@@ -61,6 +61,8 @@ public:
 
     int Disconnect();
 
+    ClientId client_id() const { return clientId; }
+
     int CreateChronicle(std::string const& chronicle_name);
 
     int DestroyChronicle(std::string const& chronicle_name);
@@ -70,23 +72,21 @@ public:
     int ReleaseStory(std::string const& chronicle_name, std::string const& story_name);
     int DestroyStory(std::string const& chronicle_name, std::string const& story_name);
 
-    int GetChronicleAttr(std::string const& chronicle_name, const std::string& key, std::string& value);
-
-    int EditChronicleAttr(std::string const& chronicle_name, const std::string& key, const std::string& value);
-
     std::pair<int, std::vector<std::string>> ShowChronicles();
     std::pair<int, std::vector<std::string>> ShowStories(const std::string& chronicle_name);
 
     int
     replay_story(ChronicleName const&, StoryName const&, uint64_t start, uint64_t end, std::vector<Event>& eventSeries);
 
+    int
+    replay_story(ChronicleName const&, StoryName const&, uint64_t start, uint64_t end, Client::EventCallback callback);
+
 private:
     ClientMode clientMode;
     ChronologClientState clientState;
     std::string clientLogin;
     uint32_t euid;
-    uint32_t hostId;
-    uint32_t pid;
+    ClientIdentity clientIdentity;
     ClientId clientId;
     ChronologTimer clockProxy;
     thallium::engine* tlEngine;
@@ -96,7 +96,7 @@ private:
 
     ChronologClientImpl(ClientPortalServiceConf const&, ClientMode const&, chronolog::ClientQueryServiceConf const&);
 
-    void defineClientIdentity();
+    void defineClientIdentity(uint16_t query_service_port);
 };
 } //namespace chronolog
 

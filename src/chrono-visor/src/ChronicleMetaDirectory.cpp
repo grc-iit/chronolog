@@ -321,6 +321,84 @@ int ChronicleMetaDirectory::release_story(chl::ClientId const& client_id,
     return ret;
 }
 
+int ChronicleMetaDirectory::evaluate_story_destroy(std::string const& chronicle_name,
+                                                   std::string const& story_name,
+                                                   chl::ClientId const& requester_client_id,
+                                                   StoryId& story_id,
+                                                   bool& caller_holds_it)
+{
+    caller_holds_it = false;
+    story_id = 0;
+
+    std::lock_guard<std::mutex> chronicleMapLock(g_chronicleMetaDirectoryMutex_);
+    uint64_t cid = CityHash64(chronicle_name.c_str(), chronicle_name.length());
+    auto chronicleRecord = chronicleMap_->find(cid);
+    if(chronicleRecord == chronicleMap_->end())
+    {
+        return chronolog::CL_ERR_NOT_EXIST;
+    }
+    Chronicle* pChronicle = chronicleRecord->second;
+    uint64_t sid = pChronicle->getStoryId(story_name);
+    if(sid == 0)
+    {
+        return chronolog::CL_ERR_NOT_EXIST;
+    }
+    Story* pStory = pChronicle->getStoryMap().at(sid);
+    story_id = sid;
+
+    auto& acquirerMap = pStory->getAcquirerMap();
+    for(auto const& entry: acquirerMap)
+    {
+        if(entry.first != requester_client_id)
+        {
+            // Some other client holds the story; destroy must be refused.
+            return chronolog::CL_ERR_ACQUIRED;
+        }
+    }
+    caller_holds_it = !acquirerMap.empty();
+    return chronolog::CL_SUCCESS;
+}
+
+int ChronicleMetaDirectory::evaluate_chronicle_destroy(
+        std::string const& chronicle_name,
+        chl::ClientId const& requester_client_id,
+        std::vector<std::pair<StoryId, std::string>>& stories_to_auto_release)
+{
+    stories_to_auto_release.clear();
+
+    std::lock_guard<std::mutex> chronicleMapLock(g_chronicleMetaDirectoryMutex_);
+    uint64_t cid = CityHash64(chronicle_name.c_str(), chronicle_name.length());
+    auto chronicleRecord = chronicleMap_->find(cid);
+    if(chronicleRecord == chronicleMap_->end())
+    {
+        return chronolog::CL_ERR_NOT_EXIST;
+    }
+    Chronicle* pChronicle = chronicleRecord->second;
+
+    for(auto const& storyMapRecord: pChronicle->getStoryMap())
+    {
+        Story* pStory = storyMapRecord.second;
+        if(pStory == nullptr)
+        {
+            continue;
+        }
+        auto& acquirerMap = pStory->getAcquirerMap();
+        bool sole_caller = !acquirerMap.empty();
+        for(auto const& entry: acquirerMap)
+        {
+            if(entry.first != requester_client_id)
+            {
+                return chronolog::CL_ERR_ACQUIRED;
+            }
+        }
+        if(sole_caller)
+        {
+            stories_to_auto_release.emplace_back(pStory->getSid(), pStory->getName());
+        }
+    }
+    return chronolog::CL_SUCCESS;
+}
+
 int ChronicleMetaDirectory::release_all_acquired_stories(chl::ClientId const& client_id,
                                                          std::vector<StoryId>& released_with_no_acquirers_left)
 {
@@ -389,103 +467,6 @@ int ChronicleMetaDirectory::release_all_acquired_stories(chl::ClientId const& cl
     }
 
     return chronolog::CL_SUCCESS;
-}
-
-int ChronicleMetaDirectory::get_chronicle_attr(std::string const& name, const std::string& key, std::string& value)
-{
-    LOG_DEBUG("[ChronicleMetaDirectory] Getting attributes Key={} from ChronicleName={}", key.c_str(), name.c_str());
-    std::lock_guard<std::mutex> chronicleMapLock(g_chronicleMetaDirectoryMutex_);
-    /* First check if Chronicle exists, fail if false */
-    uint64_t cid;
-    cid = CityHash64(name.c_str(), name.length());
-    auto chronicleMapRecord = chronicleMap_->find(cid);
-    if(chronicleMapRecord != chronicleMap_->end())
-    {
-        Chronicle* pChronicle = chronicleMap_->find(cid)->second;
-        if(pChronicle)
-        {
-            /* Then check if property exists, fail if false */
-            auto propertyRecord = pChronicle->getPropertyList().find(key);
-            if(propertyRecord != pChronicle->getPropertyList().end())
-            {
-                value = propertyRecord->second;
-                return chronolog::CL_SUCCESS;
-            }
-            else
-            {
-                LOG_WARNING("[ChronicleMetaDirectory] Property Key={} does not exist in ChronicleName={}",
-                            key.c_str(),
-                            name.c_str());
-                return chronolog::CL_ERR_NOT_EXIST;
-            }
-        }
-        else
-        {
-            LOG_ERROR("[ChronicleMetaDirectory] Something is wrong, stored Chronicle object is null");
-            return chronolog::CL_ERR_UNKNOWN;
-        }
-    }
-    else
-    {
-        LOG_WARNING("[ChronicleMetaDirectory] ChronicleName={} does not exist", name.c_str());
-        return chronolog::CL_ERR_NOT_EXIST;
-    }
-}
-
-int ChronicleMetaDirectory::edit_chronicle_attr(std::string const& name,
-                                                const std::string& key,
-                                                const std::string& value)
-{
-    LOG_DEBUG("[ChronicleMetaDirectory] Editing attribute Key={}, Value={} from ChronicleName={}",
-              key.c_str(),
-              value.c_str(),
-              name.c_str());
-    std::lock_guard<std::mutex> chronicleMapLock(g_chronicleMetaDirectoryMutex_);
-    /* First check if Chronicle exists, fail if false */
-    uint64_t cid;
-    cid = CityHash64(name.c_str(), name.length());
-    auto chronicleMapRecord = chronicleMap_->find(cid);
-    if(chronicleMapRecord != chronicleMap_->end())
-    {
-        Chronicle* pChronicle = chronicleMap_->find(cid)->second;
-        if(pChronicle)
-        {
-            /* Then check if property exists, fail if false */
-            auto propertyRecord = pChronicle->getPropertyList().find(key);
-            if(propertyRecord != pChronicle->getPropertyList().end())
-            {
-                auto res = pChronicle->getPropertyList().insert_or_assign(key, value);
-                if(res.second)
-                {
-                    return chronolog::CL_SUCCESS;
-                }
-                else
-                {
-                    LOG_ERROR("[ChronicleMetaDirectory] Something is wrong, fail to insert property Key={}, Value={}",
-                              key.c_str(),
-                              value.c_str());
-                    return chronolog::CL_ERR_UNKNOWN;
-                }
-            }
-            else
-            {
-                LOG_WARNING("[ChronicleMetaDirectory] Property Key={} does not exist in ChronicleName={}",
-                            key.c_str(),
-                            name.c_str());
-                return chronolog::CL_ERR_NOT_EXIST;
-            }
-        }
-        else
-        {
-            LOG_ERROR("[ChronicleMetaDirectory] Something is wrong, stored Chronicle object is null");
-            return chronolog::CL_ERR_UNKNOWN;
-        }
-    }
-    else
-    {
-        LOG_WARNING("[ChronicleMetaDirectory] ChronicleName={} does not exist", name.c_str());
-        return chronolog::CL_ERR_NOT_EXIST;
-    }
 }
 
 /**

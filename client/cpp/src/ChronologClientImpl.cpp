@@ -1,10 +1,16 @@
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
 #include <limits.h>
 #include <mutex>
+#include <netdb.h>
+#include <netinet/in.h>
 #include <sstream>
 #include <string>
+#include <sys/socket.h>
 #include <unistd.h>
+
+#include <arpa/inet.h>
 
 #include <margo.h>
 #include <thallium.hpp>
@@ -48,16 +54,18 @@ chronolog::ChronologClientImpl::ChronologClientImpl(chronolog::ClientPortalServi
     : clientMode(clientMode)
     , clientState(UNKNOWN)
     , clientLogin("")
-    , hostId(0)
-    , pid(0)
+    , clientIdentity{}
     , clientId(0)
     , tlEngine(nullptr)
     , rpcVisorClient(nullptr)
     , storyteller(nullptr)
     , storyReaderService(nullptr)
 {
-
-    defineClientIdentity();
+    // For reader-mode clients, the local query service has a stable port; pin
+    // it into the ClientId so consumers can reach back to this client. Writer-
+    // only clients have no inbound port and report 0.
+    uint16_t query_port = (READER_MODE == clientMode) ? clientQueryServiceConf.PORT : uint16_t{0};
+    defineClientIdentity(query_port);
 
     if(WRITER_MODE == clientMode)
     {
@@ -88,7 +96,33 @@ chronolog::ChronologClientImpl::ChronologClientImpl(chronolog::ClientPortalServi
 
 ////////
 
-void chronolog::ChronologClientImpl::defineClientIdentity()
+// Resolve the host's primary IPv4 address in host byte order. Returns 0 if the
+// hostname does not resolve to an IPv4 address (e.g. air-gapped environments);
+// that's intentionally non-fatal — ClientId is still unique within a host
+// thanks to the pid-derived instance discriminator.
+static uint32_t resolve_local_ipv4()
+{
+    char hostname[HOST_NAME_MAX + 1] = {0};
+    if(gethostname(hostname, sizeof(hostname) - 1) != 0)
+    {
+        return 0;
+    }
+    struct addrinfo hints;
+    std::memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    struct addrinfo* res = nullptr;
+    if(getaddrinfo(hostname, nullptr, &hints, &res) != 0 || res == nullptr)
+    {
+        return 0;
+    }
+    auto const* sin = reinterpret_cast<struct sockaddr_in const*>(res->ai_addr);
+    uint32_t ip = ntohl(sin->sin_addr.s_addr);
+    freeaddrinfo(res);
+    return ip;
+}
+
+void chronolog::ChronologClientImpl::defineClientIdentity(uint16_t query_service_port)
 {
     euid = geteuid(); //TODO: effective uid might be a better choice than login name ...
 
@@ -97,15 +131,28 @@ void chronolog::ChronologClientImpl::defineClientIdentity()
 
     clientLogin = login_name; //this truncates login_name to the actual strlen...
 
-    //32bit host identifier
-    hostId = gethostid();
-    //32bit process id
-    pid = getpid();
-    LOG_INFO("[ChronologClientImpl] Client Identity - Login: {}, EUID: {}, HostID: {}, PID: {}",
+    clientIdentity.ip = resolve_local_ipv4();
+    clientIdentity.port = query_service_port;
+    clientIdentity.instance = static_cast<uint16_t>(getpid() & 0xFFFFu);
+
+    LOG_INFO("[ChronologClientImpl] Client Identity - Login: {}, EUID: {}, IP: {}, Port: {}, Instance: {}",
              clientLogin,
              euid,
-             hostId,
-             pid);
+             clientIdentity.ip,
+             clientIdentity.port,
+             clientIdentity.instance);
+
+    // pid&0xFFFF alone makes ClientId collide between processes whose pids
+    // differ only above bit 16 (~1-in-65536 on long-running boxes). Without
+    // an IP component, the Visor's collision guard can refuse the second
+    // Connect for what is really a legitimate distinct process.
+    if(clientIdentity.ip == 0)
+    {
+        LOG_WARNING("[ChronologClientImpl] Could not resolve a local IPv4 address; ClientId.ip=0. "
+                    "ClientId uniqueness now relies solely on pid&0xFFFF — collisions are possible "
+                    "and the Visor will refuse the second Connect. Configure /etc/hosts or ensure "
+                    "the host's name resolves to a non-loopback address to recover the full guarantee.");
+    }
 }
 
 chronolog::ChronologClientImpl::~ChronologClientImpl()
@@ -148,7 +195,8 @@ int chronolog::ChronologClientImpl::Connect()
     }
 
 
-    auto connectResponseMsg = rpcVisorClient->Connect(euid, hostId, pid);
+    ClientId proposed_client_id = clientIdentity.pack();
+    auto connectResponseMsg = rpcVisorClient->Connect(euid, proposed_client_id);
 
     std::stringstream ss;
     ss << connectResponseMsg;
@@ -163,7 +211,6 @@ int chronolog::ChronologClientImpl::Connect()
         {
             storyteller = new StorytellerClient(clockProxy, *tlEngine, clientId);
         }
-        //TODO: if we ever change the connection hashing algorithm we'd need to handle reconnection case with the new client_id
     }
     else
     {
@@ -449,89 +496,6 @@ int chronolog::ChronologClientImpl::ReleaseStory(std::string const& chronicle_na
     return releaseStatus;
 }
 
-//TODO: client account must be passed into the rpc call
-int chronolog::ChronologClientImpl::GetChronicleAttr(std::string const& chronicle_name,
-                                                     const std::string& key,
-                                                     std::string& value)
-{
-    value.clear(); // in case the error is returned , make sure value is an empty string
-
-    if(chronicle_name.empty() || key.empty())
-    {
-        LOG_ERROR("[ChronoLogClientImpl] Failed to get attribute: Both chronicle_name and key must be provided.");
-        return chronolog::CL_ERR_INVALID_ARG;
-    }
-
-    std::lock_guard<std::mutex> lock_client(chronologClientMutex);
-
-    if((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
-    {
-        LOG_ERROR("[ChronoLogClientImpl] Cannot fetch attribute for chronicle '{}': Client is in an unknown or "
-                  "shutting down state.",
-                  chronicle_name);
-        return chronolog::CL_ERR_NO_CONNECTION;
-    }
-
-    // Attempt to fetch the attribute from the Visor using the RPC call.
-    int fetchStatus = rpcVisorClient->GetChronicleAttr(clientId, chronicle_name, key, value);
-    if(fetchStatus != chronolog::CL_SUCCESS)
-    {
-        LOG_ERROR("[ChronoLogClientImpl] Failed to fetch attribute '{}' for chronicle '{}'. Error code: {}",
-                  key,
-                  chronicle_name,
-                  chronolog::to_string_client(fetchStatus));
-    }
-    else
-    {
-        LOG_INFO("[ChronoLogClientImpl] Successfully fetched attribute '{}' for chronicle '{}'. Value: '{}'",
-                 key,
-                 chronicle_name,
-                 value);
-    }
-    return fetchStatus;
-}
-
-//TODO: client account must be passed into the rpc call
-int chronolog::ChronologClientImpl::EditChronicleAttr(std::string const& chronicle_name,
-                                                      const std::string& key,
-                                                      std::string const& value)
-{
-    if(chronicle_name.empty() || key.empty() || value.empty())
-    {
-        LOG_ERROR(
-                "[ChronoLogClientImpl] Failed to edit attribute: chronicle_name, key, and value must all be provided.");
-        return chronolog::CL_ERR_INVALID_ARG;
-    }
-
-    std::lock_guard<std::mutex> lock_client(chronologClientMutex);
-
-    if((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
-    {
-        LOG_ERROR("[ChronoLogClientImpl] Cannot edit attribute for chronicle '{}': Client is in an unknown or shutting "
-                  "down state.",
-                  chronicle_name);
-        return chronolog::CL_ERR_NO_CONNECTION;
-    }
-
-    // Attempt to edit the attribute in the Visor using the RPC call.
-    int editStatus = rpcVisorClient->EditChronicleAttr(clientId, chronicle_name, key, value);
-    if(editStatus != chronolog::CL_SUCCESS)
-    {
-        LOG_ERROR("[ChronoLogClientImpl] Failed to edit attribute '{}' for chronicle '{}'. Error code: {}",
-                  key,
-                  chronicle_name,
-                  chronolog::to_string_client(editStatus));
-    }
-    else
-    {
-        LOG_INFO("[ChronoLogClientImpl] Successfully edited attribute '{}' for chronicle '{}'. New value: '{}'",
-                 key,
-                 chronicle_name,
-                 value);
-    }
-    return editStatus;
-}
-
 std::pair<int, std::vector<std::string>> chronolog::ChronologClientImpl::ShowChronicles()
 {
     std::vector<std::string> chronicles;
@@ -591,5 +555,29 @@ int chronolog::ChronologClientImpl::replay_story(chronolog::ChronicleName const&
     }
 
     return storyReaderService->replay_story(chronicle, story, start, end, event_series);
+}
+
+int chronolog::ChronologClientImpl::replay_story(chronolog::ChronicleName const& chronicle,
+                                                 chronolog::StoryName const& story,
+                                                 uint64_t start,
+                                                 uint64_t end,
+                                                 chronolog::Client::EventCallback callback)
+{
+    if(WRITER_MODE == clientMode)
+    {
+        return chl::CL_ERR_NOT_READER_MODE;
+    }
+
+    if(nullptr == storyReaderService)
+    {
+        return chronolog::CL_ERR_NO_PLAYERS;
+    }
+
+    if(!callback)
+    {
+        return chronolog::CL_ERR_INVALID_ARG;
+    }
+
+    return storyReaderService->replay_story(chronicle, story, start, end, std::move(callback));
 }
 //////////////////////////////

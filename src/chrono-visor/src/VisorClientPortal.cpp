@@ -103,35 +103,24 @@ chronolog::VisorClientPortal::~VisorClientPortal()
 /**
  * Admin APIs
  */
-int chronolog::VisorClientPortal::ClientConnect(uint32_t client_euid,
-                                                uint32_t client_host_id,
-                                                uint32_t client_pid,
-                                                chl::ClientId& client_id,
-                                                uint64_t& clock_offset)
+int chronolog::VisorClientPortal::ClientConnect(uint32_t client_euid, chl::ClientId& client_id, uint64_t& clock_offset)
 {
-    LOG_INFO("New Client Connected. ClientEUID={}, ClientHostID={}, ClientPID={}",
+    chronolog::ClientIdentity identity = chronolog::ClientIdentity::unpack(client_id);
+    LOG_INFO("New Client Connected. ClientEUID={}, ClientID={} (ip={}, port={}, instance={})",
              client_euid,
-             client_host_id,
-             client_pid);
+             client_id,
+             identity.ip,
+             identity.port,
+             identity.instance);
     ClientInfo record;
 
     if(!is_client_authenticated(client_euid))
     {
         LOG_ERROR("client_euid={} is invalid", client_euid);
-        //LOG_ERROR("client_euid=%u is invalid", client_euid);
         return chronolog::CL_ERR_INVALID_ARG;
     }
-    //TODO: consider different hashing mechanism that takesproduces uint32 hash value
-    std::string client_account_for_hash =
-            std::to_string(client_euid) + std::to_string(client_host_id) + std::to_string(client_pid);
-    uint64_t client_token = CityHash64(client_account_for_hash.c_str(), client_account_for_hash.size());
-    client_id = client_token; //INNA: change this API...
-    LOG_INFO("[VisorClientPortal] Client arguments: account={} host_id={} pid={} -> client_token={}",
-             client_euid,
-             client_host_id,
-             client_pid,
-             client_token);
-    return clientManager.add_client_record(client_token, record);
+
+    return clientManager.add_client_record(client_id, record);
 }
 
 int chronolog::VisorClientPortal::ClientDisconnect(chronolog::ClientId const& client_id)
@@ -198,13 +187,62 @@ int chronolog::VisorClientPortal::DestroyChronicle(chl::ClientId const& client_i
         return chronolog::CL_ERR_NOT_AUTHORIZED;
     }
 
-    int return_code = chronicleMetaDirectory.destroy_chronicle(chronicle_name);
-    if(return_code == chronolog::CL_SUCCESS)
+    // Destroy rule: refuse if any story is held by a client other than the
+    // requester. If the requester is the sole acquirer of some stories, auto-
+    // release them first (the same Release path drives the sync flush so any
+    // in-flight events are persisted before the data is destroyed).
+    std::vector<std::pair<StoryId, std::string>> stories_to_auto_release;
+    int eligibility =
+            chronicleMetaDirectory.evaluate_chronicle_destroy(chronicle_name, client_id, stories_to_auto_release);
+    if(eligibility != chronolog::CL_SUCCESS)
     {
-        LOG_DEBUG("[VisorClientPortal] Chronicle destroyed: ClientID={}, ChronicleName={}",
-                  client_id,
-                  chronicle_name.c_str());
+        return eligibility;
     }
+
+    for(auto const& [sid, story_name]: stories_to_auto_release)
+    {
+        StoryId released_id{0};
+        bool was_last_acquirer = false;
+        int release_rc = chronicleMetaDirectory.release_story(client_id,
+                                                              chronicle_name,
+                                                              story_name,
+                                                              released_id,
+                                                              was_last_acquirer);
+        if(release_rc != chronolog::CL_SUCCESS)
+        {
+            LOG_WARNING("[VisorClientPortal] DestroyChronicle: auto-release of StoryName={} failed rc={}",
+                        story_name,
+                        release_rc);
+            // Continue; metadata removal below will report any inconsistency.
+        }
+        if(was_last_acquirer && theKeeperRegistry != nullptr)
+        {
+            // Stop the recording group from accepting new events for this
+            // story (notification is async; the Grapher will drain on its
+            // own when destroy lands below).
+            theKeeperRegistry->notifyRecordingGroupOfStoryRecordingStop(released_id);
+        }
+    }
+
+    // Destroy metadata FIRST so that any concurrent Acquire fails before it
+    // can hand out a recording group binding for stories in this chronicle.
+    int return_code = chronicleMetaDirectory.destroy_chronicle(chronicle_name);
+    if(return_code != chronolog::CL_SUCCESS)
+    {
+        return return_code;
+    }
+
+    if(theKeeperRegistry != nullptr)
+    {
+        // Broadcast destroy_chronicle to every Grapher so HDF5 files written
+        // by any group during the chronicle's lifetime are removed. The
+        // Grapher destroy is async internally.
+        theKeeperRegistry->notifyAllGraphersOfChronicleDestruction(chronicle_name);
+    }
+
+    LOG_INFO("[VisorClientPortal] Chronicle destroyed: ClientID={}, ChronicleName={}",
+             client_id,
+             chronicle_name.c_str());
     return (return_code);
 }
 
@@ -213,7 +251,7 @@ int chronolog::VisorClientPortal::DestroyStory(chl::ClientId const& client_id,
                                                std::string const& chronicle_name,
                                                std::string const& story_name)
 {
-    LOG_INFO("[VisorClientPortal] Story destroyed: PID={}, ChronicleName={}, StoryName={}",
+    LOG_INFO("[VisorClientPortal] Story destroy requested: PID={}, ChronicleName={}, StoryName={}",
              getpid(),
              chronicle_name.c_str(),
              story_name.c_str());
@@ -222,14 +260,71 @@ int chronolog::VisorClientPortal::DestroyStory(chl::ClientId const& client_id,
         return chronolog::CL_ERR_NOT_AUTHORIZED;
     }
 
-    if(!chronicle_name.empty() && !story_name.empty())
-    {
-        return chronicleMetaDirectory.destroy_story(chronicle_name, story_name);
-    }
-    else
+    if(chronicle_name.empty() || story_name.empty())
     {
         return chronolog::CL_ERR_INVALID_ARG;
     }
+
+    StoryId story_id{0};
+    bool caller_holds_it = false;
+    int eligibility = chronicleMetaDirectory.evaluate_story_destroy(chronicle_name,
+                                                                    story_name,
+                                                                    client_id,
+                                                                    story_id,
+                                                                    caller_holds_it);
+    if(eligibility != chronolog::CL_SUCCESS)
+    {
+        return eligibility;
+    }
+
+    if(caller_holds_it)
+    {
+        // Auto-release on behalf of the caller. Release is async; the
+        // notification just stops the recording group from accepting new
+        // events for this story.
+        StoryId released_id{0};
+        bool was_last_acquirer = false;
+        int release_rc = chronicleMetaDirectory.release_story(client_id,
+                                                              chronicle_name,
+                                                              story_name,
+                                                              released_id,
+                                                              was_last_acquirer);
+        if(release_rc != chronolog::CL_SUCCESS)
+        {
+            LOG_WARNING("[VisorClientPortal] DestroyStory: auto-release of StoryName={} failed rc={}",
+                        story_name,
+                        release_rc);
+        }
+        if(was_last_acquirer && theKeeperRegistry != nullptr)
+        {
+            theKeeperRegistry->notifyRecordingGroupOfStoryRecordingStop(released_id);
+        }
+    }
+
+    // Destroy metadata FIRST. This closes the TOCTOU window where a
+    // concurrent AcquireStory from another client could land between the
+    // Grapher-side destroy broadcast and metadata removal: with metadata
+    // gone, any concurrent Acquire fails before it can hand out a recording
+    // group binding for the story.
+    int return_code = chronicleMetaDirectory.destroy_story(chronicle_name, story_name);
+    if(return_code != chronolog::CL_SUCCESS)
+    {
+        return return_code;
+    }
+
+    if(theKeeperRegistry != nullptr)
+    {
+        // Broadcast destroy_story to every Grapher. The Grapher's destroy is
+        // async (it enqueues the work and returns immediately), so this
+        // RPC is fire-and-forget from the Visor's POV. Each Grapher filters
+        // by filename and no-ops on stories it never persisted.
+        theKeeperRegistry->notifyAllGraphersOfStoryDestruction(chronicle_name, story_name, story_id);
+    }
+
+    LOG_INFO("[VisorClientPortal] Story destroyed: ChronicleName={}, StoryName={}",
+             chronicle_name.c_str(),
+             story_name.c_str());
+    return return_code;
 }
 
 ///////////////////
@@ -341,47 +436,6 @@ int chronolog::VisorClientPortal::ReleaseStory(chl::ClientId const& client_id,
     return chronolog::CL_SUCCESS;
 }
 
-//////////////
-
-int chronolog::VisorClientPortal::GetChronicleAttr(chl::ClientId const& client_id,
-                                                   std::string const& chronicle_name,
-                                                   const std::string& key,
-                                                   std::string& value)
-{
-    LOG_DEBUG("[VisorClientPortal] Get Chronicle Attributes: PID={}, Name={}, Key={}",
-              getpid(),
-              chronicle_name.c_str(),
-              key.c_str());
-    if(chronicle_name.empty() || key.empty())
-    {
-        return chronolog::CL_ERR_INVALID_ARG;
-    }
-
-    // TODO: add authorization check : if ( chronicle_action_is_authorized())
-    return chronicleMetaDirectory.get_chronicle_attr(chronicle_name, key, value);
-}
-
-//////////////
-
-int chronolog::VisorClientPortal::EditChronicleAttr(chl::ClientId const& client_id,
-                                                    std::string const& chronicle,
-                                                    std::string const& key,
-                                                    std::string const& value)
-{
-    LOG_DEBUG("[VisorClientPortal] Edit Chronicle Attributes: PID={}, Name={}, Key={}, Value={}",
-              getpid(),
-              chronicle.c_str(),
-              key.c_str(),
-              value.c_str());
-    if(chronicle.empty() || key.empty() || value.empty())
-    {
-        return chronolog::CL_ERR_INVALID_ARG;
-    }
-
-    // TODO: add authorization check : if ( chronicle_action_is_authorized())
-    return chronicleMetaDirectory.edit_chronicle_attr(chronicle, key, value);
-}
-
 int chronolog::VisorClientPortal::ShowChronicles(chl::ClientId const& client_id, std::vector<std::string>& chronicles)
 {
     LOG_DEBUG("[VisorClientPortal] Show Chronicles: PID={}, ClientID={}", getpid(), client_id);
@@ -410,62 +464,6 @@ int chronolog::VisorClientPortal::ShowStories(chl::ClientId const& client_id,
 
     return chronicleMetaDirectory.show_stories(chronicle_name, stories);
 }
-
-
-/*
-/////////////////
-int chronolog::VisorClientPortal::LocalDestroyStory(std::string const& chronicle_name, std::string const&story_name)
-{    int return_code = chronolog::CL_SUCCESS;
-
-    return return_code;
-}
-
-
-/////////////////
-AcquireStoryResponseMsg const& chronolog::VisorClientPortal::LocalAcquireStory(
-                              chronolog::ClientId const&client_id
-                              , std::string const&chronicle_name,
-                              std::string const&story_name,
-                              const std::unordered_map<std::string, std::string> &attrs,
-                              int &flags)
-{
-    int return_code = chronolog::CL_SUCCESS;
-
-    return return_code;
-}
-
-
-/////////////////
-int chronolog::VisorClientPortal::LocalReleaseStory( chronolog::ClientId const&client_id
-            , std::string const&chronicle_name, std::string const&story_name)
-{
-    int return_code = chronolog::CL_SUCCESS;
-
-    return return_code;
-}
-
-
-/////////////////
-int chronolog::VisorClientPortal::LocalGetChronicleAttr( chronolog::ClientId const& client_id
-            , std::string const&name, const std::string &key, std::string &value)
-{
-    int return_code = chronolog::CL_SUCCESS;
-
-    return return_code;
-}
-
-/////////////////
-int chronolog::VisorClientPortal::LocalEditChronicleAttr( chronolog::ClientId const& client_id
-            , std::string const&name, const std::string &key, const std::string &value)
-{
-    int return_code = chronolog::CL_SUCCESS;
-
-    return return_code;
-}
-
-
-*/
-/////////////////
 
 bool chronolog::VisorClientPortal::is_client_authenticated(uint32_t client_account) { return true; }
 

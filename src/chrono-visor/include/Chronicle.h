@@ -21,7 +21,6 @@
 #include "Story.h"
 #include "Archive.h"
 
-#define MAX_CHRONICLE_PROPERTY_LIST_SIZE 16
 #define MAX_CHRONICLE_METADATA_MAP_SIZE 16
 #define MAX_STORY_MAP_SIZE 1024
 #define MAX_ARCHIVE_MAP_SIZE 1024
@@ -58,7 +57,6 @@ class Chronicle
 public:
     Chronicle()
     {
-        propertyList_ = std::unordered_map<std::string, std::string>(MAX_CHRONICLE_PROPERTY_LIST_SIZE);
         metadataMap_ = std::unordered_map<std::string, std::string>(MAX_CHRONICLE_METADATA_MAP_SIZE);
         storyMap_ = std::unordered_map<uint64_t, Story*>(MAX_STORY_MAP_SIZE);
         archiveMap_ = std::unordered_map<uint64_t, Archive*>(MAX_ARCHIVE_MAP_SIZE);
@@ -83,18 +81,11 @@ public:
 
     void setStats(const ChronicleStats& stats) { stats_ = stats; }
 
-    void setProperty(const std::unordered_map<std::string, std::string>& attrs)
-    {
-        for(auto const& entry: attrs) { propertyList_.emplace(entry.first, entry.second); }
-    }
-
     const std::string& getName() const { return name_; }
 
     const uint64_t& getCid() const { return cid_; }
 
     const ChronicleStats& getStats() const { return stats_; }
-
-    std::unordered_map<std::string, std::string>& getPropertyList() { return propertyList_; }
 
     const std::unordered_map<std::string, std::string>& getMetadataMap() const { return metadataMap_; }
 
@@ -141,26 +132,6 @@ public:
     }
 
     friend std::ostream& operator<<(std::ostream& os, const Chronicle& chronicle);
-
-    int addProperty(const std::string& name, const std::string& value)
-    {
-        if(propertyList_.size() <= MAX_CHRONICLE_PROPERTY_LIST_SIZE)
-        {
-            auto res = propertyList_.insert_or_assign(name, value);
-            if(res.second)
-            {
-                return chronolog::CL_SUCCESS;
-            }
-            else
-            {
-                return chronolog::CL_ERR_UNKNOWN;
-            }
-        }
-        else
-        {
-            return chronolog::CL_ERR_CHRONICLE_PROPERTY_FULL;
-        }
-    }
 
     int addMetadata(const std::string& name, const std::string& value)
     {
@@ -281,8 +252,6 @@ public:
 
     uint64_t getAcquisitionCount() const { return stats_.count; }
 
-    size_t getPropertyListSize() { return propertyList_.size(); }
-
     size_t getMetadataMapSize() { return metadataMap_.size(); }
 
     size_t getStoryMapSize() { return storyMap_.size(); }
@@ -294,7 +263,6 @@ private:
     uint64_t cid_{};
     ChronicleAttrs attrs_{};
     ChronicleStats stats_{};
-    std::unordered_map<std::string, std::string> propertyList_;
     std::unordered_map<std::string, std::string> metadataMap_;
     std::unordered_map<uint64_t, Story*> storyMap_;
     std::unordered_map<uint64_t, Archive*> archiveMap_;
@@ -305,10 +273,7 @@ private:
 inline std::ostream& operator<<(std::ostream& os, const Chronicle& chronicle)
 {
     os << "name: " << chronicle.name_ << ", " << "cid: " << chronicle.cid_ << ", "
-       << "access count: " << chronicle.stats_.count << ", " << "properties: ";
-    os << "(";
-    for(auto const& property: chronicle.propertyList_) os << property.first << ": " << property.second << ", ";
-    os << ")";
+       << "access count: " << chronicle.stats_.count;
     return os;
 }
 

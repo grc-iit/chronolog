@@ -22,6 +22,8 @@ int chronolog::Client::Connect() { return chronologClientImpl->Connect(); }
 
 int chronolog::Client::Disconnect() { return chronologClientImpl->Disconnect(); }
 
+chronolog::ClientId chronolog::Client::client_id() const { return chronologClientImpl->client_id(); }
+
 int chronolog::Client::CreateChronicle(std::string const& chronicle_name)
 {
     return chronologClientImpl->CreateChronicle(chronicle_name);
@@ -48,18 +50,6 @@ int chronolog::Client::DestroyStory(std::string const& chronicle_name, std::stri
     return chronologClientImpl->DestroyStory(chronicle_name, story_name);
 }
 
-int chronolog::Client::GetChronicleAttr(std::string const& chronicle_name, const std::string& key, std::string& value)
-{
-    return chronologClientImpl->GetChronicleAttr(chronicle_name, key, value);
-}
-
-int chronolog::Client::EditChronicleAttr(std::string const& chronicle_name,
-                                         const std::string& key,
-                                         const std::string& value)
-{
-    return chronologClientImpl->EditChronicleAttr(chronicle_name, key, value);
-}
-
 std::pair<int, std::vector<std::string>> chronolog::Client::ShowChronicles()
 {
     return chronologClientImpl->ShowChronicles();
@@ -78,4 +68,13 @@ int chronolog::Client::ReplayStory(std::string const& chronicle_name,
                                    std::vector<chronolog::Event>& event_series)
 {
     return chronologClientImpl->replay_story(chronicle_name, story_name, start_time, end_time, event_series);
+}
+
+int chronolog::Client::ReplayStory(std::string const& chronicle_name,
+                                   std::string const& story_name,
+                                   uint64_t start_time,
+                                   uint64_t end_time,
+                                   chronolog::Client::EventCallback callback)
+{
+    return chronologClientImpl->replay_story(chronicle_name, story_name, start_time, end_time, std::move(callback));
 }

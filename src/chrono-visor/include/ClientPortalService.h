@@ -41,8 +41,7 @@ public:
 
     void Connect(tl::request const& request,
                  uint32_t client_account,
-                 uint32_t client_host_ip,
-                 uint32_t client_pid,
+                 ClientId proposed_client_id,
                  uint32_t client_protocol_version)
     {
         if(client_protocol_version != chronolog::CLIENT_PROTOCOL_VERSION)
@@ -54,10 +53,9 @@ public:
             return;
         }
 
-        ClientId client_id;
+        ClientId client_id = proposed_client_id;
         uint64_t clock_offset;
-        int return_code =
-                theVisorClientPortal.ClientConnect(client_account, client_host_ip, client_pid, client_id, clock_offset);
+        int return_code = theVisorClientPortal.ClientConnect(client_account, client_id, clock_offset);
         if(chronolog::CL_SUCCESS == return_code)
         {
             request.respond(ConnectResponseMsg(chronolog::CL_SUCCESS, client_id));
@@ -113,26 +111,6 @@ public:
         request.respond(theVisorClientPortal.DestroyStory(client_id, chronicle_name, story_name));
     }
 
-    void GetChronicleAttr(tl::request const& request,
-                          ClientId const& client_id,
-                          std::string const& chronicle_name,
-                          std::string const& key,
-                          std::string& value)
-    {
-        int return_code = theVisorClientPortal.GetChronicleAttr(client_id, chronicle_name, key, value);
-        request.respond(return_code);
-    }
-
-    void EditChronicleAttr(tl::request const& request,
-                           ClientId const& client_id,
-                           std::string const& chronicle_name,
-                           std::string const& key,
-                           std::string const& value)
-    {
-        int return_code = theVisorClientPortal.EditChronicleAttr(client_id, chronicle_name, key, value);
-        request.respond(return_code);
-    }
-
     void ShowChronicles(tl::request const& request, ClientId const& client_id)
     {
         std::vector<std::string> chronicles;
@@ -159,8 +137,6 @@ private:
         define("AcquireStory", &ClientPortalService::AcquireStory);
         define("ReleaseStory", &ClientPortalService::ReleaseStory);
         define("DestroyStory", &ClientPortalService::DestroyStory);
-        define("GetChronicleAttr", &ClientPortalService::GetChronicleAttr);
-        define("EditChronicleAttr", &ClientPortalService::EditChronicleAttr);
         define("ShowChronicles", &ClientPortalService::ShowChronicles);
         define("ShowStories", &ClientPortalService::ShowStories);
         //setup finalization callback in case this ser vice provider is still alive when the engine is finalized

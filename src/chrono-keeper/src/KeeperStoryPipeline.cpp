@@ -102,6 +102,7 @@ void chronolog::KeeperStoryPipeline::finalize()
             mergeEvents(activeIngestionHandle->getActiveDeque());
         }
         delete activeIngestionHandle;
+        activeIngestionHandle = nullptr;
         LOG_INFO("[KeeperStoryPipeline] Finalized ingestion handle for storyId: {}", storyId);
     }
 
@@ -132,7 +133,6 @@ void chronolog::KeeperStoryPipeline::finalize()
         }
     }
 }
-
 
 /////////////////////
 
