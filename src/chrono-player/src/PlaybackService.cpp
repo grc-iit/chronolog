@@ -1,6 +1,6 @@
+#include <chrono>
 #include <map>
 #include <mutex>
-#include <sstream>
 #include <utility>
 #include <thallium.hpp>
 
@@ -42,6 +42,8 @@ chronolog::PlaybackService::~PlaybackService()
 
 void chronolog::PlaybackService::playback_service_available(tl::request const& request) { request.respond(1); }
 
+/////////
+
 void chronolog::PlaybackService::story_playback_request(tl::request const& request,
                                                         chl::ServiceId const& receiver_service_id,
                                                         uint32_t query_id,
@@ -56,8 +58,6 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
              story_name);
 
     //ChronoPlayer is running and able to respond
-    // generate unique RequestId (service_provider_id + atomic query index)
-    uint32_t requestId = 1;
 
     chl::StoryChunkTransferAgent* storyChunkSender = nullptr;
     // if we already have StoryChunkTransferAgent & ExtractionQueue for this receiver,
@@ -83,16 +83,32 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
         }
     }
 
+    //chl::chrono_time active_window_boundary = PlayerDataStore.get_access_window_boundary();
+    chl::chrono_time active_window_boundary = 1;
+
+    // allocate PlaybackQueryResponse instance for this query 
+    // and put it on the ResponseTransferAgentQueue
+    chl::PlaybackQueryResponse * query_response = storyChunkSender->createQueryResponse(query_id);
+
+    // handle the active in-memory portion of the query response
+    if(start_time < active_window_boundary)
+    {  
+	 //PlayerDataStore.get_active_story_events( query_response.events());
+    }
+
+
+    if(end_time > active_window_boundary)
+    {
     // put new archiveRequest tied to the Sender's extractionQueue on
     // onto the ArchiveReadingRequestQueue
 
-    theArchiveReadingRequestQueue.pushReadingRequest(
+        theArchiveReadingRequestQueue.pushReadingRequest(
             chl::ArchiveReadingRequest(&(storyChunkSender->getExtractionQueue()),
                                        chronicle_name,
                                        story_name,
                                        start_time,
                                        end_time));
+    }
 
-    // return requestId
-    request.respond(requestId);
+    request.respond(query_id);
 }

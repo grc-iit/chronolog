@@ -6,7 +6,8 @@
 #include <thallium.hpp>
 
 #include <chrono_monitor.h>
-#include <chronolog_types.h>
+#include <chronolog_client.h>
+#include <PlaybackQueryResponse.h>
 #include <StoryChunkExtractor.h>
 #include <ServiceId.h>
 
@@ -38,6 +39,8 @@ public:
 
     int processStoryChunk(StoryChunk* story_chunk) override;
     bool is_receiver_available() const;
+
+    PlaybackQueryResponse * createQueryResponse(ClientQueryId const&);
 
 private:
     tl::engine& service_engine;                  // local tl::engine

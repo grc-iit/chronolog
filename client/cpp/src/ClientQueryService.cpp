@@ -276,14 +276,17 @@ void chl::ClientQueryService::receive_query_response(tl::request const& request,
         auto query_iter = activeQueryMap.find(query_id);
         if(query_iter != activeQueryMap.end())
         {
+	    //TODO: now that PlaybackResponse is already an eventseries, 
+	    //revisit this unnecessary copying of large arrays	
+	    // movign arrays would be better here 
             std::vector<chl::Event>& event_series = (*query_iter).second.eventSeries;
             event_series.reserve(event_series.size() + response.events.size());
-            for(auto const& log_event: response.events)
+            for(auto const& event: response.events)
             {
-                event_series.emplace_back(log_event.eventTime,
-                                          log_event.clientId,
-                                          log_event.eventIndex,
-                                          log_event.logRecord);
+                event_series.emplace_back(event.time(),
+                                          event.client_id(),
+                                          event.index(),
+                                          event.log_record());
             }
             (*query_iter).second.completed = true;
             LOG_DEBUG("[ClientQueryService] Query {} got {} events, ThreadID={}",

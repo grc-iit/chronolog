@@ -281,7 +281,5 @@ std::vector<chl::Event>& chl::StoryChunk::extractEventSeries(std::vector<chl::Ev
                                           logEvent.second.logRecord});
     }
 
-    logEvents.clear();
-
     return event_series;
 }

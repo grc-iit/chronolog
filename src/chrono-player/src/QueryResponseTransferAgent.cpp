@@ -53,6 +53,22 @@ bool chronolog::StoryChunkTransferAgent::is_receiver_available() const
               ret_value);
     return ret_value;
 }
+
+//////////
+
+chl::PlaybackQueryResponse * chronolog::StoryChunkTransferAgent::createQueryResponse(chl::ClientQueryId const& query_id)
+{
+//TODO: create the PlaybackQueryResponse object and stash it this agent's internal queue or map keyed by clientQueryId
+// note that particualr QueryResponseAgent talkes to one client so can jsut use client provided query id
+//
+    chl::PlaybackQueryResponse * new_query_response =nullptr;
+
+    return new_query_response;
+}
+
+///////
+// TODO change this function to submit the query_id accompanied with the chronologically orded vector of story_chunks
+// attach all the events from this vector to the query response mark it as ready to send
 int chronolog::StoryChunkTransferAgent::processStoryChunk(chronolog::StoryChunk* story_chunk)
 {
     try
@@ -66,13 +82,15 @@ int chronolog::StoryChunkTransferAgent::processStoryChunk(chronolog::StoryChunk*
         std::chrono::high_resolution_clock::time_point start, end;
         start = std::chrono::high_resolution_clock::now();
 #endif
-        // Build the wire response: a flat vector of LogEvent values in the
-        // chunk's natural sorted order (the chunk stores events in a map
-        // keyed by (eventTime, clientId, eventIndex), so iteration is
-        // already ordered).
+        // Build the wire response: a flat vector of Event values in the
+        // chunk's sorted order (the chunk stores events in a map
+        // keyed by (eventTime, clientId, eventIndex)
+	//
         chronolog::PlaybackQueryResponse response;
-        response.events.reserve(story_chunk->getEventCount());
-        for(auto const& entry: *story_chunk) { response.events.push_back(entry.second); }
+       
+        	
+        //for(auto const& entry: *story_chunk) { response.events.push_back(entry.second); }
+        story_chunk->extractEventSeries(response.events);
 
         size_t serialized_response_size;
         std::ostringstream oss(std::ios::binary);
