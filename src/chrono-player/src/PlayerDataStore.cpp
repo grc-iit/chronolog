@@ -113,7 +113,7 @@ void chronolog::PlayerDataStore::dataCollectionTask()
               es.get_rank(),
               tl::thread::self_id());
 
-    while(!is_shutting_down() || !theIngestionQueue.is_empty() || !theMapOfStoryPipelines.empty())
+    while(!is_shutting_down())
     {
         LOG_DEBUG("[PlayerDataStore] Running DataCollection iteration. ESrank={}, ThreadID={}",
                   es.get_rank(),
@@ -180,13 +180,24 @@ void chronolog::PlayerDataStore::shutdownDataCollection()
              theMapOfStoryPipelines.size(),
              pipelinesWaitingForExit.size());
 
+    // Join threads & execution streams while holding stateMutex
+
+    for(auto& th: dataStoreThreads) { th->join(); }
+    LOG_INFO("[PlayerDataStore] All data collection threads have been joined.");
+
+    for(auto& es: dataStoreStreams) { es->join(); }
+    LOG_INFO("[PlayerDataStore] All data collection streams have been joined.");
+
+    // Collect any remaining ingested events and retire the StoryPipelines
+    collectIngestedEvents();
 
     if(!theMapOfStoryPipelines.empty())
     {
         std::lock_guard storeLock(dataStoreMutex);
 
         chl::StoryPipeline* pipeline = nullptr;
-        for(auto pipeline_iter = theMapOfStoryPipelines.begin(); pipeline_iter != theMapOfStoryPipelines.end();)
+        for(auto pipeline_iter = theMapOfStoryPipelines.begin(); pipeline_iter != theMapOfStoryPipelines.end();
+            ++pipeline_iter)
         {
             pipeline = (*pipeline_iter).second;
             theIngestionQueue.removeStoryIngestionHandle(pipeline->getStoryId());
@@ -203,14 +214,6 @@ void chronolog::PlayerDataStore::shutdownDataCollection()
                  pipelinesWaitingForExit.size());
     }
 
-    // Join threads & execution streams while holding stateMutex
-    // and just wait until all the events are collected and
-    // all the storyPipelines decay and retire
-    for(auto& th: dataStoreThreads) { th->join(); }
-    LOG_INFO("[PlayerDataStore] All data collection threads have been joined.");
-
-    for(auto& es: dataStoreStreams) { es->join(); }
-    LOG_INFO("[PlayerDataStore] All data collection streams have been joined.");
     LOG_INFO("[PlayerDataStore] DataCollection shutdown completed.");
 }
 
