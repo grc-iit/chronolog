@@ -40,7 +40,6 @@ endif()
 
 add_executable(transfer_agent_test
     chrono_player_transfer_agent_test.cpp
-    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/StoryChunkExtractor.cpp
     ${CMAKE_SOURCE_DIR}/src/chrono-player/src/QueryResponseTransferAgent.cpp
 )
 
@@ -62,8 +61,8 @@ set_target_properties(transfer_agent_test PROPERTIES
     SKIP_BUILD_RPATH TRUE
 )
 
-add_test(NAME Functional_ChronoPlayer_StoryChunkTransferAgent COMMAND transfer_agent_test)
-set_tests_properties(Functional_ChronoPlayer_StoryChunkTransferAgent PROPERTIES DISABLED TRUE)
+add_test(NAME Functional_ChronoPlayer_QueryResponseAgent COMMAND transfer_agent_test)
+set_tests_properties(Functional_ChronoPlayer_QueryResponseAgent PROPERTIES DISABLED TRUE)
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(transfer_agent_test DESTINATION tests)
 endif()
@@ -73,7 +72,6 @@ endif()
 add_executable(playback_service_test
     chrono_player_playback_service_test.cpp
     ${CMAKE_SOURCE_DIR}/src/chrono-player/src/PlaybackService.cpp
-    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/StoryChunkExtractor.cpp
     ${CMAKE_SOURCE_DIR}/src/chrono-player/src/QueryResponseTransferAgent.cpp
 )
 

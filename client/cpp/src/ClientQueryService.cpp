@@ -164,7 +164,7 @@ chl::PlaybackQuery* chl::ClientQueryService::start_query(uint64_t timeout_time,
     std::lock_guard<std::mutex> lock(queryServiceMutex);
 
     uint32_t query_id = queryIndex++;
-    query_id = 1;  //TODO: remove this line ...
+
     auto insert_return = activeQueryMap.insert(std::pair<uint32_t, chl::PlaybackQuery>(
             query_id,
             chl::PlaybackQuery(playback_events, query_id, timeout_time, chronicle, story, start_time, end_time)));
@@ -189,7 +189,7 @@ chl::PlaybackQuery* chl::ClientQueryService::start_query(uint64_t timeout_time,
     std::lock_guard<std::mutex> lock(queryServiceMutex);
 
     uint32_t query_id = queryIndex++;
-    query_id = 1;  //TODO: remove this line ...
+
     auto insert_return = activeQueryMap.insert(std::pair<uint32_t, chl::PlaybackQuery>(
             query_id,
             chl::PlaybackQuery(std::move(callback), query_id, timeout_time, chronicle, story, start_time, end_time)));
@@ -326,10 +326,7 @@ void chl::ClientQueryService::receive_query_response(tl::request const& request,
                     // and hang the polling thread until CL_ERR_QUERY_TIMED_OUT.
                     try
                     {
-                        query.callback(chl::Event{event.time(),
-                                                  event.client_id(),
-                                                  event.index(),
-                                                  event.log_record()});
+                        query.callback(chl::Event{event.time(), event.client_id(), event.index(), event.log_record()});
                     }
                     catch(std::exception const& ex)
                     {
@@ -348,16 +345,13 @@ void chl::ClientQueryService::receive_query_response(tl::request const& request,
             }
             else if(query.eventSeries != nullptr)
             {
-            //TODO: now that PlaybackResponse is already an event series,
-            //revisit this unnecessary copying of large arrays
+                //TODO: now that PlaybackResponse is already an event series,
+                //revisit this unnecessary copying of large arrays
                 std::vector<chl::Event>& event_series = *query.eventSeries;
                 event_series.reserve(event_series.size() + response.events.size());
                 for(auto const& event: response.events)
                 {
-                    event_series.emplace_back(event.time(),
-                                              event.client_id(),
-                                              event.index(),
-                                              event.log_record());
+                    event_series.emplace_back(event.time(), event.client_id(), event.index(), event.log_record());
                 }
             }
             query.completed = true;
