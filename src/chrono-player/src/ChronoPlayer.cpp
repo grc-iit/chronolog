@@ -315,7 +315,7 @@ int main(int argc, char** argv)
 
     // start all dataCollection and Extraction threads...
     theDataStore.startDataCollection(3);
-    
+
     int NUMBER_ARCHIVE_READING_STREAMS = 1;
     archiveReadingAgent->startArchiveReading(NUMBER_ARCHIVE_READING_STREAMS);
 
@@ -342,7 +342,6 @@ int main(int argc, char** argv)
     delete recordingService;
     // Shutdown the Data Collection
     theDataStore.shutdownDataCollection();
-    delete recordingEngine;
     delete dataAdminEngine;
     delete playbackEngine;
     delete recordingEngine;

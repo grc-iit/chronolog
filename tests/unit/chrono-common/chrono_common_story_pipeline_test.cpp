@@ -24,7 +24,7 @@ static constexpr uint64_t NS = 1000000000ULL;
 TEST(StoryPipeline_TestConstructors, testValidEmptyInit)
 {
     initLogger();
-    EXPECT_NO_THROW({ chl::StoryPipeline p( "C", "S", 1, 0, 1, 1); });
+    EXPECT_NO_THROW({ chl::StoryPipeline p("C", "S", 1, 0, 1, 1); });
 }
 
 // We set the starttime as the granularity boundary
@@ -212,7 +212,7 @@ TEST(StoryPipeline_TestExtractDecayedChunks, testExtractSmallAfterDecay)
     chl::StoryChunk c("C", "S", 1, 0, 1000);
     c.insertEvent(chl::LogEvent(1, 500, 1, 0, "test"));
     p.mergeEvents(c);
- 
+
     std::vector<chl::StoryChunk*> q;
     p.extractDecayedStoryChunks(2 * NS + 1, q);
     EXPECT_EQ(q.size(), 1);
@@ -239,7 +239,7 @@ TEST(StoryPipeline_TestExtractDecayedChunks, testExtractSmallAfterDecay)
 TEST(StoryPipeline_TestExtractDecayedChunks, testExtractMultiple)
 {
     initLogger();
-    chl::StoryPipeline p( "C", "S", 1, 0, 1, 1);
+    chl::StoryPipeline p("C", "S", 1, 0, 1, 1);
 
     chl::StoryChunk c1("C", "S", 1, 0, NS);
     c1.insertEvent(chl::LogEvent(1, 500'000'000, 1, 0, "first"));
@@ -293,7 +293,7 @@ TEST(StoryPipeline_TestExtractDecayedChunks, testAppendBehaviorAfterMultiDecay)
     // now we move beyond the second's threshold
     // first removal threshold = 2s, second = 3s so we use 3s + 1ns
     std::vector<chl::StoryChunk*> q;
-    p.extractDecayedStoryChunks(3 * NS + 1,q);
+    p.extractDecayedStoryChunks(3 * NS + 1, q);
     // confirm that both chunks got stashed
     EXPECT_EQ(q.size(), 2);
 
@@ -321,7 +321,7 @@ TEST(StoryPipeline_TestExtractDecayedChunks, testExtractLeavesTwo)
     // we extract at just after 3s, it should remove the first two and stop before the third
     uint64_t extractTime = 3 * NS + 1;
     std::vector<chl::StoryChunk*> q;
-    p.extractDecayedStoryChunks(extractTime,q);
+    p.extractDecayedStoryChunks(extractTime, q);
     // no non empty events in the first two chunks so no stashes
     EXPECT_EQ(q.size(), 0);
 
@@ -522,7 +522,7 @@ TEST(StoryPipeline_TestFinalize, testMixedDeques)
     EXPECT_EQ(q.size(), 2);
 
     // Now validate the order by checking payload of the event of the chunk
-    auto* firstChunk = q[0]; 
+    auto* firstChunk = q[0];
     ASSERT_NE(firstChunk, nullptr);
     std::vector<chl::Event> ev;
     firstChunk->extractEventSeries(ev);
@@ -530,7 +530,7 @@ TEST(StoryPipeline_TestFinalize, testMixedDeques)
     EXPECT_EQ(ev[0].log_record(), "passive");
     delete firstChunk;
 
-    auto* secondChunk = q[1]; 
+    auto* secondChunk = q[1];
     ASSERT_NE(secondChunk, nullptr);
     ev.clear();
     secondChunk->extractEventSeries(ev);

@@ -80,7 +80,7 @@ chronolog::StoryPipeline::~StoryPipeline()
 {
     LOG_DEBUG("[StoryPipeline] Destructor called for StoryId {}", storyId);
 
-    //extract & destroy any remaining non-empty StoryChunks 
+    //extract & destroy any remaining non-empty StoryChunks
     {
         std::lock_guard<std::mutex> lock(sequencingMutex);
         while(!storyTimelineMap.empty())
@@ -96,13 +96,13 @@ chronolog::StoryPipeline::~StoryPipeline()
                       extractedChunk->getEventCount());
 
             delete extractedChunk;
-	}    
-    }	    
+        }
+    }
 }
 ///////////////////////
 
 // caller takes ownerhisp of the extracted StoryChunks
-void chronolog::StoryPipeline::finalize( std::vector<chl::StoryChunk*> & extracted_chunks)
+void chronolog::StoryPipeline::finalize(std::vector<chl::StoryChunk*>& extracted_chunks)
 {
     if(activeIngestionHandle != nullptr)
     {
@@ -148,7 +148,7 @@ void chronolog::StoryPipeline::finalize( std::vector<chl::StoryChunk*> & extract
             }
             else
             {
-		extracted_chunks.push_back(extractedChunk);
+                extracted_chunks.push_back(extractedChunk);
             }
         }
     }
@@ -244,7 +244,8 @@ void chronolog::StoryPipeline::collectIngestedEvents()
 }
 
 // caller takes ownerhisp of the extracted StoryChunks
-void chronolog::StoryPipeline::extractDecayedStoryChunks(uint64_t current_time, std::vector<chl::StoryChunk*> & extracted_chunks)
+void chronolog::StoryPipeline::extractDecayedStoryChunks(uint64_t current_time,
+                                                         std::vector<chl::StoryChunk*>& extracted_chunks)
 {
 #ifdef TRACE_CHUNK_EXTRACTION
     auto current_point = std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds>{}
@@ -296,7 +297,7 @@ void chronolog::StoryPipeline::extractDecayedStoryChunks(uint64_t current_time, 
             }
             else
             {
-		extracted_chunks.push_back(extractedChunk);
+                extracted_chunks.push_back(extractedChunk);
             }
         }
     }

@@ -54,23 +54,23 @@ public:
 
     void mergeEvents(StoryChunk&);
 
-    void extractDecayedStoryChunks(uint64_t, std::vector<StoryChunk*> &);
+    void extractDecayedStoryChunks(uint64_t, std::vector<StoryChunk*>&);
 
     StoryId const& getStoryId() const { return storyId; }
 
     uint64_t getAcceptanceWindow() const { return acceptanceWindow; }
 
-    uint64_t TimelineStart() const 
-    {// storyTimelineMap is never left empty 
-        return (*storyTimelineMap.begin()).first; 
-    } 
+    uint64_t TimelineStart() const
+    { // storyTimelineMap is never left empty
+        return (*storyTimelineMap.begin()).first;
+    }
 
     uint64_t TimelineEnd() const
-    {// storyTimelineMap is never left empty 
+    { // storyTimelineMap is never left empty
         return (*storyTimelineMap.rbegin()).second->getEndTime();
-    } 
+    }
 
-    void finalize(std::vector<StoryChunk*> &);
+    void finalize(std::vector<StoryChunk*>&);
 
 private:
     StoryId storyId;
