@@ -79,7 +79,7 @@ void chronolog::PlayerDataStore::retireDecayedPipelines()
         std::lock_guard storeLock(dataStoreMutex);
 
         uint64_t current_time = std::chrono::high_resolution_clock::now().time_since_epoch().count();
-        chl::StoryPipeline * pipeline = nullptr;
+        chl::StoryPipeline* pipeline = nullptr;
         for(auto pipeline_iter = pipelinesWaitingForExit.begin(); pipeline_iter != pipelinesWaitingForExit.end();)
         {
             if(current_time >= (*pipeline_iter).second.second)
@@ -201,23 +201,23 @@ void chronolog::PlayerDataStore::shutdownDataCollection()
     if(!theMapOfStoryPipelines.empty())
     {
         std::lock_guard storeLock(dataStoreMutex);
-        
+
         chl::StoryPipeline* pipeline = nullptr;
         for(auto pipeline_iter = theMapOfStoryPipelines.begin(); pipeline_iter != theMapOfStoryPipelines.end();)
         {
-                pipeline = (*pipeline_iter).second;
-                theIngestionQueue.removeStoryIngestionHandle(pipeline->getStoryId());
-                delete pipeline;
+            pipeline = (*pipeline_iter).second;
+            theIngestionQueue.removeStoryIngestionHandle(pipeline->getStoryId());
+            delete pipeline;
         }
-     
-        pipelinesWaitingForExit.clear(); 
+
+        pipelinesWaitingForExit.clear();
         theMapOfStoryPipelines.clear();
 
-        LOG_INFO("[PlayerDataStore] Completed retirement of pipelines. Current state={}, MapOfStoryPipelines={}, pipelinesWaitingForExit={}",
-              state,
-              theMapOfStoryPipelines.size(),
-              pipelinesWaitingForExit.size());
-
+        LOG_INFO("[PlayerDataStore] Completed retirement of pipelines. Current state={}, MapOfStoryPipelines={}, "
+                 "pipelinesWaitingForExit={}",
+                 state,
+                 theMapOfStoryPipelines.size(),
+                 pipelinesWaitingForExit.size());
     }
 
     // Join threads & execution streams while holding stateMutex
@@ -237,7 +237,7 @@ void chronolog::PlayerDataStore::shutdownDataCollection()
 chronolog::PlayerDataStore::~PlayerDataStore()
 {
     LOG_TRACE("[PlayerDataStore] Destructor called. Initiating shutdown. Active StoryPipelines count={}",
-             theMapOfStoryPipelines.size());
+              theMapOfStoryPipelines.size());
 
     shutdownDataCollection();
     LOG_INFO("[PlayerDataStore] Shutdown completed successfully. Active StoryPipelines count={}",

@@ -652,8 +652,7 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
     if(recording_group->playerProcess != nullptr)
     {
         player_service_id = recording_group->playerProcess->idCard.getPlaybackServiceId();
-        rpc_return =
-                notifyPlayerOfStoryRecordingStart(*recording_group, chronicle, story, story_id, story_start_time);
+        rpc_return = notifyPlayerOfStoryRecordingStart(*recording_group, chronicle, story, story_id, story_start_time);
 
         if(rpc_return == chronolog::CL_SUCCESS)
         {
@@ -665,10 +664,10 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
         else
         {
             LOG_ERROR("[ChronoProcessRegistry]  RecordingGroup {} failed to notify Player of Story {} Start : "
-                        "err_code {}",
-                        recording_group->groupId,
-                        story_id,
-                        rpc_return);
+                      "err_code {}",
+                      recording_group->groupId,
+                      story_id,
+                      rpc_return);
 
             notifyGrapherOfStoryRecordingStop(*recording_group, story_id);
             notifyKeepersOfStoryRecordingStop(*recording_group, vectorOfKeepers, story_id);
