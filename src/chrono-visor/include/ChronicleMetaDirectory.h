@@ -29,7 +29,7 @@ public:
 
     std::unordered_map<uint64_t, Chronicle*>* getChronicleMap() { return chronicleMap_; }
 
-    int create_chronicle(const std::string& name, const std::map<std::string, std::string>& attrs);
+    int create_chronicle(const std::string& name);
 
     int destroy_chronicle(const std::string& name);
 
@@ -38,14 +38,19 @@ public:
     int acquire_story(chronolog::ClientId const& client_id,
                       const std::string& chronicle_name,
                       const std::string& story_name,
-                      const std::map<std::string, std::string>& attrs,
-                      int& flags,
                       StoryId&);
 
     int release_story(chronolog::ClientId const& client_id,
                       const std::string& chronicle_name,
                       const std::string& story_name,
-                      StoryId&);
+                      StoryId&,
+                      bool& was_last_acquirer);
+
+    // Release every story currently acquired by client_id. Returns the StoryIds
+    // of stories whose last acquirer was this client, so the caller can notify
+    // the recording groups to stop only those.
+    int release_all_acquired_stories(chronolog::ClientId const& client_id,
+                                     std::vector<StoryId>& released_with_no_acquirers_left);
 
     int get_chronicle_attr(std::string const& name, const std::string& key, std::string& value);
 

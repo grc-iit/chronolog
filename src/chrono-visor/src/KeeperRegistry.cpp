@@ -640,6 +640,8 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
                 story_id,
                 rpc_return);
         vectorOfKeepers.clear();
+
+        notifyGrapherOfStoryRecordingStop(*recording_group, story_id);
         return rpc_return;
     }
 
@@ -650,10 +652,9 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
     if(recording_group->playerProcess != nullptr)
     {
         player_service_id = recording_group->playerProcess->idCard.getPlaybackServiceId();
-        int rpc_player =
-                notifyPlayerOfStoryRecordingStart(*recording_group, chronicle, story, story_id, story_start_time);
+        rpc_return = notifyPlayerOfStoryRecordingStart(*recording_group, chronicle, story, story_id, story_start_time);
 
-        if(rpc_player == chronolog::CL_SUCCESS)
+        if(rpc_return == chronolog::CL_SUCCESS)
         {
             player_service_id = recording_group->playerProcess->idCard.getPlaybackServiceId();
             LOG_DEBUG("[ChronoProcessRegistry]  RecordingGroup {}  notified Player  of Story {} Start",
@@ -662,20 +663,23 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
         }
         else
         {
-            LOG_WARNING("[ChronoProcessRegistry]  RecordingGroup {} failed to notify Player of Story {} Start : "
-                        "err_code {}",
-                        recording_group->groupId,
-                        story_id,
-                        rpc_return);
+            LOG_ERROR("[ChronoProcessRegistry]  RecordingGroup {} failed to notify Player of Story {} Start : "
+                      "err_code {}",
+                      recording_group->groupId,
+                      story_id,
+                      rpc_return);
+
+            notifyGrapherOfStoryRecordingStop(*recording_group, story_id);
+            notifyKeepersOfStoryRecordingStop(*recording_group, vectorOfKeepers, story_id);
+            vectorOfKeepers.clear();
+            return rpc_return;
         }
     }
 
-    LOG_INFO("[ChronoProcessRegistry]  RecordingGroup {}  notified  of story {} Start : group has {} keepers and "
-             "player {}",
+    LOG_INFO("[ChronoProcessRegistry]  RecordingGroup {}  notified  of story {} Start : group has {} keepers",
              recording_group->groupId,
              story_id,
-             vectorOfKeepers.size(),
-             chl::to_string(player_service_id));
+             vectorOfKeepers.size());
     return rpc_return;
 }
 
@@ -793,13 +797,13 @@ int KeeperRegistry::notifyPlayerOfStoryRecordingStart(RecordingGroup& recordingG
         if(return_code != chronolog::CL_SUCCESS)
         {
             LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to player {}",
-                        recordingGroup.grapherProcess->idCardString);
+                        recordingGroup.playerProcess->idCardString);
         }
         else
         {
             LOG_INFO("[ChronoProcessRegistry] Registry notified player {} to start recording StoryID={} with "
                      "StartTime={}",
-                     recordingGroup.grapherProcess->idCardString,
+                     recordingGroup.playerProcess->idCardString,
                      storyId,
                      story_start_time);
         }
@@ -807,7 +811,7 @@ int KeeperRegistry::notifyPlayerOfStoryRecordingStart(RecordingGroup& recordingG
     catch(thallium::exception const& ex)
     {
         LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to player {}",
-                    recordingGroup.grapherProcess->idCardString);
+                    recordingGroup.playerProcess->idCardString);
     }
 
     return return_code;
@@ -1066,6 +1070,7 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStop(StoryId const& stor
         notifyKeepersOfStoryRecordingStop(*recording_group, vectorOfKeepers, story_id);
 
         notifyGrapherOfStoryRecordingStop(*recording_group, story_id);
+        notifyPlayerOfStoryRecordingStop(*recording_group, story_id);
     }
 
     return chronolog::CL_SUCCESS;

@@ -198,9 +198,7 @@ int chronolog::ChronologClientImpl::Disconnect()
     return return_code;
 }
 
-int chronolog::ChronologClientImpl::CreateChronicle(std::string const& chronicle_name,
-                                                    const std::map<std::string, std::string>& attrs,
-                                                    int& flags)
+int chronolog::ChronologClientImpl::CreateChronicle(std::string const& chronicle_name)
 {
     if(chronicle_name.empty())
     {
@@ -218,7 +216,7 @@ int chronolog::ChronologClientImpl::CreateChronicle(std::string const& chronicle
     }
 
     // Attempt to create the chronicle using the Visor client.
-    int result = rpcVisorClient->CreateChronicle(clientId, chronicle_name, attrs, flags);
+    int result = rpcVisorClient->CreateChronicle(clientId, chronicle_name);
 
     // Log the outcome of the create operation.
     if(result == chronolog::CL_SUCCESS)
@@ -303,11 +301,8 @@ int chronolog::ChronologClientImpl::DestroyStory(std::string const& chronicle_na
     return result;
 }
 
-std::pair<int, chronolog::StoryHandle*>
-chronolog::ChronologClientImpl::AcquireStory(std::string const& chronicle_name,
-                                             std::string const& story_name,
-                                             const std::map<std::string, std::string>& attrs,
-                                             int& flags)
+std::pair<int, chronolog::StoryHandle*> chronolog::ChronologClientImpl::AcquireStory(std::string const& chronicle_name,
+                                                                                     std::string const& story_name)
 {
     // Log the attempt to acquire a story with specific details.
     LOG_DEBUG("[ChronoLogClientImpl] Attempting to acquire story. ChronicleName={}, StoryName={}",
@@ -344,7 +339,7 @@ chronolog::ChronologClientImpl::AcquireStory(std::string const& chronicle_name,
     }
 
     // issue rpc request to the Visor
-    auto acquireStoryResponse = rpcVisorClient->AcquireStory(clientId, chronicle_name, story_name, attrs, flags);
+    auto acquireStoryResponse = rpcVisorClient->AcquireStory(clientId, chronicle_name, story_name);
 
     std::stringstream ss;
     ss << acquireStoryResponse;
@@ -537,38 +532,29 @@ int chronolog::ChronologClientImpl::EditChronicleAttr(std::string const& chronic
     return editStatus;
 }
 
-std::vector<std::string>& chronolog::ChronologClientImpl::ShowChronicles(std::vector<std::string>& chronicles)
+std::pair<int, std::vector<std::string>> chronolog::ChronologClientImpl::ShowChronicles()
 {
+    std::vector<std::string> chronicles;
     std::lock_guard<std::mutex> lock_client(chronologClientMutex);
 
     if((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
     {
         LOG_ERROR("[ChronoLogClientImpl] Failed to fetch chronicles: Client is in an unknown or shutting down state.");
-        return chronicles;
+        return {chronolog::CL_ERR_UNKNOWN, std::move(chronicles)};
     }
 
-    // Fetch the list of chronicles from the Visor using the RPC call.
-    chronicles = rpcVisorClient->ShowChronicles(clientId);
-
-    // Log the number of chronicles fetched and return the list.
-    if(!chronicles.empty())
-    {
-        LOG_INFO("[ChronoLogClientImpl] Successfully fetched {} chronicles.", chronicles.size());
-    }
-    else
-    {
-        LOG_WARNING("[ChronoLogClientImpl] No chronicles found for the client.");
-    }
-    return chronicles;
+    int return_code = rpcVisorClient->ShowChronicles(clientId, chronicles);
+    return {return_code, std::move(chronicles)};
 }
 
-std::vector<std::string>& chronolog::ChronologClientImpl::ShowStories(std::string const& chronicle_name,
-                                                                      std::vector<std::string>& stories)
+std::pair<int, std::vector<std::string>> chronolog::ChronologClientImpl::ShowStories(std::string const& chronicle_name)
 {
+    std::vector<std::string> stories;
+
     if(chronicle_name.empty())
     {
         LOG_ERROR("[ChronoLogClientImpl] Failed to fetch stories: Empty chronicle name provided.");
-        return stories;
+        return {chronolog::CL_ERR_INVALID_ARG, std::move(stories)};
     }
 
     std::lock_guard<std::mutex> lock_client(chronologClientMutex);
@@ -578,24 +564,11 @@ std::vector<std::string>& chronolog::ChronologClientImpl::ShowStories(std::strin
         LOG_ERROR("[ChronoLogClientImpl] Failed to fetch stories for chronicle '{}': Client is in an unknown or "
                   "shutting down state.",
                   chronicle_name);
-        return stories;
+        return {chronolog::CL_ERR_UNKNOWN, std::move(stories)};
     }
 
-    // Fetch stories for the given chronicle name using the RPC call.
-    stories = rpcVisorClient->ShowStories(clientId, chronicle_name);
-
-    // Log the number of stories fetched and return the list.
-    if(!stories.empty())
-    {
-        LOG_INFO("[ChronoLogClientImpl] Successfully fetched {} stories for chronicle '{}'.",
-                 stories.size(),
-                 chronicle_name);
-    }
-    else
-    {
-        LOG_WARNING("[ChronoLogClientImpl] No stories found for chronicle '{}'.", chronicle_name);
-    }
-    return stories;
+    int return_code = rpcVisorClient->ShowStories(clientId, chronicle_name, stories);
+    return {return_code, std::move(stories)};
 }
 
 ////////////////////////////

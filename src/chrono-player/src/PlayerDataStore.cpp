@@ -55,9 +55,12 @@ void chronolog::PlayerDataStore::extractDecayedStoryChunks()
     }
 
     // discard the extracted story chunks
-    for(auto & chunk_ptr : extracted_story_chunks)
+    for(auto& chunk_ptr: extracted_story_chunks)
     {
-        if(chunk_ptr != nullptr) { delete chunk_ptr; }
+        if(chunk_ptr != nullptr)
+        {
+            delete chunk_ptr;
+        }
     }
 }
 ////////////////////////
@@ -72,19 +75,20 @@ void chronolog::PlayerDataStore::retireDecayedPipelines()
               tl::thread::self_id());
 
 
-    std::vector<chl::StoryChunk*>extracted_story_chunks;
+    std::vector<chl::StoryChunk*> extracted_story_chunks;
 
     if(!theMapOfStoryPipelines.empty())
     {
         std::lock_guard storeLock(dataStoreMutex);
 
         uint64_t current_time = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+        chl::StoryPipeline* pipeline = nullptr;
         for(auto pipeline_iter = pipelinesWaitingForExit.begin(); pipeline_iter != pipelinesWaitingForExit.end();)
         {
             if(current_time >= (*pipeline_iter).second.second)
             {
                 //current_time >= pipeline exit_time
-                StoryPipeline* pipeline = (*pipeline_iter).second.first;
+                pipeline = (*pipeline_iter).second.first;
                 LOG_DEBUG("[PlayerDataStore] retiring pipeline StoryId {} timeline {}-{} acceptanceWindow {} "
                           "retirementTime {}",
                           pipeline->getStoryId(),
@@ -95,7 +99,7 @@ void chronolog::PlayerDataStore::retireDecayedPipelines()
                 theMapOfStoryPipelines.erase(pipeline->getStoryId());
                 theIngestionQueue.removeStoryIngestionHandle(pipeline->getStoryId());
                 pipeline_iter = pipelinesWaitingForExit.erase(pipeline_iter);
-		pipeline->finalize(extracted_story_chunks);
+                pipeline->finalize(extracted_story_chunks);
                 delete pipeline;
             }
             else
@@ -106,9 +110,12 @@ void chronolog::PlayerDataStore::retireDecayedPipelines()
     }
 
     // discard the extracted story chunks
-    for(auto & chunk_ptr : extracted_story_chunks)
+    for(auto& chunk_ptr: extracted_story_chunks)
     {
-        if(chunk_ptr != nullptr) { delete chunk_ptr; }
+        if(chunk_ptr != nullptr)
+        {
+            delete chunk_ptr;
+        }
     }
 
     LOG_TRACE("[PlayerDataStore] Completed retirement of decayed pipelines. Current state={}, Active "
@@ -129,7 +136,7 @@ void chronolog::PlayerDataStore::dataCollectionTask()
               es.get_rank(),
               tl::thread::self_id());
 
-    while(!is_shutting_down() || !theIngestionQueue.is_empty() || !theMapOfStoryPipelines.empty())
+    while(!is_shutting_down())
     {
         LOG_DEBUG("[PlayerDataStore] Running DataCollection iteration. ESrank={}, ThreadID={}",
                   es.get_rank(),
@@ -180,47 +187,66 @@ void chronolog::PlayerDataStore::startDataCollection(int stream_count)
 
 void chronolog::PlayerDataStore::shutdownDataCollection()
 {
+    if(is_shutting_down())
+    {
+        LOG_INFO("[PlayerDataStore] Data collection is already shutting down. Ignoring additional shutdown request.");
+        return;
+    }
+
+    // switch the state to shuttingDown
+    std::lock_guard storeLock(dataStoreStateMutex);
+    state = SHUTTING_DOWN;
+
     LOG_INFO("[PlayerDataStore] Initiating shutdown of DataCollection. CurrentState={}, Active StoryPipelines={}, "
              "PipelinesWaitingForExit={}",
              state,
              theMapOfStoryPipelines.size(),
              pipelinesWaitingForExit.size());
 
-    // switch the state to shuttingDown
-    std::lock_guard storeLock(dataStoreStateMutex);
-    if(is_shutting_down())
-    {
-        LOG_INFO("[PlayerDataStore] Data collection is already shutting down. Ignoring additional shutdown request.");
-        return;
-    }
-    state = SHUTTING_DOWN;
-
-    if(!theMapOfStoryPipelines.empty())
-    {
-        // label all existing Pipelines as waiting to exit
-        std::lock_guard storeLock(dataStoreMutex);
-        uint64_t current_time = std::chrono::high_resolution_clock::now().time_since_epoch().count();
-
-        for(auto pipeline_iter = theMapOfStoryPipelines.begin(); pipeline_iter != theMapOfStoryPipelines.end();
-            ++pipeline_iter)
-        {
-            if(pipelinesWaitingForExit.find((*pipeline_iter).first) == pipelinesWaitingForExit.end())
-            {
-                uint64_t exit_time = current_time + (*pipeline_iter).second->getAcceptanceWindow();
-                pipelinesWaitingForExit[(*pipeline_iter).first] =
-                        (std::pair<chl::StoryPipeline*, uint64_t>((*pipeline_iter).second, exit_time));
-            }
-        }
-    }
-
     // Join threads & execution streams while holding stateMutex
-    // and just wait until all the events are collected and
-    // all the storyPipelines decay and retire
+
     for(auto& th: dataStoreThreads) { th->join(); }
     LOG_INFO("[PlayerDataStore] All data collection threads have been joined.");
 
     for(auto& es: dataStoreStreams) { es->join(); }
     LOG_INFO("[PlayerDataStore] All data collection streams have been joined.");
+
+    // Collect any remaining ingested events and retire the StoryPipelines
+    collectIngestedEvents();
+
+    if(!theMapOfStoryPipelines.empty())
+    {
+        std::lock_guard storeLock(dataStoreMutex);
+
+        chl::StoryPipeline* pipeline = nullptr;
+        std::vector<chl::StoryChunk*> remaining_chunks;
+        for(auto pipeline_iter = theMapOfStoryPipelines.begin(); pipeline_iter != theMapOfStoryPipelines.end();
+            ++pipeline_iter)
+        {
+            pipeline = (*pipeline_iter).second;
+            theIngestionQueue.removeStoryIngestionHandle(pipeline->getStoryId());
+            pipeline->finalize(remaining_chunks);
+            delete pipeline;
+        }
+
+        pipelinesWaitingForExit.clear();
+        theMapOfStoryPipelines.clear();
+
+        for(auto& chunk: remaining_chunks)
+        {
+            if(chunk != nullptr)
+            {
+                delete chunk;
+            }
+        }
+
+        LOG_INFO("[PlayerDataStore] Completed retirement of pipelines. Current state={}, MapOfStoryPipelines={}, "
+                 "pipelinesWaitingForExit={}",
+                 state,
+                 theMapOfStoryPipelines.size(),
+                 pipelinesWaitingForExit.size());
+    }
+
     LOG_INFO("[PlayerDataStore] DataCollection shutdown completed.");
 }
 
@@ -229,8 +255,9 @@ void chronolog::PlayerDataStore::shutdownDataCollection()
 //
 chronolog::PlayerDataStore::~PlayerDataStore()
 {
-    LOG_INFO("[PlayerDataStore] Destructor called. Initiating shutdown. Active StoryPipelines count={}",
-             theMapOfStoryPipelines.size());
+    LOG_TRACE("[PlayerDataStore] Destructor called. Initiating shutdown. Active StoryPipelines count={}",
+              theMapOfStoryPipelines.size());
+
     shutdownDataCollection();
     LOG_INFO("[PlayerDataStore] Shutdown completed successfully. Active StoryPipelines count={}",
              theMapOfStoryPipelines.size());

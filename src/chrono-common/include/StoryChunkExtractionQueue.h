@@ -41,21 +41,23 @@ public:
 
     void stashStoryChunks(std::vector<StoryChunk*> story_chunks)
     {
-	if(story_chunks.empty())
-	{ return; }
+        if(story_chunks.empty())
+        {
+            return;
+        }
 
         std::lock_guard<std::mutex> lock(extractionQueueMutex);
-	for(auto const& chunk_ptr : story_chunks)
-	{
+        for(auto const& chunk_ptr: story_chunks)
+        {
             if(nullptr != chunk_ptr)
             {
                 LOG_DEBUG("[StoryChunkExtractionQueue] Stashed story chunk with StoryID={} and StartTime={}",
-                    chunk_ptr->getStoryId(),
-                    chunk_ptr->getStartTime());
+                          chunk_ptr->getStoryId(),
+                          chunk_ptr->getStartTime());
                 extractionDeque.push_back(chunk_ptr);
             }
-	}
-	story_chunks.clear();
+        }
+        story_chunks.clear();
     }
 
     StoryChunk* ejectStoryChunk()
