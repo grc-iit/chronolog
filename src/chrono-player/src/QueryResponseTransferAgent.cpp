@@ -1,11 +1,14 @@
+
 #include <sstream>
 #include <string>
 #include <vector>
 #include <utility>
 #include <ios>
 #include <cstddef>
-#include <thallium/serialization/stl/vector.hpp>
+
+#include <unistd.h>
 #include <cereal/archives/binary.hpp>
+#include <thallium/serialization/stl/vector.hpp>
 
 #include <chrono_monitor.h>
 #include <chronolog_errcode.h>
@@ -16,15 +19,15 @@
 namespace tl = thallium;
 namespace chl = chronolog;
 
-chronolog::StoryChunkTransferAgent::StoryChunkTransferAgent(tl::engine& tl_engine,
-                                                            chronolog::ServiceId const& service_id)
-    : service_engine(tl_engine)
+chronolog::QueryResponseAgent::QueryResponseAgent(tl::engine& tl_engine, chronolog::ServiceId const& service_id)
+    : state(UNKNOWN)
+    , service_engine(tl_engine)
     , receiver_service_id(service_id)
 {
     std::string service_addr_string;
     receiver_service_id.get_service_as_string(service_addr_string);
 
-    LOG_DEBUG("[StoryChunkTransferAgent] Constructor for receiver service {} , service_string {}",
+    LOG_DEBUG("[QueryResponseAgent] Constructor for receiver service {} , service_string {}",
               chl::to_string(receiver_service_id),
               service_addr_string);
     receiver_service_handle =
@@ -33,22 +36,37 @@ chronolog::StoryChunkTransferAgent::StoryChunkTransferAgent(tl::engine& tl_engin
     receiver_is_available = service_engine.define("receiver_is_available");
     receive_query_response = service_engine.define("receive_query_response");
 
-    LOG_DEBUG("[StoryChunkTransferAgent] created agent for receiver service {}", chl::to_string(receiver_service_id));
+    LOG_INFO("[QueryResponseAgent] created QueryResponseAgent for receiver service {}",
+             chl::to_string(receiver_service_id));
 }
 
-chronolog::StoryChunkTransferAgent::~StoryChunkTransferAgent()
+chronolog::QueryResponseAgent::~QueryResponseAgent()
 {
+    LOG_DEBUG("[QueryResponseAgent] Destroying agent for receiver service {}", chl::to_string(receiver_service_id));
+
+    stopResponseThreads();
+
+    {
+        std::lock_guard<std::mutex> lock(query_mutex);
+        for(auto query_iter = active_queries.begin(); query_iter != active_queries.end(); ++query_iter)
+        {
+            delete(*query_iter).second.second;
+        }
+        active_queries.clear();
+    }
+
     receiver_is_available.deregister();
     receive_query_response.deregister();
-    LOG_DEBUG("[StoryChunkTransferAgent] Destroying agent for receiver service {}",
-              chl::to_string(receiver_service_id));
+
+    extractionThreads.clear();
+    extractionStreams.clear();
 }
 
-bool chronolog::StoryChunkTransferAgent::is_receiver_available() const
+bool chronolog::QueryResponseAgent::is_receiver_available() const
 {
     bool ret_value = receiver_is_available.on(receiver_service_handle)();
 
-    LOG_DEBUG("[StoryChunkTransferAgent] receiver_service {} is available {}",
+    LOG_DEBUG("[QueryResponseAgent] receiver_service {} is available {}",
               chl::to_string(receiver_service_id),
               ret_value);
     return ret_value;
@@ -56,50 +74,77 @@ bool chronolog::StoryChunkTransferAgent::is_receiver_available() const
 
 //////////
 
-chl::PlaybackQueryResponse * chronolog::StoryChunkTransferAgent::createQueryResponse(chl::ClientQueryId const& query_id)
+int chronolog::QueryResponseAgent::createQueryResponse(chl::ClientQueryId const& query_id)
 {
-//TODO: create the PlaybackQueryResponse object and stash it this agent's internal queue or map keyed by clientQueryId
-// note that particualr QueryResponseAgent talkes to one client so can jsut use client provided query id
-//
-    chl::PlaybackQueryResponse * new_query_response =nullptr;
+    // create the PlaybackQueryResponse object and stash it this agent's internal map of active queries
+    // keyed by the ClientQueryId
+    //
 
-    //it's not actually the queryresponse object pointer than needs to be exposed back to the PlaybackService 
-    //but the reference to the event series vector
-    // the bool ready to send is flipped when the archive resposne is received
-    active_queries[query_id] = std::pair< chl::PlaybackQueryResponse, bool>(chl::PlaybackQueryResponse(query_id), false);
+    int ret_value = chl::CL_ERR_UNKNOWN;
 
+    std::lock_guard<std::mutex> lock(query_mutex);
 
-    return new_query_response;
+    // the bool active query entry is flipped  to "true" when the archive portion of hte response is received
+    // and the PlaybackQueryResponse object is ready to be sent back to the client
+    //
+    auto insert_return =
+            active_queries.insert(std::pair<chl::ClientQueryId, std::pair<bool, chl::PlaybackQueryResponse*>>(
+                    query_id,
+                    std::pair<bool, chl::PlaybackQueryResponse*>(false, new chl::PlaybackQueryResponse(query_id))));
+
+    if(insert_return.second)
+    {
+        LOG_INFO("[QueryResponseAgent] receiver for {} got request for query_id {}",
+                 chl::to_string(receiver_service_id),
+                 query_id);
+        ret_value = chl::CL_SUCCESS;
+    }
+
+    return ret_value;
 }
 
 ///////
 
-int chronolog::StoryChunkTransferAgent::stashStoryChunks(chl::ClientQueryId const& query_id, std::list<chl::StoryChunk*>const& archive_chunks)
+int chronolog::QueryResponseAgent::stashStoryChunks(chl::ClientQueryId const& query_id,
+                                                    std::list<chl::StoryChunk*> const& archive_chunks)
 {
+    std::lock_guard<std::mutex> lock(query_mutex);
+
+    auto query_iter = active_queries.find(query_id);
+    if(query_iter == active_queries.end())
+    {
+        return chl::CL_SUCCESS;
+    }
+
+    // add the events from the StoryChunks to the response.events vector
+    chronolog::PlaybackQueryResponse* response = (*query_iter).second.second;
+
+    for(auto& story_chunk: archive_chunks)
+    {
+        LOG_DEBUG(
+                "[QueryResponseAgent] agent for receiver {} processing QueryId {} story chunk, story {} StartTime: {}",
+                chl::to_string(receiver_service_id),
+                query_id,
+                story_chunk->getStoryName(),
+                story_chunk->getStartTime());
+
+        story_chunk->extractEventSeries(response->events);
+    }
+
+    //mark the query_response as ready to be sent
+    (*query_iter).second.first = true;
+
+    return chl::CL_SUCCESS;
+}
+
+////
+
+int chronolog::QueryResponseAgent::transferQueryResponseToClient(chl::PlaybackQueryResponse const& response)
+{
+    chl::ClientQueryId query_id = response.query_id;
+
     try
     {
-	auto query_iter = active_queries.find(query_id);
-	if(query_iter == active_queries.end())
-	{ return chl::CL_SUCCESS; }
-
-	// add the events from the StoryChunks to the response.events vector
-        chronolog::PlaybackQueryResponse & response = (*query_iter).second.first;
-      
-        for( auto& story_chunk: archive_chunks)
-        {	       
-            LOG_DEBUG(
-                "[StoryChunkTransferAgent] agent for receiver {} processing QueryId {} story chunk, story {} StartTime: {}",
-                chl::to_string(receiver_service_id),
-		query_id, story_chunk->getStoryName(), story_chunk->getStartTime());
-
-            story_chunk->extractEventSeries(response.events);
-        }
-
-	(*query_iter).second.second = true;
-
-//TODO: the rest of this function is actual transfer and should be separate function
-	       // executed by the transfer thread
-
         size_t serialized_response_size;
         std::ostringstream oss(std::ios::binary);
         cereal::BinaryOutputArchive oarchive(oss);
@@ -107,7 +152,7 @@ int chronolog::StoryChunkTransferAgent::stashStoryChunks(chl::ClientQueryId cons
         std::string serialized_response = oss.str();
         serialized_response_size = serialized_response.size();
 
-        LOG_DEBUG("[StoryChunkTransferAgent] Serialized PlaybackQueryResponse size: {} ({} events)",
+        LOG_DEBUG("[QueryResponseAgent] Serialized PlaybackQueryResponse size: {} ({} events)",
                   serialized_response_size,
                   response.events.size());
 
@@ -115,45 +160,132 @@ int chronolog::StoryChunkTransferAgent::stashStoryChunks(chl::ClientQueryId cons
         segments[0].first = (void*)(serialized_response.data());
         segments[0].second = serialized_response_size;
         tl::bulk tl_bulk = service_engine.expose(segments, tl::bulk_mode::read_only);
-        LOG_TRACE("[StoryChunkTransferAgent] Draining PlaybackQueryResponse QueryId {} bulk size: {} ", query_id, tl_bulk.size());
+        LOG_TRACE("[QueryResponseAgent] Draining PlaybackQueryResponse QueryId {} bulk size: {} ",
+                  query_id,
+                  tl_bulk.size());
 
         size_t bytes_transfered = receive_query_response.on(receiver_service_handle)(tl_bulk);
 
-        LOG_TRACE("[StoryChunkTransferAgent] PlaybackQueryResponse transfer for QueryId {} returned with result: {}",
-                  query_id, bytes_transfered);
+        LOG_TRACE("[QueryResponseAgent] PlaybackQueryResponse transfer for QueryId {} returned with result: {}",
+                  query_id,
+                  bytes_transfered);
 
         if(bytes_transfered == serialized_response_size)
         {
-            LOG_INFO("[StoryChunkTransferAgent] Successfully transfered PlaybackQueryResponse for QueryId {} with {} events", 
-                     query_id, response.events.size());
+            LOG_INFO("[QueryResponseAgent] Successfully transfered PlaybackQueryResponse for QueryId {} with {} events",
+                     query_id,
+                     response.events.size());
             return chronolog::CL_SUCCESS;
         }
     }
     catch(tl::exception const& ex)
     {
-        LOG_ERROR("[StoryChunkTransferAgent] Thallium exception while transferring PlaybackQueryResponse for QueryId {}: {}",
-            query_id, ex.what());
+        LOG_ERROR("[QueryResponseAgent] Thallium exception while transferring PlaybackQueryResponse for QueryId {}: {}",
+                  query_id,
+                  ex.what());
         return (chronolog::CL_ERR_UNKNOWN);
     }
     catch(cereal::Exception const& ex)
     {
-        LOG_ERROR("[StoryChunkTransferAgent] Cereal exception while serializing PlaybackQueryResponse for QueryId {}: {}", 
-	    query_id,ex.what());
+        LOG_ERROR("[QueryResponseAgent] Cereal exception while serializing PlaybackQueryResponse for QueryId {}: {}",
+                  query_id,
+                  ex.what());
         return chronolog::CL_ERR_UNKNOWN;
     }
     catch(std::exception const& ex)
     {
-        LOG_ERROR("[StoryChunkTransferAgent] Standard exception while serializing PlaybackQueryResponse for QueryId {}: {}", 
-	    query_id, ex.what());
+        LOG_ERROR("[QueryResponseAgent] Standard exception while serializing PlaybackQueryResponse for QueryId {}: {}",
+                  query_id,
+                  ex.what());
         return chronolog::CL_ERR_UNKNOWN;
     }
     catch(...)
     {
-        LOG_ERROR("[StoryChunkTransferAgent] Unknown exception while transferring PlaybackQueryResponse.");
+        LOG_ERROR("[QueryResponseAgent] Unknown exception while transferring PlaybackQueryResponse.");
         return chronolog::CL_ERR_UNKNOWN;
     }
 
-    LOG_ERROR("[StoryChunkTransferAgent] Failed to transfer PlaybackQueryResponse for QueryId {}", query_id);
+    LOG_ERROR("[QueryResponseAgent] Failed to transfer PlaybackQueryResponse for QueryId {}", query_id);
 
     return chronolog::CL_ERR_STORY_CHUNK_EXTRACTION;
+}
+
+////
+
+void chronolog::QueryResponseAgent::startResponseThreads(int stream_count)
+{
+    state = RUNNING;
+
+    for(int i = 0; i < stream_count; ++i)
+    {
+        tl::managed<tl::xstream> es = tl::xstream::create();
+        extractionStreams.push_back(std::move(es));
+    }
+
+    for(int i = 0; i < stream_count; ++i)
+    {
+        tl::managed<tl::thread> th = extractionStreams[i % extractionStreams.size()]->make_thread(
+                [p = this]() { p->drainQueryResponses(); });
+        extractionThreads.push_back(std::move(th));
+    }
+    LOG_INFO("[QueryResponseAgent] Started query response threads for receiver  {}",
+             chl::to_string(receiver_service_id));
+}
+
+//////
+
+void chronolog::QueryResponseAgent::stopResponseThreads()
+{
+    if(state == SHUTTING_DOWN)
+    {
+        return;
+    }
+
+    state = SHUTTING_DOWN;
+
+    // join threads & executionstreams while holding stateMutex
+    for(auto& eth: extractionThreads) { eth->join(); }
+    LOG_INFO("[QueryResponseAgent] Response threads for receiver {} successfully shut down.",
+             chl::to_string(receiver_service_id));
+    for(auto& es: extractionStreams) { es->join(); }
+    LOG_INFO("[QueryResponseAgent] Streams for receiver {} have been successfully closed.",
+             chl::to_string(receiver_service_id));
+}
+
+///
+void chronolog::QueryResponseAgent::drainQueryResponses()
+{
+    LOG_DEBUG("[StoryChunkTransferAgent] Draining query responses: {}  active queries,  thread ID: {}",
+              active_queries.size(),
+              thallium::thread::self_id());
+
+    while(state == RUNNING)
+    {
+        if(active_queries.empty())
+        {
+            sleep(2);
+            continue;
+        }
+
+        PlaybackQueryResponse* query_response = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(query_mutex);
+
+            for(auto query_iter = active_queries.begin(); query_iter != active_queries.end(); ++query_iter)
+            {
+                if((*query_iter).second.first)
+                { // query_response is ready to be sent to the client
+                    query_response = (*query_iter).second.second;
+                    active_queries.erase(query_iter);
+                    break;
+                }
+            }
+        }
+
+        if(query_response != nullptr)
+        {
+            transferQueryResponseToClient(*query_response);
+            delete query_response;
+        }
+    }
 }

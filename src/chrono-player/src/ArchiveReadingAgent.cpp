@@ -33,41 +33,44 @@ void chronolog::ArchiveReadingAgent::archiveReadingTask()
 
         // 1. take a reading request off the reading queue
         // 2. read in the requested data from the archive store
-        // 3. pass the story chunks read from archive to the QueryResponseTransferAgent 
-        
-        chl::ArchiveReadingRequest readingRequest = theReadingRequestQueue.popReadingRequest(readingRequest);
+        // 3. pass the story chunks read from archive to the QueryResponseTransferAgent
 
-	if(!readingRequest.is_valid())
-	{
-	   // queue might have been drained by another thread before this this thread got a hold 
-	   // of the reading queue mutex
-	   continue;
-	}
+        chl::ArchiveReadingRequest* readingRequest = theReadingRequestQueue.popReadingRequest();
+
+        if(readingRequest == nullptr)
+        {
+            // queue might have been drained by another thread before this this thread got a hold
+            // of the reading queue mutex
+            continue;
+        }
 
         std::list<chl::StoryChunk*> listOfChunks;
 
-        theReadingAgent.readArchivedStory(readingRequest.chronicleName,
-                                          readingRequest.storyName,
-                                          readingRequest.startTime,
-                                          readingRequest.endTime,
+        theReadingAgent.readArchivedStory(readingRequest->chronicleName,
+                                          readingRequest->storyName,
+                                          readingRequest->startTime,
+                                          readingRequest->endTime,
                                           listOfChunks);
 
-        LOG_DEBUG("[ReadingAgent] Read {} StoryChunks for Chronicle={}, Story={}, TimeRange=[{}, {})",
+        LOG_DEBUG("[ReadingAgent] Read {} StoryChunks for query {} Chronicle={}, Story={}, TimeRange=[{}, {})",
                   listOfChunks.size(),
-                  readingRequest.chronicleName,
-                  readingRequest.storyName,
-                  readingRequest.startTime,
-                  readingRequest.endTime);
-        while(!listOfChunks.empty())
-        {
-	    readingRequest.queryResponseAgent->stashStoryChunks(readingRequest.queryId, listOfChunks);
-        }
+                  readingRequest->queryId,
+                  readingRequest->chronicleName,
+                  readingRequest->storyName,
+                  readingRequest->startTime,
+                  readingRequest->endTime);
+
+        // notify the queryResponseAgent that archive read is completed
+        // even if no events within the query time range were found
+        readingRequest->queryResponseAgent->stashStoryChunks(readingRequest->queryId, listOfChunks);
 
         if(!listOfChunks.empty())
         {
-            for(auto& chunk : listOfChunks) { delete chunk; }
-	    listOfChunks.clear();
-	}
+            for(auto& chunk: listOfChunks) { delete chunk; }
+            listOfChunks.clear();
+        }
+
+        delete readingRequest;
     }
 }
 

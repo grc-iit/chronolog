@@ -20,7 +20,7 @@ struct PlaybackQueryResponse
 {
     PlaybackQueryResponse(ClientQueryId const& client_query_id = 0)
         : query_id(client_query_id)
-    { }
+    {}
 
     ClientQueryId query_id;
     std::vector<Event> events;

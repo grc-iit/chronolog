@@ -50,7 +50,7 @@ int main()
     localServiceId.get_service_as_string(LOCAL_SERVICE_NA_STRING);
 
     tl::engine* localEngine = nullptr;
-    chronolog::StoryChunkTransferAgent* transferAgent = nullptr;
+    chronolog::QueryResponseAgent* transferAgent = nullptr;
 
     chl::ServiceId queryServiceId("ofi+sockets", "127.0.0.1", 5557, 57);
     try
@@ -61,7 +61,7 @@ int main()
         std::cout << "started localEngine at " << localEngine->self() << std::endl;
 
 
-        transferAgent = chronolog::StoryChunkTransferAgent::CreateStoryChunkTransferAgent(*localEngine, queryServiceId);
+        transferAgent = chronolog::QueryResponseAgent::CreateQueryResponseAgent(*localEngine, queryServiceId);
     }
     catch(tl::exception const&)
     {
@@ -78,7 +78,7 @@ int main()
         std::cout << "TransferAgent is running" << std::endl;
         transferAgent->is_receiver_available();
 
-	chl::ClientQueryId queryId = 7;
+        chl::ClientQueryId queryId = 7;
 
         chl::StoryChunk storyChunk("Chronicle",
                                    "Story",
@@ -94,9 +94,9 @@ int main()
         std::cout << "TransferAgent is sending storyChunk for story " << storyChunk.getChronicleName() << "-"
                   << storyChunk.getStoryName() << "-" << storyChunk.getStartTime() << "-" << storyChunk.getEndTime()
                   << " eventCount:" << storyChunk.getEventCount() << std::endl;
-	std::list<chl::StoryChunk*> listOfChunks;
-	listOfChunks.push_back(&storyChunk);
-        transferAgent->stashStoryChunks( queryId,listOfChunks);
+        std::list<chl::StoryChunk*> listOfChunks;
+        listOfChunks.push_back(&storyChunk);
+        transferAgent->stashStoryChunks(queryId, listOfChunks);
 
         sleep(3);
     }

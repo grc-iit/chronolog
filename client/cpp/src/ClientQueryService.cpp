@@ -228,7 +228,7 @@ void chronolog::ClientQueryService::removePlaybackQueryClient(chl::ServiceId con
 }
 
 // Receive a PlaybackQueryResponse from the Player and append its events
-// directly to the active query's event series. 
+// directly to the active query's event series.
 void chl::ClientQueryService::receive_query_response(tl::request const& request, tl::bulk& b)
 {
     try
@@ -264,10 +264,10 @@ void chl::ClientQueryService::receive_query_response(tl::request const& request,
             return;
         }
 
-        LOG_DEBUG("[ClientQueryService] PlaybackQueryResponse received: query_id { } eventCount {} ThreadID={}",
-		response.query_id,
-                response.events.size(),
-                tl::thread::self_id());
+        LOG_DEBUG("[ClientQueryService] PlaybackQueryResponse received: query_id {} eventCount {} ThreadID={}",
+                  response.query_id,
+                  response.events.size(),
+                  tl::thread::self_id());
 
         // NOTE: by design there would be only one receiving thread that's writing to the specific query object
         // but we probably should take care of the possibility of the query timeout happening while we are writing the response
@@ -275,17 +275,13 @@ void chl::ClientQueryService::receive_query_response(tl::request const& request,
         auto query_iter = activeQueryMap.find(response.query_id);
         if(query_iter != activeQueryMap.end())
         {
-	    //TODO: now that PlaybackResponse is already an eventseries, 
-	    //revisit this unnecessary copying of large arrays	
-	    // movign arrays would be better here 
+            //TODO: now that PlaybackResponse is already an event series,
+            //revisit this unnecessary copying of large arrays
             std::vector<chl::Event>& event_series = (*query_iter).second.eventSeries;
             event_series.reserve(event_series.size() + response.events.size());
             for(auto const& event: response.events)
             {
-                event_series.emplace_back(event.time(),
-                                          event.client_id(),
-                                          event.index(),
-                                          event.log_record());
+                event_series.emplace_back(event.time(), event.client_id(), event.index(), event.log_record());
             }
             (*query_iter).second.completed = true;
             LOG_DEBUG("[ClientQueryService] Query {} got {} events, ThreadID={}",
