@@ -8,6 +8,7 @@
 #include <chrono_monitor.h>
 #include <ServiceId.h>
 #include <StoryChunk.h>
+#include <PlaybackQueryResponse.h>
 #include <QueryResponseTransferAgent.h>
 
 namespace tl = thallium;
@@ -77,6 +78,8 @@ int main()
         std::cout << "TransferAgent is running" << std::endl;
         transferAgent->is_receiver_available();
 
+	chl::ClientQueryId queryId = 7;
+
         chl::StoryChunk storyChunk("Chronicle",
                                    "Story",
                                    1,
@@ -91,7 +94,9 @@ int main()
         std::cout << "TransferAgent is sending storyChunk for story " << storyChunk.getChronicleName() << "-"
                   << storyChunk.getStoryName() << "-" << storyChunk.getStartTime() << "-" << storyChunk.getEndTime()
                   << " eventCount:" << storyChunk.getEventCount() << std::endl;
-        transferAgent->processStoryChunk(&storyChunk);
+	std::list<chl::StoryChunk*> listOfChunks;
+	listOfChunks.push_back(&storyChunk);
+        transferAgent->stashStoryChunks( queryId,listOfChunks);
 
         sleep(3);
     }

@@ -66,6 +66,10 @@ chronolog::StoryChunkExtractorBase::~StoryChunkExtractorBase()
     extractionStreams.clear();
 }
 
+int chronolog::StoryChunkExtractorBase::processStoryChunk(chronolog::StoryChunk*)
+{
+return 0;
+}
 //////////////////////
 
 void chronolog::StoryChunkExtractorBase::drainExtractionQueue()

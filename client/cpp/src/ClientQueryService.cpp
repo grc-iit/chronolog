@@ -252,7 +252,7 @@ void chl::ClientQueryService::receive_query_response(tl::request const& request,
                   b.size(),
                   tl::thread::self_id());
 
-        chronolog::PlaybackQueryResponse response;
+        chronolog::PlaybackQueryResponse response(0);
         int ret = deserializeResponse(&mem_vec[0], b.size(), response);
         if(ret != chronolog::CL_SUCCESS)
         {
@@ -264,16 +264,15 @@ void chl::ClientQueryService::receive_query_response(tl::request const& request,
             return;
         }
 
-        LOG_DEBUG("[ClientQueryService] PlaybackQueryResponse received: eventCount {} ThreadID={}",
-                  response.events.size(),
-                  tl::thread::self_id());
-
-        uint32_t query_id = 1; //TODO:  add query_id to query response transfer
+        LOG_DEBUG("[ClientQueryService] PlaybackQueryResponse received: query_id { } eventCount {} ThreadID={}",
+		response.query_id,
+                response.events.size(),
+                tl::thread::self_id());
 
         // NOTE: by design there would be only one receiving thread that's writing to the specific query object
         // but we probably should take care of the possibility of the query timeout happening while we are writing the response
 
-        auto query_iter = activeQueryMap.find(query_id);
+        auto query_iter = activeQueryMap.find(response.query_id);
         if(query_iter != activeQueryMap.end())
         {
 	    //TODO: now that PlaybackResponse is already an eventseries, 
@@ -290,7 +289,7 @@ void chl::ClientQueryService::receive_query_response(tl::request const& request,
             }
             (*query_iter).second.completed = true;
             LOG_DEBUG("[ClientQueryService] Query {} got {} events, ThreadID={}",
-                      query_id,
+                      response.query_id,
                       response.events.size(),
                       tl::thread::self_id());
         }

@@ -63,34 +63,42 @@ chl::PlaybackQueryResponse * chronolog::StoryChunkTransferAgent::createQueryResp
 //
     chl::PlaybackQueryResponse * new_query_response =nullptr;
 
+    //it's not actually the queryresponse object pointer than needs to be exposed back to the PlaybackService 
+    //but the reference to the event series vector
+    // the bool ready to send is flipped when the archive resposne is received
+    active_queries[query_id] = std::pair< chl::PlaybackQueryResponse, bool>(chl::PlaybackQueryResponse(query_id), false);
+
+
     return new_query_response;
 }
 
 ///////
-// TODO change this function to submit the query_id accompanied with the chronologically orded vector of story_chunks
-// attach all the events from this vector to the query response mark it as ready to send
-int chronolog::StoryChunkTransferAgent::processStoryChunk(chronolog::StoryChunk* story_chunk)
+
+int chronolog::StoryChunkTransferAgent::stashStoryChunks(chl::ClientQueryId const& query_id, std::list<chl::StoryChunk*>const& archive_chunks)
 {
     try
     {
-        LOG_DEBUG(
-                "[StoryChunkTransferAgent] agent for receiver {} processing a story chunk, StoryID: {}, StartTime: {}",
+	auto query_iter = active_queries.find(query_id);
+	if(query_iter == active_queries.end())
+	{ return chl::CL_SUCCESS; }
+
+	// add the events from the StoryChunks to the response.events vector
+        chronolog::PlaybackQueryResponse & response = (*query_iter).second.first;
+      
+        for( auto& story_chunk: archive_chunks)
+        {	       
+            LOG_DEBUG(
+                "[StoryChunkTransferAgent] agent for receiver {} processing QueryId {} story chunk, story {} StartTime: {}",
                 chl::to_string(receiver_service_id),
-                story_chunk->getStoryId(),
-                story_chunk->getStartTime());
-#ifdef LOGTIME
-        std::chrono::high_resolution_clock::time_point start, end;
-        start = std::chrono::high_resolution_clock::now();
-#endif
-        // Build the wire response: a flat vector of Event values in the
-        // chunk's sorted order (the chunk stores events in a map
-        // keyed by (eventTime, clientId, eventIndex)
-	//
-        chronolog::PlaybackQueryResponse response;
-       
-        	
-        //for(auto const& entry: *story_chunk) { response.events.push_back(entry.second); }
-        story_chunk->extractEventSeries(response.events);
+		query_id, story_chunk->getStoryName(), story_chunk->getStartTime());
+
+            story_chunk->extractEventSeries(response.events);
+        }
+
+	(*query_iter).second.second = true;
+
+//TODO: the rest of this function is actual transfer and should be separate function
+	       // executed by the transfer thread
 
         size_t serialized_response_size;
         std::ostringstream oss(std::ios::binary);
@@ -99,11 +107,6 @@ int chronolog::StoryChunkTransferAgent::processStoryChunk(chronolog::StoryChunk*
         std::string serialized_response = oss.str();
         serialized_response_size = serialized_response.size();
 
-#ifdef LOGTIME
-        end = std::chrono::high_resolution_clock::now();
-        LOG_INFO("[StoryChunkTransferAgent] PlaybackQueryResponse serialization took {} us",
-                 std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count() / 1000.0);
-#endif
         LOG_DEBUG("[StoryChunkTransferAgent] Serialized PlaybackQueryResponse size: {} ({} events)",
                   serialized_response_size,
                   response.events.size());
@@ -112,43 +115,36 @@ int chronolog::StoryChunkTransferAgent::processStoryChunk(chronolog::StoryChunk*
         segments[0].first = (void*)(serialized_response.data());
         segments[0].second = serialized_response_size;
         tl::bulk tl_bulk = service_engine.expose(segments, tl::bulk_mode::read_only);
-        LOG_DEBUG("[StoryChunkTransferAgent] Draining PlaybackQueryResponse size: {} ...", tl_bulk.size());
+        LOG_TRACE("[StoryChunkTransferAgent] Draining PlaybackQueryResponse QueryId {} bulk size: {} ", query_id, tl_bulk.size());
 
         size_t bytes_transfered = receive_query_response.on(receiver_service_handle)(tl_bulk);
 
-#ifdef LOGTIME
-        start = end;
-        end = std::chrono::high_resolution_clock::now();
-        LOG_INFO("[StoryChunkTransferAgent] PlaybackQueryResponse transfer took {} us",
-                 std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count() / 1000.0);
-#endif
-        LOG_DEBUG("[StoryChunkTransferAgent] PlaybackQueryResponse transfer returned with result: {}",
-                  bytes_transfered);
+        LOG_TRACE("[StoryChunkTransferAgent] PlaybackQueryResponse transfer for QueryId {} returned with result: {}",
+                  query_id, bytes_transfered);
 
         if(bytes_transfered == serialized_response_size)
         {
-            LOG_INFO("[StoryChunkTransferAgent] Successfully transfered PlaybackQueryResponse, StoryId:{}, "
-                     "StartTime:{}, events:{}",
-                     story_chunk->getStoryId(),
-                     story_chunk->getStartTime(),
-                     response.events.size());
+            LOG_INFO("[StoryChunkTransferAgent] Successfully transfered PlaybackQueryResponse for QueryId {} with {} events", 
+                     query_id, response.events.size());
             return chronolog::CL_SUCCESS;
         }
     }
     catch(tl::exception const& ex)
     {
-        LOG_ERROR("[StoryChunkTransferAgent] Thallium exception while transferring StoryChunk: {}", ex.what());
+        LOG_ERROR("[StoryChunkTransferAgent] Thallium exception while transferring PlaybackQueryResponse for QueryId {}: {}",
+            query_id, ex.what());
         return (chronolog::CL_ERR_UNKNOWN);
     }
     catch(cereal::Exception const& ex)
     {
-        LOG_ERROR("[StoryChunkTransferAgent] Cereal exception while serializing PlaybackQueryResponse: {}", ex.what());
+        LOG_ERROR("[StoryChunkTransferAgent] Cereal exception while serializing PlaybackQueryResponse for QueryId {}: {}", 
+	    query_id,ex.what());
         return chronolog::CL_ERR_UNKNOWN;
     }
     catch(std::exception const& ex)
     {
-        LOG_ERROR("[StoryChunkTransferAgent] Standard exception while serializing PlaybackQueryResponse: {}",
-                  ex.what());
+        LOG_ERROR("[StoryChunkTransferAgent] Standard exception while serializing PlaybackQueryResponse for QueryId {}: {}", 
+	    query_id, ex.what());
         return chronolog::CL_ERR_UNKNOWN;
     }
     catch(...)
@@ -157,8 +153,7 @@ int chronolog::StoryChunkTransferAgent::processStoryChunk(chronolog::StoryChunk*
         return chronolog::CL_ERR_UNKNOWN;
     }
 
-    LOG_ERROR("[StoryChunkTransferAgent] Failed to transfer PlaybackQueryResponse, StoryId:{},StartTime:{}",
-              story_chunk->getStoryId(),
-              story_chunk->getStartTime());
+    LOG_ERROR("[StoryChunkTransferAgent] Failed to transfer PlaybackQueryResponse for QueryId {}", query_id);
+
     return chronolog::CL_ERR_STORY_CHUNK_EXTRACTION;
 }

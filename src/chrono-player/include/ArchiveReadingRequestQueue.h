@@ -11,27 +11,33 @@
 namespace chronolog
 {
 
-class StoryChunkExtractionQueue;
+class StoryChunkTransferAgent;
 
 struct ArchiveReadingRequest
 {
-    StoryChunkExtractionQueue* storyChunkQueue;
+    StoryChunkTransferAgent * queryResponseAgent;
+    uint32_t queryId;
     ChronicleName chronicleName;
     StoryName storyName;
     chrono_time startTime;
     chrono_time endTime;
 
-    ArchiveReadingRequest(StoryChunkExtractionQueue* queue = nullptr,
+    ArchiveReadingRequest(StoryChunkTransferAgent * queryResponseAgent = nullptr,
+			  uint32_t query_id = 0,
                           ChronicleName const& chronicle = std::string(),
                           StoryName const& story = std::string(),
                           chrono_time const& start = 0,
                           chrono_time const& end = 0)
-        : storyChunkQueue(queue)
+        : queryResponseAgent(queryResponseAgent)
+	, queryId (query_id)
         , chronicleName(chronicle)
         , storyName(story)
         , startTime(start)
         , endTime(end)
     {}
+
+    bool is_valid() const
+    { return (queryResponseAgent != nullptr) && (queryId >0); }
 };
 
 class ArchiveReadingRequestQueue
@@ -59,7 +65,7 @@ public:
         }
         else
         {
-            a_request = ArchiveReadingRequest{nullptr, "", "", 0, 0};
+            a_request = ArchiveReadingRequest{};
         }
 
         return a_request;

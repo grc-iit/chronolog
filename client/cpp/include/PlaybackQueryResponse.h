@@ -18,12 +18,18 @@ typedef uint32_t ClientQueryId;
 
 struct PlaybackQueryResponse
 {
+    PlaybackQueryResponse(ClientQueryId const& client_query_id = 0)
+        : query_id(client_query_id)
+    { }
+
+    ClientQueryId query_id;
     std::vector<Event> events;
 
-    template <typename Archive>
-    void serialize(Archive& ar)
+    template <typename SerArchiveT>
+    void serialize(SerArchiveT& serT)
     {
-        ar & events;
+        serT & query_id;
+        serT & events;
     }
 };
 

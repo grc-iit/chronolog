@@ -103,7 +103,8 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
     // onto the ArchiveReadingRequestQueue
 
         theArchiveReadingRequestQueue.pushReadingRequest(
-            chl::ArchiveReadingRequest(&(storyChunkSender->getExtractionQueue()),
+            chl::ArchiveReadingRequest(storyChunkSender,
+			               query_id,  
                                        chronicle_name,
                                        story_name,
                                        start_time,

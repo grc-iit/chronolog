@@ -37,10 +37,11 @@ public:
 
     virtual ~StoryChunkTransferAgent();
 
-    int processStoryChunk(StoryChunk* story_chunk) override;
     bool is_receiver_available() const;
 
     PlaybackQueryResponse * createQueryResponse(ClientQueryId const&);
+
+    int stashStoryChunks(ClientQueryId const& query_id, std::list<StoryChunk*>const&);
 
 private:
     tl::engine& service_engine;                  // local tl::engine
@@ -48,6 +49,9 @@ private:
     tl::provider_handle receiver_service_handle; // tl::provider_handle for remote receiver service
     tl::remote_procedure receiver_is_available;
     tl::remote_procedure receive_query_response;
+
+    //map of active client queries the receiver service is waiting on
+    std::map<ClientQueryId, std::pair<PlaybackQueryResponse, bool>> active_queries; 
 
     // constructor is private to make sure thalium rpc objects are created on the heap, not stack
     StoryChunkTransferAgent(tl::engine& tl_engine, ServiceId const& receiver_service_id);
