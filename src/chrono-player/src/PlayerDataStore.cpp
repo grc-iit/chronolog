@@ -55,9 +55,12 @@ void chronolog::PlayerDataStore::extractDecayedStoryChunks()
     }
 
     // discard the extracted story chunks
-    for(auto & chunk_ptr : extracted_story_chunks)
+    for(auto& chunk_ptr: extracted_story_chunks)
     {
-        if(chunk_ptr != nullptr) { delete chunk_ptr; }
+        if(chunk_ptr != nullptr)
+        {
+            delete chunk_ptr;
+        }
     }
 }
 ////////////////////////
@@ -72,7 +75,7 @@ void chronolog::PlayerDataStore::retireDecayedPipelines()
               tl::thread::self_id());
 
 
-    std::vector<chl::StoryChunk*>extracted_story_chunks;
+    std::vector<chl::StoryChunk*> extracted_story_chunks;
 
     if(!theMapOfStoryPipelines.empty())
     {
@@ -96,7 +99,7 @@ void chronolog::PlayerDataStore::retireDecayedPipelines()
                 theMapOfStoryPipelines.erase(pipeline->getStoryId());
                 theIngestionQueue.removeStoryIngestionHandle(pipeline->getStoryId());
                 pipeline_iter = pipelinesWaitingForExit.erase(pipeline_iter);
-		pipeline->finalize(extracted_story_chunks);
+                pipeline->finalize(extracted_story_chunks);
                 delete pipeline;
             }
             else
@@ -107,9 +110,12 @@ void chronolog::PlayerDataStore::retireDecayedPipelines()
     }
 
     // discard the extracted story chunks
-    for(auto & chunk_ptr : extracted_story_chunks)
+    for(auto& chunk_ptr: extracted_story_chunks)
     {
-        if(chunk_ptr != nullptr) { delete chunk_ptr; }
+        if(chunk_ptr != nullptr)
+        {
+            delete chunk_ptr;
+        }
     }
 
     LOG_TRACE("[PlayerDataStore] Completed retirement of decayed pipelines. Current state={}, Active "
@@ -213,16 +219,26 @@ void chronolog::PlayerDataStore::shutdownDataCollection()
         std::lock_guard storeLock(dataStoreMutex);
 
         chl::StoryPipeline* pipeline = nullptr;
+        std::vector<chl::StoryChunk*> remaining_chunks;
         for(auto pipeline_iter = theMapOfStoryPipelines.begin(); pipeline_iter != theMapOfStoryPipelines.end();
             ++pipeline_iter)
         {
             pipeline = (*pipeline_iter).second;
             theIngestionQueue.removeStoryIngestionHandle(pipeline->getStoryId());
+            pipeline->finalize(remaining_chunks);
             delete pipeline;
         }
 
         pipelinesWaitingForExit.clear();
         theMapOfStoryPipelines.clear();
+
+        for(auto& chunk: remaining_chunks)
+        {
+            if(chunk != nullptr)
+            {
+                delete chunk;
+            }
+        }
 
         LOG_INFO("[PlayerDataStore] Completed retirement of pipelines. Current state={}, MapOfStoryPipelines={}, "
                  "pipelinesWaitingForExit={}",
