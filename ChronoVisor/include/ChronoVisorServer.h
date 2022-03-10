@@ -16,6 +16,7 @@
 #include <TimeRecord.h>
 #include <ClientRegistryRecord.h>
 #include <SerDe.h>
+#include <ChronicleMetaDirectory.h>
 
 namespace ChronoVisor {
 
@@ -146,6 +147,11 @@ namespace ChronoVisor {
          */
         SerDeFactory *pSerDeFactory{};
         SerDe *pSerDe{};
+
+        /**
+         * @name Chronicle Meta Directory related variables
+         */
+        ChronicleMetaDirectory *pChronicleMetaDirectory;
     };
 
 }

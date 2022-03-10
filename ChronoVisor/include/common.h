@@ -9,6 +9,7 @@
 #include <mutex>
 #include <TimeRecord.h>
 #include <ClocksourceManager.h>
+#include <condition_variable>
 
 ClocksourceManager *ClocksourceManager::clocksourceManager_ = nullptr;
 std::queue<TimeRecord> timeDBWriteQueue_;

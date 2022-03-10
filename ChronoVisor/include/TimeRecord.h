@@ -16,14 +16,14 @@
  */
 class TimeRecord {
 public:
-    TimeRecord() : clocksource_(nullptr), drift_rate_(0), ref_interval_(-1) {}
+    TimeRecord() : timestamp_(0), drift_rate_(0), ref_interval_(-1), clocksource_(nullptr) {}
 
-    explicit TimeRecord(Clocksource *clocksource) : drift_rate_(0), ref_interval_(-1) {
+    explicit TimeRecord(Clocksource *clocksource) : timestamp_(0), drift_rate_(0), ref_interval_(-1) {
         clocksource_ = clocksource;
     }
 
     TimeRecord(Clocksource *clocksource, uint64_t timestamp, double ref_interval)
-    : clocksource_(clocksource), timestamp_(timestamp), ref_interval_(ref_interval) {}
+    : timestamp_(timestamp), ref_interval_(ref_interval), clocksource_(clocksource) {}
 
     TimeRecord& operator=(const TimeRecord& other) {
         if (this == &other)
@@ -67,12 +67,10 @@ public:
     /**
      * Update timestamp and drift rate
      * @param last_timestamp timestamp at last time
-     * @return the latest TimeRecord with timestamp and drift rate
      */
-    TimeRecord updateTimeRecord(uint64_t last_timestamp) {
+    void updateTimeRecord(uint64_t last_timestamp) {
         timestamp_ = getCurTimestamp();
         drift_rate_ = calDriftRate(last_timestamp);
-        return *this;
     }
 
     /**
