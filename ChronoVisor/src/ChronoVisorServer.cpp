@@ -6,7 +6,7 @@
 #include <cstdio>
 #include <ChronoVisorServer.h>
 #include <ClocksourceManager.h>
-#include <common.h>
+#include "../../ChronoAPI/ChronoLog/include/common.h"
 
 namespace ChronoVisor {
 
@@ -14,6 +14,7 @@ namespace ChronoVisor {
             : SocketPP::TCPServer(port) {
         timeDBUpdateInterval_ = TIME_DB_UPDATE_INTERVAL;
         pTimeManager = new TimeManager();
+        pChronicleMetaDirectory = new ChronicleMetaDirectory();
         initTimeDB();
         initSerDe();
         startPeriodicTimeDBUpdateThread();
@@ -23,6 +24,7 @@ namespace ChronoVisor {
     ChronoVisorServer::ChronoVisorServer(int port, int update_interval)
             : SocketPP::TCPServer(port), timeDBUpdateInterval_(update_interval) {
         pTimeManager = new TimeManager(update_interval);
+        pChronicleMetaDirectory = new ChronicleMetaDirectory();
         initTimeDB();
         initSerDe();
         startPeriodicTimeDBUpdateThread();
@@ -223,6 +225,30 @@ namespace ChronoVisor {
             }
             case ClientMessage::DISCONNECTION: {
                 removeFromClientRegistry(fd);
+                break;
+            }
+            case ClientMessage::CREATECHRONICLE: {
+                pChronicleMetaDirectory->create_chronicle(clientMsg->chronicleName_);
+                serverMsg.msgType_ = ServerMessage::CREATECHRONICLERESPONSE;
+                serverMsg.chronicleId_ = CityHash64(clientMsg->chronicleName_.c_str(),
+                                                    clientMsg->chronicleName_.size());
+                {
+                    oss = pSerDe->serializeServerMessage(serverMsg);
+                }
+                LOGD("Msg to client: %s", serverMsg.toString().c_str());
+                reply.rawMsg.initMsg((const byte *) oss->str().c_str(), oss->str().length());
+                break;
+            }
+            case ClientMessage::ACQUIRECHRONICLE: {
+                pChronicleMetaDirectory->acquire_chronicle(clientMsg->chronicleName_, 0);
+                break;
+            }
+            case ClientMessage::RELEASECHRONICLE: {
+                pChronicleMetaDirectory->release_chronicle(clientMsg->chronicleId_, 0);
+                break;
+            }
+            case ClientMessage::DESTROYCHRONICLE: {
+                pChronicleMetaDirectory->destroy_chronicle(clientMsg->chronicleName_, 0);
                 break;
             }
             default: {

@@ -103,8 +103,10 @@ void writeVectorToFile(std::vector<T> v) {
 }
 
 int main() {
+    sleep(10);
+
     std::ofstream fout("data.csv");
-    fout << "clocksource\tmin\t0.01%\t0.1%\t50%\t99.99%\t99.999%\tmax" << std::endl;
+    fout << "clocksource\tmin\t0.01%\t0.1%\t50%\t99%\t99.9%\tmax" << std::endl;
 
     /**
      * using rdtsc instruction from CPU

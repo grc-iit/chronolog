@@ -8,3 +8,6 @@ target_include_directories(ChronoLog PUBLIC include)
 #    enable_testing()
 #    add_subdirectory(test)
 #endif()
+
+find_package(mercury REQUIRED)
+find_package(thallium REQUIRED)

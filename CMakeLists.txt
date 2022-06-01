@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.17)
 
 # Set a consistent MACOSX_RPATH default across all CMake versions.
 if(NOT DEFINED CMAKE_MACOSX_RPATH)
@@ -84,7 +84,10 @@ endif()
 # Change some compilation flags depending on the build type
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     message("Compiling ChronoLog in Debug Mode")
-    add_compile_options(-g3)
+#    add_compile_options(-g3)
+    add_compile_options(-O0)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0")
 
     if (HERMES_USE_ADDRESS_SANITIZER)
         add_compile_options(-fsanitize=address)
@@ -205,6 +208,9 @@ add_subdirectory(ChronoAPI)
 
 # ChronoVisor
 add_subdirectory(ChronoVisor)
+
+# ChronoLog client library
+add_subdirectory(Client)
 
 # custom
 add_custom_target(make_all cd ${CMAKE_BINARY_DIR} && make)

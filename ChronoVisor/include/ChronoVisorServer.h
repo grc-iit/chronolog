@@ -28,6 +28,7 @@ namespace ChronoVisor {
         ~ChronoVisorServer() override {
             if (pSerDe) { delete pSerDe; pSerDe = nullptr; }
             if (pTimeManager) { delete pTimeManager; pTimeManager = nullptr; }
+            if (pChronicleMetaDirectory) { delete pChronicleMetaDirectory; pChronicleMetaDirectory = nullptr; }
         }
 
         void setClocksourceType(ClocksourceType clocksourceType) { pTimeManager->setClocksourceType(clocksourceType); }

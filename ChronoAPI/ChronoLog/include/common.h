@@ -7,22 +7,36 @@
 
 #include <queue>
 #include <mutex>
-#include <TimeRecord.h>
-#include <ClocksourceManager.h>
 #include <condition_variable>
-
-#define RPC_THREADS 4
-
-#define THALLIUM_SOCKETS 0
-#define THALLIUM_TCP 1
-#define THALLIUM_UDP 2
-#define THALLIUM_ROCE 3
-#define CONF_COMM_LIB THALLIUM_SOCKETS
+#include <random>
+#include "singleton.h"
+#include "../../../ChronoVisor/include/TimeRecord.h"
+#include "../../../ChronoVisor/include/ClocksourceManager.h"
 
 ClocksourceManager *ClocksourceManager::clocksourceManager_ = nullptr;
 std::queue<TimeRecord> timeDBWriteQueue_;
 int timeDBWriteQueueSize_{};
 std::mutex timeDBWriteQueueMutex_;
 std::condition_variable timeDBWriteQueueCV_;
+
+std::random_device rd;
+std::seed_seq ssq{rd()};
+std::default_random_engine mt{rd()};
+std::uniform_int_distribution<int> dist(0, INT32_MAX);
+
+std::string gen_random(const int len) {
+    static const char alphanum[] =
+            "0123456789"
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+            "abcdefghijklmnopqrstuvwxyz";
+    std::string tmp_s;
+    tmp_s.reserve(len);
+
+    for (int i = 0; i < len; ++i) {
+        tmp_s += alphanum[dist(mt) % (sizeof(alphanum) - 1)];
+    }
+
+    return tmp_s;
+}
 
 #endif //CHRONOLOG_COMMON_H
