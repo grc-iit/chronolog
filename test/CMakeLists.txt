@@ -1,2 +1,3 @@
 add_subdirectory(integration)
 add_subdirectory(overhead)
+add_subdirectory(communication)
