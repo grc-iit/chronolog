@@ -17,6 +17,7 @@
 #include <ClientRegistryRecord.h>
 #include <SerDe.h>
 #include <ChronicleMetaDirectory.h>
+#include <ClientRegistryManager.h>
 
 namespace ChronoVisor {
 
@@ -131,7 +132,8 @@ namespace ChronoVisor {
          * @name ClientRegistry related variables
          */
         ///@{
-        std::unordered_map<int, ClientRegistryRecord> clientRegistry_; ///< use socket fd as the key
+        ClientRegistryManager *pClientRegistryManager;
+        std::shared_ptr<std::unordered_map<int, ClientRegistryRecord>> clientRegistry_; ///< use socket fd as the key
         std::mutex clientRegistryMutex_;
         ///@}
 

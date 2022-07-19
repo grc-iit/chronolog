@@ -9,14 +9,14 @@ add_library(ChronoVisor_lib STATIC
         src/ClocksourceManager.cpp include/ClocksourceManager.h
         src/ChronicleMetaDirectory.cpp include/ChronicleMetaDirectory.h
         include/Chronicle.h include/Story.h include/Archive.h include/Event.h
-        src/city.cpp include/city.h include/config.h)
+        src/city.cpp include/city.h include/config.h include/ClientRegistryManager.h src/ClientRegistryManager.cpp)
 target_include_directories(ChronoVisor_lib PUBLIC include
         ../ChronoAPI/ChronoLog/include
         ${ROCKSDB_INCLUDE}) #-I/usr/include
 target_link_libraries(ChronoVisor_lib socketpp Serde ${ROCKSDB_LIB} pthread) #_L/usr/bin/mpi.so
 add_dependencies(ChronoVisor_lib socketpp Serde)
 
-add_executable(ChronoVisor main.cpp)
+add_executable(ChronoVisor main.cpp include/ClientRegistryManager.h)
 target_link_libraries(ChronoVisor ChronoVisor_lib socketpp)
 add_dependencies(ChronoVisor ChronoVisor_lib socketpp)
 

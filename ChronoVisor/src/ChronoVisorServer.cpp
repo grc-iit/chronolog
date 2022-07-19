@@ -15,6 +15,7 @@ namespace ChronoVisor {
         timeDBUpdateInterval_ = TIME_DB_UPDATE_INTERVAL;
         pTimeManager = new TimeManager();
         pChronicleMetaDirectory = new ChronicleMetaDirectory();
+        pClientRegistryManager = new ClientRegistryManager();
         initTimeDB();
         initSerDe();
         startPeriodicTimeDBUpdateThread();
@@ -25,6 +26,7 @@ namespace ChronoVisor {
             : SocketPP::TCPServer(port), timeDBUpdateInterval_(update_interval) {
         pTimeManager = new TimeManager(update_interval);
         pChronicleMetaDirectory = new ChronicleMetaDirectory();
+        pClientRegistryManager = new ClientRegistryManager();
         initTimeDB();
         initSerDe();
         startPeriodicTimeDBUpdateThread();
@@ -74,21 +76,21 @@ namespace ChronoVisor {
     }
 
     void ChronoVisorServer::addToClientRegistry(SocketPP::TCPStream stream) {
-        ClientRegistryRecord client_record(stream.fd, stream);
+        ClientRegistryRecord client_record();
         std::unique_lock<std::mutex> lock(clientRegistryMutex_);
-        clientRegistry_[stream.fd] = client_record;
+        clientRegistry_->emplace(std::make_pair(stream.fd, client_record));
     }
 
     void ChronoVisorServer::removeFromClientRegistry(SocketPP::TCPStream stream) {
         std::unique_lock<std::mutex> lock(clientRegistryMutex_);
-        auto iter = clientRegistry_.find(stream.fd);
+        auto iter = clientRegistry_->find(stream.fd);
 
-        if (iter == clientRegistry_.end()) {
+        if (iter == clientRegistry_->end()) {
             LOGE("fd=%d is not in client registry!", stream.fd);
             return;
         }
 
-        clientRegistry_.erase(iter);
+        clientRegistry_->erase(iter);
     }
 
     void ChronoVisorServer::startPeriodicTimeDBUpdateThread() {
