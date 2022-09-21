@@ -16,6 +16,10 @@ Modern applications spanning from Edge to High Performance Computing (HPC) syste
 
 ![Feature matrix](/doc/images/feature-matrix.png)
 
+## Installation
+
+ChronoLog uses HCL internally. It is added to this repository as a submodule. Thus, you need to run `git submodule update --init --recursive` once in `ChronoLog` directory after you clone the repository. For following pulls, you can update the submodule using command `git pull --recurse-submodules`.
+
 ------
 # Coming soon ...
 
