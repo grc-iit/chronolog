@@ -22,12 +22,14 @@ public:
     uint64_t getSid() const { return sid_; }
     uint64_t getCid() const { return cid_; }
     const StoryStats &getStats() const { return stats_; }
+    const std::unordered_map<std::string, std::string> &getAttrs() const { return attrs_; }
     const std::unordered_map<std::string, Event> &getEventMap() const { return eventMap_; }
 
     void setName(const std::string &name) { name_ = name; }
     void setSid(uint64_t sid) { sid_ = sid; }
     void setCid(uint64_t cid) { cid_ = cid; }
     void setStats(const StoryStats &stats) { stats_ = stats; }
+    void setAttrs(const std::unordered_map<std::string, std::string>& attrs) { attrs_ = attrs; }
     void setEventMap(const std::unordered_map<std::string, Event> &eventMap) { eventMap_ = eventMap; }
 
     friend std::ostream& operator<<(std::ostream& os, const Story& story);
@@ -37,6 +39,7 @@ private:
     uint64_t sid_{};
     uint64_t cid_{};
     StoryStats stats_{};
+    std::unordered_map<std::string, std::string> attrs_;
     std::unordered_map<std::string, Event> eventMap_;
 };
 

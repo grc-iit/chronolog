@@ -15,10 +15,12 @@ public:
     const std::string &getName() const { return name_; }
     const uint64_t &getAid() const { return aid_; }
     const uint64_t &getCid() const { return cid_; }
+    const std::unordered_map<std::string, std::string> &getAttrs() const { return attrs_; }
 
     void setName(const std::string &name) { name_ = name; }
     void setAid(uint64_t aid) { aid_ = aid; }
     void setCid(uint64_t cid) { cid_ = cid; }
+    void setAttrs(const std::unordered_map<std::string, std::string>& attrs) { attrs_ = attrs; }
 
     friend std::ostream& operator<<(std::ostream& os, const Archive& archive);
 
@@ -26,6 +28,7 @@ private:
     std::string name_;
     uint64_t aid_{};
     uint64_t cid_{};
+    std::unordered_map<std::string, std::string> attrs_;
 };
 
 inline std::ostream& operator<<(std::ostream& os, const Archive& archive) {

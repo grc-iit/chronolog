@@ -71,12 +71,13 @@ public:
     bool addStory(uint64_t cid, const std::string& name, const std::unordered_map<std::string, std::string>& attrs) {
         Story *pStory = new Story();
         pStory->setName(name);
+        pStory->setAttrs(attrs);
         // add cid to name before hash to allow same story name across chronicles
         std::string story_name_for_hash = std::to_string(cid) + name;
         uint64_t sid = CityHash64(story_name_for_hash.c_str(), story_name_for_hash.size());
         pStory->setSid(sid);
         pStory->setCid(cid);
-        LOGD("adding to storyMap at address %lu with %d entries in Chronicle at address %lu",
+        LOGD("adding to storyMap@%p with %lu entries in Chronicle@%p",
              &storyMap_, storyMap_.size(), this);
         auto res = storyMap_.emplace(std::to_string(sid), pStory);
         return res.second;
@@ -90,7 +91,7 @@ public:
         if (storyRecord != storyMap_.end()) {
             Story *pStory = storyRecord->second;
             delete pStory;
-            LOGD("removing from storyMap at address %lu with %d entries in Chronicle at address %lu",
+            LOGD("removing from storyMap@%p with %lu entries in Chronicle@%p",
                  &storyMap_, storyMap_.size(), this);
             auto nErased = storyMap_.erase(std::to_string(sid));
             return (nErased == 1);
@@ -102,12 +103,13 @@ public:
     bool addArchive(uint64_t cid, const std::string& name, const std::unordered_map<std::string, std::string>& attrs) {
         Archive *pArchive = new Archive();
         pArchive->setName(name);
+        pArchive->setAttrs(attrs);
         // add cid to name before hash to allow same archive name across chronicles
         std::string archive_name_for_hash = std::to_string(cid) + name;
         uint64_t aid = CityHash64(archive_name_for_hash.c_str(), archive_name_for_hash.size());
         pArchive->setAid(aid);
         pArchive->setCid(cid);
-        LOGD("adding to archiveMap at address %lu with %d entries in Chronicle at address %lu",
+        LOGD("adding to archiveMap@%p with %lu entries in Chronicle@%p",
              &archiveMap_, archiveMap_.size(), this);
         auto res = archiveMap_.emplace(std::to_string(aid), pArchive);
         return res.second;
@@ -121,7 +123,7 @@ public:
         if (storyRecord != archiveMap_.end()) {
             Archive *pArchive = storyRecord->second;
             delete pArchive;
-            LOGD("removing from archiveMap at address %lu with %d entries in Chronicle at address %lu",
+            LOGD("removing from archiveMap@%p with %lu entries in Chronicle@%p",
                  &archiveMap_, archiveMap_.size(), this);
             auto nErased = archiveMap_.erase(std::to_string(aid));
             return (nErased == 1);
