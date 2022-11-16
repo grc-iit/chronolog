@@ -76,7 +76,7 @@ namespace ChronoVisor {
     }
 
     void ChronoVisorServer::addToClientRegistry(SocketPP::TCPStream stream) {
-        ClientRegistryRecord client_record();
+        ClientRegistryInfo client_record;
         std::unique_lock<std::mutex> lock(clientRegistryMutex_);
         clientRegistry_->emplace(std::make_pair(stream.fd, client_record));
     }
