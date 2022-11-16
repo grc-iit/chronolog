@@ -14,8 +14,8 @@ public:
 
     ChronoLogClient(const std::string& server_list_file_path) {
         CHRONOLOG_CONF->ConfigureDefaultClient(server_list_file_path);
-        metadataRpcProxy_ = ChronicleMetadataRPCProxy();
-        adminRpcProxy_ = ChronoLogAdminRPCProxy();
+        metadataRpcProxy_ = ChronoLog::Singleton<ChronicleMetadataRPCProxy>::GetInstance();
+        adminRpcProxy_ = ChronoLog::Singleton<ChronoLogAdminRPCProxy>::GetInstance();
     }
 
     bool Connect(const std::string &server_uri, std::string &client_id);
@@ -32,7 +32,7 @@ public:
     bool EditChronicleAttr(uint64_t &cid, const std::string &key, const std::string &value);
 
 private:
-    ChronicleMetadataRPCProxy metadataRpcProxy_;
-    ChronoLogAdminRPCProxy adminRpcProxy_;
+    std::shared_ptr<ChronicleMetadataRPCProxy> metadataRpcProxy_;
+    std::shared_ptr<ChronoLogAdminRPCProxy> adminRpcProxy_;
 };
 #endif //CHRONOLOG_CLIENT_H

@@ -2,10 +2,10 @@
 // Created by kfeng on 5/17/22.
 //
 
-#include "client.h"
-#include "log.h"
-#include "common.h"
-
+#include <client.h>
+#include <global_var_client.h>
+#include <log.h>
+#include <common.h>
 
 #define NUM_CHRONICLE (1)
 #define NUM_STORY (1)
@@ -14,7 +14,7 @@
 #define STORY_NAME_LEN 32
 
 int main() {
-    ChronoLogClient client;
+    ChronoLogClient client("../../../../test/communication/server_list");
     std::vector<std::string> chronicle_names;
     std::chrono::steady_clock::time_point t1, t2;
     std::chrono::duration<double, std::nano> duration_create_chronicle{},
@@ -42,17 +42,20 @@ int main() {
         t1 = std::chrono::steady_clock::now();
         ret = client.CreateChronicle(chronicle_name, chronicle_attrs);
         t2 = std::chrono::steady_clock::now();
+        LOGD("ret: %d", ret);
         duration_create_chronicle += (t2 - t1);
 
         t1 = std::chrono::steady_clock::now();
         ret = client.AcquireChronicle(chronicle_name, 1);
         t2 = std::chrono::steady_clock::now();
+        LOGD("ret: %d", ret);
         duration_acquire_chronicle += (t2 - t1);
 
         std::string key("Date");
         t1 = std::chrono::steady_clock::now();
         ret = client.EditChronicleAttr(cid, key, "2022-04-20");
         t2 = std::chrono::steady_clock::now();
+        LOGD("ret: %d", ret);
         duration_edit_chronicle_attr += (t2 - t1);
 
         std::vector<std::string> story_names;
@@ -67,6 +70,7 @@ int main() {
             t1 = std::chrono::steady_clock::now();
             ret = client.CreateStory(cid, story_name, story_attrs);
             t2 = std::chrono::steady_clock::now();
+            LOGD("ret: %d", ret);
             duration_create_story += (t2 - t1);
 
             t1 = std::chrono::steady_clock::now();
@@ -77,6 +81,7 @@ int main() {
             t1 = std::chrono::steady_clock::now();
             ret = client.ReleaseStory(cid, 4);
             t2 = std::chrono::steady_clock::now();
+            LOGD("ret: %d", ret);
             duration_release_story += (t2 - t1);
         }
 
@@ -84,17 +89,20 @@ int main() {
             t1 = std::chrono::steady_clock::now();
             ret = client.DestroyStory(cid, story_names[j], 8);
             t2 = std::chrono::steady_clock::now();
+            LOGD("ret: %d", ret);
             duration_destroy_story += (t2 - t1);
         }
 
         t1 = std::chrono::steady_clock::now();
         std::string value = client.GetChronicleAttr(cid, key);
         t2 = std::chrono::steady_clock::now();
+        LOGD("ret: %d", ret);
         duration_get_chronicle_attr += (t2 - t1);
 
         t1 = std::chrono::steady_clock::now();
         ret = client.ReleaseChronicle(cid, 16);
         t2 = std::chrono::steady_clock::now();
+        LOGD("ret: %d", ret);
         duration_release_chronicle += (t2 - t1);
     }
 
@@ -102,6 +110,7 @@ int main() {
         t1 = std::chrono::steady_clock::now();
         bool ret = client.DestroyChronicle(chronicle_names[i], 32);
         t2 = std::chrono::steady_clock::now();
+        LOGD("ret: %d", ret);
         duration_destroy_chronicle += (t2 - t1);
     };
 
@@ -131,6 +140,7 @@ int main() {
         t1 = std::chrono::steady_clock::now();
         ret = client.CreateChronicle(chronicle_name, chronicle_attrs);
         t2 = std::chrono::steady_clock::now();
+        LOGD("ret: %d", ret);
         duration_create_chronicle += (t2 - t1);
     }
 
@@ -139,6 +149,7 @@ int main() {
         t1 = std::chrono::steady_clock::now();
         bool ret = client.DestroyChronicle(chronicle_names[i], 32);
         t2 = std::chrono::steady_clock::now();
+        LOGD("ret: %d", ret);
         duration_destroy_chronicle += (t2 - t1);
     }
 

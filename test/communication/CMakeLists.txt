@@ -19,8 +19,11 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0")
 endif()
 
-add_executable(thallium_server thallium_server.cpp)
+add_executable(thallium_server thallium_server.cpp
+        ../../ChronoVisor/src/ClientRegistryRecord.cpp
+        ../../ChronoVisor/src/ClientRegistryManager.cpp)
 target_include_directories(thallium_server PRIVATE ../../ChronoAPI/ChronoLog/include)
+target_include_directories(thallium_server PRIVATE ../../ChronoVisor/include)
 target_link_libraries(thallium_server PRIVATE thallium)
 target_link_libraries(thallium_server PUBLIC "-pthread")
 add_test(NAME CommThalliumServer COMMAND thallium_server)
@@ -39,6 +42,11 @@ target_link_libraries(thallium_client_mpi thallium ${MPI_C_LIBRARIES})
 add_test(NAME CommThalliumClientMPI COMMAND thallium_client_mpi)
 
 add_executable(rpc_server rpc_server.cpp
+        ../../ChronoAPI/ChronoLog/include/ChronoLogAdminRPCProxy.h
+        ../../ChronoVisor/include/ClientRegistryManager.h
+        ../../ChronoVisor/src/ClientRegistryManager.cpp
+        ../../ChronoVisor/include/ClientRegistryInfo.h
+        ../../ChronoVisor/src/ClientRegistryRecord.cpp
         ../../ChronoAPI/ChronoLog/include/ChronicleMetadataRPCProxy.h
         ../../ChronoAPI/ChronoLog/include/macro.h
         ../../ChronoAPI/ChronoLog/include/rpc.h

@@ -18,11 +18,11 @@ public:
     std::shared_ptr<RPC> GetRPC(uint16_t server_port) {
         auto iter = rpcs.find(server_port);
         if (iter != rpcs.end()) return iter->second;
-        auto temp = CHRONOLOG_CONF->RPC_PORT;
-        CHRONOLOG_CONF->RPC_PORT = server_port;
+        auto temp = CHRONOLOG_CONF->RPC_BASE_SERVER_PORT;
+        CHRONOLOG_CONF->RPC_BASE_SERVER_PORT = server_port;
         auto rpc = std::make_shared<RPC>();
         rpcs.emplace(server_port, rpc);
-        CHRONOLOG_CONF->RPC_PORT = temp;
+        CHRONOLOG_CONF->RPC_BASE_SERVER_PORT = temp;
         return rpc;
     }
 };

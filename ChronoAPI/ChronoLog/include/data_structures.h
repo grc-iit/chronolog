@@ -48,7 +48,7 @@ public:
         return value;
     }
 
-    const size_t size() const {
+    size_t size() const {
         return strlen(value);
     }
     /**

@@ -16,7 +16,8 @@ public:
     ChronicleMetaDirectory();
     ~ChronicleMetaDirectory();
 
-    std::shared_ptr<std::unordered_map<std::string, Chronicle *>> &getChronicleMap() { return chronicleMap_; }
+//    std::shared_ptr<std::unordered_map<std::string, Chronicle *>> getChronicleMap() { return chronicleMap_; }
+    std::unordered_map<std::string, Chronicle *> *getChronicleMap() { return chronicleMap_; }
 
     bool create_chronicle(const std::string& name);
     bool create_chronicle(const std::string& name, const std::unordered_map<std::string, std::string>& attrs);
@@ -37,7 +38,8 @@ public:
     bool edit_chronicle_attr(uint64_t &cid, const std::string& key, std::string value);
 
 private:
-    std::shared_ptr<std::unordered_map<std::string, Chronicle *>> chronicleMap_;
+//    std::shared_ptr<std::unordered_map<std::string, Chronicle *>> chronicleMap_;
+    std::unordered_map<std::string, Chronicle *> *chronicleMap_;
 };
 
 #endif //CHRONOLOG_CHRONICLEMETADIRECTORY_H

@@ -17,7 +17,7 @@ add_library(ChronoLogClient_lib STATIC
         ../ChronoAPI/ChronoLog/include/rpc.h
         ../ChronoAPI/ChronoLog/include/RPCFactory.h
         ../ChronoAPI/ChronoLog/include/singleton.h
-        ../ChronoVisor/include/ClientRegistryRecord.h
+        ../ChronoVisor/include/ClientRegistryInfo.h
         ../ChronoVisor/include/ClientRegistryManager.h
         ../ChronoVisor/src/ClientRegistryRecord.cpp
         ../ChronoVisor/src/ClientRegistryManager.cpp

@@ -3,15 +3,24 @@
 //
 
 #include <cassert>
-#include "client.h"
+#include <thallium.hpp>
+#include <thallium/serialization/stl/string.hpp>
+//#include "client.h"
 #include "log.h"
 #include "common.h"
 
 #define NUM_CONNECTION (1)
 
+namespace tl = thallium;
+
 int main() {
-    ChronoLogClient client;
-    std::string server_uri = "ofi+sockets://127.0.0.1:6666";
+//    CHRONOLOG_CONF->ConfigureDefaultClient("../../../../test/communication/server_list");
+//    ChronoLogClient client("../../../../test/communication/server_list");
+    std::string protocol = "ofi+sockets";
+    std::string server_ip = "127.0.0.1";
+    int base_port = 5555;
+    int num_ports = 3;
+    std::string server_uri;
     std::vector<std::string> client_ids;
     int flags = 0;
     bool ret = false;
@@ -20,18 +29,34 @@ int main() {
             duration_disconnect{};
 
     client_ids.reserve(NUM_CONNECTION);
+    for (int i = 0; i < NUM_CONNECTION; i++) client_ids.emplace_back(gen_random(8));
+    protocol.append("://");
     for (int i = 0; i < NUM_CONNECTION; i++) {
+        server_uri = protocol;
+        server_uri += "://" + server_ip + ":" + std::to_string(base_port + i);
         t1 = std::chrono::steady_clock::now();
-        ret = client.Connect(server_uri, client_ids[i]);
-        assert(ret != false);
+//        ret = client.Connect(server_uri, client_ids[i]);
+        tl::engine myEngine(protocol, THALLIUM_CLIENT_MODE);
+        tl::remote_procedure rpc_proc = myEngine.define("ChronoLogThalliumConnect");
+        tl::endpoint visor = myEngine.lookup(protocol + server_ip + ":" + std::to_string(base_port));
+        tl::provider_handle ph(visor);
+        ret = rpc_proc.on(visor)(server_uri, client_ids[i]);
+//        assert(ret == true);
+        LOGD("ret: %d", ret);
         t2 = std::chrono::steady_clock::now();
         duration_connect += (t2 - t1);
     }
 
     for (int i = 0; i < NUM_CONNECTION; i++) {
         t1 = std::chrono::steady_clock::now();
-        ret = client.Disconnect(client_ids[i], flags);
-        assert(ret != false);
+//        ret = client.Disonnect(client_ids[i], flags);
+        tl::engine myEngine(protocol, THALLIUM_CLIENT_MODE);
+        tl::remote_procedure rpc_proc = myEngine.define("ChronoLogThalliumDisconnect");
+        tl::endpoint visor = myEngine.lookup(protocol + server_ip + ":" + std::to_string(base_port));
+        tl::provider_handle ph(visor);
+        ret = rpc_proc.on(visor)(client_ids[i], flags);
+//        assert(ret == true);
+        LOGD("ret: %d", ret);
         t2 = std::chrono::steady_clock::now();
         duration_disconnect += (t2 - t1);
     };

@@ -1,7 +1,7 @@
 project(Chronovisor)
 
 add_library(ChronoVisor_lib STATIC
-        include/ChronoVisorServer.h include/ClientRegistryRecord.h
+        include/ChronoVisorServer.h include/ClientRegistryInfo.h
         include/SerVector.h include/TimeRecord.h
         src/ChronoVisorServer.cpp src/ClientRegistryRecord.cpp
         src/TimeRecord.cpp
@@ -19,6 +19,25 @@ add_dependencies(ChronoVisor_lib socketpp Serde)
 add_executable(ChronoVisor main.cpp include/ClientRegistryManager.h)
 target_link_libraries(ChronoVisor ChronoVisor_lib socketpp)
 add_dependencies(ChronoVisor ChronoVisor_lib socketpp)
+
+# For new RPC-based ChronoVisor implementation
+find_package(mercury REQUIRED)
+find_package(thallium REQUIRED)
+find_package(Threads REQUIRED)
+
+add_library(ChronoVisor_lib2 STATIC
+        include/ChronoVisorServer2.h include/ClientRegistryInfo.h
+        include/TimeRecord.h
+        src/ChronoVisorServer2.cpp src/ClientRegistryRecord.cpp
+        src/TimeRecord.cpp
+        src/TimeManager.cpp include/TimeManager.h
+        src/ClocksourceManager.cpp include/ClocksourceManager.h
+        src/ChronicleMetaDirectory.cpp include/ChronicleMetaDirectory.h
+        include/Chronicle.h include/Story.h include/Archive.h include/Event.h
+        src/city.cpp include/city.h include/config.h include/ClientRegistryManager.h src/ClientRegistryManager.cpp)
+target_include_directories(ChronoVisor_lib2 PUBLIC include
+        ../ChronoAPI/ChronoLog/include)
+target_link_libraries(ChronoVisor_lib2 thallium)
 
 if(BUILD_TESTING)
     enable_testing()
