@@ -32,9 +32,9 @@ target_include_directories(ChronoLogClient_lib PUBLIC include
         ../ChronoVisor/include)
 target_link_libraries(ChronoLogClient_lib thallium)
 
-add_executable(ChronoLogClient main.cpp)
-target_link_libraries(ChronoLogClient ChronoLogClient_lib)
-add_dependencies(ChronoLogClient ChronoLogClient_lib)
+#add_executable(ChronoLogClient main.cpp)
+#target_link_libraries(ChronoLogClient ChronoLogClient_lib)
+#add_dependencies(ChronoLogClient ChronoLogClient_lib)
 
 if(BUILD_TESTING)
     enable_testing()
