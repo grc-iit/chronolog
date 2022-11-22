@@ -6,9 +6,10 @@
 #define CHRONOLOG_CONFIGURATIONMANAGER_H
 
 #include <cstdint>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
-#include <filesystem>
+//#include <filesystem>
 #include "data_structures.h"
 #include "enum.h"
 #include "log.h"
@@ -57,7 +58,7 @@ namespace ChronoLog {
             LOGI("MEMORY_ALLOCATED: %lu", MEMORY_ALLOCATED);
             LOGI("IS_SERVER: %d", IS_SERVER);
             LOGI("MY_SERVER_ID: %d", MY_SERVER_ID);
-            LOGI("SERVER_LIST_FILE_PATH: %s", std::filesystem::absolute(SERVER_LIST_FILE_PATH.c_str()).c_str());
+            LOGI("SERVER_LIST_FILE_PATH: %s", realpath(SERVER_LIST_FILE_PATH.c_str(), NULL));
             LOGI("SERVER_LIST: ");
             LOGI("BACKED_FILE_DIR: %s", BACKED_FILE_DIR.c_str());
         }
