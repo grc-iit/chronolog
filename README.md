@@ -52,6 +52,7 @@ The installation may take some time (> 30 minutes) to finish.
 Three tests can be built for not to have a mini testbed. `chronovisor_server_test` is for the ChronoVisor. `chronolog_client_lib_connect_rpc_test` and `chronolog_client_lib_metadata_rpc_test` are two client apps to test the connection/disconnection and metadata operations (e.g., Chronicle and Story management) functionalities, respectively.
 ```
 cd ChronoLog
+git switch rpc_framework
 mkdir build
 cd build
 cmake ..
