@@ -36,6 +36,8 @@ std::shared_ptr<ChronicleMetaDirectory> g_chronicleMetaDirectory =
                                                                      // store a reference to it using Singleton
                                                                      // template class in its constructor
 std::mutex g_chronicleMetaDirectoryMutex_;
+std::mutex g_acquiredChronicleMapMutex_;
+std::mutex g_acquiredStoryMapMutex_;
 
 /**
  * RPC-related global variables
