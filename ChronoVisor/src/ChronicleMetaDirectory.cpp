@@ -209,6 +209,7 @@ std::string ChronicleMetaDirectory::get_chronicle_attr(std::string &name, const 
     extern std::mutex g_chronicleMetaDirectoryMutex_;
     g_chronicleMetaDirectoryMutex_.lock();
     Chronicle *pChronicle = chronicleMap_->at(cid);
+    g_chronicleMetaDirectoryMutex_.unlock();
     return pChronicle->getPropertyList().at(key);
 }
 
@@ -218,6 +219,7 @@ bool ChronicleMetaDirectory::edit_chronicle_attr(std::string &name, const std::s
     extern std::mutex g_chronicleMetaDirectoryMutex_;
     g_chronicleMetaDirectoryMutex_.lock();
     Chronicle *pChronicle = chronicleMap_->at(cid);
+    g_chronicleMetaDirectoryMutex_.unlock();
     pChronicle->getPropertyList().insert_or_assign(key, value);
     return true;
 }
