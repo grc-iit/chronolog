@@ -78,93 +78,99 @@ public:
         return RPC_CALL_WRAPPER("AcquireChronicle", 0, bool, name, flags);
     }
 
-    bool LocalReleaseChronicle(uint64_t &cid, const int &flags) {
-        LOGD("%s is called in PID=%d, with args: cid=%ld, flags=%d", __FUNCTION__, getpid(), cid, flags);
+    bool LocalReleaseChronicle(std::string &name, const int &flags) {
+        LOGD("%s is called in PID=%d, with args: name=%s, flags=%d", __FUNCTION__, getpid(), name.c_str(), flags);
         extern std::shared_ptr<ChronicleMetaDirectory> g_chronicleMetaDirectory;
-        return g_chronicleMetaDirectory->release_chronicle(cid, flags);
+        return g_chronicleMetaDirectory->release_chronicle(name, flags);
     }
 
-    bool ReleaseChronicle(uint64_t &cid, const int &flags) {
-        LOGD("%s is called in PID=%d, with args: cid=%ld, flags=%d", __FUNCTION__, getpid(), cid, flags);
-        return RPC_CALL_WRAPPER("ReleaseChronicle", 0, bool, cid, flags);
+    bool ReleaseChronicle(std::string &name, const int &flags) {
+        LOGD("%s is called in PID=%d, with args: name=%s, flags=%d", __FUNCTION__, getpid(), name.c_str(), flags);
+        return RPC_CALL_WRAPPER("ReleaseChronicle", 0, bool, name, flags);
     }
 
-    bool LocalCreateStory(uint64_t &cid, std::string &name, const std::unordered_map<std::string, std::string> &attrs) {
-        LOGD("%s is called in PID=%d, with args: name=%s, attrs=", __FUNCTION__, getpid(), name.c_str());
+    bool LocalCreateStory(std::string &chronicle_name, std::string &story_name,
+                          const std::unordered_map<std::string, std::string> &attrs) {
+        LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, ,attrs=",
+             __FUNCTION__, getpid(), chronicle_name.c_str());
         for (auto iter = attrs.begin(); iter != attrs.end(); ++iter) {
             LOGD("%s=%s", iter->first.c_str(), iter->second.c_str());
         }
         extern std::shared_ptr<ChronicleMetaDirectory> g_chronicleMetaDirectory;
-        return g_chronicleMetaDirectory->create_story(cid, name, attrs);
+        return g_chronicleMetaDirectory->create_story(chronicle_name, story_name, attrs);
     }
 
-    bool CreateStory(uint64_t &cid, std::string &name, const std::unordered_map<std::string, std::string> &attrs) {
-        LOGD("%s is called in PID=%d, with args: name=%s, attrs=", __FUNCTION__, getpid(), name.c_str());
+    bool CreateStory(std::string &chronicle_name, std::string &story_name,
+                     const std::unordered_map<std::string, std::string> &attrs) {
+        LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, ,attrs=",
+             __FUNCTION__, getpid(), chronicle_name.c_str());
         for (auto iter = attrs.begin(); iter != attrs.end(); ++iter) {
             LOGD("%s=%s", iter->first.c_str(), iter->second.c_str());
         }
-        return RPC_CALL_WRAPPER("CreateStory", 0, bool, cid, name, attrs);
+        return RPC_CALL_WRAPPER("CreateStory", 0, bool, chronicle_name, story_name, attrs);
     }
 
-    bool LocalDestroyStory(uint64_t &cid, std::string &name, const int &flags) {
-        LOGD("%s is called in PID=%d, with args: cid=%ld, name=%s, flags=%d",
-             __FUNCTION__, getpid(), cid, name.c_str(), flags);
+    bool LocalDestroyStory(std::string &chronicle_name, std::string &story_name, const int &flags) {
+        LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, flags=%d",
+             __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
         extern std::shared_ptr<ChronicleMetaDirectory> g_chronicleMetaDirectory;
-        return g_chronicleMetaDirectory->destroy_story(cid, name, flags);
+        return g_chronicleMetaDirectory->destroy_story(chronicle_name, story_name, flags);
     }
 
-    bool DestroyStory(uint64_t &cid, std::string &name, const int &flags) {
-        LOGD("%s is called in PID=%d, with args: cid=%ld, name=%s, flags=%d",
-             __FUNCTION__, getpid(), cid, name.c_str(), flags);
-        return RPC_CALL_WRAPPER("DestroyStory", 0, bool, cid, name, flags);
+    bool DestroyStory(std::string &chronicle_name, std::string &story_name, const int &flags) {
+        LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, flags=%d",
+             __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
+        return RPC_CALL_WRAPPER("DestroyStory", 0, bool, chronicle_name, story_name, flags);
     }
 
-    bool LocalAcquireStory(uint64_t &cid, std::string &name, const int &flags) {
-        LOGD("%s is called in PID=%d, with args: cid=%ld, name=%s, flags=%d",
-             __FUNCTION__, getpid(), cid, name.c_str(), flags);
+    bool LocalAcquireStory(std::string &chronicle_name, std::string &story_name, const int &flags) {
+        LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, flags=%d",
+             __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
         extern std::shared_ptr<ChronicleMetaDirectory> g_chronicleMetaDirectory;
-        return g_chronicleMetaDirectory->acquire_story(cid, name, flags);
+        return g_chronicleMetaDirectory->acquire_story(chronicle_name, story_name, flags);
     }
 
-    bool AcquireStory(uint64_t &cid, std::string &name, const int &flags) {
-        LOGD("%s is called in PID=%d, with args: cid=%ld, name=%s, flags=%d",
-             __FUNCTION__, getpid(), cid, name.c_str(), flags);
-        return RPC_CALL_WRAPPER("AcquireStory", 0, bool, cid, name, flags);
+    bool AcquireStory(std::string &chronicle_name, std::string &story_name, const int &flags) {
+        LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, flags=%d",
+             __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
+        return RPC_CALL_WRAPPER("AcquireStory", 0, bool, chronicle_name, story_name, flags);
     }
 
-    bool LocalReleaseStory(uint64_t &sid, const int &flags) {
-        LOGD("%s is called in PID=%d, with args: sid=%ld, flags=%d", __FUNCTION__, getpid(), sid, flags);
+    bool LocalReleaseStory(std::string &chronicle_name, std::string &story_name, const int &flags) {
+        LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, flags=%d",
+             __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
         extern std::shared_ptr<ChronicleMetaDirectory> g_chronicleMetaDirectory;
-        return g_chronicleMetaDirectory->release_story(sid, flags);
+        return g_chronicleMetaDirectory->release_story(chronicle_name, story_name, flags);
     }
 
-    bool ReleaseStory(uint64_t &sid, const int &flags) {
-        LOGD("%s is called in PID=%d, with args: sid=%ld, flags=%d", __FUNCTION__, getpid(), sid, flags);
-        return RPC_CALL_WRAPPER("ReleaseStory", 0, bool, sid, flags);
+    bool ReleaseStory(std::string &chronicle_name, std::string &story_name, const int &flags) {
+        LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, flags=%d",
+             __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
+        return RPC_CALL_WRAPPER("ReleaseStory", 0, bool, chronicle_name, story_name, flags);
     }
 
-    std::string LocalGetChronicleAttr(uint64_t &cid, const std::string &key) {
-        LOGD("%s is called in PID=%d, with args: cid=%ld, key=%s", __FUNCTION__, getpid(), cid, key.c_str());
+    std::string LocalGetChronicleAttr(std::string &name, const std::string &key) {
+        LOGD("%s is called in PID=%d, with args: name=%s, key=%s", __FUNCTION__, getpid(), name.c_str(), key.c_str());
         extern std::shared_ptr<ChronicleMetaDirectory> g_chronicleMetaDirectory;
-        return g_chronicleMetaDirectory->get_chronicle_attr(cid, key);
+        return g_chronicleMetaDirectory->get_chronicle_attr(name, key);
     }
 
-    std::string GetChronicleAttr(uint64_t &cid, const std::string &key) {
-        LOGD("%s is called in PID=%d, with args: cid=%ld, key=%s", __FUNCTION__, getpid(), cid, key.c_str());
-        return RPC_CALL_WRAPPER("GetChronicleAttr", 0, std::string, cid, key);
+    std::string GetChronicleAttr(std::string &name, const std::string &key) {
+        LOGD("%s is called in PID=%d, with args: name=%s, key=%s", __FUNCTION__, getpid(), name.c_str(), key.c_str());
+        return RPC_CALL_WRAPPER("GetChronicleAttr", 0, std::string, name, key);
     }
 
-    bool LocalEditChronicleAttr(uint64_t &cid, const std::string &key, const std::string &value) {
-        LOGD("%s is called in PID=%d, with args: cid=%ld, key=%s, value=%s",
-             __FUNCTION__, getpid(), cid, key.c_str(), value.c_str());
+    bool LocalEditChronicleAttr(std::string &name, const std::string &key, const std::string &value) {
+        LOGD("%s is called in PID=%d, with args: name=%s, key=%s, value=%s",
+             __FUNCTION__, getpid(), name.c_str(), key.c_str(), value.c_str());
         extern std::shared_ptr<ChronicleMetaDirectory> g_chronicleMetaDirectory;
-        return g_chronicleMetaDirectory->edit_chronicle_attr(cid, key, value);
+        return g_chronicleMetaDirectory->edit_chronicle_attr(name, key, value);
     }
 
-    bool EditChronicleAttr(uint64_t &cid, const std::string &key, const std::string &value) {
-        LOGD("%s is called in PID=%d, with args: cid=%ld, key=%s, value=%s",
-             __FUNCTION__, getpid(), cid, key.c_str(), value.c_str());
-        return RPC_CALL_WRAPPER("EditChronicleAttr", 0, bool, cid, key, value);
+    bool EditChronicleAttr(std::string &name, const std::string &key, const std::string &value) {
+        LOGD("%s is called in PID=%d, with args: name=%s, key=%s, value=%s",
+             __FUNCTION__, getpid(), name.c_str(), key.c_str(), value.c_str());
+        return RPC_CALL_WRAPPER("EditChronicleAttr", 0, bool, name, key, value);
     }
     
     void bind_functions() {
@@ -200,7 +206,7 @@ public:
                                   std::placeholders::_3)
                 );
                 std::function<void(const tl::request &,
-                                   uint64_t &,
+                                   std::string &,
                                    const int &)> releaseChronicleFunc(
                         std::bind(&ChronicleMetadataRPCProxy::ThalliumLocalReleaseChronicle,
                                   this,
@@ -210,7 +216,7 @@ public:
                 );
 
                 std::function<void(const tl::request &,
-                                   uint64_t &,
+                                   std::string &,
                                    std::string &,
                                    const std::unordered_map<std::string, std::string> &)> createStoryFunc(
                         std::bind(&ChronicleMetadataRPCProxy::ThalliumLocalCreateStory,
@@ -221,7 +227,7 @@ public:
                                   std::placeholders::_4)
                 );
                 std::function<void(const tl::request &,
-                                   uint64_t &,
+                                   std::string &,
                                    std::string &,
                                    const int &)> destroyStoryFunc(
                         std::bind(&ChronicleMetadataRPCProxy::ThalliumLocalDestroyStory,
@@ -232,7 +238,7 @@ public:
                                   std::placeholders::_4)
                 );
                 std::function<void(const tl::request &,
-                                   uint64_t &,
+                                   std::string &,
                                    std::string &,
                                    const int &)> acquireStoryFunc(
                         std::bind(&ChronicleMetadataRPCProxy::ThalliumLocalAcquireStory,
@@ -243,18 +249,20 @@ public:
                                   std::placeholders::_4)
                 );
                 std::function<void(const tl::request &,
-                                   uint64_t &,
+                                   std::string &,
+                                   std::string &,
                                    const int &)> releaseStoryFunc(
                         std::bind(&ChronicleMetadataRPCProxy::ThalliumLocalReleaseStory,
                                   this,
                                   std::placeholders::_1,
                                   std::placeholders::_2,
-                                  std::placeholders::_3)
+                                  std::placeholders::_3,
+                                  std::placeholders::_4)
                 );
 
                 std::function<void(const tl::request &,
-                                   uint64_t &,
-                                   const std::string &)> getChronicleAttrFunc(
+                                   std::string &name,
+                                   const std::string &key)> getChronicleAttrFunc(
                         std::bind(&ChronicleMetadataRPCProxy::ThalliumLocalGetChronicleAttr,
                                   this,
                                   std::placeholders::_1,
@@ -262,7 +270,7 @@ public:
                                   std::placeholders::_3)
                 );
                 std::function<void(const tl::request &,
-                                   uint64_t &,
+                                   std::string &name,
                                    const std::string &key,
                                    const std::string &value)> editChronicleAttrFunc(
                         std::bind(&ChronicleMetadataRPCProxy::ThalliumLocalEditChronicleAttr,
@@ -293,17 +301,21 @@ public:
                     std::string &name, const std::unordered_map<std::string, std::string> &attrs)
     THALLIUM_DEFINE(LocalDestroyChronicle, (name, flags), std::string &name, const int &flags)
     THALLIUM_DEFINE(LocalAcquireChronicle, (name, flags), std::string &name, const int &flags)
-    THALLIUM_DEFINE(LocalReleaseChronicle, (cid, flags), uint64_t &cid, const int &flags)
+    THALLIUM_DEFINE(LocalReleaseChronicle, (name, flags), std::string &name, const int &flags)
 
-    THALLIUM_DEFINE(LocalCreateStory, (cid, name, attrs),
-                    uint64_t &cid, std::string &name, const std::unordered_map<std::string, std::string> &attrs)
-    THALLIUM_DEFINE(LocalDestroyStory, (cid, name, flags), uint64_t &cid, std::string &name, const int &flags)
-    THALLIUM_DEFINE(LocalAcquireStory, (cid, name, flags), uint64_t &cid, std::string &name, const int &flags)
-    THALLIUM_DEFINE(LocalReleaseStory, (sid, flags), uint64_t &sid, const int &flags)
+    THALLIUM_DEFINE(LocalCreateStory, (chronicle_name, story_name, attrs),
+                    std::string &chronicle_name, std::string &story_name,
+                    const std::unordered_map<std::string, std::string> &attrs)
+    THALLIUM_DEFINE(LocalDestroyStory, (chronicle_name, story_name, flags),
+                    std::string &chronicle_name, std::string &story_name, const int &flags)
+    THALLIUM_DEFINE(LocalAcquireStory, (chronicle_name, story_name, flags),
+                    std::string &chronicle_name, std::string &story_name, const int &flags)
+    THALLIUM_DEFINE(LocalReleaseStory, (chronicle_name, story_name, flags),
+                    std::string &chronicle_name, std::string &story_name, const int &flags)
 
-    THALLIUM_DEFINE(LocalGetChronicleAttr, (cid, key), uint64_t &cid, const std::string &key)
-    THALLIUM_DEFINE(LocalEditChronicleAttr, (cid, key, value),
-                    uint64_t &cid, const std::string &key, const std::string &value)
+    THALLIUM_DEFINE(LocalGetChronicleAttr, (name, key), std::string &name, const std::string &key)
+    THALLIUM_DEFINE(LocalEditChronicleAttr, (name, key, value),
+                    std::string &name, const std::string &key, const std::string &value)
 
 //private:
     std::shared_ptr<ChronicleMetaDirectory> chronicleMetaDirectory;

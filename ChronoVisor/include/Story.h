@@ -10,6 +10,32 @@
 #include <Event.h>
 #include <city.h>
 
+enum StoryIndexingGranularity {
+    story_gran_ns = 0,
+    story_gran_us = 1,
+    story_gran_ms = 2,
+    story_gran_sec = 3
+};
+
+enum StoryType {
+    story_type_standard = 0,
+    story_type_priority = 1
+};
+
+enum StoryTieringPolicy {
+    story_tiering_normal = 0,
+    story_tiering_hot = 1,
+    story_tiering_cold = 2
+};
+
+typedef struct StoryAttrs_ {
+    uint64_t size;
+    enum StoryIndexingGranularity indexing_granularity;
+    enum StoryType type;
+    enum StoryTieringPolicy tiering_policy;
+    uint16_t access_permission;
+} StoryAttrs;
+
 typedef struct StoryStats_ {
     uint64_t count;
 } StoryStats;
@@ -22,14 +48,18 @@ public:
     uint64_t getSid() const { return sid_; }
     uint64_t getCid() const { return cid_; }
     const StoryStats &getStats() const { return stats_; }
-    const std::unordered_map<std::string, std::string> &getAttrs() const { return attrs_; }
+    const std::unordered_map<std::string, std::string> &getProperty() const { return propertyList_; }
     const std::unordered_map<std::string, Event> &getEventMap() const { return eventMap_; }
 
     void setName(const std::string &name) { name_ = name; }
     void setSid(uint64_t sid) { sid_ = sid; }
     void setCid(uint64_t cid) { cid_ = cid; }
     void setStats(const StoryStats &stats) { stats_ = stats; }
-    void setAttrs(const std::unordered_map<std::string, std::string>& attrs) { attrs_ = attrs; }
+    void setProperty(const std::unordered_map<std::string, std::string>& attrs) {
+        for (auto const& entry : attrs) {
+            propertyList_.emplace(entry.first, entry.second);
+        }
+    }
     void setEventMap(const std::unordered_map<std::string, Event> &eventMap) { eventMap_ = eventMap; }
 
     friend std::ostream& operator<<(std::ostream& os, const Story& story);
@@ -38,8 +68,9 @@ private:
     std::string name_;
     uint64_t sid_{};
     uint64_t cid_{};
+    StoryAttrs attrs_{};
     StoryStats stats_{};
-    std::unordered_map<std::string, std::string> attrs_;
+    std::unordered_map<std::string, std::string> propertyList_;
     std::unordered_map<std::string, Event> eventMap_;
 };
 
