@@ -5,7 +5,6 @@
 #include <ChronicleMetaDirectory.h>
 #include <city.h>
 #include <log.h>
-#include <uuid/uuid.h>
 #include <iostream>
 #include <chrono>
 #include <singleton.h>
