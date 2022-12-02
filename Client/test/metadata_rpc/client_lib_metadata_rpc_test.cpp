@@ -32,7 +32,6 @@ int main() {
     for (int i = 0; i < NUM_CHRONICLE; i++) {
         std::string chronicle_name(gen_random(CHRONICLE_NAME_LEN));
         chronicle_names.emplace_back(chronicle_name);
-        uint64_t cid = CityHash64(chronicle_name.c_str(), chronicle_name.size());
         std::string attr = std::string("Priority=High");
         bool ret = false;
         std::unordered_map<std::string, std::string> chronicle_attrs;
@@ -53,7 +52,7 @@ int main() {
 
         std::string key("Date");
         t1 = std::chrono::steady_clock::now();
-        ret = client.EditChronicleAttr(cid, key, "2022-04-20");
+        ret = client.EditChronicleAttr(chronicle_name, key, "2022-04-20");
         t2 = std::chrono::steady_clock::now();
         LOGD("ret: %d", ret);
         duration_edit_chronicle_attr += (t2 - t1);
@@ -68,18 +67,18 @@ int main() {
             chronicle_attrs.emplace("IndexGranularity", "Millisecond");
             chronicle_attrs.emplace("TieringPolicy", "Hot");
             t1 = std::chrono::steady_clock::now();
-            ret = client.CreateStory(cid, story_name, story_attrs);
+            ret = client.CreateStory(chronicle_name, story_name, story_attrs);
             t2 = std::chrono::steady_clock::now();
             LOGD("ret: %d", ret);
             duration_create_story += (t2 - t1);
 
             t1 = std::chrono::steady_clock::now();
-            ret = client.AcquireStory(cid, story_name, 2);
+            ret = client.AcquireStory(chronicle_name, story_name, 2);
             t2 = std::chrono::steady_clock::now();
             duration_acquire_story += (t2 - t1);
 
             t1 = std::chrono::steady_clock::now();
-            ret = client.ReleaseStory(cid, 4);
+            ret = client.ReleaseStory(chronicle_name, story_name, 4);
             t2 = std::chrono::steady_clock::now();
             LOGD("ret: %d", ret);
             duration_release_story += (t2 - t1);
@@ -87,20 +86,20 @@ int main() {
 
         for (int j = 0; j < NUM_STORY; j++) {
             t1 = std::chrono::steady_clock::now();
-            ret = client.DestroyStory(cid, story_names[j], 8);
+            ret = client.DestroyStory(chronicle_name, story_names[j], 8);
             t2 = std::chrono::steady_clock::now();
             LOGD("ret: %d", ret);
             duration_destroy_story += (t2 - t1);
         }
 
         t1 = std::chrono::steady_clock::now();
-        std::string value = client.GetChronicleAttr(cid, key);
+        std::string value = client.GetChronicleAttr(chronicle_name, key);
         t2 = std::chrono::steady_clock::now();
         LOGD("ret: %d", ret);
         duration_get_chronicle_attr += (t2 - t1);
 
         t1 = std::chrono::steady_clock::now();
-        ret = client.ReleaseChronicle(cid, 16);
+        ret = client.ReleaseChronicle(chronicle_name, 16);
         t2 = std::chrono::steady_clock::now();
         LOGD("ret: %d", ret);
         duration_release_chronicle += (t2 - t1);
@@ -130,7 +129,6 @@ int main() {
     for (int i = 0; i < NUM_CHRONICLE; i++) {
         std::string chronicle_name(gen_random(CHRONICLE_NAME_LEN));
         chronicle_names.emplace_back(chronicle_name);
-        uint64_t cid = CityHash64(chronicle_name.c_str(), chronicle_name.size());
         std::string attr = std::string("Priority=High");
         bool ret = false;
         std::unordered_map<std::string, std::string> chronicle_attrs;
