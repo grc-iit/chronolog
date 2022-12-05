@@ -11,7 +11,7 @@
 #include <cstdint>
 #include <chrono>
 
-typedef struct CharStruct {
+typedef struct ChronoLogCharStruct {
 private:
     char value[256];
     void Set(char* data_, size_t size) {
@@ -21,18 +21,18 @@ private:
         snprintf(this->value, data_.length()+1, "%s", data_.c_str());
     }
 public:
-    CharStruct() {}
+    ChronoLogCharStruct() {}
 
-    CharStruct(const CharStruct &other) : CharStruct(other.value) {} /* copy constructor*/
-    CharStruct(CharStruct &&other) : CharStruct(other.value) {} /* move constructor*/
+    ChronoLogCharStruct(const ChronoLogCharStruct &other) : ChronoLogCharStruct(other.value) {} /* copy constructor*/
+    ChronoLogCharStruct(ChronoLogCharStruct &&other) : ChronoLogCharStruct(other.value) {} /* move constructor*/
 
-    CharStruct(const char *data_) {
+    ChronoLogCharStruct(const char *data_) {
         snprintf(this->value, strlen(data_) + 1, "%s", data_);
     }
 
-    CharStruct(std::string data_) : CharStruct(data_.c_str()) {}
+    ChronoLogCharStruct(std::string data_) : ChronoLogCharStruct(data_.c_str()) {}
 
-    CharStruct(char *data_, size_t size) {
+    ChronoLogCharStruct(char *data_, size_t size) {
         snprintf(this->value, size, "%s", data_);
     }
 
@@ -54,47 +54,47 @@ public:
     /**
    * Operators
    */
-    CharStruct &operator=(const CharStruct &other) {
+    ChronoLogCharStruct &operator=(const ChronoLogCharStruct &other) {
         strcpy(value,other.c_str());
         return *this;
     }
     /* equal operator for comparing two Chars. */
-    bool operator==(const CharStruct &o) const {
+    bool operator==(const ChronoLogCharStruct &o) const {
         return strcmp(value, o.value) == 0;
     }
-    CharStruct operator+(const CharStruct& o){
+    ChronoLogCharStruct operator+(const ChronoLogCharStruct& o){
         std::string added=std::string(this->c_str())+std::string(o.c_str());
-        return CharStruct(added);
+        return ChronoLogCharStruct(added);
     }
-    CharStruct operator+(std::string &o)
+    ChronoLogCharStruct operator+(std::string &o)
     {
         std::string added=std::string(this->c_str())+o;
-        return CharStruct(added);
+        return ChronoLogCharStruct(added);
     }
-    CharStruct& operator+=(const CharStruct& rhs){
+    ChronoLogCharStruct& operator+=(const ChronoLogCharStruct& rhs){
         std::string added=std::string(this->c_str())+std::string(rhs.c_str());
         Set(added);
         return *this;
     }
-    bool operator>(const CharStruct &o) const {
+    bool operator>(const ChronoLogCharStruct &o) const {
         return  strcmp(this->value,o.c_str()) > 0;
     }
-    bool operator>=(const CharStruct &o) const {
+    bool operator>=(const ChronoLogCharStruct &o) const {
         return strcmp(this->value,o.c_str()) >= 0;
     }
-    bool operator<(const CharStruct &o) const {
+    bool operator<(const ChronoLogCharStruct &o) const {
         return strcmp(this->value,o.c_str()) < 0;
     }
-    bool operator<=(const CharStruct &o) const {
+    bool operator<=(const ChronoLogCharStruct &o) const {
         return strcmp(this->value,o.c_str()) <= 0;
     }
 
-} CharStruct;
+} ChronoLogCharStruct;
 
 namespace std {
     template<>
-    struct hash<CharStruct> {
-        size_t operator()(const CharStruct &k) const {
+    struct hash<ChronoLogCharStruct> {
+        size_t operator()(const ChronoLogCharStruct &k) const {
             std::string val(k.c_str());
             return std::hash<std::string>()(val);
         }

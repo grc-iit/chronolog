@@ -75,6 +75,7 @@ int main() {
             t1 = std::chrono::steady_clock::now();
             ret = client.AcquireStory(chronicle_name, story_name, 2);
             t2 = std::chrono::steady_clock::now();
+            LOGD("ret: %d", ret);
             duration_acquire_story += (t2 - t1);
 
             t1 = std::chrono::steady_clock::now();
@@ -95,7 +96,7 @@ int main() {
         t1 = std::chrono::steady_clock::now();
         std::string value = client.GetChronicleAttr(chronicle_name, key);
         t2 = std::chrono::steady_clock::now();
-        LOGD("ret: %d", ret);
+        LOGD("value: %s", value.c_str());
         duration_get_chronicle_attr += (t2 - t1);
 
         t1 = std::chrono::steady_clock::now();

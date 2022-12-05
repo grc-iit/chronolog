@@ -9,13 +9,13 @@ namespace ChronoVisor {
     ChronoVisorServer2::ChronoVisorServer2() {
         CHRONOLOG_CONF->ConfigureDefaultServer("../../../../test/communication/server_list");
         switch (CHRONOLOG_CONF->RPC_IMPLEMENTATION) {
-            RPC_CALL_WRAPPER_THALLIUM_SOCKETS()
+            CHRONOLOG_RPC_CALL_WRAPPER_THALLIUM_SOCKETS()
             [[fallthrough]];
-            RPC_CALL_WRAPPER_THALLIUM_TCP() {
+            CHRONOLOG_RPC_CALL_WRAPPER_THALLIUM_TCP() {
                 protocol_ = CHRONOLOG_CONF->SOCKETS_CONF.string();
                 break;
             }
-            RPC_CALL_WRAPPER_THALLIUM_ROCE() {
+            CHRONOLOG_RPC_CALL_WRAPPER_THALLIUM_ROCE() {
                 protocol_ = CHRONOLOG_CONF->VERBS_CONF.string();
                 break;
             }
@@ -48,7 +48,8 @@ namespace ChronoVisor {
         metadataRPCProxy_->bind_functions();
 
         // start engines (listening for incoming requests)
-        ChronoLog::Singleton<RPCFactory>::GetInstance()->GetRPC(CHRONOLOG_CONF->RPC_BASE_SERVER_PORT)->start();
+        ChronoLog::Singleton<ChronoLogRPCFactory>::GetInstance()->
+                    GetRPC(CHRONOLOG_CONF->RPC_BASE_SERVER_PORT)->start();
 
         return 0;
     }

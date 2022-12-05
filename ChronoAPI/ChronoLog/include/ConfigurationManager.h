@@ -17,22 +17,22 @@
 namespace ChronoLog {
     class ConfigurationManager {
     public:
-        CharStruct RPC_SERVER_IP;
+        ChronoLogCharStruct RPC_SERVER_IP;
         uint16_t RPC_BASE_SERVER_PORT;
         uint16_t RPC_NUM_SERVER_PORTS;
         uint16_t RPC_NUM_SERVICE_THREADS;
         uint16_t RPC_CLIENT_PORT;
-        RPCImplementation RPC_IMPLEMENTATION;
-        CharStruct SOCKETS_CONF;
-        CharStruct VERBS_CONF;
-        CharStruct VERBS_DOMAIN;
+        ChronoLogRPCImplementation RPC_IMPLEMENTATION;
+        ChronoLogCharStruct SOCKETS_CONF;
+        ChronoLogCharStruct VERBS_CONF;
+        ChronoLogCharStruct VERBS_DOMAIN;
         uint64_t MEMORY_ALLOCATED;
 
         bool IS_SERVER;
         int MY_SERVER_ID;
-        CharStruct SERVER_LIST_FILE_PATH;
-        std::vector<CharStruct> SERVER_LIST;
-        CharStruct BACKED_FILE_DIR;
+        ChronoLogCharStruct SERVER_LIST_FILE_PATH;
+        std::vector<ChronoLogCharStruct> SERVER_LIST;
+        ChronoLogCharStruct BACKED_FILE_DIR;
 
         ConfigurationManager() :
                 RPC_SERVER_IP("127.0.0.1"),
@@ -40,7 +40,7 @@ namespace ChronoLog {
                 RPC_NUM_SERVER_PORTS(1),
                 RPC_NUM_SERVICE_THREADS(1),
                 RPC_CLIENT_PORT(6666),
-                RPC_IMPLEMENTATION(THALLIUM_SOCKETS),
+                RPC_IMPLEMENTATION(CHRONOLOG_THALLIUM_SOCKETS),
                 SOCKETS_CONF("ofi+sockets"), VERBS_CONF("verbs"), VERBS_DOMAIN("mlx5_0"),
                 MEMORY_ALLOCATED(1024ULL * 1024ULL * 128ULL),
                 IS_SERVER(true), MY_SERVER_ID(0), SERVER_LIST_FILE_PATH("./server_list"),
@@ -63,8 +63,8 @@ namespace ChronoLog {
             LOGI("BACKED_FILE_DIR: %s", BACKED_FILE_DIR.c_str());
         }
 
-        std::vector<CharStruct> LoadServers() {
-            SERVER_LIST = std::vector<CharStruct>();
+        std::vector<ChronoLogCharStruct> LoadServers() {
+            SERVER_LIST = std::vector<ChronoLogCharStruct>();
             std::fstream file;
             file.open(SERVER_LIST_FILE_PATH.c_str(), std::ios::in);
             if (file.is_open()) {

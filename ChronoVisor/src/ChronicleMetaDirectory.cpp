@@ -16,12 +16,16 @@ ChronicleMetaDirectory::ChronicleMetaDirectory() {
     LOGD("%s constructor is called", typeid(*this).name());
 //    chronicleMap_ = ChronoLog::Singleton<std::unordered_map<std::string, Chronicle *>>::GetInstance();
     chronicleMap_ = new std::unordered_map<uint64_t, Chronicle *>();
+    acquiredChronicleMap_ = new std::unordered_map<uint64_t, Chronicle *>();
+    acquiredStoryMap_ = new std::unordered_map<uint64_t, Story *>();
     LOGD("%s constructor finishes, object created@%p in thread PID=%d",
          typeid(*this).name(), this, getpid());
 }
 
 ChronicleMetaDirectory::~ChronicleMetaDirectory() {
     delete chronicleMap_;
+    delete acquiredChronicleMap_;
+    delete acquiredStoryMap_;
 }
 
 bool ChronicleMetaDirectory::create_chronicle(const std::string& name) {
@@ -63,8 +67,8 @@ bool ChronicleMetaDirectory::destroy_chronicle(const std::string& name, int flag
         Chronicle *pChronicle = chronicleRecord->second;
         delete pChronicle;
         auto nErased = chronicleMap_->erase(cid);
-        if (chronicleMap_->size() % 10 == 0)
-            LOGD("10 chronicles have been destroyed");
+//        if (chronicleMap_->size() % 10 == 0)
+//            LOGD("10 chronicles have been destroyed");
         t2 = std::chrono::steady_clock::now();
         std::chrono::duration<double, std::nano> duration = (t2 - t1);
         LOGD("time in %s: %lf ns", __FUNCTION__, duration.count());
@@ -100,8 +104,8 @@ bool ChronicleMetaDirectory::create_story(std::string &chronicle_name, const std
         Chronicle *pChronicle = chronicleRecord->second;
         LOGD("Chronicle@%p", &(*pChronicle));
         bool res = pChronicle->addStory(chronicle_name, story_name, attrs);
-        if (pChronicle->getStoryMapSize() % 10 == 0)
-            LOGD("10 stories have been created");
+//        if (pChronicle->getStoryMapSize() % 10 == 0)
+//            LOGD("10 stories have been created");
         t2 = std::chrono::steady_clock::now();
         std::chrono::duration<double, std::nano> duration = (t2 - t1);
         LOGD("time in %s: %lf ns", __FUNCTION__, duration.count());

@@ -20,12 +20,12 @@ class ChronoLogAdminRPCProxy {
 public:
     ChronoLogAdminRPCProxy() {
         LOGD("%s constructor is called", typeid(*this).name());
-        rpc = ChronoLog::Singleton<RPCFactory>::GetInstance()->GetRPC(CHRONOLOG_CONF->RPC_BASE_SERVER_PORT);
+        rpc = ChronoLog::Singleton<ChronoLogRPCFactory>::GetInstance()->GetRPC(CHRONOLOG_CONF->RPC_BASE_SERVER_PORT);
         func_prefix = "ChronoLog";
         switch (CHRONOLOG_CONF->RPC_IMPLEMENTATION) {
-            case THALLIUM_SOCKETS:
-            case THALLIUM_TCP:
-            case THALLIUM_ROCE:
+            case CHRONOLOG_THALLIUM_SOCKETS:
+            case CHRONOLOG_THALLIUM_TCP:
+            case CHRONOLOG_THALLIUM_ROCE:
                 func_prefix += "Thallium";
                 break;
         }
@@ -53,27 +53,27 @@ public:
     bool Connect(const std::string &uri, std::string &client_id) {
         LOGD("%s in ChronoLogAdminRPCProxy at addresss %p called in PID=%d, with args: uri=%s, client_id=%s",
              __FUNCTION__, this, getpid(), uri.c_str(), client_id.c_str());
-        return RPC_CALL_WRAPPER("Connect", 0, bool, uri, client_id);
+        return CHRONOLOG_RPC_CALL_WRAPPER("Connect", 0, bool, uri, client_id);
     }
 
     bool LocalDisconnect(const std::string &client_id, int &flags) {
         LOGD("%s is called in PID=%d, with args: client_id=%s, flags=%d",
              __FUNCTION__, getpid(), client_id.c_str(), flags);
         extern std::shared_ptr<ClientRegistryManager> g_clientRegistryManager;
-        g_clientRegistryManager->remove_client_record(client_id, flags);
+        return g_clientRegistryManager->remove_client_record(client_id, flags);
     }
 
     bool Disconnect(const std::string &client_id, int &flags) {
         LOGD("%s is called in PID=%d, with args: client_id=%s, flags=%d",
              __FUNCTION__, getpid(), client_id.c_str(), flags);
-        return RPC_CALL_WRAPPER("Disconnect", 0, bool, client_id, flags);
+        return CHRONOLOG_RPC_CALL_WRAPPER("Disconnect", 0, bool, client_id, flags);
     }
     
     void bind_functions() {
         switch (CHRONOLOG_CONF->RPC_IMPLEMENTATION) {
-            case THALLIUM_SOCKETS:
-            case THALLIUM_TCP:
-            case THALLIUM_ROCE: {
+            case CHRONOLOG_THALLIUM_SOCKETS:
+            case CHRONOLOG_THALLIUM_TCP:
+            case CHRONOLOG_THALLIUM_ROCE: {
                 std::function<void(const tl::request &,
                                    const std::string &,
                                    std::string &)> connectFunc(
@@ -99,13 +99,13 @@ public:
         }
     }
 
-    THALLIUM_DEFINE(LocalConnect, (uri, client_id),
+    CHRONOLOG_THALLIUM_DEFINE(LocalConnect, (uri, client_id),
                     const std::string &uri, std::string &client_id)
-    THALLIUM_DEFINE(LocalDisconnect, (client_id, flags), std::string &client_id, int &flags)
+    CHRONOLOG_THALLIUM_DEFINE(LocalDisconnect, (client_id, flags), std::string &client_id, int &flags)
 
 private:
-    CharStruct func_prefix;
-    std::shared_ptr<RPC> rpc;
+    ChronoLogCharStruct func_prefix;
+    std::shared_ptr<ChronoLogRPC> rpc;
 };
 
 #endif //CHRONOLOG_CHRONOLOGADMINRPCPROXY_H

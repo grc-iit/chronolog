@@ -17,7 +17,7 @@ int main() {
     std::unique_ptr<ChronoLogAdminRPCProxy> adminRPCProxy = std::make_unique<ChronoLogAdminRPCProxy>();
     adminRPCProxy->bind_functions();
 //    ChronicleMetadataRPCProxy metadataRPCProxy;
-    ChronoLog::Singleton<RPCFactory>::GetInstance()->GetRPC(CHRONOLOG_CONF->RPC_BASE_SERVER_PORT)->start();
+    ChronoLog::Singleton<ChronoLogRPCFactory>::GetInstance()->GetRPC(CHRONOLOG_CONF->RPC_BASE_SERVER_PORT)->start();
 
     return 0;
 }

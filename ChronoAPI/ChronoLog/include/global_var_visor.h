@@ -43,8 +43,8 @@ std::mutex g_acquiredStoryMapMutex_;
  * RPC-related global variables
  */
 // Shared RPC instance
-std::shared_ptr<RPC> g_RPC =
-        ChronoLog::Singleton<RPCFactory>::GetInstance()->GetRPC(CHRONOLOG_CONF->RPC_BASE_SERVER_PORT);
+std::shared_ptr<ChronoLogRPC> g_RPC =
+        ChronoLog::Singleton<ChronoLogRPCFactory>::GetInstance()->GetRPC(CHRONOLOG_CONF->RPC_BASE_SERVER_PORT);
 // RPC proxy instance for admin APIs (e.g., connect/disconnect)
 std::shared_ptr<ChronoLogAdminRPCProxy> g_adminRPCProxy =
         ChronoLog::Singleton<ChronoLogAdminRPCProxy>::GetInstance();

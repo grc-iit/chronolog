@@ -39,7 +39,7 @@
 
 namespace tl = thallium;
 
-class RPC {
+class ChronoLogRPC {
 private:
     uint16_t baseServerPort_;
     uint16_t numPorts_;
@@ -50,25 +50,25 @@ private:
 
     std::vector<tl::engine> thalliumServerList_;
     std::shared_ptr<tl::engine> thalliumClient_;
-    std::vector<CharStruct> serverAddrList_;
+    std::vector<ChronoLogCharStruct> serverAddrList_;
     std::vector<tl::endpoint> thallium_endpoints;
 
-    tl::endpoint get_endpoint(CharStruct protocol, CharStruct server_name, uint16_t server_port) {
+    tl::endpoint get_endpoint(ChronoLogCharStruct protocol, ChronoLogCharStruct server_name, uint16_t server_port) {
         // We use addr lookup because mercury addresses must be exactly 15 char
         char ip[16];
         struct hostent *he = gethostbyname(server_name.c_str());
         in_addr **addr_list = (struct in_addr **) he->h_addr_list;
         strcpy(ip, inet_ntoa(*addr_list[0]));
-        CharStruct lookup_str = protocol + "://" + std::string(ip) + ":" + std::to_string(server_port);
+        ChronoLogCharStruct lookup_str = protocol + "://" + std::string(ip) + ":" + std::to_string(server_port);
         LOGD("lookup_str: %s", lookup_str.c_str());
         return thalliumClient_->lookup(lookup_str.c_str());
     }
 
-    void init_engine_and_endpoints(CharStruct protocol) {
+    void init_engine_and_endpoints(ChronoLogCharStruct protocol) {
         thalliumClient_ = ChronoLog::Singleton<tl::engine>::GetInstance(protocol.c_str(), MARGO_CLIENT_MODE);
         LOGD("generate a new client at %s", std::string(thalliumClient_->self()).c_str());
         thallium_endpoints.reserve(serverList_.size());
-        for (std::vector<CharStruct>::size_type i = 0; i < serverList_.size(); ++i) {
+        for (std::vector<ChronoLogCharStruct>::size_type i = 0; i < serverList_.size(); ++i) {
             thallium_endpoints.push_back(get_endpoint(protocol, serverList_[i], baseServerPort_ + i));
         }
     }
@@ -81,14 +81,14 @@ private:
       thallium_engine->wait_for_finalize();
       }*/
 
-    std::vector<CharStruct> serverList_;
+    std::vector<ChronoLogCharStruct> serverList_;
 public:
-    ~RPC() {
+    ~ChronoLogRPC() {
         if (CHRONOLOG_CONF->IS_SERVER) {
             switch (CHRONOLOG_CONF->RPC_IMPLEMENTATION) {
-                case THALLIUM_TCP:
-                case THALLIUM_SOCKETS:
-                case THALLIUM_ROCE: {
+                case CHRONOLOG_THALLIUM_TCP:
+                case CHRONOLOG_THALLIUM_SOCKETS:
+                case CHRONOLOG_THALLIUM_ROCE: {
                     // Mercury addresses in endpoints must be freed before finalizing Thallium
                     thallium_endpoints.clear();
                     for (int i = 0; i < numPorts_; i++) {
@@ -101,7 +101,7 @@ public:
         }
     }
 
-    RPC() : baseServerPort_(CHRONOLOG_CONF->RPC_BASE_SERVER_PORT),
+    ChronoLogRPC() : baseServerPort_(CHRONOLOG_CONF->RPC_BASE_SERVER_PORT),
             numPorts_(CHRONOLOG_CONF->RPC_NUM_SERVER_PORTS),
             numStreams_(CHRONOLOG_CONF->RPC_NUM_SERVICE_THREADS),
             clientPort_(CHRONOLOG_CONF->RPC_CLIENT_PORT),
@@ -111,8 +111,8 @@ public:
         /* if current rank is a server */
         if (CHRONOLOG_CONF->IS_SERVER) {
             switch (CHRONOLOG_CONF->RPC_IMPLEMENTATION) {
-                case THALLIUM_TCP:
-                case THALLIUM_SOCKETS: {
+                case CHRONOLOG_THALLIUM_TCP:
+                case CHRONOLOG_THALLIUM_SOCKETS: {
                     for (int i = 0; i < numPorts_; i++) {
                         serverAddrList_.emplace_back(CHRONOLOG_CONF->SOCKETS_CONF + "://" +
                                                      CHRONOLOG_CONF->SERVER_LIST[CHRONOLOG_CONF->MY_SERVER_ID] +
@@ -121,7 +121,7 @@ public:
                     }
                     break;
                 }
-                case THALLIUM_ROCE: {
+                case CHRONOLOG_THALLIUM_ROCE: {
                     for (int i = 0; i < numPorts_; i++) {
                         serverAddrList_.emplace_back(CHRONOLOG_CONF->VERBS_CONF + "://" +
                                                      CHRONOLOG_CONF->SERVER_LIST[CHRONOLOG_CONF->MY_SERVER_ID] +
@@ -136,15 +136,15 @@ public:
     }
 
     template<typename F>
-    void bind(const CharStruct &str, F func);
+    void bind(const ChronoLogCharStruct &str, F func);
 
     void run(size_t workers = CHRONOLOG_CONF->RPC_NUM_SERVER_PORTS) {
         if (CHRONOLOG_CONF->IS_SERVER) {
             /* only servers run */
             switch (CHRONOLOG_CONF->RPC_IMPLEMENTATION) {
-                case THALLIUM_TCP:
-                case THALLIUM_SOCKETS:
-                case THALLIUM_ROCE: {
+                case CHRONOLOG_THALLIUM_TCP:
+                case CHRONOLOG_THALLIUM_SOCKETS:
+                case CHRONOLOG_THALLIUM_ROCE: {
                     hg_addr_t addr_self;
                     hg_return_t hret;
                     for (size_t i = 0; i < workers; i++) {
@@ -185,12 +185,12 @@ public:
         }
         switch (CHRONOLOG_CONF->RPC_IMPLEMENTATION) {
             /* both servers and clients run */
-            case THALLIUM_TCP:
-            case THALLIUM_SOCKETS: {
+            case CHRONOLOG_THALLIUM_TCP:
+            case CHRONOLOG_THALLIUM_SOCKETS: {
                 init_engine_and_endpoints(CHRONOLOG_CONF->SOCKETS_CONF);
                 break;
             }
-            case THALLIUM_ROCE: {
+            case CHRONOLOG_THALLIUM_ROCE: {
                 init_engine_and_endpoints(CHRONOLOG_CONF->VERBS_CONF);
                 break;
             }
@@ -202,9 +202,9 @@ public:
         if (isRunning_) return;
         if (CHRONOLOG_CONF->IS_SERVER) {
             switch (CHRONOLOG_CONF->RPC_IMPLEMENTATION) {
-                case THALLIUM_TCP:
-                case THALLIUM_SOCKETS:
-                case THALLIUM_ROCE: {
+                case CHRONOLOG_THALLIUM_TCP:
+                case CHRONOLOG_THALLIUM_SOCKETS:
+                case CHRONOLOG_THALLIUM_ROCE: {
                     for (int i = 0; i < numPorts_; i++) {
                         thalliumServerList_[i].wait_for_finalize();
                     }
@@ -217,31 +217,31 @@ public:
 
     template<typename Response, typename... Args>
     Response call(uint16_t server_index,
-                  CharStruct const &func_name,
+                  ChronoLogCharStruct const &func_name,
                   Args... args);
 
     template<typename Response, typename... Args>
-    Response call(CharStruct &server,
+    Response call(ChronoLogCharStruct &server,
                   uint16_t &port,
-                  CharStruct const &func_name,
+                  ChronoLogCharStruct const &func_name,
                   Args... args);
 
     template<typename Response, typename... Args>
     Response callWithTimeout(uint16_t server_index,
                              int timeout_ms,
-                             CharStruct const &func_name,
+                             ChronoLogCharStruct const &func_name,
                              Args... args);
 
     template<typename Response, typename... Args>
     std::future<Response> async_call(
             uint16_t server_index,
-            CharStruct const &func_name,
+            ChronoLogCharStruct const &func_name,
             Args... args);
 
     template<typename Response, typename... Args>
-    std::future<Response> async_call(CharStruct &server,
+    std::future<Response> async_call(ChronoLogCharStruct &server,
                                      uint16_t &port,
-                                     CharStruct const &func_name,
+                                     ChronoLogCharStruct const &func_name,
                                      Args... args);
 
 };
