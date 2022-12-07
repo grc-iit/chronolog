@@ -9,8 +9,6 @@
 
 #define NUM_CONNECTION (1)
 
-namespace tl = thallium;
-
 int main() {
     ChronoLogClient client("../../../../test/communication/server_list");
     std::string protocol = "ofi+sockets";
