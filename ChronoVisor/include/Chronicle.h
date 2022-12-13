@@ -18,6 +18,32 @@
 #define MAX_STORY_MAP_SIZE 1024
 #define MAX_ARCHIVE_MAP_SIZE 1024
 
+enum ChronicleIndexingGranularity {
+    chronicle_gran_ns = 0,
+    chronicle_gran_us = 1,
+    chronicle_gran_ms = 2,
+    chronicle_gran_sec = 3
+};
+
+enum ChronicleType {
+    chronicle_type_standard = 0,
+    chronicle_type_priority = 1
+};
+
+enum ChronicleTieringPolicy {
+    chronicle_tiering_normal = 0,
+    chronicle_tiering_hot = 1,
+    chronicle_tiering_cold = 2
+};
+
+typedef struct ChronicleAttrs_ {
+    uint64_t size;
+    enum ChronicleIndexingGranularity indexing_granularity;
+    enum ChronicleType type;
+    enum ChronicleTieringPolicy tiering_policy;
+    uint16_t access_permission;
+} ChronicleAttrs;
+
 typedef struct ChronicleStats_ {
     uint64_t count;
 } ChronicleStats;
@@ -27,8 +53,8 @@ public:
     Chronicle() {
         propertyList_ = std::unordered_map<std::string, std::string>(MAX_CHRONICLE_PROPERTY_LIST_SIZE);
         metadataMap_ = std::unordered_map<std::string, std::string>(MAX_CHRONICLE_METADATA_MAP_SIZE);
-        storyMap_ = std::unordered_map<std::string, Story *>(MAX_STORY_MAP_SIZE);
-        archiveMap_ = std::unordered_map<std::string, Archive *>(MAX_ARCHIVE_MAP_SIZE);
+        storyMap_ = std::unordered_map<uint64_t, Story *>(MAX_STORY_MAP_SIZE);
+        archiveMap_ = std::unordered_map<uint64_t, Archive *>(MAX_ARCHIVE_MAP_SIZE);
     }
 
     void setName(const std::string &name) { name_ = name; }
@@ -45,8 +71,8 @@ public:
     const ChronicleStats &getStats() const { return stats_; }
     std::unordered_map<std::string, std::string> &getPropertyList() { return propertyList_; }
     const std::unordered_map<std::string, std::string> &getMetadataMap() const { return metadataMap_; }
-    std::unordered_map<std::string, Story *> &getStoryMap() { return storyMap_; }
-    const std::unordered_map<std::string, Archive *> &getArchiveMap() const { return archiveMap_; }
+    std::unordered_map<uint64_t, Story *> &getStoryMap() { return storyMap_; }
+    const std::unordered_map<uint64_t, Archive *> &getArchiveMap() const { return archiveMap_; }
 
     friend std::ostream& operator<<(std::ostream& os, const Chronicle& chronicle);
 
@@ -68,31 +94,34 @@ public:
         }
     }
 
-    bool addStory(uint64_t cid, const std::string& name, const std::unordered_map<std::string, std::string>& attrs) {
+    bool addStory(std::string &chronicle_name, const std::string& story_name,
+                  const std::unordered_map<std::string, std::string>& attrs) {
         Story *pStory = new Story();
-        pStory->setName(name);
+        pStory->setName(story_name);
+        pStory->setProperty(attrs);
         // add cid to name before hash to allow same story name across chronicles
-        std::string story_name_for_hash = std::to_string(cid) + name;
+        std::string story_name_for_hash = chronicle_name + story_name;
+        uint64_t cid = CityHash64(chronicle_name.c_str(), chronicle_name.size());
         uint64_t sid = CityHash64(story_name_for_hash.c_str(), story_name_for_hash.size());
         pStory->setSid(sid);
         pStory->setCid(cid);
-        LOGD("adding to storyMap at address %lu with %d entries in Chronicle at address %lu",
+        LOGD("adding to storyMap@%p with %lu entries in Chronicle@%p",
              &storyMap_, storyMap_.size(), this);
-        auto res = storyMap_.emplace(std::to_string(sid), pStory);
+        auto res = storyMap_.emplace(sid, pStory);
         return res.second;
     }
 
-    bool removeStory(uint64_t cid, const std::string& name, int flags) {
+    bool removeStory(std::string &chronicle_name, const std::string& story_name, int flags) {
         // add cid to name before hash to allow same story name across chronicles
-        std::string story_name_for_hash = std::to_string(cid) + name;
+        std::string story_name_for_hash = chronicle_name + story_name;
         uint64_t sid = CityHash64(story_name_for_hash.c_str(), story_name_for_hash.size());
-        auto storyRecord = storyMap_.find(std::to_string(sid));
+        auto storyRecord = storyMap_.find(sid);
         if (storyRecord != storyMap_.end()) {
             Story *pStory = storyRecord->second;
             delete pStory;
-            LOGD("removing from storyMap at address %lu with %d entries in Chronicle at address %lu",
+            LOGD("removing from storyMap@%p with %lu entries in Chronicle@%p",
                  &storyMap_, storyMap_.size(), this);
-            auto nErased = storyMap_.erase(std::to_string(sid));
+            auto nErased = storyMap_.erase(sid);
             return (nErased == 1);
         }
         return false;
@@ -102,14 +131,15 @@ public:
     bool addArchive(uint64_t cid, const std::string& name, const std::unordered_map<std::string, std::string>& attrs) {
         Archive *pArchive = new Archive();
         pArchive->setName(name);
+        pArchive->setProperty(attrs);
         // add cid to name before hash to allow same archive name across chronicles
         std::string archive_name_for_hash = std::to_string(cid) + name;
         uint64_t aid = CityHash64(archive_name_for_hash.c_str(), archive_name_for_hash.size());
         pArchive->setAid(aid);
         pArchive->setCid(cid);
-        LOGD("adding to archiveMap at address %lu with %d entries in Chronicle at address %lu",
+        LOGD("adding to archiveMap@%p with %lu entries in Chronicle@%p",
              &archiveMap_, archiveMap_.size(), this);
-        auto res = archiveMap_.emplace(std::to_string(aid), pArchive);
+        auto res = archiveMap_.emplace(aid, pArchive);
         return res.second;
     }
 
@@ -117,13 +147,13 @@ public:
         // add cid to name before hash to allow same archive name across chronicles
         std::string archive_name_for_hash = std::to_string(cid) + name;
         uint64_t aid = CityHash64(archive_name_for_hash.c_str(), archive_name_for_hash.size());
-        auto storyRecord = archiveMap_.find(std::to_string(aid));
+        auto storyRecord = archiveMap_.find(aid);
         if (storyRecord != archiveMap_.end()) {
             Archive *pArchive = storyRecord->second;
             delete pArchive;
-            LOGD("removing from archiveMap at address %lu with %d entries in Chronicle at address %lu",
+            LOGD("removing from archiveMap@%p with %lu entries in Chronicle@%p",
                  &archiveMap_, archiveMap_.size(), this);
-            auto nErased = archiveMap_.erase(std::to_string(aid));
+            auto nErased = archiveMap_.erase(aid);
             return (nErased == 1);
         }
         return false;
@@ -137,11 +167,12 @@ public:
 private:
     std::string name_;
     uint64_t cid_{};
+    ChronicleAttrs attrs_{};
     ChronicleStats stats_{};
     std::unordered_map<std::string, std::string> propertyList_;
     std::unordered_map<std::string, std::string> metadataMap_;
-    std::unordered_map<std::string, Story *> storyMap_;
-    std::unordered_map<std::string, Archive *> archiveMap_;
+    std::unordered_map<uint64_t, Story *> storyMap_;
+    std::unordered_map<uint64_t, Archive *> archiveMap_;
 };
 
 inline std::ostream& operator<<(std::ostream& os, const Chronicle& chronicle) {

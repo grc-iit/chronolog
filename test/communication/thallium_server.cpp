@@ -8,6 +8,8 @@
 #include <string>
 #include <thallium/serialization/stl/vector.hpp>
 #include <thallium/serialization/stl/string.hpp>
+#include <../../../ChronoVisor/include/ClientRegistryManager.h>
+#include <../../ChronoLog/include/singleton.h>
 #include <thread>
 #include <string>
 #include <algorithm>
@@ -19,6 +21,9 @@
 
 namespace tl = thallium;
 
+std::vector<std::string> g_str_vector;
+
+using namespace ChronoLog;
 int main(int argc, char **argv) {
     if (argc != 5) {
         std::cerr << "Usage: " << argv[0] << " <address> <nstreams_per_port> <nports> <sendrecv|rdma>" << std::endl;
@@ -31,6 +36,17 @@ int main(int argc, char **argv) {
     std::string mode = argv[4];
     std::vector<std::thread> server_thrd_vec;
     server_thrd_vec.reserve(nPorts);
+
+    g_str_vector.push_back("100");
+    g_str_vector.push_back("200");
+    g_str_vector.push_back("300");
+
+    std::shared_ptr<ClientRegistryManager> g_clientRegistryManager = ChronoLog::Singleton<ClientRegistryManager>::GetInstance();
+    ClientRegistryInfo record;
+    record.addr_ = "127.0.0.1";
+    g_clientRegistryManager->add_client_record("1000000", record);
+    g_clientRegistryManager->add_client_record("2000000", record);
+    g_clientRegistryManager->add_client_record("3000000", record);
 
     tl::abt scope;
     hg_addr_t addr_self;
@@ -63,10 +79,10 @@ int main(int argc, char **argv) {
         int new_port = stoi(port) + j;
         LOGD("newly generated port to use: %d", new_port);
         std::string new_addr_str = host_ip + ":" + std::to_string(new_port);
-        LOGI("engine no.%d at address %s", j, new_addr_str.c_str());
+        LOGI("engine no.%d@%s", j, new_addr_str.c_str());
 
         margo_instance_id mid = margo_init(new_addr_str.c_str(), MARGO_SERVER_MODE,
-                                           1, nStreams);
+                                           0, nStreams);
         if (mid == MARGO_INSTANCE_NULL) {
             LOGE("Error: margo_init()");
             exit(-1);
@@ -92,13 +108,17 @@ int main(int argc, char **argv) {
         margo_addr_free(mid, addr_self);
 
         tl::engine myEngine(mid);
-        LOGD("engine created and running at address %s ...", std::string(myEngine.self()).c_str());
+        LOGD("engine created and running@%s ...", std::string(myEngine.self()).c_str());
 
         if (!strcmp(mode.c_str(), "sendrecv")) {
             // send/recv version
             LOGI("Defining RPC routines in send/recv mode");
             std::function<void(const tl::request &, std::vector<char> &)> repeater =
-                    [&j, &engine_vec](const tl::request &req, std::vector<char> &data) {
+                    [&j, &engine_vec, &g_clientRegistryManager](const tl::request &req, std::vector<char> &data) {
+                        std::cout << "global vector has " << g_str_vector.size() << " elements" << std::endl;
+                        std::cout << "global vector[1]: " << g_str_vector[1] << std::endl;
+                        int flag = 0;
+                        g_clientRegistryManager->remove_client_record("1000000", flag);
                         req.respond(data);
                     };
             myEngine.define("repeater", repeater, 0, *myPool);

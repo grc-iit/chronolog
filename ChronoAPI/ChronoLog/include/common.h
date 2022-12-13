@@ -13,12 +13,6 @@
 #include "../../../ChronoVisor/include/TimeRecord.h"
 #include "../../../ChronoVisor/include/ClocksourceManager.h"
 
-ClocksourceManager *ClocksourceManager::clocksourceManager_ = nullptr;
-std::queue<TimeRecord> timeDBWriteQueue_;
-int timeDBWriteQueueSize_{};
-std::mutex timeDBWriteQueueMutex_;
-std::condition_variable timeDBWriteQueueCV_;
-
 std::random_device rd;
 std::seed_seq ssq{rd()};
 std::default_random_engine mt{rd()};

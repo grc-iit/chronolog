@@ -9,20 +9,20 @@
 #include <memory>
 #include "rpc.h"
 
-class RPCFactory {
+class ChronoLogRPCFactory {
 private:
-    std::unordered_map<uint16_t, std::shared_ptr<RPC>> rpcs;
+    std::unordered_map<uint16_t, std::shared_ptr<ChronoLogRPC>> rpcs;
 public:
-    RPCFactory() : rpcs() {}
+    ChronoLogRPCFactory() : rpcs() {}
 
-    std::shared_ptr<RPC> GetRPC(uint16_t server_port) {
+    std::shared_ptr<ChronoLogRPC> GetRPC(uint16_t server_port) {
         auto iter = rpcs.find(server_port);
         if (iter != rpcs.end()) return iter->second;
-        auto temp = CHRONOLOG_CONF->RPC_PORT;
-        CHRONOLOG_CONF->RPC_PORT = server_port;
-        auto rpc = std::make_shared<RPC>();
+        auto temp = CHRONOLOG_CONF->RPC_BASE_SERVER_PORT;
+        CHRONOLOG_CONF->RPC_BASE_SERVER_PORT = server_port;
+        auto rpc = std::make_shared<ChronoLogRPC>();
         rpcs.emplace(server_port, rpc);
-        CHRONOLOG_CONF->RPC_PORT = temp;
+        CHRONOLOG_CONF->RPC_BASE_SERVER_PORT = temp;
         return rpc;
     }
 };

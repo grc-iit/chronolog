@@ -14,8 +14,8 @@ public:
 
     ChronoLogClient(const std::string& server_list_file_path) {
         CHRONOLOG_CONF->ConfigureDefaultClient(server_list_file_path);
-        metadataRpcProxy_ = ChronicleMetadataRPCProxy();
-        adminRpcProxy_ = ChronoLogAdminRPCProxy();
+        metadataRpcProxy_ = ChronoLog::Singleton<ChronicleMetadataRPCProxy>::GetInstance();
+        adminRpcProxy_ = ChronoLog::Singleton<ChronoLogAdminRPCProxy>::GetInstance();
     }
 
     bool Connect(const std::string &server_uri, std::string &client_id);
@@ -23,16 +23,17 @@ public:
     bool CreateChronicle(std::string &name, const std::unordered_map<std::string, std::string> &attrs);
     bool DestroyChronicle(std::string &name, const int &flags);
     bool AcquireChronicle(std::string &name, const int &flags);
-    bool ReleaseChronicle(uint64_t &cid, const int &flags);
-    bool CreateStory(uint64_t &cid, std::string &name, const std::unordered_map<std::string, std::string> &attrs);
-    bool DestroyStory(uint64_t &cid, std::string &name, const int &flags);
-    bool AcquireStory(uint64_t &cid, std::string &name, const int &flags);
-    bool ReleaseStory(uint64_t &sid, const int &flags);
-    std::string GetChronicleAttr(uint64_t &cid, const std::string &key);
-    bool EditChronicleAttr(uint64_t &cid, const std::string &key, const std::string &value);
+    bool ReleaseChronicle(std::string &name, const int &flags);
+    bool CreateStory(std::string &chronicle_name, std::string &story_name,
+                     const std::unordered_map<std::string, std::string> &attrs);
+    bool DestroyStory(std::string &chronicle_name, std::string &story_name, const int &flags);
+    bool AcquireStory(std::string &chronicle_name, std::string &story_name, const int &flags);
+    bool ReleaseStory(std::string &chronicle_name, std::string &story_name, const int &flags);
+    std::string GetChronicleAttr(std::string &chronicle_name, const std::string &key);
+    bool EditChronicleAttr(std::string &chronicle_name, const std::string &key, const std::string &value);
 
 private:
-    ChronicleMetadataRPCProxy metadataRpcProxy_;
-    ChronoLogAdminRPCProxy adminRpcProxy_;
+    std::shared_ptr<ChronicleMetadataRPCProxy> metadataRpcProxy_;
+    std::shared_ptr<ChronoLogAdminRPCProxy> adminRpcProxy_;
 };
 #endif //CHRONOLOG_CLIENT_H

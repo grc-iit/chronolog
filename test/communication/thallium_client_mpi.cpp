@@ -84,7 +84,7 @@ std::string get_server_address(const std::string &base_address, long num_servers
     int new_port = atoi(base_port.c_str()) + rank % num_servers;
     LOGD("newly generated port to use: %d", new_port);
     std::string new_addr_str = host_ip + ":" + std::to_string(new_port);
-    LOGI("engine at address %s", new_addr_str.c_str());
+    LOGI("engine@%s", new_addr_str.c_str());
     return new_addr_str;
 }
 

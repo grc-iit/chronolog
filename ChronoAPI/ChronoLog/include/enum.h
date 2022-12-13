@@ -5,10 +5,10 @@
 #ifndef CHRONOLOG_ENUM_H
 #define CHRONOLOG_ENUM_H
 
-typedef enum RPCImplementation {
-    THALLIUM_SOCKETS = 0,
-    THALLIUM_TCP = 1,
-    THALLIUM_ROCE = 2
-} RPCImplementation;
+typedef enum ChronoLogRPCImplementation {
+    CHRONOLOG_THALLIUM_SOCKETS = 0,
+    CHRONOLOG_THALLIUM_TCP = 1,
+    CHRONOLOG_THALLIUM_ROCE = 2
+} ChronoLogRPCImplementation;
 
 #endif //CHRONOLOG_ENUM_H

@@ -8,6 +8,7 @@
 #include <iostream>
 #include <memory>
 #include <utility>
+
 /**
  * Make a class singleton when used with the class. format for class name T
  * Singleton<T>::GetInstance()
@@ -43,13 +44,13 @@ namespace ChronoLog {
         Singleton(const Singleton &) = delete; /* deleting copy constructor. */
 
     protected:
-        static std::shared_ptr<T> instance;
+        static inline std::shared_ptr<T> instance = nullptr;
 
         Singleton() {} /* hidden default constructor. */
     };
 
-    template<typename T>
-    std::shared_ptr<T> Singleton<T>::instance = nullptr;
+//    template<typename T>
+//    std::shared_ptr<T> Singleton<T>::instance = nullptr;
 }
 
 #endif //CHRONOLOG_SINGLETON_H

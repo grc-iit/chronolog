@@ -6,18 +6,19 @@
 #define CHRONOLOG_CLIENTREGISTRYMANAGER_H
 
 #include <unordered_map>
+#include <vector>
 #include <memory>
-#include <ClientRegistryRecord.h>
+#include <ClientRegistryInfo.h>
 
 class ClientRegistryManager {
 public:
     ClientRegistryManager();
     ~ClientRegistryManager();
 
-    bool connect(const std::string &client_id, const ClientRegistryRecord &record);
-    bool disconnect(const std::string& client_id);
+    bool add_client_record(const std::string &client_id, const ClientRegistryInfo &record);
+    bool remove_client_record(const std::string& client_id, int &flags);
 private:
-    std::shared_ptr<std::unordered_map<std::string, ClientRegistryRecord>> clientRegistry_;
+    std::unordered_map<std::string, ClientRegistryInfo> *clientRegistry_;
 };
 
 #endif //CHRONOLOG_CLIENTREGISTRYMANAGER_H

@@ -11,26 +11,27 @@
 
 #define CHRONOLOG_CONF ChronoLog::Singleton<ChronoLog::ConfigurationManager>::GetInstance()
 
-#define RPC_CALL_WRAPPER_THALLIUM_SOCKETS() case THALLIUM_SOCKETS:
-#define RPC_CALL_WRAPPER_THALLIUM_TCP() case THALLIUM_TCP:
-#define RPC_CALL_WRAPPER_THALLIUM_ROCE() case THALLIUM_ROCE:
+#define CHRONOLOG_RPC_CALL_WRAPPER_THALLIUM_SOCKETS() case CHRONOLOG_THALLIUM_SOCKETS:
+#define CHRONOLOG_RPC_CALL_WRAPPER_THALLIUM_TCP() case CHRONOLOG_THALLIUM_TCP:
+#define CHRONOLOG_RPC_CALL_WRAPPER_THALLIUM_ROCE() case CHRONOLOG_THALLIUM_ROCE:
 
-#define RPC_CALL_WRAPPER_THALLIUM(funcname, serverVar, ret, args...) \
+#define CHRONOLOG_RPC_CALL_WRAPPER_THALLIUM(funcname, serverVar, ret, args...) \
 { \
-    return rpc->call<tl::packed_data<>>(serverVar, func_prefix + funcname, args).template as<ret>(); \
+    return rpc->call<ret>(serverVar, func_prefix + funcname, args); \
     break; \
 }
 
-#define RPC_CALL_WRAPPER(funcname, serverVar, ret, args...) [& ]()-> ret { \
+#define CHRONOLOG_RPC_CALL_WRAPPER(funcname, serverVar, ret, args...) [& ]()-> ret { \
     switch (CHRONOLOG_CONF->RPC_IMPLEMENTATION) { \
-        RPC_CALL_WRAPPER_THALLIUM_SOCKETS() \
-        RPC_CALL_WRAPPER_THALLIUM_TCP() \
-        RPC_CALL_WRAPPER_THALLIUM_ROCE() \
-        RPC_CALL_WRAPPER_THALLIUM(funcname, serverVar, ret, args) \
+        CHRONOLOG_RPC_CALL_WRAPPER_THALLIUM_SOCKETS() \
+        CHRONOLOG_RPC_CALL_WRAPPER_THALLIUM_TCP() \
+        CHRONOLOG_RPC_CALL_WRAPPER_THALLIUM_ROCE() \
+        CHRONOLOG_RPC_CALL_WRAPPER_THALLIUM(funcname, serverVar, ret, args) \
     } \
 }();
+// this is how it is called: CHRONOLOG_RPC_CALL_WRAPPER("Connect", 0, bool, uri, client_id);
 
-#define THALLIUM_DEFINE(name, args,args_t...) \
+#define CHRONOLOG_THALLIUM_DEFINE(name, args,args_t...) \
 void Thallium##name(const tl::request &thallium_req, args_t) \
 { \
     thallium_req.respond(name args); \
