@@ -35,8 +35,8 @@ namespace ChronoVisor {
         midVec_.reserve(numPorts_);
         pTimeManager = new TimeManager();
         chronicleMetaDirectory_ = ChronoLog::Singleton<ChronicleMetaDirectory>::GetInstance();
-        adminRpcProxy_ = ChronoLog::Singleton<ChronoLogAdminRPCProxy>::GetInstance();
-        metadataRPCProxy_ = ChronoLog::Singleton<ChronicleMetadataRPCProxy>::GetInstance();
+        adminRpcProxy_ = ChronoLog::Singleton<ChronoLogAdminRPCVisor>::GetInstance();
+        metadataRPCProxy_ = ChronoLog::Singleton<ChronicleMetadataRPCVisor>::GetInstance();
         clientRegistryManager_ = ChronoLog::Singleton<ClientRegistryManager>::GetInstance();
     }
 

@@ -18,8 +18,8 @@
 #include <ClientRegistryInfo.h>
 #include <ChronicleMetaDirectory.h>
 #include <ClientRegistryManager.h>
-#include <ChronicleMetadataRPCProxy.h>
-#include <ChronoLogAdminRPCProxy.h>
+#include <ChronicleMetadataRPCVisor.h>
+#include <ChronoLogAdminRPCVisor.h>
 
 namespace ChronoVisor {
     namespace tl = thallium;
@@ -59,7 +59,7 @@ namespace ChronoVisor {
          */
         ///@{
         std::shared_ptr<ClientRegistryManager> clientRegistryManager_;
-        std::shared_ptr<ChronoLogAdminRPCProxy> adminRpcProxy_;
+        std::shared_ptr<ChronoLogAdminRPCVisor> adminRpcProxy_;
         ///@}
 
         /**
@@ -67,7 +67,7 @@ namespace ChronoVisor {
          */
         ///@{
         std::shared_ptr<ChronicleMetaDirectory> chronicleMetaDirectory_;
-        std::shared_ptr<ChronicleMetadataRPCProxy> metadataRPCProxy_;
+        std::shared_ptr<ChronicleMetadataRPCVisor> metadataRPCProxy_;
         ///@}
     };
 }

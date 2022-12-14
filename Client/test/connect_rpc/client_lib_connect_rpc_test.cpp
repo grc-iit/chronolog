@@ -4,7 +4,6 @@
 
 #include <client.h>
 #include <global_var_client.h>
-#include <log.h>
 #include <common.h>
 
 #define NUM_CONNECTION (1)
@@ -19,6 +18,7 @@ int main() {
     std::vector<std::string> client_ids;
     int flags = 0;
     bool ret = false;
+    uint64_t offset;
     std::chrono::steady_clock::time_point t1, t2;
     std::chrono::duration<double, std::nano> duration_connect{},
             duration_disconnect{};
@@ -30,7 +30,7 @@ int main() {
         server_uri = protocol;
         server_uri += "://" + server_ip + ":" + std::to_string(base_port + i);
         t1 = std::chrono::steady_clock::now();
-        ret = client.Connect(server_uri, client_ids[i]);
+        ret = client.Connect(server_uri, client_ids[i], flags, offset);
         LOGD("ret: %d", ret);
         t2 = std::chrono::steady_clock::now();
         duration_connect += (t2 - t1);

@@ -11,8 +11,8 @@ find_package(thallium REQUIRED)
 
 add_library(ChronoLogClient_lib STATIC
         include/client.h src/client.cpp
-        ../ChronoAPI/ChronoLog/include/ChronoLogAdminRPCProxy.h
-        ../ChronoAPI/ChronoLog/include/ChronicleMetadataRPCProxy.h
+        ../ChronoAPI/ChronoLog/include/ChronoLogAdminRPCVisor.h
+        ../ChronoAPI/ChronoLog/include/ChronicleMetadataRPCVisor.h
         ../ChronoAPI/ChronoLog/include/macro.h
         ../ChronoAPI/ChronoLog/include/rpc.h
         ../ChronoAPI/ChronoLog/include/RPCFactory.h
