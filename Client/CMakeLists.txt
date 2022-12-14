@@ -9,27 +9,21 @@ find_package(thallium REQUIRED)
 
 #set(CMAKE_FIND_DEBUG_MODE FALSE)
 
-add_library(ChronoLogClient_lib STATIC
-        include/client.h src/client.cpp
-        ../ChronoAPI/ChronoLog/include/ChronoLogAdminRPCVisor.h
-        ../ChronoAPI/ChronoLog/include/ChronicleMetadataRPCVisor.h
+add_library(ChronoLogClient_lib
+        src/client.cpp
+        include/client.h
+        include/ChronoLogAdminRPCClient.h
+        include/ChronicleMetadataRPCClient.h
         ../ChronoAPI/ChronoLog/include/macro.h
         ../ChronoAPI/ChronoLog/include/rpc.h
         ../ChronoAPI/ChronoLog/include/RPCFactory.h
         ../ChronoAPI/ChronoLog/include/singleton.h
-        ../ChronoVisor/include/ClientRegistryInfo.h
-        ../ChronoVisor/include/ClientRegistryManager.h
-        ../ChronoVisor/src/ClientRegistryRecord.cpp
-        ../ChronoVisor/src/ClientRegistryManager.cpp
-        ../ChronoVisor/src/ChronicleMetaDirectory.cpp
-        ../ChronoVisor/include/Chronicle.h
-        ../ChronoVisor/include/Story.h
-        ../ChronoVisor/include/Event.h
         ../ChronoVisor/src/city.cpp
         ../ChronoVisor/include/city.h)
 target_include_directories(ChronoLogClient_lib PUBLIC include
         ../ChronoAPI/ChronoLog/include
-        ../ChronoVisor/include)
+        ../ChronoVisor/include
+        ../Client/include)
 target_link_libraries(ChronoLogClient_lib thallium)
 
 #add_executable(ChronoLogClient main.cpp)
