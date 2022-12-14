@@ -18,7 +18,7 @@ Modern applications spanning from Edge to High Performance Computing (HPC) syste
 
 ## Checkout ChronoLog
 
-ChronoLog uses HCL internally. It is added to this repository as a submodule. Thus, you need to run `git submodule update --init --recursive` once in `ChronoLog` directory after you clone the repository. For following pulls, you can update the submodule using command `git pull --recurse-submodules`.
+ChronoLog uses HCL internally. It is added to this repository as a submodule. Thus, you need to clone the submodules as well. You can do it using `git clone --recursive git@github.com:scs-lab/ChronoLog.git` to clone ChronoLog. Or you can run `git submodule update --init --recursive` once in `ChronoLog` directory after you clone the repository without `--recursive`. For following pulls, you can update the submodule using command `git pull --recurse-submodules`.
 
 ## Building
 
@@ -52,7 +52,7 @@ The installation may take some time (> 30 minutes) to finish.
 Three tests can be built for not to have a mini testbed. `chronovisor_server_test` is for the ChronoVisor. `chronolog_client_lib_connect_rpc_test` and `chronolog_client_lib_metadata_rpc_test` are two client apps to test the connection/disconnection and metadata operations (e.g., Chronicle and Story management) functionalities, respectively.
 ```
 cd ChronoLog
-git switch rpc_framework
+git switch develop
 mkdir build
 cd build
 cmake ..
@@ -61,7 +61,7 @@ make chronovisor_server_test chronolog_client_lib_connect_rpc_test chronolog_cli
 
 ### Run mini tests
 
-All tests require a `server_list` file to be in the same directory of the executable to run. A simple line of `localhost` in the file should suffice.
+All tests require a `server_list` file to be in the same directory of the executable to run which should be generated after building automatically. Just in case the automated generation failed, a simple line of `localhost` in the file should suffice.
 
 ------
 # Coming soon ...

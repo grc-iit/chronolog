@@ -7,7 +7,7 @@
 
 namespace ChronoVisor {
     ChronoVisorServer2::ChronoVisorServer2() {
-        CHRONOLOG_CONF->ConfigureDefaultServer("../../../../test/communication/server_list");
+        CHRONOLOG_CONF->ConfigureDefaultServer("./server_list");
         switch (CHRONOLOG_CONF->RPC_IMPLEMENTATION) {
             CHRONOLOG_RPC_CALL_WRAPPER_THALLIUM_SOCKETS()
             [[fallthrough]];

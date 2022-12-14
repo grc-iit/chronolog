@@ -2,9 +2,9 @@
 // Created by kfeng on 5/17/22.
 //
 
-#include <client.h>
-#include <global_var_client.h>
-#include <common.h>
+#include "client.h"
+#include "global_var_client.h"
+#include "common.h"
 
 #define NUM_CHRONICLE (1)
 #define NUM_STORY (1)
@@ -13,7 +13,7 @@
 #define STORY_NAME_LEN 32
 
 int main() {
-    ChronoLogClient client("../../../../test/communication/server_list");
+    ChronoLogClient client("./server_list");
     std::vector<std::string> chronicle_names;
     std::chrono::steady_clock::time_point t1, t2;
     std::chrono::duration<double, std::nano> duration_create_chronicle{},

@@ -2,14 +2,14 @@
 // Created by kfeng on 7/11/22.
 //
 
-#include <client.h>
-#include <global_var_client.h>
-#include <common.h>
+#include "client.h"
+#include "global_var_client.h"
+#include "common.h"
 
 #define NUM_CONNECTION (1)
 
 int main() {
-    ChronoLogClient client("../../../../test/communication/server_list");
+    ChronoLogClient client("./server_list");
     std::string protocol = "ofi+sockets";
     std::string server_ip = "127.0.0.1";
     int base_port = 5555;
