@@ -16,6 +16,8 @@
 #include "ClientRegistryInfo.h"
 #include "ClientRegistryManager.h"
 
+extern std::shared_ptr<ClientRegistryManager> g_clientRegistryManager;
+
 class ChronoLogAdminRPCVisor {
 public:
     ChronoLogAdminRPCVisor() {
@@ -45,8 +47,6 @@ public:
              __FUNCTION__, this, getpid(), uri.c_str());
         ClientRegistryInfo record;
         record.addr_ = "127.0.0.1";
-//        return ChronoLog::Singleton<ClientRegistryManager>::GetInstance()->add_client_record(client_id, record);
-        extern std::shared_ptr<ClientRegistryManager> g_clientRegistryManager;
         g_clientRegistryManager->add_client_record(client_id, record);
         return true;
     }
@@ -54,7 +54,6 @@ public:
     bool LocalDisconnect(const std::string &client_id, int &flags) {
         LOGD("%s is called in PID=%d, with args: client_id=%s, flags=%d",
              __FUNCTION__, getpid(), client_id.c_str(), flags);
-        extern std::shared_ptr<ClientRegistryManager> g_clientRegistryManager;
         return g_clientRegistryManager->remove_client_record(client_id, flags);
     }
 

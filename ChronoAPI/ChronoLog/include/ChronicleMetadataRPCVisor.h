@@ -17,6 +17,8 @@
 #include "ClientRegistryInfo.h"
 #include "ClientRegistryManager.h"
 
+extern std::shared_ptr<ChronicleMetaDirectory> g_chronicleMetaDirectory;
+
 class ChronicleMetadataRPCVisor {
 public:
     ChronicleMetadataRPCVisor() : rpc(ChronoLog::Singleton<ChronoLogRPCFactory>::GetInstance()->
@@ -44,25 +46,22 @@ public:
         for (auto iter = attrs.begin(); iter != attrs.end(); ++iter) {
             LOGD("%s=%s", iter->first.c_str(), iter->second.c_str());
         }
-        extern std::shared_ptr<ChronicleMetaDirectory> g_chronicleMetaDirectory;
+
         return g_chronicleMetaDirectory->create_chronicle(name);
     }
 
     bool LocalDestroyChronicle(std::string &name, const int &flags) {
         LOGD("%s is called in PID=%d, with args: name=%s, flags=%d", __FUNCTION__, getpid(), name.c_str(), flags);
-        extern std::shared_ptr<ChronicleMetaDirectory> g_chronicleMetaDirectory;
         return g_chronicleMetaDirectory->destroy_chronicle(name, flags);
     }
 
     bool LocalAcquireChronicle(std::string &name, const int &flags) {
         LOGD("%s is called in PID=%d, with args: name=%s, flags=%d", __FUNCTION__, getpid(), name.c_str(), flags);
-        extern std::shared_ptr<ChronicleMetaDirectory> g_chronicleMetaDirectory;
         return g_chronicleMetaDirectory->acquire_chronicle(name, flags);
     }
 
     bool LocalReleaseChronicle(std::string &name, const int &flags) {
         LOGD("%s is called in PID=%d, with args: name=%s, flags=%d", __FUNCTION__, getpid(), name.c_str(), flags);
-        extern std::shared_ptr<ChronicleMetaDirectory> g_chronicleMetaDirectory;
         return g_chronicleMetaDirectory->release_chronicle(name, flags);
     }
 
@@ -75,41 +74,35 @@ public:
         for (auto iter = attrs.begin(); iter != attrs.end(); ++iter) {
             LOGD("%s=%s", iter->first.c_str(), iter->second.c_str());
         }
-        extern std::shared_ptr<ChronicleMetaDirectory> g_chronicleMetaDirectory;
         return g_chronicleMetaDirectory->create_story(chronicle_name, story_name, attrs);
     }
 
     bool LocalDestroyStory(std::string &chronicle_name, std::string &story_name, const int &flags) {
         LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, flags=%d",
              __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
-        extern std::shared_ptr<ChronicleMetaDirectory> g_chronicleMetaDirectory;
         return g_chronicleMetaDirectory->destroy_story(chronicle_name, story_name, flags);
     }
 
     bool LocalAcquireStory(std::string &chronicle_name, std::string &story_name, const int &flags) {
         LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, flags=%d",
              __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
-        extern std::shared_ptr<ChronicleMetaDirectory> g_chronicleMetaDirectory;
         return g_chronicleMetaDirectory->acquire_story(chronicle_name, story_name, flags);
     }
 
     bool LocalReleaseStory(std::string &chronicle_name, std::string &story_name, const int &flags) {
         LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, flags=%d",
              __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
-        extern std::shared_ptr<ChronicleMetaDirectory> g_chronicleMetaDirectory;
         return g_chronicleMetaDirectory->release_story(chronicle_name, story_name, flags);
     }
 
     std::string LocalGetChronicleAttr(std::string &name, const std::string &key) {
         LOGD("%s is called in PID=%d, with args: name=%s, key=%s", __FUNCTION__, getpid(), name.c_str(), key.c_str());
-        extern std::shared_ptr<ChronicleMetaDirectory> g_chronicleMetaDirectory;
         return g_chronicleMetaDirectory->get_chronicle_attr(name, key);
     }
 
     bool LocalEditChronicleAttr(std::string &name, const std::string &key, const std::string &value) {
         LOGD("%s is called in PID=%d, with args: name=%s, key=%s, value=%s",
              __FUNCTION__, getpid(), name.c_str(), key.c_str(), value.c_str());
-        extern std::shared_ptr<ChronicleMetaDirectory> g_chronicleMetaDirectory;
         return g_chronicleMetaDirectory->edit_chronicle_attr(name, key, value);
     }
 
