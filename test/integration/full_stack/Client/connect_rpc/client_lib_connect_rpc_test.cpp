@@ -31,7 +31,7 @@ int main() {
         server_uri += "://" + server_ip + ":" + std::to_string(base_port + i);
         t1 = std::chrono::steady_clock::now();
         ret = client.Connect(server_uri, client_ids[i], flags, offset);
-        LOGD("ret: %d", ret);
+        assert(ret);
         t2 = std::chrono::steady_clock::now();
         duration_connect += (t2 - t1);
     }
@@ -39,7 +39,7 @@ int main() {
     for (int i = 0; i < NUM_CONNECTION; i++) {
         t1 = std::chrono::steady_clock::now();
         ret = client.Disconnect(client_ids[i], flags);
-        LOGD("ret: %d", ret);
+        assert(ret);
         t2 = std::chrono::steady_clock::now();
         duration_disconnect += (t2 - t1);
     };

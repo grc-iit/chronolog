@@ -41,21 +41,21 @@ int main() {
         t1 = std::chrono::steady_clock::now();
         ret = client.CreateChronicle(chronicle_name, chronicle_attrs, flags);
         t2 = std::chrono::steady_clock::now();
-        LOGD("ret: %d", ret);
+        assert(ret);
         duration_create_chronicle += (t2 - t1);
 
         flags = 1;
         t1 = std::chrono::steady_clock::now();
         ret = client.AcquireChronicle(chronicle_name, flags);
         t2 = std::chrono::steady_clock::now();
-        LOGD("ret: %d", ret);
+        assert(ret);
         duration_acquire_chronicle += (t2 - t1);
 
         std::string key("Date");
         t1 = std::chrono::steady_clock::now();
-        ret = client.EditChronicleAttr(chronicle_name, key, "2022-04-20");
+        ret = client.EditChronicleAttr(chronicle_name, key, "2023-01-15");
         t2 = std::chrono::steady_clock::now();
-        LOGD("ret: %d", ret);
+        assert(ret);
         duration_edit_chronicle_attr += (t2 - t1);
 
         std::vector<std::string> story_names;
@@ -71,21 +71,21 @@ int main() {
             t1 = std::chrono::steady_clock::now();
             ret = client.CreateStory(chronicle_name, story_name, story_attrs, flags);
             t2 = std::chrono::steady_clock::now();
-            LOGD("ret: %d", ret);
+            assert(ret);
             duration_create_story += (t2 - t1);
 
             flags = 2;
             t1 = std::chrono::steady_clock::now();
             ret = client.AcquireStory(chronicle_name, story_name, flags);
             t2 = std::chrono::steady_clock::now();
-            LOGD("ret: %d", ret);
+            assert(ret);
             duration_acquire_story += (t2 - t1);
 
             flags = 4;
             t1 = std::chrono::steady_clock::now();
             ret = client.ReleaseStory(chronicle_name, story_name, flags);
             t2 = std::chrono::steady_clock::now();
-            LOGD("ret: %d", ret);
+            assert(ret);
             duration_release_story += (t2 - t1);
         }
 
@@ -94,21 +94,21 @@ int main() {
             t1 = std::chrono::steady_clock::now();
             ret = client.DestroyStory(chronicle_name, story_names[j], flags);
             t2 = std::chrono::steady_clock::now();
-            LOGD("ret: %d", ret);
+            assert(ret);
             duration_destroy_story += (t2 - t1);
         }
 
         t1 = std::chrono::steady_clock::now();
         std::string value = client.GetChronicleAttr(chronicle_name, key);
         t2 = std::chrono::steady_clock::now();
-        LOGD("value: %s", value.c_str());
+        assert(value == "2023-01-15");
         duration_get_chronicle_attr += (t2 - t1);
 
         flags = 16;
         t1 = std::chrono::steady_clock::now();
         ret = client.ReleaseChronicle(chronicle_name, flags);
         t2 = std::chrono::steady_clock::now();
-        LOGD("ret: %d", ret);
+        assert(ret);
         duration_release_chronicle += (t2 - t1);
     }
 
@@ -117,7 +117,7 @@ int main() {
         t1 = std::chrono::steady_clock::now();
         bool ret = client.DestroyChronicle(chronicle_names[i], flags);
         t2 = std::chrono::steady_clock::now();
-        LOGD("ret: %d", ret);
+        assert(ret);
         duration_destroy_chronicle += (t2 - t1);
     };
 
@@ -147,7 +147,7 @@ int main() {
         t1 = std::chrono::steady_clock::now();
         ret = client.CreateChronicle(chronicle_name, chronicle_attrs, flags);
         t2 = std::chrono::steady_clock::now();
-        LOGD("ret: %d", ret);
+        assert(ret);
         duration_create_chronicle += (t2 - t1);
     }
 
@@ -157,7 +157,7 @@ int main() {
         t1 = std::chrono::steady_clock::now();
         bool ret = client.DestroyChronicle(chronicle_names[i], flags);
         t2 = std::chrono::steady_clock::now();
-        LOGD("ret: %d", ret);
+        assert(ret);
         duration_destroy_chronicle += (t2 - t1);
     }
 
