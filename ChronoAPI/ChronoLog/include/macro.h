@@ -37,4 +37,9 @@ void Thallium##name(const tl::request &thallium_req, args_t) \
     thallium_req.respond(name args); \
 }
 
+#define ASSERT(left,operator,right) { if(!((left) operator (right))){ \
+std::cerr << "ASSERT FAILED: " << #left << #operator << #right \
+<< " @ " << __FILE__ << " (" << __LINE__ << "). " \
+<< #left << "=" << (left) << "; " << #right << "=" << (right) << std::endl; } }
+
 #endif //CHRONOLOG_MACRO_H

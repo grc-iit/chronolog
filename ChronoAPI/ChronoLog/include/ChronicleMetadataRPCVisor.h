@@ -12,6 +12,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include "macro.h"
+#include "errcode.h"
 #include "RPCFactory.h"
 #include "ChronicleMetaDirectory.h"
 #include "ClientRegistryInfo.h"
@@ -39,71 +40,140 @@ public:
 
     ~ChronicleMetadataRPCVisor() = default;
 
-    bool LocalCreateChronicle(std::string &name,
-                              const std::unordered_map<std::string, std::string> &attrs,
-                              int &flags) {
+    int LocalCreateChronicle(std::string& name,
+                              const std::unordered_map<std::string, std::string>& attrs,
+                              int& flags) {
         LOGD("%s is called in PID=%d, with args: name=%s, attrs=", __FUNCTION__, getpid(), name.c_str());
         for (auto iter = attrs.begin(); iter != attrs.end(); ++iter) {
             LOGD("%s=%s", iter->first.c_str(), iter->second.c_str());
         }
 
-        return g_chronicleMetaDirectory->create_chronicle(name);
+        if (!name.empty()) {
+            return g_chronicleMetaDirectory->create_chronicle(name);
+        } else {
+            LOGE("name is empty");
+            return CL_ERR_INVALID_ARG;
+        }
     }
 
-    bool LocalDestroyChronicle(std::string &name, const int &flags) {
+    int LocalDestroyChronicle(std::string& name, int& flags) {
         LOGD("%s is called in PID=%d, with args: name=%s, flags=%d", __FUNCTION__, getpid(), name.c_str(), flags);
-        return g_chronicleMetaDirectory->destroy_chronicle(name, flags);
+        if (!name.empty()) {
+            return g_chronicleMetaDirectory->destroy_chronicle(name, flags);
+        } else {
+            LOGE("name is empty");
+            return CL_ERR_INVALID_ARG;
+        }
     }
 
-    bool LocalAcquireChronicle(std::string &name, const int &flags) {
+    int LocalAcquireChronicle(std::string& name, int& flags) {
         LOGD("%s is called in PID=%d, with args: name=%s, flags=%d", __FUNCTION__, getpid(), name.c_str(), flags);
-        return g_chronicleMetaDirectory->acquire_chronicle(name, flags);
+        if (!name.empty()) {
+            return g_chronicleMetaDirectory->acquire_chronicle(name, flags);
+        } else {
+            LOGE("name is empty");
+            return CL_ERR_INVALID_ARG;
+        }
     }
 
-    bool LocalReleaseChronicle(std::string &name, const int &flags) {
+    int LocalReleaseChronicle(std::string& name, int& flags) {
         LOGD("%s is called in PID=%d, with args: name=%s, flags=%d", __FUNCTION__, getpid(), name.c_str(), flags);
-        return g_chronicleMetaDirectory->release_chronicle(name, flags);
+        if (!name.empty()) {
+            return g_chronicleMetaDirectory->release_chronicle(name, flags);
+        } else {
+            LOGE("name is empty");
+            return CL_ERR_INVALID_ARG;
+        }
     }
 
-    bool LocalCreateStory(std::string &chronicle_name,
-                          std::string &story_name,
-                          const std::unordered_map<std::string, std::string> &attrs,
-                          int &flags) {
+    int LocalCreateStory(std::string& chronicle_name,
+                          std::string& story_name,
+                          const std::unordered_map<std::string, std::string>& attrs,
+                          int& flags) {
         LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, ,attrs=",
              __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str());
         for (auto iter = attrs.begin(); iter != attrs.end(); ++iter) {
             LOGD("%s=%s", iter->first.c_str(), iter->second.c_str());
         }
-        return g_chronicleMetaDirectory->create_story(chronicle_name, story_name, attrs);
+        if (!chronicle_name.empty() && !story_name.empty()) {
+            return g_chronicleMetaDirectory->create_story(chronicle_name, story_name, attrs);
+        } else {
+            if (chronicle_name.empty())
+                LOGE("chronicle name is empty");
+            if (story_name.empty())
+                LOGE("story name is empty");
+            return CL_ERR_INVALID_ARG;
+        }
     }
 
-    bool LocalDestroyStory(std::string &chronicle_name, std::string &story_name, const int &flags) {
+    int LocalDestroyStory(std::string& chronicle_name, std::string& story_name, int& flags) {
         LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, flags=%d",
              __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
-        return g_chronicleMetaDirectory->destroy_story(chronicle_name, story_name, flags);
+        if (!chronicle_name.empty() && !story_name.empty()) {
+            return g_chronicleMetaDirectory->destroy_story(chronicle_name, story_name, flags);
+        } else {
+            if (chronicle_name.empty())
+                LOGE("chronicle name is empty");
+            if (story_name.empty())
+                LOGE("story name is empty");
+            return CL_ERR_INVALID_ARG;
+        }
     }
 
-    bool LocalAcquireStory(std::string &chronicle_name, std::string &story_name, const int &flags) {
+    int LocalAcquireStory(std::string& chronicle_name, std::string& story_name, int& flags) {
         LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, flags=%d",
              __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
-        return g_chronicleMetaDirectory->acquire_story(chronicle_name, story_name, flags);
+        if (!chronicle_name.empty() && !story_name.empty()) {
+            return g_chronicleMetaDirectory->acquire_story(chronicle_name, story_name, flags);
+        } else {
+            if (chronicle_name.empty())
+                LOGE("chronicle name is empty");
+            if (story_name.empty())
+                LOGE("story name is empty");
+            return CL_ERR_INVALID_ARG;
+        }
     }
 
-    bool LocalReleaseStory(std::string &chronicle_name, std::string &story_name, const int &flags) {
+    int LocalReleaseStory(std::string& chronicle_name, std::string& story_name, int& flags) {
         LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, flags=%d",
              __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
-        return g_chronicleMetaDirectory->release_story(chronicle_name, story_name, flags);
+        if (!chronicle_name.empty() && !story_name.empty()) {
+            return g_chronicleMetaDirectory->release_story(chronicle_name, story_name, flags);
+        } else {
+            if (chronicle_name.empty())
+                LOGE("chronicle name is empty");
+            if (story_name.empty())
+                LOGE("story name is empty");
+            return CL_ERR_INVALID_ARG;
+        }
     }
 
-    std::string LocalGetChronicleAttr(std::string &name, const std::string &key) {
+    int LocalGetChronicleAttr(std::string& name, const std::string& key, std::string& value) {
         LOGD("%s is called in PID=%d, with args: name=%s, key=%s", __FUNCTION__, getpid(), name.c_str(), key.c_str());
-        return g_chronicleMetaDirectory->get_chronicle_attr(name, key);
+        if (!name.empty() && !key.empty()) {
+            g_chronicleMetaDirectory->get_chronicle_attr(name, key, value);
+            return CL_SUCCESS;
+        } else {
+            if (name.empty())
+                LOGE("name is empty");
+            if (key.empty())
+                LOGE("key is empty");
+            return CL_ERR_INVALID_ARG;
+        }
     }
 
-    bool LocalEditChronicleAttr(std::string &name, const std::string &key, const std::string &value) {
+    int LocalEditChronicleAttr(std::string& name, const std::string& key, const std::string& value) {
         LOGD("%s is called in PID=%d, with args: name=%s, key=%s, value=%s",
              __FUNCTION__, getpid(), name.c_str(), key.c_str(), value.c_str());
-        return g_chronicleMetaDirectory->edit_chronicle_attr(name, key, value);
+        if (!name.empty() && !key.empty() && !value.empty()) {
+            return g_chronicleMetaDirectory->edit_chronicle_attr(name, key, value);
+        } else {
+            if (name.empty())
+                LOGE("name is empty");
+            if (key.empty())
+                LOGE("key is empty");
+            return CL_ERR_INVALID_ARG;
+        }
     }
 
     void bind_functions() {
@@ -124,7 +194,7 @@ public:
                 );
                 std::function<void(const tl::request &,
                                    std::string &,
-                                   const int &)> destroyChronicleFunc(
+                                   int &)> destroyChronicleFunc(
                         std::bind(&ChronicleMetadataRPCVisor::ThalliumLocalDestroyChronicle,
                                   this,
                                   std::placeholders::_1,
@@ -133,7 +203,7 @@ public:
                 );
                 std::function<void(const tl::request &,
                                    std::string &,
-                                   const int &)> acquireChronicleFunc(
+                                   int &)> acquireChronicleFunc(
                         std::bind(&ChronicleMetadataRPCVisor::ThalliumLocalAcquireChronicle,
                                   this,
                                   std::placeholders::_1,
@@ -142,7 +212,7 @@ public:
                 );
                 std::function<void(const tl::request &,
                                    std::string &,
-                                   const int &)> releaseChronicleFunc(
+                                   int &)> releaseChronicleFunc(
                         std::bind(&ChronicleMetadataRPCVisor::ThalliumLocalReleaseChronicle,
                                   this,
                                   std::placeholders::_1,
@@ -166,7 +236,7 @@ public:
                 std::function<void(const tl::request &,
                                    std::string &,
                                    std::string &,
-                                   const int &)> destroyStoryFunc(
+                                   int &)> destroyStoryFunc(
                         std::bind(&ChronicleMetadataRPCVisor::ThalliumLocalDestroyStory,
                                   this,
                                   std::placeholders::_1,
@@ -177,7 +247,7 @@ public:
                 std::function<void(const tl::request &,
                                    std::string &,
                                    std::string &,
-                                   const int &)> acquireStoryFunc(
+                                   int &)> acquireStoryFunc(
                         std::bind(&ChronicleMetadataRPCVisor::ThalliumLocalAcquireStory,
                                   this,
                                   std::placeholders::_1,
@@ -188,7 +258,7 @@ public:
                 std::function<void(const tl::request &,
                                    std::string &,
                                    std::string &,
-                                   const int &)> releaseStoryFunc(
+                                   int &)> releaseStoryFunc(
                         std::bind(&ChronicleMetadataRPCVisor::ThalliumLocalReleaseStory,
                                   this,
                                   std::placeholders::_1,
@@ -199,17 +269,19 @@ public:
 
                 std::function<void(const tl::request &,
                                    std::string &name,
-                                   const std::string &key)> getChronicleAttrFunc(
+                                   const std::string &,
+                                   std::string &)> getChronicleAttrFunc(
                         std::bind(&ChronicleMetadataRPCVisor::ThalliumLocalGetChronicleAttr,
                                   this,
                                   std::placeholders::_1,
                                   std::placeholders::_2,
-                                  std::placeholders::_3)
+                                  std::placeholders::_3,
+                                  std::placeholders::_4)
                 );
                 std::function<void(const tl::request &,
                                    std::string &name,
-                                   const std::string &key,
-                                   const std::string &value)> editChronicleAttrFunc(
+                                   const std::string &,
+                                   const std::string &)> editChronicleAttrFunc(
                         std::bind(&ChronicleMetadataRPCVisor::ThalliumLocalEditChronicleAttr,
                                   this,
                                   std::placeholders::_1,
@@ -236,9 +308,9 @@ public:
 
     CHRONOLOG_THALLIUM_DEFINE(LocalCreateChronicle, (name, attrs, flags),
                     std::string &name, const std::unordered_map<std::string, std::string> &attrs, int &flags)
-    CHRONOLOG_THALLIUM_DEFINE(LocalDestroyChronicle, (name, flags), std::string &name, const int &flags)
-    CHRONOLOG_THALLIUM_DEFINE(LocalAcquireChronicle, (name, flags), std::string &name, const int &flags)
-    CHRONOLOG_THALLIUM_DEFINE(LocalReleaseChronicle, (name, flags), std::string &name, const int &flags)
+    CHRONOLOG_THALLIUM_DEFINE(LocalDestroyChronicle, (name, flags), std::string &name, int &flags)
+    CHRONOLOG_THALLIUM_DEFINE(LocalAcquireChronicle, (name, flags), std::string &name, int &flags)
+    CHRONOLOG_THALLIUM_DEFINE(LocalReleaseChronicle, (name, flags), std::string &name, int &flags)
 
     CHRONOLOG_THALLIUM_DEFINE(LocalCreateStory, (chronicle_name, story_name, attrs, flags),
                     std::string &chronicle_name,
@@ -246,13 +318,14 @@ public:
                     const std::unordered_map<std::string, std::string> &attrs,
                     int &flags)
     CHRONOLOG_THALLIUM_DEFINE(LocalDestroyStory, (chronicle_name, story_name, flags),
-                    std::string &chronicle_name, std::string &story_name, const int &flags)
+                    std::string &chronicle_name, std::string &story_name, int &flags)
     CHRONOLOG_THALLIUM_DEFINE(LocalAcquireStory, (chronicle_name, story_name, flags),
-                    std::string &chronicle_name, std::string &story_name, const int &flags)
+                    std::string &chronicle_name, std::string &story_name, int &flags)
     CHRONOLOG_THALLIUM_DEFINE(LocalReleaseStory, (chronicle_name, story_name, flags),
-                    std::string &chronicle_name, std::string &story_name, const int &flags)
+                    std::string &chronicle_name, std::string &story_name, int &flags)
 
-    CHRONOLOG_THALLIUM_DEFINE(LocalGetChronicleAttr, (name, key), std::string &name, const std::string &key)
+    CHRONOLOG_THALLIUM_DEFINE(LocalGetChronicleAttr, (name, key, value),
+                              std::string &name, const std::string &key, std::string &value)
     CHRONOLOG_THALLIUM_DEFINE(LocalEditChronicleAttr, (name, key, value),
                     std::string &name, const std::string &key, const std::string &value)
 

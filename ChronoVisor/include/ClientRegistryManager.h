@@ -15,8 +15,8 @@ public:
     ClientRegistryManager();
     ~ClientRegistryManager();
 
-    bool add_client_record(const std::string &client_id, const ClientRegistryInfo &record);
-    bool remove_client_record(const std::string& client_id, int &flags);
+    int add_client_record(const std::string &client_id, const ClientRegistryInfo &record);
+    int remove_client_record(const std::string& client_id, int &flags);
 private:
     std::unordered_map<std::string, ClientRegistryInfo> *clientRegistry_;
 };

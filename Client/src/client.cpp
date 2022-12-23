@@ -7,10 +7,10 @@
 #include "client.h"
 #include "city.h"
 
-bool ChronoLogClient::Connect(const std::string &server_uri,
-                              std::string &client_id,
-                              int &flags,
-                              uint64_t &clock_offset) {
+int ChronoLogClient::Connect(const std::string &server_uri,
+                             std::string &client_id,
+                             int &flags,
+                             uint64_t &clock_offset) {
     if (client_id.empty()) {
         char ip[16];
         struct hostent *he = gethostbyname("localhost");
@@ -23,51 +23,51 @@ bool ChronoLogClient::Connect(const std::string &server_uri,
     return adminRpcProxy_->Connect(server_uri, client_id, flags, clock_offset);
 }
 
-bool ChronoLogClient::Disconnect(const std::string &client_id, int &flags) {
+int ChronoLogClient::Disconnect(const std::string &client_id, int &flags) {
     return adminRpcProxy_->Disconnect(client_id, flags);
 }
 
-bool ChronoLogClient::CreateChronicle(std::string &name,
-                                      const std::unordered_map<std::string, std::string> &attrs,
-                                      int &flags) {
+int ChronoLogClient::CreateChronicle(std::string &name,
+                                     const std::unordered_map<std::string, std::string> &attrs,
+                                     int &flags) {
     return metadataRpcProxy_->CreateChronicle(name, attrs, flags);
 }
 
-bool ChronoLogClient::DestroyChronicle(std::string &name, int &flags) {
+int ChronoLogClient::DestroyChronicle(std::string &name, int &flags) {
     return metadataRpcProxy_->DestroyChronicle(name, flags);
 }
 
-bool ChronoLogClient::AcquireChronicle(std::string &name, int &flags) {
+int ChronoLogClient::AcquireChronicle(std::string &name, int &flags) {
     return metadataRpcProxy_->AcquireChronicle(name, flags);
 }
 
-bool ChronoLogClient::ReleaseChronicle(std::string &name, int &flags) {
+int ChronoLogClient::ReleaseChronicle(std::string &name, int &flags) {
     return metadataRpcProxy_->ReleaseChronicle(name, flags);
 }
 
-bool ChronoLogClient::CreateStory(std::string &chronicle_name,
-                                  std::string &story_name,
-                                  const std::unordered_map<std::string, std::string> &attrs,
-                                  int &flags) {
+int ChronoLogClient::CreateStory(std::string &chronicle_name,
+                                 std::string &story_name,
+                                 const std::unordered_map<std::string, std::string> &attrs,
+                                 int &flags) {
     return metadataRpcProxy_->CreateStory(chronicle_name, story_name, attrs, flags);
 }
 
-bool ChronoLogClient::DestroyStory(std::string &chronicle_name, std::string &story_name, int &flags) {
+int ChronoLogClient::DestroyStory(std::string &chronicle_name, std::string &story_name, int &flags) {
     return metadataRpcProxy_->DestroyStory(chronicle_name, story_name, flags);
 }
 
-bool ChronoLogClient::AcquireStory(std::string &chronicle_name, std::string &story_name, int &flags) {
+int ChronoLogClient::AcquireStory(std::string &chronicle_name, std::string &story_name, int &flags) {
     return metadataRpcProxy_->AcquireStory(chronicle_name, story_name, flags);
 }
 
-bool ChronoLogClient::ReleaseStory(std::string &chronicle_name, std::string &story_name, int &flags) {
+int ChronoLogClient::ReleaseStory(std::string &chronicle_name, std::string &story_name, int &flags) {
     return metadataRpcProxy_->ReleaseStory(chronicle_name, story_name, flags);
 }
 
-std::string ChronoLogClient::GetChronicleAttr(std::string &chronicle_name, const std::string &key) {
-    return metadataRpcProxy_->GetChronicleAttr(chronicle_name, key);
+int ChronoLogClient::GetChronicleAttr(std::string &chronicle_name, const std::string &key, std::string &value) {
+    return metadataRpcProxy_->GetChronicleAttr(chronicle_name, key, value);
 }
 
-bool ChronoLogClient::EditChronicleAttr(std::string &chronicle_name, const std::string &key, const std::string &value) {
+int ChronoLogClient::EditChronicleAttr(std::string &chronicle_name, const std::string &key, const std::string &value) {
     return metadataRpcProxy_->EditChronicleAttr(chronicle_name, key, value);
 }

@@ -26,7 +26,7 @@
                                     __FILENAME__, __func__, __LINE__, ##__VA_ARGS__); \
                                 } while(0)
 
-#define NDEBUG 1
+//#define NDEBUG 1
 #ifdef NDEBUG
 #define LOGD(fmt, ...)          ((void)0)
 #else

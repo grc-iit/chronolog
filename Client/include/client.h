@@ -7,6 +7,7 @@
 
 #include "ChronicleMetadataRPCClient.h"
 #include "ChronoLogAdminRPCClient.h"
+#include "errcode.h"
 
 class ChronoLogClient {
 public:
@@ -18,26 +19,35 @@ public:
         adminRpcProxy_ = ChronoLog::Singleton<ChronoLogAdminRPCClient>::GetInstance();
     }
 
-    bool Connect(const std::string &server_uri,
-                 std::string &client_id,
-                 int &flags,
-                 uint64_t &clock_offset);
-    bool Disconnect(const std::string &client_id, int &flags);
-    bool CreateChronicle(std::string &name,
-                         const std::unordered_map<std::string, std::string> &attrs,
-                         int &flags);
-    bool DestroyChronicle(std::string &name, int &flags);
-    bool AcquireChronicle(std::string &name, int &flags);
-    bool ReleaseChronicle(std::string &name, int &flags);
-    bool CreateStory(std::string &chronicle_name,
-                     std::string &story_name,
-                     const std::unordered_map<std::string, std::string> &attrs,
-                     int &flags);
-    bool DestroyStory(std::string &chronicle_name, std::string &story_name, int &flags);
-    bool AcquireStory(std::string &chronicle_name, std::string &story_name, int &flags);
-    bool ReleaseStory(std::string &chronicle_name, std::string &story_name, int &flags);
-    std::string GetChronicleAttr(std::string &chronicle_name, const std::string &key);
-    bool EditChronicleAttr(std::string &chronicle_name, const std::string &key, const std::string &value);
+    ChronoLogClient(const ChronoLogRPCImplementation& protocol, const std::string& visor_ip, int visor_port) {
+        CHRONOLOG_CONF->IS_SERVER = false;
+        CHRONOLOG_CONF->RPC_IMPLEMENTATION = protocol;
+        CHRONOLOG_CONF->RPC_SERVER_IP = visor_ip;
+        CHRONOLOG_CONF->RPC_BASE_SERVER_PORT = visor_port;
+        adminRpcProxy_ = ChronoLog::Singleton<ChronoLogAdminRPCClient>::GetInstance();
+        metadataRpcProxy_ = ChronoLog::Singleton<ChronicleMetadataRPCClient>::GetInstance();
+    }
+
+    int Connect(const std::string &server_uri,
+                std::string &client_id,
+                int &flags,
+                uint64_t &clock_offset);
+    int Disconnect(const std::string &client_id, int &flags);
+    int CreateChronicle(std::string &name,
+                        const std::unordered_map<std::string, std::string> &attrs,
+                        int &flags);
+    int DestroyChronicle(std::string &name, int &flags);
+    int AcquireChronicle(std::string &name, int &flags);
+    int ReleaseChronicle(std::string &name, int &flags);
+    int CreateStory(std::string &chronicle_name,
+                    std::string &story_name,
+                    const std::unordered_map<std::string, std::string> &attrs,
+                    int &flags);
+    int DestroyStory(std::string &chronicle_name, std::string &story_name, int &flags);
+    int AcquireStory(std::string &chronicle_name, std::string &story_name, int &flags);
+    int ReleaseStory(std::string &chronicle_name, std::string &story_name, int &flags);
+    int GetChronicleAttr(std::string &chronicle_name, const std::string &key, std::string &value);
+    int EditChronicleAttr(std::string &chronicle_name, const std::string &key, const std::string &value);
 
 private:
     std::shared_ptr<ChronicleMetadataRPCClient> metadataRpcProxy_;

@@ -5,13 +5,7 @@
 #ifndef CHRONOLOG_COMMON_H
 #define CHRONOLOG_COMMON_H
 
-#include <queue>
-#include <mutex>
-#include <condition_variable>
 #include <random>
-#include "singleton.h"
-#include "../../../ChronoVisor/include/TimeRecord.h"
-#include "../../../ChronoVisor/include/ClocksourceManager.h"
 
 std::random_device rd;
 std::seed_seq ssq{rd()};

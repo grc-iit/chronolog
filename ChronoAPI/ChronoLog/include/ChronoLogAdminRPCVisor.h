@@ -12,6 +12,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include "macro.h"
+#include "errcode.h"
 #include "RPCFactory.h"
 #include "ClientRegistryInfo.h"
 #include "ClientRegistryManager.h"
@@ -42,18 +43,27 @@ public:
 
     ~ChronoLogAdminRPCVisor() = default;
 
-    bool LocalConnect(const std::string &uri, std::string &client_id, int &flags, uint64_t &clock_offset) {
+    int LocalConnect(const std::string &uri, std::string &client_id, int &flags, uint64_t &clock_offset) {
         LOGD("%s in ChronoLogAdminRPCProxy@%p called in PID=%d, with args: uri=%s",
              __FUNCTION__, this, getpid(), uri.c_str());
         ClientRegistryInfo record;
         record.addr_ = "127.0.0.1";
-        g_clientRegistryManager->add_client_record(client_id, record);
-        return true;
+        if (std::strtol(client_id.c_str(), nullptr, 10) < 0) {
+            LOGE("client id is invalid");
+            return CL_ERR_INVALID_ARG;
+        }
+        if (g_clientRegistryManager) {
+            return g_clientRegistryManager->add_client_record(client_id, record);
+        }
     }
 
-    bool LocalDisconnect(const std::string &client_id, int &flags) {
+    int LocalDisconnect(const std::string &client_id, int &flags) {
         LOGD("%s is called in PID=%d, with args: client_id=%s, flags=%d",
              __FUNCTION__, getpid(), client_id.c_str(), flags);
+        if (std::strtol(client_id.c_str(), nullptr, 10) < 0) {
+            LOGE("client id is invalid");
+            return CL_ERR_INVALID_ARG;
+        }
         return g_clientRegistryManager->remove_client_record(client_id, flags);
     }
 
