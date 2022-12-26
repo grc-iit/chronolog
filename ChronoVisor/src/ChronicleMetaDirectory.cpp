@@ -89,8 +89,13 @@ int ChronicleMetaDirectory::acquire_chronicle(const std::string& name,
                                               int& flags) {
     LOGD("acquiring Chronicle name=%s", name.c_str());
     uint64_t cid = CityHash64(name.c_str(), name.size());
-    Chronicle *c = chronicleMap_->at(cid);
-    auto res = acquiredChronicleMap_->emplace(cid, c);
+    Chronicle *pChronicle;
+    try {
+        pChronicle = chronicleMap_->at(cid);
+    } catch (const std::out_of_range& e) {
+        return CL_ERR_NOT_EXIST;
+    }
+    auto res = acquiredChronicleMap_->emplace(cid, pChronicle);
     if (res.second) {
         return CL_SUCCESS;
     } else {
@@ -163,8 +168,19 @@ int ChronicleMetaDirectory::acquire_story(const std::string& chronicle_name,
     std::string story_name_for_hash = chronicle_name + story_name;
     uint64_t cid = CityHash64(chronicle_name.c_str(), chronicle_name.size());
     uint64_t sid = CityHash64(story_name_for_hash.c_str(), story_name_for_hash.size());
-    Story *s = chronicleMap_->at(cid)->getStoryMap().at(sid);
-    auto res = acquiredStoryMap_->emplace(sid, s);
+    Chronicle *pChronicle;
+    try {
+        pChronicle = chronicleMap_->at(cid);
+    } catch (const std::out_of_range& e) {
+        return CL_ERR_NOT_EXIST;
+    }
+    Story *pStory;
+    try {
+        pStory = pChronicle->getStoryMap().at(sid);
+    } catch (const std::out_of_range& e) {
+        return CL_ERR_NOT_EXIST;
+    }
+    auto res = acquiredStoryMap_->emplace(sid, pStory);
     if (res.second) {
         return CL_SUCCESS;
     } else {
@@ -199,9 +215,18 @@ uint64_t ChronicleMetaDirectory::playback_event(uint64_t sid) {
 int ChronicleMetaDirectory::get_chronicle_attr(std::string& name, const std::string& key, std::string& value) {
     LOGD("getting attributes key=%s from Chronicle name=%s", key.c_str(), name.c_str());
     uint64_t cid = CityHash64(name.c_str(), name.size());
-    Chronicle *pChronicle = chronicleMap_->at(cid);
-    value = pChronicle->getPropertyList().at(key);
-    return CL_SUCCESS;
+    Chronicle *pChronicle;
+    try {
+        pChronicle = chronicleMap_->at(cid);
+    } catch (const std::out_of_range& e) {
+        return CL_ERR_NOT_EXIST;
+    }
+    if (pChronicle) {
+        value = pChronicle->getPropertyList().at(key);
+        return CL_SUCCESS;
+    } else {
+        return CL_ERR_UNKNOWN;
+    }
 }
 
 int ChronicleMetaDirectory::edit_chronicle_attr(std::string& name,
@@ -209,7 +234,12 @@ int ChronicleMetaDirectory::edit_chronicle_attr(std::string& name,
                                                 const std::string& value) {
     LOGD("editing attribute key=%s, value=%s from Chronicle name=%s", key.c_str(), value.c_str(), name.c_str());
     uint64_t cid = CityHash64(name.c_str(), name.size());
-    Chronicle *pChronicle = chronicleMap_->at(cid);
+    Chronicle *pChronicle;
+    try {
+        pChronicle = chronicleMap_->at(cid);
+    } catch (const std::out_of_range& e) {
+        return CL_ERR_NOT_EXIST;
+    }
     auto res = pChronicle->getPropertyList().insert_or_assign(key, value);
     if (res.second) {
         return CL_SUCCESS;
