@@ -12,6 +12,7 @@
 #include <Archive.h>
 #include <city.h>
 #include <log.h>
+#include <errcode.h>
 
 #define MAX_CHRONICLE_PROPERTY_LIST_SIZE 16
 #define MAX_CHRONICLE_METADATA_MAP_SIZE 16
@@ -55,6 +56,12 @@ public:
         metadataMap_ = std::unordered_map<std::string, std::string>(MAX_CHRONICLE_METADATA_MAP_SIZE);
         storyMap_ = std::unordered_map<uint64_t, Story *>(MAX_STORY_MAP_SIZE);
         archiveMap_ = std::unordered_map<uint64_t, Archive *>(MAX_ARCHIVE_MAP_SIZE);
+        attrs_.size = 0;
+        attrs_.indexing_granularity = chronicle_gran_ms;
+        attrs_.type = chronicle_type_standard;
+        attrs_.tiering_policy = chronicle_tiering_normal;
+        attrs_.access_permission = 0;
+        stats_.count = 0;
     }
 
     void setName(const std::string &name) { name_ = name; }
@@ -118,6 +125,9 @@ public:
         auto storyRecord = storyMap_.find(sid);
         if (storyRecord != storyMap_.end()) {
             Story *pStory = storyRecord->second;
+            if (pStory->getAcquisitionCount() != 0) {
+                return CL_ERR_ACQUIRED;
+            }
             delete pStory;
             LOGD("removing from storyMap@%p with %lu entries in Chronicle@%p",
                  &storyMap_, storyMap_.size(), this);
@@ -158,6 +168,10 @@ public:
         }
         return false;
     }
+
+    int incrementAcquisitionCount() { stats_.count++; return stats_.count; }
+    int decrementAcquisitionCount() { stats_.count--; return stats_.count; }
+    int getAcquisitionCount() { return stats_.count; }
 
     size_t getPropertyListSize() { return propertyList_.size(); }
     size_t getMetadataMapSize() { return metadataMap_.size(); }

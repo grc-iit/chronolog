@@ -69,6 +69,9 @@ int ChronicleMetaDirectory::destroy_chronicle(const std::string& name,
     auto chronicleRecord = chronicleMap_->find(cid);
     if (chronicleRecord != chronicleMap_->end()) {
         Chronicle *pChronicle = chronicleRecord->second;
+        if (pChronicle->getAcquisitionCount() != 0) {
+            return CL_ERR_ACQUIRED;
+        }
         delete pChronicle;
         auto nErased = chronicleMap_->erase(cid);
         t2 = std::chrono::steady_clock::now();
@@ -95,6 +98,7 @@ int ChronicleMetaDirectory::acquire_chronicle(const std::string& name,
     } catch (const std::out_of_range& e) {
         return CL_ERR_NOT_EXIST;
     }
+    pChronicle->incrementAcquisitionCount();
     auto res = acquiredChronicleMap_->emplace(cid, pChronicle);
     if (res.second) {
         return CL_SUCCESS;
@@ -107,6 +111,13 @@ int ChronicleMetaDirectory::release_chronicle(const std::string& name,
                                               int& flags) {
     LOGD("releasing Chronicle name=%s", name.c_str());
     uint64_t cid = CityHash64(name.c_str(), name.size());
+    auto chronicleRecord = chronicleMap_->find(cid);
+    if (chronicleRecord != chronicleMap_->end()) {
+        Chronicle *pChronicle = chronicleRecord->second;
+        pChronicle->decrementAcquisitionCount();
+    } else {
+        return CL_ERR_NOT_EXIST;
+    }
     auto nErased = acquiredChronicleMap_->erase(cid);
     if (nErased == 1) {
         return CL_SUCCESS;
@@ -144,7 +155,7 @@ int ChronicleMetaDirectory::destroy_story(std::string& chronicle_name,
     uint64_t cid = CityHash64(chronicle_name.c_str(), chronicle_name.size());
     Chronicle *pChronicle = chronicleMap_->find(cid)->second;
     if (!pChronicle->removeStory(chronicle_name, story_name, flags)) {
-        LOGE("Cannot find Story name=%s in Chronicle name=%s", story_name.c_str(), chronicle_name.c_str());
+        LOGE("Fail to remove Story name=%s in Chronicle name=%s", story_name.c_str(), chronicle_name.c_str());
         return CL_ERR_UNKNOWN;
     }
     return CL_SUCCESS;
@@ -180,6 +191,7 @@ int ChronicleMetaDirectory::acquire_story(const std::string& chronicle_name,
     } catch (const std::out_of_range& e) {
         return CL_ERR_NOT_EXIST;
     }
+    pStory->incrementAcquisitionCount();
     auto res = acquiredStoryMap_->emplace(sid, pStory);
     if (res.second) {
         return CL_SUCCESS;
@@ -194,6 +206,13 @@ int ChronicleMetaDirectory::release_story(const std::string& chronicle_name,
     LOGD("releasing Story name=%s in Chronicle name=%s", story_name.c_str(), chronicle_name.c_str());
     std::string story_name_for_hash = chronicle_name + story_name;
     uint64_t sid = CityHash64(story_name_for_hash.c_str(), story_name_for_hash.size());
+    auto storyRecord = acquiredStoryMap_->find(sid);
+    if (storyRecord != acquiredStoryMap_->end()) {
+        Story *pStory = storyRecord->second;
+        pStory->decrementAcquisitionCount();
+    } else {
+        return CL_ERR_NOT_EXIST;
+    }
     auto nErased = acquiredStoryMap_->erase(sid);
     if (nErased == 1) {
         return CL_SUCCESS;

@@ -42,7 +42,14 @@ typedef struct StoryStats_ {
 
 class Story {
 public:
-    Story() {}
+    Story() {
+        attrs_.size = 0;
+        attrs_.indexing_granularity = story_gran_ms;
+        attrs_.type = story_type_standard;
+        attrs_.tiering_policy = story_tiering_normal;
+        attrs_.access_permission = 0;
+        stats_.count = 0;
+    }
 
     const std::string &getName() const { return name_; }
     uint64_t getSid() const { return sid_; }
@@ -61,6 +68,10 @@ public:
         }
     }
     void setEventMap(const std::unordered_map<std::string, Event> &eventMap) { eventMap_ = eventMap; }
+
+    int incrementAcquisitionCount() { stats_.count++; return stats_.count; }
+    int decrementAcquisitionCount() { stats_.count--; return stats_.count; }
+    int getAcquisitionCount() { return stats_.count; }
 
     friend std::ostream& operator<<(std::ostream& os, const Story& story);
 
