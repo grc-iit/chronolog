@@ -169,9 +169,9 @@ public:
         return false;
     }
 
-    int incrementAcquisitionCount() { stats_.count++; return stats_.count; }
-    int decrementAcquisitionCount() { stats_.count--; return stats_.count; }
-    int getAcquisitionCount() { return stats_.count; }
+    uint64_t incrementAcquisitionCount() { stats_.count++; return stats_.count; }
+    uint64_t decrementAcquisitionCount() { stats_.count--; return stats_.count; }
+    uint64_t getAcquisitionCount() const { return stats_.count; }
 
     size_t getPropertyListSize() { return propertyList_.size(); }
     size_t getMetadataMapSize() { return metadataMap_.size(); }

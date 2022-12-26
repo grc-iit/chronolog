@@ -69,9 +69,9 @@ public:
     }
     void setEventMap(const std::unordered_map<std::string, Event> &eventMap) { eventMap_ = eventMap; }
 
-    int incrementAcquisitionCount() { stats_.count++; return stats_.count; }
-    int decrementAcquisitionCount() { stats_.count--; return stats_.count; }
-    int getAcquisitionCount() { return stats_.count; }
+    uint64_t incrementAcquisitionCount() { stats_.count++; return stats_.count; }
+    uint64_t decrementAcquisitionCount() { stats_.count--; return stats_.count; }
+    uint64_t getAcquisitionCount() const { return stats_.count; }
 
     friend std::ostream& operator<<(std::ostream& os, const Story& story);
 
