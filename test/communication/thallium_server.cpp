@@ -16,6 +16,7 @@
 #include <unistd.h>
 #include <margo.h>
 #include "log.h"
+#include "global_var_visor.h"
 
 #define MSG_SIZE 100
 

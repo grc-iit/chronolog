@@ -6,6 +6,12 @@
 #define CHRONOLOG_GLOBAL_VAR_VISOR_H
 
 #include <ClocksourceManager.h>
+#include <ConfigurationManager.h>
+#include <Chronicle.h>
+#include <ChronicleMetaDirectory.h>
+#include <rpc.h>
+#include <RPCFactory.h>
+#include <RPCVisor.h>
 
 /**
  * Configuration-related global variables

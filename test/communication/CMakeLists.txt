@@ -21,21 +21,28 @@ endif()
 
 add_executable(thallium_server thallium_server.cpp
         ../../ChronoVisor/src/ClientRegistryRecord.cpp
-        ../../ChronoVisor/src/ClientRegistryManager.cpp)
+        ../../ChronoVisor/include/ClientRegistryManager.h
+        ../../ChronoAPI/ChronoLog/include/global_var_visor.h
+        ../../ChronoVisor/src/ClientRegistryManager.cpp
+        ../../ChronoVisor/src/ChronicleMetaDirectory.cpp
+        ../../ChronoVisor/src/city.cpp
+        ../../ChronoVisor/include/city.h)
 target_include_directories(thallium_server PRIVATE ../../ChronoAPI/ChronoLog/include)
 target_include_directories(thallium_server PRIVATE ../../ChronoVisor/include)
 target_link_libraries(thallium_server PRIVATE thallium)
 target_link_libraries(thallium_server PUBLIC "-pthread")
 add_test(NAME CommThalliumServer COMMAND thallium_server)
 
-add_executable(thallium_client thallium_client.cpp)
+add_executable(thallium_client thallium_client.cpp
+        ../../ChronoAPI/ChronoLog/include/global_var_client.h)
 target_include_directories(thallium_client PRIVATE)
 target_link_libraries(thallium_client thallium)
 add_test(NAME CommThalliumClient COMMAND thallium_client)
 
 find_package(MPI)
 
-add_executable(thallium_client_mpi thallium_client_mpi.cpp)
+add_executable(thallium_client_mpi thallium_client_mpi.cpp
+        ../../ChronoAPI/ChronoLog/include/global_var_client.h)
 include_directories(SYSTEM ${MPI_INCLUDE_PATH})
 target_include_directories(thallium_client_mpi PRIVATE ../../ChronoAPI/ChronoLog/include)
 target_link_libraries(thallium_client_mpi thallium ${MPI_C_LIBRARIES})
