@@ -35,8 +35,7 @@ namespace ChronoVisor {
         midVec_.reserve(numPorts_);
         pTimeManager = new TimeManager();
         chronicleMetaDirectory_ = ChronoLog::Singleton<ChronicleMetaDirectory>::GetInstance();
-        adminRpcProxy_ = ChronoLog::Singleton<ChronoLogAdminRPCVisor>::GetInstance();
-        metadataRPCProxy_ = ChronoLog::Singleton<ChronicleMetadataRPCVisor>::GetInstance();
+        rpcProxy_ = ChronoLog::Singleton<RPCVisor>::GetInstance();
         clientRegistryManager_ = ChronoLog::Singleton<ClientRegistryManager>::GetInstance();
     }
 
@@ -44,8 +43,7 @@ namespace ChronoVisor {
         LOGI("ChronoVisor server starting, listen on %d ports starting from %d ...", numPorts_, basePorts_);
 
         // bind functions first (defining RPC routines on engines)
-        adminRpcProxy_->bind_functions();
-        metadataRPCProxy_->bind_functions();
+        rpcProxy_->bind_functions();
 
         // start engines (listening for incoming requests)
         ChronoLog::Singleton<ChronoLogRPCFactory>::GetInstance()->

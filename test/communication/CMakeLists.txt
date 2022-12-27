@@ -42,13 +42,12 @@ target_link_libraries(thallium_client_mpi thallium ${MPI_C_LIBRARIES})
 add_test(NAME CommThalliumClientMPI COMMAND thallium_client_mpi)
 
 add_executable(rpc_server rpc_server.cpp
-        ../../ChronoAPI/ChronoLog/include/ChronoLogAdminRPCVisor.h
+        ../../ChronoAPI/ChronoLog/include/RPCVisor.h
         ../../ChronoVisor/include/ClientRegistryManager.h
         ../../ChronoAPI/ChronoLog/include/global_var_visor.h
         ../../ChronoVisor/src/ClientRegistryManager.cpp
         ../../ChronoVisor/include/ClientRegistryInfo.h
         ../../ChronoVisor/src/ClientRegistryRecord.cpp
-        ../../ChronoAPI/ChronoLog/include/ChronicleMetadataRPCVisor.h
         ../../ChronoAPI/ChronoLog/include/macro.h
         ../../ChronoAPI/ChronoLog/include/rpc.h
         ../../ChronoAPI/ChronoLog/include/RPCFactory.h
@@ -64,10 +63,12 @@ target_include_directories(rpc_server PRIVATE
         ../../tools/Serde/include
         ../../ChronoVisor/include)
 target_link_libraries(rpc_server thallium)
+add_custom_command(TARGET rpc_server POST_BUILD
+        COMMAND cp ${CMAKE_CURRENT_SOURCE_DIR}/server_list.in ${CMAKE_CURRENT_BINARY_DIR}/server_list)
 add_test(NAME CommRPCServer COMMAND rpc_server)
 
 add_executable(rpc_client rpc_client.cpp
-        ../../Client/include/ChronicleMetadataRPCClient.h
+        ../../Client/include/RPCClient.h
         ../../ChronoAPI/ChronoLog/include/macro.h
         ../../ChronoAPI/ChronoLog/include/rpc.h
         ../../ChronoAPI/ChronoLog/include/RPCFactory.h

@@ -1,7 +1,7 @@
 find_package(mercury REQUIRED)
 find_package(thallium REQUIRED)
 
-add_executable(chronolog_client_lib_metadata_rpc_test client_lib_metadata_rpc_test.cpp ../../../../../Client/include/ChronoLogAdminRPCClient.h)
+add_executable(chronolog_client_lib_metadata_rpc_test client_lib_metadata_rpc_test.cpp)
 target_include_directories(chronolog_client_lib_metadata_rpc_test PRIVATE ../../../../../Client/include
         ../../../../../ChronoAPI/ChronoLog/include
         ../../../../../ChronoVisor/include)

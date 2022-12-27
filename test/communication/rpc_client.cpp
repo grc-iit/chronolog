@@ -6,7 +6,7 @@
 #include <chrono>
 #include <rpc.h>
 #include <common.h>
-#include "ChronicleMetadataRPCClient.h"
+#include "RPCClient.h"
 #include "city.h"
 #include "log.h"
 
@@ -30,7 +30,7 @@ int main() {
                                              duration_destroy_chronicle{};
 
     CHRONOLOG_CONF->ConfigureDefaultClient("../../../test/communication/server_list");
-    ChronicleMetadataRPCClient rpcProxy;
+    RPCClient rpcProxy;
     int flags;
 
     std::vector<std::string> chronicle_names;
@@ -71,7 +71,7 @@ int main() {
             chronicle_attrs.emplace("IndexGranularity", "Millisecond");
             chronicle_attrs.emplace("TieringPolicy", "Hot");
             t1 = std::chrono::steady_clock::now();
-            ret = rpcProxy.CreateStory(chronicle_name, story_name, story_attrs);
+            ret = rpcProxy.CreateStory(chronicle_name, story_name, story_attrs, flags);
             t2 = std::chrono::steady_clock::now();
             duration_create_story += (t2 - t1);
 
@@ -93,8 +93,9 @@ int main() {
             duration_destroy_story += (t2 - t1);
         }
 
+        std::string value;
         t1 = std::chrono::steady_clock::now();
-        std::string value = rpcProxy.GetChronicleAttr(chronicle_name, key);
+        ret = rpcProxy.GetChronicleAttr(chronicle_name, key, value);
         t2 = std::chrono::steady_clock::now();
         duration_get_chronicle_attr += (t2 - t1);
 

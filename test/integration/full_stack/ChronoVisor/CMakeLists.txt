@@ -12,12 +12,10 @@ add_executable(chronovisor_server_test chronovisor_server.cpp
         ../../../../ChronoVisor/src/ChronoVisorServer2.cpp
         ../../../../ChronoVisor/include/ClocksourceManager.h
         ../../../../ChronoVisor/src/ClocksourceManager.cpp
-        ../../../../ChronoAPI/ChronoLog/include/ChronoLogAdminRPCVisor.h
         ../../../../ChronoVisor/include/ClientRegistryManager.h
         ../../../../ChronoVisor/src/ClientRegistryManager.cpp
         ../../../../ChronoVisor/include/ClientRegistryInfo.h
         ../../../../ChronoVisor/src/ClientRegistryRecord.cpp
-        ../../../../ChronoAPI/ChronoLog/include/ChronicleMetadataRPCVisor.h
         ../../../../ChronoAPI/ChronoLog/include/macro.h
         ../../../../ChronoAPI/ChronoLog/include/rpc.h
         ../../../../ChronoAPI/ChronoLog/include/RPCFactory.h

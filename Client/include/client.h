@@ -5,8 +5,7 @@
 #ifndef CHRONOLOG_CLIENT_H
 #define CHRONOLOG_CLIENT_H
 
-#include "ChronicleMetadataRPCClient.h"
-#include "ChronoLogAdminRPCClient.h"
+#include "RPCClient.h"
 #include "errcode.h"
 
 class ChronoLogClient {
@@ -15,8 +14,7 @@ public:
 
     ChronoLogClient(const std::string& server_list_file_path) {
         CHRONOLOG_CONF->ConfigureDefaultClient(server_list_file_path);
-        metadataRpcProxy_ = ChronoLog::Singleton<ChronicleMetadataRPCClient>::GetInstance();
-        adminRpcProxy_ = ChronoLog::Singleton<ChronoLogAdminRPCClient>::GetInstance();
+        rpcProxy_ = ChronoLog::Singleton<RPCClient>::GetInstance();
     }
 
     ChronoLogClient(const ChronoLogRPCImplementation& protocol, const std::string& visor_ip, int visor_port) {
@@ -24,8 +22,7 @@ public:
         CHRONOLOG_CONF->RPC_IMPLEMENTATION = protocol;
         CHRONOLOG_CONF->RPC_SERVER_IP = visor_ip;
         CHRONOLOG_CONF->RPC_BASE_SERVER_PORT = visor_port;
-        adminRpcProxy_ = ChronoLog::Singleton<ChronoLogAdminRPCClient>::GetInstance();
-        metadataRpcProxy_ = ChronoLog::Singleton<ChronicleMetadataRPCClient>::GetInstance();
+        rpcProxy_ = ChronoLog::Singleton<RPCClient>::GetInstance();
     }
 
     int Connect(const std::string &server_uri,
@@ -50,7 +47,6 @@ public:
     int EditChronicleAttr(std::string &chronicle_name, const std::string &key, const std::string &value);
 
 private:
-    std::shared_ptr<ChronicleMetadataRPCClient> metadataRpcProxy_;
-    std::shared_ptr<ChronoLogAdminRPCClient> adminRpcProxy_;
+    std::shared_ptr<RPCClient> rpcProxy_;
 };
 #endif //CHRONOLOG_CLIENT_H
