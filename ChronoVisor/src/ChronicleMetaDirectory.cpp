@@ -7,7 +7,7 @@
 #include <chrono>
 #include <unistd.h>
 #include <mutex>
-#include <errcode.h>
+#include <typedefs.h>
 
 ChronicleMetaDirectory::ChronicleMetaDirectory() {
     LOGD("%s constructor is called", typeid(*this).name());
@@ -32,6 +32,7 @@ int ChronicleMetaDirectory::create_chronicle(const std::string& name) {
     Chronicle *pChronicle = new Chronicle();
     pChronicle->setName(name);
     uint64_t cid = CityHash64(name.c_str(), name.size());
+    if (chronicleMap_->find(cid) != chronicleMap_->end()) return CL_ERR_CHRONICLE_EXISTS;
     pChronicle->setCid(cid);
     auto res = chronicleMap_->emplace(cid, pChronicle);
     t2 = std::chrono::steady_clock::now();
@@ -137,11 +138,11 @@ int ChronicleMetaDirectory::create_story(std::string& chronicle_name,
     if (chronicleRecord != chronicleMap_->end()) {
         Chronicle *pChronicle = chronicleRecord->second;
         LOGD("Chronicle@%p", &(*pChronicle));
-        bool res = pChronicle->addStory(chronicle_name, story_name, attrs);
+        CL_Status res = pChronicle->addStory(chronicle_name, story_name, attrs);
         t2 = std::chrono::steady_clock::now();
         std::chrono::duration<double, std::nano> duration = (t2 - t1);
         LOGD("time in %s: %lf ns", __FUNCTION__, duration.count());
-        return res ? CL_SUCCESS : CL_ERR_UNKNOWN;
+        return res;
     } else {
         LOGE("Cannot find Chronicle name=%s", chronicle_name.c_str());
         return CL_ERR_NOT_EXIST;
@@ -154,9 +155,10 @@ int ChronicleMetaDirectory::destroy_story(std::string& chronicle_name,
     LOGD("destroying Story name=%s in Chronicle name=%s", story_name.c_str(), chronicle_name.c_str());
     uint64_t cid = CityHash64(chronicle_name.c_str(), chronicle_name.size());
     Chronicle *pChronicle = chronicleMap_->find(cid)->second;
-    if (!pChronicle->removeStory(chronicle_name, story_name, flags)) {
+    CL_Status res = pChronicle->removeStory(chronicle_name, story_name, flags);
+    if (res != CL_SUCCESS) {
         LOGE("Fail to remove Story name=%s in Chronicle name=%s", story_name.c_str(), chronicle_name.c_str());
-        return CL_ERR_UNKNOWN;
+        return res;
     }
     return CL_SUCCESS;
 }
