@@ -43,7 +43,7 @@ int main(int argc, char **argv) {
     g_str_vector.push_back("300");
 
     std::shared_ptr<ClientRegistryManager> g_clientRegistryManager = ChronoLog::Singleton<ClientRegistryManager>::GetInstance();
-    ClientRegistryInfo record;
+    ClientInfo record;
     record.addr_ = "127.0.0.1";
     g_clientRegistryManager->add_client_record("1000000", record);
     g_clientRegistryManager->add_client_record("2000000", record);

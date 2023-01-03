@@ -14,7 +14,7 @@ add_executable(chronovisor_server_test chronovisor_server.cpp
         ../../../../ChronoVisor/src/ClocksourceManager.cpp
         ../../../../ChronoVisor/include/ClientRegistryManager.h
         ../../../../ChronoVisor/src/ClientRegistryManager.cpp
-        ../../../../ChronoVisor/include/ClientRegistryInfo.h
+        ../../../../ChronoVisor/include/ClientInfo.h
         ../../../../ChronoVisor/src/ClientRegistryRecord.cpp
         ../../../../ChronoAPI/ChronoLog/include/macro.h
         ../../../../ChronoAPI/ChronoLog/include/rpc.h

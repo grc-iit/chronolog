@@ -15,7 +15,6 @@
 #include <TimeManager.h>
 #include <TimeRecord.h>
 #include <ClocksourceManager.h>
-#include <ClientRegistryInfo.h>
 #include <ChronicleMetaDirectory.h>
 #include <ClientRegistryManager.h>
 #include <RPCVisor.h>

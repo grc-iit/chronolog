@@ -14,7 +14,7 @@ ClientRegistryManager::ClientRegistryManager() {
     LOGD("%s constructor is called, object created@%p in thread PID=%d",
          typeid(*this).name(), this, getpid());
 
-    clientRegistry_ = new std::unordered_map<std::string, ClientRegistryInfo>();
+    clientRegistry_ = new std::unordered_map<std::string, ClientInfo>();
 
     LOGD("clientRegistry_@%p has %ld entries", clientRegistry_, clientRegistry_->size());
 }
@@ -23,7 +23,7 @@ ClientRegistryManager::~ClientRegistryManager() {
     delete clientRegistry_;
 }
 
-int ClientRegistryManager::add_client_record(const std::string &client_id, const ClientRegistryInfo &record) {
+int ClientRegistryManager::add_client_record(const std::string &client_id, const ClientInfo &record) {
     LOGD("%s in ClientRegistryManager@%p", __FUNCTION__, this);
     LOGD("clientRegistry_@%p has %ld entries stored", clientRegistry_, clientRegistry_->size());
     std::lock_guard<std::mutex> lock(g_clientRegistryMutex_);
