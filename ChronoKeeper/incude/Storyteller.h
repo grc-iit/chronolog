@@ -9,12 +9,12 @@ namespace chronolog
 template <typename ClientId,
 	  typename ChronoTime,
 	  typename StoryAccessToken,
-          typename StoryMetadata
+          typename StoryMetadata,
           typename RPCChannel>
 class Storyteller
 {
 public:
-	Storyteller();
+	Storyteller( ClientId const&);
 	~Storyteller();
 
 	StoryAccessToken const & getStoryAccessToken ( StoryId const&) const;
