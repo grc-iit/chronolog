@@ -7,6 +7,9 @@
 
 #include "RPCClient.h"
 #include "errcode.h"
+#include "ClocksourceManager.h"
+
+ClocksourceManager *ClocksourceManager::clocksourceManager_ = nullptr;
 
 class ChronoLogClient {
 public:

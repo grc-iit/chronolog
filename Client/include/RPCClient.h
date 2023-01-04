@@ -9,11 +9,11 @@
 #include <unordered_map>
 #include <functional>
 #include <thallium.hpp>
+#include <utility>
 #include <sys/types.h>
 #include <unistd.h>
 #include "macro.h"
 #include "RPCFactory.h"
-#include "global_var_client.h"
 
 class RPCClient {
 public:
@@ -21,7 +21,6 @@ public:
         LOGD("%s constructor is called", typeid(*this).name());
         rpc = ChronoLog::Singleton<ChronoLogRPCFactory>::GetInstance()
                 ->GetRPC(CHRONOLOG_CONF->RPC_BASE_SERVER_PORT);
-        g_RPC = rpc;
         set_prefix("ChronoLog");
         LOGD("%s constructor finishes, object created@%p in thread PID=%d",
              typeid(*this).name(), this, getpid());
@@ -111,7 +110,7 @@ public:
 
 private:
     void set_prefix(std::string prefix) {
-        func_prefix = prefix;
+        func_prefix = std::move(prefix);
         switch (CHRONOLOG_CONF->RPC_IMPLEMENTATION) {
             case CHRONOLOG_THALLIUM_SOCKETS:
             case CHRONOLOG_THALLIUM_TCP:

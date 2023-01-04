@@ -6,8 +6,8 @@
 #include <unordered_map>
 #include <random>
 #include <ChronicleMetaDirectory.h>
-#include <TimeManager.h>
-#include <city.h>
+#include "TimeManager.h"
+#include "city.h"
 #include <common.h>
 
 #define CHRONICLE_NAME_LEN 8

@@ -17,10 +17,9 @@ add_library(ChronoLogClient_lib
         ../ChronoAPI/ChronoLog/include/rpc.h
         ../ChronoAPI/ChronoLog/include/RPCFactory.h
         ../ChronoAPI/ChronoLog/include/singleton.h
-        ../ChronoVisor/src/city.cpp
-        ../ChronoVisor/include/city.h)
+        ../ChronoAPI/ChronoLog/src/city.cpp
+        ../ChronoAPI/ChronoLog/include/city.h)
 target_include_directories(ChronoLogClient_lib PUBLIC include
         ../ChronoAPI/ChronoLog/include
-        ../ChronoVisor/include
         ../Client/include)
 target_link_libraries(ChronoLogClient_lib thallium)

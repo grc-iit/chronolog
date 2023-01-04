@@ -12,9 +12,9 @@
 #include <log.h>
 #include <thallium.hpp>
 #include <margo.h>
-#include <TimeManager.h>
+#include "TimeManager.h"
 #include <TimeRecord.h>
-#include <ClocksourceManager.h>
+#include "ClocksourceManager.h"
 #include <ChronicleMetaDirectory.h>
 #include <ClientRegistryManager.h>
 #include <RPCVisor.h>

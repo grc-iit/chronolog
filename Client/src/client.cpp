@@ -2,7 +2,6 @@
 // Created by kfeng on 5/17/22.
 //
 
-#include <sys/types.h>
 #include <unistd.h>
 #include "client.h"
 #include "city.h"
@@ -14,7 +13,7 @@ int ChronoLogClient::Connect(const std::string &server_uri,
     if (client_id.empty()) {
         char ip[16];
         struct hostent *he = gethostbyname("localhost");
-        in_addr **addr_list = (struct in_addr **) he->h_addr_list;
+        auto **addr_list = (struct in_addr **) he->h_addr_list;
         strcpy(ip, inet_ntoa(*addr_list[0]));
         std::string addr_str = ip + std::string(",") + std::to_string(getpid());
         uint64_t client_id_hash = CityHash64(addr_str.c_str(), addr_str.size());

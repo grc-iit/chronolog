@@ -10,8 +10,8 @@ add_test(NAME chronolog_client_test COMMAND chronolog_client_test)
 
 add_executable(chronovisor_server_test chronovisor_server.cpp
         ../../../../ChronoVisor/src/ChronoVisorServer2.cpp
-        ../../../../ChronoVisor/include/ClocksourceManager.h
-        ../../../../ChronoVisor/src/ClocksourceManager.cpp
+        ../../../../ChronoAPI/ChronoLog/include/ClocksourceManager.h
+        ../../../../ChronoAPI/ChronoLog/src/ClocksourceManager.cpp
         ../../../../ChronoVisor/include/ClientRegistryManager.h
         ../../../../ChronoVisor/src/ClientRegistryManager.cpp
         ../../../../ChronoVisor/include/ClientInfo.h
@@ -23,8 +23,8 @@ add_executable(chronovisor_server_test chronovisor_server.cpp
         ../../../../ChronoVisor/include/Chronicle.h
         ../../../../ChronoVisor/include/Story.h
         ../../../../ChronoVisor/include/Event.h
-        ../../../../ChronoVisor/src/city.cpp
-        ../../../../ChronoVisor/include/city.h
+        ../../../../ChronoAPI/ChronoLog/src/city.cpp
+        ../../../../ChronoAPI/ChronoLog/include/city.h
         ../../../../tools/Serde/src/SerDe.cpp)
 target_include_directories(chronovisor_server_test PRIVATE
         ../../../../ChronoAPI/ChronoLog/include

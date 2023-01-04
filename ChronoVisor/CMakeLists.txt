@@ -5,11 +5,11 @@ add_library(ChronoVisor_lib STATIC
         include/SerVector.h include/TimeRecord.h
         src/ChronoVisorServer.cpp src/ClientRegistryRecord.cpp
         src/TimeRecord.cpp
-        src/TimeManager.cpp include/TimeManager.h
-        src/ClocksourceManager.cpp include/ClocksourceManager.h
+        ../ChronoAPI/ChronoLog/src/TimeManager.cpp ../ChronoAPI/ChronoLog/include/TimeManager.h
+        ../ChronoAPI/ChronoLog/src/ClocksourceManager.cpp ../ChronoAPI/ChronoLog/include/ClocksourceManager.h
         src/ChronicleMetaDirectory.cpp include/ChronicleMetaDirectory.h
         include/Chronicle.h include/Story.h include/Archive.h include/Event.h
-        src/city.cpp include/city.h include/config.h include/ClientRegistryManager.h src/ClientRegistryManager.cpp)
+        ../ChronoAPI/ChronoLog/src/city.cpp ../ChronoAPI/ChronoLog/include/city.h ../ChronoAPI/ChronoLog/include/config.h include/ClientRegistryManager.h src/ClientRegistryManager.cpp)
 target_include_directories(ChronoVisor_lib PUBLIC include
         ../ChronoAPI/ChronoLog/include
         ${ROCKSDB_INCLUDE}) #-I/usr/include
@@ -30,11 +30,11 @@ add_library(ChronoVisor_lib2 STATIC
         include/TimeRecord.h
         src/ChronoVisorServer2.cpp src/ClientRegistryRecord.cpp
         src/TimeRecord.cpp
-        src/TimeManager.cpp include/TimeManager.h
-        src/ClocksourceManager.cpp include/ClocksourceManager.h
+        ../ChronoAPI/ChronoLog/src/TimeManager.cpp ../ChronoAPI/ChronoLog/include/TimeManager.h
+        ../ChronoAPI/ChronoLog/src/ClocksourceManager.cpp ../ChronoAPI/ChronoLog/include/ClocksourceManager.h
         src/ChronicleMetaDirectory.cpp include/ChronicleMetaDirectory.h
         include/Chronicle.h include/Story.h include/Archive.h include/Event.h
-        src/city.cpp include/city.h include/config.h include/ClientRegistryManager.h src/ClientRegistryManager.cpp)
+        ../ChronoAPI/ChronoLog/src/city.cpp ../ChronoAPI/ChronoLog/include/city.h ../ChronoAPI/ChronoLog/include/config.h include/ClientRegistryManager.h src/ClientRegistryManager.cpp)
 target_include_directories(ChronoVisor_lib2 PUBLIC include
         ../ChronoAPI/ChronoLog/include)
 target_link_libraries(ChronoVisor_lib2 thallium)
