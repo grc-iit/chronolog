@@ -18,11 +18,17 @@ int main()
     std::string hostname;
     std::string portnum;
     std::string filename = "server_list";
-    std::string protocol = "ofi";
-    std::string provider; 
-
-    std::cout <<" Enter protocol (ofi provider), choose from tcp, sockets, shm, udp "<<std::endl;
-    std::cin >> provider;
+    ChronoLogRPCImplementation protocol;
+    std::string protocol_string; 
+    std::string server_uri;
+    std::cout <<" Enter protocol 0 for sockets, 1 for TCP, 2 for verbs "<<std::endl;
+    std::cin >> protocol_string;
+    protocol = (ChronoLogRPCImplementation)std::stoi(protocol_string);
+    if(protocol < 0 || protocol > 2) 
+    {
+	 std::cout <<" protocol not supported, Exiting"<<std::endl;
+	 exit(-1);
+    }
 
     std::cout <<" Enter server hostname (localhost) : "<<std::endl;
     std::cin >> hostname;
@@ -43,25 +49,36 @@ int main()
     strcpy(ip_add, inet_ntoa(*addr_list[0]));
     host_ip = std::string(ip_add);
 
-    ChronoLogCharStruct host_ip_struct(host_ip);
-    ChronoLogCharStruct socket_struct(protocol+"+"+provider);
+    std::string protocolstring;
 
-    CHRONOLOG_CONF->SOCKETS_CONF = socket_struct;
-    CHRONOLOG_CONF->RPC_SERVER_IP = host_ip_struct;
-    CHRONOLOG_CONF->RPC_BASE_SERVER_PORT = portno;
+    if(protocol==0)
+    {
+       protocolstring = "ofi+sockets";
+       ChronoLogCharStruct prot_struct(protocolstring);
+       CHRONOLOG_CONF->SOCKETS_CONF = prot_struct;
+    }
+    else if(protocol==1)
+    {
+	protocolstring = "ofi+tcp";
+	ChronoLogCharStruct prot_struct(protocolstring);
+	CHRONOLOG_CONF->SOCKETS_CONF = prot_struct;
+    }
+    else protocolstring = "verbs";
 
-    ChronoLogClient client;
+    server_uri = protocolstring+"://"+host_ip+":"+portnum;
 
-    std::string conf = protocol + "+"+ provider;    
-    std::string conn = "://";
-    std::string server_uri = conf + conn + host_ip + ":" + std::to_string(portno);
+    std::fstream fp(filename,std::ios::out);
+    fp << "localhost"<<std::endl;
 
+    ChronoLogClient client(protocol,host_ip,portno);
+     
     int flags = 0;
     bool ret = false;
+    uint64_t offset = 0;
 
     std::string client_id = gen_random(8);
 
-    ret = client.Connect(server_uri, client_id);
+    ret = client.Connect(server_uri, client_id,flags,offset);
 
     std::cout <<" connected to server address : "<<server_uri<<std::endl;
 
