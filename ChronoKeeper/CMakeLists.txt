@@ -1,3 +1,11 @@
 add_executable(KeeperService KeeperRecordingService.cpp)
-target_link_libraries(KeeperService thallium)
 
+target_include_directories(KeeperService PUBLIC include)
+target_link_libraries(KeeperService mercury thallium)
+
+add_executable(KeeperRegistryService KeeperRegistryService.cpp)
+target_include_directories(KeeperRegistryService PUBLIC include)
+target_link_libraries(KeeperRegistryService mercury thallium)
+
+#add_subdirectory(keeper_reg_service)
+add_subdirectory(storyteller_client)
