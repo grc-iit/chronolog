@@ -116,7 +116,6 @@ public:
         pStory->setProperty(attrs);
         pStory->setSid(sid);
         pStory->setCid(cid);
-        std::lock_guard<std::mutex> lock(storyMapMutex_);
         LOGD("adding to storyMap@%p with %lu entries in Chronicle@%p",
              &storyMap_, storyMap_.size(), this);
         auto res = storyMap_.emplace(sid, pStory);
@@ -128,7 +127,6 @@ public:
         // add cid to name before hash to allow same story name across chronicles
         std::string story_name_for_hash = chronicle_name + story_name;
         uint64_t sid = CityHash64(story_name_for_hash.c_str(), story_name_for_hash.size());
-        std::lock_guard<std::mutex> lock(storyMapMutex_);
         auto storyRecord = storyMap_.find(sid);
         if (storyRecord != storyMap_.end()) {
             Story *pStory = storyRecord->second;
@@ -156,7 +154,6 @@ public:
         pArchive->setProperty(attrs);
         pArchive->setAid(aid);
         pArchive->setCid(cid);
-        std::lock_guard<std::mutex> lock(archiveMapMutex_);
         LOGD("adding to archiveMap@%p with %lu entries in Chronicle@%p",
              &archiveMap_, archiveMap_.size(), this);
         auto res = archiveMap_.emplace(aid, pArchive);
@@ -168,7 +165,6 @@ public:
         // add cid to name before hash to allow same archive name across chronicles
         std::string archive_name_for_hash = std::to_string(cid) + name;
         uint64_t aid = CityHash64(archive_name_for_hash.c_str(), archive_name_for_hash.size());
-        std::lock_guard<std::mutex> lock(archiveMapMutex_);
         auto storyRecord = archiveMap_.find(aid);
         if (storyRecord != archiveMap_.end()) {
             Archive *pArchive = storyRecord->second;
