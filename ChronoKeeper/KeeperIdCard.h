@@ -1,6 +1,7 @@
 #ifndef KEEPER_ID_CARD_H
 #define KEEPER_ID_CARD_H
 
+#include <ostream>
 
 
 namespace chronolog
@@ -43,4 +44,10 @@ public:
 
 }
 
+std::ostream & operator<< (std::ostream & cout , chronolog::KeeperIdCard const & keeper_id_card)
+{
+
+   cout << "KeeperIdCard{"<<keeper_id_card.getId()<<":"<<keeper_id_card.getIPaddr()<<":"<<keeper_id_card.getPort()<<"}";
+   return cout;
+}
 #endif

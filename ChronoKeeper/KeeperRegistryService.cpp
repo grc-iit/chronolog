@@ -19,21 +19,21 @@ class KeeperRegistryService : public tl::provider<KeeperRegistryService>
     private:
 
 
-    void register_keeper(tl::request const& request, chronolog::KeeperIdCard const&)
+    void register_keeper(tl::request const& request, chronolog::KeeperIdCard const& keeper_id_card)
     {
 	
 	int return_code = 0;
 
-        std::cout << "register_keeper"<<std::endl;
+        std::cout << "register_keeper:"<< keeper_id_card <<std::endl;
 	
 	request.respond(return_code);
     }
-    void unregister_keeper(tl::request const& request, chronolog::KeeperIdCard const&)
+    void unregister_keeper(tl::request const& request, chronolog::KeeperIdCard const& keeper_id_card)
     {
 	
 	int return_code = 0;
 
-        std::cout << "unregister_keeper"<<std::endl;
+        std::cout << "unregister_keeper:" << keeper_id_card<<std::endl;
 	
 	request.respond(return_code);
     }
@@ -69,7 +69,7 @@ class KeeperRegistryService : public tl::provider<KeeperRegistryService>
 // uncomment to test this class as standalone process
 int main(int argc, char** argv) {
 
-    uint16_t provider_id = 22;
+    uint16_t provider_id = 25;
 
     margo_instance_id margo_id=margo_init("ofi+sockets",MARGO_SERVER_MODE, 1, 0);
     //margo_instance_id margo_id=margo_init("tcp",MARGO_SERVER_MODE, 1, 0);

@@ -1,3 +1,4 @@
+cmake_minimum_required(VERSION 3.21)
 add_executable(KeeperService KeeperRecordingService.cpp)
 
 target_include_directories(KeeperService PUBLIC include)

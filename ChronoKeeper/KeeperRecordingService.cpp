@@ -78,7 +78,19 @@ int main(int argc, char** argv) {
         << " with provider id " << provider_id << std::endl;
 
     chronolog::KeeperRecordingService keeperRecordingService(keeperEngine, provider_id);
-   
+
+    //tl::engine myEngine("ofi+sockets", THALLIUM_CLIENT_MODE);
+    tl::remote_procedure handle_stats_msg = keeperEngine.define("handle_stats_msg").disable_response();
+    tl::remote_procedure register_keeper = keeperEngine.define("register_keeper");
+    tl::endpoint server = keeperEngine.lookup(argv[1]);
+    uint16_t registry_provider_id = atoi(argv[2]);
+    tl::provider_handle ph(server, registry_provider_id);
+
+    std::string name("Keeper:22");
+    handle_stats_msg.on(ph)(name);
+
+    chronolog::KeeperIdCard keeperIdCard(123, 5555, 22);
+    register_keeper.on(ph)(keeperIdCard); 
     return 0;
 }
 
