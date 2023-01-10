@@ -53,12 +53,12 @@ int ChronicleMetaDirectory::create_chronicle(const std::string& name,
     LOGD("creating Chronicle name=%s", name.c_str());
     std::chrono::steady_clock::time_point t1, t2;
     t1 = std::chrono::steady_clock::now();
-    auto *pChronicle = new Chronicle();
-    pChronicle->setName(name);
     uint64_t cid = CityHash64(name.c_str(), name.size());
     std::lock_guard<std::mutex> lock(g_chronicleMetaDirectoryMutex_);
     /* Check if Chronicle already exists, fail if true */
     if (chronicleMap_->find(cid) != chronicleMap_->end()) return CL_ERR_CHRONICLE_EXISTS;
+    auto *pChronicle = new Chronicle();
+    pChronicle->setName(name);
     pChronicle->setCid(cid);
     auto res = chronicleMap_->emplace(cid, pChronicle);
     t2 = std::chrono::steady_clock::now();
