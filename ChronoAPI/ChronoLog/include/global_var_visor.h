@@ -5,7 +5,7 @@
 #ifndef CHRONOLOG_GLOBAL_VAR_VISOR_H
 #define CHRONOLOG_GLOBAL_VAR_VISOR_H
 
-#include <ClocksourceManager.h>
+#include "ClocksourceManager.h"
 #include <ConfigurationManager.h>
 #include <Chronicle.h>
 #include <ChronicleMetaDirectory.h>

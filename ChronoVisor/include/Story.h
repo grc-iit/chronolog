@@ -8,7 +8,8 @@
 #include <unordered_map>
 #include <atomic>
 #include <Event.h>
-#include <city.h>
+#include "city.h"
+#include <mutex>
 
 enum StoryIndexingGranularity {
     story_gran_ns = 0,
@@ -61,7 +62,7 @@ public:
     void setName(const std::string &name) { name_ = name; }
     void setSid(uint64_t sid) { sid_ = sid; }
     void setCid(uint64_t cid) { cid_ = cid; }
-    void setStats(const StoryStats &stats) { stats_ = stats; }
+    void setStats(const StoryStats &stats) { std::lock_guard<std::mutex> lock(statsMutex_); stats_ = stats; }
     void setProperty(const std::unordered_map<std::string, std::string>& attrs) {
         for (auto const& entry : attrs) {
             propertyList_.emplace(entry.first, entry.second);
@@ -69,11 +70,21 @@ public:
     }
     void setEventMap(const std::unordered_map<std::string, Event> &eventMap) { eventMap_ = eventMap; }
 
-    uint64_t incrementAcquisitionCount() { stats_.count++; return stats_.count; }
-    uint64_t decrementAcquisitionCount() { stats_.count--; return stats_.count; }
+    uint64_t incrementAcquisitionCount() {
+        std::lock_guard<std::mutex> lock(statsMutex_);
+        stats_.count++;
+        return stats_.count;
+    }
+    uint64_t decrementAcquisitionCount() {
+        std::lock_guard<std::mutex> lock(statsMutex_);
+        stats_.count--;
+        return stats_.count;
+    }
     uint64_t getAcquisitionCount() const { return stats_.count; }
 
     friend std::ostream& operator<<(std::ostream& os, const Story& story);
+
+    std::mutex statsMutex_;
 
 private:
     std::string name_;
