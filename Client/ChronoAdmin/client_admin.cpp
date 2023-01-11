@@ -73,7 +73,7 @@ int main()
     ChronoLogClient client(protocol,host_ip,portno);
      
     int flags = 0;
-    bool ret = false;
+    int ret;
     uint64_t offset = 0;
 
     std::string client_id = gen_random(8);
