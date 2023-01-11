@@ -1,12 +1,11 @@
-cmake_minimum_required(VERSION 3.21)
-add_executable(KeeperService KeeperRecordingService.cpp)
+cmake_minimum_required( VERSION 3.19)
 
-target_include_directories(KeeperService PUBLIC include)
-target_link_libraries(KeeperService mercury thallium)
+add_executable(keeper_registry KeeperRegistryInstance.cpp)
+target_include_directories(keeper_registry PUBLIC include)
+target_link_libraries(keeper_registry mercury thallium)
 
-add_executable(KeeperRegistryService KeeperRegistryService.cpp)
-target_include_directories(KeeperRegistryService PUBLIC include)
-target_link_libraries(KeeperRegistryService mercury thallium)
+add_executable(chrono_keeper ChronoKeeperInstance.cpp)
+target_include_directories(chrono_keeper PUBLIC include)
+target_link_libraries(chrono_keeper mercury thallium)
 
-#add_subdirectory(keeper_reg_service)
 add_subdirectory(storyteller_client)
