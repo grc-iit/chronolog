@@ -67,7 +67,7 @@ public:
 
     void setName(const std::string &name) { name_ = name; }
     void setCid(const uint64_t &cid) { cid_ = cid; }
-    void setStats(const ChronicleStats &stats) { std::lock_guard<std::mutex> lock(statsMutex_); stats_ = stats; }
+    void setStats(const ChronicleStats &stats) { stats_ = stats; }
     void setProperty(const std::unordered_map<std::string, std::string>& attrs) {
         for (auto const& entry : attrs) {
             propertyList_.emplace(entry.first, entry.second);
@@ -179,12 +179,10 @@ public:
     }
 
     uint64_t incrementAcquisitionCount() {
-        std::lock_guard<std::mutex> lock(statsMutex_);
         stats_.count++;
         return stats_.count;
     }
     uint64_t decrementAcquisitionCount() {
-        std::lock_guard<std::mutex> lock(statsMutex_);
         stats_.count--;
         return stats_.count;
     }
@@ -194,10 +192,6 @@ public:
     size_t getMetadataMapSize() { return metadataMap_.size(); }
     size_t getStoryMapSize() { return storyMap_.size(); }
     size_t getArchiveMapSize() { return archiveMap_.size(); }
-
-    std::mutex statsMutex_;
-    std::mutex storyMapMutex_;
-    std::mutex archiveMapMutex_;
 
 private:
     std::string name_;

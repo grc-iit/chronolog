@@ -175,7 +175,6 @@ int ChronicleMetaDirectory::release_chronicle(const std::string& name,
             return CL_ERR_NOT_EXIST;
         }
     }
-    std::lock_guard<std::mutex> statsLock(pChronicle->statsMutex_);
     /* Remove it from AcquiredChronicleMap when it's not acquired by anyone */
     if (pChronicle->getAcquisitionCount() == 0) {
         std::lock_guard<std::mutex> lock(g_acquiredChronicleMapMutex_);
@@ -313,6 +312,8 @@ int ChronicleMetaDirectory::acquire_story(const std::string& chronicle_name,
             } else {
                 return CL_SUCCESS;
             }
+        } else {
+            return CL_ERR_NOT_EXIST;
         }
     } else {
         return CL_ERR_NOT_EXIST;
@@ -379,18 +380,25 @@ uint64_t ChronicleMetaDirectory::playback_event(uint64_t sid) {
 int ChronicleMetaDirectory::get_chronicle_attr(std::string& name, const std::string& key, std::string& value) {
     LOGD("getting attributes key=%s from Chronicle name=%s", key.c_str(), name.c_str());
     uint64_t cid = CityHash64(name.c_str(), name.size());
-    Chronicle *pChronicle;
     std::lock_guard<std::mutex> lock(g_chronicleMetaDirectoryMutex_);
-    try {
-        pChronicle = chronicleMap_->at(cid);
-    } catch (const std::out_of_range& e) {
-        return CL_ERR_NOT_EXIST;
-    }
-    if (pChronicle) {
-        value = pChronicle->getPropertyList().at(key);
-        return CL_SUCCESS;
+    /* First check if Chronicle exists, fail if false */
+    auto chronicleRecord = chronicleMap_->find(cid);
+    if (chronicleRecord != chronicleMap_->end()) {
+        Chronicle *pChronicle = chronicleRecord->second;
+        if (pChronicle) {
+            /* Then check if property exists, fail if false */
+            auto propertyRecord = pChronicle->getPropertyList().find(key);
+            if (propertyRecord != pChronicle->getPropertyList().end()) {
+                value = propertyRecord->second;
+                return CL_SUCCESS;
+            } else {
+                CL_ERR_NOT_EXIST;
+            }
+        } else {
+            return CL_ERR_UNKNOWN;
+        }
     } else {
-        return CL_ERR_UNKNOWN;
+        return CL_ERR_NOT_EXIST;
     }
 }
 
@@ -399,17 +407,28 @@ int ChronicleMetaDirectory::edit_chronicle_attr(std::string& name,
                                                 const std::string& value) {
     LOGD("editing attribute key=%s, value=%s from Chronicle name=%s", key.c_str(), value.c_str(), name.c_str());
     uint64_t cid = CityHash64(name.c_str(), name.size());
-    Chronicle *pChronicle;
     std::lock_guard<std::mutex> lock(g_chronicleMetaDirectoryMutex_);
-    try {
-        pChronicle = chronicleMap_->at(cid);
-    } catch (const std::out_of_range& e) {
-        return CL_ERR_NOT_EXIST;
-    }
-    auto res = pChronicle->getPropertyList().insert_or_assign(key, value);
-    if (res.second) {
-        return CL_SUCCESS;
+    /* First check if Chronicle exists, fail if false */
+    auto chronicleRecord = chronicleMap_->find(cid);
+    if (chronicleRecord != chronicleMap_->end()) {
+        Chronicle *pChronicle = chronicleRecord->second;
+        if (pChronicle) {
+            /* Then check if property exists, fail if false */
+            auto propertyRecord = pChronicle->getPropertyList().find(key);
+            if (propertyRecord != pChronicle->getPropertyList().end()) {
+                auto res = pChronicle->getPropertyList().insert_or_assign(key, value);
+                if (res.second) {
+                    return CL_SUCCESS;
+                } else {
+                    return CL_ERR_UNKNOWN;
+                }
+            } else {
+                CL_ERR_NOT_EXIST;
+            }
+        } else {
+            return CL_ERR_UNKNOWN;
+        }
     } else {
-        return CL_ERR_UNKNOWN;
+        return CL_ERR_NOT_EXIST;
     }
 }
