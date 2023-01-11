@@ -1,6 +1,7 @@
 #ifndef KEEPER_STATS_MSG_H
 #define KEEPER_STATS_MSG_H
 
+#include<ostream>
 #include "KeeperIdCard.h"
 
 
@@ -24,6 +25,9 @@ public:
 
   ~KeeperStatsMsg()=default;
 
+  KeeperIdCard const& getKeeperIdCard() const 
+  { return keeperIdCard; }
+
   template <typename SerArchiveT>
   void serialize( SerArchiveT& serT)
   {
@@ -33,7 +37,12 @@ public:
 
 };
 
+}
 
+std::ostream & operator << (std::ostream & cout, chronolog::KeeperStatsMsg const& stats_msg)
+{
+  cout<<"KeeperStatsMsg{"<<stats_msg.getKeeperIdCard()<<"}";
+  return cout;
 }
 
 #endif

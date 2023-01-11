@@ -38,7 +38,7 @@ class KeeperRegistryService : public tl::provider<KeeperRegistryService>
 	request.respond(return_code);
     }
 
-    void handle_stats_msg(tl::request const& request, const std::string& keeper_stats_msg) 
+    void handle_stats_msg(tl::request const& request, chronolog::KeeperStatsMsg const& keeper_stats_msg) 
     {
 	int return_code = 0;
         std::cout << "handle_keeper_stats " << keeper_stats_msg<< std::endl;
@@ -71,7 +71,7 @@ int main(int argc, char** argv) {
 
     uint16_t provider_id = 25;
 
-    margo_instance_id margo_id=margo_init("ofi+sockets",MARGO_SERVER_MODE, 1, 0);
+    margo_instance_id margo_id=margo_init("ofi+sockets://127.0.0.1:1234",MARGO_SERVER_MODE, 1, 0);
     //margo_instance_id margo_id=margo_init("tcp",MARGO_SERVER_MODE, 1, 0);
 
     if(MARGO_INSTANCE_NULL == margo_id)

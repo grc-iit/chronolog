@@ -1,13 +1,14 @@
+#ifndef KEEPER_RECORDING_SERVICE_H
+#define KEEPER_RECORDING_SERVICE_H
+
 #include <iostream>
 #include <margo.h>
 #include <thallium.hpp>
 #include <thallium/serialization/stl/string.hpp>
+#include "KeeperIdCard.h"
 
 namespace tl = thallium;
 
-
-#ifdef INNA 
-//INNA :  for now assume all identifiers are uint64_t , revisit later on
 
 namespace chronolog
 {
@@ -43,58 +44,25 @@ class KeeperRecordingService : public tl::provider<KeeperRecordingService>
     public:
 
     KeeperRecordingService(tl::engine& tl_engine, uint16_t service_provider_id=1)
-    : tl::provider<KeeperRecordingService>(tl_engine, service_provider_id) {
+    	: tl::provider<KeeperRecordingService>(tl_engine, service_provider_id) 
+    {
         define("hello", &KeeperRecordingService::hello, tl::ignore_return_value());
         define("record_event", &KeeperRecordingService::record_event);
         define("record_int_values", &KeeperRecordingService::record_int_values );
     }
 
-    ~KeeperRecordingService() {
+    public:
+    //INNA: TODO :
+    //1.add static create function so that constructor can be made private 
+    //2.add record event function that takes timestamp & event data structure ...
+    //3. finalize provider through callback
+    ~KeeperRecordingService() 
+    {
         std::cout<<"KeeperRecordingService::destructor"<<std::endl;
         get_engine().wait_for_finalize();
     }
 };
 
-
 }// namespace chronolog
+
 #endif
-
-#include "KeeperIdCard.h"
-#include "KeeperRecordingService.h"
-
-// uncomment to test this class as standalone process
-int main(int argc, char** argv) {
-
-    uint16_t provider_id = 22;
-
-    margo_instance_id margo_id=margo_init("ofi+sockets://localhost:5555",MARGO_SERVER_MODE, 1, 0);
-
-    if(MARGO_INSTANCE_NULL == margo_id)
-    {
-      std::cout<<"FAiled to initialise margo_instance"<<std::endl;
-      return 1;
-    }
-    std::cout<<"margo_instance initialized"<<std::endl;
-
-   tl::engine keeperEngine(margo_id);
- 
-    std::cout << "Starting KeeperRecordingService  at address " << keeperEngine.self()
-        << " with provider id " << provider_id << std::endl;
-
-    chronolog::KeeperRecordingService keeperRecordingService(keeperEngine, provider_id);
-
-    //tl::engine myEngine("ofi+sockets", THALLIUM_CLIENT_MODE);
-    tl::remote_procedure handle_stats_msg = keeperEngine.define("handle_stats_msg").disable_response();
-    tl::remote_procedure register_keeper = keeperEngine.define("register_keeper");
-    tl::endpoint server = keeperEngine.lookup(argv[1]);
-    uint16_t registry_provider_id = atoi(argv[2]);
-    tl::provider_handle ph(server, registry_provider_id);
-
-    std::string name("Keeper:22");
-    handle_stats_msg.on(ph)(name);
-
-    chronolog::KeeperIdCard keeperIdCard(123, 5555, 22);
-    register_keeper.on(ph)(keeperIdCard); 
-    return 0;
-}
-
