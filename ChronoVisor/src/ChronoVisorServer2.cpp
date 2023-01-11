@@ -3,6 +3,7 @@
 //
 
 #include "ChronoVisorServer2.h"
+#include "global_var_visor.h"
 #include "macro.h"
 
 namespace ChronoVisor {
