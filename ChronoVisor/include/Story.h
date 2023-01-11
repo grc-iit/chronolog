@@ -8,7 +8,8 @@
 #include <unordered_map>
 #include <atomic>
 #include <Event.h>
-#include <city.h>
+#include "city.h"
+#include <mutex>
 
 enum StoryIndexingGranularity {
     story_gran_ns = 0,
@@ -42,7 +43,14 @@ typedef struct StoryStats_ {
 
 class Story {
 public:
-    Story() {}
+    Story() {
+        attrs_.size = 0;
+        attrs_.indexing_granularity = story_gran_ms;
+        attrs_.type = story_type_standard;
+        attrs_.tiering_policy = story_tiering_normal;
+        attrs_.access_permission = 0;
+        stats_.count = 0;
+    }
 
     const std::string &getName() const { return name_; }
     uint64_t getSid() const { return sid_; }
@@ -61,6 +69,16 @@ public:
         }
     }
     void setEventMap(const std::unordered_map<std::string, Event> &eventMap) { eventMap_ = eventMap; }
+
+    uint64_t incrementAcquisitionCount() {
+        stats_.count++;
+        return stats_.count;
+    }
+    uint64_t decrementAcquisitionCount() {
+        stats_.count--;
+        return stats_.count;
+    }
+    uint64_t getAcquisitionCount() const { return stats_.count; }
 
     friend std::ostream& operator<<(std::ostream& os, const Story& story);
 

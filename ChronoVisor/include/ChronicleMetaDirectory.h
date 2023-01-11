@@ -19,23 +19,23 @@ public:
 //    std::shared_ptr<std::unordered_map<std::string, Chronicle *>> getChronicleMap() { return chronicleMap_; }
     std::unordered_map<uint64_t, Chronicle *> *getChronicleMap() { return chronicleMap_; }
 
-    bool create_chronicle(const std::string& name);
-    bool create_chronicle(const std::string& name, const std::unordered_map<std::string, std::string>& attrs);
-    bool destroy_chronicle(const std::string& name, int flags);
-    uint64_t acquire_chronicle(const std::string& name, int flags);
-    bool release_chronicle(const std::string& name, int flags);
+    int create_chronicle(const std::string& name);
+    int create_chronicle(const std::string& name, const std::unordered_map<std::string, std::string>& attrs);
+    int destroy_chronicle(const std::string& name, int& flags);
+    int acquire_chronicle(const std::string& name, int& flags);
+    int release_chronicle(const std::string& name, int& flags);
 
-    bool create_story(std::string &chronicle_name, const std::string& story_name, const std::unordered_map<std::string, std::string>& attrs);
-    bool destroy_story(std::string &chronicle_name, const std::string& story_name, int flags);
-    std::vector<uint64_t> get_story_list(std::string &chronicle_name);
-    uint64_t acquire_story(const std::string &chronicle_name, const std::string& story_name, int flags);
-    bool release_story(const std::string &chronicle_name, const std::string &story_name, int flags);
+    int create_story(std::string &chronicle_name, const std::string& story_name, const std::unordered_map<std::string, std::string>& attrs);
+    int destroy_story(std::string &chronicle_name, const std::string& story_name, int& flags);
+    int get_story_list(std::string &chronicle_name, std::vector<std::string> &story_name_list);
+    int acquire_story(const std::string& chronicle_name, const std::string& story_name, int& flags);
+    int release_story(const std::string& chronicle_name, const std::string& story_name, int& flags);
 
     uint64_t record_event(uint64_t sid, void *data);
     uint64_t playback_event(uint64_t sid);
 
-    std::string get_chronicle_attr(std::string &name, const std::string& key);
-    bool edit_chronicle_attr(std::string &name, const std::string& key, std::string value);
+    int get_chronicle_attr(std::string& name, const std::string& key, std::string& value);
+    int edit_chronicle_attr(std::string& name, const std::string& key, const std::string& value);
 
 private:
 //    std::shared_ptr<std::unordered_map<std::string, Chronicle *>> chronicleMap_;

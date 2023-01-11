@@ -8,17 +8,17 @@
 #include <unordered_map>
 #include <vector>
 #include <memory>
-#include <ClientRegistryInfo.h>
+#include <ClientInfo.h>
 
 class ClientRegistryManager {
 public:
     ClientRegistryManager();
     ~ClientRegistryManager();
 
-    bool add_client_record(const std::string &client_id, const ClientRegistryInfo &record);
-    bool remove_client_record(const std::string& client_id, int &flags);
+    int add_client_record(const std::string &client_id, const ClientInfo &record);
+    int remove_client_record(const std::string& client_id, int &flags);
 private:
-    std::unordered_map<std::string, ClientRegistryInfo> *clientRegistry_;
+    std::unordered_map<std::string, ClientInfo> *clientRegistry_;
 };
 
 #endif //CHRONOLOG_CLIENTREGISTRYMANAGER_H

@@ -64,7 +64,7 @@ private:
         return thalliumClient_->lookup(lookup_str.c_str());
     }
 
-    void init_engine_and_endpoints(ChronoLogCharStruct protocol) {
+    void init_client_engine_and_endpoints(ChronoLogCharStruct protocol) {
         thalliumClient_ = ChronoLog::Singleton<tl::engine>::GetInstance(protocol.c_str(), MARGO_CLIENT_MODE);
         LOGD("generate a new client at %s", std::string(thalliumClient_->self()).c_str());
         thallium_endpoints.reserve(serverList_.size());
@@ -107,6 +107,7 @@ public:
             clientPort_(CHRONOLOG_CONF->RPC_CLIENT_PORT),
             isRunning_(false),
             serverList_() {
+        LOGD("ChronoLogRPC constructor is called");
         serverList_ = CHRONOLOG_CONF->LoadServers();
         /* if current rank is a server */
         if (CHRONOLOG_CONF->IS_SERVER) {
@@ -148,7 +149,7 @@ public:
                     hg_addr_t addr_self;
                     hg_return_t hret;
                     for (size_t i = 0; i < workers; i++) {
-                        LOGD("running Thallium server with engine str %s", serverAddrList_[i].c_str());
+                        LOGD("creating Thallium server with engine str %s", serverAddrList_[i].c_str());
                         margo_instance_id mid = margo_init(serverAddrList_[i].c_str(), MARGO_SERVER_MODE,
                                                            1, numStreams_);
                         if (mid == MARGO_INSTANCE_NULL) {
@@ -177,22 +178,24 @@ public:
 
                         tl::engine new_engine(mid);
                         thalliumServerList_.emplace_back(std::move(new_engine));
-                        LOGI("engine: %s", std::string(thalliumServerList_[i].self()).c_str());
+                        LOGI("engine: %s is created", std::string(thalliumServerList_[i].self()).c_str());
                     }
                     break;
                 }
             }
         }
         switch (CHRONOLOG_CONF->RPC_IMPLEMENTATION) {
-            /* both servers and clients run */
-            case CHRONOLOG_THALLIUM_TCP:
-            case CHRONOLOG_THALLIUM_SOCKETS: {
-                init_engine_and_endpoints(CHRONOLOG_CONF->SOCKETS_CONF);
-                break;
-            }
-            case CHRONOLOG_THALLIUM_ROCE: {
-                init_engine_and_endpoints(CHRONOLOG_CONF->VERBS_CONF);
-                break;
+            /* only clients need Thallium end_points */
+            if (CHRONOLOG_CONF->IS_SERVER == false) {
+                case CHRONOLOG_THALLIUM_TCP:
+                case CHRONOLOG_THALLIUM_SOCKETS: {
+                    init_client_engine_and_endpoints(CHRONOLOG_CONF->SOCKETS_CONF);
+                    break;
+                }
+                case CHRONOLOG_THALLIUM_ROCE: {
+                    init_client_engine_and_endpoints(CHRONOLOG_CONF->VERBS_CONF);
+                    break;
+                }
             }
         }
         isRunning_ = true;

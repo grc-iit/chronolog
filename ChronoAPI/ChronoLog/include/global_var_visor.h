@@ -5,7 +5,13 @@
 #ifndef CHRONOLOG_GLOBAL_VAR_VISOR_H
 #define CHRONOLOG_GLOBAL_VAR_VISOR_H
 
-#include <ClocksourceManager.h>
+#include "ClocksourceManager.h"
+#include <ConfigurationManager.h>
+#include <Chronicle.h>
+#include <ChronicleMetaDirectory.h>
+#include <rpc.h>
+#include <RPCFactory.h>
+#include <RPCVisor.h>
 
 /**
  * Configuration-related global variables
@@ -45,11 +51,8 @@ std::mutex g_acquiredStoryMapMutex_;
 // Shared RPC instance
 std::shared_ptr<ChronoLogRPC> g_RPC =
         ChronoLog::Singleton<ChronoLogRPCFactory>::GetInstance()->GetRPC(CHRONOLOG_CONF->RPC_BASE_SERVER_PORT);
-// RPC proxy instance for admin APIs (e.g., connect/disconnect)
-std::shared_ptr<ChronoLogAdminRPCProxy> g_adminRPCProxy =
-        ChronoLog::Singleton<ChronoLogAdminRPCProxy>::GetInstance();
-// RPC proxy instance for metadata APIs (e.g., Chronicle/Story management)
-std::shared_ptr<ChronicleMetadataRPCProxy> g_chronicleMetadataRPCProxy =
-        ChronoLog::Singleton<ChronicleMetadataRPCProxy>::GetInstance();
+// RPC proxy instance
+std::shared_ptr<RPCVisor> g_RPCProxy =
+        ChronoLog::Singleton<RPCVisor>::GetInstance();
 
 #endif //CHRONOLOG_GLOBAL_VAR_VISOR_H
