@@ -4,13 +4,6 @@
 
 #include <client.h>
 #include <common.h>
-#include <cassert>
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <sys/types.h>
-#include <unistd.h>
-#include <string>
 
 int main() 
 {
