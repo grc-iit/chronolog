@@ -72,14 +72,14 @@ option(CHRONOLOG_ENABLE_DOXYGEN "Enable Doxygen documentation generation." OFF)
 # TODO Should we consider the posibility of a user passing their own fflags through CMAKE_CXX_FLAGS
 #   Encapsulate everything around if(NOT CMAKE_CXX_FLAGS)
 #   Check Hermes for hwo they delete flags automatically
-if(SET_WERROR)
-    add_compile_options(-Wall)
-    add_compile_options(-Wextra)
-    add_compile_options(-Werror)
-else()
-    add_compile_options(-Wall)
-    add_compile_options(-Wextra)
-endif()
+#if(SET_WERROR)
+#    add_compile_options(-Wall)
+#    add_compile_options(-Wextra)
+#    add_compile_options(-Werror)
+#else()
+#    add_compile_options(-Wall)
+#    add_compile_options(-Wextra)
+#endif()
 
 # Change some compilation flags depending on the build type
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -101,12 +101,10 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
         message(FATAL_ERROR "Cannont use -fsanitize=address and -fsanitize=thread "
                 "at the same time")
     endif()
-endif()
-
-if(CMAKE_BUILD_TYPE STREQUAL "Release")
+else()    
     message("Compiling ChronoLog in release Mode")
-    add_compile_options(-O1)
-    add_compile_options(-Werror)
+    add_compile_options(-O3)
+    add_compile_options(-Wno-switch-unreachable -Wno-return-type)
 endif()
 
 #------------------------------------------------------------------------------

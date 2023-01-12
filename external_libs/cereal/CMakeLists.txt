@@ -11,7 +11,7 @@ if(APPLE)
     option(SKIP_PORTABILITY_TEST "Skip portability (32 bit) tests" ON)
 endif()
 
-option(SKIP_PERFORMANCE_COMPARISON "Skip building performance comparison (requires boost)" OFF)
+option(SKIP_PERFORMANCE_COMPARISON "Skip building performance comparison (requires boost)" ON)
 
 # TODO: should not be needed! CK
 if(NOT CMAKE_VERSION VERSION_LESS 3.0) # installing cereal requires INTERFACE lib
@@ -33,7 +33,7 @@ endif()
 if(MSVC)
     add_compile_options(/bigobj /W3 /WX)
 else()
-    add_compile_options(-Wall -Wextra -pedantic -Wshadow -Wold-style-cast)
+    add_compile_options(-Wall -Wextra -pedantic -Wshadow -Wno-old-style-cast)
     option(WITH_WERROR "Compile with '-Werror' C++ compiler flag" ON)
     if(WITH_WERROR)
         add_compile_options(-Werror)
@@ -106,7 +106,7 @@ endif()
 
 if(NOT SKIP_PERFORMANCE_COMPARISON)
     # Boost serialization for performance sandbox
-    find_package(Boost REQUIRED COMPONENTS serialization)
+    find_package(Boost REQUIRED COMPONENTS)
 endif()
 
 
