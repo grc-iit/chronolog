@@ -17,5 +17,6 @@
 #define CL_ERR_STORY_PROPERTY_FULL          -9      /* Property list of Story is full, cannot add new property */
 #define CL_ERR_CHRONICLE_METADATA_FULL      -10     /* Metadata list of Chronicle is full, cannot add new property */
 #define CL_ERR_STORY_METADATA_FULL          -11     /* Metadata list of Story is full, cannot add new property */
+#define CL_ERR_INVALID_CONF                 -12     /* Content of configuration file is invalid */
 
 #endif //CHRONOLOG_ERRCODE_H

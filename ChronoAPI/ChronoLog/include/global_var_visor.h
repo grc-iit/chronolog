@@ -16,8 +16,8 @@
 /**
  * Configuration-related global variables
  */
-std::shared_ptr<ChronoLog::ConfigurationManager> g_confManager =
-        ChronoLog::Singleton<ChronoLog::ConfigurationManager>::GetInstance();
+//std::shared_ptr<ChronoLog::ConfigurationManager> g_confManager =
+//        ChronoLog::Singleton<ChronoLog::ConfigurationManager>::GetInstance();
 
 /**
  * Clock management-related global variables
@@ -49,10 +49,10 @@ std::mutex g_acquiredStoryMapMutex_;
  * RPC-related global variables
  */
 // Shared RPC instance
-std::shared_ptr<ChronoLogRPC> g_RPC =
-        ChronoLog::Singleton<ChronoLogRPCFactory>::GetInstance()->GetRPC(CHRONOLOG_CONF->RPC_BASE_SERVER_PORT);
+//std::shared_ptr<ChronoLogRPC> g_RPC =
+//        ChronoLog::Singleton<ChronoLogRPCFactory>::GetInstance()->GetRPC(CHRONOLOG_CONF->RPC_BASE_SERVER_PORT);
 // RPC proxy instance
-std::shared_ptr<RPCVisor> g_RPCProxy =
-        ChronoLog::Singleton<RPCVisor>::GetInstance();
+//std::shared_ptr<RPCVisor> g_RPCProxy =
+//        ChronoLog::Singleton<RPCVisor>::GetInstance();
 
 #endif //CHRONOLOG_GLOBAL_VAR_VISOR_H

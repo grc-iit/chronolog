@@ -9,10 +9,12 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
-//#include <filesystem>
+#include <rapidjson/document.h>
+#include <sstream>
 #include "data_structures.h"
 #include "enum.h"
 #include "log.h"
+#include "errcode.h"
 
 namespace ChronoLog {
     class ConfigurationManager {
@@ -134,6 +136,58 @@ namespace ChronoLog {
             LOGD("IS_SERVER: %d", IS_SERVER);
             for (const auto& server : SERVER_LIST)
                 LOGD("server: %s", server.c_str());
+        }
+
+        void LoadConfFromJSONFile(const std::string& conf_file_path) {
+            std::ifstream conf_file_stream(conf_file_path);
+            if (!conf_file_stream.is_open()) {
+                std::cerr << "Unable to open file " + conf_file_path + ", exiting ...";
+                exit(CL_ERR_NOT_EXIST);
+            }
+
+            std::stringstream contents;
+            contents << conf_file_stream.rdbuf();
+            rapidjson::Document doc;
+            doc.Parse(contents.str().c_str());
+            if (doc.HasParseError()) {
+                std::cerr << "Error during parsing configuration file " + conf_file_path << std::endl
+                          << "Error: " << doc.GetParseError() << std::endl
+                          << "at: " << doc.GetErrorOffset() << std::endl;
+                exit(CL_ERR_INVALID_CONF);
+            }
+
+            assert(doc["rpc_server_ip"].IsString());
+            RPC_SERVER_IP = doc["rpc_server_ip"].GetString();
+            assert(doc["rpc_base_server_port"].IsInt());
+            RPC_BASE_SERVER_PORT = doc["rpc_base_server_port"].GetInt();
+            assert(doc["rpc_num_server_ports"].IsInt());
+            RPC_NUM_SERVER_PORTS = doc["rpc_num_server_ports"].GetInt();
+            assert(doc["rpc_num_service_threads"].IsInt());
+            RPC_NUM_SERVICE_THREADS = doc["rpc_num_service_threads"].GetInt();
+            assert(doc["rpc_client_port"].IsInt());
+            RPC_CLIENT_PORT = doc["rpc_client_port"].GetInt();
+            assert(doc["rpc_implementation"].IsInt());
+            RPC_IMPLEMENTATION = static_cast<ChronoLogRPCImplementation>(doc["rpc_implementation"].GetInt());
+            assert(doc["sockets_conf"].IsString());
+            SOCKETS_CONF = doc["sockets_conf"].GetString();
+            assert(doc["verbs_conf"].IsString());
+            VERBS_CONF = doc["verbs_conf"].GetString();
+            assert(doc["verbs_domain"].IsString());
+            VERBS_DOMAIN = doc["verbs_domain"].GetString();
+            assert(doc["memory_allocated"].IsUint64());
+            MEMORY_ALLOCATED = doc["memory_allocated"].GetUint64();
+            assert(doc["is_server"].IsBool());
+            IS_SERVER = doc["is_server"].GetBool();
+            assert(doc["my_server_id"].IsInt());
+            MY_SERVER_ID = doc["my_server_id"].GetInt();
+            assert(doc["server_list_file_path"].IsString());
+            SERVER_LIST_FILE_PATH = doc["server_list_file_path"].GetString();
+            assert(doc["server_list"].IsArray());
+            auto server_array = doc["server_list"].GetArray();
+            for (auto& server: server_array)
+                SERVER_LIST.emplace_back(server.GetString());
+            assert(doc["backed_file_dir"].IsString());
+            BACKED_FILE_DIR = doc["backed_file_dir"].GetString();
         }
     };
 
