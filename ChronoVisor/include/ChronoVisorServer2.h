@@ -24,7 +24,7 @@ namespace ChronoVisor {
 
     class ChronoVisorServer2 {
     public:
-        ChronoVisorServer2();
+        explicit ChronoVisorServer2(const std::string& conf_file_path = "");
 
         ~ChronoVisorServer2() {
             if (pTimeManager) {
@@ -38,10 +38,12 @@ namespace ChronoVisor {
         int start();
 
     private:
+        void init();
+
         std::string protocol_;
         std::string baseIP_;
         int basePorts_{};
-        int numPorts_;
+        int numPorts_{};
         std::vector<std::string> serverAddrVec_;
         int numStreams_{};
         std::vector<tl::engine> engineVec_;
@@ -50,7 +52,7 @@ namespace ChronoVisor {
         /**
          * @name Clock-related variables
          */
-        TimeManager *pTimeManager;
+        TimeManager *pTimeManager{};
 
         /**
          * @name ClientRegistry related variables
