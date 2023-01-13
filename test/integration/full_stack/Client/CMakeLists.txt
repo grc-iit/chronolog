@@ -1,7 +1,7 @@
 find_package(mercury REQUIRED)
 find_package(thallium REQUIRED)
 
-set(client_examples client_lib_connect_rpc_test client_lib_metadata_rpc_test client_lib_multithreaded_test)
+set(client_examples client_lib_connect_rpc_test client_lib_metadata_rpc_test)
 
 add_custom_target(copyserverlist)
 
