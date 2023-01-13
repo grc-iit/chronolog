@@ -1,6 +1,7 @@
 find_package(mercury REQUIRED)
 find_package(thallium REQUIRED)
 find_package(MPI REQUIRED)
+find_package(OpenMP)
 
 set(client_examples client_lib_connect_rpc_test client_lib_metadata_rpc_test client_lib_multi_pthread_test client_lib_multi_argobots_test)
 
@@ -20,6 +21,15 @@ foreach(client ${client_examples})
     target_link_libraries(${client} ChronoLogClient_lib -lpthread -lrt)
     #add_test(NAME ${client} COMMAND ${client})
 endforeach()
+
+set(client_openmp client_lib_multi_openmp_test)
+
+foreach(client ${client_openmp})
+   add_executable(${client} ${client}.cpp)
+   add_dependencies(${client} copyserverlist)
+   target_include_directories(${client} PRIVATE ../Client/include)
+   target_link_libraries(${client} ChronoLogClient_lib OpenMP::OpenMP_CXX)
+endforeach()   
 
 set(CMAKE_CXX_COMPILER "mpic++")
 
