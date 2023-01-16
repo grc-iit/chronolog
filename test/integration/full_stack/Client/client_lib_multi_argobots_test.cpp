@@ -74,6 +74,8 @@ int main(int argc,char **argv) {
     ABT_thread *threads = (ABT_thread*)malloc(sizeof(ABT_thread)*num_threads);
     struct thread_arg *t_args = (struct thread_arg*)malloc(num_threads*sizeof(struct thread_arg));
 
+    for(int i=0;i<num_threads;i++)
+	    t_args[i].tid = i;
 
     ABT_init(argc, argv);
 
