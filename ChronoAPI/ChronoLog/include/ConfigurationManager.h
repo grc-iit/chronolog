@@ -46,8 +46,12 @@ namespace ChronoLog {
                 SOCKETS_CONF("ofi+sockets"), VERBS_CONF("verbs"), VERBS_DOMAIN("mlx5_0"),
                 MEMORY_ALLOCATED(1024ULL * 1024ULL * 128ULL),
                 IS_SERVER(true), MY_SERVER_ID(0), SERVER_LIST_FILE_PATH("./server_list"),
-                SERVER_LIST(), BACKED_FILE_DIR("/dev/shm") {
+                SERVER_LIST({"localhost"}), BACKED_FILE_DIR("/dev/shm") {
             LOGI("initializing configuration with all default values: ");
+            PrintConf();
+        }
+
+        void PrintConf() {
             LOGI("RPC_SERVER_IP: %s", RPC_SERVER_IP.c_str());
             LOGI("RPC_BASE_PORT: %d", RPC_BASE_SERVER_PORT);
             LOGI("RPC_NUM_PORTS: %d", RPC_NUM_SERVER_PORTS);
@@ -62,6 +66,8 @@ namespace ChronoLog {
             LOGI("MY_SERVER_ID: %d", MY_SERVER_ID);
             LOGI("SERVER_LIST_FILE_PATH: %s", realpath(SERVER_LIST_FILE_PATH.c_str(), NULL));
             LOGI("SERVER_LIST: ");
+            for (const auto& server : SERVER_LIST)
+                LOGI("%s ", server.c_str());
             LOGI("BACKED_FILE_DIR: %s", BACKED_FILE_DIR.c_str());
         }
 
@@ -118,24 +124,16 @@ namespace ChronoLog {
             return SERVER_LIST;
         }
 
-        void ConfigureDefaultClient(const std::string &server_list_path = "") {
-            if (!server_list_path.empty()) SERVER_LIST_FILE_PATH = server_list_path;
-            LoadServers();
+        void ConfigureDefaultClient() {
             IS_SERVER = false;
             LOGD("default configuration for client is loaded, changed configuration:");
             LOGD("IS_SERVER: %d", IS_SERVER);
-            for (const auto& server : SERVER_LIST)
-                LOGD("server: %s", server.c_str());
         }
 
-        void ConfigureDefaultServer(const std::string &server_list_path = "") {
-            if (!server_list_path.empty()) SERVER_LIST_FILE_PATH = server_list_path;
-            LoadServers();
+        void ConfigureDefaultServer() {
             IS_SERVER = true;
             LOGD("default configuration for server is loaded, changed configuration:");
             LOGD("IS_SERVER: %d", IS_SERVER);
-            for (const auto& server : SERVER_LIST)
-                LOGD("server: %s", server.c_str());
         }
 
         void LoadConfFromJSONFile(const std::string& conf_file_path) {
@@ -156,38 +154,75 @@ namespace ChronoLog {
                 exit(CL_ERR_INVALID_CONF);
             }
 
-            assert(doc["rpc_server_ip"].IsString());
-            RPC_SERVER_IP = doc["rpc_server_ip"].GetString();
-            assert(doc["rpc_base_server_port"].IsInt());
-            RPC_BASE_SERVER_PORT = doc["rpc_base_server_port"].GetInt();
-            assert(doc["rpc_num_server_ports"].IsInt());
-            RPC_NUM_SERVER_PORTS = doc["rpc_num_server_ports"].GetInt();
-            assert(doc["rpc_num_service_threads"].IsInt());
-            RPC_NUM_SERVICE_THREADS = doc["rpc_num_service_threads"].GetInt();
-            assert(doc["rpc_client_port"].IsInt());
-            RPC_CLIENT_PORT = doc["rpc_client_port"].GetInt();
-            assert(doc["rpc_implementation"].IsInt());
-            RPC_IMPLEMENTATION = static_cast<ChronoLogRPCImplementation>(doc["rpc_implementation"].GetInt());
-            assert(doc["sockets_conf"].IsString());
-            SOCKETS_CONF = doc["sockets_conf"].GetString();
-            assert(doc["verbs_conf"].IsString());
-            VERBS_CONF = doc["verbs_conf"].GetString();
-            assert(doc["verbs_domain"].IsString());
-            VERBS_DOMAIN = doc["verbs_domain"].GetString();
-            assert(doc["memory_allocated"].IsUint64());
-            MEMORY_ALLOCATED = doc["memory_allocated"].GetUint64();
-            assert(doc["is_server"].IsBool());
-            IS_SERVER = doc["is_server"].GetBool();
-            assert(doc["my_server_id"].IsInt());
-            MY_SERVER_ID = doc["my_server_id"].GetInt();
-            assert(doc["server_list_file_path"].IsString());
-            SERVER_LIST_FILE_PATH = doc["server_list_file_path"].GetString();
-            assert(doc["server_list"].IsArray());
-            auto server_array = doc["server_list"].GetArray();
-            for (auto& server: server_array)
-                SERVER_LIST.emplace_back(server.GetString());
-            assert(doc["backed_file_dir"].IsString());
-            BACKED_FILE_DIR = doc["backed_file_dir"].GetString();
+            for (auto& item : doc.GetObject()) {
+                auto item_name = item.name.GetString();
+                if (strcmp(item_name, "rpc_server_ip") == 0) {
+                    assert(item.value.IsString());
+                    RPC_SERVER_IP = item.value.GetString();
+                }
+                else if (strcmp(item_name, "rpc_base_server_port") == 0) {
+                    assert(item.value.IsInt());
+                    RPC_BASE_SERVER_PORT = item.value.GetInt();
+                }
+                else if (strcmp(item_name, "rpc_num_server_ports") == 0) {
+                    assert(item.value.IsInt());
+                    RPC_NUM_SERVER_PORTS = item.value.GetInt();
+                }
+                else if (strcmp(item_name, "rpc_num_service_threads") == 0) {
+                    assert(item.value.IsInt());
+                    RPC_NUM_SERVICE_THREADS = item.value.GetInt();
+                }
+                else if (strcmp(item_name, "rpc_client_port") == 0) {
+                    assert(item.value.IsInt());
+                    RPC_CLIENT_PORT = item.value.GetInt();
+                }
+                else if (strcmp(item_name, "rpc_implementation") == 0) {
+                    assert(item.value.IsInt());
+                    RPC_IMPLEMENTATION = static_cast<ChronoLogRPCImplementation>(item.value.GetInt());
+                }
+                else if (strcmp(item_name, "sockets_conf") == 0) {
+                    assert(item.value.IsString());
+                    SOCKETS_CONF = item.value.GetString();
+                }
+                else if (strcmp(item_name, "verbs_conf") == 0) {
+                    assert(item.value.IsString());
+                    VERBS_CONF = item.value.GetString();
+                }
+                else if (strcmp(item_name, "verbs_domain") == 0) {
+                    assert(item.value.IsString());
+                    VERBS_DOMAIN = item.value.GetString();
+                }
+                else if (strcmp(item_name, "memory_allocated") == 0) {
+                    assert(item.value.IsUint64());
+                    MEMORY_ALLOCATED = item.value.GetUint64();
+                }
+                else if (strcmp(item_name, "is_server") == 0) {
+                    assert(item.value.IsBool());
+                    IS_SERVER = item.value.GetBool();
+                }
+                else if (strcmp(item_name, "my_server_id") == 0) {
+                    assert(item.value.IsInt());
+                    MY_SERVER_ID = item.value.GetInt();
+                }
+                else if (strcmp(item_name, "server_list_file_path") == 0) {
+                    assert(item.value.IsString());
+                    SERVER_LIST_FILE_PATH = item.value.GetString();
+                }
+                else if (strcmp(item_name, "server_list") == 0) {
+                    assert(item.value.IsArray());
+                    auto server_array = item.value.GetArray();
+                    for (auto &server: server_array)
+                        SERVER_LIST.emplace_back(server.GetString());
+                }
+                else if (strcmp(item_name, "backed_file_dir") == 0) {
+                    assert(item.value.IsString());
+                    BACKED_FILE_DIR = item.value.GetString();
+                } else {
+                    LOGI("Unknown configuration: %s", item_name);
+                }
+            }
+            std::cout << "Configuration loaded from configuration file " + conf_file_path + ":" << std::endl;
+            PrintConf();
         }
     };
 

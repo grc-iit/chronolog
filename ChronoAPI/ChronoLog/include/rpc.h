@@ -108,7 +108,7 @@ public:
             isRunning_(false),
             serverList_() {
         LOGD("ChronoLogRPC constructor is called");
-        serverList_ = CHRONOLOG_CONF->LoadServers();
+        serverList_ = CHRONOLOG_CONF->SERVER_LIST;
         /* if current rank is a server */
         if (CHRONOLOG_CONF->IS_SERVER) {
             switch (CHRONOLOG_CONF->RPC_IMPLEMENTATION) {

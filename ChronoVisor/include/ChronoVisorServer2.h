@@ -72,7 +72,7 @@ namespace ChronoVisor {
          * @name RPC related variables
          */
         ///@{
-        std::shared_ptr<RPCVisor> rpcProxy_;
+        std::shared_ptr<RPCVisor> rpcVisor_;
     };
 }
 

@@ -15,8 +15,7 @@ namespace ChronoVisor {
     int ChronoVisorServer2::start() {
         LOGI("ChronoVisor server starting, listen on %d ports starting from %d ...", numPorts_, basePorts_);
 
-        // bind functions first (defining RPC routines on engines)
-        rpcProxy_->bind_functions();
+        // bind functions first (defining RPC rorpcVisor_->bind_functions();
 
         // start engines (listening for incoming requests)
         ChronoLog::Singleton<ChronoLogRPCFactory>::GetInstance()->
@@ -26,7 +25,6 @@ namespace ChronoVisor {
     }
 
     void ChronoVisorServer2::init() {
-        CHRONOLOG_CONF->ConfigureDefaultServer("./server_list");
         switch (CHRONOLOG_CONF->RPC_IMPLEMENTATION) {
             CHRONOLOG_RPC_CALL_WRAPPER_THALLIUM_SOCKETS()
                 [[fallthrough]];
@@ -54,7 +52,7 @@ namespace ChronoVisor {
         midVec_.reserve(numPorts_);
         pTimeManager = new TimeManager();
         chronicleMetaDirectory_ = ChronoLog::Singleton<ChronicleMetaDirectory>::GetInstance();
-        rpcProxy_ = ChronoLog::Singleton<RPCVisor>::GetInstance();
+        rpcVisor_ = ChronoLog::Singleton<RPCVisor>::GetInstance();
         clientRegistryManager_ = ChronoLog::Singleton<ClientRegistryManager>::GetInstance();
     }
 }

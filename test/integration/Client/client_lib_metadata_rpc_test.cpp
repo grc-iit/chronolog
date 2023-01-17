@@ -13,10 +13,7 @@
 #define STORY_NAME_LEN 32
 
 int main() {
-    ChronoLogRPCImplementation protocol = CHRONOLOG_THALLIUM_SOCKETS;
-    std::string server_ip = "127.0.0.1";
-    int base_port = 5555;
-    ChronoLogClient client(protocol, server_ip, base_port);
+    ChronoLogClient client("./default_conf.json");
     std::vector<std::string> chronicle_names;
     std::chrono::steady_clock::time_point t1, t2;
     std::chrono::duration<double, std::nano> duration_create_chronicle{},
