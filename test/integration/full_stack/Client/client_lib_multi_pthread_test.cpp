@@ -5,6 +5,7 @@
 #include <cassert>
 #include <common.h>
 #include <thread>
+#define STORY_NAME_LEN 32
 
 struct thread_arg
 {
@@ -18,22 +19,44 @@ void thread_body(struct thread_arg *t)
 
     std::string server_ip = "127.0.0.1";
     int base_port = 5555;
-    std::string client_id;// = gen_random(8);
+    std::string client_id = gen_random(8);
     std::string server_uri = CHRONOLOG_CONF->SOCKETS_CONF.string();
     server_uri += "://"+server_ip+":"+std::to_string(base_port);
     int flags = 0;
     uint64_t offset;
     int ret = client->Connect(server_uri,client_id,flags,offset);
-    std::cout <<" connected"<<std::endl;
+    std::string chronicle_name;
+    if(t->tid%2==0) chronicle_name = "gscs5er9TcdJ9mOgUDteDVBcI0oQjozK";
+    else chronicle_name = "6RPkwqX2IOpR41dVCqmWauX9RfXIuTAp";
+    std::unordered_map<std::string, std::string> chronicle_attrs;
+    chronicle_attrs.emplace("Priority", "High");
+    chronicle_attrs.emplace("IndexGranularity", "Millisecond");
+    chronicle_attrs.emplace("TieringPolicy", "Hot");
+    ret = client->CreateChronicle(chronicle_name, chronicle_attrs, flags);
+    flags = 1;
+    ret = client->AcquireChronicle(chronicle_name,flags);
+    ret = client->ReleaseChronicle(chronicle_name,flags);
+    std::string story_name = gen_random(STORY_NAME_LEN);
+    std::unordered_map<std::string, std::string> story_attrs;
+    story_attrs.emplace("Priority", "High");
+    story_attrs.emplace("IndexGranularity", "Millisecond");
+    story_attrs.emplace("TieringPolicy", "Hot");
+    flags = 2;
+    ret = client->CreateStory(chronicle_name, story_name, story_attrs, flags);
+    ret = client->AcquireStory(chronicle_name,story_name,flags);
+    ret = client->ReleaseStory(chronicle_name,story_name,flags);
+    ret = client->DestroyStory(chronicle_name,story_name,flags);
+    ret = client->DestroyChronicle(client_id,flags);
     ret = client->Disconnect(client_id,flags);
-    std::cout <<" disconnected"<<std::endl;
 }
 
-int main() {
+int main(int argc,char **argv) {
 
+
+    int provided;
     std::string client_id = gen_random(8);
 
-    int num_threads = 1;
+    int num_threads = 4;
 
     std::vector<struct thread_arg> t_args(num_threads);
     std::vector<std::thread> workers(num_threads);
@@ -43,9 +66,9 @@ int main() {
     int base_port = 5555;
     client = new ChronoLogClient(protocol, server_ip, base_port);
 
-    //thread_body(&t_args[0]);
     for(int i=0;i<num_threads;i++)
     {
+	t_args[i].tid = i;
 	std::thread t{thread_body,&t_args[i]};
 	workers[i] = std::move(t);
     }
