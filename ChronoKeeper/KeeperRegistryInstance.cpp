@@ -36,7 +36,11 @@ int main(int argc, char** argv) {
 
     chronolog::KeeperRegistry keeperRegistry;
 
-    chronolog::KeeperRegistryService keeperRegistryService(keeper_reg_engine,provider_id, keeperRegistry);
-    
+    chronolog::KeeperRegistryService * keeperRegistryService =
+	    chronolog::KeeperRegistryService::CreateKeeperRegistryService(keeper_reg_engine,provider_id, keeperRegistry);
+   
+
+    //INNA:TODO add gracefull finalize and shutdown...
+    delete keeperRegistryService; 
     return 0;
 }

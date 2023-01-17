@@ -28,6 +28,9 @@ public:
   KeeperIdCard const& getKeeperIdCard() const 
   { return keeperIdCard; }
 
+  uint32_t getActiveStoryCount() const 
+  { return active_story_count; }
+
   template <typename SerArchiveT>
   void serialize( SerArchiveT& serT)
   {

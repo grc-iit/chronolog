@@ -23,10 +23,6 @@ class KeeperRegistryService : public tl::provider<KeeperRegistryService>
 
 private:
     
-    KeeperRegistryService(KeeperRegistryService const&) =delete;
-    KeeperRegistryService & operator= (KeeperRegistryService const&) =delete;
-
-
     void register_keeper(tl::request const& request, chronolog::KeeperIdCard const& keeper_id_card)
     {
 	
@@ -57,7 +53,6 @@ private:
 
     KeeperRegistry &  theKeeperProcessRegistry;
 
-    public:
 
     KeeperRegistryService(tl::engine& tl_engine, uint16_t service_provider_id
 		    , KeeperRegistry & keeperRegistry)
@@ -67,6 +62,18 @@ private:
 	define("register_keeper", &KeeperRegistryService::register_keeper);
 	define("unregister_keeper", &KeeperRegistryService::unregister_keeper);
         define("handle_stats_msg", &KeeperRegistryService::handle_stats_msg, tl::ignore_return_value());
+    }
+
+    KeeperRegistryService(KeeperRegistryService const&) =delete;
+    KeeperRegistryService & operator= (KeeperRegistryService const&) =delete;
+
+
+    public:
+
+    static KeeperRegistryService * CreateKeeperRegistryService(tl::engine& tl_engine, uint16_t service_provider_id
+		    , KeeperRegistry & keeperRegistry)
+    {
+	    return new KeeperRegistryService(tl_engine, service_provider_id, keeperRegistry);
     }
 
     ~KeeperRegistryService() {
@@ -103,7 +110,8 @@ int main(int argc, char** argv) {
     std::cout << "Starting KeeperRegService  at address " << keeper_reg_engine.self()
         << " with provider id " << provider_id << std::endl;
 
-    chronolog::KeeperRegistryService keeperRegistryService(keeper_reg_engine,provider_id);
+    chronolog::KeeperRegistryService  * keeperRegistryService = 
+	    chronolog::KeeperRegistryService::CreateKeeperRegistryService(keeper_reg_engine,provider_id);
     
     return 0;
 }
