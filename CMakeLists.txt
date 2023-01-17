@@ -89,18 +89,18 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     #set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0 -g")
 
-    if (HERMES_USE_ADDRESS_SANITIZER)
-        add_compile_options(-fsanitize=address)
-    endif()
+    #if (HERMES_USE_ADDRESS_SANITIZER)
+    #    add_compile_options(-fsanitize=address)
+    #endif()
 
-    if (HERMES_USE_THREAD_SANITIZER)
-        add_compile_options(-fsanitize=thread)
-    endif()
+    #if (HERMES_USE_THREAD_SANITIZER)
+    #    add_compile_options(-fsanitize=thread)
+    #endif()
 
-    if (HERMES_USE_THREAD_SANITIZER AND HERMES_USE_ADDRESS_SANITIZER)
-        message(FATAL_ERROR "Cannont use -fsanitize=address and -fsanitize=thread "
-                "at the same time")
-    endif()
+    #if (HERMES_USE_THREAD_SANITIZER AND HERMES_USE_ADDRESS_SANITIZER)
+    #    message(FATAL_ERROR "Cannont use -fsanitize=address and -fsanitize=thread "
+    #            "at the same time")
+    #endif()
 else()    
     message("Compiling ChronoLog in release Mode")
     add_compile_options(-O3 -lm)
