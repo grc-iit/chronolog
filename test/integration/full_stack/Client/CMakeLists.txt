@@ -1,0 +1,3 @@
+add_subdirectory(metadata_rpc)
+add_subdirectory(connect_rpc)
+add_subdirectory(multithreaded)

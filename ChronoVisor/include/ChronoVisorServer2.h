@@ -12,14 +12,12 @@
 #include <log.h>
 #include <thallium.hpp>
 #include <margo.h>
-#include <TimeManager.h>
+#include "TimeManager.h"
 #include <TimeRecord.h>
-#include <ClocksourceManager.h>
-#include <ClientRegistryInfo.h>
+#include "ClocksourceManager.h"
 #include <ChronicleMetaDirectory.h>
 #include <ClientRegistryManager.h>
-#include <ChronicleMetadataRPCProxy.h>
-#include <ChronoLogAdminRPCProxy.h>
+#include <RPCVisor.h>
 
 namespace ChronoVisor {
     namespace tl = thallium;
@@ -55,20 +53,24 @@ namespace ChronoVisor {
         TimeManager *pTimeManager;
 
         /**
-         * @name ClientRegistry RPC related variables
+         * @name ClientRegistry related variables
          */
         ///@{
         std::shared_ptr<ClientRegistryManager> clientRegistryManager_;
-        std::shared_ptr<ChronoLogAdminRPCProxy> adminRpcProxy_;
         ///@}
 
         /**
-         * @name Chronicle Meta Directory RPC related variables
+         * @name Chronicle Meta Directory related variables
          */
         ///@{
         std::shared_ptr<ChronicleMetaDirectory> chronicleMetaDirectory_;
-        std::shared_ptr<ChronicleMetadataRPCProxy> metadataRPCProxy_;
         ///@}
+
+        /**
+         * @name RPC related variables
+         */
+        ///@{
+        std::shared_ptr<RPCVisor> rpcProxy_;
     };
 }
 

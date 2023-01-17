@@ -6,8 +6,8 @@
 #define CHRONOLOG_TIMEMANAGER_H
 
 #include <atomic>
-#include <ClocksourceManager.h>
-#include <TimeRecord.h>
+#include "ClocksourceManager.h"
+#include "TimeRecord.h"
 
 #define TIME_DB_INIT_WAIT 1
 #define TIME_DB_UPDATE_INTERVAL 3

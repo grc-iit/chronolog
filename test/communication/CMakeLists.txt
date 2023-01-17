@@ -21,33 +21,40 @@ endif()
 
 add_executable(thallium_server thallium_server.cpp
         ../../ChronoVisor/src/ClientRegistryRecord.cpp
-        ../../ChronoVisor/src/ClientRegistryManager.cpp)
+        ../../ChronoVisor/include/ClientRegistryManager.h
+        ../../ChronoAPI/ChronoLog/include/global_var_visor.h
+        ../../ChronoVisor/src/ClientRegistryManager.cpp
+        ../../ChronoVisor/src/ChronicleMetaDirectory.cpp
+        ../../ChronoAPI/ChronoLog/src/city.cpp
+        ../../ChronoAPI/ChronoLog/include/city.h)
 target_include_directories(thallium_server PRIVATE ../../ChronoAPI/ChronoLog/include)
 target_include_directories(thallium_server PRIVATE ../../ChronoVisor/include)
 target_link_libraries(thallium_server PRIVATE thallium)
 target_link_libraries(thallium_server PUBLIC "-pthread")
 add_test(NAME CommThalliumServer COMMAND thallium_server)
 
-add_executable(thallium_client thallium_client.cpp)
+add_executable(thallium_client thallium_client.cpp
+        )
 target_include_directories(thallium_client PRIVATE)
 target_link_libraries(thallium_client thallium)
 add_test(NAME CommThalliumClient COMMAND thallium_client)
 
 find_package(MPI)
 
-add_executable(thallium_client_mpi thallium_client_mpi.cpp)
+add_executable(thallium_client_mpi thallium_client_mpi.cpp
+        )
 include_directories(SYSTEM ${MPI_INCLUDE_PATH})
 target_include_directories(thallium_client_mpi PRIVATE ../../ChronoAPI/ChronoLog/include)
 target_link_libraries(thallium_client_mpi thallium ${MPI_C_LIBRARIES})
 add_test(NAME CommThalliumClientMPI COMMAND thallium_client_mpi)
 
 add_executable(rpc_server rpc_server.cpp
-        ../../ChronoAPI/ChronoLog/include/ChronoLogAdminRPCProxy.h
+        ../../ChronoAPI/ChronoLog/include/RPCVisor.h
         ../../ChronoVisor/include/ClientRegistryManager.h
+        ../../ChronoAPI/ChronoLog/include/global_var_visor.h
         ../../ChronoVisor/src/ClientRegistryManager.cpp
         ../../ChronoVisor/include/ClientRegistryInfo.h
         ../../ChronoVisor/src/ClientRegistryRecord.cpp
-        ../../ChronoAPI/ChronoLog/include/ChronicleMetadataRPCProxy.h
         ../../ChronoAPI/ChronoLog/include/macro.h
         ../../ChronoAPI/ChronoLog/include/rpc.h
         ../../ChronoAPI/ChronoLog/include/RPCFactory.h
@@ -55,18 +62,20 @@ add_executable(rpc_server rpc_server.cpp
         ../../ChronoVisor/include/Chronicle.h
         ../../ChronoVisor/include/Story.h
         ../../ChronoVisor/include/Event.h
-        ../../ChronoVisor/src/city.cpp
-        ../../ChronoVisor/include/city.h
+        ../../ChronoAPI/ChronoLog/src/city.cpp
+        ../../ChronoAPI/ChronoLog/include/city.h
         ../../tools/Serde/src/SerDe.cpp)
 target_include_directories(rpc_server PRIVATE
         ../../ChronoAPI/ChronoLog/include
         ../../tools/Serde/include
         ../../ChronoVisor/include)
 target_link_libraries(rpc_server thallium)
+add_custom_command(TARGET rpc_server POST_BUILD
+        COMMAND cp ${CMAKE_CURRENT_SOURCE_DIR}/server_list.in ${CMAKE_CURRENT_BINARY_DIR}/server_list)
 add_test(NAME CommRPCServer COMMAND rpc_server)
 
 add_executable(rpc_client rpc_client.cpp
-        ../../ChronoAPI/ChronoLog/include/ChronicleMetadataRPCProxy.h
+        ../../Client/include/RPCClient.h
         ../../ChronoAPI/ChronoLog/include/macro.h
         ../../ChronoAPI/ChronoLog/include/rpc.h
         ../../ChronoAPI/ChronoLog/include/RPCFactory.h
@@ -74,12 +83,13 @@ add_executable(rpc_client rpc_client.cpp
         ../../ChronoVisor/include/Chronicle.h
         ../../ChronoVisor/include/Story.h
         ../../ChronoVisor/include/Event.h
-        ../../ChronoVisor/src/city.cpp
-        ../../ChronoVisor/include/city.h
+        ../../ChronoAPI/ChronoLog/src/city.cpp
+        ../../ChronoAPI/ChronoLog/include/city.h
         ../../tools/Serde/src/SerDe.cpp)
 target_include_directories(rpc_client PRIVATE
         ../../ChronoAPI/ChronoLog/include
         ../../tools/Serde/include
-        ../../ChronoVisor/include)
+        ../../ChronoVisor/include
+        ../../Client/include)
 target_link_libraries(rpc_client thallium)
 add_test(NAME CommRPCClient COMMAND rpc_client)
