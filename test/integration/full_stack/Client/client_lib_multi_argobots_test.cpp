@@ -23,12 +23,12 @@ void thread_function(void *tt)
 
 	std::string server_ip = "127.0.0.1";
 	int base_port = 5555;
-	std::string client_id = gen_random(8);
+	/*std::string client_id = gen_random(8);
 	std::string server_uri = CHRONOLOG_CONF->SOCKETS_CONF.string();
-	server_uri += "://"+server_ip+":"+std::to_string(base_port);
+	server_uri += "://"+server_ip+":"+std::to_string(base_port);*/
         int flags = 0;
 	uint64_t offset;
-	int ret = client->Connect(server_uri,client_id,flags,offset);
+	int ret;
 	std::string chronicle_name;
         if(t->tid%2==0) chronicle_name = "gscs5er9TcdJ9mOgUDteDVBcI0oQjozK";
 	else chronicle_name = "6RPkwqX2IOpR41dVCqmWauX9RfXIuTAp";
@@ -50,12 +50,10 @@ void thread_function(void *tt)
 	ret = client->AcquireStory(chronicle_name,story_name,flags);
         ret = client->ReleaseStory(chronicle_name,story_name,flags);
 	ret = client->DestroyStory(chronicle_name,story_name,flags);
-	ret = client->DestroyChronicle(client_id,flags);
-	ret = client->Disconnect(client_id,flags);
+	ret = client->DestroyChronicle(chronicle_name,flags);
 }
 
 int main(int argc,char **argv) {
-    std::vector<std::string> client_ids;
     std::atomic<long> duration_connect{}, duration_disconnect{};
     std::vector<std::thread> thread_vec;
     uint64_t offset;
@@ -73,6 +71,13 @@ int main(int argc,char **argv) {
     ABT_pool *pools = (ABT_pool *)malloc(sizeof(ABT_pool) * num_xstreams);
     ABT_thread *threads = (ABT_thread*)malloc(sizeof(ABT_thread)*num_threads);
     struct thread_arg *t_args = (struct thread_arg*)malloc(num_threads*sizeof(struct thread_arg));
+
+    std::string client_id = gen_random(8);;
+    std::string server_uri = CHRONOLOG_CONF->SOCKETS_CONF.string();
+    server_uri += "://"+server_ip+":"+std::to_string(base_port);
+    int flags = 0;
+
+    int ret = client->Connect(server_uri,client_id,flags,offset);
 
     for(int i=0;i<num_threads;i++)
 	    t_args[i].tid = i;
@@ -114,7 +119,9 @@ int main(int argc,char **argv) {
    free(threads);
    free(t_args);
 
-    delete client;
+   ret = client->Disconnect(client_id,flags);
+
+   delete client;
 
     return 0;
 }

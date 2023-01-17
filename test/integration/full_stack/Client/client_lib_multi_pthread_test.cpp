@@ -19,12 +19,9 @@ void thread_body(struct thread_arg *t)
 
     std::string server_ip = "127.0.0.1";
     int base_port = 5555;
-    std::string client_id = gen_random(8);
-    std::string server_uri = CHRONOLOG_CONF->SOCKETS_CONF.string();
-    server_uri += "://"+server_ip+":"+std::to_string(base_port);
     int flags = 0;
     uint64_t offset;
-    int ret = client->Connect(server_uri,client_id,flags,offset);
+    int ret;
     std::string chronicle_name;
     if(t->tid%2==0) chronicle_name = "gscs5er9TcdJ9mOgUDteDVBcI0oQjozK";
     else chronicle_name = "6RPkwqX2IOpR41dVCqmWauX9RfXIuTAp";
@@ -46,8 +43,7 @@ void thread_body(struct thread_arg *t)
     ret = client->AcquireStory(chronicle_name,story_name,flags);
     ret = client->ReleaseStory(chronicle_name,story_name,flags);
     ret = client->DestroyStory(chronicle_name,story_name,flags);
-    ret = client->DestroyChronicle(client_id,flags);
-    ret = client->Disconnect(client_id,flags);
+    ret = client->DestroyChronicle(chronicle_name,flags);
 }
 
 int main(int argc,char **argv) {
@@ -66,6 +62,13 @@ int main(int argc,char **argv) {
     int base_port = 5555;
     client = new ChronoLogClient(protocol, server_ip, base_port);
 
+    std::string server_uri = CHRONOLOG_CONF->SOCKETS_CONF.string();
+    server_uri += "://"+server_ip+":"+std::to_string(base_port);
+
+    int flags = 0;
+    uint64_t offset;
+    int ret = client->Connect(server_uri,client_id,flags,offset);
+
     for(int i=0;i<num_threads;i++)
     {
 	t_args[i].tid = i;
@@ -76,6 +79,7 @@ int main(int argc,char **argv) {
     for(int i=0;i<num_threads;i++)
 	    workers[i].join();
 
+    ret = client->Disconnect(client_id,flags);
     delete client;
 
     return 0;

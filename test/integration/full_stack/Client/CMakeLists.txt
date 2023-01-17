@@ -3,7 +3,7 @@ find_package(thallium REQUIRED)
 find_package(MPI REQUIRED)
 find_package(OpenMP)
 
-set(client_examples client_lib_connect_rpc_test client_lib_metadata_rpc_test client_lib_multi_pthread_test client_lib_multi_argobots_test)
+set(client_examples client_lib_connect_rpc_test client_lib_metadata_rpc_test client_lib_multi_argobots_test client_lib_multi_pthread_test)
 
 add_custom_target(copyserverlist)
 
