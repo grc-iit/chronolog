@@ -8,7 +8,7 @@
 #include "KeeperStatsMsg.h"
 #include "KeeperRecordingService.h"
 #include "KeeperRegClient.h"
-//#include "KeeperProcess.h"
+#include "LogIngestionQueue.h"
 
 #define KEEPER_REGISTRY_SERVICE_NA_STRING  "ofi+sockets://127.0.0.1:1234"
 #define KEEPER_REGISTRY_SERVICE_PROVIDER_ID	25
@@ -45,11 +45,11 @@ int main(int argc, char** argv) {
 
     // Instantiate ChronoKeeper MemoryDataStore
     //
-     
+    chronolog::LogIngestionQueue ingestionQueue; 
     // Instantiate KeeperRecordingService 
 
    chronolog::KeeperRecordingService *  keeperRecordingService=
-	   chronolog::KeeperRecordingService::CreateKeeperRecordingService(keeperEngine, recording_provider_id);
+	   chronolog::KeeperRecordingService::CreateKeeperRecordingService(keeperEngine, recording_provider_id, ingestionQueue);
 
 
     // we will be using a combination of the uint32_t representation of the service IP address 
@@ -59,7 +59,12 @@ int main(int argc, char** argv) {
 
    struct sockaddr_in sa;
    // translate the recording service dotted IP string into 32bit network byte order representation
-   int inet_pton_int_value = inet_pton(AF_INET, std::string(KEEPER_RECORDING_SERVICE_IP).c_str(), &sa.sin_addr.s_addr); //returns 1 on success
+   int inet_pton_return = inet_pton(AF_INET, std::string(KEEPER_RECORDING_SERVICE_IP).c_str(), &sa.sin_addr.s_addr); //returns 1 on success
+    if(1 != inet_pton_return)
+    { std::cout<< "invalid ip address"<<std::endl;
+	    return (-1);
+    }
+
     // translate 32bit ip from network into the host byte order
     uint32_t ntoh_ip_addr = ntohl(sa.sin_addr.s_addr); 
     uint16_t ntoh_port = atoi(KEEPER_RECORDING_SERVICE_PORT);

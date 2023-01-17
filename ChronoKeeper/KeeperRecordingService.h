@@ -6,6 +6,7 @@
 #include <thallium.hpp>
 #include <thallium/serialization/stl/string.hpp>
 #include "KeeperIdCard.h"
+#include "LogIngestionQueue.h"
 
 namespace tl = thallium;
 
@@ -24,9 +25,10 @@ public:
     
 // KeeperRecordingService should be created on the heap not the stack thus the constructor is private...
 
-    static KeeperRecordingService * CreateKeeperRecordingService(tl::engine& tl_engine, uint16_t service_provider_id=1)
+    static KeeperRecordingService * CreateKeeperRecordingService(tl::engine& tl_engine, uint16_t service_provider_id
+		    , LogIngestionQueue & ingestion_queue)
     {
-          return  new KeeperRecordingService( tl_engine, service_provider_id );
+          return  new KeeperRecordingService( tl_engine, service_provider_id, ingestion_queue );
     }  
 
     //INNA: TODO: finalize provider through callback
@@ -43,6 +45,7 @@ private:
 		       uint64_t timeStamp, const std::string& record) 
     {
         std::cout << "recording {"<< teller_id<<":"<<story_id<<":"<< record <<"}"<< std::endl;
+	theIngestionQueue.ingestLogEvent(LogEvent(story_id,teller_id,timeStamp,record));
         request.respond( static_cast<int>(record.size()) );
     }
 
@@ -50,11 +53,13 @@ private:
 		       uint64_t timeStamp, const std::string& record) 
     {
         std::cout << "recording {"<< teller_id<<":"<<story_id<<":"<< record <<"}"<< std::endl;
+	theIngestionQueue.ingestLogEvent(LogEvent(story_id,teller_id,timeStamp,record));
     }
 
 
-    KeeperRecordingService(tl::engine& tl_engine, uint16_t service_provider_id=1)
-    	: tl::provider<KeeperRecordingService>(tl_engine, service_provider_id) 
+    KeeperRecordingService(tl::engine& tl_engine, uint16_t service_provider_id, LogIngestionQueue & ingestion_queue)
+    	: tl::provider<KeeperRecordingService>(tl_engine, service_provider_id)
+	, theIngestionQueue(ingestion_queue)  
     {
         define("record_event", &KeeperRecordingService::record_event);
         define("record_event_no_response", &KeeperRecordingService::record_event_no_response,tl::ignore_return_value() );
@@ -63,6 +68,7 @@ private:
     KeeperRecordingService( KeeperRecordingService const&) = delete;
     KeeperRecordingService & operator= (KeeperRecordingService const&) = delete;
 
+    LogIngestionQueue & theIngestionQueue;
 };
 
 }// namespace chronolog
