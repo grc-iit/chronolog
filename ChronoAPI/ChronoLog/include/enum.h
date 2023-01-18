@@ -23,4 +23,10 @@ typedef enum ChronoLogVisibility {
      CHRONOLOG_GROUP_RDONLY = 2,
      CHRONOLOG_PRIVATE = 3
 }ChronoLogVisibility;
+
+typedef enum ChronoLogOp {
+    CHRONOLOG_READ = 0,
+    CHRONOLOG_WRITE = 1
+}ChronoLogOp;
+
 #endif //CHRONOLOG_ENUM_H
