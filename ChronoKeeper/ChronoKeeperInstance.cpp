@@ -83,8 +83,10 @@ int main(int argc, char** argv) {
 
     // for now BOTH KeeperRecordingService and KeeperRegistryClient will be running until they are explicitly killed  
     // INNA: TODO: add a graceful shutdown mechanism with finalized callbacks and all
-    delete keeperRegistryClient;
-    delete keeperRecordingService;
+    //
+    keeperEngine.wait_for_finalize();
+   // delete keeperRegistryClient;
+   // delete keeperRecordingService;
 
 
 return exit_code;

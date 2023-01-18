@@ -23,7 +23,7 @@ class KeeperRegistryService : public tl::provider<KeeperRegistryService>
 
 private:
     
-    void register_keeper(tl::request const& request, chronolog::KeeperIdCard const& keeper_id_card)
+    int register_keeper(tl::request const& request, chronolog::KeeperIdCard const& keeper_id_card)
     {
 	
 	int return_code = 0;
@@ -34,7 +34,8 @@ private:
 
 	request.respond(return_code);
     }
-    void unregister_keeper(tl::request const& request, chronolog::KeeperIdCard const& keeper_id_card)
+
+    int unregister_keeper(tl::request const& request, chronolog::KeeperIdCard const& keeper_id_card)
     {
 	
 	int return_code = 0;
@@ -62,6 +63,8 @@ private:
 	define("register_keeper", &KeeperRegistryService::register_keeper);
 	define("unregister_keeper", &KeeperRegistryService::unregister_keeper);
         define("handle_stats_msg", &KeeperRegistryService::handle_stats_msg, tl::ignore_return_value());
+	//setup finalization callback in case this ser vice provider is still alive when the engine is finalized 
+	get_engine().push_finalize_callback(this, [p=this]() {delete p;});
     }
 
     KeeperRegistryService(KeeperRegistryService const&) =delete;
@@ -78,43 +81,11 @@ private:
 
     ~KeeperRegistryService() {
         std::cout<<"KeeperRegistryService::destructor"<<std::endl;
-        get_engine().wait_for_finalize();
+        get_engine().pop_finalize_callback(this);
     }
 };
 
-/*INNA: TODO list : 
-1. make constructor private and add static create function , so that service is always created on the HEAP and nothte stack
-2. add a way to either pass in or locate the instance of KeeperRegistry instance 
-*/
 
 }// namespace chronolog
-
-// uncomment to test this class as standalone process
-#ifdef INNA
-int main(int argc, char** argv) {
-
-    uint16_t provider_id = 25;
-
-    margo_instance_id margo_id=margo_init("ofi+sockets://127.0.0.1:1234",MARGO_SERVER_MODE, 1, 0);
-    //margo_instance_id margo_id=margo_init("tcp",MARGO_SERVER_MODE, 1, 0);
-
-    if(MARGO_INSTANCE_NULL == margo_id)
-    {
-      std::cout<<"FAiled to initialise margo_instance"<<std::endl;
-      return 1;
-    }
-    std::cout<<"KeeperRegistryService:margo_instance initialized"<<std::endl;
-
-   tl::engine keeper_reg_engine(margo_id);
- 
-    std::cout << "Starting KeeperRegService  at address " << keeper_reg_engine.self()
-        << " with provider id " << provider_id << std::endl;
-
-    chronolog::KeeperRegistryService  * keeperRegistryService = 
-	    chronolog::KeeperRegistryService::CreateKeeperRegistryService(keeper_reg_engine,provider_id);
-    
-    return 0;
-}
-#endif
 
 #endif

@@ -41,6 +41,7 @@ int main(int argc, char** argv) {
    
 
     //INNA:TODO add gracefull finalize and shutdown...
-    delete keeperRegistryService; 
+    //delete keeperRegistryService; 
+    keeper_reg_engine.wait_for_finalize();
     return 0;
 }

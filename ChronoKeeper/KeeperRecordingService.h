@@ -31,11 +31,9 @@ public:
           return  new KeeperRecordingService( tl_engine, service_provider_id, ingestion_queue );
     }  
 
-    //INNA: TODO: finalize provider through callback
     ~KeeperRecordingService() 
     {
-        std::cout<<"KeeperRecordingService::destructor"<<std::endl;
-        get_engine().wait_for_finalize();
+        get_engine().pop_finalize_callback(this);
     }
 
 private:
@@ -63,6 +61,8 @@ private:
     {
         define("record_event", &KeeperRecordingService::record_event);
         define("record_event_no_response", &KeeperRecordingService::record_event_no_response,tl::ignore_return_value() );
+	//set up callback for the case when the engine is being finalized while this provider is still alive
+	get_engine().push_finalize_callback(this, [p=this](){delete p;} );
     }
 
     KeeperRecordingService( KeeperRecordingService const&) = delete;
