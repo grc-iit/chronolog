@@ -8,8 +8,10 @@
 #include <unordered_map>
 #include <atomic>
 #include <Event.h>
-#include "city.h"
 #include <mutex>
+#include <city.h>
+#include <errcode.h>
+#include <enum.h>
 
 enum StoryIndexingGranularity {
     story_gran_ns = 0,
@@ -34,7 +36,7 @@ typedef struct StoryAttrs_ {
     enum StoryIndexingGranularity indexing_granularity;
     enum StoryType type;
     enum StoryTieringPolicy tiering_policy;
-    uint16_t access_permission;
+    enum ChronoLogVisibility access_permission;
     std::string owner;
     std::string group;
 } StoryAttrs;
@@ -50,7 +52,7 @@ public:
         attrs_.indexing_granularity = story_gran_ms;
         attrs_.type = story_type_standard;
         attrs_.tiering_policy = story_tiering_normal;
-        attrs_.access_permission = 0;
+        attrs_.access_permission = CHRONOLOG_PRIVATE;
         stats_.count = 0;
     }
 
@@ -81,6 +83,21 @@ public:
         return stats_.count;
     }
     uint64_t getAcquisitionCount() const { return stats_.count; }
+    int add_owner_and_group(std::string &client_id, std::string &group_id)
+    {
+	 attrs_.owner = client_id;
+	 attrs_.group = group_id;
+	 return CL_SUCCESS;
+    } 
+    enum ChronoLogVisibility& get_permissions()
+    {
+	  return attrs_.access_permission;
+    }
+    int set_permissions(enum ChronoLogVisibility &v)
+    {
+	 attrs_.access_permission = v;
+	 return CL_SUCCESS;
+    }
 
     friend std::ostream& operator<<(std::ostream& os, const Story& story);
 
