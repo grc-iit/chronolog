@@ -68,6 +68,34 @@ int ChronicleMetaDirectory::create_chronicle(const std::string& name, std::strin
     pChronicle->setName(name);
     pChronicle->setCid(cid);
     pChronicle->add_owner_and_group(client_id,group_id);
+    auto attr_iter = attrs.find("Permissions");
+    enum ChronoLogVisibility v;
+    if(attr_iter==attrs.end())
+    {
+	v = CHRONOLOG_PRIVATE;
+    }
+    else 
+    {
+	std::string perm = attr_iter->second;
+	if(perm.compare("Public")==0)
+	{
+            v = CHRONOLOG_PUBLIC;
+	}
+	else if(perm.compare("Private")==0)
+	{
+	    v = CHRONOLOG_PRIVATE;
+	}
+	else if(perm.compare("Group_RDONLY")==0)
+	{
+	    v = CHRONOLOG_GROUP_RDONLY;
+	}
+	else if(perm.compare("Group_RW")==0)
+	{
+	   v = CHRONOLOG_GROUP_RW;
+	}
+	else v = CHRONOLOG_PRIVATE;
+    }
+    pChronicle->set_permissions(v);
     auto res = chronicleMap_->emplace(cid, pChronicle);
     t2 = std::chrono::steady_clock::now();
     std::chrono::duration<double, std::nano> duration = (t2 - t1);
