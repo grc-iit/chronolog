@@ -29,7 +29,7 @@ public:
     {
     }
 
-    int Connect(const std::string &uri, std::string &client_id,std::string &group_id, int &role,  int &flags, uint64_t &clock_offset) {
+    int Connect(const std::string &uri, std::string &client_id,std::string &group_id, int &role, int &flags, uint64_t &clock_offset) {
         LOGD("%s in ChronoLogAdminRPCProxy at addresss %p called in PID=%d, with args: uri=%s, client_id=%s",
              __FUNCTION__, this, getpid(), uri.c_str(), client_id.c_str());
         return CHRONOLOG_RPC_CALL_WRAPPER("Connect", 0, int, uri, client_id, group_id, role, flags, clock_offset);

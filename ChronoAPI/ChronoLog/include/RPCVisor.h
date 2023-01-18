@@ -87,7 +87,6 @@ public:
         }
 
 	std::string group_id; int role;
-        enum ChronoLogVisibility v = CHRONOLOG_PUBLIC;
 	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
 	if(ret == CL_SUCCESS && (role == CHRONOLOG_CLIENT_ADMIN || role == CHRONOLOG_CLIENT_USER_RW))
 	{	
@@ -536,8 +535,8 @@ public:
                               const std::string &uri, std::string &client_id, std::string &group_id, int &role, int &flags, uint64_t &clock_offset)
     CHRONOLOG_THALLIUM_DEFINE(LocalDisconnect, (client_id, flags), std::string &client_id, int &flags)
 
-    CHRONOLOG_THALLIUM_DEFINE(LocalCreateChronicle, (name, client_id,attrs, flags),
-                              std::string &name, std::string &client_id, const std::unordered_map<std::string, std::string> &attrs, int &flags)
+    CHRONOLOG_THALLIUM_DEFINE(LocalCreateChronicle, (name, client_id, attrs, flags),
+                              std::string &name, std::string &client_id,const std::unordered_map<std::string, std::string> &attrs, int &flags)
     CHRONOLOG_THALLIUM_DEFINE(LocalDestroyChronicle, (name, client_id, flags), std::string &name, std::string & client_id, int &flags)
     CHRONOLOG_THALLIUM_DEFINE(LocalAcquireChronicle, (name, client_id, flags), std::string &name, std::string &client_id, int &flags)
     CHRONOLOG_THALLIUM_DEFINE(LocalReleaseChronicle, (name, client_id, flags), std::string &name, std::string &client_id, int &flags)
