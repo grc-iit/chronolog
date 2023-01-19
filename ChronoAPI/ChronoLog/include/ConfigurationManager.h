@@ -19,51 +19,54 @@
 namespace ChronoLog {
     class ConfigurationManager {
     public:
-        ChronoLogCharStruct RPC_SERVER_IP;
-        uint16_t RPC_BASE_SERVER_PORT;
-        uint16_t RPC_NUM_SERVER_PORTS;
-        uint16_t RPC_NUM_SERVICE_THREADS;
+        ChronoLogCharStruct RPC_VISOR_IP;
+        uint16_t RPC_BASE_VISOR_PORT;
+        uint16_t RPC_NUM_VISOR_PORTS;
+        uint16_t RPC_NUM_VISOR_SERVICE_THREADS;
         uint16_t RPC_CLIENT_PORT;
+        uint16_t RPC_NUM_CLIENT_SERVICE_THREADS;
         ChronoLogRPCImplementation RPC_IMPLEMENTATION;
         ChronoLogCharStruct SOCKETS_CONF;
         ChronoLogCharStruct VERBS_CONF;
         ChronoLogCharStruct VERBS_DOMAIN;
         uint64_t MEMORY_ALLOCATED;
 
-        bool IS_SERVER;
-        int MY_SERVER_ID;
+        bool IS_VISOR;
+        int MY_VISOR_ID;
         ChronoLogCharStruct SERVER_LIST_FILE_PATH;
         std::vector<ChronoLogCharStruct> SERVER_LIST;
         ChronoLogCharStruct BACKED_FILE_DIR;
 
         ConfigurationManager() :
-                RPC_SERVER_IP("127.0.0.1"),
-                RPC_BASE_SERVER_PORT(5555),
-                RPC_NUM_SERVER_PORTS(1),
-                RPC_NUM_SERVICE_THREADS(1),
+                RPC_VISOR_IP("127.0.0.1"),
+                RPC_BASE_VISOR_PORT(5555),
+                RPC_NUM_VISOR_PORTS(1),
+                RPC_NUM_VISOR_SERVICE_THREADS(1),
                 RPC_CLIENT_PORT(6666),
+                RPC_NUM_CLIENT_SERVICE_THREADS(1),
                 RPC_IMPLEMENTATION(CHRONOLOG_THALLIUM_SOCKETS),
                 SOCKETS_CONF("ofi+sockets"), VERBS_CONF("verbs"), VERBS_DOMAIN("mlx5_0"),
                 MEMORY_ALLOCATED(1024ULL * 1024ULL * 128ULL),
-                IS_SERVER(true), MY_SERVER_ID(0), SERVER_LIST_FILE_PATH("./server_list"),
+                IS_VISOR(true), MY_VISOR_ID(0), SERVER_LIST_FILE_PATH(""),
                 SERVER_LIST({"localhost"}), BACKED_FILE_DIR("/dev/shm") {
             LOGI("initializing configuration with all default values: ");
             PrintConf();
         }
 
         void PrintConf() {
-            LOGI("RPC_SERVER_IP: %s", RPC_SERVER_IP.c_str());
-            LOGI("RPC_BASE_PORT: %d", RPC_BASE_SERVER_PORT);
-            LOGI("RPC_NUM_PORTS: %d", RPC_NUM_SERVER_PORTS);
-            LOGI("RPC_NUM_SERVICE_THREADS: %d", RPC_NUM_SERVICE_THREADS);
+            LOGI("RPC_VISOR_IP: %s", RPC_VISOR_IP.c_str());
+            LOGI("RPC_BASE_PORT: %d", RPC_BASE_VISOR_PORT);
+            LOGI("RPC_NUM_PORTS: %d", RPC_NUM_VISOR_PORTS);
+            LOGI("RPC_NUM_VISOR_SERVICE_THREADS: %d", RPC_NUM_VISOR_SERVICE_THREADS);
             LOGI("RPC_CLIENT_PORT: %d", RPC_CLIENT_PORT);
+            LOGI("RPC_NUM_CLIENT_SERVICE_THREADS: %d", RPC_NUM_CLIENT_SERVICE_THREADS);
             LOGI("RPC_IMPLEMENTATION (0 for sockets, 1 for TCP, 2 for verbs): %d", RPC_IMPLEMENTATION);
             LOGI("SOCKETS_CONF: %s", SOCKETS_CONF.c_str());
             LOGI("VERBS_CONF: %s", VERBS_CONF.c_str());
             LOGI("VERBS_DOMAIN: %s", VERBS_DOMAIN.c_str());
             LOGI("MEMORY_ALLOCATED: %lu", MEMORY_ALLOCATED);
-            LOGI("IS_SERVER: %d", IS_SERVER);
-            LOGI("MY_SERVER_ID: %d", MY_SERVER_ID);
+            LOGI("IS_VISOR: %d", IS_VISOR);
+            LOGI("MY_VISOR_ID: %d", MY_VISOR_ID);
             LOGI("SERVER_LIST_FILE_PATH: %s", realpath(SERVER_LIST_FILE_PATH.c_str(), NULL));
             LOGI("SERVER_LIST: ");
             for (const auto& server : SERVER_LIST)
@@ -125,15 +128,15 @@ namespace ChronoLog {
         }
 
         void ConfigureDefaultClient() {
-            IS_SERVER = false;
+            IS_VISOR = false;
             LOGD("default configuration for client is loaded, changed configuration:");
-            LOGD("IS_SERVER: %d", IS_SERVER);
+            LOGD("IS_VISOR: %d", IS_VISOR);
         }
 
         void ConfigureDefaultServer() {
-            IS_SERVER = true;
+            IS_VISOR = true;
             LOGD("default configuration for server is loaded, changed configuration:");
-            LOGD("IS_SERVER: %d", IS_SERVER);
+            LOGD("IS_VISOR: %d", IS_VISOR);
         }
 
         void LoadConfFromJSONFile(const std::string& conf_file_path) {
@@ -158,23 +161,27 @@ namespace ChronoLog {
                 auto item_name = item.name.GetString();
                 if (strcmp(item_name, "rpc_server_ip") == 0) {
                     assert(item.value.IsString());
-                    RPC_SERVER_IP = item.value.GetString();
+                    RPC_VISOR_IP = item.value.GetString();
                 }
                 else if (strcmp(item_name, "rpc_base_server_port") == 0) {
                     assert(item.value.IsInt());
-                    RPC_BASE_SERVER_PORT = item.value.GetInt();
+                    RPC_BASE_VISOR_PORT = item.value.GetInt();
                 }
                 else if (strcmp(item_name, "rpc_num_server_ports") == 0) {
                     assert(item.value.IsInt());
-                    RPC_NUM_SERVER_PORTS = item.value.GetInt();
+                    RPC_NUM_VISOR_PORTS = item.value.GetInt();
                 }
-                else if (strcmp(item_name, "rpc_num_service_threads") == 0) {
+                else if (strcmp(item_name, "rpc_num_visor_service_threads") == 0) {
                     assert(item.value.IsInt());
-                    RPC_NUM_SERVICE_THREADS = item.value.GetInt();
+                    RPC_NUM_VISOR_SERVICE_THREADS = item.value.GetInt();
                 }
                 else if (strcmp(item_name, "rpc_client_port") == 0) {
                     assert(item.value.IsInt());
                     RPC_CLIENT_PORT = item.value.GetInt();
+                }
+                else if (strcmp(item_name, "rpc_num_client_service_threads") == 0) {
+                    assert(item.value.IsInt());
+                    RPC_NUM_CLIENT_SERVICE_THREADS = item.value.GetInt();
                 }
                 else if (strcmp(item_name, "rpc_implementation") == 0) {
                     assert(item.value.IsInt());
@@ -198,11 +205,11 @@ namespace ChronoLog {
                 }
                 else if (strcmp(item_name, "is_server") == 0) {
                     assert(item.value.IsBool());
-                    IS_SERVER = item.value.GetBool();
+                    IS_VISOR = item.value.GetBool();
                 }
                 else if (strcmp(item_name, "my_server_id") == 0) {
                     assert(item.value.IsInt());
-                    MY_SERVER_ID = item.value.GetInt();
+                    MY_VISOR_ID = item.value.GetInt();
                 }
                 else if (strcmp(item_name, "server_list_file_path") == 0) {
                     assert(item.value.IsString());
@@ -210,6 +217,7 @@ namespace ChronoLog {
                 }
                 else if (strcmp(item_name, "server_list") == 0) {
                     assert(item.value.IsArray());
+                    SERVER_LIST.clear();
                     auto server_array = item.value.GetArray();
                     for (auto &server: server_array)
                         SERVER_LIST.emplace_back(server.GetString());

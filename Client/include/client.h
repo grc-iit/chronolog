@@ -20,10 +20,10 @@ public:
     }
 
     ChronoLogClient(const ChronoLogRPCImplementation& protocol, const std::string& visor_ip, int visor_port) {
-        CHRONOLOG_CONF->IS_SERVER = false;
+        CHRONOLOG_CONF->IS_VISOR = false;
         CHRONOLOG_CONF->RPC_IMPLEMENTATION = protocol;
-        CHRONOLOG_CONF->RPC_SERVER_IP = visor_ip;
-        CHRONOLOG_CONF->RPC_BASE_SERVER_PORT = visor_port;
+        CHRONOLOG_CONF->RPC_VISOR_IP = visor_ip;
+        CHRONOLOG_CONF->RPC_BASE_VISOR_PORT = visor_port;
         rpcClient_ = ChronoLog::Singleton<RPCClient>::GetInstance();
     }
 

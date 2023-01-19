@@ -20,7 +20,7 @@ public:
     RPCClient() {
         LOGD("%s constructor is called", typeid(*this).name());
         rpc = ChronoLog::Singleton<ChronoLogRPCFactory>::GetInstance()
-                ->GetRPC(CHRONOLOG_CONF->RPC_BASE_SERVER_PORT);
+                ->GetRPC(CHRONOLOG_CONF->RPC_BASE_VISOR_PORT);
         set_prefix("ChronoLog");
         LOGD("%s constructor finishes, object created@%p in thread PID=%d",
              typeid(*this).name(), this, getpid());

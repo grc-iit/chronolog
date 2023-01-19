@@ -19,7 +19,7 @@ namespace ChronoVisor {
 
         // start engines (listening for incoming requests)
         ChronoLog::Singleton<ChronoLogRPCFactory>::GetInstance()->
-                    GetRPC(CHRONOLOG_CONF->RPC_BASE_SERVER_PORT)->start();
+                    GetRPC(CHRONOLOG_CONF->RPC_BASE_VISOR_PORT)->start();
 
         return 0;
     }
@@ -37,11 +37,11 @@ namespace ChronoVisor {
                 break;
             }
         }
-        baseIP_ = CHRONOLOG_CONF->RPC_SERVER_IP.string();
-        basePorts_ = CHRONOLOG_CONF->RPC_BASE_SERVER_PORT;
-        numPorts_ = CHRONOLOG_CONF->RPC_NUM_SERVER_PORTS;
-        numStreams_ = CHRONOLOG_CONF->RPC_NUM_SERVICE_THREADS;
-        serverAddrVec_.reserve(CHRONOLOG_CONF->RPC_NUM_SERVER_PORTS);
+        baseIP_ = CHRONOLOG_CONF->RPC_VISOR_IP.string();
+        basePorts_ = CHRONOLOG_CONF->RPC_BASE_VISOR_PORT;
+        numPorts_ = CHRONOLOG_CONF->RPC_NUM_VISOR_PORTS;
+        numStreams_ = CHRONOLOG_CONF->RPC_NUM_VISOR_SERVICE_THREADS;
+        serverAddrVec_.reserve(CHRONOLOG_CONF->RPC_NUM_VISOR_PORTS);
         for (int i = 0; i < numPorts_; i++) {
             std::string server_addr = protocol_ + "://" +
                                       baseIP_ + ":" +
