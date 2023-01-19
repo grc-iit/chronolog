@@ -51,10 +51,21 @@ struct KeeperProcessEntry
 	   return 1;
 	}
 
-        void updateKeeperProcessStats(KeeperStatsMsg const &) {}
+        void updateKeeperProcessStats(KeeperStatsMsg const &) 
+	{}
 
-	std::vector<KeeperIdCard> const& getActiveKeepers() const
-	{ return std::vector<KeeperIdCard>(); }	
+	std::vector<KeeperIdCard> & getActiveKeepers( std::vector<KeeperIdCard> & keeper_id_cards) 
+	{  //this will probably get more nuanced 
+	   //for now jsut return all the keepers registered
+
+	   keeper_id_cards.clear();
+	   std::lock_guard<std::mutex> lock_guard(registryLock);
+	   for (auto keeperProcess : keeperProcessRegistry )
+		   keeper_id_cards.push_back(keeperProcess.second.idCard);
+
+	   return keeper_id_cards;
+	}
+
 
 
 private:

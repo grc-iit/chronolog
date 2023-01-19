@@ -10,6 +10,7 @@
 #include "KeeperRegClient.h"
 #include "LogIngestionQueue.h"
 
+#define KEEPER_GROUP_ID 7
 #define KEEPER_REGISTRY_SERVICE_NA_STRING  "ofi+sockets://127.0.0.1:1234"
 #define KEEPER_REGISTRY_SERVICE_PROVIDER_ID	25
 
@@ -22,6 +23,11 @@
 int main(int argc, char** argv) {
 
   int exit_code = 0;
+
+  //INNA: TODO: pass the config file path on the command line & load the parameters inot a ConfigurationObject
+  // for now all the arguments are hardcoded ...
+    
+    uint64_t keeper_group_id = KEEPER_GROUP_ID;
 
     std::string KEEPER_RECORDING_SERVICE_NA_STRING = std::string(KEEPER_RECORDING_SERVICE_PROTOCOL)
 	                                           +"://"+std::string(KEEPER_RECORDING_SERVICE_IP)
@@ -39,8 +45,8 @@ int main(int argc, char** argv) {
 
    tl::engine keeperEngine(margo_id);
  
-    std::cout << "Starting KeeperRecordingService  at address " << keeperEngine.self()
-        << " with provider id " << recording_provider_id << std::endl;
+    std::cout << "ChronoKeeperInstance group_id {"<<keeper_group_id<<"} starting KeeperRecordingService at address {" << keeperEngine.self()
+        << "} with provider_id {" << recording_provider_id <<"}"<< std::endl;
 
 
     // Instantiate ChronoKeeper MemoryDataStore
@@ -69,7 +75,7 @@ int main(int argc, char** argv) {
     uint32_t ntoh_ip_addr = ntohl(sa.sin_addr.s_addr); 
     uint16_t ntoh_port = atoi(KEEPER_RECORDING_SERVICE_PORT);
     
-    chronolog::KeeperIdCard keeperIdCard( ntoh_ip_addr, ntoh_port, recording_provider_id);
+    chronolog::KeeperIdCard keeperIdCard( keeper_group_id,ntoh_ip_addr, ntoh_port, recording_provider_id);
     std::cout << keeperIdCard<<std::endl;
 
     // create KeeperRegistryClient and register the new KeeperRecording service with the KeeperRegistry 

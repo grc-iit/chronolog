@@ -23,7 +23,7 @@ class KeeperRegistryService : public tl::provider<KeeperRegistryService>
 
 private:
     
-    int register_keeper(tl::request const& request, chronolog::KeeperIdCard const& keeper_id_card)
+    void register_keeper(tl::request const& request, chronolog::KeeperIdCard const& keeper_id_card)
     {
 	
 	int return_code = 0;
@@ -35,7 +35,7 @@ private:
 	request.respond(return_code);
     }
 
-    int unregister_keeper(tl::request const& request, chronolog::KeeperIdCard const& keeper_id_card)
+    void unregister_keeper(tl::request const& request, chronolog::KeeperIdCard const& keeper_id_card)
     {
 	
 	int return_code = 0;
@@ -46,7 +46,7 @@ private:
 	request.respond(return_code);
     }
 
-    void handle_stats_msg(tl::request const& request, chronolog::KeeperStatsMsg const& keeper_stats_msg) 
+    void handle_stats_msg( chronolog::KeeperStatsMsg const& keeper_stats_msg) 
     {
         std::cout << "handle_keeper_stats " << keeper_stats_msg<< std::endl;
 	theKeeperProcessRegistry.updateKeeperProcessStats(keeper_stats_msg);
