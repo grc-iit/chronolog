@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.1)
 
 set(CMAKE_CXX_STANDARD 11)
 
-add_compile_options(-Wall)
+add_compile_options(-Wall -Wno-error)
 
 set(SOCKET_PP_SRC
         socket_event.cpp
