@@ -15,7 +15,8 @@ namespace ChronoVisor {
     int ChronoVisorServer2::start() {
         LOGI("ChronoVisor server starting, listen on %d ports starting from %d ...", numPorts_, basePorts_);
 
-        // bind functions first (defining RPC rorpcVisor_->bind_functions();
+        // bind functions first (defining RPC routines on engines)
+        rpcVisor_->bind_functions();
 
         // start engines (listening for incoming requests)
         ChronoLog::Singleton<ChronoLogRPCFactory>::GetInstance()->
