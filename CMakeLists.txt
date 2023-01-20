@@ -87,7 +87,7 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 #    add_compile_options(-g3)
     add_compile_options(-O0)
     #set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0 -g")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Werror -O0 -g")
 
     #if (HERMES_USE_ADDRESS_SANITIZER)
     #    add_compile_options(-fsanitize=address)
