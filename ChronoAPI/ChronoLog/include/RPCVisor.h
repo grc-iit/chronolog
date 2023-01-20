@@ -139,8 +139,9 @@ public:
         LOGD("%s is called in PID=%d, with args: name=%s, flags=%d", __FUNCTION__, getpid(), name.c_str(), flags);
 	std::string group_id; int role;
 	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
+	enum ChronoLogOp op = (enum ChronoLogOp)flags;
 
-	if(ret == CL_SUCCESS)
+	if(ret == CL_SUCCESS && ((role == CHRONOLOG_CLIENT_ADMIN || role == CHRONOLOG_CLIENT_USER_RW) || (role == CHRONOLOG_CLIENT_USER_RDONLY && op == CHRONOLOG_READ))) 
 	{
           if (!name.empty()) {
             return g_chronicleMetaDirectory->acquire_chronicle(name,client_id,group_id,flags);
@@ -149,7 +150,11 @@ public:
             return CL_ERR_INVALID_ARG;
           }
 	}
-	else return ret;
+	else 
+	{
+	   if(ret == CL_SUCCESS) LOGD(" Insufficient permissions to perform requested operation");
+	   return ret;
+	}
     }
 
     int LocalReleaseChronicle(std::string& name, std::string &client_id, int& flags) {
@@ -233,8 +238,9 @@ public:
              __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
 	std::string group_id; int role;
 	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
+        enum ChronoLogOp op = (enum ChronoLogOp)flags;
 
-	if(ret == CL_SUCCESS)
+	if(ret == CL_SUCCESS && ((role == CHRONOLOG_CLIENT_ADMIN || role == CHRONOLOG_CLIENT_USER_RW) || (role == CHRONOLOG_CLIENT_USER_RDONLY && op == CHRONOLOG_READ)))
 	{
         if (!chronicle_name.empty() && !story_name.empty()) {
             return g_chronicleMetaDirectory->acquire_story(chronicle_name, story_name,client_id,group_id,flags);
@@ -246,7 +252,11 @@ public:
             return CL_ERR_INVALID_ARG;
         }
 	}
-	else return ret;
+	else 
+	{
+	   if(ret == CL_SUCCESS) LOGD("Insufficient permissions to perform requested operation");
+	   return ret;
+	}
     }
 
     int LocalReleaseStory(std::string& chronicle_name, std::string& story_name, std::string &client_id, int& flags) {
