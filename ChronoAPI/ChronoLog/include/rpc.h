@@ -65,7 +65,7 @@ private:
     }
 
     void init_client_engine_and_endpoints(ChronoLogCharStruct protocol) {
-        thalliumClient_ = ChronoLog::Singleton<tl::engine>::GetInstance(protocol.c_str(), MARGO_CLIENT_MODE,true,12);
+        thalliumClient_ = ChronoLog::Singleton<tl::engine>::GetInstance(protocol.c_str(), MARGO_CLIENT_MODE,true,numStreams_);
         LOGD("generate a new client at %s", std::string(thalliumClient_->self()).c_str());
         thallium_endpoints.reserve(serverList_.size());
         for (std::vector<ChronoLogCharStruct>::size_type i = 0; i < serverList_.size(); ++i) {
