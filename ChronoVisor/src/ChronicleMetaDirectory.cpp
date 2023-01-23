@@ -51,6 +51,9 @@ int ChronicleMetaDirectory::create_chronicle(const std::string& name) {
 int ChronicleMetaDirectory::create_chronicle(const std::string& name,
                                              const std::unordered_map<std::string, std::string>& attrs) {
     LOGD("creating Chronicle name=%s", name.c_str());
+    for (auto iter = attrs.begin(); iter != attrs.end(); ++iter) {
+        LOGD("%s=%s", iter->first.c_str(), iter->second.c_str());
+    }
     std::chrono::steady_clock::time_point t1, t2;
     t1 = std::chrono::steady_clock::now();
     uint64_t cid = CityHash64(name.c_str(), name.size());
@@ -83,7 +86,7 @@ int ChronicleMetaDirectory::create_chronicle(const std::string& name,
  */
 int ChronicleMetaDirectory::destroy_chronicle(const std::string& name,
                                               int& flags) {
-    LOGD("destroying Chronicle name=%s", name.c_str());
+    LOGD("destroying Chronicle name=%s, flags=%d", name.c_str(), flags);
     std::chrono::steady_clock::time_point t1, t2;
     t1 = std::chrono::steady_clock::now();
     uint64_t cid = CityHash64(name.c_str(), name.size());
@@ -125,7 +128,7 @@ int ChronicleMetaDirectory::destroy_chronicle(const std::string& name,
  */
 int ChronicleMetaDirectory::acquire_chronicle(const std::string& name,
                                               int& flags) {
-    LOGD("acquiring Chronicle name=%s", name.c_str());
+    LOGD("acquiring Chronicle name=%s, flags=%d", name.c_str(), flags);
     uint64_t cid = CityHash64(name.c_str(), name.size());
     std::lock_guard<std::mutex> chronicleMapLock(g_chronicleMetaDirectoryMutex_);
     /* First check if Chronicle exists, fail if false */
@@ -160,7 +163,7 @@ int ChronicleMetaDirectory::acquire_chronicle(const std::string& name,
  */
 int ChronicleMetaDirectory::release_chronicle(const std::string& name,
                                               int& flags) {
-    LOGD("releasing Chronicle name=%s", name.c_str());
+    LOGD("releasing Chronicle name=%s, flags=%d", name.c_str(), flags);
     uint64_t cid = CityHash64(name.c_str(), name.size());
     Chronicle *pChronicle;
     std::lock_guard<std::mutex> chronicleMapLock(g_chronicleMetaDirectoryMutex_);
@@ -253,14 +256,10 @@ int ChronicleMetaDirectory::destroy_story(std::string& chronicle_name,
         Chronicle *pChronicle = chronicleRecord->second;
         /* Ask the Chronicle to destroy the Story */
         CL_Status res = pChronicle->removeStory(chronicle_name, story_name, flags);
-        if (res != CL_SUCCESS) {
-            LOGE("Fail to remove Story name=%s in Chronicle name=%s", story_name.c_str(), chronicle_name.c_str());
-            return res;
-        }
+        return res;
     } else {
         return CL_ERR_NOT_EXIST;
     }
-    return CL_ERR_UNKNOWN;
 }
 
 int ChronicleMetaDirectory::get_story_list(std::string& chronicle_name, std::vector<std::string>& story_name_list) {
@@ -286,7 +285,7 @@ int ChronicleMetaDirectory::get_story_list(std::string& chronicle_name, std::vec
 int ChronicleMetaDirectory::acquire_story(const std::string& chronicle_name,
                                           const std::string& story_name,
                                           int& flags) {
-    LOGD("acquiring Story name=%s in Chronicle name=%s", story_name.c_str(), chronicle_name.c_str());
+    LOGD("acquiring Story name=%s in Chronicle name=%s, flags=%d", story_name.c_str(), chronicle_name.c_str(), flags);
     // add cid to name before hash to allow same story name across chronicles
     std::string story_name_for_hash = chronicle_name + story_name;
     uint64_t cid = CityHash64(chronicle_name.c_str(), chronicle_name.size());
@@ -333,7 +332,7 @@ int ChronicleMetaDirectory::acquire_story(const std::string& chronicle_name,
 int ChronicleMetaDirectory::release_story(const std::string& chronicle_name,
                                           const std::string& story_name,
                                           int& flags) {
-    LOGD("releasing Story name=%s in Chronicle name=%s", story_name.c_str(), chronicle_name.c_str());
+    LOGD("releasing Story name=%s in Chronicle name=%s, flags=%d", story_name.c_str(), chronicle_name.c_str(), flags);
     std::string story_name_for_hash = chronicle_name + story_name;
     uint64_t sid = CityHash64(story_name_for_hash.c_str(), story_name_for_hash.size());
     uint64_t cid = CityHash64(chronicle_name.c_str(), chronicle_name.size());
@@ -401,7 +400,6 @@ int ChronicleMetaDirectory::get_chronicle_attr(std::string& name, const std::str
     } else {
         return CL_ERR_NOT_EXIST;
     }
-    return CL_ERR_UNKNOWN;
 }
 
 int ChronicleMetaDirectory::edit_chronicle_attr(std::string& name,
