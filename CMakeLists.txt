@@ -104,7 +104,7 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 else()    
     message("Compiling ChronoLog in release Mode")
     add_compile_options(-O3 -lm)
-    add_compile_options(-Wno-switch-unreachable -Wno-return-type)
+    #add_compile_options(-Wno-switch-unreachable -Wno-return-type)
 endif()
 
 #------------------------------------------------------------------------------
