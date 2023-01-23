@@ -8,14 +8,20 @@
 #include "RPCClient.h"
 #include "errcode.h"
 #include "ClocksourceManager.h"
+#include "ConfigurationManager.h"
 
 ClocksourceManager *ClocksourceManager::clocksourceManager_ = nullptr;
 
 class ChronoLogClient {
 public:
-    ChronoLogClient(const std::string& conf_file_path = "") {
+    explicit ChronoLogClient(const std::string& conf_file_path = "") {
         if (!conf_file_path.empty())
             CHRONOLOG_CONF->LoadConfFromJSONFile(conf_file_path);
+        rpcClient_ = ChronoLog::Singleton<RPCClient>::GetInstance();
+    }
+
+    explicit ChronoLogClient(const ChronoLog::ConfigurationManager& conf_manager) {
+        CHRONOLOG_CONF->SetConfiguration(conf_manager);
         rpcClient_ = ChronoLog::Singleton<RPCClient>::GetInstance();
     }
 

@@ -13,7 +13,8 @@
 #define STORY_NAME_LEN 32
 
 int main() {
-    ChronoLogClient client("./default_conf.json");
+    ChronoLog::ConfigurationManager confManager("./default_conf.json");
+    ChronoLogClient client(confManager);
     std::vector<std::string> chronicle_names;
     std::chrono::steady_clock::time_point t1, t2;
     std::chrono::duration<double, std::nano> duration_create_chronicle{},

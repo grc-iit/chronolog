@@ -20,19 +20,19 @@ namespace ChronoLog {
     class ConfigurationManager {
     public:
         ChronoLogCharStruct RPC_VISOR_IP;
-        uint16_t RPC_BASE_VISOR_PORT;
-        uint16_t RPC_NUM_VISOR_PORTS;
-        uint16_t RPC_NUM_VISOR_SERVICE_THREADS;
-        uint16_t RPC_CLIENT_PORT;
-        uint16_t RPC_NUM_CLIENT_SERVICE_THREADS;
+        uint16_t RPC_BASE_VISOR_PORT{};
+        uint16_t RPC_NUM_VISOR_PORTS{};
+        uint16_t RPC_NUM_VISOR_SERVICE_THREADS{};
+        uint16_t RPC_CLIENT_PORT{};
+        uint16_t RPC_NUM_CLIENT_SERVICE_THREADS{};
         ChronoLogRPCImplementation RPC_IMPLEMENTATION;
         ChronoLogCharStruct SOCKETS_CONF;
         ChronoLogCharStruct VERBS_CONF;
         ChronoLogCharStruct VERBS_DOMAIN;
-        uint64_t MEMORY_ALLOCATED;
+        uint64_t MEMORY_ALLOCATED{};
 
-        bool IS_VISOR;
-        int MY_VISOR_ID;
+        bool IS_VISOR{};
+        int MY_VISOR_ID{};
         ChronoLogCharStruct SERVER_LIST_FILE_PATH;
         std::vector<ChronoLogCharStruct> SERVER_LIST;
         ChronoLogCharStruct BACKED_FILE_DIR;
@@ -53,7 +53,35 @@ namespace ChronoLog {
             PrintConf();
         }
 
+        explicit ConfigurationManager(const std::string &conf_file_path) :
+                RPC_IMPLEMENTATION(CHRONOLOG_THALLIUM_SOCKETS){
+            LOGI("initializing configuration from a configuration file: %s", conf_file_path.c_str());
+            LoadConfFromJSONFile(conf_file_path);
+        }
+
+        void SetConfiguration(const ConfigurationManager &confManager) {
+            RPC_VISOR_IP = confManager.RPC_VISOR_IP;
+            RPC_BASE_VISOR_PORT = confManager.RPC_BASE_VISOR_PORT;
+            RPC_NUM_VISOR_PORTS = confManager.RPC_NUM_VISOR_PORTS;
+            RPC_NUM_VISOR_SERVICE_THREADS = confManager.RPC_NUM_VISOR_SERVICE_THREADS;
+            RPC_CLIENT_PORT = confManager.RPC_CLIENT_PORT;
+            RPC_NUM_CLIENT_SERVICE_THREADS = confManager.RPC_NUM_CLIENT_SERVICE_THREADS;
+            RPC_IMPLEMENTATION = confManager.RPC_IMPLEMENTATION;
+            SOCKETS_CONF = confManager.SOCKETS_CONF;
+            VERBS_CONF = confManager.VERBS_CONF;
+            VERBS_DOMAIN = confManager.VERBS_DOMAIN;
+            MEMORY_ALLOCATED = confManager.MEMORY_ALLOCATED;
+            IS_VISOR = confManager.IS_VISOR;
+            MY_VISOR_ID = confManager.MY_VISOR_ID;
+            SERVER_LIST_FILE_PATH = confManager.SERVER_LIST_FILE_PATH;
+            SERVER_LIST = confManager.SERVER_LIST;
+            BACKED_FILE_DIR = confManager.BACKED_FILE_DIR;
+            LOGI("set configuration with a pre-configured ConfigurationManager object");
+            PrintConf();
+        }
+
         void PrintConf() {
+            LOGI("******** Start of configuration output ********");
             LOGI("RPC_VISOR_IP: %s", RPC_VISOR_IP.c_str());
             LOGI("RPC_BASE_PORT: %d", RPC_BASE_VISOR_PORT);
             LOGI("RPC_NUM_PORTS: %d", RPC_NUM_VISOR_PORTS);
@@ -68,10 +96,11 @@ namespace ChronoLog {
             LOGI("IS_VISOR: %d", IS_VISOR);
             LOGI("MY_VISOR_ID: %d", MY_VISOR_ID);
             LOGI("SERVER_LIST_FILE_PATH: %s", realpath(SERVER_LIST_FILE_PATH.c_str(), NULL));
-            LOGI("SERVER_LIST: ");
+            LOGI("SERVER_LIST (overwrites what's in SERVER_LIST_FILE_PATH): ");
             for (const auto& server : SERVER_LIST)
                 LOGI("%s ", server.c_str());
             LOGI("BACKED_FILE_DIR: %s", BACKED_FILE_DIR.c_str());
+            LOGI("******** End of configuration output ********");
         }
 
         std::vector<ChronoLogCharStruct> LoadServers() {
@@ -142,7 +171,7 @@ namespace ChronoLog {
         void LoadConfFromJSONFile(const std::string& conf_file_path) {
             std::ifstream conf_file_stream(conf_file_path);
             if (!conf_file_stream.is_open()) {
-                std::cerr << "Unable to open file " + conf_file_path + ", exiting ...";
+                LOGE("Unable to open file %s, exiting ...", conf_file_path.c_str());
                 exit(CL_ERR_NOT_EXIST);
             }
 
@@ -151,9 +180,9 @@ namespace ChronoLog {
             rapidjson::Document doc;
             doc.Parse(contents.str().c_str());
             if (doc.HasParseError()) {
-                std::cerr << "Error during parsing configuration file " + conf_file_path << std::endl
-                          << "Error: " << doc.GetParseError() << std::endl
-                          << "at: " << doc.GetErrorOffset() << std::endl;
+                LOGE("Error during parsing configuration file %s\n"
+                     "Error: %d\n"
+                     "at: %lu", conf_file_path.c_str(), doc.GetParseError(), doc.GetErrorOffset());
                 exit(CL_ERR_INVALID_CONF);
             }
 
@@ -229,7 +258,7 @@ namespace ChronoLog {
                     LOGI("Unknown configuration: %s", item_name);
                 }
             }
-            std::cout << "Configuration loaded from configuration file " + conf_file_path + ":" << std::endl;
+            LOGI("Finish loading configurations from file %s, new configurations: ", conf_file_path.c_str());
             PrintConf();
         }
     };

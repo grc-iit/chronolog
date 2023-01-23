@@ -12,7 +12,8 @@ int main() {
     ChronoLogRPCImplementation protocol = CHRONOLOG_THALLIUM_SOCKETS;
     std::string server_ip = "127.0.0.1";
     int base_port = 5555;
-    ChronoLogClient client("./default_conf.json");
+    ChronoLog::ConfigurationManager confManager("./default_conf.json");
+    ChronoLogClient client(confManager);
     int num_ports = 3;
     std::string server_uri;
     std::vector<std::string> client_ids;

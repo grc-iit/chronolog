@@ -12,6 +12,11 @@ namespace ChronoVisor {
         init();
     }
 
+    ChronoVisorServer2::ChronoVisorServer2(const ChronoLog::ConfigurationManager &conf_manager) {
+        CHRONOLOG_CONF->SetConfiguration(conf_manager);
+        init();
+    }
+
     int ChronoVisorServer2::start() {
         LOGI("ChronoVisor server starting, listen on %d ports starting from %d ...", numPorts_, basePorts_);
 

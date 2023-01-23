@@ -26,6 +26,8 @@ namespace ChronoVisor {
     public:
         explicit ChronoVisorServer2(const std::string& conf_file_path = "");
 
+        explicit ChronoVisorServer2(const ChronoLog::ConfigurationManager &conf_manager);
+
         ~ChronoVisorServer2() {
             if (pTimeManager) {
                 delete pTimeManager;
@@ -73,6 +75,13 @@ namespace ChronoVisor {
          */
         ///@{
         std::shared_ptr<RPCVisor> rpcVisor_;
+        ///@}
+
+        /**
+         * @name Configuration related variables
+         */
+        ChronoLog::ConfigurationManager confManager_;
+        ///@}
     };
 }
 
