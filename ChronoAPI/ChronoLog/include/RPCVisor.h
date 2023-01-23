@@ -50,6 +50,8 @@ public:
         }
         if (g_clientRegistryManager) {
             return g_clientRegistryManager->add_client_record(client_id, record);
+        } else {
+            return CL_ERR_UNKNOWN;
         }
     }
 
@@ -60,7 +62,11 @@ public:
             LOGE("client id is invalid");
             return CL_ERR_INVALID_ARG;
         }
-        return g_clientRegistryManager->remove_client_record(client_id, flags);
+        if (g_clientRegistryManager) {
+            return g_clientRegistryManager->remove_client_record(client_id, flags);
+        } else {
+            return CL_ERR_UNKNOWN;
+        }
     }
 
     /**

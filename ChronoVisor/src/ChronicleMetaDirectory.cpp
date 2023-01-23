@@ -260,6 +260,7 @@ int ChronicleMetaDirectory::destroy_story(std::string& chronicle_name,
     } else {
         return CL_ERR_NOT_EXIST;
     }
+    return CL_ERR_UNKNOWN;
 }
 
 int ChronicleMetaDirectory::get_story_list(std::string& chronicle_name, std::vector<std::string>& story_name_list) {
@@ -392,7 +393,7 @@ int ChronicleMetaDirectory::get_chronicle_attr(std::string& name, const std::str
                 value = propertyRecord->second;
                 return CL_SUCCESS;
             } else {
-                CL_ERR_NOT_EXIST;
+                return CL_ERR_NOT_EXIST;
             }
         } else {
             return CL_ERR_UNKNOWN;
@@ -400,6 +401,7 @@ int ChronicleMetaDirectory::get_chronicle_attr(std::string& name, const std::str
     } else {
         return CL_ERR_NOT_EXIST;
     }
+    return CL_ERR_UNKNOWN;
 }
 
 int ChronicleMetaDirectory::edit_chronicle_attr(std::string& name,
