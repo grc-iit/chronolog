@@ -30,6 +30,8 @@ namespace ChronoLog {
         ChronoLogCharStruct VERBS_CONF;
         ChronoLogCharStruct VERBS_DOMAIN;
         uint64_t MEMORY_ALLOCATED{};
+        uint64_t DRIFT_CAL_SLEEP_SEC{};
+        uint64_t DRIFT_CAL_SLEEP_NSEC{};
 
         bool IS_VISOR{};
         int MY_VISOR_ID{};
@@ -47,6 +49,7 @@ namespace ChronoLog {
                 RPC_IMPLEMENTATION(CHRONOLOG_THALLIUM_SOCKETS),
                 SOCKETS_CONF("ofi+sockets"), VERBS_CONF("verbs"), VERBS_DOMAIN("mlx5_0"),
                 MEMORY_ALLOCATED(1024ULL * 1024ULL * 128ULL),
+                DRIFT_CAL_SLEEP_SEC(10), DRIFT_CAL_SLEEP_NSEC(0),
                 IS_VISOR(true), MY_VISOR_ID(0), SERVER_LIST_FILE_PATH(""),
                 SERVER_LIST({"localhost"}), BACKED_FILE_DIR("/dev/shm") {
             LOGI("initializing configuration with all default values: ");
@@ -71,6 +74,8 @@ namespace ChronoLog {
             VERBS_CONF = confManager.VERBS_CONF;
             VERBS_DOMAIN = confManager.VERBS_DOMAIN;
             MEMORY_ALLOCATED = confManager.MEMORY_ALLOCATED;
+            DRIFT_CAL_SLEEP_SEC = confManager.DRIFT_CAL_SLEEP_SEC;
+            DRIFT_CAL_SLEEP_NSEC = confManager.DRIFT_CAL_SLEEP_NSEC;
             IS_VISOR = confManager.IS_VISOR;
             MY_VISOR_ID = confManager.MY_VISOR_ID;
             SERVER_LIST_FILE_PATH = confManager.SERVER_LIST_FILE_PATH;
@@ -93,6 +98,8 @@ namespace ChronoLog {
             LOGI("VERBS_CONF: %s", VERBS_CONF.c_str());
             LOGI("VERBS_DOMAIN: %s", VERBS_DOMAIN.c_str());
             LOGI("MEMORY_ALLOCATED: %lu", MEMORY_ALLOCATED);
+            LOGI("DRIFT_CAL_SLEEP_SEC: %ld", DRIFT_CAL_SLEEP_SEC);
+            LOGI("DRIFT_CAL_SLEEP_NSEC: %ld", DRIFT_CAL_SLEEP_NSEC);
             LOGI("IS_VISOR: %d", IS_VISOR);
             LOGI("MY_VISOR_ID: %d", MY_VISOR_ID);
             LOGI("SERVER_LIST_FILE_PATH: %s", realpath(SERVER_LIST_FILE_PATH.c_str(), NULL));
@@ -231,6 +238,14 @@ namespace ChronoLog {
                 else if (strcmp(item_name, "memory_allocated") == 0) {
                     assert(item.value.IsUint64());
                     MEMORY_ALLOCATED = item.value.GetUint64();
+                }
+                else if (strcmp(item_name, "drift_cal_sleep_sec") == 0) {
+                    assert(item.value.IsUint64());
+                    DRIFT_CAL_SLEEP_SEC = item.value.GetUint64();
+                }
+                else if (strcmp(item_name, "drift_cal_sleep_nsec") == 0) {
+                    assert(item.value.IsUint64());
+                    DRIFT_CAL_SLEEP_NSEC = item.value.GetUint64();
                 }
                 else if (strcmp(item_name, "is_server") == 0) {
                     assert(item.value.IsBool());
