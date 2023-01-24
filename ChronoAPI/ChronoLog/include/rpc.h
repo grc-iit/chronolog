@@ -184,9 +184,9 @@ public:
                 }
             }
         }
-        switch (CHRONOLOG_CONF->RPC_IMPLEMENTATION) {
-            /* only clients need Thallium end_points */
-            if (CHRONOLOG_CONF->IS_VISOR == false) {
+        if (CHRONOLOG_CONF->IS_VISOR == false) {
+            switch (CHRONOLOG_CONF->RPC_IMPLEMENTATION) {
+                /* only clients need Thallium end_points */
                 case CHRONOLOG_THALLIUM_TCP:
                 case CHRONOLOG_THALLIUM_SOCKETS: {
                     init_client_engine_and_endpoints(CHRONOLOG_CONF->SOCKETS_CONF);
