@@ -15,10 +15,10 @@
 #define   mfence()  _mm_mfence()
 
 enum ClocksourceType {
-    TBD = 0,
-    C_STYLE = 1,
-    CPP_STYLE = 2,
-    TSC = 3
+    C_STYLE = 0,
+    CPP_STYLE = 1,
+    TSC = 2,
+    UNKNOWN = 3
 };
 
 class Clocksource {
@@ -63,16 +63,16 @@ public:
 
 class ClocksourceManager {
 private:
-    ClocksourceManager() : clocksource_(nullptr), clocksourceType_(ClocksourceType::TBD) {}
+    ClocksourceManager() : clocksource_(nullptr), clocksourceType_(ClocksourceType::UNKNOWN) {}
 
 public:
     ~ClocksourceManager() {
         if (clocksource_) {
-            delete[] clocksource_;
+            delete clocksource_;
             clocksource_ = nullptr;
         }
         if (clocksourceManager_) {
-            delete[] clocksourceManager_;
+            delete clocksourceManager_;
             clocksourceManager_ = nullptr;
         }
     }
