@@ -124,6 +124,7 @@ int main(int argc, char **argv)
 
 	for(int i=0;i<num_processes;i++)
 		if(queues[i] != nullptr) delete queues[i];
+	std::free(queues);
 
     }
     else
