@@ -1,1 +1,2 @@
-add_subdirectory(full_stack)
+add_subdirectory(ChronoVisor)
+add_subdirectory(Client)
