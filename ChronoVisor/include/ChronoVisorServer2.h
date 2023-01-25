@@ -76,12 +76,6 @@ namespace ChronoVisor {
         ///@{
         std::shared_ptr<RPCVisor> rpcVisor_;
         ///@}
-
-        /**
-         * @name Configuration related variables
-         */
-        ChronoLog::ConfigurationManager confManager_;
-        ///@}
     };
 }
 

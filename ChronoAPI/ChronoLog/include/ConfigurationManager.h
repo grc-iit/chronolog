@@ -15,6 +15,7 @@
 #include "enum.h"
 #include "log.h"
 #include "errcode.h"
+#include "ClocksourceManager.h"
 
 namespace ChronoLog {
     class ConfigurationManager {
@@ -244,7 +245,7 @@ namespace ChronoLog {
                     MEMORY_ALLOCATED = item.value.GetUint64();
                 }
                 else if (strcmp(item_name, "clocksource") == 0) {
-                    assert(item.value.IsInt8());
+                    assert(item.value.IsInt());
                     CLOCKSOURCE = static_cast<ClocksourceType>(item.value.GetInt());
                     ClocksourceManager::getInstance()->setClocksourceType(CLOCKSOURCE);
                 }
