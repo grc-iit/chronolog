@@ -27,8 +27,8 @@ ClocksourceManager *ClocksourceManager::clocksourceManager_ = nullptr;
 /**
  * ClientRegistry-related global variables
  */
-std::shared_ptr<ClientRegistryManager> g_clientRegistryManager =
-        ChronoLog::Singleton<ClientRegistryManager>::GetInstance();
+std::shared_ptr<ClientRegistryManager> g_clientRegistryManager = nullptr;
+        //ChronoLog::Singleton<ClientRegistryManager>::GetInstance();
 std::mutex g_clientRegistryMutex_;
 
 /**
@@ -36,8 +36,8 @@ std::mutex g_clientRegistryMutex_;
  */
 std::shared_ptr<std::unordered_map<std::string, Chronicle *>> g_chronicleMap =
         ChronoLog::Singleton<std::unordered_map<std::string, Chronicle *>>::GetInstance();
-std::shared_ptr<ChronicleMetaDirectory> g_chronicleMetaDirectory =
-        ChronoLog::Singleton<ChronicleMetaDirectory>::GetInstance(); // ChronicleMetaDirectory has to been inited
+std::shared_ptr<ChronicleMetaDirectory> g_chronicleMetaDirectory = nullptr;
+        //ChronoLog::Singleton<ChronicleMetaDirectory>::GetInstance(); // ChronicleMetaDirectory has to been inited
                                                                      // after global ChronicleMap since it tried to
                                                                      // store a reference to it using Singleton
                                                                      // template class in its constructor

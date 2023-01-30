@@ -48,7 +48,7 @@ private:
     std::string name;
     bool isRunning_;
 
-    std::vector<tl::engine> thalliumServerList_;
+    std::vector<tl::engine*> thalliumServerList_;
     std::shared_ptr<tl::engine> thalliumClient_;
     std::vector<ChronoLogCharStruct> serverAddrList_;
     std::vector<tl::endpoint> thallium_endpoints;
@@ -92,7 +92,7 @@ public:
                     // Mercury addresses in endpoints must be freed before finalizing Thallium
                     thallium_endpoints.clear();
                     for (int i = 0; i < numPorts_; i++) {
-                        thalliumServerList_[i].wait_for_finalize();
+                        thalliumServerList_[i]->wait_for_finalize();
                     }
                     thalliumClient_->finalize();
                     break;
@@ -149,16 +149,16 @@ public:
                     hg_addr_t addr_self;
                     hg_return_t hret;
                     for (size_t i = 0; i < workers; i++) {
-                        LOGD("creating Thallium server with engine str %s", serverAddrList_[i].c_str());
+                        /*LOGD("creating Thallium server with engine str %s", serverAddrList_[i].c_str());
                         margo_instance_id mid = margo_init(serverAddrList_[i].c_str(), MARGO_SERVER_MODE,
                                                            1, numStreams_);
                         if (mid == MARGO_INSTANCE_NULL) {
                             LOGE("Error: margo_init()");
                             exit(-1);
-                        }
+                        }*/
 
                         /* figure out first listening addr */
-                        hret = margo_addr_self(mid, &addr_self);
+                        /*hret = margo_addr_self(mid, &addr_self);
                         if (hret != HG_SUCCESS) {
                             LOGE("Error: margo_addr_self()");
                             margo_finalize(mid);
@@ -177,9 +177,12 @@ public:
                         margo_addr_free(mid, addr_self);
 
                         tl::engine new_engine(mid);
-                        thalliumServerList_.emplace_back(std::move(new_engine));
-                        LOGI("engine: %s is created", std::string(thalliumServerList_[i].self()).c_str());
+                        thalliumServerList_.emplace_back(std::move(new_engine));*/
+			tl::engine *tmpserver = new tl::engine(serverAddrList_[i].c_str(),THALLIUM_SERVER_MODE,true,2);
+			thalliumServerList_.push_back(tmpserver);
                     }
+		    for(int i=0;i<workers;i++)
+			    std::cout <<" server created at "<<thalliumServerList_[i]->self()<<std::endl;
                     break;
                 }
             }
@@ -209,7 +212,7 @@ public:
                 case CHRONOLOG_THALLIUM_SOCKETS:
                 case CHRONOLOG_THALLIUM_ROCE: {
                     for (int i = 0; i < numPorts_; i++) {
-                        thalliumServerList_[i].wait_for_finalize();
+                        thalliumServerList_[i]->wait_for_finalize();
                     }
 //                    thalliumClient_->wait_for_finalize();
                     break;

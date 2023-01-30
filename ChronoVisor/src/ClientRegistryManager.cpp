@@ -7,6 +7,7 @@
 #include "ClientRegistryManager.h"
 #include "errcode.h"
 #include "log.h"
+#include <iostream>
 
 extern std::mutex g_clientRegistryMutex_;
 
@@ -16,6 +17,7 @@ ClientRegistryManager::ClientRegistryManager() {
 
     clientRegistry_ = new std::unordered_map<std::string, ClientInfo>();
 
+    std::cout <<" clientRegistry con"<<std::endl;
     LOGD("clientRegistry_@%p has %ld entries", clientRegistry_, clientRegistry_->size());
 }
 
