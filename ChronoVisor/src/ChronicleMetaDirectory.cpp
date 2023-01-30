@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <mutex>
 #include <typedefs.h>
+#include <iostream>
 
 extern std::mutex g_chronicleMetaDirectoryMutex_;       /* protects global ChronicleMap */
 extern std::mutex g_acquiredChronicleMapMutex_;         /* protects global AcquiredChronicleMap */
@@ -246,20 +247,22 @@ int ChronicleMetaDirectory::destroy_story(std::string& chronicle_name,
     uint64_t sid = CityHash64(story_name_for_hash.c_str(), story_name_for_hash.size());
     if (acquiredStoryMap_->find(sid) != acquiredStoryMap_->end())
         return CL_ERR_ACQUIRED;
+
     std::lock_guard<std::mutex> chronicleMapLock(g_chronicleMetaDirectoryMutex_);
     /* Then check if Chronicle exists, fail if false */
     auto chronicleRecord = chronicleMap_->find(cid);
-    if (chronicleRecord != chronicleMap_->end()) {
+    if (chronicleRecord != chronicleMap_->end()) 
+    {
         Chronicle *pChronicle = chronicleRecord->second;
         /* Ask the Chronicle to destroy the Story */
         CL_Status res = pChronicle->removeStory(chronicle_name, story_name, flags);
-        if (res != CL_SUCCESS) {
+        if (res != CL_SUCCESS) 
+	{
             LOGE("Fail to remove Story name=%s in Chronicle name=%s", story_name.c_str(), chronicle_name.c_str());
-            return res;
         }
-    } else {
-        return CL_ERR_NOT_EXIST;
-    }
+	return res;
+    }    
+    return CL_ERR_NOT_EXIST;
 }
 
 int ChronicleMetaDirectory::get_story_list(std::string& chronicle_name, std::vector<std::string>& story_name_list) {
@@ -383,23 +386,25 @@ int ChronicleMetaDirectory::get_chronicle_attr(std::string& name, const std::str
     std::lock_guard<std::mutex> lock(g_chronicleMetaDirectoryMutex_);
     /* First check if Chronicle exists, fail if false */
     auto chronicleRecord = chronicleMap_->find(cid);
-    if (chronicleRecord != chronicleMap_->end()) {
+    if (chronicleRecord != chronicleMap_->end()) 
+    {
         Chronicle *pChronicle = chronicleRecord->second;
-        if (pChronicle) {
+        if (pChronicle) 
+	{
             /* Then check if property exists, fail if false */
             auto propertyRecord = pChronicle->getPropertyList().find(key);
-            if (propertyRecord != pChronicle->getPropertyList().end()) {
+            if (propertyRecord != pChronicle->getPropertyList().end()) 
+	    {
                 value = propertyRecord->second;
                 return CL_SUCCESS;
-            } else {
-                CL_ERR_NOT_EXIST;
-            }
-        } else {
+            } else 
+                return CL_ERR_NOT_EXIST;
+        } 
+	else
             return CL_ERR_UNKNOWN;
-        }
-    } else {
+    } 
+    else
         return CL_ERR_NOT_EXIST;
-    }
 }
 
 int ChronicleMetaDirectory::edit_chronicle_attr(std::string& name,
@@ -407,28 +412,32 @@ int ChronicleMetaDirectory::edit_chronicle_attr(std::string& name,
                                                 const std::string& value) {
     LOGD("editing attribute key=%s, value=%s from Chronicle name=%s", key.c_str(), value.c_str(), name.c_str());
     uint64_t cid = CityHash64(name.c_str(), name.size());
+
     std::lock_guard<std::mutex> lock(g_chronicleMetaDirectoryMutex_);
     /* First check if Chronicle exists, fail if false */
     auto chronicleRecord = chronicleMap_->find(cid);
-    if (chronicleRecord != chronicleMap_->end()) {
+     if(chronicleRecord != chronicleMap_->end()) 
+    {
         Chronicle *pChronicle = chronicleRecord->second;
-        if (pChronicle) {
+        if (pChronicle) 
+	{
             /* Then check if property exists, fail if false */
             auto propertyRecord = pChronicle->getPropertyList().find(key);
-            if (propertyRecord != pChronicle->getPropertyList().end()) {
+            if (propertyRecord != pChronicle->getPropertyList().end()) 
+	    {
                 auto res = pChronicle->getPropertyList().insert_or_assign(key, value);
-                if (res.second) {
+                if (res.second) 
                     return CL_SUCCESS;
-                } else {
-                    return CL_ERR_UNKNOWN;
-                }
-            } else {
-                CL_ERR_NOT_EXIST;
+		else
+                  return CL_ERR_UNKNOWN;
             }
-        } else {
-            return CL_ERR_UNKNOWN;
-        }
-    } else {
+	    else 
+	    return CL_ERR_NOT_EXIST;
+        } 
+	else 
+           return CL_ERR_UNKNOWN;
+       
+    } 
+    else 
         return CL_ERR_NOT_EXIST;
-    }
 }
