@@ -8,23 +8,20 @@
 #include <string>
 #include <thallium/serialization/stl/vector.hpp>
 #include <thallium/serialization/stl/string.hpp>
-#include <../../../ChronoVisor/include/ClientRegistryManager.h>
-#include <../../ChronoLog/include/singleton.h>
 #include <thread>
 #include <string>
 #include <algorithm>
 #include <unistd.h>
 #include <margo.h>
 #include "log.h"
-#include "global_var_visor.h"
+#include "data_structures.h"
 
-#define MSG_SIZE 100
+#define MSG_SIZE 10000
 
 namespace tl = thallium;
 
 std::vector<std::string> g_str_vector;
 
-using namespace ChronoLog;
 int main(int argc, char **argv) {
     if (argc != 5) {
         std::cerr << "Usage: " << argv[0] << " <address> <nstreams_per_port> <nports> <sendrecv|rdma>" << std::endl;
@@ -41,13 +38,6 @@ int main(int argc, char **argv) {
     g_str_vector.push_back("100");
     g_str_vector.push_back("200");
     g_str_vector.push_back("300");
-
-    std::shared_ptr<ClientRegistryManager> g_clientRegistryManager = ChronoLog::Singleton<ClientRegistryManager>::GetInstance();
-    ClientInfo record;
-    record.addr_ = "127.0.0.1";
-    g_clientRegistryManager->add_client_record("1000000", record);
-    g_clientRegistryManager->add_client_record("2000000", record);
-    g_clientRegistryManager->add_client_record("3000000", record);
 
     tl::abt scope;
     hg_addr_t addr_self;
@@ -114,15 +104,30 @@ int main(int argc, char **argv) {
         if (!strcmp(mode.c_str(), "sendrecv")) {
             // send/recv version
             LOGI("Defining RPC routines in send/recv mode");
-            std::function<void(const tl::request &, std::vector<char> &)> repeater =
-                    [&j, &engine_vec, &g_clientRegistryManager](const tl::request &req, std::vector<char> &data) {
-                        std::cout << "global vector has " << g_str_vector.size() << " elements" << std::endl;
-                        std::cout << "global vector[1]: " << g_str_vector[1] << std::endl;
-                        int flag = 0;
-                        g_clientRegistryManager->remove_client_record("1000000", flag);
-                        req.respond(data);
+            std::function<void(const tl::request &)> return_int =
+                    [&j, &engine_vec](const tl::request &req) {
+                        req.respond((int) 1234567890);
                     };
-            myEngine.define("repeater", repeater, 0, *myPool);
+            std::function<void(const tl::request &)> return_double =
+                    [&j, &engine_vec](const tl::request &req) {
+                        req.respond((double) 1234567890.0987654321);
+                    };
+            std::function<void(const tl::request &)> return_uint64 =
+                    [&j, &engine_vec](const tl::request &req) {
+                        req.respond((uint64_t) 1234567890.0987654321);
+                    };
+            std::function<void(const tl::request &)> return_struct =
+                    [&j, &engine_vec](const tl::request &req) {
+                        GetClockResponse res;
+                        res.t_arrival = 1234567890;
+                        res.t_departure = 987654321;
+                        res.drift_rate = 1234567890.0987654321;
+                        req.respond(res);
+                    };
+            myEngine.define("return_int", return_int, 0, *myPool);
+            myEngine.define("return_double", return_double, 0, *myPool);
+            myEngine.define("return_uint64", return_uint64, 0, *myPool);
+            myEngine.define("return_struct", return_struct, 0, *myPool);
         } else if (!strcmp(mode.c_str(), "rdma")) {
             // RDMA version
             LOGI("Defining RPC routines in RDMA mode");

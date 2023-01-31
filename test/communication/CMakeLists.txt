@@ -20,11 +20,6 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 endif()
 
 add_executable(thallium_server thallium_server.cpp
-        ../../ChronoVisor/src/ClientRegistryRecord.cpp
-        ../../ChronoVisor/include/ClientRegistryManager.h
-        ../../ChronoAPI/ChronoLog/include/global_var_visor.h
-        ../../ChronoVisor/src/ClientRegistryManager.cpp
-        ../../ChronoVisor/src/ChronicleMetaDirectory.cpp
         ../../ChronoAPI/ChronoLog/src/city.cpp
         ../../ChronoAPI/ChronoLog/include/city.h)
 target_include_directories(thallium_server PRIVATE ../../ChronoAPI/ChronoLog/include)
