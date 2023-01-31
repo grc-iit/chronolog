@@ -10,9 +10,6 @@
 #include <typedefs.h>
 #include <iostream>
 
-extern std::mutex g_chronicleMetaDirectoryMutex_;       /* protects global ChronicleMap */
-extern std::mutex g_acquiredChronicleMapMutex_;         /* protects global AcquiredChronicleMap */
-extern std::mutex g_acquiredStoryMapMutex_;             /* protects global AcquiredStoryMap */
 
 ChronicleMetaDirectory::ChronicleMetaDirectory() {
     LOGD("%s constructor is called", typeid(*this).name());

@@ -42,6 +42,9 @@ private:
     std::unordered_map<uint64_t , Chronicle *> *chronicleMap_;
     std::unordered_map<uint64_t, Chronicle *> *acquiredChronicleMap_;
     std::unordered_map<uint64_t, Story *> *acquiredStoryMap_;
+    std::mutex g_chronicleMetaDirectoryMutex_;      
+    std::mutex g_acquiredChronicleMapMutex_;         
+    std::mutex g_acquiredStoryMapMutex_;             
 };
 
 #endif //CHRONOLOG_CHRONICLEMETADIRECTORY_H

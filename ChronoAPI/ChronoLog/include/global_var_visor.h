@@ -29,7 +29,7 @@ ClocksourceManager *ClocksourceManager::clocksourceManager_ = nullptr;
  */
 //std::shared_ptr<ClientRegistryManager> g_clientRegistryManager = nullptr;
         //ChronoLog::Singleton<ClientRegistryManager>::GetInstance();
-std::mutex g_clientRegistryMutex_;
+//std::mutex g_clientRegistryMutex_;
 
 /**
  * ChronicleMetaDirectory-related global variables
@@ -41,9 +41,9 @@ std::mutex g_clientRegistryMutex_;
                                                                      // after global ChronicleMap since it tried to
                                                                      // store a reference to it using Singleton
                                                                      // template class in its constructor
-std::mutex g_chronicleMetaDirectoryMutex_;
-std::mutex g_acquiredChronicleMapMutex_;
-std::mutex g_acquiredStoryMapMutex_;
+//std::mutex g_chronicleMetaDirectoryMutex_;
+//std::mutex g_acquiredChronicleMapMutex_;
+//std::mutex g_acquiredStoryMapMutex_;
 
 /**
  * RPC-related global variables
