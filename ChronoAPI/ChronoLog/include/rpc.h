@@ -148,36 +148,8 @@ public:
                 case CHRONOLOG_THALLIUM_ROCE: {
                     hg_addr_t addr_self;
                     hg_return_t hret;
-                    for (size_t i = 0; i < workers; i++) {
-                        /*LOGD("creating Thallium server with engine str %s", serverAddrList_[i].c_str());
-                        margo_instance_id mid = margo_init(serverAddrList_[i].c_str(), MARGO_SERVER_MODE,
-                                                           1, numStreams_);
-                        if (mid == MARGO_INSTANCE_NULL) {
-                            LOGE("Error: margo_init()");
-                            exit(-1);
-                        }*/
-
-                        /* figure out first listening addr */
-                        /*hret = margo_addr_self(mid, &addr_self);
-                        if (hret != HG_SUCCESS) {
-                            LOGE("Error: margo_addr_self()");
-                            margo_finalize(mid);
-                            exit(-1);
-                        }
-                        hg_size_t addr_self_string_sz = 128;
-                        char addr_self_string[128];
-                        hret = margo_addr_to_string(mid, addr_self_string, &addr_self_string_sz,
-                                                    addr_self);
-                        if (hret != HG_SUCCESS) {
-                            LOGE("Error: margo_addr_to_string()");
-                            margo_addr_free(mid, addr_self);
-                            margo_finalize(mid);
-                            exit(-1);
-                        }
-                        margo_addr_free(mid, addr_self);
-
-                        tl::engine new_engine(mid);
-                        thalliumServerList_.emplace_back(std::move(new_engine));*/
+                    for (size_t i = 0; i < workers; i++) 
+		    {
 			tl::engine *tmpserver = new tl::engine(serverAddrList_[i].c_str(),THALLIUM_SERVER_MODE,true,2);
 			thalliumServerList_.push_back(tmpserver);
                     }
