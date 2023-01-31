@@ -21,16 +21,12 @@ class RPCVisor {
 public:
     RPCVisor() {
         LOGD("%s constructor is called", typeid(*this).name());
-        rpc = new ChronoLogRPC(); //std::make_shared<ChronoLogRPC> (); /*ChronoLog::Singleton<ChronoLogRPCFactory>::GetInstance()
-               // ->GetRPC(CHRONOLOG_CONF->RPC_BASE_SERVER_PORT);
+        rpc = new ChronoLogRPC(); 
         set_prefix("ChronoLog");
-        if (CHRONOLOG_CONF->IS_SERVER) {
-            //chronicleMetaDirectory = ChronoLog::Singleton<ChronicleMetaDirectory>::GetInstance();
-        }
         LOGD("%s constructor finishes, object created@%p in thread PID=%d",
              typeid(*this).name(), this, getpid());
-	clientManager = std::make_shared<ClientRegistryManager> ();//new ClientRegistryManager();//std::make_unique<ClientRegistryManager> ();
-	chronicleMetaDirectory = std::make_shared<ChronicleMetaDirectory> ();
+	clientManager = ChronoLog::Singleton<ClientRegistryManager>::GetInstance();
+	chronicleMetaDirectory = ChronoLog::Singleton<ChronicleMetaDirectory>::GetInstance();
     }
 
     ~RPCVisor()

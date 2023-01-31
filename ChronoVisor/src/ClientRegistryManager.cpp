@@ -17,7 +17,6 @@ ClientRegistryManager::ClientRegistryManager() {
 
     clientRegistry_ = new std::unordered_map<std::string, ClientInfo>();
 
-    std::cout <<" clientRegistry con"<<std::endl;
     LOGD("clientRegistry_@%p has %ld entries", clientRegistry_, clientRegistry_->size());
 }
 

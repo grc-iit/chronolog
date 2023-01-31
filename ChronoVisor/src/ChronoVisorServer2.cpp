@@ -34,9 +34,7 @@ namespace ChronoVisor {
         engineVec_.reserve(numPorts_);
         midVec_.reserve(numPorts_);
         pTimeManager = new TimeManager();
-        //chronicleMetaDirectory_ = ChronoLog::Singleton<ChronicleMetaDirectory>::GetInstance();
-        rpcProxy_ = std::make_shared<RPCVisor> ();//new RPCVisor(); //ChronoLog::Singleton<RPCVisor>::GetInstance();
-        //clientRegistryManager_ = ChronoLog::Singleton<ClientRegistryManager>::GetInstance();
+        rpcProxy_ = ChronoLog::Singleton<RPCVisor>::GetInstance();
     }
 
     int ChronoVisorServer2::start() {
