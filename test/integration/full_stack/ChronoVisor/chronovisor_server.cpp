@@ -6,6 +6,7 @@
 #include "global_var_visor.h"
 
 int main() {
+    ClocksourceManager::getInstance()->setClocksourceType(ClocksourceType::C_STYLE);
     ChronoVisor::ChronoVisorServer2 visor;
     visor.start();
 

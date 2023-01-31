@@ -9,7 +9,7 @@
 int ChronoLogClient::Connect(const std::string &server_uri,
                              std::string &client_id,
                              int &flags,
-                             uint64_t &clock_offset) {
+                             int64_t &clock_offset) {
     if (client_id.empty()) {
         char ip[16];
         struct hostent *he = gethostbyname("localhost");
@@ -24,6 +24,27 @@ int ChronoLogClient::Connect(const std::string &server_uri,
 
 int ChronoLogClient::Disconnect(const std::string &client_id, int &flags) {
     return rpcProxy_->Disconnect(client_id, flags);
+}
+
+int ChronoLogClient::GetClock(int64_t &offset, double &drift_rate) {
+    uint64_t t1, t2, t3, t4;
+    t2 = t3 = 0;
+    std::string client_id;
+    t1 = ClocksourceManager::getInstance()->getClocksource()->getTimestamp();
+//    rpcProxy_->GetClock(t2, t3, drift_rate);
+    GetClockResponse res = rpcProxy_->GetClock(client_id);
+    t4 = ClocksourceManager::getInstance()->getClocksource()->getTimestamp();
+    t2 = res.t_arrival;
+    t3 = res.t_departure;
+    drift_rate = res.drift_rate;
+    offset = (int64_t) ((t2 - t1) - (t4 - t3)) / 2;
+    LOGD("t1 (msg1 leaves client): %lu", t1);
+    LOGD("t_arrival (msg1 arrives visor): %lu", t2);
+    LOGD("t_departure (msg2 leaves visor): %lu", t3);
+    LOGD("t4 (msg2 arrives client): %lu", t4);
+    LOGD("offset: %ld", offset);
+    LOGD("drift_rate: %.10e", drift_rate);
+    return CL_SUCCESS;
 }
 
 int ChronoLogClient::CreateChronicle(std::string &name,

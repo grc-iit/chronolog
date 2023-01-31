@@ -13,11 +13,14 @@ ClocksourceManager *ClocksourceManager::clocksourceManager_ = nullptr;
 
 class ChronoLogClient {
 public:
-    ChronoLogClient() { CHRONOLOG_CONF->ConfigureDefaultClient("../../test/communication/server_list"); }
+    ChronoLogClient() { CHRONOLOG_CONF->ConfigureDefaultClient("../../test/communication/server_list");
+        setClocksourceType(ClocksourceType::C_STYLE);
+    }
 
     ChronoLogClient(const std::string& server_list_file_path) {
         CHRONOLOG_CONF->ConfigureDefaultClient(server_list_file_path);
         rpcProxy_ = ChronoLog::Singleton<RPCClient>::GetInstance();
+        setClocksourceType(ClocksourceType::C_STYLE);
     }
 
     ChronoLogClient(const ChronoLogRPCImplementation& protocol, const std::string& visor_ip, int visor_port) {
@@ -26,13 +29,19 @@ public:
         CHRONOLOG_CONF->RPC_SERVER_IP = visor_ip;
         CHRONOLOG_CONF->RPC_BASE_SERVER_PORT = visor_port;
         rpcProxy_ = ChronoLog::Singleton<RPCClient>::GetInstance();
+        setClocksourceType(ClocksourceType::C_STYLE);
+    }
+
+    void setClocksourceType(const ClocksourceType &type) {
+        ClocksourceManager::getInstance()->setClocksourceType(type);
     }
 
     int Connect(const std::string &server_uri,
                 std::string &client_id,
                 int &flags,
-                uint64_t &clock_offset);
-    int Disconnect(const std::string &client_id, int &flags);
+                int64_t &clock_offset);
+    int Disconnect(const std::string &client_id, int &flags);\
+    int GetClock(int64_t &offset, double &drift_rate);
     int CreateChronicle(std::string &name,
                         const std::unordered_map<std::string, std::string> &attrs,
                         int &flags);

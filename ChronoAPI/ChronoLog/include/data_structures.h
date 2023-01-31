@@ -101,4 +101,17 @@ namespace std {
     };
 }
 
+typedef struct GetClockResponse_ {
+    uint64_t t_arrival;
+    uint64_t t_departure;
+    double drift_rate;
+
+    template<typename SerArchiveT>
+    void serialize(SerArchiveT &serT) {
+        serT & t_arrival;
+        serT & t_departure;
+        serT & drift_rate;
+    }
+} GetClockResponse;
+
 #endif //CHRONOLOG_DATA_STRUCTURES_H

@@ -10,15 +10,16 @@
 #include <ctime>
 #include <unistd.h>
 #include <emmintrin.h>
+#include <log.h>
 
 #define   lfence()  _mm_lfence()
 #define   mfence()  _mm_mfence()
 
 enum ClocksourceType {
-    TBD = 0,
-    C_STYLE = 1,
-    CPP_STYLE = 2,
-    TSC = 3
+    C_STYLE = 0,
+    CPP_STYLE = 1,
+    TSC = 2,
+    UNKNOWN = 3
 };
 
 class Clocksource {
@@ -63,7 +64,7 @@ public:
 
 class ClocksourceManager {
 private:
-    ClocksourceManager() : clocksource_(nullptr), clocksourceType_(ClocksourceType::TBD) {}
+    ClocksourceManager() : clocksource_(nullptr), clocksourceType_(ClocksourceType::UNKNOWN) {}
 
 public:
     ~ClocksourceManager() {
@@ -86,6 +87,7 @@ public:
 
     void setClocksourceType(ClocksourceType type) {
         this->clocksourceType_ = type;
+        LOGD("clocksource is set to (0 for C, 1 for C++, 2 for TSC): %d", clocksourceType_);
     }
 
     Clocksource *getClocksource() {

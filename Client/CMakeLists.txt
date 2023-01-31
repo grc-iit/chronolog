@@ -13,6 +13,8 @@ add_library(ChronoLogClient_lib
         src/client.cpp
         include/client.h
         include/RPCClient.h
+        ../ChronoAPI/ChronoLog/include/ClocksourceManager.h
+        ../ChronoAPI/ChronoLog/src/ClocksourceManager.cpp
         ../ChronoAPI/ChronoLog/include/macro.h
         ../ChronoAPI/ChronoLog/include/rpc.h
         ../ChronoAPI/ChronoLog/include/RPCFactory.h

@@ -18,7 +18,8 @@ int main() {
     std::vector<std::string> client_ids;
     int flags = 0;
     bool ret = false;
-    uint64_t offset;
+    int64_t offset;
+    double drift_rate;
     std::chrono::steady_clock::time_point t1, t2;
     std::chrono::duration<double, std::nano> duration_connect{},
             duration_disconnect{};
@@ -39,6 +40,14 @@ int main() {
         assert(ret == CL_SUCCESS);
         t2 = std::chrono::steady_clock::now();
         duration_connect += (t2 - t1);
+    }
+
+    for (int i = 0; i < NUM_CONNECTION; i++) {
+        offset = 0;
+        drift_rate = 0;
+        ret = client.GetClock(offset, drift_rate);
+        ASSERT(ret, ==, CL_SUCCESS);
+        LOGI("offset: %ld, drift_rate: %f", offset, drift_rate);
     }
 
     for (int i = 0; i < NUM_CONNECTION; i++) {

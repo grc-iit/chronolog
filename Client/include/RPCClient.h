@@ -28,7 +28,7 @@ public:
 
     ~RPCClient() = default;
 
-    int Connect(const std::string &uri, std::string &client_id, int &flags, uint64_t &clock_offset) {
+    int Connect(const std::string &uri, std::string &client_id, int &flags, int64_t &clock_offset) {
         LOGD("%s in ChronoLogAdminRPCProxy at addresss %p called in PID=%d, with args: uri=%s, client_id=%s",
              __FUNCTION__, this, getpid(), uri.c_str(), client_id.c_str());
         return CHRONOLOG_RPC_CALL_WRAPPER("Connect", 0, int, uri, client_id, flags, clock_offset);
@@ -38,6 +38,21 @@ public:
         LOGD("%s is called in PID=%d, with args: client_id=%s, flags=%d",
              __FUNCTION__, getpid(), client_id.c_str(), flags);
         return CHRONOLOG_RPC_CALL_WRAPPER("Disconnect", 0, int, client_id, flags);
+    }
+
+    /*
+    int GetClock(uint64_t &t_arrival, uint64_t &t_departure, double &drift_rate) {
+        LOGD("%s is called in PID=%d, with args: t_arrival=%lu, t_departure=%lu, drift_rate=%f",
+             __FUNCTION__, getpid(), t_arrival, t_departure, drift_rate);
+        return CHRONOLOG_RPC_CALL_WRAPPER("GetClock", 0, int, t_arrival, t_departure, drift_rate);
+    }
+     */
+    GetClockResponse GetClock(const std::string &client_id) {
+        LOGD("%s is called in PID=%d, with args: client_id=%s", __FUNCTION__, getpid(), client_id.c_str());
+        GetClockResponse res = CHRONOLOG_RPC_CALL_WRAPPER("GetClock", 0, GetClockResponse, client_id);
+        LOGD("%s is returning in PID=%d, t_arrival=%lu, t_departure=%lu, drift_rate=%f", __FUNCTION__, getpid(),
+             res.t_arrival, res.t_departure, res.drift_rate);
+        return res;
     }
 
     int CreateChronicle(std::string &name,

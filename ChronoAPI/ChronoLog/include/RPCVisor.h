@@ -39,7 +39,7 @@ public:
     /**
      * Admin APIs
      */
-    int LocalConnect(const std::string &uri, std::string &client_id, int &flags, uint64_t &clock_offset) {
+    int LocalConnect(const std::string &uri, std::string &client_id, int &flags, int64_t &clock_offset) {
         LOGD("%s in ChronoLogAdminRPCProxy@%p called in PID=%d, with args: uri=%s",
              __FUNCTION__, this, getpid(), uri.c_str());
         ClientInfo record;
@@ -61,6 +61,45 @@ public:
             return CL_ERR_INVALID_ARG;
         }
         return g_clientRegistryManager->remove_client_record(client_id, flags);
+    }
+
+    /*
+    int LocalGetClock(uint64_t &t_arrival, uint64_t &t_departure, double &drift_rate) {
+        LOGD("%s is called in PID=%d, with args: t_arrival=%lu, t_arrival=%lu, drift_rate=%f",
+             __FUNCTION__, getpid(), t_arrival, t_departure, drift_rate);
+        uint64_t t1 = ClocksourceManager::getInstance()->getClocksource()->getTimestamp();
+        struct timespec ts_sleep{};
+        // TODO: we need two new configurations for sleep duration control
+        ts_sleep.tv_sec = 10;
+        ts_sleep.tv_nsec = 0;
+        uint64_t sleep_duration = ts_sleep.tv_sec * 1e9 + ts_sleep.tv_nsec;
+        LOGI("Sleeping for %ld nanoseconds to calculate drift rate ...", sleep_duration);
+        nanosleep(&ts_sleep, nullptr);
+        uint64_t t_arrival = ClocksourceManager::getInstance()->getClocksource()->getTimestamp();
+        drift_rate = (double) (t_arrival - t1) / sleep_duration;
+        t_arrival = t1;
+        t_departure = ClocksourceManager::getInstance()->getClocksource()->getTimestamp();
+        LOGD("t_arrival: %lu, t_departure: %lu, drift_rate: %.10e", t_arrival, t_departure, drift_rate);
+        return CL_SUCCESS;
+    }
+    */
+    GetClockResponse LocalGetClock(const std::string &client_id) {
+        LOGD("%s is called in PID=%d, with args: client_id=%s", __FUNCTION__, getpid(), client_id.c_str());
+        uint64_t t1 = ClocksourceManager::getInstance()->getClocksource()->getTimestamp();
+        struct timespec ts_sleep{};
+        /* TODO: we need two new configurations for sleep duration control */
+        ts_sleep.tv_sec = 10;
+        ts_sleep.tv_nsec = 0;
+        uint64_t sleep_duration = ts_sleep.tv_sec * 1e9 + ts_sleep.tv_nsec;
+        LOGI("Sleeping for %ld nanoseconds to calculate drift rate ...", sleep_duration);
+        nanosleep(&ts_sleep, nullptr);
+        uint64_t t2 = ClocksourceManager::getInstance()->getClocksource()->getTimestamp();
+        GetClockResponse res;
+        res.drift_rate = (double) (t2 - t1) / sleep_duration;
+        res.t_arrival = t1;
+        res.t_departure = ClocksourceManager::getInstance()->getClocksource()->getTimestamp();
+        LOGD("t_arrival: %lu, t_departure: %lu, drift_rate: %.10e", res.t_arrival, res.t_departure, res.drift_rate);
+        return res;
     }
 
     /**
@@ -211,7 +250,7 @@ public:
                                    const std::string &,
                                    std::string &,
                                    int &,
-                                   uint64_t &)> connectFunc(
+                                   int64_t &)> connectFunc(
                         [this](auto && PH1,
                                auto && PH2,
                                auto && PH3,
@@ -233,6 +272,30 @@ public:
                             ThalliumLocalDisconnect(std::forward<decltype(PH1)>(PH1),
                                                     std::forward<decltype(PH2)>(PH2),
                                                     std::forward<decltype(PH3)>(PH3));
+                        }
+                );
+                /*
+                std::function<void(const tl::request &,
+                                   uint64_t &,
+                                   uint64_t &,
+                                   double &)> getClockFunc(
+                        [this](auto && PH1,
+                               auto && PH2,
+                               auto && PH3,
+                               auto && PH4) {
+                            ThalliumLocalGetClock(std::forward<decltype(PH1)>(PH1),
+                                                    std::forward<decltype(PH2)>(PH2),
+                                                    std::forward<decltype(PH3)>(PH3),
+                                                    std::forward<decltype(PH4)>(PH4));
+                        }
+                );
+                 */
+                std::function<void(const tl::request &,
+                                   const std::string &)> getClockFunc(
+                        [this](auto && PH1,
+                               auto && PH2) {
+                            ThalliumLocalGetClock(std::forward<decltype(PH1)>(PH1),
+                                                  std::forward<decltype(PH2)>(PH2));
                         }
                 );
                 std::function<void(const tl::request &,
@@ -367,6 +430,7 @@ public:
 
                 rpc->bind("ChronoLogThalliumConnect", connectFunc);
                 rpc->bind("ChronoLogThalliumDisconnect", disconnectFunc);
+                rpc->bind("ChronoLogThalliumGetClock", getClockFunc);
 
                 rpc->bind("ChronoLogThalliumCreateChronicle", createChronicleFunc);
                 rpc->bind("ChronoLogThalliumDestroyChronicle", destroyChronicleFunc);
@@ -385,8 +449,11 @@ public:
     }
 
     CHRONOLOG_THALLIUM_DEFINE(LocalConnect, (uri, client_id, flags, clock_offset),
-                              const std::string &uri, std::string &client_id, int &flags, uint64_t &clock_offset)
+                              const std::string &uri, std::string &client_id, int &flags, int64_t &clock_offset)
     CHRONOLOG_THALLIUM_DEFINE(LocalDisconnect, (client_id, flags), std::string &client_id, int &flags)
+//    CHRONOLOG_THALLIUM_DEFINE(LocalGetClock, (t_arrival, t_departure, drift_rate),
+//                              uint64_t &t_arrival, uint64_t &t_departure, double &drift_rate)
+    CHRONOLOG_THALLIUM_DEFINE(LocalGetClock, (client_id), const std::string &client_id);
 
     CHRONOLOG_THALLIUM_DEFINE(LocalCreateChronicle, (name, attrs, flags),
                               std::string &name, const std::unordered_map<std::string, std::string> &attrs, int &flags)
