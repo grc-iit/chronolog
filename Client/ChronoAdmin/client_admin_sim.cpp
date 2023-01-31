@@ -39,6 +39,21 @@ Created by Aparna on 01/12/2023
 int max_msg_len;
 int num_processes;
 
+void print_banner()
+{
+
+      std::cout <<" -connect -protocol <int> -hostname <string> -port <int>, protocol should be 0(sockets),1(tcp),2(verbs), connects all clients"<<std::endl;
+      std::cout <<" Metadata operations : -c <string> -p <int>, create a chronicle with name <string> by client <int>  "<<std::endl
+              <<" -s <string1> <string2> -p <int> , create a story with name string1+string2 : string1 = chronicle name, string2 = story name by client <int>"<<std::endl
+              <<" -a -c <string> -p <int>, acquire chronicle with name <string> by client <int>"<<std::endl
+              <<" -a -s <string1> <string2> -p <int>, acquire story with name string1+string2 : string1 = chronicle name, string2 = story name by client <int>"<<std::endl
+              <<" -r -c <string> -p <int>, release chronicle with name <string> by client <int>"<<std::endl
+              <<" -r -s <string1> <string2> -p <int>, release story with name string1+string2 : string1 = chronicle name, string2 = story name by client <int> "<<std::endl
+              <<" -d -c <string> -p <int>, destroy chronicle with name <string> by client <int>"<<std::endl
+              <<" -d -s <string1> <string2> -p <int>, destroy story with name string1+string2 : string1 = chronicle name, string2 = story name by client <int>"<<std::endl
+              <<" -disconnect , disconnect all clients"<<std::endl;
+}
+
 using namespace boost::interprocess;
 
 int main(int argc, char **argv) 
@@ -49,6 +64,11 @@ int main(int argc, char **argv)
     std::fstream fp(filename,std::ios::out);
     fp << "localhost"<<std::endl;
 
+    if(argc != 2)
+    {
+	std::cout <<" ChronoAdmin_Sim usage : ./ChronoAdmin_Sim <int>, run simulation with <int> number of clients"<<std::endl
+		<< " -h for help"<<std::endl;
+    }
     assert(argc==2);
 
     num_processes = std::stoi(argv[1]);
@@ -111,6 +131,8 @@ int main(int argc, char **argv)
           command_subs.push_back(s);
         }
 
+	if(command_subs[0].compare("-h")==0) print_banner();
+	else
 	parse_commands(queues,command_subs,end_loop);
 
 	if(end_loop) break;

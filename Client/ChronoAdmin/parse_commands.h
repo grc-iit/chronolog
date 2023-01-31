@@ -77,7 +77,7 @@ void run_command(ChronoLogClient *&client,std::string &msg_string,std::string &c
 	std::string hostname;
 	int portno=-1;
 	incorrect = false;
-	if(command_subs.size()!=7 || (command_subs[1].compare("-protocol")!=0 && command_subs[3].compare("-hostname")!=0 && command_subs[5].compare("-portnumber")!=0)) incorrect = true;
+	if(command_subs.size()!=7 || (command_subs[1].compare("-protocol")!=0 && command_subs[3].compare("-hostname")!=0 && command_subs[5].compare("-port")!=0)) incorrect = true;
 	if(incorrect)
 	{
 	   std::cout <<" incorrect command, retry"<<std::endl;
@@ -123,13 +123,17 @@ void run_command(ChronoLogClient *&client,std::string &msg_string,std::string &c
 	
 	   server_uri = protocolstring+"://"+host_ip+":"+std::to_string(portno);
 	   std::cout <<" server_uri = "<<server_uri<<std::endl;
-	   client = new ChronoLogClient((ChronoLogRPCImplementation)protocol,host_ip,portno);
-	   if(client_id.empty())
-	   client_id = gen_random(8);
-	   flags = 0;
-	   offset = 0;
-	   ret = client->Connect(server_uri,client_id,flags,offset);
-	   assert(ret == CL_SUCCESS);
+	   if(client == nullptr)
+	   {
+	     client = new ChronoLogClient((ChronoLogRPCImplementation)protocol,host_ip,portno);
+	     if(client_id.empty())
+	     client_id = gen_random(8);
+	     flags = 0;
+	     offset = 0;
+	     ret = client->Connect(server_uri,client_id,flags,offset);
+	     assert(ret == CL_SUCCESS);
+	   }
+	   else std::cout <<" client connected, Incorrect command, retry"<<std::endl;
 	}
 	else 
 	{

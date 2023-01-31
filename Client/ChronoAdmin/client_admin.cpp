@@ -44,7 +44,7 @@ int main(int argc, char **argv)
 
     if(argc != 7)
     {
-       std::cout <<" ChronoAdmin usage : ./ChronoAdmin -protocol p -hostname h -portnumber n"<<std::endl;
+       std::cout <<" ChronoAdmin usage : ./ChronoAdmin -protocol p -hostname h -port n"<<std::endl;
        exit(-1);
     }
 
@@ -68,7 +68,7 @@ int main(int argc, char **argv)
 	end_program = true;
     }
     
-    if(args[4] != "-portnumber")
+    if(args[4] != "-port")
     {
 	std::cout <<" incorrect input string : should be -portnumber"<<std::endl;
 	end_program = true;
