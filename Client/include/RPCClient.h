@@ -19,14 +19,17 @@ class RPCClient {
 public:
     RPCClient() {
         LOGD("%s constructor is called", typeid(*this).name());
-        rpc = ChronoLog::Singleton<ChronoLogRPCFactory>::GetInstance()
-                ->GetRPC(CHRONOLOG_CONF->RPC_BASE_SERVER_PORT);
+        rpc = new ChronoLogRPC(); //ChronoLog::Singleton<ChronoLogRPCFactory>::GetInstance()
+                //->GetRPC(CHRONOLOG_CONF->RPC_BASE_SERVER_PORT);
         set_prefix("ChronoLog");
         LOGD("%s constructor finishes, object created@%p in thread PID=%d",
              typeid(*this).name(), this, getpid());
     }
 
-    ~RPCClient() = default;
+    ~RPCClient()
+    {
+	delete rpc;
+    }
 
     int Connect(const std::string &uri, std::string &client_id, int &flags, uint64_t &clock_offset) {
         LOGD("%s in ChronoLogAdminRPCProxy at addresss %p called in PID=%d, with args: uri=%s, client_id=%s",
@@ -121,7 +124,8 @@ private:
     }
 
     ChronoLogCharStruct func_prefix;
-    std::shared_ptr<ChronoLogRPC> rpc;
+    ChronoLogRPC *rpc;
+    //std::shared_ptr<ChronoLogRPC> rpc;
 };
 
 
