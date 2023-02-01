@@ -27,7 +27,6 @@ public:
 
     int create_story(std::string &chronicle_name, const std::string& story_name, const std::unordered_map<std::string, std::string>& attrs);
     int destroy_story(std::string &chronicle_name, const std::string& story_name, int& flags);
-    int get_story_list(std::string &chronicle_name, std::vector<std::string> &story_name_list);
     int acquire_story(const std::string& chronicle_name, const std::string& story_name, int& flags);
     int release_story(const std::string& chronicle_name, const std::string& story_name, int& flags);
 
@@ -37,11 +36,16 @@ public:
     int get_chronicle_attr(std::string& name, const std::string& key, std::string& value);
     int edit_chronicle_attr(std::string& name, const std::string& key, const std::string& value);
 
+    std::vector<std::string> show_chronicles(std::string& client_id);
+    std::vector<std::string> show_stories(std::string& client_id, const std::string& chronicle_name);
+
 private:
 //    std::shared_ptr<std::unordered_map<std::string, Chronicle *>> chronicleMap_;
     std::unordered_map<uint64_t , Chronicle *> *chronicleMap_;
     std::unordered_map<uint64_t, Chronicle *> *acquiredChronicleMap_;
     std::unordered_map<uint64_t, Story *> *acquiredStoryMap_;
+    std::unordered_map<std::string, uint64_t> *chronicleName2IdMap_;
+    std::unordered_map<uint64_t, std::string> *chronicleId2NameMap_;
 };
 
 #endif //CHRONOLOG_CHRONICLEMETADIRECTORY_H

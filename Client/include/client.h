@@ -48,6 +48,8 @@ public:
     int ReleaseStory(std::string &chronicle_name, std::string &story_name, int &flags);
     int GetChronicleAttr(std::string &chronicle_name, const std::string &key, std::string &value);
     int EditChronicleAttr(std::string &chronicle_name, const std::string &key, const std::string &value);
+    std::vector<std::string> ShowChronicles(std::string &client_id);
+    std::vector<std::string> ShowStories(std::string &client_id, const std::string &chronicle_name);
 
 private:
     std::shared_ptr<RPCClient> rpcProxy_;

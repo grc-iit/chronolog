@@ -70,3 +70,11 @@ int ChronoLogClient::GetChronicleAttr(std::string &chronicle_name, const std::st
 int ChronoLogClient::EditChronicleAttr(std::string &chronicle_name, const std::string &key, const std::string &value) {
     return rpcProxy_->EditChronicleAttr(chronicle_name, key, value);
 }
+
+std::vector<std::string> ChronoLogClient::ShowChronicles(std::string &client_id) {
+    return rpcProxy_->ShowChronicles(client_id);
+}
+
+std::vector<std::string> ChronoLogClient::ShowStories(std::string &client_id, const std::string &chronicle_name) {
+    return rpcProxy_->ShowStories(client_id, chronicle_name);
+}

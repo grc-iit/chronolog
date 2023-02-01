@@ -107,6 +107,16 @@ public:
         return CHRONOLOG_RPC_CALL_WRAPPER("EditChronicleAttr", 0, int, name, key, value);
     }
 
+    std::vector<std::string> ShowChronicles(std::string &client_id) {
+        LOGD("%s is called in PID=%d, with args: client_id=%s", __FUNCTION__, getpid(), client_id.c_str());
+        return CHRONOLOG_RPC_CALL_WRAPPER("ShowChronicles", 0, std::vector<std::string>, client_id);
+    }
+
+    std::vector<std::string> ShowStories(std::string &client_id, const std::string &chronicle_name) {
+        LOGD("%s is called in PID=%d, with args: client_id=%s, chronicle_name=%s",
+             __FUNCTION__, getpid(), client_id.c_str(), chronicle_name.c_str());
+        return CHRONOLOG_RPC_CALL_WRAPPER("ShowStories", 0, std::vector<std::string>, client_id, chronicle_name);
+    }
 
 private:
     void set_prefix(std::string prefix) {

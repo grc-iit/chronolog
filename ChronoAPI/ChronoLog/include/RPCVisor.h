@@ -202,6 +202,17 @@ public:
         }
     }
 
+    std::vector<std::string> LocalShowChronicles(std::string& client_id) {
+        LOGD("%s is called in PID=%d, with args: client_id=%s", __FUNCTION__, getpid(), client_id.c_str());
+        return g_chronicleMetaDirectory->show_chronicles(client_id);
+    }
+
+    std::vector<std::string> LocalShowStories(std::string& client_id, const std::string &chronicle_name) {
+        LOGD("%s is called in PID=%d, with args: client_id=%s, chronicle_name=%s",
+             __FUNCTION__, getpid(), client_id.c_str(), chronicle_name.c_str());
+        return g_chronicleMetaDirectory->show_stories(client_id, chronicle_name);
+    }
+
     void bind_functions() {
         switch (CHRONOLOG_CONF->RPC_IMPLEMENTATION) {
             case CHRONOLOG_THALLIUM_SOCKETS:
@@ -364,6 +375,23 @@ public:
                                                            std::forward<decltype(PH3)>(PH3),
                                                            std::forward<decltype(PH4)>(PH4)); }
                 );
+                std::function<void(const tl::request &,
+                                   std::string &client_id)> showChroniclesFunc(
+                        [this](auto && PH1,
+                               auto && PH2) {
+                            ThalliumLocalShowChronicles(std::forward<decltype(PH1)>(PH1),
+                                                           std::forward<decltype(PH2)>(PH2)); }
+                );
+                std::function<void(const tl::request &,
+                                   std::string &client_id,
+                                   const std::string &chroicle_name)> showStoriesFunc(
+                        [this](auto && PH1,
+                               auto && PH2,
+                               auto && PH3) {
+                            ThalliumLocalShowStories(std::forward<decltype(PH1)>(PH1),
+                                                          std::forward<decltype(PH2)>(PH2),
+                                                          std::forward<decltype(PH3)>(PH3)); }
+                );
 
                 rpc->bind("ChronoLogThalliumConnect", connectFunc);
                 rpc->bind("ChronoLogThalliumDisconnect", disconnectFunc);
@@ -380,6 +408,9 @@ public:
 
                 rpc->bind("ChronoLogThalliumGetChronicleAttr", getChronicleAttrFunc);
                 rpc->bind("ChronoLogThalliumEditChronicleAttr", editChronicleAttrFunc);
+
+                rpc->bind("ChronoLogThalliumShowChronicles", showChroniclesFunc);
+                rpc->bind("ChronoLogThalliumShowStories", showStoriesFunc);
             }
         }
     }
@@ -410,6 +441,10 @@ public:
                               std::string &name, const std::string &key, std::string &value)
     CHRONOLOG_THALLIUM_DEFINE(LocalEditChronicleAttr, (name, key, value),
                               std::string &name, const std::string &key, const std::string &value)
+
+    CHRONOLOG_THALLIUM_DEFINE(LocalShowChronicles, (client_id), std::string &client_id)
+    CHRONOLOG_THALLIUM_DEFINE(LocalShowStories, (client_id, chronicle_name),
+                              std::string &client_id, const std::string &chronicle_name)
 
 private:
     void set_prefix(std::string prefix) {
