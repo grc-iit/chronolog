@@ -101,7 +101,7 @@ public:
     /**
      * Get StoryID from its name
      * @param story_name: name of the Story
-     * @return StoryID if found
+     * @return StoryID if found \n
      *         0 elsewise
      */
     uint64_t getStoryId(const std::string &story_name) {

@@ -36,8 +36,8 @@ ChronicleMetaDirectory::~ChronicleMetaDirectory() {
 /**
  * Create a Chronicle
  * @param name: name of the Chronicle
- * @return CL_SUCCESS if succeed to create the Chronicle
- *         CL_ERR_CHRONICLE_EXISTS if a Chronicle with the same name already exists
+ * @return CL_SUCCESS if succeed to create the Chronicle \n
+ *         CL_ERR_CHRONICLE_EXISTS if a Chronicle with the same name already exists \n
  *         CL_ERR_UNKNOWN otherwise
  */
 int ChronicleMetaDirectory::create_chronicle(const std::string& name) {
@@ -49,8 +49,8 @@ int ChronicleMetaDirectory::create_chronicle(const std::string& name) {
  * Create a Chronicle
  * @param name: name of the Chronicle
  * @param attrs: attributes associated with the Chronicle
- * @return CL_SUCCESS if succeed to create the Chronicle
- *         CL_ERR_CHRONICLE_EXISTS if a Chronicle with the same name already exists
+ * @return CL_SUCCESS if succeed to create the Chronicle \n
+ *         CL_ERR_CHRONICLE_EXISTS if a Chronicle with the same name already exists \n
  *         CL_ERR_UNKNOWN otherwise
  */
 int ChronicleMetaDirectory::create_chronicle(const std::string& name,
@@ -84,13 +84,13 @@ int ChronicleMetaDirectory::create_chronicle(const std::string& name,
 }
 
 /**
- * Destroy a Chronicle
+ * Destroy a Chronicle \n
  * No need to check its Stories. Users are required to release all Stories before releasing a Chronicle
  * @param name: name of the Chronicle
  * @param flags: flags
- * @return CL_SUCCESS if succeed to destroy the Chronicle
- *         CL_ERR_NOT_EXIST if the Chronicle does not exist
- *         CL_ERR_ACQUIRED if the Chronicle is acquired by others and cannot be destroyed
+ * @return CL_SUCCESS if succeed to destroy the Chronicle \n
+ *         CL_ERR_NOT_EXIST if the Chronicle does not exist \n
+ *         CL_ERR_ACQUIRED if the Chronicle is acquired by others and cannot be destroyed \n
  *         CL_ERR_UNKNOWN otherwise
  */
 int ChronicleMetaDirectory::destroy_chronicle(const std::string& name,
@@ -133,8 +133,8 @@ int ChronicleMetaDirectory::destroy_chronicle(const std::string& name,
  * Acquire a Chronicle
  * @param name: name of the Chronicle
  * @param flags: flags
- * @return CL_SUCCESS if succeed to acquire the Chronicle
- *         CL_ERR_NOT_EXIST if the Chronicle does not exist
+ * @return CL_SUCCESS if succeed to acquire the Chronicle \n
+ *         CL_ERR_NOT_EXIST if the Chronicle does not exist \n
  *         CL_ERR_UNKNOWN otherwise
  */
 int ChronicleMetaDirectory::acquire_chronicle(const std::string& name,
@@ -168,8 +168,8 @@ int ChronicleMetaDirectory::acquire_chronicle(const std::string& name,
  * Release a Chronicle
  * @param name: name of the Chronicle
  * @param flags: flags
- * @return CL_SUCCESS if succeed to release the Chronicle
- *         CL_ERR_NOT_EXIST if the Chronicle does not exist
+ * @return CL_SUCCESS if succeed to release the Chronicle \n
+ *         CL_ERR_NOT_EXIST if the Chronicle does not exist \n
  *         CL_ERR_UNKNOWN otherwise
  */
 int ChronicleMetaDirectory::release_chronicle(const std::string& name,
@@ -209,9 +209,9 @@ int ChronicleMetaDirectory::release_chronicle(const std::string& name,
  * @param chronicle_name: name of the Chronicle that the Story belongs to
  * @param story_name: name of the Story
  * @param attrs: attributes associated with the Story
- * @return CL_SUCCESS if succeed to create the Story
- *         CL_ERR_NOT_EXIST if the Chronicle does not exist
- *         CL_ERR_STORY_EXISTS if a Story with the same name already exists
+ * @return CL_SUCCESS if succeed to create the Story \n
+ *         CL_ERR_NOT_EXIST if the Chronicle does not exist \n
+ *         CL_ERR_STORY_EXISTS if a Story with the same name already exists \n
  *         CL_ERR_UNKNOWN otherwise
  */
 int ChronicleMetaDirectory::create_story(std::string& chronicle_name,
@@ -246,9 +246,9 @@ int ChronicleMetaDirectory::create_story(std::string& chronicle_name,
  * @param chronicle_name: name of the Chronicle that the Story belongs to
  * @param story_name: name of the Story
  * @param flags: flags
- * @return CL_SUCCESS if succeed to destroy the Story
- *         CL_ERR_ACQUIRED if the Story is acquired by others and cannot be destroyed
- *         CL_ERR_NOT_EXIST if the Chronicle does not exist
+ * @return CL_SUCCESS if succeed to destroy the Story \n
+ *         CL_ERR_ACQUIRED if the Story is acquired by others and cannot be destroyed \n
+ *         CL_ERR_NOT_EXIST if the Chronicle does not exist \n
  *         CL_ERR_UNKNOWN otherwise
  */
 int ChronicleMetaDirectory::destroy_story(std::string& chronicle_name,
@@ -285,8 +285,8 @@ int ChronicleMetaDirectory::destroy_story(std::string& chronicle_name,
  * @param chronicle_name: name of the Chronicle that the Story belongs to
  * @param story_name: name of the Story
  * @param flags: flags
- * @return CL_SUCCESS if succeed to destroy the Story
- *         CL_ERR_NOT_EXIST if the Chronicle does not exist
+ * @return CL_SUCCESS if succeed to destroy the Story \n
+ *         CL_ERR_NOT_EXIST if the Chronicle does not exist \n
  *         CL_ERR_UNKNOWN otherwise
  */
 int ChronicleMetaDirectory::acquire_story(const std::string& chronicle_name,
@@ -325,11 +325,11 @@ int ChronicleMetaDirectory::acquire_story(const std::string& chronicle_name,
 
 /**
  * Release a Story
- * @param cchronicle_name: name of the Chronicle that the Story belongs to
+ * @param chronicle_name: name of the Chronicle that the Story belongs to
  * @param story_name: name of the Story
  * @param flags: flags
- * @return CL_SUCCESS if succeed to destroy the Story
- *         CL_ERR_NOT_EXIST if the Chronicle does not exist
+ * @return CL_SUCCESS if succeed to destroy the Story \n
+ *         CL_ERR_NOT_EXIST if the Chronicle does not exist \n
  *         CL_ERR_UNKNOWN otherwise
  */
 int ChronicleMetaDirectory::release_story(const std::string& chronicle_name,
@@ -445,7 +445,7 @@ std::vector<std::string> ChronicleMetaDirectory::show_chronicles(std::string &cl
  * Show all the Stories names in a Chronicle
  * @param client_id: Client ID
  * @param chronicle_name: name of the Chronicle
- * @return a vector of the names of given Chronicle
+ * @return a vector of the names of given Chronicle \n
  *         empty vector if Chronicle does not exist
  */
 std::vector<std::string>
