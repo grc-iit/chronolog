@@ -59,14 +59,14 @@ public:
         return CHRONOLOG_RPC_CALL_WRAPPER("DestroyChronicle", 0, int, name, flags);
     }
 
-    int AcquireChronicle(std::string &name, const int &flags) {
+    int AcquireChronicle(std::string &client_id, std::string &name, const int &flags) {
         LOGD("%s is called in PID=%d, with args: name=%s, flags=%d", __FUNCTION__, getpid(), name.c_str(), flags);
-        return CHRONOLOG_RPC_CALL_WRAPPER("AcquireChronicle", 0, int, name, flags);
+        return CHRONOLOG_RPC_CALL_WRAPPER("AcquireChronicle", 0, int, client_id,name, flags);
     }
 
-    int ReleaseChronicle(std::string &name, const int &flags) {
+    int ReleaseChronicle(std::string &client_id, std::string &name, const int &flags) {
         LOGD("%s is called in PID=%d, with args: name=%s, flags=%d", __FUNCTION__, getpid(), name.c_str(), flags);
-        return CHRONOLOG_RPC_CALL_WRAPPER("ReleaseChronicle", 0, int, name, flags);
+        return CHRONOLOG_RPC_CALL_WRAPPER("ReleaseChronicle", 0, int, client_id, name, flags);
     }
 
     int CreateStory(std::string &chronicle_name,
