@@ -142,11 +142,11 @@ public:
         }
     }
 
-    int LocalAcquireStory(std::string& chronicle_name, std::string& story_name, int& flags) {
+    int LocalAcquireStory(std::string &client_id,std::string& chronicle_name, std::string& story_name, int& flags) {
         LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, flags=%d",
              __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
         if (!chronicle_name.empty() && !story_name.empty()) {
-	      return chronicleMetaDirectory->acquire_story(chronicle_name,story_name,flags);
+	      return chronicleMetaDirectory->acquire_story(client_id,chronicle_name,story_name,flags);
         } else {
             if (chronicle_name.empty())
                 LOGE("chronicle name is empty");
@@ -156,11 +156,11 @@ public:
         }
     }
 
-    int LocalReleaseStory(std::string& chronicle_name, std::string& story_name, int& flags) {
+    int LocalReleaseStory(std::string &client_id,std::string& chronicle_name, std::string& story_name, int& flags) {
         LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, flags=%d",
              __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
         if (!chronicle_name.empty() && !story_name.empty()) {
-	      return chronicleMetaDirectory->release_story(chronicle_name,story_name,flags);
+	      return chronicleMetaDirectory->release_story(client_id,chronicle_name,story_name,flags);
         } else {
             if (chronicle_name.empty())
                 LOGE("chronicle name is empty");
@@ -313,30 +313,36 @@ public:
                         }
                 );
                 std::function<void(const tl::request &,
+				   std::string &,
                                    std::string &,
                                    std::string &,
                                    int &)> acquireStoryFunc(
                         [this](auto && PH1,
                                 auto && PH2,
                                 auto && PH3,
-                                auto && PH4) {
+				auto && PH4,
+                                auto && PH5) {
                             ThalliumLocalAcquireStory(std::forward<decltype(PH1)>(PH1),
                                                       std::forward<decltype(PH2)>(PH2),
                                                       std::forward<decltype(PH3)>(PH3),
-                                                      std::forward<decltype(PH4)>(PH4)); }
+						      std::forward<decltype(PH4)>(PH4),
+                                                      std::forward<decltype(PH5)>(PH5)); }
                 );
                 std::function<void(const tl::request &,
+				   std::string &,
                                    std::string &,
                                    std::string &,
                                    int &)> releaseStoryFunc(
                         [this](auto && PH1,
                                 auto && PH2,
                                 auto && PH3,
-                                auto && PH4) {
+				auto && PH4,
+                                auto && PH5) {
                             ThalliumLocalReleaseStory(std::forward<decltype(PH1)>(PH1),
                                                       std::forward<decltype(PH2)>(PH2),
                                                       std::forward<decltype(PH3)>(PH3),
-                                                      std::forward<decltype(PH4)>(PH4));
+						      std::forward<decltype(PH4)>(PH4),
+                                                      std::forward<decltype(PH5)>(PH5));
                         }
                 );
 
@@ -403,10 +409,10 @@ public:
                               int &flags)
     CHRONOLOG_THALLIUM_DEFINE(LocalDestroyStory, (chronicle_name, story_name, flags),
                               std::string &chronicle_name, std::string &story_name, int &flags)
-    CHRONOLOG_THALLIUM_DEFINE(LocalAcquireStory, (chronicle_name, story_name, flags),
-                              std::string &chronicle_name, std::string &story_name, int &flags)
-    CHRONOLOG_THALLIUM_DEFINE(LocalReleaseStory, (chronicle_name, story_name, flags),
-                              std::string &chronicle_name, std::string &story_name, int &flags)
+    CHRONOLOG_THALLIUM_DEFINE(LocalAcquireStory, (client_id,chronicle_name, story_name, flags),
+                              std::string &client_id,std::string &chronicle_name, std::string &story_name, int &flags)
+    CHRONOLOG_THALLIUM_DEFINE(LocalReleaseStory, (client_id,chronicle_name, story_name, flags),
+                              std::string &client_id,std::string &chronicle_name, std::string &story_name, int &flags)
 
     CHRONOLOG_THALLIUM_DEFINE(LocalGetChronicleAttr, (name, key, value),
                               std::string &name, const std::string &key, std::string &value)

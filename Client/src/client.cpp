@@ -57,11 +57,11 @@ int ChronoLogClient::DestroyStory(std::string &chronicle_name, std::string &stor
 }
 
 int ChronoLogClient::AcquireStory(std::string &chronicle_name, std::string &story_name, int &flags) {
-    return rpcProxy_->AcquireStory(chronicle_name, story_name, flags);
+    return rpcProxy_->AcquireStory(clientid,chronicle_name, story_name, flags);
 }
 
 int ChronoLogClient::ReleaseStory(std::string &chronicle_name, std::string &story_name, int &flags) {
-    return rpcProxy_->ReleaseStory(chronicle_name, story_name, flags);
+    return rpcProxy_->ReleaseStory(clientid,chronicle_name, story_name, flags);
 }
 
 int ChronoLogClient::GetChronicleAttr(std::string &chronicle_name, const std::string &key, std::string &value) {

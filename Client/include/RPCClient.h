@@ -87,16 +87,16 @@ public:
         return CHRONOLOG_RPC_CALL_WRAPPER("DestroyStory", 0, int, chronicle_name, story_name, flags);
     }
 
-    int AcquireStory(std::string &chronicle_name, std::string &story_name, const int &flags) {
+    int AcquireStory(std::string &client_id, std::string &chronicle_name, std::string &story_name, const int &flags) {
         LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, flags=%d",
              __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
-        return CHRONOLOG_RPC_CALL_WRAPPER("AcquireStory", 0, int, chronicle_name, story_name, flags);
+        return CHRONOLOG_RPC_CALL_WRAPPER("AcquireStory", 0, int, client_id, chronicle_name, story_name, flags);
     }
 
-    int ReleaseStory(std::string &chronicle_name, std::string &story_name, const int &flags) {
+    int ReleaseStory(std::string &client_id, std::string &chronicle_name, std::string &story_name, const int &flags) {
         LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, flags=%d",
              __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
-        return CHRONOLOG_RPC_CALL_WRAPPER("ReleaseStory", 0, int, chronicle_name, story_name, flags);
+        return CHRONOLOG_RPC_CALL_WRAPPER("ReleaseStory", 0, int, client_id, chronicle_name, story_name, flags);
     }
 
     int GetChronicleAttr(std::string &name, const std::string &key, std::string &value) {

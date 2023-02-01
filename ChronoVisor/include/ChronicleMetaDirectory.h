@@ -29,8 +29,8 @@ public:
     int create_story(std::string &chronicle_name, const std::string& story_name, const std::unordered_map<std::string, std::string>& attrs);
     int destroy_story(std::string &chronicle_name, const std::string& story_name, int& flags);
     int get_story_list(std::string &chronicle_name, std::vector<std::string> &story_name_list);
-    int acquire_story(const std::string& chronicle_name, const std::string& story_name, int& flags);
-    int release_story(const std::string& chronicle_name, const std::string& story_name, int& flags);
+    int acquire_story(const std::string& client_id,const std::string& chronicle_name, const std::string& story_name, int& flags);
+    int release_story(const std::string &client_id,const std::string& chronicle_name, const std::string& story_name, int& flags);
 
     uint64_t record_event(uint64_t sid, void *data);
     uint64_t playback_event(uint64_t sid);
