@@ -150,7 +150,6 @@ int ChronicleMetaDirectory::acquire_chronicle(const std::string &client_id, cons
 	   }
 	}
 
-     	
 	if(!exists)
 	{
 	   std::pair<uint64_t,std::string> p(cid,client_id);
