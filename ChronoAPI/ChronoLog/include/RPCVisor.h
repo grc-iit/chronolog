@@ -21,7 +21,7 @@ class RPCVisor {
 public:
     RPCVisor() {
         LOGD("%s constructor is called", typeid(*this).name());
-        rpc = new ChronoLogRPC(); 
+	rpc = std::make_shared<ChronoLogRPC> ();
         set_prefix("ChronoLog");
         LOGD("%s constructor finishes, object created@%p in thread PID=%d",
              typeid(*this).name(), this, getpid());
@@ -31,12 +31,16 @@ public:
 
     ~RPCVisor()
     {
-	delete rpc;
     }
 
     /**
      * Admin APIs
      */
+    void Visor_start()
+    {
+	rpc->start();
+	
+    }
     int LocalConnect(const std::string &uri, std::string &client_id, int &flags, uint64_t &clock_offset) {
         LOGD("%s in ChronoLogAdminRPCProxy@%p called in PID=%d, with args: uri=%s",
              __FUNCTION__, this, getpid(), uri.c_str());
@@ -46,6 +50,7 @@ public:
             LOGE("client id is invalid");
             return CL_ERR_INVALID_ARG;
         }
+	std::cout <<" localconnect"<<std::endl;
 	return clientManager->add_client_record(client_id,record);
     }
 
@@ -431,10 +436,8 @@ private:
         }
     }
 
-    //std::shared_ptr<ChronicleMetaDirectory> chronicleMetaDirectory;
     ChronoLogCharStruct func_prefix;
-    ChronoLogRPC* rpc;
-    //std::shared_ptr<ChronoLogRPC> rpc;
+    std::shared_ptr<ChronoLogRPC> rpc;
     std::shared_ptr<ClientRegistryManager> clientManager;
     std::shared_ptr<ChronicleMetaDirectory> chronicleMetaDirectory;
 };

@@ -94,11 +94,11 @@ public:
                     for (int i = 0; i < numPorts_; i++) {
                         thalliumServerList_[i]->wait_for_finalize();
                     }
-                    thalliumClient_->finalize();
                     break;
                 }
             }
         }
+	else thalliumClient_->finalize();
     }
 
     ChronoLogRPC() : baseServerPort_(CHRONOLOG_CONF->RPC_BASE_SERVER_PORT),

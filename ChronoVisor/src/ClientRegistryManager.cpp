@@ -9,8 +9,6 @@
 #include "log.h"
 #include <iostream>
 
-extern std::mutex g_clientRegistryMutex_;
-
 ClientRegistryManager::ClientRegistryManager() {
     LOGD("%s constructor is called, object created@%p in thread PID=%d",
          typeid(*this).name(), this, getpid());

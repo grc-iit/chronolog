@@ -43,6 +43,7 @@ namespace ChronoVisor {
         // bind functions first (defining RPC routines on engines)
         rpcProxy_->bind_functions();
 
+	rpcProxy_->Visor_start();
         // start engines (listening for incoming requests)
         //ChronoLog::Singleton<ChronoLogRPCFactory>::GetInstance()->
                     //GetRPC(CHRONOLOG_CONF->RPC_BASE_SERVER_PORT)->start();
