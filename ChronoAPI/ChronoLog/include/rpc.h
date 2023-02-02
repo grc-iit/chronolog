@@ -148,7 +148,7 @@ public:
                 case CHRONOLOG_THALLIUM_ROCE: {
                     for (size_t i = 0; i < workers; i++) 
 		    {
-			tl::engine *tmpserver = new tl::engine(serverAddrList_[i].c_str(),THALLIUM_SERVER_MODE,true,2);
+			tl::engine *tmpserver = new tl::engine(serverAddrList_[i].c_str(),THALLIUM_SERVER_MODE,true,numStreams_);
 			thalliumServerList_.push_back(tmpserver);
                     }
 		    for(int i=0;i<workers;i++)
