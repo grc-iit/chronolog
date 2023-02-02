@@ -1,11 +1,11 @@
-#ifndef INGESTION_QUEUE_H
-#define INGESTION_QUEUE_H
+#ifndef STORY_INGESTION_HANDLE_H
+#define STORY_INGESTION_HANDLE_H
 
-
+#include <mutex>
 #include <deque>
 
 //
-// IngestionQueue is a funnel into the MemoryDataStore
+// IngestionQueue is a funnel into the KeeperDataStore
 // std::deque guarantees O(1) time for addidng elements and resizing 
 // (vector of vectors implementation)
 
@@ -39,7 +39,7 @@ public:
 			{}
 	~StoryIngestionQueue() = default;
 
-	void ingestEvent( LogEvent const& logEvent)
+	void ingestLogEvent( LogEvent const& logEvent)
 	{   // assume multiple service threads pushing events on ingestionQueue
 	    std::lock_guard<ingestionMutex> lock(); 
 	    activeDeque->push_back(logEvent); 
@@ -65,48 +65,6 @@ private:
 
 	std::mutex & ingestionMutex;   
 	EventDeque * activeDeque;
-};
-
-
-class IngestionQueue
-{
-
-int addStoryIngestionHandle( StoryIngestionHandle * ingestionHandle)
-{
-	std::lock_guard<std::mutex> lock(ingestionQueueMutex);
-	storyIngestionHandles.emplace(ingestion_handle->getStoryId(),ingestionHandle);
-}
-
-int removeIngestionHandle(StoryId const & story_id)
-{
-	std::lock_guard<std::mutex> lock(ingestionQueueMutex);
-	storyIngestionHandles.erase(story_id);
-}
-
-void ingestLogEvent(LogEvent const& event)
-{
-	auto ingestionHandle_iter = storyIngestionHandles.find(event.storyId);
-	if( ingestionHandle_iter == storyIngestionHandles.end())
-	{
-		std::lock_guard<std::mutex> lock(ingestionQueueMutex);
-		orphanEventQueue.push_back(event);
-	}
-	else
-	{       //individual StoryIngestionHandle has its own mutex
-		(*ingestionHandle_iter).second->ingestEvent(event);
-	}	
-}
-
-private:
-
-	std::mutex ingestionQueueMutex;
-	std::unordered_map<StoryId, StoryIngestionHandle*> storyIngestionHandles;
-
-	// events for unknown stories or late events for closed stories will end up
-	// in orphanEventQueue that we'll periodically try to drain into the DataStore
-	std::deque<LogEvent> orphanEventQueue;
-
-	//Timer to triger periodic attempt to drain orphanEventQueue and collect/log statistics
 };
 
 }

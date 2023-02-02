@@ -82,14 +82,17 @@ int main(int argc, char** argv) {
     chronolog::KeeperRegistryClient * keeperRegistryClient = chronolog::KeeperRegistryClient::CreateKeeperRegistryClient(
 		     keeperEngine, KEEPER_REGISTRY_SERVICE_NA_STRING, KEEPER_REGISTRY_SERVICE_PROVIDER_ID);
 
-    keeperRegistryClient->send_register_msg(keeperIdCard);
-    keeperRegistryClient->send_unregister_msg(keeperIdCard);
+    chronolog::KeeperStatsMsg keeperStatsMsg(keeperIdCard);
+    keeperRegistryClient->send_register_msg(keeperStatsMsg);
+
 
     // now we are ready to ingest records coming from the storyteller clients ....
 
     // for now BOTH KeeperRecordingService and KeeperRegistryClient will be running until they are explicitly killed  
     // INNA: TODO: add a graceful shutdown mechanism with finalized callbacks and all
     //
+
+    keeperRegistryClient->send_unregister_msg(keeperIdCard);
     keeperEngine.wait_for_finalize();
    // delete keeperRegistryClient;
    // delete keeperRecordingService;

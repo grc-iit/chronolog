@@ -4,6 +4,7 @@
 #include <mutex>
 #include <vector>
 #include <map>
+#include <chrono>
 
 #include "KeeperIdCard.h"
 #include "KeeperStatsMsg.h"
@@ -33,13 +34,23 @@ struct KeeperProcessEntry
 	KeeperRegistry(){}
 	~KeeperRegistry()=default;
 
-	int registerKeeperProcess( KeeperIdCard const& keeper_id_card)
-	{ 
+	int registerKeeperProcess( KeeperStatsMsg const& keeperStatsMsg)
+	{
+	   KeeperIdCard keeper_id_card = keeperStatsMsg.getKeeperIdCard();
+
 	   std::lock_guard<std::mutex> lock_guard(registryLock);
-	   keeperProcessRegistry.insert( std::pair<std::pair<uint32_t,uint16_t>,KeeperProcessEntry>
+	   auto insert_return = keeperProcessRegistry.insert( std::pair<std::pair<uint32_t,uint16_t>,KeeperProcessEntry>
 		( std::pair<uint32_t,uint16_t>(keeper_id_card.getIPaddr(),keeper_id_card.getPort()),
 			   KeeperProcessEntry(keeper_id_card) )
 		);
+	   if( false == insert_return.second)
+	   { //log msg here , insert_return.first is the position to the current keeper entry the same KeeperIdCard...
+		   return 0;
+	   }
+
+	   KeeperProcessEntry keeper_process = (*(insert_return.first)).second;
+	   //keeper_process.lastStatsTime = std::chrono::steady_clock::now();
+	   keeper_process.activeStoryCount = keeperStatsMsg.getActiveStoryCount();
 	   return 1;
 	}
 
@@ -51,12 +62,26 @@ struct KeeperProcessEntry
 	   return 1;
 	}
 
-        void updateKeeperProcessStats(KeeperStatsMsg const &) 
-	{}
+        void updateKeeperProcessStats(KeeperStatsMsg const & keeperStatsMsg) 
+	{
+	   KeeperIdCard keeper_id_card = keeperStatsMsg.getKeeperIdCard();
+
+	   std::lock_guard<std::mutex> lock_guard(registryLock);
+	   auto keeper_process_iter = keeperProcessRegistry.find(std::pair<uint32_t,uint16_t>(keeper_id_card.getIPaddr(),keeper_id_card.getPort()));
+	   if(keeper_process_iter == keeperProcessRegistry.end())
+	   {    // however unlikely it is that the sstats msg would be delivered for the keeper that's already unregistered
+		// we should probably log a warning here...
+		return;
+	   }
+   	   KeeperProcessEntry keeper_process = (*keeper_process_iter).second;
+	  // keeper_process.lastStatsTime = std::chrono::steady_clock::now();
+	   keeper_process.activeStoryCount = keeperStatsMsg.getActiveStoryCount();
+
+	}
 
 	std::vector<KeeperIdCard> & getActiveKeepers( std::vector<KeeperIdCard> & keeper_id_cards) 
-	{  //this will probably get more nuanced 
-	   //for now jsut return all the keepers registered
+	{  //the process of keeper selection will probably get more nuanced; 
+	   //for now just return all the keepers registered
 
 	   keeper_id_cards.clear();
 	   std::lock_guard<std::mutex> lock_guard(registryLock);

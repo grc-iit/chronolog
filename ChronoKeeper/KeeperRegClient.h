@@ -32,10 +32,10 @@ public:
 	   }
         }
 
-    int send_register_msg( KeeperIdCard const& keeperIdCard)
+    int send_register_msg( KeeperStatsMsg const& keeperStatsMsg)
     {
-	 std::cout<< "KeeperRegisterClient::send_register_msg:"<<keeperIdCard<<std::endl;
-	 return register_keeper.on(reg_service_ph)(keeperIdCard);
+	 std::cout<< "KeeperRegisterClient::send_register_msg:"<<keeperStatsMsg<<std::endl;
+	 return register_keeper.on(reg_service_ph)(keeperStatsMsg);
     }
     int send_unregister_msg( KeeperIdCard const& keeperIdCard)
     {
