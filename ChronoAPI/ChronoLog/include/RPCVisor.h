@@ -50,7 +50,6 @@ public:
             LOGE("client id is invalid");
             return CL_ERR_INVALID_ARG;
         }
-	std::cout <<" localconnect"<<std::endl;
 	return clientManager->add_client_record(client_id,record);
     }
 
