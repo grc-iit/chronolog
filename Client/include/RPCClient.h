@@ -122,6 +122,7 @@ private:
     }
 
     ChronoLogCharStruct func_prefix;
+    //ChronoLogRPC *rpc;
     std::shared_ptr<ChronoLogRPC> rpc;
 };
 
