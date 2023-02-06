@@ -56,29 +56,34 @@ int main(int argc, char **argv)
 
     bool end_program = false;
 
-    if(args[0] != "-protocol")
+
+    int portno = -1;
+    protocol = (ChronoLogRPCImplementation)-1;
+
+    for(int i=0;i<args.size();i++)
     {
-	std::cout <<" incorrect input string : should be -protocol"<<std::endl;
-	end_program = true;
-    }
-    
-    if(args[2] != "-hostname")
-    {
-        std::cout <<" incorrect input string : should be -hostname"<<std::endl;
-	end_program = true;
-    }
-    
-    if(args[4] != "-port")
-    {
-	std::cout <<" incorrect input string : should be -portnumber"<<std::endl;
-	end_program = true;
+	  if(i%2==0)
+	  {
+	      if(args[i].compare("-protocol")==0)
+	      {
+		   protocol = (ChronoLogRPCImplementation)std::stoi(args[i+1]);
+	      }
+	      else if(args[i].compare("-hostname")==0)
+	      {
+		    hostname = args[i+1];
+	      }
+	      else if(args[i].compare("-port")==0)
+	      {
+		      portno = std::stoi(args[i+1]);
+	      }
+	      else
+	      {
+		    end_program = true; break;
+	      }
+	  }
     }
 
-    if(end_program) exit(-1);
-
-    protocol = (ChronoLogRPCImplementation)std::stoi(args[1]);
-    hostname = args[3];
-    int portno = std::stoi(args[5]);
+    if(end_program || protocol == -1 || hostname.empty() || portno == -1 ) exit(-1);
 
     if(protocol < 0 || protocol > 2) 
     {
