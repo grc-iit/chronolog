@@ -18,8 +18,7 @@
 enum ClocksourceType {
     C_STYLE = 0,
     CPP_STYLE = 1,
-    TSC = 2,
-    UNKNOWN = 3
+    TSC = 2
 };
 
 class Clocksource {
@@ -64,7 +63,7 @@ public:
 
 class ClocksourceManager {
 private:
-    ClocksourceManager() : clocksource_(nullptr), clocksourceType_(ClocksourceType::UNKNOWN) {}
+    ClocksourceManager() : clocksource_(nullptr), clocksourceType_(ClocksourceType::C_STYLE) {}
 
 public:
     ~ClocksourceManager() {
