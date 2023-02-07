@@ -33,9 +33,6 @@ endforeach()
 
 set(client_mpi client_lib_hybrid_argobots_test)
 
-message(${MPI_CXX_INCLUDE_DIRS})
-message(${MPI_CXX_LIBRARIES})
-
 foreach(client ${client_mpi})
 	add_executable(${client} ${client}.cpp)
 	add_dependencies(${client} copyserverlist)
