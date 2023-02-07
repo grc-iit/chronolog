@@ -31,8 +31,6 @@ foreach(client ${client_openmp})
    target_link_libraries(${client} ChronoLogClient_lib OpenMP::OpenMP_CXX)
 endforeach()   
 
-set(CMAKE_CXX_COMPILER "mpic++")
-
 set(client_mpi client_lib_hybrid_argobots_test)
 
 message(${MPI_CXX_INCLUDE_DIRS})
@@ -45,4 +43,3 @@ foreach(client ${client_mpi})
 	target_link_libraries(${client} ChronoLogClient_lib ${MPI_CXX_LIBRARIES} -lpthread -lrt)
 endforeach()
 
-set(CMAKE_CXX_COMPILER "g++")
