@@ -55,6 +55,9 @@ if(NOT "${CMAKE_CXX_STANDARD}")
     set(CMAKE_CXX_EXTENSIONS OFF)
 endif()
 
+#find_package(OpenMP)
+#find_package(IntelDPCPP REQUIRED)
+
 #------------------------------------------------------------------------------
 # Options for compilations
 #------------------------------------------------------------------------------
@@ -85,7 +88,7 @@ option(CHRONOLOG_ENABLE_DOXYGEN "Enable Doxygen documentation generation." OFF)
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     message("Compiling ChronoLog in Debug Mode")
 #    add_compile_options(-g3)
-    add_compile_options(-O0)
+    add_compile_options(-O0 -fiopenmp)
     #set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -O0 -g")
 
@@ -103,7 +106,7 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     #endif()
 else()    
     message("Compiling ChronoLog in release Mode")
-    add_compile_options(-O3 -lm)
+    add_compile_options(-O3 -fiopenmp -lm)
     #add_compile_options(-Wno-switch-unreachable -Wno-return-type)
 endif()
 
