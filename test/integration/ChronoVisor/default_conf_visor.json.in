@@ -10,7 +10,7 @@
     "verbs_conf": "verbs",
     "verbs_domain": "mlx5_0",
     "memory_allocated": 134217728,
-    "clocksource": 1,
+    "clocksource_type": 1,
     "drift_cal_sleep_sec": 10,
     "drift_cal_sleep_nsec": 0,
     "is_server": true,

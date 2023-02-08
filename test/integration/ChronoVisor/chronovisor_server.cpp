@@ -8,6 +8,7 @@
 int main() {
     ChronoLog::ConfigurationManager confManager("./default_conf.json");
     ChronoVisor::ChronoVisorServer2 visor(confManager);
+    visor.setClocksourceType(ClocksourceType::CPP_STYLE);
     visor.start();
 
     return 0;

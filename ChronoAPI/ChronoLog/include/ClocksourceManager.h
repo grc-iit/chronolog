@@ -8,8 +8,10 @@
 #include <chrono>
 #include <cstdint>
 #include <ctime>
+#include <typeinfo>
 #include <unistd.h>
 #include <emmintrin.h>
+#include <log.h>
 
 #define   lfence()  _mm_lfence()
 #define   mfence()  _mm_mfence()
@@ -17,8 +19,7 @@
 enum ClocksourceType {
     C_STYLE = 0,
     CPP_STYLE = 1,
-    TSC = 2,
-    UNKNOWN = 3
+    TSC = 2
 };
 
 class Clocksource {
@@ -63,7 +64,9 @@ public:
 
 class ClocksourceManager {
 private:
-    ClocksourceManager() : clocksource_(nullptr), clocksourceType_(ClocksourceType::UNKNOWN) {}
+    ClocksourceManager() : clocksource_(nullptr), clocksourceType_(ClocksourceType::C_STYLE) {
+        LOGD("%s constructor is called", typeid(*this).name());
+    }
 
 public:
     ~ClocksourceManager() {
@@ -86,6 +89,10 @@ public:
 
     void setClocksourceType(ClocksourceType type) {
         this->clocksourceType_ = type;
+    }
+
+    ClocksourceType getClocksourceType() {
+        return clocksourceType_;
     }
 
     Clocksource *getClocksource() {

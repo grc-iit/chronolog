@@ -7,7 +7,6 @@
 
 #include "RPCClient.h"
 #include "errcode.h"
-#include "ClocksourceManager.h"
 #include "ConfigurationManager.h"
 
 ClocksourceManager *ClocksourceManager::clocksourceManager_ = nullptr;

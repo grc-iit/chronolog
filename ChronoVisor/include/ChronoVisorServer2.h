@@ -12,9 +12,6 @@
 #include <log.h>
 #include <thallium.hpp>
 #include <margo.h>
-#include "TimeManager.h"
-#include <TimeRecord.h>
-#include "ClocksourceManager.h"
 #include <ChronicleMetaDirectory.h>
 #include <ClientRegistryManager.h>
 #include <RPCVisor.h>
@@ -28,14 +25,9 @@ namespace ChronoVisor {
 
         explicit ChronoVisorServer2(const ChronoLog::ConfigurationManager &conf_manager);
 
-        ~ChronoVisorServer2() {
-            if (pTimeManager) {
-                delete pTimeManager;
-                pTimeManager = nullptr;
-            }
+        void setClocksourceType(ClocksourceType clocksourceType) {
+            CHRONOLOG_CONF->SetClocksourceType(clocksourceType);
         }
-
-        void setClocksourceType(ClocksourceType clocksourceType) { pTimeManager->setClocksourceType(clocksourceType); }
 
         int start();
 
@@ -50,11 +42,6 @@ namespace ChronoVisor {
         int numStreams_{};
         std::vector<tl::engine> engineVec_;
         std::vector<margo_instance_id> midVec_;
-
-        /**
-         * @name Clock-related variables
-         */
-        TimeManager *pTimeManager{};
 
         /**
          * @name ClientRegistry related variables

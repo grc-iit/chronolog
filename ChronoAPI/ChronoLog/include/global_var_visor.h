@@ -14,11 +14,6 @@
 #include <RPCVisor.h>
 
 /**
- * Clock management-related global variables
- */
-ClocksourceManager *ClocksourceManager::clocksourceManager_ = nullptr;
-
-/**
  * ClientRegistry-related global variables
  */
 std::shared_ptr<ClientRegistryManager> g_clientRegistryManager =

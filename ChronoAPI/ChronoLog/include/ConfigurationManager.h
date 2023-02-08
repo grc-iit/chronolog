@@ -31,7 +31,8 @@ namespace ChronoLog {
         ChronoLogCharStruct VERBS_CONF;
         ChronoLogCharStruct VERBS_DOMAIN;
         uint64_t MEMORY_ALLOCATED{};
-        ClocksourceType CLOCKSOURCE{};
+        ClocksourceType CLOCKSOURCE_TYPE{};
+        ClocksourceManager *CLOCKSOURCE_MANAGER{};
         uint64_t DRIFT_CAL_SLEEP_SEC{};
         uint64_t DRIFT_CAL_SLEEP_NSEC{};
 
@@ -51,21 +52,24 @@ namespace ChronoLog {
                 RPC_IMPLEMENTATION(CHRONOLOG_THALLIUM_SOCKETS),
                 SOCKETS_CONF("ofi+sockets"), VERBS_CONF("verbs"), VERBS_DOMAIN("mlx5_0"),
                 MEMORY_ALLOCATED(1024ULL * 1024ULL * 128ULL),
-                CLOCKSOURCE(ClocksourceType::C_STYLE), DRIFT_CAL_SLEEP_SEC(10), DRIFT_CAL_SLEEP_NSEC(0),
+                DRIFT_CAL_SLEEP_SEC(10), DRIFT_CAL_SLEEP_NSEC(0),
                 IS_VISOR(true), MY_VISOR_ID(0), SERVER_LIST_FILE_PATH(""),
                 SERVER_LIST({"localhost"}), BACKED_FILE_DIR("/dev/shm") {
-            LOGI("initializing configuration with all default values: ");
-            ClocksourceManager::getInstance()->setClocksourceType(CLOCKSOURCE);
+            LOGI("constructing configuration with all default values: ");
+            CLOCKSOURCE_MANAGER = ClocksourceManager::getInstance();
+            CLOCKSOURCE_MANAGER->setClocksourceType(ClocksourceType::C_STYLE);
             PrintConf();
         }
 
         explicit ConfigurationManager(const std::string &conf_file_path) :
                 RPC_IMPLEMENTATION(CHRONOLOG_THALLIUM_SOCKETS){
-            LOGI("initializing configuration from a configuration file: %s", conf_file_path.c_str());
+            LOGI("constructing configuration from a configuration file: %s", conf_file_path.c_str());
+            CLOCKSOURCE_MANAGER = ClocksourceManager::getInstance();
             LoadConfFromJSONFile(conf_file_path);
         }
 
         void SetConfiguration(const ConfigurationManager &confManager) {
+            LOGI("setting configuration with a pre-configured ConfigurationManager object");
             RPC_VISOR_IP = confManager.RPC_VISOR_IP;
             RPC_BASE_VISOR_PORT = confManager.RPC_BASE_VISOR_PORT;
             RPC_NUM_VISOR_PORTS = confManager.RPC_NUM_VISOR_PORTS;
@@ -84,9 +88,12 @@ namespace ChronoLog {
             SERVER_LIST_FILE_PATH = confManager.SERVER_LIST_FILE_PATH;
             SERVER_LIST = confManager.SERVER_LIST;
             BACKED_FILE_DIR = confManager.BACKED_FILE_DIR;
-            ClocksourceManager::getInstance()->setClocksourceType(CLOCKSOURCE);
-            LOGI("set configuration with a pre-configured ConfigurationManager object");
+            CLOCKSOURCE_MANAGER = confManager.CLOCKSOURCE_MANAGER;
             PrintConf();
+        }
+
+        void SetClocksourceType(ClocksourceType type) {
+            CLOCKSOURCE_MANAGER->setClocksourceType(type);
         }
 
         void PrintConf() {
@@ -102,7 +109,7 @@ namespace ChronoLog {
             LOGI("VERBS_CONF: %s", VERBS_CONF.c_str());
             LOGI("VERBS_DOMAIN: %s", VERBS_DOMAIN.c_str());
             LOGI("MEMORY_ALLOCATED: %lu", MEMORY_ALLOCATED);
-            LOGI("CLOCKSOURCE: %d (0 for C, 1 for C++, 2 for TSC)", CLOCKSOURCE);
+            LOGI("CLOCKSOURCE: %d (0 for C, 1 for C++, 2 for TSC)", CLOCKSOURCE_MANAGER->getClocksourceType());
             LOGI("DRIFT_CAL_SLEEP_SEC: %ld", DRIFT_CAL_SLEEP_SEC);
             LOGI("DRIFT_CAL_SLEEP_NSEC: %ld", DRIFT_CAL_SLEEP_NSEC);
             LOGI("IS_VISOR: %d", IS_VISOR);
@@ -244,10 +251,10 @@ namespace ChronoLog {
                     assert(item.value.IsUint64());
                     MEMORY_ALLOCATED = item.value.GetUint64();
                 }
-                else if (strcmp(item_name, "clocksource") == 0) {
+                else if (strcmp(item_name, "clocksource_type") == 0) {
                     assert(item.value.IsInt());
-                    CLOCKSOURCE = static_cast<ClocksourceType>(item.value.GetInt());
-                    ClocksourceManager::getInstance()->setClocksourceType(CLOCKSOURCE);
+                    CLOCKSOURCE_TYPE = static_cast<ClocksourceType>(item.value.GetInt());
+                    CLOCKSOURCE_MANAGER->setClocksourceType(CLOCKSOURCE_TYPE);
                 }
                 else if (strcmp(item_name, "drift_cal_sleep_sec") == 0) {
                     assert(item.value.IsUint64());

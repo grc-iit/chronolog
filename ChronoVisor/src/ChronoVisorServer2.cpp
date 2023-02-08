@@ -56,9 +56,8 @@ namespace ChronoVisor {
         }
         engineVec_.reserve(numPorts_);
         midVec_.reserve(numPorts_);
-        pTimeManager = new TimeManager();
         chronicleMetaDirectory_ = ChronoLog::Singleton<ChronicleMetaDirectory>::GetInstance();
-        rpcVisor_ = ChronoLog::Singleton<RPCVisor>::GetInstance();
         clientRegistryManager_ = ChronoLog::Singleton<ClientRegistryManager>::GetInstance();
+        rpcVisor_ = ChronoLog::Singleton<RPCVisor>::GetInstance();
     }
 }
