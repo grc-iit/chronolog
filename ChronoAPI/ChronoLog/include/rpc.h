@@ -147,27 +147,13 @@ public:
                 case CHRONOLOG_THALLIUM_SOCKETS:
                 case CHRONOLOG_THALLIUM_ROCE: {
 
-		    /*for(int i=0;i<workers;i++)  // separate streams and pools for each engine
+		    for(size_t i=0;i<workers;i++)  // separate streams and pools for each engine
 		    {
 			tl::engine *tmpServer = new tl::engine(serverAddrList_[i].c_str(),THALLIUM_SERVER_MODE,true,numStreams_);
 			thalliumServerList_.push_back(tmpServer);
-		    }*/
+		    }
 
-		    // shared streams and pools across engines, progress pool and rpc service pool are the two pools 
-		    tl::engine *tmpserver = new tl::engine(serverAddrList_[0].c_str(),THALLIUM_SERVER_MODE,true,numStreams_);						      
-		    thalliumServerList_.push_back(tmpserver);
-
-		    margo_instance_id mid = tmpserver->get_margo_instance();
-		    ABT_pool progresspool, rpcpool;
-		    margo_get_progress_pool(mid, &progresspool);
-		    margo_get_handler_pool(mid,&rpcpool);
-
-		    for(int i=1;i<workers;i++)
-		    {
-		      tmpserver = new tl::engine(serverAddrList_[i].c_str(),THALLIUM_SERVER_MODE,tl::pool(progresspool),tl::pool(rpcpool));
-		      thalliumServerList_.push_back(tmpserver);
-                    }
-		    for(int i=0;i<workers;i++)
+		    for(size_t i=0;i<workers;i++)
 			    std::cout <<" server created at "<<thalliumServerList_[i]->self()<<std::endl;
                     break;
                 }
