@@ -90,7 +90,7 @@ int main() {
             story_attrs.emplace("Priority", "High");
             story_attrs.emplace("IndexGranularity", "Millisecond");
             story_attrs.emplace("TieringPolicy", "Hot");
-	    story_attrs.emplace("Permissions","RW");
+	    story_attrs.emplace("Permissions","RWD");
             flags = 1;
             t1 = std::chrono::steady_clock::now();
             ret = client.CreateStory(chronicle_name, story_name, story_attrs, flags);
@@ -98,7 +98,7 @@ int main() {
             assert(ret == CL_SUCCESS);
             duration_create_story += (t2 - t1);
 
-            flags = CHRONOLOG_WRITE;
+            flags = CHRONOLOG_READ;
             t1 = std::chrono::steady_clock::now();
             ret = client.AcquireStory(chronicle_name, story_name, flags);
             t2 = std::chrono::steady_clock::now();
@@ -171,7 +171,7 @@ int main() {
         chronicle_attrs.emplace("Priority", "High");
         chronicle_attrs.emplace("IndexGranularity", "Millisecond");
         chronicle_attrs.emplace("TieringPolicy", "Hot");
-	chronicle_attrs.emplace("Permissions","RWC");
+	chronicle_attrs.emplace("Permissions","RWCD");
         t1 = std::chrono::steady_clock::now();
         ret = client.CreateChronicle(chronicle_name, chronicle_attrs, flags);
         t2 = std::chrono::steady_clock::now();

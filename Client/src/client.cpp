@@ -77,6 +77,19 @@ int ChronoLogClient::GetChronicleAttr(std::string &chronicle_name, const std::st
 int ChronoLogClient::EditChronicleAttr(std::string &chronicle_name, const std::string &key, const std::string &value) {
     return rpcProxy_->EditChronicleAttr(chronicle_name, key, client_id_, value);
 }
+int ChronoLogClient::RequestRoleChange(uint32_t &role)
+{
+    int ret = CheckClientRole(role);
+    if(ret==CL_SUCCESS)
+    {
+       ret = rpcProxy_->RequestRoleChange(client_id_,role);
+       if(ret == CL_SUCCESS)
+       {
+	   ret = SetClientRole(role);
+       }
+    }
+    return ret;
+}
 int ChronoLogClient::SetClientId(std::string &client_id)
 {
     client_id_ = client_id;
@@ -85,6 +98,24 @@ int ChronoLogClient::SetClientId(std::string &client_id)
 std::string& ChronoLogClient::GetClientId()
 {
     return client_id_;
+}
+int ChronoLogClient::CheckClientRole(uint32_t &r)
+{
+   int ret = CL_ERR_NOT_EXIST;
+   uint32_t user, group,cluster;
+   uint32_t mask = 7;
+   user = r & mask;
+   mask = mask << 3;
+   group = r & mask;
+   group = group >> 3;
+   mask = mask << 3;
+   cluster = r & mask;
+   cluster = cluster >> 6;
+   if(user >= CHRONOLOG_CLIENT_RO && user <= CHRONOLOG_CLIENT_RWCD &&
+      group >= CHRONOLOG_CLIENT_GROUP_ADMIN && group <= CHRONOLOG_CLIENT_GROUP_REG &&
+      cluster >= CHRONOLOG_CLIENT_CLUS_ADMIN && cluster <= CHRONOLOG_CLIENT_CLUS_REG)
+	  ret = CL_SUCCESS;
+  return ret; 
 }
 int ChronoLogClient::SetClientRole(uint32_t &r)
 {

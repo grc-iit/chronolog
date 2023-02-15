@@ -56,6 +56,14 @@ int main() {
 
     for (int i = 0; i < NUM_CONNECTION; i++) {
         t1 = std::chrono::steady_clock::now();
+	uint32_t user_role = CHRONOLOG_CLIENT_RWCD;
+	uint32_t group_role = CHRONOLOG_CLIENT_GROUP_ADMIN;
+	uint32_t cluster_role = CHRONOLOG_CLIENT_CLUS_REG;
+	uint32_t role = 0;
+	role = role | user_role;
+	role = role | (group_role << 3);
+	role = role | (cluster_role << 6);
+	ret = client.RequestRoleChange(role);
         ret = client.Disconnect(client_ids[i], flags);
         assert(ret == CL_SUCCESS);
         t2 = std::chrono::steady_clock::now();
