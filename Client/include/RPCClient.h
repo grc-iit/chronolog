@@ -109,7 +109,11 @@ public:
              __FUNCTION__, getpid(), name.c_str(), key.c_str(), value.c_str());
         return CHRONOLOG_RPC_CALL_WRAPPER("EditChronicleAttr", 0, int, name, key, client_id, value);
     }
-
+    int RequestRoleChange(std::string& client_id,uint32_t &role)
+    {
+	LOGD("%s is called in PID=%d, with args: client_id=%s role =%u",__FUNCTION__,getpid(),client_id.c_str(),role);
+	return CHRONOLOG_RPC_CALL_WRAPPER("RequestRoleChange",0,int,client_id,role);
+    }
 
 private:
     void set_prefix(std::string prefix) {

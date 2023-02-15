@@ -335,6 +335,18 @@ public:
 	else return ret;
     }
 
+    int LocalRequestRoleChange(std::string &client_id,uint32_t &role)
+    {
+	LOGD("%s is called in PID=%d with args: client_id=%s role = %d",__FUNCTION__,getpid(),client_id.c_str(),role);
+	std::string group_id;uint32_t prev_role;
+	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,prev_role);
+	if(ret == CL_SUCCESS)
+	{
+	    ret =  g_clientRegistryManager->update_client_role(client_id,role);
+	}
+	return ret;
+    }
+
     void bind_functions() {
         switch (CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION) {
             case CHRONOLOG_THALLIUM_SOCKETS:
@@ -538,7 +550,19 @@ public:
 							   std::forward<decltype(PH5)>(PH5)); }
                 );
 
-                rpc->bind("ChronoLogThalliumConnect", connectFunc);
+		 std::function<void(const tl::request &,
+                                   std::string &,
+                                   uint32_t &)> requestRoleChangeFunc(
+                        [this](auto && PH1,
+                               auto && PH2,
+                               auto && PH3) {
+                            ThalliumLocalRequestRoleChange(std::forward<decltype(PH1)>(PH1),
+                                                 std::forward<decltype(PH2)>(PH2),
+                                                 std::forward<decltype(PH3)>(PH3));
+                        }
+                );
+
+    		rpc->bind("ChronoLogThalliumConnect", connectFunc);
                 rpc->bind("ChronoLogThalliumDisconnect", disconnectFunc);
 
                 rpc->bind("ChronoLogThalliumCreateChronicle", createChronicleFunc);
@@ -553,6 +577,7 @@ public:
 
                 rpc->bind("ChronoLogThalliumGetChronicleAttr", getChronicleAttrFunc);
                 rpc->bind("ChronoLogThalliumEditChronicleAttr", editChronicleAttrFunc);
+		rpc->bind("ChronoLogThalliumRequestRoleChange", requestRoleChangeFunc);
             }
         }
     }
@@ -584,6 +609,8 @@ public:
                               std::string &name, const std::string &key, std::string &client_id, std::string &value)
     CHRONOLOG_THALLIUM_DEFINE(LocalEditChronicleAttr, (name, key, client_id, value),
                               std::string &name, const std::string &key, std::string &client_id, const std::string &value)
+    CHRONOLOG_THALLIUM_DEFINE(LocalRequestRoleChange, (client_id,role),
+		    	      std::string &client_id,uint32_t role)
 
 private:
     void set_prefix(std::string prefix) {

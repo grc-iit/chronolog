@@ -65,6 +65,8 @@ public:
     std::string& GetClientId();
     int SetClientRole(uint32_t &role);
     int CreateClientRole(uint32_t &user, uint32_t &group,uint32_t &cluster);
+    int RequestRoleChange(uint32_t &role);
+    int CheckClientRole(uint32_t &role);
     uint32_t GetClientRole();
     uint32_t UserRole();
     uint32_t GroupRole();

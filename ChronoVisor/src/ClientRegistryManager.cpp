@@ -44,15 +44,29 @@ int ClientRegistryManager::remove_client_record(const std::string &client_id, in
         return CL_ERR_UNKNOWN;
 }
 
+int ClientRegistryManager::update_client_role(std::string &client_id,uint32_t &role)
+{
+    std::lock_guard<std::mutex> lock(g_clientRegistryMutex_);
+    auto iter = clientRegistry_->find(client_id);
+    int ret = CL_ERR_NOT_EXIST;
+    if(iter != clientRegistry_->end())
+    {
+       (*iter).second.client_role_ = role;
+	ret = CL_SUCCESS;
+    }
+    return ret;
+}
+
 int ClientRegistryManager::get_client_group_and_role(const std::string &client_id,std::string &group_id,uint32_t &role)
 {
       std::lock_guard<std::mutex> lock(g_clientRegistryMutex_);
-      std::unordered_map<std::string,ClientInfo>::iterator it = clientRegistry_->find(client_id);
+      auto it = clientRegistry_->find(client_id);
+      int ret = CL_ERR_NOT_EXIST;
       if(it != clientRegistry_->end())
       {
 	group_id = (*it).second.group_id_;
 	role = (*it).second.client_role_;
-	return CL_SUCCESS;
-      }      
-      else return CL_ERR_NOT_EXIST; 
+	ret = CL_SUCCESS;
+      }     
+      return ret; 
 }

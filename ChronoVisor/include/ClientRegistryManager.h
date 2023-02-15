@@ -19,6 +19,7 @@ public:
     int add_client_record(const std::string &client_id, const ClientInfo &record);
     int remove_client_record(const std::string& client_id, int &flags);
     int get_client_group_and_role(const std::string &client_id, std::string &group_id,uint32_t &role);
+    int update_client_role(std::string &client_id,uint32_t &role);
 
     inline bool can_create_or_delete(uint32_t& role)
     {
