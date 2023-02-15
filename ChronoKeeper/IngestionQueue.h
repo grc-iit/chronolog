@@ -3,6 +3,8 @@
 
 
 #include <deque>
+#include <unordered_map>
+#include <mutex>
 
 //
 // IngestionQueue is a funnel into the MemoryDataStore
@@ -34,50 +36,54 @@ class StoryIngestionHandle
 
 public:
 	StoryIngestionHandle( ChronoMutex & a_mutex, EventDeque & event_deque)
-       		: ingestionMutex(a_mutex)
-	  	, activeDeque(&eventDeque)
+       		: handleMutex(a_mutex)
+	  	, activeDeque(&event_deque)
 			{}
-	~StoryIngestionQueue() = default;
+	~StoryIngestionHandle() = default;
 
 	void ingestEvent( LogEvent const& logEvent)
 	{   // assume multiple service threads pushing events on ingestionQueue
-	    std::lock_guard<ingestionMutex> lock(); 
+	    std::lock_guard<std::mutex> lock(handleMutex); 
 	    activeDeque->push_back(logEvent); 
 	}
 
 	void swapActiveDeque( EventDeque * empty_deque, EventDeque * full_deque)
 	{
-	    if( activeDeque->is_empty())
+	    if( activeDeque->empty())
 	    {	    return ;       }
 //INNA: check if atomic compare_and_swap will work here
 
-	    std::lock_guard<ingestionMutex> lock_guard(ingestionMutex); 
-	    if(  activeDeque->is_empty() )
+	    std::lock_guard<std::mutex> lock(handleMutex); 
+	    if(  activeDeque->empty() )
 	    {	    return ;       }
 
-	    full_queue = activeDeque;
+	    full_deque = activeDeque;
 	    activeDeque = empty_deque;
 
 	}
-		
 	     
 private:
 
-	std::mutex & ingestionMutex;   
+	std::mutex & handleMutex;   
 	EventDeque * activeDeque;
 };
 
 
 class IngestionQueue
 {
+public:
+	IngestionQueue()
+	{ }
+	~IngestionQueue()
+	{ shutDown();}
 
-int addStoryIngestionHandle( StoryIngestionHandle * ingestionHandle)
+void addStoryIngestionHandle( StoryId const& story_id, StoryIngestionHandle * ingestion_handle)
 {
 	std::lock_guard<std::mutex> lock(ingestionQueueMutex);
-	storyIngestionHandles.emplace(ingestion_handle->getStoryId(),ingestionHandle);
+	storyIngestionHandles.emplace(story_id,ingestion_handle);
 }
 
-int removeIngestionHandle(StoryId const & story_id)
+void removeIngestionHandle(StoryId const & story_id)
 {
 	std::lock_guard<std::mutex> lock(ingestionQueueMutex);
 	storyIngestionHandles.erase(story_id);
@@ -97,7 +103,39 @@ void ingestLogEvent(LogEvent const& event)
 	}	
 }
 
+void drainOrphanEvents()
+{
+	if ( orphanEventQueue.empty())
+	{	return; }
+
+	std::lock_guard<std::mutex> lock(ingestionQueueMutex);
+	for( EventDeque::iterator iter = orphanEventQueue.begin(); iter != orphanEventQueue.end(); )
+	{
+	   auto ingestionHandle_iter = storyIngestionHandles.find((*iter).storyId);
+	   if( ingestionHandle_iter != storyIngestionHandles.end())
+           {	//individual StoryIngestionHandle has its own mutex
+		(*ingestionHandle_iter).second->ingestEvent(*iter);
+           	//remove the event from the orphan deque and get the iterator to the next element prior to removal
+		iter = orphanEventQueue.erase(iter);	
+	   }
+	   else
+	   { ++iter; }
+	}
+}
+
+void shutDown()
+{
+	// last attempt to drain orphanEventQueue into known ingestionHandles
+ 	drainOrphanEvents();
+	// disengage all handles
+	std::lock_guard<std::mutex> lock(ingestionQueueMutex);
+	storyIngestionHandles.clear();
+}
+
 private:
+
+	IngestionQueue(IngestionQueue const &) = delete;
+	IngestionQueue & operator=(IngestionQueue const &) = delete;
 
 	std::mutex ingestionQueueMutex;
 	std::unordered_map<StoryId, StoryIngestionHandle*> storyIngestionHandles;

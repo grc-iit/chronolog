@@ -8,7 +8,8 @@
 #include "KeeperStatsMsg.h"
 #include "KeeperRecordingService.h"
 #include "KeeperRegClient.h"
-#include "LogIngestionQueue.h"
+#include "IngestionQueue.h"
+#include "KeeperDataStore.h"
 
 #define KEEPER_GROUP_ID 7
 #define KEEPER_REGISTRY_SERVICE_NA_STRING  "ofi+sockets://127.0.0.1:1234"
@@ -51,7 +52,9 @@ int main(int argc, char** argv) {
 
     // Instantiate ChronoKeeper MemoryDataStore
     //
-    chronolog::LogIngestionQueue ingestionQueue; 
+    chronolog::IngestionQueue ingestionQueue; 
+    chronolog::KeeperDataStore theDataStore;
+
     // Instantiate KeeperRecordingService 
 
    chronolog::KeeperRecordingService *  keeperRecordingService=

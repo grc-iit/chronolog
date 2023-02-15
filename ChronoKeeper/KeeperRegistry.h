@@ -13,6 +13,7 @@
 namespace chronolog
 {
 
+typedef uint64_t StoryId;
 
 class KeeperRegistry
 {
@@ -69,7 +70,7 @@ struct KeeperProcessEntry
 	   std::lock_guard<std::mutex> lock_guard(registryLock);
 	   auto keeper_process_iter = keeperProcessRegistry.find(std::pair<uint32_t,uint16_t>(keeper_id_card.getIPaddr(),keeper_id_card.getPort()));
 	   if(keeper_process_iter == keeperProcessRegistry.end())
-	   {    // however unlikely it is that the sstats msg would be delivered for the keeper that's already unregistered
+	   {    // however unlikely it is that the stats msg would be delivered for the keeper that's already unregistered
 		// we should probably log a warning here...
 		return;
 	   }
@@ -91,7 +92,8 @@ struct KeeperProcessEntry
 	   return keeper_id_cards;
 	}
 
-
+	int notifyKeepersOfStoryAcquisition(StoryId const&);
+	int notifyKeepersOfStoryRelease(StoryId const&);
 
 private:
 

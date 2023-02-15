@@ -6,7 +6,7 @@
 #include <thallium.hpp>
 #include <thallium/serialization/stl/string.hpp>
 #include "KeeperIdCard.h"
-#include "LogIngestionQueue.h"
+#include "IngestionQueue.h"
 
 namespace tl = thallium;
 
@@ -26,7 +26,7 @@ public:
 // KeeperRecordingService should be created on the heap not the stack thus the constructor is private...
 
     static KeeperRecordingService * CreateKeeperRecordingService(tl::engine& tl_engine, uint16_t service_provider_id
-		    , LogIngestionQueue & ingestion_queue)
+		    , IngestionQueue & ingestion_queue)
     {
           return  new KeeperRecordingService( tl_engine, service_provider_id, ingestion_queue );
     }  
@@ -55,7 +55,7 @@ private:
     }
 
 
-    KeeperRecordingService(tl::engine& tl_engine, uint16_t service_provider_id, LogIngestionQueue & ingestion_queue)
+    KeeperRecordingService(tl::engine& tl_engine, uint16_t service_provider_id, IngestionQueue & ingestion_queue)
     	: tl::provider<KeeperRecordingService>(tl_engine, service_provider_id)
 	, theIngestionQueue(ingestion_queue)  
     {
@@ -68,7 +68,7 @@ private:
     KeeperRecordingService( KeeperRecordingService const&) = delete;
     KeeperRecordingService & operator= (KeeperRecordingService const&) = delete;
 
-    LogIngestionQueue & theIngestionQueue;
+    IngestionQueue & theIngestionQueue;
 };
 
 }// namespace chronolog
