@@ -57,8 +57,8 @@ class ClockSynchronization
      ClockSynchronization(int n1,int n2,std::string &q) : myrank(n1), numprocs(n2)
      {
 	 if(q.compare("second")==0) unit = 1000000000;
-	 else if(q.compare("microsecond")==0) unit = 1000000;
-         else if(q.compare("millisecond")==0) unit = 1000;
+	 else if(q.compare("microsecond")==0) unit = 1000;
+         else if(q.compare("millisecond")==0) unit = 1000000;
 	 else unit = 1;
 	 myoffset = 0;
 	 maxError = 0;
