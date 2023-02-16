@@ -10,6 +10,7 @@
 #include "KeeperRegClient.h"
 #include "IngestionQueue.h"
 #include "KeeperDataStore.h"
+#include "DataCollectionService.h"
 
 #define KEEPER_GROUP_ID 7
 #define KEEPER_REGISTRY_SERVICE_NA_STRING  "ofi+sockets://127.0.0.1:1234"
@@ -19,7 +20,11 @@
 #define KEEPER_RECORDING_SERVICE_IP  "127.0.0.1"
 #define KEEPER_RECORDING_SERVICE_PORT  "5555"
 #define KEEPER_RECORDING_SERVICE_PROVIDER_ID	22
-#define IP_ADDRESS "127.0.0.1"
+
+#define KEEPER_COLLECTION_SERVICE_PROTOCOL  "ofi+sockets"
+#define KEEPER_COLLECTION_SERVICE_IP  "127.0.0.1"
+#define KEEPER_COLLECTION_SERVICE_PORT  "7777"
+#define KEEPER_COLLECTION_SERVICE_PROVIDER_ID	27
 
 int main(int argc, char** argv) {
 
@@ -35,7 +40,7 @@ int main(int argc, char** argv) {
 						   +":"+std::string(KEEPER_RECORDING_SERVICE_PORT);
     uint16_t recording_provider_id = KEEPER_RECORDING_SERVICE_PROVIDER_ID;
 
-    margo_instance_id margo_id=margo_init( KEEPER_RECORDING_SERVICE_NA_STRING.c_str(),MARGO_SERVER_MODE, 1, 0);
+    margo_instance_id margo_id=margo_init( KEEPER_RECORDING_SERVICE_NA_STRING.c_str(),MARGO_SERVER_MODE, 1, 1);
 
     if(MARGO_INSTANCE_NULL == margo_id)
     {
@@ -44,9 +49,9 @@ int main(int argc, char** argv) {
     }
     std::cout<<"margo_instance initialized"<<std::endl;
 
-   tl::engine keeperEngine(margo_id);
+    tl::engine recordingEngine(margo_id);
  
-    std::cout << "ChronoKeeperInstance group_id {"<<keeper_group_id<<"} starting KeeperRecordingService at address {" << keeperEngine.self()
+    std::cout << "ChronoKeeperInstance group_id {"<<keeper_group_id<<"} starting KeeperRecordingService at address {" << recordingEngine.self()
         << "} with provider_id {" << recording_provider_id <<"}"<< std::endl;
 
 
@@ -55,10 +60,33 @@ int main(int argc, char** argv) {
     chronolog::IngestionQueue ingestionQueue; 
     chronolog::KeeperDataStore theDataStore;
 
+    // instantiate DataCollectionService
+    std::string KEEPER_COLLECTION_SERVICE_NA_STRING = std::string(KEEPER_COLLECTION_SERVICE_PROTOCOL)
+	                                           +"://"+std::string(KEEPER_COLLECTION_SERVICE_IP)
+						   +":"+std::string(KEEPER_COLLECTION_SERVICE_PORT);
+    uint16_t collection_provider_id = KEEPER_COLLECTION_SERVICE_PROVIDER_ID;
+
+    margo_instance_id collection_margo_id=margo_init( KEEPER_COLLECTION_SERVICE_NA_STRING.c_str(),MARGO_SERVER_MODE, 1, 0);
+
+    if(MARGO_INSTANCE_NULL == collection_margo_id)
+    {
+      std::cout<<"FAiled to initialise collection_margo_instance"<<std::endl;
+      return 1;
+    }
+    std::cout<<"collection_margo_instance initialized"<<std::endl;
+
+   tl::engine collectionEngine(collection_margo_id);
+ 
+    std::cout << "ChronoKeeperInstance group_id {"<<keeper_group_id<<"} starting KeeperCollectionService at address {" << collectionEngine.self()
+        << "} with provider_id {" << collection_provider_id <<"}"<< std::endl;
+    
+    chronolog::DataCollectionService * keeperCollectionService = 
+	    chronolog::DataCollectionService::CreateDataCollectionService(collectionEngine,collection_provider_id, theDataStore);
+
     // Instantiate KeeperRecordingService 
 
    chronolog::KeeperRecordingService *  keeperRecordingService=
-	   chronolog::KeeperRecordingService::CreateKeeperRecordingService(keeperEngine, recording_provider_id, ingestionQueue);
+	   chronolog::KeeperRecordingService::CreateKeeperRecordingService(recordingEngine, recording_provider_id, ingestionQueue);
 
 
     // we will be using a combination of the uint32_t representation of the service IP address 
@@ -83,7 +111,7 @@ int main(int argc, char** argv) {
 
     // create KeeperRegistryClient and register the new KeeperRecording service with the KeeperRegistry 
     chronolog::KeeperRegistryClient * keeperRegistryClient = chronolog::KeeperRegistryClient::CreateKeeperRegistryClient(
-		     keeperEngine, KEEPER_REGISTRY_SERVICE_NA_STRING, KEEPER_REGISTRY_SERVICE_PROVIDER_ID);
+		     recordingEngine, KEEPER_REGISTRY_SERVICE_NA_STRING, KEEPER_REGISTRY_SERVICE_PROVIDER_ID);
 
     chronolog::KeeperStatsMsg keeperStatsMsg(keeperIdCard);
     keeperRegistryClient->send_register_msg(keeperStatsMsg);
@@ -95,10 +123,18 @@ int main(int argc, char** argv) {
     // INNA: TODO: add a graceful shutdown mechanism with finalized callbacks and all
     //
 
+    while( !theDataStore.is_shutting_down())
+    {
+	sleep(60);
+        keeperRegistryClient->send_stats_msg(keeperStatsMsg);
+    }
+
     keeperRegistryClient->send_unregister_msg(keeperIdCard);
-    keeperEngine.wait_for_finalize();
+    collectionEngine.wait_for_finalize();
+    recordingEngine.wait_for_finalize();
    // delete keeperRegistryClient;
    // delete keeperRecordingService;
+   // delete keeperCollectionService;
 
 
 return exit_code;

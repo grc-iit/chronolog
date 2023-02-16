@@ -42,4 +42,14 @@ int chronolog::StoryPipeline::mergeEvents(chronolog::StoryChunk const&)
 
  return status;
 }
+////////////////////
+int chronolog::KeeperDataStore::startStoryRecording(std::string const&, std::string const& , chronolog::StoryId const& story_id, uint32_t)
+{
 
+	return 1;
+}
+int chronolog::KeeperDataStore::stopStoryRecording(chronolog::StoryId const& story_id)
+{
+
+	return 1;
+}

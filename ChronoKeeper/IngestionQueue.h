@@ -2,9 +2,12 @@
 #define INGESTION_QUEUE_H
 
 
+#include <iostream>
 #include <deque>
 #include <unordered_map>
 #include <mutex>
+
+#include "chronolog_types.h"
 
 //
 // IngestionQueue is a funnel into the MemoryDataStore
@@ -13,21 +16,6 @@
 
 namespace chronolog
 {
-typedef uint64_t StoryId;
-typedef uint64_t ClientId;
-typedef std::mutex ChronoMutex;	
-
-struct LogEvent
-{
-	LogEvent(StoryId const& story_id, ClientId const& client_id, uint64_t time, std::string const& record)
-		: storyId(story_id), clientId(client_id)
-		, timestamp(time),logRecord(record)
-	{}  
-	StoryId  storyId;
-	ClientId clientId;
-	uint64_t timestamp;
-	std::string logRecord;
-};
 
 typedef std::deque<LogEvent> EventDeque;
 
@@ -94,6 +82,7 @@ void ingestLogEvent(LogEvent const& event)
 	auto ingestionHandle_iter = storyIngestionHandles.find(event.storyId);
 	if( ingestionHandle_iter == storyIngestionHandles.end())
 	{
+		std::cout <<" orphan event"<<std::endl;
 		std::lock_guard<std::mutex> lock(ingestionQueueMutex);
 		orphanEventQueue.push_back(event);
 	}

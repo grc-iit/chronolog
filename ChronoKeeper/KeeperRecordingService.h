@@ -6,6 +6,7 @@
 #include <thallium.hpp>
 #include <thallium/serialization/stl/string.hpp>
 #include "KeeperIdCard.h"
+#include "chronolog_types.h"
 #include "IngestionQueue.h"
 
 namespace tl = thallium;
@@ -13,10 +14,6 @@ namespace tl = thallium;
 
 namespace chronolog
 {
-
-//#INNA :  for now assume all identifiers are uint64_t , revisit later 
-typedef uint64_t StoryId;
-typedef uint64_t StorytellerId;
 
 
 class KeeperRecordingService : public tl::provider<KeeperRecordingService> 

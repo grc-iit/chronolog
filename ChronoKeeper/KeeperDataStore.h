@@ -32,7 +32,7 @@ typedef std::string ChronicleName;
 //
 //
 //
-enum StoryState
+enum Storyttate
 {
 	UNKNOWN = 0,
 	UNFOLDING =1, // being written to
@@ -104,7 +104,12 @@ class KeeperDataStore
 {
 public:
 
-int startStoryRecording(ChronicleName const&, StoryName const&, StoryId const&, uint32_t timeGranularity );
+bool is_shutting_down() const
+{
+	return (false); // INNA: implement state_management
+}
+
+int startStoryRecording(ChronicleName const&, StoryName const&, StoryId const&, uint32_t timeGranularity=30 ); //INNA: 30 seconds?
 int stopStoryRecording(StoryId const&);
 
 void shutdown();
