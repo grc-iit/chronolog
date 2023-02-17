@@ -98,6 +98,12 @@ public:
 	 attrs_.access_permission = v;
 	 return CL_SUCCESS;
     }
+    int get_owner_and_group(std::string &owner, std::string &group)
+    {
+	  owner = attrs_.owner;
+	  group = attrs_.group;
+	  return CL_SUCCESS;
+    }
 
     friend std::ostream& operator<<(std::ostream& os, const Story& story);
 
