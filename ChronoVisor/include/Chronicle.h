@@ -297,12 +297,38 @@ public:
 	attrs_.grouplist.emplace(attrs_.grouplist.end(),group_id);
         return CL_SUCCESS;	
     }
+    inline int add_group(std::string &group_id)
+    {
+	 if(std::find(attrs_.grouplist.begin(),attrs_.grouplist.end(),group_id)==attrs_.grouplist.end())
+		 attrs_.grouplist.emplace(attrs_.grouplist.end(),group_id);
+	 return CL_SUCCESS;
+    }
+    inline int remove_group(std::string &group_id)
+    {
+	    auto iter = std::find(attrs_.grouplist.begin(),attrs_.grouplist.end(),group_id);
+	    if(iter != attrs_.grouplist.end())
+	    {
+		 attrs_.grouplist.erase(iter);
+		 return CL_SUCCESS;
+	    }
+	    return CL_ERR_NOT_EXIST;
+    }
     inline int get_owner_and_group(std::vector<std::string> &owner, std::vector<std::string> &group)
     {
         owner.assign(attrs_.ownerlist.begin(),attrs_.ownerlist.end());
         group.assign(attrs_.grouplist.begin(),attrs_.grouplist.end());
         return CL_SUCCESS;
     }	
+
+    inline bool can_edit_group(std::string &client_id,std::string &group_id)
+    {
+	if(std::find(attrs_.ownerlist.begin(),attrs_.ownerlist.end(),client_id) != attrs_.ownerlist.end() ||
+	   std::find(attrs_.grouplist.begin(),attrs_.grouplist.end(),group_id) != attrs_.grouplist.end())
+	{
+	   return true;
+	}	
+	return false;
+    }
 
 private:
     std::string name_;

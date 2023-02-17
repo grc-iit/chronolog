@@ -26,6 +26,7 @@ int ClientRegistryManager::add_client_record(const std::string &client_id, const
     LOGD("%s in ClientRegistryManager@%p", __FUNCTION__, this);
     LOGD("clientRegistry_@%p has %ld entries stored", clientRegistry_, clientRegistry_->size());
     std::lock_guard<std::mutex> lock(g_clientRegistryMutex_);
+    std::cout <<" add_client_record role = "<<record.client_role_<<std::endl;
     if (clientRegistry_->insert_or_assign(client_id, record).second) {
         LOGD("a new entry has been added to clientRegistry_@%p", clientRegistry_);
         return CL_SUCCESS;

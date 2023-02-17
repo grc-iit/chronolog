@@ -35,7 +35,10 @@ public:
 
     int get_chronicle_attr(std::string& name, const std::string& key, std::string &client_id, std::string &group_id, std::string& value);
     int edit_chronicle_attr(std::string& name, const std::string& key, std::string &client_id, std::string &group_id, const std::string& value);
-
+    int add_group_to_chronicle(std::string &name,std::string &client_id,std::string &group_id,std::string &new_group_id);
+    int add_group_to_story(std::string &chronicle_name,std::string &story_name,std::string &client_id,std::string &group_id,std::string &new_group_id);
+    int remove_group_from_chronicle(std::string &name,std::string &client_id,std::string &group_id,std::string &new_group_id);
+    int remove_group_from_story(std::string &chronicle_name,std::string &story_name,std::string &client_id,std::string &group_id,std::string &new_group_id);
 private:
 //    std::shared_ptr<std::unordered_map<std::string, Chronicle *>> chronicleMap_;
     std::unordered_map<uint64_t , Chronicle *> *chronicleMap_;
