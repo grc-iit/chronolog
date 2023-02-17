@@ -49,11 +49,17 @@ public:
         LOGD("%s in ChronoLogAdminRPCProxy@%p called in PID=%d, with args: uri=%s",
              __FUNCTION__, this, getpid(), uri.c_str());
         ClientInfo record;
-        record.addr_ = "127.0.0.1";
+	int npos = uri.find("://");
+	std::string substring = uri.substr(npos);
+	npos = substring.rfind(":");
+	std::string ip = substring.substr(3,npos-3);
+        record.addr_ = ip;
 	if(group_id.empty()) group_id = "DEFAULT";
 	record.group_id_ = group_id;
 	record.client_role_ = role;
-	if(role < CHRONOLOG_CLIENT_ADMIN || role > CHRONOLOG_CLIENT_USER_RW) record.client_role_ = CHRONOLOG_CLIENT_USER_RDONLY;
+
+	if(role < CHRONOLOG_CLIENT_ADMIN || role > CHRONOLOG_CLIENT_USER_RW) 
+		record.client_role_ = CHRONOLOG_CLIENT_USER_RDONLY;
 
         if (std::strtol(client_id.c_str(), nullptr, 10) < 0) {
             LOGE("client id is invalid");
@@ -91,7 +97,7 @@ public:
 	{	
           if (!name.empty()) 
 	  {
-            return g_chronicleMetaDirectory->create_chronicle(name,client_id,group_id,v);
+            return g_chronicleMetaDirectory->create_chronicle(name,client_id,group_id,attrs);
           } 
 	  else 
 	  {
@@ -119,7 +125,7 @@ public:
 
            if (!name.empty()) 
 	   {
-              return g_chronicleMetaDirectory->destroy_chronicle(name,client_id,group_id,flags);
+              return g_chronicleMetaDirectory->destroy_chronicle(name,client_id,flags);
            } 
 	   else 
 	   {

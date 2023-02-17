@@ -36,7 +36,6 @@ int ChronoLogClient::CreateChronicle(std::string &name,
                                      const std::unordered_map<std::string, std::string> &attrs,
                                      int &flags) 
 {
-    std::cout <<" client_id = "<<client_id_<<std::endl;
     return rpcProxy_->CreateChronicle(name,client_id_,attrs,flags);
 }
 

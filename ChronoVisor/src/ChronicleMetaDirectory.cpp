@@ -36,10 +36,10 @@ ChronicleMetaDirectory::~ChronicleMetaDirectory() {
  *         CL_ERR_CHRONICLE_EXISTS if a Chronicle with the same name already exists
  *         CL_ERR_UNKNOWN otherwise
  */
-int ChronicleMetaDirectory::create_chronicle(const std::string& name) {
+/*int ChronicleMetaDirectory::create_chronicle(const std::string& name) {
     std::unordered_map<std::string, std::string> attrs;
     return create_chronicle(name, attrs);
-}
+}*/
 
 /**
  * Create a Chronicle
@@ -49,7 +49,7 @@ int ChronicleMetaDirectory::create_chronicle(const std::string& name) {
  *         CL_ERR_CHRONICLE_EXISTS if a Chronicle with the same name already exists
  *         CL_ERR_UNKNOWN otherwise
  */
-int ChronicleMetaDirectory::create_chronicle(const std::string& name,
+int ChronicleMetaDirectory::create_chronicle(const std::string& name, std::string &client_id, std::string &group_id,
                                              const std::unordered_map<std::string, std::string>& attrs) {
     LOGD("creating Chronicle name=%s", name.c_str());
     for (auto iter = attrs.begin(); iter != attrs.end(); ++iter) {
@@ -57,16 +57,8 @@ int ChronicleMetaDirectory::create_chronicle(const std::string& name,
     }
     std::chrono::steady_clock::time_point t1, t2;
     t1 = std::chrono::steady_clock::now();
-/*int ChronicleMetaDirectory::create_chronicle(const std::string& name, std::string& client_id, std::string& group_id, enum ChronoLogVisibility &v) {
-    LOGD("creating Chronicle name=%s", name.c_str());
-    std::chrono::steady_clock::time_point t1, t2;
-    t1 = std::chrono::steady_clock::now();*/
-    Chronicle *pChronicle = new Chronicle();
-    //pChronicle->add_owner_and_group(client_id,group_id);
-    //pChronicle->set_permissions(v);
-    pChronicle->setName(name);
     uint64_t cid = CityHash64(name.c_str(), name.size());
-    std::lock_guard<std::mutex> ChronicleMapLock(g_chronicleMetaDirectoryMutex_);
+    std::lock_guard<std::mutex> lock(g_chronicleMetaDirectoryMutex_);
     /* Check if Chronicle already exists, fail if true */
     if (chronicleMap_->find(cid) != chronicleMap_->end())
     {
@@ -75,6 +67,7 @@ int ChronicleMetaDirectory::create_chronicle(const std::string& name,
     auto *pChronicle = new Chronicle();
     pChronicle->setName(name);
     pChronicle->setCid(cid);
+    pChronicle->add_owner_and_group(client_id,group_id);
     auto res = chronicleMap_->emplace(cid, pChronicle);
     t2 = std::chrono::steady_clock::now();
     std::chrono::duration<double, std::nano> duration = (t2 - t1);
@@ -97,7 +90,7 @@ int ChronicleMetaDirectory::create_chronicle(const std::string& name,
  *         CL_ERR_UNKNOWN otherwise
  */
 int ChronicleMetaDirectory::destroy_chronicle(const std::string& name,
-					      std::string &client_id, std::string &group_id,
+					      std::string &client_id,
                                               int& flags) {
     LOGD("destroying Chronicle name=%s, flags=%d", name.c_str(), flags);
     std::chrono::steady_clock::time_point t1, t2;
@@ -106,6 +99,9 @@ int ChronicleMetaDirectory::destroy_chronicle(const std::string& name,
     /* Check if Chronicle is acquired, fail if true */
     std::lock_guard<std::mutex> ChronicleMapLock(g_chronicleMetaDirectoryMutex_);
     std::lock_guard<std::mutex> AcquiredChronicleMapLock(g_acquiredChronicleMapMutex_);
+
+    std::string group_id;
+    int client_role;
 
     if (acquiredStoryMap_->find(cid) != acquiredStoryMap_->end())
     {
@@ -462,7 +458,8 @@ int ChronicleMetaDirectory::edit_chronicle_attr(std::string& name,
     std::lock_guard<std::mutex> lock(g_chronicleMetaDirectoryMutex_);
     /* First check if Chronicle exists, fail if false */
     auto chronicleRecord = chronicleMap_->find(cid);
-    if (chronicleRecord != chronicleMap_->end()) {
+    if (chronicleRecord != chronicleMap_->end()) 
+    {
         Chronicle *pChronicle = chronicleRecord->second;
         if (pChronicle) {
             /* Then check if property exists, fail if false */
