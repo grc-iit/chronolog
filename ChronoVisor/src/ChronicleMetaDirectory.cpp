@@ -147,7 +147,7 @@ int ChronicleMetaDirectory::destroy_chronicle(const std::string& name,
 	pChronicle->get_owner_and_group(owner,group);
 	enum ChronoLogVisibility v = pChronicle->get_permissions();
 	if(owner.compare(client_id)==0 ||
-           group.compare(group_id)==0 && (v ==CHRONOLOG_GROUP_RW || v == CHRONOLOG_PUBLIC) || 
+           (group.compare(group_id)==0 && (v ==CHRONOLOG_GROUP_RW || v == CHRONOLOG_PUBLIC)) || 
            v == CHRONOLOG_PUBLIC)
         {		
            delete pChronicle;
@@ -288,12 +288,25 @@ int ChronicleMetaDirectory::create_story(std::string& chronicle_name,
         Chronicle *pChronicle = chronicleRecord->second;
         LOGD("Chronicle@%p", &(*pChronicle));
         /* Ask Chronicle to create the Story */
-        CL_Status res = pChronicle->addStory(chronicle_name, story_name, attrs);
-        t2 = std::chrono::steady_clock::now();
-        std::chrono::duration<double, std::nano> duration = (t2 - t1);
-        LOGD("time in %s: %lf ns", __FUNCTION__, duration.count());
+	std::string owner,group;
+	pChronicle->get_owner_and_group(owner,group);
+	enum ChronoLogVisibility v = pChronicle->get_permissions();
+        if(v==CHRONOLOG_PUBLIC || 
+	owner.compare(client_id)==0 ||
+	(group.compare(group_id)==0 && (v == CHRONOLOG_PUBLIC || v == CHRONOLOG_GROUP_RW)))
+	{
+          CL_Status res = pChronicle->addStory(chronicle_name, story_name,client_id,group_id,attrs);
+          t2 = std::chrono::steady_clock::now();
+          std::chrono::duration<double, std::nano> duration = (t2 - t1);
+          LOGD("time in %s: %lf ns", __FUNCTION__, duration.count());
         /* Forward its return value */
-        return res;
+          return res;
+	}
+	else
+	{
+	    LOGE("Insufficient permissions to create story under this Chronicle");
+	    return CL_ERR_UNKNOWN;
+	}
     } else {
         LOGE("Cannot find Chronicle name=%s", chronicle_name.c_str());
         return CL_ERR_NOT_EXIST;
@@ -321,7 +334,9 @@ int ChronicleMetaDirectory::destroy_story(std::string& chronicle_name,
     std::lock_guard<std::mutex> AcquiredStoryMapLock(g_acquiredStoryMapMutex_);
     std::string story_name_for_hash = chronicle_name + story_name;
     uint64_t sid = CityHash64(story_name_for_hash.c_str(), story_name_for_hash.size());
-    if (acquiredStoryMap_->find(sid) != acquiredStoryMap_->end()) {
+
+    if (acquiredStoryMap_->find(sid) != acquiredStoryMap_->end())
+    {
         return CL_ERR_ACQUIRED;
     }
 
@@ -330,7 +345,7 @@ int ChronicleMetaDirectory::destroy_story(std::string& chronicle_name,
     if (chronicleRecord != chronicleMap_->end()) {
         Chronicle *pChronicle = chronicleRecord->second;
         /* Ask the Chronicle to destroy the Story */
-        CL_Status res = pChronicle->removeStory(chronicle_name, story_name, flags);
+        CL_Status res = pChronicle->removeStory(chronicle_name, story_name,client_id,group_id,flags);
         if (res != CL_SUCCESS) {
             LOGE("Fail to remove Story name=%s in Chronicle name=%s", story_name.c_str(), chronicle_name.c_str());
         }
@@ -402,9 +417,8 @@ int ChronicleMetaDirectory::acquire_story(const std::string &client_id,
                     else ret = CL_ERR_UNKNOWN;
                 }
             } else ret = CL_ERR_UNKNOWN;
-            ret = CL_SUCCESS;
-        }
-    }
+        } else ret = CL_ERR_NOT_EXIST;
+    } else ret = CL_ERR_NOT_EXIST;
     return ret;
 }
 

@@ -107,7 +107,7 @@ public:
         }
     }
 
-    int addStory(std::string &chronicle_name, const std::string& story_name,
+    int addStory(std::string &chronicle_name, const std::string& story_name, std::string &client_id, std::string &group_id,
                  const std::unordered_map<std::string, std::string>& attrs) {
         // add cid to name before hash to allow same story name across chronicles
         std::string story_name_for_hash = chronicle_name + story_name;
@@ -119,6 +119,37 @@ public:
         pStory->setProperty(attrs);
         pStory->setSid(sid);
         pStory->setCid(cid);
+	pStory->add_owner_and_group(client_id,group_id);
+	enum ChronoLogVisibility v;
+	auto attr_perm = attrs.find("permissions");
+	if(attr_perm == attrs.end())
+	{
+	    v = CHRONOLOG_PRIVATE;
+	}
+	else
+	{
+		std::string perm_string = attr_perm->second;
+
+		if(perm_string.compare("Public")==0)
+		{
+		    v = CHRONOLOG_PUBLIC;
+		}
+		else if(perm_string.compare("Private")==0)
+		{
+		   v = CHRONOLOG_PRIVATE;
+		}
+		else if(perm_string.compare("Group_RDONLY")==0)
+		{
+		   v = CHRONOLOG_GROUP_RDONLY;
+		}
+		else if(perm_string.compare("Group_RW")==0)
+		{
+		   v = CHRONOLOG_GROUP_RW;
+		}
+		else
+		     v = CHRONOLOG_PRIVATE;
+	}
+	pStory->set_permissions(v);
         LOGD("adding to storyMap@%p with %lu entries in Chronicle@%p",
              &storyMap_, storyMap_.size(), this);
         auto res = storyMap_.emplace(sid, pStory);
@@ -126,7 +157,7 @@ public:
         else return CL_ERR_UNKNOWN;
     }
 
-    int removeStory(std::string &chronicle_name, const std::string& story_name, int flags) {
+    int removeStory(std::string &chronicle_name, const std::string& story_name,std::string client_id,std::string group_id,int flags) {
         // add cid to name before hash to allow same story name across chronicles
         std::string story_name_for_hash = chronicle_name + story_name;
         uint64_t sid = CityHash64(story_name_for_hash.c_str(), story_name_for_hash.size());
@@ -136,12 +167,25 @@ public:
             if (pStory->getAcquisitionCount() != 0) {
                return CL_ERR_ACQUIRED;
             }
-            delete pStory;
-            LOGD("removing from storyMap@%p with %lu entries in Chronicle@%p",
+	    std::string owner,group;
+	    pStory->get_owner_and_group(owner,group);
+	    enum ChronoLogVisibility v = pStory->get_permissions();
+	    if(owner.compare(client_id)==0 ||
+	       (group.compare(group_id)==0 && (v == CHRONOLOG_PUBLIC || v == CHRONOLOG_GROUP_RW)) ||
+	       v == CHRONOLOG_PUBLIC)
+	    {	    
+              delete pStory;
+              LOGD("removing from storyMap@%p with %lu entries in Chronicle@%p",
                  &storyMap_, storyMap_.size(), this);
-            auto nErased = storyMap_.erase(sid);
-            if (nErased == 1) return CL_SUCCESS;
-            else return CL_ERR_UNKNOWN;
+              auto nErased = storyMap_.erase(sid);
+              if (nErased == 1) return CL_SUCCESS;
+              else return CL_ERR_UNKNOWN;
+	    }
+	    else
+	    {
+		LOGD("does not have permissions to remove story from this Chronicle");
+		return CL_ERR_UNKNOWN;
+	    }
         }
         return CL_ERR_NOT_EXIST;
     }
