@@ -48,6 +48,12 @@ public:
     int ReleaseStory(std::string &chronicle_name, std::string &story_name, int &flags);
     int GetChronicleAttr(std::string &chronicle_name, const std::string &key, std::string &value);
     int EditChronicleAttr(std::string &chronicle_name, const std::string &key, const std::string &value);
+    int SetClientId(std::string &client_id);
+    std::string& GetClientId();
+    int SetClientRole(int &role);
+    int GetClientRole();
+    int SetGroupId(std::string &group_id);
+    std::string &GetGroupId();
 
 private:
     std::string client_id_;

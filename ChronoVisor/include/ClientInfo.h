@@ -11,6 +11,8 @@ public:
     ClientInfo() = default;
 
     std::string addr_;
+    std::string group_id_;
+    int client_role_;
     uint16_t port_{};
 };
 

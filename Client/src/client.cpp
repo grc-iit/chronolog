@@ -71,3 +71,32 @@ int ChronoLogClient::GetChronicleAttr(std::string &chronicle_name, const std::st
 int ChronoLogClient::EditChronicleAttr(std::string &chronicle_name, const std::string &key, const std::string &value) {
     return rpcProxy_->EditChronicleAttr(chronicle_name, key, value);
 }
+int ChronoLogClient::SetClientId(std::string &client_id)
+{
+    client_id_ = client_id;
+    return CL_SUCCESS;
+}
+std::string& ChronoLogClient::GetClientId()
+{
+    return client_id_;
+}
+int ChronoLogClient::SetClientRole(int &r)
+{
+    my_role_ = r;
+    if(r < CHRONOLOG_CLIENT_ADMIN || r > CHRONOLOG_CLIENT_USER_RW)
+    my_role_ = CHRONOLOG_CLIENT_USER_RDONLY;
+    return CL_SUCCESS;
+}
+int ChronoLogClient::GetClientRole()
+{
+    return my_role_;
+}
+int ChronoLogClient::SetGroupId(std::string &group_id)
+{
+     group_id_ = group_id;
+     return CL_SUCCESS;
+}
+std::string& ChronoLogClient::GetGroupId()
+{
+	return group_id_;
+}
