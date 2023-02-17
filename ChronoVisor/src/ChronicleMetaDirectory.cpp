@@ -218,6 +218,7 @@ int ChronicleMetaDirectory::release_chronicle(const std::string &client_id, cons
 	}
 
      }
+     else ret = CL_ERR_UNKNOWN;
      }
      else ret =CL_ERR_NOT_EXIST;	
      return ret;
@@ -410,7 +411,7 @@ int ChronicleMetaDirectory::release_story(const std::string &client_id,
 		for(auto t = range.first; t != range.second;)
 		{
 		   if(t->second.compare(client_id)==0)
-		   {	   
+		   {	  
 		      t = acquiredStoryClientMap_->erase(t);
 		      pStory->decrementAcquisitionCount();
 		      ret = CL_SUCCESS;
@@ -426,7 +427,6 @@ int ChronicleMetaDirectory::release_story(const std::string &client_id,
 		}
 	    }
 	    else ret = CL_ERR_UNKNOWN;
-	    ret = CL_SUCCESS;
 	}
     }
     return ret;
