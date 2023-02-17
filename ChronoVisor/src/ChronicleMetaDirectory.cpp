@@ -119,6 +119,7 @@ int ChronicleMetaDirectory::create_chronicle(const std::string& name, std::strin
  */
 int ChronicleMetaDirectory::destroy_chronicle(const std::string& name,
 					      std::string &client_id,
+					      std::string &group_id,
                                               int& flags) {
     LOGD("destroying Chronicle name=%s, flags=%d", name.c_str(), flags);
     std::chrono::steady_clock::time_point t1, t2;
@@ -142,16 +143,32 @@ int ChronicleMetaDirectory::destroy_chronicle(const std::string& name,
         if (pChronicle->getAcquisitionCount() != 0) {
             return CL_ERR_UNKNOWN;
         }
-        delete pChronicle;
-        auto nErased = chronicleMap_->erase(cid);
-        t2 = std::chrono::steady_clock::now();
-        std::chrono::duration<double, std::nano> duration = (t2 - t1);
-        LOGD("time in %s: %lf ns", __FUNCTION__, duration.count());
-        if (nErased == 1) {
+	std::string owner, group;
+	pChronicle->get_owner_and_group(owner,group);
+	enum ChronoLogVisibility v = pChronicle->get_permissions();
+	if(owner.compare(client_id)==0 ||
+           group.compare(group_id)==0 && (v ==CHRONOLOG_GROUP_RW || v == CHRONOLOG_PUBLIC) || 
+           v == CHRONOLOG_PUBLIC)
+        {		
+           delete pChronicle;
+           auto nErased = chronicleMap_->erase(cid);
+           t2 = std::chrono::steady_clock::now();
+           std::chrono::duration<double, std::nano> duration = (t2 - t1);
+           LOGD("time in %s: %lf ns", __FUNCTION__, duration.count());
+           if (nErased == 1) 
+	   {
             return CL_SUCCESS;
-        } else {
+           } 
+	   else 
+	   {
             return CL_ERR_UNKNOWN;
-        }
+           }
+	}
+	else 
+	{
+	   LOGE("Does not have permissions to delete Chronicle");
+	   return CL_ERR_UNKNOWN;
+	}
     } else {
         LOGE("Cannot find Chronicle cid=%lu", cid);
         return CL_ERR_NOT_EXIST;

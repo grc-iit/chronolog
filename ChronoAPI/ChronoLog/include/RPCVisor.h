@@ -119,12 +119,12 @@ public:
 
 	int ret = g_clientRegistryManager->get_client_group_and_role(client_id, group_id,role);
 
-	if(ret == CL_SUCCESS && role == CHRONOLOG_CLIENT_ADMIN)
+	if(ret == CL_SUCCESS && (role == CHRONOLOG_CLIENT_ADMIN || role == CHRONOLOG_CLIENT_USER_RW))
 	{
 
            if (!name.empty()) 
 	   {
-              return g_chronicleMetaDirectory->destroy_chronicle(name,client_id,flags);
+              return g_chronicleMetaDirectory->destroy_chronicle(name,client_id,group_id,flags);
            } 
 	   else 
 	   {
