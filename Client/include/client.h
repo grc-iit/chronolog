@@ -30,6 +30,8 @@ public:
 
     int Connect(const std::string &server_uri,
                 std::string &client_id,
+		std::string &group_id,
+		int &role,
                 int &flags,
                 uint64_t &clock_offset);
     int Disconnect(const std::string &client_id, int &flags);
