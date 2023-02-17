@@ -31,7 +31,7 @@ public:
     int Connect(const std::string &server_uri,
                 std::string &client_id,
 		std::string &group_id,
-		int &role,
+		uint32_t &role,
                 int &flags,
                 uint64_t &clock_offset);
     int Disconnect(const std::string &client_id, int &flags);
@@ -52,14 +52,18 @@ public:
     int EditChronicleAttr(std::string &chronicle_name, const std::string &key, const std::string &value);
     int SetClientId(std::string &client_id);
     std::string& GetClientId();
-    int SetClientRole(int &role);
-    int GetClientRole();
+    int SetClientRole(uint32_t &role);
+    int CreateClientRole(uint32_t &user, uint32_t &group,uint32_t &cluster);
+    uint32_t GetClientRole();
+    uint32_t UserRole();
+    uint32_t GroupRole();
+    uint32_t ClusterRole();
     int SetGroupId(std::string &group_id);
     std::string &GetGroupId();
 
 private:
     std::string client_id_;
-    int my_role_;
+    uint32_t my_role_;    
     std::string group_id_;
     std::shared_ptr<RPCClient> rpcProxy_;
 };

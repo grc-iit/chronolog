@@ -43,3 +43,16 @@ int ClientRegistryManager::remove_client_record(const std::string &client_id, in
     } else
         return CL_ERR_UNKNOWN;
 }
+
+int ClientRegistryManager::get_client_group_and_role(const std::string &client_id,std::string &group_id,uint32_t &role)
+{
+      std::lock_guard<std::mutex> lock(g_clientRegistryMutex_);
+      std::unordered_map<std::string,ClientInfo>::iterator it = clientRegistry_->find(client_id);
+      if(it != clientRegistry_->end())
+      {
+	group_id = (*it).second.group_id_;
+	role = (*it).second.client_role_;
+	return CL_SUCCESS;
+      }      
+      else return CL_ERR_NOT_EXIST; 
+}

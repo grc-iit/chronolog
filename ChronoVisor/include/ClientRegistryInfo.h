@@ -25,7 +25,7 @@ public:
 
     std::string addr_;
     std::string group_;
-    int role_;
+    uint32_t role_;
 
 };
 

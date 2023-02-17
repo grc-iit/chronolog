@@ -67,33 +67,13 @@ int ChronicleMetaDirectory::create_chronicle(const std::string& name, std::strin
     pChronicle->setCid(cid);
     pChronicle->add_owner_and_group(client_id,group_id);
     auto attr_iter = attrs.find("Permissions");
-    enum ChronoLogVisibility v;
-    if(attr_iter==attrs.end())
+    enum ChronoLogVisibility v = CHRONOLOG_RONLY;
+    if(attr_iter != attrs.end())
     {
-	v = CHRONOLOG_PRIVATE;
+	  std::string c(attr_iter->second);
+	  pChronicle->generate_permission(c); 
     }
-    else 
-    {
-	std::string perm = attr_iter->second;
-	if(perm.compare("Public")==0)
-	{
-            v = CHRONOLOG_PUBLIC;
-	}
-	else if(perm.compare("Private")==0)
-	{
-	    v = CHRONOLOG_PRIVATE;
-	}
-	else if(perm.compare("Group_RDONLY")==0)
-	{
-	    v = CHRONOLOG_GROUP_RDONLY;
-	}
-	else if(perm.compare("Group_RW")==0)
-	{
-	   v = CHRONOLOG_GROUP_RW;
-	}
-	else v = CHRONOLOG_PRIVATE;
-    }
-    pChronicle->set_permissions(v);
+    else pChronicle->set_permissions(v);
     auto res = chronicleMap_->emplace(cid, pChronicle);
     t2 = std::chrono::steady_clock::now();
     std::chrono::duration<double, std::nano> duration = (t2 - t1);
@@ -141,13 +121,10 @@ int ChronicleMetaDirectory::destroy_chronicle(const std::string& name,
         if (pChronicle->getAcquisitionCount() != 0) {
             return CL_ERR_UNKNOWN;
         }
-	std::string owner, group;
-	pChronicle->get_owner_and_group(owner,group);
 	enum ChronoLogVisibility v = pChronicle->get_permissions();
-	if(owner.compare(client_id)==0 ||
-           (group.compare(group_id)==0 && (v ==CHRONOLOG_GROUP_RW || v == CHRONOLOG_PUBLIC)) || 
-           v == CHRONOLOG_PUBLIC)
-        {		
+	bool b = pChronicle->can_delete_chronicle(client_id,group_id);
+	if(b)
+        {	
            delete pChronicle;
            auto nErased = chronicleMap_->erase(cid);
            t2 = std::chrono::steady_clock::now();
@@ -164,9 +141,10 @@ int ChronicleMetaDirectory::destroy_chronicle(const std::string& name,
 	}
 	else 
 	{
-	   LOGE("Does not have permissions to delete Chronicle");
-	   return CL_ERR_UNKNOWN;
+	  LOGE("Does not have permissions to delete Chronicle");
+	  return CL_ERR_UNKNOWN;
 	}
+
     } else {
         LOGE("Cannot find Chronicle cid=%lu", cid);
         return CL_ERR_NOT_EXIST;
@@ -205,7 +183,6 @@ int ChronicleMetaDirectory::acquire_chronicle(const std::string& name,
 		   exists = true; break;
 		}
 	   }
-	}
 
 	if(!exists)
 	{
@@ -301,12 +278,8 @@ int ChronicleMetaDirectory::create_story(std::string& chronicle_name,
         Chronicle *pChronicle = chronicleRecord->second;
         LOGD("Chronicle@%p", &(*pChronicle));
         /* Ask Chronicle to create the Story */
-	std::string owner,group;
-	pChronicle->get_owner_and_group(owner,group);
-	enum ChronoLogVisibility v = pChronicle->get_permissions();
-        if(v==CHRONOLOG_PUBLIC || 
-	owner.compare(client_id)==0 ||
-	(group.compare(group_id)==0 && (v == CHRONOLOG_PUBLIC || v == CHRONOLOG_GROUP_RW)))
+	bool b = pChronicle->can_create_story(client_id,group_id);
+	if(b)
 	{
           CL_Status res = pChronicle->addStory(chronicle_name, story_name,client_id,group_id,attrs);
           t2 = std::chrono::steady_clock::now();
@@ -315,10 +288,10 @@ int ChronicleMetaDirectory::create_story(std::string& chronicle_name,
         /* Forward its return value */
           return res;
 	}
-	else
+	else 
 	{
-	    LOGE("Insufficient permissions to create story under this Chronicle");
-	    return CL_ERR_UNKNOWN;
+	   LOGE("Does not have permission to create story");
+	   return CL_ERR_UNKNOWN;
 	}
     } else {
         LOGE("Cannot find Chronicle name=%s", chronicle_name.c_str());
@@ -358,10 +331,14 @@ int ChronicleMetaDirectory::destroy_story(std::string& chronicle_name,
     if (chronicleRecord != chronicleMap_->end()) 
     {
         Chronicle *pChronicle = chronicleRecord->second;
+	bool b = pChronicle->can_delete_story(client_id,group_id);
         /* Ask the Chronicle to destroy the Story */
-        CL_Status res = pChronicle->removeStory(chronicle_name, story_name,client_id,group_id,flags);
-        if (res != CL_SUCCESS) {
+	if(b)
+	{
+          CL_Status res = pChronicle->removeStory(chronicle_name, story_name,client_id,group_id,flags);
+          if (res != CL_SUCCESS) {
             LOGE("Fail to remove Story name=%s in Chronicle name=%s", story_name.c_str(), chronicle_name.c_str());
+<<<<<<< HEAD
         }
 	return res;
     }   

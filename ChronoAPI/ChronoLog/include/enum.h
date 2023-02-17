@@ -12,21 +12,27 @@ typedef enum ChronoLogRPCImplementation {
 } ChronoLogRPCImplementation;
 
 typedef enum ChronoLogClientRole {
-    CHRONOLOG_CLIENT_ADMIN = 0,
-    CHRONOLOG_CLIENT_USER_RDONLY = 1,
-    CHRONOLOG_CLIENT_USER_RW = 2
+    CHRONOLOG_CLIENT_RO = 0,
+    CHRONOLOG_CLIENT_RW = 1,
+    CHRONOLOG_CLIENT_RWCD = 2,
+    CHRONOLOG_CLIENT_CLUS_ADMIN = 3,
+    CHRONOLOG_CLIENT_CLUS_REG = 4,
+    CHRONOLOG_CLIENT_GROUP_ADMIN = 5,
+    CHRONOLOG_CLIENT_GROUP_REG = 6
 } ChronoLogClientRole;
 
 typedef enum ChronoLogVisibility {
-     CHRONOLOG_PUBLIC = 0,
-     CHRONOLOG_GROUP_RW = 1,
-     CHRONOLOG_GROUP_RDONLY = 2,
-     CHRONOLOG_PRIVATE = 3
+     CHRONOLOG_RONLY = 0,
+     CHRONOLOG_RW = 1,
+     CHRONOLOG_RWC = 2,
+     CHRONOLOG_RWD = 3,
+     CHRONOLOG_RWCD = 4
 }ChronoLogVisibility;
 
 typedef enum ChronoLogOp {
     CHRONOLOG_READ = 0,
-    CHRONOLOG_WRITE = 1
+    CHRONOLOG_WRITE = 1,
+    CHRONOLOG_FILEOP = 2
 }ChronoLogOp;
 
 #endif //CHRONOLOG_ENUM_H
