@@ -172,10 +172,14 @@ int ChronicleMetaDirectory::acquire_chronicle(const std::string& name,
     if (chronicleRecord != chronicleMap_->end()) 
     {
         Chronicle *pChronicle = chronicleRecord->second;
-	auto range = acquiredChronicleClientMap_->equal_range(cid);
-	bool exists = false;
-	if( range.first != range.second)
+	enum ChronoLogOp op = (enum ChronoLogOp)flags;
+	bool b = pChronicle->can_acquire_chronicle(client_id,group_id,op);
+	if(b)
 	{
+	  auto range = acquiredChronicleClientMap_->equal_range(cid);
+	  bool exists = false;
+	  if( range.first != range.second)
+	  {
 	   for(auto t = range.first; t != range.second; ++t)
 	   {
 		if(t->second.compare(client_id)==0)
@@ -183,9 +187,10 @@ int ChronicleMetaDirectory::acquire_chronicle(const std::string& name,
 		   exists = true; break;
 		}
 	   }
+	  }
 
-	if(!exists)
-	{
+	  if(!exists)
+	  {
 	   std::pair<uint64_t,std::string> p(cid,client_id);
 	   acquiredChronicleClientMap_->insert(p);
 	   pChronicle->incrementAcquisitionCount();
@@ -196,8 +201,12 @@ int ChronicleMetaDirectory::acquire_chronicle(const std::string& name,
 	     if(res.second) ret = CL_SUCCESS;
 	     else ret = CL_ERR_UNKNOWN;
 	   }
+	  }
 	}
-	else ret = CL_ERR_UNKNOWN;
+	else 
+	{
+	   ret = CL_ERR_UNKNOWN;
+	}
     }
     else ret = CL_ERR_NOT_EXIST;
     return ret;
@@ -389,11 +398,14 @@ int ChronicleMetaDirectory::acquire_story(const std::string &client_id,
         if (storyRecord != pChronicle->getStoryMap().end()) 
 	{
             Story *pStory = storyRecord->second;
-	    auto range = acquiredStoryClientMap_->equal_range(sid);
-	    bool exists = false;
-	    if(range.first != range.second)
-            /* Increment AcquisitionCount */
+	    bool b2 = pStory->can_acquire_story(client_id,group_id,op);
+
+	    if(b1 && b2)
 	    {
+	      auto range = acquiredStoryClientMap_->equal_range(sid);
+	      bool exists = false;
+	      if(range.first != range.second)
+	      {
 		for(auto t = range.first; t != range.second; ++t)
 		{
 		   if(t->second.compare(client_id)==0)
@@ -401,9 +413,9 @@ int ChronicleMetaDirectory::acquire_story(const std::string &client_id,
 			exists = true; break;
 		   }
 		}
-	    }
-	    if(!exists)
-	    {
+	      }
+	      if(!exists)
+	      {
 	       pStory->incrementAcquisitionCount();
 	       std::pair<uint64_t,std::string> p(sid,client_id);
 	       acquiredStoryClientMap_->insert(p);
@@ -414,10 +426,13 @@ int ChronicleMetaDirectory::acquire_story(const std::string &client_id,
 		   if(res.second) ret = CL_SUCCESS;
 		   else ret = CL_ERR_UNKNOWN;
 	       }
+	      }
 	    }
 	    else ret = CL_ERR_UNKNOWN;
         }
+	else ret = CL_ERR_NOT_EXIST;
     }
+    else ret = CL_ERR_NOT_EXIST;
     return ret;
 }
 
