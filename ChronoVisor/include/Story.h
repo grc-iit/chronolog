@@ -13,6 +13,7 @@
 #include <errcode.h>
 #include <enum.h>
 #include <algorithm>
+#include <iostream>
 
 enum StoryIndexingGranularity {
     story_gran_ns = 0,

@@ -95,9 +95,8 @@ public:
 	std::string group_id; uint32_t role;
 
 	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
-
         	
-	if (!name.empty() && g_chronicleMetaDirectory->can_create_or_delete(role))
+	if (!name.empty() && g_clientRegistryManager->can_create_or_delete(role))
 	{
             return g_chronicleMetaDirectory->create_chronicle(name,client_id,group_id,attrs);
         } 
@@ -116,7 +115,7 @@ public:
 
 	int ret = g_clientRegistryManager->get_client_group_and_role(client_id, group_id,role);
 
-        if (!name.empty() && g_chronicleMetaDirectory->can_create_or_delete(role)) 
+        if (!name.empty() && g_clientRegistryManager->can_create_or_delete(role)) 
 	{
               return g_chronicleMetaDirectory->destroy_chronicle(name,client_id,group_id,flags);
         } 
@@ -136,8 +135,9 @@ public:
 	enum ChronoLogOp op = (enum ChronoLogOp)flags;
 	bool b = false;
 
-	  if(op == CHRONOLOG_READ) b = g_chronicleMetaDirectory->can_read(role);
-	  else if(op == CHRONOLOG_WRITE) b = g_chronicleMetaDirectory->can_write(role);
+	  if(op == CHRONOLOG_READ) b = g_clientRegistryManager->can_read(role);
+	  else if(op == CHRONOLOG_WRITE) b = g_clientRegistryManager->can_write(role);
+	  else if(op == CHRONOLOG_FILEOP) b = g_clientRegistryManager->can_perform_fileops(role);
 
           if (!name.empty() && b) 
 	  {
@@ -187,14 +187,17 @@ public:
         }
 	std::string group_id; uint32_t role;
 	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
+	bool b = g_clientRegistryManager->can_create_or_delete(role);
 
-          if (!chronicle_name.empty() && !story_name.empty()) {
+          if (!chronicle_name.empty() && !story_name.empty() && b) {
             return g_chronicleMetaDirectory->create_story(chronicle_name, story_name,client_id,group_id,attrs);
           } else {
             if (chronicle_name.empty())
                 LOGE("chronicle name is empty");
             if (story_name.empty())
                 LOGE("story name is empty");
+	    if(!b)
+		LOGE("Role does not support create or delete operations");
             return CL_ERR_INVALID_ARG;
         }
     }
@@ -205,13 +208,17 @@ public:
 	std::string group_id; uint32_t role;
 	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
 
-        if (!chronicle_name.empty() && !story_name.empty()) {
+	bool b = g_clientRegistryManager->can_create_or_delete(role);
+
+        if (!chronicle_name.empty() && !story_name.empty() && b) {
             return g_chronicleMetaDirectory->destroy_story(chronicle_name, story_name, client_id,group_id,flags);
         } else {
             if (chronicle_name.empty())
                 LOGE("chronicle name is empty");
             if (story_name.empty())
                 LOGE("story name is empty");
+	    if(!b)
+	        LOGE("Role does not support create or delete operations");
             return CL_ERR_INVALID_ARG;
         }
     }
@@ -223,13 +230,20 @@ public:
 	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
         enum ChronoLogOp op = (enum ChronoLogOp)flags;
 
-        if (!chronicle_name.empty() && !story_name.empty()) {
+	bool b = false;
+
+	if(op == CHRONOLOG_READ) b = g_clientRegistryManager->can_read(role);
+	else if(op == CHRONOLOG_WRITE) b = g_clientRegistryManager->can_write(role);
+
+        if (!chronicle_name.empty() && !story_name.empty() && b) {
             return g_chronicleMetaDirectory->acquire_story(chronicle_name, story_name,client_id,group_id,flags);
         } else {
             if (chronicle_name.empty())
                 LOGE("chronicle name is empty");
             if (story_name.empty())
                 LOGE("story name is empty");
+	    if(!b)
+	       LOGE("Role cannot perform requested operation");
             return CL_ERR_INVALID_ARG;
         }
     }
