@@ -15,33 +15,79 @@ struct thread_arg
 
 };
 
+std::string client_id;
+std::string group_id;
+
 void thread_function(void *t)
 {
 
+<<<<<<< HEAD
 	std::string server_ip = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string();
 	int base_port = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT;
 	std::string client_id = gen_random(8);
 	std::string server_uri = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF.string();
 	server_uri += "://"+server_ip+":"+std::to_string(base_port);
     int flags = 0;
+=======
+        int flags = 0;
+>>>>>>> 75b8683 (rebase)
 	uint64_t offset;
-	int ret = client->Connect(server_uri,client_id,flags,offset);
-	ret = client->Disconnect(client_id,flags);
+	int ret;
+
+	std::string chronicle_name=gen_random(32);
+        std::unordered_map<std::string, std::string> chronicle_attrs;
+        chronicle_attrs.emplace("Priority", "High");
+        chronicle_attrs.emplace("IndexGranularity", "Millisecond");
+        chronicle_attrs.emplace("TieringPolicy", "Hot");
+	chronicle_attrs.emplace("Permissions","RWCD");
+        ret = client->CreateChronicle(chronicle_name, chronicle_attrs, flags);
+        flags = CHRONOLOG_WRITE;
+        ret = client->AcquireChronicle(chronicle_name,flags);
+        ret = client->ReleaseChronicle(chronicle_name,flags);
+        std::string story_name = gen_random(32);
+        std::unordered_map<std::string, std::string> story_attrs;
+        story_attrs.emplace("Priority", "High");
+        story_attrs.emplace("IndexGranularity", "Millisecond");
+        story_attrs.emplace("TieringPolicy", "Hot");
+	story_attrs.emplace("Permissions","RWD");
+        flags = CHRONOLOG_WRITE;
+        ret = client->CreateStory(chronicle_name, story_name, story_attrs, flags);
+        ret = client->AcquireStory(chronicle_name,story_name,flags);
+        ret = client->ReleaseStory(chronicle_name,story_name,flags);
+        ret = client->DestroyStory(chronicle_name,story_name,flags);
+        ret = client->DestroyChronicle(chronicle_name,flags);
+
+
 }
 
 int main(int argc,char **argv) {
     std::vector<std::string> client_ids;
     std::atomic<long> duration_connect{}, duration_disconnect{};
     std::vector<std::thread> thread_vec;
-    uint64_t offset;
+    uint64_t offset=0;
     int provided;
 
     MPI_Init_thread(&argc,&argv,MPI_THREAD_MULTIPLE,&provided);
 
     ChronoLogRPCImplementation protocol = CHRONOLOG_THALLIUM_SOCKETS;
-    std::string server_ip = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string();
-    int base_port = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT;
+    std::string server_ip = "127.0.0.1";
+    int base_port = 5555;
+    client_id = gen_random(8);
+    std::string server_uri = CHRONOLOG_CONF->SOCKETS_CONF.string();
+    server_uri += "://"+server_ip+":"+std::to_string(base_port);
+    int flags = 0;
+    group_id = "hybrid_argobots_application";
+    uint32_t user_role = CHRONOLOG_CLIENT_RWCD;
+    uint32_t group_role = CHRONOLOG_CLIENT_GROUP_REG;
+    uint32_t cluster_role = CHRONOLOG_CLIENT_CLUS_REG;
+    uint32_t role = 0;
+    role = role | user_role;
+    role = role | (group_role << 3);
+    role = role | (cluster_role << 6);
+
     client = new ChronoLogClient(protocol, server_ip, base_port);
+
+    int ret = client->Connect(server_uri,client_id,group_id,role,flags,offset);
 
     int num_xstreams = 8;
     int num_threads = 8;
@@ -89,6 +135,7 @@ int main(int argc,char **argv) {
    free(threads);
    free(t_args);
 
+    client->Disconnect(client_id,flags);
     delete client;
 
     MPI_Finalize();
