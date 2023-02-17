@@ -44,6 +44,8 @@ typedef struct ChronicleAttrs_ {
     enum ChronicleType type;
     enum ChronicleTieringPolicy tiering_policy;
     uint16_t access_permission;
+    std::string owner;
+    std::string group;
 } ChronicleAttrs;
 
 typedef struct ChronicleStats_ {

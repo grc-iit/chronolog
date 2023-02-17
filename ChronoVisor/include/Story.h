@@ -35,6 +35,8 @@ typedef struct StoryAttrs_ {
     enum StoryType type;
     enum StoryTieringPolicy tiering_policy;
     uint16_t access_permission;
+    std::string owner;
+    std::string group;
 } StoryAttrs;
 
 typedef struct StoryStats_ {

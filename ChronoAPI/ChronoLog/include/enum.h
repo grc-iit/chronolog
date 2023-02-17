@@ -5,12 +5,6 @@
 #ifndef CHRONOLOG_ENUM_H
 #define CHRONOLOG_ENUM_H
 
-typedef enum ChronoLogRPCImplementation {
-    CHRONOLOG_THALLIUM_SOCKETS = 0,
-    CHRONOLOG_THALLIUM_TCP = 1,
-    CHRONOLOG_THALLIUM_ROCE = 2
-} ChronoLogRPCImplementation;
-
 inline const char* getRPCImplString(ChronoLogRPCImplementation impl) {
     switch (impl) {
         case CHRONOLOG_THALLIUM_SOCKETS: return "CHRONOLOG_THALLIUM_SOCKETS";

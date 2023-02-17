@@ -24,6 +24,9 @@ public:
     template<typename A> friend void serialize(A& ar, ClientRegistryInfo& r);
 
     std::string addr_;
+    std::string group_;
+    int role_;
+
 };
 
 template<typename A>

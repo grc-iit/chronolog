@@ -64,5 +64,8 @@ private:
     std::string clientid;
     std::shared_ptr<RPCClient> rpcClient_;
     ClocksourceManager *pClocksourceManager_;
+    int my_role_;
+    std::string group_id_;
+    std::shared_ptr<RPCClient> rpcProxy_;
 };
 #endif //CHRONOLOG_CLIENT_H
