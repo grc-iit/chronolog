@@ -21,8 +21,8 @@ public:
     std::unordered_map<uint64_t, Chronicle *> *getChronicleMap() { return chronicleMap_; }
 
     //int create_chronicle(const std::string& name, std::string &client_id, std::string &group_id,enum ChronoLogVisibility &v);
-    int create_chronicle(const std::string& name, std::string &client_id, std::string &group_id, const std::unordered_map<std::string, std::string>& attrs);
-    int destroy_chronicle(const std::string& name, std::string &client_id, int& flags);
+    int create_chronicle(const std::string& name,std::string &client_id, std::string &group_id, const std::unordered_map<std::string, std::string>& attrs);
+    int destroy_chronicle(const std::string& name, std::string &client_id, std::string &group_id, int& flags);
     int acquire_chronicle(const std::string& name, std::string &client_id, std::string &group_id, int& flags);
     int release_chronicle(const std::string& name, std::string &client_id, std::string &group_id, int& flags);
     int create_story(std::string &chronicle_name, const std::string& story_name, std::string &client_id, std::string &group_id, const std::unordered_map<std::string, std::string>& attrs);

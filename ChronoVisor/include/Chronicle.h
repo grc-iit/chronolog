@@ -211,6 +211,12 @@ public:
 	attrs_.group = group_id;
         return CL_SUCCESS;	
     }
+    int get_owner_and_group(std::string &owner, std::string &group)
+    {
+        owner = attrs_.owner;
+        group = attrs_.group;
+        return CL_SUCCESS;
+    }	
 
 private:
     std::string name_;
