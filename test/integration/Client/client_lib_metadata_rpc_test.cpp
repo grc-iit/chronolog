@@ -34,20 +34,21 @@ int main() {
     std::string server_uri = "ofi+sockets://"+server_ip+std::to_string(base_port);
 
     std::string client_id = gen_random(8);
-<<<<<<< HEAD
-    client.Connect(server_uri, client_id, flags, offset);
-=======
     std::string group_id = "metadata_application";
     std::string server_uri = CHRONOLOG_CONF->SOCKETS_CONF.string();
         
    server_uri += "://" + server_ip + ":" + std::to_string(base_port);
-        
-   int role = CHRONOLOG_CLIENT_USER_RDONLY;
+   
+   uint32_t user_role = CHRONOLOG_CLIENT_RWCD;
+   uint32_t group_role = CHRONOLOG_CLIENT_GROUP_REG;
+   uint32_t cluster_role = CHRONOLOG_CLIENT_CLUS_REG;
+   uint32_t role = role | user_role;
+   role = role | (group_role << 3);
+   role = role | (cluster_role << 6);   
    uint64_t offset = 0;
    int ret = client.Connect(server_uri, client_id, group_id, role, flags, offset);
 
     
->>>>>>> 0a5b4e8 (role updates)
     chronicle_names.reserve(NUM_CHRONICLE);
     for (int i = 0; i < NUM_CHRONICLE; i++) 
     {
@@ -59,13 +60,14 @@ int main() {
         chronicle_attrs.emplace("Priority", "High");
         chronicle_attrs.emplace("IndexGranularity", "Millisecond");
         chronicle_attrs.emplace("TieringPolicy", "Hot");
+	chronicle_attrs.emplace("Permissions","RWCD");
         t1 = std::chrono::steady_clock::now();
         ret = client.CreateChronicle(chronicle_name, chronicle_attrs, flags);
         t2 = std::chrono::steady_clock::now();
         assert(ret == CL_SUCCESS);
         duration_create_chronicle += (t2 - t1);
         
-        flags = 1;
+        flags = CHRONOLOG_WRITE;
         t1 = std::chrono::steady_clock::now();
         ret = client.AcquireChronicle(chronicle_name, flags);
         t2 = std::chrono::steady_clock::now();
@@ -85,9 +87,10 @@ int main() {
             std::string story_name(gen_random(STORY_NAME_LEN));
             story_names.emplace_back(story_name);
             std::unordered_map<std::string, std::string> story_attrs;
-            chronicle_attrs.emplace("Priority", "High");
-            chronicle_attrs.emplace("IndexGranularity", "Millisecond");
-            chronicle_attrs.emplace("TieringPolicy", "Hot");
+            story_attrs.emplace("Priority", "High");
+            story_attrs.emplace("IndexGranularity", "Millisecond");
+            story_attrs.emplace("TieringPolicy", "Hot");
+	    story_attrs.emplace("Permissions","RW");
             flags = 1;
             t1 = std::chrono::steady_clock::now();
             ret = client.CreateStory(chronicle_name, story_name, story_attrs, flags);
@@ -168,6 +171,7 @@ int main() {
         chronicle_attrs.emplace("Priority", "High");
         chronicle_attrs.emplace("IndexGranularity", "Millisecond");
         chronicle_attrs.emplace("TieringPolicy", "Hot");
+	chronicle_attrs.emplace("Permissions","RWC");
         t1 = std::chrono::steady_clock::now();
         ret = client.CreateChronicle(chronicle_name, chronicle_attrs, flags);
         t2 = std::chrono::steady_clock::now();

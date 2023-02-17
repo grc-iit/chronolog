@@ -41,7 +41,13 @@ int main() {
         }
         server_uri += "://" + server_ip + ":" + std::to_string(base_port + i);
         t1 = std::chrono::steady_clock::now();
-	int role = CHRONOLOG_CLIENT_ADMIN;
+	uint32_t user_role = CHRONOLOG_CLIENT_RW;
+	uint32_t group_role = CHRONOLOG_CLIENT_GROUP_REG;
+	uint32_t cluster_role = CHRONOLOG_CLIENT_CLUS_REG;
+	uint32_t role = 0; 
+	role = role | user_role;
+	role = role | (group_role << 3);
+	role = role | (cluster_role << 6);
         ret = client.Connect(server_uri, client_ids[i], group_ids[i], role, flags, offset);
         assert(ret == CL_SUCCESS);
         t2 = std::chrono::steady_clock::now();
