@@ -34,9 +34,23 @@ int main() {
     std::string server_uri = "ofi+sockets://"+server_ip+std::to_string(base_port);
 
     std::string client_id = gen_random(8);
+<<<<<<< HEAD
     client.Connect(server_uri, client_id, flags, offset);
+=======
+    std::string group_id = "metadata_application";
+    std::string server_uri = CHRONOLOG_CONF->SOCKETS_CONF.string();
+        
+   server_uri += "://" + server_ip + ":" + std::to_string(base_port);
+        
+   int role = CHRONOLOG_CLIENT_ADMIN;
+   uint64_t offset = 0;
+   int ret = client.Connect(server_uri, client_id, group_id, role, flags, offset);
+
+    
+>>>>>>> 0a5b4e8 (role updates)
     chronicle_names.reserve(NUM_CHRONICLE);
-    for (int i = 0; i < NUM_CHRONICLE; i++) {
+    for (int i = 0; i < NUM_CHRONICLE; i++) 
+    {
         std::string chronicle_name(gen_random(CHRONICLE_NAME_LEN));
         chronicle_names.emplace_back(chronicle_name);
         std::string attr = std::string("Priority=High");
@@ -50,7 +64,7 @@ int main() {
         t2 = std::chrono::steady_clock::now();
         assert(ret == CL_SUCCESS);
         duration_create_chronicle += (t2 - t1);
-
+        
         flags = 1;
         t1 = std::chrono::steady_clock::now();
         ret = client.AcquireChronicle(chronicle_name, flags);
@@ -93,9 +107,9 @@ int main() {
             ret = client.ReleaseStory(chronicle_name, story_name, flags);
             t2 = std::chrono::steady_clock::now();
             assert(ret == CL_SUCCESS);
-            duration_release_story += (t2 - t1);
+            duration_release_story += (t2 - t1); 
         }
-
+	
         flags = 8;
         for (int j = 0; j < NUM_STORY; j++) {
             t1 = std::chrono::steady_clock::now();
@@ -130,7 +144,7 @@ int main() {
         assert(ret == CL_SUCCESS);
         duration_destroy_chronicle += (t2 - t1);
     };
-
+   
     LOGI("CreateChronicle takes %lf ns", duration_create_chronicle.count() / NUM_CHRONICLE);
     LOGI("AcquireChronicle takes %lf ns", duration_acquire_chronicle.count() / NUM_CHRONICLE);
     LOGI("EditChronicleAttr takes %lf ns", duration_edit_chronicle_attr.count() / NUM_CHRONICLE);
@@ -175,5 +189,6 @@ int main() {
     LOGI("CreateChronicle2 takes %lf ns", duration_create_chronicle.count() / NUM_CHRONICLE);
     LOGI("DestroyChronicle2 takes %lf ns", duration_destroy_chronicle.count() / NUM_CHRONICLE);
 
+    client.Disconnect(client_id,flags);
     return 0;
 }

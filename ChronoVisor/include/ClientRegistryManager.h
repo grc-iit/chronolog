@@ -17,6 +17,8 @@ public:
 
     int add_client_record(const std::string &client_id, const ClientInfo &record);
     int remove_client_record(const std::string& client_id, int &flags);
+    int get_client_group_and_role(const std::string &client_id, std::string &group_id,int &role);
+
 private:
     std::unordered_map<std::string, ClientInfo> *clientRegistry_;
     std::mutex g_clientRegistryMutex_;

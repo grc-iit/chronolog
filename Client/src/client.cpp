@@ -12,7 +12,8 @@ int ChronoLogClient::Connect(const std::string &server_uri,
 			     int &role,
                              int &flags,
                              uint64_t &clock_offset) {
-    if (client_id.empty()) {
+    if (client_id.empty()) 
+    {
         char ip[16];
         struct hostent *he = gethostbyname("localhost");
         auto **addr_list = (struct in_addr **) he->h_addr_list;
@@ -20,10 +21,10 @@ int ChronoLogClient::Connect(const std::string &server_uri,
         std::string addr_str = ip + std::string(",") + std::to_string(getpid());
         uint64_t client_id_hash = CityHash64(addr_str.c_str(), addr_str.size());
         client_id = std::to_string(client_id_hash);
-	SetClientId(client_id);
-	SetGroupId(group_id);
-	SetClientRole(role);
     }
+    SetClientId(client_id);
+    SetGroupId(group_id);
+    SetClientRole(role);
     return rpcProxy_->Connect(server_uri, client_id, group_id,role,flags, clock_offset);
 }
 
@@ -33,7 +34,9 @@ int ChronoLogClient::Disconnect(const std::string &client_id, int &flags) {
 
 int ChronoLogClient::CreateChronicle(std::string &name,
                                      const std::unordered_map<std::string, std::string> &attrs,
-                                     int &flags) {
+                                     int &flags) 
+{
+    std::cout <<" client_id = "<<client_id_<<std::endl;
     return rpcProxy_->CreateChronicle(name,client_id_,attrs,flags);
 }
 
