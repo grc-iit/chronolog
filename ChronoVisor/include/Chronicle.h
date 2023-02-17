@@ -15,6 +15,8 @@
 #include <errcode.h>
 #include <mutex>
 #include <enum.h>
+#include <algorithm>
+#include <iostream>
 
 #define MAX_CHRONICLE_PROPERTY_LIST_SIZE 16
 #define MAX_CHRONICLE_METADATA_MAP_SIZE 16
@@ -45,8 +47,8 @@ typedef struct ChronicleAttrs_ {
     enum ChronicleType type;
     enum ChronicleTieringPolicy tiering_policy;
     enum ChronoLogVisibility access_permission;
-    std::string owner;
-    std::string group;
+    std::vector<std::string> ownerlist;
+    std::vector<std::string> grouplist;
 } ChronicleAttrs;
 
 typedef struct ChronicleStats_ {
@@ -64,7 +66,6 @@ public:
         attrs_.indexing_granularity = chronicle_gran_ms;
         attrs_.type = chronicle_type_standard;
         attrs_.tiering_policy = chronicle_tiering_normal;
-        attrs_.access_permission = CHRONOLOG_PRIVATE;
         stats_.count = 0;
     }
 
@@ -120,36 +121,14 @@ public:
         pStory->setSid(sid);
         pStory->setCid(cid);
 	pStory->add_owner_and_group(client_id,group_id);
-	enum ChronoLogVisibility v;
-	auto attr_perm = attrs.find("permissions");
-	if(attr_perm == attrs.end())
+	enum ChronoLogVisibility v=CHRONOLOG_RONLY;
+	auto attr_iter = attrs.find("permissions");
+	if(attr_iter != attrs.end())
 	{
-	    v = CHRONOLOG_PRIVATE;
+	   std::string c(attr_iter->second);
+	   pStory->generate_permission(c);
 	}
-	else
-	{
-		std::string perm_string = attr_perm->second;
-
-		if(perm_string.compare("Public")==0)
-		{
-		    v = CHRONOLOG_PUBLIC;
-		}
-		else if(perm_string.compare("Private")==0)
-		{
-		   v = CHRONOLOG_PRIVATE;
-		}
-		else if(perm_string.compare("Group_RDONLY")==0)
-		{
-		   v = CHRONOLOG_GROUP_RDONLY;
-		}
-		else if(perm_string.compare("Group_RW")==0)
-		{
-		   v = CHRONOLOG_GROUP_RW;
-		}
-		else
-		     v = CHRONOLOG_PRIVATE;
-	}
-	pStory->set_permissions(v);
+	else pStory->set_permissions(v);
         LOGD("adding to storyMap@%p with %lu entries in Chronicle@%p",
              &storyMap_, storyMap_.size(), this);
         auto res = storyMap_.emplace(sid, pStory);
@@ -167,14 +146,11 @@ public:
             if (pStory->getAcquisitionCount() != 0) {
                return CL_ERR_ACQUIRED;
             }
-	    std::string owner,group;
-	    pStory->get_owner_and_group(owner,group);
-	    enum ChronoLogVisibility v = pStory->get_permissions();
-	    if(owner.compare(client_id)==0 ||
-	       (group.compare(group_id)==0 && (v == CHRONOLOG_PUBLIC || v == CHRONOLOG_GROUP_RW)) ||
-	       v == CHRONOLOG_PUBLIC)
-	    {	    
-              delete pStory;
+             
+	    bool b = pStory->can_delete_story(client_id,group_id);
+	    if(b)
+	    { 
+	      delete pStory;
               LOGD("removing from storyMap@%p with %lu entries in Chronicle@%p",
                  &storyMap_, storyMap_.size(), this);
               auto nErased = storyMap_.erase(sid);
@@ -183,8 +159,8 @@ public:
 	    }
 	    else
 	    {
-		LOGD("does not have permissions to remove story from this Chronicle");
-		return CL_ERR_UNKNOWN;
+	       LOGD("Doesnot have permission to delete story");
+	       return CL_ERR_UNKNOWN;
 	    }
         }
         return CL_ERR_NOT_EXIST;
@@ -249,16 +225,68 @@ public:
     {
 	  return attrs_.access_permission;
     }
+    void generate_permission(std::string &perm)
+    {
+	if(perm.compare("RWCD")==0) attrs_.access_permission = CHRONOLOG_RWCD;
+        else if(perm.compare("RWC")==0) attrs_.access_permission = CHRONOLOG_RWC;
+	else if(perm.compare("RWD")==0) attrs_.access_permission = CHRONOLOG_RWD;
+	else if(perm.compare("RW")==0) attrs_.access_permission = CHRONOLOG_RW;
+	else if(perm.compare("RO")==0) attrs_.access_permission = CHRONOLOG_RONLY;	
+	else attrs_.access_permission = CHRONOLOG_RONLY;
+    }
+    bool can_create_story(std::string &client_id, std::string &group_id)
+    {
+	if(std::find(attrs_.ownerlist.begin(),attrs_.ownerlist.end(),client_id) != attrs_.ownerlist.end() ||
+	   std::find(attrs_.grouplist.begin(),attrs_.grouplist.end(),group_id) != attrs_.grouplist.end())
+	{
+	  if(attrs_.access_permission == CHRONOLOG_RWC || attrs_.access_permission == CHRONOLOG_RWCD) return true;
+	}
+	return false;
+    }
+    bool can_delete_story(std::string &client_id, std::string &group_id)
+    {
+	 if(std::find(attrs_.ownerlist.begin(),attrs_.ownerlist.end(),client_id) != attrs_.ownerlist.end() ||
+	    std::find(attrs_.grouplist.begin(),attrs_.grouplist.end(),group_id) != attrs_.grouplist.end())
+	 {
+	   if(attrs_.access_permission == CHRONOLOG_RWD || attrs_.access_permission == CHRONOLOG_RWCD) return true;
+	 }
+	 return false;
+    }
+    bool can_delete_chronicle(std::string &client_id, std::string &group_id)
+    {
+	if(std::find(attrs_.ownerlist.begin(),attrs_.ownerlist.end(),client_id) != attrs_.ownerlist.end() ||
+	   std::find(attrs_.grouplist.begin(),attrs_.grouplist.end(),group_id) != attrs_.grouplist.end())
+	{
+           if(attrs_.access_permission == CHRONOLOG_RWCD) return true;	
+	}
+	return false;
+    }
+    bool can_acquire_chronicle(std::string &client_id, std::string &group_id,enum ChronoLogOp &op)
+    {
+        if(std::find(attrs_.ownerlist.begin(),attrs_.ownerlist.end(),client_id) != attrs_.ownerlist.end() ||
+	   std::find(attrs_.grouplist.begin(),attrs_.grouplist.end(),group_id) != attrs_.grouplist.end())
+	{
+	   if(op == CHRONOLOG_READ && (attrs_.access_permission == CHRONOLOG_RONLY ||
+	    attrs_.access_permission == CHRONOLOG_RW || attrs_.access_permission == CHRONOLOG_RWC || attrs_.access_permission == CHRONOLOG_RWD || attrs_.access_permission == CHRONOLOG_RWCD))
+	      return true;		   
+	   else if(op == CHRONOLOG_WRITE && (attrs_.access_permission == CHRONOLOG_RW || attrs_.access_permission == CHRONOLOG_RWC || attrs_.access_permission == CHRONOLOG_RWD || attrs_.access_permission == CHRONOLOG_RWCD))
+	      return true;
+	   else if(op == CHRONOLOG_FILEOP && attrs_.access_permission == CHRONOLOG_RWCD)
+		   return true;
+	}
+
+	return false;
+    }
     int add_owner_and_group(std::string &client_id, std::string &group_id)
     {
-	attrs_.owner = client_id;
-	attrs_.group = group_id;
+	attrs_.ownerlist.emplace(attrs_.ownerlist.end(),client_id);
+	attrs_.grouplist.emplace(attrs_.grouplist.end(),group_id);
         return CL_SUCCESS;	
     }
-    int get_owner_and_group(std::string &owner, std::string &group)
+    int get_owner_and_group(std::vector<std::string> &owner, std::vector<std::string> &group)
     {
-        owner = attrs_.owner;
-        group = attrs_.group;
+        owner.assign(attrs_.ownerlist.begin(),attrs_.ownerlist.end());
+        group.assign(attrs_.grouplist.begin(),attrs_.grouplist.end());
         return CL_SUCCESS;
     }	
 

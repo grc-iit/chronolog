@@ -45,7 +45,7 @@ public:
 	rpc->start();
 	
     }
-    int LocalConnect(const std::string &uri, std::string &client_id, std::string &group_id, int &role, int &flags, uint64_t &clock_offset) {
+    int LocalConnect(const std::string &uri, std::string &client_id, std::string &group_id, uint32_t &role, int &flags, uint64_t &clock_offset) {
         LOGD("%s in ChronoLogAdminRPCProxy@%p called in PID=%d, with args: uri=%s",
              __FUNCTION__, this, getpid(), uri.c_str());
         ClientInfo record;
@@ -58,14 +58,12 @@ public:
 	record.group_id_ = group_id;
 	record.client_role_ = role;
 
-	if(role < CHRONOLOG_CLIENT_ADMIN || role > CHRONOLOG_CLIENT_USER_RW) 
-		record.client_role_ = CHRONOLOG_CLIENT_USER_RDONLY;
-
         if (std::strtol(client_id.c_str(), nullptr, 10) < 0) {
             LOGE("client id is invalid");
             return CL_ERR_INVALID_ARG;
         }
-        return clientManager->add_client_record(client_id,record);
+	return clientManager->add_client_record(client_id,record);
+            
     }
 
     int LocalDisconnect(const std::string &client_id, int &flags) {
@@ -90,81 +88,75 @@ public:
             LOGD("%s=%s", iter->first.c_str(), iter->second.c_str());
         }
 
-	std::string group_id; int role;
+	std::string group_id; uint32_t role;
+
 	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
-	if(ret == CL_SUCCESS && (role == CHRONOLOG_CLIENT_ADMIN || role == CHRONOLOG_CLIENT_USER_RW))
-	{	
-          if (!name.empty()) 
-	  {
-            return g_chronicleMetaDirectory->create_chronicle(name,client_id,group_id,attrs);
-          } 
-	  else 
-	  {
-            LOGE("name is empty");
-            return CL_ERR_INVALID_ARG;
-          }
-	}
-	else
+
+        	
+	if (!name.empty() && g_chronicleMetaDirectory->can_create_or_delete(role))
 	{
-	   if(ret == CL_SUCCESS && role == CHRONOLOG_CLIENT_USER_RDONLY)
-	   LOGE("cannot create chronicle : role is readonly");
-	   return ret;
-	}
+            return g_chronicleMetaDirectory->create_chronicle(name,client_id,group_id,attrs);
+        } 
+	else  
+	{
+	    if(name.empty())
+            LOGE("name is empty");
+	    else LOGE("Client role cannot create new chronicles");
+            return CL_ERR_INVALID_ARG;
+        }
     }
 
     int LocalDestroyChronicle(std::string& name, std::string &client_id, int& flags) {
         LOGD("%s is called in PID=%d, with args: name=%s, flags=%d", __FUNCTION__, getpid(), name.c_str(), flags);
-	
-	std::string group_id; int role;
+	std::string group_id; uint32_t role;
 
 	int ret = g_clientRegistryManager->get_client_group_and_role(client_id, group_id,role);
 
-	if(ret == CL_SUCCESS && (role == CHRONOLOG_CLIENT_ADMIN || role == CHRONOLOG_CLIENT_USER_RW))
+        if (!name.empty() && g_chronicleMetaDirectory->can_create_or_delete(role)) 
 	{
-
-           if (!name.empty()) 
-	   {
               return g_chronicleMetaDirectory->destroy_chronicle(name,client_id,group_id,flags);
-           } 
-	   else 
-	   {
-            LOGE("name is empty");
-            return CL_ERR_INVALID_ARG;
-           }
-	}
+        } 
 	else 
 	{
-	   if(ret == CL_SUCCESS && role == CHRONOLOG_CLIENT_USER_RDONLY)
-	   LOGE(" cannot destroy chronicle : role is readonly");
-	   return ret;
-	}
+	    if(name.empty())
+            LOGE("name is empty");
+	    else LOGE("Client role cannot delete chronicles");
+            return CL_ERR_INVALID_ARG;
+        }
     }
 
     int LocalAcquireChronicle(std::string& name, std::string &client_id, int& flags) {
         LOGD("%s is called in PID=%d, with args: name=%s, flags=%d", __FUNCTION__, getpid(), name.c_str(), flags);
-	std::string group_id; int role;
+	std::string group_id; uint32_t role;
 	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
 	enum ChronoLogOp op = (enum ChronoLogOp)flags;
+	bool b = false;
 
-	if(ret == CL_SUCCESS && ((role == CHRONOLOG_CLIENT_ADMIN || role == CHRONOLOG_CLIENT_USER_RW) || (role == CHRONOLOG_CLIENT_USER_RDONLY && op == CHRONOLOG_READ))) 
-	{
-          if (!name.empty()) {
+	  if(op == CHRONOLOG_READ) b = g_chronicleMetaDirectory->can_read(role);
+	  else if(op == CHRONOLOG_WRITE) b = g_chronicleMetaDirectory->can_write(role);
+
+          if (!name.empty() && b) 
+	  {
             return g_chronicleMetaDirectory->acquire_chronicle(name,client_id,group_id,flags);
-          } else {
-            LOGE("name is empty");
-            return CL_ERR_INVALID_ARG;
+          } 
+	  else 
+	  {
+	    if(name.empty())
+	    {
+              LOGE("name is empty");
+              return CL_ERR_INVALID_ARG;
+	    }
+	    else
+	    {
+	      LOGE("Role cannot perform this operation");
+	      return CL_ERR_UNKNOWN;
+	    }
           }
-	}
-	else 
-	{
-	   if(ret == CL_SUCCESS) LOGD(" Insufficient permissions to perform requested operation");
-	   return ret;
-	}
     }
 
     int LocalReleaseChronicle(std::string& name, std::string &client_id, int& flags) {
         LOGD("%s is called in PID=%d, with args: name=%s, flags=%d", __FUNCTION__, getpid(), name.c_str(), flags);
-	std::string group_id; int role;
+	std::string group_id; uint32_t role;
 	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
 
 	if(ret == CL_SUCCESS)
@@ -189,11 +181,9 @@ public:
         for (auto iter = attrs.begin(); iter != attrs.end(); ++iter) {
             LOGD("%s=%s", iter->first.c_str(), iter->second.c_str());
         }
-	std::string group_id; int role;
+	std::string group_id; uint32_t role;
 	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
 
-	if(ret == CL_SUCCESS && (role == CHRONOLOG_CLIENT_ADMIN || role == CHRONOLOG_CLIENT_USER_RW))
-	{
           if (!chronicle_name.empty() && !story_name.empty()) {
             return g_chronicleMetaDirectory->create_story(chronicle_name, story_name,client_id,group_id,attrs);
           } else {
@@ -203,23 +193,14 @@ public:
                 LOGE("story name is empty");
             return CL_ERR_INVALID_ARG;
         }
-	}
-	else
-	{
-	   if(ret == CL_SUCCESS && role == CHRONOLOG_CLIENT_USER_RDONLY)
-	   LOGE(" cannot create story : role is rdonly");
-	   return ret;
-	}
     }
 
     int LocalDestroyStory(std::string& chronicle_name, std::string& story_name, std::string &client_id, int& flags) {
         LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, flags=%d",
              __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
-	std::string group_id; int role;
+	std::string group_id; uint32_t role;
 	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
 
-	if(ret == CL_SUCCESS && (role == CHRONOLOG_CLIENT_ADMIN || role == CHRONOLOG_CLIENT_USER_RW))
-	{
         if (!chronicle_name.empty() && !story_name.empty()) {
             return g_chronicleMetaDirectory->destroy_story(chronicle_name, story_name, client_id,group_id,flags);
         } else {
@@ -229,24 +210,15 @@ public:
                 LOGE("story name is empty");
             return CL_ERR_INVALID_ARG;
         }
-	}
-	else
-	{
-	   if(ret == CL_SUCCESS && role == CHRONOLOG_CLIENT_USER_RDONLY)
-	   LOGE("cannot destroy story : role is readonly");
-	   return ret;
-	}
     }
 
     int LocalAcquireStory(std::string& chronicle_name, std::string& story_name, std::string &client_id, int& flags) {
         LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, flags=%d",
              __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
-	std::string group_id; int role;
+	std::string group_id; uint32_t role;
 	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
         enum ChronoLogOp op = (enum ChronoLogOp)flags;
 
-	if(ret == CL_SUCCESS && ((role == CHRONOLOG_CLIENT_ADMIN || role == CHRONOLOG_CLIENT_USER_RW) || (role == CHRONOLOG_CLIENT_USER_RDONLY && op == CHRONOLOG_READ)))
-	{
         if (!chronicle_name.empty() && !story_name.empty()) {
             return g_chronicleMetaDirectory->acquire_story(chronicle_name, story_name,client_id,group_id,flags);
         } else {
@@ -256,18 +228,12 @@ public:
                 LOGE("story name is empty");
             return CL_ERR_INVALID_ARG;
         }
-	}
-	else 
-	{
-	   if(ret == CL_SUCCESS) LOGD("Insufficient permissions to perform requested operation");
-	   return ret;
-	}
     }
 
     int LocalReleaseStory(std::string& chronicle_name, std::string& story_name, std::string &client_id, int& flags) {
         LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, flags=%d",
              __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
-	std::string group_id; int role;
+	std::string group_id; uint32_t role;
 	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
 	if(ret == CL_SUCCESS)
 	{
@@ -286,7 +252,7 @@ public:
 
     int LocalGetChronicleAttr(std::string& name, const std::string& key, std::string &client_id, std::string& value) {
         LOGD("%s is called in PID=%d, with args: name=%s, key=%s", __FUNCTION__, getpid(), name.c_str(), key.c_str());
-	std::string group_id; int role;
+	std::string group_id; uint32_t role;
 	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
 	if(ret == CL_SUCCESS)
 	{
@@ -307,7 +273,7 @@ public:
     int LocalEditChronicleAttr(std::string& name, const std::string& key, std::string &client_id, const std::string& value) {
         LOGD("%s is called in PID=%d, with args: name=%s, key=%s, value=%s",
              __FUNCTION__, getpid(), name.c_str(), key.c_str(), value.c_str());
-	std::string group_id; int role;
+	std::string group_id; uint32_t role;
 	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
 	if(ret == CL_SUCCESS)
 	{
@@ -333,7 +299,7 @@ public:
                                    const std::string &,
                                    std::string &,
 				   std::string &,
-				   int &,
+				   uint32_t &,
                                    int &,
                                    uint64_t &)> connectFunc(
                         [this](auto && PH1,
@@ -547,7 +513,7 @@ public:
     }
 
     CHRONOLOG_THALLIUM_DEFINE(LocalConnect, (uri, client_id, group_id, role, flags, clock_offset),
-                              const std::string &uri, std::string &client_id, std::string &group_id, int &role, int &flags, uint64_t &clock_offset)
+                              const std::string &uri, std::string &client_id, std::string &group_id, uint32_t &role, int &flags, uint64_t &clock_offset)
     CHRONOLOG_THALLIUM_DEFINE(LocalDisconnect, (client_id, flags), std::string &client_id, int &flags)
 
     CHRONOLOG_THALLIUM_DEFINE(LocalCreateChronicle, (name, client_id, attrs, flags),

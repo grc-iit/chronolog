@@ -35,6 +35,27 @@ public:
 
     int get_chronicle_attr(std::string& name, const std::string& key, std::string &client_id, std::string &group_id, std::string& value);
     int edit_chronicle_attr(std::string& name, const std::string& key, std::string &client_id, std::string &group_id, const std::string& value);
+    inline bool can_create_or_delete(uint32_t& role)
+    {
+	uint32_t mask = 7;
+	uint32_t user_role = role & mask;
+	if(user_role == CHRONOLOG_CLIENT_RWCD) return true;
+	else return false;
+    }
+    inline bool can_write(uint32_t& role)
+    {
+	   uint32_t mask = 7;
+	   uint32_t user_role = role & mask;
+	   if(user_role == CHRONOLOG_CLIENT_RW || user_role == CHRONOLOG_CLIENT_RWCD) return true;
+	   else return false;
+    }
+    inline bool can_read(uint32_t& role)
+    {
+	uint32_t mask = 7;
+	uint32_t user_role = role & mask;
+	if(user_role == CHRONOLOG_CLIENT_RO || CHRONOLOG_CLIENT_RW || user_role == CHRONOLOG_CLIENT_RWCD) return true;
+	else return false;
+    }  
 
 private:
 //    std::shared_ptr<std::unordered_map<std::string, Chronicle *>> chronicleMap_;

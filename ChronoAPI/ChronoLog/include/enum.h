@@ -14,6 +14,7 @@ inline const char* getRPCImplString(ChronoLogRPCImplementation impl) {
     }
 }
 
+<<<<<<< HEAD
 typedef enum ChronoLogServiceRole {
     CHRONOLOG_UNKNOWN = 0,
     CHRONOLOG_VISOR = 1,

@@ -12,6 +12,7 @@
 #include <city.h>
 #include <errcode.h>
 #include <enum.h>
+#include <algorithm>
 
 enum StoryIndexingGranularity {
     story_gran_ns = 0,
@@ -37,8 +38,8 @@ typedef struct StoryAttrs_ {
     enum StoryType type;
     enum StoryTieringPolicy tiering_policy;
     enum ChronoLogVisibility access_permission;
-    std::string owner;
-    std::string group;
+    std::vector<std::string> ownerlist;
+    std::vector<std::string> grouplist;
 } StoryAttrs;
 
 typedef struct StoryStats_ {
@@ -52,7 +53,6 @@ public:
         attrs_.indexing_granularity = story_gran_ms;
         attrs_.type = story_type_standard;
         attrs_.tiering_policy = story_tiering_normal;
-        attrs_.access_permission = CHRONOLOG_PRIVATE;
         stats_.count = 0;
     }
 
@@ -85,24 +85,55 @@ public:
     uint64_t getAcquisitionCount() const { return stats_.count; }
     int add_owner_and_group(std::string &client_id, std::string &group_id)
     {
-	 attrs_.owner = client_id;
-	 attrs_.group = group_id;
+	 attrs_.ownerlist.emplace(attrs_.ownerlist.end(),client_id);
+	 attrs_.grouplist.emplace(attrs_.grouplist.end(),group_id);
 	 return CL_SUCCESS;
     } 
     enum ChronoLogVisibility& get_permissions()
     {
 	  return attrs_.access_permission;
     }
+    void generate_permission(std::string &perm)
+    {
+	if(perm.compare("RWCD")==0) attrs_.access_permission = CHRONOLOG_RWCD;
+	else if(perm.compare("RWC")==0) attrs_.access_permission = CHRONOLOG_RWC;
+	else if(perm.compare("RWD")==0) attrs_.access_permission = CHRONOLOG_RWD;
+	else if(perm.compare("RW")==0) attrs_.access_permission = CHRONOLOG_RW;
+	else if(perm.compare("RO")==0) attrs_.access_permission = CHRONOLOG_RONLY;
+	else attrs_.access_permission = CHRONOLOG_RONLY;
+    }
     int set_permissions(enum ChronoLogVisibility &v)
     {
 	 attrs_.access_permission = v;
 	 return CL_SUCCESS;
     }
-    int get_owner_and_group(std::string &owner, std::string &group)
+    int get_owner_and_group(std::vector<std::string> &owner, std::vector<std::string> &group)
     {
-	  owner = attrs_.owner;
-	  group = attrs_.group;
+	  owner.assign(attrs_.ownerlist.begin(),attrs_.ownerlist.end());
+	  group.assign(attrs_.grouplist.begin(),attrs_.grouplist.end());
 	  return CL_SUCCESS;
+    }
+    bool can_acquire_story(std::string &client_id,std::string &group_id,enum ChronoLogOp &op)
+    {
+        if(std::find(attrs_.ownerlist.begin(),attrs_.ownerlist.end(),client_id) != attrs_.ownerlist.end() ||
+	   std::find(attrs_.grouplist.begin(),attrs_.grouplist.end(),group_id) != attrs_.grouplist.end())
+	{
+	   if(op == CHRONOLOG_READ && (attrs_.access_permission == CHRONOLOG_RONLY || attrs_.access_permission == CHRONOLOG_RW ||
+	   attrs_.access_permission == CHRONOLOG_RWC || attrs_.access_permission == CHRONOLOG_RWD || attrs_.access_permission == CHRONOLOG_RWCD))
+	       return true;
+	   else if(op == CHRONOLOG_WRITE && (attrs_.access_permission == CHRONOLOG_RW || attrs_.access_permission == CHRONOLOG_RWC || attrs_.access_permission == CHRONOLOG_RWD || attrs_.access_permission == CHRONOLOG_RWCD))
+	       return true;
+	}		
+	return false;
+    }
+    bool can_delete_story(std::string &client_id,std::string &group_id)
+    {
+	if(std::find(attrs_.ownerlist.begin(),attrs_.ownerlist.end(),client_id) != attrs_.ownerlist.end() ||
+	   std::find(attrs_.grouplist.begin(),attrs_.grouplist.end(),group_id) != attrs_.grouplist.end())
+	{
+	    if(attrs_.access_permission == CHRONOLOG_RWD || attrs_.access_permission == CHRONOLOG_RWCD) return true;
+	}
+	return false;
     }
 
     friend std::ostream& operator<<(std::ostream& os, const Story& story);

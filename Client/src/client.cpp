@@ -9,7 +9,7 @@
 int ChronoLogClient::Connect(const std::string &server_uri,
                              std::string &client_id,
 			     std::string &group_id,
-			     int &role,
+			     uint32_t &role,
                              int &flags,
                              uint64_t &clock_offset) {
     if (client_id.empty()) 
@@ -86,16 +86,51 @@ std::string& ChronoLogClient::GetClientId()
 {
     return client_id_;
 }
-int ChronoLogClient::SetClientRole(int &r)
+int ChronoLogClient::SetClientRole(uint32_t &r)
 {
-    my_role_ = r;
-    if(r < CHRONOLOG_CLIENT_ADMIN || r > CHRONOLOG_CLIENT_USER_RW)
-    my_role_ = CHRONOLOG_CLIENT_USER_RDONLY;
+    uint32_t user, group, cluster;
+    uint32_t mask = 7;
+    user = r & mask;
+    mask = mask << 3;
+    group = r & mask;
+    group = group >> 3;
+    mask = mask << 3;
+    cluster = r & mask;
+    cluster = cluster >> 6;
+    CreateClientRole(user,group,cluster);
     return CL_SUCCESS;
 }
-int ChronoLogClient::GetClientRole()
+uint32_t ChronoLogClient::GetClientRole()
 {
     return my_role_;
+}
+int ChronoLogClient::CreateClientRole(uint32_t &user, uint32_t &group, uint32_t &cluster)
+{
+	if(user < CHRONOLOG_CLIENT_RO || user >= CHRONOLOG_CLIENT_RWCD) user = CHRONOLOG_CLIENT_RO;
+	if(group != CHRONOLOG_CLIENT_GROUP_ADMIN && group != CHRONOLOG_CLIENT_GROUP_REG) group = CHRONOLOG_CLIENT_GROUP_REG;
+	if(cluster != CHRONOLOG_CLIENT_CLUS_ADMIN && cluster != CHRONOLOG_CLIENT_CLUS_REG) cluster = CHRONOLOG_CLIENT_CLUS_REG;
+	my_role_ = 0;
+	my_role_ = my_role_ | (cluster << 6);
+	my_role_ = my_role_ | (group << 3);
+	my_role_ = my_role_ | (user);
+	return CL_SUCCESS;
+}
+uint32_t ChronoLogClient::UserRole()
+{
+	uint32_t mask = 7;
+	return my_role_ & mask;
+}
+uint32_t ChronoLogClient::GroupRole()
+{
+	uint32_t mask = 7;
+	mask = mask << 3;
+	return my_role_ & mask;
+}
+uint32_t ChronoLogClient::ClusterRole()
+{
+	uint32_t mask = 7;
+	mask = mask << 6;
+	return my_role_ & mask;
 }
 int ChronoLogClient::SetGroupId(std::string &group_id)
 {
