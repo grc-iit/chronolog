@@ -26,7 +26,17 @@ int main() {
     uint64_t offset;
 
    std::string client_id = gen_random(8);
-   int ret = client->Connect(server_uri,client_id,flags,offset);
+   std::string group_id = "openmp_application";
+
+   uint32_t user_role = CHRONOLOG_CLIENT_RWCD;
+   uint32_t group_role = CHRONOLOG_CLIENT_GROUP_REG;
+   uint32_t cluster_role = CHRONOLOG_CLIENT_CLUS_REG;
+   uint32_t role = 0;
+   role = role | user_role;
+   role = role | (group_role << 3);
+   role = role | (cluster_role << 6);
+
+   int ret = client->Connect(server_uri,client_id,group_id,role,flags,offset);
     #pragma omp for
     for(int i=0;i<num_threads;i++)
     {
@@ -37,8 +47,9 @@ int main() {
        chronicle_attrs.emplace("Priority", "High");
        chronicle_attrs.emplace("IndexGranularity", "Millisecond");
        chronicle_attrs.emplace("TieringPolicy", "Hot");
+       chronicle_attrs.emplace("Permissions","RWCD");
        ret = client->CreateChronicle(chronicle_name, chronicle_attrs, flags);
-       flags = 1;
+       flags = CHRONOLOG_WRITE;
        ret = client->AcquireChronicle(chronicle_name,flags);
        ret = client->ReleaseChronicle(chronicle_name,flags);
        std::string story_name = gen_random(STORY_NAME_LEN);
@@ -46,7 +57,8 @@ int main() {
        story_attrs.emplace("Priority", "High");
        story_attrs.emplace("IndexGranularity", "Millisecond");
        story_attrs.emplace("TieringPolicy", "Hot");
-       flags = 2;
+       story_attrs.emplace("Permissions","RWD");
+       flags = CHRONOLOG_WRITE;
        ret = client->CreateStory(chronicle_name, story_name, story_attrs, flags);
        ret = client->AcquireStory(chronicle_name,story_name,flags);
        ret = client->ReleaseStory(chronicle_name,story_name,flags);
