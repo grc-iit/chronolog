@@ -91,26 +91,36 @@ public:
 	std::string group_id; uint32_t role;
 
 	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
-	
-	bool b = g_clientRegistryManager->can_create_or_delete(role);	
 
-	if (!name.empty() && b)
-	{
+	std::cout <<" client_id = "<<client_id<<" group_id = "<<group_id<<" role = "<<role<<std::endl;
+
+        if(ret == CL_SUCCESS)
+	{	
+	   bool b = g_clientRegistryManager->can_create_or_delete(role);	
+
+	  if (!name.empty() && b)
+	  {
             ret = g_chronicleMetaDirectory->create_chronicle(name,client_id,group_id,attrs);
-        } 
-	else  
-	{
+          } 
+	  else  
+	 {
 	    if(name.empty())
 	    {
               LOGE("name is empty");
 	      ret = CL_ERR_INVALID_ARG;
 	    }
-	    else if(!b)
+	    if(!b)
 	    {
 	      LOGE("Client role cannot create new chronicles");
               ret = CL_ERR_UNKNOWN;
 	    }
-        }
+         }
+	}
+	else
+	{
+           LOGE("client_id is incorrect");
+	   ret = CL_ERR_UNKNOWN;
+	}
 	return ret;
     }
 
@@ -120,14 +130,16 @@ public:
 
 	int ret = g_clientRegistryManager->get_client_group_and_role(client_id, group_id,role);
 
-	bool b = g_clientRegistryManager->can_create_or_delete(role);
+	if(ret == CL_SUCCESS)
+	{
+	   bool b = g_clientRegistryManager->can_create_or_delete(role);
 
-        if (!name.empty() && b) 
-	{
+           if (!name.empty() && b) 
+	   {
               ret = g_chronicleMetaDirectory->destroy_chronicle(name,client_id,group_id,flags);
-        } 
-	else 
-	{
+           } 
+	   else 
+	  {
 	    if(name.empty())
 	    {
               LOGE("name is empty");
@@ -138,7 +150,13 @@ public:
 	      LOGE("Client role cannot delete chronicles");
               ret = CL_ERR_UNKNOWN;
 	    }
-        }
+          }
+	}
+	else
+	{
+	   LOGE("client_id is incorrect");
+	   ret = CL_ERR_UNKNOWN;
+	}
 	return ret;
     }
 
@@ -146,30 +164,39 @@ public:
         LOGD("%s is called in PID=%d, with args: name=%s, flags=%d", __FUNCTION__, getpid(), name.c_str(), flags);
 	std::string group_id; uint32_t role;
 	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
-	enum ChronoLogOp op = (enum ChronoLogOp)flags;
-	bool b = false;
 
-	if(op == CHRONOLOG_READ) b = g_clientRegistryManager->can_read(role);
-	else if(op == CHRONOLOG_WRITE) b = g_clientRegistryManager->can_write(role);
-	else if(op == CHRONOLOG_FILEOP) b = g_clientRegistryManager->can_perform_fileops(role);
-
-        if (!name.empty() && b) 
+	if(ret == CL_SUCCESS)
 	{
+	  enum ChronoLogOp op = (enum ChronoLogOp)flags;
+	  bool b = false;
+
+	  if(op == CHRONOLOG_READ) b = g_clientRegistryManager->can_read(role);
+	  else if(op == CHRONOLOG_WRITE) b = g_clientRegistryManager->can_write(role);
+	  else if(op == CHRONOLOG_FILEOP) b = g_clientRegistryManager->can_perform_fileops(role);
+
+          if (!name.empty() && b) 
+	  {
             ret = g_chronicleMetaDirectory->acquire_chronicle(name,client_id,group_id,flags);
-        } 
-	else 
-	{
+          } 
+	  else 
+	  {
 	    if(name.empty())
 	    {
               LOGE("name is empty");
               ret = CL_ERR_INVALID_ARG;
 	    }
-	    else
+	    if(!b)
 	    {
 	      LOGE("Role cannot perform this requested operation");
 	      ret = CL_ERR_UNKNOWN;
 	    }
-        }
+         }
+	}
+	else
+	{
+	    LOGE("client_id is incorrect");
+	    ret = CL_ERR_UNKNOWN;
+	}
 	return ret;
     }
 
@@ -180,14 +207,22 @@ public:
 
 	if(ret == CL_SUCCESS)
 	{
-        if (!name.empty()) {
-            return g_chronicleMetaDirectory->release_chronicle(name,client_id,group_id,flags);
-        } else {
+          if (!name.empty()) 
+	  {
+            ret = g_chronicleMetaDirectory->release_chronicle(name,client_id,group_id,flags);
+          } 
+	  else 
+	  {
             LOGE("name is empty");
-            return CL_ERR_INVALID_ARG;
-        }
+            ret = CL_ERR_INVALID_ARG;
+          }
 	}
-	else return ret;
+	else
+	{
+	   LOGE("client_id is incorrect");
+	   ret = CL_ERR_UNKNOWN;
+	}
+	return ret;
     }
 
     int LocalCreateStory(std::string& chronicle_name,
@@ -202,12 +237,17 @@ public:
         }
 	std::string group_id; uint32_t role;
 	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
-	bool b = g_clientRegistryManager->can_create_or_delete(role);
+
+	if(ret==CL_SUCCESS)
+	{
+	  bool b = g_clientRegistryManager->can_create_or_delete(role);
 
           if (!chronicle_name.empty() && !story_name.empty() && b) 
 	  {
             ret = g_chronicleMetaDirectory->create_story(chronicle_name, story_name,client_id,group_id,attrs);
-          } else {
+          } 
+	  else 
+	  {
             if (chronicle_name.empty() || story_name.empty())
 	    {
                 LOGE("chronicle name or story name is empty");
@@ -218,7 +258,13 @@ public:
 		LOGE("Role does not support create or delete operations");
                 ret = CL_ERR_UNKNOWN;
 	    }
-        }
+          }
+	}
+	else
+	{
+	    LOGE("client_id is incorrect");
+	    ret = CL_ERR_UNKNOWN;
+	}
 	return ret;
     }
 
@@ -228,11 +274,13 @@ public:
 	std::string group_id; uint32_t role;
 	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
 
-	bool b = g_clientRegistryManager->can_create_or_delete(role);
+	if(ret == CL_SUCCESS)
+	{
+	  bool b = g_clientRegistryManager->can_create_or_delete(role);
 
-        if (!chronicle_name.empty() && !story_name.empty() && b) {
+          if (!chronicle_name.empty() && !story_name.empty() && b) {
             ret = g_chronicleMetaDirectory->destroy_story(chronicle_name, story_name, client_id,group_id,flags);
-        } else {
+          } else {
             if (chronicle_name.empty() || story_name.empty())
 	    {
                 LOGE("chronicle name or story name is empty");
@@ -243,7 +291,13 @@ public:
 	        LOGE("Role does not support create or delete operations");
                 ret = CL_ERR_UNKNOWN;
 	    }
-        }
+         }
+	}
+	else
+	{
+	    LOGE("client_id is incorrect");
+	    ret = CL_ERR_UNKNOWN;
+	}
 	return ret;
     }
 
@@ -252,27 +306,37 @@ public:
              __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
 	std::string group_id; uint32_t role;
 	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
-        enum ChronoLogOp op = (enum ChronoLogOp)flags;
+        
+	if(ret == CL_SUCCESS)
+	{
+	  enum ChronoLogOp op = (enum ChronoLogOp)flags;
 
-	bool b = false;
+	  bool b = false;
 
-	if(op == CHRONOLOG_READ) b = g_clientRegistryManager->can_read(role);
-	else if(op == CHRONOLOG_WRITE) b = g_clientRegistryManager->can_write(role);
+	  if(op == CHRONOLOG_READ) b = g_clientRegistryManager->can_read(role);
+	  else if(op == CHRONOLOG_WRITE) b = g_clientRegistryManager->can_write(role);
 
-        if (!chronicle_name.empty() && !story_name.empty() && b) {
-            return g_chronicleMetaDirectory->acquire_story(chronicle_name, story_name,client_id,group_id,flags);
-        } else {
+          if (!chronicle_name.empty() && !story_name.empty() && b) {
+            ret = g_chronicleMetaDirectory->acquire_story(chronicle_name, story_name,client_id,group_id,flags);
+          } else {
             if (chronicle_name.empty() || story_name.empty())
 	    {
                 LOGE("chronicle name or story name is empty");
-		return CL_ERR_INVALID_ARG;
+		ret = CL_ERR_INVALID_ARG;
 	    }
 	    if(!b)
 	    {
 	       LOGE("Role cannot perform requested operation");
-               return CL_ERR_UNKNOWN;
+               ret = CL_ERR_UNKNOWN;
 	    }
-        }
+          }
+	}
+	else
+	{
+	   LOGE("client_id is incorrect");
+	   ret = CL_ERR_UNKNOWN;
+	}
+	return ret;
     }
 
     int LocalReleaseStory(std::string& chronicle_name, std::string& story_name, std::string &client_id, int& flags) {
@@ -282,17 +346,22 @@ public:
 	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
 	if(ret == CL_SUCCESS)
 	{
-        if (!chronicle_name.empty() && !story_name.empty()) {
-            return g_chronicleMetaDirectory->release_story(chronicle_name, story_name,client_id,group_id,flags);
-        } else {
+          if (!chronicle_name.empty() && !story_name.empty()) {
+            ret = g_chronicleMetaDirectory->release_story(chronicle_name, story_name,client_id,group_id,flags);
+          } else {
             if (chronicle_name.empty())
                 LOGE("chronicle name is empty");
             if (story_name.empty())
                 LOGE("story name is empty");
-            return CL_ERR_INVALID_ARG;
-        }
+              ret = CL_ERR_INVALID_ARG;
+          }
 	}
-	else return ret;
+	else
+	{
+	   LOGE("client_id is incorrect");
+	   ret = CL_ERR_UNKNOWN;
+	}
+	return ret;
     }
 
     int LocalGetChronicleAttr(std::string& name, const std::string& key, std::string &client_id, std::string& value) {
@@ -301,18 +370,22 @@ public:
 	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
 	if(ret == CL_SUCCESS)
 	{
-        if (!name.empty() && !key.empty()) {
-            g_chronicleMetaDirectory->get_chronicle_attr(name, key, client_id,group_id,value);
-            return CL_SUCCESS;
-        } else {
+          if (!name.empty() && !key.empty()) {
+            ret = g_chronicleMetaDirectory->get_chronicle_attr(name, key, client_id,group_id,value);
+          } else {
             if (name.empty())
                 LOGE("name is empty");
             if (key.empty())
                 LOGE("key is empty");
-            return CL_ERR_INVALID_ARG;
-        }
+            ret = CL_ERR_INVALID_ARG;
+          }
 	}
-	else return ret;
+	else
+	{
+	   LOGE("client_id is incorrect");
+	   ret = CL_ERR_UNKNOWN;
+	}
+	return ret;
     }
 
     int LocalEditChronicleAttr(std::string& name, const std::string& key, std::string &client_id, const std::string& value) {
@@ -320,19 +393,32 @@ public:
              __FUNCTION__, getpid(), name.c_str(), key.c_str(), value.c_str());
 	std::string group_id; uint32_t role;
 	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
+
 	if(ret == CL_SUCCESS)
 	{
-        if (!name.empty() && !key.empty() && !value.empty()) {
-            return g_chronicleMetaDirectory->edit_chronicle_attr(name, key, client_id,group_id,value);
-        } else {
-            if (name.empty())
-                LOGE("name is empty");
-            if (key.empty())
-                LOGE("key is empty");
-            return CL_ERR_INVALID_ARG;
-        }
+	   bool b = g_clientRegistryManager->can_perform_fileops(role);
+
+           if (!name.empty() && !key.empty() && !value.empty() && b) {
+            ret = g_chronicleMetaDirectory->edit_chronicle_attr(name, key, client_id,group_id,value);
+           } else {
+            if (name.empty() || key.empty())
+	    {
+                LOGE("name or key is empty");
+                ret = CL_ERR_INVALID_ARG;
+	    }
+	    if(!b)
+	    {
+		LOGE("Role cannot perform requested operation");
+		ret = CL_ERR_UNKNOWN;
+	    }
+           }
 	}
-	else return ret;
+	else
+	{
+	   LOGE("client_id is incorrect");
+	   ret = CL_ERR_UNKNOWN;
+	}
+	return ret;
     }
 
     int LocalRequestRoleChange(std::string &client_id,uint32_t &role)
@@ -344,8 +430,129 @@ public:
 	{
 	    ret =  g_clientRegistryManager->update_client_role(client_id,role);
 	}
+	else
+	{
+	   LOGE("client_id is incorrect");
+	   ret = CL_ERR_UNKNOWN;
+	}
 	return ret;
     }
+    
+    int LocalAddGrouptoChronicle(std::string &chronicle_name,std::string &client_id,std::string &new_group_id)
+    {
+	LOGD("%s is called in PID=%d with args: chronicle_name=%s client_id=%s new_group_id=%s",__FUNCTION__,getpid(),chronicle_name.c_str(),client_id.c_str(),new_group_id.c_str());
+	std::string group_id; uint32_t role;
+	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
+
+        if(ret == CL_SUCCESS)
+	{
+	    bool b = g_clientRegistryManager->can_edit_ownership(role);
+
+	    if(b)
+	    {
+	       ret = g_chronicleMetaDirectory->add_group_to_chronicle(chronicle_name,client_id,group_id,new_group_id);
+	    }
+	    else
+	    {
+		LOGE("Role cannot perform requested operation");
+		ret = CL_ERR_UNKNOWN;
+	    }
+
+	}
+	else
+	{
+	    LOGE("client_id is incorrect");
+	    ret = CL_ERR_UNKNOWN;
+	}
+	return ret;
+    }
+
+    int LocalRemoveGroupFromChronicle(std::string &chronicle_name,std::string &client_id,std::string &new_group_id)
+    {
+        LOGD("%s is called in PID=%d with args: chronicle_name=%s client_id=%s new_group_id=%s",__FUNCTION__,getpid(),chronicle_name.c_str(),client_id.c_str(),new_group_id.c_str());
+        std::string group_id; uint32_t role;
+        int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
+
+        if(ret == CL_SUCCESS)
+        {
+            bool b = g_clientRegistryManager->can_edit_ownership(role);
+
+            if(b)
+            {
+               ret = g_chronicleMetaDirectory->remove_group_from_chronicle(chronicle_name,client_id,group_id,new_group_id);
+            }
+            else
+            {
+                LOGE("Role cannot perform requested operation");
+                ret = CL_ERR_UNKNOWN;
+            }
+
+        }
+        else
+        {
+            LOGE("client_id is incorrect");
+            ret = CL_ERR_UNKNOWN;
+        }
+        return ret;
+    }
+
+    int LocalAddGrouptoStory(std::string &chronicle_name,std::string &story_name,std::string &client_id,std::string &new_group_id)
+    {
+	LOGD("%s is called in PID=%d with args: chronicle_name=%s story_name=%s client_id=%s new_group_id=%s",__FUNCTION__,getpid(),chronicle_name.c_str(),story_name.c_str(),client_id.c_str(),new_group_id.c_str());
+	std::string group_id; uint32_t role;
+	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
+
+	if(ret == CL_SUCCESS)
+	{
+	    bool b = g_clientRegistryManager->can_edit_ownership(role);
+
+	    if(b)
+	    {
+		ret = g_chronicleMetaDirectory->add_group_to_story(chronicle_name,story_name,client_id,group_id,new_group_id);
+	    }
+	    else
+	    {
+		    LOGE("Role cannot perform requested operation");
+		    ret = CL_ERR_UNKNOWN;
+	    }
+
+	}
+	else
+	{
+	    LOGE("client_id is incorrect");
+	    ret = CL_ERR_UNKNOWN;
+	}
+	return ret;
+    }
+    int LocalRemoveGroupFromStory(std::string &chronicle_name,std::string &story_name,std::string &client_id,std::string &new_group_id)
+    {
+        LOGD("%s is called in PID=%d with args: chronicle_name=%s story_name=%s client_id=%s new_group_id=%s",__FUNCTION__,getpid(),chronicle_name.c_str(),story_name.c_str(),client_id.c_str(),new_group_id.c_str());
+        std::string group_id; uint32_t role;
+        int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
+
+        if(ret == CL_SUCCESS)
+        {
+            bool b = g_clientRegistryManager->can_edit_ownership(role);
+
+            if(b)
+            {
+                ret = g_chronicleMetaDirectory->remove_group_from_story(chronicle_name,story_name,client_id,group_id,new_group_id);
+            }
+            else
+            {
+                    LOGE("Role cannot perform requested operation");
+                    ret = CL_ERR_UNKNOWN;
+            }
+
+        }
+        else
+        {
+            LOGE("client_id is incorrect");
+            ret = CL_ERR_UNKNOWN;
+        }
+        return ret;
+    }
+
 
     void bind_functions() {
         switch (CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION) {
@@ -562,6 +769,72 @@ public:
                         }
                 );
 
+		 std::function<void(const tl::request &,
+                                   std::string &,
+				   std::string &,
+                                   std::string &)> addGrouptoChronicleFunc(
+                        [this](auto && PH1,
+                               auto && PH2,
+			       auto && PH3,
+                               auto && PH4) {
+                            ThalliumLocalAddGrouptoChronicle(std::forward<decltype(PH1)>(PH1),
+                                                 std::forward<decltype(PH2)>(PH2),
+						 std::forward<decltype(PH3)>(PH3),
+                                                 std::forward<decltype(PH4)>(PH4));
+                        }
+                );
+
+		 std::function<void(const tl::request &,
+                                   std::string &,
+                                   std::string &,
+                                   std::string &)> removeGroupFromChronicleFunc(
+                        [this](auto && PH1,
+                               auto && PH2,
+                               auto && PH3,
+                               auto && PH4) {
+                            ThalliumLocalRemoveGroupFromChronicle(std::forward<decltype(PH1)>(PH1),
+                                                 std::forward<decltype(PH2)>(PH2),
+                                                 std::forward<decltype(PH3)>(PH3),
+                                                 std::forward<decltype(PH4)>(PH4));
+                        }
+                );
+
+		  std::function<void(const tl::request &,
+                                   std::string &,
+				   std::string &,
+                                   std::string &,
+                                   std::string &)> addGrouptoStoryFunc(
+                        [this](auto && PH1,
+                               auto && PH2,
+                               auto && PH3,
+			       auto && PH4,
+                               auto && PH5) {
+                            ThalliumLocalAddGrouptoStory(std::forward<decltype(PH1)>(PH1),
+                                                 std::forward<decltype(PH2)>(PH2),
+                                                 std::forward<decltype(PH3)>(PH3),
+						 std::forward<decltype(PH4)>(PH4),
+                                                 std::forward<decltype(PH5)>(PH5));
+                        }
+                );
+
+		   std::function<void(const tl::request &,
+                                   std::string &,
+                                   std::string &,
+                                   std::string &,
+                                   std::string &)> removeGroupFromStoryFunc(
+                        [this](auto && PH1,
+                               auto && PH2,
+                               auto && PH3,
+                               auto && PH4,
+                               auto && PH5) {
+                            ThalliumLocalRemoveGroupFromStory(std::forward<decltype(PH1)>(PH1),
+                                                 std::forward<decltype(PH2)>(PH2),
+                                                 std::forward<decltype(PH3)>(PH3),
+                                                 std::forward<decltype(PH4)>(PH4),
+                                                 std::forward<decltype(PH5)>(PH5));
+                        }
+                );
+
     		rpc->bind("ChronoLogThalliumConnect", connectFunc);
                 rpc->bind("ChronoLogThalliumDisconnect", disconnectFunc);
 
@@ -578,6 +851,10 @@ public:
                 rpc->bind("ChronoLogThalliumGetChronicleAttr", getChronicleAttrFunc);
                 rpc->bind("ChronoLogThalliumEditChronicleAttr", editChronicleAttrFunc);
 		rpc->bind("ChronoLogThalliumRequestRoleChange", requestRoleChangeFunc);
+		rpc->bind("ChronoLogThalliumAddGrouptoChronicle",addGrouptoChronicleFunc);
+		rpc->bind("ChronoLogThalliumAddGrouptoStory",addGrouptoStoryFunc);
+		rpc->bind("ChronoLogThalliumRemoveGroupFromChronicle",removeGroupFromChronicleFunc);
+		rpc->bind("ChronoLogThalliumRemoveGroupFromStory",removeGroupFromStoryFunc);
             }
         }
     }
@@ -611,7 +888,14 @@ public:
                               std::string &name, const std::string &key, std::string &client_id, const std::string &value)
     CHRONOLOG_THALLIUM_DEFINE(LocalRequestRoleChange, (client_id,role),
 		    	      std::string &client_id,uint32_t role)
-
+    CHRONOLOG_THALLIUM_DEFINE(LocalAddGrouptoChronicle,(name,client_id,new_group_id),
+		    	      std::string &name,std::string &client_id,std::string &new_group_id)
+    CHRONOLOG_THALLIUM_DEFINE(LocalAddGrouptoStory, (chronicle_name,story_name,client_id,new_group_id),
+		             std::string &chronicle_name,std::string &story_name,std::string &client_id,std::string &new_group_id)
+    CHRONOLOG_THALLIUM_DEFINE(LocalRemoveGroupFromChronicle,(name,client_id,new_group_id),
+		    	     std::string &name,std::string &client_id,std::string &new_group_id)
+    CHRONOLOG_THALLIUM_DEFINE(LocalRemoveGroupFromStory, (chronicle_name,story_name,client_id,new_group_id),
+		             std::string &chronicle_name,std::string &story_name,std::string &client_id,std::string &new_group_id)
 private:
     void set_prefix(std::string prefix) {
         func_prefix = prefix;

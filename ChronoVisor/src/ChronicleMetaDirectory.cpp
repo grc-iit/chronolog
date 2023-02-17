@@ -517,3 +517,129 @@ int ChronicleMetaDirectory::edit_chronicle_attr(std::string& name,
     } else
         return CL_ERR_NOT_EXIST;
 }
+
+int ChronicleMetaDirectory::add_group_to_chronicle(std::string &chronicle_name, std::string &client_id, std::string &group_id, std::string &new_group_id)
+{
+  LOGD("add group_id %s to chronicle%s", new_group_id.c_str(),chronicle_name.c_str());
+    uint64_t cid = CityHash64(chronicle_name.c_str(), chronicle_name.size());
+    int ret = CL_SUCCESS;
+    std::lock_guard<std::mutex> lock(g_chronicleMetaDirectoryMutex_);
+    /* First check if Chronicle exists, fail if false */
+    auto chronicleRecord = chronicleMap_->find(cid);
+    if (chronicleRecord != chronicleMap_->end())
+    {
+        Chronicle *pChronicle = chronicleRecord->second;
+        bool b = pChronicle->can_edit_group(client_id,group_id);
+	if(b)
+	  ret = pChronicle->add_group(new_group_id);
+	else
+	    ret = CL_ERR_UNKNOWN;
+    }
+    else
+	    ret = CL_ERR_NOT_EXIST;
+    return ret;
+}
+
+int ChronicleMetaDirectory::remove_group_from_chronicle(std::string &chronicle_name, std::string &client_id, std::string &group_id, std::string &new_group_id)
+{
+  LOGD("add group_id %s to chronicle%s", new_group_id.c_str(),chronicle_name.c_str());
+    uint64_t cid = CityHash64(chronicle_name.c_str(), chronicle_name.size());
+    int ret = CL_SUCCESS;
+    std::lock_guard<std::mutex> lock(g_chronicleMetaDirectoryMutex_);
+    /* First check if Chronicle exists, fail if false */
+    auto chronicleRecord = chronicleMap_->find(cid);
+    if (chronicleRecord != chronicleMap_->end())
+    {
+        Chronicle *pChronicle = chronicleRecord->second;
+        bool b = pChronicle->can_edit_group(client_id,group_id);
+        if(b)
+          ret = pChronicle->remove_group(new_group_id);
+        else
+            ret = CL_ERR_UNKNOWN;
+    }
+    else
+            ret = CL_ERR_NOT_EXIST;
+    return ret;
+}
+
+
+int ChronicleMetaDirectory::add_group_to_story(std::string &chronicle_name,std::string &story_name,std::string &client_id,std::string &group_id,std::string &new_group_id)
+{
+    LOGD("add group %s to Story name=%s in Chronicle name=%s", new_group_id.c_str(),story_name.c_str(), chronicle_name.c_str());
+    uint64_t cid = CityHash64(chronicle_name.c_str(), chronicle_name.size());
+    /* First check if Story is acquired, fail if true */
+    std::string story_name_for_hash = chronicle_name + story_name;
+    uint64_t sid = CityHash64(story_name_for_hash.c_str(), story_name_for_hash.size());
+   
+     std::lock_guard<std::mutex> chronicleMapLock(g_chronicleMetaDirectoryMutex_); 
+     int err;
+     auto chronicleRecord = chronicleMap_->find(cid);
+     if(chronicleRecord != chronicleMap_->end())
+     {
+        Chronicle *pChronicle = chronicleRecord->second;
+
+         bool b1 = pChronicle->can_edit_group(client_id,group_id);
+         err = CL_SUCCESS;
+
+         if(b1)
+         {
+             auto storyRecord = pChronicle->getStoryMap().find(sid);
+             if (storyRecord != pChronicle->getStoryMap().end()) 
+	     {
+	        Story *story = storyRecord->second;
+                bool b2 = story->can_edit_group(client_id,group_id);	     
+	        if(b2)
+	        {
+		  err = story->add_group(new_group_id);
+	        }
+                else err = CL_ERR_UNKNOWN;	     
+	      }
+	      else err = CL_ERR_NOT_EXIST;
+          }
+	  else err = CL_ERR_UNKNOWN;
+     }
+     else err = CL_ERR_NOT_EXIST;
+      
+     return err;
+}
+
+int ChronicleMetaDirectory::remove_group_from_story(std::string &chronicle_name,std::string &story_name,std::string &client_id,std::string &group_id,std::string &new_group_id)
+{
+    LOGD("add group %s to Story name=%s in Chronicle name=%s", new_group_id.c_str(),story_name.c_str(), chronicle_name.c_str());
+    uint64_t cid = CityHash64(chronicle_name.c_str(), chronicle_name.size());
+    /* First check if Story is acquired, fail if true */
+    std::string story_name_for_hash = chronicle_name + story_name;
+    uint64_t sid = CityHash64(story_name_for_hash.c_str(), story_name_for_hash.size());
+
+     std::lock_guard<std::mutex> chronicleMapLock(g_chronicleMetaDirectoryMutex_);
+     int err;
+     auto chronicleRecord = chronicleMap_->find(cid);
+     if(chronicleRecord != chronicleMap_->end())
+     {
+        Chronicle *pChronicle = chronicleRecord->second;
+
+         bool b1 = pChronicle->can_edit_group(client_id,group_id);
+         err = CL_SUCCESS;
+
+         if(b1)
+         {
+             auto storyRecord = pChronicle->getStoryMap().find(sid);
+             if (storyRecord != pChronicle->getStoryMap().end())
+             {
+                Story *story = storyRecord->second;
+                bool b2 = story->can_edit_group(client_id,group_id);
+                if(b2)
+                {
+                  err = story->remove_group(new_group_id);
+                }
+                else err = CL_ERR_UNKNOWN;
+              }
+               else err = CL_ERR_NOT_EXIST;
+          }
+          else err = CL_ERR_UNKNOWN;
+     }
+     else err = CL_ERR_NOT_EXIST;
+
+     return err;
+}
+

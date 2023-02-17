@@ -42,7 +42,7 @@ public:
         if(user_role == CHRONOLOG_CLIENT_RO || CHRONOLOG_CLIENT_RW || user_role == CHRONOLOG_CLIENT_RWCD) return true;
         else return false;
     }
-     inline bool can_perform_fileops(uint32_t &role)
+    inline bool can_perform_fileops(uint32_t &role)
    {
         uint32_t mask = 7;
         uint32_t user_role = role & mask;
@@ -52,7 +52,16 @@ public:
         if(user_role == CHRONOLOG_CLIENT_RWCD && group_role == CHRONOLOG_CLIENT_GROUP_ADMIN) return true;
         return false;
    }
-
+    inline bool can_edit_ownership(uint32_t &role)
+    {
+	uint32_t mask = 7;
+	uint32_t user_role = role & mask;
+	mask = mask << 3;
+	uint32_t group_role = role & mask;
+	group_role = group_role >> 3;
+	if(group_role == CHRONOLOG_CLIENT_GROUP_ADMIN) return true;
+	return false;
+    }
 
 private:
     std::unordered_map<std::string, ClientInfo> *clientRegistry_;

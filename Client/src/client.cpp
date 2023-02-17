@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include "client.h"
 #include "city.h"
+#include <iostream>
 
 int ChronoLogClient::Connect(const std::string &server_uri,
                              std::string &client_id,
@@ -89,6 +90,22 @@ int ChronoLogClient::RequestRoleChange(uint32_t &role)
        }
     }
     return ret;
+}
+int ChronoLogClient::AddGrouptoChronicle(std::string &chronicle_name,std::string &new_group_id)
+{
+	return rpcProxy_->AddGrouptoChronicle(chronicle_name,client_id_,new_group_id);
+}
+int ChronoLogClient::RemoveGroupFromChronicle(std::string &chronicle_name,std::string &new_group_id)
+{
+	return rpcProxy_->RemoveGroupFromChronicle(chronicle_name,client_id_,new_group_id);
+}
+int ChronoLogClient::AddGrouptoStory(std::string &chronicle_name,std::string &story_name,std::string &new_group_id)
+{
+	return rpcProxy_->AddGrouptoStory(chronicle_name,story_name,client_id_,new_group_id);
+}
+int ChronoLogClient::RemoveGroupFromStory(std::string &chronicle_name,std::string &story_name,std::string &new_group_id)
+{
+	return rpcProxy_->RemoveGroupFromStory(chronicle_name,story_name,client_id_,new_group_id);
 }
 int ChronoLogClient::SetClientId(std::string &client_id)
 {
