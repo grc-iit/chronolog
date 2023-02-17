@@ -216,16 +216,16 @@ public:
     size_t getStoryMapSize() { return storyMap_.size(); }
     size_t getArchiveMapSize() { return archiveMap_.size(); }
 
-    int set_permissions(enum ChronoLogVisibility &v)
+    inline int set_permissions(enum ChronoLogVisibility &v)
     {
 	    attrs_.access_permission = v;
 	    return CL_SUCCESS;
     }
-    enum ChronoLogVisibility & get_permissions()
+    inline enum ChronoLogVisibility & get_permissions()
     {
 	  return attrs_.access_permission;
     }
-    void generate_permission(std::string &perm)
+    inline void generate_permission(std::string &perm)
     {
 	if(perm.compare("RWCD")==0) attrs_.access_permission = CHRONOLOG_RWCD;
         else if(perm.compare("RWC")==0) attrs_.access_permission = CHRONOLOG_RWC;
@@ -234,7 +234,7 @@ public:
 	else if(perm.compare("RO")==0) attrs_.access_permission = CHRONOLOG_RONLY;	
 	else attrs_.access_permission = CHRONOLOG_RONLY;
     }
-    bool can_create_story(std::string &client_id, std::string &group_id)
+    inline bool can_create_story(std::string &client_id, std::string &group_id)
     {
 	if(std::find(attrs_.ownerlist.begin(),attrs_.ownerlist.end(),client_id) != attrs_.ownerlist.end() ||
 	   std::find(attrs_.grouplist.begin(),attrs_.grouplist.end(),group_id) != attrs_.grouplist.end())
@@ -243,7 +243,21 @@ public:
 	}
 	return false;
     }
-    bool can_delete_story(std::string &client_id, std::string &group_id)
+    inline bool can_acquire_story(std::string &client_id,std::string &group_id,enum ChronoLogOp &op)
+    {
+	if(std::find(attrs_.ownerlist.begin(),attrs_.ownerlist.end(),client_id) != attrs_.ownerlist.end() ||
+	   std::find(attrs_.grouplist.begin(),attrs_.grouplist.end(),group_id) != attrs_.grouplist.end())
+	{
+	   if(op == CHRONOLOG_READ && (attrs_.access_permission == CHRONOLOG_RONLY || attrs_.access_permission == CHRONOLOG_RW ||
+	    attrs_.access_permission == CHRONOLOG_RWC || attrs_.access_permission == CHRONOLOG_RWD || attrs_.access_permission == CHRONOLOG_RWCD))
+		   return true;
+	   else if(op == CHRONOLOG_WRITE && (attrs_.access_permission == CHRONOLOG_RW || attrs_.access_permission == CHRONOLOG_RWC || attrs_.access_permission == CHRONOLOG_RWD || attrs_.access_permission == CHRONOLOG_RWCD))
+		   return true;
+	}
+	return false;
+
+    }
+    inline bool can_delete_story(std::string &client_id, std::string &group_id)
     {
 	 if(std::find(attrs_.ownerlist.begin(),attrs_.ownerlist.end(),client_id) != attrs_.ownerlist.end() ||
 	    std::find(attrs_.grouplist.begin(),attrs_.grouplist.end(),group_id) != attrs_.grouplist.end())
@@ -252,16 +266,16 @@ public:
 	 }
 	 return false;
     }
-    bool can_delete_chronicle(std::string &client_id, std::string &group_id)
+    inline bool can_delete_chronicle(std::string &client_id, std::string &group_id)
     {
 	if(std::find(attrs_.ownerlist.begin(),attrs_.ownerlist.end(),client_id) != attrs_.ownerlist.end() ||
 	   std::find(attrs_.grouplist.begin(),attrs_.grouplist.end(),group_id) != attrs_.grouplist.end())
 	{
-           if(attrs_.access_permission == CHRONOLOG_RWCD) return true;	
+           if(attrs_.access_permission == CHRONOLOG_RWCD || attrs_.access_permission == CHRONOLOG_RWD) return true;	
 	}
 	return false;
     }
-    bool can_acquire_chronicle(std::string &client_id, std::string &group_id,enum ChronoLogOp &op)
+    inline bool can_acquire_chronicle(std::string &client_id, std::string &group_id,enum ChronoLogOp &op)
     {
         if(std::find(attrs_.ownerlist.begin(),attrs_.ownerlist.end(),client_id) != attrs_.ownerlist.end() ||
 	   std::find(attrs_.grouplist.begin(),attrs_.grouplist.end(),group_id) != attrs_.grouplist.end())
@@ -277,13 +291,13 @@ public:
 
 	return false;
     }
-    int add_owner_and_group(std::string &client_id, std::string &group_id)
+    inline int add_owner_and_group(std::string &client_id, std::string &group_id)
     {
 	attrs_.ownerlist.emplace(attrs_.ownerlist.end(),client_id);
 	attrs_.grouplist.emplace(attrs_.grouplist.end(),group_id);
         return CL_SUCCESS;	
     }
-    int get_owner_and_group(std::vector<std::string> &owner, std::vector<std::string> &group)
+    inline int get_owner_and_group(std::vector<std::string> &owner, std::vector<std::string> &group)
     {
         owner.assign(attrs_.ownerlist.begin(),attrs_.ownerlist.end());
         group.assign(attrs_.grouplist.begin(),attrs_.grouplist.end());

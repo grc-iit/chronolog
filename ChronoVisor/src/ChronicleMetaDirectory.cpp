@@ -278,7 +278,7 @@ int ChronicleMetaDirectory::create_story(std::string& chronicle_name,
 	}
 	else 
 	{
-	   LOGE("Does not have permission to create story");
+	   LOGE("Does not have permissions to create story");
 	   return CL_ERR_UNKNOWN;
 	}
     } else {
@@ -371,6 +371,8 @@ int ChronicleMetaDirectory::acquire_story(const std::string &client_id,
     auto chronicleRecord = chronicleMap_->find(cid);
     if (chronicleRecord != chronicleMap_->end()) {
         Chronicle *pChronicle = chronicleRecord->second;
+	enum ChronoLogOp op = (enum ChronoLogOp) flags;
+	bool b1 = pChronicle->can_acquire_story(client_id,group_id,op);
         auto storyRecord = pChronicle->getStoryMap().find(sid);
         if (storyRecord != pChronicle->getStoryMap().end()) {
             Story *pStory = storyRecord->second;
