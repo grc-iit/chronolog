@@ -84,42 +84,89 @@ public:
             LOGD("%s=%s", iter->first.c_str(), iter->second.c_str());
         }
 
-        if (!name.empty()) {
-            return chronicleMetaDirectory->create_chronicle(name);
-        } else {
+	std::string group_id; int role;
+
+	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
+	if(ret == CL_SUCCESS && (role == CHRONOLOG_CLIENT_ADMIN || role == CHRONOLOG_CLIENT_USER_RW))
+	{	
+          if (!name.empty()) 
+	  {
+            return g_chronicleMetaDirectory->create_chronicle(name);
+          } 
+	  else 
+	  {
             LOGE("name is empty");
             return CL_ERR_INVALID_ARG;
-        }
+          }
+	}
+	else
+	{
+	   if(ret == CL_SUCCESS && role == CHRONOLOG_CLIENT_USER_RDONLY)
+	   LOGE("cannot create chronicle : role is readonly");
+	   return ret;
+	}
     }
 
     int LocalDestroyChronicle(std::string& name, std::string &client_id, int& flags) {
         LOGD("%s is called in PID=%d, with args: name=%s, flags=%d", __FUNCTION__, getpid(), name.c_str(), flags);
-        if (!name.empty()) {
-            return chronicleMetaDirectory->destroy_chronicle(name, flags);
-        } else {
+	
+	std::string group_id; int role;
+
+	int ret = g_clientRegistryManager->get_client_group_and_role(client_id, group_id,role);
+
+	if(ret == CL_SUCCESS && role == CHRONOLOG_CLIENT_ADMIN)
+	{
+
+           if (!name.empty()) 
+	   {
+              return g_chronicleMetaDirectory->destroy_chronicle(name, flags);
+           } 
+	   else 
+	   {
             LOGE("name is empty");
             return CL_ERR_INVALID_ARG;
-        }
+           }
+	}
+	else 
+	{
+	   if(ret == CL_SUCCESS && role != CHRONOLOG_CLIENT_ADMIN)
+	   LOGE(" cannot destroy chronicle : role is not admin");
+	   return ret;
+	}
     }
 
     int LocalAcquireChronicle(std::string& name, std::string &client_id, int& flags) {
         LOGD("%s is called in PID=%d, with args: name=%s, flags=%d", __FUNCTION__, getpid(), name.c_str(), flags);
-        if (!name.empty()) {
-            return chronicleMetaDirectory->acquire_chronicle(client_id, name, flags);
-        } else {
+	std::string group_id; int role;
+	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
+
+	if(ret == CL_SUCCESS)
+	{
+          if (!name.empty()) {
+            return g_chronicleMetaDirectory->acquire_chronicle(name, flags);
+          } else {
             LOGE("name is empty");
             return CL_ERR_INVALID_ARG;
-        }
+          }
+	}
+	else return ret;
     }
 
     int LocalReleaseChronicle(std::string& name, std::string &client_id, int& flags) {
         LOGD("%s is called in PID=%d, with args: name=%s, flags=%d", __FUNCTION__, getpid(), name.c_str(), flags);
+	std::string group_id; int role;
+	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
+
+	if(ret == CL_SUCCESS)
+	{
         if (!name.empty()) {
 	    return chronicleMetaDirectory->release_chronicle(client_id,name,flags);
         } else {
             LOGE("name is empty");
             return CL_ERR_INVALID_ARG;
         }
+	}
+	else return ret;
     }
 
     int LocalCreateStory(std::string& chronicle_name,
@@ -132,20 +179,37 @@ public:
         for (auto iter = attrs.begin(); iter != attrs.end(); ++iter) {
             LOGD("%s=%s", iter->first.c_str(), iter->second.c_str());
         }
-        if (!chronicle_name.empty() && !story_name.empty()) {
-            return chronicleMetaDirectory->create_story(chronicle_name, story_name, attrs);
-        } else {
+	std::string group_id; int role;
+	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
+
+	if(ret == CL_SUCCESS && (role == CHRONOLOG_CLIENT_ADMIN || role == CHRONOLOG_CLIENT_USER_RW))
+	{
+          if (!chronicle_name.empty() && !story_name.empty()) {
+            return g_chronicleMetaDirectory->create_story(chronicle_name, story_name, attrs);
+          } else {
             if (chronicle_name.empty())
                 LOGE("chronicle name is empty");
             if (story_name.empty())
                 LOGE("story name is empty");
             return CL_ERR_INVALID_ARG;
         }
+	}
+	else
+	{
+	   if(ret == CL_SUCCESS && role == CHRONOLOG_CLIENT_USER_RDONLY)
+	   LOGE(" cannot create story : role is rdonly");
+	   return ret;
+	}
     }
 
     int LocalDestroyStory(std::string& chronicle_name, std::string& story_name, std::string &client_id, int& flags) {
         LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, flags=%d",
              __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
+	std::string group_id; int role;
+	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
+
+	if(ret == CL_SUCCESS && (role == CHRONOLOG_CLIENT_ADMIN))
+	{
         if (!chronicle_name.empty() && !story_name.empty()) {
             return chronicleMetaDirectory->destroy_story(chronicle_name,story_name,flags);
         } else {
@@ -155,11 +219,23 @@ public:
                 LOGE("story name is empty");
             return CL_ERR_INVALID_ARG;
         }
+	}
+	else
+	{
+	   if(ret == CL_SUCCESS && role != CHRONOLOG_CLIENT_ADMIN)
+	   LOGE("cannot destroy story : role is not admin");
+	   return ret;
+	}
     }
 
     int LocalAcquireStory(std::string& chronicle_name, std::string& story_name, std::string &client_id, int& flags) {
         LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, flags=%d",
              __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
+	std::string group_id; int role;
+	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
+
+	if(ret == CL_SUCCESS)
+	{
         if (!chronicle_name.empty() && !story_name.empty()) {
             return chronicleMetaDirectory->acquire_story(client_id, chronicle_name, story_name, flags);
         } else {
@@ -169,11 +245,17 @@ public:
                 LOGE("story name is empty");
             return CL_ERR_INVALID_ARG;
         }
+	}
+	else return ret;
     }
 
     int LocalReleaseStory(std::string& chronicle_name, std::string& story_name, std::string &client_id, int& flags) {
         LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, flags=%d",
              __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
+	std::string group_id; int role;
+	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
+	if(ret == CL_SUCCESS)
+	{
         if (!chronicle_name.empty() && !story_name.empty()) {
             return chronicleMetaDirectory->release_story(client_id, chronicle_name, story_name, flags);
         } else {
@@ -183,10 +265,16 @@ public:
                 LOGE("story name is empty");
             return CL_ERR_INVALID_ARG;
         }
+	}
+	else return ret;
     }
 
     int LocalGetChronicleAttr(std::string& name, const std::string& key, std::string &client_id, std::string& value) {
         LOGD("%s is called in PID=%d, with args: name=%s, key=%s", __FUNCTION__, getpid(), name.c_str(), key.c_str());
+	std::string group_id; int role;
+	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
+	if(ret == CL_SUCCESS)
+	{
         if (!name.empty() && !key.empty()) {
             chronicleMetaDirectory->get_chronicle_attr(name, key, value);
             return CL_SUCCESS;
@@ -197,11 +285,17 @@ public:
                 LOGE("key is empty");
             return CL_ERR_INVALID_ARG;
         }
+	}
+	else return ret;
     }
 
     int LocalEditChronicleAttr(std::string& name, const std::string& key, std::string &client_id, const std::string& value) {
         LOGD("%s is called in PID=%d, with args: name=%s, key=%s, value=%s",
              __FUNCTION__, getpid(), name.c_str(), key.c_str(), value.c_str());
+	std::string group_id; int role;
+	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
+	if(ret == CL_SUCCESS)
+	{
         if (!name.empty() && !key.empty() && !value.empty()) {
             return chronicleMetaDirectory->edit_chronicle_attr(name, key, value);
         } else {
@@ -211,6 +305,8 @@ public:
                 LOGE("key is empty");
             return CL_ERR_INVALID_ARG;
         }
+	}
+	else return ret;
     }
 
     void bind_functions() {
@@ -262,7 +358,7 @@ public:
                                 auto && PH3,
                                 auto && PH4,
 				auto && PH5) {
-                            ThalliumLocalCreateChronicle(std::forward<decltype(PH1)>(PH1), \
+                            ThalliumLocalCreateChronicle(std::forward<decltype(PH1)>(PH1),
                                                          std::forward<decltype(PH2)>(PH2),
                                                          std::forward<decltype(PH3)>(PH3),
                                                          std::forward<decltype(PH4)>(PH4),
