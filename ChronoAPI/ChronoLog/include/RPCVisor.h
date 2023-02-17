@@ -85,13 +85,13 @@ public:
         }
 
 	std::string group_id; int role;
-
+        enum ChronoLogVisibility v = CHRONOLOG_PUBLIC;
 	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
 	if(ret == CL_SUCCESS && (role == CHRONOLOG_CLIENT_ADMIN || role == CHRONOLOG_CLIENT_USER_RW))
 	{	
           if (!name.empty()) 
 	  {
-            return g_chronicleMetaDirectory->create_chronicle(name);
+            return g_chronicleMetaDirectory->create_chronicle(name,client_id,group_id,v);
           } 
 	  else 
 	  {
@@ -119,7 +119,7 @@ public:
 
            if (!name.empty()) 
 	   {
-              return g_chronicleMetaDirectory->destroy_chronicle(name, flags);
+              return g_chronicleMetaDirectory->destroy_chronicle(name,client_id,group_id,flags);
            } 
 	   else 
 	   {
@@ -143,7 +143,7 @@ public:
 	if(ret == CL_SUCCESS)
 	{
           if (!name.empty()) {
-            return g_chronicleMetaDirectory->acquire_chronicle(name, flags);
+            return g_chronicleMetaDirectory->acquire_chronicle(name,client_id,group_id,flags);
           } else {
             LOGE("name is empty");
             return CL_ERR_INVALID_ARG;
@@ -160,7 +160,7 @@ public:
 	if(ret == CL_SUCCESS)
 	{
         if (!name.empty()) {
-	    return chronicleMetaDirectory->release_chronicle(client_id,name,flags);
+            return g_chronicleMetaDirectory->release_chronicle(name,client_id,group_id,flags);
         } else {
             LOGE("name is empty");
             return CL_ERR_INVALID_ARG;
@@ -185,7 +185,7 @@ public:
 	if(ret == CL_SUCCESS && (role == CHRONOLOG_CLIENT_ADMIN || role == CHRONOLOG_CLIENT_USER_RW))
 	{
           if (!chronicle_name.empty() && !story_name.empty()) {
-            return g_chronicleMetaDirectory->create_story(chronicle_name, story_name, attrs);
+            return g_chronicleMetaDirectory->create_story(chronicle_name, story_name,client_id,group_id,attrs);
           } else {
             if (chronicle_name.empty())
                 LOGE("chronicle name is empty");
@@ -211,7 +211,7 @@ public:
 	if(ret == CL_SUCCESS && (role == CHRONOLOG_CLIENT_ADMIN))
 	{
         if (!chronicle_name.empty() && !story_name.empty()) {
-            return chronicleMetaDirectory->destroy_story(chronicle_name,story_name,flags);
+            return g_chronicleMetaDirectory->destroy_story(chronicle_name, story_name, client_id,group_id,flags);
         } else {
             if (chronicle_name.empty())
                 LOGE("chronicle name is empty");
@@ -237,7 +237,7 @@ public:
 	if(ret == CL_SUCCESS)
 	{
         if (!chronicle_name.empty() && !story_name.empty()) {
-            return chronicleMetaDirectory->acquire_story(client_id, chronicle_name, story_name, flags);
+            return g_chronicleMetaDirectory->acquire_story(chronicle_name, story_name,client_id,group_id,flags);
         } else {
             if (chronicle_name.empty())
                 LOGE("chronicle name is empty");
@@ -257,7 +257,7 @@ public:
 	if(ret == CL_SUCCESS)
 	{
         if (!chronicle_name.empty() && !story_name.empty()) {
-            return chronicleMetaDirectory->release_story(client_id, chronicle_name, story_name, flags);
+            return g_chronicleMetaDirectory->release_story(chronicle_name, story_name,client_id,group_id,flags);
         } else {
             if (chronicle_name.empty())
                 LOGE("chronicle name is empty");
@@ -276,7 +276,7 @@ public:
 	if(ret == CL_SUCCESS)
 	{
         if (!name.empty() && !key.empty()) {
-            chronicleMetaDirectory->get_chronicle_attr(name, key, value);
+            g_chronicleMetaDirectory->get_chronicle_attr(name, key, client_id,group_id,value);
             return CL_SUCCESS;
         } else {
             if (name.empty())
@@ -297,7 +297,7 @@ public:
 	if(ret == CL_SUCCESS)
 	{
         if (!name.empty() && !key.empty() && !value.empty()) {
-            return chronicleMetaDirectory->edit_chronicle_attr(name, key, value);
+            return g_chronicleMetaDirectory->edit_chronicle_attr(name, key, client_id,group_id,value);
         } else {
             if (name.empty())
                 LOGE("name is empty");

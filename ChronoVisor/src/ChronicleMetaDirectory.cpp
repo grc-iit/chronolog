@@ -57,6 +57,14 @@ int ChronicleMetaDirectory::create_chronicle(const std::string& name,
     }
     std::chrono::steady_clock::time_point t1, t2;
     t1 = std::chrono::steady_clock::now();
+/*int ChronicleMetaDirectory::create_chronicle(const std::string& name, std::string& client_id, std::string& group_id, enum ChronoLogVisibility &v) {
+    LOGD("creating Chronicle name=%s", name.c_str());
+    std::chrono::steady_clock::time_point t1, t2;
+    t1 = std::chrono::steady_clock::now();*/
+    Chronicle *pChronicle = new Chronicle();
+    //pChronicle->add_owner_and_group(client_id,group_id);
+    //pChronicle->set_permissions(v);
+    pChronicle->setName(name);
     uint64_t cid = CityHash64(name.c_str(), name.size());
     std::lock_guard<std::mutex> ChronicleMapLock(g_chronicleMetaDirectoryMutex_);
     /* Check if Chronicle already exists, fail if true */
@@ -89,6 +97,7 @@ int ChronicleMetaDirectory::create_chronicle(const std::string& name,
  *         CL_ERR_UNKNOWN otherwise
  */
 int ChronicleMetaDirectory::destroy_chronicle(const std::string& name,
+					      std::string &client_id, std::string &group_id,
                                               int& flags) {
     LOGD("destroying Chronicle name=%s, flags=%d", name.c_str(), flags);
     std::chrono::steady_clock::time_point t1, t2;
@@ -133,7 +142,8 @@ int ChronicleMetaDirectory::destroy_chronicle(const std::string& name,
  *         CL_ERR_NOT_EXIST if the Chronicle does not exist
  *         CL_ERR_UNKNOWN otherwise
  */
-int ChronicleMetaDirectory::acquire_chronicle(const std::string &client_id, const std::string& name,
+int ChronicleMetaDirectory::acquire_chronicle(const std::string& name,
+				              std::string& client_id, std::string &group_id,
                                               int& flags) {
     LOGD("client_id=%s acquiring Chronicle name=%s, flags=%d", client_id.c_str(), name.c_str(), flags);
     uint64_t cid = CityHash64(name.c_str(), name.size());
@@ -178,7 +188,8 @@ int ChronicleMetaDirectory::acquire_chronicle(const std::string &client_id, cons
  *         CL_ERR_NOT_EXIST if the Chronicle does not exist
  *         CL_ERR_UNKNOWN otherwise
  */
-int ChronicleMetaDirectory::release_chronicle(const std::string &client_id, const std::string& name,
+int ChronicleMetaDirectory::release_chronicle(const std::string& name,
+					      std::string& client_id, std::string &group_id,
                                               int& flags) {
     LOGD("client_id=%s releasing Chronicle name=%s, flags=%d", client_id.c_str(), name.c_str(), flags);
     uint64_t cid = CityHash64(name.c_str(), name.size());
@@ -223,6 +234,7 @@ int ChronicleMetaDirectory::release_chronicle(const std::string &client_id, cons
  */
 int ChronicleMetaDirectory::create_story(std::string& chronicle_name,
                                          const std::string& story_name,
+					 std::string &client_id, std::string &group_id,
                                          const std::unordered_map<std::string, std::string>& attrs) {
     LOGD("creating Story name=%s in Chronicle name=%s", story_name.c_str(), chronicle_name.c_str());
     std::chrono::steady_clock::time_point t1, t2;
@@ -259,6 +271,7 @@ int ChronicleMetaDirectory::create_story(std::string& chronicle_name,
  */
 int ChronicleMetaDirectory::destroy_story(std::string& chronicle_name,
                                           const std::string& story_name,
+					  std::string& client_id, std::string& group_id,
                                           int& flags) {
     LOGD("destroying Story name=%s in Chronicle name=%s", story_name.c_str(), chronicle_name.c_str());
     uint64_t cid = CityHash64(chronicle_name.c_str(), chronicle_name.size());
@@ -308,6 +321,8 @@ int ChronicleMetaDirectory::get_story_list(std::string& chronicle_name, std::vec
 int ChronicleMetaDirectory::acquire_story(const std::string &client_id,
                                           const std::string& chronicle_name,
                                           const std::string& story_name,
+					  std::string& client_id,
+					  std::string& group_id,
                                           int& flags) {
     LOGD("client_id=%s acquiring Story name=%s in Chronicle name=%s, flags=%d",
          client_id.c_str(), story_name.c_str(), chronicle_name.c_str(), flags);
@@ -364,6 +379,7 @@ int ChronicleMetaDirectory::acquire_story(const std::string &client_id,
 int ChronicleMetaDirectory::release_story(const std::string &client_id,
                                           const std::string& chronicle_name,
                                           const std::string& story_name,
+					  std::string& client_id, std::string& group_id,
                                           int& flags) {
     LOGD("client_id=%s releasing Story name=%s in Chronicle name=%s, flags=%d",
          client_id.c_str(), story_name.c_str(), chronicle_name.c_str(), flags);
@@ -414,7 +430,7 @@ uint64_t ChronicleMetaDirectory::playback_event(uint64_t sid) {
     return 0;
 }
 
-int ChronicleMetaDirectory::get_chronicle_attr(std::string& name, const std::string& key, std::string& value) {
+int ChronicleMetaDirectory::get_chronicle_attr(std::string& name, const std::string& key, std::string& client_id, std::string& group_id, std::string& value) {
     LOGD("getting attributes key=%s from Chronicle name=%s", key.c_str(), name.c_str());
     uint64_t cid = CityHash64(name.c_str(), name.size());
     std::lock_guard<std::mutex> lock(g_chronicleMetaDirectoryMutex_);
@@ -438,6 +454,7 @@ int ChronicleMetaDirectory::get_chronicle_attr(std::string& name, const std::str
 
 int ChronicleMetaDirectory::edit_chronicle_attr(std::string& name,
                                                 const std::string& key,
+						std::string& client_id, std::string& group_id,
                                                 const std::string& value) {
     LOGD("editing attribute key=%s, value=%s from Chronicle name=%s", key.c_str(), value.c_str(), name.c_str());
     uint64_t cid = CityHash64(name.c_str(), name.size());

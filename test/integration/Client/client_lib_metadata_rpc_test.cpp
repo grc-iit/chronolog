@@ -39,7 +39,7 @@ int main() {
         
    server_uri += "://" + server_ip + ":" + std::to_string(base_port);
         
-   int role = CHRONOLOG_CLIENT_ADMIN;
+   int role = CHRONOLOG_CLIENT_USER_RDONLY;
    uint64_t offset = 0;
    int ret = client.Connect(server_uri, client_id, group_id, role, flags, offset);
 
