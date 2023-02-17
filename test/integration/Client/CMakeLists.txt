@@ -1,8 +1,3 @@
-find_package(mercury REQUIRED)
-find_package(thallium REQUIRED)
-find_package(MPI REQUIRED)
-find_package(OpenMP)
-
 set(client_examples client_lib_connect_rpc_test client_lib_metadata_rpc_test client_lib_multi_argobots_test client_lib_multi_pthread_test)
 
 add_custom_target(copyserverlist)
@@ -31,12 +26,7 @@ foreach(client ${client_openmp})
    target_link_libraries(${client} ChronoLogClient_lib OpenMP::OpenMP_CXX)
 endforeach()   
 
-set(CMAKE_CXX_COMPILER "mpic++")
-
 set(client_mpi client_lib_hybrid_argobots_test)
-
-message(${MPI_CXX_INCLUDE_DIRS})
-message(${MPI_CXX_LIBRARIES})
 
 foreach(client ${client_mpi})
 	add_executable(${client} ${client}.cpp)
@@ -45,4 +35,3 @@ foreach(client ${client_mpi})
 	target_link_libraries(${client} ChronoLogClient_lib ${MPI_CXX_LIBRARIES} -lpthread -lrt)
 endforeach()
 
-set(CMAKE_CXX_COMPILER "g++")
