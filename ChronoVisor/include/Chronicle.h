@@ -122,7 +122,7 @@ public:
         pStory->setCid(cid);
 	pStory->add_owner_and_group(client_id,group_id);
 	enum ChronoLogVisibility v=CHRONOLOG_RONLY;
-	auto attr_iter = attrs.find("permissions");
+	auto attr_iter = attrs.find("Permissions");
 	if(attr_iter != attrs.end())
 	{
 	   std::string c(attr_iter->second);

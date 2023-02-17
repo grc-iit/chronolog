@@ -98,7 +98,7 @@ int main() {
             ASSERT(ret, ==, CL_SUCCESS);
             duration_create_story += (t2 - t1);
 
-            flags = 2;
+            flags = CHRONOLOG_WRITE;
             t1 = std::chrono::steady_clock::now();
             ret = client.AcquireStory(chronicle_name, story_name, flags);
             t2 = std::chrono::steady_clock::now();
