@@ -290,7 +290,7 @@ int ChronicleMetaDirectory::create_story(std::string& chronicle_name,
 	}
 	else 
 	{
-	   LOGE("Does not have permission to create story");
+	   LOGE("Does not have permissions to create story");
 	   return CL_ERR_UNKNOWN;
 	}
     } else {
@@ -338,7 +338,6 @@ int ChronicleMetaDirectory::destroy_story(std::string& chronicle_name,
           CL_Status res = pChronicle->removeStory(chronicle_name, story_name,client_id,group_id,flags);
           if (res != CL_SUCCESS) {
             LOGE("Fail to remove Story name=%s in Chronicle name=%s", story_name.c_str(), chronicle_name.c_str());
-<<<<<<< HEAD
         }
 	return res;
     }   
@@ -384,6 +383,8 @@ int ChronicleMetaDirectory::acquire_story(const std::string &client_id,
     if (chronicleRecord != chronicleMap_->end()) 
     {
         Chronicle *pChronicle = chronicleRecord->second;
+	enum ChronoLogOp op = (enum ChronoLogOp) flags;
+	bool b1 = pChronicle->can_acquire_story(client_id,group_id,op);
         auto storyRecord = pChronicle->getStoryMap().find(sid);
         if (storyRecord != pChronicle->getStoryMap().end()) 
 	{
@@ -391,6 +392,7 @@ int ChronicleMetaDirectory::acquire_story(const std::string &client_id,
 	    auto range = acquiredStoryClientMap_->equal_range(sid);
 	    bool exists = false;
 	    if(range.first != range.second)
+            /* Increment AcquisitionCount */
 	    {
 		for(auto t = range.first; t != range.second; ++t)
 		{
