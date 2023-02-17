@@ -40,11 +40,21 @@ public:
     /**
      * Admin APIs
      */
-    int LocalConnect(const std::string &uri, std::string &client_id, int &flags, uint64_t &clock_offset) {
+    void Visor_start()
+    {
+	rpc->start();
+	
+    }
+    int LocalConnect(const std::string &uri, std::string &client_id, std::string &group_id, int &role, int &flags, uint64_t &clock_offset) {
         LOGD("%s in ChronoLogAdminRPCProxy@%p called in PID=%d, with args: uri=%s",
              __FUNCTION__, this, getpid(), uri.c_str());
         ClientInfo record;
         record.addr_ = "127.0.0.1";
+	if(group_id.empty()) group_id = "DEFAULT";
+	record.group_id_ = group_id;
+	record.client_role_ = role;
+	if(role < CHRONOLOG_CLIENT_ADMIN || role > CHRONOLOG_CLIENT_USER_RW) record.client_role_ = CHRONOLOG_CLIENT_USER_RDONLY;
+
         if (std::strtol(client_id.c_str(), nullptr, 10) < 0) {
             LOGE("client id is invalid");
             return CL_ERR_INVALID_ARG;
@@ -66,6 +76,7 @@ public:
      * Metadata APIs
      */
     int LocalCreateChronicle(std::string& name,
+		             std::string& client_id,
                              const std::unordered_map<std::string, std::string>& attrs,
                              int& flags) {
         LOGD("%s is called in PID=%d, with args: name=%s, attrs=", __FUNCTION__, getpid(), name.c_str());
@@ -81,7 +92,7 @@ public:
         }
     }
 
-    int LocalDestroyChronicle(std::string& name, int& flags) {
+    int LocalDestroyChronicle(std::string& name, std::string &client_id, int& flags) {
         LOGD("%s is called in PID=%d, with args: name=%s, flags=%d", __FUNCTION__, getpid(), name.c_str(), flags);
         if (!name.empty()) {
             return chronicleMetaDirectory->destroy_chronicle(name, flags);
@@ -91,7 +102,7 @@ public:
         }
     }
 
-    int LocalAcquireChronicle(std::string &client_id, std::string& name, int& flags) {
+    int LocalAcquireChronicle(std::string& name, std::string &client_id, int& flags) {
         LOGD("%s is called in PID=%d, with args: name=%s, flags=%d", __FUNCTION__, getpid(), name.c_str(), flags);
         if (!name.empty()) {
             return chronicleMetaDirectory->acquire_chronicle(client_id, name, flags);
@@ -101,7 +112,7 @@ public:
         }
     }
 
-    int LocalReleaseChronicle(std::string &client_id, std::string& name, int& flags) {
+    int LocalReleaseChronicle(std::string& name, std::string &client_id, int& flags) {
         LOGD("%s is called in PID=%d, with args: name=%s, flags=%d", __FUNCTION__, getpid(), name.c_str(), flags);
         if (!name.empty()) {
 	    return chronicleMetaDirectory->release_chronicle(client_id,name,flags);
@@ -113,6 +124,7 @@ public:
 
     int LocalCreateStory(std::string& chronicle_name,
                          std::string& story_name,
+			 std::string& client_id,
                          const std::unordered_map<std::string, std::string>& attrs,
                          int& flags) {
         LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, ,attrs=",
@@ -131,7 +143,7 @@ public:
         }
     }
 
-    int LocalDestroyStory(std::string& chronicle_name, std::string& story_name, int& flags) {
+    int LocalDestroyStory(std::string& chronicle_name, std::string& story_name, std::string &client_id, int& flags) {
         LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, flags=%d",
              __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
         if (!chronicle_name.empty() && !story_name.empty()) {
@@ -145,7 +157,7 @@ public:
         }
     }
 
-    int LocalAcquireStory(std::string &client_id, std::string& chronicle_name, std::string& story_name, int& flags) {
+    int LocalAcquireStory(std::string& chronicle_name, std::string& story_name, std::string &client_id, int& flags) {
         LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, flags=%d",
              __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
         if (!chronicle_name.empty() && !story_name.empty()) {
@@ -159,7 +171,7 @@ public:
         }
     }
 
-    int LocalReleaseStory(std::string &client_id, std::string& chronicle_name, std::string& story_name, int& flags) {
+    int LocalReleaseStory(std::string& chronicle_name, std::string& story_name, std::string &client_id, int& flags) {
         LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, flags=%d",
              __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
         if (!chronicle_name.empty() && !story_name.empty()) {
@@ -173,7 +185,7 @@ public:
         }
     }
 
-    int LocalGetChronicleAttr(std::string& name, const std::string& key, std::string& value) {
+    int LocalGetChronicleAttr(std::string& name, const std::string& key, std::string &client_id, std::string& value) {
         LOGD("%s is called in PID=%d, with args: name=%s, key=%s", __FUNCTION__, getpid(), name.c_str(), key.c_str());
         if (!name.empty() && !key.empty()) {
             chronicleMetaDirectory->get_chronicle_attr(name, key, value);
@@ -187,7 +199,7 @@ public:
         }
     }
 
-    int LocalEditChronicleAttr(std::string& name, const std::string& key, const std::string& value) {
+    int LocalEditChronicleAttr(std::string& name, const std::string& key, std::string &client_id, const std::string& value) {
         LOGD("%s is called in PID=%d, with args: name=%s, key=%s, value=%s",
              __FUNCTION__, getpid(), name.c_str(), key.c_str(), value.c_str());
         if (!name.empty() && !key.empty() && !value.empty()) {
@@ -209,18 +221,24 @@ public:
                 std::function<void(const tl::request &,
                                    const std::string &,
                                    std::string &,
+				   std::string &,
+				   int &,
                                    int &,
                                    uint64_t &)> connectFunc(
                         [this](auto && PH1,
                                auto && PH2,
                                auto && PH3,
                                auto && PH4,
-                               auto && PH5) {
+                               auto && PH5,
+			       auto && PH6,
+			       auto && PH7) {
                             ThalliumLocalConnect(std::forward<decltype(PH1)>(PH1),
                                                  std::forward<decltype(PH2)>(PH2),
                                                  std::forward<decltype(PH3)>(PH3),
                                                  std::forward<decltype(PH4)>(PH4),
-                                                 std::forward<decltype(PH5)>(PH5));
+                                                 std::forward<decltype(PH5)>(PH5),
+						 std::forward<decltype(PH6)>(PH6),
+						 std::forward<decltype(PH7)>(PH7));
                         }
                 );
                 std::function<void(const tl::request &,
@@ -236,151 +254,166 @@ public:
                 );
                 std::function<void(const tl::request &,
                                    std::string &,
+				   std::string &,
                                    const std::unordered_map<std::string, std::string> &,
                                    int &)> createChronicleFunc(
                         [this](auto && PH1,
-                               auto && PH2,
-                               auto && PH3,
-                               auto && PH4) {
+                                auto && PH2,
+                                auto && PH3,
+                                auto && PH4,
+				auto && PH5) {
                             ThalliumLocalCreateChronicle(std::forward<decltype(PH1)>(PH1), \
                                                          std::forward<decltype(PH2)>(PH2),
                                                          std::forward<decltype(PH3)>(PH3),
-                                                         std::forward<decltype(PH4)>(PH4));
+                                                         std::forward<decltype(PH4)>(PH4),
+							 std::forward<decltype(PH5)>(PH5));
                         }
                 );
                 std::function<void(const tl::request &,
                                    std::string &,
+				   std::string &,
                                    int &)> destroyChronicleFunc(
                         [this](auto && PH1,
-                               auto && PH2,
-                               auto && PH3) {
+                                auto && PH2,
+                                auto && PH3,
+				auto && PH4) {
                             ThalliumLocalDestroyChronicle(std::forward<decltype(PH1)>(PH1),
                                                           std::forward<decltype(PH2)>(PH2),
-                                                          std::forward<decltype(PH3)>(PH3));
-                        }
+                                                          std::forward<decltype(PH3)>(PH3),
+							  std::forward<decltype(PH4)>(PH4)); }
                 );
                 std::function<void(const tl::request &,
                                    std::string &,
                                    std::string &,
+				   std::string &,
                                    int &)> acquireChronicleFunc(
                         [this](auto && PH1,
-                               auto && PH2,
-                               auto && PH3,
-                               auto && PH4) {
+                                auto && PH2,
+                                auto && PH3,
+				auto && PH4) {
                             ThalliumLocalAcquireChronicle(std::forward<decltype(PH1)>(PH1),
                                                           std::forward<decltype(PH2)>(PH2),
                                                           std::forward<decltype(PH3)>(PH3),
-                                                          std::forward<decltype(PH4)>(PH4));
-                        }
+							  std::forward<decltype(PH4)>(PH4)); }
                 );
                 std::function<void(const tl::request &,
                                    std::string &,
                                    std::string &,
+				   std::string &,
                                    int &)> releaseChronicleFunc(
                         [this](auto && PH1,
-                               auto && PH2,
-                               auto && PH3,
-                               auto && PH4) {
+                                auto && PH2,
+                                auto && PH3,
+				auto && PH4) {
                             ThalliumLocalReleaseChronicle(std::forward<decltype(PH1)>(PH1),
                                                           std::forward<decltype(PH2)>(PH2),
                                                           std::forward<decltype(PH3)>(PH3),
-                                                          std::forward<decltype(PH4)>(PH4));
-                        }
+							  std::forward<decltype(PH4)>(PH4)); }
                 );
 
                 std::function<void(const tl::request &,
                                    std::string &,
                                    std::string &,
+				   std::string &,
                                    const std::unordered_map<std::string, std::string> &,
                                    int &)> createStoryFunc(
                         [this](auto && PH1,
-                               auto && PH2,
-                               auto && PH3,
-                               auto && PH4,
-                               auto && PH5) {
+                                auto && PH2,
+                                auto && PH3,
+                                auto && PH4,
+                                auto && PH5,
+				auto && PH6) {
                             ThalliumLocalCreateStory(std::forward<decltype(PH1)>(PH1),
                                                      std::forward<decltype(PH2)>(PH2),
                                                      std::forward<decltype(PH3)>(PH3),
                                                      std::forward<decltype(PH4)>(PH4),
-                                                     std::forward<decltype(PH5)>(PH5));
-                        }
+                                                     std::forward<decltype(PH5)>(PH5),
+						     std::forward<decltype(PH6)>(PH6)); }
                 );
                 std::function<void(const tl::request &,
                                    std::string &,
                                    std::string &,
+				   std::string &,
                                    int &)> destroyStoryFunc(
                         [this](auto && PH1,
-                               auto && PH2,
-                               auto && PH3,
-                               auto && PH4) {
+                                auto && PH2,
+                                auto && PH3,
+                                auto && PH4,
+				auto && PH5) {
                             ThalliumLocalDestroyStory(std::forward<decltype(PH1)>(PH1),
                                                       std::forward<decltype(PH2)>(PH2),
                                                       std::forward<decltype(PH3)>(PH3),
-                                                      std::forward<decltype(PH4)>(PH4));
+                                                      std::forward<decltype(PH4)>(PH4),
+						      std::forward<decltype(PH5)>(PH5));
                         }
                 );
                 std::function<void(const tl::request &,
 				                   std::string &,
                                    std::string &,
                                    std::string &,
+				   std::string &,
                                    int &)> acquireStoryFunc(
                         [this](auto && PH1,
-                               auto && PH2,
-                               auto && PH3,
-                               auto && PH4,
-                               auto && PH5) {
+                                auto && PH2,
+                                auto && PH3,
+                                auto && PH4,
+				auto && PH5) {
                             ThalliumLocalAcquireStory(std::forward<decltype(PH1)>(PH1),
                                                       std::forward<decltype(PH2)>(PH2),
                                                       std::forward<decltype(PH3)>(PH3),
                                                       std::forward<decltype(PH4)>(PH4),
-                                                      std::forward<decltype(PH5)>(PH5));
-                        }
+						      std::forward<decltype(PH5)>(PH5)); }
                 );
                 std::function<void(const tl::request &,
 				                   std::string &,
                                    std::string &,
                                    std::string &,
+				   std::string &,
                                    int &)> releaseStoryFunc(
                         [this](auto && PH1,
-                               auto && PH2,
-                               auto && PH3,
-                               auto && PH4,
-                               auto && PH5) {
+                                auto && PH2,
+                                auto && PH3,
+                                auto && PH4,
+				auto && PH5) {
                             ThalliumLocalReleaseStory(std::forward<decltype(PH1)>(PH1),
                                                       std::forward<decltype(PH2)>(PH2),
                                                       std::forward<decltype(PH3)>(PH3),
                                                       std::forward<decltype(PH4)>(PH4),
-                                                      std::forward<decltype(PH5)>(PH5));
+						      std::forward<decltype(PH5)>(PH5));
                         }
                 );
 
                 std::function<void(const tl::request &,
                                    std::string &name,
                                    const std::string &,
+				   std::string &client_id,
                                    std::string &)> getChronicleAttrFunc(
                         [this](auto && PH1,
-                               auto && PH2,
-                               auto && PH3,
-                               auto && PH4) {
+                                auto && PH2,
+                                auto && PH3,
+                                auto && PH4,
+				auto && PH5) {
                             ThalliumLocalGetChronicleAttr(std::forward<decltype(PH1)>(PH1),
                                                           std::forward<decltype(PH2)>(PH2),
                                                           std::forward<decltype(PH3)>(PH3),
-                                                          std::forward<decltype(PH4)>(PH4));
-                        }
+                                                          std::forward<decltype(PH4)>(PH4),
+							  std::forward<decltype(PH5)>(PH5)); }
                 );
                 std::function<void(const tl::request &,
                                    std::string &name,
                                    const std::string &,
+				   std::string &client_id,
                                    const std::string &)> editChronicleAttrFunc(
                         [this](auto && PH1,
-                               auto && PH2,
-                               auto && PH3,
-                               auto && PH4) {
+                                auto && PH2,
+                                auto && PH3,
+                                auto && PH4,
+				auto && PH5) {
                             ThalliumLocalEditChronicleAttr(std::forward<decltype(PH1)>(PH1),
                                                            std::forward<decltype(PH2)>(PH2),
                                                            std::forward<decltype(PH3)>(PH3),
-                                                           std::forward<decltype(PH4)>(PH4));
-                        }
+                                                           std::forward<decltype(PH4)>(PH4),
+							   std::forward<decltype(PH5)>(PH5)); }
                 );
 
                 rpc->bind("ChronoLogThalliumConnect", connectFunc);
@@ -402,34 +435,33 @@ public:
         }
     }
 
-    CHRONOLOG_THALLIUM_DEFINE(LocalConnect, (uri, client_id, flags, clock_offset),
-                              const std::string &uri, std::string &client_id, int &flags, uint64_t &clock_offset)
+    CHRONOLOG_THALLIUM_DEFINE(LocalConnect, (uri, client_id, group_id, role, flags, clock_offset),
+                              const std::string &uri, std::string &client_id, std::string &group_id, int &role, int &flags, uint64_t &clock_offset)
     CHRONOLOG_THALLIUM_DEFINE(LocalDisconnect, (client_id, flags), std::string &client_id, int &flags)
 
-    CHRONOLOG_THALLIUM_DEFINE(LocalCreateChronicle, (name, attrs, flags),
-                              std::string &name, const std::unordered_map<std::string, std::string> &attrs, int &flags)
-    CHRONOLOG_THALLIUM_DEFINE(LocalDestroyChronicle, (name, flags), std::string &name, int &flags)
-    CHRONOLOG_THALLIUM_DEFINE(LocalAcquireChronicle, (client_id, name, flags),
-                              std::string &client_id, std::string &name, int &flags)
-    CHRONOLOG_THALLIUM_DEFINE(LocalReleaseChronicle, (client_id, name, flags),
-                              std::string &client_id, std::string &name, int &flags)
+    CHRONOLOG_THALLIUM_DEFINE(LocalCreateChronicle, (name, client_id,attrs, flags),
+                              std::string &name, std::string &client_id, const std::unordered_map<std::string, std::string> &attrs, int &flags)
+    CHRONOLOG_THALLIUM_DEFINE(LocalDestroyChronicle, (name, client_id, flags), std::string &name, std::string & client_id, int &flags)
+    CHRONOLOG_THALLIUM_DEFINE(LocalAcquireChronicle, (name, client_id, flags), std::string &name, std::string &client_id, int &flags)
+    CHRONOLOG_THALLIUM_DEFINE(LocalReleaseChronicle, (name, client_id, flags), std::string &name, std::string &client_id, int &flags)
 
-    CHRONOLOG_THALLIUM_DEFINE(LocalCreateStory, (chronicle_name, story_name, attrs, flags),
+    CHRONOLOG_THALLIUM_DEFINE(LocalCreateStory, (chronicle_name, story_name, client_id, attrs, flags),
                               std::string &chronicle_name,
                               std::string &story_name,
+			      std::string &client_id,
                               const std::unordered_map<std::string, std::string> &attrs,
                               int &flags)
-    CHRONOLOG_THALLIUM_DEFINE(LocalDestroyStory, (chronicle_name, story_name, flags),
-                              std::string &chronicle_name, std::string &story_name, int &flags)
-    CHRONOLOG_THALLIUM_DEFINE(LocalAcquireStory, (client_id,chronicle_name, story_name, flags),
-                              std::string &client_id,std::string &chronicle_name, std::string &story_name, int &flags)
-    CHRONOLOG_THALLIUM_DEFINE(LocalReleaseStory, (client_id,chronicle_name, story_name, flags),
-                              std::string &client_id,std::string &chronicle_name, std::string &story_name, int &flags)
+    CHRONOLOG_THALLIUM_DEFINE(LocalDestroyStory, (chronicle_name, story_name, client_id, flags),
+                              std::string &chronicle_name, std::string &story_name, std::string &client_id, int &flags)
+    CHRONOLOG_THALLIUM_DEFINE(LocalAcquireStory, (chronicle_name, story_name, client_id, flags),
+                              std::string &chronicle_name, std::string &story_name, std::string &client_id, int &flags)
+    CHRONOLOG_THALLIUM_DEFINE(LocalReleaseStory, (chronicle_name, story_name, client_id, flags),
+                              std::string &chronicle_name, std::string &story_name, std::string &client_id, int &flags)
 
-    CHRONOLOG_THALLIUM_DEFINE(LocalGetChronicleAttr, (name, key, value),
-                              std::string &name, const std::string &key, std::string &value)
-    CHRONOLOG_THALLIUM_DEFINE(LocalEditChronicleAttr, (name, key, value),
-                              std::string &name, const std::string &key, const std::string &value)
+    CHRONOLOG_THALLIUM_DEFINE(LocalGetChronicleAttr, (name, key, client_id, value),
+                              std::string &name, const std::string &key, std::string &client_id, std::string &value)
+    CHRONOLOG_THALLIUM_DEFINE(LocalEditChronicleAttr, (name, key, client_id, value),
+                              std::string &name, const std::string &key, std::string &client_id, const std::string &value)
 
 private:
     void set_prefix(std::string prefix) {

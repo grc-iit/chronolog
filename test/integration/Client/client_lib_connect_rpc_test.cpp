@@ -16,7 +16,7 @@ int main() {
     ChronoLogClient client(confManager);
     int num_ports = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_PORTS;
     std::string server_uri;
-    std::vector<std::string> client_ids;
+    std::vector<std::string> client_ids, group_ids;
     int flags = 0;
     bool ret = false;
     uint64_t offset;
@@ -24,8 +24,14 @@ int main() {
     std::chrono::duration<double, std::nano> duration_connect{},
             duration_disconnect{};
 
+    std::string group_name = "rpc_connect_application";
+
     client_ids.reserve(NUM_CONNECTION);
-    for (int i = 0; i < NUM_CONNECTION; i++) client_ids.emplace_back(gen_random(8));
+    for (int i = 0; i < NUM_CONNECTION; i++) 
+    {
+	client_ids.emplace_back(gen_random(8));
+	group_ids.emplace_back(group_name);
+    }
     for (int i = 0; i < NUM_CONNECTION; i++) {
         switch (CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION) {
             case CHRONOLOG_THALLIUM_SOCKETS:
@@ -36,7 +42,8 @@ int main() {
         }
         server_uri += "://" + server_ip + ":" + std::to_string(base_port + i);
         t1 = std::chrono::steady_clock::now();
-        ret = client.Connect(server_uri, client_ids[i], flags, offset);
+	int role = CHRONOLOG_CLIENT_ADMIN;
+        ret = client.Connect(server_uri, client_ids[i], group_ids[i], role, flags, offset);
         assert(ret == CL_SUCCESS);
         t2 = std::chrono::steady_clock::now();
         duration_connect += (t2 - t1);
