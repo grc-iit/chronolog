@@ -55,7 +55,7 @@ if(NOT "${CMAKE_CXX_STANDARD}")
     set(CMAKE_CXX_EXTENSIONS OFF)
 endif()
 
-#find_package(OpenMP)
+find_package(OpenMP)
 #find_package(IntelDPCPP REQUIRED)
 
 #------------------------------------------------------------------------------
