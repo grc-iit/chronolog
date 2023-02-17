@@ -63,7 +63,6 @@ public:
             return CL_ERR_INVALID_ARG;
         }
 	return clientManager->add_client_record(client_id,record);
-            
     }
 
     int LocalDisconnect(const std::string &client_id, int &flags) {
@@ -90,17 +89,17 @@ public:
 
 	std::string group_id; uint32_t role;
 
-	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
+	int ret = clientManager->get_client_group_and_role(client_id,group_id,role);
 
 	std::cout <<" client_id = "<<client_id<<" group_id = "<<group_id<<" role = "<<role<<std::endl;
 
         if(ret == CL_SUCCESS)
 	{	
-	   bool b = g_clientRegistryManager->can_create_or_delete(role);	
+	   bool b = clientManager->can_create_or_delete(role);	
 
 	  if (!name.empty() && b)
 	  {
-            ret = g_chronicleMetaDirectory->create_chronicle(name,client_id,group_id,attrs);
+            ret = chronicleMetaDirectory->create_chronicle(name,client_id,group_id,attrs);
           } 
 	  else  
 	 {
@@ -128,15 +127,15 @@ public:
         LOGD("%s is called in PID=%d, with args: name=%s, flags=%d", __FUNCTION__, getpid(), name.c_str(), flags);
 	std::string group_id; uint32_t role;
 
-	int ret = g_clientRegistryManager->get_client_group_and_role(client_id, group_id,role);
+	int ret = clientRegistryManager->get_client_group_and_role(client_id, group_id,role);
 
 	if(ret == CL_SUCCESS)
 	{
-	   bool b = g_clientRegistryManager->can_create_or_delete(role);
+	   bool b = clientRegistryManager->can_create_or_delete(role);
 
            if (!name.empty() && b) 
 	   {
-              ret = g_chronicleMetaDirectory->destroy_chronicle(name,client_id,group_id,flags);
+              ret = chronicleMetaDirectory->destroy_chronicle(name,client_id,group_id,flags);
            } 
 	   else 
 	  {
@@ -163,20 +162,20 @@ public:
     int LocalAcquireChronicle(std::string& name, std::string &client_id, int& flags) {
         LOGD("%s is called in PID=%d, with args: name=%s, flags=%d", __FUNCTION__, getpid(), name.c_str(), flags);
 	std::string group_id; uint32_t role;
-	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
+	int ret = clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
 
 	if(ret == CL_SUCCESS)
 	{
 	  enum ChronoLogOp op = (enum ChronoLogOp)flags;
 	  bool b = false;
 
-	  if(op == CHRONOLOG_READ) b = g_clientRegistryManager->can_read(role);
-	  else if(op == CHRONOLOG_WRITE) b = g_clientRegistryManager->can_write(role);
-	  else if(op == CHRONOLOG_FILEOP) b = g_clientRegistryManager->can_perform_fileops(role);
+	  if(op == CHRONOLOG_READ) b = clientRegistryManager->can_read(role);
+	  else if(op == CHRONOLOG_WRITE) b = clientRegistryManager->can_write(role);
+	  else if(op == CHRONOLOG_FILEOP) b = clientRegistryManager->can_perform_fileops(role);
 
           if (!name.empty() && b) 
 	  {
-            ret = g_chronicleMetaDirectory->acquire_chronicle(name,client_id,group_id,flags);
+            ret = chronicleMetaDirectory->acquire_chronicle(name,client_id,group_id,flags);
           } 
 	  else 
 	  {
@@ -203,13 +202,13 @@ public:
     int LocalReleaseChronicle(std::string& name, std::string &client_id, int& flags) {
         LOGD("%s is called in PID=%d, with args: name=%s, flags=%d", __FUNCTION__, getpid(), name.c_str(), flags);
 	std::string group_id; uint32_t role;
-	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
+	int ret = clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
 
 	if(ret == CL_SUCCESS)
 	{
           if (!name.empty()) 
 	  {
-            ret = g_chronicleMetaDirectory->release_chronicle(name,client_id,group_id,flags);
+            ret = chronicleMetaDirectory->release_chronicle(name,client_id,group_id,flags);
           } 
 	  else 
 	  {
@@ -236,15 +235,15 @@ public:
             LOGD("%s=%s", iter->first.c_str(), iter->second.c_str());
         }
 	std::string group_id; uint32_t role;
-	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
+	int ret = clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
 
 	if(ret==CL_SUCCESS)
 	{
-	  bool b = g_clientRegistryManager->can_create_or_delete(role);
+	  bool b = clientRegistryManager->can_create_or_delete(role);
 
           if (!chronicle_name.empty() && !story_name.empty() && b) 
 	  {
-            ret = g_chronicleMetaDirectory->create_story(chronicle_name, story_name,client_id,group_id,attrs);
+            ret = chronicleMetaDirectory->create_story(chronicle_name, story_name,client_id,group_id,attrs);
           } 
 	  else 
 	  {
@@ -272,14 +271,14 @@ public:
         LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, flags=%d",
              __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
 	std::string group_id; uint32_t role;
-	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
+	int ret = clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
 
 	if(ret == CL_SUCCESS)
 	{
-	  bool b = g_clientRegistryManager->can_create_or_delete(role);
+	  bool b = clientRegistryManager->can_create_or_delete(role);
 
           if (!chronicle_name.empty() && !story_name.empty() && b) {
-            ret = g_chronicleMetaDirectory->destroy_story(chronicle_name, story_name, client_id,group_id,flags);
+            ret = chronicleMetaDirectory->destroy_story(chronicle_name, story_name, client_id,group_id,flags);
           } else {
             if (chronicle_name.empty() || story_name.empty())
 	    {
@@ -305,7 +304,7 @@ public:
         LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, flags=%d",
              __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
 	std::string group_id; uint32_t role;
-	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
+	int ret = clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
         
 	if(ret == CL_SUCCESS)
 	{
@@ -313,11 +312,11 @@ public:
 
 	  bool b = false;
 
-	  if(op == CHRONOLOG_READ) b = g_clientRegistryManager->can_read(role);
-	  else if(op == CHRONOLOG_WRITE) b = g_clientRegistryManager->can_write(role);
+	  if(op == CHRONOLOG_READ) b = clientRegistryManager->can_read(role);
+	  else if(op == CHRONOLOG_WRITE) b = clientRegistryManager->can_write(role);
 
           if (!chronicle_name.empty() && !story_name.empty() && b) {
-            ret = g_chronicleMetaDirectory->acquire_story(chronicle_name, story_name,client_id,group_id,flags);
+            ret = chronicleMetaDirectory->acquire_story(chronicle_name, story_name,client_id,group_id,flags);
           } else {
             if (chronicle_name.empty() || story_name.empty())
 	    {
@@ -343,11 +342,11 @@ public:
         LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, flags=%d",
              __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
 	std::string group_id; uint32_t role;
-	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
+	int ret = clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
 	if(ret == CL_SUCCESS)
 	{
           if (!chronicle_name.empty() && !story_name.empty()) {
-            ret = g_chronicleMetaDirectory->release_story(chronicle_name, story_name,client_id,group_id,flags);
+            ret = chronicleMetaDirectory->release_story(chronicle_name, story_name,client_id,group_id,flags);
           } else {
             if (chronicle_name.empty())
                 LOGE("chronicle name is empty");
@@ -367,11 +366,11 @@ public:
     int LocalGetChronicleAttr(std::string& name, const std::string& key, std::string &client_id, std::string& value) {
         LOGD("%s is called in PID=%d, with args: name=%s, key=%s", __FUNCTION__, getpid(), name.c_str(), key.c_str());
 	std::string group_id; uint32_t role;
-	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
+	int ret = clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
 	if(ret == CL_SUCCESS)
 	{
           if (!name.empty() && !key.empty()) {
-            ret = g_chronicleMetaDirectory->get_chronicle_attr(name, key, client_id,group_id,value);
+            ret = chronicleMetaDirectory->get_chronicle_attr(name, key, client_id,group_id,value);
           } else {
             if (name.empty())
                 LOGE("name is empty");
@@ -392,14 +391,14 @@ public:
         LOGD("%s is called in PID=%d, with args: name=%s, key=%s, value=%s",
              __FUNCTION__, getpid(), name.c_str(), key.c_str(), value.c_str());
 	std::string group_id; uint32_t role;
-	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
+	int ret = clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
 
 	if(ret == CL_SUCCESS)
 	{
-	   bool b = g_clientRegistryManager->can_perform_fileops(role);
+	   bool b = clientRegistryManager->can_perform_fileops(role);
 
            if (!name.empty() && !key.empty() && !value.empty() && b) {
-            ret = g_chronicleMetaDirectory->edit_chronicle_attr(name, key, client_id,group_id,value);
+            ret = chronicleMetaDirectory->edit_chronicle_attr(name, key, client_id,group_id,value);
            } else {
             if (name.empty() || key.empty())
 	    {
@@ -425,10 +424,10 @@ public:
     {
 	LOGD("%s is called in PID=%d with args: client_id=%s role = %d",__FUNCTION__,getpid(),client_id.c_str(),role);
 	std::string group_id;uint32_t prev_role;
-	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,prev_role);
+	int ret = clientRegistryManager->get_client_group_and_role(client_id,group_id,prev_role);
 	if(ret == CL_SUCCESS)
 	{
-	    ret =  g_clientRegistryManager->update_client_role(client_id,role);
+	    ret =  clientRegistryManager->update_client_role(client_id,role);
 	}
 	else
 	{
@@ -442,15 +441,15 @@ public:
     {
 	LOGD("%s is called in PID=%d with args: chronicle_name=%s client_id=%s new_group_id=%s",__FUNCTION__,getpid(),chronicle_name.c_str(),client_id.c_str(),new_group_id.c_str());
 	std::string group_id; uint32_t role;
-	int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
+	int ret = clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
 
         if(ret == CL_SUCCESS)
 	{
-	    bool b = g_clientRegistryManager->can_edit_ownership(role);
+	    bool b = clientRegistryManager->can_edit_ownership(role);
 
 	    if(b)
 	    {
-	       ret = g_chronicleMetaDirectory->add_group_to_chronicle(chronicle_name,client_id,group_id,new_group_id);
+	       ret = chronicleMetaDirectory->add_group_to_chronicle(chronicle_name,client_id,group_id,new_group_id);
 	    }
 	    else
 	    {
@@ -471,15 +470,15 @@ public:
     {
         LOGD("%s is called in PID=%d with args: chronicle_name=%s client_id=%s new_group_id=%s",__FUNCTION__,getpid(),chronicle_name.c_str(),client_id.c_str(),new_group_id.c_str());
         std::string group_id; uint32_t role;
-        int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
+        int ret = clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
 
         if(ret == CL_SUCCESS)
         {
-            bool b = g_clientRegistryManager->can_edit_ownership(role);
+            bool b = clientRegistryManager->can_edit_ownership(role);
 
             if(b)
             {
-               ret = g_chronicleMetaDirectory->remove_group_from_chronicle(chronicle_name,client_id,group_id,new_group_id);
+               ret = chronicleMetaDirectory->remove_group_from_chronicle(chronicle_name,client_id,group_id,new_group_id);
             }
             else
             {
@@ -504,11 +503,11 @@ public:
 
 	if(ret == CL_SUCCESS)
 	{
-	    bool b = g_clientRegistryManager->can_edit_ownership(role);
+	    bool b = clientRegistryManager->can_edit_ownership(role);
 
 	    if(b)
 	    {
-		ret = g_chronicleMetaDirectory->add_group_to_story(chronicle_name,story_name,client_id,group_id,new_group_id);
+		ret = chronicleMetaDirectory->add_group_to_story(chronicle_name,story_name,client_id,group_id,new_group_id);
 	    }
 	    else
 	    {
@@ -528,15 +527,15 @@ public:
     {
         LOGD("%s is called in PID=%d with args: chronicle_name=%s story_name=%s client_id=%s new_group_id=%s",__FUNCTION__,getpid(),chronicle_name.c_str(),story_name.c_str(),client_id.c_str(),new_group_id.c_str());
         std::string group_id; uint32_t role;
-        int ret = g_clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
+        int ret = clientRegistryManager->get_client_group_and_role(client_id,group_id,role);
 
         if(ret == CL_SUCCESS)
         {
-            bool b = g_clientRegistryManager->can_edit_ownership(role);
+            bool b = clientRegistryManager->can_edit_ownership(role);
 
             if(b)
             {
-                ret = g_chronicleMetaDirectory->remove_group_from_story(chronicle_name,story_name,client_id,group_id,new_group_id);
+                ret = chronicleMetaDirectory->remove_group_from_story(chronicle_name,story_name,client_id,group_id,new_group_id);
             }
             else
             {
