@@ -17,14 +17,14 @@ foreach(client ${client_examples})
     #add_test(NAME ${client} COMMAND ${client})
 endforeach()
 
-set(client_openmp client_lib_multi_openmp_test)
+#set(client_openmp client_lib_multi_openmp_test)
 
-foreach(client ${client_openmp})
-   add_executable(${client} ${client}.cpp)
-   add_dependencies(${client} copyserverlist)
-   target_include_directories(${client} PRIVATE ../Client/include)
-   target_link_libraries(${client} ChronoLogClient_lib OpenMP::OpenMP_CXX)
-endforeach()   
+#foreach(client ${client_openmp})
+#   add_executable(${client} ${client}.cpp)
+#   add_dependencies(${client} copyserverlist)
+#   target_include_directories(${client} PRIVATE ../Client/include)
+#   target_link_libraries(${client} ChronoLogClient_lib OpenMP::OpenMP_CXX)
+#endforeach()   
 
 set(client_mpi client_lib_hybrid_argobots_test)
 
@@ -37,3 +37,16 @@ foreach(client ${client_mpi})
             ${CMAKE_CURRENT_BINARY_DIR}/default_conf.json COPYONLY)
 endforeach()
 
+#set(client_mpi client_lib_hybrid_argobots_test)
+
+#message(${MPI_CXX_INCLUDE_DIRS})
+#message(${MPI_CXX_LIBRARIES})
+
+#foreach(client ${client_mpi})
+#	add_executable(${client} ${client}.cpp)
+#	add_dependencies(${client} copyserverlist)
+#	target_include_directories(${client} PRIVATE ../Client/include ${MPI_CXX_INCLUDE_DIRS})
+#	target_link_libraries(${client} ChronoLogClient_lib ${MPI_CXX_LIBRARIES} -lpthread -lrt)
+#endforeach()
+
+#set(CMAKE_CXX_COMPILER "g++")
