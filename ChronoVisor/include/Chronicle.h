@@ -14,6 +14,7 @@
 #include <log.h>
 #include <errcode.h>
 #include <mutex>
+#include <enum.h>
 
 #define MAX_CHRONICLE_PROPERTY_LIST_SIZE 16
 #define MAX_CHRONICLE_METADATA_MAP_SIZE 16
@@ -43,7 +44,7 @@ typedef struct ChronicleAttrs_ {
     enum ChronicleIndexingGranularity indexing_granularity;
     enum ChronicleType type;
     enum ChronicleTieringPolicy tiering_policy;
-    uint16_t access_permission;
+    enum ChronoLogVisibility access_permission;
     std::string owner;
     std::string group;
 } ChronicleAttrs;
@@ -63,7 +64,7 @@ public:
         attrs_.indexing_granularity = chronicle_gran_ms;
         attrs_.type = chronicle_type_standard;
         attrs_.tiering_policy = chronicle_tiering_normal;
-        attrs_.access_permission = 0;
+        attrs_.access_permission = CHRONOLOG_PRIVATE;
         stats_.count = 0;
     }
 
@@ -133,7 +134,7 @@ public:
         if (storyRecord != storyMap_.end()) {
             Story *pStory = storyRecord->second;
             if (pStory->getAcquisitionCount() != 0) {
-                return CL_ERR_ACQUIRED;
+               return CL_ERR_ACQUIRED;
             }
             delete pStory;
             LOGD("removing from storyMap@%p with %lu entries in Chronicle@%p",
@@ -194,6 +195,22 @@ public:
     size_t getMetadataMapSize() { return metadataMap_.size(); }
     size_t getStoryMapSize() { return storyMap_.size(); }
     size_t getArchiveMapSize() { return archiveMap_.size(); }
+
+    int set_permissions(enum ChronoLogVisibility &v)
+    {
+	    attrs_.access_permission = v;
+	    return CL_SUCCESS;
+    }
+    enum ChronoLogVisibility & get_permissions()
+    {
+	  return attrs_.access_permission;
+    }
+    int add_owner_and_group(std::string &client_id, std::string &group_id)
+    {
+	attrs_.owner = client_id;
+	attrs_.group = group_id;
+        return CL_SUCCESS;	
+    }
 
 private:
     std::string name_;
