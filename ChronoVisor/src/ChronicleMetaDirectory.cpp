@@ -109,9 +109,6 @@ int ChronicleMetaDirectory::destroy_chronicle(const std::string& name,
     std::lock_guard<std::mutex> ChronicleMapLock(g_chronicleMetaDirectoryMutex_);
     std::lock_guard<std::mutex> AcquiredChronicleMapLock(g_acquiredChronicleMapMutex_);
 
-    std::string group_id;
-    int client_role;
-
     if (acquiredStoryMap_->find(cid) != acquiredStoryMap_->end())
     {
         return CL_ERR_ACQUIRED;
@@ -120,9 +117,9 @@ int ChronicleMetaDirectory::destroy_chronicle(const std::string& name,
     auto chronicleRecord = chronicleMap_->find(cid);
     if (chronicleRecord != chronicleMap_->end()) {
         Chronicle *pChronicle = chronicleRecord->second;
-        if (pChronicle->getAcquisitionCount() != 0) {
+        if (pChronicle->getAcquisitionCount() != 0)
             return CL_ERR_UNKNOWN;
-        }
+      
 	enum ChronoLogVisibility v = pChronicle->get_permissions();
 	bool b = pChronicle->can_delete_chronicle(client_id,group_id);
 	if(b)
@@ -133,13 +130,9 @@ int ChronicleMetaDirectory::destroy_chronicle(const std::string& name,
            std::chrono::duration<double, std::nano> duration = (t2 - t1);
            LOGD("time in %s: %lf ns", __FUNCTION__, duration.count());
            if (nErased == 1) 
-	   {
             return CL_SUCCESS;
-           } 
 	   else 
-	   {
             return CL_ERR_UNKNOWN;
-           }
 	}
 	else 
 	{
@@ -241,6 +234,31 @@ int ChronicleMetaDirectory::release_chronicle(const std::string& name,
     return ret;
 }
 
+int ChronicleMetaDirectory::update_chronicle_permissions(std::string &name,std::string &client_id,std::string &group_id,std::string &perm)
+{
+    LOGD("Updating Chronicle permissions name=%s",name.c_str()); 
+    uint64_t cid = CityHash64(name.c_str(), name.size());
+    Chronicle *pChronicle;
+    int ret;
+    std::lock_guard<std::mutex> ChronicleMapLock(g_chronicleMetaDirectoryMutex_);
+    std::lock_guard<std::mutex> AcquiredChronicleMapLock(g_acquiredChronicleMapMutex_);
+    auto chronicleRecord = chronicleMap_->find(cid);
+    auto range1 = acquiredChronicleClientMap_->equal_range(cid);
+    if (chronicleRecord != chronicleMap_->end() && range1.first==range1.second)
+    {
+       pChronicle = chronicleRecord->second;
+       bool b = pChronicle->can_edit_group_and_permissions(client_id,group_id);
+       if(b)
+       {
+	pChronicle->generate_permission(perm);
+	ret = CL_SUCCESS;
+       }
+       else ret = CL_ERR_UNKNOWN;
+    }
+    else ret = CL_ERR_NOT_EXIST;
+    return ret;
+
+}
 /**
  * Create a Story
  * @param chronicle_name: name of the Chronicle that the Story belongs to
@@ -325,10 +343,10 @@ int ChronicleMetaDirectory::destroy_story(std::string& chronicle_name,
           CL_Status res = pChronicle->removeStory(chronicle_name, story_name,client_id,group_id,flags);
           if (res != CL_SUCCESS) {
             LOGE("Fail to remove Story name=%s in Chronicle name=%s", story_name.c_str(), chronicle_name.c_str());
-        }
-        return res;
-       }
-    }
+           }
+	   return res;
+	}
+    }   
     return CL_ERR_NOT_EXIST;
 }
 
@@ -352,8 +370,7 @@ int ChronicleMetaDirectory::get_story_list(std::string& chronicle_name, std::vec
  *         CL_ERR_NOT_EXIST if the Chronicle does not exist
  *         CL_ERR_UNKNOWN otherwise
  */
-int ChronicleMetaDirectory::acquire_story(const std::string &client_id,
-                                          const std::string& chronicle_name,
+int ChronicleMetaDirectory::acquire_story(const std::string& chronicle_name,
                                           const std::string& story_name,
 					  std::string& client_id,
 					  std::string& group_id,
@@ -411,8 +428,7 @@ int ChronicleMetaDirectory::acquire_story(const std::string &client_id,
  *         CL_ERR_NOT_EXIST if the Chronicle does not exist
  *         CL_ERR_UNKNOWN otherwise
  */
-int ChronicleMetaDirectory::release_story(const std::string &client_id,
-                                          const std::string& chronicle_name,
+int ChronicleMetaDirectory::release_story(const std::string& chronicle_name,
                                           const std::string& story_name,
 					  std::string& client_id, std::string& group_id,
                                           int& flags) {
@@ -455,6 +471,40 @@ int ChronicleMetaDirectory::release_story(const std::string &client_id,
 
 }
 
+int ChronicleMetaDirectory::update_story_permissions(std::string &chronicle_name,std::string &story_name,std::string &client_id,std::string &group_id,std::string &perm)
+{
+    LOGD("Update Story permissions name=%s in Chronicle name=%s perm=%s", story_name.c_str(), chronicle_name.c_str(),perm.c_str());
+    std::string story_name_for_hash = chronicle_name + story_name;
+    uint64_t sid = CityHash64(story_name_for_hash.c_str(), story_name_for_hash.size());
+    uint64_t cid = CityHash64(chronicle_name.c_str(), chronicle_name.size());
+    std::lock_guard<std::mutex> ChronicleMapLock(g_chronicleMetaDirectoryMutex_);
+    std::lock_guard<std::mutex> AcquiredStoryMapLock(g_acquiredStoryMapMutex_);
+    int ret;
+    auto chronicleRecord = chronicleMap_->find(cid);
+    auto range2 = acquiredStoryClientMap_->equal_range(sid);
+    if(chronicleRecord != chronicleMap_->end() && range2.first==range2.second)
+    {
+	Chronicle *pChronicle = chronicleRecord->second;
+	auto storyRecord = pChronicle->getStoryMap().find(sid);
+	if(storyRecord != pChronicle->getStoryMap().end())
+	{
+		Story *pStory = storyRecord->second;
+		bool b1 = pChronicle->can_edit_group_and_permissions(client_id,group_id);
+		bool b2 = pStory->can_edit_group_and_permissions(client_id,group_id);
+	        if(b1 && b2)
+		{
+		     pStory->generate_permission(perm);
+		     ret = CL_SUCCESS;
+		}
+		else ret = CL_ERR_UNKNOWN;
+	}
+	else ret = CL_ERR_NOT_EXIST;
+
+    }
+    else ret = CL_ERR_NOT_EXIST;
+    return ret;
+
+}
 uint64_t ChronicleMetaDirectory::record_event(uint64_t sid, void *data) {
     LOGD("recording Event to Story sid=%lu", sid);
     return 0;
@@ -523,13 +573,15 @@ int ChronicleMetaDirectory::add_group_to_chronicle(std::string &chronicle_name, 
   LOGD("add group_id %s to chronicle%s", new_group_id.c_str(),chronicle_name.c_str());
     uint64_t cid = CityHash64(chronicle_name.c_str(), chronicle_name.size());
     int ret = CL_SUCCESS;
-    std::lock_guard<std::mutex> lock(g_chronicleMetaDirectoryMutex_);
     /* First check if Chronicle exists, fail if false */
+    std::lock_guard<std::mutex> ChronicleMapLock(g_chronicleMetaDirectoryMutex_);
+    std::lock_guard<std::mutex> AcquiredChronicleMapLock(g_acquiredChronicleMapMutex_);
     auto chronicleRecord = chronicleMap_->find(cid);
-    if (chronicleRecord != chronicleMap_->end())
+    auto range1 = acquiredChronicleClientMap_->equal_range(cid);
+    if (chronicleRecord != chronicleMap_->end() && range1.first == range1.second)
     {
         Chronicle *pChronicle = chronicleRecord->second;
-        bool b = pChronicle->can_edit_group(client_id,group_id);
+        bool b = pChronicle->can_edit_group_and_permissions(client_id,group_id);
 	if(b)
 	  ret = pChronicle->add_group(new_group_id);
 	else
@@ -545,13 +597,15 @@ int ChronicleMetaDirectory::remove_group_from_chronicle(std::string &chronicle_n
   LOGD("add group_id %s to chronicle%s", new_group_id.c_str(),chronicle_name.c_str());
     uint64_t cid = CityHash64(chronicle_name.c_str(), chronicle_name.size());
     int ret = CL_SUCCESS;
-    std::lock_guard<std::mutex> lock(g_chronicleMetaDirectoryMutex_);
+    std::lock_guard<std::mutex> ChronicleMapLock(g_chronicleMetaDirectoryMutex_);
+    std::lock_guard<std::mutex> AcquiredChronicleMapLock(g_acquiredChronicleMapMutex_);
     /* First check if Chronicle exists, fail if false */
     auto chronicleRecord = chronicleMap_->find(cid);
-    if (chronicleRecord != chronicleMap_->end())
+    auto range1 = acquiredChronicleClientMap_->equal_range(cid);
+    if (chronicleRecord != chronicleMap_->end() && range1.first == range1.second)
     {
         Chronicle *pChronicle = chronicleRecord->second;
-        bool b = pChronicle->can_edit_group(client_id,group_id);
+        bool b = pChronicle->can_edit_group_and_permissions(client_id,group_id);
         if(b)
           ret = pChronicle->remove_group(new_group_id);
         else
@@ -572,13 +626,15 @@ int ChronicleMetaDirectory::add_group_to_story(std::string &chronicle_name,std::
     uint64_t sid = CityHash64(story_name_for_hash.c_str(), story_name_for_hash.size());
    
      std::lock_guard<std::mutex> chronicleMapLock(g_chronicleMetaDirectoryMutex_); 
+     std::lock_guard<std::mutex> AcquiredStoryMapLock(g_acquiredStoryMapMutex_);
      int err;
      auto chronicleRecord = chronicleMap_->find(cid);
-     if(chronicleRecord != chronicleMap_->end())
+     auto range2 = acquiredStoryClientMap_->equal_range(sid);
+     if(chronicleRecord != chronicleMap_->end() && range2.first==range2.second)
      {
         Chronicle *pChronicle = chronicleRecord->second;
 
-         bool b1 = pChronicle->can_edit_group(client_id,group_id);
+         bool b1 = pChronicle->can_edit_group_and_permissions(client_id,group_id);
          err = CL_SUCCESS;
 
          if(b1)
@@ -587,7 +643,7 @@ int ChronicleMetaDirectory::add_group_to_story(std::string &chronicle_name,std::
              if (storyRecord != pChronicle->getStoryMap().end()) 
 	     {
 	        Story *story = storyRecord->second;
-                bool b2 = story->can_edit_group(client_id,group_id);	     
+                bool b2 = story->can_edit_group_and_permissions(client_id,group_id);	     
 	        if(b2)
 	        {
 		  err = story->add_group(new_group_id);
@@ -612,13 +668,15 @@ int ChronicleMetaDirectory::remove_group_from_story(std::string &chronicle_name,
     uint64_t sid = CityHash64(story_name_for_hash.c_str(), story_name_for_hash.size());
 
      std::lock_guard<std::mutex> chronicleMapLock(g_chronicleMetaDirectoryMutex_);
+     std::lock_guard<std::mutex> AcquiredStoryMapLock(g_acquiredStoryMapMutex_);
      int err;
      auto chronicleRecord = chronicleMap_->find(cid);
-     if(chronicleRecord != chronicleMap_->end())
+     auto range2 = acquiredStoryClientMap_->equal_range(sid);
+     if(chronicleRecord != chronicleMap_->end() && range2.first==range2.second)
      {
         Chronicle *pChronicle = chronicleRecord->second;
 
-         bool b1 = pChronicle->can_edit_group(client_id,group_id);
+         bool b1 = pChronicle->can_edit_group_and_permissions(client_id,group_id);
          err = CL_SUCCESS;
 
          if(b1)
@@ -627,7 +685,7 @@ int ChronicleMetaDirectory::remove_group_from_story(std::string &chronicle_name,
              if (storyRecord != pChronicle->getStoryMap().end())
              {
                 Story *story = storyRecord->second;
-                bool b2 = story->can_edit_group(client_id,group_id);
+                bool b2 = story->can_edit_group_and_permissions(client_id,group_id);
                 if(b2)
                 {
                   err = story->remove_group(new_group_id);

@@ -320,7 +320,7 @@ public:
         return CL_SUCCESS;
     }	
 
-    inline bool can_edit_group(std::string &client_id,std::string &group_id)
+    inline bool can_edit_group_and_permissions(std::string &client_id,std::string &group_id)
     {
 	if(std::find(attrs_.ownerlist.begin(),attrs_.ownerlist.end(),client_id) != attrs_.ownerlist.end() ||
 	   std::find(attrs_.grouplist.begin(),attrs_.grouplist.end(),group_id) != attrs_.grouplist.end())
