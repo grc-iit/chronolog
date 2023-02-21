@@ -119,7 +119,7 @@ int ChronicleMetaDirectory::destroy_chronicle(const std::string& name,
             return CL_ERR_UNKNOWN;
       
 	enum ChronoLogVisibility v = pChronicle->get_permissions();
-	bool b = pChronicle->can_delete_chronicle(client_id,group_id);
+	bool b = pChronicle->can_delete(client_id,group_id);
 	if(b)
         {	
            delete pChronicle;
@@ -166,7 +166,7 @@ int ChronicleMetaDirectory::acquire_chronicle(const std::string& name,
     {
         Chronicle *pChronicle = chronicleRecord->second;
 	enum ChronoLogOp op = (enum ChronoLogOp)flags;
-	bool b = pChronicle->can_acquire_chronicle(client_id,group_id,op);
+	bool b = pChronicle->can_acquire(client_id,group_id,op);
 	if(b)
 	{
 	  auto range = acquiredChronicleClientMap_->equal_range(cid);
@@ -305,7 +305,7 @@ int ChronicleMetaDirectory::create_story(std::string& chronicle_name,
         Chronicle *pChronicle = chronicleRecord->second;
         LOGD("Chronicle@%p", &(*pChronicle));
         /* Ask Chronicle to create the Story */
-	bool b = pChronicle->can_create_story(client_id,group_id);
+	bool b = pChronicle->can_create(client_id,group_id);
 	if(b)
 	{
           CL_Status res = pChronicle->addStory(chronicle_name, story_name,client_id,group_id,attrs);
@@ -358,7 +358,7 @@ int ChronicleMetaDirectory::destroy_story(std::string& chronicle_name,
     if (chronicleRecord != chronicleMap_->end()) 
     {
         Chronicle *pChronicle = chronicleRecord->second;
-	bool b = pChronicle->can_delete_story(client_id,group_id);
+	bool b = pChronicle->can_delete(client_id,group_id);
         /* Ask the Chronicle to destroy the Story */
 	if(b)
 	{
@@ -411,12 +411,12 @@ int ChronicleMetaDirectory::acquire_story(const std::string& chronicle_name,
     {
         Chronicle *pChronicle = chronicleRecord->second;
 	enum ChronoLogOp op = (enum ChronoLogOp) flags;
-	bool b1 = pChronicle->can_acquire_story(client_id,group_id,op);
+	bool b1 = pChronicle->can_acquire(client_id,group_id,op);
         auto storyRecord = pChronicle->getStoryMap().find(sid);
         if (storyRecord != pChronicle->getStoryMap().end()) 
 	{
             Story *pStory = storyRecord->second;
-	    bool b2 = pStory->can_acquire_story(client_id,group_id,op);
+	    bool b2 = pStory->can_acquire(client_id,group_id,op);
 
 	    if(b1 && b2)
 	    {
