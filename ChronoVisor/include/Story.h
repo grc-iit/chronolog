@@ -130,7 +130,7 @@ public:
 	  group.assign(attrs_.grouplist.begin(),attrs_.grouplist.end());
 	  return CL_SUCCESS;
     }
-    inline bool can_acquire_story(std::string &client_id,std::string &group_id,enum ChronoLogOp &op)
+    inline bool can_acquire(std::string &client_id,std::string &group_id,enum ChronoLogOp &op)
     {
         if(std::find(attrs_.ownerlist.begin(),attrs_.ownerlist.end(),client_id) != attrs_.ownerlist.end() ||
 	   std::find(attrs_.grouplist.begin(),attrs_.grouplist.end(),group_id) != attrs_.grouplist.end())
@@ -143,7 +143,7 @@ public:
 	}		
 	return false;
     }
-    inline bool can_delete_story(std::string &client_id,std::string &group_id)
+    inline bool can_delete(std::string &client_id,std::string &group_id)
     {
 	if(std::find(attrs_.ownerlist.begin(),attrs_.ownerlist.end(),client_id) != attrs_.ownerlist.end() ||
 	   std::find(attrs_.grouplist.begin(),attrs_.grouplist.end(),group_id) != attrs_.grouplist.end())

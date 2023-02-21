@@ -147,7 +147,7 @@ public:
                return CL_ERR_ACQUIRED;
             }
              
-	    bool b = pStory->can_delete_story(client_id,group_id);
+	    bool b = pStory->can_delete(client_id,group_id);
 	    if(b)
 	    { 
 	      delete pStory;
@@ -234,7 +234,7 @@ public:
 	else if(perm.compare("RO")==0) attrs_.access_permission = CHRONOLOG_RONLY;	
 	else attrs_.access_permission = CHRONOLOG_RONLY;
     }
-    inline bool can_create_story(std::string &client_id, std::string &group_id)
+    inline bool can_create(std::string &client_id, std::string &group_id)
     {
 	if(std::find(attrs_.ownerlist.begin(),attrs_.ownerlist.end(),client_id) != attrs_.ownerlist.end() ||
 	   std::find(attrs_.grouplist.begin(),attrs_.grouplist.end(),group_id) != attrs_.grouplist.end())
@@ -243,21 +243,7 @@ public:
 	}
 	return false;
     }
-    inline bool can_acquire_story(std::string &client_id,std::string &group_id,enum ChronoLogOp &op)
-    {
-	if(std::find(attrs_.ownerlist.begin(),attrs_.ownerlist.end(),client_id) != attrs_.ownerlist.end() ||
-	   std::find(attrs_.grouplist.begin(),attrs_.grouplist.end(),group_id) != attrs_.grouplist.end())
-	{
-	   if(op == CHRONOLOG_READ && (attrs_.access_permission == CHRONOLOG_RONLY || attrs_.access_permission == CHRONOLOG_RW ||
-	    attrs_.access_permission == CHRONOLOG_RWC || attrs_.access_permission == CHRONOLOG_RWD || attrs_.access_permission == CHRONOLOG_RWCD))
-		   return true;
-	   else if(op == CHRONOLOG_WRITE && (attrs_.access_permission == CHRONOLOG_RW || attrs_.access_permission == CHRONOLOG_RWC || attrs_.access_permission == CHRONOLOG_RWD || attrs_.access_permission == CHRONOLOG_RWCD))
-		   return true;
-	}
-	return false;
-
-    }
-    inline bool can_delete_story(std::string &client_id, std::string &group_id)
+    inline bool can_delete(std::string &client_id, std::string &group_id)
     {
 	 if(std::find(attrs_.ownerlist.begin(),attrs_.ownerlist.end(),client_id) != attrs_.ownerlist.end() ||
 	    std::find(attrs_.grouplist.begin(),attrs_.grouplist.end(),group_id) != attrs_.grouplist.end())
@@ -266,16 +252,7 @@ public:
 	 }
 	 return false;
     }
-    inline bool can_delete_chronicle(std::string &client_id, std::string &group_id)
-    {
-	if(std::find(attrs_.ownerlist.begin(),attrs_.ownerlist.end(),client_id) != attrs_.ownerlist.end() ||
-	   std::find(attrs_.grouplist.begin(),attrs_.grouplist.end(),group_id) != attrs_.grouplist.end())
-	{
-           if(attrs_.access_permission == CHRONOLOG_RWCD || attrs_.access_permission == CHRONOLOG_RWD) return true;	
-	}
-	return false;
-    }
-    inline bool can_acquire_chronicle(std::string &client_id, std::string &group_id,enum ChronoLogOp &op)
+    inline bool can_acquire(std::string &client_id, std::string &group_id,enum ChronoLogOp &op)
     {
         if(std::find(attrs_.ownerlist.begin(),attrs_.ownerlist.end(),client_id) != attrs_.ownerlist.end() ||
 	   std::find(attrs_.grouplist.begin(),attrs_.grouplist.end(),group_id) != attrs_.grouplist.end())
