@@ -659,7 +659,15 @@ int ChronicleMetaDirectory::remove_group_from_chronicle(std::string &chronicle_n
         Chronicle *pChronicle = chronicleRecord->second;
         bool b = pChronicle->can_edit_group_and_permissions(client_id,group_id);
         if(b)
+	{
           ret = pChronicle->remove_group(new_group_id);
+	  auto smap = pChronicle->getStoryMap();
+	  for(auto r = smap.begin(); r != smap.end(); ++r)
+	  {
+	      Story *pStory = (*r).second;
+	      bool b1 = pStory->remove_group(new_group_id);
+	  }
+	}
         else
             ret = CL_ERR_UNKNOWN;
     }
@@ -698,6 +706,7 @@ int ChronicleMetaDirectory::add_group_to_story(std::string &chronicle_name,std::
                 bool b2 = story->can_edit_group_and_permissions(client_id,group_id);	     
 	        if(b2)
 	        {
+		  err = pChronicle->add_group(new_group_id);
 		  err = story->add_group(new_group_id);
 	        }
                 else err = CL_ERR_UNKNOWN;	     
