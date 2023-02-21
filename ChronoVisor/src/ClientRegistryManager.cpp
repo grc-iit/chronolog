@@ -47,6 +47,7 @@ int ClientRegistryManager::remove_client_record(const std::string &client_id, in
 
 int ClientRegistryManager::update_client_role(std::string &client_id,uint32_t &role)
 {
+    LOGD("%s in ClientRegistryManager@%p",__FUNCTION__,this);
     std::lock_guard<std::mutex> lock(g_clientRegistryMutex_);
     auto iter = clientRegistry_->find(client_id);
     int ret = CL_ERR_NOT_EXIST;
@@ -60,6 +61,7 @@ int ClientRegistryManager::update_client_role(std::string &client_id,uint32_t &r
 
 int ClientRegistryManager::get_client_group_and_role(const std::string &client_id,std::string &group_id,uint32_t &role)
 {
+      LOGD("%s in ClientRegistryManager@%p",__FUNCTION__,this);
       std::lock_guard<std::mutex> lock(g_clientRegistryMutex_);
       auto it = clientRegistry_->find(client_id);
       int ret = CL_ERR_NOT_EXIST;

@@ -51,7 +51,10 @@ int ChronoLogClient::AcquireChronicle(std::string &name, int &flags) {
 int ChronoLogClient::ReleaseChronicle(std::string &name, int &flags) {
     return rpcProxy_->ReleaseChronicle(name, client_id_, flags);
 }
-
+int ChronoLogClient::UpdateChroniclePermissions(std::string &name,std::string &perm)
+{
+    return rpcProxy_->UpdateChroniclePermissions(name,client_id_,perm);
+}
 int ChronoLogClient::CreateStory(std::string &chronicle_name,
                                  std::string &story_name,
                                  const std::unordered_map<std::string, std::string> &attrs,
@@ -70,7 +73,10 @@ int ChronoLogClient::AcquireStory(std::string &chronicle_name, std::string &stor
 int ChronoLogClient::ReleaseStory(std::string &chronicle_name, std::string &story_name, int &flags) {
     return rpcProxy_->ReleaseStory(chronicle_name, story_name, client_id_, flags);
 }
-
+int ChronoLogClient::UpdateStoryPermissions(std::string &chronicle_name,std::string &story_name,std::string &perm)
+{
+    return rpcProxy_->UpdateStoryPermissions(chronicle_name,story_name,client_id_,perm);
+}
 int ChronoLogClient::GetChronicleAttr(std::string &chronicle_name, const std::string &key, std::string &value) {
     return rpcProxy_->GetChronicleAttr(chronicle_name, key, client_id_, value);
 }
@@ -118,7 +124,7 @@ std::string& ChronoLogClient::GetClientId()
 }
 int ChronoLogClient::CheckClientRole(uint32_t &r)
 {
-   int ret = CL_ERR_NOT_EXIST;
+   int ret = CL_ERR_UNKNOWN;
    uint32_t user, group,cluster;
    uint32_t mask = 7;
    user = r & mask;

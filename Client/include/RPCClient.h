@@ -67,7 +67,11 @@ public:
         LOGD("%s is called in PID=%d, with args: name=%s, flags=%d", __FUNCTION__, getpid(), name.c_str(), flags);
         return CHRONOLOG_RPC_CALL_WRAPPER("ReleaseChronicle", 0, int, name, client_id, flags);
     }
-
+    int UpdateChroniclePermissions(std::string &name,std::string &client_id,std::string &perm)
+    {
+        LOGD("%s is called in PID=%d,with args: name=%s,perm=%s",__FUNCTION__,getpid(),name.c_str(),perm.c_str());
+	return CHRONOLOG_RPC_CALL_WRAPPER("UpdateChroniclePermissions",0,int,name,client_id,perm);
+    }
     int CreateStory(std::string &chronicle_name,
                     std::string &story_name,
 		    std::string &client_id,
@@ -98,7 +102,11 @@ public:
              __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
         return CHRONOLOG_RPC_CALL_WRAPPER("ReleaseStory", 0, int, chronicle_name, story_name, client_id, flags);
     }
-
+    int UpdateStoryPermissions(std::string &chronicle_name,std::string &story_name,std::string &client_id,std::string &perm)
+    {
+	LOGD("%s is called in PID=%d with args: chronicle_name=%s story_name=%s perm=%s",__FUNCTION__,getpid(),chronicle_name.c_str(),story_name.c_str(),perm.c_str());
+	return CHRONOLOG_RPC_CALL_WRAPPER("UpdateStoryPermission",0,int,chronicle_name,story_name,client_id,perm);
+    }
     int GetChronicleAttr(std::string &name, const std::string &key, std::string &client_id, std::string &value) {
         LOGD("%s is called in PID=%d, with args: name=%s, key=%s", __FUNCTION__, getpid(), name.c_str(), key.c_str());
         return CHRONOLOG_RPC_CALL_WRAPPER("GetChronicleAttr", 0, int, name, key, client_id, value);
