@@ -1,7 +1,7 @@
 #ifndef KEEPER_STATS_MSG_H
 #define KEEPER_STATS_MSG_H
 
-#include<ostream>
+#include <iostream>
 #include "KeeperIdCard.h"
 
 
@@ -42,10 +42,10 @@ public:
 
 }
 
-std::ostream & operator << (std::ostream & cout, chronolog::KeeperStatsMsg const& stats_msg)
+std::ostream & operator << (std::ostream & out,chronolog::KeeperStatsMsg const& stats_msg)
 {
-  cout<<"KeeperStatsMsg{"<<stats_msg.getKeeperIdCard()<<"}";
-  return cout;
+  out<<"KeeperStatsMsg{"<<stats_msg.getKeeperIdCard()<<"}";
+  return out;
 }
 
 #endif

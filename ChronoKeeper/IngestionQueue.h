@@ -23,7 +23,7 @@ class StoryIngestionHandle
 {
 
 public:
-	StoryIngestionHandle( ChronoMutex & a_mutex, EventDeque & event_deque)
+	StoryIngestionHandle( std::mutex & a_mutex, EventDeque & event_deque)
        		: handleMutex(a_mutex)
 	  	, activeDeque(&event_deque)
 			{}

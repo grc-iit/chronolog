@@ -6,7 +6,6 @@
 #include <thallium/serialization/stl/string.hpp>
 #include <thallium.hpp>
 
-#include "KeeperIdCard.h"
 
 namespace tl = thallium;
 
@@ -27,18 +26,19 @@ public:
       		return new DataCollectionClient( tl_engine, collection_service_addr, collection_provider_id);
         }
 
-
-    bool remote_service_available()
+   
+    int remote_service_available()
     {
-	bool available = service_available.on(service_handle)();
-	std::cout <<"CollectionClient: service_available:"<<(available?"true":"false")<<std::endl;    
+	int available = 1; //INNA: enable on the server first ..service_available.on(service_handle)();
+	std::cout <<"CollectionClient: service_available:"<<(available)<<std::endl;    
 	return available;
     }
 
-    int remote_service_shutdown()
+    int shutdown_collection_service()
     {
-	bool shutting_down = shutdown_service.on(service_handle)();
-	std::cout <<"CollectionClient: service_shutdown:"<<(shutting_down?"true":"false")<<std::endl;    
+
+	int shutting_down = 1; // INNA : enable when inmplemented on the server shutdown_service.on(service_handle)();
+	std::cout <<"CollectionClient: service_shutdown:"<<(shutting_down)<<std::endl;    
 	return shutting_down;
     }
 

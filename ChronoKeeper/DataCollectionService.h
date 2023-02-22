@@ -62,12 +62,13 @@ private:
     	: tl::provider<DataCollectionService>(tl_engine, service_provider_id)
 	, theDataStore(data_store_instance)  
     {
-//        define("service_available", &DataCollectionService::serviceAvailable);
- //       define("shutdown_service", &DataCollectionService::shutdown_service);
+        //define("service_available", &DataCollectionService::serviceAvailable);
+       //define("shutdown_service", &DataCollectionService::shutdown_service);
         define("start_story_recording", &DataCollectionService::StartStoryRecording);
         define("stop_story_recording", &DataCollectionService::StopStoryRecording);
 	//set up callback for the case when the engine is being finalized while this provider is still alive
 	get_engine().push_finalize_callback(this, [p=this](){delete p;} );
+	std::cout<<"DataCollectionService::constructed at "<< get_engine().self()<<" provider_id {"<<service_provider_id<<"}"<<std::endl;
     }
 
     DataCollectionService( DataCollectionService const&) = delete;

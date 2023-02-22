@@ -1,9 +1,9 @@
-#ifndef CHRONOLOG_KEEPER_ID_CARD_H
-#define CHRONOLOG_KEEPER_ID_CARD_H
+#ifndef _KEEPER_ID_CARD_H
+#define _KEEPER_ID_CARD_H
 
 #include <arpa/inet.h>
 
-#include <ostream>
+#include <iostream>
 
 // this class wrapps ChronoKeeper Process identification 
 // that will be used by all the ChronoLog Processes 
@@ -18,7 +18,7 @@ namespace chronolog
 
 typedef uint32_t        in_addr_t;
 typedef uint16_t        in_port_t;
-typedef std::pair <in_addr_t, in_port_t> KeeperProcessId;
+typedef std::pair <in_addr_t, in_port_t> service_endpoint;
 
 // KeeperGroup is the logical grouping of KeeperProcesses
 typedef uint64_t    KeeperGroupId;
@@ -78,17 +78,13 @@ std::string & getIPasDottedString ( std::string & a_string ) const
 
 } //namespace chronolog
 
-
-
-
-
-std::ostream & operator<< (std::ostream & cout , chronolog::KeeperIdCard const & keeper_id_card)
+std::ostream & operator<< (std::ostream & out , chronolog::KeeperIdCard const & keeper_id_card)
 {
    std::string a_string;
-   cout << "KeeperIdCard{"<<keeper_id_card.getGroupId()
+   out << "KeeperIdCard{"<<keeper_id_card.getGroupId()
 	   <<":"<<keeper_id_card.getIPasDottedString(a_string)<<":"<<keeper_id_card.getPort()
 	   <<":"<<keeper_id_card.getProviderId()<<"}";
-   return cout;
+   return out;
 }
 
 

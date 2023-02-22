@@ -5,103 +5,109 @@
 #include <vector>
 #include <map>
 #include <chrono>
+#include <thallium.hpp>
 
+#include "chronolog_types.h"
 #include "KeeperIdCard.h"
 #include "KeeperStatsMsg.h"
-
+#include "KeeperRegistrationMsg.h"
+//#include "KeeperRegistryService.h"
 
 namespace chronolog
 {
 
-typedef uint64_t StoryId;
+struct RegistryConfiguration
+{
+	std::string REGISTRY_SERVICE_PROTOCOL;
+	std::string REGISTRY_SERVICE_IP;
+	std::string    REGISTRY_SERVICE_PORT;
+	uint16_t    REGISTRY_SERVICE_PROVIDER_ID;
+	uint16_t    SERVICE_THREAD_COUNT;
+};
+
+class DataCollectionClient;
+class KeeperRegistryService;
 
 class KeeperRegistry
 {
-public:
 
 struct KeeperProcessEntry
 {
-	KeeperProcessEntry(KeeperIdCard const& keeper_id_card)
+public:
+	KeeperProcessEntry(KeeperIdCard const& keeper_id_card, ServiceId const& admin_service_id)
 		: idCard(keeper_id_card)
+		, adminServiceId(admin_service_id)
+		, keeperCollectionClient(nullptr)  
 		, lastStatsTime(0)
 		, activeStoryCount(0)
-	{}
 
-	KeeperIdCard idCard;
+	{}
+	
+	KeeperProcessEntry(KeeperProcessEntry const& other)  = default;
+
+	~KeeperProcessEntry() = default;   // Registry is reponsible for creating & deleting keeperCollectionClient
+
+	KeeperIdCard 	idCard;
+	ServiceId 	adminServiceId;
+	DataCollectionClient * keeperCollectionClient;
 	uint64_t	lastStatsTime;
 	uint32_t	activeStoryCount;
 };
 
-	KeeperRegistry(){}
-	~KeeperRegistry()=default;
+enum RegistryState
+{
+	UNKNOWN = 0,
+	INITIALIZED =1, // RegistryService is initialized, no active keepers 
+	RUNNING	=2,	// RegistryService and active Keepers
+	SHUTTING_DOWN=3	// Shutting down services
+};
 
-	int registerKeeperProcess( KeeperStatsMsg const& keeperStatsMsg)
-	{
-	   KeeperIdCard keeper_id_card = keeperStatsMsg.getKeeperIdCard();
+public:
+	KeeperRegistry( thallium::engine & the_engine)
+	   : registryState(UNKNOWN)
+	   , registryEngine(the_engine)
+	   , keeperRegistryService(nullptr)
+	{}
 
-	   std::lock_guard<std::mutex> lock_guard(registryLock);
-	   auto insert_return = keeperProcessRegistry.insert( std::pair<std::pair<uint32_t,uint16_t>,KeeperProcessEntry>
-		( std::pair<uint32_t,uint16_t>(keeper_id_card.getIPaddr(),keeper_id_card.getPort()),
-			   KeeperProcessEntry(keeper_id_card) )
-		);
-	   if( false == insert_return.second)
-	   { //log msg here , insert_return.first is the position to the current keeper entry the same KeeperIdCard...
-		   return 0;
-	   }
+	~KeeperRegistry();
 
-	   KeeperProcessEntry keeper_process = (*(insert_return.first)).second;
-	   //keeper_process.lastStatsTime = std::chrono::steady_clock::now();
-	   keeper_process.activeStoryCount = keeperStatsMsg.getActiveStoryCount();
-	   return 1;
-	}
+	bool is_initialized() const 
+	{ return (INITIALIZED == registryState); }
 
-	int unregisterKeeperProcess( KeeperIdCard const & keeper_id_card) 
-       {
+	bool is_running() const 
+	{ return (RUNNING == registryState); }
 
-	   std::lock_guard<std::mutex> lock_guard(registryLock);
-	   keeperProcessRegistry.erase(std::pair<uint32_t,uint16_t>(keeper_id_card.getIPaddr(),keeper_id_card.getPort()));
-	   return 1;
-	}
+	bool is_shutting_down() const 
+	{ return (SHUTTING_DOWN == registryState); }
 
-        void updateKeeperProcessStats(KeeperStatsMsg const & keeperStatsMsg) 
-	{
-	   KeeperIdCard keeper_id_card = keeperStatsMsg.getKeeperIdCard();
+	int InitializeRegistryService(uint16_t service_provider_id);
 
-	   std::lock_guard<std::mutex> lock_guard(registryLock);
-	   auto keeper_process_iter = keeperProcessRegistry.find(std::pair<uint32_t,uint16_t>(keeper_id_card.getIPaddr(),keeper_id_card.getPort()));
-	   if(keeper_process_iter == keeperProcessRegistry.end())
-	   {    // however unlikely it is that the stats msg would be delivered for the keeper that's already unregistered
-		// we should probably log a warning here...
-		return;
-	   }
-   	   KeeperProcessEntry keeper_process = (*keeper_process_iter).second;
-	  // keeper_process.lastStatsTime = std::chrono::steady_clock::now();
-	   keeper_process.activeStoryCount = keeperStatsMsg.getActiveStoryCount();
+	int ShutdownRegistryService();
 
-	}
+	int registerKeeperProcess( KeeperRegistrationMsg const& keeper_reg_msg);
 
-	std::vector<KeeperIdCard> & getActiveKeepers( std::vector<KeeperIdCard> & keeper_id_cards) 
-	{  //the process of keeper selection will probably get more nuanced; 
-	   //for now just return all the keepers registered
+	int unregisterKeeperProcess( KeeperIdCard const & keeper_id_card);
 
-	   keeper_id_cards.clear();
-	   std::lock_guard<std::mutex> lock_guard(registryLock);
-	   for (auto keeperProcess : keeperProcessRegistry )
-		   keeper_id_cards.push_back(keeperProcess.second.idCard);
+        void updateKeeperProcessStats(KeeperStatsMsg const & keeperStatsMsg); 
 
-	   return keeper_id_cards;
-	}
+	std::vector<KeeperIdCard> & getActiveKeepers( std::vector<KeeperIdCard> & keeper_id_cards);
 
-	int notifyKeepersOfStoryAcquisition(StoryId const&);
-	int notifyKeepersOfStoryRelease(StoryId const&);
+	int notifyKeepersOfStoryRecordingStart( std::vector<KeeperIdCard> const&,
+			ChronicleName const&, StoryName const&, StoryId const&);
+
+	int notifyKeepersOfStoryRecordingStop(std::vector<KeeperIdCard> const&, StoryId const&);
+
 
 private:
 
 	KeeperRegistry(KeeperRegistry const&) = delete; //disable copying
 	KeeperRegistry & operator= (KeeperRegistry const&) = delete;
-
+	
+	RegistryState	registryState;
 	std::mutex registryLock;
 	std::map<std::pair<uint32_t,uint16_t>, KeeperProcessEntry> keeperProcessRegistry;
+	thallium::engine & registryEngine;
+        KeeperRegistryService	* keeperRegistryService;
 };
 
 }

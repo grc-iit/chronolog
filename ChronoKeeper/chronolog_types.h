@@ -10,17 +10,9 @@ typedef uint64_t StorytellerId;
 typedef uint64_t ClientId;
 typedef std::string StoryName;
 typedef std::string ChronicleName;
-//typedef std::pair<uint64_t, uint64_t> ChronoTick; //INNA : use a pair throughout
 typedef uint64_t ChronoTick;
+//typedef std::pair<uint64_t, uint64_t> ChronoTick; //INNA : use a pair throughout
 
-// keeer process and group identifiers
-typedef uint32_t        in_addr_t;
-typedef uint16_t        in_port_t;
-typedef std::pair <in_addr_t, in_port_t> KeeperProcessId;
-typedef uint64_t    KeeperGroupId;
-
-// threading and locking types 
-typedef std::mutex ChronoMutex;	
 
 struct LogEvent
 {
@@ -33,19 +25,6 @@ struct LogEvent
         uint64_t timestamp;
         std::string logRecord;
 };
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 }

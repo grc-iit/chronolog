@@ -26,6 +26,31 @@
 #define KEEPER_COLLECTION_SERVICE_PORT  "7777"
 #define KEEPER_COLLECTION_SERVICE_PROVIDER_ID	27
 
+    // we will be using a combination of the uint32_t representation of the service IP address 
+    // and uint16_t representation of the port number
+int service_endpoint_from_dotted_string(std::string const & ip_string, int port, std::pair<uint32_t,uint16_t> & endpoint)
+{	
+    // we will be using a combination of the uint32_t representation of the service IP address 
+    // and uint16_t representation of the port number 
+    // NOTE: both IP and port values in the KeeperCard are in the host byte order, not the network order)
+    // to identfy the ChronoKeeper process
+
+   struct sockaddr_in sa;
+   // translate the recording service dotted IP string into 32bit network byte order representation
+   int inet_pton_return = inet_pton(AF_INET, ip_string.c_str(), &sa.sin_addr.s_addr); //returns 1 on success
+    if(1 != inet_pton_return)
+    { std::cout<< "invalid ip address"<<std::endl;
+	    return (-1);
+    }
+
+    // translate 32bit ip from network into the host byte order
+    uint32_t ntoh_ip_addr = ntohl(sa.sin_addr.s_addr); 
+    uint16_t ntoh_port = port;
+    endpoint = std::pair<uint32_t,uint16_t>(ntoh_ip_addr, ntoh_port);
+
+return 1;
+}	
+
 int main(int argc, char** argv) {
 
   int exit_code = 0;
@@ -109,12 +134,24 @@ int main(int argc, char** argv) {
     chronolog::KeeperIdCard keeperIdCard( keeper_group_id,ntoh_ip_addr, ntoh_port, recording_provider_id);
     std::cout << keeperIdCard<<std::endl;
 
+    chronolog::service_endpoint collection_endpoint;
+    int collection_service_port = atoi(KEEPER_COLLECTION_SERVICE_PORT);
+    uint16_t collection_service_provider_id = KEEPER_COLLECTION_SERVICE_PROVIDER_ID;
+
+    if( -1 == service_endpoint_from_dotted_string(std::string(KEEPER_COLLECTION_SERVICE_IP), collection_service_port, collection_endpoint) )
+    {
+    	    std::cout<<"invalid collection service address"<<std::endl;
+	    return (-1);
+    }	  
+
+    chronolog::ServiceId collectionServiceId(collection_endpoint.first,collection_endpoint.second, collection_service_provider_id);
+
     // create KeeperRegistryClient and register the new KeeperRecording service with the KeeperRegistry 
     chronolog::KeeperRegistryClient * keeperRegistryClient = chronolog::KeeperRegistryClient::CreateKeeperRegistryClient(
 		     recordingEngine, KEEPER_REGISTRY_SERVICE_NA_STRING, KEEPER_REGISTRY_SERVICE_PROVIDER_ID);
 
     chronolog::KeeperStatsMsg keeperStatsMsg(keeperIdCard);
-    keeperRegistryClient->send_register_msg(keeperStatsMsg);
+    keeperRegistryClient->send_register_msg(chronolog::KeeperRegistrationMsg(keeperIdCard,collectionServiceId));
 
 
     // now we are ready to ingest records coming from the storyteller clients ....
@@ -123,18 +160,21 @@ int main(int argc, char** argv) {
     // INNA: TODO: add a graceful shutdown mechanism with finalized callbacks and all
     //
 
-    while( !theDataStore.is_shutting_down())
+    int i{0};
+
+    while( !theDataStore.is_shutting_down() & (i <20))
     {
 	sleep(60);
         keeperRegistryClient->send_stats_msg(keeperStatsMsg);
+	i++;
     }
 
     keeperRegistryClient->send_unregister_msg(keeperIdCard);
     collectionEngine.wait_for_finalize();
     recordingEngine.wait_for_finalize();
-   // delete keeperRegistryClient;
-   // delete keeperRecordingService;
-   // delete keeperCollectionService;
+    delete keeperRegistryClient;
+    delete keeperRecordingService;
+    delete keeperCollectionService;
 
 
 return exit_code;

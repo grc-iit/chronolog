@@ -7,6 +7,7 @@
 #include <thallium/serialization/stl/string.hpp>
 
 #include "KeeperIdCard.h"
+#include "KeeperRegistrationMsg.h"
 #include "KeeperStatsMsg.h"
 
 #include "KeeperRegistry.h"
@@ -22,15 +23,16 @@ class KeeperRegistryService : public tl::provider<KeeperRegistryService>
 {
 
 private:
+    KeeperRegistry &  theKeeperProcessRegistry;
     
-    void register_keeper(tl::request const& request, chronolog::KeeperStatsMsg const& keeperStatsMsg)
+    void register_keeper(tl::request const& request, chronolog::KeeperRegistrationMsg const& keeperMsg)
     {
 	
 	int return_code = 0;
 
-        std::cout << "register_keeper:"<< keeperStatsMsg <<std::endl;
+        std::cout << "register_keeper:"<< keeperMsg <<std::endl;
 
-	return_code = theKeeperProcessRegistry.registerKeeperProcess(keeperStatsMsg);
+	return_code = theKeeperProcessRegistry.registerKeeperProcess(keeperMsg);
 
 	request.respond(return_code);
     }
@@ -51,8 +53,6 @@ private:
         std::cout << "handle_keeper_stats " << keeper_stats_msg<< std::endl;
 	theKeeperProcessRegistry.updateKeeperProcessStats(keeper_stats_msg);
     }
-
-    KeeperRegistry &  theKeeperProcessRegistry;
 
 
     KeeperRegistryService(tl::engine& tl_engine, uint16_t service_provider_id
