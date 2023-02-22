@@ -27,17 +27,17 @@ public:
         }
 
    
-    int remote_service_available()
+    int collection_is_available()
     {
-	int available = 1; //INNA: enable on the server first ..service_available.on(service_handle)();
+	int available = collection_service_available.on(service_handle)();
 	std::cout <<"CollectionClient: service_available:"<<(available)<<std::endl;    
 	return available;
     }
 
-    int shutdown_collection_service()
+    int shutdown_collection()
     {
 
-	int shutting_down = 1; // INNA : enable when inmplemented on the server shutdown_service.on(service_handle)();
+	int shutting_down = shutdown_data_collection.on(service_handle)();
 	std::cout <<"CollectionClient: service_shutdown:"<<(shutting_down)<<std::endl;    
 	return shutting_down;
     }
@@ -55,8 +55,8 @@ public:
 
     ~DataCollectionClient()
     {
-	   service_available.deregister(); 
-           shutdown_service.deregister(); 
+	   collection_service_available.deregister(); 
+           shutdown_data_collection.deregister(); 
 	   start_story_recording.deregister();
 	   stop_story_recording.deregister();
     }
@@ -67,8 +67,8 @@ public:
     std::string service_addr;     // na address of Keeper Collection Service 
     uint16_t 	service_provider_id;          // Keeper CollectionService provider id
     tl::provider_handle  service_handle;  //provider_handle for remote collector service
-    tl::remote_procedure service_available;
-    tl::remote_procedure shutdown_service;
+    tl::remote_procedure collection_service_available;
+    tl::remote_procedure shutdown_data_collection;
     tl::remote_procedure start_story_recording;
     tl::remote_procedure stop_story_recording;
 
@@ -77,8 +77,8 @@ public:
 	    : service_addr(collection_service_addr), service_provider_id(collection_provider_id)
 	    , service_handle(tl_engine.lookup( collection_service_addr),collection_provider_id)
 	{
-   	 service_available = tl_engine.define("service_available");
-   	 shutdown_service = tl_engine.define("shutdown_service");
+   	 collection_service_available = tl_engine.define("collection_service_available");
+   	 shutdown_data_collection = tl_engine.define("shutdown_data_collection");
    	 start_story_recording =tl_engine.define("start_story_recording"); 
    	 stop_story_recording =tl_engine.define("stop_story_recording");
        

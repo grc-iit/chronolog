@@ -45,6 +45,13 @@ public:
 	
 	KeeperProcessEntry(KeeperProcessEntry const& other)  = default;
 
+	void reset()
+	{
+	    keeperCollectionClient=nullptr;  
+	    lastStatsTime=0;
+	    activeStoryCount=0;
+	}
+
 	~KeeperProcessEntry() = default;   // Registry is reponsible for creating & deleting keeperCollectionClient
 
 	KeeperIdCard 	idCard;

@@ -91,7 +91,7 @@ int main(int argc, char** argv) {
 						   +":"+std::string(KEEPER_COLLECTION_SERVICE_PORT);
     uint16_t collection_provider_id = KEEPER_COLLECTION_SERVICE_PROVIDER_ID;
 
-    margo_instance_id collection_margo_id=margo_init( KEEPER_COLLECTION_SERVICE_NA_STRING.c_str(),MARGO_SERVER_MODE, 1, 0);
+    margo_instance_id collection_margo_id=margo_init( KEEPER_COLLECTION_SERVICE_NA_STRING.c_str(),MARGO_SERVER_MODE, 1, 2);
 
     if(MARGO_INSTANCE_NULL == collection_margo_id)
     {

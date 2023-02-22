@@ -32,13 +32,6 @@ typedef std::string ChronicleName;
 //
 //
 //
-enum Storyttate
-{
-	UNKNOWN = 0,
-	UNFOLDING =1, // being written to
-	PAUSED	=2,   // has been released 
-	ARCHIVED =3
-};
 
 // StorycChunk contains all the events for the single story
 // for the duration [startTime, endTime[
@@ -103,6 +96,10 @@ std::map<uint64_t, StoryChunk > storyTimeline;
 class KeeperDataStore
 {
 public:
+      KeeperDataStore()
+      {}
+
+      ~KeeperDataStore();
 
 bool is_shutting_down() const
 {
@@ -112,7 +109,7 @@ bool is_shutting_down() const
 int startStoryRecording(ChronicleName const&, StoryName const&, StoryId const&, uint32_t timeGranularity=30 ); //INNA: 30 seconds?
 int stopStoryRecording(StoryId const&);
 
-void shutdown();
+void shutdownDataCollection();
 
 private:
 std::unordered_map<StoryId, StoryPipeline> StoryPipelines;

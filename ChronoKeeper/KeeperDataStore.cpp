@@ -6,50 +6,34 @@
 
 ////////////////////////
 
-chronolog::StoryPipeline::StoryPipeline( chronolog::StoryId const& story_id, std::mutex & ingestion_mutex, std::mutex & sequencing_mutex)
-	: storyId(story_id)
-	, ingestionMutex(ingestion_mutex)
-	, sequencingMutex(sequencing_mutex)  
-
+int chronolog::KeeperDataStore::startStoryRecording(std::string const& chronicle, std::string const& story, chronolog::StoryId const& story_id
+		           , uint32_t time_chunk_duration)
 {
-
-}
-///////////////////////
-
-chronolog::StoryPipeline::~StoryPipeline()
-{  }
-
-/////////////////////
-
-int chronolog::StoryPipeline::mergeEvents(std::vector<chronolog::LogEvent> const&)
-{
-  int status =0;
-
-return status;
-}
-////////////////////
-
-int chronolog::StoryPipeline::mergeEvents(chronolog::StoryChunk const&)
-{
-
-  int status =0;
-
-
-
-
-
-
-
- return status;
-}
-////////////////////
-int chronolog::KeeperDataStore::startStoryRecording(std::string const&, std::string const& , chronolog::StoryId const& story_id, uint32_t)
-{
-
+      std::cout<<"KeeperDataStore: received startStoryRecording {"<< chronicle<<", "<<story<<", "<<story_id<< "}"<<std::endl;
 	return 1;
 }
+////////////////////////
+
 int chronolog::KeeperDataStore::stopStoryRecording(chronolog::StoryId const& story_id)
 {
+      std::cout<<"KeeperDataStore: received stopStoryRecording {"<<story_id<<"}"<< std::endl;
 
 	return 1;
+}
+////////////////////////
+
+void chronolog::KeeperDataStore::shutdownDataCollection()
+{
+      std::cout<<"KeeperDataStore: shutdownDataCollection" << std::endl;
+ // switch the state to shuttingDown
+}
+
+///////////////////////
+
+ // stop Recording Service
+ // finalize & persist all  active stories
+ //
+chronolog::KeeperDataStore::~KeeperDataStore()
+{
+
 }

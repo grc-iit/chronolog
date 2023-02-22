@@ -14,6 +14,9 @@
 #define KEEPER_REGISTRY_SERVICE_PROVIDER_ID	25
 
 /////////////////////////
+
+namespace thallium = tl;
+
 namespace chronolog
 {
 
@@ -54,7 +57,7 @@ int KeeperRegistry::ShutdownRegistryService()
 	   if ( process.second.keeperCollectionClient != nullptr)
 	   {  
 	      std::cout<<"KeeperRegistry: sending shutdown to keeper {"<<process.second.idCard<<"}"<<std::endl;
-	      process.second.keeperCollectionClient->shutdown_collection_service();
+	      process.second.keeperCollectionClient->shutdown_collection();
               delete process.second.keeperCollectionClient;
            }
 	}
@@ -77,38 +80,55 @@ KeeperRegistry::~KeeperRegistry()
 
 int KeeperRegistry::registerKeeperProcess( KeeperRegistrationMsg const& keeper_reg_msg)
 {
-	   KeeperIdCard keeper_id_card = keeper_reg_msg.getKeeperIdCard();
-	   ServiceId admin_service_id = keeper_reg_msg.getAdminServiceId();
-
-	   std::lock_guard<std::mutex> lock(registryLock);
 	   if(is_shutting_down())
 	   { return 0;}
+
+	   std::lock_guard<std::mutex> lock(registryLock);
+	   //re-check state after ther lock is aquired
+	   if(is_shutting_down())
+	   { return 0;}
+
+	   KeeperIdCard keeper_id_card = keeper_reg_msg.getKeeperIdCard();
+	   ServiceId admin_service_id = keeper_reg_msg.getAdminServiceId();
 
 	   auto insert_return = keeperProcessRegistry.insert( std::pair<std::pair<uint32_t,uint16_t>,KeeperProcessEntry>
 		( std::pair<uint32_t,uint16_t>(keeper_id_card.getIPaddr(),keeper_id_card.getPort()),
 			   KeeperProcessEntry(keeper_id_card, admin_service_id) )
 		);
 	   if( false == insert_return.second)
-	   { //log msg here , insert_return.first is the position to the current keeper record with the same KeeperIdCard
+	   { 
+	      std::cout<<"KeeperRegistry: registerKeeper {"<<keeper_id_card<<"} found existing keeperProcess, reseting the process record"<< std::endl;
+	     // insert_return.first is the position to the current keeper record with the same KeeperIdCard
+	     // this is probably the case of keeper process restart ... reset the record  entry
+	         if( (*insert_return.first).second.keeperCollectionClient != nullptr)
+		 { delete (*insert_return.first).second.keeperCollectionClient; }
 	      
+	         (*insert_return.first).second.reset();
 		   return 0;
 	   }
 
-	   KeeperProcessEntry keeper_process = (*insert_return.first).second;
-    //create a client of Keeper's DataCollectionService listenning at adminServiceId
-    // create DataCollectionClient and check CollectionService availability
+           //create a client of Keeper's DataCollectionService listenning at adminServiceId
            std::string service_na_string("ofi+sockets://");
-	   service_na_string = keeper_process.adminServiceId.getIPasDottedString(service_na_string)
-                             + ":"+ std::to_string(keeper_process.adminServiceId.port);
-	   std::cout<<"KeeperRegistry:: creating DataCollectionClient for service {"<<service_na_string
-		   <<" provider_id {"<<keeper_process.adminServiceId.provider_id<<"}"<<std::endl;
-           DataCollectionClient * collectionClient = DataCollectionClient::CreateDataCollectionClient(registryEngine,service_na_string, 
-			      keeper_process.adminServiceId.provider_id);
+	   service_na_string = admin_service_id.getIPasDottedString(service_na_string)
+                             + ":"+ std::to_string(admin_service_id.port);
+           try
+	   {
+              DataCollectionClient * collectionClient = DataCollectionClient::CreateDataCollectionClient(registryEngine,service_na_string, 
+			      admin_service_id.provider_id);
+	
+	      (*insert_return.first).second.keeperCollectionClient = collectionClient;
 
-	    (*insert_return.first).second.keeperCollectionClient = collectionClient;
-	    
-    // now that communnication with the Keeper is established and we still holding registryLock
-    // update registryState in case this is the first KeeperProcess registration
+	      std::cout<<"KeeperRegistry: registerKeeper {"<<keeper_id_card<<"} created DataCollectionClient for service {"<<service_na_string
+		   <<": provider_id="<<admin_service_id.provider_id<<"}"<<std::endl;
+	   }
+	   catch( tl::exception  const& ex)
+	   {
+	      std::cout <<"KeeperRegistry: registerKeeper {"<<keeper_id_card<<"} failed to create DataCollectionClient for {"<<service_na_string
+		   <<": provider_id="<<admin_service_id.provider_id<<"}"<<std::endl;
+
+	   } 
+    	   // now that communnication with the Keeper is established and we still holding registryLock
+           // update registryState in case this is the first KeeperProcess registration
 	   registryState = RUNNING;
 
 	   std::cout << "KeeperRegistry : RUNNING with {" << keeperProcessRegistry.size()<<"} KeeperProcesses"<<std::endl;
@@ -131,7 +151,7 @@ int KeeperRegistry::unregisterKeeperProcess( KeeperIdCard const & keeper_id_card
            auto keeper_process_iter = keeperProcessRegistry.find(std::pair<uint32_t,uint16_t>(keeper_id_card.getIPaddr(),keeper_id_card.getPort()));
 	   if(keeper_process_iter != keeperProcessRegistry.end())
 	   {
-	   // stop & delete keeperCollectionClient before erasing keeper_process entry
+	   // delete keeperCollectionClient before erasing keeper_process entry
 	      if( (*keeper_process_iter).second.keeperCollectionClient != nullptr)
 	      {  delete (*keeper_process_iter).second.keeperCollectionClient; }
 	      keeperProcessRegistry.erase(keeper_process_iter);
@@ -151,11 +171,11 @@ void KeeperRegistry::updateKeeperProcessStats(KeeperStatsMsg const & keeperStats
 	{
            if(is_shutting_down())
            {  return; }
-	   KeeperIdCard keeper_id_card = keeperStatsMsg.getKeeperIdCard();
 
 	   std::lock_guard<std::mutex> lock(registryLock);
            if(is_shutting_down())
            {  return; }
+	   KeeperIdCard keeper_id_card = keeperStatsMsg.getKeeperIdCard();
 	   auto keeper_process_iter = keeperProcessRegistry.find(std::pair<uint32_t,uint16_t>(keeper_id_card.getIPaddr(),keeper_id_card.getPort()));
 	   if(keeper_process_iter == keeperProcessRegistry.end())
 	   {    // however unlikely it is that the stats msg would be delivered for the keeper that's already unregistered
@@ -327,7 +347,7 @@ int main(int argc, char** argv) {
 
    tl::engine keeper_reg_engine(margo_id);
  
-    std::cout << "Starting KeeperRegService  at address " << keeper_reg_engine.self()
+    std::cout << "Starting KeeperRegistryService  at address " << keeper_reg_engine.self()
         << " with provider id " << provider_id << std::endl;
 
     chronolog::KeeperRegistry keeperRegistry (keeper_reg_engine);
@@ -341,7 +361,6 @@ int main(int argc, char** argv) {
     std::vector<chronolog::KeeperIdCard> vectorOfKeepers;
     while( !keeperRegistry.is_shutting_down())
     {
-    std::cout<<" KeeperRegistry main loop" <<std::endl;
 
        if (keeperRegistry.is_running())
        {  vectorOfKeepers.clear();

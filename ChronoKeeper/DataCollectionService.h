@@ -33,13 +33,16 @@ public:
         get_engine().pop_finalize_callback(this);
     }
 
-    void serviceAvailable(tl::request & request, int some)
+    void collection_service_available(tl::request const& request)//, uint16_t provider_id)
     {   
-	    request.respond(1); //maybe respond with KeeperId ?
+	    request.respond(1);//provider_id); //maybe respond with KeeperId ?
     }
 
-    void shutdown_service(tl::request & request)
-    {   request.respond(1); //maybe respond with KeeperId ?
+    void shutdown_data_collection(tl::request const& request)//, uint16_t provider_id)
+    {   
+	    int status =1;
+	    theDataStore.shutdownDataCollection();
+	    request.respond(1); //maybe respond with KeeperId ?
     }
 
     void StartStoryRecording(tl::request const& request, 
@@ -62,8 +65,8 @@ private:
     	: tl::provider<DataCollectionService>(tl_engine, service_provider_id)
 	, theDataStore(data_store_instance)  
     {
-        //define("service_available", &DataCollectionService::serviceAvailable);
-       //define("shutdown_service", &DataCollectionService::shutdown_service);
+        define("collection_service_available", &DataCollectionService::collection_service_available);
+        define("shutdown_data_collection", &DataCollectionService::shutdown_data_collection);
         define("start_story_recording", &DataCollectionService::StartStoryRecording);
         define("stop_story_recording", &DataCollectionService::StopStoryRecording);
 	//set up callback for the case when the engine is being finalized while this provider is still alive
