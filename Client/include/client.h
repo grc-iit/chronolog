@@ -50,6 +50,7 @@ public:
     int EditChronicleAttr(std::string &chronicle_name, const std::string &key, const std::string &value);
 
 private:
+    std::string clientid;
     std::shared_ptr<RPCClient> rpcProxy_;
 };
 #endif //CHRONOLOG_CLIENT_H

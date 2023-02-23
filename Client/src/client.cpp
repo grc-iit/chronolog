@@ -19,6 +19,7 @@ int ChronoLogClient::Connect(const std::string &server_uri,
         uint64_t client_id_hash = CityHash64(addr_str.c_str(), addr_str.size());
         client_id = std::to_string(client_id_hash);
     }
+    clientid = client_id;
     return rpcProxy_->Connect(server_uri, client_id, flags, clock_offset);
 }
 
@@ -37,11 +38,11 @@ int ChronoLogClient::DestroyChronicle(std::string &name, int &flags) {
 }
 
 int ChronoLogClient::AcquireChronicle(std::string &name, int &flags) {
-    return rpcProxy_->AcquireChronicle(name, flags);
+    return rpcProxy_->AcquireChronicle(clientid, name, flags);
 }
 
 int ChronoLogClient::ReleaseChronicle(std::string &name, int &flags) {
-    return rpcProxy_->ReleaseChronicle(name, flags);
+    return rpcProxy_->ReleaseChronicle(clientid, name, flags);
 }
 
 int ChronoLogClient::CreateStory(std::string &chronicle_name,
@@ -56,11 +57,11 @@ int ChronoLogClient::DestroyStory(std::string &chronicle_name, std::string &stor
 }
 
 int ChronoLogClient::AcquireStory(std::string &chronicle_name, std::string &story_name, int &flags) {
-    return rpcProxy_->AcquireStory(chronicle_name, story_name, flags);
+    return rpcProxy_->AcquireStory(clientid,chronicle_name, story_name, flags);
 }
 
 int ChronoLogClient::ReleaseStory(std::string &chronicle_name, std::string &story_name, int &flags) {
-    return rpcProxy_->ReleaseStory(chronicle_name, story_name, flags);
+    return rpcProxy_->ReleaseStory(clientid,chronicle_name, story_name, flags);
 }
 
 int ChronoLogClient::GetChronicleAttr(std::string &chronicle_name, const std::string &key, std::string &value) {
