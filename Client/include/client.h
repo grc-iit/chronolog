@@ -16,19 +16,21 @@ public:
     explicit ChronoLogClient(const std::string& conf_file_path = "") {
         if (!conf_file_path.empty())
             CHRONOLOG_CONF->LoadConfFromJSONFile(conf_file_path);
+        CHRONOLOG_CONF->ROLE = CHRONOLOG_CLIENT;
         rpcClient_ = ChronoLog::Singleton<RPCClient>::GetInstance();
     }
 
     explicit ChronoLogClient(const ChronoLog::ConfigurationManager& conf_manager) {
         CHRONOLOG_CONF->SetConfiguration(conf_manager);
+        CHRONOLOG_CONF->ROLE = CHRONOLOG_CLIENT;
         rpcClient_ = ChronoLog::Singleton<RPCClient>::GetInstance();
     }
 
     ChronoLogClient(const ChronoLogRPCImplementation& protocol, const std::string& visor_ip, int visor_port) {
-        CHRONOLOG_CONF->IS_VISOR = false;
-        CHRONOLOG_CONF->RPC_IMPLEMENTATION = protocol;
-        CHRONOLOG_CONF->RPC_VISOR_IP = visor_ip;
-        CHRONOLOG_CONF->RPC_BASE_VISOR_PORT = visor_port;
+        CHRONOLOG_CONF->ROLE = CHRONOLOG_CLIENT;
+        CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION = protocol;
+        CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP = visor_ip;
+        CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT = visor_port;
         rpcClient_ = ChronoLog::Singleton<RPCClient>::GetInstance();
     }
 

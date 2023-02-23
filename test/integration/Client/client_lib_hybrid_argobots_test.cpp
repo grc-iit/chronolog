@@ -21,7 +21,7 @@ void thread_function(void *t)
 	std::string server_ip = "127.0.0.1";
 	int base_port = 5555;
 	std::string client_id = gen_random(8);
-	std::string server_uri = CHRONOLOG_CONF->SOCKETS_CONF.string();
+	std::string server_uri = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF.string();
 	server_uri += "://"+server_ip+":"+std::to_string(base_port);
         int flags = 0;
 	uint64_t offset;

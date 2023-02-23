@@ -20,7 +20,7 @@ public:
     RPCClient() {
         LOGD("%s constructor is called", typeid(*this).name());
         rpc = ChronoLog::Singleton<ChronoLogRPCFactory>::GetInstance()
-                ->GetRPC(CHRONOLOG_CONF->RPC_BASE_VISOR_PORT);
+                ->GetRPC(CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT);
         set_prefix("ChronoLog");
         LOGD("%s constructor finishes, object created@%p in thread PID=%d",
              typeid(*this).name(), this, getpid());
@@ -111,7 +111,7 @@ public:
 private:
     void set_prefix(std::string prefix) {
         func_prefix = std::move(prefix);
-        switch (CHRONOLOG_CONF->RPC_IMPLEMENTATION) {
+        switch (CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION) {
             case CHRONOLOG_THALLIUM_SOCKETS:
             case CHRONOLOG_THALLIUM_TCP:
             case CHRONOLOG_THALLIUM_ROCE:

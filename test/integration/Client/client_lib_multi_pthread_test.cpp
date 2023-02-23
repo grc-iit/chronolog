@@ -62,7 +62,7 @@ int main(int argc,char **argv) {
     int base_port = 5555;
     client = new ChronoLogClient(protocol, server_ip, base_port);
 
-    std::string server_uri = CHRONOLOG_CONF->SOCKETS_CONF.string();
+    std::string server_uri = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF.string();
     server_uri += "://"+server_ip+":"+std::to_string(base_port);
 
     int flags = 0;

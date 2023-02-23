@@ -43,7 +43,7 @@ foreach(client ${client_mpi})
 	add_dependencies(${client} copyserverlist)
 	target_include_directories(${client} PRIVATE ../Client/include ${MPI_CXX_INCLUDE_DIRS})
 	target_link_libraries(${client} ChronoLogClient_lib ${MPI_CXX_LIBRARIES} -lpthread -lrt)
-    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/default_conf_client.json.in
+    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/../default_conf.json.in
             ${CMAKE_CURRENT_BINARY_DIR}/default_conf.json COPYONLY)
 endforeach()
 

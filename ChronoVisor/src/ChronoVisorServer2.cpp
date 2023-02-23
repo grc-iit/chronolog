@@ -25,29 +25,30 @@ namespace ChronoVisor {
 
         // start engines (listening for incoming requests)
         ChronoLog::Singleton<ChronoLogRPCFactory>::GetInstance()->
-                    GetRPC(CHRONOLOG_CONF->RPC_BASE_VISOR_PORT)->start();
+                    GetRPC(CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT)->start();
 
         return 0;
     }
 
     void ChronoVisorServer2::init() {
-        switch (CHRONOLOG_CONF->RPC_IMPLEMENTATION) {
+        CHRONOLOG_CONF->ROLE = CHRONOLOG_VISOR;
+        switch (CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION) {
             CHRONOLOG_RPC_CALL_WRAPPER_THALLIUM_SOCKETS()
                 [[fallthrough]];
             CHRONOLOG_RPC_CALL_WRAPPER_THALLIUM_TCP() {
-                protocol_ = CHRONOLOG_CONF->SOCKETS_CONF.string();
+                protocol_ = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF.string();
                 break;
             }
             CHRONOLOG_RPC_CALL_WRAPPER_THALLIUM_ROCE() {
-                protocol_ = CHRONOLOG_CONF->VERBS_CONF.string();
+                protocol_ = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF.string();
                 break;
             }
         }
-        baseIP_ = CHRONOLOG_CONF->RPC_VISOR_IP.string();
-        basePorts_ = CHRONOLOG_CONF->RPC_BASE_VISOR_PORT;
-        numPorts_ = CHRONOLOG_CONF->RPC_NUM_VISOR_PORTS;
-        numStreams_ = CHRONOLOG_CONF->RPC_NUM_VISOR_SERVICE_THREADS;
-        serverAddrVec_.reserve(CHRONOLOG_CONF->RPC_NUM_VISOR_PORTS);
+        baseIP_ = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string();
+        basePorts_ = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT;
+        numPorts_ = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_PORTS;
+        numStreams_ = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_SERVICE_THREADS;
+        serverAddrVec_.reserve(CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_PORTS);
         for (int i = 0; i < numPorts_; i++) {
             std::string server_addr = protocol_ + "://" +
                                       baseIP_ + ":" +

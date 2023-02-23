@@ -73,7 +73,7 @@ int main(int argc,char **argv) {
     struct thread_arg *t_args = (struct thread_arg*)malloc(num_threads*sizeof(struct thread_arg));
 
     std::string client_id = gen_random(8);;
-    std::string server_uri = CHRONOLOG_CONF->SOCKETS_CONF.string();
+    std::string server_uri = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF.string();
     server_uri += "://"+server_ip+":"+std::to_string(base_port);
     int flags = 0;
 

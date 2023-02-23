@@ -22,6 +22,15 @@ enum ClocksourceType {
     TSC = 2
 };
 
+inline const char* getClocksourceTypeString(ClocksourceType type) {
+    switch (type) {
+        case C_STYLE: return "C_STYLE";
+        case CPP_STYLE: return "CPP_STYLE";
+        case TSC: return "TSC";
+        default: return "UNKNOWN";
+    }
+}
+
 class Clocksource {
 public:
     static Clocksource *Create(ClocksourceType type);

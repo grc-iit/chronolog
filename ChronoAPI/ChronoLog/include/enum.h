@@ -11,4 +11,30 @@ typedef enum ChronoLogRPCImplementation {
     CHRONOLOG_THALLIUM_ROCE = 2
 } ChronoLogRPCImplementation;
 
+inline const char* getRPCImplString(ChronoLogRPCImplementation impl) {
+    switch (impl) {
+        case CHRONOLOG_THALLIUM_SOCKETS: return "CHRONOLOG_THALLIUM_SOCKETS";
+        case CHRONOLOG_THALLIUM_TCP: return "CHRONOLOG_THALLIUM_TCP";
+        case CHRONOLOG_THALLIUM_ROCE: return "CHRONOLOG_THALLIUM_ROCE";
+        default: return "UNKNOWN";
+    }
+}
+
+typedef enum ChronoLogServiceRole {
+    CHRONOLOG_UNKNOWN = 0,
+    CHRONOLOG_VISOR = 1,
+    CHRONOLOG_CLIENT = 2,
+    CHRONOLOG_KEEPER = 3
+} ChronoLogServiceRole;
+
+inline const char* getServiceRoleString(ChronoLogServiceRole role) {
+    switch (role) {
+        case CHRONOLOG_UNKNOWN: return "CHRONOLOG_UNKNOWN";
+        case CHRONOLOG_VISOR: return "CHRONOLOG_VISOR";
+        case CHRONOLOG_CLIENT: return "CHRONOLOG_CLIENT";
+        case CHRONOLOG_KEEPER: return "CHRONOLOG_KEEPER";
+        default: return "CHRONOLOG_UNKNOWN";
+    }
+}
+
 #endif //CHRONOLOG_ENUM_H

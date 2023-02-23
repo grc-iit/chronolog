@@ -27,11 +27,11 @@ int main() {
     client_ids.reserve(NUM_CONNECTION);
     for (int i = 0; i < NUM_CONNECTION; i++) client_ids.emplace_back(gen_random(8));
     for (int i = 0; i < NUM_CONNECTION; i++) {
-        switch (CHRONOLOG_CONF->RPC_IMPLEMENTATION) {
+        switch (CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION) {
             case CHRONOLOG_THALLIUM_SOCKETS:
             case CHRONOLOG_THALLIUM_TCP:
             case CHRONOLOG_THALLIUM_ROCE:
-                server_uri = CHRONOLOG_CONF->SOCKETS_CONF.string();
+                server_uri = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF.string();
                 break;
         }
         server_uri += "://" + server_ip + ":" + std::to_string(base_port + i);
