@@ -461,7 +461,8 @@ ChronicleMetaDirectory::show_stories(std::string &client_id, const std::string &
         Chronicle *pChronicle = chronicleMap_->find(cid)->second;
         LOGD("Chronicle@%p", &(*pChronicle));
         for (auto &[key, value] : pChronicle->getStoryMap()) {
-            story_names.emplace_back(pChronicle->getId2NameMap()->find(key)->second);
+            std::string story_name = pChronicle->getId2NameMap()->find(key)->second;
+            story_names.emplace_back(story_name.erase(story_name.find(chronicle_name), chronicle_name.length()));
         }
     }
     return story_names;
