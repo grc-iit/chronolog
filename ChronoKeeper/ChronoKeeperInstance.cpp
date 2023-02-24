@@ -91,7 +91,7 @@ int main(int argc, char** argv) {
 						   +":"+std::string(KEEPER_COLLECTION_SERVICE_PORT);
     uint16_t collection_provider_id = KEEPER_COLLECTION_SERVICE_PROVIDER_ID;
 
-    margo_instance_id collection_margo_id=margo_init( KEEPER_COLLECTION_SERVICE_NA_STRING.c_str(),MARGO_SERVER_MODE, 1, 2);
+    margo_instance_id collection_margo_id=margo_init( KEEPER_COLLECTION_SERVICE_NA_STRING.c_str(),MARGO_SERVER_MODE, 1, 1);
 
     if(MARGO_INSTANCE_NULL == collection_margo_id)
     {
@@ -148,7 +148,7 @@ int main(int argc, char** argv) {
 
     // create KeeperRegistryClient and register the new KeeperRecording service with the KeeperRegistry 
     chronolog::KeeperRegistryClient * keeperRegistryClient = chronolog::KeeperRegistryClient::CreateKeeperRegistryClient(
-		     recordingEngine, KEEPER_REGISTRY_SERVICE_NA_STRING, KEEPER_REGISTRY_SERVICE_PROVIDER_ID);
+		     collectionEngine, KEEPER_REGISTRY_SERVICE_NA_STRING, KEEPER_REGISTRY_SERVICE_PROVIDER_ID);
 
     chronolog::KeeperStatsMsg keeperStatsMsg(keeperIdCard);
     keeperRegistryClient->send_register_msg(chronolog::KeeperRegistrationMsg(keeperIdCard,collectionServiceId));
@@ -164,15 +164,15 @@ int main(int argc, char** argv) {
 
     while( !theDataStore.is_shutting_down() & (i <20))
     {
-	sleep(60);
         keeperRegistryClient->send_stats_msg(keeperStatsMsg);
 	i++;
+	sleep(60);
     }
 
     keeperRegistryClient->send_unregister_msg(keeperIdCard);
+    delete keeperRegistryClient;
     collectionEngine.wait_for_finalize();
     recordingEngine.wait_for_finalize();
-    delete keeperRegistryClient;
     delete keeperRecordingService;
     delete keeperCollectionService;
 

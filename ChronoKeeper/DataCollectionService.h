@@ -5,7 +5,6 @@
 #include <margo.h>
 #include <thallium.hpp>
 #include <thallium/serialization/stl/string.hpp>
-#include "KeeperIdCard.h"
 
 #include "chronolog_types.h"
 #include "KeeperDataStore.h"
@@ -33,16 +32,16 @@ public:
         get_engine().pop_finalize_callback(this);
     }
 
-    void collection_service_available(tl::request const& request)//, uint16_t provider_id)
+    void collection_service_available(tl::request const& request)
     {   
-	    request.respond(1);//provider_id); //maybe respond with KeeperId ?
+	    request.respond(1);
     }
 
-    void shutdown_data_collection(tl::request const& request)//, uint16_t provider_id)
+    void shutdown_data_collection(tl::request const& request)
     {   
 	    int status =1;
 	    theDataStore.shutdownDataCollection();
-	    request.respond(1); //maybe respond with KeeperId ?
+	    request.respond(1); 
     }
 
     void StartStoryRecording(tl::request const& request, 
