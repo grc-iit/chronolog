@@ -20,14 +20,11 @@ int main() {
     std::vector<std::string> chronicle_names;
     std::chrono::steady_clock::time_point t1, t2;
     std::chrono::duration<double, std::nano> duration_create_chronicle{},
-            duration_acquire_chronicle{},
             duration_edit_chronicle_attr{},
-            duration_create_story{},
             duration_acquire_story{},
             duration_release_story{},
             duration_destroy_story{},
             duration_get_chronicle_attr{},
-            duration_release_chronicle{},
             duration_destroy_chronicle{},
             duration_show_chronicles{},
             duration_show_stories{};
@@ -64,13 +61,6 @@ int main() {
     assert(chronicle_names_retrieved == chronicle_names_sorted);
 
     for (int i = 0; i < NUM_CHRONICLE; i++) {
-        flags = 1;
-        t1 = std::chrono::steady_clock::now();
-        ret = client.AcquireChronicle(chronicle_names[i], flags);
-        t2 = std::chrono::steady_clock::now();
-        ASSERT(ret, ==, CL_SUCCESS);
-        duration_acquire_chronicle += (t2 - t1);
-
         std::string key("Date");
         t1 = std::chrono::steady_clock::now();
         ret = client.EditChronicleAttr(chronicle_names[i], key, "2023-01-15");
@@ -81,18 +71,18 @@ int main() {
         std::vector<std::string> story_names;
         story_names.reserve(NUM_STORY);
         for (int j = 0; j < NUM_STORY; j++) {
+            flags = 2;
             std::string story_name(gen_random(STORY_NAME_LEN));
             story_names.emplace_back(story_name);
             std::unordered_map<std::string, std::string> story_attrs;
             story_attrs.emplace("Priority", "High");
             story_attrs.emplace("IndexGranularity", "Millisecond");
             story_attrs.emplace("TieringPolicy", "Hot");
-            flags = 1;
             t1 = std::chrono::steady_clock::now();
-            ret = client.CreateStory(chronicle_names[i], story_name, story_attrs, flags);
+            ret = client.AcquireStory(chronicle_names[i], story_names[j], story_attrs, flags);
             t2 = std::chrono::steady_clock::now();
             ASSERT(ret, ==, CL_SUCCESS);
-            duration_create_story += (t2 - t1);
+            duration_acquire_story += (t2 - t1);
         }
 
         t1 = std::chrono::steady_clock::now();
@@ -105,13 +95,6 @@ int main() {
         assert(stories_names_retrieved == story_names_sorted);
 
         for (int j = 0; j < NUM_STORY; j++) {
-            flags = 2;
-            t1 = std::chrono::steady_clock::now();
-            ret = client.AcquireStory(chronicle_names[i], story_names[j], flags);
-            t2 = std::chrono::steady_clock::now();
-            ASSERT(ret, ==, CL_SUCCESS);
-            duration_acquire_story += (t2 - t1);
-
             flags = 4;
             t1 = std::chrono::steady_clock::now();
             ret = client.ReleaseStory(chronicle_names[i], story_names[j], flags);
@@ -137,13 +120,6 @@ int main() {
         //FIXME: returning data using parameter is not working, the following assert will fail
         //ASSERT(value, ==, "2023-01-15");
         duration_get_chronicle_attr += (t2 - t1);
-
-        flags = 16;
-        t1 = std::chrono::steady_clock::now();
-        ret = client.ReleaseChronicle(chronicle_names[i], flags);
-        t2 = std::chrono::steady_clock::now();
-        ASSERT(ret, ==, CL_SUCCESS);
-        duration_release_chronicle += (t2 - t1);
     }
 
     flags = 32;
@@ -156,14 +132,11 @@ int main() {
     };
 
     LOGI("CreateChronicle takes %lf ns", duration_create_chronicle.count() / NUM_CHRONICLE);
-    LOGI("AcquireChronicle takes %lf ns", duration_acquire_chronicle.count() / NUM_CHRONICLE);
     LOGI("EditChronicleAttr takes %lf ns", duration_edit_chronicle_attr.count() / NUM_CHRONICLE);
-    LOGI("CreateStory takes %lf ns", duration_create_story.count() / (NUM_CHRONICLE * NUM_STORY));
     LOGI("AcquireStory takes %lf ns", duration_acquire_story.count() / (NUM_CHRONICLE * NUM_STORY));
     LOGI("ReleaseStory takes %lf ns", duration_release_story.count() / (NUM_CHRONICLE * NUM_STORY));
     LOGI("DestroyStory takes %lf ns", duration_destroy_story.count() / (NUM_CHRONICLE * NUM_STORY));
     LOGI("GetChronileAttr(Date) takes %lf ns", duration_get_chronicle_attr.count() / NUM_CHRONICLE);
-    LOGI("ReleaseChronicle takes %lf ns", duration_release_chronicle.count() / NUM_CHRONICLE);
     LOGI("DestroyChronicle takes %lf ns", duration_destroy_chronicle.count() / NUM_CHRONICLE);
     LOGI("ShowChronicles takes %lf ns", duration_show_chronicles.count() / NUM_CHRONICLE);
     LOGI("ShowStories takes %lf ns", duration_show_stories.count() / NUM_CHRONICLE);

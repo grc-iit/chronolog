@@ -17,7 +17,6 @@ extern std::mutex g_acquiredStoryMapMutex_;             /* protects global Acqui
 ChronicleMetaDirectory::ChronicleMetaDirectory() {
     LOGD("%s constructor is called", typeid(*this).name());
     chronicleMap_ = new std::unordered_map<uint64_t, Chronicle *>();
-    acquiredChronicleMap_ = new std::unordered_map<uint64_t, Chronicle *>();
     acquiredStoryMap_ = new std::unordered_map<uint64_t, Story *>();
     chronicleName2IdMap_ = new std::unordered_map<std::string, uint64_t>();
     chronicleId2NameMap_ = new std::unordered_map<uint64_t, std::string>();
@@ -27,7 +26,6 @@ ChronicleMetaDirectory::ChronicleMetaDirectory() {
 
 ChronicleMetaDirectory::~ChronicleMetaDirectory() {
     delete chronicleMap_;
-    delete acquiredChronicleMap_;
     delete acquiredStoryMap_;
     delete chronicleName2IdMap_;
     delete chronicleId2NameMap_;
@@ -126,81 +124,6 @@ int ChronicleMetaDirectory::destroy_chronicle(const std::string& name,
     } else {
         LOGE("Cannot find Chronicle name=%s", name.c_str());
         return CL_ERR_NOT_EXIST;
-    }
-}
-
-/**
- * Acquire a Chronicle
- * @param name: name of the Chronicle
- * @param flags: flags
- * @return CL_SUCCESS if succeed to acquire the Chronicle \n
- *         CL_ERR_NOT_EXIST if the Chronicle does not exist \n
- *         CL_ERR_UNKNOWN otherwise
- */
-int ChronicleMetaDirectory::acquire_chronicle(const std::string& name,
-                                              int& flags) {
-    LOGD("acquiring Chronicle name=%s", name.c_str());
-    std::lock_guard<std::mutex> chronicleMapLock(g_chronicleMetaDirectoryMutex_);
-    /* First check if Chronicle exists, fail if false */
-    auto name2IdRecord = chronicleName2IdMap_->find(name);
-    if (name2IdRecord != chronicleName2IdMap_->end()) {
-        uint64_t cid = name2IdRecord->second;
-        Chronicle *pChronicle = chronicleMap_->find(cid)->second;
-        pChronicle->incrementAcquisitionCount();
-        std::lock_guard<std::mutex> lock(g_acquiredChronicleMapMutex_);
-        /* Emplace only when Chronicle is not already acquired */
-        if (acquiredStoryMap_->find(cid) == acquiredStoryMap_->end()) {
-            auto res = acquiredChronicleMap_->emplace(cid, pChronicle);
-            if (res.second) {
-                return CL_SUCCESS;
-            } else {
-                return CL_ERR_UNKNOWN;
-            }
-        } else {
-            return CL_SUCCESS;
-        }
-    } else {
-        return CL_ERR_NOT_EXIST;
-    }
-}
-
-/**
- * Release a Chronicle
- * @param name: name of the Chronicle
- * @param flags: flags
- * @return CL_SUCCESS if succeed to release the Chronicle \n
- *         CL_ERR_NOT_EXIST if the Chronicle does not exist \n
- *         CL_ERR_UNKNOWN otherwise
- */
-int ChronicleMetaDirectory::release_chronicle(const std::string& name,
-                                              int& flags) {
-    LOGD("releasing Chronicle name=%s", name.c_str());
-    Chronicle *pChronicle;
-    uint64_t cid;
-    std::lock_guard<std::mutex> chronicleMapLock(g_chronicleMetaDirectoryMutex_);
-    {
-        /* First check if Chronicle exists, fail if false */
-        auto name2IdRecord = chronicleName2IdMap_->find(name);
-        if (name2IdRecord != chronicleName2IdMap_->end()) {
-            cid = name2IdRecord->second;
-            pChronicle = chronicleMap_->find(cid)->second;
-            /* Decrement AcquisitionCount */
-            pChronicle->decrementAcquisitionCount();
-        } else {
-            return CL_ERR_NOT_EXIST;
-        }
-    }
-    /* Remove it from AcquiredChronicleMap when it's not acquired by anyone */
-    if (pChronicle->getAcquisitionCount() == 0) {
-        std::lock_guard<std::mutex> lock(g_acquiredChronicleMapMutex_);
-        auto nErased = acquiredChronicleMap_->erase(cid);
-        if (nErased == 1) {
-            return CL_SUCCESS;
-        } else {
-            return CL_ERR_UNKNOWN;
-        }
-    } else {
-        return CL_SUCCESS;
     }
 }
 

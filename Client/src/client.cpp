@@ -36,27 +36,13 @@ int ChronoLogClient::DestroyChronicle(std::string &name, int &flags) {
     return rpcProxy_->DestroyChronicle(name, flags);
 }
 
-int ChronoLogClient::AcquireChronicle(std::string &name, int &flags) {
-    return rpcProxy_->AcquireChronicle(name, flags);
-}
-
-int ChronoLogClient::ReleaseChronicle(std::string &name, int &flags) {
-    return rpcProxy_->ReleaseChronicle(name, flags);
-}
-
-int ChronoLogClient::CreateStory(std::string &chronicle_name,
-                                 std::string &story_name,
-                                 const std::unordered_map<std::string, std::string> &attrs,
-                                 int &flags) {
-    return rpcProxy_->CreateStory(chronicle_name, story_name, attrs, flags);
-}
-
 int ChronoLogClient::DestroyStory(std::string &chronicle_name, std::string &story_name, int &flags) {
     return rpcProxy_->DestroyStory(chronicle_name, story_name, flags);
 }
 
-int ChronoLogClient::AcquireStory(std::string &chronicle_name, std::string &story_name, int &flags) {
-    return rpcProxy_->AcquireStory(chronicle_name, story_name, flags);
+int ChronoLogClient::AcquireStory(std::string &chronicle_name, std::string &story_name,
+                                  const std::unordered_map<std::string, std::string> &attrs, int &flags) {
+    return rpcProxy_->AcquireStory(chronicle_name, story_name, attrs, flags);
 }
 
 int ChronoLogClient::ReleaseStory(std::string &chronicle_name, std::string &story_name, int &flags) {

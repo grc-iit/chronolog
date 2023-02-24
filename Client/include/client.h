@@ -37,14 +37,9 @@ public:
                         const std::unordered_map<std::string, std::string> &attrs,
                         int &flags);
     int DestroyChronicle(std::string &name, int &flags);
-    int AcquireChronicle(std::string &name, int &flags);
-    int ReleaseChronicle(std::string &name, int &flags);
-    int CreateStory(std::string &chronicle_name,
-                    std::string &story_name,
-                    const std::unordered_map<std::string, std::string> &attrs,
-                    int &flags);
     int DestroyStory(std::string &chronicle_name, std::string &story_name, int &flags);
-    int AcquireStory(std::string &chronicle_name, std::string &story_name, int &flags);
+    int AcquireStory(std::string &chronicle_name, std::string &story_name,
+                     const std::unordered_map<std::string, std::string> &attrs, int &flags);
     int ReleaseStory(std::string &chronicle_name, std::string &story_name, int &flags);
     int GetChronicleAttr(std::string &chronicle_name, const std::string &key, std::string &value);
     int EditChronicleAttr(std::string &chronicle_name, const std::string &key, const std::string &value);
