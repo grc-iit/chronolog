@@ -31,6 +31,8 @@ namespace ChronoVisor {
     }
 
     void ChronoVisorServer2::init() {
+        pClocksourceManager_ = ClocksourceManager::getInstance();
+        pClocksourceManager_->setClocksourceType(CHRONOLOG_CONF->CLOCKSOURCE_TYPE);
         CHRONOLOG_CONF->ROLE = CHRONOLOG_VISOR;
         switch (CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION) {
             CHRONOLOG_RPC_CALL_WRAPPER_THALLIUM_SOCKETS()

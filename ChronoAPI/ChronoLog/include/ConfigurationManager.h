@@ -159,7 +159,7 @@ namespace ChronoLog {
     public:
         ChronoLogServiceRole ROLE{};
         ClockConf CLOCK_CONF{};
-        ClocksourceManager *CLOCKSOURCE_MANAGER;
+        ClocksourceType CLOCKSOURCE_TYPE{};
         RPCConf RPC_CONF{};
         AuthConf AUTH_CONF{};
         VisorConf VISOR_CONF{};
@@ -174,10 +174,9 @@ namespace ChronoLog {
             CLOCK_CONF.CLOCKSOURCE_TYPE = ClocksourceType::C_STYLE;
             CLOCK_CONF.DRIFT_CAL_SLEEP_SEC = 10;
             CLOCK_CONF.DRIFT_CAL_SLEEP_NSEC = 0;
-            CLOCKSOURCE_MANAGER = ClocksourceManager::getInstance();
-            CLOCKSOURCE_MANAGER->setClocksourceType(ClocksourceType::C_STYLE);
+            CLOCKSOURCE_TYPE = ClocksourceType::C_STYLE;
 
-            /* RPC-related configurartions */
+            /* RPC-related configurations */
             RPC_CONF.AVAIL_PROTO_CONF = { {"sockets_conf", "ofi+sockets"},
                                           {"tcp_conf", "ofi+tcp"},
                                           {"shm_conf", "ofi+shm"},
@@ -223,7 +222,6 @@ namespace ChronoLog {
 
         explicit ConfigurationManager(const std::string &conf_file_path) {
             LOGI("constructing configuration from a configuration file: %s", conf_file_path.c_str());
-            CLOCKSOURCE_MANAGER = ClocksourceManager::getInstance();
             LoadConfFromJSONFile(conf_file_path);
         }
 
@@ -236,13 +234,8 @@ namespace ChronoLog {
             VISOR_CONF = confManager.VISOR_CONF;
             CLIENT_CONF = confManager.CLIENT_CONF;
             KEEPER_CONF = confManager.KEEPER_CONF;
-            CLOCKSOURCE_MANAGER = confManager.CLOCKSOURCE_MANAGER;
             LOGI("updated configuration:");
             PrintConf();
-        }
-
-        void SetClocksourceType(ClocksourceType type) const {
-            CLOCKSOURCE_MANAGER->setClocksourceType(type);
         }
 
         void PrintConf() const {

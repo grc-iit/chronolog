@@ -25,10 +25,6 @@ namespace ChronoVisor {
 
         explicit ChronoVisorServer2(const ChronoLog::ConfigurationManager &conf_manager);
 
-        void setClocksourceType(ClocksourceType clocksourceType) {
-            CHRONOLOG_CONF->SetClocksourceType(clocksourceType);
-        }
-
         int start();
 
     private:
@@ -62,6 +58,13 @@ namespace ChronoVisor {
          */
         ///@{
         std::shared_ptr<RPCVisor> rpcVisor_;
+        ///@}
+
+        /**
+         * @name Clock related variables
+         */
+        ///@{
+        ClocksourceManager *pClocksourceManager_;
         ///@}
     };
 }
