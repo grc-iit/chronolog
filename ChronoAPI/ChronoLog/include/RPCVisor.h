@@ -53,7 +53,7 @@ public:
 	if(group_id.empty()) group_id = "DEFAULT";
 	record.group_id_ = group_id;
 	record.client_role_ = role;
-
+        
         if (std::strtol(client_id.c_str(), nullptr, 10) < 0) {
             LOGE("client id is invalid");
             return CL_ERR_INVALID_ARG;

@@ -31,16 +31,16 @@ int main() {
             duration_destroy_chronicle{};
     int flags;
     uint64_t offset = 0;
-    std::string server_uri = "ofi+sockets://"+server_ip+std::to_string(base_port);
 
-    std::string client_id = gen_random(8);
+    std::string client_id = std::to_string(getpid());
     std::string group_id = "metadata_application";
     std::string server_uri = CHRONOLOG_CONF->SOCKETS_CONF.string();
-        
+    client_id = group_id+client_id; 
+    std::cout <<" client_id = "<<client_id<<std::endl;
    server_uri += "://" + server_ip + ":" + std::to_string(base_port);
    
    uint32_t user_role = (uint32_t)CHRONOLOG_CLIENT_RWCD;
-   uint32_t group_role = (uint32_t)CHRONOLOG_CLIENT_GROUP_REG;
+   uint32_t group_role = (uint32_t)CHRONOLOG_CLIENT_GROUP_ADMIN;
    uint32_t cluster_role = (uint32_t)CHRONOLOG_CLIENT_CLUS_REG;
    uint32_t role = 0;
    role = role | user_role;
@@ -48,11 +48,8 @@ int main() {
    cluster_role = cluster_role << 6;
    role = role | group_role;
    role = role | cluster_role;  
-   std::cout <<" client role = "<<role<<std::endl; 
-   uint64_t offset = 0;
    int ret = client.Connect(server_uri, client_id, group_id, role, flags, offset);
 
-    
     chronicle_names.reserve(NUM_CHRONICLE);
     for (int i = 0; i < NUM_CHRONICLE; i++) 
     {
@@ -85,8 +82,6 @@ int main() {
         //assert(ret == CL_SUCCESS);
         duration_edit_chronicle_attr += (t2 - t1);
 
-	std::string new_group_id = "metadata_application_1";
-	ret = client.AddGrouptoChronicle(chronicle_name,new_group_id);
         std::vector<std::string> story_names;
         story_names.reserve(NUM_STORY);
         for (int j = 0; j < NUM_STORY; j++) {
@@ -116,7 +111,7 @@ int main() {
             ret = client.ReleaseStory(chronicle_name, story_name, flags);
             t2 = std::chrono::steady_clock::now();
             assert(ret == CL_SUCCESS);
-            duration_release_story += (t2 - t1); 
+            duration_release_story += (t2 - t1);
         }
 	
         flags = 8;

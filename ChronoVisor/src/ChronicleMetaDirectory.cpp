@@ -58,9 +58,11 @@ int ChronicleMetaDirectory::create_chronicle(const std::string& name, std::strin
     uint64_t cid = CityHash64(name.c_str(), name.size());
     std::lock_guard<std::mutex> lock(g_chronicleMetaDirectoryMutex_);
     /* Check if Chronicle already exists, fail if true */
-    if (chronicleMap_->find(cid) != chronicleMap_->end()) 
+    auto chronicleRecord = chronicleMap_->find(cid);
+    if (chronicleRecord != chronicleMap_->end(cid)) 
     {
-	    return CL_ERR_CHRONICLE_EXISTS;
+	LOGE("Chronicle Exists");
+	return CL_ERR_CHRONICLE_EXISTS;
     }
     auto *pChronicle = new Chronicle();
     pChronicle->setName(name);
@@ -198,6 +200,7 @@ int ChronicleMetaDirectory::acquire_chronicle(const std::string& name,
 	}
 	else 
 	{
+	   LOGE("Does not have permissions for requested operation");
 	   ret = CL_ERR_UNKNOWN;
 	}
     }
@@ -274,7 +277,11 @@ int ChronicleMetaDirectory::update_chronicle_permissions(std::string &name,std::
 	pChronicle->generate_permission(perm);
 	ret = CL_SUCCESS;
        }
-       else ret = CL_ERR_UNKNOWN;
+       else 
+       {    
+	    LOGE("Does not have permissions for requested operation");
+	    ret = CL_ERR_UNKNOWN;
+       }
     }
     else ret = CL_ERR_NOT_EXIST;
     return ret;
@@ -446,7 +453,11 @@ int ChronicleMetaDirectory::acquire_story(const std::string& chronicle_name,
 	       }
 	      }
 	    }
-	    else ret = CL_ERR_UNKNOWN;
+	    else 
+	    {
+		LOGE("Does not have permission for requested operation");
+		ret = CL_ERR_UNKNOWN;
+	    }
         }
 	else ret = CL_ERR_NOT_EXIST;
     }
@@ -538,7 +549,11 @@ int ChronicleMetaDirectory::update_story_permissions(std::string &chronicle_name
 		     pStory->generate_permission(perm);
 		     ret = CL_SUCCESS;
 		}
-		else ret = CL_ERR_UNKNOWN;
+		else 
+		{
+		   LOGE("Does not have permission for requested operation");
+		   ret = CL_ERR_UNKNOWN;
+		}
 	}
 	else ret = CL_ERR_NOT_EXIST;
 
@@ -637,7 +652,10 @@ int ChronicleMetaDirectory::add_group_to_chronicle(std::string &chronicle_name, 
 	if(b)
 	  ret = pChronicle->add_group(new_group_id);
 	else
+	{
+	    LOGE("Does not have permission for requested operation");
 	    ret = CL_ERR_UNKNOWN;
+	}
     }
     else
 	    ret = CL_ERR_NOT_EXIST;
@@ -669,7 +687,10 @@ int ChronicleMetaDirectory::remove_group_from_chronicle(std::string &chronicle_n
 	  }
 	}
         else
+	{
+	    LOGE("Does not have permission for requested operation");
             ret = CL_ERR_UNKNOWN;
+	}
     }
     else
             ret = CL_ERR_NOT_EXIST;
@@ -709,11 +730,19 @@ int ChronicleMetaDirectory::add_group_to_story(std::string &chronicle_name,std::
 		  err = pChronicle->add_group(new_group_id);
 		  err = story->add_group(new_group_id);
 	        }
-                else err = CL_ERR_UNKNOWN;	     
+                else 
+		{
+                   LOGE("Does not have permissions for requested operation");
+		   err = CL_ERR_UNKNOWN;	   
+		}	
 	      }
 	      else err = CL_ERR_NOT_EXIST;
           }
-	  else err = CL_ERR_UNKNOWN;
+	  else 
+	  {
+	     LOGE("Does not have permission for requested operation");
+	     err = CL_ERR_UNKNOWN;
+	  }
      }
      else err = CL_ERR_NOT_EXIST;
       
@@ -751,11 +780,19 @@ int ChronicleMetaDirectory::remove_group_from_story(std::string &chronicle_name,
                 {
                   err = story->remove_group(new_group_id);
                 }
-                else err = CL_ERR_UNKNOWN;
+                else 
+		{
+		    LOGE("Does not have permission for requested operation");
+		    err = CL_ERR_UNKNOWN;
+		}
               }
                else err = CL_ERR_NOT_EXIST;
           }
-          else err = CL_ERR_UNKNOWN;
+          else 
+	  {
+	      LOGE("Does not have permission for requested operation");
+	      err = CL_ERR_UNKNOWN;
+	  }
      }
      else err = CL_ERR_NOT_EXIST;
 
