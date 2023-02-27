@@ -97,8 +97,7 @@ public:
                     break;
                 }
             }
-        }
-	else thalliumClient_->finalize();
+        } else thalliumClient_->finalize();
     }
 
     ChronoLogRPC() : baseServerPort_(CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT),
@@ -166,6 +165,7 @@ public:
                 }
             }
             isRunning_ = true;
+        }
     }
 
     void start() {

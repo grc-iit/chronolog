@@ -18,12 +18,12 @@ struct thread_arg
 void thread_function(void *t)
 {
 
-	std::string server_ip = "127.0.0.1";
-	int base_port = 5555;
+	std::string server_ip = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string();
+	int base_port = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT;
 	std::string client_id = gen_random(8);
 	std::string server_uri = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF.string();
 	server_uri += "://"+server_ip+":"+std::to_string(base_port);
-        int flags = 0;
+    int flags = 0;
 	uint64_t offset;
 	int ret = client->Connect(server_uri,client_id,flags,offset);
 	ret = client->Disconnect(client_id,flags);
@@ -39,8 +39,8 @@ int main(int argc,char **argv) {
     MPI_Init_thread(&argc,&argv,MPI_THREAD_MULTIPLE,&provided);
 
     ChronoLogRPCImplementation protocol = CHRONOLOG_THALLIUM_SOCKETS;
-    std::string server_ip = "127.0.0.1";
-    int base_port = 5555;
+    std::string server_ip = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string();
+    int base_port = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT;
     client = new ChronoLogClient(protocol, server_ip, base_port);
 
     int num_xstreams = 8;
