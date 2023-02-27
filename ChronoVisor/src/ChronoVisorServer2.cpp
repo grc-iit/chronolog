@@ -24,8 +24,7 @@ namespace ChronoVisor {
         rpcVisor_->bind_functions();
 
         // start engines (listening for incoming requests)
-        ChronoLog::Singleton<ChronoLogRPCFactory>::GetInstance()->
-                    GetRPC(CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT)->start();
+        rpcVisor_->Visor_start();
 
         return 0;
     }
@@ -59,8 +58,6 @@ namespace ChronoVisor {
         }
         engineVec_.reserve(numPorts_);
         midVec_.reserve(numPorts_);
-        chronicleMetaDirectory_ = ChronoLog::Singleton<ChronicleMetaDirectory>::GetInstance();
-        clientRegistryManager_ = ChronoLog::Singleton<ClientRegistryManager>::GetInstance();
         rpcVisor_ = ChronoLog::Singleton<RPCVisor>::GetInstance();
     }
 }

@@ -48,7 +48,7 @@ private:
     std::string name;
     bool isRunning_;
 
-    std::vector<tl::engine> thalliumServerList_;
+    std::vector<tl::engine*> thalliumServerList_;
     std::shared_ptr<tl::engine> thalliumClient_;
     std::vector<ChronoLogCharStruct> serverAddrList_;
     std::vector<ChronoLogCharStruct> serverRPCAddrList_;
@@ -66,8 +66,7 @@ private:
     }
 
     void init_client_engine_and_endpoints(ChronoLogCharStruct protocol) {
-        thalliumClient_ = ChronoLog::Singleton<tl::engine>::GetInstance(protocol.c_str(),
-                                                                        MARGO_CLIENT_MODE, true, numStreams_);
+        thalliumClient_ = ChronoLog::Singleton<tl::engine>::GetInstance(protocol.c_str(), THALLIUM_CLIENT_MODE,true,numStreams_);
         LOGD("generate a new client at %s", std::string(thalliumClient_->self()).c_str());
         thallium_endpoints.reserve(serverRPCAddrList_.size());
         for (std::vector<ChronoLogCharStruct>::size_type i = 0; i < serverRPCAddrList_.size(); ++i) {
@@ -93,13 +92,13 @@ public:
                     // Mercury addresses in endpoints must be freed before finalizing Thallium
                     thallium_endpoints.clear();
                     for (int i = 0; i < numPorts_; i++) {
-                        thalliumServerList_[i].wait_for_finalize();
+                        thalliumServerList_[i]->wait_for_finalize();
                     }
-                    thalliumClient_->finalize();
                     break;
                 }
             }
         }
+	else thalliumClient_->finalize();
     }
 
     ChronoLogRPC() : baseServerPort_(CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT),
@@ -139,48 +138,34 @@ public:
                             exit(-1);
                         }
 
-                        /* figure out first listening addr */
-                        hret = margo_addr_self(mid, &addr_self);
-                        if (hret != HG_SUCCESS) {
-                            LOGE("Error: margo_addr_self()");
-                            margo_finalize(mid);
-                            exit(-1);
+                        for (size_t i = 0; i < workers; i++)  // separate streams and pools for each engine
+                        {
+                            tl::engine *tmpServer = new tl::engine(serverAddrList_[i].c_str(), THALLIUM_SERVER_MODE,
+                                                                   true, numStreams_);
+                            thalliumServerList_.push_back(tmpServer);
                         }
-                        hg_size_t addr_self_string_sz = 128;
-                        char addr_self_string[128];
-                        hret = margo_addr_to_string(mid, addr_self_string, &addr_self_string_sz,
-                                                    addr_self);
-                        if (hret != HG_SUCCESS) {
-                            LOGE("Error: margo_addr_to_string()");
-                            margo_addr_free(mid, addr_self);
-                            margo_finalize(mid);
-                            exit(-1);
-                        }
-                        margo_addr_free(mid, addr_self);
 
-                        tl::engine new_engine(mid);
-                        thalliumServerList_.emplace_back(std::move(new_engine));
-                        LOGI("engine: %s is created", std::string(thalliumServerList_[i].self()).c_str());
+                        for (size_t i = 0; i < workers; i++)
+                            std::cout << " server created at " << thalliumServerList_[i]->self() << std::endl;
+                        break;
                     }
-                    break;
                 }
             }
-        }
-        if (CHRONOLOG_CONF->ROLE == CHRONOLOG_CLIENT) {
-            switch (CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION) {
-                /* only clients need Thallium end_points */
-                case CHRONOLOG_THALLIUM_TCP:
-                case CHRONOLOG_THALLIUM_SOCKETS: {
-                    init_client_engine_and_endpoints(CHRONOLOG_CONF->RPC_CONF.AVAIL_PROTO_CONF["sockets_conf"]);
-                    break;
-                }
-                case CHRONOLOG_THALLIUM_ROCE: {
-                    init_client_engine_and_endpoints(CHRONOLOG_CONF->RPC_CONF.AVAIL_PROTO_CONF["verbs_conf"]);
-                    break;
+            if (CHRONOLOG_CONF->ROLE == CHRONOLOG_CLIENT) {
+                switch (CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION) {
+                    /* only clients need Thallium end_points */
+                    case CHRONOLOG_THALLIUM_TCP:
+                    case CHRONOLOG_THALLIUM_SOCKETS: {
+                        init_client_engine_and_endpoints(CHRONOLOG_CONF->RPC_CONF.AVAIL_PROTO_CONF["sockets_conf"]);
+                        break;
+                    }
+                    case CHRONOLOG_THALLIUM_ROCE: {
+                        init_client_engine_and_endpoints(CHRONOLOG_CONF->RPC_CONF.AVAIL_PROTO_CONF["verbs_conf"]);
+                        break;
+                    }
                 }
             }
-        }
-        isRunning_ = true;
+            isRunning_ = true;
     }
 
     void start() {
@@ -191,7 +176,7 @@ public:
                 case CHRONOLOG_THALLIUM_SOCKETS:
                 case CHRONOLOG_THALLIUM_ROCE: {
                     for (int i = 0; i < numPorts_; i++) {
-                        thalliumServerList_[i].wait_for_finalize();
+                        thalliumServerList_[i]->wait_for_finalize();
                     }
 //                    thalliumClient_->wait_for_finalize();
                     break;

@@ -14,7 +14,7 @@ void ChronoLogRPC::bind(const ChronoLogCharStruct &str, F func) {
         case CHRONOLOG_THALLIUM_SOCKETS:
         case CHRONOLOG_THALLIUM_ROCE: {
             for (int i = 0; i < numPorts_; i++)
-                thalliumServerList_[i].define(str.string(), func);
+                thalliumServerList_[i]->define(str.string(), func);
 //            thalliumClient_->define(str.string(), func);
             break;
         }

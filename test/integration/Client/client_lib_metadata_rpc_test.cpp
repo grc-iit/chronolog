@@ -28,7 +28,11 @@ int main() {
             duration_release_chronicle{},
             duration_destroy_chronicle{};
     int flags;
+    uint64_t offset = 0;
+    std::string server_uri = "ofi+sockets://"+server_ip+std::to_string(base_port);
 
+    std::string client_id = gen_random(8);
+    client.Connect(server_uri, client_id, flags, offset);
     chronicle_names.reserve(NUM_CHRONICLE);
     for (int i = 0; i < NUM_CHRONICLE; i++) {
         std::string chronicle_name(gen_random(CHRONICLE_NAME_LEN));
@@ -164,6 +168,7 @@ int main() {
         assert(ret == CL_SUCCESS);
         duration_destroy_chronicle += (t2 - t1);
     }
+    client.Disconnect(client_id,flags);
 
     LOGI("CreateChronicle2 takes %lf ns", duration_create_chronicle.count() / NUM_CHRONICLE);
     LOGI("DestroyChronicle2 takes %lf ns", duration_destroy_chronicle.count() / NUM_CHRONICLE);

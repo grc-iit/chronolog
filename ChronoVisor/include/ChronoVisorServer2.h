@@ -44,14 +44,14 @@ namespace ChronoVisor {
          * @name ClientRegistry related variables
          */
         ///@{
-        std::shared_ptr<ClientRegistryManager> clientRegistryManager_;
+        //std::shared_ptr<ClientRegistryManager> clientRegistryManager_;
         ///@}
 
         /**
          * @name Chronicle Meta Directory related variables
          */
         ///@{
-        std::shared_ptr<ChronicleMetaDirectory> chronicleMetaDirectory_;
+        //std::shared_ptr<ChronicleMetaDirectory> chronicleMetaDirectory_;
         ///@}
 
         /**
