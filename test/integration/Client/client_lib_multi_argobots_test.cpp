@@ -52,6 +52,8 @@ void thread_function(void *tt)
 	ret = client->AcquireStory(chronicle_name,story_name,flags);
         ret = client->ReleaseStory(chronicle_name,story_name,flags);
 	ret = client->DestroyStory(chronicle_name,story_name,flags);
+	std::string new_perm = "RW";
+	ret = client->UpdateStoryPermissions(chronicle_name,story_name,new_perm);
 	ret = client->DestroyChronicle(chronicle_name,flags);
 }
 
@@ -74,14 +76,15 @@ int main(int argc,char **argv) {
     ABT_thread *threads = (ABT_thread*)malloc(sizeof(ABT_thread)*num_threads);
     struct thread_arg *t_args = (struct thread_arg*)malloc(num_threads*sizeof(struct thread_arg));
 
-    std::string client_id = gen_random(8);;
     std::string server_uri = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF.string();
+    std::string client_id = std::to_string(getpid());
     std::string group_id = "argobots_application"; 
+    client_id = group_id+client_id;
     server_uri += "://"+server_ip+":"+std::to_string(base_port);
     int flags = 0;
 
     uint32_t user_role = CHRONOLOG_CLIENT_RWCD;
-    uint32_t group_role = CHRONOLOG_CLIENT_GROUP_REG;
+    uint32_t group_role = CHRONOLOG_CLIENT_GROUP_ADMIN;
     uint32_t cluster_role = CHRONOLOG_CLIENT_CLUS_REG;
     uint32_t role = 0;
     role = role | user_role;

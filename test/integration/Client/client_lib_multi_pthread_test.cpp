@@ -52,8 +52,9 @@ int main(int argc,char **argv) {
 
 
     int provided;
-    std::string client_id = gen_random(8);
+    std::string client_id = std::to_string(getpid());
     std::string group_id = "pthreads_application";
+    client_id = group_id+client_id;
     int num_threads = 4;
 
     std::vector<struct thread_arg> t_args(num_threads);
@@ -68,7 +69,7 @@ int main(int argc,char **argv) {
     server_uri += "://"+server_ip+":"+std::to_string(base_port);
 
     uint32_t user_role = CHRONOLOG_CLIENT_RWCD;
-    uint32_t group_role = CHRONOLOG_CLIENT_GROUP_REG;
+    uint32_t group_role = CHRONOLOG_CLIENT_GROUP_ADMIN;
     uint32_t cluster_role = CHRONOLOG_CLIENT_CLUS_REG;
     uint32_t role = 0;
     role = role | user_role;
