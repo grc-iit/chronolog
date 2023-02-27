@@ -12,6 +12,7 @@
 #include <log.h>
 #include <thallium.hpp>
 #include <margo.h>
+#include <ClocksourceManager.h>
 #include <ChronicleMetaDirectory.h>
 #include <ClientRegistryManager.h>
 #include <RPCVisor.h>

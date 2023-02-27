@@ -37,4 +37,19 @@ inline const char* getServiceRoleString(ChronoLogServiceRole role) {
     }
 }
 
+enum ClocksourceType {
+    C_STYLE = 0,
+    CPP_STYLE = 1,
+    TSC = 2
+};
+
+inline const char* getClocksourceTypeString(ClocksourceType type) {
+    switch (type) {
+        case C_STYLE: return "C_STYLE";
+        case CPP_STYLE: return "CPP_STYLE";
+        case TSC: return "TSC";
+        default: return "UNKNOWN";
+    }
+}
+
 #endif //CHRONOLOG_ENUM_H

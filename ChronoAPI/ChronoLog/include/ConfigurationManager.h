@@ -15,7 +15,6 @@
 #include "enum.h"
 #include "log.h"
 #include "errcode.h"
-#include "ClocksourceManager.h"
 
 namespace ChronoLog {
     typedef struct ClockConf_ {
