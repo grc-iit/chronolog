@@ -24,7 +24,7 @@ foreach(client ${client_openmp})
    add_dependencies(${client} copyserverlist)
    target_include_directories(${client} PRIVATE ../Client/include)
    target_link_libraries(${client} ChronoLogClient_lib OpenMP::OpenMP_CXX)
-endforeach()
+endforeach()   
 
 set(client_mpi client_lib_hybrid_argobots_test)
 
