@@ -17,8 +17,8 @@ ChronoLogClient *client;
 void thread_body(struct thread_arg *t)
 {
 
-    std::string server_ip = "127.0.0.1";
-    int base_port = 5555;
+    std::string server_ip = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string();
+    int base_port = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT;
     int flags = 0;
     uint64_t offset;
     int ret;
@@ -58,8 +58,8 @@ int main(int argc,char **argv) {
     std::vector<std::thread> workers(num_threads);
 
     ChronoLogRPCImplementation protocol = CHRONOLOG_THALLIUM_SOCKETS;
-    std::string server_ip = "127.0.0.1";
-    int base_port = 5555;
+    std::string server_ip = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string();
+    int base_port = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT;
     client = new ChronoLogClient(protocol, server_ip, base_port);
 
     std::string server_uri = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF.string();

@@ -12,8 +12,8 @@
 int main() {
 
     ChronoLogRPCImplementation protocol = CHRONOLOG_THALLIUM_SOCKETS;
-    std::string server_ip = "127.0.0.1";
-    int base_port = 5555;
+    std::string server_ip = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string();
+    int base_port = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT;
     ChronoLogClient *client = new ChronoLogClient(protocol, server_ip, base_port);
 
     int num_threads = 8;

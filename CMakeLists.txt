@@ -5,7 +5,7 @@ if(NOT DEFINED CMAKE_MACOSX_RPATH)
     set(CMAKE_MACOSX_RPATH 0)
 endif()
 
-project(ChronoLog)
+project(ChronoLog LANGUAGES CXX)
 
 #------------------------------------------------------------------------------
 # Version information
@@ -54,6 +54,9 @@ if(NOT "${CMAKE_CXX_STANDARD}")
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
     set(CMAKE_CXX_EXTENSIONS OFF)
 endif()
+
+#find_package(OpenMP)
+#find_package(IntelDPCPP REQUIRED)
 
 #------------------------------------------------------------------------------
 # Options for compilations

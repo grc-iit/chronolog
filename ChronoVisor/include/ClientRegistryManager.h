@@ -19,6 +19,7 @@ public:
     int remove_client_record(const std::string& client_id, int &flags);
 private:
     std::unordered_map<std::string, ClientInfo> *clientRegistry_;
+    std::mutex g_clientRegistryMutex_;
 };
 
 #endif //CHRONOLOG_CLIENTREGISTRYMANAGER_H

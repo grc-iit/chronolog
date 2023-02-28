@@ -330,7 +330,7 @@ namespace ChronoLog {
                                     ++n) {
                                 assert(n->name.IsString());
                                 if (strcmp(n->name.GetString(), "rpc_implementation") == 0) {
-                                    parseRPCImplConf(reinterpret_cast<rapidjson::Value &>(*n),
+                                    parseRPCImplConf(n->value,
                                                      RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION);
                                 } else if (strcmp(n->name.GetString(), "protocol_conf") == 0) {
                                     assert(n->value.IsString());
@@ -354,7 +354,7 @@ namespace ChronoLog {
                                  ++n) {
                                 assert(n->name.IsString());
                                 if (strcmp(n->name.GetString(), "rpc_implementation") == 0) {
-                                    parseRPCImplConf(reinterpret_cast<rapidjson::Value &>(*n), RPC_CONF.VISOR_KEEPER_CONF.RPC_IMPLEMENTATION);
+                                    parseRPCImplConf(n->value, RPC_CONF.VISOR_KEEPER_CONF.RPC_IMPLEMENTATION);
                                 } else if (strcmp(n->name.GetString(), "protocol_conf") == 0) {
                                     assert(n->value.IsString());
                                     RPC_CONF.VISOR_KEEPER_CONF.PROTO_CONF = n->value.GetString();
@@ -377,7 +377,7 @@ namespace ChronoLog {
                                  ++n) {
                                 assert(n->name.IsString());
                                 if (strcmp(n->name.GetString(), "rpc_implementation") == 0) {
-                                    parseRPCImplConf(reinterpret_cast<rapidjson::Value &>(*n), RPC_CONF.CLIENT_KEEPER_CONF.RPC_IMPLEMENTATION);
+                                    parseRPCImplConf(n->value, RPC_CONF.CLIENT_KEEPER_CONF.RPC_IMPLEMENTATION);
                                 } else if (strcmp(n->name.GetString(), "protocol_conf") == 0) {
                                     assert(n->value.IsString());
                                     RPC_CONF.CLIENT_KEEPER_CONF.PROTO_CONF = n->value.GetString();
