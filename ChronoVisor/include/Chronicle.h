@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <iostream>
 #include "city.h"
+#include <ACL.h>
 
 #define MAX_CHRONICLE_PROPERTY_LIST_SIZE 16
 #define MAX_CHRONICLE_METADATA_MAP_SIZE 16
@@ -234,6 +235,7 @@ public:
 	else if(perm.compare("RO")==0) attrs_.access_permission = CHRONOLOG_RONLY;	
 	else attrs_.access_permission = CHRONOLOG_RONLY;
     }
+    /*
     inline bool can_create(std::string &client_id, std::string &group_id)
     {
 	if(std::find(attrs_.ownerlist.begin(),attrs_.ownerlist.end(),client_id) != attrs_.ownerlist.end() ||
@@ -305,7 +307,7 @@ public:
 	   return true;
 	}	
 	return false;
-    }
+    }*/
 
 private:
     std::string name_;

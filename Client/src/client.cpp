@@ -125,66 +125,19 @@ std::string& ChronoLogClient::GetClientId()
 int ChronoLogClient::CheckClientRole(uint32_t &r)
 {
    int ret = CL_ERR_UNKNOWN;
-   uint32_t user, group,cluster;
-   uint32_t mask = 7;
-   user = r & mask;
-   mask = mask << 3;
-   group = r & mask;
-   group = group >> 3;
-   mask = mask << 3;
-   cluster = r & mask;
-   cluster = cluster >> 6;
-   if(user >= CHRONOLOG_CLIENT_RO && user <= CHRONOLOG_CLIENT_RWCD &&
-      group >= CHRONOLOG_CLIENT_GROUP_ADMIN && group <= CHRONOLOG_CLIENT_GROUP_REG &&
-      cluster >= CHRONOLOG_CLIENT_CLUS_ADMIN && cluster <= CHRONOLOG_CLIENT_CLUS_REG)
-	  ret = CL_SUCCESS;
+   if(r>=CHRONOLOG_CLIENT_RESTRICTED_USER && r <= CHRONOLOG_CLIENT_CLUSTER_ADMIN) ret = CL_SUCCESS;
   return ret; 
 }
 int ChronoLogClient::SetClientRole(uint32_t &r)
 {
-    uint32_t user, group, cluster;
-    uint32_t mask = 7;
-    user = r & mask;
-    mask = mask << 3;
-    group = r & mask;
-    group = group >> 3;
-    mask = mask << 3;
-    cluster = r & mask;
-    cluster = cluster >> 6;
-    CreateClientRole(user,group,cluster);
+    int ret = CheckClientRole(r);
+    if(ret==CL_SUCCESS) my_role_ = r;
+    else my_role_ = CHRONOLOG_CLIENT_RESTRICTED_USER;
     return CL_SUCCESS;
 }
 uint32_t ChronoLogClient::GetClientRole()
 {
     return my_role_;
-}
-int ChronoLogClient::CreateClientRole(uint32_t &user, uint32_t &group, uint32_t &cluster)
-{
-	if(user < CHRONOLOG_CLIENT_RO || user >= CHRONOLOG_CLIENT_RWCD) user = CHRONOLOG_CLIENT_RO;
-	if(group != CHRONOLOG_CLIENT_GROUP_ADMIN && group != CHRONOLOG_CLIENT_GROUP_REG) group = CHRONOLOG_CLIENT_GROUP_REG;
-	if(cluster != CHRONOLOG_CLIENT_CLUS_ADMIN && cluster != CHRONOLOG_CLIENT_CLUS_REG) cluster = CHRONOLOG_CLIENT_CLUS_REG;
-	my_role_ = 0;
-	my_role_ = my_role_ | (cluster << 6);
-	my_role_ = my_role_ | (group << 3);
-	my_role_ = my_role_ | (user);
-	return CL_SUCCESS;
-}
-uint32_t ChronoLogClient::UserRole()
-{
-	uint32_t mask = 7;
-	return my_role_ & mask;
-}
-uint32_t ChronoLogClient::GroupRole()
-{
-	uint32_t mask = 7;
-	mask = mask << 3;
-	return my_role_ & mask;
-}
-uint32_t ChronoLogClient::ClusterRole()
-{
-	uint32_t mask = 7;
-	mask = mask << 6;
-	return my_role_ & mask;
 }
 int ChronoLogClient::SetGroupId(std::string &group_id)
 {

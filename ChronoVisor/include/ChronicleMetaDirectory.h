@@ -11,8 +11,8 @@
 #include <Chronicle.h>
 #include <memory>
 #include <unordered_map>
-
 #include "city.h"
+#include "ACL_List.h" 
 
 class ChronicleMetaDirectory {
 public:
@@ -44,6 +44,7 @@ public:
     int remove_group_from_story(std::string &chronicle_name,std::string &story_name,std::string &client_id,std::string &group_id,std::string &new_group_id);
 private:
 //    std::shared_ptr<std::unordered_map<std::string, Chronicle *>> chronicleMap_;
+    ACL_List *acl_repo;
     std::unordered_map<std::string , Chronicle *,stringhashfn> *chronicleMap_;
     std::unordered_map<std::string, Chronicle *,stringhashfn> *acquiredChronicleMap_;
     std::unordered_map<std::string, Story *,stringhashfn> *acquiredStoryMap_;

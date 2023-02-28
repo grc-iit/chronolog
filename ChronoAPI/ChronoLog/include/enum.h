@@ -15,6 +15,7 @@ inline const char* getRPCImplString(ChronoLogRPCImplementation impl) {
 }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 typedef enum ChronoLogServiceRole {
     CHRONOLOG_UNKNOWN = 0,
     CHRONOLOG_VISOR = 1,
@@ -46,5 +47,20 @@ inline const char* getClocksourceTypeString(ClocksourceType type) {
         default: return "UNKNOWN";
     }
 }
+typedef enum ChronoLogClientRole
+{
+   CHRONOLOG_CLIENT_RESTRICTED_USER = 0,
+   CHRONOLOG_CLIENT_REGULAR_USER = 1,
+   CHRONOLOG_CLIENT_PRIVILEGED_USER = 2,
+   CHRONOLOG_CLIENT_CLUSTER_ADMIN = 3
+}ChronoLogClientRole;
+
+typedef enum ChronoLogOp {
+    CHRONOLOG_NOOP = 0,	
+    CHRONOLOG_READ = 1,
+    CHRONOLOG_WRITE = 2,
+    CHRONOLOG_CREATE_DELETE = 3,
+    CHRONOLOG_FILEOP = 4
+}ChronoLogOp;
 
 #endif //CHRONOLOG_ENUM_H

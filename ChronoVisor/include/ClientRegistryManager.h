@@ -24,46 +24,30 @@ public:
 
     inline bool can_create_or_delete(uint32_t& role)
     {
-        uint32_t mask = 7;
-        uint32_t user_role = role & mask;
-        if(user_role == CHRONOLOG_CLIENT_RWCD) return true;
-        else return false;
+        if(role == CHRONOLOG_CLIENT_REGULAR_USER || role == CHRONOLOG_CLIENT_PRIVILEGED_USER) return true;
+        return false;
     }
     inline bool can_write(uint32_t& role)
     {
-           uint32_t mask = 7;
-           uint32_t user_role = role & mask;
-           if(user_role == CHRONOLOG_CLIENT_RW || user_role == CHRONOLOG_CLIENT_RWCD) return true;
-           else return false;
+           if(role == CHRONOLOG_CLIENT_REGULAR_USER || role == CHRONOLOG_CLIENT_PRIVILEGED_USER) return true;
+           return false;
     }
     inline bool can_read(uint32_t& role)
     {
-        uint32_t mask = 7;
-        uint32_t user_role = role & mask;
-        if(user_role == CHRONOLOG_CLIENT_RO || CHRONOLOG_CLIENT_RW || user_role == CHRONOLOG_CLIENT_RWCD) return true;
-        else return false;
+	if(role == CHRONOLOG_CLIENT_RESTRICTED_USER || role == CHRONOLOG_CLIENT_REGULAR_USER || role == CHRONOLOG_CLIENT_PRIVILEGED_USER) return true;
+        return false;
     }
     inline bool can_perform_fileops(uint32_t &role)
    {
-        uint32_t mask = 7;
-        uint32_t user_role = role & mask;
-        mask = mask << 3;
-        uint32_t group_role = role & mask;
-        group_role = group_role >> 3;
-        if(user_role == CHRONOLOG_CLIENT_RWCD && group_role == CHRONOLOG_CLIENT_GROUP_ADMIN) return true;
+	if(role == CHRONOLOG_CLIENT_PRIVILEGED_USER || role == CHRONOLOG_CLIENT_CLUSTER_ADMIN) return true;
         return false;
    }
     inline bool can_edit_ownership(uint32_t &role)
     {
-	uint32_t mask = 7;
-	uint32_t user_role = role & mask;
-	mask = mask << 3;
-	uint32_t group_role = role & mask;
-	group_role = group_role >> 3;
-	if(group_role == CHRONOLOG_CLIENT_GROUP_ADMIN) return true;
+	if(role == CHRONOLOG_CLIENT_PRIVILEGED_USER || role == CHRONOLOG_CLIENT_CLUSTER_ADMIN) return true;
 	return false;
     }
-
+    
 private:
     std::unordered_map<std::string, ClientInfo,stringhashfn> *clientRegistry_;
     std::mutex g_clientRegistryMutex_;

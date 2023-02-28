@@ -14,6 +14,7 @@
 #include <enum.h>
 #include <algorithm>
 #include <iostream>
+#include <ACL.h>
 
 enum StoryIndexingGranularity {
     story_gran_ns = 0,
