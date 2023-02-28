@@ -12,13 +12,15 @@
 #include <memory>
 #include <unordered_map>
 
+#include "city.h"
+
 class ChronicleMetaDirectory {
 public:
     ChronicleMetaDirectory();
     ~ChronicleMetaDirectory();
 
 //    std::shared_ptr<std::unordered_map<std::string, Chronicle *>> getChronicleMap() { return chronicleMap_; }
-    std::unordered_map<uint64_t, Chronicle *> *getChronicleMap() { return chronicleMap_; }
+    std::unordered_map<std::string, Chronicle *,stringhashfn> *getChronicleMap() { return chronicleMap_; }
 
     //int create_chronicle(const std::string& name, std::string &client_id, std::string &group_id,enum ChronoLogVisibility &v);
     int create_chronicle(const std::string& name,std::string &client_id, std::string &group_id, const std::unordered_map<std::string, std::string>& attrs);
@@ -42,11 +44,11 @@ public:
     int remove_group_from_story(std::string &chronicle_name,std::string &story_name,std::string &client_id,std::string &group_id,std::string &new_group_id);
 private:
 //    std::shared_ptr<std::unordered_map<std::string, Chronicle *>> chronicleMap_;
-    std::unordered_map<uint64_t , Chronicle *> *chronicleMap_;
-    std::unordered_map<uint64_t, Chronicle *> *acquiredChronicleMap_;
-    std::unordered_map<uint64_t, Story *> *acquiredStoryMap_;
-    std::unordered_multimap<uint64_t, std::string> *acquiredChronicleClientMap_;
-    std::unordered_multimap<uint64_t, std::string> *acquiredStoryClientMap_;
+    std::unordered_map<std::string , Chronicle *,stringhashfn> *chronicleMap_;
+    std::unordered_map<std::string, Chronicle *,stringhashfn> *acquiredChronicleMap_;
+    std::unordered_map<std::string, Story *,stringhashfn> *acquiredStoryMap_;
+    std::unordered_multimap<std::string, std::string,stringhashfn> *acquiredChronicleClientMap_;
+    std::unordered_multimap<std::string, std::string,stringhashfn> *acquiredStoryClientMap_;
     std::mutex g_chronicleMetaDirectoryMutex_;      
     std::mutex g_acquiredChronicleMapMutex_;         
     std::mutex g_acquiredStoryMapMutex_;             

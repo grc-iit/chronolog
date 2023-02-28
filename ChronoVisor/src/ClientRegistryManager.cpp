@@ -13,7 +13,7 @@ ClientRegistryManager::ClientRegistryManager() {
     LOGD("%s constructor is called, object created@%p in thread PID=%d",
          typeid(*this).name(), this, getpid());
 
-    clientRegistry_ = new std::unordered_map<std::string, ClientInfo>();
+    clientRegistry_ = new std::unordered_map<std::string, ClientInfo,stringhashfn>();
 
     LOGD("clientRegistry_@%p has %ld entries", clientRegistry_, clientRegistry_->size());
 }

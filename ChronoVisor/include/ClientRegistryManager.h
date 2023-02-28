@@ -10,6 +10,7 @@
 #include <memory>
 #include <ClientInfo.h>
 #include <enum.h>
+#include "city.h"
 
 class ClientRegistryManager {
 public:
@@ -64,7 +65,7 @@ public:
     }
 
 private:
-    std::unordered_map<std::string, ClientInfo> *clientRegistry_;
+    std::unordered_map<std::string, ClientInfo,stringhashfn> *clientRegistry_;
     std::mutex g_clientRegistryMutex_;
 };
 

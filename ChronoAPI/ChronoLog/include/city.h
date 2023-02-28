@@ -65,6 +65,7 @@
 #include <stdlib.h>  // for size_t.
 #include <stdint.h>
 #include <utility>
+#include <string>
 
 typedef uint8_t uint8;
 typedef uint32_t uint32;
@@ -108,5 +109,15 @@ inline uint64 Hash128to64(const uint128& x) {
     b *= kMul;
     return b;
 }
+
+
+struct stringhashfn
+{
+   uint64_t operator()(const std::string &s) const
+   {
+        return CityHash64(s.c_str(),s.size());
+   }
+};
+
 
 #endif  // CITY_HASH_H_
