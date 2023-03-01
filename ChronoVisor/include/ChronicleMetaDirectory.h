@@ -43,8 +43,8 @@ private:
     std::unordered_map<uint64_t , Chronicle *> *chronicleMap_;
 //    std::unordered_map<uint64_t, Chronicle *> *acquiredChronicleMap_;
     std::unordered_map<uint64_t, Story *> *acquiredStoryMap_;
-    std::unordered_map<std::string, uint64_t> *chronicleName2IdMap_;
-    std::unordered_map<uint64_t, std::string> *chronicleId2NameMap_;
+//    std::unordered_map<std::string, uint64_t> *chronicleName2IdMap_;
+//    std::unordered_map<uint64_t, std::string> *chronicleId2NameMap_;
 };
 
 #endif //CHRONOLOG_CHRONICLEMETADIRECTORY_H
