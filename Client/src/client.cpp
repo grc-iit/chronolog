@@ -65,3 +65,7 @@ std::vector<std::string> ChronoLogClient::ShowChronicles(std::string &client_id)
 std::vector<std::string> ChronoLogClient::ShowStories(std::string &client_id, const std::string &chronicle_name) {
     return rpcClient_->ShowStories(client_id, chronicle_name);
 }
+uint64_t ChronoLogClient::GetTS()
+{
+	return rpcProxy_->GetTS(clientid);
+}

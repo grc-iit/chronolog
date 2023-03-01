@@ -12,13 +12,14 @@
 #define TIME_DB_INIT_WAIT 1
 #define TIME_DB_UPDATE_INTERVAL 3
 
+template<class ClockSource>
 class TimeManager {
 public:
     TimeManager() {
-        refTimestampUpdateInterval_ = TIME_DB_UPDATE_INTERVAL;
-        init(refTimestampUpdateInterval_);
+        //refTimestampUpdateInterval_ = TIME_DB_UPDATE_INTERVAL;
+        //init(refTimestampUpdateInterval_);
     }
-
+    /*
     explicit TimeManager(double updateInterval) {
         refTimestampUpdateInterval_ = updateInterval;
         init(refTimestampUpdateInterval_);
@@ -28,8 +29,6 @@ public:
         refTimestampUpdateInterval_ = updateInterval;
         init(refTimestampUpdateInterval_, clocksourceType);
     }
-
-    void setClocksourceType(ClocksourceType clocksourceType) { clocksourceType_ = clocksourceType; }
 
     std::unique_ptr<TimeRecord> genPeriodicTimeRecord() {
         std::unique_ptr<TimeRecord> record = std::make_unique<TimeRecord>(clocksource_);
@@ -64,25 +63,24 @@ public:
         record->updateTimestamp();
         record->setDriftRate(latestDriftRate_);
         return record;
-    }
+    }*/
 
 public:
-    Clocksource *clocksource_{};               ///< clocksource (clock_gettime, std::high_precision_clock::now(), or TSC)
+    ClocksourceManager<ClockSource> *manager;           ///< clocksource (clock_gettime, std::high_precision_clock::now(), or TSC)
     double refTimestampUpdateInterval_;      ///< how often reference timestamp is updated for drift rate calculation
     uint64_t lastTimestamp_{};
     std::atomic<double> latestDriftRate_{};
     bool firstTimeRecord_{};
-    ClocksourceType clocksourceType_{};
 
 private:
+    /*
     void init(double updateInterval, ClocksourceType clocksourceType = ClocksourceType::C_STYLE) {
         firstTimeRecord_ = true;
         refTimestampUpdateInterval_ = updateInterval;
-        clocksourceType_ = clocksourceType;
         ClocksourceManager *manager = ClocksourceManager::getInstance();
         manager->setClocksourceType(clocksourceType_);
         clocksource_ = manager->getClocksource();
-    }
+    }*/
 };
 
 

@@ -10,94 +10,90 @@
 #include <ctime>
 #include <typeinfo>
 #include <unistd.h>
-#include <emmintrin.h>
 #include <enum.h>
 #include <log.h>
+#include <climits>
+#include <rpc.h>
 
-#define   lfence()  _mm_lfence()
-#define   mfence()  _mm_mfence()
-
-class Clocksource {
-public:
-    static Clocksource *Create(ClocksourceType type);
-    virtual ~Clocksource() = default;;
-    /**
-     * @name Get timestamp
-     */
-    ///@{
-    virtual uint64_t getTimestamp() = 0;
-    ///@}
+class ClockSourceCStyle
+{
+   public:
+	 ClockSourceCStyle(){}
+	 ~ClockSourceCStyle(){}
+	uint64_t getTimeStamp()
+	{
+		struct timespec t{};
+		clock_gettime(CLOCK_TAI,&t);
+		return t.tv_nsec;
+	}
 };
 
-class ClocksourceCStyle : public Clocksource {
-public:
-    uint64_t getTimestamp() override {
-        struct timespec t{};
-        clock_gettime(CLOCK_MONOTONIC, &t);
-        return (t.tv_sec * (uint64_t) 1e9 + t.tv_nsec);
-    }
+class ClockSourceCPPStyle
+{
+   public:
+	ClockSourceCPPStyle() {}
+	~ClockSourceCPPStyle(){}
+	uint64_t getTimeStamp()
+	{
+	    auto t = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+	    return t;
+	}
 };
 
-class ClocksourceTSC : public Clocksource {
-public:
-    uint64_t getTimestamp() override {
-        unsigned int proc_id;
-        uint64_t  t = __builtin_ia32_rdtscp(&proc_id);
-        lfence();
-        return t;
-    }
-};
-class ClocksourceCPPStyle : public Clocksource {
-public:
-    uint64_t getTimestamp() override {
-        using namespace std::chrono;
-        using clock = steady_clock;
-        clock::time_point t = clock::now();
-        return (t.time_since_epoch().count());
-    }
-};
-
+template<class ClockSource>
 class ClocksourceManager {
-private:
-    ClocksourceManager() : clocksource_(nullptr), clocksourceType_(ClocksourceType::C_STYLE) {
-        LOGD("%s constructor is called", typeid(*this).name());
-    }
-
 public:
-    ~ClocksourceManager() {
-        if (clocksource_) {
-            delete clocksource_;
-            clocksource_ = nullptr;
-        }
-        if (clocksourceManager_) {
-            delete clocksourceManager_;
-            clocksourceManager_ = nullptr;
-        }
-    }
+	ClocksourceManager()
+	{
+	  unit = 1;
+	  offset = 0;
+	  num_procs = 1;
+	  func_prefix = "ChronoLogThallium";
+	}
+	~ClocksourceManager()
+	{}
+	uint64_t TimeStamp()
+	{
+		return clocksource_->getTimeStamp()/unit+offset;
+	}
+	void set_rpc(std::shared_ptr<ChronoLogRPC> &r)
+	{
+		rpc = r;
+	}
+	uint64_t LocalGetTS(std::string &client_id)
+	{
+	     return TimeStamp();
+	}
 
-    static ClocksourceManager *getInstance() {
-        if (!clocksourceManager_) {
-            clocksourceManager_ = new ClocksourceManager();
-        }
-        return clocksourceManager_;
-    }
+        void bind_functions()
+	{
+		std::function<void(const tl::request &,
+				   std::string &
+                                   )> timestampFunc(
+                        [this](auto && PH1,
+			       auto && PH2
+				) {
+                            ThalliumLocalGetTS(std::forward<decltype(PH1)>(PH1),
+					    std::forward<decltype(PH2)>(PH2));
+			    });
+				
+		rpc->bind("ChronoLogThalliumGetTS", timestampFunc);
 
-    void setClocksourceType(ClocksourceType type) {
-        this->clocksourceType_ = type;
-    }
 
-    ClocksourceType getClocksourceType() {
-        return clocksourceType_;
-    }
 
-    Clocksource *getClocksource() {
-        this->clocksource_ = Clocksource::Create(this->clocksourceType_);
-        return this->clocksource_;
-    }
+
+	}
+
+
+	CHRONOLOG_THALLIUM_DEFINE(LocalGetTS,(client_id),std::string& client_id)
+
 private:
-    static ClocksourceManager *clocksourceManager_;
-    Clocksource *clocksource_;
-    ClocksourceType clocksourceType_;
+    std::shared_ptr<ChronoLogRPC> rpc;
+    ClockSource *clocksource_;
+    uint64_t unit;
+    uint64_t offset;
+    int num_procs;
+    std::string func_prefix;
 };
 
 #endif //CHRONOLOG_CLOCKSOURCEMANAGER_H

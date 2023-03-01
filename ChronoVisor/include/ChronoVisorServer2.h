@@ -25,6 +25,10 @@ namespace ChronoVisor {
         explicit ChronoVisorServer2(const std::string& conf_file_path = "");
 
         explicit ChronoVisorServer2(const ChronoLog::ConfigurationManager &conf_manager);
+        ~ChronoVisorServer2() 
+	{
+	   delete CSManager;
+        }
 
         int start();
 
@@ -41,6 +45,14 @@ namespace ChronoVisor {
         std::vector<margo_instance_id> midVec_;
 
         /**
+<<<<<<< HEAD
+=======
+         * @name Clock-related variables
+         */
+        ClocksourceManager<ClockSourceCPPStyle> *CSManager;
+
+        /**
+>>>>>>> 0e4a787 (timestamps)
          * @name ClientRegistry related variables
          */
         ///@{
@@ -65,8 +77,8 @@ namespace ChronoVisor {
          * @name Clock related variables
          */
         ///@{
-        ClocksourceManager *pClocksourceManager_;
-        ///@}
+	std::shared_ptr<RPCVisor> rpcProxy_;
+	std::shared_ptr<ChronoLogRPC> rpc;
     };
 }
 

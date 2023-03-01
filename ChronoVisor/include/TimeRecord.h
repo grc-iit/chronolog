@@ -14,16 +14,13 @@
 /**
  * Class of each record in TimeDB, which might not be the same as TimeInfo in message serde
  */
+template<class ClockSource>
 class TimeRecord {
 public:
     TimeRecord() : timestamp_(0), drift_rate_(0), ref_interval_(-1), clocksource_(nullptr) {}
 
-    explicit TimeRecord(Clocksource *clocksource) : timestamp_(0), drift_rate_(0), ref_interval_(-1) {
-        clocksource_ = clocksource;
-    }
-
-    TimeRecord(Clocksource *clocksource, uint64_t timestamp, double ref_interval)
-    : timestamp_(timestamp), ref_interval_(ref_interval), clocksource_(clocksource) {}
+    TimeRecord(uint64_t timestamp, double ref_interval)
+    : timestamp_(timestamp), ref_interval_(ref_interval) {}
 
     TimeRecord& operator=(const TimeRecord& other) {
         if (this == &other)
@@ -55,11 +52,9 @@ public:
         return str;
     }
 
-    Clocksource *getClocksource() { return clocksource_; }
     uint64_t getTimestamp() const { return timestamp_; }
     double getDriftRate() const { return drift_rate_; }
 
-    void setClocksource(Clocksource *clocksource) { clocksource_ = clocksource; }
     void setUpdateInterval(double update_interval) { ref_interval_ = update_interval; }
     void setTimestamp(uint64_t timestamp) { timestamp_ = timestamp; }
     void setDriftRate(double drift_rate) { drift_rate_ = drift_rate; }
@@ -104,7 +99,7 @@ private:
         return clocksource_->getTimestamp();
     }
 
-    Clocksource *clocksource_;   ///< clocksource (clock_gettime, std::high_precision_clock::now(), or TSC)
+    ClockSource *clocksource_;   ///< clocksource (clock_gettime, std::high_precision_clock::now(), or TSC)
 };
 
 #endif //CHRONOLOG_TIMERECORD_H

@@ -14,6 +14,17 @@
 #include <RPCVisor.h>
 
 /**
+ * Configuration-related global variables
+ */
+std::shared_ptr<ChronoLog::ConfigurationManager> g_confManager =
+        ChronoLog::Singleton<ChronoLog::ConfigurationManager>::GetInstance();
+
+/**
+ * Clock management-related global variables
+ */
+//ClocksourceManager *ClocksourceManager::clocksourceManager_ = nullptr;
+
+/**
  * ClientRegistry-related global variables
  */
 //std::shared_ptr<ClientRegistryManager> g_clientRegistryManager = nullptr;

@@ -39,6 +39,16 @@ public:
     /**
      * Admin APIs
      */
+    
+    void Visor_start()
+    {
+	rpc->start();
+	
+    }
+    std::shared_ptr<ChronoLogRPC> get_RPC()
+    {
+	return rpc;
+    }
     int LocalConnect(const std::string &uri, std::string &client_id, int &flags, uint64_t &clock_offset) {
         LOGD("%s in ChronoLogAdminRPCProxy@%p called in PID=%d, with args: uri=%s",
              __FUNCTION__, this, getpid(), uri.c_str());

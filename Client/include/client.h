@@ -10,7 +10,6 @@
 #include "ConfigurationManager.h"
 #include "ClocksourceManager.h"
 
-ClocksourceManager *ClocksourceManager::clocksourceManager_ = nullptr;
 
 class ChronoLogClient {
 public:
@@ -56,10 +55,10 @@ public:
     int EditChronicleAttr(std::string &chronicle_name, const std::string &key, const std::string &value);
     std::vector<std::string> ShowChronicles(std::string &client_id);
     std::vector<std::string> ShowStories(std::string &client_id, const std::string &chronicle_name);
-
+    uint64_t GetTS();
 private:
     std::string clientid;
-    std::shared_ptr<RPCClient> rpcClient_;
-    ClocksourceManager *pClocksourceManager_;
+    std::shared_ptr<RPCClient> rpcProxy_;
+    ClocksourceManager<ClockSourceCPPStyle> *CSManager;
 };
 #endif //CHRONOLOG_CLIENT_H
