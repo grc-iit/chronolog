@@ -77,13 +77,7 @@ int main(int argc,char **argv) {
     server_uri += "://"+server_ip+":"+std::to_string(base_port);
     int flags = 0;
     group_id = "hybrid_argobots_application";
-    uint32_t user_role = CHRONOLOG_CLIENT_RWCD;
-    uint32_t group_role = CHRONOLOG_CLIENT_GROUP_REG;
-    uint32_t cluster_role = CHRONOLOG_CLIENT_CLUS_REG;
-    uint32_t role = 0;
-    role = role | user_role;
-    role = role | (group_role << 3);
-    role = role | (cluster_role << 6);
+    uint32_t role = CHRONOLOG_CLIENT_REGULAR_USER;
 
     client = new ChronoLogClient(protocol, server_ip, base_port);
 

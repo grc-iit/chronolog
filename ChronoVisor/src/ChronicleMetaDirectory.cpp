@@ -17,7 +17,7 @@ ChronicleMetaDirectory::ChronicleMetaDirectory() {
     acquiredStoryMap_ = new std::unordered_map<std::string, Story *,stringhashfn>();
     acquiredChronicleClientMap_ = new std::unordered_multimap<std::string,std::string,stringhashfn> ();
     acquiredStoryClientMap_ = new std::unordered_multimap<std::string,std::string,stringhashfn> ();
-    acl_repo = new ACL_List();
+    //acl_repo = new ACL_DB();
     LOGD("%s constructor finishes, object created@%p in thread PID=%d",
          typeid(*this).name(), this, getpid());
 }
@@ -28,7 +28,7 @@ ChronicleMetaDirectory::~ChronicleMetaDirectory() {
     delete acquiredStoryMap_;
     delete acquiredChronicleClientMap_;
     delete acquiredStoryClientMap_;
-    delete acl_repo;
+    //delete acl_repo;
 }
 
 /**
@@ -73,18 +73,14 @@ int ChronicleMetaDirectory::create_chronicle(const std::string& name, std::strin
     pChronicle->setCid(cid);
     std::string chronicle_name = name; 
     std::string perm;
-    //pChronicle->add_owner_and_group(client_id,group_id);
     auto attr_iter = attrs.find("Permissions");
-    enum ChronoLogVisibility v = CHRONOLOG_RONLY;
     if(attr_iter != attrs.end())
     {
 	  std::string c(attr_iter->second);
 	  perm = c;
-	  //pChronicle->generate_permission(c); 
     }
     else perm = "RONLY";
-    int err = acl_repo->create_acl(chronicle_name,group_id,perm);
-	    //pChronicle->set_permissions(v);
+    pChronicle->aclmaps().create_acl(group_id,perm);
     auto res = chronicleMap_->emplace(name, pChronicle);
     t2 = std::chrono::steady_clock::now();
     std::chrono::duration<double, std::nano> duration = (t2 - t1);
@@ -129,10 +125,9 @@ int ChronicleMetaDirectory::destroy_chronicle(const std::string& name,
         if (pChronicle->getAcquisitionCount() != 0)
             return CL_ERR_UNKNOWN;
       
-	enum ChronoLogVisibility v = pChronicle->get_permissions();
 	std::string chronicle_name = name;
 	enum ChronoLogOp nop = CHRONOLOG_CREATE_DELETE;
-	bool b = acl_repo->is_allowed(chronicle_name,group_id,nop);//pChronicle->can_delete(client_id,group_id);
+	bool b = pChronicle->aclmaps().is_allowed(group_id,nop);
 	if(b)
         {	
            delete pChronicle;
@@ -179,8 +174,8 @@ int ChronicleMetaDirectory::acquire_chronicle(const std::string& name,
         Chronicle *pChronicle = chronicleRecord->second;
 	enum ChronoLogOp op = (enum ChronoLogOp)flags;
 	std::string chronicle_name = name;
-	bool b = acl_repo->is_allowed(chronicle_name,group_id,op);//pChronicle->can_acquire(client_id,group_id,op);
-        if(b)
+	bool b = pChronicle->aclmaps().is_allowed(group_id,op);
+	if(b)
 	{
 	auto range = acquiredChronicleClientMap_->equal_range(name);
         bool exists = false;
@@ -264,7 +259,7 @@ int ChronicleMetaDirectory::update_chronicle_permissions(std::string &name,std::
     {
        pChronicle = chronicleRecord->second;
        uint32_t new_perm = 3;
-       bool b = acl_repo->replace_acl(name,group_id,new_perm);//pChronicle->can_edit_group_and_permissions(client_id,group_id);
+       bool b = true;//acl_repo->replace_acl(name,group_id,new_perm);//pChronicle->can_edit_group_and_permissions(client_id,group_id);
        if(b)
        {
 	//pChronicle->generate_permission(perm);
@@ -306,18 +301,10 @@ int ChronicleMetaDirectory::create_story(std::string& chronicle_name,
         LOGD("Chronicle@%p", &(*pChronicle));
         /* Ask Chronicle to create the Story */
 	enum ChronoLogOp nop = CHRONOLOG_CREATE_DELETE;
-	bool b = acl_repo->is_allowed(chronicle_name,group_id,nop);//pChronicle->can_create(client_id,group_id);
+	bool b = pChronicle->aclmaps().is_allowed(group_id,nop);
 	if(b)
 	{
           CL_Status res = pChronicle->addStory(chronicle_name, story_name,client_id,group_id,attrs);
-	  if(res==CL_SUCCESS)
-	  {
-	      std::string perm = "RONLY";
-	      auto attrs_iter = attrs.find("Permissions");
-	      if(attrs_iter != attrs.end()) perm = attrs_iter->second;
-	      std::string story_name1 = chronicle_name+story_name;
-	      res = acl_repo->create_acl(story_name1,group_id,perm);
-	  }
           t2 = std::chrono::steady_clock::now();
           std::chrono::duration<double, std::nano> duration = (t2 - t1);
           LOGD("time in %s: %lf ns", __FUNCTION__, duration.count());
@@ -359,6 +346,7 @@ int ChronicleMetaDirectory::destroy_story(std::string& chronicle_name,
 
     if (acquiredStoryMap_->find(story_name_for_hash) != acquiredStoryMap_->end())
     {
+	std::cout <<" story not released"<<std::endl;
         return CL_ERR_ACQUIRED;
     }
 
@@ -368,7 +356,7 @@ int ChronicleMetaDirectory::destroy_story(std::string& chronicle_name,
     {
         Chronicle *pChronicle = chronicleRecord->second;
 	enum ChronoLogOp nop = CHRONOLOG_CREATE_DELETE;
-	bool b = acl_repo->is_allowed(chronicle_name,group_id,nop);//pChronicle->can_delete(client_id,group_id);
+	bool b = pChronicle->aclmaps().is_allowed(group_id,nop);
         /* Ask the Chronicle to destroy the Story */
 	if(b)
 	{
@@ -376,7 +364,6 @@ int ChronicleMetaDirectory::destroy_story(std::string& chronicle_name,
 	  if(res == CL_SUCCESS)
 	  {
 		std::string story_name1 = chronicle_name+story_name;
-		acl_repo->remove_all_acls(story_name1);
 	  }
           if (res != CL_SUCCESS) {
             LOGE("Fail to remove Story name=%s in Chronicle name=%s", story_name.c_str(), chronicle_name.c_str());
@@ -422,15 +409,17 @@ int ChronicleMetaDirectory::acquire_story(const std::string& chronicle_name,
     std::lock_guard<std::mutex> AcquiredStoryMapLock(g_acquiredStoryMapMutex_);
     /* Then check if Chronicle exists, fail if false */
     int ret = CL_ERR_NOT_EXIST;
-	
-    
-    std::string chroniclename = chronicle_name;
-    bool b1 = acl_repo->is_allowed(chroniclename,group_id,op);//pChronicle->can_acquire(client_id,group_id,op);
-    auto storyRecord = pChronicle->getStoryMap().find(story_name_for_hash);
-    if (storyRecord != pChronicle->getStoryMap().end()) 
-    {
+    auto chronicleRecord = chronicleMap_->find(chronicle_map);
+    if(chronicleRecord != chronicleMap_->end()){
+        Chronicle *pChronicle = chronicleRecord->second;
+	enum ChronoLogOp op = (enum ChronoLogOp) flags;
+	std::string chroniclename = chronicle_name;
+	bool b1 = pChronicle->aclmaps().is_allowed(group_id,op);
+        auto storyRecord = pChronicle->getStoryMap().find(story_name_for_hash);
+        if (storyRecord != pChronicle->getStoryMap().end()) 
+	{
             Story *pStory = storyRecord->second;
-	    bool b2 = acl_repo->is_allowed(story_name_for_hash,group_id,op);//pStory->can_acquire(client_id,group_id,op);
+	    bool b2 = pStory->aclmaps().is_allowed(group_id,op);
 
 	    if(b1 && b2)
 	    {
@@ -487,15 +476,15 @@ int ChronicleMetaDirectory::release_story(const std::string& chronicle_name,
     std::lock_guard<std::mutex> AcquiredStoryMapLock(g_acquiredStoryMapMutex_);
     /* Then check if Chronicle exists, fail if false */
     int ret = CL_ERR_NOT_EXIST;
-    auto chronicleRecord = chronicleMap_->find(cid);
+    auto chronicleRecord = chronicleMap_->find(chronicle_name);
     if (chronicleRecord != chronicleMap_->end()) {
         Chronicle *pChronicle = chronicleRecord->second;
         /* Then check if Story exists, fail if false */
-        auto storyRecord = pChronicle->getStoryMap().find(sid);
+        auto storyRecord = pChronicle->getStoryMap().find(story_name_for_hash);
         if (storyRecord != pChronicle->getStoryMap().end()) {
             Story *pStory = storyRecord->second;
             /* Decrement AcquisitionCount */
-            auto range = acquiredStoryClientMap_->equal_range(sid);
+            auto range = acquiredStoryClientMap_->equal_range(story_name_for_hash);
             if (range.first != range.second) {
                 for (auto t = range.first; t != range.second;) {
                     if (t->second.compare(client_id) == 0) {
@@ -503,7 +492,7 @@ int ChronicleMetaDirectory::release_story(const std::string& chronicle_name,
                         pStory->decrementAcquisitionCount();
                         ret = CL_SUCCESS;
                         if (pStory->getAcquisitionCount() == 0) {
-                            auto nErased = acquiredStoryMap_->erase(sid);
+                            auto nErased = acquiredStoryMap_->erase(story_name_for_hash);
                             if (nErased == 1) ret = CL_SUCCESS;
                             else ret = CL_ERR_UNKNOWN;
                         }
@@ -535,13 +524,11 @@ int ChronicleMetaDirectory::update_story_permissions(std::string &chronicle_name
 	if(storyRecord != pChronicle->getStoryMap().end())
 	{
 		Story *pStory = storyRecord->second;
-		bool b1 = acl_repo->is_owner(chronicle_name,group_id);//pChronicle->can_edit_group_and_permissions(client_id,group_id);
-		bool b2 = acl_repo->is_owner(story_name_for_hash,group_id);//pStory->can_edit_group_and_permissions(client_id,group_id);
+		bool b1 = pChronicle->aclmaps().is_owner(group_id);
+		bool b2 = pStory->aclmaps().is_owner(group_id);
 	        if(b1 && b2)
 		{
-	             uint32_t new_perm = 3;
-		     acl_repo->replace_acl(story_name_for_hash,group_id,new_perm);
-		     //pStory->generate_permission(perm);
+		     pStory->aclmaps().replace_acl(group_id,perm);
 		     ret = CL_SUCCESS;
 		}
 		else 
@@ -621,7 +608,7 @@ int ChronicleMetaDirectory::edit_chronicle_attr(std::string& name,
         return CL_ERR_NOT_EXIST;
 }
 
-int ChronicleMetaDirectory::add_group_to_chronicle(std::string &chronicle_name, std::string &client_id, std::string &group_id, std::string &new_group_id)
+int ChronicleMetaDirectory::add_group_to_chronicle(std::string &chronicle_name, std::string &client_id, std::string &group_id, std::string &new_group_id,std::string &new_perm)
 {
   LOGD("add group_id %s to chronicle%s", new_group_id.c_str(),chronicle_name.c_str());
     uint64_t cid = CityHash64(chronicle_name.c_str(), chronicle_name.size());
@@ -631,13 +618,12 @@ int ChronicleMetaDirectory::add_group_to_chronicle(std::string &chronicle_name, 
     std::lock_guard<std::mutex> AcquiredChronicleMapLock(g_acquiredChronicleMapMutex_);
     auto chronicleRecord = chronicleMap_->find(chronicle_name);
     auto range1 = acquiredChronicleClientMap_->equal_range(chronicle_name);
-    std::string def_perm = "RONLY";
     if (chronicleRecord != chronicleMap_->end() && range1.first == range1.second)
     {
         Chronicle *pChronicle = chronicleRecord->second;
-        bool b = acl_repo->is_owner(chronicle_name,group_id);//pChronicle->can_edit_group_and_permissions(client_id,group_id);
+        bool b = pChronicle->aclmaps().is_owner(group_id);
 	if(b)
-	  ret = acl_repo->create_acl(chronicle_name,new_group_id,def_perm);//pChronicle->add_group(new_group_id);
+	  ret = pChronicle->aclmaps().create_acl(new_group_id,new_perm);
 	else
 	{
 	    LOGE("Does not have permission for requested operation");
@@ -662,15 +648,15 @@ int ChronicleMetaDirectory::remove_group_from_chronicle(std::string &chronicle_n
     if (chronicleRecord != chronicleMap_->end() && range1.first == range1.second)
     {
         Chronicle *pChronicle = chronicleRecord->second;
-        bool b = acl_repo->is_owner(chronicle_name,group_id);//pChronicle->can_edit_group_and_permissions(client_id,group_id);
+        bool b = pChronicle->aclmaps().is_owner(group_id);
         if(b)
 	{
-          acl_repo->remove_acl(chronicle_name,new_group_id);//pChronicle->remove_group(new_group_id);
+          pChronicle->aclmaps().remove_acl(new_group_id);
 	  auto smap = pChronicle->getStoryMap();
 	  for(auto r = smap.begin(); r != smap.end(); ++r)
 	  {
-	      std::string story_name = (*r).first;//Story *pStory = (*r).second;
-	      bool b1 = acl_repo->remove_acl(story_name,new_group_id);//pStory->remove_group(new_group_id);
+	      Story *pStory = (*r).second;
+	      bool b1 = pStory->aclmaps().remove_acl(new_group_id);
 	  }
 	}
         else
@@ -685,7 +671,7 @@ int ChronicleMetaDirectory::remove_group_from_chronicle(std::string &chronicle_n
 }
 
 
-int ChronicleMetaDirectory::add_group_to_story(std::string &chronicle_name,std::string &story_name,std::string &client_id,std::string &group_id,std::string &new_group_id)
+int ChronicleMetaDirectory::add_group_to_story(std::string &chronicle_name,std::string &story_name,std::string &client_id,std::string &group_id,std::string &new_group_id,std::string &new_perm)
 {
     LOGD("add group %s to Story name=%s in Chronicle name=%s", new_group_id.c_str(),story_name.c_str(), chronicle_name.c_str());
     uint64_t cid = CityHash64(chronicle_name.c_str(), chronicle_name.size());
@@ -702,21 +688,19 @@ int ChronicleMetaDirectory::add_group_to_story(std::string &chronicle_name,std::
      {
         Chronicle *pChronicle = chronicleRecord->second;
 
-         bool b1 = acl_repo->is_owner(chronicle_name,group_id);//pChronicle->can_edit_group_and_permissions(client_id,group_id);
+         bool b1 = pChronicle->aclmaps().is_owner(group_id);
          err = CL_SUCCESS;
-	 std::string def_perm = "RONLY";
          if(b1)
          {
              auto storyRecord = pChronicle->getStoryMap().find(story_name_for_hash);
              if (storyRecord != pChronicle->getStoryMap().end()) 
 	     {
-	        //Story *story = storyRecord->second;
-		     std::string story_name = storyRecord->first;
-                bool b2 = acl_repo->is_owner(story_name,group_id);//story->can_edit_group_and_permissions(client_id,group_id);	     
+	        Story *story = storyRecord->second;
+                bool b2 = story->aclmaps().is_owner(group_id);  
 	        if(b2)
 	        {
-		  err = acl_repo->create_acl(chronicle_name,new_group_id,def_perm);//pChronicle->add_group(new_group_id);
-		  err = acl_repo->create_acl(story_name,new_group_id,def_perm);//story->add_group(new_group_id);
+		  err = pChronicle->aclmaps().create_acl(new_group_id,new_perm);
+		  err = story->aclmaps().create_acl(new_group_id,new_perm);
 	        }
                 else 
 		{
@@ -754,7 +738,7 @@ int ChronicleMetaDirectory::remove_group_from_story(std::string &chronicle_name,
      {
         Chronicle *pChronicle = chronicleRecord->second;
 
-         bool b1 = acl_repo->is_owner(chronicle_name,group_id);//pChronicle->can_edit_group_and_permissions(client_id,group_id);
+         bool b1 = pChronicle->aclmaps().is_owner(group_id);
          err = CL_SUCCESS;
 
          if(b1)
@@ -762,12 +746,11 @@ int ChronicleMetaDirectory::remove_group_from_story(std::string &chronicle_name,
              auto storyRecord = pChronicle->getStoryMap().find(story_name_for_hash);
              if (storyRecord != pChronicle->getStoryMap().end())
              {
-		std::string story_name = storyRecord->first;
-                //Story *story = storyRecord->second;
-                bool b2 = acl_repo->is_owner(story_name,group_id);//story->can_edit_group_and_permissions(client_id,group_id);
+                Story *story = storyRecord->second;
+                bool b2 = story->aclmaps().is_owner(group_id);
                 if(b2)
                 {
-                  err = acl_repo->remove_acl(story_name,new_group_id);//story->remove_group(new_group_id);
+                  err = story->aclmaps().remove_acl(new_group_id);
                 }
                 else 
 		{

@@ -14,7 +14,7 @@
 #include <enum.h>
 #include <algorithm>
 #include <iostream>
-#include <ACL.h>
+#include <ACL_List.h>
 
 enum StoryIndexingGranularity {
     story_gran_ns = 0,
@@ -39,9 +39,6 @@ typedef struct StoryAttrs_ {
     enum StoryIndexingGranularity indexing_granularity;
     enum StoryType type;
     enum StoryTieringPolicy tiering_policy;
-    enum ChronoLogVisibility access_permission;
-    std::vector<std::string> ownerlist;
-    std::vector<std::string> grouplist;
 } StoryAttrs;
 
 typedef struct StoryStats_ {
@@ -85,85 +82,7 @@ public:
         return stats_.count;
     }
     uint64_t getAcquisitionCount() const { return stats_.count; }
-    inline int add_owner_and_group(std::string &client_id, std::string &group_id)
-    {
-	 attrs_.ownerlist.emplace(attrs_.ownerlist.end(),client_id);
-	 attrs_.grouplist.emplace(attrs_.grouplist.end(),group_id);
-	 return CL_SUCCESS;
-    }
-   inline int add_group(std::string &group_id)
-   {
-	if(std::find(attrs_.grouplist.begin(),attrs_.grouplist.end(),group_id)==attrs_.grouplist.end())
-	       attrs_.grouplist.emplace(attrs_.grouplist.end(),group_id);
-	return CL_SUCCESS;
-    }
-    inline int remove_group(std::string &group_id)
-    {
-	 auto iter = std::find(attrs_.grouplist.begin(),attrs_.grouplist.end(),group_id);
-         if(iter != attrs_.grouplist.end())
-	 {
-	    attrs_.grouplist.erase(iter);
-	    return CL_SUCCESS;
-         }
-	 return CL_ERR_NOT_EXIST;
-    }	 
-    inline enum ChronoLogVisibility& get_permissions()
-    {
-	  return attrs_.access_permission;
-    }
-    inline void generate_permission(std::string &perm)
-    {
-	if(perm.compare("RWCD")==0) attrs_.access_permission = CHRONOLOG_RWCD;
-	else if(perm.compare("RWC")==0) attrs_.access_permission = CHRONOLOG_RWC;
-	else if(perm.compare("RWD")==0) attrs_.access_permission = CHRONOLOG_RWD;
-	else if(perm.compare("RW")==0) attrs_.access_permission = CHRONOLOG_RW;
-	else if(perm.compare("RO")==0) attrs_.access_permission = CHRONOLOG_RONLY;
-	else attrs_.access_permission = CHRONOLOG_RONLY;
-    }
-    inline int set_permissions(enum ChronoLogVisibility &v)
-    {
-	 attrs_.access_permission = v;
-	 return CL_SUCCESS;
-    }
-    inline int get_owner_and_group(std::vector<std::string> &owner, std::vector<std::string> &group)
-    {
-	  owner.assign(attrs_.ownerlist.begin(),attrs_.ownerlist.end());
-	  group.assign(attrs_.grouplist.begin(),attrs_.grouplist.end());
-	  return CL_SUCCESS;
-    }
-    inline bool can_acquire(std::string &client_id,std::string &group_id,enum ChronoLogOp &op)
-    {
-        if(std::find(attrs_.ownerlist.begin(),attrs_.ownerlist.end(),client_id) != attrs_.ownerlist.end() ||
-	   std::find(attrs_.grouplist.begin(),attrs_.grouplist.end(),group_id) != attrs_.grouplist.end())
-	{
-	   if(op == CHRONOLOG_READ && (attrs_.access_permission == CHRONOLOG_RONLY || attrs_.access_permission == CHRONOLOG_RW ||
-	   attrs_.access_permission == CHRONOLOG_RWC || attrs_.access_permission == CHRONOLOG_RWD || attrs_.access_permission == CHRONOLOG_RWCD))
-	       return true;
-	   else if(op == CHRONOLOG_WRITE && (attrs_.access_permission == CHRONOLOG_RW || attrs_.access_permission == CHRONOLOG_RWC || attrs_.access_permission == CHRONOLOG_RWD || attrs_.access_permission == CHRONOLOG_RWCD))
-	       return true;
-	}		
-	return false;
-    }
-    inline bool can_delete(std::string &client_id,std::string &group_id)
-    {
-	if(std::find(attrs_.ownerlist.begin(),attrs_.ownerlist.end(),client_id) != attrs_.ownerlist.end() ||
-	   std::find(attrs_.grouplist.begin(),attrs_.grouplist.end(),group_id) != attrs_.grouplist.end())
-	{
-	    if(attrs_.access_permission == CHRONOLOG_RWD || attrs_.access_permission == CHRONOLOG_RWCD) return true;
-	}
-	return false;
-    }
-    inline bool can_edit_group_and_permissions(std::string &client_id,std::string &group_id)
-    {
-	if(std::find(attrs_.ownerlist.begin(),attrs_.ownerlist.end(),client_id) != attrs_.ownerlist.end() ||
-	   std::find(attrs_.grouplist.begin(),attrs_.grouplist.end(),group_id) != attrs_.grouplist.end())
-	{
-	     return true;
-	}
-	return false;
-
-    }
-
+    ACL_List &aclmaps() {return acl_pairs;}
     friend std::ostream& operator<<(std::ostream& os, const Story& story);
 
 private:
@@ -172,6 +91,7 @@ private:
     uint64_t cid_{};
     StoryAttrs attrs_{};
     StoryStats stats_{};
+    ACL_List acl_pairs;
     std::unordered_map<std::string, std::string> propertyList_;
     std::unordered_map<std::string, Event> eventMap_;
 };

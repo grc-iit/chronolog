@@ -29,6 +29,7 @@ class ACL
 		{
 			p = 3;
 		}
+		std::cout <<" permission = "<<p<<std::endl;
 		permission = p;
 	}
 	inline uint32_t get_permission()
@@ -88,9 +89,13 @@ class ACL_Map
 	{
 		binding.second = a;
 	}
-	inline void modify_acl(uint32_t &p)
+	inline void modify_acl(std::string &p)
 	{
 		binding.second.set_permission(p);
+	}
+	inline bool is_allowed_acl_op(enum ChronoLogOp &op)
+	{
+		return binding.second.get_op_permission(op);
 	}
 	inline void allow_acl_op(enum ChronoLogOp &op)
 	{

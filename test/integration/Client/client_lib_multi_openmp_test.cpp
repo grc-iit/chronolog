@@ -29,13 +29,7 @@ int main() {
    std::string group_id = "openmp_application";
    client_id = group_id+client_id;
 
-   uint32_t user_role = CHRONOLOG_CLIENT_RWCD;
-   uint32_t group_role = CHRONOLOG_CLIENT_GROUP_ADMIN;
-   uint32_t cluster_role = CHRONOLOG_CLIENT_CLUS_REG;
-   uint32_t role = 0;
-   role = role | user_role;
-   role = role | (group_role << 3);
-   role = role | (cluster_role << 6);
+   uint32_t role = CHRONOLOG_CLIENT_REGULAR_USER;
    int ret = client->Connect(server_uri,client_id,group_id,role,flags,offset);
     #pragma omp for
     for(int i=0;i<num_threads;i++)
@@ -49,7 +43,8 @@ int main() {
        chronicle_attrs.emplace("TieringPolicy", "Hot");
        chronicle_attrs.emplace("Permissions","RWCD");
        ret = client->CreateChronicle(chronicle_name, chronicle_attrs, flags);
-       ret = client->AddGrouptoChronicle(chronicle_name,group_id);
+       std::string new_perm = "RW";
+       ret = client->AddGrouptoChronicle(chronicle_name,group_id,new_perm);
        flags = CHRONOLOG_WRITE;
        ret = client->AcquireChronicle(chronicle_name,flags);
        ret = client->ReleaseChronicle(chronicle_name,flags);

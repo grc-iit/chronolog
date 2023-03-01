@@ -122,20 +122,20 @@ public:
 	LOGD("%s is called in PID=%d, with args: client_id=%s role =%u",__FUNCTION__,getpid(),client_id.c_str(),role);
 	return CHRONOLOG_RPC_CALL_WRAPPER("RequestRoleChange",0,int,client_id,role);
     }
-    int AddGrouptoChronicle(std::string &chronicle_name,std::string &client_id,std::string &new_group_id)
+    int AddGrouptoChronicle(std::string &chronicle_name,std::string &client_id,std::string &new_group_id,std::string &new_perm)
     {
 	 LOGD("%s is called in PID=%d with args: chronicle_name=%s client_id=%s, new_group_id = %s",__FUNCTION__,getpid(),chronicle_name.c_str(),client_id.c_str(),new_group_id.c_str());
-	 return CHRONOLOG_RPC_CALL_WRAPPER("AddGrouptoChronicle",0,int,chronicle_name,client_id,new_group_id);
+	 return CHRONOLOG_RPC_CALL_WRAPPER("AddGrouptoChronicle",0,int,chronicle_name,client_id,new_group_id,new_perm);
     }
     int RemoveGroupFromChronicle(std::string &chronicle_name,std::string &client_id,std::string &new_group_id)
     {
 	 LOGD("%s is called in PID=%d with args: chronicle_name=%s client_id=%s, new_group_id = %s",__FUNCTION__,getpid(),chronicle_name.c_str(),client_id.c_str(),new_group_id.c_str());
 	 return CHRONOLOG_RPC_CALL_WRAPPER("RemoveGroupFromChronicle",0,int,chronicle_name,client_id,new_group_id);
     }
-    int AddGrouptoStory(std::string &chronicle_name,std::string &story_name,std::string &client_id,std::string &new_group_id)
+    int AddGrouptoStory(std::string &chronicle_name,std::string &story_name,std::string &client_id,std::string &new_group_id,std::string &new_perm)
     {
 	LOGD("%s is called in PID=%d with args: chronicle_name=%s story_name=%s client_id=%sm new_group_id=%s",__FUNCTION__,getpid(),chronicle_name.c_str(),story_name.c_str(),client_id.c_str(),new_group_id.c_str());
-	return CHRONOLOG_RPC_CALL_WRAPPER("AddGrouptoStory",0,int,chronicle_name,story_name,client_id,new_group_id);
+	return CHRONOLOG_RPC_CALL_WRAPPER("AddGrouptoStory",0,int,chronicle_name,story_name,client_id,new_group_id,new_perm);
     }
     int RemoveGroupFromStory(std::string &chronicle_name,std::string &story_name,std::string &client_id,std::string &new_group_id)
     {

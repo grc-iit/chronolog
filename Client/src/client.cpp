@@ -97,17 +97,17 @@ int ChronoLogClient::RequestRoleChange(uint32_t &role)
     }
     return ret;
 }
-int ChronoLogClient::AddGrouptoChronicle(std::string &chronicle_name,std::string &new_group_id)
+int ChronoLogClient::AddGrouptoChronicle(std::string &chronicle_name,std::string &new_group_id,std::string &new_perm)
 {
-	return rpcProxy_->AddGrouptoChronicle(chronicle_name,client_id_,new_group_id);
+	return rpcProxy_->AddGrouptoChronicle(chronicle_name,client_id_,new_group_id,new_perm);
 }
 int ChronoLogClient::RemoveGroupFromChronicle(std::string &chronicle_name,std::string &new_group_id)
 {
 	return rpcProxy_->RemoveGroupFromChronicle(chronicle_name,client_id_,new_group_id);
 }
-int ChronoLogClient::AddGrouptoStory(std::string &chronicle_name,std::string &story_name,std::string &new_group_id)
+int ChronoLogClient::AddGrouptoStory(std::string &chronicle_name,std::string &story_name,std::string &new_group_id,std::string &new_perm)
 {
-	return rpcProxy_->AddGrouptoStory(chronicle_name,story_name,client_id_,new_group_id);
+	return rpcProxy_->AddGrouptoStory(chronicle_name,story_name,client_id_,new_group_id,new_perm);
 }
 int ChronoLogClient::RemoveGroupFromStory(std::string &chronicle_name,std::string &story_name,std::string &new_group_id)
 {

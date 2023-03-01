@@ -492,7 +492,7 @@ public:
 	return ret;
     }
     
-    int LocalAddGrouptoChronicle(std::string &chronicle_name,std::string &client_id,std::string &new_group_id)
+    int LocalAddGrouptoChronicle(std::string &chronicle_name,std::string &client_id,std::string &new_group_id,std::string &new_perm)
     {
 	LOGD("%s is called in PID=%d with args: chronicle_name=%s client_id=%s new_group_id=%s",__FUNCTION__,getpid(),chronicle_name.c_str(),client_id.c_str(),new_group_id.c_str());
 	std::string group_id; uint32_t role;
@@ -504,7 +504,7 @@ public:
 
 	    if(b)
 	    {
-	       ret = chronicleMetaDirectory->add_group_to_chronicle(chronicle_name,client_id,group_id,new_group_id);
+	       ret = chronicleMetaDirectory->add_group_to_chronicle(chronicle_name,client_id,group_id,new_group_id,new_perm);
 	    }
 	    else
 	    {
@@ -550,7 +550,7 @@ public:
         return ret;
     }
 
-    int LocalAddGrouptoStory(std::string &chronicle_name,std::string &story_name,std::string &client_id,std::string &new_group_id)
+    int LocalAddGrouptoStory(std::string &chronicle_name,std::string &story_name,std::string &client_id,std::string &new_group_id,std::string &new_perm)
     {
 	LOGD("%s is called in PID=%d with args: chronicle_name=%s story_name=%s client_id=%s new_group_id=%s",__FUNCTION__,getpid(),chronicle_name.c_str(),story_name.c_str(),client_id.c_str(),new_group_id.c_str());
 	std::string group_id; uint32_t role;
@@ -562,7 +562,7 @@ public:
 
 	    if(b)
 	    {
-		ret = chronicleMetaDirectory->add_group_to_story(chronicle_name,story_name,client_id,group_id,new_group_id);
+		ret = chronicleMetaDirectory->add_group_to_story(chronicle_name,story_name,client_id,group_id,new_group_id,new_perm);
 	    }
 	    else
 	    {
@@ -852,15 +852,18 @@ public:
 		 std::function<void(const tl::request &,
                                    std::string &,
 				   std::string &,
+				   std::string &,
                                    std::string &)> addGrouptoChronicleFunc(
                         [this](auto && PH1,
                                auto && PH2,
 			       auto && PH3,
-                               auto && PH4) {
+			       auto && PH4,
+                               auto && PH5) {
                             ThalliumLocalAddGrouptoChronicle(std::forward<decltype(PH1)>(PH1),
                                                  std::forward<decltype(PH2)>(PH2),
 						 std::forward<decltype(PH3)>(PH3),
-                                                 std::forward<decltype(PH4)>(PH4));
+						 std::forward<decltype(PH4)>(PH4),
+                                                 std::forward<decltype(PH5)>(PH5));
                         }
                 );
 
@@ -883,17 +886,20 @@ public:
                                    std::string &,
 				   std::string &,
                                    std::string &,
+				   std::string &,
                                    std::string &)> addGrouptoStoryFunc(
                         [this](auto && PH1,
                                auto && PH2,
                                auto && PH3,
 			       auto && PH4,
-                               auto && PH5) {
+			       auto && PH5,
+                               auto && PH6) {
                             ThalliumLocalAddGrouptoStory(std::forward<decltype(PH1)>(PH1),
                                                  std::forward<decltype(PH2)>(PH2),
                                                  std::forward<decltype(PH3)>(PH3),
 						 std::forward<decltype(PH4)>(PH4),
-                                                 std::forward<decltype(PH5)>(PH5));
+						 std::forward<decltype(PH5)>(PH5),
+                                                 std::forward<decltype(PH6)>(PH6));
                         }
                 );
 
@@ -968,10 +974,10 @@ public:
                               std::string &name, const std::string &key, std::string &client_id, const std::string &value)
     CHRONOLOG_THALLIUM_DEFINE(LocalRequestRoleChange, (client_id,role),
 		    	      std::string &client_id,uint32_t role)
-    CHRONOLOG_THALLIUM_DEFINE(LocalAddGrouptoChronicle,(name,client_id,new_group_id),
-		    	      std::string &name,std::string &client_id,std::string &new_group_id)
-    CHRONOLOG_THALLIUM_DEFINE(LocalAddGrouptoStory, (chronicle_name,story_name,client_id,new_group_id),
-		             std::string &chronicle_name,std::string &story_name,std::string &client_id,std::string &new_group_id)
+    CHRONOLOG_THALLIUM_DEFINE(LocalAddGrouptoChronicle,(name,client_id,new_group_id,new_perm),
+		    	      std::string &name,std::string &client_id,std::string &new_group_id,std::string &new_perm)
+    CHRONOLOG_THALLIUM_DEFINE(LocalAddGrouptoStory, (chronicle_name,story_name,client_id,new_group_id,new_perm),
+		             std::string &chronicle_name,std::string &story_name,std::string &client_id,std::string &new_group_id,std::string &new_perm)
     CHRONOLOG_THALLIUM_DEFINE(LocalRemoveGroupFromChronicle,(name,client_id,new_group_id),
 		    	     std::string &name,std::string &client_id,std::string &new_group_id)
     CHRONOLOG_THALLIUM_DEFINE(LocalRemoveGroupFromStory, (chronicle_name,story_name,client_id,new_group_id),

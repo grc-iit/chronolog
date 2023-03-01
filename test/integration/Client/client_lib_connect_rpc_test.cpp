@@ -42,13 +42,7 @@ int main() {
         }
         server_uri += "://" + server_ip + ":" + std::to_string(base_port + i);
         t1 = std::chrono::steady_clock::now();
-	uint32_t user_role = CHRONOLOG_CLIENT_RW;
-	uint32_t group_role = CHRONOLOG_CLIENT_GROUP_REG;
-	uint32_t cluster_role = CHRONOLOG_CLIENT_CLUS_REG;
-	uint32_t role = 0; 
-	role = role | user_role;
-	role = role | (group_role << 3);
-	role = role | (cluster_role << 6);
+	uint32_t role = CHRONOLOG_CLIENT_REGULAR_USER; 
         ret = client.Connect(server_uri, client_ids[i], group_ids[i], role, flags, offset);
         assert(ret == CL_SUCCESS);
         t2 = std::chrono::steady_clock::now();
@@ -57,14 +51,8 @@ int main() {
 
     for (int i = 0; i < NUM_CONNECTION; i++) {
         t1 = std::chrono::steady_clock::now();
-	uint32_t user_role = CHRONOLOG_CLIENT_RWCD;
-	uint32_t group_role = CHRONOLOG_CLIENT_GROUP_ADMIN;
-	uint32_t cluster_role = CHRONOLOG_CLIENT_CLUS_REG;
-	uint32_t role = 0;
-	role = role | user_role;
-	role = role | (group_role << 3);
-	role = role | (cluster_role << 6);
-	ret = client.RequestRoleChange(role);
+	/*uint32_t role = CHRONOLOG_CLIENT_PRIVILEGED_USER;
+	ret = client.RequestRoleChange(role);*/
         ret = client.Disconnect(client_ids[i], flags);
         assert(ret == CL_SUCCESS);
         t2 = std::chrono::steady_clock::now();

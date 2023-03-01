@@ -40,15 +40,7 @@ int main() {
     std::cout <<" client_id = "<<client_id<<std::endl;
    server_uri += "://" + server_ip + ":" + std::to_string(base_port);
    
-   uint32_t user_role = (uint32_t)CHRONOLOG_CLIENT_RWCD;
-   uint32_t group_role = (uint32_t)CHRONOLOG_CLIENT_GROUP_ADMIN;
-   uint32_t cluster_role = (uint32_t)CHRONOLOG_CLIENT_CLUS_REG;
-   uint32_t role = 0;
-   role = role | user_role;
-   group_role = group_role << 3;
-   cluster_role = cluster_role << 6;
-   role = role | group_role;
-   role = role | cluster_role;  
+   uint32_t role = CHRONOLOG_CLIENT_REGULAR_USER;
    int ret = client.Connect(server_uri, client_id, group_id, role, flags, offset);
 
     chronicle_names.reserve(NUM_CHRONICLE);
@@ -92,7 +84,7 @@ int main() {
             story_attrs.emplace("Priority", "High");
             story_attrs.emplace("IndexGranularity", "Millisecond");
             story_attrs.emplace("TieringPolicy", "Hot");
-	    story_attrs.emplace("Permissions","RWD");
+	    story_attrs.emplace("Permissions","RWCD");
             flags = 1;
             t1 = std::chrono::steady_clock::now();
             ret = client.CreateStory(chronicle_name, story_name, story_attrs, flags);

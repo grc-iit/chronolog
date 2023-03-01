@@ -67,9 +67,9 @@ public:
     std::string& GetClientId();
     int SetClientRole(uint32_t &role);
     int RequestRoleChange(uint32_t &role);
-    int AddGrouptoChronicle(std::string &chronicle_name,std::string &new_group_id);
+    int AddGrouptoChronicle(std::string &chronicle_name,std::string &new_group_id,std::string &new_perm);
     int RemoveGroupFromChronicle(std::string &chronicle_name,std::string &new_group_id);
-    int AddGrouptoStory(std::string &chronicle_name,std::string &story_name,std::string &new_group_id);
+    int AddGrouptoStory(std::string &chronicle_name,std::string &story_name,std::string &new_group_id,std::string &new_perm);
     int RemoveGroupFromStory(std::string &chronicle_name,std::string &story_name,std::string &new_group_id);
     int CheckClientRole(uint32_t &role);
     uint32_t GetClientRole();
