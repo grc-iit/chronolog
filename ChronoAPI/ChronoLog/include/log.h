@@ -26,8 +26,8 @@
                                     __FILENAME__, __func__, __LINE__, ##__VA_ARGS__); \
                                 } while(0)
 
-//#define NDEBUG 1
-#ifdef NDEBUG
+//#define NODEBUG 1
+#ifdef NODEBUG
 #define LOGD(fmt, ...)          ((void)0)
 #else
 #define LOGD(fmt, ...)          do{ printf("\033[33m%s: " fmt "\033[m\n", __FILENAME__, ##__VA_ARGS__); } while(0)

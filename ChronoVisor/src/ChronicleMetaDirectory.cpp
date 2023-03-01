@@ -8,7 +8,6 @@
 #include <unistd.h>
 #include <mutex>
 #include <typedefs.h>
-#include <iostream>
 
 
 ChronicleMetaDirectory::ChronicleMetaDirectory() {
@@ -53,12 +52,15 @@ int ChronicleMetaDirectory::create_chronicle(const std::string& name) {
 int ChronicleMetaDirectory::create_chronicle(const std::string& name,
                                              const std::unordered_map<std::string, std::string>& attrs) {
     LOGD("creating Chronicle name=%s", name.c_str());
+    for (auto iter = attrs.begin(); iter != attrs.end(); ++iter) {
+        LOGD("%s=%s", iter->first.c_str(), iter->second.c_str());
+    }
     std::chrono::steady_clock::time_point t1, t2;
     t1 = std::chrono::steady_clock::now();
     uint64_t cid = CityHash64(name.c_str(), name.size());
     std::lock_guard<std::mutex> ChronicleMapLock(g_chronicleMetaDirectoryMutex_);
     /* Check if Chronicle already exists, fail if true */
-    if (chronicleMap_->find(cid) != chronicleMap_->end()) 
+    if (chronicleMap_->find(cid) != chronicleMap_->end())
     {
 	    return CL_ERR_CHRONICLE_EXISTS;
     }
@@ -88,7 +90,7 @@ int ChronicleMetaDirectory::create_chronicle(const std::string& name,
  */
 int ChronicleMetaDirectory::destroy_chronicle(const std::string& name,
                                               int& flags) {
-    LOGD("destroying Chronicle name=%s", name.c_str());
+    LOGD("destroying Chronicle name=%s, flags=%d", name.c_str(), flags);
     std::chrono::steady_clock::time_point t1, t2;
     t1 = std::chrono::steady_clock::now();
     uint64_t cid = CityHash64(name.c_str(), name.size());
@@ -133,45 +135,38 @@ int ChronicleMetaDirectory::destroy_chronicle(const std::string& name,
  */
 int ChronicleMetaDirectory::acquire_chronicle(const std::string &client_id, const std::string& name,
                                               int& flags) {
-    LOGD("acquiring Chronicle name=%s", name.c_str());
+    LOGD("client_id=%s acquiring Chronicle name=%s, flags=%d", client_id.c_str(), name.c_str(), flags);
     uint64_t cid = CityHash64(name.c_str(), name.size());
     std::lock_guard<std::mutex> ChronicleMapLock(g_chronicleMetaDirectoryMutex_);
     std::lock_guard<std::mutex> AcquiredChronicleMapLock(g_acquiredChronicleMapMutex_);
     /* First check if Chronicle exists, fail if false */
     int ret;
     auto chronicleRecord = chronicleMap_->find(cid);
-    if (chronicleRecord != chronicleMap_->end()) 
-    {
+    if (chronicleRecord != chronicleMap_->end()) {
         Chronicle *pChronicle = chronicleRecord->second;
-	auto range = acquiredChronicleClientMap_->equal_range(cid);
-	bool exists = false;
-	if( range.first != range.second)
-	{
-	   for(auto t = range.first; t != range.second; ++t)
-	   {
-		if(t->second.compare(client_id)==0)
-		{
-		   exists = true; break;
-		}
-	   }
-	}
+        auto range = acquiredChronicleClientMap_->equal_range(cid);
+        bool exists = false;
+        if (range.first != range.second) {
+            for (auto t = range.first; t != range.second; ++t) {
+                if (t->second.compare(client_id) == 0) {
+                    exists = true;
+                    break;
+                }
+            }
+        }
 
-	if(!exists)
-	{
-	   std::pair<uint64_t,std::string> p(cid,client_id);
-	   acquiredChronicleClientMap_->insert(p);
-	   pChronicle->incrementAcquisitionCount();
-	   ret = CL_SUCCESS;
-	   if(acquiredChronicleMap_->find(cid) == acquiredChronicleMap_->end())
-	   {
-	     auto res = acquiredChronicleMap_->emplace(cid,pChronicle);
-	     if(res.second) ret = CL_SUCCESS;
-	     else ret = CL_ERR_UNKNOWN;
-	   }
-	}
-	else ret = CL_ERR_UNKNOWN;
-    }
-    else ret = CL_ERR_NOT_EXIST;
+        if (!exists) {
+            std::pair<uint64_t, std::string> p(cid, client_id);
+            acquiredChronicleClientMap_->insert(p);
+            pChronicle->incrementAcquisitionCount();
+            ret = CL_SUCCESS;
+            if (acquiredChronicleMap_->find(cid) == acquiredChronicleMap_->end()) {
+                auto res = acquiredChronicleMap_->emplace(cid, pChronicle);
+                if (res.second) ret = CL_SUCCESS;
+                else ret = CL_ERR_UNKNOWN;
+            }
+        } else ret = CL_ERR_UNKNOWN;
+    } else ret = CL_ERR_NOT_EXIST;
     return ret;
 }
 
@@ -185,43 +180,35 @@ int ChronicleMetaDirectory::acquire_chronicle(const std::string &client_id, cons
  */
 int ChronicleMetaDirectory::release_chronicle(const std::string &client_id, const std::string& name,
                                               int& flags) {
-    LOGD("releasing Chronicle name=%s", name.c_str());
+    LOGD("client_id=%s releasing Chronicle name=%s, flags=%d", client_id.c_str(), name.c_str(), flags);
     uint64_t cid = CityHash64(name.c_str(), name.size());
     Chronicle *pChronicle;
     int ret;
     std::lock_guard<std::mutex> ChronicleMapLock(g_chronicleMetaDirectoryMutex_);
     std::lock_guard<std::mutex> AcquiredChronicleMapLock(g_acquiredChronicleMapMutex_);
-        /* First check if Chronicle exists */
+    /* First check if Chronicle exists */
     auto chronicleRecord = chronicleMap_->find(cid);
-    if (chronicleRecord != chronicleMap_->end()) 
-    {
-     pChronicle = chronicleRecord->second;
-     auto range = acquiredChronicleClientMap_->equal_range(cid);
-     if(range.first != range.second)
-     {
-	for(auto t = range.first; t != range.second;)
-	{
-		if(t->second.compare(client_id)==0) 
-		{
-		   t = acquiredChronicleClientMap_->erase(t);
-		   pChronicle->decrementAcquisitionCount();
-		   ret = CL_SUCCESS;
-		   if(pChronicle->getAcquisitionCount()==0)
-		   {
-		      auto nErased = acquiredChronicleMap_->erase(cid);
-		      if(nErased==1) ret = CL_SUCCESS;
-		      else ret=CL_ERR_UNKNOWN;
-		   }
-		   break;
-		}
-	        else ++t;	
-	}
+    if (chronicleRecord != chronicleMap_->end()) {
+        pChronicle = chronicleRecord->second;
+        auto range = acquiredChronicleClientMap_->equal_range(cid);
+        if (range.first != range.second) {
+            for (auto t = range.first; t != range.second;) {
+                if (t->second.compare(client_id) == 0) {
+                    t = acquiredChronicleClientMap_->erase(t);
+                    pChronicle->decrementAcquisitionCount();
+                    ret = CL_SUCCESS;
+                    if (pChronicle->getAcquisitionCount() == 0) {
+                        auto nErased = acquiredChronicleMap_->erase(cid);
+                        if (nErased == 1) ret = CL_SUCCESS;
+                        else ret = CL_ERR_UNKNOWN;
+                    }
+                    break;
+                } else ++t;
+            }
 
-     }
-     else ret = CL_ERR_UNKNOWN;
-     }
-     else ret =CL_ERR_NOT_EXIST;	
-     return ret;
+        } else ret = CL_ERR_UNKNOWN;
+    } else ret = CL_ERR_NOT_EXIST;
+    return ret;
 }
 
 /**
@@ -280,24 +267,21 @@ int ChronicleMetaDirectory::destroy_story(std::string& chronicle_name,
     std::lock_guard<std::mutex> AcquiredStoryMapLock(g_acquiredStoryMapMutex_);
     std::string story_name_for_hash = chronicle_name + story_name;
     uint64_t sid = CityHash64(story_name_for_hash.c_str(), story_name_for_hash.size());
-    if (acquiredStoryMap_->find(sid) != acquiredStoryMap_->end())
-    {
+    if (acquiredStoryMap_->find(sid) != acquiredStoryMap_->end()) {
         return CL_ERR_ACQUIRED;
     }
 
     /* Then check if Chronicle exists, fail if false */
     auto chronicleRecord = chronicleMap_->find(cid);
-    if (chronicleRecord != chronicleMap_->end()) 
-    {
+    if (chronicleRecord != chronicleMap_->end()) {
         Chronicle *pChronicle = chronicleRecord->second;
         /* Ask the Chronicle to destroy the Story */
         CL_Status res = pChronicle->removeStory(chronicle_name, story_name, flags);
-        if (res != CL_SUCCESS) 
-	{
+        if (res != CL_SUCCESS) {
             LOGE("Fail to remove Story name=%s in Chronicle name=%s", story_name.c_str(), chronicle_name.c_str());
         }
-	return res;
-    }   
+        return res;
+    }
     return CL_ERR_NOT_EXIST;
 }
 
@@ -322,10 +306,11 @@ int ChronicleMetaDirectory::get_story_list(std::string& chronicle_name, std::vec
  *         CL_ERR_UNKNOWN otherwise
  */
 int ChronicleMetaDirectory::acquire_story(const std::string &client_id,
-					  const std::string& chronicle_name,
+                                          const std::string& chronicle_name,
                                           const std::string& story_name,
                                           int& flags) {
-    LOGD("acquiring Story name=%s in Chronicle name=%s", story_name.c_str(), chronicle_name.c_str());
+    LOGD("client_id=%s acquiring Story name=%s in Chronicle name=%s, flags=%d",
+         client_id.c_str(), story_name.c_str(), chronicle_name.c_str(), flags);
     // add cid to name before hash to allow same story name across chronicles
     std::string story_name_for_hash = chronicle_name + story_name;
     uint64_t cid = CityHash64(chronicle_name.c_str(), chronicle_name.size());
@@ -335,40 +320,33 @@ int ChronicleMetaDirectory::acquire_story(const std::string &client_id,
     /* Then check if Chronicle exists, fail if false */
     int ret = CL_ERR_NOT_EXIST;
     auto chronicleRecord = chronicleMap_->find(cid);
-    if (chronicleRecord != chronicleMap_->end()) 
-    {
+    if (chronicleRecord != chronicleMap_->end()) {
         Chronicle *pChronicle = chronicleRecord->second;
         auto storyRecord = pChronicle->getStoryMap().find(sid);
-        if (storyRecord != pChronicle->getStoryMap().end()) 
-	{
+        if (storyRecord != pChronicle->getStoryMap().end()) {
             Story *pStory = storyRecord->second;
-	    auto range = acquiredStoryClientMap_->equal_range(sid);
-	    bool exists = false;
-	    if(range.first != range.second)
-	    {
-		for(auto t = range.first; t != range.second; ++t)
-		{
-		   if(t->second.compare(client_id)==0)
-		   {
-			exists = true; break;
-		   }
-		}
-	    }
-	    if(!exists)
-	    {
-	       pStory->incrementAcquisitionCount();
-	       std::pair<uint64_t,std::string> p(sid,client_id);
-	       acquiredStoryClientMap_->insert(p);
-	       ret = CL_SUCCESS;
-	       if(acquiredStoryMap_->find(sid) == acquiredStoryMap_->end())
-	       {
-		   auto res = acquiredStoryMap_->emplace(sid,pStory);
-		   if(res.second) ret = CL_SUCCESS;
-		   else ret = CL_ERR_UNKNOWN;
-	       }
-	    }
-	    else ret = CL_ERR_UNKNOWN;
-	    ret = CL_SUCCESS;
+            auto range = acquiredStoryClientMap_->equal_range(sid);
+            bool exists = false;
+            if (range.first != range.second) {
+                for (auto t = range.first; t != range.second; ++t) {
+                    if (t->second.compare(client_id) == 0) {
+                        exists = true;
+                        break;
+                    }
+                }
+            }
+            if (!exists) {
+                pStory->incrementAcquisitionCount();
+                std::pair<uint64_t, std::string> p(sid, client_id);
+                acquiredStoryClientMap_->insert(p);
+                ret = CL_SUCCESS;
+                if (acquiredStoryMap_->find(sid) == acquiredStoryMap_->end()) {
+                    auto res = acquiredStoryMap_->emplace(sid, pStory);
+                    if (res.second) ret = CL_SUCCESS;
+                    else ret = CL_ERR_UNKNOWN;
+                }
+            } else ret = CL_ERR_UNKNOWN;
+            ret = CL_SUCCESS;
         }
     }
     return ret;
@@ -384,10 +362,11 @@ int ChronicleMetaDirectory::acquire_story(const std::string &client_id,
  *         CL_ERR_UNKNOWN otherwise
  */
 int ChronicleMetaDirectory::release_story(const std::string &client_id,
-					  const std::string& chronicle_name,
+                                          const std::string& chronicle_name,
                                           const std::string& story_name,
                                           int& flags) {
-    LOGD("releasing Story name=%s in Chronicle name=%s", story_name.c_str(), chronicle_name.c_str());
+    LOGD("client_id=%s releasing Story name=%s in Chronicle name=%s, flags=%d",
+         client_id.c_str(), story_name.c_str(), chronicle_name.c_str(), flags);
     std::string story_name_for_hash = chronicle_name + story_name;
     uint64_t sid = CityHash64(story_name_for_hash.c_str(), story_name_for_hash.size());
     uint64_t cid = CityHash64(chronicle_name.c_str(), chronicle_name.size());
@@ -396,38 +375,30 @@ int ChronicleMetaDirectory::release_story(const std::string &client_id,
     /* Then check if Chronicle exists, fail if false */
     int ret = CL_ERR_NOT_EXIST;
     auto chronicleRecord = chronicleMap_->find(cid);
-    if (chronicleRecord != chronicleMap_->end()) 
-    {
+    if (chronicleRecord != chronicleMap_->end()) {
         Chronicle *pChronicle = chronicleRecord->second;
         /* Then check if Story exists, fail if false */
         auto storyRecord = pChronicle->getStoryMap().find(sid);
-        if (storyRecord != pChronicle->getStoryMap().end()) 
-	{
+        if (storyRecord != pChronicle->getStoryMap().end()) {
             Story *pStory = storyRecord->second;
             /* Decrement AcquisitionCount */
-	    auto range = acquiredStoryClientMap_->equal_range(sid);
-	    if(range.first != range.second)
-	    {
-		for(auto t = range.first; t != range.second;)
-		{
-		   if(t->second.compare(client_id)==0)
-		   {	  
-		      t = acquiredStoryClientMap_->erase(t);
-		      pStory->decrementAcquisitionCount();
-		      ret = CL_SUCCESS;
-		      if(pStory->getAcquisitionCount()==0)
-		      {
-			  auto nErased = acquiredStoryMap_->erase(sid);
-			  if(nErased==1) ret = CL_SUCCESS;
-			  else ret = CL_ERR_UNKNOWN;
-		      }
-		      break;
-		   }
-		   else ++t;
-		}
-	    }
-	    else ret = CL_ERR_UNKNOWN;
-	}
+            auto range = acquiredStoryClientMap_->equal_range(sid);
+            if (range.first != range.second) {
+                for (auto t = range.first; t != range.second;) {
+                    if (t->second.compare(client_id) == 0) {
+                        t = acquiredStoryClientMap_->erase(t);
+                        pStory->decrementAcquisitionCount();
+                        ret = CL_SUCCESS;
+                        if (pStory->getAcquisitionCount() == 0) {
+                            auto nErased = acquiredStoryMap_->erase(sid);
+                            if (nErased == 1) ret = CL_SUCCESS;
+                            else ret = CL_ERR_UNKNOWN;
+                        }
+                        break;
+                    } else ++t;
+                }
+            } else ret = CL_ERR_UNKNOWN;
+        }
     }
     return ret;
 
@@ -449,24 +420,19 @@ int ChronicleMetaDirectory::get_chronicle_attr(std::string& name, const std::str
     std::lock_guard<std::mutex> lock(g_chronicleMetaDirectoryMutex_);
     /* First check if Chronicle exists, fail if false */
     auto chronicleRecord = chronicleMap_->find(cid);
-    if (chronicleRecord != chronicleMap_->end()) 
-    {
+    if (chronicleRecord != chronicleMap_->end()) {
         Chronicle *pChronicle = chronicleRecord->second;
-        if (pChronicle) 
-	{
+        if (pChronicle) {
             /* Then check if property exists, fail if false */
             auto propertyRecord = pChronicle->getPropertyList().find(key);
-            if (propertyRecord != pChronicle->getPropertyList().end()) 
-	    {
+            if (propertyRecord != pChronicle->getPropertyList().end()) {
                 value = propertyRecord->second;
                 return CL_SUCCESS;
-            } else 
+            } else
                 return CL_ERR_NOT_EXIST;
-        } 
-	else
+        } else
             return CL_ERR_UNKNOWN;
-    } 
-    else
+    } else
         return CL_ERR_NOT_EXIST;
 }
 
@@ -479,28 +445,22 @@ int ChronicleMetaDirectory::edit_chronicle_attr(std::string& name,
     std::lock_guard<std::mutex> lock(g_chronicleMetaDirectoryMutex_);
     /* First check if Chronicle exists, fail if false */
     auto chronicleRecord = chronicleMap_->find(cid);
-     if(chronicleRecord != chronicleMap_->end()) 
-    {
+    if (chronicleRecord != chronicleMap_->end()) {
         Chronicle *pChronicle = chronicleRecord->second;
-        if (pChronicle) 
-	{
+        if (pChronicle) {
             /* Then check if property exists, fail if false */
             auto propertyRecord = pChronicle->getPropertyList().find(key);
-            if (propertyRecord != pChronicle->getPropertyList().end()) 
-	    {
+            if (propertyRecord != pChronicle->getPropertyList().end()) {
                 auto res = pChronicle->getPropertyList().insert_or_assign(key, value);
-                if (res.second) 
+                if (res.second)
                     return CL_SUCCESS;
-		else
-                  return CL_ERR_UNKNOWN;
-            }
-	    else 
-	    return CL_ERR_NOT_EXIST;
-        } 
-	else 
-           return CL_ERR_UNKNOWN;
-       
-    } 
-    else 
+                else
+                    return CL_ERR_UNKNOWN;
+            } else
+                return CL_ERR_NOT_EXIST;
+        } else
+            return CL_ERR_UNKNOWN;
+
+    } else
         return CL_ERR_NOT_EXIST;
 }

@@ -13,10 +13,8 @@
 #define STORY_NAME_LEN 32
 
 int main() {
-    ChronoLogRPCImplementation protocol = CHRONOLOG_THALLIUM_SOCKETS;
-    std::string server_ip = "127.0.0.1";
-    int base_port = 5555;
-    ChronoLogClient client(protocol, server_ip, base_port);
+    ChronoLog::ConfigurationManager confManager("./default_conf.json");
+    ChronoLogClient client(confManager);
     std::vector<std::string> chronicle_names;
     std::chrono::steady_clock::time_point t1, t2;
     std::chrono::duration<double, std::nano> duration_create_chronicle{},
@@ -31,7 +29,9 @@ int main() {
             duration_destroy_chronicle{};
     int flags;
     uint64_t offset = 0;
-    std::string server_uri = "ofi+sockets://"+server_ip+std::to_string(base_port);
+    std::string server_uri = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF.string() + "://" +
+                             CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string() +
+                             std::to_string(CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT);
 
     std::string client_id = gen_random(8);
     client.Connect(server_uri, client_id, flags, offset);
@@ -48,21 +48,21 @@ int main() {
         t1 = std::chrono::steady_clock::now();
         ret = client.CreateChronicle(chronicle_name, chronicle_attrs, flags);
         t2 = std::chrono::steady_clock::now();
-        assert(ret == CL_SUCCESS);
+        ASSERT(ret, ==, CL_SUCCESS);
         duration_create_chronicle += (t2 - t1);
 
         flags = 1;
         t1 = std::chrono::steady_clock::now();
         ret = client.AcquireChronicle(chronicle_name, flags);
         t2 = std::chrono::steady_clock::now();
-        assert(ret == CL_SUCCESS);
+        ASSERT(ret, ==, CL_SUCCESS);
         duration_acquire_chronicle += (t2 - t1);
 
         std::string key("Date");
         t1 = std::chrono::steady_clock::now();
         ret = client.EditChronicleAttr(chronicle_name, key, "2023-01-15");
         t2 = std::chrono::steady_clock::now();
-        //assert(ret == CL_SUCCESS);
+        //ASSERT(ret, ==, CL_SUCCESS);
         duration_edit_chronicle_attr += (t2 - t1);
 
         std::vector<std::string> story_names;
@@ -78,21 +78,21 @@ int main() {
             t1 = std::chrono::steady_clock::now();
             ret = client.CreateStory(chronicle_name, story_name, story_attrs, flags);
             t2 = std::chrono::steady_clock::now();
-            assert(ret == CL_SUCCESS);
+            ASSERT(ret, ==, CL_SUCCESS);
             duration_create_story += (t2 - t1);
 
             flags = 2;
             t1 = std::chrono::steady_clock::now();
             ret = client.AcquireStory(chronicle_name, story_name, flags);
             t2 = std::chrono::steady_clock::now();
-            assert(ret == CL_SUCCESS);
+            ASSERT(ret, ==, CL_SUCCESS);
             duration_acquire_story += (t2 - t1);
 
             flags = 4;
             t1 = std::chrono::steady_clock::now();
             ret = client.ReleaseStory(chronicle_name, story_name, flags);
             t2 = std::chrono::steady_clock::now();
-            assert(ret == CL_SUCCESS);
+            ASSERT(ret, ==, CL_SUCCESS);
             duration_release_story += (t2 - t1);
         }
 
@@ -101,7 +101,7 @@ int main() {
             t1 = std::chrono::steady_clock::now();
             ret = client.DestroyStory(chronicle_name, story_names[j], flags);
             t2 = std::chrono::steady_clock::now();
-            assert(ret == CL_SUCCESS);
+            ASSERT(ret, ==, CL_SUCCESS);
             duration_destroy_story += (t2 - t1);
         }
 
@@ -118,7 +118,7 @@ int main() {
         t1 = std::chrono::steady_clock::now();
         ret = client.ReleaseChronicle(chronicle_name, flags);
         t2 = std::chrono::steady_clock::now();
-        assert(ret == CL_SUCCESS);
+        ASSERT(ret, ==, CL_SUCCESS);
         duration_release_chronicle += (t2 - t1);
     }
 
@@ -127,7 +127,7 @@ int main() {
         t1 = std::chrono::steady_clock::now();
         bool ret = client.DestroyChronicle(chronicle_names[i], flags);
         t2 = std::chrono::steady_clock::now();
-        assert(ret == CL_SUCCESS);
+        ASSERT(ret, ==, CL_SUCCESS);
         duration_destroy_chronicle += (t2 - t1);
     };
 

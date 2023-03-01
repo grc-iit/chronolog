@@ -51,6 +51,7 @@ private:
     std::vector<tl::engine*> thalliumServerList_;
     std::shared_ptr<tl::engine> thalliumClient_;
     std::vector<ChronoLogCharStruct> serverAddrList_;
+    std::vector<ChronoLogCharStruct> serverRPCAddrList_;
     std::vector<tl::endpoint> thallium_endpoints;
 
     tl::endpoint get_endpoint(ChronoLogCharStruct protocol, ChronoLogCharStruct server_name, uint16_t server_port) {
@@ -65,11 +66,12 @@ private:
     }
 
     void init_client_engine_and_endpoints(ChronoLogCharStruct protocol) {
-        thalliumClient_ = ChronoLog::Singleton<tl::engine>::GetInstance(protocol.c_str(), THALLIUM_CLIENT_MODE,true,numStreams_);
+        thalliumClient_ = ChronoLog::Singleton<tl::engine>::GetInstance(protocol.c_str(),
+                                                                        THALLIUM_CLIENT_MODE, true, numStreams_);
         LOGD("generate a new client at %s", std::string(thalliumClient_->self()).c_str());
-        thallium_endpoints.reserve(serverList_.size());
-        for (std::vector<ChronoLogCharStruct>::size_type i = 0; i < serverList_.size(); ++i) {
-            thallium_endpoints.push_back(get_endpoint(protocol, serverList_[i], baseServerPort_ + i));
+        thallium_endpoints.reserve(serverAddrList_.size());
+        for (std::vector<ChronoLogCharStruct>::size_type i = 0; i < serverAddrList_.size(); ++i) {
+            thallium_endpoints.push_back(get_endpoint(protocol, serverAddrList_[i], baseServerPort_ + i));
         }
     }
 
@@ -81,11 +83,10 @@ private:
       thallium_engine->wait_for_finalize();
       }*/
 
-    std::vector<ChronoLogCharStruct> serverList_;
 public:
     ~ChronoLogRPC() {
-        if (CHRONOLOG_CONF->IS_SERVER) {
-            switch (CHRONOLOG_CONF->RPC_IMPLEMENTATION) {
+        if (CHRONOLOG_CONF->ROLE == CHRONOLOG_VISOR) {
+            switch (CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION) {
                 case CHRONOLOG_THALLIUM_TCP:
                 case CHRONOLOG_THALLIUM_SOCKETS:
                 case CHRONOLOG_THALLIUM_ROCE: {
@@ -97,78 +98,63 @@ public:
                     break;
                 }
             }
-        }
-	else thalliumClient_->finalize();
+        } else thalliumClient_->finalize();
     }
 
-    ChronoLogRPC() : baseServerPort_(CHRONOLOG_CONF->RPC_BASE_SERVER_PORT),
-            numPorts_(CHRONOLOG_CONF->RPC_NUM_SERVER_PORTS),
-            numStreams_(CHRONOLOG_CONF->RPC_NUM_SERVICE_THREADS),
-            clientPort_(CHRONOLOG_CONF->RPC_CLIENT_PORT),
-            isRunning_(false),
-            serverList_() {
+    ChronoLogRPC() : baseServerPort_(CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT),
+            numPorts_(CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_PORTS),
+            numStreams_(CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_SERVICE_THREADS),
+            clientPort_(CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.CLIENT_END_CONF.CLIENT_PORT),
+            isRunning_(false) {
         LOGD("ChronoLogRPC constructor is called");
-        serverList_ = CHRONOLOG_CONF->LoadServers();
-        /* if current rank is a server */
-        if (CHRONOLOG_CONF->IS_SERVER) {
-            switch (CHRONOLOG_CONF->RPC_IMPLEMENTATION) {
-                case CHRONOLOG_THALLIUM_TCP:
-                case CHRONOLOG_THALLIUM_SOCKETS: {
-                    for (int i = 0; i < numPorts_; i++) {
-                        serverAddrList_.emplace_back(CHRONOLOG_CONF->SOCKETS_CONF + "://" +
-                                                     CHRONOLOG_CONF->SERVER_LIST[CHRONOLOG_CONF->MY_SERVER_ID] +
-                                                     ":" +
-                                                     std::to_string(baseServerPort_ + i));
-                    }
-                    break;
-                }
-                case CHRONOLOG_THALLIUM_ROCE: {
-                    for (int i = 0; i < numPorts_; i++) {
-                        serverAddrList_.emplace_back(CHRONOLOG_CONF->VERBS_CONF + "://" +
-                                                     CHRONOLOG_CONF->SERVER_LIST[CHRONOLOG_CONF->MY_SERVER_ID] +
-                                                     ":" +
-                                                     std::to_string(baseServerPort_ + i));
-                    }
-                    break;
-                }
-            }
+        for (int i = 0; i < numPorts_; i++) {
+            serverAddrList_.emplace_back(CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP);
+            serverRPCAddrList_.emplace_back(CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF + "://" +
+                                            CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP +
+                                            ":" +
+                                            std::to_string(baseServerPort_ + i));
         }
-        run(CHRONOLOG_CONF->RPC_NUM_SERVER_PORTS);
+        run(CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_PORTS);
     }
 
     template<typename F>
     void bind(const ChronoLogCharStruct &str, F func);
 
-    void run(size_t workers = CHRONOLOG_CONF->RPC_NUM_SERVER_PORTS) {
-        if (CHRONOLOG_CONF->IS_SERVER) {
+    void run(size_t workers = 1) {
+        if (CHRONOLOG_CONF->ROLE == CHRONOLOG_VISOR) {
             /* only servers run */
-            switch (CHRONOLOG_CONF->RPC_IMPLEMENTATION) {
+            switch (CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION) {
                 case CHRONOLOG_THALLIUM_TCP:
                 case CHRONOLOG_THALLIUM_SOCKETS:
                 case CHRONOLOG_THALLIUM_ROCE: {
+                    hg_addr_t addr_self;
+                    hg_return_t hret;
+                    for (size_t i = 0; i < workers; i++) {
+                        LOGD("creating Thallium server with engine str %s", serverRPCAddrList_[i].c_str());
+                        for (size_t i = 0; i < workers; i++)  // separate streams and pools for each engine
+                        {
+                            tl::engine *tmpServer = new tl::engine(serverRPCAddrList_[i].c_str(), THALLIUM_SERVER_MODE,
+                                                                   true, numStreams_);
+                            thalliumServerList_.push_back(tmpServer);
+                        }
 
-		    for(size_t i=0;i<workers;i++)  // separate streams and pools for each engine
-		    {
-			tl::engine *tmpServer = new tl::engine(serverAddrList_[i].c_str(),THALLIUM_SERVER_MODE,true,numStreams_);
-			thalliumServerList_.push_back(tmpServer);
-		    }
-
-		    for(size_t i=0;i<workers;i++)
-			    std::cout <<" server created at "<<thalliumServerList_[i]->self()<<std::endl;
-                    break;
+                        for (size_t i = 0; i < workers; i++)
+                            std::cout << " server created at " << thalliumServerList_[i]->self() << std::endl;
+                        break;
+                    }
                 }
             }
         }
-        switch (CHRONOLOG_CONF->RPC_IMPLEMENTATION) {
-            /* only clients need Thallium end_points */
-            if (CHRONOLOG_CONF->IS_SERVER == false) {
+        if (CHRONOLOG_CONF->ROLE == CHRONOLOG_CLIENT) {
+            switch (CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION) {
+                /* only clients need Thallium end_points */
                 case CHRONOLOG_THALLIUM_TCP:
                 case CHRONOLOG_THALLIUM_SOCKETS: {
-                    init_client_engine_and_endpoints(CHRONOLOG_CONF->SOCKETS_CONF);
+                    init_client_engine_and_endpoints(CHRONOLOG_CONF->RPC_CONF.AVAIL_PROTO_CONF["sockets_conf"]);
                     break;
                 }
                 case CHRONOLOG_THALLIUM_ROCE: {
-                    init_client_engine_and_endpoints(CHRONOLOG_CONF->VERBS_CONF);
+                    init_client_engine_and_endpoints(CHRONOLOG_CONF->RPC_CONF.AVAIL_PROTO_CONF["verbs_conf"]);
                     break;
                 }
             }
@@ -178,8 +164,8 @@ public:
 
     void start() {
         if (isRunning_) return;
-        if (CHRONOLOG_CONF->IS_SERVER) {
-            switch (CHRONOLOG_CONF->RPC_IMPLEMENTATION) {
+        if (CHRONOLOG_CONF->ROLE == CHRONOLOG_VISOR) {
+            switch (CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION) {
                 case CHRONOLOG_THALLIUM_TCP:
                 case CHRONOLOG_THALLIUM_SOCKETS:
                 case CHRONOLOG_THALLIUM_ROCE: {

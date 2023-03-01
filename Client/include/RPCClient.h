@@ -19,7 +19,7 @@ class RPCClient {
 public:
     RPCClient() {
         LOGD("%s constructor is called", typeid(*this).name());
-        rpc = std::make_shared<ChronoLogRPC>(); 
+        rpc = std::make_shared<ChronoLogRPC>();
         set_prefix("ChronoLog");
         LOGD("%s constructor finishes, object created@%p in thread PID=%d",
              typeid(*this).name(), this, getpid());
@@ -59,7 +59,7 @@ public:
 
     int AcquireChronicle(std::string &client_id, std::string &name, const int &flags) {
         LOGD("%s is called in PID=%d, with args: name=%s, flags=%d", __FUNCTION__, getpid(), name.c_str(), flags);
-        return CHRONOLOG_RPC_CALL_WRAPPER("AcquireChronicle", 0, int, client_id,name, flags);
+        return CHRONOLOG_RPC_CALL_WRAPPER("AcquireChronicle", 0, int, client_id, name, flags);
     }
 
     int ReleaseChronicle(std::string &client_id, std::string &name, const int &flags) {
@@ -112,7 +112,7 @@ public:
 private:
     void set_prefix(std::string prefix) {
         func_prefix = std::move(prefix);
-        switch (CHRONOLOG_CONF->RPC_IMPLEMENTATION) {
+        switch (CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION) {
             case CHRONOLOG_THALLIUM_SOCKETS:
             case CHRONOLOG_THALLIUM_TCP:
             case CHRONOLOG_THALLIUM_ROCE:
