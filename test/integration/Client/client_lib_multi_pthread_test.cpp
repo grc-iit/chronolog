@@ -39,7 +39,7 @@ void thread_body(struct thread_arg *t)
     story_attrs.emplace("Priority", "High");
     story_attrs.emplace("IndexGranularity", "Millisecond");
     story_attrs.emplace("TieringPolicy", "Hot");
-    story_attrs.emplace("Permissions","RWD");
+    story_attrs.emplace("Permissions","RWCD");
     flags = CHRONOLOG_WRITE;
     ret = client->CreateStory(chronicle_name, story_name, story_attrs, flags);
     ret = client->AcquireStory(chronicle_name,story_name,flags);

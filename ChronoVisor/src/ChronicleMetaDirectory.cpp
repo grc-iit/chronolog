@@ -258,11 +258,10 @@ int ChronicleMetaDirectory::update_chronicle_permissions(std::string &name,std::
     if (chronicleRecord != chronicleMap_->end() && range1.first==range1.second)
     {
        pChronicle = chronicleRecord->second;
-       uint32_t new_perm = 3;
-       bool b = true;//acl_repo->replace_acl(name,group_id,new_perm);//pChronicle->can_edit_group_and_permissions(client_id,group_id);
+       bool b = pChronicle->aclmaps().is_owner(group_id);
        if(b)
        {
-	//pChronicle->generate_permission(perm);
+	pChronicle->aclmaps().replace_acl(group_id,perm);
 	ret = CL_SUCCESS;
        }
        else 

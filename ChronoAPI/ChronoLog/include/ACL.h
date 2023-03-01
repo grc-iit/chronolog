@@ -29,7 +29,6 @@ class ACL
 		{
 			p = 3;
 		}
-		std::cout <<" permission = "<<p<<std::endl;
 		permission = p;
 	}
 	inline uint32_t get_permission()

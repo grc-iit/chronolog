@@ -298,7 +298,6 @@ class ACL_List
 		   ACL a; a.set_permission(perm);
 		   ACL_Map m; m.create_acl_map(group_id,a);
 		   acls.push_back(m);
-		   std::cout <<" create acl"<<std::endl;
 		   ret = true;
 		}
 		return ret;
