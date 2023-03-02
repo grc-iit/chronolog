@@ -100,8 +100,9 @@ public:
              __FUNCTION__, getpid(), client_id.c_str(), chronicle_name.c_str());
         return CHRONOLOG_RPC_CALL_WRAPPER("ShowStories", 0, std::vector<std::string>, client_id, chronicle_name);
     uint64_t GetTS(std::string &client_id)
-    {
-	    return CHRONOLOG_RPC_CALL_WRAPPER("GetTS",0,uint64_t,client_id);
+    {  
+         LOGD("%s is called in PID=%d with args : client_id=%s",__FUNCTION__,getpid(),client_id.c_str());
+	 return CHRONOLOG_RPC_CALL_WRAPPER("GetTS",0,uint64_t,client_id);
     }
 
 private:

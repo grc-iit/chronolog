@@ -37,7 +37,29 @@ public:
         CHRONOLOG_CONF->ROLE = CHRONOLOG_CLIENT;
         rpcClient_ = ChronoLog::Singleton<RPCClient>::GetInstance();
     }
+    ChronoLogClient() { 
+	    CHRONOLOG_CONF->ConfigureDefaultClient("../../test/communication/server_list"); 
+	    CSManager = new ClocksourceManager<ClockSourceCPPStyle> ();
+    }
 
+    ChronoLogClient(const std::string& server_list_file_path) {
+        CHRONOLOG_CONF->ConfigureDefaultClient(server_list_file_path);
+        rpcProxy_ = ChronoLog::Singleton<RPCClient>::GetInstance();
+	CSManager = new ClocksourceManager<ClockSourceCPPStyle> ();
+    }
+
+    ChronoLogClient(const ChronoLogRPCImplementation& protocol, const std::string& visor_ip, int visor_port) {
+        CHRONOLOG_CONF->IS_SERVER = false;
+        CHRONOLOG_CONF->RPC_IMPLEMENTATION = protocol;
+        CHRONOLOG_CONF->RPC_SERVER_IP = visor_ip;
+        CHRONOLOG_CONF->RPC_BASE_SERVER_PORT = visor_port;
+        rpcProxy_ = ChronoLog::Singleton<RPCClient>::GetInstance();
+	CSManager = new ClocksourceManager<ClockSourceCPPStyle> ();
+    }
+    ~ChronoLogClient()
+    {
+	    delete CSManager;
+    }
     int Connect(const std::string &server_uri,
                 std::string &client_id,
                 int &flags,
@@ -56,6 +78,9 @@ public:
     std::vector<std::string> ShowChronicles(std::string &client_id);
     std::vector<std::string> ShowStories(std::string &client_id, const std::string &chronicle_name);
     uint64_t GetTS();
+    uint64_t LocalTS();
+    void ComputeClockOffset();
+
 private:
     std::string clientid;
     std::shared_ptr<RPCClient> rpcProxy_;

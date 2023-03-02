@@ -52,8 +52,10 @@ namespace ChronoVisor {
 	CSManager->set_rpc(rpc);
         // bind functions first (defining RPC routines on engines)
         rpcVisor_->bind_functions();
+	CSManager->bind_functions();
 
-	rpcProxy_->Visor_start();
+
+	rpcVisor_->Visor_start();
 
 
         return 0;

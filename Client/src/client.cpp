@@ -69,3 +69,20 @@ uint64_t ChronoLogClient::GetTS()
 {
 	return rpcProxy_->GetTS(clientid);
 }
+uint64_t ChronoLogClient::LocalTS()
+{
+	return CSManager->LocalGetTS(clientid);
+}
+
+void ChronoLogClient::ComputeClockOffset()
+{
+	uint64_t t1 = LocalTS();
+	uint64_t vt1 = GetTS();
+
+	uint64_t t2 = LocalTS();
+	uint64_t vt2 = GetTS();
+
+	uint64_t mean_offset = ((vt1-t1)+(vt2-t2))/2;
+
+	CSManager->set_offset(mean_offset);
+}

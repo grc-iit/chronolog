@@ -45,7 +45,7 @@ class ClocksourceManager {
 public:
 	ClocksourceManager()
 	{
-	  unit = 1;
+	  unit = 1000;
 	  offset = 0;
 	  num_procs = 1;
 	  func_prefix = "ChronoLogThallium";
@@ -62,7 +62,9 @@ public:
 	}
 	uint64_t LocalGetTS(std::string &client_id)
 	{
-	     return TimeStamp();
+	     uint64_t t = TimeStamp();
+	     return t;
+
 	}
 
         void bind_functions()
@@ -87,6 +89,11 @@ public:
 
 	CHRONOLOG_THALLIUM_DEFINE(LocalGetTS,(client_id),std::string& client_id)
 
+	void set_offset(uint64_t &o)
+	{
+		offset = o;
+	}
+	
 private:
     std::shared_ptr<ChronoLogRPC> rpc;
     ClockSource *clocksource_;
