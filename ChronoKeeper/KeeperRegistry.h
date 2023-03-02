@@ -11,7 +11,6 @@
 #include "KeeperIdCard.h"
 #include "KeeperStatsMsg.h"
 #include "KeeperRegistrationMsg.h"
-//#include "KeeperRegistryService.h"
 
 namespace chronolog
 {
