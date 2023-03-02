@@ -79,6 +79,8 @@ public:
     std::vector<std::string> ShowStories(std::string &client_id, const std::string &chronicle_name);
     uint64_t GetTS();
     uint64_t LocalTS();
+    int StoreError();
+    uint64_t GetMaxError();
     void ComputeClockOffset();
 
 private:

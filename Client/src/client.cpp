@@ -20,6 +20,7 @@ int ChronoLogClient::Connect(const std::string &server_uri,
         client_id = std::to_string(client_id_hash);
     }
     clientid = client_id;
+    CSManager->set_myid(clientid);
     return rpcClient_->Connect(server_uri, client_id, flags, clock_offset);
 }
 
@@ -82,7 +83,38 @@ void ChronoLogClient::ComputeClockOffset()
 	uint64_t t2 = LocalTS();
 	uint64_t vt2 = GetTS();
 
-	uint64_t mean_offset = ((vt1-t1)+(vt2-t2))/2;
+	int offset1 = vt1-t1;
+        int offset2 = vt2-t2;
 
-	CSManager->set_offset(mean_offset);
+	int mean_offset = (offset1+offset2)/2;
+
+	uint64_t mean_offset_u;
+	bool pos_neg = false;
+	if(mean_offset < 0) 
+	{
+	   mean_offset_u = (uint64_t)(-1*mean_offset);
+	   pos_neg = true;
+	}
+	else mean_offset_u = mean_offset;
+
+	CSManager->set_offset(mean_offset_u,pos_neg);
+}
+
+int ChronoLogClient::StoreError()
+{
+    uint64_t t = CSManager->get_offset();
+    return rpcProxy_->StoreError(clientid,t);
+}
+uint64_t ChronoLogClient::GetMaxError()
+{
+   uint64_t t = UINT64_MAX;
+   
+   do
+   {
+       t = rpcProxy_->GetMaxError(clientid);
+       if(t != UINT64_MAX) break;
+       usleep(50);
+   }while(t == UINT64_MAX);
+
+   return t;
 }

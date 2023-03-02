@@ -104,6 +104,16 @@ public:
          LOGD("%s is called in PID=%d with args : client_id=%s",__FUNCTION__,getpid(),client_id.c_str());
 	 return CHRONOLOG_RPC_CALL_WRAPPER("GetTS",0,uint64_t,client_id);
     }
+    int StoreError(std::string &client_id,uint64_t &t)
+    {
+	LOGD("%s is called in PID=%d with args : client_id=%s t=%lu",__FUNCTION__,getpid(),client_id.c_str(),t);
+	return CHRONOLOG_RPC_CALL_WRAPPER("StoreError",0,int,client_id,t);
+    }
+    uint64_t GetMaxError(std::string &client_id)
+    {
+	LOGD("%s is called in PID=%d with args : client_id=%s",__FUNCTION__,getpid(),client_id.c_str());
+	return CHRONOLOG_RPC_CALL_WRAPPER("GetMaxError",0,uint64_t,client_id);
+    }
 
 private:
     void set_prefix(std::string prefix) {
