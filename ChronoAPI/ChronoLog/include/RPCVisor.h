@@ -34,7 +34,7 @@ public:
     }
 
     void Visor_start() {
-        rpc->start();
+        rpc->start();}
 
     void set_acl_db(ACL_DB *ad)
     {
@@ -43,11 +43,6 @@ public:
     /**
      * Admin APIs
      */
-    void Visor_start()
-    {
-	rpc->start();
-	
-    }
     int LocalConnect(const std::string &uri, std::string &client_id, std::string &group_id, uint32_t &role, int &flags, uint64_t &clock_offset) {
         LOGD("%s in ChronoLogAdminRPCProxy@%p called in PID=%d, with args: uri=%s",
              __FUNCTION__, this, getpid(), uri.c_str());

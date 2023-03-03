@@ -77,7 +77,7 @@ public:
     std::string &GetGroupId();
 
 private:
-    std::string clientid;
+    std::string client_id_;
     std::shared_ptr<RPCClient> rpcClient_;
     ClocksourceManager *pClocksourceManager_;
     uint32_t my_role_;    

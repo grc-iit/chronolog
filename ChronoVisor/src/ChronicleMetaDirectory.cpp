@@ -204,7 +204,7 @@ int ChronicleMetaDirectory::acquire_chronicle(const std::string& name,
         }
 
         if (!exists) {
-            std::pair<uint64_t, std::string> p(name, client_id);
+            std::pair<std::string, std::string> p(name, client_id);
             acquiredChronicleClientMap_->insert(p);
             pChronicle->incrementAcquisitionCount();
             ret = CL_SUCCESS;
@@ -213,6 +213,7 @@ int ChronicleMetaDirectory::acquire_chronicle(const std::string& name,
                 if (res.second) ret = CL_SUCCESS;
                 else ret = CL_ERR_UNKNOWN;
             }
+	}
         } else ret = CL_ERR_UNKNOWN;
     } else ret = CL_ERR_NOT_EXIST;
     return ret;
@@ -420,7 +421,7 @@ int ChronicleMetaDirectory::acquire_story(const std::string& chronicle_name,
     std::lock_guard<std::mutex> AcquiredStoryMapLock(g_acquiredStoryMapMutex_);
     /* Then check if Chronicle exists, fail if false */
     int ret = CL_ERR_NOT_EXIST;
-    auto chronicleRecord = chronicleMap_->find(chronicle_map);
+    auto chronicleRecord = chronicleMap_->find(chronicle_name);
     if(chronicleRecord != chronicleMap_->end()){
         Chronicle *pChronicle = chronicleRecord->second;
 	enum ChronoLogOp op = (enum ChronoLogOp) flags;
