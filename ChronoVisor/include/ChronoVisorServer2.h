@@ -67,6 +67,7 @@ namespace ChronoVisor {
         ///@{
         ClocksourceManager *pClocksourceManager_;
         ///@}
+	bool use_acl_db;
     };
 }
 

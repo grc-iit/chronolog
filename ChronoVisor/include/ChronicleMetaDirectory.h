@@ -18,6 +18,11 @@ public:
     ChronicleMetaDirectory();
     ~ChronicleMetaDirectory();
 
+    void set_acl_db(ACL_DB *ad) 
+    {
+	    use_acl_db = true;
+	    adb = ad;
+    }
 //    std::shared_ptr<std::unordered_map<std::string, Chronicle *>> getChronicleMap() { return chronicleMap_; }
     std::unordered_map<std::string, Chronicle *,stringhashfn> *getChronicleMap() { return chronicleMap_; }
 
@@ -51,7 +56,9 @@ private:
     std::unordered_multimap<std::string, std::string,stringhashfn> *acquiredStoryClientMap_;
     std::mutex g_chronicleMetaDirectoryMutex_;      
     std::mutex g_acquiredChronicleMapMutex_;         
-    std::mutex g_acquiredStoryMapMutex_;             
+    std::mutex g_acquiredStoryMapMutex_;   
+    bool use_acl_db;   
+    ACL_DB *adb; 
 };
 
 #endif //CHRONOLOG_CHRONICLEMETADIRECTORY_H

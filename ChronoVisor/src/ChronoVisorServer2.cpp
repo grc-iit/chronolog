@@ -4,6 +4,7 @@
 
 #include "ChronoVisorServer2.h"
 #include "macro.h"
+#include "ACL_List.h"
 
 namespace ChronoVisor {
     ChronoVisorServer2::ChronoVisorServer2(const std::string &conf_file_path) {
@@ -23,6 +24,12 @@ namespace ChronoVisor {
         // bind functions first (defining RPC routines on engines)
         rpcVisor_->bind_functions();
 
+	if(use_acl_db)
+	{
+	  std::string filename = "clients.json";
+	  ACL_DB *ad = CreateACLDB(filename);
+	  rpcVisor_->set_acl_db(ad);
+	}
         // start engines (listening for incoming requests)
         rpcVisor_->Visor_start();
 
@@ -59,5 +66,6 @@ namespace ChronoVisor {
         engineVec_.reserve(numPorts_);
         midVec_.reserve(numPorts_);
         rpcVisor_ = ChronoLog::Singleton<RPCVisor>::GetInstance();
+	use_acl_db = false;
     }
 }

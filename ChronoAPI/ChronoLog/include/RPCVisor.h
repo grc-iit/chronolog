@@ -36,6 +36,9 @@ public:
     void Visor_start() {
         rpc->start();
 
+    void set_acl_db(ACL_DB *ad)
+    {
+	    chronicleMetaDirectory->set_acl_db(ad);
     }
     /**
      * Admin APIs

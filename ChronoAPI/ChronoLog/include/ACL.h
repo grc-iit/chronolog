@@ -1,6 +1,10 @@
 #ifndef CHRONOLOG_ACL_H
 #define CHRONOLOG_ACL_H
 
+#include <cstdint>
+#include <vector>
+#include <string>
+#include "enum.h"
 
 class ACL
 {
