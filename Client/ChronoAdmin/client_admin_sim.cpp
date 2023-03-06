@@ -156,6 +156,7 @@ int main(int argc, char **argv)
             message_queue myqueue = message_queue(open_only,(char*)queue_name.c_str());	
 	    ChronoLogClient *client = nullptr;
 	    std::string client_id = gen_random(8);
+	    std::string group_id = "client_sim";
 	    client_id += std::to_string(id);
 	    int flags=0;
 	    uint64_t offset=0;
@@ -173,7 +174,7 @@ int main(int argc, char **argv)
 
 	       std::string msg_string(msg);
 
-	       run_command(client,msg_string,client_id,flags,offset,end_loop);
+	       run_command(client,msg_string,client_id,group_id,flags,offset,end_loop);
 
 	       if(end_loop) break;
 	    }

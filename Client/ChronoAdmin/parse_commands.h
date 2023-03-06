@@ -51,7 +51,7 @@ void parse_commands(message_queue** queues,std::vector<std::string> &command_sub
      }
 }
 
-void run_command(ChronoLogClient *&client,std::string &msg_string,std::string &client_id, int &flags, uint64_t &offset, bool &end_loop)
+void run_command(ChronoLogClient *&client,std::string &msg_string,std::string &client_id,std::string &group_id, int &flags, uint64_t &offset, bool &end_loop)
 {
 
    std::vector<std::string> command_subs;
@@ -97,13 +97,13 @@ void run_command(ChronoLogClient *&client,std::string &msg_string,std::string &c
 	   {
 	     protocolstring = "ofi+sockets";
 	     ChronoLogCharStruct prot_struct(protocolstring);
-             CHRONOLOG_CONF->SOCKETS_CONF = prot_struct;
+	      CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF = prot_struct;
 	   }
 	   else if(protocol==1)
 	   {
 	     protocolstring = "ofi+tcp";
    	     ChronoLogCharStruct prot_struct(protocolstring);
-             CHRONOLOG_CONF->SOCKETS_CONF = prot_struct;
+	      CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF = prot_struct;
 	   }
 	   else protocolstring = "verbs";
 
@@ -121,7 +121,7 @@ void run_command(ChronoLogClient *&client,std::string &msg_string,std::string &c
            strcpy(ip_add, inet_ntoa(*addr_list[0]));
            host_ip = std::string(ip_add);
 	
-	   server_uri = protocolstring+"://"+host_ip+":"+std::to_string(portno);
+	   server_uri += protocolstring+"://"+host_ip+":"+std::to_string(portno);
 	   std::cout <<" server_uri = "<<server_uri<<std::endl;
 	   if(client == nullptr)
 	   {
@@ -130,7 +130,8 @@ void run_command(ChronoLogClient *&client,std::string &msg_string,std::string &c
 	     client_id = gen_random(8);
 	     flags = 0;
 	     offset = 0;
-	     ret = client->Connect(server_uri,client_id,flags,offset);
+	     uint32_t role = CHRONOLOG_CLIENT_REGULAR_USER;
+	     ret = client->Connect(server_uri,client_id,group_id,role,flags,offset);
 	     assert(ret == CL_SUCCESS);
 	   }
 	   else std::cout <<" client connected, Incorrect command, retry"<<std::endl;

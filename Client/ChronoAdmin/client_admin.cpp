@@ -105,20 +105,20 @@ int main(int argc, char **argv)
     in_addr **addr_list = (struct in_addr **) he->h_addr_list;
     strcpy(ip_add, inet_ntoa(*addr_list[0]));
     host_ip = std::string(ip_add);
-
+    
     std::string protocolstring;
 
     if(protocol==0)
     {
        protocolstring = "ofi+sockets";
        ChronoLogCharStruct prot_struct(protocolstring);
-       CHRONOLOG_CONF->SOCKETS_CONF = prot_struct;
+       CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF = prot_struct;
     }
     else if(protocol==1)
     {
 	protocolstring = "ofi+tcp";
 	ChronoLogCharStruct prot_struct(protocolstring);
-	CHRONOLOG_CONF->SOCKETS_CONF = prot_struct;
+	CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF = prot_struct;
     }
     else if(protocol==2) protocolstring = "verbs";
 
@@ -132,12 +132,14 @@ int main(int argc, char **argv)
     int flags = 0;
     int ret;
     uint64_t offset = 0;
-
+    
     std::string client_id = gen_random(8);
+    std::string group_id = "ChronoAdmin_Serial";
+    uint32_t role = CHRONOLOG_CLIENT_REGULAR_USER;
 
     try
     {
-       ret = client.Connect(server_uri, client_id,flags,offset);
+       ret = client.Connect(server_uri, client_id,group_id,role,flags,offset);
     }
     catch(const thallium::exception &e)
     {
