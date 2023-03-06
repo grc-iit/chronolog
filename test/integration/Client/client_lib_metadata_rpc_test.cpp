@@ -35,10 +35,8 @@ int main() {
 
     std::string client_id = std::to_string(getpid());
     std::string group_id = "metadata_application";
-    std::string server_uri = CHRONOLOG_CONF->SOCKETS_CONF.string();
     client_id = group_id+client_id; 
     std::cout <<" client_id = "<<client_id<<std::endl;
-   server_uri += "://" + server_ip + ":" + std::to_string(base_port);
    
    uint32_t role = CHRONOLOG_CLIENT_REGULAR_USER;
    int ret = client.Connect(server_uri, client_id, group_id, role, flags, offset);

@@ -21,7 +21,8 @@ int main() {
     omp_set_num_threads(num_threads);
 
     std::string server_uri = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF.string();
-    server_uri += "://"+server_ip+":"+std::to_string(base_port);
+    server_uri += "://" + CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string() +
+                   std::to_string(CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT); 
     int flags = 0;
     uint64_t offset;
 

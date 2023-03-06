@@ -26,7 +26,7 @@ int ChronoLogClient::Connect(const std::string &server_uri,
     SetClientId(client_id);
     SetGroupId(group_id);
     SetClientRole(role);
-    return rpcProxy_->Connect(server_uri, client_id, group_id,role,flags, clock_offset);
+    return rpcClient_->Connect(server_uri, client_id, group_id,role,flags, clock_offset);
 }
 
 int ChronoLogClient::Disconnect(const std::string &client_id, int &flags) {

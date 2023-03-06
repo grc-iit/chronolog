@@ -21,16 +21,7 @@ std::string group_id;
 void thread_function(void *t)
 {
 
-<<<<<<< HEAD
-	std::string server_ip = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string();
-	int base_port = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT;
-	std::string client_id = gen_random(8);
-	std::string server_uri = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF.string();
-	server_uri += "://"+server_ip+":"+std::to_string(base_port);
-    int flags = 0;
-=======
         int flags = 0;
->>>>>>> 75b8683 (rebase)
 	uint64_t offset;
 	int ret;
 
@@ -70,17 +61,18 @@ int main(int argc,char **argv) {
     MPI_Init_thread(&argc,&argv,MPI_THREAD_MULTIPLE,&provided);
 
     ChronoLogRPCImplementation protocol = CHRONOLOG_THALLIUM_SOCKETS;
-    std::string server_ip = "127.0.0.1";
-    int base_port = 5555;
-    client_id = gen_random(8);
-    std::string server_uri = CHRONOLOG_CONF->SOCKETS_CONF.string();
-    server_uri += "://"+server_ip+":"+std::to_string(base_port);
-    int flags = 0;
-    group_id = "hybrid_argobots_application";
+    std::string client_id = gen_random(8);
+    std::string group_id = "hybrid_argobots_application";
     uint32_t role = CHRONOLOG_CLIENT_REGULAR_USER;
+    std::string server_ip = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string();
+    int base_port = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT;
+    std::string server_uri = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF.string();
+    server_uri += "://" + CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string() +
+                          std::to_string(CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT);
 
     client = new ChronoLogClient(protocol, server_ip, base_port);
 
+    int flags = 0;
     int ret = client->Connect(server_uri,client_id,group_id,role,flags,offset);
 
     int num_xstreams = 8;

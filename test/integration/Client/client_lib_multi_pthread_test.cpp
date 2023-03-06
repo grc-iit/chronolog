@@ -66,7 +66,8 @@ int main(int argc,char **argv) {
     client = new ChronoLogClient(protocol, server_ip, base_port);
 
     std::string server_uri = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF.string();
-    server_uri += "://"+server_ip+":"+std::to_string(base_port);
+    server_uri += "://" + CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string() +
+                          std::to_string(CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT);
 
     uint32_t role = CHRONOLOG_CLIENT_REGULAR_USER;
     int flags = 0;

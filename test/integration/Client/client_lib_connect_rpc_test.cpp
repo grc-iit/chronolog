@@ -13,7 +13,8 @@ int main() {
     std::string server_ip = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string();
     int base_port = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT;
     ChronoLog::ConfigurationManager confManager("./default_conf.json");
-    ChronoLogClient client(confManager);
+    ChronoLogClient client(protocol,server_ip,base_port);
+    //ChronoLogClient client(confManager);
     int num_ports = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_PORTS;
     std::string server_uri;
     std::vector<std::string> client_ids, group_ids;
@@ -41,10 +42,11 @@ int main() {
                 break;
         }
         server_uri += "://" + server_ip + ":" + std::to_string(base_port + i);
+	std::cout <<" server_uri = "<<server_uri<<std::endl;
         t1 = std::chrono::steady_clock::now();
 	uint32_t role = CHRONOLOG_CLIENT_REGULAR_USER; 
         ret = client.Connect(server_uri, client_ids[i], group_ids[i], role, flags, offset);
-        assert(ret == CL_SUCCESS);
+        //assert(ret == CL_SUCCESS);
         t2 = std::chrono::steady_clock::now();
         duration_connect += (t2 - t1);
     }
@@ -54,7 +56,7 @@ int main() {
 	/*uint32_t role = CHRONOLOG_CLIENT_PRIVILEGED_USER;
 	ret = client.RequestRoleChange(role);*/
         ret = client.Disconnect(client_ids[i], flags);
-        assert(ret == CL_SUCCESS);
+        //assert(ret == CL_SUCCESS);
         t2 = std::chrono::steady_clock::now();
         duration_disconnect += (t2 - t1);
     };

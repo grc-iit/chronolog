@@ -9,6 +9,7 @@
 #include "errcode.h"
 #include "ConfigurationManager.h"
 #include "ClocksourceManager.h"
+#include <iostream>
 
 ClocksourceManager *ClocksourceManager::clocksourceManager_ = nullptr;
 

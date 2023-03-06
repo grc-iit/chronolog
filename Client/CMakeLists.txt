@@ -24,4 +24,4 @@ target_include_directories(ChronoLogClient_lib PUBLIC include
         ../Client/include)
 target_link_libraries(ChronoLogClient_lib thallium)
 
-add_subdirectory(ChronoAdmin)
+#add_subdirectory(ChronoAdmin)
