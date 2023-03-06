@@ -63,8 +63,7 @@ int ChronicleMetaDirectory::create_chronicle(const std::string& name, std::strin
     /* Check if Chronicle already exists, fail if true */
     auto chronicleRecord = chronicleMap_->find(name);
   
-    if (chronicleRecord != chronicleMap_->end()) 
-    {
+    if (chronicleRecord != chronicleMap_->end()) {
 	LOGE("Chronicle Exists");
 	return CL_ERR_CHRONICLE_EXISTS;
     }
@@ -96,11 +95,11 @@ int ChronicleMetaDirectory::create_chronicle(const std::string& name, std::strin
     t2 = std::chrono::steady_clock::now();
     std::chrono::duration<double, std::nano> duration = (t2 - t1);
     LOGD("time in %s: %lf ns", __FUNCTION__, duration.count());
-    if (res.second) {
+    if (res.second) 
         return CL_SUCCESS;
-    } else {
+    else 
         return CL_ERR_UNKNOWN;
-    }
+   
 }
 
 /**
@@ -125,8 +124,7 @@ int ChronicleMetaDirectory::destroy_chronicle(const std::string& name,
     std::lock_guard<std::mutex> ChronicleMapLock(g_chronicleMetaDirectoryMutex_);
     std::lock_guard<std::mutex> AcquiredChronicleMapLock(g_acquiredChronicleMapMutex_);
 
-    if (acquiredChronicleMap_->find(name) != acquiredChronicleMap_->end())
-    {
+    if (acquiredChronicleMap_->find(name) != acquiredChronicleMap_->end()) {
         return CL_ERR_ACQUIRED;
     }
     /* First check if Chronicle exists, fail if false */
@@ -154,15 +152,10 @@ int ChronicleMetaDirectory::destroy_chronicle(const std::string& name,
             return CL_ERR_UNKNOWN;
 	}
 	else 
-	{
-	  LOGE("Does not have permissions to delete Chronicle");
 	  return CL_ERR_UNKNOWN;
-	}
 
-    } else {
-        LOGE("Cannot find Chronicle cid=%lu", cid);
+    } else 
         return CL_ERR_NOT_EXIST;
-    }
 }
 
 /**
@@ -275,16 +268,12 @@ int ChronicleMetaDirectory::update_chronicle_permissions(std::string &name,std::
     {
        pChronicle = chronicleRecord->second;
        bool b = !use_acl_db && pChronicle->aclmaps().is_owner(group_id);
-       if(b)
-       {
+       if(b){
 	pChronicle->aclmaps().replace_acl(group_id,perm);
 	ret = CL_SUCCESS;
        }
        else 
-       {    
-	    LOGE("Does not have permissions for requested operation");
 	    ret = CL_ERR_UNKNOWN;
-       }
     }
     else ret = CL_ERR_NOT_EXIST;
     return ret;
@@ -358,10 +347,7 @@ int ChronicleMetaDirectory::destroy_story(std::string& chronicle_name,
     uint64_t sid = CityHash64(story_name_for_hash.c_str(), story_name_for_hash.size());
 
     if (acquiredStoryMap_->find(story_name_for_hash) != acquiredStoryMap_->end())
-    {
-	std::cout <<" story not released"<<std::endl;
         return CL_ERR_ACQUIRED;
-    }
 
     /* Then check if Chronicle exists, fail if false */
     auto chronicleRecord = chronicleMap_->find(chronicle_name);
@@ -373,15 +359,11 @@ int ChronicleMetaDirectory::destroy_story(std::string& chronicle_name,
 	if(!use_acl_db) b = pChronicle->aclmaps().is_allowed(group_id,nop);
 	else b = adb->is_allowed(chronicle_name,group_id,nop) && adb->is_allowed(story_name_for_hash,group_id,nop);
         /* Ask the Chronicle to destroy the Story */
-	if(b)
-	{
+	if(b) {
           CL_Status res = pChronicle->removeStory(chronicle_name, story_name,client_id,group_id,flags,use_acl_db);
-          if (res != CL_SUCCESS) 
-	  {
-            LOGE("Fail to remove Story name=%s in Chronicle name=%s", story_name.c_str(), chronicle_name.c_str());
-           }
-	   return res;
+	  return res;
 	}
+	else return CL_ERR_UNKNOWN;
     }   
     return CL_ERR_NOT_EXIST;
 }
@@ -458,10 +440,8 @@ int ChronicleMetaDirectory::acquire_story(const std::string& chronicle_name,
 	       }
 	      }
 	    }
-	    else { 
-		LOGE("Does not have permission for requested operation");
+	    else  
 		ret = CL_ERR_UNKNOWN;
-	    }
         }
 	else ret = CL_ERR_NOT_EXIST;
     }
@@ -516,7 +496,9 @@ int ChronicleMetaDirectory::release_story(const std::string& chronicle_name,
                 }
             } else ret = CL_ERR_UNKNOWN;
         }
+	else ret = CL_ERR_NOT_EXIST;
     }
+    else ret = CL_ERR_NOT_EXIST;
     return ret;
 
 }
@@ -532,28 +514,21 @@ int ChronicleMetaDirectory::update_story_permissions(std::string &chronicle_name
     int ret;
     auto chronicleRecord = chronicleMap_->find(chronicle_name);
     auto range2 = acquiredStoryClientMap_->equal_range(story_name_for_hash);
-    if(chronicleRecord != chronicleMap_->end() && range2.first==range2.second)
-    {
+    if(chronicleRecord != chronicleMap_->end() && range2.first==range2.second){
 	Chronicle *pChronicle = chronicleRecord->second;
 	auto storyRecord = pChronicle->getStoryMap().find(story_name_for_hash);
-	if(storyRecord != pChronicle->getStoryMap().end())
-	{
+	if(storyRecord != pChronicle->getStoryMap().end()){
 		Story *pStory = storyRecord->second;
 		bool b1 = !use_acl_db && pChronicle->aclmaps().is_owner(group_id);
 		bool b2 = !use_acl_db && pStory->aclmaps().is_owner(group_id);
-	        if(b1 && b2)
-		{
+	        if(b1 && b2) {
 		     pStory->aclmaps().replace_acl(group_id,perm);
 		     ret = CL_SUCCESS;
 		}
 		else 
-		{
-		   LOGE("Does not have permission for requested operation");
 		   ret = CL_ERR_UNKNOWN;
-		}
 	}
 	else ret = CL_ERR_NOT_EXIST;
-
     }
     else ret = CL_ERR_NOT_EXIST;
     return ret;
@@ -633,17 +608,13 @@ int ChronicleMetaDirectory::add_group_to_chronicle(std::string &chronicle_name, 
     std::lock_guard<std::mutex> AcquiredChronicleMapLock(g_acquiredChronicleMapMutex_);
     auto chronicleRecord = chronicleMap_->find(chronicle_name);
     auto range1 = acquiredChronicleClientMap_->equal_range(chronicle_name);
-    if (chronicleRecord != chronicleMap_->end() && range1.first == range1.second)
-    {
+    if (chronicleRecord != chronicleMap_->end() && range1.first == range1.second) {
         Chronicle *pChronicle = chronicleRecord->second;
         bool b = !use_acl_db && pChronicle->aclmaps().is_owner(group_id);
 	if(b)
 	  ret = pChronicle->aclmaps().create_acl(new_group_id,new_perm);
 	else
-	{
-	    LOGE("Does not have permission for requested operation");
 	    ret = CL_ERR_UNKNOWN;
-	}
     }
     else
 	    ret = CL_ERR_NOT_EXIST;
@@ -660,25 +631,19 @@ int ChronicleMetaDirectory::remove_group_from_chronicle(std::string &chronicle_n
     /* First check if Chronicle exists, fail if false */
     auto chronicleRecord = chronicleMap_->find(chronicle_name);
     auto range1 = acquiredChronicleClientMap_->equal_range(chronicle_name);
-    if (chronicleRecord != chronicleMap_->end() && range1.first == range1.second)
-    {
+    if (chronicleRecord != chronicleMap_->end() && range1.first == range1.second) {
         Chronicle *pChronicle = chronicleRecord->second;
         bool b = !use_acl_db && pChronicle->aclmaps().is_owner(group_id);
-        if(b)
-	{
+        if(b) {
           pChronicle->aclmaps().remove_acl(new_group_id);
 	  auto smap = pChronicle->getStoryMap();
-	  for(auto r = smap.begin(); r != smap.end(); ++r)
-	  {
+	  for(auto r = smap.begin(); r != smap.end(); ++r) {
 	      Story *pStory = (*r).second;
 	      bool b1 = pStory->aclmaps().remove_acl(new_group_id);
 	  }
 	}
         else
-	{
-	    LOGE("Does not have permission for requested operation");
             ret = CL_ERR_UNKNOWN;
-	}
     }
     else
             ret = CL_ERR_NOT_EXIST;
@@ -699,17 +664,13 @@ int ChronicleMetaDirectory::add_group_to_story(std::string &chronicle_name,std::
      int err;
      auto chronicleRecord = chronicleMap_->find(chronicle_name);
      auto range2 = acquiredStoryClientMap_->equal_range(story_name_for_hash);
-     if(chronicleRecord != chronicleMap_->end() && range2.first==range2.second)
-     {
+     if(chronicleRecord != chronicleMap_->end() && range2.first==range2.second) {
         Chronicle *pChronicle = chronicleRecord->second;
-
          bool b1 = !use_acl_db && pChronicle->aclmaps().is_owner(group_id);
          err = CL_SUCCESS;
-         if(b1)
-         {
+         if(b1) {
              auto storyRecord = pChronicle->getStoryMap().find(story_name_for_hash);
-             if (storyRecord != pChronicle->getStoryMap().end()) 
-	     {
+             if (storyRecord != pChronicle->getStoryMap().end()) {
 	        Story *story = storyRecord->second;
                 bool b2 = !use_acl_db && story->aclmaps().is_owner(group_id);  
 	        if(b2)
@@ -718,18 +679,12 @@ int ChronicleMetaDirectory::add_group_to_story(std::string &chronicle_name,std::
 		  err = story->aclmaps().create_acl(new_group_id,new_perm);
 	        }
                 else 
-		{
-                   LOGE("Does not have permissions for requested operation");
 		   err = CL_ERR_UNKNOWN;	   
-		}	
 	      }
 	      else err = CL_ERR_NOT_EXIST;
           }
 	  else 
-	  {
-	     LOGE("Does not have permission for requested operation");
 	     err = CL_ERR_UNKNOWN;
-	  }
      }
      else err = CL_ERR_NOT_EXIST;
       
@@ -749,37 +704,26 @@ int ChronicleMetaDirectory::remove_group_from_story(std::string &chronicle_name,
      int err;
      auto chronicleRecord = chronicleMap_->find(chronicle_name);
      auto range2 = acquiredStoryClientMap_->equal_range(story_name_for_hash);
-     if(chronicleRecord != chronicleMap_->end() && range2.first==range2.second)
-     {
+     if(chronicleRecord != chronicleMap_->end() && range2.first==range2.second) {
         Chronicle *pChronicle = chronicleRecord->second;
-
          bool b1 = !use_acl_db && pChronicle->aclmaps().is_owner(group_id);
          err = CL_SUCCESS;
 
-         if(b1)
-         {
+         if(b1) {
              auto storyRecord = pChronicle->getStoryMap().find(story_name_for_hash);
              if (storyRecord != pChronicle->getStoryMap().end())
              {
                 Story *story = storyRecord->second;
                 bool b2 = !use_acl_db && story->aclmaps().is_owner(group_id);
                 if(b2)
-                {
                   err = story->aclmaps().remove_acl(new_group_id);
-                }
                 else 
-		{
-		    LOGE("Does not have permission for requested operation");
 		    err = CL_ERR_UNKNOWN;
-		}
               }
                else err = CL_ERR_NOT_EXIST;
           }
           else 
-	  {
-	      LOGE("Does not have permission for requested operation");
 	      err = CL_ERR_UNKNOWN;
-	  }
      }
      else err = CL_ERR_NOT_EXIST;
 
