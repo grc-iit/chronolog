@@ -37,59 +37,59 @@ int ChronoLogClient::CreateChronicle(std::string &name,
                                      const std::unordered_map<std::string, std::string> &attrs,
                                      int &flags) 
 {
-    return rpcProxy_->CreateChronicle(name,client_id_,attrs,flags);
+    return rpcClient_->CreateChronicle(name,client_id_,attrs,flags);
 }
 
 int ChronoLogClient::DestroyChronicle(std::string &name, int &flags) {
-    return rpcProxy_->DestroyChronicle(name, client_id_,flags);
+    return rpcClient_->DestroyChronicle(name, client_id_,flags);
 }
 
 int ChronoLogClient::AcquireChronicle(std::string &name, int &flags) {
-    return rpcProxy_->AcquireChronicle(name, client_id_,flags);
+    return rpcClient_->AcquireChronicle(name, client_id_,flags);
 }
 
 int ChronoLogClient::ReleaseChronicle(std::string &name, int &flags) {
-    return rpcProxy_->ReleaseChronicle(name, client_id_, flags);
+    return rpcClient_->ReleaseChronicle(name, client_id_, flags);
 }
 int ChronoLogClient::UpdateChroniclePermissions(std::string &name,std::string &perm)
 {
-    return rpcProxy_->UpdateChroniclePermissions(name,client_id_,perm);
+    return rpcClient_->UpdateChroniclePermissions(name,client_id_,perm);
 }
 int ChronoLogClient::CreateStory(std::string &chronicle_name,
                                  std::string &story_name,
                                  const std::unordered_map<std::string, std::string> &attrs,
                                  int &flags) {
-    return rpcProxy_->CreateStory(chronicle_name, story_name, client_id_, attrs, flags);
+    return rpcClient_->CreateStory(chronicle_name, story_name, client_id_, attrs, flags);
 }
 
 int ChronoLogClient::DestroyStory(std::string &chronicle_name, std::string &story_name, int &flags) {
-    return rpcProxy_->DestroyStory(chronicle_name, story_name, client_id_,flags);
+    return rpcClient_->DestroyStory(chronicle_name, story_name, client_id_,flags);
 }
 
 int ChronoLogClient::AcquireStory(std::string &chronicle_name, std::string &story_name, int &flags) {
-    return rpcProxy_->AcquireStory(chronicle_name, story_name, client_id_, flags);
+    return rpcClient_->AcquireStory(chronicle_name, story_name, client_id_, flags);
 }
 
 int ChronoLogClient::ReleaseStory(std::string &chronicle_name, std::string &story_name, int &flags) {
-    return rpcProxy_->ReleaseStory(chronicle_name, story_name, client_id_, flags);
+    return rpcClient_->ReleaseStory(chronicle_name, story_name, client_id_, flags);
 }
 int ChronoLogClient::UpdateStoryPermissions(std::string &chronicle_name,std::string &story_name,std::string &perm)
 {
-    return rpcProxy_->UpdateStoryPermissions(chronicle_name,story_name,client_id_,perm);
+    return rpcClient_->UpdateStoryPermissions(chronicle_name,story_name,client_id_,perm);
 }
 int ChronoLogClient::GetChronicleAttr(std::string &chronicle_name, const std::string &key, std::string &value) {
-    return rpcProxy_->GetChronicleAttr(chronicle_name, key, client_id_, value);
+    return rpcClient_->GetChronicleAttr(chronicle_name, key, client_id_, value);
 }
 
 int ChronoLogClient::EditChronicleAttr(std::string &chronicle_name, const std::string &key, const std::string &value) {
-    return rpcProxy_->EditChronicleAttr(chronicle_name, key, client_id_, value);
+    return rpcClient_->EditChronicleAttr(chronicle_name, key, client_id_, value);
 }
 int ChronoLogClient::RequestRoleChange(uint32_t &role)
 {
     int ret = CheckClientRole(role);
     if(ret==CL_SUCCESS)
     {
-       ret = rpcProxy_->RequestRoleChange(client_id_,role);
+       ret = rpcClient_->RequestRoleChange(client_id_,role);
        if(ret == CL_SUCCESS)
        {
 	   ret = SetClientRole(role);
@@ -99,19 +99,19 @@ int ChronoLogClient::RequestRoleChange(uint32_t &role)
 }
 int ChronoLogClient::AddGrouptoChronicle(std::string &chronicle_name,std::string &new_group_id,std::string &new_perm)
 {
-	return rpcProxy_->AddGrouptoChronicle(chronicle_name,client_id_,new_group_id,new_perm);
+	return rpcClient_->AddGrouptoChronicle(chronicle_name,client_id_,new_group_id,new_perm);
 }
 int ChronoLogClient::RemoveGroupFromChronicle(std::string &chronicle_name,std::string &new_group_id)
 {
-	return rpcProxy_->RemoveGroupFromChronicle(chronicle_name,client_id_,new_group_id);
+	return rpcClient_->RemoveGroupFromChronicle(chronicle_name,client_id_,new_group_id);
 }
 int ChronoLogClient::AddGrouptoStory(std::string &chronicle_name,std::string &story_name,std::string &new_group_id,std::string &new_perm)
 {
-	return rpcProxy_->AddGrouptoStory(chronicle_name,story_name,client_id_,new_group_id,new_perm);
+	return rpcClient_->AddGrouptoStory(chronicle_name,story_name,client_id_,new_group_id,new_perm);
 }
 int ChronoLogClient::RemoveGroupFromStory(std::string &chronicle_name,std::string &story_name,std::string &new_group_id)
 {
-	return rpcProxy_->RemoveGroupFromStory(chronicle_name,story_name,client_id_,new_group_id);
+	return rpcClient_->RemoveGroupFromStory(chronicle_name,story_name,client_id_,new_group_id);
 }
 int ChronoLogClient::SetClientId(std::string &client_id)
 {
