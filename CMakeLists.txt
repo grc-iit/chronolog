@@ -56,6 +56,8 @@ if(NOT "${CMAKE_CXX_STANDARD}")
 endif()
 
 find_package(OpenMP)
+find_package(json-c)
+find_package(RapidJSON)
 #find_package(IntelDPCPP REQUIRED)
 
 #------------------------------------------------------------------------------

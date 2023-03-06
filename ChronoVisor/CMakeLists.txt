@@ -28,13 +28,14 @@ find_package(Threads REQUIRED)
 add_library(ChronoVisor_lib2 STATIC
         include/ChronoVisorServer2.h include/ClientInfo.h
         src/ChronoVisorServer2.cpp src/ClientRegistryRecord.cpp
+	../ChronoAPI/ChronoLog/src/ACL_List.cpp
         ../ChronoAPI/ChronoLog/src/ClocksourceManager.cpp ../ChronoAPI/ChronoLog/include/ClocksourceManager.h
         src/ChronicleMetaDirectory.cpp include/ChronicleMetaDirectory.h
         include/Chronicle.h include/Story.h include/Archive.h include/Event.h
         ../ChronoAPI/ChronoLog/src/city.cpp ../ChronoAPI/ChronoLog/include/city.h ../ChronoAPI/ChronoLog/include/config.h include/ClientRegistryManager.h src/ClientRegistryManager.cpp)
 target_include_directories(ChronoVisor_lib2 PUBLIC include
         ../ChronoAPI/ChronoLog/include)
-target_link_libraries(ChronoVisor_lib2 thallium)
+target_link_libraries(ChronoVisor_lib2 thallium -ljson-c)
 
 if(BUILD_TESTING)
     enable_testing()

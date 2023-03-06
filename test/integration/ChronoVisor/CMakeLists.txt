@@ -21,7 +21,9 @@ target_include_directories(chronovisor_server_test PRIVATE
         ../../../ChronoAPI/ChronoLog/include
         ../../../tools/Serde/include
         ../../../ChronoVisor/include)
-target_link_libraries(chronovisor_server_test thallium)
+target_link_libraries(chronovisor_server_test thallium -ljson-c)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/../default_conf.json.in
         ${CMAKE_CURRENT_BINARY_DIR}/default_conf.json COPYONLY)
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/../clients.json.in
+        ${CMAKE_CURRENT_BINARY_DIR}/clients.json COPYONLY)
 add_test(NAME ChronoVisorServerTest COMMAND chronovisor_server_test)
