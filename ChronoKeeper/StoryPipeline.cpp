@@ -3,9 +3,15 @@
 #include <map>
 #include <mutex>
 
+
+#include "StoryChunk.h"
 #include "StoryPipeline.h"
 
 ////////////////////////
+
+     // part of the other_chunk records have decayed past the timelineStart
+     // find the first record that is still within story timeline window
+     // and use it as the merge_start_time	
 
 chronolog::StoryPipeline::StoryPipeline( std::string const& chronicle_name, std::string const& story_name,  chronolog::StoryId const& story_id
 		, uint64_t start_time, uint64_t chunk_granularity, uint64_t archive_granularity, uint64_t acceptance_window)
@@ -45,7 +51,7 @@ chronolog::StoryPipeline::~StoryPipeline()
 
 /////////////////////
 
-std::map<uint64_t, chronolog::StoryChunk>::iterator chronolog::StoryPipeline::appendNextStoryChunk()
+std::map<uint64_t, chronolog::StoryChunk>::iterator chronolog::StoryPipeline::appendStoryChunk()
 {
   // append the next storyChunk to the storyTimelineMap and return iterator to the new node
 	auto result= storyTimelineMap.insert( std::pair<uint64_t, chronolog::StoryChunk>( timelineEnd, chronolog::StoryChunk(storyId, timelineEnd, timelineEnd+chunkGranularity)));
@@ -59,36 +65,54 @@ std::map<uint64_t, chronolog::StoryChunk>::iterator chronolog::StoryPipeline::ap
 	    return result.first;
 	}
 }
-int chronolog::StoryPipeline::mergeEvents(chronolog::StoryChunk const& other_chunk)
+//////////////////////
+// merge the StoryChunkk obtained from external source into the StoryPipeline
+// note that the granularity of the StoryChunk may be 
+// different from that of the StoryPipeline
+//
+void chronolog::StoryPipeline::mergeEvents(chronolog::StoryChunk & other_chunk)
 {
 
-  int status =0;
+   // we make no assumptions about the startTime or the granularity of the chunk submitted for merging
 
-  //INNA: TODO: check the case when storyChunk.startTime < timelineStart....
- 
-   // we make no assumptions about the granularity of the chunk submitted for merging
-   // so first locate the storyChunk in the StoryPipeline with the time Key not less than 
-   // other_chunk.startTime
+   if( other_chunk.empty())
+   {   return; }
+
+   if( timelineStart > other_chunk.getEndTime() )
+   {
+      // all he records in other_chunk have decayed past the timelineStart	   
+	std::cout << "StoryPipeline: {"<< storyId<<"} merge ignores StoryChunk {"<<other_chunk.getStartTime()<<" : "<<other_chunk.getEndTime()<<"}"<<std::endl;
+	return;
+   }
+   
+     // part of the other_chunk records have decayed past the timelineStart
+     // find the first record that is still within story timeline window
+     // and use it as the merge_start
+
+      auto merge_start_record_iter = other_chunk.lower_bound(timelineStart);
+
+   // locate the storyChunk in the StoryPipeline with the time Key not less than 
+   // other_chunk.startTime and start merging
 
    auto chunk_to_merge_iter = storyTimelineMap.lower_bound(other_chunk.getStartTime());
 
    while (chunk_to_merge_iter != storyTimelineMap.end() &&  !other_chunk.empty())
+	   // check if the only records left in the other_chunk are those 
+	   // that have decayed .... other_chunk.lastRecordTime() < timelineStart
    {
 	
       (*chunk_to_merge_iter).second.mergeEvents(other_chunk);
+
       chunk_to_merge_iter++;
       
    }
 
-   if (other_chunk.empty())
-	   return 1;
-
-   // there are records in the other_chunk with the timestamps beyond the last timeChunk in the StoryTimelineMap
-   // extend the timeline forward
+   // there might still be records in the story_chunk with the timestamps beyond the current timelineEnd 
+   // if that is the case we extend the timeline forward
 
    while ( !other_chunk.empty())
    {
-      chunk_to_merge_iter= appendNextStoryChunk();
+      chunk_to_merge_iter= appendStoryChunk();
       if ( chunk_to_merge_iter == storyTimelineMap.end())
       { break; }
 
@@ -96,5 +120,5 @@ int chronolog::StoryPipeline::mergeEvents(chronolog::StoryChunk const& other_chu
 
    }	   
 
- return (other_chunk.empty() ? ! 1 : 0);
+   return;
 }
