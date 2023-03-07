@@ -107,7 +107,7 @@ public:
     }
 
     int addStory(std::string &chronicle_name, const std::string& story_name, std::string &client_id, std::string &group_id,
-                 const std::unordered_map<std::string, std::string>& attrs,bool use_acl_db) {
+                 const std::unordered_map<std::string, std::string>& attrs) {
         // add cid to name before hash to allow same story name across chronicles
         std::string story_name_for_hash = chronicle_name + story_name;
         uint64_t cid = CityHash64(chronicle_name.c_str(), chronicle_name.size());
@@ -118,18 +118,16 @@ public:
         pStory->setProperty(attrs);
         pStory->setSid(sid);
         pStory->setCid(cid);
-	if(!use_acl_db)
+	  
+	std::string perm;
+	auto attr_iter = attrs.find("Permissions");
+	if(attr_iter != attrs.end())
 	{
-	  std::string perm;
-	  auto attr_iter = attrs.find("Permissions");
-	  if(attr_iter != attrs.end())
-	  {
 	   std::string c(attr_iter->second);
 	   perm = c;
-	  }
-	  else perm = "RONLY";
-	  pStory->aclmaps().create_acl(group_id,perm);
 	}
+	else perm = "RONLY";
+	pStory->aclmaps().create_acl(group_id,perm);
         LOGD("adding to storyMap@%p with %lu entries in Chronicle@%p",
              &storyMap_, storyMap_.size(), this);
         auto res = storyMap_.emplace(story_name_for_hash, pStory);
@@ -137,7 +135,7 @@ public:
         else return CL_ERR_UNKNOWN;
     }
 
-    int removeStory(std::string &chronicle_name, const std::string& story_name,std::string client_id,std::string group_id,int flags,bool allowed_acl_db) {
+    int removeStory(std::string &chronicle_name, const std::string& story_name,std::string client_id,std::string group_id,int flags) {
         // add cid to name before hash to allow same story name across chronicles
         std::string story_name_for_hash = chronicle_name + story_name;
         uint64_t sid = CityHash64(story_name_for_hash.c_str(), story_name_for_hash.size());
@@ -149,7 +147,7 @@ public:
             }
             
 	    enum ChronoLogOp nop = CHRONOLOG_CREATE_DELETE; 
-	    bool b = allowed_acl_db || pStory->aclmaps().is_allowed(group_id,nop);
+	    bool b = pStory->aclmaps().is_allowed(group_id,nop);
 	    if(b)
 	    { 
 	      delete pStory;

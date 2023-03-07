@@ -36,9 +36,14 @@ public:
     void Visor_start() {
         rpc->start();}
 
-    void set_acl_db(ACL_DB *ad)
+    std::shared_ptr<ClientRegistryManager> GetClientRegistry()
     {
-	    chronicleMetaDirectory->set_acl_db(ad);
+	    return clientManager;
+    }
+
+    std::shared_ptr<ChronicleMetaDirectory> GetChronicleMetaDirectory()
+    {
+	    return chronicleMetaDirectory;
     }
     /**
      * Admin APIs
@@ -89,30 +94,23 @@ public:
 
 	int ret = clientManager->get_client_group_and_role(client_id,group_id,role);
 
-        if(ret == CL_SUCCESS)
-	{	
+        if(ret == CL_SUCCESS){	
 	   bool b = clientManager->can_create_or_delete(role);	
 
 	  if (!name.empty() && b)
-	  {
             ret = chronicleMetaDirectory->create_chronicle(name,client_id,group_id,attrs);
-          } 
-	  else  
-	 {
-	    if(name.empty())
-	    {
+	  else  {
+	    if(name.empty()){
               LOGE("name is empty");
 	      ret = CL_ERR_INVALID_ARG;
 	    }
-	    if(!b)
-	    {
+	    if(!b){
 	      LOGE("Client role cannot create new chronicles");
               ret = CL_ERR_UNKNOWN;
 	    }
          }
 	}
-	else
-	{
+	else{
            LOGE("client_id is incorrect");
 	   ret = CL_ERR_UNKNOWN;
 	}
@@ -125,30 +123,23 @@ public:
 
 	int ret = clientManager->get_client_group_and_role(client_id, group_id,role);
 
-	if(ret == CL_SUCCESS)
-	{
+	if(ret == CL_SUCCESS){
 	   bool b = clientManager->can_create_or_delete(role);
 
            if (!name.empty() && b) 
-	   {
               ret = chronicleMetaDirectory->destroy_chronicle(name,client_id,group_id,flags);
-           } 
-	   else 
-	  {
-	    if(name.empty())
-	    {
+	   else {
+	    if(name.empty()){
               LOGE("name is empty");
 	      ret = CL_ERR_INVALID_ARG;
 	    }
-	    if(!b)
-	    {
+	    if(!b){
 	      LOGE("Client role cannot delete chronicles");
               ret = CL_ERR_UNKNOWN;
 	    }
           }
 	}
-	else
-	{
+	else{
 	   LOGE("client_id is incorrect");
 	   ret = CL_ERR_UNKNOWN;
 	}
@@ -160,8 +151,7 @@ public:
 	std::string group_id; uint32_t role;
 	int ret = clientManager->get_client_group_and_role(client_id,group_id,role);
 
-	if(ret == CL_SUCCESS)
-	{
+	if(ret == CL_SUCCESS){
 	  enum ChronoLogOp op = (enum ChronoLogOp)flags;
 	  bool b = false;
 
@@ -170,25 +160,19 @@ public:
 	  else if(op == CHRONOLOG_FILEOP) b = clientManager->can_perform_fileops(role);
 
           if (!name.empty() && b) 
-	  {
             ret = chronicleMetaDirectory->acquire_chronicle(name,client_id,group_id,flags);
-          } 
-	  else 
-	  {
-	    if(name.empty())
-	    {
+	  else {
+	    if(name.empty()){
               LOGE("name is empty");
               ret = CL_ERR_INVALID_ARG;
 	    }
-	    if(!b)
-	    {
+	    if(!b){
 	      LOGE("Role cannot perform this requested operation");
 	      ret = CL_ERR_UNKNOWN;
 	    }
          }
 	}
-	else
-	{
+	else{
 	    LOGE("client_id is incorrect");
 	    ret = CL_ERR_UNKNOWN;
 	}
@@ -200,20 +184,15 @@ public:
 	std::string group_id; uint32_t role;
 	int ret = clientManager->get_client_group_and_role(client_id,group_id,role);
 
-	if(ret == CL_SUCCESS)
-	{
+	if(ret == CL_SUCCESS){
           if (!name.empty()) 
-	  {
             ret = chronicleMetaDirectory->release_chronicle(name,client_id,group_id,flags);
-          } 
-	  else 
-	  {
+	  else {
             LOGE("name is empty");
             ret = CL_ERR_INVALID_ARG;
           }
 	}
-	else
-	{
+	else{
 	   LOGE("client_id is incorrect");
 	   ret = CL_ERR_UNKNOWN;
 	}
@@ -224,29 +203,22 @@ public:
 	LOGD("%s is called in PID=%d with args: name=%s perm=%s",__FUNCTION__,getpid(),name.c_str(),perm.c_str());
 	std::string group_id; uint32_t role;
 	int ret = clientManager->get_client_group_and_role(client_id,group_id,role);
-	if(ret == CL_SUCCESS)
-	{
+	if(ret == CL_SUCCESS){
            bool b = clientManager->can_perform_fileops(role);
 	   if(!name.empty() && b)
-	   {
 	       ret = chronicleMetaDirectory->update_chronicle_permissions(name,client_id,group_id,perm);
-	   }
-	   else
-	   {
-	       if(name.empty())
-	       {
+	   else{
+	       if(name.empty()){
 		  LOGE("name is empty");
 		  ret = CL_ERR_INVALID_ARG;
 	       }
-	       if(!b)
-	       {
+	       if(!b){
 		  LOGE("Role cannot perform the requested operation");
 		  ret = CL_ERR_UNKNOWN;
 	       }
 	   }
 	}
-        else
-	{
+        else{
 	  LOGE("client_id is incorrect");
           ret = CL_ERR_NOT_EXIST;
 	}	  
@@ -265,30 +237,23 @@ public:
 	std::string group_id; uint32_t role;
 	int ret = clientManager->get_client_group_and_role(client_id,group_id,role);
 
-	if(ret==CL_SUCCESS)
-	{
+	if(ret==CL_SUCCESS){
 	  bool b = clientManager->can_create_or_delete(role);
 
           if (!chronicle_name.empty() && !story_name.empty() && b) 
-	  {
             ret = chronicleMetaDirectory->create_story(chronicle_name, story_name,client_id,group_id,attrs);
-          } 
-	  else 
-	  {
-            if (chronicle_name.empty() || story_name.empty())
-	    {
+	  else {
+            if (chronicle_name.empty() || story_name.empty()){
                 LOGE("chronicle name or story name is empty");
 		ret = CL_ERR_INVALID_ARG;
 	    }
-	    if(!b)
-	    {
+	    if(!b){
 		LOGE("Role does not support create or delete operations");
                 ret = CL_ERR_UNKNOWN;
 	    }
           }
 	}
-	else
-	{
+	else{
 	    LOGE("client_id is incorrect");
 	    ret = CL_ERR_UNKNOWN;
 	}
@@ -301,27 +266,23 @@ public:
 	std::string group_id; uint32_t role;
 	int ret = clientManager->get_client_group_and_role(client_id,group_id,role);
 
-	if(ret == CL_SUCCESS)
-	{
+	if(ret == CL_SUCCESS){
 	  bool b = clientManager->can_create_or_delete(role);
 
-          if (!chronicle_name.empty() && !story_name.empty() && b) {
+          if (!chronicle_name.empty() && !story_name.empty() && b) 
             ret = chronicleMetaDirectory->destroy_story(chronicle_name, story_name, client_id,group_id,flags);
-          } else {
-            if (chronicle_name.empty() || story_name.empty())
-	    {
+          else {
+            if (chronicle_name.empty() || story_name.empty()){
                 LOGE("chronicle name or story name is empty");
 		ret = CL_ERR_INVALID_ARG;
 	    }
-	    if(!b)
-	    {
+	    if(!b){
 	        LOGE("Role does not support create or delete operations");
                 ret = CL_ERR_UNKNOWN;
 	    }
          }
 	}
-	else
-	{
+	else{
 	    LOGE("client_id is incorrect");
 	    ret = CL_ERR_UNKNOWN;
 	}
@@ -334,8 +295,7 @@ public:
 	std::string group_id; uint32_t role;
 	int ret = clientManager->get_client_group_and_role(client_id,group_id,role);
         
-	if(ret == CL_SUCCESS)
-	{
+	if(ret == CL_SUCCESS){
 	  enum ChronoLogOp op = (enum ChronoLogOp)flags;
 
 	  bool b = false;
@@ -343,23 +303,20 @@ public:
 	  if(op == CHRONOLOG_READ) b = clientManager->can_read(role);
 	  else if(op == CHRONOLOG_WRITE) b = clientManager->can_write(role);
 
-          if (!chronicle_name.empty() && !story_name.empty() && b) {
+          if (!chronicle_name.empty() && !story_name.empty() && b) 
             ret = chronicleMetaDirectory->acquire_story(chronicle_name, story_name,client_id,group_id,flags);
-          } else {
-            if (chronicle_name.empty() || story_name.empty())
-	    {
+          else {
+          if (chronicle_name.empty() || story_name.empty()){
                 LOGE("chronicle name or story name is empty");
 		ret = CL_ERR_INVALID_ARG;
-	    }
-	    if(!b)
-	    {
+	  }
+	  if(!b){
 	       LOGE("Role cannot perform requested operation");
                ret = CL_ERR_UNKNOWN;
 	    }
           }
 	}
-	else
-	{
+	else{
 	   LOGE("client_id is incorrect");
 	   ret = CL_ERR_UNKNOWN;
 	}
@@ -371,11 +328,10 @@ public:
              __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
 	std::string group_id; uint32_t role;
 	int ret = clientManager->get_client_group_and_role(client_id,group_id,role);
-	if(ret == CL_SUCCESS)
-	{
-          if (!chronicle_name.empty() && !story_name.empty()) {
+	if(ret == CL_SUCCESS){
+          if (!chronicle_name.empty() && !story_name.empty()) 
             ret = chronicleMetaDirectory->release_story(chronicle_name, story_name,client_id,group_id,flags);
-          } else {
+          else {
             if (chronicle_name.empty())
                 LOGE("chronicle name is empty");
             if (story_name.empty())
@@ -383,8 +339,7 @@ public:
               ret = CL_ERR_INVALID_ARG;
           }
 	}
-	else
-	{
+	else{
 	   LOGE("client_id is incorrect");
 	   ret = CL_ERR_UNKNOWN;
 	}
@@ -395,29 +350,22 @@ public:
 	LOGD("%s is called in PID=%d with args:chronicle_name=%s story_name=%s perm=%s",__FUNCTION__,getpid(),chronicle_name.c_str(),story_name.c_str(),perm.c_str());
 	std::string group_id;uint32_t role;
 	int ret = clientManager->get_client_group_and_role(client_id,group_id,role);
-	if(ret == CL_SUCCESS)
-	{
+	if(ret == CL_SUCCESS){
 	   bool b = clientManager->can_perform_fileops(role);
 	   if(!chronicle_name.empty() && !story_name.empty() && b)
-	   {
 		ret = chronicleMetaDirectory->update_story_permissions(chronicle_name,story_name,client_id,group_id,perm);
-	   }
-	   else
-	   {
-		if(chronicle_name.empty() || story_name.empty())
-		{
+	   else{
+		if(chronicle_name.empty() || story_name.empty()){
 		   LOGE("chronicle name or story name is empty");
 		   ret = CL_ERR_INVALID_ARG;
 		}
-		if(!b)
-		{
+		if(!b){
 		   LOGE("Role cannot perform requested operation");
 		   ret = CL_ERR_UNKNOWN;
 		}
 	   }
 	}
-	else
-	{
+	else{
 	   LOGE("client_id is incorrect");
 	   ret = CL_ERR_NOT_EXIST;
 	}
@@ -427,11 +375,10 @@ public:
         LOGD("%s is called in PID=%d, with args: name=%s, key=%s", __FUNCTION__, getpid(), name.c_str(), key.c_str());
 	std::string group_id; uint32_t role;
 	int ret = clientManager->get_client_group_and_role(client_id,group_id,role);
-	if(ret == CL_SUCCESS)
-	{
-          if (!name.empty() && !key.empty()) {
+	if(ret == CL_SUCCESS){
+          if (!name.empty() && !key.empty()) 
             ret = chronicleMetaDirectory->get_chronicle_attr(name, key, client_id,group_id,value);
-          } else {
+          else {
             if (name.empty())
                 LOGE("name is empty");
             if (key.empty())
@@ -439,8 +386,7 @@ public:
             ret = CL_ERR_INVALID_ARG;
           }
 	}
-	else
-	{
+	else{
 	   LOGE("client_id is incorrect");
 	   ret = CL_ERR_UNKNOWN;
 	}
@@ -453,20 +399,17 @@ public:
 	std::string group_id; uint32_t role;
 	int ret = clientManager->get_client_group_and_role(client_id,group_id,role);
 
-	if(ret == CL_SUCCESS)
-	{
-           if (!name.empty() && !key.empty() && !value.empty()) {
+	if(ret == CL_SUCCESS){
+           if (!name.empty() && !key.empty() && !value.empty()) 
             ret = chronicleMetaDirectory->edit_chronicle_attr(name, key, client_id,group_id,value);
-           } else {
-            if (name.empty() || key.empty())
-	    {
+           else {
+           if (name.empty() || key.empty()){
                 LOGE("name or key is empty");
                 ret = CL_ERR_INVALID_ARG;
 	    }
            }
 	}
-	else
-	{
+	else{
 	   LOGE("client_id is incorrect");
 	   ret = CL_ERR_UNKNOWN;
 	}
@@ -479,11 +422,8 @@ public:
 	std::string group_id;uint32_t prev_role;
 	int ret = clientManager->get_client_group_and_role(client_id,group_id,prev_role);
 	if(ret == CL_SUCCESS)
-	{
 	    ret =  clientManager->update_client_role(client_id,role);
-	}
-	else
-	{
+	else{
 	   LOGE("client_id is incorrect");
 	   ret = CL_ERR_UNKNOWN;
 	}
@@ -496,23 +436,17 @@ public:
 	std::string group_id; uint32_t role;
 	int ret = clientManager->get_client_group_and_role(client_id,group_id,role);
 
-        if(ret == CL_SUCCESS)
-	{
+        if(ret == CL_SUCCESS){
 	    bool b = clientManager->can_edit_ownership(role);
 
 	    if(b)
-	    {
 	       ret = chronicleMetaDirectory->add_group_to_chronicle(chronicle_name,client_id,group_id,new_group_id,new_perm);
-	    }
-	    else
-	    {
+	    else{
 		LOGE("Role cannot perform requested operation");
 		ret = CL_ERR_UNKNOWN;
 	    }
-
 	}
-	else
-	{
+	else{
 	    LOGE("client_id is incorrect");
 	    ret = CL_ERR_UNKNOWN;
 	}
@@ -525,23 +459,17 @@ public:
         std::string group_id; uint32_t role;
         int ret = clientManager->get_client_group_and_role(client_id,group_id,role);
 
-        if(ret == CL_SUCCESS)
-        {
+        if(ret == CL_SUCCESS){
             bool b = clientManager->can_edit_ownership(role);
 
             if(b)
-            {
                ret = chronicleMetaDirectory->remove_group_from_chronicle(chronicle_name,client_id,group_id,new_group_id);
-            }
-            else
-            {
+            else{
                 LOGE("Role cannot perform requested operation");
                 ret = CL_ERR_UNKNOWN;
             }
-
         }
-        else
-        {
+        else{
             LOGE("client_id is incorrect");
             ret = CL_ERR_UNKNOWN;
         }
@@ -554,23 +482,17 @@ public:
 	std::string group_id; uint32_t role;
 	int ret = clientManager->get_client_group_and_role(client_id,group_id,role);
 
-	if(ret == CL_SUCCESS)
-	{
+	if(ret == CL_SUCCESS){
 	    bool b = clientManager->can_edit_ownership(role);
 
 	    if(b)
-	    {
 		ret = chronicleMetaDirectory->add_group_to_story(chronicle_name,story_name,client_id,group_id,new_group_id,new_perm);
-	    }
-	    else
-	    {
+	    else{
 		    LOGE("Role cannot perform requested operation");
 		    ret = CL_ERR_UNKNOWN;
 	    }
-
 	}
-	else
-	{
+	else{
 	    LOGE("client_id is incorrect");
 	    ret = CL_ERR_UNKNOWN;
 	}
@@ -582,23 +504,17 @@ public:
         std::string group_id; uint32_t role;
         int ret = clientManager->get_client_group_and_role(client_id,group_id,role);
 
-        if(ret == CL_SUCCESS)
-        {
+        if(ret == CL_SUCCESS){
             bool b = clientManager->can_edit_ownership(role);
 
             if(b)
-            {
                 ret = chronicleMetaDirectory->remove_group_from_story(chronicle_name,story_name,client_id,group_id,new_group_id);
-            }
-            else
-            {
+            else{
                     LOGE("Role cannot perform requested operation");
                     ret = CL_ERR_UNKNOWN;
             }
-
         }
-        else
-        {
+        else{
             LOGE("client_id is incorrect");
             ret = CL_ERR_UNKNOWN;
         }

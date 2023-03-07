@@ -10,7 +10,6 @@ add_test(NAME chronolog_client_test COMMAND chronolog_client_test)
 
 add_executable(chronovisor_server_test chronovisor_server.cpp
         ../../../ChronoVisor/src/ChronoVisorServer2.cpp
-	../../../ChronoAPI/ChronoLog/src/ACL_List.cpp
         ../../../ChronoAPI/ChronoLog/src/ClocksourceManager.cpp
         ../../../ChronoVisor/src/ClientRegistryManager.cpp
         ../../../ChronoVisor/src/ClientRegistryRecord.cpp

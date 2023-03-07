@@ -8,98 +8,6 @@
 #include <json-c/json_c_version.h>
 #include <iostream>
 
-class ACL_DB
-{
-
- private:
-     std::unordered_map<std::string,std::vector<ACL_Map>,stringhashfn> *acls;
-     std::mutex acl_mutex;
-
-  public:
-        ACL_DB()
-	{
-	   acls = new std::unordered_map<std::string,std::vector<ACL_Map>,stringhashfn> ();
-
-	}
-	inline void add_entry(std::string &s,ACL_Map &m)
-	{
-		auto acl_record = acls->find(s);
-		if(acl_record != acls->end())
-		{
-		   bool exists = false;
-		   for(auto t = acl_record->second.begin(); t != acl_record->second.end();++t)
-		   {
-			if(t->get_group_id().compare(m.get_group_id())==0)
-			{
-			   exists = true; break;
-			}
-		   }  
-
-		   if(!exists)
-		   {
-			acl_record->second.push_back(m);
-		   }
-		}
-		else
-		{
-			std::vector<ACL_Map> nl;
-			nl.push_back(m);
-			std::pair<std::string,std::vector<ACL_Map>> p(s,nl);
-			acls->insert(p);
-		}
-
-	}
-
-	inline bool record_exists(std::string &name,std::string &group_id)
-	{
-	   bool ret = false;
-
-	   auto acl_record = acls->find(name);
-
-	   if(acl_record != acls->end())
-	   {
-		for(auto t = acl_record->second.begin(); t != acl_record->second.end(); ++t)
-		{
-			if(t->get_group_id().compare(group_id)==0)
-			{
-				ret = true; break;
-			}
-		}
-	   }
-	   return ret;
-	}
-	inline bool is_allowed(std::string &name,std::string &group_id,enum ChronoLogOp &op)
-        {
-	      bool ret = false;
-	      auto acl_record = acls->find(name);
-
-	      if(acl_record != acls->end())
-	      {
-                   for(auto t=acl_record->second.begin(); t != acl_record->second.end(); ++t)
-                   {
-                           if(t->get_group_id().compare(group_id)==0)
-                           {
-                                   if(t->is_allowed_acl_op(op))
-                                           ret = true;
-                                   break;
-                           }
-                   }
-	      }
-              return ret;
-         }
-
-
-
-        ~ACL_DB()
-	{
-	    delete acls;
-	}
-
-};
-
-ACL_DB* CreateACLDB(std::string &filename);
-
-
 class ACL_List
 {
   private:
@@ -198,5 +106,6 @@ class ACL_List
 	   }
 
 };
+
 
 #endif

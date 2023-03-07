@@ -28,7 +28,6 @@ find_package(Threads REQUIRED)
 add_library(ChronoVisor_lib2 STATIC
         include/ChronoVisorServer2.h include/ClientInfo.h
         src/ChronoVisorServer2.cpp src/ClientRegistryRecord.cpp
-	../ChronoAPI/ChronoLog/src/ACL_List.cpp
         ../ChronoAPI/ChronoLog/src/ClocksourceManager.cpp ../ChronoAPI/ChronoLog/include/ClocksourceManager.h
         src/ChronicleMetaDirectory.cpp include/ChronicleMetaDirectory.h
         include/Chronicle.h include/Story.h include/Archive.h include/Event.h

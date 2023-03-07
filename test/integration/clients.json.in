@@ -1,0 +1,91 @@
+{
+ "client" : [
+   {
+      "name" : "client1",
+      "ipaddress" : "127.0.0.1",
+      "group" : "application1",
+      "role" : "CHRONOLOG_CLIENT_REGULAR_USER"
+   },
+   {
+	"name" : "client2",
+	"ipaddress" : "127.0.0.1",
+	"group" : "application2",
+	"role" : "CHRONOLOG_CLIENT_REGULAR_USER"
+    },
+    {
+	  "name" : "client3",
+	  "ipaddress" : "127.0.0.1",
+	  "group" : "application3",
+	  "role" : "CHRONOLOG_CLIENT_REGULAR_USER"
+    }
+
+],
+"chronicles" : [
+  {
+      "chronicle_name" : "chronicle1",
+      "group" : [
+	      {
+	         "group_id" : "application1",
+		 "permission" : "RWCD"
+	      },
+     	      {
+		"group_id" : "application2",
+		"permission" : "RWCD"
+  	      },
+	      {
+		"group_id" : "application3",
+		"permission" : "RWCD"
+  	      }],
+	"story" : [
+		{
+		   "story_name" : "story1",
+	           "group" : [
+		    {
+		      "group_id" : "application1",
+		      "permission" : "RWCD"
+		    },
+		   {
+		      "group_id" : "application2",
+		      "permission" : "RWCD"
+		   }]
+		},
+		{
+		   "story_name" : "story2",
+		   "group" : [
+		    {
+		      "group_id" : "application1",
+		      "permission" : "RWCD"
+		    }]
+		}]
+
+	},
+	{
+	   "chronicle_name" : "chronicle2",
+	   "group" : [
+		   {
+		      "group_id" : "application1",
+		      "permission" : "RWCD"
+		   },
+		   {
+		      "group_id" : "application2",
+		      "permission" : "RWCD"
+		   }
+	   ],
+	   "story" : [
+		   {
+		      "story_name" : "story1",  
+	   	      "group" : [
+		       {
+		         "group_id": "application1",
+		         "permission" : "RWCD"
+		       },
+		       {
+		         "group_id": "application2",
+		         "permission" : "RWCD"
+		       }]
+		   }]
+	}
+
+
+]
+}

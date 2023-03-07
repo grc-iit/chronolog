@@ -31,6 +31,7 @@ namespace ChronoVisor {
     private:
         void init();
 
+	void CreateACLDB(std::string&, std::shared_ptr<ClientRegistryManager>, std::shared_ptr<ChronicleMetaDirectory>);
 
         std::string protocol_;
         std::string baseIP_;
@@ -68,7 +69,6 @@ namespace ChronoVisor {
         ///@{
         ClocksourceManager *pClocksourceManager_;
         ///@}
-	bool use_acl_db;
     };
 }
 
