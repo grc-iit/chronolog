@@ -40,11 +40,6 @@ public:
      * Admin APIs
      */
     
-    void Visor_start()
-    {
-	rpc->start();
-	
-    }
     std::shared_ptr<ChronoLogRPC> get_RPC()
     {
 	return rpc;

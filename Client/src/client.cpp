@@ -68,7 +68,7 @@ std::vector<std::string> ChronoLogClient::ShowStories(std::string &client_id, co
 }
 uint64_t ChronoLogClient::GetTS()
 {
-	return rpcProxy_->GetTS(clientid);
+	return rpcClient_->GetTS(clientid);
 }
 uint64_t ChronoLogClient::LocalTS()
 {
@@ -102,8 +102,9 @@ void ChronoLogClient::ComputeClockOffset()
 
 int ChronoLogClient::StoreError()
 {
-    uint64_t t = CSManager->get_offset();
-    return rpcProxy_->StoreError(clientid,t);
+    uint64_t t = CSManager->LocalGetTS(clientid);
+
+    return rpcClient_->StoreError(clientid,t);
 }
 uint64_t ChronoLogClient::GetMaxError()
 {
@@ -111,10 +112,11 @@ uint64_t ChronoLogClient::GetMaxError()
    
    do
    {
-       t = rpcProxy_->GetMaxError(clientid);
+       t = rpcClient_->GetMaxError(clientid);
        if(t != UINT64_MAX) break;
        usleep(50);
    }while(t == UINT64_MAX);
 
    return t;
 }
+

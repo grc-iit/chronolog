@@ -32,28 +32,8 @@ public:
     }
 
     void init() {
-        pClocksourceManager_ = ClocksourceManager::getInstance();
-        pClocksourceManager_->setClocksourceType(CHRONOLOG_CONF->CLOCKSOURCE_TYPE);
         CHRONOLOG_CONF->ROLE = CHRONOLOG_CLIENT;
         rpcClient_ = ChronoLog::Singleton<RPCClient>::GetInstance();
-    }
-    ChronoLogClient() { 
-	    CHRONOLOG_CONF->ConfigureDefaultClient("../../test/communication/server_list"); 
-	    CSManager = new ClocksourceManager<ClockSourceCPPStyle> ();
-    }
-
-    ChronoLogClient(const std::string& server_list_file_path) {
-        CHRONOLOG_CONF->ConfigureDefaultClient(server_list_file_path);
-        rpcProxy_ = ChronoLog::Singleton<RPCClient>::GetInstance();
-	CSManager = new ClocksourceManager<ClockSourceCPPStyle> ();
-    }
-
-    ChronoLogClient(const ChronoLogRPCImplementation& protocol, const std::string& visor_ip, int visor_port) {
-        CHRONOLOG_CONF->IS_SERVER = false;
-        CHRONOLOG_CONF->RPC_IMPLEMENTATION = protocol;
-        CHRONOLOG_CONF->RPC_SERVER_IP = visor_ip;
-        CHRONOLOG_CONF->RPC_BASE_SERVER_PORT = visor_port;
-        rpcProxy_ = ChronoLog::Singleton<RPCClient>::GetInstance();
 	CSManager = new ClocksourceManager<ClockSourceCPPStyle> ();
     }
     ~ChronoLogClient()
@@ -82,10 +62,10 @@ public:
     int StoreError();
     uint64_t GetMaxError();
     void ComputeClockOffset();
-
+    
 private:
     std::string clientid;
-    std::shared_ptr<RPCClient> rpcProxy_;
+    std::shared_ptr<RPCClient> rpcClient_;
     ClocksourceManager<ClockSourceCPPStyle> *CSManager;
 };
 #endif //CHRONOLOG_CLIENT_H

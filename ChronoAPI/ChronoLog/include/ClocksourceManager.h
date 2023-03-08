@@ -56,6 +56,8 @@ public:
 	  errs.resize(num_procs);
 	  std::fill(errs.begin(),errs.end(),UINT64_MAX);
 	  pos_neg = false;
+	  delay = 3000;
+	  epsilon = 100;
 	}
 	~ClocksourceManager()
 	{}
@@ -81,6 +83,7 @@ public:
 	     {
 		     client_ids.insert(client_id);
 		     num_reqs.push_back(0);
+		     num_procs++;
 	     }
 
 	     int pos = std::distance(client_ids.begin(),std::find(client_ids.begin(),client_ids.end(),client_id));
@@ -93,9 +96,16 @@ public:
 	int LocalStoreError(std::string &client_id,uint64_t &t)
 	{	
 	   std::lock_guard<std::mutex> lock_c(clock_m);
-	   std::cout <<" se = "<<t<<std::endl;
+	   t += delay/unit;
+	   uint64_t ts = LocalGetTS(myid);
 	   int pos = std::distance(client_ids.begin(),std::find(client_ids.begin(),client_ids.end(),client_id));
-	   errs[pos] = t;
+	   uint64_t err = 0;
+	   if(ts > t) err = ts-t;
+	   else err = t-ts;
+
+	   if(pos == errs.size()) errs.push_back(err);
+	   else errs[pos] = err;
+
 	   return CL_SUCCESS;
 	}
         
@@ -109,22 +119,23 @@ public:
 	   {
 	      if(errs[i] == UINT64_MAX)
 	      {
-		   b = false; break;
+		   b = false; 
+		   break;
 	      }
 	   }
 
 	   if(!b) return UINT64_MAX;
-	   
 	   if(maxError != UINT64_MAX) return maxError;
 	  
 	   uint64_t t = 0;
 	   for(int i=0;i<num_procs;i++)
 		   if(t < errs[i]) t = errs[i];
-	
-	   maxError = t;
+	   
+	   maxError = t+epsilon/unit;
+
 	   return maxError;
 	}
-
+	
         void bind_functions()
 	{
 		std::function<void(const tl::request &,
@@ -155,7 +166,7 @@ public:
 				   ThalliumLocalMaxError(std::forward<decltype(PH1)>(PH1),
 						         std::forward<decltype(PH2)>(PH2));
 				   });
-				
+		
 		rpc->bind("ChronoLogThalliumGetTS", timestampFunc);
 		rpc->bind("ChronoLogThalliumStoreError", errorIntervalFunc);
 		rpc->bind("ChronoLogThalliumGetMaxError",getErrorFunc);
@@ -187,6 +198,7 @@ private:
     uint64_t offset;
     bool pos_neg;
     int num_procs;
+    uint64_t delay;
     std::string func_prefix;
     uint64_t maxError;
     uint64_t epsilon;
