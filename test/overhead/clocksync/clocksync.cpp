@@ -47,9 +47,15 @@ void ClockSynchronization<Clocksource>::SynchronizeClocks()
       MPI_Recv(resp.data(),3,MPI_UINT64_T,0,123,MPI_COMM_WORLD,&et);
       
       uint64_t Tresp = Timestamp();
-      uint64_t offset1 = resp[0]-Treq;
-      uint64_t offset2 = Tresp-resp[2];
-      myoffset = (offset1+offset2)/2;
+      int64_t offset1 = resp[0]-Treq;
+      int64_t offset2 = Tresp-resp[2];
+      int64_t m_offset = (offset1+offset2)/2;
+      if(m_offset < 0) 
+      {
+	      m_offset = -1*m_offset;
+	      is_less = true;
+      }
+      myoffset = m_offset;
 
    }
 

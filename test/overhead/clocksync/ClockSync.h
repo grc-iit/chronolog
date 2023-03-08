@@ -52,7 +52,7 @@ class ClockSynchronization
      uint64_t myoffset;
      uint64_t unit;
      uint64_t epsilon;
-
+     bool is_less;
    public:
      ClockSynchronization(int n1,int n2,std::string &q) : myrank(n1), numprocs(n2)
      {
@@ -63,13 +63,17 @@ class ClockSynchronization
 	 myoffset = 0;
 	 maxError = 0;
 	 epsilon = 100;
+	 is_less = false;
      }
      ~ClockSynchronization()
      {}
      
      uint64_t Timestamp()
      {
+	 if(!is_less)
 	 return clock->getTimestamp()/unit+myoffset;
+	 else
+	  return clock->getTimestamp()/unit-myoffset;
      }
      void SynchronizeClocks();
      void ComputeErrorInterval();
