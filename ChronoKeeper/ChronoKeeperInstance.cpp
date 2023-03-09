@@ -83,7 +83,7 @@ int main(int argc, char** argv) {
     // Instantiate ChronoKeeper MemoryDataStore
     //
     chronolog::IngestionQueue ingestionQueue; 
-    chronolog::KeeperDataStore theDataStore;
+    chronolog::KeeperDataStore theDataStore(ingestionQueue);
 
     // instantiate DataCollectionService
     std::string KEEPER_COLLECTION_SERVICE_NA_STRING = std::string(KEEPER_COLLECTION_SERVICE_PROTOCOL)

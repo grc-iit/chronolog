@@ -96,7 +96,7 @@ int KeeperRegistry::registerKeeperProcess( KeeperRegistrationMsg const& keeper_r
 			   KeeperProcessEntry(keeper_id_card, admin_service_id) )
 		);
 	   if( false == insert_return.second)
-	   { 
+	   {//INNA: revisit this paragraph... 
 	      std::cout<<"KeeperRegistry: registerKeeper {"<<keeper_id_card<<"} found existing keeperProcess, reseting the process record"<< std::endl;
 	     // insert_return.first is the position to the current keeper record with the same KeeperIdCard
 	     // this is probably the case of keeper process restart ... reset the record  entry
@@ -222,7 +222,7 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart( std::vector<KeeperIdCard
    if (!is_running())
    {   return -1;}
 
-    int keepers_left_to_notify = vectorOfKeepers.size();
+    size_t keepers_left_to_notify = vectorOfKeepers.size();
     for ( KeeperIdCard keeper_id_card : vectorOfKeepers)
     {
         auto keeper_process_iter = keeperProcessRegistry.find(std::pair<uint32_t,uint16_t>(keeper_id_card.getIPaddr(),keeper_id_card.getPort()));
@@ -279,7 +279,7 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStop(std::vector<KeeperIdCard> 
     if(!is_running())
     {  return -1; }
 
-    int keepers_left_to_notify = vectorOfKeepers.size();
+    size_t keepers_left_to_notify = vectorOfKeepers.size();
     for (KeeperIdCard keeper_id_card : vectorOfKeepers)
     {
         auto keeper_process_iter = keeperProcessRegistry.find(std::pair<uint32_t,uint16_t>(keeper_id_card.getIPaddr(),keeper_id_card.getPort()));
@@ -373,10 +373,11 @@ int main(int argc, char** argv) {
           { break;}
 
        }
-       sleep(10);
+       sleep(60);
     }
 	
 
+    sleep(180);
     keeperRegistry.ShutdownRegistryService();
 
     keeper_reg_engine.finalize();

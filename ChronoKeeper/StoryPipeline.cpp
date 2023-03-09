@@ -6,16 +6,16 @@
 
 #include "StoryChunk.h"
 #include "StoryPipeline.h"
+#include "StoryIngestionHandle.h"
+
+namespace chl = chronolog;
 
 ////////////////////////
-
-     // part of the other_chunk records have decayed past the timelineStart
-     // find the first record that is still within story timeline window
-     // and use it as the merge_start_time	
 
 chronolog::StoryPipeline::StoryPipeline( std::string const& chronicle_name, std::string const& story_name,  chronolog::StoryId const& story_id
 		, uint64_t start_time, uint64_t chunk_granularity, uint64_t archive_granularity, uint64_t acceptance_window)
 	: storyId(story_id)
+	, storyState(chronolog::StoryState::PASSIVE)  
 	, chronicleName(chronicle_name)
 	, storyName(story_name)
 	, timelineStart(start_time -acceptance_window)   
@@ -43,11 +43,25 @@ chronolog::StoryPipeline::StoryPipeline( std::string const& chronicle_name, std:
 
 	 }
 
+	 std::cout << "StoryPipeline : {"<<this<<"} created for {"<<chronicleName<<" "<<storyName<<" "<<story_id<<std::endl;
+
 }
+
+chl::StoryIngestionHandle * chl::StoryPipeline::getActiveIngestionHandle()
+{
+	if(activeQueueHandle == nullptr)
+	{
+		activeQueueHandle = new chl::StoryIngestionHandle( ingestionMutex, &eventQueue1);
+	}
+
+	return activeQueueHandle;
+}
+
 ///////////////////////
 
 chronolog::StoryPipeline::~StoryPipeline()
-{  }
+{ // not implemented yet 
+}
 
 /////////////////////
 

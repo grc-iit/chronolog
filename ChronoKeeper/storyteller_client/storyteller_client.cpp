@@ -5,7 +5,10 @@
 #include <thallium/serialization/stl/string.hpp>
 #include <thallium.hpp>
 
+#include "KeeperRecordingClient.h"
+
 namespace tl = thallium;
+namespace chl = chronolog;
 
 int main(int argc, char** argv) {
     if(argc != 3) {
@@ -16,7 +19,7 @@ int main(int argc, char** argv) {
     tl::remote_procedure record_event  = myEngine.define("record_event");
     tl::endpoint server = myEngine.lookup(argv[1]);
     uint16_t provider_id = atoi(argv[2]);
-    tl::provider_handle ph(server, provider_id);
+    /*tl::provider_handle ph(server, provider_id);
 
     try   // timed request throws timeout exception 
     {
@@ -28,6 +31,18 @@ int main(int argc, char** argv) {
     }
     catch(thallium::timeout const&) 
     { std::cout << "(record_event timed (3mls) :timeout" << std::endl; }
+    */
+
+    chronolog::KeeperRecordingClient * recordingClient = chronolog::KeeperRecordingClient::CreateKeeperRecordingClient(myEngine, argv[1], provider_id);
+
+
+    for ( int i =0; i <10; ++i)
+    {
+	sleep(10);
+	chl::LogEvent event( 1, 1, chl::ChronoTick(i,i), "line_"+std::to_string(i));
+
+	recordingClient->send_event_msg(event);
+    }
 
 
     return 0;

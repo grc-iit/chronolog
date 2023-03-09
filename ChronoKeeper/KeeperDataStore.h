@@ -16,25 +16,56 @@ namespace chronolog
 class KeeperDataStore
 {
 
+enum DataStoreState
+{
+	UNKNOWN = 0,
+	INITIALIZED =1, //  initialized, no active stories
+	RUNNING	=2,	//  active stories
+	SHUTTING_DOWN=3	// Shutting down services
+};
+
+
 public:
-      KeeperDataStore()
+      KeeperDataStore( IngestionQueue & ingestion_queue)
+	      : state(UNKNOWN)
+	      , theIngestionQueue(ingestion_queue) 
       {}
+
+      KeeperDataStore( KeeperDataStore const&) = delete;
+      KeeperDataStore& operator= ( KeeperDataStore const&) = delete;
 
       ~KeeperDataStore();
 
-bool is_shutting_down() const
-{
-	return (false); // INNA: implement state_management
-}
+      bool is_initialized() const 
+      { return (INITIALIZED == state); }
 
-int startStoryRecording(ChronicleName const&, StoryName const&, StoryId const&, uint32_t timeGranularity=30 ); //INNA: 30 seconds?
-int stopStoryRecording(StoryId const&);
+      bool is_running() const 
+      { return (RUNNING == state); }
 
-void shutdownDataCollection();
+      bool is_shutting_down() const 
+      { return (SHUTTING_DOWN == state); }
+
+      int startStoryRecording(ChronicleName const&, StoryName const&, StoryId const&
+		      , uint64_t start_time =0, uint32_t time_chunk_ranularity=30, uint32_t access_window = 60 ); //INNA: dummy values that eventually would come from Visor Metadata 
+      int stopStoryRecording(StoryId const&);
+
+      int  readStoryFromArchive(std::string const& archiveLocation
+		, std::string const & chronicle, std::string const& story, chronolog::StoryId const & story_id
+		, uint64_t start_time, uint64_t end_time, uint32_t time_chunk_granularity);
+
+      int  writeStoryToArchive(std::string const& archiveLocation
+		, std::string const & chronicle, std::string const& story, chronolog::StoryId const & story_id
+		, uint64_t start_time, uint64_t end_time, uint32_t archive_granularity);
+
+      void shutdownDataCollection();
 
 private:
-std::unordered_map<StoryId, StoryPipeline> StoryPipelinesMap;
-std::mutex theStoryPipelinesMutex;
+      DataStoreState	state;
+      IngestionQueue &   theIngestionQueue;
+      std::mutex dataStoreMutex;
+      std::unordered_map<StoryId, StoryPipeline*> theMapOfStoryPipelines;
+      std::unordered_map<StoryId, StoryPipeline*> pipelinesWaitingForExit; //INNA: we might get away with simple list .. revisit later
+
 
 };
 
