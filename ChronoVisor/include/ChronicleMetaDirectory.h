@@ -26,8 +26,10 @@ public:
     int create_story(std::string &chronicle_name, const std::string& story_name,
                      const std::unordered_map<std::string, std::string>& attrs);
     int destroy_story(std::string &chronicle_name, const std::string& story_name, int& flags);
-    int acquire_story(const std::string& chronicle_name, const std::string& story_name, int& flags);
-    int release_story(const std::string& chronicle_name, const std::string& story_name, int& flags);
+    int acquire_story(const std::string& client_id, const std::string& chronicle_name,
+                      const std::string& story_name, int& flags);
+    int release_story(const std::string& client_id, const std::string& chronicle_name,
+                      const std::string& story_name, int& flags);
 
     uint64_t record_event(uint64_t sid, void *data);
     uint64_t playback_event(uint64_t sid);
@@ -43,6 +45,11 @@ private:
     std::unordered_map<uint64_t , Chronicle *> *chronicleMap_;
 //    std::unordered_map<uint64_t, Chronicle *> *acquiredChronicleMap_;
     std::unordered_map<uint64_t, Story *> *acquiredStoryMap_;
+    std::unordered_multimap<uint64_t, std::string> *acquiredChronicleClientMap_;
+    std::unordered_multimap<uint64_t, std::string> *acquiredStoryClientMap_;
+    std::mutex g_chronicleMetaDirectoryMutex_;
+    std::mutex g_acquiredChronicleMapMutex_;
+    std::mutex g_acquiredStoryMapMutex_;
 //    std::unordered_map<std::string, uint64_t> *chronicleName2IdMap_;
 //    std::unordered_map<uint64_t, std::string> *chronicleId2NameMap_;
 };

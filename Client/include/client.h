@@ -7,25 +7,36 @@
 
 #include "RPCClient.h"
 #include "errcode.h"
+#include "ConfigurationManager.h"
 #include "ClocksourceManager.h"
 
 ClocksourceManager *ClocksourceManager::clocksourceManager_ = nullptr;
 
 class ChronoLogClient {
 public:
-    ChronoLogClient() { CHRONOLOG_CONF->ConfigureDefaultClient("../../test/communication/server_list"); }
+    explicit ChronoLogClient(const std::string& conf_file_path = "") {
+        if (!conf_file_path.empty())
+            CHRONOLOG_CONF->LoadConfFromJSONFile(conf_file_path);
+        init();
+    }
 
-    ChronoLogClient(const std::string& server_list_file_path) {
-        CHRONOLOG_CONF->ConfigureDefaultClient(server_list_file_path);
-        rpcProxy_ = ChronoLog::Singleton<RPCClient>::GetInstance();
+    explicit ChronoLogClient(const ChronoLog::ConfigurationManager& conf_manager) {
+        CHRONOLOG_CONF->SetConfiguration(conf_manager);
+        init();
     }
 
     ChronoLogClient(const ChronoLogRPCImplementation& protocol, const std::string& visor_ip, int visor_port) {
-        CHRONOLOG_CONF->IS_SERVER = false;
-        CHRONOLOG_CONF->RPC_IMPLEMENTATION = protocol;
-        CHRONOLOG_CONF->RPC_SERVER_IP = visor_ip;
-        CHRONOLOG_CONF->RPC_BASE_SERVER_PORT = visor_port;
-        rpcProxy_ = ChronoLog::Singleton<RPCClient>::GetInstance();
+        CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION = protocol;
+        CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP = visor_ip;
+        CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT = visor_port;
+        init();
+    }
+
+    void init() {
+        pClocksourceManager_ = ClocksourceManager::getInstance();
+        pClocksourceManager_->setClocksourceType(CHRONOLOG_CONF->CLOCKSOURCE_TYPE);
+        CHRONOLOG_CONF->ROLE = CHRONOLOG_CLIENT;
+        rpcClient_ = ChronoLog::Singleton<RPCClient>::GetInstance();
     }
 
     int Connect(const std::string &server_uri,
@@ -47,6 +58,8 @@ public:
     std::vector<std::string> ShowStories(std::string &client_id, const std::string &chronicle_name);
 
 private:
-    std::shared_ptr<RPCClient> rpcProxy_;
+    std::string clientid;
+    std::shared_ptr<RPCClient> rpcClient_;
+    ClocksourceManager *pClocksourceManager_;
 };
 #endif //CHRONOLOG_CLIENT_H

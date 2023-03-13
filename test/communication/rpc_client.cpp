@@ -8,7 +8,6 @@
 #include <common.h>
 #include "RPCClient.h"
 #include "city.h"
-#include "log.h"
 
 #define NUM_CHRONICLE (1)
 #define NUM_STORY (1)
@@ -29,7 +28,7 @@ int main() {
                                              duration_release_chronicle{},
                                              duration_destroy_chronicle{};
 
-    CHRONOLOG_CONF->ConfigureDefaultClient("../../../test/communication/server_list");
+    CHRONOLOG_CONF->LoadConfFromJSONFile("./default_conf_client.json");
     RPCClient rpcProxy;
     int flags;
 

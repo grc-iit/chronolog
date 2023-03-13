@@ -13,10 +13,8 @@
 #define STORY_NAME_LEN 32
 
 int main() {
-    ChronoLogRPCImplementation protocol = CHRONOLOG_THALLIUM_SOCKETS;
-    std::string server_ip = "127.0.0.1";
-    int base_port = 5555;
-    ChronoLogClient client(protocol, server_ip, base_port);
+    ChronoLog::ConfigurationManager confManager("./default_conf.json");
+    ChronoLogClient client(confManager);
     std::vector<std::string> chronicle_names;
     std::chrono::steady_clock::time_point t1, t2;
     std::chrono::duration<double, std::nano> duration_create_chronicle{},
@@ -30,7 +28,13 @@ int main() {
             duration_show_stories{};
     int flags;
     int ret;
+    uint64_t offset = 0;
+    std::string server_uri = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF.string() + "://" +
+                             CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string() +
+                             std::to_string(CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT);
 
+    std::string client_id = gen_random(8);
+    client.Connect(server_uri, client_id, flags, offset);
     chronicle_names.reserve(NUM_CHRONICLE);
     for (int i = 0; i < NUM_CHRONICLE; i++) {
         std::string chronicle_name(gen_random(CHRONICLE_NAME_LEN));
@@ -50,7 +54,6 @@ int main() {
         duration_create_chronicle += (t2 - t1);
     }
 
-    std::string client_id;
     t1 = std::chrono::steady_clock::now();
     std::vector<std::string> chronicle_names_retrieved = client.ShowChronicles(client_id);
     t2 = std::chrono::steady_clock::now();
@@ -169,6 +172,7 @@ int main() {
         ASSERT(ret, ==, CL_SUCCESS);
         duration_destroy_chronicle += (t2 - t1);
     }
+    client.Disconnect(client_id, flags);
 
     LOGI("CreateChronicle2 takes %lf ns", duration_create_chronicle.count() / NUM_CHRONICLE);
     LOGI("DestroyChronicle2 takes %lf ns", duration_destroy_chronicle.count() / NUM_CHRONICLE);

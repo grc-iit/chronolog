@@ -9,12 +9,12 @@
 
 template<typename F>
 void ChronoLogRPC::bind(const ChronoLogCharStruct &str, F func) {
-    switch (CHRONOLOG_CONF->RPC_IMPLEMENTATION) {
+    switch (CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION) {
         case CHRONOLOG_THALLIUM_TCP:
         case CHRONOLOG_THALLIUM_SOCKETS:
         case CHRONOLOG_THALLIUM_ROCE: {
             for (int i = 0; i < numPorts_; i++)
-                thalliumServerList_[i].define(str.string(), func);
+                thalliumServerList_[i]->define(str.string(), func);
 //            thalliumClient_->define(str.string(), func);
             break;
         }
@@ -26,7 +26,7 @@ Response ChronoLogRPC::callWithTimeout(uint16_t server_index, int timeout_ms,
                                        ChronoLogCharStruct const &func_name, Args... args) {
     int16_t port = baseServerPort_ + server_index;
 
-    switch (CHRONOLOG_CONF->RPC_IMPLEMENTATION) {
+    switch (CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION) {
         case CHRONOLOG_THALLIUM_TCP:
         case CHRONOLOG_THALLIUM_SOCKETS:
         case CHRONOLOG_THALLIUM_ROCE: {
@@ -43,7 +43,7 @@ Response ChronoLogRPC::call(uint16_t server_index,
                    Args... args) {
 //    int16_t port = baseServerPort_ + server_index;
 
-    switch (CHRONOLOG_CONF->RPC_IMPLEMENTATION) {
+    switch (CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION) {
         case CHRONOLOG_THALLIUM_TCP:
         case CHRONOLOG_THALLIUM_SOCKETS:
         case CHRONOLOG_THALLIUM_ROCE: {
@@ -59,12 +59,12 @@ Response ChronoLogRPC::call(ChronoLogCharStruct &server,
                    uint16_t &port,
                    ChronoLogCharStruct const &func_name,
                    Args... args) {
-    switch (CHRONOLOG_CONF->RPC_IMPLEMENTATION) {
+    switch (CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION) {
         case CHRONOLOG_THALLIUM_TCP:
         case CHRONOLOG_THALLIUM_SOCKETS:
         case CHRONOLOG_THALLIUM_ROCE: {
             tl::remote_procedure remote_procedure = thalliumClient_->define(func_name.c_str());
-            auto end_point = get_endpoint(CHRONOLOG_CONF->SOCKETS_CONF,
+            auto end_point = get_endpoint(CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF,
                                           server, port);
             return remote_procedure.on(end_point)(std::forward<Args>(args)...);
             break;
@@ -78,7 +78,7 @@ std::future<Response> ChronoLogRPC::async_call(uint16_t server_index,
                                       Args... args) {
 //    int16_t port = baseServerPort_ + server_index;
 
-    switch (CHRONOLOG_CONF->RPC_IMPLEMENTATION) {
+    switch (CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION) {
         case CHRONOLOG_THALLIUM_TCP: {
             // TODO: NotImplemented error
             std::cout << "async call with protocol TCP IS NOT SUPPORTED YET" << std::endl;
@@ -102,7 +102,7 @@ std::future<Response> ChronoLogRPC::async_call(ChronoLogCharStruct &server,
                                       uint16_t &port,
                                       ChronoLogCharStruct const &func_name,
                                       Args... args) {
-    switch (CHRONOLOG_CONF->RPC_IMPLEMENTATION) {
+    switch (CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION) {
         case CHRONOLOG_THALLIUM_TCP: {
             // TODO: NotImplemented error
             break;
