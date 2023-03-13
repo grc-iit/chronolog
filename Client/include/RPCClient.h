@@ -70,7 +70,7 @@ public:
         for (auto iter = attrs.begin(); iter != attrs.end(); ++iter) {
             LOGD("%s=%s", iter->first.c_str(), iter->second.c_str());
         }
-        return CHRONOLOG_RPC_CALL_WRAPPER("AcquireStory", 0, int, chronicle_name, story_name, attrs, flags);
+        return CHRONOLOG_RPC_CALL_WRAPPER("AcquireStory", 0, int, client_id, chronicle_name, story_name, attrs, flags);
     }
 
     int ReleaseStory(std::string &client_id, std::string &chronicle_name, std::string &story_name, const int &flags) {
