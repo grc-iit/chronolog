@@ -12,6 +12,7 @@
 #include <log.h>
 #include <thallium.hpp>
 #include <margo.h>
+#include <ClocksourceManager.h>
 #include <ChronicleMetaDirectory.h>
 #include <ClientRegistryManager.h>
 #include <RPCVisor.h>
@@ -24,10 +25,6 @@ namespace ChronoVisor {
         explicit ChronoVisorServer2(const std::string& conf_file_path = "");
 
         explicit ChronoVisorServer2(const ChronoLog::ConfigurationManager &conf_manager);
-
-        void setClocksourceType(ClocksourceType clocksourceType) {
-            CHRONOLOG_CONF->SetClocksourceType(clocksourceType);
-        }
 
         int start();
 
@@ -47,14 +44,14 @@ namespace ChronoVisor {
          * @name ClientRegistry related variables
          */
         ///@{
-        std::shared_ptr<ClientRegistryManager> clientRegistryManager_;
+        //std::shared_ptr<ClientRegistryManager> clientRegistryManager_;
         ///@}
 
         /**
          * @name Chronicle Meta Directory related variables
          */
         ///@{
-        std::shared_ptr<ChronicleMetaDirectory> chronicleMetaDirectory_;
+        //std::shared_ptr<ChronicleMetaDirectory> chronicleMetaDirectory_;
         ///@}
 
         /**
@@ -62,6 +59,13 @@ namespace ChronoVisor {
          */
         ///@{
         std::shared_ptr<RPCVisor> rpcVisor_;
+        ///@}
+
+        /**
+         * @name Clock related variables
+         */
+        ///@{
+        ClocksourceManager *pClocksourceManager_;
         ///@}
     };
 }

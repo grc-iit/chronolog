@@ -15,176 +15,238 @@
 #include "enum.h"
 #include "log.h"
 #include "errcode.h"
-#include "ClocksourceManager.h"
 
 namespace ChronoLog {
+    typedef struct ClockConf_ {
+        ClocksourceType CLOCKSOURCE_TYPE;
+        uint64_t DRIFT_CAL_SLEEP_SEC;
+        uint64_t DRIFT_CAL_SLEEP_NSEC;
+
+        [[nodiscard]] std::string to_String() const {
+            return "CLOCKSOURCE_TYPE: " + std::string(getClocksourceTypeString(CLOCKSOURCE_TYPE))
+                    + ", DRIFT_CAL_SLEEP_SEC: " + std::to_string(DRIFT_CAL_SLEEP_SEC)
+                    + ", DRIFT_CAL_SLEEP_NSEC: " + std::to_string(DRIFT_CAL_SLEEP_NSEC);
+        }
+    } ClockConf;
+
+    typedef struct RPCClientEndConf_ {
+        uint16_t CLIENT_PORT;
+        uint8_t CLIENT_SERVICE_THREADS;
+
+        [[nodiscard]] std::string to_String() const {
+            return "[CLIENT_PORT: " + std::to_string(CLIENT_PORT)
+                    + ", CLIENT_SERVICE_THREADS: " + std::to_string(CLIENT_SERVICE_THREADS) + "]";
+        }
+    } RPCClientEndConf;
+
+    typedef struct RPCVisorEndConf_ {
+        ChronoLogCharStruct VISOR_IP;
+        uint16_t VISOR_BASE_PORT;
+        uint8_t VISOR_PORTS;
+        uint8_t VISOR_SERVICE_THREADS;
+
+        [[nodiscard]] std::string to_String() const {
+            return "[VISOR_IP: " + VISOR_IP.string()
+                    + ", VISOR_BASE_PORT: " + std::to_string(VISOR_BASE_PORT)
+                    + ", VISOR_PORTS: " + std::to_string(VISOR_PORTS)
+                    + ", VISOR_SERVICE_THREADS: " + std::to_string(VISOR_SERVICE_THREADS) + "]";
+        }
+    } RPCVisorEndConf;
+
+    typedef struct RPCKeeperEndConf_ {
+        ChronoLogCharStruct KEEPER_IP;
+        uint16_t KEEPER_PORT;
+        uint8_t KEEPER_SERVICE_THREADS;
+
+        [[nodiscard]] std::string to_String() const {
+            return "[KEEPER_IP: " + KEEPER_IP.string()
+                    + ", KEEPER_PORT: " + std::to_string(KEEPER_PORT)
+                    + ", KEEPER_SERVICE_THREADS: " + std::to_string(KEEPER_SERVICE_THREADS) + "]";
+        }
+    } RPCKeeperEndConf;
+
+    typedef struct RPCClientVisorConf_ {
+        ChronoLogRPCImplementation RPC_IMPLEMENTATION;
+        ChronoLogCharStruct PROTO_CONF;
+        RPCClientEndConf CLIENT_END_CONF;
+        RPCVisorEndConf VISOR_END_CONF;
+
+        [[nodiscard]] std::string to_String() const {
+            return "{RPC_IMPLEMENTATION: " + std::string(getRPCImplString(RPC_IMPLEMENTATION))
+                   + ", PROTO_CONF: " + PROTO_CONF.string()
+                   + ", CLIENT_END_CONF: " + CLIENT_END_CONF.to_String()
+                   + ", VISOR_END_CONF: " + VISOR_END_CONF.to_String() + "}";
+        }
+    } RPCClientVisorConf;
+
+    typedef struct RPCVisorKeeperConf_ {
+        ChronoLogRPCImplementation RPC_IMPLEMENTATION;
+        ChronoLogCharStruct PROTO_CONF;
+        RPCVisorEndConf VISOR_END_CONF;
+        RPCKeeperEndConf KEEPER_END_CONF;
+
+        [[nodiscard]] std::string to_String() const {
+            return "{RPC_IMPLEMENTATION: " + std::string(getRPCImplString(RPC_IMPLEMENTATION))
+                    + ", PROTO_CONF: " + PROTO_CONF.string()
+                    + ", VISOR_END_CONF: " + VISOR_END_CONF.to_String()
+                    + ", KEEPER_END_CONF: " + KEEPER_END_CONF.to_String() + "}";
+        }
+    } RPCVisorKeeperConf;
+
+    typedef struct RPCClientKeeperConf_ {
+        ChronoLogRPCImplementation RPC_IMPLEMENTATION;
+        ChronoLogCharStruct PROTO_CONF;
+        RPCClientEndConf CLIENT_END_CONF;
+        RPCKeeperEndConf KEEPER_END_CONF;
+
+        [[nodiscard]] std::string to_String() const {
+            return "{RPC_IMPLEMENTATION: " + std::string(getRPCImplString(RPC_IMPLEMENTATION))
+                   + ", PROTO_CONF: " + PROTO_CONF.string()
+                   + ", CLIENT_END_CONF: " + CLIENT_END_CONF.to_String()
+                   + ", KEEPER_END_CONF: " + KEEPER_END_CONF.to_String() + "}";
+        }
+    } RPCClientKeeperConf;
+
+    typedef struct RPCConf_ {
+        std::unordered_map<ChronoLogCharStruct, ChronoLogCharStruct> AVAIL_PROTO_CONF{};
+        RPCClientVisorConf CLIENT_VISOR_CONF;
+        RPCVisorKeeperConf VISOR_KEEPER_CONF;
+        RPCClientKeeperConf CLIENT_KEEPER_CONF;
+
+        [[nodiscard]] std::string to_String() const {
+            std::string str = "AVAIL_PROTO_CONF: ";
+            for (auto &proto_conf : AVAIL_PROTO_CONF) {
+                str += proto_conf.first.string() + "=" + proto_conf.second.string();
+                str += ", ";
+            }
+            return str
+                   + "CLIENT_VISOR_CONF: " + CLIENT_VISOR_CONF.to_String()
+                   + ", VISOR_KEEPER_CONF: " + VISOR_KEEPER_CONF.to_String()
+                   + ", CLIENT_KEEPER_CONF: " + CLIENT_KEEPER_CONF.to_String();
+        }
+    } RPCConf;
+
+    typedef struct AuthConf_ {
+        ChronoLogCharStruct AUTH_TYPE;
+        ChronoLogCharStruct MODULE_PATH;
+
+        [[nodiscard]] std::string to_String() const {
+            return "AUTH_TYPE: " + AUTH_TYPE.string()
+                   + ", MODULE_PATH: " + MODULE_PATH.string();
+        }
+    } AuthConf;
+
+    typedef struct VisorConf_ {
+        [[nodiscard]] std::string to_String() const {
+            return "";
+        }
+    } VisorConf;
+
+    typedef struct ClientConf_ {
+        [[nodiscard]] std::string to_String() const {
+            return "";
+        }
+    } ClientConf;
+
+    typedef struct KeeperConf_ {
+        [[nodiscard]] std::string to_String() const {
+            return "";
+        }
+    } KeeperConf;
+
     class ConfigurationManager {
     public:
-        ChronoLogCharStruct RPC_VISOR_IP;
-        uint16_t RPC_BASE_VISOR_PORT{};
-        uint16_t RPC_NUM_VISOR_PORTS{};
-        uint16_t RPC_NUM_VISOR_SERVICE_THREADS{};
-        uint16_t RPC_CLIENT_PORT{};
-        uint16_t RPC_NUM_CLIENT_SERVICE_THREADS{};
-        ChronoLogRPCImplementation RPC_IMPLEMENTATION;
-        ChronoLogCharStruct SOCKETS_CONF;
-        ChronoLogCharStruct VERBS_CONF;
-        ChronoLogCharStruct VERBS_DOMAIN;
-        uint64_t MEMORY_ALLOCATED{};
+        ChronoLogServiceRole ROLE{};
+        ClockConf CLOCK_CONF{};
         ClocksourceType CLOCKSOURCE_TYPE{};
-        ClocksourceManager *CLOCKSOURCE_MANAGER{};
-        uint64_t DRIFT_CAL_SLEEP_SEC{};
-        uint64_t DRIFT_CAL_SLEEP_NSEC{};
+        RPCConf RPC_CONF{};
+        AuthConf AUTH_CONF{};
+        VisorConf VISOR_CONF{};
+        ClientConf CLIENT_CONF{};
+        KeeperConf KEEPER_CONF{};
 
-        bool IS_VISOR{};
-        int MY_VISOR_ID{};
-        ChronoLogCharStruct SERVER_LIST_FILE_PATH;
-        std::vector<ChronoLogCharStruct> SERVER_LIST;
-        ChronoLogCharStruct BACKED_FILE_DIR;
-
-        ConfigurationManager() :
-                RPC_VISOR_IP("127.0.0.1"),
-                RPC_BASE_VISOR_PORT(5555),
-                RPC_NUM_VISOR_PORTS(1),
-                RPC_NUM_VISOR_SERVICE_THREADS(1),
-                RPC_CLIENT_PORT(6666),
-                RPC_NUM_CLIENT_SERVICE_THREADS(1),
-                RPC_IMPLEMENTATION(CHRONOLOG_THALLIUM_SOCKETS),
-                SOCKETS_CONF("ofi+sockets"), VERBS_CONF("verbs"), VERBS_DOMAIN("mlx5_0"),
-                MEMORY_ALLOCATED(1024ULL * 1024ULL * 128ULL),
-                DRIFT_CAL_SLEEP_SEC(10), DRIFT_CAL_SLEEP_NSEC(0),
-                IS_VISOR(true), MY_VISOR_ID(0), SERVER_LIST_FILE_PATH(""),
-                SERVER_LIST({"localhost"}), BACKED_FILE_DIR("/dev/shm") {
+        ConfigurationManager() {
             LOGI("constructing configuration with all default values: ");
-            CLOCKSOURCE_MANAGER = ClocksourceManager::getInstance();
-            CLOCKSOURCE_MANAGER->setClocksourceType(ClocksourceType::C_STYLE);
+            ROLE = CHRONOLOG_UNKNOWN;
+
+            /* Clock-related configurations */
+            CLOCK_CONF.CLOCKSOURCE_TYPE = ClocksourceType::C_STYLE;
+            CLOCK_CONF.DRIFT_CAL_SLEEP_SEC = 10;
+            CLOCK_CONF.DRIFT_CAL_SLEEP_NSEC = 0;
+            CLOCKSOURCE_TYPE = ClocksourceType::C_STYLE;
+
+            /* RPC-related configurations */
+            RPC_CONF.AVAIL_PROTO_CONF = { {"sockets_conf", "ofi+sockets"},
+                                          {"tcp_conf", "ofi+tcp"},
+                                          {"shm_conf", "ofi+shm"},
+                                          {"verbs_conf", "ofi+verbs"},
+                                          {"verbs_domain", "mlx5_0"}};
+            RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION = CHRONOLOG_THALLIUM_SOCKETS;
+            RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF = "ofi+sockets";
+            RPC_CONF.CLIENT_VISOR_CONF.CLIENT_END_CONF.CLIENT_PORT = 4444;
+            RPC_CONF.CLIENT_VISOR_CONF.CLIENT_END_CONF.CLIENT_SERVICE_THREADS = 1;
+            RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP = "127.0.0.1";
+            RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT = 5555;
+            RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_PORTS = 1;
+            RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_SERVICE_THREADS = 1;
+            RPC_CONF.VISOR_KEEPER_CONF.RPC_IMPLEMENTATION = CHRONOLOG_THALLIUM_SOCKETS;
+            RPC_CONF.VISOR_KEEPER_CONF.PROTO_CONF = "ofi+sockets";
+            RPC_CONF.VISOR_KEEPER_CONF.VISOR_END_CONF.VISOR_IP = "127.0.0.1";
+            RPC_CONF.VISOR_KEEPER_CONF.VISOR_END_CONF.VISOR_BASE_PORT = 6666;
+            RPC_CONF.VISOR_KEEPER_CONF.VISOR_END_CONF.VISOR_PORTS = 1;
+            RPC_CONF.VISOR_KEEPER_CONF.VISOR_END_CONF.VISOR_SERVICE_THREADS = 1;
+            RPC_CONF.VISOR_KEEPER_CONF.KEEPER_END_CONF.KEEPER_IP = "127.0.0.1";
+            RPC_CONF.VISOR_KEEPER_CONF.KEEPER_END_CONF.KEEPER_PORT = 7777;
+            RPC_CONF.VISOR_KEEPER_CONF.KEEPER_END_CONF.KEEPER_SERVICE_THREADS = 1;
+            RPC_CONF.CLIENT_KEEPER_CONF.RPC_IMPLEMENTATION = CHRONOLOG_THALLIUM_SOCKETS;
+            RPC_CONF.CLIENT_KEEPER_CONF.PROTO_CONF = "ofi+sockets";
+            RPC_CONF.CLIENT_KEEPER_CONF.CLIENT_END_CONF.CLIENT_PORT = 8888;
+            RPC_CONF.CLIENT_KEEPER_CONF.CLIENT_END_CONF.CLIENT_SERVICE_THREADS = 1;
+            RPC_CONF.CLIENT_KEEPER_CONF.KEEPER_END_CONF.KEEPER_IP = "127.0.0.1";
+            RPC_CONF.CLIENT_KEEPER_CONF.KEEPER_END_CONF.KEEPER_PORT = 9999;
+            RPC_CONF.CLIENT_KEEPER_CONF.KEEPER_END_CONF.KEEPER_SERVICE_THREADS = 1;
+
+            /* Authentication-related configurations */
+            AUTH_CONF.AUTH_TYPE = "RBAC";
+            AUTH_CONF.MODULE_PATH = "";
+
+            /* Visor-local configurations */
+
+            /* Client-local configurations */
+
+            /* Keeper-local configurations */
+
             PrintConf();
         }
 
-        explicit ConfigurationManager(const std::string &conf_file_path) :
-                RPC_IMPLEMENTATION(CHRONOLOG_THALLIUM_SOCKETS){
+        explicit ConfigurationManager(const std::string &conf_file_path) {
             LOGI("constructing configuration from a configuration file: %s", conf_file_path.c_str());
-            CLOCKSOURCE_MANAGER = ClocksourceManager::getInstance();
             LoadConfFromJSONFile(conf_file_path);
         }
 
         void SetConfiguration(const ConfigurationManager &confManager) {
             LOGI("setting configuration with a pre-configured ConfigurationManager object");
-            RPC_VISOR_IP = confManager.RPC_VISOR_IP;
-            RPC_BASE_VISOR_PORT = confManager.RPC_BASE_VISOR_PORT;
-            RPC_NUM_VISOR_PORTS = confManager.RPC_NUM_VISOR_PORTS;
-            RPC_NUM_VISOR_SERVICE_THREADS = confManager.RPC_NUM_VISOR_SERVICE_THREADS;
-            RPC_CLIENT_PORT = confManager.RPC_CLIENT_PORT;
-            RPC_NUM_CLIENT_SERVICE_THREADS = confManager.RPC_NUM_CLIENT_SERVICE_THREADS;
-            RPC_IMPLEMENTATION = confManager.RPC_IMPLEMENTATION;
-            SOCKETS_CONF = confManager.SOCKETS_CONF;
-            VERBS_CONF = confManager.VERBS_CONF;
-            VERBS_DOMAIN = confManager.VERBS_DOMAIN;
-            MEMORY_ALLOCATED = confManager.MEMORY_ALLOCATED;
-            DRIFT_CAL_SLEEP_SEC = confManager.DRIFT_CAL_SLEEP_SEC;
-            DRIFT_CAL_SLEEP_NSEC = confManager.DRIFT_CAL_SLEEP_NSEC;
-            IS_VISOR = confManager.IS_VISOR;
-            MY_VISOR_ID = confManager.MY_VISOR_ID;
-            SERVER_LIST_FILE_PATH = confManager.SERVER_LIST_FILE_PATH;
-            SERVER_LIST = confManager.SERVER_LIST;
-            BACKED_FILE_DIR = confManager.BACKED_FILE_DIR;
-            CLOCKSOURCE_MANAGER = confManager.CLOCKSOURCE_MANAGER;
+            ROLE = confManager.ROLE;
+            CLOCK_CONF = confManager.CLOCK_CONF;
+            RPC_CONF = confManager.RPC_CONF;
+            AUTH_CONF = confManager.AUTH_CONF;
+            VISOR_CONF = confManager.VISOR_CONF;
+            CLIENT_CONF = confManager.CLIENT_CONF;
+            KEEPER_CONF = confManager.KEEPER_CONF;
+            LOGI("updated configuration:");
             PrintConf();
         }
 
-        void SetClocksourceType(ClocksourceType type) {
-            CLOCKSOURCE_MANAGER->setClocksourceType(type);
-        }
-
-        void PrintConf() {
+        void PrintConf() const {
             LOGI("******** Start of configuration output ********");
-            LOGI("RPC_VISOR_IP: %s", RPC_VISOR_IP.c_str());
-            LOGI("RPC_BASE_PORT: %d", RPC_BASE_VISOR_PORT);
-            LOGI("RPC_NUM_PORTS: %d", RPC_NUM_VISOR_PORTS);
-            LOGI("RPC_NUM_VISOR_SERVICE_THREADS: %d", RPC_NUM_VISOR_SERVICE_THREADS);
-            LOGI("RPC_CLIENT_PORT: %d", RPC_CLIENT_PORT);
-            LOGI("RPC_NUM_CLIENT_SERVICE_THREADS: %d", RPC_NUM_CLIENT_SERVICE_THREADS);
-            LOGI("RPC_IMPLEMENTATION (0 for sockets, 1 for TCP, 2 for verbs): %d", RPC_IMPLEMENTATION);
-            LOGI("SOCKETS_CONF: %s", SOCKETS_CONF.c_str());
-            LOGI("VERBS_CONF: %s", VERBS_CONF.c_str());
-            LOGI("VERBS_DOMAIN: %s", VERBS_DOMAIN.c_str());
-            LOGI("MEMORY_ALLOCATED: %lu", MEMORY_ALLOCATED);
-            LOGI("CLOCKSOURCE: %d (0 for C, 1 for C++, 2 for TSC)", CLOCKSOURCE_MANAGER->getClocksourceType());
-            LOGI("DRIFT_CAL_SLEEP_SEC: %ld", DRIFT_CAL_SLEEP_SEC);
-            LOGI("DRIFT_CAL_SLEEP_NSEC: %ld", DRIFT_CAL_SLEEP_NSEC);
-            LOGI("IS_VISOR: %d", IS_VISOR);
-            LOGI("MY_VISOR_ID: %d", MY_VISOR_ID);
-            LOGI("SERVER_LIST_FILE_PATH: %s", realpath(SERVER_LIST_FILE_PATH.c_str(), NULL));
-            LOGI("SERVER_LIST (overwrites what's in SERVER_LIST_FILE_PATH): ");
-            for (const auto& server : SERVER_LIST)
-                LOGI("%s ", server.c_str());
-            LOGI("BACKED_FILE_DIR: %s", BACKED_FILE_DIR.c_str());
+            LOGI("ROLE: %s", getServiceRoleString(ROLE));
+            LOGI("CLOCK_CONF: %s", CLOCK_CONF.to_String().c_str());
+            LOGI("RPC_CONF: %s", RPC_CONF.to_String().c_str());
+            LOGI("AUTH_CONF: %s", AUTH_CONF.to_String().c_str());
+            LOGI("VISOR_CONF: %s", VISOR_CONF.to_String().c_str());
+            LOGI("CLIENT_CONF: %s", CLIENT_CONF.to_String().c_str());
+            LOGI("KEEPER_CONF: %s", KEEPER_CONF.to_String().c_str());
             LOGI("******** End of configuration output ********");
-        }
-
-        std::vector<ChronoLogCharStruct> LoadServers() {
-            SERVER_LIST = std::vector<ChronoLogCharStruct>();
-            std::fstream file;
-            file.open(SERVER_LIST_FILE_PATH.c_str(), std::ios::in);
-            if (file.is_open()) {
-                std::string file_line;
-                std::string server_node_name;
-                while (getline(file, file_line)) {
-                    // TODO: check if hostname is valid
-                    auto colon_pos = file_line.find(':');
-                    if (colon_pos == std::string::npos) {
-                        // no port specified
-                        SERVER_LIST.emplace_back(file_line);
-                    } else {
-                        // it has something after :, ignore things after :, custom port is not supported
-                        // TODO: support different ports for different servers
-                        SERVER_LIST.emplace_back(file_line.substr(0, colon_pos));
-                    }
-
-                }
-                /*
-                 * configuration file reading from HCL which uses MPI
-                 * the serverList_ file follows the format of a hostfile for MPI
-                 * each line contains a hostname and a number of processes for each node, separated by ':'
-                 * e.g. ares-comp-05:4, where ares-comp-05 is the hostname of the server
-                 * 4 is the number of processes on that node
-                 */
-                /*
-                int count;
-                while (getline(file, file_line)) {
-                    unsigned long split_loc = file_line.find(':');  // split to node and count
-                    if (split_loc != std::string::npos) {
-                        server_node_name = file_line.substr(0, split_loc);
-                        count = atoi(file_line.substr(split_loc + 1, std::string::npos).c_str());
-                    } else {
-                        // no special count
-                        server_node_name = file_line;
-                        count = 1;
-                    }
-                    // server list is list of network interfaces
-                    for (int i = 0; i < count; ++i) {
-                        SERVER_LIST.emplace_back(server_node_name);
-                    }
-                }
-                */
-            } else {
-                LOGE("Error: Can't open server list file %s\n", SERVER_LIST_FILE_PATH.c_str());
-                exit(EXIT_FAILURE);
-            }
-            file.close();
-            return SERVER_LIST;
-        }
-
-        void ConfigureDefaultClient() {
-            IS_VISOR = false;
-            LOGD("default configuration for client is loaded, changed configuration:");
-            LOGD("IS_VISOR: %d", IS_VISOR);
-        }
-
-        void ConfigureDefaultServer() {
-            IS_VISOR = true;
-            LOGD("default configuration for server is loaded, changed configuration:");
-            LOGD("IS_VISOR: %d", IS_VISOR);
         }
 
         void LoadConfFromJSONFile(const std::string& conf_file_path) {
@@ -207,94 +269,234 @@ namespace ChronoLog {
 
             for (auto& item : doc.GetObject()) {
                 auto item_name = item.name.GetString();
-                if (strcmp(item_name, "rpc_server_ip") == 0) {
-                    assert(item.value.IsString());
-                    RPC_VISOR_IP = item.value.GetString();
-                }
-                else if (strcmp(item_name, "rpc_base_server_port") == 0) {
-                    assert(item.value.IsInt());
-                    RPC_BASE_VISOR_PORT = item.value.GetInt();
-                }
-                else if (strcmp(item_name, "rpc_num_server_ports") == 0) {
-                    assert(item.value.IsInt());
-                    RPC_NUM_VISOR_PORTS = item.value.GetInt();
-                }
-                else if (strcmp(item_name, "rpc_num_visor_service_threads") == 0) {
-                    assert(item.value.IsInt());
-                    RPC_NUM_VISOR_SERVICE_THREADS = item.value.GetInt();
-                }
-                else if (strcmp(item_name, "rpc_client_port") == 0) {
-                    assert(item.value.IsInt());
-                    RPC_CLIENT_PORT = item.value.GetInt();
-                }
-                else if (strcmp(item_name, "rpc_num_client_service_threads") == 0) {
-                    assert(item.value.IsInt());
-                    RPC_NUM_CLIENT_SERVICE_THREADS = item.value.GetInt();
-                }
-                else if (strcmp(item_name, "rpc_implementation") == 0) {
-                    assert(item.value.IsInt());
-                    RPC_IMPLEMENTATION = static_cast<ChronoLogRPCImplementation>(item.value.GetInt());
-                }
-                else if (strcmp(item_name, "sockets_conf") == 0) {
-                    assert(item.value.IsString());
-                    SOCKETS_CONF = item.value.GetString();
-                }
-                else if (strcmp(item_name, "verbs_conf") == 0) {
-                    assert(item.value.IsString());
-                    VERBS_CONF = item.value.GetString();
-                }
-                else if (strcmp(item_name, "verbs_domain") == 0) {
-                    assert(item.value.IsString());
-                    VERBS_DOMAIN = item.value.GetString();
-                }
-                else if (strcmp(item_name, "memory_allocated") == 0) {
-                    assert(item.value.IsUint64());
-                    MEMORY_ALLOCATED = item.value.GetUint64();
-                }
-                else if (strcmp(item_name, "clocksource_type") == 0) {
-                    assert(item.value.IsInt());
-                    CLOCKSOURCE_TYPE = static_cast<ClocksourceType>(item.value.GetInt());
-                    CLOCKSOURCE_MANAGER->setClocksourceType(CLOCKSOURCE_TYPE);
-                }
-                else if (strcmp(item_name, "drift_cal_sleep_sec") == 0) {
-                    assert(item.value.IsUint64());
-                    DRIFT_CAL_SLEEP_SEC = item.value.GetUint64();
-                }
-                else if (strcmp(item_name, "drift_cal_sleep_nsec") == 0) {
-                    assert(item.value.IsUint64());
-                    DRIFT_CAL_SLEEP_NSEC = item.value.GetUint64();
-                }
-                else if (strcmp(item_name, "is_server") == 0) {
-                    assert(item.value.IsBool());
-                    IS_VISOR = item.value.GetBool();
-                }
-                else if (strcmp(item_name, "my_server_id") == 0) {
-                    assert(item.value.IsInt());
-                    MY_VISOR_ID = item.value.GetInt();
-                }
-                else if (strcmp(item_name, "server_list_file_path") == 0) {
-                    assert(item.value.IsString());
-                    SERVER_LIST_FILE_PATH = item.value.GetString();
-                }
-                else if (strcmp(item_name, "server_list") == 0) {
-                    assert(item.value.IsArray());
-                    SERVER_LIST.clear();
-                    auto server_array = item.value.GetArray();
-                    for (auto &server: server_array)
-                        SERVER_LIST.emplace_back(server.GetString());
-                }
-                else if (strcmp(item_name, "backed_file_dir") == 0) {
-                    assert(item.value.IsString());
-                    BACKED_FILE_DIR = item.value.GetString();
+                if (strcmp(item_name, "clock") == 0) {
+                    rapidjson::Value& clock_conf = doc["clock"];
+                    assert(clock_conf.IsObject());
+                    for (auto m = clock_conf.MemberBegin(); m != clock_conf.MemberEnd(); ++m) {
+                        assert(m->name.IsString());
+                        if (strcmp(m->name.GetString(), "clocksource_type") == 0) {
+                            assert(m->value.IsString());
+                            if (strcmp(m->value.GetString(), "C_STYLE") == 0)
+                                CLOCK_CONF.CLOCKSOURCE_TYPE = ClocksourceType::C_STYLE;
+                            else if (strcmp(m->value.GetString(), "CPP_STYLE") == 0)
+                                CLOCK_CONF.CLOCKSOURCE_TYPE = ClocksourceType::CPP_STYLE;
+                            else if (strcmp(m->value.GetString(), "TSC") == 0)
+                                CLOCK_CONF.CLOCKSOURCE_TYPE = ClocksourceType::TSC;
+                            else
+                                LOGI("Unknown clocksource type: %s", m->value.GetString());
+                        } else if (strcmp(m->name.GetString(), "drift_cal_sleep_sec") == 0) {
+                            assert(m->value.IsInt());
+                            CLOCK_CONF.DRIFT_CAL_SLEEP_SEC = m->value.GetInt();
+                        } else if (strcmp(m->name.GetString(), "drift_cal_sleep_nsec") == 0) {
+                            assert(m->value.IsInt());
+                            CLOCK_CONF.DRIFT_CAL_SLEEP_NSEC = m->value.GetInt();
+                        }
+                    }
+                } else if (strcmp(item_name, "rpc") == 0) {
+                    rapidjson::Value& rpc_conf = doc["rpc"];
+                    assert(item.value.IsObject());
+                    for (auto m = rpc_conf.MemberBegin(); m != rpc_conf.MemberEnd(); ++m) {
+                        assert(m->name.IsString());
+                        if (strcmp(m->name.GetString(), "available_protocol") == 0) {
+                            rapidjson::Value& rpc_avail_protocol_conf = doc["rpc"]["available_protocol"];
+                            assert(rpc_avail_protocol_conf.IsObject());
+                            for (auto n = rpc_avail_protocol_conf.MemberBegin();
+                                    n != rpc_avail_protocol_conf.MemberEnd();
+                                    ++n) {
+                                assert(n->name.IsString());
+                                if (strcmp(n->name.GetString(), "sockets_conf") == 0) {
+                                    assert(n->value.IsString());
+                                    RPC_CONF.AVAIL_PROTO_CONF.emplace("sockets_conf", n->value.GetString());
+                                } else if (strcmp(n->name.GetString(), "tcp_conf") == 0) {
+                                    assert(n->value.IsString());
+                                    RPC_CONF.AVAIL_PROTO_CONF.emplace("tcp_conf", n->value.GetString());
+                                } else if (strcmp(n->name.GetString(), "shm_conf") == 0) {
+                                    assert(n->value.IsString());
+                                    RPC_CONF.AVAIL_PROTO_CONF.emplace("shm_conf", n->value.GetString());
+                                } else if (strcmp(n->name.GetString(), "verbs_conf") == 0) {
+                                    assert(n->value.IsString());
+                                    RPC_CONF.AVAIL_PROTO_CONF.emplace("verbs_conf", n->value.GetString());
+                                } else if (strcmp(n->name.GetString(), "verbs_domain") == 0) {
+                                    assert(n->value.IsString());
+                                    RPC_CONF.AVAIL_PROTO_CONF.emplace("verbs_domain", n->value.GetString());
+                                } else
+                                    LOGE("Unknown rpc protocol: %s", n->name.GetString());
+                            }
+                        } else if (strcmp(m->name.GetString(), "rpc_client_visor") == 0) {
+                            rapidjson::Value& rpc_client_visor_conf = doc["rpc"]["rpc_client_visor"];
+                            assert(rpc_client_visor_conf.IsObject());
+                            for (auto n = rpc_client_visor_conf.MemberBegin();
+                                    n != rpc_client_visor_conf.MemberEnd();
+                                    ++n) {
+                                assert(n->name.IsString());
+                                if (strcmp(n->name.GetString(), "rpc_implementation") == 0) {
+                                    parseRPCImplConf(n->value,
+                                                     RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION);
+                                } else if (strcmp(n->name.GetString(), "protocol_conf") == 0) {
+                                    assert(n->value.IsString());
+                                    RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF = n->value.GetString();
+                                } else if (strcmp(n->name.GetString(), "rpc_client_end") == 0) {
+                                    rapidjson::Value& rpc_client_end_conf =
+                                            doc["rpc"]["rpc_client_visor"]["rpc_client_end"];
+                                    parseClientEndConf(rpc_client_end_conf, RPC_CONF.CLIENT_VISOR_CONF.CLIENT_END_CONF);
+                                } else if (strcmp(n->name.GetString(), "rpc_visor_end") == 0) {
+                                    rapidjson::Value& rpc_visor_end_conf =
+                                            doc["rpc"]["rpc_client_visor"]["rpc_visor_end"];
+                                    parseVisorEndConf(rpc_visor_end_conf, RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF);
+                                } else
+                                    LOGE("Unknown configuration for client-visor rpc: %s", n->name.GetString());
+                            }
+                        } else if (strcmp(m->name.GetString(), "rpc_visor_keeper") == 0) {
+                            rapidjson::Value& rpc_visor_keeper_conf = doc["rpc"]["rpc_visor_keeper"];
+                            assert(rpc_visor_keeper_conf.IsObject());
+                            for (auto n = rpc_visor_keeper_conf.MemberBegin();
+                                 n != rpc_visor_keeper_conf.MemberEnd();
+                                 ++n) {
+                                assert(n->name.IsString());
+                                if (strcmp(n->name.GetString(), "rpc_implementation") == 0) {
+                                    parseRPCImplConf(n->value, RPC_CONF.VISOR_KEEPER_CONF.RPC_IMPLEMENTATION);
+                                } else if (strcmp(n->name.GetString(), "protocol_conf") == 0) {
+                                    assert(n->value.IsString());
+                                    RPC_CONF.VISOR_KEEPER_CONF.PROTO_CONF = n->value.GetString();
+                                } else if (strcmp(n->name.GetString(), "rpc_visor_end") == 0) {
+                                    rapidjson::Value& rpc_visor_end_conf =
+                                            doc["rpc"]["rpc_visor_keeper"]["rpc_visor_end"];
+                                    parseVisorEndConf(rpc_visor_end_conf, RPC_CONF.VISOR_KEEPER_CONF.VISOR_END_CONF);
+                                } else if (strcmp(n->name.GetString(), "rpc_keeper_end") == 0) {
+                                    rapidjson::Value& rpc_keeper_end_conf =
+                                            doc["rpc"]["rpc_visor_keeper"]["rpc_keeper_end"];
+                                    parseKeeperEndConf(rpc_keeper_end_conf, RPC_CONF.VISOR_KEEPER_CONF.KEEPER_END_CONF);
+                                } else
+                                    LOGE("Unknown configuration for visor-keeper rpc: %s", n->name.GetString());
+                            }
+                        } else if (strcmp(m->name.GetString(), "rpc_client_keeper") == 0) {
+                            rapidjson::Value& rpc_client_keeper_conf = doc["rpc"]["rpc_client_keeper"];
+                            assert(rpc_client_keeper_conf.IsObject());
+                            for (auto n = rpc_client_keeper_conf.MemberBegin();
+                                 n != rpc_client_keeper_conf.MemberEnd();
+                                 ++n) {
+                                assert(n->name.IsString());
+                                if (strcmp(n->name.GetString(), "rpc_implementation") == 0) {
+                                    parseRPCImplConf(n->value, RPC_CONF.CLIENT_KEEPER_CONF.RPC_IMPLEMENTATION);
+                                } else if (strcmp(n->name.GetString(), "protocol_conf") == 0) {
+                                    assert(n->value.IsString());
+                                    RPC_CONF.CLIENT_KEEPER_CONF.PROTO_CONF = n->value.GetString();
+                                } else if (strcmp(n->name.GetString(), "rpc_client_end") == 0) {
+                                    rapidjson::Value& rpc_client_end_conf =
+                                            doc["rpc"]["rpc_client_keeper"]["rpc_client_end"];
+                                    parseClientEndConf(rpc_client_end_conf, RPC_CONF.CLIENT_KEEPER_CONF.CLIENT_END_CONF);
+                                } else if (strcmp(n->name.GetString(), "rpc_keeper_end") == 0) {
+                                    rapidjson::Value& rpc_keeper_end_conf =
+                                            doc["rpc"]["rpc_client_keeper"]["rpc_keeper_end"];
+                                    parseKeeperEndConf(rpc_keeper_end_conf, RPC_CONF.CLIENT_KEEPER_CONF.KEEPER_END_CONF);
+                                } else
+                                    LOGE("Unknown configuration for client-keeper rpc: %s", n->name.GetString());
+                            }
+                        } else
+                            LOGE("Unknown rpc configuration: %s", m->value.GetString());
+                    }
+                } else if (strcmp(item_name, "authentication") == 0) {
+                    rapidjson::Value& auth_conf = doc["authentication"];
+                    assert(item.value.IsObject());
+                    for (auto m = auth_conf.MemberBegin(); m != auth_conf.MemberEnd(); ++m) {
+                        assert(m->name.IsString());
+                        if (strcmp(m->name.GetString(), "auth_type") == 0) {
+                            AUTH_CONF.AUTH_TYPE = m->value.GetString();
+                        } else if (strcmp(m->name.GetString(), "module_location") == 0) {
+                            AUTH_CONF.MODULE_PATH = m->value.GetString();
+                        } else
+                            LOGE("Unknown rpc configuration: %s", m->value.GetString());
+                    }
+                } else if (strcmp(item_name, "chrono_visor") == 0) {
+                    rapidjson::Value& visor_local_conf = doc["chrono_visor"];
+                    parseVisorLocalConf(visor_local_conf);
+                    assert(item.value.IsObject());
+                } else if (strcmp(item_name, "chrono_client") == 0) {
+                    rapidjson::Value& client_local_conf = doc["chrono_client"];
+                    parseClientLocalConf(client_local_conf);
+                    assert(item.value.IsObject());
+                } else if (strcmp(item_name, "chrono_keeper") == 0) {
+                    rapidjson::Value& keeper_local_conf = doc["chrono_keeper"];
+                    parseKeeperLocalConf(keeper_local_conf);
+                    assert(item.value.IsObject());
                 } else {
-                    LOGI("Unknown configuration: %s", item_name);
+                    LOGE("Unknown configuration: %s", item_name);
                 }
             }
             LOGI("Finish loading configurations from file %s, new configurations: ", conf_file_path.c_str());
             PrintConf();
         }
-    };
 
+    private:
+        void parseRPCImplConf(rapidjson::Value &json_conf, ChronoLogRPCImplementation &rpc_impl) {
+            assert(json_conf.IsString());
+            if (strcmp(json_conf.GetString(), "Thallium_sockets") == 0) {
+                rpc_impl = CHRONOLOG_THALLIUM_SOCKETS;
+            } else if (strcmp(json_conf.GetString(), "Thallium_tcp") == 0) {
+                rpc_impl = CHRONOLOG_THALLIUM_TCP;
+            } else if (strcmp(json_conf.GetString(), "Thallium_roce") == 0) {
+                rpc_impl = CHRONOLOG_THALLIUM_ROCE;
+            } else
+                LOGE("Unknown rpc implementation: %s", json_conf.GetString());
+        }
+
+        void parseClientEndConf(rapidjson::Value &json_conf, RPCClientEndConf &rpc_conf) {
+            assert(json_conf.IsObject());
+            for (auto i = json_conf.MemberBegin(); i != json_conf.MemberEnd(); ++i) {
+                assert(i->name.IsString());
+                if (strcmp(i->name.GetString(), "client_port") == 0) {
+                    assert(i->value.IsInt());
+                    rpc_conf.CLIENT_PORT = i->value.GetInt();
+                } else if (strcmp(i->name.GetString(), "client_service_threads") == 0) {
+                    assert(i->value.IsInt());
+                    rpc_conf.CLIENT_SERVICE_THREADS = i->value.GetInt();
+                } else
+                    LOGE("Unknown client end configuration: %s", i->name.GetString());
+            }
+        }
+
+        void parseVisorEndConf(rapidjson::Value &json_conf, RPCVisorEndConf &rpc_conf) {
+            assert(json_conf.IsObject());
+            for (auto i = json_conf.MemberBegin(); i != json_conf.MemberEnd(); ++i) {
+                assert(i->name.IsString());
+                if (strcmp(i->name.GetString(), "visor_ip") == 0) {
+                    assert(i->value.IsString());
+                    rpc_conf.VISOR_IP = i->value.GetString();
+                } else if (strcmp(i->name.GetString(), "visor_base_port") == 0) {
+                    assert(i->value.IsInt());
+                    rpc_conf.VISOR_BASE_PORT = i->value.GetInt();
+                } else if (strcmp(i->name.GetString(), "visor_ports") == 0) {
+                    assert(i->value.IsInt());
+                    rpc_conf.VISOR_PORTS = i->value.GetInt();
+                } else if (strcmp(i->name.GetString(), "visor_service_threads") == 0) {
+                    assert(i->value.IsInt());
+                    rpc_conf.VISOR_SERVICE_THREADS = i->value.GetInt();
+                } else
+                    LOGE("Unknown visor end configuration: %s", i->name.GetString());
+            }
+        }
+
+        void parseKeeperEndConf(rapidjson::Value &json_conf, RPCKeeperEndConf &rpc_conf) {
+            assert(json_conf.IsObject());
+            for (auto i = json_conf.MemberBegin(); i != json_conf.MemberEnd(); ++i) {
+                assert(i->name.IsString());
+                if (strcmp(i->name.GetString(), "keeper_ip") == 0) {
+                    assert(i->value.IsString());
+                    rpc_conf.KEEPER_IP = i->value.GetString();
+                } else if (strcmp(i->name.GetString(), "keeper_port") == 0) {
+                    assert(i->value.IsInt());
+                    rpc_conf.KEEPER_PORT = i->value.GetInt();
+                } else if (strcmp(i->name.GetString(), "keeper_service_threads") == 0) {
+                    assert(i->value.IsInt());
+                    rpc_conf.KEEPER_SERVICE_THREADS = i->value.GetInt();
+                } else
+                    LOGE("Unknown keeper end configuration: %s", i->name.GetString());
+            }
+        }
+        void parseVisorLocalConf(rapidjson::Value &conf) {}
+        void parseClientLocalConf(rapidjson::Value &conf) {}
+        void parseKeeperLocalConf(rapidjson::Value &conf) {}
+    };
 }
 
 #endif //CHRONOLOG_CONFIGURATIONMANAGER_H

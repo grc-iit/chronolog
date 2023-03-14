@@ -11,16 +11,11 @@
 #include <typeinfo>
 #include <unistd.h>
 #include <emmintrin.h>
+#include <enum.h>
 #include <log.h>
 
 #define   lfence()  _mm_lfence()
 #define   mfence()  _mm_mfence()
-
-enum ClocksourceType {
-    C_STYLE = 0,
-    CPP_STYLE = 1,
-    TSC = 2
-};
 
 class Clocksource {
 public:

@@ -22,7 +22,7 @@
 }
 
 #define CHRONOLOG_RPC_CALL_WRAPPER(funcname, serverVar, ret, args...) [& ]()-> ret { \
-    switch (CHRONOLOG_CONF->RPC_IMPLEMENTATION) { \
+    switch (CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION) { \
         CHRONOLOG_RPC_CALL_WRAPPER_THALLIUM_SOCKETS() \
         CHRONOLOG_RPC_CALL_WRAPPER_THALLIUM_TCP() \
         CHRONOLOG_RPC_CALL_WRAPPER_THALLIUM_ROCE() \
@@ -40,6 +40,6 @@ void Thallium##name(const tl::request &thallium_req, args_t) \
 #define ASSERT(left,operator,right) { if(!((left) operator (right))){ \
 std::cerr << "ASSERT FAILED: " << #left << #operator << #right \
 << " @ " << __FILE__ << " (" << __LINE__ << "). " \
-<< #left << "=" << (left) << "; " << #right << "=" << (right) << std::endl; } }
+<< #left << "=" << (left) << "; " << #right << "=" << (right) << std::endl; exit(1); } }
 
 #endif //CHRONOLOG_MACRO_H

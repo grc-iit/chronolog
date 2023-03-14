@@ -7,8 +7,7 @@
 #include "ClientRegistryManager.h"
 #include "errcode.h"
 #include "log.h"
-
-extern std::mutex g_clientRegistryMutex_;
+#include <iostream>
 
 ClientRegistryManager::ClientRegistryManager() {
     LOGD("%s constructor is called, object created@%p in thread PID=%d",
