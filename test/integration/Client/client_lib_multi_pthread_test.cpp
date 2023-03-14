@@ -31,16 +31,13 @@ void thread_body(struct thread_arg *t)
     chronicle_attrs.emplace("TieringPolicy", "Hot");
     ret = client->CreateChronicle(chronicle_name, chronicle_attrs, flags);
     flags = 1;
-    ret = client->AcquireChronicle(chronicle_name,flags);
-    ret = client->ReleaseChronicle(chronicle_name,flags);
     std::string story_name = gen_random(STORY_NAME_LEN);
     std::unordered_map<std::string, std::string> story_attrs;
     story_attrs.emplace("Priority", "High");
     story_attrs.emplace("IndexGranularity", "Millisecond");
     story_attrs.emplace("TieringPolicy", "Hot");
     flags = 2;
-    ret = client->CreateStory(chronicle_name, story_name, story_attrs, flags);
-    ret = client->AcquireStory(chronicle_name,story_name,flags);
+    ret = client->AcquireStory(chronicle_name, story_name, story_attrs, flags);
     ret = client->ReleaseStory(chronicle_name,story_name,flags);
     ret = client->DestroyStory(chronicle_name,story_name,flags);
     ret = client->DestroyChronicle(chronicle_name,flags);

@@ -50,8 +50,8 @@ int main() {
         duration_disconnect += (t2 - t1);
     };
 
-    LOGI("CreateChronicle takes %lf ns", duration_connect.count() / NUM_CONNECTION);
-    LOGI("AcquireChronicle takes %lf ns", duration_disconnect.count() / NUM_CONNECTION);
+    LOGI("Connect takes %lf ns", duration_connect.count() / NUM_CONNECTION);
+    LOGI("Disconnect takes %lf ns", duration_disconnect.count() / NUM_CONNECTION);
 
     return 0;
 }
