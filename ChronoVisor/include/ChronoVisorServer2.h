@@ -12,9 +12,7 @@
 #include <log.h>
 #include <thallium.hpp>
 #include <margo.h>
-#include "TimeManager.h"
-#include <TimeRecord.h>
-#include "ClocksourceManager.h"
+#include <ClocksourceManager.h>
 #include <ChronicleMetaDirectory.h>
 #include <ClientRegistryManager.h>
 #include <RPCVisor.h>
@@ -24,33 +22,23 @@ namespace ChronoVisor {
 
     class ChronoVisorServer2 {
     public:
-        ChronoVisorServer2();
+        explicit ChronoVisorServer2(const std::string& conf_file_path = "");
 
-        ~ChronoVisorServer2() {
-            if (pTimeManager) {
-                delete pTimeManager;
-                pTimeManager = nullptr;
-            }
-        }
-
-        void setClocksourceType(ClocksourceType clocksourceType) { pTimeManager->setClocksourceType(clocksourceType); }
+        explicit ChronoVisorServer2(const ChronoLog::ConfigurationManager &conf_manager);
 
         int start();
 
     private:
+        void init();
+
         std::string protocol_;
         std::string baseIP_;
         int basePorts_{};
-        int numPorts_;
+        int numPorts_{};
         std::vector<std::string> serverAddrVec_;
         int numStreams_{};
         std::vector<tl::engine> engineVec_;
         std::vector<margo_instance_id> midVec_;
-
-        /**
-         * @name Clock-related variables
-         */
-        TimeManager *pTimeManager;
 
         /**
          * @name ClientRegistry related variables
@@ -70,7 +58,15 @@ namespace ChronoVisor {
          * @name RPC related variables
          */
         ///@{
-	std::shared_ptr<RPCVisor> rpcProxy_;
+        std::shared_ptr<RPCVisor> rpcVisor_;
+        ///@}
+
+        /**
+         * @name Clock related variables
+         */
+        ///@{
+        ClocksourceManager *pClocksourceManager_;
+        ///@}
     };
 }
 
