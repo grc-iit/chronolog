@@ -116,7 +116,7 @@ int main(int argc, char **argv) {
                     std::cout << "RDMA rpc invoked" << std::endl;
                     tl::endpoint ep = req.get_endpoint();
                     std::cout << "endpoint obtained" << std::endl;
-                    std::vector<std::byte> mem_vec(MAX_BULK_MEM_SIZE);
+                    std::vector<char> mem_vec(MAX_BULK_MEM_SIZE);
                     mem_vec.reserve(MAX_BULK_MEM_SIZE);
                     mem_vec.resize(MAX_BULK_MEM_SIZE);
                     std::vector<std::pair<void *, std::size_t>> segments(1);
@@ -128,8 +128,11 @@ int main(int argc, char **argv) {
                     std::cout << "RDMA memory exposed" << std::endl;
                     b.on(ep) >> local;
                     std::cout << "Received " << b.size() << " bytes of data in RDMA mode" << std::endl;
+                    //for (auto c : mem_vec) std::cout << c;
+                    //std::cout << std::endl;
+                    req.respond();
                 };
-        myEngine.define("rdma_put", f).disable_response();
+        myEngine.define("rdma_put", f);//.disable_response();
 
         engine_vec.emplace_back(std::move(myEngine));
         mid_vec.emplace_back(std::move(mid));

@@ -36,10 +36,7 @@ int main(int argc, char** argv) {
     std::cout << "msg_size: " << msg_size << std::endl;
     std::cout << "repetition: " << repetition << std::endl;
 
-    std::vector<std::byte> data{};
-    data.reserve(msg_size);
-    std::fill(std::begin(data), std::end(data), std::byte(1));
-    data.resize(msg_size);
+    std::vector<char> data(msg_size, 'Z');
 
     t_bigbang = my_clock::now();
     tl::engine myEngine(protocol, THALLIUM_CLIENT_MODE);
@@ -60,13 +57,15 @@ int main(int argc, char** argv) {
         /* RDMA version */
         std::string rpc_name = "rdma_put";
         std::cout << "Searching for RPC with name " << rpc_name << " on " << server_address << std::endl;
-        tl::remote_procedure rdma_put = myEngine.define(rpc_name).disable_response();
+        tl::remote_procedure rdma_put = myEngine.define(rpc_name);//.disable_response();
         tl::endpoint server = myEngine.lookup(server_address);
         std::vector<std::pair<void *, std::size_t>> segments(1);
         segments[0].first = (void *) (&data[0]);
         segments[0].second = data.size() + 1;
         tl::bulk myBulk = myEngine.expose(segments, tl::bulk_mode::read_only);
         std::cout << "Sending " << data.size() << " bytes of data to " << server_address << std::endl;
+        //for (auto c : data) std::cout << c;
+        //std::cout << std::endl;
         t_local_init = my_clock::now();
         for (int i = 0; i < repetition; i++)
             rdma_put.on(server)(myBulk);
