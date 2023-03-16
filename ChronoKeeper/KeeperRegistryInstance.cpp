@@ -5,7 +5,7 @@
 
 #include "KeeperRegistry.h"
 #include "KeeperRegistryService.h"
-#include "DataCollectionClient.h"
+#include "DataStoreAdminClient.h"
 // this file allows testing of the KeeperRegistryService and KeeperRegistry classes 
 // as the standalone process without the rest of the ChronoVizor modules 
 //
@@ -54,11 +54,11 @@ int KeeperRegistry::ShutdownRegistryService()
     {
     	for ( auto process : keeperProcessRegistry)
     	{
-	   if ( process.second.keeperCollectionClient != nullptr)
+	   if ( process.second.keeperAdminClient != nullptr)
 	   {  
 	      std::cout<<"KeeperRegistry: sending shutdown to keeper {"<<process.second.idCard<<"}"<<std::endl;
-	      process.second.keeperCollectionClient->shutdown_collection();
-              delete process.second.keeperCollectionClient;
+	      process.second.keeperAdminClient->shutdown_collection();
+              delete process.second.keeperAdminClient;
            }
 	}
 	keeperProcessRegistry.clear();
@@ -100,30 +100,30 @@ int KeeperRegistry::registerKeeperProcess( KeeperRegistrationMsg const& keeper_r
 	      std::cout<<"KeeperRegistry: registerKeeper {"<<keeper_id_card<<"} found existing keeperProcess, reseting the process record"<< std::endl;
 	     // insert_return.first is the position to the current keeper record with the same KeeperIdCard
 	     // this is probably the case of keeper process restart ... reset the record  entry
-	         if( (*insert_return.first).second.keeperCollectionClient != nullptr)
-		 { delete (*insert_return.first).second.keeperCollectionClient; }
+	         if( (*insert_return.first).second.keeperAdminClient != nullptr)
+		 { delete (*insert_return.first).second.keeperAdminClient; }
 	      
 	         (*insert_return.first).second.reset();
 		   return 0;
 	   }
 
-           //create a client of Keeper's DataCollectionService listenning at adminServiceId
+           //create a client of Keeper's DataStoreAdminService listenning at adminServiceId
            std::string service_na_string("ofi+sockets://");
 	   service_na_string = admin_service_id.getIPasDottedString(service_na_string)
                              + ":"+ std::to_string(admin_service_id.port);
            try
 	   {
-              DataCollectionClient * collectionClient = DataCollectionClient::CreateDataCollectionClient(registryEngine,service_na_string, 
+              DataStoreAdminClient * collectionClient = DataStoreAdminClient::CreateDataStoreAdminClient(registryEngine,service_na_string, 
 			      admin_service_id.provider_id);
 	
-	      (*insert_return.first).second.keeperCollectionClient = collectionClient;
+	      (*insert_return.first).second.keeperAdminClient = collectionClient;
 
-	      std::cout<<"KeeperRegistry: registerKeeper {"<<keeper_id_card<<"} created DataCollectionClient for service {"<<service_na_string
+	      std::cout<<"KeeperRegistry: registerKeeper {"<<keeper_id_card<<"} created DataStoreAdminClient for service {"<<service_na_string
 		   <<": provider_id="<<admin_service_id.provider_id<<"}"<<std::endl;
 	   }
 	   catch( tl::exception  const& ex)
 	   {
-	      std::cout <<"KeeperRegistry: registerKeeper {"<<keeper_id_card<<"} failed to create DataCollectionClient for {"<<service_na_string
+	      std::cout <<"KeeperRegistry: registerKeeper {"<<keeper_id_card<<"} failed to create DataStoreAdminClient for {"<<service_na_string
 		   <<": provider_id="<<admin_service_id.provider_id<<"}"<<std::endl;
 
 	   } 
@@ -147,13 +147,13 @@ int KeeperRegistry::unregisterKeeperProcess( KeeperIdCard const & keeper_id_card
            if(is_shutting_down())
            {  return 0;}
 
-	   // stop & delete keeperCollectionClient before erasing keeper_process entry
+	   // stop & delete keeperAdminClient before erasing keeper_process entry
            auto keeper_process_iter = keeperProcessRegistry.find(std::pair<uint32_t,uint16_t>(keeper_id_card.getIPaddr(),keeper_id_card.getPort()));
 	   if(keeper_process_iter != keeperProcessRegistry.end())
 	   {
-	   // delete keeperCollectionClient before erasing keeper_process entry
-	      if( (*keeper_process_iter).second.keeperCollectionClient != nullptr)
-	      {  delete (*keeper_process_iter).second.keeperCollectionClient; }
+	   // delete keeperAdminClient before erasing keeper_process entry
+	      if( (*keeper_process_iter).second.keeperAdminClient != nullptr)
+	      {  delete (*keeper_process_iter).second.keeperAdminClient; }
 	      keeperProcessRegistry.erase(keeper_process_iter);
 	   }
 	   // now that we are still holding registryLock
@@ -232,15 +232,15 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart( std::vector<KeeperIdCard
 	  continue;
 	}
    	KeeperProcessEntry keeper_process = (*keeper_process_iter).second;
-	std::cout<<"found keeper_process:"<< &keeper_process<<" "<<keeper_process.idCard <<" "<<keeper_process.adminServiceId<<keeper_process.keeperCollectionClient<<std::endl;;
-	if (nullptr == keeper_process.keeperCollectionClient)
+	std::cout<<"found keeper_process:"<< &keeper_process<<" "<<keeper_process.idCard <<" "<<keeper_process.adminServiceId<<keeper_process.keeperAdminClient<<std::endl;;
+	if (nullptr == keeper_process.keeperAdminClient)
 	{ 
-	  std::cout<<"WARNING: Registry record for{"<<keeper_id_card<<"} is missing keeperCollectionClient"<<std::endl;
+	  std::cout<<"WARNING: Registry record for{"<<keeper_id_card<<"} is missing keeperAdminClient"<<std::endl;
 	  continue;
 	}
 	try
 	{
-	   int rpc_return = keeper_process.keeperCollectionClient->send_start_story_recording(chronicle, story, storyId);
+	   int rpc_return = keeper_process.keeperAdminClient->send_start_story_recording(chronicle, story, storyId);
 	   if (rpc_return <0)
 	   {
 	      std::cout<<"WARNING: Registry failed notification RPC to keeper {"<<keeper_id_card<<"}"<<std::endl;
@@ -289,14 +289,14 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStop(std::vector<KeeperIdCard> 
 	  continue;
 	}
    	KeeperProcessEntry keeper_process = (*keeper_process_iter).second;
-	if (nullptr == keeper_process.keeperCollectionClient)
+	if (nullptr == keeper_process.keeperAdminClient)
 	{ 
-	  std::cout<<"WARNING: Registry record for{"<<keeper_id_card<<"} is missing keeperCollectionClient"<<std::endl;
+	  std::cout<<"WARNING: Registry record for{"<<keeper_id_card<<"} is missing keeperAdminClient"<<std::endl;
 	  continue;
 	}
 	try
 	{
-	   int rpc_return = keeper_process.keeperCollectionClient->send_stop_story_recording(storyId);
+	   int rpc_return = keeper_process.keeperAdminClient->send_stop_story_recording(storyId);
 	   if (rpc_return <0)
 	   {
 	      std::cout<<"WARNING: Registry failed notification RPC to keeper {"<<keeper_id_card<<"}"<<std::endl;
