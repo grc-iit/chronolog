@@ -80,24 +80,26 @@ void ChronoLogClient::ComputeClockOffset()
 	uint64_t t1 = LocalTS();
 	uint64_t vt1 = GetTS();
 
-	uint64_t t2 = LocalTS();
 	uint64_t vt2 = GetTS();
+	uint64_t t2 = LocalTS();
 
-	int offset1 = vt1-t1;
-        int offset2 = vt2-t2;
+	int64_t offset1 = vt1-t1;
+        int64_t offset2 = vt2-t2;
 
-	int mean_offset = (offset1+offset2)/2;
+	double diff = (double)(offset1+offset2)/(double)2; 
+	int64_t offset_s = std::ceil(diff);
 
-	uint64_t mean_offset_u;
+	uint64_t offset_u;
 	bool pos_neg = false;
-	if(mean_offset < 0) 
+	
+	if(offset_s < 0) 
 	{
-	   mean_offset_u = (uint64_t)(-1*mean_offset);
+	   offset_s = -1*offset_s;
 	   pos_neg = true;
 	}
-	else mean_offset_u = mean_offset;
+	offset_u = (uint64_t)offset_s;
 
-	CSManager->set_offset(mean_offset_u,pos_neg);
+	CSManager->set_offset(offset_u,pos_neg);
 }
 
 int ChronoLogClient::StoreError()

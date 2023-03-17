@@ -46,18 +46,24 @@ class ClockSourceCPPStyle
 template<class ClockSource>
 class ClocksourceManager {
 public:
-	ClocksourceManager()
+	ClocksourceManager(std::string &unit_name,int num_clients)
 	{
-	  unit = 1000;
+	  unit = 1;
+	  if(unit_name.compare("nanoseconds")==0) unit = 1;
+	  else if(unit_name.compare("microseconds")==0) unit = 1000;
+	  else if(unit_name.compare("milliseconds")==0) unit = 1000000;
+	  else if(unit_name.compare("seconds")==0) unit = 1000000000;
 	  offset = 0;
-	  num_procs = 1;
+	  num_procs = num_clients;
 	  func_prefix = "ChronoLogThallium";
 	  maxError = UINT64_MAX;
 	  errs.resize(num_procs);
 	  std::fill(errs.begin(),errs.end(),UINT64_MAX);
 	  pos_neg = false;
-	  delay = 3000;
-	  epsilon = 100;
+	  delay = 200000;
+	  epsilon = 100000;
+	  delay = delay/unit;
+	  epsilon = epsilon/unit;
 	}
 	~ClocksourceManager()
 	{}
@@ -96,16 +102,13 @@ public:
 	int LocalStoreError(std::string &client_id,uint64_t &t)
 	{	
 	   std::lock_guard<std::mutex> lock_c(clock_m);
-	   t += delay/unit;
+	   t += delay;
 	   uint64_t ts = LocalGetTS(myid);
 	   int pos = std::distance(client_ids.begin(),std::find(client_ids.begin(),client_ids.end(),client_id));
 	   uint64_t err = 0;
 	   if(ts > t) err = ts-t;
 	   else err = t-ts;
-
-	   if(pos == errs.size()) errs.push_back(err);
-	   else errs[pos] = err;
-
+	   errs[pos] = err;
 	   return CL_SUCCESS;
 	}
         
@@ -131,7 +134,7 @@ public:
 	   for(int i=0;i<num_procs;i++)
 		   if(t < errs[i]) t = errs[i];
 	   
-	   maxError = t+epsilon/unit;
+	   maxError = t+delay+epsilon;
 
 	   return maxError;
 	}

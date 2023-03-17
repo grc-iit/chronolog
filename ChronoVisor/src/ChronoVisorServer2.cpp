@@ -60,7 +60,9 @@ namespace ChronoVisor {
         engineVec_.reserve(numPorts_);
         midVec_.reserve(numPorts_);
         rpcVisor_ = ChronoLog::Singleton<RPCVisor>::GetInstance();
-        CSManager = new ClocksourceManager<ClockSourceCPPStyle>();
+	std::string unit = "microseconds";
+	int num_clients = 1;
+        CSManager = new ClocksourceManager<ClockSourceCPPStyle>(unit,num_clients);
 	rpc = rpcVisor_->get_RPC();
     }
 }
