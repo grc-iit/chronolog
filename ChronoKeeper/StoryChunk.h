@@ -64,6 +64,7 @@ public:
    }
 
 
+
    uint32_t mergeEvents(std::map<ChronoTick,LogEvent> & events
                , std::map<ChronoTick,LogEvent>::iterator &  merge_start )
 
@@ -98,6 +99,10 @@ public:
    uint32_t mergeEvents(StoryChunk & other_chunk)
    {  return 0; }
 
+   uint32_t mergeEvents(StoryChunk & other_chunk
+	          , uint64_t start_time, uint64_t end_time)
+   {  return 0; }
+
 
    uint32_t extractEvents( std::map<ChronoTick,LogEvent> & target_map 
        , std::map<ChronoTick,LogEvent>::iterator first_pos
@@ -106,13 +111,16 @@ public:
    uint32_t extractEvents( std::map<ChronoTick,LogEvent>  & target_map
 	          , uint64_t start_time, uint64_t end_time)
    { return 0;}
+   uint32_t eraseEvents(uint64_t start_time, uint64_t end_time)
+   { return 0;}
+
 private:
 StoryId storyId;          
 uint64_t startTime;
 uint64_t endTime;   
 uint64_t revisionTime;
 
-std::multimap<ChronoTick, LogEvent> logEvents;
+std::map<ChronoTick, LogEvent> logEvents;
 
 };
 

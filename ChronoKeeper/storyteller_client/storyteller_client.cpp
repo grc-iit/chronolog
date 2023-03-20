@@ -39,7 +39,8 @@ int main(int argc, char** argv) {
     for ( int i =0; i <10; ++i)
     {
 	sleep(10);
-	chl::LogEvent event( 1, 1, chl::ChronoTick(i,i), "line_"+std::to_string(i));
+        uint64_t log_time= std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+	chl::LogEvent event( 1, 1, chl::ChronoTick(log_time,i), "line_"+std::to_string(i));
 
 	recordingClient->send_event_msg(event);
     }

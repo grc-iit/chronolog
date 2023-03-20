@@ -63,6 +63,21 @@ int chronolog::KeeperDataStore::stopStoryRecording(chronolog::StoryId const& sto
 
 return 1;
 }
+
+////////////////////////
+
+void chronolog::KeeperDataStore::collectIngestedEvents()
+{
+
+    for( auto pipeline_iter = theMapOfStoryPipelines.begin(); 
+            pipeline_iter != theMapOfStoryPipelines.end(); ++pipeline_iter)
+    {
+//INNA: this can be delegated to different threads handling individual storylines...
+            (*pipeline_iter).second->collectIngestedEvents();
+    }
+
+
+}
 ////////////////////////
 
 int  chronolog::KeeperDataStore::readStoryFromArchive(std::string const& archiveLocation
@@ -96,13 +111,15 @@ void chronolog::KeeperDataStore::shutdownDataCollection()
 
    state = SHUTTING_DOWN;
 
+   // Unregister the ChronoKeeper  
+   //
    //stop Recording service for all the active stories
    // ? should we notify the Visor ???
    // 
    // Finalize and persist all the story lines to disk
    // ? we should  probably disregard acceptance window in this case
    //
-   // Unregister the ChronoKeeper   
+   //
 }
 
 ///////////////////////
@@ -110,7 +127,6 @@ void chronolog::KeeperDataStore::shutdownDataCollection()
  //
 chronolog::KeeperDataStore::~KeeperDataStore()
 {
-  // in case shutdown was not triggered yet	
   shutdownDataCollection();
-
+  
 }

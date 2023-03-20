@@ -49,6 +49,8 @@ public:
 		      , uint64_t start_time =0, uint32_t time_chunk_ranularity=30, uint32_t access_window = 60 ); //INNA: dummy values that eventually would come from Visor Metadata 
       int stopStoryRecording(StoryId const&);
 
+      void collectIngestedEvents();
+
       int  readStoryFromArchive(std::string const& archiveLocation
 		, std::string const & chronicle, std::string const& story, chronolog::StoryId const & story_id
 		, uint64_t start_time, uint64_t end_time, uint32_t time_chunk_granularity);

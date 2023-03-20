@@ -46,6 +46,7 @@ public:
 
     StoryIngestionHandle * getActiveIngestionHandle();
 
+    void collectIngestedEvents();
     void mergeEvents(std::deque<LogEvent> &);
     void mergeEvents(StoryChunk &);
 
@@ -74,7 +75,7 @@ private:
     std::deque<LogEvent> eventQueue1;
     std::deque<LogEvent> eventQueue2;
 
-    StoryIngestionHandle * activeQueueHandle;
+    StoryIngestionHandle * activeIngestionHandle;
 
     // mutex used to protect Story sequencing operations 
     // from concurrent access by the DataStore Sequencing threads
@@ -83,6 +84,7 @@ private:
     // map of storyChunks ordered by StoryChunck.startTime
     std::map<chrono_time, StoryChunk > storyTimelineMap;
 
+    std::map<uint64_t, StoryChunk>::iterator prependStoryChunk();
     std::map<uint64_t, StoryChunk>::iterator appendStoryChunk();
 
 };

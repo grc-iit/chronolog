@@ -87,7 +87,7 @@ void removeIngestionHandle(StoryId const & story_id)
 void ingestLogEvent(LogEvent const& event)
 {
 	std::cout <<"IngestionQueue: ingestLogEvent : storyIngestionHandles {"<< &storyIngestionHandles<<"} .size="<<storyIngestionHandles.size()<<std::endl;
-	std::cout<<"received event for story {"<<event.storyId<<"}"<<std::endl;
+	std::cout<<"received event for story {"<<event.storyId<< ":"<<event.time()<<"}"<<std::endl;
 
 	auto ingestionHandle_iter = storyIngestionHandles.find(event.storyId);
 	if( ingestionHandle_iter == storyIngestionHandles.end())

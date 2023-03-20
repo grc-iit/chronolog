@@ -162,11 +162,11 @@ int main(int argc, char** argv) {
 
     int i{0};
 
-    while( !theDataStore.is_shutting_down() & (i <20))
+    while( !theDataStore.is_shutting_down())
     {
         keeperRegistryClient->send_stats_msg(keeperStatsMsg);
-	i++;
-	sleep(60);
+	theDataStore.collectIngestedEvents();
+	sleep(10);
     }
 
     keeperRegistryClient->send_unregister_msg(keeperIdCard);
