@@ -8,18 +8,19 @@
 #include "StoryPipeline.h"
 #include "StoryIngestionHandle.h"
 
+#define TRACE_CHUNKING
+
 namespace chl = chronolog;
 
 ////////////////////////
 
 chronolog::StoryPipeline::StoryPipeline( std::string const& chronicle_name, std::string const& story_name,  chronolog::StoryId const& story_id
-		, uint64_t start_time, uint64_t chunk_granularity, uint64_t archive_granularity, uint64_t acceptance_window)
+		, uint64_t story_start_time, uint16_t chunk_granularity, uint16_t archive_granularity, uint16_t acceptance_window)
 	: storyId(story_id)
-	, storyState(chronolog::StoryState::PASSIVE)  
 	, chronicleName(chronicle_name)
 	, storyName(story_name)
-	, timelineStart(start_time -acceptance_window)   
-	, timelineEnd(start_time)
+	, timelineStart(story_start_time)   
+	, timelineEnd(story_start_time)
 	, chunkGranularity(chunk_granularity)
 	, archiveGranularity(archive_granularity)  
 	, acceptanceWindow(acceptance_window)  
@@ -28,24 +29,39 @@ chronolog::StoryPipeline::StoryPipeline( std::string const& chronicle_name, std:
 {
 	activeIngestionHandle = new chl::StoryIngestionHandle( ingestionMutex, &eventQueue1, &eventQueue2);
 
-	//pre-initialize the pipeline map with the StoryChunks of timelineGranulary 
-	// with the total time window of 1/2 archiveGranularity
-	// current defaults are 5 mins chunks for 12 hours total
-         
-	 timelineStart -= (timelineStart%chunkGranularity); //make sure timelineStart is on the boundary of chunkGranularity
-							    //
-	 for(uint64_t start = timelineStart; timelineEnd < (timelineStart + archiveGranularity/2 );)
+	//pre-initialize the pipeline map with the StoryChunks of chunkGranulary 
+	// with the total time window of archiveGranularity
+
+    	auto story_start_point = std::chrono::time_point<std::chrono::system_clock,std::chrono::nanoseconds>{}
+	       		+ std::chrono::nanoseconds(timelineStart);
+    	std::time_t time_t_story_start = std::chrono::high_resolution_clock::to_time_t(story_start_point);
+    	std::cout <<"StoryPipeline: storyId {"<<storyId<<"} story_start_time= " << story_start_time <<" "<< std::ctime(&time_t_story_start) 
+	    <<" chunkGranularity="<<chunkGranularity<<" seconds"
+	    <<" archiveGranularity="<<archiveGranularity<<" hours"<<std::endl;
+	
+         chunkGranularity *= 1000000000;    // seconds =>nanoseconds
+	 archiveGranularity = archiveGranularity*60*60*1000000000; //hours =>nanoseconds
+
+	 //adjust the timelineStart to the closest prior boundary of chunkGanularity
+	 timelineStart -= (timelineStart%chunkGranularity);
+         timelineEnd=timelineStart;
+
+	 for(uint64_t start = timelineStart; timelineEnd < (timelineStart + archiveGranularity );)
 	 {
-		auto result= storyTimelineMap.insert( std::pair<uint64_t, chronolog::StoryChunk>( start, StoryChunk(storyId, start, start+chunkGranularity)) );
-		if( !result.second)
-		{   break;   }
-
-		timelineEnd = start+chunkGranularity;
-		start = timelineEnd;
-
+		appendStoryChunk();
 	 }
 
-	 std::cout << "StoryPipeline : {"<<this<<"} created for {"<<chronicleName<<" "<<storyName<<" "<<story_id<<std::endl;
+#ifdef TRACE_CHUNKING
+    	//std::chrono::time_point<std::chrono::system_clock,std::chrono::nanoseconds> epoch_time_point{};
+    	auto chunk_start_point = std::chrono::time_point<std::chrono::system_clock,std::chrono::nanoseconds>{} // epoch_time_point{};
+		+ std::chrono::nanoseconds(timelineStart);
+    	std::time_t time_t_chunk_start = std::chrono::high_resolution_clock::to_time_t(chunk_start_point);
+    	auto chunk_end_point = std::chrono::time_point<std::chrono::system_clock,std::chrono::nanoseconds>{}
+		+ std::chrono::nanoseconds(timelineEnd);
+    	std::time_t time_t_chunk_end = std::chrono::high_resolution_clock::to_time_t(chunk_end_point); 
+    	std::cout <<"Created StoryPipeline: storyId { " << storyId<<"} " <<" with adjusted timeline {" << timelineStart<<" "<< std::ctime(&time_t_chunk_start) 
+		<<"} {" << timelineEnd<<" " <<std::ctime(&time_t_chunk_end) <<"}"<<std::endl;
+#endif
 
 }
 
@@ -66,7 +82,16 @@ chronolog::StoryPipeline::~StoryPipeline()
 
 std::map<uint64_t, chronolog::StoryChunk>::iterator chronolog::StoryPipeline::prependStoryChunk()
 {
-	std::cout << "StoryPipeline: {"<< storyId<<"} prepending at {"<<timelineStart<<"}"<<std::endl;
+  // prepend a storyChunk at the begining of  storyTimeline and return the iterator to the new node
+#ifdef TRACE_CHUNKING
+    	std::chrono::time_point<std::chrono::system_clock,std::chrono::nanoseconds> epoch_time_point{};
+    	auto chunk_start_point = epoch_time_point + std::chrono::nanoseconds(timelineStart);
+    	std::time_t time_t_chunk_start = std::chrono::high_resolution_clock::to_time_t(chunk_start_point);
+    	auto chunk_end_point = epoch_time_point + std::chrono::nanoseconds(timelineStart-chunkGranularity);
+    	std::time_t time_t_chunk_end = std::chrono::high_resolution_clock::to_time_t(chunk_end_point); 
+    	std::cout <<"StoryPipeline: storyId { " << storyId<<"} prepend chunk {" << timelineStart<<" "<< std::ctime(&time_t_chunk_start) 
+		<<"} {" << timelineStart-chunkGranularity <<" " <<std::ctime(&time_t_chunk_end) <<"}"<<std::endl;
+#endif 
 	auto result= storyTimelineMap.insert( std::pair<uint64_t, chronolog::StoryChunk>
 			 ( timelineStart-chunkGranularity, chronolog::StoryChunk(storyId, timelineStart-chunkGranularity, timelineStart)));
 	if( !result.second)
@@ -83,8 +108,16 @@ std::map<uint64_t, chronolog::StoryChunk>::iterator chronolog::StoryPipeline::pr
 
 std::map<uint64_t, chronolog::StoryChunk>::iterator chronolog::StoryPipeline::appendStoryChunk()
 {
-  // append the next storyChunk to the storyTimelineMap and return iterator to the new node
-	std::cout << "StoryPipeline: {"<< storyId<<"} appending  chunk at {"<<timelineEnd<<"}"<<std::endl;
+  // append the next storyChunk at the end of storyTimeline and return the iterator to the new node
+#ifdef TRACE_CHUNKING
+    	std::chrono::time_point<std::chrono::system_clock,std::chrono::nanoseconds> epoch_time_point{};
+    	auto chunk_start_point = epoch_time_point + std::chrono::nanoseconds(timelineEnd);
+    	std::time_t time_t_chunk_start = std::chrono::high_resolution_clock::to_time_t(chunk_start_point);
+    	auto chunk_end_point = epoch_time_point + std::chrono::nanoseconds(timelineEnd+chunkGranularity);
+    	std::time_t time_t_chunk_end = std::chrono::high_resolution_clock::to_time_t(chunk_end_point); 
+    	std::cout <<"StoryPipeline: storyId { "<< storyId<<"} append chunk {" << timelineEnd <<" "<< std::ctime(&time_t_chunk_start) 
+		<<"} {" << timelineEnd+chunkGranularity <<" " <<std::ctime(&time_t_chunk_end) <<"}"<<std::endl;
+#endif 
 	auto result= storyTimelineMap.insert( std::pair<uint64_t, chronolog::StoryChunk>( timelineEnd, chronolog::StoryChunk(storyId, timelineEnd, timelineEnd+chunkGranularity)));
 	if( !result.second)
 	{ 

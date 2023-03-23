@@ -10,6 +10,10 @@
 namespace tl = thallium;
 namespace chl = chronolog;
 
+uint64_t get_chrono_timestamp() {
+	return std::chrono::system_clock::now().time_since_epoch().count();
+    }
+
 int main(int argc, char** argv) {
     if(argc != 3) {
         std::cerr << "Usage: " << argv[0] << " <address> <provider_id>" << std::endl;
@@ -39,9 +43,9 @@ int main(int argc, char** argv) {
     for ( int i =0; i <10; ++i)
     {
 	sleep(10);
-        uint64_t log_time= std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+        uint64_t log_time= get_chrono_timestamp();
 	chl::LogEvent event( 1, 1, chl::ChronoTick(log_time,i), "line_"+std::to_string(i));
-
+	std::cout<<"generated_event {"<< event.storyId<<":"<<event.clientId <<":"<<event.time()<<"}"<<std::endl;
 	recordingClient->send_event_msg(event);
     }
 

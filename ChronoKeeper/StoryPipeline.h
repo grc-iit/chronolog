@@ -16,13 +16,6 @@ namespace chronolog
 
 class StoryIngestionHandle;
 
-enum StoryState
-{ 
-  PASSIVE = 0,
-  ACTIVE = 0,
-  EXITING = 0
-};
-
 class StoryPipeline
 {
 
@@ -32,9 +25,9 @@ public:
     StoryPipeline( std::string const& chronicle_name, std::string const& story_name
 			, StoryId const& story_id
 			, uint64_t start_time
-		        , uint64_t chunk_granularity = 300 //5 mins 
-			, uint64_t archive_granularity = 24* 20 * 300 // 24 hours
-			, uint64_t acceptance_window = 2 * 300 // 10 mins
+		        , uint16_t chunk_granularity = 30 //seconds 
+			, uint16_t archive_granularity = 3 //  hours
+			, uint16_t acceptance_window = 1 // hour 
 		    
 		     );
 
@@ -55,7 +48,6 @@ public:
 private:
 
     StoryId 	storyId;
-    StoryState  storyState;
     ChronicleName	chronicleName;
     StoryName	storyName;
     uint64_t	timelineStart;

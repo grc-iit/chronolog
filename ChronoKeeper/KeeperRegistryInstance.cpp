@@ -217,6 +217,10 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart( std::vector<KeeperIdCard
       std::cout<<"Registry has no Keeper processes to start story recording" << std::endl;
       return -1;
    }
+   
+   std::chrono::time_point<std::chrono::system_clock> time_now = std::chrono::system_clock::now();
+
+   uint64_t story_start_time = time_now.time_since_epoch().count() ;
 
     std::lock_guard<std::mutex> lock(registryLock);
    if (!is_running())
@@ -240,13 +244,13 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart( std::vector<KeeperIdCard
 	}
 	try
 	{
-	   int rpc_return = keeper_process.keeperCollectionClient->send_start_story_recording(chronicle, story, storyId);
+	   int rpc_return = keeper_process.keeperCollectionClient->send_start_story_recording(chronicle, story, storyId, story_start_time);
 	   if (rpc_return <0)
 	   {
 	      std::cout<<"WARNING: Registry failed notification RPC to keeper {"<<keeper_id_card<<"}"<<std::endl;
 	      continue;
 	   }
-	   std::cout << "Registry notified keeper {"<<keeper_id_card<<"} to start recording story {"<<storyId<<"}"<<std::endl;
+	   std::cout << "Registry notified keeper {"<<keeper_id_card<<"} to start recording story {"<<storyId<<"} start_time {"<<story_start_time<<"}"<<std::endl;
 	   keepers_left_to_notify--;
 	}
 	catch(thallium::exception const& ex)
@@ -358,6 +362,7 @@ int main(int argc, char** argv) {
     std::string chronicle ="chronicle_";
     std::string story= "story_";
     uint64_t story_id = 0;
+
     std::vector<chronolog::KeeperIdCard> vectorOfKeepers;
     while( !keeperRegistry.is_shutting_down())
     {
