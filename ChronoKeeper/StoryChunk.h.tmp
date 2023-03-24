@@ -2,7 +2,6 @@
 #define STORY_CHUNK_H
 
 #include <map>
-#include <iostream>
 
 #include "chronolog_types.h"
 
@@ -17,12 +16,13 @@ typedef uint32_t chrono_index;
 // for the duration [startTime, endTime[
 // startTime included, endTime excluded
 // startTime/endTime are invariant
+//template <typename TimestampCollisionHandlingPolicy = ArrivalOrderPolicy>   logEvents is a map<chrono_time,list<Event>>
+//template < typename TimestampCollisionHandlingPolicy  =OriginalClientOrder>   logEvents is map <chrono_time, set<Event> >
+// events are ordered by tuple<chrono_index,client_id> or client_sequence, client_id>
+//
+typedef std::list<LogEvent> ArrivalOrderSet;
 
-typedef std::tuple< chrono_time, chrono_index> ArrivalSequence;
-
-typedef std::tuple< chrono_time, ClientId, chrono_index> EventSequence;
-
-
+template <typename EventSetType = ArrivalOrderSet>
 class StoryChunk
 {
 public:
@@ -44,23 +44,23 @@ public:
    bool empty() const
    {  return ( logEvents.empty() ? true : false ); }
 
-   std::map<EventSequence,LogEvent>::const_iterator begin() const
+   std::map<ChronoTick, EventSetType>::const_iterator begin() const
    {   return logEvents.begin(); }
-
-   std::map<EventSequence,LogEvent>::const_iterator end() const
+ 
+   std::map<ChronoTick, EventSetType>::const_iterator end() const
    {   return logEvents.end(); }
 
-   std::map<EventSequence,LogEvent>::const_iterator lower_bound( uint64_t chrono_time) const
-   {   return logEvents.lower_bound( EventSequence{chrono_time,0,0});}
+   std::map<ChronoTick, EventSetType>::const_iterator lower_bound( uint64_t chrono_time) const
+   {   return logEvents.lower_bound( ChronoTick{chrono_time,0});}
 
+   //template<typename TimestampCollisionHandlingPolicy>
    int insertEvent(LogEvent const& event)
    {
-	 std::cout<<"StoryChunk:{"<<storyId<<":"<<startTime<<":"<<endTime<<"} got event {"
-		 <<event.storyId<<":"<<event.time()<<":"<<event.clientId<<":"<<event.index()<<"}"<<std::endl;
       if((event.time() >= startTime)
 	      && (event.time() < endTime))
       { 
-         logEvents.insert( std::pair<EventSequence,LogEvent>({event.time(),event.clientId, event.index()}, event));
+         // logEvents.insert( std::pair<event.time(),LogEvent>(event.chronoTick, event));
+//	 logEvents(std::pair<
 	  return 1;
       }
       else
@@ -68,15 +68,16 @@ public:
    }
 
 
-   uint32_t mergeEvents( std::map<EventSequence,LogEvent> & events
-               , std::map<EventSequence,LogEvent>::iterator &  merge_start )
+
+   uint32_t mergeEvents(std::map<ChronoTick, EventSetType> & events
+               , std::map<ChronoTick, EventSetType>::iterator &  merge_start )
 
    {
        uint32_t merged_event_count = 0;
-       std::map<EventSequence,LogEvent>::iterator first_merged, last_merged;
+       std::map<ChronoTick, EventSetType>::iterator first_merged, last_merged;
      
        if ( (*merge_start).second.time() < startTime)
-       {   merge_start = events.lower_bound(EventSequence{startTime,0,0}); }
+       {   merge_start = events.lower_bound(ChronoTick{startTime,0}); }
 
        for( auto iter = merge_start; iter != events.end(); ++iter)
 	{
@@ -107,11 +108,11 @@ public:
    {  return 0; }
 
 
-   uint32_t extractEvents( std::map<EventSequence,LogEvent> & target_map 
-       , std::map<EventSequence,LogEvent>::iterator first_pos
-       , std::map<EventSequence,LogEvent>::iterator last_pos)
+   uint32_t extractEvents( std::map<ChronoTick, EventSetTypee> & target_map 
+       , std::map<ChronoTick, EventSetType>::iterator first_pos
+       , std::map<ChronoTick, EventSetType>::iterator last_pos)
    { return 0;}
-   uint32_t extractEvents( std::map<EventSequence,LogEvent>  & target_map
+   uint32_t extractEvents( std::map<ChronoTick, EventSetType>  & target_map
 	          , uint64_t start_time, uint64_t end_time)
    { return 0;}
    uint32_t eraseEvents(uint64_t start_time, uint64_t end_time)
@@ -123,7 +124,7 @@ uint64_t startTime;
 uint64_t endTime;   
 uint64_t revisionTime;
 
-std::map<EventSequence, LogEvent> logEvents;
+std::map<ChronoTick, ArrivalOrderSet> logEvents;
 
 };
 

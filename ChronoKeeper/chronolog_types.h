@@ -8,36 +8,35 @@ namespace chronolog
 typedef std::string StoryName;
 typedef std::string ChronicleName;
 typedef uint64_t StoryId;
-typedef uint64_t ClientId;
 typedef uint64_t ChronicleId;
+typedef uint32_t ClientId;
 
-// ChronoTick contains epoch timestamp & integer index
-typedef std::tuple<uint64_t,uint64_t> ChronoTick; 
-
-
-/*bool operator < (ChronoTick const& tick1, ChronoTick const& tick2)
-{
-	return ( (tick1.first  == tick2.first) ?
-		 (tick1.second < tick2.second) : (tick1.first < tick2.first) );
-}
-*/
+typedef uint64_t chrono_time;
+typedef uint32_t chrono_index;
 
 class LogEvent
 {
 public:
 	LogEvent() = default;
 
-        LogEvent(StoryId const& story_id, ClientId const& client_id, ChronoTick const& chrono_tick, std::string const& record)
-                : storyId(story_id), clientId(client_id)
-                , chronoTick(chrono_tick),logRecord(record)     
+        LogEvent(StoryId const& story_id, chrono_time event_time, ClientId client_id, chrono_index index, std::string const& record)
+                : storyId(story_id)
+		, eventTime(event_time)
+		, clientId(client_id)
+	       	, eventIndex(index)
+                , logRecord(record)     
         {}  
         StoryId  storyId;
+	uint64_t eventTime;
         ClientId clientId;
-        ChronoTick chronoTick;
+	uint32_t eventIndex;
 	std::string logRecord; //INNA: replace with size_t  length; & void * data; later on
  
   uint64_t const& time() const
-  {  return std::get<0>(chronoTick); }
+  {  return eventTime; }
+
+  uint32_t const& index() const
+  {  return eventIndex; }
 
   // serialization function used by thallium RPC providers 
   // to serialize/deserialize KeeperIdCard 
@@ -45,7 +44,7 @@ public:
   template <typename SerArchiveT>
   void serialize( SerArchiveT & serT)
   {
-      serT (storyId, clientId, chronoTick, logRecord);
+      serT (storyId, eventTime, clientId, eventIndex, logRecord);
   }
 };
 
