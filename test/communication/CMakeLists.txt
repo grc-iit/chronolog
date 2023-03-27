@@ -19,20 +19,12 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0")
 endif()
 
-add_executable(thallium_server thallium_server.cpp
-        ../../ChronoVisor/src/ClientRegistryRecord.cpp
-        ../../ChronoVisor/src/ClientRegistryManager.cpp
-        ../../ChronoVisor/src/ChronicleMetaDirectory.cpp
-        ../../ChronoAPI/ChronoLog/src/city.cpp
-	)
-target_include_directories(thallium_server PRIVATE ../../ChronoAPI/ChronoLog/include)
-target_include_directories(thallium_server PRIVATE ../../ChronoVisor/include)
+add_executable(thallium_server thallium_server.cpp)
 target_link_libraries(thallium_server PRIVATE thallium)
 target_link_libraries(thallium_server PUBLIC "-pthread")
 add_test(NAME CommThalliumServer COMMAND thallium_server)
 
-add_executable(thallium_client thallium_client.cpp
-        )
+add_executable(thallium_client thallium_client.cpp)
 target_include_directories(thallium_client PRIVATE)
 target_link_libraries(thallium_client thallium)
 add_test(NAME CommThalliumClient COMMAND thallium_client)
