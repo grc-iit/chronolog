@@ -19,7 +19,7 @@ class LogEvent
 public:
 	LogEvent() = default;
 
-        LogEvent(StoryId const& story_id, chrono_time event_time, ClientId client_id, chrono_index index, std::string const& record)
+        LogEvent(StoryId const& story_id, chrono_time event_time, ClientId const& client_id, chrono_index index, std::string const& record)
                 : storyId(story_id)
 		, eventTime(event_time)
 		, clientId(client_id)
