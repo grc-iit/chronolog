@@ -62,6 +62,8 @@ make chronovisor_server_test chronolog_client_lib_connect_rpc_test chronolog_cli
 
 All ChronoLog executables share one unified configuration file. The template file can be found in `test/default_conf.json.in`. You can modify it for your own preferences. By default, all existing mini tests expect a configuration file `default_conf.json` in the same directory it launches. The default building process will copy and rename `test/default_conf.json.in` to achieve that. If you want to change the default configurations, you can edit the template file and rebuild the targets, or directly edit the file in the target directory.
 
+ChronoLog will support sockets/TCP/verbs protocols using ofi transport. You can run command `margo-info` to check which transports and protocols are supported on your system.
+
 ------
 # Coming soon ...
 
