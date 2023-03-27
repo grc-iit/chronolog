@@ -32,7 +32,7 @@
                                                                      // template class in its constructor
 //std::mutex g_chronicleMetaDirectoryMutex_;
 //std::mutex g_acquiredChronicleMapMutex_;
-//std::mutex g_acquiredStoryMapMutex_;
+//std::mutex g_acquiredStoryClientMapMutex_;
 
 /**
  * RPC-related global variables

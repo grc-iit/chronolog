@@ -27,6 +27,8 @@ public:
              typeid(*this).name(), this, getpid());
         clientManager = ChronoLog::Singleton<ClientRegistryManager>::GetInstance();
         chronicleMetaDirectory = ChronoLog::Singleton<ChronicleMetaDirectory>::GetInstance();
+        clientManager->setChronicleMetaDirectory(chronicleMetaDirectory.get());
+        chronicleMetaDirectory->set_client_registry_manager(clientManager.get());
     }
 
     ~RPCVisor()
@@ -116,7 +118,9 @@ public:
         }
         if (!chronicle_name.empty() && !story_name.empty()) {
             int ret = chronicleMetaDirectory->create_story(chronicle_name, story_name, attrs);
-            if (ret != CL_SUCCESS) return ret;
+            if (ret != CL_SUCCESS) {
+                return ret;
+            }
             return chronicleMetaDirectory->acquire_story(client_id, chronicle_name, story_name, flags);
         } else {
             if (chronicle_name.empty())

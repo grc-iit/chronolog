@@ -8,13 +8,12 @@
 #include <unistd.h>
 #include <mutex>
 #include <typedefs.h>
-
+#include <ClientRegistryManager.h>
 
 ChronicleMetaDirectory::ChronicleMetaDirectory() {
     LOGD("%s constructor is called", typeid(*this).name());
     chronicleMap_ = new std::unordered_map<uint64_t, Chronicle *>();
-    acquiredStoryMap_ = new std::unordered_map<uint64_t, Story *>();
-    acquiredChronicleClientMap_ = new std::unordered_multimap<uint64_t,std::string> ();
+//    acquiredStoryMap_ = new std::unordered_map<uint64_t, Story *>();
     acquiredStoryClientMap_ = new std::unordered_multimap<uint64_t,std::string> ();
 //    chronicleName2IdMap_ = new std::unordered_map<std::string, uint64_t>();
 //    chronicleId2NameMap_ = new std::unordered_map<uint64_t, std::string>();
@@ -24,8 +23,7 @@ ChronicleMetaDirectory::ChronicleMetaDirectory() {
 
 ChronicleMetaDirectory::~ChronicleMetaDirectory() {
     delete chronicleMap_;
-    delete acquiredStoryMap_;
-    delete acquiredChronicleClientMap_;
+//    delete acquiredStoryMap_;
     delete acquiredStoryClientMap_;
 //    delete chronicleName2IdMap_;
 //    delete chronicleId2NameMap_;
@@ -113,12 +111,16 @@ int ChronicleMetaDirectory::destroy_chronicle(const std::string& name,
     cid = CityHash64(name.c_str(), name.length());
     auto chronicleMapRecord = chronicleMap_->find(cid);
     if (chronicleMapRecord != chronicleMap_->end()) {
-        /* Check if Chronicle is acquired, fail if true */
-        std::lock_guard<std::mutex> acquiredChronicleMapLock(g_acquiredChronicleMapMutex_);
-        if (acquiredStoryMap_->find(cid) != acquiredStoryMap_->end()) {
-            return CL_ERR_ACQUIRED;
+        /* Check if Chronicle is acquired by checking if each of its Story is acquired, fail if true */
+        std::lock_guard<std::mutex> acquiredStoryMapLock(g_acquiredStoryClientMapMutex_);
+        Chronicle *pChronicle = chronicleMapRecord->second;
+        auto storyMap = pChronicle->getStoryMap();
+        for (auto storyMapRecord : storyMap) {
+//            if (acquiredStoryMap_->find(storyMapRecord.first) != acquiredStoryMap_->end()) {
+            if (acquiredStoryClientMap_->find(storyMapRecord.first) != acquiredStoryClientMap_->end()) {
+                return CL_ERR_ACQUIRED;
+            }
         }
-        Chronicle *pChronicle = chronicleMap_->find(cid)->second;
         if (pChronicle->getAcquisitionCount() != 0) {
             return CL_ERR_UNKNOWN;
         }
@@ -210,8 +212,9 @@ int ChronicleMetaDirectory::destroy_story(std::string& chronicle_name,
             return CL_ERR_NOT_EXIST;
         }
         /* Then check if Story is acquired, fail if true */
-        std::lock_guard<std::mutex> acquiredStoryMapLock(g_acquiredStoryMapMutex_);
-        if (acquiredStoryMap_->find(sid) != acquiredStoryMap_->end()) {
+        std::lock_guard<std::mutex> acquiredStoryMapLock(g_acquiredStoryClientMapMutex_);
+//        if (acquiredStoryMap_->find(sid) != acquiredStoryMap_->end()) {
+        if (acquiredStoryClientMap_->find(sid) != acquiredStoryClientMap_->end()) {
             return CL_ERR_ACQUIRED;
         }
         /* Ask the Chronicle to destroy the Story */
@@ -256,33 +259,40 @@ int ChronicleMetaDirectory::acquire_story(const std::string &client_id,
         if (sid == 0) {
             return CL_ERR_NOT_EXIST;
         }
-        /* Last check if this client has acquired this Story already, return success if true */
+        /* Last check if this client has acquired this Story already, do nothing and return success if true */
         auto range = acquiredStoryClientMap_->equal_range(sid);
         bool exists = false;
         if (range.first != range.second) {
             for (auto t = range.first; t != range.second; ++t) {
-                if (t->second.compare(client_id) == 0) {
+                if (t->second == client_id) {
                     exists = true;
                     break;
                 }
             }
         }
         if (!exists) {
-            /* All checks passed, increment AcquisitionCount */
+            /* All checks passed, manipulate metadata */
             Story *pStory = pChronicle->getStoryMap().find(sid)->second;
+            /* Increment AcquisitionCount */
             pStory->incrementAcquisitionCount();
-            std::lock_guard<std::mutex> acquiredStoryMapLock(g_acquiredStoryMapMutex_);
+            /* Add this client to acquirerClientList of the Story */
+            pStory->addAcquirerClient(client_id, &clientRegistryManager_->get_client_info(client_id));
+            /* Add this Story to acquiredStoryMap for this client */
+            clientRegistryManager_->add_story_acquisition(client_id, sid, pStory);
+            /* Add a record of <sid, client_id> to acquiredStoryClientMap */
+            std::lock_guard<std::mutex> acquiredStoryMapLock(g_acquiredStoryClientMapMutex_);
             std::pair<uint64_t, std::string> p(sid, client_id);
             acquiredStoryClientMap_->insert(p);
             ret = CL_SUCCESS;
-            if (acquiredStoryMap_->find(sid) == acquiredStoryMap_->end()) {
-                auto res = acquiredStoryMap_->emplace(sid, pStory);
-                if (res.second) {
-                    ret = CL_SUCCESS;
-                } else {
-                    ret = CL_ERR_UNKNOWN;
-                }
-            }
+            /* Add this Story to acquiredStoryMap if it is not already there */
+//            if (acquiredStoryMap_->find(sid) == acquiredStoryMap_->end()) {
+//                auto res = acquiredStoryMap_->emplace(sid, pStory);
+//                if (res.second) {
+//                    ret = CL_SUCCESS;
+//                } else {
+//                    ret = CL_ERR_UNKNOWN;
+//                }
+//            }
         } else {
             ret = CL_ERR_UNKNOWN;
         }
@@ -325,19 +335,28 @@ int ChronicleMetaDirectory::release_story(const std::string &client_id,
             return CL_ERR_NOT_EXIST;
         }
         Story *pStory = pChronicle->getStoryMap().find(sid)->second;
-        /* Decrement AcquisitionCount */
+        /* Check if this client actually acquired this Story before, fail if false */
         auto range = acquiredStoryClientMap_->equal_range(sid);
         if (range.first != range.second) {
+            /* Loop over all entries matched for this Story to find the record for this client */
             for (auto t = range.first; t != range.second;) {
                 if (t->second.compare(client_id) == 0) {
+                    /* All checks passed and entry found, manipulate metadata */
+                    /* Remove the entry */
                     t = acquiredStoryClientMap_->erase(t);
+                    /* Decrement AcquisitionCount */
                     pStory->decrementAcquisitionCount();
+                    /* Remove this client from acquirerClientList of the Story */
+                    pStory->removeAcquirerClient(client_id);
+                    /* Remove this Story from acquiredStoryMap for this client */
+                    clientRegistryManager_->remove_story_acquisition(client_id, sid);
                     ret = CL_SUCCESS;
-                    if (pStory->getAcquisitionCount() == 0) {
-                        auto nErased = acquiredStoryMap_->erase(sid);
-                        if (nErased == 1) ret = CL_SUCCESS;
-                        else ret = CL_ERR_UNKNOWN;
-                    }
+                    /* Remove this Story from acquiredStoryMap if no client is acquiring it */
+//                    if (pStory->getAcquisitionCount() == 0) {
+//                        auto nErased = acquiredStoryMap_->erase(sid);
+//                        if (nErased == 1) ret = CL_SUCCESS;
+//                        else ret = CL_ERR_UNKNOWN;
+//                    }
                     break;
                 } else ++t;
             }
