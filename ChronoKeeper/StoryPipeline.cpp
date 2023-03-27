@@ -73,7 +73,7 @@ chl::StoryIngestionHandle * chl::StoryPipeline::getActiveIngestionHandle()
 ///////////////////////
 
 chronolog::StoryPipeline::~StoryPipeline()
-{ // not implemented yet 
+{  
 	if(activeIngestionHandle == nullptr)
 	{    delete activeIngestionHandle;   }
 }

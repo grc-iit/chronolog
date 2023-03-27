@@ -43,8 +43,6 @@ public:
     void mergeEvents(std::deque<LogEvent> &);
     void mergeEvents(StoryChunk &);
 
-    void scheduleForExit(uint64_t);
-
 private:
 
     StoryId 	storyId;
