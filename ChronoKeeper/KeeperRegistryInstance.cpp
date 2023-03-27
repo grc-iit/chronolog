@@ -244,7 +244,7 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart( std::vector<KeeperIdCard
 	}
 	try
 	{
-	   int rpc_return = keeper_process.keeperCollectionClient->send_start_story_recording(chronicle, story, storyId, story_start_time);
+	   int rpc_return = keeper_process.keeperAdminClient->send_start_story_recording(chronicle, story, storyId, story_start_time);
 	   if (rpc_return <0)
 	   {
 	      std::cout<<"WARNING: Registry failed notification RPC to keeper {"<<keeper_id_card<<"}"<<std::endl;

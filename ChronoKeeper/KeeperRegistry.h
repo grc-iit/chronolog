@@ -7,10 +7,10 @@
 #include <chrono>
 #include <thallium.hpp>
 
-#include "chronolog_types.h"
-#include "KeeperIdCard.h"
-#include "KeeperStatsMsg.h"
-#include "KeeperRegistrationMsg.h"
+#include "chrono_common/chronolog_types.h"
+#include "chrono_common/KeeperIdCard.h"
+#include "chrono_common/KeeperStatsMsg.h"
+#include "chrono_common/KeeperRegistrationMsg.h"
 
 namespace chronolog
 {

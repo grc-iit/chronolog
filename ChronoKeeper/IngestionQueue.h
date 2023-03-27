@@ -7,7 +7,7 @@
 #include <unordered_map>
 #include <mutex>
 
-#include "chronolog_types.h"
+#include "chrono_common/chronolog_types.h"
 #include "StoryIngestionHandle.h"
 
 //
