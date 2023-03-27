@@ -6,7 +6,8 @@
 #include "global_var_visor.h"
 
 int main() {
-    ChronoVisor::ChronoVisorServer2 visor;
+    ChronoLog::ConfigurationManager confManager("./default_conf.json");
+    ChronoVisor::ChronoVisorServer2 visor(confManager);
     visor.start();
 
     return 0;

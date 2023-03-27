@@ -1,6 +1,6 @@
 
-#ifndef DATA_COLLECTION_CLIENT_H
-#define DATA_COLLECTION_CLIENT_H
+#ifndef DataStoreAdmin_CLIENT_H
+#define DataStoreAdmin_CLIENT_H
 
 #include <iostream>
 #include <thallium/serialization/stl/string.hpp>
@@ -16,21 +16,21 @@ typedef std::string ChronicleName;
 typedef std::string StoryName;
 typedef uint64_t StoryId;
 
-class DataCollectionClient
+class DataStoreAdminClient
 {
 
 public:
-    static DataCollectionClient  * CreateDataCollectionClient( tl::engine & tl_engine,
+    static DataStoreAdminClient  * CreateDataStoreAdminClient( tl::engine & tl_engine,
 		    std::string const & collection_service_addr, uint16_t collection_provider_id )
     	{
-      		return new DataCollectionClient( tl_engine, collection_service_addr, collection_provider_id);
+      		return new DataStoreAdminClient( tl_engine, collection_service_addr, collection_provider_id);
         }
 
    
     int collection_is_available()
     {
 	int available = collection_service_available.on(service_handle)();
-	std::cout <<"CollectionClient: service_available:"<<(available)<<std::endl;    
+	std::cout <<"DataStoreAdminClient: service_available:"<<(available)<<std::endl;    
 	return available;
     }
 
@@ -38,7 +38,7 @@ public:
     {
 
 	int shutting_down = shutdown_data_collection.on(service_handle)();
-	std::cout <<"CollectionClient: service_shutdown:"<<(shutting_down)<<std::endl;    
+	std::cout <<"DataStoreAdminClient: service_shutdown:"<<(shutting_down)<<std::endl;    
 	return shutting_down;
     }
 
@@ -49,11 +49,11 @@ public:
     }
     int send_stop_story_recording( StoryId const& story_id)
     {
-	 std::cout<< "CollectionClient: stop_story_recording"<<story_id<<std::endl;
+	 std::cout<< "DatastoreAdminClient: stop_story_recording"<<story_id<<std::endl;
 	 return stop_story_recording.on(service_handle)(story_id);
     }
 
-    ~DataCollectionClient()
+    ~DataStoreAdminClient()
     {
 	   collection_service_available.deregister(); 
            shutdown_data_collection.deregister(); 
@@ -73,7 +73,7 @@ public:
     tl::remote_procedure stop_story_recording;
 
     // constructor is private to make sure thalium rpc objects are created on the heap, not stack
-    DataCollectionClient( tl::engine & tl_engine, std::string const& collection_service_addr, uint16_t collection_provider_id)
+    DataStoreAdminClient( tl::engine & tl_engine, std::string const& collection_service_addr, uint16_t collection_provider_id)
 	    : service_addr(collection_service_addr), service_provider_id(collection_provider_id)
 	    , service_handle(tl_engine.lookup( collection_service_addr),collection_provider_id)
 	{

@@ -10,10 +10,11 @@
 
 int main() {
     ChronoLogRPCImplementation protocol = CHRONOLOG_THALLIUM_SOCKETS;
-    std::string server_ip = "127.0.0.1";
-    int base_port = 5555;
-    ChronoLogClient client(protocol, server_ip, base_port);
-    int num_ports = 3;
+    std::string server_ip = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string();
+    int base_port = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT;
+    ChronoLog::ConfigurationManager confManager("./default_conf.json");
+    ChronoLogClient client(confManager);
+    int num_ports = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_PORTS;
     std::string server_uri;
     std::vector<std::string> client_ids;
     int flags = 0;
@@ -26,11 +27,11 @@ int main() {
     client_ids.reserve(NUM_CONNECTION);
     for (int i = 0; i < NUM_CONNECTION; i++) client_ids.emplace_back(gen_random(8));
     for (int i = 0; i < NUM_CONNECTION; i++) {
-        switch (CHRONOLOG_CONF->RPC_IMPLEMENTATION) {
+        switch (CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION) {
             case CHRONOLOG_THALLIUM_SOCKETS:
             case CHRONOLOG_THALLIUM_TCP:
             case CHRONOLOG_THALLIUM_ROCE:
-                server_uri = CHRONOLOG_CONF->SOCKETS_CONF.string();
+                server_uri = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF.string();
                 break;
         }
         server_uri += "://" + server_ip + ":" + std::to_string(base_port + i);
@@ -49,8 +50,8 @@ int main() {
         duration_disconnect += (t2 - t1);
     };
 
-    LOGI("CreateChronicle takes %lf ns", duration_connect.count() / NUM_CONNECTION);
-    LOGI("AcquireChronicle takes %lf ns", duration_disconnect.count() / NUM_CONNECTION);
+    LOGI("Connect takes %lf ns", duration_connect.count() / NUM_CONNECTION);
+    LOGI("Disconnect takes %lf ns", duration_disconnect.count() / NUM_CONNECTION);
 
     return 0;
 }

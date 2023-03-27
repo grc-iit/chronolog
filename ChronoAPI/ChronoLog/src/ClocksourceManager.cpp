@@ -4,6 +4,8 @@
 
 #include "ClocksourceManager.h"
 
+ClocksourceManager *ClocksourceManager::clocksourceManager_ = nullptr;
+
 Clocksource *Clocksource::Create(ClocksourceType type) {
     switch (type) {
         case ClocksourceType::C_STYLE:
