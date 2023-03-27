@@ -7,10 +7,10 @@
 #include <chrono>
 #include <thallium.hpp>
 
-#include "chronolog_types.h"
-#include "KeeperIdCard.h"
-#include "KeeperStatsMsg.h"
-#include "KeeperRegistrationMsg.h"
+#include "chrono_common/chronolog_types.h"
+#include "chrono_common/KeeperIdCard.h"
+#include "chrono_common/KeeperStatsMsg.h"
+#include "chrono_common/KeeperRegistrationMsg.h"
 
 namespace chronolog
 {
@@ -24,7 +24,7 @@ struct RegistryConfiguration
 	uint16_t    SERVICE_THREAD_COUNT;
 };
 
-class DataCollectionClient;
+class DataStoreAdminClient;
 class KeeperRegistryService;
 
 class KeeperRegistry
@@ -36,7 +36,7 @@ public:
 	KeeperProcessEntry(KeeperIdCard const& keeper_id_card, ServiceId const& admin_service_id)
 		: idCard(keeper_id_card)
 		, adminServiceId(admin_service_id)
-		, keeperCollectionClient(nullptr)  
+		, keeperAdminClient(nullptr)  
 		, lastStatsTime(0)
 		, activeStoryCount(0)
 
@@ -46,16 +46,16 @@ public:
 
 	void reset()
 	{
-	    keeperCollectionClient=nullptr;  
+	    keeperAdminClient=nullptr;  
 	    lastStatsTime=0;
 	    activeStoryCount=0;
 	}
 
-	~KeeperProcessEntry() = default;   // Registry is reponsible for creating & deleting keeperCollectionClient
+	~KeeperProcessEntry() = default;   // Registry is reponsible for creating & deleting keeperAdminClient
 
 	KeeperIdCard 	idCard;
 	ServiceId 	adminServiceId;
-	DataCollectionClient * keeperCollectionClient;
+	DataStoreAdminClient * keeperAdminClient;
 	uint64_t	lastStatsTime;
 	uint32_t	activeStoryCount;
 };

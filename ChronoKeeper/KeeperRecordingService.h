@@ -5,8 +5,8 @@
 #include <margo.h>
 #include <thallium.hpp>
 #include <thallium/serialization/stl/string.hpp>
-#include "KeeperIdCard.h"
-#include "chronolog_types.h"
+#include "chrono_common/KeeperIdCard.h"
+#include "chrono_common/chronolog_types.h"
 #include "IngestionQueue.h"
 
 namespace tl = thallium;

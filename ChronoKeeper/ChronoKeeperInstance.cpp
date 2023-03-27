@@ -1,16 +1,13 @@
 
 #include <arpa/inet.h>
 
-//#include "Storyteller.h"
-
-
-#include "KeeperIdCard.h"
-#include "KeeperStatsMsg.h"
+#include "chrono_common/KeeperIdCard.h"
+#include "chrono_common/KeeperStatsMsg.h"
 #include "KeeperRecordingService.h"
 #include "KeeperRegClient.h"
 #include "IngestionQueue.h"
 #include "KeeperDataStore.h"
-#include "DataCollectionService.h"
+#include "DataStoreAdminService.h"
 
 #define KEEPER_GROUP_ID 7
 #define KEEPER_REGISTRY_SERVICE_NA_STRING  "ofi+sockets://127.0.0.1:1234"
@@ -85,7 +82,7 @@ int main(int argc, char** argv) {
     chronolog::IngestionQueue ingestionQueue; 
     chronolog::KeeperDataStore theDataStore(ingestionQueue);
 
-    // instantiate DataCollectionService
+    // instantiate DataStoreAdminService
     std::string KEEPER_COLLECTION_SERVICE_NA_STRING = std::string(KEEPER_COLLECTION_SERVICE_PROTOCOL)
 	                                           +"://"+std::string(KEEPER_COLLECTION_SERVICE_IP)
 						   +":"+std::string(KEEPER_COLLECTION_SERVICE_PORT);
@@ -102,11 +99,11 @@ int main(int argc, char** argv) {
 
    tl::engine collectionEngine(collection_margo_id);
  
-    std::cout << "ChronoKeeperInstance group_id {"<<keeper_group_id<<"} starting KeeperCollectionService at address {" << collectionEngine.self()
+    std::cout << "ChronoKeeperInstance group_id {"<<keeper_group_id<<"} starting DataStoreAdminService at address {" << collectionEngine.self()
         << "} with provider_id {" << collection_provider_id <<"}"<< std::endl;
     
-    chronolog::DataCollectionService * keeperCollectionService = 
-	    chronolog::DataCollectionService::CreateDataCollectionService(collectionEngine,collection_provider_id, theDataStore);
+    chronolog::DataStoreAdminService * keeperDataAdminService = 
+	    chronolog::DataStoreAdminService::CreateDataStoreAdminService(collectionEngine,collection_provider_id, theDataStore);
 
     // Instantiate KeeperRecordingService 
 
@@ -174,7 +171,7 @@ int main(int argc, char** argv) {
     collectionEngine.wait_for_finalize();
     recordingEngine.wait_for_finalize();
     delete keeperRecordingService;
-    delete keeperCollectionService;
+    delete keeperDataAdminService;
 
 
 return exit_code;

@@ -7,7 +7,7 @@
 #include <mutex>
 #include <iostream>
 
-#include "chronolog_types.h"
+#include "chrono_common/chronolog_types.h"
 #include "StoryChunk.h"
 
 namespace chronolog
@@ -42,8 +42,6 @@ public:
     void collectIngestedEvents();
     void mergeEvents(std::deque<LogEvent> &);
     void mergeEvents(StoryChunk &);
-
-    void scheduleForExit(uint64_t);
 
 private:
 
