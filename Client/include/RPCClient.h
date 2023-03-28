@@ -99,20 +99,11 @@ public:
         LOGD("%s is called in PID=%d, with args: client_id=%s, chronicle_name=%s",
              __FUNCTION__, getpid(), client_id.c_str(), chronicle_name.c_str());
         return CHRONOLOG_RPC_CALL_WRAPPER("ShowStories", 0, std::vector<std::string>, client_id, chronicle_name);
+    }
     uint64_t GetTS(std::string &client_id)
     {  
          LOGD("%s is called in PID=%d with args : client_id=%s",__FUNCTION__,getpid(),client_id.c_str());
 	 return CHRONOLOG_RPC_CALL_WRAPPER("GetTS",0,uint64_t,client_id);
-    }
-    int StoreError(std::string &client_id,uint64_t &t)
-    {
-	LOGD("%s is called in PID=%d with args : client_id=%s t=%lu",__FUNCTION__,getpid(),client_id.c_str(),t);
-	return CHRONOLOG_RPC_CALL_WRAPPER("StoreError",0,int,client_id,t);
-    }
-    uint64_t GetMaxError(std::string &client_id)
-    {
-	LOGD("%s is called in PID=%d with args : client_id=%s",__FUNCTION__,getpid(),client_id.c_str());
-	return CHRONOLOG_RPC_CALL_WRAPPER("GetMaxError",0,uint64_t,client_id);
     }
 
 private:

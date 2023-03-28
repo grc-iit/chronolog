@@ -46,7 +46,7 @@ class ClockSourceCPPStyle
 template<class ClockSource>
 class ClocksourceManager {
 public:
-	ClocksourceManager(std::string &unit_name,int num_clients)
+	ClocksourceManager(std::string &unit_name)
 	{
 	  unit = 1;
 	  if(unit_name.compare("nanoseconds")==0) unit = 1;
@@ -54,16 +54,8 @@ public:
 	  else if(unit_name.compare("milliseconds")==0) unit = 1000000;
 	  else if(unit_name.compare("seconds")==0) unit = 1000000000;
 	  offset = 0;
-	  num_procs = num_clients;
-	  func_prefix = "ChronoLogThallium";
-	  maxError = UINT64_MAX;
-	  errs.resize(num_procs);
-	  std::fill(errs.begin(),errs.end(),UINT64_MAX);
 	  pos_neg = false;
-	  delay = 200000;
-	  epsilon = 100000;
-	  delay = delay/unit;
-	  epsilon = epsilon/unit;
+	  func_prefix = "ChronoLogThallium";
 	}
 	~ClocksourceManager()
 	{}
@@ -81,64 +73,10 @@ public:
 	{
 	     uint64_t t = TimeStamp();
 
-	     if(myid.compare(client_id)==0) return t;
-
-	     std::lock_guard<std::mutex> lock_c(clock_m);
-
-	     if(std::find(client_ids.begin(),client_ids.end(),client_id)==client_ids.end())
-	     {
-		     client_ids.insert(client_id);
-		     num_reqs.push_back(0);
-		     num_procs++;
-	     }
-
-	     int pos = std::distance(client_ids.begin(),std::find(client_ids.begin(),client_ids.end(),client_id));
-	     num_reqs[pos]++;
-
 	     return t;
 
 	}
 
-	int LocalStoreError(std::string &client_id,uint64_t &t)
-	{	
-	   std::lock_guard<std::mutex> lock_c(clock_m);
-	   t += delay;
-	   uint64_t ts = LocalGetTS(myid);
-	   int pos = std::distance(client_ids.begin(),std::find(client_ids.begin(),client_ids.end(),client_id));
-	   uint64_t err = 0;
-	   if(ts > t) err = ts-t;
-	   else err = t-ts;
-	   errs[pos] = err;
-	   return CL_SUCCESS;
-	}
-        
-	uint64_t LocalMaxError(std::string &client_id)
-	{
-	   bool b = true;
-
-	   std::lock_guard<std::mutex> lock_c(clock_m);
-
-           for(int i=0;i<num_procs;i++)
-	   {
-	      if(errs[i] == UINT64_MAX)
-	      {
-		   b = false; 
-		   break;
-	      }
-	   }
-
-	   if(!b) return UINT64_MAX;
-	   if(maxError != UINT64_MAX) return maxError;
-	  
-	   uint64_t t = 0;
-	   for(int i=0;i<num_procs;i++)
-		   if(t < errs[i]) t = errs[i];
-	   
-	   maxError = t+delay+epsilon;
-
-	   return maxError;
-	}
-	
         void bind_functions()
 	{
 		std::function<void(const tl::request &,
@@ -151,46 +89,19 @@ public:
 					    std::forward<decltype(PH2)>(PH2));
 			    });
 
-		std::function<void(const tl::request &,
-				   std::string &,
-				   uint64_t &)> errorIntervalFunc(
-				   [this](auto && PH1,
-					  auto && PH2,
-					  auto && PH3) {
-				   ThalliumLocalStoreError(std::forward<decltype(PH1)>(PH1),
-						           std::forward<decltype(PH2)>(PH2),
-							   std::forward<decltype(PH3)>(PH3));
-				   });
-
-		std::function<void(const tl::request &,
-				   std::string &)> getErrorFunc(
-				   [this](auto && PH1,
-					  auto && PH2) {
-				   ThalliumLocalMaxError(std::forward<decltype(PH1)>(PH1),
-						         std::forward<decltype(PH2)>(PH2));
-				   });
-		
 		rpc->bind("ChronoLogThalliumGetTS", timestampFunc);
-		rpc->bind("ChronoLogThalliumStoreError", errorIntervalFunc);
-		rpc->bind("ChronoLogThalliumGetMaxError",getErrorFunc);
-
 	}
 
 
 	CHRONOLOG_THALLIUM_DEFINE(LocalGetTS,(client_id),std::string& client_id)
-	CHRONOLOG_THALLIUM_DEFINE(LocalStoreError,(client_id,time),std::string& client_id,uint64_t time)
-	CHRONOLOG_THALLIUM_DEFINE(LocalMaxError,(client_id),std::string &client_id)
 
 	void set_offset(uint64_t &o, bool &b)
 	{
 		offset = o;
 		pos_neg = b;
 	}
-	void set_myid(std::string &s)
-	{
-		myid = s;
-	}
-        uint64_t get_offset()
+        
+	uint64_t get_offset()
 	{
 	     return offset;
         }	     
@@ -200,16 +111,7 @@ private:
     uint64_t unit;
     uint64_t offset;
     bool pos_neg;
-    int num_procs;
-    uint64_t delay;
     std::string func_prefix;
-    uint64_t maxError;
-    uint64_t epsilon;
-    std::vector<int> num_reqs;
-    std::vector<uint64_t> errs;
-    std::string myid;
-    std::set<std::string> client_ids;
-    std::mutex clock_m;
 };
 
 #endif //CHRONOLOG_CLOCKSOURCEMANAGER_H

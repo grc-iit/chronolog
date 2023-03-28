@@ -20,7 +20,6 @@ int ChronoLogClient::Connect(const std::string &server_uri,
         client_id = std::to_string(client_id_hash);
     }
     clientid = client_id;
-    CSManager->set_myid(clientid);
     return rpcClient_->Connect(server_uri, client_id, flags, clock_offset);
 }
 
@@ -70,18 +69,14 @@ uint64_t ChronoLogClient::GetTS()
 {
 	return rpcClient_->GetTS(clientid);
 }
-uint64_t ChronoLogClient::LocalTS()
-{
-	return CSManager->LocalGetTS(clientid);
-}
 
 void ChronoLogClient::ComputeClockOffset()
 {
-	uint64_t t1 = LocalTS();
+	uint64_t t1 = CSManager->LocalGetTS(clientid);
 	uint64_t vt1 = GetTS();
 
 	uint64_t vt2 = GetTS();
-	uint64_t t2 = LocalTS();
+	uint64_t t2 = CSManager->LocalGetTS(clientid);
 
 	int64_t offset1 = vt1-t1;
         int64_t offset2 = vt2-t2;
@@ -100,25 +95,5 @@ void ChronoLogClient::ComputeClockOffset()
 	offset_u = (uint64_t)offset_s;
 
 	CSManager->set_offset(offset_u,pos_neg);
+
 }
-
-int ChronoLogClient::StoreError()
-{
-    uint64_t t = CSManager->LocalGetTS(clientid);
-
-    return rpcClient_->StoreError(clientid,t);
-}
-uint64_t ChronoLogClient::GetMaxError()
-{
-   uint64_t t = UINT64_MAX;
-   
-   do
-   {
-       t = rpcClient_->GetMaxError(clientid);
-       if(t != UINT64_MAX) break;
-       usleep(50);
-   }while(t == UINT64_MAX);
-
-   return t;
-}
-

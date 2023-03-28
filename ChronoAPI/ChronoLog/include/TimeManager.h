@@ -16,10 +16,10 @@ template<class ClockSource>
 class TimeManager {
 public:
     TimeManager() {
-        //refTimestampUpdateInterval_ = TIME_DB_UPDATE_INTERVAL;
-        //init(refTimestampUpdateInterval_);
+        refTimestampUpdateInterval_ = TIME_DB_UPDATE_INTERVAL;
+        init(refTimestampUpdateInterval_);
     }
-    /*
+    
     explicit TimeManager(double updateInterval) {
         refTimestampUpdateInterval_ = updateInterval;
         init(refTimestampUpdateInterval_);
@@ -63,7 +63,7 @@ public:
         record->updateTimestamp();
         record->setDriftRate(latestDriftRate_);
         return record;
-    }*/
+    }
 
 public:
     ClocksourceManager<ClockSource> *manager;           ///< clocksource (clock_gettime, std::high_precision_clock::now(), or TSC)
@@ -73,14 +73,14 @@ public:
     bool firstTimeRecord_{};
 
 private:
-    /*
+    
     void init(double updateInterval, ClocksourceType clocksourceType = ClocksourceType::C_STYLE) {
         firstTimeRecord_ = true;
         refTimestampUpdateInterval_ = updateInterval;
         ClocksourceManager *manager = ClocksourceManager::getInstance();
         manager->setClocksourceType(clocksourceType_);
         clocksource_ = manager->getClocksource();
-    }*/
+    }
 };
 
 

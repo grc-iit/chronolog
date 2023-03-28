@@ -21,7 +21,6 @@ namespace ChronoVisor {
         LOGI("ChronoVisor server starting, listen on %d ports starting from %d ...", numPorts_, basePorts_);
 
 	std::string myname = "visor";
-	CSManager->set_myid(myname);
 	CSManager->set_rpc(rpc);
         // bind functions first (defining RPC routines on engines)
         rpcVisor_->bind_functions();
@@ -60,9 +59,8 @@ namespace ChronoVisor {
         engineVec_.reserve(numPorts_);
         midVec_.reserve(numPorts_);
         rpcVisor_ = ChronoLog::Singleton<RPCVisor>::GetInstance();
-	std::string unit = "microseconds";
-	int num_clients = 1;
-        CSManager = new ClocksourceManager<ClockSourceCPPStyle>(unit,num_clients);
+	std::string unit = "microseconds";  
+        CSManager = new ClocksourceManager<ClockSourceCPPStyle>(unit);
 	rpc = rpcVisor_->get_RPC();
     }
 }

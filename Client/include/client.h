@@ -35,8 +35,7 @@ public:
         CHRONOLOG_CONF->ROLE = CHRONOLOG_CLIENT;
         rpcClient_ = ChronoLog::Singleton<RPCClient>::GetInstance();
 	std::string unit = "microseconds";
-	int num_clients = 1;
-	CSManager = new ClocksourceManager<ClockSourceCPPStyle> (unit,num_clients);
+	CSManager = new ClocksourceManager<ClockSourceCPPStyle> (unit);
     }
     ~ChronoLogClient()
     {
@@ -60,11 +59,7 @@ public:
     std::vector<std::string> ShowChronicles(std::string &client_id);
     std::vector<std::string> ShowStories(std::string &client_id, const std::string &chronicle_name);
     uint64_t GetTS();
-    uint64_t LocalTS();
-    int StoreError();
-    uint64_t GetMaxError();
-    void ComputeClockOffset();
-    
+    void ComputeClockOffset();    
 private:
     std::string clientid;
     std::shared_ptr<RPCClient> rpcClient_;
