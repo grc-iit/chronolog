@@ -12,7 +12,7 @@ int main() {
     std::unique_ptr<RPCVisor> rpcProxy = std::make_unique<RPCVisor>();
     rpcProxy->bind_functions();
 //    ChronicleMetadataRPCProxy metadataRPCProxy;
-    ChronoLog::Singleton<ChronoLogRPCFactory>::GetInstance()->GetRPC(CHRONOLOG_CONF->RPC_BASE_VISOR_PORT)->start();
+    ChronoLog::Singleton<ChronoLogRPCFactory>::GetInstance()->GetRPC(CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT)->start();
 
     return 0;
 }
