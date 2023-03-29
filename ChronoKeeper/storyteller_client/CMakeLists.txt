@@ -1,4 +1,4 @@
 add_executable(storyteller_client storyteller_client.cpp)
 
-target_link_libraries(storyteller_client mercury thallium)
+target_link_libraries(storyteller_client thallium)
 

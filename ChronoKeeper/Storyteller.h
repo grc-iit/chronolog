@@ -8,7 +8,7 @@ namespace chronolog
 
 template <typename ClientId,
 	  typename ChronoTime,
-	  typename StoryAccessToken,
+	  typename StorytellingToken,
           typename StoryMetadata,
           typename RPCChannel>
 class Storyteller
@@ -27,7 +27,7 @@ private:
 	ClientId clientId; 
 	ChronoTime clientTime;  
 	RPCChannel rpcChannel;
-	std::map < StoryId, std::pair<StoryAccessToken, StoryMetadata> > activeStories;
+	std::map < StoryId, std::pair<StorytellingToken, StoryMetadata> > activeStories;
 
 };
 

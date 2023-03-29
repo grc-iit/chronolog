@@ -7,6 +7,7 @@
 #include <thallium.hpp>
 
 #include "KeeperIdCard.h"
+#include "KeeperRegistrationMsg.h"
 #include "KeeperStatsMsg.h"
 
 namespace tl = thallium;
@@ -32,11 +33,12 @@ public:
 	   }
         }
 
-    int send_register_msg( KeeperIdCard const& keeperIdCard)
+    int send_register_msg( KeeperRegistrationMsg const& keeperMsg)
     {
-	 std::cout<< "KeeperRegisterClient::send_register_msg:"<<keeperIdCard<<std::endl;
-	 return register_keeper.on(reg_service_ph)(keeperIdCard);
+	 std::cout<< "KeeperRegisterClient::send_register_msg:"<<keeperMsg<<std::endl;
+	 return register_keeper.on(reg_service_ph)(keeperMsg);
     }
+
     int send_unregister_msg( KeeperIdCard const& keeperIdCard)
     {
 	 std::cout<< "KeeperRegisterClient::send_unregister_msg:"<<keeperIdCard<<std::endl;
@@ -71,6 +73,7 @@ public:
 	    : reg_service_addr(registry_addr), reg_service_provider_id(registry_provider_id)
 	    , reg_service_ph(tl_engine.lookup( registry_addr),registry_provider_id)
 	{
+	 std::cout<< "RegistryClient created for RegistryService at {"<<registry_addr<<"} provider_id {"<<registry_provider_id<<"}"<<std::endl;
    	 register_keeper = tl_engine.define("register_keeper");
    	 unregister_keeper =tl_engine.define("unregister_keeper"); 
    	 handle_stats_msg =tl_engine.define("handle_stats_msg").disable_response();
