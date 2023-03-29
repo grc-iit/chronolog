@@ -20,7 +20,9 @@ int ChronoLogClient::Connect(const std::string &server_uri,
         client_id = std::to_string(client_id_hash);
     }
     clientid = client_id;
-    return rpcClient_->Connect(server_uri, client_id, flags, clock_offset);
+    int ret = rpcClient_->Connect(server_uri, client_id, flags, clock_offset);
+    ComputeClockOffset();
+    return ret;
 }
 
 int ChronoLogClient::Disconnect(const std::string &client_id, int &flags) {

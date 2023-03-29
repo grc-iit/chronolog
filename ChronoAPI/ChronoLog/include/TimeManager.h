@@ -67,6 +67,7 @@ public:
 
 public:
     ClocksourceManager<ClockSource> *manager;           ///< clocksource (clock_gettime, std::high_precision_clock::now(), or TSC)
+    ClockSource *clocksource_;
     double refTimestampUpdateInterval_;      ///< how often reference timestamp is updated for drift rate calculation
     uint64_t lastTimestamp_{};
     std::atomic<double> latestDriftRate_{};

@@ -27,7 +27,7 @@ class ClockSourceCStyle
 	{
 		struct timespec t{};
 		clock_gettime(CLOCK_TAI,&t);
-		return t.tv_nsec;
+		return t.tv_sec*1000000000+t.tv_nsec;
 	}
 };
 
@@ -104,13 +104,27 @@ public:
 	uint64_t get_offset()
 	{
 	     return offset;
-        }	     
+        }	    
+        
+        ClockSource *getClocksource()
+	{
+		return clocksource_;
+	}
+        ClocksourceType getClocksourceType()
+	{
+	   	return clocksourcetype_;
+	}	
+	void setClocksourceType(enum ClocksourceType &c)
+	{
+		clocksourcetype_ = c;
+	}
 private:
     std::shared_ptr<ChronoLogRPC> rpc;
     ClockSource *clocksource_;
     uint64_t unit;
     uint64_t offset;
     bool pos_neg;
+    ClocksourceType clocksourcetype_;
     std::string func_prefix;
 };
 

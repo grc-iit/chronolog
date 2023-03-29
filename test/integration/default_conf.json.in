@@ -2,7 +2,8 @@
   "clock": {
     "clocksource_type": "C_STYLE",
     "drift_cal_sleep_sec": 10,
-    "drift_cal_sleep_nsec": 0
+    "drift_cal_sleep_nsec": 0,
+    "unit": "microseconds"
   },
   "rpc": {
     "available_protocol": {

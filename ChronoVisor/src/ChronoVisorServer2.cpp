@@ -59,7 +59,7 @@ namespace ChronoVisor {
         engineVec_.reserve(numPorts_);
         midVec_.reserve(numPorts_);
         rpcVisor_ = ChronoLog::Singleton<RPCVisor>::GetInstance();
-	std::string unit = "microseconds";  
+	std::string unit = CHRONOLOG_CONF->CLOCK_CONF.unit;
         CSManager = new ClocksourceManager<ClockSourceCPPStyle>(unit);
 	rpc = rpcVisor_->get_RPC();
     }

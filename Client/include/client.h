@@ -34,7 +34,7 @@ public:
     void init() {
         CHRONOLOG_CONF->ROLE = CHRONOLOG_CLIENT;
         rpcClient_ = ChronoLog::Singleton<RPCClient>::GetInstance();
-	std::string unit = "microseconds";
+	std::string unit = CHRONOLOG_CONF->CLOCK_CONF.unit;
 	CSManager = new ClocksourceManager<ClockSourceCPPStyle> (unit);
     }
     ~ChronoLogClient()

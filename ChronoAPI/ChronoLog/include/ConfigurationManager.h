@@ -21,6 +21,7 @@ namespace ChronoLog {
         ClocksourceType CLOCKSOURCE_TYPE;
         uint64_t DRIFT_CAL_SLEEP_SEC;
         uint64_t DRIFT_CAL_SLEEP_NSEC;
+	std::string unit;
 
         [[nodiscard]] std::string to_String() const {
             return "CLOCKSOURCE_TYPE: " + std::string(getClocksourceTypeString(CLOCKSOURCE_TYPE))
@@ -291,6 +292,10 @@ namespace ChronoLog {
                             assert(m->value.IsInt());
                             CLOCK_CONF.DRIFT_CAL_SLEEP_NSEC = m->value.GetInt();
                         }
+			else if(strcmp(m->name.GetString(),"unit")==0) {
+			     assert(m->value.IsString());
+			     CLOCK_CONF.unit = m->value.GetString();
+			}
                     }
                 } else if (strcmp(item_name, "rpc") == 0) {
                     rapidjson::Value& rpc_conf = doc["rpc"];
