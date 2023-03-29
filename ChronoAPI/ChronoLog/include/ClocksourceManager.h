@@ -65,10 +65,6 @@ public:
 		return clocksource_->getTimeStamp()/unit+offset;
 		else return clocksource_->getTimeStamp()/unit-offset;
 	}
-	void set_rpc(std::shared_ptr<ChronoLogRPC> &r)
-	{
-		rpc = r;
-	}
 	uint64_t LocalGetTS(std::string &client_id)
 	{
 	     uint64_t t = TimeStamp();
@@ -77,7 +73,7 @@ public:
 
 	}
 
-        void bind_functions()
+        void bind_functions(std::shared_ptr<ChronoLogRPC> rpc)
 	{
 		std::function<void(const tl::request &,
 				   std::string &
@@ -119,7 +115,6 @@ public:
 		clocksourcetype_ = c;
 	}
 private:
-    std::shared_ptr<ChronoLogRPC> rpc;
     ClockSource *clocksource_;
     uint64_t unit;
     uint64_t offset;
