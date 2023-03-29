@@ -20,7 +20,6 @@ namespace ChronoVisor {
     int ChronoVisorServer2::start() {
         LOGI("ChronoVisor server starting, listen on %d ports starting from %d ...", numPorts_, basePorts_);
 
-	std::string myname = "visor";
         // bind functions first (defining RPC routines on engines)
         rpcVisor_->bind_functions();
 	CSManager->bind_functions(rpcVisor_->get_RPC());
