@@ -11,6 +11,7 @@
 #include <city.h>
 #include <mutex>
 #include <errcode.h>
+#include <log.h>
 
 enum StoryIndexingGranularity {
     story_gran_ns = 0,
@@ -70,14 +71,17 @@ public:
     void addAcquirerClient(const std::string &client_id, ClientInfo *clientInfo) {
         std::lock_guard<std::mutex> acquirerClientListLock(acquirerClientMapMutex_);
         acquirerClientMap_.emplace(client_id, clientInfo);
+        LOGD("acquirer client_id=%s is added to Story name=%s", client_id.c_str(), name_.c_str());
     }
 
     int removeAcquirerClient(const std::string &client_id) {
         std::lock_guard<std::mutex> acquirerClientListLock(acquirerClientMapMutex_);
         if (isAcquiredByClient(client_id)) {
             acquirerClientMap_.erase(client_id);
+            LOGD("acquirer client_id=%s is removed from Story name=%s", client_id.c_str(), name_.c_str());
             return CL_SUCCESS;
         } else {
+            LOGD("Story name=%s is not acquired by client_id=%s", client_id.c_str(), name_.c_str());
             return CL_ERR_UNKNOWN;
         }
     }

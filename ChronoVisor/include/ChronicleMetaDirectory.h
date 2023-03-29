@@ -47,7 +47,6 @@ public:
 
 private:
     std::unordered_map<uint64_t , Chronicle *> *chronicleMap_;
-//    std::unordered_map<uint64_t, Story *> *acquiredStoryMap_;
     std::unordered_multimap<uint64_t, std::string> *acquiredStoryClientMap_;
     std::mutex g_chronicleMetaDirectoryMutex_;
     std::mutex g_acquiredStoryClientMapMutex_;

@@ -47,7 +47,7 @@ public:
         ClientInfo record;
         record.addr_ = "127.0.0.1";
         if (std::strtol(client_id.c_str(), nullptr, 10) < 0) {
-            LOGE("client id is invalid");
+            LOGE("client_id=%s is invalid", client_id.c_str());
             return CL_ERR_INVALID_ARG;
         }
         return clientManager->add_client_record(client_id,record);
@@ -57,7 +57,7 @@ public:
         LOGD("%s is called in PID=%d, with args: client_id=%s, flags=%d",
              __FUNCTION__, getpid(), client_id.c_str(), flags);
         if (std::strtol(client_id.c_str(), nullptr, 10) < 0) {
-            LOGE("client id is invalid");
+            LOGE("client_id=%s is invalid", client_id.c_str());
             return CL_ERR_INVALID_ARG;
         }
         return clientManager->remove_client_record(client_id,flags);
