@@ -17,6 +17,7 @@ foreach(client ${client_examples})
     #add_test(NAME ${client} COMMAND ${client})
 endforeach()
 
+find_package(OpenMP)
 set(client_openmp client_lib_multi_openmp_test)
 
 foreach(client ${client_openmp})

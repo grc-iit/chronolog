@@ -1,2 +1,8 @@
-add_executable(high_res_clock_test high_res_clock_test.cpp)
+add_executable(high_res_clock_test high_res_clock_test.cpp common.h)
 add_test(NAME HighResClock COMMAND high_res_clock_test)
+
+add_executable(timestamp_collection timestamp_collection.cpp common.h)
+add_test(NAME TimestampCollection COMMAND timestamp_collection)
+
+add_executable(timestamp_collision_detection timestamp_collision_detection.cpp common.h)
+add_test(NAME TimestampCollisionDetection COMMAND timestamp_collision_detection)
