@@ -3,44 +3,98 @@
 
 #include <thallium.hpp>
 #include <chrono>
+#include <climits>
 
-#include "chronolog_types.h"
+#include "../chrono_common/chronolog_types.h"
 #include "StorytellerClient.h"
 #include "KeeperRecordingClient.h"
 
-namespace thallium = tl;
+namespace tl = thallium;
+
+namespace chl = chronolog;
+/////////////////////
 
 uint64_t chronolog::ChronologTimer::getTimestamp()
 {
     return std::chrono::high_resolution_clock::now().time_since_epoch().count();
 }
+
 /////////////////////
+chronolog::StoryHandle::~StoryHandle()
+{}
+////////////////////
+template<class KeeperChoicePolicy> // = chronolog::RoundRobinKeeperChoice>
+chronolog::StoryWritingHandle<KeeperChoicePolicy>::~StoryWritingHandle()
+{  delete keeperChoicePolicy; }
+
+////////////////////
+template< class KeeperChoicePolicy> 
+void chronolog::StoryWritingHandle<KeeperChoicePolicy>::addRecordingClient(chronolog::KeeperRecordingClient* keeperClient) 
+{
+	storyKeepers.push_back(keeperClient);  
+}
+///////////////////
+template< class KeeperChoicePolicy> 
+void chronolog::StoryWritingHandle<KeeperChoicePolicy>::removeRecordingClient(chronolog::KeeperIdCard const& keeper_id_card) 
+{
+	// this should only be called when the ChronoKeeper process unexpectedly exits 
+	// so it's ok to use rather inefficient vector iteration....
+	for( auto iter = storyKeepers.begin(); iter != storyKeepers.end(); ++iter)
+	{
+	 // if( (*iter)->keeperId == keeper_id_card)
+	 // {  storyKeepers.erase(iter); break; }
+	}
+}
+//////////////////
+template< class KeeperChoicePolicy> 
+int chronolog::StoryWritingHandle<KeeperChoicePolicy>::log_event( std::string const& event_record)
+{
+
+	chronolog::LogEvent log_event(storyId, 
+			theClient.getTimestamp(), 
+			theClient.getClientId(), 
+			theClient.get_event_index(), 
+			event_record);
+
+	auto keeperRecordingClient = keeperChoicePolicy->chooseKeeper(storyKeepers, log_event.time());
+
+	if(nullptr == keeperRecordingClient)   //very unlikely... 
+	{  return 0; }
+
+	// INNA: make send event returm 0 in case of tl RPC failure .... 
+	keeperRecordingClient->send_event_msg( log_event);
+
+return 1;
+}
+/////////////////////
+
+template< class KeeperChoicePolicy> 
+int chronolog::StoryWritingHandle<KeeperChoicePolicy>::log_event( size_t ,  void*)
+{
+  return 0;  // not implemented yet ; to be implemented with tl bulk transfer ... 
+}
 
 chronolog::StorytellerClient::~StorytellerClient()
 {
- //not implemented yet
+ //INNA: TODO not implemented yet
 }
 
-int chronolog::StorytellerClient::log_event( chronolog::StoryId  const& story_id, std::string const&)
+int chronolog::StorytellerClient::get_event_index()
 {
-	//reset the index on the chance we've reached the max int value...
-       if ( atomic_index= max_index)
-       {
+	// we only aqcuire mutex in the rare case when 
+	// the atomic index has reached INT_MAX value 
+	// otherwise proceed lock-free
+	if( (atomic_index == INT_MAX) ) 
+	{
 	   std::lock_guard<std::mutex> lock(recordingClientMapMutex);
-	   if(atomic_index == max_atomic_index)
+	   //recheck when mutex is acquired, only one thread changes the value
+	   if(atomic_index == INT_MAX) 
 	   {    atomic_index = 0; }
-       }
-
-
- return 1;
+	}
+return ++atomic_index;
 }
+////////////////
 
-/*int chronolog::StorytellerClient::log_event( chronolog::StoryId const& story_id, size_t , void*)
-{
- //not implemented yet	
- return 1;
-}
-*/
 
 int chronolog::StorytellerClient::addKeeperRecordingClient( chronolog::KeeperIdCard const& keeper_id_card)
 {
@@ -84,76 +138,86 @@ int chronolog::StorytellerClient::removeKeeperRecordingClient( chronolog::Keeper
            auto keeper_client_iter = recordingClientMap.find(std::pair<uint32_t,uint16_t>(keeper_id_card.getIPaddr(),keeper_id_card.getPort()));
 	   if(keeper_client_iter != recordingClientMap.end())
 	   {
-	   // delete keeperCollectionClient before erasing keeper_process entry
 	      delete (*keeper_client_iter).second; 
 	      recordingClientMap.erase(keeper_client_iter);
 	   }
-	   // now that we are still holding registryLock
-	   // update registryState if needed
 
+	   //INNA: TODO: if this function is triggered by the Vizor calls when the ChronoKeeper process unexpectedly unregistered/exited
+	   // we need to iterate through the known WritingHandles and make sure this keeperClient is removed from all the active storyHandles
+	   // serialize the log events by switching the state to PENDING and forcing the log event calls to wait by locking recording clientMutex during this time ....
 	   return 1;
 	}
 ///////////////////////////
 
-KeeperRecordingClient* chronolog::StorytellerClient::chooseKeeperClient( chronolog::StoryId const& storyId)
+std::pair<int,chronolog::StoryHandle *>  chronolog::StorytellerClient::initializeStoryWritingHandle(
+		ChronicleName const& chronicle, StoryName const& story
+		, StoryId const& story_id, std::vector<KeeperIdCard> const& vectorOfKeepers) 
+	//INNA: TODO :KeeperChoicePolicy will have to be communicated here as well ....
 {
-	
-	//find the story acqusition record and choose the keeperRecordingClient 
-	//out of the available clients 
 
-	auto story_record_found = aquiredStoryRecords.find(storyId); 
-	if ( (story_record_found != aquiredStoryRecords.end()) 
-	&& !story_record_found.second.storyKeepers.empty() )
-	{ 
-	    auto const& story_keepers_vector = story_record.second.storyKeepers;
-	    return storyKeepers[ atomic_index % storyKeepers.size()];  
-	}
 
- return nullptr;
-}
-/////////////////
+    std::lock_guard<std::mutex> lock(acquiredStoryMapMutex);
 
-/*
-    size_t keepers_left_to_notify = vectorOfKeepers.size();
+    auto story_record_iter = acquiredStoryHandles.find( std::pair<std::string,std::string>(chronicle,story));
+    if(story_record_iter != acquiredStoryHandles.end())
+    {
+	return std::pair<int,chronolog::StoryHandle*>(1, (*story_record_iter).second);
+    }
+
+    // create new StoryWritingHandle & initialize it's keeperClients vector    
+    chronolog::StoryWritingHandle<RoundRobinKeeperChoice> * storyWritingHandle = 
+    	new StoryWritingHandle<RoundRobinKeeperChoice>( *this, chronicle,story, story_id);
+
     for ( KeeperIdCard keeper_id_card : vectorOfKeepers)
     {
-        auto keeper_process_iter = keeperProcessRegistry.find(std::pair<uint32_t,uint16_t>(keeper_id_card.getIPaddr(),keeper_id_card.getPort()));
-        if(keeper_process_iter == keeperProcessRegistry.end())
-        {
-	  std::cout<<"WARNING: Registry faield to find Keeper with {"<<keeper_id_card<<"}"<<std::endl;
-	  continue;
-	}
-   	KeeperProcessEntry keeper_process = (*keeper_process_iter).second;
-	std::cout<<"found keeper_process:"<< &keeper_process<<" "<<keeper_process.idCard <<" "<<keeper_process.adminServiceId<<keeper_process.keeperCollectionClient<<std::endl;;
-	if (nullptr == keeper_process.keeperCollectionClient)
-	{ 
-	  std::cout<<"WARNING: Registry record for{"<<keeper_id_card<<"} is missing keeperCollectionClient"<<std::endl;
-	  continue;
-	}
-	try
-	{
-	   int rpc_return = keeper_process.keeperCollectionClient->send_start_story_recording(chronicle, story, storyId, story_start_time);
-	   if (rpc_return <0)
-	   {
-	      std::cout<<"WARNING: Registry failed notification RPC to keeper {"<<keeper_id_card<<"}"<<std::endl;
-	      continue;
-	   }
-	   std::cout << "Registry notified keeper {"<<keeper_id_card<<"} to start recording story {"<<storyId<<"} start_time {"<<story_start_time<<"}"<<std::endl;
-	   keepers_left_to_notify--;
-	}
-	catch(thallium::exception const& ex)
-	{
-	  std::cout<<"WARNING: Registry failed notification RPC to keeper {"<<keeper_id_card<<"} details: "<<std::endl;
-	  continue;
-	}
+         auto keeper_client_iter = recordingClientMap.find(std::pair<uint32_t,uint16_t>(keeper_id_card.getIPaddr(),keeper_id_card.getPort()));
+	 if(keeper_client_iter == recordingClientMap.end())
+	 {
+	     // unlikely but we better check	 
+	     if (0 == addKeeperRecordingClient(keeper_id_card) )
+		     continue;
+	 }
+         keeper_client_iter = recordingClientMap.find(std::pair<uint32_t,uint16_t>(keeper_id_card.getIPaddr(),keeper_id_card.getPort()));
+	storyWritingHandle->addRecordingClient((*keeper_client_iter).second);
     }
 
-    if ( keepers_left_to_notify == vectorOfKeepers.size())
+
+    auto insert_return = acquiredStoryHandles.insert( std::pair< std::pair<std::string,std::string>,chronolog::StoryHandle*>(
+				               std::pair<std::string,std::string>(chronicle,story), storyWritingHandle));
+    if( false == insert_return.second)
     {
-	  std::cout<<"ERROR: Registry failed to notify the keepers to start recording story {"<<storyId<<"}"<<std::endl;
-	  return -1;
+         delete storyWritingHandle;
+        return std::pair<int,chronolog::StoryHandle*>(0,nullptr);
     }
 
-   return ret_status;
-}*/
+return std::pair<int,chronolog::StoryHandle*>(1,storyWritingHandle);
+/*
+    // now check the state of the handle:
+    // it's possible the other thread is still pending the acquisition response from the Vizor,
+    // or the handle's keeper vector is being updated , etc ....
+    if (state == PENDING_RESPONSE || state== UPDATING_KEEPERS) )
+    {
+	// get the handle lock and wait for the thread that sent the request to Vizor to get the response
+        std::lock_guard<std::mutex> story_lock(storyHandleMutex);
+
+    }
+    */
+        
+}
+
+//////////////////////
+void chronolog::StorytellerClient::removeAcquiredStoryHandle(ChronicleName const& chronicle, StoryName const& story)
+{
+	   std::lock_guard<std::mutex> lock(acquiredStoryMapMutex);
+
+           auto story_record_iter = acquiredStoryHandles.find(std::pair<std::string,std::string> (chronicle,story));
+	   if(story_record_iter != acquiredStoryHandles.end())
+	   {
+	      delete (*story_record_iter).second;	   
+	      acquiredStoryHandles.erase(story_record_iter);
+	   }
+}
+
+/////////////////
+
 
