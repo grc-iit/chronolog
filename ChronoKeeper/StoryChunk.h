@@ -85,6 +85,7 @@ public:
 		if( merged_event_count ==0)
 		{ first_merged = iter; }
 		last_merged = iter;
+		merged_event_count++;
             }	
 	    else
 	    {    break; }  //stop at the first record that can't be merged
