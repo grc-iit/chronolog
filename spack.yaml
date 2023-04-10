@@ -1,0 +1,9 @@
+spack:
+  specs:
+  - cmake@3.25.1
+  - mpich@4.0.2~fortran +verbs +argobots ^libfabric@1.16.1 fabrics=mlx,rxd,rxm,shm,sockets,tcp,udp,verbs
+  - mochi-thallium@0.10.1 ^libfabric@1.16.1 fabrics=mlx,rxd,rxm,shm,sockets,tcp,udp,verbs
+  - mochi-margo@0.13 ^libfabric@1.16.1 fabrics=mlx,rxd,rxm,shm,sockets,tcp,udp,verbs
+  - mercury@2.2.0~boostsys ^libfabric@1.16.1 fabrics=mlx,rxd,rxm,shm,sockets,tcp,udp,verbs
+  - boost@1.80.0
+  view: true

@@ -8,46 +8,34 @@
 #include <string>
 #include <thallium/serialization/stl/vector.hpp>
 #include <thallium/serialization/stl/string.hpp>
-#include <../../../ChronoVisor/include/ClientRegistryManager.h>
-#include <../../ChronoLog/include/singleton.h>
+#include <thallium/serialization/stl/array.hpp>
 #include <thread>
-#include <string>
 #include <algorithm>
 #include <unistd.h>
 #include <margo.h>
-#include "log.h"
-#include "global_var_visor.h"
 
-#define MSG_SIZE 100
+#define MAX_BULK_MEM_SIZE (128 * 1024 * 1024)
 
 namespace tl = thallium;
 
-std::vector<std::string> g_str_vector;
-
-using namespace ChronoLog;
 int main(int argc, char **argv) {
-    if (argc != 5) {
-        std::cerr << "Usage: " << argv[0] << " <address> <nstreams_per_port> <nports> <sendrecv|rdma>" << std::endl;
+    if (argc != 4) {
+        std::cerr << "Usage: " << argv[0] << " <address> <nstreams_per_port> <nports>" << std::endl;
         exit(0);
     }
 
     std::string address = argv[1];
+    std::string protocol = address.substr(0, address.find_first_of(':'));
     long nStreams = strtol(argv[2], nullptr, 10);
     long nPorts = strtol(argv[3], nullptr, 10);
-    std::string mode = argv[4];
+
+    if ((protocol.find("sm") != std::string::npos) && nPorts > 1) {
+        std::cerr << "Multi-port server does not support " << protocol << " protocol, exiting ..." << std::endl;
+        exit(1);
+    }
+
     std::vector<std::thread> server_thrd_vec;
     server_thrd_vec.reserve(nPorts);
-
-    g_str_vector.push_back("100");
-    g_str_vector.push_back("200");
-    g_str_vector.push_back("300");
-
-    std::shared_ptr<ClientRegistryManager> g_clientRegistryManager = ChronoLog::Singleton<ClientRegistryManager>::GetInstance();
-    ClientInfo record;
-    record.addr_ = "127.0.0.1";
-    g_clientRegistryManager->add_client_record("1000000", record);
-    g_clientRegistryManager->add_client_record("2000000", record);
-    g_clientRegistryManager->add_client_record("3000000", record);
 
     tl::abt scope;
     hg_addr_t addr_self;
@@ -60,13 +48,13 @@ int main(int argc, char **argv) {
     margo_set_environment(argobots_conf_str.c_str());
 
     std::vector<tl::managed<tl::xstream>> ess;
-    LOGD("vector of streams created");
+    std::cout << "vector of streams created" << std::endl;
     tl::managed<tl::pool> myPool = tl::pool::create(tl::pool::access::spmc);
-    LOGD("pool created");
+    std::cout << "pool created" << std::endl;
     for (int j = 0; j < nStreams; j++) {
         tl::managed<tl::xstream> es
                 = tl::xstream::create(tl::scheduler::predef::deflt, *myPool);
-        LOGD("a new stream is created");
+        std::cout << "a new stream is created" << std::endl;
         ess.push_back(std::move(es));
     }
 
@@ -78,21 +66,21 @@ int main(int argc, char **argv) {
         std::string host_ip = address.substr(0, address.rfind(':'));
         std::string port = address.substr(address.rfind(':') + 1);
         int new_port = stoi(port) + j;
-        LOGD("newly generated port to use: %d", new_port);
+        std::cout << "newly generated port to use: " << new_port << std::endl;
         std::string new_addr_str = host_ip + ":" + std::to_string(new_port);
-        LOGI("engine no.%d@%s", j, new_addr_str.c_str());
+        std::cout << "engine no." << j << "@" << new_addr_str << std::endl;
 
         margo_instance_id mid = margo_init(new_addr_str.c_str(), MARGO_SERVER_MODE,
                                            0, nStreams);
         if (mid == MARGO_INSTANCE_NULL) {
-            LOGE("Error: margo_init()");
+            std::cerr << "Error: margo_init()" << std::endl;
             exit(-1);
         }
 
         /* figure out first listening addr */
         hret = margo_addr_self(mid, &addr_self);
         if (hret != HG_SUCCESS) {
-            LOGE("Error: margo_addr_self()");
+            std::cerr << "Error: margo_addr_self()" << std::endl;
             margo_finalize(mid);
             exit(-1);
         }
@@ -101,7 +89,7 @@ int main(int argc, char **argv) {
         hret = margo_addr_to_string(mid, addr_self_string, &addr_self_string_sz,
                                     addr_self);
         if (hret != HG_SUCCESS) {
-            LOGE("Error: margo_addr_to_string()");
+            std::cerr << "Error: margo_addr_to_string()" << std::endl;
             margo_addr_free(mid, addr_self);
             margo_finalize(mid);
             exit(-1);
@@ -109,44 +97,43 @@ int main(int argc, char **argv) {
         margo_addr_free(mid, addr_self);
 
         tl::engine myEngine(mid);
-        LOGD("engine created and running@%s ...", std::string(myEngine.self()).c_str());
+        std::cout << "engine created and running@" << std::string(myEngine.self()) << " ..." << std::endl;
 
-        if (!strcmp(mode.c_str(), "sendrecv")) {
-            // send/recv version
-            LOGI("Defining RPC routines in send/recv mode");
-            std::function<void(const tl::request &, std::vector<char> &)> repeater =
-                    [&j, &engine_vec, &g_clientRegistryManager](const tl::request &req, std::vector<char> &data) {
-                        std::cout << "global vector has " << g_str_vector.size() << " elements" << std::endl;
-                        std::cout << "global vector[1]: " << g_str_vector[1] << std::endl;
-                        int flag = 0;
-                        g_clientRegistryManager->remove_client_record("1000000", flag);
-                        req.respond(data);
-                    };
-            myEngine.define("repeater", repeater, 0, *myPool);
-        } else if (!strcmp(mode.c_str(), "rdma")) {
-            // RDMA version
-            LOGI("Defining RPC routines in RDMA mode");
-            std::function<void(const tl::request &, tl::bulk &)> f =
-                    [j, &engine_vec](const tl::request &req, tl::bulk &b) {
-                        LOGD("RDMA rpc invoked");
-                        tl::endpoint ep = req.get_endpoint();
-                        LOGD("endpoint obtained");
-                        std::vector<char> vec(MSG_SIZE);
-                        //vec.reserve(MSG_SIZE);
-                        std::vector<std::pair<void *, std::size_t>> segments(1);
-                        segments[0].first = (void *) (&vec[0]);
-                        segments[0].second = vec.size();
-                        LOGD("RDMA memory prepared");
-                        tl::engine myEngine = engine_vec.at(j);
-                        tl::bulk local = myEngine.expose(segments, tl::bulk_mode::write_only);
-                        LOGD("RDMA memory exposed");
-                        b.on(ep) >> local;
-                    };
-            myEngine.define("rdma_put", f).disable_response();
-        } else {
-            LOGE("Unknonw option %s", mode.c_str());
-            exit(-1);
-        }
+        // Define send/recv version
+        std::cout << "Defining RPC routines in send/recv mode" << std::endl;
+        std::function<void(const tl::request &, std::vector<std::byte> &)> repeater =
+                [](const tl::request &req, std::vector<std::byte> &data) {
+                    std::vector<std::byte> mem_vec(MAX_BULK_MEM_SIZE);
+                    std::copy(data.begin(), data.end(), mem_vec.begin());
+                    std::cout << "Received " << data.size() << " bytes of data in send/recv mode" << std::endl;
+                };
+        myEngine.define("repeater", repeater, 0, *myPool);
+
+        // Define RDMA version
+        std::cout << "Defining RPC routines in RDMA mode" << std::endl;
+        std::function<void(const tl::request &, tl::bulk &)> f =
+                [j, &engine_vec](const tl::request &req, tl::bulk &b) {
+                    std::cout << "RDMA rpc invoked" << std::endl;
+                    tl::endpoint ep = req.get_endpoint();
+                    std::cout << "endpoint obtained" << std::endl;
+                    std::vector<char> mem_vec(MAX_BULK_MEM_SIZE);
+                    mem_vec.reserve(MAX_BULK_MEM_SIZE);
+                    mem_vec.resize(MAX_BULK_MEM_SIZE);
+                    std::vector<std::pair<void *, std::size_t>> segments(1);
+                    segments[0].first = (void *) (&mem_vec[0]);
+                    segments[0].second = mem_vec.size();
+                    std::cout << "RDMA memory prepared, size: " << mem_vec.size() << std::endl;
+                    tl::engine myEngine = engine_vec.at(j);
+                    tl::bulk local = myEngine.expose(segments, tl::bulk_mode::write_only);
+                    std::cout << "RDMA memory exposed" << std::endl;
+                    b.on(ep) >> local;
+                    std::cout << "Received " << b.size() << " bytes of data in RDMA mode" << std::endl;
+                    //for (auto c : mem_vec) std::cout << c;
+                    //std::cout << std::endl;
+                    req.respond();
+                };
+        myEngine.define("rdma_put", f);//.disable_response();
+
         engine_vec.emplace_back(std::move(myEngine));
         mid_vec.emplace_back(std::move(mid));
     }

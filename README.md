@@ -28,22 +28,21 @@ ChronoLog has a list of dependencies which can be solved by Spack packages. Thus
 
 Spack can be checked out with `git clone https://github.com/spack/spack.git`. It is assumed that Spack is stored at `~/Spack` for the following step. Spack needs to activated by running `source ~/Spack/spack/share/spack/setup-env.sh`.
 
-### Install ChronoLog dependencies using Spack environment
+### Install ChronoLog dependencies
 
-Currently, ChronoLog uses the same dependencies as HCL. Thus, we can follow the dependency description file at `external_libs/hcl/Spack.yaml` to install dependecies for ChronoLog.
+Currently, most of the dependencies are listed in `spack.yaml` and can be installed via Spack.
 
-A Spack environment needs to be created and activated using the following commands. When the environment is activated, a shell prompt `[dependencies]` wil l pop up.
+A Spack environment needs to be created and activated using the following commands. When the environment is activated, a shell prompt `[ChronoLog]` will pop up.
 ```
-cd external_libs/hcl
-mkdir dependencies
-cd dependencies
-cp ../Spack.yaml .
-vim Spack.yaml # Update the version of gcc and cmake to the versions on your testbed
+cd ChronoLog
+git switch develop
 spack env create -d .
 spack env activate -p .
 spack install -v
 ```
 The installation may take some time (> 30 minutes) to finish.
+
+Additionally, `rapidjson` is needed to parse the JSON configuration file. You can install it using command `sudo apt install rapidjson-dev` in Ubuntu.
 
 ### Build ChronoLog
 
@@ -59,9 +58,11 @@ cmake ..
 make chronovisor_server_test chronolog_client_lib_connect_rpc_test chronolog_client_lib_metadata_rpc_test
 ```
 
-### Run mini tests
+### Configuration files
 
-All tests require a `server_list` file to be in the same directory of the executable to run which should be generated after building automatically. Just in case the automated generation failed, a simple line of `localhost` in the file should suffice.
+All ChronoLog executables share one unified configuration file. The template file can be found in `test/default_conf.json.in`. You can modify it for your own preferences. By default, all existing mini tests expect a configuration file `default_conf.json` in the same directory it launches. The default building process will copy and rename `test/default_conf.json.in` to achieve that. If you want to change the default configurations, you can edit the template file and rebuild the targets, or directly edit the file in the target directory.
+
+ChronoLog will support sockets/TCP/verbs protocols using ofi transport. You can run command `margo-info` to check which transports and protocols are supported on your system.
 
 ------
 # Coming soon ...
