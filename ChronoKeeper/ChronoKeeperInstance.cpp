@@ -1,11 +1,8 @@
 
 #include <arpa/inet.h>
 
-//#include "Storyteller.h"
-
-
-#include "KeeperIdCard.h"
-#include "KeeperStatsMsg.h"
+#include "chrono_common/KeeperIdCard.h"
+#include "chrono_common/KeeperStatsMsg.h"
 #include "KeeperRecordingService.h"
 #include "KeeperRegClient.h"
 #include "IngestionQueue.h"
@@ -83,7 +80,7 @@ int main(int argc, char** argv) {
     // Instantiate ChronoKeeper MemoryDataStore
     //
     chronolog::IngestionQueue ingestionQueue; 
-    chronolog::KeeperDataStore theDataStore;
+    chronolog::KeeperDataStore theDataStore(ingestionQueue);
 
     // instantiate DataStoreAdminService
     std::string KEEPER_COLLECTION_SERVICE_NA_STRING = std::string(KEEPER_COLLECTION_SERVICE_PROTOCOL)
@@ -162,11 +159,11 @@ int main(int argc, char** argv) {
 
     int i{0};
 
-    while( !theDataStore.is_shutting_down() & (i <20))
+    while( !theDataStore.is_shutting_down())
     {
         keeperRegistryClient->send_stats_msg(keeperStatsMsg);
-	i++;
-	sleep(60);
+	theDataStore.collectIngestedEvents();
+	sleep(10);
     }
 
     keeperRegistryClient->send_unregister_msg(keeperIdCard);
