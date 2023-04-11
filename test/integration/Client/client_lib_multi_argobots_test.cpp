@@ -73,7 +73,7 @@ int main(int argc, char **argv) {
     ABT_xstream *xstreams = (ABT_xstream *) malloc(sizeof(ABT_xstream) * num_xstreams);
     ABT_pool *pools = (ABT_pool *) malloc(sizeof(ABT_pool) * num_xstreams);
     ABT_thread *threads = (ABT_thread *) malloc(sizeof(ABT_thread) * num_threads);
-    struct thread_arg *t_args = (struct thread_arg *) malloc(num_threads * sizeof(struct thread_arg));
+    std::vector<struct thread_arg> t_args(num_threads);;
 
     std::string client_id = gen_random(8);;
     std::string server_uri = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF.string();
@@ -119,7 +119,6 @@ int main(int argc, char **argv) {
     free(pools);
     free(xstreams);
     free(threads);
-    free(t_args);
 
     ret = client->Disconnect(client_id, flags);
     ASSERT(ret, ==, CL_SUCCESS);

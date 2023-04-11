@@ -68,6 +68,10 @@ public:
     void setCid(uint64_t cid) { cid_ = cid; }
     void setStats(const StoryStats &stats) { stats_ = stats; }
 
+    std::unordered_map<std::string, ClientInfo *> &getAcquirerMap() {
+        return acquirerClientMap_;
+    }
+
     void addAcquirerClient(const std::string &client_id, ClientInfo *clientInfo) {
         std::lock_guard<std::mutex> acquirerClientListLock(acquirerClientMapMutex_);
         acquirerClientMap_.emplace(client_id, clientInfo);

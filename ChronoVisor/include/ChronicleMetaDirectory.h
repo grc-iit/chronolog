@@ -47,10 +47,8 @@ public:
 
 private:
     std::unordered_map<uint64_t , Chronicle *> *chronicleMap_;
-    std::unordered_multimap<uint64_t, std::string> *acquiredStoryClientMap_;
     std::mutex g_chronicleMetaDirectoryMutex_;
-    std::mutex g_acquiredStoryClientMapMutex_;
-    ClientRegistryManager *clientRegistryManager_{};
+    ClientRegistryManager *clientRegistryManager_ = nullptr;
 //    std::unordered_map<std::string, uint64_t> *chronicleName2IdMap_;
 //    std::unordered_map<uint64_t, std::string> *chronicleId2NameMap_;
 };
