@@ -4,6 +4,8 @@ project(ChronoKeeper)
 
 message("Building CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
 
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}  -Wextra -O0 -g")
+
 add_executable(keeper_registry)
 #KeeperRegistryInstance.cpp)
 target_include_directories(keeper_registry PRIVATE include)
