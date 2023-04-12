@@ -27,6 +27,8 @@ public:
              typeid(*this).name(), this, getpid());
         clientManager = ChronoLog::Singleton<ClientRegistryManager>::GetInstance();
         chronicleMetaDirectory = ChronoLog::Singleton<ChronicleMetaDirectory>::GetInstance();
+        clientManager->setChronicleMetaDirectory(chronicleMetaDirectory.get());
+        chronicleMetaDirectory->set_client_registry_manager(clientManager.get());
     }
 
     ~RPCVisor()
@@ -45,7 +47,7 @@ public:
         ClientInfo record;
         record.addr_ = "127.0.0.1";
         if (std::strtol(client_id.c_str(), nullptr, 10) < 0) {
-            LOGE("client id is invalid");
+            LOGE("client_id=%s is invalid", client_id.c_str());
             return CL_ERR_INVALID_ARG;
         }
         return clientManager->add_client_record(client_id,record);
@@ -55,7 +57,7 @@ public:
         LOGD("%s is called in PID=%d, with args: client_id=%s, flags=%d",
              __FUNCTION__, getpid(), client_id.c_str(), flags);
         if (std::strtol(client_id.c_str(), nullptr, 10) < 0) {
-            LOGE("client id is invalid");
+            LOGE("client_id=%s is invalid", client_id.c_str());
             return CL_ERR_INVALID_ARG;
         }
         return clientManager->remove_client_record(client_id,flags);
@@ -116,7 +118,9 @@ public:
         }
         if (!chronicle_name.empty() && !story_name.empty()) {
             int ret = chronicleMetaDirectory->create_story(chronicle_name, story_name, attrs);
-            if (ret != CL_SUCCESS) return ret;
+            if (ret != CL_SUCCESS) {
+                return ret;
+            }
             return chronicleMetaDirectory->acquire_story(client_id, chronicle_name, story_name, flags);
         } else {
             if (chronicle_name.empty())

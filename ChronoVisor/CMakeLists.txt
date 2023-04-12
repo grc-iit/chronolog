@@ -1,4 +1,3 @@
-#find_package(mercury REQUIRED)
 find_package(thallium REQUIRED)
 find_package(Threads REQUIRED)
 
