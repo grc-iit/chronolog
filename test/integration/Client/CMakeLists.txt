@@ -19,6 +19,7 @@ endforeach()
 
 set(client_openmp client_lib_multi_openmp_test)
 
+find_package(OpenMP)
 foreach(client ${client_openmp})
    add_executable(${client} ${client}.cpp)
    add_dependencies(${client} copyserverlist)
