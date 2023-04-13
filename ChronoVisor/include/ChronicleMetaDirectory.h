@@ -1,7 +1,3 @@
-//
-// Created by kfeng on 3/9/22.
-//
-
 #ifndef CHRONOLOG_CHRONICLEMETADIRECTORY_H
 #define CHRONOLOG_CHRONICLEMETADIRECTORY_H
 
@@ -9,7 +5,6 @@
 #include <unordered_map>
 #include <vector>
 #include <Chronicle.h>
-#include <memory>
 
 class ClientRegistryManager;
 
@@ -35,9 +30,6 @@ public:
                       const std::string& story_name, int& flags);
     int release_story(const std::string& client_id, const std::string& chronicle_name,
                       const std::string& story_name, int& flags);
-
-    uint64_t record_event(uint64_t sid, void *data);
-    uint64_t playback_event(uint64_t sid);
 
     int get_chronicle_attr(std::string& name, const std::string& key, std::string& value);
     int edit_chronicle_attr(std::string& name, const std::string& key, const std::string& value);

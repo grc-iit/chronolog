@@ -1,6 +1,3 @@
-//
-// Created by kfeng on 7/19/22.
-//
 
 #include "ChronoVisorServer2.h"
 #include "macro.h"
@@ -30,21 +27,10 @@ namespace ChronoVisor {
     }
 
     void ChronoVisorServer2::init() {
-        pClocksourceManager_ = ClocksourceManager::getInstance();
-        pClocksourceManager_->setClocksourceType(CHRONOLOG_CONF->CLOCKSOURCE_TYPE);
+        //pClocksourceManager_ = ClocksourceManager::getInstance();
+        //pClocksourceManager_->setClocksourceType(CHRONOLOG_CONF->CLOCKSOURCE_TYPE);
         CHRONOLOG_CONF->ROLE = CHRONOLOG_VISOR;
-        switch (CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION) {
-            CHRONOLOG_RPC_CALL_WRAPPER_THALLIUM_SOCKETS()
-                [[fallthrough]];
-            CHRONOLOG_RPC_CALL_WRAPPER_THALLIUM_TCP() {
-                protocol_ = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF.string();
-                break;
-            }
-            CHRONOLOG_RPC_CALL_WRAPPER_THALLIUM_ROCE() {
-                protocol_ = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF.string();
-                break;
-            }
-        }
+        protocol_ = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF.string();
         baseIP_ = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string();
         basePorts_ = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT;
         numPorts_ = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_PORTS;

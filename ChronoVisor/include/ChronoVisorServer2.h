@@ -1,21 +1,19 @@
-//
-// Created by kfeng on 7/19/22.
-//
-
 #ifndef CHRONOLOG_CHRONOVISORSERVER2_H
 #define CHRONOLOG_CHRONOVISORSERVER2_H
 
-#include <unordered_map>
+//#include <unordered_map>
 #include <vector>
-#include <mutex>
-#include <atomic>
+//#include <mutex>
+//#include <atomic>
 #include <log.h>
 #include <thallium.hpp>
-#include <margo.h>
-#include <ClocksourceManager.h>
-#include <ChronicleMetaDirectory.h>
-#include <ClientRegistryManager.h>
+//#include <margo.h>
+//#include <ClocksourceManager.h>
+//#include <ChronicleMetaDirectory.h>
+//#include <ClientRegistryManager.h>
 #include <RPCVisor.h>
+
+class ClocksourceManager;
 
 namespace ChronoVisor {
     namespace tl = thallium;

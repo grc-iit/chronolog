@@ -6,7 +6,7 @@ add_executable(chronovisor_server)
 target_sources ( chronovisor_server PRIVATE
 	chronovisor_server.cpp
         ./src/ChronoVisorServer2.cpp
-        ../ChronoAPI/ChronoLog/src/ClocksourceManager.cpp
+	#../ChronoAPI/ChronoLog/src/ClocksourceManager.cpp
         ./src/ClientRegistryManager.cpp
         ./src/ClientRegistryRecord.cpp
         ./src/ChronicleMetaDirectory.cpp
@@ -15,10 +15,10 @@ target_sources ( chronovisor_server PRIVATE
 
 target_include_directories(chronovisor_server PRIVATE
         ../ChronoAPI/ChronoLog/include
-	../ChronoKeeper/
+	../chrono_common
         ./include)
 
-target_link_libraries(chronovisor_server chrono_client thallium)
+target_link_libraries(chronovisor_server chronolog_client thallium)
 
 # prep the stage...
 configure_file(${CMAKE_SOURCE_DIR}/default_conf.json.in

@@ -6,28 +6,26 @@
 #include "KeeperRegistry.h"
 #include "KeeperRegistryService.h"
 #include "DataStoreAdminClient.h"
-// this file allows testing of the KeeperRegistryService and KeeperRegistry classes 
-// as the standalone process without the rest of the ChronoVizor modules 
-//
-
-#define KEEPER_REGISTRY_SERVICE_NA_STRING  "ofi+sockets://127.0.0.1:1234"
-#define KEEPER_REGISTRY_SERVICE_PROVIDER_ID	25
-
+#include "ConfigurationManager.h"
 /////////////////////////
 
-namespace thallium = tl;
+namespace tl = thallium;
+namespace chl = chronolog;
 
 namespace chronolog
 {
 
-int KeeperRegistry::InitializeRegistryService(uint16_t service_provider_id)
+int KeeperRegistry::InitializeRegistryService( uint16_t service_provider_id)
 {
     std::lock_guard<std::mutex> lock(registryLock);
 
-    keeperRegistryService =
+    if(registryState == UNKNOWN)
+    {
+        keeperRegistryService =
 	    KeeperRegistryService::CreateKeeperRegistryService(registryEngine,service_provider_id, *this);
 
-    registryState = INITIALIZED;
+        registryState = INITIALIZED;
+    }
     return 1;
 
 }

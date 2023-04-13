@@ -1,7 +1,3 @@
-//
-// Created by kfeng on 3/9/22.
-//
-
 #include <ChronicleMetaDirectory.h>
 #include "city.h"
 #include <chrono>
@@ -360,16 +356,6 @@ int ChronicleMetaDirectory::release_story(const std::string &client_id,
         }
     }
     return ret;
-}
-
-uint64_t ChronicleMetaDirectory::record_event(uint64_t sid, void *data) {
-    LOGD("recording Event to Story sid=%lu", sid);
-    return 0;
-}
-
-uint64_t ChronicleMetaDirectory::playback_event(uint64_t sid) {
-    LOGD("playing back Event from Story sid=%lu", sid);
-    return 0;
 }
 
 int ChronicleMetaDirectory::get_chronicle_attr(std::string &name, const std::string &key, std::string &value) {

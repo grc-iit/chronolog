@@ -6,9 +6,9 @@
 #include <thallium.hpp>
 #include <thallium/serialization/stl/string.hpp>
 
-#include "chrono_common/KeeperIdCard.h"
-#include "chrono_common/KeeperRegistrationMsg.h"
-#include "chrono_common/KeeperStatsMsg.h"
+#include "KeeperIdCard.h"
+#include "KeeperRegistrationMsg.h"
+#include "KeeperStatsMsg.h"
 
 #include "KeeperRegistry.h"
 
