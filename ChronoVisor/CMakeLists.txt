@@ -4,7 +4,7 @@ find_package(Threads REQUIRED)
 add_executable(chronovisor_server)
 
 target_sources ( chronovisor_server PRIVATE
-	chronovisor_server.cpp
+	./src/chronovisor_instance.cpp
         ./src/ChronoVisorServer2.cpp
 	#../ChronoAPI/ChronoLog/src/ClocksourceManager.cpp
         ./src/ClientRegistryManager.cpp

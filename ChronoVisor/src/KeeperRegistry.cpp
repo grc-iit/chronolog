@@ -15,14 +15,41 @@ namespace chl = chronolog;
 namespace chronolog
 {
 
-int KeeperRegistry::InitializeRegistryService( uint16_t service_provider_id)
+int KeeperRegistry::InitializeRegistryService(ChronoLog::ConfigurationManager const& confManager )
 {
     std::lock_guard<std::mutex> lock(registryLock);
 
     if(registryState == UNKNOWN)
     {
+	//INNA: TODO: add exception handling ...    
+	// initialise thalium engine for KeeperRegistryService
+	
+        std::string KEEPER_REGISTRY_SERVICE_NA_STRING=
+        confManager.RPC_CONF.VISOR_KEEPER_CONF.PROTO_CONF.string()
+	    +"://" + confManager.RPC_CONF.VISOR_KEEPER_CONF.VISOR_END_CONF.VISOR_IP.string()
+	    +":" + std::to_string(confManager.RPC_CONF.VISOR_KEEPER_CONF.VISOR_END_CONF.VISOR_BASE_PORT);
+
+        uint16_t provider_id = 22;//REGISTRY_SERVICE_PROVIDER_ID;
+
+        margo_instance_id margo_id=margo_init(KEEPER_REGISTRY_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 2);
+
+        if(MARGO_INSTANCE_NULL == margo_id)
+        {  
+             std::cout<<"KeeperRegistryService: Failed to initialize margo_instance"<<std::endl;
+             return -1;
+         }
+         std::cout<<"KeeperRegistryService:margo_instance initialized with NA_STRING"
+             << "{"<<KEEPER_REGISTRY_SERVICE_NA_STRING<<"}" <<std::endl;
+
+        registryEngine =  new tl::engine(margo_id);
+ 
+        std::cout << "Starting KeeperRegistryService  at address " << registryEngine->self()
+        << " with provider id " << provider_id << std::endl;
+
+
+
         keeperRegistryService =
-	    KeeperRegistryService::CreateKeeperRegistryService(registryEngine,service_provider_id, *this);
+	    KeeperRegistryService::CreateKeeperRegistryService(*registryEngine, provider_id, *this);
 
         registryState = INITIALIZED;
     }
@@ -72,6 +99,8 @@ return 1;
 KeeperRegistry::~KeeperRegistry()
 {  
    ShutdownRegistryService();
+   registryEngine->finalize();
+   delete registryEngine;
 }
 /////////////////
 	
@@ -111,7 +140,7 @@ int KeeperRegistry::registerKeeperProcess( KeeperRegistrationMsg const& keeper_r
                              + ":"+ std::to_string(admin_service_id.port);
            try
 	   {
-              DataStoreAdminClient * collectionClient = DataStoreAdminClient::CreateDataStoreAdminClient(registryEngine,service_na_string, 
+              DataStoreAdminClient * collectionClient = DataStoreAdminClient::CreateDataStoreAdminClient(*registryEngine,service_na_string, 
 			      admin_service_id.provider_id);
 	
 	      (*insert_return.first).second.keeperAdminClient = collectionClient;
