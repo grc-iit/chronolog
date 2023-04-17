@@ -15,7 +15,7 @@ int main(int argc, char *argv[]) {
     if (argc > 1) dir_path = argv[1];
 
     // Define the regular expression to match the file names
-    std::regex file_regex("clock_gettime_thread(\\d+)");
+    std::regex file_regex("clock_gettime_thread.*");
 
     // Define an unordered map to store the count of each number
     std::unordered_map<uint64_t, uint64_t> count_map;

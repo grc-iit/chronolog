@@ -169,6 +169,18 @@ unsigned long long * collect_w_rdtscp(int test_reps, unsigned int proc_id, int s
     return clock_list;
 }
 
+struct timespec * collect_w_clock_gettime_tai(int test_reps, int sleep_time = 0) {
+    struct timespec *clock_list = (struct timespec *) malloc((test_reps + 1) * sizeof(struct timespec));
+    for (int i = 0; i < test_reps + 1; i++) {
+        mfence();
+        lfence();
+        clock_gettime(CLOCK_TAI, &clock_list[i]);
+        emulate_event_interval(sleep_time);
+    }
+
+    return clock_list;
+}
+
 struct timespec * collect_w_clock_gettime_mono(int test_reps, int sleep_time = 0) {
     struct timespec *clock_list = (struct timespec *) malloc((test_reps + 1) * sizeof(struct timespec));
     for (int i = 0; i < test_reps + 1; i++) {

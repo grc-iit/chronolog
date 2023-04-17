@@ -6,9 +6,10 @@
 #include <iostream>
 #include <thread>
 #include <sched.h>
+#include <unistd.h>
 #include "common.h"
 
-#define NUM_TIMESTAMPS (1000 * 1000 * 10)
+#define NUM_TIMESTAMPS (1000 * 1000)
 
 typedef struct thrd_args_ {
   int thread_id;
@@ -24,7 +25,9 @@ void rdtscp_thread(void *args) {
               " w/ " << sleep_time << " ns sleep to emulate event interval" << std::endl;
     unsigned int proc_id;
     unsigned long long *clock_list = collect_w_rdtscp(NUM_TIMESTAMPS, proc_id, sleep_time);
-    std::string fname = __FUNCTION__ + std::to_string(thread_id);
+    char hostname[256];
+    gethostname(hostname, sizeof(hostname));
+    std::string fname = __FUNCTION__ + std::to_string(thread_id) + hostname;
     writeListToFile(clock_list, NUM_TIMESTAMPS, fname);
 }
 
@@ -35,8 +38,10 @@ void clock_gettime_thread(void *args) {
     int sleep_time = arg->sleep_ns;
     std::cout << __FUNCTION__  << thread_id << " is running on CPU core " << cpu <<
               " w/ " << sleep_time << " ns sleep to emulate event interval" << std::endl;
-    struct timespec *clock_list = collect_w_clock_gettime_mono(NUM_TIMESTAMPS, sleep_time);
-    std::string fname = __FUNCTION__ + std::to_string(thread_id);
+    struct timespec *clock_list = collect_w_clock_gettime_tai(NUM_TIMESTAMPS, sleep_time);
+    char hostname[256];
+    gethostname(hostname, sizeof(hostname));
+    std::string fname = __FUNCTION__ + std::to_string(thread_id) + hostname;
     std::vector<unsigned long long> clock_list_ull;
     for (int i = 0; i < NUM_TIMESTAMPS; i++)
         clock_list_ull.emplace_back(clock_list[i].tv_sec * 1e9 + clock_list[i].tv_nsec);
