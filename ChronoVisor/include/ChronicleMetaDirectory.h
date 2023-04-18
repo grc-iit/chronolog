@@ -6,7 +6,10 @@
 #include <vector>
 #include <Chronicle.h>
 
+
 class ClientRegistryManager;
+
+typedef uint64_t StoryId;
 
 class ChronicleMetaDirectory {
 public:
@@ -27,9 +30,9 @@ public:
                      const std::unordered_map<std::string, std::string>& attrs);
     int destroy_story(std::string &chronicle_name, const std::string& story_name, int& flags);
     int acquire_story(const std::string& client_id, const std::string& chronicle_name,
-                      const std::string& story_name, int& flags);
+                      const std::string& story_name, int& flags, StoryId &, bool&);
     int release_story(const std::string& client_id, const std::string& chronicle_name,
-                      const std::string& story_name, int& flags);
+                      const std::string& story_name, int& flags, StoryId &, bool&);
 
     int get_chronicle_attr(std::string& name, const std::string& key, std::string& value);
     int edit_chronicle_attr(std::string& name, const std::string& key, const std::string& value);

@@ -237,7 +237,7 @@ std::vector<KeeperIdCard> & KeeperRegistry::getActiveKeepers( std::vector<Keeper
 int KeeperRegistry::notifyKeepersOfStoryRecordingStart( std::vector<KeeperIdCard> const& vectorOfKeepers
 		, ChronicleName const& chronicle, StoryName const& story, StoryId const& storyId)
 { 
-   int ret_status = 1;
+   int ret_status = 0;
    
    if (!is_running())
    {
@@ -299,7 +299,7 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart( std::vector<KeeperIdCard
 
 int KeeperRegistry::notifyKeepersOfStoryRecordingStop(std::vector<KeeperIdCard> const& vectorOfKeepers, StoryId const& storyId)
 {
-    int ret_status = 1;
+    int ret_status = 0;
     if (!is_running())
     {
        std::cout<<"Registry has no Keeper processes to notify of story release" << std::endl;

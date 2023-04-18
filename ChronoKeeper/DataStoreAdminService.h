@@ -49,14 +49,14 @@ public:
     {
         std::cout << "DataCollectionService: StartStoryRecoding {"<< story_name<<":"<<story_id<<"}"<< std::endl;
         theDataStore.startStoryRecording(chronicle_name, story_name, story_id, start_time);
-        request.respond( story_id );
+        request.respond( 0);
     }
 
     void StopStoryRecording(tl::request const& request, StoryId const& story_id)
     {
-        std::cout << "DataStoreAdminService: StartStoryRecoding {"<< story_id<<"}"<< std::endl;
+        std::cout << "DataStoreAdminService: StopStoryRecoding {"<< story_id<<"}"<< std::endl;
 	theDataStore.stopStoryRecording(story_id);
-        request.respond( story_id );
+        request.respond( 0);
     }
 
 private:
