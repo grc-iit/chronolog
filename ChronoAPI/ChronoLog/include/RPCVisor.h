@@ -16,10 +16,14 @@
 #include "RPCFactory.h"
 #include "ClientRegistryManager.h"
 #include "ChronicleMetaDirectory.h"
+#include "KeeperRegistry.h"
+
 
 class RPCVisor {
 public:
-    RPCVisor() {
+    RPCVisor(chronolog::KeeperRegistry * keeper_registry)
+   : keeperRegistry(keeper_registry)
+    {
         LOGD("%s constructor is called", typeid(*this).name());
         rpc = std::make_shared<ChronoLogRPC>();
         set_prefix("ChronoLog");
@@ -35,7 +39,7 @@ public:
     {
     }
 
-    void Visor_start() {
+    void Visor_start( ) { //chronolog::KeeperRegistry * keeper_registry) {
         rpc->start();
     }
     /**
@@ -113,6 +117,10 @@ public:
                           int& flags) {
         LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, flags=%d",
              __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
+
+	if( !keeperRegistry->is_running())
+	{ return CL_ERR_NO_KEEPERS; }
+
         for (auto iter = attrs.begin(); iter != attrs.end(); ++iter) {
             LOGD("%s=%s", iter->first.c_str(), iter->second.c_str());
         }
@@ -410,6 +418,7 @@ private:
 
     ChronoLogCharStruct func_prefix;
     std::shared_ptr<ChronoLogRPC> rpc;
+    chronolog::KeeperRegistry * keeperRegistry;
     std::shared_ptr<ClientRegistryManager> clientManager;
     std::shared_ptr<ChronicleMetaDirectory> chronicleMetaDirectory;
 };

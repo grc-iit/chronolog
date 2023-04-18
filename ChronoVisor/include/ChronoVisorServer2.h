@@ -24,7 +24,7 @@ namespace ChronoVisor {
 
         explicit ChronoVisorServer2(const ChronoLog::ConfigurationManager &conf_manager);
 
-        int start();
+        int start( chronolog::KeeperRegistry *);
 
     private:
         void init();

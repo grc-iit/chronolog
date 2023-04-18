@@ -19,5 +19,6 @@
 #define CL_ERR_CHRONICLE_METADATA_FULL      -11   /* Metadata list of Chronicle is full, cannot add new property */
 #define CL_ERR_STORY_METADATA_FULL          -12   /* Metadata list of Story is full, cannot add new property */
 #define CL_ERR_INVALID_CONF                 -13   /* Content of configuration file is invalid */
+#define CL_ERR_NO_KEEPERS		    -14   /* No ChronoKeepers are available */
 
 #endif //CHRONOLOG_ERRCODE_H
