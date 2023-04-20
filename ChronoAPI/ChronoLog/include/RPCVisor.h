@@ -25,14 +25,15 @@ public:
    : keeperRegistry(keeper_registry)
     {
         LOGD("%s constructor is called", typeid(*this).name());
-        rpc = std::make_shared<ChronoLogRPC>();
-        set_prefix("ChronoLog");
-        LOGD("%s constructor finishes, object created@%p in thread PID=%d",
-             typeid(*this).name(), this, getpid());
         clientManager = ChronoLog::Singleton<ClientRegistryManager>::GetInstance();
         chronicleMetaDirectory = ChronoLog::Singleton<ChronicleMetaDirectory>::GetInstance();
         clientManager->setChronicleMetaDirectory(chronicleMetaDirectory.get());
         chronicleMetaDirectory->set_client_registry_manager(clientManager.get());
+        
+	rpc = std::make_shared<ChronoLogRPC>();
+        set_prefix("ChronoLog");
+        LOGD("%s constructor finishes, object created@%p in thread PID=%d",
+             typeid(*this).name(), this, getpid());
     }
 
     ~RPCVisor()
@@ -162,7 +163,8 @@ public:
 	    
 	}
 
-	keeperRegistry->notifyKeepersOfStoryRecordingStart(recording_keepers, chronicle_name, story_name,story_id);
+        LOGD("%s finished  in PID=%d, with args: chronicle_name=%s, story_name=%s",
+             __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str());
     return CL_SUCCESS; 
     }
 //TODO: check if flags are ever needed to release the story...
@@ -186,6 +188,8 @@ public:
 	  std::vector<chronolog::KeeperIdCard> recording_keepers;
 	  keeperRegistry->notifyKeepersOfStoryRecordingStop( keeperRegistry->getActiveKeepers(recording_keepers), story_id);
 	}
+        LOGD("%s finished in PID=%d, with args: chronicle_name=%s, story_name=%s", 
+             __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str() );
     return CL_SUCCESS;
     }
 //////////////
