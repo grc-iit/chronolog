@@ -23,8 +23,6 @@ int main(int argc, char** argv)
 
     chronolog::KeeperRegistry keeperRegistry;
 
-    //keeperRegistry.InitializeRegistryService( confManager);//provider_id=22);
-
     ChronoVisor::ChronoVisorServer2 visor(confManager);
 
     keeperRegistry.InitializeRegistryService( confManager);//provider_id=22);
@@ -33,29 +31,9 @@ int main(int argc, char** argv)
 
     /////
 
-  //std::string chronicle ="chronicle_";
-  //  std::string story= "story_";
-  //  uint64_t story_id = 0;
-
-  //  std::vector<chronolog::KeeperIdCard> vectorOfKeepers;
      while( !keeperRegistry.is_shutting_down())
     {
-
-	   
-      /* if (keeperRegistry.is_running())
-       {  vectorOfKeepers.clear();
-	  vectorOfKeepers = keeperRegistry.getActiveKeepers(vectorOfKeepers);
-
-       	  story_id++;
-          keeperRegistry.notifyKeepersOfStoryRecordingStart( vectorOfKeepers,
-	               chronicle +std::to_string(story_id), story +std::to_string(story_id), story_id);
-          if (story_id >5)
-          { break;}
-
-       }
-       */
        sleep(60);
-
     }
 	
 
