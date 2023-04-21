@@ -9,6 +9,7 @@
 #include "ConfigurationManager.h"
 #include "singleton.h"
 
+// it's a bad idea to call GetInstance every time object reference is mentioned ...
 #define CHRONOLOG_CONF ChronoLog::Singleton<ChronoLog::ConfigurationManager>::GetInstance()
 
 #define CHRONOLOG_RPC_CALL_WRAPPER_THALLIUM_SOCKETS() case CHRONOLOG_THALLIUM_SOCKETS:

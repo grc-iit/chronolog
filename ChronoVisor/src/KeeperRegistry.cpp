@@ -6,28 +6,53 @@
 #include "KeeperRegistry.h"
 #include "KeeperRegistryService.h"
 #include "DataStoreAdminClient.h"
-// this file allows testing of the KeeperRegistryService and KeeperRegistry classes 
-// as the standalone process without the rest of the ChronoVizor modules 
-//
-
-#define KEEPER_REGISTRY_SERVICE_NA_STRING  "ofi+sockets://127.0.0.1:1234"
-#define KEEPER_REGISTRY_SERVICE_PROVIDER_ID	25
-
+#include "ConfigurationManager.h"
 /////////////////////////
 
-namespace thallium = tl;
+namespace tl = thallium;
+namespace chl = chronolog;
 
 namespace chronolog
 {
 
-int KeeperRegistry::InitializeRegistryService(uint16_t service_provider_id)
+int KeeperRegistry::InitializeRegistryService(ChronoLog::ConfigurationManager const& confManager )
 {
     std::lock_guard<std::mutex> lock(registryLock);
 
-    keeperRegistryService =
-	    KeeperRegistryService::CreateKeeperRegistryService(registryEngine,service_provider_id, *this);
+    if(registryState == UNKNOWN)
+    {
+	//INNA: TODO: add exception handling ...    
+	// initialise thalium engine for KeeperRegistryService
+	
+        std::string KEEPER_REGISTRY_SERVICE_NA_STRING=
+        confManager.RPC_CONF.VISOR_KEEPER_CONF.PROTO_CONF.string()
+	    +"://" + confManager.RPC_CONF.VISOR_KEEPER_CONF.VISOR_END_CONF.VISOR_IP.string()
+	    +":" + std::to_string(confManager.RPC_CONF.VISOR_KEEPER_CONF.VISOR_END_CONF.VISOR_BASE_PORT);
 
-    registryState = INITIALIZED;
+        uint16_t provider_id = 22;//REGISTRY_SERVICE_PROVIDER_ID;
+
+        margo_instance_id margo_id=margo_init(KEEPER_REGISTRY_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 2);
+
+        if(MARGO_INSTANCE_NULL == margo_id)
+        {  
+             std::cout<<"KeeperRegistryService: Failed to initialize margo_instance"<<std::endl;
+             return -1;
+         }
+         std::cout<<"KeeperRegistryService:margo_instance initialized with NA_STRING"
+             << "{"<<KEEPER_REGISTRY_SERVICE_NA_STRING<<"}" <<std::endl;
+
+        registryEngine =  new tl::engine(margo_id);
+ 
+        std::cout << "Starting KeeperRegistryService  at address " << registryEngine->self()
+        << " with provider id " << provider_id << std::endl;
+
+
+
+        keeperRegistryService =
+	    KeeperRegistryService::CreateKeeperRegistryService(*registryEngine, provider_id, *this);
+
+        registryState = INITIALIZED;
+    }
     return 1;
 
 }
@@ -74,6 +99,8 @@ return 1;
 KeeperRegistry::~KeeperRegistry()
 {  
    ShutdownRegistryService();
+   registryEngine->finalize();
+   delete registryEngine;
 }
 /////////////////
 	
@@ -113,7 +140,7 @@ int KeeperRegistry::registerKeeperProcess( KeeperRegistrationMsg const& keeper_r
                              + ":"+ std::to_string(admin_service_id.port);
            try
 	   {
-              DataStoreAdminClient * collectionClient = DataStoreAdminClient::CreateDataStoreAdminClient(registryEngine,service_na_string, 
+              DataStoreAdminClient * collectionClient = DataStoreAdminClient::CreateDataStoreAdminClient(*registryEngine,service_na_string, 
 			      admin_service_id.provider_id);
 	
 	      (*insert_return.first).second.keeperAdminClient = collectionClient;
@@ -210,7 +237,7 @@ std::vector<KeeperIdCard> & KeeperRegistry::getActiveKeepers( std::vector<Keeper
 int KeeperRegistry::notifyKeepersOfStoryRecordingStart( std::vector<KeeperIdCard> const& vectorOfKeepers
 		, ChronicleName const& chronicle, StoryName const& story, StoryId const& storyId)
 { 
-   int ret_status = 1;
+   int ret_status = 0;
    
    if (!is_running())
    {
@@ -272,7 +299,7 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart( std::vector<KeeperIdCard
 
 int KeeperRegistry::notifyKeepersOfStoryRecordingStop(std::vector<KeeperIdCard> const& vectorOfKeepers, StoryId const& storyId)
 {
-    int ret_status = 1;
+    int ret_status = 0;
     if (!is_running())
     {
        std::cout<<"Registry has no Keeper processes to notify of story release" << std::endl;
@@ -328,64 +355,3 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStop(std::vector<KeeperIdCard> 
 }//namespace chronolog
 
 
-///////////////////////////////////////////////
-int main(int argc, char** argv) {
-
-    chronolog::RegistryConfiguration registryConfig;
-    registryConfig.REGISTRY_SERVICE_PROTOCOL = std::string(argv[1]);
-    registryConfig.REGISTRY_SERVICE_IP=std::string(argv[2]);
-    registryConfig.REGISTRY_SERVICE_PORT= atoi(argv[3]);
-    registryConfig.REGISTRY_SERVICE_PROVIDER_ID =atoi(argv[4]);
-    registryConfig.SERVICE_THREAD_COUNT=2;
-
-    uint16_t provider_id = KEEPER_REGISTRY_SERVICE_PROVIDER_ID;
-
-    margo_instance_id margo_id=margo_init(KEEPER_REGISTRY_SERVICE_NA_STRING, MARGO_SERVER_MODE, 1, 2);
-
-    if(MARGO_INSTANCE_NULL == margo_id)
-    {
-      std::cout<<"FAiled to initialise margo_instance"<<std::endl;
-      return 1;
-    }
-    std::cout<<"KeeperRegistryService:margo_instance initialized"<<std::endl;
-
-   tl::engine keeper_reg_engine(margo_id);
- 
-    std::cout << "Starting KeeperRegistryService  at address " << keeper_reg_engine.self()
-        << " with provider id " << provider_id << std::endl;
-
-    chronolog::KeeperRegistry keeperRegistry (keeper_reg_engine);
-
-    keeperRegistry.InitializeRegistryService(provider_id);
-
-    
-    std::string chronicle ="chronicle_";
-    std::string story= "story_";
-    uint64_t story_id = 0;
-
-    std::vector<chronolog::KeeperIdCard> vectorOfKeepers;
-    while( !keeperRegistry.is_shutting_down())
-    {
-
-       if (keeperRegistry.is_running())
-       {  vectorOfKeepers.clear();
-	  vectorOfKeepers = keeperRegistry.getActiveKeepers(vectorOfKeepers);
-
-       	  story_id++;
-          keeperRegistry.notifyKeepersOfStoryRecordingStart( vectorOfKeepers,
-	               chronicle +std::to_string(story_id), story +std::to_string(story_id), story_id);
-          if (story_id >5)
-          { break;}
-
-       }
-       sleep(60);
-    }
-	
-
-    sleep(180);
-    keeperRegistry.ShutdownRegistryService();
-
-    keeper_reg_engine.finalize();
-  
-    return 0;
-}

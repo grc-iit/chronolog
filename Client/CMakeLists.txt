@@ -2,14 +2,9 @@ project(ChronoLogClient)
 
 set(CMAKE_CXX_STANDARD 17)
 
-#set(CMAKE_FIND_DEBUG_MODE TRUE)
-
-find_package(mercury REQUIRED)
 find_package(thallium REQUIRED)
 
-#set(CMAKE_FIND_DEBUG_MODE FALSE)
-
-add_library(ChronoLogClient_lib
+add_library(chronolog_client
         src/client.cpp
         include/client.h
         include/RPCClient.h
@@ -19,7 +14,10 @@ add_library(ChronoLogClient_lib
         ../ChronoAPI/ChronoLog/include/singleton.h
         ../ChronoAPI/ChronoLog/src/city.cpp
         ../ChronoAPI/ChronoLog/include/city.h)
-target_include_directories(ChronoLogClient_lib PUBLIC include
+
+target_include_directories(chronolog_client PUBLIC include
         ../ChronoAPI/ChronoLog/include
+	../chrono_common/
         ../Client/include)
-target_link_libraries(ChronoLogClient_lib thallium)
+
+target_link_libraries(chronolog_client thallium)
