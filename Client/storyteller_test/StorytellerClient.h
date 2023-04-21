@@ -7,9 +7,9 @@
 
 #include <thallium.hpp>
 
-#include "../chrono_common/KeeperIdCard.h"
-#include "../chrono_common/chronolog_types.h"
-#include "../chrono_common/client.h"
+#include "KeeperIdCard.h"
+#include "chronolog_types.h"
+#include "client_new.h"
 
 namespace chronolog
 {
