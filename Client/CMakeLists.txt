@@ -5,15 +5,22 @@ set(CMAKE_CXX_STANDARD 17)
 find_package(thallium REQUIRED)
 
 add_library(chronolog_client
-        src/client.cpp
-        include/client.h
-        include/RPCClient.h
+	include/chronolog_client.h
+	include/ChronologClientImpl.h
+	src/KeeperRecordingClient.h
+	src/StorytellerClient.h
+	src/StorytellerClient.cpp
+	src/ChronologClient.cpp
+	src/ChronologClientImpl.cpp
+        
+	#	include/client.h
+	include/RPCClient.h
         ../ChronoAPI/ChronoLog/include/macro.h
-        ../ChronoAPI/ChronoLog/include/rpc.h
-        ../ChronoAPI/ChronoLog/include/RPCFactory.h
-        ../ChronoAPI/ChronoLog/include/singleton.h
-        ../ChronoAPI/ChronoLog/src/city.cpp
-        ../ChronoAPI/ChronoLog/include/city.h)
+	../ChronoAPI/ChronoLog/include/rpc.h
+	../ChronoAPI/ChronoLog/include/RPCFactory.h
+	../ChronoAPI/ChronoLog/include/singleton.h
+	../ChronoAPI/ChronoLog/src/city.cpp
+	../ChronoAPI/ChronoLog/include/city.h)
 
 target_include_directories(chronolog_client PUBLIC include
         ../ChronoAPI/ChronoLog/include
@@ -21,3 +28,5 @@ target_include_directories(chronolog_client PUBLIC include
         ../Client/include)
 
 target_link_libraries(chronolog_client thallium)
+
+add_subdirectory(storyteller_test)

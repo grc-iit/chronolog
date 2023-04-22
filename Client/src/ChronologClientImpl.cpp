@@ -3,6 +3,12 @@
 #include "ChronologClientImpl.h"
 #include "city.h"
 
+
+chronolog::ChronologClientImpl::~ChronologClientImpl()
+{
+	//TODO: implement
+}
+
 int chronolog::ChronologClientImpl::Connect(const std::string &server_uri,
                              std::string const& client_account,
                              int &flags)
@@ -28,54 +34,66 @@ int chronolog::ChronologClientImpl::Disconnect( ) //const std::string &client_id
 {
   //TODO : release all the acquired stories before asking to disconnect...
     int flags=1;
-    return CL_SUCCESS; //rpcClient_->Disconnect(clientAccount , flags);
+    return rpcClient_->Disconnect(clientAccount , flags);
 }
 //TODO: client account must be passed in
 int chronolog::ChronologClientImpl::CreateChronicle(std::string const& chronicle_name,
                                      const std::unordered_map<std::string, std::string> &attrs,
                                      int &flags) 
-{
-    return CL_SUCCESS;//rpcClient_->CreateChronicle(chronicle_name, attrs, flags);
+{  
+    std::string chronicle(chronicle_name);
+    return rpcClient_->CreateChronicle(chronicle, attrs, flags);
 }
 
 //TODO: client account must be passed in
 int chronolog::ChronologClientImpl::DestroyChronicle(std::string const& chronicle_name)//, int &flags) 
 {
     int flags=1;	 
-    return CL_SUCCESS; //rpcClient_->DestroyChronicle(chronicle_name, flags);
+    std::string chronicle(chronicle_name);
+    return rpcClient_->DestroyChronicle(chronicle, flags);
 }
 
-int chronolog::ChronologClientImpl::DestroyStory(std::string const& chronicle_name, std::string const& story_name)//, int &flags)
+int chronolog::ChronologClientImpl::DestroyStory(std::string const& chronicle_name, std::string const& story_name)
 {
+    ChronicleName chronicle(chronicle_name);
+    StoryName story(story_name);
     int flags=1;	 
-    return CL_SUCCESS;//rpcClient_->DestroyStory(chronicle_name, story_name);
+    return rpcClient_->DestroyStory(chronicle, story, flags);
 }
 
-chronolog::StoryHandle * chronolog::ChronologClientImpl::AcquireStory(std::string const& chronicle_name, std::string const& story_name,
+std::pair<int,chronolog::StoryHandle*> chronolog::ChronologClientImpl::AcquireStory(std::string const& chronicle_name, std::string const& story_name,
                                   const std::unordered_map<std::string, std::string> &attrs, int &flags) 
 {
     chronolog::StoryHandle * storyHandle = nullptr;
- //TODO:   return rpcClient_->AcquireStory(clientAccount, chronicle_name, story_name, attrs, flags);
- return storyHandle;
+    //TODO: this function should return StoryId & vector<KeeperIdCard>  that will be used to create StoryWritingHandle
+
+    ChronicleName chronicle(chronicle_name);
+    StoryName story(story_name);
+    int ret = rpcClient_->AcquireStory(clientAccount, chronicle, story, attrs, flags);
+ return std::pair<int,StoryHandle*>(ret,storyHandle);
 }
 // TODO: remove flags ...
 int chronolog::ChronologClientImpl::ReleaseStory(std::string const& chronicle_name, std::string const& story_name)
 	//, int &flags) 
 {
     int flags=1;	 
-    return CL_SUCCESS; //rpcClient_->ReleaseStory(clientAccount, chronicle_name, story_name, flags);
+    ChronicleName chronicle(chronicle_name);
+    StoryName story(story_name);
+    return rpcClient_->ReleaseStory(clientAccount, chronicle, story, flags);
 }
 
 //TODO: client account must be passed in
 int chronolog::ChronologClientImpl::GetChronicleAttr(std::string const& chronicle_name, const std::string &key, std::string &value) {
-    return CL_SUCCESS; //rpcClient_->GetChronicleAttr(chronicle_name, key, value);
+    ChronicleName chronicle(chronicle_name);
+    return rpcClient_->GetChronicleAttr(chronicle, key, value);
 }
 //TODO: client account must be passed in
 int chronolog::ChronologClientImpl::EditChronicleAttr(std::string const& chronicle_name, const std::string &key, std::string const& value) {
-    return CL_SUCCESS; //rpcClient_->EditChronicleAttr(chronicle_name, key, value);
+    ChronicleName chronicle(chronicle_name);
+    return rpcClient_->EditChronicleAttr(chronicle, key, value);
 }
 
-std::vector<std::string> & chronolog::ChronologClientImpl::ShowChronicles( std::vector<std::string> & chronicles )//std::string &client_id) 
+std::vector<std::string> & chronolog::ChronologClientImpl::ShowChronicles( std::vector<std::string> & chronicles ) 
 {
   //TODO:   return rpcClient_->ShowChronicles(clientAccount);
   return chronicles;
@@ -83,6 +101,6 @@ std::vector<std::string> & chronolog::ChronologClientImpl::ShowChronicles( std::
 
 std::vector<std::string> & chronolog::ChronologClientImpl::ShowStories( const std::string &chronicle_name, std::vector<std::string> & stories) 
 {
-   //TODO :  return rpcClient_->ShowStories(clientAccount, chronicles);
+   //TODO :  return rpcClient_->ShowStories(clientAccount, chronicle_name);
    return stories;
 }

@@ -43,7 +43,7 @@ public:
     int DestroyChronicle(std::string const& chronicle_name);
 
 //TODO: unordered_map? how manyu attributes do we expect ???
-    StoryHandle * AcquireStory(std::string const& chronicle_name, std::string const& story_name,
+    std::pair<int,StoryHandle*> AcquireStory(std::string const& chronicle_name, std::string const& story_name,
                      const std::unordered_map<std::string, std::string> &attrs, int &flags);
 
     int ReleaseStory(std::string const& chronicle_name, std::string const& story_name);

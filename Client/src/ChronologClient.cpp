@@ -1,5 +1,4 @@
 
-#include "client.h"
 #include "ChronologClientImpl.h"
 
 //TODO: get the account from the process itself ....
@@ -38,7 +37,7 @@ int chronolog::Client::DestroyChronicle(std::string const& chronicle_name)
     return chronologClientImpl->DestroyChronicle(chronicle_name);
 }
 
-chronolog::StoryHandle * chronolog::Client::AcquireStory(std::string const& chronicle_name, std::string const& story_name,
+std::pair<int,chronolog::StoryHandle *> chronolog::Client::AcquireStory(std::string const& chronicle_name, std::string const& story_name,
                      const std::unordered_map<std::string, std::string> &attrs, int &flags)
 {
     return chronologClientImpl->AcquireStory(chronicle_name, story_name, attrs,flags);

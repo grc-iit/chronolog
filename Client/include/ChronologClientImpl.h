@@ -6,7 +6,6 @@
 #include "ConfigurationManager.h"
 //#include "ClocksourceManager.h"
 
-#include "client.h"
 #include "chronolog_types.h"
 //#include "StorytellerClient.h"
 
@@ -14,6 +13,9 @@
 //ClocksourceManager *ClocksourceManager::clocksourceManager_ = nullptr;
 //class ClocksourceManager;
 //class StorytellerClient;
+
+#include "chronolog_client.h"
+#include "rpcVisorClient.h"
 
 namespace chronolog
 {
@@ -54,7 +56,7 @@ public:
                         int &flags);
     int DestroyChronicle(std::string const& chronicle_name); //, int &flags);
 
-    StoryHandle * AcquireStory(std::string const& chronicle_name, std::string const& story_name,
+    std::pair<int,StoryHandle*> AcquireStory(std::string const& chronicle_name, std::string const& story_name,
                      const std::unordered_map<std::string, std::string> &attrs, int &flags);
     int ReleaseStory(std::string const&chronicle_name, std::string const& story_name); //, int &flags);
     int DestroyStory(std::string const& chronicle_name, std::string const& story_name);
@@ -69,6 +71,7 @@ private:
     std::string clientAccount;
     ClientId	clientId;
     std::shared_ptr<RPCClient> rpcClient_;
+    RpcVisorClient * rpcVisorClient;
   //  StorytellerClient * storyteller;
   //  ClocksourceManager *pClocksourceManager_;
 
@@ -76,4 +79,4 @@ private:
 };
 } //namespace chronolog
 
-#endif //CHRONOLOG_CLIENT_H
+#endif 

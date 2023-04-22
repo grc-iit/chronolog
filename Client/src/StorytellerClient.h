@@ -9,7 +9,7 @@
 
 #include "KeeperIdCard.h"
 #include "chronolog_types.h"
-#include "client_new.h"
+#include "chronolog_client.h"
 
 namespace chronolog
 {
@@ -29,37 +29,6 @@ public:
 	{   
 		return vectorOfKeepers[ chrono_tick % vectorOfKeepers.size()];
 	}
-};
-
-// this class definition lives in the client lib
-template< class KeeperChoicePolicy>
-class StoryWritingHandle : public StoryHandle
-{
- public: 	
-     StoryWritingHandle(StorytellerClient & client, ChronicleName const& a_chronicle, StoryName const& a_story, StoryId const& story_id)
-            : theClient(client)
-	    , chronicle(a_chronicle)
-            , story(a_story)
-            , storyId(story_id)
-            , keeperChoicePolicy( new KeeperChoicePolicy)	      
-     {  }
-
-
-     virtual ~StoryWritingHandle();
-     virtual int log_event( std::string const&);
-     virtual int log_event( size_t size, void* data);
-
-     void addRecordingClient(KeeperRecordingClient *);
-     void removeRecordingClient(KeeperIdCard const&);
-
-private:
-
-        StorytellerClient& theClient;
-        ChronicleName  chronicle;
-	StoryName      story;
-	StoryId        storyId;
-	KeeperChoicePolicy * keeperChoicePolicy;
-	std::vector<KeeperRecordingClient*> storyKeepers;
 };
 
 
@@ -107,6 +76,37 @@ private:
 };
 
 
+// this class definition lives in the client lib
+template< class KeeperChoicePolicy>
+class StoryWritingHandle : public StoryHandle
+{
+ public: 	
+     StoryWritingHandle(StorytellerClient & client, ChronicleName const& a_chronicle, StoryName const& a_story, StoryId const& story_id)
+            : theClient(client)
+	    , chronicle(a_chronicle)
+            , story(a_story)
+            , storyId(story_id)
+            , keeperChoicePolicy( new KeeperChoicePolicy)	      
+     {  }
+
+
+     virtual ~StoryWritingHandle();
+     virtual int log_event( std::string const&);
+     virtual int log_event( size_t size, void* data);
+
+     void addRecordingClient(KeeperRecordingClient *);
+     void removeRecordingClient(KeeperIdCard const&);
+
+private:
+
+        StorytellerClient& theClient;
+        ChronicleName  chronicle;
+	StoryName      story;
+	StoryId        storyId;
+	KeeperChoicePolicy * keeperChoicePolicy;
+	std::vector<KeeperRecordingClient*> storyKeepers;
+
+};
 
 }//namespace
 
