@@ -101,6 +101,9 @@ public:
         return CHRONOLOG_RPC_CALL_WRAPPER("ShowStories", 0, std::vector<std::string>, client_id, chronicle_name);
     }
 
+    tl::engine & get_tl_client_engine()
+    {  return rpc->get_tl_client_engine(); }
+
 private:
     void set_prefix(std::string prefix) {
         func_prefix = std::move(prefix);

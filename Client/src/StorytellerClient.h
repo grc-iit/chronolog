@@ -39,7 +39,9 @@ public:
 	    : theTimer(chronolog_timer)
 	    , client_engine(client_tl_engine)  
 	    , clientId(client_id)  
-    {  }
+    {  
+      std::cout<<"StorytellerClient::StorytellerClient"<<std::endl;
+    }
 
     ~StorytellerClient();
 

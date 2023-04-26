@@ -1,12 +1,15 @@
 
 #include <unistd.h>
 #include "ChronologClientImpl.h"
+#include "StorytellerClient.h"
 #include "city.h"
 
 
 chronolog::ChronologClientImpl::~ChronologClientImpl()
 {
 	//TODO: implement
+	delete storyteller;
+// shared_ptr..	delete rpcClient_;
 }
 
 int chronolog::ChronologClientImpl::Connect(const std::string &server_uri,
@@ -36,7 +39,7 @@ int chronolog::ChronologClientImpl::Disconnect( ) //const std::string &client_id
     int flags=1;
     return rpcClient_->Disconnect(clientAccount , flags);
 }
-//TODO: client account must be passed in
+//TODO: client account must be passed into the rpc call
 int chronolog::ChronologClientImpl::CreateChronicle(std::string const& chronicle_name,
                                      const std::unordered_map<std::string, std::string> &attrs,
                                      int &flags) 
@@ -45,7 +48,7 @@ int chronolog::ChronologClientImpl::CreateChronicle(std::string const& chronicle
     return rpcClient_->CreateChronicle(chronicle, attrs, flags);
 }
 
-//TODO: client account must be passed in
+//TODO: client account must be passed into the rpc call 
 int chronolog::ChronologClientImpl::DestroyChronicle(std::string const& chronicle_name)//, int &flags) 
 {
     int flags=1;	 
@@ -53,6 +56,7 @@ int chronolog::ChronologClientImpl::DestroyChronicle(std::string const& chronicl
     return rpcClient_->DestroyChronicle(chronicle, flags);
 }
 
+//TODO: client account must be passed into the rpc call 
 int chronolog::ChronologClientImpl::DestroyStory(std::string const& chronicle_name, std::string const& story_name)
 {
     ChronicleName chronicle(chronicle_name);
@@ -70,8 +74,14 @@ std::pair<int,chronolog::StoryHandle*> chronolog::ChronologClientImpl::AcquireSt
     ChronicleName chronicle(chronicle_name);
     StoryName story(story_name);
     int ret = rpcClient_->AcquireStory(clientAccount, chronicle, story, attrs, flags);
+    if(ret == CL_SUCCESS)
+    {
+    	// storyHandle = storytellerClient->initializeStoryWritingHandle(...)
+    }
+
  return std::pair<int,StoryHandle*>(ret,storyHandle);
 }
+
 // TODO: remove flags ...
 int chronolog::ChronologClientImpl::ReleaseStory(std::string const& chronicle_name, std::string const& story_name)
 	//, int &flags) 
@@ -79,15 +89,21 @@ int chronolog::ChronologClientImpl::ReleaseStory(std::string const& chronicle_na
     int flags=1;	 
     ChronicleName chronicle(chronicle_name);
     StoryName story(story_name);
-    return rpcClient_->ReleaseStory(clientAccount, chronicle, story, flags);
+    auto ret = rpcClient_->ReleaseStory(clientAccount, chronicle, story, flags);
+    if (ret == CL_SUCCESS)
+    {
+    	//storytellerClient->removeAcquireStoryHandle(...)
+    }
+    return ret;
 }
 
-//TODO: client account must be passed in
+//TODO: client account must be passed into the rpc call 
 int chronolog::ChronologClientImpl::GetChronicleAttr(std::string const& chronicle_name, const std::string &key, std::string &value) {
     ChronicleName chronicle(chronicle_name);
     return rpcClient_->GetChronicleAttr(chronicle, key, value);
 }
-//TODO: client account must be passed in
+
+//TODO: client account must be passed into the rpc call 
 int chronolog::ChronologClientImpl::EditChronicleAttr(std::string const& chronicle_name, const std::string &key, std::string const& value) {
     ChronicleName chronicle(chronicle_name);
     return rpcClient_->EditChronicleAttr(chronicle, key, value);

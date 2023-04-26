@@ -49,42 +49,41 @@ public:
     {
      //   LOGD("%s is called in PID=%d, with args: client_id=%s, flags=%d",
        //      __FUNCTION__, getpid(), client_id.c_str(), flags);
-        //return CHRONOLOG_RPC_CALL_WRAPPER("Disconnect", 0, int, client_id, flags);
 	visor_disconnect.on(service_ph)();
 	return CL_SUCCESS;
     }
 
-/*    int CreateChronicle(std::string const& name,
+    int CreateChronicle(std::string const& name,
                         const std::unordered_map<std::string, std::string> &attrs,
                         int &flags) {
-        LOGD("%s is called in PID=%d, with args: name=%s, flags=%d, attrs=",
-             __FUNCTION__, getpid(), name.c_str(), flags);
+//        LOGD("%s is called in PID=%d, with args: name=%s, flags=%d, attrs=",
+  //           __FUNCTION__, getpid(), name.c_str(), flags);
         return CL_SUCCESS; //CHRONOLOG_RPC_CALL_WRAPPER("CreateChronicle", 0, int, name, attrs, flags);
     }
 
     int DestroyChronicle(std::string const& name)
     {
-        LOGD("%s is called in PID=%d, with args: name=%s, flags=%d", __FUNCTION__, getpid(), name.c_str(), flags);
+        //LOGD("%s is called in PID=%d, with args: name=%s, flags=%d", __FUNCTION__, getpid(), name.c_str(), flags);
         return CL_SUCCESS; //CHRONOLOG_RPC_CALL_WRAPPER("DestroyChronicle", 0, int, name, flags);
     }
 
-    int DestroyStory(std::string const&chronicle_name, std::string const& story_name)
+    int DestroyStory(std::string const& chronicle_name, std::string const& story_name)
     {
-        LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, flags=%d",
-             __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
+        //LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, flags=%d",
+          //   __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
         return CL_SUCCESS; //CHRONOLOG_RPC_CALL_WRAPPER("DestroyStory", 0, int, chronicle_name, story_name, flags);
     }
 
-*/
+
     ~RpcVisorClient()
     {
            visor_connect.deregister(); 
            visor_disconnect.deregister(); 
-//	   CreateChronicle.deregister();
-//	   DestroyChronicle.deregister();
-//	   AcquireStory.deregister();
-//	   ReleaseStory.deregister();
-//	   DestroyStory.deregister();
+	   create_chronicle.deregister();
+	   destroy_chronicle.deregister();
+	   acquire_story.deregister();
+	   release_story.deregister();
+	   destroy_story.deregister();
     }
 
     private:
@@ -95,11 +94,11 @@ public:
     tl::provider_handle  service_ph;  //provider_handle for client registry service
     tl::remote_procedure visor_connect;
     tl::remote_procedure visor_disconnect;
-    //tl::remote_procedure CreateChronicle;
-    //tl::remote_procedure DestroyChronicle;
-    //tl::remote_procedure AcquireStory;
-    //tl::remote_procedure ReleaseStory;
-    //tl::remote_procedure DestroyStory;
+    tl::remote_procedure create_chronicle;
+    tl::remote_procedure destroy_chronicle;
+    tl::remote_procedure acquire_story;
+    tl::remote_procedure release_story;
+    tl::remote_procedure destroy_story;
 
     RpcVisorClient(RpcVisorClient const&) = delete;
     RpcVisorClient& operator= (RpcVisorClient const&) = delete;

@@ -16,6 +16,7 @@
 
 #include "chronolog_client.h"
 #include "rpcVisorClient.h"
+#include "StorytellerClient.h"
 
 namespace chronolog
 {
@@ -24,12 +25,14 @@ class ChronologClientImpl
 {
 public:
 
-    ChronologClientImpl(const ChronoLog::ConfigurationManager& conf_manager) {
+    ChronologClientImpl(const ChronoLog::ConfigurationManager& conf_manager)
+    {
         CHRONOLOG_CONF->SetConfiguration(conf_manager);
         init();
     }
 
-    ChronologClientImpl(const ChronoLogRPCImplementation& protocol, const std::string& visor_ip, int visor_port) {
+    ChronologClientImpl(const ChronoLogRPCImplementation& protocol, const std::string& visor_ip, int visor_port) 
+    {
         CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION = protocol;
         CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP = visor_ip;
         CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT = visor_port;
@@ -41,6 +44,7 @@ public:
         //pClocksourceManager_->setClocksourceType(CHRONOLOG_CONF->CLOCKSOURCE_TYPE);
         CHRONOLOG_CONF->ROLE = CHRONOLOG_CLIENT;
         rpcClient_ = ChronoLog::Singleton<RPCClient>::GetInstance();
+        storyteller =  new StorytellerClient( clockProxy,  rpcClient_->get_tl_client_engine(), 0 ); //clientId field will be accessable later...
     }
 
     ~ChronologClientImpl();
@@ -70,10 +74,11 @@ public:
 private:
     std::string clientAccount;
     ClientId	clientId;
+    ChronologTimer clockProxy;
     std::shared_ptr<RPCClient> rpcClient_;
     RpcVisorClient * rpcVisorClient;
-  //  StorytellerClient * storyteller;
-  //  ClocksourceManager *pClocksourceManager_;
+    StorytellerClient * storyteller;
+   // ClocksourceManager *pClocksourceManager_;
 
 
 };

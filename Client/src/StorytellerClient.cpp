@@ -77,6 +77,16 @@ int chronolog::StoryWritingHandle<KeeperChoicePolicy>::log_event( size_t ,  void
 chronolog::StorytellerClient::~StorytellerClient()
 {
  //INNA: TODO not implemented yet
+   std::cout<<"StorytellerClient::~StorytellerClient()"<<std::endl;
+   //release acquired stories
+
+   // stop & delete keeperRecordingClients
+   std::lock_guard<std::mutex> lock(recordingClientMapMutex);
+   for ( auto keeper_client : recordingClientMap)
+   {  
+	delete keeper_client.second; 
+   }
+   recordingClientMap.clear();
 }
 
 int chronolog::StorytellerClient::get_event_index()
