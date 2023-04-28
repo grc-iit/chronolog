@@ -1,10 +1,11 @@
 
 #include "ChronologClientImpl.h"
 
+
 chronolog::Client::Client( ChronoLog::ConfigurationManager const& confManager) 
 {
 	//TODO:  the pointer must be protected with the static mutex ...
-   chronologClientImpl = new chronolog::ChronologClientImpl( confManager);  
+   chronologClientImpl = chronolog::ChronologClientImpl::GetClientImplInstance( confManager);  
 }
  
 chronolog::Client::~Client()

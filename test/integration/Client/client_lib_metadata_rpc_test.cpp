@@ -90,10 +90,8 @@ int main() {
             duration_acquire_story += (t2 - t1);
         }
 
-        for (int j = 0; j < NUM_STORY; j++) {
-            ret = client.Disconnect(); //client_id, flags);
-            assert(ret == CL_ERR_ACQUIRED);
-        }
+        ret = client.Disconnect(); //client_id, flags);
+        assert(ret == CL_ERR_ACQUIRED);
 
   /*      t1 = std::chrono::steady_clock::now();
         std::vector<std::string> stories_names_retrieved = client.ShowStories( chronicle_names[i]);
