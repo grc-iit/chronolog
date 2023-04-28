@@ -1,13 +1,10 @@
-//
-// Created by kfeng on 7/18/22.
-//
-#include <client.h>
+#include <chronolog_client.h>
 #include <common.h>
 #include <thread>
 #include <abt.h>
 #include <mpi.h>
 
-ChronoLogClient *client;
+chronolog::Client *client;
 
 struct thread_arg {
     int tid;
@@ -15,6 +12,8 @@ struct thread_arg {
 
 void thread_function(void *t) {
 
+    auto CHRONOLOG_CONF = ChronoLog::Singleton<ChronoLog::ConfigurationManager>::GetInstance()
+  
     std::string server_ip = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string();
     int base_port = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT;
     std::string client_id = gen_random(8);
@@ -22,8 +21,8 @@ void thread_function(void *t) {
     server_uri += "://" + server_ip + ":" + std::to_string(base_port);
     int flags = 0;
     uint64_t offset;
-    int ret = client->Connect(server_uri, client_id, flags, offset);
-    ret = client->Disconnect(client_id, flags);
+    int ret = client->Connect(server_uri, client_id, flags);//, offset);
+    ret = client->Disconnect();//client_id, flags);
 }
 
 int main(int argc, char **argv) {
@@ -36,9 +35,11 @@ int main(int argc, char **argv) {
     MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &provided);
 
     ChronoLogRPCImplementation protocol = CHRONOLOG_THALLIUM_SOCKETS;
-    std::string server_ip = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string();
-    int base_port = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT;
-    client = new ChronoLogClient(protocol, server_ip, base_port);
+    ChronoLog::ConfigurationManager confManager;
+
+    std::string server_ip = confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string();
+    int base_port = confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT;
+    client = new chronolog::Client(confManager); // protocol, server_ip, base_port);
 
     int num_xstreams = 8;
     int num_threads = 8;

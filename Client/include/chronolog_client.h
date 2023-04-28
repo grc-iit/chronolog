@@ -30,6 +30,7 @@ class Client
 {
 public:
     Client( ChronoLog::ConfigurationManager const&);
+
     ~Client();
 
     int Connect(const std::string &server_uri,
@@ -42,7 +43,7 @@ public:
                          int &flags);
     int DestroyChronicle(std::string const& chronicle_name);
 
-//TODO: unordered_map? how manyu attributes do we expect ???
+//TODO: unordered_map? how many attributes do we expect ???
     std::pair<int,StoryHandle*> AcquireStory(std::string const& chronicle_name, std::string const& story_name,
                      const std::unordered_map<std::string, std::string> &attrs, int &flags);
 

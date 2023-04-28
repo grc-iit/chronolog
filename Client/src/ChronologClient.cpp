@@ -1,18 +1,18 @@
 
 #include "ChronologClientImpl.h"
 
-//TODO: get the account from the process itself ....
 chronolog::Client::Client( ChronoLog::ConfigurationManager const& confManager) 
 {
 	//TODO:  the pointer must be protected with the static mutex ...
    chronologClientImpl = new chronolog::ChronologClientImpl( confManager);  
 }
-
+ 
 chronolog::Client::~Client()
 {
    delete chronologClientImpl;
 }
 
+//TODO: get the client_account & client ip from the process itself ....
 int chronolog::Client::Connect(std::string const& server_uri,
                 std::string const& client_account,
                 int &flags)

@@ -72,6 +72,9 @@ public:
     std::vector<std::string> & ShowStories( const std::string &chronicle_name, std::vector<std::string> &);
 
 private:
+    //static 
+	    std::mutex chronologClientMutex;
+
     std::string clientAccount;
     ClientId	clientId;
     ChronologTimer clockProxy;

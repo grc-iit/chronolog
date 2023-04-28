@@ -16,6 +16,8 @@ int chronolog::ChronologClientImpl::Connect(const std::string &server_uri,
                              std::string const& client_account,
                              int &flags)
 {
+    std::lock_guard<std::mutex> lock_client(chronologClientMutex);
+
 /*    if (client_id.empty()) {
         char ip[16];
         struct hostent *he = gethostbyname("localhost");
@@ -35,6 +37,7 @@ int chronolog::ChronologClientImpl::Connect(const std::string &server_uri,
 
 int chronolog::ChronologClientImpl::Disconnect( ) //const std::string &client_id, int &flags)
 {
+    std::lock_guard<std::mutex> lock_client(chronologClientMutex);
   //TODO : release all the acquired stories before asking to disconnect...
     int flags=1;
     return rpcClient_->Disconnect(clientAccount , flags);
@@ -44,6 +47,7 @@ int chronolog::ChronologClientImpl::CreateChronicle(std::string const& chronicle
                                      const std::unordered_map<std::string, std::string> &attrs,
                                      int &flags) 
 {  
+    std::lock_guard<std::mutex> lock_client(chronologClientMutex);
     std::string chronicle(chronicle_name);
     return rpcClient_->CreateChronicle(chronicle, attrs, flags);
 }
@@ -51,6 +55,7 @@ int chronolog::ChronologClientImpl::CreateChronicle(std::string const& chronicle
 //TODO: client account must be passed into the rpc call 
 int chronolog::ChronologClientImpl::DestroyChronicle(std::string const& chronicle_name)//, int &flags) 
 {
+    std::lock_guard<std::mutex> lock_client(chronologClientMutex);
     int flags=1;	 
     std::string chronicle(chronicle_name);
     return rpcClient_->DestroyChronicle(chronicle, flags);
@@ -59,6 +64,7 @@ int chronolog::ChronologClientImpl::DestroyChronicle(std::string const& chronicl
 //TODO: client account must be passed into the rpc call 
 int chronolog::ChronologClientImpl::DestroyStory(std::string const& chronicle_name, std::string const& story_name)
 {
+    std::lock_guard<std::mutex> lock_client(chronologClientMutex);
     ChronicleName chronicle(chronicle_name);
     StoryName story(story_name);
     int flags=1;	 
@@ -68,6 +74,7 @@ int chronolog::ChronologClientImpl::DestroyStory(std::string const& chronicle_na
 std::pair<int,chronolog::StoryHandle*> chronolog::ChronologClientImpl::AcquireStory(std::string const& chronicle_name, std::string const& story_name,
                                   const std::unordered_map<std::string, std::string> &attrs, int &flags) 
 {
+    std::lock_guard<std::mutex> lock_client(chronologClientMutex);
     chronolog::StoryHandle * storyHandle = nullptr;
     //TODO: this function should return StoryId & vector<KeeperIdCard>  that will be used to create StoryWritingHandle
 
@@ -86,6 +93,7 @@ std::pair<int,chronolog::StoryHandle*> chronolog::ChronologClientImpl::AcquireSt
 int chronolog::ChronologClientImpl::ReleaseStory(std::string const& chronicle_name, std::string const& story_name)
 	//, int &flags) 
 {
+    std::lock_guard<std::mutex> lock_client(chronologClientMutex);
     int flags=1;	 
     ChronicleName chronicle(chronicle_name);
     StoryName story(story_name);
