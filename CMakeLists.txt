@@ -24,6 +24,7 @@ set(CHRONOLOG_PACKAGE_TARNAME "${CHRONOLOG_PACKAGE}")
 #------------------------------------------------------------------------------
 # Setup install and output Directories
 #------------------------------------------------------------------------------
+set(CMAKE_INSTALL_PREFIX /home/chronolog/chronolog)
 if(NOT CHRONOLOG_INSTALL_BIN_DIR)
     set(CHRONOLOG_INSTALL_BIN_DIR ${CMAKE_INSTALL_PREFIX}/bin)
 endif()
@@ -201,9 +202,9 @@ if(CHRONOLOG_BUILD_TESTING)
 endif()
 
 # External header only libraries
-add_subdirectory(external_libs)
+#add_subdirectory(external_libs)
 
-add_subdirectory(tools)
+#add_subdirectory(tools)
 
 # ChronoVisor
 add_subdirectory(ChronoAPI)
