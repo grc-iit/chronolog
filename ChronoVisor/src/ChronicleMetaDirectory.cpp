@@ -92,9 +92,9 @@ int ChronicleMetaDirectory::create_chronicle(const std::string &name,
  *         CL_ERR_ACQUIRED if the Chronicle is acquired by others and cannot be destroyed \n
  *         CL_ERR_UNKNOWN otherwise
  */
-int ChronicleMetaDirectory::destroy_chronicle(const std::string &name,
-                                              int &flags) {
-    LOGD("destroying Chronicle name=%s, flags=%d", name.c_str(), flags);
+int ChronicleMetaDirectory::destroy_chronicle(const std::string &name)
+{
+    LOGD("destroying Chronicle name=%s", name.c_str());
     std::chrono::steady_clock::time_point t1, t2;
     t1 = std::chrono::steady_clock::now();
     std::lock_guard<std::mutex> chronicleMapLock(g_chronicleMetaDirectoryMutex_);
@@ -159,7 +159,7 @@ int ChronicleMetaDirectory::destroy_chronicle(const std::string &name,
  *         CL_ERR_STORY_EXISTS if a Story with the same name already exists \n
  *         CL_ERR_UNKNOWN otherwise
  */
-int ChronicleMetaDirectory::create_story(std::string &chronicle_name,
+int ChronicleMetaDirectory::create_story(std::string const& chronicle_name,
                                          const std::string &story_name,
                                          const std::unordered_map<std::string, std::string> &attrs) {
     LOGD("creating Story name=%s in Chronicle name=%s", story_name.c_str(), chronicle_name.c_str());
@@ -199,9 +199,9 @@ int ChronicleMetaDirectory::create_story(std::string &chronicle_name,
  *         CL_ERR_NOT_EXIST if the Chronicle does not exist \n
  *         CL_ERR_UNKNOWN otherwise
  */
-int ChronicleMetaDirectory::destroy_story(std::string &chronicle_name,
-                                          const std::string &story_name,
-                                          int &flags) {
+int ChronicleMetaDirectory::destroy_story(std::string const& chronicle_name,
+                                          const std::string &story_name
+                                          ) {
     LOGD("destroying Story name=%s in Chronicle name=%s", story_name.c_str(), chronicle_name.c_str());
     std::lock_guard<std::mutex> chronicleMapLock(g_chronicleMetaDirectoryMutex_);
     /* First check if Chronicle exists, fail if false */
@@ -229,7 +229,7 @@ int ChronicleMetaDirectory::destroy_story(std::string &chronicle_name,
             return CL_ERR_ACQUIRED;
         }
         /* Ask the Chronicle to destroy the Story */
-        CL_Status res = pChronicle->removeStory(chronicle_name, story_name, flags);
+        CL_Status res = pChronicle->removeStory(chronicle_name, story_name);
         if (res != CL_SUCCESS) {
             LOGE("Fail to remove Story name=%s in Chronicle name=%s", story_name.c_str(), chronicle_name.c_str());
         }
@@ -321,11 +321,10 @@ int ChronicleMetaDirectory::acquire_story(const std::string &client_id,
 //TO_DO return acquisition_count after the story has been released
 int ChronicleMetaDirectory::release_story(const std::string &client_id,
                                           const std::string &chronicle_name,
-                                          const std::string &story_name,
-                                          int &flags
+                                          const std::string &story_name
 					  , StoryId & story_id, bool & notify_keepers ) {
-    LOGD("client_id=%s releasing Story name=%s in Chronicle name=%s, flags=%d",
-         client_id.c_str(), story_name.c_str(), chronicle_name.c_str(), flags);
+    LOGD("client_id=%s releasing Story name=%s in Chronicle name=%s",
+         client_id.c_str(), story_name.c_str(), chronicle_name.c_str());
     std::lock_guard<std::mutex> chronicleMapLock(g_chronicleMetaDirectoryMutex_);
     /* First check if Chronicle exists, fail if false */
     uint64_t cid;
@@ -368,7 +367,7 @@ int ChronicleMetaDirectory::release_story(const std::string &client_id,
     return ret;
 }
 
-int ChronicleMetaDirectory::get_chronicle_attr(std::string &name, const std::string &key, std::string &value) {
+int ChronicleMetaDirectory::get_chronicle_attr(std::string const& name, const std::string &key, std::string &value) {
     LOGD("getting attributes key=%s from Chronicle name=%s", key.c_str(), name.c_str());
     std::lock_guard<std::mutex> chronicleMapLock(g_chronicleMetaDirectoryMutex_);
     /* First check if Chronicle exists, fail if false */
@@ -400,7 +399,7 @@ int ChronicleMetaDirectory::get_chronicle_attr(std::string &name, const std::str
     }
 }
 
-int ChronicleMetaDirectory::edit_chronicle_attr(std::string &name,
+int ChronicleMetaDirectory::edit_chronicle_attr(std::string const& name,
                                                 const std::string &key,
                                                 const std::string &value) {
     LOGD("editing attribute key=%s, value=%s from Chronicle name=%s", key.c_str(), value.c_str(), name.c_str());

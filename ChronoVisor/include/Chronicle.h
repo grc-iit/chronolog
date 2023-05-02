@@ -144,7 +144,7 @@ public:
         }
     }
 
-    int addStory(std::string &chronicle_name, uint64_t &cid, const std::string &story_name,
+    int addStory(std::string const&chronicle_name, uint64_t &cid, const std::string &story_name,
                  const std::unordered_map<std::string, std::string> &attrs) {
         // add cid to name before hash to allow same story name across chronicles
         std::string story_name_for_hash = chronicle_name + story_name;
@@ -165,7 +165,7 @@ public:
         else return CL_ERR_UNKNOWN;
     }
 
-    int removeStory(std::string &chronicle_name, const std::string& story_name, int flags) {
+    int removeStory(std::string const&chronicle_name, const std::string& story_name) {
         // add chronicle_name to story_name before hash to allow same story name across chronicles
         std::string story_name_for_hash = chronicle_name + story_name;
         /* Check if Story exists, fail if true */

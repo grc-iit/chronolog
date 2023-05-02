@@ -90,21 +90,18 @@ int chronolog::ChronologClientImpl::CreateChronicle(std::string const& chronicle
     if((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
     {  return CL_ERR_NO_CONNECTION; }
 
-    std::string chronicle(chronicle_name);
-    return rpcClient_->CreateChronicle(chronicle, attrs, flags);
+    return rpcClient_->CreateChronicle(chronicle_name, attrs, flags);
 }
 
 //TODO: client account must be passed into the rpc call 
-int chronolog::ChronologClientImpl::DestroyChronicle(std::string const& chronicle_name)//, int &flags) 
+int chronolog::ChronologClientImpl::DestroyChronicle(std::string const& chronicle_name) 
 {
     std::lock_guard<std::mutex> lock_client(chronologClientMutex);
 
     if((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
     {  return CL_ERR_NO_CONNECTION; }
 
-    int flags=1;	 
-    std::string chronicle(chronicle_name);
-    return rpcClient_->DestroyChronicle(chronicle, flags);
+    return rpcClient_->DestroyChronicle(chronicle_name);
 }
 
 //TODO: client account must be passed into the rpc call 
@@ -115,10 +112,7 @@ int chronolog::ChronologClientImpl::DestroyStory(std::string const& chronicle_na
     if((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
     {  return CL_ERR_NO_CONNECTION; }
 
-    ChronicleName chronicle(chronicle_name);
-    StoryName story(story_name);
-    int flags=1;	 
-    return rpcClient_->DestroyStory(chronicle, story, flags);
+    return rpcClient_->DestroyStory(chronicle_name, story_name);
 }
 
 std::pair<int,chronolog::StoryHandle*> chronolog::ChronologClientImpl::AcquireStory(std::string const& chronicle_name, std::string const& story_name,
@@ -132,9 +126,7 @@ std::pair<int,chronolog::StoryHandle*> chronolog::ChronologClientImpl::AcquireSt
     chronolog::StoryHandle * storyHandle = nullptr;
     //TODO: this function should return StoryId & vector<KeeperIdCard>  that will be used to create StoryWritingHandle
 
-    ChronicleName chronicle(chronicle_name);
-    StoryName story(story_name);
-    int ret = rpcClient_->AcquireStory(clientAccount, chronicle, story, attrs, flags);
+    int ret = rpcClient_->AcquireStory(clientAccount, chronicle_name, story_name, attrs, flags);
     if(ret == CL_SUCCESS)
     {
     	// storyHandle = storytellerClient->initializeStoryWritingHandle(...)
@@ -152,10 +144,7 @@ int chronolog::ChronologClientImpl::ReleaseStory(std::string const& chronicle_na
     if((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
     {  return CL_ERR_NO_CONNECTION; }
 
-    int flags=1;	 
-    ChronicleName chronicle(chronicle_name);
-    StoryName story(story_name);
-    auto ret = rpcClient_->ReleaseStory(clientAccount, chronicle, story, flags);
+    auto ret = rpcClient_->ReleaseStory(clientAccount, chronicle_name, story_name);
     if (ret == CL_SUCCESS)
     {
     	//storytellerClient->removeAcquireStoryHandle(...)
@@ -170,8 +159,7 @@ int chronolog::ChronologClientImpl::GetChronicleAttr(std::string const& chronicl
     if((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
     {  return CL_ERR_NO_CONNECTION; }
 
-    ChronicleName chronicle(chronicle_name);
-    return rpcClient_->GetChronicleAttr(chronicle, key, value);
+    return rpcClient_->GetChronicleAttr(chronicle_name, key, value);
 }
 
 //TODO: client account must be passed into the rpc call 
@@ -181,8 +169,7 @@ int chronolog::ChronologClientImpl::EditChronicleAttr(std::string const& chronic
     if((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
     {  return CL_ERR_NO_CONNECTION; }
 
-    ChronicleName chronicle(chronicle_name);
-    return rpcClient_->EditChronicleAttr(chronicle, key, value);
+    return rpcClient_->EditChronicleAttr(chronicle_name, key, value);
 }
 
 std::vector<std::string> & chronolog::ChronologClientImpl::ShowChronicles( std::vector<std::string> & chronicles ) 
@@ -192,17 +179,17 @@ std::vector<std::string> & chronolog::ChronologClientImpl::ShowChronicles( std::
     if((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
     {  return chronicles; }
 
-  //TODO:   return rpcClient_->ShowChronicles(clientAccount);
+    chronicles = rpcClient_->ShowChronicles(clientAccount);
   return chronicles;
 }
 
-std::vector<std::string> & chronolog::ChronologClientImpl::ShowStories( const std::string &chronicle_name, std::vector<std::string> & stories) 
+std::vector<std::string> & chronolog::ChronologClientImpl::ShowStories( std::string const& chronicle_name, std::vector<std::string> & stories) 
 {
     std::lock_guard<std::mutex> lock_client(chronologClientMutex);
 
     if((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
     {  return stories; }
 
-   //TODO :  return rpcClient_->ShowStories(clientAccount, chronicle_name);
+    stories = rpcClient_->ShowStories(clientAccount, chronicle_name);
    return stories;
 }

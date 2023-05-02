@@ -54,23 +54,24 @@ int main() {
         duration_create_chronicle += (t2 - t1);
     }
 
-/*
+
     t1 = std::chrono::steady_clock::now();
-    std::vector<std::string> chronicle_names_retrieved = client.ShowChronicles(client_id);
+    std::vector<std::string> chronicle_names_retrieved;
+    chronicle_names_retrieved= client.ShowChronicles(chronicle_names_retrieved);
     t2 = std::chrono::steady_clock::now();
     duration_show_chronicles += (t2 - t1);
-    std::sort(chronicle_names_retrieved.begin(), chronicle_names_retrieved.end());
+    //std::sort(chronicle_names_retrieved.begin(), chronicle_names_retrieved.end());
     std::vector<std::string> chronicle_names_sorted = chronicle_names;
-    std::sort(chronicle_names_sorted.begin(), chronicle_names_sorted.end());
-    assert(chronicle_names_retrieved == chronicle_names_sorted);
-*/
+    //std::sort(chronicle_names_sorted.begin(), chronicle_names_sorted.end());
+    //assert(chronicle_names_retrieved == chronicle_names_sorted);
+
 
     for (int i = 0; i < NUM_CHRONICLE; i++) {
         std::string key("Date");
         t1 = std::chrono::steady_clock::now();
         ret = client.EditChronicleAttr(chronicle_names[i], key, "2023-01-15");
         t2 = std::chrono::steady_clock::now();
-        //assert(ret == CL_SUCCESS);
+        assert(ret == CL_SUCCESS);
         duration_edit_chronicle_attr += (t2 - t1);
 
         std::vector<std::string> story_names;
@@ -124,7 +125,7 @@ int main() {
         t1 = std::chrono::steady_clock::now();
         ret = client.GetChronicleAttr(chronicle_names[i], key, value);
         t2 = std::chrono::steady_clock::now();
-        //ASSERT(ret, ==, CL_SUCCESS);
+        assert(ret == CL_SUCCESS);
         //FIXME: returning data using parameter is not working, the following assert will fail
         //ASSERT(value, ==, "2023-01-15");
         duration_get_chronicle_attr += (t2 - t1);
