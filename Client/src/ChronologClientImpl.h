@@ -23,11 +23,11 @@ namespace chronolog
 
 enum ChronologClientState
 {
-	UNKNOWN	 = 0,
-	CONNECTED = 1,
-	READING	  = 2,
-	WRITING	  = 3,
-	SHUTTING_DOWN = 4
+    UNKNOWN	 = 0,
+    CONNECTED = 1,
+    READING	  = 2,
+    WRITING	  = 3,
+    SHUTTING_DOWN = 4
 };
 
 class ChronologClientImpl 
@@ -83,22 +83,22 @@ private:
     //TODO : client_account & client_ip will be acquired from the cleitn process itself ....
     //    for now they can be passed in....
     ChronologClientImpl(const ChronoLog::ConfigurationManager& conf_manager)
-	    : clientState(UNKNOWN)
-	    , clientAccount("")
-	    , clientId(0)
-	    , rpcVisorClient(nullptr)
-	    , storyteller(nullptr) 
+        : clientState(UNKNOWN)
+        , clientAccount("")
+        , clientId(0)
+        , rpcVisorClient(nullptr)
+        , storyteller(nullptr) 
     {
         CHRONOLOG_CONF->SetConfiguration(conf_manager);
         init();
     }
 
     ChronologClientImpl(const ChronoLogRPCImplementation& protocol, const std::string& visor_ip, int visor_port) 
-	    : clientState(UNKNOWN)
-	    , clientAccount("")
-	    , clientId(0)
-	    , rpcVisorClient(nullptr)
-	    , storyteller(nullptr) 
+        : clientState(UNKNOWN)
+        , clientAccount("")
+        , clientId(0)
+        , rpcVisorClient(nullptr)
+        , storyteller(nullptr) 
     {
         CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION = protocol;
         CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP = visor_ip;
