@@ -6,7 +6,7 @@ find_package(thallium REQUIRED)
 
 add_library(chronolog_client
 	include/chronolog_client.h
-	include/ChronologClientImpl.h
+	src/ChronologClientImpl.h
 	src/KeeperRecordingClient.h
 	src/StorytellerClient.h
 	src/StorytellerClient.cpp

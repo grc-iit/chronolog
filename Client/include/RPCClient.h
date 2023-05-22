@@ -15,6 +15,8 @@
 #include "macro.h"
 #include "RPCFactory.h"
 
+#include "AcquireStoryResponseMsg.h"
+
 class RPCClient {
 public:
     RPCClient() {
@@ -63,14 +65,14 @@ public:
         return CHRONOLOG_RPC_CALL_WRAPPER("DestroyStory", 0, int, chronicle_name, story_name);
     }
 
-    int AcquireStory(std::string &client_id, std::string const& chronicle_name, std::string const& story_name,
+    chronolog::AcquireStoryResponseMsg AcquireStory(std::string &client_id, std::string const& chronicle_name, std::string const& story_name,
                      const std::unordered_map<std::string, std::string> &attrs, const int &flags) {
         LOGD("%s is called in PID=%d, with args: client_id=%s, chronicle_name=%s, story_name=%s, flags=%d",
              __FUNCTION__, getpid(), client_id.c_str(), chronicle_name.c_str(), story_name.c_str(), flags);
         for (auto iter = attrs.begin(); iter != attrs.end(); ++iter) {
             LOGD("%s=%s", iter->first.c_str(), iter->second.c_str());
         }
-        return CHRONOLOG_RPC_CALL_WRAPPER("AcquireStory", 0, int, client_id, chronicle_name, story_name, attrs, flags);
+        return CHRONOLOG_RPC_CALL_WRAPPER("AcquireStory", 0, chronolog::AcquireStoryResponseMsg, client_id, chronicle_name, story_name, attrs, flags);
     }
 
     int ReleaseStory(std::string &client_id, std::string const& chronicle_name, std::string const& story_name) {
