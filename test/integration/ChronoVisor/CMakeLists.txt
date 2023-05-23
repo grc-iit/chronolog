@@ -2,7 +2,7 @@ find_package(mercury REQUIRED)
 find_package(thallium REQUIRED)
 find_package(Threads REQUIRED)
 
-set(CMAKE_INSTALL_RPATH /home/chronolog/chronolog/lib/*)
+set(CMAKE_INSTALL_RPATH /home/chronolog/chronolog/bin/*)
 
 add_executable(chronovisor_server_test chronovisor_server.cpp
         ../../../ChronoVisor/src/ChronoVisorServer2.cpp
@@ -38,12 +38,12 @@ message("${DEPENDENCY_LIST}")
 
 # copy each dependency to destination directory
 foreach (dependency IN LISTS DEPENDENCY_LIST)
-        if (${dependency})
+        #if (dependency STREQUAL "")
                 message("Installing dependency: ${dependency} ...")
-                execute_process(COMMAND cp -u -f ${dependency} ${CMAKE_INSTALL_PREFIX}/lib/)
-        endif ()
+                execute_process(COMMAND cp -u -f ${dependency} ${CMAKE_INSTALL_PREFIX}/bin/)
+        #endif ()
 endforeach ()
-execute_process(COMMAND sh -c "chmod 777 ${CMAKE_INSTALL_PREFIX}/lib/*")
+execute_process(COMMAND sh -c "chmod 777 -f ${CMAKE_INSTALL_PREFIX}/bin/*")
 
 # install binary
 install(
@@ -52,5 +52,5 @@ install(
 
 # install configuration file
 install(
-        FILES ${CMAKE_CURRENT_SOURCE_DIR}/../default_conf.json.in DESTINATION conf RENAME default_conf.json
+        FILES ${CMAKE_CURRENT_SOURCE_DIR}/../default_conf.json.in DESTINATION bin RENAME default_conf.json
 )
