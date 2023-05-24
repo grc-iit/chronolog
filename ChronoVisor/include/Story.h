@@ -8,8 +8,10 @@
 #include <unordered_map>
 #include <atomic>
 #include <Event.h>
-#include "city.h"
+#include <city.h>
 #include <mutex>
+#include <errcode.h>
+#include <log.h>
 
 enum StoryIndexingGranularity {
     story_gran_ns = 0,
@@ -41,6 +43,8 @@ typedef struct StoryStats_ {
     uint64_t count;
 } StoryStats;
 
+class ClientInfo;
+
 class Story {
 public:
     Story() {
@@ -63,6 +67,37 @@ public:
     void setSid(uint64_t sid) { sid_ = sid; }
     void setCid(uint64_t cid) { cid_ = cid; }
     void setStats(const StoryStats &stats) { stats_ = stats; }
+
+    std::unordered_map<std::string, ClientInfo *> &getAcquirerMap() {
+        return acquirerClientMap_;
+    }
+
+    void addAcquirerClient(const std::string &client_id, ClientInfo *clientInfo) {
+        std::lock_guard<std::mutex> acquirerClientListLock(acquirerClientMapMutex_);
+        acquirerClientMap_.emplace(client_id, clientInfo);
+        LOGD("acquirer client_id=%s is added to Story name=%s", client_id.c_str(), name_.c_str());
+    }
+
+    int removeAcquirerClient(const std::string &client_id) {
+        std::lock_guard<std::mutex> acquirerClientListLock(acquirerClientMapMutex_);
+        if (isAcquiredByClient(client_id)) {
+            acquirerClientMap_.erase(client_id);
+            LOGD("acquirer client_id=%s is removed from Story name=%s", client_id.c_str(), name_.c_str());
+            return CL_SUCCESS;
+        } else {
+            LOGD("Story name=%s is not acquired by client_id=%s", client_id.c_str(), name_.c_str());
+            return CL_ERR_UNKNOWN;
+        }
+    }
+
+    bool isAcquiredByClient(const std::string &client_id) {
+        if (acquirerClientMap_.find(client_id) != acquirerClientMap_.end()) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
     void setProperty(const std::unordered_map<std::string, std::string>& attrs) {
         for (auto const& entry : attrs) {
             propertyList_.emplace(entry.first, entry.second);
@@ -88,6 +123,8 @@ private:
     uint64_t cid_{};
     StoryAttrs attrs_{};
     StoryStats stats_{};
+    std::unordered_map<std::string, ClientInfo *> acquirerClientMap_;
+    std::mutex acquirerClientMapMutex_;
     std::unordered_map<std::string, std::string> propertyList_;
     std::unordered_map<std::string, Event> eventMap_;
 };

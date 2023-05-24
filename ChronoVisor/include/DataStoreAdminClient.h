@@ -42,10 +42,10 @@ public:
 	return shutting_down;
     }
 
-    int send_start_story_recording( ChronicleName const& chronicle_name, StoryName const& story_name,StoryId const& story_id )
+    int send_start_story_recording( ChronicleName const& chronicle_name, StoryName const& story_name,StoryId const& story_id, uint64_t start_time )
     {
-	 std::cout<< "DataStoreAdminClient: start_story_recording:"<<story_id<<std::endl;
-	 return start_story_recording.on(service_handle)(chronicle_name,story_name,story_id);
+	 std::cout<< "CollectionClient: start_story_recording:"<<story_id<<std::endl;
+	 return start_story_recording.on(service_handle)(chronicle_name,story_name,story_id,start_time);
     }
     int send_stop_story_recording( StoryId const& story_id)
     {

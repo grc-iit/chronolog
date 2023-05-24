@@ -88,6 +88,11 @@ int main() {
             duration_acquire_story += (t2 - t1);
         }
 
+        for (int j = 0; j < NUM_STORY; j++) {
+            ret = client.Disconnect(client_id, flags);
+            ASSERT(ret, ==, CL_ERR_ACQUIRED);
+        }
+
         t1 = std::chrono::steady_clock::now();
         std::vector<std::string> stories_names_retrieved = client.ShowStories(client_id, chronicle_names[i]);
         t2 = std::chrono::steady_clock::now();
@@ -133,6 +138,13 @@ int main() {
         ASSERT(ret, ==, CL_SUCCESS);
         duration_destroy_chronicle += (t2 - t1);
     };
+
+    for (int i = 0; i < NUM_STORY; i++) {
+        std::unordered_map<std::string, std::string> story_attrs;
+        std::string temp_str = gen_random(STORY_NAME_LEN);
+        ret = client.AcquireStory(chronicle_names[i].append(temp_str), temp_str, story_attrs, flags);
+        ASSERT(ret, ==, CL_ERR_NOT_EXIST);
+    }
 
     LOGI("CreateChronicle takes %lf ns", duration_create_chronicle.count() / NUM_CHRONICLE);
     LOGI("EditChronicleAttr takes %lf ns", duration_edit_chronicle_attr.count() / NUM_CHRONICLE);

@@ -76,14 +76,14 @@ public:
 
 }//namespace
 
-std::ostream & operator << (std::ostream & out, chronolog::ServiceId const serviceId)
+inline std::ostream & operator << (std::ostream & out, chronolog::ServiceId const serviceId)
 {
    std::string a_string;
    out <<"{"<< serviceId.getIPasDottedString(a_string)<<":"<<serviceId.port<<":"<<serviceId.provider_id<<"}";
    return out;
 }
 
-std::ostream & operator << (std::ostream & out, chronolog::KeeperRegistrationMsg const& msg)
+inline std::ostream & operator << (std::ostream & out, chronolog::KeeperRegistrationMsg const& msg)
 {
   out<<"KeeperRegistrationMsg{"<<msg.getKeeperIdCard()<<"}{admin:"<<msg.getAdminServiceId()<<"}";
   return out;

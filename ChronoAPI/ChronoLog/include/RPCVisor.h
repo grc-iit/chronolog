@@ -16,24 +16,31 @@
 #include "RPCFactory.h"
 #include "ClientRegistryManager.h"
 #include "ChronicleMetaDirectory.h"
+#include "KeeperRegistry.h"
+
 
 class RPCVisor {
 public:
-    RPCVisor() {
+    RPCVisor(chronolog::KeeperRegistry * keeper_registry)
+   : keeperRegistry(keeper_registry)
+    {
         LOGD("%s constructor is called", typeid(*this).name());
-        rpc = std::make_shared<ChronoLogRPC>();
+        clientManager = ChronoLog::Singleton<ClientRegistryManager>::GetInstance();
+        chronicleMetaDirectory = ChronoLog::Singleton<ChronicleMetaDirectory>::GetInstance();
+        clientManager->setChronicleMetaDirectory(chronicleMetaDirectory.get());
+        chronicleMetaDirectory->set_client_registry_manager(clientManager.get());
+        
+	rpc = std::make_shared<ChronoLogRPC>();
         set_prefix("ChronoLog");
         LOGD("%s constructor finishes, object created@%p in thread PID=%d",
              typeid(*this).name(), this, getpid());
-        clientManager = ChronoLog::Singleton<ClientRegistryManager>::GetInstance();
-        chronicleMetaDirectory = ChronoLog::Singleton<ChronicleMetaDirectory>::GetInstance();
     }
 
     ~RPCVisor()
     {
     }
 
-    void Visor_start() {
+    void Visor_start( ) { //chronolog::KeeperRegistry * keeper_registry) {
         rpc->start();
     }
     /**
@@ -45,7 +52,7 @@ public:
         ClientInfo record;
         record.addr_ = "127.0.0.1";
         if (std::strtol(client_id.c_str(), nullptr, 10) < 0) {
-            LOGE("client id is invalid");
+            LOGE("client_id=%s is invalid", client_id.c_str());
             return CL_ERR_INVALID_ARG;
         }
         return clientManager->add_client_record(client_id,record);
@@ -55,7 +62,7 @@ public:
         LOGD("%s is called in PID=%d, with args: client_id=%s, flags=%d",
              __FUNCTION__, getpid(), client_id.c_str(), flags);
         if (std::strtol(client_id.c_str(), nullptr, 10) < 0) {
-            LOGE("client id is invalid");
+            LOGE("client_id=%s is invalid", client_id.c_str());
             return CL_ERR_INVALID_ARG;
         }
         return clientManager->remove_client_record(client_id,flags);
@@ -104,6 +111,8 @@ public:
         }
     }
 
+///////////////////
+
     int LocalAcquireStory(std::string &client_id,
                           std::string& chronicle_name,
                           std::string& story_name,
@@ -111,35 +120,79 @@ public:
                           int& flags) {
         LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, flags=%d",
              __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
-        for (auto iter = attrs.begin(); iter != attrs.end(); ++iter) {
+
+	if( !keeperRegistry->is_running())
+	{ return CL_ERR_NO_KEEPERS; }
+
+        /*for (auto iter = attrs.begin(); iter != attrs.end(); ++iter) {
             LOGD("%s=%s", iter->first.c_str(), iter->second.c_str());
-        }
-        if (!chronicle_name.empty() && !story_name.empty()) {
+        }*/
+
+        if (chronicle_name.empty() || story_name.empty()) 
+	{ //TODO : add this check on the client side, 
+	  //there's no need to waste the RPC on empty strings...
+	  return CL_ERR_INVALID_ARG;
+	}
+	// TODO : create_stroy should be part of acquire_story 
             int ret = chronicleMetaDirectory->create_story(chronicle_name, story_name, attrs);
-            if (ret != CL_SUCCESS) return ret;
-            return chronicleMetaDirectory->acquire_story(client_id, chronicle_name, story_name, flags);
-        } else {
-            if (chronicle_name.empty())
-                LOGE("chronicle name is empty");
-            if (story_name.empty())
-                LOGE("story name is empty");
-            return CL_ERR_INVALID_ARG;
-        }
+            if (ret != CL_SUCCESS) {
+                return ret;
+            }
+
+	// TODO : StoryId token and recordingKeepers vector need to be returned to the client 
+	// when the client side RPC is updated to receive them
+	StoryId story_id(0);
+	std::vector<chronolog::KeeperIdCard> recording_keepers;
+        bool notify_keepers = false;
+        ret = chronicleMetaDirectory->acquire_story(client_id, chronicle_name, story_name, flags, story_id,notify_keepers);
+	if(ret != CL_SUCCESS)
+	{ return ret; }
+
+	// if this is the first client to acquire this story we need to notify the recording Keepers 
+	// so that they are ready to start recording this story
+	if(notify_keepers)
+	{
+	    recording_keepers = keeperRegistry->getActiveKeepers(recording_keepers);
+	    if( 0 != keeperRegistry->notifyKeepersOfStoryRecordingStart(recording_keepers, chronicle_name, story_name,story_id))
+	    {  // RPC notification to the keepers might have failed, release the newly acquired story 
+	       chronicleMetaDirectory->release_story(client_id, chronicle_name,story_name, flags,story_id, notify_keepers);
+	       //TODO: chronicleMetaDirectory->release_story(client_id, story_id, notify_keepers); 
+	       //we do know that there's no need notify keepers of the story ending in this case as it hasn't started...
+	       return CL_ERR_NO_KEEPERS;
+	    }
+	    
+	}
+
+        LOGD("%s finished  in PID=%d, with args: chronicle_name=%s, story_name=%s",
+             __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str());
+    return CL_SUCCESS; 
     }
+//TODO: check if flags are ever needed to release the story...
 
     int LocalReleaseStory(std::string &client_id, std::string& chronicle_name, std::string& story_name, int& flags) {
         LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, flags=%d",
              __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
-        if (!chronicle_name.empty() && !story_name.empty()) {
-            return chronicleMetaDirectory->release_story(client_id, chronicle_name, story_name, flags);
-        } else {
-            if (chronicle_name.empty())
-                LOGE("chronicle name is empty");
-            if (story_name.empty())
-                LOGE("story name is empty");
-            return CL_ERR_INVALID_ARG;
-        }
+
+	//TODO: add this check on the client side so we dont' waste RPC call on empty strings...
+        if (chronicle_name.empty() || story_name.empty()) 
+	{ return CL_ERR_INVALID_ARG; }
+
+	StoryId story_id(0);
+	bool notify_keepers = false;
+        auto return_code = chronicleMetaDirectory->release_story(client_id, chronicle_name, story_name, flags, story_id, notify_keepers);
+	if(CL_SUCCESS != return_code)
+	{  return return_code; }
+
+	if( notify_keepers && keeperRegistry->is_running() )
+	{  
+	  std::vector<chronolog::KeeperIdCard> recording_keepers;
+	  keeperRegistry->notifyKeepersOfStoryRecordingStop( keeperRegistry->getActiveKeepers(recording_keepers), story_id);
+	}
+        LOGD("%s finished in PID=%d, with args: chronicle_name=%s, story_name=%s", 
+             __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str() );
+    return CL_SUCCESS;
     }
+//////////////
 
     int LocalGetChronicleAttr(std::string &name, const std::string &key, std::string &value) {
         LOGD("%s is called in PID=%d, with args: name=%s, key=%s", __FUNCTION__, getpid(), name.c_str(), key.c_str());
@@ -406,6 +459,7 @@ private:
 
     ChronoLogCharStruct func_prefix;
     std::shared_ptr<ChronoLogRPC> rpc;
+    chronolog::KeeperRegistry * keeperRegistry;
     std::shared_ptr<ClientRegistryManager> clientManager;
     std::shared_ptr<ChronicleMetaDirectory> chronicleMetaDirectory;
 };
