@@ -3,8 +3,6 @@
 
 #define H5_SIZEOF_SSIZE_T H5_SIZEOF_LONG_LONG
 
-
-
 #include <hdf5.h>
 #include <fstream>
 #include <string>
@@ -12,6 +10,7 @@
 #include <storywriter.h>
 #include <event.h>
 #include <chrono>
+#include<vector>
 #include <chunkattr.h>
 #include <datasetreader.h>
 #include <datasetminmax.h>
@@ -23,19 +22,18 @@
 #define ATTRIBUTE_DATASET_MAX "Max"
 #define ATTRIBUTE_CHUNKMETADATA_RANK 1
 #define ATTRIBUTE_TOTAL_DATASET_STORY_EVENTS "TotalStoryEvents"
-#define FILE_NAME "C1S1C1.txt"
 #define STORY "S1"
 #define CHRONICLE "C1.h5"
-#define NUM_OF_TESTS 2000
+#define NUM_OF_TESTS 200
 
 storyreader sr;
 
-void testWriteOperation(){
+void testWriteOperation(std::string fileName){
     std::vector<Event> storyChunk;
     __uint64_t time;
     std::string da;
 
-    std::ifstream filePointer(FILE_NAME);
+    std::ifstream filePointer(fileName);
     filePointer.seekg(0, std::ios::beg);
 
     /*
@@ -55,11 +53,11 @@ void testWriteOperation(){
     status = sw.writeStoryChunk(storyChunk, STORY, CHRONICLE);
     if(!status)
     {
-        std::cout<<"\nData written to file sucessfully!\n"<<std::endl;
+        std::cout<<"Data written to file sucessfully for chunk " <<fileName<<std::endl;
     }
     else
     {
-        std::cout<<"\nError occured while writing data to dataset\n"<<std::endl;
+        std::cout<<"Error occured while writing data to dataset"<<std::endl;
     }
 }
 
@@ -74,13 +72,14 @@ void testStoryRange(){
     }
 }
 
-void testReadOperation() {
+int testReadOperation() {
 
     std::cout<<"Executing read test on story "<<STORY<<" of Chronicle "<<CHRONICLE<<" \nTotal read requests: "<<NUM_OF_TESTS<<std::endl;
     std::vector<std::pair<uint64_t, uint64_t>> range;
     DatasetMinMax d = sr.readDatasetRange(STORY, CHRONICLE);
     if(d.status != 0){
         std::cout<<"Error retrieving min max range for dataset story: " << STORY<<std::endl; 
+        return -1;
     }
 
     for(int64_t i = 0 ; i < NUM_OF_TESTS ; i++){
@@ -99,7 +98,7 @@ void testReadOperation() {
         DatasetReader dr = sr.readFromDataset(range[i], STORY, CHRONICLE);
         if(dr.status != 0 || dr.eventData.size() == 0){
             // std::cout<<"Dataset read test failed on test: "<<i+1<<"\t"<<range[i].first<<"\t"<<range[i].second<<std::endl;
-            return;
+            return -1;
         }
         totalDataRead += dr.eventData.size()*sizeof(Event);
     }
@@ -111,21 +110,69 @@ void testReadOperation() {
 
 
     int result = remove(CHRONICLE);
-
-    return ;
+    if(result != 0) {
+        std::cout << CHRONICLE << " not found!" <<std::endl;
+        return -1;
+    }
+    return 0;
 }
 
+void generateData(std::string fileName, int64_t startTimeStamp){
+
+    int64_t num_entries = 100000; // each chunk generates 100000 events
+    std::vector<std::pair<int64_t, std::string>> entries(num_entries);
+    int64_t num = startTimeStamp;
+
+    // Const string in all entries for testing purpose
+    std::string str = "R7YYRjIL82qc1jHXk80GXGvzmaGS4e5U2kzyfhpdbkxbY1fXUcfoBdGpXsE5AdjjViRe1e4519bZhQjn2zvZKC64g6B309k6l6wx";
+    int j = 0;
+    for (int i = 0; i < num_entries; i++) {
+    entries[i] = std::make_pair(num, str);
+    num+=2;
+    }
+
+    // Open file for writing
+    std::ofstream out_file(fileName, std::ios::out | std::ios::app);
+
+    // Append sorted entries to file
+    for (const auto& entry : entries) {
+    out_file << entry.first << " " << entry.second << " ";
+    }
+
+    // Close file
+    out_file.close();
+}
 
 int main(int argc, char* argv[]) {
+// The test program generates five storychunk data containing 1000000 events in every chunk and writes to the storydataset for the chronicle H5. further the read and datarange queries are executed to test.
+    int storyChunksCount = 5;
+    std::string filename = "testChunk";
+    int64_t startTimeStamp = 1000;
+    for(int count = 0 ; count < storyChunksCount ; count++){
 
-    // Write to dataset
-    testWriteOperation();
+        //generate story chunk 
+        std::string chunkname = filename + std::to_string(count);
+        generateData(chunkname, startTimeStamp);
+
+        // Write to dataset
+        testWriteOperation(chunkname);
+        int result = remove(chunkname.c_str());
+        startTimeStamp += 110000;
+    }
+    std::cout << "Write to story dataset operation finished" << std::endl;
 
     // Retrieve story dataset min and max timestamp
+    std::cout << "Executing request to read story Min and Max timeStamp" << std::endl;
     testStoryRange();
 
     // Sequential reads
-    testReadOperation();
+    int ret = testReadOperation();
+    if(ret != 0){
+        std::cout << "chronostore_test failed!" << std::endl;
+    }
+    else{
+        std::cout << "chronostore_test finished!" << std::endl;
+    }
     
 
     return 0;
