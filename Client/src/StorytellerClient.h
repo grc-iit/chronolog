@@ -35,10 +35,12 @@ public:
 class StorytellerClient
 {
 public:
-    StorytellerClient( ChronologTimer & chronolog_timer, thallium::engine & client_tl_engine, ClientId client_id)
+    StorytellerClient( ChronologTimer & chronolog_timer, thallium::engine & client_tl_engine, ClientId const& client_id
+                      , std::string const& rpc_protocol = std::string("ofi+sockets") ) 
 	    : theTimer(chronolog_timer)
 	    , client_engine(client_tl_engine)  
-	    , clientId(client_id)  
+        , clientId(client_id)
+        , rpc_protocol_string(rpc_protocol)  
     {  
       std::cout<<"StorytellerClient::StorytellerClient"<<std::endl;
     }
@@ -68,6 +70,7 @@ private:
     thallium::engine & client_engine;
     ChronologTimer & theTimer;
     ClientId	clientId;
+    std::string rpc_protocol_string;  
     std::atomic<int>  atomic_index;
 
     std::mutex  recordingClientMapMutex;

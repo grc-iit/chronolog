@@ -35,8 +35,6 @@ int chronolog::ChronologClientImpl::Connect(const std::string &server_uri,
     // if disconencting return failure....
     if((clientState != UNKNOWN) && (clientState != SHUTTING_DOWN))
     {  return CL_SUCCESS;  }  
-    else if (clientState == SHUTTING_DOWN) 
-    {  return CL_ERR_INVALID_ARG; }
 
 /*    if (client_id.empty()) {
         char ip[16];
@@ -67,7 +65,7 @@ int chronolog::ChronologClientImpl::Disconnect( ) //const std::string &client_id
     std::lock_guard<std::mutex> lock_client(chronologClientMutex);
 
     if((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
-    {  return CL_ERR_NO_CONNECTION; }
+    {  return CL_SUCCESS; }
 
   //TODO : release all the acquired stories before asking to disconnect...
 
