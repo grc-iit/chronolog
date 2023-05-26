@@ -5,7 +5,8 @@
 #include <thallium/serialization/stl/string.hpp>
 #include <thallium.hpp>
 
-#include "StorytellerClient.h"
+#include "chronolog_types.h"
+#include "chronolog_client.h"
 
 namespace tl = thallium;
 namespace chl = chronolog;

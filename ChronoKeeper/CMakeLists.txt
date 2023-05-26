@@ -12,4 +12,3 @@ target_sources(chrono_keeper PRIVATE ChronoKeeperInstance.cpp StoryPipeline.cpp 
 target_link_libraries(chrono_keeper thallium)
 message("build target : chrono_keeper")
 
-add_subdirectory(storyteller_client)
