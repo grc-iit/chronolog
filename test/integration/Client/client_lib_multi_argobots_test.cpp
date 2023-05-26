@@ -44,16 +44,20 @@ void thread_function(void *tt) {
     story_attrs.emplace("TieringPolicy", "Hot");
     flags = 2;
     auto acquire_ret= client->AcquireStory(chronicle_name, story_name, story_attrs, flags);
-    assert(acquire_ret.first == CL_SUCCESS);
-    ret = client->DestroyStory(chronicle_name, story_name);//, flags);
-    assert(ret == CL_ERR_ACQUIRED);
-    ret = client->Disconnect();//t->client_id, flags);
-    assert(ret == CL_ERR_ACQUIRED);
-    ret = client->ReleaseStory(chronicle_name, story_name);//, flags);
+    std::cout << "tid="<<t->tid<<" AcquireStory {"<<chronicle_name<<":"<<story_name<<"} ret: " << acquire_ret.first << std::endl;
+    assert(acquire_ret.first == CL_SUCCESS || acquire_ret.first == CL_ERR_NOT_EXIST);
+    ret = client->DestroyStory(chronicle_name, story_name);
+    std::cout << "tid="<<t->tid<<" DestroyStory {"<<chronicle_name<<":"<<story_name<<"} ret: " << ret<< std::endl;
+    assert(ret == CL_ERR_ACQUIRED || ret==CL_SUCCESS || ret==CL_ERR_NOT_EXIST);
+    ret = client->Disconnect();
+    assert(ret == CL_ERR_ACQUIRED || ret==CL_SUCCESS);
+    ret = client->ReleaseStory(chronicle_name, story_name);
+    std::cout << "tid="<<t->tid<<" ReleaseStory {"<<chronicle_name<<":"<<story_name<<"} ret: " << ret<< std::endl;
     assert(ret == CL_SUCCESS);
-    ret = client->DestroyStory(chronicle_name, story_name);//, flags);
+     ret = client->DestroyStory(chronicle_name, story_name);
+    std::cout << "tid="<<t->tid<<" DestroyStory {"<<chronicle_name<<":"<<story_name<<"} ret: " << ret<< std::endl;
     assert(ret == CL_SUCCESS || ret == CL_ERR_NOT_EXIST || ret == CL_ERR_ACQUIRED);
-    ret = client->DestroyChronicle(chronicle_name);//, flags);
+    ret = client->DestroyChronicle(chronicle_name);
     assert(ret == CL_SUCCESS || ret == CL_ERR_NOT_EXIST || ret == CL_ERR_ACQUIRED);
 }
 

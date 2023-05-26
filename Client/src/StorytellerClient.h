@@ -50,7 +50,8 @@ public:
     int addKeeperRecordingClient(KeeperIdCard const&);
     int removeKeeperRecordingClient(KeeperIdCard const&);
 
-    std::pair<int,StoryHandle *> initializeStoryWritingHandle(ChronicleName const&, StoryName const&, StoryId const&, std::vector<KeeperIdCard> const&);
+    StoryHandle * findStoryWritingHandle(ChronicleName const&, StoryName const&);
+    StoryHandle * initializeStoryWritingHandle(ChronicleName const&, StoryName const&, StoryId const&, std::vector<KeeperIdCard> const&);
     void removeAcquiredStoryHandle(ChronicleName const&, StoryName const&);
 
     uint64_t getTimestamp()

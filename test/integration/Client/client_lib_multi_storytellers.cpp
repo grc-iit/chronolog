@@ -3,8 +3,9 @@
 #include <cassert>
 #include <common.h>
 #include <thread>
+#include <chrono>
 
-#define STORY_NAME_LEN 32
+#define STORY_NAME_LEN 5 
 
 struct thread_arg {
     int tid;
@@ -15,34 +16,32 @@ chronolog::Client *client;
 
 void thread_body(struct thread_arg *t) {
 
-    //std::string server_ip = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string();
-    //int base_port = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT;
     int flags = 0;
     uint64_t offset;
     int ret;
     std::string chronicle_name;
-    if (t->tid % 2 == 0) chronicle_name = "gscs5er9TcdJ9mOgUDteDVBcI0oQjozK";
-    else chronicle_name = "6RPkwqX2IOpR41dVCqmWauX9RfXIuTAp";
+    if (t->tid % 2 == 0) chronicle_name = "CHRONICLE_2";
+    else chronicle_name = "CHRONICLE_1";
     std::unordered_map<std::string, std::string> chronicle_attrs;
     chronicle_attrs.emplace("Priority", "High");
-    chronicle_attrs.emplace("IndexGranularity", "Millisecond");
-    chronicle_attrs.emplace("TieringPolicy", "Hot");
-    ret = client->CreateChronicle(chronicle_name, chronicle_attrs, flags);
     flags = 1;
+    ret = client->CreateChronicle(chronicle_name, chronicle_attrs, flags);
     std::string story_name = gen_random(STORY_NAME_LEN);
     std::unordered_map<std::string, std::string> story_attrs;
-    story_attrs.emplace("Priority", "High");
-    story_attrs.emplace("IndexGranularity", "Millisecond");
-    story_attrs.emplace("TieringPolicy", "Hot");
     flags = 2;
     auto acquire_ret = client->AcquireStory(chronicle_name, story_name, story_attrs, flags);
     std::cout << "tid="<<t->tid<<" AcquireStory {"<<chronicle_name<<":"<<story_name<<"} ret: " << acquire_ret.first << std::endl;
     assert(acquire_ret.first == CL_SUCCESS || acquire_ret.first == CL_ERR_NOT_EXIST);
-    ret = client->DestroyStory(chronicle_name, story_name);//, flags);
-    std::cout << "tid="<<t->tid<<" DestroyStory {"<<chronicle_name<<":"<<story_name<<"} ret: " << ret<< std::endl;
-    assert(ret == CL_ERR_ACQUIRED || ret==CL_SUCCESS || ret==CL_ERR_NOT_EXIST);
-    ret = client->Disconnect(); //t->client_id, flags);
-    assert(ret == CL_ERR_ACQUIRED || ret==CL_SUCCESS);
+
+    if(CL_SUCCESS == acquire_ret.first)
+    {
+        auto story_handle = acquire_ret.second;
+        for(int i =0; i< 100; ++i)
+        {  
+            story_handle->log_event( "line " + std::to_string(i));
+            std::this_thread::sleep_for(std::chrono::milliseconds(i%10));
+        }
+    }
     ret = client->ReleaseStory(chronicle_name, story_name);//, flags);
     std::cout << "tid="<<t->tid<<" ReleaseStory {"<<chronicle_name<<":"<<story_name<<"} ret: " << ret<< std::endl;
     assert(ret == CL_SUCCESS || ret == CL_ERR_NO_CONNECTION);

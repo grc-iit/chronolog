@@ -25,7 +25,7 @@ chronolog::StoryHandle::~StoryHandle()
 ////////////////////
 template<class KeeperChoicePolicy> // = chronolog::RoundRobinKeeperChoice>
 chronolog::StoryWritingHandle<KeeperChoicePolicy>::~StoryWritingHandle()
-{  delete keeperChoicePolicy; }
+{   delete keeperChoicePolicy; }
 
 ////////////////////
 template< class KeeperChoicePolicy> 
@@ -163,20 +163,31 @@ int chronolog::StorytellerClient::removeKeeperRecordingClient( chronolog::Keeper
 return 1;
 }
 ///////////////////////////
+chronolog::StoryHandle *  chronolog::StorytellerClient::findStoryWritingHandle(
+                ChronicleName const& chronicle, StoryName const& story )
+{
+    std::lock_guard<std::mutex> lock(acquiredStoryMapMutex);
 
-std::pair<int,chronolog::StoryHandle *>  chronolog::StorytellerClient::initializeStoryWritingHandle(
-		ChronicleName const& chronicle, StoryName const& story
-		, StoryId const& story_id, std::vector<KeeperIdCard> const& vectorOfKeepers) 
+    auto story_record_iter = acquiredStoryHandles.find( std::pair<std::string,std::string>(chronicle,story));
+    if(story_record_iter != acquiredStoryHandles.end())
+    {   return ((*story_record_iter).second); }
+    else
+    {   return (nullptr);  }
+}
+
+/////////////
+
+chronolog::StoryHandle *  chronolog::StorytellerClient::initializeStoryWritingHandle(
+            ChronicleName const& chronicle, StoryName const& story
+            , StoryId const& story_id, std::vector<KeeperIdCard> const& vectorOfKeepers) 
 	//INNA: TODO :KeeperChoicePolicy will have to be communicated here as well ....
 {
-
-
     std::lock_guard<std::mutex> lock(acquiredStoryMapMutex);
 
     auto story_record_iter = acquiredStoryHandles.find( std::pair<std::string,std::string>(chronicle,story));
     if(story_record_iter != acquiredStoryHandles.end())
     {
-	return std::pair<int,chronolog::StoryHandle*>(1, (*story_record_iter).second);
+	return (*story_record_iter).second;
     }
 
     // create new StoryWritingHandle & initialize it's keeperClients vector    
@@ -196,16 +207,15 @@ std::pair<int,chronolog::StoryHandle *>  chronolog::StorytellerClient::initializ
 	    storyWritingHandle->addRecordingClient((*keeper_client_iter).second);
     }
 
-
     auto insert_return = acquiredStoryHandles.insert( std::pair< std::pair<std::string,std::string>,chronolog::StoryHandle*>(
 				               std::pair<std::string,std::string>(chronicle,story), storyWritingHandle));
     if( false == insert_return.second)
     {
         delete storyWritingHandle;
-        return std::pair<int,chronolog::StoryHandle*>(0,nullptr);
+        return nullptr;
     }
 
-return std::pair<int,chronolog::StoryHandle*>(1,storyWritingHandle);
+return storyWritingHandle;
 /*
     // now check the state of the handle:
     // it's possible the other thread is still pending the acquisition response from the Vizor,
