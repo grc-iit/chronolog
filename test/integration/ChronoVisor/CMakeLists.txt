@@ -2,11 +2,6 @@ find_package(mercury REQUIRED)
 find_package(thallium REQUIRED)
 find_package(Threads REQUIRED)
 
-add_executable(chronolog_client_test chronolog_client.cpp)
-target_link_libraries(chronolog_client_test Serde socketpp pthread)
-add_dependencies(chronolog_client_test Serde socketpp)
-
-add_test(NAME chronolog_client_test COMMAND chronolog_client_test)
 
 add_executable(chronovisor_server_test chronovisor_server.cpp
         ../../../ChronoVisor/src/ChronoVisorServer2.cpp

@@ -78,7 +78,7 @@ std::string & getIPasDottedString ( std::string & a_string ) const
 
 } //namespace chronolog
 
-std::ostream & operator<< (std::ostream & out , chronolog::KeeperIdCard const & keeper_id_card)
+inline std::ostream & operator<< (std::ostream & out , chronolog::KeeperIdCard const & keeper_id_card)
 {
    std::string a_string;
    out << "KeeperIdCard{"<<keeper_id_card.getGroupId()
