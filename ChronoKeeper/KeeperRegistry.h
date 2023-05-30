@@ -11,7 +11,6 @@
 #include "KeeperIdCard.h"
 #include "KeeperStatsMsg.h"
 #include "KeeperRegistrationMsg.h"
-#include "ConfigurationManager.h"
 
 namespace chronolog
 {
@@ -70,9 +69,9 @@ enum RegistryState
 };
 
 public:
-	KeeperRegistry( ) 
+	KeeperRegistry( thallium::engine & the_engine)
 	   : registryState(UNKNOWN)
-	   , registryEngine(nullptr)
+	   , registryEngine(the_engine)
 	   , keeperRegistryService(nullptr)
 	{}
 
@@ -87,7 +86,7 @@ public:
 	bool is_shutting_down() const 
 	{ return (SHUTTING_DOWN == registryState); }
 
-	int InitializeRegistryService(ChronoLog::ConfigurationManager const& );
+	int InitializeRegistryService(uint16_t service_provider_id);
 
 	int ShutdownRegistryService();
 
@@ -109,11 +108,11 @@ private:
 
 	KeeperRegistry(KeeperRegistry const&) = delete; //disable copying
 	KeeperRegistry & operator= (KeeperRegistry const&) = delete;
-
+	
 	RegistryState	registryState;
 	std::mutex registryLock;
 	std::map<std::pair<uint32_t,uint16_t>, KeeperProcessEntry> keeperProcessRegistry;
-	thallium::engine  * registryEngine;
+	thallium::engine & registryEngine;
         KeeperRegistryService	* keeperRegistryService;
 };
 

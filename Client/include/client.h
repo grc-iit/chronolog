@@ -8,11 +8,9 @@
 #include "RPCClient.h"
 #include "errcode.h"
 #include "ConfigurationManager.h"
-//#include "ClocksourceManager.h"
+#include "ClocksourceManager.h"
 
-//ClocksourceManager *ClocksourceManager::clocksourceManager_ = nullptr;
-
-class ClocksourceManager;
+ClocksourceManager *ClocksourceManager::clocksourceManager_ = nullptr;
 
 class ChronoLogClient {
 public:
@@ -35,8 +33,8 @@ public:
     }
 
     void init() {
-        //pClocksourceManager_ = ClocksourceManager::getInstance();
-        //pClocksourceManager_->setClocksourceType(CHRONOLOG_CONF->CLOCKSOURCE_TYPE);
+        pClocksourceManager_ = ClocksourceManager::getInstance();
+        pClocksourceManager_->setClocksourceType(CHRONOLOG_CONF->CLOCKSOURCE_TYPE);
         CHRONOLOG_CONF->ROLE = CHRONOLOG_CLIENT;
         rpcClient_ = ChronoLog::Singleton<RPCClient>::GetInstance();
     }

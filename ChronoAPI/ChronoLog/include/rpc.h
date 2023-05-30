@@ -120,9 +120,6 @@ public:
     template<typename F>
     void bind(const ChronoLogCharStruct &str, F func);
 
-    thallium::engine & get_tl_client_engine()
-    {  return *thalliumClient_; }
-
     void run(size_t workers = 1) {
         if (CHRONOLOG_CONF->ROLE == CHRONOLOG_VISOR) {
             /* only servers run */
