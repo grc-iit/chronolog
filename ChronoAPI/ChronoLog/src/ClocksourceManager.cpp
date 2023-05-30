@@ -12,10 +12,8 @@ Clocksource *Clocksource::Create(ClocksourceType type) {
             return new ClocksourceCStyle();
         case ClocksourceType::CPP_STYLE:
             return new ClocksourceCPPStyle();
-#ifdef TSC_ENABLED
-	case ClocksourceType::TSC:
+        case ClocksourceType::TSC:
             return new ClocksourceTSC();
-#endif
         default:
             return nullptr;
     }

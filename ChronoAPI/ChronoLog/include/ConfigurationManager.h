@@ -1,3 +1,7 @@
+//
+// Created by kfeng on 3/30/22.
+//
+
 #ifndef CHRONOLOG_CONFIGURATIONMANAGER_H
 #define CHRONOLOG_CONFIGURATIONMANAGER_H
 

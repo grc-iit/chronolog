@@ -11,6 +11,21 @@
 
 namespace chronolog
 {
+typedef uint64_t StoryId;
+typedef uint64_t ClientId;
+typedef std::mutex ChronoMutex;	
+
+struct LogEvent
+{
+	LogEvent(StoryId const& story_id, ClientId const& client_id, uint64_t time, std::string const& record)
+		: storyId(story_id), clientId(client_id)
+		, timestamp(time),logRecord(record)
+	{}  
+	StoryId  storyId;
+	ClientId clientId;
+	uint64_t timestamp;
+	std::string logRecord;
+};
 
 typedef std::deque<LogEvent> EventDeque;
 
@@ -18,39 +33,30 @@ class StoryIngestionHandle
 {
 
 public:
-	StoryIngestionHandle( std::mutex & a_mutex, EventDeque * active, EventDeque * passive)
+	StoryIngestionHandle( ChronoMutex & a_mutex, EventDeque & event_deque)
        		: ingestionMutex(a_mutex)
-	  	, activeDeque(active)
-		, passiveDeque(passive)       
+	  	, activeDeque(&eventDeque)
 			{}
-	~StoryIngestionHandle() = default;
+	~StoryIngestionQueue() = default;
 
-	EventDeque & getActiveDeque() const
-	{ return *activeDeque; }
-
-	EventDeque & getPassiveDeque () const
-	{ return *passiveDeque; }
-
-	void ingestEvent( LogEvent const& logEvent)
+	void ingestLogEvent( LogEvent const& logEvent)
 	{   // assume multiple service threads pushing events on ingestionQueue
-	    std::lock_guard<std::mutex> lock(ingestionMutex); 
+	    std::lock_guard<ingestionMutex> lock(); 
 	    activeDeque->push_back(logEvent); 
 	}
 
-	void swapActiveDeque( ) //EventDeque * empty_deque, EventDeque * full_deque)
+	void swapActiveDeque( EventDeque * empty_deque, EventDeque * full_deque)
 	{
-	    if( !passiveDeque->empty() || activeDeque->empty())
+	    if( activeDeque->is_empty())
 	    {	    return ;       }
-
 //INNA: check if atomic compare_and_swap will work here
 
-	    std::lock_guard<std::mutex> lock_guard(ingestionMutex); 
-	    if( !passiveDeque->empty() || activeDeque->empty())
+	    std::lock_guard<ingestionMutex> lock_guard(ingestionMutex); 
+	    if(  activeDeque->is_empty() )
 	    {	    return ;       }
 
-	    EventDeque * full_deque = activeDeque;
-	    activeDeque = passiveDeque;
-	    passiveDeque = full_deque;
+	    full_queue = activeDeque;
+	    activeDeque = empty_deque;
 
 	}
 		
@@ -59,7 +65,6 @@ private:
 
 	std::mutex & ingestionMutex;   
 	EventDeque * activeDeque;
-	EventDeque * passiveDeque;
 };
 
 }

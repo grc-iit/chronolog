@@ -42,7 +42,7 @@ public:
 
 }
 
-inline std::ostream & operator << (std::ostream & out,chronolog::KeeperStatsMsg const& stats_msg)
+std::ostream & operator << (std::ostream & out,chronolog::KeeperStatsMsg const& stats_msg)
 {
   out<<"KeeperStatsMsg{"<<stats_msg.getKeeperIdCard()<<"}";
   return out;

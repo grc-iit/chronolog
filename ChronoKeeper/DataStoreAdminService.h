@@ -6,7 +6,7 @@
 #include <thallium.hpp>
 #include <thallium/serialization/stl/string.hpp>
 
-#include "chrono_common/chronolog_types.h"
+#include "chronolog_types.h"
 #include "KeeperDataStore.h"
 
 namespace tl = thallium;
@@ -45,18 +45,18 @@ public:
     }
 
     void StartStoryRecording(tl::request const& request, 
-                      std::string const& chronicle_name, std::string const& story_name,  StoryId const& story_id, uint64_t start_time)
+                      std::string const& chronicle_name, std::string const& story_name,  StoryId const& story_id)
     {
-        std::cout << "DataCollectionService: StartStoryRecoding {"<< story_name<<":"<<story_id<<"}"<< std::endl;
-        theDataStore.startStoryRecording(chronicle_name, story_name, story_id, start_time);
-        request.respond( 0);
+        std::cout << "DataStoreAdminService: StartStoryRecoding {"<< story_name<<":"<<story_id<<"}"<< std::endl;
+        theDataStore.startStoryRecording(chronicle_name, story_name, story_id);
+        request.respond( story_id );
     }
 
     void StopStoryRecording(tl::request const& request, StoryId const& story_id)
     {
-        std::cout << "DataStoreAdminService: StopStoryRecoding {"<< story_id<<"}"<< std::endl;
+        std::cout << "DataStoreAdminService: StartStoryRecoding {"<< story_id<<"}"<< std::endl;
 	theDataStore.stopStoryRecording(story_id);
-        request.respond( 0);
+        request.respond( story_id );
     }
 
 private:

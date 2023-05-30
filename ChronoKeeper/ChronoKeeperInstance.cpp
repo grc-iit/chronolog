@@ -1,8 +1,11 @@
 
 #include <arpa/inet.h>
 
-#include "chrono_common/KeeperIdCard.h"
-#include "chrono_common/KeeperStatsMsg.h"
+//#include "Storyteller.h"
+
+
+#include "KeeperIdCard.h"
+#include "KeeperStatsMsg.h"
 #include "KeeperRecordingService.h"
 #include "KeeperRegClient.h"
 #include "IngestionQueue.h"
@@ -10,13 +13,13 @@
 #include "DataStoreAdminService.h"
 
 #define KEEPER_GROUP_ID 7
-#define KEEPER_REGISTRY_SERVICE_NA_STRING  "ofi+sockets://127.0.0.1:6666"
-#define KEEPER_REGISTRY_SERVICE_PROVIDER_ID	22
+#define KEEPER_REGISTRY_SERVICE_NA_STRING  "ofi+sockets://127.0.0.1:1234"
+#define KEEPER_REGISTRY_SERVICE_PROVIDER_ID	25
 
 #define KEEPER_RECORDING_SERVICE_PROTOCOL  "ofi+sockets"
 #define KEEPER_RECORDING_SERVICE_IP  "127.0.0.1"
-#define KEEPER_RECORDING_SERVICE_PORT  "8888"
-#define KEEPER_RECORDING_SERVICE_PROVIDER_ID	25
+#define KEEPER_RECORDING_SERVICE_PORT  "5555"
+#define KEEPER_RECORDING_SERVICE_PROVIDER_ID	22
 
 #define KEEPER_COLLECTION_SERVICE_PROTOCOL  "ofi+sockets"
 #define KEEPER_COLLECTION_SERVICE_IP  "127.0.0.1"
@@ -80,7 +83,7 @@ int main(int argc, char** argv) {
     // Instantiate ChronoKeeper MemoryDataStore
     //
     chronolog::IngestionQueue ingestionQueue; 
-    chronolog::KeeperDataStore theDataStore(ingestionQueue);
+    chronolog::KeeperDataStore theDataStore;
 
     // instantiate DataStoreAdminService
     std::string KEEPER_COLLECTION_SERVICE_NA_STRING = std::string(KEEPER_COLLECTION_SERVICE_PROTOCOL)
@@ -159,11 +162,11 @@ int main(int argc, char** argv) {
 
     int i{0};
 
-    while( !theDataStore.is_shutting_down())
+    while( !theDataStore.is_shutting_down() & (i <20))
     {
         keeperRegistryClient->send_stats_msg(keeperStatsMsg);
-	theDataStore.collectIngestedEvents();
-	sleep(10);
+	i++;
+	sleep(60);
     }
 
     keeperRegistryClient->send_unregister_msg(keeperIdCard);

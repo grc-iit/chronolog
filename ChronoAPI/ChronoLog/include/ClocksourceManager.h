@@ -10,15 +10,12 @@
 #include <ctime>
 #include <typeinfo>
 #include <unistd.h>
-//#include <emmintrin.h>
+#include <emmintrin.h>
 #include <enum.h>
 #include <log.h>
 
-#ifdef TSC_ENABLED
-#include <emmintrin.h>
 #define   lfence()  _mm_lfence()
 #define   mfence()  _mm_mfence()
-#endif
 
 class Clocksource {
 public:
@@ -41,7 +38,6 @@ public:
     }
 };
 
-#ifdef TSC_ENABLED
 class ClocksourceTSC : public Clocksource {
 public:
     uint64_t getTimestamp() override {
@@ -51,8 +47,6 @@ public:
         return t;
     }
 };
-#endif
-
 class ClocksourceCPPStyle : public Clocksource {
 public:
     uint64_t getTimestamp() override {
