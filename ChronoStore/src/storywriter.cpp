@@ -17,7 +17,7 @@
 #define ATTRIBUTE_DATASET_MAX "Max"
 #define ATTRIBUTE_TOTAL_DATASET_STORY_EVENTS "TotalStoryEvents"
 #define ATTRIBUTE_CHUNKMETADATA_RANK 1
-#define DEBUG 0 // Set to 1 ito print H5 error messages to console
+#define DEBUG 0 // Set to 1 to print H5 error messages to console
 #define CHUNK_SIZE 40000 // Number of events equal to page size of 4MB
 
 // Constructor storywriter
@@ -33,57 +33,40 @@ storywriter::~storywriter(){}
  * @param CHRONICLE: chronicle name
  * @return: 0 if successful, else -1, if failed.
  */
-int storywriter::writeStoryChunk(std::vector<Event> storyChunk, const char* STORY, const char* CHRONICLE) {
+int storywriter::writeStoryChunk(std::vector<Event> *storyChunk, const char* STORY, const char* CHRONICLE) {
 
     // Disable automatic printing of HDF5 error stack to console
     if(!DEBUG){
         H5Eset_auto(H5E_DEFAULT, NULL, NULL);
     }
 
-    hid_t   ChronicleH5, storyDataset, storyDatasetSpace, chunkPropId, hyperslabMemorySpace, eventType, chunkmetaAttribute, attr, attr1, attr_DatasetMin, attr_DatasetMax, attr_DatasetTotalStoryEvents;
-    hid_t   attributeId, attributeType, attributeDataSpace;
-    herr_t  status, ret;
+    hid_t   ChronicleH5 = -1, storyDataset = -1, storyDatasetSpace = -1, chunkPropId = -1, hyperslabMemorySpace = -1, eventType = -1, chunkmetaAttribute = -1, attr = -1, attr1 = -1, attr_DatasetMin = -1, attr_DatasetMax = -1, attr_DatasetTotalStoryEvents = -1;
+    hid_t   attributeId = -1, attributeType = -1, attributeDataSpace = -1;
+    herr_t  status = -1, ret = -1;
+    hsize_t attributeCount = 0;
+    hsize_t chunksize = CHUNK_SIZE;
+    hsize_t datasetHyperslabStart[1] = {0};
+    hsize_t storySpaceStart[1] = {0};
+    std::vector<ChunkAttr> *attributeDataBuffer, *extendChunkMetadataBuffer;
 
-    Event* eventBuffer;
-    ChunkAttr* attributeDataBuffer;
-    ChunkAttr* extendChunkMetadataBuffer;
-
-    /* 
+    /*
     * Chunk Dimension and number of events in a story chunk
     */
     const hsize_t chunkDims[1] = {CHUNK_SIZE};
-    const hsize_t numberOfEvents = storyChunk.size() - 1;
-
-    /*
-    * Allocate memory for events buffer
-    * TODO: Modification required in case of variable sized events
-    */
-    eventBuffer = (Event*) malloc(numberOfEvents * sizeof(Event));
-    if(eventBuffer == NULL){
-        return -1;
-    }
+    const hsize_t numberOfEvents = storyChunk->size() - 1;
 
     /*
     * Allocate memory for attribute buffer
     */
-    attributeDataBuffer = (ChunkAttr*) malloc(((numberOfEvents / CHUNK_SIZE) + 1) * sizeof(ChunkAttr));
-    if(attributeDataBuffer == NULL){
-        if(eventBuffer != NULL) free(eventBuffer);
+    attributeDataBuffer = new std::vector<ChunkAttr>((numberOfEvents / CHUNK_SIZE) + 1);
+    if(attributeDataBuffer == nullptr){
         return -1;
-    }
-
-    /*
-    * Read data from storyChunk into eventBuffer
-    */
-    for(auto event = 0 ; event < numberOfEvents ; event++) {
-    eventBuffer[event].timeStamp = storyChunk[event].timeStamp;
-    strcpy(eventBuffer[event].data, storyChunk[event].data);
     }
 
     /*
     * Dimensions for the storyDataset
     */
-    const hsize_t storyChunkDims[] = {storyChunk.size() - 1};
+    const hsize_t storyChunkDims[] = {storyChunk->size() - 1};
 
     /*
     * User defined compound datatype - consists "timeStamp" and "data"
@@ -94,8 +77,6 @@ int storywriter::writeStoryChunk(std::vector<Event> storyChunk, const char* STOR
     dataError = H5Tinsert(eventType, "data", HOFFSET(Event, data), H5T_NATIVE_CHAR);
     if(eventType < 0 || dataError < 0 || timeStampError < 0){
         if(eventType >=0 )  H5Tclose(eventType);
-        if(attributeDataBuffer != NULL) free(attributeDataBuffer);
-        if(eventBuffer != NULL) free(eventBuffer);
         return -1;
     }
 
@@ -110,20 +91,15 @@ int storywriter::writeStoryChunk(std::vector<Event> storyChunk, const char* STOR
         /*
         * Open ChronicleH5 and check if the storyDataset exists
         */
-
-        ChronicleH5 = H5Fopen(CHRONICLE, H5F_ACC_RDONLY, H5P_DEFAULT);
+        ChronicleH5 = H5Fopen(CHRONICLE, H5F_ACC_RDWR, H5P_DEFAULT);
         if(ChronicleH5 < 0){
             if(eventType >=0 )  H5Tclose(eventType);
-            if(attributeDataBuffer != NULL) free(attributeDataBuffer);
-            if(eventBuffer != NULL) free(eventBuffer);
             return -1;
         }
         if(H5Lexists(ChronicleH5, STORY, H5P_DEFAULT) > 0){
             /*
-            * Open ChronicleH5 and storyDataset
+            * Open storyDataset
             */
-            H5Fclose(ChronicleH5);
-            ChronicleH5 = H5Fopen(CHRONICLE, H5F_ACC_RDWR, H5P_DEFAULT);
 
             storyDataset = H5Dopen2(ChronicleH5, STORY, H5P_DEFAULT);
 
@@ -138,15 +114,7 @@ int storywriter::writeStoryChunk(std::vector<Event> storyChunk, const char* STOR
             status = H5Aread(attributeId, attributeType, &totalStoryEvents);
 
             if(status < 0 || attributeDataSpace < 0 || attributeId < 0 || attributeType < 0 || storyDataset < 0 || ChronicleH5 < 0){
-                if(attributeId >= 0)  H5Aclose(attributeId);
-                if(attributeDataSpace >= 0)  H5Sclose(attributeDataSpace);
-                if(attributeType >= 0)  H5Tclose(attributeType);
-                if(storyDataset >= 0)  H5Dclose(storyDataset);
-                if(ChronicleH5 >= 0)  H5Fclose(ChronicleH5);
-                if(eventType >=0 )  H5Tclose(eventType);
-                if(attributeDataBuffer != NULL) free(attributeDataBuffer);
-                if(eventBuffer != NULL) free(eventBuffer);
-                return -1;
+                goto release_resources;
             }
 
             if(attributeId >= 0)  H5Aclose(attributeId);
@@ -160,12 +128,7 @@ int storywriter::writeStoryChunk(std::vector<Event> storyChunk, const char* STOR
             newStorySize[0] = {totalStoryEvents + storyChunkDims[0]};
             status = H5Dset_extent(storyDataset, newStorySize);
             if(status < 0 ){
-                if(storyDataset >= 0)  H5Dclose(storyDataset);
-                if(ChronicleH5 >= 0)  H5Fclose(ChronicleH5);
-                if(eventType >=0 )  H5Tclose(eventType);
-                if(attributeDataBuffer != NULL) free(attributeDataBuffer);
-                if(eventBuffer != NULL) free(eventBuffer);
-                return -1;
+                goto release_resources;
             }
 
             /* 
@@ -178,25 +141,14 @@ int storywriter::writeStoryChunk(std::vector<Event> storyChunk, const char* STOR
             */
             storyDataset = H5Dopen2(ChronicleH5, STORY, H5P_DEFAULT);
             storyDatasetSpace = H5Dget_space(storyDataset);
-
             if(storyDatasetSpace < 0 || storyDataset < 0){
-                if(storyDatasetSpace >= 0)  H5Sclose(storyDatasetSpace);
-                if(storyDataset >= 0)  H5Dclose(storyDataset);
-                if(ChronicleH5 >= 0)  H5Fclose(ChronicleH5);
-                if(eventType >=0 )  H5Tclose(eventType);
-                if(attributeDataBuffer != NULL) free(attributeDataBuffer);
-                if(eventBuffer != NULL) free(eventBuffer);
-                return -1;
+                goto release_resources;
             }
         }
-
         /*
         * Create the storyDataset
         */
         else{
-            std::cout << "Dataset not found..." << std::endl;
-            H5Fclose(ChronicleH5);
-            ChronicleH5 = H5Fopen(CHRONICLE, H5F_ACC_RDWR, H5P_DEFAULT);
 
             /*
             * Enable chunking for the storyDataset
@@ -210,27 +162,12 @@ int storywriter::writeStoryChunk(std::vector<Event> storyChunk, const char* STOR
             const hsize_t datasetMaxDims[] = {H5S_UNLIMITED};
             storyDatasetSpace = H5Screate_simple(DATASET_RANK, storyChunkDims, datasetMaxDims );
             if(storyDatasetSpace < 0 || ChronicleH5 < 0 || status < 0 || chunkPropId < 0){
-                if(chunkPropId >= 0)    H5Pclose(chunkPropId);
-                if(storyDatasetSpace >= 0)  H5Sclose(storyDatasetSpace);
-                if(ChronicleH5 >= 0)  H5Fclose(ChronicleH5);
-                if(eventType >=0 )  H5Tclose(eventType);
-                if(attributeDataBuffer != NULL) free(attributeDataBuffer);
-                if(eventBuffer != NULL) free(eventBuffer);
-                return -1;
+                goto release_resources;
             }
-
             storyDataset = H5Dcreate2(ChronicleH5, STORY, eventType, storyDatasetSpace, H5P_DEFAULT, chunkPropId, H5P_DEFAULT);
             if(storyDataset < 0){
-                
-                if(chunkPropId >= 0)    H5Pclose(chunkPropId);
-                if(storyDatasetSpace >= 0)  H5Sclose(storyDatasetSpace);
-                if(ChronicleH5 >= 0)  H5Fclose(ChronicleH5);
-                if(eventType >=0 )  H5Tclose(eventType);
-                if(attributeDataBuffer != NULL) free(attributeDataBuffer);
-                if(eventBuffer != NULL) free(eventBuffer);
-                return -1;
+                goto release_resources;
             }
-
         }
     }
     /*
@@ -251,73 +188,44 @@ int storywriter::writeStoryChunk(std::vector<Event> storyChunk, const char* STOR
         const hsize_t datasetMaxDims[] = {H5S_UNLIMITED};
         storyDatasetSpace = H5Screate_simple(DATASET_RANK, storyChunkDims, datasetMaxDims );
         if(storyDatasetSpace < 0 || ChronicleH5 < 0 || status < 0 || chunkPropId < 0){
-            if(chunkPropId >= 0)    H5Pclose(chunkPropId);
-            if(storyDatasetSpace >= 0)  H5Sclose(storyDatasetSpace);
-            if(ChronicleH5 >= 0)  H5Fclose(ChronicleH5);
-            if(attributeDataBuffer != NULL) free(attributeDataBuffer);
-            if(eventBuffer != NULL) free(eventBuffer);
-            if(eventType >=0 )  H5Tclose(eventType);
-            return -1;
+            goto release_resources;
         }
 
         storyDataset = H5Dcreate2(ChronicleH5, STORY, eventType, storyDatasetSpace, H5P_DEFAULT, chunkPropId, H5P_DEFAULT);
         if(storyDataset < 0){
-            if(chunkPropId >= 0)    H5Pclose(chunkPropId);
-            if(storyDatasetSpace >= 0)  H5Sclose(storyDatasetSpace);
-            if(ChronicleH5 >= 0)  H5Fclose(ChronicleH5);
-            if(attributeDataBuffer != NULL) free(attributeDataBuffer);
-            if(eventBuffer != NULL) free(eventBuffer);
-            if(eventType >=0 )  H5Tclose(eventType);
-            return -1;
+            goto release_resources;
         }
     }
 
     /*
     * Write data to the storyDataset
     */
-    hsize_t datasetHyperslabStart[] = {0};
-    hsize_t storySpaceStart[] = {storyDatasetSpaceStart};
+    storySpaceStart[0] = storyDatasetSpaceStart;
     hyperslabMemorySpace = H5Screate_simple(DATASET_RANK, storyChunkDims, NULL);
 
     herr_t memSpaceErr, datasetSpaceError;
     memSpaceErr = H5Sselect_hyperslab(hyperslabMemorySpace, H5S_SELECT_SET, datasetHyperslabStart, NULL, storyChunkDims, NULL);
     datasetSpaceError = H5Sselect_hyperslab(storyDatasetSpace, H5S_SELECT_SET, storySpaceStart, NULL, storyChunkDims, NULL);
     if(memSpaceErr < 0 || datasetSpaceError < 0 || hyperslabMemorySpace < 0){
-        if(hyperslabMemorySpace >= 0)  H5Sclose(hyperslabMemorySpace);
-        if(storyDatasetSpace >= 0)  H5Sclose(storyDatasetSpace);
-        if(storyDataset >= 0)   H5Dclose(storyDataset);
-        if(ChronicleH5 >= 0)  H5Fclose(ChronicleH5);
-        if(attributeDataBuffer != NULL) free(attributeDataBuffer);
-        if(eventBuffer != NULL) free(eventBuffer);
-        if(eventType >=0 )  H5Tclose(eventType);
-        return -1;
+        goto release_resources;
     }
 
-    status = H5Dwrite(storyDataset, eventType, hyperslabMemorySpace, storyDatasetSpace, H5P_DEFAULT, &eventBuffer[0]);
+    status = H5Dwrite(storyDataset, eventType, hyperslabMemorySpace, storyDatasetSpace, H5P_DEFAULT, storyChunk->data());
     if(status < 0){
-        if(hyperslabMemorySpace >= 0)  H5Sclose(hyperslabMemorySpace);
-        if(storyDatasetSpace >= 0)  H5Sclose(storyDatasetSpace);
-        if(storyDataset >= 0)   H5Dclose(storyDataset);
-        if(ChronicleH5 >= 0)  H5Fclose(ChronicleH5);
-        if(attributeDataBuffer != NULL) free(attributeDataBuffer);
-        if(eventBuffer != NULL) free(eventBuffer);
-        if(eventType >=0 )  H5Tclose(eventType);
-        return -1;
+        goto release_resources;
     }
 
     H5Sclose(hyperslabMemorySpace);
     H5Sclose(storyDatasetSpace);
 
-    hsize_t attributeCount = 0;
-    hsize_t chunksize = CHUNK_SIZE;
     for (hsize_t eventIndex = 0; eventIndex < storyChunkDims[0]; eventIndex += CHUNK_SIZE) {
         if(storyChunkDims[0] - eventIndex < CHUNK_SIZE){
             chunksize = storyChunkDims[0] - eventIndex;
         }
-        attributeDataBuffer[attributeCount].startTimeStamp = eventBuffer[eventIndex].timeStamp;
-        attributeDataBuffer[attributeCount].endTimeStamp = eventBuffer[eventIndex + chunksize - 1].timeStamp;
-        attributeDataBuffer[attributeCount].datasetIndex = eventIndex;
-        attributeDataBuffer[attributeCount].totalChunkEvents = chunksize;
+        attributeDataBuffer->at(attributeCount).startTimeStamp = storyChunk->at(eventIndex).timeStamp;
+        attributeDataBuffer->at(attributeCount).endTimeStamp = storyChunk->at(eventIndex + chunksize - 1).timeStamp;
+        attributeDataBuffer->at(attributeCount).datasetIndex = eventIndex;
+        attributeDataBuffer->at(attributeCount).totalChunkEvents = chunksize;
         attributeCount++;
     }
 
@@ -331,13 +239,7 @@ int storywriter::writeStoryChunk(std::vector<Event> storyChunk, const char* STOR
     datasetIndexError = H5Tinsert(chunkmetaAttribute, "datasetIndex", HOFFSET(ChunkAttr, datasetIndex), H5T_NATIVE_UINT);
     totalChunkEventsError = H5Tinsert(chunkmetaAttribute, "totalChunkEvents", HOFFSET(ChunkAttr, totalChunkEvents), H5T_NATIVE_UINT);
     if(chunkmetaAttribute < 0 || endError < 0 || startError < 0 || totalChunkEventsError < 0 || datasetIndexError < 0){
-        if(attributeDataBuffer != NULL) free(attributeDataBuffer);
-        if(eventBuffer != NULL) free(eventBuffer);
-        if(chunkmetaAttribute >=0 ) H5Tclose(chunkmetaAttribute);
-        if(eventType >=0 )  H5Tclose(eventType);
-        if(storyDataset >= 0)   H5Dclose(storyDataset);
-        if(ChronicleH5 >= 0)  H5Fclose(ChronicleH5);
-        return -1;
+        goto release_resources;
     }
 
     if(H5Aexists_by_name(storyDataset, ".", ATTRIBUTE_CHUNKMETADATA, H5P_DEFAULT) > 0){
@@ -351,23 +253,16 @@ int storywriter::writeStoryChunk(std::vector<Event> storyChunk, const char* STOR
         H5Sclose(attributeDataSpace);
 
         hsize_t attributeDims[] = {attributeChunkMetadataDims + attributeCount};
-        extendChunkMetadataBuffer = (ChunkAttr *) malloc(attributeDims[0] * sizeof(ChunkAttr));
-
+        extendChunkMetadataBuffer = new std::vector<ChunkAttr>(attributeDims[0]);
+        if(extendChunkMetadataBuffer == nullptr){
+            goto release_resources;
+        }
         /*
         * Read the attribute data into the buffer and delete the attribute
         */
-        status = H5Aread(attributeId, attributeType, extendChunkMetadataBuffer);
-        if(status < 0 || attributeId < 0 || attributeType < 0 || extendChunkMetadataBuffer == NULL || attributeChunkMetadataDims == HSIZE_UNDEF){
-            if(attributeId >= 0)  H5Aclose(attributeId);
-            if(attributeType >= 0)  H5Tclose(attributeType);
-            if(extendChunkMetadataBuffer != NULL)   free(extendChunkMetadataBuffer);
-            if(attributeDataBuffer != NULL) free(attributeDataBuffer);
-            if(eventBuffer != NULL) free(eventBuffer);
-            if(chunkmetaAttribute >=0 ) H5Tclose(chunkmetaAttribute);
-            if(eventType >=0 )  H5Tclose(eventType);
-            if(storyDataset >= 0)   H5Dclose(storyDataset);
-            if(ChronicleH5 >= 0)  H5Fclose(ChronicleH5);
-            return -1;
+        status = H5Aread(attributeId, attributeType, extendChunkMetadataBuffer->data());
+        if(status < 0 || attributeId < 0 || attributeType < 0 || attributeChunkMetadataDims == HSIZE_UNDEF){
+            goto release_resources;
         }
 
         if(attributeId >= 0)    H5Aclose(attributeId);
@@ -379,57 +274,34 @@ int storywriter::writeStoryChunk(std::vector<Event> storyChunk, const char* STOR
         attr1 = H5Acreate2(storyDataset, ATTRIBUTE_CHUNKMETADATA, attributeType, attr, H5P_DEFAULT, H5P_DEFAULT);
 
         if(deleteError < 0 || attr < 0 || ret < 0 || attr1 < 0){
-            if(attr >= 0)   H5Sclose(attr);
-            if(attr1 >= 0)  H5Aclose(attr1);
-            if(extendChunkMetadataBuffer != NULL)   free(extendChunkMetadataBuffer);
-            if(attributeDataBuffer != NULL) free(attributeDataBuffer);
-            if(eventBuffer != NULL) free(eventBuffer);
-            if(attributeType >= 0)  H5Tclose(attributeType);
-            if(chunkmetaAttribute >=0 ) H5Tclose(chunkmetaAttribute);
-            if(eventType >=0 )  H5Tclose(eventType);
-            if(storyDataset >= 0)   H5Dclose(storyDataset);
-            if(ChronicleH5 >= 0)  H5Fclose(ChronicleH5);
-            return -1;
+            goto release_resources;
         }
 
-        int lastEventIndex = extendChunkMetadataBuffer[attributeChunkMetadataDims - 1].datasetIndex + extendChunkMetadataBuffer[attributeChunkMetadataDims - 1].totalChunkEvents;
+        int lastEventIndex = (*extendChunkMetadataBuffer)[attributeChunkMetadataDims - 1].datasetIndex + (*extendChunkMetadataBuffer)[attributeChunkMetadataDims - 1].totalChunkEvents;
         for(auto index = 0 ; index < attributeCount ; index++ ){
-            extendChunkMetadataBuffer[attributeChunkMetadataDims + index].startTimeStamp = attributeDataBuffer[index].startTimeStamp;
-            extendChunkMetadataBuffer[attributeChunkMetadataDims + index].endTimeStamp = attributeDataBuffer[index].endTimeStamp;
-            extendChunkMetadataBuffer[attributeChunkMetadataDims + index].datasetIndex = attributeDataBuffer[index].datasetIndex + lastEventIndex;
-            extendChunkMetadataBuffer[attributeChunkMetadataDims + index].totalChunkEvents = attributeDataBuffer[index].totalChunkEvents;
+            extendChunkMetadataBuffer->at(attributeChunkMetadataDims + index).startTimeStamp = attributeDataBuffer->at(index).startTimeStamp;
+            extendChunkMetadataBuffer->at(attributeChunkMetadataDims + index).endTimeStamp = attributeDataBuffer->at(index).endTimeStamp;
+            extendChunkMetadataBuffer->at(attributeChunkMetadataDims + index).datasetIndex = attributeDataBuffer->at(index).datasetIndex + lastEventIndex;
+            extendChunkMetadataBuffer->at(attributeChunkMetadataDims + index).totalChunkEvents = attributeDataBuffer->at(index).totalChunkEvents;
 
         }
-        ret = H5Awrite(attr1, attributeType, extendChunkMetadataBuffer);
+        ret = H5Awrite(attr1, attributeType, extendChunkMetadataBuffer->data());
 
         /*
         * Modify MAX attribute
         */
         attr_DatasetMax = H5Aopen(storyDataset, ATTRIBUTE_DATASET_MAX, H5P_DEFAULT);
-        attrMaxError = H5Awrite(attr_DatasetMax, H5T_NATIVE_ULONG, &eventBuffer[storyChunkDims[0]-1].timeStamp);
+        attrMaxError = H5Awrite(attr_DatasetMax, H5T_NATIVE_ULONG, &storyChunk->at(storyChunkDims[0] - 1));
 
         attr_DatasetTotalStoryEvents = H5Aopen(storyDataset, ATTRIBUTE_TOTAL_DATASET_STORY_EVENTS, H5P_DEFAULT);
         attrStoryEventsError = H5Awrite(attr_DatasetTotalStoryEvents, H5T_NATIVE_ULONG, &newStorySize[0]);
 
         if(ret < 0 || attr_DatasetMax < 0 || attr_DatasetTotalStoryEvents < 0 || attrMaxError < 0 || attrStoryEventsError < 0){
-            if(attr_DatasetMax >= 0)    H5Aclose(attr_DatasetMax);
-            if(attr_DatasetTotalStoryEvents >= 0)    H5Aclose(attr_DatasetTotalStoryEvents);
-
-            if(extendChunkMetadataBuffer != NULL)   free(extendChunkMetadataBuffer);
-            if(attributeDataBuffer != NULL) free(attributeDataBuffer);
-
-            if(attr >=0)    H5Sclose(attr);
-            if(attr1 >=0)    H5Aclose(attr1);
-            if(attributeType >= 0)  H5Tclose(attributeType);
-            if(chunkmetaAttribute >=0 ) H5Tclose(chunkmetaAttribute);
-            if(eventType >=0 )  H5Tclose(eventType);
-            if(storyDataset >= 0)   H5Dclose(storyDataset);
-            if(ChronicleH5 >= 0)  H5Fclose(ChronicleH5);
-            return -1;
+            goto release_resources;
         }
 
         // Release extendAttributeBuffer memory
-        free(extendChunkMetadataBuffer);
+        delete extendChunkMetadataBuffer;
     }
     else{
         hsize_t attributeDims[] = {attributeCount};
@@ -440,7 +312,7 @@ int storywriter::writeStoryChunk(std::vector<Event> storyChunk, const char* STOR
         * Create array attribute and write array attribute.
         */
         attr1 = H5Acreate2(storyDataset, ATTRIBUTE_CHUNKMETADATA, chunkmetaAttribute, attr, H5P_DEFAULT, H5P_DEFAULT);
-        attrError = H5Awrite(attr1, chunkmetaAttribute, attributeDataBuffer);
+        attrError = H5Awrite(attr1, chunkmetaAttribute, attributeDataBuffer->data());
 
         /*
         * Create and write to Min and Max and totalStoryEvents attribute.
@@ -449,36 +321,23 @@ int storywriter::writeStoryChunk(std::vector<Event> storyChunk, const char* STOR
         attr = H5Screate_simple(1, attributeDims, NULL);
 
         attr_DatasetMin = H5Acreate2(storyDataset, ATTRIBUTE_DATASET_MIN, H5T_NATIVE_ULONG, attr, H5P_DEFAULT, H5P_DEFAULT);
-        attrMinError = H5Awrite(attr_DatasetMin, H5T_NATIVE_ULONG, &eventBuffer[0].timeStamp);
+        attrMinError = H5Awrite(attr_DatasetMin, H5T_NATIVE_ULONG, &storyChunk->at(0).timeStamp);
 
         attr_DatasetMax = H5Acreate2(storyDataset, ATTRIBUTE_DATASET_MAX, H5T_NATIVE_ULONG, attr, H5P_DEFAULT, H5P_DEFAULT);
-        attrMaxError = H5Awrite(attr_DatasetMax, H5T_NATIVE_ULONG, &eventBuffer[storyChunkDims[0]-1].timeStamp);
+        attrMaxError = H5Awrite(attr_DatasetMax, H5T_NATIVE_ULONG, &storyChunk->at(storyChunkDims[0]-1).timeStamp);
 
         attr_DatasetTotalStoryEvents = H5Acreate2(storyDataset, ATTRIBUTE_TOTAL_DATASET_STORY_EVENTS, H5T_NATIVE_ULONG, attr, H5P_DEFAULT, H5P_DEFAULT);
         attrStoryEventsError = H5Awrite(attr_DatasetTotalStoryEvents, H5T_NATIVE_ULONG, &storyChunkDims[0]);
         if(attrStoryEventsError < 0 || attr_DatasetTotalStoryEvents < 0 || attrMinError < 0 || attr_DatasetMin < 0 || attrMaxError < 0 || attr_DatasetMax < 0 || attr < 0 || attr1 < 0 || attrError < 0)
         {
-            if(attr_DatasetTotalStoryEvents >= 0)   H5Aclose(attr_DatasetTotalStoryEvents);
-            if(attr_DatasetMax >= 0)    H5Aclose(attr_DatasetMax);
-            if(attr_DatasetMin >= 0)    H5Aclose(attr_DatasetMin);
-            if(attr1 >= 0)  H5Aclose(attr1);
-            if(attr >= 0)   H5Sclose(attr);
-            if(attributeDataBuffer != NULL) free(attributeDataBuffer);
-
-            if(chunkmetaAttribute >=0 ) H5Tclose(chunkmetaAttribute);
-            if(eventType >=0 )  H5Tclose(eventType);
-            if(storyDataset >= 0)   H5Dclose(storyDataset);
-            if(ChronicleH5 >= 0)  H5Fclose(ChronicleH5);
-            return 1;
+            goto release_resources;
         }
     }
 
     /*
     * Release resources
     */
-    if(attributeDataBuffer != NULL) free(attributeDataBuffer);
-    if(eventBuffer != NULL) free(eventBuffer);
-
+    if(attributeDataBuffer != nullptr) {    delete attributeDataBuffer;}
     if(attr1 >= 0)  H5Aclose(attr1);
     if(attr >= 0)   H5Sclose(attr);
     if(chunkPropId >= 0)    H5Pclose(chunkPropId);
@@ -492,6 +351,25 @@ int storywriter::writeStoryChunk(std::vector<Event> storyChunk, const char* STOR
     if(eventType >=0 )  H5Tclose(eventType);
     if(storyDataset >= 0)   H5Dclose(storyDataset);
     if(ChronicleH5 >= 0)  H5Fclose(ChronicleH5);
-
     return 0;
+
+
+    // goto
+    release_resources:
+    if(attributeDataBuffer != nullptr) {    delete attributeDataBuffer;}
+    if(attr1 >= 0)  H5Aclose(attr1);
+    if(attr >= 0)   H5Sclose(attr);
+    if(chunkPropId >= 0)    H5Pclose(chunkPropId);
+    if(attributeDataSpace >= 0)    H5Sclose(attributeDataSpace);
+    if(attributeId >= 0)    H5Aclose(attributeId);
+    if(attributeType >= 0)    H5Tclose(attributeType);
+    if(attr_DatasetMin >= 0)    H5Aclose(attr_DatasetMin);
+    if(attr_DatasetMax >= 0)    H5Aclose(attr_DatasetMax);
+    if(attr_DatasetTotalStoryEvents >= 0)    H5Aclose(attr_DatasetTotalStoryEvents);
+    if(chunkmetaAttribute >=0 ) H5Tclose(chunkmetaAttribute);
+    if(eventType >=0 )  H5Tclose(eventType);
+    if(storyDataset >= 0)   H5Dclose(storyDataset);
+    if(ChronicleH5 >= 0)  H5Fclose(ChronicleH5);
+    return -1;
+
 }

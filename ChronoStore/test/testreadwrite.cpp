@@ -29,7 +29,7 @@
 storyreader sr;
 
 void testWriteOperation(std::string fileName){
-    std::vector<Event> storyChunk;
+    std::vector<Event> chunk;
     __uint64_t time;
     std::string da;
 
@@ -42,18 +42,19 @@ void testWriteOperation(std::string fileName){
     Event e;
     while (filePointer >> time >> da) {
         e.timeStamp = time;
-        strcpy(e.data, da.c_str());
-        storyChunk.push_back(e);
+        strncpy(e.data, da.c_str(), sizeof(e.data) - 1);
+        e.data[sizeof(e.data) - 1] = '\0';
+        chunk.push_back(e);
     }
-    filePointer.close();    
+    filePointer.close();   
     int status;
-    
+
     //Write to dataset
     storywriter sw;
-    status = sw.writeStoryChunk(storyChunk, STORY, CHRONICLE);
+    status = sw.writeStoryChunk(&chunk, STORY, CHRONICLE);
     if(!status)
     {
-        std::cout<<"Data written to file sucessfully for chunk " <<fileName<<std::endl;
+        std::cout<<"Data chunk written to story "<<STORY<<" dataset for chunk " <<fileName<<" of Chronicle "<<CHRONICLE<<std::endl;
     }
     else
     {
@@ -81,7 +82,6 @@ int testReadOperation() {
         std::cout<<"Error retrieving min max range for dataset story: " << STORY<<std::endl; 
         return -1;
     }
-
     for(int64_t i = 0 ; i < NUM_OF_TESTS ; i++){
 
         auto seed = std::chrono::system_clock::now().time_since_epoch().count();
@@ -142,12 +142,26 @@ void generateData(std::string fileName, int64_t startTimeStamp){
     // Close file
     out_file.close();
 }
-
+/**
+ * @param argv[1]: storyChunksCount
+ * @param argv[2]: startTimeStamp
+ */
 int main(int argc, char* argv[]) {
-// The test program generates five storychunk data containing 1000000 events in every chunk and writes to the storydataset for the chronicle H5. further the read and datarange queries are executed to test.
-    int storyChunksCount = 5;
+// The test program generates five chunk data containing 1000000 events in every chunk and writes to the storydataset for the chronicle H5. further the read and datarange queries are executed to test.
+
+    if(argc < 2){
+        std::cout<<"Check parameters\n@param argv[1]: storyChunksCount\n@param argv[2]: startTimeStamp\n";
+        return 1;
+    }
+    int storyChunksCount = std::atoi(argv[1]);
     std::string filename = "testChunk";
-    int64_t startTimeStamp = 1000;
+    int64_t startTimeStamp = std::atoi(argv[2]);
+
+    if(storyChunksCount < 0 || startTimeStamp < 0){
+        std::cout<<"Enter valid value\n@param argv[1]: storyChunksCount\n@param argv[2]: startTimeStamp\n";
+        return 1;
+    }
+    std::cout<<"Story chunk count: "<<storyChunksCount<<std::endl;
     for(int count = 0 ; count < storyChunksCount ; count++){
 
         //generate story chunk 
@@ -162,7 +176,7 @@ int main(int argc, char* argv[]) {
     std::cout << "Write to story dataset operation finished" << std::endl;
 
     // Retrieve story dataset min and max timestamp
-    std::cout << "Executing request to read story Min and Max timeStamp" << std::endl;
+    std::cout << "\nExecuting request to read story Min and Max timeStamp" << std::endl;
     testStoryRange();
 
     // Sequential reads

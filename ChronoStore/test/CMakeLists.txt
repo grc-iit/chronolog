@@ -3,6 +3,7 @@ find_package(HDF5 REQUIRED)
 
 # Set the build directory to a subdirectory called "build"
 set(CMAKE_BINARY_DIR ${CMAKE_SOURCE_DIR}/build)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")
 
 include_directories(../include)
 include_directories(${HDF5_INCLUDE_DIRS})
