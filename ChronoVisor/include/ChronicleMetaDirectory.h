@@ -24,18 +24,18 @@ public:
 
     int create_chronicle(const std::string& name);
     int create_chronicle(const std::string& name, const std::unordered_map<std::string, std::string>& attrs);
-    int destroy_chronicle(const std::string& name, int& flags);
+    int destroy_chronicle(const std::string& name);
 
-    int create_story(std::string &chronicle_name, const std::string& story_name,
+    int create_story(std::string const& chronicle_name, const std::string& story_name,
                      const std::unordered_map<std::string, std::string>& attrs);
-    int destroy_story(std::string &chronicle_name, const std::string& story_name, int& flags);
+    int destroy_story(std::string const& chronicle_name, const std::string& story_name);
     int acquire_story(const std::string& client_id, const std::string& chronicle_name,
                       const std::string& story_name, int& flags, StoryId &, bool&);
     int release_story(const std::string& client_id, const std::string& chronicle_name,
-                      const std::string& story_name, int& flags, StoryId &, bool&);
+                      const std::string& story_name, StoryId &, bool&);
 
-    int get_chronicle_attr(std::string& name, const std::string& key, std::string& value);
-    int edit_chronicle_attr(std::string& name, const std::string& key, const std::string& value);
+    int get_chronicle_attr(std::string const& name, const std::string& key, std::string& value);
+    int edit_chronicle_attr(std::string const& name, const std::string& key, const std::string& value);
 
     std::vector<std::string> show_chronicles(std::string& client_id);
     std::vector<std::string> show_stories(std::string& client_id, const std::string& chronicle_name);

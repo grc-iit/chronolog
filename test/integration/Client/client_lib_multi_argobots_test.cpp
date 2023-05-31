@@ -1,15 +1,16 @@
 //
 // Created by kfeng on 7/18/22.
 //
-#include <client.h>
+#include <chronolog_client.h>
 #include <common.h>
 #include <thread>
 #include <abt.h>
+#include <atomic>
 
 #define CHRONICLE_NAME_LEN 32
 #define STORY_NAME_LEN 32
 
-ChronoLogClient *client;
+chronolog::Client *client;
 
 struct thread_arg {
     int tid;
@@ -19,8 +20,8 @@ struct thread_arg {
 void thread_function(void *tt) {
     struct thread_arg *t = (struct thread_arg *) tt;
 
-    std::string server_ip = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string();
-    int base_port = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT;
+    //std::string server_ip = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string();
+    //int base_port = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT;
     /*std::string client_id = gen_random(8);
     std::string server_uri = CHRONOLOG_CONF->SOCKETS_CONF.string();
     server_uri += "://"+server_ip+":"+std::to_string(base_port);*/
@@ -42,17 +43,17 @@ void thread_function(void *tt) {
     story_attrs.emplace("IndexGranularity", "Millisecond");
     story_attrs.emplace("TieringPolicy", "Hot");
     flags = 2;
-    ret = client->AcquireStory(chronicle_name, story_name, story_attrs, flags);
-    ASSERT(ret, ==, CL_SUCCESS);
-    ret = client->DestroyStory(chronicle_name, story_name, flags);
-    ASSERT(ret, ==, CL_ERR_ACQUIRED);
-    ret = client->Disconnect(t->client_id, flags);
-    ASSERT(ret, ==, CL_ERR_ACQUIRED);
-    ret = client->ReleaseStory(chronicle_name, story_name, flags);
-    ASSERT(ret, ==, CL_SUCCESS);
-    ret = client->DestroyStory(chronicle_name, story_name, flags);
+    auto acquire_ret= client->AcquireStory(chronicle_name, story_name, story_attrs, flags);
+    assert(acquire_ret.first == CL_SUCCESS);
+    ret = client->DestroyStory(chronicle_name, story_name);//, flags);
+    assert(ret == CL_ERR_ACQUIRED);
+    ret = client->Disconnect();//t->client_id, flags);
+    assert(ret == CL_ERR_ACQUIRED);
+    ret = client->ReleaseStory(chronicle_name, story_name);//, flags);
+    assert(ret == CL_SUCCESS);
+    ret = client->DestroyStory(chronicle_name, story_name);//, flags);
     assert(ret == CL_SUCCESS || ret == CL_ERR_NOT_EXIST || ret == CL_ERR_ACQUIRED);
-    ret = client->DestroyChronicle(chronicle_name, flags);
+    ret = client->DestroyChronicle(chronicle_name);//, flags);
     assert(ret == CL_SUCCESS || ret == CL_ERR_NOT_EXIST || ret == CL_ERR_ACQUIRED);
 }
 
@@ -61,11 +62,12 @@ int main(int argc, char **argv) {
     std::vector<std::thread> thread_vec;
     uint64_t offset;
 
-
+    
     ChronoLogRPCImplementation protocol = CHRONOLOG_THALLIUM_SOCKETS;
-    std::string server_ip = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string();
-    int base_port = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT;
-    client = new ChronoLogClient(protocol, server_ip, base_port);
+    ChronoLog::ConfigurationManager confManager("./default_conf.json");
+    std::string server_ip = confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string();
+    int base_port = confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT;
+    client = new chronolog::Client(confManager); //protocol, server_ip, base_port);
 
     int num_xstreams = 8;
     int num_threads = 8;
@@ -76,12 +78,12 @@ int main(int argc, char **argv) {
     std::vector<struct thread_arg> t_args(num_threads);;
 
     std::string client_id = gen_random(8);;
-    std::string server_uri = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF.string();
+    std::string server_uri = confManager.RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF.string();
     server_uri += "://" + server_ip + ":" + std::to_string(base_port);
     int flags = 0;
 
-    int ret = client->Connect(server_uri, client_id, flags, offset);
-    ASSERT(ret, ==, CL_SUCCESS);
+    int ret = client->Connect(server_uri, client_id, flags);//, offset);
+    assert(ret == CL_SUCCESS);
 
     for (int i = 0; i < num_threads; i++) {
         t_args[i].tid = i;
@@ -120,8 +122,8 @@ int main(int argc, char **argv) {
     free(xstreams);
     free(threads);
 
-    ret = client->Disconnect(client_id, flags);
-    ASSERT(ret, ==, CL_SUCCESS);
+    ret = client->Disconnect();//client_id, flags);
+    assert(ret == CL_SUCCESS);
 
     delete client;
 
