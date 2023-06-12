@@ -80,7 +80,7 @@ private:
     //    for now they can be passed in....
     ChronologClientImpl(const ChronoLog::ConfigurationManager& conf_manager);
 
-    ChronologClientImpl(const ChronoLogRPCImplementation& protocol, const std::string& visor_ip, int visor_port); 
+    ChronologClientImpl(std::string const& protocol, const std::string& visor_ip, int visor_port, uint16_t service_provider); 
 
 
 };

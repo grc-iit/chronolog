@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <unordered_map>
 #include <rapidjson/document.h>
 #include <sstream>
 #include "data_structures.h"
@@ -489,9 +490,12 @@ namespace ChronoLog {
                     LOGE("Unknown keeper end configuration: %s", i->name.GetString());
             }
         }
-        void parseVisorLocalConf(rapidjson::Value &conf) {}
-        void parseClientLocalConf(rapidjson::Value &conf) {}
-        void parseKeeperLocalConf(rapidjson::Value &conf) {}
+        void parseVisorLocalConf(rapidjson::Value & json_conf) 
+        {   assert(json_conf.IsObject());   }
+        void parseClientLocalConf(rapidjson::Value & json_conf)
+        {   assert(json_conf.IsObject());   }
+        void parseKeeperLocalConf(rapidjson::Value & json_conf)
+        {   assert(json_conf.IsObject());   }
     };
 }
 
