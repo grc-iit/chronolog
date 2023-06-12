@@ -120,8 +120,12 @@ int chronolog::StorytellerClient::addKeeperRecordingClient( chronolog::KeeperIdC
 
     try
 	{
+        std::string a_string;
+        std::string keeper_service_na_string = rpc_protocol_string +"://"
+                        + keeper_id_card.getIPasDottedString(a_string)
+                        + ":"+ std::to_string(keeper_id_card.getPort());
         chronolog::KeeperRecordingClient * keeperRecordingClient = chronolog::KeeperRecordingClient::CreateKeeperRecordingClient
-			 (client_engine, keeper_id_card, rpc_protocol_string);
+			 (client_engine, keeper_id_card, keeper_service_na_string);
 		
 		auto insert_return = recordingClientMap.insert( std::pair<std::pair<uint32_t,uint16_t>, chronolog::KeeperRecordingClient*>
 		    ( std::pair<uint32_t,uint16_t>(keeper_id_card.getIPaddr(),keeper_id_card.getPort()), keeperRecordingClient));

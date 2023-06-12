@@ -15,19 +15,21 @@ chronolog::Client *client;
 
 void thread_body(struct thread_arg *t) {
 
+    std::cout << "Start Thread tid="<<t->tid<< std::endl;
     //std::string server_ip = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string();
     //int base_port = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT;
     int flags = 0;
     uint64_t offset;
     int ret;
     std::string chronicle_name;
-    if (t->tid % 2 == 0) chronicle_name = "gscs5er9TcdJ9mOgUDteDVBcI0oQjozK";
-    else chronicle_name = "6RPkwqX2IOpR41dVCqmWauX9RfXIuTAp";
+    if (t->tid % 2 == 0) chronicle_name = "Chronicle_2";
+    else chronicle_name = "Chronicle_1";
     std::unordered_map<std::string, std::string> chronicle_attrs;
     chronicle_attrs.emplace("Priority", "High");
     chronicle_attrs.emplace("IndexGranularity", "Millisecond");
     chronicle_attrs.emplace("TieringPolicy", "Hot");
     ret = client->CreateChronicle(chronicle_name, chronicle_attrs, flags);
+    std::cout << "tid="<<t->tid<<" CreateChronicle {"<<chronicle_name<<"} ret: " << ret<< std::endl;
     flags = 1;
     std::string story_name = gen_random(STORY_NAME_LEN);
     std::unordered_map<std::string, std::string> story_attrs;
@@ -49,8 +51,12 @@ void thread_body(struct thread_arg *t) {
     ret = client->DestroyStory(chronicle_name, story_name);//, flags);
     std::cout << "tid="<<t->tid<<" DestroyStory {"<<chronicle_name<<":"<<story_name<<"} ret: " << ret<< std::endl;
     assert(ret == CL_SUCCESS || ret == CL_ERR_NOT_EXIST || ret == CL_ERR_ACQUIRED || ret ==CL_ERR_NO_CONNECTION);
+
+    
     ret = client->DestroyChronicle(chronicle_name);//, flags);
     assert(ret == CL_SUCCESS || ret == CL_ERR_NOT_EXIST || ret == CL_ERR_ACQUIRED || ret==CL_ERR_NO_CONNECTION);
+    std::cout << "tid="<<t->tid<<" DestroyChronicle{"<<chronicle_name<<"} ret: " << ret<< std::endl;
+    std::cout << "Stop Thread tid="<<t->tid<< std::endl;
 }
 
 int main(int argc, char **argv) {

@@ -443,14 +443,15 @@ int ChronicleMetaDirectory::edit_chronicle_attr(std::string const& name,
  * @param client_id: Client ID
  * @return a vector of the names of all Chronicles
  */
-std::vector<std::string> ChronicleMetaDirectory::show_chronicles(std::string &client_id) {
-    LOGD("showing all Chronicles client %s", client_id.c_str());
-    std::vector<std::string> chronicle_names;
+int ChronicleMetaDirectory::show_chronicles( std::vector<std::string>& chronicle_names) 
+{
+    chronicle_names.clear();
+
     std::lock_guard<std::mutex> lock(g_chronicleMetaDirectoryMutex_);
     for (auto &[key, value]: *chronicleMap_) {
         chronicle_names.emplace_back(value->getName());
     }
-    return chronicle_names;
+    return CL_SUCCESS;
 }
 
 /**
@@ -460,26 +461,29 @@ std::vector<std::string> ChronicleMetaDirectory::show_chronicles(std::string &cl
  * @return a vector of the names of given Chronicle \n
  *         empty vector if Chronicle does not exist
  */
-std::vector<std::string>
-ChronicleMetaDirectory::show_stories(std::string &client_id, const std::string &chronicle_name) {
-    LOGD("showing all Stories in Chronicle name=%s for client %s", chronicle_name.c_str(), client_id.c_str());
+
+int ChronicleMetaDirectory::show_stories(const std::string &chronicle_name, std::vector<std::string> & story_names) 
+{
+    story_names.clear();
+
     std::lock_guard<std::mutex> chronicleMapLock(g_chronicleMetaDirectoryMutex_);
+
     /* First check if Chronicle exists, fail if false */
-    std::vector<std::string> story_names;
+    
     uint64_t cid;
 //    auto name2IdRecord = chronicleName2IdMap_->find(chronicle_name);
 //    if (name2IdRecord != chronicleName2IdMap_->end()) {
 //        cid = name2IdRecord->second;
     cid = CityHash64(chronicle_name.c_str(), chronicle_name.length());
     auto chronicleMapRecord = chronicleMap_->find(cid);
-    if (chronicleMapRecord != chronicleMap_->end()) {
+    if (chronicleMapRecord == chronicleMap_->end()) 
+    {   return CL_ERR_NOT_EXIST; }  
+ 
         Chronicle *pChronicle = chronicleMap_->find(cid)->second;
         LOGD("Chronicle@%p", &(*pChronicle));
         for (auto &[key, value]: pChronicle->getStoryMap()) {
             std::string story_name = value->getName();
-//            story_names.emplace_back(story_name.erase(story_name.find(chronicle_name), chronicle_name.length()));
             story_names.emplace_back(story_name);
         }
-    }
-    return story_names;
+    return CL_SUCCESS;
 }

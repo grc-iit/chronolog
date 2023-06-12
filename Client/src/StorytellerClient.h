@@ -67,8 +67,8 @@ private:
     StorytellerClient(StorytellerClient const&) = delete;
     StorytellerClient & operator= (StorytellerClient const&) = delete;
 
-    thallium::engine & client_engine;
     ChronologTimer & theTimer;
+    thallium::engine & client_engine;
     ClientId	clientId;
     std::string rpc_protocol_string;  
     std::atomic<int>  atomic_index;

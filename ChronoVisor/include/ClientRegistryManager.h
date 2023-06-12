@@ -27,7 +27,7 @@ public:
     int remove_story_acquisition(const std::string &client_id, uint64_t &sid);
 
     int add_client_record(const std::string &client_id, const ClientInfo &record);
-    int remove_client_record(const std::string& client_id, int &flags);
+    int remove_client_record(const std::string& client_id);
 private:
     std::unordered_map<std::string, ClientInfo> *clientRegistry_;
     std::mutex g_clientRegistryMutex_;

@@ -6,61 +6,92 @@
 #include <vector>
 #include <map>
 
+#include <thallium.hpp>
+
+#include "chronolog_types.h"
 #include "ConfigurationManager.h"
 
+#include "ClientRegistryManager.h"
+#include "ChronicleMetaDirectory.h"
+#include "AcquireStoryResponseMsg.h"
 
 namespace chronolog
 {
 
+class ClientPortalService;
+class KeeperRegistry;
+//class ClientRegistryManager;
+//class ChronicleMetaDirectory;
 
 class VisorClientPortal
 {
 
+enum ClientPortalState
+{
+    UNKNOWN = 0,
+    INITIALIZED =1,
+    RUNNING =2, // RegistryService and ClientPortalService are up and running  
+    SHUTTING_DOWN=3 // Shutting down services
+};
+
+
 public:
-	VisorClientPortal( ConfigurationManager const&);
+	VisorClientPortal();
 
 	~VisorClientPortal();
 
-int LocalConnect( const std::string &uri, std::string const &client_id, int &flags, uint64_t &clock_offset); //old
+    int StartServices( ChronoLog::ConfigurationManager const&, KeeperRegistry*);
 
-std::pair<int, uint32_t>  ClientConnect( uint32_t client_host_ip, std::string const &client_account, int &flags, uint64_t &clock_offset);
+int ClientConnect( const std::string &uri, std::string const &client_account, uint32_t client_host_ip, ClientId &, uint64_t &clock_offset); //old
+int ClientDisconnect(std::string const& client_account); //, int& flags); //old
 
-int LocalDisconnect(std::string const& client_account); //old
-int ClientDisconnect(uint32_t client_id);
+int ClientConnect( std::string const &client_account, uint32_t client_host_ip, ClientId &, uint64_t &clock_offset);
+int ClientDisconnect(ClientId const& client_id);
 
-int LocalCreateChronicle( std::string const&name, const std::unordered_map<std::string, std::string> &attrs, int &flags);//old
-int CreateChronicle( uint62_t client_id, std::string const&name, std::map<std::string, std::string> const& attrs, int &flags);
+int CreateChronicle( ClientId const&name, ChronicleName const&, const std::unordered_map<std::string, std::string> &attrs, int &flags);
+int DestroyChronicle( ClientId const& client_id, ChronicleName const& chronicle_name);
 
-int LocalDestroyChronicle( std::string const&name);
-int LocalDestroyStory(std::string const& chronicle_name, std::string const&story_name);
+int DestroyStory(ClientId const& client_id, std::string const& chronicle_name, std::string const& story_name);
 
-AcquireStoryResponseMsg LocalAcquireStory( 
-                              std::string const&client_id,
-                              std::string const&chronicle_name,
-                              std::string const&story_name,
+AcquireStoryResponseMsg AcquireStory( 
+                              //ClientId const& client_id,
+                              std::string const& client_id,
+                              std::string const& chronicle_name,
+                              std::string const& story_name,
                               const std::unordered_map<std::string, std::string> &attrs,
                               int &flags);
+                            //, AcquireStoryResponseMsg &);
 
-int LocalReleaseStory( std::string const&client_id, std::string const&chronicle_name, std::string const&story_name);
+int ReleaseStory( std::string const&client_id, std::string const& chronicle_name, std::string const& story_name);
+/*int ReleaseStory( ClientId const&client_id, StoryId const&);
+int DestroyStory(std::string const& client_id, std::string const& chronicle_name, std::string const& story_name);
+int DestroyStory( ClientId const&client_id, StoryId const&);
+*/
+int GetChronicleAttr( ClientId const& , std::string const& chronicle_name, std::string const& key, std::string &value);
 
-int LocalGetChronicleAttr( std::string const&name, const std::string &key, std::string &value);
+int EditChronicleAttr( ClientId const& ,std::string const& chronicle, std::string const& key, std::string const& value);
 
-int LocalEditChronicleAttr( std::string const&name, const std::string &key, const std::string &value);
-
-std::vector<std::string> & ShowChronicles( std::string &client_id, std::vector<std::string> &);
-
-std::vector<std::string>& ShowStories( std::string &client_id, const std::string &chronicle_name, std::vector<std::string> &);
+int ShowChronicles( ClientId const& client_id, std::vector<std::string> &);
+int ShowStories( ClientId const& client_id, std::string const& chronicle_name, std::vector<std::string> &);
 
 
 
 private:
 
-	void authenticate_client( std::string const& client_account)
-	{  return true; }
+    // role based authentication dummies return true for any client_id for the time being
+    // TODO: will be implemented when we add ClientAuthentication module
+	bool authenticate_client( std::string const& client_account, ClientId &);
+    bool chronicle_action_is_authorized( ClientId const&, ChronicleName const&);
+    bool story_action_is_authorized( ClientId const&, ChronicleName const&, StoryName const&);
 
-    chronolog::KeeperRegistry * keeperRegistry;
-    std::shared_ptr<ClientRegistryManager> clientManager;
-    std::shared_ptr<ChronicleMetaDirectory> chronicleMetaDirectory;
+    //ChronoLog::ConfigurationManager & visorConfiguration; 
+    ClientPortalState   clientPortalState; 
+    thallium::engine  * clientPortalEngine;
+    ClientPortalService   * clientPortalService; 
+    chronolog::KeeperRegistry * theKeeperRegistry;
+    ClientRegistryManager clientManager;
+    ChronicleMetaDirectory chronicleMetaDirectory;
+
 
 };
 
