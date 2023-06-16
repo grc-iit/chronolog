@@ -217,7 +217,9 @@ add_subdirectory(ChronoVisor)
 
 # ChronoKeeper
 add_subdirectory(ChronoKeeper)
-    
+
+# ChronoStore
+add_subdirectory(ChronoStore)
 
 # custom
 add_custom_target(make_all cd ${CMAKE_BINARY_DIR} && make)

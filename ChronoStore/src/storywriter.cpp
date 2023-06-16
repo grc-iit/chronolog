@@ -1,15 +1,19 @@
 #include <iostream>
 
-#define H5_SIZEOF_SSIZE_T H5_SIZEOF_LONG_LONG
+//#define H5_SIZEOF_SSIZE_T H5_SIZEOF_LONG_LONG
 
 #include <hdf5.h>
 #include <fstream>
 #include <string>
 #include <cstring>
 #include <vector>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <event.h>
 #include <chunkattr.h>
 #include <storywriter.h>
+#include <log.h>
+#include <errcode.h>
 
 #define DATASET_RANK 1 // Dataset dimension
 #define ATTRIBUTE_CHUNKMETADATA "ChunkMetadata"
@@ -21,10 +25,195 @@
 #define CHUNK_SIZE 40000 // Number of events equal to page size of 4MB
 
 // Constructor storywriter
-storywriter::storywriter(){}
+storywriter::storywriter()= default;
 
 // Destructor storywriter
-storywriter::~storywriter(){}
+storywriter::~storywriter()= default;
+
+/**
+ * @brief Write an attribute to a storyDataset.
+ * @param story_chunk_dset: dataset id
+ * @param attribute_name: attribute name
+ * @param attribute_value: attribute value
+ * @return: 0 if successful, else errcode, if failed.
+ */
+hid_t storywriter::writeAttribute(hid_t story_chunk_dset,
+                                  const std::string &attribute_name,
+                                  const std::string &attribute_value)
+{
+    hsize_t num_event_size_dims[1] = {attribute_value.size()};
+    hid_t attr_id = H5Screate(H5S_SIMPLE);
+    hid_t status = H5Sset_extent_simple(attr_id, 1, num_event_size_dims, nullptr);
+    hid_t num_event_attr = H5Acreate2(story_chunk_dset, "num_events", H5T_NATIVE_LLONG,
+                                      attr_id, H5P_DEFAULT, H5P_DEFAULT);
+    status += H5Awrite(num_event_attr, H5T_NATIVE_FLOAT, attribute_value.c_str());
+    status += H5Aclose(num_event_attr);
+    status += H5Sclose(attr_id);
+    return status;
+}
+
+/**
+ * @brief Write/Append data to storyDataset.
+ * @param story_chunk_map: an ordered_map of <EventSequence, LogEvent> pairs.
+ * @param chronicle_name: chronicle name
+ * @return: 0 if successful, else errcode, if failed.
+ */
+int storywriter::writeStoryChunks(const std::map<uint64_t, chronolog::StoryChunk> &story_chunk_map,
+                                  const std::string &chronicle_name)
+{
+    // Disable automatic printing of HDF5 error stack to console
+    if (! DEBUG)
+    {
+        H5Eset_auto(H5E_DEFAULT, nullptr, nullptr);
+    }
+
+    // Iterate over storyChunks and logEvents to size of #events of each chunk and total size of #events of all chunks.
+    // At the same time, serialize each chunk to a JSON string and store it in story_chunk_JSON_strs.
+    hsize_t num_chunks = story_chunk_map.size();
+    hsize_t total_num_events = 0;
+    hsize_t total_chunk_size = 0;
+    std::vector<hsize_t> num_events;
+    std::vector<hsize_t> chunk_sizes;
+    std::vector<std::string> story_chunk_JSON_strs;
+    for (auto const &story_chunk_it : story_chunk_map)
+    {
+        hsize_t numb_events = 0;
+        hsize_t chunk_size = 0;
+        json_object *story_chunk_JSON_obj = json_object_new_object();
+        for (auto const &it : story_chunk_it.second)
+        {
+            numb_events++;
+            chunk_size += it.second.logRecord.size();
+            json_object *logRecordJSONObj = json_object_new_string(it.second.logRecord.c_str());
+            json_object *sequenceTuple = serializeTupleToJsonObject(it.first);
+            json_object_object_add(story_chunk_JSON_obj, json_object_get_string(sequenceTuple), logRecordJSONObj);
+        }
+        num_events.push_back(numb_events);
+        total_num_events += numb_events;
+        chunk_sizes.emplace_back(chunk_size);
+        story_chunk_JSON_strs.emplace_back(json_object_to_json_string(story_chunk_JSON_obj));
+    }
+
+    // Check if the directory for the Chronicle already exists
+    struct stat st{};
+    std::string chronicle_dir = CHRONICLE_ROOT_DIR + chronicle_name;
+    if (stat(chronicle_dir.c_str(), &st) != 0 || ! S_ISDIR(st.st_mode))
+    {
+        // Create the directory for the Chronicle
+        if (mkdir(chronicle_dir.c_str(), 0775) < 0)
+        {
+            LOGE("Failed to create chronicle directory: %s, errno: %d", chronicle_dir.c_str(), errno);
+            return CL_ERR_UNKNOWN;
+        }
+    }
+
+    // Write each Story Chunk to a dataset in the Story file
+    auto story_chunk_map_it = story_chunk_map.begin();
+    auto num_event_it = num_events.begin();
+    auto story_chunk_size_it = chunk_sizes.begin();
+    auto story_chunk_json_str_it = story_chunk_JSON_strs.begin();
+    for (;
+         story_chunk_map_it != story_chunk_map.end();
+         story_chunk_map_it++, num_event_it++, story_chunk_size_it++, story_chunk_json_str_it++)
+    {
+        // Create the Story file if it does not exist
+        std::string story_file_name = chronicle_dir + "/" + std::to_string(story_chunk_map_it->second.getStoryID());
+        hid_t story_file, status;
+        if (stat(story_file_name.c_str(), &st) != 0)
+        {
+            story_file = H5Fcreate(story_file_name.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+            if (story_file == H5I_INVALID_HID)
+            {
+                LOGE("Failed to create story file: %s", story_file_name.c_str());
+                return CL_ERR_UNKNOWN;
+            }
+        } else
+        {
+            // Open the Story file if it exists
+            story_file = H5Fopen(story_file_name.c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
+            if (story_file < 0)
+            {
+                LOGE("Failed to open story file: %s", story_file_name.c_str());
+                return CL_ERR_UNKNOWN;
+            }
+        }
+
+        // Check if the dataset for the Story Chunk exists
+        hid_t story_chunk_dset, story_chunk_dspace;
+        std::string story_chunk_dset_name = std::to_string(story_chunk_map_it->second.getStartTime());
+        if (H5Lexists(story_file, story_chunk_dset_name.c_str(), H5P_DEFAULT) > 0)
+        {
+            LOGE("Story chunk already exists: %s", story_chunk_dset_name.c_str());
+            return CL_ERR_STORY_CHUNK_EXISTS;
+        }
+
+        // Create the dataspace for the dataset for the Story Chunk
+        const hsize_t story_chunk_dset_dims[1] = {*story_chunk_size_it};
+        const hsize_t story_chunk_dset_max_dims[1] = {H5S_UNLIMITED};
+        story_chunk_dspace = H5Screate_simple(DATASET_RANK, story_chunk_dset_dims, nullptr);
+        if (story_chunk_dspace < 0)
+        {
+            LOGE("Failed to create dataspace for story chunk: %s", story_chunk_dset_name.c_str());
+            return CL_ERR_UNKNOWN;
+        }
+
+        // Create the dataset for the Story Chunk
+        story_chunk_dset = H5Dcreate2(story_file, story_chunk_dset_name.c_str(), H5T_NATIVE_B8, story_chunk_dspace,
+                                      H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+        if (story_chunk_dset < 0)
+        {
+            LOGE("Failed to create dataset for story chunk: %s", story_chunk_dset_name.c_str());
+            // Print the detailed error message
+            H5Eprint(H5E_DEFAULT, stderr);
+
+            // Get the error stack and retrieve the error message
+            H5Ewalk2(H5E_DEFAULT, H5E_WALK_DOWNWARD, [](unsigned n,
+                    const H5E_error2_t *err_desc,
+                    void *client_data) -> herr_t {
+                printf("Error #%u: %s\n", n, err_desc->desc);
+                return 0;
+            }, NULL);
+            return CL_ERR_UNKNOWN;
+        }
+
+        // Open the dataset for the Story Chunk
+//        story_chunk_dset = H5Dopen2(story_file, story_chunk_dset_name.c_str(), H5P_DEFAULT);
+//        if (story_chunk_dset < 0)
+//        {
+//            LOGE("Failed to open dataset for story chunk: %s", story_chunk_dset_name.c_str());
+//            return CL_ERR_UNKNOWN;
+//        }
+
+        // Write the Story Chunk to the dataset
+        status = H5Dwrite(story_chunk_dset, H5T_NATIVE_B8, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+                                story_chunk_json_str_it->c_str());
+        if (status < 0)
+        {
+            LOGE("Failed to write story chunk to dataset: %s", story_chunk_dset_name.c_str());
+            return CL_ERR_UNKNOWN;
+        }
+
+        // Write storyId attribute to the dataset
+        status = writeAttribute(story_chunk_dset, "story_id", std::to_string(story_chunk_map_it->second.getStoryID()));
+
+        // Write num_events attribute to the dataset
+        status = writeAttribute(story_chunk_dset, "num_events", std::to_string(*num_event_it));
+
+        // Write end_time attribute to the dataset
+        status = writeAttribute(story_chunk_dset, "end_time", std::to_string(story_chunk_map_it->second.getEndTime()));
+
+        // Close everything
+        status = H5Dclose(story_chunk_dset);
+        status += H5Sclose(story_chunk_dspace);
+        if (status < 0)
+        {
+            LOGE("Failed to close dataset or dataspace or file for story chunk: %s", story_chunk_dset_name.c_str());
+            return CL_ERR_UNKNOWN;
+        }
+        H5Fclose(story_file);
+    }
+    return CL_SUCCESS;
+}
 
 /**
  * Write/Append data to storyDataset. 
@@ -35,7 +224,9 @@ storywriter::~storywriter(){}
  */
 int storywriter::writeStoryChunk(std::vector<Event> *storyChunk, const char* STORY, const char* CHRONICLE) {
 
-    // Disable automatic printing of HDF5 error stack to console
+    /*
+     * Disable automatic printing of HDF5 error stack to console
+     */
     if(!DEBUG){
         H5Eset_auto(H5E_DEFAULT, NULL, NULL);
     }
@@ -50,9 +241,9 @@ int storywriter::writeStoryChunk(std::vector<Event> *storyChunk, const char* STO
     std::vector<ChunkAttr> *attributeDataBuffer, *extendChunkMetadataBuffer;
 
     /*
-    * Chunk Dimension and number of events in a story chunk
-    */
-    const hsize_t chunkDims[1] = {CHUNK_SIZE};
+     * Chunk Dimension and number of events in a story chunk
+     */
+    hsize_t chunkDims[1] = {storyChunk->size()};
     const hsize_t numberOfEvents = storyChunk->size() - 1;
 
     /*
@@ -372,4 +563,70 @@ int storywriter::writeStoryChunk(std::vector<Event> *storyChunk, const char* STO
     if(ChronicleH5 >= 0)  H5Fclose(ChronicleH5);
     return -1;
 
+}
+
+/**
+ * @brief Serialize a map to JSON object
+ * @param obj: json_object to attach the map to
+ * @param map: map to serialize
+ */
+void storywriter::serializeMap(json_object *obj, std::map<std::string, std::string> &map)
+{
+    for (auto & it : map)
+    {
+        json_object *value = json_object_new_string(it.second.c_str());
+        json_object_object_add(obj, it.first.c_str(), value);
+    }
+}
+
+/**
+ * @brief Serialize a map of maps to a vector of JSON strings
+ * @param maps: map of maps to serialize
+ * @return a vector of JSON strings
+ */
+std::vector<std::string> storywriter::serializeMaps(std::map<std::string, std::map<std::string, std::string>> &maps)
+{
+    std::vector<std::string> strings;
+    for (auto & map : maps)
+    {
+        json_object *obj = json_object_new_object();
+        serializeMap(obj, map.second);
+        const char *json = json_object_to_json_string(obj);
+        strings.emplace_back(json);
+    }
+    return strings;
+}
+
+// Convert a single element to a json_object
+template <typename T>
+json_object *storywriter::convertToJsonObject(const T &value) {
+    json_object *obj = nullptr;
+
+    if constexpr (std::is_same_v<T, int>) {
+        obj = json_object_new_int(value);
+    } else if constexpr (std::is_same_v<T, double>) {
+        obj = json_object_new_double(value);
+    } else if constexpr (std::is_same_v<T, std::string>) {
+        obj = json_object_new_string(value.c_str());
+    }
+    // Add more type conversions for other types as needed
+
+    return obj;
+}
+
+// Serialize the std::tuple to a json_object
+template <typename... Args, size_t... Is>
+json_object *storywriter::serializeTupleToJsonObject(const std::tuple<Args...> &tuple, std::index_sequence<Is...>) {
+    json_object *obj = json_object_new_array();
+
+    // Convert each element of the std::tuple to a json_object and add it to the array
+    (json_object_array_add(obj, convertToJsonObject(std::get<Is>(tuple))), ...);
+
+    return obj;
+}
+
+// Helper function to serialize the std::tuple to a json_object
+template <typename... Args>
+json_object *storywriter::serializeTupleToJsonObject(const std::tuple<Args...> &tuple) {
+    return serializeTupleToJsonObject(tuple, std::make_index_sequence<sizeof...(Args)>{});
 }
