@@ -41,7 +41,6 @@ public:
 
 
     int Connect(std::string const& client_account, uint32_t client_host_ip, ClientId & , uint64_t &clock_offset)
-		      //, uint64_t &clock_offset) 
     {
  //       LOGD("%s in ChronoLogAdminRPCProxy at addresss %p called in PID=%d, with args: uri=%s, client_id=%s",
    //          __FUNCTION__, this, getpid(), uri.c_str(), client_id.c_str());
@@ -80,7 +79,6 @@ public:
         LOGD("%s is called in PID=%d, with args: client_id=%s, chronicle_name=%s, story_name=%s, flags=%d",
              __FUNCTION__, getpid(), client_id.c_str(), chronicle_name.c_str(), story_name.c_str(), flags);
         
-        //chronolog::AcquireStoryResponseMsg acquire_response;
         return  acquire_story.on(service_ph)(client_id, chronicle_name, story_name, attrs, flags);
     }
 

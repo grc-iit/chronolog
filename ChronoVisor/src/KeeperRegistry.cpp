@@ -29,7 +29,7 @@ int KeeperRegistry::InitializeRegistryService(ChronoLog::ConfigurationManager co
 	    +"://" + confManager.RPC_CONF.VISOR_KEEPER_CONF.VISOR_END_CONF.VISOR_IP.string()
 	    +":" + std::to_string(confManager.RPC_CONF.VISOR_KEEPER_CONF.VISOR_END_CONF.VISOR_BASE_PORT);
 
-        uint16_t provider_id = 22;//REGISTRY_SERVICE_PROVIDER_ID;
+        uint16_t provider_id = confManager.RPC_CONF.VISOR_KEEPER_CONF.VISOR_END_CONF.SERVICE_PROVIDER_ID;
 
         margo_instance_id margo_id=margo_init(KEEPER_REGISTRY_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 2);
 

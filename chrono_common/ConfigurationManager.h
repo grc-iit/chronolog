@@ -39,12 +39,14 @@ namespace ChronoLog {
     typedef struct RPCVisorEndConf_ {
         ChronoLogCharStruct VISOR_IP;
         uint16_t VISOR_BASE_PORT;
+        uint16_t SERVICE_PROVIDER_ID;
         uint8_t VISOR_PORTS;
         uint8_t VISOR_SERVICE_THREADS;
 
         [[nodiscard]] std::string to_String() const {
             return "[VISOR_IP: " + VISOR_IP.string()
                     + ", VISOR_BASE_PORT: " + std::to_string(VISOR_BASE_PORT)
+                    + ", SERVICE_PROVIDER_ID: "+ std::to_string(SERVICE_PROVIDER_ID)
                     + ", VISOR_PORTS: " + std::to_string(VISOR_PORTS)
                     + ", VISOR_SERVICE_THREADS: " + std::to_string(VISOR_SERVICE_THREADS) + "]";
         }
@@ -53,11 +55,13 @@ namespace ChronoLog {
     typedef struct RPCKeeperEndConf_ {
         ChronoLogCharStruct KEEPER_IP;
         uint16_t KEEPER_PORT;
+        uint16_t SERVICE_PROVIDER_ID;
         uint8_t KEEPER_SERVICE_THREADS;
 
         [[nodiscard]] std::string to_String() const {
             return "[KEEPER_IP: " + KEEPER_IP.string()
                     + ", KEEPER_PORT: " + std::to_string(KEEPER_PORT)
+                    + ", SERVICE_PROVIDER_ID: "+ std::to_string(SERVICE_PROVIDER_ID)
                     + ", KEEPER_SERVICE_THREADS: " + std::to_string(KEEPER_SERVICE_THREADS) + "]";
         }
     } RPCKeeperEndConf;
@@ -184,16 +188,19 @@ namespace ChronoLog {
             RPC_CONF.CLIENT_VISOR_CONF.CLIENT_END_CONF.CLIENT_SERVICE_THREADS = 1;
             RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP = "127.0.0.1";
             RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT = 5555;
+            RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.SERVICE_PROVIDER_ID = 55;
             RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_PORTS = 1;
             RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_SERVICE_THREADS = 1;
             RPC_CONF.VISOR_KEEPER_CONF.RPC_IMPLEMENTATION = CHRONOLOG_THALLIUM_SOCKETS;
             RPC_CONF.VISOR_KEEPER_CONF.PROTO_CONF = "ofi+sockets";
             RPC_CONF.VISOR_KEEPER_CONF.VISOR_END_CONF.VISOR_IP = "127.0.0.1";
             RPC_CONF.VISOR_KEEPER_CONF.VISOR_END_CONF.VISOR_BASE_PORT = 6666;
+            RPC_CONF.VISOR_KEEPER_CONF.VISOR_END_CONF.SERVICE_PROVIDER_ID = 66;
             RPC_CONF.VISOR_KEEPER_CONF.VISOR_END_CONF.VISOR_PORTS = 1;
             RPC_CONF.VISOR_KEEPER_CONF.VISOR_END_CONF.VISOR_SERVICE_THREADS = 1;
             RPC_CONF.VISOR_KEEPER_CONF.KEEPER_END_CONF.KEEPER_IP = "127.0.0.1";
             RPC_CONF.VISOR_KEEPER_CONF.KEEPER_END_CONF.KEEPER_PORT = 7777;
+            RPC_CONF.VISOR_KEEPER_CONF.KEEPER_END_CONF.SERVICE_PROVIDER_ID = 77;
             RPC_CONF.VISOR_KEEPER_CONF.KEEPER_END_CONF.KEEPER_SERVICE_THREADS = 1;
             RPC_CONF.CLIENT_KEEPER_CONF.RPC_IMPLEMENTATION = CHRONOLOG_THALLIUM_SOCKETS;
             RPC_CONF.CLIENT_KEEPER_CONF.PROTO_CONF = "ofi+sockets";
@@ -201,6 +208,7 @@ namespace ChronoLog {
             RPC_CONF.CLIENT_KEEPER_CONF.CLIENT_END_CONF.CLIENT_SERVICE_THREADS = 1;
             RPC_CONF.CLIENT_KEEPER_CONF.KEEPER_END_CONF.KEEPER_IP = "127.0.0.1";
             RPC_CONF.CLIENT_KEEPER_CONF.KEEPER_END_CONF.KEEPER_PORT = 9999;
+            RPC_CONF.CLIENT_KEEPER_CONF.KEEPER_END_CONF.SERVICE_PROVIDER_ID = 99;
             RPC_CONF.CLIENT_KEEPER_CONF.KEEPER_END_CONF.KEEPER_SERVICE_THREADS = 1;
 
             /* Authentication-related configurations */
@@ -462,6 +470,9 @@ namespace ChronoLog {
                 } else if (strcmp(i->name.GetString(), "visor_base_port") == 0) {
                     assert(i->value.IsInt());
                     rpc_conf.VISOR_BASE_PORT = i->value.GetInt();
+                } else if (strcmp(i->name.GetString(), "service_provider_id") == 0) {
+                    assert(i->value.IsInt());
+                    rpc_conf.SERVICE_PROVIDER_ID = i->value.GetInt();
                 } else if (strcmp(i->name.GetString(), "visor_ports") == 0) {
                     assert(i->value.IsInt());
                     rpc_conf.VISOR_PORTS = i->value.GetInt();
@@ -483,6 +494,9 @@ namespace ChronoLog {
                 } else if (strcmp(i->name.GetString(), "keeper_port") == 0) {
                     assert(i->value.IsInt());
                     rpc_conf.KEEPER_PORT = i->value.GetInt();
+                } else if (strcmp(i->name.GetString(), "service_provider_id") == 0) {
+                    assert(i->value.IsInt());
+                    rpc_conf.SERVICE_PROVIDER_ID = i->value.GetInt();
                 } else if (strcmp(i->name.GetString(), "keeper_service_threads") == 0) {
                     assert(i->value.IsInt());
                     rpc_conf.KEEPER_SERVICE_THREADS = i->value.GetInt();

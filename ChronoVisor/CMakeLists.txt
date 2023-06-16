@@ -5,7 +5,7 @@ add_executable(chronovisor_server)
 
 target_sources ( chronovisor_server PRIVATE
 	./src/chronovisor_instance.cpp
-        ./src/ChronoVisorServer2.cpp
+    ./src/VisorClientPortal.cpp
 	#../ChronoAPI/ChronoLog/src/ClocksourceManager.cpp
         ./src/ClientRegistryManager.cpp
         ./src/ClientRegistryRecord.cpp

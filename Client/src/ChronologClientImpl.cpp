@@ -38,11 +38,11 @@ chronolog::ChronologClientImpl::ChronologClientImpl(const ChronoLog::Configurati
 
         tlEngine = new thallium::engine(confManager.RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF.string(),THALLIUM_CLIENT_MODE, true, 1);
 
-        std::string CLIENT_VISOR_NA_STRING = confManager.RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF.string()    //"ofi+sockets"
+        std::string CLIENT_VISOR_NA_STRING = confManager.RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF.string()   
                     +"://" + confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string() 
                     +":" + std::to_string(confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT);
         rpcVisorClient = chl::RpcVisorClient::CreateRpcVisorClient( *tlEngine, CLIENT_VISOR_NA_STRING, 
-                        77);
+                    confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.SERVICE_PROVIDER_ID);
     }
 
 ////////
@@ -61,7 +61,7 @@ chronolog::ChronologClientImpl::ChronologClientImpl(const std::string& protocol_
             
         tlEngine = new thallium::engine( protocol_string, THALLIUM_CLIENT_MODE, true, 1);
 
-        std::string client_visor_na_string =  protocol_string //"ofi+sockets"
+        std::string client_visor_na_string =  protocol_string 
                         +"://" + visor_ip
                         +":"+ std::to_string(visor_port) ; 
         

@@ -42,12 +42,7 @@ int chronolog::VisorClientPortal::StartServices(ChronoLog::ConfigurationManager 
     // TODO : keeper registry can be a member ...
     theKeeperRegistry= keeperRegistry;
     
-// create thallium engines and start servicing client requests 
-
    
-    //TODO: add static lock for portal state management ... 
-    //std::lock_guard<std::mutex> lock(visorPortalLock);
- 
     // if(visorPortalState == UNKNOWN)
     // {
      //INNA: TODO: add exception handling ...    
@@ -58,7 +53,7 @@ int chronolog::VisorClientPortal::StartServices(ChronoLog::ConfigurationManager 
          +"://" + confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string()
          +":" + std::to_string(confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT);
  
-         uint16_t provider_id = 77;//TODO: add provider id for client_portal service_SERVICE_PROVIDER_ID;
+         uint16_t provider_id =  confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.SERVICE_PROVIDER_ID;
  
          margo_instance_id margo_id=margo_init(CLIENT_PORTAL_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 2);
  
