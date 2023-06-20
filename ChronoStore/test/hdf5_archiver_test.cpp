@@ -189,6 +189,9 @@ int main(int argc, char* argv[])
                   << " startTime endTime" << std::endl;
         return 1;
     }
+    std::random_device rd;
+    std::mt19937_64 rng(rd());
+    std::uniform_int_distribution<uint64_t> dist(0, UINT64_MAX);
     uint64_t num_story_chunks = strtol(argv[1], nullptr, 10);
     uint64_t num_events_per_story_chunk = strtol(argv[2], nullptr, 10);
     uint64_t mean_event_size = strtol(argv[3], nullptr, 10);
@@ -199,10 +202,11 @@ int main(int argc, char* argv[])
     uint64_t end_time = strtol(argv[8], nullptr, 10);
     std::string chronicle_name = CHRONICLE_NAME;
     std::string story_name = STORY_NAME;
-    uint64_t story_id = STORY_ID;
+    uint64_t story_id = dist(rng);
     uint64_t client_id = CLIENT_ID;
 
-    std::cout << "#StoryChunks: " << num_story_chunks << std::endl
+    std::cout << "StoryID: " << story_id << std::endl
+              << "#StoryChunks: " << num_story_chunks << std::endl
               << "#EventsInEachChunk: " << num_events_per_story_chunk << std::endl
               << "meanEventSize: " << mean_event_size << std::endl
               << "minEventSize: " << min_event_size << std::endl

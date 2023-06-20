@@ -7,6 +7,8 @@
 #include <string>
 #include <cstring>
 #include <vector>
+#include <map>
+#include <unordered_map>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <event.h>
@@ -69,6 +71,7 @@ int storywriter::writeStoryChunks(const std::map<uint64_t, chronolog::StoryChunk
 
     // Iterate over storyChunks and logEvents to size of #events of each chunk and total size of #events of all chunks.
     // At the same time, serialize each chunk to a JSON string and store it in story_chunk_JSON_strs.
+    hid_t status;
     hsize_t num_chunks = story_chunk_map.size();
     hsize_t total_num_events = 0;
     hsize_t total_chunk_size = 0;
@@ -112,14 +115,22 @@ int storywriter::writeStoryChunks(const std::map<uint64_t, chronolog::StoryChunk
     auto num_event_it = num_events.begin();
     auto story_chunk_size_it = chunk_sizes.begin();
     auto story_chunk_json_str_it = story_chunk_JSON_strs.begin();
+    std::unordered_map<uint64_t, hid_t> story_chunk_fd_map;
     for (;
          story_chunk_map_it != story_chunk_map.end();
          story_chunk_map_it++, num_event_it++, story_chunk_size_it++, story_chunk_json_str_it++)
     {
-        // Create the Story file if it does not exist
-        std::string story_file_name = chronicle_dir + "/" + std::to_string(story_chunk_map_it->second.getStoryID());
-        hid_t story_file, status;
-        if (stat(story_file_name.c_str(), &st) != 0)
+        // Check if the Story file has been opened/created already
+        hid_t story_file;
+        uint64_t story_id = story_chunk_map_it->second.getStoryID();
+        std::string story_file_name = chronicle_dir + "/" + std::to_string(story_id);
+        if (story_chunk_fd_map.find(story_id) != story_chunk_fd_map.end())
+        {
+            story_file = story_chunk_fd_map.find(story_id)->second;
+            LOGD("Story file already opened: %s", story_file_name.c_str());
+        }
+        // Story file does not exist, create the Story file if it does not exist
+        else if (stat(story_file_name.c_str(), &st) != 0)
         {
             story_file = H5Fcreate(story_file_name.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
             if (story_file == H5I_INVALID_HID)
@@ -127,7 +138,9 @@ int storywriter::writeStoryChunks(const std::map<uint64_t, chronolog::StoryChunk
                 LOGE("Failed to create story file: %s", story_file_name.c_str());
                 return CL_ERR_UNKNOWN;
             }
-        } else
+            story_chunk_fd_map.emplace(story_id, story_file);
+        }
+        else
         {
             // Open the Story file if it exists
             story_file = H5Fopen(story_file_name.c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
@@ -136,6 +149,7 @@ int storywriter::writeStoryChunks(const std::map<uint64_t, chronolog::StoryChunk
                 LOGE("Failed to open story file: %s", story_file_name.c_str());
                 return CL_ERR_UNKNOWN;
             }
+            story_chunk_fd_map.emplace(story_id, story_file);
         }
 
         // Check if the dataset for the Story Chunk exists
@@ -194,7 +208,7 @@ int storywriter::writeStoryChunks(const std::map<uint64_t, chronolog::StoryChunk
         }
 
         // Write storyId attribute to the dataset
-        status = writeAttribute(story_chunk_dset, "story_id", std::to_string(story_chunk_map_it->second.getStoryID()));
+        status = writeAttribute(story_chunk_dset, "story_id", std::to_string(story_id));
 
         // Write num_events attribute to the dataset
         status = writeAttribute(story_chunk_dset, "num_events", std::to_string(*num_event_it));
@@ -202,7 +216,7 @@ int storywriter::writeStoryChunks(const std::map<uint64_t, chronolog::StoryChunk
         // Write end_time attribute to the dataset
         status = writeAttribute(story_chunk_dset, "end_time", std::to_string(story_chunk_map_it->second.getEndTime()));
 
-        // Close everything
+        // Close dataset and data space
         status = H5Dclose(story_chunk_dset);
         status += H5Sclose(story_chunk_dspace);
         if (status < 0)
@@ -210,8 +224,23 @@ int storywriter::writeStoryChunks(const std::map<uint64_t, chronolog::StoryChunk
             LOGE("Failed to close dataset or dataspace or file for story chunk: %s", story_chunk_dset_name.c_str());
             return CL_ERR_UNKNOWN;
         }
-        H5Fclose(story_file);
     }
+
+    // Close all files at the end
+    for (auto &story_chunk_fd_map_it : story_chunk_fd_map)
+    {
+        status = H5Fclose(story_chunk_fd_map_it.second);
+        if (status < 0)
+        {
+            char *file_name = new char[128];
+            size_t file_name_len = 0;
+            H5Fget_name(story_chunk_fd_map_it.second, file_name, file_name_len);
+            LOGE("Failed to close file for story chunk: %s", file_name);
+            free(file_name);
+            return CL_ERR_UNKNOWN;
+        }
+    }
+
     return CL_SUCCESS;
 }
 
