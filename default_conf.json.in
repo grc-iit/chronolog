@@ -22,6 +22,7 @@
       "rpc_visor_end": {
         "visor_ip": "127.0.0.1",
         "visor_base_port": 5555,
+        "service_provider_id": 55,
         "visor_ports": 1,
         "visor_service_threads": 1
       }
@@ -32,12 +33,14 @@
       "rpc_visor_end": {
         "visor_ip": "127.0.0.1",
         "visor_base_port": 6666,
+        "service_provider_id": 66,
         "visor_ports": 1,
         "visor_service_threads": 1
       },
       "rpc_keeper_end": {
         "keeper_ip": "127.0.0.1",
         "keeper_port": 7777,
+        "service_provider_id": 77,
         "keeper_service_threads": 1
       }
     },
@@ -51,6 +54,7 @@
       "rpc_keeper_end": {
         "keeper_ip": "127.0.0.1",
         "keeper_port": 9999,
+        "service_provider_id": 99,
         "keeper_service_threads": 1
       }
     }
