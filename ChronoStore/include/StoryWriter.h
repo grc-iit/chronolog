@@ -8,12 +8,10 @@
 #include <json-c/json.h>
 #include "../../ChronoKeeper/StoryChunk.h"
 
-#define CHRONICLE_ROOT_DIR "/home/kfeng/chronolog_store/"
-
-class storywriter
+class StoryWriter
 {
 private:
-    /* data */
+    std::string chronicle_root_dir;
 
     template <typename T>
     json_object *convertToJsonObject(const T &value);
@@ -27,9 +25,11 @@ private:
     hid_t writeAttribute(hid_t dataset_id, const std::string &attribute_name, const std::string &attribute_value);
 
 public:
-    storywriter(/* args */);
+    StoryWriter() = default;
 
-    ~storywriter();
+    explicit StoryWriter(std::string &chronicle_root_dir) : chronicle_root_dir(chronicle_root_dir) {};
+
+    ~StoryWriter() = default;
 
     int writeStoryChunk(std::vector<Event> *storyChunk, const char *DATASET_NAME, const char *H5FILE_NAME);
 

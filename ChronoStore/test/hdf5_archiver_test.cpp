@@ -4,9 +4,11 @@
 #include <string>
 #include <chrono>
 #include <random>
+#include <filesystem>
 #include <hdf5.h>
-#include <storywriter.h>
-#include <storyreader.h>
+#include <StoryWriter.h>
+#include <StoryReader.h>
+#include <log.h>
 
 #define ATTRIBUTE_CHUNKMETADATA "ChunkMetadata"
 #define ATTRIBUTE_DATASET_MIN "Min"
@@ -17,18 +19,21 @@
 #define CHRONICLE "C1.h5"
 #define NUM_OF_TESTS 200
 
+#define CHRONICLE_ROOT_DIR "/home/kfeng/chronolog_store/"
 #define CLIENT_ID 1
 #define CHRONICLE_NAME "Ares_Monitoring"
 #define STORY_NAME "CPU_Utilization"
 #define STORY_ID 2378540293847398
 
-storyreader sr;
+std::string chronicle_root_dir = CHRONICLE_ROOT_DIR;
+StoryReader sr(chronicle_root_dir);
 
 void testWriteOperation(const std::map<uint64_t, chronolog::StoryChunk>& story_chunk_map,
                         std::string &chronicle_name,
                         std::string &story_name)
 {
-    storywriter writer;
+    std::string chronicle_root_dir = CHRONICLE_ROOT_DIR;
+    StoryWriter writer(chronicle_root_dir);
     writer.writeStoryChunks(story_chunk_map, chronicle_name);
 }
 
@@ -44,48 +49,55 @@ void testStoryRange()
     }
 }
 
-int testReadOperation() {
-
-    std::cout<<"Executing read test on story "<<STORY<<" of Chronicle "<<CHRONICLE<<" \nTotal read requests: "<<NUM_OF_TESTS<<std::endl;
-    std::vector<std::pair<uint64_t, uint64_t>> range;
-    DatasetMinMax d = sr.readDatasetRange(STORY, CHRONICLE);
-    if(d.status != 0){
-        std::cout<<"Error retrieving min max range for dataset story: " << STORY<<std::endl; 
-        return -1;
-    }
-    for(int64_t i = 0 ; i < NUM_OF_TESTS ; i++){
-
-        auto seed = std::chrono::system_clock::now().time_since_epoch().count();
-        srand(seed);
-
-        int64_t start_val = rand() % (d.MinMax.second - d.MinMax.first + 1) + d.MinMax.first;
-        int64_t end_val = rand() % (d.MinMax.second - start_val + 1) + start_val;
-        range.push_back(std::make_pair(start_val, end_val));
-    }
-
-    int64_t totalDataRead = 0;
-    auto start_time = std::chrono::high_resolution_clock::now();
-    for(int i = 0 ; i < range.size() ; i++){
-        DatasetReader dr = sr.readFromDataset(range[i], STORY, CHRONICLE);
-        if(dr.status != 0 || dr.eventData.size() == 0){
-            // std::cout<<"Dataset read test failed on test: "<<i+1<<"\t"<<range[i].first<<"\t"<<range[i].second<<std::endl;
-            return -1;
-        }
-        totalDataRead += dr.eventData.size()*sizeof(Event);
-    }
-
-    // Calculate the duration in seconds
-    auto end_time = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::seconds>(end_time - start_time).count();
-    std::cout << "\nTime taken: " << duration << " seconds\nRead bandwidth: "<<(totalDataRead/(1024*1024*duration)) << " MB/second\n";
+std::map<uint64_t, chronolog::StoryChunk> testReadAllOperation(uint64_t story_id, std::string &chronicle_name)
+{
+    hid_t status;
+    std::map<uint64_t, chronolog::StoryChunk> story_chunk_map;
+    story_chunk_map = sr.readAllStories(chronicle_name);
+    return story_chunk_map;
 
 
-    int result = remove(CHRONICLE);
-    if(result != 0) {
-        std::cout << CHRONICLE << " not found!" <<std::endl;
-        return -1;
-    }
-    return 0;
+
+//    std::cout<<"Executing read test on story "<<STORY<<" of Chronicle "<<CHRONICLE<<" \nTotal read requests: "<<NUM_OF_TESTS<<std::endl;
+//    std::vector<std::pair<uint64_t, uint64_t>> range;
+//    DatasetMinMax d = sr.readDatasetRange(STORY, CHRONICLE);
+//    if(d.status != 0){
+//        std::cout<<"Error retrieving min max range for dataset story: " << STORY<<std::endl;
+//        return -1;
+//    }
+//    for(int64_t i = 0 ; i < NUM_OF_TESTS ; i++){
+//
+//        auto seed = std::chrono::system_clock::now().time_since_epoch().count();
+//        srand(seed);
+//
+//        int64_t start_val = rand() % (d.MinMax.second - d.MinMax.first + 1) + d.MinMax.first;
+//        int64_t end_val = rand() % (d.MinMax.second - start_val + 1) + start_val;
+//        range.push_back(std::make_pair(start_val, end_val));
+//    }
+//
+//    int64_t totalDataRead = 0;
+//    auto start_time = std::chrono::high_resolution_clock::now();
+//    for(int i = 0 ; i < range.size() ; i++){
+//        DatasetReader dr = sr.readFromDataset(range[i], STORY, CHRONICLE);
+//        if(dr.status != 0 || dr.eventData.size() == 0){
+//            // std::cout<<"Dataset read test failed on test: "<<i+1<<"\t"<<range[i].first<<"\t"<<range[i].second<<std::endl;
+//            return -1;
+//        }
+//        totalDataRead += dr.eventData.size()*sizeof(Event);
+//    }
+//
+//    // Calculate the duration in seconds
+//    auto end_time = std::chrono::high_resolution_clock::now();
+//    auto duration = std::chrono::duration_cast<std::chrono::seconds>(end_time - start_time).count();
+//    std::cout << "\nTime taken: " << duration << " seconds\nRead bandwidth: "<<(totalDataRead/(1024*1024*duration)) << " MB/second\n";
+//
+//
+//    int result = remove(CHRONICLE);
+//    if(result != 0) {
+//        std::cout << CHRONICLE << " not found!" <<std::endl;
+//        return -1;
+//    }
+//    return 0;
 }
 
 /**
@@ -229,9 +241,32 @@ int main(int argc, char* argv[])
                                                                                     num_events_per_story_chunk,
                                                                                     num_story_chunks);
 
+    // Clean up Chronicle directory
+    std::cout << "Cleaning up Chronicle directory..." << std::endl;
+    for (const auto &entry: std::filesystem::directory_iterator(CHRONICLE_ROOT_DIR))
+    {
+        std::filesystem::remove_all(entry.path());
+    }
+    std::filesystem::create_directory(CHRONICLE_ROOT_DIR);
+
     // Test write operation
     std::cout << "Testing write operation..." << std::endl;
     testWriteOperation(story_chunk_map, chronicle_name, story_name);
+
+    // Test read operation
+    std::cout << "Testing read operation..." << std::endl;
+    std::map<uint64_t, chronolog::StoryChunk> story_chunk_map2 = testReadAllOperation(story_id, chronicle_name);
+
+    // Validate
+    std::cout << "Validating..." << std::endl;
+    if (story_chunk_map == story_chunk_map2)
+    {
+        std::cout << "Validation passed!" << std::endl;
+    }
+    else
+    {
+        std::cout << "Validation failed!" << std::endl;
+    }
 
     return 0;
 }

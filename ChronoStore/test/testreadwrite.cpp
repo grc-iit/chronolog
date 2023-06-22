@@ -6,8 +6,8 @@
 #include <hdf5.h>
 #include <fstream>
 #include <string>
-#include <storyreader.h>
-#include <storywriter.h>
+#include <StoryReader.h>
+#include <StoryWriter.h>
 #include <event.h>
 #include <chrono>
 #include<vector>
@@ -26,7 +26,7 @@
 #define CHRONICLE "C1.h5"
 #define NUM_OF_TESTS 200
 
-storyreader sr;
+StoryReader sr;
 
 void testWriteOperation(std::string fileName){
     std::vector<Event> chunk;
@@ -50,7 +50,7 @@ void testWriteOperation(std::string fileName){
     int status;
 
     //Write to dataset
-    storywriter sw;
+    StoryWriter sw;
     status = sw.writeStoryChunk(&chunk, STORY, CHRONICLE);
     if(!status)
     {

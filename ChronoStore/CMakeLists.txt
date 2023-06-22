@@ -20,5 +20,5 @@ endif()
 include_directories(${HDF5_INCLUDE_DIRS})
 include_directories(${JSON-C_INCLUDE_DIRS})
 
-add_executable(chronostore main.cpp src/storywriter.cpp src/storyreader.cpp)
+add_executable(chronostore main.cpp src/StoryWriter.cpp src/StoryReader.cpp)
 target_link_libraries(chronostore ${HDF5_LIBRARIES} json-c)

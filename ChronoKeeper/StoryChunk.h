@@ -45,6 +45,9 @@ namespace chronolog
         bool empty() const
         { return (logEvents.empty() ? true : false); }
 
+        size_t getNumEvents() const
+        { return logEvents.size(); }
+
         std::map<EventSequence, LogEvent>::const_iterator begin() const
         { return logEvents.begin(); }
 
@@ -117,6 +120,14 @@ namespace chronolog
 
         uint32_t eraseEvents(uint64_t start_time, uint64_t end_time)
         { return 0; }
+
+        bool operator==(const StoryChunk &other) const
+        {
+            return ((storyId == other.storyId)
+                    && (startTime == other.startTime)
+                    && (endTime == other.endTime)
+                    && (logEvents == other.logEvents));
+        }
 
     private:
         StoryId storyId;

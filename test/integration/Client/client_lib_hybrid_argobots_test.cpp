@@ -1,6 +1,7 @@
 #include <chronolog_client.h>
 #include <common.h>
 #include <thread>
+#include <atomic>
 #include <abt.h>
 #include <mpi.h>
 
