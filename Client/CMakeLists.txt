@@ -12,15 +12,16 @@ add_library(chronolog_client
 	src/StorytellerClient.cpp
 	src/ChronologClient.cpp
 	src/ChronologClientImpl.cpp
-        
+    )
+       
 	#	include/client.h
-	include/RPCClient.h
-        ../ChronoAPI/ChronoLog/include/macro.h
-	../ChronoAPI/ChronoLog/include/rpc.h
-	../ChronoAPI/ChronoLog/include/RPCFactory.h
-	../ChronoAPI/ChronoLog/include/singleton.h
-	../ChronoAPI/ChronoLog/src/city.cpp
-	../ChronoAPI/ChronoLog/include/city.h)
+	#include/RPCClient.h
+    #    ../ChronoAPI/ChronoLog/include/macro.h
+	#../ChronoAPI/ChronoLog/include/rpc.h
+	#../ChronoAPI/ChronoLog/include/RPCFactory.h
+	#../ChronoAPI/ChronoLog/include/singleton.h
+	#../ChronoAPI/ChronoLog/src/city.cpp
+	#../ChronoAPI/ChronoLog/include/city.h)
 
 target_include_directories(chronolog_client PUBLIC include
         ../ChronoAPI/ChronoLog/include

@@ -95,7 +95,7 @@ int ClientRegistryManager::add_client_record(const std::string &client_id, const
     }
 }
 
-int ClientRegistryManager::remove_client_record(const std::string &client_id, int &flags) {
+int ClientRegistryManager::remove_client_record(const std::string &client_id) {
     LOGD("%s in ClientRegistryManager@%p", __FUNCTION__, this);
     LOGD("clientRegistry_@%p has %ld entries", clientRegistry_, clientRegistry_->size());
     std::lock_guard<std::mutex> lock(g_clientRegistryMutex_);
