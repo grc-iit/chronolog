@@ -1,7 +1,9 @@
 
-#include "ChronoVisorServer2.h"
+//#include "ChronoVisorServer2.h"
 
 #include "KeeperRegistry.h"
+
+#include "VisorClientPortal.h"
 
 ///////////////////////////////////////////////
 int main(int argc, char** argv) 
@@ -21,14 +23,19 @@ int main(int argc, char** argv)
 
     ChronoLog::ConfigurationManager confManager("./default_conf.json");
 
+    chronolog::VisorClientPortal theChronoVisorPortal; // confManager);
+
     chronolog::KeeperRegistry keeperRegistry;
 
-    ChronoVisor::ChronoVisorServer2 visor(confManager);
+   // ChronoVisor::ChronoVisorServer2 visor(confManager);
 
     keeperRegistry.InitializeRegistryService( confManager);//provider_id=22);
 
-    visor.start(&keeperRegistry);
+//    visor.start(&keeperRegistry);
 
+    theChronoVisorPortal.StartServices(confManager, &keeperRegistry);
+
+    
     /////
 
      while( !keeperRegistry.is_shutting_down())

@@ -17,7 +17,7 @@
 #include "ClientRegistryManager.h"
 #include "ChronicleMetaDirectory.h"
 #include "KeeperRegistry.h"
-
+#include "AcquireStoryResponseMsg.h"
 
 class RPCVisor {
 public:
@@ -113,59 +113,64 @@ public:
 
 ///////////////////
 
-    int LocalAcquireStory(std::string const& client_id,
+    chronolog::AcquireStoryResponseMsg LocalAcquireStory(std::string const& client_id,
                           std::string const& chronicle_name,
                           std::string const& story_name,
                           const std::unordered_map<std::string, std::string> &attrs,
                           int& flags) {
         LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, flags=%d",
              __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
-
+	
+	chronolog::StoryId story_id{0};
+	std::vector<chronolog::KeeperIdCard> recording_keepers;
+	
 	if( !keeperRegistry->is_running())
-	{ return CL_ERR_NO_KEEPERS; }
-
-        /*for (auto iter = attrs.begin(); iter != attrs.end(); ++iter) {
-            LOGD("%s=%s", iter->first.c_str(), iter->second.c_str());
-        }*/
+	//{ return CL_ERR_NO_KEEPERS; }
+        {return chronolog::AcquireStoryResponseMsg (CL_ERR_NO_KEEPERS, story_id, recording_keepers); }
 
         if (chronicle_name.empty() || story_name.empty()) 
-	{ //TODO : add this check on the client side, 
+	//{ //TODO : add this check on the client side, 
 	  //there's no need to waste the RPC on empty strings...
-	  return CL_ERR_INVALID_ARG;
-	}
+	  //return CL_ERR_INVALID_ARG;
+	//}
+        {return chronolog::AcquireStoryResponseMsg (CL_ERR_INVALID_ARG, story_id, recording_keepers); }
+
 	// TODO : create_stroy should be part of acquire_story 
             int ret = chronicleMetaDirectory->create_story(chronicle_name, story_name, attrs);
-            if (ret != CL_SUCCESS) {
-                return ret;
-            }
+            if (ret != CL_SUCCESS)
+	    //{ return ret; }
+        {return chronolog::AcquireStoryResponseMsg (ret, story_id, recording_keepers); }
 
 	// TODO : StoryId token and recordingKeepers vector need to be returned to the client 
 	// when the client side RPC is updated to receive them
-	StoryId story_id(0);
-	std::vector<chronolog::KeeperIdCard> recording_keepers;
         bool notify_keepers = false;
         ret = chronicleMetaDirectory->acquire_story(client_id, chronicle_name, story_name, flags, story_id,notify_keepers);
 	if(ret != CL_SUCCESS)
-	{ return ret; }
+	//{ return ret; }
+        {return chronolog::AcquireStoryResponseMsg (ret, story_id, recording_keepers); }
 
+	recording_keepers = keeperRegistry->getActiveKeepers(recording_keepers);
 	// if this is the first client to acquire this story we need to notify the recording Keepers 
 	// so that they are ready to start recording this story
 	if(notify_keepers)
 	{
-	    recording_keepers = keeperRegistry->getActiveKeepers(recording_keepers);
 	    if( 0 != keeperRegistry->notifyKeepersOfStoryRecordingStart(recording_keepers, chronicle_name, story_name,story_id))
 	    {  // RPC notification to the keepers might have failed, release the newly acquired story 
 	       chronicleMetaDirectory->release_story(client_id, chronicle_name,story_name,story_id, notify_keepers);
 	       //TODO: chronicleMetaDirectory->release_story(client_id, story_id, notify_keepers); 
 	       //we do know that there's no need notify keepers of the story ending in this case as it hasn't started...
-	       return CL_ERR_NO_KEEPERS;
+	       //return CL_ERR_NO_KEEPERS;
+               return chronolog::AcquireStoryResponseMsg (CL_ERR_NO_KEEPERS, story_id, recording_keepers); 
 	    }
 	    
 	}
+	
+	//chronolog::AcquireStoryResponseMsg (CL_SUCCESS, story_id, recording_keepers);
 
         LOGD("%s finished  in PID=%d, with args: chronicle_name=%s, story_name=%s",
              __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str());
-    return CL_SUCCESS; 
+   // return CL_SUCCESS; 
+    return chronolog::AcquireStoryResponseMsg (CL_SUCCESS, story_id, recording_keepers);
     }
 //TODO: check if flags are ever needed to release the story...
 

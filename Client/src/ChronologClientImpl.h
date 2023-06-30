@@ -1,18 +1,14 @@
 #ifndef CHRONOLOG_CLIENT_IMPL_H
 #define CHRONOLOG_CLIENT_IMPL_H
 
-#include "RPCClient.h"
 #include "errcode.h"
 #include "ConfigurationManager.h"
 //#include "ClocksourceManager.h"
 
 #include "chronolog_types.h"
-//#include "StorytellerClient.h"
 
 
 //ClocksourceManager *ClocksourceManager::clocksourceManager_ = nullptr;
-//class ClocksourceManager;
-//class StorytellerClient;
 
 #include "chronolog_client.h"
 #include "rpcVisorClient.h"
@@ -23,11 +19,11 @@ namespace chronolog
 
 enum ChronologClientState
 {
-	UNKNOWN	 = 0,
-	CONNECTED = 1,
-	READING	  = 2,
-	WRITING	  = 3,
-	SHUTTING_DOWN = 4
+    UNKNOWN	 = 0,
+    CONNECTED = 1,
+    READING	  = 2,
+    WRITING	  = 3,
+    SHUTTING_DOWN = 4
 };
 
 class ChronologClientImpl 
@@ -75,44 +71,16 @@ private:
     std::string clientAccount;
     ClientId	clientId;
     ChronologTimer clockProxy;
-    std::shared_ptr<RPCClient> rpcClient_;
+    thallium::engine * tlEngine;
     RpcVisorClient * rpcVisorClient;
     StorytellerClient * storyteller;
    // ClocksourceManager *pClocksourceManager_;
 
     //TODO : client_account & client_ip will be acquired from the cleitn process itself ....
     //    for now they can be passed in....
-    ChronologClientImpl(const ChronoLog::ConfigurationManager& conf_manager)
-	    : clientState(UNKNOWN)
-	    , clientAccount("")
-	    , clientId(0)
-	    , rpcVisorClient(nullptr)
-	    , storyteller(nullptr) 
-    {
-        CHRONOLOG_CONF->SetConfiguration(conf_manager);
-        init();
-    }
+    ChronologClientImpl(const ChronoLog::ConfigurationManager& conf_manager);
 
-    ChronologClientImpl(const ChronoLogRPCImplementation& protocol, const std::string& visor_ip, int visor_port) 
-	    : clientState(UNKNOWN)
-	    , clientAccount("")
-	    , clientId(0)
-	    , rpcVisorClient(nullptr)
-	    , storyteller(nullptr) 
-    {
-        CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION = protocol;
-        CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP = visor_ip;
-        CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT = visor_port;
-        init();
-    }
-
-    void init() {
-        //pClocksourceManager_ = ClocksourceManager::getInstance();
-        //pClocksourceManager_->setClocksourceType(CHRONOLOG_CONF->CLOCKSOURCE_TYPE);
-        CHRONOLOG_CONF->ROLE = CHRONOLOG_CLIENT;
-        rpcClient_ = ChronoLog::Singleton<RPCClient>::GetInstance();
-        storyteller =  new StorytellerClient( clockProxy,  rpcClient_->get_tl_client_engine(), 0 ); //clientId field will be accessable later...
-    }
+    ChronologClientImpl(std::string const& protocol, const std::string& visor_ip, int visor_port, uint16_t service_provider); 
 
 
 };
