@@ -22,7 +22,11 @@ private:
     template <typename... Args>
     json_object *serializeTupleToJsonObject(const std::tuple<Args...> &tuple);
 
-    hid_t writeAttribute(hid_t dataset_id, const std::string &attribute_name, const std::string &attribute_value);
+    hid_t writeStringAttribute(hid_t story_chunk_dset, const std::string &attribute_name,
+                               const std::string &attribute_value);
+
+    hid_t writeUint64Attribute(hid_t story_chunk_dset, const std::string &attribute_name,
+                               const uint64_t &attribute_value);
 
 public:
     StoryWriter() = default;
@@ -31,14 +35,13 @@ public:
 
     ~StoryWriter() = default;
 
-    int writeStoryChunk(std::vector<Event> *storyChunk, const char *DATASET_NAME, const char *H5FILE_NAME);
-
     int writeStoryChunks(const std::map<uint64_t, chronolog::StoryChunk> &story_chunk_map,
                          const std::string &chronicle_name);
 
-    void serializeMap(json_object *obj, std::map<std::string, std::string> &map);
+    static void serializeStoryChunk(json_object *obj, chronolog::StoryChunk &story_chunk);
 
-    std::vector<std::string> serializeMaps(std::map<std::string, std::map<std::string, std::string>> &maps);
+    static std::vector<std::string> serializeStoryChunkMap(
+            std::map<std::uint64_t, chronolog::StoryChunk> &story_chunk_map);
 };
 
 #endif

@@ -15,9 +15,19 @@ class StoryReader
 private:
     std::string chronicle_root_dir;
 
+    // Deserialize StoryChunk from JSON string
     chronolog::StoryChunk deserializeStoryChunk(char *story_chunk_json_str,
                                                 uint64_t story_id, uint64_t start_time, uint64_t end_time);
 
+    // Find all Story Chunks that overlap with the given time range of a Story
+    std::vector<std::string> findContiguousStoryChunks(const hid_t& story_file,
+                                                       uint64_t start_time, uint64_t end_time);
+
+    // Check if a Story Chunk overlaps with the given time range
+    static bool isStoryChunkOverlapping(const std::string& story_chunk_name, uint64_t start_time, uint64_t end_time);
+
+    // Get all Story Chunks in a Story file
+    std::vector<std::string> getAllStoryChunks(const hid_t& story_file);
 
 public:
     StoryReader() = default;
@@ -26,11 +36,10 @@ public:
 
     ~StoryReader() = default;
 
-    // Read data from H5 dataset
-    DatasetReader readFromDataset(std::pair<uint64_t, uint64_t> range, const char* STORY, const char* CHRONICLE);
-
-    // Read dataset data range i.e Min and Max
-    DatasetMinMax readDatasetRange(const char* STORY, const char* CHRONICLE);
+    // Read Events within a time range from a Story file
+    int readStoryRange(const std::string &chronicle_name, const uint64_t &story_id,
+                       uint64_t start_time, uint64_t end_time,
+                       std::map<uint64_t, chronolog::StoryChunk> &story_chunk_map);
 
     // Read from all Story files in a Chronicle directory
     std::map<uint64_t, chronolog::StoryChunk> readAllStories(const std::string& chronicle_name);
@@ -39,13 +48,19 @@ public:
     int readStory(const std::string &chronicle_name, const std::string &story_file_name,
                   std::map<uint64_t, chronolog::StoryChunk>& story_chunk_map);
 
-    // Read from all Story Chunks in a Story file
+    // Read all Story Chunks in a Story file
     int readAllStoryChunks(hid_t& story_file,
                            std::map<uint64_t,
                            chronolog::StoryChunk>& story_chunk_map);
 
-    // Read attribute from a Story Chunk dataset
-    std::string readAttribute(hid_t dataset_id, const std::string& attribute_name);
+    // Read a Story Chunk from a Story file
+    chronolog::StoryChunk readOneStoryChunk(hid_t& story_file, const std::string& story_chunk_name);
+
+    // Read string attribute from a Story Chunk dataset
+    std::string readStringAttribute(hid_t &story_chunk_dset, const std::string& attribute_name);
+
+    // Read uint64_t attribute from a Story Chunk dataset
+    uint64_t readUint64Attribute(hid_t &story_chunk_dset, const std::string& attribute_name);
 };
 
 #endif

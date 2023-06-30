@@ -10,11 +10,6 @@
 #include <StoryReader.h>
 #include <log.h>
 
-#define ATTRIBUTE_CHUNKMETADATA "ChunkMetadata"
-#define ATTRIBUTE_DATASET_MIN "Min"
-#define ATTRIBUTE_DATASET_MAX "Max"
-#define ATTRIBUTE_CHUNKMETADATA_RANK 1
-#define ATTRIBUTE_TOTAL_DATASET_STORY_EVENTS "TotalStoryEvents"
 #define STORY "S1"
 #define CHRONICLE "C1.h5"
 #define NUM_OF_TESTS 200
@@ -23,10 +18,6 @@
 #define CLIENT_ID 1
 #define CHRONICLE_NAME "Ares_Monitoring"
 #define STORY_NAME "CPU_Utilization"
-#define STORY_ID 2378540293847398
-
-std::string chronicle_root_dir = CHRONICLE_ROOT_DIR;
-StoryReader sr(chronicle_root_dir);
 
 void testWriteOperation(const std::map<uint64_t, chronolog::StoryChunk>& story_chunk_map,
                         std::string &chronicle_name,
@@ -37,67 +28,23 @@ void testWriteOperation(const std::map<uint64_t, chronolog::StoryChunk>& story_c
     writer.writeStoryChunks(story_chunk_map, chronicle_name);
 }
 
-void testStoryRange()
+void testRangeReadOperation(const std::string &chronicle_name, const uint64_t &story_id,
+                            uint64_t start_time, uint64_t end_time,
+                            std::map<uint64_t, chronolog::StoryChunk>& story_chunk_map)
 {
-    // Read Min and Max attribute from dataset
-    DatasetMinMax d = sr.readDatasetRange(STORY, CHRONICLE);
-    if(d.status == 0){
-        std::cout << "Min Timestamp: " << d.MinMax.first << " Max Timestamp: " << d.MinMax.second << std::endl;
-    }
-    else{
-        std::cout<<"Error retrieving min max for story: " << STORY<<std::endl; 
-    }
+    std::string chronicle_root_dir = CHRONICLE_ROOT_DIR;
+    StoryReader sr(chronicle_root_dir);
+    sr.readStoryRange(chronicle_name, story_id, start_time, end_time, story_chunk_map);
 }
 
 std::map<uint64_t, chronolog::StoryChunk> testReadAllOperation(uint64_t story_id, std::string &chronicle_name)
 {
     hid_t status;
     std::map<uint64_t, chronolog::StoryChunk> story_chunk_map;
+    std::string chronicle_root_dir = CHRONICLE_ROOT_DIR;
+    StoryReader sr(chronicle_root_dir);
     story_chunk_map = sr.readAllStories(chronicle_name);
     return story_chunk_map;
-
-
-
-//    std::cout<<"Executing read test on story "<<STORY<<" of Chronicle "<<CHRONICLE<<" \nTotal read requests: "<<NUM_OF_TESTS<<std::endl;
-//    std::vector<std::pair<uint64_t, uint64_t>> range;
-//    DatasetMinMax d = sr.readDatasetRange(STORY, CHRONICLE);
-//    if(d.status != 0){
-//        std::cout<<"Error retrieving min max range for dataset story: " << STORY<<std::endl;
-//        return -1;
-//    }
-//    for(int64_t i = 0 ; i < NUM_OF_TESTS ; i++){
-//
-//        auto seed = std::chrono::system_clock::now().time_since_epoch().count();
-//        srand(seed);
-//
-//        int64_t start_val = rand() % (d.MinMax.second - d.MinMax.first + 1) + d.MinMax.first;
-//        int64_t end_val = rand() % (d.MinMax.second - start_val + 1) + start_val;
-//        range.push_back(std::make_pair(start_val, end_val));
-//    }
-//
-//    int64_t totalDataRead = 0;
-//    auto start_time = std::chrono::high_resolution_clock::now();
-//    for(int i = 0 ; i < range.size() ; i++){
-//        DatasetReader dr = sr.readFromDataset(range[i], STORY, CHRONICLE);
-//        if(dr.status != 0 || dr.eventData.size() == 0){
-//            // std::cout<<"Dataset read test failed on test: "<<i+1<<"\t"<<range[i].first<<"\t"<<range[i].second<<std::endl;
-//            return -1;
-//        }
-//        totalDataRead += dr.eventData.size()*sizeof(Event);
-//    }
-//
-//    // Calculate the duration in seconds
-//    auto end_time = std::chrono::high_resolution_clock::now();
-//    auto duration = std::chrono::duration_cast<std::chrono::seconds>(end_time - start_time).count();
-//    std::cout << "\nTime taken: " << duration << " seconds\nRead bandwidth: "<<(totalDataRead/(1024*1024*duration)) << " MB/second\n";
-//
-//
-//    int result = remove(CHRONICLE);
-//    if(result != 0) {
-//        std::cout << CHRONICLE << " not found!" <<std::endl;
-//        return -1;
-//    }
-//    return 0;
 }
 
 /**
@@ -111,12 +58,13 @@ std::map<uint64_t, chronolog::StoryChunk> testReadAllOperation(uint64_t story_id
  * @param max_event_size: Maximum Event size
  * @param stddev: Standard deviation of Event size
  * @param num_events: Number of events in the StoryChunk
+ * @param total_event_size: Total size of all events in the StoryChunk
  * @return a StoryChunk
  */
 chronolog::StoryChunk
 generateStoryChunk(uint64_t story_id, uint64_t start_time, uint64_t time_step, uint64_t end_time,
                    uint64_t mean_event_size, uint64_t min_event_size, uint64_t max_event_size, double stddev,
-                   uint64_t num_events)
+                   uint64_t num_events, uint64_t &total_event_size)
 {
     chronolog::StoryChunk story_chunk(story_id, start_time, end_time);
     std::random_device rd;
@@ -134,6 +82,7 @@ generateStoryChunk(uint64_t story_id, uint64_t start_time, uint64_t time_step, u
         uint64_t string_size = static_cast<int>(normal_dist(generator));
         if (string_size < min_event_size) string_size = min_event_size;
         if (string_size > max_event_size) string_size = max_event_size;
+        total_event_size += string_size;
         std::string random_str;
         for (int j = 0; j < string_size; ++j)
         {
@@ -166,6 +115,7 @@ generateStoryChunks(uint64_t story_id, uint64_t start_time, uint64_t time_step, 
                     uint64_t num_events_per_chunk, uint64_t num_chunks)
 {
     std::map<uint64_t, chronolog::StoryChunk> story_chunks;
+    uint64_t total_event_size = 0;
     for (int i = 0; i < num_chunks; ++i)
     {
         uint64_t chunk_start_time = start_time + i * num_events_per_chunk * time_step;
@@ -178,9 +128,11 @@ generateStoryChunks(uint64_t story_id, uint64_t start_time, uint64_t time_step, 
                                                                min_event_size,
                                                                max_event_size,
                                                                stddev,
-                                                               num_events_per_chunk);
+                                                               num_events_per_chunk,
+                                                               total_event_size);
         story_chunks.emplace(chunk_start_time, story_chunk);
     }
+    std::cout << "Total data size: " << total_event_size << std::endl;
     return story_chunks;
 }
 
@@ -257,8 +209,8 @@ int main(int argc, char* argv[])
     std::cout << "Testing read operation..." << std::endl;
     std::map<uint64_t, chronolog::StoryChunk> story_chunk_map2 = testReadAllOperation(story_id, chronicle_name);
 
-    // Validate
-    std::cout << "Validating..." << std::endl;
+    // Validate read all results
+    std::cout << "Validating read all results ..." << std::endl;
     if (story_chunk_map == story_chunk_map2)
     {
         std::cout << "Validation passed!" << std::endl;
@@ -266,6 +218,72 @@ int main(int argc, char* argv[])
     else
     {
         std::cout << "Validation failed!" << std::endl;
+        std::cout << "Correct: " << std::endl;
+        for (const auto &story_chunk_str : StoryWriter::serializeStoryChunkMap(story_chunk_map))
+        {
+            std::cout << story_chunk_str << std::endl;
+        }
+        std::cout << "Result: " << std::endl;
+        for (const auto &story_chunk_str : StoryWriter::serializeStoryChunkMap(story_chunk_map2))
+        {
+            std::cout << story_chunk_str << std::endl;
+        }
+    }
+
+    // Test range read operation
+    std::cout << "Testing range read operation..." << std::endl;
+    uint64_t range_start_time = start_time + dist(rng) % (end_time - start_time) / 2;
+    uint64_t range_end_time = range_start_time + dist(rng) % (end_time - range_start_time);
+    std::map<uint64_t, chronolog::StoryChunk> story_chunk_map3;
+    testRangeReadOperation(chronicle_name, story_id, range_start_time, range_end_time, story_chunk_map3);
+
+    // Generate reference range read results to validate
+    std::map<uint64_t, chronolog::StoryChunk> story_chunk_map4;
+    for (auto & it : story_chunk_map)
+    {
+        if (it.first >= range_start_time || it.first < range_end_time)
+        {
+            std::map<chronolog::EventSequence, chronolog::LogEvent> event_map;
+            for (const auto & event_it : it.second)
+            {
+                uint64_t event_time = std::get<0>(event_it.first);
+                if (event_time >= range_start_time && event_time < range_end_time)
+                {
+                    event_map.emplace(event_it.first, event_it.second);
+                }
+            }
+            chronolog::StoryChunk story_chunk;
+            if (!event_map.empty())
+            {
+                for (const auto & event : event_map)
+                {
+                    story_chunk.insertEvent(event.second);
+                }
+            }
+        }
+    }
+
+    // Validate range read results
+    std::cout << "Validating range read [" << range_start_time << ", " << range_end_time << ") "
+              << "out of [" << start_time << ", " << end_time << ") results ..." <<
+    std::endl;
+    if (story_chunk_map3 == story_chunk_map4)
+    {
+        std::cout << "Validation passed!" << std::endl;
+    }
+    else
+    {
+        std::cout << "Validation failed!" << std::endl;
+        std::cout << "Correct: " << std::endl;
+        for (const auto &story_chunk_str : StoryWriter::serializeStoryChunkMap(story_chunk_map4))
+        {
+            std::cout << story_chunk_str << std::endl;
+        }
+        std::cout << "Result: " << std::endl;
+        for (const auto &story_chunk_str : StoryWriter::serializeStoryChunkMap(story_chunk_map3))
+        {
+            std::cout << story_chunk_str << std::endl;
+        }
     }
 
     return 0;

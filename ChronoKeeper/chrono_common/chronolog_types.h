@@ -50,6 +50,15 @@ namespace chronolog
             return (storyId == other.storyId && eventTime == other.eventTime && clientId == other.clientId &&
                     eventIndex == other.eventIndex && logRecord == other.logRecord);
         }
+
+        // convert to string
+        [[nodiscard]] std::string toString() const
+        {
+            std::string str = "StoryId: " + std::to_string(storyId) + " EventTime: " + std::to_string(eventTime) +
+                              " ClientId: " + std::to_string(clientId) + " EventIndex: " + std::to_string(eventIndex) +
+                              " LogRecord: " + logRecord;
+            return str;
+        }
     };
 
 
