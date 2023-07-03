@@ -1,6 +1,7 @@
 #include <chronolog_client.h>
 #include <common.h>
 #include <thread>
+#include <atomic>
 #include <abt.h>
 #include <mpi.h>
 
@@ -12,12 +13,11 @@ struct thread_arg {
 
 void thread_function(void *t) {
 
-    auto CHRONOLOG_CONF = ChronoLog::Singleton<ChronoLog::ConfigurationManager>::GetInstance()
-  
-    std::string server_ip = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string();
-    int base_port = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT;
+    ChronoLog::ConfigurationManager confManager("./default_conf.json");
+    std::string server_ip = confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string();
+    int base_port = confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT;
     std::string client_id = gen_random(8);
-    std::string server_uri = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF.string();
+    std::string server_uri = confManager.RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF.string();
     server_uri += "://" + server_ip + ":" + std::to_string(base_port);
     int flags = 0;
     uint64_t offset;
