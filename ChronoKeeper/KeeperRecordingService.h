@@ -5,8 +5,8 @@
 #include <margo.h>
 #include <thallium.hpp>
 #include <thallium/serialization/stl/string.hpp>
-#include "KeeperIdCard.h"
-#include "chronolog_types.h"
+#include "chrono_common/KeeperIdCard.h"
+#include "chrono_common/chronolog_types.h"
 #include "IngestionQueue.h"
 
 namespace tl = thallium;
@@ -35,20 +35,12 @@ public:
 
 private:
 
-    void record_event(tl::request const& request, 
-                       StorytellerId teller_id,  StoryId story_id, 
-		       uint64_t timeStamp, const std::string& record) 
+    void record_event(tl::request const& request, LogEvent const & log_event) 
+                   //    ClientId teller_id,  StoryId story_id, 
+		     //  ChronoTick const& chrono_tick, std::string const& record) 
     {
-        std::cout << "recording {"<< teller_id<<":"<<story_id<<":"<< record <<"}"<< std::endl;
-	theIngestionQueue.ingestLogEvent(LogEvent(story_id,teller_id,timeStamp,record));
-        request.respond( static_cast<int>(record.size()) );
-    }
-
-    void record_event_no_response( StorytellerId teller_id,  StoryId story_id, 
-		       uint64_t timeStamp, const std::string& record) 
-    {
-        std::cout << "recording {"<< teller_id<<":"<<story_id<<":"<< record <<"}"<< std::endl;
-	theIngestionQueue.ingestLogEvent(LogEvent(story_id,teller_id,timeStamp,record));
+        std::cout << "recording {"<< log_event.clientId<<":"<<log_event.storyId<<":"<< log_event.logRecord <<"}"<< std::endl;
+	theIngestionQueue.ingestLogEvent(log_event);
     }
 
 
@@ -56,8 +48,7 @@ private:
     	: tl::provider<KeeperRecordingService>(tl_engine, service_provider_id)
 	, theIngestionQueue(ingestion_queue)  
     {
-        define("record_event", &KeeperRecordingService::record_event);
-        define("record_event_no_response", &KeeperRecordingService::record_event_no_response,tl::ignore_return_value() );
+        define("record_event", &KeeperRecordingService::record_event, tl::ignore_return_value());
 	//set up callback for the case when the engine is being finalized while this provider is still alive
 	get_engine().push_finalize_callback(this, [p=this](){delete p;} );
     }

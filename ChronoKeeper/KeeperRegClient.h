@@ -6,9 +6,9 @@
 #include <thallium/serialization/stl/string.hpp>
 #include <thallium.hpp>
 
-#include "KeeperIdCard.h"
-#include "KeeperRegistrationMsg.h"
-#include "KeeperStatsMsg.h"
+#include "chrono_common/KeeperIdCard.h"
+#include "chrono_common/KeeperRegistrationMsg.h"
+#include "chrono_common/KeeperStatsMsg.h"
 
 namespace tl = thallium;
 

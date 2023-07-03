@@ -7,7 +7,8 @@
 #include <unordered_map>
 #include <mutex>
 
-#include "chronolog_types.h"
+#include "chrono_common/chronolog_types.h"
+#include "StoryIngestionHandle.h"
 
 //
 // IngestionQueue is a funnel into the MemoryDataStore
@@ -18,7 +19,7 @@ namespace chronolog
 {
 
 typedef std::deque<LogEvent> EventDeque;
-
+/*
 class StoryIngestionHandle
 {
 
@@ -56,7 +57,7 @@ private:
 	EventDeque * activeDeque;
 };
 
-
+*/
 class IngestionQueue
 {
 public:
@@ -68,21 +69,30 @@ public:
 void addStoryIngestionHandle( StoryId const& story_id, StoryIngestionHandle * ingestion_handle)
 {
 	std::lock_guard<std::mutex> lock(ingestionQueueMutex);
-	storyIngestionHandles.emplace(story_id,ingestion_handle);
+	storyIngestionHandles.emplace(std::pair<StoryId,StoryIngestionHandle*>(story_id,ingestion_handle));
+	std::cout <<"IngestionQueue: added handle for story {"<<story_id<<"} {"<<ingestion_handle<<"}"<<" handlesMap.size="<<storyIngestionHandles.size()<<std::endl;
+
+	std::cout <<"IngestionQueue: addHandle : storyIngestionHandles {"<< &storyIngestionHandles<<"} .size="<<storyIngestionHandles.size()<<std::endl;
+
 }
 
 void removeIngestionHandle(StoryId const & story_id)
 {
+	std::cout <<"IngestionQueue: removeHandle : storyIngestionHandles {"<< &storyIngestionHandles<<"} .size="<<storyIngestionHandles.size()<<std::endl;
 	std::lock_guard<std::mutex> lock(ingestionQueueMutex);
 	storyIngestionHandles.erase(story_id);
+	std::cout <<"IngestionQueue: removed handle for story {"<<story_id<<"}"<<" handlesMap.size="<<storyIngestionHandles.size()<<std::endl;
 }
 
 void ingestLogEvent(LogEvent const& event)
 {
+	std::cout <<"IngestionQueue: ingestLogEvent : storyIngestionHandles {"<< &storyIngestionHandles<<"} .size="<<storyIngestionHandles.size()<<std::endl;
+	std::cout<<"received event for story {"<<event.storyId<< ":"<<event.time()<<"}"<<std::endl;
+
 	auto ingestionHandle_iter = storyIngestionHandles.find(event.storyId);
 	if( ingestionHandle_iter == storyIngestionHandles.end())
 	{
-		std::cout <<" orphan event"<<std::endl;
+		std::cout <<" orphan event for story {"<<event.storyId<<"}"<<std::endl;
 		std::lock_guard<std::mutex> lock(ingestionQueueMutex);
 		orphanEventQueue.push_back(event);
 	}
@@ -114,6 +124,7 @@ void drainOrphanEvents()
 
 void shutDown()
 {
+	std::cout <<"IngestionQueue: shutdown : storyIngestionHandles {"<< &storyIngestionHandles<<"} .size="<<storyIngestionHandles.size()<<std::endl;
 	// last attempt to drain orphanEventQueue into known ingestionHandles
  	drainOrphanEvents();
 	// disengage all handles

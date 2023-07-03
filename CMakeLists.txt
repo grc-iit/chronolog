@@ -85,6 +85,7 @@ option(CHRONOLOG_ENABLE_DOXYGEN "Enable Doxygen documentation generation." OFF)
 #    add_compile_options(-Wextra)
 #endif()
 
+#set(CMAKE_BUILD_TYPE "Debug")
 # Change some compilation flags depending on the build type
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     message("Compiling ChronoLog in Debug Mode")
@@ -134,7 +135,7 @@ endif()
 #-----------------------------------------------------------------------------
 # Dependencies common to all subdirectories
 #-----------------------------------------------------------------------------
-find_package(MPI REQUIRED COMPONENTS CXX)
+#find_package(MPI REQUIRED COMPONENTS CXX)
 find_package(Boost REQUIRED)
 find_package(Thallium REQUIRED)
 #find_library(ROCKSDB_LIB rocksdb)
@@ -206,14 +207,18 @@ endif()
 
 #add_subdirectory(tools)
 
+# ChronoLog client library
+add_subdirectory(Client)
+
 # ChronoVisor
-add_subdirectory(ChronoAPI)
+#add_subdirectory(ChronoAPI)
 
 # ChronoVisor
 add_subdirectory(ChronoVisor)
 
-# ChronoLog client library
-add_subdirectory(Client)
+# ChronoKeeper
+add_subdirectory(ChronoKeeper)
+
 
 # custom
 add_custom_target(make_all cd ${CMAKE_BINARY_DIR} && make)
