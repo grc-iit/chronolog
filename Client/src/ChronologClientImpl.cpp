@@ -133,7 +133,7 @@ int chronolog::ChronologClientImpl::Disconnect( ) //const std::string &client_id
     if((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
     {  return CL_SUCCESS; }
 
-  //TODO : release all the acquired stories before asking to disconnect...
+    //TODO : release all the acquired stories before asking to disconnect...
 
     int flags=1;
     //auto return_code = rpcClient_->Disconnect(clientAccount , flags);
