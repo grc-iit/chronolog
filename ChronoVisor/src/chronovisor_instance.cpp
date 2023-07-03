@@ -1,6 +1,7 @@
 
 //#include "ChronoVisorServer2.h"
 
+#include <unistd.h>
 #include "KeeperRegistry.h"
 
 #include "VisorClientPortal.h"
@@ -38,7 +39,7 @@ int main(int argc, char** argv)
     
     /////
 
-     while( !keeperRegistry.is_shutting_down())
+    while( !keeperRegistry.is_shutting_down())
     {
        sleep(60);
     }
