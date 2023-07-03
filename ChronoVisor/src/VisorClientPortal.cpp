@@ -2,6 +2,8 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <sys/types.h>
+#include <unistd.h>
 #include <thallium.hpp>  
 
 #include "ConfigurationManager.h"
