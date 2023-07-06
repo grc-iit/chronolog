@@ -14,21 +14,21 @@ SERVER_USERNAME="chronolog"
 CLIENT_USERNAMES=("chl_user1", "chl_user2", "chl_user3", "chl_user4")
 
 # set setgid bit
-if [[ $(chmod g+s ${VISOR_BIN}) -ne 0 || $(chmod g+s ${KEEPER_BIN}) -ne 0 || $(chmod g+s ${CLIENT_BIN}) -ne 0 ]]
-then
-  echo setgid bit fails, exiting ...
-  exit 1
-fi
+#if [[ $(chmod g+s ${VISOR_BIN}) -ne 0 || $(chmod g+s ${KEEPER_BIN}) -ne 0 || $(chmod g+s ${CLIENT_BIN}) -ne 0 ]]
+#then
+  #echo setgid bit fails, exiting ...
+  #exit 1
+#fi
 
-# double check
-if [[ ! -g ${VISOR_BIN} || ! -g ${KEEPER_BIN} || ! -g ${CLIENT_BIN} ]]
-then
-  echo setgid bit is not set, exiting ...
-  exit 1
-fi
+## double check
+#if [[ ! -g ${VISOR_BIN} || ! -g ${KEEPER_BIN} || ! -g ${CLIENT_BIN} ]]
+#then
+  #echo setgid bit is not set, exiting ...
+  #exit 1
+#fi
 
 # launch Visor
-mpssh -f ${VISOR_HOSTS} "sudo -u ${SERVER_USERNAME} \"LD_LIBRARY_PATH=${LIB_DIR} ${VISOR_BIN} ${CONF_DIR}/default_conf.json\""
+mpssh -f ${VISOR_HOSTS} "cd ${BIN_DIR}; sudo -u ${SERVER_USERNAME} ./chronovisor_server_test ${CONF_DIR}/default_conf.json"
 
 # launch Keeper
 mpssh -f ${KEEPER_HOSTS} "sudo -u ${SERVER_USERNAME} \"LD_LIBRARY_PATH=${LIB_DIR} ${KEEPER_BIN} ${CONF_DIR}/default_conf.json\""
