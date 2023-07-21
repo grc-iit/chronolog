@@ -4,7 +4,7 @@
 #include <iostream>
 #include <map>
 #include <json-c/json.h>
-#include "../../ChronoKeeper/StoryChunk.h"
+#include <StoryChunk.h>
 #include <event.h>
 #include <datasetreader.h>
 #include <datasetminmax.h>

@@ -3,6 +3,7 @@
 
 #include <map>
 #include <iostream>
+#include <sstream>
 
 #include "chrono_common/chronolog_types.h"
 
@@ -47,6 +48,14 @@ namespace chronolog
 
         size_t getNumEvents() const
         { return logEvents.size(); }
+
+        size_t getTotalPayloadSize() const
+        {
+            size_t total_size = 0;
+            for (auto const &event : logEvents)
+            { total_size += event.second.logRecord.size(); }
+            return total_size;
+        }
 
         std::map<EventSequence, LogEvent>::const_iterator begin() const
         { return logEvents.begin(); }

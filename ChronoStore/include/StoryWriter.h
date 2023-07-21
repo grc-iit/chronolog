@@ -6,7 +6,7 @@
 #include <map>
 #include <event.h>
 #include <json-c/json.h>
-#include "../../ChronoKeeper/StoryChunk.h"
+#include <StoryChunk.h>
 
 class StoryWriter
 {

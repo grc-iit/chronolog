@@ -19,8 +19,22 @@ add_executable(hdf5_archiver_test
         ../include/StoryWriter.h
         ../src/StoryWriter.cpp
         ../include/StoryReader.h
-        ../src/StoryReader.cpp)
+        ../src/StoryReader.cpp
+        story_chunk_test_utils.h)
 
+target_include_directories(hdf5_archiver_test PRIVATE ../../ChronoKeeper
+        ./)
 target_link_libraries(hdf5_archiver_test ${HDF5_LIBRARIES})
 target_link_libraries(hdf5_archiver_test json-c)
 add_test(NAME hdf5_archiver_test COMMAND hdf5_archiver_test)
+
+add_executable(compound_vlen_dtype_test
+        compound_vlen_dtype_test.cpp
+        story_chunk_test_utils.h)
+target_include_directories(compound_vlen_dtype_test PRIVATE ../../ChronoKeeper
+        ./)
+target_link_libraries(compound_vlen_dtype_test ${HDF5_LIBRARIES})
+add_test(NAME compound_vlen_dtype_test COMMAND compound_vlen_dtype_test)
+
+add_executable(cmpvstring cmpvstring.c)
+target_link_libraries(cmpvstring ${HDF5_LIBRARIES})
