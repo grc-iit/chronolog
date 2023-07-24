@@ -229,19 +229,6 @@ namespace ChronoLog {
             LoadConfFromJSONFile(conf_file_path);
         }
 
-        void SetConfiguration(const ConfigurationManager &confManager) {
-            LOGI("setting configuration with a pre-configured ConfigurationManager object");
-            ROLE = confManager.ROLE;
-            CLOCK_CONF = confManager.CLOCK_CONF;
-            RPC_CONF = confManager.RPC_CONF;
-            AUTH_CONF = confManager.AUTH_CONF;
-            VISOR_CONF = confManager.VISOR_CONF;
-            CLIENT_CONF = confManager.CLIENT_CONF;
-            KEEPER_CONF = confManager.KEEPER_CONF;
-            LOGI("updated configuration:");
-            PrintConf();
-        }
-
         void PrintConf() const {
             LOGI("******** Start of configuration output ********");
             LOGI("ROLE: %s", getServiceRoleString(ROLE));
