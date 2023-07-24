@@ -6,16 +6,18 @@
 
 #define STORY_NAME_LEN 32
 
-struct thread_arg {
+struct thread_arg
+{
     int tid;
     std::string client_id;
 };
 
 chronolog::Client *client;
 
-void thread_body(struct thread_arg *t) {
+void thread_body(struct thread_arg *t)
+{
 
-    std::cout << "Start Thread tid="<<t->tid<< std::endl;
+    std::cout << "Start Thread tid=" << t->tid << std::endl;
     //std::string server_ip = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string();
     //int base_port = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT;
     int flags = 0;
@@ -29,7 +31,7 @@ void thread_body(struct thread_arg *t) {
     chronicle_attrs.emplace("IndexGranularity", "Millisecond");
     chronicle_attrs.emplace("TieringPolicy", "Hot");
     ret = client->CreateChronicle(chronicle_name, chronicle_attrs, flags);
-    std::cout << "tid="<<t->tid<<" CreateChronicle {"<<chronicle_name<<"} ret: " << ret<< std::endl;
+    std::cout << "tid=" << t->tid << " CreateChronicle {" << chronicle_name << "} ret: " << ret << std::endl;
     flags = 1;
     std::string story_name = gen_random(STORY_NAME_LEN);
     std::unordered_map<std::string, std::string> story_attrs;
@@ -38,28 +40,33 @@ void thread_body(struct thread_arg *t) {
     story_attrs.emplace("TieringPolicy", "Hot");
     flags = 2;
     auto acquire_ret = client->AcquireStory(chronicle_name, story_name, story_attrs, flags);
-    std::cout << "tid="<<t->tid<<" AcquireStory {"<<chronicle_name<<":"<<story_name<<"} ret: " << acquire_ret.first << std::endl;
+    std::cout << "tid=" << t->tid << " AcquireStory {" << chronicle_name << ":" << story_name << "} ret: "
+              << acquire_ret.first << std::endl;
     assert(acquire_ret.first == CL_SUCCESS || acquire_ret.first == CL_ERR_NOT_EXIST);
     ret = client->DestroyStory(chronicle_name, story_name);//, flags);
-    std::cout << "tid="<<t->tid<<" DestroyStory {"<<chronicle_name<<":"<<story_name<<"} ret: " << ret<< std::endl;
-    assert(ret == CL_ERR_ACQUIRED || ret==CL_SUCCESS || ret==CL_ERR_NOT_EXIST);
+    std::cout << "tid=" << t->tid << " DestroyStory {" << chronicle_name << ":" << story_name << "} ret: " << ret
+              << std::endl;
+    assert(ret == CL_ERR_ACQUIRED || ret == CL_SUCCESS || ret == CL_ERR_NOT_EXIST);
     ret = client->Disconnect(); //t->client_id, flags);
-    assert(ret == CL_ERR_ACQUIRED || ret==CL_SUCCESS);
+    assert(ret == CL_ERR_ACQUIRED || ret == CL_SUCCESS);
     ret = client->ReleaseStory(chronicle_name, story_name);//, flags);
-    std::cout << "tid="<<t->tid<<" ReleaseStory {"<<chronicle_name<<":"<<story_name<<"} ret: " << ret<< std::endl;
+    std::cout << "tid=" << t->tid << " ReleaseStory {" << chronicle_name << ":" << story_name << "} ret: " << ret
+              << std::endl;
     assert(ret == CL_SUCCESS || ret == CL_ERR_NO_CONNECTION);
     ret = client->DestroyStory(chronicle_name, story_name);//, flags);
-    std::cout << "tid="<<t->tid<<" DestroyStory {"<<chronicle_name<<":"<<story_name<<"} ret: " << ret<< std::endl;
-    assert(ret == CL_SUCCESS || ret == CL_ERR_NOT_EXIST || ret == CL_ERR_ACQUIRED || ret ==CL_ERR_NO_CONNECTION);
+    std::cout << "tid=" << t->tid << " DestroyStory {" << chronicle_name << ":" << story_name << "} ret: " << ret
+              << std::endl;
+    assert(ret == CL_SUCCESS || ret == CL_ERR_NOT_EXIST || ret == CL_ERR_ACQUIRED || ret == CL_ERR_NO_CONNECTION);
 
-    
+
     ret = client->DestroyChronicle(chronicle_name);//, flags);
-    assert(ret == CL_SUCCESS || ret == CL_ERR_NOT_EXIST || ret == CL_ERR_ACQUIRED || ret==CL_ERR_NO_CONNECTION);
-    std::cout << "tid="<<t->tid<<" DestroyChronicle{"<<chronicle_name<<"} ret: " << ret<< std::endl;
-    std::cout << "Stop Thread tid="<<t->tid<< std::endl;
+    assert(ret == CL_SUCCESS || ret == CL_ERR_NOT_EXIST || ret == CL_ERR_ACQUIRED || ret == CL_ERR_NO_CONNECTION);
+    std::cout << "tid=" << t->tid << " DestroyChronicle{" << chronicle_name << "} ret: " << ret << std::endl;
+    std::cout << "Stop Thread tid=" << t->tid << std::endl;
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv)
+{
 
 
     int provided;
@@ -72,18 +79,19 @@ int main(int argc, char **argv) {
 
     ChronoLogRPCImplementation protocol = CHRONOLOG_THALLIUM_SOCKETS;
     ChronoLog::ConfigurationManager confManager("./default_conf.json");
-    std::string server_ip = confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string();
+    std::string server_ip = confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP;
     int base_port = confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT;
     client = new chronolog::Client(confManager);//protocol, server_ip, base_port);
 
-    std::string server_uri = confManager.RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF.string();
+    std::string server_uri = confManager.RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF;
     server_uri += "://" + server_ip + ":" + std::to_string(base_port);
 
     int flags = 0;
     uint64_t offset;
     int ret = client->Connect(server_uri, client_id, flags);//, offset);
 
-    for (int i = 0; i < num_threads; i++) {
+    for (int i = 0; i < num_threads; i++)
+    {
         t_args[i].tid = i;
         t_args[i].client_id = client_id;
         std::thread t{thread_body, &t_args[i]};

@@ -49,8 +49,8 @@ int chronolog::VisorClientPortal::StartServices(ChronoLog::ConfigurationManager 
      // initialise thalium engine for KeeperRegistryService
 
          std::string CLIENT_PORTAL_SERVICE_NA_STRING=
-         confManager.RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF.string()
-         +"://" + confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string()
+         confManager.RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF
+         +"://" + confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP
          +":" + std::to_string(confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT);
  
          uint16_t provider_id =  confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.SERVICE_PROVIDER_ID;

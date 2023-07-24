@@ -8,7 +8,6 @@
 #include <unordered_map>
 #include <rapidjson/document.h>
 #include <sstream>
-#include "data_structures.h"
 #include "enum.h"
 #include "log.h"
 #include "errcode.h"
@@ -37,14 +36,14 @@ namespace ChronoLog {
     } RPCClientEndConf;
 
     typedef struct RPCVisorEndConf_ {
-        ChronoLogCharStruct VISOR_IP;
+        std::string VISOR_IP;
         uint16_t VISOR_BASE_PORT;
         uint16_t SERVICE_PROVIDER_ID;
         uint8_t VISOR_PORTS;
         uint8_t VISOR_SERVICE_THREADS;
 
         [[nodiscard]] std::string to_String() const {
-            return "[VISOR_IP: " + VISOR_IP.string()
+            return "[VISOR_IP: " + VISOR_IP
                     + ", VISOR_BASE_PORT: " + std::to_string(VISOR_BASE_PORT)
                     + ", SERVICE_PROVIDER_ID: "+ std::to_string(SERVICE_PROVIDER_ID)
                     + ", VISOR_PORTS: " + std::to_string(VISOR_PORTS)
@@ -53,13 +52,13 @@ namespace ChronoLog {
     } RPCVisorEndConf;
 
     typedef struct RPCKeeperEndConf_ {
-        ChronoLogCharStruct KEEPER_IP;
+        std::string KEEPER_IP;
         uint16_t KEEPER_PORT;
         uint16_t SERVICE_PROVIDER_ID;
         uint8_t KEEPER_SERVICE_THREADS;
 
         [[nodiscard]] std::string to_String() const {
-            return "[KEEPER_IP: " + KEEPER_IP.string()
+            return "[KEEPER_IP: " + KEEPER_IP
                     + ", KEEPER_PORT: " + std::to_string(KEEPER_PORT)
                     + ", SERVICE_PROVIDER_ID: "+ std::to_string(SERVICE_PROVIDER_ID)
                     + ", KEEPER_SERVICE_THREADS: " + std::to_string(KEEPER_SERVICE_THREADS) + "]";
@@ -68,13 +67,13 @@ namespace ChronoLog {
 
     typedef struct RPCClientVisorConf_ {
         ChronoLogRPCImplementation RPC_IMPLEMENTATION;
-        ChronoLogCharStruct PROTO_CONF;
+        std::string PROTO_CONF;
         RPCClientEndConf CLIENT_END_CONF;
         RPCVisorEndConf VISOR_END_CONF;
 
         [[nodiscard]] std::string to_String() const {
             return "{RPC_IMPLEMENTATION: " + std::string(getRPCImplString(RPC_IMPLEMENTATION))
-                   + ", PROTO_CONF: " + PROTO_CONF.string()
+                   + ", PROTO_CONF: " + PROTO_CONF
                    + ", CLIENT_END_CONF: " + CLIENT_END_CONF.to_String()
                    + ", VISOR_END_CONF: " + VISOR_END_CONF.to_String() + "}";
         }
@@ -82,13 +81,13 @@ namespace ChronoLog {
 
     typedef struct RPCVisorKeeperConf_ {
         ChronoLogRPCImplementation RPC_IMPLEMENTATION;
-        ChronoLogCharStruct PROTO_CONF;
+        std::string PROTO_CONF;
         RPCVisorEndConf VISOR_END_CONF;
         RPCKeeperEndConf KEEPER_END_CONF;
 
         [[nodiscard]] std::string to_String() const {
             return "{RPC_IMPLEMENTATION: " + std::string(getRPCImplString(RPC_IMPLEMENTATION))
-                    + ", PROTO_CONF: " + PROTO_CONF.string()
+                    + ", PROTO_CONF: " + PROTO_CONF
                     + ", VISOR_END_CONF: " + VISOR_END_CONF.to_String()
                     + ", KEEPER_END_CONF: " + KEEPER_END_CONF.to_String() + "}";
         }
@@ -96,20 +95,20 @@ namespace ChronoLog {
 
     typedef struct RPCClientKeeperConf_ {
         ChronoLogRPCImplementation RPC_IMPLEMENTATION;
-        ChronoLogCharStruct PROTO_CONF;
+        std::string PROTO_CONF;
         RPCClientEndConf CLIENT_END_CONF;
         RPCKeeperEndConf KEEPER_END_CONF;
 
         [[nodiscard]] std::string to_String() const {
             return "{RPC_IMPLEMENTATION: " + std::string(getRPCImplString(RPC_IMPLEMENTATION))
-                   + ", PROTO_CONF: " + PROTO_CONF.string()
+                   + ", PROTO_CONF: " + PROTO_CONF
                    + ", CLIENT_END_CONF: " + CLIENT_END_CONF.to_String()
                    + ", KEEPER_END_CONF: " + KEEPER_END_CONF.to_String() + "}";
         }
     } RPCClientKeeperConf;
 
     typedef struct RPCConf_ {
-        std::unordered_map<ChronoLogCharStruct, ChronoLogCharStruct> AVAIL_PROTO_CONF{};
+        std::unordered_map<std::string, std::string> AVAIL_PROTO_CONF{};
         RPCClientVisorConf CLIENT_VISOR_CONF;
         RPCVisorKeeperConf VISOR_KEEPER_CONF;
         RPCClientKeeperConf CLIENT_KEEPER_CONF;
@@ -117,7 +116,7 @@ namespace ChronoLog {
         [[nodiscard]] std::string to_String() const {
             std::string str = "AVAIL_PROTO_CONF: ";
             for (auto &proto_conf : AVAIL_PROTO_CONF) {
-                str += proto_conf.first.string() + "=" + proto_conf.second.string();
+                str += proto_conf.first + "=" + proto_conf.second;
                 str += ", ";
             }
             return str
@@ -128,12 +127,12 @@ namespace ChronoLog {
     } RPCConf;
 
     typedef struct AuthConf_ {
-        ChronoLogCharStruct AUTH_TYPE;
-        ChronoLogCharStruct MODULE_PATH;
+        std::string AUTH_TYPE;
+        std::string MODULE_PATH;
 
         [[nodiscard]] std::string to_String() const {
-            return "AUTH_TYPE: " + AUTH_TYPE.string()
-                   + ", MODULE_PATH: " + MODULE_PATH.string();
+            return "AUTH_TYPE: " + AUTH_TYPE
+                   + ", MODULE_PATH: " + MODULE_PATH;
         }
     } AuthConf;
 

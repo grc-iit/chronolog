@@ -2,6 +2,7 @@
 // Created by kfeng on 5/17/22.
 //
 
+#include <chrono>
 #include "chronolog_client.h"
 #include "common.h"
 #include <cassert>
@@ -12,7 +13,8 @@
 #define CHRONICLE_NAME_LEN 32
 #define STORY_NAME_LEN 32
 
-int main() {
+int main()
+{
     ChronoLog::ConfigurationManager confManager("./default_conf.json");
     chronolog::Client client(confManager);
     std::vector<std::string> chronicle_names;
@@ -29,19 +31,21 @@ int main() {
     int flags;
     int ret;
     uint64_t offset = 0;
-    std::string server_uri = confManager.RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF.string() + "://" +
-                             confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string() +
+    std::string server_uri = confManager.RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF + "://" +
+                             confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP +
                              std::to_string(confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT);
 
     std::string client_id = gen_random(8);
     client.Connect(server_uri, client_id, flags);//, offset);
     chronicle_names.reserve(NUM_CHRONICLE);
-    for (int i = 0; i < NUM_CHRONICLE; i++) {
+    for (int i = 0; i < NUM_CHRONICLE; i++)
+    {
         std::string chronicle_name(gen_random(CHRONICLE_NAME_LEN));
         chronicle_names.emplace_back(chronicle_name);
     }
 
-    for (int i = 0; i < NUM_CHRONICLE; i++) {
+    for (int i = 0; i < NUM_CHRONICLE; i++)
+    {
         std::string attr = std::string("Priority=High");
         std::unordered_map<std::string, std::string> chronicle_attrs;
         chronicle_attrs.emplace("Priority", "High");
@@ -58,7 +62,7 @@ int main() {
 
     t1 = std::chrono::steady_clock::now();
     std::vector<std::string> chronicle_names_retrieved;
-    chronicle_names_retrieved= client.ShowChronicles(chronicle_names_retrieved);
+    chronicle_names_retrieved = client.ShowChronicles(chronicle_names_retrieved);
     t2 = std::chrono::steady_clock::now();
     duration_show_chronicles += (t2 - t1);
     //std::sort(chronicle_names_retrieved.begin(), chronicle_names_retrieved.end());
@@ -67,7 +71,8 @@ int main() {
     //assert(chronicle_names_retrieved == chronicle_names_sorted);
 
 
-    for (int i = 0; i < NUM_CHRONICLE; i++) {
+    for (int i = 0; i < NUM_CHRONICLE; i++)
+    {
         std::string key("Date");
         t1 = std::chrono::steady_clock::now();
         ret = client.EditChronicleAttr(chronicle_names[i], key, "2023-01-15");
@@ -78,7 +83,8 @@ int main() {
 
         std::vector<std::string> story_names;
         story_names.reserve(NUM_STORY);
-        for (int j = 0; j < NUM_STORY; j++) {
+        for (int j = 0; j < NUM_STORY; j++)
+        {
             flags = 2;
             std::string story_name(gen_random(STORY_NAME_LEN));
             story_names.emplace_back(story_name);
@@ -98,7 +104,7 @@ int main() {
 
         t1 = std::chrono::steady_clock::now();
         std::vector<std::string> stories_names_retrieved;
-        client.ShowStories( chronicle_names[i], stories_names_retrieved);
+        client.ShowStories(chronicle_names[i], stories_names_retrieved);
         t2 = std::chrono::steady_clock::now();
         duration_show_stories += (t2 - t1);
         //std::sort(stories_names_retrieved.begin(), stories_names_retrieved.end());
@@ -106,7 +112,8 @@ int main() {
         //std::sort(story_names_sorted.begin(), story_names_sorted.end());
         //assert(stories_names_retrieved == story_names_sorted);
 
-        for (int j = 0; j < NUM_STORY; j++) {
+        for (int j = 0; j < NUM_STORY; j++)
+        {
             flags = 4;
             t1 = std::chrono::steady_clock::now();
             ret = client.ReleaseStory(chronicle_names[i], story_names[j]); //, flags);
@@ -116,7 +123,8 @@ int main() {
         }
 
         flags = 8;
-        for (int j = 0; j < NUM_STORY; j++) {
+        for (int j = 0; j < NUM_STORY; j++)
+        {
             t1 = std::chrono::steady_clock::now();
             ret = client.DestroyStory(chronicle_names[i], story_names[j]); // flags);
             t2 = std::chrono::steady_clock::now();
@@ -135,7 +143,8 @@ int main() {
     }
 
     flags = 32;
-    for (int i = 0; i < NUM_CHRONICLE; i++) {
+    for (int i = 0; i < NUM_CHRONICLE; i++)
+    {
         t1 = std::chrono::steady_clock::now();
         bool ret = client.DestroyChronicle(chronicle_names[i]); // flags);
         t2 = std::chrono::steady_clock::now();
@@ -143,7 +152,8 @@ int main() {
         duration_destroy_chronicle += (t2 - t1);
     };
 
-    for (int i = 0; i < NUM_STORY; i++) {
+    for (int i = 0; i < NUM_STORY; i++)
+    {
         std::unordered_map<std::string, std::string> story_attrs;
         std::string temp_str = gen_random(STORY_NAME_LEN);
         ret = client.AcquireStory(chronicle_names[i].append(temp_str), temp_str, story_attrs, flags).first;
@@ -163,7 +173,8 @@ int main() {
     duration_create_chronicle = std::chrono::duration<double, std::nano>();
     chronicle_names.clear();
     flags = 1;
-    for (int i = 0; i < NUM_CHRONICLE; i++) {
+    for (int i = 0; i < NUM_CHRONICLE; i++)
+    {
         std::string chronicle_name(gen_random(CHRONICLE_NAME_LEN));
         chronicle_names.emplace_back(chronicle_name);
         std::string attr = std::string("Priority=High");
@@ -181,7 +192,8 @@ int main() {
 
     flags = 32;
     duration_destroy_chronicle = std::chrono::duration<double, std::nano>();
-    for (int i = 0; i < NUM_CHRONICLE; i++) {
+    for (int i = 0; i < NUM_CHRONICLE; i++)
+    {
         t1 = std::chrono::steady_clock::now();
         int ret = client.DestroyChronicle(chronicle_names[i]);//, flags);
         t2 = std::chrono::steady_clock::now();

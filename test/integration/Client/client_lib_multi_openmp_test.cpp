@@ -6,11 +6,12 @@
 
 #define STORY_NAME_LEN 32
 
-int main() {
+int main()
+{
 
     ChronoLogRPCImplementation protocol = CHRONOLOG_THALLIUM_SOCKETS;
     ChronoLog::ConfigurationManager confManager("./default_conf.json");
-    std::string server_ip = confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string();
+    std::string server_ip = confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP;
     int base_port = confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT;
     chronolog::Client *client = new chronolog::Client(confManager);//protocol, server_ip, base_port);
 
@@ -18,7 +19,7 @@ int main() {
 
     omp_set_num_threads(num_threads);
 
-    std::string server_uri = confManager.RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF.string();
+    std::string server_uri = confManager.RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF;
     server_uri += "://" + server_ip + ":" + std::to_string(base_port);
     int flags = 0;
     uint64_t offset;
@@ -26,7 +27,8 @@ int main() {
     std::string client_id = gen_random(8);
     int ret = client->Connect(server_uri, client_id, flags);//, offset);
 #pragma omp for
-    for (int i = 0; i < num_threads; i++) {
+    for (int i = 0; i < num_threads; i++)
+    {
         std::string chronicle_name;
         if (i % 2 == 0) chronicle_name = "gscs5er9TcdJ9mOgUDteDVBcI0oQjozK";
         else chronicle_name = "6RPkwqX2IOpR41dVCqmWauX9RfXIuTAp";
