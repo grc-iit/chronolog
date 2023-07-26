@@ -8,8 +8,6 @@
 #include <thallium.hpp>
 #include <margo.h>
 #include <thallium/serialization/serialize.hpp>
-//#include <thallium/serialization/buffer_input_archive.hpp>
-//#include <thallium/serialization/buffer_output_archive.hpp>
 #include <thallium/serialization/stl/array.hpp>
 #include <thallium/serialization/stl/complex.hpp>
 #include <thallium/serialization/stl/deque.hpp>

@@ -33,7 +33,7 @@
         "visor_ip": "127.0.0.1",
         "visor_base_port": 6666,
         "visor_ports": 1,
-        "visor_service_threads": 1
+        "visor_service_threads": 2
       },
       "rpc_keeper_end": {
         "keeper_ip": "127.0.0.1",

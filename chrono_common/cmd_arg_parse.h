@@ -47,7 +47,7 @@ std::string parse_conf_path_arg(int argc, char **argv)
     }
     else
     {
-        LOGD("No config file specified, using default ./default_conf.json instead\n");
+        LOGD("No config file specified, using default instead\n");
         return "";
     }
 }

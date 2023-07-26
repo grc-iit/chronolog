@@ -39,9 +39,9 @@ public:
 
     void shutdown_data_collection(tl::request const& request)
     {   
-	    int status =1;
+	    int status = 1;
 	    theDataStore.shutdownDataCollection();
-	    request.respond(1); 
+	    request.respond(status);
     }
 
     void StartStoryRecording(tl::request const& request, 

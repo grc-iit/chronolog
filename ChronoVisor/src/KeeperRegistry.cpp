@@ -31,7 +31,8 @@ namespace chronolog
 
             uint16_t provider_id = confManager.RPC_CONF.VISOR_KEEPER_CONF.VISOR_END_CONF.SERVICE_PROVIDER_ID;
 
-            margo_instance_id margo_id = margo_init(KEEPER_REGISTRY_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 2);
+            margo_instance_id margo_id = margo_init(KEEPER_REGISTRY_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1,
+                                                    confManager.RPC_CONF.VISOR_KEEPER_CONF.VISOR_END_CONF.VISOR_SERVICE_THREADS);
 
             if (MARGO_INSTANCE_NULL == margo_id)
             {
@@ -43,7 +44,7 @@ namespace chronolog
 
             registryEngine = new tl::engine(margo_id);
 
-            std::cout << "Starting KeeperRegistryService  at address " << registryEngine->self()
+            std::cout << "Starting KeeperRegistryService at address " << registryEngine->self()
                       << " with provider id " << provider_id << std::endl;
 
 

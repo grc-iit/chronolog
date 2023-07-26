@@ -40,7 +40,7 @@ int main(int argc, char** argv)
 
    // ChronoVisor::ChronoVisorServer2 visor(confManager);
 
-    keeperRegistry.InitializeRegistryService( confManager);//provider_id=22);
+    keeperRegistry.InitializeRegistryService(confManager);//provider_id=22);
 
 //    visor.start(&keeperRegistry);
 
