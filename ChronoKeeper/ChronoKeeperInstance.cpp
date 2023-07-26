@@ -10,6 +10,7 @@
 #include "KeeperDataStore.h"
 #include "DataStoreAdminService.h"
 #include "ConfigurationManager.h"
+#include "cmd_arg_parse.h"
 
 #define KEEPER_GROUP_ID 7
 
@@ -49,7 +50,15 @@ int main(int argc, char **argv)
     //INNA: TODO: pass the config file path on the command line & load the parameters inot a ConfigurationObject
     // for now all the arguments are hardcoded ...
 
-    ChronoLog::ConfigurationManager confManager("./default_conf.json");
+    std::string default_conf_file_path = "./default_conf.json";
+    std::string conf_file_path;
+    conf_file_path = parse_conf_path_arg(argc, argv);
+    if (conf_file_path.empty())
+    {
+        conf_file_path = default_conf_file_path;
+    }
+
+    ChronoLog::ConfigurationManager confManager(conf_file_path);
     // Instantiate ChronoKeeper MemoryDataStore
     //
     chronolog::IngestionQueue ingestionQueue;
