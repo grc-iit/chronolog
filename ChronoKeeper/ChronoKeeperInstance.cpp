@@ -1,4 +1,5 @@
 
+#include <unistd.h>
 #include <arpa/inet.h>
 
 #include "chrono_common/KeeperIdCard.h"
@@ -118,7 +119,7 @@ int main(int argc, char **argv)
     if (-1 == service_endpoint_from_dotted_string(KEEPER_RECORDING_SERVICE_IP, KEEPER_RECORDING_SERVICE_PORT,
                                                   recording_endpoint))
     {
-        std::cout << "invalid KeeperRecordingService  address" << std::endl;
+        std::cout << "invalid KeeperRecordingService address" << std::endl;
         return (-1);
     }
 
