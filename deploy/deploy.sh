@@ -1,12 +1,12 @@
 #!/bin/bash
 
-CHRONOLOG_ROOT_DIR="/home/chronolog/chronolog"
+CHRONOLOG_ROOT_DIR="/home/${USER}/chronolog"
 BIN_DIR="${CHRONOLOG_ROOT_DIR}/bin"
 LIB_DIR="${CHRONOLOG_ROOT_DIR}/lib"
 CONF_DIR="${CHRONOLOG_ROOT_DIR}/conf"
-VISOR_BIN="${BIN_DIR}/chronovisor_server_test"
-KEEPER_BIN="${BIN_DIR}/chronokeeper_test"
-CLIENT_BIN="${BIN_DIR}/client_lib_metadata_rpc_test"
+VISOR_BIN="${BIN_DIR}/chronovisor_server"
+KEEPER_BIN="${BIN_DIR}/chrono_keeper"
+CLIENT_BIN="${BIN_DIR}/storyteller_test"
 VISOR_HOSTS="${BIN_DIR}/hosts_visor"
 KEEPER_HOSTS="${BIN_DIR}/hosts_keeper"
 CLIENT_HOSTS="${BIN_DIR}/hosts_client"
