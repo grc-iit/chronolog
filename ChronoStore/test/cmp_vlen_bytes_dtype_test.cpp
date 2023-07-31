@@ -1,5 +1,5 @@
 //
-// Created by kfeng on 7/6/23.
+// Created by kfeng on 7/27/23.
 //
 
 #include <iostream>
@@ -40,8 +40,8 @@ typedef struct LogEvent
     uint64_t eventTime;
     ClientId clientId;
     uint32_t eventIndex;
-    uint64_t logRecordSize;
-    char *logRecord;
+//    uint64_t logRecordSize;
+    hvl_t logRecord;
 } LogEvent;
 
 LogEvent g_events[3];
@@ -65,21 +65,10 @@ typedef struct StoryChunk
     {
         size_t total_size = 0;
         for (int i = 0; i < numLogEvents; i++)
-        { total_size += strlen(logEvents[i].logRecord) + 1; }
+        { total_size += logEvents[i].logRecord.len; }
         return total_size;
     }
 } StoryChunk;
-
-void freeStoryChunk(StoryChunk& chunk) {
-    for (int i = 0; i < chunk.numLogEvents; i++) {
-        delete[] chunk.logEvents[i].logRecord;
-    }
-    delete[] chunk.logEvents;
-}
-
-void freeLogEvent(LogEvent& event) {
-    delete[] event.logRecord;
-}
 
 StoryChunk *generateStoryChunkArray(uint64_t story_id,
                                     uint64_t client_id,
@@ -114,19 +103,69 @@ StoryChunk *generateStoryChunkArray(uint64_t story_id,
             story_chunk_array[i].logEvents[j].clientId = client_id;
             story_chunk_array[i].logEvents[j].eventIndex = j;
             size_t log_record_size = event_size_dist(rng);
-            story_chunk_array[i].logEvents[j].logRecordSize = log_record_size; //event_size_dist(rng);
-            story_chunk_array[i].logEvents[j].logRecord = new char[log_record_size + 1];
+            story_chunk_array[i].logEvents[j].logRecord.len = log_record_size; //event_size_dist(rng);
+            story_chunk_array[i].logEvents[j].logRecord.p = new uint8_t[log_record_size + 1];
             for (uint64_t k = 0; k < log_record_size; k++)
             {
-                story_chunk_array[i].logEvents[j].logRecord[k] = 'a' + ((k + j) % 26);
+                ((uint8_t *)story_chunk_array[i].logEvents[j].logRecord.p)[k] = (j + k + 1) % 255;
             }
-            story_chunk_array[i].logEvents[j].logRecord[log_record_size] = '\0';
+//            ((uint8_t *)story_chunk_array[i].logEvents[j].logRecord.p)[log_record_size] = '\0';
         }
 
         story_id++;
     }
 
     return story_chunk_array;
+}
+
+std::map<uint64_t, StoryChunk> generateStoryChunkMap(uint64_t story_id,
+                                                     uint64_t client_id,
+                                                     uint64_t start_time,
+                                                     uint64_t time_step,
+                                                     uint64_t end_time,
+                                                     uint64_t mean_event_size,
+                                                     uint64_t min_event_size,
+                                                     uint64_t max_event_size,
+                                                     double stddev,
+                                                     uint64_t num_events_per_story_chunk,
+                                                     uint64_t num_story_chunks)
+{
+    std::map<uint64_t, StoryChunk> story_chunk_map;
+    std::random_device rd;
+    std::mt19937_64 rng(rd());
+    std::normal_distribution<double> event_size_dist(mean_event_size, stddev);
+
+    for (uint64_t i = 0; i < num_story_chunks; i++)
+    {
+        StoryChunk story_chunk;
+        story_chunk.storyId = story_id;
+        story_chunk.startTime = start_time;
+        story_chunk.endTime = end_time;
+        story_chunk.revisionTime = end_time;
+        story_chunk.numLogEvents = num_events_per_story_chunk;
+        story_chunk.logEvents = new LogEvent[num_events_per_story_chunk];
+
+        for (uint64_t j = 0; j < num_events_per_story_chunk; j++)
+        {
+            story_chunk.logEvents[j].storyId = story_id;
+            story_chunk.logEvents[j].eventTime = start_time + j * time_step;
+            story_chunk.logEvents[j].clientId = client_id;
+            story_chunk.logEvents[j].eventIndex = j;
+            size_t log_record_size = event_size_dist(rng);
+            story_chunk.logEvents[j].logRecord.len = log_record_size; //event_size_dist(rng);
+            story_chunk.logEvents[j].logRecord.p = new uint8_t[log_record_size + 1];
+            for (uint64_t k = 0; k < log_record_size; k++)
+            {
+                ((uint8_t *)story_chunk.logEvents[j].logRecord.p)[k] = (j + k+ 1) % 255;
+            }
+//            ((uint8_t *)story_chunk.logEvents[j].logRecord.p)[log_record_size] = '\0';
+        }
+        story_chunk_map.emplace(story_id, story_chunk);
+
+        story_id++;
+    }
+
+    return story_chunk_map;
 }
 
 int main(int argc, char *argv[])
@@ -174,14 +213,14 @@ int main(int argc, char *argv[])
         g_events[i].clientId = (i + 1) * 10;
         g_events[i].eventIndex = i;
         len = strlen(str[i]);
-        g_events[i].logRecordSize = len;
-        len = strlen(str[i]);
+//        g_events[i].logRecordSize = len;
         if ((bptr = (char *) malloc(++len * sizeof(char))))
         {
 
             strcpy(bptr, str[i]);
 
-            g_events[i].logRecord = (char *) bptr;
+            g_events[i].logRecord.p = (uint8_t *) bptr;
+            g_events[i].logRecord.len = len;
         }
     }
 
@@ -199,6 +238,17 @@ int main(int argc, char *argv[])
                                                             stddev,
                                                             num_events_per_story_chunk,
                                                             num_story_chunks);
+    std::map<uint64_t, StoryChunk> story_chunk_map = generateStoryChunkMap(story_id,
+                                                                           client_id,
+                                                                           start_time,
+                                                                           time_step,
+                                                                           end_time,
+                                                                           mean_event_size,
+                                                                           min_event_size,
+                                                                           max_event_size,
+                                                                           stddev,
+                                                                           num_events_per_story_chunk,
+                                                                           num_story_chunks);
 
     hsize_t total_num_events = 0;
     std::vector<hsize_t> num_events;
@@ -223,8 +273,14 @@ int main(int argc, char *argv[])
 //    }
 
     herr_t status;
+    auto story_chunk_map_it = story_chunk_map.begin();
+    std::unordered_map<uint64_t, hid_t> story_chunk_fd_map;
+//    for (;
+//            story_chunk_map_it != story_chunk_map.end();
+//            story_chunk_map_it++)
     for (uint64_t i = 0; i < 1; i++)
     {
+//        StoryChunk story_chunk = story_chunk_map_it->second;
         StoryChunk story_chunk = story_chunk_array[i];
         // Check if the Story file has been opened/created already
         hid_t story_file;
@@ -279,11 +335,8 @@ int main(int argc, char *argv[])
          * H5T_C_S1 type based implementation
          */
         // Define variable-length payload data type
-        hid_t event_payload_type = H5Tcopy(H5T_C_S1);
-        LOGD("H5Tcopy(H5T_C_S1) returns: %li", event_payload_type);
-        status = H5Tset_size(event_payload_type,
-                             H5T_VARIABLE);
-        LOGD("H5Tset_size(event_payload_type, H5T_VARIABLE) returns: %i", status);
+        hid_t event_payload_type = H5Tvlen_create(H5T_NATIVE_UINT8);
+        LOGD("H5Tvlen_create(H5T_NATIVE_UINT8) returns: %li", event_payload_type);
         hid_t vl_datatype_id = H5Tcopy(event_payload_type);
         LOGD("H5Tcopy(event_payload_type) returns: %li", vl_datatype_id);
         // Define LogEvent data type
@@ -310,11 +363,11 @@ int main(int argc, char *argv[])
                            HOFFSET(LogEvent, eventIndex),
                            H5T_NATIVE_UINT32);
         LOGD("H5Tinsert returns: %i", status);
-        status = H5Tinsert(log_event_type,
-                           "logRecordSize",
-                           HOFFSET(LogEvent, logRecordSize),
-                           H5T_NATIVE_UINT64);
-        LOGD("H5Tinsert returns: %i", status);
+//        status = H5Tinsert(log_event_type,
+//                           "logRecordSize",
+//                           HOFFSET(LogEvent, logRecordSize),
+//                           H5T_NATIVE_UINT64);
+//        LOGD("H5Tinsert returns: %i", status);
         status = H5Tinsert(log_event_type,
                            "logRecord",
                            HOFFSET(LogEvent, logRecord),
@@ -382,10 +435,10 @@ int main(int argc, char *argv[])
 //        }
 
         // Write the Story Chunk to the dataset
-        LOGD("%c", story_chunk.logEvents[0].logRecord[0]);
-        LOGD("%c", story_chunk.logEvents[0].logRecord[7]);
-        LOGD("%c", story_chunk.logEvents[9].logRecord[0]);
-        LOGD("%c", story_chunk.logEvents[9].logRecord[7]);
+        LOGD("%d", ((char *)story_chunk.logEvents[0].logRecord.p)[0]);
+        LOGD("%d", ((char *)story_chunk.logEvents[0].logRecord.p)[7]);
+        LOGD("%d", ((char *)story_chunk.logEvents[0].logRecord.p)[0]);
+        LOGD("%d", ((char *)story_chunk.logEvents[0].logRecord.p)[7]);
 //        status = H5Dwrite(story_chunk_dset, H5T_NATIVE_B8, H5S_ALL, H5S_ALL, H5P_DEFAULT,
 //                          &story_chunk_map_it->second);
         status = H5Dwrite(story_chunk_dset,
