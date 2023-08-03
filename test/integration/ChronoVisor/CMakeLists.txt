@@ -2,8 +2,6 @@ find_package(mercury REQUIRED)
 find_package(thallium REQUIRED)
 find_package(Threads REQUIRED)
 
-set(CMAKE_INSTALL_RPATH /home/chronolog/chronolog/bin/*)
-
 add_executable(chronovisor_server_test chronovisor_server.cpp
         ../../../ChronoVisor/src/ChronoVisorServer2.cpp
         ../../../ChronoAPI/ChronoLog/src/ClocksourceManager.cpp
@@ -45,12 +43,12 @@ foreach (dependency IN LISTS DEPENDENCY_LIST)
 endforeach ()
 execute_process(COMMAND sh -c "chmod 777 -f ${CMAKE_INSTALL_PREFIX}/bin/*")
 
-# install binary
-install(
-        TARGETS chronovisor_server_test DESTINATION bin
-)
-
-# install configuration file
-install(
-        FILES ${CMAKE_CURRENT_SOURCE_DIR}/../default_conf.json.in DESTINATION bin RENAME default_conf.json
-)
+## install binary
+#install(
+#        TARGETS chronovisor_server_test DESTINATION bin
+#)
+#
+## install configuration file
+#install(
+#        FILES ${CMAKE_CURRENT_SOURCE_DIR}/../default_conf.json.in DESTINATION bin RENAME default_conf.json
+#)

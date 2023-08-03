@@ -3,19 +3,19 @@ find_package(Threads REQUIRED)
 
 add_executable(chronovisor_server)
 
-target_sources ( chronovisor_server PRIVATE
-	./src/chronovisor_instance.cpp
-    ./src/VisorClientPortal.cpp
-	#../ChronoAPI/ChronoLog/src/ClocksourceManager.cpp
+target_sources(chronovisor_server PRIVATE
+        ./src/chronovisor_instance.cpp
+        ./src/VisorClientPortal.cpp
+        #../ChronoAPI/ChronoLog/src/ClocksourceManager.cpp
         ./src/ClientRegistryManager.cpp
         ./src/ClientRegistryRecord.cpp
         ./src/ChronicleMetaDirectory.cpp
-	./src/KeeperRegistry.cpp
+        ./src/KeeperRegistry.cpp
         ../ChronoAPI/ChronoLog/src/city.cpp)
 
 target_include_directories(chronovisor_server PRIVATE
         ../ChronoAPI/ChronoLog/include
-	../chrono_common
+        ../chrono_common
         ./include)
 
 target_link_libraries(chronovisor_server chronolog_client thallium)
@@ -25,3 +25,32 @@ configure_file(${CMAKE_SOURCE_DIR}/default_conf.json.in
         ${CMAKE_CURRENT_BINARY_DIR}/default_conf.json COPYONLY)
 add_test(NAME ChronoVisorServerTest COMMAND chronovisor_server)
 
+# install binary
+install(
+        TARGETS chronovisor_server DESTINATION bin
+)
+
+# install configuration file
+install(
+        FILES ${CMAKE_CURRENT_SOURCE_DIR}/../default_conf.json.in DESTINATION bin RENAME default_conf.json
+)
+
+# install shared libraries
+get_target_property(VISOR_LIBS chronovisor_server LINK_LIBRARIES)
+foreach (lib ${VISOR_LIBS})
+    message(STATUS "processing lib of visor: ${lib}")
+    #    get_target_property(lib_type ${lib} TYPE)
+    #    if (lib_type STREQUAL "SHARED_LIBRARY")
+    #        message(STATUS "installing shared lib: ${lib}")
+    #        install(
+    #                FILES $<TARGET_FILE:${lib}> DESTINATION lib
+    #        )
+    #    endif ()
+endforeach ()
+#install(SCRIPT [[
+#        FILE(GET_RUNTIME_DEPENDENCIES EXECUTABLES chronovisor_server)
+#        foreach(dep ${visor_deps})
+#        message(STATUS "installing dep: ${dep}")
+#        endforeach()
+#]]
+#)

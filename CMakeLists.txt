@@ -24,7 +24,9 @@ set(CHRONOLOG_PACKAGE_TARNAME "${CHRONOLOG_PACKAGE}")
 #------------------------------------------------------------------------------
 # Setup install and output Directories
 #------------------------------------------------------------------------------
-set(CMAKE_INSTALL_PREFIX /home/chronolog/chronolog)
+#if(NOT CMAKE_INSTALL_PREFIX)
+    set(CMAKE_INSTALL_PREFIX /home/$ENV{USER}/chronolog)
+#endif()
 if(NOT CHRONOLOG_INSTALL_BIN_DIR)
     set(CHRONOLOG_INSTALL_BIN_DIR ${CMAKE_INSTALL_PREFIX}/bin)
 endif()
