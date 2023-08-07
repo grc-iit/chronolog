@@ -1,14 +1,20 @@
 
 #include <arpa/inet.h>
 
+#include <signal.h>
+
 #include "chrono_common/KeeperIdCard.h"
 #include "chrono_common/KeeperStatsMsg.h"
 #include "KeeperRecordingService.h"
 #include "KeeperRegClient.h"
 #include "IngestionQueue.h"
+#include "StoryChunkExtractionQueue.h"
+#include "StoryChunkExtractor.h"
 #include "KeeperDataStore.h"
 #include "DataStoreAdminService.h"
 #include "ConfigurationManager.h"
+#include "StoryChunkExtractor.h"
+#include "PosixFileChunkExtractor.h"
 
 #define KEEPER_GROUP_ID 7
 
@@ -37,11 +43,24 @@ int service_endpoint_from_dotted_string(std::string const & ip_string, int port,
 return 1;
 }	
 
+volatile sig_atomic_t keep_running = true;
+
+void sigterm_handler (int)
+{
+    std::cout << "Received SIGTERM, starrt shutting down "<<std::endl;
+
+    keep_running = false;
+    return;
+}
+
+
 ///////////////////////////////////////////////
 
 int main(int argc, char** argv) {
 
   int exit_code = 0;
+
+    signal(SIGTERM, sigterm_handler);
 
   //INNA: TODO: pass the config file path on the command line & load the parameters inot a ConfigurationObject
   // for now all the arguments are hardcoded ...
@@ -49,8 +68,12 @@ int main(int argc, char** argv) {
     ChronoLog::ConfigurationManager confManager("./default_conf.json");
     // Instantiate ChronoKeeper MemoryDataStore
     //
-    chronolog::IngestionQueue ingestionQueue; 
-    chronolog::KeeperDataStore theDataStore(ingestionQueue);
+    chronolog::IngestionQueue ingestionQueue;
+    //  instantiate the extractor module 
+    
+   // chronolog::StoryChunkExtractorBase storyExtractor; 
+    chronolog::PosixFileStoryChunkExtractor storyExtractor; 
+    chronolog::KeeperDataStore theDataStore(ingestionQueue, storyExtractor.getExtractionQueue());
 
     // instantiate DataStoreAdminService
     uint64_t keeper_group_id = KEEPER_GROUP_ID;
@@ -152,27 +175,84 @@ int main(int argc, char** argv) {
 
     keeperRegistryClient->send_register_msg(chronolog::KeeperRegistrationMsg(keeperIdCard,collectionServiceId));
 
-    // now we are ready to ingest records coming from the storyteller clients ....
 
-    // for now BOTH KeeperRecordingService and KeeperRegistryClient will be running until they are explicitly killed  
-    // INNA: TODO: add a graceful shutdown mechanism with finalized callbacks and all
-    //
+    tl::abt scope;
 
-    chronolog::KeeperStatsMsg keeperStatsMsg(keeperIdCard);
-    while( !theDataStore.is_shutting_down())
-    {
-        keeperRegistryClient->send_stats_msg(keeperStatsMsg);
-	theDataStore.collectIngestedEvents();
-	sleep(10);
+    std::vector<tl::managed<tl::xstream>> dataStoreStreams;
+
+    for(int i=0; i < 4; i++) {
+        tl::managed<tl::xstream> es = tl::xstream::create();
+        dataStoreStreams.push_back(std::move(es));
     }
+
+    std::vector<tl::managed<tl::thread>> dataStoreThreads;
+    for(int i=0; i < 6; i++) 
+    {
+        tl::managed<tl::thread> th = dataStoreStreams[i % (dataStoreStreams.size()-1)]->make_thread(
+                    [p=&theDataStore](){
+                        tl::xstream es = tl::xstream::self();
+                        while( !p->is_shutting_down())
+                        {
+                            std::cout<< "DataStore ES "<<es.get_rank() << ", ULT "
+                                << tl::thread::self_id() << std::endl;
+
+	                        for(int i =0; i<6; ++i)
+                            {
+                                p->collectIngestedEvents();
+	                            sleep(10);
+                            }
+                            p->extractDecayedStoryChunks();
+                        }
+                        std::cout << "Exiting thread "<< tl::thread::self_id() << std::endl;
+                    });
+        dataStoreThreads.push_back(std::move(th));
+    }
+
+    // start extraction streams & threads
+    storyExtractor.startExtractionThreads(2);
+
+   // now we are ready to ingest records coming from the storyteller clients ....
+    chronolog::KeeperStatsMsg keeperStatsMsg(keeperIdCard);
+    while( keep_running)
+    {
+        std::cout<<"Main thread"<<std::endl;
+        keeperRegistryClient->send_stats_msg(keeperStatsMsg);
+        sleep(30);
+    }
+
+    //unregister from the chronoVisor so that no new story requests would be ent out
 
     keeperRegistryClient->send_unregister_msg(keeperIdCard);
     delete keeperRegistryClient;
-    collectionEngine.wait_for_finalize();
-    recordingEngine.wait_for_finalize();
-    delete keeperRecordingService;
-    delete keeperDataAdminService;
 
+    //stop recording events
+    delete keeperRecordingService;
+    //recordingEngine.finalize();
+    delete keeperDataAdminService;
+    //collectionEngine.finalize();
+
+    //shutdown the Data Collection
+    //INNA: move ingestionQueue and sequencing Xstream pool into the dataStore class later 
+   // ingestionQueue.shutdown();
+
+    theDataStore.shutdownDataCollection();
+    for(auto& mth : dataStoreThreads) {
+        mth->join();
+    }
+    std::cout<<"Main thread: sequencing threads exited"<<std::endl;
+    for(auto& es : dataStoreStreams) {
+        es->join();
+    }
+    std::cout<<"Main thread: dataStoreStreams exited"<<std::endl;
+    
+    // shutdown extraction module
+    // drain extractionQueue and stop extraction xStreams 
+
+    storyExtractor.shutdownExtractionThreads();
+
+//    recordingEngine.finalize();
+  //  collectionEngine.finalize();
 
 return exit_code;
 }
+

@@ -2,6 +2,8 @@
 #define CHRONOLOG_TYPE_DEFINITIONS_H
 
 
+#include <string>
+
 namespace chronolog
 {
 
@@ -26,16 +28,17 @@ public:
 	       	, eventIndex(index)
                 , logRecord(record)     
         {}  
-        StoryId  storyId;
+
+    StoryId  storyId;
 	uint64_t eventTime;
         ClientId clientId;
 	uint32_t eventIndex;
 	std::string logRecord; //INNA: replace with size_t  length; & void * data; later on
  
-  uint64_t const& time() const
+  uint64_t time() const
   {  return eventTime; }
 
-  uint32_t const& index() const
+  uint32_t index() const
   {  return eventIndex; }
 
   // serialization function used by thallium RPC providers 

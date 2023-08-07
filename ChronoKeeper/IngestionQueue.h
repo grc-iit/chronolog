@@ -19,45 +19,7 @@ namespace chronolog
 {
 
 typedef std::deque<LogEvent> EventDeque;
-/*
-class StoryIngestionHandle
-{
 
-public:
-	StoryIngestionHandle( std::mutex & a_mutex, EventDeque & event_deque)
-       		: handleMutex(a_mutex)
-	  	, activeDeque(&event_deque)
-			{}
-	~StoryIngestionHandle() = default;
-
-	void ingestEvent( LogEvent const& logEvent)
-	{   // assume multiple service threads pushing events on ingestionQueue
-	    std::lock_guard<std::mutex> lock(handleMutex); 
-	    activeDeque->push_back(logEvent); 
-	}
-
-	void swapActiveDeque( EventDeque * empty_deque, EventDeque * full_deque)
-	{
-	    if( activeDeque->empty())
-	    {	    return ;       }
-//INNA: check if atomic compare_and_swap will work here
-
-	    std::lock_guard<std::mutex> lock(handleMutex); 
-	    if(  activeDeque->empty() )
-	    {	    return ;       }
-
-	    full_deque = activeDeque;
-	    activeDeque = empty_deque;
-
-	}
-	     
-private:
-
-	std::mutex & handleMutex;   
-	EventDeque * activeDeque;
-};
-
-*/
 class IngestionQueue
 {
 public:

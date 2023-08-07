@@ -9,6 +9,7 @@
 
 #include "chrono_common/chronolog_types.h"
 #include "StoryChunk.h"
+#include "StoryChunkExtractionQueue.h"
 
 namespace chronolog
 {
@@ -22,13 +23,11 @@ class StoryPipeline
 
 
 public:
-    StoryPipeline( std::string const& chronicle_name, std::string const& story_name
+    StoryPipeline( StoryChunkExtractionQueue &, std::string const& chronicle_name, std::string const& story_name
 			, StoryId const& story_id
 			, uint64_t start_time
 		        , uint16_t chunk_granularity = 30 //seconds 
-			, uint16_t archive_granularity = 3 //  hours
 			, uint16_t acceptance_window = 1 // hour 
-		    
 		     );
 
      StoryPipeline(StoryPipeline const&) = delete;
@@ -43,8 +42,11 @@ public:
     void mergeEvents(std::deque<LogEvent> &);
     void mergeEvents(StoryChunk &);
 
+    void extractDecayedStoryChunks(uint64_t);
+
 private:
 
+    StoryChunkExtractionQueue & theExtractionQueue;
     StoryId 	storyId;
     ChronicleName	chronicleName;
     StoryName	storyName;

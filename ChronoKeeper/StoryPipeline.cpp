@@ -7,22 +7,25 @@
 #include "StoryChunk.h"
 #include "StoryPipeline.h"
 #include "StoryIngestionHandle.h"
+#include "StoryChunkExtractionQueue.h"
 
-#define TRACE_CHUNKING
+//#define TRACE_CHUNKING
+#define TRACE_CHUNK_EXTRACTION
 
 namespace chl = chronolog;
 
 ////////////////////////
 
-chronolog::StoryPipeline::StoryPipeline( std::string const& chronicle_name, std::string const& story_name,  chronolog::StoryId const& story_id
-		, uint64_t story_start_time, uint16_t chunk_granularity, uint16_t archive_granularity, uint16_t acceptance_window)
-	: storyId(story_id)
+chronolog::StoryPipeline::StoryPipeline( StoryChunkExtractionQueue & extractionQueue
+        , std::string const& chronicle_name, std::string const& story_name,  chronolog::StoryId const& story_id
+		, uint64_t story_start_time, uint16_t chunk_granularity, uint16_t acceptance_window)
+	: theExtractionQueue(extractionQueue)
+    , storyId(story_id)
 	, chronicleName(chronicle_name)
 	, storyName(story_name)
 	, timelineStart(story_start_time)   
 	, timelineEnd(story_start_time)
 	, chunkGranularity(chunk_granularity)
-	, archiveGranularity(archive_granularity)  
 	, acceptanceWindow(acceptance_window)  
 	, activeIngestionHandle(nullptr)
 
@@ -36,23 +39,21 @@ chronolog::StoryPipeline::StoryPipeline( std::string const& chronicle_name, std:
 	       		+ std::chrono::nanoseconds(timelineStart);
     	std::time_t time_t_story_start = std::chrono::high_resolution_clock::to_time_t(story_start_point);
     	std::cout <<"StoryPipeline: storyId {"<<storyId<<"} story_start_time= " << story_start_time <<" "<< std::ctime(&time_t_story_start) 
-	    <<" chunkGranularity="<<chunkGranularity<<" seconds"
-	    <<" archiveGranularity="<<archiveGranularity<<" hours"<<std::endl;
+	    <<" chunkGranularity="<<chunkGranularity<<" seconds acceptanceWindow {" <<acceptanceWindow<<"}"<<std::endl;
 	
          chunkGranularity *= 1000000000;    // seconds =>nanoseconds
-	 archiveGranularity = archiveGranularity*60*60*1000000000; //hours =>nanoseconds
+         acceptanceWindow *= 1000000000;    // seconds =>nanoseconds
 
 	 //adjust the timelineStart to the closest prior boundary of chunkGanularity
 	 timelineStart -= (timelineStart%chunkGranularity);
          timelineEnd=timelineStart;
 
-	 for(uint64_t start = timelineStart; timelineEnd < (timelineStart + chunkGranularity*2 );)
+	 for(uint64_t start = timelineStart; timelineEnd < (timelineStart + chunkGranularity*3 );)
 	 {
 		appendStoryChunk();
 	 }
 
 #ifdef TRACE_CHUNKING
-    	//std::chrono::time_point<std::chrono::system_clock,std::chrono::nanoseconds> epoch_time_point{};
     	auto chunk_start_point = std::chrono::time_point<std::chrono::system_clock,std::chrono::nanoseconds>{} // epoch_time_point{};
 		+ std::chrono::nanoseconds(timelineStart);
     	std::time_t time_t_chunk_start = std::chrono::high_resolution_clock::to_time_t(chunk_start_point);
@@ -73,9 +74,17 @@ chl::StoryIngestionHandle * chl::StoryPipeline::getActiveIngestionHandle()
 ///////////////////////
 
 chronolog::StoryPipeline::~StoryPipeline()
-{  
+{ 
+    //confirm that activeIngestionHandle is disengaged from the IngestionQueue 
+    // before the destructor if called  
 	if(activeIngestionHandle == nullptr)
-	{    delete activeIngestionHandle;   }
+	{
+	    if( !activeIngestionHandle->getPassiveDeque().empty())
+	    {   mergeEvents(activeIngestionHandle->getPassiveDeque()); }
+	    if( !activeIngestionHandle->getActiveDeque().empty())
+	    {   mergeEvents(activeIngestionHandle->getActiveDeque()); }
+        delete activeIngestionHandle;   
+    }
 }
 
 /////////////////////
@@ -139,6 +148,56 @@ void chronolog::StoryPipeline::collectIngestedEvents()
 	{   mergeEvents(activeIngestionHandle->getPassiveDeque()); }
 
 }
+
+void chronolog::StoryPipeline::extractDecayedStoryChunks(uint64_t current_time)
+{
+#ifdef TRACE_CHUNK_EXTRACTION
+    	auto current_point = std::chrono::time_point<std::chrono::system_clock,std::chrono::nanoseconds>{} // epoch_time_point{};
+		+ std::chrono::nanoseconds(current_time);
+    	std::time_t time_t_current_time = std::chrono::high_resolution_clock::to_time_t(current_point); 
+        uint64_t head_chunk_end_time = (*storyTimelineMap.begin()).second.getEndTime();
+    	auto decay_point= std::chrono::time_point<std::chrono::system_clock,std::chrono::nanoseconds>{} // epoch_time_point{};
+		+ std::chrono::nanoseconds(head_chunk_end_time +acceptanceWindow);
+    	std::time_t time_t_decay = std::chrono::high_resolution_clock::to_time_t(decay_point); 
+    std::cout <<"StoryPipeline::extractDecayedStoryChunks: storyId { "<< storyId <<"} extractionQueue.size {"<< theExtractionQueue.size()<<"}"<<std::endl;
+    std::cout <<"StoryPipeline::extractDecayedStoryChunks: current_time {"<< current_time<< " : "<< std::ctime(&time_t_current_time)
+        <<" storyId { "<< storyId<<"} size {"<< storyTimelineMap.size()<<"} head_chunk decay_time {"<< std::ctime(&time_t_decay)<<"}"<< std::endl;
+#endif
+ 
+    while (current_time >= acceptanceWindow+(*storyTimelineMap.begin()).second.getEndTime())
+    {
+        StoryChunk * extractedChunk = nullptr;
+
+        {  // lock the TimelineMap and extract the decayed storyChunk   
+            std::lock_guard<std::mutex> lock(sequencingMutex);
+            if(current_time > acceptanceWindow + (*storyTimelineMap.begin()).second.getEndTime())
+            {
+                extractedChunk = &(*storyTimelineMap.begin()).second;
+                storyTimelineMap.erase(storyTimelineMap.begin());
+                if(storyTimelineMap.size() < 2)   //keep at least 2 chunks in the map as merging relies on it ...
+                {   appendStoryChunk();  }
+            }
+        }
+
+        if(extractedChunk != nullptr)
+        { 
+            if(extractedChunk->empty())
+            {   /* INNA: this would need to be restored ! delete extractedChunk; */  
+#ifdef TRACE_CHUNK_EXTRACTION
+                std::cout <<"StoryPipeline::extractDecayedStoryChunks: storyId { "<< storyId <<"} extracted chunk {"<<extractedChunk->getStartTime()<<"} is empty"<<std::endl;
+#endif
+            }
+            else
+            {
+                theExtractionQueue.stashStoryChunk(extractedChunk);
+            }
+        }
+    }
+#ifdef TRACE_CHUNK_EXTRACTION
+    std::cout <<"StoryPipeline::extractDecayedStoryChunks: storyId { "<< storyId <<"} extractionQueue.size {"<< theExtractionQueue.size()<<"}"<<std::endl;
+#endif
+}
+
 ////////////////////
 
 void chronolog::StoryPipeline::mergeEvents(chronolog::EventDeque & event_deque)
@@ -202,8 +261,8 @@ void chronolog::StoryPipeline::mergeEvents(chronolog::EventDeque & event_deque)
 }
 
 //////////////////////
-// merge the StoryChunk obtained from external source into the StoryPipeline
-// note that the granularity of the StoryChunk may be 
+// Merge the StoryChunk obtained from external source into the StoryPipeline
+// Note that the granularity of the StoryChunk being merged may be 
 // different from that of the StoryPipeline
 //
 void chronolog::StoryPipeline::mergeEvents(chronolog::StoryChunk & other_chunk)

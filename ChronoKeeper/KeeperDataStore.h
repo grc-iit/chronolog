@@ -8,6 +8,7 @@
 
 #include "IngestionQueue.h"
 #include "StoryPipeline.h"
+#include "StoryChunkExtractionQueue.h"
 
 namespace chronolog
 {
@@ -26,9 +27,10 @@ enum DataStoreState
 
 
 public:
-      KeeperDataStore( IngestionQueue & ingestion_queue)
+      KeeperDataStore( IngestionQueue & ingestion_queue, StoryChunkExtractionQueue & extraction_queue)
 	      : state(UNKNOWN)
 	      , theIngestionQueue(ingestion_queue) 
+	      , theExtractionQueue(extraction_queue) 
       {}
 
       KeeperDataStore( KeeperDataStore const&) = delete;
@@ -51,19 +53,16 @@ public:
 
       void collectIngestedEvents();
 
-      int  readStoryFromArchive(std::string const& archiveLocation
-		, std::string const & chronicle, std::string const& story, chronolog::StoryId const & story_id
-		, uint64_t start_time, uint64_t end_time, uint32_t time_chunk_granularity);
-
-      int  writeStoryToArchive(std::string const& archiveLocation
-		, std::string const & chronicle, std::string const& story, chronolog::StoryId const & story_id
-		, uint64_t start_time, uint64_t end_time, uint32_t archive_granularity);
-
+        void extractDecayedStoryChunks();
+    void retireDecayedPipelines();
+    
+    void startDataCollection();
       void shutdownDataCollection();
 
 private:
       DataStoreState	state;
       IngestionQueue &   theIngestionQueue;
+      StoryChunkExtractionQueue &   theExtractionQueue;
       std::mutex dataStoreMutex;
       std::unordered_map<StoryId, StoryPipeline*> theMapOfStoryPipelines;
       std::unordered_map<StoryId, StoryPipeline*> pipelinesWaitingForExit; //INNA: we might get away with simple list .. revisit later
