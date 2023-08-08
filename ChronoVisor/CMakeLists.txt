@@ -34,23 +34,3 @@ install(
 install(
         FILES ${CMAKE_CURRENT_SOURCE_DIR}/../default_conf.json.in DESTINATION bin RENAME default_conf.json
 )
-
-# install shared libraries
-get_target_property(VISOR_LIBS chronovisor_server LINK_LIBRARIES)
-foreach (lib ${VISOR_LIBS})
-    message(STATUS "processing lib of visor: ${lib}")
-    #    get_target_property(lib_type ${lib} TYPE)
-    #    if (lib_type STREQUAL "SHARED_LIBRARY")
-    #        message(STATUS "installing shared lib: ${lib}")
-    #        install(
-    #                FILES $<TARGET_FILE:${lib}> DESTINATION lib
-    #        )
-    #    endif ()
-endforeach ()
-#install(SCRIPT [[
-#        FILE(GET_RUNTIME_DEPENDENCIES EXECUTABLES chronovisor_server)
-#        foreach(dep ${visor_deps})
-#        message(STATUS "installing dep: ${dep}")
-#        endforeach()
-#]]
-#)
