@@ -69,7 +69,31 @@ check_conf_files() {
     fi
 }
 
+extract_shared_libraries() {
+    local executable="$1"
+    ldd_output=$(ldd ${executable} 2>/dev/null | awk '{print $3}' | grep -v 'not' | grep -v '^/lib')
+    echo "${ldd_output}"
+}
+
+copy_shared_libs() {
+    libs_visor=$(extract_shared_libraries ${VISOR_BIN})
+    libs_keeper=$(extract_shared_libraries ${KEEPER_BIN})
+    libs_client=$(extract_shared_libraries ${CLIENT_BIN})
+
+    # Combine shared libraries from all executables and remove duplicates
+    all_shared_libs=$(echo -e "${libs_visor}\n${libs_keeper}\n${libs_client}" | sort | uniq)
+
+    echo "Copying shared libraries ..."
+    for lib in ${all_shared_libs}
+    do
+        echo "Copying ${lib} ..."
+        cp ${lib} ${BIN_DIR}/
+    done
+}
+
 deploy() {
+    copy_shared_libs
+
     prepare_hosts
 
     check_bin_files
@@ -138,7 +162,7 @@ parse_args() {
                 shift 2 ;;
             -k|--keeper)
                 KEEPER_BIN=$(realpath "$2")
-                KEEPER_BIN_FILE_NAMER=$(basename ${KEEPER_BIN})
+                KEEPER_BIN_FILE_NAME=$(basename ${KEEPER_BIN})
                 shift 2 ;;
             -c|--client)
                 CLIENT_BIN=$(realpath "$2")
@@ -202,7 +226,8 @@ prepare_hosts() {
         if [ -n "${JOB_ID}" ]
         then
             echo "JOB_ID is set to be ${JOB_ID} via command line, use it"
-            hosts="$(scontrol show hostnames $(squeue | grep ${JOB_ID} | awk '{print $NF}'))"
+            JOB_ID="$(squeue | grep ${JOB_ID} | awk '{print $NF}')"
+            hosts="$(scontrol show hostnames ${JOB_ID})"
             echo "${hosts}" | head -1 > ${VISOR_HOSTS}
             echo "${hosts}" > ${KEEPER_HOSTS}
             echo "${hosts}" > ${CLIENT_HOSTS}
