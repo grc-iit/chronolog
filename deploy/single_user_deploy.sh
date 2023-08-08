@@ -253,14 +253,16 @@ prepare_hosts() {
 }
 
 usage() {
-    echo "Usage: $0 install|deploy|reset
-                               -v VISOR_BIN
-                               -k KEEPER_BIN
-                               -c CLIENT_BIN
-                               -s VISOR_HOSTS
-                               -p KEEPER_HOSTS
-                               -r CLIENT_HOSTS
-                               -j JOB_ID"
+    echo "Usage: $0 -i|--install
+                               -d|--deploy
+                               -r|--reset
+                               -v|--visor VISOR_BIN
+                               -k|--keeper KEEPER_BIN
+                               -c|--client CLIENT_BIN
+                               -s|--visor_hosts VISOR_HOSTS
+                               -p|--keeper_hosts KEEPER_HOSTS
+                               -r|--client_hosts CLIENT_HOSTS
+                               -j|--job_id JOB_ID"
     exit 1
 }
 
