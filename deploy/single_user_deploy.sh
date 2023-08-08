@@ -15,6 +15,7 @@ KEEPER_HOSTS="${CONF_DIR}/hosts_keeper"
 CLIENT_HOSTS="${CONF_DIR}/hosts_client"
 CONF_FILE="${CONF_DIR}/default_conf.json"
 JOB_ID=""
+install=false
 deploy=false
 reset=false
 
@@ -22,19 +23,19 @@ check_hosts_files() {
     echo "Checking hosts files..."
     if [[ ! -f ${VISOR_HOSTS} ]]
     then
-        echo ${VISOR_HOSTS} host file does not exist, exiting ...
+        echo "${VISOR_HOSTS} host file does not exist, exiting ..."
         exit 1
     fi
 
     if [[ ! -f ${KEEPER_HOSTS} ]]
     then
-        echo ${KEEPER_HOSTS} host file does not exist, exiting ...
+        echo "${KEEPER_HOSTS} host file does not exist, exiting ..."
         exit 1
     fi
 
     if [[ ! -f ${CLIENT_HOSTS} ]]
     then
-        echo ${CLIENT_HOSTS} host file does not exist, exiting ...
+        echo "${CLIENT_HOSTS} host file does not exist, exiting ..."
         exit 1
     fi
 }
@@ -43,28 +44,28 @@ check_bin_files() {
     echo "Checking binary files..."
     if [[ ! -f ${VISOR_BIN} ]]
     then
-        echo ${VISOR_BIN} executable file does not exist, exiting ...
+        echo "${VISOR_BIN} executable file does not exist, exiting ..."
         exit 1
     fi
 
     if [[ ! -f ${KEEPER_BIN} ]]
     then
-        echo ${KEEPER_BIN} executable file does not exist, exiting ...
+        echo "${KEEPER_BIN} executable file does not exist, exiting ..."
         exit 1
     fi
 
     if [[ ! -f ${CLIENT_BIN} ]]
     then
-        echo ${CLIENT_BIN} executable file does not exist, exiting ...
+        echo "${CLIENT_BIN} executable file does not exist, exiting ..."
         exit 1
     fi
 }
 
 check_conf_files() {
-    echo "Checking configuration files..."
+    echo "Checking configuration files ..."
     if [[ ! -f ${CONF_FILE} ]]
     then
-        echo ${CONF_FILE} configuration file does not exist, exiting ...
+        echo "${CONF_FILE} configuration file does not exist, exiting ..."
         exit 1
     fi
 }
@@ -91,7 +92,9 @@ copy_shared_libs() {
     done
 }
 
-deploy() {
+install() {
+    echo "Installing ..."
+
     copy_shared_libs
 
     prepare_hosts
@@ -99,8 +102,12 @@ deploy() {
     check_bin_files
 
     check_conf_files
+}
 
-    echo "Deploying..."
+deploy() {
+    install
+
+    echo "Deploying ..."
 
     # launch Visor
     mpssh -f ${VISOR_HOSTS} "nohup ${VISOR_BIN} ${CONF_FILE} > /dev/null 2>&1 &"
@@ -124,7 +131,7 @@ deploy() {
 reset() {
     prepare_hosts
 
-    echo "Resetting..."
+    echo "Resetting ..."
 
     # kill Visor
     mpssh -f ${VISOR_HOSTS} "pkill --signal 9 -f ${VISOR_BIN_FILE_NAME}"
@@ -147,10 +154,9 @@ reset() {
 }
 
 parse_args() {
-    TEMP=$(getopt -o v:k:c:s:p:t:j:dr --long visor:,keeper:,client:,visor_hosts:,keeper_hosts:,client_hosts:,job_id:,deploy,reset \
-        -- "$@")
+    TEMP=$(getopt -o v:k:c:s:p:t:j:idr --long visor:,keeper:,client:,visor_hosts:,keeper_hosts:,client_hosts:,job_id:,install,deploy,reset -- "$@")
 
-    if [ $? != 0 ] ; then echo "Terminating..." >&2 ; exit 1 ; fi
+    if [ $? != 0 ] ; then echo "Terminating ..." >&2 ; exit 1 ; fi
 
     # Note the quotes around '$TEMP': they are essential!
     eval set -- "$TEMP"
@@ -180,6 +186,9 @@ parse_args() {
             -j|--job_id)
                 JOB_ID="$2"
                 shift 2 ;;
+            -i|--install)
+                install=true
+                shift ;;
             -d|--deploy)
                 deploy=true
                 shift ;;
@@ -195,7 +204,12 @@ parse_args() {
         esac
     done
 
-    if [[ "$deploy" == true && "$reset" == true ]] || [[ "$deploy" == false && "$reset" == false ]]
+    if [[ "$install" == true ]]
+    then
+        install
+    fi
+
+    if [[ "$deploy" == true && "$reset" == true ]]
     then
         echo "Error: You must choose between deploy (-d) or reset (-r)."
         usage
@@ -239,7 +253,7 @@ prepare_hosts() {
 }
 
 usage() {
-    echo "Usage: $0 deploy|reset
+    echo "Usage: $0 install|deploy|reset
                                -v VISOR_BIN
                                -k KEEPER_BIN
                                -c CLIENT_BIN
@@ -251,6 +265,11 @@ usage() {
 }
 
 parse_args "$@"
+
+if ${install}
+then
+    install
+fi
 
 if ${deploy}
 then
