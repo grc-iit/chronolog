@@ -25,14 +25,14 @@ namespace chronolog
             // initialise thalium engine for KeeperRegistryService
 
             std::string KEEPER_REGISTRY_SERVICE_NA_STRING =
-                    confManager.RPC_CONF.VISOR_KEEPER_CONF.PROTO_CONF
-                    + "://" + confManager.RPC_CONF.VISOR_KEEPER_CONF.VISOR_END_CONF.VISOR_IP
-                    + ":" + std::to_string(confManager.RPC_CONF.VISOR_KEEPER_CONF.VISOR_END_CONF.VISOR_BASE_PORT);
+                    confManager.VISOR_CONF.RPC_FROM_KEEPER_CONF.PROTO_CONF
+                    + "://" + confManager.VISOR_CONF.RPC_FROM_KEEPER_CONF.IP
+                    + ":" + std::to_string(confManager.VISOR_CONF.RPC_FROM_KEEPER_CONF.BASE_PORT);
 
-            uint16_t provider_id = confManager.RPC_CONF.VISOR_KEEPER_CONF.VISOR_END_CONF.SERVICE_PROVIDER_ID;
+            uint16_t provider_id = confManager.VISOR_CONF.RPC_FROM_KEEPER_CONF.SERVICE_PROVIDER_ID;
 
             margo_instance_id margo_id = margo_init(KEEPER_REGISTRY_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1,
-                                                    confManager.RPC_CONF.VISOR_KEEPER_CONF.VISOR_END_CONF.VISOR_SERVICE_THREADS);
+                                                    confManager.VISOR_CONF.RPC_FROM_KEEPER_CONF.SERVICE_THREADS);
 
             if (MARGO_INSTANCE_NULL == margo_id)
             {

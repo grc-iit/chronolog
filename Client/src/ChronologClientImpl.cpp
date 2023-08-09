@@ -33,14 +33,13 @@ chronolog::ChronologClientImpl::ChronologClientImpl(const ChronoLog::Configurati
     //pClocksourceManager_ = ClocksourceManager::getInstance();
     //pClocksourceManager_->setClocksourceType(CHRONOLOG_CONF->CLOCKSOURCE_TYPE);
 
-    tlEngine = new thallium::engine(confManager.RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF, THALLIUM_CLIENT_MODE, true, 1);
+    tlEngine = new thallium::engine(confManager.VISOR_CONF.RPC_FROM_CLIENT_CONF.PROTO_CONF, THALLIUM_CLIENT_MODE, true, 1);
 
-    std::string CLIENT_VISOR_NA_STRING = confManager.RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF
-                                         + "://" + confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP
-                                         + ":" + std::to_string(
-            confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT);
+    std::string CLIENT_VISOR_NA_STRING = confManager.VISOR_CONF.RPC_FROM_CLIENT_CONF.PROTO_CONF
+                                         + "://" + confManager.VISOR_CONF.RPC_FROM_CLIENT_CONF.IP
+                                         + ":" + std::to_string(confManager.VISOR_CONF.RPC_FROM_CLIENT_CONF.BASE_PORT);
     rpcVisorClient = chl::RpcVisorClient::CreateRpcVisorClient(*tlEngine, CLIENT_VISOR_NA_STRING,
-                                                               confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.SERVICE_PROVIDER_ID);
+                                                               confManager.VISOR_CONF.RPC_FROM_CLIENT_CONF.SERVICE_PROVIDER_ID);
 }
 
 ////////
