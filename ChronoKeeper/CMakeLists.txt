@@ -12,6 +12,8 @@ target_sources(chrono_keeper PRIVATE ChronoKeeperInstance.cpp StoryPipeline.cpp 
 target_link_libraries(chrono_keeper thallium)
 message("build target : chrono_keeper")
 
+set_target_properties(chrono_keeper PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
+
 # install binary
 install(
         TARGETS chrono_keeper DESTINATION bin
@@ -19,5 +21,5 @@ install(
 
 # install configuration file
 install(
-        FILES ${CMAKE_CURRENT_SOURCE_DIR}/../default_conf.json.in DESTINATION bin RENAME default_conf.json
+        FILES ${CMAKE_CURRENT_SOURCE_DIR}/../default_conf.json.in DESTINATION conf RENAME default_conf.json
 )

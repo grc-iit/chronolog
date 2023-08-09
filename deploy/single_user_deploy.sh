@@ -76,6 +76,26 @@ extract_shared_libraries() {
     echo "${ldd_output}"
 }
 
+copy_shared_libs_recursive() {
+    local lib_path="$1"
+    local dest_path="$2"
+    local linked_to_lib_path="$(readlink -f ${lib_path})"
+
+    # Copy the library and maintain symbolic links recursively
+    final_dest_lib_copies=false
+    while [ "$final_dest_lib_copies" != true ]
+    do
+        echo "Copying ${lib_path}, linked to ${linked_to_lib_path} ..."
+        cp -P "$lib_path" "$dest_path/"
+        if [ "$lib_path" == "$linked_to_lib_path" ]
+        then
+            final_dest_lib_copies=true
+        fi
+        lib_path="$linked_to_lib_path"
+        linked_to_lib_path="$(readlink -f ${lib_path})"
+    done
+}
+
 copy_shared_libs() {
     libs_visor=$(extract_shared_libraries ${VISOR_BIN})
     libs_keeper=$(extract_shared_libraries ${KEEPER_BIN})
@@ -84,11 +104,11 @@ copy_shared_libs() {
     # Combine shared libraries from all executables and remove duplicates
     all_shared_libs=$(echo -e "${libs_visor}\n${libs_keeper}\n${libs_client}" | sort | uniq)
 
-    echo "Copying shared libraries ..."
-    for lib in ${all_shared_libs}
-    do
-        echo "Copying ${lib} ..."
-        cp ${lib} ${BIN_DIR}/
+    # Copy shared libraries to the bin directory
+    mkdir -p ${LIB_DIR}
+    for lib in ${all_shared_libs}; do
+        echo "Copying shared library ${lib} ..."
+        copy_shared_libs_recursive ${lib} ${LIB_DIR}
     done
 }
 
