@@ -178,78 +178,40 @@ int main(int argc, char** argv) {
 
     tl::abt scope;
 
-    std::vector<tl::managed<tl::xstream>> dataStoreStreams;
-
-    for(int i=0; i < 4; i++) {
-        tl::managed<tl::xstream> es = tl::xstream::create();
-        dataStoreStreams.push_back(std::move(es));
-    }
-
-    std::vector<tl::managed<tl::thread>> dataStoreThreads;
-    for(int i=0; i < 6; i++) 
-    {
-        tl::managed<tl::thread> th = dataStoreStreams[i % (dataStoreStreams.size()-1)]->make_thread(
-                    [p=&theDataStore](){
-                        tl::xstream es = tl::xstream::self();
-                        while( !p->is_shutting_down())
-                        {
-                            std::cout<< "DataStore ES "<<es.get_rank() << ", ULT "
-                                << tl::thread::self_id() << std::endl;
-
-	                        for(int i =0; i<6; ++i)
-                            {
-                                p->collectIngestedEvents();
-	                            sleep(10);
-                            }
-                            p->extractDecayedStoryChunks();
-                        }
-                        std::cout << "Exiting thread "<< tl::thread::self_id() << std::endl;
-                    });
-        dataStoreThreads.push_back(std::move(th));
-    }
+    theDataStore.startDataCollection(3);
 
     // start extraction streams & threads
     storyExtractor.startExtractionThreads(2);
 
    // now we are ready to ingest records coming from the storyteller clients ....
+    // main thread would be sending stats message until keeper process receives
+    // sigterm signal
     chronolog::KeeperStatsMsg keeperStatsMsg(keeperIdCard);
     while( keep_running)
     {
-        std::cout<<"Main thread"<<std::endl;
         keeperRegistryClient->send_stats_msg(keeperStatsMsg);
         sleep(30);
     }
 
-    //unregister from the chronoVisor so that no new story requests would be ent out
-
+    //unregister from the chronoVisor so that no new story requests would be coming 
     keeperRegistryClient->send_unregister_msg(keeperIdCard);
     delete keeperRegistryClient;
 
     //stop recording events
     delete keeperRecordingService;
-    //recordingEngine.finalize();
     delete keeperDataAdminService;
-    //collectionEngine.finalize();
 
     //shutdown the Data Collection
     //INNA: move ingestionQueue and sequencing Xstream pool into the dataStore class later 
    // ingestionQueue.shutdown();
 
     theDataStore.shutdownDataCollection();
-    for(auto& mth : dataStoreThreads) {
-        mth->join();
-    }
-    std::cout<<"Main thread: sequencing threads exited"<<std::endl;
-    for(auto& es : dataStoreStreams) {
-        es->join();
-    }
-    std::cout<<"Main thread: dataStoreStreams exited"<<std::endl;
-    
+
     // shutdown extraction module
     // drain extractionQueue and stop extraction xStreams 
-
     storyExtractor.shutdownExtractionThreads();
 
+// these are not probably needed as thalium handles the engine finalization...
 //    recordingEngine.finalize();
   //  collectionEngine.finalize();
 

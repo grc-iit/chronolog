@@ -72,12 +72,12 @@ chl::StoryIngestionHandle * chl::StoryPipeline::getActiveIngestionHandle()
 }
 
 ///////////////////////
-
 chronolog::StoryPipeline::~StoryPipeline()
-{ 
+{
+    std::cout <<"StoryPipeline::~StoryPipeline storyId { " << storyId<< std::endl;
+ 
     //confirm that activeIngestionHandle is disengaged from the IngestionQueue 
-    // before the destructor if called  
-	if(activeIngestionHandle == nullptr)
+	if(activeIngestionHandle != nullptr)
 	{
 	    if( !activeIngestionHandle->getPassiveDeque().empty())
 	    {   mergeEvents(activeIngestionHandle->getPassiveDeque()); }
@@ -85,6 +85,11 @@ chronolog::StoryPipeline::~StoryPipeline()
 	    {   mergeEvents(activeIngestionHandle->getActiveDeque()); }
         delete activeIngestionHandle;   
     }
+
+    //extract any remianing non-empty StoryChunks regardless of decay_time
+    // and into the extractionQueue
+
+    extractDecayedStoryChunks(0, true);
 }
 
 /////////////////////
@@ -149,7 +154,7 @@ void chronolog::StoryPipeline::collectIngestedEvents()
 
 }
 
-void chronolog::StoryPipeline::extractDecayedStoryChunks(uint64_t current_time)
+void chronolog::StoryPipeline::extractDecayedStoryChunks(uint64_t current_time, bool exiting_pipeline)
 {
 #ifdef TRACE_CHUNK_EXTRACTION
     	auto current_point = std::chrono::time_point<std::chrono::system_clock,std::chrono::nanoseconds>{} // epoch_time_point{};
@@ -164,17 +169,19 @@ void chronolog::StoryPipeline::extractDecayedStoryChunks(uint64_t current_time)
         <<" storyId { "<< storyId<<"} size {"<< storyTimelineMap.size()<<"} head_chunk decay_time {"<< std::ctime(&time_t_decay)<<"}"<< std::endl;
 #endif
  
-    while (current_time >= acceptanceWindow+(*storyTimelineMap.begin()).second.getEndTime())
+    while ( (exiting_pipeline && !storyTimelineMap.empty()) 
+        || (current_time >= acceptanceWindow+(*storyTimelineMap.begin()).second.getEndTime() )) 
     {
         StoryChunk * extractedChunk = nullptr;
 
         {  // lock the TimelineMap and extract the decayed storyChunk   
             std::lock_guard<std::mutex> lock(sequencingMutex);
-            if(current_time > acceptanceWindow + (*storyTimelineMap.begin()).second.getEndTime())
+            if(current_time > acceptanceWindow + (*storyTimelineMap.begin()).second.getEndTime() || exiting_pipeline)
             {
                 extractedChunk = &(*storyTimelineMap.begin()).second;
                 storyTimelineMap.erase(storyTimelineMap.begin());
-                if(storyTimelineMap.size() < 2)   //keep at least 2 chunks in the map as merging relies on it ...
+                if((storyTimelineMap.size() < 2) && !exiting_pipeline)  
+                 //keep at least 2 chunks in the map of active pipeline as merging relies on it ...
                 {   appendStoryChunk();  }
             }
         }

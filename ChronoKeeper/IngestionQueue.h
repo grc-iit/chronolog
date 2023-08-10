@@ -70,23 +70,29 @@ void drainOrphanEvents()
 	{	return; }
 
 	std::lock_guard<std::mutex> lock(ingestionQueueMutex);
-	for( EventDeque::iterator iter = orphanEventQueue.begin(); iter != orphanEventQueue.end(); )
+    for( EventDeque::iterator iter = orphanEventQueue.begin(); iter != orphanEventQueue.end(); )
 	{
 	   auto ingestionHandle_iter = storyIngestionHandles.find((*iter).storyId);
 	   if( ingestionHandle_iter != storyIngestionHandles.end())
-           {	//individual StoryIngestionHandle has its own mutex
-		(*ingestionHandle_iter).second->ingestEvent(*iter);
+        {	//individual StoryIngestionHandle has its own mutex
+		    (*ingestionHandle_iter).second->ingestEvent(*iter);
            	//remove the event from the orphan deque and get the iterator to the next element prior to removal
-		iter = orphanEventQueue.erase(iter);	
+		    iter = orphanEventQueue.erase(iter);	
 	   }
 	   else
-	   { ++iter; }
+	   {    ++iter; }
 	}
+}
+
+bool is_empty() const
+{
+    return (orphanEventQueue.empty() && storyIngestionHandles.empty());
 }
 
 void shutDown()
 {
-	std::cout <<"IngestionQueue: shutdown : storyIngestionHandles {"<< &storyIngestionHandles<<"} .size="<<storyIngestionHandles.size()<<std::endl;
+	std::cout <<"IngestionQueue: shutdown : storyIngestionHandles {"<<storyIngestionHandles.size()
+               << "} orphanEventQueue {"<<orphanEventQueue.size()<<"}"<<std::endl;
 	// last attempt to drain orphanEventQueue into known ingestionHandles
  	drainOrphanEvents();
 	// disengage all handles
