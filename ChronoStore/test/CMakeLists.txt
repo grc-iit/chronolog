@@ -46,3 +46,6 @@ add_test(NAME cmp_vlen_bytes_dtype_test COMMAND cmp_vlen_bytes_dtype_test)
 
 add_executable(cmpvstring cmpvstring.c)
 target_link_libraries(cmpvstring ${HDF5_LIBRARIES})
+
+add_executable(cmpvlenbyte h5ex_t_vlen.c)
+target_link_libraries(cmpvlenbyte ${HDF5_LIBRARIES})

@@ -44,7 +44,7 @@ typedef struct LogEvent
     hvl_t logRecord;
 } LogEvent;
 
-LogEvent g_events[3];
+LogEvent g_events[10];
 
 typedef struct StoryChunk
 {
@@ -177,9 +177,11 @@ int main(int argc, char *argv[])
                   << " startTime endTime" << std::endl;
         return 1;
     }
-    int i, len, nCount = 3;
+    int i, len, nCount = 10;
     char *bptr;
-    char *str[] = {"Wake Me up When", "September", "Ends"};
+    char *str[] = {"Wake Me up When", "September", "Ends",
+                   "Ever tried", "Ever failed", "No matter", "Try again", "Fail again", "Fail better",
+                   "I am the master of my fate"};
     std::random_device rd;
     std::mt19937_64 rng(rd());
     std::uniform_int_distribution<uint64_t> dist(0, UINT64_MAX);
@@ -222,6 +224,13 @@ int main(int argc, char *argv[])
             g_events[i].logRecord.p = (uint8_t *) bptr;
             g_events[i].logRecord.len = len;
         }
+    }
+
+    hvl_t *wdata = (hvl_t *) malloc(sizeof(hvl_t) * nCount);
+    for (i = 0; i < nCount; i++)
+    {
+        wdata[i].len = g_events[i].logRecord.len;
+        wdata[i].p = g_events[i].logRecord.p;
     }
 
     // Generate StoryChunks
@@ -275,6 +284,7 @@ int main(int argc, char *argv[])
     herr_t status;
     auto story_chunk_map_it = story_chunk_map.begin();
     std::unordered_map<uint64_t, hid_t> story_chunk_fd_map;
+    LOGD("Writing StoryChunks to Chronicle ...");
 //    for (;
 //            story_chunk_map_it != story_chunk_map.end();
 //            story_chunk_map_it++)
@@ -334,44 +344,89 @@ int main(int argc, char *argv[])
         /**
          * H5Tvlen type based implementation
          */
-        // Define variable-length payload data type
-        hid_t event_payload_type = H5Tvlen_create(H5T_NATIVE_UINT8);
-        LOGD("H5Tvlen_create(H5T_NATIVE_UINT8) returns: %li", event_payload_type);
-        hid_t vl_datatype_id = H5Tcopy(event_payload_type);
-        LOGD("H5Tcopy(event_payload_type) returns: %li", vl_datatype_id);
+        // Define variable-length payload data type for memory type
+        hid_t event_payload_memtype = H5Tvlen_create(H5T_NATIVE_UINT8);
+        LOGD("H5Tvlen_create(H5T_NATIVE_UINT8) returns: %li", event_payload_memtype);
+        hid_t vlen_memtype_id = H5Tcopy(event_payload_memtype);
+        LOGD("H5Tcopy(event_payload_memtype) returns: %li", vlen_memtype_id);
         // Define LogEvent data type
-        hid_t log_event_type = H5Tcreate(H5T_COMPOUND,
+        hid_t log_event_memtype = H5Tcreate(H5T_COMPOUND,
                                          sizeof(LogEvent));
-        LOGD("H5Tcreate(H5T_COMPOUND, sizeof(LogEvent)) returns: %li", log_event_type);
-        status = H5Tinsert(log_event_type,
+        LOGD("H5Tcreate(H5T_COMPOUND, sizeof(LogEvent)) returns: %li", log_event_memtype);
+        status = H5Tinsert(log_event_memtype,
                            "storyId",
                            HOFFSET(LogEvent, storyId),
                            H5T_NATIVE_UINT64);
         LOGD("H5Tinsert returns: %i", status);
-        status = H5Tinsert(log_event_type,
+        status = H5Tinsert(log_event_memtype,
                            "eventTime",
                            HOFFSET(LogEvent, eventTime),
                            H5T_NATIVE_UINT64);
         LOGD("H5Tinsert returns: %i", status);
-        status = H5Tinsert(log_event_type,
+        status = H5Tinsert(log_event_memtype,
                            "clientId",
                            HOFFSET(LogEvent, clientId),
                            H5T_NATIVE_UINT32);
         LOGD("H5Tinsert returns: %i", status);
-        status = H5Tinsert(log_event_type,
+        status = H5Tinsert(log_event_memtype,
                            "eventIndex",
                            HOFFSET(LogEvent, eventIndex),
                            H5T_NATIVE_UINT32);
         LOGD("H5Tinsert returns: %i", status);
-//        status = H5Tinsert(log_event_type,
+//        status = H5Tinsert(log_event_memtype,
 //                           "logRecordSize",
 //                           HOFFSET(LogEvent, logRecordSize),
 //                           H5T_NATIVE_UINT64);
 //        LOGD("H5Tinsert returns: %i", status);
-        status = H5Tinsert(log_event_type,
+        status = H5Tinsert(log_event_memtype,
                            "logRecord",
                            HOFFSET(LogEvent, logRecord),
-                           vl_datatype_id);
+                           vlen_memtype_id);
+        LOGD("H5Tinsert returns: %i", status);
+        if (status < 0)
+        {
+            LOGE("Failed to create data type for log event, status: %i", status);
+            return CL_ERR_UNKNOWN;
+        }
+
+        // Define variable-length payload data type for file type
+        hid_t event_payload_filetype = H5Tvlen_create(H5T_STD_I8LE);
+        LOGD("H5Tvlen_create(H5T_NATIVE_UINT8) returns: %li", event_payload_memtype);
+        vlen_memtype_id = H5Tcopy(event_payload_memtype);
+        LOGD("H5Tcopy(event_payload_memtype) returns: %li", vlen_memtype_id);
+        // Define LogEvent data type
+        hid_t log_event_filetype = H5Tcreate(H5T_COMPOUND,
+                                         sizeof(LogEvent));
+        LOGD("H5Tcreate(H5T_COMPOUND, sizeof(LogEvent)) returns: %li", log_event_filetype);
+        status = H5Tinsert(log_event_filetype,
+                           "storyId",
+                           HOFFSET(LogEvent, storyId),
+                           H5T_NATIVE_UINT64);
+        LOGD("H5Tinsert returns: %i", status);
+        status = H5Tinsert(log_event_filetype,
+                           "eventTime",
+                           HOFFSET(LogEvent, eventTime),
+                           H5T_NATIVE_UINT64);
+        LOGD("H5Tinsert returns: %i", status);
+        status = H5Tinsert(log_event_filetype,
+                           "clientId",
+                           HOFFSET(LogEvent, clientId),
+                           H5T_NATIVE_UINT32);
+        LOGD("H5Tinsert returns: %i", status);
+        status = H5Tinsert(log_event_filetype,
+                           "eventIndex",
+                           HOFFSET(LogEvent, eventIndex),
+                           H5T_NATIVE_UINT32);
+        LOGD("H5Tinsert returns: %i", status);
+//        status = H5Tinsert(log_event_filetype,
+//                           "logRecordSize",
+//                           HOFFSET(LogEvent, logRecordSize),
+//                           H5T_NATIVE_UINT64);
+//        LOGD("H5Tinsert returns: %i", status);
+        status = H5Tinsert(log_event_filetype,
+                           "logRecord",
+                           HOFFSET(LogEvent, logRecord),
+                           vlen_memtype_id);
         LOGD("H5Tinsert returns: %i", status);
         if (status < 0)
         {
@@ -397,16 +452,17 @@ int main(int argc, char *argv[])
 
         // Create the dataset for the Story Chunk
         // Set #chunks to number of Events in the Story Chunk
-        hsize_t story_chunk_dset_chunk_dims[1] = {1}; //{ story_chunk.getNumEvents() };
+        hsize_t story_chunk_dset_chunk_dims[1] = { story_chunk.getNumEvents() };
         status = H5Pset_chunk(story_chunk_dset_creation_plist,
                               DATASET_RANK,
                               story_chunk_dset_chunk_dims);
         LOGD("H5Pset_chunk returns: %i", status);
+        LOGD("Creating StoryChunk %s in Story file: %s", story_chunk_dset_name.c_str(), story_file_name.c_str());
 //        story_chunk_dset = H5Dcreate2(story_file, story_chunk_dset_name.c_str(), story_chunk_type, story_chunk_dspace,
 //                                      H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
         story_chunk_dset = H5Dcreate(story_file,
-                                     ("/" + story_chunk_dset_name).c_str(),
-                                     log_event_type,
+                                     story_chunk_dset_name.c_str(),
+                                     event_payload_filetype,
                                      story_chunk_dspace,
                                      H5P_DEFAULT,
                                      story_chunk_dset_creation_plist,
@@ -439,14 +495,15 @@ int main(int argc, char *argv[])
         LOGD("%d", ((char *)story_chunk.logEvents[0].logRecord.p)[7]);
         LOGD("%d", ((char *)story_chunk.logEvents[0].logRecord.p)[0]);
         LOGD("%d", ((char *)story_chunk.logEvents[0].logRecord.p)[7]);
+        LOGD("Writing StoryChunk %s to Story file: %s", story_chunk_dset_name.c_str(), story_file_name.c_str());
 //        status = H5Dwrite(story_chunk_dset, H5T_NATIVE_B8, H5S_ALL, H5S_ALL, H5P_DEFAULT,
 //                          &story_chunk_map_it->second);
         status = H5Dwrite(story_chunk_dset,
-                          log_event_type,
+                          event_payload_memtype,
                           H5S_ALL,
                           H5S_ALL,
                           H5P_DEFAULT,
-                          &g_events);
+                          wdata);
         LOGD("H5Dwrite returns: %i", status);
 //        free(event_payload_data);
         if (status < 0)
@@ -464,7 +521,7 @@ int main(int argc, char *argv[])
             }, nullptr);
             return CL_ERR_UNKNOWN;
         }
-        status = H5Dvlen_reclaim(log_event_type,
+        status = H5Dvlen_reclaim(log_event_memtype,
                                  story_chunk_dspace,
                                  H5P_DEFAULT,
                                  &g_events);
@@ -477,11 +534,13 @@ int main(int argc, char *argv[])
         LOGD("H5Dclose returns: %i", status);
         status = H5Sclose(story_chunk_dspace);
         LOGD("H5Sclose returns: %i", status);
-        status = H5Tclose(log_event_type);
+        status = H5Tclose(log_event_memtype);
         LOGD("H5Tclose returns: %i", status);
-        status = H5Tclose(event_payload_type);
+        status = H5Tclose(log_event_filetype);
         LOGD("H5Tclose returns: %i", status);
-        status = H5Tclose(vl_datatype_id);
+        status = H5Tclose(event_payload_memtype);
+        LOGD("H5Tclose returns: %i", status);
+        status = H5Tclose(vlen_memtype_id);
         LOGD("H5Tclose returns: %i", status);
         if (status < 0)
         {
@@ -506,6 +565,7 @@ int main(int argc, char *argv[])
 //    }
 
     // Read StoryChunks
+    LOGD("Reading StoryChunks ...");
     for (uint64_t i = 0; i < 1; i++)
     {
 //        StoryChunk story_chunk = story_chunk_map_it->second;
@@ -523,43 +583,43 @@ int main(int argc, char *argv[])
          * H5Tvlen type based implementation
          */
         // Define variable-length payload data type
-        hid_t event_payload_type = H5Tvlen_create(H5T_NATIVE_UINT8);
-        LOGD("H5Tvlen_create(H5T_NATIVE_UINT8) returns: %li", event_payload_type);
-        hid_t vl_datatype_id = H5Tcopy(event_payload_type);
-        LOGD("H5Tcopy(event_payload_type) returns: %li", vl_datatype_id);
+        hid_t event_payload_memtype = H5Tvlen_create(H5T_NATIVE_UINT8);
+        LOGD("H5Tvlen_create(H5T_NATIVE_UINT8) returns: %li", event_payload_memtype);
+        hid_t vlen_memtype_id = H5Tcopy(event_payload_memtype);
+        LOGD("H5Tcopy(event_payload_type) returns: %li", vlen_memtype_id);
         // Define LogEvent data type
-        hid_t log_event_type = H5Tcreate(H5T_COMPOUND,
-                                         sizeof(LogEvent));
-        LOGD("H5Tcreate(H5T_COMPOUND, sizeof(LogEvent)) returns: %li", log_event_type);
-        status = H5Tinsert(log_event_type,
+        hid_t log_event_memtype = H5Tcreate(H5T_COMPOUND,
+                                            sizeof(LogEvent));
+        LOGD("H5Tcreate(H5T_COMPOUND, sizeof(LogEvent)) returns: %li", log_event_memtype);
+        status = H5Tinsert(log_event_memtype,
                            "storyId",
                            HOFFSET(LogEvent, storyId),
                            H5T_NATIVE_UINT64);
         LOGD("H5Tinsert returns: %i", status);
-        status = H5Tinsert(log_event_type,
+        status = H5Tinsert(log_event_memtype,
                            "eventTime",
                            HOFFSET(LogEvent, eventTime),
                            H5T_NATIVE_UINT64);
         LOGD("H5Tinsert returns: %i", status);
-        status = H5Tinsert(log_event_type,
+        status = H5Tinsert(log_event_memtype,
                            "clientId",
                            HOFFSET(LogEvent, clientId),
                            H5T_NATIVE_UINT32);
         LOGD("H5Tinsert returns: %i", status);
-        status = H5Tinsert(log_event_type,
+        status = H5Tinsert(log_event_memtype,
                            "eventIndex",
                            HOFFSET(LogEvent, eventIndex),
                            H5T_NATIVE_UINT32);
         LOGD("H5Tinsert returns: %i", status);
-//        status = H5Tinsert(log_event_type,
+//        status = H5Tinsert(log_event_memtype,
 //                           "logRecordSize",
 //                           HOFFSET(LogEvent, logRecordSize),
 //                           H5T_NATIVE_UINT64);
 //        LOGD("H5Tinsert returns: %i", status);
-        status = H5Tinsert(log_event_type,
+        status = H5Tinsert(log_event_memtype,
                            "logRecord",
                            HOFFSET(LogEvent, logRecord),
-                           vl_datatype_id);
+                           vlen_memtype_id);
         LOGD("H5Tinsert returns: %i", status);
         if (status < 0)
         {
@@ -571,27 +631,34 @@ int main(int argc, char *argv[])
         hid_t story_chunk_dset;
         std::string story_chunk_dset_name = std::to_string(story_chunk.getStartTime()) + "_" +
                                             std::to_string(story_chunk.getEndTime());
+        LOGD("Opening StoryChunk %s in Story file: %s", story_chunk_dset_name.c_str(), story_file_name.c_str());
         story_chunk_dset = H5Dopen(story_file,
                                      ("/" + story_chunk_dset_name).c_str(),
                                      H5P_DEFAULT);
-
+        LOGD("H5Dopen returns: %li", story_chunk_dset);
+        if (story_chunk_dset < 0)
+        {
+            LOGE("Failed to open dataset for story chunk: %s", story_chunk_dset_name.c_str());
+            return CL_ERR_UNKNOWN;
+        }
 
         // Get size and prepare memory
         hid_t story_chunk_dspace;
         hsize_t story_chunk_dset_dims[1] = {story_chunk.getNumEvents()};
         story_chunk_dspace = H5Dget_space(story_chunk_dset);
         int ndims = H5Sget_simple_extent_dims(story_chunk_dspace, story_chunk_dset_dims, nullptr);
-        hvl_t *rdata = (hvl_t *) malloc(story_chunk_dset_dims[0] * sizeof(hvl_t));
+        hvl_t *rdata = (hvl_t *) malloc((story_chunk_dset_dims[0] + 1) * sizeof(hvl_t));
 
         // Read data
-        status = H5Dread(story_chunk_dset, log_event_type, H5S_ALL, H5S_ALL, H5P_DEFAULT, rdata);
+        LOGD("Reading StoryChunk %s from Story file: %s", story_chunk_dset_name.c_str(), story_file_name.c_str());
+        status = H5Dread(story_chunk_dset, event_payload_memtype, H5S_ALL, H5S_ALL, H5P_DEFAULT, rdata);
 
         // Cleanup
-        status = H5Dvlen_reclaim(log_event_type, story_chunk_dspace, H5P_DEFAULT, rdata);
+        status = H5Dvlen_reclaim(log_event_memtype, story_chunk_dspace, H5P_DEFAULT, rdata);
         free(rdata);
         status = H5Dclose(story_chunk_dset);
         status = H5Sclose(story_chunk_dspace);
-        status = H5Tclose(log_event_type);
+        status = H5Tclose(log_event_memtype);
         status = H5Fclose(story_file);
 
     }
