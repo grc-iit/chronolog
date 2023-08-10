@@ -10,10 +10,13 @@ CLIENT_BIN_FILE_NAME="storyteller_test"
 VISOR_BIN="${BIN_DIR}/${VISOR_BIN_FILE_NAME}"
 KEEPER_BIN="${BIN_DIR}/${KEEPER_BIN_FILE_NAME}"
 CLIENT_BIN="${BIN_DIR}/${CLIENT_BIN_FILE_NAME}"
+CONF_FILE="${CONF_DIR}/default_conf.json"
+VISOR_ARGS="--config ${CONF_FILE}"
+KEEPER_ARGS="--config ${CONF_FILE}"
+CLIENT_ARGS="--config ${CONF_FILE}"
 VISOR_HOSTS="${CONF_DIR}/hosts_visor"
 KEEPER_HOSTS="${CONF_DIR}/hosts_keeper"
 CLIENT_HOSTS="${CONF_DIR}/hosts_client"
-CONF_FILE="${CONF_DIR}/default_conf.json"
 JOB_ID=""
 install=false
 deploy=false
@@ -130,13 +133,13 @@ deploy() {
     echo "Deploying ..."
 
     # launch Visor
-    mpssh -f ${VISOR_HOSTS} "nohup ${VISOR_BIN} ${CONF_FILE} > /dev/null 2>&1 &"
+    mpssh -f ${VISOR_HOSTS} "cd ${BIN_DIR}; nohup ${VISOR_BIN} ${VISOR_ARGS} > ${VISOR_BIN_FILE_NAME}.\$(hostname) 2>&1 &"
 
     # launch Keeper
-    mpssh -f ${KEEPER_HOSTS} "nohup ${KEEPER_BIN} ${CONF_FILE} > /dev/null 2>&1 &"
+    mpssh -f ${KEEPER_HOSTS} "cd ${BIN_DIR}; nohup ${KEEPER_BIN} ${KEEPER_ARGS} > ${KEEPER_BIN_FILE_NAME}.\$(hostname) 2>&1 &"
 
     # launch Client
-    mpssh -f ${CLIENT_HOSTS} "${CLIENT_BIN} ${CONF_FILE}"
+    mpssh -f ${CLIENT_HOSTS} "cd ${BIN_DIR}; ${CLIENT_BIN} ${CLIENT_ARGS}"
 
     # check Visor
     mpssh -f ${VISOR_HOSTS} "pgrep -fla ${VISOR_BIN_FILE_NAME}"
@@ -224,11 +227,6 @@ parse_args() {
         esac
     done
 
-    if [[ "$install" == true ]]
-    then
-        install
-    fi
-
     if [[ "$deploy" == true && "$reset" == true ]]
     then
         echo "Error: You must choose between deploy (-d) or reset (-r)."
@@ -260,8 +258,8 @@ prepare_hosts() {
         if [ -n "${JOB_ID}" ]
         then
             echo "JOB_ID is set to be ${JOB_ID} via command line, use it"
-            JOB_ID="$(squeue | grep ${JOB_ID} | awk '{print $NF}')"
-            hosts="$(scontrol show hostnames ${JOB_ID})"
+            hosts_regex="$(squeue | grep ${JOB_ID} | awk '{print $NF}')"
+            hosts="$(scontrol show hostnames ${hosts_regex})"
             echo "${hosts}" | head -1 > ${VISOR_HOSTS}
             echo "${hosts}" > ${KEEPER_HOSTS}
             echo "${hosts}" > ${CLIENT_HOSTS}
