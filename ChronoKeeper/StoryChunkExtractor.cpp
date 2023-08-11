@@ -88,8 +88,8 @@ void chronolog::StoryChunkExtractorBase::drainExtractionQueue()
             if(storyChunk == nullptr)  //the queue might have been drained by another thread before the current thread acquired extractionQueue mutex
             {   break;  }
             processStoryChunk(storyChunk);  // INNA: should add return type and handle the failure properly
-            //INNA: todo later ...
-            // finalize processed stroychunk here : free the memory or reset the startTime and return to the pool of prealocated chunks
+            // free the memory or reset the startTime and return to the pool of prealocated chunks
+            delete storyChunk;
         }
 
         sleep(30);

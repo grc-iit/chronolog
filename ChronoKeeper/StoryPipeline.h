@@ -42,7 +42,7 @@ public:
     void mergeEvents(std::deque<LogEvent> &);
     void mergeEvents(StoryChunk &);
 
-    void extractDecayedStoryChunks(uint64_t, bool exiting_pipeline = false);
+    void extractDecayedStoryChunks(uint64_t);
 
     StoryId const& getStoryId() const
     {   return storyId; }
@@ -79,11 +79,11 @@ private:
     std::mutex sequencingMutex;
 
     // map of storyChunks ordered by StoryChunck.startTime
-    std::map<chrono_time, StoryChunk > storyTimelineMap;
+    std::map<chrono_time, StoryChunk*> storyTimelineMap;
 
-    std::map<uint64_t, StoryChunk>::iterator prependStoryChunk();
-    std::map<uint64_t, StoryChunk>::iterator appendStoryChunk();
-
+    std::map<uint64_t, StoryChunk*>::iterator prependStoryChunk();
+    std::map<uint64_t, StoryChunk*>::iterator appendStoryChunk();
+    void finalize();
 };
 
 }

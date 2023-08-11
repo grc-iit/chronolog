@@ -3,6 +3,7 @@
 
 
 #include <string>
+#include <ostream>
 
 namespace chronolog
 {
@@ -31,25 +32,39 @@ public:
 
     StoryId  storyId;
 	uint64_t eventTime;
-        ClientId clientId;
+    ClientId clientId;
 	uint32_t eventIndex;
 	std::string logRecord; //INNA: replace with size_t  length; & void * data; later on
  
-  uint64_t time() const
-  {  return eventTime; }
+    StoryId const& getStoryId() const
+    {   return storyId; }
 
-  uint32_t index() const
-  {  return eventIndex; }
+    uint64_t time() const
+    {   return eventTime; }
+
+    ClientId const& getClientId() const
+    {   return clientId; }
+
+    uint32_t index() const
+    {   return eventIndex; }
+
+    std::string const& getRecord() const
+    {   return  logRecord;  }
 
   // serialization function used by thallium RPC providers 
-  
-  template <typename SerArchiveT>
-  void serialize( SerArchiveT & serT)
-  {
-      serT (storyId, eventTime, clientId, eventIndex, logRecord);
-  }
+    template <typename SerArchiveT>
+    void serialize( SerArchiveT & serT)
+    {
+        serT (storyId, eventTime, clientId, eventIndex, logRecord);
+    }
 };
 
+}
 
+inline std::ostream & operator<< (std::ostream & out, chronolog::LogEvent const& event)
+{
+    out<< "event : " << event.getStoryId() <<":"<<event.time()<<":"<<event.getClientId()<<":"<< event.index()
+        <<":"<<event.getRecord();
+return out;
 }
 #endif
