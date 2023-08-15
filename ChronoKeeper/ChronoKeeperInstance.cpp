@@ -14,7 +14,7 @@
 #include "DataStoreAdminService.h"
 #include "ConfigurationManager.h"
 #include "StoryChunkExtractor.h"
-#include "PosixFileChunkExtractor.h"
+#include "CSVFileChunkExtractor.h"
 
 #define KEEPER_GROUP_ID 7
 
@@ -63,21 +63,13 @@ int main(int argc, char** argv) {
     signal(SIGTERM, sigterm_handler);
 
   //INNA: TODO: pass the config file path on the command line & load the parameters inot a ConfigurationObject
-  // for now all the arguments are hardcoded ...
 
     ChronoLog::ConfigurationManager confManager("./default_conf.json");
-    // Instantiate ChronoKeeper MemoryDataStore
-    //
-    chronolog::IngestionQueue ingestionQueue;
-    //  instantiate the extractor module 
-    
-   // chronolog::StoryChunkExtractorBase storyExtractor; 
-    chronolog::PosixFileStoryChunkExtractor storyExtractor; 
-    chronolog::KeeperDataStore theDataStore(ingestionQueue, storyExtractor.getExtractionQueue());
-
-    // instantiate DataStoreAdminService
+    std::string keeper_csv_files_directory= confManager.KEEPER_CONF.STORY_FILES_DIR;
     uint64_t keeper_group_id = KEEPER_GROUP_ID;
-
+   
+    // instantiate DataStoreAdminService
+    
     std::string datastore_service_ip =  confManager.RPC_CONF.VISOR_KEEPER_CONF.KEEPER_END_CONF.KEEPER_IP.string();
     int datastore_service_port = confManager.RPC_CONF.VISOR_KEEPER_CONF.KEEPER_END_CONF.KEEPER_PORT;
     std::string KEEPER_DATASTORE_SERVICE_NA_STRING = 
@@ -99,6 +91,34 @@ int main(int argc, char** argv) {
 
     chronolog::ServiceId collectionServiceId(datastore_endpoint.first,datastore_endpoint.second, datastore_service_provider_id);
 
+    // Instantiate KeeperRecordingService 
+
+    std::string KEEPER_RECORDING_SERVICE_PROTOCOL = confManager.RPC_CONF.CLIENT_KEEPER_CONF.PROTO_CONF.string();
+    std::string KEEPER_RECORDING_SERVICE_IP  = confManager.RPC_CONF.CLIENT_KEEPER_CONF.KEEPER_END_CONF.KEEPER_IP.string();
+    uint16_t KEEPER_RECORDING_SERVICE_PORT  = confManager.RPC_CONF.CLIENT_KEEPER_CONF.KEEPER_END_CONF.KEEPER_PORT;
+    uint16_t recording_service_provider_id  = confManager.RPC_CONF.CLIENT_KEEPER_CONF.KEEPER_END_CONF.SERVICE_PROVIDER_ID;
+
+    std::string KEEPER_RECORDING_SERVICE_NA_STRING = std::string(KEEPER_RECORDING_SERVICE_PROTOCOL)
+	                                           +"://"+std::string(KEEPER_RECORDING_SERVICE_IP)
+						   +":"+std::to_string(KEEPER_RECORDING_SERVICE_PORT);
+
+    // validate ip address, instantiate Recording Service and create KeeperIdCard
+
+    chronolog::service_endpoint recording_endpoint;
+    if( -1 == service_endpoint_from_dotted_string( KEEPER_RECORDING_SERVICE_IP, KEEPER_RECORDING_SERVICE_PORT, recording_endpoint) )
+    {
+    	std::cout<<"invalid KeeperRecordingService  address"<<std::endl;
+	    return (-1);
+    }
+	  
+    // create KeeperIdCard to identify this Keeper process in ChronoVisor's KeeperRegistry
+    chronolog::KeeperIdCard keeperIdCard( keeper_group_id, recording_endpoint.first, recording_endpoint.second, recording_service_provider_id);
+    std::cout << keeperIdCard<<std::endl;
+
+    // Instantiate ChronoKeeper MemoryDataStore & ExtractorModule
+    chronolog::IngestionQueue ingestionQueue;
+    chronolog::CSVFileStoryChunkExtractor storyExtractor( keeperIdCard, keeper_csv_files_directory); 
+    chronolog::KeeperDataStore theDataStore(ingestionQueue, storyExtractor.getExtractionQueue());
 
     margo_instance_id collection_margo_id=margo_init( KEEPER_DATASTORE_SERVICE_NA_STRING.c_str(),MARGO_SERVER_MODE, 1, 1);
 
@@ -119,25 +139,6 @@ int main(int argc, char** argv) {
 
 
     // Instantiate KeeperRecordingService 
-
-    std::string KEEPER_RECORDING_SERVICE_PROTOCOL = confManager.RPC_CONF.CLIENT_KEEPER_CONF.PROTO_CONF.string();
-    std::string KEEPER_RECORDING_SERVICE_IP  = confManager.RPC_CONF.CLIENT_KEEPER_CONF.KEEPER_END_CONF.KEEPER_IP.string();
-    uint16_t KEEPER_RECORDING_SERVICE_PORT  = confManager.RPC_CONF.CLIENT_KEEPER_CONF.KEEPER_END_CONF.KEEPER_PORT;
-    uint16_t recording_service_provider_id  = confManager.RPC_CONF.CLIENT_KEEPER_CONF.KEEPER_END_CONF.SERVICE_PROVIDER_ID;
-
-    std::string KEEPER_RECORDING_SERVICE_NA_STRING = std::string(KEEPER_RECORDING_SERVICE_PROTOCOL)
-	                                           +"://"+std::string(KEEPER_RECORDING_SERVICE_IP)
-						   +":"+std::to_string(KEEPER_RECORDING_SERVICE_PORT);
-
-    // validate ip address, instantiate Recording Service and create KeeperIdCard
-
-    chronolog::service_endpoint recording_endpoint;
-    if( -1 == service_endpoint_from_dotted_string( KEEPER_RECORDING_SERVICE_IP, KEEPER_RECORDING_SERVICE_PORT, recording_endpoint) )
-    {
-    	std::cout<<"invalid KeeperRecordingService  address"<<std::endl;
-	    return (-1);
-    }	  
-
     margo_instance_id margo_id=margo_init( KEEPER_RECORDING_SERVICE_NA_STRING.c_str(),MARGO_SERVER_MODE, 1, 1);
 
     if(MARGO_INSTANCE_NULL == margo_id)
@@ -158,9 +159,6 @@ int main(int argc, char** argv) {
     chronolog::KeeperRecordingService *  keeperRecordingService=
 	   chronolog::KeeperRecordingService::CreateKeeperRecordingService(recordingEngine, recording_service_provider_id, ingestionQueue);
 
-    // create KeeperIdCard to identify this Keeper process in ChronoVisor's KeeperRegistry
-    chronolog::KeeperIdCard keeperIdCard( keeper_group_id, recording_endpoint.first, recording_endpoint.second, recording_service_provider_id);
-    std::cout << keeperIdCard<<std::endl;
 
     // create KeeperRegistryClient and register the new KeeperRecording service with the KeeperRegistry 
     std::string KEEPER_REGISTRY_SERVICE_NA_STRING=
@@ -204,7 +202,6 @@ int main(int argc, char** argv) {
     //shutdown the Data Collection
     //INNA: move ingestionQueue and sequencing Xstream pool into the dataStore class later 
    // ingestionQueue.shutdown();
-
     theDataStore.shutdownDataCollection();
 
     // shutdown extraction module

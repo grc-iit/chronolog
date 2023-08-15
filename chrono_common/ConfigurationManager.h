@@ -150,8 +150,9 @@ namespace ChronoLog {
     } ClientConf;
 
     typedef struct KeeperConf_ {
+        std::string STORY_FILES_DIR;
         [[nodiscard]] std::string to_String() const {
-            return "";
+            return "STORY_FILES_DIR:"+STORY_FILES_DIR;
         }
     } KeeperConf;
 
@@ -218,9 +219,9 @@ namespace ChronoLog {
             /* Visor-local configurations */
 
             /* Client-local configurations */
-
+            
             /* Keeper-local configurations */
-
+            KEEPER_CONF.STORY_FILES_DIR="/tmp/";
             PrintConf();
         }
 
@@ -422,7 +423,7 @@ namespace ChronoLog {
                     assert(item.value.IsObject());
                 } else if (strcmp(item_name, "chrono_keeper") == 0) {
                     rapidjson::Value& keeper_local_conf = doc["chrono_keeper"];
-                    parseKeeperLocalConf(keeper_local_conf);
+                    parseKeeperLocalConf(keeper_local_conf, KEEPER_CONF);
                     assert(item.value.IsObject());
                 } else {
                     LOGE("Unknown configuration: %s", item_name);
@@ -508,8 +509,16 @@ namespace ChronoLog {
         {   assert(json_conf.IsObject());   }
         void parseClientLocalConf(rapidjson::Value & json_conf)
         {   assert(json_conf.IsObject());   }
-        void parseKeeperLocalConf(rapidjson::Value & json_conf)
-        {   assert(json_conf.IsObject());   }
+        void parseKeeperLocalConf(rapidjson::Value & json_conf, KeeperConf & keeper_conf)
+        {   assert(json_conf.IsObject());  
+            for (auto i = json_conf.MemberBegin(); i != json_conf.MemberEnd(); ++i) {
+                assert(i->name.IsString());
+                if (strcmp(i->name.GetString(), "story_files_dir") == 0) {
+                    assert(i->value.IsString());
+                    keeper_conf.STORY_FILES_DIR = i->value.GetString();
+                }
+            }            
+        }
     };
 }
 
