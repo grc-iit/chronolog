@@ -244,32 +244,33 @@ void chronolog::StoryPipeline::mergeEvents(chronolog::EventDeque & event_deque)
 	// the last chunk is most likely the one that would get the events, so we'd start with the last 
 	// chunk and do the lookup only if it's not the one
 	// NOTE: we should never have less than 2 chunks in the active storyTimelineMap !!!
-    	std::map<uint64_t, chronolog::StoryChunk*>::iterator chunk_to_merge_iter = --storyTimelineMap.end();
+    std::map<uint64_t, chronolog::StoryChunk*>::iterator chunk_to_merge_iter = --storyTimelineMap.end();
 	while( !event_deque.empty())
 	{
 		event = event_deque.front();
-		{   //std::cout << "StoryPipeline: {"<< storyId<<":"<<timelineStart<<":"<<timelineEnd<<"} merging event  {"<< event.time()<<"}"<<std::endl; }
-        	if( timelineStart <= event.time() && event.time() < timelineEnd)
-        	{       // we expect the events in the deque to be mostly monotonous
+		//std::cout << "StoryPipeline: {"<< storyId<<":"<<timelineStart<<":"<<timelineEnd<<"} merging event  {"<< event.time()<<"}"<<std::endl; 
+
+        if( timelineStart <= event.time() && event.time() < timelineEnd)
+        {       // we expect the events in the deque to be mostly monotonous
 			// so we'd try the most recently used chunk first and only look for the new chunk 
 			// if the event does not belong to the recently used chunk
-        		if( !(*chunk_to_merge_iter).second->insertEvent(event) )
+        	if( !(*chunk_to_merge_iter).second->insertEvent(event) )
 			{
 			    // find the new chunk_to_merge the event into : we are lookingt for 
 			    // the chunk preceeding the first chunk with the startTime > event.time()
-		       	    chunk_to_merge_iter = storyTimelineMap.upper_bound(event.time()); 
-		            //merge into the preceeding chunk
-        		    if( ! (*(--chunk_to_merge_iter)).second->insertEvent(event) )
-			        {	std::cout << "ERROR : StoryPipeline: {"<< storyId<<"} merge discards event  {"<< event.time()<<"}"<<std::endl; }
+		       	chunk_to_merge_iter = storyTimelineMap.upper_bound(event.time()); 
+		        //merge into the preceeding chunk
+        		if( ! (*(--chunk_to_merge_iter)).second->insertEvent(event) )
+			    {	std::cout << "ERROR : StoryPipeline: {"<< storyId<<"} merge discards event  {"<< event.time()<<"}"<<std::endl; }
 			}
    		}
 		else if(event.time() >= timelineEnd)
 		{  //extend timeline forward
 		  	while(event.time() >= timelineEnd)
 			{
-      				chunk_to_merge_iter= appendStoryChunk();
-      				if ( chunk_to_merge_iter == storyTimelineMap.end())
-      				{	break; }
+      			chunk_to_merge_iter= appendStoryChunk();
+      			if ( chunk_to_merge_iter == storyTimelineMap.end())
+      			{	break; }
 			}
 			if (chunk_to_merge_iter != storyTimelineMap.end())		
 			{	(*chunk_to_merge_iter).second->insertEvent(event);    }
@@ -280,9 +281,9 @@ void chronolog::StoryPipeline::mergeEvents(chronolog::EventDeque & event_deque)
 		{  //extend timeline backward
 			while( event.time() < timelineStart)
 			{	
-	    			chunk_to_merge_iter = chl::StoryPipeline::prependStoryChunk();
-	    			if(chunk_to_merge_iter==storyTimelineMap.end())
-	    			{ 	break; }
+	    		chunk_to_merge_iter = chl::StoryPipeline::prependStoryChunk();
+	    		if(chunk_to_merge_iter==storyTimelineMap.end())
+	    		{ 	break; }
 			}
 			if (chunk_to_merge_iter != storyTimelineMap.end())		
 			{	(*chunk_to_merge_iter).second->insertEvent(event);  }
