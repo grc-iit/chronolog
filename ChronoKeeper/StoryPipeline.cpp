@@ -74,9 +74,8 @@ chl::StoryIngestionHandle * chl::StoryPipeline::getActiveIngestionHandle()
 ///////////////////////
 chronolog::StoryPipeline::~StoryPipeline()
 {
-    std::cout <<"StoryPipeline::~StoryPipeline storyId { " << storyId<<"} END"<< std::endl;
+    std::cout <<"StoryPipeline::~StoryPipeline storyId { " << storyId<<"}"<< std::endl;
     finalize();
-    std::cout <<"StoryPipeline::~StoryPipeline storyId { " << storyId<< "} END"<<std::endl;
 }
 
 void chronolog::StoryPipeline::finalize()
@@ -185,14 +184,13 @@ void chronolog::StoryPipeline::collectIngestedEvents()
 void chronolog::StoryPipeline::extractDecayedStoryChunks(uint64_t current_time)
 {
 #ifdef TRACE_CHUNK_EXTRACTION
-    	auto current_point = std::chrono::time_point<std::chrono::system_clock,std::chrono::nanoseconds>{} // epoch_time_point{};
+    auto current_point = std::chrono::time_point<std::chrono::system_clock,std::chrono::nanoseconds>{} // epoch_time_point{};
 		+ std::chrono::nanoseconds(current_time);
-    	std::time_t time_t_current_time = std::chrono::high_resolution_clock::to_time_t(current_point); 
-        uint64_t head_chunk_end_time = (*storyTimelineMap.begin()).second->getEndTime();
-    	auto decay_point= std::chrono::time_point<std::chrono::system_clock,std::chrono::nanoseconds>{} // epoch_time_point{};
-		+ std::chrono::nanoseconds(head_chunk_end_time +acceptanceWindow);
-    	std::time_t time_t_decay = std::chrono::high_resolution_clock::to_time_t(decay_point); 
-    std::cout <<"StoryPipeline::extractDecayedStoryChunks: storyId { "<< storyId <<"} extractionQueue.size {"<< theExtractionQueue.size()<<"}"<<std::endl;
+    std::time_t time_t_current_time = std::chrono::high_resolution_clock::to_time_t(current_point); 
+    uint64_t head_chunk_end_time = (*storyTimelineMap.begin()).second->getEndTime();
+    auto decay_point= std::chrono::time_point<std::chrono::system_clock,std::chrono::nanoseconds>{} // epoch_time_point{};
+	    + std::chrono::nanoseconds(head_chunk_end_time +acceptanceWindow);
+    std::time_t time_t_decay = std::chrono::high_resolution_clock::to_time_t(decay_point); 
     std::cout <<"StoryPipeline::extractDecayedStoryChunks: current_time {"<< current_time<< " : "<< std::ctime(&time_t_current_time)
         <<" storyId { "<< storyId<<"} size {"<< storyTimelineMap.size()<<"} head_chunk decay_time {"<< std::ctime(&time_t_decay)<<"}"<< std::endl;
 #endif
@@ -250,7 +248,7 @@ void chronolog::StoryPipeline::mergeEvents(chronolog::EventDeque & event_deque)
 	while( !event_deque.empty())
 	{
 		event = event_deque.front();
-		{std::cout << "StoryPipeline: {"<< storyId<<":"<<timelineStart<<":"<<timelineEnd<<"} merging event  {"<< event.time()<<"}"<<std::endl; }
+		{   //std::cout << "StoryPipeline: {"<< storyId<<":"<<timelineStart<<":"<<timelineEnd<<"} merging event  {"<< event.time()<<"}"<<std::endl; }
         	if( timelineStart <= event.time() && event.time() < timelineEnd)
         	{       // we expect the events in the deque to be mostly monotonous
 			// so we'd try the most recently used chunk first and only look for the new chunk 
@@ -262,7 +260,7 @@ void chronolog::StoryPipeline::mergeEvents(chronolog::EventDeque & event_deque)
 		       	    chunk_to_merge_iter = storyTimelineMap.upper_bound(event.time()); 
 		            //merge into the preceeding chunk
         		    if( ! (*(--chunk_to_merge_iter)).second->insertEvent(event) )
-			    {	std::cout << "ERROR : StoryPipeline: {"<< storyId<<"} merge discards event  {"<< event.time()<<"}"<<std::endl; }
+			        {	std::cout << "ERROR : StoryPipeline: {"<< storyId<<"} merge discards event  {"<< event.time()<<"}"<<std::endl; }
 			}
    		}
 		else if(event.time() >= timelineEnd)

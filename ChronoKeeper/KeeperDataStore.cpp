@@ -129,9 +129,6 @@ void chronolog::KeeperDataStore::retireDecayedPipelines()
             <<"} pipelinesWaitingForExit {"<< pipelinesWaitingForExit.size()
             <<"} START , ULT " << tl::thread::self_id() << std::endl;
 
-//INNA: TODO : more testing is needed to make sure datacolelction and retire functions are properly 
-// protecting theMApOfStroyPipelines from concurrent access
-
 if( !theMapOfStoryPipelines.empty())
 {
 	std::lock_guard storeLock(dataStoreMutex);
@@ -149,7 +146,6 @@ if( !theMapOfStoryPipelines.empty())
             theIngestionQueue.removeIngestionHandle(pipeline->getStoryId());
             pipeline_iter = pipelinesWaitingForExit.erase(pipeline_iter); //pipeline->getStoryId());
             delete pipeline;
-        std::cout<<"retired pipeline"<<std::endl;
         }
         else
         { pipeline_iter++; }
@@ -207,29 +203,7 @@ void  chronolog::KeeperDataStore::startDataCollection( int stream_count)
     for(int i=0; i < 2*stream_count; ++i)
     {
         tl::managed<tl::thread> th = dataStoreStreams[i % (dataStoreStreams.size())]->make_thread(
-                    [p=this](){ p->dataCollectionTask();
-                        //run dataCollectionTask as long as the state == RUNNING 
-                        // or there're still events left to collect and
-                        // storyPipelines left to retire...
-                      /*  tl::xstream es = tl::xstream::self();
-                        while( !p->is_shutting_down()
-                            //|| !p->theIngestionQueue.empty() //INNA: TODO: add criteria that IngestionQueue is empty 
-                            || !p->theMapOfStoryPipelines.empty())
-                        {
-                            std::cout<< "DataStoreCollectionTask ES "<<es.get_rank() << ", ULT "
-                                << tl::thread::self_id() << std::endl;
-
-                            for(int i =0; i<6; ++i)
-                            {
-                                p->collectIngestedEvents();
-                                sleep(10);
-                            }
-                            p->extractDecayedStoryChunks();
-                            p->retireDecayedPipelines();
-                        }
-                        std::cout << "Exiting thread "<< tl::thread::self_id() << std::endl;
-                    */
-                    });
+                    [p=this](){ p->dataCollectionTask(); });
         dataStoreThreads.push_back(std::move(th));
     }
 }
@@ -290,8 +264,8 @@ void chronolog::KeeperDataStore::shutdownDataCollection()
 chronolog::KeeperDataStore::~KeeperDataStore()
 {
     std::cout<<"KeeperDataStore::~KeeperDataStore()"<<std::endl;
-    std::cout<<"KeeperDataStore:: prior shutdown mapOfStoryPipelines.size()={"<<theMapOfStoryPipelines.size()<<"}"<< std::endl;
+    //std::cout<<"KeeperDataStore:: before shutdown mapOfStryPipelines.size()={"<<theMapOfStoryPipelines.size()<<"}"<< std::endl;
     shutdownDataCollection();
-    std::cout<<"KeeperDataStore::after shutdown  mapOfStoryPipelines.size()={"<<theMapOfStoryPipelines.size()<<"}"<< std::endl;
+    //std::cout<<"KeeperDataStore::after shutdown  mapOfStoryPipelines.size()={"<<theMapOfStoryPipelines.size()<<"}"<< std::endl;
   
 }
