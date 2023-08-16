@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.17)
-find_package(HDF5 REQUIRED)
+find_package(HDF5 REQUIRED COMPONENTS C CXX)
 find_package(JSON-C REQUIRED)
 
 # Set the build directory to a subdirectory called "build"
@@ -49,3 +49,6 @@ target_link_libraries(cmpvstring ${HDF5_LIBRARIES})
 
 add_executable(cmpvlenbyte h5ex_t_vlen.c)
 target_link_libraries(cmpvlenbyte ${HDF5_LIBRARIES})
+
+add_executable(cmp_vlen_bytes_cpp cmp_vlen_bytes_cpp.cpp)
+target_link_libraries(cmp_vlen_bytes_cpp ${HDF5_LIBRARIES})
