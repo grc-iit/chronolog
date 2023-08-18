@@ -72,18 +72,25 @@ int chronolog::VisorClientPortal::StartServices(ChronoLog::ConfigurationManager 
   
       //    visorPortalState = INITIALIZED;
       //}
-        clientPortalEngine->wait_for_finalize();
+        //INNA: commented out as this line blocks main thread at the moment
+        // revisit threading model later...
+        //  clientPortalEngine->wait_for_finalize();
  
     return CL_SUCCESS;
 }
 
+void chronolog::VisorClientPortal::ShutdownServices()
+{
+    clientPortalState = SHUTTING_DOWN;
+    //INNA: revisit this later, as more work might be needed to shutdown gracefully...
+}
 /////////////////
 chronolog::VisorClientPortal::~VisorClientPortal()
 {
     std::cout << "VisorClientPortal::~VisorClientPortal"<<std::endl;
 
-    //ShutdownServices();
-    // TODO : check that everything is kosher here ... 
+    ShutdownServices();
+    
     if(clientPortalService != nullptr)
     {   delete clientPortalService; }
     
