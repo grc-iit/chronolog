@@ -17,9 +17,14 @@ namespace chronolog
 
 int KeeperRegistry::InitializeRegistryService(ChronoLog::ConfigurationManager const& confManager )
 {
+    int status = 0 ;
+
     std::lock_guard<std::mutex> lock(registryLock);
 
-    if(registryState == UNKNOWN)
+    if(registryState != UNKNOWN)
+    { return status; }
+
+    try
     {
 	//INNA: TODO: add exception handling ...    
 	// initialise thalium engine for KeeperRegistryService
@@ -52,8 +57,14 @@ int KeeperRegistry::InitializeRegistryService(ChronoLog::ConfigurationManager co
 	    KeeperRegistryService::CreateKeeperRegistryService(*registryEngine, provider_id, *this);
 
         registryState = INITIALIZED;
+        status =1;
     }
-    return 1;
+	catch(tl::exception const& ex)
+	{
+	  std::cout<<"ERROR: Failed to start KeeperRegistryService "<<std::endl;
+	}
+    
+    return status;
 
 }
 /////////////////
@@ -79,15 +90,15 @@ int KeeperRegistry::ShutdownRegistryService()
     {
     	for ( auto process : keeperProcessRegistry)
     	{
-	   if ( process.second.keeperAdminClient != nullptr)
-	   {  
-	      std::cout<<"KeeperRegistry: sending shutdown to keeper {"<<process.second.idCard<<"}"<<std::endl;
-	      process.second.keeperAdminClient->shutdown_collection();
-              delete process.second.keeperAdminClient;
-           }
-	}
-	keeperProcessRegistry.clear();
-     }
+	        if ( process.second.keeperAdminClient != nullptr)
+	        {  
+	            std::cout<<"KeeperRegistry: sending shutdown to keeper {"<<process.second.idCard<<"}"<<std::endl;
+	            process.second.keeperAdminClient->shutdown_collection();
+                delete process.second.keeperAdminClient;
+            }
+	    }
+	    keeperProcessRegistry.clear();
+    }
     std::cout<<"KeeperRegistry: shutting down RegistryService"<<std::endl;
 
     if( nullptr != keeperRegistryService)
@@ -138,8 +149,8 @@ int KeeperRegistry::registerKeeperProcess( KeeperRegistrationMsg const& keeper_r
            std::string service_na_string("ofi+sockets://");
 	   service_na_string = admin_service_id.getIPasDottedString(service_na_string)
                              + ":"+ std::to_string(admin_service_id.port);
-           try
-	   {
+    try
+    {
               DataStoreAdminClient * collectionClient = DataStoreAdminClient::CreateDataStoreAdminClient(*registryEngine,service_na_string, 
 			      admin_service_id.provider_id);
 	
@@ -147,51 +158,54 @@ int KeeperRegistry::registerKeeperProcess( KeeperRegistrationMsg const& keeper_r
 
 	      std::cout<<"KeeperRegistry: registerKeeper {"<<keeper_id_card<<"} created DataStoreAdminClient for service {"<<service_na_string
 		   <<": provider_id="<<admin_service_id.provider_id<<"}"<<std::endl;
-	   }
-	   catch( tl::exception  const& ex)
-	   {
+	}
+	catch( tl::exception  const& ex)
+	{
 	      std::cout <<"KeeperRegistry: registerKeeper {"<<keeper_id_card<<"} failed to create DataStoreAdminClient for {"<<service_na_string
 		   <<": provider_id="<<admin_service_id.provider_id<<"}"<<std::endl;
 
-	   } 
-    	   // now that communnication with the Keeper is established and we still holding registryLock
-           // update registryState in case this is the first KeeperProcess registration
-	   registryState = RUNNING;
+	} 
+    
+    // now that communnication with the Keeper is established and we still holding registryLock
+    // update registryState in case this is the first KeeperProcess registration
+	if( keeperProcessRegistry.size() >0)
+    { registryState = RUNNING; }
 
-	   std::cout << "KeeperRegistry : RUNNING with {" << keeperProcessRegistry.size()<<"} KeeperProcesses"<<std::endl;
+	std::cout << "KeeperRegistry : RUNNING with {" << keeperProcessRegistry.size()<<"} KeeperProcesses"<<std::endl;
 
 return 1;
 }
 /////////////////
 
 int KeeperRegistry::unregisterKeeperProcess( KeeperIdCard const & keeper_id_card) 
-       {
-           if(is_shutting_down())
-           {  return 0;}
+{
+    if(is_shutting_down())
+    {  return 0;}
 
-	   std::lock_guard<std::mutex> lock(registryLock);
-           //check again after the lock is aquired
-           if(is_shutting_down())
-           {  return 0;}
+	std::lock_guard<std::mutex> lock(registryLock);
+    //check again after the lock is aquired
+    if(is_shutting_down())
+    {  return 0;}
 
-	   // stop & delete keeperAdminClient before erasing keeper_process entry
-           auto keeper_process_iter = keeperProcessRegistry.find(std::pair<uint32_t,uint16_t>(keeper_id_card.getIPaddr(),keeper_id_card.getPort()));
-	   if(keeper_process_iter != keeperProcessRegistry.end())
-	   {
-	   // delete keeperAdminClient before erasing keeper_process entry
-	      if( (*keeper_process_iter).second.keeperAdminClient != nullptr)
-	      {  delete (*keeper_process_iter).second.keeperAdminClient; }
-	      keeperProcessRegistry.erase(keeper_process_iter);
-	   }
-	   // now that we are still holding registryLock
-	   // update registryState if needed
-	   if( !is_shutting_down() && (0 == keeperProcessRegistry.size()))
-	   { registryState = INITIALIZED;  
-	     std::cout<<"KeeperRegistry: state {INITIALIZED}" << " with {"<< keeperProcessRegistry.size()<<"} KeeperProcesses"<<std::endl;
-	   }
-
-	   return 1;
+	// stop & delete keeperAdminClient before erasing keeper_process entry
+    auto keeper_process_iter = keeperProcessRegistry.find(std::pair<uint32_t,uint16_t>(keeper_id_card.getIPaddr(),keeper_id_card.getPort()));
+	if(keeper_process_iter != keeperProcessRegistry.end())
+	{
+	    // delete keeperAdminClient before erasing keeper_process entry
+	    if( (*keeper_process_iter).second.keeperAdminClient != nullptr)
+	    {  delete (*keeper_process_iter).second.keeperAdminClient; }
+	    keeperProcessRegistry.erase(keeper_process_iter);
 	}
+	// now that we are still holding registryLock
+	// update registryState if needed
+	if( !is_shutting_down() && (0 == keeperProcessRegistry.size()))
+	{ 
+        registryState = INITIALIZED;  
+	    std::cout<<"KeeperRegistry: state {INITIALIZED}" << " with {"<< keeperProcessRegistry.size()<<"} KeeperProcesses"<<std::endl;
+	}
+
+    return 1;
+}
 /////////////////
 
 void KeeperRegistry::updateKeeperProcessStats(KeeperStatsMsg const & keeperStatsMsg) 
@@ -250,8 +264,8 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart( std::vector<KeeperIdCard
    uint64_t story_start_time = time_now.time_since_epoch().count() ;
 
     std::lock_guard<std::mutex> lock(registryLock);
-   if (!is_running())
-   {   return -1;}
+    if (!is_running())
+    {   return -1;}
 
     size_t keepers_left_to_notify = vectorOfKeepers.size();
     for ( KeeperIdCard keeper_id_card : vectorOfKeepers)
@@ -259,32 +273,32 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart( std::vector<KeeperIdCard
         auto keeper_process_iter = keeperProcessRegistry.find(std::pair<uint32_t,uint16_t>(keeper_id_card.getIPaddr(),keeper_id_card.getPort()));
         if(keeper_process_iter == keeperProcessRegistry.end())
         {
-	  std::cout<<"WARNING: Registry faield to find Keeper with {"<<keeper_id_card<<"}"<<std::endl;
-	  continue;
-	}
-   	KeeperProcessEntry keeper_process = (*keeper_process_iter).second;
-	std::cout<<"found keeper_process:"<< &keeper_process<<" "<<keeper_process.idCard <<" "<<keeper_process.adminServiceId<<keeper_process.keeperAdminClient<<std::endl;;
-	if (nullptr == keeper_process.keeperAdminClient)
-	{ 
-	  std::cout<<"WARNING: Registry record for{"<<keeper_id_card<<"} is missing keeperAdminClient"<<std::endl;
-	  continue;
-	}
-	try
-	{
-	   int rpc_return = keeper_process.keeperAdminClient->send_start_story_recording(chronicle, story, storyId, story_start_time);
-	   if (rpc_return <0)
-	   {
-	      std::cout<<"WARNING: Registry failed notification RPC to keeper {"<<keeper_id_card<<"}"<<std::endl;
-	      continue;
-	   }
-	   std::cout << "Registry notified keeper {"<<keeper_id_card<<"} to start recording story {"<<storyId<<"} start_time {"<<story_start_time<<"}"<<std::endl;
-	   keepers_left_to_notify--;
-	}
-	catch(thallium::exception const& ex)
-	{
-	  std::cout<<"WARNING: Registry failed notification RPC to keeper {"<<keeper_id_card<<"} details: "<<std::endl;
-	  continue;
-	}
+	        std::cout<<"WARNING: Registry faield to find Keeper with {"<<keeper_id_card<<"}"<<std::endl;
+	        continue;
+	    }
+   	    KeeperProcessEntry keeper_process = (*keeper_process_iter).second;
+	    std::cout<<"found keeper_process:"<< &keeper_process<<" "<<keeper_process.idCard <<" "<<keeper_process.adminServiceId<<keeper_process.keeperAdminClient<<std::endl;;
+	    if (nullptr == keeper_process.keeperAdminClient)
+	    { 
+	        std::cout<<"WARNING: Registry record for{"<<keeper_id_card<<"} is missing keeperAdminClient"<<std::endl;
+	        continue;
+	    }
+	    try
+	    {
+	        int rpc_return = keeper_process.keeperAdminClient->send_start_story_recording(chronicle, story, storyId, story_start_time);
+	        if (rpc_return <0)
+	        {
+	            std::cout<<"WARNING: Registry failed notification RPC to keeper {"<<keeper_id_card<<"}"<<std::endl;
+	            continue;
+	        }
+	        std::cout << "Registry notified keeper {"<<keeper_id_card<<"} to start recording story {"<<storyId<<"} start_time {"<<story_start_time<<"}"<<std::endl;
+	        keepers_left_to_notify--;
+	    }
+	    catch(thallium::exception const& ex)
+	    {
+	        std::cout<<"WARNING: Registry failed notification RPC to keeper {"<<keeper_id_card<<"} details: "<<std::endl;
+	        continue;
+	    }
     }
 
     if ( keepers_left_to_notify == vectorOfKeepers.size())
@@ -316,39 +330,39 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStop(std::vector<KeeperIdCard> 
         auto keeper_process_iter = keeperProcessRegistry.find(std::pair<uint32_t,uint16_t>(keeper_id_card.getIPaddr(),keeper_id_card.getPort()));
         if(keeper_process_iter == keeperProcessRegistry.end())
         {
-	  std::cout<<"WARNING: Registry faield to find Keeper with {"<<keeper_id_card<<"}"<<std::endl;
-	  continue;
-	}
-   	KeeperProcessEntry keeper_process = (*keeper_process_iter).second;
-	if (nullptr == keeper_process.keeperAdminClient)
-	{ 
-	  std::cout<<"WARNING: Registry record for{"<<keeper_id_card<<"} is missing keeperAdminClient"<<std::endl;
-	  continue;
-	}
-	try
-	{
-	   int rpc_return = keeper_process.keeperAdminClient->send_stop_story_recording(storyId);
-	   if (rpc_return <0)
-	   {
-	      std::cout<<"WARNING: Registry failed notification RPC to keeper {"<<keeper_id_card<<"}"<<std::endl;
-	      continue;
-	   }
-	   std::cout << "Registry notified keeper {"<<keeper_id_card<<"} to stop recording story {"<<storyId<<"}"<<std::endl;
-	   keepers_left_to_notify--;
-	}
-	catch(thallium::exception const& ex)
-	{
-	  std::cout<<"WARNING: Registry failed notification RPC to keeper {"<<keeper_id_card<<"} details: "<<std::endl;
-	  continue;
-	}
+            std::cout<<"WARNING: Registry faield to find Keeper with {"<<keeper_id_card<<"}"<<std::endl;
+	        continue;
+	    }
+   	    KeeperProcessEntry keeper_process = (*keeper_process_iter).second;
+	    if (nullptr == keeper_process.keeperAdminClient)
+	    { 
+	        std::cout<<"WARNING: Registry record for{"<<keeper_id_card<<"} is missing keeperAdminClient"<<std::endl;
+	        continue;
+	    }
+	    try
+	    {
+	        int rpc_return = keeper_process.keeperAdminClient->send_stop_story_recording(storyId);
+	        if (rpc_return <0)
+	        {
+	            std::cout<<"WARNING: Registry failed notification RPC to keeper {"<<keeper_id_card<<"}"<<std::endl;
+	            continue;
+	        }
+        std::cout << "Registry notified keeper {"<<keeper_id_card<<"} to stop recording story {"<<storyId<<"}"<<std::endl;
+	    keepers_left_to_notify--;
+	    }
+	    catch(thallium::exception const& ex)
+	    {
+	        std::cout<<"WARNING: Registry failed notification RPC to keeper {"<<keeper_id_card<<"} details: "<<std::endl;
+	        continue;
+	    }
     }
 
     if ( keepers_left_to_notify == vectorOfKeepers.size())
     {
-	  std::cout<<"ERROR: Registry failed to notify the keepers to stop recording story {"<<storyId<<"}"<<std::endl;
-	  return -1;
+	    std::cout<<"ERROR: Registry failed to notify the keepers to stop recording story {"<<storyId<<"}"<<std::endl;
+	    return -1;
     }
-  return ret_status;
+    return ret_status;
 }
 
 
