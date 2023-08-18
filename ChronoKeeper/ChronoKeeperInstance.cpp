@@ -67,15 +67,15 @@ int main(int argc, char **argv)
     // instantiate DataStoreAdminService
     uint64_t keeper_group_id = KEEPER_GROUP_ID;
 
-    std::string datastore_service_ip = confManager.KEEPER_CONF.RPC_FROM_VISOR_CONF.IP;
-    int datastore_service_port = confManager.KEEPER_CONF.RPC_FROM_VISOR_CONF.BASE_PORT;
+    std::string datastore_service_ip = confManager.KEEPER_CONF.KEEPER_DATA_STORE_ADMIN_SERVICE_CONF.RPC_CONF.IP;
+    int datastore_service_port = confManager.KEEPER_CONF.KEEPER_DATA_STORE_ADMIN_SERVICE_CONF.RPC_CONF.BASE_PORT;
     std::string KEEPER_DATASTORE_SERVICE_NA_STRING =
-            confManager.KEEPER_CONF.RPC_FROM_VISOR_CONF.PROTO_CONF
+            confManager.KEEPER_CONF.KEEPER_DATA_STORE_ADMIN_SERVICE_CONF.RPC_CONF.PROTO_CONF
             + "://" + datastore_service_ip
             + ":" + std::to_string(datastore_service_port);
 
     uint16_t datastore_service_provider_id =
-            confManager.KEEPER_CONF.RPC_FROM_VISOR_CONF.SERVICE_PROVIDER_ID;
+            confManager.KEEPER_CONF.KEEPER_DATA_STORE_ADMIN_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID;
 
     chronolog::service_endpoint datastore_endpoint;
     // validate ip address, instantiate DataAdminService and create ServiceId to be included in KeeperRegistrationMsg
@@ -113,10 +113,10 @@ int main(int argc, char **argv)
 
     // Instantiate KeeperRecordingService 
 
-    std::string KEEPER_RECORDING_SERVICE_PROTOCOL = confManager.KEEPER_CONF.RPC_FROM_CLIENT_CONF.PROTO_CONF;
-    std::string KEEPER_RECORDING_SERVICE_IP = confManager.KEEPER_CONF.RPC_FROM_CLIENT_CONF.IP;
-    uint16_t KEEPER_RECORDING_SERVICE_PORT = confManager.KEEPER_CONF.RPC_FROM_CLIENT_CONF.BASE_PORT;
-    uint16_t recording_service_provider_id = confManager.KEEPER_CONF.RPC_FROM_CLIENT_CONF.SERVICE_PROVIDER_ID;
+    std::string KEEPER_RECORDING_SERVICE_PROTOCOL = confManager.KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.PROTO_CONF;
+    std::string KEEPER_RECORDING_SERVICE_IP = confManager.KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.IP;
+    uint16_t KEEPER_RECORDING_SERVICE_PORT = confManager.KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.BASE_PORT;
+    uint16_t recording_service_provider_id = confManager.KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID;
 
     std::string KEEPER_RECORDING_SERVICE_NA_STRING = std::string(KEEPER_RECORDING_SERVICE_PROTOCOL)
                                                      + "://" + std::string(KEEPER_RECORDING_SERVICE_IP)
@@ -162,11 +162,11 @@ int main(int argc, char **argv)
 
     // create KeeperRegistryClient and register the new KeeperRecording service with the KeeperRegistry 
     std::string KEEPER_REGISTRY_SERVICE_NA_STRING =
-            confManager.VISOR_CONF.RPC_FROM_KEEPER_CONF.PROTO_CONF
-            + "://" + confManager.VISOR_CONF.RPC_FROM_KEEPER_CONF.IP
-            + ":" + std::to_string(confManager.VISOR_CONF.RPC_FROM_KEEPER_CONF.BASE_PORT);
+            confManager.VISOR_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.RPC_CONF.PROTO_CONF
+            + "://" + confManager.VISOR_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.RPC_CONF.IP
+            + ":" + std::to_string(confManager.VISOR_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.RPC_CONF.BASE_PORT);
 
-    uint16_t KEEPER_REGISTRY_SERVICE_PROVIDER_ID = confManager.VISOR_CONF.RPC_FROM_KEEPER_CONF.SERVICE_PROVIDER_ID;
+    uint16_t KEEPER_REGISTRY_SERVICE_PROVIDER_ID = confManager.VISOR_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID;
 
     chronolog::KeeperRegistryClient *keeperRegistryClient = chronolog::KeeperRegistryClient::CreateKeeperRegistryClient(
             collectionEngine, KEEPER_REGISTRY_SERVICE_NA_STRING, KEEPER_REGISTRY_SERVICE_PROVIDER_ID);

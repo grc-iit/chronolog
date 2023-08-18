@@ -1,68 +1,71 @@
 {
   "clock": {
-    "clocksource_type": "C_STYLE",
+    "clocksource_type": "CPP_STYLE",
     "drift_cal_sleep_sec": 10,
     "drift_cal_sleep_nsec": 0
-  },
-  "rpc": {
-    "available_protocol": {
-      "sockets_conf": "ofi+sockets",
-      "tcp_conf": "ofi+tcp",
-      "shm_conf": "ofi+shm",
-      "verbs_conf": "ofi+verbs",
-      "verbs_domain": "mlx5_0"
-    },
-    "rpc_client_visor": {
-      "rpc_implementation": "Thallium_sockets",
-      "protocol_conf": "ofi+sockets",
-      "rpc_client_end": {
-        "client_port": 4444,
-        "client_service_threads": 1
-      },
-      "rpc_visor_end": {
-        "visor_ip": "127.0.0.1",
-        "visor_base_port": 5555,
-        "visor_ports": 1,
-        "visor_service_threads": 1
-      }
-    },
-    "rpc_visor_keeper": {
-      "rpc_implementation": "Thallium_sockets",
-      "protocol_conf": "ofi+sockets",
-      "rpc_visor_end": {
-        "visor_ip": "127.0.0.1",
-        "visor_base_port": 6666,
-        "visor_ports": 1,
-        "visor_service_threads": 2
-      },
-      "rpc_keeper_end": {
-        "keeper_ip": "127.0.0.1",
-        "keeper_port": 7777,
-        "keeper_service_threads": 1
-      }
-    },
-    "rpc_client_keeper": {
-      "rpc_implementation": "Thallium_sockets",
-      "protocol_conf": "ofi+sockets",
-      "rpc_client_end": {
-        "client_port": 8888,
-        "client_service_threads": 1
-      },
-      "rpc_keeper_end": {
-        "keeper_ip": "127.0.0.1",
-        "keeper_port": 9999,
-        "keeper_service_threads": 1
-      }
-    }
   },
   "authentication": {
     "auth_type": "RBAC",
     "module_location": "/path/to/auth_module"
   },
   "chrono_visor": {
-  },
-  "chrono_client": {
+    "VisorClientPortalService": {
+      "rpc": {
+        "rpc_implementation": "Thallium_sockets",
+        "protocol_conf": "ofi+sockets",
+        "service_ip": "127.0.0.1",
+        "service_base_port": 5555,
+        "service_provider_id": 55
+      }
+    },
+    "VisorKeeperRegistryService": {
+      "rpc": {
+        "rpc_implementation": "Thallium_sockets",
+        "protocol_conf": "ofi+sockets",
+        "service_ip": "127.0.0.1",
+        "service_base_port": 8888,
+        "service_provider_id": 88
+      }
+    }
   },
   "chrono_keeper": {
+    "KeeperRecordingService": {
+      "rpc": {
+        "rpc_implementation": "Thallium_sockets",
+        "protocol_conf": "ofi+sockets",
+        "service_ip": "127.0.0.1",
+        "service_base_port": 6666,
+        "service_provider_id": 66
+      }
+    },
+    "KeeperDataStoreAdminService": {
+      "rpc": {
+        "rpc_implementation": "Thallium_sockets",
+        "protocol_conf": "ofi+sockets",
+        "service_ip": "127.0.0.1",
+        "service_base_port": 7777,
+        "service_provider_id": 77
+      }
+    },
+    "VisorKeeperRegistryService": {
+      "rpc": {
+        "rpc_implementation": "Thallium_sockets",
+        "protocol_conf": "ofi+sockets",
+        "service_ip": "127.0.0.1",
+        "service_base_port": 8888,
+        "service_provider_id": 88
+      }
+    }
+  },
+  "chrono_client": {
+    "VisorClientPortalService": {
+      "rpc": {
+        "rpc_implementation": "Thallium_sockets",
+        "protocol_conf": "ofi+sockets",
+        "service_ip": "127.0.0.1",
+        "service_base_port": 5555,
+        "service_provider_id": 55
+      }
+    }
   }
 }

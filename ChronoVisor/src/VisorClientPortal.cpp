@@ -49,14 +49,14 @@ int chronolog::VisorClientPortal::StartServices(ChronoLog::ConfigurationManager 
     // initialise thalium engine for KeeperRegistryService
 
     std::string CLIENT_PORTAL_SERVICE_NA_STRING =
-            confManager.VISOR_CONF.RPC_FROM_CLIENT_CONF.PROTO_CONF
-            + "://" + confManager.VISOR_CONF.RPC_FROM_CLIENT_CONF.IP
-            + ":" + std::to_string(confManager.VISOR_CONF.RPC_FROM_CLIENT_CONF.BASE_PORT);
+            confManager.VISOR_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.PROTO_CONF
+            + "://" + confManager.VISOR_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP
+            + ":" + std::to_string(confManager.VISOR_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT);
 
-    uint16_t provider_id = confManager.VISOR_CONF.RPC_FROM_CLIENT_CONF.SERVICE_PROVIDER_ID;
+    uint16_t provider_id = confManager.VISOR_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID;
 
     margo_instance_id margo_id = margo_init(CLIENT_PORTAL_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1,
-                                            confManager.VISOR_CONF.RPC_FROM_CLIENT_CONF.SERVICE_THREADS);
+                                            1); // Kun: hardcode 1 thread for now
 
     if (MARGO_INSTANCE_NULL == margo_id)
     {

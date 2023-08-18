@@ -16,12 +16,13 @@ void thread_function(void *t)
 {
 
     ChronoLog::ConfigurationManager confManager("./default_conf.json");
-    std::string server_ip = confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP;
-    int base_port = confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT;
+    std::string server_ip = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP;
+    int base_port = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT;
     std::string client_id = gen_random(8);
-    std::string server_uri = confManager.RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF + "://" +
-                             confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP +
-                             std::to_string(confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT);
+    std::string server_uri = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.PROTO_CONF + "://" +
+                             confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP +
+                             std::to_string(confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF
+                             .BASE_PORT);
     int flags = 0;
     uint64_t offset;
     int ret = client->Connect(server_uri, client_id, flags);//, offset);
@@ -41,8 +42,8 @@ int main(int argc, char **argv)
     ChronoLogRPCImplementation protocol = CHRONOLOG_THALLIUM_SOCKETS;
     ChronoLog::ConfigurationManager confManager;
 
-    std::string server_ip = confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP;
-    int base_port = confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT;
+    std::string server_ip = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP;
+    int base_port = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT;
     client = new chronolog::Client(confManager); // protocol, server_ip, base_port);
 
     int num_xstreams = 8;

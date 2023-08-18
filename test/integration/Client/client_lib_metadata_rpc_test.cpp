@@ -31,9 +31,10 @@ int main()
     int flags;
     int ret;
     uint64_t offset = 0;
-    std::string server_uri = confManager.RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF + "://" +
-                             confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP +
-                             std::to_string(confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT);
+    std::string server_uri = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.PROTO_CONF + "://" +
+                             confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP +
+                             std::to_string(confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF
+                             .BASE_PORT);
 
     std::string client_id = gen_random(8);
     client.Connect(server_uri, client_id, flags);//, offset);

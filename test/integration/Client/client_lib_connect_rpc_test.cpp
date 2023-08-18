@@ -16,9 +16,9 @@ int main()
 {
     ChronoLogRPCImplementation protocol = CHRONOLOG_THALLIUM_SOCKETS;
     ChronoLog::ConfigurationManager confManager("./default_conf.json");
-    std::string server_ip = confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP;
-    int base_port = confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT;
-    int num_ports = confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_PORTS;
+    std::string server_ip = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP;
+    int base_port = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT;
+    int num_ports = 1; // Kun: hardcode for now
     chronolog::Client client(confManager);
     std::string server_uri;
     std::vector<std::string> client_ids;
@@ -33,12 +33,12 @@ int main()
     for (int i = 0; i < NUM_CONNECTION; i++) client_ids.emplace_back(gen_random(8));
     for (int i = 0; i < NUM_CONNECTION; i++)
     {
-        switch (confManager.RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION)
+        switch (confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.RPC_IMPLEMENTATION)
         {
             case CHRONOLOG_THALLIUM_SOCKETS:
             case CHRONOLOG_THALLIUM_TCP:
             case CHRONOLOG_THALLIUM_ROCE:
-                server_uri = confManager.RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF;
+                server_uri = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.PROTO_CONF;
                 break;
             default:
                 server_uri = "ofi+sockets";

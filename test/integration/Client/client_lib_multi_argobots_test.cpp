@@ -80,8 +80,8 @@ int main(int argc, char **argv)
 
     ChronoLogRPCImplementation protocol = CHRONOLOG_THALLIUM_SOCKETS;
     ChronoLog::ConfigurationManager confManager("./default_conf.json");
-    std::string server_ip = confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP;
-    int base_port = confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT;
+    std::string server_ip = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP;
+    int base_port = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT;
     client = new chronolog::Client(confManager); //protocol, server_ip, base_port);
 
     int num_xstreams = 8;
@@ -93,7 +93,7 @@ int main(int argc, char **argv)
     std::vector<struct thread_arg> t_args(num_threads);;
 
     std::string client_id = gen_random(8);;
-    std::string server_uri = confManager.RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF;
+    std::string server_uri = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.PROTO_CONF;
     server_uri += "://" + server_ip + ":" + std::to_string(base_port);
     int flags = 0;
 

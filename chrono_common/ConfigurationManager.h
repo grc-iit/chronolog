@@ -29,84 +29,6 @@ namespace ChronoLog
         }
     } ClockConf;
 
-    typedef struct RPCProviderEndConf_
-    {
-        ChronoLogRPCImplementation RPC_IMPLEMENTATION;
-        std::string PROTO_CONF;
-        std::string IP;
-        uint16_t BASE_PORT;
-        uint16_t SERVICE_PROVIDER_ID;
-        uint8_t PORTS;
-        uint8_t SERVICE_THREADS;
-
-        [[nodiscard]] std::string to_String() const
-        {
-            return "[RPC_IMPLEMENTATION: " + std::string(getRPCImplString(RPC_IMPLEMENTATION))
-                   + ", PROTO_CONF: " + PROTO_CONF
-                   + ", IP: " + IP
-                   + ", BASE_PORT: " + std::to_string(BASE_PORT)
-                   + ", SERVICE_PROVIDER_ID: " + std::to_string(SERVICE_PROVIDER_ID)
-                   + ", PORTS: " + std::to_string(PORTS)
-                   + ", SERVICE_THREADS: " + std::to_string(SERVICE_THREADS) + "]";
-        }
-    } RPCProviderEndConf;
-
-    typedef struct RPCConsumerEndConf_
-    {
-        ChronoLogRPCImplementation RPC_IMPLEMENTATION;
-        std::string PROTO_CONF;
-        uint16_t PORT;
-        uint8_t SERVICE_THREADS;
-
-        [[nodiscard]] std::string to_String() const
-        {
-            return "[RPC_IMPLEMENTATION: " + std::string(getRPCImplString(RPC_IMPLEMENTATION))
-                   + ", PROTO_CONF: " + PROTO_CONF
-                   + ", PORT: " + std::to_string(PORT)
-                   + ", SERVICE_THREADS: " + std::to_string(SERVICE_THREADS) + "]";
-        }
-    } RPCConsumerEndConf;
-
-    typedef struct VisorConf_
-    {
-        RPCProviderEndConf RPC_FROM_CLIENT_CONF;
-        RPCProviderEndConf RPC_FROM_KEEPER_CONF;
-        RPCConsumerEndConf RPC_TO_KEEPER_CONF;
-
-        [[nodiscard]] std::string to_String() const
-        {
-            return "[RPC_FROM_CLIENT_CONF: " + RPC_FROM_CLIENT_CONF.to_String()
-                   + ", RPC_FROM_KEEPER_CONF: " + RPC_FROM_KEEPER_CONF.to_String()
-                   + ", RPC_TO_KEEPER_CONF: " + RPC_TO_KEEPER_CONF.to_String() + "]";
-        }
-    } VisorConf;
-
-    typedef struct KeeperConf_
-    {
-        RPCProviderEndConf RPC_FROM_CLIENT_CONF;
-        RPCProviderEndConf RPC_FROM_VISOR_CONF;
-        RPCConsumerEndConf RPC_TO_VISOR_CONF;
-
-        [[nodiscard]] std::string to_String() const
-        {
-            return "[RPC_FROM_CLIENT_CONF: " + RPC_FROM_CLIENT_CONF.to_String()
-                   + ", RPC_FROM_VISOR_CONF: " + RPC_FROM_VISOR_CONF.to_String()
-                   + ", RPC_TO_VISOR_CONF: " + RPC_TO_VISOR_CONF.to_String() + "]";
-        }
-    } KeeperConf;
-
-    typedef struct ClientConf_
-    {
-        RPCConsumerEndConf RPC_TO_VISOR_CONF;
-        RPCConsumerEndConf RPC_TO_KEEPER_CONF;
-
-        [[nodiscard]] std::string to_String() const
-        {
-            return "[RPC_TO_VISOR_CONF: " + RPC_TO_VISOR_CONF.to_String()
-                   + ", RPC_TO_KEEPER_CONF: " + RPC_TO_KEEPER_CONF.to_String() + "]";
-        }
-    } ClientConf;
-
     typedef struct AuthConf_
     {
         std::string AUTH_TYPE;
@@ -118,6 +40,101 @@ namespace ChronoLog
                    + ", MODULE_PATH: " + MODULE_PATH;
         }
     } AuthConf;
+
+    typedef struct RPCProviderConf_
+    {
+        ChronoLogRPCImplementation RPC_IMPLEMENTATION;
+        std::string PROTO_CONF;
+        std::string IP;
+        uint16_t BASE_PORT;
+        uint16_t SERVICE_PROVIDER_ID;
+
+        [[nodiscard]] std::string to_String() const
+        {
+            return "[RPC_IMPLEMENTATION: " + std::string(getRPCImplString(RPC_IMPLEMENTATION))
+                   + ", PROTO_CONF: " + PROTO_CONF
+                   + ", IP: " + IP
+                   + ", BASE_PORT: " + std::to_string(BASE_PORT)
+                   + ", SERVICE_PROVIDER_ID: " + std::to_string(SERVICE_PROVIDER_ID)
+                   + ", PORTS: " + "]";
+        }
+    } RPCProviderConf;
+
+    typedef struct VisorClientPortalServiceConf_
+    {
+        RPCProviderConf RPC_CONF;
+
+        [[nodiscard]] std::string to_String() const
+        {
+            return "[RPC_CONF: " + RPC_CONF.to_String() + "]";
+        }
+    } VisorClientPortalServiceConf;
+
+    typedef struct VisorKeeperRegistryServiceConf_
+    {
+        RPCProviderConf RPC_CONF;
+
+        [[nodiscard]] std::string to_String() const
+        {
+            return "[RPC_CONF: " + RPC_CONF.to_String() + "]";
+        }
+    } VisorKeeperRegistryServiceConf;
+
+    typedef struct KeeperRecordingServiceConf_
+    {
+        RPCProviderConf RPC_CONF;
+
+        [[nodiscard]] std::string to_String() const
+        {
+            return "[RPC_CONF: " + RPC_CONF.to_String() + "]";
+        }
+    } KeeperRecordingServiceConf;
+
+    typedef struct KeeperDataStoreAdminServiceConf_
+    {
+        RPCProviderConf RPC_CONF;
+
+        [[nodiscard]] std::string to_String() const
+        {
+            return "[RPC_CONF: " + RPC_CONF.to_String() + "]";
+        }
+    } KeeperDataStoreAdminServiceConf;
+
+    typedef struct VisorConf_
+    {
+        VisorClientPortalServiceConf VISOR_CLIENT_PORTAL_SERVICE_CONF;
+        VisorKeeperRegistryServiceConf VISOR_KEEPER_REGISTRY_SERVICE_CONF;
+
+        [[nodiscard]] std::string to_String() const
+        {
+            return "[VISOR_CLIENT_PORTAL_SERVICE_CONF: " + VISOR_CLIENT_PORTAL_SERVICE_CONF.to_String()
+                   + ", VISOR_KEEPER_REGISTRY_SERVICE_CONF: " + VISOR_KEEPER_REGISTRY_SERVICE_CONF.to_String() + "]";
+        }
+    } VisorConf;
+
+    typedef struct KeeperConf_
+    {
+        KeeperRecordingServiceConf KEEPER_RECORDING_SERVICE_CONF;
+        KeeperDataStoreAdminServiceConf KEEPER_DATA_STORE_ADMIN_SERVICE_CONF;
+        VisorKeeperRegistryServiceConf VISOR_KEEPER_REGISTRY_SERVICE_CONF;
+
+        [[nodiscard]] std::string to_String() const
+        {
+            return "[KEEPER_RECORDING_SERVICE_CONF: " + KEEPER_RECORDING_SERVICE_CONF.to_String()
+                   + ", KEEPER_DATA_STORE_ADMIN_SERVICE_CONF: " + KEEPER_DATA_STORE_ADMIN_SERVICE_CONF.to_String()
+                   + ", VISOR_KEEPER_REGISTRY_SERVICE_CONF: " + VISOR_KEEPER_REGISTRY_SERVICE_CONF.to_String() + "]";
+        }
+    } KeeperConf;
+
+    typedef struct ClientConf_
+    {
+        VisorClientPortalServiceConf VISOR_CLIENT_PORTAL_SERVICE_CONF;
+
+        [[nodiscard]] std::string to_String() const
+        {
+            return "[VISOR_CLIENT_PORTAL_SERVICE_CONF: " + VISOR_CLIENT_PORTAL_SERVICE_CONF.to_String() + "]";
+        }
+    } ClientConf;
 
     class ConfigurationManager
     {
@@ -141,70 +158,47 @@ namespace ChronoLog
             CLOCK_CONF.DRIFT_CAL_SLEEP_NSEC = 0;
             CLOCKSOURCE_TYPE = ClocksourceType::C_STYLE;
 
-            /* Visor-related configurations */
-            VISOR_CONF.RPC_FROM_CLIENT_CONF.RPC_IMPLEMENTATION = CHRONOLOG_THALLIUM_SOCKETS;
-            VISOR_CONF.RPC_FROM_CLIENT_CONF.PROTO_CONF = "ofi+sockets";
-            VISOR_CONF.RPC_FROM_CLIENT_CONF.IP = "127.0.0.1";
-            VISOR_CONF.RPC_FROM_CLIENT_CONF.BASE_PORT = 5555;
-            VISOR_CONF.RPC_FROM_CLIENT_CONF.SERVICE_PROVIDER_ID = 55;
-            VISOR_CONF.RPC_FROM_CLIENT_CONF.PORTS = 1;
-            VISOR_CONF.RPC_FROM_CLIENT_CONF.SERVICE_THREADS = 1;
-
-            VISOR_CONF.RPC_FROM_KEEPER_CONF.RPC_IMPLEMENTATION = CHRONOLOG_THALLIUM_SOCKETS;
-            VISOR_CONF.RPC_FROM_KEEPER_CONF.PROTO_CONF = "ofi+sockets";
-            VISOR_CONF.RPC_FROM_KEEPER_CONF.IP = "127.0.0.1";
-            VISOR_CONF.RPC_FROM_KEEPER_CONF.BASE_PORT = 7777;
-            VISOR_CONF.RPC_FROM_KEEPER_CONF.SERVICE_PROVIDER_ID = 77;
-            VISOR_CONF.RPC_FROM_KEEPER_CONF.PORTS = 1;
-            VISOR_CONF.RPC_FROM_KEEPER_CONF.SERVICE_THREADS = 1;
-
-            VISOR_CONF.RPC_TO_KEEPER_CONF.RPC_IMPLEMENTATION = CHRONOLOG_THALLIUM_SOCKETS;
-            VISOR_CONF.RPC_TO_KEEPER_CONF.PROTO_CONF = "ofi+sockets";
-            VISOR_CONF.RPC_TO_KEEPER_CONF.PORT = 2222;
-            VISOR_CONF.RPC_TO_KEEPER_CONF.SERVICE_THREADS = 1;
-
-            /* Keeper-related configurations */
-            KEEPER_CONF.RPC_FROM_VISOR_CONF.RPC_IMPLEMENTATION = CHRONOLOG_THALLIUM_SOCKETS;
-            KEEPER_CONF.RPC_FROM_VISOR_CONF.PROTO_CONF = "ofi+sockets";
-            KEEPER_CONF.RPC_FROM_VISOR_CONF.IP = "127.0.0.1";
-            KEEPER_CONF.RPC_FROM_VISOR_CONF.BASE_PORT = 6666;
-            KEEPER_CONF.RPC_FROM_VISOR_CONF.SERVICE_PROVIDER_ID = 66;
-            KEEPER_CONF.RPC_FROM_VISOR_CONF.PORTS = 1;
-            KEEPER_CONF.RPC_FROM_VISOR_CONF.SERVICE_THREADS = 1;
-
-            KEEPER_CONF.RPC_FROM_CLIENT_CONF.RPC_IMPLEMENTATION = CHRONOLOG_THALLIUM_SOCKETS;
-            KEEPER_CONF.RPC_FROM_CLIENT_CONF.PROTO_CONF = "ofi+sockets";
-            KEEPER_CONF.RPC_FROM_CLIENT_CONF.IP = "127.0.0.1";
-            KEEPER_CONF.RPC_FROM_CLIENT_CONF.BASE_PORT = 9999;
-            KEEPER_CONF.RPC_FROM_CLIENT_CONF.SERVICE_PROVIDER_ID = 99;
-            KEEPER_CONF.RPC_FROM_CLIENT_CONF.PORTS = 1;
-            KEEPER_CONF.RPC_FROM_CLIENT_CONF.SERVICE_THREADS = 1;
-
-            KEEPER_CONF.RPC_TO_VISOR_CONF.RPC_IMPLEMENTATION = CHRONOLOG_THALLIUM_SOCKETS;
-            KEEPER_CONF.RPC_TO_VISOR_CONF.PROTO_CONF = "ofi+sockets";
-            KEEPER_CONF.RPC_TO_VISOR_CONF.PORT = 3333;
-            KEEPER_CONF.RPC_TO_VISOR_CONF.SERVICE_THREADS = 1;
-
-            /* Client-related configurations */
-            CLIENT_CONF.RPC_TO_VISOR_CONF.RPC_IMPLEMENTATION = CHRONOLOG_THALLIUM_SOCKETS;
-            CLIENT_CONF.RPC_TO_VISOR_CONF.PROTO_CONF = "ofi+sockets";
-            CLIENT_CONF.RPC_TO_VISOR_CONF.PORT = 4444;
-            CLIENT_CONF.RPC_TO_VISOR_CONF.SERVICE_THREADS = 1;
-
-            CLIENT_CONF.RPC_TO_KEEPER_CONF.RPC_IMPLEMENTATION = CHRONOLOG_THALLIUM_SOCKETS;
-            CLIENT_CONF.RPC_TO_KEEPER_CONF.PROTO_CONF = "ofi+sockets";
-            CLIENT_CONF.RPC_TO_KEEPER_CONF.PORT = 8888;
-            CLIENT_CONF.RPC_TO_KEEPER_CONF.SERVICE_THREADS = 1;
-
             /* Authentication-related configurations */
             AUTH_CONF.AUTH_TYPE = "RBAC";
             AUTH_CONF.MODULE_PATH = "";
 
-            /* Visor-local configurations */
+            /* Visor-related configurations */
+            VISOR_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.RPC_IMPLEMENTATION = CHRONOLOG_THALLIUM_SOCKETS;
+            VISOR_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.PROTO_CONF = "ofi+sockets";
+            VISOR_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP = "127.0.0.1";
+            VISOR_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT = 5555;
+            VISOR_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID = 55;
 
-            /* Client-local configurations */
+            VISOR_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.RPC_CONF.RPC_IMPLEMENTATION = CHRONOLOG_THALLIUM_SOCKETS;
+            VISOR_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.RPC_CONF.PROTO_CONF = "ofi+sockets";
+            VISOR_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.RPC_CONF.IP = "127.0.0.1";
+            VISOR_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.RPC_CONF.BASE_PORT = 8888;
+            VISOR_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID = 88;
 
-            /* Keeper-local configurations */
+            /* Keeper-related configurations */
+            KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.RPC_IMPLEMENTATION = CHRONOLOG_THALLIUM_SOCKETS;
+            KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.PROTO_CONF = "ofi+sockets";
+            KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.IP = "127.0.0.1";
+            KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.BASE_PORT = 6666;
+            KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID = 66;
+
+            KEEPER_CONF.KEEPER_DATA_STORE_ADMIN_SERVICE_CONF.RPC_CONF.RPC_IMPLEMENTATION = CHRONOLOG_THALLIUM_SOCKETS;
+            KEEPER_CONF.KEEPER_DATA_STORE_ADMIN_SERVICE_CONF.RPC_CONF.PROTO_CONF = "ofi+sockets";
+            KEEPER_CONF.KEEPER_DATA_STORE_ADMIN_SERVICE_CONF.RPC_CONF.IP = "127.0.0.1";
+            KEEPER_CONF.KEEPER_DATA_STORE_ADMIN_SERVICE_CONF.RPC_CONF.BASE_PORT = 7777;
+            KEEPER_CONF.KEEPER_DATA_STORE_ADMIN_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID = 77;
+
+            KEEPER_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.RPC_CONF.RPC_IMPLEMENTATION = CHRONOLOG_THALLIUM_SOCKETS;
+            KEEPER_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.RPC_CONF.PROTO_CONF = "ofi+sockets";
+            KEEPER_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.RPC_CONF.IP = "127.0.0.1";
+            KEEPER_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.RPC_CONF.BASE_PORT = 8888;
+            KEEPER_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID = 88;
+
+            /* Client-related configurations */
+            CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.RPC_IMPLEMENTATION = CHRONOLOG_THALLIUM_SOCKETS;
+            CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.PROTO_CONF = "ofi+sockets";
+            CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT = 5555;
+            CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID = 55;
 
             PrintConf();
         }
@@ -247,56 +241,7 @@ namespace ChronoLog
                              "Error: %s\n", conf_file_path.c_str(), "clock configuration is not an object");
                         exit(CL_ERR_INVALID_CONF);
                     }
-                    json_object_object_foreach(clock_conf, key, val)
-                    {
-                        if (strcmp(key, "clocksource_type") == 0)
-                        {
-                            if (json_object_is_type(val, json_type_string))
-                            {
-                                const char *clocksource_type = json_object_get_string(val);
-                                if (strcmp(clocksource_type, "C_STYLE") == 0)
-                                    CLOCK_CONF.CLOCKSOURCE_TYPE = ClocksourceType::C_STYLE;
-                                else if (strcmp(clocksource_type, "CPP_STYLE") == 0)
-                                    CLOCK_CONF.CLOCKSOURCE_TYPE = ClocksourceType::CPP_STYLE;
-                                else if (strcmp(clocksource_type, "TSC") == 0)
-                                    CLOCK_CONF.CLOCKSOURCE_TYPE = ClocksourceType::TSC;
-                                else
-                                    LOGI("Unknown clocksource type: %s", clocksource_type);
-                            }
-                            else
-                            {
-                                LOGE("Error during parsing configuration file %s\n"
-                                     "Error: %s\n", conf_file_path.c_str(), "clocksource_type is not a string");
-                                exit(CL_ERR_INVALID_CONF);
-                            }
-                        }
-                        else if (strcmp(key, "drift_cal_sleep_sec") == 0)
-                        {
-                            if (json_object_is_type(val, json_type_int))
-                            {
-                                CLOCK_CONF.DRIFT_CAL_SLEEP_SEC = json_object_get_int(val);
-                            }
-                            else
-                            {
-                                LOGE("Error during parsing configuration file %s\n"
-                                     "Error: %s\n", conf_file_path.c_str(), "drift_cal_sleep_sec is not an integer");
-                                exit(CL_ERR_INVALID_CONF);
-                            }
-                        }
-                        else if (strcmp(key, "drift_cal_sleep_nsec") == 0)
-                        {
-                            if (json_object_is_type(val, json_type_int))
-                            {
-                                CLOCK_CONF.DRIFT_CAL_SLEEP_NSEC = json_object_get_int(val);
-                            }
-                            else
-                            {
-                                LOGE("Error during parsing configuration file %s\n"
-                                     "Error: %s\n", conf_file_path.c_str(), "drift_cal_sleep_nsec is not an integer");
-                                exit(CL_ERR_INVALID_CONF);
-                            }
-                        }
-                    }
+                    parseClockConf(clock_conf);
                 }
                 else if (strcmp(key, "authentication") == 0)
                 {
@@ -308,35 +253,7 @@ namespace ChronoLog
                                                                     "object");
                         exit(CL_ERR_INVALID_CONF);
                     }
-                    json_object_object_foreach(auth_conf, key, val)
-                    {
-                        if (strcmp(key, "auth_type") == 0)
-                        {
-                            if (json_object_is_type(val, json_type_string))
-                            {
-                                AUTH_CONF.AUTH_TYPE = json_object_get_string(val);
-                            }
-                            else
-                            {
-                                LOGE("Error during parsing configuration file %s\n"
-                                     "Error: %s\n", conf_file_path.c_str(), "auth_type is not a string");
-                                exit(CL_ERR_INVALID_CONF);
-                            }
-                        }
-                        else if (strcmp(key, "module_location") == 0)
-                        {
-                            if (json_object_is_type(val, json_type_string))
-                            {
-                                AUTH_CONF.MODULE_PATH = json_object_get_string(val);
-                            }
-                            else
-                            {
-                                LOGE("Error during parsing configuration file %s\n"
-                                     "Error: %s\n", conf_file_path.c_str(), "module_location is not a string");
-                                exit(CL_ERR_INVALID_CONF);
-                            }
-                        }
-                    }
+                    parseAuthConf(auth_conf);
                 }
                 else if (strcmp(key, "chrono_visor") == 0)
                 {
@@ -347,50 +264,7 @@ namespace ChronoLog
                              "Error: %s\n", conf_file_path.c_str(), "chrono_visor configuration is not an object");
                         exit(CL_ERR_INVALID_CONF);
                     }
-                    json_object_object_foreach(chrono_visor_conf, key, val)
-                    {
-                        if (strcmp(key, "rpc_from_client") == 0)
-                        {
-                            json_object *rpc_from_client_conf = json_object_object_get(chrono_visor_conf, "rpc_from_client");
-                            if (rpc_from_client_conf == nullptr ||
-                                !json_object_is_type(rpc_from_client_conf, json_type_object))
-                            {
-                                LOGE("Error during parsing configuration file %s\n"
-                                     "Error: %s\n", conf_file_path.c_str(),
-                                     "rpc_from_client configuration is not an object");
-                                exit(CL_ERR_INVALID_CONF);
-                            }
-                            parseProviderEndConf(rpc_from_client_conf, VISOR_CONF.RPC_FROM_CLIENT_CONF);
-                        }
-                        else if (strcmp(key, "rpc_from_keeper") == 0)
-                        {
-                            json_object *rpc_from_keeper_conf = json_object_object_get(chrono_visor_conf,
-                                                                                    "rpc_from_keeper");
-                            if (rpc_from_keeper_conf == nullptr ||
-                                !json_object_is_type(rpc_from_keeper_conf, json_type_object))
-                            {
-                                LOGE("Error during parsing configuration file %s\n"
-                                     "Error: %s\n", conf_file_path.c_str(),
-                                     "rpc_from_keeper configuration is not an object");
-                                exit(CL_ERR_INVALID_CONF);
-                            }
-                            parseProviderEndConf(rpc_from_keeper_conf, VISOR_CONF.RPC_FROM_KEEPER_CONF);
-                        }
-                        else if (strcmp(key, "rpc_to_keeper") == 0)
-                        {
-                            json_object *rpc_to_keeper_conf = json_object_object_get(chrono_visor_conf,
-                                                                                     "rpc_to_keeper");
-                            if (rpc_to_keeper_conf == nullptr ||
-                                !json_object_is_type(rpc_to_keeper_conf, json_type_object))
-                            {
-                                LOGE("Error during parsing configuration file %s\n"
-                                     "Error: %s\n", conf_file_path.c_str(),
-                                     "rpc_to_keeper configuration is not an object");
-                                exit(CL_ERR_INVALID_CONF);
-                            }
-                            parseConsumerEndConf(rpc_to_keeper_conf, VISOR_CONF.RPC_TO_KEEPER_CONF);
-                        }
-                    }
+                    parseVisorConf(chrono_visor_conf);
                 }
                 else if (strcmp(key, "chrono_keeper") == 0)
                 {
@@ -401,50 +275,7 @@ namespace ChronoLog
                              "Error: %s\n", conf_file_path.c_str(), "chrono_keeper configuration is not an object");
                         exit(CL_ERR_INVALID_CONF);
                     }
-                    json_object_object_foreach(chrono_keeper_conf, key, val)
-                    {
-                        if (strcmp(key, "rpc_from_visor") == 0)
-                        {
-                            json_object *rpc_from_visor_conf = json_object_object_get(chrono_keeper_conf,
-                                                                                      "rpc_from_visor");
-                            if (rpc_from_visor_conf == nullptr ||
-                                !json_object_is_type(rpc_from_visor_conf, json_type_object))
-                            {
-                                LOGE("Error during parsing configuration file %s\n"
-                                     "Error: %s\n", conf_file_path.c_str(),
-                                     "rpc_from_visor configuration is not an object");
-                                exit(CL_ERR_INVALID_CONF);
-                            }
-                            parseProviderEndConf(rpc_from_visor_conf, KEEPER_CONF.RPC_FROM_VISOR_CONF);
-                        }
-                        else if (strcmp(key, "rpc_from_client") == 0)
-                        {
-                            json_object *rpc_from_client_conf = json_object_object_get(chrono_keeper_conf, "rpc_from_client");
-                            if (rpc_from_client_conf == nullptr ||
-                                !json_object_is_type(rpc_from_client_conf, json_type_object))
-                            {
-                                LOGE("Error during parsing configuration file %s\n"
-                                     "Error: %s\n", conf_file_path.c_str(),
-                                     "rpc_from_client configuration is not an object");
-                                exit(CL_ERR_INVALID_CONF);
-                            }
-                            parseProviderEndConf(rpc_from_client_conf, KEEPER_CONF.RPC_FROM_CLIENT_CONF);
-                        }
-                        else if (strcmp(key, "rpc_to_visor") == 0)
-                        {
-                            json_object *rpc_to_visor_conf = json_object_object_get(chrono_keeper_conf,
-                                                                                     "rpc_to_visor");
-                            if (rpc_to_visor_conf == nullptr ||
-                                !json_object_is_type(rpc_to_visor_conf, json_type_object))
-                            {
-                                LOGE("Error during parsing configuration file %s\n"
-                                     "Error: %s\n", conf_file_path.c_str(),
-                                     "rpc_to_visor configuration is not an object");
-                                exit(CL_ERR_INVALID_CONF);
-                            }
-                            parseConsumerEndConf(rpc_to_visor_conf, KEEPER_CONF.RPC_TO_VISOR_CONF);
-                        }
-                    }
+                    parseKeeperConf(chrono_keeper_conf);
                 }
                 else if (strcmp(key, "chrono_client") == 0)
                 {
@@ -455,37 +286,7 @@ namespace ChronoLog
                              "Error: %s\n", conf_file_path.c_str(), "chrono_client configuration is not an object");
                         exit(CL_ERR_INVALID_CONF);
                     }
-                    json_object_object_foreach(chrono_client_conf, key, val)
-                    {
-                        if (strcmp(key, "rpc_to_visor") == 0)
-                        {
-                            json_object *rpc_to_visor_conf = json_object_object_get(chrono_client_conf,
-                                                                                    "rpc_to_visor");
-                            if (rpc_to_visor_conf == nullptr ||
-                                !json_object_is_type(rpc_to_visor_conf, json_type_object))
-                            {
-                                LOGE("Error during parsing configuration file %s\n"
-                                     "Error: %s\n", conf_file_path.c_str(),
-                                     "rpc_to_visor configuration is not an object");
-                                exit(CL_ERR_INVALID_CONF);
-                            }
-                            parseConsumerEndConf(rpc_to_visor_conf, CLIENT_CONF.RPC_TO_VISOR_CONF);
-                        }
-                        else if (strcmp(key, "rpc_to_keeper") == 0)
-                        {
-                            json_object *rpc_to_keeper_conf = json_object_object_get(chrono_client_conf,
-                                                                                    "rpc_to_keeper");
-                            if (rpc_to_keeper_conf == nullptr ||
-                                !json_object_is_type(rpc_to_keeper_conf, json_type_object))
-                            {
-                                LOGE("Error during parsing configuration file %s\n"
-                                     "Error: %s\n", conf_file_path.c_str(),
-                                     "rpc_to_keeper configuration is not an object");
-                                exit(CL_ERR_INVALID_CONF);
-                            }
-                            parseConsumerEndConf(rpc_to_keeper_conf, CLIENT_CONF.RPC_TO_KEEPER_CONF);
-                        }
-                    }
+                    parseClientConf(chrono_client_conf);
                 }
                 else
                 {
@@ -526,41 +327,95 @@ namespace ChronoLog
             }
         }
 
-        void parseConsumerEndConf(json_object *json_conf, RPCConsumerEndConf &rpc_consumer_conf)
+        void parseClockConf(json_object *clock_conf)
         {
-            assert(json_object_is_type(json_conf, json_type_object));
-            json_object_object_foreach(json_conf, key, val)
+            json_object_object_foreach(clock_conf, key, val)
             {
-                if (strcmp(key, "rpc_implementation") == 0)
+                if (strcmp(key, "clocksource_type") == 0)
                 {
-                    assert(json_object_is_type(val, json_type_string));
-                    parseRPCImplConf(val, rpc_consumer_conf.RPC_IMPLEMENTATION);
+                    if (json_object_is_type(val, json_type_string))
+                    {
+                        const char *clocksource_type = json_object_get_string(val);
+                        if (strcmp(clocksource_type, "C_STYLE") == 0)
+                            CLOCK_CONF.CLOCKSOURCE_TYPE = ClocksourceType::C_STYLE;
+                        else if (strcmp(clocksource_type, "CPP_STYLE") == 0)
+                            CLOCK_CONF.CLOCKSOURCE_TYPE = ClocksourceType::CPP_STYLE;
+                        else if (strcmp(clocksource_type, "TSC") == 0)
+                            CLOCK_CONF.CLOCKSOURCE_TYPE = ClocksourceType::TSC;
+                        else
+                            LOGI("Unknown clocksource type: %s", clocksource_type);
+                    }
+                    else
+                    {
+                        LOGE("clocksource_type is not a string");
+                        exit(CL_ERR_INVALID_CONF);
+                    }
                 }
-                else if (strcmp(key, "protocol_conf") == 0)
+                else if (strcmp(key, "drift_cal_sleep_sec") == 0)
                 {
-                    assert(json_object_is_type(val, json_type_string));
-                    rpc_consumer_conf.PROTO_CONF = json_object_get_string(val);
+                    if (json_object_is_type(val, json_type_int))
+                    {
+                        CLOCK_CONF.DRIFT_CAL_SLEEP_SEC = json_object_get_int(val);
+                    }
+                    else
+                    {
+                        LOGE("drift_cal_sleep_sec is not an integer");
+                        exit(CL_ERR_INVALID_CONF);
+                    }
                 }
-                else if (strcmp(key, "port") == 0)
+                else if (strcmp(key, "drift_cal_sleep_nsec") == 0)
                 {
-                    assert(json_object_is_type(val, json_type_int));
-                    rpc_consumer_conf.PORT = json_object_get_int(val);
-                }
-                else if (strcmp(key, "service_threads") == 0)
-                {
-                    assert(json_object_is_type(val, json_type_int));
-                    rpc_consumer_conf.SERVICE_THREADS = json_object_get_int(val);
-                }
-                else
-                {
-                    LOGE("Unknown client end configuration: %s", key);
+                    if (json_object_is_type(val, json_type_int))
+                    {
+                        CLOCK_CONF.DRIFT_CAL_SLEEP_NSEC = json_object_get_int(val);
+                    }
+                    else
+                    {
+                        LOGE("drift_cal_sleep_nsec is not an integer");
+                        exit(CL_ERR_INVALID_CONF);
+                    }
                 }
             }
         }
 
-        void parseProviderEndConf(json_object *json_conf, RPCProviderEndConf &rpc_provider_conf)
+        void parseAuthConf(json_object *auth_conf)
         {
-            assert(json_object_is_type(json_conf, json_type_object));
+            if (auth_conf == nullptr || !json_object_is_type(auth_conf, json_type_object))
+            {
+                LOGE("authentication configuration is not an object");
+                exit(CL_ERR_INVALID_CONF);
+            }
+            json_object_object_foreach(auth_conf, key, val)
+            {
+                if (strcmp(key, "auth_type") == 0)
+                {
+                    if (json_object_is_type(val, json_type_string))
+                    {
+                        AUTH_CONF.AUTH_TYPE = json_object_get_string(val);
+                    }
+                    else
+                    {
+                        LOGE("auth_type is not a string");
+                        exit(CL_ERR_INVALID_CONF);
+                    }
+                }
+                else if (strcmp(key, "module_location") == 0)
+                {
+                    if (json_object_is_type(val, json_type_string))
+                    {
+                        AUTH_CONF.MODULE_PATH = json_object_get_string(val);
+                    }
+                    else
+                    {
+                        LOGE("module_location is not a string");
+                        exit(CL_ERR_INVALID_CONF);
+                    }
+                }
+            }
+        }
+
+        void parseRPCProviderConf(json_object *json_conf, RPCProviderConf &rpc_provider_conf)
+        {
             json_object_object_foreach(json_conf, key, val)
             {
                 if (strcmp(key, "rpc_implementation") == 0)
@@ -573,12 +428,12 @@ namespace ChronoLog
                     assert(json_object_is_type(val, json_type_string));
                     rpc_provider_conf.PROTO_CONF = json_object_get_string(val);
                 }
-                else if (strcmp(key, "ip") == 0)
+                else if (strcmp(key, "service_ip") == 0)
                 {
                     assert(json_object_is_type(val, json_type_string));
                     rpc_provider_conf.IP = json_object_get_string(val);
                 }
-                else if (strcmp(key, "base_port") == 0)
+                else if (strcmp(key, "service_base_port") == 0)
                 {
                     assert(json_object_is_type(val, json_type_int));
                     rpc_provider_conf.BASE_PORT = json_object_get_int(val);
@@ -588,56 +443,148 @@ namespace ChronoLog
                     assert(json_object_is_type(val, json_type_int));
                     rpc_provider_conf.SERVICE_PROVIDER_ID = json_object_get_int(val);
                 }
-                else if (strcmp(key, "ports") == 0)
-                {
-                    assert(json_object_is_type(val, json_type_int));
-                    rpc_provider_conf.PORTS = json_object_get_int(val);
-                }
-                else if (strcmp(key, "service_threads") == 0)
-                {
-                    assert(json_object_is_type(val, json_type_int));
-                    rpc_provider_conf.SERVICE_THREADS = json_object_get_int(val);
-                }
                 else
                 {
-                    LOGE("Unknown visor end configuration: %s", key);
+                    LOGE("Unknown client end configuration: %s", key);
                 }
             }
         }
 
-        void parseVisorLocalConf(json_object *json_conf)
+        void parseVisorConf(json_object *json_conf)
         {
-            assert(json_object_is_type(json_conf, json_type_object));
             json_object_object_foreach(json_conf, key, val)
             {
-                if (strcmp(key, "visor_local_ip") == 0)
+                if (strcmp(key, "VisorClientPortalService") == 0)
                 {
-                    assert(json_object_is_type(val, json_type_string));
-                    const char *visor_local_ip = json_object_get_string(val);
-                    LOGI("Visor local IP: %s", visor_local_ip);
+                    assert(json_object_is_type(val, json_type_object));
+                    json_object *visor_client_portal_service_conf = json_object_object_get(json_conf,
+                                                                                           "VisorClientPortalService");
+                    json_object_object_foreach(visor_client_portal_service_conf, key, val)
+                    {
+                        if (strcmp(key, "rpc") == 0)
+                        {
+                            parseRPCProviderConf(val, VISOR_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF);
+                        }
+                        else
+                        {
+                            LOGE("Unknown VisorClientPortalService configuration: %s", key);
+                        }
+                    }
                 }
-                else if (strcmp(key, "visor_local_port") == 0)
+                else if (strcmp(key, "VisorKeeperRegistryService") == 0)
                 {
-                    assert(json_object_is_type(val, json_type_int));
-                    int visor_local_port = json_object_get_int(val);
-                    LOGI("Visor local port: %d", visor_local_port);
+                    assert(json_object_is_type(val, json_type_object));
+                    json_object *visor_keeper_registry_service_conf = json_object_object_get(json_conf,
+                                                                                             "VisorKeeperRegistryService");
+                    json_object_object_foreach(visor_keeper_registry_service_conf, key, val)
+                    {
+                        if (strcmp(key, "rpc") == 0)
+                        {
+                            parseRPCProviderConf(val, VISOR_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.RPC_CONF);
+                        }
+                        else
+                        {
+                            LOGE("Unknown VisorKeeperRegistryService configuration: %s", key);
+                        }
+                    }
                 }
                 else
                 {
-                    LOGE("Unknown visor local configuration: %s", key);
+                    LOGE("Unknown visor configuration: %s", key);
                 }
             }
         }
 
-        void parseClientLocalConf(json_object *json_conf)
+        void parseKeeperConf(json_object *json_conf)
         {
-            assert(json_object_is_type(json_conf, json_type_object));
+            json_object_object_foreach(json_conf, key, val)
+            {
+                if (strcmp(key, "KeeperRecordingService") == 0)
+                {
+                    assert(json_object_is_type(val, json_type_object));
+                    json_object *keeper_recording_service_conf = json_object_object_get(json_conf,
+                                                                                         "KeeperRecordingService");
+                    json_object_object_foreach(keeper_recording_service_conf, key, val)
+                    {
+                        if (strcmp(key, "rpc") == 0)
+                        {
+                            parseRPCProviderConf(val, KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF);
+                        }
+                        else
+                        {
+                            LOGE("Unknown KeeperRecordingService configuration: %s", key);
+                        }
+                    }
+                }
+                else if (strcmp(key, "KeeperDataStoreAdminService") == 0)
+                {
+                    assert(json_object_is_type(val, json_type_object));
+                    json_object *keeper_data_store_admin_service_conf = json_object_object_get(json_conf,
+                                                                                               "KeeperDataStoreAdminService");
+                    json_object_object_foreach(keeper_data_store_admin_service_conf, key, val)
+                    {
+                        if (strcmp(key, "rpc") == 0)
+                        {
+                            parseRPCProviderConf(val, KEEPER_CONF.KEEPER_DATA_STORE_ADMIN_SERVICE_CONF.RPC_CONF);
+                        }
+                        else
+                        {
+                            LOGE("Unknown KeeperDataStoreAdminService configuration: %s", key);
+                        }
+                    }
+                }
+                else if (strcmp(key, "VisorKeeperRegistryService") == 0)
+                {
+                    assert(json_object_is_type(val, json_type_object));
+                    json_object *visor_keeper_registry_service_conf = json_object_object_get(json_conf,
+                                                                                             "VisorKeeperRegistryService");
+                    json_object_object_foreach(visor_keeper_registry_service_conf, key, val)
+                    {
+                        if (strcmp(key, "rpc") == 0)
+                        {
+                            parseRPCProviderConf(val, KEEPER_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.RPC_CONF);
+                        }
+                        else
+                        {
+                            LOGE("Unknown VisorKeeperRegistryService configuration: %s", key);
+                        }
+                    }
+                }
+                else
+                {
+                    LOGE("Unknown keeper configuration: %s", key);
+                }
+            }
         }
 
-        void parseKeeperLocalConf(json_object *json_conf)
+        void parseClientConf(json_object *json_conf)
         {
-            assert(json_object_is_type(json_conf, json_type_object));
+            json_object_object_foreach(json_conf, key, val)
+            {
+                if (strcmp(key, "VisorClientPortalService") == 0)
+                {
+                    assert(json_object_is_type(val, json_type_object));
+                    json_object *visor_client_portal_service_conf = json_object_object_get(json_conf,
+                                                                                           "VisorClientPortalService");
+                    json_object_object_foreach(visor_client_portal_service_conf, key, val)
+                    {
+                        if (strcmp(key, "rpc") == 0)
+                        {
+                            parseRPCProviderConf(val, CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF);
+                        }
+                        else
+                        {
+                            LOGE("Unknown VisorClientPortalService configuration: %s", key);
+                        }
+                    }
+                }
+                else
+                {
+                    LOGE("Unknown client configuration: %s", key);
+                }
+            }
         }
+
     };
 }
 
