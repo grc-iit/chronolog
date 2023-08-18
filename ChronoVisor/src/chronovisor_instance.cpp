@@ -1,9 +1,12 @@
 
 //#include "ChronoVisorServer2.h"
+#include <unistd.h>
 
 #include "KeeperRegistry.h"
 
 #include "VisorClientPortal.h"
+
+#include "cmd_arg_parse.h"
 
 ///////////////////////////////////////////////
 int main(int argc, char** argv) 
@@ -21,7 +24,15 @@ int main(int argc, char** argv)
     // If we can't ensure the instantiation of registries on the main thread
     // we'd need to add static mutex protection to all the registry singleton objects
 
-    ChronoLog::ConfigurationManager confManager("./default_conf.json");
+    std::string default_conf_file_path = "./default_conf.json";
+    std::string conf_file_path;
+    conf_file_path = parse_conf_path_arg(argc, argv);
+    if (conf_file_path.empty())
+    {
+        conf_file_path = default_conf_file_path;
+    }
+
+    ChronoLog::ConfigurationManager confManager(conf_file_path);
 
     chronolog::VisorClientPortal theChronoVisorPortal; // confManager);
 
@@ -29,7 +40,7 @@ int main(int argc, char** argv)
 
    // ChronoVisor::ChronoVisorServer2 visor(confManager);
 
-    keeperRegistry.InitializeRegistryService( confManager);//provider_id=22);
+    keeperRegistry.InitializeRegistryService(confManager);//provider_id=22);
 
 //    visor.start(&keeperRegistry);
 
@@ -38,9 +49,9 @@ int main(int argc, char** argv)
     
     /////
 
-     while( !keeperRegistry.is_shutting_down())
+    while (!keeperRegistry.is_shutting_down())
     {
-       sleep(60);
+        sleep(60);
     }
 	
 

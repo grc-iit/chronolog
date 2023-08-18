@@ -3,19 +3,19 @@ find_package(Threads REQUIRED)
 
 add_executable(chronovisor_server)
 
-target_sources ( chronovisor_server PRIVATE
-	./src/chronovisor_instance.cpp
-    ./src/VisorClientPortal.cpp
-	#../ChronoAPI/ChronoLog/src/ClocksourceManager.cpp
+target_sources(chronovisor_server PRIVATE
+        ./src/chronovisor_instance.cpp
+        ./src/VisorClientPortal.cpp
+#        ../ChronoAPI/ChronoLog/src/ClocksourceManager.cpp
         ./src/ClientRegistryManager.cpp
         ./src/ClientRegistryRecord.cpp
         ./src/ChronicleMetaDirectory.cpp
-	./src/KeeperRegistry.cpp
+        ./src/KeeperRegistry.cpp
         ../ChronoAPI/ChronoLog/src/city.cpp)
 
 target_include_directories(chronovisor_server PRIVATE
         ../ChronoAPI/ChronoLog/include
-	../chrono_common
+        ../chrono_common
         ./include)
 
 target_link_libraries(chronovisor_server chronolog_client thallium)

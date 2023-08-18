@@ -8,7 +8,7 @@
 #include <arpa/inet.h>
 
 template<typename F>
-void ChronoLogRPC::bind(const ChronoLogCharStruct &str, F func) {
+void ChronoLogRPC::bind(const std::string &str, F func) {
     switch (CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION) {
         case CHRONOLOG_THALLIUM_TCP:
         case CHRONOLOG_THALLIUM_SOCKETS:
@@ -22,8 +22,10 @@ void ChronoLogRPC::bind(const ChronoLogCharStruct &str, F func) {
 }
 
 template<typename Response, typename... Args>
-Response ChronoLogRPC::callWithTimeout(uint16_t server_index, int timeout_ms,
-                                       ChronoLogCharStruct const &func_name, Args... args) {
+Response ChronoLogRPC::callWithTimeout(uint16_t server_index,
+                                       int timeout_ms,
+                                       std::string const &func_name,
+                                       Args... args) {
     int16_t port = baseServerPort_ + server_index;
 
     switch (CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION) {
@@ -39,8 +41,8 @@ Response ChronoLogRPC::callWithTimeout(uint16_t server_index, int timeout_ms,
 
 template<typename Response, typename... Args>
 Response ChronoLogRPC::call(uint16_t server_index,
-                   ChronoLogCharStruct const &func_name,
-                   Args... args) {
+                            std::string const &func_name,
+                            Args... args) {
 //    int16_t port = baseServerPort_ + server_index;
 
     switch (CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION) {
@@ -55,10 +57,10 @@ Response ChronoLogRPC::call(uint16_t server_index,
 }
 
 template<typename Response, typename... Args>
-Response ChronoLogRPC::call(ChronoLogCharStruct &server,
-                   uint16_t &port,
-                   ChronoLogCharStruct const &func_name,
-                   Args... args) {
+Response ChronoLogRPC::call(std::string &server,
+                            uint16_t &port,
+                            std::string const &func_name,
+                            Args... args) {
     switch (CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION) {
         case CHRONOLOG_THALLIUM_TCP:
         case CHRONOLOG_THALLIUM_SOCKETS:
@@ -74,8 +76,8 @@ Response ChronoLogRPC::call(ChronoLogCharStruct &server,
 
 template<typename Response, typename... Args>
 std::future<Response> ChronoLogRPC::async_call(uint16_t server_index,
-                                      ChronoLogCharStruct const &func_name,
-                                      Args... args) {
+                                               std::string const &func_name,
+                                               Args... args) {
 //    int16_t port = baseServerPort_ + server_index;
 
     switch (CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION) {
@@ -98,10 +100,10 @@ std::future<Response> ChronoLogRPC::async_call(uint16_t server_index,
 }
 
 template<typename Response, typename... Args>
-std::future<Response> ChronoLogRPC::async_call(ChronoLogCharStruct &server,
-                                      uint16_t &port,
-                                      ChronoLogCharStruct const &func_name,
-                                      Args... args) {
+std::future<Response> ChronoLogRPC::async_call(std::string &server,
+                                               uint16_t &port,
+                                               std::string const &func_name,
+                                               Args... args) {
     switch (CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION) {
         case CHRONOLOG_THALLIUM_TCP: {
             // TODO: NotImplemented error
