@@ -117,12 +117,14 @@ namespace ChronoLog
         KeeperRecordingServiceConf KEEPER_RECORDING_SERVICE_CONF;
         KeeperDataStoreAdminServiceConf KEEPER_DATA_STORE_ADMIN_SERVICE_CONF;
         VisorKeeperRegistryServiceConf VISOR_KEEPER_REGISTRY_SERVICE_CONF;
+        std::string STORY_FILES_DIR;
 
         [[nodiscard]] std::string to_String() const
         {
             return "[KEEPER_RECORDING_SERVICE_CONF: " + KEEPER_RECORDING_SERVICE_CONF.to_String()
-                   + ", KEEPER_DATA_STORE_ADMIN_SERVICE_CONF: " + KEEPER_DATA_STORE_ADMIN_SERVICE_CONF.to_String()
-                   + ", VISOR_KEEPER_REGISTRY_SERVICE_CONF: " + VISOR_KEEPER_REGISTRY_SERVICE_CONF.to_String() + "]";
+                + ", KEEPER_DATA_STORE_ADMIN_SERVICE_CONF: " + KEEPER_DATA_STORE_ADMIN_SERVICE_CONF.to_String()
+                + ", VISOR_KEEPER_REGISTRY_SERVICE_CONF: " + VISOR_KEEPER_REGISTRY_SERVICE_CONF.to_String() 
+                +", STORY_FILES_DIR:" + STORY_FILES_DIR +"]";
         }
     } KeeperConf;
 
@@ -193,6 +195,8 @@ namespace ChronoLog
             KEEPER_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.RPC_CONF.IP = "127.0.0.1";
             KEEPER_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.RPC_CONF.BASE_PORT = 8888;
             KEEPER_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID = 88;
+
+            KEEPER_CONF.STORY_FILES_DIR="/tmp/";
 
             /* Client-related configurations */
             CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.RPC_IMPLEMENTATION = CHRONOLOG_THALLIUM_SOCKETS;
@@ -549,6 +553,11 @@ namespace ChronoLog
                             LOGE("Unknown VisorKeeperRegistryService configuration: %s", key);
                         }
                     }
+                }
+                else if (strcmp(key, "story_files_dir") == 0) 
+                {
+                    assert(json_object_is_type(val, json_type_string));
+                    KEEPER_CONF.STORY_FILES_DIR = json_object_get_string(val);
                 }
                 else
                 {

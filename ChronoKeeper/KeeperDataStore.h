@@ -6,8 +6,12 @@
 #include <map>
 #include <mutex>
 
+#include <thallium.hpp>
+
 #include "IngestionQueue.h"
 #include "StoryPipeline.h"
+#include "StoryChunkExtractionQueue.h"
+
 
 namespace chronolog
 {
@@ -19,55 +23,52 @@ class KeeperDataStore
 enum DataStoreState
 {
 	UNKNOWN = 0,
-	INITIALIZED =1, //  initialized, no active stories
-	RUNNING	=2,	//  active stories
-	SHUTTING_DOWN=3	// Shutting down services
+	RUNNING	=1,	//  active stories
+	SHUTTING_DOWN=2	// Shutting down services
 };
 
 
 public:
-      KeeperDataStore( IngestionQueue & ingestion_queue)
+    KeeperDataStore( IngestionQueue & ingestion_queue, StoryChunkExtractionQueue & extraction_queue)
 	      : state(UNKNOWN)
 	      , theIngestionQueue(ingestion_queue) 
-      {}
+	      , theExtractionQueue(extraction_queue) 
+    {}
 
-      KeeperDataStore( KeeperDataStore const&) = delete;
-      KeeperDataStore& operator= ( KeeperDataStore const&) = delete;
+    ~KeeperDataStore();
 
-      ~KeeperDataStore();
+    bool is_running() const 
+    { return (RUNNING == state); }
 
-      bool is_initialized() const 
-      { return (INITIALIZED == state); }
+    bool is_shutting_down() const 
+    { return (SHUTTING_DOWN == state); }
 
-      bool is_running() const 
-      { return (RUNNING == state); }
+    int startStoryRecording(ChronicleName const&, StoryName const&, StoryId const&
+		      , uint64_t start_time, uint32_t time_chunk_ranularity=30, uint32_t access_window = 60 ); 
+    int stopStoryRecording(StoryId const&);
 
-      bool is_shutting_down() const 
-      { return (SHUTTING_DOWN == state); }
-
-      int startStoryRecording(ChronicleName const&, StoryName const&, StoryId const&
-		      , uint64_t start_time =0, uint32_t time_chunk_ranularity=30, uint32_t access_window = 60 ); //INNA: dummy values that eventually would come from Visor Metadata 
-      int stopStoryRecording(StoryId const&);
-
-      void collectIngestedEvents();
-
-      int  readStoryFromArchive(std::string const& archiveLocation
-		, std::string const & chronicle, std::string const& story, chronolog::StoryId const & story_id
-		, uint64_t start_time, uint64_t end_time, uint32_t time_chunk_granularity);
-
-      int  writeStoryToArchive(std::string const& archiveLocation
-		, std::string const & chronicle, std::string const& story, chronolog::StoryId const & story_id
-		, uint64_t start_time, uint64_t end_time, uint32_t archive_granularity);
-
-      void shutdownDataCollection();
+    void collectIngestedEvents();
+    void extractDecayedStoryChunks();
+    void retireDecayedPipelines();
+    
+    void startDataCollection(int stream_count);
+    void shutdownDataCollection();
+    void dataCollectionTask();
 
 private:
-      DataStoreState	state;
-      IngestionQueue &   theIngestionQueue;
-      std::mutex dataStoreMutex;
-      std::unordered_map<StoryId, StoryPipeline*> theMapOfStoryPipelines;
-      std::unordered_map<StoryId, StoryPipeline*> pipelinesWaitingForExit; //INNA: we might get away with simple list .. revisit later
+    KeeperDataStore( KeeperDataStore const&) = delete;
+    KeeperDataStore& operator= ( KeeperDataStore const&) = delete;
 
+    DataStoreState	state;
+    std::mutex dataStoreStateMutex;
+    IngestionQueue &   theIngestionQueue;
+    StoryChunkExtractionQueue &   theExtractionQueue;
+    std::vector<thallium::managed<thallium::xstream>> dataStoreStreams;
+    std::vector<thallium::managed<thallium::thread>> dataStoreThreads;
+    
+    std::mutex dataStoreMutex;
+    std::unordered_map<StoryId, StoryPipeline*> theMapOfStoryPipelines;
+    std::unordered_map<StoryId, std::pair<StoryPipeline*, uint64_t>> pipelinesWaitingForExit; 
 
 };
 

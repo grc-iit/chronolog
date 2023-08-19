@@ -55,7 +55,8 @@
         "service_base_port": 8888,
         "service_provider_id": 88
       }
-    }
+    },
+    "story_files_dir" : "/tmp/"
   },
   "chrono_client": {
     "VisorClientPortalService": {

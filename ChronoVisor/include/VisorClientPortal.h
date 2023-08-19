@@ -41,6 +41,7 @@ public:
 	~VisorClientPortal();
 
     int StartServices( ChronoLog::ConfigurationManager const&, KeeperRegistry*);
+    void ShutdownServices();
 
 int ClientConnect( const std::string &uri, std::string const &client_account, uint32_t client_host_ip, ClientId &, uint64_t &clock_offset); //old
 int ClientDisconnect(std::string const& client_account); //, int& flags); //old

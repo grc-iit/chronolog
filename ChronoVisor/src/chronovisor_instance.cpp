@@ -1,16 +1,29 @@
 
-//#include "ChronoVisorServer2.h"
+#include <signal.h>
+//#include "ClocksourceManager.h"
 #include <unistd.h>
 
+#include "cmd_arg_parse.h"
 #include "KeeperRegistry.h"
 
 #include "VisorClientPortal.h"
 
-#include "cmd_arg_parse.h"
+volatile sig_atomic_t keep_running = true;
+
+void sigterm_handler (int)
+{
+    std::cout << "Received SIGTERM, starrt shutting down "<<std::endl;
+
+    keep_running = false;
+    return;
+}
+
 
 ///////////////////////////////////////////////
 int main(int argc, char** argv) 
 {
+
+    signal(SIGTERM, sigterm_handler);
 
     // IMPORTANT NOTE!!!!
     // we need to instantiate Client Registry,
@@ -49,12 +62,14 @@ int main(int argc, char** argv)
     
     /////
 
-    while (!keeperRegistry.is_shutting_down())
+    while( keep_running)
     {
-        sleep(60);
+       sleep(10);
     }
 	
 
+    theChronoVisorPortal.ShutdownServices();
     keeperRegistry.ShutdownRegistryService();
+
     return 0;
 }

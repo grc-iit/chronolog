@@ -43,8 +43,9 @@ int chronolog::VisorClientPortal::StartServices(ChronoLog::ConfigurationManager 
     theKeeperRegistry = keeperRegistry;
 
 
-    // if(visorPortalState == UNKNOWN)
-    // {
+    if(clientPortalState != UNKNOWN)
+    { return 1; }
+    
     //INNA: TODO: add exception handling ...
     // initialise thalium engine for KeeperRegistryService
 
@@ -55,41 +56,47 @@ int chronolog::VisorClientPortal::StartServices(ChronoLog::ConfigurationManager 
 
     uint16_t provider_id = confManager.VISOR_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID;
 
-    margo_instance_id margo_id = margo_init(CLIENT_PORTAL_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1,
-                                            1); // Kun: hardcode 1 thread for now
-
-    if (MARGO_INSTANCE_NULL == margo_id)
+ 
+    margo_instance_id margo_id=margo_init(CLIENT_PORTAL_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 2);
+ 
+    if(MARGO_INSTANCE_NULL == margo_id)
     {
-        std::cout << "VisorClientPortal : Failed to initialize margo_instance" << std::endl;
+        std::cout<<"VisorClientPortal : Failed to initialize margo_instance"<<std::endl;
         return -1;
     }
-    std::cout << "VisorClientPortal::margo_instance initialized with NA_STRING"
-              << "{" << CLIENT_PORTAL_SERVICE_NA_STRING << "}" << std::endl;
 
-    clientPortalEngine = new tl::engine(margo_id);
-
-    clientPortalService =
-            chl::ClientPortalService::CreateClientPortalService(*clientPortalEngine, provider_id, *this);
-
-    //    visorPortalState = INITIALIZED;
-    //}
-    clientPortalEngine->wait_for_finalize();
-
+    std::cout<<"VisorClientPortal : :margo_instance initialized with NA_STRING"
+              << "{"<<CLIENT_PORTAL_SERVICE_NA_STRING<<"}" <<std::endl;
+ 
+    clientPortalEngine =  new tl::engine(margo_id);
+ 
+    clientPortalService = chl::ClientPortalService::CreateClientPortalService(*clientPortalEngine, provider_id, *this);
+  
+    clientPortalState = INITIALIZED;
+        
+    //INNA: commented out as this line blocks main thread at the moment
+    //  clientPortalEngine->wait_for_finalize();
+ 
     return CL_SUCCESS;
 }
 
+void chronolog::VisorClientPortal::ShutdownServices()
+{
+    clientPortalState = SHUTTING_DOWN;
+    //INNA: revisit this later, as more work might be needed to shutdown gracefully...
+}
 /////////////////
 chronolog::VisorClientPortal::~VisorClientPortal()
 {
     std::cout << "VisorClientPortal::~VisorClientPortal" << std::endl;
 
-    //ShutdownServices();
-    // TODO : check that everything is kosher here ... 
-    if (clientPortalService != nullptr)
-    { delete clientPortalService; }
-
-    if (clientPortalEngine != nullptr)
-    { delete clientPortalEngine; }
+    ShutdownServices();
+    
+    if(clientPortalService != nullptr)
+    {   delete clientPortalService; }
+    
+    if(clientPortalEngine != nullptr)
+    {   delete clientPortalEngine;   }
 
 }
 
