@@ -43,7 +43,7 @@ int chronolog::VisorClientPortal::StartServices(ChronoLog::ConfigurationManager 
     theKeeperRegistry = keeperRegistry;
 
 
-    if(visorPortalState != UNKNOWN)
+    if(clientPortalState != UNKNOWN)
     { return 1; }
     
     //INNA: TODO: add exception handling ...

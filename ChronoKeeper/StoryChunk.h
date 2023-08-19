@@ -22,7 +22,6 @@ namespace chronolog
     typedef std::tuple<chrono_time, ClientId, chrono_index> EventSequence;
 
 
-<<<<<<< HEAD
 class StoryChunk
 {
 public:

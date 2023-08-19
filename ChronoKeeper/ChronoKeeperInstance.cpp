@@ -78,12 +78,9 @@ int main(int argc, char **argv)
     ChronoLog::ConfigurationManager confManager(conf_file_path);
     // Instantiate ChronoKeeper MemoryDataStore
     //
-    chronolog::IngestionQueue ingestionQueue;
-    chronolog::KeeperDataStore theDataStore(ingestionQueue);
 
     // instantiate DataStoreAdminService
     uint64_t keeper_group_id = KEEPER_GROUP_ID;
-    std::string keeper_csv_files_directory= confManager.KEEPER_CONF.STORY_FILES_DIR;
 
     std::string datastore_service_ip = confManager.KEEPER_CONF.KEEPER_DATA_STORE_ADMIN_SERVICE_CONF.RPC_CONF.IP;
     int datastore_service_port = confManager.KEEPER_CONF.KEEPER_DATA_STORE_ADMIN_SERVICE_CONF.RPC_CONF.BASE_PORT;
@@ -103,8 +100,6 @@ int main(int argc, char **argv)
     	std::cout<<"invalid DataStoreAdmin service address"<<std::endl;
 	    return (-1);
     }	  
-
-    chronolog::ServiceId collectionServiceId(datastore_endpoint.first,datastore_endpoint.second, datastore_service_provider_id);
 
     // Instantiate KeeperRecordingService 
 
@@ -132,6 +127,7 @@ int main(int argc, char **argv)
 
     // Instantiate ChronoKeeper MemoryDataStore & ExtractorModule
     chronolog::IngestionQueue ingestionQueue;
+    std::string keeper_csv_files_directory= confManager.KEEPER_CONF.STORY_FILES_DIR;
     chronolog::CSVFileStoryChunkExtractor storyExtractor( keeperIdCard, keeper_csv_files_directory); 
     chronolog::KeeperDataStore theDataStore(ingestionQueue, storyExtractor.getExtractionQueue());
 
@@ -147,14 +143,6 @@ int main(int argc, char **argv)
                                              datastore_service_provider_id);
 
 
-    margo_instance_id collection_margo_id = margo_init(KEEPER_DATASTORE_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1,
-                                                       1);
-
-    if (MARGO_INSTANCE_NULL == collection_margo_id)
-    {
-        std::cout << "FAiled to initialise collection_margo_instance" << std::endl;
-        return 1;
-    }
     std::cout << "collection_margo_instance initialized" << std::endl;
 
     tl::engine collectionEngine(collection_margo_id);
@@ -177,13 +165,6 @@ int main(int argc, char **argv)
       return 1;
     }
 
-    margo_instance_id margo_id = margo_init(KEEPER_RECORDING_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 1);
-
-    if (MARGO_INSTANCE_NULL == margo_id)
-    {
-        std::cout << "FAiled to initialise margo_instance" << std::endl;
-        return 1;
-    }
     std::cout << "margo_instance initialized" << std::endl;
 
     tl::engine recordingEngine(margo_id);
