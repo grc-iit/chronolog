@@ -19,20 +19,15 @@ uint64_t get_chrono_timestamp()
 
 int main(int argc, char **argv)
 {
-//    if (argc != 3)
-//    {
-//        std::cerr << "Usage: " << argv[0] << " <address> <provider_id>" << std::endl;
-//        exit(0);
-//    }
-    ChronoLog::ConfigurationManager confManager("./default_conf.json");
-    std::string proto_conf = confManager.RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF.string();
-    tl::engine myEngine(proto_conf, THALLIUM_CLIENT_MODE);
+    if (argc != 3)
+    {
+        std::cerr << "Usage: " << argv[0] << " <address> <provider_id>" << std::endl;
+        exit(0);
+    }
+    tl::engine myEngine("ofi+sockets", THALLIUM_CLIENT_MODE);
     tl::remote_procedure record_event = myEngine.define("record_event");
-    std::string visor_uri = proto_conf + "://"
-                            + confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string() + ":"
-                            + std::to_string(confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT);
-    tl::endpoint server = myEngine.lookup(visor_uri);
-    uint16_t provider_id = confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.SERVICE_PROVIDER_ID;
+    tl::endpoint server = myEngine.lookup(argv[1]);
+    uint16_t provider_id = atoi(argv[2]);
 
 
 

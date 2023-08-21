@@ -53,6 +53,7 @@ public:
 
     ~KeeperRegistryClient()
     {
+        std::cout<<"KeeperRegistryClient::~KeeperRegistryClinet()"<<std::endl;
 	   register_keeper.deregister();
 	   unregister_keeper.deregister();
            handle_stats_msg.deregister(); 
