@@ -133,13 +133,13 @@ deploy() {
     echo "Deploying ..."
 
     # launch Visor
-    mpssh -f ${VISOR_HOSTS} "cd ${BIN_DIR}; nohup LD_LIBRARY_PATH=${CONF_DIR}${VISOR_BIN} ${VISOR_ARGS} > ${VISOR_BIN_FILE_NAME}.\$(hostname) 2>&1 &"
+    mpssh -f ${VISOR_HOSTS} "cd ${BIN_DIR}; LD_LIBRARY_PATH=${LIB_DIR} nohup ${VISOR_BIN} ${VISOR_ARGS} > ${VISOR_BIN_FILE_NAME}.\$(hostname) 2>&1 &"
 
     # launch Keeper
-    mpssh -f ${KEEPER_HOSTS} "cd ${BIN_DIR}; nohup LD_LIBRARY_PATH=${CONF_DIR} ${KEEPER_BIN} ${KEEPER_ARGS} > ${KEEPER_BIN_FILE_NAME}.\$(hostname) 2>&1 &"
+    mpssh -f ${KEEPER_HOSTS} "cd ${BIN_DIR}; LD_LIBRARY_PATH=${LIB_DIR} nohup ${KEEPER_BIN} ${KEEPER_ARGS} > ${KEEPER_BIN_FILE_NAME}.\$(hostname) 2>&1 &"
 
     # launch Client
-    mpssh -f ${CLIENT_HOSTS} "cd ${BIN_DIR}; nohup LD_LIBRARY_PATH=${CONF_DIR} ${CLIENT_BIN} ${CLIENT_ARGS} > ${CLIENT_BIN_FILE_NAME}.\$(hostname) 2>&1 &"
+    mpssh -f ${CLIENT_HOSTS} "cd ${BIN_DIR}; LD_LIBRARY_PATH=${LIB_DIR} nohup ${CLIENT_BIN} ${CLIENT_ARGS} > ${CLIENT_BIN_FILE_NAME}.\$(hostname) 2>&1 &"
 
     # check Visor
     mpssh -f ${VISOR_HOSTS} "pgrep -fla ${VISOR_BIN_FILE_NAME}"
