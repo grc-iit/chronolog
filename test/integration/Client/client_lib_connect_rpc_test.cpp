@@ -9,13 +9,21 @@
 #include "chronolog_client.h"
 #include "common.h"
 #include <cassert>
+#include <cmd_arg_parse.h>
 
 #define NUM_CONNECTION (1)
 
-int main()
+int main(int argc, char **argv)
 {
-    ChronoLogRPCImplementation protocol = CHRONOLOG_THALLIUM_SOCKETS;
-    ChronoLog::ConfigurationManager confManager("./default_conf.json");
+    std::string default_conf_file_path = "./default_conf.json";
+    std::string conf_file_path;
+    conf_file_path = parse_conf_path_arg(argc, argv);
+    if (conf_file_path.empty())
+    {
+        conf_file_path = default_conf_file_path;
+    }
+
+    ChronoLog::ConfigurationManager confManager(conf_file_path);
     std::string server_ip = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP;
     int base_port = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT;
     int num_ports = 1; // Kun: hardcode for now

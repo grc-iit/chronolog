@@ -6,7 +6,7 @@ LIB_DIR="${CHRONOLOG_ROOT_DIR}/lib"
 CONF_DIR="${CHRONOLOG_ROOT_DIR}/conf"
 VISOR_BIN_FILE_NAME="chronovisor_server"
 KEEPER_BIN_FILE_NAME="chrono_keeper"
-CLIENT_BIN_FILE_NAME="storyteller_test"
+CLIENT_BIN_FILE_NAME="client_lib_multi_storytellers"
 VISOR_BIN="${BIN_DIR}/${VISOR_BIN_FILE_NAME}"
 KEEPER_BIN="${BIN_DIR}/${KEEPER_BIN_FILE_NAME}"
 CLIENT_BIN="${BIN_DIR}/${CLIENT_BIN_FILE_NAME}"
@@ -71,6 +71,22 @@ check_conf_files() {
         echo "${CONF_FILE} configuration file does not exist, exiting ..."
         exit 1
     fi
+
+    visor_client_portal_rpc_in_visor=$(jq '.chrono_visor.VisorClientPortalService.rpc' "${CONF_FILE}")
+    visor_client_portal_rpc_in_client=$(jq '.chrono_client.VisorClientPortalService.rpc' "${CONF_FILE}")
+    if [[ "${visor_client_portal_rpc_in_visor}" != "${visor_client_portal_rpc_in_client}" ]]
+    then
+        echo "mismatched VisorClientPortalService conf in ${CONF_FILE}, exiting ..."
+        exit 1
+    fi
+
+    visor_keeper_registry_rpc_in_visor=$(jq '.chrono_visor.VisorKeeperRegistryService.rpc' "${CONF_FILE}")
+    visor_keeper_registry_rpc_in_keeper=$(jq '.chrono_keeper.VisorKeeperRegistryService.rpc' "${CONF_FILE}")
+    if [[ "${visor_keeper_registry_rpc_in_visor}" != "${visor_keeper_registry_rpc_in_keeper}" ]]
+    then
+        echo "mismatched VisorKeeperRegistryService conf in ${CONF_FILE}, exiting ..."
+        exit 1
+    fi
 }
 
 extract_shared_libraries() {
@@ -133,13 +149,13 @@ deploy() {
     echo "Deploying ..."
 
     # launch Visor
-    mpssh -f ${VISOR_HOSTS} "cd ${BIN_DIR}; nohup ${VISOR_BIN} ${VISOR_ARGS} > ${VISOR_BIN_FILE_NAME}.\$(hostname) 2>&1 &"
+    mpssh -f ${VISOR_HOSTS} "cd ${BIN_DIR}; LD_LIBRARY_PATH=${LIB_DIR} nohup ${VISOR_BIN} ${VISOR_ARGS} > ${VISOR_BIN_FILE_NAME}.\$(hostname) 2>&1 &"
 
     # launch Keeper
-    mpssh -f ${KEEPER_HOSTS} "cd ${BIN_DIR}; nohup ${KEEPER_BIN} ${KEEPER_ARGS} > ${KEEPER_BIN_FILE_NAME}.\$(hostname) 2>&1 &"
+    mpssh -f ${KEEPER_HOSTS} "cd ${BIN_DIR}; LD_LIBRARY_PATH=${LIB_DIR} nohup ${KEEPER_BIN} ${KEEPER_ARGS} > ${KEEPER_BIN_FILE_NAME}.\$(hostname) 2>&1 &"
 
     # launch Client
-    mpssh -f ${CLIENT_HOSTS} "cd ${BIN_DIR}; ${CLIENT_BIN} ${CLIENT_ARGS}"
+    mpssh -f ${CLIENT_HOSTS} "cd ${BIN_DIR}; LD_LIBRARY_PATH=${LIB_DIR} nohup ${CLIENT_BIN} ${CLIENT_ARGS} > ${CLIENT_BIN_FILE_NAME}.\$(hostname) 2>&1 &"
 
     # check Visor
     mpssh -f ${VISOR_HOSTS} "pgrep -fla ${VISOR_BIN_FILE_NAME}"

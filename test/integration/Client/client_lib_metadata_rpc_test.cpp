@@ -6,6 +6,7 @@
 #include "chronolog_client.h"
 #include "common.h"
 #include <cassert>
+#include <cmd_arg_parse.h>
 
 #define NUM_CHRONICLE (10)
 #define NUM_STORY (10)
@@ -13,9 +14,17 @@
 #define CHRONICLE_NAME_LEN 32
 #define STORY_NAME_LEN 32
 
-int main()
+int main(int argc, char **argv)
 {
-    ChronoLog::ConfigurationManager confManager("./default_conf.json");
+    std::string default_conf_file_path = "./default_conf.json";
+    std::string conf_file_path;
+    conf_file_path = parse_conf_path_arg(argc, argv);
+    if (conf_file_path.empty())
+    {
+        conf_file_path = default_conf_file_path;
+    }
+
+    ChronoLog::ConfigurationManager confManager(conf_file_path);
     chronolog::Client client(confManager);
     std::vector<std::string> chronicle_names;
     std::chrono::steady_clock::time_point t1, t2;
