@@ -6,6 +6,7 @@
 #include <thread>
 #include <abt.h>
 #include <atomic>
+#include <cmd_arg_parse.h>
 
 #define CHRONICLE_NAME_LEN 32
 #define STORY_NAME_LEN 32
@@ -78,8 +79,15 @@ int main(int argc, char **argv)
     uint64_t offset;
 
 
-    ChronoLogRPCImplementation protocol = CHRONOLOG_THALLIUM_SOCKETS;
-    ChronoLog::ConfigurationManager confManager("./default_conf.json");
+    std::string default_conf_file_path = "./default_conf.json";
+    std::string conf_file_path;
+    conf_file_path = parse_conf_path_arg(argc, argv);
+    if (conf_file_path.empty())
+    {
+        conf_file_path = default_conf_file_path;
+    }
+
+    ChronoLog::ConfigurationManager confManager(conf_file_path);
     std::string server_ip = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP;
     int base_port = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT;
     client = new chronolog::Client(confManager); //protocol, server_ip, base_port);

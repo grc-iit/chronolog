@@ -6,7 +6,7 @@ LIB_DIR="${CHRONOLOG_ROOT_DIR}/lib"
 CONF_DIR="${CHRONOLOG_ROOT_DIR}/conf"
 VISOR_BIN_FILE_NAME="chronovisor_server"
 KEEPER_BIN_FILE_NAME="chrono_keeper"
-CLIENT_BIN_FILE_NAME="storyteller_test"
+CLIENT_BIN_FILE_NAME="client_lib_multi_storytellers"
 VISOR_BIN="${BIN_DIR}/${VISOR_BIN_FILE_NAME}"
 KEEPER_BIN="${BIN_DIR}/${KEEPER_BIN_FILE_NAME}"
 CLIENT_BIN="${BIN_DIR}/${CLIENT_BIN_FILE_NAME}"
@@ -133,13 +133,13 @@ deploy() {
     echo "Deploying ..."
 
     # launch Visor
-    mpssh -f ${VISOR_HOSTS} "cd ${BIN_DIR}; nohup ${VISOR_BIN} ${VISOR_ARGS} > ${VISOR_BIN_FILE_NAME}.\$(hostname) 2>&1 &"
+    mpssh -f ${VISOR_HOSTS} "cd ${BIN_DIR}; nohup LD_LIBRARY_PATH=${CONF_DIR}${VISOR_BIN} ${VISOR_ARGS} > ${VISOR_BIN_FILE_NAME}.\$(hostname) 2>&1 &"
 
     # launch Keeper
-    mpssh -f ${KEEPER_HOSTS} "cd ${BIN_DIR}; nohup ${KEEPER_BIN} ${KEEPER_ARGS} > ${KEEPER_BIN_FILE_NAME}.\$(hostname) 2>&1 &"
+    mpssh -f ${KEEPER_HOSTS} "cd ${BIN_DIR}; nohup LD_LIBRARY_PATH=${CONF_DIR} ${KEEPER_BIN} ${KEEPER_ARGS} > ${KEEPER_BIN_FILE_NAME}.\$(hostname) 2>&1 &"
 
     # launch Client
-    mpssh -f ${CLIENT_HOSTS} "cd ${BIN_DIR}; ${CLIENT_BIN} ${CLIENT_ARGS}"
+    mpssh -f ${CLIENT_HOSTS} "cd ${BIN_DIR}; nohup LD_LIBRARY_PATH=${CONF_DIR} ${CLIENT_BIN} ${CLIENT_ARGS} > ${CLIENT_BIN_FILE_NAME}.\$(hostname) 2>&1 &"
 
     # check Visor
     mpssh -f ${VISOR_HOSTS} "pgrep -fla ${VISOR_BIN_FILE_NAME}"
