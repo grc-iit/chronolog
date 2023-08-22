@@ -71,6 +71,22 @@ check_conf_files() {
         echo "${CONF_FILE} configuration file does not exist, exiting ..."
         exit 1
     fi
+
+    visor_client_portal_rpc_in_visor=$(jq '.chrono_visor.VisorClientPortalService.rpc' "${CONF_FILE}")
+    visor_client_portal_rpc_in_client=$(jq '.chrono_client.VisorClientPortalService.rpc' "${CONF_FILE}")
+    if [[ "${visor_client_portal_rpc_in_visor}" != "${visor_client_portal_rpc_in_client}" ]]
+    then
+        echo "mismatched VisorClientPortalService conf in ${CONF_FILE}, exiting ..."
+        exit 1
+    fi
+
+    visor_keeper_registry_rpc_in_visor=$(jq '.chrono_visor.VisorKeeperRegistryService.rpc' "${CONF_FILE}")
+    visor_keeper_registry_rpc_in_keeper=$(jq '.chrono_keeper.VisorKeeperRegistryService.rpc' "${CONF_FILE}")
+    if [[ "${visor_keeper_registry_rpc_in_visor}" != "${visor_keeper_registry_rpc_in_keeper}" ]]
+    then
+        echo "mismatched VisorKeeperRegistryService conf in ${CONF_FILE}, exiting ..."
+        exit 1
+    fi
 }
 
 extract_shared_libraries() {
