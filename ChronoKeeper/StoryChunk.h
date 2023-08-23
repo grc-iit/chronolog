@@ -9,17 +9,17 @@ namespace chronolog
 {
 
 
-typedef uint64_t chrono_time;
-typedef uint32_t chrono_index;
+    typedef uint64_t chrono_time;
+    typedef uint32_t chrono_index;
 
 // StoryChunk contains all the events for the single story
 // for the duration [startTime, endTime[
 // startTime included, endTime excluded
 // startTime/endTime are invariant
 
-typedef std::tuple< chrono_time, chrono_index> ArrivalSequence;
+    typedef std::tuple<chrono_time, chrono_index> ArrivalSequence;
 
-typedef std::tuple< chrono_time, ClientId, chrono_index> EventSequence;
+    typedef std::tuple<chrono_time, ClientId, chrono_index> EventSequence;
 
 
 class StoryChunk
@@ -101,7 +101,7 @@ private:
 
     std::map<EventSequence, LogEvent> logEvents;
 
-};
+    };
 
 }
 #endif

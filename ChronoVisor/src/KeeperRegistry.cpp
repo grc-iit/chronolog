@@ -26,15 +26,13 @@ int KeeperRegistry::InitializeRegistryService(ChronoLog::ConfigurationManager co
 
     try
     {
-	//INNA: TODO: add exception handling ...    
-	// initialise thalium engine for KeeperRegistryService
-	
-        std::string KEEPER_REGISTRY_SERVICE_NA_STRING=
-        confManager.RPC_CONF.VISOR_KEEPER_CONF.PROTO_CONF.string()
-	    +"://" + confManager.RPC_CONF.VISOR_KEEPER_CONF.VISOR_END_CONF.VISOR_IP.string()
-	    +":" + std::to_string(confManager.RPC_CONF.VISOR_KEEPER_CONF.VISOR_END_CONF.VISOR_BASE_PORT);
+        // initialise thalium engine for KeeperRegistryService
+        std::string KEEPER_REGISTRY_SERVICE_NA_STRING =
+                    confManager.VISOR_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.RPC_CONF.PROTO_CONF
+                    + "://" + confManager.VISOR_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.RPC_CONF.IP
+                    + ":" + std::to_string(confManager.VISOR_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.RPC_CONF.BASE_PORT);
 
-        uint16_t provider_id = confManager.RPC_CONF.VISOR_KEEPER_CONF.VISOR_END_CONF.SERVICE_PROVIDER_ID;
+        uint16_t provider_id = confManager.VISOR_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID;
 
         margo_instance_id margo_id=margo_init(KEEPER_REGISTRY_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 2);
 
@@ -53,16 +51,15 @@ int KeeperRegistry::InitializeRegistryService(ChronoLog::ConfigurationManager co
 
 
 
-        keeperRegistryService =
-	    KeeperRegistryService::CreateKeeperRegistryService(*registryEngine, provider_id, *this);
+        keeperRegistryService = KeeperRegistryService::CreateKeeperRegistryService(*registryEngine, provider_id, *this);
 
         registryState = INITIALIZED;
         status =1;
     }
-	catch(tl::exception const& ex)
-	{
-	  std::cout<<"ERROR: Failed to start KeeperRegistryService "<<std::endl;
-	}
+    catch(tl::exception const& ex)
+    {
+        std::cout<<"ERROR: Failed to start KeeperRegistryService "<<std::endl;
+    }
     
     return status;
 
@@ -88,16 +85,16 @@ int KeeperRegistry::ShutdownRegistryService()
     // then drain the registry
     if( !keeperProcessRegistry.empty() )
     {
-    	for ( auto process : keeperProcessRegistry)
-    	{
-	        if ( process.second.keeperAdminClient != nullptr)
-	        {  
-	            std::cout<<"KeeperRegistry: sending shutdown to keeper {"<<process.second.idCard<<"}"<<std::endl;
-	            process.second.keeperAdminClient->shutdown_collection();
+        for ( auto process : keeperProcessRegistry)
+        {
+            if ( process.second.keeperAdminClient != nullptr)
+            {  
+                std::cout<<"KeeperRegistry: sending shutdown to keeper {"<<process.second.idCard<<"}"<<std::endl;
+                process.second.keeperAdminClient->shutdown_collection();
                 delete process.second.keeperAdminClient;
             }
-	    }
-	    keeperProcessRegistry.clear();
+        }
+        keeperProcessRegistry.clear();
     }
     std::cout<<"KeeperRegistry: shutting down RegistryService"<<std::endl;
 

@@ -30,6 +30,7 @@ public:
 
     ~KeeperRecordingService() 
     {
+        std::cout<<"KeeperRecordingService::~KeeperRecordingService()"<<std::endl;
         get_engine().pop_finalize_callback(this);
     }
 
