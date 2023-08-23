@@ -131,6 +131,15 @@ copy_shared_libs() {
     done
 }
 
+update_visor_ip() {
+    visor_host=$(cat ${VISOR_HOSTS})
+    visor_ip=$(dig +short ${visor_host})
+    jq ".chrono_visor.VisorClientPortalService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} > tmp.json && mv tmp.json ${CONF_FILE}
+    jq ".chrono_client.VisorClientPortalService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} > tmp.json && mv tmp.json ${CONF_FILE}
+    jq ".chrono_visor.VisorKeeperRegistryService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} > tmp.json && mv tmp.json ${CONF_FILE}
+    jq ".chrono_keeper.VisorKeeperRegistryService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} > tmp.json && mv tmp.json ${CONF_FILE}
+}
+
 install() {
     echo "Installing ..."
 
@@ -141,6 +150,8 @@ install() {
     check_bin_files
 
     check_conf_files
+
+    update_visor_ip
 }
 
 deploy() {
