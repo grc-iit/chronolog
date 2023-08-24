@@ -68,13 +68,10 @@ int KeeperRegistry::InitializeRegistryService(ChronoLog::ConfigurationManager co
 
 int KeeperRegistry::ShutdownRegistryService()
 {
-    if(is_shutting_down())
-    {return 1;}
-
     std::cout<<"KeeperRegistry: shutting down ...."<<std::endl;
 
     std::lock_guard<std::mutex> lock(registryLock);
-    //check again after the lock is aquired
+   
     if(is_shutting_down())
     { return 1;}
   
@@ -206,29 +203,30 @@ int KeeperRegistry::unregisterKeeperProcess( KeeperIdCard const & keeper_id_card
 /////////////////
 
 void KeeperRegistry::updateKeeperProcessStats(KeeperStatsMsg const & keeperStatsMsg) 
-	{
-           if(is_shutting_down())
-           {  return; }
+{
+    if(is_shutting_down())
+    {  return; }
 
-	   std::lock_guard<std::mutex> lock(registryLock);
-           if(is_shutting_down())
-           {  return; }
-	   KeeperIdCard keeper_id_card = keeperStatsMsg.getKeeperIdCard();
-	   auto keeper_process_iter = keeperProcessRegistry.find(std::pair<uint32_t,uint16_t>(keeper_id_card.getIPaddr(),keeper_id_card.getPort()));
-	   if(keeper_process_iter == keeperProcessRegistry.end())
-	   {    // however unlikely it is that the stats msg would be delivered for the keeper that's already unregistered
+	std::lock_guard<std::mutex> lock(registryLock);
+    if(is_shutting_down())
+    {  return; }
+
+	KeeperIdCard keeper_id_card = keeperStatsMsg.getKeeperIdCard();
+	auto keeper_process_iter = keeperProcessRegistry.find(std::pair<uint32_t,uint16_t>(keeper_id_card.getIPaddr(),keeper_id_card.getPort()));
+	if(keeper_process_iter == keeperProcessRegistry.end())
+	{    // however unlikely it is that the stats msg would be delivered for the keeper that's already unregistered
 		// we should probably log a warning here...
 		return;
-	   }
-   	   KeeperProcessEntry keeper_process = (*keeper_process_iter).second;
-	  // keeper_process.lastStatsTime = std::chrono::steady_clock::now();
-	   keeper_process.activeStoryCount = keeperStatsMsg.getActiveStoryCount();
-
 	}
+   	KeeperProcessEntry keeper_process = (*keeper_process_iter).second;
+	  // keeper_process.lastStatsTime = std::chrono::steady_clock::now();
+	keeper_process.activeStoryCount = keeperStatsMsg.getActiveStoryCount();
+
+}
 /////////////////
 
 std::vector<KeeperIdCard> & KeeperRegistry::getActiveKeepers( std::vector<KeeperIdCard> & keeper_id_cards) 
-	{  //the process of keeper selection will probably get more nuanced; 
+{  //the process of keeper selection will probably get more nuanced; 
 	   //for now just return all the keepers registered
            if(is_shutting_down())
            {  return keeper_id_cards;}
@@ -242,7 +240,7 @@ std::vector<KeeperIdCard> & KeeperRegistry::getActiveKeepers( std::vector<Keeper
 		   keeper_id_cards.push_back(keeperProcess.second.idCard);
 
 	   return keeper_id_cards;
-	}
+}
 /////////////////
 
 int KeeperRegistry::notifyKeepersOfStoryRecordingStart( std::vector<KeeperIdCard> const& vectorOfKeepers
@@ -344,8 +342,8 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStop(std::vector<KeeperIdCard> 
 	            std::cout<<"WARNING: Registry failed notification RPC to keeper {"<<keeper_id_card<<"}"<<std::endl;
 	            continue;
 	        }
-        std::cout << "Registry notified keeper {"<<keeper_id_card<<"} to stop recording story {"<<storyId<<"}"<<std::endl;
-	    keepers_left_to_notify--;
+            std::cout << "Registry notified keeper {"<<keeper_id_card<<"} to stop recording story {"<<storyId<<"}"<<std::endl;
+	        keepers_left_to_notify--;
 	    }
 	    catch(thallium::exception const& ex)
 	    {
