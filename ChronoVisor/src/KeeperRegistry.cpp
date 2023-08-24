@@ -17,12 +17,12 @@ namespace chronolog
 
 int KeeperRegistry::InitializeRegistryService(ChronoLog::ConfigurationManager const& confManager )
 {
-    int status = 0 ;
+    int status = CL_ERR_UNKNOWN;
 
     std::lock_guard<std::mutex> lock(registryLock);
 
     if(registryState != UNKNOWN)
-    { return status; }
+    { return CL_SUCCESS; }
 
     try
     {
@@ -54,7 +54,7 @@ int KeeperRegistry::InitializeRegistryService(ChronoLog::ConfigurationManager co
         keeperRegistryService = KeeperRegistryService::CreateKeeperRegistryService(*registryEngine, provider_id, *this);
 
         registryState = INITIALIZED;
-        status =1;
+        status = CL_SUCCESS;
     }
     catch(tl::exception const& ex)
     {
@@ -112,54 +112,61 @@ KeeperRegistry::~KeeperRegistry()
 
 int KeeperRegistry::registerKeeperProcess( KeeperRegistrationMsg const& keeper_reg_msg)
 {
-	   if(is_shutting_down())
-	   { return 0;}
 
-	   std::lock_guard<std::mutex> lock(registryLock);
+	if(is_shutting_down())
+	{ return CL_ERR_UNKNOWN;}
+
+	std::lock_guard<std::mutex> lock(registryLock);
 	   //re-check state after ther lock is aquired
-	   if(is_shutting_down())
-	   { return 0;}
+	if(is_shutting_down())
+	{ return CL_ERR_UNKNOWN;}
 
-	   KeeperIdCard keeper_id_card = keeper_reg_msg.getKeeperIdCard();
-	   ServiceId admin_service_id = keeper_reg_msg.getAdminServiceId();
+	KeeperIdCard keeper_id_card = keeper_reg_msg.getKeeperIdCard();
+	ServiceId admin_service_id = keeper_reg_msg.getAdminServiceId();
+	// unlikely but possible that the Registry still retains the record of the previous re-incarnation of hte Keeper process 
+    // running on the same host... check for this case and clean up the leftover record...
+    auto keeper_process_iter = keeperProcessRegistry.find(std::pair<uint32_t,uint16_t>(keeper_id_card.getIPaddr(),keeper_id_card.getPort()));
+	if(keeper_process_iter != keeperProcessRegistry.end())
+	{
+	    // delete keeperAdminClient before erasing keeper_process entry
+	    if( (*keeper_process_iter).second.keeperAdminClient != nullptr)
+	    {  delete (*keeper_process_iter).second.keeperAdminClient; }
+	    keeperProcessRegistry.erase(keeper_process_iter);
 
-	   auto insert_return = keeperProcessRegistry.insert( std::pair<std::pair<uint32_t,uint16_t>,KeeperProcessEntry>
+    }
+    
+    //create a client of Keeper's DataStoreAdminService listenning at adminServiceId
+    std::string service_na_string("ofi+sockets://");
+	service_na_string = admin_service_id.getIPasDottedString(service_na_string)
+                             + ":"+ std::to_string(admin_service_id.port);
+              
+    DataStoreAdminClient * collectionClient = DataStoreAdminClient::CreateDataStoreAdminClient(*registryEngine,service_na_string, admin_service_id.provider_id);
+    if(nullptr == collectionClient)
+    {    	
+	    std::cout <<"ERROR: KeeperRegistry: registerKeeper {"<<keeper_id_card<<"} failed to create DataStoreAdminClient for {"
+                <<service_na_string <<": provider_id="<<admin_service_id.provider_id<<"}"<<std::endl;
+        return CL_ERR_UNKNOWN;
+    }
+
+    //now create a new KeeperRecord with the new DataAdminclient
+	auto insert_return = keeperProcessRegistry.insert( std::pair<std::pair<uint32_t,uint16_t>,KeeperProcessEntry>
 		( std::pair<uint32_t,uint16_t>(keeper_id_card.getIPaddr(),keeper_id_card.getPort()),
 			   KeeperProcessEntry(keeper_id_card, admin_service_id) )
 		);
-	   if( false == insert_return.second)
-	   {//INNA: revisit this paragraph... 
-	      std::cout<<"KeeperRegistry: registerKeeper {"<<keeper_id_card<<"} found existing keeperProcess, reseting the process record"<< std::endl;
-	     // insert_return.first is the position to the current keeper record with the same KeeperIdCard
-	     // this is probably the case of keeper process restart ... reset the record  entry
-	         if( (*insert_return.first).second.keeperAdminClient != nullptr)
-		 { delete (*insert_return.first).second.keeperAdminClient; }
-	      
-	         (*insert_return.first).second.reset();
-		   return 0;
-	   }
-
-           //create a client of Keeper's DataStoreAdminService listenning at adminServiceId
-           std::string service_na_string("ofi+sockets://");
-	   service_na_string = admin_service_id.getIPasDottedString(service_na_string)
-                             + ":"+ std::to_string(admin_service_id.port);
-    try
-    {
-              DataStoreAdminClient * collectionClient = DataStoreAdminClient::CreateDataStoreAdminClient(*registryEngine,service_na_string, 
-			      admin_service_id.provider_id);
-	
-	      (*insert_return.first).second.keeperAdminClient = collectionClient;
-
-	      std::cout<<"KeeperRegistry: registerKeeper {"<<keeper_id_card<<"} created DataStoreAdminClient for service {"<<service_na_string
-		   <<": provider_id="<<admin_service_id.provider_id<<"}"<<std::endl;
-	}
-	catch( tl::exception  const& ex)
+	if( false == insert_return.second)
 	{
-	      std::cout <<"KeeperRegistry: registerKeeper {"<<keeper_id_card<<"} failed to create DataStoreAdminClient for {"<<service_na_string
+	    std::cout <<"ERROR:KeeperRegistry: registerKeeper {"<<keeper_id_card<<"} failed to registration"<<std::endl;
+        delete collectionClient;
+        return CL_ERR_UNKNOWN;
+
+    }
+
+
+	(*insert_return.first).second.keeperAdminClient = collectionClient;
+
+	std::cout<<"KeeperRegistry: registerKeeper {"<<keeper_id_card<<"} created DataStoreAdminClient for service {"<<service_na_string
 		   <<": provider_id="<<admin_service_id.provider_id<<"}"<<std::endl;
 
-	} 
-    
     // now that communnication with the Keeper is established and we still holding registryLock
     // update registryState in case this is the first KeeperProcess registration
 	if( keeperProcessRegistry.size() >0)
@@ -167,18 +174,20 @@ int KeeperRegistry::registerKeeperProcess( KeeperRegistrationMsg const& keeper_r
 
 	std::cout << "KeeperRegistry : RUNNING with {" << keeperProcessRegistry.size()<<"} KeeperProcesses"<<std::endl;
 
-return 1;
+return CL_SUCCESS;
 }
 /////////////////
 
 int KeeperRegistry::unregisterKeeperProcess( KeeperIdCard const & keeper_id_card) 
 {
     if(is_shutting_down())
+	   { return CL_ERR_UNKNOWN;}
     {  return 0;}
 
 	std::lock_guard<std::mutex> lock(registryLock);
     //check again after the lock is aquired
     if(is_shutting_down())
+	   { return CL_ERR_UNKNOWN;}
     {  return 0;}
 
 	// stop & delete keeperAdminClient before erasing keeper_process entry
@@ -198,7 +207,7 @@ int KeeperRegistry::unregisterKeeperProcess( KeeperIdCard const & keeper_id_card
 	    std::cout<<"KeeperRegistry: state {INITIALIZED}" << " with {"<< keeperProcessRegistry.size()<<"} KeeperProcesses"<<std::endl;
 	}
 
-    return 1;
+    return CL_SUCCESS;
 }
 /////////////////
 
@@ -246,12 +255,10 @@ std::vector<KeeperIdCard> & KeeperRegistry::getActiveKeepers( std::vector<Keeper
 int KeeperRegistry::notifyKeepersOfStoryRecordingStart( std::vector<KeeperIdCard> const& vectorOfKeepers
 		, ChronicleName const& chronicle, StoryName const& story, StoryId const& storyId)
 { 
-   int ret_status = 0;
-   
    if (!is_running())
    {
       std::cout<<"Registry has no Keeper processes to start story recording" << std::endl;
-      return -1;
+      return CL_ERR_NO_KEEPERS;
    }
    
    std::chrono::time_point<std::chrono::system_clock> time_now = std::chrono::system_clock::now();
@@ -260,7 +267,7 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart( std::vector<KeeperIdCard
 
     std::lock_guard<std::mutex> lock(registryLock);
     if (!is_running())
-    {   return -1;}
+    {   return CL_ERR_NO_KEEPERS;}
 
     size_t keepers_left_to_notify = vectorOfKeepers.size();
     for ( KeeperIdCard keeper_id_card : vectorOfKeepers)
@@ -281,7 +288,7 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart( std::vector<KeeperIdCard
 	    try
 	    {
 	        int rpc_return = keeper_process.keeperAdminClient->send_start_story_recording(chronicle, story, storyId, story_start_time);
-	        if (rpc_return <0)
+	        if (rpc_return != CL_SUCCESS)
 	        {
 	            std::cout<<"WARNING: Registry failed notification RPC to keeper {"<<keeper_id_card<<"}"<<std::endl;
 	            continue;
@@ -299,10 +306,10 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart( std::vector<KeeperIdCard
     if ( keepers_left_to_notify == vectorOfKeepers.size())
     {
 	  std::cout<<"ERROR: Registry failed to notify the keepers to start recording story {"<<storyId<<"}"<<std::endl;
-	  return -1;
+	  return CL_ERR_UNKNOWN;
     }
 
-   return ret_status;
+    return CL_SUCCESS;
 }
 /////////////////
 

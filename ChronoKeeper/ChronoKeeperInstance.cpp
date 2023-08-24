@@ -131,55 +131,69 @@ int main(int argc, char **argv)
     chronolog::CSVFileStoryChunkExtractor storyExtractor( keeperIdCard, keeper_csv_files_directory); 
     chronolog::KeeperDataStore theDataStore(ingestionQueue, storyExtractor.getExtractionQueue());
 
-    margo_instance_id collection_margo_id=margo_init( KEEPER_DATASTORE_SERVICE_NA_STRING.c_str(),MARGO_SERVER_MODE, 1, 1);
-
-    if(MARGO_INSTANCE_NULL == collection_margo_id)
-    {
-      std::cout<<"FAiled to initialise collection_margo_instance"<<std::endl;
-      return 1;
-    }
-
     chronolog::ServiceId collectionServiceId(datastore_endpoint.first, datastore_endpoint.second,
                                              datastore_service_provider_id);
+    tl::engine * dataAdminEngine = nullptr;
 
+    chronolog::DataStoreAdminService * keeperDataAdminService = nullptr;
 
-    std::cout << "collection_margo_instance initialized" << std::endl;
+    try
+    {
+        margo_instance_id collection_margo_id=margo_init( KEEPER_DATASTORE_SERVICE_NA_STRING.c_str(),MARGO_SERVER_MODE, 1, 1);
 
-    tl::engine collectionEngine(collection_margo_id);
+        dataAdminEngine = new tl::engine(collection_margo_id);
 
-    std::cout << "ChronoKeeperInstance group_id {" << keeper_group_id << "} starting DataStoreAdminService at address {"
-              << collectionEngine.self()
+        std::cout << "ChronoKeeperInstance group_id {" << keeper_group_id << "} starting DataStoreAdminService at address {"
+              << dataAdminEngine->self()
               << "} with provider_id {" << datastore_service_provider_id << "}" << std::endl;
 
-    chronolog::DataStoreAdminService *keeperDataAdminService =
-            chronolog::DataStoreAdminService::CreateDataStoreAdminService(collectionEngine,
+        keeperDataAdminService =
+            chronolog::DataStoreAdminService::CreateDataStoreAdminService(*dataAdminEngine,
                                                                           datastore_service_provider_id, theDataStore);
-
-
-    // Instantiate KeeperRecordingService 
-    margo_instance_id margo_id=margo_init( KEEPER_RECORDING_SERVICE_NA_STRING.c_str(),MARGO_SERVER_MODE, 1, 1);
-
-    if(MARGO_INSTANCE_NULL == margo_id)
+    }
+    catch(tl::exception const&)
     {
-      std::cout<<"FAiled to initialise margo_instance"<<std::endl;
-      return 1;
+        std::cout <<"ERROR: Keeper failed to create DataStoreAdminService; "<<std::endl;
     }
 
-    std::cout << "margo_instance initialized" << std::endl;
-
-    tl::engine recordingEngine(margo_id);
-
-    std::cout << "ChronoKeeperInstance group_id {" << keeper_group_id
-              << "} starting KeeperRecordingService at address {" << recordingEngine.self()
-              << "} with provider_id {" << recording_service_provider_id << "}" << std::endl;
-
+    if(nullptr == keeperDataAdminService)
+    {
+        std::cout <<"ERROR: Keeper failed to create DataStoreAdminService; exiting"<<std::endl;
+        if(dataAdminEngine)
+        { delete dataAdminEngine; }
+        return(-1);
+    }
 
     // Instantiate KeeperRecordingService 
+    tl::engine * recordingEngine = nullptr;
+    chronolog::KeeperRecordingService *keeperRecordingService = nullptr;
 
-    chronolog::KeeperRecordingService *keeperRecordingService =
-            chronolog::KeeperRecordingService::CreateKeeperRecordingService(recordingEngine,
+    try
+    {
+        margo_instance_id margo_id=margo_init( KEEPER_RECORDING_SERVICE_NA_STRING.c_str(),MARGO_SERVER_MODE, 1, 1);
+
+        recordingEngine= new tl::engine(margo_id);
+
+        std::cout << "ChronoKeeperInstance group_id {" << keeper_group_id
+              << "} starting KeeperRecordingService at address {" << recordingEngine->self()
+              << "} with provider_id {" << recording_service_provider_id << "}" << std::endl;
+
+        keeperRecordingService =
+            chronolog::KeeperRecordingService::CreateKeeperRecordingService(*recordingEngine,
                                                                             recording_service_provider_id,
                                                                             ingestionQueue);
+    }
+    catch(tl::exception const& )
+    {
+        std::cout <<"ERROR: Keeper failed to create KeeperRecordingService; "<<std::endl;
+    }
+
+    if(nullptr == keeperRecordingService)
+    {
+        std::cout <<"ERROR: Keeper failed to create KeeperRecordingService; exiting"<<std::endl;
+        delete keeperDataAdminService;
+        return (-1); 
+    }
 
     // create KeeperRegistryClient and register the new KeeperRecording service with the KeeperRegistry 
     std::string KEEPER_REGISTRY_SERVICE_NA_STRING =
@@ -190,7 +204,7 @@ int main(int argc, char **argv)
     uint16_t KEEPER_REGISTRY_SERVICE_PROVIDER_ID = confManager.KEEPER_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID;
 
     chronolog::KeeperRegistryClient *keeperRegistryClient = chronolog::KeeperRegistryClient::CreateKeeperRegistryClient(
-            collectionEngine, KEEPER_REGISTRY_SERVICE_NA_STRING, KEEPER_REGISTRY_SERVICE_PROVIDER_ID);
+            *dataAdminEngine, KEEPER_REGISTRY_SERVICE_NA_STRING, KEEPER_REGISTRY_SERVICE_PROVIDER_ID);
     if(nullptr == keeperRegistryClient)
     {
         std::cout <<"ERROR: Keeper failed to create KeeperRegistryClient; exiting"<<std::endl;
@@ -254,6 +268,9 @@ int main(int argc, char **argv)
     // these are not probably needed as thalium handles the engine finalization...
     //  recordingEngine.finalize();
     //  collectionEngine.finalize();
+
+    delete recordingEngine;
+    delete dataAdminEngine;
 
     return exit_code;
 }

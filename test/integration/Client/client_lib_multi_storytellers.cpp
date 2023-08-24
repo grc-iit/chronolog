@@ -34,7 +34,7 @@ void thread_body(struct thread_arg *t)
     auto acquire_ret = client->AcquireStory(chronicle_name, story_name, story_attrs, flags);
     std::cout << "tid=" << t->tid << " AcquireStory {" << chronicle_name << ":" << story_name << "} ret: "
               << acquire_ret.first << std::endl;
-    assert(acquire_ret.first == CL_SUCCESS || acquire_ret.first == CL_ERR_NOT_EXIST);
+    assert(acquire_ret.first == CL_SUCCESS || acquire_ret.first == CL_ERR_NOT_EXIST || acquire_ret.first==CL_ERR_NO_KEEPERS);
 
     if (CL_SUCCESS == acquire_ret.first)
     {
@@ -44,11 +44,12 @@ void thread_body(struct thread_arg *t)
             story_handle->log_event("line " + std::to_string(i));
             std::this_thread::sleep_for(std::chrono::milliseconds(i % 10));
         }
-    }
+    
     ret = client->ReleaseStory(chronicle_name, story_name);//, flags);
     std::cout << "tid=" << t->tid << " ReleaseStory {" << chronicle_name << ":" << story_name << "} ret: " << ret
               << std::endl;
     assert(ret == CL_SUCCESS || ret == CL_ERR_NO_CONNECTION);
+    }
     ret = client->DestroyStory(chronicle_name, story_name);//, flags);
     std::cout << "tid=" << t->tid << " DestroyStory {" << chronicle_name << ":" << story_name << "} ret: " << ret
               << std::endl;
@@ -81,6 +82,13 @@ int main(int argc, char **argv)
     int flags = 0;
     uint64_t offset;
     int ret = client->Connect(server_uri, client_id, flags);//, offset);
+
+    if (CL_SUCCESS != ret)
+    {
+        std::cout<<"failed to connect to ChronoVisor"<<std::endl;
+        delete client;
+        return -1;
+    }
 
     for (int i = 0; i < num_threads; i++)
     {

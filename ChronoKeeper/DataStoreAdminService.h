@@ -28,6 +28,7 @@ public:
 
     ~DataStoreAdminService() 
     {
+        std::cout << "DataStoreAdminService::~DataStoreAdminService"<< std::endl;
 	//remove provider finalization callback from the engine's list	
         get_engine().pop_finalize_callback(this);
     }

@@ -55,20 +55,20 @@ public:
     int shutdown_collection()
     {
 
-	    int shutting_down = 0;
+        int status = CL_ERR_UNKNOWN;
         try
         {
-            shutting_down = shutdown_data_collection.on(service_handle)();
-	        std::cout <<"DataStoreAdminClient: service_shutdown:"<<(shutting_down)<<std::endl;    
+	        std::cout <<"DataStoreAdminClient: shutdown_collection:"<<std::endl;    
+            status = shutdown_data_collection.on(service_handle)();
         }
         catch(tl::exception const &ex)
         {}
-	    return shutting_down;
+	    return status;
     }
 
     int send_start_story_recording( ChronicleName const& chronicle_name, StoryName const& story_name,StoryId const& story_id, uint64_t start_time )
     {
-        int status = 0;
+        int status = CL_ERR_UNKNOWN;
         try
         {
 	        std::cout<< "CollectionClient: start_story_recording:"<<story_id<<std::endl;
@@ -81,7 +81,7 @@ public:
 
     int send_stop_story_recording( StoryId const& story_id)
     {
-        int status = 0;
+        int status = CL_ERR_UNKNOWN;
         try
         {
 	        std::cout<< "DatastoreAdminClient: stop_story_recording"<<story_id<<std::endl;

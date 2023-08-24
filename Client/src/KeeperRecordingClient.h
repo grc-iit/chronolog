@@ -8,6 +8,7 @@
 
 #include "chronolog_types.h"
 #include "KeeperIdCard.h"
+#include "errcode.h"
 
 namespace tl = thallium;
 
@@ -29,15 +30,23 @@ public:
             return new KeeperRecordingClient( tl_engine, keeper_id_card, keeper_rpc_string);
         } catch( tl::exception const&)
 	    {
-            std::cout<<"KeeperRecordingClient: failed construction"<<std::endl;
-            return nullptr;
         }
+        return nullptr;
     }
 
-    void send_event_msg( LogEvent const& eventMsg)
+    int send_event_msg( LogEvent const& eventMsg)
     {
-	    std::cout<< "KeeperRecordingClient::send_event_msg:"<<eventMsg.storyId<<std::endl;
-	    record_event.on(service_ph)(eventMsg);
+        try
+        { 
+	        std::cout<< "KeeperRecordingClient::send_event_msg:"<<eventMsg.storyId<<std::endl;
+	        record_event.on(service_ph)(eventMsg);
+            return CL_SUCCESS;
+        }
+        catch(thallium::exception const&)
+        {
+            std::cout<<"ERROR: failed to send event_msg" << std::endl;
+        }
+        return(CL_ERR_UNKNOWN); 
     }
 
     KeeperIdCard const& getKeeperId() const
