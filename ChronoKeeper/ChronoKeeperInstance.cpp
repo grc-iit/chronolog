@@ -183,18 +183,42 @@ int main(int argc, char **argv)
 
     // create KeeperRegistryClient and register the new KeeperRecording service with the KeeperRegistry 
     std::string KEEPER_REGISTRY_SERVICE_NA_STRING =
-            confManager.VISOR_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.RPC_CONF.PROTO_CONF
-            + "://" + confManager.VISOR_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.RPC_CONF.IP
-            + ":" + std::to_string(confManager.VISOR_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.RPC_CONF.BASE_PORT);
+            confManager.KEEPER_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.RPC_CONF.PROTO_CONF
+            + "://" + confManager.KEEPER_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.RPC_CONF.IP
+            + ":" + std::to_string(confManager.KEEPER_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.RPC_CONF.BASE_PORT);
 
-    uint16_t KEEPER_REGISTRY_SERVICE_PROVIDER_ID = confManager.VISOR_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID;
+    uint16_t KEEPER_REGISTRY_SERVICE_PROVIDER_ID = confManager.KEEPER_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID;
 
     chronolog::KeeperRegistryClient *keeperRegistryClient = chronolog::KeeperRegistryClient::CreateKeeperRegistryClient(
             collectionEngine, KEEPER_REGISTRY_SERVICE_NA_STRING, KEEPER_REGISTRY_SERVICE_PROVIDER_ID);
+    if(nullptr == keeperRegistryClient)
+    {
+        std::cout <<"ERROR: Keeper failed to create KeeperRegistryClient; exiting"<<std::endl;
+        delete keeperRecordingService;
+        delete keeperDataAdminService;
+        return (-1); 
+    }
 
-    keeperRegistryClient->send_register_msg(chronolog::KeeperRegistrationMsg(keeperIdCard, collectionServiceId));
+    //try to register with chronoVisor a few times than log ERROR and exit...
+    int registration_status = CL_ERR_UNKNOWN;
+    int retries =5;
+    while( (CL_SUCCESS != registration_status) && (retries>0))
+    {
+        registration_status = keeperRegistryClient->send_register_msg(chronolog::KeeperRegistrationMsg(keeperIdCard, collectionServiceId));
+        retries--;
+    }
+    
+    if(CL_SUCCESS != registration_status)
+    {
+        std::cout <<"ERROR: Keeper failed to register with the ChronoVisor; exiting"<<std::endl;
+        delete keeperRegistryClient;
+        delete keeperRecordingService;
+        delete keeperDataAdminService;
+        return (-1); 
+    }
 
-
+    // services are successfulley created and keeper process had registered with ChronoVisor
+    // start all dataColelction and Extraction threads...
     tl::abt scope;
 
     theDataStore.startDataCollection(3);
