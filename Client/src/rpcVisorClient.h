@@ -6,6 +6,8 @@
 #include <unordered_map>
 #include <iostream>
 #include <thallium.hpp>
+#include <sys/types.h>
+#include <unistd.h>
 #include <thallium/serialization/serialize.hpp>
 #include <thallium/serialization/stl/string.hpp>
 #include <thallium/serialization/stl/vector.hpp>
@@ -42,16 +44,16 @@ public:
 
     int Connect(std::string const& client_account, uint32_t client_host_ip, ClientId & , uint64_t &clock_offset)
     {
- //       LOGD("%s in ChronoLogAdminRPCProxy at addresss %p called in PID=%d, with args: uri=%s, client_id=%s",
-   //          __FUNCTION__, this, getpid(), uri.c_str(), client_id.c_str());
-        //return CHRONOLOG_RPC_CALL_WRAPPER("Connect", 0, int, uri, client_id, flags, clock_offset);
+//        LOGD("%s in ChronoLogAdminRPCProxy at addresss %p called in PID=%d, with args: uri=%s, client_id=%s",
+//             __FUNCTION__, this, getpid(), uri.c_str(), client_id.c_str());
+//        return CHRONOLOG_RPC_CALL_WRAPPER("Connect", 0, int, uri, client_id, flags, clock_offset);
 	    return visor_connect.on(service_ph)( client_account, client_host_ip);
     }
 
     int Disconnect(std::string const& client_id)
     {
-     //   LOGD("%s is called in PID=%d, with args: client_id=%s, flags=%d",
-       //      __FUNCTION__, getpid(), client_id.c_str(), flags);
+//        LOGD("%s is called in PID=%d, with args: client_id=%s, flags=%d",
+//             __FUNCTION__, getpid(), client_id.c_str(), flags);
 	    return visor_disconnect.on(service_ph)( client_id);
     }
 

@@ -9,6 +9,7 @@
 
 #include "chrono_common/chronolog_types.h"
 #include "StoryChunk.h"
+#include "StoryChunkExtractionQueue.h"
 
 namespace chronolog
 {
@@ -22,17 +23,15 @@ class StoryPipeline
 
 
 public:
-    StoryPipeline( std::string const& chronicle_name, std::string const& story_name
+    StoryPipeline( StoryChunkExtractionQueue &, std::string const& chronicle_name, std::string const& story_name
 			, StoryId const& story_id
 			, uint64_t start_time
-		        , uint16_t chunk_granularity = 30 //seconds 
-			, uint16_t archive_granularity = 3 //  hours
+		    , uint16_t chunk_granularity = 30 //seconds 
 			, uint16_t acceptance_window = 1 // hour 
-		    
 		     );
 
-     StoryPipeline(StoryPipeline const&) = delete;
-     StoryPipeline& operator=(StoryPipeline const&) = delete;
+    StoryPipeline(StoryPipeline const&) = delete;
+    StoryPipeline& operator=(StoryPipeline const&) = delete;
 
     ~StoryPipeline();
 
@@ -43,8 +42,17 @@ public:
     void mergeEvents(std::deque<LogEvent> &);
     void mergeEvents(StoryChunk &);
 
+    void extractDecayedStoryChunks(uint64_t);
+
+    StoryId const& getStoryId() const
+    {   return storyId; }
+    uint16_t getAcceptanceWindow() const
+    {   return acceptanceWindow; }
+    
+    
 private:
 
+    StoryChunkExtractionQueue & theExtractionQueue;
     StoryId 	storyId;
     ChronicleName	chronicleName;
     StoryName	storyName;
@@ -54,7 +62,6 @@ private:
     uint64_t 	archiveGranularity;
     uint64_t 	acceptanceWindow;
     uint64_t	revisionTime; //time of the most recent merge 
-    uint64_t	exitTime; //time the story can be removed from memory
 
     // mutex used to protect the IngestionQueue from concurrent access
     // by RecordingService threads
@@ -72,11 +79,11 @@ private:
     std::mutex sequencingMutex;
 
     // map of storyChunks ordered by StoryChunck.startTime
-    std::map<chrono_time, StoryChunk > storyTimelineMap;
+    std::map<chrono_time, StoryChunk*> storyTimelineMap;
 
-    std::map<uint64_t, StoryChunk>::iterator prependStoryChunk();
-    std::map<uint64_t, StoryChunk>::iterator appendStoryChunk();
-
+    std::map<uint64_t, StoryChunk*>::iterator prependStoryChunk();
+    std::map<uint64_t, StoryChunk*>::iterator appendStoryChunk();
+    void finalize();
 };
 
 }

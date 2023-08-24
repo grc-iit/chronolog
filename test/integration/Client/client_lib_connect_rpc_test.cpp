@@ -2,6 +2,7 @@
 // Created by kfeng on 7/11/22.
 //
 
+#include <chrono>
 #include <unordered_map>
 
 #include "ConfigurationManager.h"
@@ -11,12 +12,13 @@
 
 #define NUM_CONNECTION (1)
 
-int main() {
+int main()
+{
     ChronoLogRPCImplementation protocol = CHRONOLOG_THALLIUM_SOCKETS;
     ChronoLog::ConfigurationManager confManager("./default_conf.json");
-    std::string server_ip = confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string();
-    int base_port = confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT;
-    int num_ports = confManager.RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_PORTS;
+    std::string server_ip = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP;
+    int base_port = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT;
+    int num_ports = 1; // Kun: hardcode for now
     chronolog::Client client(confManager);
     std::string server_uri;
     std::vector<std::string> client_ids;
@@ -29,15 +31,17 @@ int main() {
 
     client_ids.reserve(NUM_CONNECTION);
     for (int i = 0; i < NUM_CONNECTION; i++) client_ids.emplace_back(gen_random(8));
-    for (int i = 0; i < NUM_CONNECTION; i++) {
-        switch (confManager.RPC_CONF.CLIENT_VISOR_CONF.RPC_IMPLEMENTATION) {
+    for (int i = 0; i < NUM_CONNECTION; i++)
+    {
+        switch (confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.RPC_IMPLEMENTATION)
+        {
             case CHRONOLOG_THALLIUM_SOCKETS:
             case CHRONOLOG_THALLIUM_TCP:
             case CHRONOLOG_THALLIUM_ROCE:
-                server_uri = confManager.RPC_CONF.CLIENT_VISOR_CONF.PROTO_CONF.string();
+                server_uri = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.PROTO_CONF;
                 break;
-	    default:
-		server_uri="ofi+sockets";
+            default:
+                server_uri = "ofi+sockets";
         }
 
         server_uri += "://" + server_ip + ":" + std::to_string(base_port + i);
@@ -48,7 +52,8 @@ int main() {
         duration_connect += (t2 - t1);
     }
 
-    for (int i = 0; i < NUM_CONNECTION; i++) {
+    for (int i = 0; i < NUM_CONNECTION; i++)
+    {
         t1 = std::chrono::steady_clock::now();
         ret = client.Disconnect(); //client_ids[i], flags);
         assert(ret == CL_SUCCESS);

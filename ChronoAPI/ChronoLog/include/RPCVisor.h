@@ -462,7 +462,7 @@ private:
         }
     }
 
-    ChronoLogCharStruct func_prefix;
+    std::string func_prefix;
     std::shared_ptr<ChronoLogRPC> rpc;
     chronolog::KeeperRegistry * keeperRegistry;
     std::shared_ptr<ClientRegistryManager> clientManager;

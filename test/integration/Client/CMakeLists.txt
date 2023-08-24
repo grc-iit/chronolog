@@ -29,6 +29,7 @@ endforeach()
 
 set(client_mpi client_lib_hybrid_argobots_test)
 
+find_package(MPI)
 foreach(client ${client_mpi})
 	add_executable(${client} ${client}.cpp)
 	add_dependencies(${client} copyserverlist)
