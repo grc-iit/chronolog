@@ -18,7 +18,7 @@ namespace tl = thallium;
 namespace chl = chronolog;
 
 /////////////////
-chronolog::VisorClientPortal::VisorClientPortal() // ChronoLog::ConfigurationManager & configuration)
+chronolog::VisorClientPortal::VisorClientPortal() 
         : clientPortalState(chl::VisorClientPortal::UNKNOWN), clientPortalEngine(nullptr), clientPortalService(nullptr),
           theKeeperRegistry(nullptr)  //TODO: revisit later ...
 {
@@ -38,45 +38,55 @@ chronolog::VisorClientPortal::VisorClientPortal() // ChronoLog::ConfigurationMan
 int chronolog::VisorClientPortal::StartServices(ChronoLog::ConfigurationManager const &confManager,
                                                 chl::KeeperRegistry *keeperRegistry)
 {
+    int return_status = CL_ERR_UNKNOWN;
+
+    // check if already started
+    if(clientPortalState != UNKNOWN)
+    { return CL_SUCCESS; }
+
     // TODO : keeper registry can be a member ...
     theKeeperRegistry = keeperRegistry;
+    
+    try
+    {
 
-
-    if(clientPortalState != UNKNOWN)
-    { return 1; }
-
-    //INNA: TODO: add exception handling ...
     // initialise thalium engine for KeeperRegistryService
 
-    std::string CLIENT_PORTAL_SERVICE_NA_STRING =
+        std::string CLIENT_PORTAL_SERVICE_NA_STRING =
             confManager.VISOR_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.PROTO_CONF
             + "://" + confManager.VISOR_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP
             + ":" + std::to_string(confManager.VISOR_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT);
 
-    uint16_t provider_id = confManager.VISOR_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID;
+        uint16_t provider_id = confManager.VISOR_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID;
 
+        margo_instance_id margo_id=margo_init(CLIENT_PORTAL_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 2);
+ 
+        if(MARGO_INSTANCE_NULL == margo_id)
+        {
+            std::cout<<"VisorClientPortal : Failed to initialize margo_instance"<<std::endl;
+            return CL_ERR_UNKNOWN;
+        }
 
-    margo_instance_id margo_id=margo_init(CLIENT_PORTAL_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 2);
-
-    if(MARGO_INSTANCE_NULL == margo_id)
-    {
-        std::cout<<"VisorClientPortal : Failed to initialize margo_instance"<<std::endl;
-        return -1;
-    }
-
-    std::cout<<"VisorClientPortal : :margo_instance initialized with NA_STRING"
+        std::cout<<"VisorClientPortal : :margo_instance initialized with NA_STRING"
               << "{"<<CLIENT_PORTAL_SERVICE_NA_STRING<<"}" <<std::endl;
-
-    clientPortalEngine =  new tl::engine(margo_id);
-
-    clientPortalService = chl::ClientPortalService::CreateClientPortalService(*clientPortalEngine, provider_id, *this);
-
-    clientPortalState = INITIALIZED;
-
+ 
+        clientPortalEngine =  new tl::engine(margo_id);
+ 
+        clientPortalService = chl::ClientPortalService::CreateClientPortalService(*clientPortalEngine, provider_id, *this);
+  
+        clientPortalState = INITIALIZED;
+    
+        return_status = CL_SUCCESS;
+        
     //INNA: commented out as this line blocks main thread at the moment
     //  clientPortalEngine->wait_for_finalize();
-
-    return CL_SUCCESS;
+    }
+    catch(tl::exception const& ex)
+    {
+        std::cout<<"VisorClientPortal : Failed to start ClientPortal services"<<std::endl;
+    }
+ 
+    return return_status;
 }
 
 void chronolog::VisorClientPortal::ShutdownServices()
@@ -204,10 +214,6 @@ chl::AcquireStoryResponseMsg chronolog::VisorClientPortal::AcquireStory(std::str
     { return chronolog::AcquireStoryResponseMsg(CL_ERR_NO_KEEPERS, story_id, recording_keepers); }
 
     if (chronicle_name.empty() || story_name.empty())
-        //{ //TODO : add this check on the client side,
-        //there's no need to waste the RPC on empty strings...
-        //return CL_ERR_INVALID_ARG;
-        //}
     { return chronolog::AcquireStoryResponseMsg(CL_ERR_INVALID_ARG, story_id, recording_keepers); }
 
     // TODO : create_stroy should be part of acquire_story
@@ -229,11 +235,10 @@ chl::AcquireStoryResponseMsg chronolog::VisorClientPortal::AcquireStory(std::str
     // so that they are ready to start recording this story
     if (notify_keepers)
     {
-        if (0 != theKeeperRegistry->notifyKeepersOfStoryRecordingStart(recording_keepers, chronicle_name, story_name,
+        if (CL_SUCCESS != theKeeperRegistry->notifyKeepersOfStoryRecordingStart(recording_keepers, chronicle_name, story_name,
                                                                        story_id))
         {  // RPC notification to the keepers might have failed, release the newly acquired story
             chronicleMetaDirectory.release_story(client_id, chronicle_name, story_name, story_id, notify_keepers);
-            //TODO: chronicleMetaDirectory->release_story(client_id, story_id, notify_keepers);
             //we do know that there's no need notify keepers of the story ending in this case as it hasn't started...
             //return CL_ERR_NO_KEEPERS;
             return chronolog::AcquireStoryResponseMsg(CL_ERR_NO_KEEPERS, story_id, recording_keepers);

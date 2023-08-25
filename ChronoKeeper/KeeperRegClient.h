@@ -9,6 +9,7 @@
 #include "chrono_common/KeeperIdCard.h"
 #include "chrono_common/KeeperRegistrationMsg.h"
 #include "chrono_common/KeeperStatsMsg.h"
+#include "errcode.h"
 
 namespace tl = thallium;
 
@@ -23,40 +24,65 @@ class KeeperRegistryClient
 public:
     static KeeperRegistryClient * CreateKeeperRegistryClient( tl::engine & tl_engine,
 		    std::string const & registry_service_addr, uint16_t registry_provider_id )
-    	{
-	   try{
-	      return new KeeperRegistryClient( tl_engine,registry_service_addr, registry_provider_id);
-	   } catch( tl::exception const&)
-	   {
-		std::cout<<"KeeperRegistryClient: failed construction"<<std::endl;
-		return nullptr;
-	   }
-        }
+    {
+        try
+        {
+	        return new KeeperRegistryClient( tl_engine,registry_service_addr, registry_provider_id);
+        } 
+        catch( tl::exception const&)
+        {
+		    std::cout<<"ERROR: failed to create KeeperRegistryClient"<<std::endl;
+		    return nullptr;
+	    }
+    }
 
     int send_register_msg( KeeperRegistrationMsg const& keeperMsg)
     {
-	 std::cout<< "KeeperRegisterClient::send_register_msg:"<<keeperMsg<<std::endl;
-	 return register_keeper.on(reg_service_ph)(keeperMsg);
+        try
+        {
+	        std::cout<< "KeeperRegisterClient::send_register_msg:"<<keeperMsg<<std::endl;
+	        return register_keeper.on(reg_service_ph)(keeperMsg);
+        }
+        catch(tl::exception const&)
+        {
+	        std::cout<< "ERROR: KeeperRegisterClient::send_register_msg failed"<<std::endl;
+            return CL_ERR_UNKNOWN;
+        }
     }
 
     int send_unregister_msg( KeeperIdCard const& keeperIdCard)
     {
-	 std::cout<< "KeeperRegisterClient::send_unregister_msg:"<<keeperIdCard<<std::endl;
-	 return unregister_keeper.on(reg_service_ph)(keeperIdCard);
+        try
+        {
+	        std::cout<< "KeeperRegisterClient::send_unregister_msg:"<<keeperIdCard<<std::endl;
+	        return unregister_keeper.on(reg_service_ph)(keeperIdCard);
+        }
+        catch(tl::exception const&)
+        {
+	        std::cout<< "ERROR: KeeperRegisterClient::send_unregister_msg failed"<<std::endl;
+            return CL_ERR_UNKNOWN;
+        }
     }
 
     void send_stats_msg(KeeperStatsMsg const& keeperStatsMsg)
     {
-	std::cout<< "KeeperRegisterClient::send_stats_msg:"<<keeperStatsMsg<<std::endl;
-	handle_stats_msg.on(reg_service_ph)(keeperStatsMsg);
+        try
+        {
+	        std::cout<< "KeeperRegisterClient::send_stats_msg:"<<keeperStatsMsg<<std::endl;
+	        handle_stats_msg.on(reg_service_ph)(keeperStatsMsg);
+        }
+        catch(tl::exception const&)
+        {
+	        std::cout<< "ERROR: KeeperRegisterClient::send_stats_msg failed"<<std::endl;
+        }
     }
 
     ~KeeperRegistryClient()
     {
         std::cout<<"KeeperRegistryClient::~KeeperRegistryClinet()"<<std::endl;
-	   register_keeper.deregister();
-	   unregister_keeper.deregister();
-           handle_stats_msg.deregister(); 
+        register_keeper.deregister();
+        unregister_keeper.deregister();
+        handle_stats_msg.deregister(); 
     }
 
     private:
@@ -74,10 +100,10 @@ public:
 	    : reg_service_addr(registry_addr), reg_service_provider_id(registry_provider_id)
 	    , reg_service_ph(tl_engine.lookup( registry_addr),registry_provider_id)
 	{
-	 std::cout<< "RegistryClient created for RegistryService at {"<<registry_addr<<"} provider_id {"<<registry_provider_id<<"}"<<std::endl;
-   	 register_keeper = tl_engine.define("register_keeper");
-   	 unregister_keeper =tl_engine.define("unregister_keeper"); 
-   	 handle_stats_msg =tl_engine.define("handle_stats_msg").disable_response();
+        std::cout<< "RegistryClient created for RegistryService at {"<<registry_addr<<"} provider_id {"<<registry_provider_id<<"}"<<std::endl;
+   	    register_keeper = tl_engine.define("register_keeper");
+   	    unregister_keeper =tl_engine.define("unregister_keeper"); 
+   	    handle_stats_msg =tl_engine.define("handle_stats_msg").disable_response();
        
 	}	
 };

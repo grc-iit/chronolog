@@ -18,57 +18,59 @@ namespace chl = chronolog;
 
 chronolog::StoryPipeline::StoryPipeline( StoryChunkExtractionQueue & extractionQueue
         , std::string const& chronicle_name, std::string const& story_name,  chronolog::StoryId const& story_id
-		, uint64_t story_start_time, uint16_t chunk_granularity, uint16_t acceptance_window)
-	: theExtractionQueue(extractionQueue)
+        , uint64_t story_start_time, uint16_t chunk_granularity, uint16_t acceptance_window)
+    : theExtractionQueue(extractionQueue)
     , storyId(story_id)
-	, chronicleName(chronicle_name)
-	, storyName(story_name)
-	, timelineStart(story_start_time)   
-	, timelineEnd(story_start_time)
-	, chunkGranularity(chunk_granularity)
-	, acceptanceWindow(acceptance_window)  
-	, activeIngestionHandle(nullptr)
+    , chronicleName(chronicle_name)
+    , storyName(story_name)
+    , timelineStart(story_start_time)   
+    , timelineEnd(story_start_time)
+    , chunkGranularity(chunk_granularity)
+    , acceptanceWindow(acceptance_window)  
+    , activeIngestionHandle(nullptr)
 
 {
-	activeIngestionHandle = new chl::StoryIngestionHandle( ingestionMutex, &eventQueue1, &eventQueue2);
+    activeIngestionHandle = new chl::StoryIngestionHandle( ingestionMutex, &eventQueue1, &eventQueue2);
 
-	//pre-initialize the pipeline map with the StoryChunks of chunkGranulary 
-	// with the total time window of max(acceptance_window, chunk_granularity*2) 
+    //pre-initialize the pipeline map with the StoryChunks of chunkGranulary 
+    // with the total timelength of at least 2 chunks (merging logic assumes at least 2 chunks in the active pipeline)
 
-    	auto story_start_point = std::chrono::time_point<std::chrono::system_clock,std::chrono::nanoseconds>{}
-	       		+ std::chrono::nanoseconds(timelineStart);
-    	std::time_t time_t_story_start = std::chrono::high_resolution_clock::to_time_t(story_start_point);
-    	std::cout <<"StoryPipeline: storyId {"<<storyId<<"} story_start_time= " << story_start_time <<" "<< std::ctime(&time_t_story_start) 
-	    <<" chunkGranularity="<<chunkGranularity<<" seconds acceptanceWindow {" <<acceptanceWindow<<"}"<<std::endl;
+    auto story_start_point = std::chrono::time_point<std::chrono::system_clock,std::chrono::nanoseconds>{}
+                + std::chrono::nanoseconds(timelineStart);
+    std::time_t time_t_story_start = std::chrono::high_resolution_clock::to_time_t(story_start_point);
+    std::cout <<"StoryPipeline: storyId {"<<storyId<<"} story_start_time= " << story_start_time <<" "<< std::ctime(&time_t_story_start) 
+                <<" chunkGranularity="<<chunkGranularity<<" seconds acceptanceWindow {" <<acceptanceWindow<<"}"<<std::endl;
 	
-         chunkGranularity *= 1000000000;    // seconds =>nanoseconds
-         acceptanceWindow *= 1000000000;    // seconds =>nanoseconds
+    chunkGranularity *= 1000000000;    // seconds =>nanoseconds
+    acceptanceWindow *= 1000000000;    // seconds =>nanoseconds
 
-	 //adjust the timelineStart to the closest prior boundary of chunkGanularity
-	 timelineStart -= (timelineStart%chunkGranularity);
+	 //adjust the timelineStart to the closest prior boundary of chunkGranularity
+    timelineStart -= (timelineStart%chunkGranularity);
          timelineEnd=timelineStart;
 
-	 for(uint64_t start = timelineStart; timelineEnd < (timelineStart + chunkGranularity*3 );)
-	 {
-		appendStoryChunk();
-	 }
+    for(uint64_t start = timelineStart; timelineEnd < (timelineStart + chunkGranularity*3 );)
+    {
+        appendStoryChunk();
+    }
 
 #ifdef TRACE_CHUNKING
-    	auto chunk_start_point = std::chrono::time_point<std::chrono::system_clock,std::chrono::nanoseconds>{} // epoch_time_point{};
-		+ std::chrono::nanoseconds(timelineStart);
-    	std::time_t time_t_chunk_start = std::chrono::high_resolution_clock::to_time_t(chunk_start_point);
-    	auto chunk_end_point = std::chrono::time_point<std::chrono::system_clock,std::chrono::nanoseconds>{}
+    auto chunk_start_point = std::chrono::time_point<std::chrono::system_clock,std::chrono::nanoseconds>{} // epoch_time_point{};
+        + std::chrono::nanoseconds(timelineStart);
+    std::time_t time_t_chunk_start = std::chrono::high_resolution_clock::to_time_t(chunk_start_point);
+    auto chunk_end_point = std::chrono::time_point<std::chrono::system_clock,std::chrono::nanoseconds>{}
 		+ std::chrono::nanoseconds(timelineEnd);
-    	std::time_t time_t_chunk_end = std::chrono::high_resolution_clock::to_time_t(chunk_end_point); 
-    	std::cout <<"Created StoryPipeline: storyId { " << storyId<<"} " <<" with adjusted timeline {" << timelineStart<<" "<< std::ctime(&time_t_chunk_start) 
-		<<"} {" << timelineEnd<<" " <<std::ctime(&time_t_chunk_end) <<"}"<<std::endl;
+    std::time_t time_t_chunk_end = std::chrono::high_resolution_clock::to_time_t(chunk_end_point); 
+    std::cout <<"Created StoryPipeline: storyId { " << storyId<<"} " 
+            <<" with adjusted timeline {" << timelineStart<<" "<< std::ctime(&time_t_chunk_start) 
+            <<"} {" << timelineEnd<<" " <<std::ctime(&time_t_chunk_end) <<"}"<<std::endl;
 #endif
 
 }
+///////////////////////
 
 chl::StoryIngestionHandle * chl::StoryPipeline::getActiveIngestionHandle()
 {
-	return activeIngestionHandle;
+    return activeIngestionHandle;
 }
 
 ///////////////////////
@@ -77,6 +79,7 @@ chronolog::StoryPipeline::~StoryPipeline()
     std::cout <<"StoryPipeline::~StoryPipeline storyId { " << storyId<<"}"<< std::endl;
     finalize();
 }
+///////////////////////
 
 void chronolog::StoryPipeline::finalize()
 {

@@ -25,6 +25,7 @@ public:
     static KeeperRecordingService * CreateKeeperRecordingService(tl::engine& tl_engine, uint16_t service_provider_id
 		    , IngestionQueue & ingestion_queue)
     {
+        
           return  new KeeperRecordingService( tl_engine, service_provider_id, ingestion_queue );
     }  
 
@@ -41,7 +42,7 @@ private:
 		     //  ChronoTick const& chrono_tick, std::string const& record) 
     {
         std::cout << "recording {"<< log_event.clientId<<":"<<log_event.storyId<<":"<< log_event.logRecord <<"}"<< std::endl;
-	theIngestionQueue.ingestLogEvent(log_event);
+	    theIngestionQueue.ingestLogEvent(log_event);
     }
 
 
@@ -50,8 +51,8 @@ private:
 	, theIngestionQueue(ingestion_queue)  
     {
         define("record_event", &KeeperRecordingService::record_event, tl::ignore_return_value());
-	//set up callback for the case when the engine is being finalized while this provider is still alive
-	get_engine().push_finalize_callback(this, [p=this](){delete p;} );
+	    //set up callback for the case when the engine is being finalized while this provider is still alive
+	    get_engine().push_finalize_callback(this, [p=this](){delete p;} );
     }
 
     KeeperRecordingService( KeeperRecordingService const&) = delete;
