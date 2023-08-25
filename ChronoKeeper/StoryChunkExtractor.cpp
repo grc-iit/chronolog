@@ -1,3 +1,4 @@
+#include <unistd.h>
 
 #include <thallium.hpp>
 
@@ -18,7 +19,7 @@ void chronolog::StoryChunkExtractorBase::startExtractionThreads( int stream_coun
     extractorState = RUNNING;
     std::cout <<"ExtractionModule: startExtractionThreads"<<std::endl;
 
-    for(int i=0; i < stream_count; ++i) 
+    for(int i=0; i < stream_count; ++i)
     {
         tl::managed<tl::xstream> es = tl::xstream::create();
         extractionStreams.push_back(std::move(es));
@@ -75,7 +76,7 @@ void chronolog::StoryChunkExtractorBase::drainExtractionQueue()
 
     thallium::xstream es = thallium::xstream::self();
 
-    // extraction threads will be running as long as the state doesn't change 
+    // extraction threads will be running as long as the state doesn't change
     // and untill the extractionQueue is drained in shutdown mode
     while( (extractorState == RUNNING) || !chunkExtractionQueue.empty() )
     {

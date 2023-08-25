@@ -5,6 +5,8 @@
 #include <string>
 #include <unordered_map>
 #include <iostream>
+#include <sys/types.h>
+#include <unistd.h>
 #include <thallium.hpp>
 #include <sys/types.h>
 #include <unistd.h>
@@ -13,6 +15,7 @@
 #include <thallium/serialization/stl/vector.hpp>
 #include <thallium/serialization/stl/unordered_map.hpp>  // remove after attrs are changed 
 
+#include "log.h"
 #include "error.h"
 #include "chronolog_types.h"
 #include "AcquireStoryResponseMsg.h"

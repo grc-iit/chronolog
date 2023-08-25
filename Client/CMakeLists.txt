@@ -5,29 +5,34 @@ set(CMAKE_CXX_STANDARD 17)
 find_package(thallium REQUIRED)
 
 add_library(chronolog_client
-	include/chronolog_client.h
-	src/ChronologClientImpl.h
-	src/KeeperRecordingClient.h
-	src/StorytellerClient.h
-	src/StorytellerClient.cpp
-	src/ChronologClient.cpp
-	src/ChronologClientImpl.cpp
-    )
-       
-	#	include/client.h
-	#include/RPCClient.h
-    #    ../ChronoAPI/ChronoLog/include/macro.h
-	#../ChronoAPI/ChronoLog/include/rpc.h
-	#../ChronoAPI/ChronoLog/include/RPCFactory.h
-	#../ChronoAPI/ChronoLog/include/singleton.h
-	#../ChronoAPI/ChronoLog/src/city.cpp
-	#../ChronoAPI/ChronoLog/include/city.h)
+        include/chronolog_client.h
+        src/ChronologClientImpl.h
+        src/KeeperRecordingClient.h
+        src/StorytellerClient.h
+        src/StorytellerClient.cpp
+        src/ChronologClient.cpp
+        src/ChronologClientImpl.cpp
+)
+
+#include/client.h
+#include/RPCClient.h
+#../ChronoAPI/ChronoLog/include/macro.h
+#../ChronoAPI/ChronoLog/include/rpc.h
+#../ChronoAPI/ChronoLog/include/RPCFactory.h
+#../ChronoAPI/ChronoLog/include/singleton.h
+#../ChronoAPI/ChronoLog/src/city.cpp
+#../ChronoAPI/ChronoLog/include/city.h)
 
 target_include_directories(chronolog_client PUBLIC include
         ../ChronoAPI/ChronoLog/include
-	../chrono_common/
+        ../chrono_common/
         ../Client/include)
 
 target_link_libraries(chronolog_client thallium)
 
 add_subdirectory(storyteller_test)
+
+# install library
+install(
+        TARGETS chronolog_client DESTINATION lib
+)
