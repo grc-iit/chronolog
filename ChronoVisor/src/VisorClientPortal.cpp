@@ -237,11 +237,10 @@ chl::AcquireStoryResponseMsg chronolog::VisorClientPortal::AcquireStory(std::str
     // so that they are ready to start recording this story
     if (notify_keepers)
     {
-        if (0 != theKeeperRegistry->notifyKeepersOfStoryRecordingStart(recording_keepers, chronicle_name, story_name,
+        if (CL_SUCCESS != theKeeperRegistry->notifyKeepersOfStoryRecordingStart(recording_keepers, chronicle_name, story_name,
                                                                        story_id))
         {  // RPC notification to the keepers might have failed, release the newly acquired story
             chronicleMetaDirectory.release_story(client_id, chronicle_name, story_name, story_id, notify_keepers);
-            //TODO: chronicleMetaDirectory->release_story(client_id, story_id, notify_keepers);
             //we do know that there's no need notify keepers of the story ending in this case as it hasn't started...
             //return CL_ERR_NO_KEEPERS;
             return chronolog::AcquireStoryResponseMsg(CL_ERR_NO_KEEPERS, story_id, recording_keepers);

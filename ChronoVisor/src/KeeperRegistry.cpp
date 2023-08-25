@@ -73,7 +73,7 @@ int KeeperRegistry::ShutdownRegistryService()
     std::lock_guard<std::mutex> lock(registryLock);
    
     if(is_shutting_down())
-    { return 1;}
+    { return CL_SUCCESS;}
   
     registryState = SHUTTING_DOWN;
 
@@ -98,7 +98,7 @@ int KeeperRegistry::ShutdownRegistryService()
     if( nullptr != keeperRegistryService)
     {   delete keeperRegistryService;   }
 
-return 1;
+return CL_SUCCESS;
 }
 
 KeeperRegistry::~KeeperRegistry()
@@ -182,13 +182,11 @@ int KeeperRegistry::unregisterKeeperProcess( KeeperIdCard const & keeper_id_card
 {
     if(is_shutting_down())
 	   { return CL_ERR_UNKNOWN;}
-    {  return 0;}
 
 	std::lock_guard<std::mutex> lock(registryLock);
     //check again after the lock is aquired
     if(is_shutting_down())
 	   { return CL_ERR_UNKNOWN;}
-    {  return 0;}
 
 	// stop & delete keeperAdminClient before erasing keeper_process entry
     auto keeper_process_iter = keeperProcessRegistry.find(std::pair<uint32_t,uint16_t>(keeper_id_card.getIPaddr(),keeper_id_card.getPort()));
@@ -306,7 +304,7 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart( std::vector<KeeperIdCard
     if ( keepers_left_to_notify == vectorOfKeepers.size())
     {
 	  std::cout<<"ERROR: Registry failed to notify the keepers to start recording story {"<<storyId<<"}"<<std::endl;
-	  return CL_ERR_UNKNOWN;
+	  return CL_ERR_NO_KEEPERS;
     }
 
     return CL_SUCCESS;
@@ -315,16 +313,15 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart( std::vector<KeeperIdCard
 
 int KeeperRegistry::notifyKeepersOfStoryRecordingStop(std::vector<KeeperIdCard> const& vectorOfKeepers, StoryId const& storyId)
 {
-    int ret_status = 0;
     if (!is_running())
     {
        std::cout<<"Registry has no Keeper processes to notify of story release" << std::endl;
-       return -1;
+       return CL_ERR_NO_KEEPERS;
     }
     
     std::lock_guard<std::mutex> lock(registryLock);
     if(!is_running())
-    {  return -1; }
+    {  return CL_ERR_NO_KEEPERS; }
 
     size_t keepers_left_to_notify = vectorOfKeepers.size();
     for (KeeperIdCard keeper_id_card : vectorOfKeepers)
@@ -362,9 +359,9 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStop(std::vector<KeeperIdCard> 
     if ( keepers_left_to_notify == vectorOfKeepers.size())
     {
 	    std::cout<<"ERROR: Registry failed to notify the keepers to stop recording story {"<<storyId<<"}"<<std::endl;
-	    return -1;
+	    return CL_ERR_NO_KEEPERS;
     }
-    return ret_status;
+    return CL_SUCCESS;
 }
 
 
