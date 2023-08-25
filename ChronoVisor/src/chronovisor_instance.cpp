@@ -20,7 +20,7 @@ void sigterm_handler (int)
 
 
 ///////////////////////////////////////////////
-int main(int argc, char** argv) 
+int main(int argc, char** argv)
 {
 
     signal(SIGTERM, sigterm_handler);
@@ -28,12 +28,12 @@ int main(int argc, char** argv)
     // IMPORTANT NOTE!!!!
     // we need to instantiate Client Registry,
     // MetadataDirectory, & KeeperRegistry
-    // without initializing any of the related RPC communication objects 
+    // without initializing any of the related RPC communication objects
     // to ensure that the main thread is the only one running at this point.
-    // After they are instantiated and tied together 
-    // we can start RPC engines initialization that would start 
+    // After they are instantiated and tied together
+    // we can start RPC engines initialization that would start
     // a bunch of new threads....
-    // 
+    //
     // If we can't ensure the instantiation of registries on the main thread
     // we'd need to add static mutex protection to all the registry singleton objects
 
@@ -59,14 +59,14 @@ int main(int argc, char** argv)
 
     theChronoVisorPortal.StartServices(confManager, &keeperRegistry);
 
-    
+
     /////
 
     while( keep_running)
     {
        sleep(10);
     }
-	
+
 
     theChronoVisorPortal.ShutdownServices();
     keeperRegistry.ShutdownRegistryService();

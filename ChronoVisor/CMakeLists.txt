@@ -1,3 +1,5 @@
+set(CMAKE_FIND_LIBRARY_TYPE STATIC)
+
 find_package(thallium REQUIRED)
 find_package(Threads REQUIRED)
 
@@ -25,3 +27,14 @@ configure_file(${CMAKE_SOURCE_DIR}/default_conf.json.in
         ${CMAKE_CURRENT_BINARY_DIR}/default_conf.json COPYONLY)
 add_test(NAME ChronoVisorServerTest COMMAND chronovisor_server)
 
+set_target_properties(chronovisor_server PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
+
+# install binary
+install(
+        TARGETS chronovisor_server DESTINATION bin
+)
+
+# install configuration file
+install(
+        FILES ${CMAKE_CURRENT_SOURCE_DIR}/../default_conf.json.in DESTINATION conf RENAME default_conf.json
+)

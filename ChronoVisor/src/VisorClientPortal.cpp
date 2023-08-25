@@ -2,7 +2,6 @@
 #include <string>
 #include <vector>
 #include <map>
-#include <thallium.hpp>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -60,7 +59,6 @@ int chronolog::VisorClientPortal::StartServices(ChronoLog::ConfigurationManager 
 
         uint16_t provider_id = confManager.VISOR_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID;
 
- 
         margo_instance_id margo_id=margo_init(CLIENT_PORTAL_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 2);
  
         if(MARGO_INSTANCE_NULL == margo_id)
@@ -102,10 +100,10 @@ chronolog::VisorClientPortal::~VisorClientPortal()
     std::cout << "VisorClientPortal::~VisorClientPortal" << std::endl;
 
     ShutdownServices();
-    
+
     if(clientPortalService != nullptr)
     {   delete clientPortalService; }
-    
+
     if(clientPortalEngine != nullptr)
     {   delete clientPortalEngine;   }
 
@@ -352,7 +350,7 @@ int chronolog::VisorClientPortal::LocalDestroyStory(std::string const& chronicle
 
 
 /////////////////
-AcquireStoryResponseMsg const& chronolog::VisorClientPortal::LocalAcquireStory( 
+AcquireStoryResponseMsg const& chronolog::VisorClientPortal::LocalAcquireStory(
                               chronolog::ClientId const&client_id
                               , std::string const&chronicle_name,
                               std::string const&story_name,
