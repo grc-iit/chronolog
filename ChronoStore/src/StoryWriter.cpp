@@ -143,7 +143,7 @@ int StoryWriter::writeStoryChunks(const std::map<uint64_t, chronolog::StoryChunk
     {
         // Check if the Story file has been opened/created already
         hid_t story_file;
-        uint64_t story_id = story_chunk_map_it->second.getStoryID();
+        uint64_t story_id = story_chunk_map_it->second.getStoryId();
         std::string story_file_name = chronicle_dir + "/" + std::to_string(story_id);
         if (story_chunk_fd_map.find(story_id) != story_chunk_fd_map.end())
         {

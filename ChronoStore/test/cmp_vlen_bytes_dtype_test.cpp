@@ -361,11 +361,11 @@ int writeStoryChunks(std::map<uint64_t, StoryChunk> &story_chunk_map,
 //        status = H5Fclose(story_chunk_fd_map_it.second);
 //        if (status < 0)
 //        {
-//            char *file_name = new char[128];
+//            char *story_file_name = new char[128];
 //            size_t file_name_len = 0;
-//            H5Fget_name(story_chunk_fd_map_it.second, file_name, file_name_len);
-//            LOGE("Failed to close file for story chunk: %s", file_name);
-//            free(file_name);
+//            H5Fget_name(story_chunk_fd_map_it.second, story_file_name, file_name_len);
+//            LOGE("Failed to close file for story chunk: %s", story_file_name);
+//            free(story_file_name);
 //            return CL_ERR_UNKNOWN;
 //        }
 //    }

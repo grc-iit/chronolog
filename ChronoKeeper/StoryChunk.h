@@ -23,118 +23,116 @@ namespace chronolog
     typedef std::tuple<chrono_time, ClientId, chrono_index> EventSequence;
 
 
-class StoryChunk
-{
-public:
-   
-    StoryChunk( StoryId const & story_id = 0, uint64_t start_time = 0, uint64_t end_time = 0)
-	   : storyId(story_id)
-	   , startTime(start_time)
-	   , endTime(end_time)
-	   , revisionTime(start_time)
-    { }
-
-    ~StoryChunk() = default;
-
-    StoryId const& getStoryId() const
-    {   return storyId; }
-
-    uint64_t getStartTime() const
-    {   return startTime; }
-
-    uint64_t getEndTime() const
-    {   return endTime; }
-
-    bool empty() const
-    {   return ( logEvents.empty() ? true : false ); }
-
-    size_t getNumEvents() const
-    { return logEvents.size(); }
-
-    size_t getTotalPayloadSize() const
+    class StoryChunk
     {
-        size_t total_size = 0;
-        for (auto const &event : logEvents)
-        { total_size += event.second.logRecord.size(); }
-        return total_size;
-    }
+    public:
 
-    std::map<EventSequence, LogEvent>::const_iterator begin() const
-    { return logEvents.begin(); }
+        StoryChunk(StoryId const &story_id = 0, uint64_t start_time = 0, uint64_t end_time = 0)
+                : storyId(story_id), startTime(start_time), endTime(end_time), revisionTime(start_time)
+        {}
 
-    std::map<EventSequence,LogEvent>::const_iterator end() const
-    {   return logEvents.end(); }
+        ~StoryChunk() = default;
 
-    std::map<EventSequence,LogEvent>::const_iterator lower_bound( uint64_t chrono_time) const
-    {   return logEvents.lower_bound( EventSequence{chrono_time,0,0});}
+        StoryId const &getStoryId() const
+        { return storyId; }
 
-    uint64_t firstEventTime() const
-    {   return (*logEvents.begin()).second.time(); }
+        uint64_t getStartTime() const
+        { return startTime; }
 
-    int insertEvent(LogEvent const& event)
-    {
-      if((event.time() >= startTime)
-	      && (event.time() < endTime))
-      { 
-         logEvents.insert( std::pair<EventSequence,LogEvent>({event.time(),event.clientId, event.index()}, event));
-	  return 1;
-      }
-      else
-      {   return 0;   }
-   }
+        uint64_t getEndTime() const
+        { return endTime; }
 
+        bool empty() const
+        { return (logEvents.empty() ? true : false); }
 
-    uint32_t mergeEvents( std::map<EventSequence,LogEvent> & events
-               , std::map<EventSequence,LogEvent>::iterator &  merge_start );
+        size_t getNumEvents() const
+        { return logEvents.size(); }
 
-    uint32_t mergeEvents(StoryChunk & other_chunk)
-    {  return 0; }
-
-    uint32_t mergeEvents(StoryChunk & other_chunk
-	          , uint64_t start_time, uint64_t end_time)
-    {  return 0; }
-
-
-   uint32_t extractEvents( std::map<EventSequence,LogEvent> & target_map
-       , std::map<EventSequence,LogEvent>::iterator first_pos
-       , std::map<EventSequence,LogEvent>::iterator last_pos)
-   { return 0;}
-   uint32_t extractEvents( std::map<EventSequence,LogEvent>  & target_map
-	          , uint64_t start_time, uint64_t end_time)
-   { return 0;}
-   uint32_t eraseEvents(uint64_t start_time, uint64_t end_time)
-   { return 0;}
-
-    bool operator==(const StoryChunk &other) const
-    {
-        return ((storyId == other.storyId)
-                && (startTime == other.startTime)
-                && (endTime == other.endTime)
-                && (revisionTime == other.revisionTime)
-                && (logEvents == other.logEvents));
-    }
-
-    [[nodiscard]] std::string toString() const
-    {
-        std::stringstream ss;
-        ss << "StoryChunk:{" << storyId << ":" << startTime << ":" << endTime << "} has " << logEvents.size()
-           << " events: ";
-        for (auto const &event : logEvents)
+        size_t getTotalPayloadSize() const
         {
-            ss << "<" << std::get<0>(event.first) << ", "
-               << std::get<1>(event.first) << ", "
-               << std::get<2>(event.first) << ">: " << event.second.toString();
+            size_t total_size = 0;
+            for (auto const &event: logEvents)
+            { total_size += event.second.logRecord.size(); }
+            return total_size;
         }
-        return ss.str();
-    }
 
-private:
-    StoryId storyId;
-    uint64_t startTime;
-    uint64_t endTime;
-    uint64_t revisionTime;
+        std::map<EventSequence, LogEvent>::const_iterator begin() const
+        { return logEvents.begin(); }
 
-    std::map<EventSequence, LogEvent> logEvents;
+        std::map<EventSequence, LogEvent>::const_iterator end() const
+        { return logEvents.end(); }
+
+        std::map<EventSequence, LogEvent>::const_iterator lower_bound(uint64_t chrono_time) const
+        { return logEvents.lower_bound(EventSequence{chrono_time, 0, 0}); }
+
+        uint64_t firstEventTime() const
+        { return (*logEvents.begin()).second.time(); }
+
+        int insertEvent(LogEvent const &event)
+        {
+            if ((event.time() >= startTime)
+                && (event.time() < endTime))
+            {
+                logEvents.insert(
+                        std::pair<EventSequence, LogEvent>({event.time(), event.clientId, event.index()}, event));
+                return 1;
+            }
+            else
+            { return 0; }
+        }
+
+
+        uint32_t mergeEvents(std::map<EventSequence, LogEvent> &events,
+                             std::map<EventSequence, LogEvent>::iterator &merge_start);
+
+        uint32_t mergeEvents(StoryChunk &other_chunk)
+        { return 0; }
+
+        uint32_t mergeEvents(StoryChunk &other_chunk, uint64_t start_time, uint64_t end_time)
+        { return 0; }
+
+
+        uint32_t extractEvents(std::map<EventSequence, LogEvent> &target_map,
+                               std::map<EventSequence, LogEvent>::iterator first_pos,
+                               std::map<EventSequence, LogEvent>::iterator last_pos)
+        { return 0; }
+
+        uint32_t extractEvents(std::map<EventSequence, LogEvent> &target_map, uint64_t start_time, uint64_t end_time)
+        { return 0; }
+
+        uint32_t eraseEvents(uint64_t start_time, uint64_t end_time)
+        { return 0; }
+
+        bool operator==(const StoryChunk &other) const
+        {
+            return ((storyId == other.storyId)
+                    && (startTime == other.startTime)
+                    && (endTime == other.endTime)
+                    && (revisionTime == other.revisionTime)
+                    && (logEvents == other.logEvents));
+        }
+
+        [[nodiscard]] std::string toString() const
+        {
+            std::stringstream ss;
+            ss << "StoryChunk:{" << storyId << ":" << startTime << ":" << endTime << "} has " << logEvents.size()
+               << " events: ";
+            for (auto const &event: logEvents)
+            {
+                ss << "<" << std::get<0>(event.first) << ", "
+                   << std::get<1>(event.first) << ", "
+                   << std::get<2>(event.first) << ">: " << event.second.toString();
+            }
+            return ss.str();
+        }
+
+    private:
+        StoryId storyId;
+        uint64_t startTime;
+        uint64_t endTime;
+        uint64_t revisionTime;
+
+        std::map<EventSequence, LogEvent> logEvents;
 
     };
 
