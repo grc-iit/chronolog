@@ -9,6 +9,8 @@
 #include "log.h"
 #include <ChronicleMetaDirectory.h>
 
+//////////////////////
+
 ClientRegistryManager::ClientRegistryManager() {
     LOGD("%s constructor is called, object created@%p in thread PID=%d",
          typeid(*this).name(), this, getpid());
@@ -22,6 +24,9 @@ ClientRegistryManager::~ClientRegistryManager() {
     delete clientRegistry_;
 }
 
+//INNA : in case the client is not found this function does not return !!!
+// it generates compiler warning now , that is really a bug
+// I suggest the API should change
 ClientInfo& ClientRegistryManager::get_client_info(const std::string &client_id) {
     std::lock_guard<std::mutex> clientRegistryLock(g_clientRegistryMutex_);
     auto clientRegistryRecord = clientRegistry_->find(client_id);
@@ -29,19 +34,26 @@ ClientInfo& ClientRegistryManager::get_client_info(const std::string &client_id)
         return clientRegistryRecord->second;
     }
 }
+//////////////////////
 
-int ClientRegistryManager::add_story_acquisition(const std::string &client_id, uint64_t &sid, Story *pStory) {
+int ClientRegistryManager::add_story_acquisition(const std::string &client_id, uint64_t &sid, Story *pStory) 
+{
     std::lock_guard<std::mutex> clientRegistryLock(g_clientRegistryMutex_);
     auto clientRegistryRecord = clientRegistry_->find(client_id);
-    if (clientRegistryRecord != clientRegistry_->end()) {
+    if (clientRegistryRecord != clientRegistry_->end()) 
+    {
         auto clientInfo = clientRegistryRecord->second;
-        if (clientInfo.acquiredStoryList_.find(sid) != clientInfo.acquiredStoryList_.end()) {
+        if (clientInfo.acquiredStoryList_.find(sid) != clientInfo.acquiredStoryList_.end()) 
+        {
             LOGD("client_id=%s has already acquired StoryID=%lu", client_id.c_str(), sid);
             return CL_ERR_ACQUIRED;
-        } else {
+        } 
+        else 
+        {
             clientInfo.acquiredStoryList_.emplace(sid, pStory);
             auto res = clientRegistry_->insert_or_assign(client_id, clientInfo);
-            if (res.second) {
+            if (res.second) 
+            {
                 LOGD("added a new entry for client_id=%s acquiring StoryID=%lu", client_id.c_str(), sid);
                 return CL_SUCCESS;
             } else {
@@ -49,11 +61,15 @@ int ClientRegistryManager::add_story_acquisition(const std::string &client_id, u
                 return CL_ERR_UNKNOWN;
             }
         }
-    } else {
+    } 
+    else 
+    {
         LOGD("client_id=%s does not exist", client_id.c_str());
         return CL_ERR_UNKNOWN;
     }
 }
+
+//////////////////////
 
 int ClientRegistryManager::remove_story_acquisition(const std::string &client_id, uint64_t &sid) {
     std::lock_guard<std::mutex> clientRegistryLock(g_clientRegistryMutex_);
