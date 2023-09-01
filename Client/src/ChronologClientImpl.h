@@ -68,7 +68,9 @@ public:
 private:
 
     ChronologClientState    clientState;
-    std::string clientAccount;
+    std::string clientLogin;
+    uint32_t    hostId;
+    uint32_t    pid;
     ClientId	clientId;
     ChronologTimer clockProxy;
     thallium::engine * tlEngine;
@@ -76,12 +78,11 @@ private:
     StorytellerClient * storyteller;
    // ClocksourceManager *pClocksourceManager_;
 
-    //TODO : client_account & client_ip will be acquired from the cleitn process itself ....
-    //    for now they can be passed in....
     ChronologClientImpl(const ChronoLog::ConfigurationManager& conf_manager);
 
     ChronologClientImpl(std::string const& protocol, const std::string& visor_ip, int visor_port, uint16_t service_provider); 
 
+    void defineClientIdentity();
 
 };
 } //namespace chronolog

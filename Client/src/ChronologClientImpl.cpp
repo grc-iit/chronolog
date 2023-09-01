@@ -27,12 +27,13 @@ chronolog::ChronologClientImpl::GetClientImplInstance(ChronoLog::ConfigurationMa
 //    for now they can be passed in....
 ////////
 chronolog::ChronologClientImpl::ChronologClientImpl(const ChronoLog::ConfigurationManager &confManager)
-        : clientState(UNKNOWN), clientAccount(""), clientId(0), tlEngine(nullptr), rpcVisorClient(nullptr),
+        : clientState(UNKNOWN), clientLogin(""), hostId(0), pid(0), clientId(0), tlEngine(nullptr), rpcVisorClient(nullptr),
           storyteller(nullptr)
 {
     //pClocksourceManager_ = ClocksourceManager::getInstance();
     //pClocksourceManager_->setClocksourceType(CHRONOLOG_CONF->CLOCKSOURCE_TYPE);
 
+    defineClientIdentity();
     tlEngine = new thallium::engine(confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.PROTO_CONF,
                                     THALLIUM_CLIENT_MODE, true, 1);
 
@@ -48,12 +49,13 @@ chronolog::ChronologClientImpl::ChronologClientImpl(const ChronoLog::Configurati
 
 chronolog::ChronologClientImpl::ChronologClientImpl(const std::string &protocol_string, const std::string &visor_ip,
                                                     int visor_port, uint16_t visor_portal_service_provider)
-        : clientState(UNKNOWN), clientAccount(""), clientId(0), tlEngine(nullptr), rpcVisorClient(nullptr),
+        : clientState(UNKNOWN), clientLogin(""),hostId(0),pid(0), clientId(0), tlEngine(nullptr), rpcVisorClient(nullptr),
           storyteller(nullptr)
 {
     //pClocksourceManager_ = ClocksourceManager::getInstance();
     //pClocksourceManager_->setClocksourceType(CHRONOLOG_CONF->CLOCKSOURCE_TYPE);
 
+    defineClientIdentity();
     tlEngine = new thallium::engine(protocol_string, THALLIUM_CLIENT_MODE, true, 1);
 
     std::string client_visor_na_string = protocol_string
@@ -64,6 +66,22 @@ chronolog::ChronologClientImpl::ChronologClientImpl(const std::string &protocol_
                                                                visor_portal_service_provider);
 }
 
+void chronolog::ChronologClientImpl::defineClientIdentity()
+{
+    //uint32_t uid = geteuid(); //TODO: effective uid might be a better choice than login name ...
+
+    char login_name[LOGIN_NAME_MAX];
+    getlogin_r(login_name, LOGIN_NAME_MAX);
+
+    clientLogin=login_name; //this truncates to actual strlen...
+
+    //32bit host identifier
+    uint32_t hostId= gethostid();
+    //32bit process id
+    uint32_t pid=getpid();
+    std::cout <<"Client_identity {"<<clientLogin<<":"<<hostId<<":"<<pid<<"}"<<std::endl;
+
+}
 
 chronolog::ChronologClientImpl::~ChronologClientImpl()
 {
@@ -91,23 +109,13 @@ int chronolog::ChronologClientImpl::Connect(const std::string &server_uri,
     if ((clientState != UNKNOWN) && (clientState != SHUTTING_DOWN))
     { return CL_SUCCESS; }
 
-/*    if (client_id.empty()) {
-        char ip[16];
-        struct hostent *he = gethostbyname("localhost");
-        auto **addr_list = (struct in_addr **) he->h_addr_list;
-        strcpy(ip, inet_ntoa(*addr_list[0]));
-        std::string addr_str = ip + std::string(",") + std::to_string(getpid());
-        uint64_t client_id_hash = CityHash64(addr_str.c_str(), addr_str.size());
-        client_id = std::to_string(client_id_hash);
-    }
-    */
-    clientAccount = client_account;
+
     //TODO: client_id must be assigned by the Visor server
     ClientId client_id{0};
     uint64_t clock_offset = 0; //TODO: use this value with the clocksource...
 
     //auto return_code = rpcClient_->Connect(server_uri, clientAccount, flags, clock_offset);
-    auto return_code = rpcVisorClient->Connect(clientAccount, 345, client_id, clock_offset);
+    auto return_code = rpcVisorClient->Connect(clientLogin, hostId, client_id, clock_offset);
 
     if (return_code == CL_SUCCESS)
     {
@@ -120,7 +128,7 @@ int chronolog::ChronologClientImpl::Connect(const std::string &server_uri,
     return return_code;
 }
 
-int chronolog::ChronologClientImpl::Disconnect() //const std::string &client_id, int &flags)
+int chronolog::ChronologClientImpl::Disconnect() 
 {
     std::lock_guard<std::mutex> lock_client(chronologClientMutex);
 
@@ -131,7 +139,7 @@ int chronolog::ChronologClientImpl::Disconnect() //const std::string &client_id,
 
     int flags = 1;
     //auto return_code = rpcClient_->Disconnect(clientAccount , flags);
-    auto return_code = rpcVisorClient->Disconnect(clientAccount);// , flags);
+    auto return_code = rpcVisorClient->Disconnect(clientLogin);// , flags);
     if (return_code == CL_SUCCESS)
     {
         clientState = SHUTTING_DOWN;
@@ -153,7 +161,7 @@ int chronolog::ChronologClientImpl::CreateChronicle(std::string const &chronicle
     if ((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
     { return CL_ERR_NO_CONNECTION; }
 
-    return rpcVisorClient->CreateChronicle(chronicle_name, attrs, flags);
+    return rpcVisorClient->CreateChronicle(clientId, chronicle_name, attrs, flags);
 }
 
 //TODO: client account must be passed into the rpc call 
@@ -205,7 +213,7 @@ chronolog::ChronologClientImpl::AcquireStory(std::string const &chronicle_name, 
     { return std::pair<int, chronolog::StoryHandle *>(CL_SUCCESS, storyHandle); }
 
     // issue rpc request to the Visor
-    auto acquireStoryResponse = rpcVisorClient->AcquireStory(clientAccount, chronicle_name, story_name, attrs, flags);
+    auto acquireStoryResponse = rpcVisorClient->AcquireStory(clientLogin, chronicle_name, story_name, attrs, flags);
 
     std::cout << "AcquireStoryResponseMsg : " << acquireStoryResponse << std::endl;
     if (acquireStoryResponse.getErrorCode() != CL_SUCCESS)
@@ -251,7 +259,7 @@ int chronolog::ChronologClientImpl::ReleaseStory(std::string const &chronicle_na
     if ((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
     { return CL_ERR_NO_CONNECTION; }
 
-    auto ret = rpcVisorClient->ReleaseStory(clientAccount, chronicle_name, story_name);
+    auto ret = rpcVisorClient->ReleaseStory(clientLogin, chronicle_name, story_name);
     return ret;
 }
 
@@ -294,7 +302,7 @@ std::vector<std::string> &chronolog::ChronologClientImpl::ShowChronicles(std::ve
     if ((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
     { return chronicles; }
 
-    chronicles = rpcVisorClient->ShowChronicles(clientAccount);
+    chronicles = rpcVisorClient->ShowChronicles(clientLogin);
     return chronicles;
 }
 
@@ -309,6 +317,6 @@ chronolog::ChronologClientImpl::ShowStories(std::string const &chronicle_name, s
     if ((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
     { return stories; }
 
-    stories = rpcVisorClient->ShowStories(clientAccount, chronicle_name);
+    stories = rpcVisorClient->ShowStories(clientLogin, chronicle_name);
     return stories;
 }

@@ -112,32 +112,36 @@ chronolog::VisorClientPortal::~VisorClientPortal()
 /**
  * Admin APIs
  */
-int chronolog::VisorClientPortal::ClientConnect(std::string const &client_account, uint32_t client_host_ip,
+int chronolog::VisorClientPortal::ClientConnect(std::string const &client_login, uint32_t client_host_id,
                                                 chl::ClientId &client_id, uint64_t &clock_offset)
 {
     LOGD("%s in ChronoLogAdminRPCProxy@%p called in PID=%d, with args: account=%s",
-         __FUNCTION__, this, getpid(), client_account.c_str());
+         __FUNCTION__, this, getpid(), client_login.c_str());
     ClientInfo record;
-    record.addr_ = "127.0.0.1";
-    //TODO: process real ip + account instead and generate client_id
-    if (std::strtol(client_account.c_str(), nullptr, 10) < 0)
+
+    //TODO: real authentication goes here ...
+    if(! is_client_authenticated(client_login))
     {
-        LOGE("client_id=%s is invalid", client_account.c_str());
+        LOGE("client_id=%s is invalid", client_login.c_str());
         return CL_ERR_INVALID_ARG;
     }
-    return clientManager.add_client_record(client_account, record);
+    //TODO: consider different hashing mechanism ...
+    std::string client_account_for_hash = client_login + std::to_string(client_host_id); //+process_id 
+    uint64_t client_token = CityHash64(client_account_for_hash.c_str(), client_account_for_hash.size());
+
+    return clientManager.add_client_record(client_token, record);
 }
 
-int chronolog::VisorClientPortal::ClientDisconnect(std::string const &client_id)
+int chronolog::VisorClientPortal::ClientDisconnect(chronolog::ClientId const &client_id)
 {
-    LOGD("%s is called in PID=%d, with args: client_id=%s",
+ /*   LOGD("%s is called in PID=%d, with args: client_id=%s",
          __FUNCTION__, getpid(), client_id.c_str());
     if (std::strtol(client_id.c_str(), nullptr, 10) < 0)
     {
         LOGE("client_id=%s is invalid", client_id.c_str());
         return CL_ERR_INVALID_ARG;
     }
-
+*/
     return clientManager.remove_client_record(client_id);
 }
 
@@ -195,7 +199,7 @@ int chronolog::VisorClientPortal::DestroyStory(chl::ClientId const &client_id, s
 
 ///////////////////
 
-chl::AcquireStoryResponseMsg chronolog::VisorClientPortal::AcquireStory(std::string const &client_id,
+chl::AcquireStoryResponseMsg chronolog::VisorClientPortal::AcquireStory(chl::ClientId const &client_id,
                                                                         std::string const &chronicle_name,
                                                                         std::string const &story_name,
                                                                         const std::unordered_map<std::string, std::string> &attrs,
@@ -255,7 +259,7 @@ chl::AcquireStoryResponseMsg chronolog::VisorClientPortal::AcquireStory(std::str
 }
 
 
-int chronolog::VisorClientPortal::ReleaseStory(std::string const &client_id, std::string const &chronicle_name,
+int chronolog::VisorClientPortal::ReleaseStory(chl::ClientId const &client_id, std::string const &chronicle_name,
                                                std::string const &story_name)
 {
     LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s",
@@ -395,7 +399,7 @@ int chronolog::VisorClientPortal::LocalEditChronicleAttr( chronolog::ClientId co
 */
 /////////////////
 
-bool chronolog::VisorClientPortal::authenticate_client(std::string const &client_account, chl::ClientId &)
+bool chronolog::VisorClientPortal::is_client_authenticated(std::string const &client_account)
 {
 
     return true;

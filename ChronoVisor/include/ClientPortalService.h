@@ -46,13 +46,13 @@ class ClientPortalService : public thallium::provider<ClientPortalService>
         request.respond(return_code);
     }
 
-    void Disconnect(tl::request const& request, std::string const&  client_account) //old TODO : replace with client_id
+    void Disconnect(tl::request const& request, ClientId const&  client_token) 
     {
-        int return_code = theVisorClientPortal.ClientDisconnect(client_account);
+        int return_code = theVisorClientPortal.ClientDisconnect(client_token);
         request.respond(return_code);
     }
 
-    void CreateChronicle( tl::request const& request //, ClientId const& client_id
+    void CreateChronicle( tl::request const& request , ClientId const& client_id
             , std::string const& chronicle_name, const std::unordered_map<std::string, std::string> &attrs, int &flags)//old
     {
         ClientId client_id;
@@ -69,8 +69,7 @@ class ClientPortalService : public thallium::provider<ClientPortalService>
     }
 
     void AcquireStory( tl::request const& request
-                              //ClientId const& client_id,
-                              , std::string const& client_id,
+                              , ClientId const& client_id,
                               std::string const& chronicle_name,
                               std::string const& story_name,
                               const std::unordered_map<std::string, std::string> &attrs,
@@ -82,7 +81,7 @@ class ClientPortalService : public thallium::provider<ClientPortalService>
     }
 
     void ReleaseStory( tl::request const& request
-            , std::string const& client_id 
+            , ClientId const& client_id 
             , std::string const& chronicle_name, std::string const& story_name)
     {
         int return_code = theVisorClientPortal.ReleaseStory(client_id, chronicle_name,story_name);

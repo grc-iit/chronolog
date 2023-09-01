@@ -44,7 +44,6 @@ public:
     void ShutdownServices();
 
 int ClientConnect( const std::string &uri, std::string const &client_account, uint32_t client_host_ip, ClientId &, uint64_t &clock_offset); //old
-int ClientDisconnect(std::string const& client_account); //, int& flags); //old
 
 int ClientConnect( std::string const &client_account, uint32_t client_host_ip, ClientId &, uint64_t &clock_offset);
 int ClientDisconnect(ClientId const& client_id);
@@ -55,15 +54,15 @@ int DestroyChronicle( ClientId const& client_id, ChronicleName const& chronicle_
 int DestroyStory(ClientId const& client_id, std::string const& chronicle_name, std::string const& story_name);
 
 AcquireStoryResponseMsg AcquireStory( 
-                              //ClientId const& client_id,
-                              std::string const& client_id,
+                              ClientId const& client_id,
+                              //std::string const& client_id,
                               std::string const& chronicle_name,
                               std::string const& story_name,
                               const std::unordered_map<std::string, std::string> &attrs,
                               int &flags);
                             //, AcquireStoryResponseMsg &);
 
-int ReleaseStory( std::string const&client_id, std::string const& chronicle_name, std::string const& story_name);
+int ReleaseStory( ClientId const&client_id, std::string const& chronicle_name, std::string const& story_name);
 /*int ReleaseStory( ClientId const&client_id, StoryId const&);
 int DestroyStory(std::string const& client_id, std::string const& chronicle_name, std::string const& story_name);
 int DestroyStory( ClientId const&client_id, StoryId const&);
@@ -81,7 +80,7 @@ private:
 
     // role based authentication dummies return true for any client_id for the time being
     // TODO: will be implemented when we add ClientAuthentication module
-	bool authenticate_client( std::string const& client_account, ClientId &);
+	bool is_client_authenticated( std::string const& client_account);
     bool chronicle_action_is_authorized( ClientId const&, ChronicleName const&);
     bool story_action_is_authorized( ClientId const&, ChronicleName const&, StoryName const&);
 
