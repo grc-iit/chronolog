@@ -23,7 +23,7 @@ public:
         chronicleMetaDirectory_ = pChronicleMetaDirectory;
     }
 
-    ClientInfo& get_client_info(chronolog::ClientId const & client_id);
+    ClientInfo* get_client_info(chronolog::ClientId const & client_id);
     int add_story_acquisition(chronolog::ClientId const & client_id, uint64_t &sid, Story *pStory);
     int remove_story_acquisition(chronolog::ClientId const &client_id, uint64_t &sid);
 

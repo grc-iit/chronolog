@@ -132,8 +132,8 @@ int chronolog::VisorClientPortal::ClientConnect(std::string const &client_login,
 
 int chronolog::VisorClientPortal::ClientDisconnect(chronolog::ClientId const &client_id)
 {
-    LOGD("%s is called in PID=%d, with args: client_id=%lu",
-         __FUNCTION__, getpid());
+    LOGD("%s is called with args: client_id=%lu",
+         __FUNCTION__, client_id);
 
     return clientManager.remove_client_record(client_id);
 }

@@ -27,15 +27,14 @@ ClientRegistryManager::~ClientRegistryManager() {
     delete clientRegistry_;
 }
 
-//INNA : in case the client is not found this function does not return !!!
-// it generates compiler warning now , that is really a bug
-// I suggest the API should change
-ClientInfo& ClientRegistryManager::get_client_info(chl::ClientId const &client_id) {
+ClientInfo* ClientRegistryManager::get_client_info(chl::ClientId const &client_id) {
     std::lock_guard<std::mutex> clientRegistryLock(g_clientRegistryMutex_);
     auto clientRegistryRecord = clientRegistry_->find(client_id);
     if (clientRegistryRecord != clientRegistry_->end()) {
-        return clientRegistryRecord->second;
+        return &(clientRegistryRecord->second);
     }
+    else
+    {   return nullptr; }
 }
 //////////////////////
 

@@ -301,7 +301,7 @@ int ChronicleMetaDirectory::acquire_story( chl::ClientId const &client_id,
             /* Increment AcquisitionCount */
             pStory->incrementAcquisitionCount();
             /* Add this client to acquirerClientList of the Story */
-            pStory->addAcquirerClient(client_id, &clientRegistryManager_->get_client_info(client_id));
+            pStory->addAcquirerClient(client_id, clientRegistryManager_->get_client_info(client_id));
             /* Add this Story to acquiredStoryMap for this client */
             clientRegistryManager_->add_story_acquisition(client_id, sid, pStory);
             ret = CL_SUCCESS;

@@ -75,6 +75,9 @@ public:
     }
 
     void addAcquirerClient( chronolog::ClientId const &client_id, ClientInfo *clientInfo) {
+        if(nullptr == clientInfo)
+        {   return; }
+
         std::lock_guard<std::mutex> acquirerClientListLock(acquirerClientMapMutex_);
         acquirerClientMap_.emplace(client_id, clientInfo);
         LOGD("acquirer client_id=%lu is added to Story name=%s", client_id, name_.c_str());
