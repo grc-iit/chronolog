@@ -23,7 +23,7 @@ public:
 void stashStoryChunk(StoryChunk * story_chunk)
 {
     if(nullptr == story_chunk)
-        return;
+    {    return;    }
 
 	std::cout <<"ExtractionQueue::stashStoryChunk: storyId{"<< story_chunk->getStoryId()<<"}{"<<story_chunk->getStartTime()<<std::endl;
 	{

@@ -7,7 +7,7 @@
 #include <unordered_map>
 #include <mutex>
 
-#include "chrono_common/chronolog_types.h"
+#include "chronolog_types.h"
 #include "StoryIngestionHandle.h"
 
 //
@@ -46,15 +46,15 @@ void removeIngestionHandle(StoryId const & story_id)
 	std::cout <<"IngestionQueue: removed handle for story {"<<story_id<<"}"<<" handlesMap.size="<<storyIngestionHandles.size()<<std::endl;
 }
 
-void ingestLogEvent(LogEvent const& event)
+void ingestLogEvent(LogEvent const & event)
 {
 	std::cout <<"IngestionQueue: ingestLogEvent : storyIngestionHandles {"<< &storyIngestionHandles<<"} .size="<<storyIngestionHandles.size()<<std::endl;
-	std::cout<<"received event for story {"<<event.storyId<< ":"<<event.time()<<"}"<<std::endl;
+	std::cout<<"IngestionQueue: received event {"<<event<< "}"<<std::endl;
 
 	auto ingestionHandle_iter = storyIngestionHandles.find(event.storyId);
 	if( ingestionHandle_iter == storyIngestionHandles.end())
 	{
-		std::cout <<" orphan event for story {"<<event.storyId<<"}"<<std::endl;
+		std::cout <<" orphan event {"<<event<<"}"<<std::endl;
 		std::lock_guard<std::mutex> lock(ingestionQueueMutex);
 		orphanEventQueue.push_back(event);
 	}

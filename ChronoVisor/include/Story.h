@@ -77,17 +77,17 @@ public:
     void addAcquirerClient( chronolog::ClientId const &client_id, ClientInfo *clientInfo) {
         std::lock_guard<std::mutex> acquirerClientListLock(acquirerClientMapMutex_);
         acquirerClientMap_.emplace(client_id, clientInfo);
-        LOGD("acquirer client_id=%u is added to Story name=%s", client_id, name_.c_str());
+        LOGD("acquirer client_id=%lu is added to Story name=%s", client_id, name_.c_str());
     }
 
     int removeAcquirerClient(chronolog::ClientId const &client_id) {
         std::lock_guard<std::mutex> acquirerClientListLock(acquirerClientMapMutex_);
         if (isAcquiredByClient(client_id)) {
             acquirerClientMap_.erase(client_id);
-            LOGD("acquirer client_id=%u is removed from Story name=%s", client_id, name_.c_str());
+            LOGD("acquirer client_id=%lu is removed from Story name=%s", client_id, name_.c_str());
             return CL_SUCCESS;
         } else {
-            LOGD("Story name=%u is not acquired by client_id=%s", client_id, name_.c_str());
+            LOGD("Story name=%lu is not acquired by client_id=%s", client_id, name_.c_str());
             return CL_ERR_UNKNOWN;
         }
     }

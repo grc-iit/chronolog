@@ -122,26 +122,21 @@ int chronolog::VisorClientPortal::ClientConnect(std::string const &client_login,
     //TODO: real authentication goes here ...
     if(! is_client_authenticated(client_login))
     {
-        LOGE("client_id=%s is invalid", client_login.c_str());
+        LOGE("client_login=%s is invalid", client_login.c_str());
         return CL_ERR_INVALID_ARG;
     }
     //TODO: consider different hashing mechanism ...
     std::string client_account_for_hash = client_login + std::to_string(client_host_id); //+process_id 
     uint64_t client_token = CityHash64(client_account_for_hash.c_str(), client_account_for_hash.size());
-
+    client_id  =client_token;    //INNA: change this API...
     return clientManager.add_client_record(client_token, record);
 }
 
 int chronolog::VisorClientPortal::ClientDisconnect(chronolog::ClientId const &client_id)
 {
- /*   LOGD("%s is called in PID=%d, with args: client_id=%s",
-         __FUNCTION__, getpid(), client_id.c_str());
-    if (std::strtol(client_id.c_str(), nullptr, 10) < 0)
-    {
-        LOGE("client_id=%s is invalid", client_id.c_str());
-        return CL_ERR_INVALID_ARG;
-    }
-*/
+    LOGD("%s is called in PID=%d, with args: client_id=%lu",
+         __FUNCTION__, getpid());
+
     return clientManager.remove_client_record(client_id);
 }
 
@@ -151,7 +146,7 @@ int chronolog::VisorClientPortal::ClientDisconnect(chronolog::ClientId const &cl
 int chronolog::VisorClientPortal::CreateChronicle(chl::ClientId const &client_id, std::string const &name,
                                                   const std::unordered_map<std::string, std::string> &attrs, int &flags)
 {
-    LOGD("%s is called in PID=%d - START, with args: name=%s, attrs=", __FUNCTION__, getpid(), name.c_str());
+    LOGD("%s is called in PID=%d - START, with args: clientId:%lu name=%s ", __FUNCTION__, getpid(), client_id, name.c_str());
 
     if (name.empty())
     { return CL_ERR_INVALID_ARG; }
@@ -207,8 +202,8 @@ chl::AcquireStoryResponseMsg chronolog::VisorClientPortal::AcquireStory(chl::Cli
         // , chl::AcquireStoryResponseMsg &
 )
 {
-    LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s, flags=%d",
-         __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str(), flags);
+    LOGD("%s is called in PID=%d, with args: client_id:%lu chronicle_name=%s, story_name=%s, flags=%d",
+         __FUNCTION__, getpid(), client_id, chronicle_name.c_str(), story_name.c_str(), flags);
 
     chronolog::StoryId story_id{0};
     std::vector<chronolog::KeeperIdCard> recording_keepers;

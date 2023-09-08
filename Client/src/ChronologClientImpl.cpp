@@ -115,12 +115,15 @@ int chronolog::ChronologClientImpl::Connect(const std::string &server_uri,
     uint64_t clock_offset = 0; //TODO: use this value with the clocksource...
 
     //auto return_code = rpcClient_->Connect(server_uri, clientAccount, flags, clock_offset);
-    auto return_code = rpcVisorClient->Connect(clientLogin, hostId, client_id, clock_offset);
+    auto connectResponseMsg = rpcVisorClient->Connect(clientLogin, hostId, client_id, clock_offset);
 
+    std::cout<< connectResponseMsg<<std::endl;
+
+    int return_code = connectResponseMsg.getErrorCode();
     if (return_code == CL_SUCCESS)
     {
         clientState = CONNECTED;
-        clientId = client_id;
+        clientId = connectResponseMsg.getClientId();
         if (storyteller == nullptr) //TODO: need to handle reconnection case, when client_id might change...
         { storyteller = new StorytellerClient(clockProxy, *tlEngine, clientId); }
 
@@ -135,11 +138,7 @@ int chronolog::ChronologClientImpl::Disconnect()
     if ((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
     { return CL_SUCCESS; }
 
-    //TODO : release all the acquired stories before asking to disconnect...
-
-    int flags = 1;
-    //auto return_code = rpcClient_->Disconnect(clientAccount , flags);
-    auto return_code = rpcVisorClient->Disconnect(clientLogin);// , flags);
+    auto return_code = rpcVisorClient->Disconnect(clientId);
     if (return_code == CL_SUCCESS)
     {
         clientState = SHUTTING_DOWN;
@@ -148,7 +147,6 @@ int chronolog::ChronologClientImpl::Disconnect()
 
 }
 
-//TODO: client account must be passed into the rpc call
 int chronolog::ChronologClientImpl::CreateChronicle(std::string const &chronicle_name,
                                                     const std::unordered_map<std::string, std::string> &attrs,
                                                     int &flags)
@@ -164,7 +162,6 @@ int chronolog::ChronologClientImpl::CreateChronicle(std::string const &chronicle
     return rpcVisorClient->CreateChronicle(clientId, chronicle_name, attrs, flags);
 }
 
-//TODO: client account must be passed into the rpc call 
 int chronolog::ChronologClientImpl::DestroyChronicle(std::string const &chronicle_name)
 {
     if (chronicle_name.empty())
@@ -175,10 +172,9 @@ int chronolog::ChronologClientImpl::DestroyChronicle(std::string const &chronicl
     if ((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
     { return CL_ERR_NO_CONNECTION; }
 
-    return rpcVisorClient->DestroyChronicle(chronicle_name);
+    return rpcVisorClient->DestroyChronicle(clientId, chronicle_name);
 }
 
-//TODO: client account must be passed into the rpc call 
 int chronolog::ChronologClientImpl::DestroyStory(std::string const &chronicle_name, std::string const &story_name)
 {
     if (chronicle_name.empty() || story_name.empty())
@@ -189,7 +185,7 @@ int chronolog::ChronologClientImpl::DestroyStory(std::string const &chronicle_na
     if ((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
     { return CL_ERR_NO_CONNECTION; }
 
-    return rpcVisorClient->DestroyStory(chronicle_name, story_name);
+    return rpcVisorClient->DestroyStory(clientId, chronicle_name, story_name);
 }
 
 std::pair<int, chronolog::StoryHandle *>
@@ -213,7 +209,7 @@ chronolog::ChronologClientImpl::AcquireStory(std::string const &chronicle_name, 
     { return std::pair<int, chronolog::StoryHandle *>(CL_SUCCESS, storyHandle); }
 
     // issue rpc request to the Visor
-    auto acquireStoryResponse = rpcVisorClient->AcquireStory(clientLogin, chronicle_name, story_name, attrs, flags);
+    auto acquireStoryResponse = rpcVisorClient->AcquireStory(clientId, chronicle_name, story_name, attrs, flags);
 
     std::cout << "AcquireStoryResponseMsg : " << acquireStoryResponse << std::endl;
     if (acquireStoryResponse.getErrorCode() != CL_SUCCESS)
@@ -259,7 +255,7 @@ int chronolog::ChronologClientImpl::ReleaseStory(std::string const &chronicle_na
     if ((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
     { return CL_ERR_NO_CONNECTION; }
 
-    auto ret = rpcVisorClient->ReleaseStory(clientLogin, chronicle_name, story_name);
+    auto ret = rpcVisorClient->ReleaseStory(clientId, chronicle_name, story_name);
     return ret;
 }
 

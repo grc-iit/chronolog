@@ -5,6 +5,7 @@
 
 #include <thallium.hpp>
 
+#include "errcode.h"
 #include "KeeperDataStore.h"
 
 namespace chl = chronolog;
@@ -29,31 +30,37 @@ int chronolog::KeeperDataStore::startStoryRecording(std::string const& chronicle
     //get dataStoreMutex, check for story_id_presense & add new StoryPipeline if needed
     std::lock_guard storeLock(dataStoreMutex);
     auto pipeline_iter = theMapOfStoryPipelines.find(story_id);
-    if(pipeline_iter == theMapOfStoryPipelines.end())
+    if(pipeline_iter != theMapOfStoryPipelines.end())
     {
-        auto result = theMapOfStoryPipelines.emplace(std::pair<chl::StoryId, chl::StoryPipeline*> (story_id, new chl::StoryPipeline(theExtractionQueue,                         chronicle, story, story_id, start_time, time_chunk_duration)));
-	    if( result.second)
-	    { pipeline_iter = result.first; }
-	    else
-        { return 0; }
+        //check it the pipeline was put on the waitingForExit list by the previous acquisition
+        // and remove it from there
+        auto waiting_iter = pipelinesWaitingForExit.find(story_id);
+        if(waiting_iter != pipelinesWaitingForExit.end())
+        {
+            pipelinesWaitingForExit.erase(waiting_iter);
+        }
+
+        return CL_SUCCESS;
     }
 
-    //check it the pipeline was put on the waitingForExit list by the previous acquisition
-    // and remove it from there
-    auto waiting_iter = pipelinesWaitingForExit.find(story_id);
-    if(waiting_iter != pipelinesWaitingForExit.end())
-    {
-        pipelinesWaitingForExit.erase(waiting_iter);
-        return 1;
-    }
+    auto result = theMapOfStoryPipelines.emplace(std::pair<chl::StoryId, chl::StoryPipeline*> (story_id, 
+            new chl::StoryPipeline(theExtractionQueue, chronicle, story, story_id, start_time, time_chunk_duration)));
 
-    //engage StoryPipeline with the IngestionQueue
+	if( result.second)
+	{ 
+        pipeline_iter = result.first; 
+    
+        //engage StoryPipeline with the IngestionQueue
+        StoryIngestionHandle * ingestionHandle = (*pipeline_iter).second->getActiveIngestionHandle();
+        theIngestionQueue.addStoryIngestionHandle( story_id, ingestionHandle);
 
-    StoryIngestionHandle * ingestionHandle = (*pipeline_iter).second->getActiveIngestionHandle();
+        return CL_SUCCESS;
+    } 
+	else
+    { 
+        return CL_ERR_UNKNOWN; 
+    }   
 
-    theIngestionQueue.addStoryIngestionHandle( story_id, ingestionHandle);
-
-return 1;
 }
 ////////////////////////
 
@@ -70,12 +77,12 @@ int chronolog::KeeperDataStore::stopStoryRecording(chronolog::StoryId const& sto
     auto pipeline_iter = theMapOfStoryPipelines.find(story_id);
     if(pipeline_iter != theMapOfStoryPipelines.end())
     {
-        uint64_t exit_time = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+        uint64_t exit_time = std::chrono::high_resolution_clock::now().time_since_epoch().count()
                 + (*pipeline_iter).second->getAcceptanceWindow();
         pipelinesWaitingForExit[(*pipeline_iter).first] =(std::pair<chl::StoryPipeline*, uint64_t>((*pipeline_iter).second, exit_time) );
     }
 
-return 1;
+return CL_SUCCESS;
 }
 
 ////////////////////////
@@ -96,7 +103,6 @@ void chronolog::KeeperDataStore::collectIngestedEvents()
 //INNA: this can be delegated to different threads handling individual storylines...
             (*pipeline_iter).second->collectIngestedEvents();
     }
-
 
 }
 ////////////////////////

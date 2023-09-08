@@ -117,7 +117,7 @@ int ChronicleMetaDirectory::destroy_chronicle(const std::string &name)
             if (!pStory->getAcquirerMap().empty()) {
                 ret = CL_ERR_ACQUIRED;
                 for (const auto &acquirerMapRecord: pStory->getAcquirerMap()) {
-                    LOGD("StoryID=%lu in Chronicle name=%s is still acquired by client_id=%u",
+                    LOGD("StoryID=%lu in Chronicle name=%s is still acquired by client_id=%lu",
                          pStory->getSid(), name.c_str(), acquirerMapRecord.first);
                 }
             }
@@ -225,7 +225,7 @@ int ChronicleMetaDirectory::destroy_story(std::string const& chronicle_name,
         Story *pStory = pChronicle->getStoryMap().at(sid);
         if (!pStory->getAcquirerMap().empty()) {
             for (const auto &acquirerMapRecord: pStory->getAcquirerMap()) {
-                LOGD("StoryID=%lu in Chronicle name=%s is still acquired by client_id=%u",
+                LOGD("StoryID=%lu in Chronicle name=%s is still acquired by client_id=%lu",
                      pStory->getSid(), chronicle_name.c_str(), acquirerMapRecord.first);
             }
             return CL_ERR_ACQUIRED;
@@ -260,7 +260,7 @@ int ChronicleMetaDirectory::acquire_story( chl::ClientId const &client_id,
                                           int &flags
 					  , StoryId & story_id, bool& notify_keepers) 
 {
-    LOGD("client_id=%u acquiring Story name=%s in Chronicle name=%s, flags=%d",
+    LOGD("client_id=%lu acquiring Story name=%s in Chronicle name=%s, flags=%d",
          client_id, story_name.c_str(), chronicle_name.c_str(), flags);
 
     std::lock_guard<std::mutex> chronicleMapLock(g_chronicleMetaDirectoryMutex_);
@@ -288,7 +288,7 @@ int ChronicleMetaDirectory::acquire_story( chl::ClientId const &client_id,
         auto acquirerMap = pChronicle->getStoryMap().at(sid)->getAcquirerMap();
         auto acquirerMapRecord = acquirerMap.find(client_id);
         if (acquirerMapRecord != acquirerMap.end()) {
-            LOGD("Story name=%s has already been acquired by client_id=%u", story_name.c_str(), client_id);
+            LOGD("Story name=%s has already been acquired by client_id=%lu", story_name.c_str(), client_id);
             /* All checks passed, manipulate metadata */
             return CL_ERR_ACQUIRED;
         }
@@ -325,7 +325,7 @@ int ChronicleMetaDirectory::release_story(chl::ClientId const &client_id,
                                           const std::string &chronicle_name,
                                           const std::string &story_name
 					  , StoryId & story_id, bool & notify_keepers ) {
-    LOGD("client_id=%u releasing Story name=%s in Chronicle name=%s",
+    LOGD("client_id=%lu releasing Story name=%s in Chronicle name=%s",
          client_id, story_name.c_str(), chronicle_name.c_str());
     std::lock_guard<std::mutex> chronicleMapLock(g_chronicleMetaDirectoryMutex_);
     /* First check if Chronicle exists, fail if false */
@@ -361,7 +361,7 @@ int ChronicleMetaDirectory::release_story(chl::ClientId const &client_id,
                 return ret;
             }
         } else {
-            LOGD("Story name=%s is not acquired by client_id=%u, cannot release", story_name.c_str(),
+            LOGD("Story name=%s is not acquired by client_id=%lu, cannot release", story_name.c_str(),
                  client_id);
             ret = CL_ERR_NOT_ACQUIRED;
         }
