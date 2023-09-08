@@ -46,7 +46,7 @@ int main(int argc, char **argv)
                              .BASE_PORT);
 
     std::string client_id = gen_random(8);
-    client.Connect(server_uri, client_id, flags);//, offset);
+    client.Connect();
     chronicle_names.reserve(NUM_CHRONICLE);
     for (int i = 0; i < NUM_CHRONICLE; i++)
     {
@@ -210,7 +210,7 @@ int main(int argc, char **argv)
         assert(ret == CL_SUCCESS);
         duration_destroy_chronicle += (t2 - t1);
     }
-    client.Disconnect();//client_id, flags);
+    client.Disconnect();
 
     LOGI("CreateChronicle2 takes %lf ns", duration_create_chronicle.count() / NUM_CHRONICLE);
     LOGI("DestroyChronicle2 takes %lf ns", duration_destroy_chronicle.count() / NUM_CHRONICLE);

@@ -21,5 +21,5 @@
 #define CL_ERR_INVALID_CONF                 -13   /* Content of configuration file is invalid */
 #define CL_ERR_NO_KEEPERS		    -14   /* No ChronoKeepers are available */
 #define CL_ERR_NO_CONNECTION		    -15   /* No valid connnection to ChronoVisor */
-
+#define CL_ERR_NOT_AUTHORIZED           -16   /* Client is not authorized for operation */
 #endif //CHRONOLOG_ERRCODE_H

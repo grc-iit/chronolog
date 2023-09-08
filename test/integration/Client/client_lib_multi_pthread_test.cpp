@@ -96,7 +96,7 @@ int main(int argc, char **argv)
 
     int flags = 0;
     uint64_t offset;
-    int ret = client->Connect(server_uri, client_id, flags);//, offset);
+    int ret = client->Connect(); //;server_uri, client_id, flags);//, offset);
 
     for (int i = 0; i < num_threads; i++)
     {

@@ -27,7 +27,7 @@ void thread_function(void *t)
                              .BASE_PORT);
     int flags = 0;
     uint64_t offset;
-    int ret = client->Connect(server_uri, client_id, flags);//, offset);
+    int ret = client->Connect();//server_uri, client_id, flags);//, offset);
     ret = client->Disconnect();//client_id, flags);
 }
 

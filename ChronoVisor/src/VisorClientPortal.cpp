@@ -78,8 +78,6 @@ int chronolog::VisorClientPortal::StartServices(ChronoLog::ConfigurationManager 
     
         return_status = CL_SUCCESS;
         
-    //INNA: commented out as this line blocks main thread at the moment
-    //  clientPortalEngine->wait_for_finalize();
     }
     catch(tl::exception const& ex)
     {
@@ -92,7 +90,6 @@ int chronolog::VisorClientPortal::StartServices(ChronoLog::ConfigurationManager 
 void chronolog::VisorClientPortal::ShutdownServices()
 {
     clientPortalState = SHUTTING_DOWN;
-    //INNA: revisit this later, as more work might be needed to shutdown gracefully...
 }
 /////////////////
 chronolog::VisorClientPortal::~VisorClientPortal()
@@ -113,22 +110,23 @@ chronolog::VisorClientPortal::~VisorClientPortal()
  * Admin APIs
  */
 int chronolog::VisorClientPortal::ClientConnect(std::string const &client_login, uint32_t client_host_id,
-                                                chl::ClientId &client_id, uint64_t &clock_offset)
+                                                uint32_t client_pid , chl::ClientId &client_id, uint64_t &clock_offset)
 {
-    LOGD("%s in ChronoLogAdminRPCProxy@%p called in PID=%d, with args: account=%s",
-         __FUNCTION__, this, getpid(), client_login.c_str());
+    LOGD("%s called with args: account=%s host_id=%u pid=%u",
+         __FUNCTION__, client_login.c_str(), client_host_id, client_pid);
     ClientInfo record;
 
-    //TODO: real authentication goes here ...
     if(! is_client_authenticated(client_login))
     {
         LOGE("client_login=%s is invalid", client_login.c_str());
         return CL_ERR_INVALID_ARG;
     }
-    //TODO: consider different hashing mechanism ...
-    std::string client_account_for_hash = client_login + std::to_string(client_host_id); //+process_id 
+    //TODO: consider different hashing mechanism that takesproduces uint32 hash value
+    std::string client_account_for_hash = client_login + std::to_string(client_host_id) +std::to_string(client_pid); 
     uint64_t client_token = CityHash64(client_account_for_hash.c_str(), client_account_for_hash.size());
     client_id  =client_token;    //INNA: change this API...
+    LOGD("%s  with args: account=%s host_id=%u pid=%u -> client_token=%lu",
+         __FUNCTION__, client_login.c_str(), client_host_id, client_pid, client_token);
     return clientManager.add_client_record(client_token, record);
 }
 
@@ -143,32 +141,32 @@ int chronolog::VisorClientPortal::ClientDisconnect(chronolog::ClientId const &cl
 /**
  * Metadata APIs
  */
-int chronolog::VisorClientPortal::CreateChronicle(chl::ClientId const &client_id, std::string const &name,
+int chronolog::VisorClientPortal::CreateChronicle(chl::ClientId const &client_id, std::string const &chronicle_name,
                                                   const std::unordered_map<std::string, std::string> &attrs, int &flags)
 {
-    LOGD("%s is called in PID=%d - START, with args: clientId:%lu name=%s ", __FUNCTION__, getpid(), client_id, name.c_str());
+    LOGD("%s is called in PID=%d - START, with args: clientId:%lu name=%s ", __FUNCTION__, getpid(), client_id,chronicle_name.c_str());
 
-    if (name.empty())
+    if (chronicle_name.empty())
     { return CL_ERR_INVALID_ARG; }
 
-    // TODO: add authorization check : if ( chronicle_action_is_authorized())
+    if ( !chronicle_action_is_authorized( client_id, chronicle_name))
+    {   return CL_ERR_NOT_AUTHORIZED; }
 
-    int return_code = chronicleMetaDirectory.create_chronicle(name);
-    LOGD("%s is called in PID=%d - END, with args: name=%s, return_code=%d", __FUNCTION__, getpid(), name.c_str(),
-         return_code);
+    int return_code = chronicleMetaDirectory.create_chronicle(chronicle_name);
 
     return (return_code);
 }
 
-int chronolog::VisorClientPortal::DestroyChronicle(chl::ClientId const &, chl::ChronicleName const &name)
+int chronolog::VisorClientPortal::DestroyChronicle(chl::ClientId const & client_id, chl::ChronicleName const &chronicle_name)
 {
-    LOGD("%s is called in PID=%d, with args: name=%s", __FUNCTION__, getpid(), name.c_str());
-    if (name.empty())
+    LOGD("%s is called with args: client_id=%lu chronicle_name=%s", __FUNCTION__, client_id, chronicle_name.c_str());
+    if (chronicle_name.empty())
     { return CL_ERR_INVALID_ARG; }
 
-    // TODO: add authorization check : if ( chronicle_action_is_authorized())
+    if ( !chronicle_action_is_authorized( client_id, chronicle_name))
+    {   return CL_ERR_NOT_AUTHORIZED; }
 
-    return chronicleMetaDirectory.destroy_chronicle(name);
+    return chronicleMetaDirectory.destroy_chronicle(chronicle_name);
 }
 
 
@@ -177,17 +175,16 @@ int chronolog::VisorClientPortal::DestroyStory(chl::ClientId const &client_id, s
 {
     LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s",
          __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str());
-    // TODO: add authorization check : if ( chronicle_action_is_authorized())
+
+    if ( !story_action_is_authorized( client_id, chronicle_name, story_name))
+    {   return CL_ERR_NOT_AUTHORIZED; }
+
     if (!chronicle_name.empty() && !story_name.empty())
     {
         return chronicleMetaDirectory.destroy_story(chronicle_name, story_name);
     }
     else
     {
-        if (chronicle_name.empty())
-            LOGE("chronicle name is empty");
-        if (story_name.empty())
-            LOGE("story name is empty");
         return CL_ERR_INVALID_ARG;
     }
 }
@@ -199,7 +196,6 @@ chl::AcquireStoryResponseMsg chronolog::VisorClientPortal::AcquireStory(chl::Cli
                                                                         std::string const &story_name,
                                                                         const std::unordered_map<std::string, std::string> &attrs,
                                                                         int &flags
-        // , chl::AcquireStoryResponseMsg &
 )
 {
     LOGD("%s is called in PID=%d, with args: client_id:%lu chronicle_name=%s, story_name=%s, flags=%d",
@@ -209,24 +205,22 @@ chl::AcquireStoryResponseMsg chronolog::VisorClientPortal::AcquireStory(chl::Cli
     std::vector<chronolog::KeeperIdCard> recording_keepers;
 
     if (!theKeeperRegistry->is_running())
-        //{ return CL_ERR_NO_KEEPERS; }
     { return chronolog::AcquireStoryResponseMsg(CL_ERR_NO_KEEPERS, story_id, recording_keepers); }
 
     if (chronicle_name.empty() || story_name.empty())
     { return chronolog::AcquireStoryResponseMsg(CL_ERR_INVALID_ARG, story_id, recording_keepers); }
+    
+    if ( !story_action_is_authorized( client_id, chronicle_name, story_name))
+    { return chronolog::AcquireStoryResponseMsg(CL_ERR_NOT_AUTHORIZED, story_id, recording_keepers); }
 
     // TODO : create_stroy should be part of acquire_story
     int ret = chronicleMetaDirectory.create_story(chronicle_name, story_name, attrs);
     if (ret != CL_SUCCESS)
-        //{ return ret; }
     { return chronolog::AcquireStoryResponseMsg(ret, story_id, recording_keepers); }
 
-    // TODO : StoryId token and recordingKeepers vector need to be returned to the client
-    // when the client side RPC is updated to receive them
     bool notify_keepers = false;
     ret = chronicleMetaDirectory.acquire_story(client_id, chronicle_name, story_name, flags, story_id, notify_keepers);
     if (ret != CL_SUCCESS)
-        //{ return ret; }
     { return chronolog::AcquireStoryResponseMsg(ret, story_id, recording_keepers); }
 
     recording_keepers = theKeeperRegistry->getActiveKeepers(recording_keepers);
@@ -245,11 +239,6 @@ chl::AcquireStoryResponseMsg chronolog::VisorClientPortal::AcquireStory(chl::Cli
 
     }
 
-    //chronolog::AcquireStoryResponseMsg (CL_SUCCESS, story_id, recording_keepers);
-
-    LOGD("%s finished  in PID=%d, with args: chronicle_name=%s, story_name=%s",
-         __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str());
-    // return CL_SUCCESS;
     return chronolog::AcquireStoryResponseMsg(CL_SUCCESS, story_id, recording_keepers);
 }
 
@@ -260,9 +249,8 @@ int chronolog::VisorClientPortal::ReleaseStory(chl::ClientId const &client_id, s
     LOGD("%s is called in PID=%d, with args: chronicle_name=%s, story_name=%s",
          __FUNCTION__, getpid(), chronicle_name.c_str(), story_name.c_str());
 
-    //TODO: add this check on the client side so we dont' waste RPC call on empty strings...
-    if (chronicle_name.empty() || story_name.empty())
-    { return CL_ERR_INVALID_ARG; }
+    if ( !story_action_is_authorized( client_id, chronicle_name, story_name))
+    {   return CL_ERR_NOT_AUTHORIZED; }
 
     StoryId story_id(0);
     bool notify_keepers = false;
@@ -329,7 +317,8 @@ int chronolog::VisorClientPortal::ShowStories(chl::ClientId const &client_id, st
     LOGD("%s is called in PID=%d, chronicle_name=%s",
          __FUNCTION__, getpid(), chronicle_name.c_str());
 
-    // TODO: add client_id authorization check : if ( chronicle_action_is_authorized())
+    if ( !chronicle_action_is_authorized( client_id, chronicle_name))
+    {   return CL_ERR_UNKNOWN; }
 
     chronicleMetaDirectory.show_stories(chronicle_name, stories);
 

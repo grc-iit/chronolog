@@ -36,11 +36,11 @@ class ClientPortalService : public thallium::provider<ClientPortalService>
         get_engine().pop_finalize_callback(this);
     }
 
-    void Connect(tl::request const& request, std::string const& client_account, uint32_t client_host_ip)
+    void Connect(tl::request const& request, std::string const& client_account, uint32_t client_host_ip, uint32_t client_pid)
     {
         ClientId client_id;
         uint64_t clock_offset;
-        int return_code = theVisorClientPortal.ClientConnect(client_account, client_host_ip, client_id, clock_offset);
+        int return_code = theVisorClientPortal.ClientConnect(client_account, client_host_ip, client_pid, client_id, clock_offset);
         if(CL_SUCCESS == return_code)
         {   request.respond(ConnectResponseMsg(CL_SUCCESS,client_id));  }
         else
@@ -94,35 +94,30 @@ class ClientPortalService : public thallium::provider<ClientPortalService>
     }
 
 
-    void GetChronicleAttr( tl::request const& request//, ClientId const& client_id
+    void GetChronicleAttr( tl::request const& request, ClientId const& client_id
                 , std::string const& chronicle_name, std::string const& key, std::string &value)
     {
-        ClientId client_id{0};
         int return_code = theVisorClientPortal.GetChronicleAttr( client_id, chronicle_name, key, value);
         request.respond(return_code);
     }
 
-    void EditChronicleAttr( tl::request const& request//, ClientId const& client_id
+    void EditChronicleAttr( tl::request const& request, ClientId const& client_id
                 , std::string const& chronicle_name, std::string const& key, std::string const &value)
     {
 
-        ClientId client_id{0};
         int return_code =  theVisorClientPortal.EditChronicleAttr(client_id, chronicle_name, key, value);
         request.respond(return_code);
     }
 
-    void ShowChronicles( tl::request const& request)//, ClientId const& client_id) 
+    void ShowChronicles( tl::request const& request, ClientId const& client_id) 
     {
-        //TODO: pass in client_id
-        ClientId client_id{0};
         std::vector<std::string> chronicles;
         theVisorClientPortal.ShowChronicles( client_id, chronicles);
         request.respond(chronicles);
     }
 
-    void ShowStories( tl::request const& request, const std::string &chronicle_name)//, std::vector<std::string> & stories)
+    void ShowStories( tl::request const& request, ClientId const& client_id, const std::string &chronicle_name)
     {
-        ClientId client_id{0};
         std::vector<std::string> stories;
         theVisorClientPortal.ShowStories( client_id, chronicle_name,stories);
         

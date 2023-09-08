@@ -105,7 +105,7 @@ int main(int argc, char **argv)
     server_uri += "://" + server_ip + ":" + std::to_string(base_port);
     int flags = 0;
 
-    int ret = client->Connect(server_uri, client_id, flags);//, offset);
+    int ret = client->Connect();//server_uri, client_id, flags);//, offset);
     assert(ret == CL_SUCCESS);
 
     for (int i = 0; i < num_threads; i++)

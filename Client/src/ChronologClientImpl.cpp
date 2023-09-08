@@ -23,8 +23,6 @@ chronolog::ChronologClientImpl::GetClientImplInstance(ChronoLog::ConfigurationMa
     return chronologClientImplInstance;
 }
 
-//TODO : client_account & client_ip will be acquired from the cleitn process itself ....
-//    for now they can be passed in....
 ////////
 chronolog::ChronologClientImpl::ChronologClientImpl(const ChronoLog::ConfigurationManager &confManager)
         : clientState(UNKNOWN), clientLogin(""), hostId(0), pid(0), clientId(0), tlEngine(nullptr), rpcVisorClient(nullptr),
@@ -73,12 +71,12 @@ void chronolog::ChronologClientImpl::defineClientIdentity()
     char login_name[LOGIN_NAME_MAX];
     getlogin_r(login_name, LOGIN_NAME_MAX);
 
-    clientLogin=login_name; //this truncates to actual strlen...
+    clientLogin=login_name; //this truncates login_name to the actual strlen...
 
     //32bit host identifier
-    uint32_t hostId= gethostid();
+    hostId= gethostid();
     //32bit process id
-    uint32_t pid=getpid();
+    pid=getpid();
     std::cout <<"Client_identity {"<<clientLogin<<":"<<hostId<<":"<<pid<<"}"<<std::endl;
 
 }
@@ -99,9 +97,7 @@ chronolog::ChronologClientImpl::~ChronologClientImpl()
 
 }
 
-int chronolog::ChronologClientImpl::Connect(const std::string &server_uri,
-                                            std::string const &client_account,
-                                            int &flags)
+int chronolog::ChronologClientImpl::Connect()
 {
     std::lock_guard<std::mutex> lock_client(chronologClientMutex);
     // if already connected return success
@@ -110,12 +106,7 @@ int chronolog::ChronologClientImpl::Connect(const std::string &server_uri,
     { return CL_SUCCESS; }
 
 
-    //TODO: client_id must be assigned by the Visor server
-    ClientId client_id{0};
-    uint64_t clock_offset = 0; //TODO: use this value with the clocksource...
-
-    //auto return_code = rpcClient_->Connect(server_uri, clientAccount, flags, clock_offset);
-    auto connectResponseMsg = rpcVisorClient->Connect(clientLogin, hostId, client_id, clock_offset);
+    auto connectResponseMsg = rpcVisorClient->Connect(clientLogin, hostId, pid);
 
     std::cout<< connectResponseMsg<<std::endl;
 
@@ -124,9 +115,9 @@ int chronolog::ChronologClientImpl::Connect(const std::string &server_uri,
     {
         clientState = CONNECTED;
         clientId = connectResponseMsg.getClientId();
-        if (storyteller == nullptr) //TODO: need to handle reconnection case, when client_id might change...
+        if (storyteller == nullptr) 
         { storyteller = new StorytellerClient(clockProxy, *tlEngine, clientId); }
-
+        //TODO: if we ever change the connection hashing algorithm we'd need to handle reconnection case with the new client_id 
     }
     return return_code;
 }
@@ -273,7 +264,7 @@ int chronolog::ChronologClientImpl::GetChronicleAttr(std::string const &chronicl
     if ((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
     { return CL_ERR_NO_CONNECTION; }
 
-    return rpcVisorClient->GetChronicleAttr(chronicle_name, key, value);
+    return rpcVisorClient->GetChronicleAttr(clientId, chronicle_name, key, value);
 }
 
 //TODO: client account must be passed into the rpc call 
@@ -288,7 +279,7 @@ int chronolog::ChronologClientImpl::EditChronicleAttr(std::string const &chronic
     if ((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
     { return CL_ERR_NO_CONNECTION; }
 
-    return rpcVisorClient->EditChronicleAttr(chronicle_name, key, value);
+    return rpcVisorClient->EditChronicleAttr(clientId, chronicle_name, key, value);
 }
 
 std::vector<std::string> &chronolog::ChronologClientImpl::ShowChronicles(std::vector<std::string> &chronicles)
@@ -298,7 +289,7 @@ std::vector<std::string> &chronolog::ChronologClientImpl::ShowChronicles(std::ve
     if ((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
     { return chronicles; }
 
-    chronicles = rpcVisorClient->ShowChronicles(clientLogin);
+    chronicles = rpcVisorClient->ShowChronicles(clientId);
     return chronicles;
 }
 
@@ -313,6 +304,6 @@ chronolog::ChronologClientImpl::ShowStories(std::string const &chronicle_name, s
     if ((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
     { return stories; }
 
-    stories = rpcVisorClient->ShowStories(clientLogin, chronicle_name);
+    stories = rpcVisorClient->ShowStories(clientId, chronicle_name);
     return stories;
 }

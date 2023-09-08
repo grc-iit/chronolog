@@ -43,9 +43,9 @@ public:
     int StartServices( ChronoLog::ConfigurationManager const&, KeeperRegistry*);
     void ShutdownServices();
 
-int ClientConnect( const std::string &uri, std::string const &client_account, uint32_t client_host_ip, ClientId &, uint64_t &clock_offset); //old
+//int ClientConnect( const std::string &uri, std::string const &client_account, uint32_t client_host_ip, ClientId &, uint64_t &clock_offset); //old
 
-int ClientConnect( std::string const &client_account, uint32_t client_host_ip, ClientId &, uint64_t &clock_offset);
+int ClientConnect( std::string const &client_account, uint32_t client_host_ip, uint32_t client_pid, ClientId &, uint64_t &clock_offset);
 int ClientDisconnect(ClientId const& client_id);
 
 int CreateChronicle( ClientId const&name, ChronicleName const&, const std::unordered_map<std::string, std::string> &attrs, int &flags);
