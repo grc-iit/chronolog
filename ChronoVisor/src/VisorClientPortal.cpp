@@ -109,24 +109,24 @@ chronolog::VisorClientPortal::~VisorClientPortal()
 /**
  * Admin APIs
  */
-int chronolog::VisorClientPortal::ClientConnect(std::string const &client_login, uint32_t client_host_id,
+int chronolog::VisorClientPortal::ClientConnect(uint32_t client_euid, uint32_t client_host_id,
                                                 uint32_t client_pid , chl::ClientId &client_id, uint64_t &clock_offset)
 {
-    LOGD("%s called with args: account=%s host_id=%u pid=%u",
-         __FUNCTION__, client_login.c_str(), client_host_id, client_pid);
+    LOGD("%s called with args: account=%u host_id=%u pid=%u",
+         __FUNCTION__, client_euid, client_host_id, client_pid);
     ClientInfo record;
 
-    if(! is_client_authenticated(client_login))
+    if(! is_client_authenticated(client_euid))
     {
-        LOGE("client_login=%s is invalid", client_login.c_str());
+        LOGE("client_euid=%u is invalid", client_euid);
         return CL_ERR_INVALID_ARG;
     }
     //TODO: consider different hashing mechanism that takesproduces uint32 hash value
-    std::string client_account_for_hash = client_login + std::to_string(client_host_id) +std::to_string(client_pid); 
+    std::string client_account_for_hash = std::to_string(client_euid) + std::to_string(client_host_id) +std::to_string(client_pid); 
     uint64_t client_token = CityHash64(client_account_for_hash.c_str(), client_account_for_hash.size());
     client_id  =client_token;    //INNA: change this API...
-    LOGD("%s  with args: account=%s host_id=%u pid=%u -> client_token=%lu",
-         __FUNCTION__, client_login.c_str(), client_host_id, client_pid, client_token);
+    LOGD("%s  with args: account=%u host_id=%u pid=%u -> client_token=%lu",
+         __FUNCTION__, client_euid, client_host_id, client_pid, client_token);
     return clientManager.add_client_record(client_token, record);
 }
 
@@ -383,7 +383,7 @@ int chronolog::VisorClientPortal::LocalEditChronicleAttr( chronolog::ClientId co
 */
 /////////////////
 
-bool chronolog::VisorClientPortal::is_client_authenticated(std::string const &client_account)
+bool chronolog::VisorClientPortal::is_client_authenticated(uint32_t client_account)
 {
 
     return true;

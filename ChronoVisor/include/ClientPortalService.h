@@ -36,7 +36,7 @@ class ClientPortalService : public thallium::provider<ClientPortalService>
         get_engine().pop_finalize_callback(this);
     }
 
-    void Connect(tl::request const& request, std::string const& client_account, uint32_t client_host_ip, uint32_t client_pid)
+    void Connect(tl::request const& request,uint32_t client_account, uint32_t client_host_ip, uint32_t client_pid)
     {
         ClientId client_id;
         uint64_t clock_offset;

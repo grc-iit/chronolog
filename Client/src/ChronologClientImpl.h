@@ -67,6 +67,7 @@ private:
 
     ChronologClientState    clientState;
     std::string clientLogin;
+    uint32_t    euid;
     uint32_t    hostId;
     uint32_t    pid;
     ClientId	clientId;

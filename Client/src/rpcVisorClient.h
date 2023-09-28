@@ -46,13 +46,13 @@ public:
     }
 
 
-    ConnectResponseMsg Connect(std::string const& client_account, uint32_t client_host_ip, uint32_t client_pid)
+    ConnectResponseMsg Connect(uint32_t client_euid, uint32_t client_host_ip, uint32_t client_pid)
     {
-        LOGD("%s  with args: accout=%s, host_id=%u pid=%u",
-             __FUNCTION__, client_account.c_str(), client_host_ip, client_pid);
+        LOGD("%s  with args: accout=%u, host_id=%u pid=%u",
+             __FUNCTION__, client_euid, client_host_ip, client_pid);
         try
         {
-	        return visor_connect.on(service_ph)( client_account, client_host_ip, client_pid);
+	        return visor_connect.on(service_ph)( client_euid, client_host_ip, client_pid);
         }
         catch (tl::exception const&)
         {

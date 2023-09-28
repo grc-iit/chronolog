@@ -66,7 +66,7 @@ chronolog::ChronologClientImpl::ChronologClientImpl(const std::string &protocol_
 
 void chronolog::ChronologClientImpl::defineClientIdentity()
 {
-    //uint32_t uid = geteuid(); //TODO: effective uid might be a better choice than login name ...
+    euid = geteuid(); //TODO: effective uid might be a better choice than login name ...
 
     char login_name[LOGIN_NAME_MAX];
     getlogin_r(login_name, LOGIN_NAME_MAX);
@@ -77,7 +77,7 @@ void chronolog::ChronologClientImpl::defineClientIdentity()
     hostId= gethostid();
     //32bit process id
     pid=getpid();
-    std::cout <<"Client_identity {"<<clientLogin<<":"<<hostId<<":"<<pid<<"}"<<std::endl;
+    std::cout <<"Client_identity {"<<clientLogin<<":"<<euid<<":"<<hostId<<":"<<pid<<"}"<<std::endl;
 
 }
 
@@ -106,7 +106,7 @@ int chronolog::ChronologClientImpl::Connect()
     { return CL_SUCCESS; }
 
 
-    auto connectResponseMsg = rpcVisorClient->Connect(clientLogin, hostId, pid);
+    auto connectResponseMsg = rpcVisorClient->Connect(euid, hostId, pid);
 
     std::cout<< connectResponseMsg<<std::endl;
 
