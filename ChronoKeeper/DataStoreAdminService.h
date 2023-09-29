@@ -49,15 +49,15 @@ public:
                       std::string const& chronicle_name, std::string const& story_name,  StoryId const& story_id, uint64_t start_time)
     {
         std::cout << "DataCollectionService: StartStoryRecoding {"<< story_name<<":"<<story_id<<"}"<< std::endl;
-        theDataStore.startStoryRecording(chronicle_name, story_name, story_id, start_time);
-        request.respond( 0);
+        int return_code = theDataStore.startStoryRecording(chronicle_name, story_name, story_id, start_time);
+        request.respond( return_code);
     }
 
     void StopStoryRecording(tl::request const& request, StoryId const& story_id)
     {
         std::cout << "DataStoreAdminService: StopStoryRecoding {"<< story_id<<"}"<< std::endl;
-	theDataStore.stopStoryRecording(story_id);
-        request.respond( 0);
+	    int return_code = theDataStore.stopStoryRecording(story_id);
+        request.respond( return_code);
     }
 
 private:

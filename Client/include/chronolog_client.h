@@ -33,10 +33,8 @@ public:
 
     ~Client();
 
-    int Connect(const std::string &server_uri,
-                std::string const& client_account,
-                int &flags);
-    int Disconnect( ); //std::string const& client_account);
+    int Connect();
+    int Disconnect( ); 
 
     int CreateChronicle( std::string const& chronicle_name,
                          std::unordered_map<std::string, std::string> const& attrs,

@@ -41,7 +41,7 @@ namespace chronolog
                 : theTimer(chronolog_timer), client_engine(client_tl_engine), clientId(client_id),
                   rpc_protocol_string(rpc_protocol)
         {
-            std::cout << "StorytellerClient::StorytellerClient" << std::endl;
+            std::cout << "StorytellerClient::StorytellerClient clientId : " <<clientId<< std::endl;
         }
 
         ~StorytellerClient();

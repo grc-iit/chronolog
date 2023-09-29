@@ -10,6 +10,7 @@
 #include "KeeperIdCard.h"
 
 #include "VisorClientPortal.h"
+#include "ConnectResponseMsg.h"
 #include "AcquireStoryResponseMsg.h"
 
 
@@ -35,42 +36,39 @@ class ClientPortalService : public thallium::provider<ClientPortalService>
         get_engine().pop_finalize_callback(this);
     }
 
-    void Connect(tl::request const& request, std::string const& client_account, uint32_t client_host_ip)
+    void Connect(tl::request const& request,uint32_t client_account, uint32_t client_host_ip, uint32_t client_pid)
     {
-        int return_code = 0;
-        // TODO : add ClientConnectResponseMsg = >tuple <int, ClientId, clock_offset>
         ClientId client_id;
         uint64_t clock_offset;
-        return_code = theVisorClientPortal.ClientConnect(client_account, client_host_ip, client_id, clock_offset);
-
-        request.respond(return_code);
+        int return_code = theVisorClientPortal.ClientConnect(client_account, client_host_ip, client_pid, client_id, clock_offset);
+        if(CL_SUCCESS == return_code)
+        {   request.respond(ConnectResponseMsg(CL_SUCCESS,client_id));  }
+        else
+        {   request.respond(ConnectResponseMsg(return_code,ClientId{0})); }
     }
 
-    void Disconnect(tl::request const& request, std::string const&  client_account) //old TODO : replace with client_id
+    void Disconnect(tl::request const& request, ClientId const&  client_token) 
     {
-        int return_code = theVisorClientPortal.ClientDisconnect(client_account);
+        int return_code = theVisorClientPortal.ClientDisconnect(client_token);
         request.respond(return_code);
     }
 
-    void CreateChronicle( tl::request const& request //, ClientId const& client_id
+    void CreateChronicle( tl::request const& request , ClientId const& client_id
             , std::string const& chronicle_name, const std::unordered_map<std::string, std::string> &attrs, int &flags)//old
     {
-        ClientId client_id;
         int return_code = theVisorClientPortal.CreateChronicle(client_id, chronicle_name, attrs, flags);
         request.respond(return_code);
     }
 
-    void DestroyChronicle( tl::request const& request //,  ClientId const& client_id
+    void DestroyChronicle( tl::request const& request,  ClientId const& client_id
             , ChronicleName const& chronicle_name)
     { 
-        ClientId client_id;
         int return_code = theVisorClientPortal.DestroyChronicle(client_id, chronicle_name);
         request.respond(return_code);
     }
 
     void AcquireStory( tl::request const& request
-                              //ClientId const& client_id,
-                              , std::string const& client_id,
+                              , ClientId const& client_id,
                               std::string const& chronicle_name,
                               std::string const& story_name,
                               const std::unordered_map<std::string, std::string> &attrs,
@@ -82,50 +80,44 @@ class ClientPortalService : public thallium::provider<ClientPortalService>
     }
 
     void ReleaseStory( tl::request const& request
-            , std::string const& client_id 
+            , ClientId const& client_id 
             , std::string const& chronicle_name, std::string const& story_name)
     {
         int return_code = theVisorClientPortal.ReleaseStory(client_id, chronicle_name,story_name);
         request.respond(return_code);
     }
 
-    void DestroyStory( tl::request const& request
+    void DestroyStory( tl::request const& request, ClientId const& client_id
             , std::string const& chronicle_name, std::string const& story_name)
     {
-        ClientId client_id{0};
         request.respond(theVisorClientPortal.DestroyStory(client_id, chronicle_name,story_name));
     }
 
 
-    void GetChronicleAttr( tl::request const& request//, ClientId const& client_id
+    void GetChronicleAttr( tl::request const& request, ClientId const& client_id
                 , std::string const& chronicle_name, std::string const& key, std::string &value)
     {
-        ClientId client_id{0};
         int return_code = theVisorClientPortal.GetChronicleAttr( client_id, chronicle_name, key, value);
         request.respond(return_code);
     }
 
-    void EditChronicleAttr( tl::request const& request//, ClientId const& client_id
+    void EditChronicleAttr( tl::request const& request, ClientId const& client_id
                 , std::string const& chronicle_name, std::string const& key, std::string const &value)
     {
 
-        ClientId client_id{0};
         int return_code =  theVisorClientPortal.EditChronicleAttr(client_id, chronicle_name, key, value);
         request.respond(return_code);
     }
 
-    void ShowChronicles( tl::request const& request)//, ClientId const& client_id) 
+    void ShowChronicles( tl::request const& request, ClientId const& client_id) 
     {
-        //TODO: pass in client_id
-        ClientId client_id{0};
         std::vector<std::string> chronicles;
         theVisorClientPortal.ShowChronicles( client_id, chronicles);
         request.respond(chronicles);
     }
 
-    void ShowStories( tl::request const& request, const std::string &chronicle_name)//, std::vector<std::string> & stories)
+    void ShowStories( tl::request const& request, ClientId const& client_id, const std::string &chronicle_name)
     {
-        ClientId client_id{0};
         std::vector<std::string> stories;
         theVisorClientPortal.ShowStories( client_id, chronicle_name,stories);
         

@@ -88,7 +88,7 @@ int main(int argc, char **argv)
 
     int flags = 0;
     uint64_t offset;
-    int ret = client->Connect(server_uri, client_id, flags);//, offset);
+    int ret = client->Connect();
 
     if (CL_SUCCESS != ret)
     {
@@ -108,7 +108,7 @@ int main(int argc, char **argv)
     for (int i = 0; i < num_threads; i++)
         workers[i].join();
 
-    ret = client->Disconnect();//client_id, flags);
+    ret = client->Disconnect();
     delete client;
 
     return 0;

@@ -54,7 +54,7 @@ int main(int argc, char **argv)
 
         server_uri += "://" + server_ip + ":" + std::to_string(base_port + i);
         t1 = std::chrono::steady_clock::now();
-        ret = client.Connect(server_uri, client_ids[i], flags); //, offset);
+        ret = client.Connect();//server_uri, client_ids[i], flags); //, offset);
         assert(ret == CL_SUCCESS);
         t2 = std::chrono::steady_clock::now();
         duration_connect += (t2 - t1);

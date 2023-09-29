@@ -38,9 +38,10 @@ public:
     {
         try
         { 
-	        std::cout<< "KeeperRecordingClient::send_event_msg:"<<eventMsg.storyId<<std::endl;
-	        record_event.on(service_ph)(eventMsg);
-            return CL_SUCCESS;
+	        std::cout<< "KeeperRecordingClient::send_event_msg:"<<eventMsg<<std::endl;
+	        int return_code = record_event.on(service_ph)(eventMsg);
+	        std::cout<< "KeeperRecordingClient::send_event_msg:"<<eventMsg<<" return_code:"<<return_code<<std::endl;
+            return return_code;
         }
         catch(thallium::exception const&)
         {
@@ -71,7 +72,7 @@ private:
 	    , service_ph(tl_engine.lookup( service_addr), keeper_id_card.getProviderId())
 	{
         std::cout<< "RecordingClient created for KeeperRecordingService at {"<<service_addr<<"} provider_id {"<<keeperIdCard.getProviderId()<<"}"<<std::endl;
-        record_event =tl_engine.define("record_event").disable_response();
+        record_event =tl_engine.define("record_event");
 	}	
 };
 

@@ -33,7 +33,7 @@ int main(int argc, char **argv)
     uint64_t offset;
 
     std::string client_id = gen_random(8);
-    int ret = client->Connect(server_uri, client_id, flags);//, offset);
+    int ret = client->Connect();//server_uri, client_id, flags);//, offset);
 #pragma omp for
     for (int i = 0; i < num_threads; i++)
     {

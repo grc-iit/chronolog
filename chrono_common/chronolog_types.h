@@ -12,7 +12,7 @@ typedef std::string StoryName;
 typedef std::string ChronicleName;
 typedef uint64_t StoryId;
 typedef uint64_t ChronicleId;
-typedef uint32_t ClientId;
+typedef uint64_t ClientId;
 
 typedef uint64_t chrono_time;
 typedef uint32_t chrono_index;

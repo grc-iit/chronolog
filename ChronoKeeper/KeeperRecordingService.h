@@ -5,8 +5,10 @@
 #include <margo.h>
 #include <thallium.hpp>
 #include <thallium/serialization/stl/string.hpp>
-#include "chrono_common/KeeperIdCard.h"
-#include "chrono_common/chronolog_types.h"
+
+#include "errcode.h"
+#include "KeeperIdCard.h"
+#include "chronolog_types.h"
 #include "IngestionQueue.h"
 
 namespace tl = thallium;
@@ -35,16 +37,17 @@ public:
         get_engine().pop_finalize_callback(this);
     }
 
-private:
-
     void record_event(tl::request const& request, LogEvent const & log_event) 
                    //    ClientId teller_id,  StoryId story_id, 
 		     //  ChronoTick const& chrono_tick, std::string const& record) 
     {
-        std::cout << "recording {"<< log_event.clientId<<":"<<log_event.storyId<<":"<< log_event.logRecord <<"}"<< std::endl;
+        std::cout << "KeeperRecordingService : record_event {"<< log_event<<"}"<< std::endl;
 	    theIngestionQueue.ingestLogEvent(log_event);
+        request.respond(CL_SUCCESS);
+
     }
 
+private:
 
     KeeperRecordingService(tl::engine& tl_engine, uint16_t service_provider_id, IngestionQueue & ingestion_queue)
     	: tl::provider<KeeperRecordingService>(tl_engine, service_provider_id)
