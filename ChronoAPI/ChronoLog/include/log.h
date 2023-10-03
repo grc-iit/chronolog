@@ -27,8 +27,8 @@
 
 #define LOG(fmt, ...)           do{ printf(fmt "\n", ##__VA_ARGS__); } while(0)
 #define LOGT(tag, fmt, ...)     do{ printf(tag ": " fmt "\n", ##__VA_ARGS__); } while(0)
-#define LOGI(fmt, ...)          do{ printf("[%lu] %s: " fmt "\n", gettid(), __FILENAME__, ##__VA_ARGS__); } while(0)
-#define LOGE(fmt, ...)          do{ printf("\033[31m[%lu] ERROR: %s: %s: %d: " fmt "\033[m\n", \
+#define LOGI(fmt, ...)          do{ printf("[%d] %s: " fmt "\n", gettid(), __FILENAME__, ##__VA_ARGS__); } while(0)
+#define LOGE(fmt, ...)          do{ printf("\033[31m[%d] ERROR: %s: %s: %d: " fmt "\033[m\n", \
                                     gettid(), __FILENAME__, __func__, __LINE__, ##__VA_ARGS__); \
                                 } while(0)
 
@@ -36,7 +36,7 @@
 #ifdef NODEBUG
 #define LOGD(fmt, ...)          ((void)0)
 #else
-#define LOGD(fmt, ...)          do{ printf("\033[33m[%lu] %s: " fmt "\033[m\n", \
+#define LOGD(fmt, ...)          do{ printf("\033[33m[%d] %s: " fmt "\033[m\n", \
                                     gettid(), __FILENAME__, ##__VA_ARGS__); \
                                 } while(0)
 #endif
