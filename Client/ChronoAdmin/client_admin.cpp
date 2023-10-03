@@ -27,238 +27,133 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 Created by Aparna on 01/12/2023
 */
 
-#include <client.h>
+#include <chronolog_client.h>
+#include <cmd_arg_parse.h>
 #include <common.h>
 #include <cassert>
+#include <unistd.h>
+#include <pwd.h>
 
-int main(int argc, char**argv)
+int main(int argc, char **argv)
 {
-
-    std::string hostname;
-    std::string portnum;
-    std::string filename = "server_list";
-    ChronoLogRPCImplementation protocol;
-    std::string protocol_string;
-    std::string server_uri;
-    std::vector <std::string> args;
-
-    if(argc != 7)
+    std::string default_conf_file_path = "./default_conf.json";
+    std::string conf_file_path;
+    conf_file_path = parse_conf_path_arg(argc, argv);
+    if (conf_file_path.empty())
     {
-        std::cout << " ChronoAdmin usage : ./ChronoAdmin -protocol p -hostname h -port n" << std::endl;
-        exit(-1);
+        conf_file_path = default_conf_file_path;
     }
-
-    for(int i = 1; i < 7; i++)
-    {
-        std::string s(argv[i]);
-        args.push_back(s);
-    }
-
-    bool end_program = false;
-
-
-    int portno = -1;
-    protocol = (ChronoLogRPCImplementation) - 1;
-
-    for(int i = 0; i < args.size(); i++)
-    {
-        if(i % 2 == 0)
-        {
-            if(args[i].compare("-protocol") == 0)
-            {
-                protocol = (ChronoLogRPCImplementation)std::stoi(args[i + 1]);
-            }
-            else if(args[i].compare("-hostname") == 0)
-            {
-                hostname = args[i + 1];
-            }
-            else if(args[i].compare("-port") == 0)
-            {
-                portno = std::stoi(args[i + 1]);
-            }
-            else
-            {
-                end_program = true;
-                break;
-            }
-        }
-    }
-
-    if(end_program || protocol == -1 || hostname.empty() || portno == -1) exit(-1);
-
-    if(protocol < 0 || protocol > 2)
-    {
-        std::cout << " protocol not supported : valid values are 0 (sockets), 1 (tcp) and 2 (verbs)" << std::endl;
-        end_program = true;
-    }
-
-    if(end_program) exit(-1);
-
-    char ip_add[16];
-    std::string host_ip;
-
-    struct hostent*he = gethostbyname(hostname.c_str());
-    if(he == 0)
-    {
-        std::cout << " hostname not found, Exiting" << std::endl;
-        exit(-1);
-    }
-    in_addr**addr_list = (struct in_addr**)he->h_addr_list;
-    strcpy(ip_add, inet_ntoa(*addr_list[0]));
-    host_ip = std::string(ip_add);
-
-    std::string protocolstring;
-
-    if(protocol == 0)
-    {
-        protocolstring = "ofi+sockets";
-        ChronoLogCharStruct prot_struct(protocolstring);
-        CHRONOLOG_CONF->SOCKETS_CONF = prot_struct;
-    }
-    else if(protocol == 1)
-    {
-        protocolstring = "ofi+tcp";
-        ChronoLogCharStruct prot_struct(protocolstring);
-        CHRONOLOG_CONF->SOCKETS_CONF = prot_struct;
-    }
-    else if(protocol == 2) protocolstring = "verbs";
-
-    server_uri = protocolstring + "://" + host_ip + ":" + std::to_string(portno);
-
-    std::fstream fp(filename, std::ios::out);
-    fp << "localhost" << std::endl;
-
-    ChronoLogClient client(protocol, host_ip, portno);
+    ChronoLog::ConfigurationManager confManager(conf_file_path);
+    chronolog::Client client(confManager);
 
     int flags = 0;
     int ret;
-    uint64_t offset = 0;
 
     std::string client_id = gen_random(8);
 
-    try
-    {
-        ret = client.Connect(server_uri, client_id, flags, offset);
-    }
-    catch(const thallium::exception &e)
-    {
-        std::cerr << " Failed to connect" << e.what() << std::endl;
-        exit(-1);
-    };
+    std::string server_ip = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP;
+    int base_port = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT;
+    std::string server_uri = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.PROTO_CONF;
+    server_uri += "://" + server_ip + ":" + std::to_string(base_port);
 
+    std::string username = getpwuid(getuid())->pw_name;
+    client.Connect(server_uri, username, flags);
 
     std::cout << " connected to server address : " << server_uri << std::endl;
 
-    std::cout << " Metadata operations : -c <string> , create a chronicle with name <string>  " << std::endl
-              << " -s <string1> <string2>, create a story with name string1+string2 : string1 = chronicle name, string2 = story name "
-              << std::endl << " -a -c <string>, acquire chronicle with name <string>" << std::endl
-              << " -a -s <string1> <string2>, acquire story with name string1+string2 : string1 = chronicle name, string2 = story name"
-              << std::endl << " -r -c <string>, release chronicle with name <string>" << std::endl
-              << " -r -s <string1> <string2>, release story with name string1+string2 : string1 = chronicle name, string2 = story name"
-              << std::endl << " -d -c <string>, destroy chronicle with name <string>" << std::endl
-              << " -d -s <string1> <string2>, destroy story with name string1+string2 : string1 = chronicle name, string2 = story name"
-              << std::endl << " -disconnect " << std::endl;
+    std::cout << "Metadata operations: \n"
+              << "\t-c <chronicle_name> , create a Chronicle <chronicle_name> \n"
+              << "\t-a -s <chronicle_name> <story_name>, acquire Story <story_name> in Chronicle <chronicle_name> \n"
+              << "\t-r -s <chronicle_name> <story_name>, release Story <story_name> in Chronicle <chronicle_name> \n"
+              << "\t-d -s <chronicle_name> <story_name>, destroy Story <story_name> in Chronicle <chronicle_name> \n"
+              << "\t-d -c <chronicle_name>, destroy Chronicle <chronicle_name> \n"
+              << "\t-disconnect \n" << std::endl;
 
 
-    std::vector <std::string> commands;
+    std::vector<std::string> commands;
 
     std::string command_line;
 
-    const char*delim = " ";
+    const char *delim = " ";
 
     std::string str;
 
     flags = 0;
 
-    while(true)
+    while (true)
     {
         str.clear();
         std::getline(std::cin, str);
-        if(str.compare("-disconnect") == 0) break;
+        if (str == "-disconnect") break;
 
-        std::vector <std::string> command_subs;
+        std::vector<std::string> command_subs;
 
-        char*s = std::strtok((char*)str.c_str(), delim);
-        command_subs.push_back(s);
+        char *s = std::strtok((char *) str.c_str(), delim);
+        command_subs.emplace_back(s);
 
-        while(s != NULL)
+        while (s != nullptr)
         {
-            s = std::strtok(NULL, delim);
-            if(s != NULL)
-                command_subs.push_back(s);
+            s = std::strtok(nullptr, delim);
+            if (s != nullptr)
+                command_subs.emplace_back(s);
         }
 
-        if(command_subs[0].compare("-c") == 0)
+        if (command_subs[0] == "-c")
         {
             assert(command_subs.size() == 2);
             std::string chronicle_name = command_subs[1];
-            std::unordered_map <std::string, std::string> chronicle_attrs;
+            std::unordered_map<std::string, std::string> chronicle_attrs;
             chronicle_attrs.emplace("Priority", "High");
             chronicle_attrs.emplace("IndexGranularity", "Millisecond");
             chronicle_attrs.emplace("TieringPolicy", "Hot");
             ret = client.CreateChronicle(chronicle_name, chronicle_attrs, flags);
-            assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_CHRONICLE_EXISTS);
+            assert(ret == CL_SUCCESS || ret == CL_ERR_CHRONICLE_EXISTS);
         }
-        else if(command_subs[0].compare("-s") == 0)
+        else if (command_subs[0] == "-a")
         {
-            assert(command_subs.size() == 3);
-            std::string chronicle_name = command_subs[1];
-            std::string story_name = command_subs[2];
-            std::unordered_map <std::string, std::string> story_attrs;
-            story_attrs.emplace("Priority", "High");
-            story_attrs.emplace("IndexGranularity", "Millisecond");
-            story_attrs.emplace("TieringPolicy", "Hot");
-            ret = client.CreateStory(chronicle_name, story_name, story_attrs, flags);
-            assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_STORY_EXISTS);
-
-        }
-        else if(command_subs[0].compare("-a") == 0)
-        {
-            if(command_subs[1].compare("-c") == 0)
-            {
-                assert(command_subs.size() == 3);
-                std::string chronicle_name = command_subs[2];
-                ret = client.AcquireChronicle(chronicle_name, flags);
-            }
-            else if(command_subs[1].compare("-s") == 0)
+            if (command_subs[1] == "-s")
             {
                 assert(command_subs.size() == 4);
                 std::string chronicle_name = command_subs[2];
                 std::string story_name = command_subs[3];
-                ret = client.AcquireStory(chronicle_name, story_name, flags);
+                std::unordered_map<std::string, std::string> story_acquisition_attrs;
+                story_acquisition_attrs.emplace("Priority", "High");
+                story_acquisition_attrs.emplace("IndexGranularity", "Millisecond");
+                story_acquisition_attrs.emplace("TieringPolicy", "Hot");
+                std::pair<int, chronolog::StoryHandle *> acq_ret = client.AcquireStory(chronicle_name, story_name,
+                                                                                       story_acquisition_attrs,
+                                                                                       flags);
+                assert(acq_ret.first == CL_SUCCESS || acq_ret.first == CL_ERR_ACQUIRED);
             }
         }
-        else if(command_subs[0].compare("-r") == 0)
+        else if (command_subs[0] == "-r")
         {
-            if(command_subs[1].compare("-c") == 0)
-            {
-                assert(command_subs.size() == 3);
-                std::string chronicle_name = command_subs[2];
-                ret = client.ReleaseChronicle(chronicle_name, flags);
-            }
-            else if(command_subs[1].compare("-s") == 0)
+            if (command_subs[1] == "-s")
             {
                 assert(command_subs.size() == 4);
                 std::string chronicle_name = command_subs[2];
                 std::string story_name = command_subs[3];
-                ret = client.ReleaseStory(chronicle_name, story_name, flags);
+                ret = client.ReleaseStory(chronicle_name, story_name);
+                assert(ret == CL_SUCCESS || ret == CL_ERR_NOT_EXIST);
             }
 
         }
-        else if(command_subs[0].compare("-d") == 0)
+        else if (command_subs[0] == "-d")
         {
-            if(command_subs[1].compare("-c") == 0)
+            if (command_subs[1] == "-c")
             {
                 assert(command_subs.size() == 3);
                 std::string chronicle_name = command_subs[2];
-                ret = client.DestroyChronicle(chronicle_name, flags);
+                ret = client.DestroyChronicle(chronicle_name);
+                assert(ret == CL_SUCCESS || ret == CL_ERR_NOT_EXIST || ret == CL_ERR_ACQUIRED);
             }
-            else if(command_subs[1].compare("-s") == 0)
+            else if (command_subs[1] == "-s")
             {
                 assert(command_subs.size() == 4);
                 std::string chronicle_name = command_subs[2];
                 std::string story_name = command_subs[3];
-                ret = client.DestroyStory(chronicle_name, story_name, flags);
+                ret = client.DestroyStory(chronicle_name, story_name);
+                assert(ret == CL_SUCCESS || ret == CL_ERR_NOT_EXIST || ret == CL_ERR_ACQUIRED);
             }
 
         }
@@ -266,8 +161,8 @@ int main(int argc, char**argv)
 
     }
 
-
-    ret = client.Disconnect(client_id, flags);
+    ret = client.Disconnect();
+    assert(ret == CL_SUCCESS);
 
     return 0;
 }
