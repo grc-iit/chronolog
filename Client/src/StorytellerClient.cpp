@@ -69,6 +69,7 @@ int chronolog::StoryWritingHandle <KeeperChoicePolicy>::log_event(std::string co
     // INNA: make send event returm 0 in case of tl RPC failure ....
     keeperRecordingClient->send_event_msg(log_event);
 
+    // Kun: do we have any reason to have a different errno definition than what we already have in errcode.h?
     return 1;
 }
 /////////////////////
