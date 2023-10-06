@@ -35,6 +35,7 @@ Created by Aparna on 01/12/2023
 #include <pwd.h>
 #include <getopt.h>
 #include <functional>
+#include <chrono>
 
 typedef struct workload_conf_args_ {
     uint64_t chronicle_count = 1;
@@ -239,6 +240,7 @@ int main(int argc, char **argv)
 
     int flags = 0;
     int ret;
+    uint64_t total_event_payload_size = 0;
 
     std::string client_id = gen_random(8);
 
@@ -252,6 +254,8 @@ int main(int argc, char **argv)
 
     std::cout << " connected to server address : " << server_uri << std::endl;
 
+    std::chrono::steady_clock::time_point t1, t2;
+    t1 = std::chrono::steady_clock::now();
     if (workload_args.interactive)
     {
         std::cout << "Metadata operations: \n"
@@ -350,7 +354,9 @@ int main(int argc, char **argv)
                 {
                     uint64_t event_size = std::min(std::max(size_dist(gen), workload_args.min_event_size * 1.0),
                                                    workload_args.max_event_size * 1.0);
+                    total_event_payload_size += event_size;
                     std::string event_payload;
+                    event_payload.resize(event_size);
                     for (uint64_t l = 0; l < event_size; l++)
                         event_payload += std::to_string('a' + std::abs(char_dist(gen)) + 1);
                     test_write_event(story_handle, event_payload);
@@ -367,9 +373,15 @@ int main(int argc, char **argv)
             test_destroy_chronicle(client, chronicle_name);
         }
     }
+    t2 = std::chrono::steady_clock::now();
 
     ret = client.Disconnect();
     assert(ret == CL_SUCCESS);
+
+    std::cout << "Total payload written: " << total_event_payload_size << std::endl;
+    double duration = (t2 - t1).count() / 1.0e9;
+    std::cout << "Time used: " << duration << " seconds" << std::endl;
+    std::cout << "Bandwidth: " << total_event_payload_size / duration / 1e6 << " MB/s" << std::endl;
 
     return 0;
 }
