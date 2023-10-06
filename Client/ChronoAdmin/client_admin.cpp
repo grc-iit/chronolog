@@ -352,14 +352,37 @@ int main(int argc, char **argv)
                 uint64_t event_count_per_story = workload_args.event_count / workload_args.story_count;
                 for (uint64_t k = 0; k < event_count_per_story; k++)
                 {
-                    uint64_t event_size = std::min(std::max(size_dist(gen), workload_args.min_event_size * 1.0),
-                                                   workload_args.max_event_size * 1.0);
-                    total_event_payload_size += event_size;
-                    std::string event_payload;
-                    event_payload.resize(event_size);
-                    for (uint64_t l = 0; l < event_size; l++)
-                        event_payload += std::to_string('a' + std::abs(char_dist(gen)) + 1);
-                    test_write_event(story_handle, event_payload);
+                    if (workload_args.event_input_file.empty())
+                    {
+                        // randomly generate events with size in specified range
+                        uint64_t event_size = std::min(std::max(size_dist(gen), workload_args.min_event_size * 1.0),
+                                                       workload_args.max_event_size * 1.0);
+                        total_event_payload_size += event_size;
+                        std::string event_payload;
+                        event_payload.resize(event_size);
+                        for (uint64_t l = 0; l < event_size; l++)
+                            event_payload += std::to_string('a' + std::abs(char_dist(gen)) + 1);
+                        test_write_event(story_handle, event_payload);
+                    }
+                    else
+                    {
+                        // read event payload from input file line by line
+                        std::ifstream input_file(workload_args.event_input_file);
+
+                        // check if the file opened successfully
+                        if (input_file.is_open()) {
+                            std::string event_payload;
+                            while (std::getline(input_file, event_payload)) {
+                                total_event_payload_size += event_payload.size();
+                                test_write_event(story_handle, event_payload);
+                            }
+
+                            input_file.close();
+                        }
+                        else {
+                            std::cout << "Unable to open the file";
+                        }
+                    }
                 }
 
                 // release story test
