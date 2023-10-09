@@ -243,6 +243,7 @@ int main(int argc, char **argv)
     uint64_t total_event_payload_size = 0;
 
     std::string client_id = gen_random(8);
+    std::cout << "Generated client id: " << client_id << std::endl;
 
     std::string server_ip = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP;
     int base_port = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT;
@@ -250,7 +251,8 @@ int main(int argc, char **argv)
     server_uri += "://" + server_ip + ":" + std::to_string(base_port);
 
     std::string username = getpwuid(getuid())->pw_name;
-    client.Connect(server_uri, username, flags);
+    ret = client.Connect(server_uri, username, flags);
+    assert(ret == CL_SUCCESS);
 
     std::cout << " connected to server address : " << server_uri << std::endl;
 
