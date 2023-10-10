@@ -36,6 +36,7 @@ Created by Aparna on 01/12/2023
 #include <getopt.h>
 #include <functional>
 #include <chrono>
+#include <mpi.h>
 
 typedef struct workload_conf_args_ {
     uint64_t chronicle_count = 1;
@@ -46,6 +47,7 @@ typedef struct workload_conf_args_ {
     uint64_t event_count = 1;
     std::string event_input_file;
     bool interactive = false;
+    bool collective_access = false;
 } workload_conf_args;
 
 std::pair<std::string, workload_conf_args> cmd_arg_parse(int argc, char **argv)
@@ -65,11 +67,12 @@ std::pair<std::string, workload_conf_args> cmd_arg_parse(int argc, char **argv)
             {"event_count", required_argument, nullptr, 'n'},
             {"event_input_file", optional_argument, nullptr, 'f'},
             {"interactive", optional_argument, nullptr, 'i'},
+            {"collective_access", optional_argument, nullptr, 'o'},
             {nullptr, 0,                  nullptr, 0} // Terminate the options array
     };
 
     // Parse the command-line options
-    while ((opt = getopt_long(argc, argv, "h:t:c:a:s:b:n:f:i", long_options, nullptr)) != -1)
+    while ((opt = getopt_long(argc, argv, "h:t:c:a:s:b:n:f:io", long_options, nullptr)) != -1)
     {
         switch (opt)
         {
@@ -100,6 +103,9 @@ std::pair<std::string, workload_conf_args> cmd_arg_parse(int argc, char **argv)
             case 'i':
                 workload_args.interactive = true;
                 break;
+            case 'o':
+                workload_args.collective_access = true;
+                break;
             case '?':
                 // Invalid option or missing argument
                 LOGE("Usage: %s -c|--config <config_file>\n"
@@ -110,7 +116,8 @@ std::pair<std::string, workload_conf_args> cmd_arg_parse(int argc, char **argv)
                      "-b|--max_event_size <max_event_size>\n"
                      "-n|--event_count <event_count>\n"
                      "-f|--input <event_input_file>\n"
-                     "-i|--interactive", argv[0]);
+                     "-i|--interactive\n"
+                     "-o|--collective", argv[0]);
                 exit(EXIT_FAILURE);
             default:
                 // Unknown option
@@ -176,6 +183,7 @@ chronolog::StoryHandle *test_acquire_story(chronolog::Client &client,
     std::pair<int, chronolog::StoryHandle *> acq_ret = client.AcquireStory(chronicle_name, story_name,
                                                                            story_acquisition_attrs,
                                                                            flags);
+    std::cout << "acq_ret: " << acq_ret.first << std::endl;
     assert(acq_ret.first == CL_SUCCESS || acq_ret.first == CL_ERR_ACQUIRED);
     return acq_ret.second;
 }
@@ -226,6 +234,8 @@ void command_dispatcher(const std::string& command_line,
 
 int main(int argc, char **argv)
 {
+    MPI_Init(&argc, &argv);
+
     std::string default_conf_file_path = "./default_conf.json";
     std::pair<std::string, workload_conf_args> cmd_args = cmd_arg_parse(argc, argv);
     std::string conf_file_path = cmd_args.first;
@@ -238,7 +248,6 @@ int main(int argc, char **argv)
     chronolog::Client client(confManager);
     chronolog::StoryHandle *story_handle;
 
-    int flags = 0;
     int ret;
     uint64_t total_event_payload_size = 0;
 
@@ -251,7 +260,7 @@ int main(int argc, char **argv)
     server_uri += "://" + server_ip + ":" + std::to_string(base_port);
 
     std::string username = getpwuid(getuid())->pw_name;
-    ret = client.Connect(server_uri, username, flags);
+    ret = client.Connect();
     assert(ret == CL_SUCCESS);
 
     std::cout << " connected to server address : " << server_uri << std::endl;
@@ -332,6 +341,9 @@ int main(int argc, char **argv)
     }
     else
     {
+        int rank;
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
         std::random_device rd;
         std::mt19937 gen(rd());
         std::uniform_int_distribution char_dist(0, 255);
@@ -340,14 +352,22 @@ int main(int argc, char **argv)
         for (uint64_t i = 0; i < workload_args.chronicle_count; i++)
         {
             // create chronicle test
-            std::string chronicle_name = "chronicle_" + std::to_string(i);
+            std::string chronicle_name;
+            if (workload_args.collective_access)
+                chronicle_name = "chronicle_" + std::to_string(i);
+            else
+                chronicle_name = "chronicle_" + std::to_string(rank) + "_" + std::to_string(i);
             test_create_chronicle(client, chronicle_name);
 
             uint64_t story_count_per_chronicle = workload_args.story_count / workload_args.chronicle_count;
             for (uint64_t j = 0; j < story_count_per_chronicle; j++)
             {
                 // acquire story test
-                std::string story_name = "story_" + std::to_string(j);
+                std::string story_name;
+                if (workload_args.collective_access)
+                    story_name = "story_" + std::to_string(j);
+                else
+                    story_name = "story_" + std::to_string(rank) + "_" + std::to_string(j);
                 story_handle = test_acquire_story(client, chronicle_name, story_name);
 
                 // write event test
@@ -407,6 +427,8 @@ int main(int argc, char **argv)
     double duration = (t2 - t1).count() / 1.0e9;
     std::cout << "Time used: " << duration << " seconds" << std::endl;
     std::cout << "Bandwidth: " << total_event_payload_size / duration / 1e6 << " MB/s" << std::endl;
+
+    MPI_Finalize();
 
     return 0;
 }
