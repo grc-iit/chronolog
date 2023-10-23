@@ -213,13 +213,14 @@ chl::AcquireStoryResponseMsg chronolog::VisorClientPortal::AcquireStory(chl::Cli
     if ( !story_action_is_authorized( client_id, chronicle_name, story_name))
     { return chronolog::AcquireStoryResponseMsg(CL_ERR_NOT_AUTHORIZED, story_id, recording_keepers); }
 
-    // TODO : create_stroy should be part of acquire_story
-    int ret = chronicleMetaDirectory.create_story(chronicle_name, story_name, attrs);
-    if (ret != CL_SUCCESS)
-    { return chronolog::AcquireStoryResponseMsg(ret, story_id, recording_keepers); }
+    int ret = CL_ERR_UNKNOWN;
+    //ret = chronicleMetaDirectory.create_story(chronicle_name, story_name, attrs);
+    
+    //if (ret != CL_SUCCESS && ret != CL_ERR_STORY_EXISTS)
+    //{ return chronolog::AcquireStoryResponseMsg(ret, story_id, recording_keepers); }
 
     bool notify_keepers = false;
-    ret = chronicleMetaDirectory.acquire_story(client_id, chronicle_name, story_name, flags, story_id, notify_keepers);
+    ret = chronicleMetaDirectory.acquire_story(client_id, chronicle_name, story_name, attrs, flags, story_id, notify_keepers);
     if (ret != CL_SUCCESS)
     { return chronolog::AcquireStoryResponseMsg(ret, story_id, recording_keepers); }
 
