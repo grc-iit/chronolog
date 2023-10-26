@@ -144,25 +144,29 @@ public:
         }
     }
 
-    int addStory(std::string const&chronicle_name, uint64_t &cid, const std::string &story_name,
-                 const std::unordered_map<std::string, std::string> &attrs) {
-        // add cid to name before hash to allow same story name across chronicles
-        std::string story_name_for_hash = chronicle_name + story_name;
-        /* Check if Story exists, fail if true */
-        if (hasStory(story_name)) return CL_ERR_STORY_EXISTS;
-        uint64_t sid = CityHash64(story_name_for_hash.c_str(), story_name_for_hash.size());
-        auto *pStory = new Story();
+    std::pair<int, Story*> addStory( const std::string &story_name, const std::unordered_map<std::string, std::string> &attrs) 
+    {
+        /* Check if Story exists */
+        std::string story_name_for_hash = name_ + story_name;
+        uint64_t sid = CityHash64(story_name_for_hash.c_str(), story_name_for_hash.length());
+        auto story_iter =storyMap_.find(sid);
+        if (story_iter != storyMap_.end()) 
+        {   return std::pair<int, Story*>(CL_SUCCESS, (*story_iter).second); }
+
+        Story *pStory = new Story();
         pStory->setName(story_name);
         pStory->setProperty(attrs);
         pStory->setSid(sid);
-        pStory->setCid(cid);
+        pStory->setCid(cid_);
         LOGD("adding to storyMap@%p with %lu entries in Chronicle@%p",
              &storyMap_, storyMap_.size(), this);
         auto res = storyMap_.emplace(sid, pStory);
 //        storyName2IdMap_->insert_or_assign(story_name_for_hash, sid);
 //        storyId2NameMap_->insert_or_assign(sid, story_name_for_hash);
-        if (res.second) return CL_SUCCESS;
-        else return CL_ERR_UNKNOWN;
+        if (res.second) 
+        {   return std::pair<int, Story*>(CL_SUCCESS, pStory);   }
+        else 
+        {   return std::pair<int, Story*>(CL_ERR_UNKNOWN, nullptr); }
     }
 
     int removeStory(std::string const&chronicle_name, const std::string& story_name) {
