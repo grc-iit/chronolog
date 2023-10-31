@@ -257,6 +257,28 @@ void command_dispatcher(const std::string& command_line,
     }
 }
 
+uint64_t get_event_timestamp(std::string &event_line)
+{
+    size_t pos_first_space = event_line.find_first_of(' ');
+    size_t pos_second_space = event_line.find_first_of(' ', pos_first_space + 1);
+    size_t pos_third_space = event_line.find_first_of(' ', pos_second_space + 1);
+
+    std::string timestamp_str = event_line.substr(0, pos_third_space);
+    std::tm timeinfo;
+    strptime(timestamp_str.c_str(), "%b %d %H:%M:%S", &timeinfo);
+    uint64_t timestamp = timelocal(&timeinfo);
+    return timestamp;
+}
+
+uint64_t get_bigbang_timestamp(std::ifstream &file)
+{
+    std::string line;
+    std::getline(file, line);
+    uint64_t bigbang_timestamp = get_event_timestamp(line);
+    file.seekg(0, std::ios::beg);
+    return bigbang_timestamp;
+}
+
 int main(int argc, char **argv)
 {
     MPI_Init(&argc, &argv);
@@ -427,8 +449,17 @@ int main(int argc, char **argv)
 
                         // check if the file opened successfully
                         if (input_file.is_open()) {
+                            uint64_t bigbang_timestamp = get_bigbang_timestamp(input_file);
+                            uint64_t last_event_timestamp = bigbang_timestamp;
+                            uint64_t event_timestamp;
                             std::string event_payload;
+                            struct timespec sleep_ts;
                             while (std::getline(input_file, event_payload)) {
+                                event_timestamp = get_event_timestamp(event_payload);
+                                sleep_ts.tv_sec = (event_timestamp - last_event_timestamp) / 1000000000;
+                                sleep_ts.tv_nsec = (event_timestamp - last_event_timestamp) % 1000000000;
+                                nanosleep(&sleep_ts, nullptr);
+                                last_event_timestamp = event_timestamp;
                                 total_event_payload_size += event_payload.size();
                                 test_write_event(story_handle, event_payload);
                                 if (workload_args.barrier)
