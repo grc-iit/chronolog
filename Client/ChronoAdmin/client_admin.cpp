@@ -45,9 +45,11 @@ typedef struct workload_conf_args_ {
     uint64_t ave_event_size = 256;
     uint64_t max_event_size = 512;
     uint64_t event_count = 1;
+    uint64_t event_interval = 0;
+    bool barrier = false;
     std::string event_input_file;
     bool interactive = false;
-    bool collective_access = false;
+    bool shared_story = false;
 } workload_conf_args;
 
 std::pair<std::string, workload_conf_args> cmd_arg_parse(int argc, char **argv)
@@ -65,14 +67,16 @@ std::pair<std::string, workload_conf_args> cmd_arg_parse(int argc, char **argv)
             {"ave_event_size", required_argument, nullptr, 's'},
             {"max_event_size", required_argument, nullptr, 'b'},
             {"event_count", required_argument, nullptr, 'n'},
+            {"event_interval", required_argument, nullptr, 'g'},
+            {"barrier", optional_argument, nullptr, 'r'},
             {"event_input_file", optional_argument, nullptr, 'f'},
             {"interactive", optional_argument, nullptr, 'i'},
-            {"collective_access", optional_argument, nullptr, 'o'},
-            {nullptr, 0,                  nullptr, 0} // Terminate the options array
+            {"shared_story", optional_argument, nullptr, 'o'},
+            {nullptr, 0,nullptr, 0} // Terminate the options array
     };
 
     // Parse the command-line options
-    while ((opt = getopt_long(argc, argv, "h:t:c:a:s:b:n:f:io", long_options, nullptr)) != -1)
+    while ((opt = getopt_long(argc, argv, "c:h:t:a:s:b:n:g:f:rio", long_options, nullptr)) != -1)
     {
         switch (opt)
         {
@@ -97,6 +101,12 @@ std::pair<std::string, workload_conf_args> cmd_arg_parse(int argc, char **argv)
             case 'n':
                 workload_args.event_count = strtoll(optarg, nullptr, 10);
                 break;
+            case 'g':
+                workload_args.event_interval = strtoll(optarg, nullptr, 10);
+                break;
+            case 'r':
+                workload_args.barrier = false;
+                break;
             case 'f':
                 workload_args.event_input_file = optarg;
                 break;
@@ -104,20 +114,23 @@ std::pair<std::string, workload_conf_args> cmd_arg_parse(int argc, char **argv)
                 workload_args.interactive = true;
                 break;
             case 'o':
-                workload_args.collective_access = true;
+                workload_args.shared_story = true;
                 break;
             case '?':
                 // Invalid option or missing argument
-                LOGE("Usage: %s -c|--config <config_file>\n"
+                LOGE("\nUsage: %s \n"
+                     "-c|--config <config_file>\n"
                      "-h|--chronicle_count <chronicle_count>\n"
                      "-t|--story_count <story_count>\n"
                      "-a|--min_event_size <min_event_size>\n"
                      "-s|--ave_event_size <ave_event_size>\n"
                      "-b|--max_event_size <max_event_size>\n"
                      "-n|--event_count <event_count>\n"
+                     "-g|--event_interval <event_interval>\n"
+                     "-r|--barrier\n"
                      "-f|--input <event_input_file>\n"
                      "-i|--interactive\n"
-                     "-o|--collective", argv[0]);
+                     "-o|--shared_story", argv[0]);
                 exit(EXIT_FAILURE);
             default:
                 // Unknown option
@@ -160,6 +173,16 @@ std::pair<std::string, workload_conf_args> cmd_arg_parse(int argc, char **argv)
     }
 }
 
+void random_sleep()
+{
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    srand(getpid());
+    long usec = random() % 100000;
+    std::cout << "Sleeping for " << usec << " us ..." << std::endl;
+    usleep(usec * rank);
+}
+
 void test_create_chronicle(chronolog::Client &client, const std::string &chronicle_name)
 {
     int ret, flags = 0;
@@ -175,6 +198,7 @@ chronolog::StoryHandle *test_acquire_story(chronolog::Client &client,
                                            const std::string &chronicle_name,
                                            const std::string &story_name)
 {
+//    random_sleep();
     int flags = 0;
     std::unordered_map<std::string, std::string> story_acquisition_attrs;
     story_acquisition_attrs.emplace("Priority", "High");
@@ -196,6 +220,7 @@ void test_write_event(chronolog::StoryHandle *story_handle, const std::string &e
 
 void test_release_story(chronolog::Client &client, const std::string &chronicle_name, const std::string &story_name)
 {
+//    random_sleep();
     int ret = client.ReleaseStory(chronicle_name, story_name);
     assert(ret == CL_SUCCESS || ret == CL_ERR_NOT_EXIST);
 }
@@ -353,22 +378,26 @@ int main(int argc, char **argv)
         {
             // create chronicle test
             std::string chronicle_name;
-            if (workload_args.collective_access)
+            if (workload_args.shared_story)
                 chronicle_name = "chronicle_" + std::to_string(i);
             else
                 chronicle_name = "chronicle_" + std::to_string(rank) + "_" + std::to_string(i);
             test_create_chronicle(client, chronicle_name);
+            if (workload_args.barrier)
+                MPI_Barrier(MPI_COMM_WORLD);
 
             uint64_t story_count_per_chronicle = workload_args.story_count / workload_args.chronicle_count;
             for (uint64_t j = 0; j < story_count_per_chronicle; j++)
             {
                 // acquire story test
                 std::string story_name;
-                if (workload_args.collective_access)
+                if (workload_args.shared_story)
                     story_name = "story_" + std::to_string(j);
                 else
                     story_name = "story_" + std::to_string(rank) + "_" + std::to_string(j);
                 story_handle = test_acquire_story(client, chronicle_name, story_name);
+                if (workload_args.barrier)
+                    MPI_Barrier(MPI_COMM_WORLD);
 
                 // write event test
                 uint64_t event_count_per_story = workload_args.event_count / workload_args.story_count;
@@ -385,6 +414,11 @@ int main(int argc, char **argv)
                         for (uint64_t l = 0; l < event_size; l++)
                             event_payload += std::to_string('a' + std::abs(char_dist(gen)) + 1);
                         test_write_event(story_handle, event_payload);
+                        if (workload_args.barrier)
+                            MPI_Barrier(MPI_COMM_WORLD);
+
+                        if (workload_args.event_interval > 0)
+                            usleep(workload_args.event_interval);
                     }
                     else
                     {
@@ -397,6 +431,11 @@ int main(int argc, char **argv)
                             while (std::getline(input_file, event_payload)) {
                                 total_event_payload_size += event_payload.size();
                                 test_write_event(story_handle, event_payload);
+                                if (workload_args.barrier)
+                                    MPI_Barrier(MPI_COMM_WORLD);
+
+                                if (workload_args.event_interval > 0)
+                                    usleep(workload_args.event_interval);
                             }
 
                             input_file.close();
@@ -409,13 +448,19 @@ int main(int argc, char **argv)
 
                 // release story test
                 test_release_story(client, chronicle_name, story_name);
+                if (workload_args.barrier)
+                    MPI_Barrier(MPI_COMM_WORLD);
 
                 // destroy story test
                 test_destroy_story(client, chronicle_name, story_name);
+                if (workload_args.barrier)
+                    MPI_Barrier(MPI_COMM_WORLD);
             }
 
             // destroy chronicle test
             test_destroy_chronicle(client, chronicle_name);
+            if (workload_args.barrier)
+                MPI_Barrier(MPI_COMM_WORLD);
         }
     }
     t2 = std::chrono::steady_clock::now();
