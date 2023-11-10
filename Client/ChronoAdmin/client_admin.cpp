@@ -61,6 +61,7 @@ std::pair<std::string, workload_conf_args> cmd_arg_parse(int argc, char **argv)
     // Define the long options and their corresponding short options
     struct option long_options[] = {
             {"config", required_argument, nullptr, 'c'},
+            {"interactive", optional_argument, nullptr, 'i'},
             {"chronicle_count", required_argument, nullptr, 'h'},
             {"story_count", required_argument, nullptr, 't'},
             {"min_event_size", required_argument, nullptr, 'a'},
@@ -70,18 +71,20 @@ std::pair<std::string, workload_conf_args> cmd_arg_parse(int argc, char **argv)
             {"event_interval", required_argument, nullptr, 'g'},
             {"barrier", optional_argument, nullptr, 'r'},
             {"event_input_file", optional_argument, nullptr, 'f'},
-            {"interactive", optional_argument, nullptr, 'i'},
             {"shared_story", optional_argument, nullptr, 'o'},
             {nullptr, 0,nullptr, 0} // Terminate the options array
     };
 
     // Parse the command-line options
-    while ((opt = getopt_long(argc, argv, "c:h:t:a:s:b:n:g:f:rio", long_options, nullptr)) != -1)
+    while ((opt = getopt_long(argc, argv, "c:ih:t:a:s:b:n:g:rf:o", long_options, nullptr)) != -1)
     {
         switch (opt)
         {
             case 'c':
                 config_file = optarg;
+                break;
+            case 'i':
+                workload_args.interactive = true;
                 break;
             case 'h':
                 workload_args.chronicle_count = strtoll(optarg, nullptr, 10);
@@ -110,9 +113,6 @@ std::pair<std::string, workload_conf_args> cmd_arg_parse(int argc, char **argv)
             case 'f':
                 workload_args.event_input_file = optarg;
                 break;
-            case 'i':
-                workload_args.interactive = true;
-                break;
             case 'o':
                 workload_args.shared_story = true;
                 break;
@@ -120,6 +120,7 @@ std::pair<std::string, workload_conf_args> cmd_arg_parse(int argc, char **argv)
                 // Invalid option or missing argument
                 LOGE("\nUsage: %s \n"
                      "-c|--config <config_file>\n"
+                     "-i|--interactive\n"
                      "-h|--chronicle_count <chronicle_count>\n"
                      "-t|--story_count <story_count>\n"
                      "-a|--min_event_size <min_event_size>\n"
@@ -129,7 +130,6 @@ std::pair<std::string, workload_conf_args> cmd_arg_parse(int argc, char **argv)
                      "-g|--event_interval <event_interval>\n"
                      "-r|--barrier\n"
                      "-f|--input <event_input_file>\n"
-                     "-i|--interactive\n"
                      "-o|--shared_story", argv[0]);
                 exit(EXIT_FAILURE);
             default:
@@ -144,16 +144,18 @@ std::pair<std::string, workload_conf_args> cmd_arg_parse(int argc, char **argv)
     {
         LOGI("Config file specified: %s\n", config_file);
         if (workload_args.interactive) {
-            LOGI("Interactive mode on");
+            LOGI("Interactive mode: on");
         }
         else
         {
-            LOGI("Interactive mode off");
+            LOGI("Interactive mode: off");
             LOGI("Chronicle count: %lu", workload_args.chronicle_count);
             LOGI("Story count: %lu", workload_args.story_count);
             if (!workload_args.event_input_file.empty())
             {
                 LOGI("Event input file specified: %s", workload_args.event_input_file.c_str());
+                LOGI("Barrier: %s", workload_args.barrier ? "true" : "false");
+                LOGI("Shared story: %s", workload_args.shared_story ? "true" : "false");
             }
             else
             {
@@ -162,13 +164,26 @@ std::pair<std::string, workload_conf_args> cmd_arg_parse(int argc, char **argv)
                 LOGI("Ave event size: %lu", workload_args.ave_event_size);
                 LOGI("Max event size: %lu", workload_args.max_event_size);
                 LOGI("Event count: %lu", workload_args.event_count);
+                LOGI("Event interval: %lu", workload_args.event_interval);
+                LOGI("Barrier: %s", workload_args.barrier ? "true" : "false");
+                LOGI("Shared story: %s", workload_args.shared_story ? "true" : "false");
             }
         }
         return {std::pair<std::string, workload_conf_args>((config_file), workload_args)};
     }
     else
     {
-        LOGI("No config file specified, using default instead\n");
+        LOGI("No config file specified, using default instead:\n");
+        LOGI("Interactive mode: %s", workload_args.interactive ? "on" : "off");
+        LOGI("Chronicle count: %lu", workload_args.chronicle_count);
+        LOGI("Story count: %lu", workload_args.story_count);
+        LOGI("Min event size: %lu", workload_args.min_event_size);
+        LOGI("Ave event size: %lu", workload_args.ave_event_size);
+        LOGI("Max event size: %lu", workload_args.max_event_size);
+        LOGI("Event count: %lu", workload_args.event_count);
+        LOGI("Event interval: %lu", workload_args.event_interval);
+        LOGI("Barrier: %s", workload_args.barrier ? "true" : "false");
+        LOGI("Shared story: %s", workload_args.shared_story ? "true" : "false");
         return {};
     }
 }
@@ -198,7 +213,7 @@ chronolog::StoryHandle *test_acquire_story(chronolog::Client &client,
                                            const std::string &chronicle_name,
                                            const std::string &story_name)
 {
-//    random_sleep();
+    random_sleep(); // TODO: (Kun) remove this when the hanging bug upon concurrent acquire is fixed
     int flags = 0;
     std::unordered_map<std::string, std::string> story_acquisition_attrs;
     story_acquisition_attrs.emplace("Priority", "High");
@@ -220,7 +235,7 @@ void test_write_event(chronolog::StoryHandle *story_handle, const std::string &e
 
 void test_release_story(chronolog::Client &client, const std::string &chronicle_name, const std::string &story_name)
 {
-//    random_sleep();
+    random_sleep(); // TODO: (Kun) remove this when the hanging bug upon concurrent acquire is fixed
     int ret = client.ReleaseStory(chronicle_name, story_name);
     assert(ret == CL_SUCCESS || ret == CL_ERR_NOT_EXIST);
 }
@@ -259,11 +274,17 @@ void command_dispatcher(const std::string& command_line,
 
 uint64_t get_event_timestamp(std::string &event_line)
 {
-    size_t pos_first_space = event_line.find_first_of(' ');
+    /*
+     * Supported log files: syslog, auth.log, kern.log, ufw.log on Ubuntu
+     * Expected format of log record:
+     * Nov  5 14:36:49 ares-comp-01 systemd[1]: Started Time & Date Service.
+     */
+    size_t pos_first_space = event_line.find_first_of("0123456789") - 1;
     size_t pos_second_space = event_line.find_first_of(' ', pos_first_space + 1);
     size_t pos_third_space = event_line.find_first_of(' ', pos_second_space + 1);
 
     std::string timestamp_str = event_line.substr(0, pos_third_space);
+    LOGD("timestamp_str: %s", timestamp_str.c_str());
     std::tm timeinfo;
     strptime(timestamp_str.c_str(), "%b %d %H:%M:%S", &timeinfo);
     uint64_t timestamp = timelocal(&timeinfo);
