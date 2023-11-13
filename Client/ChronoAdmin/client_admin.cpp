@@ -284,8 +284,12 @@ uint64_t get_event_timestamp(std::string &event_line)
     size_t pos_third_space = event_line.find_first_of(' ', pos_second_space + 1);
 
     std::string timestamp_str = event_line.substr(0, pos_third_space);
-    LOGD("timestamp_str: %s", timestamp_str.c_str());
     std::tm timeinfo;
+    auto now = std::chrono::system_clock::now();
+    std::time_t current_time = std::chrono::system_clock::to_time_t(now);
+    std::tm* time_info_now = std::localtime(&current_time);
+    // assume the log file is generated in the same year as the current time
+    timeinfo.tm_year = time_info_now->tm_year;
     strptime(timestamp_str.c_str(), "%b %d %H:%M:%S", &timeinfo);
     uint64_t timestamp = timelocal(&timeinfo);
     return timestamp;
@@ -479,6 +483,10 @@ int main(int argc, char **argv)
                                 event_timestamp = get_event_timestamp(event_payload);
                                 sleep_ts.tv_sec = (event_timestamp - last_event_timestamp) / 1000000000;
                                 sleep_ts.tv_nsec = (event_timestamp - last_event_timestamp) % 1000000000;
+                                // TODO: (Kun) work around on failure when daytime changes
+                                if (sleep_ts.tv_sec > 3600) sleep_ts.tv_sec = 0;
+                                LOGD("Sleeping for %ld.%ld seconds to emulate interval between events ...",
+                                     sleep_ts.tv_sec, sleep_ts.tv_nsec);
                                 nanosleep(&sleep_ts, nullptr);
                                 last_event_timestamp = event_timestamp;
                                 total_event_payload_size += event_payload.size();
