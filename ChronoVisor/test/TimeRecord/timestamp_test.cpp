@@ -13,11 +13,11 @@
 
 #define SLEEP_INTERVAL_IN_SEC 3
 
-int main ()
+int main()
 {
-    ClocksourceManager *manager = ClocksourceManager::getInstance();
+    ClocksourceManager*manager = ClocksourceManager::getInstance();
     manager->setClocksourceType(ClocksourceType::C_STYLE);
-    Clocksource *clocksource_ = manager->getClocksource();
+    Clocksource*clocksource_ = manager->getClocksource();
 
     TimeRecord r1;
     r1.setClocksource(clocksource_);
@@ -34,7 +34,7 @@ int main ()
     uint64_t t2 = r2.getTimestamp();
 
     std::cout << "It took me " << t2 - t1 << " nanoseconds." << std::endl;
-    std::cout << "Drift rate: " << std::scientific << (double) (t2 - t1) / SLEEP_INTERVAL_IN_SEC - 1 << std::endl;
+    std::cout << "Drift rate: " << std::scientific << (double)(t2 - t1) / SLEEP_INTERVAL_IN_SEC - 1 << std::endl;
 
     return 0;
 }

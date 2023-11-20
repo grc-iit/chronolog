@@ -10,7 +10,8 @@
 
 using namespace ChronoVisor;
 
-int main() {
+int main()
+{
     const int port = 6000;
     LOGI("ChronoVisor server port:%d", port);
 
@@ -29,7 +30,8 @@ int main() {
 //        LOGI("received a message from a client: msg=%s", message.rawMsg.toString().c_str());
 //    });
 
-    for (int i = 0; i < NUM_CHRONOKEEPER; i++) {
+    for(int i = 0; i < NUM_CHRONOKEEPER; i++)
+    {
         ChronoKeeperInfo chronoKeeperInfo(std::string("172.25.101.") + std::to_string(i + 1), 8000 + i);
         server.addChronoKeeperInfo(chronoKeeperInfo);
     }

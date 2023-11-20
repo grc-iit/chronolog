@@ -8,24 +8,40 @@
 #include <atomic>
 #include <cstdint>
 
-class Event {
+class Event
+{
 public:
-    Event() : data_(nullptr) {};
+    Event(): data_(nullptr)
+    {};
 
-    const uint64_t &getSid() const { return sid_; }
-    const uint64_t &getTimestamp() const { return timestamp_; }
-    void *getData() const { return data_; }
-    size_t getSize() const { return size_; }
+    const uint64_t &getSid() const
+    { return sid_; }
 
-    void setSid(const uint64_t &sid) { sid_ = sid; }
-    void setTimestamp(const uint64_t &timestamp) { timestamp_ = timestamp; }
-    void setData(void *data) { Event::data_ = data; }
-    void setSize(size_t size) { size_ = size; }
+    const uint64_t &getTimestamp() const
+    { return timestamp_; }
+
+    void*getData() const
+    { return data_; }
+
+    size_t getSize() const
+    { return size_; }
+
+    void setSid(const uint64_t &sid)
+    { sid_ = sid; }
+
+    void setTimestamp(const uint64_t &timestamp)
+    { timestamp_ = timestamp; }
+
+    void setData(void*data)
+    { Event::data_ = data; }
+
+    void setSize(size_t size)
+    { size_ = size; }
 
 private:
     uint64_t sid_{};
     uint64_t timestamp_{};
-    void *data_;
+    void*data_;
     size_t size_{};
 };
 
