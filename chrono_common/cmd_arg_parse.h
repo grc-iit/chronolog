@@ -9,21 +9,20 @@
 #include <string>
 #include <log.h>
 
-std::string parse_conf_path_arg(int argc, char **argv)
+std::string parse_conf_path_arg(int argc, char**argv)
 {
     int opt;
-    char *config_file = nullptr;
+    char*config_file = nullptr;
 
     // Define the long options and their corresponding short options
-    struct option long_options[] = {
-            {"config", required_argument, 0, 'c'},
-            {0, 0,                        0, 0} // Terminate the options array
+    struct option long_options[] = {{  "config", required_argument, 0, 'c'}
+                                    , {0       , 0                , 0, 0} // Terminate the options array
     };
 
     // Parse the command-line options
-    while ((opt = getopt_long(argc, argv, "c:", long_options, nullptr)) != -1)
+    while((opt = getopt_long(argc, argv, "c:", long_options, nullptr)) != -1)
     {
-        switch (opt)
+        switch(opt)
         {
             case 'c':
                 config_file = optarg;
@@ -40,7 +39,7 @@ std::string parse_conf_path_arg(int argc, char **argv)
     }
 
     // Check if the config file option is provided
-    if (config_file)
+    if(config_file)
     {
         LOGD("Config file specified: %s\n", config_file);
         return {std::string(config_file)};
