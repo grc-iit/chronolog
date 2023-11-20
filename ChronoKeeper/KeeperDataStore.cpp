@@ -59,8 +59,7 @@ int chronolog::KeeperDataStore::startStoryRecording(std::string const& chronicle
 	else
     { 
         return CL_ERR_UNKNOWN; 
-    }   
-
+    }
 }
 ////////////////////////
 

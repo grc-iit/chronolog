@@ -6,28 +6,25 @@
 #include "StoryChunkExtractor.h"
 
 
-
 namespace chronolog
 {
 
-class CSVFileStoryChunkExtractor : public StoryChunkExtractorBase
+class CSVFileStoryChunkExtractor: public StoryChunkExtractorBase
 {
 
-
 public:
-    CSVFileStoryChunkExtractor( KeeperIdCard const& keeper_id_card, std::string const& csv_files_root_dir);
-    
+    CSVFileStoryChunkExtractor(KeeperIdCard const &keeper_id_card, std::string const &csv_files_root_dir);
+
     ~CSVFileStoryChunkExtractor();
 
-    virtual void processStoryChunk( StoryChunk *);
+    virtual void processStoryChunk(StoryChunk*);
 
 private:
     KeeperIdCard keeperIdCard;
     std::string rootDirectory;
-    
+
 
 };
-
 
 
 }

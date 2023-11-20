@@ -17,55 +17,52 @@ namespace tl = thallium;
 namespace chronolog
 {
 
-
 class StoryChunkExtractorBase
 {
-
-enum ExtractorState
-{
-    UNKNOWN = 0,
-    RUNNING =1, //  active extraction threads 
-    SHUTTING_DOWN=2 // Shutting down extraction threads
-};
-
+    enum ExtractorState
+    {
+        UNKNOWN = 0, RUNNING = 1, //  active extraction threads
+        SHUTTING_DOWN = 2 // Shutting down extraction threads
+    };
 
 public:
-	StoryChunkExtractorBase()
-    : extractorState(UNKNOWN)
-	{ }
-	~StoryChunkExtractorBase();
+    StoryChunkExtractorBase(): extractorState(UNKNOWN)
+    {}
 
-    StoryChunkExtractionQueue & getExtractionQueue()
+    ~StoryChunkExtractorBase();
+
+    StoryChunkExtractionQueue &getExtractionQueue()
     {
-	    std::cout <<"ExtractionBase : chunkExtractionQueue.size="<<chunkExtractionQueue.size()<<std::endl;
+        std::cout << "ExtractionBase : chunkExtractionQueue.size=" << chunkExtractionQueue.size() << std::endl;
         return chunkExtractionQueue;
     }
 
     bool is_running() const
-    {  return (extractorState == RUNNING);  }
+    { return (extractorState == RUNNING); }
 
     bool is_shutting_down() const
-    {   return (extractorState == SHUTTING_DOWN);   }
+    { return (extractorState == SHUTTING_DOWN); }
 
-    void drainExtractionQueue(); 
+    void drainExtractionQueue();
 
-    virtual void processStoryChunk( StoryChunk*)  //=0
-    { }
+    virtual void processStoryChunk(StoryChunk*)  //=0
+    {}
 
     void startExtractionThreads(int);
+
     void shutdownExtractionThreads();
 
 private:
+    StoryChunkExtractorBase(StoryChunkExtractorBase const &) = delete;
 
-	StoryChunkExtractorBase(StoryChunkExtractorBase const &) = delete;
-	StoryChunkExtractorBase & operator=(StoryChunkExtractorBase const &) = delete;
+    StoryChunkExtractorBase &operator=(StoryChunkExtractorBase const &) = delete;
 
     ExtractorState extractorState;
-    std::mutex      extractorMutex;
+    std::mutex extractorMutex;
     StoryChunkExtractionQueue chunkExtractionQueue;
 
-    std::vector<tl::managed<tl::xstream>> extractionStreams; 
-    std::vector<tl::managed<tl::thread>> extractionThreads; 
+    std::vector <tl::managed < tl::xstream>> extractionStreams;
+    std::vector <tl::managed < tl::thread>> extractionThreads;
 };
 
 }
