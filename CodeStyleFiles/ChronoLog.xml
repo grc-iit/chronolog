@@ -1,4 +1,4 @@
-<code_scheme name="ChronoLog" version="173">
+<code_scheme name="Project" version="173">
   <Objective-C>
     <option name="INDENT_NAMESPACE_MEMBERS" value="0" />
     <option name="KEEP_STRUCTURES_IN_ONE_LINE" value="true" />
@@ -27,6 +27,9 @@
     <option name="SPACE_BEFORE_IF_PARENTHESES" value="false" />
     <option name="SPACE_BEFORE_WHILE_PARENTHESES" value="false" />
     <option name="SPACE_BEFORE_FOR_PARENTHESES" value="false" />
+    <indentOptions>
+      <option name="CONTINUATION_INDENT_SIZE" value="4" />
+    </indentOptions>
   </codeStyleSettings>
   <codeStyleSettings language="Git Machete">
     <indentOptions>
