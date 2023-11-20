@@ -17,9 +17,9 @@ uint64_t get_chrono_timestamp()
     return std::chrono::system_clock::now().time_since_epoch().count();
 }
 
-int main(int argc, char **argv)
+int main(int argc, char**argv)
 {
-    if (argc != 3)
+    if(argc != 3)
     {
         std::cerr << "Usage: " << argv[0] << " <address> <provider_id>" << std::endl;
         exit(0);
@@ -34,7 +34,7 @@ int main(int argc, char **argv)
 //    chronolog::StorytellerClient storytellerClient(myEngine, argv[1], provider_id);
 
 
-    for (int i = 0; i < 10; ++i)
+    for(int i = 0; i < 10; ++i)
     {
         sleep(10);
         uint64_t log_time = get_chrono_timestamp();

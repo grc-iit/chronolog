@@ -3,7 +3,7 @@
 
 #include <string>
 #include <vector>
-#include <unordered_map>   
+#include <unordered_map>
 
 #include "ConfigurationManager.h"  //TODO: not sure this is a good idea , but will keep it for now ...
 
@@ -16,7 +16,7 @@ class StoryHandle
 public:
     virtual  ~StoryHandle();
 
-    virtual int log_event( std::string const&) = 0;
+    virtual int log_event(std::string const &) = 0;
 
     // to be implemented with libfabric/thallium bulk transfer...
     //virtual int log_event( size_t , void*) = 0;
@@ -29,33 +29,38 @@ class ChronologClientImpl;
 class Client
 {
 public:
-    Client( ChronoLog::ConfigurationManager const&);
+    Client(ChronoLog::ConfigurationManager const &);
 
     ~Client();
 
     int Connect();
-    int Disconnect( ); 
 
-    int CreateChronicle( std::string const& chronicle_name,
-                         std::unordered_map<std::string, std::string> const& attrs,
-                         int &flags);
-    int DestroyChronicle(std::string const& chronicle_name);
+    int Disconnect();
+
+    int CreateChronicle(std::string const &chronicle_name, std::unordered_map <std::string, std::string> const &attrs
+                        , int &flags);
+
+    int DestroyChronicle(std::string const &chronicle_name);
 
 //TODO: unordered_map? how many attributes do we expect ???
-    std::pair<int,StoryHandle*> AcquireStory(std::string const& chronicle_name, std::string const& story_name,
-                     const std::unordered_map<std::string, std::string> &attrs, int &flags);
+    std::pair <int, StoryHandle*> AcquireStory(std::string const &chronicle_name, std::string const &story_name
+                                               , const std::unordered_map <std::string, std::string> &attrs
+                                               , int &flags);
 
-    int ReleaseStory(std::string const& chronicle_name, std::string const& story_name);
-    int DestroyStory(std::string const& chronicle_name, std::string const& story_name);
+    int ReleaseStory(std::string const &chronicle_name, std::string const &story_name);
 
-    int GetChronicleAttr(std::string const& chronicle_name, const std::string &key, std::string &value);
-    int EditChronicleAttr(std::string const& chronicle_name, const std::string &key, const std::string &value);
+    int DestroyStory(std::string const &chronicle_name, std::string const &story_name);
 
-    std::vector<std::string> & ShowChronicles( std::vector<std::string> &);
-    std::vector<std::string> & ShowStories( std::string const& chronicle_name, std::vector<std::string> & );
+    int GetChronicleAttr(std::string const &chronicle_name, const std::string &key, std::string &value);
+
+    int EditChronicleAttr(std::string const &chronicle_name, const std::string &key, const std::string &value);
+
+    std::vector <std::string> &ShowChronicles(std::vector <std::string> &);
+
+    std::vector <std::string> &ShowStories(std::string const &chronicle_name, std::vector <std::string> &);
 
 private:
-    ChronologClientImpl * chronologClientImpl;
+    ChronologClientImpl*chronologClientImpl;
 };
 
 } //namespace chronolog
