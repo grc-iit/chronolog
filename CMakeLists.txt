@@ -26,7 +26,7 @@ set(CHRONOLOG_PACKAGE_TARNAME "${CHRONOLOG_PACKAGE}")
 # Setup install and output Directories
 #------------------------------------------------------------------------------
 #if(NOT CMAKE_INSTALL_PREFIX)
-    set(CMAKE_INSTALL_PREFIX /home/$ENV{USER}/chronolog)
+set(CMAKE_INSTALL_PREFIX /home/$ENV{USER}/chronolog)
 #endif()
 if(NOT CHRONOLOG_INSTALL_BIN_DIR)
     set(CHRONOLOG_INSTALL_BIN_DIR ${CMAKE_INSTALL_PREFIX}/bin)
@@ -92,7 +92,7 @@ option(CHRONOLOG_ENABLE_DOXYGEN "Enable Doxygen documentation generation." OFF)
 # Change some compilation flags depending on the build type
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     message("Compiling ChronoLog in Debug Mode")
-#    add_compile_options(-g3)
+    #    add_compile_options(-g3)
     add_compile_options(-O0)
     #set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -O0 -g")
@@ -109,7 +109,7 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     #    message(FATAL_ERROR "Cannont use -fsanitize=address and -fsanitize=thread "
     #            "at the same time")
     #endif()
-else()    
+else()
     message("Compiling ChronoLog in release Mode")
     add_compile_options(-O3 -lm)
     #add_compile_options(-Wno-switch-unreachable -Wno-return-type)
@@ -120,7 +120,7 @@ endif()
 #------------------------------------------------------------------------------
 if(CHRONOLOG_ENABLE_COVERAGE)
     if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
-        message(FATAL_ERROR  "Use code coverage with debug mode")
+        message(FATAL_ERROR "Use code coverage with debug mode")
     endif()
 endif()
 
@@ -161,7 +161,7 @@ if(CHRONOLOG_ENABLE_COVERAGE)
                 PROPERTIES
                 COMPILE_FLAGS ${COVERAGE_FLAGS}
                 LINK_FLAGS ${COVERAGE_FLAGS}
-                )
+        )
     endmacro()
 endif()
 
@@ -195,7 +195,7 @@ add_custom_target(lint COMMAND cpplint --recursive
         --exclude=${CMAKE_CURRENT_SOURCE_DIR}/external_libs
         --exclude=${CMAKE_CURRENT_SOURCE_DIR}/doc
         --exclude=${CMAKE_CURRENT_SOURCE_DIR}/CI
-        ${CMAKE_CURRENT_SOURCE_DIR} )
+        ${CMAKE_CURRENT_SOURCE_DIR})
 
 #-----------------------------------------------------------------------------
 # Source
