@@ -7,13 +7,14 @@
 #include "RPCVisor.h"
 #include "global_var_visor.h"
 
-int main() {
+int main()
+{
     CHRONOLOG_CONF->LoadConfFromJSONFile("./default_conf_server.json");
-    std::unique_ptr<RPCVisor> rpcProxy = std::make_unique<RPCVisor>();
+    std::unique_ptr <RPCVisor> rpcProxy = std::make_unique <RPCVisor>();
     rpcProxy->bind_functions();
 //    ChronicleMetadataRPCProxy metadataRPCProxy;
-    ChronoLog::Singleton<ChronoLogRPCFactory>::GetInstance()
-    ->GetRPC(CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT)->start();
+    ChronoLog::Singleton <ChronoLogRPCFactory>::GetInstance()->GetRPC(
+            CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT)->start();
 
     return 0;
 }
