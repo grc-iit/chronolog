@@ -32,13 +32,13 @@
 }();
 // this is how it is called: CHRONOLOG_RPC_CALL_WRAPPER("Connect", 0, bool, uri, client_id);
 
-#define CHRONOLOG_THALLIUM_DEFINE(name, args,args_t...) \
+#define CHRONOLOG_THALLIUM_DEFINE(name, args, args_t...) \
 void Thallium##name(const tl::request &thallium_req, args_t) \
 { \
     thallium_req.respond(name args); \
 }
 
-#define ASSERT(left,operator,right) { if(!((left) operator (right))){ \
+#define ASSERT(left, operator, right) { if(!((left) operator (right))){ \
 std::cerr << "ASSERT FAILED: " << #left << #operator << #right \
 << " @ " << __FILE__ << " (" << __LINE__ << "). " \
 << #left << "=" << (left) << "; " << #right << "=" << (right) << std::endl; exit(1); } }
