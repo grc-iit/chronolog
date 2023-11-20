@@ -33,34 +33,33 @@
 
 struct query_req
 {
-   
- std::string name;
- uint64_t minkey;
- uint64_t maxkey;
- int id;
- int sender;
- bool from_nvme;
- bool sorted;
- bool collective;
- bool single_point;
- bool output_file;
- int op;
+    std::string name;
+    uint64_t minkey;
+    uint64_t maxkey;
+    int id;
+    int sender;
+    bool from_nvme;
+    bool sorted;
+    bool collective;
+    bool single_point;
+    bool output_file;
+    int op;
 };
 
-template<typename A>
-void serialize(A &ar,struct query_req &e)
+template <typename A>
+void serialize(A &ar, struct query_req &e)
 {
-        ar & e.name;
-        ar & e.minkey;
-        ar & e.maxkey;
-        ar & e.id;
-        ar & e.sender;
-        ar & e.from_nvme;
-        ar & e.sorted;
-        ar & e.collective;
-        ar & e.single_point;
-        ar & e.output_file;
-        ar & e.op;
+    ar&e.name;
+    ar&e.minkey;
+    ar&e.maxkey;
+    ar&e.id;
+    ar&e.sender;
+    ar&e.from_nvme;
+    ar&e.sorted;
+    ar&e.collective;
+    ar&e.single_point;
+    ar&e.output_file;
+    ar&e.op;
 }
 
 #endif

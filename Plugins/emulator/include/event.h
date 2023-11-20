@@ -14,20 +14,21 @@ using namespace boost;
 
 struct event
 {
-   uint64_t ts;
-   char *data;
+    uint64_t ts;
+    char*data;
 };
 
 struct atomic_buffer
 {
-   boost::shared_mutex m;
-   std::atomic<int> buffer_size;
-   std::vector<struct event> *buffer;
-   std::vector<char> *datamem;
-   std::vector<std::atomic<int>> *valid;
+    boost::shared_mutex m;
+    std::atomic <int> buffer_size;
+    std::vector <struct event>*buffer;
+    std::vector <char>*datamem;
+    std::vector <std::atomic <int>>*valid;
 };
 
-std::string pack_event(struct event *,int);
-void unpack_event(struct event *,std::string &);
+std::string pack_event(struct event*, int);
+
+void unpack_event(struct event*, std::string &);
 
 #endif

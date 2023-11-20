@@ -35,29 +35,29 @@
 
 struct query_resp
 {
-   int id;
-   int response_id;
-   uint64_t minkey;
-   uint64_t maxkey;
-   int  sender;
-   std::string response;
-   std::string output_file;
-   bool complete;
-   int error_code;
+    int id;
+    int response_id;
+    uint64_t minkey;
+    uint64_t maxkey;
+    int sender;
+    std::string response;
+    std::string output_file;
+    bool complete;
+    int error_code;
 };
 
-template<typename A>
-void serialize(A &ar,struct query_resp &e)
+template <typename A>
+void serialize(A &ar, struct query_resp &e)
 {
-   ar & e.id;
-   ar & e.response_id;
-   ar & e.minkey;
-   ar & e.maxkey;
-   ar & e.sender;
-   ar & e.response;
-   ar & e.output_file;
-   ar & e.complete;
-   ar & e.error_code;
+    ar&e.id;
+    ar&e.response_id;
+    ar&e.minkey;
+    ar&e.maxkey;
+    ar&e.sender;
+    ar&e.response;
+    ar&e.output_file;
+    ar&e.complete;
+    ar&e.error_code;
 }
 
 
