@@ -186,8 +186,7 @@ void run_command(ChronoLogClient*&client, std::string &msg_string, std::string &
     }
     else if(command_subs[0].compare("-a") == 0)
     {
-        if(command_subs.size() < 3 ||
-           (command_subs[1].compare("-c") != 0 && command_subs[1].compare("-s") != 0))
+        if(command_subs.size() < 3 || (command_subs[1].compare("-c") != 0 && command_subs[1].compare("-s") != 0))
             incorrect = true;
         if(incorrect)
         {
@@ -215,8 +214,7 @@ void run_command(ChronoLogClient*&client, std::string &msg_string, std::string &
     }
     else if(command_subs[0].compare("-r") == 0)
     {
-        if(command_subs.size() < 3 ||
-           (command_subs[1].compare("-c") != 0 && command_subs[1].compare("-s") != 0))
+        if(command_subs.size() < 3 || (command_subs[1].compare("-c") != 0 && command_subs[1].compare("-s") != 0))
             incorrect = true;
         if(incorrect)
         {
@@ -243,8 +241,7 @@ void run_command(ChronoLogClient*&client, std::string &msg_string, std::string &
     }
     else if(command_subs[0].compare("-d") == 0)
     {
-        if(command_subs.size() < 3 ||
-           (command_subs[1].compare("-c") != 0 && command_subs[1].compare("-s") != 0))
+        if(command_subs.size() < 3 || (command_subs[1].compare("-c") != 0 && command_subs[1].compare("-s") != 0))
             incorrect = true;
         if(incorrect)
         {

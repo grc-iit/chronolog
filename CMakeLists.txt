@@ -46,8 +46,8 @@ endif()
 #------------------------------------------------------------------------------
 if("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_BINARY_DIR}")
     message(FATAL_ERROR
-            "ChronoLog requires an out of source build. "
-            "Please create a separate binary directory and run CMake there.")
+        "ChronoLog requires an out of source build. "
+        "Please create a separate binary directory and run CMake there.")
 endif()
 
 #------------------------------------------------------------------------------
@@ -153,14 +153,14 @@ find_package(Thallium REQUIRED)
 #-----------------------------------------------------------------------------
 if(CHRONOLOG_ENABLE_COVERAGE)
     set(COVERAGE_FLAGS "-fprofile-arcs -ftest-coverage" CACHE STRING
-            "Flags to the coverage program to perform coverage inspection")
+        "Flags to the coverage program to perform coverage inspection")
     mark_as_advanced(COVERAGE_FLAGS)
 
     macro(set_coverage_flags target)
         set_target_properties(${target}
-                PROPERTIES
-                COMPILE_FLAGS ${COVERAGE_FLAGS}
-                LINK_FLAGS ${COVERAGE_FLAGS}
+            PROPERTIES
+            COMPILE_FLAGS ${COVERAGE_FLAGS}
+            LINK_FLAGS ${COVERAGE_FLAGS}
         )
     endmacro()
 endif()
@@ -175,14 +175,14 @@ if(CHRONOLOG_ENABLE_DOXYGEN)
     include(UseDoxygenDoc)
 
     add_doxygen_doc(
-            BUILD_DIR
-            ${CMAKE_CURRENT_BINARY_DIR}/_build
-            DOXY_FILE
-            ${CMAKE_CURRENT_SOURCE_DIR}/doc/Doxyfile.in
-            TARGET_NAME
-            dox
-            COMMENT
-            "HTML documentation"
+        BUILD_DIR
+        ${CMAKE_CURRENT_BINARY_DIR}/_build
+        DOXY_FILE
+        ${CMAKE_CURRENT_SOURCE_DIR}/doc/Doxyfile.in
+        TARGET_NAME
+        dox
+        COMMENT
+        "HTML documentation"
     )
 endif()
 
@@ -190,12 +190,12 @@ endif()
 # Linting
 #-----------------------------------------------------------------------------
 add_custom_target(lint COMMAND cpplint --recursive
-        --exclude=${CMAKE_CURRENT_SOURCE_DIR}/build
-        --exclude=${CMAKE_CURRENT_SOURCE_DIR}/cmake-build-debug
-        --exclude=${CMAKE_CURRENT_SOURCE_DIR}/external_libs
-        --exclude=${CMAKE_CURRENT_SOURCE_DIR}/doc
-        --exclude=${CMAKE_CURRENT_SOURCE_DIR}/CI
-        ${CMAKE_CURRENT_SOURCE_DIR})
+    --exclude=${CMAKE_CURRENT_SOURCE_DIR}/build
+    --exclude=${CMAKE_CURRENT_SOURCE_DIR}/cmake-build-debug
+    --exclude=${CMAKE_CURRENT_SOURCE_DIR}/external_libs
+    --exclude=${CMAKE_CURRENT_SOURCE_DIR}/doc
+    --exclude=${CMAKE_CURRENT_SOURCE_DIR}/CI
+    ${CMAKE_CURRENT_SOURCE_DIR})
 
 #-----------------------------------------------------------------------------
 # Source

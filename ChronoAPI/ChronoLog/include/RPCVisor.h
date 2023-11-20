@@ -412,7 +412,7 @@ public:
 
     CHRONOLOG_THALLIUM_DEFINE(LocalShowChronicles, (client_id), std::string &client_id)
 
-    CHRONOLOG_THALLIUM_DEFINE(LocalShowStories, (client_id, chronicle_name), std::string &client_id
+    CHRONOLOG_THALLIUM_DEFINE(LocalShowStories, (client_id, chronicle_name), std::string&client_id
                               , const std::string &chronicle_name)
 
 private:
