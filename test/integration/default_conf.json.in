@@ -56,7 +56,7 @@
         "service_provider_id": 88
       }
     },
-    "story_files_dir" : "/tmp/"
+    "story_files_dir": "/tmp/"
   },
   "chrono_client": {
     "VisorClientPortalService": {

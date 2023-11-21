@@ -17,20 +17,20 @@ typedef uint32_t chrono_index;
 class LogEvent
 {
 public:
-	LogEvent() = default;
+    LogEvent() = default;
 
         LogEvent(StoryId const& story_id, chrono_time event_time, ClientId const& client_id, chrono_index index, std::string const& record)
                 : storyId(story_id)
-		, eventTime(event_time)
-		, clientId(client_id)
-	       	, eventIndex(index)
-                , logRecord(record)     
-        {}  
+        , eventTime(event_time)
+        , clientId(client_id)
+               , eventIndex(index)
+                , logRecord(record)
+        {}
         StoryId  storyId;
-	uint64_t eventTime;
+    uint64_t eventTime;
         ClientId clientId;
-	uint32_t eventIndex;
-	std::string logRecord; //INNA: replace with size_t  length; & void * data; later on
+    uint32_t eventIndex;
+    std::string logRecord; //INNA: replace with size_t  length; & void * data; later on
  
   uint64_t const& time() const
   {  return eventTime; }

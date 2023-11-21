@@ -1,4 +1,3 @@
-
 #include <iostream>
 
 #include <thallium.hpp>
@@ -24,29 +23,29 @@ chronolog::StoryHandle::~StoryHandle()
 {}
 
 ////////////////////
-template<class KeeperChoicePolicy>
+template <class KeeperChoicePolicy>
 // = chronolog::RoundRobinKeeperChoice>
-chronolog::StoryWritingHandle<KeeperChoicePolicy>::~StoryWritingHandle()
+chronolog::StoryWritingHandle <KeeperChoicePolicy>::~StoryWritingHandle()
 { delete keeperChoicePolicy; }
 
 ////////////////////
-template<class KeeperChoicePolicy>
+template <class KeeperChoicePolicy>
 void
-chronolog::StoryWritingHandle<KeeperChoicePolicy>::addRecordingClient(chronolog::KeeperRecordingClient *keeperClient)
+chronolog::StoryWritingHandle <KeeperChoicePolicy>::addRecordingClient(chronolog::KeeperRecordingClient*keeperClient)
 {
     storyKeepers.push_back(keeperClient);
 }
 
 ///////////////////
-template<class KeeperChoicePolicy>
+template <class KeeperChoicePolicy>
 void
-chronolog::StoryWritingHandle<KeeperChoicePolicy>::removeRecordingClient(chronolog::KeeperIdCard const &keeper_id_card)
+chronolog::StoryWritingHandle <KeeperChoicePolicy>::removeRecordingClient(chronolog::KeeperIdCard const &keeper_id_card)
 {
     // this should only be called when the ChronoKeeper process unexpectedly exits
     // so it's ok to use rather inefficient vector iteration....
-    for (auto iter = storyKeepers.begin(); iter != storyKeepers.end(); ++iter)
+    for(auto iter = storyKeepers.begin(); iter != storyKeepers.end(); ++iter)
     {
-        if ((*iter)->getKeeperId() == keeper_id_card)
+        if((*iter)->getKeeperId() == keeper_id_card)
         {
             storyKeepers.erase(iter);
             break;
@@ -55,19 +54,16 @@ chronolog::StoryWritingHandle<KeeperChoicePolicy>::removeRecordingClient(chronol
 }
 
 //////////////////
-template<class KeeperChoicePolicy>
-int chronolog::StoryWritingHandle<KeeperChoicePolicy>::log_event(std::string const &event_record)
+template <class KeeperChoicePolicy>
+int chronolog::StoryWritingHandle <KeeperChoicePolicy>::log_event(std::string const &event_record)
 {
 
-    chronolog::LogEvent log_event(storyId,
-                                  theClient.getTimestamp(),
-                                  theClient.getClientId(),
-                                  theClient.get_event_index(),
-                                  event_record);
+    chronolog::LogEvent log_event(storyId, theClient.getTimestamp(), theClient.getClientId()
+                                  , theClient.get_event_index(), event_record);
 
     auto keeperRecordingClient = keeperChoicePolicy->chooseKeeper(storyKeepers, log_event.time());
 
-    if (nullptr == keeperRecordingClient)   //very unlikely...
+    if(nullptr == keeperRecordingClient)   //very unlikely...
     { return 0; }
 
     // INNA: make send event returm 0 in case of tl RPC failure ....
@@ -77,8 +73,8 @@ int chronolog::StoryWritingHandle<KeeperChoicePolicy>::log_event(std::string con
 }
 /////////////////////
 
-template<class KeeperChoicePolicy>
-int chronolog::StoryWritingHandle<KeeperChoicePolicy>::log_event(size_t, void *)
+template <class KeeperChoicePolicy>
+int chronolog::StoryWritingHandle <KeeperChoicePolicy>::log_event(size_t, void*)
 {
     return 0;  // not implemented yet ; to be implemented with tl bulk transfer ... 
 }
@@ -89,7 +85,7 @@ chronolog::StorytellerClient::~StorytellerClient()
 {
     std::cout << "StorytellerClient::~StorytellerClient()" << std::endl;
     {
-        std::lock_guard<std::mutex> lock(acquiredStoryMapMutex);
+        std::lock_guard <std::mutex> lock(acquiredStoryMapMutex);
 
 /*        for( auto story_record_iter : acquiredStoryHandles)
         {
@@ -98,8 +94,8 @@ chronolog::StorytellerClient::~StorytellerClient()
         acquiredStoryHandles.clear();
   */  }
     // stop & delete keeperRecordingClients
-    std::lock_guard<std::mutex> lock(recordingClientMapMutex);
-    for (auto keeper_client: recordingClientMap)
+    std::lock_guard <std::mutex> lock(recordingClientMapMutex);
+    for(auto keeper_client: recordingClientMap)
     {
         delete keeper_client.second;
     }
@@ -111,11 +107,11 @@ int chronolog::StorytellerClient::get_event_index()
     // we only aqcuire mutex in the rare case when
     // the atomic index has reached INT_MAX value
     // otherwise proceed lock-free
-    if ((atomic_index == INT_MAX))
+    if((atomic_index == INT_MAX))
     {
-        std::lock_guard<std::mutex> lock(recordingClientMapMutex);
+        std::lock_guard <std::mutex> lock(recordingClientMapMutex);
         //recheck when mutex is acquired, only one thread changes the value
-        if (atomic_index == INT_MAX)
+        if(atomic_index == INT_MAX)
         { atomic_index = 0; }
     }
     return ++atomic_index;
@@ -125,29 +121,29 @@ int chronolog::StorytellerClient::get_event_index()
 
 int chronolog::StorytellerClient::addKeeperRecordingClient(chronolog::KeeperIdCard const &keeper_id_card)
 {
-    std::lock_guard<std::mutex> lock(recordingClientMapMutex);
+    std::lock_guard <std::mutex> lock(recordingClientMapMutex);
 
     try
     {
         std::string a_string;
-        std::string keeper_service_na_string = rpc_protocol_string + "://"
-                                               + keeper_id_card.getIPasDottedString(a_string)
-                                               + ":" + std::to_string(keeper_id_card.getPort());
-        chronolog::KeeperRecordingClient *keeperRecordingClient = chronolog::KeeperRecordingClient::CreateKeeperRecordingClient
-                (client_engine, keeper_id_card, keeper_service_na_string);
+        std::string keeper_service_na_string =
+                rpc_protocol_string + "://" + keeper_id_card.getIPasDottedString(a_string) + ":" +
+                std::to_string(keeper_id_card.getPort());
+        chronolog::KeeperRecordingClient*keeperRecordingClient = chronolog::KeeperRecordingClient::CreateKeeperRecordingClient(
+                client_engine, keeper_id_card, keeper_service_na_string);
 
         auto insert_return = recordingClientMap.insert(
-                std::pair<std::pair<uint32_t, uint16_t>, chronolog::KeeperRecordingClient *>
-                        (std::pair<uint32_t, uint16_t>(keeper_id_card.getIPaddr(), keeper_id_card.getPort()),
-                         keeperRecordingClient));
-        if (false == insert_return.second)
+                std::pair <std::pair <uint32_t, uint16_t>, chronolog::KeeperRecordingClient*>(
+                        std::pair <uint32_t, uint16_t>(keeper_id_card.getIPaddr(), keeper_id_card.getPort())
+                        , keeperRecordingClient));
+        if(false == insert_return.second)
         {
             return 0;
         }
 
         std::cout << "StorytellerClient: created keeperRecordingClient for {" << keeper_id_card << "}" << std::endl;
     }
-    catch (tl::exception const &ex)
+    catch(tl::exception const &ex)
     {
         std::cout << "StorytellerClient: failed to create KeeperRecordingClient for {" << keeper_id_card << "}"
                   << std::endl;
@@ -163,12 +159,12 @@ int chronolog::StorytellerClient::addKeeperRecordingClient(chronolog::KeeperIdCa
 
 int chronolog::StorytellerClient::removeKeeperRecordingClient(chronolog::KeeperIdCard const &keeper_id_card)
 {
-    std::lock_guard<std::mutex> lock(recordingClientMapMutex);
+    std::lock_guard <std::mutex> lock(recordingClientMapMutex);
 
     // stop & delete keeperRecordingClient before erasing keeper_process entry
     auto keeper_client_iter = recordingClientMap.find(
-            std::pair<uint32_t, uint16_t>(keeper_id_card.getIPaddr(), keeper_id_card.getPort()));
-    if (keeper_client_iter != recordingClientMap.end())
+            std::pair <uint32_t, uint16_t>(keeper_id_card.getIPaddr(), keeper_id_card.getPort()));
+    if(keeper_client_iter != recordingClientMap.end())
     {
         delete (*keeper_client_iter).second;
         recordingClientMap.erase(keeper_client_iter);
@@ -182,13 +178,13 @@ int chronolog::StorytellerClient::removeKeeperRecordingClient(chronolog::KeeperI
 }
 
 ///////////////////////////
-chronolog::StoryHandle *chronolog::StorytellerClient::findStoryWritingHandle(
-        ChronicleName const &chronicle, StoryName const &story)
+chronolog::StoryHandle*
+chronolog::StorytellerClient::findStoryWritingHandle(ChronicleName const &chronicle, StoryName const &story)
 {
-    std::lock_guard<std::mutex> lock(acquiredStoryMapMutex);
+    std::lock_guard <std::mutex> lock(acquiredStoryMapMutex);
 
-    auto story_record_iter = acquiredStoryHandles.find(std::pair<std::string, std::string>(chronicle, story));
-    if (story_record_iter != acquiredStoryHandles.end())
+    auto story_record_iter = acquiredStoryHandles.find(std::pair <std::string, std::string>(chronicle, story));
+    if(story_record_iter != acquiredStoryHandles.end())
     { return ((*story_record_iter).second); }
     else
     { return (nullptr); }
@@ -196,42 +192,43 @@ chronolog::StoryHandle *chronolog::StorytellerClient::findStoryWritingHandle(
 
 /////////////
 
-chronolog::StoryHandle *chronolog::StorytellerClient::initializeStoryWritingHandle(
-        ChronicleName const &chronicle, StoryName const &story, StoryId const &story_id,
-        std::vector<KeeperIdCard> const &vectorOfKeepers)
+chronolog::StoryHandle*
+chronolog::StorytellerClient::initializeStoryWritingHandle(ChronicleName const &chronicle, StoryName const &story
+                                                           , StoryId const &story_id
+                                                           , std::vector <KeeperIdCard> const &vectorOfKeepers)
 //INNA: TODO :KeeperChoicePolicy will have to be communicated here as well ....
 {
-    std::lock_guard<std::mutex> lock(acquiredStoryMapMutex);
+    std::lock_guard <std::mutex> lock(acquiredStoryMapMutex);
 
-    auto story_record_iter = acquiredStoryHandles.find(std::pair<std::string, std::string>(chronicle, story));
-    if (story_record_iter != acquiredStoryHandles.end())
+    auto story_record_iter = acquiredStoryHandles.find(std::pair <std::string, std::string>(chronicle, story));
+    if(story_record_iter != acquiredStoryHandles.end())
     {
         return (*story_record_iter).second;
     }
 
     // create new StoryWritingHandle & initialize it's keeperClients vector    
-    chronolog::StoryWritingHandle<RoundRobinKeeperChoice> *storyWritingHandle =
-            new StoryWritingHandle<RoundRobinKeeperChoice>(*this, chronicle, story, story_id);
+    chronolog::StoryWritingHandle <RoundRobinKeeperChoice>*storyWritingHandle = new StoryWritingHandle <RoundRobinKeeperChoice>(
+            *this, chronicle, story, story_id);
 
-    for (KeeperIdCard keeper_id_card: vectorOfKeepers)
+    for(KeeperIdCard keeper_id_card: vectorOfKeepers)
     {
         auto keeper_client_iter = recordingClientMap.find(
-                std::pair<uint32_t, uint16_t>(keeper_id_card.getIPaddr(), keeper_id_card.getPort()));
-        if (keeper_client_iter == recordingClientMap.end())
+                std::pair <uint32_t, uint16_t>(keeper_id_card.getIPaddr(), keeper_id_card.getPort()));
+        if(keeper_client_iter == recordingClientMap.end())
         {
             // unlikely but we better check
-            if (0 == addKeeperRecordingClient(keeper_id_card))
+            if(0 == addKeeperRecordingClient(keeper_id_card))
                 continue;
         }
         keeper_client_iter = recordingClientMap.find(
-                std::pair<uint32_t, uint16_t>(keeper_id_card.getIPaddr(), keeper_id_card.getPort()));
+                std::pair <uint32_t, uint16_t>(keeper_id_card.getIPaddr(), keeper_id_card.getPort()));
         storyWritingHandle->addRecordingClient((*keeper_client_iter).second);
     }
 
     auto insert_return = acquiredStoryHandles.insert(
-            std::pair<std::pair<std::string, std::string>, chronolog::StoryHandle *>(
-                    std::pair<std::string, std::string>(chronicle, story), storyWritingHandle));
-    if (false == insert_return.second)
+            std::pair <std::pair <std::string, std::string>, chronolog::StoryHandle*>(
+                    std::pair <std::string, std::string>(chronicle, story), storyWritingHandle));
+    if(false == insert_return.second)
     {
         delete storyWritingHandle;
         return nullptr;
@@ -255,10 +252,10 @@ chronolog::StoryHandle *chronolog::StorytellerClient::initializeStoryWritingHand
 //////////////////////
 void chronolog::StorytellerClient::removeAcquiredStoryHandle(ChronicleName const &chronicle, StoryName const &story)
 {
-    std::lock_guard<std::mutex> lock(acquiredStoryMapMutex);
+    std::lock_guard <std::mutex> lock(acquiredStoryMapMutex);
 
-    auto story_record_iter = acquiredStoryHandles.find(std::pair<std::string, std::string>(chronicle, story));
-    if (story_record_iter != acquiredStoryHandles.end())
+    auto story_record_iter = acquiredStoryHandles.find(std::pair <std::string, std::string>(chronicle, story));
+    if(story_record_iter != acquiredStoryHandles.end())
     {
         delete (*story_record_iter).second;
         acquiredStoryHandles.erase(story_record_iter);

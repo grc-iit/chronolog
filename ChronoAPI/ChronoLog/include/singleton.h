@@ -14,40 +14,44 @@
  * Singleton<T>::GetInstance()
  * @tparam T
  */
-namespace ChronoLog {
-    template<typename T>
-    class Singleton {
-    public:
-        /**
-         * Members of Singleton Class
-         */
-        /**
-         * Uses unique pointer to build a static global instance of variable.
-         * @tparam T
-         * @return instance of T
-         */
-        template<typename... Args>
-        static std::shared_ptr<T> GetInstance(Args... args) {
-            if (instance == nullptr)
-                instance = std::shared_ptr<T>(new T(std::forward<Args>(args)...));
-            return instance;
-        }
+namespace ChronoLog
+{
+template <typename T>
+class Singleton
+{
+public:
+    /**
+     * Members of Singleton Class
+     */
+    /**
+     * Uses unique pointer to build a static global instance of variable.
+     * @tparam T
+     * @return instance of T
+     */
+    template <typename... Args>
+    static std::shared_ptr <T> GetInstance(Args... args)
+    {
+        if(instance == nullptr)
+            instance = std::shared_ptr <T>(new T(std::forward <Args>(args)...));
+        return instance;
+    }
 
-        /**
-         * Operators
-         */
-        Singleton &operator=(const Singleton) = delete; /* deleting = operatos*/
-        /**
-         * Constructor
-         */
-    public:
-        Singleton(const Singleton &) = delete; /* deleting copy constructor. */
+    /**
+     * Operators
+     */
+    Singleton &operator=(const Singleton) = delete; /* deleting = operatos*/
+    /**
+     * Constructor
+     */
+public:
+    Singleton(const Singleton &) = delete; /* deleting copy constructor. */
 
-    protected:
-        static inline std::shared_ptr<T> instance = nullptr;
+protected:
+    static inline std::shared_ptr <T> instance = nullptr;
 
-        Singleton() {} /* hidden default constructor. */
-    };
+    Singleton()
+    {} /* hidden default constructor. */
+};
 
 //    template<typename T>
 //    std::shared_ptr<T> Singleton<T>::instance = nullptr;

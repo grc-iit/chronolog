@@ -13,12 +13,12 @@
 
 #define NUM_CONNECTION (1)
 
-int main(int argc, char **argv)
+int main(int argc, char**argv)
 {
     std::string default_conf_file_path = "./default_conf.json";
     std::string conf_file_path;
     conf_file_path = parse_conf_path_arg(argc, argv);
-    if (conf_file_path.empty())
+    if(conf_file_path.empty())
     {
         conf_file_path = default_conf_file_path;
     }
@@ -29,19 +29,18 @@ int main(int argc, char **argv)
     int num_ports = 1; // Kun: hardcode for now
     chronolog::Client client(confManager);
     std::string server_uri;
-    std::vector<std::string> client_ids;
+    std::vector <std::string> client_ids;
     int flags = 0;
     bool ret = false;
     uint64_t offset;
     std::chrono::steady_clock::time_point t1, t2;
-    std::chrono::duration<double, std::nano> duration_connect{},
-            duration_disconnect{};
+    std::chrono::duration <double, std::nano> duration_connect{}, duration_disconnect{};
 
     client_ids.reserve(NUM_CONNECTION);
-    for (int i = 0; i < NUM_CONNECTION; i++) client_ids.emplace_back(gen_random(8));
-    for (int i = 0; i < NUM_CONNECTION; i++)
+    for(int i = 0; i < NUM_CONNECTION; i++) client_ids.emplace_back(gen_random(8));
+    for(int i = 0; i < NUM_CONNECTION; i++)
     {
-        switch (confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.RPC_IMPLEMENTATION)
+        switch(confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.RPC_IMPLEMENTATION)
         {
             case CHRONOLOG_THALLIUM_SOCKETS:
             case CHRONOLOG_THALLIUM_TCP:
@@ -60,7 +59,7 @@ int main(int argc, char **argv)
         duration_connect += (t2 - t1);
     }
 
-    for (int i = 0; i < NUM_CONNECTION; i++)
+    for(int i = 0; i < NUM_CONNECTION; i++)
     {
         t1 = std::chrono::steady_clock::now();
         ret = client.Disconnect(); //client_ids[i], flags);

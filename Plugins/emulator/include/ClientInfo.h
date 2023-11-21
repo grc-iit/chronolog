@@ -5,26 +5,28 @@
 
 class ClientInfo
 {
-  private:
-	  std::string name;
+private:
+    std::string name;
 
-   public:
-	ClientInfo()
-	{
+public:
+    ClientInfo()
+    {
 
-	}
-	~ClientInfo()
-	{
-	}	
+    }
 
-	void setname(std::string &s)
-	{
-	   name = s;
-	}
-	std::string &getname()
-	{
-		return name;
-	}
+    ~ClientInfo()
+    {
+    }
+
+    void setname(std::string &s)
+    {
+        name = s;
+    }
+
+    std::string &getname()
+    {
+        return name;
+    }
 
 };
 

@@ -15,57 +15,59 @@
 
 class ClocksourceManager;
 
-namespace ChronoVisor {
-    namespace tl = thallium;
+namespace ChronoVisor
+{
+namespace tl = thallium;
 
-    class ChronoVisorServer2 {
-    public:
-        explicit ChronoVisorServer2(const std::string& conf_file_path = "");
+class ChronoVisorServer2
+{
+public:
+    explicit ChronoVisorServer2(const std::string &conf_file_path = "");
 
-        explicit ChronoVisorServer2(const ChronoLog::ConfigurationManager &conf_manager);
+    explicit ChronoVisorServer2(const ChronoLog::ConfigurationManager &conf_manager);
 
-        int start( chronolog::KeeperRegistry *);
+    int start(chronolog::KeeperRegistry*);
 
-    private:
-        void init();
+private:
+    void init();
 
-        std::string protocol_;
-        std::string baseIP_;
-        int basePorts_{};
-        int numPorts_{};
-        std::vector<std::string> serverAddrVec_;
-        int numStreams_{};
-        std::vector<tl::engine> engineVec_;
-        std::vector<margo_instance_id> midVec_;
+    std::string protocol_;
+    std::string baseIP_;
+    int basePorts_{};
+    int numPorts_{};
+    std::vector <std::string> serverAddrVec_;
+    int numStreams_{};
+    std::vector <tl::engine> engineVec_;
+    std::vector <margo_instance_id> midVec_;
 
-        /**
-         * @name ClientRegistry related variables
-         */
-        ///@{
-        //std::shared_ptr<ClientRegistryManager> clientRegistryManager_;
-        ///@}
+    /**
+     * @name ClientRegistry related variables
+     */
+    ///@{
+    //std::shared_ptr<ClientRegistryManager> clientRegistryManager_;
+    ///@}
 
-        /**
-         * @name Chronicle Meta Directory related variables
-         */
-        ///@{
-        //std::shared_ptr<ChronicleMetaDirectory> chronicleMetaDirectory_;
-        ///@}
+    /**
+     * @name Chronicle Meta Directory related variables
+     */
+    ///@{
+    //std::shared_ptr<ChronicleMetaDirectory> chronicleMetaDirectory_;
+    ///@}
 
-        /**
-         * @name RPC related variables
-         */
-        ///@{
-        std::shared_ptr<RPCVisor> rpcVisor_;
-        ///@}
+    /**
+     * @name RPC related variables
+     */
+    ///@{
+    std::shared_ptr <RPCVisor> rpcVisor_;
+    ///@}
 
-        /**
-         * @name Clock related variables
-         */
-        ///@{
-        ClocksourceManager *pClocksourceManager_;
-        ///@}
-    };
+    /**
+     * @name Clock related variables
+     */
+    ///@{
+    ClocksourceManager*pClocksourceManager_;
+    ///@}
+};
 }
 
 

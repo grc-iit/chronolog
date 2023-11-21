@@ -10,49 +10,52 @@
 
 using namespace SocketPP;
 
-int main() {
+int main()
+{
     const int port = 6000;
     TCPClient client("127.0.0.1", port);
 
     std::chrono::high_resolution_clock::time_point t1, t2;
-    std::chrono::duration<double> duration{};
-    SerDeFactory *pSerDeFactory = new SerDeFactory(SerDeType::CEREAL);
-    SerDe *pSerDe = pSerDeFactory->getSerDe();
+    std::chrono::duration <double> duration{};
+    SerDeFactory*pSerDeFactory = new SerDeFactory(SerDeType::CEREAL);
+    SerDe*pSerDe = pSerDeFactory->getSerDe();
 
-    client.setConnHandle([&] (const TCPStream& stream) {
-        ClientMessage clientMsg;
-        clientMsg.msgType_ = ClientMessage::CONNECTION;
-        std::unique_ptr<std::ostringstream> oss;
-        {
-            oss = pSerDe->serializeClientMessage(clientMsg);
-        }
-        LOGD("Serialized client msg (len: %ld): %s", oss->str().length(), oss->str().c_str());
-        t1 = std::chrono::high_resolution_clock::now();
-        client.send(oss->str());
-    });
+    client.setConnHandle([&](const TCPStream &stream)
+                         {
+                             ClientMessage clientMsg;
+                             clientMsg.msgType_ = ClientMessage::CONNECTION;
+                             std::unique_ptr <std::ostringstream> oss;
+                             {
+                                 oss = pSerDe->serializeClientMessage(clientMsg);
+                             }
+                             LOGD("Serialized client msg (len: %ld): %s", oss->str().length(), oss->str().c_str());
+                             t1 = std::chrono::high_resolution_clock::now();
+                             client.send(oss->str());
+                         });
 
-    client.setRecvHandle([&] (const Message& message) {
-        std::unique_ptr<ServerMessage> serverMsg;
-        {
-            serverMsg = pSerDe->deserializeServerMessage(message.rawMsg.data(),
-                                                         message.rawMsg.length());
-        }
-        t2 = std::chrono::high_resolution_clock::now();
-        duration = std::chrono::duration_cast<std::chrono::duration<double>>(t2 - t1);
-        LOGD("server message received: %s", serverMsg->toString().c_str());
-        std::cout << "Latency: " << duration.count() * 1000 << " ms" << std::endl;
+    client.setRecvHandle([&](const Message &message)
+                         {
+                             std::unique_ptr <ServerMessage> serverMsg;
+                             {
+                                 serverMsg = pSerDe->deserializeServerMessage(message.rawMsg.data()
+                                                                              , message.rawMsg.length());
+                             }
+                             t2 = std::chrono::high_resolution_clock::now();
+                             duration = std::chrono::duration_cast <std::chrono::duration <double>>(t2 - t1);
+                             LOGD("server message received: %s", serverMsg->toString().c_str());
+                             std::cout << "Latency: " << duration.count() * 1000 << " ms" << std::endl;
 
-        usleep(3e6);
-        ClientMessage clientMsg;
-        clientMsg.msgType_ = ClientMessage::GETTIMEINFO;
-        std::unique_ptr<std::ostringstream> oss;
-        {
-            oss = pSerDe->serializeClientMessage(clientMsg);
-        }
-        LOGD("Serialized client msg (len: %ld): %s", oss->str().length(), oss->str().c_str());
-        t1 = std::chrono::high_resolution_clock::now();
-        client.send(oss->str());
-    });
+                             usleep(3e6);
+                             ClientMessage clientMsg;
+                             clientMsg.msgType_ = ClientMessage::GETTIMEINFO;
+                             std::unique_ptr <std::ostringstream> oss;
+                             {
+                                 oss = pSerDe->serializeClientMessage(clientMsg);
+                             }
+                             LOGD("Serialized client msg (len: %ld): %s", oss->str().length(), oss->str().c_str());
+                             t1 = std::chrono::high_resolution_clock::now();
+                             client.send(oss->str());
+                         });
 
     return client.loop();
 }

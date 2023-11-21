@@ -14,121 +14,117 @@
 #include "AcquireStoryResponseMsg.h"
 
 
-namespace tl = thallium; 
+namespace tl = thallium;
 
 namespace chronolog
 {
 
-
-class ClientPortalService : public thallium::provider<ClientPortalService> 
+class ClientPortalService: public thallium::provider <ClientPortalService>
 {
-    public:
+public:
 
-    static ClientPortalService * CreateClientPortalService(thallium::engine& tl_engine, uint16_t service_provider_id
-		        , VisorClientPortal & visor_portal)
+    static ClientPortalService*CreateClientPortalService(thallium::engine &tl_engine, uint16_t service_provider_id
+                                                         , VisorClientPortal &visor_portal)
     {
-	    return new ClientPortalService(tl_engine, service_provider_id, visor_portal);
+        return new ClientPortalService(tl_engine, service_provider_id, visor_portal);
     }
 
-    ~ClientPortalService() 
+    ~ClientPortalService()
     {
-        std::cout<<"ClientPortalService::destructor"<<std::endl;
+        std::cout << "ClientPortalService::destructor" << std::endl;
         get_engine().pop_finalize_callback(this);
     }
 
-    void Connect(tl::request const& request,uint32_t client_account, uint32_t client_host_ip, uint32_t client_pid)
+    void Connect(tl::request const &request, uint32_t client_account, uint32_t client_host_ip, uint32_t client_pid)
     {
         ClientId client_id;
         uint64_t clock_offset;
-        int return_code = theVisorClientPortal.ClientConnect(client_account, client_host_ip, client_pid, client_id, clock_offset);
+        int return_code = theVisorClientPortal.ClientConnect(client_account, client_host_ip, client_pid, client_id
+                                                             , clock_offset);
         if(CL_SUCCESS == return_code)
-        {   request.respond(ConnectResponseMsg(CL_SUCCESS,client_id));  }
+        { request.respond(ConnectResponseMsg(CL_SUCCESS, client_id)); }
         else
-        {   request.respond(ConnectResponseMsg(return_code,ClientId{0})); }
+        { request.respond(ConnectResponseMsg(return_code, ClientId{0})); }
     }
 
-    void Disconnect(tl::request const& request, ClientId const&  client_token) 
+    void Disconnect(tl::request const &request, ClientId const &client_token)
     {
         int return_code = theVisorClientPortal.ClientDisconnect(client_token);
         request.respond(return_code);
     }
 
-    void CreateChronicle( tl::request const& request , ClientId const& client_id
-            , std::string const& chronicle_name, const std::unordered_map<std::string, std::string> &attrs, int &flags)//old
+    void CreateChronicle(tl::request const &request, ClientId const &client_id, std::string const &chronicle_name
+                         , const std::unordered_map <std::string, std::string> &attrs, int &flags)//old
     {
         int return_code = theVisorClientPortal.CreateChronicle(client_id, chronicle_name, attrs, flags);
         request.respond(return_code);
     }
 
-    void DestroyChronicle( tl::request const& request,  ClientId const& client_id
-            , ChronicleName const& chronicle_name)
-    { 
+    void DestroyChronicle(tl::request const &request, ClientId const &client_id, ChronicleName const &chronicle_name)
+    {
         int return_code = theVisorClientPortal.DestroyChronicle(client_id, chronicle_name);
         request.respond(return_code);
     }
 
-    void AcquireStory( tl::request const& request
-                              , ClientId const& client_id,
-                              std::string const& chronicle_name,
-                              std::string const& story_name,
-                              const std::unordered_map<std::string, std::string> &attrs,
-                              int &flags)
+    void AcquireStory(tl::request const &request, ClientId const &client_id, std::string const &chronicle_name
+                      , std::string const &story_name, const std::unordered_map <std::string, std::string> &attrs
+                      , int &flags)
     {
 
-        AcquireStoryResponseMsg acquire_response = theVisorClientPortal.AcquireStory( client_id,chronicle_name,story_name,attrs,flags);
+        AcquireStoryResponseMsg acquire_response = theVisorClientPortal.AcquireStory(client_id, chronicle_name
+                                                                                     , story_name, attrs, flags);
         request.respond(acquire_response);
     }
 
-    void ReleaseStory( tl::request const& request
-            , ClientId const& client_id 
-            , std::string const& chronicle_name, std::string const& story_name)
+    void ReleaseStory(tl::request const &request, ClientId const &client_id, std::string const &chronicle_name
+                      , std::string const &story_name)
     {
-        int return_code = theVisorClientPortal.ReleaseStory(client_id, chronicle_name,story_name);
+        int return_code = theVisorClientPortal.ReleaseStory(client_id, chronicle_name, story_name);
         request.respond(return_code);
     }
 
-    void DestroyStory( tl::request const& request, ClientId const& client_id
-            , std::string const& chronicle_name, std::string const& story_name)
+    void DestroyStory(tl::request const &request, ClientId const &client_id, std::string const &chronicle_name
+                      , std::string const &story_name)
     {
-        request.respond(theVisorClientPortal.DestroyStory(client_id, chronicle_name,story_name));
+        request.respond(theVisorClientPortal.DestroyStory(client_id, chronicle_name, story_name));
     }
 
 
-    void GetChronicleAttr( tl::request const& request, ClientId const& client_id
-                , std::string const& chronicle_name, std::string const& key, std::string &value)
+    void GetChronicleAttr(tl::request const &request, ClientId const &client_id, std::string const &chronicle_name
+                          , std::string const &key, std::string &value)
     {
-        int return_code = theVisorClientPortal.GetChronicleAttr( client_id, chronicle_name, key, value);
+        int return_code = theVisorClientPortal.GetChronicleAttr(client_id, chronicle_name, key, value);
         request.respond(return_code);
     }
 
-    void EditChronicleAttr( tl::request const& request, ClientId const& client_id
-                , std::string const& chronicle_name, std::string const& key, std::string const &value)
+    void EditChronicleAttr(tl::request const &request, ClientId const &client_id, std::string const &chronicle_name
+                           , std::string const &key, std::string const &value)
     {
 
-        int return_code =  theVisorClientPortal.EditChronicleAttr(client_id, chronicle_name, key, value);
+        int return_code = theVisorClientPortal.EditChronicleAttr(client_id, chronicle_name, key, value);
         request.respond(return_code);
     }
 
-    void ShowChronicles( tl::request const& request, ClientId const& client_id) 
+    void ShowChronicles(tl::request const &request, ClientId const &client_id)
     {
-        std::vector<std::string> chronicles;
-        theVisorClientPortal.ShowChronicles( client_id, chronicles);
+        std::vector <std::string> chronicles;
+        theVisorClientPortal.ShowChronicles(client_id, chronicles);
         request.respond(chronicles);
     }
 
-    void ShowStories( tl::request const& request, ClientId const& client_id, const std::string &chronicle_name)
+    void ShowStories(tl::request const &request, ClientId const &client_id, const std::string &chronicle_name)
     {
-        std::vector<std::string> stories;
-        theVisorClientPortal.ShowStories( client_id, chronicle_name,stories);
-        
+        std::vector <std::string> stories;
+        theVisorClientPortal.ShowStories(client_id, chronicle_name, stories);
+
         request.respond(stories);
     }
 
 private:
-    
-    ClientPortalService(tl::engine& tl_engine, uint16_t service_provider_id, VisorClientPortal & visorPortal)
-        : thallium::provider<ClientPortalService>(tl_engine, service_provider_id)
-        , theVisorClientPortal(visorPortal)
+
+    ClientPortalService(tl::engine &tl_engine, uint16_t service_provider_id, VisorClientPortal &visorPortal)
+            : thallium::provider <ClientPortalService>(tl_engine, service_provider_id), theVisorClientPortal(
+            visorPortal)
     {
         define("Connect", &ClientPortalService::Connect);
         define("Disconnect", &ClientPortalService::Disconnect);
@@ -142,14 +138,18 @@ private:
         define("ShowChronicles", &ClientPortalService::ShowChronicles);
         define("ShowStories", &ClientPortalService::ShowStories);
         //setup finalization callback in case this ser vice provider is still alive when the engine is finalized 
-        std::cout<<"ClientPortalService::constructed at "<< get_engine().self()<<" provider_id {"<<service_provider_id<<"}"<<std::endl;        get_engine().push_finalize_callback(this, [p=this]() {delete p;});
+        std::cout << "ClientPortalService::constructed at " << get_engine().self() << " provider_id {"
+                  << service_provider_id << "}" << std::endl;
+        get_engine().push_finalize_callback(this, [p = this]()
+        { delete p; });
     }
 
-    ClientPortalService(ClientPortalService const&) =delete;
-    ClientPortalService & operator= (ClientPortalService const&) =delete;
+    ClientPortalService(ClientPortalService const &) = delete;
+
+    ClientPortalService &operator=(ClientPortalService const &) = delete;
 
 
-    VisorClientPortal &  theVisorClientPortal;
+    VisorClientPortal &theVisorClientPortal;
 };
 
 

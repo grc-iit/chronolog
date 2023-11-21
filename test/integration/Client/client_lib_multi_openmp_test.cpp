@@ -7,13 +7,13 @@
 
 #define STORY_NAME_LEN 32
 
-int main(int argc, char **argv)
+int main(int argc, char**argv)
 {
 
     std::string default_conf_file_path = "./default_conf.json";
     std::string conf_file_path;
     conf_file_path = parse_conf_path_arg(argc, argv);
-    if (conf_file_path.empty())
+    if(conf_file_path.empty())
     {
         conf_file_path = default_conf_file_path;
     }
@@ -21,7 +21,7 @@ int main(int argc, char **argv)
     ChronoLog::ConfigurationManager confManager(conf_file_path);
     std::string server_ip = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP;
     int base_port = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT;
-    chronolog::Client *client = new chronolog::Client(confManager);//protocol, server_ip, base_port);
+    chronolog::Client*client = new chronolog::Client(confManager);//protocol, server_ip, base_port);
 
     int num_threads = 8;
 
@@ -35,19 +35,19 @@ int main(int argc, char **argv)
     std::string client_id = gen_random(8);
     int ret = client->Connect();//server_uri, client_id, flags);//, offset);
 #pragma omp for
-    for (int i = 0; i < num_threads; i++)
+    for(int i = 0; i < num_threads; i++)
     {
         std::string chronicle_name;
-        if (i % 2 == 0) chronicle_name = "gscs5er9TcdJ9mOgUDteDVBcI0oQjozK";
+        if(i % 2 == 0) chronicle_name = "gscs5er9TcdJ9mOgUDteDVBcI0oQjozK";
         else chronicle_name = "6RPkwqX2IOpR41dVCqmWauX9RfXIuTAp";
-        std::unordered_map<std::string, std::string> chronicle_attrs;
+        std::unordered_map <std::string, std::string> chronicle_attrs;
         chronicle_attrs.emplace("Priority", "High");
         chronicle_attrs.emplace("IndexGranularity", "Millisecond");
         chronicle_attrs.emplace("TieringPolicy", "Hot");
         ret = client->CreateChronicle(chronicle_name, chronicle_attrs, flags);
         flags = 1;
         std::string story_name = gen_random(STORY_NAME_LEN);
-        std::unordered_map<std::string, std::string> story_attrs;
+        std::unordered_map <std::string, std::string> story_attrs;
         story_attrs.emplace("Priority", "High");
         story_attrs.emplace("IndexGranularity", "Millisecond");
         story_attrs.emplace("TieringPolicy", "Hot");

@@ -18,25 +18,28 @@
 #define EVENTMAP_SIZE 128
 #define MAX_EVENT_SIZE 65536
 
-int main() {
-    TimeManager *pTimeManager = new TimeManager();
+int main()
+{
+    TimeManager*pTimeManager = new TimeManager();
     pTimeManager->setClocksourceType(ClocksourceType::C_STYLE);
-    Clocksource *pClocksource = pTimeManager->clocksource_;
+    Clocksource*pClocksource = pTimeManager->clocksource_;
     std::string chronicle_names[CHRONICLEMAP_SIZE];
     std::string story_names[CHRONICLEMAP_SIZE * STORYMAP_SIZE];
 
-    ChronicleMetaDirectory *pChronicleMetaDirectory = new ChronicleMetaDirectory();
-    for (int i = 0; i < CHRONICLEMAP_SIZE; i++) {
+    ChronicleMetaDirectory*pChronicleMetaDirectory = new ChronicleMetaDirectory();
+    for(int i = 0; i < CHRONICLEMAP_SIZE; i++)
+    {
         chronicle_names[i] = gen_random(CHRONICLE_NAME_LEN);
         std::string chronicle_name = chronicle_names[i];
-        std::unordered_map<std::string, std::string> attrs;
+        std::unordered_map <std::string, std::string> attrs;
         pChronicleMetaDirectory->create_chronicle(chronicle_name);
         uint64_t cid = pChronicleMetaDirectory->acquire_chronicle(chronicle_name, 0);
 
-        for (int j = i * STORYMAP_SIZE; j < (i + 1) * STORYMAP_SIZE; j++) {
+        for(int j = i * STORYMAP_SIZE; j < (i + 1) * STORYMAP_SIZE; j++)
+        {
             story_names[j] = gen_random(STORY_NAME_LEN);
             std::string story_name = story_names[j];
-            std::unordered_map<std::string, std::string> story_attrs;
+            std::unordered_map <std::string, std::string> story_attrs;
             pChronicleMetaDirectory->create_story(chronicle_name, story_name, story_attrs);
             uint64_t sid = pChronicleMetaDirectory->acquire_story(chronicle_name, story_name, 0);
         }
@@ -44,17 +47,21 @@ int main() {
 
     auto chronicleMap = pChronicleMetaDirectory->getChronicleMap();
     std::cout << "#entries in ChronicleMap: " << chronicleMap->size() << std::endl;
-    for (auto const & chronicleRecord : *chronicleMap) {
-        std::unordered_map<uint64_t, Story *> storyMap = chronicleRecord.second->getStoryMap();
-        for (auto const & storyRecord: storyMap) {
+    for(auto const &chronicleRecord: *chronicleMap)
+    {
+        std::unordered_map <uint64_t, Story*> storyMap = chronicleRecord.second->getStoryMap();
+        for(auto const &storyRecord: storyMap)
+        {
             std::cout << *storyRecord.second << std::endl;
         }
     }
 
-    for (int i = 0; i < CHRONICLEMAP_SIZE; i++) {
+    for(int i = 0; i < CHRONICLEMAP_SIZE; i++)
+    {
         uint64_t cid = pChronicleMetaDirectory->acquire_chronicle(chronicle_names[i], 0);
 
-        for (int j = i * STORYMAP_SIZE; j < (i + 1) * STORYMAP_SIZE; j++) {
+        for(int j = i * STORYMAP_SIZE; j < (i + 1) * STORYMAP_SIZE; j++)
+        {
             pChronicleMetaDirectory->destroy_story(chronicle_names[i], story_names[j], 0);
         }
 

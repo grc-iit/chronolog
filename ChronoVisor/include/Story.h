@@ -15,25 +15,23 @@
 
 #include "chronolog_types.h"
 
-enum StoryIndexingGranularity {
-    story_gran_ns = 0,
-    story_gran_us = 1,
-    story_gran_ms = 2,
-    story_gran_sec = 3
+enum StoryIndexingGranularity
+{
+    story_gran_ns = 0, story_gran_us = 1, story_gran_ms = 2, story_gran_sec = 3
 };
 
-enum StoryType {
-    story_type_standard = 0,
-    story_type_priority = 1
+enum StoryType
+{
+    story_type_standard = 0, story_type_priority = 1
 };
 
-enum StoryTieringPolicy {
-    story_tiering_normal = 0,
-    story_tiering_hot = 1,
-    story_tiering_cold = 2
+enum StoryTieringPolicy
+{
+    story_tiering_normal = 0, story_tiering_hot = 1, story_tiering_cold = 2
 };
 
-typedef struct StoryAttrs_ {
+typedef struct StoryAttrs_
+{
     uint64_t size;
     enum StoryIndexingGranularity indexing_granularity;
     enum StoryType type;
@@ -41,15 +39,18 @@ typedef struct StoryAttrs_ {
     uint16_t access_permission;
 } StoryAttrs;
 
-typedef struct StoryStats_ {
+typedef struct StoryStats_
+{
     uint64_t count;
 } StoryStats;
 
 class ClientInfo;
 
-class Story {
+class Story
+{
 public:
-    Story() {
+    Story()
+    {
         attrs_.size = 0;
         attrs_.indexing_granularity = story_gran_ms;
         attrs_.type = story_type_standard;
@@ -58,69 +59,106 @@ public:
         stats_.count = 0;
     }
 
-    const std::string &getName() const { return name_; }
-    uint64_t getSid() const { return sid_; }
-    uint64_t getCid() const { return cid_; }
-    const StoryStats &getStats() const { return stats_; }
-    const std::unordered_map<std::string, std::string> &getProperty() const { return propertyList_; }
-    const std::unordered_map<std::string, Event> &getEventMap() const { return eventMap_; }
+    const std::string &getName() const
+    { return name_; }
 
-    void setName(const std::string &name) { name_ = name; }
-    void setSid(uint64_t sid) { sid_ = sid; }
-    void setCid(uint64_t cid) { cid_ = cid; }
-    void setStats(const StoryStats &stats) { stats_ = stats; }
+    uint64_t getSid() const
+    { return sid_; }
 
-    std::unordered_map<chronolog::ClientId, ClientInfo *> &getAcquirerMap() {
+    uint64_t getCid() const
+    { return cid_; }
+
+    const StoryStats &getStats() const
+    { return stats_; }
+
+    const std::unordered_map <std::string, std::string> &getProperty() const
+    { return propertyList_; }
+
+    const std::unordered_map <std::string, Event> &getEventMap() const
+    { return eventMap_; }
+
+    void setName(const std::string &name)
+    { name_ = name; }
+
+    void setSid(uint64_t sid)
+    { sid_ = sid; }
+
+    void setCid(uint64_t cid)
+    { cid_ = cid; }
+
+    void setStats(const StoryStats &stats)
+    { stats_ = stats; }
+
+    std::unordered_map <chronolog::ClientId, ClientInfo*> &getAcquirerMap()
+    {
         return acquirerClientMap_;
     }
 
-    void addAcquirerClient( chronolog::ClientId const &client_id, ClientInfo *clientInfo) {
+    void addAcquirerClient(chronolog::ClientId const &client_id, ClientInfo*clientInfo)
+    {
         if(nullptr == clientInfo)
-        {   return; }
+        { return; }
 
-        std::lock_guard<std::mutex> acquirerClientListLock(acquirerClientMapMutex_);
+        std::lock_guard <std::mutex> acquirerClientListLock(acquirerClientMapMutex_);
         acquirerClientMap_.emplace(client_id, clientInfo);
         LOGD("acquirer client_id=%lu is added to Story name=%s", client_id, name_.c_str());
     }
 
-    int removeAcquirerClient(chronolog::ClientId const &client_id) {
-        std::lock_guard<std::mutex> acquirerClientListLock(acquirerClientMapMutex_);
-        if (isAcquiredByClient(client_id)) {
+    int removeAcquirerClient(chronolog::ClientId const &client_id)
+    {
+        std::lock_guard <std::mutex> acquirerClientListLock(acquirerClientMapMutex_);
+        if(isAcquiredByClient(client_id))
+        {
             acquirerClientMap_.erase(client_id);
             LOGD("acquirer client_id=%lu is removed from Story name=%s", client_id, name_.c_str());
             return CL_SUCCESS;
-        } else {
+        }
+        else
+        {
             LOGD("Story name=%lu is not acquired by client_id=%s", client_id, name_.c_str());
             return CL_ERR_UNKNOWN;
         }
     }
 
-    bool isAcquiredByClient(chronolog::ClientId const &client_id) {
-        if (acquirerClientMap_.find(client_id) != acquirerClientMap_.end()) {
+    bool isAcquiredByClient(chronolog::ClientId const &client_id)
+    {
+        if(acquirerClientMap_.find(client_id) != acquirerClientMap_.end())
+        {
             return true;
-        } else {
+        }
+        else
+        {
             return false;
         }
     }
 
-    void setProperty(const std::unordered_map<std::string, std::string>& attrs) {
-        for (auto const& entry : attrs) {
+    void setProperty(const std::unordered_map <std::string, std::string> &attrs)
+    {
+        for(auto const &entry: attrs)
+        {
             propertyList_.emplace(entry.first, entry.second);
         }
     }
-    void setEventMap(const std::unordered_map<std::string, Event> &eventMap) { eventMap_ = eventMap; }
 
-    uint64_t incrementAcquisitionCount() {
+    void setEventMap(const std::unordered_map <std::string, Event> &eventMap)
+    { eventMap_ = eventMap; }
+
+    uint64_t incrementAcquisitionCount()
+    {
         stats_.count++;
         return stats_.count;
     }
-    uint64_t decrementAcquisitionCount() {
+
+    uint64_t decrementAcquisitionCount()
+    {
         stats_.count--;
         return stats_.count;
     }
-    uint64_t getAcquisitionCount() const { return stats_.count; }
 
-    friend std::ostream& operator<<(std::ostream& os, const Story& story);
+    uint64_t getAcquisitionCount() const
+    { return stats_.count; }
+
+    friend std::ostream &operator<<(std::ostream &os, const Story &story);
 
 private:
     std::string name_;
@@ -128,16 +166,15 @@ private:
     uint64_t cid_{};
     StoryAttrs attrs_{};
     StoryStats stats_{};
-    std::unordered_map<chronolog::ClientId, ClientInfo *> acquirerClientMap_;
+    std::unordered_map <chronolog::ClientId, ClientInfo*> acquirerClientMap_;
     std::mutex acquirerClientMapMutex_;
-    std::unordered_map<std::string, std::string> propertyList_;
-    std::unordered_map<std::string, Event> eventMap_;
+    std::unordered_map <std::string, std::string> propertyList_;
+    std::unordered_map <std::string, Event> eventMap_;
 };
 
-inline std::ostream& operator<<(std::ostream& os, const Story& story) {
-    os << "name: " << story.name_ << ", "
-       << "sid: " << story.sid_ << ", "
-       << "access count: " << story.stats_.count;
+inline std::ostream &operator<<(std::ostream &os, const Story &story)
+{
+    os << "name: " << story.name_ << ", " << "sid: " << story.sid_ << ", " << "access count: " << story.stats_.count;
     return os;
 }
 

@@ -1,4 +1,3 @@
-
 #include <chronolog_client.h>
 #include <cassert>
 #include <common.h>
@@ -14,42 +13,42 @@ struct thread_arg
     std::string client_id;
 };
 
-chronolog::Client *client;
+chronolog::Client*client;
 
-void thread_body(struct thread_arg *t)
+void thread_body(struct thread_arg*t)
 {
-
     int flags = 0;
     uint64_t offset;
     int ret;
     std::string chronicle_name;
-    if (t->tid % 2 == 0) chronicle_name = "CHRONICLE_2";
+    if(t->tid % 2 == 0) chronicle_name = "CHRONICLE_2";
     else chronicle_name = "CHRONICLE_1";
-    std::unordered_map<std::string, std::string> chronicle_attrs;
+    std::unordered_map <std::string, std::string> chronicle_attrs;
     chronicle_attrs.emplace("Priority", "High");
     flags = 1;
     ret = client->CreateChronicle(chronicle_name, chronicle_attrs, flags);
     std::string story_name = gen_random(STORY_NAME_LEN);
-    std::unordered_map<std::string, std::string> story_attrs;
+    std::unordered_map <std::string, std::string> story_attrs;
     flags = 2;
     auto acquire_ret = client->AcquireStory(chronicle_name, story_name, story_attrs, flags);
     std::cout << "tid=" << t->tid << " AcquireStory {" << chronicle_name << ":" << story_name << "} ret: "
               << acquire_ret.first << std::endl;
-    assert(acquire_ret.first == CL_SUCCESS || acquire_ret.first == CL_ERR_NOT_EXIST || acquire_ret.first==CL_ERR_NO_KEEPERS);
+    assert(acquire_ret.first == CL_SUCCESS || acquire_ret.first == CL_ERR_NOT_EXIST ||
+           acquire_ret.first == CL_ERR_NO_KEEPERS);
 
-    if (CL_SUCCESS == acquire_ret.first)
+    if(CL_SUCCESS == acquire_ret.first)
     {
         auto story_handle = acquire_ret.second;
-        for (int i = 0; i < 100; ++i)
+        for(int i = 0; i < 100; ++i)
         {
             story_handle->log_event("line " + std::to_string(i));
             std::this_thread::sleep_for(std::chrono::milliseconds(i % 10));
         }
-    
-    ret = client->ReleaseStory(chronicle_name, story_name);//, flags);
-    std::cout << "tid=" << t->tid << " ReleaseStory {" << chronicle_name << ":" << story_name << "} ret: " << ret
-              << std::endl;
-    assert(ret == CL_SUCCESS || ret == CL_ERR_NO_CONNECTION);
+
+        ret = client->ReleaseStory(chronicle_name, story_name);//, flags);
+        std::cout << "tid=" << t->tid << " ReleaseStory {" << chronicle_name << ":" << story_name << "} ret: " << ret
+                  << std::endl;
+        assert(ret == CL_SUCCESS || ret == CL_ERR_NO_CONNECTION);
     }
     ret = client->DestroyStory(chronicle_name, story_name);//, flags);
     std::cout << "tid=" << t->tid << " DestroyStory {" << chronicle_name << ":" << story_name << "} ret: " << ret
@@ -59,12 +58,12 @@ void thread_body(struct thread_arg *t)
     assert(ret == CL_SUCCESS || ret == CL_ERR_NOT_EXIST || ret == CL_ERR_ACQUIRED || ret == CL_ERR_NO_CONNECTION);
 }
 
-int main(int argc, char **argv)
+int main(int argc, char**argv)
 {
     std::string default_conf_file_path = "./default_conf.json";
     std::string conf_file_path;
     conf_file_path = parse_conf_path_arg(argc, argv);
-    if (conf_file_path.empty())
+    if(conf_file_path.empty())
     {
         conf_file_path = default_conf_file_path;
     }
@@ -74,8 +73,8 @@ int main(int argc, char **argv)
 
     int num_threads = 4;
 
-    std::vector<struct thread_arg> t_args(num_threads);
-    std::vector<std::thread> workers(num_threads);
+    std::vector <struct thread_arg> t_args(num_threads);
+    std::vector <std::thread> workers(num_threads);
 
     ChronoLogRPCImplementation protocol = CHRONOLOG_THALLIUM_SOCKETS;
     ChronoLog::ConfigurationManager confManager(conf_file_path);
@@ -90,14 +89,14 @@ int main(int argc, char **argv)
     uint64_t offset;
     int ret = client->Connect();
 
-    if (CL_SUCCESS != ret)
+    if(CL_SUCCESS != ret)
     {
-        std::cout<<"failed to connect to ChronoVisor"<<std::endl;
+        std::cout << "failed to connect to ChronoVisor" << std::endl;
         delete client;
         return -1;
     }
 
-    for (int i = 0; i < num_threads; i++)
+    for(int i = 0; i < num_threads; i++)
     {
         t_args[i].tid = i;
         t_args[i].client_id = client_id;
@@ -105,7 +104,7 @@ int main(int argc, char **argv)
         workers[i] = std::move(t);
     }
 
-    for (int i = 0; i < num_threads; i++)
+    for(int i = 0; i < num_threads; i++)
         workers[i].join();
 
     ret = client->Disconnect();

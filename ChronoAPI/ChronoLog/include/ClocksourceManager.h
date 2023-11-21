@@ -35,16 +35,22 @@ public:
 
 class ClockSourceCStyle
 {
-   public:
-     ClockSourceCStyle(){}
-     ~ClockSourceCStyle(){}
+public:
+    ClockSourceCStyle()
+    {}
+
+    ~ClockSourceCStyle()
+    {}
+
     uint64_t getTimeStamp()
     {
         struct timespec t{};
-        clock_gettime(CLOCK_TAI,&t);
-        return t.tv_sec*1000000000+t.tv_nsec;
+        clock_gettime(CLOCK_TAI, &t);
+        return t.tv_sec * 1000000000 + t.tv_nsec;
     }
-    ClocksourceType getClocksourceType() {
+
+    ClocksourceType getClocksourceType()
+    {
         return ClocksourceType::C_STYLE;
     }
 
@@ -52,37 +58,46 @@ class ClockSourceCStyle
 
 class ClockSourceCPPStyle
 {
-   public:
-    ClockSourceCPPStyle() {}
-    ~ClockSourceCPPStyle(){}
+public:
+    ClockSourceCPPStyle()
+    {}
+
+    ~ClockSourceCPPStyle()
+    {}
+
     uint64_t getTimeStamp()
     {
         return std::chrono::high_resolution_clock::now().time_since_epoch().count();
     }
-    ClocksourceType getClocksourceType() {
+
+    ClocksourceType getClocksourceType()
+    {
         return ClocksourceType::CPP_STYLE;
     }
 };
 
-template<class ClockSource>
-class ClocksourceManager {
+template <class ClockSource>
+class ClocksourceManager
+{
 private:
-    ClocksourceManager() 
-        : offset(0)
-    { }
+    ClocksourceManager(): offset(0)
+    {}
 
 public:
-    ~ClocksourceManager() 
-    { }
+    ~ClocksourceManager()
+    {}
 
-    static ClocksourceManager *getInstance() {
-        if (!clocksourceManager_) {
+    static ClocksourceManager*getInstance()
+    {
+        if(!clocksourceManager_)
+        {
             clocksourceManager_ = new ClocksourceManager();
         }
         return clocksourceManager_;
     }
 
-    ClocksourceType getClocksourceType() {
+    ClocksourceType getClocksourceType()
+    {
         return clocksource_.getClocksourceType();
     }
 
@@ -92,7 +107,7 @@ public:
     }
 
 private:
-    static ClocksourceManager *clocksourceManager_;
+    static ClocksourceManager*clocksourceManager_;
     ClockSource clocksource_;
     int64_t offset;
 };
