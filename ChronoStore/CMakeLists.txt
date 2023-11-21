@@ -10,8 +10,8 @@ set(CMAKE_BINARY_DIR ${CMAKE_SOURCE_DIR}/build)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0 -g")
 
 include_directories(include
-        ../ChronoAPI/ChronoLog/include
-        ../ChronoKeeper)
+    ../ChronoAPI/ChronoLog/include
+    ../ChronoKeeper)
 
 option(BUILD_TEST_DIRECTORY "Build Test Directory" ON)
 if(BUILD_TEST_DIRECTORY)

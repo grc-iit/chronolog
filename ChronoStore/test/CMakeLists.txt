@@ -15,32 +15,32 @@ target_link_libraries(chronostore_test ${HDF5_LIBRARIES})
 add_test(NAME chronostore_test COMMAND chronostore_test)
 
 add_executable(hdf5_archiver_test
-        hdf5_archiver_test.cpp
-        ../include/StoryWriter.h
-        ../src/StoryWriter.cpp
-        ../include/StoryReader.h
-        ../src/StoryReader.cpp
-        story_chunk_test_utils.h)
+    hdf5_archiver_test.cpp
+    ../include/StoryWriter.h
+    ../src/StoryWriter.cpp
+    ../include/StoryReader.h
+    ../src/StoryReader.cpp
+    story_chunk_test_utils.h)
 
 target_include_directories(hdf5_archiver_test PRIVATE ../../ChronoKeeper
-        ./)
+    ./)
 target_link_libraries(hdf5_archiver_test ${HDF5_LIBRARIES})
 target_link_libraries(hdf5_archiver_test json-c)
 add_test(NAME hdf5_archiver_test COMMAND hdf5_archiver_test)
 
 add_executable(cmp_vlen_str_dtype_test
-        cmp_vlen_str_dtype_test.cpp
-        story_chunk_test_utils.h)
+    cmp_vlen_str_dtype_test.cpp
+    story_chunk_test_utils.h)
 target_include_directories(cmp_vlen_str_dtype_test PRIVATE ../../ChronoKeeper
-        ./)
+    ./)
 target_link_libraries(cmp_vlen_str_dtype_test ${HDF5_LIBRARIES})
 add_test(NAME cmp_vlen_str_dtype_test COMMAND cmp_vlen_str_dtype_test)
 
 add_executable(cmp_vlen_bytes_dtype_test
-        cmp_vlen_bytes_dtype_test.cpp
-        story_chunk_test_utils.h)
+    cmp_vlen_bytes_dtype_test.cpp
+    story_chunk_test_utils.h)
 target_include_directories(cmp_vlen_bytes_dtype_test PRIVATE ../../ChronoKeeper
-        ./)
+    ./)
 target_link_libraries(cmp_vlen_bytes_dtype_test ${HDF5_LIBRARIES})
 add_test(NAME cmp_vlen_bytes_dtype_test COMMAND cmp_vlen_bytes_dtype_test)
 

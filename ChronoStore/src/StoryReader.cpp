@@ -22,14 +22,14 @@
  * @param chronicle_name Chronicle name to read
  * @return a map of StoryChunk objects sorted by its start_time
  */
-std::map<uint64_t, chronolog::StoryChunk> StoryReader::readAllStories(const std::string &chronicle_name)
+std::map <uint64_t, chronolog::StoryChunk> StoryReader::readAllStories(const std::string &chronicle_name)
 {
-    std::map<uint64_t, chronolog::StoryChunk> story_chunk_map;
+    std::map <uint64_t, chronolog::StoryChunk> story_chunk_map;
     std::string chronicle_dir = std::string(chronicle_root_dir) + chronicle_name;
-    for (const auto &entry : std::filesystem::directory_iterator(chronicle_dir))
+    for(const auto &entry: std::filesystem::directory_iterator(chronicle_dir))
     {
         // Skip directories and non-HDF5 files
-        if (entry.is_directory() || !H5Fis_hdf5(entry.path().c_str()))
+        if(entry.is_directory() || !H5Fis_hdf5(entry.path().c_str()))
         {
             continue;
         }
@@ -48,12 +48,12 @@ std::map<uint64_t, chronolog::StoryChunk> StoryReader::readAllStories(const std:
  * @param story_chunk_map the map to store StoryChunk objects
  * @return CL_SUCCESS if successful, else error code
  */
-int StoryReader::readStory(const std::string &chronicle_name, const std::string &story_file_name,
-                           std::map<uint64_t, chronolog::StoryChunk> &story_chunk_map)
+int StoryReader::readStory(const std::string &chronicle_name, const std::string &story_file_name
+                           , std::map <uint64_t, chronolog::StoryChunk> &story_chunk_map)
 {
     // Open Story file
     hid_t story_file = H5Fopen(story_file_name.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
-    if (story_file < 0)
+    if(story_file < 0)
     {
         LOGE("Failed to open story file: %s", story_file_name.c_str());
         return CL_ERR_UNKNOWN;
@@ -74,7 +74,7 @@ int StoryReader::readStory(const std::string &chronicle_name, const std::string 
  * @param story_chunk_map the map to store StoryChunk objects
  * @return CL_SUCCESS if successful, else error code
  */
-int StoryReader::readAllStoryChunks(hid_t &story_file, std::map<uint64_t, chronolog::StoryChunk> &story_chunk_map)
+int StoryReader::readAllStoryChunks(hid_t &story_file, std::map <uint64_t, chronolog::StoryChunk> &story_chunk_map)
 {
     hid_t status;
     hsize_t num_story_chunks;
@@ -82,17 +82,16 @@ int StoryReader::readAllStoryChunks(hid_t &story_file, std::map<uint64_t, chrono
     // Get number of Story Chunks first
     H5Gget_num_objs(story_file, &num_story_chunks);
     // Iterate over all of them
-    for (hsize_t i = 0; i < num_story_chunks; i++)
+    for(hsize_t i = 0; i < num_story_chunks; i++)
     {
         // Get story_chunk_dset name length first
-        ssize_t story_chunk_dset_name_len = H5Lget_name_by_idx(story_file, ".", H5_INDEX_NAME, H5_ITER_INC, i,
-                                                               nullptr, 0, H5P_DEFAULT) +
-                                            1;
-        char *story_chunk_dset_name = new char[story_chunk_dset_name_len];
+        ssize_t story_chunk_dset_name_len =
+                H5Lget_name_by_idx(story_file, ".", H5_INDEX_NAME, H5_ITER_INC, i, nullptr, 0, H5P_DEFAULT) + 1;
+        char*story_chunk_dset_name = new char[story_chunk_dset_name_len];
 
         // Then read story_chunk_dset name
-        H5Lget_name_by_idx(story_file, ".", H5_INDEX_NAME, H5_ITER_INC, i,
-                           story_chunk_dset_name, story_chunk_dset_name_len, H5P_DEFAULT);
+        H5Lget_name_by_idx(story_file, ".", H5_INDEX_NAME, H5_ITER_INC, i, story_chunk_dset_name
+                           , story_chunk_dset_name_len, H5P_DEFAULT);
         // Open story_chunk_dset
         chronolog::StoryChunk story_chunk = readOneStoryChunk(story_file, std::string(story_chunk_dset_name));
 
@@ -109,12 +108,12 @@ int StoryReader::readAllStoryChunks(hid_t &story_file, std::map<uint64_t, chrono
  * @param story_chunk_name Story Chunk name to read
  * @return a StoryChunk object
  */
-chronolog::StoryChunk StoryReader::readOneStoryChunk(hid_t& story_file, const std::string& story_chunk_name)
+chronolog::StoryChunk StoryReader::readOneStoryChunk(hid_t &story_file, const std::string &story_chunk_name)
 {
     hid_t status;
     // Open story_chunk_dset
     hid_t story_chunk_dset = H5Dopen(story_file, story_chunk_name.c_str(), H5P_DEFAULT);
-    if (story_chunk_dset < 0)
+    if(story_chunk_dset < 0)
     {
         LOGE("Failed to open story_chunk_dset: %s", story_chunk_name.c_str());
         return {};
@@ -122,14 +121,14 @@ chronolog::StoryChunk StoryReader::readOneStoryChunk(hid_t& story_file, const st
 
     hid_t story_chunk_dspace = H5Dget_space(story_chunk_dset);
     int story_chunk_dset_rank = H5Sget_simple_extent_ndims(story_chunk_dspace);
-    auto *story_chunk_dset_dims = new hsize_t[story_chunk_dset_rank];
+    auto*story_chunk_dset_dims = new hsize_t[story_chunk_dset_rank];
     H5Sget_simple_extent_dims(story_chunk_dspace, story_chunk_dset_dims, nullptr);
 
     // Read the dataset
-    char *story_chunk_dset_buf = new char[story_chunk_dset_dims[0]];
+    char*story_chunk_dset_buf = new char[story_chunk_dset_dims[0]];
     memset(story_chunk_dset_buf, 0, story_chunk_dset_dims[0]);
     status = H5Dread(story_chunk_dset, H5T_NATIVE_B8, H5S_ALL, H5S_ALL, H5P_DEFAULT, story_chunk_dset_buf);
-    if (status < 0)
+    if(status < 0)
     {
         LOGE("Failed to read story_chunk_dset: %s", story_chunk_name.c_str());
         return {};
@@ -146,8 +145,7 @@ chronolog::StoryChunk StoryReader::readOneStoryChunk(hid_t& story_file, const st
     uint64_t end_time = readUint64Attribute(story_chunk_dset, "end_time");
 
     // Convert Story Chunk bytes to map of Story Chunks
-    chronolog::StoryChunk story_chunk = deserializeStoryChunk(story_chunk_dset_buf,
-                                                              story_id, start_time, end_time);
+    chronolog::StoryChunk story_chunk = deserializeStoryChunk(story_chunk_dset_buf, story_id, start_time, end_time);
 
     free(story_chunk_dset_buf);
     free(story_chunk_dset_dims);
@@ -168,7 +166,7 @@ std::string StoryReader::readStringAttribute(hid_t &story_chunk_dset, const std:
 // (*-convert-member-functions-to-static)
 {
     hid_t attribute_id = H5Aopen(story_chunk_dset, attribute_name.c_str(), H5P_DEFAULT);
-    if (attribute_id < 0)
+    if(attribute_id < 0)
     {
         LOGE("Failed to open attribute: %s", attribute_name.c_str());
         return {};
@@ -187,10 +185,11 @@ std::string StoryReader::readStringAttribute(hid_t &story_chunk_dset, const std:
  * @param attribute_name attribute name to read
  * @return attribute value
  */
-uint64_t StoryReader::readUint64Attribute(hid_t &story_chunk_dset, const std::string &attribute_name) // NOLINT(*-convert-member-functions-to-static)
+uint64_t StoryReader::readUint64Attribute(hid_t &story_chunk_dset
+                                          , const std::string &attribute_name) // NOLINT(*-convert-member-functions-to-static)
 {
     hid_t attribute_id = H5Aopen(story_chunk_dset, attribute_name.c_str(), H5P_DEFAULT);
-    if (attribute_id < 0)
+    if(attribute_id < 0)
     {
         LOGE("Failed to open attribute: %s", attribute_name.c_str());
         return {};
@@ -209,13 +208,14 @@ uint64_t StoryReader::readUint64Attribute(hid_t &story_chunk_dset, const std::st
  * @param end_time end time of the Story Chunk
  * @return a Story Chunk
  */
-chronolog::StoryChunk StoryReader::deserializeStoryChunk(char *story_chunk_json_str, // NOLINT(*-convert-member-functions-to-static)
-                                                         uint64_t story_id, uint64_t start_time, uint64_t end_time)
+chronolog::StoryChunk
+StoryReader::deserializeStoryChunk(char*story_chunk_json_str, // NOLINT(*-convert-member-functions-to-static)
+        uint64_t story_id, uint64_t start_time, uint64_t end_time)
 {
-    struct json_object *obj = json_tokener_parse(story_chunk_json_str);
+    struct json_object*obj = json_tokener_parse(story_chunk_json_str);
     chronolog::StoryChunk story_chunk(story_id, start_time, end_time);
     enum json_type type = json_object_get_type(obj);
-    if (type == json_type_object)
+    if(type == json_type_object)
     {
         json_object_object_foreach(obj, key, val)
         {
@@ -256,22 +256,21 @@ chronolog::StoryChunk StoryReader::deserializeStoryChunk(char *story_chunk_json_
  * @param story_chunk_map map of Story Chunks to be populated
  * @return CL_SUCCESS on success, else error code
  */
-int StoryReader::readStoryRange(const std::string &chronicle_name, const uint64_t &story_id,
-                                uint64_t start_time, uint64_t end_time,
-                                std::map<uint64_t, chronolog::StoryChunk> &story_chunk_map)
+int StoryReader::readStoryRange(const std::string &chronicle_name, const uint64_t &story_id, uint64_t start_time
+                                , uint64_t end_time, std::map <uint64_t, chronolog::StoryChunk> &story_chunk_map)
 {
     std::string story_file_name = chronicle_root_dir + "/" + chronicle_name + "/" + std::to_string(story_id);
     // Open Story file
     hid_t story_file = H5Fopen(story_file_name.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
-    if (story_file < 0)
+    if(story_file < 0)
     {
         LOGE("Failed to open story file: %s", story_file_name.c_str());
         return CL_ERR_UNKNOWN;
     }
     // Get all overlapped Story Chunk names
-    std::vector<std::string> story_chunk_names_overlap = findContiguousStoryChunks(story_file, start_time, end_time);
+    std::vector <std::string> story_chunk_names_overlap = findContiguousStoryChunks(story_file, start_time, end_time);
     // Read Story Chunks
-    for (const auto &story_chunk_name : story_chunk_names_overlap)
+    for(const auto &story_chunk_name: story_chunk_names_overlap)
     {
         chronolog::StoryChunk story_chunk = readOneStoryChunk(story_file, story_chunk_name);
         story_chunk_map.emplace(story_chunk.getStartTime(), story_chunk);
@@ -287,16 +286,16 @@ int StoryReader::readStoryRange(const std::string &chronicle_name, const uint64_
  * @param end_time end time
  * @return a vector of Story Chunk names that overlap with the time range
  */
-std::vector<std::string>
+std::vector <std::string>
 StoryReader::findContiguousStoryChunks(const hid_t &story_file, uint64_t start_time, uint64_t end_time)
 {
-    std::vector<std::string> story_chunk_names_cont_overlap;
+    std::vector <std::string> story_chunk_names_cont_overlap;
     // Get all Story Chunk names
-    std::vector<std::string> story_chunk_names_all = getAllStoryChunks(story_file);
+    std::vector <std::string> story_chunk_names_all = getAllStoryChunks(story_file);
     // Find Story Chunks that overlap with the time range
-    for (const auto &story_chunk_name : story_chunk_names_all)
+    for(const auto &story_chunk_name: story_chunk_names_all)
     {
-        if (isStoryChunkOverlapping(story_chunk_name, start_time, end_time))
+        if(isStoryChunkOverlapping(story_chunk_name, start_time, end_time))
         {
             story_chunk_names_cont_overlap.push_back(story_chunk_name);
         }
@@ -313,10 +312,10 @@ StoryReader::findContiguousStoryChunks(const hid_t &story_file, uint64_t start_t
  */
 bool StoryReader::isStoryChunkOverlapping(const std::string &story_chunk_name, uint64_t start_time, uint64_t end_time)
 {
-    uint64_t story_chunk_start_time = std::strtoll(story_chunk_name.substr(0, story_chunk_name.find_last_of('_')).c_str(),
-                                                   nullptr, 10);
-    uint64_t story_chunk_end_time = std::strtoll(story_chunk_name.substr(story_chunk_name.find_last_of('_') + 1).c_str(),
-                                                 nullptr, 10);
+    uint64_t story_chunk_start_time = std::strtoll(
+            story_chunk_name.substr(0, story_chunk_name.find_last_of('_')).c_str(), nullptr, 10);
+    uint64_t story_chunk_end_time = std::strtoll(story_chunk_name.substr(story_chunk_name.find_last_of('_') + 1).c_str()
+                                                 , nullptr, 10);
     return (story_chunk_start_time >= start_time || story_chunk_end_time < end_time);
 }
 
@@ -325,18 +324,19 @@ bool StoryReader::isStoryChunkOverlapping(const std::string &story_chunk_name, u
  * @param story_file Story file to read
  * @return a vector of Story Chunk names
  */
-std::vector<std::string> StoryReader::getAllStoryChunks(const hid_t &story_file) // NOLINT(*-convert-member-functions-to-static)
+std::vector <std::string>
+StoryReader::getAllStoryChunks(const hid_t &story_file) // NOLINT(*-convert-member-functions-to-static)
 {
-    std::vector<std::string> story_chunk_names;
+    std::vector <std::string> story_chunk_names;
     // Get all Story Chunk dataset names
     H5G_info_t group_info;
     H5Gget_info(story_file, &group_info);
-    for (int i = 0; i < group_info.nlinks; i++)
+    for(int i = 0; i < group_info.nlinks; i++)
     {
         char group_name[256];
         H5Gget_objname_by_idx(story_file, i, group_name, 256);
         std::string group_name_str(group_name);
-        if (group_name_str.find("story_chunk") != std::string::npos)
+        if(group_name_str.find("story_chunk") != std::string::npos)
         {
             story_chunk_names.push_back(group_name_str);
         }

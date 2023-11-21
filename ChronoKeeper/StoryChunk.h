@@ -50,7 +50,7 @@ public:
     size_t getTotalPayloadSize() const
     {
         size_t total_size = 0;
-        for (auto const &event: logEvents)
+        for(auto const &event: logEvents)
         { total_size += event.second.logRecord.size(); }
         return total_size;
     }
@@ -102,11 +102,8 @@ public:
 
     bool operator==(const StoryChunk &other) const
     {
-        return ((storyId == other.storyId)
-            && (startTime == other.startTime)
-            && (endTime == other.endTime)
-            && (revisionTime == other.revisionTime)
-            && (logEvents == other.logEvents));
+        return ((storyId == other.storyId) && (startTime == other.startTime) && (endTime == other.endTime) &&
+                (revisionTime == other.revisionTime) && (logEvents == other.logEvents));
     }
 
     [[nodiscard]] std::string toString() const
@@ -114,11 +111,10 @@ public:
         std::stringstream ss;
         ss << "StoryChunk:{" << storyId << ":" << startTime << ":" << endTime << "} has " << logEvents.size()
            << " events: ";
-        for (auto const &event: logEvents)
+        for(auto const &event: logEvents)
         {
-            ss << "<" << std::get<0>(event.first) << ", "
-               << std::get<1>(event.first) << ", "
-               << std::get<2>(event.first) << ">: " << event.second.toString();
+            ss << "<" << std::get <0>(event.first) << ", " << std::get <1>(event.first) << ", "
+               << std::get <2>(event.first) << ">: " << event.second.toString();
         }
         return ss.str();
     }
