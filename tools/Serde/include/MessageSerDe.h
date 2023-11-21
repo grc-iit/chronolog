@@ -10,24 +10,30 @@
 /** \struct ChronoKeeperInfo
  * Structure to store IP and port of a ChronoKeeper
  */
-struct ChronoKeeperInfo {
+struct ChronoKeeperInfo
+{
     std::string ip_;
     int port_;
 
     template <class Archive>
-    void serialize(Archive & ar) {
+    void serialize(Archive &ar)
+    {
         ar(ip_, port_);
     }
 
-    ChronoKeeperInfo() : ip_("0.0.0.0"), port_(0) {}
+    ChronoKeeperInfo(): ip_("0.0.0.0"), port_(0)
+    {}
 
-    ChronoKeeperInfo(std::string ip, int port) : ip_(std::move(ip)), port_(port) {}
+    ChronoKeeperInfo(std::string ip, int port): ip_(std::move(ip)), port_(port)
+    {}
 
-    std::string toString() const {
+    std::string toString() const
+    {
         return "(" + ip_ + ":" + std::to_string(port_) + ")";
     }
 
-    friend std::ostream &operator<<(std::ostream &os, const ChronoKeeperInfo &info) {
+    friend std::ostream &operator<<(std::ostream &os, const ChronoKeeperInfo &info)
+    {
         os << info.ip_ << ":" << info.port_;
         return os;
     }
@@ -37,24 +43,30 @@ struct ChronoKeeperInfo {
  * \struct TimeInfo
  * Structure to store clock sent over network, including timestamp and drift rate
  */
-struct TimeInfo {
+struct TimeInfo
+{
     std::string timestamp_;
     double driftRate_;
 
     template <class Archive>
-    void serialize(Archive & ar) {
+    void serialize(Archive &ar)
+    {
         ar(timestamp_, driftRate_);
     }
 
-    TimeInfo() : driftRate_(0) {}
+    TimeInfo(): driftRate_(0)
+    {}
 
-    TimeInfo(std::string timestamp, double driftRate) : timestamp_(std::move(timestamp)), driftRate_(driftRate) {}
+    TimeInfo(std::string timestamp, double driftRate): timestamp_(std::move(timestamp)), driftRate_(driftRate)
+    {}
 
-    std::string toString() const {
+    std::string toString() const
+    {
         return "(" + timestamp_ + ", " + std::to_string(driftRate_) + ")";
     }
 
-    friend std::ostream &operator<<(std::ostream &os, const TimeInfo &info) {
+    friend std::ostream &operator<<(std::ostream &os, const TimeInfo &info)
+    {
         os << "timestamp_: " << info.timestamp_ << ", driftRate_: " << info.driftRate_;
         return os;
     }
@@ -68,8 +80,10 @@ const int CLIENTMSGTYPE_EVENT_MASK = 1 << 12;
  * \struct ClientMessage
  * Structure to store all the info client sends to server
  */
-struct ClientMessage {
-    enum ClientMessageType {
+struct ClientMessage
+{
+    enum ClientMessageType
+    {
         UNKNOWN = -1,
         CONNECTION = CLIENTMSGTYPE_ADMIN_MASK + 1,
         DISCONNECTION = CLIENTMSGTYPE_ADMIN_MASK + 2,
@@ -92,11 +106,13 @@ struct ClientMessage {
     uint64_t storyId_;
 
     template <class Archive>
-    void serialize(Archive & ar) {
+    void serialize(Archive &ar)
+    {
         ar(msgType_, chronicleName_, storyName_, chronicleId_, storyId_);
     }
 
-    ClientMessage() {
+    ClientMessage()
+    {
         msgType_ = ClientMessageType::UNKNOWN;
         chronicleName_ = {};
         storyName_ = {};
@@ -104,20 +120,17 @@ struct ClientMessage {
         storyId_ = 0;
     }
 
-    std::string toString() const {
-        return "Type: " + std::to_string(msgType_)
-               + ", chronicle name: " + chronicleName_
-               + ", story name: " + storyName_
-               + ", chronicle id: " + std::to_string(chronicleId_)
-               + ", story id: " + std::to_string(storyId_);
+    std::string toString() const
+    {
+        return "Type: " + std::to_string(msgType_) + ", chronicle name: " + chronicleName_ + ", story name: " +
+               storyName_ + ", chronicle id: " + std::to_string(chronicleId_) + ", story id: " +
+               std::to_string(storyId_);
     }
 
-    friend std::ostream &operator<<(std::ostream &os, const ClientMessage &message) {
-        os << "msgType_: " << message.msgType_
-           << ", chronicleName_: " << message.chronicleName_
-           << ", storyName_: " << message.storyName_
-           << ", chronicleId_: " << message.chronicleId_
-           << ", storyId_: " << message.storyId_;
+    friend std::ostream &operator<<(std::ostream &os, const ClientMessage &message)
+    {
+        os << "msgType_: " << message.msgType_ << ", chronicleName_: " << message.chronicleName_ << ", storyName_: "
+           << message.storyName_ << ", chronicleId_: " << message.chronicleId_ << ", storyId_: " << message.storyId_;
         return os;
     }
 };
@@ -130,8 +143,10 @@ const int SERVERMSGTYPE_EVENT_MASK = 1 << 12;
  * \struct ServerMessage
  * Structure to store all the info server sends to client
  */
-struct ServerMessage {
-    enum ServerMessageType {
+struct ServerMessage
+{
+    enum ServerMessageType
+    {
         UNKNOWN = -1,
         CONNRESPONSE = SERVERMSGTYPE_ADMIN_MASK + 1,
         DISCONNRESPONSE = SERVERMSGTYPE_ADMIN_MASK + 2,
@@ -146,38 +161,38 @@ struct ServerMessage {
 
     ServerMessageType msgType_;                             ///< type
     TimeInfo timeInfo_;                                     ///< timestamp and drift rate
-    std::vector<ChronoKeeperInfo> chronoKeeperList_;        ///< a list of ChronoKeeperInfo for clients to access
+    std::vector <ChronoKeeperInfo> chronoKeeperList_;        ///< a list of ChronoKeeperInfo for clients to access
     uint64_t chronicleId_;
     uint64_t storyId_;
 
     template <class Archive>
-    void serialize(Archive & ar) {
+    void serialize(Archive &ar)
+    {
         ar(msgType_, timeInfo_, chronoKeeperList_, chronicleId_, storyId_);
     }
 
-    ServerMessage() : msgType_(ServerMessageType::UNKNOWN),
-                      timeInfo_(TimeInfo()),
-                      chronoKeeperList_(),
-                      chronicleId_(0),
-                      storyId_(0) {}
+    ServerMessage(): msgType_(ServerMessageType::UNKNOWN), timeInfo_(TimeInfo()), chronoKeeperList_(), chronicleId_(0)
+                     , storyId_(0)
+    {}
 
-    std::string toString() {
+    std::string toString()
+    {
         std::string chronoKeeperListStr;
-        for (const ChronoKeeperInfo& info : chronoKeeperList_) {
-            if (!chronoKeeperListStr.empty()) chronoKeeperListStr += ", ";
+        for(const ChronoKeeperInfo &info: chronoKeeperList_)
+        {
+            if(!chronoKeeperListStr.empty()) chronoKeeperListStr += ", ";
             chronoKeeperListStr += info.toString();
         }
-        return "Type: " + std::to_string(msgType_)
-               + ", timeinfo: " + timeInfo_.toString()
-               + ", ChronoKeeper list: " + chronoKeeperListStr
-               + ", Chronicle ID: " + std::to_string(chronicleId_)
-               + ", Story ID: " + std::to_string(storyId_);
+        return "Type: " + std::to_string(msgType_) + ", timeinfo: " + timeInfo_.toString() + ", ChronoKeeper list: " +
+               chronoKeeperListStr + ", Chronicle ID: " + std::to_string(chronicleId_) + ", Story ID: " +
+               std::to_string(storyId_);
     }
 
-    friend std::ostream &operator<<(std::ostream &os, const ServerMessage &message) {
+    friend std::ostream &operator<<(std::ostream &os, const ServerMessage &message)
+    {
         os << "msgType_: " << message.msgType_ << ", timeInfo_: " << message.timeInfo_ << ", chronoKeeperList_: ";
-        for (ChronoKeeperInfo chronoKeeperInfo : message.chronoKeeperList_)
-           os << chronoKeeperInfo << ", ";
+        for(ChronoKeeperInfo chronoKeeperInfo: message.chronoKeeperList_)
+            os << chronoKeeperInfo << ", ";
         os << ", Chronicle ID: " << message.chronicleId_ << ", Story ID: " << message.storyId_;
         return os;
     }

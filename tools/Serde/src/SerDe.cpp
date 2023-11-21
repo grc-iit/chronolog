@@ -4,8 +4,9 @@
 
 #include <SerDe.h>
 
-SerDe *SerDe::Create(SerDeType type) {
-    if (type == SerDeType::CEREAL)
+SerDe*SerDe::Create(SerDeType type)
+{
+    if(type == SerDeType::CEREAL)
         return new SerDeCereal();
     else return nullptr;
 }

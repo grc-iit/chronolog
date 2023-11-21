@@ -36,12 +36,12 @@ public:
 
 
     KeeperIdCard( uint64_t group_id = 0, uint32_t addr = 0, uint16_t a_port=0, uint16_t provider_id=0)
-	    : keeper_group_id(group_id), ip_addr(addr), port(a_port),tl_provider_id(provider_id) 
-	{} 
+        : keeper_group_id(group_id), ip_addr(addr), port(a_port),tl_provider_id(provider_id)
+    {}
 
     KeeperIdCard( KeeperIdCard const& other)
-  	    : keeper_group_id(other.getGroupId()), ip_addr(other.getIPaddr()), port(other.getPort()),tl_provider_id(other.getProviderId())
-  	{}
+          : keeper_group_id(other.getGroupId()), ip_addr(other.getIPaddr()), port(other.getPort()),tl_provider_id(other.getProviderId())
+      {}
 
     ~KeeperIdCard()=default;
 
@@ -51,23 +51,23 @@ public:
     uint16_t getProviderId () const { return tl_provider_id; }
 
 
-    // serialization function used by thallium RPC providers 
-    // to serialize/deserialize KeeperIdCard 
+    // serialization function used by thallium RPC providers
+    // to serialize/deserialize KeeperIdCard
     template <typename SerArchiveT>
     void serialize( SerArchiveT & serT)
     {
         serT & keeper_group_id;
         serT & ip_addr;
-        serT & port;	
+        serT & port;
         serT & tl_provider_id;
     }
 
     std::string & getIPasDottedString ( std::string & a_string ) const
     {
-  
+
         char buffer[INET_ADDRSTRLEN];
         // convert ip from host to network byte order uint32_t
-        uint32_t ip_net_order = htonl(ip_addr); 
+        uint32_t ip_net_order = htonl(ip_addr);
         // convert network byte order uint32_t to a dotted string
         if (NULL != inet_ntop(AF_INET, &ip_net_order, buffer, INET_ADDRSTRLEN))
         {   a_string += std::string(buffer); }
@@ -80,7 +80,7 @@ public:
 
 inline bool operator==(chronolog::KeeperIdCard const& card1, chronolog::KeeperIdCard const& card2)
 {
-    return ( (card1.getIPaddr()==card2.getIPaddr() && card1.getPort() == card2.getPort() 
+    return ( (card1.getIPaddr()==card2.getIPaddr() && card1.getPort() == card2.getPort()
                 && card1.getProviderId() == card2.getProviderId()) ? true : false );
 
 }
@@ -88,8 +88,8 @@ inline std::ostream & operator<< (std::ostream & out , chronolog::KeeperIdCard c
 {
     std::string a_string;
     out << "KeeperIdCard{"<<keeper_id_card.getGroupId()
-	   <<":"<<keeper_id_card.getIPasDottedString(a_string)<<":"<<keeper_id_card.getPort()
-	   <<":"<<keeper_id_card.getProviderId()<<"}";
+       <<":"<<keeper_id_card.getIPasDottedString(a_string)<<":"<<keeper_id_card.getPort()
+       <<":"<<keeper_id_card.getProviderId()<<"}";
     return out;
 }
 

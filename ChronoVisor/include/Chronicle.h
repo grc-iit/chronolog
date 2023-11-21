@@ -20,25 +20,23 @@
 #define MAX_STORY_MAP_SIZE 1024
 #define MAX_ARCHIVE_MAP_SIZE 1024
 
-enum ChronicleIndexingGranularity {
-    chronicle_gran_ns = 0,
-    chronicle_gran_us = 1,
-    chronicle_gran_ms = 2,
-    chronicle_gran_sec = 3
+enum ChronicleIndexingGranularity
+{
+    chronicle_gran_ns = 0, chronicle_gran_us = 1, chronicle_gran_ms = 2, chronicle_gran_sec = 3
 };
 
-enum ChronicleType {
-    chronicle_type_standard = 0,
-    chronicle_type_priority = 1
+enum ChronicleType
+{
+    chronicle_type_standard = 0, chronicle_type_priority = 1
 };
 
-enum ChronicleTieringPolicy {
-    chronicle_tiering_normal = 0,
-    chronicle_tiering_hot = 1,
-    chronicle_tiering_cold = 2
+enum ChronicleTieringPolicy
+{
+    chronicle_tiering_normal = 0, chronicle_tiering_hot = 1, chronicle_tiering_cold = 2
 };
 
-typedef struct ChronicleAttrs_ {
+typedef struct ChronicleAttrs_
+{
     uint64_t size;
     enum ChronicleIndexingGranularity indexing_granularity;
     enum ChronicleType type;
@@ -46,17 +44,20 @@ typedef struct ChronicleAttrs_ {
     uint16_t access_permission;
 } ChronicleAttrs;
 
-typedef struct ChronicleStats_ {
+typedef struct ChronicleStats_
+{
     uint64_t count;
 } ChronicleStats;
 
-class Chronicle {
+class Chronicle
+{
 public:
-    Chronicle() {
-        propertyList_ = std::unordered_map<std::string, std::string>(MAX_CHRONICLE_PROPERTY_LIST_SIZE);
-        metadataMap_ = std::unordered_map<std::string, std::string>(MAX_CHRONICLE_METADATA_MAP_SIZE);
-        storyMap_ = std::unordered_map<uint64_t, Story *>(MAX_STORY_MAP_SIZE);
-        archiveMap_ = std::unordered_map<uint64_t, Archive *>(MAX_ARCHIVE_MAP_SIZE);
+    Chronicle()
+    {
+        propertyList_ = std::unordered_map <std::string, std::string>(MAX_CHRONICLE_PROPERTY_LIST_SIZE);
+        metadataMap_ = std::unordered_map <std::string, std::string>(MAX_CHRONICLE_METADATA_MAP_SIZE);
+        storyMap_ = std::unordered_map <uint64_t, Story*>(MAX_STORY_MAP_SIZE);
+        archiveMap_ = std::unordered_map <uint64_t, Archive*>(MAX_ARCHIVE_MAP_SIZE);
         attrs_.size = 0;
         attrs_.indexing_granularity = chronicle_gran_ms;
         attrs_.type = chronicle_type_standard;
@@ -67,38 +68,64 @@ public:
 //        storyId2NameMap_ = new std::unordered_map<uint64_t, std::string>();
     }
 
-    ~Chronicle() {
+    ~Chronicle()
+    {
 //        delete storyName2IdMap_;
 //        delete storyId2NameMap_;
     }
 
-    void setName(const std::string &name) { name_ = name; }
-    void setCid(const uint64_t &cid) { cid_ = cid; }
-    void setStats(const ChronicleStats &stats) { stats_ = stats; }
-    void setProperty(const std::unordered_map<std::string, std::string>& attrs) {
-        for (auto const& entry : attrs) {
+    void setName(const std::string &name)
+    { name_ = name; }
+
+    void setCid(const uint64_t &cid)
+    { cid_ = cid; }
+
+    void setStats(const ChronicleStats &stats)
+    { stats_ = stats; }
+
+    void setProperty(const std::unordered_map <std::string, std::string> &attrs)
+    {
+        for(auto const &entry: attrs)
+        {
             propertyList_.emplace(entry.first, entry.second);
         }
     }
 
-    const std::string &getName() const { return name_; }
-    const uint64_t &getCid() const { return cid_; }
-    const ChronicleStats &getStats() const { return stats_; }
-    std::unordered_map<std::string, std::string> &getPropertyList() { return propertyList_; }
-    const std::unordered_map<std::string, std::string> &getMetadataMap() const { return metadataMap_; }
-    std::unordered_map<uint64_t, Story *> &getStoryMap() { return storyMap_; }
-    const std::unordered_map<uint64_t, Archive *> &getArchiveMap() const { return archiveMap_; }
+    const std::string &getName() const
+    { return name_; }
+
+    const uint64_t &getCid() const
+    { return cid_; }
+
+    const ChronicleStats &getStats() const
+    { return stats_; }
+
+    std::unordered_map <std::string, std::string> &getPropertyList()
+    { return propertyList_; }
+
+    const std::unordered_map <std::string, std::string> &getMetadataMap() const
+    { return metadataMap_; }
+
+    std::unordered_map <uint64_t, Story*> &getStoryMap()
+    { return storyMap_; }
+
+    const std::unordered_map <uint64_t, Archive*> &getArchiveMap() const
+    { return archiveMap_; }
 //    std::unordered_map<std::string, uint64_t> *getName2IdMap() { return storyName2IdMap_; }
 //    std::unordered_map<uint64_t, std::string> *getId2NameMap() { return storyId2NameMap_; }
 
-    bool hasStory(const std::string &story_name) {
+    bool hasStory(const std::string &story_name)
+    {
         std::string story_name_for_hash = name_ + story_name;
 //        auto name2IdRecord = storyName2IdMap_->find(story_name_for_hash);
 //        if (name2IdRecord != storyName2IdMap_->end()) return true;
         uint64_t sid = CityHash64(story_name_for_hash.c_str(), story_name_for_hash.length());
-        if (storyMap_.find(sid) != storyMap_.end()) {
+        if(storyMap_.find(sid) != storyMap_.end())
+        {
             return true;
-        } else {
+        }
+        else
+        {
             return false;
         }
     }
@@ -109,63 +136,83 @@ public:
      * @return StoryID if found \n
      *         0 elsewise
      */
-    uint64_t getStoryId(const std::string &story_name) {
-        if (!hasStory(story_name)) {
+    uint64_t getStoryId(const std::string &story_name)
+    {
+        if(!hasStory(story_name))
+        {
             return 0;
-        } else {
+        }
+        else
+        {
             std::string story_name_for_hash = name_ + story_name;
 //            return storyName2IdMap_->find(story_name_for_hash)->second;
             return CityHash64(story_name_for_hash.c_str(), story_name_for_hash.length());
         }
     }
 
-    friend std::ostream& operator<<(std::ostream& os, const Chronicle& chronicle);
+    friend std::ostream &operator<<(std::ostream &os, const Chronicle &chronicle);
 
-    int addProperty(const std::string& name, const std::string& value) {
-        if (propertyList_.size() <= MAX_CHRONICLE_PROPERTY_LIST_SIZE) {
+    int addProperty(const std::string &name, const std::string &value)
+    {
+        if(propertyList_.size() <= MAX_CHRONICLE_PROPERTY_LIST_SIZE)
+        {
             auto res = propertyList_.insert_or_assign(name, value);
-            if (res.second) {
+            if(res.second)
+            {
                 return CL_SUCCESS;
-            } else {
+            }
+            else
+            {
                 return CL_ERR_UNKNOWN;
             }
-        } else {
+        }
+        else
+        {
             return CL_ERR_CHRONICLE_PROPERTY_FULL;
         }
     }
 
-    int addMetadata(const std::string& name, const std::string& value) {
-        if (metadataMap_.size() <= MAX_CHRONICLE_METADATA_MAP_SIZE) {
+    int addMetadata(const std::string &name, const std::string &value)
+    {
+        if(metadataMap_.size() <= MAX_CHRONICLE_METADATA_MAP_SIZE)
+        {
             auto res = metadataMap_.insert_or_assign(name, value);
-            if (res.second) return CL_SUCCESS;
+            if(res.second) return CL_SUCCESS;
             else return CL_ERR_UNKNOWN;
-        } else {
+        }
+        else
+        {
             return CL_ERR_CHRONICLE_METADATA_FULL;
         }
     }
 
-    int addStory(std::string const&chronicle_name, uint64_t &cid, const std::string &story_name,
-                 const std::unordered_map<std::string, std::string> &attrs) {
-        // add cid to name before hash to allow same story name across chronicles
-        std::string story_name_for_hash = chronicle_name + story_name;
-        /* Check if Story exists, fail if true */
-        if (hasStory(story_name)) return CL_ERR_STORY_EXISTS;
-        uint64_t sid = CityHash64(story_name_for_hash.c_str(), story_name_for_hash.size());
-        auto *pStory = new Story();
+    std::pair <int, Story*>
+    addStory(const std::string &story_name, const std::unordered_map <std::string, std::string> &attrs)
+    {
+        /* Check if Story exists */
+        std::string story_name_for_hash = name_ + story_name;
+        uint64_t sid = CityHash64(story_name_for_hash.c_str(), story_name_for_hash.length());
+        auto story_iter = storyMap_.find(sid);
+        if(story_iter != storyMap_.end())
+        { return std::pair <int, Story*>(CL_SUCCESS, (*story_iter).second); }
+
+        Story*pStory = new Story();
         pStory->setName(story_name);
         pStory->setProperty(attrs);
         pStory->setSid(sid);
-        pStory->setCid(cid);
-        LOGD("adding to storyMap@%p with %lu entries in Chronicle@%p",
-             &storyMap_, storyMap_.size(), this);
+        pStory->setCid(cid_);
+        LOGD("adding to storyMap@%p with %lu entries in Chronicle@%p", &storyMap_, storyMap_.size(), this);
         auto res = storyMap_.emplace(sid, pStory);
 //        storyName2IdMap_->insert_or_assign(story_name_for_hash, sid);
 //        storyId2NameMap_->insert_or_assign(sid, story_name_for_hash);
-        if (res.second) return CL_SUCCESS;
-        else return CL_ERR_UNKNOWN;
+        if(res.second)
+        { return std::pair <int, Story*>(CL_SUCCESS, pStory); }
+        else
+        { return std::pair <int, Story*>(CL_ERR_UNKNOWN, nullptr); }
     }
 
-    int removeStory(std::string const&chronicle_name, const std::string& story_name) {
+    int removeStory(std::string const &chronicle_name, const std::string &story_name)
+    {
         // add chronicle_name to story_name before hash to allow same story name across chronicles
         std::string story_name_for_hash = chronicle_name + story_name;
         /* Check if Story exists, fail if true */
@@ -173,94 +220,108 @@ public:
 //            uint64_t sid = storyName2IdMap_->find(story_name_for_hash)->second;
         uint64_t sid = CityHash64(story_name_for_hash.c_str(), story_name_for_hash.length());
         auto storyMapRecord = storyMap_.find(sid);
-        if (storyMapRecord != storyMap_.end()) {
-            Story *pStory = storyMap_.find(sid)->second;
+        if(storyMapRecord != storyMap_.end())
+        {
+            Story*pStory = storyMap_.find(sid)->second;
             /* Check if Story is acquired, fail if true */
-            if (pStory->getAcquisitionCount() != 0) {
+            if(pStory->getAcquisitionCount() != 0)
+            {
                 return CL_ERR_ACQUIRED;
             }
             delete pStory;
-            LOGD("removing from storyMap@%p with %lu entries in Chronicle@%p",
-                 &storyMap_, storyMap_.size(), this);
+            LOGD("removing from storyMap@%p with %lu entries in Chronicle@%p", &storyMap_, storyMap_.size(), this);
             auto nErased = storyMap_.erase(sid);
 //            storyName2IdMap_->erase(story_name_for_hash);
 //            storyId2NameMap_->erase(sid);
-            if (nErased == 1) return CL_SUCCESS;
+            if(nErased == 1) return CL_SUCCESS;
             else return CL_ERR_UNKNOWN;
         }
         return CL_ERR_NOT_EXIST;
     }
 
 
-    int addArchive(uint64_t cid, const std::string& name, const std::unordered_map<std::string, std::string>& attrs) {
+    int addArchive(uint64_t cid, const std::string &name, const std::unordered_map <std::string, std::string> &attrs)
+    {
         // add cid to name before hash to allow same archive name across chronicles
         std::string archive_name_for_hash = std::to_string(cid) + name;
         uint64_t aid = CityHash64(archive_name_for_hash.c_str(), archive_name_for_hash.size());
-        if (archiveMap_.find(aid) != archiveMap_.end()) return false;
-        auto *pArchive = new Archive();
+        if(archiveMap_.find(aid) != archiveMap_.end()) return false;
+        auto*pArchive = new Archive();
         pArchive->setName(name);
         pArchive->setProperty(attrs);
         pArchive->setAid(aid);
         pArchive->setCid(cid);
-        LOGD("adding to archiveMap@%p with %lu entries in Chronicle@%p",
-             &archiveMap_, archiveMap_.size(), this);
+        LOGD("adding to archiveMap@%p with %lu entries in Chronicle@%p", &archiveMap_, archiveMap_.size(), this);
         auto res = archiveMap_.emplace(aid, pArchive);
-        if (res.second) return CL_SUCCESS;
+        if(res.second) return CL_SUCCESS;
         else return CL_ERR_UNKNOWN;
     }
 
-    int removeArchive(uint64_t cid, const std::string& name, int flags) {
+    int removeArchive(uint64_t cid, const std::string &name, int flags)
+    {
         // add cid to name before hash to allow same archive name across chronicles
         std::string archive_name_for_hash = std::to_string(cid) + name;
         uint64_t aid = CityHash64(archive_name_for_hash.c_str(), archive_name_for_hash.size());
         auto storyRecord = archiveMap_.find(aid);
-        if (storyRecord != archiveMap_.end()) {
-            Archive *pArchive = storyRecord->second;
+        if(storyRecord != archiveMap_.end())
+        {
+            Archive*pArchive = storyRecord->second;
             delete pArchive;
-            LOGD("removing from archiveMap@%p with %lu entries in Chronicle@%p",
-                 &archiveMap_, archiveMap_.size(), this);
+            LOGD("removing from archiveMap@%p with %lu entries in Chronicle@%p", &archiveMap_, archiveMap_.size()
+                 , this);
             auto nErased = archiveMap_.erase(aid);
-            if (nErased == 1) return CL_SUCCESS;
+            if(nErased == 1) return CL_SUCCESS;
             else return CL_ERR_UNKNOWN;
         }
         return CL_ERR_NOT_EXIST;
     }
 
-    uint64_t incrementAcquisitionCount() {
+    uint64_t incrementAcquisitionCount()
+    {
         stats_.count++;
         return stats_.count;
     }
-    uint64_t decrementAcquisitionCount() {
+
+    uint64_t decrementAcquisitionCount()
+    {
         stats_.count--;
         return stats_.count;
     }
-    uint64_t getAcquisitionCount() const { return stats_.count; }
 
-    size_t getPropertyListSize() { return propertyList_.size(); }
-    size_t getMetadataMapSize() { return metadataMap_.size(); }
-    size_t getStoryMapSize() { return storyMap_.size(); }
-    size_t getArchiveMapSize() { return archiveMap_.size(); }
+    uint64_t getAcquisitionCount() const
+    { return stats_.count; }
+
+    size_t getPropertyListSize()
+    { return propertyList_.size(); }
+
+    size_t getMetadataMapSize()
+    { return metadataMap_.size(); }
+
+    size_t getStoryMapSize()
+    { return storyMap_.size(); }
+
+    size_t getArchiveMapSize()
+    { return archiveMap_.size(); }
 
 private:
     std::string name_;
     uint64_t cid_{};
     ChronicleAttrs attrs_{};
     ChronicleStats stats_{};
-    std::unordered_map<std::string, std::string> propertyList_;
-    std::unordered_map<std::string, std::string> metadataMap_;
-    std::unordered_map<uint64_t, Story *> storyMap_;
-    std::unordered_map<uint64_t, Archive *> archiveMap_;
+    std::unordered_map <std::string, std::string> propertyList_;
+    std::unordered_map <std::string, std::string> metadataMap_;
+    std::unordered_map <uint64_t, Story*> storyMap_;
+    std::unordered_map <uint64_t, Archive*> archiveMap_;
 //    std::unordered_map<std::string, uint64_t> *storyName2IdMap_;
 //    std::unordered_map<uint64_t, std::string> *storyId2NameMap_;
 };
 
-inline std::ostream& operator<<(std::ostream& os, const Chronicle& chronicle) {
-    os << "name: " << chronicle.name_ << ", "
-       << "cid: " << chronicle.cid_ << ", "
-       << "access count: " << chronicle.stats_.count << ", "
-       << "properties: ";
+inline std::ostream &operator<<(std::ostream &os, const Chronicle &chronicle)
+{
+    os << "name: " << chronicle.name_ << ", " << "cid: " << chronicle.cid_ << ", " << "access count: "
+       << chronicle.stats_.count << ", " << "properties: ";
     os << "(";
-    for (auto const& property : chronicle.propertyList_)
+    for(auto const &property: chronicle.propertyList_)
         os << property.first << ": " << property.second << ", ";
     os << ")";
     return os;

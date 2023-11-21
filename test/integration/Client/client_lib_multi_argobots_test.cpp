@@ -6,11 +6,12 @@
 #include <thread>
 #include <abt.h>
 #include <atomic>
+#include <cmd_arg_parse.h>
 
 #define CHRONICLE_NAME_LEN 32
 #define STORY_NAME_LEN 32
 
-chronolog::Client *client;
+chronolog::Client*client;
 
 struct thread_arg
 {
@@ -18,9 +19,9 @@ struct thread_arg
     std::string client_id;
 };
 
-void thread_function(void *tt)
+void thread_function(void*tt)
 {
-    struct thread_arg *t = (struct thread_arg *) tt;
+    struct thread_arg*t = (struct thread_arg*)tt;
 
     //std::string server_ip = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string();
     //int base_port = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT;
@@ -31,9 +32,9 @@ void thread_function(void *tt)
     uint64_t offset;
     int ret;
     std::string chronicle_name;
-    if (t->tid % 2 == 0) chronicle_name = "Chronicle_1";
+    if(t->tid % 2 == 0) chronicle_name = "Chronicle_1";
     else chronicle_name = "Chronicle_2";
-    std::unordered_map<std::string, std::string> chronicle_attrs;
+    std::unordered_map <std::string, std::string> chronicle_attrs;
     chronicle_attrs.emplace("Priority", "High");
     chronicle_attrs.emplace("IndexGranularity", "Millisecond");
     chronicle_attrs.emplace("TieringPolicy", "Hot");
@@ -42,7 +43,7 @@ void thread_function(void *tt)
     assert(ret == CL_SUCCESS || ret == CL_ERR_CHRONICLE_EXISTS || ret == CL_ERR_NO_KEEPERS);
     flags = 1;
     std::string story_name = gen_random(STORY_NAME_LEN);
-    std::unordered_map<std::string, std::string> story_attrs;
+    std::unordered_map <std::string, std::string> story_attrs;
     story_attrs.emplace("Priority", "High");
     story_attrs.emplace("IndexGranularity", "Millisecond");
     story_attrs.emplace("TieringPolicy", "Hot");
@@ -71,15 +72,22 @@ void thread_function(void *tt)
     assert(ret == CL_SUCCESS || ret == CL_ERR_NOT_EXIST || ret == CL_ERR_ACQUIRED);
 }
 
-int main(int argc, char **argv)
+int main(int argc, char**argv)
 {
-    std::atomic<long> duration_connect{}, duration_disconnect{};
-    std::vector<std::thread> thread_vec;
+    std::atomic <long> duration_connect{}, duration_disconnect{};
+    std::vector <std::thread> thread_vec;
     uint64_t offset;
 
 
-    ChronoLogRPCImplementation protocol = CHRONOLOG_THALLIUM_SOCKETS;
-    ChronoLog::ConfigurationManager confManager("./default_conf.json");
+    std::string default_conf_file_path = "./default_conf.json";
+    std::string conf_file_path;
+    conf_file_path = parse_conf_path_arg(argc, argv);
+    if(conf_file_path.empty())
+    {
+        conf_file_path = default_conf_file_path;
+    }
+
+    ChronoLog::ConfigurationManager confManager(conf_file_path);
     std::string server_ip = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP;
     int base_port = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT;
     client = new chronolog::Client(confManager); //protocol, server_ip, base_port);
@@ -87,20 +95,20 @@ int main(int argc, char **argv)
     int num_xstreams = 8;
     int num_threads = 8;
 
-    ABT_xstream *xstreams = (ABT_xstream *) malloc(sizeof(ABT_xstream) * num_xstreams);
-    ABT_pool *pools = (ABT_pool *) malloc(sizeof(ABT_pool) * num_xstreams);
-    ABT_thread *threads = (ABT_thread *) malloc(sizeof(ABT_thread) * num_threads);
-    std::vector<struct thread_arg> t_args(num_threads);;
+    ABT_xstream*xstreams = (ABT_xstream*)malloc(sizeof(ABT_xstream) * num_xstreams);
+    ABT_pool*pools = (ABT_pool*)malloc(sizeof(ABT_pool) * num_xstreams);
+    ABT_thread*threads = (ABT_thread*)malloc(sizeof(ABT_thread) * num_threads);
+    std::vector <struct thread_arg> t_args(num_threads);;
 
     std::string client_id = gen_random(8);;
     std::string server_uri = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.PROTO_CONF;
     server_uri += "://" + server_ip + ":" + std::to_string(base_port);
     int flags = 0;
 
-    int ret = client->Connect(server_uri, client_id, flags);//, offset);
+    int ret = client->Connect();//server_uri, client_id, flags);//, offset);
     assert(ret == CL_SUCCESS);
 
-    for (int i = 0; i < num_threads; i++)
+    for(int i = 0; i < num_threads; i++)
     {
         t_args[i].tid = i;
         t_args[i].client_id = client_id;
@@ -110,27 +118,27 @@ int main(int argc, char **argv)
 
     ABT_xstream_self(&xstreams[0]);
 
-    for (int i = 1; i < num_xstreams; i++)
+    for(int i = 1; i < num_xstreams; i++)
     {
         ABT_xstream_create(ABT_SCHED_NULL, &xstreams[i]);
     }
 
 
-    for (int i = 0; i < num_xstreams; i++)
+    for(int i = 0; i < num_xstreams; i++)
     {
         ABT_xstream_get_main_pools(xstreams[i], 1, &pools[i]);
     }
 
 
-    for (int i = 0; i < num_threads; i++)
+    for(int i = 0; i < num_threads; i++)
     {
         ABT_thread_create(pools[i], thread_function, &t_args[i], ABT_THREAD_ATTR_NULL, &threads[i]);
     }
 
-    for (int i = 0; i < num_threads; i++)
+    for(int i = 0; i < num_threads; i++)
         ABT_thread_free(&threads[i]);
 
-    for (int i = 1; i < num_xstreams; i++)
+    for(int i = 1; i < num_xstreams; i++)
     {
         ABT_xstream_join(xstreams[i]);
         ABT_xstream_free(&xstreams[i]);

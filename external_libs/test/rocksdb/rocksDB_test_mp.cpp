@@ -14,21 +14,21 @@
 
 using namespace std;
 
-int main(int argc, char** argv) {
+int main(int argc, char**argv)
+{
     MPI_Init(&argc, &argv);
 
     int rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-    rocksdb::DB* db;
+    rocksdb::DB*db;
     rocksdb::Options options;
     options.create_if_missing = true;
 #ifndef READ_ONLY
     rocksdb::Status status =
             rocksdb::DB::Open(options, "/tmp/testdb", &db);
 #else
-    rocksdb::Status status =
-            rocksdb::DB::OpenForReadOnly(options, "/tmp/testdb", &db);
+    rocksdb::Status status = rocksdb::DB::OpenForReadOnly(options, "/tmp/testdb", &db);
 #endif
     assert(status.ok());
 
@@ -45,15 +45,15 @@ int main(int argc, char** argv) {
 
     // Read back value
     std::string value;
-    for (int i = 0; i < NUM_KEYS; i++) {
+    for(int i = 0; i < NUM_KEYS; i++)
+    {
         status = db->Get(rocksdb::ReadOptions(), "Test key" + to_string(i), &value);
         assert(status.ok());
         assert(!status.IsNotFound());
     }
 
     auto end = chrono::steady_clock::now();
-    cout << "Elapsed time in milliseconds: "
-         << chrono::duration_cast<chrono::milliseconds>(end - start).count()
+    cout << "Elapsed time in milliseconds: " << chrono::duration_cast <chrono::milliseconds>(end - start).count()
          << " ms" << endl;
 
     // Read key which does not exist

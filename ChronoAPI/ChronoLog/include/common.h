@@ -10,17 +10,18 @@
 std::random_device rd;
 std::seed_seq ssq{rd()};
 std::default_random_engine mt{rd()};
-std::uniform_int_distribution<int> dist(0, INT32_MAX);
+std::uniform_int_distribution <int> dist(0, INT32_MAX);
 
-std::string gen_random(const int len) {
-    static const char alphanum[] =
-            "0123456789"
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-            "abcdefghijklmnopqrstuvwxyz";
+std::string gen_random(const int len)
+{
+    static const char alphanum[] = "0123456789"
+                                   "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                                   "abcdefghijklmnopqrstuvwxyz";
     std::string tmp_s;
     tmp_s.reserve(len);
 
-    for (int i = 0; i < len; ++i) {
+    for(int i = 0; i < len; ++i)
+    {
         tmp_s += alphanum[dist(mt) % (sizeof(alphanum) - 1)];
     }
 
