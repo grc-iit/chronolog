@@ -5,7 +5,7 @@
 #include <unistd.h>
 #include <mutex>
 #include "ClientRegistryManager.h"
-#include "errcode.h"
+#include "chronolog_errcode.h"
 #include "log.h"
 #include <ChronicleMetaDirectory.h>
 

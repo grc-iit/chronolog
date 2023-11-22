@@ -12,7 +12,7 @@
 #include <Archive.h>
 #include "city.h"
 #include <log.h>
-#include <errcode.h>
+#include <chronolog_errcode.h>
 #include <mutex>
 
 #define MAX_CHRONICLE_PROPERTY_LIST_SIZE 16

@@ -5,7 +5,7 @@
 
 #include <thallium.hpp>
 
-#include "errcode.h"
+#include "chronolog_errcode.h"
 #include "KeeperDataStore.h"
 
 namespace chl = chronolog;

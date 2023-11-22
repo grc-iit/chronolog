@@ -12,7 +12,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include "macro.h"
-#include "errcode.h"
+#include "chronolog_errcode.h"
 #include "RPCFactory.h"
 #include "ClientRegistryManager.h"
 #include "ChronicleMetaDirectory.h"

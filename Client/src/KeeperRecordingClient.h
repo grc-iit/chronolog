@@ -7,7 +7,7 @@
 
 #include "chronolog_types.h"
 #include "KeeperIdCard.h"
-#include "errcode.h"
+#include "chronolog_errcode.h"
 
 namespace tl = thallium;
 

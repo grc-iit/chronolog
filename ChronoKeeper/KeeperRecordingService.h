@@ -6,7 +6,7 @@
 #include <thallium.hpp>
 #include <thallium/serialization/stl/string.hpp>
 
-#include "errcode.h"
+#include "chronolog_errcode.h"
 #include "KeeperIdCard.h"
 #include "chronolog_types.h"
 #include "IngestionQueue.h"

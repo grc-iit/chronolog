@@ -11,7 +11,7 @@
 #include <sstream>
 #include "enum.h"
 #include "log.h"
-#include "errcode.h"
+#include "chronolog_errcode.h"
 
 namespace ChronoLog
 {

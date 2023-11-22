@@ -8,7 +8,7 @@ find_package(thallium REQUIRED)
 set(HEADER_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/chronolog_client.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../chrono_common/ConfigurationManager.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/../ChronoAPI/ChronoLog/include/errcode.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../ChronoAPI/ChronoLog/include/chronolog_errcode.h
 )
 
 # Set the destination directory for the header files

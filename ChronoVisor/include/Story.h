@@ -10,7 +10,7 @@
 #include <Event.h>
 #include <city.h>
 #include <mutex>
-#include <errcode.h>
+#include <chronolog_errcode.h>
 #include <log.h>
 
 #include "chronolog_types.h"

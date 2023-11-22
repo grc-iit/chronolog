@@ -2,8 +2,8 @@
 // Created by kfeng on 12/19/22.
 //
 
-#ifndef CHRONOLOG_ERRCODE_H
-#define CHRONOLOG_ERRCODE_H
+#ifndef CHRONOLOG_CHRONOLOG_ERRCODE_H
+#define CHRONOLOG_CHRONOLOG_ERRCODE_H
 
 #define CL_SUCCESS                          0     /* Success */
 #define CL_ERR_UNKNOWN                      -1    /* Error does not belong to any categories below */
@@ -22,4 +22,4 @@
 #define CL_ERR_NO_KEEPERS            -14   /* No ChronoKeepers are available */
 #define CL_ERR_NO_CONNECTION            -15   /* No valid connnection to ChronoVisor */
 #define CL_ERR_NOT_AUTHORIZED           -16   /* Client is not authorized for operation */
-#endif //CHRONOLOG_ERRCODE_H
+#endif //CHRONOLOG_CHRONOLOG_ERRCODE_H
