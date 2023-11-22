@@ -11,7 +11,7 @@
 #include <sstream>
 #include "enum.h"
 #include "log.h"
-#include "errcode.h"
+#include "chronolog_errcode.h"
 
 namespace ChronoLog
 {
@@ -227,7 +227,7 @@ public:
         if(root == nullptr)
         {
             LOGE("Unable to open file %s, exiting ...", conf_file_path.c_str());
-            exit(CL_ERR_NOT_EXIST);
+            exit(chronolog::CL_ERR_NOT_EXIST);
         }
 
         json_object_object_foreach(root, key, val)
@@ -239,7 +239,7 @@ public:
                 {
                     LOGE("Error during parsing configuration file %s\n"
                          "Error: %s\n", conf_file_path.c_str(), "clock configuration is not an object");
-                    exit(CL_ERR_INVALID_CONF);
+                    exit(chronolog::CL_ERR_INVALID_CONF);
                 }
                 parseClockConf(clock_conf);
             }
@@ -251,7 +251,7 @@ public:
                     LOGE("Error during parsing configuration file %s\n"
                          "Error: %s\n", conf_file_path.c_str(), "authentication configuration is not an "
                                                                 "object");
-                    exit(CL_ERR_INVALID_CONF);
+                    exit(chronolog::CL_ERR_INVALID_CONF);
                 }
                 parseAuthConf(auth_conf);
             }
@@ -262,7 +262,7 @@ public:
                 {
                     LOGE("Error during parsing configuration file %s\n"
                          "Error: %s\n", conf_file_path.c_str(), "chrono_visor configuration is not an object");
-                    exit(CL_ERR_INVALID_CONF);
+                    exit(chronolog::CL_ERR_INVALID_CONF);
                 }
                 parseVisorConf(chrono_visor_conf);
             }
@@ -273,7 +273,7 @@ public:
                 {
                     LOGE("Error during parsing configuration file %s\n"
                          "Error: %s\n", conf_file_path.c_str(), "chrono_keeper configuration is not an object");
-                    exit(CL_ERR_INVALID_CONF);
+                    exit(chronolog::CL_ERR_INVALID_CONF);
                 }
                 parseKeeperConf(chrono_keeper_conf);
             }
@@ -284,7 +284,7 @@ public:
                 {
                     LOGE("Error during parsing configuration file %s\n"
                          "Error: %s\n", conf_file_path.c_str(), "chrono_client configuration is not an object");
-                    exit(CL_ERR_INVALID_CONF);
+                    exit(chronolog::CL_ERR_INVALID_CONF);
                 }
                 parseClientConf(chrono_client_conf);
             }
@@ -348,7 +348,7 @@ private:
                 else
                 {
                     LOGE("clocksource_type is not a string");
-                    exit(CL_ERR_INVALID_CONF);
+                    exit(chronolog::CL_ERR_INVALID_CONF);
                 }
             }
             else if(strcmp(key, "drift_cal_sleep_sec") == 0)
@@ -360,7 +360,7 @@ private:
                 else
                 {
                     LOGE("drift_cal_sleep_sec is not an integer");
-                    exit(CL_ERR_INVALID_CONF);
+                    exit(chronolog::CL_ERR_INVALID_CONF);
                 }
             }
             else if(strcmp(key, "drift_cal_sleep_nsec") == 0)
@@ -372,7 +372,7 @@ private:
                 else
                 {
                     LOGE("drift_cal_sleep_nsec is not an integer");
-                    exit(CL_ERR_INVALID_CONF);
+                    exit(chronolog::CL_ERR_INVALID_CONF);
                 }
             }
         }
@@ -383,7 +383,7 @@ private:
         if(auth_conf == nullptr || !json_object_is_type(auth_conf, json_type_object))
         {
             LOGE("authentication configuration is not an object");
-            exit(CL_ERR_INVALID_CONF);
+            exit(chronolog::CL_ERR_INVALID_CONF);
         }
         json_object_object_foreach(auth_conf, key, val)
         {
@@ -396,7 +396,7 @@ private:
                 else
                 {
                     LOGE("auth_type is not a string");
-                    exit(CL_ERR_INVALID_CONF);
+                    exit(chronolog::CL_ERR_INVALID_CONF);
                 }
             }
             else if(strcmp(key, "module_location") == 0)
@@ -408,7 +408,7 @@ private:
                 else
                 {
                     LOGE("module_location is not a string");
-                    exit(CL_ERR_INVALID_CONF);
+                    exit(chronolog::CL_ERR_INVALID_CONF);
                 }
             }
         }

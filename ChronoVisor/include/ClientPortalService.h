@@ -41,8 +41,8 @@ public:
         uint64_t clock_offset;
         int return_code = theVisorClientPortal.ClientConnect(client_account, client_host_ip, client_pid, client_id
                                                              , clock_offset);
-        if(CL_SUCCESS == return_code)
-        { request.respond(ConnectResponseMsg(CL_SUCCESS, client_id)); }
+        if(chronolog::CL_SUCCESS == return_code)
+        { request.respond(ConnectResponseMsg(chronolog::CL_SUCCESS, client_id)); }
         else
         { request.respond(ConnectResponseMsg(return_code, ClientId{0})); }
     }

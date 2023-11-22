@@ -197,7 +197,7 @@ int main(int argc, char**argv)
             chronicle_attrs.emplace("IndexGranularity", "Millisecond");
             chronicle_attrs.emplace("TieringPolicy", "Hot");
             ret = client.CreateChronicle(chronicle_name, chronicle_attrs, flags);
-            assert(ret == CL_SUCCESS || ret == CL_ERR_CHRONICLE_EXISTS);
+            assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_CHRONICLE_EXISTS);
         }
         else if(command_subs[0].compare("-s") == 0)
         {
@@ -209,7 +209,7 @@ int main(int argc, char**argv)
             story_attrs.emplace("IndexGranularity", "Millisecond");
             story_attrs.emplace("TieringPolicy", "Hot");
             ret = client.CreateStory(chronicle_name, story_name, story_attrs, flags);
-            assert(ret == CL_SUCCESS || ret == CL_ERR_STORY_EXISTS);
+            assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_STORY_EXISTS);
 
         }
         else if(command_subs[0].compare("-a") == 0)

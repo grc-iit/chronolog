@@ -134,7 +134,7 @@ void run_command(ChronoLogClient*&client, std::string &msg_string, std::string &
                 flags = 0;
                 offset = 0;
                 ret = client->Connect(server_uri, client_id, flags, offset);
-                assert(ret == CL_SUCCESS);
+                assert(ret == chronolog::CL_SUCCESS);
             }
             else std::cout << " client connected, Incorrect command, retry" << std::endl;
         }
@@ -165,7 +165,7 @@ void run_command(ChronoLogClient*&client, std::string &msg_string, std::string &
         chronicle_attrs.emplace("IndexGranularity", "Millisecond");
         chronicle_attrs.emplace("TieringPolicy", "Hot");
         ret = client->CreateChronicle(chronicle_name, chronicle_attrs, flags);
-        assert(ret == CL_SUCCESS || ret == CL_ERR_CHRONICLE_EXISTS);
+        assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_CHRONICLE_EXISTS);
     }
     else if(command_subs[0].compare("-s") == 0)
     {
@@ -182,7 +182,7 @@ void run_command(ChronoLogClient*&client, std::string &msg_string, std::string &
         story_attrs.emplace("IndexGranularity", "Millisecond");
         story_attrs.emplace("TieringPolicy", "Hot");
         ret = client->CreateStory(chronicle_name, story_name, story_attrs, flags);
-        assert(ret == CL_SUCCESS || ret == CL_ERR_STORY_EXISTS);
+        assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_STORY_EXISTS);
     }
     else if(command_subs[0].compare("-a") == 0)
     {

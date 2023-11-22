@@ -16,12 +16,12 @@ namespace chronolog
 
 int KeeperRegistry::InitializeRegistryService(ChronoLog::ConfigurationManager const &confManager)
 {
-    int status = CL_ERR_UNKNOWN;
+    int status = chronolog::CL_ERR_UNKNOWN;
 
     std::lock_guard <std::mutex> lock(registryLock);
 
     if(registryState != UNKNOWN)
-    { return CL_SUCCESS; }
+    { return chronolog::CL_SUCCESS; }
 
     try
     {
@@ -52,7 +52,7 @@ int KeeperRegistry::InitializeRegistryService(ChronoLog::ConfigurationManager co
         keeperRegistryService = KeeperRegistryService::CreateKeeperRegistryService(*registryEngine, provider_id, *this);
 
         registryState = INITIALIZED;
-        status = CL_SUCCESS;
+        status = chronolog::CL_SUCCESS;
     }
     catch(tl::exception const &ex)
     {
@@ -71,7 +71,7 @@ int KeeperRegistry::ShutdownRegistryService()
     std::lock_guard <std::mutex> lock(registryLock);
 
     if(is_shutting_down())
-    { return CL_SUCCESS; }
+    { return chronolog::CL_SUCCESS; }
 
     registryState = SHUTTING_DOWN;
 
@@ -97,7 +97,7 @@ int KeeperRegistry::ShutdownRegistryService()
     if(nullptr != keeperRegistryService)
     { delete keeperRegistryService; }
 
-    return CL_SUCCESS;
+    return chronolog::CL_SUCCESS;
 }
 
 KeeperRegistry::~KeeperRegistry()
@@ -113,12 +113,12 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const &keeper_re
 {
 
     if(is_shutting_down())
-    { return CL_ERR_UNKNOWN; }
+    { return chronolog::CL_ERR_UNKNOWN; }
 
     std::lock_guard <std::mutex> lock(registryLock);
     //re-check state after ther lock is aquired
     if(is_shutting_down())
-    { return CL_ERR_UNKNOWN; }
+    { return chronolog::CL_ERR_UNKNOWN; }
 
     KeeperIdCard keeper_id_card = keeper_reg_msg.getKeeperIdCard();
     ServiceId admin_service_id = keeper_reg_msg.getAdminServiceId();
@@ -148,7 +148,7 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const &keeper_re
         std::cout << "ERROR: KeeperRegistry: registerKeeper {" << keeper_id_card
                   << "} failed to create DataStoreAdminClient for {" << service_na_string << ": provider_id="
                   << admin_service_id.provider_id << "}" << std::endl;
-        return CL_ERR_UNKNOWN;
+        return chronolog::CL_ERR_UNKNOWN;
     }
 
     //now create a new KeeperRecord with the new DataAdminclient
@@ -160,7 +160,7 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const &keeper_re
         std::cout << "ERROR:KeeperRegistry: registerKeeper {" << keeper_id_card << "} failed to registration"
                   << std::endl;
         delete collectionClient;
-        return CL_ERR_UNKNOWN;
+        return chronolog::CL_ERR_UNKNOWN;
 
     }
 
@@ -177,19 +177,19 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const &keeper_re
 
     std::cout << "KeeperRegistry : RUNNING with {" << keeperProcessRegistry.size() << "} KeeperProcesses" << std::endl;
 
-    return CL_SUCCESS;
+    return chronolog::CL_SUCCESS;
 }
 /////////////////
 
 int KeeperRegistry::unregisterKeeperProcess(KeeperIdCard const &keeper_id_card)
 {
     if(is_shutting_down())
-    { return CL_ERR_UNKNOWN; }
+    { return chronolog::CL_ERR_UNKNOWN; }
 
     std::lock_guard <std::mutex> lock(registryLock);
     //check again after the lock is aquired
     if(is_shutting_down())
-    { return CL_ERR_UNKNOWN; }
+    { return chronolog::CL_ERR_UNKNOWN; }
 
     // stop & delete keeperAdminClient before erasing keeper_process entry
     auto keeper_process_iter = keeperProcessRegistry.find(
@@ -210,7 +210,7 @@ int KeeperRegistry::unregisterKeeperProcess(KeeperIdCard const &keeper_id_card)
                   << "} KeeperProcesses" << std::endl;
     }
 
-    return CL_SUCCESS;
+    return chronolog::CL_SUCCESS;
 }
 /////////////////
 
@@ -263,7 +263,7 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart(std::vector <KeeperIdCard
     if(!is_running())
     {
         std::cout << "Registry has no Keeper processes to start story recording" << std::endl;
-        return CL_ERR_NO_KEEPERS;
+        return chronolog::CL_ERR_NO_KEEPERS;
     }
 
     std::chrono::time_point <std::chrono::system_clock> time_now = std::chrono::system_clock::now();
@@ -272,7 +272,7 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart(std::vector <KeeperIdCard
 
     std::lock_guard <std::mutex> lock(registryLock);
     if(!is_running())
-    { return CL_ERR_NO_KEEPERS; }
+    { return chronolog::CL_ERR_NO_KEEPERS; }
 
     size_t keepers_left_to_notify = vectorOfKeepers.size();
     for(KeeperIdCard keeper_id_card: vectorOfKeepers)
@@ -297,7 +297,7 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart(std::vector <KeeperIdCard
         {
             int rpc_return = keeper_process.keeperAdminClient->send_start_story_recording(chronicle, story, storyId
                                                                                           , story_start_time);
-            if(rpc_return != CL_SUCCESS)
+            if(rpc_return != chronolog::CL_SUCCESS)
             {
                 std::cout << "WARNING: Registry failed notification RPC to keeper {" << keeper_id_card << "}"
                           << std::endl;
@@ -319,10 +319,10 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart(std::vector <KeeperIdCard
     {
         std::cout << "ERROR: Registry failed to notify the keepers to start recording story {" << storyId << "}"
                   << std::endl;
-        return CL_ERR_NO_KEEPERS;
+        return chronolog::CL_ERR_NO_KEEPERS;
     }
 
-    return CL_SUCCESS;
+    return chronolog::CL_SUCCESS;
 }
 /////////////////
 
@@ -332,12 +332,12 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStop(std::vector <KeeperIdCard>
     if(!is_running())
     {
         std::cout << "Registry has no Keeper processes to notify of story release" << std::endl;
-        return CL_ERR_NO_KEEPERS;
+        return chronolog::CL_ERR_NO_KEEPERS;
     }
 
     std::lock_guard <std::mutex> lock(registryLock);
     if(!is_running())
-    { return CL_ERR_NO_KEEPERS; }
+    { return chronolog::CL_ERR_NO_KEEPERS; }
 
     size_t keepers_left_to_notify = vectorOfKeepers.size();
     for(KeeperIdCard keeper_id_card: vectorOfKeepers)
@@ -381,9 +381,9 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStop(std::vector <KeeperIdCard>
     {
         std::cout << "ERROR: Registry failed to notify the keepers to stop recording story {" << storyId << "}"
                   << std::endl;
-        return CL_ERR_NO_KEEPERS;
+        return chronolog::CL_ERR_NO_KEEPERS;
     }
-    return CL_SUCCESS;
+    return chronolog::CL_SUCCESS;
 }
 
 
