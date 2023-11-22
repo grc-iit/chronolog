@@ -53,9 +53,11 @@ void thread_body(struct thread_arg*t)
     ret = client->DestroyStory(chronicle_name, story_name);//, flags);
     std::cout << "tid=" << t->tid << " DestroyStory {" << chronicle_name << ":" << story_name << "} ret: " << ret
               << std::endl;
-    assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST || ret == chronolog::CL_ERR_ACQUIRED || ret == chronolog::CL_ERR_NO_CONNECTION);
+    assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST || ret == chronolog::CL_ERR_ACQUIRED ||
+           ret == chronolog::CL_ERR_NO_CONNECTION);
     ret = client->DestroyChronicle(chronicle_name);//, flags);
-    assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST || ret == chronolog::CL_ERR_ACQUIRED || ret == chronolog::CL_ERR_NO_CONNECTION);
+    assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST || ret == chronolog::CL_ERR_ACQUIRED ||
+           ret == chronolog::CL_ERR_NO_CONNECTION);
 }
 
 int main(int argc, char**argv)

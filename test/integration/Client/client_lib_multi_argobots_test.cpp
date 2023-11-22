@@ -40,7 +40,8 @@ void thread_function(void*tt)
     chronicle_attrs.emplace("TieringPolicy", "Hot");
     ret = client->CreateChronicle(chronicle_name, chronicle_attrs, flags);
     std::cout << "tid=" << t->tid << " Createchronicle {" << chronicle_name << "} ret: " << ret << std::endl;
-    assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_CHRONICLE_EXISTS || ret == chronolog::CL_ERR_NO_KEEPERS);
+    assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_CHRONICLE_EXISTS ||
+           ret == chronolog::CL_ERR_NO_KEEPERS);
     flags = 1;
     std::string story_name = gen_random(STORY_NAME_LEN);
     std::unordered_map <std::string, std::string> story_attrs;
@@ -56,7 +57,8 @@ void thread_function(void*tt)
     ret = client->DestroyStory(chronicle_name, story_name);
     std::cout << "tid=" << t->tid << " DestroyStory {" << chronicle_name << ":" << story_name << "} ret: " << ret
               << std::endl;
-    assert(ret == chronolog::CL_ERR_ACQUIRED || ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST || ret == chronolog::CL_ERR_NO_KEEPERS);
+    assert(ret == chronolog::CL_ERR_ACQUIRED || ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST ||
+           ret == chronolog::CL_ERR_NO_KEEPERS);
     ret = client->Disconnect();
     std::cout << "tid=" << t->tid << " Disconnect{" << "} ret: " << ret << std::endl;
     assert(ret == chronolog::CL_ERR_ACQUIRED || ret == chronolog::CL_SUCCESS);
@@ -67,7 +69,8 @@ void thread_function(void*tt)
     ret = client->DestroyStory(chronicle_name, story_name);
     std::cout << "tid=" << t->tid << " DestroyStory {" << chronicle_name << ":" << story_name << "} ret: " << ret
               << std::endl;
-    assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST || ret == chronolog::CL_ERR_ACQUIRED || ret == chronolog::CL_ERR_NO_KEEPERS);
+    assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST || ret == chronolog::CL_ERR_ACQUIRED ||
+           ret == chronolog::CL_ERR_NO_KEEPERS);
     ret = client->DestroyChronicle(chronicle_name);
     assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST || ret == chronolog::CL_ERR_ACQUIRED);
 }
