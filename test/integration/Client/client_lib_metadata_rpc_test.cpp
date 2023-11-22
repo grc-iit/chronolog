@@ -56,7 +56,7 @@ int main(int argc, char**argv)
         t1 = std::chrono::steady_clock::now();
         ret = client.CreateChronicle(chronicle_names[i], chronicle_attrs, flags);
         t2 = std::chrono::steady_clock::now();
-        assert(ret == CL_SUCCESS);
+        assert(ret == chronolog::CL_SUCCESS);
         duration_create_chronicle += (t2 - t1);
     }
 
@@ -96,12 +96,12 @@ int main(int argc, char**argv)
             t1 = std::chrono::steady_clock::now();
             ret = client.AcquireStory(chronicle_names[i], story_names[j], story_attrs, flags).first;
             t2 = std::chrono::steady_clock::now();
-            assert(ret == CL_SUCCESS || ret == CL_ERR_NO_KEEPERS);
+            assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NO_KEEPERS);
             duration_acquire_story += (t2 - t1);
         }
 
         ret = client.Disconnect(); //client_id, flags);
-        assert(ret == CL_ERR_NO_KEEPERS || ret == CL_ERR_ACQUIRED);
+        assert(ret == chronolog::CL_ERR_NO_KEEPERS || ret == chronolog::CL_ERR_ACQUIRED);
 
         t1 = std::chrono::steady_clock::now();
         std::vector <std::string> stories_names_retrieved;
@@ -119,7 +119,7 @@ int main(int argc, char**argv)
             t1 = std::chrono::steady_clock::now();
             ret = client.ReleaseStory(chronicle_names[i], story_names[j]); //, flags);
             t2 = std::chrono::steady_clock::now();
-            assert(ret == CL_SUCCESS);
+            assert(ret == chronolog::CL_SUCCESS);
             duration_release_story += (t2 - t1);
         }
 
@@ -129,7 +129,7 @@ int main(int argc, char**argv)
             t1 = std::chrono::steady_clock::now();
             ret = client.DestroyStory(chronicle_names[i], story_names[j]); // flags);
             t2 = std::chrono::steady_clock::now();
-            assert(ret == CL_SUCCESS);
+            assert(ret == chronolog::CL_SUCCESS);
             duration_destroy_story += (t2 - t1);
         }
 
@@ -149,7 +149,7 @@ int main(int argc, char**argv)
         t1 = std::chrono::steady_clock::now();
         bool ret = client.DestroyChronicle(chronicle_names[i]); // flags);
         t2 = std::chrono::steady_clock::now();
-        assert(ret == CL_SUCCESS);
+        assert(ret == chronolog::CL_SUCCESS);
         duration_destroy_chronicle += (t2 - t1);
     };
 
@@ -158,7 +158,7 @@ int main(int argc, char**argv)
         std::unordered_map <std::string, std::string> story_attrs;
         std::string temp_str = gen_random(STORY_NAME_LEN);
         ret = client.AcquireStory(chronicle_names[i].append(temp_str), temp_str, story_attrs, flags).first;
-        assert(ret == CL_ERR_NOT_EXIST);
+        assert(ret == chronolog::CL_ERR_NOT_EXIST);
     }
 
     LOGI("CreateChronicle takes %lf ns", duration_create_chronicle.count() / NUM_CHRONICLE);
@@ -187,7 +187,7 @@ int main(int argc, char**argv)
         t1 = std::chrono::steady_clock::now();
         ret = client.CreateChronicle(chronicle_name, chronicle_attrs, flags);
         t2 = std::chrono::steady_clock::now();
-        assert(ret == CL_SUCCESS);
+        assert(ret == chronolog::CL_SUCCESS);
         duration_create_chronicle += (t2 - t1);
     }
 
@@ -198,7 +198,7 @@ int main(int argc, char**argv)
         t1 = std::chrono::steady_clock::now();
         int ret = client.DestroyChronicle(chronicle_names[i]);//, flags);
         t2 = std::chrono::steady_clock::now();
-        assert(ret == CL_SUCCESS);
+        assert(ret == chronolog::CL_SUCCESS);
         duration_destroy_chronicle += (t2 - t1);
     }
     client.Disconnect();

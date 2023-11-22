@@ -56,7 +56,7 @@ public:
         if(std::strtol(client_id.c_str(), nullptr, 10) < 0)
         {
             LOGE("client_id=%s is invalid", client_id.c_str());
-            return CL_ERR_INVALID_ARG;
+            return chronolog::CL_ERR_INVALID_ARG;
         }
         return clientManager->add_client_record(client_id, record);
     }
@@ -68,7 +68,7 @@ public:
         if(std::strtol(client_id.c_str(), nullptr, 10) < 0)
         {
             LOGE("client_id=%s is invalid", client_id.c_str());
-            return CL_ERR_INVALID_ARG;
+            return chronolog::CL_ERR_INVALID_ARG;
         }
         return clientManager->remove_client_record(client_id, flags);
     }
@@ -92,7 +92,7 @@ public:
         else
         {
             LOGE("name is empty");
-            return CL_ERR_INVALID_ARG;
+            return chronolog::CL_ERR_INVALID_ARG;
         }
     }
 
@@ -106,7 +106,7 @@ public:
         else
         {
             LOGE("name is empty");
-            return CL_ERR_INVALID_ARG;
+            return chronolog::CL_ERR_INVALID_ARG;
         }
     }
 
@@ -124,7 +124,7 @@ public:
                 LOGE("chronicle name is empty");
             if(story_name.empty())
                 LOGE("story name is empty");
-            return CL_ERR_INVALID_ARG;
+            return chronolog::CL_ERR_INVALID_ARG;
         }
     }
 
@@ -142,18 +142,18 @@ public:
 
         if(!keeperRegistry->is_running())
             //{ return CL_ERR_NO_KEEPERS; }
-        { return chronolog::AcquireStoryResponseMsg(CL_ERR_NO_KEEPERS, story_id, recording_keepers); }
+        { return chronolog::AcquireStoryResponseMsg(chronolog::CL_ERR_NO_KEEPERS, story_id, recording_keepers); }
 
         if(chronicle_name.empty() || story_name.empty())
             //{ //TODO : add this check on the client side,
             //there's no need to waste the RPC on empty strings...
             //return CL_ERR_INVALID_ARG;
             //}
-        { return chronolog::AcquireStoryResponseMsg(CL_ERR_INVALID_ARG, story_id, recording_keepers); }
+        { return chronolog::AcquireStoryResponseMsg(chronolog::CL_ERR_INVALID_ARG, story_id, recording_keepers); }
 
         // TODO : create_stroy should be part of acquire_story
         int ret = chronicleMetaDirectory->create_story(chronicle_name, story_name, attrs);
-        if(ret != CL_SUCCESS)
+        if(ret != chronolog::CL_SUCCESS)
             //{ return ret; }
         { return chronolog::AcquireStoryResponseMsg(ret, story_id, recording_keepers); }
 
@@ -162,7 +162,7 @@ public:
         bool notify_keepers = false;
         ret = chronicleMetaDirectory->acquire_story(client_id, chronicle_name, story_name, flags, story_id
                                                     , notify_keepers);
-        if(ret != CL_SUCCESS)
+        if(ret != chronolog::CL_SUCCESS)
             //{ return ret; }
         { return chronolog::AcquireStoryResponseMsg(ret, story_id, recording_keepers); }
 
@@ -178,7 +178,7 @@ public:
                 //TODO: chronicleMetaDirectory->release_story(client_id, story_id, notify_keepers);
                 //we do know that there's no need notify keepers of the story ending in this case as it hasn't started...
                 //return CL_ERR_NO_KEEPERS;
-                return chronolog::AcquireStoryResponseMsg(CL_ERR_NO_KEEPERS, story_id, recording_keepers);
+                return chronolog::AcquireStoryResponseMsg(chronolog::CL_ERR_NO_KEEPERS, story_id, recording_keepers);
             }
 
         }
@@ -188,7 +188,7 @@ public:
         LOGD("%s finished  in PID=%d, with args: chronicle_name=%s, story_name=%s", __FUNCTION__, getpid()
              , chronicle_name.c_str(), story_name.c_str());
         // return CL_SUCCESS;
-        return chronolog::AcquireStoryResponseMsg(CL_SUCCESS, story_id, recording_keepers);
+        return chronolog::AcquireStoryResponseMsg(chronolog::CL_SUCCESS, story_id, recording_keepers);
     }
 //TODO: check if flags are ever needed to release the story...
 
@@ -200,13 +200,13 @@ public:
 
         //TODO: add this check on the client side so we dont' waste RPC call on empty strings...
         if(chronicle_name.empty() || story_name.empty())
-        { return CL_ERR_INVALID_ARG; }
+        { return chronolog::CL_ERR_INVALID_ARG; }
 
         StoryId story_id(0);
         bool notify_keepers = false;
         auto return_code = chronicleMetaDirectory->release_story(client_id, chronicle_name, story_name, story_id
                                                                  , notify_keepers);
-        if(CL_SUCCESS != return_code)
+        if(chronolog::CL_SUCCESS != return_code)
         { return return_code; }
 
         if(notify_keepers && keeperRegistry->is_running())
@@ -217,7 +217,7 @@ public:
         }
         LOGD("%s finished in PID=%d, with args: chronicle_name=%s, story_name=%s", __FUNCTION__, getpid()
              , chronicle_name.c_str(), story_name.c_str());
-        return CL_SUCCESS;
+        return chronolog::CL_SUCCESS;
     }
 //////////////
 
@@ -227,7 +227,7 @@ public:
         if(!name.empty() && !key.empty())
         {
             chronicleMetaDirectory->get_chronicle_attr(name, key, value);
-            return CL_SUCCESS;
+            return chronolog::CL_SUCCESS;
         }
         else
         {
@@ -235,7 +235,7 @@ public:
                 LOGE("name is empty");
             if(key.empty())
                 LOGE("key is empty");
-            return CL_ERR_INVALID_ARG;
+            return chronolog::CL_ERR_INVALID_ARG;
         }
     }
 
@@ -253,7 +253,7 @@ public:
                 LOGE("name is empty");
             if(key.empty())
                 LOGE("key is empty");
-            return CL_ERR_INVALID_ARG;
+            return chronolog::CL_ERR_INVALID_ARG;
         }
     }
 

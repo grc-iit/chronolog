@@ -42,25 +42,25 @@ void thread_body(struct thread_arg*t)
     auto acquire_ret = client->AcquireStory(chronicle_name, story_name, story_attrs, flags);
     std::cout << "tid=" << t->tid << " AcquireStory {" << chronicle_name << ":" << story_name << "} ret: "
               << acquire_ret.first << std::endl;
-    assert(acquire_ret.first == CL_SUCCESS || acquire_ret.first == CL_ERR_NOT_EXIST);
+    assert(acquire_ret.first == chronolog::CL_SUCCESS || acquire_ret.first == chronolog::CL_ERR_NOT_EXIST);
     ret = client->DestroyStory(chronicle_name, story_name);//, flags);
     std::cout << "tid=" << t->tid << " DestroyStory {" << chronicle_name << ":" << story_name << "} ret: " << ret
               << std::endl;
-    assert(ret == CL_ERR_ACQUIRED || ret == CL_SUCCESS || ret == CL_ERR_NOT_EXIST);
+    assert(ret == chronolog::CL_ERR_ACQUIRED || ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST);
     ret = client->Disconnect(); //t->client_id, flags);
-    assert(ret == CL_ERR_ACQUIRED || ret == CL_SUCCESS);
+    assert(ret == chronolog::CL_ERR_ACQUIRED || ret == chronolog::CL_SUCCESS);
     ret = client->ReleaseStory(chronicle_name, story_name);//, flags);
     std::cout << "tid=" << t->tid << " ReleaseStory {" << chronicle_name << ":" << story_name << "} ret: " << ret
               << std::endl;
-    assert(ret == CL_SUCCESS || ret == CL_ERR_NO_CONNECTION);
+    assert(ret == chronolog::CL_SUCCESS || ret == CL_ERR_NO_CONNECTION);
     ret = client->DestroyStory(chronicle_name, story_name);//, flags);
     std::cout << "tid=" << t->tid << " DestroyStory {" << chronicle_name << ":" << story_name << "} ret: " << ret
               << std::endl;
-    assert(ret == CL_SUCCESS || ret == CL_ERR_NOT_EXIST || ret == CL_ERR_ACQUIRED || ret == CL_ERR_NO_CONNECTION);
+    assert(ret == chronolog::CL_SUCCESS || ret == CL_ERR_NOT_EXIST || ret == CL_ERR_ACQUIRED || ret == CL_ERR_NO_CONNECTION);
 
 
     ret = client->DestroyChronicle(chronicle_name);//, flags);
-    assert(ret == CL_SUCCESS || ret == CL_ERR_NOT_EXIST || ret == CL_ERR_ACQUIRED || ret == CL_ERR_NO_CONNECTION);
+    assert(ret == chronolog::CL_SUCCESS || ret == CL_ERR_NOT_EXIST || ret == CL_ERR_ACQUIRED || ret == CL_ERR_NO_CONNECTION);
     std::cout << "tid=" << t->tid << " DestroyChronicle{" << chronicle_name << "} ret: " << ret << std::endl;
     std::cout << "Stop Thread tid=" << t->tid << std::endl;
 }

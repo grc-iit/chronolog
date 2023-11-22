@@ -111,12 +111,12 @@ public:
         {
             acquirerClientMap_.erase(client_id);
             LOGD("acquirer client_id=%lu is removed from Story name=%s", client_id, name_.c_str());
-            return CL_SUCCESS;
+            return chronolog::CL_SUCCESS;
         }
         else
         {
             LOGD("Story name=%lu is not acquired by client_id=%s", client_id, name_.c_str());
-            return CL_ERR_UNKNOWN;
+            return chronolog::CL_ERR_UNKNOWN;
         }
     }
 

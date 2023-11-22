@@ -159,16 +159,16 @@ public:
             auto res = propertyList_.insert_or_assign(name, value);
             if(res.second)
             {
-                return CL_SUCCESS;
+                return chronolog::CL_SUCCESS;
             }
             else
             {
-                return CL_ERR_UNKNOWN;
+                return chronolog::CL_ERR_UNKNOWN;
             }
         }
         else
         {
-            return CL_ERR_CHRONICLE_PROPERTY_FULL;
+            return chronolog::CL_ERR_CHRONICLE_PROPERTY_FULL;
         }
     }
 
@@ -177,12 +177,12 @@ public:
         if(metadataMap_.size() <= MAX_CHRONICLE_METADATA_MAP_SIZE)
         {
             auto res = metadataMap_.insert_or_assign(name, value);
-            if(res.second) return CL_SUCCESS;
-            else return CL_ERR_UNKNOWN;
+            if(res.second) return chronolog::CL_SUCCESS;
+            else return chronolog::CL_ERR_UNKNOWN;
         }
         else
         {
-            return CL_ERR_CHRONICLE_METADATA_FULL;
+            return chronolog::CL_ERR_CHRONICLE_METADATA_FULL;
         }
     }
 
@@ -194,7 +194,7 @@ public:
         uint64_t sid = CityHash64(story_name_for_hash.c_str(), story_name_for_hash.length());
         auto story_iter = storyMap_.find(sid);
         if(story_iter != storyMap_.end())
-        { return std::pair <int, Story*>(CL_SUCCESS, (*story_iter).second); }
+        { return std::pair <int, Story*>(chronolog::CL_SUCCESS, (*story_iter).second); }
 
         Story*pStory = new Story();
         pStory->setName(story_name);
@@ -206,9 +206,9 @@ public:
 //        storyName2IdMap_->insert_or_assign(story_name_for_hash, sid);
 //        storyId2NameMap_->insert_or_assign(sid, story_name_for_hash);
         if(res.second)
-        { return std::pair <int, Story*>(CL_SUCCESS, pStory); }
+        { return std::pair <int, Story*>(chronolog::CL_SUCCESS, pStory); }
         else
-        { return std::pair <int, Story*>(CL_ERR_UNKNOWN, nullptr); }
+        { return std::pair <int, Story*>(chronolog::CL_ERR_UNKNOWN, nullptr); }
     }
 
     int removeStory(std::string const &chronicle_name, const std::string &story_name)
@@ -226,17 +226,17 @@ public:
             /* Check if Story is acquired, fail if true */
             if(pStory->getAcquisitionCount() != 0)
             {
-                return CL_ERR_ACQUIRED;
+                return chronolog::CL_ERR_ACQUIRED;
             }
             delete pStory;
             LOGD("removing from storyMap@%p with %lu entries in Chronicle@%p", &storyMap_, storyMap_.size(), this);
             auto nErased = storyMap_.erase(sid);
 //            storyName2IdMap_->erase(story_name_for_hash);
 //            storyId2NameMap_->erase(sid);
-            if(nErased == 1) return CL_SUCCESS;
-            else return CL_ERR_UNKNOWN;
+            if(nErased == 1) return chronolog::CL_SUCCESS;
+            else return chronolog::CL_ERR_UNKNOWN;
         }
-        return CL_ERR_NOT_EXIST;
+        return chronolog::CL_ERR_NOT_EXIST;
     }
 
 
@@ -253,8 +253,8 @@ public:
         pArchive->setCid(cid);
         LOGD("adding to archiveMap@%p with %lu entries in Chronicle@%p", &archiveMap_, archiveMap_.size(), this);
         auto res = archiveMap_.emplace(aid, pArchive);
-        if(res.second) return CL_SUCCESS;
-        else return CL_ERR_UNKNOWN;
+        if(res.second) return chronolog::CL_SUCCESS;
+        else return chronolog::CL_ERR_UNKNOWN;
     }
 
     int removeArchive(uint64_t cid, const std::string &name, int flags)
@@ -270,10 +270,10 @@ public:
             LOGD("removing from archiveMap@%p with %lu entries in Chronicle@%p", &archiveMap_, archiveMap_.size()
                  , this);
             auto nErased = archiveMap_.erase(aid);
-            if(nErased == 1) return CL_SUCCESS;
-            else return CL_ERR_UNKNOWN;
+            if(nErased == 1) return chronolog::CL_SUCCESS;
+            else return chronolog::CL_ERR_UNKNOWN;
         }
-        return CL_ERR_NOT_EXIST;
+        return chronolog::CL_ERR_NOT_EXIST;
     }
 
     uint64_t incrementAcquisitionCount()

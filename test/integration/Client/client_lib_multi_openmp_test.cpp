@@ -53,17 +53,17 @@ int main(int argc, char**argv)
         story_attrs.emplace("TieringPolicy", "Hot");
         flags = 2;
         auto acquire_ret = client->AcquireStory(chronicle_name, story_name, story_attrs, flags);
-        assert(acquire_ret.first == CL_SUCCESS);
+        assert(acquire_ret.first == chronolog::CL_SUCCESS);
         ret = client->DestroyStory(chronicle_name, story_name);//, flags);
-        assert(ret == CL_ERR_ACQUIRED);
+        assert(ret == chronolog::CL_ERR_ACQUIRED);
         ret = client->Disconnect();//client_id, flags);
-        assert(ret == CL_ERR_ACQUIRED);
+        assert(ret == chronolog::CL_ERR_ACQUIRED);
         ret = client->ReleaseStory(chronicle_name, story_name);//, flags);
-        assert(ret == CL_SUCCESS);
+        assert(ret == chronolog::CL_SUCCESS);
         ret = client->DestroyStory(chronicle_name, story_name);//, flags);
-        assert(ret == CL_SUCCESS || ret == CL_ERR_NOT_EXIST || ret == CL_ERR_ACQUIRED);
+        assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST || ret == chronolog::CL_ERR_ACQUIRED);
         ret = client->DestroyChronicle(chronicle_name);//, flags);
-        assert(ret == CL_SUCCESS || ret == CL_ERR_NOT_EXIST || ret == CL_ERR_ACQUIRED);
+        assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST || ret == chronolog::CL_ERR_ACQUIRED);
     }
     ret = client->Disconnect();//client_id, flags);
 

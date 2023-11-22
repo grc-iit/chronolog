@@ -42,7 +42,7 @@ public:
     {
         std::cout << "KeeperRecordingService : record_event {" << log_event << "}" << std::endl;
         theIngestionQueue.ingestLogEvent(log_event);
-        request.respond(CL_SUCCESS);
+        request.respond(chronolog::CL_SUCCESS);
 
     }
 
