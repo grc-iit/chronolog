@@ -17,7 +17,7 @@ class AcquireStoryResponseMsg
 
 public:
 
-    AcquireStoryResponseMsg(): error_code(CL_SUCCESS), storyId(0)
+    AcquireStoryResponseMsg(): error_code(chronolog::CL_SUCCESS), storyId(0)
     {}
 
     AcquireStoryResponseMsg(int code, StoryId const &story_id, std::vector <KeeperIdCard> const &keepers_to_use)

@@ -56,7 +56,7 @@ public:
         {
 
         }
-        return (ConnectResponseMsg(CL_ERR_UNKNOWN, ClientId{0}));
+        return (ConnectResponseMsg(chronolog::CL_ERR_UNKNOWN, ClientId{0}));
     }
 
     int Disconnect(ClientId const &client_id)
@@ -70,7 +70,7 @@ public:
         {
 
         }
-        return (CL_ERR_UNKNOWN);
+        return (chronolog::CL_ERR_UNKNOWN);
     }
 
     int CreateChronicle(ClientId const &client_id, std::string const &name
@@ -86,7 +86,7 @@ public:
         {
 
         }
-        return (CL_ERR_UNKNOWN);
+        return (chronolog::CL_ERR_UNKNOWN);
 
     }
 
@@ -101,7 +101,7 @@ public:
         {
 
         }
-        return (CL_ERR_UNKNOWN);
+        return (chronolog::CL_ERR_UNKNOWN);
     }
 
     chronolog::AcquireStoryResponseMsg
@@ -118,7 +118,7 @@ public:
         {
 
         }
-        return (AcquireStoryResponseMsg(CL_ERR_UNKNOWN, 0, std::vector <KeeperIdCard>{}));
+        return (AcquireStoryResponseMsg(chronolog::CL_ERR_UNKNOWN, 0, std::vector <KeeperIdCard>{}));
     }
 
     int ReleaseStory(ClientId const &client_id, std::string const &chronicle_name, std::string const &story_name)
@@ -133,7 +133,7 @@ public:
         {
 
         }
-        return (CL_ERR_UNKNOWN);
+        return (chronolog::CL_ERR_UNKNOWN);
     }
 
     int DestroyStory(ClientId const &client_id, std::string const &chronicle_name, std::string const &story_name)
@@ -148,7 +148,7 @@ public:
         {
 
         }
-        return (CL_ERR_UNKNOWN);
+        return (chronolog::CL_ERR_UNKNOWN);
     }
 
 
@@ -163,7 +163,7 @@ public:
         {
 
         }
-        return (CL_ERR_UNKNOWN);
+        return (chronolog::CL_ERR_UNKNOWN);
     }
 
     int EditChronicleAttr(ClientId const &client_id, std::string const &name, const std::string &key
@@ -179,7 +179,7 @@ public:
         {
 
         }
-        return (CL_ERR_UNKNOWN);
+        return (chronolog::CL_ERR_UNKNOWN);
     }
 
     std::vector <std::string> ShowChronicles(ClientId const &client_id) //, std::vector<std::string> & chronicles)

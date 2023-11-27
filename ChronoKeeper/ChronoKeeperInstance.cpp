@@ -215,16 +215,16 @@ int main(int argc, char**argv)
     }
 
     //try to register with chronoVisor a few times than log ERROR and exit...
-    int registration_status = CL_ERR_UNKNOWN;
+    int registration_status = chronolog::CL_ERR_UNKNOWN;
     int retries = 5;
-    while((CL_SUCCESS != registration_status) && (retries > 0))
+    while((chronolog::CL_SUCCESS != registration_status) && (retries > 0))
     {
         registration_status = keeperRegistryClient->send_register_msg(
                 chronolog::KeeperRegistrationMsg(keeperIdCard, collectionServiceId));
         retries--;
     }
 
-    if(CL_SUCCESS != registration_status)
+    if(chronolog::CL_SUCCESS != registration_status)
     {
         std::cout << "ERROR: Keeper failed to register with the ChronoVisor; exiting" << std::endl;
         delete keeperRegistryClient;

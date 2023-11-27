@@ -7,7 +7,7 @@
 
 #include "chronolog_types.h"
 #include "KeeperIdCard.h"
-#include "errcode.h"
+#include "chronolog_errcode.h"
 
 namespace tl = thallium;
 
@@ -47,7 +47,7 @@ public:
         {
             std::cout << "ERROR: failed to send event_msg" << std::endl;
         }
-        return (CL_ERR_UNKNOWN);
+        return (chronolog::CL_ERR_UNKNOWN);
     }
 
     KeeperIdCard const &getKeeperId() const

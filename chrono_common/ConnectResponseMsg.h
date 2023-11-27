@@ -4,7 +4,6 @@
 #include <iostream>
 #include "chronolog_types.h"
 
-
 namespace chronolog
 {
 
@@ -15,7 +14,7 @@ class ConnectResponseMsg
 
 public:
 
-    ConnectResponseMsg(): error_code(CL_SUCCESS), clientId(0)
+    ConnectResponseMsg(): error_code(chronolog::CL_SUCCESS), clientId(0)
     {}
 
     ConnectResponseMsg(int code, ClientId const &client_id): error_code(code), clientId(client_id)
