@@ -14,7 +14,7 @@
 #include <unistd.h>
 #include <hdf5.h>
 #include <log.h>
-#include <errcode.h>
+#include <chronolog_errcode.h>
 //#include <story_chunk_test_utils.h>
 
 #define STORY "S1"
@@ -55,45 +55,45 @@ typedef struct StoryChunk
     uint64_t numLogEvents;
     LogEvent*logEvents;
 
-    [[nodiscard]] uint64_t getStoryID()
+    [[nodiscard]] uint64_t getStoryID() const
     { return storyId; }
 
-    [[nodiscard]] uint64_t getStartTime()
+    [[nodiscard]] uint64_t getStartTime() const
     { return startTime; }
 
-    [[nodiscard]] uint64_t getEndTime()
+    [[nodiscard]] uint64_t getEndTime() const
     { return endTime; }
 
-    [[nodiscard]] uint64_t getNumEvents()
+    [[nodiscard]] uint64_t getNumEvents() const
     { return numLogEvents; }
 
-    [[nodiscard]] uint64_t getRevisionTime()
+    [[nodiscard]] uint64_t getRevisionTime() const
     { return revisionTime; }
 
-    [[nodiscard]] LogEvent*getLogEvents()
+    [[nodiscard]] LogEvent*getLogEvents() const
     { return logEvents; }
 
-    [[nodiscard]] size_t getTotalPayloadSize()
+    [[nodiscard]] size_t getTotalPayloadSize() const
     {
         size_t total_size = 0;
-        for(int i = 0; i < numLogEvents; i++)
+        for(uint64_t i = 0; i < numLogEvents; i++)
         { total_size += strlen(logEvents[i].logRecord) + 1; }
         return total_size;
     }
 } StoryChunk;
 
-void freeStoryChunk(StoryChunk &chunk)
-{
-    for(int i = 0; i < chunk.numLogEvents; i++)
-    {
-        delete[] chunk.logEvents[i].logRecord;
-    }
-    delete[] chunk.logEvents;
-}
-
 void freeLogEvent(LogEvent &event)
 {
     delete[] event.logRecord;
+}
+
+void freeStoryChunk(StoryChunk &chunk)
+{
+    for(uint64_t i = 0; i < chunk.numLogEvents; i++)
+    {
+        freeLogEvent(chunk.logEvents[i]);
+    }
+    delete[] chunk.logEvents;
 }
 
 StoryChunk*generateStoryChunkArray(uint64_t story_id, uint64_t client_id, uint64_t start_time, uint64_t time_step
@@ -101,10 +101,10 @@ StoryChunk*generateStoryChunkArray(uint64_t story_id, uint64_t client_id, uint64
                                    , uint64_t max_event_size, double stddev, uint64_t num_events_per_story_chunk
                                    , uint64_t num_story_chunks)
 {
-    StoryChunk*story_chunk_array = new StoryChunk[num_story_chunks];
+    auto*story_chunk_array = new StoryChunk[num_story_chunks];
     std::random_device rd;
     std::mt19937_64 rng(rd());
-    std::normal_distribution <double> event_size_dist(mean_event_size, stddev);
+    std::normal_distribution <double> event_size_dist((double)mean_event_size, stddev);
 
     for(uint64_t i = 0; i < num_story_chunks; i++)
     {
@@ -121,8 +121,10 @@ StoryChunk*generateStoryChunkArray(uint64_t story_id, uint64_t client_id, uint64
             story_chunk_array[i].logEvents[j].eventTime = start_time + j * time_step;
             story_chunk_array[i].logEvents[j].clientId = client_id;
             story_chunk_array[i].logEvents[j].eventIndex = j;
-            size_t log_record_size = event_size_dist(rng);
-            story_chunk_array[i].logEvents[j].logRecordSize = log_record_size; //event_size_dist(rng);
+            auto log_record_size = (size_t)event_size_dist(rng);
+            log_record_size = log_record_size < min_event_size ? min_event_size : log_record_size > max_event_size
+                                                                                  ? max_event_size : log_record_size;
+            story_chunk_array[i].logEvents[j].logRecordSize = log_record_size;
             story_chunk_array[i].logEvents[j].logRecord = new char[log_record_size + 1];
             for(uint64_t k = 0; k < log_record_size; k++)
             {
@@ -145,7 +147,7 @@ generateStoryChunkMap(uint64_t story_id, uint64_t client_id, uint64_t start_time
     std::map <uint64_t, StoryChunk> story_chunk_map;
     std::random_device rd;
     std::mt19937_64 rng(rd());
-    std::normal_distribution <double> event_size_dist(mean_event_size, stddev);
+    std::normal_distribution <double> event_size_dist((double)mean_event_size, stddev);
 
     for(uint64_t i = 0; i < num_story_chunks; i++)
     {
@@ -163,8 +165,10 @@ generateStoryChunkMap(uint64_t story_id, uint64_t client_id, uint64_t start_time
             story_chunk.logEvents[j].eventTime = start_time + j * time_step;
             story_chunk.logEvents[j].clientId = client_id;
             story_chunk.logEvents[j].eventIndex = j;
-            size_t log_record_size = event_size_dist(rng);
-            story_chunk.logEvents[j].logRecordSize = log_record_size; //event_size_dist(rng);
+            auto log_record_size = (size_t)event_size_dist(rng);
+            log_record_size = log_record_size < min_event_size ? min_event_size : log_record_size > max_event_size
+                                                                                  ? max_event_size : log_record_size;
+            story_chunk.logEvents[j].logRecordSize = log_record_size;
             story_chunk.logEvents[j].logRecord = new char[log_record_size + 1];
             for(uint64_t k = 0; k < log_record_size; k++)
             {
@@ -189,9 +193,10 @@ int main(int argc, char*argv[])
                   << " startTime endTime" << std::endl;
         return 1;
     }
-    int i, len, nCount = 3;
+    int i, nCount = 3;
+    size_t len;
     char*bptr;
-    char*str[] = {"Wake Me up When", "September", "Ends"};
+    char const*str[] = {"Wake Me up When", "September", "Ends"};
     std::random_device rd;
     std::mt19937_64 rng(rd());
     std::uniform_int_distribution <uint64_t> dist(0, UINT64_MAX);
@@ -235,9 +240,9 @@ int main(int argc, char*argv[])
     // Generate StoryChunks
     std::cout << "Generating StoryChunks..." << std::endl;
     uint64_t time_step = (end_time - start_time) / num_events_per_story_chunk;
-    StoryChunk*story_chunk_array = generateStoryChunkArray(story_id, client_id, start_time, time_step, end_time
-                                                           , mean_event_size, min_event_size, max_event_size, stddev
-                                                           , num_events_per_story_chunk, num_story_chunks);
+//    StoryChunk*story_chunk_array = generateStoryChunkArray(story_id, client_id, start_time, time_step, end_time
+//                                                           , mean_event_size, min_event_size, max_event_size, stddev
+//                                                           , num_events_per_story_chunk, num_story_chunks);
     std::map <uint64_t, StoryChunk> story_chunk_map = generateStoryChunkMap(story_id, client_id, start_time, time_step
                                                                             , end_time, mean_event_size, min_event_size
                                                                             , max_event_size, stddev
@@ -246,9 +251,10 @@ int main(int argc, char*argv[])
 
     hsize_t total_num_events = 0;
     std::vector <hsize_t> num_events;
-    for(uint64_t i = 0; i < num_story_chunks; i++)
+    for(uint64_t j = 0; j < num_story_chunks; j++)
     {
-        hsize_t num_events_per_chunk = story_chunk_array[i].getNumEvents();;
+//        hsize_t num_events_per_chunk = story_chunk_array[j].getNumEvents();
+        hsize_t num_events_per_chunk = story_chunk_map[j].getNumEvents();
         num_events.push_back(num_events_per_chunk);
         total_num_events += num_events_per_chunk;
     }
@@ -303,7 +309,7 @@ int main(int argc, char*argv[])
             if(story_file < 0)
             {
                 LOGE("Failed to open story file: %s", story_file_name.c_str());
-                return CL_ERR_UNKNOWN;
+                return chronolog::CL_ERR_UNKNOWN;
             }
 //            story_chunk_fd_map.emplace(story_id, story_file);
         }
@@ -315,7 +321,7 @@ int main(int argc, char*argv[])
         if(H5Lexists(story_file, story_chunk_dset_name.c_str(), H5P_DEFAULT) > 0)
         {
             LOGE("Story chunk already exists: %s", story_chunk_dset_name.c_str());
-            return CL_ERR_STORY_CHUNK_EXISTS;
+            return chronolog::CL_ERR_STORY_CHUNK_EXISTS;
         }
 
         /**
@@ -346,7 +352,7 @@ int main(int argc, char*argv[])
         if(status < 0)
         {
             LOGE("Failed to create data type for log event, status: %i", status);
-            return CL_ERR_UNKNOWN;
+            return chronolog::CL_ERR_UNKNOWN;
         }
 
         // Create the dataspace for the dataset for the Story Chunk
@@ -356,7 +362,7 @@ int main(int argc, char*argv[])
         if(story_chunk_dspace < 0)
         {
             LOGE("Failed to create dataspace for story chunk: %s", story_chunk_dset_name.c_str());
-            return CL_ERR_UNKNOWN;
+            return chronolog::CL_ERR_UNKNOWN;
         }
 
         // Create the property list
@@ -377,7 +383,7 @@ int main(int argc, char*argv[])
         if(story_chunk_dset < 0)
         {
             LOGE("Failed to create dataset for story chunk: %s", story_chunk_dset_name.c_str());
-            return CL_ERR_UNKNOWN;
+            return chronolog::CL_ERR_UNKNOWN;
         }
 
         // Create a contiguous memory space for the variable-length data
@@ -418,7 +424,7 @@ int main(int argc, char*argv[])
                         printf("Error #%u: %s\n", n, err_desc->desc);
                         return 0;
                     }, nullptr);
-            return CL_ERR_UNKNOWN;
+            return chronolog::CL_ERR_UNKNOWN;
         }
         status = H5Dvlen_reclaim(log_event_type, story_chunk_dspace, H5P_DEFAULT, &g_events);
         LOGD("H5Dvlen_reclaim returns: %i", status);
@@ -439,7 +445,7 @@ int main(int argc, char*argv[])
         if(status < 0)
         {
             LOGE("Failed to close dataset or dataspace or file for story chunk: %s", story_chunk_dset_name.c_str());
-            return CL_ERR_UNKNOWN;
+            return chronolog::CL_ERR_UNKNOWN;
         }
     }
 
@@ -457,4 +463,8 @@ int main(int argc, char*argv[])
 //            return CL_ERR_UNKNOWN;
 //        }
 //    }
+
+    // Cleanup
+    for(auto &story_chunk_map_it : story_chunk_map)
+    { freeStoryChunk(story_chunk_map_it.second); }
 }
