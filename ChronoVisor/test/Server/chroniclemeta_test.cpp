@@ -46,13 +46,15 @@ int main()
     }
 
     auto chronicleMap = pChronicleMetaDirectory->getChronicleMap();
-    std::cout << "#entries in ChronicleMap: " << chronicleMap->size() << std::endl;
+    Logger::getLogger()->debug("Number of entries in ChronicleMap: {}", chronicleMap->size());
     for(auto const &chronicleRecord: *chronicleMap)
     {
         std::unordered_map <uint64_t, Story*> storyMap = chronicleRecord.second->getStoryMap();
         for(auto const &storyRecord: storyMap)
         {
-            std::cout << *storyRecord.second << std::endl;
+            std::stringstream ss;
+            ss << *storyRecord.second;
+            Logger::getLogger()->debug(" Story record in seconds: {}", ss.str());
         }
     }
 

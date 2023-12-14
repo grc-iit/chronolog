@@ -31,7 +31,7 @@ public:
         }
         catch(tl::exception const &ex)
         {
-            std::cout << "ERROR: failed to create DataStoreAdminClient" << std::endl;
+            Logger::getLogger()->error("[DataStoreAdminClient] Failed to create DataStoreAdminClient");
         }
         return adminClient;
     }
@@ -43,22 +43,22 @@ public:
         try
         {
             available = collection_service_available.on(service_handle)();
-            std::cout << "DataStoreAdminClient: service_available:" << (available) << std::endl;
+            Logger::getLogger()->debug("[DataStoreAdminClient] Service available: {}", available);
+
         }
         catch(tl::exception const &ex)
         {
-            std::cout << "ERROR:DataStoreAdminClient: service unavailable:" << (available) << std::endl;
+            Logger::getLogger()->error("[DataStoreAdminClient] Service unavailable: {}", available);
         }
         return available;
     }
 
     int shutdown_collection()
     {
-
         int status = chronolog::CL_ERR_UNKNOWN;
         try
         {
-            std::cout << "DataStoreAdminClient: shutdown_collection:" << std::endl;
+            Logger::getLogger()->debug("[DataStoreAdminClient] Shutdown");
             status = shutdown_data_collection.on(service_handle)();
         }
         catch(tl::exception const &ex)
@@ -73,7 +73,7 @@ public:
         int status = chronolog::CL_ERR_UNKNOWN;
         try
         {
-            std::cout << "CollectionClient: start_story_recording:" << story_id << std::endl;
+            Logger::getLogger()->debug("[DataStoreAdminClient] START Story Recording for StoryID={}", story_id);
             status = start_story_recording.on(service_handle)(chronicle_name, story_name, story_id, start_time);
         }
         catch(tl::exception const &ex)
@@ -86,7 +86,7 @@ public:
         int status = chronolog::CL_ERR_UNKNOWN;
         try
         {
-            std::cout << "DatastoreAdminClient: stop_story_recording" << story_id << std::endl;
+            Logger::getLogger()->debug("[DataStoreAdminClient] STOP Story Recording for StoryId={}", story_id);
             status = stop_story_recording.on(service_handle)(story_id);
         }
         catch(tl::exception const &ex)
@@ -103,8 +103,6 @@ public:
     }
 
 private:
-
-
     std::string service_addr;     // na address of Keeper Collection Service 
     uint16_t service_provider_id;          // Keeper CollectionService provider id
     tl::provider_handle service_handle;  //provider_handle for remote collector service
@@ -122,11 +120,8 @@ private:
         shutdown_data_collection = tl_engine.define("shutdown_data_collection");
         start_story_recording = tl_engine.define("start_story_recording");
         stop_story_recording = tl_engine.define("stop_story_recording");
-
     }
-
 };
-
 }
 
 #endif

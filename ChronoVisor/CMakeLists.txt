@@ -13,7 +13,8 @@ target_sources(chronovisor_server PRIVATE
     ./src/ClientRegistryRecord.cpp
     ./src/ChronicleMetaDirectory.cpp
     ./src/KeeperRegistry.cpp
-    ../ChronoAPI/ChronoLog/src/city.cpp)
+    ../ChronoAPI/ChronoLog/src/city.cpp
+    ../ChronoAPI/ChronoLog/src/log.cpp)
 
 target_include_directories(chronovisor_server PRIVATE
     ../ChronoAPI/ChronoLog/include

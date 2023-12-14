@@ -201,7 +201,8 @@ public:
         pStory->setProperty(attrs);
         pStory->setSid(sid);
         pStory->setCid(cid_);
-        LOGD("adding to storyMap@%p with %lu entries in Chronicle@%p", &storyMap_, storyMap_.size(), this);
+        Logger::getLogger()->debug("[Chronicle] Adding to StoryMap at {} with {} entries in Chronicle at {}"
+                                   , static_cast<void*>(&storyMap_), storyMap_.size(), static_cast<const void*>(this));
         auto res = storyMap_.emplace(sid, pStory);
 //        storyName2IdMap_->insert_or_assign(story_name_for_hash, sid);
 //        storyId2NameMap_->insert_or_assign(sid, story_name_for_hash);
@@ -229,7 +230,9 @@ public:
                 return chronolog::CL_ERR_ACQUIRED;
             }
             delete pStory;
-            LOGD("removing from storyMap@%p with %lu entries in Chronicle@%p", &storyMap_, storyMap_.size(), this);
+            Logger::getLogger()->debug("[Chronicle] Removing from StoryMap at {} with {} entries in Chronicle at {}"
+                                       , static_cast<void*>(&storyMap_), storyMap_.size()
+                                       , static_cast<const void*>(this));
             auto nErased = storyMap_.erase(sid);
 //            storyName2IdMap_->erase(story_name_for_hash);
 //            storyId2NameMap_->erase(sid);
@@ -251,7 +254,9 @@ public:
         pArchive->setProperty(attrs);
         pArchive->setAid(aid);
         pArchive->setCid(cid);
-        LOGD("adding to archiveMap@%p with %lu entries in Chronicle@%p", &archiveMap_, archiveMap_.size(), this);
+        Logger::getLogger()->debug("[Chronicle] Adding to ArchiveMap at {} with {} entries in Chronicle at {}"
+                                   , static_cast<void*>(&archiveMap_), archiveMap_.size()
+                                   , static_cast<const void*>(this));
         auto res = archiveMap_.emplace(aid, pArchive);
         if(res.second) return chronolog::CL_SUCCESS;
         else return chronolog::CL_ERR_UNKNOWN;
@@ -267,8 +272,9 @@ public:
         {
             Archive*pArchive = storyRecord->second;
             delete pArchive;
-            LOGD("removing from archiveMap@%p with %lu entries in Chronicle@%p", &archiveMap_, archiveMap_.size()
-                 , this);
+            Logger::getLogger()->debug("[Chronicle] Removing from ArchiveMap at {} with {} entries in Chronicle at {}"
+                                       , static_cast<void*>(&archiveMap_), archiveMap_.size()
+                                       , static_cast<const void*>(this));
             auto nErased = archiveMap_.erase(aid);
             if(nErased == 1) return chronolog::CL_SUCCESS;
             else return chronolog::CL_ERR_UNKNOWN;

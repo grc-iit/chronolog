@@ -13,7 +13,6 @@
 #include "ConnectResponseMsg.h"
 #include "AcquireStoryResponseMsg.h"
 
-
 namespace tl = thallium;
 
 namespace chronolog
@@ -31,7 +30,7 @@ public:
 
     ~ClientPortalService()
     {
-        std::cout << "ClientPortalService::destructor" << std::endl;
+        Logger::getLogger()->debug("[ClientPortalService] Destructor is called.");
         get_engine().pop_finalize_callback(this);
     }
 
@@ -70,7 +69,6 @@ public:
                       , std::string const &story_name, const std::unordered_map <std::string, std::string> &attrs
                       , int &flags)
     {
-
         AcquireStoryResponseMsg acquire_response = theVisorClientPortal.AcquireStory(client_id, chronicle_name
                                                                                      , story_name, attrs, flags);
         request.respond(acquire_response);
@@ -89,7 +87,6 @@ public:
         request.respond(theVisorClientPortal.DestroyStory(client_id, chronicle_name, story_name));
     }
 
-
     void GetChronicleAttr(tl::request const &request, ClientId const &client_id, std::string const &chronicle_name
                           , std::string const &key, std::string &value)
     {
@@ -100,7 +97,6 @@ public:
     void EditChronicleAttr(tl::request const &request, ClientId const &client_id, std::string const &chronicle_name
                            , std::string const &key, std::string const &value)
     {
-
         int return_code = theVisorClientPortal.EditChronicleAttr(client_id, chronicle_name, key, value);
         request.respond(return_code);
     }
@@ -137,9 +133,11 @@ private:
         define("EditChronicleAttr", &ClientPortalService::EditChronicleAttr);
         define("ShowChronicles", &ClientPortalService::ShowChronicles);
         define("ShowStories", &ClientPortalService::ShowStories);
-        //setup finalization callback in case this ser vice provider is still alive when the engine is finalized 
-        std::cout << "ClientPortalService::constructed at " << get_engine().self() << " provider_id {"
-                  << service_provider_id << "}" << std::endl;
+        //setup finalization callback in case this ser vice provider is still alive when the engine is finalized
+        std::stringstream ss;
+        ss << get_engine().self();
+        Logger::getLogger()->debug("[ClientPortalService] Started at address {} with provider id {}", ss.str()
+                                   , service_provider_id);
         get_engine().push_finalize_callback(this, [p = this]()
         { delete p; });
     }
@@ -148,11 +146,8 @@ private:
 
     ClientPortalService &operator=(ClientPortalService const &) = delete;
 
-
     VisorClientPortal &theVisorClientPortal;
 };
-
-
 }// namespace chronolog
 
 #endif
