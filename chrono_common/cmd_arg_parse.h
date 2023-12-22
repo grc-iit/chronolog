@@ -29,11 +29,12 @@ std::string parse_conf_path_arg(int argc, char**argv)
                 break;
             case '?':
                 // Invalid option or missing argument
-                LOGE("Usage: %s -c|--config <config_file>\n", argv[0]);
+                Logger::getLogger()->error(
+                        "[cmd_arg_parse] Invalid usage: Please provide a configuration file path using -c or --config option.");
                 exit(EXIT_FAILURE);
             default:
                 // Unknown option
-                LOGE("Unknown option: %c\n", opt);
+                Logger::getLogger()->error("[cmd_arg_parse] Encountered an unknown option: {}", static_cast<char>(opt));
                 exit(EXIT_FAILURE);
         }
     }
@@ -41,12 +42,12 @@ std::string parse_conf_path_arg(int argc, char**argv)
     // Check if the config file option is provided
     if(config_file)
     {
-        LOGD("Config file specified: %s\n", config_file);
+        Logger::getLogger()->debug("[cmd_arg_parse] Configuration file path provided: {}", config_file);
         return {std::string(config_file)};
     }
     else
     {
-        LOGD("No config file specified, using default instead\n");
+        Logger::getLogger()->debug("[cmd_arg_parse] No configuration file path provided; using default configuration.");
         return "";
     }
 }

@@ -147,7 +147,7 @@ public:
 
     ConfigurationManager()
     {
-        LOGI("constructing configuration with all default values: ");
+        Logger::getLogger()->info("[ConfigurationManager] Initializing configuration with default settings.");
         ROLE = CHRONOLOG_UNKNOWN;
 
         /* Clock-related configurations */
@@ -205,20 +205,20 @@ public:
 
     explicit ConfigurationManager(const std::string &conf_file_path)
     {
-        LOGI("constructing configuration from a configuration file: %s", conf_file_path.c_str());
+        Logger::getLogger()->info("[ConfigurationManager] Loading configuration from file: {}", conf_file_path.c_str());
         LoadConfFromJSONFile(conf_file_path);
     }
 
     void PrintConf() const
     {
-        LOGI("******** Start of configuration output ********");
-        LOGI("ROLE: %s", getServiceRoleString(ROLE));
-        LOGI("CLOCK_CONF: %s", CLOCK_CONF.to_String().c_str());
-        LOGI("AUTH_CONF: %s", AUTH_CONF.to_String().c_str());
-        LOGI("VISOR_CONF: %s", VISOR_CONF.to_String().c_str());
-        LOGI("KEEPER_CONF: %s", KEEPER_CONF.to_String().c_str());
-        LOGI("CLIENT_CONF: %s", CLIENT_CONF.to_String().c_str());
-        LOGI("******** End of configuration output ********");
+        Logger::getLogger()->info("******** Start of configuration output ********");
+        Logger::getLogger()->info("ROLE: {}", getServiceRoleString(ROLE));
+        Logger::getLogger()->info("CLOCK_CONF: {}", CLOCK_CONF.to_String().c_str());
+        Logger::getLogger()->info("AUTH_CONF: {}", AUTH_CONF.to_String().c_str());
+        Logger::getLogger()->info("VISOR_CONF: {}", VISOR_CONF.to_String().c_str());
+        Logger::getLogger()->info("KEEPER_CONF: {}", KEEPER_CONF.to_String().c_str());
+        Logger::getLogger()->info("CLIENT_CONF: {}", CLIENT_CONF.to_String().c_str());
+        Logger::getLogger()->info("******** End of configuration output ********");
     }
 
     void LoadConfFromJSONFile(const std::string &conf_file_path)
@@ -226,7 +226,9 @@ public:
         json_object*root = json_object_from_file(conf_file_path.c_str());
         if(root == nullptr)
         {
-            LOGE("Unable to open file %s, exiting ...", conf_file_path.c_str());
+            Logger::getLogger()->error(
+                    "[ConfigurationManager] Failed to open configuration file at path: {}. Exiting..."
+                    , conf_file_path.c_str());
             exit(chronolog::CL_ERR_NOT_EXIST);
         }
 
@@ -237,9 +239,15 @@ public:
                 json_object*clock_conf = json_object_object_get(root, "clock");
                 if(clock_conf == nullptr || !json_object_is_type(clock_conf, json_type_object))
                 {
-                    LOGE("Error during parsing configuration file %s\n"
-                         "Error: %s\n", conf_file_path.c_str(), "clock configuration is not an object");
+                    Logger::getLogger()->error(
+                            "[ConfigurationManager] Error while parsing configuration file {}. Clock configuration is not found or is not an object."
+                            , conf_file_path.c_str());
                     exit(chronolog::CL_ERR_INVALID_CONF);
+                }
+                else
+                {
+                    Logger::getLogger()->error("[ConfigurationManager] Unknown configuration item encountered: {}"
+                                               , key);
                 }
                 parseClockConf(clock_conf);
             }
@@ -248,10 +256,15 @@ public:
                 json_object*auth_conf = json_object_object_get(root, "authentication");
                 if(auth_conf == nullptr || !json_object_is_type(auth_conf, json_type_object))
                 {
-                    LOGE("Error during parsing configuration file %s\n"
-                         "Error: %s\n", conf_file_path.c_str(), "authentication configuration is not an "
-                                                                "object");
+                    Logger::getLogger()->error(
+                            "[ConfigurationManager] Error while parsing configuration file {}. Authentication configuration is not found or is not an object."
+                            , conf_file_path.c_str());
                     exit(chronolog::CL_ERR_INVALID_CONF);
+                }
+                else
+                {
+                    Logger::getLogger()->error("[ConfigurationManager] Unknown configuration item encountered: {}"
+                                               , key);
                 }
                 parseAuthConf(auth_conf);
             }
@@ -260,9 +273,15 @@ public:
                 json_object*chrono_visor_conf = json_object_object_get(root, "chrono_visor");
                 if(chrono_visor_conf == nullptr || !json_object_is_type(chrono_visor_conf, json_type_object))
                 {
-                    LOGE("Error during parsing configuration file %s\n"
-                         "Error: %s\n", conf_file_path.c_str(), "chrono_visor configuration is not an object");
+                    Logger::getLogger()->error(
+                            "[ConfigurationManager] Error while parsing configuration file {}. ChronoVisor configuration is not found or is not an object."
+                            , conf_file_path.c_str());
                     exit(chronolog::CL_ERR_INVALID_CONF);
+                }
+                else
+                {
+                    Logger::getLogger()->error("[ConfigurationManager] Unknown configuration item encountered: {}"
+                                               , key);
                 }
                 parseVisorConf(chrono_visor_conf);
             }
@@ -271,9 +290,15 @@ public:
                 json_object*chrono_keeper_conf = json_object_object_get(root, "chrono_keeper");
                 if(chrono_keeper_conf == nullptr || !json_object_is_type(chrono_keeper_conf, json_type_object))
                 {
-                    LOGE("Error during parsing configuration file %s\n"
-                         "Error: %s\n", conf_file_path.c_str(), "chrono_keeper configuration is not an object");
+                    Logger::getLogger()->error(
+                            "[ConfigurationManager] Error while parsing configuration file {}. ChronoKeeper configuration is not found or is not an object."
+                            , conf_file_path.c_str());
                     exit(chronolog::CL_ERR_INVALID_CONF);
+                }
+                else
+                {
+                    Logger::getLogger()->error("[ConfigurationManager] Unknown configuration item encountered: {}"
+                                               , key);
                 }
                 parseKeeperConf(chrono_keeper_conf);
             }
@@ -282,18 +307,23 @@ public:
                 json_object*chrono_client_conf = json_object_object_get(root, "chrono_client");
                 if(chrono_client_conf == nullptr || !json_object_is_type(chrono_client_conf, json_type_object))
                 {
-                    LOGE("Error during parsing configuration file %s\n"
-                         "Error: %s\n", conf_file_path.c_str(), "chrono_client configuration is not an object");
+                    Logger::getLogger()->error(
+                            "[ConfigurationManager] Error while parsing configuration file {}. ChronoClient configuration is not found or is not an object."
+                            , conf_file_path.c_str());
                     exit(chronolog::CL_ERR_INVALID_CONF);
+                }
+                else
+                {
+                    Logger::getLogger()->error("[ConfigurationManager] Unknown configuration item encountered: {}"
+                                               , key);
                 }
                 parseClientConf(chrono_client_conf);
             }
             else
             {
-                LOGE("Unknown configuration item: %s", key);
+                Logger::getLogger()->error("[ConfigurationManager] Unknown configuration item: {}", key);
             }
         }
-
         json_object_put(root);
         PrintConf();
     }
@@ -318,12 +348,12 @@ private:
             }
             else
             {
-                LOGE("Unknown rpc implementation: %s", conf_str);
+                Logger::getLogger()->warn("[ConfigurationManager] Unknown rpc implementation: {}", conf_str);
             }
         }
         else
         {
-            LOGE("Invalid rpc implementation configuration");
+            Logger::getLogger()->error("[ConfigurationManager] Invalid rpc implementation configuration");
         }
     }
 
@@ -343,11 +373,13 @@ private:
                     else if(strcmp(clocksource_type, "TSC") == 0)
                         CLOCK_CONF.CLOCKSOURCE_TYPE = ClocksourceType::TSC;
                     else
-                        LOGI("Unknown clocksource type: %s", clocksource_type);
+                        Logger::getLogger()->warn("[ConfigurationManager] Unknown clocksource type: {}"
+                                                  , clocksource_type);
                 }
                 else
                 {
-                    LOGE("clocksource_type is not a string");
+                    Logger::getLogger()->error(
+                            "[ConfigurationManager] Failed to parse configuration file: clocksource_type is not a string");
                     exit(chronolog::CL_ERR_INVALID_CONF);
                 }
             }
@@ -359,7 +391,8 @@ private:
                 }
                 else
                 {
-                    LOGE("drift_cal_sleep_sec is not an integer");
+                    Logger::getLogger()->error(
+                            "[ConfigurationManager] Failed to parse configuration file: drift_cal_sleep_sec is not an integer");
                     exit(chronolog::CL_ERR_INVALID_CONF);
                 }
             }
@@ -371,7 +404,8 @@ private:
                 }
                 else
                 {
-                    LOGE("drift_cal_sleep_nsec is not an integer");
+                    Logger::getLogger()->error(
+                            "[ConfigurationManager] Failed to parse configuration file: drift_cal_sleep_nsec is not an integer");
                     exit(chronolog::CL_ERR_INVALID_CONF);
                 }
             }
@@ -382,7 +416,8 @@ private:
     {
         if(auth_conf == nullptr || !json_object_is_type(auth_conf, json_type_object))
         {
-            LOGE("authentication configuration is not an object");
+            Logger::getLogger()->error(
+                    "[ConfigurationManager] Error while parsing configuration file. Authentication configuration is not found or is not an object.");
             exit(chronolog::CL_ERR_INVALID_CONF);
         }
         json_object_object_foreach(auth_conf, key, val)
@@ -395,7 +430,8 @@ private:
                 }
                 else
                 {
-                    LOGE("auth_type is not a string");
+                    Logger::getLogger()->error(
+                            "[ConfigurationManager] Failed to parse configuration file: auth_type is not a string");
                     exit(chronolog::CL_ERR_INVALID_CONF);
                 }
             }
@@ -407,7 +443,8 @@ private:
                 }
                 else
                 {
-                    LOGE("module_location is not a string");
+                    Logger::getLogger()->error(
+                            "[ConfigurationManager] Failed to parse configuration file: module_location is not a string");
                     exit(chronolog::CL_ERR_INVALID_CONF);
                 }
             }
@@ -445,7 +482,7 @@ private:
             }
             else
             {
-                LOGE("Unknown client end configuration: %s", key);
+                Logger::getLogger()->error("[ConfigurationManager] Unknown client end configuration: {}", key);
             }
         }
     }
@@ -467,7 +504,8 @@ private:
                     }
                     else
                     {
-                        LOGE("Unknown VisorClientPortalService configuration: %s", key);
+                        Logger::getLogger()->error(
+                                "[ConfigurationManager] Unknown VisorClientPortalService configuration: {}", key);
                     }
                 }
             }
@@ -484,13 +522,14 @@ private:
                     }
                     else
                     {
-                        LOGE("Unknown VisorKeeperRegistryService configuration: %s", key);
+                        Logger::getLogger()->error(
+                                "[ConfigurationManager] Unknown VisorKeeperRegistryService configuration: {}", key);
                     }
                 }
             }
             else
             {
-                LOGE("Unknown visor configuration: %s", key);
+                Logger::getLogger()->error("[ConfigurationManager] Unknown visor configuration: {}", key);
             }
         }
     }
@@ -511,7 +550,8 @@ private:
                     }
                     else
                     {
-                        LOGE("Unknown KeeperRecordingService configuration: %s", key);
+                        Logger::getLogger()->error(
+                                "[ConfigurationManager] Unknown KeeperRecordingService configuration: {}", key);
                     }
                 }
             }
@@ -528,7 +568,8 @@ private:
                     }
                     else
                     {
-                        LOGE("Unknown KeeperDataStoreAdminService configuration: %s", key);
+                        Logger::getLogger()->error(
+                                "[ConfigurationManager] Unknown KeeperDataStoreAdminService configuration: {}", key);
                     }
                 }
             }
@@ -545,7 +586,8 @@ private:
                     }
                     else
                     {
-                        LOGE("Unknown VisorKeeperRegistryService configuration: %s", key);
+                        Logger::getLogger()->error(
+                                "[ConfigurationManager] Unknown VisorKeeperRegistryService configuration: {}", key);
                     }
                 }
             }
@@ -556,7 +598,7 @@ private:
             }
             else
             {
-                LOGE("Unknown keeper configuration: %s", key);
+                Logger::getLogger()->error("[ConfigurationManager] Unknown keeper configuration: {}", key);
             }
         }
     }
@@ -578,17 +620,17 @@ private:
                     }
                     else
                     {
-                        LOGE("Unknown VisorClientPortalService configuration: %s", key);
+                        Logger::getLogger()->error(
+                                "[ConfigurationManager] Unknown VisorClientPortalService configuration: {}", key);
                     }
                 }
             }
             else
             {
-                LOGE("Unknown client configuration: %s", key);
+                Logger::getLogger()->error("[ConfigurationManager] Unknown client configuration: {}", key);
             }
         }
     }
-
 };
 }
 

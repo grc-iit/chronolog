@@ -4,6 +4,7 @@
 
 #include <string>
 #include <ostream>
+#include "log.h"
 
 namespace chronolog
 {

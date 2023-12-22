@@ -5,10 +5,8 @@
 #include <iostream>
 #include "KeeperIdCard.h"
 
-
 namespace chronolog
 {
-
 class ServiceId
 {
 public:
@@ -32,7 +30,6 @@ public:
 
     std::string &getIPasDottedString(std::string &a_string) const
     {
-
         char buffer[INET_ADDRSTRLEN];
         // convert ip from host to network byte order uint32_t
         uint32_t ip_net_order = htonl(ip_addr);
@@ -45,13 +42,9 @@ public:
 
 class KeeperRegistrationMsg
 {
-
     KeeperIdCard keeperIdCard;
     ServiceId adminServiceId;
-
 public:
-
-
     KeeperRegistrationMsg(KeeperIdCard const &keeper_card = KeeperIdCard{0, 0, 0}
                           , ServiceId const &admin_service_id = ServiceId{0, 0, 0}): keeperIdCard(keeper_card)
                                                                                      , adminServiceId(admin_service_id)
@@ -71,7 +64,6 @@ public:
         serT&keeperIdCard;
         serT&adminServiceId;
     }
-
 };
 
 }//namespace
@@ -86,7 +78,7 @@ inline std::ostream &operator<<(std::ostream &out, chronolog::ServiceId const se
 
 inline std::ostream &operator<<(std::ostream &out, chronolog::KeeperRegistrationMsg const &msg)
 {
-    out << "KeeperRegistrationMsg{" << msg.getKeeperIdCard() << "}{admin:" << msg.getAdminServiceId() << "}";
+    out << "{" << msg.getKeeperIdCard() << "}{admin:" << msg.getAdminServiceId() << "}";
     return out;
 }
 
