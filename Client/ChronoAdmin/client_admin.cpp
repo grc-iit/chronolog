@@ -30,6 +30,7 @@ Created by Aparna on 01/12/2023
 #include <client.h>
 #include <common.h>
 #include <cassert>
+#include "log.h"
 
 int main(int argc, char**argv)
 {
@@ -44,7 +45,8 @@ int main(int argc, char**argv)
 
     if(argc != 7)
     {
-        std::cout << " ChronoAdmin usage : ./ChronoAdmin -protocol p -hostname h -port n" << std::endl;
+        Logger::getLogger()->info("ChronoAdmin usage : ./ChronoAdmin -protocol p -hostname h -port n");
+        /*std::cout << " ChronoAdmin usage : ./ChronoAdmin -protocol p -hostname h -port n" << std::endl;*/
         exit(-1);
     }
 
@@ -88,7 +90,8 @@ int main(int argc, char**argv)
 
     if(protocol < 0 || protocol > 2)
     {
-        std::cout << " protocol not supported : valid values are 0 (sockets), 1 (tcp) and 2 (verbs)" << std::endl;
+        Logger::getLogger()->error("protocol not supported : valid values are 0 (sockets), 1 (tcp) and 2 (verbs)");
+        /*std::cout << " protocol not supported : valid values are 0 (sockets), 1 (tcp) and 2 (verbs)" << std::endl;*/
         end_program = true;
     }
 
@@ -100,7 +103,8 @@ int main(int argc, char**argv)
     struct hostent*he = gethostbyname(hostname.c_str());
     if(he == 0)
     {
-        std::cout << " hostname not found, Exiting" << std::endl;
+        Logger::getLogger()->error("hostname not found, Exiting");
+        /*std::cout << " hostname not found, Exiting" << std::endl;*/
         exit(-1);
     }
     in_addr**addr_list = (struct in_addr**)he->h_addr_list;
@@ -147,18 +151,33 @@ int main(int argc, char**argv)
     };
 
 
-    std::cout << " connected to server address : " << server_uri << std::endl;
+    Logger::getLogger()->info("connected to server address : {}", server_uri);
+    /*std::cout << " connected to server address : " << server_uri << std::endl;*/
 
-    std::cout << " Metadata operations : -c <string> , create a chronicle with name <string>  " << std::endl
-              << " -s <string1> <string2>, create a story with name string1+string2 : string1 = chronicle name, string2 = story name "
-              << std::endl << " -a -c <string>, acquire chronicle with name <string>" << std::endl
-              << " -a -s <string1> <string2>, acquire story with name string1+string2 : string1 = chronicle name, string2 = story name"
-              << std::endl << " -r -c <string>, release chronicle with name <string>" << std::endl
-              << " -r -s <string1> <string2>, release story with name string1+string2 : string1 = chronicle name, string2 = story name"
-              << std::endl << " -d -c <string>, destroy chronicle with name <string>" << std::endl
-              << " -d -s <string1> <string2>, destroy story with name string1+string2 : string1 = chronicle name, string2 = story name"
-              << std::endl << " -disconnect " << std::endl;
+    
+    Logger::getLogger()->info("Metadata operations : -c <string> , create a chronicle with name <string>");
+    Logger::getLogger()->info(
+            " -s <string1> <string2>, create a story with name string1+string2 : string1 = chronicle name, string2 = story name ");
+    Logger::getLogger()->info(" -a -c <string>, acquire chronicle with name <string>");
+    Logger::getLogger()->info(
+            " -a -s <string1> <string2>, acquire story with name string1+string2 : string1 = chronicle name, string2 = story name");
+    Logger::getLogger()->info(" -r -c <string>, release chronicle with name <string>");
+    Logger::getLogger()->info(
+            " -r -s <string1> <string2>, release story with name string1+string2 : string1 = chronicle name, string2 = story name");
+    Logger::getLogger()->info(" -d -c <string>, destroy chronicle with name <string>");
+    Logger::getLogger()->info(
+            " -d -s <string1> <string2>, destroy story with name string1+string2 : string1 = chronicle name, string2 = story name");
+    Logger::getLogger()->info(" -disconnect ");
 
+    /*std::cout << " Metadata operations : -c <string> , create a chronicle with name <string>  " << std::endl
+                  << " -s <string1> <string2>, create a story with name string1+string2 : string1 = chronicle name, string2 = story name "
+                  << std::endl << " -a -c <string>, acquire chronicle with name <string>" << std::endl
+                  << " -a -s <string1> <string2>, acquire story with name string1+string2 : string1 = chronicle name, string2 = story name"
+                  << std::endl << " -r -c <string>, release chronicle with name <string>" << std::endl
+                  << " -r -s <string1> <string2>, release story with name string1+string2 : string1 = chronicle name, string2 = story name"
+                  << std::endl << " -d -c <string>, destroy chronicle with name <string>" << std::endl
+                  << " -d -s <string1> <string2>, destroy story with name string1+string2 : string1 = chronicle name, string2 = story name"
+                  << std::endl << " -disconnect " << std::endl;*/
 
     std::vector <std::string> commands;
 

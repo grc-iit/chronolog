@@ -39,8 +39,11 @@ int main(int argc, char**argv)
         sleep(10);
         uint64_t log_time = get_chrono_timestamp();
         chl::LogEvent event(1, log_time, 7, i, "line_" + std::to_string(i));
-        std::cout << "generated_event {" << event.storyId << ":" << event.time() << ":" << event.clientId << ":"
-                  << event.index() << "}" << std::endl;
+        Logger::getLogger()->debug("generated_event {}:{}:{}:{}", event.storyId, event.time(), event.clientId
+                                   , event.index());
+        /*std::cout << "generated_event {" << event.storyId << ":" << event.time() << ":" << event.clientId << ":"
+                          << event.index() << "}" << std::endl;*/
+
 //        recordingClient->send_event_msg(event);
     }
 

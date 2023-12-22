@@ -1,4 +1,5 @@
 #include <boost/interprocess/ipc/message_queue.hpp>
+#include "log.h"
 
 using namespace boost::interprocess;
 
@@ -83,7 +84,8 @@ void run_command(ChronoLogClient*&client, std::string &msg_string, std::string &
             incorrect = true;
         if(incorrect)
         {
-            std::cout << " incorrect command, retry" << std::endl;
+            Logger::getLogger()->error("incorrect command, retry");
+            /*std::cout << " incorrect command, retry" << std::endl;*/
             return;
         }
 
@@ -116,7 +118,8 @@ void run_command(ChronoLogClient*&client, std::string &msg_string, std::string &
             struct hostent*he = gethostbyname(hostname.c_str());
             if(he == 0)
             {
-                std::cout << " hostname not found" << std::endl;
+                Logger::getLogger()->error("hostname not found");
+                /*std::cout << " hostname not found" << std::endl;*/
                 return;
             }
 
@@ -125,7 +128,9 @@ void run_command(ChronoLogClient*&client, std::string &msg_string, std::string &
             host_ip = std::string(ip_add);
 
             server_uri = protocolstring + "://" + host_ip + ":" + std::to_string(portno);
-            std::cout << " server_uri = " << server_uri << std::endl;
+            Logger::getLogger()->info("server_uri = {}", server_uri);
+            /*std::cout << " server_uri = " << server_uri << std::endl;*/
+
             if(client == nullptr)
             {
                 client = new ChronoLogClient((ChronoLogRPCImplementation)protocol, host_ip, portno);
@@ -136,12 +141,16 @@ void run_command(ChronoLogClient*&client, std::string &msg_string, std::string &
                 ret = client->Connect(server_uri, client_id, flags, offset);
                 assert(ret == chronolog::CL_SUCCESS);
             }
-            else std::cout << " client connected, Incorrect command, retry" << std::endl;
+            else
+                Logger::getLogger()->error("client connected, Incorrect command, retry");
+            /*std::cout << " client connected, Incorrect command, retry" << std::endl;*/
+
         }
         else
         {
             incorrect = true;
-            std::cout << " Incorrect command, retry" << std::endl;
+            Logger::getLogger()->error("incorrect command, retry");
+            /*std::cout << " incorrect command, retry" << std::endl;*/
             return;
         }
     }
@@ -156,7 +165,8 @@ void run_command(ChronoLogClient*&client, std::string &msg_string, std::string &
         if(command_subs.size() != 2) incorrect = true;
         if(incorrect)
         {
-            std::cout << " Incorrect command, retry" << std::endl;
+            Logger::getLogger()->error("incorrect command, retry");
+            /*std::cout << " incorrect command, retry" << std::endl;*/
             return;
         }
         std::string chronicle_name = command_subs[1];
@@ -172,7 +182,8 @@ void run_command(ChronoLogClient*&client, std::string &msg_string, std::string &
         if(command_subs.size() != 3) incorrect = true;
         if(incorrect)
         {
-            std::cout << " Incorrect command, retry" << std::endl;
+            Logger::getLogger()->error("incorrect command, retry");
+            /*std::cout << " incorrect command, retry" << std::endl;*/
             return;
         }
         std::string chronicle_name = command_subs[1];
@@ -190,7 +201,8 @@ void run_command(ChronoLogClient*&client, std::string &msg_string, std::string &
             incorrect = true;
         if(incorrect)
         {
-            std::cout << " Incorrect command, retry" << std::endl;
+            Logger::getLogger()->error("incorrect command, retry");
+            /*std::cout << " incorrect command, retry" << std::endl;*/
             return;
         }
         if(command_subs[1].compare("-c") == 0)
@@ -204,7 +216,8 @@ void run_command(ChronoLogClient*&client, std::string &msg_string, std::string &
             if(command_subs.size() != 4) incorrect = true;
             if(incorrect)
             {
-                std::cout << " Incorrect command, retry" << std::endl;
+                Logger::getLogger()->error("incorrect command, retry");
+                /*std::cout << " incorrect command, retry" << std::endl;*/
                 return;
             }
             std::string chronicle_name = command_subs[2];
@@ -218,7 +231,8 @@ void run_command(ChronoLogClient*&client, std::string &msg_string, std::string &
             incorrect = true;
         if(incorrect)
         {
-            std::cout << " Incorrect command, retry" << std::endl;
+            Logger::getLogger()->error("incorrect command, retry");
+            /*std::cout << " incorrect command, retry" << std::endl;*/
             return;
         }
         if(command_subs[1].compare("-c") == 0)
@@ -231,7 +245,8 @@ void run_command(ChronoLogClient*&client, std::string &msg_string, std::string &
             if(command_subs.size() != 4) incorrect = true;
             if(incorrect)
             {
-                std::cout << " Incorrect command, retry" << std::endl;
+                Logger::getLogger()->error("incorrect command, retry");
+                /*std::cout << " incorrect command, retry" << std::endl;*/
                 return;
             }
             std::string chronicle_name = command_subs[2];
@@ -245,7 +260,8 @@ void run_command(ChronoLogClient*&client, std::string &msg_string, std::string &
             incorrect = true;
         if(incorrect)
         {
-            std::cout << " Incorrect command,retry" << std::endl;
+            Logger::getLogger()->error("incorrect command, retry");
+            /*std::cout << " incorrect command, retry" << std::endl;*/
             return;
         }
         if(command_subs[1].compare("-c") == 0)
@@ -258,7 +274,8 @@ void run_command(ChronoLogClient*&client, std::string &msg_string, std::string &
             if(command_subs.size() != 4) incorrect = true;
             if(incorrect)
             {
-                std::cout << " Incorrect command, retry" << std::endl;
+                Logger::getLogger()->error("incorrect command, retry");
+                /*std::cout << " incorrect command, retry" << std::endl;*/
                 return;
             }
             std::string chronicle_name = command_subs[2];
