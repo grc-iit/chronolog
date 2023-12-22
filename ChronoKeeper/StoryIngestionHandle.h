@@ -42,7 +42,7 @@ public:
         if(!passiveDeque->empty() || activeDeque->empty())
         { return; }
 
-//INNA: check if atomic compare_and_swap will work here
+        //INNA: check if atomic compare_and_swap will work here
 
         std::lock_guard <std::mutex> lock_guard(ingestionMutex);
         if(!passiveDeque->empty() || activeDeque->empty())

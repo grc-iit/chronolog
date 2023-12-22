@@ -6,13 +6,14 @@
 #include <deque>
 #include <unordered_map>
 #include <mutex>
+#include "log.h"
 
 #include "chronolog_types.h"
 #include "StoryIngestionHandle.h"
 
 //
 // IngestionQueue is a funnel into the MemoryDataStore
-// std::deque guarantees O(1) time for addidng elements and resizing 
+// std::deque guarantees O(1) time for addidng elements and resizing
 // (vector of vectors implementation)
 
 namespace chronolog
@@ -33,39 +34,43 @@ public:
     {
         std::lock_guard <std::mutex> lock(ingestionQueueMutex);
         storyIngestionHandles.emplace(std::pair <StoryId, StoryIngestionHandle*>(story_id, ingestion_handle));
-        std::cout << "IngestionQueue: added handle for story {" << story_id << "} {" << ingestion_handle << "}"
-                  << " handlesMap.size=" << storyIngestionHandles.size() << std::endl;
-
-        std::cout << "IngestionQueue: addHandle : storyIngestionHandles {" << &storyIngestionHandles << "} .size="
-                  << storyIngestionHandles.size() << std::endl;
-
+        Logger::getLogger()->debug(
+                "[IngestionQueue] Added handle for StoryID={}: HandleAddress={}, StoryIngestionHandles={}, HandleMapSize={}"
+                , story_id, static_cast<void*>(ingestion_handle), reinterpret_cast<void*>(&storyIngestionHandles)
+                , storyIngestionHandles.size());
     }
 
     void removeIngestionHandle(StoryId const &story_id)
     {
-        std::cout << "IngestionQueue: removeHandle : storyIngestionHandles {" << &storyIngestionHandles << "} .size="
-                  << storyIngestionHandles.size() << std::endl;
         std::lock_guard <std::mutex> lock(ingestionQueueMutex);
-        storyIngestionHandles.erase(story_id);
-        std::cout << "IngestionQueue: removed handle for story {" << story_id << "}" << " handlesMap.size="
-                  << storyIngestionHandles.size() << std::endl;
+        if(storyIngestionHandles.erase(story_id))
+        {
+            Logger::getLogger()->debug("[IngestionQueue] Removed handle for StoryID={}. Current handle MapSize={}"
+                                       , story_id, storyIngestionHandles.size());
+        }
+        else
+        {
+            Logger::getLogger()->warn("[IngestionQueue] Tried to remove non-existent handle for StoryID={}.", story_id);
+        }
     }
 
     void ingestLogEvent(LogEvent const &event)
     {
-        std::cout << "IngestionQueue: ingestLogEvent : storyIngestionHandles {" << &storyIngestionHandles << "} .size="
-                  << storyIngestionHandles.size() << std::endl;
-        std::cout << "IngestionQueue: received event {" << event << "}" << std::endl;
-
+        std::stringstream ss;
+        ss << event;
+        Logger::getLogger()->debug("[IngestionQueue] Received event for StoryID={}: Event Details={}, HandleMapSize={}"
+                                   , event.storyId, ss.str(), storyIngestionHandles.size());
         auto ingestionHandle_iter = storyIngestionHandles.find(event.storyId);
         if(ingestionHandle_iter == storyIngestionHandles.end())
         {
-            std::cout << " orphan event {" << event << "}" << std::endl;
+            Logger::getLogger()->warn("[IngestionQueue] Orphan event for story {}. Storing for later processing."
+                                      , event.storyId);
             std::lock_guard <std::mutex> lock(ingestionQueueMutex);
             orphanEventQueue.push_back(event);
         }
         else
-        {       //individual StoryIngestionHandle has its own mutex
+        {
+            //individual StoryIngestionHandle has its own mutex
             (*ingestionHandle_iter).second->ingestEvent(event);
         }
     }
@@ -73,21 +78,28 @@ public:
     void drainOrphanEvents()
     {
         if(orphanEventQueue.empty())
-        { return; }
-
+        {
+            Logger::getLogger()->info("[IngestionQueue] Orphan event queue is empty. No actions taken.");
+            return;
+        }
         std::lock_guard <std::mutex> lock(ingestionQueueMutex);
         for(EventDeque::iterator iter = orphanEventQueue.begin(); iter != orphanEventQueue.end();)
         {
             auto ingestionHandle_iter = storyIngestionHandles.find((*iter).storyId);
             if(ingestionHandle_iter != storyIngestionHandles.end())
-            {    //individual StoryIngestionHandle has its own mutex
+            {
+                // Individual StoryIngestionHandle has its own mutex
                 (*ingestionHandle_iter).second->ingestEvent(*iter);
-                //remove the event from the orphan deque and get the iterator to the next element prior to removal
+                // Remove the event from the orphan deque and get the iterator to the next element prior to removal
                 iter = orphanEventQueue.erase(iter);
             }
             else
-            { ++iter; }
+            {
+                ++iter;
+            }
         }
+        Logger::getLogger()->debug("[IngestionQueue] Drained {} orphan events into known handles."
+                                   , orphanEventQueue.size());
     }
 
     bool is_empty() const
@@ -97,17 +109,17 @@ public:
 
     void shutDown()
     {
-        std::cout << "IngestionQueue: shutdown : storyIngestionHandles {" << storyIngestionHandles.size()
-                  << "} orphanEventQueue {" << orphanEventQueue.size() << "}" << std::endl;
+        Logger::getLogger()->info("[IngestionQueue] Initiating shutdown. HandleMapSize={}, Orphan EventQueueSize={}"
+                                  , storyIngestionHandles.size(), orphanEventQueue.size());
         // last attempt to drain orphanEventQueue into known ingestionHandles
         drainOrphanEvents();
         // disengage all handles
         std::lock_guard <std::mutex> lock(ingestionQueueMutex);
         storyIngestionHandles.clear();
+        Logger::getLogger()->info("[IngestionQueue] Shutdown completed. All handles disengaged.");
     }
 
 private:
-
     IngestionQueue(IngestionQueue const &) = delete;
 
     IngestionQueue &operator=(IngestionQueue const &) = delete;
@@ -121,7 +133,6 @@ private:
 
     //Timer to triger periodic attempt to drain orphanEventQueue and collect/log statistics
 };
-
 }
 
 #endif

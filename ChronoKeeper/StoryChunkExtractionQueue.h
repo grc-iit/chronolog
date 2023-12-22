@@ -5,6 +5,7 @@
 #include <iostream>
 #include <deque>
 #include <mutex>
+#include "log.h"
 
 #include "chrono_common/chronolog_types.h"
 #include "StoryChunk.h"
@@ -19,15 +20,20 @@ public:
     {}
 
     ~StoryChunkExtractionQueue()
-    { shutDown(); }
+    {
+        Logger::getLogger()->info("[StoryChunkExtractionQueue] Destructor called. Initiating queue shutdown.");
+        shutDown();
+    }
 
     void stashStoryChunk(StoryChunk*story_chunk)
     {
         if(nullptr == story_chunk)
-        { return; }
-
-        std::cout << "ExtractionQueue::stashStoryChunk: storyId{" << story_chunk->getStoryId() << "}{"
-                  << story_chunk->getStartTime() << std::endl;
+        {
+            Logger::getLogger()->warn("[StoryChunkExtractionQueue] Attempted to stash a null story chunk. Ignoring.");
+            return;
+        }
+        Logger::getLogger()->debug("[StoryChunkExtractionQueue] Stashed story chunk with StoryID={} and StartTime={}"
+                                   , story_chunk->getStoryId(), story_chunk->getStartTime());
         {
             std::lock_guard <std::mutex> lock(extractionQueueMutex);
             extractionDeque.push_back(story_chunk);
@@ -38,7 +44,10 @@ public:
     {
         std::lock_guard <std::mutex> lock(extractionQueueMutex);
         if(extractionDeque.empty())
-        { return nullptr; }
+        {
+            Logger::getLogger()->debug("[StoryChunkExtractionQueue] No story chunks available for ejection.");
+            return nullptr;
+        }
         StoryChunk*story_chunk = extractionDeque.front();
         extractionDeque.pop_front();
 
@@ -60,14 +69,13 @@ public:
 
     void shutDown()
     {
-        std::cout << "ExtractionQueue: shutdown : extractionQueue.size=" << extractionDeque.size() << std::endl;
+        Logger::getLogger()->info("[StoryChunkExtractionQueue] Initiating queue shutdown. Queue size: {}"
+                                  , extractionDeque.size());
         if(extractionDeque.empty())
         { return; }
 
         //INNA: LOG a WARNING and attempt to delay shutdown until the queue is drained by the Extraction module
-
         // if this fails , log an ERROR .
-
         // free the remaining storychunks memory...
         std::lock_guard <std::mutex> lock(extractionQueueMutex);
         while(!extractionDeque.empty())
@@ -75,6 +83,8 @@ public:
             delete extractionDeque.front();
             extractionDeque.pop_front();
         }
+        Logger::getLogger()->info(
+                "[StoryChunkExtractionQueue] Queue has been successfully shut down and all story chunks have been freed.");
     }
 
 private:
