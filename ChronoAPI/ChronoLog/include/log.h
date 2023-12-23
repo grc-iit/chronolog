@@ -20,21 +20,24 @@
 /**
  * @brief The Logger class provides a singleton logger with customizable configuration.
  */
-class Logger {
+class Logger
+{
 public:
     /**
      * @brief Initializes the logger with the specified configuration.
      * @param logType The type of logger ("file" or "console").
      * @param location The file location if logType is "file".
      * @param logLevel The logging level for the logger.
+     * @param loggerName The name of the logger.
      */
-    static void initialize(const std::string& logType, const std::string& location, spdlog::level::level_enum logLevel);
+    static void initialize(const std::string &logType, const std::string &location, spdlog::level::level_enum logLevel
+                           , const std::string &loggerName);
 
     /**
      * @brief Gets the shared pointer to the logger.
      * @return A shared pointer to the logger.
      */
-    static std::shared_ptr<spdlog::logger> getLogger();
+    static std::shared_ptr <spdlog::logger> getLogger();
 
 private:
     /**
@@ -50,7 +53,7 @@ private:
     /**
      * @brief The shared pointer to the logger.
      */
-    static std::shared_ptr<spdlog::logger> logger;
+    static std::shared_ptr <spdlog::logger> logger;
 };
 
 #endif //CHRONOLOG_LOG_H
