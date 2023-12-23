@@ -17,51 +17,91 @@ chronolog::Client*client;
 
 void thread_body(struct thread_arg*t)
 {
+    // Local variable declarations
     int flags = 0;
     uint64_t offset;
     int ret;
     std::string chronicle_name;
-    if(t->tid % 2 == 0) chronicle_name = "CHRONICLE_2";
-    else chronicle_name = "CHRONICLE_1";
+
+    // Determine chronicle name based on thread ID (even or odd)
+    if(t->tid % 2 == 0)
+        chronicle_name = "CHRONICLE_2";
+    else
+        chronicle_name = "CHRONICLE_1";
+
+    // Create attributes for the chronicle
     std::unordered_map <std::string, std::string> chronicle_attrs;
     chronicle_attrs.emplace("Priority", "High");
     flags = 1;
+
+    // Create the chronicle
     ret = client->CreateChronicle(chronicle_name, chronicle_attrs, flags);
+    Logger::getLogger()->debug("[ClientLibMultiStorytellers] Chronicle created: tid={}, ChronicleName={}, Flags: {}"
+                               , t->tid, chronicle_name, flags);
+
+    // Create attributes for the story
     std::string story_name = gen_random(STORY_NAME_LEN);
     std::unordered_map <std::string, std::string> story_attrs;
     flags = 2;
+
+    // Acquire the story
     auto acquire_ret = client->AcquireStory(chronicle_name, story_name, story_attrs, flags);
-    std::cout << "tid=" << t->tid << " AcquireStory {" << chronicle_name << ":" << story_name << "} ret: "
-              << acquire_ret.first << std::endl;
+    Logger::getLogger()->debug(
+            "[ClientLibMultiStorytellers] Story acquired: tid={}, ChronicleName={}, StoryName={}, Ret: {}", t->tid
+            , chronicle_name, story_name, acquire_ret.first);
+
+    // Assertion for successful story acquisition or expected errors
     assert(acquire_ret.first == chronolog::CL_SUCCESS || acquire_ret.first == chronolog::CL_ERR_NOT_EXIST ||
            acquire_ret.first == chronolog::CL_ERR_NO_KEEPERS);
 
+    // If story acquisition is successful, log events to the story
     if(chronolog::CL_SUCCESS == acquire_ret.first)
     {
         auto story_handle = acquire_ret.second;
         for(int i = 0; i < 100; ++i)
         {
+            // Log an event to the story
             story_handle->log_event("line " + std::to_string(i));
             std::this_thread::sleep_for(std::chrono::milliseconds(i % 10));
         }
 
-        ret = client->ReleaseStory(chronicle_name, story_name);//, flags);
-        std::cout << "tid=" << t->tid << " ReleaseStory {" << chronicle_name << ":" << story_name << "} ret: " << ret
-                  << std::endl;
+        // Release the story
+        ret = client->ReleaseStory(chronicle_name, story_name);
+        Logger::getLogger()->debug(
+                "[ClientLibMultiStorytellers] Story released: tid={}, ChronicleName={}, StoryName={}, Ret: {}", t->tid
+                , chronicle_name, story_name, ret);
+
+        // Assertion for successful story release or expected errors
         assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NO_CONNECTION);
     }
-    ret = client->DestroyStory(chronicle_name, story_name);//, flags);
-    std::cout << "tid=" << t->tid << " DestroyStory {" << chronicle_name << ":" << story_name << "} ret: " << ret
-              << std::endl;
+
+    // Destroy the story
+    ret = client->DestroyStory(chronicle_name, story_name);
+    Logger::getLogger()->debug(
+            "[ClientLibMultiStorytellers] Story destroyed: tid={}, ChronicleName={}, StoryName={}, Ret: {}", t->tid
+            , chronicle_name, story_name, ret);
+
+    // Assertion for successful story destruction or expected errors
     assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST || ret == chronolog::CL_ERR_ACQUIRED ||
            ret == chronolog::CL_ERR_NO_CONNECTION);
-    ret = client->DestroyChronicle(chronicle_name);//, flags);
+
+    // Destroy the chronicle
+    ret = client->DestroyChronicle(chronicle_name);
+    Logger::getLogger()->debug("[ClientLibMultiStorytellers] Chronicle destroyed: tid={}, ChronicleName={}", t->tid
+                               , chronicle_name);
+
+    // Assertion for successful chronicle destruction or expected errors
     assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST || ret == chronolog::CL_ERR_ACQUIRED ||
            ret == chronolog::CL_ERR_NO_CONNECTION);
 }
 
+
 int main(int argc, char**argv)
 {
+    //Logger::initialize("file", "/home/eneko/Desktop/ChronoLog/logs/logfile.txt", spdlog::level::err);
+    Logger::initialize("console", "/home/eneko/Desktop/ChronoLog/logs/logfile.txt", spdlog::level::trace
+                       , "ClientLogger");
+
     std::string default_conf_file_path = "./default_conf.json";
     std::string conf_file_path;
     conf_file_path = parse_conf_path_arg(argc, argv);
@@ -93,7 +133,7 @@ int main(int argc, char**argv)
 
     if(chronolog::CL_SUCCESS != ret)
     {
-        std::cout << "failed to connect to ChronoVisor" << std::endl;
+        Logger::getLogger()->error("[ClientLibMultiStorytellers] Failed to connect to ChronoVisor");
         delete client;
         return -1;
     }

@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include <regex>
 #include <filesystem>
+#include "log.h"
 
 int main(int argc, char*argv[])
 {
@@ -33,7 +34,9 @@ int main(int argc, char*argv[])
         }
 
         // Open the file and read its contents
-        std::cout << "reading from file " << entry.path().string() << std::endl;
+        Logger::getLogger()->info("Reading from file {}", entry.path().string());
+        /*std::cout << "reading from file " << entry.path().string() << std::endl;*/
+
         std::ifstream file(entry.path());
         uint64_t num;
         while(file >> num)
@@ -43,9 +46,12 @@ int main(int argc, char*argv[])
             total_count++;
         }
     }
-    std::cout << count_map.size() << " unique numbers are read" << std::endl;
+    Logger::getLogger()->info("{} unique numbers are read", count_map.size());
+    /*std::cout << count_map.size() << " unique numbers are read" << std::endl;*/
     double collision_ratio = 1 - count_map.size() * 1.0 / total_count;
-    std::cout << "Collision ratio: " << collision_ratio * 100 << "%" << std::endl;
+    Logger::getLogger()->info("Collision ratio: {}%", collision_ratio * 100);
+    /*std::cout << "Collision ratio: " << collision_ratio * 100 << "%" << std::endl;*/
+
 
     // Open a file to write the duplicate numbers and their counts
 //    std::ofstream out_file("duplicates.txt", std::ios::trunc);

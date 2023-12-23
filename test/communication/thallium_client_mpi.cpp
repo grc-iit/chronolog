@@ -22,20 +22,17 @@ using my_clock = steady_clock;
 void report_results(double duration_ave, double duration_min, double duration_max, double duration_wall
                     , double duration_init_ave, double duration_comm_ave)
 {
-    //std::cout << "Results" << std::endl
-    //<< std::setw(10) << "overall_ave" << " "
-    //<< std::setw(10) << "overall_min" << " "
-    //<< std::setw(10) << "overall_max" << " "
-    //<< std::setw(10) << "overall_wall" << " "
-    //<< std::setw(10) << "init_ave" << " "
-    //<< std::setw(10) << "comm_ave" << " "
-    //<< std::endl
-    //<< "---------------------------------------------------------------------------------------------------------------"
-    //<< std::endl;
-    std::cout << std::setw(10) << duration_ave << " " << std::setw(10) << duration_min << " " << std::setw(10)
-              << duration_max << " " << std::setw(10) << duration_wall << " " << std::setw(10) << duration_init_ave
-              << " " << std::setw(10) << duration_comm_ave << " " << std::endl;
+    // Logging the results with descriptive headers for better context.
+    Logger::getLogger()->info("[Performance Metrics Report]");
+    Logger::getLogger()->info("---------------------------------------------------------------");
+    Logger::getLogger()->info("{:>20} {:>20} {:>20} {:>20} {:>20} {:>20}", "Average Duration", "Minimum Duration"
+                              , "Maximum Duration", "Wall Duration", "Average Initialization Time"
+                              , "Average Communication Time");
+    Logger::getLogger()->info("---------------------------------------------------------------");
+    Logger::getLogger()->info("{:>20.2f} {:>20.2f} {:>20.2f} {:>20.2f} {:>20.2f} {:>20.2f}", duration_ave, duration_min
+                              , duration_max, duration_wall, duration_init_ave, duration_comm_ave);
 }
+
 
 void calculate_time(time_point <my_clock, nanoseconds> &t_bigbang, time_point <my_clock, nanoseconds> &t_local_init
                     , time_point <my_clock, nanoseconds> &t_local_finish
@@ -69,13 +66,13 @@ std::string get_server_address(const std::string &base_address, long num_servers
     std::string base_port = base_address.substr(base_address.rfind(':') + 1);
     // randomly select target server port
     long max_port = stoi(base_port) + num_servers - 1;
-//  std::uniform_int_distribution<long> distr(stoi(base_port), max_port);
-//  long new_port = distr(mt);
+    //  std::uniform_int_distribution<long> distr(stoi(base_port), max_port);
+    //  long new_port = distr(mt);
     // round-robin select target server port
     int new_port = atoi(base_port.c_str()) + rank % num_servers;
-    LOGD("newly generated port to use: %d", new_port);
+    Logger::getLogger()->debug("[ThalliumClientMPI] Selected server port based on rank {}: {}", rank, new_port);
     std::string new_addr_str = host_ip + ":" + std::to_string(new_port);
-    LOGI("engine@%s", new_addr_str.c_str());
+    Logger::getLogger()->info("[ThalliumClientMPI] Generated server address for engine: {}", new_addr_str);
     return new_addr_str;
 }
 
@@ -83,7 +80,8 @@ int main(int argc, char**argv)
 {
     if(argc < 4)
     {
-        std::cerr << "Usage: " << argv[0] << " <address> <#servers> <sendrecv|rdma> [repetition]" << std::endl;
+        Logger::getLogger()->error("[ThalliumClientMPI] Usage: {} <address> <#servers> <sendrecv|rdma> [repetition]"
+                                   , argv[0]);
         exit(0);
     }
 
@@ -121,7 +119,9 @@ int main(int argc, char**argv)
         tl::engine myEngine("ofi+sockets", THALLIUM_CLIENT_MODE);
         server_address = get_server_address(base_address, num_servers, my_rank);
         std::string rpc_name = "repeater";
-        LOGD("Searching for RPC with name %s on %s", rpc_name.c_str(), server_address.c_str());
+        Logger::getLogger()->debug(
+                "[ThalliumClientMPI] Attempting to establish RPC connection for sendrecv mode with server at: {}"
+                , server_address);
         tl::remote_procedure repeater = myEngine.define(rpc_name);
         tl::endpoint server = myEngine.lookup(server_address);
         tl::provider_handle ph(server);
@@ -140,7 +140,9 @@ int main(int argc, char**argv)
         tl::engine myEngine("ofi+sockets", THALLIUM_CLIENT_MODE);
         server_address = get_server_address(base_address, num_servers, my_rank);
         std::string rpc_name = "rdma_put";
-        LOGD("Searching for RPC with name %s on %s", rpc_name.c_str(), server_address.c_str());
+        Logger::getLogger()->debug(
+                "[ThalliumClientMPI] Attempting to establish RPC connection for RDMA mode with server at: {}"
+                , server_address);
         tl::remote_procedure rdma_put = myEngine.define(rpc_name).disable_response();
         tl::endpoint server = myEngine.lookup(server_address);
         std::vector <std::pair <void*, std::size_t>> segments(1);
@@ -156,7 +158,7 @@ int main(int argc, char**argv)
     }
     else
     {
-        std::cout << "Unknonw option " << mode << std::endl;
+        Logger::getLogger()->error("[ThalliumClientMPI] Invalid mode selected: {}", mode);
         exit(0);
     }
 
@@ -167,7 +169,8 @@ int main(int argc, char**argv)
     {
         if(ret_vec != send_vec)
         {
-            LOGE("Server returns wrong result");
+            Logger::getLogger()->error(
+                    "[ThalliumClientMPI] Mismatch detected: The server's response does not match the sent data.");
         }
         report_results(duration_ave, duration_min, duration_max, duration_wall, duration_init_ave, duration_comm_ave);
     }

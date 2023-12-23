@@ -15,11 +15,17 @@
 
 int main(int argc, char**argv)
 {
+    Logger::initialize("console", "/home/eneko/Desktop/ChronoLog/logs/logfile.txt", spdlog::level::trace
+                       , "ClientLogger");
+
     std::string default_conf_file_path = "./default_conf.json";
     std::string conf_file_path;
     conf_file_path = parse_conf_path_arg(argc, argv);
     if(conf_file_path.empty())
     {
+        Logger::getLogger()->warn(
+                "[ClientLibConnectRPCTest] No configuration path provided. Using default configuration path: {}"
+                , default_conf_file_path);
         conf_file_path = default_conf_file_path;
     }
 
@@ -68,8 +74,10 @@ int main(int argc, char**argv)
         duration_disconnect += (t2 - t1);
     };
 
-    LOGI("Connect takes %lf ns", duration_connect.count() / NUM_CONNECTION);
-    LOGI("Disconnect takes %lf ns", duration_disconnect.count() / NUM_CONNECTION);
+    Logger::getLogger()->info("[ClientLibConnectRPCTest] Average connection time: {} ns",
+            duration_connect.count() / NUM_CONNECTION);
+    Logger::getLogger()->info("[ClientLibConnectRPCTest] Average disconnection time: {} ns",
+            duration_disconnect.count() / NUM_CONNECTION);
 
     return 0;
 }

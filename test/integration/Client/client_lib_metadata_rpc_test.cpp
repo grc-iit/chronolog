@@ -16,11 +16,17 @@
 
 int main(int argc, char**argv)
 {
+    Logger::initialize("console", "/home/eneko/Desktop/ChronoLog/logs/logfile.txt", spdlog::level::trace
+                       , "ClientLogger");
+
     std::string default_conf_file_path = "./default_conf.json";
     std::string conf_file_path;
     conf_file_path = parse_conf_path_arg(argc, argv);
     if(conf_file_path.empty())
     {
+        Logger::getLogger()->warn(
+                "[ClientLibMetadataRPCTest] No configuration file path provided. Using default configuration: {}"
+                , default_conf_file_path);
         conf_file_path = default_conf_file_path;
     }
 
@@ -37,12 +43,15 @@ int main(int argc, char**argv)
             confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT);
 
     std::string client_id = gen_random(8);
+    Logger::getLogger()->info("[ClientLibMetadataRPCTest] Connecting to server with URI: {}", server_uri);
     client.Connect();
     chronicle_names.reserve(NUM_CHRONICLE);
+    Logger::getLogger()->info("[ClientLibMetadataRPCTest] Starting creation of {} chronicles.", NUM_CHRONICLE);
     for(int i = 0; i < NUM_CHRONICLE; i++)
     {
         std::string chronicle_name(gen_random(CHRONICLE_NAME_LEN));
         chronicle_names.emplace_back(chronicle_name);
+        Logger::getLogger()->info("[ClientLibMetadataRPCTest] Created chronicle: {}", chronicle_names[i]);
     }
 
     for(int i = 0; i < NUM_CHRONICLE; i++)
@@ -161,15 +170,24 @@ int main(int argc, char**argv)
         assert(ret == chronolog::CL_ERR_NOT_EXIST);
     }
 
-    LOGI("CreateChronicle takes %lf ns", duration_create_chronicle.count() / NUM_CHRONICLE);
-    LOGI("EditChronicleAttr takes %lf ns", duration_edit_chronicle_attr.count() / NUM_CHRONICLE);
-    LOGI("AcquireStory takes %lf ns", duration_acquire_story.count() / (NUM_CHRONICLE * NUM_STORY));
-    LOGI("ReleaseStory takes %lf ns", duration_release_story.count() / (NUM_CHRONICLE * NUM_STORY));
-    LOGI("DestroyStory takes %lf ns", duration_destroy_story.count() / (NUM_CHRONICLE * NUM_STORY));
-    LOGI("GetChronileAttr(Date) takes %lf ns", duration_get_chronicle_attr.count() / NUM_CHRONICLE);
-    LOGI("DestroyChronicle takes %lf ns", duration_destroy_chronicle.count() / NUM_CHRONICLE);
-    LOGI("ShowChronicles takes %lf ns", duration_show_chronicles.count() / NUM_CHRONICLE);
-    LOGI("ShowStories takes %lf ns", duration_show_stories.count() / NUM_CHRONICLE);
+    Logger::getLogger()->info("[ClientLibMetadataRPCTest] CreateChronicle takes {} ns",
+            duration_create_chronicle.count() / NUM_CHRONICLE);
+    Logger::getLogger()->info("[ClientLibMetadataRPCTest] EditChronicleAttr takes {} ns",
+            duration_edit_chronicle_attr.count() / NUM_CHRONICLE);
+    Logger::getLogger()->info("[ClientLibMetadataRPCTest] AcquireStory takes {} ns",
+            duration_acquire_story.count() / (NUM_CHRONICLE * NUM_STORY));
+    Logger::getLogger()->info("[ClientLibMetadataRPCTest] ReleaseStory takes {} ns",
+            duration_release_story.count() / (NUM_CHRONICLE * NUM_STORY));
+    Logger::getLogger()->info("[ClientLibMetadataRPCTest] DestroyStory takes {} ns",
+            duration_destroy_story.count() / (NUM_CHRONICLE * NUM_STORY));
+    Logger::getLogger()->info("[ClientLibMetadataRPCTest] GetChronileAttr(Date) takes {} ns",
+            duration_get_chronicle_attr.count() / NUM_CHRONICLE);
+    Logger::getLogger()->info("[ClientLibMetadataRPCTest] DestroyChronicle takes {} ns",
+            duration_destroy_chronicle.count() / NUM_CHRONICLE);
+    Logger::getLogger()->info("[ClientLibMetadataRPCTest] ShowChronicles takes {} ns",
+            duration_show_chronicles.count() / NUM_CHRONICLE);
+    Logger::getLogger()->info("[ClientLibMetadataRPCTest] ShowStories takes {} ns",
+            duration_show_stories.count() / NUM_CHRONICLE);
 
     duration_create_chronicle = std::chrono::duration <double, std::nano>();
     chronicle_names.clear();
@@ -201,10 +219,12 @@ int main(int argc, char**argv)
         assert(ret == chronolog::CL_SUCCESS);
         duration_destroy_chronicle += (t2 - t1);
     }
+    Logger::getLogger()->info("[ClientLibMetadataRPCTest] Disconnecting from the server.");
     client.Disconnect();
 
-    LOGI("CreateChronicle2 takes %lf ns", duration_create_chronicle.count() / NUM_CHRONICLE);
-    LOGI("DestroyChronicle2 takes %lf ns", duration_destroy_chronicle.count() / NUM_CHRONICLE);
-
+    Logger::getLogger()->info("[ClientLibMetadataRPCTest] CreateChronicle2 takes {} ns",
+            duration_create_chronicle.count() / NUM_CHRONICLE);
+    Logger::getLogger()->info("[ClientLibMetadataRPCTest] DestroyChronicle2 takes {} ns",
+            duration_destroy_chronicle.count() / NUM_CHRONICLE);
     return 0;
 }

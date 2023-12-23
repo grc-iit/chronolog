@@ -16,26 +16,46 @@ struct thread_arg
 
 void thread_function(void*t)
 {
+    Logger::getLogger()->info("[ClientLibHybridArgobotsTest] Starting thread function for thread ID: {}"
+                              , ((thread_arg*)t)->tid);
 
     ChronoLog::ConfigurationManager confManager("./default_conf.json");
     std::string server_ip = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP;
     int base_port = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT;
     std::string client_id = gen_random(8);
-    std::string server_uri = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.PROTO_CONF + "://" +
-                             confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP + std::to_string(
-            confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT);
+    std::string server_uri =
+            confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.PROTO_CONF + "://" + server_ip + ":" +
+            std::to_string(base_port);
     int flags = 0;
-    uint64_t offset;
-    int ret = client->Connect();//server_uri, client_id, flags);//, offset);
-    ret = client->Disconnect();//client_id, flags);
+
+    int ret = client->Connect(); // Connect to server using client_id and flags
+    if(ret == chronolog::CL_SUCCESS)
+    {
+        Logger::getLogger()->info("[ClientLibHybridArgobotsTest] Successfully connected to server for thread ID: {}"
+                                  , ((thread_arg*)t)->tid);
+    }
+
+    ret = client->Disconnect(); // Disconnect from server using client_id and flags
+    if(ret == chronolog::CL_SUCCESS)
+    {
+        Logger::getLogger()->info(
+                "[ClientLibHybridArgobotsTest] Successfully disconnected from server for thread ID: {}"
+                , ((thread_arg*)t)->tid);
+    }
 }
 
 int main(int argc, char**argv)
 {
+    Logger::initialize("console", "/home/eneko/Desktop/ChronoLog/logs/logfile.txt", spdlog::level::trace
+                       , "ClientLogger");
+    Logger::getLogger()->info("[ClientLibHybridArgobotsTest] Starting main function");
+
     std::vector <std::string> client_ids;
     std::atomic <long> duration_connect{}, duration_disconnect{};
     std::vector <std::thread> thread_vec;
     uint64_t offset;
+
+    Logger::getLogger()->info("[ClientLibHybridArgobotsTest] Initializing MPI with multiple threads support");
     int provided;
 
     MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &provided);
@@ -45,6 +65,9 @@ int main(int argc, char**argv)
     conf_file_path = parse_conf_path_arg(argc, argv);
     if(conf_file_path.empty())
     {
+        Logger::getLogger()->warn(
+                "[ClientLibHybridArgobotsTest] No configuration path provided. Using default configuration path: {}"
+                , default_conf_file_path);
         conf_file_path = default_conf_file_path;
     }
 
@@ -100,9 +123,9 @@ int main(int argc, char**argv)
     free(threads);
     free(t_args);
 
+    Logger::getLogger()->info("[ClientLibHybridArgobotsTest] Cleaning up resources and finalizing MPI");
     delete client;
-
     MPI_Finalize();
-
+    Logger::getLogger()->info("[ClientLibHybridArgobotsTest] Exiting main function");
     return 0;
 }

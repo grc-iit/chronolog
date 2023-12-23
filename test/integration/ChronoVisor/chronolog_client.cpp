@@ -28,7 +28,8 @@ int main()
                              {
                                  oss = pSerDe->serializeClientMessage(clientMsg);
                              }
-                             LOGD("Serialized client msg (len: %ld): %s", oss->str().length(), oss->str().c_str());
+                             Logger::getLogger()->debug("[ChronoLog Client] Serialized client msg (len: {}): {}"
+                                                        , oss->str().length(), oss->str().c_str());
                              t1 = std::chrono::high_resolution_clock::now();
                              client.send(oss->str());
                          });
@@ -42,8 +43,9 @@ int main()
                              }
                              t2 = std::chrono::high_resolution_clock::now();
                              duration = std::chrono::duration_cast <std::chrono::duration <double>>(t2 - t1);
-                             LOGD("server message received: %s", serverMsg->toString().c_str());
-                             std::cout << "Latency: " << duration.count() * 1000 << " ms" << std::endl;
+                             Logger::getLogger()->debug("[ChronoLog Client] Server message received: {}"
+                                                        , serverMsg->toString().c_str());
+                             Logger::getLogger()->info("[ChronoLog Client] Latency: {} ms", duration.count() * 1000);
 
                              usleep(3e6);
                              ClientMessage clientMsg;
@@ -52,7 +54,8 @@ int main()
                              {
                                  oss = pSerDe->serializeClientMessage(clientMsg);
                              }
-                             LOGD("Serialized client msg (len: %ld): %s", oss->str().length(), oss->str().c_str());
+                             Logger::getLogger()->debug("[ChronoLog Client] Serialized client msg (len: {}): {}"
+                                                        , oss->str().length(), oss->str().c_str());
                              t1 = std::chrono::high_resolution_clock::now();
                              client.send(oss->str());
                          });

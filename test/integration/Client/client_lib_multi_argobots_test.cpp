@@ -39,7 +39,8 @@ void thread_function(void*tt)
     chronicle_attrs.emplace("IndexGranularity", "Millisecond");
     chronicle_attrs.emplace("TieringPolicy", "Hot");
     ret = client->CreateChronicle(chronicle_name, chronicle_attrs, flags);
-    std::cout << "tid=" << t->tid << " Createchronicle {" << chronicle_name << "} ret: " << ret << std::endl;
+    Logger::getLogger()->debug("[ClientLibMultiArgobotsTest] Thread (ID: {}) - Created Chronicle: {}. Return Code: {}"
+                               , t->tid, chronicle_name, ret);
     assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_CHRONICLE_EXISTS ||
            ret == chronolog::CL_ERR_NO_KEEPERS);
     flags = 1;
@@ -50,25 +51,34 @@ void thread_function(void*tt)
     story_attrs.emplace("TieringPolicy", "Hot");
     flags = 2;
     auto acquire_ret = client->AcquireStory(chronicle_name, story_name, story_attrs, flags);
-    std::cout << "tid=" << t->tid << " AcquireStory {" << chronicle_name << ":" << story_name << "} ret: "
-              << acquire_ret.first << std::endl;
+    Logger::getLogger()->debug(
+            "[ClientLibMultiArgobotsTest] Thread ID: {} - Attempted to acquire Story: {} in Chronicle: {}. Result Code: {}"
+            , t->tid, story_name, chronicle_name, acquire_ret.first);
     assert(acquire_ret.first == chronolog::CL_SUCCESS || acquire_ret.first == chronolog::CL_ERR_NOT_EXIST ||
            acquire_ret.first == chronolog::CL_ERR_NO_KEEPERS);
     ret = client->DestroyStory(chronicle_name, story_name);
-    std::cout << "tid=" << t->tid << " DestroyStory {" << chronicle_name << ":" << story_name << "} ret: " << ret
-              << std::endl;
+
+    Logger::getLogger()->debug(
+            "[ClientLibMultiArgobotsTest] Thread ID: {} - Attempted to destroy story '{}' within chronicle '{}'. Result Code: {}"
+            , t->tid, story_name, chronicle_name, acquire_ret.first);
     assert(ret == chronolog::CL_ERR_ACQUIRED || ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST ||
            ret == chronolog::CL_ERR_NO_KEEPERS);
     ret = client->Disconnect();
-    std::cout << "tid=" << t->tid << " Disconnect{" << "} ret: " << ret << std::endl;
+
+    Logger::getLogger()->debug("[ClientLibMultiArgobotsTest] Thread ID: {} - Attempted disconnection. Result Code: {}"
+                               , t->tid, ret);
     assert(ret == chronolog::CL_ERR_ACQUIRED || ret == chronolog::CL_SUCCESS);
     ret = client->ReleaseStory(chronicle_name, story_name);
-    std::cout << "tid=" << t->tid << " ReleaseStory {" << chronicle_name << ":" << story_name << "} ret: " << ret
-              << std::endl;
+
+    Logger::getLogger()->debug(
+            "[ClientLibMultiArgobotsTest] Thread ID: {} - Released Story: {} from Chronicle: {}. Result Code: {}"
+            , t->tid, story_name, chronicle_name, ret);
     assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NO_KEEPERS || ret == chronolog::CL_ERR_NOT_EXIST);
     ret = client->DestroyStory(chronicle_name, story_name);
-    std::cout << "tid=" << t->tid << " DestroyStory {" << chronicle_name << ":" << story_name << "} ret: " << ret
-              << std::endl;
+
+    Logger::getLogger()->debug(
+            "[ClientLibMultiArgobotsTest] Thread ID: {} - Destroyed Story: {} from Chronicle: {}. Result Code: {}"
+            , t->tid, story_name, chronicle_name, ret);
     assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST || ret == chronolog::CL_ERR_ACQUIRED ||
            ret == chronolog::CL_ERR_NO_KEEPERS);
     ret = client->DestroyChronicle(chronicle_name);
@@ -77,6 +87,8 @@ void thread_function(void*tt)
 
 int main(int argc, char**argv)
 {
+    Logger::initialize("console", "/home/eneko/Desktop/ChronoLog/logs/logfile.txt", spdlog::level::trace
+                       , "ClientLogger");
     std::atomic <long> duration_connect{}, duration_disconnect{};
     std::vector <std::thread> thread_vec;
     uint64_t offset;
@@ -109,6 +121,15 @@ int main(int argc, char**argv)
     int flags = 0;
 
     int ret = client->Connect();//server_uri, client_id, flags);//, offset);
+    if(ret == chronolog::CL_SUCCESS)
+    {
+        Logger::getLogger()->info("[ClientLibMultiArgobotsTest] Connected to the server successfully.");
+    }
+    else
+    {
+        Logger::getLogger()->error("[ClientLibMultiArgobotsTest] Failed to connect to the server. Error code: {}", ret);
+        exit(1);  // Exit if connection fails
+    }
     assert(ret == chronolog::CL_SUCCESS);
 
     for(int i = 0; i < num_threads; i++)
@@ -153,8 +174,18 @@ int main(int argc, char**argv)
     free(xstreams);
     free(threads);
 
-    ret = client->Disconnect();//client_id, flags);
-    std::cout << "main Disconnect ret: " << ret << std::endl;
+    ret = client->Disconnect(); //client_id, flags);
+    ret = client->Disconnect();
+    if(ret == chronolog::CL_SUCCESS)
+    {
+        Logger::getLogger()->info("[ClientLibMultiArgobotsTest] Disconnected from the server successfully.");
+    }
+    else
+    {
+        Logger::getLogger()->error("[ClientLibMultiArgobotsTest] Failed to disconnect from the server. Error code: {}"
+                                   , ret);
+        // Handle the failure scenario accordingly
+    }
     assert(ret == chronolog::CL_SUCCESS);
 
     delete client;
