@@ -15,7 +15,6 @@ ChronicleMetaDirectory::ChronicleMetaDirectory()
     chronicleMap_ = new std::unordered_map <uint64_t, Chronicle*>();
 //    chronicleName2IdMap_ = new std::unordered_map<std::string, uint64_t>();
 //    chronicleId2NameMap_ = new std::unordered_map<uint64_t, std::string>();
-    LOGD("%s constructor finishes, object created@%p in thread PID=%d", typeid(*this).name(), this, getpid());
 }
 
 ChronicleMetaDirectory::~ChronicleMetaDirectory()
