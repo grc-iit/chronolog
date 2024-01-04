@@ -15,8 +15,8 @@
 
 int main(int argc, char**argv)
 {
-    Logger::initialize("console", "/home/eneko/Desktop/ChronoLog/logs/logfile.txt", spdlog::level::trace
-                       , "ClientLogger");
+    Logger::initialize("file", "../../logs/ChronoClient_initlogfile.txt", spdlog::level::debug, "ChronoClient");
+    Logger::getLogger()->info("[ClientLibConnectRPCTest] Init configuration process.");
 
     std::string default_conf_file_path = "./default_conf.json";
     std::string conf_file_path;
@@ -28,8 +28,14 @@ int main(int argc, char**argv)
                 , default_conf_file_path);
         conf_file_path = default_conf_file_path;
     }
-
     ChronoLog::ConfigurationManager confManager(conf_file_path);
+    Logger::getLogger()->info("[ClientLibConnectRPCTest] Configuration process completed.");
+    Logger::changeConfiguration(confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE
+                                , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
+                                , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
+                                , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME);
+    Logger::getLogger()->info("[ClientLibConnectRPCTest] Running test.");
+
     std::string server_ip = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP;
     int base_port = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT;
     int num_ports = 1; // Kun: hardcode for now

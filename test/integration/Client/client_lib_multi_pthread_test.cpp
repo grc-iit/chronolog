@@ -81,8 +81,8 @@ void thread_body(struct thread_arg*t)
 
 int main(int argc, char**argv)
 {
-    Logger::initialize("console", "/home/eneko/Desktop/ChronoLog/logs/logfile.txt", spdlog::level::trace
-                       , "ClientLogger");
+    Logger::initialize("file", "../../logs/ChronoClient_initlogfile.txt", spdlog::level::debug, "ChronoClient");
+    Logger::getLogger()->info("[ClientLibMultiPthreadTest] Init configuration process.");
     int provided;
     std::string client_id = gen_random(8);
 
@@ -98,8 +98,14 @@ int main(int argc, char**argv)
     {
         conf_file_path = default_conf_file_path;
     }
-
     ChronoLog::ConfigurationManager confManager(conf_file_path);
+    Logger::getLogger()->info("[ClientLibMultiPthreadTest] Configuration process completed.");
+    Logger::changeConfiguration(confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE
+                                , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
+                                , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
+                                , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME);
+    Logger::getLogger()->info("[ClientLibMultiPthreadTest] Running test.");
+
     std::string server_ip = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP;
     int base_port = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT;
     client = new chronolog::Client(confManager);//protocol, server_ip, base_port);

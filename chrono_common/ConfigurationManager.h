@@ -56,6 +56,44 @@ typedef struct RPCProviderConf_
     }
 } RPCProviderConf;
 
+typedef struct LogConf_
+{
+    std::string LOGTYPE;
+    std::string LOGFILE;
+    spdlog::level::level_enum LOGLEVEL;
+    std::string LOGNAME;
+
+    // Helper function to convert spdlog::level::level_enum to string
+    static std::string LogLevelToString(spdlog::level::level_enum level)
+    {
+        switch(level)
+        {
+            case spdlog::level::trace:
+                return "TRACE";
+            case spdlog::level::debug:
+                return "DEBUG";
+            case spdlog::level::info:
+                return "INFO";
+            case spdlog::level::warn:
+                return "WARN";
+            case spdlog::level::err:
+                return "ERROR";
+            case spdlog::level::critical:
+                return "CRITICAL";
+            case spdlog::level::off:
+                return "OFF";
+            default:
+                return "UNKNOWN";
+        }
+    }
+
+    [[nodiscard]] std::string to_String() const
+    {
+        return "[TYPE: " + LOGTYPE + ", FILE: " + LOGFILE + ", LEVEL: " + LogLevelToString(LOGLEVEL) + ", NAME: " +
+               LOGNAME + "]";
+    }
+} LogConf;
+
 typedef struct VisorClientPortalServiceConf_
 {
     RPCProviderConf RPC_CONF;
@@ -100,11 +138,13 @@ typedef struct VisorConf_
 {
     VisorClientPortalServiceConf VISOR_CLIENT_PORTAL_SERVICE_CONF;
     VisorKeeperRegistryServiceConf VISOR_KEEPER_REGISTRY_SERVICE_CONF;
+    LogConf VISOR_LOG_CONF;
 
     [[nodiscard]] std::string to_String() const
     {
         return "[VISOR_CLIENT_PORTAL_SERVICE_CONF: " + VISOR_CLIENT_PORTAL_SERVICE_CONF.to_String() +
-               ", VISOR_KEEPER_REGISTRY_SERVICE_CONF: " + VISOR_KEEPER_REGISTRY_SERVICE_CONF.to_String() + "]";
+               ", VISOR_KEEPER_REGISTRY_SERVICE_CONF: " + VISOR_KEEPER_REGISTRY_SERVICE_CONF.to_String() +
+               ", VISOR_LOG: " + VISOR_LOG_CONF.to_String() + "]";
     }
 } VisorConf;
 
@@ -114,23 +154,26 @@ typedef struct KeeperConf_
     KeeperDataStoreAdminServiceConf KEEPER_DATA_STORE_ADMIN_SERVICE_CONF;
     VisorKeeperRegistryServiceConf VISOR_KEEPER_REGISTRY_SERVICE_CONF;
     std::string STORY_FILES_DIR;
+    LogConf KEEPER_LOG_CONF;
 
     [[nodiscard]] std::string to_String() const
     {
         return "[KEEPER_RECORDING_SERVICE_CONF: " + KEEPER_RECORDING_SERVICE_CONF.to_String() +
                ", KEEPER_DATA_STORE_ADMIN_SERVICE_CONF: " + KEEPER_DATA_STORE_ADMIN_SERVICE_CONF.to_String() +
                ", VISOR_KEEPER_REGISTRY_SERVICE_CONF: " + VISOR_KEEPER_REGISTRY_SERVICE_CONF.to_String() +
-               ", STORY_FILES_DIR:" + STORY_FILES_DIR + "]";
+               ", STORY_FILES_DIR:" + STORY_FILES_DIR + ", KEEPER_LOG_CONF:" + KEEPER_LOG_CONF.to_String() + "]";
     }
 } KeeperConf;
 
 typedef struct ClientConf_
 {
     VisorClientPortalServiceConf VISOR_CLIENT_PORTAL_SERVICE_CONF;
+    LogConf CLIENT_LOG_CONF;
 
     [[nodiscard]] std::string to_String() const
     {
-        return "[VISOR_CLIENT_PORTAL_SERVICE_CONF: " + VISOR_CLIENT_PORTAL_SERVICE_CONF.to_String() + "]";
+        return "[VISOR_CLIENT_PORTAL_SERVICE_CONF: " + VISOR_CLIENT_PORTAL_SERVICE_CONF.to_String() +
+               ", CLIENT_LOG_CONF:" + CLIENT_LOG_CONF.to_String() + "]";
     }
 } ClientConf;
 
@@ -332,6 +375,46 @@ private:
         }
     }
 
+    void parselogLevelConf(json_object*json_conf, spdlog::level::level_enum &log_level)
+    {
+        if(json_object_is_type(json_conf, json_type_string))
+        {
+            const char*conf_str = json_object_get_string(json_conf);
+            if(strcmp(conf_str, "trace") == 0)
+            {
+                log_level = spdlog::level::trace;
+            }
+            else if(strcmp(conf_str, "info") == 0)
+            {
+                log_level = spdlog::level::info;
+            }
+            else if(strcmp(conf_str, "debug") == 0)
+            {
+                log_level = spdlog::level::debug;
+            }
+            else if(strcmp(conf_str, "warning") == 0)
+            {
+                log_level = spdlog::level::warn;
+            }
+            else if(strcmp(conf_str, "error") == 0)
+            {
+                log_level = spdlog::level::err;
+            }
+            else if(strcmp(conf_str, "critical") == 0)
+            {
+                log_level = spdlog::level::critical;
+            }
+            else
+            {
+                Logger::getLogger()->warn("[ConfigurationManager] Unknown log level: {}", conf_str);
+            }
+        }
+        else
+        {
+            Logger::getLogger()->error("[ConfigurationManager] Invalid rpc implementation configuration");
+        }
+    }
+
     void parseClockConf(json_object*clock_conf)
     {
         json_object_object_foreach(clock_conf, key, val)
@@ -462,6 +545,37 @@ private:
         }
     }
 
+    void parseLogConf(json_object*json_conf, LogConf &log_conf)
+    {
+        json_object_object_foreach(json_conf, key, val)
+        {
+            if(strcmp(key, "type") == 0)
+            {
+                assert(json_object_is_type(val, json_type_string));
+                log_conf.LOGTYPE = json_object_get_string(val);
+            }
+            else if(strcmp(key, "file") == 0)
+            {
+                assert(json_object_is_type(val, json_type_string));
+                log_conf.LOGFILE = json_object_get_string(val);
+            }
+            else if(strcmp(key, "level") == 0)
+            {
+                assert(json_object_is_type(val, json_type_string));
+                parselogLevelConf(val, log_conf.LOGLEVEL);
+            }
+            else if(strcmp(key, "name") == 0)
+            {
+                assert(json_object_is_type(val, json_type_string));
+                log_conf.LOGNAME = json_object_get_string(val);
+            }
+            else
+            {
+                Logger::getLogger()->error("[ConfigurationManager] Unknown log configuration: {}", key);
+            }
+        }
+    }
+
     void parseVisorConf(json_object*json_conf)
     {
         json_object_object_foreach(json_conf, key, val)
@@ -499,6 +613,22 @@ private:
                     {
                         Logger::getLogger()->error(
                                 "[ConfigurationManager] Unknown VisorKeeperRegistryService configuration: {}", key);
+                    }
+                }
+            }
+            else if(strcmp(key, "Logging") == 0)
+            {
+                assert(json_object_is_type(val, json_type_object));
+                json_object*chronovisor_log = json_object_object_get(json_conf, "Logging");
+                json_object_object_foreach(chronovisor_log, key, val)
+                {
+                    if(strcmp(key, "log") == 0)
+                    {
+                        parseLogConf(val, VISOR_CONF.VISOR_LOG_CONF);
+                    }
+                    else
+                    {
+                        Logger::getLogger()->error("[ConfigurationManager] Unknown VisorLog configuration: {}", key);
                     }
                 }
             }
@@ -566,6 +696,22 @@ private:
                     }
                 }
             }
+            else if(strcmp(key, "Logging") == 0)
+            {
+                assert(json_object_is_type(val, json_type_object));
+                json_object*chronokeeper_log = json_object_object_get(json_conf, "Logging");
+                json_object_object_foreach(chronokeeper_log, key, val)
+                {
+                    if(strcmp(key, "log") == 0)
+                    {
+                        parseLogConf(val, KEEPER_CONF.KEEPER_LOG_CONF);
+                    }
+                    else
+                    {
+                        Logger::getLogger()->error("[ConfigurationManager] Unknown KeeperLog configuration: {}", key);
+                    }
+                }
+            }
             else if(strcmp(key, "story_files_dir") == 0)
             {
                 assert(json_object_is_type(val, json_type_string));
@@ -580,6 +726,7 @@ private:
 
     void parseClientConf(json_object*json_conf)
     {
+        const char *string_value = json_object_get_string(json_conf);
         json_object_object_foreach(json_conf, key, val)
         {
             if(strcmp(key, "VisorClientPortalService") == 0)
@@ -597,6 +744,22 @@ private:
                     {
                         Logger::getLogger()->error(
                                 "[ConfigurationManager] Unknown VisorClientPortalService configuration: {}", key);
+                    }
+                }
+            }
+            else if(strcmp(key, "Logging") == 0)
+            {
+                assert(json_object_is_type(val, json_type_object));
+                json_object*chronoclient_log = json_object_object_get(json_conf, "Logging");
+                json_object_object_foreach(chronoclient_log, key, val)
+                {
+                    if(strcmp(key, "log") == 0)
+                    {
+                        parseLogConf(val, CLIENT_CONF.CLIENT_LOG_CONF);
+                    }
+                    else
+                    {
+                        Logger::getLogger()->error("[ConfigurationManager] Unknown ClientLog configuration: {}", key);
                     }
                 }
             }

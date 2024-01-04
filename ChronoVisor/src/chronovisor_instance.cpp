@@ -33,13 +33,8 @@ int main(int argc, char**argv)
     // If we can't ensure the instantiation of registries on the main thread
     // we'd need to add static mutex protection to all the registry singleton objects
 
-    //Logger::initialize("file", "/home/eneko/Desktop/ChronoLog/logs/logfile.txt", spdlog::level::err);
-    Logger::initialize("console", "/home/eneko/Desktop/ChronoLog/logs/logfile.txt", spdlog::level::debug
-                       , "ChronoVisor");
-
-    Logger::getLogger()->info("Running Chronovisor Server.");
-
-    Logger::getLogger()->info("Init configuration process.");
+    Logger::initialize("file", "../../logs/ChronoVisor_initlogfile.txt", spdlog::level::debug, "ChronoVisor");
+    Logger::getLogger()->info("[chronovisor_instance] Init configuration process.");
     std::string default_conf_file_path = "./default_conf.json";
     std::string conf_file_path;
     conf_file_path = parse_conf_path_arg(argc, argv);
@@ -48,7 +43,13 @@ int main(int argc, char**argv)
         conf_file_path = default_conf_file_path;
     }
     ChronoLog::ConfigurationManager confManager(conf_file_path);
-    Logger::getLogger()->info("Configuration process completed.");
+    Logger::getLogger()->info("[chronovisor_instance] Configuration process completed.");
+
+    Logger::changeConfiguration(confManager.VISOR_CONF.VISOR_LOG_CONF.LOGTYPE
+                                , confManager.VISOR_CONF.VISOR_LOG_CONF.LOGFILE
+                                , confManager.VISOR_CONF.VISOR_LOG_CONF.LOGLEVEL
+                                , confManager.VISOR_CONF.VISOR_LOG_CONF.LOGNAME);
+    Logger::getLogger()->info("[chronovisor_instance] Running Chronovisor Server.");
 
     chronolog::VisorClientPortal theChronoVisorPortal;
     chronolog::KeeperRegistry keeperRegistry;
@@ -59,7 +60,7 @@ int main(int argc, char**argv)
     theChronoVisorPortal.StartServices(confManager, &keeperRegistry);
 
     /////
-    Logger::getLogger()->info("ChronoVisor Running...");
+    Logger::getLogger()->info("[chronovisor_instance] ChronoVisor Running...");
     while(keep_running)
     {
         sleep(10);
@@ -67,6 +68,6 @@ int main(int argc, char**argv)
 
     theChronoVisorPortal.ShutdownServices();
     keeperRegistry.ShutdownRegistryService();
-    Logger::getLogger()->info("ChronoVisor shutdown.");
+    Logger::getLogger()->info("[chronovisor_instance] ChronoVisor shutdown.");
     return 0;
 }

@@ -34,22 +34,21 @@ public:
                            , const std::string &loggerName);
 
     /**
+     * @brief Changes the logger configuration at runtime.
+     * @param newLogType The new type of logger ("file" or "console").
+     * @param newLocation The new file location if logType is "file".
+     * @param newLogLevel The new logging level for the logger.
+     * @param newLoggerName The new name of the logger.
+     */
+    static void changeConfiguration(const std::string& newLogType, const std::string& newLocation, spdlog::level::level_enum newLogLevel, const std::string& newLoggerName);
+
+    /**
      * @brief Gets the shared pointer to the logger.
      * @return A shared pointer to the logger.
      */
     static std::shared_ptr <spdlog::logger> getLogger();
 
 private:
-    /**
-     * @brief Private constructor to enforce the singleton pattern.
-     */
-    Logger();
-
-    /**
-     * @brief Private destructor to enforce the singleton pattern.
-     */
-    ~Logger();
-
     /**
      * @brief The shared pointer to the logger.
      */
