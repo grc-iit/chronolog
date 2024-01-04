@@ -244,11 +244,6 @@ public:
                             , conf_file_path.c_str());
                     exit(chronolog::CL_ERR_INVALID_CONF);
                 }
-                else
-                {
-                    Logger::getLogger()->error("[ConfigurationManager] Unknown configuration item encountered: {}"
-                                               , key);
-                }
                 parseClockConf(clock_conf);
             }
             else if(strcmp(key, "authentication") == 0)
@@ -260,11 +255,6 @@ public:
                             "[ConfigurationManager] Error while parsing configuration file {}. Authentication configuration is not found or is not an object."
                             , conf_file_path.c_str());
                     exit(chronolog::CL_ERR_INVALID_CONF);
-                }
-                else
-                {
-                    Logger::getLogger()->error("[ConfigurationManager] Unknown configuration item encountered: {}"
-                                               , key);
                 }
                 parseAuthConf(auth_conf);
             }
@@ -278,11 +268,6 @@ public:
                             , conf_file_path.c_str());
                     exit(chronolog::CL_ERR_INVALID_CONF);
                 }
-                else
-                {
-                    Logger::getLogger()->error("[ConfigurationManager] Unknown configuration item encountered: {}"
-                                               , key);
-                }
                 parseVisorConf(chrono_visor_conf);
             }
             else if(strcmp(key, "chrono_keeper") == 0)
@@ -295,11 +280,6 @@ public:
                             , conf_file_path.c_str());
                     exit(chronolog::CL_ERR_INVALID_CONF);
                 }
-                else
-                {
-                    Logger::getLogger()->error("[ConfigurationManager] Unknown configuration item encountered: {}"
-                                               , key);
-                }
                 parseKeeperConf(chrono_keeper_conf);
             }
             else if(strcmp(key, "chrono_client") == 0)
@@ -311,11 +291,6 @@ public:
                             "[ConfigurationManager] Error while parsing configuration file {}. ChronoClient configuration is not found or is not an object."
                             , conf_file_path.c_str());
                     exit(chronolog::CL_ERR_INVALID_CONF);
-                }
-                else
-                {
-                    Logger::getLogger()->error("[ConfigurationManager] Unknown configuration item encountered: {}"
-                                               , key);
                 }
                 parseClientConf(chrono_client_conf);
             }
