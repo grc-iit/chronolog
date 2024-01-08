@@ -16,6 +16,7 @@
 namespace chronolog
 {
 
+
 class KeeperDataStore
 {
 
@@ -72,6 +73,7 @@ private:
     std::mutex dataStoreMutex;
     std::unordered_map <StoryId, StoryPipeline*> theMapOfStoryPipelines;
     std::unordered_map <StoryId, std::pair <StoryPipeline*, uint64_t>> pipelinesWaitingForExit;
+
 };
 
 }

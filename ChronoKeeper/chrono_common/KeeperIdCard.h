@@ -26,12 +26,15 @@ typedef uint64_t KeeperGroupId;
 
 class KeeperIdCard
 {
+
     uint64_t keeper_group_id;
     uint32_t ip_addr; //IP address as uint32_t in host byte order
     uint16_t port;    //port number as uint16_t in host byte order
     uint16_t tl_provider_id; // id of thallium service provider
 
 public:
+
+
     KeeperIdCard(uint64_t group_id = 0, uint32_t addr = 0, uint16_t a_port = 0, uint16_t provider_id = 0)
             : keeper_group_id(group_id), ip_addr(addr), port(a_port), tl_provider_id(provider_id)
     {}
@@ -54,6 +57,7 @@ public:
     uint16_t getProviderId() const
     { return tl_provider_id; }
 
+
     // serialization function used by thallium RPC providers
     // to serialize/deserialize KeeperIdCard
     template <typename SerArchiveT>
@@ -67,6 +71,7 @@ public:
 
     std::string &getIPasDottedString(std::string &a_string) const
     {
+
         char buffer[INET_ADDRSTRLEN];
         // convert ip from host to network byte order uint32_t
         uint32_t ip_net_order = htonl(ip_addr);
@@ -83,9 +88,10 @@ public:
 inline std::ostream &operator<<(std::ostream &out, chronolog::KeeperIdCard const &keeper_id_card)
 {
     std::string a_string;
-    out << "{" << keeper_id_card.getGroupId() << ":" << keeper_id_card.getIPasDottedString(a_string) << ":"
+    out << "KeeperIdCard{" << keeper_id_card.getGroupId() << ":" << keeper_id_card.getIPasDottedString(a_string) << ":"
         << keeper_id_card.getPort() << ":" << keeper_id_card.getProviderId() << "}";
     return out;
 }
+
 
 #endif

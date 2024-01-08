@@ -42,7 +42,7 @@ public:
 
 inline std::ostream &operator<<(std::ostream &out, chronolog::ConnectResponseMsg const &msg)
 {
-    out << "{" << msg.getErrorCode() << "}{client_id:" << msg.getClientId() << "}";
+    out << "ConnectResponseMsg{" << msg.getErrorCode() << "}{client_id:" << msg.getClientId() << "}";
     return out;
 }
 

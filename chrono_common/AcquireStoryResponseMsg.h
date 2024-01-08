@@ -5,6 +5,7 @@
 #include "chronolog_types.h"
 #include "KeeperIdCard.h"
 
+
 namespace chronolog
 {
 
@@ -51,10 +52,9 @@ inline std::ostream &operator<<(std::ostream &out, chronolog::AcquireStoryRespon
 {
     out << "AcquireStoryResponseMsg{" << msg.getErrorCode() << "}{story_id:" << msg.getStoryId() << "}{";
     for(chronolog::KeeperIdCard keeper_card: msg.getKeepers())
-    {
-        out << keeper_card;
-    }
+    { out << keeper_card; }
     out << "}";
+
     return out;
 }
 

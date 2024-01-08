@@ -39,7 +39,7 @@ public:
 
 inline std::ostream &operator<<(std::ostream &out, chronolog::KeeperStatsMsg const &stats_msg)
 {
-    out << "{" << stats_msg.getKeeperIdCard() << "}";
+    out << "KeeperStatsMsg{" << stats_msg.getKeeperIdCard() << "}";
     return out;
 }
 

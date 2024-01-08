@@ -22,6 +22,10 @@ public:
 private:
     KeeperIdCard keeperIdCard;
     std::string rootDirectory;
+
+
 };
+
+
 }
 #endif

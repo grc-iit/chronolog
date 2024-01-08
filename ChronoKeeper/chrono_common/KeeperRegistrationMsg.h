@@ -86,7 +86,7 @@ inline std::ostream &operator<<(std::ostream &out, chronolog::ServiceId const se
 
 inline std::ostream &operator<<(std::ostream &out, chronolog::KeeperRegistrationMsg const &msg)
 {
-    out << "{" << msg.getKeeperIdCard() << "}{admin:" << msg.getAdminServiceId() << "}";
+    out << "KeeperRegistrationMsg{" << msg.getKeeperIdCard() << "}{admin:" << msg.getAdminServiceId() << "}";
     return out;
 }
 
