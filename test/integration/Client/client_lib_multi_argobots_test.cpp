@@ -183,6 +183,7 @@ int main(int argc, char**argv)
     free(threads);
 
     ret = client->Disconnect(); //client_id, flags);
+    Logger::getLogger()->info("[ClientLibMultiArgobotsTest] Main disconnect return: {}", ret);
     ret = client->Disconnect();
     if(ret == chronolog::CL_SUCCESS)
     {
