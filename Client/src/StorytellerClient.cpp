@@ -157,7 +157,7 @@ int chronolog::StorytellerClient::addKeeperRecordingClient(chronolog::KeeperIdCa
     }
 
     // state = RUNNING;
-    Logger::getLogger()->debug("[StorytellerClient] RUNNING with {} KeeperRecordingClients", recordingClientMap.size());
+    Logger::getLogger()->info("[StorytellerClient] RUNNING with {} KeeperRecordingClients", recordingClientMap.size());
     return 1;
 }
 /////////////////
@@ -221,7 +221,7 @@ chronolog::StorytellerClient::initializeStoryWritingHandle(ChronicleName const &
     auto story_record_iter = acquiredStoryHandles.find(std::pair <std::string, std::string>(chronicle, story));
     if(story_record_iter != acquiredStoryHandles.end())
     {
-        Logger::getLogger()->info("[StorytellerClient] StoryHandle already exists for Chronicle: '{}' and Story: '{}'."
+        Logger::getLogger()->debug("[StorytellerClient] StoryHandle already exists for Chronicle: '{}' and Story: '{}'."
                                   , chronicle, story);
         return story_record_iter->second;
     }

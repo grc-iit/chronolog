@@ -60,8 +60,8 @@ int chronolog::VisorClientPortal::StartServices(ChronoLog::ConfigurationManager 
             return chronolog::CL_ERR_UNKNOWN;
         }
 
-        Logger::getLogger()->debug("[VisorClientPortal] margo_instance initialized with NA_STRING {}"
-                                   , CLIENT_PORTAL_SERVICE_NA_STRING);
+        Logger::getLogger()->info("[VisorClientPortal] margo_instance initialized with NA_STRING {}"
+                                  , CLIENT_PORTAL_SERVICE_NA_STRING);
 
         clientPortalEngine = new tl::engine(margo_id);
         clientPortalService = chl::ClientPortalService::CreateClientPortalService(*clientPortalEngine, provider_id
@@ -118,7 +118,7 @@ int chronolog::VisorClientPortal::ClientConnect(uint32_t client_euid, uint32_t c
             std::to_string(client_euid) + std::to_string(client_host_id) + std::to_string(client_pid);
     uint64_t client_token = CityHash64(client_account_for_hash.c_str(), client_account_for_hash.size());
     client_id = client_token;    //INNA: change this API...
-    Logger::getLogger()->debug("[VisorClientPortal] Client arguments: account={} host_id={} pid={} -> client_token={}"
+    Logger::getLogger()->info("[VisorClientPortal] Client arguments: account={} host_id={} pid={} -> client_token={}"
                                , client_euid, client_host_id, client_pid, client_token);
     return clientManager.add_client_record(client_token, record);
 }
@@ -145,7 +145,7 @@ int chronolog::VisorClientPortal::CreateChronicle(chl::ClientId const &client_id
     int return_code = chronicleMetaDirectory.create_chronicle(chronicle_name);
     if(return_code == CL_SUCCESS)
     {
-        Logger::getLogger()->debug("[VisorClientPortal] Chronicle created: PID={}, ClientID={}, Name={}", getpid()
+        Logger::getLogger()->info("[VisorClientPortal] Chronicle created: PID={}, ClientID={}, Name={}", getpid()
                                    , client_id, chronicle_name.c_str());
     }
     return (return_code);
@@ -173,7 +173,7 @@ chronolog::VisorClientPortal::DestroyChronicle(chl::ClientId const &client_id, c
 int chronolog::VisorClientPortal::DestroyStory(chl::ClientId const &client_id, std::string const &chronicle_name
                                                , std::string const &story_name)
 {
-    Logger::getLogger()->debug("[VisorClientPortal] Story destroyed: PID={}, ChronicleName={}, StoryName={}", getpid()
+    Logger::getLogger()->info("[VisorClientPortal] Story destroyed: PID={}, ChronicleName={}, StoryName={}", getpid()
                                , chronicle_name.c_str(), story_name.c_str());
     if(!story_action_is_authorized(client_id, chronicle_name, story_name))
     { return CL_ERR_NOT_AUTHORIZED; }
@@ -222,7 +222,7 @@ chronolog::VisorClientPortal::AcquireStory(chl::ClientId const &client_id, std::
     }
     else
     {
-        Logger::getLogger()->debug(
+        Logger::getLogger()->info(
                 "[VisorClientPortal] Story acquired: PID={}, ClientID={}, ChronicleName={}, StoryName={}, Flags={}"
                 , getpid(), client_id, chronicle_name.c_str(), story_name.c_str(), flags);
     }
@@ -249,7 +249,7 @@ chronolog::VisorClientPortal::AcquireStory(chl::ClientId const &client_id, std::
 int chronolog::VisorClientPortal::ReleaseStory(chl::ClientId const &client_id, std::string const &chronicle_name
                                                , std::string const &story_name)
 {
-    Logger::getLogger()->debug("[VisorClientPortal] Story released: PID={}, ChronicleName={}, StoryName={}", getpid()
+    Logger::getLogger()->info("[VisorClientPortal] Story released: PID={}, ChronicleName={}, StoryName={}", getpid()
                                , chronicle_name.c_str(), story_name.c_str());
 
     if(!story_action_is_authorized(client_id, chronicle_name, story_name))

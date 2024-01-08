@@ -44,7 +44,7 @@ void chronolog::StoryChunkExtractorBase::shutdownExtractionThreads()
 
     if(extractorState == SHUTTING_DOWN)
     {
-        Logger::getLogger()->warn(
+        Logger::getLogger()->info(
                 "[StoryChunkExtractionBase] ExtractionModule already shutting down. Skipping shutdown request.");
         return;
     }

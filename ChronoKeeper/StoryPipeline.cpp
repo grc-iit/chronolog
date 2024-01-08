@@ -106,7 +106,7 @@ void chronolog::StoryPipeline::finalize()
             storyTimelineMap.erase(storyTimelineMap.begin());
 
 #ifdef TRACE_CHUNK_EXTRACTION
-            Logger::getLogger()->debug("[StoryPipeline] Finalized chunk for StoryID={}. Is empty: {}", storyId
+            Logger::getLogger()->trace("[StoryPipeline] Finalized chunk for StoryID={}. Is empty: {}", storyId
                                        , extractedChunk->empty() ? "Yes" : "No");
 #endif
             if(extractedChunk->empty())
@@ -133,7 +133,7 @@ std::map <uint64_t, chronolog::StoryChunk*>::iterator chronolog::StoryPipeline::
     std::time_t time_t_chunk_start = std::chrono::high_resolution_clock::to_time_t(chunk_start_point);
     auto chunk_end_point = epoch_time_point + std::chrono::nanoseconds(timelineStart-chunkGranularity);
     std::time_t time_t_chunk_end = std::chrono::high_resolution_clock::to_time_t(chunk_end_point);
-    Logger::getLogger()->debug("[StoryPipeline] Prepending new chunk for StoryID={} starting at: {}",
+    Logger::getLogger()->trace("[StoryPipeline] Prepending new chunk for StoryID={} starting at: {}",
                                storyId, timelineStart);
 #endif
     auto result = storyTimelineMap.insert(
@@ -160,7 +160,7 @@ std::map <uint64_t, chronolog::StoryChunk*>::iterator chronolog::StoryPipeline::
     std::time_t time_t_chunk_start = std::chrono::high_resolution_clock::to_time_t(chunk_start_point);
     auto chunk_end_point = epoch_time_point + std::chrono::nanoseconds(timelineEnd+chunkGranularity);
     std::time_t time_t_chunk_end = std::chrono::high_resolution_clock::to_time_t(chunk_end_point);
-    Logger::getLogger()->debug("[StoryPipeline] Appending new chunk for StoryID={} starting at: {}",
+    Logger::getLogger()->trace("[StoryPipeline] Appending new chunk for StoryID={} starting at: {}",
                                storyId, timelineEnd);
 #endif
     auto result = storyTimelineMap.insert(
@@ -200,7 +200,7 @@ void chronolog::StoryPipeline::extractDecayedStoryChunks(uint64_t current_time)
             std::chrono::time_point <std::chrono::system_clock, std::chrono::nanoseconds>{} // epoch_time_point{};
             + std::chrono::nanoseconds(head_chunk_end_time + acceptanceWindow);
     std::time_t time_t_decay = std::chrono::high_resolution_clock::to_time_t(decay_point);
-    Logger::getLogger()->debug(
+    Logger::getLogger()->trace(
             "[StoryPipeline] StoryID: {} - Current time: {} - Timeline size: {} - Head chunk decay time: {}", storyId
             , std::ctime(&time_t_current_time), storyTimelineMap.size(), std::ctime(&time_t_decay));
 #endif
@@ -225,7 +225,7 @@ void chronolog::StoryPipeline::extractDecayedStoryChunks(uint64_t current_time)
         if(extractedChunk != nullptr)
         {
 #ifdef TRACE_CHUNK_EXTRACTION
-            Logger::getLogger()->debug("[StoryPipeline] StoryID: {} - Extracted chunk with start time {} is empty: {}"
+            Logger::getLogger()->trace("[StoryPipeline] StoryID: {} - Extracted chunk with start time {} is empty: {}"
                                        , storyId, extractedChunk->getStartTime(), (extractedChunk->empty() ? "Yes"
                                                                                                            : "No"));
 #endif
@@ -240,7 +240,7 @@ void chronolog::StoryPipeline::extractDecayedStoryChunks(uint64_t current_time)
         }
     }
 #ifdef TRACE_CHUNK_EXTRACTION
-    Logger::getLogger()->debug("[StoryPipeline] Extracting decayed chunks for StoryID={}. Queue size: {}", storyId
+    Logger::getLogger()->trace("[StoryPipeline] Extracting decayed chunks for StoryID={}. Queue size: {}", storyId
                                , theExtractionQueue.size());
 #endif
 }

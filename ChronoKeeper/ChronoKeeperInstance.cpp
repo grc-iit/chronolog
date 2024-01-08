@@ -103,7 +103,7 @@ int main(int argc, char**argv)
 
     if(-1 == service_endpoint_from_dotted_string(datastore_service_ip, datastore_service_port, datastore_endpoint))
     {
-        Logger::getLogger()->error(
+        Logger::getLogger()->critical(
                 "[ChronoKeeperInstance] Failed to start DataStoreAdminService. Invalid endpoint provided.");
         return (-1);
     }
@@ -126,7 +126,7 @@ int main(int argc, char**argv)
     if(-1 == service_endpoint_from_dotted_string(KEEPER_RECORDING_SERVICE_IP, KEEPER_RECORDING_SERVICE_PORT
                                                  , recording_endpoint))
     {
-        Logger::getLogger()->error(
+        Logger::getLogger()->critical(
                 "[ChronoKeeperInstance] Failed to start KeeperRecordingService. Invalid endpoint provided.");
         return (-1);
     }
@@ -138,7 +138,7 @@ int main(int argc, char**argv)
 
     std::stringstream ss;
     ss << keeperIdCard;
-    Logger::getLogger()->debug("[ChronoKeeperInstance] KeeperIdCard: {}", ss.str());
+    Logger::getLogger()->info("[ChronoKeeperInstance] KeeperIdCard: {}", ss.str());
 
     // Instantiate ChronoKeeper MemoryDataStore & ExtractorModule
     chronolog::IngestionQueue ingestionQueue;
@@ -175,7 +175,7 @@ int main(int argc, char**argv)
 
     if(nullptr == keeperDataAdminService)
     {
-        Logger::getLogger()->error("[ChronoKeeperInstance] Keeper failed to create DataStoreAdminService exiting");
+        Logger::getLogger()->critical("[ChronoKeeperInstance] Keeper failed to create DataStoreAdminService exiting");
         if(dataAdminEngine)
         { delete dataAdminEngine; }
         return (-1);
@@ -192,7 +192,7 @@ int main(int argc, char**argv)
 
         std::stringstream s1;
         s1 << recordingEngine->self();
-        Logger::getLogger()->debug(
+        Logger::getLogger()->info(
                 "[ChronoKeeperInstance] GroupID={} starting KeeperRecordingService at {} with provider_id {}"
                 , keeper_group_id, s1.str(), datastore_service_provider_id);
         keeperRecordingService = chronolog::KeeperRecordingService::CreateKeeperRecordingService(*recordingEngine
@@ -206,7 +206,7 @@ int main(int argc, char**argv)
 
     if(nullptr == keeperRecordingService)
     {
-        Logger::getLogger()->error("[ChronoKeeperInstance] Keeper failed to create KeeperRecordingService exiting");
+        Logger::getLogger()->critical("[ChronoKeeperInstance] Keeper failed to create KeeperRecordingService exiting");
         delete keeperDataAdminService;
         return (-1);
     }
@@ -225,7 +225,7 @@ int main(int argc, char**argv)
 
     if(nullptr == keeperRegistryClient)
     {
-        Logger::getLogger()->error("[ChronoKeeperInstance] Keeper failed to create KeeperRegistryClient; exiting");
+        Logger::getLogger()->critical("[ChronoKeeperInstance] Keeper failed to create KeeperRegistryClient; exiting");
         delete keeperRecordingService;
         delete keeperDataAdminService;
         return (-1);
@@ -244,7 +244,7 @@ int main(int argc, char**argv)
 
     if(chronolog::CL_SUCCESS != registration_status)
     {
-        Logger::getLogger()->error(
+        Logger::getLogger()->critical(
                 "[ChronoKeeperInstance] Failed to register with ChronoVisor after multiple attempts. Exiting.");
         delete keeperRegistryClient;
         delete keeperRecordingService;

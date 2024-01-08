@@ -60,7 +60,7 @@ public:
     ~KeeperRecordingClient()
     {
         record_event.deregister();
-        Logger::getLogger()->info("[KeeperRecordingClient] Destructor called. Deregistered record_event.");
+        Logger::getLogger()->debug("[KeeperRecordingClient] Destructor called. Deregistered record_event.");
     }
 
 private:

@@ -58,7 +58,7 @@ public:
         int status = chronolog::CL_ERR_UNKNOWN;
         try
         {
-            Logger::getLogger()->debug("[DataStoreAdminClient] Shutdown");
+            Logger::getLogger()->info("[DataStoreAdminClient] Shutdown");
             status = shutdown_data_collection.on(service_handle)();
         }
         catch(tl::exception const &ex)

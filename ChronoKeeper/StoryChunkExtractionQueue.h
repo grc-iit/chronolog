@@ -21,7 +21,7 @@ public:
 
     ~StoryChunkExtractionQueue()
     {
-        Logger::getLogger()->info("[StoryChunkExtractionQueue] Destructor called. Initiating queue shutdown.");
+        Logger::getLogger()->debug("[StoryChunkExtractionQueue] Destructor called. Initiating queue shutdown.");
         shutDown();
     }
 

@@ -26,7 +26,7 @@ public:
 
     ~DataStoreAdminService()
     {
-        Logger::getLogger()->info("[DataStoreAdminService] Destructor called. Cleaning up...");
+        Logger::getLogger()->debug("[DataStoreAdminService] Destructor called. Cleaning up...");
         //remove provider finalization callback from the engine's list
         get_engine().pop_finalize_callback(this);
     }

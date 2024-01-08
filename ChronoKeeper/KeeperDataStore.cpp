@@ -28,7 +28,7 @@ int chronolog::KeeperDataStore::startStoryRecording(std::string const &chronicle
                                                     , chronolog::StoryId const &story_id, uint64_t start_time
                                                     , uint32_t time_chunk_duration, uint32_t access_window)
 {
-    Logger::getLogger()->debug("[KeeperDataStore] Start recording story: Chronicle={}, Story={}, StoryID={}", chronicle
+    Logger::getLogger()->info("[KeeperDataStore] Start recording story: Chronicle={}, Story={}, StoryID={}", chronicle
                                , story, story_id);
 
     // Get dataStoreMutex, check for story_id_presense & add new StoryPipeline if needed
@@ -36,7 +36,7 @@ int chronolog::KeeperDataStore::startStoryRecording(std::string const &chronicle
     auto pipeline_iter = theMapOfStoryPipelines.find(story_id);
     if(pipeline_iter != theMapOfStoryPipelines.end())
     {
-        Logger::getLogger()->debug("[KeeperDataStore] Story already being recorded. StoryID: {}", story_id);
+        Logger::getLogger()->info("[KeeperDataStore] Story already being recorded. StoryID: {}", story_id);
         //check it the pipeline was put on the waitingForExit list by the previous acquisition
         // and remove it from there
         auto waiting_iter = pipelinesWaitingForExit.find(story_id);
@@ -198,7 +198,7 @@ void chronolog::KeeperDataStore::startDataCollection(int stream_count)
     std::lock_guard storeLock(dataStoreStateMutex);
     if(is_running() || is_shutting_down())
     {
-        Logger::getLogger()->warn(
+        Logger::getLogger()->info(
                 "[KeeperDataStore] Data collection is already running or shutting down. Ignoring request.");
         return;
     }
@@ -234,7 +234,7 @@ void chronolog::KeeperDataStore::shutdownDataCollection()
     std::lock_guard storeLock(dataStoreStateMutex);
     if(is_shutting_down())
     {
-        Logger::getLogger()->warn(
+        Logger::getLogger()->info(
                 "[KeeperDataStore] Data collection is already shutting down. Ignoring additional shutdown request.");
         return;
     }

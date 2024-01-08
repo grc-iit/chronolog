@@ -79,7 +79,7 @@ public:
     {
         if(orphanEventQueue.empty())
         {
-            Logger::getLogger()->info("[IngestionQueue] Orphan event queue is empty. No actions taken.");
+            Logger::getLogger()->debug("[IngestionQueue] Orphan event queue is empty. No actions taken.");
             return;
         }
         std::lock_guard <std::mutex> lock(ingestionQueueMutex);

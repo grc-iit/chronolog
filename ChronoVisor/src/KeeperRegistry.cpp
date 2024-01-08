@@ -35,17 +35,17 @@ int KeeperRegistry::InitializeRegistryService(ChronoLog::ConfigurationManager co
 
         if(MARGO_INSTANCE_NULL == margo_id)
         {
-            Logger::getLogger()->error("[KeeperRegistry] Failed to initialize margo_instance");
+            Logger::getLogger()->critical("[KeeperRegistry] Failed to initialize margo_instance");
             return -1;
         }
-        Logger::getLogger()->debug("[KeeperRegistry] margo_instance initialized with NA_STRING {}"
+        Logger::getLogger()->info("[KeeperRegistry] margo_instance initialized with NA_STRING {}"
                                    , KEEPER_REGISTRY_SERVICE_NA_STRING);
 
         registryEngine = new tl::engine(margo_id);
 
         std::stringstream ss;
         ss << registryEngine->self();
-        Logger::getLogger()->debug("[KeeperRegistry] Starting at address {} with provider id: {}", ss.str()
+        Logger::getLogger()->info("[KeeperRegistry] Starting at address {} with provider id: {}", ss.str()
                                    , provider_id);
 
         keeperRegistryService = KeeperRegistryService::CreateKeeperRegistryService(*registryEngine, provider_id, *this);
@@ -71,12 +71,12 @@ int KeeperRegistry::ShutdownRegistryService()
 
     if(is_shutting_down())
     {
-        Logger::getLogger()->debug("[KeeperRegistry] Shutdown");
+        Logger::getLogger()->info("[KeeperRegistry] Shutdown");
         return chronolog::CL_SUCCESS;
     }
 
     registryState = SHUTTING_DOWN;
-    Logger::getLogger()->debug("[KeeperRegistry] Shutting down...");
+    Logger::getLogger()->info("[KeeperRegistry] Shutting down...");
 
     // send out shutdown instructions to 
     // all the registered keeper processes
@@ -89,7 +89,7 @@ int KeeperRegistry::ShutdownRegistryService()
             {
                 std::stringstream ss;
                 ss << process.second.idCard;
-                Logger::getLogger()->debug("[KeeperRegistry] Sending shutdown to keeper {}", ss.str());
+                Logger::getLogger()->info("[KeeperRegistry] Sending shutdown to keeper {}", ss.str());
                 process.second.keeperAdminClient->shutdown_collection();
                 delete process.second.keeperAdminClient;
             }
@@ -180,7 +180,7 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const &keeper_re
     if(keeperProcessRegistry.size() > 0)
     { registryState = RUNNING; }
 
-    Logger::getLogger()->debug("[KeeperRegistry] RUNNING with {} KeeperProcesses", keeperProcessRegistry.size());
+    Logger::getLogger()->info("[KeeperRegistry] RUNNING with {} KeeperProcesses", keeperProcessRegistry.size());
 
     return chronolog::CL_SUCCESS;
 }
@@ -211,7 +211,7 @@ int KeeperRegistry::unregisterKeeperProcess(KeeperIdCard const &keeper_id_card)
     if(!is_shutting_down() && (0 == keeperProcessRegistry.size()))
     {
         registryState = INITIALIZED;
-        Logger::getLogger()->debug("[KeeperRegistry] INITIALIZED with {} KeeperProcesses"
+        Logger::getLogger()->info("[KeeperRegistry] INITIALIZED with {} KeeperProcesses"
                                    , keeperProcessRegistry.size());
     }
 
@@ -267,7 +267,7 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart(std::vector <KeeperIdCard
 {
     if(!is_running())
     {
-        Logger::getLogger()->debug("[KeeperRegistry] Registry has no Keeper processes to start story recording");
+        Logger::getLogger()->warn("[KeeperRegistry] Registry has no Keeper processes to start story recording");
         return chronolog::CL_ERR_NO_KEEPERS;
     }
 
@@ -319,7 +319,7 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart(std::vector <KeeperIdCard
             }
             std::stringstream s4;
             s4 << keeper_id_card;
-            Logger::getLogger()->debug(
+            Logger::getLogger()->info(
                     "[KeeperRegistry] Registry notified keeper {} to start recording StoryID={} at StartTime={}"
                     , s4.str(), storyId, story_start_time);
             keepers_left_to_notify--;
@@ -390,7 +390,7 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStop(std::vector <KeeperIdCard>
             }
             std::stringstream s3;
             s3 << keeper_id_card;
-            Logger::getLogger()->debug("[KeeperRegistry] Registry notified keeper {} to stop recording story {}"
+            Logger::getLogger()->info("[KeeperRegistry] Registry notified keeper {} to stop recording story {}"
                                        , s3.str(), storyId);
             keepers_left_to_notify--;
         }

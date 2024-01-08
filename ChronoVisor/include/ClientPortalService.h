@@ -136,7 +136,7 @@ private:
         //setup finalization callback in case this ser vice provider is still alive when the engine is finalized
         std::stringstream ss;
         ss << get_engine().self();
-        Logger::getLogger()->debug("[ClientPortalService] Started at address {} with provider id {}", ss.str()
+        Logger::getLogger()->info("[ClientPortalService] Started at address {} with provider id {}", ss.str()
                                    , service_provider_id);
         get_engine().push_finalize_callback(this, [p = this]()
         { delete p; });
