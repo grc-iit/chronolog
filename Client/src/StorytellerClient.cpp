@@ -288,7 +288,7 @@ void chronolog::StorytellerClient::removeAcquiredStoryHandle(ChronicleName const
     auto story_record_iter = acquiredStoryHandles.find(std::pair <std::string, std::string>(chronicle, story));
     if(story_record_iter != acquiredStoryHandles.end())
     {
-        delete story_record_iter->second;
+        delete (*story_record_iter).second;
         acquiredStoryHandles.erase(story_record_iter);
         Logger::getLogger()->info(
                 "[StorytellerClient] Successfully removed StoryHandle for Chronicle: '{}' and Story: '{}'.", chronicle
