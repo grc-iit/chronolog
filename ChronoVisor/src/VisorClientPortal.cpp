@@ -103,7 +103,8 @@ chronolog::VisorClientPortal::~VisorClientPortal()
 int chronolog::VisorClientPortal::ClientConnect(uint32_t client_euid, uint32_t client_host_id, uint32_t client_pid
                                                 , chl::ClientId &client_id, uint64_t &clock_offset)
 {
-    Logger::getLogger()->info("New Client Connected.");
+    Logger::getLogger()->info("New Client Connected. ClientEUID={}, ClientHostID={}, ClientPID={}", client_euid
+                              , client_host_id, client_pid);
     ClientInfo record;
 
     if(!is_client_authenticated(client_euid))
@@ -124,8 +125,7 @@ int chronolog::VisorClientPortal::ClientConnect(uint32_t client_euid, uint32_t c
 
 int chronolog::VisorClientPortal::ClientDisconnect(chronolog::ClientId const &client_id)
 {
-    Logger::getLogger()->info("Client Disconnected.");
-    Logger::getLogger()->debug("[VisorClientPortal] Disconnected client arguments: ClientID={}", client_id);
+    Logger::getLogger()->info("Client Disconnected. ClientID={}", client_id);
     return clientManager.remove_client_record(client_id);
 }
 
