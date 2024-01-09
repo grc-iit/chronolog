@@ -3,6 +3,7 @@
 #include <common.h>
 #include <thread>
 #include <cmd_arg_parse.h>
+#include "log.h"
 
 #define STORY_NAME_LEN 32
 
@@ -81,8 +82,6 @@ void thread_body(struct thread_arg*t)
 
 int main(int argc, char**argv)
 {
-    Logger::initialize("file", "../../logs/ChronoClient_initlogfile.txt", spdlog::level::debug, "ChronoClient");
-    Logger::getLogger()->info("[ClientLibMultiPthreadTest] Init configuration process.");
     int provided;
     std::string client_id = gen_random(8);
 
@@ -91,19 +90,16 @@ int main(int argc, char**argv)
     std::vector <struct thread_arg> t_args(num_threads);
     std::vector <std::thread> workers(num_threads);
 
-    std::string default_conf_file_path = "./default_conf.json";
     std::string conf_file_path;
     conf_file_path = parse_conf_path_arg(argc, argv);
     if(conf_file_path.empty())
     {
-        conf_file_path = default_conf_file_path;
+        std::exit(EXIT_FAILURE);
     }
     ChronoLog::ConfigurationManager confManager(conf_file_path);
-    Logger::getLogger()->info("[ClientLibMultiPthreadTest] Configuration process completed.");
-    Logger::changeConfiguration(confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE
-                                , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
-                                , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
-                                , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME);
+    Logger::initialize(confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE, confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
+                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
+                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME);
     Logger::getLogger()->info("[ClientLibMultiPthreadTest] Running test.");
 
     std::string server_ip = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP;

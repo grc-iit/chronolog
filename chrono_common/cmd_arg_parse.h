@@ -7,7 +7,7 @@
 
 #include <getopt.h>
 #include <string>
-#include <log.h>
+#include <iostream>
 
 std::string parse_conf_path_arg(int argc, char**argv)
 {
@@ -29,12 +29,13 @@ std::string parse_conf_path_arg(int argc, char**argv)
                 break;
             case '?':
                 // Invalid option or missing argument
-                Logger::getLogger()->error(
-                        "[cmd_arg_parse] Invalid usage: Please provide a configuration file path using -c or --config option.");
+                std::cout
+                        << "[cmd_arg_parse] Invalid usage: Please provide a configuration file path using -c or --config option."
+                        << std::endl;
                 exit(EXIT_FAILURE);
             default:
                 // Unknown option
-                Logger::getLogger()->error("[cmd_arg_parse] Encountered an unknown option: {}", static_cast<char>(opt));
+                std::cerr << "[cmd_arg_parse] Encountered an unknown option: " << static_cast<char>(opt) << std::endl;
                 exit(EXIT_FAILURE);
         }
     }
@@ -42,12 +43,12 @@ std::string parse_conf_path_arg(int argc, char**argv)
     // Check if the config file option is provided
     if(config_file)
     {
-        Logger::getLogger()->debug("[cmd_arg_parse] Configuration file path provided: {}", config_file);
+        std::cout << "[cmd_arg_parse] Configuration file path provided: " << config_file << std::endl;
         return {std::string(config_file)};
     }
     else
     {
-        Logger::getLogger()->debug("[cmd_arg_parse] No configuration file path provided; using default configuration.");
+        std::cerr << "[cmd_arg_parse] No configuration file path provided" << std::endl;
         return "";
     }
 }

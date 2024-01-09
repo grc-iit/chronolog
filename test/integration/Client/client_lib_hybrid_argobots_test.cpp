@@ -6,6 +6,7 @@
 #include <abt.h>
 #include <mpi.h>
 #include <cmd_arg_parse.h>
+#include "log.h"
 
 chronolog::Client*client;
 
@@ -46,35 +47,24 @@ void thread_function(void*t)
 
 int main(int argc, char**argv)
 {
-    Logger::initialize("file", "../../logs/ChronoClient_initlogfile.txt", spdlog::level::debug, "ChronoClient");
-    Logger::getLogger()->info("[ClientLibHybridArgobotsTest] Init configuration process.");
-
     std::vector <std::string> client_ids;
     std::atomic <long> duration_connect{}, duration_disconnect{};
     std::vector <std::thread> thread_vec;
     uint64_t offset;
-
-    Logger::getLogger()->info("[ClientLibHybridArgobotsTest] Initializing MPI with multiple threads support");
     int provided;
 
     MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &provided);
 
-    std::string default_conf_file_path = "./default_conf.json";
     std::string conf_file_path;
     conf_file_path = parse_conf_path_arg(argc, argv);
     if(conf_file_path.empty())
     {
-        Logger::getLogger()->warn(
-                "[ClientLibHybridArgobotsTest] No configuration path provided. Using default configuration path: {}"
-                , default_conf_file_path);
-        conf_file_path = default_conf_file_path;
+        std::exit(EXIT_FAILURE);
     }
     ChronoLog::ConfigurationManager confManager(conf_file_path);
-    Logger::getLogger()->info("[ClientLibHybridArgobotsTest] Configuration process completed.");
-    Logger::changeConfiguration(confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE
-                                , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
-                                , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
-                                , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME);
+    Logger::initialize(confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE, confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
+                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
+                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME);
     Logger::getLogger()->info("[ClientLibHybridArgobotsTest] Running test.");
 
     std::string server_ip = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP;

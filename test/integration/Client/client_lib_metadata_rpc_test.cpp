@@ -7,6 +7,7 @@
 #include "common.h"
 #include <cassert>
 #include <cmd_arg_parse.h>
+#include "log.h"
 
 #define NUM_CHRONICLE (10)
 #define NUM_STORY (10)
@@ -16,25 +17,16 @@
 
 int main(int argc, char**argv)
 {
-    Logger::initialize("file", "../../logs/ChronoClient_initlogfile.txt", spdlog::level::debug, "ChronoClient");
-    Logger::getLogger()->info("[ClientLibMetadataRPCTest] Init configuration process.");
-
-    std::string default_conf_file_path = "./default_conf.json";
     std::string conf_file_path;
     conf_file_path = parse_conf_path_arg(argc, argv);
     if(conf_file_path.empty())
     {
-        Logger::getLogger()->warn(
-                "[ClientLibMetadataRPCTest] No configuration file path provided. Using default configuration: {}"
-                , default_conf_file_path);
-        conf_file_path = default_conf_file_path;
+        std::exit(EXIT_FAILURE);
     }
     ChronoLog::ConfigurationManager confManager(conf_file_path);
-    Logger::getLogger()->info("[ClientLibMetadataRPCTest] Configuration process completed.");
-    Logger::changeConfiguration(confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE
-                                , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
-                                , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
-                                , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME);
+    Logger::initialize(confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE, confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
+                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
+                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME);
     Logger::getLogger()->info("[ClientLibMetadataRPCTest] Running test.");
 
     chronolog::Client client(confManager);

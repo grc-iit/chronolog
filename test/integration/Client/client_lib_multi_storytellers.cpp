@@ -4,6 +4,7 @@
 #include <thread>
 #include <chrono>
 #include <cmd_arg_parse.h>
+#include "log.h"
 
 #define STORY_NAME_LEN 5
 
@@ -98,15 +99,11 @@ void thread_body(struct thread_arg*t)
 
 int main(int argc, char**argv)
 {
-    Logger::initialize("console", "../../../../logs/ChronoClient_initlogfile.txt", spdlog::level::debug, "ChronoClient");
-    Logger::getLogger()->info("[ClientLibMultiStorytellers] Init configuration process.");
-
-    std::string default_conf_file_path = "./default_conf.json";
     std::string conf_file_path;
     conf_file_path = parse_conf_path_arg(argc, argv);
     if(conf_file_path.empty())
     {
-        conf_file_path = default_conf_file_path;
+        std::exit(EXIT_FAILURE);
     }
 
     int provided;
@@ -119,8 +116,7 @@ int main(int argc, char**argv)
 
     ChronoLogRPCImplementation protocol = CHRONOLOG_THALLIUM_SOCKETS;
     ChronoLog::ConfigurationManager confManager(conf_file_path);
-    Logger::getLogger()->info("[ClientLibMultiStorytellers] Configuration process completed.");
-    Logger::changeConfiguration(confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE
+    Logger::initialize(confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE
                                 , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
                                 , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
                                 , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME);

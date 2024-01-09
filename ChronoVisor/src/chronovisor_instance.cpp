@@ -4,7 +4,7 @@
 
 #include "cmd_arg_parse.h"
 #include "KeeperRegistry.h"
-
+#include "log.h"
 #include "VisorClientPortal.h"
 
 volatile sig_atomic_t keep_running = true;
@@ -33,22 +33,15 @@ int main(int argc, char**argv)
     // If we can't ensure the instantiation of registries on the main thread
     // we'd need to add static mutex protection to all the registry singleton objects
 
-    Logger::initialize("file", "../../logs/ChronoVisor_initlogfile.txt", spdlog::level::debug, "ChronoVisor");
-    Logger::getLogger()->info("[chronovisor_instance] Init configuration process.");
-    std::string default_conf_file_path = "./default_conf.json";
     std::string conf_file_path;
     conf_file_path = parse_conf_path_arg(argc, argv);
     if(conf_file_path.empty())
     {
-        conf_file_path = default_conf_file_path;
+        std::exit(EXIT_FAILURE);
     }
     ChronoLog::ConfigurationManager confManager(conf_file_path);
-    Logger::getLogger()->info("[chronovisor_instance] Configuration process completed.");
-
-    Logger::changeConfiguration(confManager.VISOR_CONF.VISOR_LOG_CONF.LOGTYPE
-                                , confManager.VISOR_CONF.VISOR_LOG_CONF.LOGFILE
-                                , confManager.VISOR_CONF.VISOR_LOG_CONF.LOGLEVEL
-                                , confManager.VISOR_CONF.VISOR_LOG_CONF.LOGNAME);
+    Logger::initialize(confManager.VISOR_CONF.VISOR_LOG_CONF.LOGTYPE, confManager.VISOR_CONF.VISOR_LOG_CONF.LOGFILE
+                       , confManager.VISOR_CONF.VISOR_LOG_CONF.LOGLEVEL, confManager.VISOR_CONF.VISOR_LOG_CONF.LOGNAME);
     Logger::getLogger()->info("[chronovisor_instance] Running Chronovisor Server.");
 
     chronolog::VisorClientPortal theChronoVisorPortal;

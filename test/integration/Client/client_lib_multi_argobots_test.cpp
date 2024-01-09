@@ -7,6 +7,7 @@
 #include <abt.h>
 #include <atomic>
 #include <cmd_arg_parse.h>
+#include "log.h"
 
 #define CHRONICLE_NAME_LEN 32
 #define STORY_NAME_LEN 32
@@ -87,27 +88,20 @@ void thread_function(void*tt)
 
 int main(int argc, char**argv)
 {
-    Logger::initialize("file", "../../logs/ChronoClient_initlogfile.txt", spdlog::level::debug, "ChronoClient");
-    Logger::getLogger()->info("[ClientLibMultiArgobotsTest] Init configuration process.");
-
     std::atomic <long> duration_connect{}, duration_disconnect{};
     std::vector <std::thread> thread_vec;
     uint64_t offset;
 
-    std::string default_conf_file_path = "./default_conf.json";
     std::string conf_file_path;
     conf_file_path = parse_conf_path_arg(argc, argv);
     if(conf_file_path.empty())
     {
-        conf_file_path = default_conf_file_path;
+        std::exit(EXIT_FAILURE);
     }
-
     ChronoLog::ConfigurationManager confManager(conf_file_path);
-    Logger::getLogger()->info("[ClientLibMultiArgobotsTest] Configuration process completed.");
-    Logger::changeConfiguration(confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE
-                                , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
-                                , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
-                                , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME);
+    Logger::initialize(confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE, confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
+                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
+                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME);
     Logger::getLogger()->info("[ClientLibMultiArgobotsTest] Running test.");
 
 

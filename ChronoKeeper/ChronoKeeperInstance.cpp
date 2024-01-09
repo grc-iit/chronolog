@@ -64,25 +64,17 @@ int main(int argc, char**argv)
     int exit_code = 0;
     signal(SIGTERM, sigterm_handler);
 
-    // Initialize the logger
-    Logger::initialize("file", "../../logs/ChronoKeeper_initlogfile.txt", spdlog::level::debug, "ChronoKeeper");
-    Logger::getLogger()->info("[ChronoKeeperInstance] Init configuration process.");
-
     /// Configure SetUp ________________________________________________________________________________________________
-    std::string default_conf_file_path = "./default_conf.json";
     std::string conf_file_path;
     conf_file_path = parse_conf_path_arg(argc, argv);
     if(conf_file_path.empty())
     {
-        conf_file_path = default_conf_file_path;
+        std::exit(EXIT_FAILURE);
     }
     ChronoLog::ConfigurationManager confManager(conf_file_path);
-    Logger::getLogger()->info("Configuration process completed.");
-
-    Logger::changeConfiguration(confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGTYPE
-                                , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILE
-                                , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGLEVEL
-                                , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGNAME);
+    Logger::initialize(confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGTYPE, confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILE
+                       , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGLEVEL
+                       , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGNAME);
     Logger::getLogger()->info("Running Chronokeeper Server.");
 
     // Instantiate ChronoKeeper MemoryDataStore

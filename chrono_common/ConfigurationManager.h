@@ -9,8 +9,8 @@
 #include <unordered_map>
 #include <json-c/json.h>
 #include <sstream>
+#include <spdlog/common.h>
 #include "enum.h"
-#include "log.h"
 #include "chronolog_errcode.h"
 
 namespace ChronoLog
@@ -190,7 +190,7 @@ public:
 
     ConfigurationManager()
     {
-        Logger::getLogger()->info("[ConfigurationManager] Initializing configuration with default settings.");
+        std::cout << "[ConfigurationManager] Initializing configuration with default settings." << std::endl;
         ROLE = CHRONOLOG_UNKNOWN;
 
         /* Clock-related configurations */
@@ -248,20 +248,20 @@ public:
 
     explicit ConfigurationManager(const std::string &conf_file_path)
     {
-        Logger::getLogger()->info("[ConfigurationManager] Loading configuration from file: {}", conf_file_path.c_str());
+        std::cout << "[ConfigurationManager] Loading configuration from file: " << conf_file_path.c_str() << std::endl;
         LoadConfFromJSONFile(conf_file_path);
     }
 
     void PrintConf() const
     {
-        Logger::getLogger()->info("******** Start of configuration output ********");
-        Logger::getLogger()->info("ROLE: {}", getServiceRoleString(ROLE));
-        Logger::getLogger()->info("CLOCK_CONF: {}", CLOCK_CONF.to_String().c_str());
-        Logger::getLogger()->info("AUTH_CONF: {}", AUTH_CONF.to_String().c_str());
-        Logger::getLogger()->info("VISOR_CONF: {}", VISOR_CONF.to_String().c_str());
-        Logger::getLogger()->info("KEEPER_CONF: {}", KEEPER_CONF.to_String().c_str());
-        Logger::getLogger()->info("CLIENT_CONF: {}", CLIENT_CONF.to_String().c_str());
-        Logger::getLogger()->info("******** End of configuration output ********");
+        std::cout << "******** Start of configuration output ********" << std::endl;
+        std::cout << "ROLE: " << getServiceRoleString(ROLE) << std::endl;
+        std::cout << "CLOCK_CONF: " << CLOCK_CONF.to_String().c_str() << std::endl;
+        std::cout << "AUTH_CONF: " << AUTH_CONF.to_String().c_str() << std::endl;
+        std::cout << "VISOR_CONF: " << VISOR_CONF.to_String().c_str() << std::endl;
+        std::cout << "KEEPER_CONF: " << KEEPER_CONF.to_String().c_str() << std::endl;
+        std::cout << "CLIENT_CONF: " << CLIENT_CONF.to_String().c_str() << std::endl;
+        std::cout << "******** End of configuration output ********" << std::endl;
     }
 
     void LoadConfFromJSONFile(const std::string &conf_file_path)
@@ -269,9 +269,8 @@ public:
         json_object*root = json_object_from_file(conf_file_path.c_str());
         if(root == nullptr)
         {
-            Logger::getLogger()->error(
-                    "[ConfigurationManager] Failed to open configuration file at path: {}. Exiting..."
-                    , conf_file_path.c_str());
+            std::cerr << "[ConfigurationManager] Failed to open configuration file at path: " << conf_file_path.c_str()
+                      << ". Exiting..." << std::endl;
             exit(chronolog::CL_ERR_NOT_EXIST);
         }
 
@@ -282,9 +281,9 @@ public:
                 json_object*clock_conf = json_object_object_get(root, "clock");
                 if(clock_conf == nullptr || !json_object_is_type(clock_conf, json_type_object))
                 {
-                    Logger::getLogger()->error(
-                            "[ConfigurationManager] Error while parsing configuration file {}. Clock configuration is not found or is not an object."
-                            , conf_file_path.c_str());
+                    std::cerr << "[ConfigurationManager] Error while parsing configuration file "
+                              << conf_file_path.c_str() << ". Clock configuration is not found or is not an object."
+                              << std::endl;
                     exit(chronolog::CL_ERR_INVALID_CONF);
                 }
                 parseClockConf(clock_conf);
@@ -294,9 +293,9 @@ public:
                 json_object*auth_conf = json_object_object_get(root, "authentication");
                 if(auth_conf == nullptr || !json_object_is_type(auth_conf, json_type_object))
                 {
-                    Logger::getLogger()->error(
-                            "[ConfigurationManager] Error while parsing configuration file {}. Authentication configuration is not found or is not an object."
-                            , conf_file_path.c_str());
+                    std::cerr << "[ConfigurationManager] Error while parsing configuration file "
+                              << conf_file_path.c_str()
+                              << ". Authentication configuration is not found or is not an object." << std::endl;
                     exit(chronolog::CL_ERR_INVALID_CONF);
                 }
                 parseAuthConf(auth_conf);
@@ -306,9 +305,9 @@ public:
                 json_object*chrono_visor_conf = json_object_object_get(root, "chrono_visor");
                 if(chrono_visor_conf == nullptr || !json_object_is_type(chrono_visor_conf, json_type_object))
                 {
-                    Logger::getLogger()->error(
-                            "[ConfigurationManager] Error while parsing configuration file {}. ChronoVisor configuration is not found or is not an object."
-                            , conf_file_path.c_str());
+                    std::cerr << "[ConfigurationManager] Error while parsing configuration file "
+                              << conf_file_path.c_str()
+                              << ". ChronoVisor configuration is not found or is not an object." << std::endl;
                     exit(chronolog::CL_ERR_INVALID_CONF);
                 }
                 parseVisorConf(chrono_visor_conf);
@@ -318,9 +317,9 @@ public:
                 json_object*chrono_keeper_conf = json_object_object_get(root, "chrono_keeper");
                 if(chrono_keeper_conf == nullptr || !json_object_is_type(chrono_keeper_conf, json_type_object))
                 {
-                    Logger::getLogger()->error(
-                            "[ConfigurationManager] Error while parsing configuration file {}. ChronoKeeper configuration is not found or is not an object."
-                            , conf_file_path.c_str());
+                    std::cerr << "[ConfigurationManager] Error while parsing configuration file "
+                              << conf_file_path.c_str()
+                              << ". ChronoKeeper configuration is not found or is not an object." << std::endl;
                     exit(chronolog::CL_ERR_INVALID_CONF);
                 }
                 parseKeeperConf(chrono_keeper_conf);
@@ -330,16 +329,16 @@ public:
                 json_object*chrono_client_conf = json_object_object_get(root, "chrono_client");
                 if(chrono_client_conf == nullptr || !json_object_is_type(chrono_client_conf, json_type_object))
                 {
-                    Logger::getLogger()->error(
-                            "[ConfigurationManager] Error while parsing configuration file {}. ChronoClient configuration is not found or is not an object."
-                            , conf_file_path.c_str());
+                    std::cerr << "[ConfigurationManager] Error while parsing configuration file "
+                              << conf_file_path.c_str()
+                              << ". ChronoClient configuration is not found or is not an object." << std::endl;
                     exit(chronolog::CL_ERR_INVALID_CONF);
                 }
                 parseClientConf(chrono_client_conf);
             }
             else
             {
-                Logger::getLogger()->error("[ConfigurationManager] Unknown configuration item: {}", key);
+                std::cerr << "[ConfigurationManager] Unknown configuration item: " << key << std::endl;
             }
         }
         json_object_put(root);
@@ -366,12 +365,12 @@ private:
             }
             else
             {
-                Logger::getLogger()->warn("[ConfigurationManager] Unknown rpc implementation: {}", conf_str);
+                std::cout << "[ConfigurationManager] Unknown rpc implementation: " << conf_str << std::endl;
             }
         }
         else
         {
-            Logger::getLogger()->error("[ConfigurationManager] Invalid rpc implementation configuration");
+            std::cerr << "[ConfigurationManager] Invalid rpc implementation configuration" << std::endl;
         }
     }
 
@@ -406,12 +405,12 @@ private:
             }
             else
             {
-                Logger::getLogger()->warn("[ConfigurationManager] Unknown log level: {}", conf_str);
+                std::cout << "[ConfigurationManager] Unknown log level: " << conf_str << std::endl;
             }
         }
         else
         {
-            Logger::getLogger()->error("[ConfigurationManager] Invalid rpc implementation configuration");
+            std::cerr << "[ConfigurationManager] Invalid rpc implementation configuration" << std::endl;
         }
     }
 
@@ -431,13 +430,14 @@ private:
                     else if(strcmp(clocksource_type, "TSC") == 0)
                         CLOCK_CONF.CLOCKSOURCE_TYPE = ClocksourceType::TSC;
                     else
-                        Logger::getLogger()->warn("[ConfigurationManager] Unknown clocksource type: {}"
-                                                  , clocksource_type);
+                        std::cout << "[ConfigurationManager] Unknown clocksource type: " << clocksource_type
+                                  << std::endl;
                 }
                 else
                 {
-                    Logger::getLogger()->error(
-                            "[ConfigurationManager] Failed to parse configuration file: clocksource_type is not a string");
+                    std::cerr
+                            << "[ConfigurationManager] Failed to parse configuration file: clocksource_type is not a string"
+                            << std::endl;
                     exit(chronolog::CL_ERR_INVALID_CONF);
                 }
             }
@@ -449,8 +449,9 @@ private:
                 }
                 else
                 {
-                    Logger::getLogger()->error(
-                            "[ConfigurationManager] Failed to parse configuration file: drift_cal_sleep_sec is not an integer");
+                    std::cerr
+                            << "[ConfigurationManager] Failed to parse configuration file: drift_cal_sleep_sec is not an integer"
+                            << std::endl;
                     exit(chronolog::CL_ERR_INVALID_CONF);
                 }
             }
@@ -462,8 +463,9 @@ private:
                 }
                 else
                 {
-                    Logger::getLogger()->error(
-                            "[ConfigurationManager] Failed to parse configuration file: drift_cal_sleep_nsec is not an integer");
+                    std::cerr
+                            << "[ConfigurationManager] Failed to parse configuration file: drift_cal_sleep_nsec is not an integer"
+                            << std::endl;
                     exit(chronolog::CL_ERR_INVALID_CONF);
                 }
             }
@@ -474,8 +476,9 @@ private:
     {
         if(auth_conf == nullptr || !json_object_is_type(auth_conf, json_type_object))
         {
-            Logger::getLogger()->error(
-                    "[ConfigurationManager] Error while parsing configuration file. Authentication configuration is not found or is not an object.");
+            std::cerr
+                    << "[ConfigurationManager] Error while parsing configuration file. Authentication configuration is not found or is not an object."
+                    << std::endl;
             exit(chronolog::CL_ERR_INVALID_CONF);
         }
         json_object_object_foreach(auth_conf, key, val)
@@ -488,8 +491,8 @@ private:
                 }
                 else
                 {
-                    Logger::getLogger()->error(
-                            "[ConfigurationManager] Failed to parse configuration file: auth_type is not a string");
+                    std::cerr << "[ConfigurationManager] Failed to parse configuration file: auth_type is not a string"
+                              << std::endl;
                     exit(chronolog::CL_ERR_INVALID_CONF);
                 }
             }
@@ -501,8 +504,9 @@ private:
                 }
                 else
                 {
-                    Logger::getLogger()->error(
-                            "[ConfigurationManager] Failed to parse configuration file: module_location is not a string");
+                    std::cerr
+                            << "[ConfigurationManager] Failed to parse configuration file: module_location is not a string"
+                            << std::endl;
                     exit(chronolog::CL_ERR_INVALID_CONF);
                 }
             }
@@ -540,7 +544,7 @@ private:
             }
             else
             {
-                Logger::getLogger()->error("[ConfigurationManager] Unknown client end configuration: {}", key);
+                std::cerr << "[ConfigurationManager] Unknown client end configuration: " << key << std::endl;
             }
         }
     }
@@ -571,7 +575,7 @@ private:
             }
             else
             {
-                Logger::getLogger()->error("[ConfigurationManager] Unknown log configuration: {}", key);
+                std::cerr << "[ConfigurationManager] Unknown log configuration: " << key << std::endl;
             }
         }
     }
@@ -593,8 +597,8 @@ private:
                     }
                     else
                     {
-                        Logger::getLogger()->error(
-                                "[ConfigurationManager] Unknown VisorClientPortalService configuration: {}", key);
+                        std::cerr << "[ConfigurationManager] Unknown VisorClientPortalService configuration: " << key
+                                  << std::endl;
                     }
                 }
             }
@@ -611,8 +615,8 @@ private:
                     }
                     else
                     {
-                        Logger::getLogger()->error(
-                                "[ConfigurationManager] Unknown VisorKeeperRegistryService configuration: {}", key);
+                        std::cerr << "[ConfigurationManager] Unknown VisorKeeperRegistryService configuration: " << key
+                                  << std::endl;
                     }
                 }
             }
@@ -628,13 +632,13 @@ private:
                     }
                     else
                     {
-                        Logger::getLogger()->error("[ConfigurationManager] Unknown VisorLog configuration: {}", key);
+                        std::cerr << "[ConfigurationManager] Unknown VisorLog configuration: " << key << std::endl;
                     }
                 }
             }
             else
             {
-                Logger::getLogger()->error("[ConfigurationManager] Unknown visor configuration: {}", key);
+                std::cerr << "[ConfigurationManager] Unknown VisorLog configuration: " << key << std::endl;
             }
         }
     }
@@ -655,8 +659,8 @@ private:
                     }
                     else
                     {
-                        Logger::getLogger()->error(
-                                "[ConfigurationManager] Unknown KeeperRecordingService configuration: {}", key);
+                        std::cerr << "[ConfigurationManager] Unknown KeeperRecordingService configuration: " << key
+                                  << std::endl;
                     }
                 }
             }
@@ -673,8 +677,8 @@ private:
                     }
                     else
                     {
-                        Logger::getLogger()->error(
-                                "[ConfigurationManager] Unknown KeeperDataStoreAdminService configuration: {}", key);
+                        std::cerr << "[ConfigurationManager] Unknown KeeperDataStoreAdminService configuration: " << key
+                                  << std::endl;
                     }
                 }
             }
@@ -691,8 +695,8 @@ private:
                     }
                     else
                     {
-                        Logger::getLogger()->error(
-                                "[ConfigurationManager] Unknown VisorKeeperRegistryService configuration: {}", key);
+                        std::cerr << "[ConfigurationManager] Unknown VisorKeeperRegistryService configuration: " << key
+                                  << std::endl;
                     }
                 }
             }
@@ -708,7 +712,7 @@ private:
                     }
                     else
                     {
-                        Logger::getLogger()->error("[ConfigurationManager] Unknown KeeperLog configuration: {}", key);
+                        std::cerr << "[ConfigurationManager] Unknown KeeperLog configuration: " << key << std::endl;
                     }
                 }
             }
@@ -719,14 +723,14 @@ private:
             }
             else
             {
-                Logger::getLogger()->error("[ConfigurationManager] Unknown keeper configuration: {}", key);
+                std::cerr << "[ConfigurationManager] Unknown Keeper configuration: " << key << std::endl;
             }
         }
     }
 
     void parseClientConf(json_object*json_conf)
     {
-        const char *string_value = json_object_get_string(json_conf);
+        const char*string_value = json_object_get_string(json_conf);
         json_object_object_foreach(json_conf, key, val)
         {
             if(strcmp(key, "VisorClientPortalService") == 0)
@@ -742,8 +746,8 @@ private:
                     }
                     else
                     {
-                        Logger::getLogger()->error(
-                                "[ConfigurationManager] Unknown VisorClientPortalService configuration: {}", key);
+                        std::cerr << "[ConfigurationManager] Unknown VisorClientPortalService configuration: " << key
+                                  << std::endl;
                     }
                 }
             }
@@ -759,13 +763,13 @@ private:
                     }
                     else
                     {
-                        Logger::getLogger()->error("[ConfigurationManager] Unknown ClientLog configuration: {}", key);
+                        std::cerr << "[ConfigurationManager] Unknown ClientLog configuration: " << key << std::endl;
                     }
                 }
             }
             else
             {
-                Logger::getLogger()->error("[ConfigurationManager] Unknown client configuration: {}", key);
+                std::cerr << "[ConfigurationManager] Unknown ClientLog configuration: " << key << std::endl;
             }
         }
     }
