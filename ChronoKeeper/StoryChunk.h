@@ -4,6 +4,7 @@
 #include <map>
 #include <iostream>
 #include "chronolog_types.h"
+#include "log.h"
 
 namespace chronolog
 {

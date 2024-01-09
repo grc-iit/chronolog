@@ -9,7 +9,7 @@
 #include "KeeperIdCard.h"
 #include "KeeperRegistrationMsg.h"
 #include "KeeperStatsMsg.h"
-
+#include "log.h"
 #include "KeeperRegistry.h"
 
 namespace tl = thallium;
