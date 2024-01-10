@@ -30,7 +30,7 @@
     "Logging": {
       "log": {
         "type": "file",
-        "file": "../../logs/chronovisor_logfile.txt",
+        "file": "chronovisor_logfile.txt",
         "level": "debug",
         "name": "ChronoVisor"
       }
@@ -67,7 +67,7 @@
     "Logging": {
       "log": {
         "type": "file",
-        "file": "../../logs/chronokeeper_logfile.txt",
+        "file": "chronokeeper_logfile.txt",
         "level": "debug",
         "name": "ChronoKeeper"
       }
@@ -87,7 +87,7 @@
     "Logging": {
       "log": {
         "type": "file",
-        "file": "../../logs/chronoclient_logfile.txt",
+        "file": "chronoclient_logfile.txt",
         "level": "debug",
         "name": "ChronoClient"
       }
