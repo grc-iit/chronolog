@@ -3,106 +3,80 @@
 //
 
 #include "log.h"
-#include <spdlog/spdlog.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
+#include <spdlog/sinks/rotating_file_sink.h>
+#include <iostream>
 
 std::shared_ptr <spdlog::logger> Logger::logger = nullptr;
+std::mutex Logger::mutex;
 
-void Logger::initialize(const std::string &logType, const std::string &location, spdlog::level::level_enum logLevel
-                        , const std::string &loggerName)
+int Logger::initialize(const std::string &logType, const std::string &location, spdlog::level::level_enum logLevel
+                       , const std::string &loggerName)
 {
-    if(!logger)
+    std::lock_guard <std::mutex> lock(mutex);
+    if(logger)
     {
-        if(logType == "file")
+        Logger::getLogger()->debug("[Logger] Logger is already initialized");
+        return 0;
+    }
+    if(logType == "file")
+    {
+        try
         {
-            logger = spdlog::basic_logger_mt(loggerName, location);
+            // Create a rotating_file_sink with a max file size of 5MB and max 3 files
+            auto rotating_sink = std::make_shared <spdlog::sinks::rotating_file_sink_mt>(location, 1024 * 1024 * 5, 3);
+            logger = std::make_shared <spdlog::logger>(loggerName, rotating_sink);
         }
-        else if(logType == "console")
+        catch(const spdlog::spdlog_ex &ex)
+        {
+            std::cerr << "[Logger] Log initialization failed: " << ex.what() << std::endl;
+            return 1;
+        }
+
+    }
+    else if(logType == "console")
+    {
+        try
         {
             logger = spdlog::stdout_color_mt(loggerName);
         }
-        else
+        catch(const spdlog::spdlog_ex &ex)
         {
-            throw std::invalid_argument("Invalid log type");
+            std::cerr << "[Logger] Logger initialization failed: " << ex.what() << std::endl;
+            return 1;
         }
 
-        logger->set_level(logLevel);
     }
     else
     {
-        throw std::logic_error("Logger is already initialized");
+        std::cerr << "[Logger] Invalid log type " << std::endl;
+        return 1;
     }
-}
-
-/*void Logger::changeConfiguration(const std::string &newLogType, const std::string &newLocation
-                                 , spdlog::level::level_enum newLogLevel, const std::string &newLoggerName)
-{
-    if(logger)
+    // Adjust log level based on build type
+#ifdef NDEBUG  // Release build
+    if(logLevel == spdlog::level::trace || logLevel == spdlog::level::debug)
     {
-        // Check if any parameter is provided for change
-        if(!newLogType.empty() || !newLocation.empty() || newLogLevel != spdlog::level::off || !newLoggerName.empty())
-        {
-            // Check if logger name is changing
-            if(!newLoggerName.empty() && logger->name() != newLoggerName)
-            {
-                // Reset the existing logger and initialize with new name and configurations
-                logger.reset();
-                logger = nullptr;
-                initialize(newLogType, newLocation, newLogLevel, newLoggerName);
-            }
-            else
-            {
-                // Modify existing logger configuration
-                if(!newLogType.empty())
-                {
-                    // Handle changing log type (file/console)
-                    // For simplicity, this example does not support changing log type
-                    throw std::logic_error("Changing log type is not supported");
-                }
-
-                if(!newLocation.empty())
-                {
-                    // Handle changing file location (if applicable)
-                    // For simplicity, this example does not support changing file location
-                    throw std::logic_error("Changing file location is not supported");
-                }
-
-                if(newLogLevel != spdlog::level::off)
-                {
-                    // Set the new logging level
-                    logger->set_level(newLogLevel);
-                }
-            }
-        }
-        else
-        {
-            throw std::invalid_argument("No new configuration provided");
-        }
+        logger->set_level(spdlog::level::info);  // Set to info level for release builds if trace/debug is requested
     }
     else
     {
-        throw std::logic_error("Logger not initialized");
+        logger->set_level(logLevel);  // Set the provided log level for release builds
     }
-}*/
-
-void Logger::changeConfiguration(const std::string& newLogType, const std::string& newLocation, spdlog::level::level_enum newLogLevel, const std::string& newLoggerName)
-{
-    // Reset the existing logger instance and reinitialize with new configurations
-    logger.reset();
-    logger = nullptr;
-    // Check if logger with the same name exists
-    if (spdlog::get(newLoggerName))
-    {
-        // If logger with the same name exists, unregister it from the spdlog registry
-        spdlog::drop(newLoggerName);
-    }
-    initialize(newLogType, newLocation, newLogLevel, newLoggerName);
+#else  // Debug build
+    logger->set_level(logLevel);  // Set the provided log level for debug builds
+#endif
+    return 0;
 }
 
 std::shared_ptr <spdlog::logger> Logger::getLogger()
 {
-    if(!logger)
+    std::lock_guard <std::mutex> lock(mutex);
+    if(logger)
     {
-        throw std::logic_error("Logger not initialized");
+        return logger;
     }
-    return logger;
+    std::cerr
+            << "[Logger] No logger is not initialized or you are trying to log before initializing the logger. Ending the program..."
+            << std::endl;
+    std::exit(EXIT_FAILURE);
 }
