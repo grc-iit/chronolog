@@ -99,9 +99,14 @@ int main(int argc, char**argv)
         std::exit(EXIT_FAILURE);
     }
     ChronoLog::ConfigurationManager confManager(conf_file_path);
-    Logger::initialize(confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE, confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
-                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
-                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME);
+    int result = Logger::initialize(confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE
+                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
+                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
+                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME);
+    if(result == 1)
+    {
+        exit(EXIT_FAILURE);
+    }
     Logger::getLogger()->info("[ClientLibMultiArgobotsTest] Running test.");
 
 

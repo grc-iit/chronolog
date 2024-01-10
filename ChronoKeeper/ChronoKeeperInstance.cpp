@@ -72,9 +72,14 @@ int main(int argc, char**argv)
         std::exit(EXIT_FAILURE);
     }
     ChronoLog::ConfigurationManager confManager(conf_file_path);
-    Logger::initialize(confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGTYPE, confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILE
-                       , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGLEVEL
-                       , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGNAME);
+    int result = Logger::initialize(confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGTYPE
+                                    , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILE
+                                    , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGLEVEL
+                                    , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGNAME);
+    if(result == 1)
+    {
+        exit(EXIT_FAILURE);
+    }
     Logger::getLogger()->info("Running Chronokeeper Server.");
 
     // Instantiate ChronoKeeper MemoryDataStore
@@ -173,7 +178,7 @@ int main(int argc, char**argv)
         return (-1);
     }
 
-    // Instantiate KeeperRecordingService 
+    // Instantiate KeeperRecordingService
     tl::engine*recordingEngine = nullptr;
     chronolog::KeeperRecordingService*keeperRecordingService = nullptr;
 
