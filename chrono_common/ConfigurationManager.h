@@ -403,6 +403,10 @@ private:
             {
                 log_level = spdlog::level::critical;
             }
+            else if(strcmp(conf_str, "off") == 0)
+            {
+                log_level = spdlog::level::off;
+            }
             else
             {
                 std::cout << "[ConfigurationManager] Unknown log level: " << conf_str << std::endl;
