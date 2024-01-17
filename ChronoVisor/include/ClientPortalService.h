@@ -30,7 +30,7 @@ public:
 
     ~ClientPortalService()
     {
-        Logger::getLogger()->debug("[ClientPortalService] Destructor is called.");
+        LOGD("[ClientPortalService] Destructor is called.");
         get_engine().pop_finalize_callback(this);
     }
 
@@ -136,8 +136,7 @@ private:
         //setup finalization callback in case this ser vice provider is still alive when the engine is finalized
         std::stringstream ss;
         ss << get_engine().self();
-        Logger::getLogger()->info("[ClientPortalService] Started at address {} with provider id {}", ss.str()
-                                   , service_provider_id);
+        LOGI("[ClientPortalService] Started at address {} with provider id {}", ss.str(), service_provider_id);
         get_engine().push_finalize_callback(this, [p = this]()
         { delete p; });
     }

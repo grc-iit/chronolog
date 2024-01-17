@@ -34,7 +34,7 @@ int main(int argc, char*argv[])
         }
 
         // Open the file and read its contents
-        Logger::getLogger()->info("Reading from file {}", entry.path().string());
+        LOGI("Reading from file {}", entry.path().string());
         /*std::cout << "reading from file " << entry.path().string() << std::endl;*/
 
         std::ifstream file(entry.path());
@@ -46,10 +46,10 @@ int main(int argc, char*argv[])
             total_count++;
         }
     }
-    Logger::getLogger()->info("{} unique numbers are read", count_map.size());
+    LOGI("{} unique numbers are read", count_map.size());
     /*std::cout << count_map.size() << " unique numbers are read" << std::endl;*/
     double collision_ratio = 1 - count_map.size() * 1.0 / total_count;
-    Logger::getLogger()->info("Collision ratio: {}%", collision_ratio * 100);
+    LOGI("Collision ratio: {}%", collision_ratio * 100);
     /*std::cout << "Collision ratio: " << collision_ratio * 100 << "%" << std::endl;*/
 
 

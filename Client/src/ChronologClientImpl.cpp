@@ -75,8 +75,8 @@ void chronolog::ChronologClientImpl::defineClientIdentity()
     hostId = gethostid();
     //32bit process id
     pid = getpid();
-    Logger::getLogger()->info("[ChronologClientImpl] Client Identity - Login: {}, EUID: {}, HostID: {}, PID: {}"
-                              , clientLogin, euid, hostId, pid);
+    LOGI("[ChronologClientImpl] Client Identity - Login: {}, EUID: {}, HostID: {}, PID: {}", clientLogin, euid, hostId
+         , pid);
 }
 
 chronolog::ChronologClientImpl::~ChronologClientImpl()
@@ -102,8 +102,7 @@ int chronolog::ChronologClientImpl::Connect()
     // if disconencting return failure....
     if((clientState != UNKNOWN) && (clientState != SHUTTING_DOWN))
     {
-        Logger::getLogger()->info(
-                "[ChronoLogClientImpl] Already connected or in the process of shutting down. No further action taken.");
+        LOGI("[ChronoLogClientImpl] Already connected or in the process of shutting down. No further action taken.");
         return chronolog::CL_SUCCESS;
     }
 
@@ -112,8 +111,7 @@ int chronolog::ChronologClientImpl::Connect()
 
     std::stringstream ss;
     ss << connectResponseMsg;
-    Logger::getLogger()->debug("[ChronoLogClientImpl] Connection attempt to Visor completed. Response received: {}"
-                               , ss.str());
+    LOGD("[ChronoLogClientImpl] Connection attempt to Visor completed. Response received: {}", ss.str());
 
     int return_code = connectResponseMsg.getErrorCode();
     if(return_code == chronolog::CL_SUCCESS)
@@ -128,8 +126,7 @@ int chronolog::ChronologClientImpl::Connect()
     }
     else
     {
-        Logger::getLogger()->error("[ChronoLogClientImpl] Connection attempt to Visor failed with error code: {}"
-                                   , return_code);
+        LOGE("[ChronoLogClientImpl] Connection attempt to Visor failed with error code: {}", return_code);
     }
     return return_code;
 }
@@ -140,8 +137,7 @@ int chronolog::ChronologClientImpl::Disconnect()
 
     if((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
     {
-        Logger::getLogger()->debug(
-                "[ChronoLogClientImpl] Already in a disconnected or shutting down state. No action taken.");
+        LOGD("[ChronoLogClientImpl] Already in a disconnected or shutting down state. No action taken.");
         return chronolog::CL_SUCCESS;
     }
 
@@ -149,12 +145,11 @@ int chronolog::ChronologClientImpl::Disconnect()
     if(return_code == chronolog::CL_SUCCESS)
     {
         clientState = SHUTTING_DOWN;
-        Logger::getLogger()->info("[ChronoLogClientImpl] Successfully disconnected from Visor.");
+        LOGI("[ChronoLogClientImpl] Successfully disconnected from Visor.");
     }
     else
     {
-        Logger::getLogger()->error("[ChronoLogClientImpl] Failed to disconnect from Visor. Error code: {}"
-                                   , return_code);
+        LOGE("[ChronoLogClientImpl] Failed to disconnect from Visor. Error code: {}", return_code);
     }
     return return_code;
 
@@ -166,7 +161,7 @@ int chronolog::ChronologClientImpl::CreateChronicle(std::string const &chronicle
 {
     if(chronicle_name.empty())
     {
-        Logger::getLogger()->error("[ChronoLogClientImpl] Failed to create chronicle: No valid name provided.");
+        LOGE("[ChronoLogClientImpl] Failed to create chronicle: No valid name provided.");
         return chronolog::CL_ERR_INVALID_ARG;
     }
 
@@ -174,9 +169,8 @@ int chronolog::ChronologClientImpl::CreateChronicle(std::string const &chronicle
 
     if((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
     {
-        Logger::getLogger()->error(
-                "[ChronoLogClientImpl] Failed to create chronicle '{}': Client is not connected or is shutting down."
-                , chronicle_name);
+        LOGE("[ChronoLogClientImpl] Failed to create chronicle '{}': Client is not connected or is shutting down."
+             , chronicle_name);
         return chronolog::CL_ERR_NO_CONNECTION;
     }
 
@@ -186,12 +180,11 @@ int chronolog::ChronologClientImpl::CreateChronicle(std::string const &chronicle
     // Log the outcome of the create operation.
     if(result == chronolog::CL_SUCCESS)
     {
-        Logger::getLogger()->info("[ChronoLogClientImpl] Successfully created chronicle '{}'.", chronicle_name);
+        LOGI("[ChronoLogClientImpl] Successfully created chronicle '{}'.", chronicle_name);
     }
     else
     {
-        Logger::getLogger()->error("[ChronoLogClientImpl] Failed to create chronicle '{}'. Error code: {}"
-                                   , chronicle_name, result);
+        LOGE("[ChronoLogClientImpl] Failed to create chronicle '{}'. Error code: {}", chronicle_name, result);
     }
     return result;
 }
@@ -213,7 +206,7 @@ int chronolog::ChronologClientImpl::DestroyStory(std::string const &chronicle_na
 {
     if(chronicle_name.empty() || story_name.empty())
     {
-        Logger::getLogger()->error("[ChronoLogClientImpl] Failed to destroy chronicle: No valid name provided.");
+        LOGE("[ChronoLogClientImpl] Failed to destroy chronicle: No valid name provided.");
         return chronolog::CL_ERR_INVALID_ARG;
     }
 
@@ -221,9 +214,8 @@ int chronolog::ChronologClientImpl::DestroyStory(std::string const &chronicle_na
 
     if((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
     {
-        Logger::getLogger()->error(
-                "[ChronoLogClientImpl] Failed to destroy chronicle '{}': Client is not connected or is shutting down."
-                , chronicle_name);
+        LOGE("[ChronoLogClientImpl] Failed to destroy chronicle '{}': Client is not connected or is shutting down."
+             , chronicle_name);
         return chronolog::CL_ERR_NO_CONNECTION;
     }
 
@@ -233,12 +225,11 @@ int chronolog::ChronologClientImpl::DestroyStory(std::string const &chronicle_na
     // Log the outcome of the destroy operation.
     if(result == chronolog::CL_SUCCESS)
     {
-        Logger::getLogger()->info("[ChronoLogClientImpl] Successfully destroyed chronicle '{}'.", chronicle_name);
+        LOGI("[ChronoLogClientImpl] Successfully destroyed chronicle '{}'.", chronicle_name);
     }
     else
     {
-        Logger::getLogger()->error("[ChronoLogClientImpl] Failed to destroy chronicle '{}'. Error code: {}"
-                                   , chronicle_name, result);
+        LOGE("[ChronoLogClientImpl] Failed to destroy chronicle '{}'. Error code: {}", chronicle_name, result);
     }
     return result;
 }
@@ -248,12 +239,12 @@ chronolog::ChronologClientImpl::AcquireStory(std::string const &chronicle_name, 
                                              , const std::unordered_map <std::string, std::string> &attrs, int &flags)
 {
     // Log the attempt to acquire a story with specific details.
-    Logger::getLogger()->debug("[ChronoLogClientImpl] Attempting to acquire story. ChronicleName={}, StoryName={}"
-                               , chronicle_name, story_name);
+    LOGD("[ChronoLogClientImpl] Attempting to acquire story. ChronicleName={}, StoryName={}", chronicle_name
+         , story_name);
 
     if(chronicle_name.empty() || story_name.empty())
     {
-        Logger::getLogger()->error("[ChronoLogClientImpl] Failed to acquire story: Missing essential parameters.");
+        LOGE("[ChronoLogClientImpl] Failed to acquire story: Missing essential parameters.");
         return std::pair <int, chronolog::StoryHandle*>(chronolog::CL_ERR_INVALID_ARG, nullptr);
     }
 
@@ -261,9 +252,8 @@ chronolog::ChronologClientImpl::AcquireStory(std::string const &chronicle_name, 
 
     if((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
     {
-        Logger::getLogger()->error(
-                "[ChronoLogClientImpl] Failed to acquire story '{}' from chronicle '{}': Client is not connected or is shutting down."
-                , story_name, chronicle_name);
+        LOGE("[ChronoLogClientImpl] Failed to acquire story '{}' from chronicle '{}': Client is not connected or is shutting down."
+             , story_name, chronicle_name);
         return std::pair <int, chronolog::StoryHandle*>(chronolog::CL_ERR_NO_CONNECTION, nullptr);
     }
 
@@ -273,8 +263,7 @@ chronolog::ChronologClientImpl::AcquireStory(std::string const &chronicle_name, 
     chronolog::StoryHandle*storyHandle = storyteller->findStoryWritingHandle(chronicle_name, story_name);
     if(storyHandle != nullptr)
     {
-        Logger::getLogger()->info("[ChronoLogClientImpl] Story '{}' from chronicle '{}' is already acquired."
-                                  , story_name, chronicle_name);
+        LOGI("[ChronoLogClientImpl] Story '{}' from chronicle '{}' is already acquired.", story_name, chronicle_name);
         return std::pair <int, chronolog::StoryHandle*>(chronolog::CL_SUCCESS, storyHandle);
     }
 
@@ -283,12 +272,11 @@ chronolog::ChronologClientImpl::AcquireStory(std::string const &chronicle_name, 
 
     std::stringstream ss;
     ss << acquireStoryResponse;
-    Logger::getLogger()->debug("[ChronoLogClientImpl] Response from AcquireStory RPC call: {}", ss.str());
+    LOGD("[ChronoLogClientImpl] Response from AcquireStory RPC call: {}", ss.str());
     if(acquireStoryResponse.getErrorCode() != chronolog::CL_SUCCESS)
     {
-        Logger::getLogger()->error(
-                "[ChronoLogClientImpl] Failed to acquire story '{}' from chronicle '{}'. Error code: {}", story_name
-                , chronicle_name, acquireStoryResponse.getErrorCode());
+        LOGE("[ChronoLogClientImpl] Failed to acquire story '{}' from chronicle '{}'. Error code: {}", story_name
+             , chronicle_name, acquireStoryResponse.getErrorCode());
         return std::pair <int, chronolog::StoryHandle*>(acquireStoryResponse.getErrorCode(), nullptr);
     }
 
@@ -301,14 +289,13 @@ chronolog::ChronologClientImpl::AcquireStory(std::string const &chronicle_name, 
 
     if(storyHandle == nullptr)
     {
-        Logger::getLogger()->error("[ChronoLogClientImpl] Failed to initialize story handle for '{}' in chronicle '{}'."
-                                   , story_name, chronicle_name);
+        LOGE("[ChronoLogClientImpl] Failed to initialize story handle for '{}' in chronicle '{}'.", story_name
+             , chronicle_name);
         return std::pair <int, chronolog::StoryHandle*>(chronolog::CL_ERR_UNKNOWN, nullptr);
     }
     else
     {
-        Logger::getLogger()->info("[ChronoLogClientImpl] Successfully acquired story '{}' in chronicle '{}'."
-                                  , story_name, chronicle_name);
+        LOGI("[ChronoLogClientImpl] Successfully acquired story '{}' in chronicle '{}'.", story_name, chronicle_name);
         return std::pair <int, chronolog::StoryHandle*>(chronolog::CL_SUCCESS, storyHandle);
     }
 }
@@ -320,8 +307,7 @@ int chronolog::ChronologClientImpl::ReleaseStory(std::string const &chronicle_na
     // there's no reason to waste an rpc call on empty strings...
     if(chronicle_name.empty() || story_name.empty())
     {
-        Logger::getLogger()->error(
-                "[ChronoLogClientImpl] Failed to release story: Both chronicle_name and story_name must be provided.");
+        LOGE("[ChronoLogClientImpl] Failed to release story: Both chronicle_name and story_name must be provided.");
         return chronolog::CL_ERR_INVALID_ARG;
     }
 
@@ -332,22 +318,19 @@ int chronolog::ChronologClientImpl::ReleaseStory(std::string const &chronicle_na
 
     if(nullptr == storyteller || nullptr == storyteller->findStoryWritingHandle(chronicle_name, story_name))
     {
-        Logger::getLogger()->warn(
-                "[ChronoLogClientImpl] No active writing handle found for story '{}' in chronicle '{}'.", story_name
-                , chronicle_name);
+        LOGW("[ChronoLogClientImpl] No active writing handle found for story '{}' in chronicle '{}'.", story_name
+             , chronicle_name);
         return chronolog::CL_ERR_NOT_EXIST;
     }
 
     storyteller->removeAcquiredStoryHandle(chronicle_name, story_name);
-    Logger::getLogger()->info("[ChronoLogClientImpl] Successfully released the story '{}' from chronicle '{}'."
-                              , story_name, chronicle_name);
+    LOGI("[ChronoLogClientImpl] Successfully released the story '{}' from chronicle '{}'.", story_name, chronicle_name);
     // if the client is still connected to the Visor
     // send ReleaseStory request 
     if((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
     {
-        Logger::getLogger()->error(
-                "[ChronoLogClientImpl] Cannot release story '{}' from chronicle '{}' due to client being in an unknown or shutting down state."
-                , story_name, chronicle_name);
+        LOGE("[ChronoLogClientImpl] Cannot release story '{}' from chronicle '{}' due to client being in an unknown or shutting down state."
+             , story_name, chronicle_name);
         return chronolog::CL_ERR_NO_CONNECTION;
     }
 
@@ -355,14 +338,12 @@ int chronolog::ChronologClientImpl::ReleaseStory(std::string const &chronicle_na
     auto releaseStatus = rpcVisorClient->ReleaseStory(clientId, chronicle_name, story_name);
     if(releaseStatus != chronolog::CL_SUCCESS)
     {
-        Logger::getLogger()->error(
-                "[ChronoLogClientImpl] Failed to release story '{}' from chronicle '{}'. Error code: {}", story_name
-                , chronicle_name, releaseStatus);
+        LOGE("[ChronoLogClientImpl] Failed to release story '{}' from chronicle '{}'. Error code: {}", story_name
+             , chronicle_name, releaseStatus);
     }
     else
     {
-        Logger::getLogger()->info("[ChronoLogClientImpl] Successfully released story '{}' from chronicle '{}'."
-                                  , story_name, chronicle_name);
+        LOGI("[ChronoLogClientImpl] Successfully released story '{}' from chronicle '{}'.", story_name, chronicle_name);
     }
 
     return releaseStatus;
@@ -376,8 +357,7 @@ int chronolog::ChronologClientImpl::GetChronicleAttr(std::string const &chronicl
 
     if(chronicle_name.empty() || key.empty())
     {
-        Logger::getLogger()->error(
-                "[ChronoLogClientImpl] Failed to get attribute: Both chronicle_name and key must be provided.");
+        LOGE("[ChronoLogClientImpl] Failed to get attribute: Both chronicle_name and key must be provided.");
         return chronolog::CL_ERR_INVALID_ARG;
     }
 
@@ -385,9 +365,8 @@ int chronolog::ChronologClientImpl::GetChronicleAttr(std::string const &chronicl
 
     if((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
     {
-        Logger::getLogger()->error(
-                "[ChronoLogClientImpl] Cannot fetch attribute for chronicle '{}': Client is in an unknown or shutting down state."
-                , chronicle_name);
+        LOGE("[ChronoLogClientImpl] Cannot fetch attribute for chronicle '{}': Client is in an unknown or shutting down state."
+             , chronicle_name);
         return chronolog::CL_ERR_NO_CONNECTION;
     }
 
@@ -395,15 +374,13 @@ int chronolog::ChronologClientImpl::GetChronicleAttr(std::string const &chronicl
     int fetchStatus = rpcVisorClient->GetChronicleAttr(clientId, chronicle_name, key, value);
     if(fetchStatus != chronolog::CL_SUCCESS)
     {
-        Logger::getLogger()->error(
-                "[ChronoLogClientImpl] Failed to fetch attribute '{}' for chronicle '{}'. Error code: {}", key
-                , chronicle_name, fetchStatus);
+        LOGE("[ChronoLogClientImpl] Failed to fetch attribute '{}' for chronicle '{}'. Error code: {}", key
+             , chronicle_name, fetchStatus);
     }
     else
     {
-        Logger::getLogger()->info(
-                "[ChronoLogClientImpl] Successfully fetched attribute '{}' for chronicle '{}'. Value: '{}'", key
-                , chronicle_name, value);
+        LOGI("[ChronoLogClientImpl] Successfully fetched attribute '{}' for chronicle '{}'. Value: '{}'", key
+             , chronicle_name, value);
     }
     return fetchStatus;
 }
@@ -414,8 +391,7 @@ int chronolog::ChronologClientImpl::EditChronicleAttr(std::string const &chronic
 {
     if(chronicle_name.empty() || key.empty() || value.empty())
     {
-        Logger::getLogger()->error(
-                "[ChronoLogClientImpl] Failed to edit attribute: chronicle_name, key, and value must all be provided.");
+        LOGE("[ChronoLogClientImpl] Failed to edit attribute: chronicle_name, key, and value must all be provided.");
         return chronolog::CL_ERR_INVALID_ARG;
     }
 
@@ -423,9 +399,8 @@ int chronolog::ChronologClientImpl::EditChronicleAttr(std::string const &chronic
 
     if((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
     {
-        Logger::getLogger()->error(
-                "[ChronoLogClientImpl] Cannot edit attribute for chronicle '{}': Client is in an unknown or shutting down state."
-                , chronicle_name);
+        LOGE("[ChronoLogClientImpl] Cannot edit attribute for chronicle '{}': Client is in an unknown or shutting down state."
+             , chronicle_name);
         return chronolog::CL_ERR_NO_CONNECTION;
     }
 
@@ -433,15 +408,13 @@ int chronolog::ChronologClientImpl::EditChronicleAttr(std::string const &chronic
     int editStatus = rpcVisorClient->EditChronicleAttr(clientId, chronicle_name, key, value);
     if(editStatus != chronolog::CL_SUCCESS)
     {
-        Logger::getLogger()->error(
-                "[ChronoLogClientImpl] Failed to edit attribute '{}' for chronicle '{}'. Error code: {}", key
-                , chronicle_name, editStatus);
+        LOGE("[ChronoLogClientImpl] Failed to edit attribute '{}' for chronicle '{}'. Error code: {}", key
+             , chronicle_name, editStatus);
     }
     else
     {
-        Logger::getLogger()->info(
-                "[ChronoLogClientImpl] Successfully edited attribute '{}' for chronicle '{}'. New value: '{}'", key
-                , chronicle_name, value);
+        LOGI("[ChronoLogClientImpl] Successfully edited attribute '{}' for chronicle '{}'. New value: '{}'", key
+             , chronicle_name, value);
     }
     return editStatus;
 }
@@ -452,8 +425,7 @@ std::vector <std::string> &chronolog::ChronologClientImpl::ShowChronicles(std::v
 
     if((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
     {
-        Logger::getLogger()->error(
-                "[ChronoLogClientImpl] Failed to fetch chronicles: Client is in an unknown or shutting down state.");
+        LOGE("[ChronoLogClientImpl] Failed to fetch chronicles: Client is in an unknown or shutting down state.");
         return chronicles;
     }
 
@@ -463,11 +435,11 @@ std::vector <std::string> &chronolog::ChronologClientImpl::ShowChronicles(std::v
     // Log the number of chronicles fetched and return the list.
     if(!chronicles.empty())
     {
-        Logger::getLogger()->info("[ChronoLogClientImpl] Successfully fetched {} chronicles.", chronicles.size());
+        LOGI("[ChronoLogClientImpl] Successfully fetched {} chronicles.", chronicles.size());
     }
     else
     {
-        Logger::getLogger()->warn("[ChronoLogClientImpl] No chronicles found for the client.");
+        LOGW("[ChronoLogClientImpl] No chronicles found for the client.");
     }
     return chronicles;
 }
@@ -477,7 +449,7 @@ chronolog::ChronologClientImpl::ShowStories(std::string const &chronicle_name, s
 {
     if(chronicle_name.empty())
     {
-        Logger::getLogger()->error("[ChronoLogClientImpl] Failed to fetch stories: Empty chronicle name provided.");
+        LOGE("[ChronoLogClientImpl] Failed to fetch stories: Empty chronicle name provided.");
         return stories;
     }
 
@@ -485,9 +457,8 @@ chronolog::ChronologClientImpl::ShowStories(std::string const &chronicle_name, s
 
     if((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
     {
-        Logger::getLogger()->error(
-                "[ChronoLogClientImpl] Failed to fetch stories for chronicle '{}': Client is in an unknown or shutting down state."
-                , chronicle_name);
+        LOGE("[ChronoLogClientImpl] Failed to fetch stories for chronicle '{}': Client is in an unknown or shutting down state."
+             , chronicle_name);
         return stories;
     }
 
@@ -497,12 +468,12 @@ chronolog::ChronologClientImpl::ShowStories(std::string const &chronicle_name, s
     // Log the number of stories fetched and return the list.
     if(!stories.empty())
     {
-        Logger::getLogger()->info("[ChronoLogClientImpl] Successfully fetched {} stories for chronicle '{}'."
-                                  , stories.size(), chronicle_name);
+        LOGI("[ChronoLogClientImpl] Successfully fetched {} stories for chronicle '{}'.", stories.size()
+             , chronicle_name);
     }
     else
     {
-        Logger::getLogger()->warn("[ChronoLogClientImpl] No stories found for chronicle '{}'.", chronicle_name);
+        LOGW("[ChronoLogClientImpl] No stories found for chronicle '{}'.", chronicle_name);
     }
     return stories;
 }

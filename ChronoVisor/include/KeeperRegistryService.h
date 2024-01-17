@@ -29,8 +29,7 @@ private:
         std::stringstream ss, s1;
         ss << keeperMsg.getKeeperIdCard();
         s1 << keeperMsg.getAdminServiceId();
-        Logger::getLogger()->info("[KeeperRegistryService] New Keeper Registered: KeeperIdCard: {}, AdminServiceId: {}"
-                                  , ss.str(), s1.str());
+        LOGI("[KeeperRegistryService] New Keeper Registered: KeeperIdCard: {}, AdminServiceId: {}", ss.str(), s1.str());
         return_code = theKeeperProcessRegistry.registerKeeperProcess(keeperMsg);
         request.respond(return_code);
     }
@@ -40,7 +39,7 @@ private:
         int return_code = 0;
         std::stringstream ss;
         ss << keeper_id_card;
-        Logger::getLogger()->info("[KeeperRegistryService] Keeper Unregistered: KeeperIdCard: {}", ss.str());
+        LOGI("[KeeperRegistryService] Keeper Unregistered: KeeperIdCard: {}", ss.str());
         return_code = theKeeperProcessRegistry.unregisterKeeperProcess(keeper_id_card);
         request.respond(return_code);
     }
@@ -49,8 +48,8 @@ private:
     {
         std::stringstream ss;
         ss << keeper_stats_msg.getKeeperIdCard();
-        Logger::getLogger()->debug("[KeeperRegistryService] Keeper Stats: KeeperIdCard: {}, ActiveStoryCount: {}"
-                                   , ss.str(), keeper_stats_msg.getActiveStoryCount());
+        LOGD("[KeeperRegistryService] Keeper Stats: KeeperIdCard: {}, ActiveStoryCount: {}", ss.str()
+             , keeper_stats_msg.getActiveStoryCount());
         theKeeperProcessRegistry.updateKeeperProcessStats(keeper_stats_msg);
     }
 

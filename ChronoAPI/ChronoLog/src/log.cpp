@@ -16,7 +16,7 @@ int Logger::initialize(const std::string &logType, const std::string &location, 
     std::lock_guard <std::mutex> lock(mutex);
     if(logger)
     {
-        Logger::getLogger()->debug("[Logger] Logger is already initialized");
+        LOGD("[Logger] Logger is already initialized");
         return 0;
     }
     if(logType == "file")
@@ -52,19 +52,7 @@ int Logger::initialize(const std::string &logType, const std::string &location, 
         std::cerr << "[Logger] Invalid log type " << std::endl;
         return 1;
     }
-    // Adjust log level based on build type
-#ifdef NDEBUG  // Release build
-    if(logLevel == spdlog::level::trace || logLevel == spdlog::level::debug)
-    {
-        logger->set_level(spdlog::level::info);  // Set to info level for release builds if trace/debug is requested
-    }
-    else
-    {
-        logger->set_level(logLevel);  // Set the provided log level for release builds
-    }
-#else  // Debug build
-    logger->set_level(logLevel);  // Set the provided log level for debug builds
-#endif
+    logger->set_level(logLevel);
     return 0;
 }
 

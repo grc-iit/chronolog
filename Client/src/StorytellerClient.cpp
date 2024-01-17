@@ -66,7 +66,7 @@ int chronolog::StoryWritingHandle <KeeperChoicePolicy>::log_event(std::string co
     auto keeperRecordingClient = keeperChoicePolicy->chooseKeeper(storyKeepers, log_event.time());
     if(nullptr == keeperRecordingClient)   //very unlikely...
     {
-        Logger::getLogger()->warn("[StoryWritingHandle] No keeper selected for logging event: {}", event_record);
+        LOGW("[StoryWritingHandle] No keeper selected for logging event: {}", event_record);
         return 0;
     }
 
@@ -87,7 +87,7 @@ int chronolog::StoryWritingHandle <KeeperChoicePolicy>::log_event(size_t, void*)
 
 chronolog::StorytellerClient::~StorytellerClient()
 {
-    Logger::getLogger()->debug("[StorytellerClient] Destructor called.");
+    LOGD("[StorytellerClient] Destructor called.");
     {
         std::lock_guard <std::mutex> lock(acquiredStoryMapMutex);
         /*
@@ -146,18 +146,17 @@ int chronolog::StorytellerClient::addKeeperRecordingClient(chronolog::KeeperIdCa
         }
         std::stringstream ss;
         ss << keeper_id_card;
-        Logger::getLogger()->debug("[StorytellerClient] Added KeeperRecordingClient for KeeperIdCard: {}", ss.str());
+        LOGD("[StorytellerClient] Added KeeperRecordingClient for KeeperIdCard: {}", ss.str());
     }
     catch(tl::exception const &ex)
     {
         std::stringstream s1;
         s1 << keeper_id_card;
-        Logger::getLogger()->debug("[StorytellerClient] Failed to create KeeperRecordingClient for KeeperIdCard: {}"
-                                   , s1.str());
+        LOGD("[StorytellerClient] Failed to create KeeperRecordingClient for KeeperIdCard: {}", s1.str());
     }
 
     // state = RUNNING;
-    Logger::getLogger()->info("[StorytellerClient] RUNNING with {} KeeperRecordingClients", recordingClientMap.size());
+    LOGI("[StorytellerClient] RUNNING with {} KeeperRecordingClients", recordingClientMap.size());
     return 1;
 }
 /////////////////
@@ -181,7 +180,7 @@ int chronolog::StorytellerClient::removeKeeperRecordingClient(chronolog::KeeperI
     //recording clientMutex during this time ....
     std::stringstream ss;
     ss << keeper_id_card;
-    Logger::getLogger()->debug("[StorytellerClient] Removed KeeperRecordingClient for KeeperIdCard: {}", ss.str());
+    LOGD("[StorytellerClient] Removed KeeperRecordingClient for KeeperIdCard: {}", ss.str());
     return 1;
 }
 
@@ -194,16 +193,14 @@ chronolog::StorytellerClient::findStoryWritingHandle(ChronicleName const &chroni
     auto story_record_iter = acquiredStoryHandles.find(std::pair <std::string, std::string>(chronicle, story));
     if(story_record_iter != acquiredStoryHandles.end())
     {
-        Logger::getLogger()->info(
-                "[StorytellerClient::findStoryWritingHandle] Found StoryHandle for Chronicle: '{}' and Story: '{}'."
-                , chronicle, story);
+        LOGI("[StorytellerClient::findStoryWritingHandle] Found StoryHandle for Chronicle: '{}' and Story: '{}'."
+             , chronicle, story);
         return ((*story_record_iter).second);
     }
     else
     {
-        Logger::getLogger()->warn(
-                "[StorytellerClient::findStoryWritingHandle] StoryHandle not found for Chronicle: '{}' and Story: '{}'."
-                , chronicle, story);
+        LOGW("[StorytellerClient::findStoryWritingHandle] StoryHandle not found for Chronicle: '{}' and Story: '{}'."
+             , chronicle, story);
         return (nullptr);
     }
 }
@@ -221,8 +218,7 @@ chronolog::StorytellerClient::initializeStoryWritingHandle(ChronicleName const &
     auto story_record_iter = acquiredStoryHandles.find(std::pair <std::string, std::string>(chronicle, story));
     if(story_record_iter != acquiredStoryHandles.end())
     {
-        Logger::getLogger()->debug("[StorytellerClient] StoryHandle already exists for Chronicle: '{}' and Story: '{}'."
-                                  , chronicle, story);
+        LOGD("[StorytellerClient] StoryHandle already exists for Chronicle: '{}' and Story: '{}'.", chronicle, story);
         return story_record_iter->second;
     }
 
@@ -241,8 +237,7 @@ chronolog::StorytellerClient::initializeStoryWritingHandle(ChronicleName const &
             {
                 std::stringstream ss;
                 ss << keeper_id_card;
-                Logger::getLogger()->warn(
-                        "[StorytellerClient] Failed to add KeeperRecordingClient for KeeperIdCard: '{}'.", ss.str());
+                LOGW("[StorytellerClient] Failed to add KeeperRecordingClient for KeeperIdCard: '{}'.", ss.str());
                 continue;
             }
         }
@@ -256,16 +251,14 @@ chronolog::StorytellerClient::initializeStoryWritingHandle(ChronicleName const &
                     std::pair <std::string, std::string>(chronicle, story), storyWritingHandle));
     if(!insert_return.second)
     {
-        Logger::getLogger()->error(
-                "[StorytellerClient] Failed to insert StoryWritingHandle for Chronicle: '{}' and Story: '{}'."
-                , chronicle, story);
+        LOGE("[StorytellerClient] Failed to insert StoryWritingHandle for Chronicle: '{}' and Story: '{}'.", chronicle
+             , story);
         delete storyWritingHandle;
         return nullptr;
     }
 
-    Logger::getLogger()->info(
-            "[StorytellerClient] Successfully initialized StoryWritingHandle for Chronicle: '{}' and Story: '{}'."
-            , chronicle, story);
+    LOGI("[StorytellerClient] Successfully initialized StoryWritingHandle for Chronicle: '{}' and Story: '{}'."
+         , chronicle, story);
     return storyWritingHandle;
     /*
     // now check the state of the handle:
@@ -290,15 +283,13 @@ void chronolog::StorytellerClient::removeAcquiredStoryHandle(ChronicleName const
     {
         delete (*story_record_iter).second;
         acquiredStoryHandles.erase(story_record_iter);
-        Logger::getLogger()->info(
-                "[StorytellerClient] Successfully removed StoryHandle for Chronicle: '{}' and Story: '{}'.", chronicle
-                , story);
+        LOGI("[StorytellerClient] Successfully removed StoryHandle for Chronicle: '{}' and Story: '{}'.", chronicle
+             , story);
     }
     else
     {
-        Logger::getLogger()->warn(
-                "[StorytellerClient] No matching StoryHandle found for Chronicle: '{}' and Story: '{}'.", chronicle
-                , story);
+        LOGW("[StorytellerClient] No matching StoryHandle found for Chronicle: '{}' and Story: '{}'.", chronicle
+             , story);
     }
 }
 

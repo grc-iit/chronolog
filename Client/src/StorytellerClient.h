@@ -43,7 +43,7 @@ public:
                                                                                        , rpc_protocol_string(
                     rpc_protocol)
     {
-        Logger::getLogger()->debug("[StorytellerClient] Initialized with ClientID: {}", clientId);
+        LOGD("[StorytellerClient] Initialized with ClientID: {}", clientId);
     }
 
     ~StorytellerClient();
@@ -97,8 +97,7 @@ public:
                        , StoryId const &story_id): theClient(client), chronicle(a_chronicle), story(a_story), storyId(
             story_id), keeperChoicePolicy(new KeeperChoicePolicy)
     {
-        Logger::getLogger()->debug("[StoryWritingHandle] Initialized for Chronicle: {}, Story: {}", a_chronicle
-                                   , a_story);
+        LOGD("[StoryWritingHandle] Initialized for Chronicle: {}, Story: {}", a_chronicle, a_story);
     }
 
     virtual ~StoryWritingHandle();

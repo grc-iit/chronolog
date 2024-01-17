@@ -34,8 +34,7 @@ public:
 
     StoryChunkExtractionQueue &getExtractionQueue()
     {
-        Logger::getLogger()->debug("[StoryChunkExtraction] Current size of extraction queue: {}"
-                                   , chunkExtractionQueue.size());
+        LOGD("[StoryChunkExtraction] Current size of extraction queue: {}", chunkExtractionQueue.size());
         return chunkExtractionQueue;
     }
 
@@ -49,8 +48,7 @@ public:
 
     virtual void processStoryChunk(StoryChunk*)  //=0
     {
-        Logger::getLogger()->warn(
-                "[StoryChunkExtraction] Base processStoryChunk method called. Derived class should implement specific logic.");
+        LOGW("[StoryChunkExtraction] Base processStoryChunk method called. Derived class should implement specific logic.");
     }
 
     void startExtractionThreads(int);
@@ -66,8 +64,8 @@ private:
     std::mutex extractorMutex;
     StoryChunkExtractionQueue chunkExtractionQueue;
 
-    std::vector <tl::managed < tl::xstream>> extractionStreams;
-    std::vector <tl::managed < tl::thread>> extractionThreads;
+    std::vector <tl::managed <tl::xstream>> extractionStreams;
+    std::vector <tl::managed <tl::thread>> extractionThreads;
 };
 }
 

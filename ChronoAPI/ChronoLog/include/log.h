@@ -8,6 +8,20 @@
 #include <spdlog/spdlog.h>
 #include <mutex>
 
+// Custom logging macros based on build type
+#ifdef NDEBUG
+#define LOGT(...)
+#define LOGD(...)
+#else
+#define LOGT(...) Logger::getLogger()->trace(__VA_ARGS__)
+#define LOGD(...) Logger::getLogger()->debug(__VA_ARGS__)
+#endif
+#define LOGI(...) Logger::getLogger()->info(__VA_ARGS__)
+#define LOGW(...) Logger::getLogger()->warn(__VA_ARGS__)
+#define LOGE(...) Logger::getLogger()->error(__VA_ARGS__)
+#define LOGC(...) Logger::getLogger()->critical(__VA_ARGS__)
+
+
 /**
  * @class Logger
  * @brief The Logger class provides a singleton logger with customizable configuration.
@@ -19,6 +33,7 @@
 class Logger
 {
 public:
+
     /**
      * @brief Initializes the logger with the specified configuration.
      *

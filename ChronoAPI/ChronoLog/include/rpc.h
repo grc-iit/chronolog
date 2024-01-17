@@ -60,7 +60,7 @@ private:
         in_addr**addr_list = (struct in_addr**)he->h_addr_list;
         strcpy(ip, inet_ntoa(*addr_list[0]));
         std::string lookup_str = protocol + "://" + std::string(ip) + ":" + std::to_string(server_port);
-        Logger::getLogger()->debug("[RPC] Generated endpoint lookup string: {}", lookup_str);
+        LOGD("[RPC] Generated endpoint lookup string: {}", lookup_str);
         return thalliumClient_->lookup(lookup_str.c_str());
     }
 
@@ -68,7 +68,7 @@ private:
     {
         thalliumClient_ = ChronoLog::Singleton <tl::engine>::GetInstance(protocol.c_str(), THALLIUM_CLIENT_MODE, true
                                                                          , numStreams_);
-        Logger::getLogger()->debug("[RPC] Initialized client engine and endpoints for protocol: {}", protocol);
+        LOGD("[RPC] Initialized client engine and endpoints for protocol: {}", protocol);
         thallium_endpoints.reserve(serverAddrList_.size());
         for(std::vector <std::string>::size_type i = 0; i < serverAddrList_.size(); ++i)
         {
@@ -113,7 +113,7 @@ public:
                     CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_SERVICE_THREADS), clientPort_(
                     CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.CLIENT_END_CONF.CLIENT_PORT), isRunning_(false)
     {
-        Logger::getLogger()->debug("[RPC] Started ChronoLogRPC service.");
+        LOGD("[RPC] Started ChronoLogRPC service.");
         for(int i = 0; i < numPorts_; i++)
         {
             serverAddrList_.emplace_back(CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP);
@@ -145,7 +145,7 @@ public:
                     hg_return_t hret;
                     for(size_t i = 0; i < workers; i++)
                     {
-                        Logger::getLogger()->debug("[RPC] Started Thallium server with {} workers.", workers);
+                        LOGD("[RPC] Started Thallium server with {} workers.", workers);
                         for(size_t i = 0; i < workers; i++)  // separate streams and pools for each engine
                         {
                             tl::engine*tmpServer = new tl::engine(serverRPCAddrList_[i].c_str(), THALLIUM_SERVER_MODE
@@ -157,7 +157,7 @@ public:
                         {
                             std::stringstream ss;
                             ss << thalliumServerList_[i]->self();
-                            Logger::getLogger()->debug("[RPC] Server created at {}", ss.str());
+                            LOGD("[RPC] Server created at {}", ss.str());
                         }
                         break;
                     }

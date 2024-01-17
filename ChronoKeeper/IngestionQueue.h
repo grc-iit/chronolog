@@ -34,10 +34,9 @@ public:
     {
         std::lock_guard <std::mutex> lock(ingestionQueueMutex);
         storyIngestionHandles.emplace(std::pair <StoryId, StoryIngestionHandle*>(story_id, ingestion_handle));
-        Logger::getLogger()->debug(
-                "[IngestionQueue] Added handle for StoryID={}: HandleAddress={}, StoryIngestionHandles={}, HandleMapSize={}"
-                , story_id, static_cast<void*>(ingestion_handle), reinterpret_cast<void*>(&storyIngestionHandles)
-                , storyIngestionHandles.size());
+        LOGD("[IngestionQueue] Added handle for StoryID={}: HandleAddress={}, StoryIngestionHandles={}, HandleMapSize={}"
+             , story_id, static_cast<void*>(ingestion_handle), reinterpret_cast<void*>(&storyIngestionHandles)
+             , storyIngestionHandles.size());
     }
 
     void removeIngestionHandle(StoryId const &story_id)
@@ -45,12 +44,12 @@ public:
         std::lock_guard <std::mutex> lock(ingestionQueueMutex);
         if(storyIngestionHandles.erase(story_id))
         {
-            Logger::getLogger()->debug("[IngestionQueue] Removed handle for StoryID={}. Current handle MapSize={}"
-                                       , story_id, storyIngestionHandles.size());
+            LOGD("[IngestionQueue] Removed handle for StoryID={}. Current handle MapSize={}", story_id
+                 , storyIngestionHandles.size());
         }
         else
         {
-            Logger::getLogger()->warn("[IngestionQueue] Tried to remove non-existent handle for StoryID={}.", story_id);
+            LOGW("[IngestionQueue] Tried to remove non-existent handle for StoryID={}.", story_id);
         }
     }
 
@@ -58,13 +57,12 @@ public:
     {
         std::stringstream ss;
         ss << event;
-        Logger::getLogger()->debug("[IngestionQueue] Received event for StoryID={}: Event Details={}, HandleMapSize={}"
-                                   , event.storyId, ss.str(), storyIngestionHandles.size());
+        LOGD("[IngestionQueue] Received event for StoryID={}: Event Details={}, HandleMapSize={}", event.storyId
+             , ss.str(), storyIngestionHandles.size());
         auto ingestionHandle_iter = storyIngestionHandles.find(event.storyId);
         if(ingestionHandle_iter == storyIngestionHandles.end())
         {
-            Logger::getLogger()->warn("[IngestionQueue] Orphan event for story {}. Storing for later processing."
-                                      , event.storyId);
+            LOGW("[IngestionQueue] Orphan event for story {}. Storing for later processing.", event.storyId);
             std::lock_guard <std::mutex> lock(ingestionQueueMutex);
             orphanEventQueue.push_back(event);
         }
@@ -79,7 +77,7 @@ public:
     {
         if(orphanEventQueue.empty())
         {
-            Logger::getLogger()->debug("[IngestionQueue] Orphan event queue is empty. No actions taken.");
+            LOGD("[IngestionQueue] Orphan event queue is empty. No actions taken.");
             return;
         }
         std::lock_guard <std::mutex> lock(ingestionQueueMutex);
@@ -98,8 +96,7 @@ public:
                 ++iter;
             }
         }
-        Logger::getLogger()->debug("[IngestionQueue] Drained {} orphan events into known handles."
-                                   , orphanEventQueue.size());
+        LOGD("[IngestionQueue] Drained {} orphan events into known handles.", orphanEventQueue.size());
     }
 
     bool is_empty() const
@@ -109,14 +106,14 @@ public:
 
     void shutDown()
     {
-        Logger::getLogger()->info("[IngestionQueue] Initiating shutdown. HandleMapSize={}, Orphan EventQueueSize={}"
-                                  , storyIngestionHandles.size(), orphanEventQueue.size());
+        LOGI("[IngestionQueue] Initiating shutdown. HandleMapSize={}, Orphan EventQueueSize={}"
+             , storyIngestionHandles.size(), orphanEventQueue.size());
         // last attempt to drain orphanEventQueue into known ingestionHandles
         drainOrphanEvents();
         // disengage all handles
         std::lock_guard <std::mutex> lock(ingestionQueueMutex);
         storyIngestionHandles.clear();
-        Logger::getLogger()->info("[IngestionQueue] Shutdown completed. All handles disengaged.");
+        LOGI("[IngestionQueue] Shutdown completed. All handles disengaged.");
     }
 
 private:

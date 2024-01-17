@@ -16,10 +16,10 @@ int main()
         std::unique_ptr <std::ostringstream> oss;
         clientMsg.msgType_ = ClientMessage::CONNECTION;
         oss = serde->serializeClientMessage(clientMsg);
-        Logger::getLogger()->info("[SerDeFactoryTest] Serialized client msg (len: {}): {}", oss->str().length(), oss->str());
+        LOGI("[SerDeFactoryTest] Serialized client msg (len: {}): {}", oss->str().length(), oss->str());
         std::unique_ptr <ClientMessage> clientMsg2 = serde->deserializeClientMessage(
                 reinterpret_cast<unsigned char*>(const_cast<char*>(oss->str().data())), oss->str().length());
-        Logger::getLogger()->info("[SerDeFactoryTest] Deserialized client msg: {}", *clientMsg2);
+        LOGI("[SerDeFactoryTest] Deserialized client msg: {}", *clientMsg2);
     }
 
     {
@@ -35,11 +35,11 @@ int main()
         }
         serverMsg.chronoKeeperList_ = chronoKeeperList;
         oss = serde->serializeServerMessage(serverMsg);
-        Logger::getLogger()->info("[SerDeFactoryTest] Serialized server msg (len: {}): {}", oss->str().length(), oss->str());
+        LOGI("[SerDeFactoryTest] Serialized server msg (len: {}): {}", oss->str().length(), oss->str());
 
         std::unique_ptr <ServerMessage> serverMsg2 = serde->deserializeServerMessage(
                 reinterpret_cast<unsigned char*>(const_cast<char*>(oss->str().data())), oss->str().length());
-        Logger::getLogger()->info("[SerDeFactoryTest] Deserialized server msg: {}", *serverMsg2);
+        LOGI("[SerDeFactoryTest] Deserialized server msg: {}", *serverMsg2);
 
     }
 }

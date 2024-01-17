@@ -16,7 +16,7 @@ chronolog::CSVFileStoryChunkExtractor::CSVFileStoryChunkExtractor(chronolog::Kee
 /////////////
 chronolog::CSVFileStoryChunkExtractor::~CSVFileStoryChunkExtractor()
 {
-    Logger::getLogger()->info("[CSVFileStoryChunkExtractor] Destructor called. Cleaning up...");
+    LOGI("[CSVFileStoryChunkExtractor] Destructor called. Cleaning up...");
 }
 
 /////////////
@@ -29,9 +29,8 @@ void chronolog::CSVFileStoryChunkExtractor::processStoryChunk(chronolog::StoryCh
                       std::to_string(story_chunk->getStartTime() / 1000000000) + ".csv";
 
     tl::xstream es = tl::xstream::self();
-    Logger::getLogger()->info(
-            "[CSVFileStoryChunkExtractor] Processing StoryChunk: ES={}, ULT={}, StoryID={}, StartTime={}", es.get_rank()
-            , tl::thread::self_id(), story_chunk->getStoryId(), story_chunk->getStartTime());
+    LOGI("[CSVFileStoryChunkExtractor] Processing StoryChunk: ES={}, ULT={}, StoryID={}, StartTime={}", es.get_rank()
+         , tl::thread::self_id(), story_chunk->getStoryId(), story_chunk->getStartTime());
     // current thread if the only one that has this storyChunk and the only one that's writing to this chunk csv file 
     // thus no additional locking is needed ... 
     chunk_fstream.open(chunk_filename, std::ofstream::out|std::ofstream::app);
@@ -41,6 +40,6 @@ void chronolog::CSVFileStoryChunkExtractor::processStoryChunk(chronolog::StoryCh
         chunk_fstream << event << std::endl;
     }
     chunk_fstream.close();
-    Logger::getLogger()->info("[CSVFileStoryChunkExtractor] Finished processing StoryChunk. File={}", chunk_filename);
+    LOGI("[CSVFileStoryChunkExtractor] Finished processing StoryChunk. File={}", chunk_filename);
 }
 

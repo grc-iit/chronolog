@@ -27,7 +27,7 @@ public:
 
     ~KeeperRecordingService()
     {
-        Logger::getLogger()->debug("[KeeperRecordingService] Destructor called. Cleaning up...");
+        LOGD("[KeeperRecordingService] Destructor called. Cleaning up...");
         get_engine().pop_finalize_callback(this);
     }
 
@@ -37,7 +37,7 @@ public:
         //  ChronoTick const& chrono_tick, std::string const& record)
         std::stringstream ss;
         ss << log_event;
-        Logger::getLogger()->debug("[KeeperRecordingService] Recording event: {}", ss.str());
+        LOGD("[KeeperRecordingService] Recording event: {}", ss.str());
         theIngestionQueue.ingestLogEvent(log_event);
         request.respond(chronolog::CL_SUCCESS);
     }

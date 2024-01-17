@@ -31,7 +31,7 @@ public:
         }
         catch(tl::exception const &ex)
         {
-            Logger::getLogger()->error("[DataStoreAdminClient] Failed to create DataStoreAdminClient");
+            LOGE("[DataStoreAdminClient] Failed to create DataStoreAdminClient");
         }
         return adminClient;
     }
@@ -43,12 +43,12 @@ public:
         try
         {
             available = collection_service_available.on(service_handle)();
-            Logger::getLogger()->debug("[DataStoreAdminClient] Service available: {}", available);
+            LOGD("[DataStoreAdminClient] Service available: {}", available);
 
         }
         catch(tl::exception const &ex)
         {
-            Logger::getLogger()->error("[DataStoreAdminClient] Service unavailable: {}", available);
+            LOGE("[DataStoreAdminClient] Service unavailable: {}", available);
         }
         return available;
     }
@@ -58,7 +58,7 @@ public:
         int status = chronolog::CL_ERR_UNKNOWN;
         try
         {
-            Logger::getLogger()->info("[DataStoreAdminClient] Shutdown");
+            LOGI("[DataStoreAdminClient] Shutdown");
             status = shutdown_data_collection.on(service_handle)();
         }
         catch(tl::exception const &ex)
@@ -73,7 +73,7 @@ public:
         int status = chronolog::CL_ERR_UNKNOWN;
         try
         {
-            Logger::getLogger()->debug("[DataStoreAdminClient] START Story Recording for StoryID={}", story_id);
+            LOGD("[DataStoreAdminClient] START Story Recording for StoryID={}", story_id);
             status = start_story_recording.on(service_handle)(chronicle_name, story_name, story_id, start_time);
         }
         catch(tl::exception const &ex)
@@ -86,7 +86,7 @@ public:
         int status = chronolog::CL_ERR_UNKNOWN;
         try
         {
-            Logger::getLogger()->debug("[DataStoreAdminClient] STOP Story Recording for StoryId={}", story_id);
+            LOGD("[DataStoreAdminClient] STOP Story Recording for StoryId={}", story_id);
             status = stop_story_recording.on(service_handle)(story_id);
         }
         catch(tl::exception const &ex)

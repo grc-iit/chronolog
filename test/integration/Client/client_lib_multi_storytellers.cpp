@@ -37,8 +37,8 @@ void thread_body(struct thread_arg*t)
 
     // Create the chronicle
     ret = client->CreateChronicle(chronicle_name, chronicle_attrs, flags);
-    Logger::getLogger()->debug("[ClientLibMultiStorytellers] Chronicle created: tid={}, ChronicleName={}, Flags: {}"
-                               , t->tid, chronicle_name, flags);
+    LOGD("[ClientLibMultiStorytellers] Chronicle created: tid={}, ChronicleName={}, Flags: {}", t->tid, chronicle_name
+         , flags);
 
     // Create attributes for the story
     std::string story_name = gen_random(STORY_NAME_LEN);
@@ -47,9 +47,8 @@ void thread_body(struct thread_arg*t)
 
     // Acquire the story
     auto acquire_ret = client->AcquireStory(chronicle_name, story_name, story_attrs, flags);
-    Logger::getLogger()->debug(
-            "[ClientLibMultiStorytellers] Story acquired: tid={}, ChronicleName={}, StoryName={}, Ret: {}", t->tid
-            , chronicle_name, story_name, acquire_ret.first);
+    LOGD("[ClientLibMultiStorytellers] Story acquired: tid={}, ChronicleName={}, StoryName={}, Ret: {}", t->tid
+         , chronicle_name, story_name, acquire_ret.first);
 
     // Assertion for successful story acquisition or expected errors
     assert(acquire_ret.first == chronolog::CL_SUCCESS || acquire_ret.first == chronolog::CL_ERR_NOT_EXIST ||
@@ -68,9 +67,8 @@ void thread_body(struct thread_arg*t)
 
         // Release the story
         ret = client->ReleaseStory(chronicle_name, story_name);
-        Logger::getLogger()->debug(
-                "[ClientLibMultiStorytellers] Story released: tid={}, ChronicleName={}, StoryName={}, Ret: {}", t->tid
-                , chronicle_name, story_name, ret);
+        LOGD("[ClientLibMultiStorytellers] Story released: tid={}, ChronicleName={}, StoryName={}, Ret: {}", t->tid
+             , chronicle_name, story_name, ret);
 
         // Assertion for successful story release or expected errors
         assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NO_CONNECTION);
@@ -78,9 +76,8 @@ void thread_body(struct thread_arg*t)
 
     // Destroy the story
     ret = client->DestroyStory(chronicle_name, story_name);
-    Logger::getLogger()->debug(
-            "[ClientLibMultiStorytellers] Story destroyed: tid={}, ChronicleName={}, StoryName={}, Ret: {}", t->tid
-            , chronicle_name, story_name, ret);
+    LOGD("[ClientLibMultiStorytellers] Story destroyed: tid={}, ChronicleName={}, StoryName={}, Ret: {}", t->tid
+         , chronicle_name, story_name, ret);
 
     // Assertion for successful story destruction or expected errors
     assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST || ret == chronolog::CL_ERR_ACQUIRED ||
@@ -88,8 +85,7 @@ void thread_body(struct thread_arg*t)
 
     // Destroy the chronicle
     ret = client->DestroyChronicle(chronicle_name);
-    Logger::getLogger()->debug("[ClientLibMultiStorytellers] Chronicle destroyed: tid={}, ChronicleName={}", t->tid
-                               , chronicle_name);
+    LOGD("[ClientLibMultiStorytellers] Chronicle destroyed: tid={}, ChronicleName={}", t->tid, chronicle_name);
 
     // Assertion for successful chronicle destruction or expected errors
     assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST || ret == chronolog::CL_ERR_ACQUIRED ||
@@ -124,7 +120,7 @@ int main(int argc, char**argv)
     {
         exit(EXIT_FAILURE);
     }
-    Logger::getLogger()->info("[ClientLibMultiStorytellers] Running test.");
+    LOGI("[ClientLibMultiStorytellers] Running test.");
 
 
     std::string server_ip = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP;
@@ -140,7 +136,7 @@ int main(int argc, char**argv)
 
     if(chronolog::CL_SUCCESS != ret)
     {
-        Logger::getLogger()->error("[ClientLibMultiStorytellers] Failed to connect to ChronoVisor");
+        LOGE("[ClientLibMultiStorytellers] Failed to connect to ChronoVisor");
         delete client;
         return -1;
     }

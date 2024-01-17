@@ -29,8 +29,7 @@ public:
         }
         catch(tl::exception const &)
         {
-            Logger::getLogger()->error(
-                    "[KeeperRecordingClient] Failed to create KeeperRecordingClient due to an exception.");
+            LOGE("[KeeperRecordingClient] Failed to create KeeperRecordingClient due to an exception.");
         }
         return nullptr;
     }
@@ -41,15 +40,14 @@ public:
         {
             std::stringstream ss;
             ss << eventMsg;
-            Logger::getLogger()->info("[KeeperRecordingClient] Sending event message: {}", ss.str());
+            LOGI("[KeeperRecordingClient] Sending event message: {}", ss.str());
             int return_code = record_event.on(service_ph)(eventMsg);
-            Logger::getLogger()->info("[KeeperRecordingClient] Sent event message: {} with return code: {}", ss.str()
-                                      , return_code);
+            LOGI("[KeeperRecordingClient] Sent event message: {} with return code: {}", ss.str(), return_code);
             return return_code;
         }
         catch(thallium::exception const &)
         {
-            Logger::getLogger()->error("[KeeperRecordingClient] Failed to send event message due to an exception.");
+            LOGE("[KeeperRecordingClient] Failed to send event message due to an exception.");
         }
         return (chronolog::CL_ERR_UNKNOWN);
     }
@@ -60,7 +58,7 @@ public:
     ~KeeperRecordingClient()
     {
         record_event.deregister();
-        Logger::getLogger()->debug("[KeeperRecordingClient] Destructor called. Deregistered record_event.");
+        LOGD("[KeeperRecordingClient] Destructor called. Deregistered record_event.");
     }
 
 private:
@@ -75,9 +73,8 @@ private:
                           , std::string const &keeper_service_addr): keeperIdCard(keeper_id_card), service_addr(
             keeper_service_addr), service_ph(tl_engine.lookup(service_addr), keeper_id_card.getProviderId())
     {
-        Logger::getLogger()->info(
-                "[KeeperRecordingClient] RecordingClient created for KeeperRecordingService at {} with ProviderID={}"
-                , service_addr, keeperIdCard.getProviderId());
+        LOGI("[KeeperRecordingClient] RecordingClient created for KeeperRecordingService at {} with ProviderID={}"
+             , service_addr, keeperIdCard.getProviderId());
         record_event = tl_engine.define("record_event");
     }
 };

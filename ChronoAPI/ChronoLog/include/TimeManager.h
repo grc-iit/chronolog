@@ -19,23 +19,22 @@ public:
     {
         refTimestampUpdateInterval_ = TIME_DB_UPDATE_INTERVAL;
         init(refTimestampUpdateInterval_);
-        Logger::getLogger()->info("[TimeManager] Initialized with default update interval: {}"
-                                  , refTimestampUpdateInterval_);
+        LOGI("[TimeManager] Initialized with default update interval: {}", refTimestampUpdateInterval_);
     }
 
     explicit TimeManager(double updateInterval)
     {
         refTimestampUpdateInterval_ = updateInterval;
         init(refTimestampUpdateInterval_);
-        Logger::getLogger()->info("[TimeManager] Initialized with update interval: {}", updateInterval);
+        LOGI("[TimeManager] Initialized with update interval: {}", updateInterval);
     }
 
     explicit TimeManager(double updateInterval, ClocksourceType clocksourceType)
     {
         refTimestampUpdateInterval_ = updateInterval;
         init(refTimestampUpdateInterval_, clocksourceType);
-        Logger::getLogger()->info("[TimeManager] Initialized with update interval: {} and clocksource type: {}"
-                                  , updateInterval, static_cast<int>(clocksourceType));
+        LOGI("[TimeManager] Initialized with update interval: {} and clocksource type: {}", updateInterval
+             , static_cast<int>(clocksourceType));
     }
 
     void setClocksourceType(ClocksourceType clocksourceType)

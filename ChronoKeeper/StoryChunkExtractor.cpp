@@ -15,13 +15,12 @@ void chronolog::StoryChunkExtractorBase::startExtractionThreads(int stream_count
 
     if(extractorState == RUNNING)
     {
-        Logger::getLogger()->info(
-                "[StoryChunkExtractionBase] ExtractionModule already running. Aborting start request.");
+        LOGI("[StoryChunkExtractionBase] ExtractionModule already running. Aborting start request.");
         return;
     }
 
     extractorState = RUNNING;
-    Logger::getLogger()->debug("[StoryChunkExtractionBase] Started extraction threads.");
+    LOGD("[StoryChunkExtractionBase] Started extraction threads.");
 
     for(int i = 0; i < stream_count; ++i)
     {
@@ -44,32 +43,30 @@ void chronolog::StoryChunkExtractorBase::shutdownExtractionThreads()
 
     if(extractorState == SHUTTING_DOWN)
     {
-        Logger::getLogger()->info(
-                "[StoryChunkExtractionBase] ExtractionModule already shutting down. Skipping shutdown request.");
+        LOGI("[StoryChunkExtractionBase] ExtractionModule already shutting down. Skipping shutdown request.");
         return;
     }
 
     extractorState = SHUTTING_DOWN;
-    Logger::getLogger()->debug("[StoryChunkExtractionBase] Initiating shutdown. Queue size: {}"
-                               , chunkExtractionQueue.size());
+    LOGD("[StoryChunkExtractionBase] Initiating shutdown. Queue size: {}", chunkExtractionQueue.size());
 
     // join threads & executionstreams while holding stateMutex
     for(auto &eth: extractionThreads)
     {
         eth->join();
     }
-    Logger::getLogger()->debug("[StoryChunkExtractionBase] Extraction threads successfully shut down.");
+    LOGD("[StoryChunkExtractionBase] Extraction threads successfully shut down.");
     for(auto &es: extractionStreams)
     {
         es->join();
     }
-    Logger::getLogger()->debug("[StoryChunkExtractionBase] Streams have been successfully closed.");
+    LOGD("[StoryChunkExtractionBase] Streams have been successfully closed.");
 }
 
 //////////////////////
 chronolog::StoryChunkExtractorBase::~StoryChunkExtractorBase()
 {
-    Logger::getLogger()->debug("[StoryChunkExtractionBase] Destructor called. Initiating shutdown sequence.");
+    LOGD("[StoryChunkExtractionBase] Destructor called. Initiating shutdown sequence.");
 
     shutdownExtractionThreads();
 
@@ -86,8 +83,8 @@ void chronolog::StoryChunkExtractorBase::drainExtractionQueue()
     // and untill the extractionQueue is drained in shutdown mode
     while((extractorState == RUNNING) || !chunkExtractionQueue.empty())
     {
-        Logger::getLogger()->debug("[StoryChunkExtractionBase] Draining queue. ES Rank: {}, ULT ID: {}, Queue Size: {}"
-                                   , es.get_rank(), thallium::thread::self_id(), chunkExtractionQueue.size());
+        LOGD("[StoryChunkExtractionBase] Draining queue. ES Rank: {}, ULT ID: {}, Queue Size: {}", es.get_rank()
+             , thallium::thread::self_id(), chunkExtractionQueue.size());
 
         while(!chunkExtractionQueue.empty())
         {
@@ -95,7 +92,7 @@ void chronolog::StoryChunkExtractorBase::drainExtractionQueue()
             if(storyChunk == nullptr)
                 //the queue might have been drained by another thread before the current thread acquired extractionQueue mutex
             {
-                Logger::getLogger()->warn("[StoryChunkExtractionBase] Failed to acquire a story chunk from the queue.");
+                LOGW("[StoryChunkExtractionBase] Failed to acquire a story chunk from the queue.");
                 break;
             }
             processStoryChunk(storyChunk);  // INNA: should add return type and handle the failure properly

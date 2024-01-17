@@ -17,7 +17,7 @@ chronolog::Client*client;
 
 void thread_body(struct thread_arg*t)
 {
-    Logger::getLogger()->info("[ClientLibMultiPThreadTest] Thread (ID: {}) - Starting execution.", t->tid);
+    LOGI("[ClientLibMultiPThreadTest] Thread (ID: {}) - Starting execution.", t->tid);
     //std::string server_ip = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string();
     //int base_port = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT;
     int flags = 0;
@@ -27,19 +27,18 @@ void thread_body(struct thread_arg*t)
     if(t->tid % 2 == 0) chronicle_name = "Chronicle_2";
     else chronicle_name = "Chronicle_1";
 
-    Logger::getLogger()->info("[ClientLibMultiPThreadTest] Thread (ID: {}) - Creating Chronicle: {}", t->tid
-                              , chronicle_name);
+    LOGI("[ClientLibMultiPThreadTest] Thread (ID: {}) - Creating Chronicle: {}", t->tid, chronicle_name);
     std::unordered_map <std::string, std::string> chronicle_attrs;
     chronicle_attrs.emplace("Priority", "High");
     chronicle_attrs.emplace("IndexGranularity", "Millisecond");
     chronicle_attrs.emplace("TieringPolicy", "Hot");
     ret = client->CreateChronicle(chronicle_name, chronicle_attrs, flags);
-    Logger::getLogger()->info("[ClientLibMultiPThreadTest] Thread (ID: {}) - CreateChronicle result for {}: {}", t->tid
-                              , chronicle_name, ret);
+    LOGI("[ClientLibMultiPThreadTest] Thread (ID: {}) - CreateChronicle result for {}: {}", t->tid, chronicle_name
+         , ret);
 
     flags = 1;
     std::string story_name = gen_random(STORY_NAME_LEN);
-    Logger::getLogger()->info("[ClientLibMultiPThreadTest] Thread (ID: {}) - Generating Story: {}", t->tid, story_name);
+    LOGI("[ClientLibMultiPThreadTest] Thread (ID: {}) - Generating Story: {}", t->tid, story_name);
 
     std::unordered_map <std::string, std::string> story_attrs;
     story_attrs.emplace("Priority", "High");
@@ -47,27 +46,27 @@ void thread_body(struct thread_arg*t)
     story_attrs.emplace("TieringPolicy", "Hot");
     flags = 2;
     auto acquire_ret = client->AcquireStory(chronicle_name, story_name, story_attrs, flags);
-    Logger::getLogger()->info("[ClientLibMultiPThreadTest] Thread (ID: {}) - AcquireStory result for {}:{} - {}", t->tid
-                              , chronicle_name, story_name, acquire_ret.first);
+    LOGI("[ClientLibMultiPThreadTest] Thread (ID: {}) - AcquireStory result for {}:{} - {}", t->tid, chronicle_name
+         , story_name, acquire_ret.first);
 
     assert(acquire_ret.first == chronolog::CL_SUCCESS || acquire_ret.first == chronolog::CL_ERR_NOT_EXIST);
     ret = client->DestroyStory(chronicle_name, story_name);//, flags);
-    Logger::getLogger()->info("[ClientLibMultiPThreadTest] Thread (ID: {}) - DestroyStory result for {}:{} - {}", t->tid
-                              , chronicle_name, story_name, ret);
+    LOGI("[ClientLibMultiPThreadTest] Thread (ID: {}) - DestroyStory result for {}:{} - {}", t->tid, chronicle_name
+         , story_name, ret);
 
     assert(ret == chronolog::CL_ERR_ACQUIRED || ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST);
     ret = client->Disconnect(); //t->client_id, flags);
-    Logger::getLogger()->info("[ClientLibMultiPThreadTest] Thread (ID: {}) - Disconnect result: {}", t->tid, ret);
+    LOGI("[ClientLibMultiPThreadTest] Thread (ID: {}) - Disconnect result: {}", t->tid, ret);
 
     assert(ret == chronolog::CL_ERR_ACQUIRED || ret == chronolog::CL_SUCCESS);
     ret = client->ReleaseStory(chronicle_name, story_name);//, flags);
-    Logger::getLogger()->info("[ClientLibMultiPThreadTest] Thread (ID: {}) - ReleaseStory result for {}:{} - {}", t->tid
-                              , chronicle_name, story_name, ret);
+    LOGI("[ClientLibMultiPThreadTest] Thread (ID: {}) - ReleaseStory result for {}:{} - {}", t->tid, chronicle_name
+         , story_name, ret);
 
     assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NO_CONNECTION);
     ret = client->DestroyStory(chronicle_name, story_name);//, flags);
-    Logger::getLogger()->info("[ClientLibMultiPThreadTest] Thread (ID: {}) - DestroyStory result for {}:{} - {}", t->tid
-                              , chronicle_name, story_name, ret);
+    LOGI("[ClientLibMultiPThreadTest] Thread (ID: {}) - DestroyStory result for {}:{} - {}", t->tid, chronicle_name
+         , story_name, ret);
 
     assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST || ret == chronolog::CL_ERR_ACQUIRED ||
            ret == chronolog::CL_ERR_NO_CONNECTION);
@@ -75,9 +74,9 @@ void thread_body(struct thread_arg*t)
     ret = client->DestroyChronicle(chronicle_name);//, flags);
     assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST || ret == chronolog::CL_ERR_ACQUIRED ||
            ret == chronolog::CL_ERR_NO_CONNECTION);
-    Logger::getLogger()->info("[ClientLibMultiPThreadTest] Thread (ID: {}) - DestroyChronicle result for {}: {}", t->tid
-                              , chronicle_name, ret);
-    Logger::getLogger()->info("[ClientLibMultiPThreadTest] Thread (ID: {}) - Execution completed.", t->tid);
+    LOGI("[ClientLibMultiPThreadTest] Thread (ID: {}) - DestroyChronicle result for {}: {}", t->tid, chronicle_name
+         , ret);
+    LOGI("[ClientLibMultiPThreadTest] Thread (ID: {}) - Execution completed.", t->tid);
 }
 
 int main(int argc, char**argv)
@@ -105,7 +104,7 @@ int main(int argc, char**argv)
     {
         exit(EXIT_FAILURE);
     }
-    Logger::getLogger()->info("[ClientLibMultiPthreadTest] Running test.");
+    LOGI("[ClientLibMultiPthreadTest] Running test.");
 
     std::string server_ip = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP;
     int base_port = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT;

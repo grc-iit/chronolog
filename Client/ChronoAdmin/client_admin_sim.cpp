@@ -42,26 +42,20 @@ int num_processes;
 
 void print_banner()
 {
-    Logger::getLogger()->info(
-            " -connect -protocol <int> -hostname <string> -port <int>, protocol should be 0(sockets),1(tcp),2(verbs), connects all clients");
+    LOGI(" -connect -protocol <int> -hostname <string> -port <int>, protocol should be 0(sockets),1(tcp),2(verbs), connects all clients");
     /*std::cout
                 << " -connect -protocol <int> -hostname <string> -port <int>, protocol should be 0(sockets),1(tcp),2(verbs), connects all clients"
                 << std::endl;*/
 
-    Logger::getLogger()->info(
-            "Metadata operations : -c <string> -p <int>, create a chronicle with name <string> by client <int>");
-    Logger::getLogger()->info(
-            " -s <string1> <string2> -p <int> , create a story with name string1+string2 : string1 = chronicle name, string2 = story name by client <int>");
-    Logger::getLogger()->info(" -a -c <string> -p <int>, acquire chronicle with name <string> by client <int>");
-    Logger::getLogger()->info(
-            " -a -s <string1> <string2> -p <int>, acquire story with name string1+string2 : string1 = chronicle name, string2 = story name by client <int>");
-    Logger::getLogger()->info(" -r -c <string> -p <int>, release chronicle with name <string> by client <int>");
-    Logger::getLogger()->info(
-            " -r -s <string1> <string2> -p <int>, release story with name string1+string2 : string1 = chronicle name, string2 = story name by client <int> ");
-    Logger::getLogger()->info(" -d -c <string> -p <int>, destroy chronicle with name <string> by client <int>");
-    Logger::getLogger()->info(
-            " -d -s <string1> <string2> -p <int>, destroy story with name string1+string2 : string1 = chronicle name, string2 = story name by client <int>");
-    Logger::getLogger()->info(" -disconnect , disconnect all clients");
+    LOGI("Metadata operations : -c <string> -p <int>, create a chronicle with name <string> by client <int>");
+    LOGI(" -s <string1> <string2> -p <int> , create a story with name string1+string2 : string1 = chronicle name, string2 = story name by client <int>");
+    LOGI(" -a -c <string> -p <int>, acquire chronicle with name <string> by client <int>");
+    LOGI(" -a -s <string1> <string2> -p <int>, acquire story with name string1+string2 : string1 = chronicle name, string2 = story name by client <int>");
+    LOGI(" -r -c <string> -p <int>, release chronicle with name <string> by client <int>");
+    LOGI(" -r -s <string1> <string2> -p <int>, release story with name string1+string2 : string1 = chronicle name, string2 = story name by client <int> ");
+    LOGI(" -d -c <string> -p <int>, destroy chronicle with name <string> by client <int>");
+    LOGI(" -d -s <string1> <string2> -p <int>, destroy story with name string1+string2 : string1 = chronicle name, string2 = story name by client <int>");
+    LOGI(" -disconnect , disconnect all clients");
     /*std::cout << " Metadata operations : -c <string> -p <int>, create a chronicle with name <string>  "
                   << std::endl
                   << " -s <string1> <string2> -p <int> , create a story with name string1+string2 : string1 = chronicle name, string2 = story name by client <int>"
@@ -89,9 +83,8 @@ int main(int argc, char**argv)
 
     if(argc != 2)
     {
-        Logger::getLogger()->info(
-                "ChronoAdmin_Sim usage : ./ChronoAdmin_Sim <int>, run simulation with <int> number of clients");
-        Logger::getLogger()->info(" -h for help");
+        LOGI("ChronoAdmin_Sim usage : ./ChronoAdmin_Sim <int>, run simulation with <int> number of clients");
+        LOGI(" -h for help");
         /*std::cout << " ChronoAdmin_Sim usage : ./ChronoAdmin_Sim <int>, run simulation with <int> number of clients"
                           << std::endl << " -h for help" << std::endl;*/
 
