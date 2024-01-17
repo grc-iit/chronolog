@@ -44,6 +44,8 @@ public:
      * @param location     The file location if logType is "file".
      * @param logLevel     The logging level for the logger (e.g., debug, info, error).
      * @param loggerName   The name of the logger, used in formatted output.
+     * @param logFileSize  Maximum size of log file before rotating (in Bytes).
+     * @param logFileNum   Number of log files to maintain before overwriting.
      *
      * @return             Returns 0 if the logger was initialized successfully,
      *                     and returns 1 if there was an error during initialization.
@@ -83,6 +85,10 @@ private:
      */
     static std::mutex mutex;
 
+    /**
+     * @brief Retrieves the hostname of the system.
+     * @return std::string Hostname of the system.
+     */
     static std::string getHostname();
 
     Logger() = default;
