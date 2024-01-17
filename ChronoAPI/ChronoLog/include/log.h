@@ -83,6 +83,8 @@ private:
      */
     static std::mutex mutex;
 
+    static std::string getHostname();
+
     Logger() = default;
 
     ~Logger() = default;
