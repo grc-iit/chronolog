@@ -49,7 +49,8 @@ public:
      *                     and returns 1 if there was an error during initialization.
      */
     static int initialize(const std::string &logType, const std::string &location, spdlog::level::level_enum logLevel
-                          , const std::string &loggerName);
+                          , const std::string &loggerName, const std::size_t &logFileSize
+                          , const std::size_t &logFileNum);
 
 
     /**

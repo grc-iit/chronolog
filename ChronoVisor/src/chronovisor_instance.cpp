@@ -43,7 +43,9 @@ int main(int argc, char**argv)
     int result = Logger::initialize(confManager.VISOR_CONF.VISOR_LOG_CONF.LOGTYPE
                                     , confManager.VISOR_CONF.VISOR_LOG_CONF.LOGFILE
                                     , confManager.VISOR_CONF.VISOR_LOG_CONF.LOGLEVEL
-                                    , confManager.VISOR_CONF.VISOR_LOG_CONF.LOGNAME);
+                                    , confManager.VISOR_CONF.VISOR_LOG_CONF.LOGNAME
+                                    , confManager.VISOR_CONF.VISOR_LOG_CONF.LOGFILESIZE
+                                    , confManager.VISOR_CONF.VISOR_LOG_CONF.LOGFILENUM);
     if(result == 1)
     {
         exit(EXIT_FAILURE);

@@ -62,7 +62,9 @@ int main(int argc, char**argv)
     int result = Logger::initialize(confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE
                                     , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
                                     , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME);
+                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME
+                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILESIZE
+                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILENUM);
     if(result == 1)
     {
         exit(EXIT_FAILURE);

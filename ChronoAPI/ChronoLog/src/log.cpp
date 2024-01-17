@@ -11,7 +11,7 @@ std::shared_ptr <spdlog::logger> Logger::logger = nullptr;
 std::mutex Logger::mutex;
 
 int Logger::initialize(const std::string &logType, const std::string &location, spdlog::level::level_enum logLevel
-                       , const std::string &loggerName)
+                       , const std::string &loggerName, const std::size_t &logFileSize, const std::size_t &logFileNum)
 {
     std::lock_guard <std::mutex> lock(mutex);
     if(logger)
@@ -24,7 +24,7 @@ int Logger::initialize(const std::string &logType, const std::string &location, 
         try
         {
             // Create a rotating_file_sink with a max file size of 5MB and max 3 files
-            auto rotating_sink = std::make_shared <spdlog::sinks::rotating_file_sink_mt>(location, 1024 * 1024 * 5, 3);
+            auto rotating_sink = std::make_shared <spdlog::sinks::rotating_file_sink_mt>(location, logFileSize, logFileNum);
             logger = std::make_shared <spdlog::logger>(loggerName, rotating_sink);
         }
         catch(const spdlog::spdlog_ex &ex)

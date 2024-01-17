@@ -62,6 +62,8 @@ typedef struct LogConf_
     std::string LOGFILE;
     spdlog::level::level_enum LOGLEVEL;
     std::string LOGNAME;
+    size_t LOGFILESIZE;
+    size_t LOGFILENUM;
 
     // Helper function to convert spdlog::level::level_enum to string
     static std::string LogLevelToString(spdlog::level::level_enum level)
@@ -90,7 +92,8 @@ typedef struct LogConf_
     [[nodiscard]] std::string to_String() const
     {
         return "[TYPE: " + LOGTYPE + ", FILE: " + LOGFILE + ", LEVEL: " + LogLevelToString(LOGLEVEL) + ", NAME: " +
-               LOGNAME + "]";
+               LOGNAME + ", LOGFILESIZE: " + std::to_string(LOGFILESIZE) + ", LOGFILENUM: " +
+               std::to_string(LOGFILENUM) + "]";
     }
 } LogConf;
 
@@ -576,6 +579,16 @@ private:
             {
                 assert(json_object_is_type(val, json_type_string));
                 log_conf.LOGNAME = json_object_get_string(val);
+            }
+            else if(strcmp(key, "filesize") == 0)
+            {
+                assert(json_object_is_type(val, json_type_int));
+                log_conf.LOGFILESIZE = json_object_get_int(val);
+            }
+            else if(strcmp(key, "filenum") == 0)
+            {
+                assert(json_object_is_type(val, json_type_int));
+                log_conf.LOGFILENUM = json_object_get_int(val);
             }
             else
             {

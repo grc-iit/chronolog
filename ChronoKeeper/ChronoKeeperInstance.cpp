@@ -75,7 +75,9 @@ int main(int argc, char**argv)
     int result = Logger::initialize(confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGTYPE
                                     , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILE
                                     , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGLEVEL
-                                    , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGNAME);
+                                    , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGNAME
+                                    , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILESIZE
+                                    , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILENUM);
     if(result == 1)
     {
         exit(EXIT_FAILURE);
