@@ -21,6 +21,8 @@
 const hsize_t n_dims = 1;
 uint64_t n_records = 1000000;
 hsize_t mean_length = 100;
+double range_start_percentage = 0.0;
+double range_end_percentage = 1.0;
 hsize_t total_story_chunk_size = 0;
 const std::string story_chunk_dataset_name = "08h00m00_08h10m00";
 const std::string group_name = "observations";
@@ -98,6 +100,11 @@ struct LogEvent
             }
         }
         return true;
+    }
+
+    bool operator!=(const LogEvent &other) const
+    {
+        return !(*this == other);
     }
 
     bool operator<(const LogEvent &other) const
@@ -235,7 +242,7 @@ struct StoryChunk2
 
     ~StoryChunk2()
     {
-        delete eventData;
+        free(eventData);
     }
 
     int insertEvent(LogEvent const &event)
@@ -244,12 +251,12 @@ struct StoryChunk2
         {
             std::lock_guard <std::mutex> lock(offsetMapMutex);
             memcpy((uint8_t*)eventData + currentOffset, event.logRecord.p, event.logRecord.len);
-            totalEventCount++;
-            currentOffset += event.logRecord.len;
-            totalSize += event.logRecord.len;
             offsetSizeMap.insert(
                     std::pair <EventSequence, EventOffsetSize>({event.time(), event.clientId, event.index()}, {
                             currentOffset, event.logRecord.len}));
+            totalEventCount++;
+            currentOffset += event.logRecord.len;
+            totalSize += event.logRecord.len;
             return 1;
         }
         else
@@ -344,8 +351,12 @@ void parseCommandLineOptions(int argc, char*argv[])
 {
     if(argc > 1) n_records = std::stoi(argv[1]);
     if(argc > 2) mean_length = std::stoi(argv[2]);
+    if(argc > 3) range_start_percentage = std::stod(argv[3]);
+    if(argc > 4) range_end_percentage = std::stod(argv[4]);
     std::cout << "n_records: " << n_records << std::endl;
     std::cout << "mean_length: " << mean_length << std::endl;
+    std::cout << "range_start_percentage: " << range_start_percentage << std::endl;
+    std::cout << "range_end_percentage: " << range_end_percentage << std::endl;
 }
 
 H5::CompType createEventCompoundType()
@@ -387,31 +398,25 @@ std::vector <LogEvent> generateEvents(uint64_t &start_timestamp)
 
     std::random_device rd;
     std::mt19937 gen(rd());
-    std::normal_distribution <double> value_dist(0.0, 255.0);
-    std::normal_distribution <double> size_dist((double)mean_length, (double)mean_length * 0.01);
+    std::normal_distribution <double> value_dist(0.0, 25.0);
+    std::normal_distribution <double> size_dist((double)mean_length, (double)mean_length * 0.1);
 //    std::poisson_distribution<hsize_t> size_dist(mean_length);
 
 //    start_timestamp = (uint64_t)std::abs(value_dist(gen)) / 255 * 1000000000;
     for(uint64_t idx = 0; idx < n_records; idx++)
     {
         size_t size = (size_t)std::min(std::max(size_dist(gen), 1.0), mean_length * 3.0);
-//        std::cout << "size: " << size << std::endl;
         log_record_bytes.emplace_back();
 
         for(hsize_t i = 0; i < size; i++)
         {
-            log_record_bytes.at(idx).push_back((unsigned char)std::abs(value_dist(gen)) + 'a');
+            log_record_bytes.at(idx).emplace_back(idx % 26 + 'a');
         }
-
-//        for (const uint8_t & v : log_record_bytes.at(idx)) {
-//            std::cout << static_cast<char>(v) << " ";
-//        }
-//        std::cout << std::endl;
 
         // set len and pointer for the variable length descriptor
         uint64_t event_time = start_timestamp + idx * 100;
-        uint32_t client_id = idx * 10;
-        uint32_t event_index = idx;
+        uint32_t client_id = 0;
+        uint32_t event_index = 0;
         LogEvent event(test_story_id, event_time, client_id, event_index, hvl_t());
         event.logRecord.len = size;
         event.logRecord.p = (void*)&log_record_bytes.at(idx).front();
@@ -422,11 +427,6 @@ std::vector <LogEvent> generateEvents(uint64_t &start_timestamp)
         total_story_chunk_size += size;
         total_payload_size += size;
     }
-
-//    for (hsize_t idx = 0; idx < n_records; idx++)
-//    {
-//        std::cout << "events[" << idx << "]: " << events.at(idx).toString() << std::endl;
-//    }
 
     std::cout << "total_story_chunk_size: " << total_story_chunk_size << ", pay_load_size: " << total_payload_size
               << std::endl;
@@ -886,6 +886,90 @@ int readStoryChunkUsingBlobAndKVPairs(StoryChunk2 &story_chunk)
     }
 }
 
+int rangeQuery(uint64_t start_time, uint64_t end_time, std::vector<LogEvent> &res_events, void*res_data_blob)
+{
+    try
+    {
+        auto*file = new H5::H5File(story_file_name + ".blob+map.h5", H5F_ACC_RDONLY);
+        H5::Group group = file->openGroup(group_name);
+        H5::DataSet dataset = file->openDataSet("/" + group_name + "/" + story_chunk_dataset_name + ".data");
+        H5::DataSpace dataspace = dataset.getSpace();
+        std::map <StoryChunk2::EventSequence, StoryChunk2::EventOffsetSize> offsetSizeMap;
+
+        // read out the entire offsetSizeMap
+        readMapAsKVPairs(offsetSizeMap, file);
+
+        // get the lower and upper iterators for the range query
+        // FIXME: what if the clientId and eventIdx are not 0?
+        auto lower_it = offsetSizeMap.lower_bound(StoryChunk2::EventSequence{start_time, 0, 0});
+        auto upper_it = offsetSizeMap.upper_bound(StoryChunk2::EventSequence{end_time, 0, 0});
+//        auto start_idx = std::distance(offsetSizeMap.begin(), lower_it);
+//        auto end_idx = std::distance(offsetSizeMap.begin(), upper_it);
+//        auto range_size = std::distance(lower_it, upper_it);
+
+        // calculate the total size of the result event payloads
+        uint64_t range_data_size = 0;
+        size_t range_offset = 0;
+        for(auto it = lower_it; it != upper_it; it++)
+        {
+            auto event_payload_len = std::get<1>(it->second);
+//            LOGD("event_payload_len of result event %ld: %lu", range_offset++, event_payload_len);
+            range_data_size += event_payload_len;
+        }
+        LOGD("Total size of result events: %lu", range_data_size);
+
+        // read out the result event payloads
+        res_data_blob = malloc(range_data_size);
+        hsize_t start_offset = std::get<0>(lower_it->second);
+        hsize_t data_size = range_data_size;
+//        LOGD("Total storage size of dataset: %llu", dataset.getStorageSize());
+//        hsize_t ndims = dataspace.getSimpleExtentNdims();
+//        LOGD("Dataspace ndims: %llu", ndims);
+//        hsize_t dims[2] = {0, 0};
+//        dataspace.getSimpleExtentDims(dims, nullptr);
+//        LOGD("Dataspace dims: %llu x %llu", dims[0], dims[1]);
+
+        // select file hyperslab
+        LOGD("Selecting hyperslab of size %llu starting from offset %llu ...", data_size, start_offset);
+        dataspace.selectHyperslab(H5S_SELECT_SET, &data_size, &start_offset);
+
+        // select memory hyperslab
+        hsize_t start[2] = {0, 0}, end[2] = {0, 0};
+        dataspace.getSelectBounds(start, end);
+        hsize_t hyperslab_dims[2] = {end[0] - start[0] + 1, end[1] - start[1] + 1};
+        LOGD("Hyperslab dims: %llu x %llu", hyperslab_dims[0], hyperslab_dims[1]);
+        H5::DataSpace memspace(n_dims, hyperslab_dims);
+
+        // read
+        dataset.read(res_data_blob, H5::PredType::NATIVE_UINT8, memspace, dataspace);
+
+        // fill in the result event vector
+        std::map <StoryChunk2::EventSequence, StoryChunk2::EventOffsetSize> res_offsetSizeMap;
+        for(auto it = lower_it; it != upper_it; it++)
+        {
+            uint64_t offset = std::get<0>(it->second) - start_offset;
+            uint64_t size = std::get<1>(it->second);
+            LogEvent event;
+            event.storyId = test_story_id;
+            event.eventTime = std::get<0>(it->first);
+            event.clientId = std::get<1>(it->first);
+            event.eventIndex = std::get<2>(it->first);
+            event.logRecord.p = (void*)((uint8_t*)res_data_blob + offset);
+            event.logRecord.len = size;
+            res_events.emplace_back(event);
+        }
+        return chronolog::CL_SUCCESS;
+    }
+    catch(H5::Exception &error)
+    {
+        std::cout << error.getCDetailMsg() << std::endl;
+        return chronolog::CL_ERR_UNKNOWN;
+    }
+}
+
+/**********************************************************************************************************************
+ * Utils
+ *********************************************************************************************************************/
 void writeEventVectorToFile(std::vector <LogEvent> &data, const std::string &filename)
 {
     std::ofstream outputFile(filename); // Open the file for writing
@@ -1148,6 +1232,9 @@ int main(int argc, char*argv[])
      * Write/read events data as blob and metadata as key-value pairs
      */
     {
+        /*
+         * Full chunk write and read
+         */
         max_story_chunk2_size = n_records * mean_length * 1.5;
         StoryChunk2 wdata2 = generateStoryChunk2();
 
@@ -1183,6 +1270,68 @@ int main(int argc, char*argv[])
             writeStoryChunkToFile(wdata2, "wdata2.txt");
             writeStoryChunkToFile(rdata2, "rdata2.txt");
 //        return -1;
+        }
+
+        /*
+         * Range query
+         */
+//        size_t idx = 0;
+//        for(auto const &event: events)
+//        {
+//            LOGD("Raw event %lu: %s", idx++, event.toString().c_str());
+//        }
+        std::cout << "======================================================================================="
+                  << std::endl;
+        std::vector <LogEvent> res_events;
+        uint64_t range_start_time =
+                test_start_timestamp + (events.back().eventTime - events.front().eventTime) * range_start_percentage;
+        uint64_t range_end_time =
+                test_start_timestamp + (events.back().eventTime - events.front().eventTime) * range_end_percentage;
+        LOGI("Range query: start_time: %lu, end_time: %lu", range_start_time, range_end_time);
+        auto start_idx = static_cast<size_t>(events.size() * range_start_percentage);
+        auto end_idx = static_cast<size_t>(events.size() * range_end_percentage);
+        LOGD("Expected result events range from %ld to %ld", start_idx, end_idx);
+        std::vector <LogEvent> expected_res_events(events.begin() + start_idx, events.begin() + end_idx);
+        size_t range_idx = 0;
+        uint64_t total_size = 0;
+        for(auto const &event: expected_res_events)
+        {
+//            LOGD("event_payload_len of expected event %lu: %lu", range_idx++, event.logRecord.len);
+//            LOGD("Expected event %lu: %s", range_idx++, event.toString().c_str());
+            total_size += event.logRecord.len;
+        }
+        LOGD("Total size of expected result events: %lu", total_size);
+        void*res_data_blob = nullptr;
+
+        start = std::chrono::high_resolution_clock::now();
+        rangeQuery(range_start_time, range_end_time, res_events, res_data_blob);
+        end = std::chrono::high_resolution_clock::now();
+        duration_ns = std::chrono::duration_cast <std::chrono::nanoseconds>(end - start).count();
+        duration_s = (double)duration_ns / 1e9;
+        std::cout << std::endl << "Time taken to range query: " << duration_s / 1e9 << " seconds" << std::endl
+                  << "Read bandwidth: " << ((double)total_story_chunk_size / (1e+6 * duration_s)) << " MB/second"
+                  << std::endl;
+        if(res_events != expected_res_events)
+        {
+            std::cerr << "\n\n" << "Range query: Data mismatch" << "\n\n" << std::endl;
+            size_t minSize = std::min(res_events.size(), expected_res_events.size());
+            size_t i;
+            for (i = 0; i < minSize; ++i) {
+                if (res_events[i] != expected_res_events[i]) {
+                    break;
+                }
+            }
+
+            // If no difference was found within the common length, but the lengths are different,
+            // then the difference starts at the end of the shorter vector
+            if (res_events.size() != expected_res_events.size()) {
+                std::cout << "Difference found at index " << i << std::endl
+                            << "Expected: " << expected_res_events[i].toString() << std::endl
+                            << "Actual: " << res_events[i].toString() << std::endl;
+            }
+            writeEventVectorToFile(expected_res_events, "expected_res_events.txt");
+            writeEventVectorToFile(res_events, "res_events.txt");
+            free(res_data_blob);
         }
     }
 
