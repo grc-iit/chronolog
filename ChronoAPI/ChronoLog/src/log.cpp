@@ -20,32 +20,12 @@ int Logger::initialize(const std::string &logType, const std::string &location, 
         LOGD("[Logger] Logger is already initialized");
         return 0;
     }
-    std::string updatedLocation = location;
-    if(!location.empty())
-    {
-        try
-        {
-            std::filesystem::path filePath(location);
-            std::string filename = filePath.filename().string();
-            std::string hostname = getHostname();
-
-            size_t extensionPos = filename.find_last_of('.');
-            std::string newFilename = filename.substr(0, extensionPos) + "_" + hostname + filename.substr(extensionPos);
-            updatedLocation = (filePath.parent_path() / newFilename).string();
-        }
-        catch(const std::exception &ex)
-        {
-            std::cerr << "[Logger] Failed to update log file location: " << ex.what() << std::endl;
-            return 1;
-        }
-    }
 
     try
     {
         if(logType == "file")
         {
-            auto rotating_sink = std::make_shared <spdlog::sinks::rotating_file_sink_mt>(updatedLocation, logFileSize
-                                                                                         , logFileNum);
+            auto rotating_sink = std::make_shared <spdlog::sinks::rotating_file_sink_mt>(location, logFileSize, logFileNum);
             logger = std::make_shared <spdlog::logger>(loggerName, rotating_sink);
         }
         else if(logType == "console")
@@ -66,18 +46,6 @@ int Logger::initialize(const std::string &logType, const std::string &location, 
     }
     return 0;
 }
-
-std::string Logger::getHostname()
-{
-    char hostname[256];
-    if(gethostname(hostname, sizeof(hostname)) != 0)
-    {
-        spdlog::error("[Logger] Failed to retrieve hostname");
-        return "unknown_hostname";
-    }
-    return std::string(hostname);
-}
-
 
 std::shared_ptr <spdlog::logger> Logger::getLogger()
 {
