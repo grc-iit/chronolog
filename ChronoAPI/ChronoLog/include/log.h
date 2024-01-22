@@ -8,18 +8,55 @@
 #include <spdlog/spdlog.h>
 #include <mutex>
 
+
+/**
+ * @def LOGT(...)
+ * @brief Trace logging macro.
+ * Logs a trace message when NDEBUG is not defined. Does nothing otherwise.
+ */
+
+/**
+ * @def LOGD(...)
+ * @brief Debug logging macro.
+ * Logs a debug message when NDEBUG is not defined. Does nothing otherwise.
+ */
+
+/**
+ * @def LOGI(...)
+ * @brief Info logging macro.
+ * Logs an info message regardless of NDEBUG definition.
+ */
+
+/**
+ * @def LOGW(...)
+ * @brief Warning logging macro.
+ * Logs a warning message regardless of NDEBUG definition.
+ */
+
+/**
+ * @def LOGE(...)
+ * @brief Error logging macro.
+ * Logs an error message regardless of NDEBUG definition.
+ */
+
+/**
+ * @def LOGC(...)
+ * @brief Critical logging macro.
+ * Logs a critical message regardless of NDEBUG definition.
+ */
+
 // Custom logging macros based on build type
 #ifdef NDEBUG
 #define LOGT(...)
 #define LOGD(...)
 #else
-#define LOGT(...) Logger::getLogger()->trace(__VA_ARGS__)
-#define LOGD(...) Logger::getLogger()->debug(__VA_ARGS__)
+#define LOGT(...) Logger::getInstance().trace(__VA_ARGS__)
+#define LOGD(...) Logger::getInstance().debug(__VA_ARGS__)
 #endif
-#define LOGI(...) Logger::getLogger()->info(__VA_ARGS__)
-#define LOGW(...) Logger::getLogger()->warn(__VA_ARGS__)
-#define LOGE(...) Logger::getLogger()->error(__VA_ARGS__)
-#define LOGC(...) Logger::getLogger()->critical(__VA_ARGS__)
+#define LOGI(...) Logger::getInstance().info(__VA_ARGS__)
+#define LOGW(...) Logger::getInstance().warn(__VA_ARGS__)
+#define LOGE(...) Logger::getInstance().error(__VA_ARGS__)
+#define LOGC(...) Logger::getInstance().critical(__VA_ARGS__)
 
 
 /**
@@ -37,8 +74,9 @@ public:
     /**
      * @brief Initializes the logger with the specified configuration.
      *
-     * This static function configures and initializes the logger. It must be called
-     * before any logging activities. Returns 0 on success and 1 on failure.
+     * This static function sets up the logger based on given parameters. It should be
+     * called before any logging operations. The function handles logger type,
+     * location, level, name, file size for rotation, and number of files to keep.
      *
      * @param logType      The type of logger ("file" or "console").
      * @param location     The file location if logType is "file".
@@ -56,21 +94,24 @@ public:
 
 
     /**
-     * @brief Gets the shared pointer to the logger.
+     * @brief Accessor for the logger instance.
      *
-     * This static function provides access to the logger instance. It returns a
-     * shared pointer to the spdlog logger.
+     * Provides access to the singleton logger instance. The function returns
+     * a reference to the internal spdlog::logger instance.
      *
-     * @return A shared pointer to the spdlog::logger instance.
+     * @return Reference to spdlog::logger instance.
      */
-    static std::shared_ptr <spdlog::logger> getLogger();
+    static spdlog::logger &getInstance();
 
-    ~Logger() = default;
-
+    // Delete copy constructor and assignment operator
     Logger(const Logger &) = delete;
     Logger &operator=(const Logger &) = delete;
+    ~Logger() = default;
 
 private:
+    //Private Constructor
+    Logger() = default;
+
     /**
      * @brief The shared pointer to the spdlog logger instance.
      *
@@ -84,14 +125,6 @@ private:
      * This mutex is used to ensure thread-safe initialization and access to the logger instance.
      */
     static std::mutex mutex;
-
-    /**
-     * @brief Retrieves the hostname of the system.
-     * @return std::string Hostname of the system.
-     */
-    static std::string getHostname();
-
-    Logger() = default;
 };
 
 #endif //CHRONOLOG_LOG_H

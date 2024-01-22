@@ -17,45 +17,49 @@ int Logger::initialize(const std::string &logType, const std::string &location, 
     std::lock_guard <std::mutex> lock(mutex);
     if(logger)
     {
-        LOGD("[Logger] Logger is already initialized");
         return 0;
     }
-
     try
     {
+        std::shared_ptr <spdlog::sinks::sink> sink;
         if(logType == "file")
         {
-            auto rotating_sink = std::make_shared <spdlog::sinks::rotating_file_sink_mt>(location, logFileSize, logFileNum);
-            logger = std::make_shared <spdlog::logger>(loggerName, rotating_sink);
+            /*
+             * There is an alternative for rotating daily:
+             * Link: https://github.com/gabime/spdlog/blob/v1.x/include/spdlog/sinks/daily_file_sink.h
+             * They use C++ standard library clock:
+             * Link: https://github.com/gabime/spdlog/blob/696db97f672e9082e50e50af315d0f4234c82397/include/spdlog/common.h#L141
+             */
+            sink = std::make_shared <spdlog::sinks::rotating_file_sink_mt>(location, logFileSize, logFileNum);
         }
         else if(logType == "console")
         {
-            logger = spdlog::stdout_color_mt(loggerName);
+            sink = std::make_shared <spdlog::sinks::stdout_color_sink_mt>();
         }
         else
         {
             std::cerr << "[Logger] Invalid log type" << std::endl;
-            return 1;
         }
+        logger = std::make_shared <spdlog::logger>(loggerName, sink);
         logger->set_level(logLevel);
     }
     catch(const spdlog::spdlog_ex &ex)
     {
         std::cerr << "[Logger] Logger initialization failed: " << ex.what() << std::endl;
-        return 1;
     }
-    return 0;
+    return 0; // already initialized
 }
 
-std::shared_ptr <spdlog::logger> Logger::getLogger()
+spdlog::logger &Logger::getInstance()
 {
     std::lock_guard <std::mutex> lock(mutex);
     if(logger)
     {
-        return logger;
+        return *logger;
     }
-    std::cerr
-            << "[Logger] No logger is not initialized or you are trying to log before initializing the logger. Ending the program..."
-            << std::endl;
-    std::exit(EXIT_FAILURE);
+    else
+    {
+        std::cerr << "[Logger] Logger not initialized. Ending the program..." << std::endl;
+        std::exit(EXIT_FAILURE);
+    }
 }
