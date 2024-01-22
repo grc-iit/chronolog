@@ -69,6 +69,7 @@ int chronolog::StoryWritingHandle <KeeperChoicePolicy>::log_event(std::string co
     // INNA: make send event returm 0 in case of tl RPC failure ....
     keeperRecordingClient->send_event_msg(log_event);
 
+    // Kun: do we have any reason to have a different errno definition than what we already have in errcode.h?
     return 1;
 }
 /////////////////////
@@ -241,7 +242,7 @@ chronolog::StorytellerClient::initializeStoryWritingHandle(ChronicleName const &
     // or the handle's keeper vector is being updated , etc ....
     if (state == PENDING_RESPONSE || state== UPDATING_KEEPERS) )
     {
-	// get the handle lock and wait for the thread that sent the request to Vizor to get the response
+    // get the handle lock and wait for the thread that sent the request to Vizor to get the response
         std::lock_guard<std::mutex> story_lock(storyHandleMutex);
 
     }

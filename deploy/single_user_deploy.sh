@@ -138,6 +138,8 @@ update_visor_ip() {
     jq ".chrono_client.VisorClientPortalService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} > tmp.json && mv tmp.json ${CONF_FILE}
     jq ".chrono_visor.VisorKeeperRegistryService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} > tmp.json && mv tmp.json ${CONF_FILE}
     jq ".chrono_keeper.VisorKeeperRegistryService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} > tmp.json && mv tmp.json ${CONF_FILE}
+    jq ".chrono_keeper.KeeperRecordingService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} > tmp.json && mv tmp.json ${CONF_FILE}
+    jq ".chrono_keeper.KeeperDataStoreAdminService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} > tmp.json && mv tmp.json ${CONF_FILE}
 }
 
 install() {

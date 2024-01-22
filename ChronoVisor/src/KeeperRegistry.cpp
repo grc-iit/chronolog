@@ -281,7 +281,7 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart(std::vector <KeeperIdCard
                 std::pair <uint32_t, uint16_t>(keeper_id_card.getIPaddr(), keeper_id_card.getPort()));
         if(keeper_process_iter == keeperProcessRegistry.end())
         {
-            std::cout << "WARNING: Registry faield to find Keeper with {" << keeper_id_card << "}" << std::endl;
+            std::cout << "WARNING: Registry failed to find Keeper with {" << keeper_id_card << "}" << std::endl;
             continue;
         }
         KeeperProcessEntry keeper_process = (*keeper_process_iter).second;
