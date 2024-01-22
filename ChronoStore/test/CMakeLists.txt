@@ -44,12 +44,6 @@ target_include_directories(cmp_vlen_bytes_dtype_test PRIVATE ../../ChronoKeeper
 target_link_libraries(cmp_vlen_bytes_dtype_test ${HDF5_LIBRARIES})
 add_test(NAME cmp_vlen_bytes_dtype_test COMMAND cmp_vlen_bytes_dtype_test)
 
-add_executable(cmpvstring cmpvstring.c)
-target_link_libraries(cmpvstring ${HDF5_LIBRARIES})
-
-add_executable(cmpvlenbyte h5ex_t_vlen.c)
-target_link_libraries(cmpvlenbyte ${HDF5_LIBRARIES})
-
 find_package(JSON-C REQUIRED)
 add_executable(cmp_vlen_bytes_cpp cmp_vlen_bytes_cpp.cpp)
 target_link_libraries(cmp_vlen_bytes_cpp ${HDF5_LIBRARIES} json-c)
