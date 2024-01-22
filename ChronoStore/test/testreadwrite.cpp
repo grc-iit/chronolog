@@ -38,7 +38,7 @@ void testWriteOperation(std::string fileName)
     std::ifstream filePointer(fileName);
     if(!filePointer.is_open())
     {
-        LOGE("[TestReadWrite] Failed to open file: {}", fileName);
+        LOG_ERROR("[TestReadWrite] Failed to open file: {}", fileName);
         return;
     }
     filePointer.seekg(0, std::ios::beg);
@@ -62,12 +62,12 @@ void testWriteOperation(std::string fileName)
     status = sw.writeStoryChunk(&chunk, STORY, CHRONICLE);
     if(!status)
     {
-        LOGI("[TestReadWrite] Successfully wrote data from file {} to the story dataset for Chronicle {}.", fileName
+        LOG_INFO("[TestReadWrite] Successfully wrote data from file {} to the story dataset for Chronicle {}.", fileName
              , CHRONICLE);
     }
     else
     {
-        LOGE("[TestReadWrite] Failed to write data from file {} to the story dataset for Chronicle {}. Error code: {}"
+        LOG_ERROR("[TestReadWrite] Failed to write data from file {} to the story dataset for Chronicle {}. Error code: {}"
              , fileName, CHRONICLE, status);
     }
 }
@@ -78,25 +78,25 @@ void testStoryRange()
     DatasetMinMax d = sr.readDatasetRange(STORY, CHRONICLE);
     if(d.status == 0)
     {
-        LOGI("[TestReadWrite] Successfully retrieved timestamp range for Story {}: Min Timestamp: {}, Max Timestamp: {}"
+        LOG_INFO("[TestReadWrite] Successfully retrieved timestamp range for Story {}: Min Timestamp: {}, Max Timestamp: {}"
              , STORY, d.MinMax.first, d.MinMax.second);
     }
     else
     {
-        LOGE("[TestReadWrite] Failed to retrieve timestamp range for Story {}. Error details: {}", STORY
+        LOG_ERROR("[TestReadWrite] Failed to retrieve timestamp range for Story {}. Error details: {}", STORY
              , d.errorMessage);
     }
 }
 
 int testReadOperation()
 {
-    LOGI("[TestReadWrite] Initiating read test for Story: {} of Chronicle: {}. Total read requests to perform: {}"
+    LOG_INFO("[TestReadWrite] Initiating read test for Story: {} of Chronicle: {}. Total read requests to perform: {}"
          , STORY, CHRONICLE, NUM_OF_TESTS);
 
     DatasetMinMax d = sr.readDatasetRange(STORY, CHRONICLE);
     if(d.status != 0)
     {
-        LOGE("[TestReadWrite] Failed to retrieve min-max range for dataset story: {}", STORY);
+        LOG_ERROR("[TestReadWrite] Failed to retrieve min-max range for dataset story: {}", STORY);
         return -1;
     }
 
@@ -119,7 +119,7 @@ int testReadOperation()
         DatasetReader dr = sr.readFromDataset(range[i], STORY, CHRONICLE);
         if(dr.status != 0 || dr.eventData.size() == 0)
         {
-            LOGE("[TestReadWrite] Read test failed for test index: {}. Range: [{}, {}]", i + 1, range[i].first
+            LOG_ERROR("[TestReadWrite] Read test failed for test index: {}. Range: [{}, {}]", i + 1, range[i].first
                  , range[i].second);
             return -1;
         }
@@ -129,13 +129,13 @@ int testReadOperation()
     // Calculate the duration in seconds
     auto end_time = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast <std::chrono::seconds>(end_time - start_time).count();
-    LOGI("[TestReadWrite] Read tests completed successfully.\nTime taken: {} seconds\nRead bandwidth: {} MB/second"
+    LOG_INFO("[TestReadWrite] Read tests completed successfully.\nTime taken: {} seconds\nRead bandwidth: {} MB/second"
          , duration, (totalDataRead / (1024 * 1024 * duration)));
 
     int result = remove(CHRONICLE);
     if(result != 0)
     {
-        LOGW("[TestReadWrite] Failed to remove chronicle: {}. Proceeding...", CHRONICLE);
+        LOG_WARNING("[TestReadWrite] Failed to remove chronicle: {}. Proceeding...", CHRONICLE);
         return -1;
     }
     return 0;
@@ -161,7 +161,7 @@ void generateData(std::string fileName, int64_t startTimeStamp)
     std::ofstream out_file(fileName, std::ios::out|std::ios::app);
     if(!out_file.is_open())
     {
-        LOGE("[TestReadWrite] Failed to open file '{}' for writing.", fileName);
+        LOG_ERROR("[TestReadWrite] Failed to open file '{}' for writing.", fileName);
         return; // Return if file opening fails.
     }
 
@@ -173,7 +173,7 @@ void generateData(std::string fileName, int64_t startTimeStamp)
 
     // Close file
     out_file.close();
-    LOGI("[TestReadWrite] Successfully generated and appended {} entries to file '{}'.", num_entries, fileName);
+    LOG_INFO("[TestReadWrite] Successfully generated and appended {} entries to file '{}'.", num_entries, fileName);
 }
 
 /**
@@ -186,7 +186,7 @@ int main(int argc, char*argv[])
     // storydataset for the chronicle H5. further the read and datarange queries are executed to test.
     if(argc < 2)
     {
-        LOGE("[TestReadWrite] Insufficient arguments provided. Expected: storyChunksCount startTimeStamp");
+        LOG_ERROR("[TestReadWrite] Insufficient arguments provided. Expected: storyChunksCount startTimeStamp");
         return 1;
     }
 
@@ -195,10 +195,10 @@ int main(int argc, char*argv[])
 
     if(storyChunksCount < 0 || startTimeStamp < 0)
     {
-        LOGE("[TestReadWrite] Invalid arguments provided. Ensure storyChunksCount is positive and startTimeStamp >= 0.");
+        LOG_ERROR("[TestReadWrite] Invalid arguments provided. Ensure storyChunksCount is positive and startTimeStamp >= 0.");
         return 1;
     }
-    LOGI("[TestReadWrite] Starting tests with {} story chunks.", storyChunksCount);
+    LOG_INFO("[TestReadWrite] Starting tests with {} story chunks.", storyChunksCount);
 
     for(int count = 0; count < storyChunksCount; count++)
     {
@@ -211,26 +211,26 @@ int main(int argc, char*argv[])
         int result = remove(chunkname.c_str());
         if(result != 0)
         {
-            LOGW("[TestReadWrite] Failed to remove chunk: {}", chunkname);
+            LOG_WARNING("[TestReadWrite] Failed to remove chunk: {}", chunkname);
         }
         startTimeStamp += 110000;
     }
 
-    LOGI("[TestReadWrite] Completed writing data to story dataset.");
+    LOG_INFO("[TestReadWrite] Completed writing data to story dataset.");
 
     // Retrieve and log the story dataset's min and max timestamps.
-    LOGI("[TestReadWrite] Retrieving and logging story Min and Max timestamps.");
+    LOG_INFO("[TestReadWrite] Retrieving and logging story Min and Max timestamps.");
     testStoryRange();
 
     // Sequential reads
     int ret = testReadOperation();
     if(ret != 0)
     {
-        LOGE("[TestReadWrite] Sequential read test failed!");
+        LOG_ERROR("[TestReadWrite] Sequential read test failed!");
     }
     else
     {
-        LOGI("[TestReadWrite] Sequential read test completed successfully.");
+        LOG_INFO("[TestReadWrite] Sequential read test completed successfully.");
     }
 
     return 0;

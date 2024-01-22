@@ -35,7 +35,7 @@ service_endpoint_from_dotted_string(std::string const &ip_string, int port, std:
     int inet_pton_return = inet_pton(AF_INET, ip_string.c_str(), &sa.sin_addr.s_addr); //returns 1 on success
     if(1 != inet_pton_return)
     {
-        LOGE("[ChronoKeeperInstance] Invalid IP address provided: {}", ip_string);
+        LOG_ERROR("[ChronoKeeperInstance] Invalid IP address provided: {}", ip_string);
         return (-1);
     }
 
@@ -44,7 +44,7 @@ service_endpoint_from_dotted_string(std::string const &ip_string, int port, std:
     uint16_t ntoh_port = port;
     endpoint = std::pair <uint32_t, uint16_t>(ntoh_ip_addr, ntoh_port);
 
-    LOGD("[ChronoKeeperInstance] Service endpoint created: IP={}, Port={}", ip_string, port);
+    LOG_DEBUG("[ChronoKeeperInstance] Service endpoint created: IP={}, Port={}", ip_string, port);
     return 1;
 }
 
@@ -52,7 +52,7 @@ volatile sig_atomic_t keep_running = true;
 
 void sigterm_handler(int)
 {
-    LOGI("[ChronoKeeperInstance] Received SIGTERM signal. Initiating shutdown procedure.");
+    LOG_INFO("[ChronoKeeperInstance] Received SIGTERM signal. Initiating shutdown procedure.");
     keep_running = false;
     return;
 }
@@ -82,7 +82,7 @@ int main(int argc, char**argv)
     {
         exit(EXIT_FAILURE);
     }
-    LOGI("Running Chronokeeper Server.");
+    LOG_INFO("Running Chronokeeper Server.");
 
     // Instantiate ChronoKeeper MemoryDataStore
     // instantiate DataStoreAdminService
@@ -102,10 +102,10 @@ int main(int argc, char**argv)
 
     if(-1 == service_endpoint_from_dotted_string(datastore_service_ip, datastore_service_port, datastore_endpoint))
     {
-        LOGC("[ChronoKeeperInstance] Failed to start DataStoreAdminService. Invalid endpoint provided.");
+        LOG_CRITICAL("[ChronoKeeperInstance] Failed to start DataStoreAdminService. Invalid endpoint provided.");
         return (-1);
     }
-    LOGI("[ChronoKeeperInstance] DataStoreAdminService started successfully.");
+    LOG_INFO("[ChronoKeeperInstance] DataStoreAdminService started successfully.");
 
     /// KeeperRecordingService setup ___________________________________________________________________________________
     // Instantiate KeeperRecordingService
@@ -124,10 +124,10 @@ int main(int argc, char**argv)
     if(-1 == service_endpoint_from_dotted_string(KEEPER_RECORDING_SERVICE_IP, KEEPER_RECORDING_SERVICE_PORT
                                                  , recording_endpoint))
     {
-        LOGC("[ChronoKeeperInstance] Failed to start KeeperRecordingService. Invalid endpoint provided.");
+        LOG_CRITICAL("[ChronoKeeperInstance] Failed to start KeeperRecordingService. Invalid endpoint provided.");
         return (-1);
     }
-    LOGI("[ChronoKeeperInstance] KeeperRecordingService started successfully.");
+    LOG_INFO("[ChronoKeeperInstance] KeeperRecordingService started successfully.");
 
     // create KeeperIdCard to identify this Keeper process in ChronoVisor's KeeperRegistry
     chronolog::KeeperIdCard keeperIdCard(keeper_group_id, recording_endpoint.first, recording_endpoint.second
@@ -135,7 +135,7 @@ int main(int argc, char**argv)
 
     std::stringstream ss;
     ss << keeperIdCard;
-    LOGI("[ChronoKeeperInstance] KeeperIdCard: {}", ss.str());
+    LOG_INFO("[ChronoKeeperInstance] KeeperIdCard: {}", ss.str());
 
     // Instantiate ChronoKeeper MemoryDataStore & ExtractorModule
     chronolog::IngestionQueue ingestionQueue;
@@ -158,7 +158,7 @@ int main(int argc, char**argv)
 
         std::stringstream s3;
         s3 << dataAdminEngine->self();
-        LOGD("[ChronoKeeperInstance] GroupID={} starting DataStoreAdminService at address {} with ProviderID={}"
+        LOG_DEBUG("[ChronoKeeperInstance] GroupID={} starting DataStoreAdminService at address {} with ProviderID={}"
              , keeper_group_id, s3.str(), datastore_service_provider_id);
         keeperDataAdminService = chronolog::DataStoreAdminService::CreateDataStoreAdminService(*dataAdminEngine
                                                                                                , datastore_service_provider_id
@@ -166,12 +166,12 @@ int main(int argc, char**argv)
     }
     catch(tl::exception const &)
     {
-        LOGE("[ChronoKeeperInstance] Keeper failed to create DataStoreAdminService");
+        LOG_ERROR("[ChronoKeeperInstance] Keeper failed to create DataStoreAdminService");
     }
 
     if(nullptr == keeperDataAdminService)
     {
-        LOGC("[ChronoKeeperInstance] Keeper failed to create DataStoreAdminService exiting");
+        LOG_CRITICAL("[ChronoKeeperInstance] Keeper failed to create DataStoreAdminService exiting");
         if(dataAdminEngine)
         { delete dataAdminEngine; }
         return (-1);
@@ -188,7 +188,7 @@ int main(int argc, char**argv)
 
         std::stringstream s1;
         s1 << recordingEngine->self();
-        LOGI("[ChronoKeeperInstance] GroupID={} starting KeeperRecordingService at {} with provider_id {}"
+        LOG_INFO("[ChronoKeeperInstance] GroupID={} starting KeeperRecordingService at {} with provider_id {}"
              , keeper_group_id, s1.str(), datastore_service_provider_id);
         keeperRecordingService = chronolog::KeeperRecordingService::CreateKeeperRecordingService(*recordingEngine
                                                                                                  , recording_service_provider_id
@@ -196,12 +196,12 @@ int main(int argc, char**argv)
     }
     catch(tl::exception const &)
     {
-        LOGE("[ChronoKeeperInstance] Keeper failed to create KeeperRecordingService");
+        LOG_ERROR("[ChronoKeeperInstance] Keeper failed to create KeeperRecordingService");
     }
 
     if(nullptr == keeperRecordingService)
     {
-        LOGC("[ChronoKeeperInstance] Keeper failed to create KeeperRecordingService exiting");
+        LOG_CRITICAL("[ChronoKeeperInstance] Keeper failed to create KeeperRecordingService exiting");
         delete keeperDataAdminService;
         return (-1);
     }
@@ -220,7 +220,7 @@ int main(int argc, char**argv)
 
     if(nullptr == keeperRegistryClient)
     {
-        LOGC("[ChronoKeeperInstance] Keeper failed to create KeeperRegistryClient; exiting");
+        LOG_CRITICAL("[ChronoKeeperInstance] Keeper failed to create KeeperRegistryClient; exiting");
         delete keeperRecordingService;
         delete keeperDataAdminService;
         return (-1);
@@ -239,13 +239,13 @@ int main(int argc, char**argv)
 
     if(chronolog::CL_SUCCESS != registration_status)
     {
-        LOGC("[ChronoKeeperInstance] Failed to register with ChronoVisor after multiple attempts. Exiting.");
+        LOG_CRITICAL("[ChronoKeeperInstance] Failed to register with ChronoVisor after multiple attempts. Exiting.");
         delete keeperRegistryClient;
         delete keeperRecordingService;
         delete keeperDataAdminService;
         return (-1);
     }
-    LOGI("[ChronoKeeperInstance] Successfully registered with ChronoVisor.");
+    LOG_INFO("[ChronoKeeperInstance] Successfully registered with ChronoVisor.");
 
     /// Start data collection and extraction threads ___________________________________________________________________
     // services are successfulley created and keeper process had registered with ChronoVisor
@@ -273,7 +273,7 @@ int main(int argc, char**argv)
     delete keeperRegistryClient;
 
     /// Stop services and shut down ____________________________________________________________________________________
-    LOGI("[ChronoKeeperInstance] Initiating shutdown procedures.");
+    LOG_INFO("[ChronoKeeperInstance] Initiating shutdown procedures.");
     // Stop recording events
     delete keeperRecordingService;
     delete keeperDataAdminService;
@@ -287,6 +287,6 @@ int main(int argc, char**argv)
     //  collectionEngine.finalize();
     delete recordingEngine;
     delete dataAdminEngine;
-    LOGI("[ChronoKeeperInstance] Shutdown completed. Exiting.");
+    LOG_INFO("[ChronoKeeperInstance] Shutdown completed. Exiting.");
     return exit_code;
 }

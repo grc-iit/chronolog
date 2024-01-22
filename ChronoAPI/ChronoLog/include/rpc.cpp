@@ -88,19 +88,19 @@ std::future <Response> ChronoLogRPC::async_call(uint16_t server_index, std::stri
         case CHRONOLOG_THALLIUM_TCP:
         {
             // TODO: NotImplemented error
-            LOGE("[RPC] Async call with TCP protocol is not supported yet.");
+            LOG_ERROR("[RPC] Async call with TCP protocol is not supported yet.");
             break;
         }
         case CHRONOLOG_THALLIUM_SOCKETS:
         {
             // TODO: NotImplemented error
-            LOGE("[RPC] Async call with SOCKETS protocol is not supported yet.");
+            LOG_ERROR("[RPC] Async call with SOCKETS protocol is not supported yet.");
             break;
         }
         case CHRONOLOG_THALLIUM_ROCE:
         {
             // TODO: NotImplemented error
-            LOGE("[RPC] Async call with ROCE protocol is not supported yet.");
+            LOG_ERROR("[RPC] Async call with ROCE protocol is not supported yet.");
             break;
         }
     }

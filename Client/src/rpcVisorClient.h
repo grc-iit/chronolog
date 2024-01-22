@@ -40,7 +40,7 @@ public:
         }
         catch(tl::exception const &)
         {
-            LOGE("[RpcVisorClient] Failed to create client instance due to a Thallium exception.");
+            LOG_ERROR("[RpcVisorClient] Failed to create client instance due to a Thallium exception.");
         }
         return nullptr;
     }
@@ -48,42 +48,42 @@ public:
 
     ConnectResponseMsg Connect(uint32_t client_euid, uint32_t client_host_ip, uint32_t client_pid)
     {
-        LOGD("[RpcVisorClient] Initiating connection for Account={}, HostID={}, PID={}", client_euid, client_host_ip
+        LOG_DEBUG("[RpcVisorClient] Initiating connection for Account={}, HostID={}, PID={}", client_euid, client_host_ip
              , client_pid);
         try
         {
             ConnectResponseMsg response = visor_connect.on(service_ph)(client_euid, client_host_ip, client_pid);
-            LOGI("[RpcVisorClient] Connection successful for Account={}, HostID={}, PID={}", client_euid, client_host_ip
+            LOG_INFO("[RpcVisorClient] Connection successful for Account={}, HostID={}, PID={}", client_euid, client_host_ip
                  , client_pid);
             return response;
         }
         catch(tl::exception const &)
         {
-            LOGE("[RpcVisorClient] Connection attempt failed.");
+            LOG_ERROR("[RpcVisorClient] Connection attempt failed.");
         }
         return (ConnectResponseMsg(chronolog::CL_ERR_UNKNOWN, ClientId{0}));
     }
 
     int Disconnect(ClientId const &client_id)
     {
-        LOGI("[RPCVisorClient] Initiating disconnection for ClientID={}", client_id);
+        LOG_INFO("[RPCVisorClient] Initiating disconnection for ClientID={}", client_id);
         try
         {
             int result = visor_disconnect.on(service_ph)(client_id);
             if(result == chronolog::CL_SUCCESS)
             {
-                LOGI("[RPCVisorClient] Disconnection successful for ClientID={}", client_id);
+                LOG_INFO("[RPCVisorClient] Disconnection successful for ClientID={}", client_id);
             }
             else
             {
-                LOGE("[RPCVisorClient] Failed to disconnect ClientID={}. Unexpected return code: {}", client_id
+                LOG_ERROR("[RPCVisorClient] Failed to disconnect ClientID={}. Unexpected return code: {}", client_id
                      , result);
             }
             return result;
         }
         catch(tl::exception const &)
         {
-            LOGE("[RPCVisorClient] Failed to disconnect. Thallium exception encountered.");
+            LOG_ERROR("[RPCVisorClient] Failed to disconnect. Thallium exception encountered.");
         }
         return (chronolog::CL_ERR_UNKNOWN);
     }
@@ -91,7 +91,7 @@ public:
     int CreateChronicle(ClientId const &client_id, std::string const &name
                         , const std::unordered_map <std::string, std::string> &attrs, int &flags)
     {
-        LOGI("[RPCVisorClient] Initiating creation of chronicle: Name={}, Flags={}, Attributes={...}", name.c_str()
+        LOG_INFO("[RPCVisorClient] Initiating creation of chronicle: Name={}, Flags={}, Attributes={...}", name.c_str()
              , flags);
         try
         {
@@ -99,18 +99,18 @@ public:
 
             if(result == chronolog::CL_SUCCESS)
             {
-                LOGI("[RPCVisorClient] Successfully created chronicle with Name={}, Flags={}", name.c_str(), flags);
+                LOG_INFO("[RPCVisorClient] Successfully created chronicle with Name={}, Flags={}", name.c_str(), flags);
             }
             else
             {
-                LOGE("[RPCVisorClient] Failed to create chronicle with Name={}, Flags={}. Unexpected return code: {}"
+                LOG_ERROR("[RPCVisorClient] Failed to create chronicle with Name={}, Flags={}. Unexpected return code: {}"
                      , name.c_str(), flags, result);
             }
             return result;
         }
         catch(tl::exception const &)
         {
-            LOGE("[RPCVisorClient] Failed to create chronicle {}. Thallium exception encountered.", name.c_str());
+            LOG_ERROR("[RPCVisorClient] Failed to create chronicle {}. Thallium exception encountered.", name.c_str());
         }
         return (chronolog::CL_ERR_UNKNOWN);
 
@@ -118,24 +118,24 @@ public:
 
     int DestroyChronicle(ClientId const &client_id, std::string const &name)
     {
-        LOGI("[RPCVisorClient] Initiating destruction of chronicle: Name={}", name.c_str());
+        LOG_INFO("[RPCVisorClient] Initiating destruction of chronicle: Name={}", name.c_str());
         try
         {
             int result = destroy_chronicle.on(service_ph)(client_id, name);
 
             if(result == chronolog::CL_SUCCESS)
             {
-                LOGI("[RPCVisorClient] Successfully destroyed chronicle: Name={}", name.c_str());
+                LOG_INFO("[RPCVisorClient] Successfully destroyed chronicle: Name={}", name.c_str());
             }
             else
             {
-                LOGE("[RPCVisorClient] Failed to destroy chronicle: Name={}, Error Code={}", name.c_str(), result);
+                LOG_ERROR("[RPCVisorClient] Failed to destroy chronicle: Name={}, Error Code={}", name.c_str(), result);
             }
             return result;
         }
         catch(tl::exception const &)
         {
-            LOGE("[RPCVisorClient] Failed to destroy chronicle {}. Thallium exception encountered.", name.c_str());
+            LOG_ERROR("[RPCVisorClient] Failed to destroy chronicle {}. Thallium exception encountered.", name.c_str());
         }
         return (chronolog::CL_ERR_UNKNOWN);
     }
@@ -144,7 +144,7 @@ public:
     AcquireStory(ClientId const &client_id, std::string const &chronicle_name, std::string const &story_name
                  , const std::unordered_map <std::string, std::string> &attrs, const int &flags)
     {
-        LOGI("[RPCVisorClient] Initiating story acquisition: ChronicleName={}, StoryName={}", chronicle_name.c_str()
+        LOG_INFO("[RPCVisorClient] Initiating story acquisition: ChronicleName={}, StoryName={}", chronicle_name.c_str()
              , story_name.c_str());
         try
         {
@@ -153,12 +153,12 @@ public:
 
             if(response.getErrorCode() == chronolog::CL_SUCCESS)
             {
-                LOGI("[RPCVisorClient] Successfully acquired story: ChronicleName={}, StoryName={}"
+                LOG_INFO("[RPCVisorClient] Successfully acquired story: ChronicleName={}, StoryName={}"
                      , chronicle_name.c_str(), story_name.c_str());
             }
             else
             {
-                LOGE("[RPCVisorClient] Failed to acquire story: ChronicleName={}, StoryName={}, Error Code={}"
+                LOG_ERROR("[RPCVisorClient] Failed to acquire story: ChronicleName={}, StoryName={}, Error Code={}"
                      , chronicle_name.c_str(), story_name.c_str(), response.getErrorCode());
             }
 
@@ -166,7 +166,7 @@ public:
         }
         catch(tl::exception const &)
         {
-            LOGE("[RPCVisorClient] Failed to acquire story {} from chronicle {}. Thallium exception encountered."
+            LOG_ERROR("[RPCVisorClient] Failed to acquire story {} from chronicle {}. Thallium exception encountered."
                  , story_name.c_str(), chronicle_name.c_str());
         }
         return (AcquireStoryResponseMsg(chronolog::CL_ERR_UNKNOWN, 0, std::vector <KeeperIdCard>{}));
@@ -174,7 +174,7 @@ public:
 
     int ReleaseStory(ClientId const &client_id, std::string const &chronicle_name, std::string const &story_name)
     {
-        LOGI("[RPCVisorClient] Initiating story release: ChronicleName={}, StoryName={}", chronicle_name.c_str()
+        LOG_INFO("[RPCVisorClient] Initiating story release: ChronicleName={}, StoryName={}", chronicle_name.c_str()
              , story_name.c_str());
         try
         {
@@ -182,12 +182,12 @@ public:
 
             if(resultCode == chronolog::CL_SUCCESS)
             {
-                LOGI("[RPCVisorClient] Successfully released story: ChronicleName={}, StoryName={}"
+                LOG_INFO("[RPCVisorClient] Successfully released story: ChronicleName={}, StoryName={}"
                      , chronicle_name.c_str(), story_name.c_str());
             }
             else
             {
-                LOGE("[RPCVisorClient] Failed to release story: ChronicleName={}, StoryName={}, Error Code={}"
+                LOG_ERROR("[RPCVisorClient] Failed to release story: ChronicleName={}, StoryName={}, Error Code={}"
                      , chronicle_name.c_str(), story_name.c_str(), resultCode);
             }
 
@@ -195,7 +195,7 @@ public:
         }
         catch(tl::exception const &)
         {
-            LOGE("[RPCVisorClient] Failed to release story {} from chronicle {}. Thallium exception encountered."
+            LOG_ERROR("[RPCVisorClient] Failed to release story {} from chronicle {}. Thallium exception encountered."
                  , story_name.c_str(), chronicle_name.c_str());
         }
         return (chronolog::CL_ERR_UNKNOWN);
@@ -203,7 +203,7 @@ public:
 
     int DestroyStory(ClientId const &client_id, std::string const &chronicle_name, std::string const &story_name)
     {
-        LOGI("[RPCVisorClient] Initiating story destruction: ChronicleName={}, StoryName={}", chronicle_name.c_str()
+        LOG_INFO("[RPCVisorClient] Initiating story destruction: ChronicleName={}, StoryName={}", chronicle_name.c_str()
              , story_name.c_str());
         try
         {
@@ -211,12 +211,12 @@ public:
 
             if(resultCode == chronolog::CL_SUCCESS)
             {
-                LOGI("[RPCVisorClient] Successfully destroyed story: ChronicleName={}, StoryName={}"
+                LOG_INFO("[RPCVisorClient] Successfully destroyed story: ChronicleName={}, StoryName={}"
                      , chronicle_name.c_str(), story_name.c_str());
             }
             else
             {
-                LOGE("[RPCVisorClient] Failed to destroy story: ChronicleName={}, StoryName={}, Error Code={}"
+                LOG_ERROR("[RPCVisorClient] Failed to destroy story: ChronicleName={}, StoryName={}, Error Code={}"
                      , chronicle_name.c_str(), story_name.c_str(), resultCode);
             }
 
@@ -224,7 +224,7 @@ public:
         }
         catch(tl::exception const &)
         {
-            LOGE("[RPCVisorClient] Failed to destroy story {} from chronicle {}. Thallium exception encountered."
+            LOG_ERROR("[RPCVisorClient] Failed to destroy story {} from chronicle {}. Thallium exception encountered."
                  , story_name.c_str(), chronicle_name.c_str());
         }
         return (chronolog::CL_ERR_UNKNOWN);
@@ -233,19 +233,19 @@ public:
 
     int GetChronicleAttr(ClientId const &client_id, std::string const &name, const std::string &key, std::string &value)
     {
-        LOGI("[RPCVisorClient] Retrieving attribute: ChronicleName={}, Key={}", name.c_str(), key.c_str());
+        LOG_INFO("[RPCVisorClient] Retrieving attribute: ChronicleName={}, Key={}", name.c_str(), key.c_str());
         try
         {
             int resultCode = get_chronicle_attr.on(service_ph)(client_id, name, key, value);
 
             if(resultCode == chronolog::CL_SUCCESS)
             {
-                LOGI("[RPCVisorClient] Successfully retrieved attribute: ChronicleName={}, Key={}, Value={}"
+                LOG_INFO("[RPCVisorClient] Successfully retrieved attribute: ChronicleName={}, Key={}, Value={}"
                      , name.c_str(), key.c_str(), value.c_str());
             }
             else
             {
-                LOGE("[RPCVisorClient] Failed to retrieve attribute: ChronicleName={}, Key={}, Error Code={}"
+                LOG_ERROR("[RPCVisorClient] Failed to retrieve attribute: ChronicleName={}, Key={}, Error Code={}"
                      , name.c_str(), key.c_str(), resultCode);
             }
 
@@ -253,7 +253,7 @@ public:
         }
         catch(tl::exception const &)
         {
-            LOGE("[RPCVisorClient] Failed to retrieve attribute {} from chronicle {}. Thallium exception encountered."
+            LOG_ERROR("[RPCVisorClient] Failed to retrieve attribute {} from chronicle {}. Thallium exception encountered."
                  , key.c_str(), name.c_str());
         }
         return (chronolog::CL_ERR_UNKNOWN);
@@ -262,7 +262,7 @@ public:
     int EditChronicleAttr(ClientId const &client_id, std::string const &name, const std::string &key
                           , const std::string &value)
     {
-        LOGI("[RPCVisorClient] Modifying attribute: ChronicleName={}, Key={}, NewValue={}", name.c_str(), key.c_str()
+        LOG_INFO("[RPCVisorClient] Modifying attribute: ChronicleName={}, Key={}, NewValue={}", name.c_str(), key.c_str()
              , value.c_str());
         try
         {
@@ -270,12 +270,12 @@ public:
 
             if(resultCode == chronolog::CL_SUCCESS)
             {
-                LOGI("[RPCVisorClient] Successfully modified attribute: ChronicleName={}, Key={}, NewValue={}"
+                LOG_INFO("[RPCVisorClient] Successfully modified attribute: ChronicleName={}, Key={}, NewValue={}"
                      , name.c_str(), key.c_str(), value.c_str());
             }
             else
             {
-                LOGE("[RPCVisorClient] Failed to modify attribute: ChronicleName={}, Key={}, NewValue={}, Error Code={}"
+                LOG_ERROR("[RPCVisorClient] Failed to modify attribute: ChronicleName={}, Key={}, NewValue={}, Error Code={}"
                      , name.c_str(), key.c_str(), value.c_str(), resultCode);
             }
 
@@ -283,7 +283,7 @@ public:
         }
         catch(tl::exception const &)
         {
-            LOGE("[RPCVisorClient] Failed to modify attribute {} of chronicle {}. Thallium exception encountered."
+            LOG_ERROR("[RPCVisorClient] Failed to modify attribute {} of chronicle {}. Thallium exception encountered."
                  , key.c_str(), name.c_str());
         }
         return (chronolog::CL_ERR_UNKNOWN);
@@ -291,25 +291,25 @@ public:
 
     std::vector <std::string> ShowChronicles(ClientId const &client_id) //, std::vector<std::string> & chronicles)
     {
-        LOGI("[RPCVisorClient] Attempting to retrieve list of chronicles for ClientID={}", client_id);
+        LOG_INFO("[RPCVisorClient] Attempting to retrieve list of chronicles for ClientID={}", client_id);
         try
         {
             std::vector <std::string> chronicleList = show_chronicles.on(service_ph)(client_id);
 
             if(!chronicleList.empty())
             {
-                LOGI("[RPCVisorClient] Successfully fetched {} chronicles for ClientID={}", chronicleList.size()
+                LOG_INFO("[RPCVisorClient] Successfully fetched {} chronicles for ClientID={}", chronicleList.size()
                      , client_id);
             }
             else
             {
-                LOGW("[RPCVisorClient] Retrieved an empty list of chronicles for ClientID={}", client_id);
+                LOG_WARNING("[RPCVisorClient] Retrieved an empty list of chronicles for ClientID={}", client_id);
             }
             return chronicleList;
         }
         catch(tl::exception const &)
         {
-            LOGE("[RPCVisorClient] Failed to fetch chronicles for ClientID {}. Thallium exception encountered."
+            LOG_ERROR("[RPCVisorClient] Failed to fetch chronicles for ClientID {}. Thallium exception encountered."
                  , client_id);
         }
         return (std::vector <std::string>{});
@@ -318,7 +318,7 @@ public:
     std::vector <std::string>
     ShowStories(ClientId const &client_id, std::string const &chronicle_name) //, std::vector<std::string> & stories )
     {
-        LOGI("[RPCVisorClient] Attempting to retrieve stories for ClientID={}, ChronicleName={}", client_id
+        LOG_INFO("[RPCVisorClient] Attempting to retrieve stories for ClientID={}, ChronicleName={}", client_id
              , chronicle_name);
         try
         {
@@ -326,12 +326,12 @@ public:
 
             if(!storyList.empty())
             {
-                LOGI("[RPCVisorClient] Successfully fetched {} stories for ClientID={} from ChronicleName={}"
+                LOG_INFO("[RPCVisorClient] Successfully fetched {} stories for ClientID={} from ChronicleName={}"
                      , storyList.size(), client_id, chronicle_name);
             }
             else
             {
-                LOGW("[RPCVisorClient] Retrieved an empty list of stories for ClientID={} from ChronicleName={}"
+                LOG_WARNING("[RPCVisorClient] Retrieved an empty list of stories for ClientID={} from ChronicleName={}"
                      , client_id, chronicle_name);
             }
 
@@ -339,7 +339,7 @@ public:
         }
         catch(tl::exception const &)
         {
-            LOGE("[RPCVisorClient] Failed to fetch stories for ClientID {} from ChronicleName {}. Thallium exception encountered."
+            LOG_ERROR("[RPCVisorClient] Failed to fetch stories for ClientID {} from ChronicleName {}. Thallium exception encountered."
                  , client_id, chronicle_name);
         }
         return (std::vector <std::string>{});
@@ -384,7 +384,7 @@ private:
     RpcVisorClient(tl::engine &tl_engine, std::string const &service_addr, uint16_t provider_id): service_addr(
             service_addr), service_provider_id(provider_id), service_ph(tl_engine.lookup(service_addr), provider_id)
     {
-        LOGD("[RpcVisorClient] Initialized for Visor Service at {} with ProviderID={}", service_addr
+        LOG_DEBUG("[RpcVisorClient] Initialized for Visor Service at {} with ProviderID={}", service_addr
              , service_provider_id);
         visor_connect = tl_engine.define("Connect");
         visor_disconnect = tl_engine.define("Disconnect");

@@ -23,12 +23,12 @@ void report_results(double duration_ave, double duration_min, double duration_ma
                     , double duration_init_ave, double duration_comm_ave)
 {
     // Logging the results with descriptive headers for better context.
-    LOGI("[Performance Metrics Report]");
-    LOGI("---------------------------------------------------------------");
-    LOGI("{:>20} {:>20} {:>20} {:>20} {:>20} {:>20}", "Average Duration", "Minimum Duration", "Maximum Duration"
+    LOG_INFO("[Performance Metrics Report]");
+    LOG_INFO("---------------------------------------------------------------");
+    LOG_INFO("{:>20} {:>20} {:>20} {:>20} {:>20} {:>20}", "Average Duration", "Minimum Duration", "Maximum Duration"
          , "Wall Duration", "Average Initialization Time", "Average Communication Time");
-    LOGI("---------------------------------------------------------------");
-    LOGI("{:>20.2f} {:>20.2f} {:>20.2f} {:>20.2f} {:>20.2f} {:>20.2f}", duration_ave, duration_min, duration_max
+    LOG_INFO("---------------------------------------------------------------");
+    LOG_INFO("{:>20.2f} {:>20.2f} {:>20.2f} {:>20.2f} {:>20.2f} {:>20.2f}", duration_ave, duration_min, duration_max
          , duration_wall, duration_init_ave, duration_comm_ave);
 }
 
@@ -69,9 +69,9 @@ std::string get_server_address(const std::string &base_address, long num_servers
     //  long new_port = distr(mt);
     // round-robin select target server port
     int new_port = atoi(base_port.c_str()) + rank % num_servers;
-    LOGD("[ThalliumClientMPI] Selected server port based on rank {}: {}", rank, new_port);
+    LOG_DEBUG("[ThalliumClientMPI] Selected server port based on rank {}: {}", rank, new_port);
     std::string new_addr_str = host_ip + ":" + std::to_string(new_port);
-    LOGI("[ThalliumClientMPI] Generated server address for engine: {}", new_addr_str);
+    LOG_INFO("[ThalliumClientMPI] Generated server address for engine: {}", new_addr_str);
     return new_addr_str;
 }
 
@@ -79,7 +79,7 @@ int main(int argc, char**argv)
 {
     if(argc < 4)
     {
-        LOGE("[ThalliumClientMPI] Usage: {} <address> <#servers> <sendrecv|rdma> [repetition]", argv[0]);
+        LOG_ERROR("[ThalliumClientMPI] Usage: {} <address> <#servers> <sendrecv|rdma> [repetition]", argv[0]);
         exit(0);
     }
 
@@ -117,7 +117,7 @@ int main(int argc, char**argv)
         tl::engine myEngine("ofi+sockets", THALLIUM_CLIENT_MODE);
         server_address = get_server_address(base_address, num_servers, my_rank);
         std::string rpc_name = "repeater";
-        LOGD("[ThalliumClientMPI] Attempting to establish RPC connection for sendrecv mode with server at: {}"
+        LOG_DEBUG("[ThalliumClientMPI] Attempting to establish RPC connection for sendrecv mode with server at: {}"
              , server_address);
         tl::remote_procedure repeater = myEngine.define(rpc_name);
         tl::endpoint server = myEngine.lookup(server_address);
@@ -137,7 +137,7 @@ int main(int argc, char**argv)
         tl::engine myEngine("ofi+sockets", THALLIUM_CLIENT_MODE);
         server_address = get_server_address(base_address, num_servers, my_rank);
         std::string rpc_name = "rdma_put";
-        LOGD("[ThalliumClientMPI] Attempting to establish RPC connection for RDMA mode with server at: {}"
+        LOG_DEBUG("[ThalliumClientMPI] Attempting to establish RPC connection for RDMA mode with server at: {}"
              , server_address);
         tl::remote_procedure rdma_put = myEngine.define(rpc_name).disable_response();
         tl::endpoint server = myEngine.lookup(server_address);
@@ -154,7 +154,7 @@ int main(int argc, char**argv)
     }
     else
     {
-        LOGE("[ThalliumClientMPI] Invalid mode selected: {}", mode);
+        LOG_ERROR("[ThalliumClientMPI] Invalid mode selected: {}", mode);
         exit(0);
     }
 
@@ -165,7 +165,7 @@ int main(int argc, char**argv)
     {
         if(ret_vec != send_vec)
         {
-            LOGE("[ThalliumClientMPI] Mismatch detected: The server's response does not match the sent data.");
+            LOG_ERROR("[ThalliumClientMPI] Mismatch detected: The server's response does not match the sent data.");
         }
         report_results(duration_ave, duration_min, duration_max, duration_wall, duration_init_ave, duration_comm_ave);
     }

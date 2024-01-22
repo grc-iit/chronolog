@@ -34,7 +34,7 @@ public:
 
     StoryChunkExtractionQueue &getExtractionQueue()
     {
-        LOGD("[StoryChunkExtraction] Current size of extraction queue: {}", chunkExtractionQueue.size());
+        LOG_DEBUG("[StoryChunkExtraction] Current size of extraction queue: {}", chunkExtractionQueue.size());
         return chunkExtractionQueue;
     }
 
@@ -48,7 +48,7 @@ public:
 
     virtual void processStoryChunk(StoryChunk*)  //=0
     {
-        LOGW("[StoryChunkExtraction] Base processStoryChunk method called. Derived class should implement specific logic.");
+        LOG_WARNING("[StoryChunkExtraction] Base processStoryChunk method called. Derived class should implement specific logic.");
     }
 
     void startExtractionThreads(int);

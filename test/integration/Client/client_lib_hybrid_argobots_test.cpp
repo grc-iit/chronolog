@@ -17,7 +17,7 @@ struct thread_arg
 
 void thread_function(void*t)
 {
-    LOGI("[ClientLibHybridArgobotsTest] Starting thread function for thread ID: {}", ((thread_arg*)t)->tid);
+    LOG_INFO("[ClientLibHybridArgobotsTest] Starting thread function for thread ID: {}", ((thread_arg*)t)->tid);
 
     ChronoLog::ConfigurationManager confManager("./default_conf.json");
     std::string server_ip = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP;
@@ -31,13 +31,13 @@ void thread_function(void*t)
     int ret = client->Connect(); // Connect to server using client_id and flags
     if(ret == chronolog::CL_SUCCESS)
     {
-        LOGI("[ClientLibHybridArgobotsTest] Successfully connected to server for thread ID: {}", ((thread_arg*)t)->tid);
+        LOG_INFO("[ClientLibHybridArgobotsTest] Successfully connected to server for thread ID: {}", ((thread_arg*)t)->tid);
     }
 
     ret = client->Disconnect(); // Disconnect from server using client_id and flags
     if(ret == chronolog::CL_SUCCESS)
     {
-        LOGI("[ClientLibHybridArgobotsTest] Successfully disconnected from server for thread ID: {}"
+        LOG_INFO("[ClientLibHybridArgobotsTest] Successfully disconnected from server for thread ID: {}"
              , ((thread_arg*)t)->tid);
     }
 }
@@ -69,7 +69,7 @@ int main(int argc, char**argv)
     {
         exit(EXIT_FAILURE);
     }
-    LOGI("[ClientLibHybridArgobotsTest] Running test.");
+    LOG_INFO("[ClientLibHybridArgobotsTest] Running test.");
 
     std::string server_ip = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP;
     int base_port = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT;
@@ -121,9 +121,9 @@ int main(int argc, char**argv)
     free(threads);
     free(t_args);
 
-    LOGI("[ClientLibHybridArgobotsTest] Cleaning up resources and finalizing MPI");
+    LOG_INFO("[ClientLibHybridArgobotsTest] Cleaning up resources and finalizing MPI");
     delete client;
     MPI_Finalize();
-    LOGI("[ClientLibHybridArgobotsTest] Exiting main function");
+    LOG_INFO("[ClientLibHybridArgobotsTest] Exiting main function");
     return 0;
 }

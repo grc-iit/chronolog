@@ -25,7 +25,7 @@ int main()
 
     uint64_t t1 = r1.getTimestamp();
 
-    LOGD("Sleeping for {} seconds ...", SLEEP_INTERVAL_IN_SEC);
+    LOG_DEBUG("Sleeping for {} seconds ...", SLEEP_INTERVAL_IN_SEC);
 
     usleep(SLEEP_INTERVAL_IN_SEC * 1000000);
 
@@ -34,8 +34,8 @@ int main()
     r2.updateTimestamp();
     uint64_t t2 = r2.getTimestamp();
 
-    LOGD("It took me {} nanoseconds.", t2 - t1);
-    LOGD("Drift rate: {}", static_cast<double>(t2 - t1) / SLEEP_INTERVAL_IN_SEC - 1);
+    LOG_DEBUG("It took me {} nanoseconds.", t2 - t1);
+    LOG_DEBUG("Drift rate: {}", static_cast<double>(t2 - t1) / SLEEP_INTERVAL_IN_SEC - 1);
 
     return 0;
 }

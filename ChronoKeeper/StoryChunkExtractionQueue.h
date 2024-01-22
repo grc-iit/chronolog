@@ -21,7 +21,7 @@ public:
 
     ~StoryChunkExtractionQueue()
     {
-        LOGD("[StoryChunkExtractionQueue] Destructor called. Initiating queue shutdown.");
+        LOG_DEBUG("[StoryChunkExtractionQueue] Destructor called. Initiating queue shutdown.");
         shutDown();
     }
 
@@ -29,10 +29,10 @@ public:
     {
         if(nullptr == story_chunk)
         {
-            LOGW("[StoryChunkExtractionQueue] Attempted to stash a null story chunk. Ignoring.");
+            LOG_WARNING("[StoryChunkExtractionQueue] Attempted to stash a null story chunk. Ignoring.");
             return;
         }
-        LOGD("[StoryChunkExtractionQueue] Stashed story chunk with StoryID={} and StartTime={}"
+        LOG_DEBUG("[StoryChunkExtractionQueue] Stashed story chunk with StoryID={} and StartTime={}"
              , story_chunk->getStoryId(), story_chunk->getStartTime());
         {
             std::lock_guard <std::mutex> lock(extractionQueueMutex);
@@ -45,7 +45,7 @@ public:
         std::lock_guard <std::mutex> lock(extractionQueueMutex);
         if(extractionDeque.empty())
         {
-            LOGD("[StoryChunkExtractionQueue] No story chunks available for ejection.");
+            LOG_DEBUG("[StoryChunkExtractionQueue] No story chunks available for ejection.");
             return nullptr;
         }
         StoryChunk*story_chunk = extractionDeque.front();
@@ -69,7 +69,7 @@ public:
 
     void shutDown()
     {
-        LOGI("[StoryChunkExtractionQueue] Initiating queue shutdown. Queue size: {}", extractionDeque.size());
+        LOG_INFO("[StoryChunkExtractionQueue] Initiating queue shutdown. Queue size: {}", extractionDeque.size());
         if(extractionDeque.empty())
         { return; }
 
@@ -82,7 +82,7 @@ public:
             delete extractionDeque.front();
             extractionDeque.pop_front();
         }
-        LOGI("[StoryChunkExtractionQueue] Queue has been successfully shut down and all story chunks have been freed.");
+        LOG_INFO("[StoryChunkExtractionQueue] Queue has been successfully shut down and all story chunks have been freed.");
     }
 
 private:

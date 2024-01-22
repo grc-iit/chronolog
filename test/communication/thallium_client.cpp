@@ -20,7 +20,7 @@ int main(int argc, char**argv)
 {
     if(argc < 5)
     {
-        LOGE("Insufficient arguments provided. Usage: {} <address> <sendrecv|rdma> <msg_size> [repetition]", argv[0]);
+        LOG_ERROR("Insufficient arguments provided. Usage: {} <address> <sendrecv|rdma> <msg_size> [repetition]", argv[0]);
         exit(0);
     }
     std::string server_address = argv[1];
@@ -32,12 +32,12 @@ int main(int argc, char**argv)
         repetition = strtol(argv[4], nullptr, 10);
     time_point <my_clock, nanoseconds> t_bigbang, t_local_init, t_local_finish, t_global_finish;
 
-    LOGI("[Thallium Client] Configurations:");
-    LOGI(" - Server Address: {}", server_address);
-    LOGI(" - Protocol: {}", protocol);
-    LOGI(" - Mode: {}", mode);
-    LOGI(" - Message Size: {} bytes", msg_size);
-    LOGI(" - Repetition Count: {}", repetition);
+    LOG_INFO("[Thallium Client] Configurations:");
+    LOG_INFO(" - Server Address: {}", server_address);
+    LOG_INFO(" - Protocol: {}", protocol);
+    LOG_INFO(" - Mode: {}", mode);
+    LOG_INFO(" - Message Size: {} bytes", msg_size);
+    LOG_INFO(" - Repetition Count: {}", repetition);
 
     std::vector <char> data(msg_size, 'Z');
 
@@ -48,11 +48,11 @@ int main(int argc, char**argv)
     {
         /* send/recv version */
         std::string rpc_name = "repeater";
-        LOGI("[Thallium Client] Searching for RPC with name {} on {}", rpc_name, server_address);
+        LOG_INFO("[Thallium Client] Searching for RPC with name {} on {}", rpc_name, server_address);
         tl::remote_procedure repeater = myEngine.define(rpc_name).disable_response();
         tl::endpoint server = myEngine.lookup(server_address);
         tl::provider_handle ph(server);
-        LOGI("[Thallium Client] Initiating send/recv mode.");
+        LOG_INFO("[Thallium Client] Initiating send/recv mode.");
         t_local_init = my_clock::now();
         for(int i = 0; i < repetition; i++)
             repeater.on(server)(data);
@@ -62,15 +62,15 @@ int main(int argc, char**argv)
     {
         /* RDMA version */
         std::string rpc_name = "rdma_put";
-        LOGI("[Thallium Client] Initiating RDMA mode.");
-        LOGI("[Thallium Client] Searching for RPC with name {} on {}", rpc_name, server_address);
+        LOG_INFO("[Thallium Client] Initiating RDMA mode.");
+        LOG_INFO("[Thallium Client] Searching for RPC with name {} on {}", rpc_name, server_address);
         tl::remote_procedure rdma_put = myEngine.define(rpc_name);//.disable_response();
         tl::endpoint server = myEngine.lookup(server_address);
         std::vector <std::pair <void*, std::size_t>> segments(1);
         segments[0].first = (void*)(&data[0]);
         segments[0].second = data.size() + 1;
         tl::bulk myBulk = myEngine.expose(segments, tl::bulk_mode::read_only);
-        LOGI("[Thallium Client] Sending {} bytes of data to {}", data.size(), server_address);
+        LOG_INFO("[Thallium Client] Sending {} bytes of data to {}", data.size(), server_address);
         t_local_init = my_clock::now();
         for(int i = 0; i < repetition; i++)
             rdma_put.on(server)(myBulk);
@@ -78,7 +78,7 @@ int main(int argc, char**argv)
     }
     else
     {
-        LOGE("[Thallium Client] Invalid mode selected: {}", mode);
+        LOG_ERROR("[Thallium Client] Invalid mode selected: {}", mode);
         exit(0);
     }
 
@@ -86,7 +86,7 @@ int main(int argc, char**argv)
     // sleep(100);
 
     double duration = std::chrono::duration <double>(t_local_finish - t_bigbang).count();
-    LOGI("[Thallium Client] Total execution time: {:>10} seconds", duration);
+    LOG_INFO("[Thallium Client] Total execution time: {:>10} seconds", duration);
 
     return 0;
 }

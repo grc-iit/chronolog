@@ -31,7 +31,7 @@ public:
         }
         catch(tl::exception const &ex)
         {
-            LOGE("[DataStoreAdminClient] Failed to create DataStoreAdminClient");
+            LOG_ERROR("[DataStoreAdminClient] Failed to create DataStoreAdminClient");
         }
         return adminClient;
     }
@@ -43,12 +43,12 @@ public:
         try
         {
             available = collection_service_available.on(service_handle)();
-            LOGD("[DataStoreAdminClient] Service available: {}", available);
+            LOG_DEBUG("[DataStoreAdminClient] Service available: {}", available);
 
         }
         catch(tl::exception const &ex)
         {
-            LOGE("[DataStoreAdminClient] Service unavailable: {}", available);
+            LOG_ERROR("[DataStoreAdminClient] Service unavailable: {}", available);
         }
         return available;
     }
@@ -58,7 +58,7 @@ public:
         int status = chronolog::CL_ERR_UNKNOWN;
         try
         {
-            LOGI("[DataStoreAdminClient] Shutdown");
+            LOG_INFO("[DataStoreAdminClient] Shutdown");
             status = shutdown_data_collection.on(service_handle)();
         }
         catch(tl::exception const &ex)
@@ -73,7 +73,7 @@ public:
         int status = chronolog::CL_ERR_UNKNOWN;
         try
         {
-            LOGD("[DataStoreAdminClient] START Story Recording for StoryID={}", story_id);
+            LOG_DEBUG("[DataStoreAdminClient] START Story Recording for StoryID={}", story_id);
             status = start_story_recording.on(service_handle)(chronicle_name, story_name, story_id, start_time);
         }
         catch(tl::exception const &ex)
@@ -86,7 +86,7 @@ public:
         int status = chronolog::CL_ERR_UNKNOWN;
         try
         {
-            LOGD("[DataStoreAdminClient] STOP Story Recording for StoryId={}", story_id);
+            LOG_DEBUG("[DataStoreAdminClient] STOP Story Recording for StoryId={}", story_id);
             status = stop_story_recording.on(service_handle)(story_id);
         }
         catch(tl::exception const &ex)

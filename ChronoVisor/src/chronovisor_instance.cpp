@@ -11,7 +11,7 @@ volatile sig_atomic_t keep_running = true;
 
 void sigterm_handler(int)
 {
-    LOGI("Received SIGTERM, start shutting down.");
+    LOG_INFO("Received SIGTERM, start shutting down.");
     keep_running = false;
 }
 
@@ -50,7 +50,7 @@ int main(int argc, char**argv)
     {
         exit(EXIT_FAILURE);
     }
-    LOGI("[chronovisor_instance] Running Chronovisor Server.");
+    LOG_INFO("[chronovisor_instance] Running Chronovisor Server.");
 
     chronolog::VisorClientPortal theChronoVisorPortal;
     chronolog::KeeperRegistry keeperRegistry;
@@ -61,7 +61,7 @@ int main(int argc, char**argv)
     theChronoVisorPortal.StartServices(confManager, &keeperRegistry);
 
     /////
-    LOGI("[chronovisor_instance] ChronoVisor Running...");
+    LOG_INFO("[chronovisor_instance] ChronoVisor Running...");
     while(keep_running)
     {
         sleep(10);
@@ -69,6 +69,6 @@ int main(int argc, char**argv)
 
     theChronoVisorPortal.ShutdownServices();
     keeperRegistry.ShutdownRegistryService();
-    LOGI("[chronovisor_instance] ChronoVisor shutdown.");
+    LOG_INFO("[chronovisor_instance] ChronoVisor shutdown.");
     return 0;
 }

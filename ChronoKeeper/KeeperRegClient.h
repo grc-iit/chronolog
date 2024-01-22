@@ -30,7 +30,7 @@ public:
         }
         catch(tl::exception const &)
         {
-            LOGE("[KeeperRegistryClient] Failed to create KeeperRegistryClient");
+            LOG_ERROR("[KeeperRegistryClient] Failed to create KeeperRegistryClient");
             return nullptr;
         }
     }
@@ -41,12 +41,12 @@ public:
         {
             std::stringstream ss;
             ss << keeperMsg;
-            LOGD("[KeeperRegisterClient] Sending Register Message: {}", ss.str());
+            LOG_DEBUG("[KeeperRegisterClient] Sending Register Message: {}", ss.str());
             return register_keeper.on(reg_service_ph)(keeperMsg);
         }
         catch(tl::exception const &)
         {
-            LOGE("[KeeperRegisterClient] Failed Sending Register Message.");
+            LOG_ERROR("[KeeperRegisterClient] Failed Sending Register Message.");
             return CL_ERR_UNKNOWN;
         }
     }
@@ -57,12 +57,12 @@ public:
         {
             std::stringstream ss;
             ss << keeperIdCard;
-            LOGD("[KeeperRegisterClient] Sending Unregister Message: {}", ss.str());
+            LOG_DEBUG("[KeeperRegisterClient] Sending Unregister Message: {}", ss.str());
             return unregister_keeper.on(reg_service_ph)(keeperIdCard);
         }
         catch(tl::exception const &)
         {
-            LOGE("[KeeperRegisterClient] Failed Sending Unregistered Message.");
+            LOG_ERROR("[KeeperRegisterClient] Failed Sending Unregistered Message.");
             return CL_ERR_UNKNOWN;
         }
     }
@@ -73,18 +73,18 @@ public:
         {
             std::stringstream ss;
             ss << keeperStatsMsg;
-            LOGD("[KeeperRegisterClient] Sending Stats Message: {}", ss.str());
+            LOG_DEBUG("[KeeperRegisterClient] Sending Stats Message: {}", ss.str());
             handle_stats_msg.on(reg_service_ph)(keeperStatsMsg);
         }
         catch(tl::exception const &)
         {
-            LOGE("[KeeperRegisterClient] Failed Sending Stats Message.");
+            LOG_ERROR("[KeeperRegisterClient] Failed Sending Stats Message.");
         }
     }
 
     ~KeeperRegistryClient()
     {
-        LOGD("[KeeperRegistryClient] Destructor called. Cleaning up resources...");
+        LOG_DEBUG("[KeeperRegistryClient] Destructor called. Cleaning up resources...");
         register_keeper.deregister();
         unregister_keeper.deregister();
         handle_stats_msg.deregister();
@@ -103,7 +103,7 @@ private:
             : reg_service_addr(registry_addr), reg_service_provider_id(registry_provider_id), reg_service_ph(
             tl_engine.lookup(registry_addr), registry_provider_id)
     {
-        LOGD("[KeeperRegistryClient] Initialized for RegistryService at {} with ProviderID={}", registry_addr
+        LOG_DEBUG("[KeeperRegistryClient] Initialized for RegistryService at {} with ProviderID={}", registry_addr
              , registry_provider_id);
         register_keeper = tl_engine.define("register_keeper");
         unregister_keeper = tl_engine.define("unregister_keeper");

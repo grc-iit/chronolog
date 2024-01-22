@@ -36,16 +36,16 @@ int KeeperRegistry::InitializeRegistryService(ChronoLog::ConfigurationManager co
 
         if(MARGO_INSTANCE_NULL == margo_id)
         {
-            LOGC("[KeeperRegistry] Failed to initialize margo_instance");
+            LOG_CRITICAL("[KeeperRegistry] Failed to initialize margo_instance");
             return -1;
         }
-        LOGI("[KeeperRegistry] margo_instance initialized with NA_STRING {}", KEEPER_REGISTRY_SERVICE_NA_STRING);
+        LOG_INFO("[KeeperRegistry] margo_instance initialized with NA_STRING {}", KEEPER_REGISTRY_SERVICE_NA_STRING);
 
         registryEngine = new tl::engine(margo_id);
 
         std::stringstream ss;
         ss << registryEngine->self();
-        LOGI("[KeeperRegistry] Starting at address {} with provider id: {}", ss.str(), provider_id);
+        LOG_INFO("[KeeperRegistry] Starting at address {} with provider id: {}", ss.str(), provider_id);
 
         keeperRegistryService = KeeperRegistryService::CreateKeeperRegistryService(*registryEngine, provider_id, *this);
 
@@ -54,7 +54,7 @@ int KeeperRegistry::InitializeRegistryService(ChronoLog::ConfigurationManager co
     }
     catch(tl::exception const &ex)
     {
-        LOGE("[KeeperRegistry] Failed to start");
+        LOG_ERROR("[KeeperRegistry] Failed to start");
     }
 
     return status;
@@ -70,12 +70,12 @@ int KeeperRegistry::ShutdownRegistryService()
 
     if(is_shutting_down())
     {
-        LOGI("[KeeperRegistry] Shutdown");
+        LOG_INFO("[KeeperRegistry] Shutdown");
         return chronolog::CL_SUCCESS;
     }
 
     registryState = SHUTTING_DOWN;
-    LOGI("[KeeperRegistry] Shutting down...");
+    LOG_INFO("[KeeperRegistry] Shutting down...");
 
     // send out shutdown instructions to 
     // all the registered keeper processes
@@ -88,7 +88,7 @@ int KeeperRegistry::ShutdownRegistryService()
             {
                 std::stringstream ss;
                 ss << process.second.idCard;
-                LOGI("[KeeperRegistry] Sending shutdown to keeper {}", ss.str());
+                LOG_INFO("[KeeperRegistry] Sending shutdown to keeper {}", ss.str());
                 process.second.keeperAdminClient->shutdown_collection();
                 delete process.second.keeperAdminClient;
             }
@@ -147,7 +147,7 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const &keeper_re
     {
         std::stringstream ss;
         ss << keeper_id_card;
-        LOGE("[KeeperRegistry] Register Keeper: KeeperIdCard: {} failed to create DataStoreAdminClient for {}: provider_id={}"
+        LOG_ERROR("[KeeperRegistry] Register Keeper: KeeperIdCard: {} failed to create DataStoreAdminClient for {}: provider_id={}"
              , ss.str(), service_na_string, admin_service_id.provider_id);
         return chronolog::CL_ERR_UNKNOWN;
     }
@@ -160,7 +160,7 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const &keeper_re
     {
         std::stringstream ss;
         ss << keeper_id_card;
-        LOGE("[KeeperRegistry] Register Keeper {} failed to registration", ss.str());
+        LOG_ERROR("[KeeperRegistry] Register Keeper {} failed to registration", ss.str());
         delete collectionClient;
         return chronolog::CL_ERR_UNKNOWN;
     }
@@ -169,7 +169,7 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const &keeper_re
 
     std::stringstream s1;
     s1 << keeper_id_card;
-    LOGD("[KeeperRegistry] Register Keeper: KeeperIdCard: {} failed to create DataStoreAdminClient for {}: provider_id={}"
+    LOG_DEBUG("[KeeperRegistry] Register Keeper: KeeperIdCard: {} failed to create DataStoreAdminClient for {}: provider_id={}"
          , s1.str(), service_na_string, admin_service_id.provider_id);
 
     // now that communnication with the Keeper is established and we still holding registryLock
@@ -177,7 +177,7 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const &keeper_re
     if(keeperProcessRegistry.size() > 0)
     { registryState = RUNNING; }
 
-    LOGI("[KeeperRegistry] RUNNING with {} KeeperProcesses", keeperProcessRegistry.size());
+    LOG_INFO("[KeeperRegistry] RUNNING with {} KeeperProcesses", keeperProcessRegistry.size());
 
     return chronolog::CL_SUCCESS;
 }
@@ -208,7 +208,7 @@ int KeeperRegistry::unregisterKeeperProcess(KeeperIdCard const &keeper_id_card)
     if(!is_shutting_down() && (0 == keeperProcessRegistry.size()))
     {
         registryState = INITIALIZED;
-        LOGI("[KeeperRegistry] INITIALIZED with {} KeeperProcesses", keeperProcessRegistry.size());
+        LOG_INFO("[KeeperRegistry] INITIALIZED with {} KeeperProcesses", keeperProcessRegistry.size());
     }
 
     return chronolog::CL_SUCCESS;
@@ -263,7 +263,7 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart(std::vector <KeeperIdCard
 {
     if(!is_running())
     {
-        LOGW("[KeeperRegistry] Registry has no Keeper processes to start story recording");
+        LOG_WARNING("[KeeperRegistry] Registry has no Keeper processes to start story recording");
         return chronolog::CL_ERR_NO_KEEPERS;
     }
 
@@ -284,7 +284,7 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart(std::vector <KeeperIdCard
         {
             std::stringstream s0;
             s0 << keeper_id_card;
-            LOGW("[KeeperRegistry] Registry failed to find Keeper with {}", s0.str());
+            LOG_WARNING("[KeeperRegistry] Registry failed to find Keeper with {}", s0.str());
             continue;
         }
         KeeperProcessEntry keeper_process = (*keeper_process_iter).second;
@@ -292,13 +292,13 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart(std::vector <KeeperIdCard
         std::stringstream ss, s1;
         ss << keeper_process.idCard;
         s1 << keeper_process.adminServiceId;
-        LOGD("[KeeperRegistry] Found Keeper Process: KeeperIdCard: {}, AdminServiceId: {}, LastStatsTime: {}, ActiveStoryCount: {}"
+        LOG_DEBUG("[KeeperRegistry] Found Keeper Process: KeeperIdCard: {}, AdminServiceId: {}, LastStatsTime: {}, ActiveStoryCount: {}"
              , ss.str(), s1.str(), keeper_process.lastStatsTime, keeper_process.activeStoryCount);
         if(nullptr == keeper_process.keeperAdminClient)
         {
             std::stringstream s2;
             s2 << keeper_id_card;
-            LOGW("[KeeperRegistry] Registry record for {} is missing keeperAdminClient", ss.str());
+            LOG_WARNING("[KeeperRegistry] Registry record for {} is missing keeperAdminClient", ss.str());
             continue;
         }
         try
@@ -309,12 +309,12 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart(std::vector <KeeperIdCard
             {
                 std::stringstream s3;
                 s3 << keeper_id_card;
-                LOGW("[KeeperRegistry] Registry failed notification RPC to keeper {}", s3.str());
+                LOG_WARNING("[KeeperRegistry] Registry failed notification RPC to keeper {}", s3.str());
                 continue;
             }
             std::stringstream s4;
             s4 << keeper_id_card;
-            LOGI("[KeeperRegistry] Registry notified keeper {} to start recording StoryID={} at StartTime={}", s4.str()
+            LOG_INFO("[KeeperRegistry] Registry notified keeper {} to start recording StoryID={} at StartTime={}", s4.str()
                  , storyId, story_start_time);
             keepers_left_to_notify--;
         }
@@ -322,14 +322,14 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart(std::vector <KeeperIdCard
         {
             std::stringstream s5;
             s5 << keeper_id_card;
-            LOGW("[KeeperRegistry] Registry failed notification RPC to keeper {} details:", s5.str());
+            LOG_WARNING("[KeeperRegistry] Registry failed notification RPC to keeper {} details:", s5.str());
             continue;
         }
     }
 
     if(keepers_left_to_notify == vectorOfKeepers.size())
     {
-        LOGE("[KeeperRegistry] Registry failed to notify the keepers to start recording story {}", storyId);
+        LOG_ERROR("[KeeperRegistry] Registry failed to notify the keepers to start recording story {}", storyId);
         return chronolog::CL_ERR_NO_KEEPERS;
     }
 
@@ -342,7 +342,7 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStop(std::vector <KeeperIdCard>
 {
     if(!is_running())
     {
-        LOGD("[KeeperRegistry] Registry has no Keeper processes to notify of story release");
+        LOG_DEBUG("[KeeperRegistry] Registry has no Keeper processes to notify of story release");
         return chronolog::CL_ERR_NO_KEEPERS;
     }
 
@@ -359,7 +359,7 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStop(std::vector <KeeperIdCard>
         {
             std::stringstream ss;
             ss << keeper_id_card;
-            LOGW("[KeeperRegistry] Registry failed to find Keeper with {}", ss.str());
+            LOG_WARNING("[KeeperRegistry] Registry failed to find Keeper with {}", ss.str());
             continue;
         }
         KeeperProcessEntry keeper_process = (*keeper_process_iter).second;
@@ -367,7 +367,7 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStop(std::vector <KeeperIdCard>
         {
             std::stringstream s1;
             s1 << keeper_id_card;
-            LOGW("[KeeperRegistry] Registry record for {} is missing keeperAdminClient", s1.str());
+            LOG_WARNING("[KeeperRegistry] Registry record for {} is missing keeperAdminClient", s1.str());
             continue;
         }
         try
@@ -377,26 +377,26 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStop(std::vector <KeeperIdCard>
             {
                 std::stringstream s2;
                 s2 << keeper_id_card;
-                LOGW("[KeeperRegistry] Registry failed notification RPC to keeper {}", s2.str());
+                LOG_WARNING("[KeeperRegistry] Registry failed notification RPC to keeper {}", s2.str());
                 continue;
             }
             std::stringstream s3;
             s3 << keeper_id_card;
-            LOGI("[KeeperRegistry] Registry notified keeper {} to stop recording story {}", s3.str(), storyId);
+            LOG_INFO("[KeeperRegistry] Registry notified keeper {} to stop recording story {}", s3.str(), storyId);
             keepers_left_to_notify--;
         }
         catch(thallium::exception const &ex)
         {
             std::stringstream s4;
             s4 << keeper_id_card;
-            LOGW("[KeeperRegistry] Registry failed notification RPC to keeper {} details.", s4.str());
+            LOG_WARNING("[KeeperRegistry] Registry failed notification RPC to keeper {} details.", s4.str());
             continue;
         }
     }
 
     if(keepers_left_to_notify == vectorOfKeepers.size())
     {
-        LOGE("[KeeperRegistry] Registry failed to notify the keepers to stop recording story {}", storyId);
+        LOG_ERROR("[KeeperRegistry] Registry failed to notify the keepers to stop recording story {}", storyId);
         return chronolog::CL_ERR_NO_KEEPERS;
     }
     return chronolog::CL_SUCCESS;

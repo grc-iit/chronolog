@@ -34,7 +34,7 @@ public:
     {
         std::lock_guard <std::mutex> lock(ingestionQueueMutex);
         storyIngestionHandles.emplace(std::pair <StoryId, StoryIngestionHandle*>(story_id, ingestion_handle));
-        LOGD("[IngestionQueue] Added handle for StoryID={}: HandleAddress={}, StoryIngestionHandles={}, HandleMapSize={}"
+        LOG_DEBUG("[IngestionQueue] Added handle for StoryID={}: HandleAddress={}, StoryIngestionHandles={}, HandleMapSize={}"
              , story_id, static_cast<void*>(ingestion_handle), reinterpret_cast<void*>(&storyIngestionHandles)
              , storyIngestionHandles.size());
     }
@@ -44,12 +44,12 @@ public:
         std::lock_guard <std::mutex> lock(ingestionQueueMutex);
         if(storyIngestionHandles.erase(story_id))
         {
-            LOGD("[IngestionQueue] Removed handle for StoryID={}. Current handle MapSize={}", story_id
+            LOG_DEBUG("[IngestionQueue] Removed handle for StoryID={}. Current handle MapSize={}", story_id
                  , storyIngestionHandles.size());
         }
         else
         {
-            LOGW("[IngestionQueue] Tried to remove non-existent handle for StoryID={}.", story_id);
+            LOG_WARNING("[IngestionQueue] Tried to remove non-existent handle for StoryID={}.", story_id);
         }
     }
 
@@ -57,12 +57,12 @@ public:
     {
         std::stringstream ss;
         ss << event;
-        LOGD("[IngestionQueue] Received event for StoryID={}: Event Details={}, HandleMapSize={}", event.storyId
+        LOG_DEBUG("[IngestionQueue] Received event for StoryID={}: Event Details={}, HandleMapSize={}", event.storyId
              , ss.str(), storyIngestionHandles.size());
         auto ingestionHandle_iter = storyIngestionHandles.find(event.storyId);
         if(ingestionHandle_iter == storyIngestionHandles.end())
         {
-            LOGW("[IngestionQueue] Orphan event for story {}. Storing for later processing.", event.storyId);
+            LOG_WARNING("[IngestionQueue] Orphan event for story {}. Storing for later processing.", event.storyId);
             std::lock_guard <std::mutex> lock(ingestionQueueMutex);
             orphanEventQueue.push_back(event);
         }
@@ -77,7 +77,7 @@ public:
     {
         if(orphanEventQueue.empty())
         {
-            LOGD("[IngestionQueue] Orphan event queue is empty. No actions taken.");
+            LOG_DEBUG("[IngestionQueue] Orphan event queue is empty. No actions taken.");
             return;
         }
         std::lock_guard <std::mutex> lock(ingestionQueueMutex);
@@ -96,7 +96,7 @@ public:
                 ++iter;
             }
         }
-        LOGD("[IngestionQueue] Drained {} orphan events into known handles.", orphanEventQueue.size());
+        LOG_DEBUG("[IngestionQueue] Drained {} orphan events into known handles.", orphanEventQueue.size());
     }
 
     bool is_empty() const
@@ -106,14 +106,14 @@ public:
 
     void shutDown()
     {
-        LOGI("[IngestionQueue] Initiating shutdown. HandleMapSize={}, Orphan EventQueueSize={}"
+        LOG_INFO("[IngestionQueue] Initiating shutdown. HandleMapSize={}, Orphan EventQueueSize={}"
              , storyIngestionHandles.size(), orphanEventQueue.size());
         // last attempt to drain orphanEventQueue into known ingestionHandles
         drainOrphanEvents();
         // disengage all handles
         std::lock_guard <std::mutex> lock(ingestionQueueMutex);
         storyIngestionHandles.clear();
-        LOGI("[IngestionQueue] Shutdown completed. All handles disengaged.");
+        LOG_INFO("[IngestionQueue] Shutdown completed. All handles disengaged.");
     }
 
 private:

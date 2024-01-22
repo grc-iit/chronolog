@@ -33,7 +33,7 @@ int main(int argc, char**argv)
     {
         exit(EXIT_FAILURE);
     }
-    LOGI("[ClientLibConnectRPCTest] Running test.");
+    LOG_INFO("[ClientLibConnectRPCTest] Running test.");
 
     std::string server_ip = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP;
     int base_port = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT;
@@ -79,8 +79,8 @@ int main(int argc, char**argv)
         duration_disconnect += (t2 - t1);
     };
 
-    LOGI("[ClientLibConnectRPCTest] Average connection time: {} ns", duration_connect.count() / NUM_CONNECTION);
-    LOGI("[ClientLibConnectRPCTest] Average disconnection time: {} ns", duration_disconnect.count() / NUM_CONNECTION);
+    LOG_INFO("[ClientLibConnectRPCTest] Average connection time: {} ns", duration_connect.count() / NUM_CONNECTION);
+    LOG_INFO("[ClientLibConnectRPCTest] Average disconnection time: {} ns", duration_disconnect.count() / NUM_CONNECTION);
 
     return 0;
 }

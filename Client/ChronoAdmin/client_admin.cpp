@@ -45,7 +45,7 @@ int main(int argc, char**argv)
 
     if(argc != 7)
     {
-        LOGI("ChronoAdmin usage : ./ChronoAdmin -protocol p -hostname h -port n");
+        LOG_INFO("ChronoAdmin usage : ./ChronoAdmin -protocol p -hostname h -port n");
         /*std::cout << " ChronoAdmin usage : ./ChronoAdmin -protocol p -hostname h -port n" << std::endl;*/
         exit(-1);
     }
@@ -90,7 +90,7 @@ int main(int argc, char**argv)
 
     if(protocol < 0 || protocol > 2)
     {
-        LOGE("protocol not supported : valid values are 0 (sockets), 1 (tcp) and 2 (verbs)");
+        LOG_ERROR("protocol not supported : valid values are 0 (sockets), 1 (tcp) and 2 (verbs)");
         /*std::cout << " protocol not supported : valid values are 0 (sockets), 1 (tcp) and 2 (verbs)" << std::endl;*/
         end_program = true;
     }
@@ -103,7 +103,7 @@ int main(int argc, char**argv)
     struct hostent*he = gethostbyname(hostname.c_str());
     if(he == 0)
     {
-        LOGE("hostname not found, Exiting");
+        LOG_ERROR("hostname not found, Exiting");
         /*std::cout << " hostname not found, Exiting" << std::endl;*/
         exit(-1);
     }
@@ -151,19 +151,19 @@ int main(int argc, char**argv)
     };
 
 
-    LOGI("connected to server address : {}", server_uri);
+    LOG_INFO("connected to server address : {}", server_uri);
     /*std::cout << " connected to server address : " << server_uri << std::endl;*/
 
 
-    LOGI("Metadata operations : -c <string> , create a chronicle with name <string>");
-    LOGI(" -s <string1> <string2>, create a story with name string1+string2 : string1 = chronicle name, string2 = story name ");
-    LOGI(" -a -c <string>, acquire chronicle with name <string>");
-    LOGI(" -a -s <string1> <string2>, acquire story with name string1+string2 : string1 = chronicle name, string2 = story name");
-    LOGI(" -r -c <string>, release chronicle with name <string>");
-    LOGI(" -r -s <string1> <string2>, release story with name string1+string2 : string1 = chronicle name, string2 = story name");
-    LOGI(" -d -c <string>, destroy chronicle with name <string>");
-    LOGI(" -d -s <string1> <string2>, destroy story with name string1+string2 : string1 = chronicle name, string2 = story name");
-    LOGI(" -disconnect ");
+    LOG_INFO("Metadata operations : -c <string> , create a chronicle with name <string>");
+    LOG_INFO(" -s <string1> <string2>, create a story with name string1+string2 : string1 = chronicle name, string2 = story name ");
+    LOG_INFO(" -a -c <string>, acquire chronicle with name <string>");
+    LOG_INFO(" -a -s <string1> <string2>, acquire story with name string1+string2 : string1 = chronicle name, string2 = story name");
+    LOG_INFO(" -r -c <string>, release chronicle with name <string>");
+    LOG_INFO(" -r -s <string1> <string2>, release story with name string1+string2 : string1 = chronicle name, string2 = story name");
+    LOG_INFO(" -d -c <string>, destroy chronicle with name <string>");
+    LOG_INFO(" -d -s <string1> <string2>, destroy story with name string1+string2 : string1 = chronicle name, string2 = story name");
+    LOG_INFO(" -disconnect ");
 
     /*std::cout << " Metadata operations : -c <string> , create a chronicle with name <string>  " << std::endl
                   << " -s <string1> <string2>, create a story with name string1+string2 : string1 = chronicle name, string2 = story name "

@@ -24,7 +24,7 @@ class RPCVisor
 public:
     RPCVisor(chronolog::KeeperRegistry*keeper_registry): keeperRegistry(keeper_registry)
     {
-        LOGD("[RPCVisor] Constructor is called");
+        LOG_DEBUG("[RPCVisor] Constructor is called");
         clientManager = ChronoLog::Singleton <ClientRegistryManager>::GetInstance();
         chronicleMetaDirectory = ChronoLog::Singleton <ChronicleMetaDirectory>::GetInstance();
         clientManager->setChronicleMetaDirectory(chronicleMetaDirectory.get());
@@ -32,7 +32,7 @@ public:
 
         rpc = std::make_shared <ChronoLogRPC>();
         set_prefix("ChronoLog");
-        LOGD("[RPCVisor] Constructor completed. Created at {} in thread PID={}", static_cast<void*>(this), getpid());
+        LOG_DEBUG("[RPCVisor] Constructor completed. Created at {} in thread PID={}", static_cast<void*>(this), getpid());
     }
 
     ~RPCVisor()
@@ -41,7 +41,7 @@ public:
 
     void Visor_start()
     { //chronolog::KeeperRegistry * keeper_registry) {
-        LOGI("[RPCVisor] Start visor is called.");
+        LOG_INFO("[RPCVisor] Start visor is called.");
         rpc->start();
     }
 
@@ -50,7 +50,7 @@ public:
      */
     int LocalConnect(const std::string &uri, std::string const &client_id, int &flags, uint64_t &clock_offset)
     {
-        LOGD("[RPCVisor] LocalConnect initiated. URI: {}, PID: {}", uri, getpid());
+        LOG_DEBUG("[RPCVisor] LocalConnect initiated. URI: {}, PID: {}", uri, getpid());
 
         ClientInfo record;
         record.addr_ = "127.0.0.1";
@@ -58,49 +58,49 @@ public:
         long clientIdValue = std::strtol(client_id.c_str(), nullptr, 10);
         if(clientIdValue < 0)
         {
-            LOGE("[RPCVisor] LocalConnect failed: Invalid client_id detected. ClientID={}", client_id);
+            LOG_ERROR("[RPCVisor] LocalConnect failed: Invalid client_id detected. ClientID={}", client_id);
             return chronolog::CL_ERR_INVALID_ARG;
         }
         else
         {
-            LOGD("[RPCVisor] Valid client_id detected. ClientID={}", client_id);
+            LOG_DEBUG("[RPCVisor] Valid client_id detected. ClientID={}", client_id);
         }
         int result = clientManager->add_client_record(client_id, record);
         if(result != chronolog::CL_SUCCESS)
         {
-            LOGE("[RPCVisor] Failed to add client record. ClientID={}, ErrorCode={}", client_id, result);
+            LOG_ERROR("[RPCVisor] Failed to add client record. ClientID={}, ErrorCode={}", client_id, result);
         }
         else
         {
-            LOGD("[RPCVisor] Successfully added client record. ClientID={}", client_id);
+            LOG_DEBUG("[RPCVisor] Successfully added client record. ClientID={}", client_id);
         }
     }
 
     int LocalDisconnect(std::string const &client_id, int &flags)
     {
-        LOGD("[RPCVisor] Initiating Local Disconnect. Process ID: {}, Client ID: {}, Flags: {}", getpid(), client_id
+        LOG_DEBUG("[RPCVisor] Initiating Local Disconnect. Process ID: {}, Client ID: {}, Flags: {}", getpid(), client_id
              , flags);
 
         long clientIdValue = std::strtol(client_id.c_str(), nullptr, 10);
         if(clientIdValue < 0)
         {
-            LOGE("[RPCVisor] Failed: Detected an invalid Client ID during disconnection. Client ID: {}", client_id);
+            LOG_ERROR("[RPCVisor] Failed: Detected an invalid Client ID during disconnection. Client ID: {}", client_id);
             return chronolog::CL_ERR_INVALID_ARG;
         }
         else
         {
-            LOGD("[RPCVisor] Valid Client ID confirmed for disconnection process. Client ID: {}", client_id);
+            LOG_DEBUG("[RPCVisor] Valid Client ID confirmed for disconnection process. Client ID: {}", client_id);
         }
 
         int result = clientManager->remove_client_record(client_id, flags);
         if(result != chronolog::CL_SUCCESS)
         {
-            LOGE("[RPCVisor] Disconnection failed: Unable to remove client record. Client ID: {}, Error Code: {}"
+            LOG_ERROR("[RPCVisor] Disconnection failed: Unable to remove client record. Client ID: {}, Error Code: {}"
                  , client_id, result);
         }
         else
         {
-            LOGD("[RPCVisor] Disconnection succeeded: Client record successfully removed. Client ID: {}", client_id);
+            LOG_DEBUG("[RPCVisor] Disconnection succeeded: Client record successfully removed. Client ID: {}", client_id);
         }
         return result;
     }
@@ -112,30 +112,30 @@ public:
     int LocalCreateChronicle(std::string const &name, const std::unordered_map <std::string, std::string> &attrs
                              , int &flags)
     {
-        LOGD("[RPCVisor] Initiating Local Chronicle Creation. Process ID: {}, Chronicle Name: {}", getpid(), name);
+        LOG_DEBUG("[RPCVisor] Initiating Local Chronicle Creation. Process ID: {}, Chronicle Name: {}", getpid(), name);
 
         // Log the attributes associated with the Chronicle creation
-        LOGD("[RPCVisor] Attributes for Chronicle '{}':", name);
+        LOG_DEBUG("[RPCVisor] Attributes for Chronicle '{}':", name);
         for(const auto &attr: attrs)
         {
-            LOGD("[RPCVisor] - {} : {}", attr.first, attr.second);
+            LOG_DEBUG("[RPCVisor] - {} : {}", attr.first, attr.second);
         }
 
         if(name.empty())
         {
-            LOGE("[RPCVisor] Chronicle creation failed: Provided name is empty.");
+            LOG_ERROR("[RPCVisor] Chronicle creation failed: Provided name is empty.");
             return chronolog::CL_ERR_INVALID_ARG;
         }
 
         int result = chronicleMetaDirectory->create_chronicle(name);
         if(result != chronolog::CL_SUCCESS)
         {
-            LOGE("[RPCVisor] Chronicle creation failed: Error encountered while creating Chronicle '{}'. Error Code: {}"
+            LOG_ERROR("[RPCVisor] Chronicle creation failed: Error encountered while creating Chronicle '{}'. Error Code: {}"
                  , name, result);
         }
         else
         {
-            LOGD("[RPCVisor] Chronicle creation succeeded: Chronicle '{}' successfully created.", name);
+            LOG_DEBUG("[RPCVisor] Chronicle creation succeeded: Chronicle '{}' successfully created.", name);
         }
 
         return result;
@@ -143,23 +143,23 @@ public:
 
     int LocalDestroyChronicle(std::string const &name)
     {
-        LOGD("[RPCVisor] Initiating Local Chronicle Destruction. Process ID: {}, Chronicle Name: {}", getpid(), name);
+        LOG_DEBUG("[RPCVisor] Initiating Local Chronicle Destruction. Process ID: {}, Chronicle Name: {}", getpid(), name);
 
         if(name.empty())
         {
-            LOGE("[RPCVisor] Chronicle destruction failed: Provided name is empty.");
+            LOG_ERROR("[RPCVisor] Chronicle destruction failed: Provided name is empty.");
             return chronolog::CL_ERR_INVALID_ARG;
         }
 
         int result = chronicleMetaDirectory->destroy_chronicle(name);
         if(result != chronolog::CL_SUCCESS)
         {
-            LOGE("[RPCVisor] Chronicle destruction failed: Error encountered while destroying Chronicle '{}'. Error Code: {}"
+            LOG_ERROR("[RPCVisor] Chronicle destruction failed: Error encountered while destroying Chronicle '{}'. Error Code: {}"
                  , name, result);
         }
         else
         {
-            LOGD("[RPCVisor] Chronicle destruction succeeded: Chronicle '{}' successfully destroyed.", name);
+            LOG_DEBUG("[RPCVisor] Chronicle destruction succeeded: Chronicle '{}' successfully destroyed.", name);
         }
 
         return result;
@@ -167,34 +167,34 @@ public:
 
     int LocalDestroyStory(std::string const &chronicle_name, std::string const &story_name)
     {
-        LOGD("[RPCVisor] Initiating Local Story Destruction. Process ID: {}, Chronicle Name: {}, Story Name: {}"
+        LOG_DEBUG("[RPCVisor] Initiating Local Story Destruction. Process ID: {}, Chronicle Name: {}, Story Name: {}"
              , getpid(), chronicle_name, story_name);
 
         if(chronicle_name.empty() && story_name.empty())
         {
-            LOGE("[RPCVisor] Story destruction failed: Both Chronicle name and Story name are empty.");
+            LOG_ERROR("[RPCVisor] Story destruction failed: Both Chronicle name and Story name are empty.");
             return chronolog::CL_ERR_INVALID_ARG;
         }
         else if(chronicle_name.empty())
         {
-            LOGE("[RPCVisor] Story destruction failed: Chronicle name is empty for Story '{}'.", story_name);
+            LOG_ERROR("[RPCVisor] Story destruction failed: Chronicle name is empty for Story '{}'.", story_name);
             return chronolog::CL_ERR_INVALID_ARG;
         }
         else if(story_name.empty())
         {
-            LOGE("[RPCVisor] Story destruction failed: Story name is empty for Chronicle '{}'.", chronicle_name);
+            LOG_ERROR("[RPCVisor] Story destruction failed: Story name is empty for Chronicle '{}'.", chronicle_name);
             return chronolog::CL_ERR_INVALID_ARG;
         }
 
         int result = chronicleMetaDirectory->destroy_story(chronicle_name, story_name);
         if(result != chronolog::CL_SUCCESS)
         {
-            LOGE("[RPCVisor] Story destruction failed: Error encountered while destroying Story '{}' in Chronicle '{}'. Error Code: {}"
+            LOG_ERROR("[RPCVisor] Story destruction failed: Error encountered while destroying Story '{}' in Chronicle '{}'. Error Code: {}"
                  , story_name, chronicle_name, result);
         }
         else
         {
-            LOGD("[RPCVisor] Story destruction succeeded: Story '{}' in Chronicle '{}' successfully destroyed."
+            LOG_DEBUG("[RPCVisor] Story destruction succeeded: Story '{}' in Chronicle '{}' successfully destroyed."
                  , story_name, chronicle_name);
         }
 
@@ -208,7 +208,7 @@ public:
     LocalAcquireStory(std::string const &client_id, std::string const &chronicle_name, std::string const &story_name
                       , const std::unordered_map <std::string, std::string> &attrs, int &flags)
     {
-        LOGD("[RPCVisor] Acquiring Story. PID: {}, Chronicle Name: {}, Story Name: {}, Flags: {}", getpid()
+        LOG_DEBUG("[RPCVisor] Acquiring Story. PID: {}, Chronicle Name: {}, Story Name: {}, Flags: {}", getpid()
              , chronicle_name, story_name, flags);
 
         chronolog::StoryId story_id{0};
@@ -217,7 +217,7 @@ public:
         if(!keeperRegistry->is_running())
         {
             //{ return CL_ERR_NO_KEEPERS; }
-            LOGE("[RPCVisor] Keeper registry is not running. Cannot acquire story.");
+            LOG_ERROR("[RPCVisor] Keeper registry is not running. Cannot acquire story.");
             return chronolog::AcquireStoryResponseMsg(chronolog::CL_ERR_NO_KEEPERS, story_id, recording_keepers);
         }
 
@@ -227,7 +227,7 @@ public:
             //there's no need to waste the RPC on empty strings...
             //return CL_ERR_INVALID_ARG;
             //}
-            LOGE("[RPCVisor] Invalid arguments: Chronicle name or Story name is empty.");
+            LOG_ERROR("[RPCVisor] Invalid arguments: Chronicle name or Story name is empty.");
             return chronolog::AcquireStoryResponseMsg(chronolog::CL_ERR_INVALID_ARG, story_id, recording_keepers);
         }
 
@@ -236,7 +236,7 @@ public:
         if(ret != chronolog::CL_SUCCESS)
         {
             //{ return ret; }
-            LOGE("[RPCVisor] Failed to create story: {}. Error Code: {}", story_name, ret);
+            LOG_ERROR("[RPCVisor] Failed to create story: {}. Error Code: {}", story_name, ret);
             return chronolog::AcquireStoryResponseMsg(ret, story_id, recording_keepers);
         }
 
@@ -248,7 +248,7 @@ public:
         if(ret != chronolog::CL_SUCCESS)
         {
             //{ return ret; }
-            LOGE("[RPCVisor] Failed to acquire story: {}. Error Code: {}", story_name, ret);
+            LOG_ERROR("[RPCVisor] Failed to acquire story: {}. Error Code: {}", story_name, ret);
             return chronolog::AcquireStoryResponseMsg(ret, story_id, recording_keepers);
         }
 
@@ -260,7 +260,7 @@ public:
             if(0 != keeperRegistry->notifyKeepersOfStoryRecordingStart(recording_keepers, chronicle_name, story_name
                                                                        , story_id))
             {
-                LOGE("[RPCVisor] Failed to notify keepers of story recording start for story: {}", story_name);
+                LOG_ERROR("[RPCVisor] Failed to notify keepers of story recording start for story: {}", story_name);
                 // RPC notification to the keepers might have failed, release the newly acquired story
                 chronicleMetaDirectory->release_story(client_id, chronicle_name, story_name, story_id, notify_keepers);
                 //TODO: chronicleMetaDirectory->release_story(client_id, story_id, notify_keepers);
@@ -273,7 +273,7 @@ public:
 
         //chronolog::AcquireStoryResponseMsg (CL_SUCCESS, story_id, recording_keepers);
 
-        LOGD("[RPCVisor] Successfully acquired story: {} in Chronicle: {}", story_name, chronicle_name);
+        LOG_DEBUG("[RPCVisor] Successfully acquired story: {} in Chronicle: {}", story_name, chronicle_name);
         // return CL_SUCCESS;
         return chronolog::AcquireStoryResponseMsg(chronolog::CL_SUCCESS, story_id, recording_keepers);
     }
@@ -282,13 +282,13 @@ public:
     int
     LocalReleaseStory(std::string const &client_id, std::string const &chronicle_name, std::string const &story_name)
     {
-        LOGD("[RPCVisor] Releasing Story. PID: {}, Chronicle Name: {}, Story Name: {}", getpid(), chronicle_name
+        LOG_DEBUG("[RPCVisor] Releasing Story. PID: {}, Chronicle Name: {}, Story Name: {}", getpid(), chronicle_name
              , story_name);
 
         //TODO: add this check on the client side so we dont' waste RPC call on empty strings...
         if(chronicle_name.empty() || story_name.empty())
         {
-            LOGE("[RPCVisor] Invalid arguments: Chronicle name or Story name is empty.");
+            LOG_ERROR("[RPCVisor] Invalid arguments: Chronicle name or Story name is empty.");
             return chronolog::CL_ERR_INVALID_ARG;
         }
 
@@ -298,7 +298,7 @@ public:
                                                                  , notify_keepers);
         if(chronolog::CL_SUCCESS != return_code)
         {
-            LOGE("[RPCVisor] Failed to release story: {}. Error Code: {}", story_name, return_code);
+            LOG_ERROR("[RPCVisor] Failed to release story: {}. Error Code: {}", story_name, return_code);
             return return_code;
         }
 
@@ -307,53 +307,53 @@ public:
             std::vector <chronolog::KeeperIdCard> recording_keepers;
             keeperRegistry->notifyKeepersOfStoryRecordingStop(keeperRegistry->getActiveKeepers(recording_keepers)
                                                               , story_id);
-            LOGD("[RPCVisor] Notified keepers of story recording stop for: {}", story_name);
+            LOG_DEBUG("[RPCVisor] Notified keepers of story recording stop for: {}", story_name);
         }
 
-        LOGD("[RPCVisor] Successfully released story: {} from Chronicle: {}", story_name, chronicle_name);
+        LOG_DEBUG("[RPCVisor] Successfully released story: {} from Chronicle: {}", story_name, chronicle_name);
         return chronolog::CL_SUCCESS;
     }
 //////////////
 
     int LocalGetChronicleAttr(std::string const &name, const std::string &key, std::string &value)
     {
-        LOGD("[RPCVisor] Retrieving Chronicle Attribute. PID: {}, Chronicle Name: {}, Key: {}", getpid(), name, key);
+        LOG_DEBUG("[RPCVisor] Retrieving Chronicle Attribute. PID: {}, Chronicle Name: {}, Key: {}", getpid(), name, key);
         if(name.empty() || key.empty())
         {
             if(name.empty())
             {
-                LOGE("[RPCVisor] Empty Chronicle Name provided while fetching attribute.");
+                LOG_ERROR("[RPCVisor] Empty Chronicle Name provided while fetching attribute.");
             }
             if(key.empty())
             {
-                LOGE("[RPCVisor] Empty Key provided while fetching attribute for Chronicle: {}", name);
+                LOG_ERROR("[RPCVisor] Empty Key provided while fetching attribute for Chronicle: {}", name);
             }
             return chronolog::CL_ERR_INVALID_ARG;
         }
         chronicleMetaDirectory->get_chronicle_attr(name, key, value);
 
-        LOGD("[RPCVisor] Successfully retrieved attribute for Chronicle: {}. Key: {}, Value: {}", name, key, value);
+        LOG_DEBUG("[RPCVisor] Successfully retrieved attribute for Chronicle: {}. Key: {}, Value: {}", name, key, value);
         return chronolog::CL_SUCCESS;
     }
 
     int LocalEditChronicleAttr(const std::string &name, const std::string &key, const std::string &value)
     {
-        LOGD("[RPCVisor] Editing Chronicle Attribute. PID: {}, Chronicle Name: {}, Key: {}, New Value: {}", getpid()
+        LOG_DEBUG("[RPCVisor] Editing Chronicle Attribute. PID: {}, Chronicle Name: {}, Key: {}, New Value: {}", getpid()
              , name, key, value);
 
         if(name.empty() || key.empty() || value.empty())
         {
             if(name.empty())
             {
-                LOGE("[RPCVisor] Empty Chronicle Name provided while editing attribute.");
+                LOG_ERROR("[RPCVisor] Empty Chronicle Name provided while editing attribute.");
             }
             if(key.empty())
             {
-                LOGE("[RPCVisor] Empty Key provided while editing attribute for Chronicle: {}", name);
+                LOG_ERROR("[RPCVisor] Empty Key provided while editing attribute for Chronicle: {}", name);
             }
             if(value.empty())
             {
-                LOGE("[RPCVisor] Empty Value provided while editing attribute for Key: {} in Chronicle: {}", key, name);
+                LOG_ERROR("[RPCVisor] Empty Value provided while editing attribute for Key: {} in Chronicle: {}", key, name);
             }
             return chronolog::CL_ERR_INVALID_ARG;
         }
@@ -361,11 +361,11 @@ public:
         int result = chronicleMetaDirectory->edit_chronicle_attr(name, key, value);
         if(result != chronolog::CL_SUCCESS)
         {
-            LOGE("[RPCVisor] Failed to edit attribute for Chronicle: {}. Key: {}. Error Code: {}", name, key, result);
+            LOG_ERROR("[RPCVisor] Failed to edit attribute for Chronicle: {}. Key: {}. Error Code: {}", name, key, result);
         }
         else
         {
-            LOGD("[RPCVisor] Successfully edited attribute for Chronicle: {}. Key: {}. New Value: {}", name, key
+            LOG_DEBUG("[RPCVisor] Successfully edited attribute for Chronicle: {}. Key: {}. New Value: {}", name, key
                  , value);
         }
 
@@ -375,31 +375,31 @@ public:
 
     std::vector <std::string> LocalShowChronicles(const std::string &client_id)
     {
-        LOGD("[RPCVisor] Displaying Chronicles for Client ID: {}. PID: {}", client_id, getpid());
+        LOG_DEBUG("[RPCVisor] Displaying Chronicles for Client ID: {}. PID: {}", client_id, getpid());
         std::vector <std::string> chronicleList = chronicleMetaDirectory->show_chronicles(client_id);
         if(chronicleList.empty())
         {
-            LOGW("[RPCVisor] No chronicles found for Client ID: {}", client_id);
+            LOG_WARNING("[RPCVisor] No chronicles found for Client ID: {}", client_id);
         }
         else
         {
-            LOGI("[RPCVisor] Retrieved {} chronicles for Client ID: {}", chronicleList.size(), client_id);
+            LOG_INFO("[RPCVisor] Retrieved {} chronicles for Client ID: {}", chronicleList.size(), client_id);
         }
         return chronicleList;
     }
 
     std::vector <std::string> LocalShowStories(const std::string &client_id, const std::string &chronicle_name)
     {
-        LOGD("[RPCVisor] Retrieving Stories for Client ID: {} from Chronicle: {}. PID: {}", client_id, chronicle_name
+        LOG_DEBUG("[RPCVisor] Retrieving Stories for Client ID: {} from Chronicle: {}. PID: {}", client_id, chronicle_name
              , getpid());
         std::vector <std::string> storyList = chronicleMetaDirectory->show_stories(client_id, chronicle_name);
         if(storyList.empty())
         {
-            LOGW("[RPCVisor] No stories found for Client ID: {} in Chronicle: {}", client_id, chronicle_name);
+            LOG_WARNING("[RPCVisor] No stories found for Client ID: {} in Chronicle: {}", client_id, chronicle_name);
         }
         else
         {
-            LOGI("[RPCVisor] Retrieved {} stories for Client ID: {} from Chronicle: {}", storyList.size(), client_id
+            LOG_INFO("[RPCVisor] Retrieved {} stories for Client ID: {} from Chronicle: {}", storyList.size(), client_id
                  , chronicle_name);
         }
         return storyList;

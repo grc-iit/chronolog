@@ -16,7 +16,7 @@ uint32_t chronolog::StoryChunk::mergeEvents(std::map <chl::EventSequence, chl::L
     if((*merge_start).second.time() < startTime)
     {
         merge_start = events.lower_bound(chl::EventSequence{startTime, 0, 0});
-        LOGD("[StoryChunk] Adjusted merge start time to align with StoryChunk's start time: {}", startTime);
+        LOG_DEBUG("[StoryChunk] Adjusted merge start time to align with StoryChunk's start time: {}", startTime);
     }
 
     for(auto iter = merge_start; iter != events.end(); ++iter)
@@ -30,7 +30,7 @@ uint32_t chronolog::StoryChunk::mergeEvents(std::map <chl::EventSequence, chl::L
         }
         else
         {
-            LOGD("[StoryChunk] Stopped merging due to a record that couldn't be inserted.");
+            LOG_DEBUG("[StoryChunk] Stopped merging due to a record that couldn't be inserted.");
             break;
         }  //stop at the first record that can't be merged
     }
@@ -39,11 +39,11 @@ uint32_t chronolog::StoryChunk::mergeEvents(std::map <chl::EventSequence, chl::L
     {
         //remove the merged records from the original map
         events.erase(first_merged, last_merged);
-        LOGD("[StoryChunk] Removed {} merged records from the original event map.", merged_event_count);
+        LOG_DEBUG("[StoryChunk] Removed {} merged records from the original event map.", merged_event_count);
     }
     else
     {
-        LOGD("[StoryChunk] No events merged during the operation.");
+        LOG_DEBUG("[StoryChunk] No events merged during the operation.");
     }
 
     return merged_event_count;

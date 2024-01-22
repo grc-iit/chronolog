@@ -10,53 +10,53 @@
 
 
 /**
- * @def LOGT(...)
+ * @def LOG_TRACE(...)
  * @brief Trace logging macro.
  * Logs a trace message when NDEBUG is not defined. Does nothing otherwise.
  */
 
 /**
- * @def LOGD(...)
+ * @def LOG_DEBUG(...)
  * @brief Debug logging macro.
  * Logs a debug message when NDEBUG is not defined. Does nothing otherwise.
  */
 
 /**
- * @def LOGI(...)
+ * @def LOG_INFO(...)
  * @brief Info logging macro.
  * Logs an info message regardless of NDEBUG definition.
  */
 
 /**
- * @def LOGW(...)
+ * @def LOG_WARNING(...)
  * @brief Warning logging macro.
  * Logs a warning message regardless of NDEBUG definition.
  */
 
 /**
- * @def LOGE(...)
+ * @def LOG_ERROR(...)
  * @brief Error logging macro.
  * Logs an error message regardless of NDEBUG definition.
  */
 
 /**
- * @def LOGC(...)
+ * @def LOG_CRITICAL(...)
  * @brief Critical logging macro.
  * Logs a critical message regardless of NDEBUG definition.
  */
 
 // Custom logging macros based on build type
 #ifdef NDEBUG
-#define LOGT(...)
-#define LOGD(...)
+#define LOG_TRACE(...)
+#define LOG_DEBUG(...)
 #else
-#define LOGT(...) Logger::getInstance().trace(__VA_ARGS__)
-#define LOGD(...) Logger::getInstance().debug(__VA_ARGS__)
+#define LOG_TRACE(...) Logger::getInstance().trace(__VA_ARGS__)
+#define LOG_DEBUG(...) Logger::getInstance().debug(__VA_ARGS__)
 #endif
-#define LOGI(...) Logger::getInstance().info(__VA_ARGS__)
-#define LOGW(...) Logger::getInstance().warn(__VA_ARGS__)
-#define LOGE(...) Logger::getInstance().error(__VA_ARGS__)
-#define LOGC(...) Logger::getInstance().critical(__VA_ARGS__)
+#define LOG_INFO(...) Logger::getInstance().info(__VA_ARGS__)
+#define LOG_WARNING(...) Logger::getInstance().warn(__VA_ARGS__)
+#define LOG_ERROR(...) Logger::getInstance().error(__VA_ARGS__)
+#define LOG_CRITICAL(...) Logger::getInstance().critical(__VA_ARGS__)
 
 
 /**

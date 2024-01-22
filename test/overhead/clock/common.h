@@ -45,12 +45,12 @@ double cpu_base_frequency()
         regex_match(line, m, re);
         if(m.size() == 2)
         {
-            LOGI("[Common] CPU freq obtained from /proc/cpuinfo: {} GHz", std::stod(m[1]));
+            LOG_INFO("[Common] CPU freq obtained from /proc/cpuinfo: {} GHz", std::stod(m[1]));
             return std::stod(m[1]);
         }
     }
     double freq = 3.8; // base clock of Ryzen 7 5700G is 3.8GHz
-    LOGE("[Common] Fail to get CPU freq from /proc/cpuinfo, returning hard-coded freq {} GHz", freq);
+    LOG_ERROR("[Common] Fail to get CPU freq from /proc/cpuinfo, returning hard-coded freq {} GHz", freq);
     return freq;
 }
 
@@ -88,7 +88,7 @@ void printVectorStats(std::vector <T> v)
     { return x - mean; });
     double sq_sum = std::inner_product(diff.begin(), diff.end(), diff.begin(), 0.0);
     double stdev = std::sqrt(sq_sum / v.size());
-    LOGI("[Common] Min/Max/Mean/Median/Stddev (ns)\n{}\t{}\t{}\t{}\t{}", min, max, mean, median, stdev);
+    LOG_INFO("[Common] Min/Max/Mean/Median/Stddev (ns)\n{}\t{}\t{}\t{}\t{}", min, max, mean, median, stdev);
 }
 
 template <class T>
@@ -120,7 +120,7 @@ void writeListToFile(T*clock_list, int len, std::string &fname)
     std::ofstream outFile(fname, std::ios::trunc);
     if(!outFile.is_open())
     {
-        LOGE("[Common] Failed to open output file.");
+        LOG_ERROR("[Common] Failed to open output file.");
         exit(1);
     }
 
@@ -138,7 +138,7 @@ void writeVecToFile(std::vector <T> &clock_list, int len, std::string &fname)
     std::ofstream outFile(fname, std::ios::trunc);
     if(!outFile.is_open())
     {
-        LOGE("[Common] Failed to open output file.");
+        LOG_ERROR("[Common] Failed to open output file.");
         exit(1);
     }
 

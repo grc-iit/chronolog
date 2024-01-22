@@ -20,10 +20,10 @@ int main(int argc, char*argv[])
         unsigned long long*clock_list = collect_w_rdtsc(test_reps);
         std::vector <double> duration_list;
         convert_ull_to_double_vec(clock_list, test_reps, duration_list);
-        LOGI("[HighResClockTest] Test with __builtin_ia32_rdtsc() calls: ");
-        LOGI("[HighResClockTest] CPU_GHZ_INV: {}", CPU_GHZ_INV);
+        LOG_INFO("[HighResClockTest] Test with __builtin_ia32_rdtsc() calls: ");
+        LOG_INFO("[HighResClockTest] CPU_GHZ_INV: {}", CPU_GHZ_INV);
         printVectorStats(duration_list);
-        LOGI("[HighResClockTest] Resolution: N/A");
+        LOG_INFO("[HighResClockTest] Resolution: N/A");
         sort(duration_list.begin(), duration_list.end());
         fout << "RDTSC\t";
         printStatLine(fout, duration_list);
@@ -38,14 +38,14 @@ int main(int argc, char*argv[])
         unsigned long long*clock_list = collect_w_rdtscp(test_reps, proc_id);
         std::vector <double> duration_list;
         convert_ull_to_double_vec(clock_list, test_reps, duration_list);
-        LOGI("[HighResClockTest] Test with __builtin_ia32_rdtscp() calls on processor {}: ", proc_id);
-        LOGI("[HighResClockTest] CPU_GHZ_INV: {}", CPU_GHZ_INV);
+        LOG_INFO("[HighResClockTest] Test with __builtin_ia32_rdtscp() calls on processor {}: ", proc_id);
+        LOG_INFO("[HighResClockTest] CPU_GHZ_INV: {}", CPU_GHZ_INV);
         printVectorStats(duration_list);
         //        writeVectorStatsToFile(duration_list);
         sort(duration_list.begin(), duration_list.end());
         fout << "RDTSCP\t";
         printStatLine(fout, duration_list);
-        LOGI("[HighResClockTest] Resolution: N/A");
+        LOG_INFO("[HighResClockTest] Resolution: N/A");
         free(clock_list);
     }
 
@@ -58,14 +58,14 @@ int main(int argc, char*argv[])
         std::vector <unsigned long long> duration_list;
         convert_timespec_to_ull_vec(clock_list, test_reps, duration_list);
         struct timespec res;
-        LOGI("[HighResClockTest] Test with clock_gettime(CLOCK_MONOTONIC) calls: ");
+        LOG_INFO("[HighResClockTest] Test with clock_gettime(CLOCK_MONOTONIC) calls: ");
         printVectorStats(duration_list);
         // writeVectorStatsToFile(duration_list);
         sort(duration_list.begin(), duration_list.end());
         fout << "CLOCK_MONOTONIC\t";
         printStatLine(fout, duration_list);
         clock_getres(CLOCK_MONOTONIC, &res);
-        LOGI("[HighResClockTest] Resolution (ns): {}", res.tv_sec * 1e9 + res.tv_nsec);
+        LOG_INFO("[HighResClockTest] Resolution (ns): {}", res.tv_sec * 1e9 + res.tv_nsec);
         free(clock_list);
     }
 
@@ -75,13 +75,13 @@ int main(int argc, char*argv[])
         std::vector <unsigned long long> duration_list;
         convert_timespec_to_ull_vec(clock_list, test_reps, duration_list);
         struct timespec res;
-        LOGI("[HighResClockTest] Test with clock_gettime(CLOCK_MONOTONIC_RAW) calls: ");
+        LOG_INFO("[HighResClockTest] Test with clock_gettime(CLOCK_MONOTONIC_RAW) calls: ");
         printVectorStats(duration_list);
         sort(duration_list.begin(), duration_list.end());
         fout << "CLOCK_MONOTONIC_RAW\t";
         printStatLine(fout, duration_list);
         clock_getres(CLOCK_MONOTONIC_RAW, &res);
-        LOGI("[HighResClockTest] Resolution (ns): {}", res.tv_sec * 1e9 + res.tv_nsec);
+        LOG_INFO("[HighResClockTest] Resolution (ns): {}", res.tv_sec * 1e9 + res.tv_nsec);
         free(clock_list);
     }
 
@@ -93,12 +93,12 @@ int main(int argc, char*argv[])
         my_clock::time_point*clock_list = collect_w_std_high_res_clock_alap(test_reps);
         std::vector <double> duration_list;
         convert_time_point_to_double_vec(clock_list, test_reps, duration_list);
-        LOGI("[HighResClockTest] Test with std::chrono::high_resolution_clock::now() calls (count as late as possible): ");
+        LOG_INFO("[HighResClockTest] Test with std::chrono::high_resolution_clock::now() calls (count as late as possible): ");
         printVectorStats(duration_list);
         sort(duration_list.begin(), duration_list.end());
         fout << "C++11(alap)\t";
         printStatLine(fout, duration_list);
-        LOGI("[HighResClockTest] Resolution (ns): {}", (double)std::chrono::high_resolution_clock::period::num /
+        LOG_INFO("[HighResClockTest] Resolution (ns): {}", (double)std::chrono::high_resolution_clock::period::num /
                                                        std::chrono::high_resolution_clock::period::den * 1e9);
         free(clock_list);
     }
@@ -108,12 +108,12 @@ int main(int argc, char*argv[])
         unsigned long long*clock_list = collect_w_std_high_res_clock_imme(test_reps);
         std::vector <double> duration_list;
         convert_ull_to_double_vec(clock_list, test_reps, duration_list);
-        LOGI("[HighResClockTest] Test with std::chrono::high_resolution_clock::now() calls (count immediately): ");
+        LOG_INFO("[HighResClockTest] Test with std::chrono::high_resolution_clock::now() calls (count immediately): ");
         printVectorStats(duration_list);
         sort(duration_list.begin(), duration_list.end());
         fout << "C++11(imme)\t";
         printStatLine(fout, duration_list);
-        LOGI("[HighResClockTest] Resolution (ns): {}", (double)std::chrono::high_resolution_clock::period::num /
+        LOG_INFO("[HighResClockTest] Resolution (ns): {}", (double)std::chrono::high_resolution_clock::period::num /
                                                        std::chrono::high_resolution_clock::period::den * 1e9);
         free(clock_list);
     }

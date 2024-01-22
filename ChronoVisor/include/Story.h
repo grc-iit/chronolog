@@ -101,7 +101,7 @@ public:
 
         std::lock_guard <std::mutex> acquirerClientListLock(acquirerClientMapMutex_);
         acquirerClientMap_.emplace(client_id, clientInfo);
-        LOGD("[Story] Acquirer ClientID={} is added to StoryName={}", client_id, name_.c_str());
+        LOG_DEBUG("[Story] Acquirer ClientID={} is added to StoryName={}", client_id, name_.c_str());
     }
 
     int removeAcquirerClient(chronolog::ClientId const &client_id)
@@ -110,12 +110,12 @@ public:
         if(isAcquiredByClient(client_id))
         {
             acquirerClientMap_.erase(client_id);
-            LOGD("[Story] Acquirer ClientID={} is removed from StoryName={}", client_id, name_.c_str());
+            LOG_DEBUG("[Story] Acquirer ClientID={} is removed from StoryName={}", client_id, name_.c_str());
             return chronolog::CL_SUCCESS;
         }
         else
         {
-            LOGW("[Story] StoryName={} is not acquired by ClientID={}", client_id, name_.c_str());
+            LOG_WARNING("[Story] StoryName={} is not acquired by ClientID={}", client_id, name_.c_str());
             return chronolog::CL_ERR_UNKNOWN;
         }
     }

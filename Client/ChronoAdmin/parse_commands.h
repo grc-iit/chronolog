@@ -84,7 +84,7 @@ void run_command(ChronoLogClient*&client, std::string &msg_string, std::string &
             incorrect = true;
         if(incorrect)
         {
-            LOGE("incorrect command, retry");
+            LOG_ERROR("incorrect command, retry");
             /*std::cout << " incorrect command, retry" << std::endl;*/
             return;
         }
@@ -118,7 +118,7 @@ void run_command(ChronoLogClient*&client, std::string &msg_string, std::string &
             struct hostent*he = gethostbyname(hostname.c_str());
             if(he == 0)
             {
-                LOGE("hostname not found");
+                LOG_ERROR("hostname not found");
                 /*std::cout << " hostname not found" << std::endl;*/
                 return;
             }
@@ -128,7 +128,7 @@ void run_command(ChronoLogClient*&client, std::string &msg_string, std::string &
             host_ip = std::string(ip_add);
 
             server_uri = protocolstring + "://" + host_ip + ":" + std::to_string(portno);
-            LOGI("server_uri = {}", server_uri);
+            LOG_INFO("server_uri = {}", server_uri);
             /*std::cout << " server_uri = " << server_uri << std::endl;*/
 
             if(client == nullptr)
@@ -142,14 +142,14 @@ void run_command(ChronoLogClient*&client, std::string &msg_string, std::string &
                 assert(ret == chronolog::CL_SUCCESS);
             }
             else
-                LOGE("client connected, Incorrect command, retry");
+                LOG_ERROR("client connected, Incorrect command, retry");
             /*std::cout << " client connected, Incorrect command, retry" << std::endl;*/
 
         }
         else
         {
             incorrect = true;
-            LOGE("incorrect command, retry");
+            LOG_ERROR("incorrect command, retry");
             /*std::cout << " incorrect command, retry" << std::endl;*/
             return;
         }
@@ -165,7 +165,7 @@ void run_command(ChronoLogClient*&client, std::string &msg_string, std::string &
         if(command_subs.size() != 2) incorrect = true;
         if(incorrect)
         {
-            LOGE("incorrect command, retry");
+            LOG_ERROR("incorrect command, retry");
             /*std::cout << " incorrect command, retry" << std::endl;*/
             return;
         }
@@ -182,7 +182,7 @@ void run_command(ChronoLogClient*&client, std::string &msg_string, std::string &
         if(command_subs.size() != 3) incorrect = true;
         if(incorrect)
         {
-            LOGE("incorrect command, retry");
+            LOG_ERROR("incorrect command, retry");
             /*std::cout << " incorrect command, retry" << std::endl;*/
             return;
         }
@@ -201,7 +201,7 @@ void run_command(ChronoLogClient*&client, std::string &msg_string, std::string &
             incorrect = true;
         if(incorrect)
         {
-            LOGE("incorrect command, retry");
+            LOG_ERROR("incorrect command, retry");
             /*std::cout << " incorrect command, retry" << std::endl;*/
             return;
         }
@@ -216,7 +216,7 @@ void run_command(ChronoLogClient*&client, std::string &msg_string, std::string &
             if(command_subs.size() != 4) incorrect = true;
             if(incorrect)
             {
-                LOGE("incorrect command, retry");
+                LOG_ERROR("incorrect command, retry");
                 /*std::cout << " incorrect command, retry" << std::endl;*/
                 return;
             }
@@ -231,7 +231,7 @@ void run_command(ChronoLogClient*&client, std::string &msg_string, std::string &
             incorrect = true;
         if(incorrect)
         {
-            LOGE("incorrect command, retry");
+            LOG_ERROR("incorrect command, retry");
             /*std::cout << " incorrect command, retry" << std::endl;*/
             return;
         }
@@ -245,7 +245,7 @@ void run_command(ChronoLogClient*&client, std::string &msg_string, std::string &
             if(command_subs.size() != 4) incorrect = true;
             if(incorrect)
             {
-                LOGE("incorrect command, retry");
+                LOG_ERROR("incorrect command, retry");
                 /*std::cout << " incorrect command, retry" << std::endl;*/
                 return;
             }
@@ -260,7 +260,7 @@ void run_command(ChronoLogClient*&client, std::string &msg_string, std::string &
             incorrect = true;
         if(incorrect)
         {
-            LOGE("incorrect command, retry");
+            LOG_ERROR("incorrect command, retry");
             /*std::cout << " incorrect command, retry" << std::endl;*/
             return;
         }
@@ -274,7 +274,7 @@ void run_command(ChronoLogClient*&client, std::string &msg_string, std::string &
             if(command_subs.size() != 4) incorrect = true;
             if(incorrect)
             {
-                LOGE("incorrect command, retry");
+                LOG_ERROR("incorrect command, retry");
                 /*std::cout << " incorrect command, retry" << std::endl;*/
                 return;
             }

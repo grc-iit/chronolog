@@ -29,7 +29,7 @@ public:
         }
         catch(tl::exception const &)
         {
-            LOGE("[KeeperRecordingClient] Failed to create KeeperRecordingClient due to an exception.");
+            LOG_ERROR("[KeeperRecordingClient] Failed to create KeeperRecordingClient due to an exception.");
         }
         return nullptr;
     }
@@ -40,14 +40,14 @@ public:
         {
             std::stringstream ss;
             ss << eventMsg;
-            LOGI("[KeeperRecordingClient] Sending event message: {}", ss.str());
+            LOG_INFO("[KeeperRecordingClient] Sending event message: {}", ss.str());
             int return_code = record_event.on(service_ph)(eventMsg);
-            LOGI("[KeeperRecordingClient] Sent event message: {} with return code: {}", ss.str(), return_code);
+            LOG_INFO("[KeeperRecordingClient] Sent event message: {} with return code: {}", ss.str(), return_code);
             return return_code;
         }
         catch(thallium::exception const &)
         {
-            LOGE("[KeeperRecordingClient] Failed to send event message due to an exception.");
+            LOG_ERROR("[KeeperRecordingClient] Failed to send event message due to an exception.");
         }
         return (chronolog::CL_ERR_UNKNOWN);
     }
@@ -58,7 +58,7 @@ public:
     ~KeeperRecordingClient()
     {
         record_event.deregister();
-        LOGD("[KeeperRecordingClient] Destructor called. Deregistered record_event.");
+        LOG_DEBUG("[KeeperRecordingClient] Destructor called. Deregistered record_event.");
     }
 
 private:
@@ -73,7 +73,7 @@ private:
                           , std::string const &keeper_service_addr): keeperIdCard(keeper_id_card), service_addr(
             keeper_service_addr), service_ph(tl_engine.lookup(service_addr), keeper_id_card.getProviderId())
     {
-        LOGI("[KeeperRecordingClient] RecordingClient created for KeeperRecordingService at {} with ProviderID={}"
+        LOG_INFO("[KeeperRecordingClient] RecordingClient created for KeeperRecordingService at {} with ProviderID={}"
              , service_addr, keeperIdCard.getProviderId());
         record_event = tl_engine.define("record_event");
     }

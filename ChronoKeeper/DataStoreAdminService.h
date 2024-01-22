@@ -26,7 +26,7 @@ public:
 
     ~DataStoreAdminService()
     {
-        LOGD("[DataStoreAdminService] Destructor called. Cleaning up...");
+        LOG_DEBUG("[DataStoreAdminService] Destructor called. Cleaning up...");
         //remove provider finalization callback from the engine's list
         get_engine().pop_finalize_callback(this);
     }
@@ -47,14 +47,14 @@ public:
     StartStoryRecording(tl::request const &request, std::string const &chronicle_name, std::string const &story_name
                         , StoryId const &story_id, uint64_t start_time)
     {
-        LOGI("[DataStoreAdminService] Starting Story Recording: StoryName={}, StoryID={}", story_name, story_id);
+        LOG_INFO("[DataStoreAdminService] Starting Story Recording: StoryName={}, StoryID={}", story_name, story_id);
         int return_code = theDataStore.startStoryRecording(chronicle_name, story_name, story_id, start_time);
         request.respond(return_code);
     }
 
     void StopStoryRecording(tl::request const &request, StoryId const &story_id)
     {
-        LOGI("[DataStoreAdminService] Stopping Story Recording: StoryID={}", story_id);
+        LOG_INFO("[DataStoreAdminService] Stopping Story Recording: StoryID={}", story_id);
         int return_code = theDataStore.stopStoryRecording(story_id);
         request.respond(return_code);
     }
@@ -73,7 +73,7 @@ private:
 
         std::stringstream ss;
         ss << get_engine().self();
-        LOGI("[DataStoreAdminService] Constructed at {}. ProviderID={}", ss.str(), service_provider_id);
+        LOG_INFO("[DataStoreAdminService] Constructed at {}. ProviderID={}", ss.str(), service_provider_id);
     }
 
     DataStoreAdminService(DataStoreAdminService const &) = delete;

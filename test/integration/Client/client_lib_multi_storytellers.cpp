@@ -37,7 +37,7 @@ void thread_body(struct thread_arg*t)
 
     // Create the chronicle
     ret = client->CreateChronicle(chronicle_name, chronicle_attrs, flags);
-    LOGD("[ClientLibMultiStorytellers] Chronicle created: tid={}, ChronicleName={}, Flags: {}", t->tid, chronicle_name
+    LOG_DEBUG("[ClientLibMultiStorytellers] Chronicle created: tid={}, ChronicleName={}, Flags: {}", t->tid, chronicle_name
          , flags);
 
     // Create attributes for the story
@@ -47,7 +47,7 @@ void thread_body(struct thread_arg*t)
 
     // Acquire the story
     auto acquire_ret = client->AcquireStory(chronicle_name, story_name, story_attrs, flags);
-    LOGD("[ClientLibMultiStorytellers] Story acquired: tid={}, ChronicleName={}, StoryName={}, Ret: {}", t->tid
+    LOG_DEBUG("[ClientLibMultiStorytellers] Story acquired: tid={}, ChronicleName={}, StoryName={}, Ret: {}", t->tid
          , chronicle_name, story_name, acquire_ret.first);
 
     // Assertion for successful story acquisition or expected errors
@@ -67,7 +67,7 @@ void thread_body(struct thread_arg*t)
 
         // Release the story
         ret = client->ReleaseStory(chronicle_name, story_name);
-        LOGD("[ClientLibMultiStorytellers] Story released: tid={}, ChronicleName={}, StoryName={}, Ret: {}", t->tid
+        LOG_DEBUG("[ClientLibMultiStorytellers] Story released: tid={}, ChronicleName={}, StoryName={}, Ret: {}", t->tid
              , chronicle_name, story_name, ret);
 
         // Assertion for successful story release or expected errors
@@ -76,7 +76,7 @@ void thread_body(struct thread_arg*t)
 
     // Destroy the story
     ret = client->DestroyStory(chronicle_name, story_name);
-    LOGD("[ClientLibMultiStorytellers] Story destroyed: tid={}, ChronicleName={}, StoryName={}, Ret: {}", t->tid
+    LOG_DEBUG("[ClientLibMultiStorytellers] Story destroyed: tid={}, ChronicleName={}, StoryName={}, Ret: {}", t->tid
          , chronicle_name, story_name, ret);
 
     // Assertion for successful story destruction or expected errors
@@ -85,7 +85,7 @@ void thread_body(struct thread_arg*t)
 
     // Destroy the chronicle
     ret = client->DestroyChronicle(chronicle_name);
-    LOGD("[ClientLibMultiStorytellers] Chronicle destroyed: tid={}, ChronicleName={}", t->tid, chronicle_name);
+    LOG_DEBUG("[ClientLibMultiStorytellers] Chronicle destroyed: tid={}, ChronicleName={}", t->tid, chronicle_name);
 
     // Assertion for successful chronicle destruction or expected errors
     assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST || ret == chronolog::CL_ERR_ACQUIRED ||
@@ -122,7 +122,7 @@ int main(int argc, char**argv)
     {
         exit(EXIT_FAILURE);
     }
-    LOGI("[ClientLibMultiStorytellers] Running test.");
+    LOG_INFO("[ClientLibMultiStorytellers] Running test.");
 
 
     std::string server_ip = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP;
@@ -138,7 +138,7 @@ int main(int argc, char**argv)
 
     if(chronolog::CL_SUCCESS != ret)
     {
-        LOGE("[ClientLibMultiStorytellers] Failed to connect to ChronoVisor");
+        LOG_ERROR("[ClientLibMultiStorytellers] Failed to connect to ChronoVisor");
         delete client;
         return -1;
     }

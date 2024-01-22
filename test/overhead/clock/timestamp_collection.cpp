@@ -23,7 +23,7 @@ void rdtscp_thread(void*args)
     thrd_args*arg = (thrd_args*)args;
     int thread_id = arg->thread_id;
     int sleep_time = arg->sleep_ns;
-    LOGI("[TimestampCollection] Thread ID: {} is executing function {} on CPU Core: {} with a sleep interval of {} ns."
+    LOG_INFO("[TimestampCollection] Thread ID: {} is executing function {} on CPU Core: {} with a sleep interval of {} ns."
          , thread_id, __FUNCTION__, cpu, sleep_time);
     unsigned int proc_id;
     unsigned long long*clock_list = collect_w_rdtscp(NUM_TIMESTAMPS, proc_id, sleep_time);
@@ -39,7 +39,7 @@ void clock_gettime_thread(void*args)
     thrd_args*arg = (thrd_args*)args;
     int thread_id = arg->thread_id;
     int sleep_time = arg->sleep_ns;
-    LOGI("[TimestampCollection] Thread ID: {} is executing function {} on CPU Core: {} with a sleep interval of {} ns."
+    LOG_INFO("[TimestampCollection] Thread ID: {} is executing function {} on CPU Core: {} with a sleep interval of {} ns."
          , thread_id, __FUNCTION__, cpu, sleep_time);
     struct timespec*clock_list = collect_w_clock_gettime_tai(NUM_TIMESTAMPS, sleep_time);
     char hostname[256];
@@ -49,7 +49,7 @@ void clock_gettime_thread(void*args)
     for(int i = 0; i < NUM_TIMESTAMPS; i++)
         clock_list_ull.emplace_back(clock_list[i].tv_sec * 1e9 + clock_list[i].tv_nsec);
     writeVecToFile(clock_list_ull, NUM_TIMESTAMPS, fname);
-    LOGI("[TimestampCollection] Thread ID: {} completed execution. Timestamps saved to file: {}", thread_id, fname);
+    LOG_INFO("[TimestampCollection] Thread ID: {} completed execution. Timestamps saved to file: {}", thread_id, fname);
 }
 
 int main(int argc, char*argv[])

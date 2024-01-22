@@ -19,21 +19,21 @@ public:
     {
         refTimestampUpdateInterval_ = TIME_DB_UPDATE_INTERVAL;
         init(refTimestampUpdateInterval_);
-        LOGI("[TimeManager] Initialized with default update interval: {}", refTimestampUpdateInterval_);
+        LOG_INFO("[TimeManager] Initialized with default update interval: {}", refTimestampUpdateInterval_);
     }
 
     explicit TimeManager(double updateInterval)
     {
         refTimestampUpdateInterval_ = updateInterval;
         init(refTimestampUpdateInterval_);
-        LOGI("[TimeManager] Initialized with update interval: {}", updateInterval);
+        LOG_INFO("[TimeManager] Initialized with update interval: {}", updateInterval);
     }
 
     explicit TimeManager(double updateInterval, ClocksourceType clocksourceType)
     {
         refTimestampUpdateInterval_ = updateInterval;
         init(refTimestampUpdateInterval_, clocksourceType);
-        LOGI("[TimeManager] Initialized with update interval: {} and clocksource type: {}", updateInterval
+        LOG_INFO("[TimeManager] Initialized with update interval: {} and clocksource type: {}", updateInterval
              , static_cast<int>(clocksourceType));
     }
 
