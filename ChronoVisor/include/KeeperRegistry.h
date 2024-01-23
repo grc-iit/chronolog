@@ -38,8 +38,11 @@ public:
 		: idCard(keeper_id_card)
 		, adminServiceId(admin_service_id)
 		, keeperAdminClient(nullptr)  
+        , active(false)
 		, lastStatsTime(0)
+        , delayedExitTime(0)
 		, activeStoryCount(0)
+    
 
 	{}
 	
@@ -47,8 +50,10 @@ public:
 
 	void reset()
 	{
-	    keeperAdminClient=nullptr;  
+	    keeperAdminClient=nullptr; 
+        active = false;  
 	    lastStatsTime=0;
+        delayedExitTime=0;
 	    activeStoryCount=0;
 	}
 
@@ -57,8 +62,11 @@ public:
 	KeeperIdCard 	idCard;
 	ServiceId 	adminServiceId;
 	DataStoreAdminClient * keeperAdminClient;
+    bool        active;
 	uint64_t	lastStatsTime;
+	std::time_t	delayedExitTime;
 	uint32_t	activeStoryCount;
+    std::list<std::pair<std::time_t,DataStoreAdminClient*>> delayedExitClients;
 };
 
 enum RegistryState
@@ -99,10 +107,10 @@ public:
 
 	std::vector<KeeperIdCard> & getActiveKeepers( std::vector<KeeperIdCard> & keeper_id_cards);
 
-	int notifyKeepersOfStoryRecordingStart( std::vector<KeeperIdCard> const&,
+	int notifyKeepersOfStoryRecordingStart( std::vector<KeeperIdCard> &,
 			ChronicleName const&, StoryName const&, StoryId const&);
 
-	int notifyKeepersOfStoryRecordingStop(std::vector<KeeperIdCard> const&, StoryId const&);
+	int notifyKeepersOfStoryRecordingStop(std::vector<KeeperIdCard> &, StoryId const&);
 
 
 private:

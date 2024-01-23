@@ -59,7 +59,7 @@ int chronolog::VisorClientPortal::StartServices(ChronoLog::ConfigurationManager 
 
         uint16_t provider_id = confManager.VISOR_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID;
 
-        margo_instance_id margo_id=margo_init(CLIENT_PORTAL_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 2);
+        margo_instance_id margo_id=margo_init(CLIENT_PORTAL_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 1);
  
         if(MARGO_INSTANCE_NULL == margo_id)
         {
