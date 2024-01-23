@@ -23,6 +23,7 @@ add_executable(hdf5_archiver_test
     story_chunk_test_utils.h)
 
 target_include_directories(hdf5_archiver_test PRIVATE ../../ChronoKeeper
+    ../../chrono_common
     ./)
 target_link_libraries(hdf5_archiver_test ${HDF5_LIBRARIES})
 target_link_libraries(hdf5_archiver_test json-c)
