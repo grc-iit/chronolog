@@ -32,38 +32,37 @@ class KeeperRegistryService;
 class KeeperRegistry
 {
 
-struct KeeperProcessEntry
-{
-public:
-	KeeperProcessEntry(KeeperIdCard const& keeper_id_card, ServiceId const& admin_service_id)
-		: idCard(keeper_id_card)
-		, adminServiceId(admin_service_id)
-		, keeperAdminClient(nullptr)  
-        , active(false)
-		, lastStatsTime(0)
-		, activeStoryCount(0)
-    {}    
+    struct KeeperProcessEntry {
+    public:
+        KeeperProcessEntry(KeeperIdCard const& keeper_id_card, ServiceId const& admin_service_id)
+            : idCard(keeper_id_card)
+            , adminServiceId(admin_service_id)
+            , keeperAdminClient(nullptr)
+            , active(false)
+            , lastStatsTime(0)
+            , activeStoryCount(0)
+        {}
 
         KeeperProcessEntry(KeeperProcessEntry const &other) = default;
 
-	void reset()
-	{
-	    keeperAdminClient=nullptr; 
-        active = false;  
-	    lastStatsTime=0;
-	    activeStoryCount=0;
-	}
+        void reset()
+        {
+            keeperAdminClient = nullptr;
+            active = false;
+            lastStatsTime = 0;
+            activeStoryCount = 0;
+        }
 
         ~KeeperProcessEntry() = default;   // Registry is reponsible for creating & deleting keeperAdminClient
 
-	KeeperIdCard 	idCard;
-	ServiceId 	adminServiceId;
-	DataStoreAdminClient * keeperAdminClient;
-    bool        active;
-	uint64_t	lastStatsTime;
-	uint32_t	activeStoryCount;
-    std::list<std::pair<std::time_t,DataStoreAdminClient*>> delayedExitClients;
-};
+        KeeperIdCard idCard;
+        ServiceId adminServiceId;
+        DataStoreAdminClient* keeperAdminClient;
+        bool active;
+        uint64_t lastStatsTime;
+        uint32_t activeStoryCount;
+        std::list<std::pair<std::time_t, DataStoreAdminClient*>> delayedExitClients;
+    };
 
     enum RegistryState
     {
@@ -99,8 +98,8 @@ public:
 
     std::vector <KeeperIdCard> &getActiveKeepers(std::vector <KeeperIdCard> &keeper_id_cards);
 
-    int notifyKeepersOfStoryRecordingStart(std::vector <KeeperIdCard> &, ChronicleName const &, StoryName const &
-                                           , StoryId const &);
+    int notifyKeepersOfStoryRecordingStart(std::vector<KeeperIdCard>&, ChronicleName const&, StoryName const&,
+                                           StoryId const&);
 
     int notifyKeepersOfStoryRecordingStop(std::vector <KeeperIdCard> const &, StoryId const &);
 
