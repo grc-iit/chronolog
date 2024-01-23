@@ -16,7 +16,7 @@
 #include <chunkattr.h>
 #include <StoryWriter.h>
 #include <log.h>
-#include <errcode.h>
+#include <chronolog_errcode.h>
 
 #define DATASET_RANK 1 // Dataset dimension
 #define ATTRIBUTE_CHUNKMETADATA "ChunkMetadata"
@@ -125,7 +125,7 @@ int StoryWriter::writeStoryChunks(const std::map <uint64_t, chronolog::StoryChun
         if(!std::filesystem::create_directory(chronicle_dir.c_str()))
         {
             LOGE("Failed to create chronicle directory: %s, errno: %d", chronicle_dir.c_str(), errno);
-            return CL_ERR_UNKNOWN;
+            return chronolog::CL_ERR_UNKNOWN;
         }
     }
 
@@ -154,7 +154,7 @@ int StoryWriter::writeStoryChunks(const std::map <uint64_t, chronolog::StoryChun
             if(story_file == H5I_INVALID_HID)
             {
                 LOGE("Failed to create story file: %s", story_file_name.c_str());
-                return CL_ERR_UNKNOWN;
+                return chronolog::CL_ERR_UNKNOWN;
             }
             story_chunk_fd_map.emplace(story_id, story_file);
         }
@@ -165,7 +165,7 @@ int StoryWriter::writeStoryChunks(const std::map <uint64_t, chronolog::StoryChun
             if(story_file < 0)
             {
                 LOGE("Failed to open story file: %s", story_file_name.c_str());
-                return CL_ERR_UNKNOWN;
+                return chronolog::CL_ERR_UNKNOWN;
             }
             story_chunk_fd_map.emplace(story_id, story_file);
         }
@@ -177,7 +177,7 @@ int StoryWriter::writeStoryChunks(const std::map <uint64_t, chronolog::StoryChun
         if(H5Lexists(story_file, story_chunk_dset_name.c_str(), H5P_DEFAULT) > 0)
         {
             LOGE("Story chunk already exists: %s", story_chunk_dset_name.c_str());
-            return CL_ERR_STORY_CHUNK_EXISTS;
+            return chronolog::CL_ERR_STORY_CHUNK_EXISTS;
         }
 
         // Create the dataspace for the dataset for the Story Chunk
@@ -187,7 +187,7 @@ int StoryWriter::writeStoryChunks(const std::map <uint64_t, chronolog::StoryChun
         if(story_chunk_dspace < 0)
         {
             LOGE("Failed to create dataspace for story chunk: %s", story_chunk_dset_name.c_str());
-            return CL_ERR_UNKNOWN;
+            return chronolog::CL_ERR_UNKNOWN;
         }
 
         // Create the dataset for the Story Chunk
@@ -206,7 +206,7 @@ int StoryWriter::writeStoryChunks(const std::map <uint64_t, chronolog::StoryChun
                         printf("Error #%u: %s\n", n, err_desc->desc);
                         return 0;
                     }, nullptr);
-            return CL_ERR_UNKNOWN;
+            return chronolog::CL_ERR_UNKNOWN;
         }
 
         // Open the dataset for the Story Chunk
@@ -223,7 +223,7 @@ int StoryWriter::writeStoryChunks(const std::map <uint64_t, chronolog::StoryChun
         if(status < 0)
         {
             LOGE("Failed to write story chunk to dataset: %s", story_chunk_dset_name.c_str());
-            return CL_ERR_UNKNOWN;
+            return chronolog::CL_ERR_UNKNOWN;
         }
 
         // Write storyId attribute to the dataset
@@ -244,7 +244,7 @@ int StoryWriter::writeStoryChunks(const std::map <uint64_t, chronolog::StoryChun
         if(status < 0)
         {
             LOGE("Failed to close dataset or dataspace or file for story chunk: %s", story_chunk_dset_name.c_str());
-            return CL_ERR_UNKNOWN;
+            return chronolog::CL_ERR_UNKNOWN;
         }
     }
 
@@ -259,11 +259,11 @@ int StoryWriter::writeStoryChunks(const std::map <uint64_t, chronolog::StoryChun
             H5Fget_name(story_chunk_fd_map_it.second, file_name, file_name_len);
             LOGE("Failed to close file for story chunk: %s", file_name);
             free(file_name);
-            return CL_ERR_UNKNOWN;
+            return chronolog::CL_ERR_UNKNOWN;
         }
     }
 
-    return CL_SUCCESS;
+    return chronolog::CL_SUCCESS;
 }
 
 /**

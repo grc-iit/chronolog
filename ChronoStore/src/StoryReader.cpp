@@ -13,7 +13,7 @@
 #include <datasetreader.h>
 #include <datasetminmax.h>
 #include <log.h>
-#include <errcode.h>
+#include <chronolog_errcode.h>
 
 #define DEBUG 0 // Set to 1 ito print H5 error messages to console
 
@@ -56,7 +56,7 @@ int StoryReader::readStory(const std::string &chronicle_name, const std::string 
     if(story_file < 0)
     {
         LOGE("Failed to open story file: %s", story_file_name.c_str());
-        return CL_ERR_UNKNOWN;
+        return chronolog::CL_ERR_UNKNOWN;
     }
 
     // Read all Story Chunks
@@ -65,7 +65,7 @@ int StoryReader::readStory(const std::string &chronicle_name, const std::string 
     // Close Story file
     H5Fclose(story_file);
 
-    return CL_SUCCESS;
+    return chronolog::CL_SUCCESS;
 }
 
 /**
@@ -99,7 +99,7 @@ int StoryReader::readAllStoryChunks(hid_t &story_file, std::map <uint64_t, chron
         story_chunk_map.emplace(story_chunk.getStartTime(), story_chunk);
     }
 
-    return CL_SUCCESS;
+    return chronolog::CL_SUCCESS;
 }
 
 /**
@@ -241,7 +241,7 @@ StoryReader::deserializeStoryChunk(char*story_chunk_json_str, // NOLINT(*-conver
     else
     {
         LOGE("Failed to parse story_chunk_json_str: %s", story_chunk_json_str);
-        exit(CL_ERR_UNKNOWN);
+        exit(chronolog::CL_ERR_UNKNOWN);
     }
     LOGD("#Events: %ld", story_chunk.getNumEvents());
     return story_chunk;
@@ -265,7 +265,7 @@ int StoryReader::readStoryRange(const std::string &chronicle_name, const uint64_
     if(story_file < 0)
     {
         LOGE("Failed to open story file: %s", story_file_name.c_str());
-        return CL_ERR_UNKNOWN;
+        return chronolog::CL_ERR_UNKNOWN;
     }
     // Get all overlapped Story Chunk names
     std::vector <std::string> story_chunk_names_overlap = findContiguousStoryChunks(story_file, start_time, end_time);
@@ -276,7 +276,7 @@ int StoryReader::readStoryRange(const std::string &chronicle_name, const uint64_
         story_chunk_map.emplace(story_chunk.getStartTime(), story_chunk);
     }
 
-    return CL_SUCCESS;
+    return chronolog::CL_SUCCESS;
 }
 
 /**
