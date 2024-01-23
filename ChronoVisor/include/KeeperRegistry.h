@@ -42,7 +42,7 @@ public:
         , active(false)
 		, lastStatsTime(0)
 		, activeStoryCount(0)
-    
+    {}    
 
         KeeperProcessEntry(KeeperProcessEntry const &other) = default;
 

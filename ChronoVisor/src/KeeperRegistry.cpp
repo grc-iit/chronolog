@@ -361,7 +361,7 @@ std::vector <KeeperIdCard> &KeeperRegistry::getActiveKeepers(std::vector <Keeper
             }
             else    
             {
-                std::cout <<"DEBUG: KeeperRegistry::getActiveKeepers still keeps keeperProcessEntry for {"<<(*iter).second.idCard<<"} current_time="<<ctime(&current_time)<<"} delayedExitTime= " << std::ctime(&((*iter).second.delayedExitTime))<<std::endl;
+                std::cout <<"DEBUG: KeeperRegistry::getActiveKeepers still keeps keeperProcessEntry for {"<<(*iter).second.idCard<<"} current_time="<<ctime(&current_time)<<std::endl;
 
                 ++iter; 
             }
