@@ -21,7 +21,7 @@ int Logger::initialize(const std::string &logType, const std::string &location, 
     }
     try
     {
-        std::shared_ptr <spdlog::sinks::sink> sink;
+        std::shared_ptr <spdlog::sinks::sink> sink = nullptr;
         if(logType == "file")
         {
             /*
@@ -39,6 +39,7 @@ int Logger::initialize(const std::string &logType, const std::string &location, 
         else
         {
             std::cerr << "[Logger] Invalid log type" << std::endl;
+            return 1;
         }
         logger = std::make_shared <spdlog::logger>(loggerName, sink);
         logger->set_level(logLevel);
@@ -46,6 +47,7 @@ int Logger::initialize(const std::string &logType, const std::string &location, 
     catch(const spdlog::spdlog_ex &ex)
     {
         std::cerr << "[Logger] Logger initialization failed: " << ex.what() << std::endl;
+        return 1;
     }
     return 0; // already initialized
 }
