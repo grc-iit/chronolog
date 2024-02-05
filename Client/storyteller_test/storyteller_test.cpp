@@ -2,6 +2,7 @@
 #include <ctime>
 #include <chrono>
 #include <unistd.h>
+#include "log.h"
 
 #include <thallium/serialization/stl/string.hpp>
 #include <thallium.hpp>
