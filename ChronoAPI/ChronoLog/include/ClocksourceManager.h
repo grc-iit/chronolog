@@ -25,9 +25,12 @@ public:
         unsigned int proc_id;
         uint64_t  t = __builtin_ia32_rdtscp(&proc_id);
         lfence();
+        LOG_INFO("[ClockSourceManager] Timestamp retrieved using TSC.");
         return t;
     }
-    ClocksourceType getClocksourceType() {
+    ClocksourceType getClocksourceType()
+    {
+        LOG_INFO("[ClockSourceManager] Returning clocksource type: TSC.");
         return ClocksourceType::TSC;
     }
 };
@@ -37,10 +40,14 @@ class ClockSourceCStyle
 {
 public:
     ClockSourceCStyle()
-    {}
+    {
+        LOG_INFO("[ClockSourceManager] Initialized CStyle Clocksource.");
+    }
 
     ~ClockSourceCStyle()
-    {}
+    {
+        LOG_INFO("[ClockSourceManager] Destroyed CStyle Clocksource.");
+    }
 
     uint64_t getTimeStamp()
     {
@@ -60,10 +67,14 @@ class ClockSourceCPPStyle
 {
 public:
     ClockSourceCPPStyle()
-    {}
+    {
+        LOG_INFO("[ClockSourceManager] Initialized CPPStyle Clocksource.");
+    }
 
     ~ClockSourceCPPStyle()
-    {}
+    {
+        LOG_INFO("[ClockSourceManager] Destroyed CPPStyle Clocksource.");
+    }
 
     uint64_t getTimeStamp()
     {
@@ -81,11 +92,15 @@ class ClocksourceManager
 {
 private:
     ClocksourceManager(): offset(0)
-    {}
+    {
+        LOG_INFO("[ClockSourceManager] Initialized ClocksourceManager.");
+    }
 
 public:
     ~ClocksourceManager()
-    {}
+    {
+        LOG_INFO("[ClockSourceManager] Destroyed ClocksourceManager.");
+    }
 
     static ClocksourceManager*getInstance()
     {

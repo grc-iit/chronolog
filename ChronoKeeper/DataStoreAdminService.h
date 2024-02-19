@@ -17,8 +17,7 @@ namespace chronolog
 class DataStoreAdminService: public tl::provider <DataStoreAdminService>
 {
 public:
-
-// Service should be created on the heap not the stack thus the constructor is private...
+    // Service should be created on the heap not the stack thus the constructor is private...
     static DataStoreAdminService*
     CreateDataStoreAdminService(tl::engine &tl_engine, uint16_t service_provider_id, KeeperDataStore &dataStoreInstance)
     {
@@ -27,7 +26,7 @@ public:
 
     ~DataStoreAdminService()
     {
-        std::cout << "DataStoreAdminService::~DataStoreAdminService" << std::endl;
+        LOG_DEBUG("[DataStoreAdminService] Destructor called. Cleaning up...");
         //remove provider finalization callback from the engine's list
         get_engine().pop_finalize_callback(this);
     }
@@ -48,14 +47,14 @@ public:
     StartStoryRecording(tl::request const &request, std::string const &chronicle_name, std::string const &story_name
                         , StoryId const &story_id, uint64_t start_time)
     {
-        std::cout << "DataCollectionService: StartStoryRecoding {" << story_name << ":" << story_id << "}" << std::endl;
+        LOG_INFO("[DataStoreAdminService] Starting Story Recording: StoryName={}, StoryID={}", story_name, story_id);
         int return_code = theDataStore.startStoryRecording(chronicle_name, story_name, story_id, start_time);
         request.respond(return_code);
     }
 
     void StopStoryRecording(tl::request const &request, StoryId const &story_id)
     {
-        std::cout << "DataStoreAdminService: StopStoryRecoding {" << story_id << "}" << std::endl;
+        LOG_INFO("[DataStoreAdminService] Stopping Story Recording: StoryID={}", story_id);
         int return_code = theDataStore.stopStoryRecording(story_id);
         request.respond(return_code);
     }
@@ -71,8 +70,10 @@ private:
         //set up callback for the case when the engine is being finalized while this provider is still alive
         get_engine().push_finalize_callback(this, [p = this]()
         { delete p; });
-        std::cout << "DataStoreAdminService::constructed at " << get_engine().self() << " provider_id {"
-                  << service_provider_id << "}" << std::endl;
+
+        std::stringstream ss;
+        ss << get_engine().self();
+        LOG_INFO("[DataStoreAdminService] Constructed at {}. ProviderID={}", ss.str(), service_provider_id);
     }
 
     DataStoreAdminService(DataStoreAdminService const &) = delete;

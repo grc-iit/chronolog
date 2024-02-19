@@ -13,41 +13,36 @@
 
 namespace tl = thallium;
 
-
 namespace chronolog
 {
-
 class KeeperRecordingService: public tl::provider <KeeperRecordingService>
 {
 public:
-
-// KeeperRecordingService should be created on the heap not the stack thus the constructor is private...
-
+    // KeeperRecordingService should be created on the heap not the stack thus the constructor is private...
     static KeeperRecordingService*
     CreateKeeperRecordingService(tl::engine &tl_engine, uint16_t service_provider_id, IngestionQueue &ingestion_queue)
     {
-
         return new KeeperRecordingService(tl_engine, service_provider_id, ingestion_queue);
     }
 
     ~KeeperRecordingService()
     {
-        std::cout << "KeeperRecordingService::~KeeperRecordingService()" << std::endl;
+        LOG_DEBUG("[KeeperRecordingService] Destructor called. Cleaning up...");
         get_engine().pop_finalize_callback(this);
     }
 
     void record_event(tl::request const &request, LogEvent const &log_event)
-    //    ClientId teller_id,  StoryId story_id,
-    //  ChronoTick const& chrono_tick, std::string const& record)
     {
-        std::cout << "KeeperRecordingService : record_event {" << log_event << "}" << std::endl;
+        //  ClientId teller_id,  StoryId story_id,
+        //  ChronoTick const& chrono_tick, std::string const& record)
+        std::stringstream ss;
+        ss << log_event;
+        LOG_DEBUG("[KeeperRecordingService] Recording event: {}", ss.str());
         theIngestionQueue.ingestLogEvent(log_event);
         request.respond(chronolog::CL_SUCCESS);
-
     }
 
 private:
-
     KeeperRecordingService(tl::engine &tl_engine, uint16_t service_provider_id, IngestionQueue &ingestion_queue)
             : tl::provider <KeeperRecordingService>(tl_engine, service_provider_id), theIngestionQueue(ingestion_queue)
     {

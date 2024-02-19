@@ -26,6 +26,14 @@
         "service_base_port": 8888,
         "service_provider_id": 88
       }
+    },
+    "Logging": {
+      "log": {
+        "type": "file",
+        "file": "chronovisor_logfile.txt",
+        "level": "debug",
+        "name": "ChronoVisor"
+      }
     }
   },
   "chrono_keeper": {
@@ -56,6 +64,14 @@
         "service_provider_id": 88
       }
     },
+    "Logging": {
+      "log": {
+        "type": "file",
+        "file": "chronokeeper_logfile.txt",
+        "level": "debug",
+        "name": "ChronoKeeper"
+      }
+    },
     "story_files_dir": "/tmp/"
   },
   "chrono_client": {
@@ -66,6 +82,14 @@
         "service_ip": "127.0.0.1",
         "service_base_port": 5555,
         "service_provider_id": 55
+      }
+    },
+    "Logging": {
+      "log": {
+        "type": "file",
+        "file": "chronoclient_logfile.txt",
+        "level": "debug",
+        "name": "ChronoClient"
       }
     }
   }

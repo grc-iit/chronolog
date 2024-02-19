@@ -7,7 +7,7 @@
 
 #include <getopt.h>
 #include <string>
-#include <log.h>
+#include <iostream>
 
 std::string parse_conf_path_arg(int argc, char**argv)
 {
@@ -29,11 +29,13 @@ std::string parse_conf_path_arg(int argc, char**argv)
                 break;
             case '?':
                 // Invalid option or missing argument
-                LOGE("Usage: %s -c|--config <config_file>\n", argv[0]);
+                std::cout
+                        << "[cmd_arg_parse] Invalid usage: Please provide a configuration file path using -c or --config option."
+                        << std::endl;
                 exit(EXIT_FAILURE);
             default:
                 // Unknown option
-                LOGE("Unknown option: %c\n", opt);
+                std::cerr << "[cmd_arg_parse] Encountered an unknown option: " << static_cast<char>(opt) << std::endl;
                 exit(EXIT_FAILURE);
         }
     }
@@ -41,12 +43,12 @@ std::string parse_conf_path_arg(int argc, char**argv)
     // Check if the config file option is provided
     if(config_file)
     {
-        LOGD("Config file specified: %s\n", config_file);
+        std::cout << "[cmd_arg_parse] Configuration file path provided: " << config_file << std::endl;
         return {std::string(config_file)};
     }
     else
     {
-        LOGD("No config file specified, using default instead\n");
+        std::cerr << "[cmd_arg_parse] No configuration file path provided" << std::endl;
         return "";
     }
 }

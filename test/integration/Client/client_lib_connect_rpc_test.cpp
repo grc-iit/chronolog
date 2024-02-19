@@ -10,20 +10,31 @@
 #include "common.h"
 #include <cassert>
 #include <cmd_arg_parse.h>
+#include "log.h"
 
 #define NUM_CONNECTION (1)
 
 int main(int argc, char**argv)
 {
-    std::string default_conf_file_path = "./default_conf.json";
     std::string conf_file_path;
     conf_file_path = parse_conf_path_arg(argc, argv);
     if(conf_file_path.empty())
     {
-        conf_file_path = default_conf_file_path;
+        std::exit(EXIT_FAILURE);
     }
-
     ChronoLog::ConfigurationManager confManager(conf_file_path);
+    int result = Logger::initialize(confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE
+                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
+                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
+                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME
+                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILESIZE
+                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILENUM);
+    if(result == 1)
+    {
+        exit(EXIT_FAILURE);
+    }
+    LOG_INFO("[ClientLibConnectRPCTest] Running test.");
+
     std::string server_ip = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP;
     int base_port = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT;
     int num_ports = 1; // Kun: hardcode for now
@@ -68,8 +79,8 @@ int main(int argc, char**argv)
         duration_disconnect += (t2 - t1);
     };
 
-    LOGI("Connect takes %lf ns", duration_connect.count() / NUM_CONNECTION);
-    LOGI("Disconnect takes %lf ns", duration_disconnect.count() / NUM_CONNECTION);
+    LOG_INFO("[ClientLibConnectRPCTest] Average connection time: {} ns", duration_connect.count() / NUM_CONNECTION);
+    LOG_INFO("[ClientLibConnectRPCTest] Average disconnection time: {} ns", duration_disconnect.count() / NUM_CONNECTION);
 
     return 0;
 }

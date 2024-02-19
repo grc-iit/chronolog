@@ -4,6 +4,7 @@
 #include <map>
 #include <iostream>
 #include "chronolog_types.h"
+#include "log.h"
 
 namespace chronolog
 {
@@ -67,7 +68,7 @@ public:
         { return 0; }
     }
 
-//INNA: TODO implement the functions!!!
+    //INNA: TODO implement the functions!!!
     uint32_t
     mergeEvents(std::map <EventSequence, LogEvent> &events, std::map <EventSequence, LogEvent>::iterator &merge_start);
 
@@ -76,7 +77,6 @@ public:
 
     uint32_t mergeEvents(StoryChunk &other_chunk, uint64_t start_time, uint64_t end_time)
     { return 0; }
-
 
     uint32_t
     extractEvents(std::map <EventSequence, LogEvent> &target_map, std::map <EventSequence, LogEvent>::iterator first_pos
@@ -94,9 +94,7 @@ private:
     uint64_t startTime;
     uint64_t endTime;
     uint64_t revisionTime;
-
     std::map <EventSequence, LogEvent> logEvents;
 };
-
 }
 #endif

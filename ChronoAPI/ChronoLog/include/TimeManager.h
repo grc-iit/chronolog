@@ -19,22 +19,28 @@ public:
     {
         refTimestampUpdateInterval_ = TIME_DB_UPDATE_INTERVAL;
         init(refTimestampUpdateInterval_);
+        LOG_INFO("[TimeManager] Initialized with default update interval: {}", refTimestampUpdateInterval_);
     }
 
     explicit TimeManager(double updateInterval)
     {
         refTimestampUpdateInterval_ = updateInterval;
         init(refTimestampUpdateInterval_);
+        LOG_INFO("[TimeManager] Initialized with update interval: {}", updateInterval);
     }
 
     explicit TimeManager(double updateInterval, ClocksourceType clocksourceType)
     {
         refTimestampUpdateInterval_ = updateInterval;
         init(refTimestampUpdateInterval_, clocksourceType);
+        LOG_INFO("[TimeManager] Initialized with update interval: {} and clocksource type: {}", updateInterval
+             , static_cast<int>(clocksourceType));
     }
 
     void setClocksourceType(ClocksourceType clocksourceType)
-    { clocksourceType_ = clocksourceType; }
+    {
+        clocksourceType_ = clocksourceType;
+    }
 
     std::unique_ptr <TimeRecord> genPeriodicTimeRecord()
     {
