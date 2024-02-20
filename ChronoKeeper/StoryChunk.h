@@ -3,6 +3,7 @@
 
 #include <map>
 #include <iostream>
+#include <sstream>
 #include "chronolog_types.h"
 
 namespace chronolog
