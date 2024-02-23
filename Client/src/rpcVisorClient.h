@@ -91,7 +91,7 @@ public:
     int CreateChronicle(ClientId const &client_id, std::string const &name
                         , const std::unordered_map <std::string, std::string> &attrs, int &flags)
     {
-        LOG_INFO("[RPCVisorClient] Initiating creation of chronicle: Name={}, Flags={}, Attributes={...}", name.c_str()
+        LOG_INFO("[RPCVisorClient] Initiating creation of chronicle: Name={}, Flags={}", name.c_str()
              , flags);
         try
         {
