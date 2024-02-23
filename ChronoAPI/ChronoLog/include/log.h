@@ -1,7 +1,3 @@
-//
-// Created by kfeng on 4/5/22.
-//
-
 #ifndef CHRONOLOG_LOG_H
 #define CHRONOLOG_LOG_H
 

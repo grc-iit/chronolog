@@ -32,7 +32,9 @@
         "type": "file",
         "file": "../../logs/chronovisor_logfile.txt",
         "level": "debug",
-        "name": "ChronoVisor"
+        "name": "ChronoVisor",
+        "filesize": 102400,
+        "filenum": 3
       }
     }
   },
@@ -69,7 +71,9 @@
         "type": "file",
         "file": "../../logs/chronokeeper_logfile.txt",
         "level": "debug",
-        "name": "ChronoKeeper"
+        "name": "ChronoKeeper",
+        "filesize": 102400,
+        "filenum": 3
       }
     },
     "story_files_dir": "/tmp/"
@@ -83,13 +87,15 @@
         "service_base_port": 5555,
         "service_provider_id": 55
       }
-    }
+    },
     "Logging": {
       "log": {
-        "type": "console",
+        "type": "file",
         "file": "../../../../logs/chronoclient_logfile.txt",
         "level": "debug",
-        "name": "ChronoClient"
+        "name": "ChronoClient",
+        "filesize": 102400,
+        "filenum": 3
       }
     }
   }
