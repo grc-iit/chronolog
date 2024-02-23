@@ -48,10 +48,10 @@ void ChronoVisorServer::addChronoKeeperInfo(const ChronoKeeperInfo &chronoKeeper
 
 int ChronoVisorServer::start()
 {
-//        LOGD("ChronoVisor server initializing ...");
+//        LOG_DEBUG("ChronoVisor server initializing ...");
 //        init();
 
-    LOGI("ChronoVisor server starting, socket=%p, port=%d ...", this, port_);
+    LOG_INFO("ChronoVisor server starting, socket=%p, port=%d ...", this, port_);
     return this->loop();
 }
 
@@ -59,12 +59,12 @@ void ChronoVisorServer::init()
 {
     SocketPP::TCPServer::setConnHandle([this](const SocketPP::TCPStream &stream)
                                        {
-                                           LOGI("add a new client to registry: fd=%d", stream.fd);
+                                           LOG_INFO("add a new client to registry: fd=%d", stream.fd);
                                            addToClientRegistry(stream);
                                        });
     SocketPP::TCPServer::setDiscHandle([this](const SocketPP::TCPStream &stream)
                                        {
-                                           LOGI("remove a client from registry: fd=%d", stream.fd);
+                                           LOG_INFO("remove a client from registry: fd=%d", stream.fd);
                                            removeFromClientRegistry(stream);
                                        });
 }
@@ -98,7 +98,7 @@ void ChronoVisorServer::removeFromClientRegistry(SocketPP::TCPStream stream)
 
     if(iter == clientRegistry_->end())
     {
-        LOGE("fd=%d is not in client registry!", stream.fd);
+        LOG_ERROR("fd=%d is not in client registry!", stream.fd);
         return;
     }
 
@@ -109,13 +109,13 @@ void ChronoVisorServer::startPeriodicTimeDBUpdateThread()
 {
     periodicTimeDBUpdateThread_ = new std::thread([this]
                                                   {
-                                                      LOGD("periodic TimeDB update thread running...");
+                                                      LOG_DEBUG("periodic TimeDB update thread running...");
                                                       TimeRecord record = *(pTimeManager->genPeriodicTimeRecord());
                                                       rocksdb::Status status = timeDB_->Put(rocksdb::WriteOptions()
                                                                                             , std::to_string(
                                                                       record.getTimestamp()).c_str(), std::to_string(
                                                                       record.getDriftRate()).c_str()); // first record
-                                                      LOGI("big bang time record is generated, %s, appended to timeDB ..."
+                                                      LOG_INFO("big bang time record is generated, %s, appended to timeDB ..."
                                                            , record.toString().c_str());
 
                                                       pTimeManager->refTimestampUpdateInterval_ = timeDBUpdateInterval_;
@@ -140,13 +140,13 @@ void ChronoVisorServer::startPeriodicTimeDBUpdateThread()
                                                                                   record.getTimestamp()).c_str()
                                                                                         , driftRateStr.c_str());
                                                               }
-                                                              LOGI("every %lf seconds, new time record %s is appended to timeDB ..."
+                                                              LOG_INFO("every %lf seconds, new time record %s is appended to timeDB ..."
                                                                    , \
                          timeDBUpdateInterval_, record.toString().c_str());
 
-//                    LOGD("time record appended");
+//                    LOG_DEBUG("time record appended");
 
-                                                              LOGD("sleeping for %lf seconds ..."
+                                                              LOG_DEBUG("sleeping for %lf seconds ..."
                                                                    , timeDBUpdateInterval_);
                                                               usleep(timeDBUpdateInterval_ * 1000000);
 
@@ -160,7 +160,7 @@ void ChronoVisorServer::startOnDemandTimeDBUpdateThread()
 {
     onDemandTimeDBUpdateThread_ = new std::thread([this]
                                                   {
-                                                      LOGD("on-demand TimeDB update thread running...");
+                                                      LOG_DEBUG("on-demand TimeDB update thread running...");
                                                       TimeRecord record;
                                                       rocksdb::Status status;
                                                       while(true)
@@ -194,7 +194,7 @@ void ChronoVisorServer::startOnDemandTimeDBUpdateThread()
                                                                                   record.getTimestamp()).c_str()
                                                                                         , driftRateStr.c_str());
                                                               }
-                                                              LOGI("upon client requests, new time record %s is appended to timeDB ..."
+                                                              LOG_INFO("upon client requests, new time record %s is appended to timeDB ..."
                                                                    , \
                          record.toString().c_str());
 
@@ -221,7 +221,7 @@ void ChronoVisorServer::onReceive(int fd, const byte*buf, size_t len)
     {
         case ClientMessage::CONNECTION:
         {
-            LOGI("connection message has been handled by onConnected");
+            LOG_INFO("connection message has been handled by onConnected");
             break;
         }
         case ClientMessage::GETTIMEINFO:
@@ -233,7 +233,7 @@ void ChronoVisorServer::onReceive(int fd, const byte*buf, size_t len)
             {
                 oss = pSerDe->serializeServerMessage(serverMsg);
             }
-            LOGD("Msg to client: %s", serverMsg.toString().c_str());
+            LOG_DEBUG("Msg to client: %s", serverMsg.toString().c_str());
             reply.rawMsg.initMsg((const byte*)oss->str().c_str(), oss->str().length());
 
             // Upon each get_clock request from clients, append a record to TimeDB
@@ -252,7 +252,7 @@ void ChronoVisorServer::onReceive(int fd, const byte*buf, size_t len)
             {
                 oss = pSerDe->serializeServerMessage(serverMsg);
             }
-            LOGD("Msg to client: %s", serverMsg.toString().c_str());
+            LOG_DEBUG("Msg to client: %s", serverMsg.toString().c_str());
             reply.rawMsg.initMsg((const byte*)oss->str().c_str(), oss->str().length());
             break;
         }
@@ -269,7 +269,7 @@ void ChronoVisorServer::onReceive(int fd, const byte*buf, size_t len)
             {
                 oss = pSerDe->serializeServerMessage(serverMsg);
             }
-            LOGD("Msg to client: %s", serverMsg.toString().c_str());
+            LOG_DEBUG("Msg to client: %s", serverMsg.toString().c_str());
             reply.rawMsg.initMsg((const byte*)oss->str().c_str(), oss->str().length());
             break;
         }
@@ -290,7 +290,7 @@ void ChronoVisorServer::onReceive(int fd, const byte*buf, size_t len)
         }
         default:
         {
-            LOGE("unknown message from client");
+            LOG_ERROR("unknown message from client");
         }
     }
 
@@ -311,7 +311,7 @@ void ChronoVisorServer::onConnected(int fd)
         oss = pSerDe->serializeServerMessage(serverMsg);
     }
 
-//        LOGD("Msg to client: %s", serverMsg.toString().c_str());
+//        LOG_DEBUG("Msg to client: %s", serverMsg.toString().c_str());
     SocketPP::Message reply;
     reply.rawMsg.initMsg((const byte*)oss->str().c_str(), oss->str().length());
     reply.target = SocketPP::TCPStream(fd);

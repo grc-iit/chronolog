@@ -35,29 +35,40 @@ Created by Aparna on 01/12/2023
 #include <sys/wait.h>
 #include <unistd.h>
 #include "parse_commands.h"
+#include "log.h"
 
 int max_msg_len;
 int num_processes;
 
 void print_banner()
 {
+    LOG_INFO(" -connect -protocol <int> -hostname <string> -port <int>, protocol should be 0(sockets),1(tcp),2(verbs), connects all clients");
+    /*std::cout
+                << " -connect -protocol <int> -hostname <string> -port <int>, protocol should be 0(sockets),1(tcp),2(verbs), connects all clients"
+                << std::endl;*/
 
-    std::cout
-            << " -connect -protocol <int> -hostname <string> -port <int>, protocol should be 0(sockets),1(tcp),2(verbs), connects all clients"
-            << std::endl;
-    std::cout << " Metadata operations : -c <string> -p <int>, create a chronicle with name <string> by client <int>  "
-              << std::endl
-              << " -s <string1> <string2> -p <int> , create a story with name string1+string2 : string1 = chronicle name, string2 = story name by client <int>"
-              << std::endl << " -a -c <string> -p <int>, acquire chronicle with name <string> by client <int>"
-              << std::endl
-              << " -a -s <string1> <string2> -p <int>, acquire story with name string1+string2 : string1 = chronicle name, string2 = story name by client <int>"
-              << std::endl << " -r -c <string> -p <int>, release chronicle with name <string> by client <int>"
-              << std::endl
-              << " -r -s <string1> <string2> -p <int>, release story with name string1+string2 : string1 = chronicle name, string2 = story name by client <int> "
-              << std::endl << " -d -c <string> -p <int>, destroy chronicle with name <string> by client <int>"
-              << std::endl
-              << " -d -s <string1> <string2> -p <int>, destroy story with name string1+string2 : string1 = chronicle name, string2 = story name by client <int>"
-              << std::endl << " -disconnect , disconnect all clients" << std::endl;
+    LOG_INFO("Metadata operations : -c <string> -p <int>, create a chronicle with name <string> by client <int>");
+    LOG_INFO(" -s <string1> <string2> -p <int> , create a story with name string1+string2 : string1 = chronicle name, string2 = story name by client <int>");
+    LOG_INFO(" -a -c <string> -p <int>, acquire chronicle with name <string> by client <int>");
+    LOG_INFO(" -a -s <string1> <string2> -p <int>, acquire story with name string1+string2 : string1 = chronicle name, string2 = story name by client <int>");
+    LOG_INFO(" -r -c <string> -p <int>, release chronicle with name <string> by client <int>");
+    LOG_INFO(" -r -s <string1> <string2> -p <int>, release story with name string1+string2 : string1 = chronicle name, string2 = story name by client <int> ");
+    LOG_INFO(" -d -c <string> -p <int>, destroy chronicle with name <string> by client <int>");
+    LOG_INFO(" -d -s <string1> <string2> -p <int>, destroy story with name string1+string2 : string1 = chronicle name, string2 = story name by client <int>");
+    LOG_INFO(" -disconnect , disconnect all clients");
+    /*std::cout << " Metadata operations : -c <string> -p <int>, create a chronicle with name <string>  "
+                  << std::endl
+                  << " -s <string1> <string2> -p <int> , create a story with name string1+string2 : string1 = chronicle name, string2 = story name by client <int>"
+                  << std::endl << " -a -c <string> -p <int>, acquire chronicle with name <string> by client <int>"
+                  << std::endl
+                  << " -a -s <string1> <string2> -p <int>, acquire story with name string1+string2 : string1 = chronicle name, string2 = story name by client <int>"
+                  << std::endl << " -r -c <string> -p <int>, release chronicle with name <string> by client <int>"
+                  << std::endl
+                  << " -r -s <string1> <string2> -p <int>, release story with name string1+string2 : string1 = chronicle name, string2 = story name by client <int> "
+                  << std::endl << " -d -c <string> -p <int>, destroy chronicle with name <string> by client <int>"
+                  << std::endl
+                  << " -d -s <string1> <string2> -p <int>, destroy story with name string1+string2 : string1 = chronicle name, string2 = story name by client <int>"
+                  << std::endl << " -disconnect , disconnect all clients" << std::endl;*/
 }
 
 using namespace boost::interprocess;
@@ -72,8 +83,11 @@ int main(int argc, char**argv)
 
     if(argc != 2)
     {
-        std::cout << " ChronoAdmin_Sim usage : ./ChronoAdmin_Sim <int>, run simulation with <int> number of clients"
-                  << std::endl << " -h for help" << std::endl;
+        LOG_INFO("ChronoAdmin_Sim usage : ./ChronoAdmin_Sim <int>, run simulation with <int> number of clients");
+        LOG_INFO(" -h for help");
+        /*std::cout << " ChronoAdmin_Sim usage : ./ChronoAdmin_Sim <int>, run simulation with <int> number of clients"
+                          << std::endl << " -h for help" << std::endl;*/
+
     }
     assert(argc == 2);
 

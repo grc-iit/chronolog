@@ -25,7 +25,8 @@ int main()
 
     uint64_t t1 = r1.getTimestamp();
 
-    std::cout << "sleeping for " << SLEEP_INTERVAL_IN_SEC << " seconds ...\n";
+    LOG_DEBUG("Sleeping for {} seconds ...", SLEEP_INTERVAL_IN_SEC);
+
     usleep(SLEEP_INTERVAL_IN_SEC * 1000000);
 
     TimeRecord r2;
@@ -33,8 +34,8 @@ int main()
     r2.updateTimestamp();
     uint64_t t2 = r2.getTimestamp();
 
-    std::cout << "It took me " << t2 - t1 << " nanoseconds." << std::endl;
-    std::cout << "Drift rate: " << std::scientific << (double)(t2 - t1) / SLEEP_INTERVAL_IN_SEC - 1 << std::endl;
+    LOG_DEBUG("It took me {} nanoseconds.", t2 - t1);
+    LOG_DEBUG("Drift rate: {}", static_cast<double>(t2 - t1) / SLEEP_INTERVAL_IN_SEC - 1);
 
     return 0;
 }

@@ -97,13 +97,13 @@ int main()
         duration_destroy_chronicle += (t2 - t1);
     };
 
-    LOGI("CreateChronicle takes %lf ns", duration_create_chronicle.count() / NUM_CHRONICLE);
-    LOGI("EditChronicleAttr takes %lf ns", duration_edit_chronicle_attr.count() / NUM_CHRONICLE);
-    LOGI("AcquireStory takes %lf ns", duration_acquire_story.count() / (NUM_CHRONICLE * NUM_STORY));
-    LOGI("ReleaseStory takes %lf ns", duration_release_story.count() / (NUM_CHRONICLE * NUM_STORY));
-    LOGI("DestroyStory takes %lf ns", duration_destroy_story.count() / (NUM_CHRONICLE * NUM_STORY));
-    LOGI("GetChronileAttr(Date) takes %lf ns", duration_get_chronicle_attr.count() / NUM_CHRONICLE);
-    LOGI("DestroyChronicle takes %lf ns", duration_destroy_chronicle.count() / NUM_CHRONICLE);
+    LOG_INFO("[RPCClient] CreateChronicle duration: {}ns", duration_create_chronicle.count() / NUM_CHRONICLE);
+    LOG_INFO("[RPCClient] EditChronicleAttr duration: {}}ns", duration_edit_chronicle_attr.count() / NUM_CHRONICLE);
+    LOG_INFO("[RPCClient] AcquireStory duration: {}}ns", duration_acquire_story.count() / (NUM_CHRONICLE * NUM_STORY));
+    LOG_INFO("[RPCClient] ReleaseStory duration: {}}ns", duration_release_story.count() / (NUM_CHRONICLE * NUM_STORY));
+    LOG_INFO("[RPCClient] DestroyStory duration: {}ns", duration_destroy_story.count() / (NUM_CHRONICLE * NUM_STORY));
+    LOG_INFO("[RPCClient] GetChronicleAttr(Date) duration: {}ns", duration_get_chronicle_attr.count() / NUM_CHRONICLE);
+    LOG_INFO("[RPCClient] DestroyChronicle duration: {}}ns", duration_destroy_chronicle.count() / NUM_CHRONICLE);
 
     duration_create_chronicle = std::chrono::duration <double, std::nano>();
     chronicle_names.clear();
@@ -133,8 +133,10 @@ int main()
         duration_destroy_chronicle += (t2 - t1);
     }
 
-    LOGI("CreateChronicle2 takes %lf ns", duration_create_chronicle.count() / NUM_CHRONICLE);
-    LOGI("DestroyChronicle2 takes %lf ns", duration_destroy_chronicle.count() / NUM_CHRONICLE);
+    LOG_INFO("[RPCClient] Second round of CreateChronicle2 duration: {}ns",
+            duration_create_chronicle.count() / NUM_CHRONICLE);
+    LOG_INFO("[RPCClient] Second round of DestroyChronicle2 duration: {}ns",
+            duration_destroy_chronicle.count() / NUM_CHRONICLE);
 
     return 0;
 }

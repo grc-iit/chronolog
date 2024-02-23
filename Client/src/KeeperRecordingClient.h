@@ -29,6 +29,7 @@ public:
         }
         catch(tl::exception const &)
         {
+            LOG_ERROR("[KeeperRecordingClient] Failed to create KeeperRecordingClient due to an exception.");
         }
         return nullptr;
     }
@@ -37,15 +38,16 @@ public:
     {
         try
         {
-            std::cout << "KeeperRecordingClient::send_event_msg:" << eventMsg << std::endl;
+            std::stringstream ss;
+            ss << eventMsg;
+            LOG_INFO("[KeeperRecordingClient] Sending event message: {}", ss.str());
             int return_code = record_event.on(service_ph)(eventMsg);
-            std::cout << "KeeperRecordingClient::send_event_msg:" << eventMsg << " return_code:" << return_code
-                      << std::endl;
+            LOG_INFO("[KeeperRecordingClient] Sent event message: {} with return code: {}", ss.str(), return_code);
             return return_code;
         }
         catch(thallium::exception const &)
         {
-            std::cout << "ERROR: failed to send event_msg" << std::endl;
+            LOG_ERROR("[KeeperRecordingClient] Failed to send event message due to an exception.");
         }
         return (chronolog::CL_ERR_UNKNOWN);
     }
@@ -56,6 +58,7 @@ public:
     ~KeeperRecordingClient()
     {
         record_event.deregister();
+        LOG_DEBUG("[KeeperRecordingClient] Destructor called. Deregistered record_event.");
     }
 
 private:
@@ -70,12 +73,11 @@ private:
                           , std::string const &keeper_service_addr): keeperIdCard(keeper_id_card), service_addr(
             keeper_service_addr), service_ph(tl_engine.lookup(service_addr), keeper_id_card.getProviderId())
     {
-        std::cout << "RecordingClient created for KeeperRecordingService at {" << service_addr << "} provider_id {"
-                  << keeperIdCard.getProviderId() << "}" << std::endl;
+        LOG_INFO("[KeeperRecordingClient] RecordingClient created for KeeperRecordingService at {} with ProviderID={}"
+             , service_addr, keeperIdCard.getProviderId());
         record_event = tl_engine.define("record_event");
     }
 };
-
 }
 
 #endif
