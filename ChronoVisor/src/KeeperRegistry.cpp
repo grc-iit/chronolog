@@ -5,6 +5,7 @@
 #include "KeeperRegistry.h"
 #include "KeeperRegistryService.h"
 #include "DataStoreAdminClient.h"
+#include "log.h"
 #include "ConfigurationManager.h"
 /////////////////////////
 
@@ -17,7 +18,6 @@ namespace chronolog
 int KeeperRegistry::InitializeRegistryService(ChronoLog::ConfigurationManager const &confManager)
 {
     int status = chronolog::CL_ERR_UNKNOWN;
-
     std::lock_guard <std::mutex> lock(registryLock);
 
     if(registryState != UNKNOWN)
@@ -32,22 +32,20 @@ int KeeperRegistry::InitializeRegistryService(ChronoLog::ConfigurationManager co
                 std::to_string(confManager.VISOR_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.RPC_CONF.BASE_PORT);
 
         uint16_t provider_id = confManager.VISOR_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID;
-
         margo_instance_id margo_id = margo_init(KEEPER_REGISTRY_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 2);
 
         if(MARGO_INSTANCE_NULL == margo_id)
         {
-            std::cout << "KeeperRegistryService: Failed to initialize margo_instance" << std::endl;
+            LOG_CRITICAL("[KeeperRegistry] Failed to initialize margo_instance");
             return -1;
         }
-        std::cout << "KeeperRegistryService:margo_instance initialized with NA_STRING" << "{"
-                  << KEEPER_REGISTRY_SERVICE_NA_STRING << "}" << std::endl;
+        LOG_INFO("[KeeperRegistry] margo_instance initialized with NA_STRING {}", KEEPER_REGISTRY_SERVICE_NA_STRING);
 
         registryEngine = new tl::engine(margo_id);
 
-        std::cout << "Starting KeeperRegistryService  at address " << registryEngine->self() << " with provider id "
-                  << provider_id << std::endl;
-
+        std::stringstream ss;
+        ss << registryEngine->self();
+        LOG_INFO("[KeeperRegistry] Starting at address {} with provider id: {}", ss.str(), provider_id);
 
         keeperRegistryService = KeeperRegistryService::CreateKeeperRegistryService(*registryEngine, provider_id, *this);
 
@@ -56,7 +54,7 @@ int KeeperRegistry::InitializeRegistryService(ChronoLog::ConfigurationManager co
     }
     catch(tl::exception const &ex)
     {
-        std::cout << "ERROR: Failed to start KeeperRegistryService " << std::endl;
+        LOG_ERROR("[KeeperRegistry] Failed to start");
     }
 
     return status;
@@ -66,14 +64,18 @@ int KeeperRegistry::InitializeRegistryService(ChronoLog::ConfigurationManager co
 
 int KeeperRegistry::ShutdownRegistryService()
 {
-    std::cout << "KeeperRegistry: shutting down ...." << std::endl;
+
 
     std::lock_guard <std::mutex> lock(registryLock);
 
     if(is_shutting_down())
-    { return chronolog::CL_SUCCESS; }
+    {
+        LOG_INFO("[KeeperRegistry] Shutdown");
+        return chronolog::CL_SUCCESS;
+    }
 
     registryState = SHUTTING_DOWN;
+    LOG_INFO("[KeeperRegistry] Shutting down...");
 
     // send out shutdown instructions to
     // all active keeper processes
@@ -84,10 +86,12 @@ int KeeperRegistry::ShutdownRegistryService()
         {
             std::time_t current_time =
                     std::chrono::high_resolution_clock::to_time_t(std::chrono::high_resolution_clock::now());
+            std::stringstream id_string;
+            id_string << (*process_iter).second.idCard;
+
             if((*process_iter).second.active)
             {
-                std::cout << "KeeperRegistry: sending shutdown to keeper {" << (*process_iter).second.idCard << "}"
-                          << std::endl;
+                LOG_INFO("[KeeperRegistry] Sending shutdown to keeper {}", id_string.str());
                 (*process_iter).second.keeperAdminClient->shutdown_collection();
 
                 (*process_iter).second.active = false;
@@ -96,10 +100,7 @@ int KeeperRegistry::ShutdownRegistryService()
                 {
                     std::time_t delayedExitTime = std::chrono::high_resolution_clock::to_time_t(
                             std::chrono::high_resolution_clock::now() + std::chrono::seconds(3));
-                    std::cout << "KeeperRegistry::register keeper {" << (*process_iter).second.idCard
-                              << "}  found old instance of DataStoreAdminclient : current_time=" << ctime(&current_time)
-                              << "} delayedExitTime= " << std::ctime(&delayedExitTime) << std::endl;
-
+                    LOG_INFO("[KeeperRegistry] shutdown: starting delayedExit for keeperProcess {} current_time={} delayedExitTime={}",id_string.str(), ctime(&current_time), std::ctime(&delayedExitTime));;
                     (*process_iter)
                             .second.delayedExitClients.push_back(std::pair<std::time_t, DataStoreAdminClient*>(
                                     delayedExitTime, (*process_iter).second.keeperAdminClient));
@@ -111,31 +112,25 @@ int KeeperRegistry::ShutdownRegistryService()
                   (current_time >= (*process_iter).second.delayedExitClients.front().first))
             {
                 auto dataStoreClientPair = (*process_iter).second.delayedExitClients.front();
-                std::cout << "INFO: KeeperRegistry::finalize destroys old client for {" << (*process_iter).second.idCard
-                          << "} delayedTime=" << ctime(&(dataStoreClientPair.first)) << std::endl;
+                LOG_INFO("[KeeperRegistry] shutdown() destroys old dataAdminClient for keeper {} delayedTime={}", id_string.str(), ctime(&(dataStoreClientPair.first)));
                 if(dataStoreClientPair.second != nullptr) { delete dataStoreClientPair.second; }
                 (*process_iter).second.delayedExitClients.pop_front();
             }
 
             if((*process_iter).second.delayedExitClients.empty())
             {
-                std::cout << "INFO: KeeperRegistry::registerKeeperProcess destroys old entry for {"
-                          << (*process_iter).second.idCard << "}" << std::endl;
+                LOG_INFO("[KeeperRegistry] registerKeeperProcess() destroys old keeperProcessEntry for {}",id_string.str());
                 process_iter = keeperProcessRegistry.erase(process_iter);
             }
             else
             {
-                std::cout << "INFO: KeeperRegistry::finalize : AdminClient for {" << (*process_iter).second.idCard
-                          << "} is not yet dismantled" << std::endl;
+                LOG_INFO("[KeeperRegistry] registerKeeperProcess() old dataAdminClient for {} can't yet be destroyed", id_string.str());
                 ++process_iter;
             }
         }
     }
-    std::cout << "KeeperRegistry: shutting down RegistryService" << std::endl;
-
     if(nullptr != keeperRegistryService)
     { delete keeperRegistryService; }
-
     return chronolog::CL_SUCCESS;
 }
 
@@ -165,6 +160,8 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const &keeper_re
     // running on the same host... check for this case and clean up the leftover record...
     auto keeper_process_iter = keeperProcessRegistry.find(
             std::pair<uint32_t, uint16_t>(keeper_id_card.getIPaddr(), keeper_id_card.getPort()));
+    std::stringstream id_string;
+    id_string << keeper_id_card;
     if(keeper_process_iter != keeperProcessRegistry.end())
     {
         // must be a case of the KeeperProcess exiting without unregistering or some unexpected break in communication...
@@ -179,9 +176,7 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const &keeper_re
 
             std::time_t delayedExitTime = std::chrono::high_resolution_clock::to_time_t(
                     std::chrono::high_resolution_clock::now() + std::chrono::seconds(3));
-            std::cout << "KeeperRegistry::register keeper {" << keeper_id_card
-                      << "}  found old instance of DataStoreAdminclient : current_time=" << ctime(&current_time)
-                      << "} delayedExitTime= " << std::ctime(&delayedExitTime) << std::endl;
+            LOG_WARNING("[KeeperRegistry] registerKeeperProcess for keeper {}  found old instance of dataAdminclient; starting delayedExit current_time={} delayedExitTime={}",id_string.str(), ctime(&current_time), std::ctime(&delayedExitTime));;
 
             (*keeper_process_iter)
                     .second.delayedExitClients.push_back(std::pair<std::time_t, DataStoreAdminClient*>(
@@ -193,23 +188,19 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const &keeper_re
               (current_time >= (*keeper_process_iter).second.delayedExitClients.front().first))
         {
             auto dataStoreClientPair = (*keeper_process_iter).second.delayedExitClients.front();
-            std::cout << "INFO: KeeperRegistry::registerKeeperProcess destroys old client for {"
-                      << (*keeper_process_iter).second.idCard << "} delayedTime=" << ctime(&(dataStoreClientPair.first))
-                      << std::endl;
+            LOG_INFO("[KeeperRegistry] registerKeeperProcess destroys delayed dataAdmindClient for {}",id_string.str());
             if(dataStoreClientPair.second != nullptr) { delete dataStoreClientPair.second; }
             (*keeper_process_iter).second.delayedExitClients.pop_front();
         }
 
         if((*keeper_process_iter).second.delayedExitClients.empty())
         {
-            std::cout << "INFO: KeeperRegistry::registerKeeperProcess destroys old entry for {"
-                      << (*keeper_process_iter).second.idCard << "}" << std::endl;
+            LOG_INFO("[KeeperRegistry] registerKeeperProcess has destroyed old entry for keeper {}",id_string.str());
             keeperProcessRegistry.erase(keeper_process_iter);
         }
         else
         {
-            std::cout << "INFO: KeeperRegistry::registerKeeper {" << keeper_id_card
-                      << "} cant's proceed as previous AdminClient is not yet dismantled" << std::endl;
+            LOG_INFO("[KeeperRegistry] registration for Keeper {} cant's proceed as previous AdminClient is not yet dismantled", id_string.str());
             return CL_ERR_UNKNOWN;
         }
     }
@@ -224,9 +215,8 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const &keeper_re
                                                                                              , admin_service_id.provider_id);
     if(nullptr == collectionClient)
     {
-        std::cout << "ERROR: KeeperRegistry: registerKeeper {" << keeper_id_card
-                  << "} failed to create DataStoreAdminClient for {" << service_na_string << ": provider_id="
-                  << admin_service_id.provider_id << "}" << std::endl;
+        LOG_ERROR("[KeeperRegistry] Register Keeper: KeeperIdCard: {} failed to create DataStoreAdminClient for {}: provider_id={}"
+             , id_string.str(), service_na_string, admin_service_id.provider_id);
         return chronolog::CL_ERR_UNKNOWN;
     }
 
@@ -236,26 +226,24 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const &keeper_re
                     keeper_id_card, admin_service_id)));
     if(false == insert_return.second)
     {
-        std::cout << "ERROR:KeeperRegistry: registerKeeper {" << keeper_id_card << "} failed to registration"
-                  << std::endl;
+        LOG_ERROR("[KeeperRegistry] registration failed for Keeper {}", id_string.str());
         delete collectionClient;
         return chronolog::CL_ERR_UNKNOWN;
-
     }
 
     (*insert_return.first).second.keeperAdminClient = collectionClient;
     (*insert_return.first).second.active = true;
 
-    std::cout << "KeeperRegistry: registerKeeper {" << keeper_id_card << "} created DataStoreAdminClient for service {"
-              << service_na_string << ": provider_id=" << admin_service_id.provider_id << "}" << std::endl;
+    LOG_INFO("[KeeperRegistry] Register Keeper: KeeperIdCard: {} created DataStoreAdminClient for {}: provider_id={}"
+         , id_string.str(), service_na_string, admin_service_id.provider_id);
 
     // now that communnication with the Keeper is established and we still holding registryLock
     // update registryState in case this is the first KeeperProcess registration
     if(keeperProcessRegistry.size() > 0)
-    { registryState = RUNNING; }
+    { registryState = RUNNING; 
 
-    std::cout << "KeeperRegistry : RUNNING with {" << keeperProcessRegistry.size() << "} KeeperProcesses" << std::endl;
-
+        LOG_INFO("[KeeperRegistry] RUNNING with {} KeeperProcesses", keeperProcessRegistry.size());
+    }
     return chronolog::CL_SUCCESS;
 }
 /////////////////
@@ -278,19 +266,17 @@ int KeeperRegistry::unregisterKeeperProcess(KeeperIdCard const &keeper_id_card)
         // we delay the destruction of the keeperEntry & keeperAdminClient by 5 secs
         // to prevent the case of deleting the keeperAdminClient while it might be waiting for rpc response on the
         // other thread
+        std::stringstream id_string;
+        id_string << keeper_id_card;
 
         (*keeper_process_iter).second.active = false;
 
         if((*keeper_process_iter).second.keeperAdminClient != nullptr)
         {
 
-            std::time_t current_time =
-                    std::chrono::high_resolution_clock::to_time_t(std::chrono::high_resolution_clock::now());
-            std::time_t delayedExitTime = std::chrono::high_resolution_clock::to_time_t(
-                    std::chrono::high_resolution_clock::now() + std::chrono::seconds(30));
-            std::cout << "KeeperRegistry::unregistered keeper {" << keeper_id_card
-                      << "} current_time=" << ctime(&current_time)
-                      << "} delayedExitTime= " << std::ctime(&delayedExitTime) << std::endl;
+            std::time_t current_time = std::chrono::high_resolution_clock::to_time_t(std::chrono::high_resolution_clock::now());
+            std::time_t delayedExitTime = std::chrono::high_resolution_clock::to_time_t(std::chrono::high_resolution_clock::now() + std::chrono::seconds(30));
+            LOG_INFO("[KeeperRegistry] unregisterKeeperProcess() starting delayedExit for keeper {} current_time={} delayedExitTime={}",id_string.str(), std::ctime(&current_time), std::ctime(&delayedExitTime));;
 
             (*keeper_process_iter)
                     .second.delayedExitClients.push_back(std::pair<std::time_t, DataStoreAdminClient*>(
@@ -308,8 +294,7 @@ int KeeperRegistry::unregisterKeeperProcess(KeeperIdCard const &keeper_id_card)
     if(!is_shutting_down() && (1 == keeperProcessRegistry.size()))
     {
         registryState = INITIALIZED;
-        std::cout << "KeeperRegistry: state {INITIALIZED}"
-                  << " with {" << keeperProcessRegistry.size() << "} KeeperProcesses" << std::endl;
+        LOG_INFO("[KeeperRegistry] INITIALIZED with {} KeeperProcesses", keeperProcessRegistry.size());
     }
 
     return chronolog::CL_SUCCESS;
@@ -354,14 +339,14 @@ std::vector <KeeperIdCard> &KeeperRegistry::getActiveKeepers(std::vector <Keeper
 
     for(auto iter = keeperProcessRegistry.begin(); iter != keeperProcessRegistry.end();)
     {
+        std::stringstream id_string;
+        id_string << (*iter).second.idCard;
         // first check if there are any delayedExit DataStoreClients to be deleted
         while(!(*iter).second.delayedExitClients.empty() &&
               (current_time >= (*iter).second.delayedExitClients.front().first))
         {
             auto dataStoreClientPair = (*iter).second.delayedExitClients.front();
-            std::cout << "INFO: KeeperRegistry::getActiveKeepers destroys old client for {" << (*iter).second.idCard
-                      << "} current_time=" << ctime(&current_time)
-                      << " delayedTime=" << ctime(&(dataStoreClientPair.first)) << std::endl;
+            LOG_INFO("[KeeperRegistry] getActiveKeepers() destroys dataAdminClient for keeper {} current_time={} delayedExitTime={}",id_string.str(), ctime(&current_time), ctime(&(dataStoreClientPair.first)));
             if(dataStoreClientPair.second != nullptr) { delete dataStoreClientPair.second; }
             (*iter).second.delayedExitClients.pop_front();
         }
@@ -375,8 +360,7 @@ std::vector <KeeperIdCard> &KeeperRegistry::getActiveKeepers(std::vector <Keeper
         else if((*iter).second.delayedExitClients.empty())
         {
             // it's safe to erase the entry for unregistered keeper process
-            std::cout << "INFO: KeeperRegistry::getActiveKeepers destroys keeperProcessEntry for {"
-                      << (*iter).second.idCard << "} current_time=" << ctime(&current_time) << std::endl;
+            LOG_INFO("[KeeperRegistry] getActiveKeepers() destroys keeperProcessEntry for keeper {} current_time={}", id_string.str(), std::ctime(&current_time));
 
             if((*iter).second.keeperAdminClient != nullptr)//this should not be the case so may be removed from here
             {
@@ -386,8 +370,7 @@ std::vector <KeeperIdCard> &KeeperRegistry::getActiveKeepers(std::vector <Keeper
         }
         else
         {
-            std::cout << "DEBUG: KeeperRegistry::getActiveKeepers still keeps keeperProcessEntry for {"
-                      << (*iter).second.idCard << "} current_time=" << ctime(&current_time) << std::endl;
+            LOG_INFO("KeeperRegistry] getActiveKeepers still keeps keeperProcessEntry for keeper {} current_time={}",id_string.str(),ctime(&current_time));
 
             ++iter;
         }
@@ -403,8 +386,8 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart(std::vector<KeeperIdCard>
 {
     if(!is_running())
     {
-        std::cout << "Registry has no Keeper processes to start story recording" << std::endl;
-        return CL_ERR_NO_KEEPERS;
+        LOG_ERROR("[KeeperRegistry] Registry has no Keeper processes to start recording story {}", storyId);
+        return chronolog::CL_ERR_NO_KEEPERS;
     }
 
     std::chrono::time_point<std::chrono::system_clock> time_now = std::chrono::system_clock::now();
@@ -415,8 +398,8 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart(std::vector<KeeperIdCard>
     for(KeeperIdCard keeper_id_card: vectorOfKeepersToNotify)
     {
         DataStoreAdminClient* dataAdminClient = nullptr;
-        std::cout << "Registry::notifyStart : story {" << storyId << "} BEFORE {" << story_start_time << "}"
-                  << std::endl;
+        std::stringstream id_string;
+        id_string << keeper_id_card;
         {
             // NOTE: we release the registryLock before sending rpc request so that we do not hold it for the duration of rpc communication.
             // We delay the destruction of unactive keeperProcessEntries that might be triggered by the keeper unregister call from a different thread
@@ -432,8 +415,7 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart(std::vector<KeeperIdCard>
             }
             else
             {
-                std::cout << "WARNING: keeper {" << keeper_id_card << "} is not available for notification..."
-                          << std::endl;
+                LOG_WARNING("[KeeperRegistry] Keeper {} is not available for notification", id_string.str());
                 continue;
             }
         }
@@ -443,35 +425,27 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart(std::vector<KeeperIdCard>
             int rpc_return = dataAdminClient->send_start_story_recording(chronicle, story, storyId, story_start_time);
             if(rpc_return != CL_SUCCESS)
             {
-                std::cout << "WARNING: Registry failed notification RPC to keeper {" << keeper_id_card << "}"
-                          << std::endl;
+                LOG_WARNING("[KeeperRegistry] Registry failed RPC notification to keeper {}", id_string.str());
             }
             else
             {
-                std::cout << "Registry notified keeper {" << keeper_id_card << "} to start recording story {" << storyId
-                          << "} start_time {" << story_start_time << "} " << std::endl;
+                LOG_INFO("[KeeperRegistry] Registry notified keeper {} to start recording StoryID={} with StartTime={}", id_string.str(), storyId, story_start_time);
                 vectorOfKeepers.push_back(keeper_id_card);
             }
         }
         catch(thallium::exception const& ex)
         {
-            std::cout << "WARNING: Registry failed notification RPC to keeper {" << keeper_id_card
-                      << "} details: " << std::endl;
+            LOG_WARNING("[KeeperRegistry] Registry failed RPC notification to keeper {}", id_string.str());
         }
-        std::cout << "Registry::notifyStart : story {" << storyId << "} AFTER {" << story_start_time << "}"
-                  << std::endl;
     }
 
     if(vectorOfKeepers.empty())
     {
-        std::cout << "ERROR: notifyKeepersStart:Registry failed to notify the keepers to start recording story {"
-                  << storyId << "}" << std::endl;
-        return CL_ERR_NO_KEEPERS;
+        LOG_ERROR("[KeeperRegistry] Registry failed to notify keepers to start recording story {}", storyId);
+        return chronolog::CL_ERR_NO_KEEPERS;
     }
 
-    std::cout << "notifyKeepersStart: Registry notified the keepers to start recording story {" << storyId << "}"
-              << std::endl;
-    return CL_SUCCESS;
+    return chronolog::CL_SUCCESS;
 }
 /////////////////
 
@@ -480,16 +454,16 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStop(std::vector<KeeperIdCard> 
 {
     if(!is_running())
     {
-        std::cout << "Registry has no Keeper processes to notify of story release" << std::endl;
-        return CL_ERR_NO_KEEPERS;
+        LOG_ERROR("[KeeperRegistry] Registry has no keepers to notify of story release {}", storyId);
+        return chronolog::CL_ERR_NO_KEEPERS;
     }
 
     size_t keepers_left_to_notify = vectorOfKeepers.size();
     for(KeeperIdCard keeper_id_card: vectorOfKeepers)
     {
         DataStoreAdminClient* dataAdminClient = nullptr;
-        std::cout << "Registry::notifyStart : story {" << storyId << "} BEFORE {"
-                  << "}" << std::endl;
+        std::stringstream id_string;
+        id_string << keeper_id_card;
         {
             // NOTE: we release the registryLock before sending rpc request so that we do not hold it for the duration of rpc communication.
             // We delay the destruction of unactive keeperProcessEntries that might be triggered by the keeper unregister call from a different thread
@@ -505,8 +479,7 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStop(std::vector<KeeperIdCard> 
             }
             else
             {
-                std::cout << "WARNING: keeper {" << keeper_id_card << "} is not available for notification..."
-                          << std::endl;
+                LOG_WARNING("[KeeperRegistry] Keeper {} is not available for notification", id_string.str());
                 continue;
             }
         }
@@ -515,24 +488,20 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStop(std::vector<KeeperIdCard> 
             int rpc_return = dataAdminClient->send_stop_story_recording(storyId);
             if(rpc_return != CL_SUCCESS)
             {
-                std::cout << "WARNING: Registry failed notification RPC to keeper {" << keeper_id_card << "}"
-                          << std::endl;
+                LOG_WARNING("[KeeperRegistry] Registry failed RPC notification to keeper {}", id_string.str());
             }
             else
             {
-                std::cout << "Registry notified keeper {" << keeper_id_card << "} to stop recording story {" << storyId
-                          << "}" << std::endl;
+                LOG_INFO("[KeeperRegistry] Registry notified keeper {} to stop recording story {}", id_string.str(), storyId);
             }
         }
         catch(thallium::exception const& ex)
         {
-            std::cout << "WARNING: Registry failed notification RPC to keeper {" << keeper_id_card
-                      << "} details: " << std::endl;
+            LOG_WARNING("[KeeperRegistry] Registry failed RPC notification to keeper {}", id_string.str());
         }
-        std::cout << "Registry::notifyStop : story {" << storyId << "} AFTER {}" << std::endl;
     }
 
-    return CL_SUCCESS;
+    return chronolog::CL_SUCCESS;
 }
 
 

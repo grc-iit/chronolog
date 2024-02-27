@@ -9,6 +9,7 @@
 #include <fstream>
 #include <numeric>
 #include <complex>
+#include "log.h"
 
 //#define NO_LFENCE
 //#define NO_MFENCE
@@ -44,12 +45,12 @@ double cpu_base_frequency()
         regex_match(line, m, re);
         if(m.size() == 2)
         {
-            std::cout << "CPU freq obtained from /proc/cpuinfo: " << std::stod(m[1]) << " GHz" << std::endl;
+            LOG_INFO("[Common] CPU freq obtained from /proc/cpuinfo: {} GHz", std::stod(m[1]));
             return std::stod(m[1]);
         }
     }
     double freq = 3.8; // base clock of Ryzen 7 5700G is 3.8GHz
-    std::cout << "Fail to get CPU freq from /proc/cpuinfo, returning hard-coded freq " << freq << " GHz" << std::endl;
+    LOG_ERROR("[Common] Fail to get CPU freq from /proc/cpuinfo, returning hard-coded freq {} GHz", freq);
     return freq;
 }
 
@@ -87,8 +88,7 @@ void printVectorStats(std::vector <T> v)
     { return x - mean; });
     double sq_sum = std::inner_product(diff.begin(), diff.end(), diff.begin(), 0.0);
     double stdev = std::sqrt(sq_sum / v.size());
-    std::cout << "Min/Max/Mean/Median/Stddev (ns)" << std::endl << min << "\t" << max << "\t" << mean << "\t" << median
-              << "\t" << stdev << std::endl;
+    LOG_INFO("[Common] Min/Max/Mean/Median/Stddev (ns)\n{}\t{}\t{}\t{}\t{}", min, max, mean, median, stdev);
 }
 
 template <class T>
@@ -96,15 +96,15 @@ void writeVectorStatsToFile(std::vector <T> v)
 {
     sort(v.begin(), v.end());
     std::ofstream fout("data.csv");
-//    fout << "clocksource\t0.001%\t0.1%\t1%\t50%\t99%\t99.9%\t99.99%" << std::endl;
+    //    fout << "clocksource\t0.001%\t0.1%\t1%\t50%\t99%\t99.9%\t99.99%" << std::endl;
     fout << "clocksource\t0.001%\t0.1%\t50%\t99.9%\t99.99%" << std::endl;
     T min = v.at(0);
     T whislo = v.at(TEST_REPS * 0.0001);
     T q1 = v.at(TEST_REPS * 0.001);
-//    T q2 = v.at(TEST_REPS * 0.01);
+    //    T q2 = v.at(TEST_REPS * 0.01);
     T med = v.at(TEST_REPS * 0.5);
     T q3 = v.at(TEST_REPS * 0.99);
-//    T q4 = v.at(TEST_REPS * 0.999);
+    //    T q4 = v.at(TEST_REPS * 0.999);
     T whishi = v.at(TEST_REPS * 0.9999 - 1);
     T max = v.at(TEST_REPS - 2);
     fout << min << "\t" << whislo << "\t" << q1 << "\t"
@@ -120,7 +120,7 @@ void writeListToFile(T*clock_list, int len, std::string &fname)
     std::ofstream outFile(fname, std::ios::trunc);
     if(!outFile.is_open())
     {
-        std::cerr << "Failed to open output file." << std::endl;
+        LOG_ERROR("[Common] Failed to open output file.");
         exit(1);
     }
 
@@ -138,7 +138,7 @@ void writeVecToFile(std::vector <T> &clock_list, int len, std::string &fname)
     std::ofstream outFile(fname, std::ios::trunc);
     if(!outFile.is_open())
     {
-        std::cerr << "Failed to open output file." << std::endl;
+        LOG_ERROR("[Common] Failed to open output file.");
         exit(1);
     }
 
@@ -281,8 +281,7 @@ void convert_timespec_to_ull_vec(struct timespec*clock_list, int len, std::vecto
 
 void convert_time_point_to_double_vec(my_clock::time_point*clock_list, int len, std::vector <double> &duration_list)
 {
-    std::vector <duration < double, std::nano>>
-    duration_list_nanosecond;
+    std::vector <duration <double, std::nano>> duration_list_nanosecond;
     duration_list_nanosecond.reserve(len);
     duration_list.reserve(len);
     for(int i = 0; i < len; i++)

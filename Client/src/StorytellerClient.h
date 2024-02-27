@@ -6,7 +6,7 @@
 #include <map>
 
 #include <thallium.hpp>
-
+#include "log.h"
 #include "KeeperIdCard.h"
 #include "chronolog_types.h"
 #include "chronolog_client.h"
@@ -43,7 +43,7 @@ public:
                                                                                        , rpc_protocol_string(
                     rpc_protocol)
     {
-        std::cout << "StorytellerClient::StorytellerClient clientId : " << clientId << std::endl;
+        LOG_DEBUG("[StorytellerClient] Initialized with ClientID: {}", clientId);
     }
 
     ~StorytellerClient();
@@ -96,8 +96,9 @@ public:
     StoryWritingHandle(StorytellerClient &client, ChronicleName const &a_chronicle, StoryName const &a_story
                        , StoryId const &story_id): theClient(client), chronicle(a_chronicle), story(a_story), storyId(
             story_id), keeperChoicePolicy(new KeeperChoicePolicy)
-    {}
-
+    {
+        LOG_DEBUG("[StoryWritingHandle] Initialized for Chronicle: {}, Story: {}", a_chronicle, a_story);
+    }
 
     virtual ~StoryWritingHandle();
 

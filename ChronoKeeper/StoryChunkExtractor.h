@@ -10,6 +10,7 @@
 
 #include "chrono_common/chronolog_types.h"
 #include "StoryChunkExtractionQueue.h"
+#include "log.h"
 
 
 namespace tl = thallium;
@@ -33,7 +34,7 @@ public:
 
     StoryChunkExtractionQueue &getExtractionQueue()
     {
-        std::cout << "ExtractionBase : chunkExtractionQueue.size=" << chunkExtractionQueue.size() << std::endl;
+        LOG_DEBUG("[StoryChunkExtraction] Current size of extraction queue: {}", chunkExtractionQueue.size());
         return chunkExtractionQueue;
     }
 
@@ -46,7 +47,9 @@ public:
     void drainExtractionQueue();
 
     virtual void processStoryChunk(StoryChunk*)  //=0
-    {}
+    {
+        LOG_WARNING("[StoryChunkExtraction] Base processStoryChunk method called. Derived class should implement specific logic.");
+    }
 
     void startExtractionThreads(int);
 
@@ -61,10 +64,9 @@ private:
     std::mutex extractorMutex;
     StoryChunkExtractionQueue chunkExtractionQueue;
 
-    std::vector <tl::managed < tl::xstream>> extractionStreams;
-    std::vector <tl::managed < tl::thread>> extractionThreads;
+    std::vector <tl::managed <tl::xstream>> extractionStreams;
+    std::vector <tl::managed <tl::thread>> extractionThreads;
 };
-
 }
 
 #endif

@@ -23,7 +23,7 @@ int ChronoVisorServer2::start(chronolog::KeeperRegistry*keeper_registry)
 {
     rpcVisor_ = ChronoLog::Singleton <RPCVisor>::GetInstance(keeper_registry);
 
-    LOGI("ChronoVisor server starting, listen on %d ports starting from %d ...", numPorts_, basePorts_);
+    LOG_INFO("ChronoVisor server starting, listen on %d ports starting from %d ...", numPorts_, basePorts_);
 
     // bind functions first (defining RPC routines on engines)
     rpcVisor_->bind_functions();

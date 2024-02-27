@@ -9,7 +9,7 @@
 #include "KeeperIdCard.h"
 #include "KeeperRegistrationMsg.h"
 #include "KeeperStatsMsg.h"
-
+#include "log.h"
 #include "KeeperRegistry.h"
 
 namespace tl = thallium;
@@ -25,33 +25,33 @@ private:
 
     void register_keeper(tl::request const &request, chronolog::KeeperRegistrationMsg const &keeperMsg)
     {
-
         int return_code = 0;
-
-        std::cout << "register_keeper:" << keeperMsg << std::endl;
-
+        std::stringstream ss, s1;
+        ss << keeperMsg.getKeeperIdCard();
+        s1 << keeperMsg.getAdminServiceId();
+        LOG_INFO("[KeeperRegistryService] New Keeper Registered: KeeperIdCard: {}, AdminServiceId: {}", ss.str(), s1.str());
         return_code = theKeeperProcessRegistry.registerKeeperProcess(keeperMsg);
-
         request.respond(return_code);
     }
 
     void unregister_keeper(tl::request const &request, chronolog::KeeperIdCard const &keeper_id_card)
     {
-
         int return_code = 0;
-
-        std::cout << "unregister_keeper:" << keeper_id_card << std::endl;
+        std::stringstream ss;
+        ss << keeper_id_card;
+        LOG_INFO("[KeeperRegistryService] Keeper Unregistered: KeeperIdCard: {}", ss.str());
         return_code = theKeeperProcessRegistry.unregisterKeeperProcess(keeper_id_card);
-
         request.respond(return_code);
     }
 
     void handle_stats_msg(chronolog::KeeperStatsMsg const &keeper_stats_msg)
     {
-        std::cout << "handle_keeper_stats " << keeper_stats_msg << std::endl;
+        std::stringstream ss;
+        ss << keeper_stats_msg.getKeeperIdCard();
+        LOG_DEBUG("[KeeperRegistryService] Keeper Stats: KeeperIdCard: {}, ActiveStoryCount: {}", ss.str()
+             , keeper_stats_msg.getActiveStoryCount());
         theKeeperProcessRegistry.updateKeeperProcessStats(keeper_stats_msg);
     }
-
 
     KeeperRegistryService(tl::engine &tl_engine, uint16_t service_provider_id, KeeperRegistry &keeperRegistry)
             : tl::provider <KeeperRegistryService>(tl_engine, service_provider_id), theKeeperProcessRegistry(
@@ -80,12 +80,9 @@ public:
 
     ~KeeperRegistryService()
     {
-        std::cout << "KeeperRegistryService::destructor" << std::endl;
         get_engine().pop_finalize_callback(this);
     }
 };
-
-
 }// namespace chronolog
 
 #endif

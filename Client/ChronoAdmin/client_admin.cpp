@@ -1,32 +1,3 @@
-/*BSD 2-Clause License
-
-Copyright (c) 2022, Scalable Computing Software Laboratory
-All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
-
-1. Redistributions of source code must retain the above copyright notice, this
-   list of conditions and the following disclaimer.
-
-2. Redistributions in binary form must reproduce the above copyright notice,
-   this list of conditions and the following disclaimer in the documentation
-   and/or other materials provided with the distribution.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
-FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-Created by Aparna on 01/12/2023
-*/
-
 #include <chronolog_client.h>
 #include <cmd_arg_parse.h>
 #include <common.h>
@@ -37,6 +8,8 @@ Created by Aparna on 01/12/2023
 #include <functional>
 #include <chrono>
 #include <mpi.h>
+#include <log.h>
+#include <cstring>
 
 typedef struct workload_conf_args_
 {
@@ -118,23 +91,23 @@ std::pair <std::string, workload_conf_args> cmd_arg_parse(int argc, char**argv)
                 break;
             case '?':
                 // Invalid option or missing argument
-                LOGE("\nUsage: %s \n"
-                     "-c|--config <config_file>\n"
-                     "-i|--interactive\n"
-                     "-h|--chronicle_count <chronicle_count>\n"
-                     "-t|--story_count <story_count>\n"
-                     "-a|--min_event_size <min_event_size>\n"
-                     "-s|--ave_event_size <ave_event_size>\n"
-                     "-b|--max_event_size <max_event_size>\n"
-                     "-n|--event_count <event_count>\n"
-                     "-g|--event_interval <event_interval>\n"
-                     "-r|--barrier\n"
-                     "-f|--input <event_input_file>\n"
-                     "-o|--shared_story", argv[0]);
+                std::cerr << "\nUsage: \n"
+                             "-c|--config <config_file>\n"
+                             "-i|--interactive\n"
+                             "-h|--chronicle_count <chronicle_count>\n"
+                             "-t|--story_count <story_count>\n"
+                             "-a|--min_event_size <min_event_size>\n"
+                             "-s|--ave_event_size <ave_event_size>\n"
+                             "-b|--max_event_size <max_event_size>\n"
+                             "-n|--event_count <event_count>\n"
+                             "-g|--event_interval <event_interval>\n"
+                             "-r|--barrier\n"
+                             "-f|--input <event_input_file>\n"
+                             "-o|--shared_story\n" << argv[0] << std::endl;
                 exit(EXIT_FAILURE);
             default:
                 // Unknown option
-                LOGE("Unknown option: %c\n", opt);
+                std::cerr << "Unknown option: " << opt << std::endl;
                 exit(EXIT_FAILURE);
         }
     }
@@ -142,49 +115,49 @@ std::pair <std::string, workload_conf_args> cmd_arg_parse(int argc, char**argv)
     // Check if the config file option is provided
     if(config_file)
     {
-        LOGI("Config file specified: %s\n", config_file);
+        std::cout << "Config file specified: " << config_file << std::endl;
         if(workload_args.interactive)
         {
-            LOGI("Interactive mode: on");
+            std::cout << "Interactive mode: on" << std::endl;
         }
         else
         {
-            LOGI("Interactive mode: off");
-            LOGI("Chronicle count: %lu", workload_args.chronicle_count);
-            LOGI("Story count: %lu", workload_args.story_count);
+            std::cout << "Interactive mode: off" << std::endl;
+            std::cout << "Chronicle count: " << workload_args.chronicle_count << std::endl;
+            std::cout << "Story count: " << workload_args.story_count << std::endl;
             if(!workload_args.event_input_file.empty())
             {
-                LOGI("Event input file specified: %s", workload_args.event_input_file.c_str());
-                LOGI("Barrier: %s", workload_args.barrier ? "true" : "false");
-                LOGI("Shared story: %s", workload_args.shared_story ? "true" : "false");
+                std::cout << "Event input file specified: " << workload_args.event_input_file.c_str() << std::endl;
+                std::cout << "Barrier: " << (workload_args.barrier ? "true" : "false") << std::endl;
+                std::cout << "Shared story: " << (workload_args.shared_story ? "true" : "false") << std::endl;
             }
             else
             {
-                LOGI("No event input file specified, use default/specified separate conf args ...");
-                LOGI("Min event size: %lu", workload_args.min_event_size);
-                LOGI("Ave event size: %lu", workload_args.ave_event_size);
-                LOGI("Max event size: %lu", workload_args.max_event_size);
-                LOGI("Event count: %lu", workload_args.event_count);
-                LOGI("Event interval: %lu", workload_args.event_interval);
-                LOGI("Barrier: %s", workload_args.barrier ? "true" : "false");
-                LOGI("Shared story: %s", workload_args.shared_story ? "true" : "false");
+                std::cout << "No event input file specified, use default/specified separate conf args ..." << std::endl;
+                std::cout << "Min event size: " << workload_args.min_event_size << std::endl;
+                std::cout << "Ave event size: " << workload_args.ave_event_size << std::endl;
+                std::cout << "Max event size: " << workload_args.max_event_size << std::endl;
+                std::cout << "Event count: " << workload_args.event_count << std::endl;
+                std::cout << "Event interval: " << workload_args.event_interval << std::endl;
+                std::cout << "Barrier: " << (workload_args.barrier ? "true" : "false") << std::endl;
+                std::cout << "Shared story: " << (workload_args.shared_story ? "true" : "false") << std::endl;
             }
         }
         return {std::pair <std::string, workload_conf_args>((config_file), workload_args)};
     }
     else
     {
-        LOGI("No config file specified, using default instead:\n");
-        LOGI("Interactive mode: %s", workload_args.interactive ? "on" : "off");
-        LOGI("Chronicle count: %lu", workload_args.chronicle_count);
-        LOGI("Story count: %lu", workload_args.story_count);
-        LOGI("Min event size: %lu", workload_args.min_event_size);
-        LOGI("Ave event size: %lu", workload_args.ave_event_size);
-        LOGI("Max event size: %lu", workload_args.max_event_size);
-        LOGI("Event count: %lu", workload_args.event_count);
-        LOGI("Event interval: %lu", workload_args.event_interval);
-        LOGI("Barrier: %s", workload_args.barrier ? "true" : "false");
-        LOGI("Shared story: %s", workload_args.shared_story ? "true" : "false");
+        std::cout << "No config file specified, using default settings instead:" << std::endl;
+        std::cout << "Interactive mode: " << (workload_args.interactive ? "on" : "off") << std::endl;
+        std::cout << "Chronicle count: " << workload_args.chronicle_count << std::endl;
+        std::cout << "Story count: " << workload_args.story_count << std::endl;
+        std::cout << "Min event size: " << workload_args.min_event_size << std::endl;
+        std::cout << "Ave event size: " << workload_args.ave_event_size << std::endl;
+        std::cout << "Max event size: " << workload_args.max_event_size << std::endl;
+        std::cout << "Event count: " << workload_args.event_count << std::endl;
+        std::cout << "Event interval: " << workload_args.event_interval << std::endl;
+        std::cout << "Barrier: " << (workload_args.barrier ? "true" : "false") << std::endl;
+        std::cout << "Shared story: " << (workload_args.shared_story ? "true" : "false") << std::endl;
         return {};
     }
 }
@@ -195,7 +168,7 @@ void random_sleep()
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     srand(getpid());
     long usec = random() % 100000;
-    std::cout << "Sleeping for " << usec << " us ..." << std::endl;
+    LOG_DEBUG("Sleeping for {} us ...", usec);
     usleep(usec * rank);
 }
 
@@ -213,7 +186,7 @@ void test_create_chronicle(chronolog::Client &client, const std::string &chronic
 chronolog::StoryHandle*
 test_acquire_story(chronolog::Client &client, const std::string &chronicle_name, const std::string &story_name)
 {
-    random_sleep(); // TODO: (Kun) remove this when the hanging bug upon concurrent acquire is fixed
+//    random_sleep();
     int flags = 0;
     std::unordered_map <std::string, std::string> story_acquisition_attrs;
     story_acquisition_attrs.emplace("Priority", "High");
@@ -221,7 +194,7 @@ test_acquire_story(chronolog::Client &client, const std::string &chronicle_name,
     story_acquisition_attrs.emplace("TieringPolicy", "Hot");
     std::pair <int, chronolog::StoryHandle*> acq_ret = client.AcquireStory(chronicle_name, story_name
                                                                            , story_acquisition_attrs, flags);
-    std::cout << "acq_ret: " << acq_ret.first << std::endl;
+//    LOG_DEBUG("acq_ret: {}", acq_ret.first);
     assert(acq_ret.first == chronolog::CL_SUCCESS || acq_ret.first == chronolog::CL_ERR_ACQUIRED);
     return acq_ret.second;
 }
@@ -320,6 +293,17 @@ int main(int argc, char**argv)
         conf_file_path = default_conf_file_path;
     }
     ChronoLog::ConfigurationManager confManager(conf_file_path);
+    int result = Logger::initialize(confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE
+                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
+                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
+                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME
+                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILESIZE
+                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILENUM);
+    if(result == 1)
+    {
+        exit(EXIT_FAILURE);
+    }
+
     chronolog::Client client(confManager);
     chronolog::StoryHandle*story_handle;
 
@@ -490,7 +474,7 @@ std::vector <std::string> &command_subs)
                                 event_timestamp = get_event_timestamp(event_payload);
                                 if(event_timestamp < last_event_timestamp)
                                 {
-                                    LOGI("An Out-of-Order event is found, sleeping for 1 second ...");
+                                    LOG_INFO("An Out-of-Order event is found, sleeping for 1 second ...");
                                     sleep_ts.tv_sec = 1;
                                     sleep_ts.tv_nsec = 0;
                                 }
@@ -501,17 +485,14 @@ std::vector <std::string> &command_subs)
                                 }
                                 // TODO: (Kun) work around on failure when daytime changes
                                 if(sleep_ts.tv_sec > 3600) sleep_ts.tv_sec = 0;
-                                LOGD("Sleeping for %ld.%ld seconds to emulate interval between events ..."
-                                     , sleep_ts.tv_sec, sleep_ts.tv_nsec);
+                                LOG_DEBUG("Sleeping for {}.{} seconds to emulate interval between events ..."
+                                          , sleep_ts.tv_sec, sleep_ts.tv_nsec);
                                 nanosleep(&sleep_ts, nullptr);
                                 last_event_timestamp = event_timestamp;
                                 total_event_payload_size += event_payload.size();
                                 test_write_event(story_handle, event_payload);
                                 if(workload_args.barrier)
                                     MPI_Barrier(MPI_COMM_WORLD);
-
-                                if(workload_args.event_interval > 0)
-                                    usleep(workload_args.event_interval);
                             }
 
                             input_file.close();

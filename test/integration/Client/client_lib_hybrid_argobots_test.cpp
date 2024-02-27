@@ -6,6 +6,7 @@
 #include <abt.h>
 #include <mpi.h>
 #include <cmd_arg_parse.h>
+#include "log.h"
 
 chronolog::Client*client;
 
@@ -16,18 +17,29 @@ struct thread_arg
 
 void thread_function(void*t)
 {
+    LOG_INFO("[ClientLibHybridArgobotsTest] Starting thread function for thread ID: {}", ((thread_arg*)t)->tid);
 
     ChronoLog::ConfigurationManager confManager("./default_conf.json");
     std::string server_ip = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP;
     int base_port = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT;
     std::string client_id = gen_random(8);
-    std::string server_uri = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.PROTO_CONF + "://" +
-                             confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP + std::to_string(
-            confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT);
+    std::string server_uri =
+            confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.PROTO_CONF + "://" + server_ip + ":" +
+            std::to_string(base_port);
     int flags = 0;
-    uint64_t offset;
-    int ret = client->Connect();//server_uri, client_id, flags);//, offset);
-    ret = client->Disconnect();//client_id, flags);
+
+    int ret = client->Connect(); // Connect to server using client_id and flags
+    if(ret == chronolog::CL_SUCCESS)
+    {
+        LOG_INFO("[ClientLibHybridArgobotsTest] Successfully connected to server for thread ID: {}", ((thread_arg*)t)->tid);
+    }
+
+    ret = client->Disconnect(); // Disconnect from server using client_id and flags
+    if(ret == chronolog::CL_SUCCESS)
+    {
+        LOG_INFO("[ClientLibHybridArgobotsTest] Successfully disconnected from server for thread ID: {}"
+             , ((thread_arg*)t)->tid);
+    }
 }
 
 int main(int argc, char**argv)
@@ -40,15 +52,24 @@ int main(int argc, char**argv)
 
     MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &provided);
 
-    std::string default_conf_file_path = "./default_conf.json";
     std::string conf_file_path;
     conf_file_path = parse_conf_path_arg(argc, argv);
     if(conf_file_path.empty())
     {
-        conf_file_path = default_conf_file_path;
+        std::exit(EXIT_FAILURE);
     }
-
     ChronoLog::ConfigurationManager confManager(conf_file_path);
+    int result = Logger::initialize(confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE
+                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
+                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
+                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME
+                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILESIZE
+                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILENUM);
+    if(result == 1)
+    {
+        exit(EXIT_FAILURE);
+    }
+    LOG_INFO("[ClientLibHybridArgobotsTest] Running test.");
 
     std::string server_ip = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP;
     int base_port = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT;
@@ -100,9 +121,9 @@ int main(int argc, char**argv)
     free(threads);
     free(t_args);
 
+    LOG_INFO("[ClientLibHybridArgobotsTest] Cleaning up resources and finalizing MPI");
     delete client;
-
     MPI_Finalize();
-
+    LOG_INFO("[ClientLibHybridArgobotsTest] Exiting main function");
     return 0;
 }
