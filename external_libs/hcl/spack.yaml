@@ -1,9 +1,0 @@
-spack:
-  specs:
-  - matrix:
-    - [cmake@3.21.4, boost@1.69.0, mpich@3.3.2, mochi-thallium@0.10.1 ^mochi-margo@0.9.10
-        ^mercury~boostsys]
-    - ['%gcc@8.3.1']
-  - cmake@3.21.4
-  view: true
-  compilers: []
