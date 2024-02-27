@@ -141,13 +141,8 @@ endif()
 #find_package(MPI REQUIRED COMPONENTS CXX)
 find_package(Boost REQUIRED)
 find_package(Thallium REQUIRED)
-#find_library(ROCKSDB_LIB rocksdb)
-#if(NOT ROCKSDB_LIB)
-#    message(FATAL_ERROR "rocksdb is required")
-#else()
-#    find_path(ROCKDSB_INCLUDE rocksdb)
-#    MESSAGE(STATUS "Found rocksdb at: ${ROCKSDB_INCLUDE}")
-#endif()
+
+
 #-----------------------------------------------------------------------------
 # Coverage
 #-----------------------------------------------------------------------------
