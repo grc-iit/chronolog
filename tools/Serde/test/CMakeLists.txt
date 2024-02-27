@@ -1,5 +1,0 @@
-
-add_executable(serde_factory_test serde_factory_test.cpp)
-target_include_directories(serde_factory_test PRIVATE ${Serde_SOURCE_DIR}/include)
-target_link_libraries(serde_factory_test cereal Serde)
-add_dependencies(serde_factory_test cereal Serde)
