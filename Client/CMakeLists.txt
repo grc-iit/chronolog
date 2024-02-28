@@ -1,9 +1,3 @@
-project(ChronoLogClient)
-
-set(CMAKE_CXX_STANDARD 17)
-
-find_package(thallium REQUIRED)
-
 # Define the header files to be copied
 set(HEADER_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/chronolog_client.h

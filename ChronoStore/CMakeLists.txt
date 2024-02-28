@@ -1,13 +1,5 @@
-cmake_minimum_required(VERSION 3.17)
-project(chronostore)
-
 find_package(HDF5 REQUIRED)
 find_package(JSON-C REQUIRED)
-
-# Set the build directory to a subdirectory called "build and add compiler '-o3' flag"
-set(CMAKE_BINARY_DIR ${CMAKE_SOURCE_DIR}/build)
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -g")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0 -g")
 
 include_directories(include
     ../ChronoAPI/ChronoLog/include

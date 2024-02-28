@@ -1,8 +1,5 @@
 set(CMAKE_FIND_LIBRARY_TYPE STATIC)
 
-find_package(thallium REQUIRED)
-find_package(Threads REQUIRED)
-
 add_executable(chronovisor_server)
 
 target_sources(chronovisor_server PRIVATE

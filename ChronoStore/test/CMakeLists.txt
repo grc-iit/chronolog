@@ -1,11 +1,7 @@
-cmake_minimum_required(VERSION 3.17)
+
 find_package(HDF5 REQUIRED COMPONENTS C CXX)
 find_package(JSON-C REQUIRED)
 
-# Set the build directory to a subdirectory called "build"
-set(CMAKE_BINARY_DIR ${CMAKE_SOURCE_DIR}/build)
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0 -g")
 include_directories(../include)
 include_directories(${HDF5_INCLUDE_DIRS})
 
@@ -21,6 +17,7 @@ add_executable(hdf5_archiver_test
 
 target_include_directories(hdf5_archiver_test PRIVATE ../../ChronoKeeper
     ../../chrono_common
+    ../../ChronoKeeper/include
     ./)
 target_link_libraries(hdf5_archiver_test ${HDF5_LIBRARIES})
 target_link_libraries(hdf5_archiver_test json-c)
