@@ -1,6 +1,7 @@
 #include <unistd.h>
 
 #include <thallium.hpp>
+#include <unistd.h>
 
 #include "StoryChunkExtractor.h"
 

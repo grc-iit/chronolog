@@ -2,6 +2,7 @@
 #include <map>
 #include <mutex>
 #include <chrono>
+#include <unistd.h>
 
 #include <thallium.hpp>
 
