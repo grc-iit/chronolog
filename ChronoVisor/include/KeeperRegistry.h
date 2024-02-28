@@ -114,6 +114,7 @@ private:
     std::map <std::pair <uint32_t, uint16_t>, KeeperProcessEntry> keeperProcessRegistry;
     thallium::engine*registryEngine;
     KeeperRegistryService*keeperRegistryService;
+    size_t delayedDataAdminExitSeconds;
 };
 
 }

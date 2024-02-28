@@ -142,12 +142,14 @@ typedef struct VisorConf_
     VisorClientPortalServiceConf VISOR_CLIENT_PORTAL_SERVICE_CONF;
     VisorKeeperRegistryServiceConf VISOR_KEEPER_REGISTRY_SERVICE_CONF;
     LogConf VISOR_LOG_CONF;
+    size_t DELAYED_DATA_ADMIN_EXIT_IN_SECS;
 
     [[nodiscard]] std::string to_String() const
     {
         return "[VISOR_CLIENT_PORTAL_SERVICE_CONF: " + VISOR_CLIENT_PORTAL_SERVICE_CONF.to_String() +
                ", VISOR_KEEPER_REGISTRY_SERVICE_CONF: " + VISOR_KEEPER_REGISTRY_SERVICE_CONF.to_String() +
-               ", VISOR_LOG: " + VISOR_LOG_CONF.to_String() + "]";
+               ", VISOR_LOG: " + VISOR_LOG_CONF.to_String() + 
+               ", DELAYED_DATA_ADMIN_EXIT_IN_SECS: "+ std::to_string(DELAYED_DATA_ADMIN_EXIT_IN_SECS) + "]";
     }
 } VisorConf;
 
@@ -219,6 +221,8 @@ public:
         VISOR_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.RPC_CONF.BASE_PORT = 8888;
         VISOR_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID = 88;
 
+        VISOR_CONF.DELAYED_DATA_ADMIN_EXIT_IN_SECS = 3;
+
         /* Keeper-related configurations */
         KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.RPC_IMPLEMENTATION = CHRONOLOG_THALLIUM_SOCKETS;
         KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.PROTO_CONF = "ofi+sockets";
@@ -258,7 +262,6 @@ public:
     void PrintConf() const
     {
         std::cout << "******** Start of configuration output ********" << std::endl;
-        std::cout << "ROLE: " << getServiceRoleString(ROLE) << std::endl;
         std::cout << "CLOCK_CONF: " << CLOCK_CONF.to_String().c_str() << std::endl;
         std::cout << "AUTH_CONF: " << AUTH_CONF.to_String().c_str() << std::endl;
         std::cout << "VISOR_CONF: " << VISOR_CONF.to_String().c_str() << std::endl;
@@ -652,6 +655,11 @@ private:
                         std::cerr << "[ConfigurationManager] Unknown VisorLog configuration: " << key << std::endl;
                     }
                 }
+            }
+            else if(strcmp(key, "delayed_data_admin_exit_in_secs") == 0)
+            {
+                assert(json_object_is_type(val, json_type_int));
+                VISOR_CONF.DELAYED_DATA_ADMIN_EXIT_IN_SECS=json_object_get_int(val);
             }
             else
             {

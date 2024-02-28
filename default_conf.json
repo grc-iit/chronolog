@@ -36,7 +36,8 @@
         "filesize": 102400,
         "filenum": 3
       }
-    }
+    },
+    "delayed_data_admin_exit_in_secs": 3
   },
   "chrono_keeper": {
     "KeeperRecordingService": {

@@ -49,6 +49,7 @@ int KeeperRegistry::InitializeRegistryService(ChronoLog::ConfigurationManager co
 
         keeperRegistryService = KeeperRegistryService::CreateKeeperRegistryService(*registryEngine, provider_id, *this);
 
+        delayedDataAdminExitSeconds = confManager.VISOR_CONF.DELAYED_DATA_ADMIN_EXIT_IN_SECS;
         registryState = INITIALIZED;
         status = chronolog::CL_SUCCESS;
     }
@@ -99,7 +100,7 @@ int KeeperRegistry::ShutdownRegistryService()
                 if((*process_iter).second.keeperAdminClient != nullptr)
                 {
                     std::time_t delayedExitTime = std::chrono::high_resolution_clock::to_time_t(
-                            std::chrono::high_resolution_clock::now() + std::chrono::seconds(3));
+                            std::chrono::high_resolution_clock::now() + std::chrono::seconds(delayedDataAdminExitSeconds));
                     LOG_INFO("[KeeperRegistry] shutdown: starting delayedExit for keeperProcess {} current_time={} delayedExitTime={}",id_string.str(), ctime(&current_time), std::ctime(&delayedExitTime));;
                     (*process_iter)
                             .second.delayedExitClients.push_back(std::pair<std::time_t, DataStoreAdminClient*>(
@@ -175,7 +176,7 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const &keeper_re
         {
 
             std::time_t delayedExitTime = std::chrono::high_resolution_clock::to_time_t(
-                    std::chrono::high_resolution_clock::now() + std::chrono::seconds(3));
+                    std::chrono::high_resolution_clock::now() + std::chrono::seconds(delayedDataAdminExitSeconds));
             LOG_WARNING("[KeeperRegistry] registerKeeperProcess for keeper {}  found old instance of dataAdminclient; starting delayedExit current_time={} delayedExitTime={}",id_string.str(), ctime(&current_time), std::ctime(&delayedExitTime));;
 
             (*keeper_process_iter)
@@ -275,7 +276,7 @@ int KeeperRegistry::unregisterKeeperProcess(KeeperIdCard const &keeper_id_card)
         {
 
             std::time_t current_time = std::chrono::high_resolution_clock::to_time_t(std::chrono::high_resolution_clock::now());
-            std::time_t delayedExitTime = std::chrono::high_resolution_clock::to_time_t(std::chrono::high_resolution_clock::now() + std::chrono::seconds(30));
+            std::time_t delayedExitTime = std::chrono::high_resolution_clock::to_time_t(std::chrono::high_resolution_clock::now() + std::chrono::seconds(delayedDataAdminExitSeconds));
             LOG_INFO("[KeeperRegistry] unregisterKeeperProcess() starting delayedExit for keeper {} current_time={} delayedExitTime={}",id_string.str(), std::ctime(&current_time), std::ctime(&delayedExitTime));;
 
             (*keeper_process_iter)
