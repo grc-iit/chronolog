@@ -659,7 +659,8 @@ private:
             else if(strcmp(key, "delayed_data_admin_exit_in_secs") == 0)
             {
                 assert(json_object_is_type(val, json_type_int));
-                VISOR_CONF.DELAYED_DATA_ADMIN_EXIT_IN_SECS=json_object_get_int(val);
+                int delayed_exit_value = json_object_get_int(val);
+                VISOR_CONF.DELAYED_DATA_ADMIN_EXIT_IN_SECS=((0<delayed_exit_value && delayed_exit_value<60)? delayed_exit_value : 5);
             }
             else
             {
