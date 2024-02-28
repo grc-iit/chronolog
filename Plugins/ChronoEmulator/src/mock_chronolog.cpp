@@ -1,0 +1,185 @@
+#include <algorithm>
+#include "mock_chronolog.h"
+
+int MockChronolog::Connect()
+{
+    isConnected = true;
+    return 0; // Simulate successful connection
+}
+
+int MockChronolog::Disconnect()
+{
+    isConnected = false;
+    return 0; // Simulate successful disconnection
+}
+
+int MockChronolog::CreateChronicle(const std::string &chronicle_name
+                                   , const std::unordered_map <std::string, std::string> &attrs, int &flags)
+{
+    if(!isConnected)
+    {
+        return -1; // Connection is not established
+    }
+
+    // Search for an existing chronicle with the same name
+    for(const auto &chronicle: chronicles)
+    {
+        if(chronicle->name == chronicle_name)
+        {
+            return -1; // Chronicle already exists
+        }
+    }
+
+    // If not found, create a new chronicle and add it to the vector
+    std::shared_ptr <Chronicle> newChronicle = std::make_shared <Chronicle>(chronicle_name, attrs);
+    chronicles.push_back(newChronicle);
+    return 0; // Success
+}
+
+int MockChronolog::DestroyChronicle(const std::string &chronicle_name)
+{
+    // Iterate through the vector to find the chronicle with the given name
+    for(auto it = chronicles.begin(); it != chronicles.end(); ++it)
+    {
+        if((*it)->name == chronicle_name)
+        {
+            // Chronicle found, remove it from the vector
+            chronicles.erase(it);
+            return 0; // Success
+        }
+    }
+    return -1; // Chronicle not found
+}
+
+
+std::pair <int, StoryHandle*>
+MockChronolog::AcquireStory(const std::string &chronicle_name, const std::string &story_name
+                            , const std::unordered_map <std::string, std::string> &attrs, int &flags)
+{
+    if(!isConnected)
+    {
+        return {-1, nullptr}; // Connection is not established
+    }
+
+    std::shared_ptr <Chronicle> foundChronicle = nullptr;
+
+    // Find the chronicle by name
+    for(auto &chronicle: chronicles)
+    {
+        if(chronicle->name == chronicle_name)
+        {
+            foundChronicle = chronicle;
+            break; // Chronicle found
+        }
+    }
+
+    if(!foundChronicle)
+    {
+        return {-1, nullptr}; // Chronicle does not exist
+    }
+
+    Chronicle &chronicle = *foundChronicle;
+
+    bool exists = chronicle.storyExists(story_name);
+    if(!exists)
+    {
+        chronicle.addStory(story_name);
+    }
+    auto story = chronicle.acquireStory(story_name);
+    if(story == nullptr)
+    {
+        return {-1, story};
+    }
+    else
+    {
+        return {0, story};
+    }
+}
+
+
+int MockChronolog::ReleaseStory(const std::string &chronicle_name, const std::string &story_name)
+{
+    if(!isConnected)
+    {
+        return -1; // Connection is not established
+    }
+
+    // Find the chronicle by name
+    for(auto &chronicle: chronicles)
+    {
+        if(chronicle->name == chronicle_name)
+        {
+            bool exists = chronicle->storyExists(story_name);
+            if(exists)
+            {
+                return chronicle->releaseStory(story_name);
+            }
+            else
+            {
+                return -1;
+            }
+        }
+    }
+    return -1; // Chronicle not found
+}
+
+int MockChronolog::DestroyStory(const std::string &chronicle_name, const std::string &story_name)
+{
+    if(!isConnected)
+    {
+        return -1; // Connection is not established
+    }
+
+    // Iterate through the chronicles to find the one with the given name
+    for(auto &chronicle: chronicles)
+    {
+        if(chronicle->name == chronicle_name)
+        {
+            if(chronicle->storyExists(story_name))
+            {
+                return chronicle->deleteStory(story_name);
+            }
+            return 0;
+        }
+    }
+
+    return -1; // Chronicle not found
+}
+
+/*
+int MockChronolog::GetChronicleAttr(const std::string &chronicle_name, const std::string &key, std::string &value)
+{
+    if(!isConnected)
+    {
+        return -1; // Connection is not established
+    }
+    return 0; // Success
+}
+
+int
+MockChronolog::EditChronicleAttr(const std::string &chronicle_name, const std::string &key, const std::string &value)
+{
+    if(!isConnected)
+    {
+        return -1; // Connection is not established
+    }
+    return 0; // Success
+}
+
+std::vector <std::string> &MockChronolog::ShowChronicles(std::vector <std::string> &output)
+{
+    if(!isConnected)
+    {
+        output.clear(); // Connection is not established
+        return output;
+    }
+    return output; // Return a reference to the provided vector filled with chronicle names
+}
+
+std::vector <std::string> &
+MockChronolog::ShowStories(const std::string &chronicle_name, std::vector <std::string> &output)
+{
+    output.clear();
+    return output; // Return a reference to the provided vector filled with story names
+}
+*/
