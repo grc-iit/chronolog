@@ -3,7 +3,6 @@
 
 #include <map>
 #include <iostream>
-#include <sstream>
 #include "chronolog_types.h"
 #include "log.h"
 
@@ -45,17 +44,6 @@ public:
 
     bool empty() const
     { return (logEvents.empty() ? true : false); }
-
-    size_t getNumEvents() const
-    { return logEvents.size(); }
-
-    size_t getTotalPayloadSize() const
-    {
-        size_t total_size = 0;
-        for(auto const &event: logEvents)
-        { total_size += event.second.logRecord.size(); }
-        return total_size;
-    }
 
     std::map <EventSequence, LogEvent>::const_iterator begin() const
     { return logEvents.begin(); }
@@ -100,25 +88,6 @@ public:
 
     uint32_t eraseEvents(uint64_t start_time, uint64_t end_time)
     { return 0; }
-
-    bool operator==(const StoryChunk &other) const
-    {
-        return ((storyId == other.storyId) && (startTime == other.startTime) && (endTime == other.endTime) &&
-                (revisionTime == other.revisionTime) && (logEvents == other.logEvents));
-    }
-
-    [[nodiscard]] std::string toString() const
-    {
-        std::stringstream ss;
-        ss << "StoryChunk:{" << storyId << ":" << startTime << ":" << endTime << "} has " << logEvents.size()
-           << " events: ";
-        for(auto const &event: logEvents)
-        {
-            ss << "<" << std::get <0>(event.first) << ", " << std::get <1>(event.first) << ", "
-               << std::get <2>(event.first) << ">: " << event.second.toString();
-        }
-        return ss.str();
-    }
 
 private:
     StoryId storyId;
