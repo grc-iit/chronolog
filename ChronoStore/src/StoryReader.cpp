@@ -55,7 +55,7 @@ int StoryReader::readStory(const std::string &chronicle_name, const std::string 
     hid_t story_file = H5Fopen(story_file_name.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
     if(story_file < 0)
     {
-        LOGE("Failed to open story file: %s", story_file_name.c_str());
+        LOG_ERROR("Failed to open story file: {}", story_file_name.c_str());
         return chronolog::CL_ERR_UNKNOWN;
     }
 
@@ -115,7 +115,7 @@ chronolog::StoryChunk StoryReader::readOneStoryChunk(hid_t &story_file, const st
     hid_t story_chunk_dset = H5Dopen(story_file, story_chunk_name.c_str(), H5P_DEFAULT);
     if(story_chunk_dset < 0)
     {
-        LOGE("Failed to open story_chunk_dset: %s", story_chunk_name.c_str());
+        LOG_ERROR("Failed to open story_chunk_dset: {}", story_chunk_name.c_str());
         return {};
     }
 
@@ -130,10 +130,10 @@ chronolog::StoryChunk StoryReader::readOneStoryChunk(hid_t &story_file, const st
     status = H5Dread(story_chunk_dset, H5T_NATIVE_B8, H5S_ALL, H5S_ALL, H5P_DEFAULT, story_chunk_dset_buf);
     if(status < 0)
     {
-        LOGE("Failed to read story_chunk_dset: %s", story_chunk_name.c_str());
+        LOG_ERROR("Failed to read story_chunk_dset: {}", story_chunk_name.c_str());
         return {};
     }
-    LOGD("read %ld bytes from story_chunk_dset: %s", strlen(story_chunk_dset_buf), story_chunk_name.c_str());
+    LOG_DEBUG("read {} bytes from story_chunk_dset: {}", strlen(story_chunk_dset_buf), story_chunk_name.c_str());
 
     // Read story_id_str attribute
     uint64_t story_id = readUint64Attribute(story_chunk_dset, "story_id");
@@ -168,7 +168,7 @@ std::string StoryReader::readStringAttribute(hid_t &story_chunk_dset, const std:
     hid_t attribute_id = H5Aopen(story_chunk_dset, attribute_name.c_str(), H5P_DEFAULT);
     if(attribute_id < 0)
     {
-        LOGE("Failed to open attribute: %s", attribute_name.c_str());
+        LOG_ERROR("Failed to open attribute: {}", attribute_name.c_str());
         return {};
     }
     std::string attribute_value;
@@ -191,7 +191,7 @@ uint64_t StoryReader::readUint64Attribute(hid_t &story_chunk_dset
     hid_t attribute_id = H5Aopen(story_chunk_dset, attribute_name.c_str(), H5P_DEFAULT);
     if(attribute_id < 0)
     {
-        LOGE("Failed to open attribute: %s", attribute_name.c_str());
+        LOG_ERROR("Failed to open attribute: {}", attribute_name.c_str());
         return {};
     }
     uint64_t attribute_value;
@@ -232,18 +232,16 @@ StoryReader::deserializeStoryChunk(char*story_chunk_json_str, // NOLINT(*-conver
             uint32_t client_id = std::stoul(key_str.substr(comma_pos1 + 2, comma_pos2 - comma_pos1 - 2));
             uint32_t index = std::stoul(key_str.substr(comma_pos2 + 2, closing_bracket_pos - comma_pos2 - 2));
 
-            LOGD("val: %s", json_object_get_string(val));
+            LOG_DEBUG("val: {}", json_object_get_string(val));
             chronolog::LogEvent event(story_id, event_time, client_id, index, json_object_get_string(val));
             story_chunk.insertEvent(event);
-            LOGD("#Events: %ld", story_chunk.getNumEvents());
         }
     }
     else
     {
-        LOGE("Failed to parse story_chunk_json_str: %s", story_chunk_json_str);
+        LOG_ERROR("Failed to parse story_chunk_json_str: {}", story_chunk_json_str);
         exit(chronolog::CL_ERR_UNKNOWN);
     }
-    LOGD("#Events: %ld", story_chunk.getNumEvents());
     return story_chunk;
 }
 
@@ -264,7 +262,7 @@ int StoryReader::readStoryRange(const std::string &chronicle_name, const uint64_
     hid_t story_file = H5Fopen(story_file_name.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
     if(story_file < 0)
     {
-        LOGE("Failed to open story file: %s", story_file_name.c_str());
+        LOG_ERROR("Failed to open story file: {}", story_file_name.c_str());
         return chronolog::CL_ERR_UNKNOWN;
     }
     // Get all overlapped Story Chunk names
