@@ -213,6 +213,12 @@ int main(int argc, char*argv[])
     uint64_t story_id = STORY_ID; //dist(rng);
     uint64_t client_id = CLIENT_ID;
 
+    int result = Logger::initialize("console", "cmp_vlen_str_dtype_test.log", spdlog::level::debug, "cmp_vlen_str_dtype_test", 102400, 1);
+    if(result == 1)
+    {
+        exit(EXIT_FAILURE);
+    }
+
     std::cout << "StoryID: " << story_id << std::endl << "#StoryChunks: " << num_story_chunks << std::endl
               << "#EventsInEachChunk: " << num_events_per_story_chunk << std::endl << "meanEventSize: "
               << mean_event_size << std::endl << "minEventSize: " << min_event_size << std::endl << "maxEventSize: "
@@ -267,7 +273,7 @@ int main(int argc, char*argv[])
 //        // Create the directory for the Chronicle
 //        if (!std::filesystem::create_directory(chronicle_dir.c_str()))
 //        {
-//            LOGE("Failed to create chronicle directory: %s, errno: %d", chronicle_dir.c_str(), errno);
+//            LOG_ERROR("Failed to create chronicle directory: {}, errno: {}", chronicle_dir.c_str(), errno);
 //            return CL_ERR_UNKNOWN;
 //        }
 //    }
@@ -285,11 +291,11 @@ int main(int argc, char*argv[])
         story_id = story_chunk.getStoryID();
         std::string story_file_name = chronicle_dir + "/" + std::to_string(story_id);
         story_file = H5Fcreate(story_file_name.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
-        LOGD("H5Fcreate returns: %li", story_file);
+        LOG_DEBUG("H5Fcreate returns: {}", story_file);
 //        if (story_chunk_fd_map.find(story_id) != story_chunk_fd_map.end())
 //        {
 //            story_file = story_chunk_fd_map.find(story_id)->second;
-//            LOGD("Story file already opened: %s", story_file_name.c_str());
+//            LOG_DEBUG("Story file already opened: {}", story_file_name.c_str());
 //        }
         // Story file does not exist, create the Story file if it does not exist
 //        else if (stat(story_file_name.c_str(), &st) != 0)
@@ -297,7 +303,7 @@ int main(int argc, char*argv[])
 //            story_file = H5Fcreate(story_file_name.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
 //            if (story_file == H5I_INVALID_HID)
 //            {
-//                LOGE("Failed to create story file: %s", story_file_name.c_str());
+//                LOG_ERROR("Failed to create story file: {}", story_file_name.c_str());
 //                return CL_ERR_UNKNOWN;
 //            }
 //            story_chunk_fd_map.emplace(story_id, story_file);
@@ -308,7 +314,7 @@ int main(int argc, char*argv[])
             story_file = H5Fopen(story_file_name.c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
             if(story_file < 0)
             {
-                LOGE("Failed to open story file: %s", story_file_name.c_str());
+                LOG_ERROR("Failed to open story file: {}", story_file_name.c_str());
                 return chronolog::CL_ERR_UNKNOWN;
             }
 //            story_chunk_fd_map.emplace(story_id, story_file);
@@ -320,7 +326,7 @@ int main(int argc, char*argv[])
                 std::to_string(story_chunk.getStartTime()) + "_" + std::to_string(story_chunk.getEndTime());
         if(H5Lexists(story_file, story_chunk_dset_name.c_str(), H5P_DEFAULT) > 0)
         {
-            LOGE("Story chunk already exists: %s", story_chunk_dset_name.c_str());
+            LOG_ERROR("Story chunk already exists: {}", story_chunk_dset_name.c_str());
             return chronolog::CL_ERR_STORY_CHUNK_EXISTS;
         }
 
@@ -329,60 +335,60 @@ int main(int argc, char*argv[])
          */
         // Define variable-length payload data type
         hid_t event_payload_type = H5Tcopy(H5T_C_S1);
-        LOGD("H5Tcopy(H5T_C_S1) returns: %li", event_payload_type);
+        LOG_DEBUG("H5Tcopy(H5T_C_S1) returns: {}", event_payload_type);
         status = H5Tset_size(event_payload_type, H5T_VARIABLE);
-        LOGD("H5Tset_size(event_payload_type, H5T_VARIABLE) returns: %i", status);
+        LOG_DEBUG("H5Tset_size(event_payload_type, H5T_VARIABLE) returns: {}", status);
         hid_t vl_datatype_id = H5Tcopy(event_payload_type);
-        LOGD("H5Tcopy(event_payload_type) returns: %li", vl_datatype_id);
+        LOG_DEBUG("H5Tcopy(event_payload_type) returns: {}", vl_datatype_id);
         // Define LogEvent data type
         hid_t log_event_type = H5Tcreate(H5T_COMPOUND, sizeof(LogEvent));
-        LOGD("H5Tcreate(H5T_COMPOUND, sizeof(LogEvent)) returns: %li", log_event_type);
+        LOG_DEBUG("H5Tcreate(H5T_COMPOUND, sizeof(LogEvent)) returns: {}", log_event_type);
         status = H5Tinsert(log_event_type, "storyId", HOFFSET(LogEvent, storyId), H5T_NATIVE_UINT64);
-        LOGD("H5Tinsert returns: %i", status);
+        LOG_DEBUG("H5Tinsert returns: {}", status);
         status = H5Tinsert(log_event_type, "eventTime", HOFFSET(LogEvent, eventTime), H5T_NATIVE_UINT64);
-        LOGD("H5Tinsert returns: %i", status);
+        LOG_DEBUG("H5Tinsert returns: {}", status);
         status = H5Tinsert(log_event_type, "clientId", HOFFSET(LogEvent, clientId), H5T_NATIVE_UINT32);
-        LOGD("H5Tinsert returns: %i", status);
+        LOG_DEBUG("H5Tinsert returns: {}", status);
         status = H5Tinsert(log_event_type, "eventIndex", HOFFSET(LogEvent, eventIndex), H5T_NATIVE_UINT32);
-        LOGD("H5Tinsert returns: %i", status);
+        LOG_DEBUG("H5Tinsert returns: {}", status);
         status = H5Tinsert(log_event_type, "logRecordSize", HOFFSET(LogEvent, logRecordSize), H5T_NATIVE_UINT64);
-        LOGD("H5Tinsert returns: %i", status);
+        LOG_DEBUG("H5Tinsert returns: {}", status);
         status = H5Tinsert(log_event_type, "logRecord", HOFFSET(LogEvent, logRecord), vl_datatype_id);
-        LOGD("H5Tinsert returns: %i", status);
+        LOG_DEBUG("H5Tinsert returns: {}", status);
         if(status < 0)
         {
-            LOGE("Failed to create data type for log event, status: %i", status);
+            LOG_ERROR("Failed to create data type for log event, status: {}", status);
             return chronolog::CL_ERR_UNKNOWN;
         }
 
         // Create the dataspace for the dataset for the Story Chunk
         const hsize_t story_chunk_dset_dims[1] = {story_chunk.getNumEvents()};
         story_chunk_dspace = H5Screate_simple(DATASET_RANK, story_chunk_dset_dims, nullptr);
-        LOGD("H5Screate_simple returns: %li", story_chunk_dspace);
+        LOG_DEBUG("H5Screate_simple returns: {}", story_chunk_dspace);
         if(story_chunk_dspace < 0)
         {
-            LOGE("Failed to create dataspace for story chunk: %s", story_chunk_dset_name.c_str());
+            LOG_ERROR("Failed to create dataspace for story chunk: {}", story_chunk_dset_name.c_str());
             return chronolog::CL_ERR_UNKNOWN;
         }
 
         // Create the property list
         hid_t story_chunk_dset_creation_plist = H5Pcreate(H5P_DATASET_CREATE);
-        LOGD("H5Pcreate returns: %li", story_chunk_dset_creation_plist);
+        LOG_DEBUG("H5Pcreate returns: {}", story_chunk_dset_creation_plist);
 
         // Create the dataset for the Story Chunk
         // Set #chunks to number of Events in the Story Chunk
         hsize_t story_chunk_dset_chunk_dims[1] = {1}; //{ story_chunk.getNumEvents() };
         status = H5Pset_chunk(story_chunk_dset_creation_plist, DATASET_RANK, story_chunk_dset_chunk_dims);
-        LOGD("H5Pset_chunk returns: %i", status);
+        LOG_DEBUG("H5Pset_chunk returns: {}", status);
 //        story_chunk_dset = H5Dcreate2(story_file, story_chunk_dset_name.c_str(), story_chunk_type, story_chunk_dspace,
 //                                      H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
         story_chunk_dset = H5Dcreate(story_file, ("/" + story_chunk_dset_name).c_str(), log_event_type
                                      , story_chunk_dspace, H5P_DEFAULT, story_chunk_dset_creation_plist, H5P_DEFAULT);
         status = H5Pclose(story_chunk_dset_creation_plist);
-        LOGD("H5Pclose returns: %i", status);
+        LOG_DEBUG("H5Pclose returns: {}", status);
         if(story_chunk_dset < 0)
         {
-            LOGE("Failed to create dataset for story chunk: %s", story_chunk_dset_name.c_str());
+            LOG_ERROR("Failed to create dataset for story chunk: {}", story_chunk_dset_name.c_str());
             return chronolog::CL_ERR_UNKNOWN;
         }
 
@@ -402,18 +408,18 @@ int main(int argc, char*argv[])
 //        }
 
         // Write the Story Chunk to the dataset
-        LOGD("%c", story_chunk.logEvents[0].logRecord[0]);
-        LOGD("%c", story_chunk.logEvents[0].logRecord[7]);
-        LOGD("%c", story_chunk.logEvents[9].logRecord[0]);
-        LOGD("%c", story_chunk.logEvents[9].logRecord[7]);
+        LOG_DEBUG("{}", story_chunk.logEvents[0].logRecord[0]);
+        LOG_DEBUG("{}", story_chunk.logEvents[0].logRecord[7]);
+        LOG_DEBUG("{}", story_chunk.logEvents[9].logRecord[0]);
+        LOG_DEBUG("{}", story_chunk.logEvents[9].logRecord[7]);
 //        status = H5Dwrite(story_chunk_dset, H5T_NATIVE_B8, H5S_ALL, H5S_ALL, H5P_DEFAULT,
 //                          &story_chunk_map_it->second);
         status = H5Dwrite(story_chunk_dset, log_event_type, H5S_ALL, H5S_ALL, H5P_DEFAULT, &story_chunk.logEvents);
-        LOGD("H5Dwrite returns: %i", status);
+        LOG_DEBUG("H5Dwrite returns: {}", status);
 //        free(event_payload_data);
         if(status < 0)
         {
-            LOGE("Failed to write story chunk to dataset: %s", story_chunk_dset_name.c_str());
+            LOG_ERROR("Failed to write story chunk to dataset: {}", story_chunk_dset_name.c_str());
             // Print the detailed error message
             H5Eprint(H5E_DEFAULT, stderr);
 
@@ -421,30 +427,31 @@ int main(int argc, char*argv[])
             H5Ewalk2(H5E_DEFAULT, H5E_WALK_DOWNWARD
                      , [](unsigned n, const H5E_error2_t*err_desc, void*client_data) -> herr_t
                     {
-                        printf("Error #%u: %s\n", n, err_desc->desc);
+                        printf("Error #%u: {}\n", n, err_desc->desc);
                         return 0;
                     }, nullptr);
             return chronolog::CL_ERR_UNKNOWN;
         }
         status = H5Dvlen_reclaim(log_event_type, story_chunk_dspace, H5P_DEFAULT, &g_events);
-        LOGD("H5Dvlen_reclaim returns: %i", status);
+        LOG_DEBUG("H5Dvlen_reclaim returns: {}", status);
 
         // Close file, dataset and data space
         status = H5Fclose(story_file);
-        LOGD("H5Fclose returns: %i", status);
+        LOG_DEBUG("H5Fclose returns: {}", status);
         status = H5Dclose(story_chunk_dset);
-        LOGD("H5Dclose returns: %i", status);
+        LOG_DEBUG("H5Dclose returns: {}", status);
         status = H5Sclose(story_chunk_dspace);
-        LOGD("H5Sclose returns: %i", status);
+        LOG_DEBUG("H5Sclose returns: {}", status);
         status = H5Tclose(log_event_type);
-        LOGD("H5Tclose returns: %i", status);
+        LOG_DEBUG("H5Tclose returns: {}", status);
         status = H5Tclose(event_payload_type);
-        LOGD("H5Tclose returns: %i", status);
+        LOG_DEBUG("H5Tclose returns: {}", status);
         status = H5Tclose(vl_datatype_id);
-        LOGD("H5Tclose returns: %i", status);
+        LOG_DEBUG("H5Tclose returns: {}", status);
         if(status < 0)
         {
-            LOGE("Failed to close dataset or dataspace or file for story chunk: %s", story_chunk_dset_name.c_str());
+            LOG_ERROR("Failed to close dataset or dataspace or file for story chunk: {}"
+                      , story_chunk_dset_name.c_str());
             return chronolog::CL_ERR_UNKNOWN;
         }
     }
@@ -458,13 +465,13 @@ int main(int argc, char*argv[])
 //            char *story_file_name = new char[128];
 //            size_t file_name_len = 0;
 //            H5Fget_name(story_chunk_fd_map_it.second, story_file_name, file_name_len);
-//            LOGE("Failed to close file for story chunk: %s", story_file_name);
+//            LOG_ERROR("Failed to close file for story chunk: {}", story_file_name);
 //            free(story_file_name);
 //            return CL_ERR_UNKNOWN;
 //        }
 //    }
 
     // Cleanup
-    for(auto &story_chunk_map_it : story_chunk_map)
+    for(auto &story_chunk_map_it: story_chunk_map)
     { freeStoryChunk(story_chunk_map_it.second); }
 }
