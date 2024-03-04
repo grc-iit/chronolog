@@ -1,7 +1,3 @@
-//
-// Created by eneko on 2/20/24.
-//
-
 #include "chronokvs_utils.h"
 
 std::string serialize(const std::string &key, const std::string &value)

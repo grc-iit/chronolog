@@ -1,14 +1,10 @@
-//
-// Created by eneko on 2/20/24.
-//
-
 #ifndef CHRONOKVS_CHRONOKVS_MEMORYMANAGER_H
 #define CHRONOKVS_CHRONOKVS_MEMORYMANAGER_H
 
 #include <string>
 #include <vector>
+#include <utility>
 #include <unordered_map>
-#include <utility> // for std::pair
 
 class MemoryManager
 {

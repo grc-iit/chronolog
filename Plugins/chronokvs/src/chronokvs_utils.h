@@ -1,12 +1,8 @@
-//
-// Created by eneko on 2/20/24.
-//
-
 #ifndef CHRONOKVS_CHRONOKVS_UTILS_H
 #define CHRONOKVS_CHRONOKVS_UTILS_H
 
 #include <string>
-#include <utility> // For std::pair
+#include <utility>
 
 // Serializes the given key and value into a single string.
 std::string serialize(const std::string &key, const std::string &value);

@@ -1,7 +1,3 @@
-//
-// Created by eneko on 2/20/24.
-//
-
 #include "chronokvs_memorymanager.h"
 
 std::unordered_multimap <std::string, std::uint64_t> dataStore;

@@ -1,11 +1,6 @@
-//
-// Created by eneko on 1/11/24.
-//
-
 #include "chronokvs_mapper.h"
 #include "chronolog_client.h"
 #include "chronokvs_utils.h"
-
 
 std::uint64_t chronolog::chronokvs_mapper::storeKeyValue(const std::string &key, const std::string &value)
 {
@@ -26,7 +21,6 @@ chronolog::chronokvs_mapper::retrieveByTimestamp(std::uint64_t timestamp)
     {
         keyValues.push_back(deserialize(serializedEvent));
     }
-
     return keyValues;
 }
 

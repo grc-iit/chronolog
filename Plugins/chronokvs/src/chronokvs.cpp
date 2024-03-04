@@ -1,15 +1,9 @@
-//
-// Created by eneko on 2/19/24.
-//
+#include <iostream>
 #include "chronokvs.h"
 #include "chronokvs_mapper.h"
-#include <iostream>
-// Include other necessary headers
 
 namespace chronolog
 {
-
-// Assuming the mapper is initialized elsewhere and available here.
 chronokvs_mapper mapper;
 
 ChronoKVS::ChronoKVS()

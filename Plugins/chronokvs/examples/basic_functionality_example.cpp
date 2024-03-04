@@ -1,10 +1,6 @@
-//
-// Created by eneko on 2/21/24.
-//
-
-#include "chronokvs.h"
-#include <iostream>
 #include <string>
+#include <iostream>
+#include "chronokvs.h"
 
 int main()
 {

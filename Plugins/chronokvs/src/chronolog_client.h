@@ -1,7 +1,3 @@
-//
-// Created by eneko on 2/20/24.
-//
-
 #ifndef CHRONOLOG_CLIENT_H_
 #define CHRONOLOG_CLIENT_H_
 
@@ -12,7 +8,6 @@
 
 namespace chronolog
 {
-
 /**
  * Client for interacting with the ChronoLog system.
  */
@@ -23,6 +18,7 @@ private:
     std::uint64_t currentTimestamp = 0; // Simplified timestamp generation
 public:
     ChronoLogClient() = default;
+
     ~ChronoLogClient() = default;
 
     // Store an event in ChronoLog and return a timestamp
@@ -33,5 +29,4 @@ public:
 
 };
 }
-
 #endif // CHRONOLOG_CLIENT_H_

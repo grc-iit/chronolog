@@ -1,7 +1,3 @@
-//
-// Created by eneko on 1/11/24.
-//
-
 #include "chronolog_client.h"
 
 namespace chronolog
@@ -28,7 +24,6 @@ std::vector <std::string> ChronoLogClient::retrieveEvents(std::uint64_t timestam
             matchingEvents.push_back(eventPair.second);
         }
     }
-
     return matchingEvents;
 }
 

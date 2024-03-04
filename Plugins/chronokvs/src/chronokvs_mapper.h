@@ -1,40 +1,35 @@
-//
-// Created by eneko on 1/11/24.
-//
 #ifndef KVS_MAPPER_H_
 #define KVS_MAPPER_H_
 
 #include <string>
 #include <vector>
+#include <memory>
 #include <utility>
 #include <optional>
 #include <unordered_map>
-#include <memory>
 #include "chronolog_client.h"
 #include "chronokvs_memorymanager.h"
 
-
 namespace chronolog
 {
-
 /**
  * Handles mapping between key-value pairs and ChronoLog's data model.
  */
 class chronokvs_mapper
 {
 private:
-    std::unique_ptr<MemoryManager> memoryManager;
-    std::unique_ptr<ChronoLogClient> chronoClient;
+    std::unique_ptr <MemoryManager> memoryManager;
+    std::unique_ptr <ChronoLogClient> chronoClient;
 
 public:
     // Default constructor that initializes MemoryManager and ChronoLogClient
-    chronokvs_mapper()
-            : memoryManager(std::make_unique<MemoryManager>()),
-            chronoClient(std::make_unique<ChronoLogClient>()) {}
+    chronokvs_mapper(): memoryManager(std::make_unique <MemoryManager>()), chronoClient(
+            std::make_unique <ChronoLogClient>())
+    {}
 
     // Existing constructor remains for manual dependency injection if needed
-    chronokvs_mapper(MemoryManager &manager, ChronoLogClient &client)
-            : memoryManager(&manager), chronoClient(&client) {}
+    chronokvs_mapper(MemoryManager &manager, ChronoLogClient &client): memoryManager(&manager), chronoClient(&client)
+    {}
 
     std::uint64_t storeKeyValue(const std::string &key, const std::string &value);
 

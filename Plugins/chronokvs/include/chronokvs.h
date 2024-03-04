@@ -1,7 +1,3 @@
-//
-// Created by eneko on 2/19/24.
-//
-
 #ifndef CHRONOKVS_H_
 #define CHRONOKVS_H_
 
