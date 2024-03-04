@@ -46,5 +46,5 @@ install(
 
 # install configuration file
 install(
-    FILES ${CMAKE_CURRENT_SOURCE_DIR}/../default_conf.json.in DESTINATION conf RENAME default_conf.json
+    FILES ${CMAKE_SOURCE_DIR}/default_conf.json.in DESTINATION conf RENAME default_conf.json
 )
