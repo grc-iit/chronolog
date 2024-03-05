@@ -9,20 +9,6 @@
 #include "../src/story.h"
 #include "../src/chronicle.h"
 
-class Story {
-private:
-    StoryHandle* storyHandle;
-
-public:
-    uint64_t record(const std::string &event){
-        return storyHandle->record(event);
-    }
-
-    std::vector <std::string> replay(uint64_t timestamp){
-        return storyHandle->replay(timestamp);
-    }
-};
-
 class MockChronolog: public std::enable_shared_from_this <MockChronolog>
 {
 private:
