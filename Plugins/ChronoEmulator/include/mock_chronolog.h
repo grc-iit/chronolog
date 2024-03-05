@@ -2,12 +2,26 @@
 #define CHRONOKVS_MOCK_CHRONOLOG_H
 
 #include <string>
-#include <unordered_map>
 #include <vector>
-#include <utility>
 #include <memory>
+#include <utility>
+#include <unordered_map>
 #include "../src/story.h"
 #include "../src/chronicle.h"
+
+class Story {
+private:
+    StoryHandle* storyHandle;
+
+public:
+    uint64_t record(const std::string &event){
+        return storyHandle->record(event);
+    }
+
+    std::vector <std::string> replay(uint64_t timestamp){
+        return storyHandle->replay(timestamp);
+    }
+};
 
 class MockChronolog: public std::enable_shared_from_this <MockChronolog>
 {
@@ -32,16 +46,6 @@ public:
     int ReleaseStory(const std::string &chronicle_name, const std::string &story_name);
 
     int DestroyStory(const std::string &chronicle_name, const std::string &story_name);
-
-    /*
-    int GetChronicleAttr(const std::string &chronicle_name, const std::string &key, std::string &value);
-
-    int EditChronicleAttr(const std::string &chronicle_name, const std::string &key, const std::string &value);
-
-    std::vector <std::string> &ShowChronicles(std::vector <std::string> &output);
-
-    std::vector <std::string> &ShowStories(const std::string &chronicle_name, std::vector <std::string> &output);
-    */
 };
 
 #endif //CHRONOKVS_MOCK_CHRONOLOG_H
