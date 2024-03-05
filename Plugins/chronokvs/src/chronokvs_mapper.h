@@ -27,10 +27,6 @@ public:
             std::make_unique <ChronoLogClient>())
     {}
 
-    // Existing constructor remains for manual dependency injection if needed
-    chronokvs_mapper(MemoryManager &manager, ChronoLogClient &client): memoryManager(&manager), chronoClient(&client)
-    {}
-
     std::uint64_t storeKeyValue(const std::string &key, const std::string &value);
 
     std::vector <std::pair <std::string, std::string>> retrieveByTimestamp(std::uint64_t timestamp);

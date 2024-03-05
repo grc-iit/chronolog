@@ -4,19 +4,18 @@
 
 int main()
 {
-    // Note: ChronoKVS::put is now a static method that returns a timestamp.
+    // Phase 1: Variable Definition
     std::string key1 = "key1";
     std::string value1 = "value1";
-
     std::string key2 = "key2";
     std::string value2 = "value2";
 
-    // Put operation with current timestamp
+    // Phase 2: Key-Value Insertion
     std::cout << "Putting key-value pairs into ChronoKVS...\n";
     std::uint64_t timestamp1 = chronolog::ChronoKVS::put(key1, value1);
     std::uint64_t timestamp2 = chronolog::ChronoKVS::put(key2, value2);
 
-    // Retrieve operation by timestamp
+    // Phase 3: Retrieval By Timestamp
     std::cout << "Retrieving values by timestamp from ChronoKVS...\n";
     auto valuesAtTimestamp1 = chronolog::ChronoKVS::get(timestamp1);
     for(const auto &pair: valuesAtTimestamp1)
@@ -24,7 +23,7 @@ int main()
         std::cout << "At timestamp " << timestamp1 << ", key: " << pair.first << " value: " << pair.second << "\n";
     }
 
-    // Retrieve all timestamps and values for a key
+    // Phase 4: Retrieving History For A Key
     std::cout << "Retrieving all timestamps and values for a key...\n";
     auto historyForKey2 = chronolog::ChronoKVS::get(key2);
     for(const auto &pair: historyForKey2)
@@ -32,7 +31,7 @@ int main()
         std::cout << "Key " << key2 << " at timestamp " << pair.first << " had value: " << pair.second << "\n";
     }
 
-    // Retrieve value by key and specific timestamp
+    // Phase 5: Retrieving Value By Key And Specific Timestamp
     std::cout << "Retrieving value by key and specific timestamp...\n";
     auto valueForKey1AtTimestamp = chronolog::ChronoKVS::get(key1, timestamp1);
     if(!valueForKey1AtTimestamp.empty())
