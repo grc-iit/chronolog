@@ -21,6 +21,78 @@
 #define CHRONICLE_NAME "Ares_Monitoring"
 #define STORY_NAME "CPU_Utilization"
 
+bool compareLogEvent(const chronolog::LogEvent &event1, const chronolog::LogEvent &event2)
+{
+    if(event1.storyId != event2.storyId)
+    {
+        return false;
+    }
+    if(event1.clientId != event2.clientId)
+    {
+        return false;
+    }
+    if(event1.eventIndex != event2.eventIndex)
+    {
+        return false;
+    }
+    if(event1.eventTime != event2.eventTime)
+    {
+        return false;
+    }
+    if(event1.logRecord != event2.logRecord)
+    {
+        return false;
+    }
+    return true;
+}
+
+bool compareStoryChunk(chronolog::StoryChunk &story_chunk1, chronolog::StoryChunk &story_chunk2)
+{
+    auto size1 = std::distance(story_chunk1.begin(), story_chunk1.end());
+    auto size2 = std::distance(story_chunk2.begin(), story_chunk2.end());
+    if(size1 != size2)
+    {
+        return false;
+    }
+    auto it1 = story_chunk1.begin();
+    auto it2 = story_chunk2.begin();
+    while(it1 != story_chunk1.end())
+    {
+        if(it1->first != it2->first)
+        {
+            return false;
+        }
+        if(!compareLogEvent(it1->second, it2->second))
+        {
+            return false;
+        }
+        it1++;
+        it2++;
+    }
+    return true;
+}
+
+bool compareStoryChunkMaps(std::map <uint64_t, chronolog::StoryChunk> &map1
+                           , std::map <uint64_t, chronolog::StoryChunk> &map2)
+{
+    if(map1.size() != map2.size())
+    {
+        return false;
+    }
+    for(auto &it: map1)
+    {
+        if(map2.find(it.first) == map2.end())
+        {
+            return false;
+        }
+        if(!compareStoryChunk(it.second, map2[it.first]))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 void testWriteOperation(const std::map <uint64_t, chronolog::StoryChunk> &story_chunk_map, std::string &chronicle_name
                         , std::string &story_name)
 {
@@ -80,6 +152,13 @@ int main(int argc, char*argv[])
     uint64_t story_id = dist(rng);
     uint64_t client_id = CLIENT_ID;
 
+    int result = Logger::initialize("console", "hdf5_archiver_test.log", spdlog::level::debug, "hdf5_archiver_test"
+                                    , 102400, 1);
+    if(result == 1)
+    {
+        exit(EXIT_FAILURE);
+    }
+
     std::cout << "StoryID: " << story_id << std::endl << "#StoryChunks: " << num_story_chunks << std::endl
               << "#EventsInEachChunk: " << num_events_per_story_chunk << std::endl << "meanEventSize: "
               << mean_event_size << std::endl << "minEventSize: " << min_event_size << std::endl << "maxEventSize: "
@@ -114,7 +193,7 @@ int main(int argc, char*argv[])
 
     // Validate read all results
     std::cout << "Validating read all results ..." << std::endl;
-    if(story_chunk_map == story_chunk_map2)
+    if(compareStoryChunkMaps(story_chunk_map, story_chunk_map2))
     {
         std::cout << "Validation passed!" << std::endl;
     }
@@ -169,7 +248,7 @@ int main(int argc, char*argv[])
     // Validate range read results
     std::cout << "Validating range read [" << range_start_time << ", " << range_end_time << ") " << "out of ["
               << start_time << ", " << end_time << ") results ..." << std::endl;
-    if(story_chunk_map3 == story_chunk_map4)
+    if(compareStoryChunkMaps(story_chunk_map3, story_chunk_map4))
     {
         std::cout << "Validation passed!" << std::endl;
     }
