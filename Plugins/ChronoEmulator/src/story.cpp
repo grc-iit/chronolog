@@ -1,5 +1,6 @@
 #include <string>
 #include <chrono>
+#include <thread>
 #include "story.h"
 
 /**
@@ -11,13 +12,11 @@ uint64_t StoryHandle::record(const std::string &event)
     {
         return 1;
     }
-    auto now = std::chrono::system_clock::now();
+    auto now = std::chrono::high_resolution_clock::now();
     auto duration = now.time_since_epoch();
-    auto millis = std::chrono::duration_cast <std::chrono::milliseconds>(duration).count();
-
-    events.emplace_back(static_cast<uint64_t>(millis), event);
-
-    return static_cast<uint64_t>(millis);
+    auto nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
+    events.emplace_back(static_cast<uint64_t>(nanos), event);
+    return static_cast<uint64_t>(nanos);
 }
 
 /**
