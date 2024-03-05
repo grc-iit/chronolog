@@ -2,7 +2,6 @@
 #define CHRONOKVS_H_
 
 #include <string>
-#include <optional>
 #include <vector>
 
 namespace chronolog
