@@ -2,28 +2,50 @@
 
 namespace chronolog
 {
+ChronoLogClient::ChronoLogClient()
+{
+    int flags = 0;
+    chronolog = std::make_shared <MockChronolog>();
+    chronolog->Connect();
+    chronolog->CreateChronicle("defaultChronicle", {}, flags);
+    auto [status, handle] = chronolog->AcquireStory("defaultChronicle", "defaultStory", {}, flags);
+    storyHandle = std::shared_ptr<StoryHandle>(handle);
+}
+
+ChronoLogClient::~ChronoLogClient()
+{
+    if(storyHandle != nullptr)
+    {
+        chronolog->ReleaseStory("defaultChronicle", "defaultStory");
+        chronolog->DestroyStory("defaultChronicle", "defaultStory");
+    }
+    chronolog->DestroyChronicle("defaultChronicle");
+    chronolog->Disconnect();
+}
 
 // Store an event in ChronoLog and return a timestamp
 std::uint64_t ChronoLogClient::storeEvent(const std::string &serializedEvent)
 {
-    std::uint64_t timestamp = ++currentTimestamp; // Increment to simulate timestamp generation
-    events[timestamp] = serializedEvent;
-    return timestamp;
+    if(storyHandle == nullptr)
+    {
+        return 0; // Error handling or re-acquire the story handle if necessary
+    }
+
+    // Record the event using the persistent story handle
+    std::uint64_t eventTimestamp = storyHandle->record(serializedEvent);
+
+    return eventTimestamp;
 }
 
 // Retrieve an event from ChronoLog using a timestamp
 std::vector <std::string> ChronoLogClient::retrieveEvents(std::uint64_t timestamp)
 {
-    std::vector <std::string> matchingEvents;
-
-    // Iterate through the events container (assuming it's a container supporting iteration)
-    for(const auto &eventPair: events)
+    if(storyHandle == nullptr)
     {
-        if(eventPair.first == timestamp)
-        {
-            matchingEvents.push_back(eventPair.second);
-        }
+        return {};
     }
+    // Replay events using the persistent story handle
+    std::vector <std::string> matchingEvents = storyHandle->replay(timestamp);
     return matchingEvents;
 }
 
