@@ -71,7 +71,7 @@ struct LogEvent
             str += " ";
         }
         str += "\n";
-//        LOGD("logRecord len: %d", logRecord.len);
+//        LOG_DEBUG("logRecord len: {}", logRecord.len);
         return str;
     }
 
@@ -197,7 +197,7 @@ struct StoryChunk
             ss << "<" << std::get <0>(event.first) << ", " << std::get <1>(event.first) << ", "
                << std::get <2>(event.first) << ">: " << event.second.toString();
         }
-//        LOGD("string size in StoryChunk::toString(): %zu", ss.str().size());
+//        LOG_DEBUG("string size in StoryChunk::toString(): {}", ss.str().size());
         return ss.str();
     }
 
@@ -308,7 +308,7 @@ struct StoryChunk2
                 ss << ((uint8_t*)eventData)[i];
             }
         }
-        LOGD("string size in StoryChunk2::toString(): %zu", ss.str().size());
+        LOG_DEBUG("string size in StoryChunk2::toString(): {}", ss.str().size());
         return ss.str();
     }
 
@@ -444,7 +444,7 @@ StoryChunk generateStoryChunk()
     for(auto const &event: events)
     {
         if(story_chunk.insertEvent(event) == 0)
-        { LOGE("Failed to insert %zu-th event", event_idx); }
+        { LOG_ERROR("Failed to insert {}-th event", event_idx); }
         event_idx++;
     }
 
@@ -459,7 +459,7 @@ StoryChunk2 generateStoryChunk2()
     for(auto const &event: events)
     {
         if(story_chunk.insertEvent(event) == 0)
-        { LOGE("Failed to insert %zu-th event", event_idx); }
+        { LOG_ERROR("Failed to insert {}-th event", event_idx); }
         event_idx++;
     }
 
@@ -611,7 +611,7 @@ hsize_t writeStoryChunkUsingVlenBytesEvents(StoryChunk &story_chunk)
     writeVlenBytesEvents(file, data);
     file->flush(H5F_SCOPE_GLOBAL);
     hsize_t file_size = file->getFileSize();
-    LOGD("vlen-bytes file size: %llu", file_size);
+    LOG_DEBUG("vlen-bytes file size: {}", file_size);
     delete file;
     return file_size;
 }
@@ -626,7 +626,7 @@ int readStoryChunkUsingVlenBytesEvents(StoryChunk &story_chunk)
     for(auto const &event: data)
     {
         if(story_chunk.insertEvent(event) == 0)
-        { LOGE("Failed to insert %zu-th event", event_idx); }
+        { LOG_ERROR("Failed to insert {}-th event", event_idx); }
         event_idx++;
     }
     return chronolog::CL_SUCCESS;
@@ -841,7 +841,7 @@ hsize_t writeStoryChunkUsingBlobAndKVPairs(StoryChunk2 &story_chunk)
         writeMapAsKVPairs(file, story_chunk.offsetSizeMap);
         file->flush(H5F_SCOPE_GLOBAL);
         hsize_t file_size = file->getFileSize();
-        LOGD("blob+map file size: %llu", file_size);
+        LOG_DEBUG("blob+map file size: {}", file_size);
         delete file;
         return file_size;
     }
@@ -906,31 +906,31 @@ int rangeQuery(uint64_t start_time, uint64_t end_time, StoryChunk2 &res_story_ch
         for(auto it = lower_it; it != upper_it; it++)
         {
             auto event_payload_len = std::get <1>(it->second);
-//            LOGD("event_payload_len of result event %ld: %lu", range_offset++, event_payload_len);
+//            LOG_DEBUG("event_payload_len of result event {}: {}", range_offset++, event_payload_len);
             range_data_size += event_payload_len;
         }
-        LOGD("Total size of result events: %lu", range_data_size);
+        LOG_DEBUG("Total size of result events: {}", range_data_size);
 
         // read out the result event payloads
         res_data_blob = malloc(range_data_size);
         hsize_t start_offset = std::get <0>(lower_it->second);
         hsize_t data_size = range_data_size;
-//        LOGD("Total storage size of dataset: %llu", dataset.getStorageSize());
+//        LOG_DEBUG("Total storage size of dataset: {}", dataset.getStorageSize());
 //        hsize_t ndims = dataspace.getSimpleExtentNdims();
-//        LOGD("Dataspace ndims: %llu", ndims);
+//        LOG_DEBUG("Dataspace ndims: {}", ndims);
 //        hsize_t dims[2] = {0, 0};
 //        dataspace.getSimpleExtentDims(dims, nullptr);
-//        LOGD("Dataspace dims: %llu x %llu", dims[0], dims[1]);
+//        LOG_DEBUG("Dataspace dims: {} x {}", dims[0], dims[1]);
 
         // select file hyperslab
-        LOGD("Selecting hyperslab of size %llu starting from offset %llu ...", data_size, start_offset);
+        LOG_DEBUG("Selecting hyperslab of size {} starting from offset {} ...", data_size, start_offset);
         dataspace.selectHyperslab(H5S_SELECT_SET, &data_size, &start_offset);
 
         // select memory hyperslab
         hsize_t start[2] = {0, 0}, end[2] = {0, 0};
         dataspace.getSelectBounds(start, end);
         hsize_t hyperslab_dims[2] = {end[0] - start[0] + 1, end[1] - start[1] + 1};
-        LOGD("Hyperslab dims: %llu x %llu", hyperslab_dims[0], hyperslab_dims[1]);
+        LOG_DEBUG("Hyperslab dims: {} x {}", hyperslab_dims[0], hyperslab_dims[1]);
         H5::DataSpace memspace(n_dims, hyperslab_dims);
 
         // read
@@ -1027,22 +1027,22 @@ StoryChunk deserializeStoryChunk(char*story_chunk_json_str, uint64_t &story_id, 
             uint32_t client_id = std::stoul(key_str.substr(comma_pos1 + 2, comma_pos2 - comma_pos1 - 2));
             uint32_t index = std::stoul(key_str.substr(comma_pos2 + 2, closing_bracket_pos - comma_pos2 - 2));
 
-//            LOGD("val: %s", json_object_get_string(val));
+//            LOG_DEBUG("val: {}", json_object_get_string(val));
             hvl_t log_record;
             log_record.p = (void*)json_object_get_string(val);
             log_record.len = strlen(json_object_get_string(val));
             LogEvent event(story_id, event_time, client_id, index, log_record);
             if(story_chunk.insertEvent(event) == 0)
-            { LOGE("Failed to insert event"); }
-//            LOGD("#Events: %ld", story_chunk.getNumEvents());
+            { LOG_ERROR("Failed to insert event"); }
+//            LOG_DEBUG("#Events: {}", story_chunk.getNumEvents());
         }
     }
     else
     {
-        LOGE("Failed to parse story_chunk_json_str: %s", story_chunk_json_str);
+        LOG_ERROR("Failed to parse story_chunk_json_str: {}", story_chunk_json_str);
         exit(chronolog::CL_ERR_UNKNOWN);
     }
-//    LOGD("#Events: %ld", story_chunk.getNumEvents());
+//    LOG_DEBUG("#Events: {}", story_chunk.getNumEvents());
     return story_chunk;
 }
 
@@ -1055,7 +1055,7 @@ hsize_t writeStoryChunkInJSON(StoryChunk &story_chunk)
         auto*group = new H5::Group(file->createGroup(group_name));
 
         std::string story_chunk_json_str = serializeStoryChunk(story_chunk);
-//        LOGD("size of story_chunk_json_str: %ld", story_chunk_json_str.size());
+//        LOG_DEBUG("size of story_chunk_json_str: {}", story_chunk_json_str.size());
 
         hsize_t dims[] = {1};
         auto*dataspace = new H5::DataSpace(n_dims, dims);
@@ -1160,6 +1160,13 @@ int readStoryChunkInJSON(StoryChunk &story_chunk)
 
 int main(int argc, char*argv[])
 {
+    int result = Logger::initialize("console", "cmp_vlen_bytes_vs_blob_map.log", spdlog::level::debug
+                                    , "cmp_vlen_bytes_vs_blob_map", 102400, 1);
+    if(result == 1)
+    {
+        exit(EXIT_FAILURE);
+    }
+
     parseCommandLineOptions(argc, argv);
 
     std::chrono::time_point <std::chrono::high_resolution_clock> start, end;
@@ -1266,7 +1273,7 @@ int main(int argc, char*argv[])
 //        size_t idx = 0;
 //        for(auto const &event: events)
 //        {
-//            LOGD("Raw event %lu: %s", idx++, event.toString().c_str());
+//            LOG_DEBUG("Raw event {}: {}", idx++, event.toString().c_str());
 //        }
         for(auto start_percent = range_start_percentage, end_percent = range_start_percentage + range_step_percentage;
             end_percent <= range_end_percentage; end_percent += range_step_percentage)
@@ -1280,13 +1287,13 @@ int main(int argc, char*argv[])
             auto range_event_time_end_offset = (events.back().eventTime - events.front().eventTime) * end_percent / 100;
             auto range_start_time = static_cast<uint64_t>(test_start_timestamp + range_event_time_start_offset);
             auto range_end_time = static_cast<uint64_t>(test_start_timestamp + range_event_time_end_offset);
-            LOGI("Range query: start_percent: %d%%, end_percent: %d%%", start_percent, end_percent);
-            LOGI("Range query: start_time: %lu, end_time: %lu", range_start_time, range_end_time);
+            LOG_INFO("Range query: start_percent: {}%%, end_percent: {}%%", start_percent, end_percent);
+            LOG_INFO("Range query: start_time: {}, end_time: {}", range_start_time, range_end_time);
 
             // calculate the expected result StoryChunk2
             auto start_idx = static_cast<int>(events.size() * start_percent / 100);
             auto end_idx = static_cast<int>(events.size() * end_percent / 100);
-            LOGD("Expected result events range from %d to %d", start_idx, end_idx);
+            LOG_DEBUG("Expected result events range from {} to {}", start_idx, end_idx);
             StoryChunk2 expected_res_story_chunk(test_story_id, test_start_timestamp,
                     test_start_timestamp + n_records * 1000 + 1);
             uint64_t total_res_payload_size = 0;
@@ -1295,7 +1302,7 @@ int main(int argc, char*argv[])
                 expected_res_story_chunk.insertEvent(events[i]);
                 total_res_payload_size += events[i].logRecord.len;
             }
-            LOGD("Total size of expected result event payloads: %lu", total_res_payload_size);
+            LOG_DEBUG("Total size of expected result event payloads: {}", total_res_payload_size);
             void*res_data_blob = nullptr;
 
             // test rangeQuery

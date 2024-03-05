@@ -71,7 +71,7 @@ hid_t StoryWriter::writeUint64Attribute(hid_t story_chunk_dset, const std::strin
 
 /**
  * @brief Write/Append data to storyDataset.
- * @param story_chunk_map: an ordered_map of <EventSequence, LogEvent> pairs.
+ * @param story_chunk_map: an ordered_map of <EventSequence, StoryChunk> pairs.
  * @param chronicle_name: chronicle name
  * @return: 0 if successful, else errcode, if failed.
  */
@@ -103,12 +103,12 @@ int StoryWriter::writeStoryChunks(const std::map <uint64_t, chronolog::StoryChun
             num_events_per_chunk++;
             json_object*logRecordJSONObj = json_object_new_string(it.second.logRecord.c_str());
             json_object*sequenceTuple = serializeTupleToJsonObject(it.first);
-            LOGD("sequenceTuple: %s", json_object_to_json_string(sequenceTuple));
-            LOGD("logRecordJSONObj: %s", json_object_to_json_string(logRecordJSONObj));
+            LOG_DEBUG("sequenceTuple: {}", json_object_to_json_string(sequenceTuple));
+            LOG_DEBUG("logRecordJSONObj: {}", json_object_to_json_string(logRecordJSONObj));
             json_object_object_add(story_chunk_JSON_obj, json_object_get_string(sequenceTuple), logRecordJSONObj);
         }
         std::string story_chunk_JSON_str = json_object_to_json_string(story_chunk_JSON_obj);
-        LOGD("story_chunk_JSON_obj (size: %ld): %s", story_chunk_JSON_str.size(), story_chunk_JSON_str.c_str());
+        LOG_DEBUG("story_chunk_JSON_obj (size: {}): {}", story_chunk_JSON_str.size(), story_chunk_JSON_str.c_str());
         chunk_size = story_chunk_JSON_str.size();
         num_events.push_back(num_events_per_chunk);
         total_num_events += num_events_per_chunk;
@@ -124,7 +124,7 @@ int StoryWriter::writeStoryChunks(const std::map <uint64_t, chronolog::StoryChun
         // Create the directory for the Chronicle
         if(!std::filesystem::create_directory(chronicle_dir.c_str()))
         {
-            LOGE("Failed to create chronicle directory: %s, errno: %d", chronicle_dir.c_str(), errno);
+            LOG_ERROR("Failed to create chronicle directory: {}, errno: {}", chronicle_dir.c_str(), errno);
             return chronolog::CL_ERR_UNKNOWN;
         }
     }
@@ -145,7 +145,7 @@ int StoryWriter::writeStoryChunks(const std::map <uint64_t, chronolog::StoryChun
         if(story_chunk_fd_map.find(story_id) != story_chunk_fd_map.end())
         {
             story_file = story_chunk_fd_map.find(story_id)->second;
-            LOGD("Story file already opened: %s", story_file_name.c_str());
+            LOG_DEBUG("Story file already opened: {}", story_file_name.c_str());
         }
             // Story file does not exist, create the Story file if it does not exist
         else if(stat(story_file_name.c_str(), &st) != 0)
@@ -153,7 +153,7 @@ int StoryWriter::writeStoryChunks(const std::map <uint64_t, chronolog::StoryChun
             story_file = H5Fcreate(story_file_name.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
             if(story_file == H5I_INVALID_HID)
             {
-                LOGE("Failed to create story file: %s", story_file_name.c_str());
+                LOG_ERROR("Failed to create story file: {}", story_file_name.c_str());
                 return chronolog::CL_ERR_UNKNOWN;
             }
             story_chunk_fd_map.emplace(story_id, story_file);
@@ -164,7 +164,7 @@ int StoryWriter::writeStoryChunks(const std::map <uint64_t, chronolog::StoryChun
             story_file = H5Fopen(story_file_name.c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
             if(story_file < 0)
             {
-                LOGE("Failed to open story file: %s", story_file_name.c_str());
+                LOG_ERROR("Failed to open story file: {}", story_file_name.c_str());
                 return chronolog::CL_ERR_UNKNOWN;
             }
             story_chunk_fd_map.emplace(story_id, story_file);
@@ -176,7 +176,7 @@ int StoryWriter::writeStoryChunks(const std::map <uint64_t, chronolog::StoryChun
                                             std::to_string(story_chunk_map_it->second.getEndTime());
         if(H5Lexists(story_file, story_chunk_dset_name.c_str(), H5P_DEFAULT) > 0)
         {
-            LOGE("Story chunk already exists: %s", story_chunk_dset_name.c_str());
+            LOG_ERROR("Story chunk already exists: {}", story_chunk_dset_name.c_str());
             return chronolog::CL_ERR_STORY_CHUNK_EXISTS;
         }
 
@@ -186,7 +186,7 @@ int StoryWriter::writeStoryChunks(const std::map <uint64_t, chronolog::StoryChun
         story_chunk_dspace = H5Screate_simple(DATASET_RANK, story_chunk_dset_dims, nullptr);
         if(story_chunk_dspace < 0)
         {
-            LOGE("Failed to create dataspace for story chunk: %s", story_chunk_dset_name.c_str());
+            LOG_ERROR("Failed to create dataspace for story chunk: {}", story_chunk_dset_name.c_str());
             return chronolog::CL_ERR_UNKNOWN;
         }
 
@@ -195,7 +195,7 @@ int StoryWriter::writeStoryChunks(const std::map <uint64_t, chronolog::StoryChun
                                       , H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
         if(story_chunk_dset < 0)
         {
-            LOGE("Failed to create dataset for story chunk: %s", story_chunk_dset_name.c_str());
+            LOG_ERROR("Failed to create dataset for story chunk: {}", story_chunk_dset_name.c_str());
             // Print the detailed error message
             H5Eprint(H5E_DEFAULT, stderr);
 
@@ -213,7 +213,7 @@ int StoryWriter::writeStoryChunks(const std::map <uint64_t, chronolog::StoryChun
 //        story_chunk_dset = H5Dopen2(story_file, story_chunk_dset_name.c_str(), H5P_DEFAULT);
 //        if (story_chunk_dset < 0)
 //        {
-//            LOGE("Failed to open dataset for story chunk: %s", story_chunk_dset_name.c_str());
+//            LOG_ERROR("Failed to open dataset for story chunk: {}", story_chunk_dset_name.c_str());
 //            return CL_ERR_UNKNOWN;
 //        }
 
@@ -222,7 +222,7 @@ int StoryWriter::writeStoryChunks(const std::map <uint64_t, chronolog::StoryChun
                           , story_chunk_json_str_it->c_str());
         if(status < 0)
         {
-            LOGE("Failed to write story chunk to dataset: %s", story_chunk_dset_name.c_str());
+            LOG_ERROR("Failed to write story chunk to dataset: {}", story_chunk_dset_name.c_str());
             return chronolog::CL_ERR_UNKNOWN;
         }
 
@@ -243,7 +243,7 @@ int StoryWriter::writeStoryChunks(const std::map <uint64_t, chronolog::StoryChun
         status += H5Sclose(story_chunk_dspace);
         if(status < 0)
         {
-            LOGE("Failed to close dataset or dataspace or file for story chunk: %s", story_chunk_dset_name.c_str());
+            LOG_ERROR("Failed to close dataset or dataspace or file for story chunk: {}", story_chunk_dset_name.c_str());
             return chronolog::CL_ERR_UNKNOWN;
         }
     }
@@ -257,7 +257,7 @@ int StoryWriter::writeStoryChunks(const std::map <uint64_t, chronolog::StoryChun
             char*file_name = new char[128];
             size_t file_name_len = 0;
             H5Fget_name(story_chunk_fd_map_it.second, file_name, file_name_len);
-            LOGE("Failed to close file for story chunk: %s", file_name);
+            LOG_ERROR("Failed to close file for story chunk: {}", file_name);
             free(file_name);
             return chronolog::CL_ERR_UNKNOWN;
         }
@@ -275,7 +275,16 @@ void StoryWriter::serializeStoryChunk(json_object*obj, chronolog::StoryChunk &st
 {
     std::string story_chunk_name =
             std::to_string(story_chunk.getStartTime()) + "_" + std::to_string(story_chunk.getEndTime());
-    json_object_object_add(obj, story_chunk_name.c_str(), json_object_new_string(story_chunk.toString().c_str()));
+    std::stringstream ss;
+    ss << "StoryChunk:{" << story_chunk.getStoryId() << ":"
+    << story_chunk.getStartTime() << ":" << story_chunk.getEndTime() << "} has "
+    << std::distance(story_chunk.begin(), story_chunk.end()) << " events: ";
+    for(const auto & iter : story_chunk)
+    {
+        ss << "<" << std::get <0>(iter.first) << ", " << std::get <1>(iter.first) << ", "
+           << std::get <2>(iter.first) << ">: " << iter.second.toString();
+    }
+    json_object_object_add(obj, story_chunk_name.c_str(), json_object_new_string(ss.str().c_str()));
 }
 
 /**
