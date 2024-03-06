@@ -1,6 +1,5 @@
 cmake_minimum_required(VERSION 3.19)
 
-find_package(HDF5 REQUIRED COMPONENTS C CXX)
 find_package(JSON-C REQUIRED)
 
 include_directories(../include)

@@ -1,4 +1,8 @@
 cmake_minimum_required(VERSION 3.19)
+
+find_package(Thallium REQUIRED)
+find_package(spdlog REQUIRED)
+
 message("Building CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
 
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}  -Wextra -O0 -g")

@@ -1,10 +1,6 @@
 cmake_minimum_required(VERSION 3.19)
 
-#set(CMAKE_FIND_DEBUG_MODE TRUE)
-
-find_package(mercury REQUIRED)
-find_package(thallium REQUIRED)
-find_package(Threads REQUIRED)
+find_package(MPI REQUIRED)
 
 #set(CMAKE_FIND_DEBUG_MODE FALSE)
 
@@ -25,8 +21,6 @@ add_executable(thallium_client thallium_client.cpp)
 target_include_directories(thallium_client PRIVATE)
 target_link_libraries(thallium_client thallium)
 add_test(NAME CommThalliumClient COMMAND thallium_client)
-
-find_package(MPI)
 
 add_executable(thallium_client_mpi thallium_client_mpi.cpp
 )

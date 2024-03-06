@@ -138,9 +138,6 @@ endif()
 #-----------------------------------------------------------------------------
 # Dependencies common to all subdirectories
 #-----------------------------------------------------------------------------
-#find_package(MPI REQUIRED COMPONENTS CXX)
-find_package(Boost REQUIRED)
-find_package(Thallium REQUIRED)
 
 
 #-----------------------------------------------------------------------------
