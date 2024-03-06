@@ -1,6 +1,6 @@
 #include "chronolog_client.h"
 
-namespace chronolog
+namespace chronokvs
 {
 ChronoLogClient::ChronoLogClient()
 {
@@ -49,4 +49,4 @@ std::vector <std::string> ChronoLogClient::retrieveEvents(std::uint64_t timestam
     return matchingEvents;
 }
 
-} // namespace chronolog
+}

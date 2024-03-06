@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-namespace chronolog
+namespace chronokvs
 {
 
 /**
@@ -65,6 +65,6 @@ public:
     static std::vector <std::string> get(const std::string &key, uint64_t timestamp);
 };
 
-} // namespace chronolog
+}
 
 #endif // CHRONOKVS_H_

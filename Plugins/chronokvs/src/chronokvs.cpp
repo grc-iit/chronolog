@@ -2,7 +2,7 @@
 #include "chronokvs.h"
 #include "chronokvs_mapper.h"
 
-namespace chronolog
+namespace chronokvs
 {
 chronokvs_mapper mapper;
 
@@ -40,4 +40,4 @@ std::vector <std::string> ChronoKVS::get(const std::string &key, std::uint64_t t
     return mapper.retrieveByKeyAndTimestamp(key, timestamp);
 }
 
-} // namespace chronolog
+}

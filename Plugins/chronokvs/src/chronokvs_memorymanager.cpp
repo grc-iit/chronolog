@@ -1,5 +1,8 @@
 #include "chronokvs_memorymanager.h"
 
+namespace chronokvs
+{
+
 std::unordered_multimap <std::string, std::uint64_t> dataStore;
 
 void MemoryManager::store(const std::string &key, std::uint64_t timestamp)

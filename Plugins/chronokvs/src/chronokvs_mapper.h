@@ -10,7 +10,7 @@
 #include "chronolog_client.h"
 #include "chronokvs_memorymanager.h"
 
-namespace chronolog
+namespace chronokvs
 {
 /**
  * Handles mapping between key-value pairs and ChronoLog's data model.
@@ -35,6 +35,6 @@ public:
 
     std::vector <std::string> retrieveByKeyAndTimestamp(const std::string &key, std::uint64_t timestamp);
 
-}; // namespace chronolog
+};
 }
 #endif // KVS_MAPPER_H_

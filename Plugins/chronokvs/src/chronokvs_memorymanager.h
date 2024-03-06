@@ -6,6 +6,8 @@
 #include <utility>
 #include <unordered_map>
 
+namespace chronokvs
+{
 class MemoryManager
 {
 public:

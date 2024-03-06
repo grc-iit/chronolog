@@ -7,7 +7,7 @@
 #include <unordered_map>
 #include "mock_chronolog.h"
 
-namespace chronolog
+namespace chronokvs
 {
 /**
  * Client for interacting with the ChronoLog system.

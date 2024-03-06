@@ -2,6 +2,8 @@
 #include "chronolog_client.h"
 #include "chronokvs_utils.h"
 
+namespace chronokvs
+{
 std::uint64_t chronolog::chronokvs_mapper::storeKeyValue(const std::string &key, const std::string &value)
 {
     std::string serialized = serialize(key, value);
