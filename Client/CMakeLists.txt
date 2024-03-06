@@ -1,3 +1,4 @@
+cmake_minimum_required(VERSION 3.19)
 # Define the header files to be copied
 set(HEADER_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/chronolog_client.h

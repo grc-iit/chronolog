@@ -1,3 +1,4 @@
+cmake_minimum_required(VERSION 3.19)
 set(CMAKE_FIND_LIBRARY_TYPE STATIC)
 
 add_executable(chronovisor_server)

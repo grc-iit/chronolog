@@ -1,6 +1,4 @@
-cmake_minimum_required(VERSION 3.17)
-
-project(thallium_communication_test)
+cmake_minimum_required(VERSION 3.19)
 
 #set(CMAKE_FIND_DEBUG_MODE TRUE)
 

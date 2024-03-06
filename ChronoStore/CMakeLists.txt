@@ -1,3 +1,5 @@
+cmake_minimum_required(VERSION 3.19)
+
 find_package(HDF5 REQUIRED)
 find_package(JSON-C REQUIRED)
 

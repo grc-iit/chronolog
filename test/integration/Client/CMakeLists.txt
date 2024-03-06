@@ -1,3 +1,5 @@
+cmake_minimum_required(VERSION 3.19)
+
 set(client_examples client_lib_connect_rpc_test client_lib_metadata_rpc_test client_lib_multi_argobots_test client_lib_multi_pthread_test client_lib_multi_storytellers)
 
 add_custom_target(copyserverlist)
