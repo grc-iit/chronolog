@@ -15,19 +15,16 @@ namespace chronolog
 class ChronoLogClient
 {
 private:
-    //std::unordered_map <std::uint64_t, std::string> events;
     std::shared_ptr <MockChronolog> chronolog;
-    std::shared_ptr <StoryHandle> storyHandle;
+    StoryHandle*storyHandle;
 
 public:
     ChronoLogClient();
 
     ~ChronoLogClient();
 
-    // Store an event in ChronoLog and return a timestamp
     std::uint64_t storeEvent(const std::string &serializedEvent);
 
-    // Retrieve an event from ChronoLog using a timestamp
     std::vector <std::string> retrieveEvents(std::uint64_t timestamp);
 };
 }

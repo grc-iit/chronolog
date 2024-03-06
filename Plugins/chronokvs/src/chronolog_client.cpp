@@ -9,7 +9,7 @@ ChronoLogClient::ChronoLogClient()
     chronolog->Connect();
     chronolog->CreateChronicle("defaultChronicle", {}, flags);
     auto [status, handle] = chronolog->AcquireStory("defaultChronicle", "defaultStory", {}, flags);
-    storyHandle = std::shared_ptr<StoryHandle>(handle);
+    storyHandle = handle;
 }
 
 ChronoLogClient::~ChronoLogClient()
