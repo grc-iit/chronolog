@@ -3,8 +3,6 @@
 namespace chronokvs
 {
 
-std::unordered_multimap <std::string, std::uint64_t> dataStore;
-
 void MemoryManager::store(const std::string &key, std::uint64_t timestamp)
 {
     dataStore.insert({key, timestamp});
@@ -25,5 +23,7 @@ std::vector <std::uint64_t> MemoryManager::retrieveByKey(const std::string &key)
 
     return timestamps;
 }
+}
+
 
 
