@@ -3,6 +3,7 @@
 
 #include <string>
 #include <vector>
+#include "../src/chronokvs_mapper.h"
 
 namespace chronokvs
 {
@@ -16,6 +17,9 @@ namespace chronokvs
  */
 class ChronoKVS
 {
+private:
+    std::unique_ptr <chronokvs_mapper> mapper;
+
 public:
     /**
      * @brief Constructs a new instance of ChronoKVS.
@@ -25,7 +29,7 @@ public:
     /**
      * @brief Destructs the ChronoKVS instance.
      */
-    ~ChronoKVS();
+    ~ChronoKVS() = default;
 
     /**
      * @brief Stores a key-value pair with an associated timestamp.
@@ -34,7 +38,7 @@ public:
      * @param value The value to be stored.
      * @return A timestamp (as std::uint64_t) indicating when the value was stored.
      */
-    static std::uint64_t put(const std::string &key, const std::string &value);
+    std::uint64_t put(const std::string &key, const std::string &value);
 
     /**
      * @brief Retrieves all key-value pairs that match the given timestamp.
@@ -43,7 +47,7 @@ public:
      * @return A vector of key-value pairs (as std::pair<std::string, std::string>)
      *         that were stored at the given timestamp.
      */
-    static std::vector <std::pair <std::string, std::string>> get(uint64_t timestamp);
+    std::vector <std::pair <std::string, std::string>> get(uint64_t timestamp);
 
     /**
      * @brief Retrieves all timestamps and values associated with a given key.
@@ -52,7 +56,7 @@ public:
      * @return A vector of timestamp-value pairs (as std::pair<uint64_t, std::string>)
      *         associated with the given key.
      */
-    static std::vector <std::pair <uint64_t, std::string>> get(const std::string &key);
+    std::vector <std::pair <uint64_t, std::string>> get(const std::string &key);
 
     /**
      * @brief Retrieves the value associated with a given key at a specific timestamp.
@@ -62,7 +66,7 @@ public:
      * @return The value (as std::string) associated with the given key at the specified
      *         timestamp, or an empty string if no such value exists.
      */
-    static std::vector <std::string> get(const std::string &key, uint64_t timestamp);
+    std::vector <std::string> get(const std::string &key, uint64_t timestamp);
 };
 
 }
