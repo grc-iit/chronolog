@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-add_subdirectory(../ChronoEmulator ${PROJECT_SOURCE_DIR}/../ChronoEmulator)
+add_subdirectory(../chronoemulator ${PROJECT_SOURCE_DIR}/../chronoemulator)
 
 # Source files for the library
 set(SOURCE_FILES

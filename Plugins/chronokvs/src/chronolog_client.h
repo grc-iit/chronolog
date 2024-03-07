@@ -5,23 +5,23 @@
 #include <vector>
 #include <optional>
 #include <unordered_map>
-#include "mock_chronolog.h"
+#include "chronoemulator.h"
 
 namespace chronokvs
 {
 /**
  * Client for interacting with the ChronoLog system.
  */
-class ChronoLogClient
+class ChronologClient
 {
 private:
-    std::shared_ptr <MockChronolog> chronolog;
+    std::shared_ptr <ChronoEmulator> chronolog;
     StoryHandle*storyHandle;
 
 public:
-    ChronoLogClient();
+    ChronologClient();
 
-    ~ChronoLogClient();
+    ~ChronologClient();
 
     std::uint64_t storeEvent(const std::string &serializedEvent);
 

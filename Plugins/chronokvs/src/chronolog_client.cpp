@@ -2,17 +2,17 @@
 
 namespace chronokvs
 {
-ChronoLogClient::ChronoLogClient()
+ChronologClient::ChronologClient()
 {
     int flags = 0;
-    chronolog = std::make_shared <MockChronolog>();
+    chronolog = std::make_shared <ChronoEmulator>();
     chronolog->Connect();
     chronolog->CreateChronicle("defaultChronicle", {}, flags);
     auto [status, handle] = chronolog->AcquireStory("defaultChronicle", "defaultStory", {}, flags);
     storyHandle = handle;
 }
 
-ChronoLogClient::~ChronoLogClient()
+ChronologClient::~ChronologClient()
 {
     if(storyHandle != nullptr)
     {
@@ -24,7 +24,7 @@ ChronoLogClient::~ChronoLogClient()
 }
 
 // Store an event in ChronoLog and return a timestamp
-std::uint64_t ChronoLogClient::storeEvent(const std::string &serializedEvent)
+std::uint64_t ChronologClient::storeEvent(const std::string &serializedEvent)
 {
     if(storyHandle == nullptr)
     {
@@ -38,7 +38,7 @@ std::uint64_t ChronoLogClient::storeEvent(const std::string &serializedEvent)
 }
 
 // Retrieve an event from ChronoLog using a timestamp
-std::vector <std::string> ChronoLogClient::retrieveEvents(std::uint64_t timestamp)
+std::vector <std::string> ChronologClient::retrieveEvents(std::uint64_t timestamp)
 {
     if(storyHandle == nullptr)
     {

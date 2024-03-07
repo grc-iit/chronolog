@@ -6,7 +6,7 @@ namespace chronokvs
 chronokvs_mapper::chronokvs_mapper()
 {
     memoryManager = std::make_unique <MemoryManager>();
-    chronoClient = std::make_unique <ChronoLogClient>();
+    chronoClient = std::make_unique <ChronologClient>();
 }
 
 std::uint64_t chronokvs_mapper::storeKeyValue(const std::string &key, const std::string &value)

@@ -19,7 +19,7 @@ class chronokvs_mapper
 {
 private:
     std::unique_ptr <MemoryManager> memoryManager;
-    std::unique_ptr <ChronoLogClient> chronoClient;
+    std::unique_ptr <ChronologClient> chronoClient;
 
 public:
     chronokvs_mapper();
