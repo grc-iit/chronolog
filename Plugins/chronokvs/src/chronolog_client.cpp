@@ -5,7 +5,7 @@ namespace chronokvs
 ChronologClient::ChronologClient()
 {
     int flags = 0;
-    chronolog = std::make_shared <ChronoEmulator>();
+    chronolog = std::make_shared <chronoemulator::ChronoEmulator>();
     chronolog->Connect();
     chronolog->CreateChronicle("defaultChronicle", {}, flags);
     auto [status, handle] = chronolog->AcquireStory("defaultChronicle", "defaultStory", {}, flags);

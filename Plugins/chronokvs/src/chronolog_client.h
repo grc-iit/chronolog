@@ -15,8 +15,8 @@ namespace chronokvs
 class ChronologClient
 {
 private:
-    std::shared_ptr <ChronoEmulator> chronolog;
-    StoryHandle*storyHandle;
+    std::shared_ptr <chronoemulator::ChronoEmulator> chronolog;
+    chronoemulator::StoryHandle*storyHandle;
 
 public:
     ChronologClient();
