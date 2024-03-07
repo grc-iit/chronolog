@@ -1,5 +1,5 @@
-#ifndef CHRONOKVS_MOCK_CHRONOLOG_H
-#define CHRONOKVS_MOCK_CHRONOLOG_H
+#ifndef CHRONOKVS_CHRONOEMULATOR_H
+#define CHRONOKVS_CHRONOEMULATOR_H
 
 #include <string>
 #include <vector>
@@ -9,7 +9,7 @@
 #include "../src/story.h"
 #include "../src/chronicle.h"
 
-class MockChronolog: public std::enable_shared_from_this <MockChronolog>
+class ChronoEmulator: public std::enable_shared_from_this <ChronoEmulator>
 {
 private:
     std::vector <std::shared_ptr <Chronicle>> chronicles;
@@ -34,4 +34,4 @@ public:
     int DestroyStory(const std::string &chronicle_name, const std::string &story_name);
 };
 
-#endif //CHRONOKVS_MOCK_CHRONOLOG_H
+#endif //CHRONOKVS_CHRONOEMULATOR_H

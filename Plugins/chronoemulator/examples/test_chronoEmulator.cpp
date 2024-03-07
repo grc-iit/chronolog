@@ -1,4 +1,4 @@
-#include "mock_chronolog.h"
+#include "chronoemulator.h"
 #include <iostream>
 #include <cassert>
 #include <chrono>
@@ -6,7 +6,7 @@
 
 void TestWithoutConnection()
 {
-    MockChronolog chronolog;
+    ChronoEmulator chronolog;
     std::unordered_map <std::string, std::string> attrs = {{"creator", "John Doe"}};
     int flags = 0;
 
@@ -21,7 +21,7 @@ void TestWithoutConnection()
 
 void TestWithConnection()
 {
-    MockChronolog chronolog;
+    ChronoEmulator chronolog;
     std::unordered_map <std::string, std::string> attrs = {{"creator", "John Doe"}};
     int flags = 0;
 
@@ -42,10 +42,10 @@ void TestWithConnection()
 
 void TestStories()
 {
-    MockChronolog chronolog;
+    ChronoEmulator chronolog;
     int flags = 0; // Placeholder for flags, adjust as necessary for your implementation
 
-    // Connect to MockChronolog
+    // Connect to ChronoEmulator
     assert(chronolog.Connect() == 0);
 
     // Create Chronicle for further testing
@@ -70,10 +70,10 @@ void TestStories()
 
 void TestRecordAndReplay()
 {
-    MockChronolog chronolog;
+    ChronoEmulator chronolog;
     int flags = 0; // Placeholder for flags, adjust as necessary for your implementation
 
-    // Connect to MockChronolog
+    // Connect to ChronoEmulator
     assert(chronolog.Connect() == 0);
 
     // Create Chronicle for further testing

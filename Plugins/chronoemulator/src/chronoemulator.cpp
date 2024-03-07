@@ -1,20 +1,20 @@
 #include <algorithm>
-#include "mock_chronolog.h"
+#include "chronoemulator.h"
 
-int MockChronolog::Connect()
+int ChronoEmulator::Connect()
 {
     isConnected = true;
     return 0; // Simulate successful connection
 }
 
-int MockChronolog::Disconnect()
+int ChronoEmulator::Disconnect()
 {
     isConnected = false;
     return 0; // Simulate successful disconnection
 }
 
-int MockChronolog::CreateChronicle(const std::string &chronicle_name
-                                   , const std::unordered_map <std::string, std::string> &attrs, int &flags)
+int ChronoEmulator::CreateChronicle(const std::string &chronicle_name
+                                    , const std::unordered_map <std::string, std::string> &attrs, int &flags)
 {
     if(!isConnected)
     {
@@ -36,7 +36,7 @@ int MockChronolog::CreateChronicle(const std::string &chronicle_name
     return 0; // Success
 }
 
-int MockChronolog::DestroyChronicle(const std::string &chronicle_name)
+int ChronoEmulator::DestroyChronicle(const std::string &chronicle_name)
 {
     // Iterate through the vector to find the chronicle with the given name
     for(auto it = chronicles.begin(); it != chronicles.end(); ++it)
@@ -53,8 +53,8 @@ int MockChronolog::DestroyChronicle(const std::string &chronicle_name)
 
 
 std::pair <int, StoryHandle*>
-MockChronolog::AcquireStory(const std::string &chronicle_name, const std::string &story_name
-                            , const std::unordered_map <std::string, std::string> &attrs, int &flags)
+ChronoEmulator::AcquireStory(const std::string &chronicle_name, const std::string &story_name
+                             , const std::unordered_map <std::string, std::string> &attrs, int &flags)
 {
     if(!isConnected)
     {
@@ -97,7 +97,7 @@ MockChronolog::AcquireStory(const std::string &chronicle_name, const std::string
 }
 
 
-int MockChronolog::ReleaseStory(const std::string &chronicle_name, const std::string &story_name)
+int ChronoEmulator::ReleaseStory(const std::string &chronicle_name, const std::string &story_name)
 {
     if(!isConnected)
     {
@@ -123,7 +123,7 @@ int MockChronolog::ReleaseStory(const std::string &chronicle_name, const std::st
     return -1; // Chronicle not found
 }
 
-int MockChronolog::DestroyStory(const std::string &chronicle_name, const std::string &story_name)
+int ChronoEmulator::DestroyStory(const std::string &chronicle_name, const std::string &story_name)
 {
     if(!isConnected)
     {
@@ -147,7 +147,7 @@ int MockChronolog::DestroyStory(const std::string &chronicle_name, const std::st
 }
 
 /*
-int MockChronolog::GetChronicleAttr(const std::string &chronicle_name, const std::string &key, std::string &value)
+int ChronoEmulator::GetChronicleAttr(const std::string &chronicle_name, const std::string &key, std::string &value)
 {
     if(!isConnected)
     {
@@ -157,7 +157,7 @@ int MockChronolog::GetChronicleAttr(const std::string &chronicle_name, const std
 }
 
 int
-MockChronolog::EditChronicleAttr(const std::string &chronicle_name, const std::string &key, const std::string &value)
+ChronoEmulator::EditChronicleAttr(const std::string &chronicle_name, const std::string &key, const std::string &value)
 {
     if(!isConnected)
     {
@@ -166,7 +166,7 @@ MockChronolog::EditChronicleAttr(const std::string &chronicle_name, const std::s
     return 0; // Success
 }
 
-std::vector <std::string> &MockChronolog::ShowChronicles(std::vector <std::string> &output)
+std::vector <std::string> &ChronoEmulator::ShowChronicles(std::vector <std::string> &output)
 {
     if(!isConnected)
     {
@@ -177,7 +177,7 @@ std::vector <std::string> &MockChronolog::ShowChronicles(std::vector <std::strin
 }
 
 std::vector <std::string> &
-MockChronolog::ShowStories(const std::string &chronicle_name, std::vector <std::string> &output)
+ChronoEmulator::ShowStories(const std::string &chronicle_name, std::vector <std::string> &output)
 {
     output.clear();
     return output; // Return a reference to the provided vector filled with story names

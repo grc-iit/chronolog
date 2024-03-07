@@ -8,7 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Source files for the library
 set(SOURCE_FILES
-    src/mock_chronolog.cpp
+    src/chronoemulator.cpp
     src/story.cpp
     src/chronicle.cpp
 )
@@ -20,7 +20,7 @@ add_library(ChronoEmulator STATIC ${SOURCE_FILES})
 target_include_directories(ChronoEmulator PUBLIC ${PROJECT_SOURCE_DIR}/include)
 
 # If there are any dependencies, link them here
-# target_link_libraries(ChronoEmulator other_libraries)
+# target_link_libraries(chronoemulator other_libraries)
 
 # For installation (optional)
 install(TARGETS ChronoEmulator DESTINATION lib)
