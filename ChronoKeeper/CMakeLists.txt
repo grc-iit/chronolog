@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.19)
 
-project(ChronoKeeper)
+find_package(Thallium REQUIRED)
+find_package(spdlog REQUIRED)
 
 message("Building CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
 
