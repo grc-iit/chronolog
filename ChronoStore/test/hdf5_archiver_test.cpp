@@ -10,7 +10,7 @@
 #include <StoryReader.h>
 #include <log.h>
 #include <story_chunk_test_utils.h>
-#include "chrono_common/chronolog_types.h"
+#include "chronolog_types.h"
 
 #define STORY "S1"
 #define CHRONICLE "C1.h5"
