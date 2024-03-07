@@ -22,10 +22,9 @@ private:
     std::unique_ptr <ChronoLogClient> chronoClient;
 
 public:
-    // Default constructor that initializes MemoryManager and ChronoLogClient
-    chronokvs_mapper(): memoryManager(std::make_unique <MemoryManager>()), chronoClient(
-            std::make_unique <ChronoLogClient>())
-    {}
+    chronokvs_mapper();
+
+    ~chronokvs_mapper() = default;
 
     std::uint64_t storeKeyValue(const std::string &key, const std::string &value);
 

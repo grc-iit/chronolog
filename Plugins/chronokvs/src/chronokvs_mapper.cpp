@@ -1,10 +1,15 @@
 #include "chronokvs_mapper.h"
-#include "chronolog_client.h"
 #include "chronokvs_utils.h"
 
 namespace chronokvs
 {
-std::uint64_t chronolog::chronokvs_mapper::storeKeyValue(const std::string &key, const std::string &value)
+chronokvs_mapper::chronokvs_mapper()
+{
+    memoryManager = std::make_unique <MemoryManager>();
+    chronoClient = std::make_unique <ChronoLogClient>();
+}
+
+std::uint64_t chronokvs_mapper::storeKeyValue(const std::string &key, const std::string &value)
 {
     std::string serialized = serialize(key, value);
     std::uint64_t timestamp = chronoClient->storeEvent(serialized);
@@ -12,8 +17,7 @@ std::uint64_t chronolog::chronokvs_mapper::storeKeyValue(const std::string &key,
     return timestamp;
 }
 
-std::vector <std::pair <std::string, std::string>>
-chronolog::chronokvs_mapper::retrieveByTimestamp(std::uint64_t timestamp)
+std::vector <std::pair <std::string, std::string>> chronokvs_mapper::retrieveByTimestamp(std::uint64_t timestamp)
 {
     std::vector <std::string> serializedEvents = chronoClient->retrieveEvents(timestamp);
     std::vector <std::pair <std::string, std::string>> keyValues;
@@ -26,7 +30,7 @@ chronolog::chronokvs_mapper::retrieveByTimestamp(std::uint64_t timestamp)
     return keyValues;
 }
 
-std::vector <std::pair <std::uint64_t, std::string>> chronolog::chronokvs_mapper::retrieveByKey(const std::string &key)
+std::vector <std::pair <std::uint64_t, std::string>> chronokvs_mapper::retrieveByKey(const std::string &key)
 {
     std::vector <std::uint64_t> timestamps = memoryManager->retrieveByKey(key);
     std::vector <std::pair <std::uint64_t, std::string>> results;
@@ -48,8 +52,7 @@ std::vector <std::pair <std::uint64_t, std::string>> chronolog::chronokvs_mapper
     return results;
 }
 
-std::vector <std::string>
-chronolog::chronokvs_mapper::retrieveByKeyAndTimestamp(const std::string &key, std::uint64_t timestamp)
+std::vector <std::string> chronokvs_mapper::retrieveByKeyAndTimestamp(const std::string &key, std::uint64_t timestamp)
 {
     std::vector <std::string> serializedEvents = chronoClient->retrieveEvents(timestamp);
     std::vector <std::string> values;
@@ -64,4 +67,5 @@ chronolog::chronokvs_mapper::retrieveByKeyAndTimestamp(const std::string &key, s
         }
     }
     return values;
+}
 }
