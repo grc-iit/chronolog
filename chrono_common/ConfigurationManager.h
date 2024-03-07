@@ -64,9 +64,10 @@ typedef struct LogConf_
     std::string LOGNAME;
     size_t LOGFILESIZE;
     size_t LOGFILENUM;
+    spdlog::level::level_enum FLUSHLEVEL;
 
     // Helper function to convert spdlog::level::level_enum to string
-    static std::string LogLevelToString(spdlog::level::level_enum level)
+    static std::string LevelToString(spdlog::level::level_enum level)
     {
         switch(level)
         {
@@ -91,9 +92,9 @@ typedef struct LogConf_
 
     [[nodiscard]] std::string to_String() const
     {
-        return "[TYPE: " + LOGTYPE + ", FILE: " + LOGFILE + ", LEVEL: " + LogLevelToString(LOGLEVEL) + ", NAME: " +
+        return "[TYPE: " + LOGTYPE + ", FILE: " + LOGFILE + ", LEVEL: " + LevelToString(LOGLEVEL) + ", NAME: " +
                LOGNAME + ", LOGFILESIZE: " + std::to_string(LOGFILESIZE) + ", LOGFILENUM: " +
-               std::to_string(LOGFILENUM) + "]";
+               std::to_string(LOGFILENUM) + ", FLUSH LEVEL: " + LevelToString(FLUSHLEVEL) + "]";
     }
 } LogConf;
 
@@ -148,8 +149,8 @@ typedef struct VisorConf_
     {
         return "[VISOR_CLIENT_PORTAL_SERVICE_CONF: " + VISOR_CLIENT_PORTAL_SERVICE_CONF.to_String() +
                ", VISOR_KEEPER_REGISTRY_SERVICE_CONF: " + VISOR_KEEPER_REGISTRY_SERVICE_CONF.to_String() +
-               ", VISOR_LOG: " + VISOR_LOG_CONF.to_String() + 
-               ", DELAYED_DATA_ADMIN_EXIT_IN_SECS: "+ std::to_string(DELAYED_DATA_ADMIN_EXIT_IN_SECS) + "]";
+               ", VISOR_LOG: " + VISOR_LOG_CONF.to_String() + ", DELAYED_DATA_ADMIN_EXIT_IN_SECS: " +
+               std::to_string(DELAYED_DATA_ADMIN_EXIT_IN_SECS) + "]";
     }
 } VisorConf;
 
@@ -420,7 +421,53 @@ private:
         }
         else
         {
-            std::cerr << "[ConfigurationManager] Invalid rpc implementation configuration" << std::endl;
+            std::cerr << "[ConfigurationManager] Invalid Log Level implementation configuration" << std::endl;
+        }
+    }
+
+    void parseFlushLevelConf(json_object*json_conf, spdlog::level::level_enum &flush_level)
+    {
+        if(json_object_is_type(json_conf, json_type_string))
+        {
+            const char*conf_str = json_object_get_string(json_conf);
+            if(strcmp(conf_str, "trace") == 0)
+            {
+                flush_level = spdlog::level::trace;
+            }
+            else if(strcmp(conf_str, "info") == 0)
+            {
+                flush_level = spdlog::level::info;
+            }
+            else if(strcmp(conf_str, "debug") == 0)
+            {
+                flush_level = spdlog::level::debug;
+            }
+            else if(strcmp(conf_str, "warning") == 0)
+            {
+                flush_level = spdlog::level::warn;
+            }
+            else if(strcmp(conf_str, "error") == 0)
+            {
+                flush_level = spdlog::level::err;
+            }
+            else if(strcmp(conf_str, "critical") == 0)
+            {
+                flush_level = spdlog::level::critical;
+            }
+            else if(strcmp(conf_str, "off") == 0)
+            {
+                flush_level = spdlog::level::off;
+            }
+            else
+            {
+                std::cout << "[ConfigurationManager] Unknown flush level: " << conf_str << "Set it to default value: "
+                                                                                           "Warning" << std::endl;
+                flush_level = flush_level = spdlog::level::warn;
+            }
+        }
+        else
+        {
+            std::cerr << "[ConfigurationManager] Invalid Flush Level implementation configuration" << std::endl;
         }
     }
 
@@ -592,6 +639,11 @@ private:
             {
                 assert(json_object_is_type(val, json_type_int));
                 log_conf.LOGFILENUM = json_object_get_int(val);
+            }
+            else if(strcmp(key, "flushlevel") == 0)
+            {
+                assert(json_object_is_type(val, json_type_string));
+                parseFlushLevelConf(val, log_conf.FLUSHLEVEL);
             }
             else
             {

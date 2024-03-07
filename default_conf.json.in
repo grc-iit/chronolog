@@ -34,7 +34,8 @@
         "level": "debug",
         "name": "ChronoVisor",
         "filesize": 102400,
-        "filenum": 3
+        "filenum": 3,
+        "flushlevel": ""
       }
     },
     "delayed_data_admin_exit_in_secs": 3
@@ -74,7 +75,8 @@
         "level": "debug",
         "name": "ChronoKeeper",
         "filesize": 102400,
-        "filenum": 3
+        "filenum": 3,
+        "flushlevel": ""
       }
     },
     "story_files_dir": "/tmp/"
@@ -96,7 +98,8 @@
         "level": "debug",
         "name": "ChronoClient",
         "filesize": 102400,
-        "filenum": 3
+        "filenum": 3,
+        "flushlevel": ""
       }
     }
   }
