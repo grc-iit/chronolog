@@ -7,7 +7,7 @@
 #include <mutex>
 #include <iostream>
 
-#include "chrono_common/chronolog_types.h"
+#include "chronolog_types.h"
 #include "StoryChunk.h"
 #include "StoryChunkExtractionQueue.h"
 

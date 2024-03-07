@@ -6,7 +6,7 @@
 #include <thallium.hpp>
 #include <thallium/serialization/stl/string.hpp>
 
-#include "chrono_common/chronolog_types.h"
+#include "chronolog_types.h"
 #include "KeeperDataStore.h"
 
 namespace tl = thallium;
