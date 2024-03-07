@@ -25,13 +25,9 @@ class StoryChunk
 {
 public:
 
-    StoryChunk(StoryId const &story_id = 0, uint64_t start_time = 0, uint64_t end_time = 0): storyId(story_id)
-                                                                                             , startTime(start_time)
-                                                                                             , endTime(end_time)
-                                                                                             , revisionTime(start_time)
-    {}
+    StoryChunk(StoryId const &story_id = 0, uint64_t start_time = 0, uint64_t end_time = 0, uint32_t chunk_size = 1024);
 
-    ~StoryChunk() = default;
+    ~StoryChunk();
 
     StoryId const &getStoryId() const
     { return storyId; }
@@ -56,44 +52,37 @@ public:
 
     uint64_t firstEventTime() const
     { return (*logEvents.begin()).second.time(); }
+    
+    uint64_t lastEventTime() const
+    { return (*logEvents.begin()).second.time(); }
 
-    int insertEvent(LogEvent const &event)
-    {
-        if((event.time() >= startTime) && (event.time() < endTime))
-        {
-            logEvents.insert(std::pair <EventSequence, LogEvent>({event.time(), event.clientId, event.index()}, event));
-            return 1;
-        }
-        else
-        { return 0; }
-    }
-
-    //INNA: TODO implement the functions!!!
+    int insertEvent(LogEvent const &);
+    
     uint32_t
     mergeEvents(std::map <EventSequence, LogEvent> &events, std::map <EventSequence, LogEvent>::iterator &merge_start);
 
-    uint32_t mergeEvents(StoryChunk &other_chunk)
-    { return 0; }
-
-    uint32_t mergeEvents(StoryChunk &other_chunk, uint64_t start_time, uint64_t end_time)
-    { return 0; }
+    uint32_t mergeEvents(StoryChunk &other_chunk, uint64_t start_time =0, uint64_t end_time=0);
 
     uint32_t
     extractEvents(std::map <EventSequence, LogEvent> &target_map, std::map <EventSequence, LogEvent>::iterator first_pos
-                  , std::map <EventSequence, LogEvent>::iterator last_pos)
-    { return 0; }
+                  , std::map <EventSequence, LogEvent>::iterator last_pos);
 
-    uint32_t extractEvents(std::map <EventSequence, LogEvent> &target_map, uint64_t start_time, uint64_t end_time)
-    { return 0; }
+    uint32_t extractEvents(std::map <EventSequence, LogEvent> &target_map, uint64_t start_time, uint64_t end_time);
 
-    uint32_t eraseEvents(uint64_t start_time, uint64_t end_time)
-    { return 0; }
+    uint32_t extractEvents( StoryChunk & target_chunk, uint64_t start_time, uint64_t end_time);
+
+    uint32_t split(StoryChunk & split_chunk, uint64_t time_boundary);
+
+    uint32_t eraseEvents(uint64_t start_time, uint64_t end_time);
 
 private:
     StoryId storyId;
     uint64_t startTime;
     uint64_t endTime;
     uint64_t revisionTime;
+    uint32_t chunkSize;
+    char * dataBlob;
+    std::map <EventSequence, size_t > eventOffsetMap;
     std::map <EventSequence, LogEvent> logEvents;
 };
 }
