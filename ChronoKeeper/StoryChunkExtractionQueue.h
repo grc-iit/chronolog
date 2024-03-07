@@ -7,7 +7,7 @@
 #include <mutex>
 #include "log.h"
 
-#include "chrono_common/chronolog_types.h"
+#include "chronolog_types.h"
 #include "StoryChunk.h"
 
 namespace chronolog

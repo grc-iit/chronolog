@@ -8,7 +8,7 @@
 #include <mutex>
 #include <thallium.hpp>
 
-#include "chrono_common/chronolog_types.h"
+#include "chronolog_types.h"
 #include "StoryChunkExtractionQueue.h"
 #include "log.h"
 
