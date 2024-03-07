@@ -1,7 +1,5 @@
 cmake_minimum_required(VERSION 3.19)
 
-find_package(JSON-C REQUIRED)
-
 include_directories(../include)
 include_directories(${HDF5_INCLUDE_DIRS})
 
@@ -20,7 +18,7 @@ target_include_directories(hdf5_archiver_test PRIVATE ../../ChronoKeeper
     ../../ChronoKeeper/include
     ./)
 target_link_libraries(hdf5_archiver_test ${HDF5_LIBRARIES})
-target_link_libraries(hdf5_archiver_test json-c)
+target_link_libraries(hdf5_archiver_test thallium)
 add_test(NAME hdf5_archiver_test COMMAND hdf5_archiver_test)
 
 # compound-vlen-string-based archiver implementation
@@ -46,5 +44,5 @@ add_test(NAME hdf5_archiver_test COMMAND hdf5_archiver_test)
 # compound-vlen-bytes-based vs blob+map archiver implementation comparison
 add_executable(cmp_vlen_bytes_vs_blob_map cmp_vlen_bytes_vs_blob_map.cpp
     ../../ChronoAPI/ChronoLog/src/log.cpp)
-target_link_libraries(cmp_vlen_bytes_vs_blob_map ${HDF5_LIBRARIES} json-c)
+target_link_libraries(cmp_vlen_bytes_vs_blob_map ${HDF5_LIBRARIES} thallium)
 add_test(NAME cmp_vlen_bytes_vs_blob_map COMMAND cmp_vlen_bytes_vs_blob_map)

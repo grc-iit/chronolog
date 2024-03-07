@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.19)
 
+find_package(Thallium REQUIRED)
 find_package(HDF5 REQUIRED COMPONENTS C CXX)
 find_package(spdlog REQUIRED)
 
