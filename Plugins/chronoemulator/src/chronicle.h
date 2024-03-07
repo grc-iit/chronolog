@@ -7,6 +7,9 @@
 #include <memory>
 #include "story.h"
 
+namespace chronoemulator
+{
+
 class Chronicle
 {
 public:
@@ -72,6 +75,6 @@ public:
      */
     int releaseStory(const std::string &story_name);
 };
-
+}
 
 #endif //CHRONOEMULATOR_CHRONICLE_H

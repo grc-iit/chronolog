@@ -1,12 +1,10 @@
-//
-// Created by eneko on 2/26/24.
-//
-
 #ifndef CHRONOEMULATOR_STORY_H
 #define CHRONOEMULATOR_STORY_H
 
 #include "vector"
 
+namespace chronoemulator
+{
 /**
  * @brief Represents a single story with a series of timestamped events.
  *
@@ -49,5 +47,5 @@ public:
      */
     std::vector <std::string> replay(uint64_t timestamp);
 };
-
+}
 #endif //CHRONOEMULATOR_STORY_H

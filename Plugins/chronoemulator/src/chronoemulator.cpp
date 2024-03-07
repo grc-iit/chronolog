@@ -1,6 +1,9 @@
 #include <algorithm>
 #include "chronoemulator.h"
 
+namespace chronoemulator
+{
+
 int ChronoEmulator::Connect()
 {
     isConnected = true;
@@ -146,40 +149,4 @@ int ChronoEmulator::DestroyStory(const std::string &chronicle_name, const std::s
     return -1; // Chronicle not found
 }
 
-/*
-int ChronoEmulator::GetChronicleAttr(const std::string &chronicle_name, const std::string &key, std::string &value)
-{
-    if(!isConnected)
-    {
-        return -1; // Connection is not established
-    }
-    return 0; // Success
 }
-
-int
-ChronoEmulator::EditChronicleAttr(const std::string &chronicle_name, const std::string &key, const std::string &value)
-{
-    if(!isConnected)
-    {
-        return -1; // Connection is not established
-    }
-    return 0; // Success
-}
-
-std::vector <std::string> &ChronoEmulator::ShowChronicles(std::vector <std::string> &output)
-{
-    if(!isConnected)
-    {
-        output.clear(); // Connection is not established
-        return output;
-    }
-    return output; // Return a reference to the provided vector filled with chronicle names
-}
-
-std::vector <std::string> &
-ChronoEmulator::ShowStories(const std::string &chronicle_name, std::vector <std::string> &output)
-{
-    output.clear();
-    return output; // Return a reference to the provided vector filled with story names
-}
-*/

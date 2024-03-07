@@ -9,6 +9,8 @@
 #include "../src/story.h"
 #include "../src/chronicle.h"
 
+namespace chronoemulator
+{
 class ChronoEmulator: public std::enable_shared_from_this <ChronoEmulator>
 {
 private:
@@ -32,6 +34,8 @@ public:
     int ReleaseStory(const std::string &chronicle_name, const std::string &story_name);
 
     int DestroyStory(const std::string &chronicle_name, const std::string &story_name);
+
 };
+}
 
 #endif //CHRONOKVS_CHRONOEMULATOR_H

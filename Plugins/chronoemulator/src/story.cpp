@@ -3,6 +3,8 @@
 #include <thread>
 #include "story.h"
 
+namespace chronoemulator
+{
 /**
  * Records an event with the current system timestamp.
  */
@@ -14,7 +16,7 @@ uint64_t StoryHandle::record(const std::string &event)
     }
     auto now = std::chrono::high_resolution_clock::now();
     auto duration = now.time_since_epoch();
-    auto nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
+    auto nanos = std::chrono::duration_cast <std::chrono::nanoseconds>(duration).count();
     events.emplace_back(static_cast<uint64_t>(nanos), event);
     return static_cast<uint64_t>(nanos);
 }
@@ -39,4 +41,5 @@ std::vector <std::string> StoryHandle::replay(uint64_t timestamp)
     }
 
     return matchingEvents;
+}
 }

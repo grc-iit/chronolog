@@ -1,6 +1,9 @@
 #include "chronicle.h"
 #include <algorithm>
 
+namespace chronoemulator
+{
+
 Chronicle::Chronicle(const std::string &name, const std::unordered_map <std::string, std::string> &attributes): name(
         name), attributes(attributes)
 {}
@@ -83,4 +86,5 @@ int Chronicle::releaseStory(const std::string &story_name)
         return 0;
     }
     return -1;
+}
 }

@@ -6,7 +6,7 @@
 
 void TestWithoutConnection()
 {
-    ChronoEmulator chronolog;
+    chronoemulator::ChronoEmulator chronolog;
     std::unordered_map <std::string, std::string> attrs = {{"creator", "John Doe"}};
     int flags = 0;
 
@@ -21,7 +21,7 @@ void TestWithoutConnection()
 
 void TestWithConnection()
 {
-    ChronoEmulator chronolog;
+    chronoemulator::ChronoEmulator chronolog;
     std::unordered_map <std::string, std::string> attrs = {{"creator", "John Doe"}};
     int flags = 0;
 
@@ -42,7 +42,7 @@ void TestWithConnection()
 
 void TestStories()
 {
-    ChronoEmulator chronolog;
+    chronoemulator::ChronoEmulator chronolog;
     int flags = 0; // Placeholder for flags, adjust as necessary for your implementation
 
     // Connect to ChronoEmulator
@@ -70,7 +70,7 @@ void TestStories()
 
 void TestRecordAndReplay()
 {
-    ChronoEmulator chronolog;
+    chronoemulator::ChronoEmulator chronolog;
     int flags = 0; // Placeholder for flags, adjust as necessary for your implementation
 
     // Connect to ChronoEmulator
