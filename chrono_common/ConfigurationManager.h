@@ -462,7 +462,7 @@ private:
             {
                 std::cout << "[ConfigurationManager] Unknown flush level: " << conf_str << "Set it to default value: "
                                                                                            "Warning" << std::endl;
-                flush_level = flush_level = spdlog::level::warn;
+                flush_level = spdlog::level::warn;
             }
         }
         else
