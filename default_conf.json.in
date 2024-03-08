@@ -35,7 +35,7 @@
         "name": "ChronoVisor",
         "filesize": 102400,
         "filenum": 3,
-        "flushlevel": ""
+        "flushlevel": "warning"
       }
     },
     "delayed_data_admin_exit_in_secs": 3
@@ -76,7 +76,7 @@
         "name": "ChronoKeeper",
         "filesize": 102400,
         "filenum": 3,
-        "flushlevel": ""
+        "flushlevel": "warning"
       }
     },
     "story_files_dir": "/tmp/"
@@ -99,7 +99,7 @@
         "name": "ChronoClient",
         "filesize": 102400,
         "filenum": 3,
-        "flushlevel": ""
+        "flushlevel": "warning"
       }
     }
   }
