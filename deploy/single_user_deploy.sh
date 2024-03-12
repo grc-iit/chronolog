@@ -17,6 +17,7 @@ CLIENT_ARGS="--config ${CONF_FILE}"
 VISOR_HOSTS="${CONF_DIR}/hosts_visor"
 KEEPER_HOSTS="${CONF_DIR}/hosts_keeper"
 CLIENT_HOSTS="${CONF_DIR}/hosts_client"
+HOSTNAME_HS_NET_POSTFIX="-40g"
 JOB_ID=""
 install=false
 deploy=false
@@ -133,7 +134,18 @@ copy_shared_libs() {
 
 update_visor_ip() {
     visor_host=$(cat ${VISOR_HOSTS})
-    visor_ip=$(dig +short ${visor_host})
+    if [[ ${visor_host} == *${HOSTNAME_HS_NET_POSTFIX} ]]
+    then
+        visor_ip=$(getent hosts ${visor_host} | awk '{print $1}')
+    else
+        visor_ip=$(getent hosts ${visor_host}${HOSTNAME_HS_NET_POSTFIX} | awk '{print $1}')
+    fi
+    if [[ -z "${visor_ip}" ]]
+    then
+        echo "Cannot get ChronoVisor IP, exiting ..."
+        exit 1
+    fi
+    echo "Replacing ChronoVisor IP with ${visor_ip} ..."
     jq ".chrono_visor.VisorClientPortalService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} > tmp.json && mv tmp.json ${CONF_FILE}
     jq ".chrono_client.VisorClientPortalService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} > tmp.json && mv tmp.json ${CONF_FILE}
     jq ".chrono_visor.VisorKeeperRegistryService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} > tmp.json && mv tmp.json ${CONF_FILE}
