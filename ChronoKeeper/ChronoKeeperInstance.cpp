@@ -77,7 +77,8 @@ int main(int argc, char**argv)
                                     , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGLEVEL
                                     , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGNAME
                                     , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILESIZE
-                                    , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILENUM);
+                                    , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILENUM
+                                    , confManager.KEEPER_CONF.KEEPER_LOG_CONF.FLUSHLEVEL);
     if(result == 1)
     {
         exit(EXIT_FAILURE);

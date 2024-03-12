@@ -80,13 +80,14 @@ public:
      * @param loggerName   The name of the logger, used in formatted output.
      * @param logFileSize  Maximum size of log file before rotating (in Bytes).
      * @param logFileNum   Number of log files to maintain before overwriting.
+     * @param flushLevel   The logging level for the logger to flush into file when file logging mode.
      *
      * @return             Returns 0 if the logger was initialized successfully,
      *                     and returns 1 if there was an error during initialization.
      */
     static int initialize(const std::string &logType, const std::string &location, spdlog::level::level_enum logLevel
-                          , const std::string &loggerName, const std::size_t &logFileSize
-                          , const std::size_t &logFileNum);
+                          , const std::string &loggerName, const std::size_t &logFileSize, const std::size_t &logFileNum
+                          , spdlog::level::level_enum flushLevel);
 
 
     /**

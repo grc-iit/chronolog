@@ -153,7 +153,7 @@ int main(int argc, char*argv[])
     uint64_t client_id = CLIENT_ID;
 
     int result = Logger::initialize("console", "hdf5_archiver_test.log", spdlog::level::debug, "hdf5_archiver_test"
-                                    , 102400, 1);
+                                    , 102400, 1, spdlog::level::debug);
     if(result == 1)
     {
         exit(EXIT_FAILURE);

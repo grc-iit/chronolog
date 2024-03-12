@@ -12,7 +12,8 @@ std::shared_ptr <spdlog::logger> Logger::logger = nullptr;
 std::mutex Logger::mutex;
 
 int Logger::initialize(const std::string &logType, const std::string &location, spdlog::level::level_enum logLevel
-                       , const std::string &loggerName, const std::size_t &logFileSize, const std::size_t &logFileNum)
+                       , const std::string &loggerName, const std::size_t &logFileSize, const std::size_t &logFileNum
+                       , spdlog::level::level_enum flushLevel)
 {
     std::lock_guard <std::mutex> lock(mutex);
     if(logger)
@@ -42,6 +43,7 @@ int Logger::initialize(const std::string &logType, const std::string &location, 
             return 1;
         }
         logger = std::make_shared <spdlog::logger>(loggerName, sink);
+        logger->flush_on(flushLevel);
         logger->set_level(logLevel);
     }
     catch(const spdlog::spdlog_ex &ex)
