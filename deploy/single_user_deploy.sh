@@ -132,14 +132,21 @@ copy_shared_libs() {
     done
 }
 
-update_visor_ip() {
-    visor_host=$(cat ${VISOR_HOSTS})
-    if [[ ${visor_host} == *${HOSTNAME_HS_NET_POSTFIX} ]]
+get_host_ip() {
+    local hostname=$1
+    local host_ip=""
+    if [[ ${hostname} == *${HOSTNAME_HS_NET_POSTFIX} ]]
     then
-        visor_ip=$(getent hosts ${visor_host} | awk '{print $1}')
+        host_ip=$(getent hosts ${hostname} | awk '{print $1}' | head -1)
     else
-        visor_ip=$(getent hosts ${visor_host}${HOSTNAME_HS_NET_POSTFIX} | awk '{print $1}')
+        host_ip=$(getent hosts ${hostname}${HOSTNAME_HS_NET_POSTFIX} | awk '{print $1}' | head -1)
     fi
+    echo ${host_ip}
+}
+
+update_visor_ip() {
+    visor_host=$(head -1 ${VISOR_HOSTS})
+    visor_ip=$(get_host_ip ${visor_host})
     if [[ -z "${visor_ip}" ]]
     then
         echo "Cannot get ChronoVisor IP, exiting ..."
