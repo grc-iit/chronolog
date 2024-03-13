@@ -157,8 +157,17 @@ update_visor_ip() {
     jq ".chrono_client.VisorClientPortalService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} > tmp.json && mv tmp.json ${CONF_FILE}
     jq ".chrono_visor.VisorKeeperRegistryService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} > tmp.json && mv tmp.json ${CONF_FILE}
     jq ".chrono_keeper.VisorKeeperRegistryService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} > tmp.json && mv tmp.json ${CONF_FILE}
-    jq ".chrono_keeper.KeeperRecordingService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} > tmp.json && mv tmp.json ${CONF_FILE}
-    jq ".chrono_keeper.KeeperDataStoreAdminService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} > tmp.json && mv tmp.json ${CONF_FILE}
+}
+
+generate_conf_for_each_keeper() {
+    for keeper_host in $(cat ${KEEPER_HOSTS} | awk '{print $1}')
+    do
+        keeper_ip=$(get_host_ip ${keeper_host})
+        echo "Generating conf file for Keeper ${keeper_host} ..."
+        jq ".chrono_keeper.KeeperDataStoreAdminService.rpc.service_ip = \"${keeper_ip}\"" ${CONF_FILE} > tmp.json && mv tmp.json ${CONF_FILE}
+        jq ".chrono_keeper.KeeperRecordingService.rpc.service_ip = \"${keeper_ip}\"" ${CONF_FILE} > tmp.json && mv tmp.json ${CONF_FILE}
+        jq ".chrono_keeper.Logging.log.file = \"chronokeeper_logfile.txt.${keeper_host}\"" ${CONF_FILE} > tmp.json && mv tmp.json ${CONF_FILE}.${keeper_host}
+    done
 }
 
 install() {
@@ -173,6 +182,8 @@ install() {
     check_conf_files
 
     update_visor_ip
+
+    generate_conf_for_each_keeper
 }
 
 deploy() {
@@ -184,10 +195,10 @@ deploy() {
     mpssh -f ${VISOR_HOSTS} "cd ${BIN_DIR}; LD_LIBRARY_PATH=${LIB_DIR} nohup ${VISOR_BIN} ${VISOR_ARGS} > ${VISOR_BIN_FILE_NAME}.\$(hostname) 2>&1 &"
 
     # launch Keeper
-    mpssh -f ${KEEPER_HOSTS} "cd ${BIN_DIR}; LD_LIBRARY_PATH=${LIB_DIR} nohup ${KEEPER_BIN} ${KEEPER_ARGS} > ${KEEPER_BIN_FILE_NAME}.\$(hostname) 2>&1 &"
+    mpssh -f ${KEEPER_HOSTS} "cd ${BIN_DIR}; LD_LIBRARY_PATH=${LIB_DIR} nohup ${KEEPER_BIN} ${KEEPER_ARGS}.\$(hostname) > ${KEEPER_BIN_FILE_NAME}.\$(hostname) 2>&1 &"
 
     # launch Client
-    mpssh -f ${CLIENT_HOSTS} "cd ${BIN_DIR}; LD_LIBRARY_PATH=${LIB_DIR} nohup ${CLIENT_BIN} ${CLIENT_ARGS} > ${CLIENT_BIN_FILE_NAME}.\$(hostname) 2>&1 &"
+    mpssh -f ${CLIENT_HOSTS} "cd ${BIN_DIR}; LD_LIBRARY_PATH=${LIB_DIR} nohup ${CLIENT_BIN} ${CLIENT_ARGS}.\$(hostname) > ${CLIENT_BIN_FILE_NAME}.\$(hostname) 2>&1 &"
 
     # check Visor
     mpssh -f ${VISOR_HOSTS} "pgrep -fla ${VISOR_BIN_FILE_NAME}"
