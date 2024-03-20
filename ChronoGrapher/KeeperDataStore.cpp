@@ -13,15 +13,6 @@
 namespace chl = chronolog;
 namespace tl = thallium;
 
-///////////////////////
-class ClocksourceCPPStyle
-{
-public:
-    uint64_t getTimestamp()
-    {
-        return std::chrono::steady_clock::now().time_since_epoch().count();
-    }
-};
 
 ////////////////////////
 
