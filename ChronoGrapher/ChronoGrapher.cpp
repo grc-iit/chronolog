@@ -4,9 +4,7 @@
 
 #include <signal.h>
 
-//#include "chrono_common/KeeperIdCard.h"
-//#include "chrono_common/KeeperStatsMsg.h"
-#include "KeeperRecordingService.h"
+#include "GrapherRecordingService.h"
 #include "KeeperRegClient.h"
 #include "ChunkIngestionQueue.h"
 #include "StoryChunkExtractionQueue.h"
@@ -107,8 +105,7 @@ int main(int argc, char**argv)
     }
     LOG_INFO("[ChronoKeeperInstance] DataStoreAdminService started successfully.");
 
-    /// KeeperRecordingService setup ___________________________________________________________________________________
-    // Instantiate KeeperRecordingService
+    // Instantiate GrapherRecordingService
     std::string KEEPER_RECORDING_SERVICE_PROTOCOL = confManager.KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.PROTO_CONF;
     std::string KEEPER_RECORDING_SERVICE_IP = confManager.KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.IP;
     uint16_t KEEPER_RECORDING_SERVICE_PORT = confManager.KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.BASE_PORT;
@@ -179,7 +176,7 @@ int main(int argc, char**argv)
 
     // Instantiate KeeperRecordingService
     tl::engine*recordingEngine = nullptr;
-    chronolog::KeeperRecordingService*keeperRecordingService = nullptr;
+    chronolog::GrapherRecordingService* keeperRecordingService = nullptr;
 
     try
     {
@@ -190,7 +187,7 @@ int main(int argc, char**argv)
         s1 << recordingEngine->self();
         LOG_INFO("[ChronoKeeperInstance] GroupID={} starting KeeperRecordingService at {} with provider_id {}"
              , keeper_group_id, s1.str(), datastore_service_provider_id);
-        keeperRecordingService = chronolog::KeeperRecordingService::CreateKeeperRecordingService(*recordingEngine
+        keeperRecordingService = chronolog::GrapherRecordingService::CreateRecordingService(*recordingEngine
                                                                                                  , recording_service_provider_id
                                                                                                  , ingestionQueue);
     }

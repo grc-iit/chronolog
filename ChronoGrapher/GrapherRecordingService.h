@@ -1,5 +1,5 @@
-#ifndef KEEPER_RECORDING_SERVICE_H
-#define KEEPER_RECORDING_SERVICE_H
+#ifndef GRAPHER_RECORDING_SERVICE_H
+#define GRAPHER_RECORDING_SERVICE_H
 
 #include <iostream>
 #include <margo.h>
@@ -15,19 +15,19 @@ namespace tl = thallium;
 
 namespace chronolog
 {
-class KeeperRecordingService: public tl::provider <KeeperRecordingService>
+class GrapherRecordingService: public tl::provider <GrapherRecordingService>
 {
 public:
-    // KeeperRecordingService should be created on the heap not the stack thus the constructor is private...
-    static KeeperRecordingService*
-    CreateKeeperRecordingService(tl::engine &tl_engine, uint16_t service_provider_id, ChunkIngestionQueue &ingestion_queue)
+    // RecordingService should be created on the heap not the stack thus the constructor is private...
+    static GrapherRecordingService*
+    CreateRecordingService(tl::engine &tl_engine, uint16_t service_provider_id, ChunkIngestionQueue &ingestion_queue)
     {
-        return new KeeperRecordingService(tl_engine, service_provider_id, ingestion_queue);
+        return new GrapherRecordingService(tl_engine, service_provider_id, ingestion_queue);
     }
 
-    ~KeeperRecordingService()
+    ~GrapherRecordingService()
     {
-        LOG_DEBUG("[KeeperRecordingService] Destructor called. Cleaning up...");
+        LOG_DEBUG("[GrapherRecordingService] Destructor called. Cleaning up...");
         get_engine().pop_finalize_callback(this);
     }
 /*
@@ -44,18 +44,18 @@ public:
     }
 */
 private:
-    KeeperRecordingService(tl::engine &tl_engine, uint16_t service_provider_id, ChunkIngestionQueue &ingestion_queue)
-            : tl::provider <KeeperRecordingService>(tl_engine, service_provider_id), theIngestionQueue(ingestion_queue)
+    GrapherRecordingService(tl::engine &tl_engine, uint16_t service_provider_id, ChunkIngestionQueue &ingestion_queue)
+            : tl::provider <GrapherRecordingService>(tl_engine, service_provider_id), theIngestionQueue(ingestion_queue)
     {
-        //define("", &KeeperRecordingService::record_event, tl::ignore_return_value());
+        //define("", &RecordingService::record_event, tl::ignore_return_value());
         //set up callback for the case when the engine is being finalized while this provider is still alive
         get_engine().push_finalize_callback(this, [p = this]()
         { delete p; });
     }
 
-    KeeperRecordingService(KeeperRecordingService const &) = delete;
+    GrapherRecordingService(GrapherRecordingService const &) = delete;
 
-    KeeperRecordingService &operator=(KeeperRecordingService const &) = delete;
+    GrapherRecordingService &operator=(GrapherRecordingService const &) = delete;
 
     ChunkIngestionQueue &theIngestionQueue;
 };
