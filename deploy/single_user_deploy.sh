@@ -69,7 +69,7 @@ check_conf_files() {
     echo "Checking configuration files ..."
     if [[ ! -f ${CONF_FILE} ]]
     then
-        echo "${CONF_FILE} configuration file does not exist, exiting ..."
+        echo "configuration file ${CONF_FILE} does not exist, exiting ..."
         exit 1
     fi
 
@@ -192,12 +192,15 @@ deploy() {
     echo "Deploying ..."
 
     # launch Visor
+    VISOR_ARGS="--config ${CONF_FILE}"
     mpssh -f ${VISOR_HOSTS} "cd ${BIN_DIR}; LD_LIBRARY_PATH=${LIB_DIR} nohup ${VISOR_BIN} ${VISOR_ARGS} > ${VISOR_BIN_FILE_NAME}.\$(hostname) 2>&1 &"
 
     # launch Keeper
+    KEEPER_ARGS="--config ${CONF_FILE}"
     mpssh -f ${KEEPER_HOSTS} "cd ${BIN_DIR}; LD_LIBRARY_PATH=${LIB_DIR} nohup ${KEEPER_BIN} ${KEEPER_ARGS}.\$(hostname) > ${KEEPER_BIN_FILE_NAME}.\$(hostname) 2>&1 &"
 
     # launch Client
+    CLIENT_ARGS="--config ${CONF_FILE}"
     mpssh -f ${CLIENT_HOSTS} "cd ${BIN_DIR}; LD_LIBRARY_PATH=${LIB_DIR} nohup ${CLIENT_BIN} ${CLIENT_ARGS}.\$(hostname) > ${CLIENT_BIN_FILE_NAME}.\$(hostname) 2>&1 &"
 
     # check Visor
@@ -236,7 +239,7 @@ reset() {
 }
 
 parse_args() {
-    TEMP=$(getopt -o v:k:c:s:p:t:j:idr --long visor:,keeper:,client:,visor_hosts:,keeper_hosts:,client_hosts:,job_id:,install,deploy,reset -- "$@")
+    TEMP=$(getopt -o v:k:c:s:p:t:f:j:idr --long visor:,keeper:,client:,visor_hosts:,keeper_hosts:,client_hosts:,conf_file:,job_id:,install,deploy,reset -- "$@")
 
     if [ $? != 0 ] ; then echo "Terminating ..." >&2 ; exit 1 ; fi
 
@@ -264,6 +267,9 @@ parse_args() {
                 shift 2 ;;
             -t|--client_hosts)
                 CLIENT_HOSTS=$(realpath "$2")
+                shift 2 ;;
+            -f|--conf_file)
+                CONF_FILE=$(realpath "$2")
                 shift 2 ;;
             -j|--job_id)
                 JOB_ID="$2"
@@ -339,6 +345,7 @@ usage() {
                                -s|--visor_hosts VISOR_HOSTS
                                -p|--keeper_hosts KEEPER_HOSTS
                                -r|--client_hosts CLIENT_HOSTS
+                               -f|--conf_file CONF_FILE
                                -j|--job_id JOB_ID"
     exit 1
 }
