@@ -33,7 +33,7 @@
         "file": "chronovisor_logfile.txt",
         "level": "debug",
         "name": "ChronoVisor",
-        "filesize": 102400,
+        "filesize": 1048576,
         "filenum": 3,
         "flushlevel": "warning"
       }
@@ -74,7 +74,7 @@
         "file": "chronokeeper_logfile.txt",
         "level": "debug",
         "name": "ChronoKeeper",
-        "filesize": 102400,
+        "filesize": 1048576,
         "filenum": 3,
         "flushlevel": "warning"
       }
@@ -97,7 +97,7 @@
         "file": "chronoclient_logfile.txt",
         "level": "debug",
         "name": "ChronoClient",
-        "filesize": 102400,
+        "filesize": 1048576,
         "filenum": 3,
         "flushlevel": "warning"
       }
