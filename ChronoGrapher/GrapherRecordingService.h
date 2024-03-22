@@ -30,24 +30,20 @@ public:
         LOG_DEBUG("[GrapherRecordingService] Destructor called. Cleaning up...");
         get_engine().pop_finalize_callback(this);
     }
-/*
- INN: replace this method with chunk receptor method
-    void on_chunk_received(tl::request const &request, LogEvent const &log_event)
+
+    //TODO: replace or augment this with RDMA transfer later on...
+    void record_story_chunk(tl::request const &request, StoryChunk & chunk)
     {
-        //  ClientId teller_id,  StoryId story_id,
-        //  ChronoTick const& chrono_tick, std::string const& record)
-        std::stringstream ss;
-        ss << log_event;
-        LOG_DEBUG("[KeeperRecordingService] Recording event: {}", ss.str());
-        theIngestionQueue.ingestLogEvent(log_event);
+        LOG_DEBUG("[KeeperRecordingService] Recording chunk: {}", chunk.getStoryId());
+        theIngestionQueue.ingestStoryChunk(&chunk);
         request.respond(chronolog::CL_SUCCESS);
     }
-*/
+
 private:
     GrapherRecordingService(tl::engine &tl_engine, uint16_t service_provider_id, ChunkIngestionQueue &ingestion_queue)
             : tl::provider <GrapherRecordingService>(tl_engine, service_provider_id), theIngestionQueue(ingestion_queue)
     {
-        //define("", &RecordingService::record_event, tl::ignore_return_value());
+        define("record_story_chunk", &GrapherRecordingService::record_story_chunk, tl::ignore_return_value());
         //set up callback for the case when the engine is being finalized while this provider is still alive
         get_engine().push_finalize_callback(this, [p = this]()
         { delete p; });

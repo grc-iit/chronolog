@@ -14,8 +14,8 @@ target_include_directories(chrono_grapher PRIVATE include
 target_sources(chrono_grapher PRIVATE
     ChronoGrapher.cpp
     StoryPipeline.cpp
-    StoryChunk.cpp
     KeeperDataStore.cpp
+    ../chrono_common/StoryChunk.cpp
     StoryChunkExtractor.cpp
     CSVFileChunkExtractor.cpp
     ../ChronoAPI/ChronoLog/src/log.cpp)

@@ -75,14 +75,27 @@ public:
 
     uint32_t eraseEvents(uint64_t start_time, uint64_t end_time);
 
+    // serialization function used by thallium RPC providers
+    // to serialize/deserialize KeeperIdCard
+    template <typename SerArchiveT>
+    void serialize( SerArchiveT & serT)
+    {
+        serT & storyId;
+        serT & startTime;
+        serT & endTime;
+        serT & revisionTime;
+        for(auto iter=logEvents.begin(); iter!= logEvents.end(); ++iter)
+        {
+             serT((*iter).second);
+        }
+    }
+
+
 private:
     StoryId storyId;
     uint64_t startTime;
     uint64_t endTime;
     uint64_t revisionTime;
-    uint32_t chunkSize;
-    char * dataBlob;
-    std::map <EventSequence, size_t > eventOffsetMap;
     std::map <EventSequence, LogEvent> logEvents;
 };
 }

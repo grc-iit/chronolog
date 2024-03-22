@@ -12,14 +12,11 @@ chl::StoryChunk::StoryChunk(chl::StoryId const &story_id , uint64_t start_time ,
             , startTime(start_time)
             , endTime(end_time)
             , revisionTime(start_time)
-            , chunkSize(chunk_size)
     {
-        dataBlob = new char[chunk_size];
     }
 
 chl::StoryChunk::~StoryChunk()
     {
-        delete [] dataBlob;
     }
 
 int chl::StoryChunk::insertEvent(chl::LogEvent const &event)
