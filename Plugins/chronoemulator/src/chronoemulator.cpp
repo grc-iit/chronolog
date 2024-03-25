@@ -41,6 +41,11 @@ int ChronoEmulator::CreateChronicle(const std::string &chronicle_name
 
 int ChronoEmulator::DestroyChronicle(const std::string &chronicle_name)
 {
+    if(!isConnected)
+    {
+        return -1; // Connection is not established
+    }
+
     // Iterate through the vector to find the chronicle with the given name
     for(auto it = chronicles.begin(); it != chronicles.end(); ++it)
     {
