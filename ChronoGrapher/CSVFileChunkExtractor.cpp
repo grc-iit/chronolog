@@ -3,14 +3,13 @@
 #include <thallium.hpp>
 
 #include "chronolog_types.h"
-#include "KeeperIdCard.h"
 #include "CSVFileChunkExtractor.h"
 
 namespace tl = thallium;
 
-chronolog::CSVFileStoryChunkExtractor::CSVFileStoryChunkExtractor(chronolog::KeeperIdCard const &keeper_id_card
+chronolog::CSVFileStoryChunkExtractor::CSVFileStoryChunkExtractor(std::string const & process_id_card
                                                                   , std::string const &csv_files_root_dir)
-        : keeperIdCard(keeper_id_card), rootDirectory(csv_files_root_dir)
+        : chrono_process_id(process_id_card), rootDirectory(csv_files_root_dir)
 {}
 
 /////////////
@@ -24,8 +23,7 @@ void chronolog::CSVFileStoryChunkExtractor::processStoryChunk(chronolog::StoryCh
 {
     std::ofstream chunk_fstream;
     std::string chunk_filename(rootDirectory);
-    keeperIdCard.getIPasDottedString(chunk_filename);
-    chunk_filename += "." + std::to_string(story_chunk->getStoryId()) + "." +
+    chunk_filename += chrono_process_id + "." + std::to_string(story_chunk->getStoryId()) + "." +
                       std::to_string(story_chunk->getStartTime() / 1000000000) + ".csv";
 
     tl::xstream es = tl::xstream::self();
