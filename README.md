@@ -51,7 +51,7 @@ git pull --recurse-submodules
 
 ### Prerequisites: Spack
 
-ChronoLog requires various packages managed by Spack. To ensure compatibility and stability, we recommend using Spack version **`v0.21.2 (2024-03-01)`**. Follow the steps below to install and configure Spack:
+ChronoLog requires various packages managed by Spack. To ensure compatibility and stability, we recommend using Spack version [`v0.21.2 (2024-03-01)`](https://github.com/spack/spack/releases/tag/v0.21.2). Follow the steps below to install and configure Spack:
 
 ```
 git clone --branch v0.21.2 https://github.com/spack/spack.git
@@ -113,5 +113,5 @@ to install executables and dependencies into the default install directory (**`~
 ------
 # Coming soon ...
 
-For more details about the ChronoLog project, please visit our website http://chronolog.dev.
+For more details about the ChronoLog project, please visit our [website](https://grc.iit.edu/research/projects/chronolog)
 
