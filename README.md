@@ -1,12 +1,8 @@
 # ChronoLog 
 
----
-
 ChronoLog: A High-Performance Storage Infrastructure for Activity and Log Workloads (NSF CSSI 2104013)
 
 ## ChronoLog Project Synopsis
-
----
 
 This project will design and implement ChronoLog, a distributed and tiered shared log storage ecosystem. ChronoLog uses
 physical time to distribute log entries while providing total log ordering. It also utilizes multiple storage tiers to
@@ -16,8 +12,6 @@ distribution, a log-based key-value store, and a log-based TensorFlow module.
 
 ## Workloads and Applications
 
----
-
 Modern applications spanning from Edge to High Performance Computing (HPC) systems, produce and process log data and
 create a plethora of workload characteristics that rely on a common storage model: **the distributed shared log**.
 
@@ -25,14 +19,9 @@ create a plethora of workload characteristics that rely on a common storage mode
 
 ## Features
 
----
-
 ![Feature matrix](/doc/images/feature-matrix.png)
 
 ## Checkout ChronoLog
-
----
-
 To get started with ChronoLog, the first step involves cloning the repository to your system. ChronoLog utilizes the HCL language, which is integrated as a submodule within the repository. This setup requires specific steps to ensure both the main project and its submodule are correctly cloned and initialized. Below, you will find two options to achieve this:
 
 **Option 1: Clone directly with Submodules (Clone and automatically initializes and updates the submodules)**
@@ -59,8 +48,6 @@ git pull --recurse-submodules
 ```
 
 ## Installation and configuration
-
----
 
 ### Prerequisites: Spack
 
@@ -116,10 +103,7 @@ make install
 
 to install executables and dependencies into the default install directory (**`~/chronolog`**).
 
-### Configuration files
-
----
-
+## Configuration files
 - **Default Configuration:** ChronoLog executables require a configuration file (`default_conf.json.in`). Modify this template according to your preferences.
 - **Installation Process:** The default installation copies and renames `default_conf.json.in` to `conf` in the install directory.
 - **Using Configuration:** Pass the configuration file to executables with `-config default_conf.json`.
