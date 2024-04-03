@@ -21,7 +21,7 @@ typedef uint16_t        in_port_t;
 typedef std::pair <in_addr_t, in_port_t> service_endpoint;
 
 // KeeperGroup is the logical grouping of KeeperProcesses
-typedef uint64_t    KeeperGroupId;
+typedef uint32_t    KeeperGroupId;
 
 
 class KeeperIdCard
@@ -35,7 +35,7 @@ class KeeperIdCard
 public:
 
 
-    KeeperIdCard( uint64_t group_id = 0, uint32_t addr = 0, uint16_t a_port=0, uint16_t provider_id=0)
+    KeeperIdCard( uint32_t group_id = 0, uint32_t addr = 0, uint16_t a_port=0, uint16_t provider_id=0)
         : keeper_group_id(group_id), ip_addr(addr), port(a_port),tl_provider_id(provider_id)
     {}
 
@@ -45,7 +45,7 @@ public:
 
     ~KeeperIdCard()=default;
 
-    uint64_t getGroupId() const { return keeper_group_id; }
+    uint32_t getGroupId() const { return keeper_group_id; }
     uint32_t getIPaddr() const {return ip_addr; }
     uint16_t getPort() const { return port;}
     uint16_t getProviderId () const { return tl_provider_id; }

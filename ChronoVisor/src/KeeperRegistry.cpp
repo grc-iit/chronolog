@@ -504,6 +504,18 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStop(std::vector<KeeperIdCard> 
 
     return chronolog::CL_SUCCESS;
 }
+int KeeperRegistry::registerGrapherProcess(GrapherRegistrationMsg const & reg_msg)
+{
+
+    return chronolog::CL_SUCCESS;
+}
+
+int KeeperRegistry::unregisterGrapherProcess(GrapherIdCard const & id_card)
+{
+
+
+    return chronolog::CL_SUCCESS;
+}
 
 
 }//namespace chronolog

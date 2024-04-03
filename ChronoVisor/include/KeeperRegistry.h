@@ -11,6 +11,8 @@
 #include "KeeperIdCard.h"
 #include "KeeperStatsMsg.h"
 #include "KeeperRegistrationMsg.h"
+#include "GrapherIdCard.h"
+#include "GrapherRegistrationMsg.h"
 #include "ConfigurationManager.h"
 
 namespace chronolog
@@ -64,6 +66,46 @@ class KeeperRegistry
         std::list<std::pair<std::time_t, DataStoreAdminClient*>> delayedExitClients;
     };
 
+    struct GrapherProcessEntry 
+    {
+    public:
+        GrapherProcessEntry(GrapherIdCard const& id_card, ServiceId const& admin_service_id)
+            : idCard(id_card)
+            , adminServiceId(admin_service_id) 
+            , adminClient(nullptr)
+            , active(false)
+            , lastStatsTime(0)
+            , activeStoryCount(0)
+        {}
+
+        GrapherProcessEntry(GrapherProcessEntry const &other) = default;
+        ~GrapherProcessEntry() = default;   // Registry is reponsible for creating & deleting keeperAdminClient
+
+        GrapherIdCard idCard;
+        ServiceId adminServiceId;
+        DataStoreAdminClient* adminClient;
+        bool active;
+        uint64_t lastStatsTime;
+        uint32_t activeStoryCount;
+        std::list<std::pair<std::time_t, DataStoreAdminClient*>> delayedExitClients;
+    };
+
+
+    struct KeeperGroupEntry
+    {
+        KeeperGroupEntry( KeeperGroupId group_id, GrapherProcessEntry * grapher_ptr=nullptr)
+            : groupId(group_id)
+            , grapher_process(grapher_ptr)
+        { }
+        
+        KeeperGroupEntry(KeeperGroupEntry const &other) = default;
+        ~KeeperGroupEntry() = default;
+
+        KeeperGroupId   groupId;
+        GrapherProcessEntry* grapher_process;
+        std::map<std::pair<uint32_t,uint16_t>, KeeperProcessEntry*> keepers;
+    };
+
     enum RegistryState
     {
         UNKNOWN = 0, INITIALIZED = 1, // RegistryService is initialized, no active keepers
@@ -103,6 +145,8 @@ public:
 
     int notifyKeepersOfStoryRecordingStop(std::vector <KeeperIdCard> const &, StoryId const &);
 
+    int registerGrapherProcess(GrapherRegistrationMsg const & reg_msg);
+    int unregisterGrapherProcess(GrapherIdCard const & id_card);
 
 private:
 
@@ -112,6 +156,7 @@ private:
     RegistryState registryState;
     std::mutex registryLock;
     std::map <std::pair <uint32_t, uint16_t>, KeeperProcessEntry> keeperProcessRegistry;
+    std::map <KeeperGroupId, KeeperGroupEntry> keeperGroups;    
     thallium::engine*registryEngine;
     KeeperRegistryService*keeperRegistryService;
     size_t delayedDataAdminExitSeconds;
