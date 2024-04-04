@@ -47,8 +47,7 @@ source /path-to-where-spack-was-cloned/spack/share/spack/setup-env.sh
 Currently, most of the dependencies are listed in `spack.yaml` and can be installed via Spack. `gcc` and `g++` will be
 needed to build ChronoLog.
 
-A Spack environment needs to be created and activated using the following commands. When the environment is activated, a
-shell prompt `[ChronoLog]` will pop up.
+A Spack environment needs to be created and activated using the following commands. 
 
 ```
 cd ChronoLog
@@ -56,14 +55,17 @@ git switch develop
 spack env activate -p .
 spack install -v
 ```
-
+To check if the environment is activated the following can be executed: 
+```
+spack env status
+```
 :information_source: Installation can take > 30 minutes.
 
 ### Building ChronoLog
+:exclamation: Ensure (by using `spack env status`) all building steps are performed within the activated Spack environment to allow CMake to locate
+necessary dependencies. To do so:
 
-:exclamation: Ensure all build steps are performed within the activated Spack environment to allow CMake to locate
-necessary dependencies:
-
+For building ChronoLog the following commands must be executed.
 ```
 // Build the environment
 cd ChronoLog
@@ -94,8 +96,8 @@ to install executables and dependencies into the default install directory (**`~
 ## Configuration files
 
 - **Default Configuration:** ChronoLog executables require a configuration file. Modify this template (`default_conf.json.in`) according to your preferences.
-- **Installation Process:** The installation copies and renames default_conf.json.in to conf/default_conf.json in the
-  installation directory by default. You can pass -DCMAKE_INSTALL_PREFIX=/new/installation/directory to CMake to change it.
+- **Installation Process:** The installation copies and renames `default_conf.json.in` to `conf/default_conf.json` in the
+  installation directory by default. You can pass `-DCMAKE_INSTALL_PREFIX=/new/installation/directory` to CMake to change it.
 - **Using Configuration:** Pass the configuration file to executables with `--config default_conf.json`.
 
 ------
