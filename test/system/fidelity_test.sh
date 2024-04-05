@@ -1,14 +1,21 @@
 #!/bin/bash
 
-# Define project directories
-PROJECT_DIR="$HOME/Documents/Repositories/ChronoLog"
-BUILD_DIR="$HOME/chronolog"
-INSTALL_DIR="$HOME/chronolog_install"
+# Default paths
+default_project_dir="$HOME/Documents/Repositories/ChronoLog"
+default_build_dir="$HOME/chronolog"
+default_install_dir="$HOME/chronolog_install"
+default_csv_files_dir="/tmp"
+
+# Assign arguments with default fallbacks
+PROJECT_DIR="${1:-$default_project_dir}"
+BUILD_DIR="${2:-$default_build_dir}"
+INSTALL_DIR="${3:-$default_install_dir}"
+CSV_FILES_DIR="${4:-$default_csv_files_dir}"
+
 VISOR_BIN="$INSTALL_DIR/bin/chronovisor_server"
 KEEPER_BIN="$INSTALL_DIR/bin/chrono_keeper"
 CLIENT_BIN="$INSTALL_DIR/bin/client_lib_multi_storytellers"
 LIB_DIR="$INSTALL_DIR/lib"
-CSV_FILES_DIR="/tmp"
 
 # Check .csv files in a directory
 check_csv_files() {
@@ -38,7 +45,7 @@ check_file() {
         local line_story_id=$(echo "$line" | grep -oP 'event : \K[0-9]+')
 
         if [ "$file_story_id" != "$line_story_id" ]; then
-            echo -e "\tTest 1 - StoryID match: \e[41mFailed.\e[0m"
+            echo -e "\t\e[41mTest 1 - StoryID match: Failed.\e[0m"
             mismatch_found=1
             break
         fi
@@ -48,20 +55,20 @@ check_file() {
     done < "$file_path"
 
     if [ $mismatch_found -eq 0 ]; then
-        echo -e "\tTest 1 - StoryID match: \e[42mSuccess.\e[0m"
+        echo -e "\t\e[42mTest 1 - StoryID match: Success.\e[0m"
     fi
 
     if [ $line_count -ne 100 ]; then
-        echo -e "\tTest 2 - Expected events: \e[41mFailed.\e[0m"
+        echo -e "\t\e[41mTest 2 - Expected events: Failed.\e[0m"
     else
-        echo -e "\tTest 2 - Expected events: \e[42mSuccess.\e[0m"
+        echo -e "\t\e[42mTest 2 - Expected events: Success.\e[0m"
     fi
 
     local expected_lines=$(seq 0 99 | tr '\n' ' ')
     if [ "$line_numbers" == "$expected_lines" ]; then
-        echo -e "\tTest 3 - Sequential order: \e[42mSuccess.\e[0m"
+        echo -e "\t\e[42mTest 3 - Sequential order: Success.\e[0m"
     else
-        echo -e "\tTest 3 - Sequential order: \e[41mFailed.\e[0m"
+        echo -e "\t\e[41mTest 3 - Sequential order: Failed.\e[0m"
     fi
 }
 
