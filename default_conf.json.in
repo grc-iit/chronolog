@@ -68,6 +68,15 @@
         "service_provider_id": 88
       }
     },
+    "KeeperCollectorDrainService": {
+      "rpc": {
+        "rpc_implementation": "Thallium_sockets",
+        "protocol_conf": "ofi+sockets",
+        "service_ip": "127.0.0.1",
+        "service_base_port": 9999,
+        "service_provider_id": 99
+      }
+    },
     "Logging": {
       "log": {
         "type": "file",
@@ -81,6 +90,28 @@
     },
     "story_files_dir": "/tmp/"
   },
+  "chrono_collector": {
+      "KeeperCollectorDrainService": {
+        "rpc": {
+          "rpc_implementation": "Thallium_sockets",
+          "protocol_conf": "ofi+sockets",
+          "service_ip": "127.0.0.1",
+          "service_base_port": 9999,
+          "service_provider_id": 99
+        }
+      },
+      "Logging": {
+        "log": {
+          "type": "file",
+          "file": "chronocollector_logfile.txt",
+          "level": "debug",
+          "name": "ChronoCollector",
+          "filesize": 102400,
+          "filenum": 3,
+          "flushlevel": "warning"
+        }
+      }
+    },
   "chrono_client": {
     "VisorClientPortalService": {
       "rpc": {

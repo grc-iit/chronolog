@@ -3,6 +3,9 @@
 
 #include <map>
 #include <iostream>
+#include <thallium/serialization/stl/string.hpp>
+#include <thallium/serialization/stl/tuple.hpp>
+#include <thallium/serialization/stl/map.hpp>
 #include "chronolog_types.h"
 #include "log.h"
 
@@ -20,6 +23,12 @@ typedef uint32_t chrono_index;
 typedef std::tuple <chrono_time, chrono_index> ArrivalSequence;
 
 typedef std::tuple <chrono_time, ClientId, chrono_index> EventSequence;
+
+template <typename SerArchiveT>
+void serialize(SerArchiveT &serT, EventSequence &sequence)
+{
+    serT(std::get <0>(sequence), std::get <1>(sequence), std::get <2>(sequence));
+}
 
 class StoryChunk
 {
@@ -88,6 +97,12 @@ public:
 
     uint32_t eraseEvents(uint64_t start_time, uint64_t end_time)
     { return 0; }
+
+    template <typename SerArchiveT>
+    void serialize(SerArchiveT &serT)
+    {
+        serT(storyId, startTime, endTime, revisionTime, logEvents);
+    }
 
 private:
     StoryId storyId;
