@@ -16,6 +16,7 @@ VISOR_BIN="$INSTALL_DIR/bin/chronovisor_server"
 KEEPER_BIN="$INSTALL_DIR/bin/chrono_keeper"
 CLIENT_BIN="$INSTALL_DIR/bin/client_lib_multi_storytellers"
 LIB_DIR="$INSTALL_DIR/lib"
+CONFIG_FILE="$INSTALL_DIR/conf/default_conf.json"
 
 # Check .csv files in a directory
 check_csv_files() {
@@ -108,15 +109,15 @@ build_and_install() {
 # Run the system and execute tests
 run_system_and_tests() {
     export LD_LIBRARY_PATH="$LIB_DIR"
-    "$VISOR_BIN" -c conf/default_conf.json &
+    "$VISOR_BIN" -c "${CONFIG_FILE}" &
     CHRONOVISOR_PID=$!
     sleep 1
-    "$KEEPER_BIN" -c conf/default_conf.json &
+    "$KEEPER_BIN" -c "${CONFIG_FILE}" &
     CHRONOKEEPER_PID=$!
     sleep 1
 
     echo "Running the client..."
-    "$CLIENT_BIN" -c conf/default_conf.json
+    "$CLIENT_BIN" -c "${CONFIG_FILE}"
     echo "Client finished."
 
     kill "$CHRONOKEEPER_PID" && wait "$CHRONOKEEPER_PID"
