@@ -27,7 +27,7 @@ typedef uint32_t    KeeperGroupId;
 class KeeperIdCard
 {
 
-    uint64_t keeper_group_id;
+    KeeperGroupId keeper_group_id;
     uint32_t ip_addr; //IP address as uint32_t in host byte order
     uint16_t port;    //port number as uint16_t in host byte order
     uint16_t tl_provider_id; // id of thallium service provider

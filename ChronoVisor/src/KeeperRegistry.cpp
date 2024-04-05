@@ -157,6 +157,23 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const &keeper_re
 
     KeeperIdCard keeper_id_card = keeper_reg_msg.getKeeperIdCard();
     ServiceId admin_service_id = keeper_reg_msg.getAdminServiceId();
+
+    //find the group that keepr belongs to in the registry
+    auto keeper_group_iter = keeperGroups.find(keeper_id_card.getGroupId());
+    if(keeper_group_iter == keeperGroups.end())
+    {
+        auto insert_return = keeperGroups.insert(std::pair<KeeperGroupId, KeeperGroupEntry>(
+                keeper_id_card.getGroupId(), KeeperGroupEntry(keeper_id_card.getGroupId())));
+        if(false == insert_return.second)
+        {
+            LOG_ERROR("[KeeperRegistry] registration failed for KeeperGroup {}", keeper_id_card.getGroupId());
+            return chronolog::CL_ERR_UNKNOWN;
+        }
+        else { keeper_group_iter = insert_return.first; }
+    }
+
+    KeeperGroupEntry* keeper_group = &((*keeper_group_iter).second);
+
     // unlikely but possible that the Registry still retains the record of the previous re-incarnation of hte Keeper process
     // running on the same host... check for this case and clean up the leftover record...
     auto keeper_process_iter = keeperProcessRegistry.find(
@@ -259,6 +276,9 @@ int KeeperRegistry::unregisterKeeperProcess(KeeperIdCard const &keeper_id_card)
     if(is_shutting_down())
     { return chronolog::CL_ERR_UNKNOWN; }
 
+    auto keeper_group_iter = keeperGroups.find(keeper_id_card.getGroupId());
+    if(keeper_group_iter == keeperGroups.end()) { return chronolog::CL_SUCCESS; }
+
     auto keeper_process_iter = keeperProcessRegistry.find(
             std::pair<uint32_t, uint16_t>(keeper_id_card.getIPaddr(), keeper_id_card.getPort()));
     if(keeper_process_iter != keeperProcessRegistry.end())
@@ -284,11 +304,6 @@ int KeeperRegistry::unregisterKeeperProcess(KeeperIdCard const &keeper_id_card)
                             delayedExitTime, (*keeper_process_iter).second.keeperAdminClient));
             (*keeper_process_iter).second.keeperAdminClient = nullptr;
         }
-
-        /*if( (*keeper_process_iter).second.keeperAdminClient != nullptr)
-	    {  delete (*keeper_process_iter).second.keeperAdminClient; }
-	    keeperProcessRegistry.erase(keeper_process_iter);
-        */
     }
     // now that we are still holding registryLock
     // update registryState if needed
