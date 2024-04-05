@@ -194,7 +194,7 @@ sleep 3
 cd "${INSTALL_DIR}"
 
 # Define LD_LIBRARY_PATH
-LD_LIBRARY_PATH=${LIB_DIR}
+export LD_LIBRARY_PATH=${LIB_DIR}
 
 # Run ChronoVisor
 bin/chronovisor_server -c conf/default_conf.json &
