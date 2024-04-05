@@ -4,8 +4,8 @@
 
 #include <signal.h>
 
-#include "chrono_common/KeeperIdCard.h"
-#include "chrono_common/KeeperStatsMsg.h"
+//#include "chrono_common/KeeperIdCard.h"
+//#include "chrono_common/KeeperStatsMsg.h"
 #include "KeeperRecordingService.h"
 #include "KeeperRegClient.h"
 #include "IngestionQueue.h"

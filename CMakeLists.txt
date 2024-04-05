@@ -205,6 +205,7 @@ add_subdirectory(ChronoVisor)
 
 # ChronoKeeper
 add_subdirectory(ChronoKeeper)
+add_subdirectory(ChronoGrapher)
 
 # ChronoStore
 add_subdirectory(ChronoStore)
