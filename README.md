@@ -53,11 +53,14 @@ A Spack environment needs to be created and activated using the following comman
 cd ChronoLog
 git switch develop
 spack env activate -p .
-spack install -v
 ```
 To check if the environment is activated the following can be executed: 
 ```
 spack env status
+```
+If the environment is properly activated, it can be installed
+```
+spack install -v
 ```
 :information_source: Installation can take > 30 minutes.
 
