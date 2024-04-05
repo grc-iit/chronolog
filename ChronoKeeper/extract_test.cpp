@@ -200,6 +200,7 @@ int main(int argc, char**argv)
     std::string KEEPER_COLLECTOR_NA_STRING = KEEPER_COLLECTOR_PROTOCOL + "://"
             + confManager.KEEPER_CONF.KEEPER_COLLECTOR_DRAIN_SERVICE_CONF.RPC_CONF.IP + ":"
             + std::to_string(confManager.KEEPER_CONF.KEEPER_COLLECTOR_DRAIN_SERVICE_CONF.RPC_CONF.BASE_PORT);
+    LOG_DEBUG("[extract_test_main] T{}: Looking up {} at: {} ...", tid, rpc_name_g, KEEPER_COLLECTOR_NA_STRING);
     service_ph_g = tl_engine_g->lookup(KEEPER_COLLECTOR_NA_STRING);
     if(service_ph_g.is_null())
     {
