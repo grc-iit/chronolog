@@ -11,7 +11,8 @@ add_executable(hdf5_archiver_test
     ../include/StoryReader.h
     ../src/StoryReader.cpp
     story_chunk_test_utils.h
-    ../../ChronoAPI/ChronoLog/src/log.cpp)
+    ../../ChronoAPI/ChronoLog/src/log.cpp
+    ../../chrono_common/StoryChunk.cpp)
 
 target_include_directories(hdf5_archiver_test PRIVATE ../../ChronoKeeper
     ../../chrono_common
