@@ -6,6 +6,9 @@
 #include "chronolog_types.h"
 #include "log.h"
 
+#include <thallium/serialization/stl/map.hpp>
+#include <thallium/serialization/stl/tuple.hpp>
+
 namespace chronolog
 {
 
@@ -76,7 +79,6 @@ public:
     uint32_t eraseEvents(uint64_t start_time, uint64_t end_time);
 
     // serialization function used by thallium RPC providers
-    // to serialize/deserialize KeeperIdCard
     template <typename SerArchiveT>
     void serialize( SerArchiveT & serT)
     {
@@ -84,10 +86,7 @@ public:
         serT & startTime;
         serT & endTime;
         serT & revisionTime;
-        for(auto iter=logEvents.begin(); iter!= logEvents.end(); ++iter)
-        {
-             serT((*iter).second);
-        }
+        serT& logEvents;
     }
 
 
