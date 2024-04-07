@@ -15,13 +15,15 @@ target_include_directories(chrono_keeper PRIVATE include
 target_sources(chrono_keeper PRIVATE
     ChronoKeeperInstance.cpp
     StoryPipeline.cpp
-    StoryChunk.cpp
     KeeperDataStore.cpp
+    ../chrono_common/StoryChunk.cpp
     StoryChunkExtractor.cpp
     CSVFileChunkExtractor.cpp
 #    StoryChunkExtractorRDMA.cpp
     ../ChronoAPI/ChronoLog/src/log.cpp)
-target_link_libraries(chrono_keeper thallium)
+
+target_link_libraries(chrono_keeper chronolog_client thallium)
+
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/../default_conf.json.in
     ${CMAKE_CURRENT_BINARY_DIR}/default_conf.json COPYONLY)
 message("build target : chrono_keeper")

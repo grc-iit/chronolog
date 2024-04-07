@@ -194,6 +194,49 @@ typedef struct CollectorConf_
     }
 } CollectorConf;
 
+typedef struct DataStoreConf_
+{
+    int max_story_chunk_size;
+
+    [[nodiscard]] std::string to_String() const
+    {
+        return  "[DATA_STORE_CONF: max_story_chunk_size :" + std::to_string(max_story_chunk_size) +
+                "]";
+    }
+} DataStoreConf;
+
+typedef struct ExtractorConf_
+{
+    std::string story_files_dir;
+
+    [[nodiscard]] std::string to_String() const
+    {
+        return  "[EXTRACTOR_CONF: STORY_FILES_DIR:" + story_files_dir +
+                "]";
+    }
+} ExtractorConf;
+
+typedef struct GrapherConf_
+{
+    RPCProviderConf RECORDING_SERVICE_CONF;
+    RPCProviderConf DATA_STORE_ADMIN_SERVICE_CONF;
+    RPCProviderConf VISOR_REGISTRY_SERVICE_CONF;
+    LogConf LOG_CONF;
+    DataStoreConf  DATA_STORE_CONF;
+    ExtractorConf  EXTRACTOR_CONF;
+
+    [[nodiscard]] std::string to_String() const
+    {
+        return "[CHRONO_GRAPHER_CONFIGURATION : RECORDING_SERVICE_CONF: " + RECORDING_SERVICE_CONF.to_String() +
+               ", DATA_STORE_ADMIN_SERVICE_CONF: " + DATA_STORE_ADMIN_SERVICE_CONF.to_String() +
+               ", VISOR_REGISTRY_SERVICE_CONF: " + VISOR_REGISTRY_SERVICE_CONF.to_String() +
+               ", LOG_CONF:" + LOG_CONF.to_String() +
+               ", " + DATA_STORE_CONF.to_String() +
+               ", " + EXTRACTOR_CONF.to_String()+
+               "]";
+    }
+} GrapherConf;
+
 typedef struct ClientConf_
 {
     VisorClientPortalServiceConf VISOR_CLIENT_PORTAL_SERVICE_CONF;
@@ -217,6 +260,7 @@ public:
     ClientConf CLIENT_CONF{};
     KeeperConf KEEPER_CONF{};
     CollectorConf COLLECTOR_CONF{};
+    GrapherConf GRAPHER_CONF{};
 
     ConfigurationManager()
     {
@@ -299,6 +343,7 @@ public:
         std::cout << "VISOR_CONF: " << VISOR_CONF.to_String().c_str() << std::endl;
         std::cout << "KEEPER_CONF: " << KEEPER_CONF.to_String().c_str() << std::endl;
         std::cout << "COLLECTOR_CONF: " << COLLECTOR_CONF.to_String().c_str() << std::endl;
+        std::cout << "GRAPHER_CONF: " << GRAPHER_CONF.to_String().c_str() << std::endl;
         std::cout << "CLIENT_CONF: " << CLIENT_CONF.to_String().c_str() << std::endl;
         std::cout << "******** End of configuration output ********" << std::endl;
     }
@@ -374,6 +419,18 @@ public:
                     exit(chronolog::CL_ERR_INVALID_CONF);
                 }
                 parseCollectorConf(chrono_collector_conf);
+            }
+            else if(strcmp(key, "chrono_grapher") == 0)
+            {
+                json_object*chrono_grapher_conf = json_object_object_get(root, "chrono_grapher");
+                if(chrono_grapher_conf == nullptr || !json_object_is_type(chrono_grapher_conf, json_type_object))
+                {
+                    std::cerr << "[ConfigurationManager] Error while parsing configuration file "
+                              << conf_file_path.c_str()
+                              << ". ChronoGrapher configuration is not found or is not an object." << std::endl;
+                    exit(chronolog::CL_ERR_INVALID_CONF);
+                }
+                parseGrapherConf(chrono_grapher_conf);
             }
             else if(strcmp(key, "chrono_client") == 0)
             {
@@ -913,6 +970,8 @@ private:
             }
         }
     }
+
+    void parseGrapherConf(json_object*json_conf);
 
     void parseClientConf(json_object*json_conf)
     {

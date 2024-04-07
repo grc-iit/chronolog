@@ -30,6 +30,7 @@ add_library(chronolog_client
     src/ChronologClient.cpp
     src/ChronologClientImpl.cpp
     ../ChronoAPI/ChronoLog/src/log.cpp
+    ../chrono_common/ConfigurationManager.cpp
 )
 
 # Include directories for the library

@@ -30,7 +30,7 @@
     "Logging": {
       "log": {
         "type": "file",
-        "file": "chronovisor_logfile.txt",
+        "file": "chrono_visor.log",
         "level": "debug",
         "name": "ChronoVisor",
         "filesize": 1048576,
@@ -80,7 +80,7 @@
     "Logging": {
       "log": {
         "type": "file",
-        "file": "chronokeeper_logfile.txt",
+        "file": "chrono_keeper.log",
         "level": "debug",
         "name": "ChronoKeeper",
         "filesize": 1048576,
@@ -112,6 +112,52 @@
         }
       }
     },
+  "chrono_grapher": {
+    "RecordingService": {
+      "rpc": {
+        "rpc_implementation": "Thallium_sockets",
+        "protocol_conf": "ofi+sockets",
+        "service_ip": "127.0.0.1",
+        "service_base_port": 3333,
+        "service_provider_id": 33
+      }
+    },
+    "DataStoreAdminService": {
+      "rpc": {
+        "rpc_implementation": "Thallium_sockets",
+        "protocol_conf": "ofi+sockets",
+        "service_ip": "127.0.0.1",
+        "service_base_port": 4444,
+        "service_provider_id": 44
+      }
+    },
+    "VisorRegistryService": {
+      "rpc": {
+        "rpc_implementation": "Thallium_sockets",
+        "protocol_conf": "ofi+sockets",
+        "service_ip": "127.0.0.1",
+        "service_base_port": 8888,
+        "service_provider_id": 88
+      }
+    },
+    "Logging": {
+      "log": {
+        "type": "file",
+        "file": "chrono_grapher.log",
+        "level": "debug",
+        "name": "ChronoGrapher",
+        "filesize": 102400,
+        "filenum": 3,
+        "flushlevel": "debug"
+      }
+    },
+    "DataStoreInternals": {
+        "max_story_chunk_size": 4096
+    },
+    "Extractors": {
+        "story_files_dir" : "/tmp"
+    }
+ },
   "chrono_client": {
     "VisorClientPortalService": {
       "rpc": {
