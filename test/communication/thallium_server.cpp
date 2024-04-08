@@ -13,7 +13,7 @@
 #include <margo.h>
 #include "log.h"
 
-#define MAX_BULK_MEM_SIZE (128 * 1024 * 1024)
+#define MAX_BULK_MEM_SIZE (1 * 1024 * 1024)
 
 namespace tl = thallium;
 

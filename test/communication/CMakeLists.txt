@@ -34,5 +34,6 @@ add_executable(thallium_client_mpi thallium_client_mpi.cpp
 include_directories(SYSTEM ${MPI_INCLUDE_PATH})
 target_include_directories(thallium_client_mpi PRIVATE
     ../../ChronoAPI/ChronoLog/include)
-target_link_libraries(thallium_client_mpi thallium ${MPI_C_LIBRARIES})
+target_link_libraries(thallium_client_mpi thallium)
+target_link_libraries(thallium_client_mpi ${MPI_C_LIBRARIES} ${MPI_CXX_LIBRARIES})
 add_test(NAME CommThalliumClientMPI COMMAND thallium_client_mpi)
