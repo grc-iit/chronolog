@@ -2,7 +2,7 @@
 #include "StoryChunk.h"
 //#include "StoryChunkReceiver.h"
 #include "cmd_arg_parse.h"
-#include "../external_libs/cereal/include/cereal/archives/binary.hpp"
+#include "../../../external_libs/cereal/include/cereal/archives/binary.hpp"
 #include "ConfigurationManager.h"
 
 namespace tl = thallium;

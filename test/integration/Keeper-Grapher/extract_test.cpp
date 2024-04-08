@@ -2,16 +2,15 @@
 #include <random>
 #include <deque>
 #include "StoryChunk.h"
-//#include "StoryChunkExtractorRDMA.h"
 #include "cmd_arg_parse.h"
-#include "../external_libs/cereal/include/cereal/archives/binary.hpp"
+#include "../../../external_libs/cereal/include/cereal/archives/binary.hpp"
 #include "ConfigurationManager.h"
 
 namespace tl = thallium;
 
 #define NUM_THREADS 1
 #define NUM_STORY_CHUNKS 100
-#define NUM_EVENTS 1000
+#define NUM_EVENTS 10
 #define MAX_BULK_MEM_SIZE (1024 * 1024 * 2)
 
 std::string rpc_name_g = "bulk_put";
@@ -30,7 +29,7 @@ chronolog::StoryChunk*generateRandomStoryChunk()
     uint64_t story_id = dis(gen);
     uint64_t start_time = dis(gen) * 4;
     uint64_t end_time = start_time + NUM_EVENTS * 128;
-    std::string log_event_str_base = "FFFFFFFFFF = " + std::to_string(story_id);
+    std::string log_event_str_base = "FFFFFFFFFFFFFFFFFFFFFF" + std::to_string(story_id);
     auto*story_chunk = new chronolog::StoryChunk(story_id, start_time, end_time);
     uint32_t client_id = dis(gen);
     for(int i = 0; i < NUM_EVENTS; ++i)
@@ -41,7 +40,21 @@ chronolog::StoryChunk*generateRandomStoryChunk()
         event.clientId = client_id;
         event.eventTime = start_time + i * 2;
         event.eventIndex = i;
-        event.logRecord = log_event_str_base + ", AABBCCDDEEFFGGHHIIJJKKLLMMNN = " + std::to_string(i);
+        event.logRecord = log_event_str_base + ", AABBCCDDEEFFGGHHIIJJKKLLMMNNOOPPQQRRSSTTUUVVWWXXYYZZ" +
+                std::to_string(i);
+        event.logRecord += event.logRecord;
+        event.logRecord += event.logRecord;
+        event.logRecord += event.logRecord;
+        event.logRecord += event.logRecord;
+        event.logRecord += event.logRecord;
+        event.logRecord += event.logRecord;
+        event.logRecord += event.logRecord;
+        event.logRecord += log_event_str_base + ", AABBCCDDEEFFGGHHIIJJKKLLMMNNOOPPQQRRSSTTUUVVWW" +
+                           std::to_string(i);
+        event.logRecord += log_event_str_base + ", AABBCCDDEEFFGGHHIIJJKKLLM" +
+                           std::to_string(i);
+//        event.logRecord += log_event_str_base + ", AABBCCDDEEFFGGHHIIJJKKLLMMNNOOPPQQRRSSTTUUVVWWXXYYZZ" +
+//                           std::to_string(i);
         story_chunk->insertEvent(event);
     }
 
@@ -79,13 +92,13 @@ void standaloneExtraction()
 //    LOG_DEBUG("[standalone_extract_test] T{}: RPC defined with name: {}", tid, rpc_name_g);
 //
 //    // get provider handle
-//    std::string KEEPER_COLLECTOR_NA_STRING = "ofi+sockets://127.0.0.1:9999";
-//    LOG_DEBUG("[standalone_extract_test] T{}: Looking up {} at: {} ...", tid, rpc_name_g, KEEPER_COLLECTOR_NA_STRING);
-//    service_ph_g = tl_engine_g->lookup(KEEPER_COLLECTOR_NA_STRING);
+//    std::string KEEPER_GRAPHER_NA_STRING = "ofi+sockets://127.0.0.1:9999";
+//    LOG_DEBUG("[standalone_extract_test] T{}: Looking up {} at: {} ...", tid, rpc_name_g, KEEPER_GRAPHER_NA_STRING);
+//    service_ph_g = tl_engine_g->lookup(KEEPER_GRAPHER_NA_STRING);
 //    if(service_ph_g.is_null())
 //    {
-//        LOG_ERROR("[standalone_extract_test] T{}: Failed to lookup Collector service provider handle", tid);
-//        throw std::runtime_error("Failed to lookup Collector service provider handle");
+//        LOG_ERROR("[standalone_extract_test] T{}: Failed to lookup Grapher service provider handle", tid);
+//        throw std::runtime_error("Failed to lookup Grapher service provider handle");
 //    }
 //    LOG_DEBUG("[standalone_extract_test] T{}: Successfully obtained service provider handle", tid);
 
@@ -129,7 +142,7 @@ void standaloneExtraction()
         tl::bulk tl_bulk = tl_engine_g->expose(segments, tl::bulk_mode::read_only);
 
         // call RPC
-        LOG_DEBUG("[standalone_extract_test] T{}: Calling RPC on Collector with serialized story chunk size: {} ..."
+        LOG_DEBUG("[standalone_extract_test] T{}: Calling RPC on Grapher with serialized story chunk size: {} ..."
                   , tid, tl_bulk.size());
         start = std::chrono::high_resolution_clock::now();
         result = bulk_put_g.on(service_ph_g)(tl_bulk);
@@ -138,18 +151,18 @@ void standaloneExtraction()
 //    LOG_DEBUG("[standalone_extract_test] T{}: Waiting for response...", tid);
 //    result = response.wait();
         end = std::chrono::high_resolution_clock::now();
-        LOG_DEBUG("[standalone_extract_test] T{}: RPC call on Collector returned with result: {}", tid, result);
-        LOG_INFO("[standalone_extract_test] T{}: RPC call on Collector took {} us", tid,
+        LOG_DEBUG("[standalone_extract_test] T{}: RPC call on Grapher returned with result: {}", tid, result);
+        LOG_INFO("[standalone_extract_test] T{}: RPC call on Grapher took {} us", tid,
                 std::chrono::duration_cast <std::chrono::nanoseconds>(end - start).count() / 1000.0);
 
         // result check
         if(result == serialized_story_chunk_size + 1)
         {
-            LOG_INFO("[standalone_extract_test] T{}: Successfully drained a story chunk to Collector", tid);
+            LOG_INFO("[standalone_extract_test] T{}: Successfully drained a story chunk to Grapher", tid);
         }
         else
         {
-            LOG_ERROR("[standalone_extract_test] T{}: Failed to drain a story chunk to Collector, Error Code: {}", tid
+            LOG_ERROR("[standalone_extract_test] T{}: Failed to drain a story chunk to Grapher, Error Code: {}", tid
                       , result);
         }
         delete[] serialized_buf;
@@ -186,9 +199,9 @@ int main(int argc, char**argv)
      * Standalone StoryChunk Extraction in a separate thread
      */
     // setup engine in client mode
-    //std::string KEEPER_COLLECTOR_PROTOCOL = "ofi+tcp";
-    std::string KEEPER_COLLECTOR_PROTOCOL = confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.PROTO_CONF;
-    tl_engine_g = new tl::engine(KEEPER_COLLECTOR_PROTOCOL + "://", THALLIUM_CLIENT_MODE);
+    //std::string KEEPER_GRAPHER_PROTOCOL = "ofi+tcp";
+    std::string KEEPER_GRAPHER_PROTOCOL = confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.PROTO_CONF;
+    tl_engine_g = new tl::engine(KEEPER_GRAPHER_PROTOCOL + "://", THALLIUM_CLIENT_MODE);
     tid = tl::thread::self_id();
     std::stringstream ss;
     ss << tl_engine_g->self();
@@ -199,15 +212,15 @@ int main(int argc, char**argv)
     LOG_DEBUG("[extract_test_main] T{}: RPC defined with name: {}", tid, rpc_name_g);
 
     // get provider handle
-    std::string KEEPER_COLLECTOR_NA_STRING = KEEPER_COLLECTOR_PROTOCOL + "://"
-                                             + confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.IP + ":"
-                                             + std::to_string(confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.BASE_PORT);
-    LOG_DEBUG("[extract_test_main] T{}: Looking up {} at: {} ...", tid, rpc_name_g, KEEPER_COLLECTOR_NA_STRING);
-    service_ph_g = tl_engine_g->lookup(KEEPER_COLLECTOR_NA_STRING);
+    std::string KEEPER_GRAPHER_NA_STRING = KEEPER_GRAPHER_PROTOCOL + "://"
+                                           + confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.IP + ":"
+                                           + std::to_string(confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.BASE_PORT);
+    LOG_DEBUG("[extract_test_main] T{}: Looking up {} at: {} ...", tid, rpc_name_g, KEEPER_GRAPHER_NA_STRING);
+    service_ph_g = tl_engine_g->lookup(KEEPER_GRAPHER_NA_STRING);
     if(service_ph_g.is_null())
     {
-        LOG_ERROR("[extract_test_main] T{}: Failed to lookup Collector service provider handle", tid);
-        throw std::runtime_error("Failed to lookup Collector service provider handle");
+        LOG_ERROR("[extract_test_main] T{}: Failed to lookup Grapher service provider handle", tid);
+        throw std::runtime_error("Failed to lookup Grapher service provider handle");
     }
     LOG_DEBUG("[extract_test_main] T{}: Successfully obtained service provider handle", tid);
 
@@ -239,18 +252,19 @@ int main(int argc, char**argv)
 //    tl::bulk tl_bulk = tl_engine_g->expose(segments, tl::bulk_mode::read_only);
 //
 //    // call RPC
-//    LOG_DEBUG("[standalone_extract_test] T{}: Calling RPC on Collector with story chunk size: {} ...", tid, tl_bulk.size());
+//    LOG_DEBUG("[standalone_extract_test] T{}: Calling RPC on Grapher with story chunk size: {} ...", tid, tl_bulk.size
+//    ());
 //    result = bulk_put_g.on(service_ph_g)(tl_bulk);
-//    LOG_DEBUG("[standalone_extract_test] T{}: RPC call on Collector returned with result: {}", tid, result);
+//    LOG_DEBUG("[standalone_extract_test] T{}: RPC call on Grapher returned with result: {}", tid, result);
 //
 //    // result check
 //    if(result == msg_size + 1)
 //    {
-//        LOG_INFO("[extract_test_main] T{}: Successfully drained a story chunk to Collector", tid);
+//        LOG_INFO("[extract_test_main] T{}: Successfully drained a story chunk to Grapher", tid);
 //    }
 //    else
 //    {
-//        LOG_ERROR("[extract_test_main] T{}: Failed to drain a story chunk to Collector, Error Code: {}", tid, result);
+//        LOG_ERROR("[extract_test_main] T{}: Failed to drain a story chunk to Grapher, Error Code: {}", tid, result);
 //    }
     /**
      * End of Standalone StoryChunk Extraction
@@ -271,15 +285,6 @@ int main(int argc, char**argv)
 //
 //    LOG_INFO("[extract_test_main] T{}: Starting StoryChunk Extraction Threads.", tid);
 //    story_chunk_extractor.startExtractionThreads(1);
-
-//    int sleep_sec_per_thread = 5;
-//    for(int i = 0; i < NUM_THREADS; ++i)
-//    {
-//        LOG_DEBUG("[extract_test_main] T{}: Sleeping, {} seconds to go ...", tid,
-//                (NUM_THREADS - i) * sleep_sec_per_thread);
-//        sleep(sleep_sec_per_thread);
-//    }
-//    LOG_DEBUG("[extract_test_main] T{}: Waking up ...", tid);
 
 //    LOG_DEBUG("[extract_test_main] T{}: Waiting for responses ...", tid);
 //    for(auto &response: response_vec_g)
