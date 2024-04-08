@@ -10,7 +10,7 @@
 namespace tl = thallium;
 
 #define NUM_THREADS 1
-#define NUM_STORY_CHUNKS 10
+#define NUM_STORY_CHUNKS 100
 #define NUM_EVENTS 1000
 #define MAX_BULK_MEM_SIZE (1024 * 1024 * 2)
 
@@ -30,7 +30,7 @@ chronolog::StoryChunk*generateRandomStoryChunk()
     uint64_t story_id = dis(gen);
     uint64_t start_time = dis(gen) * 4;
     uint64_t end_time = start_time + NUM_EVENTS * 128;
-    std::string story_data = "FFFF = " + std::to_string(story_id);
+    std::string log_event_str_base = "FFFFFFFFFF = " + std::to_string(story_id);
     auto*story_chunk = new chronolog::StoryChunk(story_id, start_time, end_time);
     uint32_t client_id = dis(gen);
     for(int i = 0; i < NUM_EVENTS; ++i)
@@ -41,7 +41,7 @@ chronolog::StoryChunk*generateRandomStoryChunk()
         event.clientId = client_id;
         event.eventTime = start_time + i * 2;
         event.eventIndex = i;
-        event.logRecord = story_data + ", AAAA = " + std::to_string(i);
+        event.logRecord = log_event_str_base + ", AABBCCDDEEFFGGHHIIJJKKLLMMNN = " + std::to_string(i);
         story_chunk->insertEvent(event);
     }
 
@@ -89,6 +89,7 @@ void standaloneExtraction()
 //    }
 //    LOG_DEBUG("[standalone_extract_test] T{}: Successfully obtained service provider handle", tid);
 
+    while(!story_chunk_queue_g.empty())
     {
         // get StoryChunk
         std::lock_guard <std::mutex> lock(story_chunk_queue_mutex_g);
@@ -116,7 +117,7 @@ void standaloneExtraction()
         size_t story_chunk_size = sizeof(uint64_t) * 4; // for four uint64_t members in StoryChunk
         for(const auto & iter : *story_chunk)
         {
-            story_chunk_size += sizeof(iter.first) + sizeof(iter.second);
+            story_chunk_size += sizeof(iter.first) + sizeof(iter.second.storyId) + sizeof(iter.second.eventTime) + sizeof(iter.second.clientId) + sizeof(iter.second.eventIndex) + iter.second.logRecord.size();
         }
         LOG_INFO("[standalone_extract_test] T{}: StoryChunk size before serialization: {}", tid, story_chunk_size);
         LOG_INFO("[standalone_extract_test] T{}: StoryChunk size after serialization: {}", tid
@@ -185,7 +186,8 @@ int main(int argc, char**argv)
      * Standalone StoryChunk Extraction in a separate thread
      */
     // setup engine in client mode
-    std::string KEEPER_COLLECTOR_PROTOCOL = "ofi+sockets";
+    //std::string KEEPER_COLLECTOR_PROTOCOL = "ofi+tcp";
+    std::string KEEPER_COLLECTOR_PROTOCOL = confManager.KEEPER_CONF.KEEPER_COLLECTOR_DRAIN_SERVICE_CONF.RPC_CONF.PROTO_CONF;
     tl_engine_g = new tl::engine(KEEPER_COLLECTOR_PROTOCOL + "://", THALLIUM_CLIENT_MODE);
     tid = tl::thread::self_id();
     std::stringstream ss;

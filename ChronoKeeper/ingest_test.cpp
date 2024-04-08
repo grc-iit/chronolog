@@ -40,8 +40,9 @@ int main(int argc, char**argv)
      * Keeper-push
      */
     std::string KEEPER_COLLECTOR_NA_STRING =
-//            confManager.COLLECTOR_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.PROTO_CONF +
-            "ofi+sockets://" +
+            confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.PROTO_CONF +
+//            "ofi+sockets://" +
+            "://" +
             confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP + ":" +
             std::to_string(confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT);
 //    std::string KEEPER_COLLECTOR_NA_STRING = "ofi+tcp;ofi_rxm://172.17.0.1:37709";
