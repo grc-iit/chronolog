@@ -187,7 +187,7 @@ int main(int argc, char**argv)
      */
     // setup engine in client mode
     //std::string KEEPER_COLLECTOR_PROTOCOL = "ofi+tcp";
-    std::string KEEPER_COLLECTOR_PROTOCOL = confManager.KEEPER_CONF.KEEPER_COLLECTOR_DRAIN_SERVICE_CONF.RPC_CONF.PROTO_CONF;
+    std::string KEEPER_COLLECTOR_PROTOCOL = confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.PROTO_CONF;
     tl_engine_g = new tl::engine(KEEPER_COLLECTOR_PROTOCOL + "://", THALLIUM_CLIENT_MODE);
     tid = tl::thread::self_id();
     std::stringstream ss;
