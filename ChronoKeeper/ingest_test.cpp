@@ -70,6 +70,7 @@ int main(int argc, char**argv)
     std::function <void(const tl::request &, tl::bulk &)> drain_story_chunk_to_collector = [&extraction_engine](
             const tl::request &req, tl::bulk &b)
     {
+        std::chrono::high_resolution_clock::time_point start, end;
         LOG_DEBUG("[standalone_ingest_test] Bulk transfer rpc invoked");
         tl::endpoint ep = req.get_endpoint();
         LOG_DEBUG("[standalone_ingest_test] Endpoint obtained");
@@ -91,11 +92,15 @@ int main(int argc, char**argv)
 //        }
 //        std::cout << std::endl;
         chronolog::StoryChunk story_chunk;
+        start = std::chrono::high_resolution_clock::now();
         deserializedWithCereal(&mem_vec[0], b.size() - 1, story_chunk);
         LOG_DEBUG("[standalone_ingest_test] StoryChunk received: StoryID: {}, StartTime: {}"
                   , story_chunk.getStoryId(), story_chunk.getStartTime());
+        end = std::chrono::high_resolution_clock::now();
         req.respond(b.size());
         LOG_DEBUG("[standalone_ingest_test] Bulk transfer rpc responded");
+        LOG_INFO("[standalone_ingest_test] Deserialization took {} us",
+                std::chrono::duration_cast <std::chrono::nanoseconds>(end - start).count() / 1000.0);
     };
 
     extraction_engine.define("bulk_put", drain_story_chunk_to_collector, 0, *tl_pool);

@@ -122,10 +122,10 @@ void standaloneExtraction()
         LOG_INFO("[standalone_extract_test] T{}: StoryChunk size before serialization: {}", tid, story_chunk_size);
         LOG_INFO("[standalone_extract_test] T{}: StoryChunk size after serialization: {}", tid
                  , serialized_story_chunk_size);
-        LOG_INFO("[standalone_extract_test] T{}: Serialization took {} ms", tid,
+        LOG_INFO("[standalone_extract_test] T{}: Serialization took {} us", tid,
                 std::chrono::duration_cast <std::chrono::nanoseconds>(end - start).count() / 1000.0);
         segments[0].first = (void*)(serialized_buf);
-        segments[0].second = serialized_story_chunk_size + 1; //TODO: Replace with actual size
+        segments[0].second = serialized_story_chunk_size + 1;
         tl::bulk tl_bulk = tl_engine_g->expose(segments, tl::bulk_mode::read_only);
 
         // call RPC
@@ -139,7 +139,7 @@ void standaloneExtraction()
 //    result = response.wait();
         end = std::chrono::high_resolution_clock::now();
         LOG_DEBUG("[standalone_extract_test] T{}: RPC call on Collector returned with result: {}", tid, result);
-        LOG_INFO("[standalone_extract_test] T{}: RPC call on Collector took {} ms", tid,
+        LOG_INFO("[standalone_extract_test] T{}: RPC call on Collector took {} us", tid,
                 std::chrono::duration_cast <std::chrono::nanoseconds>(end - start).count() / 1000.0);
 
         // result check
