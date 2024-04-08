@@ -104,10 +104,10 @@ int main(int argc, char**argv)
     LOG_INFO("[ChronoGrapher] DataStoreAdminService started successfully.");
 
     // Instantiate GrapherRecordingService
-    std::string RECORDING_SERVICE_PROTOCOL = confManager.GRAPHER_CONF.RECORDING_SERVICE_CONF.PROTO_CONF;
-    std::string RECORDING_SERVICE_IP = confManager.GRAPHER_CONF.RECORDING_SERVICE_CONF.IP;
-    uint16_t RECORDING_SERVICE_PORT = confManager.GRAPHER_CONF.RECORDING_SERVICE_CONF.BASE_PORT;
-    uint16_t recording_service_provider_id = confManager.GRAPHER_CONF.RECORDING_SERVICE_CONF.SERVICE_PROVIDER_ID;
+    std::string RECORDING_SERVICE_PROTOCOL = confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.PROTO_CONF;
+    std::string RECORDING_SERVICE_IP = confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP;
+    uint16_t RECORDING_SERVICE_PORT = confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT;
+    uint16_t recording_service_provider_id = confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.SERVICE_PROVIDER_ID;
 
     std::string RECORDING_SERVICE_NA_STRING =
             std::string(RECORDING_SERVICE_PROTOCOL) + "://" + std::string(RECORDING_SERVICE_IP) + ":" +

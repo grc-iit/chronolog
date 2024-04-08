@@ -198,8 +198,8 @@ int main(int argc, char**argv)
 
     // get provider handle
     std::string KEEPER_COLLECTOR_NA_STRING = KEEPER_COLLECTOR_PROTOCOL + "://"
-            + confManager.KEEPER_CONF.KEEPER_COLLECTOR_DRAIN_SERVICE_CONF.RPC_CONF.IP + ":"
-            + std::to_string(confManager.KEEPER_CONF.KEEPER_COLLECTOR_DRAIN_SERVICE_CONF.RPC_CONF.BASE_PORT);
+                                             + confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.IP + ":"
+                                             + std::to_string(confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.BASE_PORT);
     LOG_DEBUG("[extract_test_main] T{}: Looking up {} at: {} ...", tid, rpc_name_g, KEEPER_COLLECTOR_NA_STRING);
     service_ph_g = tl_engine_g->lookup(KEEPER_COLLECTOR_NA_STRING);
     if(service_ph_g.is_null())
@@ -256,7 +256,7 @@ int main(int argc, char**argv)
 
 //    LOG_INFO("T{}: Running StoryChunk Extraction Server.", tid);
 //
-//    tl::engine extraction_engine = tl::engine(confManager.KEEPER_CONF.KEEPER_COLLECTOR_DRAIN_SERVICE_CONF.RPC_CONF.PROTO_CONF
+//    tl::engine extraction_engine = tl::engine(confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.PROTO_CONF
 //                                      , THALLIUM_CLIENT_MODE);
 //    extraction_engine.define("rdma_put");
 //

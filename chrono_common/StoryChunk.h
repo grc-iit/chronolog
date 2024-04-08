@@ -27,12 +27,6 @@ typedef std::tuple <chrono_time, chrono_index> ArrivalSequence;
 
 typedef std::tuple <chrono_time, ClientId, chrono_index> EventSequence;
 
-template <typename SerArchiveT>
-void serialize(SerArchiveT &serT, EventSequence &sequence)
-{
-    serT(std::get <0>(sequence), std::get <1>(sequence), std::get <2>(sequence));
-}
-
 class StoryChunk
 {
 public:
@@ -98,12 +92,6 @@ public:
         serT& logEvents;
     }
 
-
-    template <typename SerArchiveT>
-    void serialize(SerArchiveT &serT)
-    {
-        serT(storyId, startTime, endTime, revisionTime, logEvents);
-    }
 
 private:
     StoryId storyId;

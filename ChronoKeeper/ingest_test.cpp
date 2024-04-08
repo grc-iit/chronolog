@@ -24,12 +24,12 @@ int main(int argc, char**argv)
     std::string conf_file_path;
     conf_file_path = parse_conf_path_arg(argc, argv);
     ChronoLog::ConfigurationManager confManager(conf_file_path);
-    int result = Logger::initialize("console", confManager.COLLECTOR_CONF.COLLECTOR_LOG_CONF.LOGFILE
-                                    , confManager.COLLECTOR_CONF.COLLECTOR_LOG_CONF.LOGLEVEL
-                                    , confManager.COLLECTOR_CONF.COLLECTOR_LOG_CONF.LOGNAME
-                                    , confManager.COLLECTOR_CONF.COLLECTOR_LOG_CONF.LOGFILESIZE
-                                    , confManager.COLLECTOR_CONF.COLLECTOR_LOG_CONF.LOGFILENUM
-                                    , confManager.COLLECTOR_CONF.COLLECTOR_LOG_CONF.FLUSHLEVEL);
+    int result = Logger::initialize("console", confManager.GRAPHER_CONF.LOG_CONF.LOGFILE
+                                    , confManager.GRAPHER_CONF.LOG_CONF.LOGLEVEL
+                                    , confManager.GRAPHER_CONF.LOG_CONF.LOGNAME
+                                    , confManager.GRAPHER_CONF.LOG_CONF.LOGFILESIZE
+                                    , confManager.GRAPHER_CONF.LOG_CONF.LOGFILENUM
+                                    , confManager.GRAPHER_CONF.LOG_CONF.FLUSHLEVEL);
     if(result == 1)
     {
         exit(EXIT_FAILURE);
@@ -40,10 +40,10 @@ int main(int argc, char**argv)
      * Keeper-push
      */
     std::string KEEPER_COLLECTOR_NA_STRING =
-//            confManager.COLLECTOR_CONF.KEEPER_COLLECTOR_DRAIN_SERVICE_CONF.RPC_CONF.PROTO_CONF +
+//            confManager.COLLECTOR_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.PROTO_CONF +
             "ofi+sockets://" +
-            confManager.COLLECTOR_CONF.KEEPER_COLLECTOR_DRAIN_SERVICE_CONF.RPC_CONF.IP + ":" +
-            std::to_string(confManager.COLLECTOR_CONF.KEEPER_COLLECTOR_DRAIN_SERVICE_CONF.RPC_CONF.BASE_PORT);
+            confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP + ":" +
+            std::to_string(confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT);
 //    std::string KEEPER_COLLECTOR_NA_STRING = "ofi+tcp;ofi_rxm://172.17.0.1:37709";
     tl::engine extraction_engine = tl::engine(KEEPER_COLLECTOR_NA_STRING, THALLIUM_SERVER_MODE);
     std::stringstream ss;

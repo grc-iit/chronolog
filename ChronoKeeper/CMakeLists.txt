@@ -37,9 +37,10 @@ add_executable(extract_test)
 target_sources(extract_test PRIVATE
     extract_test.cpp
     ../chrono_common/chronolog_types.h
-    StoryChunk.cpp
+    ../chrono_common/StoryChunk.cpp
     StoryChunkExtractor.cpp
 #    StoryChunkExtractorRDMA.cpp
+    ../chrono_common/ConfigurationManager.cpp
     ../ChronoAPI/ChronoLog/src/log.cpp)
 target_include_directories(extract_test PRIVATE include
     ../chrono_common
@@ -51,9 +52,10 @@ add_executable(ingest_test)
 target_sources(ingest_test PRIVATE
     ingest_test.cpp
     ../chrono_common/chronolog_types.h
-    StoryChunk.cpp
+    ../chrono_common/StoryChunk.cpp
 #    StoryChunkExtractor.cpp
 #    StoryChunkExtractorRDMA.cpp
+    ../chrono_common/ConfigurationManager.cpp
     ../ChronoAPI/ChronoLog/src/log.cpp)
 target_include_directories(ingest_test PRIVATE include
     ../chrono_common

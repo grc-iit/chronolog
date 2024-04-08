@@ -138,7 +138,7 @@ typedef struct KeeperDataStoreAdminServiceConf_
     }
 } KeeperDataStoreAdminServiceConf;
 
-typedef struct KeeperCollectorDrainServiceConf_
+typedef struct KeeperGrapherDrainServiceConf_
 {
     RPCProviderConf RPC_CONF;
 
@@ -146,7 +146,7 @@ typedef struct KeeperCollectorDrainServiceConf_
     {
         return "[RPC_CONF: " + RPC_CONF.to_String() + "]";
     }
-} KeeperCollectorDrainServiceConf;
+} KeeperGrapherDrainServiceConf;
 
 typedef struct VisorConf_
 {
@@ -169,7 +169,7 @@ typedef struct KeeperConf_
     KeeperRecordingServiceConf KEEPER_RECORDING_SERVICE_CONF;
     KeeperDataStoreAdminServiceConf KEEPER_DATA_STORE_ADMIN_SERVICE_CONF;
     VisorKeeperRegistryServiceConf VISOR_KEEPER_REGISTRY_SERVICE_CONF;
-    KeeperCollectorDrainServiceConf KEEPER_COLLECTOR_DRAIN_SERVICE_CONF;
+    KeeperGrapherDrainServiceConf KEEPER_GRAPHER_DRAIN_SERVICE_CONF;
     std::string STORY_FILES_DIR;
     LogConf KEEPER_LOG_CONF;
 
@@ -181,18 +181,6 @@ typedef struct KeeperConf_
                ", STORY_FILES_DIR:" + STORY_FILES_DIR + ", KEEPER_LOG_CONF:" + KEEPER_LOG_CONF.to_String() + "]";
     }
 } KeeperConf;
-
-typedef struct CollectorConf_
-{
-    KeeperCollectorDrainServiceConf KEEPER_COLLECTOR_DRAIN_SERVICE_CONF;
-    LogConf COLLECTOR_LOG_CONF;
-
-    [[nodiscard]] std::string to_String() const
-    {
-        return "[KEEPER_COLLECTOR_DRAIN_SERVICE_CONF: " + KEEPER_COLLECTOR_DRAIN_SERVICE_CONF.to_String() + ", COLLECTOR_LOG_CONF:" +
-               COLLECTOR_LOG_CONF.to_String() + "]";
-    }
-} CollectorConf;
 
 typedef struct DataStoreConf_
 {
@@ -218,7 +206,7 @@ typedef struct ExtractorConf_
 
 typedef struct GrapherConf_
 {
-    RPCProviderConf RECORDING_SERVICE_CONF;
+    RPCProviderConf KEEPER_GRAPHER_DRAIN_SERVICE_CONF;
     RPCProviderConf DATA_STORE_ADMIN_SERVICE_CONF;
     RPCProviderConf VISOR_REGISTRY_SERVICE_CONF;
     LogConf LOG_CONF;
@@ -227,12 +215,12 @@ typedef struct GrapherConf_
 
     [[nodiscard]] std::string to_String() const
     {
-        return "[CHRONO_GRAPHER_CONFIGURATION : RECORDING_SERVICE_CONF: " + RECORDING_SERVICE_CONF.to_String() +
+        return "[CHRONO_GRAPHER_CONFIGURATION : KEEPER_GRAPHER_DRAIN_SERVICE_CONF: " + KEEPER_GRAPHER_DRAIN_SERVICE_CONF.to_String() +
                ", DATA_STORE_ADMIN_SERVICE_CONF: " + DATA_STORE_ADMIN_SERVICE_CONF.to_String() +
                ", VISOR_REGISTRY_SERVICE_CONF: " + VISOR_REGISTRY_SERVICE_CONF.to_String() +
                ", LOG_CONF:" + LOG_CONF.to_String() +
                ", " + DATA_STORE_CONF.to_String() +
-               ", " + EXTRACTOR_CONF.to_String()+
+               ", " + EXTRACTOR_CONF.to_String() +
                "]";
     }
 } GrapherConf;
@@ -259,7 +247,6 @@ public:
     VisorConf VISOR_CONF{};
     ClientConf CLIENT_CONF{};
     KeeperConf KEEPER_CONF{};
-    CollectorConf COLLECTOR_CONF{};
     GrapherConf GRAPHER_CONF{};
 
     ConfigurationManager()
@@ -313,12 +300,12 @@ public:
 
         KEEPER_CONF.STORY_FILES_DIR = "/tmp/";
 
-        /* Collector-related configurations */
-        COLLECTOR_CONF.KEEPER_COLLECTOR_DRAIN_SERVICE_CONF.RPC_CONF.RPC_IMPLEMENTATION = CHRONOLOG_THALLIUM_SOCKETS;
-        COLLECTOR_CONF.KEEPER_COLLECTOR_DRAIN_SERVICE_CONF.RPC_CONF.PROTO_CONF = "ofi+sockets";
-        COLLECTOR_CONF.KEEPER_COLLECTOR_DRAIN_SERVICE_CONF.RPC_CONF.IP = "127.0.0.1";
-        COLLECTOR_CONF.KEEPER_COLLECTOR_DRAIN_SERVICE_CONF.RPC_CONF.BASE_PORT = 9999;
-        COLLECTOR_CONF.KEEPER_COLLECTOR_DRAIN_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID = 99;
+        /* Grapher-related configurations */
+        GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_IMPLEMENTATION = CHRONOLOG_THALLIUM_SOCKETS;
+        GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.PROTO_CONF = "ofi+sockets";
+        GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP = "127.0.0.1";
+        GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT = 9999;
+        GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.SERVICE_PROVIDER_ID = 99;
 
         /* Client-related configurations */
         CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.RPC_IMPLEMENTATION = CHRONOLOG_THALLIUM_SOCKETS;
@@ -342,7 +329,6 @@ public:
         std::cout << "AUTH_CONF: " << AUTH_CONF.to_String().c_str() << std::endl;
         std::cout << "VISOR_CONF: " << VISOR_CONF.to_String().c_str() << std::endl;
         std::cout << "KEEPER_CONF: " << KEEPER_CONF.to_String().c_str() << std::endl;
-        std::cout << "COLLECTOR_CONF: " << COLLECTOR_CONF.to_String().c_str() << std::endl;
         std::cout << "GRAPHER_CONF: " << GRAPHER_CONF.to_String().c_str() << std::endl;
         std::cout << "CLIENT_CONF: " << CLIENT_CONF.to_String().c_str() << std::endl;
         std::cout << "******** End of configuration output ********" << std::endl;
@@ -407,18 +393,6 @@ public:
                     exit(chronolog::CL_ERR_INVALID_CONF);
                 }
                 parseKeeperConf(chrono_keeper_conf);
-            }
-            else if(strcmp(key, "chrono_collector") == 0)
-            {
-                json_object*chrono_collector_conf = json_object_object_get(root, "chrono_collector");
-                if(chrono_collector_conf == nullptr || !json_object_is_type(chrono_collector_conf, json_type_object))
-                {
-                    std::cerr << "[ConfigurationManager] Error while parsing configuration file "
-                              << conf_file_path.c_str()
-                              << ". ChronoCollector configuration is not found or is not an object." << std::endl;
-                    exit(chronolog::CL_ERR_INVALID_CONF);
-                }
-                parseCollectorConf(chrono_collector_conf);
             }
             else if(strcmp(key, "chrono_grapher") == 0)
             {
@@ -880,20 +854,20 @@ private:
                     }
                 }
             }
-            else if(strcmp(key, "KeeperCollectorDrainService") == 0)
+            else if(strcmp(key, "KeeperGrapherDrainService") == 0)
             {
                 assert(json_object_is_type(val, json_type_object));
-                json_object*keeper_collector_drain_service_conf = json_object_object_get(json_conf
-                                                                                         , "KeeperCollectorDrainService");
-                json_object_object_foreach(keeper_collector_drain_service_conf, key, val)
+                json_object*keeper_grapher_drain_service_conf = json_object_object_get(json_conf
+                                                                                       , "KeeperGrapherDrainService");
+                json_object_object_foreach(keeper_grapher_drain_service_conf, key, val)
                 {
                     if(strcmp(key, "rpc") == 0)
                     {
-                        parseRPCProviderConf(val, KEEPER_CONF.KEEPER_COLLECTOR_DRAIN_SERVICE_CONF.RPC_CONF);
+                        parseRPCProviderConf(val, KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF);
                     }
                     else
                     {
-                        std::cerr << "[ConfigurationManager] Unknown KeeperCollectorDrainService configuration: " << key
+                        std::cerr << "[ConfigurationManager] Unknown KeeperGrapherDrainService configuration: " << key
                                   << std::endl;
                     }
                 }
@@ -922,51 +896,6 @@ private:
             else
             {
                 std::cerr << "[ConfigurationManager] Unknown Keeper configuration: " << key << std::endl;
-            }
-        }
-    }
-
-    void parseCollectorConf(json_object*json_conf)
-    {
-        json_object_object_foreach(json_conf, key, val)
-        {
-            if(strcmp(key, "KeeperCollectorDrainService") == 0)
-            {
-                assert(json_object_is_type(val, json_type_object));
-                json_object*keeper_collector_drain_service_conf = json_object_object_get(json_conf
-                                                                                         , "KeeperCollectorDrainService");
-                json_object_object_foreach(keeper_collector_drain_service_conf, key, val)
-                {
-                    if(strcmp(key, "rpc") == 0)
-                    {
-                        parseRPCProviderConf(val, COLLECTOR_CONF.KEEPER_COLLECTOR_DRAIN_SERVICE_CONF.RPC_CONF);
-                    }
-                    else
-                    {
-                        std::cerr << "[ConfigurationManager] Unknown CollectorDrainService configuration: " << key
-                                  << std::endl;
-                    }
-                }
-            }
-            else if(strcmp(key, "Logging") == 0)
-            {
-                assert(json_object_is_type(val, json_type_object));
-                json_object*chronocollector_log = json_object_object_get(json_conf, "Logging");
-                json_object_object_foreach(chronocollector_log, key, val)
-                {
-                    if(strcmp(key, "log") == 0)
-                    {
-                        parseLogConf(val, COLLECTOR_CONF.COLLECTOR_LOG_CONF);
-                    }
-                    else
-                    {
-                        std::cerr << "[ConfigurationManager] Unknown CollectorLog configuration: " << key << std::endl;
-                    }
-                }
-            }
-            else
-            {
-                std::cerr << "[ConfigurationManager] Unknown Collector configuration: " << key << std::endl;
             }
         }
     }
