@@ -20,7 +20,7 @@ chronolog::CSVFileStoryChunkExtractor::~CSVFileStoryChunkExtractor()
 }
 
 /////////////
-void chronolog::CSVFileStoryChunkExtractor::processStoryChunk(chronolog::StoryChunk*story_chunk)
+int chronolog::CSVFileStoryChunkExtractor::processStoryChunk(StoryChunk*story_chunk)
 {
     std::ofstream chunk_fstream;
     std::string chunk_filename(rootDirectory);

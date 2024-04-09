@@ -46,7 +46,7 @@ public:
 
     void drainExtractionQueue();
 
-    virtual void processStoryChunk(StoryChunk*)  //=0
+    virtual int processStoryChunk(StoryChunk*)  //=0
     {
         LOG_WARNING("[StoryChunkExtraction] Base processStoryChunk method called. Derived class should implement specific logic.");
     }
@@ -55,6 +55,9 @@ public:
 
     void shutdownExtractionThreads();
 
+    // TODO: move it back to private after testing
+    StoryChunkExtractionQueue chunkExtractionQueue;
+
 private:
     StoryChunkExtractorBase(StoryChunkExtractorBase const &) = delete;
 
@@ -62,7 +65,6 @@ private:
 
     ExtractorState extractorState;
     std::mutex extractorMutex;
-    StoryChunkExtractionQueue chunkExtractionQueue;
 
     std::vector <tl::managed <tl::xstream>> extractionStreams;
     std::vector <tl::managed <tl::thread>> extractionThreads;

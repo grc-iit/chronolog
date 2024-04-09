@@ -29,7 +29,7 @@ void chronolog::StoryChunkExtractorBase::startExtractionThreads(int stream_count
         extractionStreams.push_back(std::move(es));
     }
 
-    for(int i = 0; i < 2 * stream_count; ++i)
+    for(int i = 0; i < stream_count; ++i)
     {
         tl::managed <tl::thread> th = extractionStreams[i % extractionStreams.size()]->make_thread([p = this]()
                                                                                                    { p->drainExtractionQueue(); });
@@ -85,7 +85,7 @@ void chronolog::StoryChunkExtractorBase::drainExtractionQueue()
     while((extractorState == RUNNING) || !chunkExtractionQueue.empty())
     {
         LOG_DEBUG("[StoryChunkExtractionBase] Draining queue. ES Rank: {}, ULT ID: {}, Queue Size: {}", es.get_rank()
-             , thallium::thread::self_id(), chunkExtractionQueue.size());
+                  , thallium::thread::self_id(), chunkExtractionQueue.size());
 
         while(!chunkExtractionQueue.empty())
         {
@@ -96,11 +96,13 @@ void chronolog::StoryChunkExtractorBase::drainExtractionQueue()
                 LOG_WARNING("[StoryChunkExtractionBase] Failed to acquire a story chunk from the queue.");
                 break;
             }
-            processStoryChunk(storyChunk);  // INNA: should add return type and handle the failure properly
+            int ret = processStoryChunk(storyChunk);  // INNA: should add return type and handle the failure properly
+            LOG_DEBUG("[StoryChunkExtractionBase] Story chunk processing returns {}, ES Rank: {}, ULT "
+                      "ID: {}", ret, es.get_rank(), thallium::thread::self_id());
             // free the memory or reset the startTime and return to the pool of prealocated chunks
             delete storyChunk;
         }
-        sleep(30);
+        sleep(3);
     }
 }
 

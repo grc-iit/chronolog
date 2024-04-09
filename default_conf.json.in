@@ -33,7 +33,7 @@
         "file": "chrono_visor.log",
         "level": "debug",
         "name": "ChronoVisor",
-        "filesize": 1048576,
+        "filesize": 104857600,
         "filenum": 3,
         "flushlevel": "warning"
       }

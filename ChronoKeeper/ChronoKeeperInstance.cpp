@@ -17,6 +17,7 @@
 #include "StoryChunkExtractor.h"
 #include "CSVFileChunkExtractor.h"
 #include "cmd_arg_parse.h"
+#include "StoryChunkExtractorRDMA.h"
 
 #define KEEPER_GROUP_ID 7
 
@@ -141,9 +142,29 @@ int main(int argc, char**argv)
     // Instantiate ChronoKeeper MemoryDataStore & ExtractorModule
     chronolog::IngestionQueue ingestionQueue;
     std::string keeper_csv_files_directory = confManager.KEEPER_CONF.STORY_FILES_DIR;
-    chronolog::CSVFileStoryChunkExtractor storyExtractor(keeperIdCard, keeper_csv_files_directory);
+    // Instantiate KeeperGrapherDrainService
+    tl::engine*extractionEngine = nullptr;
+    try
+    {
+        extractionEngine = new tl::engine(confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.PROTO_CONF
+                                          , THALLIUM_CLIENT_MODE);
+
+        std::stringstream s1;
+        s1 << extractionEngine->self();
+        LOG_INFO("[ChronoKeeperInstance] GroupID={} starting extraction engine at address {}", keeper_group_id
+                 , s1.str());
+    }
+    catch(tl::exception const &)
+    {
+        LOG_ERROR("[ChronoKeeperInstance] Keeper failed to create extraction engine");
+    }
+
+    chronolog::StoryChunkExtractorRDMA storyExtractor = chronolog::StoryChunkExtractorRDMA(*extractionEngine
+                                                                                           , confManager);
+    //    chronolog::CSVFileStoryChunkExtractor storyExtractor(keeperIdCard, keeper_csv_files_directory);
     chronolog::KeeperDataStore theDataStore(ingestionQueue, storyExtractor.getExtractionQueue());
 
+    // Instantiate KeeperRecordingService
     chronolog::ServiceId collectionServiceId(datastore_endpoint.first, datastore_endpoint.second
                                              , datastore_service_provider_id);
     tl::engine*dataAdminEngine = nullptr;
@@ -160,7 +181,7 @@ int main(int argc, char**argv)
         std::stringstream s3;
         s3 << dataAdminEngine->self();
         LOG_DEBUG("[ChronoKeeperInstance] GroupID={} starting DataStoreAdminService at address {} with ProviderID={}"
-             , keeper_group_id, s3.str(), datastore_service_provider_id);
+                  , keeper_group_id, s3.str(), datastore_service_provider_id);
         keeperDataAdminService = chronolog::DataStoreAdminService::CreateDataStoreAdminService(*dataAdminEngine
                                                                                                , datastore_service_provider_id
                                                                                                , theDataStore);
@@ -190,7 +211,7 @@ int main(int argc, char**argv)
         std::stringstream s1;
         s1 << recordingEngine->self();
         LOG_INFO("[ChronoKeeperInstance] GroupID={} starting KeeperRecordingService at {} with provider_id {}"
-             , keeper_group_id, s1.str(), datastore_service_provider_id);
+                 , keeper_group_id, s1.str(), datastore_service_provider_id);
         keeperRecordingService = chronolog::KeeperRecordingService::CreateKeeperRecordingService(*recordingEngine
                                                                                                  , recording_service_provider_id
                                                                                                  , ingestionQueue);
@@ -249,8 +270,8 @@ int main(int argc, char**argv)
     LOG_INFO("[ChronoKeeperInstance] Successfully registered with ChronoVisor.");
 
     /// Start data collection and extraction threads ___________________________________________________________________
-    // services are successfulley created and keeper process had registered with ChronoVisor
-    // start all dataColelction and Extraction threads...
+    // services are successfully created and keeper process had registered with ChronoVisor
+    // start all dataCollection and Extraction threads...
     tl::abt scope;
     theDataStore.startDataCollection(3);
     // start extraction streams & threads
@@ -286,6 +307,7 @@ int main(int argc, char**argv)
     // these are not probably needed as thalium handles the engine finalization...
     //  recordingEngine.finalize();
     //  collectionEngine.finalize();
+    delete extractionEngine;
     delete recordingEngine;
     delete dataAdminEngine;
     LOG_INFO("[ChronoKeeperInstance] Shutdown completed. Exiting.");
