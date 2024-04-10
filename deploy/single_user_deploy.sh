@@ -411,7 +411,7 @@ usage() {
                                -c|--client CLIENT_BIN
                                -s|--visor_hosts VISOR_HOSTS
                                -p|--keeper_hosts KEEPER_HOSTS
-                               -r|--client_hosts CLIENT_HOSTS
+                               -t|--client_hosts CLIENT_HOSTS
                                -f|--conf_file CONF_FILE
                                -j|--job_id JOB_ID
                                -h|--help Print this page"
