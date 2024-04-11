@@ -1,6 +1,0 @@
-add_executable(SerVector_test SerVector_test.cpp)
-target_include_directories(SerVector_test PRIVATE ${ChronoVisor_SOURCE_SIR}/include)
-target_link_libraries(SerVector_test ChronoVisor_lib)
-add_dependencies(SerVector_test ChronoVisor_lib)
-
-add_test(NAME SerVector_test COMMAND SerVector_test)

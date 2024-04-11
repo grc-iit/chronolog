@@ -101,7 +101,8 @@ int main(int argc, char**argv)
                                     , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
                                     , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME
                                     , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILESIZE
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILENUM);
+                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILENUM
+                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.FLUSHLEVEL);
     if(result == 1)
     {
         exit(EXIT_FAILURE);

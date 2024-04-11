@@ -1,3 +1,5 @@
+cmake_minimum_required(VERSION 3.19)
+
 find_package(MPI REQUIRED)
 
 add_executable(client_admin client_admin.cpp)

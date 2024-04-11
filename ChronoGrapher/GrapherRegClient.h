@@ -1,13 +1,13 @@
-#ifndef KEEPER_REG_CLIENT_H
-#define KEEPER_REG_CLIENT_H
+#ifndef GRAPHER_REG_CLIENT_H
+#define GRAPHER_REG_CLIENT_H
 
 #include <iostream>
 #include <thallium/serialization/stl/string.hpp>
 #include <thallium.hpp>
 
-#include "KeeperIdCard.h"
-#include "KeeperRegistrationMsg.h"
-#include "KeeperStatsMsg.h"
+#include "GrapherIdCard.h"
+#include "GrapherRegistrationMsg.h"
+//#include "GrapherStatsMsg.h"
 #include "chronolog_errcode.h"
 
 namespace tl = thallium;
@@ -16,49 +16,49 @@ namespace tl = thallium;
 namespace chronolog
 {
 
-class KeeperRegistryClient
+class GrapherRegistryClient
 {
 
 public:
-    static KeeperRegistryClient*
-    CreateKeeperRegistryClient(tl::engine &tl_engine, std::string const &registry_service_addr
+    static GrapherRegistryClient*
+    CreateRegistryClient(tl::engine &tl_engine, std::string const &registry_service_addr
                                , uint16_t registry_provider_id)
     {
         try
         {
-            return new KeeperRegistryClient(tl_engine, registry_service_addr, registry_provider_id);
+            return new GrapherRegistryClient(tl_engine, registry_service_addr, registry_provider_id);
         }
         catch(tl::exception const &)
         {
-            LOG_ERROR("[KeeperRegistryClient] Failed to create KeeperRegistryClient");
+            LOG_ERROR("[GrapherRegistryClient] Failed to create GrapherRegistryClient");
             return nullptr;
         }
     }
 
-    int send_register_msg(KeeperRegistrationMsg const &keeperMsg)
+    int send_register_msg(GrapherRegistrationMsg const & grapherMsg)
     {
         try
         {
             std::stringstream ss;
-            ss << keeperMsg;
-            LOG_DEBUG("[KeeperRegisterClient] Sending Register Message: {}", ss.str());
-            return register_keeper.on(reg_service_ph)(keeperMsg);
+            ss << grapherMsg;
+            LOG_DEBUG("[GrapherRegistryClient] Sending Registration Message: {}", ss.str());
+            return register_grapher.on(reg_service_ph)(grapherMsg);
         }
         catch(tl::exception const &)
         {
-            LOG_ERROR("[KeeperRegisterClient] Failed Sending Register Message.");
+            LOG_ERROR("[GrapherRegistryClient] Failed Sending Registration Message.");
             return CL_ERR_UNKNOWN;
         }
     }
 
-    int send_unregister_msg(KeeperIdCard const &keeperIdCard)
+    int send_unregister_msg(GrapherIdCard const &grapherIdCard)
     {
         try
         {
             std::stringstream ss;
-            ss << keeperIdCard;
-            LOG_DEBUG("[KeeperRegisterClient] Sending Unregister Message: {}", ss.str());
-            return unregister_keeper.on(reg_service_ph)(keeperIdCard);
+            ss << grapherIdCard;
+            LOG_DEBUG("[GrapherRegistryClient] Sending Unregister Message: {}", ss.str());
+            return unregister_grapher.on(reg_service_ph)(grapherIdCard);
         }
         catch(tl::exception const &)
         {
@@ -67,7 +67,7 @@ public:
         }
     }
 
-    void send_stats_msg(KeeperStatsMsg const &keeperStatsMsg)
+/*    void send_stats_msg(KeeperStatsMsg const &keeperStatsMsg)
     {
         try
         {
@@ -81,33 +81,33 @@ public:
             LOG_ERROR("[KeeperRegisterClient] Failed Sending Stats Message.");
         }
     }
-
-    ~KeeperRegistryClient()
+*/
+    ~GrapherRegistryClient()
     {
         LOG_DEBUG("[KeeperRegistryClient] Destructor called. Cleaning up resources...");
-        register_keeper.deregister();
-        unregister_keeper.deregister();
-        handle_stats_msg.deregister();
+        register_grapher.deregister();
+        unregister_grapher.deregister();
+        //handle_stats_msg.deregister();
     }
 
 private:
     std::string reg_service_addr;     // na address of Keeper Registry Service 
     uint16_t reg_service_provider_id;          // KeeperRegistryService provider id
     tl::provider_handle reg_service_ph;  //provider_handle for remote registry service
-    tl::remote_procedure register_keeper;
-    tl::remote_procedure unregister_keeper;
-    tl::remote_procedure handle_stats_msg;
+    tl::remote_procedure register_grapher;
+    tl::remote_procedure unregister_grapher;
+    //tl::remote_procedure handle_stats_msg;
 
     // constructor is private to make sure thalium rpc objects are created on the heap, not stack
-    KeeperRegistryClient(tl::engine &tl_engine, std::string const &registry_addr, uint16_t registry_provider_id)
+    GrapherRegistryClient(tl::engine &tl_engine, std::string const &registry_addr, uint16_t registry_provider_id)
             : reg_service_addr(registry_addr), reg_service_provider_id(registry_provider_id), reg_service_ph(
             tl_engine.lookup(registry_addr), registry_provider_id)
     {
-        LOG_DEBUG("[KeeperRegistryClient] Initialized for RegistryService at {} with ProviderID={}", registry_addr
+        LOG_DEBUG("[GrapherRegistryClient] Initialized for RegistryService at {} with ProviderID={}", registry_addr
              , registry_provider_id);
-        register_keeper = tl_engine.define("register_keeper");
-        unregister_keeper = tl_engine.define("unregister_keeper");
-        handle_stats_msg = tl_engine.define("handle_stats_msg").disable_response();
+        register_grapher = tl_engine.define("register_grapher");
+        unregister_grapher = tl_engine.define("unregister_grapher");
+      //  handle_stats_msg = tl_engine.define("handle_stats_msg").disable_response();
     }
 };
 }

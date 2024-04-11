@@ -1,3 +1,0 @@
-[submodule "external_libs/hcl"]
-	path = external_libs/hcl
-	url = https://github.com/scs-lab/hcl

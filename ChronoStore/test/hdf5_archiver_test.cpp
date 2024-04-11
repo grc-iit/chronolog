@@ -10,7 +10,7 @@
 #include <StoryReader.h>
 #include <log.h>
 #include <story_chunk_test_utils.h>
-#include "chrono_common/chronolog_types.h"
+#include "chronolog_types.h"
 
 #define STORY "S1"
 #define CHRONICLE "C1.h5"
@@ -153,7 +153,7 @@ int main(int argc, char*argv[])
     uint64_t client_id = CLIENT_ID;
 
     int result = Logger::initialize("console", "hdf5_archiver_test.log", spdlog::level::debug, "hdf5_archiver_test"
-                                    , 102400, 1);
+                                    , 102400, 1, spdlog::level::debug);
     if(result == 1)
     {
         exit(EXIT_FAILURE);

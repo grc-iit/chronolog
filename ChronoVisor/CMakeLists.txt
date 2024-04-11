@@ -1,7 +1,9 @@
-set(CMAKE_FIND_LIBRARY_TYPE STATIC)
+cmake_minimum_required(VERSION 3.19)
 
-find_package(thallium REQUIRED)
-find_package(Threads REQUIRED)
+find_package(Thallium REQUIRED)
+find_package(spdlog REQUIRED)
+
+set(CMAKE_FIND_LIBRARY_TYPE STATIC)
 
 add_executable(chronovisor_server)
 

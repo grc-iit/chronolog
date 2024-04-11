@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.17)
+cmake_minimum_required(VERSION 3.19)
 
 # Set a consistent MACOSX_RPATH default across all CMake versions.
 if(NOT DEFINED CMAKE_MACOSX_RPATH)
@@ -12,7 +12,7 @@ project(ChronoLog LANGUAGES CXX)
 # Version information
 #------------------------------------------------------------------------------
 set(CHRONOLOG_VERSION_MAJOR "0")
-set(CHRONOLOG_VERSION_MINOR "1")
+set(CHRONOLOG_VERSION_MINOR "7")
 set(CHRONOLOG_VERSION_PATCH "0")
 set(CHRONOLOG_PACKAGE "ChronoLog")
 set(CHRONOLOG_PACKAGE_NAME "CHRONOLOG")
@@ -97,15 +97,15 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     #set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -O0 -g")
 
-    #if (HERMES_USE_ADDRESS_SANITIZER)
+    #if (CHRONOLOG_USE_ADDRESS_SANITIZER)
     #    add_compile_options(-fsanitize=address)
     #endif()
 
-    #if (HERMES_USE_THREAD_SANITIZER)
+    #if (CHRONOLOG_USE_THREAD_SANITIZER)
     #    add_compile_options(-fsanitize=thread)
     #endif()
 
-    #if (HERMES_USE_THREAD_SANITIZER AND HERMES_USE_ADDRESS_SANITIZER)
+    #if (CHRONOLOG_USE_THREAD_SANITIZER AND CHRONOLOG_USE_ADDRESS_SANITIZER)
     #    message(FATAL_ERROR "Cannont use -fsanitize=address and -fsanitize=thread "
     #            "at the same time")
     #endif()
@@ -126,7 +126,7 @@ endif()
 
 
 #------------------------------------------------------------------------------
-# Transform flags from boolean to meaningfull usages.
+# Transform flags from boolean to meaningful usages.
 #------------------------------------------------------------------------------
 if(BUILD_SHARED_LIBS)
     set(CHRONOLOG_LIBTYPE SHARED)
@@ -138,16 +138,8 @@ endif()
 #-----------------------------------------------------------------------------
 # Dependencies common to all subdirectories
 #-----------------------------------------------------------------------------
-#find_package(MPI REQUIRED COMPONENTS CXX)
-find_package(Boost REQUIRED)
-find_package(Thallium REQUIRED)
-#find_library(ROCKSDB_LIB rocksdb)
-#if(NOT ROCKSDB_LIB)
-#    message(FATAL_ERROR "rocksdb is required")
-#else()
-#    find_path(ROCKDSB_INCLUDE rocksdb)
-#    MESSAGE(STATUS "Found rocksdb at: ${ROCKSDB_INCLUDE}")
-#endif()
+
+
 #-----------------------------------------------------------------------------
 # Coverage
 #-----------------------------------------------------------------------------
@@ -205,22 +197,15 @@ if(CHRONOLOG_BUILD_TESTING)
     include(CTest)
 endif()
 
-# External header only libraries
-#add_subdirectory(external_libs)
-
-#add_subdirectory(tools)
-
 # ChronoLog client library
 add_subdirectory(Client)
-
-# ChronoVisor
-#add_subdirectory(ChronoAPI)
 
 # ChronoVisor
 add_subdirectory(ChronoVisor)
 
 # ChronoKeeper
 add_subdirectory(ChronoKeeper)
+add_subdirectory(ChronoGrapher)
 
 # ChronoStore
 add_subdirectory(ChronoStore)

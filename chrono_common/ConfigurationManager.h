@@ -64,9 +64,10 @@ typedef struct LogConf_
     std::string LOGNAME;
     size_t LOGFILESIZE;
     size_t LOGFILENUM;
+    spdlog::level::level_enum FLUSHLEVEL;
 
     // Helper function to convert spdlog::level::level_enum to string
-    static std::string LogLevelToString(spdlog::level::level_enum level)
+    static std::string LevelToString(spdlog::level::level_enum level)
     {
         switch(level)
         {
@@ -91,9 +92,9 @@ typedef struct LogConf_
 
     [[nodiscard]] std::string to_String() const
     {
-        return "[TYPE: " + LOGTYPE + ", FILE: " + LOGFILE + ", LEVEL: " + LogLevelToString(LOGLEVEL) + ", NAME: " +
+        return "[TYPE: " + LOGTYPE + ", FILE: " + LOGFILE + ", LEVEL: " + LevelToString(LOGLEVEL) + ", NAME: " +
                LOGNAME + ", LOGFILESIZE: " + std::to_string(LOGFILESIZE) + ", LOGFILENUM: " +
-               std::to_string(LOGFILENUM) + "]";
+               std::to_string(LOGFILENUM) + ", FLUSH LEVEL: " + LevelToString(FLUSHLEVEL) + "]";
     }
 } LogConf;
 
@@ -148,8 +149,8 @@ typedef struct VisorConf_
     {
         return "[VISOR_CLIENT_PORTAL_SERVICE_CONF: " + VISOR_CLIENT_PORTAL_SERVICE_CONF.to_String() +
                ", VISOR_KEEPER_REGISTRY_SERVICE_CONF: " + VISOR_KEEPER_REGISTRY_SERVICE_CONF.to_String() +
-               ", VISOR_LOG: " + VISOR_LOG_CONF.to_String() + 
-               ", DELAYED_DATA_ADMIN_EXIT_IN_SECS: "+ std::to_string(DELAYED_DATA_ADMIN_EXIT_IN_SECS) + "]";
+               ", VISOR_LOG: " + VISOR_LOG_CONF.to_String() + ", DELAYED_DATA_ADMIN_EXIT_IN_SECS: " +
+               std::to_string(DELAYED_DATA_ADMIN_EXIT_IN_SECS) + "]";
     }
 } VisorConf;
 
@@ -169,6 +170,49 @@ typedef struct KeeperConf_
                ", STORY_FILES_DIR:" + STORY_FILES_DIR + ", KEEPER_LOG_CONF:" + KEEPER_LOG_CONF.to_String() + "]";
     }
 } KeeperConf;
+
+typedef struct DataStoreConf_
+{
+    int max_story_chunk_size;
+
+    [[nodiscard]] std::string to_String() const
+    {
+        return  "[DATA_STORE_CONF: max_story_chunk_size :" + std::to_string(max_story_chunk_size) +
+                "]";
+    }
+} DataStoreConf;
+
+typedef struct ExtractorConf_
+{
+    std::string story_files_dir;
+
+    [[nodiscard]] std::string to_String() const
+    {
+        return  "[EXTRACTOR_CONF: STORY_FILES_DIR:" + story_files_dir + 
+                "]";
+    }
+} ExtractorConf;
+
+typedef struct GrapherConf_
+{
+    RPCProviderConf RECORDING_SERVICE_CONF;
+    RPCProviderConf DATA_STORE_ADMIN_SERVICE_CONF;
+    RPCProviderConf VISOR_REGISTRY_SERVICE_CONF;
+    LogConf LOG_CONF;
+    DataStoreConf  DATA_STORE_CONF;
+    ExtractorConf  EXTRACTOR_CONF;  
+
+    [[nodiscard]] std::string to_String() const
+    {
+        return "[CHRONO_GRAPHER_CONFIGURATION : RECORDING_SERVICE_CONF: " + RECORDING_SERVICE_CONF.to_String() +
+               ", DATA_STORE_ADMIN_SERVICE_CONF: " + DATA_STORE_ADMIN_SERVICE_CONF.to_String() +
+               ", VISOR_REGISTRY_SERVICE_CONF: " + VISOR_REGISTRY_SERVICE_CONF.to_String() +
+               ", LOG_CONF:" + LOG_CONF.to_String() + 
+               ", " + DATA_STORE_CONF.to_String() +
+               ", " + EXTRACTOR_CONF.to_String()+ 
+               "]";
+    }
+} GrapherConf;
 
 typedef struct ClientConf_
 {
@@ -192,6 +236,7 @@ public:
     VisorConf VISOR_CONF{};
     ClientConf CLIENT_CONF{};
     KeeperConf KEEPER_CONF{};
+    GrapherConf GRAPHER_CONF{};
 
     ConfigurationManager()
     {
@@ -266,6 +311,7 @@ public:
         std::cout << "AUTH_CONF: " << AUTH_CONF.to_String().c_str() << std::endl;
         std::cout << "VISOR_CONF: " << VISOR_CONF.to_String().c_str() << std::endl;
         std::cout << "KEEPER_CONF: " << KEEPER_CONF.to_String().c_str() << std::endl;
+        std::cout << "GRAPHER_CONF: " << GRAPHER_CONF.to_String().c_str() << std::endl;
         std::cout << "CLIENT_CONF: " << CLIENT_CONF.to_String().c_str() << std::endl;
         std::cout << "******** End of configuration output ********" << std::endl;
     }
@@ -329,6 +375,18 @@ public:
                     exit(chronolog::CL_ERR_INVALID_CONF);
                 }
                 parseKeeperConf(chrono_keeper_conf);
+            }
+            else if(strcmp(key, "chrono_grapher") == 0)
+            {
+                json_object*chrono_grapher_conf = json_object_object_get(root, "chrono_grapher");
+                if(chrono_grapher_conf == nullptr || !json_object_is_type(chrono_grapher_conf, json_type_object))
+                {
+                    std::cerr << "[ConfigurationManager] Error while parsing configuration file "
+                              << conf_file_path.c_str()
+                              << ". ChronoGrapher configuration is not found or is not an object." << std::endl;
+                    exit(chronolog::CL_ERR_INVALID_CONF);
+                }
+                parseGrapherConf(chrono_grapher_conf);
             }
             else if(strcmp(key, "chrono_client") == 0)
             {
@@ -420,7 +478,53 @@ private:
         }
         else
         {
-            std::cerr << "[ConfigurationManager] Invalid rpc implementation configuration" << std::endl;
+            std::cerr << "[ConfigurationManager] Invalid Log Level implementation configuration" << std::endl;
+        }
+    }
+
+    void parseFlushLevelConf(json_object*json_conf, spdlog::level::level_enum &flush_level)
+    {
+        if(json_object_is_type(json_conf, json_type_string))
+        {
+            const char*conf_str = json_object_get_string(json_conf);
+            if(strcmp(conf_str, "trace") == 0)
+            {
+                flush_level = spdlog::level::trace;
+            }
+            else if(strcmp(conf_str, "info") == 0)
+            {
+                flush_level = spdlog::level::info;
+            }
+            else if(strcmp(conf_str, "debug") == 0)
+            {
+                flush_level = spdlog::level::debug;
+            }
+            else if(strcmp(conf_str, "warning") == 0)
+            {
+                flush_level = spdlog::level::warn;
+            }
+            else if(strcmp(conf_str, "error") == 0)
+            {
+                flush_level = spdlog::level::err;
+            }
+            else if(strcmp(conf_str, "critical") == 0)
+            {
+                flush_level = spdlog::level::critical;
+            }
+            else if(strcmp(conf_str, "off") == 0)
+            {
+                flush_level = spdlog::level::off;
+            }
+            else
+            {
+                std::cout << "[ConfigurationManager] Unknown flush level: " << conf_str << "Set it to default value: "
+                                                                                           "Warning" << std::endl;
+                flush_level = spdlog::level::warn;
+            }
+        }
+        else
+        {
+            std::cerr << "[ConfigurationManager] Invalid Flush Level implementation configuration" << std::endl;
         }
     }
 
@@ -593,6 +697,11 @@ private:
                 assert(json_object_is_type(val, json_type_int));
                 log_conf.LOGFILENUM = json_object_get_int(val);
             }
+            else if(strcmp(key, "flushlevel") == 0)
+            {
+                assert(json_object_is_type(val, json_type_string));
+                parseFlushLevelConf(val, log_conf.FLUSHLEVEL);
+            }
             else
             {
                 std::cerr << "[ConfigurationManager] Unknown log configuration: " << key << std::endl;
@@ -753,6 +862,8 @@ private:
             }
         }
     }
+
+    void parseGrapherConf(json_object*json_conf);
 
     void parseClientConf(json_object*json_conf)
     {

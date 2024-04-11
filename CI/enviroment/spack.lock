@@ -16,10 +16,6 @@
     {
       "hash": "wtle6ecnkjzrxxjgdjyighedzjmua5kr",
       "spec": "boost"
-    },
-    {
-      "hash": "ggx2rpxnirkj2l2zfgxagqcmnsdjlgka",
-      "spec": "rocksdb"
     }
   ],
   "concrete_specs": {
@@ -1828,104 +1824,6 @@
         }
       ],
       "hash": "hdotzutcx2a4pp5cmkbc3bw5g34xwu4x"
-    },
-    "ggx2rpxnirkj2l2zfgxagqcmnsdjlgka": {
-      "name": "rocksdb",
-      "version": "6.20.3",
-      "arch": {
-        "platform": "linux",
-        "platform_os": "ubuntu20.04",
-        "target": {
-          "name": "zen2",
-          "vendor": "AuthenticAMD",
-          "features": [
-            "abm",
-            "aes",
-            "avx",
-            "avx2",
-            "bmi1",
-            "bmi2",
-            "clflushopt",
-            "clwb",
-            "clzero",
-            "cx16",
-            "f16c",
-            "fma",
-            "fsgsbase",
-            "mmx",
-            "movbe",
-            "pclmulqdq",
-            "popcnt",
-            "rdseed",
-            "sse",
-            "sse2",
-            "sse4_1",
-            "sse4_2",
-            "sse4a",
-            "ssse3",
-            "xsavec",
-            "xsaveopt"
-          ],
-          "generation": 0,
-          "parents": [
-            "zen"
-          ]
-        }
-      },
-      "compiler": {
-        "name": "gcc",
-        "version": "9.3.0"
-      },
-      "namespace": "builtin",
-      "parameters": {
-        "bz2": false,
-        "lz4": true,
-        "patches": [
-          "9a8833a09a0d6fb7b3fcf77e445b78ca86fb0a3638c1b9ef3716ff476eb6a82c"
-        ],
-        "shared": true,
-        "snappy": false,
-        "static": true,
-        "tbb": false,
-        "zlib": true,
-        "zstd": false,
-        "cflags": [],
-        "cppflags": [],
-        "cxxflags": [],
-        "fflags": [],
-        "ldflags": [],
-        "ldlibs": []
-      },
-      "patches": [
-        "9a8833a09a0d6fb7b3fcf77e445b78ca86fb0a3638c1b9ef3716ff476eb6a82c"
-      ],
-      "dependencies": [
-        {
-          "name": "gflags",
-          "build_hash": "vvjkbnwku7n6p2e5fjunybqwozblv7wp",
-          "type": [
-            "build",
-            "link"
-          ]
-        },
-        {
-          "name": "lz4",
-          "build_hash": "6m7dct2pygnn4iob47pdbhn6dxfhiryd",
-          "type": [
-            "build",
-            "link"
-          ]
-        },
-        {
-          "name": "zlib",
-          "build_hash": "whj3n7mok67wqtm5dofead56i6krevxc",
-          "type": [
-            "build",
-            "link"
-          ]
-        }
-      ],
-      "hash": "hqiuiit4ltk2mlp63bjfxrbobjeugjji"
     },
     "vvjkbnwku7n6p2e5fjunybqwozblv7wp": {
       "name": "gflags",

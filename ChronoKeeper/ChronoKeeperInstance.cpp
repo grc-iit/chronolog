@@ -4,8 +4,8 @@
 
 #include <signal.h>
 
-#include "chrono_common/KeeperIdCard.h"
-#include "chrono_common/KeeperStatsMsg.h"
+//#include "chrono_common/KeeperIdCard.h"
+//#include "chrono_common/KeeperStatsMsg.h"
 #include "KeeperRecordingService.h"
 #include "KeeperRegClient.h"
 #include "IngestionQueue.h"
@@ -77,7 +77,8 @@ int main(int argc, char**argv)
                                     , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGLEVEL
                                     , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGNAME
                                     , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILESIZE
-                                    , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILENUM);
+                                    , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILENUM
+                                    , confManager.KEEPER_CONF.KEEPER_LOG_CONF.FLUSHLEVEL);
     if(result == 1)
     {
         exit(EXIT_FAILURE);
