@@ -84,6 +84,7 @@ inline bool operator==(chronolog::KeeperIdCard const& card1, chronolog::KeeperId
                 && card1.getProviderId() == card2.getProviderId()) ? true : false );
 
 }
+
 inline std::ostream & operator<< (std::ostream & out , chronolog::KeeperIdCard const & keeper_id_card)
 {
     std::string a_string;
@@ -93,5 +94,12 @@ inline std::ostream & operator<< (std::ostream & out , chronolog::KeeperIdCard c
     return out;
 }
 
+inline std::string& operator+(std::string& a_string, chronolog::KeeperIdCard const& keeper_id_card)
+{
+    a_string += std::string("KeeperIdCard{") + std::to_string(keeper_id_card.getGroupId()) + ":" +
+                keeper_id_card.getIPasDottedString(a_string) + ":" + std::to_string(keeper_id_card.getPort()) + ":" +
+                std::to_string(keeper_id_card.getProviderId()) + "}";
+    return a_string;
+}
 
 #endif

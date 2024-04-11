@@ -104,6 +104,7 @@ int main(int argc, char**argv)
     LOG_INFO("[ChronoGrapher] DataStoreAdminService started successfully.");
 
     // Instantiate GrapherRecordingService
+    chronolog::RecordingGroupId recording_group_id = 7;
     std::string RECORDING_SERVICE_PROTOCOL = confManager.GRAPHER_CONF.RECORDING_SERVICE_CONF.PROTO_CONF;
     std::string RECORDING_SERVICE_IP = confManager.GRAPHER_CONF.RECORDING_SERVICE_CONF.IP;
     uint16_t RECORDING_SERVICE_PORT = confManager.GRAPHER_CONF.RECORDING_SERVICE_CONF.BASE_PORT;
@@ -125,8 +126,8 @@ int main(int argc, char**argv)
     LOG_INFO("[ChronoGrapher] RecordingService started successfully.");
 
     // create GrapherIdCard to identify this Grapher process in ChronoVisor's Registry
-    chronolog::GrapherIdCard processIdCard(recording_endpoint.first, recording_endpoint.second
-                                         , recording_service_provider_id);
+    chronolog::GrapherIdCard processIdCard(recording_group_id, recording_endpoint.first, recording_endpoint.second,
+                                           recording_service_provider_id);
 
     std::stringstream process_id_string;
     process_id_string << processIdCard;
