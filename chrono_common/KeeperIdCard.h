@@ -5,6 +5,8 @@
 
 #include <iostream>
 
+#include "ServiceId.h"
+
 // this class wrapps ChronoKeeper Process identification 
 // that will be used by all the ChronoLog Processes 
 // to both identofy the Keepr process and create RPC client channels 
@@ -20,14 +22,12 @@ typedef uint32_t        in_addr_t;
 typedef uint16_t        in_port_t;
 typedef std::pair <in_addr_t, in_port_t> service_endpoint;
 
-// KeeperGroup is the logical grouping of KeeperProcesses
-typedef uint32_t    KeeperGroupId;
-
+typedef uint32_t KeeperGroupId;
 
 class KeeperIdCard
 {
 
-    KeeperGroupId keeper_group_id;
+    RecordingGroupId keeper_group_id;
     uint32_t ip_addr; //IP address as uint32_t in host byte order
     uint16_t port;    //port number as uint16_t in host byte order
     uint16_t tl_provider_id; // id of thallium service provider
@@ -45,7 +45,7 @@ public:
 
     ~KeeperIdCard()=default;
 
-    uint32_t getGroupId() const { return keeper_group_id; }
+    RecordingGroupId getGroupId() const { return keeper_group_id; }
     uint32_t getIPaddr() const {return ip_addr; }
     uint16_t getPort() const { return port;}
     uint16_t getProviderId () const { return tl_provider_id; }
