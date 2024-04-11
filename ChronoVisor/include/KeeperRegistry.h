@@ -105,10 +105,11 @@ public:
         void startDelayedGrapherExit(GrapherProcessEntry&, std::time_t);
         void clearDelayedExitGrapher(GrapherProcessEntry&, std::time_t);
         void startDelayedKeeperExit(KeeperProcessEntry&, std::time_t);
+        void clearDelayedExitKeeper(KeeperProcessEntry&, std::time_t);
 
         RecordingGroupId groupId;
         GrapherProcessEntry* grapherProcess;
-        std::map<std::pair<uint32_t, uint16_t>, KeeperProcessEntry*> keeperProcesses;
+        std::map<std::pair<uint32_t, uint16_t>, KeeperProcessEntry> keeperProcesses;
     };
 
     class KeeperRegistry
@@ -162,7 +163,6 @@ public:
 
         RegistryState registryState;
         std::mutex registryLock;
-        std::map<std::pair<uint32_t, uint16_t>, KeeperProcessEntry> keeperProcessRegistry;
         std::map<RecordingGroupId, RecordingGroup> recordingGroups;
         thallium::engine* registryEngine;
         KeeperRegistryService* keeperRegistryService;
