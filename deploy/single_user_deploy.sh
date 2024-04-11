@@ -29,7 +29,7 @@ HOSTNAME_HS_NET_SUFFIX="-40g"
 JOB_ID=""
 install=false
 deploy=false
-local=true
+local=false
 reset=false
 verbose=false
 
@@ -486,20 +486,20 @@ prepare_hosts() {
 }
 
 usage() {
-    echo "Usage: $0 -i|--install Re-prepare ChronoLog deployment
-                               -d|--deploy Start ChronoLog deployment
-                               -r|--reset Reset ChronoLog deployment
-                               -l|--local Local install/deployment/reset
-                               -w|--work_dir WORK_DIR
-                               -v|--visor VISOR_BIN
-                               -k|--keeper KEEPER_BIN
-                               -c|--client CLIENT_BIN
-                               -s|--visor_hosts VISOR_HOSTS
-                               -p|--keeper_hosts KEEPER_HOSTS
-                               -t|--client_hosts CLIENT_HOSTS
-                               -f|--conf_file CONF_FILE
-                               -j|--job_id JOB_ID
-                               -e|--verbose Enable verbose output
+    echo "Usage: $0 -i|--install Re-prepare ChronoLog deployment (default: false)
+                               -d|--deploy Start ChronoLog deployment (default: false)
+                               -r|--reset Reset/cleanup ChronoLog deployment (default: false)
+                               -l|--local Local install/deployment/reset (default: false)
+                               -w|--work_dir WORK_DIR (default: ~/chronolog)
+                               -v|--visor VISOR_BIN (default: work_dir/bin/chronovisor_server)
+                               -k|--keeper KEEPER_BIN (default: work_dir/bin/chrono_keeper)
+                               -c|--client CLIENT_BIN (default: work_dir/bin/client_lib_multi_storytellers)
+                               -s|--visor_hosts VISOR_HOSTS (default: work_dir/conf/hosts_visor)
+                               -p|--keeper_hosts KEEPER_HOSTS (default: work_dir/conf/hosts_keeper)
+                               -t|--client_hosts CLIENT_HOSTS (default: work_dir/conf/hosts_client)
+                               -f|--conf_file CONF_FILE (default: work_dir/conf/default_conf.json)
+                               -j|--job_id JOB_ID (default: "")
+                               -e|--verbose Enable verbose output (default: false)
                                -h|--help Print this page"
     exit 1
 }
