@@ -15,9 +15,11 @@ chronolog::StoryChunkExtractorRDMA::StoryChunkExtractorRDMA(tl::engine &extracti
             confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.PROTO_CONF + "://" +
             confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.IP + ":" +
             std::to_string(confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.BASE_PORT);
-    drain_to_grapher = extraction_engine.define("bulk_put");
-    LOG_DEBUG("[StoryChunkExtractorRDMA] Looking up RPC at: {} ...", KEEPER_GRAPHER_NA_STRING);
-    service_ph = extraction_engine.lookup(KEEPER_GRAPHER_NA_STRING);
+    std::string extraction_rpc_name = "record_story_chunk";
+    drain_to_grapher = extraction_engine.define(extraction_rpc_name);
+    LOG_DEBUG("[StoryChunkExtractorRDMA] Looking up {} at: {} ...", extraction_rpc_name, KEEPER_GRAPHER_NA_STRING);
+    uint16_t extraction_provider_id = confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID;
+    service_ph = tl::provider_handle(extraction_engine.lookup(KEEPER_GRAPHER_NA_STRING), extraction_provider_id);
     if(service_ph.is_null())
     {
         LOG_ERROR("[StoryChunkExtractorRDMA] Failed to lookup Grapher service provider handle");
@@ -39,14 +41,6 @@ int chronolog::StoryChunkExtractorRDMA::processStoryChunk(StoryChunk*story_chunk
     std::chrono::high_resolution_clock::time_point start, end;
     try
     {
-//        std::string KEEPER_GRAPHER_NA_STRING =
-//                confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.PROTO_CONF + "://" +
-//                confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.IP + ":" +
-//                std::to_string(confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.BASE_PORT);
-//        drain_to_grapher = extraction_engine.define("rdma_put");
-//        LOG_DEBUG("[StoryChunkExtractorRDMA] Looking up RPC at: {} ...", KEEPER_GRAPHER_NA_STRING);
-//        service_ph = extraction_engine.lookup(KEEPER_GRAPHER_NA_STRING);
-
         LOG_DEBUG("[StoryChunkExtractorRDMA] Processing a story chunk, StoryID: {}, StartTime: {} ..."
                   , story_chunk->getStoryId(), story_chunk->getStartTime());
         std::vector <std::pair <void*, std::size_t>> segments(1);
@@ -58,10 +52,10 @@ int chronolog::StoryChunkExtractorRDMA::processStoryChunk(StoryChunk*story_chunk
         segments[0].first = (void*)(serialized_buf);
         segments[0].second = serialized_story_chunk_size + 1;
         tl::bulk tl_bulk = extraction_engine.expose(segments, tl::bulk_mode::read_only);
-        LOG_DEBUG("[StoryChunkExtractorRDMA] Calling RPC on Grapher with story chunk size: {} ...", tl_bulk.size());
+        LOG_DEBUG("[StoryChunkExtractorRDMA] Draining to Grapher with story chunk size: {} ...", tl_bulk.size());
         int result = drain_to_grapher.on(service_ph)(tl_bulk);
-        LOG_DEBUG("[StoryChunkExtractorRDMA] RPC call on Grapher returned with result: {}", result);
-        LOG_INFO("[StoryChunkExtractorRDMA] RPC call on Grapher took {} us",
+        LOG_DEBUG("[StoryChunkExtractorRDMA] Draining to Grapher returned with result: {}", result);
+        LOG_INFO("[StoryChunkExtractorRDMA] Draining to Grapher took {} us",
                 std::chrono::duration_cast <std::chrono::nanoseconds>(end - start).count() / 1000.0);
 
         if(result == serialized_story_chunk_size + 1)

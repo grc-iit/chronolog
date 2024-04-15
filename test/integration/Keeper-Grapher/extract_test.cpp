@@ -13,7 +13,7 @@ namespace tl = thallium;
 #define NUM_EVENTS 10
 #define MAX_BULK_MEM_SIZE (1024 * 1024 * 2)
 
-std::string rpc_name_g = "bulk_put";
+std::string rpc_name_g = "record_story_chunk";
 tl::engine*tl_engine_g;
 tl::remote_procedure bulk_put_g;
 tl::provider_handle service_ph_g;
@@ -40,8 +40,8 @@ chronolog::StoryChunk*generateRandomStoryChunk()
         event.clientId = client_id;
         event.eventTime = start_time + i * 2;
         event.eventIndex = i;
-        event.logRecord = log_event_str_base + ", AABBCCDDEEFFGGHHIIJJKKLLMMNNOOPPQQRRSSTTUUVVWWXXYYZZ" +
-                std::to_string(i);
+        event.logRecord =
+                log_event_str_base + ", AABBCCDDEEFFGGHHIIJJKKLLMMNNOOPPQQRRSSTTUUVVWWXXYYZZ" + std::to_string(i);
         event.logRecord += event.logRecord;
         event.logRecord += event.logRecord;
         event.logRecord += event.logRecord;
@@ -49,10 +49,8 @@ chronolog::StoryChunk*generateRandomStoryChunk()
         event.logRecord += event.logRecord;
         event.logRecord += event.logRecord;
         event.logRecord += event.logRecord;
-        event.logRecord += log_event_str_base + ", AABBCCDDEEFFGGHHIIJJKKLLMMNNOOPPQQRRSSTTUUVVWW" +
-                           std::to_string(i);
-        event.logRecord += log_event_str_base + ", AABBCCDDEEFFGGHHIIJJKKLLM" +
-                           std::to_string(i);
+        event.logRecord += log_event_str_base + ", AABBCCDDEEFFGGHHIIJJKKLLMMNNOOPPQQRRSSTTUUVVWW" + std::to_string(i);
+        event.logRecord += log_event_str_base + ", AABBCCDDEEFFGGHHIIJJKKLLM" + std::to_string(i);
 //        event.logRecord += log_event_str_base + ", AABBCCDDEEFFGGHHIIJJKKLLMMNNOOPPQQRRSSTTUUVVWWXXYYZZ" +
 //                           std::to_string(i);
         story_chunk->insertEvent(event);
@@ -128,9 +126,11 @@ void standaloneExtraction()
 //        }
 //        std::cout << std::endl;
         size_t story_chunk_size = sizeof(uint64_t) * 4; // for four uint64_t members in StoryChunk
-        for(const auto & iter : *story_chunk)
+        for(const auto &iter: *story_chunk)
         {
-            story_chunk_size += sizeof(iter.first) + sizeof(iter.second.storyId) + sizeof(iter.second.eventTime) + sizeof(iter.second.clientId) + sizeof(iter.second.eventIndex) + iter.second.logRecord.size();
+            story_chunk_size += sizeof(iter.first) + sizeof(iter.second.storyId) + sizeof(iter.second.eventTime) +
+                                sizeof(iter.second.clientId) + sizeof(iter.second.eventIndex) +
+                                iter.second.logRecord.size();
         }
         LOG_INFO("[standalone_extract_test] T{}: StoryChunk size before serialization: {}", tid, story_chunk_size);
         LOG_INFO("[standalone_extract_test] T{}: StoryChunk size after serialization: {}", tid
@@ -142,8 +142,8 @@ void standaloneExtraction()
         tl::bulk tl_bulk = tl_engine_g->expose(segments, tl::bulk_mode::read_only);
 
         // call RPC
-        LOG_DEBUG("[standalone_extract_test] T{}: Calling RPC on Grapher with serialized story chunk size: {} ..."
-                  , tid, tl_bulk.size());
+        LOG_DEBUG("[standalone_extract_test] T{}: Calling RPC on Grapher with serialized story chunk size: {} ...", tid
+                  , tl_bulk.size());
         start = std::chrono::high_resolution_clock::now();
         result = bulk_put_g.on(service_ph_g)(tl_bulk);
 //    auto response = bulk_put_g.on(service_ph_g).async(tl_bulk);
@@ -212,11 +212,13 @@ int main(int argc, char**argv)
     LOG_DEBUG("[extract_test_main] T{}: RPC defined with name: {}", tid, rpc_name_g);
 
     // get provider handle
-    std::string KEEPER_GRAPHER_NA_STRING = KEEPER_GRAPHER_PROTOCOL + "://"
-                                           + confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.IP + ":"
-                                           + std::to_string(confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.BASE_PORT);
-    LOG_DEBUG("[extract_test_main] T{}: Looking up {} at: {} ...", tid, rpc_name_g, KEEPER_GRAPHER_NA_STRING);
-    service_ph_g = tl_engine_g->lookup(KEEPER_GRAPHER_NA_STRING);
+    std::string KEEPER_GRAPHER_NA_STRING =
+            KEEPER_GRAPHER_PROTOCOL + "://" + confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.IP +
+            ":" + std::to_string(confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.BASE_PORT);
+    uint16_t extraction_provider_id = confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID;
+    LOG_DEBUG("[extract_test_main] T{}: Looking up {} at: {} with provider id {} ...", tid, rpc_name_g
+              , KEEPER_GRAPHER_NA_STRING, extraction_provider_id);
+    service_ph_g = tl::provider_handle(tl_engine_g->lookup(KEEPER_GRAPHER_NA_STRING), extraction_provider_id);
     if(service_ph_g.is_null())
     {
         LOG_ERROR("[extract_test_main] T{}: Failed to lookup Grapher service provider handle", tid);
