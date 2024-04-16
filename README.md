@@ -23,76 +23,90 @@ create a plethora of workload characteristics that rely on a common storage mode
 
 ## Checkout ChronoLog
 
-ChronoLog uses HCL internally. It is added to this repository as a submodule. Thus, you need to clone the submodules as
-well. You can do it using `git clone --recursive git@github.com:scs-lab/ChronoLog.git` to clone ChronoLog. Or you can
-run `git submodule update --init --recursive` once in `ChronoLog` directory after you clone the repository
-without `--recursive`. For following pulls, you can update the submodule using command `git pull --recurse-submodules`.
+To get started with ChronoLog, the first step involves cloning the repository to your system. To do so: 
 
-## Building
+```
+git clone https://github.com/grc-iit/ChronoLog.git
+```
 
-ChronoLog has a list of dependencies which can be solved by Spack packages. Thus, Spack needs to be installed and
-configured as the first step to build ChronoLog.
+## Installation and configuration
 
-### Install Spack
+### Prerequisites: Spack
 
-Spack can be checked out with `git clone https://github.com/spack/spack.git`. It is assumed that Spack is stored
-at `~/Spack` for the following step. Spack needs to activated by
-running `source ~/Spack/spack/share/spack/setup-env.sh`.
+ChronoLog requires various packages managed by Spack. To ensure compatibility and stability, we recommend using Spack
+version [`v0.21.2 (2024-03-01)`](https://github.com/spack/spack/releases/tag/v0.21.2). Follow the steps below to install
+and configure Spack:
 
-### Install ChronoLog dependencies
+```
+git clone --branch v0.21.2 https://github.com/spack/spack.git
+source /path-to-where-spack-was-cloned/spack/share/spack/setup-env.sh
+```
+
+### Installing Dependencies
 
 Currently, most of the dependencies are listed in `spack.yaml` and can be installed via Spack. `gcc` and `g++` will be
 needed to build ChronoLog.
 
-A Spack environment needs to be created and activated using the following commands. When the environment is activated, a
-shell prompt `[ChronoLog]` will pop up.
+A Spack environment needs to be created and activated using the following commands. 
 
 ```
 cd ChronoLog
 git switch develop
-spack env create -d .
 spack env activate -p .
+```
+To check if the environment is activated the following can be executed: 
+```
+spack env status
+```
+If the environment is properly activated, it can be installed
+```
 spack install -v
 ```
+:information_source: Installation can take > 30 minutes.
 
-The installation may take some time (> 30 minutes) to finish.
+### Building ChronoLog
+:exclamation: Ensure (by using `spack env status`) all building steps are performed within the activated Spack environment to allow CMake to locate
+necessary dependencies. To do so:
 
-### Build ChronoLog
-
-**Please make sure all the building is carried out in the activated Spack environment.** Otherwise, CMake will not able
-to find the dependencies.
-
-Two executables, `chronovisor_server` and `chrono_keeper`, will be built for ChronoVisor and ChronoKeeper, respectively.
-Multiple client test cases will be built in the `test/integration/Client/` directory. An additional command line client
-admin tool `client_admin` will be built in the `Client/ChronoAdmin` directory as a workload generator.
-
+For building ChronoLog the following commands must be executed.
 ```
+// Build the environment
 cd ChronoLog
 git switch develop
-mkdir build
-cd build
+mkdir build && cd build
+
+// Build the project 
 cmake ..
 make all
 ```
 
-### Install ChronoLog
+Building ChronoLog generates the following executables:
 
-You can run `make install` in the build directory to install all generated executables along with their dependencies to
-the install directory (`~/chronolog` by default).
+- **Servers:** `chronovisor_server` for ChronoVisor and `chrono_keeper` for ChronoKeeper.
+- **Client Test Cases:** Located in `test/integration/Client/`.
+- **Admin Tool:** `client_admin` in `Client/ChronoAdmin` serves as a workload generator.
 
-### Configuration files
+### Installing ChronoLog
 
-All ChronoLog executables need a configuration file to run properly. The template file can be found
-in `default_conf.json.in`. You can modify it for your own preferences. The default installing process will copy and
-rename `default_conf.json.in` into `conf` under the install directory. You can pass it to the executables via command
-line argument `--config default_conf.json`.
+From the build directory, execute
 
-ChronoLog will support sockets/TCP/verbs protocols using ofi transport. You can run command `margo-info` to check which
-transports and protocols are supported on your system.
+```
+make install
+```
+
+to install executables and dependencies into the default install directory (**`~/chronolog`**).
+
+## Configuration files
+
+- **Default Configuration:** ChronoLog executables require a configuration file. Modify this template (`default_conf.json.in`) according to your preferences.
+- **Installation Process:** The installation copies and renames `default_conf.json.in` to `conf/default_conf.json` in the
+  installation directory by default. You can pass `-DCMAKE_INSTALL_PREFIX=/new/installation/directory` to CMake to change it.
+- **Using Configuration:** Pass the configuration file to executables with `--config default_conf.json`.
 
 ------
 
 # Coming soon ...
 
-For more details about the ChronoLog project, please visit our website http://chronolog.dev.
+For more details about the ChronoLog project, please visit
+our [website](https://www.chronolog.dev)
 

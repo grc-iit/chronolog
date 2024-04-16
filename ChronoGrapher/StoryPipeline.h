@@ -15,14 +15,14 @@ namespace chronolog
 {
 
 
-class StoryIngestionHandle;
+class StoryChunkIngestionHandle;
 
 class StoryPipeline
 {
 
 public:
     StoryPipeline(StoryChunkExtractionQueue &, std::string const &chronicle_name, std::string const &story_name
-                  , StoryId const &story_id, uint64_t start_time, uint16_t chunk_granularity = 30 // seconds
+                  , StoryId const &story_id, uint64_t start_time, uint16_t chunk_granularity = 60 // seconds
                   , uint16_t acceptance_window = 300 // seconds
     );
 
@@ -33,11 +33,11 @@ public:
     ~StoryPipeline();
 
 
-    StoryIngestionHandle*getActiveIngestionHandle();
+    StoryChunkIngestionHandle*getActiveIngestionHandle();
 
     void collectIngestedEvents();
 
-    void mergeEvents(std::deque <LogEvent> &);
+   // void mergeEvents(std::deque <LogEvent> &);
 
     void mergeEvents(StoryChunk &);
 
@@ -67,10 +67,10 @@ private:
     // two ingestion queues so that they can take turns playing 
     // active/passive ingestion duty
     // 
-    std::deque <LogEvent> eventQueue1;
-    std::deque <LogEvent> eventQueue2;
+    std::deque <StoryChunk*> chunkQueue1;
+    std::deque <StoryChunk*> chunkQueue2;
 
-    StoryIngestionHandle*activeIngestionHandle;
+    StoryChunkIngestionHandle*activeIngestionHandle;
 
     // mutex used to protect Story sequencing operations 
     // from concurrent access by the DataStore Sequencing threads
