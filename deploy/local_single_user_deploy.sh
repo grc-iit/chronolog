@@ -205,22 +205,6 @@ parse_args() {
     done
 }
 
-usage2() {
-    echo "Usage: $0 [-i|--install] [-r|--reset] [-h|--help]"
-    exit 1
-}
-
-parse_args2() {
-    while [[ "$#" -gt 0 ]]; do
-        case "$1" in
-            -i|--install) install; shift ;;
-            -r|--reset) reset; shift ;;
-            -h|--help) usage; shift ;;
-            *) echo -e "${ERR}Unknown option: $1${NC}"; usage ;;
-        esac
-    done
-}
-
 # Start execution of the script
 parse_args "$@"
 echo -e "${INFO}Done${NC}"
