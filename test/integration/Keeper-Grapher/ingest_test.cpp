@@ -1,23 +1,80 @@
 #include <thallium.hpp>
+#include "ConfigurationManager.h"
 #include "StoryChunk.h"
-//#include "StoryChunkReceiver.h"
 #include "cmd_arg_parse.h"
 #include "../../../external_libs/cereal/include/cereal/archives/binary.hpp"
-#include "ConfigurationManager.h"
 
 namespace tl = thallium;
 
 #define MAX_BULK_MEM_SIZE (1024 * 1024)
-#define NUM_STREAMS 1
+#define NUM_STREAMS 4
 
-size_t deserializedWithCereal(char *buffer, size_t size, chronolog::StoryChunk &story_chunk)
+class StoryChunkRecordService: public tl::provider <StoryChunkRecordService>
 {
-    std::stringstream ss;
-    ss.write(buffer, size);
-    cereal::BinaryInputArchive iarchive(ss);
-    iarchive(story_chunk);
-    return sizeof(buffer);
-}
+public:
+    static StoryChunkRecordService*CreateStoryChunkRecordService(tl::engine &tl_engine
+                                                                 , tl::managed <tl::pool> &tl_pool
+                                                                 , uint16_t service_provider_id)
+    {
+        return new StoryChunkRecordService(tl_engine, tl_pool, service_provider_id);
+    }
+
+    StoryChunkRecordService(tl::engine &tl_engine, tl::managed <tl::pool> &tl_pool, uint16_t service_provider_id)
+            : tl::provider <StoryChunkRecordService>(tl_engine, service_provider_id)
+    {
+        define("record_story_chunk", &StoryChunkRecordService::record_story_chunk, *tl_pool,
+                            tl::ignore_return_value());
+        get_engine().push_finalize_callback(this, [p = this]()
+        { delete p; });
+        LOG_DEBUG("[StoryChunkRecordService] StoryChunkRecordService setup complete");
+    }
+
+    ~StoryChunkRecordService()
+    {
+        LOG_DEBUG("[StoryChunkRecordService] Destructor called. Cleaning up...");
+        get_engine().pop_finalize_callback(this);
+    }
+
+    void record_story_chunk(tl::request const &request, tl::bulk &b)
+    {
+        uint64_t esid = tl::xstream::self_rank();
+        uint64_t tid = tl::thread::self_id();
+        std::chrono::high_resolution_clock::time_point start, end;
+        LOG_DEBUG("[StoryChunkRecordService] ES{}:T{}: StoryChunk recording RPC invoked", esid, tid);
+        tl::endpoint ep = request.get_endpoint();
+        LOG_DEBUG("[StoryChunkRecordService] ES{}:T{}: Endpoint obtained", esid, tid);
+        std::vector <char> mem_vec(MAX_BULK_MEM_SIZE);
+        std::vector <std::pair <void*, std::size_t>> segments(1);
+        segments[0].first = (void*)(&mem_vec[0]);
+        segments[0].second = mem_vec.size();
+        LOG_DEBUG("[StoryChunkRecordService] ES{}:T{}: Bulk memory prepared, size: {}", esid, tid, mem_vec.size());
+        tl::engine tl_engine = get_engine();
+        LOG_DEBUG("[StoryChunkRecordService] ES{}:T{}: Engine addr: {}", esid, tid, (void*)&tl_engine);
+        tl::bulk local = tl_engine.expose(segments, tl::bulk_mode::write_only);
+        LOG_DEBUG("[StoryChunkRecordService] ES{}:T{}: Bulk memory exposed", esid, tid);
+        b.on(ep) >> local;
+        LOG_DEBUG("[StoryChunkRecordService] ES{}:T{}: Received {} bytes of StoryChunk data", esid, tid, b.size());
+        chronolog::StoryChunk story_chunk;
+        start = std::chrono::high_resolution_clock::now();
+        deserializedWithCereal(&mem_vec[0], b.size() - 1, story_chunk);
+        end = std::chrono::high_resolution_clock::now();
+        LOG_DEBUG("[StoryChunkRecordService] ES{}:T{}: StoryChunk received: StoryID: {}, StartTime: {}"
+                  , esid, tid, story_chunk.getStoryId(), story_chunk.getStartTime());
+        LOG_INFO("[StoryChunkRecordService] ES{}:T{}: Deserialization took {} us"
+                 , esid, tid, std::chrono::duration_cast <std::chrono::nanoseconds>(end - start).count() / 1000.0);
+        request.respond(b.size());
+        LOG_DEBUG("[StoryChunkRecordService] ES{}:T{}: StoryChunk recording RPC responded {}", esid, tid, b.size());
+    }
+
+private:
+    void deserializedWithCereal(char*buffer, size_t size, chronolog::StoryChunk &story_chunk)
+    {
+        std::string str(buffer, buffer + size);
+        std::istringstream iss(str);
+        cereal::BinaryInputArchive iarchive(iss);
+        iarchive(story_chunk);
+    }
+};
 
 int main(int argc, char**argv)
 {
@@ -40,22 +97,13 @@ int main(int argc, char**argv)
      * Keeper-push
      */
     std::string KEEPER_COLLECTOR_NA_STRING =
-            confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.PROTO_CONF +
-//            "ofi+sockets://" +
-            "://" +
+            confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.PROTO_CONF + "://" +
             confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP + ":" +
             std::to_string(confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT);
-//    std::string KEEPER_COLLECTOR_NA_STRING = "ofi+tcp;ofi_rxm://172.17.0.1:37709";
     tl::engine extraction_engine = tl::engine(KEEPER_COLLECTOR_NA_STRING, THALLIUM_SERVER_MODE);
     std::stringstream ss;
     ss << extraction_engine.self();
     LOG_DEBUG("[standalone_ingest_test] Engine: {}", ss.str());
-
-//    chronolog::StoryChunkReceiver storyChunkReceiver(extraction_engine);;
-//
-//    storyChunkReceiver.startReceiverThreads(1);
-//
-//    storyChunkReceiver.shutdownReceiverThreads();
 
     std::vector <tl::managed <tl::xstream>> tl_es_vec;
     tl::managed <tl::pool> tl_pool = tl::pool::create(tl::pool::access::spmc);
@@ -67,49 +115,18 @@ int main(int argc, char**argv)
         tl_es_vec.push_back(std::move(es));
     }
 
-    std::function <void(const tl::request &, tl::bulk &)> drain_story_chunk_to_collector = [&extraction_engine](
-            const tl::request &req, tl::bulk &b)
-    {
-        std::chrono::high_resolution_clock::time_point start, end;
-        LOG_DEBUG("[standalone_ingest_test] Bulk transfer rpc invoked");
-        tl::endpoint ep = req.get_endpoint();
-        LOG_DEBUG("[standalone_ingest_test] Endpoint obtained");
-        std::vector <char> mem_vec(MAX_BULK_MEM_SIZE);
-        mem_vec.reserve(MAX_BULK_MEM_SIZE);
-        mem_vec.resize(MAX_BULK_MEM_SIZE);
-        std::vector <std::pair <void*, std::size_t>> segments(1);
-        segments[0].first = (void*)(&mem_vec[0]);
-        segments[0].second = mem_vec.size();
-        LOG_DEBUG("[standalone_ingest_test] Bulk memory prepared, size: {}", mem_vec.size());
-        LOG_DEBUG("[standalone_ingest_test] Engine addr: {}", (void*)&extraction_engine);
-        tl::bulk local = extraction_engine.expose(segments, tl::bulk_mode::write_only);
-        LOG_DEBUG("[standalone_ingest_test] Bulk memory exposed");
-        b.on(ep) >> local;
-        LOG_DEBUG("[standalone_ingest_test] Received {} bytes of data in bulk transfer mode", b.size());
-//        for(auto i = 0; i < b.size() - 1; ++i)
-//        {
-//            std::cout << (char)*(char*)(&mem_vec[0]+i) << " ";
-//        }
-//        std::cout << std::endl;
-        chronolog::StoryChunk story_chunk;
-        start = std::chrono::high_resolution_clock::now();
-        deserializedWithCereal(&mem_vec[0], b.size() - 1, story_chunk);
-        LOG_DEBUG("[standalone_ingest_test] StoryChunk received: StoryID: {}, StartTime: {}"
-                  , story_chunk.getStoryId(), story_chunk.getStartTime());
-        end = std::chrono::high_resolution_clock::now();
-        req.respond(b.size());
-        LOG_DEBUG("[standalone_ingest_test] Bulk transfer rpc responded");
-        LOG_INFO("[standalone_ingest_test] Deserialization took {} us",
-                std::chrono::duration_cast <std::chrono::nanoseconds>(end - start).count() / 1000.0);
-    };
-
-    extraction_engine.define("bulk_put", drain_story_chunk_to_collector, 0, *tl_pool);
+    int service_provider_id = confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.SERVICE_PROVIDER_ID;
+    StoryChunkRecordService*story_chunk_recording_service = StoryChunkRecordService::CreateStoryChunkRecordService(
+            extraction_engine, tl_pool, service_provider_id);
+    LOG_DEBUG("[standalone_ingest_test] StoryChunkRecordService created");
 
     extraction_engine.wait_for_finalize();
     for(int j = 0; j < NUM_STREAMS; j++)
     {
         tl_es_vec[j]->join();
     }
+
+    delete story_chunk_recording_service;
 
     return 0;
 }
