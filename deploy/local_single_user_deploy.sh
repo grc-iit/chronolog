@@ -136,11 +136,11 @@ kill_process() {
     echo -e "${DEBUG}Killing $(basename ${bin}) ...${NC}"
     pkill -9 -f ${bin}
 }
-Incl
+
 stop_process() {
     local bin="$1"
-    echo -e "${DEBUG}Killing $(basename ${bin}) ...${NC}"
-    pkill -9 -f ${bin}
+    echo -e "${DEBUG}Stopping $(basename ${bin}) ...${NC}"
+    pkill -f ${bin}
 }
 
 # Main functions for install, reset, and usage
@@ -170,11 +170,11 @@ reset() {
 }
 
 stop() {
-    echo -e "${INFO}Resetting ...${NC}"
+    echo -e "${INFO}Stopping ...${NC}"
     stop_process ${VISOR_BIN}
     stop_process ${KEEPER_BIN}
     stop_process ${CLIENT_BIN}
-    echo -e "${DEBUG}Reset done${NC}"
+    echo -e "${DEBUG}Stop done${NC}"
 }
 
 # Usage function with new options
