@@ -36,7 +36,7 @@ check_files() {
     echo -e "${DEBUG}All required files are in place.${NC}"
 }
 
-generate_keeper_configs() {
+generate_config_files() {
     local num_files=$1
     local bin_dir=$2
     local default_conf=$3
@@ -75,6 +75,19 @@ generate_keeper_configs() {
 
         echo "Generated $output_file with ports $new_port_keeper_record and $new_port_keeper_datastore."
     done
+
+    local output_file="${conf_dir}/visor_conf.json"
+    jq --arg bin_dir "$bin_dir" \
+       '.chrono_visor.Logging.log.file = ($bin_dir + "/" + .chrono_visor.Logging.log.file) |
+        .chrono_grapher.Logging.log.file = ($bin_dir + "/" + .chrono_grapher.Logging.log.file) |
+        .chrono_client.Logging.log.file = ($bin_dir + "/" + .chrono_client.Logging.log.file)' "$default_conf" > "$output_file"
+
+    local output_file="${conf_dir}/client_conf.json"
+    jq --arg bin_dir "$bin_dir" \
+       '.chrono_visor.Logging.log.file = ($bin_dir + "/" + .chrono_visor.Logging.log.file) |
+        .chrono_grapher.Logging.log.file = ($bin_dir + "/" + .chrono_grapher.Logging.log.file) |
+        .chrono_client.Logging.log.file = ($bin_dir + "/" + .chrono_client.Logging.log.file)' "$default_conf" > "$output_file"
+
 }
 
 extract_shared_libraries() {
@@ -148,16 +161,15 @@ install() {
     echo -e "${INFO}Installing ...${NC}"
     copy_shared_libs
     check_files
-    generate_keeper_configs ${NUM_KEEPERS} ${BIN_DIR} ${CONF_FILE} ${CONF_DIR}
-    launch_process ${VISOR_BIN} "${VISOR_ARGS}" "/visor.log"
+    generate_config_files ${NUM_KEEPERS} ${BIN_DIR} ${CONF_FILE} ${CONF_DIR}
+    launch_process ${VISOR_BIN} "--config ${CONF_DIR}/visor_conf.json" "/visor.log"
     num_keepers=${NUM_KEEPERS}
     for (( i=0; i<num_keepers; i++ ))
     do
-        local keeper_conf="${CONF_DIR}/keeper_conf_$i.json"
-        local keeper_args="--config ${keeper_conf}"
-        launch_process ${KEEPER_BIN} "${keeper_args}" "/keeper_$i.log"
+        #local keeper_args="--config ${CONF_DIR}/keeper_conf_$i.json"
+        launch_process ${KEEPER_BIN} "--config ${CONF_DIR}/keeper_conf_$i.json" "/keeper_$i.log"
     done
-    launch_process ${CLIENT_BIN} "${CLIENT_ARGS}" "/client.log"
+    launch_process ${CLIENT_BIN} "--config ${CONF_DIR}/client_conf.json" "/client.log"
     echo -e "${DEBUG}Install done${NC}"
 }
 
