@@ -136,6 +136,12 @@ kill_process() {
     echo -e "${DEBUG}Killing $(basename ${bin}) ...${NC}"
     pkill -9 -f ${bin}
 }
+Incl
+stop_process() {
+    local bin="$1"
+    echo -e "${DEBUG}Killing $(basename ${bin}) ...${NC}"
+    pkill -9 -f ${bin}
+}
 
 # Main functions for install, reset, and usage
 install() {
@@ -151,7 +157,6 @@ install() {
         local keeper_args="--config ${keeper_conf}"
         launch_process ${KEEPER_BIN} "${keeper_args}" "/keeper_$i.log"
     done
-    #launch_process ${KEEPER_BIN} "${KEEPER_ARGS}" "/keeper.log"
     launch_process ${CLIENT_BIN} "${CLIENT_ARGS}" "/client.log"
     echo -e "${DEBUG}Install done${NC}"
 }
@@ -164,12 +169,48 @@ reset() {
     echo -e "${DEBUG}Reset done${NC}"
 }
 
+stop() {
+    echo -e "${INFO}Resetting ...${NC}"
+    stop_process ${VISOR_BIN}
+    stop_process ${KEEPER_BIN}
+    stop_process ${CLIENT_BIN}
+    echo -e "${DEBUG}Reset done${NC}"
+}
+
+# Usage function with new options
 usage() {
+    echo "Usage: $0 [options]"
+    echo "Options:"
+    echo "  -h, --help             Display this help and exit"
+    echo "  -n, --num-keepers NUM  Set the number of keeper processes"
+    echo "  -w, --work-dir DIR     Set the working directory"
+    echo "  -i, --install          Install all components"
+    echo "  -r, --reset            Reset all components"
+    echo "  -s, --stop             Stop all components"
+    exit 1
+}
+
+# Parse arguments to set variables
+parse_args() {
+    while [[ "$#" -gt 0 ]]; do
+        case "$1" in
+            -i|--install) install; shift ;;
+            -r|--reset) reset; shift ;;
+            -s|--stop) stop; shift ;;
+            -h|--help) usage; shift ;;
+            -n|--num-keepers) NUM_KEEPERS="$2"; shift 2 ;;
+            -w|--work-dir) WORK_DIR="$2"; shift 2 ;;
+            *) echo -e "${ERR}Unknown option: $1${NC}"; usage ;;
+        esac
+    done
+}
+
+usage2() {
     echo "Usage: $0 [-i|--install] [-r|--reset] [-h|--help]"
     exit 1
 }
 
-parse_args() {
+parse_args2() {
     while [[ "$#" -gt 0 ]]; do
         case "$1" in
             -i|--install) install; shift ;;
