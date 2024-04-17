@@ -50,6 +50,7 @@ int KeeperRegistry::InitializeRegistryService(ChronoLog::ConfigurationManager co
         keeperRegistryService = KeeperRegistryService::CreateKeeperRegistryService(*registryEngine, provider_id, *this);
 
         delayedDataAdminExitSeconds = confManager.VISOR_CONF.DELAYED_DATA_ADMIN_EXIT_IN_SECS;
+
         registryState = INITIALIZED;
         status = chronolog::CL_SUCCESS;
     }
@@ -61,6 +62,21 @@ int KeeperRegistry::InitializeRegistryService(ChronoLog::ConfigurationManager co
     return status;
 
 }
+
+KeeperRegistry::KeeperRegistry()
+    : registryState(UNKNOWN)
+    , registryEngine(nullptr)
+    , keeperRegistryService(nullptr)
+    , delayedDataAdminExitSeconds(3)
+{
+    // INNA: I'm using current time for seeding Mersene Twister number generator
+    // there are different opinions on the use of std::random_device for seeding of Mersene Twister..
+    // TODO: reseach the seeding of Mersense Twister int number generator
+
+    size_t new_seed = std::chrono::high_resolution_clock::to_time_t(std::chrono::high_resolution_clock::now());
+    mt_random.seed(new_seed);//initial seed for the 32 int Mersene Twister generator
+}
+
 /////////////////
 
 int KeeperRegistry::ShutdownRegistryService()
@@ -295,13 +311,19 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const &keeper_re
     LOG_INFO("[KeeperRegistry] RecordingGroup {} has {} keepers", recording_group.groupId,
              recording_group.keeperProcesses.size());
 
-    // now that communnication with the Keeper is established and we still holding registryLock
-    // update registryState in case this is the first KeeperProcess registration
-    if(recordingGroups.size() > 0)
+    // check if this is the first keeper for the recording group and the group is ready to be part of
+    //  the activeGroups rotation
+    if(recording_group.keeperProcesses.size() == 1 && recording_group.grapherProcess != nullptr)
     {
-        registryState = RUNNING;
-        LOG_INFO("[KeeperRegistry] RUNNING with {} RecordingGroups ", recordingGroups.size());
+        activeGroups.push_back(&recording_group);
+        size_t new_seed = std::chrono::high_resolution_clock::to_time_t(std::chrono::high_resolution_clock::now());
+        mt_random.seed(new_seed);//re-seed the mersene_twister_generator
+        group_id_distribution =
+                std::uniform_int_distribution<size_t>(0, activeGroups.size() - 1);//reset the distribution range
     }
+
+    LOG_INFO("[KeeperRegistry]  has {} RecordingGroups ; {} activeGroups", recordingGroups.size(), activeGroups.size());
+    if(activeGroups.size() > 0) { registryState = RUNNING; }
     return chronolog::CL_SUCCESS;
 }
 /////////////////
@@ -344,12 +366,23 @@ int KeeperRegistry::unregisterKeeperProcess(KeeperIdCard const &keeper_id_card)
              recording_group.keeperProcesses.size());
 
     // now that we are still holding registryLock
-    // update registryState if needed
-    if(!is_shutting_down() && recordingGroups.size() == 0)
+    // check if the keeper we've just unregistered was the only one for the recordingGroup
+    // and the group can't perform recording duties any longer
+    if(recording_group.keeperProcesses.size() == 1)
     {
-        registryState = INITIALIZED;
-        LOG_INFO("[KeeperRegistry] RUNNING with {} RecordingGroups ", recordingGroups.size());
+        activeGroups.erase(std::remove(activeGroups.begin(), activeGroups.end(), &recording_group));
+        if(activeGroups.size() > 0)
+        {//reset the group distribution
+            size_t new_seed = std::chrono::high_resolution_clock::to_time_t(std::chrono::high_resolution_clock::now());
+            mt_random.seed(new_seed);//re-seed the mersene_twister_generator
+            group_id_distribution =
+                    std::uniform_int_distribution<size_t>(0, activeGroups.size() - 1);//reset the distribution range
+        }
     }
+
+    LOG_INFO("[KeeperRegistry]  has {} RecordingGroups ; {} activeGroups", recordingGroups.size(), activeGroups.size());
+    // update registryState if needed
+    if(!is_shutting_down() && activeGroups.size() == 0) { registryState = INITIALIZED; }
 
     return chronolog::CL_SUCCESS;
 }
@@ -382,7 +415,7 @@ void KeeperRegistry::updateKeeperProcessStats(KeeperStatsMsg const &keeperStatsM
 }
 /////////////////
 
-std::vector <KeeperIdCard> &KeeperRegistry::getActiveKeepers(std::vector <KeeperIdCard> &keeper_id_cards)
+std::vector<KeeperIdCard>& KeeperRegistry::getActiveKeepers(std::vector<KeeperIdCard>& keeper_id_cards)
 {  //the process of keeper selection will probably get more nuanced; 
     //for now just return all the keepers registered
     if(is_shutting_down())
@@ -394,7 +427,10 @@ std::vector <KeeperIdCard> &KeeperRegistry::getActiveKeepers(std::vector <Keeper
 
     keeper_id_cards.clear();
 
-    //INNA: pick random recording_group ...
+    // pick recording_group from uniform group id distribution using a random int value
+    // generated by Mirsene Twister generator
+
+    RecordingGroup* recording_group_to_use = activeGroups[group_id_distribution(mt_random)];
 
     RecordingGroup& recording_group = (*recordingGroups.begin()).second;//FIX this !!!
 
@@ -423,12 +459,8 @@ std::vector <KeeperIdCard> &KeeperRegistry::getActiveKeepers(std::vector <Keeper
         else if((*iter).second.delayedExitClients.empty())
         {
             // it's safe to erase the entry for unregistered keeper process
-            LOG_INFO("[KeeperRegistry] getActiveKeepers() destroys keeperProcessEntry for keeper {} current_time={}", id_string.str(), std::ctime(&current_time));
-
-            if((*iter).second.keeperAdminClient != nullptr)//this should not be the case so may be removed from here
-            {
-                delete(*iter).second.keeperAdminClient;
-            }
+            LOG_INFO("[KeeperRegistry] getActiveKeepers() destroys keeperProcessEntry for keeper {} current_time={}",
+                     id_string.str(), std::ctime(&current_time));
             iter = recording_group.keeperProcesses.erase(iter);
         }
         else
@@ -673,13 +705,24 @@ int KeeperRegistry::registerGrapherProcess(GrapherRegistrationMsg const & reg_ms
     LOG_INFO("[KeeperRegistry] RecordingGroup {} has a grappher and  {} keepers", recording_group.groupId,
              recording_group.keeperProcesses.size());
 
-    // now that communnication with the Grapher is established and we still holding registryLock
-    // update registryState in case this is the first GrapherProcess registration
-    if(recordingGroups.size() > 0)
+    // now that communnication with the Grapher is established and we are still holding registryLock
+    // add the group to the activeGroups rotation if it's ready
+    if(recording_group.keeperProcesses.size() > 0 && recording_group.grapherProcess != nullptr)
     {
-        registryState = RUNNING;
-        LOG_INFO("[KeeperRegistry] RUNNING with {} RecordingGroups ", recordingGroups.size());
+        activeGroups.push_back(&recording_group);
+        if(activeGroups.size() > 0)
+        {//reset the group distribution
+            size_t new_seed = std::chrono::high_resolution_clock::to_time_t(std::chrono::high_resolution_clock::now());
+            mt_random.seed(new_seed);//re-seed the mersene_twister_generator
+            group_id_distribution =
+                    std::uniform_int_distribution<size_t>(0, activeGroups.size() - 1);//reset the distribution range
+        }
     }
+
+    LOG_INFO("[KeeperRegistry]  has {} RecordingGroups ; {} activeGroups", recordingGroups.size(), activeGroups.size());
+    // now that communnication with the Grapher is established and we still holding registryLock
+    // update registryState in case this is the first group registration
+    if(activeGroups.size() > 0) { registryState = RUNNING; }
     return chronolog::CL_SUCCESS;
 }
 /////////////////
@@ -716,17 +759,21 @@ int KeeperRegistry::unregisterGrapherProcess(GrapherIdCard const& grapher_id_car
     LOG_INFO("[KeeperRegistry] RecordingGroup {} has no grappher and  {} keepers", recording_group.groupId,
              recording_group.keeperProcesses.size());
 
-    // now that communnication with the Grapher is established and we still holding registryLock
-    // update registryState in case this is the first GrapherProcess registration
-    if(recordingGroups.size() > 0)
+    // we've just unregistered the grapher so the group can't perform recording duties any longer
     {
-        LOG_INFO("[KeeperRegistry] RUNNING with {} RecordingGroups ", recordingGroups.size());
+        activeGroups.erase(std::remove(activeGroups.begin(), activeGroups.end(), &recording_group));
+        if(activeGroups.size() > 0)
+        {//reset the group distribution
+            size_t new_seed = std::chrono::high_resolution_clock::to_time_t(std::chrono::high_resolution_clock::now());
+            mt_random.seed(new_seed);//re-seed the mersene_twister_generator
+            group_id_distribution =
+                    std::uniform_int_distribution<size_t>(0, activeGroups.size() - 1);//reset the distribution range
+        }
     }
-    else if(!is_shutting_down())
-    {
-        registryState = INITIALIZED;
-        LOG_INFO("[KeeperRegistry] reverted to INITIALIZED state with {} RecordingGroups", recordingGroups.size());
-    }
+
+    LOG_INFO("[KeeperRegistry]  has {} RecordingGroups ; {} activeGroups", recordingGroups.size(), activeGroups.size());
+    // update registryState in case this was the last active recordingGroup
+    if(activeGroups.size() == 0) { registryState = INITIALIZED; }
 
     return chronolog::CL_SUCCESS;
 }

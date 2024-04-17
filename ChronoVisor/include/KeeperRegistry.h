@@ -1,10 +1,12 @@
 #ifndef KEEPER_REGISTRY_H
 #define KEEPER_REGISTRY_H
 
-#include <mutex>
-#include <vector>
-#include <map>
 #include <chrono>
+#include <map>
+#include <mutex>
+#include <random>
+#include <vector>
+
 #include <thallium.hpp>
 
 #include "chronolog_types.h"
@@ -123,11 +125,7 @@ public:
         };
 
     public:
-        KeeperRegistry()
-            : registryState(UNKNOWN)
-            , registryEngine(nullptr)
-            , keeperRegistryService(nullptr)
-        {}
+        KeeperRegistry();
 
         ~KeeperRegistry();
 
@@ -163,10 +161,14 @@ public:
 
         RegistryState registryState;
         std::mutex registryLock;
-        std::map<RecordingGroupId, RecordingGroup> recordingGroups;
         thallium::engine* registryEngine;
         KeeperRegistryService* keeperRegistryService;
         size_t delayedDataAdminExitSeconds;
+
+        std::map<RecordingGroupId, RecordingGroup> recordingGroups;
+        std::vector<RecordingGroup*> activeGroups;
+        std::mt19937 mt_random;//mersene twister random int generator
+        std::uniform_int_distribution<size_t> group_id_distribution;
     };
 }
 
