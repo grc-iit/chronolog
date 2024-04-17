@@ -20,11 +20,6 @@ KEEPER_BIN="${BIN_DIR}/chrono_keeper"
 CLIENT_BIN="${BIN_DIR}/client_lib_multi_storytellers"
 CONF_FILE="${CONF_DIR}/default_conf.json"
 
-# Arguments
-VISOR_ARGS="--config ${CONF_FILE}"
-KEEPER_ARGS="--config ${CONF_FILE}"
-CLIENT_ARGS="--config ${CONF_FILE}"
-
 # Methods ______________________________________________________________________________________________________________
 
 check_files() {
