@@ -24,7 +24,7 @@ service_endpoint_from_dotted_string(std::string const &ip_string, int port, std:
     // we will be using a combination of the uint32_t representation of the service IP address
     // and uint16_t representation of the port number
     // NOTE: both IP and port values in the IdCard are in the host byte order, not the network order)
-    // to identfy the Chrono process
+    // to identify the Chrono process
 
     struct sockaddr_in sa;
     // translate the recording service dotted IP string into 32bit network byte order representation
@@ -81,7 +81,7 @@ int main(int argc, char**argv)
     }
     LOG_INFO("Running ChronoGrapher ");
 
-    // Instantiate  MemoryDataStore
+    // Instantiate MemoryDataStore
     // instantiate DataStoreAdminService
 
     /// DataStoreAdminService setup ____________________________________________________________________________________
@@ -132,7 +132,7 @@ int main(int argc, char**argv)
     process_id_string << processIdCard;
     LOG_INFO("[ChronoGrapher] GrapherIdCard: {}", process_id_string.str());
 
-    // Instantiate  MemoryDataStore & ExtractorModule
+    // Instantiate MemoryDataStore & ExtractorModule
     chronolog::ChunkIngestionQueue ingestionQueue;
     std::string csv_files_directory = confManager.GRAPHER_CONF.EXTRACTOR_CONF.story_files_dir;
 
@@ -244,8 +244,8 @@ int main(int argc, char**argv)
 //    LOG_INFO("[ChronoGrapher] Successfully registered with ChronoVisor.");
 
     /// Start data collection and extraction threads ___________________________________________________________________
-    // services are successfulley created and keeper process had registered with ChronoVisor
-    // start all dataColelction and Extraction threads...
+    // services are successfully created and keeper process had registered with ChronoVisor
+    // start all dataCollection and Extraction threads...
     tl::abt scope;
     theDataStore.startDataCollection(3);
     // start extraction streams & threads
@@ -278,7 +278,7 @@ int main(int argc, char**argv)
     // Shutdown extraction module
     // drain extractionQueue and stop extraction xStreams
     storyExtractor.shutdownExtractionThreads();
-    // these are not probably needed as thalium handles the engine finalization...
+    // these are not probably needed as thallium handles the engine finalization...
     //  recordingEngine.finalize();
     //  collectionEngine.finalize();
     delete recordingEngine;

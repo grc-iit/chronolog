@@ -39,9 +39,6 @@ public:
         LOG_DEBUG("[GrapherRecordingService] StoryChunk recording RPC invoked, ThreadID={}", tl::thread::self_id());
         tl::endpoint ep = request.get_endpoint();
         LOG_DEBUG("[GrapherRecordingService] Endpoint obtained, ThreadID={}", tl::thread::self_id());
-        std::vector <char> mem_vec(MAX_BULK_MEM_SIZE);
-        mem_vec.reserve(MAX_BULK_MEM_SIZE);
-        mem_vec.resize(MAX_BULK_MEM_SIZE);
         std::vector <std::pair <void*, std::size_t>> segments(1);
         segments[0].first = (void*)(&mem_vec[0]);
         segments[0].second = mem_vec.size();
@@ -62,37 +59,37 @@ public:
         StoryChunk story_chunk;
         start = std::chrono::high_resolution_clock::now();
         deserializedWithCereal(&mem_vec[0], b.size() - 1, story_chunk);
+        end = std::chrono::high_resolution_clock::now();
         LOG_DEBUG("[GrapherRecordingService] StoryChunk received: StoryID: {}, StartTime: {}, ThreadID={}"
                   , story_chunk.getStoryId(), story_chunk.getStartTime(), tl::thread::self_id());
-        end = std::chrono::high_resolution_clock::now();
         request.respond(b.size());
-        LOG_DEBUG("[GrapherRecordingService] StoryChunk recording RPC responded, ThreadID={}", tl::thread::self_id());
+        LOG_DEBUG("[GrapherRecordingService] StoryChunk recording RPC responded {}, ThreadID={}"
+                  , b.size(), tl::thread::self_id());
         LOG_INFO("[GrapherRecordingService] Deserialization took {} us, ThreadID={}",
                 std::chrono::duration_cast <std::chrono::nanoseconds>(end - start).count() / 1000.0
                  , tl::thread::self_id());
         theIngestionQueue.ingestStoryChunk(&story_chunk);
-        LOG_DEBUG("[GrapherRecordingService] Ingested a StoryChunk, ThreadID={}", tl::thread::self_id());
-        request.respond(chronolog::CL_SUCCESS);
-        LOG_DEBUG("[GrapherRecordingService] StoryChunk recording RPC completed, ThreadID={}", tl::thread::self_id());
+        LOG_DEBUG("[GrapherRecordingService] Ingested a StoryChunk, StoryID: {}, StartTime: {}, ThreadID={}"
+                  , story_chunk.getStoryId(), story_chunk.getStartTime(), tl::thread::self_id());
     }
 
 private:
     GrapherRecordingService(tl::engine &tl_engine, uint16_t service_provider_id, ChunkIngestionQueue &ingestion_queue)
             : tl::provider <GrapherRecordingService>(tl_engine, service_provider_id), theIngestionQueue(ingestion_queue)
     {
+        mem_vec.resize(MAX_BULK_MEM_SIZE);
         define("record_story_chunk", &GrapherRecordingService::record_story_chunk, tl::ignore_return_value());
         //set up callback for the case when the engine is being finalized while this provider is still alive
         get_engine().push_finalize_callback(this, [p = this]()
         { delete p; });
     }
 
-    size_t deserializedWithCereal(char *buffer, size_t size, StoryChunk &story_chunk)
+    void deserializedWithCereal(char *buffer, size_t size, StoryChunk &story_chunk)
     {
         std::stringstream ss;
         ss.write(buffer, size);
         cereal::BinaryInputArchive iarchive(ss);
         iarchive(story_chunk);
-        return sizeof(buffer);
     }
 
     GrapherRecordingService(GrapherRecordingService const &) = delete;
@@ -100,6 +97,8 @@ private:
     GrapherRecordingService &operator=(GrapherRecordingService const &) = delete;
 
     ChunkIngestionQueue &theIngestionQueue;
+
+    std::vector <char> mem_vec;
 };
 
 }// namespace chronolog
