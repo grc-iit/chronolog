@@ -16,11 +16,9 @@ target_sources(chrono_grapher PRIVATE
     StoryPipeline.cpp
     KeeperDataStore.cpp
     ../chrono_common/StoryChunk.cpp
-    ../chrono_common/ConfigurationManager.cpp
     StoryChunkExtractor.cpp
     CSVFileChunkExtractor.cpp
     ../ChronoAPI/ChronoLog/src/log.cpp)
-
 target_link_libraries(chrono_grapher chronolog_client thallium)
 
 #configure_file(${CMAKE_CURRENT_SOURCE_DIR}/../default_conf.json.in

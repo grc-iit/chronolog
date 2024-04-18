@@ -20,6 +20,7 @@ public:
                            ServiceId const& admin_service_id = ServiceId{0, 0, 0})
         : grapherIdCard(id_card)
         , adminServiceId(admin_service_id)
+
     {}
 
     ~GrapherRegistrationMsg() = default;
