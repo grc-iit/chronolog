@@ -7,6 +7,15 @@ NC='\033[0m' # No Color
 BOLD='\033[1m'
 UNDERLINE='\033[4m'
 
+print_header() {
+    echo
+    echo "**************************************************"
+    echo "* Starting Fidelity Test 03 with path $directory_path"
+    echo "**************************************************"
+    echo "Test 03: Checks if the events have been written in sequential order."
+    echo
+}
+
 # Function to check all .csv files in a directory
 check_csv_files() {
     local dir_path="$1"
@@ -52,5 +61,7 @@ if [ $# -eq 0 ]; then
     exit 1
 fi
 
+# Execution ____________________________________________________________________________________________________________
 directory_path="$1"
+print_header
 check_csv_files "$directory_path"
