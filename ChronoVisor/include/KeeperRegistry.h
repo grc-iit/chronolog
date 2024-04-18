@@ -109,6 +109,8 @@ public:
         void startDelayedKeeperExit(KeeperProcessEntry&, std::time_t);
         void clearDelayedExitKeeper(KeeperProcessEntry&, std::time_t);
 
+        std::vector<KeeperIdCard>& getActiveKeepers(std::vector<KeeperIdCard>& keeper_id_cards);
+
         RecordingGroupId groupId;
         GrapherProcessEntry* grapherProcess;
         std::map<std::pair<uint32_t, uint16_t>, KeeperProcessEntry> keeperProcesses;
@@ -145,12 +147,9 @@ public:
 
         void updateKeeperProcessStats(KeeperStatsMsg const& keeperStatsMsg);
 
-        std::vector<KeeperIdCard>& getActiveKeepers(std::vector<KeeperIdCard>& keeper_id_cards);
-
-        int notifyKeepersOfStoryRecordingStart(std::vector<KeeperIdCard>&, ChronicleName const&, StoryName const&,
-                                               StoryId const&);
-
-        int notifyKeepersOfStoryRecordingStop(std::vector<KeeperIdCard> const&, StoryId const&);
+        int notifyRecordingGroupOfStoryRecordingStart(ChronicleName const&, StoryName const&, StoryId const&,
+                                                      std::vector<KeeperIdCard>&);
+        int notifyRecordingGroupOfStoryRecordingStop(StoryId const&);
 
         int registerGrapherProcess(GrapherRegistrationMsg const& reg_msg);
         int unregisterGrapherProcess(GrapherIdCard const& id_card);
@@ -158,6 +157,13 @@ public:
     private:
         KeeperRegistry(KeeperRegistry const&) = delete;//disable copying
         KeeperRegistry& operator=(KeeperRegistry const&) = delete;
+
+        int notifyGrapherOfStoryRecordingStart(RecordingGroup&, ChronicleName const&, StoryName const&, StoryId const&,
+                                               uint64_t);
+        int notifyGrapherOfStoryRecordingStop(RecordingGroup&, StoryId const&);
+        int notifyKeepersOfStoryRecordingStart(RecordingGroup&, std::vector<KeeperIdCard>&, ChronicleName const&,
+                                               StoryName const&, StoryId const&, uint64_t);
+        int notifyKeepersOfStoryRecordingStop(RecordingGroup&, std::vector<KeeperIdCard> const&, StoryId const&);
 
         RegistryState registryState;
         std::mutex registryLock;
@@ -169,6 +175,7 @@ public:
         std::vector<RecordingGroup*> activeGroups;
         std::mt19937 mt_random;//mersene twister random int generator
         std::uniform_int_distribution<size_t> group_id_distribution;
+        std::map<StoryId, RecordingGroup*> activeStories;
     };
 }
 
