@@ -200,8 +200,8 @@ update_visor_ip() {
 generate_conf_for_each_keeper() {
     for keeper_host in $(cat ${KEEPER_HOSTS} | awk '{print $1}')
     do
-        remote_keeper_host_name=$(ssh ${keeper_host} hostname)
-        keeper_ip=$(get_host_ip ${keeper_host})
+        remote_keeper_hostname=$(ssh ${keeper_host} hostname)
+        keeper_ip=$(get_host_ip ${remote_keeper_hostname})
         echo -e "${INFO}Generating conf file for ChronoKeeper ${remote_keeper_hostname} ...${NC}"
         jq ".chrono_keeper.KeeperDataStoreAdminService.rpc.service_ip = \"${keeper_ip}\"" ${CONF_FILE} > tmp.json && mv tmp.json ${CONF_FILE}
         jq ".chrono_keeper.KeeperRecordingService.rpc.service_ip = \"${keeper_ip}\"" ${CONF_FILE} > tmp.json && mv tmp.json ${CONF_FILE}
