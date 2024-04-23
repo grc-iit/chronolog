@@ -1,11 +1,17 @@
 #!/bin/bash
 
-# Path to the original file and the after system file
-original_file="/home/eneko/chronolog/bin/example_file.txt"
-after_system_file="/tmp/11362487075052809.1713907230.127.0.0.1.6666.csv"
+# Check if the correct number of arguments is given
+if [[ $# -ne 2 ]]; then
+    echo "Usage: $0 <original_file_path> <after_system_file_path>"
+    exit 1
+fi
+
+# Assign input parameters to variables
+original_file="$1"
+after_system_file="$2"
 
 # Extract lines from the after system file
-lines_from_after=$(grep -o 'line [0-9]*' $after_system_file)
+lines_from_after=$(grep -o 'line [0-9]*' "$after_system_file")
 
 # Initialize the last found line index
 last_index=-1
@@ -20,7 +26,7 @@ while read -r line; do
     line_num=$(echo "$line" | grep -o '[0-9]*')
 
     # Check if the line exists in the original file and get its line number
-    current_index=$(grep -n "^$line$" $original_file | cut -d: -f1)
+    current_index=$(grep -n "^$line$" "$original_file" | cut -d: -f1)
 
     # Ensure only the first index is considered if multiple are found
     current_index=$(echo "$current_index" | head -n1)
