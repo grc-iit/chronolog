@@ -36,7 +36,7 @@ check_csv_files() {
 check_story_id() {
     local file_path="$1"
     local filename=$(basename -- "$file_path")
-    local file_story_id=$(echo "$filename" | awk -F. '{print $(NF-2)}')
+    local file_story_id=$(echo "$filename" | awk -F. '{print $1}') # Get the element before the first dot
 
     # Retrieve the last modification date of the file
     local mod_datetime=$(stat -c %y "$file_path" | cut -d '.' -f 1)
