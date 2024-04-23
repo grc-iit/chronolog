@@ -867,7 +867,6 @@ private:
 
     void parseClientConf(json_object*json_conf)
     {
-        const char*string_value = json_object_get_string(json_conf);
         json_object_object_foreach(json_conf, key, val)
         {
             if(strcmp(key, "VisorClientPortalService") == 0)

@@ -87,7 +87,7 @@ inline std::ostream & operator<< (std::ostream & out , chronolog::GrapherIdCard 
     return out;
 }
 
-inline std::string& operator+(std::string& a_string, chronolog::GrapherIdCard const& id_card)
+inline std::string& operator+= (std::string& a_string, chronolog::GrapherIdCard const& id_card)
 {
     a_string += std::string("GrapherIdCard{") + std::to_string(id_card.getGroupId()) + ":" +
                 id_card.getIPasDottedString(a_string) + ":" + std::to_string(id_card.getPort()) + ":" +
