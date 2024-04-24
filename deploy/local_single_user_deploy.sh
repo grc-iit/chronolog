@@ -20,6 +20,11 @@ KEEPER_BIN="${BIN_DIR}/chrono_keeper"
 CLIENT_BIN="${BIN_DIR}/client_lib_multi_storytellers"
 CONF_FILE="${CONF_DIR}/default_conf.json"
 
+#Booleans
+install=false
+reset=false
+stop=false
+
 # Methods ______________________________________________________________________________________________________________
 
 check_files() {
@@ -203,18 +208,44 @@ usage() {
 parse_args() {
     while [[ "$#" -gt 0 ]]; do
         case "$1" in
-            -i|--install) install; shift ;;
-            -r|--reset) reset; shift ;;
-            -s|--stop) stop; shift ;;
-            -h|--help) usage; shift ;;
-            -n|--num-keepers) NUM_KEEPERS="$2"; shift 2 ;;
-            -w|--work-dir) WORK_DIR="$2"; shift 2 ;;
+            -i|--install)
+                install=true
+                shift ;;
+            -r|--reset)
+                reset=true
+                shift ;;
+            -s|--stop)
+                stop=true
+                shift ;;
+            -h|--help)
+                usage;
+                shift ;;
+            -n|--num-keepers)
+                NUM_KEEPERS="$2";
+                shift 2 ;;
+            -w|--work-dir)
+                WORK_DIR="$2";
+                shift 2 ;;
             *) echo -e "${ERR}Unknown option: $1${NC}"; usage ;;
         esac
     done
 }
 
-# Start execution of the script
+# Start execution of the script____________________________________________________________________________________
 parse_args "$@"
+if ${install}
+then
+    install
+elif ${reset}
+then
+    reset
+elif ${stop}
+then
+    stop
+else
+    echo -e "${ERR}Please select deploy or reset mode${NC}"
+    usage
+fi
+
 echo -e "${INFO}Done${NC}"
 
