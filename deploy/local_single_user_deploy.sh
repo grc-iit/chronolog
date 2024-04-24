@@ -24,6 +24,7 @@ CONF_FILE="${CONF_DIR}/default_conf.json"
 install=false
 reset=false
 stop=false
+kill=false
 
 # Methods ______________________________________________________________________________________________________________
 
@@ -175,11 +176,26 @@ install() {
     echo -e "${DEBUG}Install done${NC}"
 }
 
-reset() {
-    echo -e "${INFO}Resetting ...${NC}"
+kill() {
+    echo -e "${INFO}Killing ...${NC}"
     kill_process ${VISOR_BIN}
     kill_process ${KEEPER_BIN}
     kill_process ${CLIENT_BIN}
+    echo -e "${DEBUG}Kill done${NC}"
+}
+
+reset() {
+    echo -e "${INFO}Resetting...${NC}"
+    kill;
+    echo -e "${DEBUG}Delete all generated files${NC}"
+
+    # Remove all config files
+    rm ${CONF_DIR}/visor_conf.json
+    rm ${CONF_DIR}/client_conf.json
+    rm ${CONF_DIR}/keeper_conf*.json
+
+    # Remove all log files
+    rm ${BIN_DIR}/*.log
     echo -e "${DEBUG}Reset done${NC}"
 }
 
@@ -200,6 +216,7 @@ usage() {
     echo "  -w, --work-dir DIR     Set the working directory"
     echo "  -i, --install          Install all components"
     echo "  -r, --reset            Reset all components"
+    echo "  -k, --kill             Kill all components"
     echo "  -s, --stop             Stop all components"
     exit 1
 }
@@ -213,6 +230,9 @@ parse_args() {
                 shift ;;
             -r|--reset)
                 reset=true
+                shift ;;
+            -k|--kill)
+                kill=true
                 shift ;;
             -s|--stop)
                 stop=true
@@ -242,6 +262,9 @@ then
 elif ${stop}
 then
     stop
+elif ${kill}
+then
+    kill
 else
     echo -e "${ERR}Please select deploy or reset mode${NC}"
     usage
