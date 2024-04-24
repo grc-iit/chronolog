@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Define some colors
-ERR='\033[1;31m\033[41m'
-INFO='\033[1,36m\033[42m'
+ERR='\033[7;37m\033[41m'
+INFO='\033[7;49m\033[92m'
 DEBUG='\033[0;33m'
 NC='\033[0m' # No Color
 
@@ -29,6 +29,7 @@ HOSTNAME_HS_NET_SUFFIX="-40g"
 JOB_ID=""
 install=false
 deploy=false
+stop=false
 local=false
 reset=false
 verbose=false
@@ -112,6 +113,36 @@ check_conf_files() {
     if [[ "${verbose}" == "true" ]]
     then
         echo -e "${DEBUG}Check conf files done${NC}"
+    fi
+}
+
+check_op_validity() {
+    count=0
+    if [[ "$deploy" = true ]]
+    then
+        ((count++))
+    fi
+
+    if [[ "$stop" = true ]]
+    then
+        ((count++))
+    fi
+
+    if [[ "$reset" = true ]]
+    then
+        ((count++))
+    fi
+
+    if [[ $count -gt 1 ]]
+    then
+        echo -e "${ERR}Error: You cannot select more than one operation at the same time.${NC}"
+        usage
+    fi
+
+    if [[ $count -lt 1 ]]
+    then
+        echo -e "${ERR}Error: Please select one operation in deploy (-d), stop (-o) and reset (-r).${NC}"
+        usage
     fi
 }
 
@@ -277,19 +308,65 @@ deploy() {
 
     # check Visor
     echo -e "${DEBUG}Running ChronoVisor (only one is expected):${NC}"
-    mpssh -f ${VISOR_HOSTS} "pgrep -fla ${VISOR_BIN_FILE_NAME}" | grep -v ssh | grep "${simple_output_grep_keyword}" 2>&1
+    mpssh -f ${VISOR_HOSTS} "pgrep -fla ${VISOR_BIN_FILE_NAME}" | grep -e "->" | grep -v ssh 2>&1
 
     # check Keeper
     echo -e "${DEBUG}Running ChronoKeepers:${NC}"
-    mpssh -f ${KEEPER_HOSTS} "pgrep -fla ${KEEPER_BIN_FILE_NAME}" | grep -v ssh | grep "${simple_output_grep_keyword}" 2>&1
+    mpssh -f ${KEEPER_HOSTS} "pgrep -fla ${KEEPER_BIN_FILE_NAME}" | grep -e "->" | grep -v ssh 2>&1
 
     # check Client
     echo -e "${DEBUG}Running Client (may ended already):${NC}"
-    mpssh -f ${CLIENT_HOSTS} "pgrep -fla ${CLIENT_BIN_FILE_NAME}" | grep -v ssh | grep "${simple_output_grep_keyword}" 2>&1
+    mpssh -f ${CLIENT_HOSTS} "pgrep -fla ${CLIENT_BIN_FILE_NAME}" | grep -e "->" | grep -v ssh 2>&1
 
     if [[ "${verbose}" == "true" ]]
     then
         echo -e "${DEBUG}Deploy done${NC}"
+    fi
+}
+
+stop() {
+    echo -e "${INFO}Stopping ...${NC}"
+
+    if [[ -z ${JOB_ID} ]]
+    then
+        echo -e "${DEBUG}No JOB_ID provided, use hosts files in ${CONF_DIR}${NC}"
+        check_hosts_files
+    else
+        echo -e "${DEBUG}JOB_ID is provided, prepare hosts file first${NC}"
+        prepare_hosts
+    fi
+
+    # stop Visor
+    echo -e "${DEBUG}Stopping ChronoVisor ...${NC}"
+    mpssh -f ${VISOR_HOSTS} "pkill --signal 15 -ef ${VISOR_BIN_FILE_NAME}" | grep -e "->" | grep -v ssh 2>&1
+
+    # stop Keeper
+    echo -e "${DEBUG}Stopping ChronoKeeper ...${NC}"
+    mpssh -f ${KEEPER_HOSTS} "pkill --signal 15 -ef ${KEEPER_BIN_FILE_NAME}" | grep -e "->" | grep -v ssh 2>&1
+
+    # stop Client
+    echo -e "${DEBUG}Stopping Client ...${NC}"
+    mpssh -f ${CLIENT_HOSTS} "pkill --signal 15 -ef ${CLIENT_BIN_FILE_NAME}" | grep -e "->" | grep -v ssh 2>&1
+
+    # sleep to wait for sleep
+    echo -e "${DEBUG}Sleeping for 10 seconds ...${NC}"
+    sleep 10
+
+    # check Visor
+    echo -e "${DEBUG}ChronoVisor still running:${NC}"
+    mpssh -f ${VISOR_HOSTS} "pgrep -fla ${VISOR_BIN_FILE_NAME}" | grep -e "->" | grep -v ssh 2>&1
+
+    # check Keeper
+    echo -e "${DEBUG}ChronoKeeper still running:${NC}"
+    mpssh -f ${KEEPER_HOSTS} "pgrep -fla ${KEEPER_BIN_FILE_NAME}" | grep -e "->" | grep -v ssh 2>&1
+
+    # check Client
+    echo -e "${DEBUG}Client still running:${NC}"
+    mpssh -f ${CLIENT_HOSTS} "pgrep -fla ${CLIENT_BIN_FILE_NAME}" | grep -e "->" | grep -v ssh 2>&1
+
+    if [[ "${verbose}" == "true" ]]
+    then
+        echo -e "${DEBUG}Stop done${NC}"
     fi
 }
 
@@ -305,35 +382,29 @@ reset() {
         prepare_hosts
     fi
 
-    if [[ "${local}" == "false" && "${verbose}" == "false" ]]
-    then
-        # grep only on Ares with simple output
-        simple_output_grep_keyword="ares-"
-    fi
-
     # kill Visor
     echo -e "${DEBUG}Killing ChronoVisor ...${NC}"
-    mpssh -f ${VISOR_HOSTS} "pkill --signal 9 -ef ${VISOR_BIN_FILE_NAME}" | grep -v ssh | grep "${simple_output_grep_keyword}" 2>&1
+    mpssh -f ${VISOR_HOSTS} "pkill --signal 9 -ef ${VISOR_BIN_FILE_NAME}" | grep -e "->" | grep -v ssh 2>&1
 
     # kill Keeper
     echo -e "${DEBUG}Killing ChronoKeeper ...${NC}"
-    mpssh -f ${KEEPER_HOSTS} "pkill --signal 9 -ef ${KEEPER_BIN_FILE_NAME}" | grep -v ssh | grep "${simple_output_grep_keyword}" 2>&1
+    mpssh -f ${KEEPER_HOSTS} "pkill --signal 9 -ef ${KEEPER_BIN_FILE_NAME}" | grep -e "->" | grep -v ssh 2>&1
 
     # kill Client
     echo -e "${DEBUG}Killing Client ...${NC}"
-    mpssh -f ${CLIENT_HOSTS} "pkill --signal 9 -ef ${CLIENT_BIN_FILE_NAME}" | grep -v ssh | grep "${simple_output_grep_keyword}" 2>&1
+    mpssh -f ${CLIENT_HOSTS} "pkill --signal 9 -ef ${CLIENT_BIN_FILE_NAME}" | grep -e "->" | grep -v ssh 2>&1
 
     # check Visor
     echo -e "${DEBUG}ChronoVisor left behind:${NC}"
-    mpssh -f ${VISOR_HOSTS} "pgrep -fla ${VISOR_BIN_FILE_NAME}" | grep -v ssh | grep "${simple_output_grep_keyword}" 2>&1
+    mpssh -f ${VISOR_HOSTS} "pgrep -fla ${VISOR_BIN_FILE_NAME}" | grep -e "->" | grep -v ssh 2>&1
 
     # check Keeper
     echo -e "${DEBUG}ChronoKeeper left behind:${NC}"
-    mpssh -f ${KEEPER_HOSTS} "pgrep -fla ${KEEPER_BIN_FILE_NAME}" | grep -v ssh | grep "${simple_output_grep_keyword}" 2>&1
+    mpssh -f ${KEEPER_HOSTS} "pgrep -fla ${KEEPER_BIN_FILE_NAME}" | grep -e "->" | grep -v ssh 2>&1
 
     # check Client
     echo -e "${DEBUG}Client left behind:${NC}"
-    mpssh -f ${CLIENT_HOSTS} "pgrep -fla ${CLIENT_BIN_FILE_NAME}" | grep -v ssh | grep "${simple_output_grep_keyword}" 2>&1
+    mpssh -f ${CLIENT_HOSTS} "pgrep -fla ${CLIENT_BIN_FILE_NAME}" | grep -e "->" | grep -v ssh 2>&1
 
     if [[ "${verbose}" == "true" ]]
     then
@@ -342,7 +413,7 @@ reset() {
 }
 
 parse_args() {
-    TEMP=$(getopt -o w:v:k:c:s:p:t:f:j:hidlre --long work_dir:visor:,keeper:,client:,visor_hosts:,keeper_hosts:,client_hosts:,conf_file:,job_id:,help,install,deploy,local,reset,verbose -- "$@")
+    TEMP=$(getopt -o w:v:k:c:s:p:t:f:j:hidlore --long work_dir:visor:,keeper:,client:,visor_hosts:,keeper_hosts:,client_hosts:,conf_file:,job_id:,help,install,deploy,local,stop,reset,verbose -- "$@")
 
     if [ $? != 0 ] ; then echo -e "${ERR}Terminating ...${NC}" >&2 ; exit 1 ; fi
 
@@ -415,6 +486,9 @@ parse_args() {
                 local=true
                 HOSTNAME_HS_NET_SUFFIX=""
                 shift ;;
+            -o|--stop)
+                stop=true
+                shift ;;
             -r|--reset)
                 reset=true
                 shift ;;
@@ -430,22 +504,17 @@ parse_args() {
         esac
     done
 
-    if [[ "$deploy" == true && "$reset" == true ]]
-    then
-        echo -e "${ERR}Error: You must choose between deploy (-d) or reset (-r).${NC}"
-        usage
-        exit 1
-    fi
+    check_op_validity
 
     # Shift the arguments so that the non-option arguments are left
     shift $((OPTIND - 1))
 
-    # Check if required options are provided
-    if [[ -z ${VISOR_BIN} || -z ${KEEPER_BIN} || -z ${CLIENT_BIN} ||
-          -z ${VISOR_HOSTS} || -z ${KEEPER_HOSTS} || -z ${CLIENT_HOSTS} ]]; then
-        echo -e "${ERR}Missing required options.${NC}"
-        exit 1
-    fi
+    # Check binary, hosts and conf files
+    check_bin_files
+
+    check_hosts_files
+
+    check_conf_files
 }
 
 prepare_hosts() {
@@ -488,6 +557,7 @@ prepare_hosts() {
 usage() {
     echo "Usage: $0 -i|--install Re-prepare ChronoLog deployment (default: false)
                                -d|--deploy Start ChronoLog deployment (default: false)
+                               -o|--stop Stop ChronoLog deployment (default: false)
                                -r|--reset Reset/cleanup ChronoLog deployment (default: false)
                                -l|--local Local install/deployment/reset (default: false)
                                -w|--work_dir WORK_DIR (default: ~/chronolog)
@@ -498,7 +568,7 @@ usage() {
                                -p|--keeper_hosts KEEPER_HOSTS (default: work_dir/conf/hosts_keeper)
                                -t|--client_hosts CLIENT_HOSTS (default: work_dir/conf/hosts_client)
                                -f|--conf_file CONF_FILE (default: work_dir/conf/default_conf.json)
-                               -j|--job_id JOB_ID (default: "")
+                               -j|--job_id JOB_ID (default: \"\")
                                -e|--verbose Enable verbose output (default: false)
                                -h|--help Print this page"
     exit 1
@@ -514,11 +584,14 @@ fi
 if ${deploy}
 then
     deploy
+elif ${stop}
+then
+    stop
 elif ${reset}
 then
     reset
 else
-    echo -e "${ERR}Please select deploy or reset mode${NC}"
+    echo -e "${ERR}Error: Please select one operation in deploy (-d), stop (-o) and reset (-r).${NC}"
     usage
 fi
 echo -e "${INFO}Done${NC}"
