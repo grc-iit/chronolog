@@ -6,7 +6,7 @@ ERR='\033[1;31m\033[41m'
 INFO='\033[1,36m\033[42m'
 DEBUG='\033[0;33m'
 NC='\033[0m' # No Color
-NUM_KEEPERS=5
+NUM_KEEPERS=1
 
 # Directories
 WORK_DIR="/home/${USER}/chronolog"
