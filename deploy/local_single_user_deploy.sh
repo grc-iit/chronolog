@@ -245,6 +245,13 @@ parse_args() {
                 shift 2 ;;
             -w|--work-dir)
                 WORK_DIR="$2";
+                LIB_DIR="${WORK_DIR}/lib"
+                CONF_DIR="${WORK_DIR}/conf"
+                BIN_DIR="${WORK_DIR}/bin"
+                VISOR_BIN="${BIN_DIR}/chronovisor_server"
+                KEEPER_BIN="${BIN_DIR}/chrono_keeper"
+                CLIENT_BIN="${BIN_DIR}/client_lib_multi_storytellers"
+                CONF_FILE="${CONF_DIR}/default_conf.json"
                 shift 2 ;;
             *) echo -e "${ERR}Unknown option: $1${NC}"; usage ;;
         esac
