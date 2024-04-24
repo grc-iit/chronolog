@@ -136,7 +136,7 @@ launch_process() {
     local args="$2"
     local log_file="$3"
     echo -e "${DEBUG}Launching $bin ...${NC}"
-Mov    LD_LIBRARY_PATH=${LIB_DIR} nohup ${bin} ${args} > ${BIN_DIR}/${log_file} 2>&1 &
+    LD_LIBRARY_PATH=${LIB_DIR} nohup ${bin} ${args} > ${BIN_DIR}/${log_file} 2>&1 &
 }
 
 kill_process() {
