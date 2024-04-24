@@ -17,7 +17,7 @@ public:
 
     ~CSVFileStoryChunkExtractor();
 
-    virtual void processStoryChunk(StoryChunk*);
+    virtual int processStoryChunk(StoryChunk*);
 
 private:
     KeeperIdCard keeperIdCard;
