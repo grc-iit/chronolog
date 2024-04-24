@@ -136,7 +136,7 @@ launch_process() {
     local args="$2"
     local log_file="$3"
     echo -e "${DEBUG}Launching $bin ...${NC}"
-    LD_LIBRARY_PATH=${LIB_DIR} nohup ${bin} ${args} > ${BIN_DIR}${log_file} 2>&1 &
+Mov    LD_LIBRARY_PATH=${LIB_DIR} nohup ${bin} ${args} > ${BIN_DIR}/${log_file} 2>&1 &
 }
 
 kill_process() {
@@ -157,16 +157,16 @@ install() {
     copy_shared_libs
     check_files
     generate_config_files ${NUM_KEEPERS} ${BIN_DIR} ${CONF_FILE} ${CONF_DIR}
-    launch_process ${VISOR_BIN} "--config ${CONF_DIR}/visor_conf.json" "/visor.log"
+    launch_process ${VISOR_BIN} "--config ${CONF_DIR}/visor_conf.json" "visor.log"
     sleep 2
     num_keepers=${NUM_KEEPERS}
     for (( i=0; i<num_keepers; i++ ))
     do
         #local keeper_args="--config ${CONF_DIR}/keeper_conf_$i.json"
-        launch_process ${KEEPER_BIN} "--config ${CONF_DIR}/keeper_conf_$i.json" "/keeper_$i.log"
+        launch_process ${KEEPER_BIN} "--config ${CONF_DIR}/keeper_conf_$i.json" "keeper_$i.log"
     done
     sleep 2
-    launch_process ${CLIENT_BIN} "--config ${CONF_DIR}/client_conf.json" "/client.log"
+    launch_process ${CLIENT_BIN} "--config ${CONF_DIR}/client_conf.json" "client.log"
     echo -e "${DEBUG}Install done${NC}"
 }
 
