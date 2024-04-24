@@ -51,9 +51,16 @@ public:
 inline std::ostream& operator<<(std::ostream& out, chronolog::ServiceId const serviceId)
 {
     std::string a_string;
-    out << "{" << serviceId.getIPasDottedString(a_string) << ":" << serviceId.port << ":" << serviceId.provider_id
+    out << "ServiceId{" << serviceId.getIPasDottedString(a_string) << ":" << serviceId.port << ":" << serviceId.provider_id
         << "}";
     return out;
+}
+
+inline std::string& operator+= (std::string& a_string, chronolog::ServiceId const& serviceId)
+{
+    a_string += std::string("ServiceId{") + serviceId.getIPasDottedString(a_string) + ":" + std::to_string(serviceId.port) + ":" +
+                std::to_string(serviceId.provider_id) + "}";
+    return a_string;
 }
 
 #endif

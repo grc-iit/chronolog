@@ -207,10 +207,8 @@ chronolog::VisorClientPortal::AcquireStory(chl::ClientId const &client_id, std::
 
     int ret = CL_ERR_UNKNOWN;
 
-    bool notify_keepers = false;
-
-    ret = chronicleMetaDirectory.acquire_story(client_id, chronicle_name, story_name, attrs, flags, story_id
-                                               , notify_keepers);
+    ret = chronicleMetaDirectory.acquire_story(client_id, chronicle_name, story_name, attrs, flags, story_id);
+                                              
     if(ret != chronolog::CL_SUCCESS)
     {
         // return the error with the empty recording_keepers vector
@@ -230,7 +228,7 @@ chronolog::VisorClientPortal::AcquireStory(chl::ClientId const &client_id, std::
                                         chronicle_name, story_name, story_id, recording_keepers))
     {
         // RPC notification to the keepers might have failed, release the newly acquired story
-        chronicleMetaDirectory.release_story(client_id, chronicle_name, story_name, story_id, notify_keepers);
+        chronicleMetaDirectory.release_story(client_id, chronicle_name, story_name, story_id);
         //we do know that there's no need notify keepers of the story ending in this case as it hasn't started...
         recording_keepers.clear();
         return chronolog::AcquireStoryResponseMsg(chronolog::CL_ERR_NO_KEEPERS, story_id, recording_keepers);
@@ -250,16 +248,12 @@ int chronolog::VisorClientPortal::ReleaseStory(chl::ClientId const &client_id, s
     { return CL_ERR_NOT_AUTHORIZED; }
 
     StoryId story_id(0);
-    bool notify_keepers = false;
-    auto return_code = chronicleMetaDirectory.release_story(client_id, chronicle_name, story_name, story_id
-                                                            , notify_keepers);
+    auto return_code = chronicleMetaDirectory.release_story(client_id, chronicle_name, story_name, story_id);
     if(chronolog::CL_SUCCESS != return_code)
     { return return_code; }
 
-    if(notify_keepers && theKeeperRegistry->is_running())
-    {
-        theKeeperRegistry->notifyRecordingGroupOfStoryRecordingStop(story_id);
-    }
+    theKeeperRegistry->notifyRecordingGroupOfStoryRecordingStop(story_id);
+
     return chronolog::CL_SUCCESS;
 }
 

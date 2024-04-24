@@ -43,18 +43,11 @@ public:
         , active(false)
         , lastStatsTime(0)
         , activeStoryCount(0)
-    {}
-
-    KeeperProcessEntry(KeeperProcessEntry const& other) = default;
-
-    void reset()
     {
-        keeperAdminClient = nullptr;
-        active = false;
-        lastStatsTime = 0;
-        activeStoryCount = 0;
+        idCardString += idCard;
     }
 
+    KeeperProcessEntry(KeeperProcessEntry const& other) = default;
     ~KeeperProcessEntry() = default;// Registry is reponsible for creating & deleting keeperAdminClient
 
     KeeperIdCard idCard;
@@ -77,7 +70,9 @@ public:
         , active(false)
         , lastStatsTime(0)
         , activeStoryCount(0)
-    {}
+    {
+        idCardString += idCard;
+    }
 
     GrapherProcessEntry(GrapherProcessEntry const& other) = default;
     ~GrapherProcessEntry() = default;// Registry is reponsible for creating & deleting keeperAdminClient
@@ -98,12 +93,14 @@ public:
     public:
         RecordingGroup(RecordingGroupId group_id, GrapherProcessEntry* grapher_ptr = nullptr)
             : groupId(group_id)
+            , activeKeeperCount(0)
             , grapherProcess(grapher_ptr)
         {}
 
         RecordingGroup(RecordingGroup const& other) = default;
         ~RecordingGroup() = default;
 
+        bool isActive() const;
         void startDelayedGrapherExit(GrapherProcessEntry&, std::time_t);
         void clearDelayedExitGrapher(GrapherProcessEntry&, std::time_t);
         void startDelayedKeeperExit(KeeperProcessEntry&, std::time_t);
@@ -112,6 +109,7 @@ public:
         std::vector<KeeperIdCard>& getActiveKeepers(std::vector<KeeperIdCard>& keeper_id_cards);
 
         RecordingGroupId groupId;
+        size_t activeKeeperCount;
         GrapherProcessEntry* grapherProcess;
         std::map<std::pair<uint32_t, uint16_t>, KeeperProcessEntry> keeperProcesses;
     };
