@@ -69,25 +69,19 @@ generate_config_files() {
            --argjson new_port_keeper_datastore $new_port_keeper_datastore \
            '.chrono_keeper.KeeperRecordingService.rpc.service_base_port = $new_port_keeper_record |
             .chrono_keeper.KeeperDataStoreAdminService.rpc.service_base_port = $new_port_keeper_datastore |
-            .chrono_keeper.Logging.log.file = ($bin_dir + "/" + .chrono_keeper.Logging.log.file) |
-            .chrono_visor.Logging.log.file = ($bin_dir + "/" + .chrono_visor.Logging.log.file) |
-            .chrono_grapher.Logging.log.file = ($bin_dir + "/" + .chrono_grapher.Logging.log.file) |
-            .chrono_client.Logging.log.file = ($bin_dir + "/" + .chrono_client.Logging.log.file)' "$default_conf" > "$output_file"
+            .chrono_keeper.Logging.log.file = ($bin_dir + "/" + .chrono_keeper.Logging.log.file)' "$default_conf" > "$output_file"
 
         echo "Generated $output_file with ports $new_port_keeper_record and $new_port_keeper_datastore."
     done
 
     local output_file="${conf_dir}/visor_conf.json"
     jq --arg bin_dir "$bin_dir" \
-       '.chrono_visor.Logging.log.file = ($bin_dir + "/" + .chrono_visor.Logging.log.file) |
-        .chrono_grapher.Logging.log.file = ($bin_dir + "/" + .chrono_grapher.Logging.log.file) |
-        .chrono_client.Logging.log.file = ($bin_dir + "/" + .chrono_client.Logging.log.file)' "$default_conf" > "$output_file"
+       '.chrono_visor.Logging.log.file = ($bin_dir + "/" + .chrono_visor.Logging.log.file)' "$default_conf" > "$output_file"
 
     local output_file="${conf_dir}/client_conf.json"
     jq --arg bin_dir "$bin_dir" \
-       '.chrono_visor.Logging.log.file = ($bin_dir + "/" + .chrono_visor.Logging.log.file) |
-        .chrono_grapher.Logging.log.file = ($bin_dir + "/" + .chrono_grapher.Logging.log.file) |
-        .chrono_client.Logging.log.file = ($bin_dir + "/" + .chrono_client.Logging.log.file)' "$default_conf" > "$output_file"
+       '.chrono_client.Logging.log.file = ($bin_dir + "/" + .chrono_client.Logging.log.file)' "$default_conf" > "$output_file"
+
 
 }
 
