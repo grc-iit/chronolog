@@ -10,19 +10,24 @@ WORK_DIR="/home/${USER}/chronolog"
 LIB_DIR="${WORK_DIR}/lib"
 CONF_DIR="${WORK_DIR}/conf"
 VISOR_BIN_FILE_NAME="chronovisor_server"
+GRAPHER_BIN_FILE_NAME="chrono_grapher"
 KEEPER_BIN_FILE_NAME="chrono_keeper"
 CLIENT_BIN_FILE_NAME="client_lib_multi_storytellers"
 VISOR_BIN="${WORK_DIR}/bin/${VISOR_BIN_FILE_NAME}"
+GRAPHER_BIN="${WORK_DIR}/bin/${GRAPHER_BIN_FILE_NAME}"
 KEEPER_BIN="${WORK_DIR}/bin/${KEEPER_BIN_FILE_NAME}"
 CLIENT_BIN="${WORK_DIR}/bin/${CLIENT_BIN_FILE_NAME}"
 VISOR_BIN_DIR=$(dirname ${VISOR_BIN})
+GRAPHER_BIN_DIR=$(dirname ${GRAPHER_BIN})
 KEEPER_BIN_DIR=$(dirname ${KEEPER_BIN})
 CLIENT_BIN_DIR=$(dirname ${CLIENT_BIN})
 CONF_FILE="${CONF_DIR}/default_conf.json"
 VISOR_ARGS="--config ${CONF_FILE}"
+GRAPHER_ARGS="--config ${CONF_FILE}"
 KEEPER_ARGS="--config ${CONF_FILE}"
 CLIENT_ARGS="--config ${CONF_FILE}"
 VISOR_HOSTS="${CONF_DIR}/hosts_visor"
+GRAPHER_HOSTS="${CONF_DIR}/hosts_grapher"
 KEEPER_HOSTS="${CONF_DIR}/hosts_keeper"
 CLIENT_HOSTS="${CONF_DIR}/hosts_client"
 HOSTNAME_HS_NET_SUFFIX="-40g"
@@ -39,6 +44,12 @@ check_hosts_files() {
     if [[ ! -f ${VISOR_HOSTS} ]]
     then
         echo -e "${ERR}${VISOR_HOSTS} host file does not exist, exiting ...${NC}"
+        exit 1
+    fi
+
+    if [[ ! -f ${GRAPHER_HOSTS} ]]
+    then
+        echo -e "${ERR}${GRAPHER_HOSTS} host file does not exist, exiting ...${NC}"
         exit 1
     fi
 
@@ -65,6 +76,12 @@ check_bin_files() {
     if [[ ! -f ${VISOR_BIN} ]]
     then
         echo -e "${ERR}${VISOR_BIN} executable file does not exist, exiting ...${NC}"
+        exit 1
+    fi
+
+    if [[ ! -f ${GRAPHER_BIN} ]]
+    then
+        echo -e "${ERR}${GRAPHER_BIN} executable file does not exist, exiting ...${NC}"
         exit 1
     fi
 
@@ -104,9 +121,15 @@ check_conf_files() {
 
     visor_keeper_registry_rpc_in_visor=$(jq '.chrono_visor.VisorKeeperRegistryService.rpc' "${CONF_FILE}")
     visor_keeper_registry_rpc_in_keeper=$(jq '.chrono_keeper.VisorKeeperRegistryService.rpc' "${CONF_FILE}")
+    visor_grapher_registry_rpc_in_grapher=$(jq '.chrono_grapher.VisorRegistryService.rpc' "${CONF_FILE}")
     if [[ "${visor_keeper_registry_rpc_in_visor}" != "${visor_keeper_registry_rpc_in_keeper}" ]]
     then
         echo -e "${ERR}mismatched VisorKeeperRegistryService conf in ${CONF_FILE}, exiting ...${NC}"
+        exit 1
+    fi
+    if [[ "${visor_keeper_registry_rpc_in_visor}" != "${visor_grapher_registry_rpc_in_grapher}" ]]
+    then
+        echo -e "${ERR}mismatched VisorGrapherRegistryService conf in ${CONF_FILE}, exiting ...${NC}"
         exit 1
     fi
 
