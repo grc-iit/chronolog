@@ -57,17 +57,22 @@ public:
 //        }
 //        std::cout << std::endl;
         StoryChunk story_chunk;
+#ifndef NDEBUG
         start = std::chrono::high_resolution_clock::now();
+#endif
         deserializedWithCereal(&mem_vec[0], b.size() - 1, story_chunk);
+#ifndef NDEBUG
         end = std::chrono::high_resolution_clock::now();
+        LOG_INFO("[GrapherRecordingService] Deserialization took {} us, ThreadID={}",
+                std::chrono::duration_cast <std::chrono::nanoseconds>(end - start).count() / 1000.0
+                 , tl::thread::self_id());
+#endif
         LOG_DEBUG("[GrapherRecordingService] StoryChunk received: StoryID: {}, StartTime: {}, ThreadID={}"
                   , story_chunk.getStoryId(), story_chunk.getStartTime(), tl::thread::self_id());
         request.respond(b.size());
         LOG_DEBUG("[GrapherRecordingService] StoryChunk recording RPC responded {}, ThreadID={}"
                   , b.size(), tl::thread::self_id());
-        LOG_INFO("[GrapherRecordingService] Deserialization took {} us, ThreadID={}",
-                std::chrono::duration_cast <std::chrono::nanoseconds>(end - start).count() / 1000.0
-                 , tl::thread::self_id());
+
         theIngestionQueue.ingestStoryChunk(&story_chunk);
         LOG_DEBUG("[GrapherRecordingService] Ingested a StoryChunk, StoryID: {}, StartTime: {}, ThreadID={}"
                   , story_chunk.getStoryId(), story_chunk.getStartTime(), tl::thread::self_id());
