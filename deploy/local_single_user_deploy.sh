@@ -67,9 +67,10 @@ generate_config_files() {
         jq --arg bin_dir "$bin_dir" \
            --argjson new_port_keeper_record $new_port_keeper_record \
            --argjson new_port_keeper_datastore $new_port_keeper_datastore \
+           --arg i "$i" \
            '.chrono_keeper.KeeperRecordingService.rpc.service_base_port = $new_port_keeper_record |
             .chrono_keeper.KeeperDataStoreAdminService.rpc.service_base_port = $new_port_keeper_datastore |
-            .chrono_keeper.Logging.log.file = ($bin_dir + "/" + .chrono_keeper.Logging.log.file)' "$default_conf" > "$output_file"
+            .chrono_keeper.Logging.log.file = ($bin_dir + "/" + $i + "_" + .chrono_keeper.Logging.log.file)' "$default_conf" > "$output_file"
 
         echo "Generated $output_file with ports $new_port_keeper_record and $new_port_keeper_datastore."
     done
