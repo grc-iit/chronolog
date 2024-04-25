@@ -73,7 +73,7 @@ public:
     {
         if(orphanQueue.empty())
         {
-            LOG_DEBUG("[IngestionQueue] Orphan event queue is empty. No actions taken.");
+            LOG_DEBUG("[IngestionQueue] Orphan chunk queue is empty. No actions taken.");
             return;
         }
         std::lock_guard <std::mutex> lock(ingestionQueueMutex);
@@ -84,15 +84,16 @@ public:
             {
                 // Individual StoryIngestionHandle has its own mutex
                 (*ingestionHandle_iter).second->ingestChunk(*iter);
-                // Remove the event from the orphan deque and get the iterator to the next element prior to removal
+                // Remove the chunk from the orphan deque and get the iterator to the next element prior to removal
                 iter = orphanQueue.erase(iter);
             }
             else
             {
+                LOG_DEBUG("[IngestionQueue] Orphan chunk for story {} is still orphaned.", (*iter)->getStoryId());
                 ++iter;
             }
         }
-        LOG_DEBUG("[IngestionQueue] Drained {} orphan events into known handles.", orphanQueue.size());
+        LOG_DEBUG("[IngestionQueue] Drained {} orphan chunks into known handles.", orphanQueue.size());
     }
 
     bool is_empty() const
