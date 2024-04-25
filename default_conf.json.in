@@ -33,7 +33,7 @@
         "file": "chrono_visor.log",
         "level": "debug",
         "name": "ChronoVisor",
-        "filesize": 1048576,
+        "filesize": 104857600,
         "filenum": 3,
         "flushlevel": "warning"
       }
@@ -68,6 +68,15 @@
         "service_provider_id": 88
       }
     },
+    "KeeperGrapherDrainService": {
+      "rpc": {
+        "rpc_implementation": "Thallium_sockets",
+        "protocol_conf": "ofi+sockets",
+        "service_ip": "127.0.0.1",
+        "service_base_port": 3333,
+        "service_provider_id": 33
+      }
+    },
     "Logging": {
       "log": {
         "type": "file",
@@ -82,7 +91,7 @@
     "story_files_dir": "/tmp/"
   },
   "chrono_grapher": {
-    "RecordingService": {
+    "KeeperGrapherDrainService": {
       "rpc": {
         "rpc_implementation": "Thallium_sockets",
         "protocol_conf": "ofi+sockets",
@@ -115,7 +124,7 @@
         "file": "chrono_grapher.log",
         "level": "debug",
         "name": "ChronoGrapher",
-        "filesize": 102400,
+        "filesize": 1048576,
         "filenum": 3,
         "flushlevel": "debug"
       }
@@ -140,7 +149,7 @@
     "Logging": {
       "log": {
         "type": "file",
-        "file": "chronoclient_logfile.txt",
+        "file": "chrono_client.log",
         "level": "debug",
         "name": "ChronoClient",
         "filesize": 1048576,
