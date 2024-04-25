@@ -199,6 +199,11 @@ stop() {
     stop_process ${VISOR_BIN}
     stop_process ${KEEPER_BIN}
     stop_process ${CLIENT_BIN}
+    # Wait for all processes to exit
+    while pgrep -f "${BIN_DIR}/" >/dev/null; do
+        echo -e "${DEBUG}Waiting for processes to stop...${NC}"
+        sleep 1
+    done
     echo -e "${DEBUG}Stop done${NC}"
 }
 
