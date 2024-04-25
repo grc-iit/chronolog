@@ -3,11 +3,11 @@
 
 #include <map>
 #include <iostream>
-#include "chronolog_types.h"
-#include "log.h"
-
+#include <thallium/serialization/stl/string.hpp>
 #include <thallium/serialization/stl/map.hpp>
 #include <thallium/serialization/stl/tuple.hpp>
+#include "chronolog_types.h"
+#include "log.h"
 
 namespace chronolog
 {
