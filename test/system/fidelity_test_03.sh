@@ -15,9 +15,9 @@ print_header() {
     echo
 }
 
-# Check if the correct number of arguments is given
-if [[ $# -ne 2 ]]; then
-    echo "Usage: $0 <original_file_path> <after_system_file_path>"
+# Check if the correct number of arguments are provided
+if [ "$#" -ne 2 ]; then
+    echo "Usage: $0 <input_file> <directory>"
     exit 1
 fi
 
