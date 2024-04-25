@@ -15,4 +15,6 @@ PATH_PARAM=$1
 
 ./fidelity_test_03.sh $PATH_PARAM
 
+./fidelity_test_04.sh                   
+
 echo "All tests completed!"
