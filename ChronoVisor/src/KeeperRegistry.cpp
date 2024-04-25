@@ -519,10 +519,8 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
     }
 
     LOG_INFO("[Registry] selected RecordingGroup {} for story {}", recording_group->groupId, story_id);
-
-    std::time_t story_start_time =
-            std::chrono::high_resolution_clock::to_time_t(std::chrono::high_resolution_clock::now());
-
+    
+    uint64_t story_start_time = std::chrono::high_resolution_clock::now().time_since_epoch().count();
 
     // the registryLock is released by this point..
     // notify Grapher and notifyKeepers functions use delayedExit logic to protect
