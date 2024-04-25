@@ -1,6 +1,5 @@
 #!/bin/bash
 
-# Use ANSI color codes for better visibility
 RED='\e[41m'
 GREEN='\e[42m'
 NC='\033[0m' # No Color
@@ -16,7 +15,56 @@ print_header() {
     echo
 }
 
-# Function to check all .csv files in a directory
+# Check if the correct number of arguments is given
+if [[ $# -ne 2 ]]; then
+    echo "Usage: $0 <original_file_path> <after_system_file_path>"
+    exit 1
+fi
+
+verify_order() {
+    local file1="$1"
+    local file2="$2"
+
+    # Check if both files are specified
+    if [[ -z "$file1" || -z "$file2" ]]; then
+        echo "Error: Two file paths must be provided"
+        return 1
+    fi
+
+    # Read file1 line by line
+    local current_line_number=0
+    local found
+    local last_line_number=0
+
+
+    while IFS= read -r line_from_file1; do
+        found=0
+        # Increment to move to the next line to be checked after a successful match
+        ((current_line_number++))
+        local line_num=$(echo "$line_from_file1" | cut -d ':' -f6)
+
+        # Search for the line in file2 starting from the last matched line
+        while IFS= read -r line_from_file2; do
+            if [[ "$line_num" == "$line_from_file2" ]]; then
+                found=1
+                # Update last_line_number to the line number of the matched line in file2
+                last_line_number="$current_line_number"
+                break
+            fi
+            ((current_line_number++))
+        done < <(tail -n +"$current_line_number" "$file2")
+
+        # If no match is found, the test fails
+        if [[ $found -eq 0 ]]; then
+            echo -e "\t${BOLD}Result:${NC} ${RED}Failed.${NC}\n"
+            return 1
+        fi
+    done < "$file1"
+
+    echo -e "\t${BOLD}Result:${NC} ${GREEN}Success.${NC}\n"
+    return 0
+}
+
 check_csv_files() {
     local dir_path="$1"
 
@@ -28,40 +76,18 @@ check_csv_files() {
     echo -e "${UNDERLINE}Checking CSV files in directory: $dir_path${NC}\n"
 
     for file in "$dir_path"/*.csv; do
-        check_sequential_order "$file"
+        local filename=$(basename -- "$file")
+        local mod_datetime=$(stat -c %y "$file" | cut -d '.' -f 1)
+
+        echo -e "${BOLD}\tFile:${NC} $filename"
+        echo -e "${BOLD}\tDate:${NC} $mod_datetime"
+
+        verify_order "$file" "$original_file"
     done
 }
 
-# Function to verify that event numbers are sequential
-check_sequential_order() {
-    local file_path="$1"
-    local line_numbers=""
-    local filename=$(basename -- "$file_path")
-    local mod_datetime=$(stat -c %y "$file_path" | cut -d '.' -f 1)
-
-    echo -e "${BOLD}\tFile:${NC} $filename"
-    echo -e "${BOLD}\tDate:${NC} $mod_datetime"
-
-    while IFS= read -r line; do
-        local current_line_number=$(echo "$line" | grep -oP 'line \K[0-9]+')
-        line_numbers="$line_numbers$current_line_number "
-    done < "$file_path"
-
-    local expected_lines=$(seq 0 99 | tr '\n' ' ')
-    if [ "$line_numbers" == "$expected_lines" ]; then
-        echo -e "\t${BOLD}Result:${NC} ${GREEN}Success.${NC}\n"
-    else
-        echo -e "\t${BOLD}Result:${NC} ${RED}Failed.${NC}\n"
-    fi
-}
-
-# Main script execution
-if [ $# -eq 0 ]; then
-    echo -e "${RED}Usage: $0 <directory_path>${NC}"
-    exit 1
-fi
-
 # Execution ____________________________________________________________________________________________________________
-directory_path="$1"
+original_file="$1"
+output_path="$2"
 print_header
-check_csv_files "$directory_path"
+check_csv_files "$output_path"

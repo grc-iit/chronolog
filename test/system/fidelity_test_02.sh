@@ -16,50 +16,70 @@ print_header() {
     echo
 }
 
-# Function to check all .csv files in a directory
-check_csv_files() {
-    local dir_path="$1"
-
-    if [ ! -d "$dir_path" ]; then
-        echo -e "${RED}Directory does not exist.${NC}"
-        return 1
-    fi
-
-    echo -e "${UNDERLINE}Checking CSV files in directory: $dir_path${NC}\n"
-
-    for file in "$dir_path"/*.csv; do
-        check_expected_events "$file"
-    done
-}
-
-# Function to check for the expected number of events in a file
-check_expected_events() {
-    local file_path="$1"
-    local line_count=0
-    local filename=$(basename -- "$file_path")
-    local mod_datetime=$(stat -c %y "$file_path" | cut -d '.' -f 1)
-
-    echo -e "${BOLD}\tFile:${NC} $filename"
-    echo -e "${BOLD}\tDate:${NC} $mod_datetime"
-
-    while IFS= read -r line; do
-        ((line_count++))
-    done < "$file_path"
-
-    if [ $line_count -ne 100 ]; then
-        echo -e "\t${BOLD}Result:${NC} ${RED}Failed.${NC}\n"
-    else
-        echo -e "\t${BOLD}Result:${NC} ${GREEN}Success.${NC}\n"
-    fi
-}
-
-# Main script execution
-if [ $# -eq 0 ]; then
-    echo -e "${RED}Usage: $0 <directory_path>${NC}"
+# Check if the correct number of arguments are provided
+if [ "$#" -ne 2 ]; then
+    echo "Usage: $0 <directory> <input_file>"
     exit 1
 fi
 
-# Execution ____________________________________________________________________________________________________________
-directory_path="$1"
+
+verify_num_event () {
+    # Assigning the directory and the input file from arguments
+    local file="$1"
+    local dir="$2"
+
+    # Validate that the input file and dir exist
+    if [ ! -d "$dir" ]; then
+        echo "Directory does not exist."
+        exit 1
+    fi
+
+    if [ ! -f "$file" ]; then
+        echo "Input file does not exist."
+        exit 1
+    fi
+
+    # Get the number of lines in the input file
+    file_lines=$(wc -l < "$file")
+
+    # Initialize associative array to store total line counts per storyId
+    declare -A line_counts
+
+    # Loop through all csv files in the directory
+    for file in "$dir"/*.csv; do
+        # Extract storyId from filename
+        filename=$(basename -- "$file")
+        storyId=$(echo "$filename" | cut -d '.' -f1)
+
+        # Count the number of lines in the current file
+        current_lines=$(wc -l < "$file")
+
+        # Add the current line count to the total line count for the storyId
+        line_counts[$storyId]=$((line_counts[$storyId] + current_lines))
+    done
+
+    # Compare and print the results for each storyId
+    for storyId in "${!line_counts[@]}"; do
+        local mod_datetime=$(stat -c %y "$file" | cut -d '.' -f 1)
+
+        #echo -e "${BOLD}\tDate:${NC} $mod_datetime"
+        echo -e "${BOLD} \tStory ID:${NC}  $storyId"
+        echo -e "${BOLD} \tNumber of expected lines:${NC} ${file_liness}"
+        echo -e "${BOLD} \tNumber of lines:${NC} ${line_counts[$storyId]}"
+
+        if [ "${line_counts[$storyId]}" -eq "$file_lines" ]; then
+            #echo "Story ID $storyId Result: Success"
+            echo -e "\t${BOLD}Result:${NC} ${GREEN}Success.${NC}\n"
+        else
+            echo -e "\t${BOLD}Result:${NC} ${RED}Failed.${NC}\n"
+            #echo "Story ID $storyId Result: Failed"
+        fi
+    done
+}
+
+
+# Execution____________________________________________________
+directory="$2"
+input_file="$1"
 print_header
-check_csv_files "$directory_path"
+verify_num_event "$input_file" "$directory"
