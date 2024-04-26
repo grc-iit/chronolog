@@ -3,9 +3,8 @@
 
 #include <arpa/inet.h>
 #include <iostream>
-#include "KeeperIdCard.h"
+
 #include "GrapherIdCard.h"
-#include "KeeperRegistrationMsg.h"
 
 namespace chronolog
 {
@@ -17,12 +16,11 @@ class GrapherRegistrationMsg
     ServiceId adminServiceId;
 
 public:
+    GrapherRegistrationMsg(GrapherIdCard const& id_card = GrapherIdCard{0, 0, 0},
+                           ServiceId const& admin_service_id = ServiceId{0, 0, 0})
+        : grapherIdCard(id_card)
+        , adminServiceId(admin_service_id)
 
-
-    GrapherRegistrationMsg(GrapherIdCard const &id_card = GrapherIdCard{0, 0, 0}
-                          , ServiceId const &admin_service_id = ServiceId{0, 0, 0}) 
-            : grapherIdCard(id_card)
-            , adminServiceId(admin_service_id)
     {}
 
     ~GrapherRegistrationMsg() = default;

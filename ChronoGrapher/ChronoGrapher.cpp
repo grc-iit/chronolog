@@ -104,6 +104,7 @@ int main(int argc, char**argv)
     LOG_INFO("[ChronoGrapher] DataStoreAdminService started successfully.");
 
     // Instantiate GrapherRecordingService
+    chronolog::RecordingGroupId recording_group_id = confManager.GRAPHER_CONF.RECORDING_GROUP;
     std::string RECORDING_SERVICE_PROTOCOL = confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.PROTO_CONF;
     std::string RECORDING_SERVICE_IP = confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP;
     uint16_t RECORDING_SERVICE_PORT = confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT;
@@ -125,8 +126,8 @@ int main(int argc, char**argv)
     LOG_INFO("[ChronoGrapher] RecordingService started successfully.");
 
     // create GrapherIdCard to identify this Grapher process in ChronoVisor's Registry
-    chronolog::GrapherIdCard processIdCard(recording_endpoint.first, recording_endpoint.second
-                                         , recording_service_provider_id);
+    chronolog::GrapherIdCard processIdCard(recording_group_id, recording_endpoint.first, recording_endpoint.second,
+                                           recording_service_provider_id);
 
     std::stringstream process_id_string;
     process_id_string << processIdCard;
@@ -202,46 +203,47 @@ int main(int argc, char**argv)
         return (-1);
     }
 
-//    /// RegistryClient SetUp _____________________________________________________________________________________
-//    // create RegistryClient and register the new Recording service with the Registry
-//    std::string REGISTRY_SERVICE_NA_STRING =
-//            confManager.GRAPHER_CONF.VISOR_REGISTRY_SERVICE_CONF.PROTO_CONF + "://" +
-//            confManager.GRAPHER_CONF.VISOR_REGISTRY_SERVICE_CONF.IP + ":" +
-//            std::to_string(confManager.GRAPHER_CONF.VISOR_REGISTRY_SERVICE_CONF.BASE_PORT);
-//
-//    uint16_t REGISTRY_SERVICE_PROVIDER_ID = confManager.GRAPHER_CONF.VISOR_REGISTRY_SERVICE_CONF.SERVICE_PROVIDER_ID;
-//
-//    chronolog::GrapherRegistryClient* grapherRegistryClient = chronolog::GrapherRegistryClient::CreateRegistryClient(
-//            *dataAdminEngine, REGISTRY_SERVICE_NA_STRING, REGISTRY_SERVICE_PROVIDER_ID);
-//
-//    if(nullptr == grapherRegistryClient)
-//    {
-//        LOG_CRITICAL("[ChronoGrapher] failed to create RegistryClient; exiting");
-//        delete grapherRecordingService;
-//        delete keeperDataAdminService;
-//        return (-1);
-//    }
-//
-//    /// Registration with ChronoVisor __________________________________________________________________________________
-//    // try to register with chronoVisor a few times than log ERROR and exit...
-//    int registration_status = chronolog::CL_ERR_UNKNOWN;
-//    int retries = 5;
-//    while((chronolog::CL_SUCCESS != registration_status) && (retries > 0))
-//    {
-//        registration_status = grapherRegistryClient->send_register_msg(
-//                chronolog::GrapherRegistrationMsg(processIdCard, collectionServiceId));
-//        retries--;
-//    }
-//
-//    if(chronolog::CL_SUCCESS != registration_status)
-//    {
-//        LOG_CRITICAL("[ChronoGrapher] Failed to register with ChronoVisor after multiple attempts. Exiting.");
-//        delete grapherRegistryClient;
-//        delete grapherRecordingService;
-//        delete keeperDataAdminService;
-//        return (-1);
-//    }
-//    LOG_INFO("[ChronoGrapher] Successfully registered with ChronoVisor.");
+    /// RegistryClient SetUp _____________________________________________________________________________________
+    // create RegistryClient and register the new Recording service with the Registry
+    std::string REGISTRY_SERVICE_NA_STRING =
+            confManager.GRAPHER_CONF.VISOR_REGISTRY_SERVICE_CONF.PROTO_CONF + "://" +
+            confManager.GRAPHER_CONF.VISOR_REGISTRY_SERVICE_CONF.IP + ":" +
+            std::to_string(confManager.GRAPHER_CONF.VISOR_REGISTRY_SERVICE_CONF.BASE_PORT);
+
+    uint16_t REGISTRY_SERVICE_PROVIDER_ID = confManager.GRAPHER_CONF.VISOR_REGISTRY_SERVICE_CONF.SERVICE_PROVIDER_ID;
+
+    chronolog::GrapherRegistryClient* grapherRegistryClient = chronolog::GrapherRegistryClient::CreateRegistryClient(
+            *dataAdminEngine, REGISTRY_SERVICE_NA_STRING, REGISTRY_SERVICE_PROVIDER_ID);
+
+    if(nullptr == grapherRegistryClient)
+    {
+        LOG_CRITICAL("[ChronoGrapher] failed to create RegistryClient; exiting");
+        delete grapherRecordingService;
+        delete keeperDataAdminService;
+        return (-1);
+    }
+
+    /// Registration with ChronoVisor __________________________________________________________________________________
+    // try to register with chronoVisor a few times than log ERROR and exit...
+    int registration_status = chronolog::CL_ERR_UNKNOWN;
+    int retries = 5;
+    while((chronolog::CL_SUCCESS != registration_status) && (retries > 0))
+    {
+        registration_status = grapherRegistryClient->send_register_msg(
+                chronolog::GrapherRegistrationMsg(processIdCard, collectionServiceId));
+        sleep(5);
+        retries--;
+    }
+
+    if(chronolog::CL_SUCCESS != registration_status)
+    {
+        LOG_CRITICAL("[ChronoGrapher] Failed to register with ChronoVisor after multiple attempts. Exiting.");
+        delete grapherRegistryClient;
+        delete grapherRecordingService;
+        delete keeperDataAdminService;
+        return (-1);
+    }
+    LOG_INFO("[ChronoGrapher] Successfully registered with ChronoVisor.");
 
     /// Start data collection and extraction threads ___________________________________________________________________
     // services are successfully created and keeper process had registered with ChronoVisor
@@ -263,10 +265,10 @@ int main(int argc, char**argv)
         sleep(30);
     }
 
-//    /// Unregister from ChronoVisor ____________________________________________________________________________________
-//    // Unregister from the chronoVisor so that no new story requests would be coming
-//    grapherRegistryClient->send_unregister_msg(processIdCard);
-//    delete grapherRegistryClient;
+    /// Unregister from ChronoVisor ____________________________________________________________________________________
+    // Unregister from the chronoVisor so that no new story requests would be coming
+    grapherRegistryClient->send_unregister_msg(processIdCard);
+    delete grapherRegistryClient;
 
     /// Stop services and shut down ____________________________________________________________________________________
     LOG_INFO("[ChronoGrapher] Initiating shutdown procedures.");

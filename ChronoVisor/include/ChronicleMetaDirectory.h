@@ -32,17 +32,15 @@ public:
 
     int destroy_chronicle(const std::string &name);
 
-    //int create_story(std::string const& chronicle_name, const std::string& story_name,
-    //                 const std::unordered_map<std::string, std::string>& attrs);
     int destroy_story(std::string const &chronicle_name, const std::string &story_name);
 
     int
     acquire_story(chronolog::ClientId const &client_id, const std::string &chronicle_name, const std::string &story_name
-                  , const std::unordered_map <std::string, std::string> &attrs, int &flags, StoryId &, bool &);
+                  , const std::unordered_map <std::string, std::string> &attrs, int &flags, StoryId &);
 
     int
     release_story(chronolog::ClientId const &client_id, const std::string &chronicle_name, const std::string &story_name
-                  , StoryId &, bool &);
+                  , StoryId &);
 
     int get_chronicle_attr(std::string const &name, const std::string &key, std::string &value);
 
