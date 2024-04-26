@@ -104,7 +104,7 @@ int main(int argc, char**argv)
     LOG_INFO("[ChronoGrapher] DataStoreAdminService started successfully.");
 
     // Instantiate GrapherRecordingService
-    chronolog::RecordingGroupId recording_group_id = 7;
+    chronolog::RecordingGroupId recording_group_id = confManager.GRAPHER_CONF.RECORDING_GROUP;
     std::string RECORDING_SERVICE_PROTOCOL = confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.PROTO_CONF;
     std::string RECORDING_SERVICE_IP = confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP;
     uint16_t RECORDING_SERVICE_PORT = confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT;
