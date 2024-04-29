@@ -3,6 +3,7 @@
 #include <thallium.hpp>
 
 #include "chronolog_types.h"
+#include "chronolog_errcode.h"
 #include "KeeperIdCard.h"
 #include "CSVFileChunkExtractor.h"
 
@@ -44,6 +45,8 @@ int chronolog::CSVFileStoryChunkExtractor::processStoryChunk(StoryChunk*story_ch
         chunk_fstream << event << std::endl;
     }
     chunk_fstream.close();
-    LOG_INFO("[CSVFileStoryChunkExtractor] Finished processing StoryChunk. File={}", chunk_filename);
+    LOG_DEBUG("[CSVFileStoryChunkExtractor] Finished processing StoryChunk. File={}", chunk_filename);
+
+    return chronolog::CL_SUCCESS;
 }
 
