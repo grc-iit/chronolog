@@ -25,11 +25,13 @@ CLIENT_ARGS="--config ${CONF_FILE}"
 VISOR_HOSTS="${CONF_DIR}/hosts_visor"
 KEEPER_HOSTS="${CONF_DIR}/hosts_keeper"
 CLIENT_HOSTS="${CONF_DIR}/hosts_client"
-HOSTNAME_HS_NET_POSTFIX="-40g"
+HOSTNAME_HS_NET_SUFFIX="-40g"
 JOB_ID=""
 install=false
 deploy=false
+local=false
 reset=false
+verbose=false
 
 check_hosts_files() {
     echo -e "${INFO}Checking hosts files...${NC}"
@@ -49,6 +51,11 @@ check_hosts_files() {
     then
         echo -e "${ERR}${CLIENT_HOSTS} host file does not exist, exiting ...${NC}"
         exit 1
+    fi
+
+    if [[ "${verbose}" == "true" ]]
+    then
+        echo -e "${DEBUG}Check hosts files done${NC}"
     fi
 }
 
@@ -70,6 +77,11 @@ check_bin_files() {
     then
         echo -e "${ERR}${CLIENT_BIN} executable file does not exist, exiting ...${NC}"
         exit 1
+    fi
+
+    if [[ "${verbose}" == "true" ]]
+    then
+        echo -e "${DEBUG}Check binary files done${NC}"
     fi
 }
 
@@ -95,6 +107,11 @@ check_conf_files() {
     then
         echo -e "${ERR}mismatched VisorKeeperRegistryService conf in ${CONF_FILE}, exiting ...${NC}"
         exit 1
+    fi
+
+    if [[ "${verbose}" == "true" ]]
+    then
+        echo -e "${DEBUG}Check conf files done${NC}"
     fi
 }
 
@@ -141,16 +158,21 @@ copy_shared_libs() {
             copy_shared_libs_recursive ${lib} ${LIB_DIR}
         fi
     done
+
+    if [[ "${verbose}" == "true" ]]
+    then
+        echo -e "${DEBUG}Copy shared library done${NC}"
+    fi
 }
 
 get_host_ip() {
     local hostname=$1
     local host_ip=""
-    if [[ ${hostname} == *${HOSTNAME_HS_NET_POSTFIX} ]]
+    if [[ ${hostname} == *${HOSTNAME_HS_NET_SUFFIX} ]]
     then
-        host_ip=$(getent hosts ${hostname} | awk '{print $1}' | head -1)
+        host_ip=$(dig -4 ${hostname} | grep "^${hostname}" | awk '{print $5}')
     else
-        host_ip=$(getent hosts ${hostname}${HOSTNAME_HS_NET_POSTFIX} | awk '{print $1}' | head -1)
+        host_ip=$(dig -4 ${hostname}${HOSTNAME_HS_NET_SUFFIX} | grep "^${hostname}${HOSTNAME_HS_NET_SUFFIX}" | awk '{print $5}')
     fi
     echo "${host_ip}"
 }
@@ -168,17 +190,28 @@ update_visor_ip() {
     jq ".chrono_client.VisorClientPortalService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} > tmp.json && mv tmp.json ${CONF_FILE}
     jq ".chrono_visor.VisorKeeperRegistryService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} > tmp.json && mv tmp.json ${CONF_FILE}
     jq ".chrono_keeper.VisorKeeperRegistryService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} > tmp.json && mv tmp.json ${CONF_FILE}
+
+    if [[ "${verbose}" == "true" ]]
+    then
+        echo -e "${DEBUG}Update ChronoVisor IP done${NC}"
+    fi
 }
 
 generate_conf_for_each_keeper() {
     for keeper_host in $(cat ${KEEPER_HOSTS} | awk '{print $1}')
     do
+        remote_keeper_host_name=$(ssh ${keeper_host} hostname)
         keeper_ip=$(get_host_ip ${keeper_host})
-        echo -e "${INFO}Generating conf file for Keeper ${keeper_host} ...${NC}"
+        echo -e "${INFO}Generating conf file for ChronoKeeper ${remote_keeper_hostname} ...${NC}"
         jq ".chrono_keeper.KeeperDataStoreAdminService.rpc.service_ip = \"${keeper_ip}\"" ${CONF_FILE} > tmp.json && mv tmp.json ${CONF_FILE}
         jq ".chrono_keeper.KeeperRecordingService.rpc.service_ip = \"${keeper_ip}\"" ${CONF_FILE} > tmp.json && mv tmp.json ${CONF_FILE}
-        jq ".chrono_keeper.Logging.log.file = \"chronokeeper_logfile.txt.${keeper_host}\"" ${CONF_FILE} > tmp.json && mv tmp.json ${CONF_FILE}.${keeper_host}
+        jq ".chrono_keeper.Logging.log.file = \"chronokeeper_logfile.txt.${remote_keeper_hostname}\"" ${CONF_FILE} > tmp.json && mv tmp.json ${CONF_FILE}.${remote_keeper_hostname}
     done
+
+    if [[ "${verbose}" == "true" ]]
+    then
+        echo -e "${DEBUG}Generate conf file for ChronoKeepers done${NC}"
+    fi
 }
 
 install() {
@@ -194,7 +227,15 @@ install() {
 
     update_visor_ip
 
-    generate_conf_for_each_keeper
+    if [[ "${local}" == "false" ]]
+    then
+        generate_conf_for_each_keeper
+    fi
+
+    if [[ "${verbose}" == "true" ]]
+    then
+        echo -e "${DEBUG}Install done${NC}"
+    fi
 }
 
 deploy() {
@@ -202,77 +243,106 @@ deploy() {
 
     echo -e "${INFO}Deploying ...${NC}"
 
+    local hostname_suffix=""
+    local simple_output_grep_keyword=""
+
+    if [[ "${local}" == "false" ]]
+    then
+        # use hostname suffix conf file only on Ares
+        hostname_suffix=".\$(hostname)"
+        if [[ "${verbose}" == "false" ]]
+        then
+            # grep only on Ares with simple output
+            simple_output_grep_keyword="ares-"
+        fi
+    fi
+
     # launch Visor
-    echo -e "${DEBUG}Lauching ChronoVisor ...${NC}"
+    echo -e "${DEBUG}Launching ChronoVisor ...${NC}"
     VISOR_BIN="${VISOR_BIN_DIR}/${VISOR_BIN_FILE_NAME}"
     VISOR_ARGS="--config ${CONF_FILE}"
-    mpssh -f ${VISOR_HOSTS} "cd ${VISOR_BIN_DIR}; LD_LIBRARY_PATH=${LIB_DIR} nohup ${VISOR_BIN} ${VISOR_ARGS} > ${VISOR_BIN_FILE_NAME}.\$(hostname) 2>&1 &" | grep ares- 2>&1
+    mpssh -f ${VISOR_HOSTS} "cd ${VISOR_BIN_DIR}; LD_LIBRARY_PATH=${LIB_DIR} nohup ${VISOR_BIN} ${VISOR_ARGS} > ${VISOR_BIN_FILE_NAME}${hostname_suffix}.log 2>&1 &" | grep "${simple_output_grep_keyword}" 2>&1
 
     # launch Keeper
-    echo -e "${DEBUG}Lauching ChronoKeeper ...${NC}"
+    echo -e "${DEBUG}Launching ChronoKeeper ...${NC}"
     KEEPER_BIN="${KEEPER_BIN_DIR}/${KEEPER_BIN_FILE_NAME}"
-    KEEPER_ARGS="--config ${CONF_FILE}"
-    mpssh -f ${KEEPER_HOSTS} "cd ${KEEPER_BIN_DIR}; LD_LIBRARY_PATH=${LIB_DIR} nohup ${KEEPER_BIN} ${KEEPER_ARGS}.\$(hostname) > ${KEEPER_BIN_FILE_NAME}.\$(hostname) 2>&1 &" | grep ares- 2>&1
+    KEEPER_ARGS="--config ${CONF_FILE}${hostname_suffix}"
+    mpssh -f ${KEEPER_HOSTS} "cd ${KEEPER_BIN_DIR}; LD_LIBRARY_PATH=${LIB_DIR} nohup ${KEEPER_BIN} ${KEEPER_ARGS} > ${KEEPER_BIN_FILE_NAME}${hostname_suffix}.log 2>&1 &" | grep "${simple_output_grep_keyword}" 2>&1
 
     # launch Client
-    echo -e "${DEBUG}Lauching Client ...${NC}"
+    echo -e "${DEBUG}Launching Client ...${NC}"
     CLIENT_BIN="${CLIENT_BIN_DIR}/${CLIENT_BIN_FILE_NAME}"
-    CLIENT_ARGS="--config ${CONF_FILE}"
-    mpssh -f ${CLIENT_HOSTS} "cd ${CLIENT_BIN_DIR}; LD_LIBRARY_PATH=${LIB_DIR} nohup ${CLIENT_BIN} ${CLIENT_ARGS}.\$(hostname) > ${CLIENT_BIN_FILE_NAME}.\$(hostname) 2>&1 &" | grep ares- 2>&1
+    CLIENT_ARGS="--config ${CONF_FILE}${hostname_suffix}"
+    mpssh -f ${CLIENT_HOSTS} "cd ${CLIENT_BIN_DIR}; LD_LIBRARY_PATH=${LIB_DIR} nohup ${CLIENT_BIN} ${CLIENT_ARGS} > ${CLIENT_BIN_FILE_NAME}${hostname_suffix}.log 2>&1 &" | grep "${simple_output_grep_keyword}" 2>&1
 
     # check Visor
-    echo -e "${DEBUG}Checking ChronoVisor ...${NC}"
-    mpssh -f ${VISOR_HOSTS} "pgrep -fla ${VISOR_BIN_FILE_NAME}" | grep ares- 2>&1
+    echo -e "${DEBUG}Running ChronoVisor (only one is expected):${NC}"
+    mpssh -f ${VISOR_HOSTS} "pgrep -fla ${VISOR_BIN_FILE_NAME}" | grep -v ssh | grep "${simple_output_grep_keyword}" 2>&1
 
     # check Keeper
-    echo -e "${DEBUG}Checking ChronoKeeper ...${NC}"
-    mpssh -f ${KEEPER_HOSTS} "pgrep -fla ${KEEPER_BIN_FILE_NAME}" | grep ares- 2>&1
+    echo -e "${DEBUG}Running ChronoKeepers:${NC}"
+    mpssh -f ${KEEPER_HOSTS} "pgrep -fla ${KEEPER_BIN_FILE_NAME}" | grep -v ssh | grep "${simple_output_grep_keyword}" 2>&1
 
     # check Client
-    echo -e "${DEBUG}Checking Client ...${NC}"
-    mpssh -f ${CLIENT_HOSTS} "pgrep -fla ${CLIENT_BIN_FILE_NAME}" | grep ares- 2>&1
+    echo -e "${DEBUG}Running Client (may ended already):${NC}"
+    mpssh -f ${CLIENT_HOSTS} "pgrep -fla ${CLIENT_BIN_FILE_NAME}" | grep -v ssh | grep "${simple_output_grep_keyword}" 2>&1
+
+    if [[ "${verbose}" == "true" ]]
+    then
+        echo -e "${DEBUG}Deploy done${NC}"
+    fi
 }
 
 reset() {
+    echo -e "${INFO}Resetting ...${NC}"
+
     if [[ -z ${JOB_ID} ]]
     then
-        echo -e "${INFO}No JOB_ID provided, use hosts files in ${CONF_DIR}${NC}"
+        echo -e "${DEBUG}No JOB_ID provided, use hosts files in ${CONF_DIR}${NC}"
         check_hosts_files
     else
-        echo -e "${INFO}JOB_ID is provided, prepare hosts file first${NC}"
+        echo -e "${DEBUG}JOB_ID is provided, prepare hosts file first${NC}"
         prepare_hosts
     fi
 
-    echo -e "${INFO}Resetting ...${NC}"
+    if [[ "${local}" == "false" && "${verbose}" == "false" ]]
+    then
+        # grep only on Ares with simple output
+        simple_output_grep_keyword="ares-"
+    fi
 
     # kill Visor
     echo -e "${DEBUG}Killing ChronoVisor ...${NC}"
-    mpssh -f ${VISOR_HOSTS} "pkill --signal 9 -f ${VISOR_BIN_FILE_NAME}" | grep ares- 2>&1
+    mpssh -f ${VISOR_HOSTS} "pkill --signal 9 -ef ${VISOR_BIN_FILE_NAME}" | grep -v ssh | grep "${simple_output_grep_keyword}" 2>&1
 
     # kill Keeper
     echo -e "${DEBUG}Killing ChronoKeeper ...${NC}"
-    mpssh -f ${KEEPER_HOSTS} "pkill --signal 9 -f ${KEEPER_BIN_FILE_NAME}" | grep ares- 2>&1
+    mpssh -f ${KEEPER_HOSTS} "pkill --signal 9 -ef ${KEEPER_BIN_FILE_NAME}" | grep -v ssh | grep "${simple_output_grep_keyword}" 2>&1
 
     # kill Client
     echo -e "${DEBUG}Killing Client ...${NC}"
-    mpssh -f ${CLIENT_HOSTS} "pkill --signal 9 -f ${CLIENT_BIN_FILE_NAME}" | grep ares- 2>&1
+    mpssh -f ${CLIENT_HOSTS} "pkill --signal 9 -ef ${CLIENT_BIN_FILE_NAME}" | grep -v ssh | grep "${simple_output_grep_keyword}" 2>&1
 
     # check Visor
-    echo -e "${DEBUG}Checking ChronoVisor ...${NC}"
-    mpssh -f ${VISOR_HOSTS} "pgrep -fla ${VISOR_BIN_FILE_NAME}" | grep ares- 2>&1
+    echo -e "${DEBUG}ChronoVisor left behind:${NC}"
+    mpssh -f ${VISOR_HOSTS} "pgrep -fla ${VISOR_BIN_FILE_NAME}" | grep -v ssh | grep "${simple_output_grep_keyword}" 2>&1
 
     # check Keeper
-    echo -e "${DEBUG}Checking ChronoKeeper ...${NC}"
-    mpssh -f ${KEEPER_HOSTS} "pgrep -fla ${KEEPER_BIN_FILE_NAME}" | grep ares- 2>&1
+    echo -e "${DEBUG}ChronoKeeper left behind:${NC}"
+    mpssh -f ${KEEPER_HOSTS} "pgrep -fla ${KEEPER_BIN_FILE_NAME}" | grep -v ssh | grep "${simple_output_grep_keyword}" 2>&1
 
     # check Client
-    echo -e "${DEBUG}Checking Client ...${NC}"
-    mpssh -f ${CLIENT_HOSTS} "pgrep -fla ${CLIENT_BIN_FILE_NAME}" | grep ares- 2>&1
+    echo -e "${DEBUG}Client left behind:${NC}"
+    mpssh -f ${CLIENT_HOSTS} "pgrep -fla ${CLIENT_BIN_FILE_NAME}" | grep -v ssh | grep "${simple_output_grep_keyword}" 2>&1
 
+    if [[ "${verbose}" == "true" ]]
+    then
+        echo -e "${DEBUG}Reset done${NC}"
+    fi
 }
 
 parse_args() {
-    TEMP=$(getopt -o w:v:k:c:s:p:t:f:j:hidr --long work_dir:visor:,keeper:,client:,visor_hosts:,keeper_hosts:,client_hosts:,conf_file:,job_id:,help,install,deploy,reset -- "$@")
+    TEMP=$(getopt -o w:v:k:c:s:p:t:f:j:hidlre --long work_dir:visor:,keeper:,client:,visor_hosts:,keeper_hosts:,client_hosts:,conf_file:,job_id:,help,install,deploy,local,reset,verbose -- "$@")
 
     if [ $? != 0 ] ; then echo -e "${ERR}Terminating ...${NC}" >&2 ; exit 1 ; fi
 
@@ -341,8 +411,15 @@ parse_args() {
             -d|--deploy)
                 deploy=true
                 shift ;;
+            -l|--local)
+                local=true
+                HOSTNAME_HS_NET_SUFFIX=""
+                shift ;;
             -r|--reset)
                 reset=true
+                shift ;;
+            -e|--verbose)
+                verbose=true
                 shift ;;
             --)
                 shift; break ;;
@@ -372,6 +449,8 @@ parse_args() {
 }
 
 prepare_hosts() {
+    echo -e "${INFO}Preparing hosts files ...${NC}"
+
     if [ -n "$SLURM_JOB_ID" ]
     then
         echo -e "${DEBUG}Launched as a SLURM job, getting hosts from job ${SLURM_JOB_ID} ...${NC}"
@@ -399,21 +478,28 @@ prepare_hosts() {
         fi
         check_hosts_files
     fi
+
+    if [[ "${verbose}" == "true" ]]
+    then
+        echo -e "${DEBUG}Prepare hosts file done${NC}"
+    fi
 }
 
 usage() {
-    echo "Usage: $0 -i|--install Prepare ChronoLog deployment
-                               -d|--deploy Start ChronoLog deployment
-                               -r|--reset Reset ChronoLog deployment
-                               -w|--work_dir WORK_DIR
-                               -v|--visor VISOR_BIN
-                               -k|--keeper KEEPER_BIN
-                               -c|--client CLIENT_BIN
-                               -s|--visor_hosts VISOR_HOSTS
-                               -p|--keeper_hosts KEEPER_HOSTS
-                               -r|--client_hosts CLIENT_HOSTS
-                               -f|--conf_file CONF_FILE
-                               -j|--job_id JOB_ID
+    echo "Usage: $0 -i|--install Re-prepare ChronoLog deployment (default: false)
+                               -d|--deploy Start ChronoLog deployment (default: false)
+                               -r|--reset Reset/cleanup ChronoLog deployment (default: false)
+                               -l|--local Local install/deployment/reset (default: false)
+                               -w|--work_dir WORK_DIR (default: ~/chronolog)
+                               -v|--visor VISOR_BIN (default: work_dir/bin/chronovisor_server)
+                               -k|--keeper KEEPER_BIN (default: work_dir/bin/chrono_keeper)
+                               -c|--client CLIENT_BIN (default: work_dir/bin/client_lib_multi_storytellers)
+                               -s|--visor_hosts VISOR_HOSTS (default: work_dir/conf/hosts_visor)
+                               -p|--keeper_hosts KEEPER_HOSTS (default: work_dir/conf/hosts_keeper)
+                               -t|--client_hosts CLIENT_HOSTS (default: work_dir/conf/hosts_client)
+                               -f|--conf_file CONF_FILE (default: work_dir/conf/default_conf.json)
+                               -j|--job_id JOB_ID (default: "")
+                               -e|--verbose Enable verbose output (default: false)
                                -h|--help Print this page"
     exit 1
 }

@@ -7,15 +7,13 @@
 #include <array>
 #include <string>
 #include <thallium/serialization/stl/vector.hpp>
-#include <thallium/serialization/stl/string.hpp>
-#include <thallium/serialization/stl/array.hpp>
 #include <thread>
 #include <algorithm>
 #include <unistd.h>
 #include <margo.h>
 #include "log.h"
 
-#define MAX_BULK_MEM_SIZE (128 * 1024 * 1024)
+#define MAX_BULK_MEM_SIZE (1 * 1024 * 1024)
 
 namespace tl = thallium;
 
@@ -38,6 +36,13 @@ int main(int argc, char**argv)
         exit(1);
     }
 
+    int result = Logger::initialize("console", "thallium_server.log", spdlog::level::debug, "thallium_server", 1048576
+                                    , 5, spdlog::level::debug);
+    if(result == 1)
+    {
+        exit(EXIT_FAILURE);
+    }
+
     std::vector <std::thread> server_thrd_vec;
     server_thrd_vec.reserve(nPorts);
 
@@ -53,15 +58,12 @@ int main(int argc, char**argv)
 
     std::vector <tl::managed <tl::xstream>> ess;
     LOG_INFO("Vector of streams created");
-    /*std::cout << "vector of streams created" << std::endl;*/
     tl::managed <tl::pool> myPool = tl::pool::create(tl::pool::access::spmc);
     LOG_INFO("Pool created");
-    /*std::cout << "pool created" << std::endl;*/
     for(int j = 0; j < nStreams; j++)
     {
         tl::managed <tl::xstream> es = tl::xstream::create(tl::scheduler::predef::deflt, *myPool);
         LOG_INFO("A new stream is created");
-        /*std::cout << "a new stream is created" << std::endl;*/
         ess.push_back(std::move(es));
     }
 
@@ -75,16 +77,13 @@ int main(int argc, char**argv)
         std::string port = address.substr(address.rfind(':') + 1);
         int new_port = stoi(port) + j;
         LOG_INFO("Newly generated port to use: {}", new_port);
-        /*std::cout << "newly generated port to use: " << new_port << std::endl;*/
         std::string new_addr_str = host_ip + ":" + std::to_string(new_port);
         LOG_INFO("engine no.{}@{}", j, new_addr_str);
-        /*std::cout << "engine no." << j << "@" << new_addr_str << std::endl;*/
 
-        margo_instance_id mid = margo_init(new_addr_str.c_str(), MARGO_SERVER_MODE, 0, nStreams);
+        margo_instance_id mid = margo_init(new_addr_str.c_str(), MARGO_SERVER_MODE, 0, (int)nStreams);
         if(mid == MARGO_INSTANCE_NULL)
         {
             LOG_ERROR("Error: margo_init()");
-            /*std::cerr << "Error: margo_init()" << std::endl;*/
             exit(-1);
         }
 
@@ -93,7 +92,6 @@ int main(int argc, char**argv)
         if(hret != HG_SUCCESS)
         {
             LOG_ERROR("Error: margo_addr_self()");
-            /*std::cerr << "Error: margo_addr_self()" << std::endl;*/
             margo_finalize(mid);
             exit(-1);
         }
@@ -111,19 +109,16 @@ int main(int argc, char**argv)
 
         tl::engine myEngine(mid);
         LOG_INFO("Engine created and running@{} ...", std::string(myEngine.self()));
-        /*std::cout << "engine created and running@" << std::string(myEngine.self()) << " ..." << std::endl;*/
 
         // Define send/recv version
         LOG_INFO("Defining RPC routines in send/recv mode");
-        /*std::cout << "Defining RPC routines in send/recv mode" << std::endl;*/
         std::function <void(const tl::request &, std::vector <std::byte> &)> repeater = [](const tl::request &req
                                                                                            , std::vector <std::byte> &data)
         {
-            std::vector <std::byte> mem_vec(MAX_BULK_MEM_SIZE);
+            std::vector <std::byte> mem_vec(data.size());
             std::copy(data.begin(), data.end(), mem_vec.begin());
-            LOG_INFO("Received {} bytes of data in send/recv mode", data.size());
-            /*std::cout << "Received " << data.size() << " bytes of data in send/recv mode" << std::endl;*/
-
+            LOG_DEBUG("Received {} bytes of data in send/recv mode", data.size());
+            req.respond(mem_vec);
         };
         myEngine.define("repeater", repeater, 0, *myPool);
 
@@ -132,34 +127,29 @@ int main(int argc, char**argv)
         /*std::cout << "Defining RPC routines in RDMA mode" << std::endl;*/
         std::function <void(const tl::request &, tl::bulk &)> f = [j, &engine_vec](const tl::request &req, tl::bulk &b)
         {
-            LOG_INFO("RDMA rpc invoked");
-            /*std::cout << "RDMA rpc invoked" << std::endl;*/
+            LOG_DEBUG("RDMA rpc invoked");
             tl::endpoint ep = req.get_endpoint();
-            LOG_INFO("endpoint obtained");
-            /*std::cout << "endpoint obtained" << std::endl;*/
+            LOG_DEBUG("endpoint obtained");
             std::vector <char> mem_vec(MAX_BULK_MEM_SIZE);
             mem_vec.reserve(MAX_BULK_MEM_SIZE);
             mem_vec.resize(MAX_BULK_MEM_SIZE);
             std::vector <std::pair <void*, std::size_t>> segments(1);
             segments[0].first = (void*)(&mem_vec[0]);
             segments[0].second = mem_vec.size();
-            LOG_INFO("RDMA memory prepared, size: {}", mem_vec.size());
-            /*std::cout << "RDMA memory prepared, size: " << mem_vec.size() << std::endl;*/
+            LOG_DEBUG("RDMA memory prepared, size: {}", mem_vec.size());
             tl::engine myEngine = engine_vec.at(j);
             tl::bulk local = myEngine.expose(segments, tl::bulk_mode::write_only);
-            LOG_INFO("RDMA memory exposed");
-            /*std::cout << "RDMA memory exposed" << std::endl;*/
+            LOG_DEBUG("RDMA memory exposed");
             b.on(ep) >> local;
-            LOG_INFO("Received {} bytes of data in RDMA mode", b.size());
-            /*std::cout << "Received " << b.size() << " bytes of data in RDMA mode" << std::endl;*/
+            LOG_DEBUG("Received {} bytes of data in RDMA mode", b.size());
             //for (auto c : mem_vec) std::cout << c;
             //std::cout << std::endl;
-            req.respond();
+            req.respond(b.size());
         };
         myEngine.define("rdma_put", f);//.disable_response();
 
         engine_vec.emplace_back(std::move(myEngine));
-        mid_vec.emplace_back(std::move(mid));
+        mid_vec.emplace_back(mid);
     }
     for(auto engine: engine_vec)
         engine.wait_for_finalize();

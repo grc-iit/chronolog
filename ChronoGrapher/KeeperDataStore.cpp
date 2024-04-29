@@ -91,7 +91,8 @@ int chronolog::KeeperDataStore::stopStoryRecording(chronolog::StoryId const &sto
 
 void chronolog::KeeperDataStore::collectIngestedEvents()
 {
-    LOG_DEBUG("[KeeperDataStore] Initiating collection of ingested events. Current state={}, Active StoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}"
+    LOG_DEBUG("[KeeperDataStore] Initiating collection of ingested story chunks. Current state={}, Active "
+              "StoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}"
          , state, theMapOfStoryPipelines.size(), pipelinesWaitingForExit.size(), tl::thread::self_id());
     theIngestionQueue.drainOrphanChunks();
 

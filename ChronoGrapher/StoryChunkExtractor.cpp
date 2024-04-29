@@ -21,7 +21,6 @@ void chronolog::StoryChunkExtractorBase::startExtractionThreads(int stream_count
     }
 
     extractorState = RUNNING;
-    LOG_DEBUG("[StoryChunkExtractionBase] Started extraction threads.");
 
     for(int i = 0; i < stream_count; ++i)
     {
@@ -35,6 +34,7 @@ void chronolog::StoryChunkExtractorBase::startExtractionThreads(int stream_count
                                                                                                    { p->drainExtractionQueue(); });
         extractionThreads.push_back(std::move(th));
     }
+    LOG_DEBUG("[StoryChunkExtractionBase] Started extraction threads.");
 }
 //////////////////////////////
 

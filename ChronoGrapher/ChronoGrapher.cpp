@@ -24,7 +24,7 @@ service_endpoint_from_dotted_string(std::string const &ip_string, int port, std:
     // we will be using a combination of the uint32_t representation of the service IP address
     // and uint16_t representation of the port number
     // NOTE: both IP and port values in the IdCard are in the host byte order, not the network order)
-    // to identfy the Chrono process
+    // to identify the Chrono process
 
     struct sockaddr_in sa;
     // translate the recording service dotted IP string into 32bit network byte order representation
@@ -81,7 +81,7 @@ int main(int argc, char**argv)
     }
     LOG_INFO("Running ChronoGrapher ");
 
-    // Instantiate  MemoryDataStore
+    // Instantiate MemoryDataStore
     // instantiate DataStoreAdminService
 
     /// DataStoreAdminService setup ____________________________________________________________________________________
@@ -104,10 +104,11 @@ int main(int argc, char**argv)
     LOG_INFO("[ChronoGrapher] DataStoreAdminService started successfully.");
 
     // Instantiate GrapherRecordingService
-    std::string RECORDING_SERVICE_PROTOCOL = confManager.GRAPHER_CONF.RECORDING_SERVICE_CONF.PROTO_CONF;
-    std::string RECORDING_SERVICE_IP = confManager.GRAPHER_CONF.RECORDING_SERVICE_CONF.IP;
-    uint16_t RECORDING_SERVICE_PORT = confManager.GRAPHER_CONF.RECORDING_SERVICE_CONF.BASE_PORT;
-    uint16_t recording_service_provider_id = confManager.GRAPHER_CONF.RECORDING_SERVICE_CONF.SERVICE_PROVIDER_ID;
+    chronolog::RecordingGroupId recording_group_id = confManager.GRAPHER_CONF.RECORDING_GROUP;
+    std::string RECORDING_SERVICE_PROTOCOL = confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.PROTO_CONF;
+    std::string RECORDING_SERVICE_IP = confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP;
+    uint16_t RECORDING_SERVICE_PORT = confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT;
+    uint16_t recording_service_provider_id = confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.SERVICE_PROVIDER_ID;
 
     std::string RECORDING_SERVICE_NA_STRING =
             std::string(RECORDING_SERVICE_PROTOCOL) + "://" + std::string(RECORDING_SERVICE_IP) + ":" +
@@ -125,14 +126,14 @@ int main(int argc, char**argv)
     LOG_INFO("[ChronoGrapher] RecordingService started successfully.");
 
     // create GrapherIdCard to identify this Grapher process in ChronoVisor's Registry
-    chronolog::GrapherIdCard processIdCard(recording_endpoint.first, recording_endpoint.second
-                                         , recording_service_provider_id);
+    chronolog::GrapherIdCard processIdCard(recording_group_id, recording_endpoint.first, recording_endpoint.second,
+                                           recording_service_provider_id);
 
     std::stringstream process_id_string;
     process_id_string << processIdCard;
     LOG_INFO("[ChronoGrapher] GrapherIdCard: {}", process_id_string.str());
 
-    // Instantiate  MemoryDataStore & ExtractorModule
+    // Instantiate MemoryDataStore & ExtractorModule
     chronolog::ChunkIngestionQueue ingestionQueue;
     std::string csv_files_directory = confManager.GRAPHER_CONF.EXTRACTOR_CONF.story_files_dir;
 
@@ -230,6 +231,7 @@ int main(int argc, char**argv)
     {
         registration_status = grapherRegistryClient->send_register_msg(
                 chronolog::GrapherRegistrationMsg(processIdCard, collectionServiceId));
+        sleep(5);
         retries--;
     }
 
@@ -244,8 +246,8 @@ int main(int argc, char**argv)
     LOG_INFO("[ChronoGrapher] Successfully registered with ChronoVisor.");
 
     /// Start data collection and extraction threads ___________________________________________________________________
-    // services are successfulley created and keeper process had registered with ChronoVisor
-    // start all dataColelction and Extraction threads...
+    // services are successfully created and keeper process had registered with ChronoVisor
+    // start all dataCollection and Extraction threads...
     tl::abt scope;
     theDataStore.startDataCollection(3);
     // start extraction streams & threads
@@ -278,7 +280,7 @@ int main(int argc, char**argv)
     // Shutdown extraction module
     // drain extractionQueue and stop extraction xStreams
     storyExtractor.shutdownExtractionThreads();
-    // these are not probably needed as thalium handles the engine finalization...
+    // these are not probably needed as thallium handles the engine finalization...
     //  recordingEngine.finalize();
     //  collectionEngine.finalize();
     delete recordingEngine;
