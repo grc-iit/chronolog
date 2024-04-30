@@ -15,7 +15,8 @@ class Chronicle
 public:
     std::string name; ///< The name of the Chronicle.
     std::unordered_map <std::string, std::string> attributes; ///< Attributes associated with the Chronicle.
-    std::vector <std::shared_ptr <StoryHandle>> stories; ///< Vector of stories in the Chronicle.
+    std::unordered_map <std::string, std::shared_ptr <StoryHandle>> stories; ///< Map of stories in the Chronicle, keyed by story name.
+    //std::vector <std::shared_ptr <StoryHandle>> stories; ///< Vector of stories in the Chronicle.
 
     /**
      * @brief Constructs a new Chronicle object.

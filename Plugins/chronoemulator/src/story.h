@@ -2,6 +2,7 @@
 #define CHRONOEMULATOR_STORY_H
 
 #include "vector"
+#include <unordered_map>
 
 namespace chronoemulator
 {
@@ -15,7 +16,8 @@ class StoryHandle
 {
 public:
     std::string storyName; ///< The name of the story.
-    std::vector <std::pair <uint64_t, std::string>> events; ///< A list of events and their timestamps.
+    //std::vector <std::pair <uint64_t, std::string>> events; ///< A list of events and their timestamps.
+    std::unordered_map<uint64_t, std::vector<std::string>> events; ///< A map of timestamps to lists of events.
     bool acquired = false; ///< Flag indicating if the story is currently acquired.
 
     /**

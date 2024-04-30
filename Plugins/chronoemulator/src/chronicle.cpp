@@ -10,79 +10,53 @@ Chronicle::Chronicle(const std::string &name, const std::unordered_map <std::str
 
 int Chronicle::addStory(const std::string &storyName)
 {
-    // Check if a story with the same name already exists
-    auto it = std::find_if(stories.begin(), stories.end(), [&storyName](
-            const std::shared_ptr <StoryHandle> &existingStory)
-    {
-        return existingStory->storyName == storyName;
-    });
-
-    // If a story with the same name does not exist, create and add the new story
+    auto it = stories.find(storyName);
     if(it == stories.end())
     {
+        // If a story with the same name does not exist, create and add the new story
         std::shared_ptr <StoryHandle> newStory = std::make_shared <StoryHandle>(storyName);
-        stories.push_back(newStory);
+        stories.emplace(storyName, newStory);
         return 0; // Success
     }
     else
     {
-        // A story with the same name already exists, error
-        return -1; // Error
+        return -1; // A story with the same name already exists, error
     }
+
 }
 
 int Chronicle::deleteStory(const std::string &storyName)
 {
-    auto it = std::remove_if(stories.begin(), stories.end(), [storyName](const std::shared_ptr <StoryHandle> &story)
+    // Check if a story with the specified name exists and erase it
+    if (stories.erase(storyName) == 1)
     {
-        return story->storyName == storyName; // Compare against storyName instead of getId()
-    });
-
-    if(it != stories.end())
-    {
-        stories.erase(it, stories.end());
-        it->reset();
         return 0; // Story found and deleted
     }
-
     return -1; // Story not found
 }
 
 bool Chronicle::storyExists(const std::string &story_name) const
 {
-    auto it = std::find_if(stories.begin(), stories.end(), [&story_name](const std::shared_ptr <StoryHandle> &story)
-    {
-        return story->storyName == story_name;
-    });
-
-    return it != stories.end();
+    return stories.find(story_name) != stories.end();
 }
 
 StoryHandle*Chronicle::acquireStory(const std::string &story_name)
 {
-    auto it = std::find_if(stories.begin(), stories.end(), [&story_name](const std::shared_ptr <StoryHandle> &story)
+    auto it = stories.find(story_name);
+    if (it != stories.end() && !it->second->acquired)
     {
-        return story->storyName == story_name;
-    });
-
-    if(it != stories.end() && !(*it)->acquired)
-    {
-        (*it)->acquired = true;
-        return it->get();
+        it->second->acquired = true;
+        return it->second.get();
     }
     return nullptr;
 }
 
 int Chronicle::releaseStory(const std::string &story_name)
 {
-    auto it = std::find_if(stories.begin(), stories.end(), [&story_name](const std::shared_ptr <StoryHandle> &story)
+    auto it = stories.find(story_name);
+    if (it != stories.end() && it->second->acquired)
     {
-        return story->storyName == story_name;
-    });
-
-    if(it != stories.end() && (*it)->acquired)
-    {
-        (*it)->acquired = false;
+        it->second->acquired = false;
         return 0;
     }
     return -1;
