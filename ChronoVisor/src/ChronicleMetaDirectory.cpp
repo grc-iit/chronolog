@@ -171,53 +171,6 @@ int ChronicleMetaDirectory::destroy_chronicle(const std::string &name)
     }
 }
 
-/**
- * Create a Story
- * @param chronicle_name: name of the Chronicle that the Story belongs to
- * @param story_name: name of the Story
- * @param attrs: attributes associated with the Story
- * @return CL_SUCCESS if succeed to create the Story \n
- *         CL_ERR_NOT_EXIST if the Chronicle does not exist \n
- *         CL_ERR_STORY_EXISTS if a Story with the same name already exists \n
- *         CL_ERR_UNKNOWN otherwise
- */
-/*int ChronicleMetaDirectory::create_story(std::string const& chronicle_name,
-                                         const std::string &story_name,
-                                         const std::unordered_map<std::string, std::string> &attrs) {
-    LOG_DEBUG("creating Story name=%s in Chronicle name=%s", story_name.c_str(), chronicle_name.c_str());
-    std::chrono::steady_clock::time_point t1, t2;
-    t1 = std::chrono::steady_clock::now();
-    std::lock_guard<std::mutex> chronicleMapLock(g_chronicleMetaDirectoryMutex_);
-    // First check if Chronicle exists, fail if false 
-    uint64_t cid;
-//    auto name2IdRecord = chronicleName2IdMap_->find(chronicle_name);
-//    if (name2IdRecord != chronicleName2IdMap_->end()) {
-//        cid = name2IdRecord->second;
-    cid = CityHash64(chronicle_name.c_str(), chronicle_name.length());
-    auto chronicleMapRecord = chronicleMap_->find(cid);
-    if (chronicleMapRecord != chronicleMap_->end()) {
-        Chronicle *pChronicle = chronicleMap_->find(cid)->second;
-        LOG_DEBUG("Chronicle@%p", &(*pChronicle));
-        //TODO: check if the story exists and handle it gracefully
-        uint64_t sid = pChronicle->getStoryId(story_name);
-        if (sid> 0) {
-            LOG_DEBUG("StoryID=%lu name=%s exists", sid, story_name.c_str());
-            return CL_ERR_STORY_EXISTS;
-        }
-        else
-        {
-        CL_Status res = pChronicle->addStory(chronicle_name, cid, story_name, attrs);
-        t2 = std::chrono::steady_clock::now();
-        std::chrono::duration<double, std::nano> duration = (t2 - t1);
-        LOG_DEBUG("time in %s: %lf ns", __FUNCTION__, duration.count());
-        return res;
-        }
-    } else {
-        LOG_DEBUG("Chronicle name=%s does not exist", chronicle_name.c_str());
-        return CL_ERR_NOT_EXIST;
-    }
-}
-*/
 
 /**
  * Destroy a Story
@@ -285,7 +238,6 @@ int ChronicleMetaDirectory::destroy_story(std::string const &chronicle_name, con
  * @param story_name: name of the Story
  * @param flags: flags
  * @param story_id to populate with the story_id assigned to the story
- * @param notify_keepers , bool value that would be set to true if this is the first client to acquire the story
  * @return CL_SUCCESS if succeed to destroy the Story \n
  *         CL_ERR_NOT_EXIST if the Chronicle does not exist \n
  *         CL_ERR_UNKNOWN otherwise
@@ -293,7 +245,7 @@ int ChronicleMetaDirectory::destroy_story(std::string const &chronicle_name, con
 int ChronicleMetaDirectory::acquire_story(chl::ClientId const &client_id, const std::string &chronicle_name
                                           , const std::string &story_name
                                           , const std::unordered_map <std::string, std::string> &attrs, int &flags
-                                          , StoryId &story_id, bool &notify_keepers)
+                                          , StoryId &story_id)
 {
     LOG_DEBUG("[ChronicleMetaDirectory] ClientID={} acquiring StoryName={} in ChronicleName={} with Flags={}", client_id
          , story_name.c_str(), chronicle_name.c_str(), flags);
@@ -332,7 +284,6 @@ int ChronicleMetaDirectory::acquire_story(chl::ClientId const &client_id, const 
 
     /* All checks passed, manipulate metadata */
     story_id = pStory->getSid();
-    notify_keepers = (pStory->getAcquisitionCount() == 0 ? true : false);
 
     /* Increment AcquisitionCount */
     pStory->incrementAcquisitionCount();
@@ -350,14 +301,13 @@ int ChronicleMetaDirectory::acquire_story(chl::ClientId const &client_id, const 
  * @param story_name: name of the Story
  * @param flags: flags
  * @param story_id to populate with the story_id assigned to the story
- * @param notify_keepers , bool value that would be set to true if this is the last client to release the story
  * @return CL_SUCCESS if succeed to destroy the Story \n
  *         CL_ERR_NOT_EXIST if the Chronicle does not exist \n
  *         CL_ERR_UNKNOWN otherwise
  */
 //TO_DO return acquisition_count after the story has been released
 int ChronicleMetaDirectory::release_story(chl::ClientId const &client_id, const std::string &chronicle_name
-                                          , const std::string &story_name, StoryId &story_id, bool &notify_keepers)
+                                          , const std::string &story_name, StoryId &story_id)
 {
     LOG_DEBUG("[ChronicleMetaDirectory] ClientID={} releasing StoryName={} in ChronicleName={}", client_id
          , story_name.c_str(), chronicle_name.c_str());
@@ -389,7 +339,6 @@ int ChronicleMetaDirectory::release_story(chl::ClientId const &client_id, const 
             /* Decrement AcquisitionCount */
             pStory->decrementAcquisitionCount();
             story_id = pStory->getSid();
-            notify_keepers = (pStory->getAcquisitionCount() == 0 ? true : false);
             /* Remove this client from acquirerClientList of the Story */
             pStory->removeAcquirerClient(client_id);
             /* Remove this Story from acquiredStoryMap for this client */

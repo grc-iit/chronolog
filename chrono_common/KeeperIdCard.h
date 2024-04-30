@@ -5,6 +5,8 @@
 
 #include <iostream>
 
+#include "ServiceId.h"
+
 // this class wrapps ChronoKeeper Process identification 
 // that will be used by all the ChronoLog Processes 
 // to both identofy the Keepr process and create RPC client channels 
@@ -20,14 +22,12 @@ typedef uint32_t        in_addr_t;
 typedef uint16_t        in_port_t;
 typedef std::pair <in_addr_t, in_port_t> service_endpoint;
 
-// KeeperGroup is the logical grouping of KeeperProcesses
-typedef uint64_t    KeeperGroupId;
-
+typedef uint32_t KeeperGroupId;
 
 class KeeperIdCard
 {
 
-    uint64_t keeper_group_id;
+    RecordingGroupId keeper_group_id;
     uint32_t ip_addr; //IP address as uint32_t in host byte order
     uint16_t port;    //port number as uint16_t in host byte order
     uint16_t tl_provider_id; // id of thallium service provider
@@ -35,7 +35,7 @@ class KeeperIdCard
 public:
 
 
-    KeeperIdCard( uint64_t group_id = 0, uint32_t addr = 0, uint16_t a_port=0, uint16_t provider_id=0)
+    KeeperIdCard( uint32_t group_id = 0, uint32_t addr = 0, uint16_t a_port=0, uint16_t provider_id=0)
         : keeper_group_id(group_id), ip_addr(addr), port(a_port),tl_provider_id(provider_id)
     {}
 
@@ -45,7 +45,7 @@ public:
 
     ~KeeperIdCard()=default;
 
-    uint64_t getGroupId() const { return keeper_group_id; }
+    RecordingGroupId getGroupId() const { return keeper_group_id; }
     uint32_t getIPaddr() const {return ip_addr; }
     uint16_t getPort() const { return port;}
     uint16_t getProviderId () const { return tl_provider_id; }
@@ -84,6 +84,7 @@ inline bool operator==(chronolog::KeeperIdCard const& card1, chronolog::KeeperId
                 && card1.getProviderId() == card2.getProviderId()) ? true : false );
 
 }
+
 inline std::ostream & operator<< (std::ostream & out , chronolog::KeeperIdCard const & keeper_id_card)
 {
     std::string a_string;
@@ -93,5 +94,12 @@ inline std::ostream & operator<< (std::ostream & out , chronolog::KeeperIdCard c
     return out;
 }
 
+inline std::string& operator+= (std::string& a_string, chronolog::KeeperIdCard const& keeper_id_card)
+{
+    a_string += std::string("KeeperIdCard{") + std::to_string(keeper_id_card.getGroupId()) + ":" +
+                keeper_id_card.getIPasDottedString(a_string) + ":" + std::to_string(keeper_id_card.getPort()) + ":" +
+                std::to_string(keeper_id_card.getProviderId()) + "}";
+    return a_string;
+}
 
 #endif

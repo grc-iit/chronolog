@@ -138,6 +138,16 @@ typedef struct KeeperDataStoreAdminServiceConf_
     }
 } KeeperDataStoreAdminServiceConf;
 
+typedef struct KeeperGrapherDrainServiceConf_
+{
+    RPCProviderConf RPC_CONF;
+
+    [[nodiscard]] std::string to_String() const
+    {
+        return "[RPC_CONF: " + RPC_CONF.to_String() + "]";
+    }
+} KeeperGrapherDrainServiceConf;
+
 typedef struct VisorConf_
 {
     VisorClientPortalServiceConf VISOR_CLIENT_PORTAL_SERVICE_CONF;
@@ -156,15 +166,18 @@ typedef struct VisorConf_
 
 typedef struct KeeperConf_
 {
+    uint32_t RECORDING_GROUP;
     KeeperRecordingServiceConf KEEPER_RECORDING_SERVICE_CONF;
     KeeperDataStoreAdminServiceConf KEEPER_DATA_STORE_ADMIN_SERVICE_CONF;
     VisorKeeperRegistryServiceConf VISOR_KEEPER_REGISTRY_SERVICE_CONF;
+    KeeperGrapherDrainServiceConf KEEPER_GRAPHER_DRAIN_SERVICE_CONF;
     std::string STORY_FILES_DIR;
     LogConf KEEPER_LOG_CONF;
 
     [[nodiscard]] std::string to_String() const
     {
-        return "[KEEPER_RECORDING_SERVICE_CONF: " + KEEPER_RECORDING_SERVICE_CONF.to_String() +
+        return "[CHRONO_KEEPER_CONFIGURATION : RECORDING_GROUP: "+ std::to_string(RECORDING_GROUP) +
+                ", KEEPER_RECORDING_SERVICE_CONF: " + KEEPER_RECORDING_SERVICE_CONF.to_String() +
                ", KEEPER_DATA_STORE_ADMIN_SERVICE_CONF: " + KEEPER_DATA_STORE_ADMIN_SERVICE_CONF.to_String() +
                ", VISOR_KEEPER_REGISTRY_SERVICE_CONF: " + VISOR_KEEPER_REGISTRY_SERVICE_CONF.to_String() +
                ", STORY_FILES_DIR:" + STORY_FILES_DIR + ", KEEPER_LOG_CONF:" + KEEPER_LOG_CONF.to_String() + "]";
@@ -188,28 +201,30 @@ typedef struct ExtractorConf_
 
     [[nodiscard]] std::string to_String() const
     {
-        return  "[EXTRACTOR_CONF: STORY_FILES_DIR:" + story_files_dir + 
+        return  "[EXTRACTOR_CONF: STORY_FILES_DIR:" + story_files_dir +
                 "]";
     }
 } ExtractorConf;
 
 typedef struct GrapherConf_
 {
-    RPCProviderConf RECORDING_SERVICE_CONF;
+    uint32_t RECORDING_GROUP;
+    RPCProviderConf KEEPER_GRAPHER_DRAIN_SERVICE_CONF;
     RPCProviderConf DATA_STORE_ADMIN_SERVICE_CONF;
     RPCProviderConf VISOR_REGISTRY_SERVICE_CONF;
     LogConf LOG_CONF;
     DataStoreConf  DATA_STORE_CONF;
-    ExtractorConf  EXTRACTOR_CONF;  
+    ExtractorConf  EXTRACTOR_CONF;
 
     [[nodiscard]] std::string to_String() const
     {
-        return "[CHRONO_GRAPHER_CONFIGURATION : RECORDING_SERVICE_CONF: " + RECORDING_SERVICE_CONF.to_String() +
+        return "[CHRONO_GRAPHER_CONFIGURATION : RECORDING_GROUP: "+ std::to_string(RECORDING_GROUP) +
+                ", KEEPER_GRAPHER_DRAIN_SERVICE_CONF: " + KEEPER_GRAPHER_DRAIN_SERVICE_CONF.to_String() +
                ", DATA_STORE_ADMIN_SERVICE_CONF: " + DATA_STORE_ADMIN_SERVICE_CONF.to_String() +
                ", VISOR_REGISTRY_SERVICE_CONF: " + VISOR_REGISTRY_SERVICE_CONF.to_String() +
-               ", LOG_CONF:" + LOG_CONF.to_String() + 
+               ", LOG_CONF:" + LOG_CONF.to_String() +
                ", " + DATA_STORE_CONF.to_String() +
-               ", " + EXTRACTOR_CONF.to_String()+ 
+               ", " + EXTRACTOR_CONF.to_String() +
                "]";
     }
 } GrapherConf;
@@ -269,6 +284,7 @@ public:
         VISOR_CONF.DELAYED_DATA_ADMIN_EXIT_IN_SECS = 3;
 
         /* Keeper-related configurations */
+        KEEPER_CONF.RECORDING_GROUP = 0;
         KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.RPC_IMPLEMENTATION = CHRONOLOG_THALLIUM_SOCKETS;
         KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.PROTO_CONF = "ofi+sockets";
         KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.IP = "127.0.0.1";
@@ -288,6 +304,14 @@ public:
         KEEPER_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID = 88;
 
         KEEPER_CONF.STORY_FILES_DIR = "/tmp/";
+
+        /* Grapher-related configurations */
+        GRAPHER_CONF.RECORDING_GROUP = 0;
+        GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_IMPLEMENTATION = CHRONOLOG_THALLIUM_SOCKETS;
+        GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.PROTO_CONF = "ofi+sockets";
+        GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP = "127.0.0.1";
+        GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT = 9999;
+        GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.SERVICE_PROVIDER_ID = 99;
 
         /* Client-related configurations */
         CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.RPC_IMPLEMENTATION = CHRONOLOG_THALLIUM_SOCKETS;
@@ -769,7 +793,8 @@ private:
             {
                 assert(json_object_is_type(val, json_type_int));
                 int delayed_exit_value = json_object_get_int(val);
-                VISOR_CONF.DELAYED_DATA_ADMIN_EXIT_IN_SECS=((0<delayed_exit_value && delayed_exit_value<60)? delayed_exit_value : 5);
+                VISOR_CONF.DELAYED_DATA_ADMIN_EXIT_IN_SECS = ((0 < delayed_exit_value && delayed_exit_value < 60)
+                                                              ? delayed_exit_value : 5);
             }
             else
             {
@@ -782,7 +807,13 @@ private:
     {
         json_object_object_foreach(json_conf, key, val)
         {
-            if(strcmp(key, "KeeperRecordingService") == 0)
+            if(strcmp(key, "RecordingGroup") == 0)
+            {
+                assert(json_object_is_type(val, json_type_object));
+                int value = json_object_get_int(val);
+                KEEPER_CONF.RECORDING_GROUP = (value >= 0 ? value : 0);
+            }
+            else if(strcmp(key, "KeeperRecordingService") == 0)
             {
                 assert(json_object_is_type(val, json_type_object));
                 json_object*keeper_recording_service_conf = json_object_object_get(json_conf, "KeeperRecordingService");
@@ -835,6 +866,24 @@ private:
                     }
                 }
             }
+            else if(strcmp(key, "KeeperGrapherDrainService") == 0)
+            {
+                assert(json_object_is_type(val, json_type_object));
+                json_object*keeper_grapher_drain_service_conf = json_object_object_get(json_conf
+                                                                                       , "KeeperGrapherDrainService");
+                json_object_object_foreach(keeper_grapher_drain_service_conf, key, val)
+                {
+                    if(strcmp(key, "rpc") == 0)
+                    {
+                        parseRPCProviderConf(val, KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF);
+                    }
+                    else
+                    {
+                        std::cerr << "[ConfigurationManager] Unknown KeeperGrapherDrainService configuration: " << key
+                                  << std::endl;
+                    }
+                }
+            }
             else if(strcmp(key, "Logging") == 0)
             {
                 assert(json_object_is_type(val, json_type_object));
@@ -867,7 +916,6 @@ private:
 
     void parseClientConf(json_object*json_conf)
     {
-        const char*string_value = json_object_get_string(json_conf);
         json_object_object_foreach(json_conf, key, val)
         {
             if(strcmp(key, "VisorClientPortalService") == 0)

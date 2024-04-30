@@ -2,13 +2,14 @@
 #define KEEPER_REGISTRY_SERVICE_H
 
 #include <iostream>
-//#include <margo.h>
 #include <thallium.hpp>
 #include <thallium/serialization/stl/string.hpp>
 
 #include "KeeperIdCard.h"
 #include "KeeperRegistrationMsg.h"
 #include "KeeperStatsMsg.h"
+#include "GrapherIdCard.h"
+#include "GrapherRegistrationMsg.h"
 #include "log.h"
 #include "KeeperRegistry.h"
 
@@ -53,6 +54,23 @@ private:
         theKeeperProcessRegistry.updateKeeperProcessStats(keeper_stats_msg);
     }
 
+    void register_grapher(tl::request const &request, chronolog::GrapherRegistrationMsg const & registrationMsg)
+    {
+        int return_code = 0;
+        std::stringstream ss;
+        ss << registrationMsg;
+        LOG_INFO("[KeeperRegistryService] register_grapher: {}", ss.str());
+        return_code = theKeeperProcessRegistry.registerGrapherProcess(registrationMsg);
+        request.respond(return_code);
+    }
+
+    void unregister_grapher(tl::request const &request, chronolog::GrapherIdCard const &id_card)
+    {
+        int return_code = 0;
+        return_code = theKeeperProcessRegistry.unregisterGrapherProcess(id_card);
+        request.respond(return_code);
+    }
+
     KeeperRegistryService(tl::engine &tl_engine, uint16_t service_provider_id, KeeperRegistry &keeperRegistry)
             : tl::provider <KeeperRegistryService>(tl_engine, service_provider_id), theKeeperProcessRegistry(
             keeperRegistry)
@@ -60,6 +78,8 @@ private:
         define("register_keeper", &KeeperRegistryService::register_keeper);
         define("unregister_keeper", &KeeperRegistryService::unregister_keeper);
         define("handle_stats_msg", &KeeperRegistryService::handle_stats_msg, tl::ignore_return_value());
+        define("register_grapher", &KeeperRegistryService::register_grapher);
+        define("unregister_grapher", &KeeperRegistryService::unregister_grapher);
         //setup finalization callback in case this ser vice provider is still alive when the engine is finalized
         get_engine().push_finalize_callback(this, [p = this]()
         { delete p; });

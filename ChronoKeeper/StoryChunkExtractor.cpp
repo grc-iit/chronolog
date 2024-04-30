@@ -4,6 +4,7 @@
 #include <unistd.h>
 
 #include "StoryChunkExtractor.h"
+#include "chronolog_errcode.h"
 
 
 namespace tl = thallium;
@@ -29,7 +30,7 @@ void chronolog::StoryChunkExtractorBase::startExtractionThreads(int stream_count
         extractionStreams.push_back(std::move(es));
     }
 
-    for(int i = 0; i < 2 * stream_count; ++i)
+    for(int i = 0; i < stream_count; ++i)
     {
         tl::managed <tl::thread> th = extractionStreams[i % extractionStreams.size()]->make_thread([p = this]()
                                                                                                    { p->drainExtractionQueue(); });
@@ -81,11 +82,11 @@ void chronolog::StoryChunkExtractorBase::drainExtractionQueue()
 {
     thallium::xstream es = thallium::xstream::self();
     // extraction threads will be running as long as the state doesn't change
-    // and untill the extractionQueue is drained in shutdown mode
+    // and until the extractionQueue is drained in shutdown mode
     while((extractorState == RUNNING) || !chunkExtractionQueue.empty())
     {
         LOG_DEBUG("[StoryChunkExtractionBase] Draining queue. ES Rank: {}, ULT ID: {}, Queue Size: {}", es.get_rank()
-             , thallium::thread::self_id(), chunkExtractionQueue.size());
+                  , thallium::thread::self_id(), chunkExtractionQueue.size());
 
         while(!chunkExtractionQueue.empty())
         {
@@ -96,11 +97,21 @@ void chronolog::StoryChunkExtractorBase::drainExtractionQueue()
                 LOG_WARNING("[StoryChunkExtractionBase] Failed to acquire a story chunk from the queue.");
                 break;
             }
-            processStoryChunk(storyChunk);  // INNA: should add return type and handle the failure properly
-            // free the memory or reset the startTime and return to the pool of prealocated chunks
-            delete storyChunk;
+            int ret = processStoryChunk(storyChunk);
+            if(ret != chronolog::CL_SUCCESS)
+            {
+                LOG_ERROR("[StoryChunkExtractionBase] Failed to process a story chunk. ES Rank: {}, ULT ID: {}"
+                          , es.get_rank(), thallium::thread::self_id());
+                chunkExtractionQueue.stashStoryChunk(storyChunk);
+            }
+            else
+            {
+                LOG_DEBUG("[StoryChunkExtractionBase] Successfully processed a story chunk. ES Rank: {}, ULT ID: {}"
+                          , es.get_rank(), thallium::thread::self_id());
+                delete storyChunk;
+            }
         }
-        sleep(30);
+        sleep(3);
     }
 }
 
