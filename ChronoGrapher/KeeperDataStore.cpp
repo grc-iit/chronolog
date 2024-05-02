@@ -20,14 +20,14 @@ int chronolog::KeeperDataStore::startStoryRecording(std::string const &chronicle
                                                     , chronolog::StoryId const &story_id, uint64_t start_time
                                                     , uint32_t time_chunk_duration, uint32_t access_window)
 {
-    LOG_INFO("[KeeperDataStore] Start recording story: Chronicle={}, Story={}, StoryID={}", chronicle, story, story_id);
+    LOG_INFO("[KeeperDataStore] Start recording story: Chronicle={}, Story={}, StoryId={}", chronicle, story, story_id);
 
     // Get dataStoreMutex, check for story_id_presense & add new StoryPipeline if needed
     std::lock_guard storeLock(dataStoreMutex);
     auto pipeline_iter = theMapOfStoryPipelines.find(story_id);
     if(pipeline_iter != theMapOfStoryPipelines.end())
     {
-        LOG_INFO("[KeeperDataStore] Story already being recorded. StoryID: {}", story_id);
+        LOG_INFO("[KeeperDataStore] Story already being recorded. StoryId: {}", story_id);
         //check it the pipeline was put on the waitingForExit list by the previous acquisition
         // and remove it from there
         auto waiting_iter = pipelinesWaitingForExit.find(story_id);
@@ -42,11 +42,11 @@ int chronolog::KeeperDataStore::startStoryRecording(std::string const &chronicle
     auto result = theMapOfStoryPipelines.emplace(
             std::pair <chl::StoryId, chl::StoryPipeline*>(story_id, new chl::StoryPipeline(theExtractionQueue, chronicle
                                                                                            , story, story_id, start_time
-                                                                                           , time_chunk_duration)));
+                                                                                           , time_chunk_duration, access_window)));
 
     if(result.second)
     {
-        LOG_INFO("[KeeperDataStore] New StoryPipeline created successfully. StoryID: {}", story_id);
+        LOG_INFO("[KeeperDataStore] New StoryPipeline created successfully. StoryId {}", story_id);
         pipeline_iter = result.first;
         //engage StoryPipeline with the IngestionQueue
         chl::StoryChunkIngestionHandle*ingestionHandle = (*pipeline_iter).second->getActiveIngestionHandle();
@@ -55,7 +55,7 @@ int chronolog::KeeperDataStore::startStoryRecording(std::string const &chronicle
     }
     else
     {
-        LOG_ERROR("[KeeperDataStore] Failed to create StoryPipeline for StoryID: {}. Possible memory or resource issue."
+        LOG_ERROR("[KeeperDataStore] Failed to create StoryPipeline for StoryId: {}. Possible memory or resource issue."
              , story_id);
         return CL_ERR_UNKNOWN;
     }
@@ -64,7 +64,7 @@ int chronolog::KeeperDataStore::startStoryRecording(std::string const &chronicle
 
 int chronolog::KeeperDataStore::stopStoryRecording(chronolog::StoryId const &story_id)
 {
-    LOG_DEBUG("[KeeperDataStore] Initiating stop recording for StoryID={}", story_id);
+    LOG_DEBUG("[KeeperDataStore] Initiating stop recording for StoryId={}", story_id);
     // we do not yet disengage the StoryPipeline from the IngestionQueue right away
     // but put it on the WaitingForExit list to be finalized, persisted to disk , and
     // removed from memory at exit_time = now+acceptance_window...
@@ -74,15 +74,15 @@ int chronolog::KeeperDataStore::stopStoryRecording(chronolog::StoryId const &sto
     if(pipeline_iter != theMapOfStoryPipelines.end())
     {
         uint64_t exit_time = std::chrono::high_resolution_clock::now().time_since_epoch().count() +
-                             (*pipeline_iter).second->getAcceptanceWindow();
+                             (*pipeline_iter).second->getAcceptanceWindow()*5;
         pipelinesWaitingForExit[(*pipeline_iter).first] = (std::pair <chl::StoryPipeline*, uint64_t>(
                 (*pipeline_iter).second, exit_time));
-        LOG_INFO("[KeeperDataStore] Added StoryPipeline to waiting list for finalization. StoryID={}, ExitTime={}", story_id
+        LOG_INFO("[KeeperDataStore] Added StoryPipeline to waiting list for finalization. StoryId={}, ExitTime={}", story_id
              , exit_time);
     }
     else
     {
-        LOG_WARNING("[KeeperDataStore] Attempted to stop recording for non-existent StoryID={}", story_id);
+        LOG_WARNING("[KeeperDataStore] Attempted to stop recording for non-existent StoryId={}", story_id);
     }
     return chronolog::CL_SUCCESS;
 }
@@ -148,7 +148,7 @@ void chronolog::KeeperDataStore::retireDecayedPipelines()
 
         }
     }
-    //swipe through pipelineswaiting and remove all those with nullptr
+    
     LOG_DEBUG("[KeeperDataStore] Completed retirement of decayed pipelines. Current state={}, Active StoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}"
          , state, theMapOfStoryPipelines.size(), pipelinesWaitingForExit.size(), tl::thread::self_id());
 }

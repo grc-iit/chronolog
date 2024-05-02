@@ -43,7 +43,7 @@ chronolog::StoryPipeline::StoryPipeline(StoryChunkExtractionQueue &extractionQue
     timelineStart -= (timelineStart % chunkGranularity);
     timelineEnd = timelineStart;
 
-    for(uint64_t start = timelineStart; timelineEnd < (timelineStart + chunkGranularity * 3);)
+    while( timelineEnd < timelineStart + chunkGranularity * 3)
     {
         appendStoryChunk();
     }
