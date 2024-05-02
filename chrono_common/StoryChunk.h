@@ -41,6 +41,9 @@ public:
     uint64_t getEndTime() const
     { return endTime; }
 
+    int getEventCount() const
+    { return logEvents.size(); }
+
     bool empty() const
     { return (logEvents.empty() ? true : false); }
 
@@ -54,29 +57,31 @@ public:
     { return logEvents.lower_bound(EventSequence{chrono_time, 0, 0}); }
 
     uint64_t firstEventTime() const
-    { return (*logEvents.begin()).second.time(); }
-    
+    { return (logEvents.empty() ? 0 : (*logEvents.begin()).second.time()); }
+
     uint64_t lastEventTime() const
-    { return (*logEvents.begin()).second.time(); }
+    { return (logEvents.empty() ? 0 : (*(--logEvents.end())).second.time()); }
 
     int insertEvent(LogEvent const &);
-    
-    uint32_t
-    mergeEvents(std::map <EventSequence, LogEvent> &events, std::map <EventSequence, LogEvent>::iterator &merge_start);
 
-    uint32_t mergeEvents(StoryChunk &other_chunk, uint64_t start_time =0, uint64_t end_time=0);
+    uint32_t mergeEvents(std::map<EventSequence, LogEvent> & events,
+                         std::map<EventSequence, LogEvent>::const_iterator & merge_start);
 
-    uint32_t
+    uint32_t mergeEvents(StoryChunk & other_chunk, uint64_t start_time = 0);
+
+    /*    uint32_t
     extractEvents(std::map <EventSequence, LogEvent> &target_map, std::map <EventSequence, LogEvent>::iterator first_pos
                   , std::map <EventSequence, LogEvent>::iterator last_pos);
 
     uint32_t extractEvents(std::map <EventSequence, LogEvent> &target_map, uint64_t start_time, uint64_t end_time);
 
     uint32_t extractEvents( StoryChunk & target_chunk, uint64_t start_time, uint64_t end_time);
+*/
+    std::map<EventSequence, LogEvent>::iterator
+    eraseEvents(std::map<EventSequence, LogEvent>::const_iterator & first_pos,
+                std::map<EventSequence, LogEvent>::const_iterator & last_pos);
 
-    uint32_t split(StoryChunk & split_chunk, uint64_t time_boundary);
-
-    uint32_t eraseEvents(uint64_t start_time, uint64_t end_time);
+    std::map<EventSequence, LogEvent>::iterator eraseEvents(uint64_t start_time, uint64_t end_time);
 
     // serialization function used by thallium RPC providers
     template <typename SerArchiveT>
@@ -88,7 +93,6 @@ public:
         serT & revisionTime;
         serT& logEvents;
     }
-
 
 private:
     StoryId storyId;
