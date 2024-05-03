@@ -32,8 +32,8 @@ chronolog::StoryPipeline::StoryPipeline(StoryChunkExtractionQueue &extractionQue
     auto story_start_point = std::chrono::time_point <std::chrono::system_clock, std::chrono::nanoseconds>{} +
                              std::chrono::nanoseconds(timelineStart);
     std::time_t time_t_story_start = std::chrono::high_resolution_clock::to_time_t(story_start_point);
-    LOG_INFO("[StoryPipeline] Initialized : Chronicle {} Story {} StoryId {} start {} Granularity {} AcceptanceWindow {}"
-         , chronicleName, storyName, storyId, std::ctime(&time_t_story_start), chunkGranularity, acceptanceWindow );
+    LOG_INFO("[StoryPipeline] Initialized : Chronicle {} Story {} StoryId {} starting at {} "
+         , chronicleName, storyName, storyId, std::ctime(&time_t_story_start));
 
     chunkGranularity *= 1000000000;    // seconds =>nanoseconds
     acceptanceWindow *= 1000000000;    // seconds =>nanoseconds
@@ -46,6 +46,9 @@ chronolog::StoryPipeline::StoryPipeline(StoryChunkExtractionQueue &extractionQue
     {
         appendStoryChunk();
     }
+
+    LOG_DEBUG("[StoryPipeline] Initialized pipeline : Chronicle {} Story {} StoryId {} timeline {}-{} Granularity {} AcceptanceWindow {}"
+         , chronicleName, storyName, storyId, timelineStart, timelineEnd, chunkGranularity, acceptanceWindow );
 
 #ifdef TRACE_CHUNKING
     auto chunk_start_point = std::chrono::time_point<std::chrono::system_clock,std::chrono::nanoseconds>{} // epoch_time_point{};
@@ -232,8 +235,8 @@ void chronolog::StoryPipeline::extractDecayedStoryChunks(uint64_t current_time)
 
         if(extractedChunk != nullptr)
         {
-            LOG_TRACE("[StoryPipeline] StoryId: {} - Extracted chunk with start time {} eventCount {}", storyId
-                 , extractedChunk->getStartTime(), extractedChunk->getEventCount());
+            LOG_TRACE("[StoryPipeline] StoryId: {} - Extracted chunk {}-{} eventCount {}", storyId
+                 , extractedChunk->getStartTime(), extractedChunk->getEndTime(), extractedChunk->getEventCount());
 
             if(extractedChunk->empty())
             {   // there's no need to carry an empty chunk any further...  

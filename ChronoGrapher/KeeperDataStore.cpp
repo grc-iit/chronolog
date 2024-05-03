@@ -74,15 +74,16 @@ int chronolog::KeeperDataStore::stopStoryRecording(chronolog::StoryId const &sto
     if(pipeline_iter != theMapOfStoryPipelines.end())
     {
         uint64_t exit_time = std::chrono::high_resolution_clock::now().time_since_epoch().count() +
-                             (*pipeline_iter).second->getAcceptanceWindow()*5;
+                             (*pipeline_iter).second->getAcceptanceWindow();
         pipelinesWaitingForExit[(*pipeline_iter).first] = (std::pair <chl::StoryPipeline*, uint64_t>(
                 (*pipeline_iter).second, exit_time));
-        LOG_INFO("[KeeperDataStore] Added StoryPipeline to waiting list for finalization. StoryId={}, ExitTime={}", story_id
-             , exit_time);
+        LOG_INFO("[KeeperDataStore] Scheduled pipeline to retire: StoryId {} timeline {}-{} acceptanceWindow {} retirementTime {}",
+                    (*pipeline_iter).second->getStoryId(), (*pipeline_iter).second->getTimelineStart(), (*pipeline_iter).second->getTimelineEnd(),
+                    (*pipeline_iter).second->getAcceptanceWindow(), exit_time);
     }
     else
     {
-        LOG_WARNING("[KeeperDataStore] Attempted to stop recording for non-existent StoryId={}", story_id);
+        LOG_WARNING("[KeeperDataStore] Attempt to stop recording for non-existent StoryId={}", story_id);
     }
     return chronolog::CL_SUCCESS;
 }
@@ -124,7 +125,7 @@ void chronolog::KeeperDataStore::extractDecayedStoryChunks()
 
 void chronolog::KeeperDataStore::retireDecayedPipelines()
 {
-    LOG_DEBUG("[KeeperDataStore] Initiating retirement of decayed pipelines. Current state={}, Active StoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}"
+    LOG_TRACE("[KeeperDataStore] Initiating retirement of decayed pipelines. Current state={}, Active StoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}"
          , state, theMapOfStoryPipelines.size(), pipelinesWaitingForExit.size(), tl::thread::self_id());
 
     if(!theMapOfStoryPipelines.empty())
@@ -137,7 +138,9 @@ void chronolog::KeeperDataStore::retireDecayedPipelines()
             if(current_time >= (*pipeline_iter).second.second)
             {
                 //current_time >= pipeline exit_time
-                StoryPipeline*pipeline = (*pipeline_iter).second.first;
+                StoryPipeline * pipeline = (*pipeline_iter).second.first;
+                LOG_DEBUG("[KeeperDataStore] retiring pipeline StoryId {} timeline {} {} acceptanceWindow {} current_time {} retirementTime {}",
+                    pipeline->getStoryId(), pipeline->getTimelineStart(), pipeline->getTimelineEnd(), current_time, (*pipeline_iter).second.second);
                 theMapOfStoryPipelines.erase(pipeline->getStoryId());
                 theIngestionQueue.removeStoryIngestionHandle(pipeline->getStoryId());
                 pipeline_iter = pipelinesWaitingForExit.erase(pipeline_iter); //pipeline->getStoryId());
@@ -149,7 +152,7 @@ void chronolog::KeeperDataStore::retireDecayedPipelines()
         }
     }
     
-    LOG_DEBUG("[KeeperDataStore] Completed retirement of decayed pipelines. Current state={}, Active StoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}"
+    LOG_TRACE("[KeeperDataStore] Completed retirement of decayed pipelines. Current state={}, Active StoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}"
          , state, theMapOfStoryPipelines.size(), pipelinesWaitingForExit.size(), tl::thread::self_id());
 }
 
