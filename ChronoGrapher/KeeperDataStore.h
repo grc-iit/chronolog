@@ -9,6 +9,7 @@
 #include <thallium.hpp>
 
 #include "ChunkIngestionQueue.h"
+#include "DataStoreConfiguration.h"
 #include "StoryPipeline.h"
 #include "StoryChunkExtractionQueue.h"
 
