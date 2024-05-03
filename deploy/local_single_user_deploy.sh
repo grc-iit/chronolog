@@ -196,16 +196,19 @@ reset() {
 
 stop() {
     echo -e "${INFO}Stopping ...${NC}"
-    stop_process ${VISOR_BIN}
-    stop_process ${KEEPER_BIN}
-    stop_process ${CLIENT_BIN}
-    # Wait for all processes to exit
-    while pgrep -f "${BIN_DIR}/" >/dev/null; do
-        echo -e "${DEBUG}Waiting for processes to stop...${NC}"
-        sleep 1
+    declare -a processes=("${CLIENT_BIN}" "${KEEPER_BIN}" "${VISOR_BIN}")
+    for process in "${processes[@]}"; do
+        stop_process "${process}"
+        while pgrep -f "${process}" >/dev/null; do
+            echo -e "${DEBUG}Waiting for ${process} to stop...${NC}"
+            sleep 1
+        done
+        echo -e "${DEBUG}${process} stop done${NC}"
     done
-    echo -e "${DEBUG}Stop done${NC}"
+    echo -e "${DEBUG}All processes stopped${NC}"
 }
+
+
 
 # Usage function with new options
 usage() {
