@@ -58,7 +58,7 @@ StoryHandle*Chronicle::acquireStory(const std::string &story_name)
 int Chronicle::releaseStory(const std::string &story_name)
 {
     auto it = stories.find(story_name);
-    if(it != stories.end() && it->second->acquired)
+    if (it != stories.end())
     {
         it->second->acquired = false;
         return 0;
