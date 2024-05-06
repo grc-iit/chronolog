@@ -46,8 +46,14 @@ public:
     StoryId const &getStoryId() const
     { return storyId; }
 
-    uint16_t getAcceptanceWindow() const
+    uint64_t getAcceptanceWindow() const
     { return acceptanceWindow; }
+
+    uint64_t getTimelineStart() const
+    { return timelineStart; }
+
+    uint64_t getTimelineEnd() const
+    { return timelineEnd; }
 
 private:
 

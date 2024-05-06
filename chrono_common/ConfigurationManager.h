@@ -809,7 +809,7 @@ private:
         {
             if(strcmp(key, "RecordingGroup") == 0)
             {
-                assert(json_object_is_type(val, json_type_object));
+                assert(json_object_is_type(val, json_type_int));
                 int value = json_object_get_int(val);
                 KEEPER_CONF.RECORDING_GROUP = (value >= 0 ? value : 0);
             }
