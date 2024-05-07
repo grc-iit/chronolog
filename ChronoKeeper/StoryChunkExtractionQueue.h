@@ -7,7 +7,7 @@
 #include <mutex>
 #include "log.h"
 
-#include "chrono_common/chronolog_types.h"
+#include "chronolog_types.h"
 #include "StoryChunk.h"
 
 namespace chronolog
@@ -32,11 +32,11 @@ public:
             LOG_WARNING("[StoryChunkExtractionQueue] Attempted to stash a null story chunk. Ignoring.");
             return;
         }
-        LOG_DEBUG("[StoryChunkExtractionQueue] Stashed story chunk with StoryID={} and StartTime={}"
-             , story_chunk->getStoryId(), story_chunk->getStartTime());
         {
             std::lock_guard <std::mutex> lock(extractionQueueMutex);
             extractionDeque.push_back(story_chunk);
+            LOG_DEBUG("[StoryChunkExtractionQueue] Stashed story chunk with StoryID={} and StartTime={}"
+                      , story_chunk->getStoryId(), story_chunk->getStartTime());
         }
     }
 

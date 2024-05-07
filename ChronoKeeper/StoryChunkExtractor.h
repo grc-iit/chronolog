@@ -8,7 +8,7 @@
 #include <mutex>
 #include <thallium.hpp>
 
-#include "chrono_common/chronolog_types.h"
+#include "chronolog_types.h"
 #include "StoryChunkExtractionQueue.h"
 #include "log.h"
 
@@ -46,10 +46,7 @@ public:
 
     void drainExtractionQueue();
 
-    virtual void processStoryChunk(StoryChunk*)  //=0
-    {
-        LOG_WARNING("[StoryChunkExtraction] Base processStoryChunk method called. Derived class should implement specific logic.");
-    }
+    virtual int processStoryChunk(StoryChunk*)  = 0;
 
     void startExtractionThreads(int);
 

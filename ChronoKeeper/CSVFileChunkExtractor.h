@@ -1,8 +1,8 @@
 #ifndef CSV_FILE_CHUNK_EXTRACTOR_H
 #define CSV_FILE_CHUNK_EXTRACTOR_H
 
-#include "chrono_common/chronolog_types.h"
-#include "chrono_common/KeeperIdCard.h"
+#include "chronolog_types.h"
+#include "KeeperIdCard.h"
 #include "StoryChunkExtractor.h"
 
 
@@ -17,7 +17,7 @@ public:
 
     ~CSVFileStoryChunkExtractor();
 
-    virtual void processStoryChunk(StoryChunk*);
+    virtual int processStoryChunk(StoryChunk*);
 
 private:
     KeeperIdCard keeperIdCard;

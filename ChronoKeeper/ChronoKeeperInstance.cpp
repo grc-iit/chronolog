@@ -4,8 +4,8 @@
 
 #include <signal.h>
 
-#include "chrono_common/KeeperIdCard.h"
-#include "chrono_common/KeeperStatsMsg.h"
+//#include "chrono_common/KeeperIdCard.h"
+//#include "chrono_common/KeeperStatsMsg.h"
 #include "KeeperRecordingService.h"
 #include "KeeperRegClient.h"
 #include "IngestionQueue.h"
@@ -17,8 +17,7 @@
 #include "StoryChunkExtractor.h"
 #include "CSVFileChunkExtractor.h"
 #include "cmd_arg_parse.h"
-
-#define KEEPER_GROUP_ID 7
+#include "StoryChunkExtractorRDMA.h"
 
 // we will be using a combination of the uint32_t representation of the service IP address
 // and uint16_t representation of the port number
@@ -28,7 +27,7 @@ service_endpoint_from_dotted_string(std::string const &ip_string, int port, std:
     // we will be using a combination of the uint32_t representation of the service IP address
     // and uint16_t representation of the port number
     // NOTE: both IP and port values in the KeeperCard are in the host byte order, not the network order)
-    // to identfy the ChronoKeeper process
+    // to identify the ChronoKeeper process
 
     struct sockaddr_in sa;
     // translate the recording service dotted IP string into 32bit network byte order representation
@@ -77,16 +76,16 @@ int main(int argc, char**argv)
                                     , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGLEVEL
                                     , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGNAME
                                     , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILESIZE
-                                    , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILENUM);
+                                    , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILENUM
+                                    , confManager.KEEPER_CONF.KEEPER_LOG_CONF.FLUSHLEVEL);
     if(result == 1)
     {
         exit(EXIT_FAILURE);
     }
-    LOG_INFO("Running Chronokeeper Server.");
+    LOG_INFO("Running ChronoKeeper Server.");
 
     // Instantiate ChronoKeeper MemoryDataStore
     // instantiate DataStoreAdminService
-    uint64_t keeper_group_id = KEEPER_GROUP_ID;
 
     /// DataStoreAdminService setup ____________________________________________________________________________________
     std::string datastore_service_ip = confManager.KEEPER_CONF.KEEPER_DATA_STORE_ADMIN_SERVICE_CONF.RPC_CONF.IP;
@@ -130,6 +129,7 @@ int main(int argc, char**argv)
     LOG_INFO("[ChronoKeeperInstance] KeeperRecordingService started successfully.");
 
     // create KeeperIdCard to identify this Keeper process in ChronoVisor's KeeperRegistry
+    chronolog::RecordingGroupId keeper_group_id = confManager.KEEPER_CONF.RECORDING_GROUP;
     chronolog::KeeperIdCard keeperIdCard(keeper_group_id, recording_endpoint.first, recording_endpoint.second
                                          , recording_service_provider_id);
 
@@ -140,9 +140,47 @@ int main(int argc, char**argv)
     // Instantiate ChronoKeeper MemoryDataStore & ExtractorModule
     chronolog::IngestionQueue ingestionQueue;
     std::string keeper_csv_files_directory = confManager.KEEPER_CONF.STORY_FILES_DIR;
-    chronolog::CSVFileStoryChunkExtractor storyExtractor(keeperIdCard, keeper_csv_files_directory);
+    // Instantiate KeeperGrapherDrainService
+    tl::engine*extractionEngine = nullptr;
+    tl::remote_procedure drain_to_grapher;
+    tl::provider_handle service_ph;
+    uint16_t extraction_provider_id = confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID;
+    try
+    {
+        extractionEngine = new tl::engine(confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.PROTO_CONF
+                                          , THALLIUM_CLIENT_MODE);
+
+        std::stringstream s1;
+        s1 << extractionEngine->self();
+        LOG_INFO("[ChronoKeeperInstance] GroupID={} starting extraction engine at address {}", keeper_group_id
+                 , s1.str());
+        std::string KEEPER_GRAPHER_NA_STRING =
+                confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.PROTO_CONF + "://" +
+                confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.IP + ":" +
+                std::to_string(confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.BASE_PORT);
+        std::string extraction_rpc_name = "record_story_chunk";
+        drain_to_grapher = extractionEngine->define(extraction_rpc_name);
+        LOG_DEBUG("[ChronoKeeperInstance] Looking up {} at: {} ...", extraction_rpc_name, KEEPER_GRAPHER_NA_STRING);
+        service_ph = tl::provider_handle(extractionEngine->lookup(KEEPER_GRAPHER_NA_STRING),
+                                                             extraction_provider_id);
+        if(service_ph.is_null())
+        {
+            LOG_ERROR("[ChronoKeeperInstance] Failed to lookup Grapher service provider handle");
+            throw std::runtime_error("Failed to lookup Grapher service provider handle");
+        }
+    }
+    catch(tl::exception const &)
+    {
+        LOG_ERROR("[ChronoKeeperInstance] Keeper failed to create extraction engine");
+    }
+
+    chronolog::StoryChunkExtractorRDMA storyExtractor = chronolog::StoryChunkExtractorRDMA(*extractionEngine
+                                                                                           , drain_to_grapher
+                                                                                           , service_ph);
+    //    chronolog::CSVFileStoryChunkExtractor storyExtractor(keeperIdCard, keeper_csv_files_directory);
     chronolog::KeeperDataStore theDataStore(ingestionQueue, storyExtractor.getExtractionQueue());
 
+    // Instantiate KeeperRecordingService
     chronolog::ServiceId collectionServiceId(datastore_endpoint.first, datastore_endpoint.second
                                              , datastore_service_provider_id);
     tl::engine*dataAdminEngine = nullptr;
@@ -159,7 +197,7 @@ int main(int argc, char**argv)
         std::stringstream s3;
         s3 << dataAdminEngine->self();
         LOG_DEBUG("[ChronoKeeperInstance] GroupID={} starting DataStoreAdminService at address {} with ProviderID={}"
-             , keeper_group_id, s3.str(), datastore_service_provider_id);
+                  , keeper_group_id, s3.str(), datastore_service_provider_id);
         keeperDataAdminService = chronolog::DataStoreAdminService::CreateDataStoreAdminService(*dataAdminEngine
                                                                                                , datastore_service_provider_id
                                                                                                , theDataStore);
@@ -189,7 +227,7 @@ int main(int argc, char**argv)
         std::stringstream s1;
         s1 << recordingEngine->self();
         LOG_INFO("[ChronoKeeperInstance] GroupID={} starting KeeperRecordingService at {} with provider_id {}"
-             , keeper_group_id, s1.str(), datastore_service_provider_id);
+                 , keeper_group_id, s1.str(), datastore_service_provider_id);
         keeperRecordingService = chronolog::KeeperRecordingService::CreateKeeperRecordingService(*recordingEngine
                                                                                                  , recording_service_provider_id
                                                                                                  , ingestionQueue);
@@ -248,8 +286,8 @@ int main(int argc, char**argv)
     LOG_INFO("[ChronoKeeperInstance] Successfully registered with ChronoVisor.");
 
     /// Start data collection and extraction threads ___________________________________________________________________
-    // services are successfulley created and keeper process had registered with ChronoVisor
-    // start all dataColelction and Extraction threads...
+    // services are successfully created and keeper process had registered with ChronoVisor
+    // start all dataCollection and Extraction threads...
     tl::abt scope;
     theDataStore.startDataCollection(3);
     // start extraction streams & threads
@@ -282,9 +320,10 @@ int main(int argc, char**argv)
     // Shutdown extraction module
     // drain extractionQueue and stop extraction xStreams
     storyExtractor.shutdownExtractionThreads();
-    // these are not probably needed as thalium handles the engine finalization...
+    // these are not probably needed as thallium handles the engine finalization...
     //  recordingEngine.finalize();
     //  collectionEngine.finalize();
+    delete extractionEngine;
     delete recordingEngine;
     delete dataAdminEngine;
     LOG_INFO("[ChronoKeeperInstance] Shutdown completed. Exiting.");

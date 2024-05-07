@@ -45,7 +45,8 @@ int main(int argc, char**argv)
                                     , confManager.VISOR_CONF.VISOR_LOG_CONF.LOGLEVEL
                                     , confManager.VISOR_CONF.VISOR_LOG_CONF.LOGNAME
                                     , confManager.VISOR_CONF.VISOR_LOG_CONF.LOGFILESIZE
-                                    , confManager.VISOR_CONF.VISOR_LOG_CONF.LOGFILENUM);
+                                    , confManager.VISOR_CONF.VISOR_LOG_CONF.LOGFILENUM
+                                    , confManager.VISOR_CONF.VISOR_LOG_CONF.FLUSHLEVEL);
     if(result == 1)
     {
         exit(EXIT_FAILURE);

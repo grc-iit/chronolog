@@ -1,8 +1,7 @@
-project(ChronoLogClient)
+cmake_minimum_required(VERSION 3.19)
 
-set(CMAKE_CXX_STANDARD 17)
-
-find_package(thallium REQUIRED)
+find_package(Thallium REQUIRED)
+find_package(spdlog REQUIRED)
 
 # Define the header files to be copied
 set(HEADER_FILES
@@ -31,6 +30,7 @@ add_library(chronolog_client
     src/ChronologClient.cpp
     src/ChronologClientImpl.cpp
     ../ChronoAPI/ChronoLog/src/log.cpp
+    ../chrono_common/ConfigurationManager.cpp
 )
 
 # Include directories for the library
