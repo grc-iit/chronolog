@@ -19,8 +19,6 @@
 #include "cmd_arg_parse.h"
 #include "StoryChunkExtractorRDMA.h"
 
-#define KEEPER_GROUP_ID 7
-
 // we will be using a combination of the uint32_t representation of the service IP address
 // and uint16_t representation of the port number
 int
@@ -88,7 +86,6 @@ int main(int argc, char**argv)
 
     // Instantiate ChronoKeeper MemoryDataStore
     // instantiate DataStoreAdminService
-    uint64_t keeper_group_id = KEEPER_GROUP_ID;
 
     /// DataStoreAdminService setup ____________________________________________________________________________________
     std::string datastore_service_ip = confManager.KEEPER_CONF.KEEPER_DATA_STORE_ADMIN_SERVICE_CONF.RPC_CONF.IP;
@@ -132,6 +129,7 @@ int main(int argc, char**argv)
     LOG_INFO("[ChronoKeeperInstance] KeeperRecordingService started successfully.");
 
     // create KeeperIdCard to identify this Keeper process in ChronoVisor's KeeperRegistry
+    chronolog::RecordingGroupId keeper_group_id = confManager.KEEPER_CONF.RECORDING_GROUP;
     chronolog::KeeperIdCard keeperIdCard(keeper_group_id, recording_endpoint.first, recording_endpoint.second
                                          , recording_service_provider_id);
 

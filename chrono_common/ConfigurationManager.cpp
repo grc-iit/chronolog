@@ -5,7 +5,13 @@ void ChronoLog::ConfigurationManager::parseGrapherConf(json_object*json_conf)
 {
     json_object_object_foreach(json_conf, key, val)
     {
-        if(strcmp(key, "KeeperGrapherDrainService") == 0)
+        if(strcmp(key, "RecordingGroup") == 0)
+        {
+            assert(json_object_is_type(val, json_type_int));
+            int value = json_object_get_int(val);
+            GRAPHER_CONF.RECORDING_GROUP = (value >= 0 ? value : 0);
+        }
+        else if(strcmp(key, "KeeperGrapherDrainService") == 0)
         {
             assert(json_object_is_type(val, json_type_object));
             json_object*keeper_grapher_drain_service_conf = json_object_object_get(json_conf
