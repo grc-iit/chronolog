@@ -4,6 +4,7 @@
 
 #include "chronolog_types.h"
 #include "CSVFileChunkExtractor.h"
+#include "log.h"
 
 namespace tl = thallium;
 
@@ -23,11 +24,12 @@ void chronolog::CSVFileStoryChunkExtractor::processStoryChunk(chronolog::StoryCh
 {
     std::ofstream chunk_fstream;
     std::string chunk_filename(rootDirectory);
-    chunk_filename += chrono_process_id + "." + std::to_string(story_chunk->getStoryId()) + "." +
-                      std::to_string(story_chunk->getStartTime() / 1000000000) + ".csv";
+    chunk_filename += "/" + std::to_string(story_chunk->getStoryId()) + "." 
+           //INNA :  + chrono_process_id.getIPasDottedString(chunk_filename) + "." + std::to_string(chrono_process_id.getPort()) + "."
+            + std::to_string(story_chunk->getStartTime() / 1000000000) + ".csv";
 
     tl::xstream es = tl::xstream::self();
-    LOG_INFO("[CSVFileStoryChunkExtractor] Processing StoryChunk: ES={}, ULT={}, StoryID={}, StartTime={}", es.get_rank()
+    LOG_DEBUG("[CSVFileStoryChunkExtractor] Processing StoryChunk: ES={}, ULT={}, StoryID={}, StartTime={}", es.get_rank()
          , tl::thread::self_id(), story_chunk->getStoryId(), story_chunk->getStartTime());
     // current thread if the only one that has this storyChunk and the only one that's writing to this chunk csv file 
     // thus no additional locking is needed ... 
@@ -38,6 +40,6 @@ void chronolog::CSVFileStoryChunkExtractor::processStoryChunk(chronolog::StoryCh
         chunk_fstream << event << std::endl;
     }
     chunk_fstream.close();
-    LOG_INFO("[CSVFileStoryChunkExtractor] Finished processing StoryChunk. File={}", chunk_filename);
+    LOG_DEBUG("[CSVFileStoryChunkExtractor] Finished processing StoryChunk. File={}", chunk_filename);
 }
 

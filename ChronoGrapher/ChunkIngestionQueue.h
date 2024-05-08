@@ -54,7 +54,8 @@ public:
 
     void ingestStoryChunk(StoryChunk* chunk)
     {
-        LOG_DEBUG("[IngestionQueue] Received chunk for StoryID={}: HandleMapSize={}", chunk->getStoryId(), storyIngestionHandles.size());
+        LOG_DEBUG("[IngestionQueue] has {} StoryHandles; Received chunk for StoryID={} startTime {} eventCount{}", storyIngestionHandles.size(),
+                                chunk->getStoryId(), chunk->getStartTime(), chunk->getEventCount());
         auto ingestionHandle_iter = storyIngestionHandles.find(chunk->getStoryId());
         if(ingestionHandle_iter == storyIngestionHandles.end())
         {
@@ -76,6 +77,13 @@ public:
             LOG_DEBUG("[IngestionQueue] Orphan chunk queue is empty. No actions taken.");
             return;
         }
+
+        if (storyIngestionHandles.empty())
+        {
+            LOG_DEBUG("[IngestionQueue] has 0 storyIngestionHandles to place {} orphaned chunks", orphanQueue.size());
+            return;
+        }
+ 
         std::lock_guard <std::mutex> lock(ingestionQueueMutex);
         for(StoryChunkDeque::iterator iter = orphanQueue.begin(); iter != orphanQueue.end();)
         {
@@ -93,7 +101,8 @@ public:
                 ++iter;
             }
         }
-        LOG_DEBUG("[IngestionQueue] Drained {} orphan chunks into known handles.", orphanQueue.size());
+            
+        LOG_WARNING("[IngestionQueue] has {} orphaned chunks", orphanQueue.size());
     }
 
     bool is_empty() const
