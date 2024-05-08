@@ -201,7 +201,7 @@ stop() {
         stop_process "${process}"
         while pgrep -f "${process}" >/dev/null; do
             echo -e "${DEBUG}Waiting for ${process} to stop...${NC}"
-            sleep 1
+            sleep 10
         done
         echo -e "${DEBUG}${process} stop done${NC}"
     done
