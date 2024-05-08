@@ -91,10 +91,19 @@ private:
 
     void deserializedWithCereal(char *buffer, size_t size, StoryChunk &story_chunk)
     {
-        std::stringstream ss;
-        ss.write(buffer, size);
-        cereal::BinaryInputArchive iarchive(ss);
-        iarchive(story_chunk);
+        try
+        {
+            std::stringstream ss;
+            ss.write(buffer, size);
+            cereal::BinaryInputArchive iarchive(ss);
+            iarchive(story_chunk);
+        }
+        catch(cereal::Exception const &ex)
+        {
+            LOG_ERROR("[GrapherRecordingService] Failed to deserialize a story chunk, ThreadID={}. Cereal exception "
+                      "encountered.", tl::thread::self_id());
+            LOG_ERROR("[GrapherRecordingService] Exception: {}", ex.what());
+        }
     }
 
     GrapherRecordingService(GrapherRecordingService const &) = delete;
