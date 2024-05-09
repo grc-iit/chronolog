@@ -52,10 +52,10 @@ std::vector <std::pair <std::uint64_t, std::string>> chronokvs_mapper::retrieveB
     return results;
 }
 
-std::vector <std::string> chronokvs_mapper::retrieveByKeyAndTimestamp(const std::string &key, std::uint64_t timestamp)
+std::string chronokvs_mapper::retrieveByKeyAndTimestamp(const std::string &key, std::uint64_t timestamp)
 {
     std::vector <std::string> serializedEvents = chronoClient->retrieveEvents(timestamp);
-    std::vector <std::string> values;
+    std::string value;
 
     for(const std::string &serializedEvent: serializedEvents)
     {
@@ -63,9 +63,10 @@ std::vector <std::string> chronokvs_mapper::retrieveByKeyAndTimestamp(const std:
         if(keyValue.first == key)
         {
             // Add the value to values vector
-            values.push_back(keyValue.second);
+            value = keyValue.second;
+            break;
         }
     }
-    return values;
+    return value;
 }
 }

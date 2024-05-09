@@ -32,7 +32,7 @@ public:
 
     std::vector <std::pair <std::uint64_t, std::string>> retrieveByKey(const std::string &key);
 
-    std::vector <std::string> retrieveByKeyAndTimestamp(const std::string &key, std::uint64_t timestamp);
+    std::string retrieveByKeyAndTimestamp(const std::string &key, std::uint64_t timestamp);
 
 };
 }

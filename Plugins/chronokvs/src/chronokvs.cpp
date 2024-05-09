@@ -25,7 +25,7 @@ std::vector <std::pair <std::uint64_t, std::string>> ChronoKVS::get(const std::s
     return mapper->retrieveByKey(key);
 }
 
-std::vector <std::string> ChronoKVS::get(const std::string &key, std::uint64_t timestamp)
+std::string ChronoKVS::get(const std::string &key, std::uint64_t timestamp)
 {
     return mapper->retrieveByKeyAndTimestamp(key, timestamp);
 }

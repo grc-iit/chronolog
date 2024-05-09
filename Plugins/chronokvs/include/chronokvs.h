@@ -66,7 +66,7 @@ public:
      * @return The value (as std::string) associated with the given key at the specified
      *         timestamp, or an empty string if no such value exists.
      */
-    std::vector <std::string> get(const std::string &key, uint64_t timestamp);
+    std::string get(const std::string &key, uint64_t timestamp);
 };
 
 }

@@ -39,7 +39,7 @@ int main()
     auto valueForKey1AtTimestamp = ChronoKVS.get(key1, timestamp1);
     if(!valueForKey1AtTimestamp.empty())
     {
-        std::cout << "Key " << key1 << " at timestamp " << timestamp1 << " had value: " << valueForKey1AtTimestamp[0]
+        std::cout << "Key " << key1 << " at timestamp " << timestamp1 << " had value: " << valueForKey1AtTimestamp
                   << "\n";
     }
     else
