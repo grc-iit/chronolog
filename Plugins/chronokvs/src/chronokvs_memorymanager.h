@@ -8,14 +8,14 @@
 
 namespace chronokvs
 {
-class MemoryManager
+class KeyToTimestampMappingManager
 {
 private:
     std::unordered_multimap <std::string, std::uint64_t> dataStore;
 public:
-    MemoryManager() = default;
+    KeyToTimestampMappingManager() = default;
 
-    ~MemoryManager() = default;
+    ~KeyToTimestampMappingManager() = default;
 
     void store(const std::string &key, std::uint64_t timestamp);
 

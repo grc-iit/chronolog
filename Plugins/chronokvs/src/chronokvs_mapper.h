@@ -18,7 +18,7 @@ namespace chronokvs
 class chronokvs_mapper
 {
 private:
-    std::unique_ptr <MemoryManager> memoryManager;
+    std::unique_ptr <KeyToTimestampMappingManager> memoryManager;
     std::unique_ptr <ChronologClient> chronoClient;
 
 public:

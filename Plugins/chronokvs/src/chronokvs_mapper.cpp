@@ -5,7 +5,7 @@ namespace chronokvs
 {
 chronokvs_mapper::chronokvs_mapper()
 {
-    memoryManager = std::make_unique <MemoryManager>();
+    memoryManager = std::make_unique <KeyToTimestampMappingManager>();
     chronoClient = std::make_unique <ChronologClient>();
 }
 

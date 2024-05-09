@@ -3,12 +3,12 @@
 namespace chronokvs
 {
 
-void MemoryManager::store(const std::string &key, std::uint64_t timestamp)
+void KeyToTimestampMappingManager::store(const std::string &key, std::uint64_t timestamp)
 {
     dataStore.insert({key, timestamp});
 }
 
-std::vector <std::uint64_t> MemoryManager::retrieveByKey(const std::string &key)
+std::vector <std::uint64_t> KeyToTimestampMappingManager::retrieveByKey(const std::string &key)
 {
     std::vector <std::uint64_t> timestamps;
 
