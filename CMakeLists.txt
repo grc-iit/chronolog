@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.19)
+cmake_minimum_required(VERSION 3.25)
 
 # Set a consistent MACOSX_RPATH default across all CMake versions.
 if(NOT DEFINED CMAKE_MACOSX_RPATH)
@@ -217,4 +217,9 @@ add_custom_target(make_all cd ${CMAKE_BINARY_DIR} && make)
 if(CHRONOLOG_BUILD_TESTING)
     enable_testing()
     add_subdirectory(test)
+endif()
+
+if(CHRONOLOG_ENABLE_PYTHON_BINDINGS)
+    message("Python binding enabled")
+    add_subdirectory(python_client)
 endif()
