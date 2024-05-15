@@ -4,6 +4,7 @@
 
 #include <signal.h>
 
+#include "DataStoreConfiguration.h"
 #include "GrapherIdCard.h"
 #include "GrapherRecordingService.h"
 #include "GrapherRegClient.h"
@@ -133,12 +134,18 @@ int main(int argc, char**argv)
     process_id_string << processIdCard;
     LOG_INFO("[ChronoGrapher] GrapherIdCard: {}", process_id_string.str());
 
+    // Load and validate DtaStoreConfiguration
+
+    chronolog::DataStoreConfiguration dataStoreConfiguration;
+
+
     // Instantiate MemoryDataStore & ExtractorModule
     chronolog::ChunkIngestionQueue ingestionQueue;
+
     std::string csv_files_directory = confManager.GRAPHER_CONF.EXTRACTOR_CONF.story_files_dir;
 
     chronolog::CSVFileStoryChunkExtractor storyExtractor(process_id_string.str(), csv_files_directory);
-    chronolog::KeeperDataStore theDataStore(ingestionQueue, storyExtractor.getExtractionQueue());
+    chronolog::KeeperDataStore theDataStore(ingestionQueue, storyExtractor.getExtractionQueue(), dataStoreConfiguration);
 
     chronolog::ServiceId collectionServiceId(datastore_endpoint.first, datastore_endpoint.second
                                              , datastore_service_provider_id);

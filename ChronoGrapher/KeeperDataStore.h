@@ -9,10 +9,9 @@
 #include <thallium.hpp>
 
 #include "ChunkIngestionQueue.h"
-#include "DataStoreConfiguration.h"
 #include "StoryPipeline.h"
 #include "StoryChunkExtractionQueue.h"
-
+#include "DataStoreConfiguration.h"
 
 namespace chronolog
 {
@@ -29,10 +28,7 @@ class KeeperDataStore
 
 
 public:
-    KeeperDataStore(ChunkIngestionQueue &ingestion_queue, StoryChunkExtractionQueue &extraction_queue): state(UNKNOWN)
-                                                                                                   , theIngestionQueue(
-                    ingestion_queue), theExtractionQueue(extraction_queue)
-    {}
+    KeeperDataStore(ChunkIngestionQueue &, StoryChunkExtractionQueue &, DataStoreConfiguration const &);
 
     ~KeeperDataStore();
 
@@ -74,6 +70,14 @@ private:
     std::mutex dataStoreMutex;
     std::unordered_map <StoryId, StoryPipeline*> theMapOfStoryPipelines;
     std::unordered_map <StoryId, std::pair <StoryPipeline*, uint64_t>> pipelinesWaitingForExit;
+
+    // data store internal defaults  that can be overwriten through DataStoreConfiguration values
+    uint32_t max_story_chunk_size = 65536;  // 2^16 = 65536 
+    uint32_t story_chunk_time_granularity = 60;// seconds
+    uint32_t story_chunk_access_window = 120;  // seconds
+    uint32_t story_pipeline_exit_window = 300; // seconds
+
+    std::string csv_file_extraction_dir = "/tmp/";
 
 };
 

@@ -15,6 +15,14 @@ namespace tl = thallium;
 
 
 ////////////////////////
+chronolog::KeeperDataStore::KeeperDataStore( chronolog::ChunkIngestionQueue & ingestion_queue, chronolog::StoryChunkExtractionQueue & extraction_queue
+                , chronolog::DataStoreConfiguration const & data_store_config)
+        : state(UNKNOWN) 
+        , theIngestionQueue( ingestion_queue)
+        , theExtractionQueue(extraction_queue)
+{
+
+}
 
 int chronolog::KeeperDataStore::startStoryRecording(std::string const &chronicle, std::string const &story
                                                     , chronolog::StoryId const &story_id, uint64_t start_time
@@ -139,11 +147,11 @@ void chronolog::KeeperDataStore::retireDecayedPipelines()
             {
                 //current_time >= pipeline exit_time
                 StoryPipeline * pipeline = (*pipeline_iter).second.first;
-                LOG_DEBUG("[KeeperDataStore] retiring pipeline StoryId {} timeline {} {} acceptanceWindow {} current_time {} retirementTime {}",
-                    pipeline->getStoryId(), pipeline->getTimelineStart(), pipeline->getTimelineEnd(), current_time, (*pipeline_iter).second.second);
+                LOG_DEBUG("[KeeperDataStore] retiring pipeline StoryId {} timeline {}-{} acceptanceWindow {} retirementTime {}",
+                    pipeline->getStoryId(), pipeline->getTimelineStart(), pipeline->getTimelineEnd(), pipeline->getAcceptanceWindow(), (*pipeline_iter).second.second);
                 theMapOfStoryPipelines.erase(pipeline->getStoryId());
                 theIngestionQueue.removeStoryIngestionHandle(pipeline->getStoryId());
-                pipeline_iter = pipelinesWaitingForExit.erase(pipeline_iter); //pipeline->getStoryId());
+                pipeline_iter = pipelinesWaitingForExit.erase(pipeline_iter); 
                 delete pipeline;
             }
             else

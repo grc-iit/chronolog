@@ -56,11 +56,3 @@ install(
     DESTINATION ${HEADER_DEST_DIR}
 )
 
-#include/client.h
-#include/RPCClient.h
-#../ChronoAPI/ChronoLog/include/macro.h
-#../ChronoAPI/ChronoLog/include/rpc.h
-#../ChronoAPI/ChronoLog/include/RPCFactory.h
-#../ChronoAPI/ChronoLog/include/singleton.h
-#../ChronoAPI/ChronoLog/src/city.cpp
-#../ChronoAPI/ChronoLog/include/city.h)
