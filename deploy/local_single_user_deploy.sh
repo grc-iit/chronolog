@@ -98,8 +98,9 @@ extract_shared_libraries() {
 copy_shared_libs_recursive() {
     local lib_path="$1"
     local dest_path="$2"
-    local linked_to_lib_path="$(readlink -f ${lib_path})"
+    local linked_to_lib_path
 
+    linked_to_lib_path="$(readlink -f ${lib_path})"
     # Copy the library and maintain symbolic links recursively
     final_dest_lib_copies=false
     echo -e "${DEBUG}Copying ${lib_path} recursively ...${NC}"
@@ -116,22 +117,24 @@ copy_shared_libs_recursive() {
 }
 
 copy_shared_libs() {
-    libs_visor=$(extract_shared_libraries ${VISOR_BIN})
-    libs_keeper=$(extract_shared_libraries ${KEEPER_BIN})
-    libs_client=$(extract_shared_libraries ${CLIENT_BIN})
-
-    # Combine shared libraries from all executables and remove duplicates
-    all_shared_libs=$(echo -e "${libs_visor}\n${libs_keeper}\n${libs_client}" | sort | uniq)
-
     # Copy shared libraries to the lib directory
-    echo -e "${DEBUG}Copying shared library ...${NC}"
+    echo -e "${DEBUG}Copying shared libraries ...${NC}"
     mkdir -p ${LIB_DIR}
+
+    all_shared_libs=""
+    for bin_file in "${WORK_DIR}"/bin/*; do
+        echo -e "${DEBUG}Extracting shared libraries from ${bin_file} ...${NC}";
+        all_shared_libs=$(echo -e "${all_shared_libs}\n$(extract_shared_libraries ${bin_file})" | sort | uniq)
+    done
+
     for lib in ${all_shared_libs}; do
-        if [[ ! -z ${lib} ]]
+        if [[ -n ${lib} ]]
         then
             copy_shared_libs_recursive ${lib} ${LIB_DIR}
         fi
     done
+
+    echo -e "${DEBUG}Copy shared libraries done${NC}"
 }
 
 # Functions to launch and kill processes
