@@ -142,7 +142,7 @@ launch_process() {
     local bin="$1"
     local args="$2"
     local log_file="$3"
-    echo -e "${DEBUG}Launching $bin ...${NC}"
+    echo -e "${DEBUG}Launching $bin $args ...${NC}"
     LD_LIBRARY_PATH=${LIB_DIR} nohup ${bin} ${args} > ${BIN_DIR}/${log_file} 2>&1 &
 }
 
@@ -167,9 +167,8 @@ install() {
     launch_process ${VISOR_BIN} "--config ${CONF_DIR}/visor_conf.json" "visor.log"
     sleep 2
     num_keepers=${NUM_KEEPERS}
-    for (( i=0; i<num_keepers; i++ ))
+    for (( i=1; i<num_keepers+1; i++ ))
     do
-        #local keeper_args="--config ${CONF_DIR}/keeper_conf_$i.json"
         launch_process ${KEEPER_BIN} "--config ${CONF_DIR}/keeper_conf_$i.json" "keeper_$i.log"
     done
     sleep 2
@@ -185,6 +184,9 @@ install() {
 
 kill() {
     echo -e "${INFO}Killing ...${NC}"
+    kill_process ${CLIENT_BIN}
+    kill_process ${KEEPER_BIN}
+    kill_process ${GRAPHER_BIN}
     kill_process ${VISOR_BIN}
     echo -e "${DEBUG}Kill done${NC}"
 }
