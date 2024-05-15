@@ -96,15 +96,14 @@ generate_config_files() {
             --argjson new_port_keeper_record $new_port_keeper_record \
             --argjson new_port_keeper_drain $new_port_keeper_drain \
             --argjson new_port_keeper_datastore $new_port_keeper_datastore \
-            --arg j "$j" \
             --argjson recording_group "$recording_group" \
+            --arg j "$j" \
             '.chrono_keeper.KeeperRecordingService.rpc.service_base_port = $new_port_keeper_record |
+            .chrono_keeper.KeeperGrapherDrainService.rpc.service_base_port = $new_port_keeper_drain |
             .chrono_keeper.KeeperDataStoreAdminService.rpc.service_base_port = $new_port_keeper_datastore |
             .chrono_keeper.story_files_dir = ($work_dir + "/output/") |
             .chrono_keeper.RecordingGroup = $recording_group |
             .chrono_keeper.Logging.log.file = ($bin_dir + "/" + $j + "_" + .chrono_keeper.Logging.log.file)' "$default_conf" > "$output_file"
-
-            #.chrono_keeper.KeeperGrapherDrainService.rpc.service_base_port = $new_port_keeper_drain |
         echo "Generated $output_file with ports $new_port_keeper_record and $new_port_keeper_datastore and $new_port_keeper_drain"
     done
 
