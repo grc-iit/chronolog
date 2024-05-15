@@ -7,6 +7,7 @@ INFO='\033[1,36m\033[42m'
 DEBUG='\033[0;33m'
 NC='\033[0m' # No Color
 NUM_KEEPERS=1
+NUM_GRAPHERS=1
 
 # Directories
 WORK_DIR="/home/${USER}/chronolog"
@@ -18,6 +19,7 @@ BIN_DIR="${WORK_DIR}/bin"
 VISOR_BIN="${BIN_DIR}/chronovisor_server"
 KEEPER_BIN="${BIN_DIR}/chrono_keeper"
 CLIENT_BIN="${BIN_DIR}/client_lib_multi_storytellers"
+GRAPHER_BIN="${BIN_DIR}/chrono_grapher"
 CONF_FILE="${CONF_DIR}/default_conf.json"
 
 #Booleans
@@ -33,6 +35,7 @@ check_files() {
     [[ ! -f ${VISOR_BIN} ]] && echo -e "${ERR}Visor binary file does not exist, exiting ...${NC}" && exit 1
     [[ ! -f ${KEEPER_BIN} ]] && echo -e "${ERR}Keeper binary file does not exist, exiting ...${NC}" && exit 1
     [[ ! -f ${CLIENT_BIN} ]] && echo -e "${ERR}Client binary file does not exist, exiting ...${NC}" && exit 1
+    [[ ! -f ${GRAPHER_BIN} ]] && echo -e "${ERR}Grapher binary file does not exist, exiting ...${NC}" && exit 1
     [[ ! -f ${CONF_FILE} ]] && echo -e "${ERR}Configuration file does not exist, exiting ...${NC}" && exit 1
     echo -e "${DEBUG}All required files are in place.${NC}"
 }
@@ -157,7 +160,7 @@ install() {
     echo -e "${INFO}Installing ...${NC}"
     copy_shared_libs
     check_files
-    generate_config_files ${NUM_KEEPERS} ${BIN_DIR} ${CONF_FILE} ${CONF_DIR}
+    generate_config_files ${NUM_KEEPERS} ${BIN_DIR} ${CONF_FILE} ${CONF_DIR} "/home/eneko/chronolog/output/" ${NUM_GRAPHERS} ${WORK_DIR}
     launch_process ${VISOR_BIN} "--config ${CONF_DIR}/visor_conf.json" "visor.log"
     sleep 2
     num_keepers=${NUM_KEEPERS}
@@ -167,6 +170,12 @@ install() {
         launch_process ${KEEPER_BIN} "--config ${CONF_DIR}/keeper_conf_$i.json" "keeper_$i.log"
     done
     sleep 2
+    num_graphers=${NUM_GRAPHERS}
+    for (( i=1; i<num_graphers+1; i++ ))
+    do
+        launch_process ${GRAPHER_BIN} "--config ${CONF_DIR}/grapher_conf_$i.json" "grapher_$i.log"
+    done
+    sleep 2
     launch_process ${CLIENT_BIN} "--config ${CONF_DIR}/client_conf.json" "client.log"
     echo -e "${DEBUG}Install done${NC}"
 }
@@ -174,8 +183,6 @@ install() {
 kill() {
     echo -e "${INFO}Killing ...${NC}"
     kill_process ${VISOR_BIN}
-    kill_process ${KEEPER_BIN}
-    kill_process ${CLIENT_BIN}
     echo -e "${DEBUG}Kill done${NC}"
 }
 
@@ -185,9 +192,11 @@ reset() {
     echo -e "${DEBUG}Delete all generated files${NC}"
 
     # Remove all config files
-    rm ${CONF_DIR}/visor_conf.json
     rm ${CONF_DIR}/client_conf.json
+    rm ${CONF_DIR}/grapher_conf*.json
     rm ${CONF_DIR}/keeper_conf*.json
+    rm ${CONF_DIR}/group_conf*.json
+    rm ${CONF_DIR}/visor_conf.json
 
     # Remove all log files
     rm ${BIN_DIR}/*.log
@@ -196,7 +205,7 @@ reset() {
 
 stop() {
     echo -e "${INFO}Stopping ...${NC}"
-    declare -a processes=("${CLIENT_BIN}" "${KEEPER_BIN}" "${VISOR_BIN}")
+    declare -a processes=("${CLIENT_BIN}" "${KEEPER_BIN}" "${GRAPHER_BIN}" "${VISOR_BIN}")
     for process in "${processes[@]}"; do
         stop_process "${process}"
         while pgrep -f "${process}" >/dev/null; do
@@ -208,14 +217,13 @@ stop() {
     echo -e "${DEBUG}All processes stopped${NC}"
 }
 
-
-
 # Usage function with new options
 usage() {
     echo "Usage: $0 [options]"
     echo "Options:"
     echo "  -h, --help             Display this help and exit"
     echo "  -n, --num-keepers NUM  Set the number of keeper processes"
+    echo "  -g, --num-graphers NUM Set the number of grapher processes"
     echo "  -w, --work-dir DIR     Set the working directory"
     echo "  -i, --install          Install all components"
     echo "  -r, --reset            Reset all components"
@@ -246,6 +254,9 @@ parse_args() {
             -n|--num-keepers)
                 NUM_KEEPERS="$2";
                 shift 2 ;;
+            -g|--num-graphers)
+                NUM_GRAPHERS="$2"
+                shift 2 ;;
             -w|--work-dir)
                 WORK_DIR="$2";
                 LIB_DIR="${WORK_DIR}/lib"
@@ -254,6 +265,7 @@ parse_args() {
                 VISOR_BIN="${BIN_DIR}/chronovisor_server"
                 KEEPER_BIN="${BIN_DIR}/chrono_keeper"
                 CLIENT_BIN="${BIN_DIR}/client_lib_multi_storytellers"
+                GRAPHER_BIN="${BIN_DIR}/chrono_grapher"
                 CONF_FILE="${CONF_DIR}/default_conf.json"
                 shift 2 ;;
             *) echo -e "${ERR}Unknown option: $1${NC}"; usage ;;
