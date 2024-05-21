@@ -1,3 +1,5 @@
+<img src="https://raw.githubusercontent.com/grc-iit/ChronoLog/169-convert-readme-into-a-landing-page/doc/images/logos/logo-chronolog.png" alt="ChronoLog" width="150">
+
 # ChronoLog
 ![OPEN SOURCE](https://img.shields.io/badge/GNOSIS_RESEARCH_CENTER-blue)
 ![OPEN SOURCE](https://img.shields.io/badge/OPEN_SOURCE-grey)
