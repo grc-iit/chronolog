@@ -130,7 +130,7 @@ generate_config_files() {
         local new_port_grapher_datastore=$((base_port_grapher_datastore + i))
 
         local grapher_output_file="${conf_dir}/grapher_conf_${i}.json"
-        j=$j
+        j=$i
         jq --arg bin_dir "$bin_dir" \
             --arg work_dir "$work_dir" \
             --argjson new_port_grapher_drain $new_port_grapher_drain \
