@@ -10,7 +10,13 @@
 
 
 # Project Wiki
-Check out the Wiki to learn more:
+
+[![Getting Started](https://img.shields.io/badge/-1.Getting_Started-blue)](https://github.com/grc-iit/ChronoLog/wiki/1.-Getting-Started)
+[![Getting Started](https://img.shields.io/badge/-2.Installation-blue)](https://github.com/grc-iit/ChronoLog/wiki/2.-Installation)
+[![Getting Started](https://img.shields.io/badge/-3.Configuration-blue)](https://github.com/grc-iit/ChronoLog/wiki/3.-Configuration)
+[![Getting Started](https://img.shields.io/badge/-4.Technical_Reference-blue)](https://github.com/grc-iit/ChronoLog/wiki/4.-Technical-Reference)
+[![Getting Started](https://img.shields.io/badge/-5.Contributors_Guidelines-blue)](https://github.com/grc-iit/ChronoLog/wiki/5.-Contributors-Guidelines)
+[![Getting Started](https://img.shields.io/badge/-6.Code_Style_Guidelines-blue)](https://github.com/grc-iit/ChronoLog/wiki/6.-Code-Style-Guidelines)
 
 # Members
 
