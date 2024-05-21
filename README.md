@@ -15,13 +15,24 @@ This project will design and implement ChronoLog, a distributed and tiered share
 </div>
 
 # Project Wiki
-
-[![Getting Started](https://img.shields.io/badge/-1.Getting_Started-blue)](https://github.com/grc-iit/ChronoLog/wiki/1.-Getting-Started)
-[![Getting Started](https://img.shields.io/badge/-2.Installation-blue)](https://github.com/grc-iit/ChronoLog/wiki/2.-Installation)
-[![Getting Started](https://img.shields.io/badge/-3.Configuration-blue)](https://github.com/grc-iit/ChronoLog/wiki/3.-Configuration)
-[![Getting Started](https://img.shields.io/badge/-4.Technical_Reference-blue)](https://github.com/grc-iit/ChronoLog/wiki/4.-Technical-Reference)
-[![Getting Started](https://img.shields.io/badge/-5.Contributors_Guidelines-blue)](https://github.com/grc-iit/ChronoLog/wiki/5.-Contributors-Guidelines)
-[![Getting Started](https://img.shields.io/badge/-6.Code_Style_Guidelines-blue)](https://github.com/grc-iit/ChronoLog/wiki/6.-Code-Style-Guidelines)
+<a href="https://github.com/grc-iit/ChronoLog/wiki/1.-Getting-Started">
+    <img src="https://img.shields.io/badge/-1.Getting_Started-informational" alt="Getting Started" style="zoom: 150%;">
+</a>
+<a href="https://github.com/grc-iit/ChronoLog/wiki/2.-Installation">
+    <img src="https://img.shields.io/badge/-2.Installation-informational" alt="Installation" style="zoom: 150%;">
+</a>
+<a href="https://github.com/grc-iit/ChronoLog/wiki/3.-Configuration">
+    <img src="https://img.shields.io/badge/-3.Configuration-informational" alt="Configuration" style="zoom: 150%;">
+</a>
+<a href="https://github.com/grc-iit/ChronoLog/wiki/4.-Technical-Reference">
+    <img src="https://img.shields.io/badge/-4.Technical_Reference-informational" alt="Technical Reference" style="zoom: 150%;">
+</a>
+<a href="https://github.com/grc-iit/ChronoLog/wiki/5.-Contributors-Guidelines">
+    <img src="https://img.shields.io/badge/-5.Contributors_Guidelines-informational" alt="Contributors Guidelines" style="zoom: 150%;">
+</a>
+<a href="https://github.com/grc-iit/ChronoLog/wiki/6.-Code-Style-Guidelines">
+    <img src="https://img.shields.io/badge/-6.Code_Style_Guidelines-informational" alt="Code Style Guidelines" style="zoom: 150%;">
+</a>
 
 # Members
 
