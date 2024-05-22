@@ -18,7 +18,10 @@ leveraging the time-based data distribution, a log-based key-value store, and a 
     <img src="https://raw.githubusercontent.com/grc-iit/ChronoLog/169-convert-readme-into-a-landing-page/doc/images/logos/logo-chronolog.png" alt="ChronoLog" width="600">
 </div>
 
-# Project Wiki
+
+
+
+## Wiki:
 <a href="https://github.com/grc-iit/ChronoLog/wiki/1.-Getting-Started">
     <img src="https://img.shields.io/badge/-1.Getting_Started-informational" alt="Getting Started" style="zoom: 150%;">
 </a>
@@ -38,7 +41,19 @@ leveraging the time-based data distribution, a log-based key-value store, and a 
     <img src="https://img.shields.io/badge/-6.Code_Style_Guidelines-informational" alt="Code Style Guidelines" style="zoom: 150%;">
 </a>
 
-# Members
+## Main publication
+
+<div style="border: 1px solid #555555; padding: 10px; border-radius: 5px; background-color: #888888;">
+  <p style="font-size: 1.2em; margin: 0;">
+    A. Kougkas, H. Devarajan, K. Bateman, J. Cernuda, N. Rajesh, X.-H. Sun. 
+    <a href="http://www.cs.iit.edu/~scs/testing/scs_website/assets/files/kougkas2020chronolog.pdf" target="_blank">
+      <strong>"ChronoLog: A Distributed Shared Tiered Log Store with Time-based Data Ordering"</strong>
+    </a>, 
+    Proceedings of the 36th International Conference on Massive Storage Systems and Technology (MSST 2020).
+  </p>
+</div>
+
+## Members
 
 <a href="https://www.iit.edu">
     <img src="https://raw.githubusercontent.com/grc-iit/ChronoLog/169-convert-readme-into-a-landing-page/doc/images/logos/IIT.png" alt="Illinois Tech" width="150">
@@ -48,7 +63,7 @@ leveraging the time-based data distribution, a log-based key-value store, and a 
     <img src="https://raw.githubusercontent.com/grc-iit/ChronoLog/169-convert-readme-into-a-landing-page/doc/images/logos/university-of-chicago.png" alt="University Of Chicago" width="150">
 </a>
 
-# Collaborators
+## Collaborators
 <a href="https://www.llnl.gov/">
     <img src="https://raw.githubusercontent.com/grc-iit/ChronoLog/169-convert-readme-into-a-landing-page/doc/images/logos/llnl.jpg" alt="Lawrence Livermore National Lab" width="75">
 </a>
@@ -77,18 +92,17 @@ leveraging the time-based data distribution, a log-based key-value store, and a 
     <img src="https://raw.githubusercontent.com/grc-iit/ChronoLog/169-convert-readme-into-a-landing-page/doc/images/logos/omnibond.png" alt="OmniBond Systems LLC" width="75">
 </a>
 
-
-# Sponsors
+## Sponsors
 <a href="https://www.nsf.gov">
     <img src="https://raw.githubusercontent.com/grc-iit/ChronoLog/169-convert-readme-into-a-landing-page/doc/images/logos/nsf-fb7efe9286a9b499c5907d82af3e70fd.png" alt="NSFLOGO" width="150">
 </a>
 
 National Science Foundation (NSF CSSI-2104013)
 
-# Learn More
+## Learn More
+
 [![WEBSITE](https://img.shields.io/badge/-Website-blue?style=flat-square&logo=Wordpress&logoColor=white&link=https://www.chronolog.dev)](https://www.chronolog.dev)
 [![Linkedin Badge](https://img.shields.io/badge/-LinkedIn-blue?style=flat-square&logo=Linkedin&logoColor=white&link=https://www.linkedin.com/school/gnosis-research-center/)](https://www.linkedin.com/school/gnosis-research-center/)
 [![GitHub Badge](https://img.shields.io/badge/-GitHub-black?style=flat-square&logo=Github&logoColor=white&link=https://www.linkedin.com/school/gnosis-research-center/)](https://www.linkedin.com/school/gnosis-research-center/)
 [![X Badge](https://img.shields.io/badge/-Twitter-black?style=flat-square&logo=X&logoColor=white&link=https://www.linkedin.com/school/gnosis-research-center/)](https://www.linkedin.com/school/gnosis-research-center/)
 [![YouTube Badge](https://img.shields.io/badge/-YouTube-red?style=flat-square&logo=Youtube&logoColor=white&link=https://www.linkedin.com/school/gnosis-research-center/)](https://www.linkedin.com/school/gnosis-research-center/)
-
