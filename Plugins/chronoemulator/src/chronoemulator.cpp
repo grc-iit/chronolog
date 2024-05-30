@@ -51,7 +51,15 @@ int ChronoEmulator::DestroyChronicle(const std::string &chronicle_name)
     {
         if((*it)->name == chronicle_name)
         {
-            // Chronicle found, remove it from the vector
+            // Chronicle found, check if any stories are acquired
+            for(const auto& story : (*it)->stories)
+            {
+                if(story.second->acquired)
+                {
+                    return -1; // One or more stories are acquired, cannot delete chronicle
+                }
+            }
+            // No stories are acquired, remove the chronicle from the vector
             chronicles.erase(it);
             return 0; // Success
         }

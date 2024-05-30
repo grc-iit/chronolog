@@ -27,9 +27,18 @@ int Chronicle::addStory(const std::string &storyName)
 
 int Chronicle::deleteStory(const std::string &storyName)
 {
-    // Check if a story with the specified name exists and erase it
-    if(stories.erase(storyName) == 1)
+    // Find the story handle by the story name
+    auto it = stories.find(storyName);
+    if (it != stories.end())
     {
+        // Check if the story is acquired
+        if (it->second->acquired)
+        {
+            return -1; // Story is acquired and cannot be deleted
+        }
+
+        // Erase the story
+        stories.erase(it);
         return 0; // Story found and deleted
     }
     return -1; // Story not found
