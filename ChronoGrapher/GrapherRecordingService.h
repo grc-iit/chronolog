@@ -56,26 +56,26 @@ public:
 //            std::cout << (char)*(char*)(&mem_vec[0]+i) << " ";
 //        }
 //        std::cout << std::endl;
-        StoryChunk story_chunk;
+
+        StoryChunk * story_chunk= new StoryChunk();
 #ifndef NDEBUG
         start = std::chrono::high_resolution_clock::now();
 #endif
-        deserializedWithCereal(&mem_vec[0], b.size() - 1, story_chunk);
+        deserializedWithCereal(&mem_vec[0], b.size() - 1, *story_chunk);
 #ifndef NDEBUG
         end = std::chrono::high_resolution_clock::now();
         LOG_INFO("[GrapherRecordingService] Deserialization took {} us, ThreadID={}",
                 std::chrono::duration_cast <std::chrono::nanoseconds>(end - start).count() / 1000.0
                  , tl::thread::self_id());
 #endif
-        LOG_DEBUG("[GrapherRecordingService] StoryChunk received: StoryID: {}, StartTime: {}, ThreadID={}"
-                  , story_chunk.getStoryId(), story_chunk.getStartTime(), tl::thread::self_id());
+        LOG_DEBUG("[GrapherRecordingService] StoryChunk received: StoryId {} StartTime {} eventCount {} ThreadID={}"
+                  , story_chunk->getStoryId(), story_chunk->getStartTime(), story_chunk->getEventCount(), tl::thread::self_id());
+
         request.respond(b.size());
         LOG_DEBUG("[GrapherRecordingService] StoryChunk recording RPC responded {}, ThreadID={}"
                   , b.size(), tl::thread::self_id());
 
-        theIngestionQueue.ingestStoryChunk(&story_chunk);
-        LOG_DEBUG("[GrapherRecordingService] Ingested a StoryChunk, StoryID: {}, StartTime: {}, ThreadID={}"
-                  , story_chunk.getStoryId(), story_chunk.getStartTime(), tl::thread::self_id());
+        theIngestionQueue.ingestStoryChunk(story_chunk);
     }
 
 private:
@@ -91,10 +91,19 @@ private:
 
     void deserializedWithCereal(char *buffer, size_t size, StoryChunk &story_chunk)
     {
-        std::stringstream ss;
-        ss.write(buffer, size);
-        cereal::BinaryInputArchive iarchive(ss);
-        iarchive(story_chunk);
+        try
+        {
+            std::stringstream ss;
+            ss.write(buffer, size);
+            cereal::BinaryInputArchive iarchive(ss);
+            iarchive(story_chunk);
+        }
+        catch(cereal::Exception const &ex)
+        {
+            LOG_ERROR("[GrapherRecordingService] Failed to deserialize a story chunk, ThreadID={}. Cereal exception "
+                      "encountered.", tl::thread::self_id());
+            LOG_ERROR("[GrapherRecordingService] Exception: {}", ex.what());
+        }
     }
 
     GrapherRecordingService(GrapherRecordingService const &) = delete;

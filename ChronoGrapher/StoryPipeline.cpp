@@ -32,9 +32,8 @@ chronolog::StoryPipeline::StoryPipeline(StoryChunkExtractionQueue &extractionQue
     auto story_start_point = std::chrono::time_point <std::chrono::system_clock, std::chrono::nanoseconds>{} +
                              std::chrono::nanoseconds(timelineStart);
     std::time_t time_t_story_start = std::chrono::high_resolution_clock::to_time_t(story_start_point);
-    LOG_INFO("[StoryPipeline] Initialized with StoryID={}, StoryStartTime={}, Chronology={}, ChunkGranularity={} seconds, AcceptanceWindow={} seconds"
-         , storyId, std::ctime(&time_t_story_start), chronicleName, chunkGranularity / 1000000000,
-            acceptanceWindow / 1000000000);
+    LOG_INFO("[StoryPipeline] Initialized : Chronicle {} Story {} StoryId {} starting at {} "
+         , chronicleName, storyName, storyId, std::ctime(&time_t_story_start));
 
     chunkGranularity *= 1000000000;    // seconds =>nanoseconds
     acceptanceWindow *= 1000000000;    // seconds =>nanoseconds
@@ -43,10 +42,13 @@ chronolog::StoryPipeline::StoryPipeline(StoryChunkExtractionQueue &extractionQue
     timelineStart -= (timelineStart % chunkGranularity);
     timelineEnd = timelineStart;
 
-    for(uint64_t start = timelineStart; timelineEnd < (timelineStart + chunkGranularity * 3);)
+    while( timelineEnd < (timelineStart + chunkGranularity * 3))
     {
         appendStoryChunk();
     }
+
+    LOG_DEBUG("[StoryPipeline] Initialized pipeline : Chronicle {} Story {} StoryId {} timeline {}-{} Granularity {} AcceptanceWindow {}"
+         , chronicleName, storyName, storyId, timelineStart, timelineEnd, chunkGranularity, acceptanceWindow );
 
 #ifdef TRACE_CHUNKING
     auto chunk_start_point = std::chrono::time_point<std::chrono::system_clock,std::chrono::nanoseconds>{} // epoch_time_point{};
@@ -55,7 +57,7 @@ chronolog::StoryPipeline::StoryPipeline(StoryChunkExtractionQueue &extractionQue
     auto chunk_end_point = std::chrono::time_point<std::chrono::system_clock,std::chrono::nanoseconds>{}
         + std::chrono::nanoseconds(timelineEnd);
     std::time_t time_t_chunk_end = std::chrono::high_resolution_clock::to_time_t(chunk_end_point); 
-    LOG_DEBUG("[StoryPipeline] Created StoryPipeline with StoryID={}, StartChunk={}, EndChunk={}",
+    LOG_TRACE("[StoryPipeline] Created StoryPipeline with StoryId {}, StartChunk {}, EndChunk {}",
                                storyId, std::ctime(&time_t_chunk_start), std::ctime(&time_t_chunk_end));
 #endif
 
@@ -70,7 +72,7 @@ chl::StoryChunkIngestionHandle*chl::StoryPipeline::getActiveIngestionHandle()
 ///////////////////////
 chronolog::StoryPipeline::~StoryPipeline()
 {
-    LOG_DEBUG("[StoryPipeline] Destructor called for StoryID={}", storyId);
+    LOG_DEBUG("[StoryPipeline] Destructor called for StoryId {}", storyId);
     finalize();
 }
 ///////////////////////
@@ -83,18 +85,20 @@ void chronolog::StoryPipeline::finalize()
     {
         while(!activeIngestionHandle->getPassiveDeque().empty())
         {
-            //INNA: consider adding mergeEvents(StoryChunk*)
-            mergeEvents(*(activeIngestionHandle->getPassiveDeque().front()));
+            StoryChunk* next_chunk = activeIngestionHandle->getPassiveDeque().front();
             activeIngestionHandle->getPassiveDeque().pop_front();
+            mergeEvents(*next_chunk);
+            delete next_chunk; 
         }
-        while(!activeIngestionHandle->getPassiveDeque().empty())
+        while(!activeIngestionHandle->getActiveDeque().empty())
         {
-            //INNA: consider adding mergeEvents(StoryChunk*)
-            mergeEvents(*(activeIngestionHandle->getPassiveDeque().front()));
-            activeIngestionHandle->getPassiveDeque().pop_front();
+            StoryChunk* next_chunk = activeIngestionHandle->getActiveDeque().front();
+            activeIngestionHandle->getActiveDeque().pop_front();
+            mergeEvents(*next_chunk);
+            delete next_chunk; 
         }
         delete activeIngestionHandle;
-        LOG_INFO("[StoryPipeline] Finalized ingestion handle for storyId: {}", storyId);
+        LOG_INFO("[StoryPipeline] Finalized ingestion handle for storyId {}", storyId);
     }
 
     //extract any remianing non-empty StoryChunks regardless of decay_time
@@ -108,10 +112,9 @@ void chronolog::StoryPipeline::finalize()
             extractedChunk = (*storyTimelineMap.begin()).second;
             storyTimelineMap.erase(storyTimelineMap.begin());
 
-#ifdef TRACE_CHUNK_EXTRACTION
-            LOG_TRACE("[StoryPipeline] Finalized chunk for StoryID={}. Is empty: {}", storyId, extractedChunk->empty()
-                                                                                          ? "Yes" : "No");
-#endif
+            LOG_DEBUG("[StoryPipeline] Finalized chunk for StoryId {} startTime {} eventCount {}", storyId, 
+                    extractedChunk->getStartTime(), extractedChunk->getEventCount());
+
             if(extractedChunk->empty())
             {  // no need to carry an empty chunk any further...
                 delete extractedChunk;
@@ -136,7 +139,7 @@ std::map <uint64_t, chronolog::StoryChunk*>::iterator chronolog::StoryPipeline::
     std::time_t time_t_chunk_start = std::chrono::high_resolution_clock::to_time_t(chunk_start_point);
     auto chunk_end_point = epoch_time_point + std::chrono::nanoseconds(timelineStart-chunkGranularity);
     std::time_t time_t_chunk_end = std::chrono::high_resolution_clock::to_time_t(chunk_end_point);
-    LOG_TRACE("[StoryPipeline] Prepending new chunk for StoryID={} starting at: {}",
+    LOG_TRACE("[StoryPipeline] Prepending new chunk for StoryId {} starting at {}",
                                storyId, timelineStart);
 #endif
     auto result = storyTimelineMap.insert(
@@ -163,7 +166,7 @@ std::map <uint64_t, chronolog::StoryChunk*>::iterator chronolog::StoryPipeline::
     std::time_t time_t_chunk_start = std::chrono::high_resolution_clock::to_time_t(chunk_start_point);
     auto chunk_end_point = epoch_time_point + std::chrono::nanoseconds(timelineEnd+chunkGranularity);
     std::time_t time_t_chunk_end = std::chrono::high_resolution_clock::to_time_t(chunk_end_point);
-    LOG_TRACE("[StoryPipeline] Appending new chunk for StoryID={} starting at: {}",
+    LOG_TRACE("[StoryPipeline] Appending new chunk for StoryId {} starting at {}",
                                storyId, timelineEnd);
 #endif
     auto result = storyTimelineMap.insert(
@@ -184,13 +187,17 @@ std::map <uint64_t, chronolog::StoryChunk*>::iterator chronolog::StoryPipeline::
 void chronolog::StoryPipeline::collectIngestedEvents()
 {
     activeIngestionHandle->swapActiveDeque();
+    StoryChunk * next_chunk = nullptr;
     while(!activeIngestionHandle->getPassiveDeque().empty())
     {
-        //INNA: consider adding mergeEvents(StoryChunk*)
-        mergeEvents(*(activeIngestionHandle->getPassiveDeque().front()));
+        next_chunk = activeIngestionHandle->getPassiveDeque().front();
         activeIngestionHandle->getPassiveDeque().pop_front();
+        if( next_chunk != nullptr)
+        {
+            mergeEvents(*next_chunk);
+            delete next_chunk;
+        }
     }
-    LOG_DEBUG("[StoryPipeline] Collected ingested events for StoryID={}", storyId);
 }
 
 void chronolog::StoryPipeline::extractDecayedStoryChunks(uint64_t current_time)
@@ -205,7 +212,7 @@ void chronolog::StoryPipeline::extractDecayedStoryChunks(uint64_t current_time)
             std::chrono::time_point <std::chrono::system_clock, std::chrono::nanoseconds>{} // epoch_time_point{};
             + std::chrono::nanoseconds(head_chunk_end_time + acceptanceWindow);
     std::time_t time_t_decay = std::chrono::high_resolution_clock::to_time_t(decay_point);
-    LOG_TRACE("[StoryPipeline] StoryID: {} - Current time: {} - Timeline size: {} - Head chunk decay time: {}", storyId
+    LOG_TRACE("[StoryPipeline] StoryId: {} - Current time: {} - Timeline size: {} - Head chunk decay time: {}", storyId
          , std::ctime(&time_t_current_time), storyTimelineMap.size(), std::ctime(&time_t_decay));
 #endif
 
@@ -228,10 +235,9 @@ void chronolog::StoryPipeline::extractDecayedStoryChunks(uint64_t current_time)
 
         if(extractedChunk != nullptr)
         {
-#ifdef TRACE_CHUNK_EXTRACTION
-            LOG_TRACE("[StoryPipeline] StoryID: {} - Extracted chunk with start time {} is empty: {}", storyId
-                 , extractedChunk->getStartTime(), (extractedChunk->empty() ? "Yes" : "No"));
-#endif
+            LOG_TRACE("[StoryPipeline] StoryId: {} - Extracted chunk {}-{} eventCount {}", storyId
+                 , extractedChunk->getStartTime(), extractedChunk->getEndTime(), extractedChunk->getEventCount());
+
             if(extractedChunk->empty())
             {   // there's no need to carry an empty chunk any further...  
                 delete extractedChunk;
@@ -242,81 +248,12 @@ void chronolog::StoryPipeline::extractDecayedStoryChunks(uint64_t current_time)
             }
         }
     }
-#ifdef TRACE_CHUNK_EXTRACTION
-    LOG_TRACE("[StoryPipeline] Extracting decayed chunks for StoryID={}. Queue size: {}", storyId
+
+    LOG_TRACE("[StoryPipeline] Extracting decayed chunks for StoryId {} ExtractionQueue size {}", storyId
          , theExtractionQueue.size());
-#endif
+
 }
 
-////////////////////
-/*
-void chronolog::StoryPipeline::mergeEvents(chronolog::EventDeque &event_deque)
-{
-    if(event_deque.empty())
-    { return; }
-
-    std::lock_guard <std::mutex> lock(sequencingMutex);
-    chl::LogEvent event;
-    // the last chunk is most likely the one that would get the events, so we'd start with the last
-    // chunk and do the lookup only if it's not the one
-    // NOTE: we should never have less than 2 chunks in the active storyTimelineMap !!!
-    std::map <uint64_t, chronolog::StoryChunk*>::iterator chunk_to_merge_iter = --storyTimelineMap.end();
-    while(!event_deque.empty())
-    {
-        event = event_deque.front();
-        LOG_DEBUG("[StoryPipeline] StoryID: {} [Start: {}, End: {}]: Merging event time: {}", storyId, timelineStart
-             , timelineEnd, event.time());
-        if(timelineStart <= event.time() && event.time() < timelineEnd)
-        {
-            // we expect the events in the deque to be mostly monotonous
-            // so we'd try the most recently used chunk first and only look for the new chunk
-            // if the event does not belong to the recently used chunk
-            if(!(*chunk_to_merge_iter).second->insertEvent(event))
-            {
-                // find the new chunk_to_merge the event into : we are lookingt for
-                // the chunk preceeding the first chunk with the startTime > event.time()
-                chunk_to_merge_iter = storyTimelineMap.upper_bound(event.time());
-                //merge into the preceeding chunk
-                if(!(*(--chunk_to_merge_iter)).second->insertEvent(event))
-                {
-                    LOG_ERROR("[StoryPipeline] StoryID: {} - Discarded event with timestamp: {}", storyId, event.time());
-                }
-            }
-        }
-        else if(event.time() >= timelineEnd)
-        {  //extend timeline forward
-            while(event.time() >= timelineEnd)
-            {
-                chunk_to_merge_iter = appendStoryChunk();
-                if(chunk_to_merge_iter == storyTimelineMap.end())
-                { break; }
-            }
-            if(chunk_to_merge_iter != storyTimelineMap.end())
-            { (*chunk_to_merge_iter).second->insertEvent(event); }
-            else
-            {
-                LOG_ERROR("[StoryPipeline] StoryID: {} - Discarding event with timestamp: {}", storyId, event.time());
-            }
-        }
-        else
-        {  //extend timeline backward
-            while(event.time() < timelineStart)
-            {
-                chunk_to_merge_iter = chl::StoryPipeline::prependStoryChunk();
-                if(chunk_to_merge_iter == storyTimelineMap.end())
-                { break; }
-            }
-            if(chunk_to_merge_iter != storyTimelineMap.end())
-            { (*chunk_to_merge_iter).second->insertEvent(event); }
-            else
-            {
-                LOG_ERROR("[StoryPipeline] StoryID: {} - Discarding event with timestamp: {}", storyId, event.time());
-            }
-        }
-        event_deque.pop_front();
-    }
-}
-*/
 //////////////////////
 // Merge the StoryChunk obtained from external source into the StoryPipeline
 // Note that the granularity of the StoryChunk being merged may be 
@@ -331,8 +268,8 @@ void chronolog::StoryPipeline::mergeEvents(chronolog::StoryChunk &other_chunk)
 
     std::lock_guard <std::mutex> lock(sequencingMutex);
 
-    LOG_DEBUG("[StoryPipeline] StoryID: {} - Merging StoryChunk from {} to {}", storyId, other_chunk.getStartTime()
-         , other_chunk.getEndTime());
+    LOG_DEBUG("[StoryPipeline] StoryId {} timeline {}-{} : Merging StoryChunk {}-{} eventCount {}", storyId,timelineStart, timelineEnd,  other_chunk.getStartTime()
+         , other_chunk.getEndTime(), other_chunk.getEventCount());
 
     // locate the storyChunk in the StoryPipeline with the time Key not less than
     // other_chunk.startTime and start merging
@@ -343,30 +280,34 @@ void chronolog::StoryPipeline::mergeEvents(chronolog::StoryChunk &other_chunk)
         // find the chunk_to_merge into : we are lookingt for
         // the chunk preceeding the one with the startTime > other_chunk.getStartTime()
         chunk_to_merge_iter = --storyTimelineMap.upper_bound(other_chunk.getStartTime());
+        LOG_DEBUG("[StoryPipeline] StoryId {} timeline {}-{} : Merging StoryChunk {} starts with chunk {}", storyId, timelineStart, timelineEnd, 
+                other_chunk.getStartTime(), (*chunk_to_merge_iter).second->getStartTime());
     }
     else
     {
         // unlikely but possible that we get some delayed events and need to prepend some chunks
         // extending the timeline back to the past
-        LOG_DEBUG("[StoryPipeline] StoryID: {} - Prepending merge starting at timestamp {}", storyId
-             , other_chunk.getStartTime());
+        LOG_DEBUG("[StoryPipeline] StoryId {} timeline {}-{} : Merging StoryChunk {} -timelineStart {} prepending chunks ", storyId, timelineStart, timelineEnd, other_chunk.getStartTime(), timelineStart);
+
         while(timelineStart > other_chunk.getStartTime())
         {
             chunk_to_merge_iter = chl::StoryPipeline::prependStoryChunk();
             if(chunk_to_merge_iter == storyTimelineMap.end())
             {
-                //INNA:: if prepend fails we have no choice but to discard the events we can't merge !!
-                LOG_ERROR("[StoryPipeline] StoryID: {} - Merge operation discards events between timestamps: {} and {}"
-                     , storyId, other_chunk.getStartTime(), timelineStart);
+                // if prepend fails we have no choice but to discard the events we can't merge !!
+                LOG_ERROR("[StoryPipeline] StoryId {} timeline {}-{} : Merge operation discards events between timestamps: {} and {}"
+                     , storyId, timelineStart, timelineEnd, other_chunk.getStartTime(), timelineStart);
                 other_chunk.eraseEvents(other_chunk.getStartTime(), timelineStart);
                 chunk_to_merge_iter = storyTimelineMap.begin();
             }
         }
     }
 
-    //iterate through the storyTimelineMap draining the other_chunk events
+    // iterate through the storyTimelineMap draining the other_chunk events
     while(chunk_to_merge_iter != storyTimelineMap.end() && !other_chunk.empty())
     {
+        LOG_DEBUG("[StoryPipeline] StoryId {} timeline {}-{} : Merging StoryChunk {} into chunk {}", storyId, timelineStart, timelineEnd, 
+                other_chunk.getStartTime(), (*chunk_to_merge_iter).second->getStartTime());
         (*chunk_to_merge_iter).second->mergeEvents(other_chunk);
         chunk_to_merge_iter++;
     }
@@ -376,10 +317,13 @@ void chronolog::StoryPipeline::mergeEvents(chronolog::StoryChunk &other_chunk)
 
     while(!other_chunk.empty())
     {
+        LOG_DEBUG("[StoryPipeline] StoryId {} timeline {}-{} : Merging StoryChunk {} events {} - appending chunks", storyId, timelineStart, timelineEnd,
+                other_chunk.getStartTime(), other_chunk.getEventCount());
         chunk_to_merge_iter = appendStoryChunk();
         if(chunk_to_merge_iter == storyTimelineMap.end())
         { break; }
-
+        LOG_DEBUG("[StoryPipeline] StoryId {} timeline {}-{} : Merging StoryChunk {} into chunk {}", storyId, timelineStart, timelineEnd, 
+                other_chunk.getStartTime(), (*chunk_to_merge_iter).second->getStartTime());
         (*chunk_to_merge_iter).second->mergeEvents(other_chunk);
     }
 

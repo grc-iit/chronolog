@@ -164,13 +164,12 @@ int main(int argc, char**argv)
     catch(tl::exception const &)
     {
         LOG_ERROR("[ChronoGrapher]  failed to create DataStoreAdminService");
+        keeperDataAdminService = nullptr;
     }
 
     if(nullptr == keeperDataAdminService)
     {
         LOG_CRITICAL("[ChronoGrapher] failed to create DataStoreAdminService exiting");
-        if(dataAdminEngine)
-        { delete dataAdminEngine; }
         return (-1);
     }
 
@@ -194,6 +193,7 @@ int main(int argc, char**argv)
     catch(tl::exception const &)
     {
         LOG_ERROR("[ChronoGrapher] failed to create RecordingService");
+        grapherRecordingService = nullptr;
     }
 
     if(nullptr == grapherRecordingService)
@@ -225,7 +225,9 @@ int main(int argc, char**argv)
 
     /// Registration with ChronoVisor __________________________________________________________________________________
     // try to register with chronoVisor a few times than log ERROR and exit...
-    int registration_status = chronolog::CL_ERR_UNKNOWN;
+    int registration_status = grapherRegistryClient->send_register_msg(
+                chronolog::GrapherRegistrationMsg(processIdCard, collectionServiceId));
+    //if the first attemp failes retry 
     int retries = 5;
     while((chronolog::CL_SUCCESS != registration_status) && (retries > 0))
     {
