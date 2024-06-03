@@ -317,7 +317,8 @@ void chronolog::StoryPipeline::mergeEvents(chronolog::StoryChunk &other_chunk)
 
     while(!other_chunk.empty())
     {
-        LOG_DEBUG("[StoryPipeline] StoryId {} timeline {}-{} : Merging StoryChunk {} events {} - appending chunks", storyId, other_chunk.getStartTime(), other_chunk.getEventCount());
+        LOG_DEBUG("[StoryPipeline] StoryId {} timeline {}-{} : Merging StoryChunk {} events {} - appending chunks", storyId, timelineStart, timelineEnd,
+                other_chunk.getStartTime(), other_chunk.getEventCount());
         chunk_to_merge_iter = appendStoryChunk();
         if(chunk_to_merge_iter == storyTimelineMap.end())
         { break; }
