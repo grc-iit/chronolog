@@ -22,7 +22,7 @@ int chronolog::Client::Disconnect()
 }
 
 int chronolog::Client::CreateChronicle(std::string const &chronicle_name
-                                       , std::unordered_map <std::string, std::string> const &attrs, int &flags)
+                                       , std::map <std::string, std::string> const &attrs, int &flags)
 {
     return chronologClientImpl->CreateChronicle(chronicle_name, attrs, flags);
 }
@@ -34,7 +34,7 @@ int chronolog::Client::DestroyChronicle(std::string const &chronicle_name)
 
 std::pair <int, chronolog::StoryHandle*>
 chronolog::Client::AcquireStory(std::string const &chronicle_name, std::string const &story_name
-                                , const std::unordered_map <std::string, std::string> &attrs, int &flags)
+                                , const std::map <std::string, std::string> &attrs, int &flags)
 {
     return chronologClientImpl->AcquireStory(chronicle_name, story_name, attrs, flags);
 }

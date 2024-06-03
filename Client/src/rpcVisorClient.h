@@ -2,7 +2,7 @@
 #define RPC_VISOR_PORTAL_CLIENT_H
 
 #include <string>
-#include <unordered_map>
+#include <map>
 #include <iostream>
 #include <sys/types.h>
 #include <unistd.h>
@@ -12,10 +12,9 @@
 #include <thallium/serialization/serialize.hpp>
 #include <thallium/serialization/stl/string.hpp>
 #include <thallium/serialization/stl/vector.hpp>
-#include <thallium/serialization/stl/unordered_map.hpp>  // remove after attrs are changed 
+#include <thallium/serialization/stl/map.hpp>
 
 #include "log.h"
-#include "error.h"
 #include "chronolog_types.h"
 #include "ConnectResponseMsg.h"
 #include "AcquireStoryResponseMsg.h"
@@ -89,7 +88,7 @@ public:
     }
 
     int CreateChronicle(ClientId const &client_id, std::string const &name
-                        , const std::unordered_map <std::string, std::string> &attrs, int &flags)
+                        , const std::map <std::string, std::string> &attrs, int &flags)
     {
         LOG_INFO("[RPCVisorClient] Initiating creation of chronicle: Name={}, Flags={}", name.c_str()
              , flags);
@@ -142,7 +141,7 @@ public:
 
     chronolog::AcquireStoryResponseMsg
     AcquireStory(ClientId const &client_id, std::string const &chronicle_name, std::string const &story_name
-                 , const std::unordered_map <std::string, std::string> &attrs, const int &flags)
+                 , const std::map <std::string, std::string> &attrs, const int &flags)
     {
         LOG_INFO("[RPCVisorClient] Initiating story acquisition: ChronicleName={}, StoryName={}", chronicle_name.c_str()
              , story_name.c_str());

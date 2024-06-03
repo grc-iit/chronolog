@@ -63,7 +63,7 @@ int main(int argc, char**argv)
     for(int i = 0; i < NUM_CHRONICLE; i++)
     {
         std::string attr = std::string("Priority=High");
-        std::unordered_map <std::string, std::string> chronicle_attrs;
+        std::map <std::string, std::string> chronicle_attrs;
         chronicle_attrs.emplace("Priority", "High");
         chronicle_attrs.emplace("Date", "2023-01-15");
         chronicle_attrs.emplace("IndexGranularity", "Millisecond");
@@ -104,7 +104,7 @@ int main(int argc, char**argv)
             flags = 2;
             std::string story_name(gen_random(STORY_NAME_LEN));
             story_names.emplace_back(story_name);
-            std::unordered_map <std::string, std::string> story_attrs;
+            std::map <std::string, std::string> story_attrs;
             story_attrs.emplace("Priority", "High");
             story_attrs.emplace("IndexGranularity", "Millisecond");
             story_attrs.emplace("TieringPolicy", "Hot");
@@ -170,7 +170,7 @@ int main(int argc, char**argv)
 
     for(int i = 0; i < NUM_STORY; i++)
     {
-        std::unordered_map <std::string, std::string> story_attrs;
+        std::map <std::string, std::string> story_attrs;
         std::string temp_str = gen_random(STORY_NAME_LEN);
         ret = client.AcquireStory(chronicle_names[i].append(temp_str), temp_str, story_attrs, flags).first;
         assert(ret == chronolog::CL_ERR_NOT_EXIST);
@@ -200,7 +200,7 @@ int main(int argc, char**argv)
         chronicle_names.emplace_back(chronicle_name);
         std::string attr = std::string("Priority=High");
         int ret;
-        std::unordered_map <std::string, std::string> chronicle_attrs;
+        std::map <std::string, std::string> chronicle_attrs;
         chronicle_attrs.emplace("Priority", "High");
         chronicle_attrs.emplace("IndexGranularity", "Millisecond");
         chronicle_attrs.emplace("TieringPolicy", "Hot");

@@ -43,16 +43,15 @@ public:
 
     int Connect();
 
-    //const std::string &server_uri, std::string const& client_id, int &flags); //uint64_t &clock_offset);
-    int Disconnect(); //const std::string &client_account, int &flags);
+    int Disconnect(); 
 
-    int CreateChronicle(std::string const &chronicle_name, const std::unordered_map <std::string, std::string> &attrs
+    int CreateChronicle(std::string const &chronicle_name, const std::map <std::string, std::string> &attrs
                         , int &flags);
 
     int DestroyChronicle(std::string const &chronicle_name); //, int &flags);
 
     std::pair <int, StoryHandle*> AcquireStory(std::string const &chronicle_name, std::string const &story_name
-                                               , const std::unordered_map <std::string, std::string> &attrs
+                                               , const std::map <std::string, std::string> &attrs
                                                , int &flags);
 
     int ReleaseStory(std::string const &chronicle_name, std::string const &story_name); //, int &flags);

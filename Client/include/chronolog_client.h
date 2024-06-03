@@ -3,14 +3,13 @@
 
 #include <string>
 #include <vector>
-#include <unordered_map>
+#include <map>
 
 #include "ConfigurationManager.h"  //TODO: not sure this is a good idea , but will keep it for now ...
 
 namespace chronolog
 {
 
-//Abstract StoryHandle will be returnrned to the cleitn in AcquireStory() API call
 class StoryHandle
 {
 public:
@@ -37,14 +36,12 @@ public:
 
     int Disconnect();
 
-    int CreateChronicle(std::string const &chronicle_name, std::unordered_map <std::string, std::string> const &attrs
-                        , int &flags);
+    int CreateChronicle(std::string const &chronicle_name, std::map <std::string, std::string> const &attrs , int &flags);
 
     int DestroyChronicle(std::string const &chronicle_name);
 
-//TODO: unordered_map? how many attributes do we expect ???
     std::pair <int, StoryHandle*> AcquireStory(std::string const &chronicle_name, std::string const &story_name
-                                               , const std::unordered_map <std::string, std::string> &attrs
+                                               , const std::map <std::string, std::string> &attrs
                                                , int &flags);
 
     int ReleaseStory(std::string const &chronicle_name, std::string const &story_name);

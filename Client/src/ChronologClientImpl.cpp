@@ -156,7 +156,7 @@ int chronolog::ChronologClientImpl::Disconnect()
 }
 
 int chronolog::ChronologClientImpl::CreateChronicle(std::string const &chronicle_name
-                                                    , const std::unordered_map <std::string, std::string> &attrs
+                                                    , const std::map <std::string, std::string> &attrs
                                                     , int &flags)
 {
     if(chronicle_name.empty())
@@ -236,7 +236,7 @@ int chronolog::ChronologClientImpl::DestroyStory(std::string const &chronicle_na
 
 std::pair <int, chronolog::StoryHandle*>
 chronolog::ChronologClientImpl::AcquireStory(std::string const &chronicle_name, std::string const &story_name
-                                             , const std::unordered_map <std::string, std::string> &attrs, int &flags)
+                                             , const std::map <std::string, std::string> &attrs, int &flags)
 {
     // Log the attempt to acquire a story with specific details.
     LOG_DEBUG("[ChronoLogClientImpl] Attempting to acquire story. ChronicleName={}, StoryName={}", chronicle_name

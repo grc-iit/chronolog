@@ -24,18 +24,13 @@ void thread_function(void*tt)
 {
     struct thread_arg*t = (struct thread_arg*)tt;
 
-    //std::string server_ip = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string();
-    //int base_port = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT;
-    /*std::string client_id = gen_random(8);
-    std::string server_uri = CHRONOLOG_CONF->SOCKETS_CONF.string();
-    server_uri += "://"+server_ip+":"+std::to_string(base_port);*/
     int flags = 0;
     uint64_t offset;
     int ret;
     std::string chronicle_name;
     if(t->tid % 2 == 0) chronicle_name = "Chronicle_1";
     else chronicle_name = "Chronicle_2";
-    std::unordered_map <std::string, std::string> chronicle_attrs;
+    std::map <std::string, std::string> chronicle_attrs;
     chronicle_attrs.emplace("Priority", "High");
     chronicle_attrs.emplace("IndexGranularity", "Millisecond");
     chronicle_attrs.emplace("TieringPolicy", "Hot");
@@ -46,7 +41,7 @@ void thread_function(void*tt)
            ret == chronolog::CL_ERR_NO_KEEPERS);
     flags = 1;
     std::string story_name = gen_random(STORY_NAME_LEN);
-    std::unordered_map <std::string, std::string> story_attrs;
+    std::map <std::string, std::string> story_attrs;
     story_attrs.emplace("Priority", "High");
     story_attrs.emplace("IndexGranularity", "Millisecond");
     story_attrs.emplace("TieringPolicy", "Hot");
