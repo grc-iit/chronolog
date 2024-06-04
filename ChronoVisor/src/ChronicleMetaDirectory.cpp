@@ -51,7 +51,6 @@ int ChronicleMetaDirectory::create_chronicle(const std::string &name
     pChronicle->setName(name);
     pChronicle->setCid(cid);
     auto res = chronicleMap_->emplace(cid, pChronicle);
-    LOG_DEBUG("[ChronicleMetaDirectory] Chronicle created in {} ns", duration.count());
     if(res.second)
     {
         LOG_DEBUG("[ChronicleMetaDirectory] ChronicleName={} is created", name.c_str());
@@ -114,7 +113,6 @@ int ChronicleMetaDirectory::destroy_chronicle(const std::string &name)
         /* No Stories in Chronicle is acquired, ready to destroy */
         delete pChronicle;
         auto nErased = chronicleMap_->erase(cid);
-        LOG_DEBUG("[ChronicleMetaDirectory] Chronicle destroyed in {} ns", duration.count());
         if(nErased == 1)
         {
             LOG_DEBUG("[ChronicleMetaDirectory] ChronicleName={} is destroyed", name.c_str());

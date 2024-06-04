@@ -3,6 +3,7 @@
 
 #include "chronolog_errcode.h"
 #include "ConfigurationManager.h"
+#include "ClientConfiguration.h"
 //#include "ClocksourceManager.h"
 
 #include "chronolog_types.h"
@@ -33,6 +34,7 @@ public:
     static ChronologClientImpl*chronologClientImplInstance;
 
     static ChronologClientImpl*GetClientImplInstance(ChronoLog::ConfigurationManager const &);
+    static ChronologClientImpl*GetClientImplInstance(chronolog::ClientPortalServiceConf const &);
 
     // the classs is non-copyable
     ChronologClientImpl(ChronologClientImpl const &) = delete;
@@ -79,6 +81,7 @@ private:
     // ClocksourceManager *pClocksourceManager_;
 
     ChronologClientImpl(const ChronoLog::ConfigurationManager &conf_manager);
+    ChronologClientImpl(const chronolog::ClientPortalServiceConf &);
 
     ChronologClientImpl(std::string const &protocol, const std::string &visor_ip, int visor_port
                         , uint16_t service_provider);

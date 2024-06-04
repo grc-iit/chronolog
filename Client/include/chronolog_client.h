@@ -7,6 +7,13 @@
 
 #include "ConfigurationManager.h"  //TODO: not sure this is a good idea , but will keep it for now ...
 
+#include "ClientConfiguration.h"
+
+//TODO: rename Client to be ChronologClient 
+//TODO: remove ConfigurationManager from chronolog_client include fiels , should only be in the implementation files 
+// if needed at all
+
+
 namespace chronolog
 {
 
@@ -29,6 +36,8 @@ class Client
 {
 public:
     Client(ChronoLog::ConfigurationManager const &);
+    
+    Client(ClientPortalServiceConf const &);
 
     ~Client();
 

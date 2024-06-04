@@ -22,7 +22,4 @@ target_link_libraries(py_chronolog_client PUBLIC
 ###################################
 # Install targets
 ##################################
-
-#install(TARGETS py_chronolog_client
-#        LIBRARY_DESTINATION ${CMAKE_INSTALL_LIBDIR}
-#        ARCHIVE_DESTINATION ${CMAKE_INSTALL_LIBDIR})
+install(TARGETS py_chronolog_client DESTINATION lib)
