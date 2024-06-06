@@ -17,18 +17,35 @@
 namespace chronolog
 {
 
+class ChronologClientImpl;
+class StoryWritingHandle;
+
 class StoryHandle
 {
 public:
-    virtual  ~StoryHandle();
+    friend ChronologClientImpl;
 
-    virtual int log_event(std::string const &) = 0;
+    StoryHandle();  //constructs invalid StoryHandle
+                     
+    StoryHandle(const StoryHandle&) = default;                    
+    StoryHandle(StoryHandle&&) = default;                         
+    StoryHandle& operator=(const StoryHandle&) = default;         
+    StoryHandle& operator=(StoryHandle&&) = default;              
+
+     ~StoryHandle() = default;
+
+    bool is_valid() const;
+
+    int log_event(std::string const &);
 
     // to be implemented with libfabric/thallium bulk transfer...
     //virtual int log_event( size_t , void*) = 0;
-};
 
-class ChronologClientImpl;
+private:
+    StoryHandle(const std::shared_ptr<StoryWritingHandle>& impl);
+
+    std::shared_ptr<StoryWritingHandle> storyWritingHandle;
+};
 
 // top level Chronolog Client...
 // implementation details are in the ChronologClientImpl class 
@@ -49,7 +66,7 @@ public:
 
     int DestroyChronicle(std::string const &chronicle_name);
 
-    std::pair <int, StoryHandle*> AcquireStory(std::string const &chronicle_name, std::string const &story_name
+    std::pair <int, StoryHandle> AcquireStory(std::string const &chronicle_name, std::string const &story_name
                                                , const std::map <std::string, std::string> &attrs
                                                , int &flags);
 

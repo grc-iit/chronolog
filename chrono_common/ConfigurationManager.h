@@ -6,7 +6,6 @@
 #include <fstream>
 #include <iostream>
 #include <cassert>
-#include <unordered_map>
 #include <json-c/json.h>
 #include <sstream>
 #include <spdlog/common.h>

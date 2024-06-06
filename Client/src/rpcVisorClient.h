@@ -357,6 +357,8 @@ public:
         destroy_story.deregister();
         show_chronicles.deregister();
         show_stories.deregister();
+        
+        //service_ph.get_engine().pop_finalize_callback(this);
     }
 
 private:
@@ -396,6 +398,8 @@ private:
         destroy_story = tl_engine.define("DestroyStory");
         show_chronicles = tl_engine.define("ShowChronicles");
         show_stories = tl_engine.define("ShowStories");
+
+        //service_ph.get_engine().push_finalize_callback(this, [p = this](){ delete p;});
     }
 };
 

@@ -1,6 +1,34 @@
 #include "ChronologClientImpl.h"
 
 
+
+chronolog::StoryHandle::StoryHandle()
+ :storyWritingHandle(nullptr)
+{ }
+
+chronolog::StoryHandle::StoryHandle(const std::shared_ptr<StoryWritingHandle>& impl)
+    :storyWritingHandle(impl)
+{
+
+}
+
+bool chronolog::StoryHandle::is_valid() const
+{
+    return static_cast<bool>(storyWritingHandle);    
+}
+
+int chronolog::StoryHandle::log_event(std::string const & event_string)
+{
+    if( is_valid())
+    {
+        return storyWritingHandle->log_event(event_string);
+    }
+    else
+    {
+        return CL_ERR_UNKNOWN;
+    }
+}
+
 chronolog::Client::Client(ChronoLog::ConfigurationManager const &confManager)
 {
     chronologClientImpl = chronolog::ChronologClientImpl::GetClientImplInstance(confManager);
@@ -37,7 +65,7 @@ int chronolog::Client::DestroyChronicle(std::string const &chronicle_name)
     return chronologClientImpl->DestroyChronicle(chronicle_name);
 }
 
-std::pair <int, chronolog::StoryHandle*>
+std::pair <int, chronolog::StoryHandle>
 chronolog::Client::AcquireStory(std::string const &chronicle_name, std::string const &story_name
                                 , const std::map <std::string, std::string> &attrs, int &flags)
 {

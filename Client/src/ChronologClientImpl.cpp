@@ -131,8 +131,9 @@ chronolog::ChronologClientImpl::~ChronologClientImpl()
 
     if(tlEngine != nullptr)
     {
+        //INNA: finalization would have to be revisited when we add the Reader with the server_SIDE tlEngine
         tlEngine->finalize();
-        delete tlEngine;
+        //delete tlEngine;
     }
 
 }
@@ -276,7 +277,7 @@ int chronolog::ChronologClientImpl::DestroyStory(std::string const &chronicle_na
     return result;
 }
 
-std::pair <int, chronolog::StoryHandle*>
+std::pair <int, chronolog::StoryHandle>
 chronolog::ChronologClientImpl::AcquireStory(std::string const &chronicle_name, std::string const &story_name
                                              , const std::map <std::string, std::string> &attrs, int &flags)
 {
@@ -287,7 +288,7 @@ chronolog::ChronologClientImpl::AcquireStory(std::string const &chronicle_name, 
     if(chronicle_name.empty() || story_name.empty())
     {
         LOG_ERROR("[ChronoLogClientImpl] Failed to acquire story: Missing essential parameters.");
-        return std::pair <int, chronolog::StoryHandle*>(chronolog::CL_ERR_INVALID_ARG, nullptr);
+        return std::pair <int, chronolog::StoryHandle>(chronolog::CL_ERR_INVALID_ARG, chronolog::StoryHandle{});
     }
 
     std::lock_guard <std::mutex> lock_client(chronologClientMutex);
@@ -296,17 +297,17 @@ chronolog::ChronologClientImpl::AcquireStory(std::string const &chronicle_name, 
     {
         LOG_ERROR("[ChronoLogClientImpl] Failed to acquire story '{}' from chronicle '{}': Client is not connected or is shutting down."
              , story_name, chronicle_name);
-        return std::pair <int, chronolog::StoryHandle*>(chronolog::CL_ERR_NO_CONNECTION, nullptr);
+        return std::pair <int, chronolog::StoryHandle>(chronolog::CL_ERR_NO_CONNECTION, chronolog::StoryHandle{});
     }
 
     // this function can be called from any client thread, so before sending an rpc request to the Visor
     // we check if the story acquisition request has been already granted to the process on some other thread
     // 
-    chronolog::StoryHandle*storyHandle = storyteller->findStoryWritingHandle(chronicle_name, story_name);
+    chronolog::StoryWritingHandle* storyHandle = storyteller->findStoryWritingHandle(chronicle_name, story_name);
     if(storyHandle != nullptr)
     {
         LOG_INFO("[ChronoLogClientImpl] Story '{}' from chronicle '{}' is already acquired.", story_name, chronicle_name);
-        return std::pair <int, chronolog::StoryHandle*>(chronolog::CL_SUCCESS, storyHandle);
+        return std::pair <int, chronolog::StoryHandle>(chronolog::CL_SUCCESS, chronolog::StoryHandle{std::make_shared<chronolog::StoryWritingHandle>(*storyHandle)});
     }
 
     // issue rpc request to the Visor
@@ -319,7 +320,7 @@ chronolog::ChronologClientImpl::AcquireStory(std::string const &chronicle_name, 
     {
         LOG_ERROR("[ChronoLogClientImpl] Failed to acquire story '{}' from chronicle '{}'. Error code: {}", story_name
              , chronicle_name, acquireStoryResponse.getErrorCode());
-        return std::pair <int, chronolog::StoryHandle*>(acquireStoryResponse.getErrorCode(), nullptr);
+        return std::pair <int, chronolog::StoryHandle>(acquireStoryResponse.getErrorCode(), chronolog::StoryHandle{});
     }
 
     //successfull AcquireStoryResponse carries Visor generated StoryId & vector<KeeperIdCard> 
@@ -333,12 +334,13 @@ chronolog::ChronologClientImpl::AcquireStory(std::string const &chronicle_name, 
     {
         LOG_ERROR("[ChronoLogClientImpl] Failed to initialize story handle for '{}' in chronicle '{}'.", story_name
              , chronicle_name);
-        return std::pair <int, chronolog::StoryHandle*>(chronolog::CL_ERR_UNKNOWN, nullptr);
+        return std::pair <int, chronolog::StoryHandle>(chronolog::CL_ERR_UNKNOWN,chronolog::StoryHandle{});
     }
     else
     {
         LOG_INFO("[ChronoLogClientImpl] Successfully acquired story '{}' in chronicle '{}'.", story_name, chronicle_name);
-        return std::pair <int, chronolog::StoryHandle*>(chronolog::CL_SUCCESS, storyHandle);
+        //return std::pair <int, chronolog::StoryWritingHandle*>(chronolog::CL_SUCCESS, storyHandle);
+        return std::pair <int, chronolog::StoryHandle>(chronolog::CL_SUCCESS, chronolog::StoryHandle{std::make_shared<chronolog::StoryWritingHandle>(*storyHandle)});
     }
 }
 

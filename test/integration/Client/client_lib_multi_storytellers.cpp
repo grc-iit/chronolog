@@ -61,7 +61,7 @@ void thread_body(struct thread_arg*t)
         for(int i = 0; i < 100; ++i)
         {
             // Log an event to the story
-            story_handle->log_event("line " + std::to_string(i));
+            story_handle.log_event("line " + std::to_string(i));
             std::this_thread::sleep_for(std::chrono::milliseconds(i % 10));
         }
 

@@ -19,29 +19,31 @@ uint64_t chronolog::ChronologTimer::getTimestamp()
 }
 
 /////////////////////
-chronolog::StoryHandle::~StoryHandle()
-{}
+//chronolog::StoryHandleBase::~StoryHandleBase()
+//{}
 
 ////////////////////
-template <class KeeperChoicePolicy>
-// = chronolog::RoundRobinKeeperChoice>
-chronolog::StoryWritingHandle <KeeperChoicePolicy>::~StoryWritingHandle()
+//template <class KeeperChoicePolicy>
+//chronolog::StoryWritingHandle <KeeperChoicePolicy>::~StoryWritingHandle()
+chronolog::StoryWritingHandle::~StoryWritingHandle()
 {
+    LOG_DEBUG("[StoryWritingHandle] Destructor called.");
     delete keeperChoicePolicy;
 }
 
 ////////////////////
-template <class KeeperChoicePolicy>
-void
-chronolog::StoryWritingHandle <KeeperChoicePolicy>::addRecordingClient(chronolog::KeeperRecordingClient*keeperClient)
+//template <class KeeperChoicePolicy>
+//void chronolog::StoryWritingHandle <KeeperChoicePolicy>::addRecordingClient(chronolog::KeeperRecordingClient*keeperClient)
+void chronolog::StoryWritingHandle::addRecordingClient(chronolog::KeeperRecordingClient*keeperClient)
 {
     storyKeepers.push_back(keeperClient);
 }
 
 ///////////////////
-template <class KeeperChoicePolicy>
+//template <class KeeperChoicePolicy>
 void
-chronolog::StoryWritingHandle <KeeperChoicePolicy>::removeRecordingClient(chronolog::KeeperIdCard const &keeper_id_card)
+//chronolog::StoryWritingHandle <KeeperChoicePolicy>::removeRecordingClient(chronolog::KeeperIdCard const &keeper_id_card)
+chronolog::StoryWritingHandle::removeRecordingClient(chronolog::KeeperIdCard const &keeper_id_card)
 {
     // this should only be called when the ChronoKeeper process unexpectedly exits
     // so it's ok to use rather inefficient vector iteration....
@@ -56,8 +58,9 @@ chronolog::StoryWritingHandle <KeeperChoicePolicy>::removeRecordingClient(chrono
 }
 
 //////////////////
-template <class KeeperChoicePolicy>
-int chronolog::StoryWritingHandle <KeeperChoicePolicy>::log_event(std::string const &event_record)
+//template <class KeeperChoicePolicy>
+//int chronolog::StoryWritingHandle <KeeperChoicePolicy>::log_event(std::string const &event_record)
+int chronolog::StoryWritingHandle::log_event(std::string const &event_record)
 {
 
     chronolog::LogEvent log_event(storyId, theClient.getTimestamp(), theClient.getClientId()
@@ -78,8 +81,9 @@ int chronolog::StoryWritingHandle <KeeperChoicePolicy>::log_event(std::string co
 }
 /////////////////////
 
-template <class KeeperChoicePolicy>
-int chronolog::StoryWritingHandle <KeeperChoicePolicy>::log_event(size_t, void*)
+//template <class KeeperChoicePolicy>
+//int chronolog::StoryWritingHandle <KeeperChoicePolicy>::log_event(size_t, void*)
+int chronolog::StoryWritingHandle::log_event(size_t, void*)
 {
     return 0;  // not implemented yet ; to be implemented with tl bulk transfer ... 
 }
@@ -92,7 +96,7 @@ chronolog::StorytellerClient::~StorytellerClient()
     {
         std::lock_guard <std::mutex> lock(acquiredStoryMapMutex);
         /*
-        for( auto story_record_iter : acquiredStoryHandles)
+        for( auto story_record_iter : acquiredStoryHandles) //TODO: need to flush remaining records before exit
         {
             delete story_record_iter.second;
         }
@@ -186,7 +190,7 @@ int chronolog::StorytellerClient::removeKeeperRecordingClient(chronolog::KeeperI
 }
 
 ///////////////////////////
-chronolog::StoryHandle*
+chronolog::StoryWritingHandle*
 chronolog::StorytellerClient::findStoryWritingHandle(ChronicleName const &chronicle, StoryName const &story)
 {
     std::lock_guard <std::mutex> lock(acquiredStoryMapMutex);
@@ -208,7 +212,7 @@ chronolog::StorytellerClient::findStoryWritingHandle(ChronicleName const &chroni
 
 /////////////
 
-chronolog::StoryHandle*
+chronolog::StoryWritingHandle*
 chronolog::StorytellerClient::initializeStoryWritingHandle(ChronicleName const &chronicle, StoryName const &story
                                                            , StoryId const &story_id
                                                            , std::vector <KeeperIdCard> const &vectorOfKeepers)
@@ -224,8 +228,8 @@ chronolog::StorytellerClient::initializeStoryWritingHandle(ChronicleName const &
     }
 
     // create new StoryWritingHandle & initialize it's keeperClients vector    
-    chronolog::StoryWritingHandle <RoundRobinKeeperChoice>*storyWritingHandle = new StoryWritingHandle <RoundRobinKeeperChoice>(
-            *this, chronicle, story, story_id);
+    //chronolog::StoryWritingHandle <RoundRobinKeeperChoice>*storyWritingHandle = new StoryWritingHandle <RoundRobinKeeperChoice>(
+    chronolog::StoryWritingHandle *storyWritingHandle = new StoryWritingHandle( *this, chronicle, story, story_id);
 
     for(KeeperIdCard keeper_id_card: vectorOfKeepers)
     {
@@ -248,7 +252,7 @@ chronolog::StorytellerClient::initializeStoryWritingHandle(ChronicleName const &
     }
 
     auto insert_return = acquiredStoryHandles.insert(
-            std::pair <std::pair <std::string, std::string>, chronolog::StoryHandle*>(
+            std::pair <std::pair <std::string, std::string>, chronolog::StoryWritingHandle*>(
                     std::pair <std::string, std::string>(chronicle, story), storyWritingHandle));
     if(!insert_return.second)
     {

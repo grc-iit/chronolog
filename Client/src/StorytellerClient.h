@@ -52,9 +52,9 @@ public:
 
     int removeKeeperRecordingClient(KeeperIdCard const &);
 
-    StoryHandle*findStoryWritingHandle(ChronicleName const &, StoryName const &);
+    StoryWritingHandle* findStoryWritingHandle(ChronicleName const &, StoryName const &);
 
-    StoryHandle*initializeStoryWritingHandle(ChronicleName const &, StoryName const &, StoryId const &
+    StoryWritingHandle* initializeStoryWritingHandle(ChronicleName const &, StoryName const &, StoryId const &
                                              , std::vector <KeeperIdCard> const &);
 
     void removeAcquiredStoryHandle(ChronicleName const &, StoryName const &);
@@ -83,19 +83,22 @@ private:
     std::mutex acquiredStoryMapMutex;
 
     std::map <std::pair <uint32_t, uint16_t>, KeeperRecordingClient*> recordingClientMap;
-    std::map <std::pair <std::string, std::string>, StoryHandle*> acquiredStoryHandles;
+    std::map <std::pair <std::string, std::string>, StoryWritingHandle*> acquiredStoryHandles;
 
 };
 
 
 // this class definition lives in the client lib
-template <class KeeperChoicePolicy>
-class StoryWritingHandle: public StoryHandle
+//template <class KeeperChoicePolicy>
+class StoryWritingHandle //: public StoryHandleBase
 {
 public:
     StoryWritingHandle(StorytellerClient &client, ChronicleName const &a_chronicle, StoryName const &a_story
-                       , StoryId const &story_id): theClient(client), chronicle(a_chronicle), story(a_story), storyId(
-            story_id), keeperChoicePolicy(new KeeperChoicePolicy)
+                       , StoryId const &story_id)
+        : theClient(client), chronicle(a_chronicle), story(a_story)
+        , storyId( story_id)
+            //, keeperChoicePolicy(new KeeperChoicePolicy)
+        , keeperChoicePolicy(new RoundRobinKeeperChoice)
     {
         LOG_DEBUG("[StoryWritingHandle] Initialized for Chronicle: {}, Story: {}", a_chronicle, a_story);
     }
@@ -116,7 +119,8 @@ private:
     ChronicleName chronicle;
     StoryName story;
     StoryId storyId;
-    KeeperChoicePolicy*keeperChoicePolicy;
+    //KeeperChoicePolicy*keeperChoicePolicy;
+    RoundRobinKeeperChoice *keeperChoicePolicy;
     std::vector <KeeperRecordingClient*> storyKeepers;
 
 };
