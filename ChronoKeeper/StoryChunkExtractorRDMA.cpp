@@ -32,9 +32,18 @@ int chronolog::StoryChunkExtractorRDMA::processStoryChunk(StoryChunk*story_chunk
 #endif
         size_t serialized_story_chunk_size;
         std::ostringstream oss;
-        oss.rdbuf()->pubsetbuf(serialized_buf, MAX_BULK_MEM_SIZE);
-        cereal::BinaryOutputArchive oarchive(oss);
-        oarchive(*story_chunk);
+        try
+        {
+            oss.rdbuf()->pubsetbuf(serialized_buf, MAX_BULK_MEM_SIZE);
+            cereal::BinaryOutputArchive oarchive(oss);
+            oarchive(*story_chunk);
+        }
+        catch(cereal::Exception const &ex)
+        {
+            LOG_ERROR("[StoryChunkExtractorRDMA] Failed to serialize a story chunk. Cereal exception encountered.");
+            LOG_ERROR("[StoryChunkExtractorRDMA] Exception: {}", ex.what());
+            return chronolog::CL_ERR_UNKNOWN;
+        }
         serialized_story_chunk_size = oss.tellp();
 #ifndef NDEBUG
         end = std::chrono::high_resolution_clock::now();
