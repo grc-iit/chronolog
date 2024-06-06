@@ -54,7 +54,6 @@
 #define LOG_ERROR(...) Logger::getInstance().error(__VA_ARGS__)
 #define LOG_CRITICAL(...) Logger::getInstance().critical(__VA_ARGS__)
 
-
 /**
  * @class Logger
  * @brief The Logger class provides a singleton logger with customizable configuration.
@@ -86,8 +85,10 @@ public:
      *                     and returns 1 if there was an error during initialization.
      */
     static int initialize(const std::string &logType, const std::string &location, spdlog::level::level_enum logLevel
-                          , const std::string &loggerName, const std::size_t &logFileSize, const std::size_t &logFileNum
-                          , spdlog::level::level_enum flushLevel);
+                          , const std::string &loggerName
+                , const std::size_t &logFileSize = 104857600
+                , const std::size_t &logFileNum = 3
+                , spdlog::level::level_enum flushLevel = spdlog::level::warn);
 
 
     /**
