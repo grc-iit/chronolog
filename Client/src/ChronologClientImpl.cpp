@@ -22,6 +22,22 @@ chronolog::ChronologClientImpl::GetClientImplInstance(ChronoLog::ConfigurationMa
     return chronologClientImplInstance;
 }
 
+
+chronolog::ChronologClientImpl*
+chronolog::ChronologClientImpl::GetClientImplInstance(chronolog::ClientPortalServiceConf const & visorClientPortalServiceConf)
+{
+    Logger::initialize("file", "/tmp/chrono_client.log", spdlog::level::info, "chrono_client", 1024000,3, spdlog::level::warn);
+
+    std::lock_guard <std::mutex> lock_client(chronologClientMutex);
+
+    if(chronologClientImplInstance == nullptr)
+    {
+        chronologClientImplInstance = new ChronologClientImpl(visorClientPortalServiceConf);
+    }
+
+    return chronologClientImplInstance;
+}
+
 ////////
 chronolog::ChronologClientImpl::ChronologClientImpl(const ChronoLog::ConfigurationManager &confManager): clientState(
         UNKNOWN), clientLogin(""), hostId(0), pid(0), clientId(0), tlEngine(nullptr), rpcVisorClient(nullptr)
@@ -41,6 +57,32 @@ chronolog::ChronologClientImpl::ChronologClientImpl(const ChronoLog::Configurati
             std::to_string(confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT);
     rpcVisorClient = chl::RpcVisorClient::CreateRpcVisorClient(*tlEngine, CLIENT_VISOR_NA_STRING
                                                                , confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID);
+}
+///////////////
+
+chronolog::ChronologClientImpl::ChronologClientImpl(const chronolog::ClientPortalServiceConf & clientPortalServiceConf)
+    : clientState(
+        UNKNOWN)
+    , clientLogin("")
+    , hostId(0), pid(0), clientId(0)
+    , tlEngine(nullptr)
+    , rpcVisorClient(nullptr)
+    , storyteller(nullptr)
+{
+    //pClocksourceManager_ = ClocksourceManager::getInstance();
+    //pClocksourceManager_->setClocksourceType(CHRONOLOG_CONF->CLOCKSOURCE_TYPE);
+
+    defineClientIdentity();
+    tlEngine = new thallium::engine(clientPortalServiceConf.proto_conf()
+                                    , THALLIUM_CLIENT_MODE, true, 1);
+
+    std::string CLIENT_VISOR_NA_STRING =
+            clientPortalServiceConf.proto_conf() + "://" +
+            clientPortalServiceConf.ip() + ":" +
+            std::to_string(clientPortalServiceConf.port());
+
+    rpcVisorClient = chl::RpcVisorClient::CreateRpcVisorClient(*tlEngine, CLIENT_VISOR_NA_STRING
+                                                               , clientPortalServiceConf.provider_id());
 }
 
 ////////
@@ -156,7 +198,7 @@ int chronolog::ChronologClientImpl::Disconnect()
 }
 
 int chronolog::ChronologClientImpl::CreateChronicle(std::string const &chronicle_name
-                                                    , const std::unordered_map <std::string, std::string> &attrs
+                                                    , const std::map <std::string, std::string> &attrs
                                                     , int &flags)
 {
     if(chronicle_name.empty())
@@ -236,7 +278,7 @@ int chronolog::ChronologClientImpl::DestroyStory(std::string const &chronicle_na
 
 std::pair <int, chronolog::StoryHandle*>
 chronolog::ChronologClientImpl::AcquireStory(std::string const &chronicle_name, std::string const &story_name
-                                             , const std::unordered_map <std::string, std::string> &attrs, int &flags)
+                                             , const std::map <std::string, std::string> &attrs, int &flags)
 {
     // Log the attempt to acquire a story with specific details.
     LOG_DEBUG("[ChronoLogClientImpl] Attempting to acquire story. ChronicleName={}, StoryName={}", chronicle_name

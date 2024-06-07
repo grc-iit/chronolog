@@ -42,25 +42,21 @@ public:
 
     void ShutdownServices();
 
-//int ClientConnect( const std::string &uri, std::string const &client_account, uint32_t client_host_ip, ClientId &, uint64_t &clock_offset); //old
-
     int ClientConnect(uint32_t client_account, uint32_t client_host_ip, uint32_t client_pid, ClientId &
                       , uint64_t &clock_offset);
 
     int ClientDisconnect(ClientId const &client_id);
 
     int CreateChronicle(ClientId const &name, ChronicleName const &
-                        , const std::unordered_map <std::string, std::string> &attrs, int &flags);
+                        , const std::map <std::string, std::string> &attrs, int &flags);
 
     int DestroyChronicle(ClientId const &client_id, ChronicleName const &chronicle_name);
 
     int DestroyStory(ClientId const &client_id, std::string const &chronicle_name, std::string const &story_name);
 
     AcquireStoryResponseMsg AcquireStory(ClientId const &client_id,
-            //std::string const& client_id,
             std::string const &chronicle_name, std::string const &story_name
-                                         , const std::unordered_map <std::string, std::string> &attrs, int &flags);
-    //, AcquireStoryResponseMsg &);
+            , const std::map <std::string, std::string> &attrs, int &flags);
 
     int ReleaseStory(ClientId const &client_id, std::string const &chronicle_name, std::string const &story_name);
 

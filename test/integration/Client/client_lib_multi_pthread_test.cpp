@@ -18,8 +18,6 @@ chronolog::Client*client;
 void thread_body(struct thread_arg*t)
 {
     LOG_INFO("[ClientLibMultiPThreadTest] Thread (ID: {}) - Starting execution.", t->tid);
-    //std::string server_ip = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_IP.string();
-    //int base_port = CHRONOLOG_CONF->RPC_CONF.CLIENT_VISOR_CONF.VISOR_END_CONF.VISOR_BASE_PORT;
     int flags = 0;
     uint64_t offset;
     int ret;
@@ -28,7 +26,7 @@ void thread_body(struct thread_arg*t)
     else chronicle_name = "Chronicle_1";
 
     LOG_INFO("[ClientLibMultiPThreadTest] Thread (ID: {}) - Creating Chronicle: {}", t->tid, chronicle_name);
-    std::unordered_map <std::string, std::string> chronicle_attrs;
+    std::map <std::string, std::string> chronicle_attrs;
     chronicle_attrs.emplace("Priority", "High");
     chronicle_attrs.emplace("IndexGranularity", "Millisecond");
     chronicle_attrs.emplace("TieringPolicy", "Hot");
@@ -40,7 +38,7 @@ void thread_body(struct thread_arg*t)
     std::string story_name = gen_random(STORY_NAME_LEN);
     LOG_INFO("[ClientLibMultiPThreadTest] Thread (ID: {}) - Generating Story: {}", t->tid, story_name);
 
-    std::unordered_map <std::string, std::string> story_attrs;
+    std::map <std::string, std::string> story_attrs;
     story_attrs.emplace("Priority", "High");
     story_attrs.emplace("IndexGranularity", "Millisecond");
     story_attrs.emplace("TieringPolicy", "Hot");

@@ -31,7 +31,7 @@ void thread_body(struct thread_arg*t)
         chronicle_name = "CHRONICLE_1";
 
     // Create attributes for the chronicle
-    std::unordered_map <std::string, std::string> chronicle_attrs;
+    std::map <std::string, std::string> chronicle_attrs;
     chronicle_attrs.emplace("Priority", "High");
     flags = 1;
 
@@ -42,7 +42,7 @@ void thread_body(struct thread_arg*t)
 
     // Create attributes for the story
     std::string story_name = gen_random(STORY_NAME_LEN);
-    std::unordered_map <std::string, std::string> story_attrs;
+    std::map <std::string, std::string> story_attrs;
     flags = 2;
 
     // Acquire the story

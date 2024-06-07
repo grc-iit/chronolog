@@ -42,8 +42,7 @@ target_include_directories(chronolog_client PUBLIC include
 
 target_link_libraries(chronolog_client thallium)
 
-add_subdirectory(storyteller_test)
-add_subdirectory(ChronoAdmin)
+################################
 
 # install library
 install(
@@ -52,15 +51,8 @@ install(
 
 # Install header files
 install(
-    FILES ${HEADER_FILES}
-    DESTINATION ${HEADER_DEST_DIR}
+    FILES ${HEADER_FILES} DESTINATION include
 )
 
-#include/client.h
-#include/RPCClient.h
-#../ChronoAPI/ChronoLog/include/macro.h
-#../ChronoAPI/ChronoLog/include/rpc.h
-#../ChronoAPI/ChronoLog/include/RPCFactory.h
-#../ChronoAPI/ChronoLog/include/singleton.h
-#../ChronoAPI/ChronoLog/src/city.cpp
-#../ChronoAPI/ChronoLog/include/city.h)
+add_subdirectory(storyteller_test)
+add_subdirectory(ChronoAdmin)
