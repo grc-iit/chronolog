@@ -85,22 +85,35 @@ void chronolog::StoryChunkExtractorBase::drainExtractionQueue()
     while((extractorState == RUNNING) || !chunkExtractionQueue.empty())
     {
         LOG_DEBUG("[StoryChunkExtractionBase] Draining queue. ES Rank: {}, ULT ID: {}, Queue Size: {}", es.get_rank()
-             , thallium::thread::self_id(), chunkExtractionQueue.size());
+                  , thallium::thread::self_id(), chunkExtractionQueue.size());
 
         while(!chunkExtractionQueue.empty())
         {
-            StoryChunk*storyChunk = chunkExtractionQueue.ejectStoryChunk();
+            StoryChunk* storyChunk = chunkExtractionQueue.ejectStoryChunk();
             if(storyChunk == nullptr)
                 //the queue might have been drained by another thread before the current thread acquired extractionQueue mutex
             {
                 LOG_WARNING("[StoryChunkExtractionBase] Failed to acquire a story chunk from the queue.");
                 break;
             }
-            processStoryChunk(storyChunk);  // INNA: should add return type and handle the failure properly
+            int ret = processStoryChunk(storyChunk);  // INNA: should add return type and handle the failure properly
             // free the memory or reset the startTime and return to the pool of prealocated chunks
-            delete storyChunk;
+            if(ret == CL_SUCCESS)
+            {
+                LOG_DEBUG("[StoryChunkExtractionBase] StoryChunk processed successfully. ES Rank: {}, ULT ID: {}"
+                          , es.get_rank(), thallium::thread::self_id());
+                delete storyChunk;
+            }
+            else
+            {
+                LOG_ERROR("[StoryChunkExtractionBase] Failed to process a story chunk, Error Code: {}. ES Rank: {}, "
+                          "ULT ID: {}", ret, es.get_rank(), thallium::thread::self_id());
+                LOG_ERROR(
+                        "[StoryChunkExtractionBase] Stashing the story chunk for later processing... ES Rank: {}, ULT "
+                        "ID: {}", es.get_rank(), thallium::thread::self_id());
+                chunkExtractionQueue.stashStoryChunk(storyChunk);
+            }
         }
         sleep(30);
     }
 }
-

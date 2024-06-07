@@ -4,7 +4,6 @@
 
 #include "chronolog_types.h"
 #include "CSVFileChunkExtractor.h"
-#include "log.h"
 
 namespace tl = thallium;
 
@@ -20,7 +19,7 @@ chronolog::CSVFileStoryChunkExtractor::~CSVFileStoryChunkExtractor()
 }
 
 /////////////
-void chronolog::CSVFileStoryChunkExtractor::processStoryChunk(chronolog::StoryChunk*story_chunk)
+int chronolog::CSVFileStoryChunkExtractor::processStoryChunk(chronolog::StoryChunk*story_chunk)
 {
     std::ofstream chunk_fstream;
     std::string chunk_filename(rootDirectory);
@@ -41,5 +40,6 @@ void chronolog::CSVFileStoryChunkExtractor::processStoryChunk(chronolog::StoryCh
     }
     chunk_fstream.close();
     LOG_DEBUG("[CSVFileStoryChunkExtractor] Finished processing StoryChunk. File={}", chunk_filename);
+    return CL_SUCCESS;
 }
 
