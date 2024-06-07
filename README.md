@@ -1,112 +1,82 @@
 # ChronoLog
+![OPEN SOURCE](https://img.shields.io/badge/GNOSIS_RESEARCH_CENTER-blue)
+![OPEN SOURCE](https://img.shields.io/badge/OPEN_SOURCE-grey)
+[![License](https://img.shields.io/github/license/grc-iit/ChronoLog.svg)](LICENSE)
+[![GitHub issues](https://img.shields.io/github/issues/grc-iit/ChronoLog.svg)](https://github.com/grc-iit/ChronoLog/issues)
 
-ChronoLog: A High-Performance Storage Infrastructure for Activity and Log Workloads (NSF CSSI 2104013)
+[![Main_Branch](https://img.shields.io/badge/Branch-Main-green)](https://github.com/grc-iit/ChronoLog/tree/main)
+[![Develop_Branch](https://img.shields.io/badge/Branch-Develop-yellow)](https://github.com/grc-iit/ChronoLog/tree/develop)
+[![GitHub release](https://img.shields.io/github/release/grc-iit/ChronoLog.svg)](https://github.com/grc-iit/ChronoLog/releases/latest)
 
-## ChronoLog Project Synopsis
 
-This project will design and implement ChronoLog, a distributed and tiered shared log storage ecosystem. ChronoLog uses
-physical time to distribute log entries while providing total log ordering. It also utilizes multiple storage tiers to
-elastically scale the log capacity (i.e., auto-tiering). ChronoLog will serve as a foundation for developing scalable
-new plugins, including a SQL-like query engine for log data, a streaming processor leveraging the time-based data
-distribution, a log-based key-value store, and a log-based TensorFlow module.
+<div style="text-align: center;">
+    <img src="https://raw.githubusercontent.com/grc-iit/ChronoLog/169-convert-readme-into-a-landing-page/doc/images/logos/logo-chronolog.png" alt="ChronoLog" width="200">
+</div>
 
-## Workloads and Applications
+This project will design and implement ChronoLog, a distributed and tiered shared log storage ecosystem.
+ChronoLog uses physical time to distribute log entries while providing total log ordering.
+It also utilizes multiple storage tiers to elastically scale the log capacity (i.e., auto-tiering).
+ChronoLog will serve as a foundation for developing scalable new plugins, including a SQL-like query engine for log data, a streaming processor
+leveraging the time-based data distribution, a log-based key-value store, and a log-based TensorFlow module.
+Learn more at https://www.chronolog.dev
 
-Modern applications spanning from Edge to High Performance Computing (HPC) systems, produce and process log data and
-create a plethora of workload characteristics that rely on a common storage model: **the distributed shared log**.
+## Wiki:
+Learn more detailed information about the project on ChronoLog's Wiki: https://github.com/grc-iit/ChronoLog/wiki/
 
-![Log centric paradigm](/doc/images/log_centric_paradigm.svg)
+## Main publication
 
-## Features
+<div style="border: 1px solid #555555; padding: 10px; border-radius: 5px; background-color: #888888;">
+  <p style="font-size: 1.2em; margin: 0;">
+    A. Kougkas, H. Devarajan, K. Bateman, J. Cernuda, N. Rajesh, X.-H. Sun. 
+    <a href="http://www.cs.iit.edu/~scs/testing/scs_website/assets/files/kougkas2020chronolog.pdf" target="_blank">
+      <strong>"ChronoLog: A Distributed Shared Tiered Log Store with Time-based Data Ordering"</strong>
+    </a>, 
+    Proceedings of the 36th International Conference on Massive Storage Systems and Technology (MSST 2020).
+  </p>
+</div>
 
-![Feature matrix](/doc/images/feature-matrix.png)
+## Members
 
-## Checkout ChronoLog
+<a href="https://www.iit.edu">
+    <img src="https://raw.githubusercontent.com/grc-iit/ChronoLog/169-convert-readme-into-a-landing-page/doc/images/logos/IIT.png" alt="Illinois Tech" width="150">
+</a>
 
-To get started with ChronoLog, the first step involves cloning the repository to your system. To do so: 
+<a href="https://www.uchicago.edu/">
+    <img src="https://raw.githubusercontent.com/grc-iit/ChronoLog/169-convert-readme-into-a-landing-page/doc/images/logos/university-of-chicago.png" alt="University Of Chicago" width="150">
+</a>
 
-```
-git clone https://github.com/grc-iit/ChronoLog.git
-```
+## Collaborators
+<a href="https://www.llnl.gov/">
+    <img src="https://raw.githubusercontent.com/grc-iit/ChronoLog/169-convert-readme-into-a-landing-page/doc/images/logos/llnl.jpg" alt="Lawrence Livermore National Lab" width="75">
+</a>
+<a href="https://www6.slac.stanford.edu/">
+    <img src="https://raw.githubusercontent.com/grc-iit/ChronoLog/169-convert-readme-into-a-landing-page/doc/images/logos/slac.png" alt="SLAC National Accelerator Lab" width="75">
+</a>
+<a href="https://www.3redpartners.com/">
+    <img src="https://raw.githubusercontent.com/grc-iit/ChronoLog/169-convert-readme-into-a-landing-page/doc/images/logos/3red.png" alt="3RedPartners" width="75">
+</a>
+<a href="https://www.depaul.edu/">
+    <img src="https://raw.githubusercontent.com/grc-iit/ChronoLog/169-convert-readme-into-a-landing-page/doc/images/logos/depaul.png" alt="DePaul University" width="75">
+</a>
+<a href="https://www.wisc.edu/">
+    <img src="https://raw.githubusercontent.com/grc-iit/ChronoLog/169-convert-readme-into-a-landing-page/doc/images/logos/university-of-wisconsin.jpg" alt="University of Wisconsin Madison" width="75">
+</a>
+<a href="https://www.paratools.com/">
+    <img src="https://raw.githubusercontent.com/grc-iit/ChronoLog/169-convert-readme-into-a-landing-page/doc/images/logos/paratools.png" alt="ParaTools, Inc." width="75">
+</a>
+<a href="https://illinois.edu/">
+    <img src="https://raw.githubusercontent.com/grc-iit/ChronoLog/169-convert-readme-into-a-landing-page/doc/images/logos/university-of-illinois.jpg" alt="University of Illinois at Urbana-Champaign" width="75">
+</a>
+<a href="https://www.anl.gov/">
+    <img src="https://raw.githubusercontent.com/grc-iit/ChronoLog/169-convert-readme-into-a-landing-page/doc/images/logos/argonne.jpeg" alt="Argonne National Lab" width="75">
+</a>
+<a href="https://omnibond.com/">
+    <img src="https://raw.githubusercontent.com/grc-iit/ChronoLog/169-convert-readme-into-a-landing-page/doc/images/logos/omnibond.png" alt="OmniBond Systems LLC" width="75">
+</a>
 
-## Installation and configuration
+## Sponsors
+<a href="https://www.nsf.gov">
+    <img src="https://raw.githubusercontent.com/grc-iit/ChronoLog/169-convert-readme-into-a-landing-page/doc/images/logos/nsf-fb7efe9286a9b499c5907d82af3e70fd.png" alt="NSFLOGO" width="150">
+</a>
 
-### Prerequisites: Spack
-
-ChronoLog requires various packages managed by Spack. To ensure compatibility and stability, we recommend using Spack
-version [`v0.21.2 (2024-03-01)`](https://github.com/spack/spack/releases/tag/v0.21.2). Follow the steps below to install
-and configure Spack:
-
-```
-git clone --branch v0.21.2 https://github.com/spack/spack.git
-source /path-to-where-spack-was-cloned/spack/share/spack/setup-env.sh
-```
-
-### Installing Dependencies
-
-Currently, most of the dependencies are listed in `spack.yaml` and can be installed via Spack. `gcc` and `g++` will be
-needed to build ChronoLog.
-
-A Spack environment needs to be created and activated using the following commands. 
-
-```
-cd ChronoLog
-git switch develop
-spack env activate -p .
-```
-To check if the environment is activated the following can be executed: 
-```
-spack env status
-```
-If the environment is properly activated, it can be installed
-```
-spack install -v
-```
-:information_source: Installation can take > 30 minutes.
-
-### Building ChronoLog
-:exclamation: Ensure (by using `spack env status`) all building steps are performed within the activated Spack environment to allow CMake to locate
-necessary dependencies. To do so:
-
-For building ChronoLog the following commands must be executed.
-```
-// Build the environment
-cd ChronoLog
-git switch develop
-mkdir build && cd build
-
-// Build the project 
-cmake ..
-make all
-```
-
-Building ChronoLog generates the following executables:
-
-- **Servers:** `chronovisor_server` for ChronoVisor and `chrono_keeper` for ChronoKeeper.
-- **Client Test Cases:** Located in `test/integration/Client/`.
-- **Admin Tool:** `client_admin` in `Client/ChronoAdmin` serves as a workload generator.
-
-### Installing ChronoLog
-
-From the build directory, execute
-
-```
-make install
-```
-
-to install executables and dependencies into the default install directory (**`~/chronolog`**).
-
-## Configuration files
-
-- **Default Configuration:** ChronoLog executables require a configuration file. Modify this template (`default_conf.json.in`) according to your preferences.
-- **Installation Process:** The installation copies and renames `default_conf.json.in` to `conf/default_conf.json` in the
-  installation directory by default. You can pass `-DCMAKE_INSTALL_PREFIX=/new/installation/directory` to CMake to change it.
-- **Using Configuration:** Pass the configuration file to executables with `--config default_conf.json`.
-
-------
-
-# Coming soon ...
-
-For more details about the ChronoLog project, please visit
-our [website](https://www.chronolog.dev)
-
+National Science Foundation (NSF CSSI-2104013)
