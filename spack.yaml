@@ -9,6 +9,4 @@ spack:
     - mercury@2.2.0~boostsys ^libfabric@1.16.1 fabrics=mlx,rxd,rxm,shm,sockets,tcp,udp,verbs
     - hdf5@1.14.1-2 +cxx
     - py-pybind11@2.11.1
-    - python3-dev
-#    - py-pybind11@2.12.0
   view: true
