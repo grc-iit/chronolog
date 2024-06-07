@@ -98,17 +98,20 @@ void chronolog::StoryChunkExtractorBase::drainExtractionQueue()
                 break;
             }
             int ret = processStoryChunk(storyChunk);
-            if(ret != chronolog::CL_SUCCESS)
-            {
-                LOG_ERROR("[StoryChunkExtractionBase] Failed to process a story chunk. ES Rank: {}, ULT ID: {}"
-                          , es.get_rank(), thallium::thread::self_id());
-                chunkExtractionQueue.stashStoryChunk(storyChunk);
-            }
-            else
+            if(ret == chronolog::CL_SUCCESS)
             {
                 LOG_DEBUG("[StoryChunkExtractionBase] Successfully processed a story chunk. ES Rank: {}, ULT ID: {}"
                           , es.get_rank(), thallium::thread::self_id());
                 delete storyChunk;
+            }
+            else
+            {
+                LOG_ERROR("[StoryChunkExtractionBase] Failed to process a story chunk, Error Code: {}. ES Rank: {}"
+                                  , ret, es.get_rank(), thallium::thread::self_id());
+                LOG_ERROR(
+                        "[StoryChunkExtractionBase] Stashing the story chunk for later processing... ES Rank: {}, ULT ID:"
+                        " {}", es.get_rank(), thallium::thread::self_id());
+                chunkExtractionQueue.stashStoryChunk(storyChunk);
             }
         }
         sleep(3);

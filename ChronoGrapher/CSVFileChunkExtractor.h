@@ -16,7 +16,7 @@ public:
 
     ~CSVFileStoryChunkExtractor();
 
-    virtual void processStoryChunk(StoryChunk*);
+    virtual int processStoryChunk(StoryChunk*);
 
 private:
     std::string chrono_process_id;

@@ -10,6 +10,7 @@
 
 #include "chronolog_types.h"
 #include "StoryChunkExtractionQueue.h"
+#include "chronolog_errcode.h"
 #include "log.h"
 
 
@@ -46,9 +47,10 @@ public:
 
     void drainExtractionQueue();
 
-    virtual void processStoryChunk(StoryChunk*)  //=0
+    virtual int processStoryChunk(StoryChunk*)  //=0
     {
         LOG_WARNING("[StoryChunkExtraction] Base processStoryChunk method called. Derived class should implement specific logic.");
+        return CL_SUCCESS;
     }
 
     void startExtractionThreads(int);

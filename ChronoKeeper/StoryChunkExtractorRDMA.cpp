@@ -14,14 +14,12 @@ chronolog::StoryChunkExtractorRDMA::StoryChunkExtractorRDMA(tl::engine &extracti
 
 chronolog::StoryChunkExtractorRDMA::~StoryChunkExtractorRDMA()
 {
-    uint64_t tid = gettid();
     LOG_DEBUG("[StoryChunkExtractorRDMA] Unregistering KeeperGrapherDrainService ...");
     drain_to_grapher.deregister();
 }
 
 int chronolog::StoryChunkExtractorRDMA::processStoryChunk(StoryChunk*story_chunk)
 {
-    uint64_t tid = gettid();
     std::chrono::high_resolution_clock::time_point start, end;
     try
     {
@@ -31,7 +29,7 @@ int chronolog::StoryChunkExtractorRDMA::processStoryChunk(StoryChunk*story_chunk
         start = std::chrono::high_resolution_clock::now();
 #endif
         size_t serialized_story_chunk_size;
-        std::ostringstream oss;
+        std::ostringstream oss(std::ostringstream::binary);
         try
         {
             oss.rdbuf()->pubsetbuf(serialized_buf, MAX_BULK_MEM_SIZE);
@@ -45,6 +43,7 @@ int chronolog::StoryChunkExtractorRDMA::processStoryChunk(StoryChunk*story_chunk
             return chronolog::CL_ERR_UNKNOWN;
         }
         serialized_story_chunk_size = oss.tellp();
+        oss << '\0';
 #ifndef NDEBUG
         end = std::chrono::high_resolution_clock::now();
         LOG_INFO("[StoryChunkExtractorRDMA] Serialization took {} us",
@@ -53,7 +52,7 @@ int chronolog::StoryChunkExtractorRDMA::processStoryChunk(StoryChunk*story_chunk
         LOG_DEBUG("[StoryChunkExtractorRDMA] Serialized story chunk size: {}", serialized_story_chunk_size);
 
         std::vector <std::pair <void*, std::size_t>> segments(1);
-        segments[0].first = (void*)(serialized_buf);
+        segments[0].first = (void*)(&serialized_buf[0]);
         segments[0].second = serialized_story_chunk_size + 1;
         tl::bulk tl_bulk = extraction_engine.expose(segments, tl::bulk_mode::read_only);
         LOG_DEBUG("[StoryChunkExtractorRDMA] Draining to Grapher with story chunk size: {} ...", tl_bulk.size());
@@ -78,13 +77,13 @@ int chronolog::StoryChunkExtractorRDMA::processStoryChunk(StoryChunk*story_chunk
         {
             LOG_ERROR("[StoryChunkExtractorRDMA] Failed to drain a story chunk to Grapher, StoryID: {}, "
                       "StartTime: {}, Error Code: {}", story_chunk->getStoryId(), story_chunk->getStartTime(), result);
-            return chronolog::CL_ERR_UNKNOWN;
+            return chronolog::CL_ERR_STORY_CHUNK_EXTRACTION;
         }
     }
     catch(tl::exception const &)
     {
         LOG_ERROR("[StoryChunkExtractorRDMA] Failed to drain a story chunk to Grapher. "
                   "Thallium exception encountered.");
+        return (chronolog::CL_ERR_UNKNOWN);
     }
-    return (chronolog::CL_ERR_UNKNOWN);
 }
