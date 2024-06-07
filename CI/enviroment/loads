@@ -30,8 +30,6 @@ module load boost-1.77.0-gcc-9.3.0-hdotzut
 module load bzip2-1.0.8-gcc-9.3.0-gk3mz66
 # zlib@1.2.11%gcc@9.3.0+optimize+pic+shared arch=linux-ubuntu20.04-zen2
 module load zlib-1.2.11-gcc-9.3.0-whj3n7m
-# rocksdb@6.20.3%gcc@9.3.0~bz2+lz4+shared~snappy+static~tbb+zlib~zstd patches=9a8833a arch=linux-ubuntu20.04-zen2
-module load rocksdb-6.20.3-gcc-9.3.0-hqiuiit
 # gflags@2.2.2%gcc@9.3.0~ipo build_type=RelWithDebInfo arch=linux-ubuntu20.04-zen2
 module load gflags-2.2.2-gcc-9.3.0-ox4tyrq
 # lz4@1.9.3%gcc@9.3.0 libs=shared,static arch=linux-ubuntu20.04-zen2

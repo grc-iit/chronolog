@@ -4,5 +4,5 @@
 # configuration settings.
 spack:
   # add package specs to the `specs` list
-  specs: [cmake, mpich~fortran, boost, rocksdb]
+  specs: [ cmake, mpich~fortran, boost ]
   view: true
