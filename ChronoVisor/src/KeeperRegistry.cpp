@@ -444,7 +444,8 @@ std::vector<KeeperIdCard>& RecordingGroup::getActiveKeepers(std::vector<KeeperId
         {
             auto dataStoreClientPair = (*iter).second.delayedExitClients.front();
             LOG_INFO("[KeeperRegistry] getActiveKeepers() destroys dataAdminClient for keeper {} current_time={} delayedExitTime={}", 
-                    (*iter).second.idCardString, ctime(&current_time));
+                    (*iter).second.idCardString, ctime(&current_time), ctime(&(*iter).second.delayedExitClients.front
+                    ().first));
             if(dataStoreClientPair.second != nullptr) { delete dataStoreClientPair.second; }
             (*iter).second.delayedExitClients.pop_front();
         }
@@ -997,7 +998,7 @@ int KeeperRegistry::unregisterGrapherProcess(GrapherIdCard const& grapher_id_car
 
         std::time_t delayedExitTime = std::chrono::high_resolution_clock::to_time_t(
                 std::chrono::high_resolution_clock::now() + std::chrono::seconds(delayedDataAdminExitSeconds));
-        LOG_INFO("[KeeperRegistry] grapher {} starting delayedExit for grapher {} delayedExitTime={}", recording_group.grapherProcess->idCardString,
+        LOG_INFO("[KeeperRegistry] starting delayedExit for grapher {} delayedExitTime={}", recording_group.grapherProcess->idCardString,
                  std::ctime(&delayedExitTime));
 
         recording_group.startDelayedGrapherExit(*(recording_group.grapherProcess), delayedExitTime);

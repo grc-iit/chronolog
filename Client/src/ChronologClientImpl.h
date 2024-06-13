@@ -3,6 +3,7 @@
 
 #include "chronolog_errcode.h"
 #include "ConfigurationManager.h"
+#include "ClientConfiguration.h"
 //#include "ClocksourceManager.h"
 
 #include "chronolog_types.h"
@@ -33,6 +34,7 @@ public:
     static ChronologClientImpl*chronologClientImplInstance;
 
     static ChronologClientImpl*GetClientImplInstance(ChronoLog::ConfigurationManager const &);
+    static ChronologClientImpl*GetClientImplInstance(chronolog::ClientPortalServiceConf const &);
 
     // the classs is non-copyable
     ChronologClientImpl(ChronologClientImpl const &) = delete;
@@ -43,16 +45,15 @@ public:
 
     int Connect();
 
-    //const std::string &server_uri, std::string const& client_id, int &flags); //uint64_t &clock_offset);
-    int Disconnect(); //const std::string &client_account, int &flags);
+    int Disconnect(); 
 
-    int CreateChronicle(std::string const &chronicle_name, const std::unordered_map <std::string, std::string> &attrs
+    int CreateChronicle(std::string const &chronicle_name, const std::map <std::string, std::string> &attrs
                         , int &flags);
 
     int DestroyChronicle(std::string const &chronicle_name); //, int &flags);
 
     std::pair <int, StoryHandle*> AcquireStory(std::string const &chronicle_name, std::string const &story_name
-                                               , const std::unordered_map <std::string, std::string> &attrs
+                                               , const std::map <std::string, std::string> &attrs
                                                , int &flags);
 
     int ReleaseStory(std::string const &chronicle_name, std::string const &story_name); //, int &flags);
@@ -80,6 +81,7 @@ private:
     // ClocksourceManager *pClocksourceManager_;
 
     ChronologClientImpl(const ChronoLog::ConfigurationManager &conf_manager);
+    ChronologClientImpl(const chronolog::ClientPortalServiceConf &);
 
     ChronologClientImpl(std::string const &protocol, const std::string &visor_ip, int visor_port
                         , uint16_t service_provider);

@@ -187,7 +187,7 @@ public:
     }
 
     std::pair <int, Story*>
-    addStory(const std::string &story_name, const std::unordered_map <std::string, std::string> &attrs)
+    addStory(const std::string &story_name, const std::map <std::string, std::string> &attrs)
     {
         /* Check if Story exists */
         std::string story_name_for_hash = name_ + story_name;

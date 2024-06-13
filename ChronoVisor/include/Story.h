@@ -6,6 +6,7 @@
 #define CHRONOLOG_STORY_H
 
 #include <unordered_map>
+#include <map>
 #include <atomic>
 #include <Event.h>
 #include <city.h>
@@ -132,7 +133,7 @@ public:
         }
     }
 
-    void setProperty(const std::unordered_map <std::string, std::string> &attrs)
+    void setProperty(const std::map <std::string, std::string> &attrs)
     {
         for(auto const &entry: attrs)
         {

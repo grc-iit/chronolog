@@ -175,7 +175,7 @@ void random_sleep()
 void test_create_chronicle(chronolog::Client &client, const std::string &chronicle_name)
 {
     int ret, flags = 0;
-    std::unordered_map <std::string, std::string> chronicle_attrs;
+    std::map <std::string, std::string> chronicle_attrs;
     chronicle_attrs.emplace("Priority", "High");
     chronicle_attrs.emplace("IndexGranularity", "Millisecond");
     chronicle_attrs.emplace("TieringPolicy", "Hot");
@@ -188,7 +188,7 @@ test_acquire_story(chronolog::Client &client, const std::string &chronicle_name,
 {
 //    random_sleep();
     int flags = 0;
-    std::unordered_map <std::string, std::string> story_acquisition_attrs;
+    std::map <std::string, std::string> story_acquisition_attrs;
     story_acquisition_attrs.emplace("Priority", "High");
     story_acquisition_attrs.emplace("IndexGranularity", "Millisecond");
     story_acquisition_attrs.emplace("TieringPolicy", "Hot");

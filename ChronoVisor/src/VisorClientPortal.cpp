@@ -131,7 +131,7 @@ int chronolog::VisorClientPortal::ClientDisconnect(chronolog::ClientId const &cl
  * Metadata APIs
  */
 int chronolog::VisorClientPortal::CreateChronicle(chl::ClientId const &client_id, std::string const &chronicle_name
-                                                  , const std::unordered_map <std::string, std::string> &attrs
+                                                  , const std::map <std::string, std::string> &attrs
                                                   , int &flags)
 {
     if(chronicle_name.empty())
@@ -140,7 +140,7 @@ int chronolog::VisorClientPortal::CreateChronicle(chl::ClientId const &client_id
     if(!chronicle_action_is_authorized(client_id, chronicle_name))
     { return CL_ERR_NOT_AUTHORIZED; }
 
-    int return_code = chronicleMetaDirectory.create_chronicle(chronicle_name);
+    int return_code = chronicleMetaDirectory.create_chronicle(chronicle_name, attrs);
     if(return_code == CL_SUCCESS)
     {
         LOG_INFO("[VisorClientPortal] Chronicle created: PID={}, ClientID={}, Name={}", getpid(), client_id
@@ -191,7 +191,7 @@ int chronolog::VisorClientPortal::DestroyStory(chl::ClientId const &client_id, s
 chl::AcquireStoryResponseMsg
 chronolog::VisorClientPortal::AcquireStory(chl::ClientId const &client_id, std::string const &chronicle_name
                                            , std::string const &story_name
-                                           , const std::unordered_map <std::string, std::string> &attrs, int &flags)
+                                           , const std::map <std::string, std::string> &attrs, int &flags)
 {
     chronolog::StoryId story_id{0};
     std::vector <chronolog::KeeperIdCard> recording_keepers;

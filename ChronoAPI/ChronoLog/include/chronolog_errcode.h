@@ -28,7 +28,8 @@ enum ErrorCode
     CL_ERR_STORY_CHUNK_EXISTS = -17,        // Specified Story chunk exists, cannot be created
     CL_ERR_CHRONICLE_DIR_NOT_EXIST = -18,   // Chronicle directory does not exist
     CL_ERR_STORY_FILE_NOT_EXIST = -19,      // Story file does not exist
-    CL_ERR_STORY_CHUNK_DSET_NOT_EXIST = -20 // Story chunk dataset does not exist
+    CL_ERR_STORY_CHUNK_DSET_NOT_EXIST = -20,// Story chunk dataset does not exist
+    CL_ERR_STORY_CHUNK_EXTRACTION = -21,    // Error in extracting Story chunk in ChronoKeeper
 };
 }
 
