@@ -23,7 +23,7 @@ GRAPHER_BIN="${BIN_DIR}/chrono_grapher"
 CONF_FILE="${CONF_DIR}/default_conf.json"
 
 #Booleans
-install=false
+deploy=false
 reset=false
 stop=false
 kill=false
@@ -235,7 +235,7 @@ stop_process() {
 }
 
 # Main functions for install, reset, and usage
-install() {
+deploy() {
     echo -e "${INFO}Installing ...${NC}"
     copy_shared_libs
     check_files
@@ -302,14 +302,16 @@ stop() {
 usage() {
     echo "Usage: $0 [options]"
     echo "Options:"
-    echo "  -h, --help             Display this help and exit"
-    echo "  -n, --num-keepers NUM  Set the number of keeper processes"
-    echo "  -g, --num-graphers NUM Set the number of grapher processes"
-    echo "  -w, --work-dir DIR     Set the working directory"
-    echo "  -i, --install          Install all components"
-    echo "  -r, --reset            Reset all components"
-    echo "  -k, --kill             Kill all components"
-    echo "  -s, --stop             Stop all components"
+    echo "  -h|--help       Display this help and exit"
+
+    echo "  -d|--deploy     Start ChronoLog Deployment (default: false)"
+    echo "  -s|--stop       Stop ChronoLog Deployment (default: false)"
+    echo "  -r|--reset      Reset/CleanUp ChronoLog Deployment (default: false)"
+    echo "  -k|--kill       Terminate ChronoLog Deployment (default: false)"
+
+    echo "  -n|--num-keepers NUM  Set the number of keeper processes"
+    echo "  -g|--num-graphers NUM Set the number of grapher processes"
+    echo "  -w|--work-dir DIR     Set the working directory"
     exit 1
 }
 
@@ -317,8 +319,8 @@ usage() {
 parse_args() {
     while [[ "$#" -gt 0 ]]; do
         case "$1" in
-            -i|--install)
-                install=true
+            -d|--deploy)
+                deploy=true
                 shift ;;
             -r|--reset)
                 reset=true
@@ -356,9 +358,9 @@ parse_args() {
 
 # Start execution of the script____________________________________________________________________________________
 parse_args "$@"
-if ${install}
+if ${deploy}
 then
-    install
+    deploy
 elif ${reset}
 then
     reset
