@@ -30,6 +30,33 @@ kill=false
 
 # Methods ______________________________________________________________________________________________________________
 
+
+check_dependencies() {
+    local dependencies=("jq" "ldd" "nohup" "pkill" "readlink")
+
+    echo -e "${INFO}Checking required dependencies...${NC}"
+    for dep in "${dependencies[@]}"; do
+        if ! command -v $dep &> /dev/null; then
+            echo -e "${ERR}Dependency $dep is not installed. Please install it and try again.${NC}"
+            exit 1
+        fi
+    done
+    echo -e "${DEBUG}All required dependencies are installed.${NC}"
+}
+
+check_directories() {
+    echo -e "${INFO}Checking required directories...${NC}"
+    local directories=("${WORK_DIR}" "${LIB_DIR}" "${CONF_DIR}" "${BIN_DIR}")
+
+    for dir in "${directories[@]}"; do
+        if [[ ! -d ${dir} ]]; then
+            echo -e "${ERR}Directory ${dir} does not exist. Please create it and try again.${NC}"
+            exit 1
+        fi
+    done
+    echo -e "${DEBUG}All required directories are in place.${NC}"
+}
+
 check_files() {
     echo -e "${INFO}Checking required files...${NC}"
     [[ ! -f ${VISOR_BIN} ]] && echo -e "${ERR}Visor binary file does not exist, exiting ...${NC}" && exit 1
@@ -237,8 +264,10 @@ stop_process() {
 # Main functions for install, reset, and usage
 install() {
     echo -e "${INFO}Installing ...${NC}"
-    copy_shared_libs
+    check_dependencies
+    check_directories
     check_files
+    copy_shared_libs
     generate_config_files ${NUM_KEEPERS} ${BIN_DIR} ${CONF_FILE} ${CONF_DIR} "/home/eneko/chronolog/output/" ${NUM_GRAPHERS} ${WORK_DIR}
     echo -e "${DEBUG}Install done${NC}"
 }
