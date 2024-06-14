@@ -235,11 +235,17 @@ stop_process() {
 }
 
 # Main functions for install, reset, and usage
-deploy() {
+install() {
     echo -e "${INFO}Installing ...${NC}"
     copy_shared_libs
     check_files
     generate_config_files ${NUM_KEEPERS} ${BIN_DIR} ${CONF_FILE} ${CONF_DIR} "/home/eneko/chronolog/output/" ${NUM_GRAPHERS} ${WORK_DIR}
+    echo -e "${DEBUG}Install done${NC}"
+}
+
+deploy() {
+    echo -e "${INFO}Deploying ...${NC}"
+    install
     launch_process ${VISOR_BIN} "--config ${CONF_DIR}/visor_conf.json" "visor.log"
     sleep 2
     num_keepers=${NUM_KEEPERS}
@@ -255,7 +261,7 @@ deploy() {
     done
     sleep 2
     launch_process ${CLIENT_BIN} "--config ${CONF_DIR}/client_conf.json" "client.log"
-    echo -e "${DEBUG}Install done${NC}"
+    echo -e "${DEBUG}Deployment done${NC}"
 }
 
 kill() {
