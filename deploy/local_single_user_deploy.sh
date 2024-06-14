@@ -173,22 +173,6 @@ generate_config_files() {
         echo "Generated $grapher_output_file with ports $new_port_grapher_drain and $new_port_grapher_datastore"
     done
 
-    # Generate recording group configuration files
-    echo "Generating recording group conf files ..."
-    for (( i=1; i<num_recording_groups+1; i++ )); do
-        local group_output_file="${conf_dir}/group_conf_${i}.json"
-
-        jq --arg bin_dir "$bin_dir" \
-            --arg work_dir "$work_dir" \
-            --argjson i "$i" \
-           '.chrono_keeper.RecordingGroup = $i |
-            .chrono_grapher.RecordingGroup = $i |
-            .chrono_keeper.story_files_dir = ($work_dir + "/output/") |
-            .chrono_grapher.Extractors.story_files_dir = ($work_dir + "/output/")' "$default_conf" > "$group_output_file"
-
-        echo "Generated $group_output_file for recording group ${i}"
-    done
-
     echo "Generate conf files for all RecordingGroups done"
 }
 
@@ -311,7 +295,6 @@ reset() {
     rm ${CONF_DIR}/client_conf.json
     rm ${CONF_DIR}/grapher_conf*.json
     rm ${CONF_DIR}/keeper_conf*.json
-    rm ${CONF_DIR}/group_conf*.json
     rm ${CONF_DIR}/visor_conf.json
 
     # Remove all log files
