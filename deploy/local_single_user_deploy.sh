@@ -14,6 +14,7 @@ WORK_DIR="/home/${USER}/chronolog"
 LIB_DIR="${WORK_DIR}/lib"
 CONF_DIR="${WORK_DIR}/conf"
 BIN_DIR="${WORK_DIR}/bin"
+OUTPUT_DIR="${WORK_DIR}/output"
 
 # Files
 VISOR_BIN="${BIN_DIR}/chronovisor_server"
@@ -29,7 +30,6 @@ stop=false
 kill=false
 
 # Methods ______________________________________________________________________________________________________________
-
 
 check_dependencies() {
     local dependencies=("jq" "ldd" "nohup" "pkill" "readlink")
@@ -74,7 +74,9 @@ generate_config_files() {
     local conf_dir=$4
     local output_dir=$5
     local num_recording_groups=$6
-    local work_dir=$7
+    #local work_dir=$7
+
+    echo "Output dir3 ${output_dir}"
 
     # Check if default configuration file exists
     if [ ! -f "$default_conf" ]; then
@@ -119,7 +121,7 @@ generate_config_files() {
         local output_file="${conf_dir}/keeper_conf_${j}.json"
 
         jq --arg bin_dir "$bin_dir" \
-            --arg work_dir "$work_dir" \
+            --arg output_dir "$output_dir" \
             --argjson new_port_keeper_record $new_port_keeper_record \
             --argjson new_port_keeper_drain $new_port_keeper_drain \
             --argjson new_port_keeper_datastore $new_port_keeper_datastore \
@@ -128,7 +130,7 @@ generate_config_files() {
             '.chrono_keeper.KeeperRecordingService.rpc.service_base_port = $new_port_keeper_record |
             .chrono_keeper.KeeperGrapherDrainService.rpc.service_base_port = $new_port_keeper_drain |
             .chrono_keeper.KeeperDataStoreAdminService.rpc.service_base_port = $new_port_keeper_datastore |
-            .chrono_keeper.story_files_dir = ($work_dir + "/output/") |
+            .chrono_keeper.story_files_dir = ($output_dir + "/") |
             .chrono_keeper.RecordingGroup = $recording_group |
             .chrono_keeper.Logging.log.file = ($bin_dir + "/" + $j + "_" + .chrono_keeper.Logging.log.file)' "$default_conf" > "$output_file"
         echo "Generated $output_file with ports $new_port_keeper_record and $new_port_keeper_datastore and $new_port_keeper_drain"
@@ -159,7 +161,7 @@ generate_config_files() {
         local grapher_output_file="${conf_dir}/grapher_conf_${i}.json"
         j=$i
         jq --arg bin_dir "$bin_dir" \
-            --arg work_dir "$work_dir" \
+            --arg output_dir "$output_dir" \
             --argjson new_port_grapher_drain $new_port_grapher_drain \
             --argjson new_port_grapher_datastore $new_port_grapher_datastore \
             --argjson j "$j" \
@@ -168,7 +170,7 @@ generate_config_files() {
             .chrono_grapher.KeeperGrapherDrainService.rpc.service_base_port = $new_port_grapher_drain |
             .chrono_grapher.DataStoreAdminService.rpc.service_base_port = $new_port_grapher_datastore |
             .chrono_grapher.Logging.log.file = ($bin_dir + "/" + $i + "_" + .chrono_grapher.Logging.log.file) |
-            .chrono_grapher.Extractors.story_files_dir = ($work_dir + "/output/")' "$default_conf" > "$grapher_output_file"
+            .chrono_grapher.Extractors.story_files_dir = ($output_dir + "/")' "$default_conf" > "$grapher_output_file"
 
         echo "Generated $grapher_output_file with ports $new_port_grapher_drain and $new_port_grapher_datastore"
     done
@@ -209,7 +211,7 @@ copy_shared_libs() {
     mkdir -p ${LIB_DIR}
 
     all_shared_libs=""
-    for bin_file in "${WORK_DIR}"/bin/*; do
+    for bin_file in "${BIN_DIR}"/*; do
         echo -e "${DEBUG}Extracting shared libraries from ${bin_file} ...${NC}";
         all_shared_libs=$(echo -e "${all_shared_libs}\n$(extract_shared_libraries ${bin_file})" | sort | uniq)
     done
@@ -252,7 +254,8 @@ install() {
     check_directories
     check_files
     copy_shared_libs
-    generate_config_files ${NUM_KEEPERS} ${BIN_DIR} ${CONF_FILE} ${CONF_DIR} "/home/eneko/chronolog/output/" ${NUM_GRAPHERS} ${WORK_DIR}
+    echo "Output dir2 ${OUTPUT_DIR}"
+    generate_config_files ${NUM_KEEPERS} ${BIN_DIR} ${CONF_FILE} ${CONF_DIR} ${OUTPUT_DIR} ${NUM_GRAPHERS} ${WORK_DIR}
     echo -e "${DEBUG}Install done${NC}"
 }
 
@@ -330,6 +333,7 @@ usage() {
     echo "  -n|--num-keepers NUM  Set the number of keeper processes"
     echo "  -g|--num-graphers NUM Set the number of grapher processes"
     echo "  -w|--work-dir DIR     Set the working directory"
+    echo "  -u|--output_dir OUTPUT_DIR (default: work_dir/output)"
     exit 1
 }
 
@@ -363,11 +367,15 @@ parse_args() {
                 LIB_DIR="${WORK_DIR}/lib"
                 CONF_DIR="${WORK_DIR}/conf"
                 BIN_DIR="${WORK_DIR}/bin"
+                OUTPUT_DIR="${WORK_DIR}/output"
                 VISOR_BIN="${BIN_DIR}/chronovisor_server"
                 KEEPER_BIN="${BIN_DIR}/chrono_keeper"
                 CLIENT_BIN="${BIN_DIR}/client_lib_multi_storytellers"
                 GRAPHER_BIN="${BIN_DIR}/chrono_grapher"
                 CONF_FILE="${CONF_DIR}/default_conf.json"
+                shift 2 ;;
+            -u|--output-dir)
+                OUTPUT_DIR="$2";
                 shift 2 ;;
             *) echo -e "${ERR}Unknown option: $1${NC}"; usage ;;
         esac
@@ -376,6 +384,7 @@ parse_args() {
 
 # Start execution of the script____________________________________________________________________________________
 parse_args "$@"
+echo "Output dir ${OUTPUT_DIR}"
 if ${deploy}
 then
     deploy
