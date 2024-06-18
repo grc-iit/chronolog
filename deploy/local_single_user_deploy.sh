@@ -74,9 +74,6 @@ generate_config_files() {
     local conf_dir=$4
     local output_dir=$5
     local num_recording_groups=$6
-    #local work_dir=$7
-
-    echo "Output dir3 ${output_dir}"
 
     # Check if default configuration file exists
     if [ ! -f "$default_conf" ]; then
@@ -338,9 +335,8 @@ usage() {
     echo "  -c|--client CLIENT_BIN (default: work_dir/bin/client_lib_multi_storytellers)"
     echo "  -f|--conf_file CONF_FILE (default: work_dir/conf/default_conf.json)"
 
-    echo "  -n|--num-keepers NUM  Set the number of keeper processes"
-    echo "  -j|--num-graphers NUM Set the number of grapher processes"
-
+    echo "  -n|--keepers-group  Set the number of keeper processes per group"
+    echo "  -j|--recording-groups Set the number of recording groups or grapher processes"
 
     exit 1
 }
@@ -396,11 +392,13 @@ parse_args() {
                 CONF_FILE=$(realpath "$2")
                 CONF_DIR=$(dirname ${CONF_FILE})
                 shift 2 ;;
-            -n|--num-keepers)
-                NUM_KEEPERS="$2";
-                shift 2 ;;
-            -j|--num-graphers)
+            -j|--recording-groups)
                 NUM_GRAPHERS="$2"
+                NUM_KEEPERS=$((NUM_KEEPERS * NUM_GRAPHERS))
+                shift 2 ;;
+            -n|--keepers-group)
+                keepers_group="$2"
+                NUM_KEEPERS=$((keepers_group * NUM_GRAPHERS))
                 shift 2 ;;
             *) echo -e "${ERR}Unknown option: $1${NC}"; usage ;;
         esac
@@ -409,7 +407,6 @@ parse_args() {
 
 # Start execution of the script____________________________________________________________________________________
 parse_args "$@"
-echo "Output dir ${OUTPUT_DIR}"
 if ${deploy}
 then
     deploy
