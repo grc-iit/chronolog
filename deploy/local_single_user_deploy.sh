@@ -46,7 +46,7 @@ check_dependencies() {
 
 check_directories() {
     echo -e "${INFO}Checking required directories...${NC}"
-    local directories=("${WORK_DIR}" "${LIB_DIR}" "${CONF_DIR}" "${BIN_DIR}")
+    local directories=("${WORK_DIR}" "${LIB_DIR}" "${CONF_DIR}" "${BIN_DIR}" "${OUTPUT_DIR}")
 
     for dir in "${directories[@]}"; do
         if [[ ! -d ${dir} ]]; then
