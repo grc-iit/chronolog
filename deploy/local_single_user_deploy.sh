@@ -330,10 +330,18 @@ usage() {
     echo "  -r|--reset      Reset/CleanUp ChronoLog Deployment (default: false)"
     echo "  -k|--kill       Terminate ChronoLog Deployment (default: false)"
 
-    echo "  -n|--num-keepers NUM  Set the number of keeper processes"
-    echo "  -g|--num-graphers NUM Set the number of grapher processes"
     echo "  -w|--work-dir DIR     Set the working directory"
     echo "  -u|--output_dir OUTPUT_DIR (default: work_dir/output)"
+    echo "  -v|--visor VISOR_BIN (default: work_dir/bin/chronovisor_server)"
+    echo "  -g|--grapher GRAPHER_BIN (default: work_dir/bin/chrono_grapher)"
+    echo "  -p|--keeper KEEPER_BIN (default: work_dir/bin/chrono_keeper)"
+    echo "  -c|--client CLIENT_BIN (default: work_dir/bin/client_lib_multi_storytellers)"
+    echo "  -f|--conf_file CONF_FILE (default: work_dir/conf/default_conf.json)"
+
+    echo "  -n|--num-keepers NUM  Set the number of keeper processes"
+    echo "  -j|--num-graphers NUM Set the number of grapher processes"
+
+
     exit 1
 }
 
@@ -356,12 +364,6 @@ parse_args() {
             -h|--help)
                 usage;
                 shift ;;
-            -n|--num-keepers)
-                NUM_KEEPERS="$2";
-                shift 2 ;;
-            -g|--num-graphers)
-                NUM_GRAPHERS="$2"
-                shift 2 ;;
             -w|--work-dir)
                 WORK_DIR="$2";
                 LIB_DIR="${WORK_DIR}/lib"
@@ -375,7 +377,30 @@ parse_args() {
                 CONF_FILE="${CONF_DIR}/default_conf.json"
                 shift 2 ;;
             -u|--output-dir)
-                OUTPUT_DIR="$2";
+                OUTPUT_DIR=$(realpath "$2")
+                mkdir -p ${OUTPUT_DIR}
+                shift 2 ;;
+            -v|--visor)
+                VISOR_BIN=$(realpath "$2")
+                shift 2 ;;
+            -g|--grapher)
+                GRAPHER_BIN=$(realpath "$2")
+                shift 2 ;;
+            -p|--keeper)
+                KEEPER_BIN=$(realpath "$2")
+                shift 2 ;;
+            -c|--client)
+                CLIENT_BIN=$(realpath "$2")
+                shift 2 ;;
+            -f|--conf_file)
+                CONF_FILE=$(realpath "$2")
+                CONF_DIR=$(dirname ${CONF_FILE})
+                shift 2 ;;
+            -n|--num-keepers)
+                NUM_KEEPERS="$2";
+                shift 2 ;;
+            -j|--num-graphers)
+                NUM_GRAPHERS="$2"
                 shift 2 ;;
             *) echo -e "${ERR}Unknown option: $1${NC}"; usage ;;
         esac
