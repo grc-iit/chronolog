@@ -113,8 +113,8 @@ generate_config_files() {
         local recording_group=$((i / keepers_per_grapher))
 
         j=$((i + 1))
-        recording_group=$((recording_group+1))
         local new_port_keeper_drain=$((base_port_keeper_drain + recording_group))
+        recording_group=$((recording_group+1))
 
         local output_file="${conf_dir}/keeper_conf_${j}.json"
 
@@ -152,12 +152,13 @@ generate_config_files() {
     # Generate grapher configuration files
     echo "Generating grapher conf files ..."
     mkdir -p "${output_dir}"
-    for (( i=1; i<num_recording_groups+1; i++ )); do
+    for (( i=0; i<num_recording_groups; i++ )); do
         local new_port_grapher_drain=$((base_port_grapher_drain + i))
         local new_port_grapher_datastore=$((base_port_grapher_datastore + i))
 
-        local grapher_output_file="${conf_dir}/grapher_conf_${i}.json"
-        j=$i
+        j=$((i + 1))
+        local grapher_output_file="${conf_dir}/grapher_conf_${j}.json"
+
         jq --arg bin_dir "$bin_dir" \
             --arg output_dir "$output_dir" \
             --argjson new_port_grapher_drain $new_port_grapher_drain \
