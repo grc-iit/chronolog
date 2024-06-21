@@ -252,7 +252,6 @@ install() {
     check_directories
     check_files
     copy_shared_libs
-    echo "Output dir2 ${OUTPUT_DIR}"
     generate_config_files ${NUM_KEEPERS} ${BIN_DIR} ${CONF_FILE} ${CONF_DIR} ${OUTPUT_DIR} ${NUM_GRAPHERS} ${WORK_DIR}
     echo -e "${DEBUG}Install done${NC}"
 }
