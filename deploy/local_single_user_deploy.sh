@@ -320,23 +320,23 @@ stop() {
 usage() {
     echo "Usage: $0 [options]"
     echo "Options:"
-    echo "  -h|--help       Display this help and exit"
+    echo "  -h|--help           Display this help and exit"
 
-    echo "  -d|--deploy     Start ChronoLog Deployment (default: false)"
-    echo "  -s|--stop       Stop ChronoLog Deployment (default: false)"
-    echo "  -r|--reset      Reset/CleanUp ChronoLog Deployment (default: false)"
-    echo "  -k|--kill       Terminate ChronoLog Deployment (default: false)"
+    echo "  -d|--deploy         Start ChronoLog Deployment (default: false)"
+    echo "  -s|--stop           Stop ChronoLog Deployment (default: false)"
+    echo "  -r|--reset          Reset/CleanUp ChronoLog Deployment (default: false)"
+    echo "  -k|--kill           Terminate ChronoLog Deployment (default: false)"
 
-    echo "  -w|--work-dir DIR     Set the working directory"
-    echo "  -u|--output_dir OUTPUT_DIR (default: work_dir/output)"
-    echo "  -v|--visor VISOR_BIN (default: work_dir/bin/chronovisor_server)"
-    echo "  -g|--grapher GRAPHER_BIN (default: work_dir/bin/chrono_grapher)"
-    echo "  -p|--keeper KEEPER_BIN (default: work_dir/bin/chrono_keeper)"
-    echo "  -c|--client CLIENT_BIN (default: work_dir/bin/client_lib_multi_storytellers)"
-    echo "  -f|--conf_file CONF_FILE (default: work_dir/conf/default_conf.json)"
+    echo "  -w|--work-dir       WORK_DIR Set the working directory(default: /home/USER/chronolog)"
+    echo "  -u|--output_dir     OUTPUT_DIR (default: work_dir/output)"
+    echo "  -v|--visor          VISOR_BIN (default: work_dir/bin/chronovisor_server)"
+    echo "  -g|--grapher        GRAPHER_BIN (default: work_dir/bin/chrono_grapher)"
+    echo "  -p|--keeper         KEEPER_BIN (default: work_dir/bin/chrono_keeper)"
+    echo "  -c|--client         CLIENT_BIN (default: work_dir/bin/client_lib_multi_storytellers)"
+    echo "  -f|--conf_file      CONF_FILE (default: work_dir/conf/default_conf.json)"
 
     echo "  -n|--keepers-group  Set the number of keeper processes per group"
-    echo "  -j|--recording-groups Set the number of recording groups or grapher processes"
+    echo "  -j|--record-groups  Set the number of recording groups or grapher processes"
 
     exit 1
 }
@@ -392,7 +392,7 @@ parse_args() {
                 CONF_FILE=$(realpath "$2")
                 CONF_DIR=$(dirname ${CONF_FILE})
                 shift 2 ;;
-            -j|--recording-groups)
+            -j|--record-groups)
                 NUM_GRAPHERS="$2"
                 NUM_KEEPERS=$((NUM_KEEPERS * NUM_GRAPHERS))
                 shift 2 ;;
