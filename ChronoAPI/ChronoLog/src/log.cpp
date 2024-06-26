@@ -8,6 +8,9 @@
 #include <iostream>
 #include <filesystem>
 
+namespace chronolog
+{
+
 std::shared_ptr <spdlog::logger> Logger::logger = nullptr;
 std::mutex Logger::mutex;
 
@@ -67,3 +70,5 @@ spdlog::logger &Logger::getInstance()
         std::exit(EXIT_FAILURE);
     }
 }
+
+} // namespace chronolog

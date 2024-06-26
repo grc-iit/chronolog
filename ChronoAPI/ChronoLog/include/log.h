@@ -4,6 +4,8 @@
 #include <spdlog/spdlog.h>
 #include <mutex>
 
+namespace chronolog
+{
 
 /**
  * @def LOG_TRACE(...)
@@ -46,13 +48,13 @@
 #define LOG_TRACE(...)
 #define LOG_DEBUG(...)
 #else
-#define LOG_TRACE(...) Logger::getInstance().trace(__VA_ARGS__)
-#define LOG_DEBUG(...) Logger::getInstance().debug(__VA_ARGS__)
+#define LOG_TRACE(...) chronolog::Logger::getInstance().trace(__VA_ARGS__)
+#define LOG_DEBUG(...) chronolog::Logger::getInstance().debug(__VA_ARGS__)
 #endif
-#define LOG_INFO(...) Logger::getInstance().info(__VA_ARGS__)
-#define LOG_WARNING(...) Logger::getInstance().warn(__VA_ARGS__)
-#define LOG_ERROR(...) Logger::getInstance().error(__VA_ARGS__)
-#define LOG_CRITICAL(...) Logger::getInstance().critical(__VA_ARGS__)
+#define LOG_INFO(...) chronolog::Logger::getInstance().info(__VA_ARGS__)
+#define LOG_WARNING(...) chronolog::Logger::getInstance().warn(__VA_ARGS__)
+#define LOG_ERROR(...) chronolog::Logger::getInstance().error(__VA_ARGS__)
+#define LOG_CRITICAL(...) chronolog::Logger::getInstance().critical(__VA_ARGS__)
 
 /**
  * @class Logger
@@ -85,10 +87,9 @@ public:
      *                     and returns 1 if there was an error during initialization.
      */
     static int initialize(const std::string &logType, const std::string &location, spdlog::level::level_enum logLevel
-                          , const std::string &loggerName
-                , const std::size_t &logFileSize = 104857600
-                , const std::size_t &logFileNum = 3
-                , spdlog::level::level_enum flushLevel = spdlog::level::warn);
+                          , const std::string &loggerName, const std::size_t &logFileSize = 104857600
+                          , const std::size_t &logFileNum = 3
+                          , spdlog::level::level_enum flushLevel = spdlog::level::warn);
 
 
     /**
@@ -103,7 +104,9 @@ public:
 
     // Delete copy constructor and assignment operator
     Logger(const Logger &) = delete;
+
     Logger &operator=(const Logger &) = delete;
+
     ~Logger() = default;
 
 private:
@@ -124,5 +127,7 @@ private:
      */
     static std::mutex mutex;
 };
+
+} // namespace chronolog
 
 #endif //CHRONOLOG_LOG_H
