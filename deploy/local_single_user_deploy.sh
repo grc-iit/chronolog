@@ -2,10 +2,11 @@
 
 # Variables ____________________________________________________________________________________________________________
 # Define some colors
-ERR='\033[1;31m\033[41m'
-INFO='\033[1,36m\033[42m'
+ERR='\033[7;37m\033[41m'
+INFO='\033[7;49m\033[92m'
 DEBUG='\033[0;33m'
 NC='\033[0m' # No Color
+
 NUM_KEEPERS=1
 NUM_GRAPHERS=1
 
@@ -46,7 +47,7 @@ check_dependencies() {
 
 check_directories() {
     echo -e "${INFO}Checking required directories...${NC}"
-    local directories=("${WORK_DIR}" "${LIB_DIR}" "${CONF_DIR}" "${BIN_DIR}" "${OUTPUT_DIR}")
+    local directories=("${WORK_DIR}" "${LIB_DIR}" "${CONF_DIR}" "${BIN_DIR}")
 
     for dir in "${directories[@]}"; do
         if [[ ! -d ${dir} ]]; then
@@ -112,8 +113,8 @@ generate_config_files() {
         local recording_group=$((i / keepers_per_grapher))
 
         j=$((i + 1))
-        recording_group=$((recording_group+1))
         local new_port_keeper_drain=$((base_port_keeper_drain + recording_group))
+        recording_group=$((recording_group+1))
 
         local output_file="${conf_dir}/keeper_conf_${j}.json"
 
@@ -151,12 +152,13 @@ generate_config_files() {
     # Generate grapher configuration files
     echo "Generating grapher conf files ..."
     mkdir -p "${output_dir}"
-    for (( i=1; i<num_recording_groups+1; i++ )); do
+    for (( i=0; i<num_recording_groups; i++ )); do
         local new_port_grapher_drain=$((base_port_grapher_drain + i))
         local new_port_grapher_datastore=$((base_port_grapher_datastore + i))
 
-        local grapher_output_file="${conf_dir}/grapher_conf_${i}.json"
-        j=$i
+        j=$((i + 1))
+        local grapher_output_file="${conf_dir}/grapher_conf_${j}.json"
+
         jq --arg bin_dir "$bin_dir" \
             --arg output_dir "$output_dir" \
             --argjson new_port_grapher_drain $new_port_grapher_drain \
@@ -251,7 +253,6 @@ install() {
     check_directories
     check_files
     copy_shared_libs
-    echo "Output dir2 ${OUTPUT_DIR}"
     generate_config_files ${NUM_KEEPERS} ${BIN_DIR} ${CONF_FILE} ${CONF_DIR} ${OUTPUT_DIR} ${NUM_GRAPHERS} ${WORK_DIR}
     echo -e "${DEBUG}Install done${NC}"
 }
@@ -320,23 +321,23 @@ stop() {
 usage() {
     echo "Usage: $0 [options]"
     echo "Options:"
-    echo "  -h|--help       Display this help and exit"
+    echo "  -h|--help           Display this help and exit"
 
-    echo "  -d|--deploy     Start ChronoLog Deployment (default: false)"
-    echo "  -s|--stop       Stop ChronoLog Deployment (default: false)"
-    echo "  -r|--reset      Reset/CleanUp ChronoLog Deployment (default: false)"
-    echo "  -k|--kill       Terminate ChronoLog Deployment (default: false)"
+    echo "  -d|--deploy         Start ChronoLog Deployment (default: false)"
+    echo "  -s|--stop           Stop ChronoLog Deployment (default: false)"
+    echo "  -r|--reset          Reset/CleanUp ChronoLog Deployment (default: false)"
+    echo "  -k|--kill           Terminate ChronoLog Deployment (default: false)"
 
-    echo "  -w|--work-dir DIR     Set the working directory"
-    echo "  -u|--output_dir OUTPUT_DIR (default: work_dir/output)"
-    echo "  -v|--visor VISOR_BIN (default: work_dir/bin/chronovisor_server)"
-    echo "  -g|--grapher GRAPHER_BIN (default: work_dir/bin/chrono_grapher)"
-    echo "  -p|--keeper KEEPER_BIN (default: work_dir/bin/chrono_keeper)"
-    echo "  -c|--client CLIENT_BIN (default: work_dir/bin/client_lib_multi_storytellers)"
-    echo "  -f|--conf_file CONF_FILE (default: work_dir/conf/default_conf.json)"
+    echo "  -w|--work-dir       WORK_DIR Set the working directory(default: /home/USER/chronolog)"
+    echo "  -u|--output_dir     OUTPUT_DIR (default: work_dir/output)"
+    echo "  -v|--visor          VISOR_BIN (default: work_dir/bin/chronovisor_server)"
+    echo "  -g|--grapher        GRAPHER_BIN (default: work_dir/bin/chrono_grapher)"
+    echo "  -p|--keeper         KEEPER_BIN (default: work_dir/bin/chrono_keeper)"
+    echo "  -c|--client         CLIENT_BIN (default: work_dir/bin/client_lib_multi_storytellers)"
+    echo "  -f|--conf_file      CONF_FILE (default: work_dir/conf/default_conf.json)"
 
     echo "  -n|--keepers-group  Set the number of keeper processes per group"
-    echo "  -j|--recording-groups Set the number of recording groups or grapher processes"
+    echo "  -j|--record-groups  Set the number of recording groups or grapher processes"
 
     exit 1
 }
@@ -392,7 +393,7 @@ parse_args() {
                 CONF_FILE=$(realpath "$2")
                 CONF_DIR=$(dirname ${CONF_FILE})
                 shift 2 ;;
-            -j|--recording-groups)
+            -j|--record-groups)
                 NUM_GRAPHERS="$2"
                 NUM_KEEPERS=$((NUM_KEEPERS * NUM_GRAPHERS))
                 shift 2 ;;
