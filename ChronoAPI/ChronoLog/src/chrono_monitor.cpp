@@ -59,7 +59,6 @@ int chrono_monitor::initialize(const std::string &logType, const std::string &lo
 
 spdlog::logger &chrono_monitor::getInstance()
 {
-    //std::lock_guard <std::mutex> lock(mutex);
     if(logger)
     {
         return *logger;
