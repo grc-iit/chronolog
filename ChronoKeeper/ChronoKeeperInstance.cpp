@@ -71,13 +71,13 @@ int main(int argc, char**argv)
         std::exit(EXIT_FAILURE);
     }
     ChronoLog::ConfigurationManager confManager(conf_file_path);
-    int result = chronolog::Logger::initialize(confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGTYPE
-                                               , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILE
-                                               , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGLEVEL
-                                               , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGNAME
-                                               , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILESIZE
-                                               , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILENUM
-                                               , confManager.KEEPER_CONF.KEEPER_LOG_CONF.FLUSHLEVEL);
+    int result = chronolog::chrono_monitor::initialize(confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGTYPE
+                                                       , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILE
+                                                       , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGLEVEL
+                                                       , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGNAME
+                                                       , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILESIZE
+                                                       , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILENUM
+                                                       , confManager.KEEPER_CONF.KEEPER_LOG_CONF.FLUSHLEVEL);
     if(result == 1)
     {
         exit(EXIT_FAILURE);

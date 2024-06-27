@@ -8,7 +8,7 @@
 
 #include "chronolog_errcode.h"
 #include "KeeperDataStore.h"
-#include "log.h"
+#include "chrono_monitor.h"
 
 namespace chl = chronolog;
 namespace tl = thallium;

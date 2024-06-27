@@ -15,7 +15,7 @@
 #include <event.h>
 #include <chunkattr.h>
 #include <StoryWriter.h>
-#include <log.h>
+#include <chrono_monitor.h>
 #include <chronolog_errcode.h>
 
 #define DATASET_RANK 1 // Dataset dimension

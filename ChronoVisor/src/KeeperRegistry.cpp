@@ -5,7 +5,7 @@
 #include "KeeperRegistry.h"
 #include "KeeperRegistryService.h"
 #include "DataStoreAdminClient.h"
-#include "log.h"
+#include "chrono_monitor.h"
 #include "ConfigurationManager.h"
 /////////////////////////
 

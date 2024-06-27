@@ -7,7 +7,7 @@
 #include "StoryPipeline.h"
 #include "StoryIngestionHandle.h"
 #include "StoryChunkExtractionQueue.h"
-#include "log.h"
+#include "chrono_monitor.h"
 
 //#define TRACE_CHUNKING
 #define TRACE_CHUNK_EXTRACTION

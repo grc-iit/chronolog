@@ -13,7 +13,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <hdf5.h>
-#include <log.h>
+#include <chrono_monitor.h>
 #include <chronolog_errcode.h>
 //#include <story_chunk_test_utils.h>
 

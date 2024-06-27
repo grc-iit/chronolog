@@ -12,7 +12,7 @@
 #include <city.h>
 #include <mutex>
 #include <chronolog_errcode.h>
-#include <log.h>
+#include <chrono_monitor.h>
 
 #include "chronolog_types.h"
 
