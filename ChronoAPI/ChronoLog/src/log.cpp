@@ -59,7 +59,7 @@ int Logger::initialize(const std::string &logType, const std::string &location, 
 
 spdlog::logger &Logger::getInstance()
 {
-    std::lock_guard <std::mutex> lock(mutex);
+    //std::lock_guard <std::mutex> lock(mutex);
     if(logger)
     {
         return *logger;
