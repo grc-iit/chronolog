@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.17)
+cmake_minimum_required(VERSION 3.25)
 
 # Define the project and specify the required C++ standard
 project(ChronoEmulator LANGUAGES CXX)

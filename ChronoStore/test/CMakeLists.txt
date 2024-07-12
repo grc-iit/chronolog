@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.19)
+cmake_minimum_required(VERSION 3.25)
 
 include_directories(../include)
 include_directories(${HDF5_INCLUDE_DIRS})
