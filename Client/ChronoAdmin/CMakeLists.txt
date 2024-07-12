@@ -2,7 +2,12 @@ cmake_minimum_required(VERSION 3.25)
 
 find_package(MPI REQUIRED)
 
-add_executable(client_admin client_admin.cpp)
+message("ClientAdmin CMakeLists - CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}")
+message("ClientAdmin CMakeLists - CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
+message("Building CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
+message("build target : client_admin")
+
+add_executable(client_admin ${CMAKE_CURRENT_SOURCE_DIR}/client_admin.cpp)
 
 target_link_libraries(client_admin chronolog_client thallium ${MPI_CXX_LIBRARIES})
 
@@ -18,5 +23,5 @@ install(
 
 # install configuration file
 install(
-    FILES ${CMAKE_CURRENT_SOURCE_DIR}/../../default_conf.json.in DESTINATION conf RENAME default_conf.json
+    FILES ${CMAKE_SOURCE_DIR}/default_conf.json.in DESTINATION conf RENAME default_conf.json
 )
