@@ -16,7 +16,7 @@ set(HEADER_FILES
 )
 
 # Set the destination directory for the header files
-set(HEADER_DEST_DIR ${CMAKE_SOURCE_DIR}/build/Client/include)
+set(HEADER_DEST_DIR ${CMAKE_BINARY_DIR}/Client/include)
 
 # Create the destination directory
 file(MAKE_DIRECTORY ${HEADER_DEST_DIR})
