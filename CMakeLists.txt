@@ -5,7 +5,6 @@ if(NOT DEFINED CMAKE_MACOSX_RPATH)
     set(CMAKE_MACOSX_RPATH 0)
 endif()
 
-
 project(ChronoLog LANGUAGES CXX)
 
 #------------------------------------------------------------------------------
@@ -76,9 +75,9 @@ option(CHRONOLOG_ENABLE_DOXYGEN "Enable Doxygen documentation generation." OFF)
 #------------------------------------------------------------------------------
 # Define the compiler flags
 #------------------------------------------------------------------------------
-# TODO Should we consider the posibility of a user passing their own fflags through CMAKE_CXX_FLAGS
+# TODO Should we consider the possibility of a user passing their own flags through CMAKE_CXX_FLAGS
 #   Encapsulate everything around if(NOT CMAKE_CXX_FLAGS)
-#   Check Hermes for hwo they delete flags automatically
+#   Check Hermes for how they delete flags automatically
 #if(SET_WERROR)
 #    add_compile_options(-Wall)
 #    add_compile_options(-Wextra)
@@ -106,7 +105,7 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     #endif()
 
     #if (CHRONOLOG_USE_THREAD_SANITIZER AND CHRONOLOG_USE_ADDRESS_SANITIZER)
-    #    message(FATAL_ERROR "Cannont use -fsanitize=address and -fsanitize=thread "
+    #    message(FATAL_ERROR "Cannot use -fsanitize=address and -fsanitize=thread "
     #            "at the same time")
     #endif()
 else()
@@ -124,7 +123,6 @@ if(CHRONOLOG_ENABLE_COVERAGE)
     endif()
 endif()
 
-
 #------------------------------------------------------------------------------
 # Transform flags from boolean to meaningful usages.
 #------------------------------------------------------------------------------
@@ -134,11 +132,9 @@ else()
     set(CHRONOLOG_LIBTYPE STATIC)
 endif()
 
-
 #-----------------------------------------------------------------------------
 # Dependencies common to all subdirectories
 #-----------------------------------------------------------------------------
-
 
 #-----------------------------------------------------------------------------
 # Coverage
@@ -197,23 +193,17 @@ if(CHRONOLOG_BUILD_TESTING)
     include(CTest)
 endif()
 
-# ChronoLog client library
+# ChronoLog Components
 add_subdirectory(Client)
-
-# ChronoVisor
 add_subdirectory(ChronoVisor)
-
-# ChronoKeeper
 add_subdirectory(ChronoKeeper)
 add_subdirectory(ChronoGrapher)
-
-# ChronoStore
 add_subdirectory(ChronoStore)
 
 # custom
 add_custom_target(make_all cd ${CMAKE_BINARY_DIR} && make)
 
-#Tests
+# Tests
 if(CHRONOLOG_BUILD_TESTING)
     enable_testing()
     add_subdirectory(test)
