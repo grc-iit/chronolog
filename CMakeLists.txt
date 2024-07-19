@@ -24,9 +24,17 @@ set(CHRONOLOG_PACKAGE_TARNAME "${CHRONOLOG_PACKAGE}")
 #------------------------------------------------------------------------------
 # Setup install and output Directories
 #------------------------------------------------------------------------------
-#if(NOT CMAKE_INSTALL_PREFIX)
-set(CMAKE_INSTALL_PREFIX /home/$ENV{USER}/chronolog)
-#endif()
+set(INSTALL_DIR "/home/$ENV{USER}/chronolog" CACHE PATH "Installation directory")
+
+set(CMAKE_INSTALL_PREFIX_DEBUG "${INSTALL_DIR}/Debug")
+set(CMAKE_INSTALL_PREFIX_RELEASE "${INSTALL_DIR}/Release")
+
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(CMAKE_INSTALL_PREFIX ${CMAKE_INSTALL_PREFIX_DEBUG})
+else()
+    set(CMAKE_INSTALL_PREFIX ${CMAKE_INSTALL_PREFIX_RELEASE})
+endif()
+
 if(NOT CHRONOLOG_INSTALL_BIN_DIR)
     set(CHRONOLOG_INSTALL_BIN_DIR ${CMAKE_INSTALL_PREFIX}/bin)
 endif()
@@ -45,7 +53,7 @@ endif()
 #------------------------------------------------------------------------------
 if("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_BINARY_DIR}")
     message(FATAL_ERROR
-        "ChronoLog requires an out of source build. "
+        "ChronoLog requires an out of source build."
         "Please create a separate binary directory and run CMake there.")
 endif()
 
@@ -109,7 +117,7 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     #            "at the same time")
     #endif()
 else()
-    message("Compiling ChronoLog in release Mode")
+    message("Compiling ChronoLog in Release Mode")
     add_compile_options(-O3 -lm)
     #add_compile_options(-Wno-switch-unreachable -Wno-return-type)
 endif()
@@ -193,23 +201,28 @@ if(CHRONOLOG_BUILD_TESTING)
     include(CTest)
 endif()
 
+#-----------------------------------------------------------------------------
 # ChronoLog Components
+#-----------------------------------------------------------------------------
 add_subdirectory(Client)
 add_subdirectory(ChronoVisor)
 add_subdirectory(ChronoKeeper)
 add_subdirectory(ChronoGrapher)
 add_subdirectory(ChronoStore)
-
-# custom
-add_custom_target(make_all cd ${CMAKE_BINARY_DIR} && make)
-
-# Tests
+#if(CHRONOLOG_ENABLE_PYTHON_BINDINGS)
+message("Python binding enabled")
+add_subdirectory(python_client)
+#endif()
 if(CHRONOLOG_BUILD_TESTING)
     enable_testing()
     add_subdirectory(test)
 endif()
 
-#if(CHRONOLOG_ENABLE_PYTHON_BINDINGS)
-message("Python binding enabled")
-add_subdirectory(python_client)
-#endif()
+#-----------------------------------------------------------------------------
+# Custom target to invoke 'make' in the build directory
+#-----------------------------------------------------------------------------
+add_custom_target(make_all cd ${CMAKE_BINARY_DIR} && make)
+
+
+
+

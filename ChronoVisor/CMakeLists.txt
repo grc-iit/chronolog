@@ -19,7 +19,6 @@ target_sources(chronovisor_server PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ClientRegistryRecord.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ChronicleMetaDirectory.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/KeeperRegistry.cpp
-    #${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/src/ClocksourceManager.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/ConfigurationManager.cpp
     ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/src/city.cpp
     ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/src/log.cpp)
@@ -31,7 +30,7 @@ target_include_directories(chronovisor_server PRIVATE
 
 target_link_libraries(chronovisor_server chronolog_client thallium)
 
-# prep the stage...
+# Prep the stage...
 configure_file(${CMAKE_SOURCE_DIR}/default_conf.json.in
     ${CMAKE_CURRENT_BINARY_DIR}/default_conf.json COPYONLY)
 
@@ -39,12 +38,12 @@ add_test(NAME ChronoVisorServerTest COMMAND chronovisor_server)
 
 set_target_properties(chronovisor_server PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
 
-# install binary
+# Install binary
 install(
-    TARGETS chronovisor_server DESTINATION bin
+    TARGETS chronovisor_server DESTINATION ${CHRONOLOG_INSTALL_BIN_DIR}
 )
 
-# install configuration file
+# Install configuration file
 install(
-    FILES ${CMAKE_SOURCE_DIR}/default_conf.json.in DESTINATION conf RENAME default_conf.json
+    FILES ${CMAKE_CURRENT_BINARY_DIR}/default_conf.json.in DESTINATION ${CHRONOLOG_INSTALL_DATA_DIR} RENAME default_conf.json
 )
