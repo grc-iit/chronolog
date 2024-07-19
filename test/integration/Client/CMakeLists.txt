@@ -51,5 +51,5 @@ install(
 
 # install configuration file
 install(
-    FILES ${CMAKE_SOURCE_DIR}/default_conf.json.in DESTINATION conf RENAME default_conf.json
+    FILES ${CMAKE_SOURCE_DIR}/default_conf.json.in DESTINATION ${CHRONOLOG_INSTALL_DATA_DIR} RENAME default_conf.json
 )

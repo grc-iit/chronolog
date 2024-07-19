@@ -45,7 +45,7 @@ if(NOT CHRONOLOG_INSTALL_INCLUDE_DIR)
     set(CHRONOLOG_INSTALL_INCLUDE_DIR ${CMAKE_INSTALL_PREFIX}/include)
 endif()
 if(NOT CHRONOLOG_INSTALL_DATA_DIR)
-    set(CHRONOLOG_INSTALL_DATA_DIR ${CMAKE_INSTALL_PREFIX}/share)
+    set(CHRONOLOG_INSTALL_DATA_DIR ${CMAKE_INSTALL_PREFIX}/conf)
 endif()
 
 #------------------------------------------------------------------------------
