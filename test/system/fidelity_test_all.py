@@ -3,7 +3,9 @@ import sys
 
 # Check if the correct number of arguments are provided
 if len(sys.argv) != 3:
-    print("Usage: python script.py <input_file> <directory>")
+    print("Usage: python fidelity_test_all.py <input_file> <directory>")
+    print("  <input_file>: The file that has been processed by the system.")
+    print("  <directory>: The destination directory for the generated files.")
     sys.exit(1)
 
 # Store the path parameters
