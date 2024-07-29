@@ -8,12 +8,15 @@ NC = '\033[0m'  # No Color
 BOLD = '\033[1m'
 UNDERLINE = '\033[4m'
 
-def print_header(directory_path):
+def print_header(input_file, directory):
     print()
     print("**************************************************")
-    print(f"* Starting Fidelity Test 03 with path {directory_path}")
+    print(f"* Starting Fidelity Test 03 with path {directory}")
     print("**************************************************")
     print("Test 03: Checks if the events have been written in sequential order.")
+    print()
+    print(f"{UNDERLINE}Checking CSV files in directory: {directory}{NC}\n")
+    print(f"{UNDERLINE}Using as reference input file: {input_file}{NC}\n")
     print()
 
 def verify_order(file1, file2):
@@ -49,32 +52,34 @@ def verify_order(file1, file2):
     print(f"\t{BOLD}Result:{NC} {GREEN}Success.{NC}\n")
     return True
 
-def check_csv_files(directory_path, original_file):
-    if not os.path.isdir(directory_path):
+def check_csv_files(directory, input_file):
+    if not os.path.isdir(directory):
         print(f"{RED}Directory does not exist.{NC}")
         return False
 
-    print(f"{UNDERLINE}Checking CSV files in directory: {directory_path}{NC}\n")
-
-    for file_name in os.listdir(directory_path):
+    for file_name in os.listdir(directory):
         if file_name.endswith(".csv"):
-            file_path = os.path.join(directory_path, file_name)
+            file_path = os.path.join(directory, file_name)
             mod_datetime = os.path.getmtime(file_path)
 
             print(f"{BOLD}\tFile:{NC} {file_name}")
             print(f"{BOLD}\tDate:{NC} {mod_datetime}")
 
-            verify_order(file_path, original_file)
+            verify_order(file_path, input_file)
 
 def main():
     if len(sys.argv) != 3:
-        print(f"{RED}Usage: python script.py <input_file> <directory>{NC}")
+        print(f"{RED}Fidelity Test 03: Missing Arguments{NC}")
+        print("Usage: python fidelity_test_03.py <input_file> <directory>")
+        print("  <input_file>: The file that has been processed by the system.")
+        print("  <directory>: The destination directory for the generated files.")
+        print()
         sys.exit(1)
 
-    original_file = sys.argv[1]
-    directory_path = sys.argv[2]
-    print_header(directory_path)
-    check_csv_files(directory_path, original_file)
+    input_file = sys.argv[1]
+    directory = sys.argv[2]
+    print_header(input_file, directory)
+    check_csv_files(directory, input_file)
 
 if __name__ == "__main__":
     main()

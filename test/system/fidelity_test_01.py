@@ -10,24 +10,25 @@ NC = '\033[0m'  # No Color
 BOLD = '\033[1m'
 UNDERLINE = '\033[4m'
 
-def print_header(directory_path):
+def print_header(directory):
     print()
     print("**************************************************")
-    print(f"* Starting Fidelity Test 01 with path {directory_path}")
+    print(f"* Starting Fidelity Test 01 with path {directory}")
     print("**************************************************")
     print("Test 01: Checks if the StoryID of the file and the one in the events written inside match.")
     print()
+    print(f"{UNDERLINE}Checking CSV files in directory: {directory}{NC}\n")
+    print()
 
-def check_csv_files(directory_path):
-    if not os.path.isdir(directory_path):
+
+def check_csv_files(directory):
+    if not os.path.isdir(directory):
         print(f"{RED}Directory does not exist.{NC}")
         return False
 
-    print(f"{UNDERLINE}Checking CSV files in directory: {directory_path}{NC}\n")
-
-    for file in os.listdir(directory_path):
+    for file in os.listdir(directory):
         if file.endswith(".csv"):
-            check_story_id(os.path.join(directory_path, file))
+            check_story_id(os.path.join(directory, file))
     return True
 
 def check_story_id(file_path):
@@ -52,11 +53,14 @@ def check_story_id(file_path):
 
 def main():
     if len(sys.argv) != 2:
-        print(f"{RED}Usage: python script.py <directory_path>{NC}")
+        print(f"{RED}Fidelity Test 01: Missing Arguments{NC}")
+        print("Usage: python fidelity_test_01.py <directory>")
+        print("  <directory>: The destination directory for the generated files.")
+        print()
         sys.exit(1)
-    directory_path = sys.argv[1]
-    print_header(directory_path)
-    check_csv_files(directory_path)
+    directory = sys.argv[1]
+    print_header(directory)
+    check_csv_files(directory)
 
 if __name__ == "__main__":
     main()

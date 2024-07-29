@@ -9,12 +9,15 @@ NC = '\033[0m'  # No Color
 BOLD = '\033[1m'
 UNDERLINE = '\033[4m'
 
-def print_header(directory_path):
+def print_header(input_file, directory_path):
     print()
     print("**************************************************")
     print(f"* Starting Fidelity Test 02 with path {directory_path}")
     print("**************************************************")
     print("Test 02: Checks if the number of recorded events is the expected one.")
+    print()
+    print(f"{UNDERLINE}Checking CSV files in directory: {directory_path}{NC}\n")
+    print(f"{UNDERLINE}Using as reference input file: {input_file}{NC}\n")
     print()
 
 def verify_num_event(input_file, directory):
@@ -59,12 +62,16 @@ def verify_num_event(input_file, directory):
 
 def main():
     if len(sys.argv) != 3:
-        print(f"{RED}Usage: python script.py <input_file> <directory>{NC}")
+        print(f"{RED}Fidelity Test 02: Missing Arguments{NC}")
+        print("Usage: python fidelity_test_02.py <input_file> <directory>")
+        print("  <input_file>: The file that has been processed by the system.")
+        print("  <directory>: The destination directory for the generated files.")
+        print()
         sys.exit(1)
 
     input_file = sys.argv[1]
     directory = sys.argv[2]
-    print_header(directory)
+    print_header(input_file, directory)
     verify_num_event(input_file, directory)
 
 if __name__ == "__main__":
