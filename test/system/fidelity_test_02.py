@@ -9,14 +9,14 @@ NC = '\033[0m'  # No Color
 BOLD = '\033[1m'
 UNDERLINE = '\033[4m'
 
-def print_header(input_file, directory_path):
+def print_header(input_file, directory):
     print()
     print("**************************************************")
-    print(f"* Starting Fidelity Test 02 with path {directory_path}")
+    print(f"* Starting Fidelity Test 02 with path {directory}")
     print("**************************************************")
     print("Test 02: Checks if the number of recorded events is the expected one.")
     print()
-    print(f"{UNDERLINE}Checking CSV files in directory: {directory_path}{NC}\n")
+    print(f"{UNDERLINE}Checking CSV files in directory: {directory}{NC}\n")
     print(f"{UNDERLINE}Using as reference input file: {input_file}{NC}\n")
     print()
 
