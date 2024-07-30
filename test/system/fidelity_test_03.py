@@ -69,7 +69,7 @@ def check_csv_files(directory, input_file):
 
 def main():
     if len(sys.argv) != 3:
-        print(f"{RED}Fidelity Test 03: Missing Arguments{NC}")
+        print(f"{RED}Error: Missing Arguments{NC}")
         print("Usage: python fidelity_test_03.py <input_file> <directory>")
         print("  <input_file>: The file that has been processed by the system.")
         print("  <directory>: The destination directory for the generated files.")

@@ -62,7 +62,7 @@ def verify_num_event(input_file, directory):
 
 def main():
     if len(sys.argv) != 3:
-        print(f"{RED}Fidelity Test 02: Missing Arguments{NC}")
+        print(f"{RED}Error: Missing Arguments{NC}")
         print("Usage: python fidelity_test_02.py <input_file> <directory>")
         print("  <input_file>: The file that has been processed by the system.")
         print("  <directory>: The destination directory for the generated files.")
