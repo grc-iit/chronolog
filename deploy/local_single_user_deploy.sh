@@ -15,6 +15,7 @@ WORK_DIR="/home/${USER}/chronolog"
 LIB_DIR="${WORK_DIR}/lib"
 CONF_DIR="${WORK_DIR}/conf"
 BIN_DIR="${WORK_DIR}/bin"
+LOG_DIR="${WORK_DIR}/log"
 OUTPUT_DIR="${WORK_DIR}/output"
 
 # Files
@@ -70,11 +71,13 @@ check_files() {
 
 generate_config_files() {
     local num_files=$1
-    local bin_dir=$2
-    local default_conf=$3
-    local conf_dir=$4
-    local output_dir=$5
-    local num_recording_groups=$6
+    local default_conf=$2
+    local conf_dir=$3
+    local output_dir=$4
+    local num_recording_groups=$5
+    local log_dir=$6
+
+    mkdir -p "${log_dir}"
 
     # Check if default configuration file exists
     if [ ! -f "$default_conf" ]; then
@@ -118,7 +121,7 @@ generate_config_files() {
 
         local output_file="${conf_dir}/keeper_conf_${j}.json"
 
-        jq --arg bin_dir "$bin_dir" \
+        jq  --arg log_dir "$log_dir" \
             --arg output_dir "$output_dir" \
             --argjson new_port_keeper_record $new_port_keeper_record \
             --argjson new_port_keeper_drain $new_port_keeper_drain \
@@ -130,20 +133,20 @@ generate_config_files() {
             .chrono_keeper.KeeperDataStoreAdminService.rpc.service_base_port = $new_port_keeper_datastore |
             .chrono_keeper.story_files_dir = ($output_dir + "/") |
             .chrono_keeper.RecordingGroup = $recording_group |
-            .chrono_keeper.Logging.log.file = ($bin_dir + "/" + $j + "_" + .chrono_keeper.Logging.log.file)' "$default_conf" > "$output_file"
+            .chrono_keeper.Logging.log.file = ($log_dir + "/" + $j + "_" + .chrono_keeper.Logging.log.file)' "$default_conf" > "$output_file"
         echo "Generated $output_file with ports $new_port_keeper_record and $new_port_keeper_datastore and $new_port_keeper_drain"
     done
 
     # Generate visor configuration file
     local visor_output_file="${conf_dir}/visor_conf.json"
-    jq --arg bin_dir "$bin_dir" \
-       '.chrono_visor.Logging.log.file = ($bin_dir + "/" + .chrono_visor.Logging.log.file)' "$default_conf" > "$visor_output_file"
+    jq --arg log_dir "$log_dir" \
+       '.chrono_visor.Logging.log.file = ($log_dir + "/" + .chrono_visor.Logging.log.file)' "$default_conf" > "$visor_output_file"
     echo "Generated $visor_output_file"
 
     # Generate client configuration file
     local client_output_file="${conf_dir}/client_conf.json"
-    jq --arg bin_dir "$bin_dir" \
-       '.chrono_client.Logging.log.file = ($bin_dir + "/" + .chrono_client.Logging.log.file)' "$default_conf" > "$client_output_file"
+    jq --arg log_dir "$log_dir" \
+       '.chrono_client.Logging.log.file = ($log_dir + "/" + .chrono_client.Logging.log.file)' "$default_conf" > "$client_output_file"
     echo "Generated $client_output_file"
 
     local base_port_grapher_drain=$(jq '.chrono_grapher.KeeperGrapherDrainService.rpc.service_base_port' "$default_conf")
@@ -159,7 +162,7 @@ generate_config_files() {
         j=$((i + 1))
         local grapher_output_file="${conf_dir}/grapher_conf_${j}.json"
 
-        jq --arg bin_dir "$bin_dir" \
+        jq --arg log_dir "$log_dir" \
             --arg output_dir "$output_dir" \
             --argjson new_port_grapher_drain $new_port_grapher_drain \
             --argjson new_port_grapher_datastore $new_port_grapher_datastore \
@@ -168,7 +171,7 @@ generate_config_files() {
            '.chrono_grapher.RecordingGroup = $j |
             .chrono_grapher.KeeperGrapherDrainService.rpc.service_base_port = $new_port_grapher_drain |
             .chrono_grapher.DataStoreAdminService.rpc.service_base_port = $new_port_grapher_datastore |
-            .chrono_grapher.Logging.log.file = ($bin_dir + "/" + $i + "_" + .chrono_grapher.Logging.log.file) |
+            .chrono_grapher.Logging.log.file = ($log_dir + "/" + $i + "_" + .chrono_grapher.Logging.log.file) |
             .chrono_grapher.Extractors.story_files_dir = ($output_dir + "/")' "$default_conf" > "$grapher_output_file"
 
         echo "Generated $grapher_output_file with ports $new_port_grapher_drain and $new_port_grapher_datastore"
@@ -231,7 +234,7 @@ launch_process() {
     local args="$2"
     local log_file="$3"
     echo -e "${DEBUG}Launching $bin $args ...${NC}"
-    LD_LIBRARY_PATH=${LIB_DIR} nohup ${bin} ${args} > ${BIN_DIR}/${log_file} 2>&1 &
+    LD_LIBRARY_PATH=${LIB_DIR} nohup ${bin} ${args} > ${LOG_DIR}/${log_file} 2>&1 &
 }
 
 kill_process() {
@@ -253,7 +256,7 @@ install() {
     check_directories
     check_files
     copy_shared_libs
-    generate_config_files ${NUM_KEEPERS} ${BIN_DIR} ${CONF_FILE} ${CONF_DIR} ${OUTPUT_DIR} ${NUM_GRAPHERS} ${WORK_DIR}
+    generate_config_files ${NUM_KEEPERS} ${CONF_FILE} ${CONF_DIR} ${OUTPUT_DIR} ${NUM_GRAPHERS} ${LOG_DIR}
     echo -e "${DEBUG}Install done${NC}"
 }
 
@@ -367,6 +370,7 @@ parse_args() {
                 CONF_DIR="${WORK_DIR}/conf"
                 BIN_DIR="${WORK_DIR}/bin"
                 OUTPUT_DIR="${WORK_DIR}/output"
+                LOG_DIR="${WORK_DIR}/log"
                 VISOR_BIN="${BIN_DIR}/chronovisor_server"
                 KEEPER_BIN="${BIN_DIR}/chrono_keeper"
                 CLIENT_BIN="${BIN_DIR}/client_lib_multi_storytellers"
@@ -376,6 +380,10 @@ parse_args() {
             -u|--output-dir)
                 OUTPUT_DIR=$(realpath "$2")
                 mkdir -p ${OUTPUT_DIR}
+                shift 2 ;;
+            -l|--log-dir)
+                LOG_DIR=$(realpath "$2")
+                mkdir -p ${LOG_DIR}
                 shift 2 ;;
             -v|--visor)
                 VISOR_BIN=$(realpath "$2")
