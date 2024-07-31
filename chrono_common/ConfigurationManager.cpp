@@ -65,13 +65,13 @@ void ChronoLog::ConfigurationManager::parseGrapherConf(json_object*json_conf)
                 }
             }
         }
-        else if(strcmp(key, "Logging") == 0)
+        else if(strcmp(key, "Monitoring") == 0)
         {
             assert(json_object_is_type(val, json_type_object));
-            json_object*chrono_logging = json_object_object_get(json_conf, "Logging");
+            json_object*chrono_logging = json_object_object_get(json_conf, "Monitoring");
             json_object_object_foreach(chrono_logging, key, val)
             {
-                if(strcmp(key, "log") == 0)
+                if(strcmp(key, "monitor") == 0)
                 {
                     parseLogConf(val, GRAPHER_CONF.LOG_CONF);
                 }

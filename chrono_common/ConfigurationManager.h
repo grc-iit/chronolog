@@ -773,13 +773,13 @@ private:
                     }
                 }
             }
-            else if(strcmp(key, "Logging") == 0)
+            else if(strcmp(key, "Monitoring") == 0)
             {
                 assert(json_object_is_type(val, json_type_object));
-                json_object*chronovisor_log = json_object_object_get(json_conf, "Logging");
+                json_object*chronovisor_log = json_object_object_get(json_conf, "Monitoring");
                 json_object_object_foreach(chronovisor_log, key, val)
                 {
-                    if(strcmp(key, "log") == 0)
+                    if(strcmp(key, "monitor") == 0)
                     {
                         parseLogConf(val, VISOR_CONF.VISOR_LOG_CONF);
                     }
@@ -884,13 +884,13 @@ private:
                     }
                 }
             }
-            else if(strcmp(key, "Logging") == 0)
+            else if(strcmp(key, "Monitoring") == 0)
             {
                 assert(json_object_is_type(val, json_type_object));
-                json_object*chronokeeper_log = json_object_object_get(json_conf, "Logging");
+                json_object*chronokeeper_log = json_object_object_get(json_conf, "Monitoring");
                 json_object_object_foreach(chronokeeper_log, key, val)
                 {
-                    if(strcmp(key, "log") == 0)
+                    if(strcmp(key, "monitor") == 0)
                     {
                         parseLogConf(val, KEEPER_CONF.KEEPER_LOG_CONF);
                     }
@@ -936,13 +936,13 @@ private:
                     }
                 }
             }
-            else if(strcmp(key, "Logging") == 0)
+            else if(strcmp(key, "Monitoring") == 0)
             {
                 assert(json_object_is_type(val, json_type_object));
-                json_object*chronoclient_log = json_object_object_get(json_conf, "Logging");
+                json_object*chronoclient_log = json_object_object_get(json_conf, "Monitoring");
                 json_object_object_foreach(chronoclient_log, key, val)
                 {
-                    if(strcmp(key, "log") == 0)
+                    if(strcmp(key, "monitor") == 0)
                     {
                         parseLogConf(val, CLIENT_CONF.CLIENT_LOG_CONF);
                     }

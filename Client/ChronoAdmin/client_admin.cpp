@@ -8,7 +8,7 @@
 #include <functional>
 #include <chrono>
 #include <mpi.h>
-#include <log.h>
+#include <chrono_monitor.h>
 #include <cstring>
 
 typedef struct workload_conf_args_

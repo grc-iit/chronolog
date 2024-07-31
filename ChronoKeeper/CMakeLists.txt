@@ -20,7 +20,7 @@ target_sources(chrono_keeper PRIVATE
     StoryChunkExtractor.cpp
     CSVFileChunkExtractor.cpp
     StoryChunkExtractorRDMA.cpp
-    ../ChronoAPI/ChronoLog/src/log.cpp)
+    ../ChronoAPI/ChronoLog/src/chrono_monitor.cpp)
 
 target_link_libraries(chrono_keeper chronolog_client thallium)
 

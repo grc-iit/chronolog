@@ -29,7 +29,7 @@ add_library(chronolog_client
     src/StorytellerClient.cpp
     src/ChronologClient.cpp
     src/ChronologClientImpl.cpp
-    ../ChronoAPI/ChronoLog/src/log.cpp
+    ../ChronoAPI/ChronoLog/src/chrono_monitor.cpp
     ../chrono_common/ConfigurationManager.cpp
 )
 

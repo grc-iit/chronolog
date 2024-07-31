@@ -12,7 +12,7 @@ target_sources(extract_test PRIVATE
     ../../../chrono_common/chronolog_types.h
     ../../../chrono_common/StoryChunk.cpp
     ../../../chrono_common/ConfigurationManager.cpp
-    ../../../ChronoAPI/ChronoLog/src/log.cpp)
+    ../../../ChronoAPI/ChronoLog/src/chrono_monitor.cpp)
 target_include_directories(extract_test PRIVATE include
     ../../../chrono_common
     ../../../ChronoAPI/ChronoLog/include)
@@ -25,7 +25,7 @@ target_sources(ingest_test PRIVATE
     ../../../chrono_common/chronolog_types.h
     ../../../chrono_common/StoryChunk.cpp
     ../../../chrono_common/ConfigurationManager.cpp
-    ../../../ChronoAPI/ChronoLog/src/log.cpp)
+    ../../../ChronoAPI/ChronoLog/src/chrono_monitor.cpp)
 target_include_directories(ingest_test PRIVATE include
     ../../../chrono_common
     ../../../ChronoAPI/ChronoLog/include)

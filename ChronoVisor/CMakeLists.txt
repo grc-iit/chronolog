@@ -17,7 +17,7 @@ target_sources(chronovisor_server PRIVATE
     ./src/KeeperRegistry.cpp
     ../chrono_common/ConfigurationManager.cpp
     ../ChronoAPI/ChronoLog/src/city.cpp
-    ../ChronoAPI/ChronoLog/src/log.cpp)
+    ../ChronoAPI/ChronoLog/src/chrono_monitor.cpp)
 
 target_include_directories(chronovisor_server PRIVATE
     ../ChronoAPI/ChronoLog/include

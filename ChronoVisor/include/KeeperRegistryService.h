@@ -10,7 +10,7 @@
 #include "KeeperStatsMsg.h"
 #include "GrapherIdCard.h"
 #include "GrapherRegistrationMsg.h"
-#include "log.h"
+#include "chrono_monitor.h"
 #include "KeeperRegistry.h"
 
 namespace tl = thallium;

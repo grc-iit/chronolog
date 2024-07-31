@@ -12,7 +12,7 @@
 #include <chunkattr.h>
 #include <datasetreader.h>
 #include <datasetminmax.h>
-#include <log.h>
+#include <chrono_monitor.h>
 #include <chronolog_errcode.h>
 
 #define DEBUG 0 // Set to 1 ito print H5 error messages to console

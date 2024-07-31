@@ -9,7 +9,7 @@
 #include <thallium/serialization/stl/vector.hpp>
 #include "../../ChronoAPI/ChronoLog/include/common.h"
 #include <mpi.h>
-#include "log.h"
+#include "chrono_monitor.h"
 
 #define WARM_UP_REPS 3
 #define MSG_SIZE (1 * 1024 * 1024)

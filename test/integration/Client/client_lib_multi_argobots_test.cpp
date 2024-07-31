@@ -7,7 +7,7 @@
 #include <abt.h>
 #include <atomic>
 #include <cmd_arg_parse.h>
-#include "log.h"
+#include "chrono_monitor.h"
 
 #define CHRONICLE_NAME_LEN 32
 #define STORY_NAME_LEN 32
