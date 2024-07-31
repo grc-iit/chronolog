@@ -331,8 +331,10 @@ usage() {
     echo "  -r|--reset          Reset/CleanUp ChronoLog Deployment (default: false)"
     echo "  -k|--kill           Terminate ChronoLog Deployment (default: false)"
 
-    echo "  -w|--work-dir       WORK_DIR Set the working directory(default: /home/USER/chronolog)"
+    echo "  -w|--work-dir       WORK_DIR Set the working directory"
+    echo "  -l|--log_dir        LOG_DIR (default: work_dir/log)"
     echo "  -u|--output_dir     OUTPUT_DIR (default: work_dir/output)"
+
     echo "  -v|--visor          VISOR_BIN (default: work_dir/bin/chronovisor_server)"
     echo "  -g|--grapher        GRAPHER_BIN (default: work_dir/bin/chrono_grapher)"
     echo "  -p|--keeper         KEEPER_BIN (default: work_dir/bin/chrono_keeper)"
