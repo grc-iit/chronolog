@@ -11,12 +11,12 @@ NUM_KEEPERS=1
 NUM_GRAPHERS=1
 
 # Directories
-WORK_DIR="/home/${USER}/chronolog"
-LIB_DIR="${WORK_DIR}/lib"
-CONF_DIR="${WORK_DIR}/conf"
-BIN_DIR="${WORK_DIR}/bin"
-LOG_DIR="${WORK_DIR}/log"
-OUTPUT_DIR="${WORK_DIR}/output"
+WORK_DIR=""
+LIB_DIR=""
+CONF_DIR=""
+BIN_DIR=""
+LOG_DIR=""
+OUTPUT_DIR=""
 
 # Files
 VISOR_BIN="${BIN_DIR}/chronovisor_server"
@@ -302,7 +302,7 @@ reset() {
     rm ${CONF_DIR}/visor_conf.json
 
     # Remove all log files
-    rm ${BIN_DIR}/*.log
+    rm ${LOG_DIR}/*.log
     echo -e "${DEBUG}Reset done${NC}"
 }
 
@@ -331,7 +331,7 @@ usage() {
     echo "  -r|--reset          Reset/CleanUp ChronoLog Deployment (default: false)"
     echo "  -k|--kill           Terminate ChronoLog Deployment (default: false)"
 
-    echo "  -w|--work-dir       WORK_DIR Set the working directory"
+    echo "  -w|--work-dir       WORK_DIR Set the working directory (Mandatory)"
     echo "  -l|--log_dir        LOG_DIR (default: work_dir/log)"
     echo "  -u|--output_dir     OUTPUT_DIR (default: work_dir/output)"
 
@@ -378,6 +378,8 @@ parse_args() {
                 CLIENT_BIN="${BIN_DIR}/client_lib_multi_storytellers"
                 GRAPHER_BIN="${BIN_DIR}/chrono_grapher"
                 CONF_FILE="${CONF_DIR}/default_conf.json"
+                mkdir -p ${LOG_DIR}
+                mkdir -p ${OUTPUT_DIR}
                 shift 2 ;;
             -u|--output-dir)
                 OUTPUT_DIR=$(realpath "$2")
@@ -414,10 +416,18 @@ parse_args() {
             *) echo -e "${ERR}Unknown option: $1${NC}"; usage ;;
         esac
     done
+
+    # Check if WORK_DIR is set
+    if [[ -z "${WORK_DIR}" ]]; then
+        echo -e "${ERR}WORK_DIR is mandatory. Please provide it using the -w or --work-dir option.${NC}"
+        usage
+        exit 1
+    fi
 }
 
 # Start execution of the script____________________________________________________________________________________
 parse_args "$@"
+
 if ${deploy}
 then
     deploy
