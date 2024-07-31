@@ -70,11 +70,11 @@ check_files() {
 }
 
 generate_config_files() {
-    local num_files=$1
+    local num_keepers=$1
     local default_conf=$2
     local conf_dir=$3
     local output_dir=$4
-    local num_recording_groups=$5
+    local num_graphers=$5
     local log_dir=$6
 
     mkdir -p "${log_dir}"
@@ -86,55 +86,72 @@ generate_config_files() {
     fi
 
     # Check if number of keepers and graphers are valid
-    if (( NUM_KEEPERS <= 0 || NUM_GRAPHERS <= 0 )); then
+    if (( num_keepers <= 0 || num_graphers <= 0 )); then
         echo "Number of keepers and graphers must be greater than 0. Exiting..."
-        exit
+        exit 1
     fi
 
-    if (( NUM_GRAPHERS > NUM_KEEPERS )); then
-        echo "Number of graphers must be less than or equal to the number of keepers ($NUM_KEEPERS). Exiting..."
-        exit
+    if (( num_keepers < num_graphers )); then
+        echo "Number of keepers must be greater than or equal to the number of graphers. Exiting..."
+        exit 1
     fi
-
-    if (( NUM_KEEPERS % NUM_GRAPHERS != 0 )); then
-        echo "Number of graphers must be a divisor of the number of keepers ($NUM_KEEPERS). Exiting..."
-        exit
-    fi
-
-    # Calculate number of keepers per grapher
-    keepers_per_grapher=$((NUM_KEEPERS / NUM_GRAPHERS))
 
     # Extract initial ports from the configuration file
-    local base_port_keeper_record=$(jq '.chrono_keeper.KeeperRecordingService.rpc.service_base_port' "$default_conf")
-    local base_port_keeper_drain=$(jq '.chrono_keeper.KeeperGrapherDrainService.rpc.service_base_port' "$default_conf")
-    local base_port_keeper_datastore=$(jq '.chrono_keeper.KeeperDataStoreAdminService.rpc.service_base_port' "$default_conf")
+    local base_port_keeper_record=$(jq -r '.chrono_keeper.KeeperRecordingService.rpc.service_base_port' "$default_conf")
+    local base_port_keeper_drain=$(jq -r '.chrono_keeper.KeeperGrapherDrainService.rpc.service_base_port' "$default_conf")
+    local base_port_keeper_datastore=$(jq -r '.chrono_keeper.KeeperDataStoreAdminService.rpc.service_base_port' "$default_conf")
+    local base_port_grapher_drain=$(jq -r '.chrono_grapher.KeeperGrapherDrainService.rpc.service_base_port' "$default_conf")
+    local base_port_grapher_datastore=$(jq -r '.chrono_grapher.DataStoreAdminService.rpc.service_base_port' "$default_conf")
 
-    # Generate keeper configuration files
-    for (( i=0; i<num_files; i++ )); do
+    # Generate grapher configuration files
+    echo "Generating grapher configuration files ..."
+    mkdir -p "${output_dir}"
+    for (( i=0; i<num_graphers; i++ )); do
+        local new_port_grapher_drain=$((base_port_grapher_drain + i))
+        local new_port_grapher_datastore=$((base_port_grapher_datastore + i))
+
+        local grapher_index=$((i + 1))
+        local grapher_output_file="${conf_dir}/grapher_conf_${grapher_index}.json"
+
+        jq --arg log_dir "$log_dir" \
+            --arg output_dir "$output_dir" \
+            --argjson new_port_grapher_drain $new_port_grapher_drain \
+            --argjson new_port_grapher_datastore $new_port_grapher_datastore \
+            --argjson grapher_index "$grapher_index" \
+           '.chrono_grapher.RecordingGroup = $grapher_index |
+            .chrono_grapher.KeeperGrapherDrainService.rpc.service_base_port = $new_port_grapher_drain |
+            .chrono_grapher.DataStoreAdminService.rpc.service_base_port = $new_port_grapher_datastore |
+            .chrono_grapher.Logging.log.file = ($log_dir + "/" + ($grapher_index | tostring) + "_" + .chrono_grapher.Logging.log.file) |
+            .chrono_grapher.Extractors.story_files_dir = ($output_dir + "/")' "$default_conf" > "$grapher_output_file"
+
+        echo "Generated $grapher_output_file with ports $new_port_grapher_drain and $new_port_grapher_datastore"
+    done
+
+    # Assign keepers to graphers iteratively
+    echo "Generating keeper configuration files ..."
+    for (( i=0; i<num_keepers; i++ )); do
         local new_port_keeper_record=$((base_port_keeper_record + i))
         local new_port_keeper_datastore=$((base_port_keeper_datastore + i))
-        local recording_group=$((i / keepers_per_grapher))
+        local grapher_index=$((i % num_graphers + 1))
+        local new_port_keeper_drain=$((base_port_keeper_drain + grapher_index - 1))
 
-        j=$((i + 1))
-        local new_port_keeper_drain=$((base_port_keeper_drain + recording_group))
-        recording_group=$((recording_group+1))
+        local keeper_index=$((i + 1))
+        local keeper_output_file="${conf_dir}/keeper_conf_${keeper_index}.json"
 
-        local output_file="${conf_dir}/keeper_conf_${j}.json"
-
-        jq  --arg log_dir "$log_dir" \
+        jq --arg log_dir "$log_dir" \
             --arg output_dir "$output_dir" \
             --argjson new_port_keeper_record $new_port_keeper_record \
             --argjson new_port_keeper_drain $new_port_keeper_drain \
             --argjson new_port_keeper_datastore $new_port_keeper_datastore \
-            --argjson recording_group "$recording_group" \
-            --arg j "$j" \
+            --argjson grapher_index "$grapher_index" \
+            --arg keeper_index "$keeper_index" \
             '.chrono_keeper.KeeperRecordingService.rpc.service_base_port = $new_port_keeper_record |
             .chrono_keeper.KeeperGrapherDrainService.rpc.service_base_port = $new_port_keeper_drain |
             .chrono_keeper.KeeperDataStoreAdminService.rpc.service_base_port = $new_port_keeper_datastore |
             .chrono_keeper.story_files_dir = ($output_dir + "/") |
-            .chrono_keeper.RecordingGroup = $recording_group |
-            .chrono_keeper.Logging.log.file = ($log_dir + "/" + $j + "_" + .chrono_keeper.Logging.log.file)' "$default_conf" > "$output_file"
-        echo "Generated $output_file with ports $new_port_keeper_record and $new_port_keeper_datastore and $new_port_keeper_drain"
+            .chrono_keeper.RecordingGroup = $grapher_index |
+            .chrono_keeper.Logging.log.file = ($log_dir + "/" + ($keeper_index | tostring) + "_" + .chrono_keeper.Logging.log.file)' "$default_conf" > "$keeper_output_file"
+        echo "Generated $keeper_output_file with ports $new_port_keeper_record, $new_port_keeper_datastore, and $new_port_keeper_drain"
     done
 
     # Generate visor configuration file
@@ -149,35 +166,7 @@ generate_config_files() {
        '.chrono_client.Logging.log.file = ($log_dir + "/" + .chrono_client.Logging.log.file)' "$default_conf" > "$client_output_file"
     echo "Generated $client_output_file"
 
-    local base_port_grapher_drain=$(jq '.chrono_grapher.KeeperGrapherDrainService.rpc.service_base_port' "$default_conf")
-    local base_port_grapher_datastore=$(jq '.chrono_grapher.DataStoreAdminService.rpc.service_base_port' "$default_conf")
-
-    # Generate grapher configuration files
-    echo "Generating grapher conf files ..."
-    mkdir -p "${output_dir}"
-    for (( i=0; i<num_recording_groups; i++ )); do
-        local new_port_grapher_drain=$((base_port_grapher_drain + i))
-        local new_port_grapher_datastore=$((base_port_grapher_datastore + i))
-
-        j=$((i + 1))
-        local grapher_output_file="${conf_dir}/grapher_conf_${j}.json"
-
-        jq --arg log_dir "$log_dir" \
-            --arg output_dir "$output_dir" \
-            --argjson new_port_grapher_drain $new_port_grapher_drain \
-            --argjson new_port_grapher_datastore $new_port_grapher_datastore \
-            --argjson j "$j" \
-            --arg i "$i" \
-           '.chrono_grapher.RecordingGroup = $j |
-            .chrono_grapher.KeeperGrapherDrainService.rpc.service_base_port = $new_port_grapher_drain |
-            .chrono_grapher.DataStoreAdminService.rpc.service_base_port = $new_port_grapher_datastore |
-            .chrono_grapher.Logging.log.file = ($log_dir + "/" + $i + "_" + .chrono_grapher.Logging.log.file) |
-            .chrono_grapher.Extractors.story_files_dir = ($output_dir + "/")' "$default_conf" > "$grapher_output_file"
-
-        echo "Generated $grapher_output_file with ports $new_port_grapher_drain and $new_port_grapher_datastore"
-    done
-
-    echo "Generate conf files for all RecordingGroups done"
+    echo "Generate configuration files for all recording groups done"
 }
 
 extract_shared_libraries() {
@@ -341,7 +330,7 @@ usage() {
     echo "  -c|--client         CLIENT_BIN (default: work_dir/bin/client_lib_multi_storytellers)"
     echo "  -f|--conf_file      CONF_FILE (default: work_dir/conf/default_conf.json)"
 
-    echo "  -n|--keepers-group  Set the number of keeper processes per group"
+    echo "  -n|--keepers        Set the total number of keeper processes. They will be assigned iteratively to the recording groups"
     echo "  -j|--record-groups  Set the number of recording groups or grapher processes"
 
     exit 1
@@ -378,16 +367,16 @@ parse_args() {
                 CLIENT_BIN="${BIN_DIR}/client_lib_multi_storytellers"
                 GRAPHER_BIN="${BIN_DIR}/chrono_grapher"
                 CONF_FILE="${CONF_DIR}/default_conf.json"
-                mkdir -p ${LOG_DIR}
-                mkdir -p ${OUTPUT_DIR}
+                mkdir -p "${LOG_DIR}"
+                mkdir -p "${OUTPUT_DIR}"
                 shift 2 ;;
             -u|--output-dir)
                 OUTPUT_DIR=$(realpath "$2")
-                mkdir -p ${OUTPUT_DIR}
+                mkdir -p "${OUTPUT_DIR}"
                 shift 2 ;;
             -l|--log-dir)
                 LOG_DIR=$(realpath "$2")
-                mkdir -p ${LOG_DIR}
+                mkdir -p "${LOG_DIR}"
                 shift 2 ;;
             -v|--visor)
                 VISOR_BIN=$(realpath "$2")
@@ -407,11 +396,9 @@ parse_args() {
                 shift 2 ;;
             -j|--record-groups)
                 NUM_GRAPHERS="$2"
-                NUM_KEEPERS=$((NUM_KEEPERS * NUM_GRAPHERS))
                 shift 2 ;;
             -n|--keepers-group)
-                keepers_group="$2"
-                NUM_KEEPERS=$((keepers_group * NUM_GRAPHERS))
+                NUM_KEEPERS="$2"
                 shift 2 ;;
             *) echo -e "${ERR}Unknown option: $1${NC}"; usage ;;
         esac
@@ -444,6 +431,4 @@ else
     echo -e "${ERR}Please select deploy or reset mode${NC}"
     usage
 fi
-
 echo -e "${INFO}Done${NC}"
-
