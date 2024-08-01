@@ -19,7 +19,7 @@ endif()
 
 add_executable(thallium_server
     ${CMAKE_CURRENT_SOURCE_DIR}/thallium_server.cpp
-    ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/src/log.cpp)
+    ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/src/chrono_monitor.cpp)
 target_include_directories(thallium_server PRIVATE
     ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/include)
 target_link_libraries(thallium_server PRIVATE thallium)
@@ -28,7 +28,7 @@ add_test(NAME CommThalliumServer COMMAND thallium_server)
 
 add_executable(thallium_client
     ${CMAKE_CURRENT_SOURCE_DIR}/thallium_client.cpp
-    ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/src/log.cpp)
+    ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/src/chrono_monitor.cpp)
 target_include_directories(thallium_client PRIVATE
     ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/include)
 target_include_directories(thallium_client PRIVATE)
@@ -37,7 +37,7 @@ add_test(NAME CommThalliumClient COMMAND thallium_client)
 
 add_executable(thallium_client_mpi
     ${CMAKE_CURRENT_SOURCE_DIR}/thallium_client_mpi.cpp
-    ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/src/log.cpp)
+    ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/src/chrono_monitor.cpp)
 include_directories(SYSTEM ${MPI_INCLUDE_PATH})
 target_include_directories(thallium_client_mpi PRIVATE
     ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/include)

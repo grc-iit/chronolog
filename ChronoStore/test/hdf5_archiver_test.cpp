@@ -8,7 +8,7 @@
 #include <hdf5.h>
 #include <StoryWriter.h>
 #include <StoryReader.h>
-#include <log.h>
+#include <chrono_monitor.h>
 #include <story_chunk_test_utils.h>
 #include "chronolog_types.h"
 

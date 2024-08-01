@@ -10,7 +10,7 @@
 
 #include "chronolog_types.h"
 #include "StoryChunkExtractionQueue.h"
-#include "log.h"
+#include "chrono_monitor.h"
 
 
 namespace tl = thallium;

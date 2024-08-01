@@ -27,8 +27,8 @@
         "service_provider_id": 88
       }
     },
-    "Logging": {
-      "log": {
+    "Monitoring": {
+      "monitor": {
         "type": "file",
         "file": "chrono_visor.log",
         "level": "debug",
@@ -78,8 +78,8 @@
         "service_provider_id": 33
       }
     },
-    "Logging": {
-      "log": {
+    "Monitoring": {
+      "monitor": {
         "type": "file",
         "file": "chrono_keeper.log",
         "level": "debug",
@@ -120,8 +120,8 @@
         "service_provider_id": 88
       }
     },
-    "Logging": {
-      "log": {
+    "Monitoring": {
+      "monitor": {
         "type": "file",
         "file": "chrono_grapher.log",
         "level": "debug",
@@ -148,8 +148,8 @@
         "service_provider_id": 55
       }
     },
-    "Logging": {
-      "log": {
+    "Monitoring": {
+      "monitor": {
         "type": "file",
         "file": "chrono_client.log",
         "level": "debug",

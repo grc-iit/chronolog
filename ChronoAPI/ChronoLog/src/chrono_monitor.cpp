@@ -2,18 +2,21 @@
 // Created by eneko on 12/1/23.
 //
 
-#include "log.h"
+#include "chrono_monitor.h"
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/sinks/rotating_file_sink.h>
 #include <iostream>
 #include <filesystem>
 
-std::shared_ptr <spdlog::logger> Logger::logger = nullptr;
-std::mutex Logger::mutex;
+namespace chronolog
+{
 
-int Logger::initialize(const std::string &logType, const std::string &location, spdlog::level::level_enum logLevel
-                       , const std::string &loggerName, const std::size_t &logFileSize, const std::size_t &logFileNum
-                       , spdlog::level::level_enum flushLevel)
+std::shared_ptr <spdlog::logger> chrono_monitor::logger = nullptr;
+std::mutex chrono_monitor::mutex;
+
+int chrono_monitor::initialize(const std::string &logType, const std::string &location, spdlog::level::level_enum logLevel
+                               , const std::string &loggerName, const std::size_t &logFileSize, const std::size_t &logFileNum
+                               , spdlog::level::level_enum flushLevel)
 {
     std::lock_guard <std::mutex> lock(mutex);
     if(logger)
@@ -54,9 +57,8 @@ int Logger::initialize(const std::string &logType, const std::string &location, 
     return 0; // already initialized
 }
 
-spdlog::logger &Logger::getInstance()
+spdlog::logger &chrono_monitor::getInstance()
 {
-    std::lock_guard <std::mutex> lock(mutex);
     if(logger)
     {
         return *logger;
@@ -67,3 +69,5 @@ spdlog::logger &Logger::getInstance()
         std::exit(EXIT_FAILURE);
     }
 }
+
+} // namespace chronolog

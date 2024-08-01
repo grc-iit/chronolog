@@ -1,9 +1,11 @@
-#ifndef CHRONOLOG_LOG_H
-#define CHRONOLOG_LOG_H
+#ifndef CHRONOLOG_CHRONO_MONITOR_H
+#define CHRONOLOG_CHRONO_MONITOR_H
 
 #include <spdlog/spdlog.h>
 #include <mutex>
 
+namespace chronolog
+{
 
 /**
  * @def LOG_TRACE(...)
@@ -46,13 +48,13 @@
 #define LOG_TRACE(...)
 #define LOG_DEBUG(...)
 #else
-#define LOG_TRACE(...) Logger::getInstance().trace(__VA_ARGS__)
-#define LOG_DEBUG(...) Logger::getInstance().debug(__VA_ARGS__)
+#define LOG_TRACE(...) chronolog::chrono_monitor::getInstance().trace(__VA_ARGS__)
+#define LOG_DEBUG(...) chronolog::chrono_monitor::getInstance().debug(__VA_ARGS__)
 #endif
-#define LOG_INFO(...) Logger::getInstance().info(__VA_ARGS__)
-#define LOG_WARNING(...) Logger::getInstance().warn(__VA_ARGS__)
-#define LOG_ERROR(...) Logger::getInstance().error(__VA_ARGS__)
-#define LOG_CRITICAL(...) Logger::getInstance().critical(__VA_ARGS__)
+#define LOG_INFO(...) chronolog::chrono_monitor::getInstance().info(__VA_ARGS__)
+#define LOG_WARNING(...) chronolog::chrono_monitor::getInstance().warn(__VA_ARGS__)
+#define LOG_ERROR(...) chronolog::chrono_monitor::getInstance().error(__VA_ARGS__)
+#define LOG_CRITICAL(...) chronolog::chrono_monitor::getInstance().critical(__VA_ARGS__)
 
 /**
  * @class Logger
@@ -62,7 +64,7 @@
  * throughout the application. It allows configuration of log type, location, level,
  * and name. It is designed to work with the spdlog library.
  */
-class Logger
+class chrono_monitor
 {
 public:
 
@@ -85,10 +87,9 @@ public:
      *                     and returns 1 if there was an error during initialization.
      */
     static int initialize(const std::string &logType, const std::string &location, spdlog::level::level_enum logLevel
-                          , const std::string &loggerName
-                , const std::size_t &logFileSize = 104857600
-                , const std::size_t &logFileNum = 3
-                , spdlog::level::level_enum flushLevel = spdlog::level::warn);
+                          , const std::string &loggerName, const std::size_t &logFileSize = 104857600
+                          , const std::size_t &logFileNum = 3
+                          , spdlog::level::level_enum flushLevel = spdlog::level::warn);
 
 
     /**
@@ -102,13 +103,15 @@ public:
     static spdlog::logger &getInstance();
 
     // Delete copy constructor and assignment operator
-    Logger(const Logger &) = delete;
-    Logger &operator=(const Logger &) = delete;
-    ~Logger() = default;
+    chrono_monitor(const chrono_monitor &) = delete;
+
+    chrono_monitor &operator=(const chrono_monitor &) = delete;
+
+    ~chrono_monitor() = default;
 
 private:
     //Private Constructor
-    Logger() = default;
+    chrono_monitor() = default;
 
     /**
      * @brief The shared pointer to the spdlog logger instance.
@@ -125,4 +128,6 @@ private:
     static std::mutex mutex;
 };
 
-#endif //CHRONOLOG_LOG_H
+} // namespace chronolog
+
+#endif //CHRONOLOG_CHRONO_MONITOR_H

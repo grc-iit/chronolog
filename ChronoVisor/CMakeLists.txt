@@ -21,7 +21,7 @@ target_sources(chronovisor_server PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/KeeperRegistry.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/ConfigurationManager.cpp
     ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/src/city.cpp
-    ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/src/log.cpp)
+    ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/src/chrono_monitor.cpp)
 
 target_include_directories(chronovisor_server PRIVATE
     ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/include
