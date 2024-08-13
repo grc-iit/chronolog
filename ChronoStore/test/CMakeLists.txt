@@ -11,7 +11,7 @@ add_executable(hdf5_archiver_test
     ../include/StoryReader.h
     ../src/StoryReader.cpp
     story_chunk_test_utils.h
-    ../../ChronoAPI/ChronoLog/src/log.cpp
+    ../../ChronoAPI/ChronoLog/src/chrono_monitor.cpp
     ../../chrono_common/StoryChunk.cpp)
 
 target_include_directories(hdf5_archiver_test PRIVATE ../../ChronoKeeper
@@ -44,6 +44,6 @@ add_test(NAME hdf5_archiver_test COMMAND hdf5_archiver_test)
 
 # compound-vlen-bytes-based vs blob+map archiver implementation comparison
 add_executable(cmp_vlen_bytes_vs_blob_map cmp_vlen_bytes_vs_blob_map.cpp
-    ../../ChronoAPI/ChronoLog/src/log.cpp)
+    ../../ChronoAPI/ChronoLog/src/chrono_monitor.cpp)
 target_link_libraries(cmp_vlen_bytes_vs_blob_map ${HDF5_LIBRARIES} thallium)
 add_test(NAME cmp_vlen_bytes_vs_blob_map COMMAND cmp_vlen_bytes_vs_blob_map)

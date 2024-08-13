@@ -7,7 +7,7 @@
 #include <thallium/serialization/stl/map.hpp>
 #include <thallium/serialization/stl/tuple.hpp>
 #include "chronolog_types.h"
-#include "log.h"
+#include "chrono_monitor.h"
 
 namespace chronolog
 {

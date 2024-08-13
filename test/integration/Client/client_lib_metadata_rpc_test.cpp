@@ -7,7 +7,7 @@
 #include "common.h"
 #include <cassert>
 #include <cmd_arg_parse.h>
-#include "log.h"
+#include "chrono_monitor.h"
 
 #define NUM_CHRONICLE (10)
 #define NUM_STORY (10)
