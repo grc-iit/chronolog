@@ -5,7 +5,7 @@ if(NOT DEFINED CMAKE_MACOSX_RPATH)
     set(CMAKE_MACOSX_RPATH 0)
 endif()
 
-project(ChronoLog LANGUAGES CXX)
+project(ChronoLog LANGUAGES CXX C)
 
 #------------------------------------------------------------------------------
 # Version information
