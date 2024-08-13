@@ -1,9 +1,9 @@
 #include <thallium.hpp>
 #include <random>
 #include <deque>
+#include <cereal/archives/binary.hpp>
 #include "StoryChunk.h"
 #include "cmd_arg_parse.h"
-#include "../../../external_libs/cereal/include/cereal/archives/binary.hpp"
 #include "ConfigurationManager.h"
 
 namespace tl = thallium;
@@ -11,7 +11,7 @@ namespace tl = thallium;
 #define NUM_THREADS 1
 #define NUM_STORY_CHUNKS 100
 #define NUM_EVENTS 100
-#define MAX_BULK_MEM_SIZE (1024 * 1024 * 2)
+#define MAX_BULK_MEM_SIZE (1024 * 1024 * 4)
 
 std::string rpc_name_g = "record_story_chunk";
 tl::engine*tl_engine_g;
@@ -105,7 +105,7 @@ void standaloneExtraction()
         start = std::chrono::high_resolution_clock::now();
         char serialized_buf[MAX_BULK_MEM_SIZE];
         size_t serialized_story_chunk_size;
-        std::ostringstream oss;
+        std::ostringstream oss(std::ios::binary);
         oss.rdbuf()->pubsetbuf(serialized_buf, MAX_BULK_MEM_SIZE);
         cereal::BinaryOutputArchive oarchive(oss);
         oarchive(*story_chunk);
