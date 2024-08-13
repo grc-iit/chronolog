@@ -12,9 +12,8 @@ namespace tl = thallium;
 class StoryChunkRecordService: public tl::provider <StoryChunkRecordService>
 {
 public:
-    static StoryChunkRecordService*CreateStoryChunkRecordService(tl::engine &tl_engine
-                                                                 , tl::managed <tl::pool> &tl_pool
-                                                                 , uint16_t service_provider_id)
+    static StoryChunkRecordService*
+    CreateStoryChunkRecordService(tl::engine &tl_engine, tl::managed <tl::pool> &tl_pool, uint16_t service_provider_id)
     {
         return new StoryChunkRecordService(tl_engine, tl_pool, service_provider_id);
     }
@@ -22,8 +21,7 @@ public:
     StoryChunkRecordService(tl::engine &tl_engine, tl::managed <tl::pool> &tl_pool, uint16_t service_provider_id)
             : tl::provider <StoryChunkRecordService>(tl_engine, service_provider_id)
     {
-        define("record_story_chunk", &StoryChunkRecordService::record_story_chunk, *tl_pool,
-                            tl::ignore_return_value());
+        define("record_story_chunk", &StoryChunkRecordService::record_story_chunk, *tl_pool, tl::ignore_return_value());
         get_engine().push_finalize_callback(this, [p = this]()
         { delete p; });
         LOG_DEBUG("[StoryChunkRecordService] StoryChunkRecordService setup complete");
@@ -58,10 +56,10 @@ public:
         start = std::chrono::high_resolution_clock::now();
         deserializedWithCereal(&mem_vec[0], b.size() - 1, story_chunk);
         end = std::chrono::high_resolution_clock::now();
-        LOG_DEBUG("[StoryChunkRecordService] ES{}:T{}: StoryChunk received: StoryID: {}, StartTime: {}"
-                  , esid, tid, story_chunk.getStoryId(), story_chunk.getStartTime());
-        LOG_INFO("[StoryChunkRecordService] ES{}:T{}: Deserialization took {} us"
-                 , esid, tid, std::chrono::duration_cast <std::chrono::nanoseconds>(end - start).count() / 1000.0);
+        LOG_DEBUG("[StoryChunkRecordService] ES{}:T{}: StoryChunk received: StoryID: {}, StartTime: {}", esid, tid
+                  , story_chunk.getStoryId(), story_chunk.getStartTime());
+        LOG_INFO("[StoryChunkRecordService] ES{}:T{}: Deserialization took {} us", esid, tid,
+                std::chrono::duration_cast <std::chrono::nanoseconds>(end - start).count() / 1000.0);
         request.respond(b.size());
         LOG_DEBUG("[StoryChunkRecordService] ES{}:T{}: StoryChunk recording RPC responded {}", esid, tid, b.size());
     }
@@ -81,12 +79,12 @@ int main(int argc, char**argv)
     std::string conf_file_path;
     conf_file_path = parse_conf_path_arg(argc, argv);
     ChronoLog::ConfigurationManager confManager(conf_file_path);
-    int result = Logger::initialize("console", confManager.GRAPHER_CONF.LOG_CONF.LOGFILE
-                                    , confManager.GRAPHER_CONF.LOG_CONF.LOGLEVEL
-                                    , confManager.GRAPHER_CONF.LOG_CONF.LOGNAME
-                                    , confManager.GRAPHER_CONF.LOG_CONF.LOGFILESIZE
-                                    , confManager.GRAPHER_CONF.LOG_CONF.LOGFILENUM
-                                    , confManager.GRAPHER_CONF.LOG_CONF.FLUSHLEVEL);
+    int result = chronolog::chrono_monitor::initialize("console", confManager.GRAPHER_CONF.LOG_CONF.LOGFILE
+                                                       , confManager.GRAPHER_CONF.LOG_CONF.LOGLEVEL
+                                                       , confManager.GRAPHER_CONF.LOG_CONF.LOGNAME
+                                                       , confManager.GRAPHER_CONF.LOG_CONF.LOGFILESIZE
+                                                       , confManager.GRAPHER_CONF.LOG_CONF.LOGFILENUM
+                                                       , confManager.GRAPHER_CONF.LOG_CONF.FLUSHLEVEL);
     if(result == 1)
     {
         exit(EXIT_FAILURE);
