@@ -12,12 +12,12 @@ message("build target : chrono_store")
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/include
-    ${CMAKE_SOURCE_DIR}/ChronoKeeper)
+    ${CMAKE_SOURCE_DIR}/ChronoKeeper
+    ${HDF5_INCLUDE_DIRS}         # HDF5 include directories
+    ${JSON-C_INCLUDE_DIRS}       # JSON-C include directories
+)
 
 option(BUILD_TEST_DIRECTORY "Build Test Directory" ON)
 if(BUILD_TEST_DIRECTORY)
     add_subdirectory(test)
 endif()
-
-include_directories(${HDF5_INCLUDE_DIRS})
-include_directories(${JSON-C_INCLUDE_DIRS})
