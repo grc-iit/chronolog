@@ -24,16 +24,13 @@ set(CHRONOLOG_PACKAGE_TARNAME "${CHRONOLOG_PACKAGE}")
 #------------------------------------------------------------------------------
 # Setup install and output Directories
 #------------------------------------------------------------------------------
-set(INSTALL_DIR "/home/$ENV{USER}/chronolog" CACHE PATH "Installation directory")
-
-set(CMAKE_INSTALL_PREFIX_DEBUG "${INSTALL_DIR}/Debug")
-set(CMAKE_INSTALL_PREFIX_RELEASE "${INSTALL_DIR}/Release")
-
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set(CMAKE_INSTALL_PREFIX ${CMAKE_INSTALL_PREFIX_DEBUG})
-else()
-    set(CMAKE_INSTALL_PREFIX ${CMAKE_INSTALL_PREFIX_RELEASE})
+# Validate CMAKE_BUILD_TYPE
+if(NOT (CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "Release"))
+    message(FATAL_ERROR "CMAKE_BUILD_TYPE must be either Debug or Release")
 endif()
+
+set(INSTALL_DIR "/home/$ENV{USER}/chronolog" CACHE PATH "Installation directory")
+set(CMAKE_INSTALL_PREFIX "${INSTALL_DIR}/${CMAKE_BUILD_TYPE}")
 
 if(NOT CHRONOLOG_INSTALL_BIN_DIR)
     set(CHRONOLOG_INSTALL_BIN_DIR ${CMAKE_INSTALL_PREFIX}/bin)
