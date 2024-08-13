@@ -48,7 +48,7 @@ int chronolog::StoryChunkExtractorRDMA::processStoryChunk(StoryChunk*story_chunk
         std::vector <std::pair <void*, std::size_t>> segments(1);
 //        segments[0].first = (void*)(serialized_story_chunk.data());
         segments[0].first = (void*)(serialized_buf);
-        segments[0].second = serialized_story_chunk_size + 1;
+        segments[0].second = serialized_story_chunk_size + 1; // TODO: (Kun) the extra byte might not be necessary
         tl::bulk tl_bulk = extraction_engine.expose(segments, tl::bulk_mode::read_only);
         LOG_DEBUG("[StoryChunkExtractorRDMA] Draining to Grapher with story chunk size: {} ...", tl_bulk.size());
 #ifndef NDEBUG
@@ -63,7 +63,7 @@ int chronolog::StoryChunkExtractorRDMA::processStoryChunk(StoryChunk*story_chunk
         LOG_DEBUG("[StoryChunkExtractorRDMA] Draining to Grapher returned with result: {}", result);
         delete[] serialized_buf;
 
-        if(result == serialized_story_chunk_size + 1)
+        if(result == serialized_story_chunk_size + 1) // TODO: (Kun) the extra byte might not be necessary
         {
             LOG_INFO("[StoryChunkExtractorRDMA] Successfully drained a story chunk to Grapher, StoryID: {}, "
                      "StartTime: {}", story_chunk->getStoryId(), story_chunk->getStartTime());

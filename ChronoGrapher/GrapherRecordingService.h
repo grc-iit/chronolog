@@ -62,7 +62,7 @@ public:
 #ifndef NDEBUG
         start = std::chrono::high_resolution_clock::now();
 #endif
-        int ret = deserializedWithCereal(&mem_vec[0], b.size() - 1, *story_chunk);
+        int ret = deserializedWithCereal(&mem_vec[0], b.size() - 1, *story_chunk); // TODO: (Kun) the extra byte might not be necessary
         if(ret != CL_SUCCESS)
         {
             LOG_ERROR("[GrapherRecordingService] Failed to deserialize a story chunk, ThreadID={}", tl::thread::self_id());
