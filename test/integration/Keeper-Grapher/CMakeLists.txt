@@ -3,9 +3,10 @@ cmake_minimum_required(VERSION 3.25)
 find_package(Thallium REQUIRED)
 find_package(spdlog REQUIRED)
 
-message("StoryChunkDrainTest CMakeLists - CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}")
-message("StoryChunkDrainTest CMakeLists - CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
+#message("StoryChunkDrainTest CMakeLists - CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}")
+#message("StoryChunkDrainTest CMakeLists - CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
 message("Building CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
+message("Build Target: StoryChunkDrainTest")
 
 add_custom_target(story_chunk_drain_test)
 add_dependencies(story_chunk_drain_test extract_test ingest_test)

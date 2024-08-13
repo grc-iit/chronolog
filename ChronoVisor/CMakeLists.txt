@@ -3,8 +3,8 @@ cmake_minimum_required(VERSION 3.25)
 find_package(Thallium REQUIRED)
 find_package(spdlog REQUIRED)
 
-message("Chronovisor CMakeLists - CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}")
-message("Chronovisor CMakeLists - CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
+#message("Chronovisor CMakeLists - CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}")
+#message("Chronovisor CMakeLists - CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
 message("Building CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
 message("build target : chronovisor_server")
 

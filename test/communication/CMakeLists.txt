@@ -3,9 +3,10 @@ cmake_minimum_required(VERSION 3.25)
 find_package(Thallium REQUIRED)
 find_package(MPI REQUIRED)
 
-message("CommunicationTest CMakeLists - CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}")
-message("CommunicationTest CMakeLists - CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
+#message("CommunicationTest CMakeLists - CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}")
+#message("CommunicationTest CMakeLists - CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
 message("Building CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
+message("Build Target: CommunicationTest")
 
 #set(CMAKE_FIND_DEBUG_MODE FALSE)
 

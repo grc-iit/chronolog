@@ -3,9 +3,10 @@ cmake_minimum_required(VERSION 3.25)
 find_package(OpenMP)
 find_package(MPI)
 
-message("ClientExamples CMakeLists - CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}")
-message("ClientExamples CMakeLists - CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
+#message("ClientExamples CMakeLists - CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}")
+#message("ClientExamples CMakeLists - CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
 message("Building CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
+message("Build target: ClientExamples")
 
 set(client_examples client_lib_connect_rpc_test client_lib_metadata_rpc_test client_lib_multi_argobots_test client_lib_multi_pthread_test client_lib_multi_storytellers)
 
