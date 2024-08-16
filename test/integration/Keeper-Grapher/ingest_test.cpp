@@ -2,11 +2,11 @@
 #include "ConfigurationManager.h"
 #include "StoryChunk.h"
 #include "cmd_arg_parse.h"
-#include "../../../external_libs/cereal/include/cereal/archives/binary.hpp"
+#include <cereal/archives/binary.hpp>
 
 namespace tl = thallium;
 
-#define MAX_BULK_MEM_SIZE (1024 * 1024)
+#define MAX_BULK_MEM_SIZE (1024 * 1024 * 4)
 #define NUM_STREAMS 4
 
 class StoryChunkRecordService: public tl::provider <StoryChunkRecordService>
