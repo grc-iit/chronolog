@@ -28,9 +28,6 @@ target_sources(chrono_keeper PRIVATE
 
 target_link_libraries(chrono_keeper chronolog_client thallium)
 
-configure_file(${CMAKE_SOURCE_DIR}/default_conf.json.in
-    ${CMAKE_CURRENT_BINARY_DIR}/default_conf.json COPYONLY)
-
 set_target_properties(chrono_keeper PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
 
 # install binary

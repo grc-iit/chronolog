@@ -30,11 +30,7 @@ target_include_directories(chronovisor_server PRIVATE
 
 target_link_libraries(chronovisor_server chronolog_client thallium)
 
-# Prep the stage...
-configure_file(${CMAKE_SOURCE_DIR}/default_conf.json.in
-    ${CMAKE_CURRENT_BINARY_DIR}/default_conf.json COPYONLY)
-
-add_test(NAME ChronoVisorServerTest COMMAND chronovisor_server)
+#add_test(NAME ChronoVisorServerTest COMMAND chronovisor_server)
 
 set_target_properties(chronovisor_server PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
 

@@ -25,25 +25,23 @@ set(CHRONOLOG_PACKAGE_TARNAME "${CHRONOLOG_PACKAGE}")
 # Setup install and output Directories
 #------------------------------------------------------------------------------
 # Validate CMAKE_BUILD_TYPE
-if(NOT (CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "Release"))
-    message(FATAL_ERROR "CMAKE_BUILD_TYPE must be either Debug or Release")
+if( NOT DEFINED CMAKE_BUILD_TYPE OR NOT (CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "Release"))
+    message(FATAL_ERROR "Please, define CMAKE_BUILD_TYPE that is either Debug or Release")
 endif()
 
-set(INSTALL_DIR "/home/$ENV{USER}/chronolog" CACHE PATH "Installation directory")
-set(CMAKE_INSTALL_PREFIX "${INSTALL_DIR}/${CMAKE_BUILD_TYPE}")
+message("CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
 
-if(NOT CHRONOLOG_INSTALL_BIN_DIR)
-    set(CHRONOLOG_INSTALL_BIN_DIR ${CMAKE_INSTALL_PREFIX}/bin)
+if(NOT DEFINED INSTALL_DIR)
+    set(INSTALL_DIR "/home/$ENV{USER}/chronolog" CACHE PATH "Installation directory")
 endif()
-if(NOT CHRONOLOG_INSTALL_LIB_DIR)
-    set(CHRONOLOG_INSTALL_LIB_DIR ${CMAKE_INSTALL_PREFIX}/lib)
-endif()
-if(NOT CHRONOLOG_INSTALL_INCLUDE_DIR)
-    set(CHRONOLOG_INSTALL_INCLUDE_DIR ${CMAKE_INSTALL_PREFIX}/include)
-endif()
-if(NOT CHRONOLOG_INSTALL_CONF_DIR)
-    set(CHRONOLOG_INSTALL_CONF_DIR ${CMAKE_INSTALL_PREFIX}/conf)
-endif()
+
+set(CMAKE_INSTALL_PREFIX ${INSTALL_DIR}/${CMAKE_BUILD_TYPE})
+message("Installation Directory CMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}")
+
+set(CHRONOLOG_INSTALL_INCLUDE_DIR ${CMAKE_INSTALL_PREFIX}/include)
+set(CHRONOLOG_INSTALL_LIB_DIR ${CMAKE_INSTALL_PREFIX}/lib)
+set(CHRONOLOG_INSTALL_BIN_DIR ${CMAKE_INSTALL_PREFIX}/bin)
+set(CHRONOLOG_INSTALL_CONF_DIR ${CMAKE_INSTALL_PREFIX}/conf)
 
 #------------------------------------------------------------------------------
 # Disallow in-source build. This checks that there is a defined and separate /build folder

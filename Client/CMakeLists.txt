@@ -8,23 +8,6 @@ find_package(spdlog REQUIRED)
 message("Building CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
 message("build target : chronolog_client")
 
-# Define the header files to be copied
-set(HEADER_FILES
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/chronolog_client.h
-    ${CMAKE_SOURCE_DIR}/chrono_common/ConfigurationManager.h
-    ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/include/chronolog_errcode.h
-)
-
-# Set the destination directory for the header files
-set(HEADER_DEST_DIR ${CMAKE_BINARY_DIR}/Client/include)
-
-# Create the destination directory
-file(MAKE_DIRECTORY ${HEADER_DEST_DIR})
-
-# Copy header files to the include directory during build
-foreach(HEADER ${HEADER_FILES})
-    configure_file(${HEADER} ${HEADER_DEST_DIR} COPYONLY)
-endforeach()
 
 add_library(chronolog_client
     ${CMAKE_CURRENT_SOURCE_DIR}/include/chronolog_client.h
@@ -50,6 +33,14 @@ target_link_libraries(chronolog_client thallium)
 
 ################################
 
+# Define the header files to be copied
+set(PUBLIC_HEADER_FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/chronolog_client.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/ClientConfiguration.h
+    ${CMAKE_SOURCE_DIR}/chrono_common/ConfigurationManager.h
+    ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/include/chronolog_errcode.h
+)
+
 # install library
 install(
     TARGETS chronolog_client DESTINATION lib
@@ -57,7 +48,7 @@ install(
 
 # Install header files
 install(
-    FILES ${HEADER_FILES} DESTINATION include
+    FILES ${PUBLIC_HEADER_FILES} DESTINATION include 
 )
 
 add_subdirectory(storyteller_test)
