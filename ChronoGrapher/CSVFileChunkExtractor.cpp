@@ -23,8 +23,9 @@ int chronolog::CSVFileStoryChunkExtractor::processStoryChunk(chronolog::StoryChu
 {
     std::ofstream chunk_fstream;
     std::string chunk_filename(rootDirectory);
-    chunk_filename += "/" + std::to_string(story_chunk->getStoryId()) + "." 
-           //INNA :  + chrono_process_id.getIPasDottedString(chunk_filename) + "." + std::to_string(chrono_process_id.getPort()) + "."
+    chunk_filename += "/" + story_chunk->getChronicleName() + "."
+            + story_chunk->getStoryName() + "."
+            + std::to_string(story_chunk->getClientId()) + "."
             + std::to_string(story_chunk->getStartTime() / 1000000000) + ".csv";
 
     tl::xstream es = tl::xstream::self();

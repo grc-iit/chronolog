@@ -22,7 +22,8 @@ class StoryPipeline
 
 public:
     StoryPipeline(StoryChunkExtractionQueue &, std::string const &chronicle_name, std::string const &story_name
-                  , StoryId const &story_id, uint64_t start_time, uint16_t chunk_granularity = 30 // seconds
+                  , ClientId const &client_id, StoryId const &story_id, uint64_t start_time
+                  , uint16_t chunk_granularity = 30 // seconds
                   , uint16_t acceptance_window = 300 // seconds
     );
 
@@ -52,6 +53,7 @@ public:
 private:
 
     StoryChunkExtractionQueue &theExtractionQueue;
+    ClientId clientId;
     StoryId storyId;
     ChronicleName chronicleName;
     StoryName storyName;

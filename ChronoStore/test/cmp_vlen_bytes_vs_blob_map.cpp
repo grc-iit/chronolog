@@ -1160,7 +1160,7 @@ int readStoryChunkInJSON(StoryChunk &story_chunk)
 
 int main(int argc, char*argv[])
 {
-    int result = Logger::initialize("console", "cmp_vlen_bytes_vs_blob_map.log", spdlog::level::debug
+    int result = chronolog::chrono_monitor::initialize("console", "cmp_vlen_bytes_vs_blob_map.log", spdlog::level::debug
                                     , "cmp_vlen_bytes_vs_blob_map", 102400, 1, spdlog::level::debug);
     if(result == 1)
     {

@@ -73,10 +73,11 @@ hid_t StoryWriter::writeUint64Attribute(hid_t story_chunk_dset, const std::strin
  * @brief Write/Append data to storyDataset.
  * @param story_chunk_map: an ordered_map of <EventSequence, StoryChunk> pairs.
  * @param chronicle_name: chronicle name
+ * @param story_name: story name
  * @return: 0 if successful, else errcode, if failed.
  */
 int StoryWriter::writeStoryChunks(const std::map <uint64_t, chronolog::StoryChunk> &story_chunk_map
-                                  , const std::string &chronicle_name)
+                                  , const std::string &chronicle_name, const std::string &story_name)
 {
     // Disable automatic printing of HDF5 error stack to console
     if(!DEBUG)
@@ -226,7 +227,16 @@ int StoryWriter::writeStoryChunks(const std::map <uint64_t, chronolog::StoryChun
             return chronolog::CL_ERR_UNKNOWN;
         }
 
-        // Write storyId attribute to the dataset
+        // Write chronicle_name attribute to the dataset
+        status = writeStringAttribute(story_chunk_dset, "chronicle_name", chronicle_name);
+
+        // Write story_name attribute to the dataset
+        status = writeStringAttribute(story_chunk_dset, "story_name", story_name);
+
+        // Write client_id attribute to the dataset
+        status = writeUint64Attribute(story_chunk_dset, "client_id", story_chunk_map_it->second.getClientId());
+
+        // Write story_id attribute to the dataset
         status = writeUint64Attribute(story_chunk_dset, "story_id", story_id);
 
         // Write num_events attribute to the dataset

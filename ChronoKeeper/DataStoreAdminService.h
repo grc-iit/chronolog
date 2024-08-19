@@ -45,10 +45,10 @@ public:
 
     void
     StartStoryRecording(tl::request const &request, std::string const &chronicle_name, std::string const &story_name
-                        , StoryId const &story_id, uint64_t start_time)
+                        , ClientId const &client_id, StoryId const &story_id, uint64_t start_time)
     {
         LOG_INFO("[DataStoreAdminService] Starting Story Recording: StoryName={}, StoryID={}", story_name, story_id);
-        int return_code = theDataStore.startStoryRecording(chronicle_name, story_name, story_id, start_time);
+        int return_code = theDataStore.startStoryRecording(chronicle_name, story_name, client_id, story_id, start_time);
         request.respond(return_code);
     }
 

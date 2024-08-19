@@ -23,7 +23,7 @@ int main(int argc, char**argv)
         std::exit(EXIT_FAILURE);
     }
     ChronoLog::ConfigurationManager confManager(conf_file_path);
-    int result = Logger::initialize(confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE
+    int result = chronolog::chrono_monitor::initialize(confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE
                                     , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
                                     , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
                                     , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME

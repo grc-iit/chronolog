@@ -36,7 +36,7 @@ int main(int argc, char**argv)
         exit(1);
     }
 
-    int result = Logger::initialize("console", "thallium_server.log", spdlog::level::debug, "thallium_server", 1048576
+    int result = chronolog::chrono_monitor::initialize("console", "thallium_server.log", spdlog::level::debug, "thallium_server", 1048576
                                     , 5, spdlog::level::debug);
     if(result == 1)
     {

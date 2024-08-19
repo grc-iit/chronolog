@@ -7,7 +7,7 @@
 #include <thallium/serialization/stl/string.hpp>
 
 #include "chronolog_types.h"
-#include "KeeperDataStore.h"
+#include "GrapherDataStore.h"
 
 namespace tl = thallium;
 
@@ -19,7 +19,7 @@ class DataStoreAdminService: public tl::provider <DataStoreAdminService>
 public:
     // Service should be created on the heap not the stack thus the constructor is private...
     static DataStoreAdminService*
-    CreateDataStoreAdminService(tl::engine &tl_engine, uint16_t service_provider_id, KeeperDataStore &dataStoreInstance)
+    CreateDataStoreAdminService(tl::engine &tl_engine, uint16_t service_provider_id, GrapherDataStore &dataStoreInstance)
     {
         return new DataStoreAdminService(tl_engine, service_provider_id, dataStoreInstance);
     }
@@ -45,10 +45,11 @@ public:
 
     void
     StartStoryRecording(tl::request const &request, std::string const &chronicle_name, std::string const &story_name
-                        , StoryId const &story_id, uint64_t start_time)
+                        , ClientId const &client_id, StoryId const &story_id, uint64_t start_time)
     {
-        LOG_INFO("[DataStoreAdminService] Starting Story Recording: StoryName={}, StoryID={}", story_name, story_id);
-        int return_code = theDataStore.startStoryRecording(chronicle_name, story_name, story_id, start_time);
+        LOG_INFO("[DataStoreAdminService] Starting Story Recording: StoryName={}, ClientID={}, StoryID={}", story_name
+                 , client_id, story_id);
+        int return_code = theDataStore.startStoryRecording(chronicle_name, story_name, client_id, story_id, start_time);
         request.respond(return_code);
     }
 
@@ -60,7 +61,7 @@ public:
     }
 
 private:
-    DataStoreAdminService(tl::engine &tl_engine, uint16_t service_provider_id, KeeperDataStore &data_store_instance)
+    DataStoreAdminService(tl::engine &tl_engine, uint16_t service_provider_id, GrapherDataStore &data_store_instance)
             : tl::provider <DataStoreAdminService>(tl_engine, service_provider_id), theDataStore(data_store_instance)
     {
         define("collection_service_available", &DataStoreAdminService::collection_service_available);
@@ -80,7 +81,7 @@ private:
 
     DataStoreAdminService &operator=(DataStoreAdminService const &) = delete;
 
-    KeeperDataStore &theDataStore;
+    GrapherDataStore &theDataStore;
 };
 
 }// namespace chronolog

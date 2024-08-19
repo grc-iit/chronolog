@@ -41,8 +41,8 @@ public:
     bool is_shutting_down() const
     { return (SHUTTING_DOWN == state); }
 
-    int startStoryRecording(ChronicleName const &, StoryName const &, StoryId const &, uint64_t start_time
-                            , uint32_t time_chunk_ranularity = 30, uint32_t access_window = 60);
+    int startStoryRecording(ChronicleName const &, StoryName const &, ClientId const &, StoryId const &
+                            , uint64_t start_time, uint32_t time_chunk_ranularity = 30, uint32_t access_window = 60);
 
     int stopStoryRecording(StoryId const &);
 

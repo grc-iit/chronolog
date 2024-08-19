@@ -86,7 +86,7 @@ int main(int argc, char**argv)
     MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
     MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
 
-    int result = Logger::initialize("console", "thallium_client_mpi.log", spdlog::level::debug, "thallium_client_mpi"
+    int result = chronolog::chrono_monitor::initialize("console", "thallium_client_mpi.log", spdlog::level::debug, "thallium_client_mpi"
                                     , 1048576, 5, spdlog::level::debug);
     if(result == 1)
     {

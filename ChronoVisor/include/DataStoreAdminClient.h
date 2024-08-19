@@ -67,14 +67,14 @@ public:
     }
 
     int
-    send_start_story_recording(ChronicleName const &chronicle_name, StoryName const &story_name, StoryId const &story_id
-                               , uint64_t start_time)
+    send_start_story_recording(ChronicleName const &chronicle_name, StoryName const &story_name, ClientId const &client_id
+                               , StoryId const &story_id, uint64_t start_time)
     {
         int status = chronolog::CL_ERR_UNKNOWN;
         try
         {
             LOG_DEBUG("[DataStoreAdminClient] START Story Recording for StoryID={}", story_id);
-            status = start_story_recording.on(service_handle)(chronicle_name, story_name, story_id, start_time);
+            status = start_story_recording.on(service_handle)(chronicle_name, story_name, client_id, story_id, start_time);
         }
         catch(tl::exception const &ex)
         {}

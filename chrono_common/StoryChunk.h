@@ -28,9 +28,20 @@ class StoryChunk
 {
 public:
 
-    StoryChunk(StoryId const &story_id = 0, uint64_t start_time = 0, uint64_t end_time = 0, uint32_t chunk_size = 1024);
+    StoryChunk(ChronicleName const &chronicle_name = "", StoryName const &story_name = "", ClientId const &client_id = 0
+               , StoryId const &story_id = 0, uint64_t start_time = 0, uint64_t end_time = 0
+               , uint32_t chunk_size = 1024);
 
     ~StoryChunk();
+
+    ChronicleName const &getChronicleName() const
+    { return chronicleName; }
+
+    StoryName const &getStoryName() const
+    { return storyName; }
+
+    ClientId const &getClientId() const
+    { return clientId; }
 
     StoryId const &getStoryId() const
     { return storyId; }
@@ -64,10 +75,10 @@ public:
 
     int insertEvent(LogEvent const &);
 
-    uint32_t mergeEvents(std::map<EventSequence, LogEvent> & events,
-                         std::map<EventSequence, LogEvent>::const_iterator & merge_start);
+    uint32_t mergeEvents(std::map <EventSequence, LogEvent> &events
+                         , std::map <EventSequence, LogEvent>::const_iterator &merge_start);
 
-    uint32_t mergeEvents(StoryChunk & other_chunk, uint64_t start_time = 0);
+    uint32_t mergeEvents(StoryChunk &other_chunk, uint64_t start_time = 0);
 
     /*    uint32_t
     extractEvents(std::map <EventSequence, LogEvent> &target_map, std::map <EventSequence, LogEvent>::iterator first_pos
@@ -77,24 +88,30 @@ public:
 
     uint32_t extractEvents( StoryChunk & target_chunk, uint64_t start_time, uint64_t end_time);
 */
-    std::map<EventSequence, LogEvent>::iterator
-    eraseEvents(std::map<EventSequence, LogEvent>::const_iterator & first_pos,
-                std::map<EventSequence, LogEvent>::const_iterator & last_pos);
+    std::map <EventSequence, LogEvent>::iterator
+    eraseEvents(std::map <EventSequence, LogEvent>::const_iterator &first_pos
+                , std::map <EventSequence, LogEvent>::const_iterator &last_pos);
 
-    std::map<EventSequence, LogEvent>::iterator eraseEvents(uint64_t start_time, uint64_t end_time);
+    std::map <EventSequence, LogEvent>::iterator eraseEvents(uint64_t start_time, uint64_t end_time);
 
     // serialization function used by thallium RPC providers
     template <typename SerArchiveT>
-    void serialize( SerArchiveT & serT)
+    void serialize(SerArchiveT &serT)
     {
-        serT & storyId;
-        serT & startTime;
-        serT & endTime;
-        serT & revisionTime;
-        serT& logEvents;
+        serT&chronicleName;
+        serT&storyName;
+        serT&clientId;
+        serT&storyId;
+        serT&startTime;
+        serT&endTime;
+        serT&revisionTime;
+        serT&logEvents;
     }
 
 private:
+    ChronicleName chronicleName;
+    StoryName storyName;
+    ClientId clientId;
     StoryId storyId;
     uint64_t startTime;
     uint64_t endTime;

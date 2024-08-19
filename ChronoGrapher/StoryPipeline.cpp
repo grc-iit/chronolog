@@ -16,13 +16,13 @@ namespace chl = chronolog;
 
 ////////////////////////
 
-chronolog::StoryPipeline::StoryPipeline(StoryChunkExtractionQueue &extractionQueue, std::string const &chronicle_name
-                                        , std::string const &story_name, chronolog::StoryId const &story_id
-                                        , uint64_t story_start_time, uint16_t chunk_granularity
-                                        , uint16_t acceptance_window): theExtractionQueue(extractionQueue), storyId(
-        story_id), chronicleName(chronicle_name), storyName(story_name), timelineStart(story_start_time), timelineEnd(
-        story_start_time), chunkGranularity(chunk_granularity), acceptanceWindow(acceptance_window)
-                                                                       , activeIngestionHandle(nullptr)
+chronolog::StoryPipeline::StoryPipeline(StoryChunkExtractionQueue &extractionQueue, chronolog::ChronicleName const &chronicle_name
+                                        , chronolog::StoryName const &story_name, chronolog::ClientId const &client_id
+                                        , chronolog::StoryId const &story_id, uint64_t story_start_time
+                                        , uint16_t chunk_granularity, uint16_t acceptance_window): theExtractionQueue(
+        extractionQueue), clientId(client_id), storyId(story_id), chronicleName(chronicle_name), storyName(story_name), timelineStart(
+        story_start_time), timelineEnd(story_start_time), chunkGranularity(chunk_granularity), acceptanceWindow(
+        acceptance_window), activeIngestionHandle(nullptr)
 {
     activeIngestionHandle = new chl::StoryChunkIngestionHandle(ingestionMutex, &chunkQueue1, &chunkQueue2);
 
@@ -32,8 +32,8 @@ chronolog::StoryPipeline::StoryPipeline(StoryChunkExtractionQueue &extractionQue
     auto story_start_point = std::chrono::time_point <std::chrono::system_clock, std::chrono::nanoseconds>{} +
                              std::chrono::nanoseconds(timelineStart);
     std::time_t time_t_story_start = std::chrono::high_resolution_clock::to_time_t(story_start_point);
-    LOG_INFO("[StoryPipeline] Initialized : Chronicle {} Story {} StoryId {} starting at {} "
-         , chronicleName, storyName, storyId, std::ctime(&time_t_story_start));
+    LOG_INFO("[StoryPipeline] Initialized : Chronicle {} Story {} ClientId {} StoryId {} starting at {} "
+         , chronicleName, storyName, clientId, storyId, std::ctime(&time_t_story_start));
 
     chunkGranularity *= 1000000000;    // seconds =>nanoseconds
     acceptanceWindow *= 1000000000;    // seconds =>nanoseconds
@@ -47,8 +47,8 @@ chronolog::StoryPipeline::StoryPipeline(StoryChunkExtractionQueue &extractionQue
         appendStoryChunk();
     }
 
-    LOG_DEBUG("[StoryPipeline] Initialized pipeline : Chronicle {} Story {} StoryId {} timeline {}-{} Granularity {} AcceptanceWindow {}"
-         , chronicleName, storyName, storyId, timelineStart, timelineEnd, chunkGranularity, acceptanceWindow );
+    LOG_DEBUG("[StoryPipeline] Initialized pipeline : Chronicle {} Story {} ClientId {} StoryId {} timeline {}-{} Granularity {} AcceptanceWindow {}"
+         , chronicleName, storyName, clientId, storyId, timelineStart, timelineEnd, chunkGranularity, acceptanceWindow );
 
 #ifdef TRACE_CHUNKING
     auto chunk_start_point = std::chrono::time_point<std::chrono::system_clock,std::chrono::nanoseconds>{} // epoch_time_point{};
@@ -144,7 +144,7 @@ std::map <uint64_t, chronolog::StoryChunk*>::iterator chronolog::StoryPipeline::
 #endif
     auto result = storyTimelineMap.insert(
             std::pair <uint64_t, chronolog::StoryChunk*>(timelineStart - chunkGranularity, new chronolog::StoryChunk(
-                    storyId, timelineStart - chunkGranularity, timelineStart)));
+                    chronicleName, storyName, clientId, storyId, timelineStart - chunkGranularity, timelineStart)));
     if(!result.second)
     {
         return storyTimelineMap.end();
@@ -170,8 +170,7 @@ std::map <uint64_t, chronolog::StoryChunk*>::iterator chronolog::StoryPipeline::
                                storyId, timelineEnd);
 #endif
     auto result = storyTimelineMap.insert(
-            std::pair <uint64_t, chronolog::StoryChunk*>(timelineEnd, new chronolog::StoryChunk(storyId, timelineEnd,
-                    timelineEnd + chunkGranularity)));
+            std::pair <uint64_t, chronolog::StoryChunk*>(timelineEnd, new chronolog::StoryChunk(chronicleName, storyName, clientId, storyId, timelineEnd,timelineEnd + chunkGranularity)));
     if(!result.second)
     {
         return storyTimelineMap.end();
