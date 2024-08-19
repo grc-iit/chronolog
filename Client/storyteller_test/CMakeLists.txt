@@ -1,6 +1,11 @@
-cmake_minimum_required(VERSION 3.19)
+cmake_minimum_required(VERSION 3.25)
 
-add_executable(storyteller_test storyteller_test.cpp)
+#message("StorytellerTest CMakeLists - CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}")
+#message("StorytellerTest CMakeLists - CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
+message("Building CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
+message("build target : storyteller_test")
+
+add_executable(storyteller_test ${CMAKE_CURRENT_SOURCE_DIR}/storyteller_test.cpp)
 
 target_link_libraries(storyteller_test chronolog_client thallium)
 
@@ -16,5 +21,5 @@ install(
 
 # install configuration file
 install(
-    FILES ${CMAKE_CURRENT_SOURCE_DIR}/../../default_conf.json.in DESTINATION conf RENAME default_conf.json
+    FILES ${CMAKE_SOURCE_DIR}/default_conf.json.in DESTINATION ${CHRONOLOG_INSTALL_CONF_DIR} RENAME default_conf.json
 )

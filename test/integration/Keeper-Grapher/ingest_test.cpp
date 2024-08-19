@@ -1,8 +1,8 @@
 #include <thallium.hpp>
-#include <cereal/archives/binary.hpp>
 #include "ConfigurationManager.h"
 #include "StoryChunk.h"
 #include "cmd_arg_parse.h"
+#include <cereal/archives/binary.hpp>
 
 namespace tl = thallium;
 
@@ -100,7 +100,7 @@ int main(int argc, char**argv)
     std::string conf_file_path;
     conf_file_path = parse_conf_path_arg(argc, argv);
     ChronoLog::ConfigurationManager confManager(conf_file_path);
-    int result = Logger::initialize("console", confManager.GRAPHER_CONF.LOG_CONF.LOGFILE
+    int result = chronolog::chrono_monitor::initialize("console", confManager.GRAPHER_CONF.LOG_CONF.LOGFILE
                                     , confManager.GRAPHER_CONF.LOG_CONF.LOGLEVEL
                                     , confManager.GRAPHER_CONF.LOG_CONF.LOGNAME
                                     , confManager.GRAPHER_CONF.LOG_CONF.LOGFILESIZE
