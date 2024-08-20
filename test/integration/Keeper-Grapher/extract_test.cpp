@@ -1,9 +1,9 @@
 #include <thallium.hpp>
 #include <random>
 #include <deque>
+#include <cereal/archives/binary.hpp>
 #include "StoryChunk.h"
 #include "cmd_arg_parse.h"
-#include "../../../external_libs/cereal/include/cereal/archives/binary.hpp"
 #include "ConfigurationManager.h"
 
 namespace tl = thallium;
@@ -11,7 +11,7 @@ namespace tl = thallium;
 #define NUM_THREADS 1
 #define NUM_STORY_CHUNKS 100
 #define NUM_EVENTS 100
-#define MAX_BULK_MEM_SIZE (1024 * 1024 * 2)
+#define MAX_BULK_MEM_SIZE (1024 * 1024 * 4)
 
 std::string rpc_name_g = "record_story_chunk";
 tl::engine*tl_engine_g;
@@ -54,17 +54,17 @@ chronolog::StoryChunk*generateRandomStoryChunk()
 //        event.logRecord += log_event_str_base + ", AABBCCDDEEFFGGHHIIJJKKLLMMNNOOPPQQRRSSTTUUVVWW" + std::to_string(i);
 //        event.logRecord += log_event_str_base + ", AABBCCDDEEFFGGHHIIJJKKLLM" + std::to_string(i);
         // for #events=100
-        event.logRecord = log_event_str_base + ", AABBCCDDEEFFGGHHIIJJKKLLMMNNOOPPQQRRSSTTUUVVWWXXYYZZ1" +
-                          std::to_string(i);
+        event.logRecord =
+                log_event_str_base + ", AABBCCDDEEFFGGHHIIJJKKLLMMNNOOPPQQRRSSTTUUVVWWXXYYZZ1" + std::to_string(i);
         event.logRecord += event.logRecord;
         event.logRecord += event.logRecord;
         event.logRecord += event.logRecord;
-        event.logRecord += log_event_str_base + ", AABBCCDDEEFFGGHHIIJJKKLLMMNNOOPPQQRRSSTTUUVVWWXXYYZZ1" +
-                           std::to_string(i);
-        event.logRecord += log_event_str_base + ", AABBCCDDEEFFGGHHIIJJKKLLMMNNOOPPQQRRSSTTUUVVWWXXYYZZ1" +
-                           std::to_string(i);
-        event.logRecord += log_event_str_base + ", AABBCCDDEEFFGGHHIIJJKKLLMMNNOOPPQQRRSSTTUUVVWWXXYYZZ" +
-                           std::to_string(i);
+        event.logRecord +=
+                log_event_str_base + ", AABBCCDDEEFFGGHHIIJJKKLLMMNNOOPPQQRRSSTTUUVVWWXXYYZZ1" + std::to_string(i);
+        event.logRecord +=
+                log_event_str_base + ", AABBCCDDEEFFGGHHIIJJKKLLMMNNOOPPQQRRSSTTUUVVWWXXYYZZ1" + std::to_string(i);
+        event.logRecord +=
+                log_event_str_base + ", AABBCCDDEEFFGGHHIIJJKKLLMMNNOOPPQQRRSSTTUUVVWWXXYYZZ" + std::to_string(i);
         // for #events=1000
 //        event.logRecord = log_event_str_base + ", AABBCCDDEEFFGGHHIIJJKKLLMMNN = " + std::to_string(i);
         story_chunk->insertEvent(event);
@@ -105,7 +105,7 @@ void standaloneExtraction()
         start = std::chrono::high_resolution_clock::now();
         char serialized_buf[MAX_BULK_MEM_SIZE];
         size_t serialized_story_chunk_size;
-        std::ostringstream oss;
+        std::ostringstream oss(std::ios::binary);
         oss.rdbuf()->pubsetbuf(serialized_buf, MAX_BULK_MEM_SIZE);
         cereal::BinaryOutputArchive oarchive(oss);
         oarchive(*story_chunk);
@@ -164,12 +164,12 @@ int main(int argc, char**argv)
     std::string conf_file_path;
     conf_file_path = parse_conf_path_arg(argc, argv);
     ChronoLog::ConfigurationManager confManager(conf_file_path);
-    int result = Logger::initialize("console", confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILE
-                                    , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGLEVEL
-                                    , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGNAME
-                                    , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILESIZE
-                                    , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILENUM
-                                    , confManager.KEEPER_CONF.KEEPER_LOG_CONF.FLUSHLEVEL);
+    int result = chronolog::chrono_monitor::initialize("console", confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILE
+                                                       , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGLEVEL
+                                                       , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGNAME
+                                                       , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILESIZE
+                                                       , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILENUM
+                                                       , confManager.KEEPER_CONF.KEEPER_LOG_CONF.FLUSHLEVEL);
     if(result == 1)
     {
         exit(EXIT_FAILURE);

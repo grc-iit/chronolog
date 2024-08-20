@@ -4,7 +4,7 @@
 #include <thread>
 #include <chrono>
 #include <cmd_arg_parse.h>
-#include "log.h"
+#include "chrono_monitor.h"
 
 #define STORY_NAME_LEN 5
 
@@ -37,8 +37,8 @@ void thread_body(struct thread_arg*t)
 
     // Create the chronicle
     ret = client->CreateChronicle(chronicle_name, chronicle_attrs, flags);
-    LOG_DEBUG("[ClientLibMultiStorytellers] Chronicle created: tid={}, ChronicleName={}, Flags: {}", t->tid, chronicle_name
-         , flags);
+    LOG_DEBUG("[ClientLibMultiStorytellers] Chronicle created: tid={}, ChronicleName={}, Flags: {}", t->tid
+              , chronicle_name, flags);
 
     // Create attributes for the story
     std::string story_name = gen_random(STORY_NAME_LEN);
@@ -48,7 +48,7 @@ void thread_body(struct thread_arg*t)
     // Acquire the story
     auto acquire_ret = client->AcquireStory(chronicle_name, story_name, story_attrs, flags);
     LOG_DEBUG("[ClientLibMultiStorytellers] Story acquired: tid={}, ChronicleName={}, StoryName={}, Ret: {}", t->tid
-         , chronicle_name, story_name, acquire_ret.first);
+              , chronicle_name, story_name, acquire_ret.first);
 
     // Assertion for successful story acquisition or expected errors
     assert(acquire_ret.first == chronolog::CL_SUCCESS || acquire_ret.first == chronolog::CL_ERR_NOT_EXIST ||
@@ -68,7 +68,7 @@ void thread_body(struct thread_arg*t)
         // Release the story
         ret = client->ReleaseStory(chronicle_name, story_name);
         LOG_DEBUG("[ClientLibMultiStorytellers] Story released: tid={}, ChronicleName={}, StoryName={}, Ret: {}", t->tid
-             , chronicle_name, story_name, ret);
+                  , chronicle_name, story_name, ret);
 
         // Assertion for successful story release or expected errors
         assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NO_CONNECTION);
@@ -77,7 +77,7 @@ void thread_body(struct thread_arg*t)
     // Destroy the story
     ret = client->DestroyStory(chronicle_name, story_name);
     LOG_DEBUG("[ClientLibMultiStorytellers] Story destroyed: tid={}, ChronicleName={}, StoryName={}, Ret: {}", t->tid
-         , chronicle_name, story_name, ret);
+              , chronicle_name, story_name, ret);
 
     // Assertion for successful story destruction or expected errors
     assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST || ret == chronolog::CL_ERR_ACQUIRED ||
@@ -112,13 +112,13 @@ int main(int argc, char**argv)
 
     ChronoLogRPCImplementation protocol = CHRONOLOG_THALLIUM_SOCKETS;
     ChronoLog::ConfigurationManager confManager(conf_file_path);
-    int result = Logger::initialize(confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILESIZE
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILENUM
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.FLUSHLEVEL);
+    int result = chronolog::chrono_monitor::initialize(confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE
+                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
+                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
+                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME
+                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILESIZE
+                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILENUM
+                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.FLUSHLEVEL);
     if(result == 1)
     {
         exit(EXIT_FAILURE);

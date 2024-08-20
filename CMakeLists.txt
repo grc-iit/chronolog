@@ -5,8 +5,7 @@ if(NOT DEFINED CMAKE_MACOSX_RPATH)
     set(CMAKE_MACOSX_RPATH 0)
 endif()
 
-
-project(ChronoLog LANGUAGES CXX)
+project(ChronoLog LANGUAGES CXX C)
 
 #------------------------------------------------------------------------------
 # Version information
@@ -25,28 +24,31 @@ set(CHRONOLOG_PACKAGE_TARNAME "${CHRONOLOG_PACKAGE}")
 #------------------------------------------------------------------------------
 # Setup install and output Directories
 #------------------------------------------------------------------------------
-#if(NOT CMAKE_INSTALL_PREFIX)
-set(CMAKE_INSTALL_PREFIX /home/$ENV{USER}/chronolog)
-#endif()
-if(NOT CHRONOLOG_INSTALL_BIN_DIR)
-    set(CHRONOLOG_INSTALL_BIN_DIR ${CMAKE_INSTALL_PREFIX}/bin)
+# Validate CMAKE_BUILD_TYPE
+if( NOT DEFINED CMAKE_BUILD_TYPE OR NOT (CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "Release"))
+    message(FATAL_ERROR "Please, define CMAKE_BUILD_TYPE that is either Debug or Release")
 endif()
-if(NOT CHRONOLOG_INSTALL_LIB_DIR)
-    set(CHRONOLOG_INSTALL_LIB_DIR ${CMAKE_INSTALL_PREFIX}/lib)
+
+message("CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
+
+if(NOT DEFINED INSTALL_DIR)
+    set(INSTALL_DIR "/home/$ENV{USER}/chronolog" CACHE PATH "Installation directory")
 endif()
-if(NOT CHRONOLOG_INSTALL_INCLUDE_DIR)
-    set(CHRONOLOG_INSTALL_INCLUDE_DIR ${CMAKE_INSTALL_PREFIX}/include)
-endif()
-if(NOT CHRONOLOG_INSTALL_DATA_DIR)
-    set(CHRONOLOG_INSTALL_DATA_DIR ${CMAKE_INSTALL_PREFIX}/share)
-endif()
+
+set(CMAKE_INSTALL_PREFIX ${INSTALL_DIR}/${CMAKE_BUILD_TYPE})
+message("Installation Directory CMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}")
+
+set(CHRONOLOG_INSTALL_INCLUDE_DIR ${CMAKE_INSTALL_PREFIX}/include)
+set(CHRONOLOG_INSTALL_LIB_DIR ${CMAKE_INSTALL_PREFIX}/lib)
+set(CHRONOLOG_INSTALL_BIN_DIR ${CMAKE_INSTALL_PREFIX}/bin)
+set(CHRONOLOG_INSTALL_CONF_DIR ${CMAKE_INSTALL_PREFIX}/conf)
 
 #------------------------------------------------------------------------------
 # Disallow in-source build. This checks that there is a defined and separate /build folder
 #------------------------------------------------------------------------------
 if("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_BINARY_DIR}")
     message(FATAL_ERROR
-        "ChronoLog requires an out of source build. "
+        "ChronoLog requires an out of source build."
         "Please create a separate binary directory and run CMake there.")
 endif()
 
@@ -76,9 +78,9 @@ option(CHRONOLOG_ENABLE_DOXYGEN "Enable Doxygen documentation generation." OFF)
 #------------------------------------------------------------------------------
 # Define the compiler flags
 #------------------------------------------------------------------------------
-# TODO Should we consider the posibility of a user passing their own fflags through CMAKE_CXX_FLAGS
+# TODO Should we consider the possibility of a user passing their own flags through CMAKE_CXX_FLAGS
 #   Encapsulate everything around if(NOT CMAKE_CXX_FLAGS)
-#   Check Hermes for hwo they delete flags automatically
+#   Check Hermes for how they delete flags automatically
 #if(SET_WERROR)
 #    add_compile_options(-Wall)
 #    add_compile_options(-Wextra)
@@ -106,11 +108,11 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     #endif()
 
     #if (CHRONOLOG_USE_THREAD_SANITIZER AND CHRONOLOG_USE_ADDRESS_SANITIZER)
-    #    message(FATAL_ERROR "Cannont use -fsanitize=address and -fsanitize=thread "
+    #    message(FATAL_ERROR "Cannot use -fsanitize=address and -fsanitize=thread "
     #            "at the same time")
     #endif()
 else()
-    message("Compiling ChronoLog in release Mode")
+    message("Compiling ChronoLog in Release Mode")
     add_compile_options(-O3 -lm)
     #add_compile_options(-Wno-switch-unreachable -Wno-return-type)
 endif()
@@ -124,7 +126,6 @@ if(CHRONOLOG_ENABLE_COVERAGE)
     endif()
 endif()
 
-
 #------------------------------------------------------------------------------
 # Transform flags from boolean to meaningful usages.
 #------------------------------------------------------------------------------
@@ -134,11 +135,9 @@ else()
     set(CHRONOLOG_LIBTYPE STATIC)
 endif()
 
-
 #-----------------------------------------------------------------------------
 # Dependencies common to all subdirectories
 #-----------------------------------------------------------------------------
-
 
 #-----------------------------------------------------------------------------
 # Coverage
@@ -197,29 +196,24 @@ if(CHRONOLOG_BUILD_TESTING)
     include(CTest)
 endif()
 
-# ChronoLog client library
+#-----------------------------------------------------------------------------
+# ChronoLog Components
+#-----------------------------------------------------------------------------
 add_subdirectory(Client)
-
-# ChronoVisor
 add_subdirectory(ChronoVisor)
-
-# ChronoKeeper
 add_subdirectory(ChronoKeeper)
 add_subdirectory(ChronoGrapher)
-
-# ChronoStore
 add_subdirectory(ChronoStore)
-
-# custom
-add_custom_target(make_all cd ${CMAKE_BINARY_DIR} && make)
-
-#Tests
+#if(CHRONOLOG_ENABLE_PYTHON_BINDINGS)
+message("Python binding enabled")
+add_subdirectory(python_client)
+#endif()
 if(CHRONOLOG_BUILD_TESTING)
     enable_testing()
     add_subdirectory(test)
 endif()
 
-#if(CHRONOLOG_ENABLE_PYTHON_BINDINGS)
-message("Python binding enabled")
-add_subdirectory(python_client)
-#endif()
+#-----------------------------------------------------------------------------
+# Custom target to invoke 'make' in the build directory
+#-----------------------------------------------------------------------------
+add_custom_target(make_all cd ${CMAKE_BINARY_DIR} && make)

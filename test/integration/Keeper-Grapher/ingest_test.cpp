@@ -2,11 +2,11 @@
 #include "ConfigurationManager.h"
 #include "StoryChunk.h"
 #include "cmd_arg_parse.h"
-#include "../../../external_libs/cereal/include/cereal/archives/binary.hpp"
+#include <cereal/archives/binary.hpp>
 
 namespace tl = thallium;
 
-#define MAX_BULK_MEM_SIZE (1024 * 1024)
+#define MAX_BULK_MEM_SIZE (1024 * 1024 * 4)
 #define NUM_STREAMS 4
 
 class StoryChunkRecordService: public tl::provider <StoryChunkRecordService>
@@ -37,33 +37,52 @@ public:
 
     void record_story_chunk(tl::request const &request, tl::bulk &b)
     {
-        uint64_t esid = tl::xstream::self_rank();
-        uint64_t tid = tl::thread::self_id();
-        std::chrono::high_resolution_clock::time_point start, end;
-        LOG_DEBUG("[StoryChunkRecordService] ES{}:T{}: StoryChunk recording RPC invoked", esid, tid);
-        tl::endpoint ep = request.get_endpoint();
-        LOG_DEBUG("[StoryChunkRecordService] ES{}:T{}: Endpoint obtained", esid, tid);
-        std::vector <char> mem_vec(MAX_BULK_MEM_SIZE);
-        std::vector <std::pair <void*, std::size_t>> segments(1);
-        segments[0].first = (void*)(&mem_vec[0]);
-        segments[0].second = mem_vec.size();
-        LOG_DEBUG("[StoryChunkRecordService] ES{}:T{}: Bulk memory prepared, size: {}", esid, tid, mem_vec.size());
-        tl::engine tl_engine = get_engine();
-        LOG_DEBUG("[StoryChunkRecordService] ES{}:T{}: Engine addr: {}", esid, tid, (void*)&tl_engine);
-        tl::bulk local = tl_engine.expose(segments, tl::bulk_mode::write_only);
-        LOG_DEBUG("[StoryChunkRecordService] ES{}:T{}: Bulk memory exposed", esid, tid);
-        b.on(ep) >> local;
-        LOG_DEBUG("[StoryChunkRecordService] ES{}:T{}: Received {} bytes of StoryChunk data", esid, tid, b.size());
-        chronolog::StoryChunk story_chunk;
-        start = std::chrono::high_resolution_clock::now();
-        deserializedWithCereal(&mem_vec[0], b.size() - 1, story_chunk);
-        end = std::chrono::high_resolution_clock::now();
-        LOG_DEBUG("[StoryChunkRecordService] ES{}:T{}: StoryChunk received: StoryID: {}, StartTime: {}"
-                  , esid, tid, story_chunk.getStoryId(), story_chunk.getStartTime());
-        LOG_INFO("[StoryChunkRecordService] ES{}:T{}: Deserialization took {} us"
-                 , esid, tid, std::chrono::duration_cast <std::chrono::nanoseconds>(end - start).count() / 1000.0);
-        request.respond(b.size());
-        LOG_DEBUG("[StoryChunkRecordService] ES{}:T{}: StoryChunk recording RPC responded {}", esid, tid, b.size());
+        try
+        {
+            uint64_t esid = tl::xstream::self_rank();
+            uint64_t tid = tl::thread::self_id();
+            std::chrono::high_resolution_clock::time_point start, end;
+            LOG_DEBUG("[StoryChunkRecordService] ES{}:T{}: StoryChunk recording RPC invoked", esid, tid);
+            tl::endpoint ep = request.get_endpoint();
+            LOG_DEBUG("[StoryChunkRecordService] ES{}:T{}: Endpoint obtained", esid, tid);
+            std::vector <char> mem_vec(MAX_BULK_MEM_SIZE);
+            std::vector <std::pair <void*, std::size_t>> segments(1);
+            segments[0].first = (void*)(&mem_vec[0]);
+            segments[0].second = mem_vec.size();
+            LOG_DEBUG("[StoryChunkRecordService] ES{}:T{}: Bulk memory prepared, size: {}", esid, tid, mem_vec.size());
+            tl::engine tl_engine = get_engine();
+            LOG_DEBUG("[StoryChunkRecordService] ES{}:T{}: Engine addr: {}", esid, tid, (void*)&tl_engine);
+            tl::bulk local = tl_engine.expose(segments, tl::bulk_mode::write_only);
+            LOG_DEBUG("[StoryChunkRecordService] ES{}:T{}: Bulk memory exposed", esid, tid);
+            b.on(ep) >> local;
+            LOG_DEBUG("[StoryChunkRecordService] ES{}:T{}: Received {} bytes of StoryChunk data", esid, tid, b.size());
+            chronolog::StoryChunk story_chunk;
+            start = std::chrono::high_resolution_clock::now();
+            deserializedWithCereal(&mem_vec[0], b.size() - 1, story_chunk);
+            end = std::chrono::high_resolution_clock::now();
+            LOG_DEBUG("[StoryChunkRecordService] ES{}:T{}: StoryChunk received: StoryID: {}, StartTime: {}", esid, tid
+                      , story_chunk.getStoryId(), story_chunk.getStartTime());
+            LOG_INFO("[StoryChunkRecordService] ES{}:T{}: Deserialization took {} us", esid, tid,
+                    std::chrono::duration_cast <std::chrono::nanoseconds>(end - start).count() / 1000.0);
+            request.respond(b.size());
+            LOG_DEBUG("[StoryChunkRecordService] ES{}:T{}: StoryChunk recording RPC responded {}", esid, tid, b.size());
+        }
+        catch(tl::exception &e)
+        {
+            LOG_ERROR("[StoryChunkRecordService] Fail to ingest story chunk, Thallium exception caught: {}", e.what());
+        }
+        catch(cereal::Exception &e)
+        {
+            LOG_ERROR("[StoryChunkRecordService] Fail to ingest story chunk, Cereal exception caught: {}", e.what());
+        }
+        catch(std::exception &e)
+        {
+            LOG_ERROR("[StoryChunkRecordService] Fail to ingest story chunk, std::exception caught: {}", e.what());
+        }
+        catch(...)
+        {
+            LOG_ERROR("[StoryChunkRecordService] Fail to ingest story chunk, unknown exception caught");
+        }
     }
 
 private:
@@ -81,7 +100,7 @@ int main(int argc, char**argv)
     std::string conf_file_path;
     conf_file_path = parse_conf_path_arg(argc, argv);
     ChronoLog::ConfigurationManager confManager(conf_file_path);
-    int result = Logger::initialize("console", confManager.GRAPHER_CONF.LOG_CONF.LOGFILE
+    int result = chronolog::chrono_monitor::initialize("console", confManager.GRAPHER_CONF.LOG_CONF.LOGFILE
                                     , confManager.GRAPHER_CONF.LOG_CONF.LOGLEVEL
                                     , confManager.GRAPHER_CONF.LOG_CONF.LOGNAME
                                     , confManager.GRAPHER_CONF.LOG_CONF.LOGFILESIZE

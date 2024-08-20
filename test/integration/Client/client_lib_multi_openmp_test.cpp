@@ -4,7 +4,7 @@
 #include <thread>
 #include <omp.h>
 #include <cmd_arg_parse.h>
-#include "log.h"
+#include "chrono_monitor.h"
 
 #define STORY_NAME_LEN 32
 
@@ -17,13 +17,13 @@ int main(int argc, char**argv)
         std::exit(EXIT_FAILURE);
     }
     ChronoLog::ConfigurationManager confManager(conf_file_path);
-    int result = Logger::initialize(confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILESIZE
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILENUM
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.FLUSHLEVEL);
+    int result = chronolog::chrono_monitor::initialize(confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE
+                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
+                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
+                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME
+                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILESIZE
+                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILENUM
+                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.FLUSHLEVEL);
     if(result == 1)
     {
         exit(EXIT_FAILURE);

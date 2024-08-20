@@ -7,7 +7,7 @@
 #include <abt.h>
 #include <atomic>
 #include <cmd_arg_parse.h>
-#include "log.h"
+#include "chrono_monitor.h"
 
 #define CHRONICLE_NAME_LEN 32
 #define STORY_NAME_LEN 32
@@ -35,8 +35,8 @@ void thread_function(void*tt)
     chronicle_attrs.emplace("IndexGranularity", "Millisecond");
     chronicle_attrs.emplace("TieringPolicy", "Hot");
     ret = client->CreateChronicle(chronicle_name, chronicle_attrs, flags);
-    LOG_DEBUG("[ClientLibMultiArgobotsTest] Thread (ID: {}) - Created Chronicle: {}. Return Code: {}", t->tid, chronicle_name
-         , ret);
+    LOG_DEBUG("[ClientLibMultiArgobotsTest] Thread (ID: {}) - Created Chronicle: {}. Return Code: {}", t->tid
+              , chronicle_name, ret);
     assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_CHRONICLE_EXISTS ||
            ret == chronolog::CL_ERR_NO_KEEPERS);
     flags = 1;
@@ -47,14 +47,16 @@ void thread_function(void*tt)
     story_attrs.emplace("TieringPolicy", "Hot");
     flags = 2;
     auto acquire_ret = client->AcquireStory(chronicle_name, story_name, story_attrs, flags);
-    LOG_DEBUG("[ClientLibMultiArgobotsTest] Thread ID: {} - Attempted to acquire Story: {} in Chronicle: {}. Result Code: {}"
-         , t->tid, story_name, chronicle_name, acquire_ret.first);
+    LOG_DEBUG(
+            "[ClientLibMultiArgobotsTest] Thread ID: {} - Attempted to acquire Story: {} in Chronicle: {}. Result Code: {}"
+            , t->tid, story_name, chronicle_name, acquire_ret.first);
     assert(acquire_ret.first == chronolog::CL_SUCCESS || acquire_ret.first == chronolog::CL_ERR_NOT_EXIST ||
            acquire_ret.first == chronolog::CL_ERR_NO_KEEPERS);
     ret = client->DestroyStory(chronicle_name, story_name);
 
-    LOG_DEBUG("[ClientLibMultiArgobotsTest] Thread ID: {} - Attempted to destroy story '{}' within chronicle '{}'. Result Code: {}"
-         , t->tid, story_name, chronicle_name, acquire_ret.first);
+    LOG_DEBUG(
+            "[ClientLibMultiArgobotsTest] Thread ID: {} - Attempted to destroy story '{}' within chronicle '{}'. Result Code: {}"
+            , t->tid, story_name, chronicle_name, acquire_ret.first);
     assert(ret == chronolog::CL_ERR_ACQUIRED || ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST ||
            ret == chronolog::CL_ERR_NO_KEEPERS);
     ret = client->Disconnect();
@@ -63,13 +65,13 @@ void thread_function(void*tt)
     assert(ret == chronolog::CL_ERR_ACQUIRED || ret == chronolog::CL_SUCCESS);
     ret = client->ReleaseStory(chronicle_name, story_name);
 
-    LOG_DEBUG("[ClientLibMultiArgobotsTest] Thread ID: {} - Released Story: {} from Chronicle: {}. Result Code: {}", t->tid
-         , story_name, chronicle_name, ret);
+    LOG_DEBUG("[ClientLibMultiArgobotsTest] Thread ID: {} - Released Story: {} from Chronicle: {}. Result Code: {}"
+              , t->tid, story_name, chronicle_name, ret);
     assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NO_KEEPERS || ret == chronolog::CL_ERR_NOT_EXIST);
     ret = client->DestroyStory(chronicle_name, story_name);
 
-    LOG_DEBUG("[ClientLibMultiArgobotsTest] Thread ID: {} - Destroyed Story: {} from Chronicle: {}. Result Code: {}", t->tid
-         , story_name, chronicle_name, ret);
+    LOG_DEBUG("[ClientLibMultiArgobotsTest] Thread ID: {} - Destroyed Story: {} from Chronicle: {}. Result Code: {}"
+              , t->tid, story_name, chronicle_name, ret);
     assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST || ret == chronolog::CL_ERR_ACQUIRED ||
            ret == chronolog::CL_ERR_NO_KEEPERS);
     ret = client->DestroyChronicle(chronicle_name);
@@ -89,13 +91,13 @@ int main(int argc, char**argv)
         std::exit(EXIT_FAILURE);
     }
     ChronoLog::ConfigurationManager confManager(conf_file_path);
-    int result = Logger::initialize(confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILESIZE
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILENUM
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.FLUSHLEVEL);
+    int result = chronolog::chrono_monitor::initialize(confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE
+                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
+                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
+                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME
+                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILESIZE
+                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILENUM
+                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.FLUSHLEVEL);
     if(result == 1)
     {
         exit(EXIT_FAILURE);
