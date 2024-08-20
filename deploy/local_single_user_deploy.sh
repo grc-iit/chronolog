@@ -15,7 +15,7 @@ WORK_DIR=""
 LIB_DIR=""
 CONF_DIR=""
 BIN_DIR=""
-LOG_DIR=""
+MONITOR_DIR=""
 OUTPUT_DIR=""
 
 # Files
@@ -75,9 +75,9 @@ generate_config_files() {
     local conf_dir=$3
     local output_dir=$4
     local num_graphers=$5
-    local log_dir=$6
+    local monitor_dir=$6
 
-    mkdir -p "${log_dir}"
+    mkdir -p "${monitor_dir}"
 
     # Check if default configuration file exists
     if [ ! -f "$default_conf" ]; then
@@ -113,7 +113,7 @@ generate_config_files() {
         local grapher_index=$((i + 1))
         local grapher_output_file="${conf_dir}/grapher_conf_${grapher_index}.json"
 
-        jq --arg log_dir "$log_dir" \
+        jq --arg monitor_dir "$monitor_dir" \
             --arg output_dir "$output_dir" \
             --argjson new_port_grapher_drain $new_port_grapher_drain \
             --argjson new_port_grapher_datastore $new_port_grapher_datastore \
@@ -121,7 +121,7 @@ generate_config_files() {
            '.chrono_grapher.RecordingGroup = $grapher_index |
             .chrono_grapher.KeeperGrapherDrainService.rpc.service_base_port = $new_port_grapher_drain |
             .chrono_grapher.DataStoreAdminService.rpc.service_base_port = $new_port_grapher_datastore |
-            .chrono_grapher.Logging.log.file = ($log_dir + "/" + ($grapher_index | tostring) + "_" + .chrono_grapher.Logging.log.file) |
+            .chrono_grapher.Monitoring.monitor.file = ($monitor_dir + "/" + ($grapher_index | tostring) + "_" + .chrono_grapher.Monitoring.monitor.file) |
             .chrono_grapher.Extractors.story_files_dir = ($output_dir + "/")' "$default_conf" > "$grapher_output_file"
 
         echo "Generated $grapher_output_file with ports $new_port_grapher_drain and $new_port_grapher_datastore"
@@ -138,7 +138,7 @@ generate_config_files() {
         local keeper_index=$((i + 1))
         local keeper_output_file="${conf_dir}/keeper_conf_${keeper_index}.json"
 
-        jq --arg log_dir "$log_dir" \
+        jq --arg monitor_dir "$monitor_dir" \
             --arg output_dir "$output_dir" \
             --argjson new_port_keeper_record $new_port_keeper_record \
             --argjson new_port_keeper_drain $new_port_keeper_drain \
@@ -150,20 +150,20 @@ generate_config_files() {
             .chrono_keeper.KeeperDataStoreAdminService.rpc.service_base_port = $new_port_keeper_datastore |
             .chrono_keeper.story_files_dir = ($output_dir + "/") |
             .chrono_keeper.RecordingGroup = $grapher_index |
-            .chrono_keeper.Logging.log.file = ($log_dir + "/" + ($keeper_index | tostring) + "_" + .chrono_keeper.Logging.log.file)' "$default_conf" > "$keeper_output_file"
+            .chrono_keeper.Monitoring.monitor.file = ($monitor_dir + "/" + ($keeper_index | tostring) + "_" + .chrono_keeper.Monitoring.monitor.file)' "$default_conf" > "$keeper_output_file"
         echo "Generated $keeper_output_file with ports $new_port_keeper_record, $new_port_keeper_datastore, and $new_port_keeper_drain"
     done
 
     # Generate visor configuration file
     local visor_output_file="${conf_dir}/visor_conf.json"
-    jq --arg log_dir "$log_dir" \
-       '.chrono_visor.Logging.log.file = ($log_dir + "/" + .chrono_visor.Logging.log.file)' "$default_conf" > "$visor_output_file"
+    jq --arg monitor_dir "$monitor_dir" \
+       '.chrono_visor.Monitoring.monitor.file = ($monitor_dir + "/" + .chrono_visor.Monitoring.monitor.file)' "$default_conf" > "$visor_output_file"
     echo "Generated $visor_output_file"
 
     # Generate client configuration file
     local client_output_file="${conf_dir}/client_conf.json"
-    jq --arg log_dir "$log_dir" \
-       '.chrono_client.Logging.log.file = ($log_dir + "/" + .chrono_client.Logging.log.file)' "$default_conf" > "$client_output_file"
+    jq --arg monitor_dir "$monitor_dir" \
+       '.chrono_client.Monitoring.monitor.file = ($monitor_dir + "/" + .chrono_client.Monitoring.monitor.file)' "$default_conf" > "$client_output_file"
     echo "Generated $client_output_file"
 
     echo "Generate configuration files for all recording groups done"
@@ -221,9 +221,9 @@ copy_shared_libs() {
 launch_process() {
     local bin="$1"
     local args="$2"
-    local log_file="$3"
+    local monitor_file="$3"
     echo -e "${DEBUG}Launching $bin $args ...${NC}"
-    LD_LIBRARY_PATH=${LIB_DIR} nohup ${bin} ${args} > ${LOG_DIR}/${log_file} 2>&1 &
+    LD_LIBRARY_PATH=${LIB_DIR} nohup ${bin} ${args} > ${MONITOR_DIR}/${monitor_file} 2>&1 &
 }
 
 kill_process() {
@@ -245,7 +245,7 @@ install() {
     check_directories
     check_files
     copy_shared_libs
-    generate_config_files ${NUM_KEEPERS} ${CONF_FILE} ${CONF_DIR} ${OUTPUT_DIR} ${NUM_GRAPHERS} ${LOG_DIR}
+    generate_config_files ${NUM_KEEPERS} ${CONF_FILE} ${CONF_DIR} ${OUTPUT_DIR} ${NUM_GRAPHERS} ${MONITOR_DIR}
     echo -e "${DEBUG}Install done${NC}"
 }
 
@@ -290,8 +290,11 @@ reset() {
     rm ${CONF_DIR}/keeper_conf*.json
     rm ${CONF_DIR}/visor_conf.json
 
-    # Remove all log files
-    rm ${LOG_DIR}/*.log
+    # Remove all monitor files
+    rm ${MONITOR_DIR}/*.log
+
+    # Remove all output files
+    rm ${OUTPUT_DIR}/*
     echo -e "${DEBUG}Reset done${NC}"
 }
 
@@ -321,7 +324,7 @@ usage() {
     echo "  -k|--kill           Terminate ChronoLog Deployment (default: false)"
 
     echo "  -w|--work-dir       WORK_DIR Set the working directory (Mandatory)"
-    echo "  -l|--log_dir        LOG_DIR (default: work_dir/log)"
+    echo "  -m|--monitor_dir    MONITOR_DIR (default: work_dir/monitor)"
     echo "  -u|--output_dir     OUTPUT_DIR (default: work_dir/output)"
 
     echo "  -v|--visor          VISOR_BIN (default: work_dir/bin/chronovisor_server)"
@@ -356,27 +359,21 @@ parse_args() {
                 usage;
                 shift ;;
             -w|--work-dir)
-                WORK_DIR="$2";
+                WORK_DIR="$2"
                 LIB_DIR="${WORK_DIR}/lib"
                 CONF_DIR="${WORK_DIR}/conf"
                 BIN_DIR="${WORK_DIR}/bin"
-                OUTPUT_DIR="${WORK_DIR}/output"
-                LOG_DIR="${WORK_DIR}/log"
                 VISOR_BIN="${BIN_DIR}/chronovisor_server"
                 KEEPER_BIN="${BIN_DIR}/chrono_keeper"
                 CLIENT_BIN="${BIN_DIR}/client_lib_multi_storytellers"
                 GRAPHER_BIN="${BIN_DIR}/chrono_grapher"
                 CONF_FILE="${CONF_DIR}/default_conf.json"
-                mkdir -p "${LOG_DIR}"
-                mkdir -p "${OUTPUT_DIR}"
                 shift 2 ;;
             -u|--output-dir)
                 OUTPUT_DIR=$(realpath "$2")
-                mkdir -p "${OUTPUT_DIR}"
                 shift 2 ;;
-            -l|--log-dir)
-                LOG_DIR=$(realpath "$2")
-                mkdir -p "${LOG_DIR}"
+            -m|--monitor-dir)
+                MONITOR_DIR=$(realpath "$2")
                 shift 2 ;;
             -v|--visor)
                 VISOR_BIN=$(realpath "$2")
@@ -410,6 +407,14 @@ parse_args() {
         usage
         exit 1
     fi
+
+    # Set default directories if not already set by the user
+    : "${OUTPUT_DIR:=${WORK_DIR}/output}"
+    : "${MONITOR_DIR:=${WORK_DIR}/monitor}"
+
+    # Ensure directories exist
+    mkdir -p "${MONITOR_DIR}"
+    mkdir -p "${OUTPUT_DIR}"
 }
 
 # Start execution of the script____________________________________________________________________________________
