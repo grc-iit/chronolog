@@ -62,7 +62,7 @@ public:
 #ifndef NDEBUG
         start = std::chrono::high_resolution_clock::now();
 #endif
-        int ret = deserializedWithCereal(&mem_vec[0], b.size() - 1, *story_chunk);
+        int ret = deserializedWithCereal(&mem_vec[0], b.size() - 1, *story_chunk); // TODO: (Kun) the extra byte might not be necessary
         if(ret != CL_SUCCESS)
         {
             LOG_ERROR("[GrapherRecordingService] Failed to deserialize a story chunk, ThreadID={}", tl::thread::self_id());
@@ -101,9 +101,9 @@ private:
 
     int deserializedWithCereal(char *buffer, size_t size, StoryChunk &story_chunk)
     {
+        std::stringstream ss(std::ios::binary | std::ios::in | std::ios::out);
         try
         {
-            std::stringstream ss(std::stringstream::binary | std::stringstream::in | std::stringstream::out);
             ss.write(buffer, size);
             cereal::BinaryInputArchive iarchive(ss);
             iarchive(story_chunk);
@@ -111,9 +111,22 @@ private:
         }
         catch(cereal::Exception const &ex)
         {
-            LOG_ERROR("[GrapherRecordingService] Failed to deserialize a story chunk, ThreadID={}. Cereal exception "
-                      "encountered.", tl::thread::self_id());
+            LOG_ERROR("[GrapherRecordingService] Failed to deserialize a story chunk, size={}, ThreadID={}. "
+                      "Cereal exception encountered.", ss.str().size(), tl::thread::self_id());
             LOG_ERROR("[GrapherRecordingService] Exception: {}", ex.what());
+            return CL_ERR_UNKNOWN;
+        }
+        catch(std::exception const &ex)
+        {
+            LOG_ERROR("[GrapherRecordingService] Failed to deserialize a story chunk, size={}, ThreadID={}. "
+                      "std::exception encountered.", ss.str().size(), tl::thread::self_id());
+            LOG_ERROR("[GrapherRecordingService] Exception: {}", ex.what());
+            return CL_ERR_UNKNOWN;
+        }
+        catch(...)
+        {
+            LOG_ERROR("[GrapherRecordingService] Failed to deserialize a story chunk, ThreadID={}. Unknown exception "
+                      "encountered.", tl::thread::self_id());
             return CL_ERR_UNKNOWN;
         }
     }

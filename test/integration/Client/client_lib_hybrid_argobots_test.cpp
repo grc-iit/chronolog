@@ -6,7 +6,7 @@
 #include <abt.h>
 #include <mpi.h>
 #include <cmd_arg_parse.h>
-#include "log.h"
+#include "chrono_monitor.h"
 
 chronolog::Client*client;
 
@@ -31,14 +31,15 @@ void thread_function(void*t)
     int ret = client->Connect(); // Connect to server using client_id and flags
     if(ret == chronolog::CL_SUCCESS)
     {
-        LOG_INFO("[ClientLibHybridArgobotsTest] Successfully connected to server for thread ID: {}", ((thread_arg*)t)->tid);
+        LOG_INFO("[ClientLibHybridArgobotsTest] Successfully connected to server for thread ID: {}"
+                 , ((thread_arg*)t)->tid);
     }
 
     ret = client->Disconnect(); // Disconnect from server using client_id and flags
     if(ret == chronolog::CL_SUCCESS)
     {
         LOG_INFO("[ClientLibHybridArgobotsTest] Successfully disconnected from server for thread ID: {}"
-             , ((thread_arg*)t)->tid);
+                 , ((thread_arg*)t)->tid);
     }
 }
 
@@ -59,13 +60,13 @@ int main(int argc, char**argv)
         std::exit(EXIT_FAILURE);
     }
     ChronoLog::ConfigurationManager confManager(conf_file_path);
-    int result = Logger::initialize(confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILESIZE
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILENUM
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.FLUSHLEVEL);
+    int result = chronolog::chrono_monitor::initialize(confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE
+                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
+                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
+                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME
+                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILESIZE
+                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILENUM
+                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.FLUSHLEVEL);
     if(result == 1)
     {
         exit(EXIT_FAILURE);

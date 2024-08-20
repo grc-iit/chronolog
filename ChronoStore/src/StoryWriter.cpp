@@ -2,7 +2,6 @@
 
 //#define H5_SIZEOF_SSIZE_T H5_SIZEOF_LONG_LONG
 
-#include <hdf5.h>
 #include <fstream>
 #include <string>
 #include <cstring>
@@ -15,7 +14,7 @@
 #include <event.h>
 #include <chunkattr.h>
 #include <StoryWriter.h>
-#include <log.h>
+#include <chrono_monitor.h>
 #include <chronolog_errcode.h>
 
 #define DATASET_RANK 1 // Dataset dimension

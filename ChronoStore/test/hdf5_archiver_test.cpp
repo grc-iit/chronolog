@@ -8,7 +8,7 @@
 #include <hdf5.h>
 #include <StoryWriter.h>
 #include <StoryReader.h>
-#include <log.h>
+#include <chrono_monitor.h>
 #include <story_chunk_test_utils.h>
 #include "chronolog_types.h"
 
@@ -152,8 +152,8 @@ int main(int argc, char*argv[])
     uint64_t story_id = dist(rng);
     uint64_t client_id = CLIENT_ID;
 
-    int result = Logger::initialize("console", "hdf5_archiver_test.log", spdlog::level::debug, "hdf5_archiver_test"
-                                    , 102400, 1, spdlog::level::debug);
+    int result = chronolog::chrono_monitor::initialize("console", "hdf5_archiver_test.log", spdlog::level::debug
+                                                       , "hdf5_archiver_test", 102400, 1, spdlog::level::debug);
     if(result == 1)
     {
         exit(EXIT_FAILURE);

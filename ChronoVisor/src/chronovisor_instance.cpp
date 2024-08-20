@@ -4,7 +4,7 @@
 
 #include "cmd_arg_parse.h"
 #include "KeeperRegistry.h"
-#include "log.h"
+#include "chrono_monitor.h"
 #include "VisorClientPortal.h"
 
 volatile sig_atomic_t keep_running = true;
@@ -40,13 +40,13 @@ int main(int argc, char**argv)
         std::exit(EXIT_FAILURE);
     }
     ChronoLog::ConfigurationManager confManager(conf_file_path);
-    int result = Logger::initialize(confManager.VISOR_CONF.VISOR_LOG_CONF.LOGTYPE
-                                    , confManager.VISOR_CONF.VISOR_LOG_CONF.LOGFILE
-                                    , confManager.VISOR_CONF.VISOR_LOG_CONF.LOGLEVEL
-                                    , confManager.VISOR_CONF.VISOR_LOG_CONF.LOGNAME
-                                    , confManager.VISOR_CONF.VISOR_LOG_CONF.LOGFILESIZE
-                                    , confManager.VISOR_CONF.VISOR_LOG_CONF.LOGFILENUM
-                                    , confManager.VISOR_CONF.VISOR_LOG_CONF.FLUSHLEVEL);
+    int result = chronolog::chrono_monitor::initialize(confManager.VISOR_CONF.VISOR_LOG_CONF.LOGTYPE
+                                                       , confManager.VISOR_CONF.VISOR_LOG_CONF.LOGFILE
+                                                       , confManager.VISOR_CONF.VISOR_LOG_CONF.LOGLEVEL
+                                                       , confManager.VISOR_CONF.VISOR_LOG_CONF.LOGNAME
+                                                       , confManager.VISOR_CONF.VISOR_LOG_CONF.LOGFILESIZE
+                                                       , confManager.VISOR_CONF.VISOR_LOG_CONF.LOGFILENUM
+                                                       , confManager.VISOR_CONF.VISOR_LOG_CONF.FLUSHLEVEL);
     if(result == 1)
     {
         exit(EXIT_FAILURE);

@@ -12,7 +12,7 @@
 #include <unistd.h>
 #include <cassert>
 #include <hdf5.h>
-#include <log.h>
+#include <chrono_monitor.h>
 #include <chronolog_errcode.h>
 //#include <story_chunk_test_utils.h>
 
@@ -486,8 +486,8 @@ int main(int argc, char*argv[])
     uint64_t story_id = STORY_ID; //dist(rng);
     uint64_t client_id = CLIENT_ID;
 
-    int result = Logger::initialize("console", "cmp_vlen_bytes_dtype_test.log", spdlog::level::debug
-                                    , "cmp_vlen_bytes_dtype_test", 102400, 1, spdlog::level::debug);
+    int result = chronolog::chrono_monitor::initialize("console", "cmp_vlen_bytes_dtype_test.log", spdlog::level::debug
+                                                       , "cmp_vlen_bytes_dtype_test", 102400, 1, spdlog::level::debug);
     if(result == 1)
     {
         exit(EXIT_FAILURE);

@@ -26,7 +26,7 @@ chronolog::ChronologClientImpl::GetClientImplInstance(ChronoLog::ConfigurationMa
 chronolog::ChronologClientImpl*
 chronolog::ChronologClientImpl::GetClientImplInstance(chronolog::ClientPortalServiceConf const & visorClientPortalServiceConf)
 {
-    Logger::initialize("file", "/tmp/chrono_client.log", spdlog::level::info, "chrono_client", 1024000,3, spdlog::level::warn);
+    chrono_monitor::initialize("file", "/tmp/chrono_client.log", spdlog::level::info, "chrono_client", 1024000,3, spdlog::level::warn);
 
     std::lock_guard <std::mutex> lock_client(chronologClientMutex);
 

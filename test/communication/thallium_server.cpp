@@ -11,7 +11,7 @@
 #include <algorithm>
 #include <unistd.h>
 #include <margo.h>
-#include "log.h"
+#include "chrono_monitor.h"
 
 #define MAX_BULK_MEM_SIZE (1 * 1024 * 1024)
 
@@ -36,8 +36,8 @@ int main(int argc, char**argv)
         exit(1);
     }
 
-    int result = Logger::initialize("console", "thallium_server.log", spdlog::level::debug, "thallium_server", 1048576
-                                    , 5, spdlog::level::debug);
+    int result = chronolog::chrono_monitor::initialize("console", "thallium_server.log", spdlog::level::debug
+                                                       , "thallium_server", 1048576, 5, spdlog::level::debug);
     if(result == 1)
     {
         exit(EXIT_FAILURE);

@@ -71,13 +71,13 @@ int main(int argc, char**argv)
         std::exit(EXIT_FAILURE);
     }
     ChronoLog::ConfigurationManager confManager(conf_file_path);
-    int result = Logger::initialize(confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGTYPE
-                                    , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILE
-                                    , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGLEVEL
-                                    , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGNAME
-                                    , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILESIZE
-                                    , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILENUM
-                                    , confManager.KEEPER_CONF.KEEPER_LOG_CONF.FLUSHLEVEL);
+    int result = chronolog::chrono_monitor::initialize(confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGTYPE
+                                                       , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILE
+                                                       , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGLEVEL
+                                                       , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGNAME
+                                                       , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILESIZE
+                                                       , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILENUM
+                                                       , confManager.KEEPER_CONF.KEEPER_LOG_CONF.FLUSHLEVEL);
     if(result == 1)
     {
         exit(EXIT_FAILURE);
@@ -161,8 +161,7 @@ int main(int argc, char**argv)
         std::string extraction_rpc_name = "record_story_chunk";
         drain_to_grapher = extractionEngine->define(extraction_rpc_name);
         LOG_DEBUG("[ChronoKeeperInstance] Looking up {} at: {} ...", extraction_rpc_name, KEEPER_GRAPHER_NA_STRING);
-        service_ph = tl::provider_handle(extractionEngine->lookup(KEEPER_GRAPHER_NA_STRING),
-                                                             extraction_provider_id);
+        service_ph = tl::provider_handle(extractionEngine->lookup(KEEPER_GRAPHER_NA_STRING), extraction_provider_id);
         if(service_ph.is_null())
         {
             LOG_ERROR("[ChronoKeeperInstance] Failed to lookup Grapher service provider handle");
