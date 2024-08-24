@@ -486,8 +486,8 @@ int main(int argc, char*argv[])
     uint64_t story_id = STORY_ID; //dist(rng);
     uint64_t client_id = CLIENT_ID;
 
-    int result = Logger::initialize("console", "cmp_vlen_bytes_dtype_test.log", spdlog::level::debug
-                                    , "cmp_vlen_bytes_dtype_test", 102400, 1, spdlog::level::debug);
+    int result = chronolog::chrono_monitor::initialize("console", "cmp_vlen_bytes_dtype_test.log", spdlog::level::debug
+                                                       , "cmp_vlen_bytes_dtype_test", 102400, 1, spdlog::level::debug);
     if(result == 1)
     {
         exit(EXIT_FAILURE);
