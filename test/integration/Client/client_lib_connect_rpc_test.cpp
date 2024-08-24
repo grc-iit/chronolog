@@ -24,12 +24,12 @@ int main(int argc, char**argv)
     }
     ChronoLog::ConfigurationManager confManager(conf_file_path);
     int result = chronolog::chrono_monitor::initialize(confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILESIZE
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILENUM
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.FLUSHLEVEL);
+                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
+                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
+                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME
+                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILESIZE
+                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILENUM
+                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.FLUSHLEVEL);
     if(result == 1)
     {
         exit(EXIT_FAILURE);
@@ -81,7 +81,8 @@ int main(int argc, char**argv)
     };
 
     LOG_INFO("[ClientLibConnectRPCTest] Average connection time: {} ns", duration_connect.count() / NUM_CONNECTION);
-    LOG_INFO("[ClientLibConnectRPCTest] Average disconnection time: {} ns", duration_disconnect.count() / NUM_CONNECTION);
+    LOG_INFO("[ClientLibConnectRPCTest] Average disconnection time: {} ns",
+            duration_disconnect.count() / NUM_CONNECTION);
 
     return 0;
 }

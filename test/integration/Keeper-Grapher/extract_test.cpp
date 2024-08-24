@@ -56,17 +56,17 @@ chronolog::StoryChunk*generateRandomStoryChunk()
 //        event.logRecord += log_event_str_base + ", AABBCCDDEEFFGGHHIIJJKKLLMMNNOOPPQQRRSSTTUUVVWW" + std::to_string(i);
 //        event.logRecord += log_event_str_base + ", AABBCCDDEEFFGGHHIIJJKKLLM" + std::to_string(i);
         // for #events=100
-        event.logRecord = log_event_str_base + ", AABBCCDDEEFFGGHHIIJJKKLLMMNNOOPPQQRRSSTTUUVVWWXXYYZZ1" +
-                          std::to_string(i);
+        event.logRecord =
+                log_event_str_base + ", AABBCCDDEEFFGGHHIIJJKKLLMMNNOOPPQQRRSSTTUUVVWWXXYYZZ1" + std::to_string(i);
         event.logRecord += event.logRecord;
         event.logRecord += event.logRecord;
         event.logRecord += event.logRecord;
-        event.logRecord += log_event_str_base + ", AABBCCDDEEFFGGHHIIJJKKLLMMNNOOPPQQRRSSTTUUVVWWXXYYZZ1" +
-                           std::to_string(i);
-        event.logRecord += log_event_str_base + ", AABBCCDDEEFFGGHHIIJJKKLLMMNNOOPPQQRRSSTTUUVVWWXXYYZZ1" +
-                           std::to_string(i);
-        event.logRecord += log_event_str_base + ", AABBCCDDEEFFGGHHIIJJKKLLMMNNOOPPQQRRSSTTUUVVWWXXYYZZ" +
-                           std::to_string(i);
+        event.logRecord +=
+                log_event_str_base + ", AABBCCDDEEFFGGHHIIJJKKLLMMNNOOPPQQRRSSTTUUVVWWXXYYZZ1" + std::to_string(i);
+        event.logRecord +=
+                log_event_str_base + ", AABBCCDDEEFFGGHHIIJJKKLLMMNNOOPPQQRRSSTTUUVVWWXXYYZZ1" + std::to_string(i);
+        event.logRecord +=
+                log_event_str_base + ", AABBCCDDEEFFGGHHIIJJKKLLMMNNOOPPQQRRSSTTUUVVWWXXYYZZ" + std::to_string(i);
         // for #events=1000
 //        event.logRecord = log_event_str_base + ", AABBCCDDEEFFGGHHIIJJKKLLMMNN = " + std::to_string(i);
         story_chunk->insertEvent(event);
@@ -172,11 +172,11 @@ int main(int argc, char**argv)
     conf_file_path = parse_conf_path_arg(argc, argv);
     ChronoLog::ConfigurationManager confManager(conf_file_path);
     int result = chronolog::chrono_monitor::initialize("console", confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILE
-                                    , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGLEVEL
-                                    , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGNAME
-                                    , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILESIZE
-                                    , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILENUM
-                                    , confManager.KEEPER_CONF.KEEPER_LOG_CONF.FLUSHLEVEL);
+                                                       , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGLEVEL
+                                                       , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGNAME
+                                                       , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILESIZE
+                                                       , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILENUM
+                                                       , confManager.KEEPER_CONF.KEEPER_LOG_CONF.FLUSHLEVEL);
     if(result == 1)
     {
         exit(EXIT_FAILURE);

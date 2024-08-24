@@ -9,6 +9,7 @@
 #include <datasetreader.h>
 #include <datasetminmax.h>
 #include <chrono_monitor.h>
+#include <hdf5.h>
 
 class StoryReader
 {

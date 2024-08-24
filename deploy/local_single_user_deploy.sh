@@ -2,46 +2,82 @@
 
 # Variables ____________________________________________________________________________________________________________
 # Define some colors
-ERR='\033[1;31m\033[41m'
-INFO='\033[1,36m\033[42m'
+ERR='\033[7;37m\033[41m'
+INFO='\033[7;49m\033[92m'
 DEBUG='\033[0;33m'
 NC='\033[0m' # No Color
+
 NUM_KEEPERS=1
+NUM_GRAPHERS=1
 
 # Directories
-WORK_DIR="/home/${USER}/chronolog"
-LIB_DIR="${WORK_DIR}/lib"
-CONF_DIR="${WORK_DIR}/conf"
-BIN_DIR="${WORK_DIR}/bin"
+WORK_DIR=""
+LIB_DIR=""
+CONF_DIR=""
+BIN_DIR=""
+MONITOR_DIR=""
+OUTPUT_DIR=""
 
 # Files
 VISOR_BIN="${BIN_DIR}/chronovisor_server"
 KEEPER_BIN="${BIN_DIR}/chrono_keeper"
 CLIENT_BIN="${BIN_DIR}/client_lib_multi_storytellers"
+GRAPHER_BIN="${BIN_DIR}/chrono_grapher"
 CONF_FILE="${CONF_DIR}/default_conf.json"
 
 #Booleans
-install=false
+deploy=false
 reset=false
 stop=false
 kill=false
 
 # Methods ______________________________________________________________________________________________________________
 
+check_dependencies() {
+    local dependencies=("jq" "ldd" "nohup" "pkill" "readlink")
+
+    echo -e "${INFO}Checking required dependencies...${NC}"
+    for dep in "${dependencies[@]}"; do
+        if ! command -v $dep &> /dev/null; then
+            echo -e "${ERR}Dependency $dep is not installed. Please install it and try again.${NC}"
+            exit 1
+        fi
+    done
+    echo -e "${DEBUG}All required dependencies are installed.${NC}"
+}
+
+check_directories() {
+    echo -e "${INFO}Checking required directories...${NC}"
+    local directories=("${WORK_DIR}" "${LIB_DIR}" "${CONF_DIR}" "${BIN_DIR}")
+
+    for dir in "${directories[@]}"; do
+        if [[ ! -d ${dir} ]]; then
+            echo -e "${ERR}Directory ${dir} does not exist. Please create it and try again.${NC}"
+            exit 1
+        fi
+    done
+    echo -e "${DEBUG}All required directories are in place.${NC}"
+}
+
 check_files() {
     echo -e "${INFO}Checking required files...${NC}"
     [[ ! -f ${VISOR_BIN} ]] && echo -e "${ERR}Visor binary file does not exist, exiting ...${NC}" && exit 1
     [[ ! -f ${KEEPER_BIN} ]] && echo -e "${ERR}Keeper binary file does not exist, exiting ...${NC}" && exit 1
     [[ ! -f ${CLIENT_BIN} ]] && echo -e "${ERR}Client binary file does not exist, exiting ...${NC}" && exit 1
+    [[ ! -f ${GRAPHER_BIN} ]] && echo -e "${ERR}Grapher binary file does not exist, exiting ...${NC}" && exit 1
     [[ ! -f ${CONF_FILE} ]] && echo -e "${ERR}Configuration file does not exist, exiting ...${NC}" && exit 1
     echo -e "${DEBUG}All required files are in place.${NC}"
 }
 
 generate_config_files() {
-    local num_files=$1
-    local bin_dir=$2
-    local default_conf=$3
-    local conf_dir=$4
+    local num_keepers=$1
+    local default_conf=$2
+    local conf_dir=$3
+    local output_dir=$4
+    local num_graphers=$5
+    local monitor_dir=$6
+
+    mkdir -p "${monitor_dir}"
 
     # Check if default configuration file exists
     if [ ! -f "$default_conf" ]; then
@@ -49,41 +85,88 @@ generate_config_files() {
         return 1
     fi
 
+    # Check if number of keepers and graphers are valid
+    if (( num_keepers <= 0 || num_graphers <= 0 )); then
+        echo "Number of keepers and graphers must be greater than 0. Exiting..."
+        exit 1
+    fi
+
+    if (( num_keepers < num_graphers )); then
+        echo "Number of keepers must be greater than or equal to the number of graphers. Exiting..."
+        exit 1
+    fi
+
     # Extract initial ports from the configuration file
-    local base_port_keeper_record=$(jq '.chrono_keeper.KeeperRecordingService.rpc.service_base_port' "$default_conf")
-    local base_port_keeper_datastore=$(jq '.chrono_keeper.KeeperDataStoreAdminService.rpc.service_base_port' "$default_conf")
+    local base_port_keeper_record=$(jq -r '.chrono_keeper.KeeperRecordingService.rpc.service_base_port' "$default_conf")
+    local base_port_keeper_drain=$(jq -r '.chrono_keeper.KeeperGrapherDrainService.rpc.service_base_port' "$default_conf")
+    local base_port_keeper_datastore=$(jq -r '.chrono_keeper.KeeperDataStoreAdminService.rpc.service_base_port' "$default_conf")
+    local base_port_grapher_drain=$(jq -r '.chrono_grapher.KeeperGrapherDrainService.rpc.service_base_port' "$default_conf")
+    local base_port_grapher_datastore=$(jq -r '.chrono_grapher.DataStoreAdminService.rpc.service_base_port' "$default_conf")
 
-    # Generate configuration files
-    for (( i=0; i<num_files; i++ ))
-    do
-        # Calculate new ports
-        local new_port_keeper_record=$((base_port_keeper_record + i))
-        local new_port_keeper_datastore=$((base_port_keeper_datastore + i))
+    # Generate grapher configuration files
+    echo "Generating grapher configuration files ..."
+    mkdir -p "${output_dir}"
+    for (( i=0; i<num_graphers; i++ )); do
+        local new_port_grapher_drain=$((base_port_grapher_drain + i))
+        local new_port_grapher_datastore=$((base_port_grapher_datastore + i))
 
-        # Create new config file name
-        local output_file="${conf_dir}/keeper_conf_$i.json"
+        local grapher_index=$((i + 1))
+        local grapher_output_file="${conf_dir}/grapher_conf_${grapher_index}.json"
 
-        # Use jq to modify the JSON
-        jq --arg bin_dir "$bin_dir" \
-           --argjson new_port_keeper_record $new_port_keeper_record \
-           --argjson new_port_keeper_datastore $new_port_keeper_datastore \
-           --arg i "$i" \
-           '.chrono_keeper.KeeperRecordingService.rpc.service_base_port = $new_port_keeper_record |
-            .chrono_keeper.KeeperDataStoreAdminService.rpc.service_base_port = $new_port_keeper_datastore |
-            .chrono_keeper.Logging.log.file = ($bin_dir + "/" + $i + "_" + .chrono_keeper.Logging.log.file)' "$default_conf" > "$output_file"
+        jq --arg monitor_dir "$monitor_dir" \
+            --arg output_dir "$output_dir" \
+            --argjson new_port_grapher_drain $new_port_grapher_drain \
+            --argjson new_port_grapher_datastore $new_port_grapher_datastore \
+            --argjson grapher_index "$grapher_index" \
+           '.chrono_grapher.RecordingGroup = $grapher_index |
+            .chrono_grapher.KeeperGrapherDrainService.rpc.service_base_port = $new_port_grapher_drain |
+            .chrono_grapher.DataStoreAdminService.rpc.service_base_port = $new_port_grapher_datastore |
+            .chrono_grapher.Monitoring.monitor.file = ($monitor_dir + "/" + ($grapher_index | tostring) + "_" + .chrono_grapher.Monitoring.monitor.file) |
+            .chrono_grapher.Extractors.story_files_dir = ($output_dir + "/")' "$default_conf" > "$grapher_output_file"
 
-        echo "Generated $output_file with ports $new_port_keeper_record and $new_port_keeper_datastore."
+        echo "Generated $grapher_output_file with ports $new_port_grapher_drain and $new_port_grapher_datastore"
     done
 
-    local output_file="${conf_dir}/visor_conf.json"
-    jq --arg bin_dir "$bin_dir" \
-       '.chrono_visor.Logging.log.file = ($bin_dir + "/" + .chrono_visor.Logging.log.file)' "$default_conf" > "$output_file"
+    # Assign keepers to graphers iteratively
+    echo "Generating keeper configuration files ..."
+    for (( i=0; i<num_keepers; i++ )); do
+        local new_port_keeper_record=$((base_port_keeper_record + i))
+        local new_port_keeper_datastore=$((base_port_keeper_datastore + i))
+        local grapher_index=$((i % num_graphers + 1))
+        local new_port_keeper_drain=$((base_port_keeper_drain + grapher_index - 1))
 
-    local output_file="${conf_dir}/client_conf.json"
-    jq --arg bin_dir "$bin_dir" \
-       '.chrono_client.Logging.log.file = ($bin_dir + "/" + .chrono_client.Logging.log.file)' "$default_conf" > "$output_file"
+        local keeper_index=$((i + 1))
+        local keeper_output_file="${conf_dir}/keeper_conf_${keeper_index}.json"
 
+        jq --arg monitor_dir "$monitor_dir" \
+            --arg output_dir "$output_dir" \
+            --argjson new_port_keeper_record $new_port_keeper_record \
+            --argjson new_port_keeper_drain $new_port_keeper_drain \
+            --argjson new_port_keeper_datastore $new_port_keeper_datastore \
+            --argjson grapher_index "$grapher_index" \
+            --arg keeper_index "$keeper_index" \
+            '.chrono_keeper.KeeperRecordingService.rpc.service_base_port = $new_port_keeper_record |
+            .chrono_keeper.KeeperGrapherDrainService.rpc.service_base_port = $new_port_keeper_drain |
+            .chrono_keeper.KeeperDataStoreAdminService.rpc.service_base_port = $new_port_keeper_datastore |
+            .chrono_keeper.story_files_dir = ($output_dir + "/") |
+            .chrono_keeper.RecordingGroup = $grapher_index |
+            .chrono_keeper.Monitoring.monitor.file = ($monitor_dir + "/" + ($keeper_index | tostring) + "_" + .chrono_keeper.Monitoring.monitor.file)' "$default_conf" > "$keeper_output_file"
+        echo "Generated $keeper_output_file with ports $new_port_keeper_record, $new_port_keeper_datastore, and $new_port_keeper_drain"
+    done
 
+    # Generate visor configuration file
+    local visor_output_file="${conf_dir}/visor_conf.json"
+    jq --arg monitor_dir "$monitor_dir" \
+       '.chrono_visor.Monitoring.monitor.file = ($monitor_dir + "/" + .chrono_visor.Monitoring.monitor.file)' "$default_conf" > "$visor_output_file"
+    echo "Generated $visor_output_file"
+
+    # Generate client configuration file
+    local client_output_file="${conf_dir}/client_conf.json"
+    jq --arg monitor_dir "$monitor_dir" \
+       '.chrono_client.Monitoring.monitor.file = ($monitor_dir + "/" + .chrono_client.Monitoring.monitor.file)' "$default_conf" > "$client_output_file"
+    echo "Generated $client_output_file"
+
+    echo "Generate configuration files for all recording groups done"
 }
 
 extract_shared_libraries() {
@@ -95,8 +178,9 @@ extract_shared_libraries() {
 copy_shared_libs_recursive() {
     local lib_path="$1"
     local dest_path="$2"
-    local linked_to_lib_path="$(readlink -f ${lib_path})"
+    local linked_to_lib_path
 
+    linked_to_lib_path="$(readlink -f ${lib_path})"
     # Copy the library and maintain symbolic links recursively
     final_dest_lib_copies=false
     echo -e "${DEBUG}Copying ${lib_path} recursively ...${NC}"
@@ -113,31 +197,33 @@ copy_shared_libs_recursive() {
 }
 
 copy_shared_libs() {
-    libs_visor=$(extract_shared_libraries ${VISOR_BIN})
-    libs_keeper=$(extract_shared_libraries ${KEEPER_BIN})
-    libs_client=$(extract_shared_libraries ${CLIENT_BIN})
-
-    # Combine shared libraries from all executables and remove duplicates
-    all_shared_libs=$(echo -e "${libs_visor}\n${libs_keeper}\n${libs_client}" | sort | uniq)
-
     # Copy shared libraries to the lib directory
-    echo -e "${DEBUG}Copying shared library ...${NC}"
+    echo -e "${DEBUG}Copying shared libraries ...${NC}"
     mkdir -p ${LIB_DIR}
+
+    all_shared_libs=""
+    for bin_file in "${BIN_DIR}"/*; do
+        echo -e "${DEBUG}Extracting shared libraries from ${bin_file} ...${NC}";
+        all_shared_libs=$(echo -e "${all_shared_libs}\n$(extract_shared_libraries ${bin_file})" | sort | uniq)
+    done
+
     for lib in ${all_shared_libs}; do
-        if [[ ! -z ${lib} ]]
+        if [[ -n ${lib} ]]
         then
             copy_shared_libs_recursive ${lib} ${LIB_DIR}
         fi
     done
+
+    echo -e "${DEBUG}Copy shared libraries done${NC}"
 }
 
 # Functions to launch and kill processes
 launch_process() {
     local bin="$1"
     local args="$2"
-    local log_file="$3"
-    echo -e "${DEBUG}Launching $bin ...${NC}"
-    LD_LIBRARY_PATH=${LIB_DIR} nohup ${bin} ${args} > ${BIN_DIR}/${log_file} 2>&1 &
+    local monitor_file="$3"
+    echo -e "${DEBUG}Launching $bin $args ...${NC}"
+    LD_LIBRARY_PATH=${LIB_DIR} nohup ${bin} ${args} > ${MONITOR_DIR}/${monitor_file} 2>&1 &
 }
 
 kill_process() {
@@ -155,27 +241,41 @@ stop_process() {
 # Main functions for install, reset, and usage
 install() {
     echo -e "${INFO}Installing ...${NC}"
-    copy_shared_libs
+    check_dependencies
+    check_directories
     check_files
-    generate_config_files ${NUM_KEEPERS} ${BIN_DIR} ${CONF_FILE} ${CONF_DIR}
+    copy_shared_libs
+    generate_config_files ${NUM_KEEPERS} ${CONF_FILE} ${CONF_DIR} ${OUTPUT_DIR} ${NUM_GRAPHERS} ${MONITOR_DIR}
+    echo -e "${DEBUG}Install done${NC}"
+}
+
+deploy() {
+    echo -e "${INFO}Deploying ...${NC}"
+    install
     launch_process ${VISOR_BIN} "--config ${CONF_DIR}/visor_conf.json" "visor.log"
     sleep 2
     num_keepers=${NUM_KEEPERS}
-    for (( i=0; i<num_keepers; i++ ))
+    for (( i=1; i<num_keepers+1; i++ ))
     do
-        #local keeper_args="--config ${CONF_DIR}/keeper_conf_$i.json"
         launch_process ${KEEPER_BIN} "--config ${CONF_DIR}/keeper_conf_$i.json" "keeper_$i.log"
     done
     sleep 2
+    num_graphers=${NUM_GRAPHERS}
+    for (( i=1; i<num_graphers+1; i++ ))
+    do
+        launch_process ${GRAPHER_BIN} "--config ${CONF_DIR}/grapher_conf_$i.json" "grapher_$i.log"
+    done
+    sleep 2
     launch_process ${CLIENT_BIN} "--config ${CONF_DIR}/client_conf.json" "client.log"
-    echo -e "${DEBUG}Install done${NC}"
+    echo -e "${DEBUG}Deployment done${NC}"
 }
 
 kill() {
     echo -e "${INFO}Killing ...${NC}"
-    kill_process ${VISOR_BIN}
-    kill_process ${KEEPER_BIN}
     kill_process ${CLIENT_BIN}
+    kill_process ${KEEPER_BIN}
+    kill_process ${GRAPHER_BIN}
+    kill_process ${VISOR_BIN}
     echo -e "${DEBUG}Kill done${NC}"
 }
 
@@ -185,18 +285,22 @@ reset() {
     echo -e "${DEBUG}Delete all generated files${NC}"
 
     # Remove all config files
-    rm ${CONF_DIR}/visor_conf.json
     rm ${CONF_DIR}/client_conf.json
+    rm ${CONF_DIR}/grapher_conf*.json
     rm ${CONF_DIR}/keeper_conf*.json
+    rm ${CONF_DIR}/visor_conf.json
 
-    # Remove all log files
-    rm ${BIN_DIR}/*.log
+    # Remove all monitor files
+    rm ${MONITOR_DIR}/*.log
+
+    # Remove all output files
+    rm ${OUTPUT_DIR}/*
     echo -e "${DEBUG}Reset done${NC}"
 }
 
 stop() {
     echo -e "${INFO}Stopping ...${NC}"
-    declare -a processes=("${CLIENT_BIN}" "${KEEPER_BIN}" "${VISOR_BIN}")
+    declare -a processes=("${CLIENT_BIN}" "${KEEPER_BIN}" "${GRAPHER_BIN}" "${VISOR_BIN}")
     for process in "${processes[@]}"; do
         stop_process "${process}"
         while pgrep -f "${process}" >/dev/null; do
@@ -208,19 +312,30 @@ stop() {
     echo -e "${DEBUG}All processes stopped${NC}"
 }
 
-
-
 # Usage function with new options
 usage() {
     echo "Usage: $0 [options]"
     echo "Options:"
-    echo "  -h, --help             Display this help and exit"
-    echo "  -n, --num-keepers NUM  Set the number of keeper processes"
-    echo "  -w, --work-dir DIR     Set the working directory"
-    echo "  -i, --install          Install all components"
-    echo "  -r, --reset            Reset all components"
-    echo "  -k, --kill             Kill all components"
-    echo "  -s, --stop             Stop all components"
+    echo "  -h|--help           Display this help and exit"
+
+    echo "  -d|--deploy         Start ChronoLog Deployment (default: false)"
+    echo "  -s|--stop           Stop ChronoLog Deployment (default: false)"
+    echo "  -r|--reset          Reset/CleanUp ChronoLog Deployment (default: false)"
+    echo "  -k|--kill           Terminate ChronoLog Deployment (default: false)"
+
+    echo "  -w|--work-dir       WORK_DIR Set the working directory (Mandatory)"
+    echo "  -m|--monitor_dir    MONITOR_DIR (default: work_dir/monitor)"
+    echo "  -u|--output_dir     OUTPUT_DIR (default: work_dir/output)"
+
+    echo "  -v|--visor          VISOR_BIN (default: work_dir/bin/chronovisor_server)"
+    echo "  -g|--grapher        GRAPHER_BIN (default: work_dir/bin/chrono_grapher)"
+    echo "  -p|--keeper         KEEPER_BIN (default: work_dir/bin/chrono_keeper)"
+    echo "  -c|--client         CLIENT_BIN (default: work_dir/bin/client_lib_multi_storytellers)"
+    echo "  -f|--conf_file      CONF_FILE (default: work_dir/conf/default_conf.json)"
+
+    echo "  -n|--keepers        Set the total number of keeper processes. They will be assigned iteratively to the recording groups"
+    echo "  -j|--record-groups  Set the number of recording groups or grapher processes"
+
     exit 1
 }
 
@@ -228,8 +343,8 @@ usage() {
 parse_args() {
     while [[ "$#" -gt 0 ]]; do
         case "$1" in
-            -i|--install)
-                install=true
+            -d|--deploy)
+                deploy=true
                 shift ;;
             -r|--reset)
                 reset=true
@@ -243,29 +358,71 @@ parse_args() {
             -h|--help)
                 usage;
                 shift ;;
-            -n|--num-keepers)
-                NUM_KEEPERS="$2";
-                shift 2 ;;
             -w|--work-dir)
-                WORK_DIR="$2";
+                WORK_DIR="$2"
                 LIB_DIR="${WORK_DIR}/lib"
                 CONF_DIR="${WORK_DIR}/conf"
                 BIN_DIR="${WORK_DIR}/bin"
                 VISOR_BIN="${BIN_DIR}/chronovisor_server"
                 KEEPER_BIN="${BIN_DIR}/chrono_keeper"
                 CLIENT_BIN="${BIN_DIR}/client_lib_multi_storytellers"
+                GRAPHER_BIN="${BIN_DIR}/chrono_grapher"
                 CONF_FILE="${CONF_DIR}/default_conf.json"
+                shift 2 ;;
+            -u|--output-dir)
+                OUTPUT_DIR=$(realpath "$2")
+                shift 2 ;;
+            -m|--monitor-dir)
+                MONITOR_DIR=$(realpath "$2")
+                shift 2 ;;
+            -v|--visor)
+                VISOR_BIN=$(realpath "$2")
+                shift 2 ;;
+            -g|--grapher)
+                GRAPHER_BIN=$(realpath "$2")
+                shift 2 ;;
+            -p|--keeper)
+                KEEPER_BIN=$(realpath "$2")
+                shift 2 ;;
+            -c|--client)
+                CLIENT_BIN=$(realpath "$2")
+                shift 2 ;;
+            -f|--conf_file)
+                CONF_FILE=$(realpath "$2")
+                CONF_DIR=$(dirname ${CONF_FILE})
+                shift 2 ;;
+            -j|--record-groups)
+                NUM_GRAPHERS="$2"
+                shift 2 ;;
+            -n|--keepers-group)
+                NUM_KEEPERS="$2"
                 shift 2 ;;
             *) echo -e "${ERR}Unknown option: $1${NC}"; usage ;;
         esac
     done
+
+    # Check if WORK_DIR is set
+    if [[ -z "${WORK_DIR}" ]]; then
+        echo -e "${ERR}WORK_DIR is mandatory. Please provide it using the -w or --work-dir option.${NC}"
+        usage
+        exit 1
+    fi
+
+    # Set default directories if not already set by the user
+    : "${OUTPUT_DIR:=${WORK_DIR}/output}"
+    : "${MONITOR_DIR:=${WORK_DIR}/monitor}"
+
+    # Ensure directories exist
+    mkdir -p "${MONITOR_DIR}"
+    mkdir -p "${OUTPUT_DIR}"
 }
 
 # Start execution of the script____________________________________________________________________________________
 parse_args "$@"
-if ${install}
+
+if ${deploy}
 then
-    install
+    deploy
 elif ${reset}
 then
     reset
@@ -279,6 +436,4 @@ else
     echo -e "${ERR}Please select deploy or reset mode${NC}"
     usage
 fi
-
 echo -e "${INFO}Done${NC}"
-
