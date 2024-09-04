@@ -10,7 +10,7 @@ NC='\033[0m' # No Color
 WORK_DIR=""
 LIB_DIR=""
 CONF_DIR=""
-LOG_DIR=""
+MONITOR_DIR=""
 OUTPUT_DIR=""
 VISOR_BIN_FILE_NAME="chronovisor_server"
 GRAPHER_BIN_FILE_NAME="chrono_grapher"
@@ -221,6 +221,13 @@ update_visor_ip() {
     [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Update ChronoVisor IP done${NC}"
 }
 
+update_visor_client_monitor_file_path() {
+    visor_host=$(head -1 ${VISOR_HOSTS})
+    echo -e "${INFO}Updating monitoring file path ...${NC}"
+    jq ".chrono_visor.Monitoring.monitor.file = \"${MONITOR_DIR}/${VISOR_BIN_FILE_NAME}.${visor_host}.log\"" ${CONF_FILE} >tmp.json && mv tmp.json ${CONF_FILE}
+    jq ".chrono_client.Monitoring.monitor.file = \"${MONITOR_DIR}/${CLIENT_BIN_FILE_NAME}.log\"" ${CONF_FILE} >tmp.json && mv tmp.json ${CONF_FILE}
+}
+
 generate_conf_for_each_keeper() {
     local base_conf_file=$1
     local keeper_hosts_file=$2
@@ -229,7 +236,7 @@ generate_conf_for_each_keeper() {
         remote_keeper_hostname=$(LD_LIBRARY_PATH=/lib/x86_64-linux-gnu/ ssh -n ${keeper_host} hostname)
         [[ -z "${remote_keeper_hostname}" ]] && echo -e "${ERR}Cannot get hostname from ${keeper_host}, exiting ...${NC}" >&2 && exit 1
         [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generating conf file ${base_conf_file}.keeper.${remote_keeper_hostname} for ChronoKeeper ${remote_keeper_hostname} ...${NC}"
-        jq ".chrono_keeper.Logging.log.file = \"chrono_keeper.log.${remote_keeper_hostname}\"" "${base_conf_file}" >"${base_conf_file}.keeper.${remote_keeper_hostname}"
+        jq ".chrono_keeper.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono_keeper.${remote_keeper_hostname}.log\"" "${base_conf_file}" >"${base_conf_file}.keeper.${remote_keeper_hostname}"
         keeper_ip=$(get_host_ip ${keeper_host})
         jq ".chrono_keeper.KeeperRecordingService.rpc.service_ip = \"${keeper_ip}\"" "${base_conf_file}.keeper.${remote_keeper_hostname}" >temp.json && mv temp.json "${base_conf_file}.keeper.${remote_keeper_hostname}"
         jq ".chrono_keeper.KeeperDataStoreAdminService.rpc.service_ip = \"${keeper_ip}\"" "${base_conf_file}.keeper.${remote_keeper_hostname}" >temp.json && mv temp.json "${base_conf_file}.keeper.${remote_keeper_hostname}"
@@ -246,7 +253,7 @@ generate_conf_for_each_grapher() {
         remote_grapher_hostname=$(LD_LIBRARY_PATH=/lib/x86_64-linux-gnu/ ssh -n ${grapher_host} hostname)
         [[ -z "${remote_grapher_hostname}" ]] && echo -e "${ERR}Cannot get hostname from ${grapher_host}, exiting ...${NC}" >&2 && exit 1
         [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generating conf file ${base_conf_file}.grapher.${remote_grapher_hostname} for ChronoGrapher ${remote_grapher_hostname} ...${NC}"
-        jq ".chrono_grapher.Logging.log.file = \"chrono_grapher.log.${remote_grapher_hostname}\"" "${base_conf_file}" >"${base_conf_file}.grapher.${remote_grapher_hostname}"
+        jq ".chrono_grapher.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono_grapher.${remote_grapher_hostname}.log\"" "${base_conf_file}" >"${base_conf_file}.grapher.${remote_grapher_hostname}"
         #grapher_ip=$(get_host_ip ${grapher_host})
         #jq ".chrono_keeper.KeeperGrapherDrainService.rpc.service_ip = \"${grapher_ip}\"" "${base_conf_file}".grapher.${remote_grapher_hostname}" > temp.json && mv temp.json "${base_conf_file}.grapher.${remote_grapher_hostname}"
         #jq ".chrono_grapher.KeeperGrapherDrainService.rpc.service_ip = \"${grapher_ip}\"" "${base_conf_file}.grapher.${remote_grapher_hostname}" > temp.json && mv temp.json "${base_conf_file}.grapher.${remote_grapher_hostname}"
@@ -275,7 +282,6 @@ generate_conf_for_each_recording_group() {
         jq ".chrono_grapher.RecordingGroup = ${i}" "${CONF_FILE}.${i}" >temp.json && mv temp.json "${CONF_FILE}.${i}"
         jq ".chrono_keeper.KeeperGrapherDrainService.rpc.service_ip = \"${grapher_ip}\"" "${CONF_FILE}.${i}" >temp.json && mv temp.json "${CONF_FILE}.${i}"
         jq ".chrono_grapher.KeeperGrapherDrainService.rpc.service_ip = \"${grapher_ip}\"" "${CONF_FILE}.${i}" >temp.json && mv temp.json "${CONF_FILE}.${i}"
-        jq ".chrono_grapher.Logging.log.file = \"chrono_grapher.log.${remote_grapher_hostname}\"" "${CONF_FILE}.${i}" >temp.json && mv temp.json "${CONF_FILE}.${i}"
         jq ".chrono_keeper.story_files_dir = \"${OUTPUT_DIR}\"" "${CONF_FILE}.${i}" >temp.json && mv temp.json "${CONF_FILE}.${i}"
         jq ".chrono_grapher.Extractors.story_files_dir = \"${OUTPUT_DIR}\"" "${CONF_FILE}.${i}" >temp.json && mv temp.json "${CONF_FILE}.${i}"
 
@@ -290,7 +296,7 @@ prepare_hosts_for_recording_groups() {
     num_keepers_processed=0
     total_num_keepers=$(wc -l <${KEEPER_HOSTS})
     min_num_keepers_in_group=$((total_num_keepers / NUM_RECORDING_GROUP))
-    missing_num_keepers_for_equal_group_size=$((total_num_keepers - min_num_keepers_in_group * NUM_RECORDING_GROUP))
+    missing_num_keepers_for_equal_group_size=$((NUM_RECORDING_GROUP - total_num_keepers + min_num_keepers_in_group * NUM_RECORDING_GROUP))
     if [[ $missing_num_keepers_for_equal_group_size -eq 0 ]]; then
         num_groups_with_extra_keeper=0
     else
@@ -304,9 +310,11 @@ prepare_hosts_for_recording_groups() {
         else
             num_keepers_in_this_group=${min_num_keepers_in_group}
         fi
+        [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Number of ChronoKeepers in RecordingGroup ${i}: ${num_keepers_in_this_group}${NC}"
         start_line_num_in_keeper_hosts=$((num_keepers_processed + 1))
         end_line_num_in_keeper_hosts=$((start_line_num_in_keeper_hosts + num_keepers_in_this_group - 1))
         sed -n "${start_line_num_in_keeper_hosts},${end_line_num_in_keeper_hosts}p" <${KEEPER_HOSTS} >${KEEPER_HOSTS}.${i}
+        [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}ChronoKeeper hosts in RecordingGroup ${i}: ${NC}" && cat ${KEEPER_HOSTS}.${i}
         sed -n "${i}p" <${GRAPHER_HOSTS} >${GRAPHER_HOSTS}.${i}
         num_keepers_processed=$((end_line_num_in_keeper_hosts))
     done
@@ -371,6 +379,8 @@ install() {
 
     update_visor_ip
 
+    update_visor_client_monitor_file_path
+
     generate_conf_for_each_recording_group
 
     check_rpc_comm_conf
@@ -397,7 +407,7 @@ parallel_remote_launch_processes() {
     fi
 
     bin_path=${bin_dir}/${bin_filename}
-    LD_LIBRARY_PATH=/lib/x86_64-linux-gnu/ mpssh -f ${hosts_file} "cd ${bin_dir}; LD_LIBRARY_PATH=${lib_dir} nohup ${bin_path} ${args} > ${bin_filename}${hostname_suffix}.launch.log 2>&1 &" | grep "${simple_output_grep_keyword}" 2>&1
+    LD_LIBRARY_PATH=/lib/x86_64-linux-gnu/ mpssh -f ${hosts_file} "cd ${bin_dir}; LD_LIBRARY_PATH=${lib_dir} nohup ${bin_path} ${args} > ${MONITOR_DIR}/${bin_filename}${hostname_suffix}.launch.log 2>&1 &" | grep "${simple_output_grep_keyword}" 2>&1
 }
 
 parallel_remote_stop_processes() {
@@ -543,12 +553,9 @@ remove_generated_files() {
     rm -f ${CONF_FILE}.*
     rm -f ${KEEPER_HOSTS}*.*
     rm -f ${GRAPHER_HOSTS}*.*
-    rm -f ${WORK_DIR}/bin/*.launch.log
     rm -f ${KEEPER_BIN}.*
     rm -f ${GRAPHER_BIN}.*
-    rm -f ${WORK_DIR}/bin/chrono_visor.log
-    rm -f ${WORK_DIR}/bin/chrono_client.log
-    rm -f ${LOG_DIR}/*.log
+    rm -f ${MONITOR_DIR}/*.log
     rm -f ${OUTPUT_DIR}/*
 }
 
@@ -611,7 +618,7 @@ parse_args() {
             WORK_DIR=$(realpath "$2")
             LIB_DIR="${WORK_DIR}/lib"
             CONF_DIR="${WORK_DIR}/conf"
-            LOG_DIR="${WORK_DIR}/log"
+            MONITOR_DIR="${WORK_DIR}/monitor"
             OUTPUT_DIR="${WORK_DIR}/output"
             VISOR_BIN_FILE_NAME="chronovisor_server"
             KEEPER_BIN_FILE_NAME="chrono_keeper"
@@ -634,7 +641,7 @@ parse_args() {
             KEEPER_HOSTS="${CONF_DIR}/hosts_keeper"
             CLIENT_HOSTS="${CONF_DIR}/hosts_client"
             [ -f "${GRAPHER_HOSTS}" ] && NUM_RECORDING_GROUP=$(wc -l <"${GRAPHER_HOSTS}") || NUM_RECORDING_GROUP=1
-            mkdir -p ${LOG_DIR}
+            mkdir -p ${MONITOR_DIR}
             mkdir -p ${OUTPUT_DIR}
             shift 2
             ;;
