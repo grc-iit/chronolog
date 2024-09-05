@@ -225,7 +225,7 @@ chronolog::VisorClientPortal::AcquireStory(chl::ClientId const &client_id, std::
     // so that they are ready to start recording this story
 
     if(chronolog::CL_SUCCESS != theKeeperRegistry->notifyRecordingGroupOfStoryRecordingStart(
-                                        chronicle_name, story_name, client_id, story_id, recording_keepers))
+                                        chronicle_name, story_name, story_id, recording_keepers))
     {
         // RPC notification to the keepers might have failed, release the newly acquired story
         chronicleMetaDirectory.release_story(client_id, chronicle_name, story_name, story_id);

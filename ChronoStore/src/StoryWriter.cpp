@@ -232,9 +232,6 @@ int StoryWriter::writeStoryChunks(const std::map <uint64_t, chronolog::StoryChun
         // Write story_name attribute to the dataset
         status = writeStringAttribute(story_chunk_dset, "story_name", story_name);
 
-        // Write client_id attribute to the dataset
-        status = writeUint64Attribute(story_chunk_dset, "client_id", story_chunk_map_it->second.getClientId());
-
         // Write story_id attribute to the dataset
         status = writeUint64Attribute(story_chunk_dset, "story_id", story_id);
 

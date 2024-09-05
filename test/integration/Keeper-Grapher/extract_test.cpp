@@ -34,7 +34,7 @@ chronolog::StoryChunk*generateRandomStoryChunk()
 //    std::string log_event_str_base = "FFFFFFFFFFFFFFFFFFFFFF" + std::to_string(story_id); // for #events=10
     std::string log_event_str_base = "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF" + std::to_string(story_id); // for #events=100
 //    std::string log_event_str_base = "FFFFFFFFFF = " + std::to_string(story_id); // for #events=1000
-    auto*story_chunk = new chronolog::StoryChunk(chronicle_name, story_name, client_id, story_id, start_time, end_time);
+    auto*story_chunk = new chronolog::StoryChunk(chronicle_name, story_name, story_id, start_time, end_time);
     for(int i = 0; i < NUM_EVENTS; ++i)
     {
         chronolog::EventSequence event_sequence = chronolog::EventSequence(start_time, client_id, i);

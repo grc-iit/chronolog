@@ -28,7 +28,7 @@ class StoryChunk
 {
 public:
 
-    StoryChunk(ChronicleName const &chronicle_name = "", StoryName const &story_name = "", ClientId const &client_id = 0
+    StoryChunk(ChronicleName const &chronicle_name = "", StoryName const &story_name = ""
                , StoryId const &story_id = 0, uint64_t start_time = 0, uint64_t end_time = 0
                , uint32_t chunk_size = 1024);
 
@@ -39,9 +39,6 @@ public:
 
     StoryName const &getStoryName() const
     { return storyName; }
-
-    ClientId const &getClientId() const
-    { return clientId; }
 
     StoryId const &getStoryId() const
     { return storyId; }
@@ -100,7 +97,6 @@ public:
     {
         serT&chronicleName;
         serT&storyName;
-        serT&clientId;
         serT&storyId;
         serT&startTime;
         serT&endTime;
@@ -111,7 +107,6 @@ public:
 private:
     ChronicleName chronicleName;
     StoryName storyName;
-    ClientId clientId;
     StoryId storyId;
     uint64_t startTime;
     uint64_t endTime;

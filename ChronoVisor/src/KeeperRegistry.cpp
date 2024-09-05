@@ -474,9 +474,9 @@ std::vector<KeeperIdCard>& RecordingGroup::getActiveKeepers(std::vector<KeeperId
     return keeper_id_cards;
 }
 /////////////////
-int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName const& chronicle, StoryName const& story,
-                                                              ClientId const& client_id, StoryId const& story_id,
-                                                              std::vector<KeeperIdCard>& vectorOfKeepers)
+int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName const& chronicle, StoryName const &story
+                                                              , StoryId const &story_id
+                                                              , std::vector <KeeperIdCard> &vectorOfKeepers)
 {
     vectorOfKeepers.clear();
 
@@ -526,13 +526,12 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
     // the registryLock is released by this point..
     // notify Grapher and notifyKeepers functions use delayedExit logic to protect
     // the rpc code from DataAdminClients being destroyed while notification is in progress..
-    int rpc_return = notifyGrapherOfStoryRecordingStart(*recording_group, chronicle, story, client_id, story_id
-                                                        , story_start_time);
+    int rpc_return = notifyGrapherOfStoryRecordingStart(*recording_group, chronicle, story, story_id, story_start_time);
 
     if(rpc_return == CL_SUCCESS)
     {
         recording_group->getActiveKeepers(vectorOfKeepers);
-        rpc_return = notifyKeepersOfStoryRecordingStart(*recording_group, vectorOfKeepers, chronicle, story, client_id, story_id,
+        rpc_return = notifyKeepersOfStoryRecordingStart(*recording_group, vectorOfKeepers, chronicle, story, story_id,
                                                         story_start_time);
     }
 
@@ -541,8 +540,8 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
 
 ////////////////
 int KeeperRegistry::notifyGrapherOfStoryRecordingStart(RecordingGroup &recordingGroup, ChronicleName const &chronicle
-                                                       , StoryName const &story, ClientId const &clientId
-                                                       , StoryId const &storyId, uint64_t story_start_time)
+                                                       , StoryName const &story, StoryId const &storyId
+                                                       , uint64_t story_start_time)
 {
     int return_code = chronolog::CL_ERR_NO_KEEPERS;
 
@@ -577,7 +576,7 @@ int KeeperRegistry::notifyGrapherOfStoryRecordingStart(RecordingGroup &recording
 
     try
     {
-        return_code = dataAdminClient->send_start_story_recording(chronicle, story, clientId, storyId, story_start_time);
+        return_code = dataAdminClient->send_start_story_recording(chronicle, story, storyId, story_start_time);
         if(return_code != CL_SUCCESS)
         {
             LOG_WARNING("[KeeperRegistry] Registry failed RPC notification to {}", recordingGroup.grapherProcess->idCardString);
@@ -655,11 +654,10 @@ int KeeperRegistry::notifyGrapherOfStoryRecordingStop(RecordingGroup& recordingG
 }
 /////////////////////
 
-int KeeperRegistry::notifyKeepersOfStoryRecordingStart(RecordingGroup& recordingGroup,
-                                                       std::vector<KeeperIdCard>& vectorOfKeepers,
-                                                       ChronicleName const& chronicle, StoryName const& story,
-                                                       ClientId const& clientId, StoryId const& storyId,
-                                                       uint64_t story_start_time)
+int KeeperRegistry::notifyKeepersOfStoryRecordingStart(RecordingGroup& recordingGroup
+                                                       , std::vector <KeeperIdCard> &vectorOfKeepers
+                                                       , ChronicleName const &chronicle, StoryName const &story
+                                                       , StoryId const &storyId, uint64_t story_start_time)
 {
 
     // if there are no activeGroups ready for recording
@@ -702,7 +700,7 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart(RecordingGroup& recording
 
         try
         {
-            int rpc_return = dataAdminClient->send_start_story_recording(chronicle, story, clientId, storyId, story_start_time);
+            int rpc_return = dataAdminClient->send_start_story_recording(chronicle, story, storyId, story_start_time);
             if(rpc_return != CL_SUCCESS)
             {
                 LOG_WARNING("[KeeperRegistry] Registry failed RPC notification to keeper {}", id_string.str());

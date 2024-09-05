@@ -145,9 +145,8 @@ public:
 
         void updateKeeperProcessStats(KeeperStatsMsg const& keeperStatsMsg);
 
-        int notifyRecordingGroupOfStoryRecordingStart(ChronicleName const&, StoryName const&,
-                                                      ClientId const& client_id, StoryId const&,
-                                                      std::vector<KeeperIdCard>&);
+        int notifyRecordingGroupOfStoryRecordingStart(ChronicleName const &, StoryName const &, StoryId const &
+                                                      , std::vector <KeeperIdCard> &);
         int notifyRecordingGroupOfStoryRecordingStop(StoryId const&);
 
         int registerGrapherProcess(GrapherRegistrationMsg const& reg_msg);
@@ -157,12 +156,12 @@ public:
         KeeperRegistry(KeeperRegistry const&) = delete;//disable copying
         KeeperRegistry& operator=(KeeperRegistry const&) = delete;
 
-        int notifyGrapherOfStoryRecordingStart(RecordingGroup &, ChronicleName const &, StoryName const &
-                                               , ClientId const &clientId, StoryId const &, uint64_t);
+        int notifyGrapherOfStoryRecordingStart(RecordingGroup &, ChronicleName const &, StoryName const &, StoryId const &
+                                               , uint64_t);
         int notifyGrapherOfStoryRecordingStop(RecordingGroup&, StoryId const&);
-        int notifyKeepersOfStoryRecordingStart(RecordingGroup&, std::vector<KeeperIdCard>&, ChronicleName const&,
-                                               StoryName const&, ClientId const&, StoryId const&, uint64_t);
-        int notifyKeepersOfStoryRecordingStop(RecordingGroup&, std::vector<KeeperIdCard> const&, StoryId const&);
+        int notifyKeepersOfStoryRecordingStart(RecordingGroup&, std::vector<KeeperIdCard> &, ChronicleName const &
+                                               , StoryName const &, StoryId const &, uint64_t);
+        int notifyKeepersOfStoryRecordingStop(RecordingGroup &, std::vector <KeeperIdCard> const &, StoryId const &);
 
         RegistryState registryState;
         std::mutex registryLock;

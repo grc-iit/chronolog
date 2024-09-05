@@ -26,12 +26,10 @@ public:
 ////////////////////////
 
 int chronolog::KeeperDataStore::startStoryRecording(std::string const &chronicle, std::string const &story
-                                                    , chronolog::ClientId const &client_id
                                                     , chronolog::StoryId const &story_id, uint64_t start_time
                                                     , uint32_t time_chunk_duration, uint32_t access_window)
 {
-    LOG_INFO("[KeeperDataStore] Start recording story: Chronicle={}, Story={}, ClientID={}, StoryID={}", chronicle
-             , story, client_id, story_id);
+    LOG_INFO("[KeeperDataStore] Start recording story: Chronicle={}, Story={}, StoryID={}", chronicle, story, story_id);
 
     // Get dataStoreMutex, check for story_id_presense & add new StoryPipeline if needed
     std::lock_guard storeLock(dataStoreMutex);
@@ -52,7 +50,7 @@ int chronolog::KeeperDataStore::startStoryRecording(std::string const &chronicle
 
     auto result = theMapOfStoryPipelines.emplace(
             std::pair <chl::StoryId, chl::StoryPipeline*>(story_id, new chl::StoryPipeline(theExtractionQueue, chronicle
-                                                                                           , story, client_id, story_id, start_time
+                                                                                           , story, story_id, start_time
                                                                                            , time_chunk_duration)));
 
     if(result.second)
@@ -79,7 +77,7 @@ int chronolog::KeeperDataStore::stopStoryRecording(chronolog::StoryId const &sto
     // we do not yet disengage the StoryPipeline from the IngestionQueue right away
     // but put it on the WaitingForExit list to be finalized, persisted to disk , and
     // removed from memory at exit_time = now+acceptance_window...
-    // unless there's a new story acqiusition request comes before that moment
+    // unless there's a new story acquisition request comes before that moment
     std::lock_guard storeLock(dataStoreMutex);
     auto pipeline_iter = theMapOfStoryPipelines.find(story_id);
     if(pipeline_iter != theMapOfStoryPipelines.end())

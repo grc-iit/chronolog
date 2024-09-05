@@ -8,10 +8,10 @@ namespace chl = chronolog;
 /////////////////////////
 
 chl::StoryChunk::StoryChunk(chl::ChronicleName const &chronicle_name, chl::StoryName const &story_name
-                            , chl::ClientId const &client_id, chl::StoryId const &story_id, uint64_t start_time
+                            , chl::StoryId const &story_id, uint64_t start_time
                             , uint64_t end_time, uint32_t chunk_size)
                             : chronicleName(chronicle_name), storyName(story_name)
-                            , clientId(client_id), storyId(story_id)
+                            , storyId(story_id)
                             , startTime(start_time), endTime(end_time), revisionTime(end_time)
 {
 

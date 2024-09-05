@@ -25,7 +25,6 @@ int chronolog::CSVFileStoryChunkExtractor::processStoryChunk(chronolog::StoryChu
     std::string chunk_filename(rootDirectory);
     chunk_filename += "/" + story_chunk->getChronicleName() + "."
             + story_chunk->getStoryName() + "."
-            + std::to_string(story_chunk->getClientId()) + "."
             + std::to_string(story_chunk->getStartTime() / 1000000000) + ".csv";
 
     tl::xstream es = tl::xstream::self();
