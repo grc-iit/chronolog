@@ -1,5 +1,5 @@
-#ifndef KEEPER_DATA_STORE_H
-#define KEEPER_DATA_STORE_H
+#ifndef GRAPHER_DATA_STORE_H
+#define GRAPHER_DATA_STORE_H
 
 #include <vector>
 #include <list>
@@ -17,7 +17,7 @@ namespace chronolog
 {
 
 
-class KeeperDataStore
+class GrapherDataStore
 {
 
     enum DataStoreState
@@ -28,12 +28,12 @@ class KeeperDataStore
 
 
 public:
-    KeeperDataStore(ChunkIngestionQueue &ingestion_queue, StoryChunkExtractionQueue &extraction_queue): state(UNKNOWN)
-                                                                                                   , theIngestionQueue(
+    GrapherDataStore(ChunkIngestionQueue &ingestion_queue, StoryChunkExtractionQueue &extraction_queue): state(UNKNOWN)
+                                                                                                        , theIngestionQueue(
                     ingestion_queue), theExtractionQueue(extraction_queue)
     {}
 
-    ~KeeperDataStore();
+    ~GrapherDataStore();
 
     bool is_running() const
     { return (RUNNING == state); }
@@ -59,9 +59,9 @@ public:
     void dataCollectionTask();
 
 private:
-    KeeperDataStore(KeeperDataStore const &) = delete;
+    GrapherDataStore(GrapherDataStore const &) = delete;
 
-    KeeperDataStore &operator=(KeeperDataStore const &) = delete;
+    GrapherDataStore &operator=(GrapherDataStore const &) = delete;
 
     DataStoreState state;
     std::mutex dataStoreStateMutex;

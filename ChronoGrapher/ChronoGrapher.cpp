@@ -10,7 +10,7 @@
 #include "ChunkIngestionQueue.h"
 #include "StoryChunkExtractionQueue.h"
 #include "StoryChunkExtractor.h"
-#include "KeeperDataStore.h"
+#include "GrapherDataStore.h"
 #include "DataStoreAdminService.h"
 #include "ConfigurationManager.h"
 #include "CSVFileChunkExtractor.h"
@@ -137,13 +137,13 @@ int main(int argc, char**argv)
     std::string csv_files_directory = confManager.GRAPHER_CONF.EXTRACTOR_CONF.story_files_dir;
 
     chronolog::CSVFileStoryChunkExtractor storyExtractor(process_id_string.str(), csv_files_directory);
-    chronolog::KeeperDataStore theDataStore(ingestionQueue, storyExtractor.getExtractionQueue());
+    chronolog::GrapherDataStore theDataStore(ingestionQueue, storyExtractor.getExtractionQueue());
 
     chronolog::ServiceId collectionServiceId(datastore_endpoint.first, datastore_endpoint.second
                                              , datastore_service_provider_id);
     tl::engine*dataAdminEngine = nullptr;
 
-    chronolog::DataStoreAdminService*keeperDataAdminService = nullptr;
+    chronolog::DataStoreAdminService*grapherDataAdminService = nullptr;
 
     try
     {
@@ -156,17 +156,17 @@ int main(int argc, char**argv)
         s3 << dataAdminEngine->self();
         LOG_DEBUG("[ChronoGrapher] starting DataStoreAdminService at address {} with ProviderID={}", s3.str()
                   , datastore_service_provider_id);
-        keeperDataAdminService = chronolog::DataStoreAdminService::CreateDataStoreAdminService(*dataAdminEngine
-                                                                                               , datastore_service_provider_id
-                                                                                               , theDataStore);
+        grapherDataAdminService = chronolog::DataStoreAdminService::CreateDataStoreAdminService(*dataAdminEngine
+                                                                                                , datastore_service_provider_id
+                                                                                                , theDataStore);
     }
     catch(tl::exception const &)
     {
         LOG_ERROR("[ChronoGrapher]  failed to create DataStoreAdminService");
-        keeperDataAdminService = nullptr;
+        grapherDataAdminService = nullptr;
     }
 
-    if(nullptr == keeperDataAdminService)
+    if(nullptr == grapherDataAdminService)
     {
         LOG_CRITICAL("[ChronoGrapher] failed to create DataStoreAdminService exiting");
         return (-1);
@@ -198,7 +198,7 @@ int main(int argc, char**argv)
     if(nullptr == grapherRecordingService)
     {
         LOG_CRITICAL("[ChronoGrapher] failed to create RecordingService exiting");
-        delete keeperDataAdminService;
+        delete grapherDataAdminService;
         return (-1);
     }
 
@@ -218,7 +218,7 @@ int main(int argc, char**argv)
     {
         LOG_CRITICAL("[ChronoGrapher] failed to create RegistryClient; exiting");
         delete grapherRecordingService;
-        delete keeperDataAdminService;
+        delete grapherDataAdminService;
         return (-1);
     }
 
@@ -241,7 +241,7 @@ int main(int argc, char**argv)
         LOG_CRITICAL("[ChronoGrapher] Failed to register with ChronoVisor after multiple attempts. Exiting.");
         delete grapherRegistryClient;
         delete grapherRecordingService;
-        delete keeperDataAdminService;
+        delete grapherDataAdminService;
         return (-1);
     }
     LOG_INFO("[ChronoGrapher] Successfully registered with ChronoVisor.");
@@ -275,7 +275,7 @@ int main(int argc, char**argv)
     LOG_INFO("[ChronoGrapher] Initiating shutdown procedures.");
     // Stop recording events
     delete grapherRecordingService;
-    delete keeperDataAdminService;
+    delete grapherDataAdminService;
     // Shutdown the Data Collection
     theDataStore.shutdownDataCollection();
     // Shutdown extraction module

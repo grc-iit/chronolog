@@ -474,9 +474,9 @@ std::vector<KeeperIdCard>& RecordingGroup::getActiveKeepers(std::vector<KeeperId
     return keeper_id_cards;
 }
 /////////////////
-int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName const& chronicle, StoryName const& story,
-                                                              StoryId const& story_id,
-                                                              std::vector<KeeperIdCard>& vectorOfKeepers)
+int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName const& chronicle, StoryName const &story
+                                                              , StoryId const &story_id
+                                                              , std::vector <KeeperIdCard> &vectorOfKeepers)
 {
     vectorOfKeepers.clear();
 
@@ -539,9 +539,9 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
 }
 
 ////////////////
-int KeeperRegistry::notifyGrapherOfStoryRecordingStart(RecordingGroup& recordingGroup, ChronicleName const& chronicle,
-                                                       StoryName const& story, StoryId const& storyId,
-                                                       uint64_t story_start_time)
+int KeeperRegistry::notifyGrapherOfStoryRecordingStart(RecordingGroup &recordingGroup, ChronicleName const &chronicle
+                                                       , StoryName const &story, StoryId const &storyId
+                                                       , uint64_t story_start_time)
 {
     int return_code = chronolog::CL_ERR_NO_KEEPERS;
 
@@ -654,10 +654,10 @@ int KeeperRegistry::notifyGrapherOfStoryRecordingStop(RecordingGroup& recordingG
 }
 /////////////////////
 
-int KeeperRegistry::notifyKeepersOfStoryRecordingStart(RecordingGroup& recordingGroup,
-                                                       std::vector<KeeperIdCard>& vectorOfKeepers,
-                                                       ChronicleName const& chronicle, StoryName const& story,
-                                                       StoryId const& storyId, uint64_t story_start_time)
+int KeeperRegistry::notifyKeepersOfStoryRecordingStart(RecordingGroup& recordingGroup
+                                                       , std::vector <KeeperIdCard> &vectorOfKeepers
+                                                       , ChronicleName const &chronicle, StoryName const &story
+                                                       , StoryId const &storyId, uint64_t story_start_time)
 {
 
     // if there are no activeGroups ready for recording

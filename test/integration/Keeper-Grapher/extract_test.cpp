@@ -25,14 +25,16 @@ chronolog::StoryChunk*generateRandomStoryChunk()
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_int_distribution <> dis(1, 100);
+    std::string chronicle_name = "CHRONICLE_" + std::to_string(dis(gen));
+    std::string story_name = "STORY_" + std::to_string(dis(gen));
+    uint64_t client_id = dis(gen);
     uint64_t story_id = dis(gen);
     uint64_t start_time = dis(gen) * 4;
     uint64_t end_time = start_time + NUM_EVENTS * 128;
 //    std::string log_event_str_base = "FFFFFFFFFFFFFFFFFFFFFF" + std::to_string(story_id); // for #events=10
     std::string log_event_str_base = "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF" + std::to_string(story_id); // for #events=100
 //    std::string log_event_str_base = "FFFFFFFFFF = " + std::to_string(story_id); // for #events=1000
-    auto*story_chunk = new chronolog::StoryChunk(story_id, start_time, end_time);
-    uint32_t client_id = dis(gen);
+    auto*story_chunk = new chronolog::StoryChunk(chronicle_name, story_name, story_id, start_time, end_time);
     for(int i = 0; i < NUM_EVENTS; ++i)
     {
         chronolog::EventSequence event_sequence = chronolog::EventSequence(start_time, client_id, i);
@@ -103,8 +105,8 @@ void standaloneExtraction()
 
         // serialize StoryChunk
         start = std::chrono::high_resolution_clock::now();
-        char serialized_buf[MAX_BULK_MEM_SIZE];
         size_t serialized_story_chunk_size;
+        char *serialized_buf = new char[MAX_BULK_MEM_SIZE];
         std::ostringstream oss(std::ios::binary);
         oss.rdbuf()->pubsetbuf(serialized_buf, MAX_BULK_MEM_SIZE);
         cereal::BinaryOutputArchive oarchive(oss);
@@ -116,7 +118,9 @@ void standaloneExtraction()
 //            std::cout << serialized_buf[i] << " ";
 //        }
 //        std::cout << std::endl;
-        size_t story_chunk_size = sizeof(uint64_t) * 4; // for four uint64_t members in StoryChunk
+        size_t story_chunk_size = sizeof(uint64_t) * 5; // for five uint64_t members in StoryChunk
+        story_chunk_size += story_chunk->getChronicleName().size();
+        story_chunk_size += story_chunk->getStoryName().size();
         for(const auto &iter: *story_chunk)
         {
             story_chunk_size += sizeof(iter.first) + sizeof(iter.second.storyId) + sizeof(iter.second.eventTime) +
@@ -155,6 +159,9 @@ void standaloneExtraction()
             LOG_ERROR("[standalone_extract_test] T{}: Failed to drain a story chunk to Grapher, Error Code: {}", tid
                       , result);
         }
+
+        // release memory
+        delete[] serialized_buf;
     }
     LOG_DEBUG("[standalone_extract_test] T{}: Exiting ...", tid);
 }
