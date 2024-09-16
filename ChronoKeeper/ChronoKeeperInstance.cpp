@@ -224,7 +224,7 @@ int main(int argc, char**argv)
         std::stringstream s1;
         s1 << recordingEngine->self();
         LOG_INFO("[ChronoKeeperInstance] GroupID={} starting KeeperRecordingService at {} with provider_id {}"
-                 , keeper_group_id, s1.str(), datastore_service_provider_id);
+                 , keeper_group_id, s1.str(), recording_service_provider_id);
         keeperRecordingService = chronolog::KeeperRecordingService::CreateKeeperRecordingService(*recordingEngine
                                                                                                  , recording_service_provider_id
                                                                                                  , ingestionQueue);

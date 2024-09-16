@@ -74,6 +74,7 @@ private:
     uint32_t hostId;
     uint32_t pid;
     ClientId clientId;
+    std::string storytellerRpcProtocol;
     ChronologTimer clockProxy;
     thallium::engine*tlEngine;
     RpcVisorClient*rpcVisorClient;

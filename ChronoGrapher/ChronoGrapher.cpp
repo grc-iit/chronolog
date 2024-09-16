@@ -184,7 +184,7 @@ int main(int argc, char**argv)
         std::stringstream s1;
         s1 << recordingEngine->self();
         LOG_INFO("[ChronoGrapher] starting RecordingService at {} with provider_id {}", s1.str()
-                 , datastore_service_provider_id);
+                 , recording_service_provider_id);
         grapherRecordingService = chronolog::GrapherRecordingService::CreateRecordingService(*recordingEngine
                                                                                              , recording_service_provider_id
                                                                                              , ingestionQueue);

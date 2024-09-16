@@ -58,6 +58,7 @@ chronolog::ChronologClientImpl::ChronologClientImpl(const ChronoLog::Configurati
             std::to_string(confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT);
     rpcVisorClient = chl::RpcVisorClient::CreateRpcVisorClient(*tlEngine, CLIENT_VISOR_NA_STRING
                                                                , confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID);
+    storytellerRpcProtocol = confManager.KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.PROTO_CONF;
 }
 ///////////////
 
@@ -157,7 +158,7 @@ int chronolog::ChronologClientImpl::Connect()
         clientId = connectResponseMsg.getClientId();
         if(storyteller == nullptr)
         {
-            storyteller = new StorytellerClient(clockProxy, *tlEngine, clientId);
+            storyteller = new StorytellerClient(clockProxy, *tlEngine, clientId, storytellerRpcProtocol);
         }
         //TODO: if we ever change the connection hashing algorithm we'd need to handle reconnection case with the new client_id 
     }
