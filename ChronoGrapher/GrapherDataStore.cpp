@@ -23,7 +23,7 @@ int chronolog::GrapherDataStore::startStoryRecording(std::string const &chronicl
     LOG_INFO("[GrapherDataStore] Start recording story: Chronicle={}, Story={}, StoryId={}"
              , chronicle, story, story_id);
 
-    // Get dataStoreMutex, check for story_id_presense & add new StoryPipeline if needed
+    // Get dataStoreMutex, check for story_id_presence & add new StoryPipeline if needed
     std::lock_guard storeLock(dataStoreMutex);
     auto pipeline_iter = theMapOfStoryPipelines.find(story_id);
     if(pipeline_iter != theMapOfStoryPipelines.end())
@@ -69,7 +69,7 @@ int chronolog::GrapherDataStore::stopStoryRecording(chronolog::StoryId const &st
     // we do not yet disengage the StoryPipeline from the IngestionQueue right away
     // but put it on the WaitingForExit list to be finalized, persisted to disk , and
     // removed from memory at exit_time = now+acceptance_window...
-    // unless there's a new story acqiusition request comes before that moment
+    // unless there's a new story acquisition request comes before that moment
     std::lock_guard storeLock(dataStoreMutex);
     auto pipeline_iter = theMapOfStoryPipelines.find(story_id);
     if(pipeline_iter != theMapOfStoryPipelines.end())
