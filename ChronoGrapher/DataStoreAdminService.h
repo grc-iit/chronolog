@@ -7,7 +7,7 @@
 #include <thallium/serialization/stl/string.hpp>
 
 #include "chronolog_types.h"
-#include "KeeperDataStore.h"
+#include "GrapherDataStore.h"
 
 namespace tl = thallium;
 
@@ -19,7 +19,7 @@ class DataStoreAdminService: public tl::provider <DataStoreAdminService>
 public:
     // Service should be created on the heap not the stack thus the constructor is private...
     static DataStoreAdminService*
-    CreateDataStoreAdminService(tl::engine &tl_engine, uint16_t service_provider_id, KeeperDataStore &dataStoreInstance)
+    CreateDataStoreAdminService(tl::engine &tl_engine, uint16_t service_provider_id, GrapherDataStore &dataStoreInstance)
     {
         return new DataStoreAdminService(tl_engine, service_provider_id, dataStoreInstance);
     }
@@ -60,7 +60,7 @@ public:
     }
 
 private:
-    DataStoreAdminService(tl::engine &tl_engine, uint16_t service_provider_id, KeeperDataStore &data_store_instance)
+    DataStoreAdminService(tl::engine &tl_engine, uint16_t service_provider_id, GrapherDataStore &data_store_instance)
             : tl::provider <DataStoreAdminService>(tl_engine, service_provider_id), theDataStore(data_store_instance)
     {
         define("collection_service_available", &DataStoreAdminService::collection_service_available);
@@ -80,7 +80,7 @@ private:
 
     DataStoreAdminService &operator=(DataStoreAdminService const &) = delete;
 
-    KeeperDataStore &theDataStore;
+    GrapherDataStore &theDataStore;
 };
 
 }// namespace chronolog

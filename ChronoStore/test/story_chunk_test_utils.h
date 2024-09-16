@@ -8,6 +8,10 @@
 #include <random>
 #include <StoryChunk.h>
 
+#define CHRONICLE_NAME "Ares_Monitoring"
+#define STORY_NAME "CPU_Utilization"
+#define CLIENT_ID 1
+
 /**
  * @brief Generate a StoryChunk with random events with random Event size following normal distribution
  * @param story_id: StoryID
@@ -28,7 +32,7 @@ generateStoryChunk(uint64_t story_id, chronolog::ClientId client_id, uint64_t st
                    , uint64_t end_time, uint64_t mean_event_size, uint64_t min_event_size, uint64_t max_event_size
                    , double stddev, uint64_t num_events_per_story_chunk, uint64_t &total_event_size)
 {
-    chronolog::StoryChunk story_chunk(story_id, start_time, end_time);
+    chronolog::StoryChunk story_chunk(CHRONICLE_NAME, STORY_NAME, story_id, start_time, end_time);
     std::random_device rd;
     std::mt19937_64 generator(rd());
     std::normal_distribution <double> normal_dist(mean_event_size, stddev);

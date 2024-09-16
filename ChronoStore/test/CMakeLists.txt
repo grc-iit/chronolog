@@ -33,7 +33,7 @@ add_test(NAME hdf5_archiver_test COMMAND hdf5_archiver_test)
 #add_executable(cmp_vlen_str_dtype_test
 #    cmp_vlen_str_dtype_test.cpp
 #    story_chunk_test_utils.h
-#    ../../ChronoAPI/ChronoLog/src/log.cpp)
+#    ../../ChronoAPI/ChronoLog/src/chrono_monitor.cpp)
 #target_include_directories(cmp_vlen_str_dtype_test PRIVATE ../../ChronoKeeper
 #    ./)
 #target_link_libraries(cmp_vlen_str_dtype_test ${HDF5_LIBRARIES})
@@ -43,7 +43,7 @@ add_test(NAME hdf5_archiver_test COMMAND hdf5_archiver_test)
 #add_executable(cmp_vlen_bytes_dtype_test
 #    cmp_vlen_bytes_dtype_test.cpp
 #    story_chunk_test_utils.h
-#    ../../ChronoAPI/ChronoLog/src/log.cpp)
+#    ../../ChronoAPI/ChronoLog/src/chrono_monitor.cpp)
 #target_include_directories(cmp_vlen_bytes_dtype_test PRIVATE ../../ChronoKeeper
 #    ./)
 #target_link_libraries(cmp_vlen_bytes_dtype_test ${HDF5_LIBRARIES})

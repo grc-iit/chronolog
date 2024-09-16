@@ -38,7 +38,7 @@ public:
     ~StoryWriter() = default;
 
     int writeStoryChunks(const std::map <uint64_t, chronolog::StoryChunk> &story_chunk_map
-                         , const std::string &chronicle_name);
+                         , const std::string &chronicle_name, const std::string &story_name);
 
     static void serializeStoryChunk(json_object*obj, chronolog::StoryChunk &story_chunk);
 

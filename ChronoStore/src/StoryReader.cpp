@@ -135,6 +135,12 @@ chronolog::StoryChunk StoryReader::readOneStoryChunk(hid_t &story_file, const st
     }
     LOG_DEBUG("read {} bytes from story_chunk_dset: {}", strlen(story_chunk_dset_buf), story_chunk_name.c_str());
 
+    // Read chronicle_name attribute
+    std::string chronicle_name = readStringAttribute(story_chunk_dset, "chronicle_name");
+
+    // Read story_name attribute
+    std::string story_name = readStringAttribute(story_chunk_dset, "story_name");
+
     // Read story_id_str attribute
     uint64_t story_id = readUint64Attribute(story_chunk_dset, "story_id");
 
@@ -145,7 +151,8 @@ chronolog::StoryChunk StoryReader::readOneStoryChunk(hid_t &story_file, const st
     uint64_t end_time = readUint64Attribute(story_chunk_dset, "end_time");
 
     // Convert Story Chunk bytes to map of Story Chunks
-    chronolog::StoryChunk story_chunk = deserializeStoryChunk(story_chunk_dset_buf, story_id, start_time, end_time);
+    chronolog::StoryChunk story_chunk = deserializeStoryChunk(story_chunk_dset_buf, chronicle_name, story_name
+                                                              , story_id, start_time, end_time);
 
     free(story_chunk_dset_buf);
     free(story_chunk_dset_dims);
@@ -203,17 +210,19 @@ uint64_t StoryReader::readUint64Attribute(hid_t &story_chunk_dset
 /**
  * Deserialize a Story Chunk from a JSON string
  * @param story_chunk_json_str JSON string read from a Story Chunk dataset
+ * @param chronicle_name Chronicle name
+ * @param story_name Story name
  * @param story_id StoryID
  * @param start_time start time of the Story Chunk
  * @param end_time end time of the Story Chunk
  * @return a Story Chunk
  */
 chronolog::StoryChunk
-StoryReader::deserializeStoryChunk(char*story_chunk_json_str, // NOLINT(*-convert-member-functions-to-static)
-        uint64_t story_id, uint64_t start_time, uint64_t end_time)
+StoryReader::deserializeStoryChunk(char*story_chunk_json_str, std::string chronicle_name, std::string story_name
+                                   , uint64_t story_id, uint64_t start_time, uint64_t end_time)
 {
     struct json_object*obj = json_tokener_parse(story_chunk_json_str);
-    chronolog::StoryChunk story_chunk(story_id, start_time, end_time);
+    chronolog::StoryChunk story_chunk(chronicle_name, story_name, story_id, start_time, end_time);
     enum json_type type = json_object_get_type(obj);
     if(type == json_type_object)
     {

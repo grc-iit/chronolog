@@ -16,8 +16,8 @@ namespace chl = chronolog;
 
 ////////////////////////
 
-chronolog::StoryPipeline::StoryPipeline(StoryChunkExtractionQueue &extractionQueue, std::string const &chronicle_name
-                                        , std::string const &story_name, chronolog::StoryId const &story_id
+chronolog::StoryPipeline::StoryPipeline(StoryChunkExtractionQueue &extractionQueue, chronolog::ChronicleName const &chronicle_name
+                                        , chronolog::StoryName const &story_name, chronolog::StoryId const &story_id
                                         , uint64_t story_start_time, uint16_t chunk_granularity
                                         , uint16_t acceptance_window): theExtractionQueue(extractionQueue), storyId(
         story_id), chronicleName(chronicle_name), storyName(story_name), timelineStart(story_start_time), timelineEnd(
@@ -144,7 +144,7 @@ std::map <uint64_t, chronolog::StoryChunk*>::iterator chronolog::StoryPipeline::
 #endif
     auto result = storyTimelineMap.insert(
             std::pair <uint64_t, chronolog::StoryChunk*>(timelineStart - chunkGranularity, new chronolog::StoryChunk(
-                    storyId, timelineStart - chunkGranularity, timelineStart)));
+                    chronicleName, storyName, storyId, timelineStart - chunkGranularity, timelineStart)));
     if(!result.second)
     {
         return storyTimelineMap.end();
@@ -170,8 +170,7 @@ std::map <uint64_t, chronolog::StoryChunk*>::iterator chronolog::StoryPipeline::
                                storyId, timelineEnd);
 #endif
     auto result = storyTimelineMap.insert(
-            std::pair <uint64_t, chronolog::StoryChunk*>(timelineEnd, new chronolog::StoryChunk(storyId, timelineEnd,
-                    timelineEnd + chunkGranularity)));
+            std::pair <uint64_t, chronolog::StoryChunk*>(timelineEnd, new chronolog::StoryChunk(chronicleName, storyName, storyId, timelineEnd,timelineEnd + chunkGranularity)));
     if(!result.second)
     {
         return storyTimelineMap.end();

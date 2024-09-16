@@ -113,15 +113,18 @@ generate_config_files() {
         local grapher_index=$((i + 1))
         local grapher_output_file="${conf_dir}/grapher_conf_${grapher_index}.json"
 
+        grapher_monitoring_file=$(jq -r '.chrono_grapher.Monitoring.monitor.file' "$default_conf")
+        grapher_monitoring_file_name=$(basename "$grapher_monitoring_file")
         jq --arg monitor_dir "$monitor_dir" \
             --arg output_dir "$output_dir" \
             --argjson new_port_grapher_drain $new_port_grapher_drain \
             --argjson new_port_grapher_datastore $new_port_grapher_datastore \
             --argjson grapher_index "$grapher_index" \
+            --arg grapher_monitoring_file_name "$grapher_monitoring_file_name" \
            '.chrono_grapher.RecordingGroup = $grapher_index |
             .chrono_grapher.KeeperGrapherDrainService.rpc.service_base_port = $new_port_grapher_drain |
             .chrono_grapher.DataStoreAdminService.rpc.service_base_port = $new_port_grapher_datastore |
-            .chrono_grapher.Monitoring.monitor.file = ($monitor_dir + "/" + ($grapher_index | tostring) + "_" + .chrono_grapher.Monitoring.monitor.file) |
+            .chrono_grapher.Monitoring.monitor.file = ($monitor_dir + "/" + ($grapher_index | tostring) + "_" + $grapher_monitoring_file_name) |
             .chrono_grapher.Extractors.story_files_dir = ($output_dir + "/")' "$default_conf" > "$grapher_output_file"
 
         echo "Generated $grapher_output_file with ports $new_port_grapher_drain and $new_port_grapher_datastore"
@@ -138,6 +141,8 @@ generate_config_files() {
         local keeper_index=$((i + 1))
         local keeper_output_file="${conf_dir}/keeper_conf_${keeper_index}.json"
 
+        keeper_monitoring_file=$(jq -r '.chrono_keeper.Monitoring.monitor.file' "$default_conf")
+        keeper_monitoring_file_name=$(basename "$keeper_monitoring_file")
         jq --arg monitor_dir "$monitor_dir" \
             --arg output_dir "$output_dir" \
             --argjson new_port_keeper_record $new_port_keeper_record \
@@ -145,25 +150,32 @@ generate_config_files() {
             --argjson new_port_keeper_datastore $new_port_keeper_datastore \
             --argjson grapher_index "$grapher_index" \
             --arg keeper_index "$keeper_index" \
+            --arg keeper_monitoring_file_name "$keeper_monitoring_file_name" \
             '.chrono_keeper.KeeperRecordingService.rpc.service_base_port = $new_port_keeper_record |
             .chrono_keeper.KeeperGrapherDrainService.rpc.service_base_port = $new_port_keeper_drain |
             .chrono_keeper.KeeperDataStoreAdminService.rpc.service_base_port = $new_port_keeper_datastore |
             .chrono_keeper.story_files_dir = ($output_dir + "/") |
             .chrono_keeper.RecordingGroup = $grapher_index |
-            .chrono_keeper.Monitoring.monitor.file = ($monitor_dir + "/" + ($keeper_index | tostring) + "_" + .chrono_keeper.Monitoring.monitor.file)' "$default_conf" > "$keeper_output_file"
+            .chrono_keeper.Monitoring.monitor.file = ($monitor_dir + "/" + ($keeper_index | tostring) + "_" + $keeper_monitoring_file_name)' "$default_conf" > "$keeper_output_file"
         echo "Generated $keeper_output_file with ports $new_port_keeper_record, $new_port_keeper_datastore, and $new_port_keeper_drain"
     done
 
     # Generate visor configuration file
     local visor_output_file="${conf_dir}/visor_conf.json"
+    visor_monitoring_file=$(jq -r '.chrono_visor.Monitoring.monitor.file' "$default_conf")
+    visor_monitoring_file_name=$(basename "$visor_monitoring_file")
     jq --arg monitor_dir "$monitor_dir" \
-       '.chrono_visor.Monitoring.monitor.file = ($monitor_dir + "/" + .chrono_visor.Monitoring.monitor.file)' "$default_conf" > "$visor_output_file"
+        --arg visor_monitoring_file_name "$visor_monitoring_file_name" \
+       '.chrono_visor.Monitoring.monitor.file = ($monitor_dir + "/" + $visor_monitoring_file_name)' "$default_conf" > "$visor_output_file"
     echo "Generated $visor_output_file"
 
     # Generate client configuration file
     local client_output_file="${conf_dir}/client_conf.json"
+    client_monitoring_file=$(jq -r '.chrono_client.Monitoring.monitor.file' "$default_conf")
+    client_monitoring_file_name=$(basename "$client_monitoring_file")
     jq --arg monitor_dir "$monitor_dir" \
-       '.chrono_client.Monitoring.monitor.file = ($monitor_dir + "/" + .chrono_client.Monitoring.monitor.file)' "$default_conf" > "$client_output_file"
+        --arg client_monitoring_file_name "$client_monitoring_file_name" \
+       '.chrono_client.Monitoring.monitor.file = ($monitor_dir + "/" + $client_monitoring_file_name)' "$default_conf" > "$client_output_file"
     echo "Generated $client_output_file"
 
     echo "Generate configuration files for all recording groups done"
@@ -285,16 +297,16 @@ reset() {
     echo -e "${DEBUG}Delete all generated files${NC}"
 
     # Remove all config files
-    rm ${CONF_DIR}/client_conf.json
-    rm ${CONF_DIR}/grapher_conf*.json
-    rm ${CONF_DIR}/keeper_conf*.json
-    rm ${CONF_DIR}/visor_conf.json
+    rm -f ${CONF_DIR}/client_conf.json
+    rm -f ${CONF_DIR}/grapher_conf*.json
+    rm -f ${CONF_DIR}/keeper_conf*.json
+    rm -f ${CONF_DIR}/visor_conf.json
 
     # Remove all monitor files
-    rm ${MONITOR_DIR}/*.log
+    rm -f ${MONITOR_DIR}/*.log
 
     # Remove all output files
-    rm ${OUTPUT_DIR}/*
+    rm -f ${OUTPUT_DIR}/*
     echo -e "${DEBUG}Reset done${NC}"
 }
 
