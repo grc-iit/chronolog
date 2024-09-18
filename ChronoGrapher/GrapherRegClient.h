@@ -7,7 +7,7 @@
 
 #include "GrapherIdCard.h"
 #include "GrapherRegistrationMsg.h"
-//#include "GrapherStatsMsg.h"
+#include "GrapherStatsMsg.h"
 #include "chronolog_errcode.h"
 
 namespace tl = thallium;
@@ -62,32 +62,32 @@ public:
         }
         catch(tl::exception const &)
         {
-            LOG_ERROR("[KeeperRegisterClient] Failed Sending Unregistered Message.");
+            LOG_ERROR("[GrapherRegistryClient] Failed Sending Unregistered Message.");
             return CL_ERR_UNKNOWN;
         }
     }
 
-/*    void send_stats_msg(KeeperStatsMsg const &keeperStatsMsg)
+    void send_stats_msg(GrapherStatsMsg const & statsMsg)
     {
         try
         {
-            std::stringstream ss;
-            ss << keeperStatsMsg;
-            LOG_DEBUG("[KeeperRegisterClient] Sending Stats Message: {}", ss.str());
-            handle_stats_msg.on(reg_service_ph)(keeperStatsMsg);
+            std::stringstream stats;
+            stats << statsMsg;
+            LOG_DEBUG("[GrapherRegistryClient] Sending Stats Message: {}", stats.str());
+            handle_grapher_stats_msg.on(reg_service_ph)(statsMsg);
         }
         catch(tl::exception const &)
         {
-            LOG_ERROR("[KeeperRegisterClient] Failed Sending Stats Message.");
+            LOG_ERROR("[GrapherRegisterClient] Failed Sending Stats Message.");
         }
     }
-*/
+
     ~GrapherRegistryClient()
     {
-        LOG_DEBUG("[KeeperRegistryClient] Destructor called. Cleaning up resources...");
+        LOG_DEBUG("[GrapherRegistryClient] Destructor called. Cleaning up resources...");
         register_grapher.deregister();
         unregister_grapher.deregister();
-        //handle_stats_msg.deregister();
+        handle_grapher_stats_msg.deregister();
     }
 
 private:
@@ -96,7 +96,7 @@ private:
     tl::provider_handle reg_service_ph;  //provider_handle for remote registry service
     tl::remote_procedure register_grapher;
     tl::remote_procedure unregister_grapher;
-    //tl::remote_procedure handle_stats_msg;
+    tl::remote_procedure handle_grapher_stats_msg;
 
     // constructor is private to make sure thalium rpc objects are created on the heap, not stack
     GrapherRegistryClient(tl::engine &tl_engine, std::string const &registry_addr, uint16_t registry_provider_id)
@@ -107,7 +107,7 @@ private:
              , registry_provider_id);
         register_grapher = tl_engine.define("register_grapher");
         unregister_grapher = tl_engine.define("unregister_grapher");
-      //  handle_stats_msg = tl_engine.define("handle_stats_msg").disable_response();
+        handle_grapher_stats_msg = tl_engine.define("handle_grapher_stats_msg").disable_response();
     }
 };
 }

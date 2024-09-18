@@ -10,6 +10,7 @@
 #include "KeeperStatsMsg.h"
 #include "GrapherIdCard.h"
 #include "GrapherRegistrationMsg.h"
+#include "KeeperStatsMsg.h"
 #include "chrono_monitor.h"
 #include "KeeperRegistry.h"
 
@@ -71,6 +72,16 @@ private:
         request.respond(return_code);
     }
 
+    void handle_grapher_stats_msg(chronolog::GrapherStatsMsg const & stats_msg)
+    {
+        std::stringstream ss;
+        ss << stats_msg.getGrapherIdCard();
+        LOG_DEBUG("[KeeperRegistryService] Grapher Stats: GrapherIdCard: {}, ActiveStoryCount: {}", ss.str()
+             , stats_msg.getActiveStoryCount());
+        theKeeperProcessRegistry.updateGrapherProcessStats(stats_msg);
+    }
+
+
     KeeperRegistryService(tl::engine &tl_engine, uint16_t service_provider_id, KeeperRegistry &keeperRegistry)
             : tl::provider <KeeperRegistryService>(tl_engine, service_provider_id), theKeeperProcessRegistry(
             keeperRegistry)
@@ -80,6 +91,7 @@ private:
         define("handle_stats_msg", &KeeperRegistryService::handle_stats_msg, tl::ignore_return_value());
         define("register_grapher", &KeeperRegistryService::register_grapher);
         define("unregister_grapher", &KeeperRegistryService::unregister_grapher);
+        define("handle_grapher_stats_msg", &KeeperRegistryService::handle_grapher_stats_msg, tl::ignore_return_value());
         //setup finalization callback in case this ser vice provider is still alive when the engine is finalized
         get_engine().push_finalize_callback(this, [p = this]()
         { delete p; });
