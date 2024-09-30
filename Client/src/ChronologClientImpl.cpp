@@ -247,7 +247,7 @@ int chronolog::ChronologClientImpl::DestroyChronicle(std::string const &chronicl
         LOG_ERROR("[ChronoLogClientImpl] Failed to destroy chronicle '{}'. Error code: {}", chronicle_name, result);
     }
 
-    return result
+    return result;
 }
 
 int chronolog::ChronologClientImpl::DestroyStory(std::string const &chronicle_name, std::string const &story_name)
