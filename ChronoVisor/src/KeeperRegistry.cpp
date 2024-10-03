@@ -45,7 +45,7 @@ int KeeperRegistry::InitializeRegistryService(ChronoLog::ConfigurationManager co
 
         std::stringstream ss;
         ss << registryEngine->self();
-        LOG_INFO("[KeeperRegistry] Starting at address {} with provider id: {}", ss.str(), provider_id);
+        LOG_INFO("[KeeperRegistry] Starting RegistryService at {} provider id: {}", ss.str(), provider_id);
 
         keeperRegistryService = KeeperRegistryService::CreateKeeperRegistryService(*registryEngine, provider_id, *this);
 
@@ -400,6 +400,13 @@ void KeeperRegistry::updateKeeperProcessStats(KeeperStatsMsg const &keeperStatsM
     { return; }
 
     KeeperIdCard keeper_id_card = keeperStatsMsg.getKeeperIdCard();
+
+#ifdef DEBUG
+    std::string id_string;
+    id_string += keeper_id_card;
+    LOG_DEBUG("[KeeperRegistry] Received KeeperStatsMsg from {}", id_string.str());
+#endif
+
     auto group_iter = recordingGroups.find(keeper_id_card.getGroupId());
     if(group_iter == recordingGroups.end()) { return; }
 
@@ -1028,7 +1035,11 @@ void chl::KeeperRegistry::updateGrapherProcessStats(chl::GrapherStatsMsg const &
     if(is_shutting_down())
     { return; }
 
-    LOG_DEBUG("[KeeperRegistry] Received GrapherStatsMsg from {}", statsMsg.getGrapherIdCard());
+#ifdef DEBUG
+    std::string id_string;
+    id_string += stats.getGrapherIdCard;
+    LOG_DEBUG("[KeeperRegistry] Received GrapherStatsMsg from {}", id_string.str());
+#endif
 
     auto group_iter = recordingGroups.find(statsMsg.getGrapherIdCard().getGroupId());
     if(group_iter == recordingGroups.end()) 
