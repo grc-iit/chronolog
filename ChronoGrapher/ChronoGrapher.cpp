@@ -254,16 +254,15 @@ int main(int argc, char**argv)
     // start extraction streams & threads
     storyExtractor.startExtractionThreads(2);
 
-
     /// Main loop for sending stats message until receiving SIGTERM ____________________________________________________
     // now we are ready to ingest records coming from the storyteller clients ....
     // main thread would be sending stats message until keeper process receives
     // sigterm signal
-    //chronolog::StatsMsg keeperStatsMsg(grapherIdCard);
+    chronolog::GrapherStatsMsg grapherStatsMsg(processIdCard);
     while(keep_running)
     {
-        // grapherRegistryClient->send_stats_msg(keeperStatsMsg);
-        sleep(30);
+        grapherRegistryClient->send_stats_msg(grapherStatsMsg);
+        sleep(10);
     }
 
     /// Unregister from ChronoVisor ____________________________________________________________________________________

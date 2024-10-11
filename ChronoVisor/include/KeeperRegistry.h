@@ -15,6 +15,7 @@
 #include "KeeperRegistrationMsg.h"
 #include "GrapherIdCard.h"
 #include "GrapherRegistrationMsg.h"
+#include "GrapherStatsMsg.h"
 #include "ConfigurationManager.h"
 
 namespace chronolog
@@ -140,9 +141,7 @@ public:
         int ShutdownRegistryService();
 
         int registerKeeperProcess(KeeperRegistrationMsg const& keeper_reg_msg);
-
         int unregisterKeeperProcess(KeeperIdCard const& keeper_id_card);
-
         void updateKeeperProcessStats(KeeperStatsMsg const& keeperStatsMsg);
 
         int notifyRecordingGroupOfStoryRecordingStart(ChronicleName const &, StoryName const &, StoryId const &
@@ -151,6 +150,7 @@ public:
 
         int registerGrapherProcess(GrapherRegistrationMsg const& reg_msg);
         int unregisterGrapherProcess(GrapherIdCard const& id_card);
+        void updateGrapherProcessStats(GrapherStatsMsg const& );
 
     private:
         KeeperRegistry(KeeperRegistry const&) = delete;//disable copying

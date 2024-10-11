@@ -45,7 +45,7 @@ int KeeperRegistry::InitializeRegistryService(ChronoLog::ConfigurationManager co
 
         std::stringstream ss;
         ss << registryEngine->self();
-        LOG_INFO("[KeeperRegistry] Starting at address {} with provider id: {}", ss.str(), provider_id);
+        LOG_INFO("[KeeperRegistry] Starting RegistryService at {} provider id: {}", ss.str(), provider_id);
 
         keeperRegistryService = KeeperRegistryService::CreateKeeperRegistryService(*registryEngine, provider_id, *this);
 
@@ -400,6 +400,13 @@ void KeeperRegistry::updateKeeperProcessStats(KeeperStatsMsg const &keeperStatsM
     { return; }
 
     KeeperIdCard keeper_id_card = keeperStatsMsg.getKeeperIdCard();
+
+#ifdef DEBUG
+    std::string id_string;
+    id_string += keeper_id_card;
+    LOG_DEBUG("[KeeperRegistry] Received KeeperStatsMsg from {}", id_string.str());
+#endif
+
     auto group_iter = recordingGroups.find(keeper_id_card.getGroupId());
     if(group_iter == recordingGroups.end()) { return; }
 
@@ -1019,7 +1026,34 @@ int KeeperRegistry::unregisterGrapherProcess(GrapherIdCard const& grapher_id_car
 
 }//namespace chronolog
 
+void chl::KeeperRegistry::updateGrapherProcessStats(chl::GrapherStatsMsg const &statsMsg)
+{
+    // NOTE: we don't lock registryLock while updating the keeperProcess stats
+    // delayed destruction of keeperProcessEntry protects us from the case when
+    // stats message is received from the KeeperProcess that has unregistered
+    // on the other thread
+    if(is_shutting_down())
+    { return; }
 
+#ifdef DEBUG
+    std::string id_string;
+    id_string += stats.getGrapherIdCard;
+    LOG_DEBUG("[KeeperRegistry] Received GrapherStatsMsg from {}", id_string.str());
+#endif
+
+    auto group_iter = recordingGroups.find(statsMsg.getGrapherIdCard().getGroupId());
+    if(group_iter == recordingGroups.end()) 
+    { return; }
+
+    RecordingGroup& recording_group = ((*group_iter).second);
+    if(recording_group.grapherProcess != nullptr && recording_group.grapherProcess->active)
+    {
+        // there's no need to update stats of inactive process
+        recording_group.grapherProcess->lastStatsTime = std::chrono::steady_clock::now().time_since_epoch().count();
+        recording_group.grapherProcess->activeStoryCount = statsMsg.getActiveStoryCount();
+
+    }
+}
 ///////////////
 
 bool chl::RecordingGroup::isActive() const
