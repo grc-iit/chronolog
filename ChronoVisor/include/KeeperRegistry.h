@@ -167,6 +167,7 @@ public:
         std::mutex registryLock;
         thallium::engine* registryEngine;
         KeeperRegistryService* keeperRegistryService;
+        std::string dataStoreAdminServiceProtocol;
         size_t delayedDataAdminExitSeconds;
 
         std::map<RecordingGroupId, RecordingGroup> recordingGroups;
