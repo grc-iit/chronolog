@@ -117,6 +117,13 @@ check_rpc_comm_conf() {
     keeper_grapher_drain_rpc_in_grapher=$(jq '.chrono_grapher.KeeperGrapherDrainService.rpc' "${CONF_FILE}")
     [[ "${keeper_grapher_drain_rpc_in_keeper}" != "${keeper_grapher_drain_rpc_in_grapher}" ]] && echo -e "${ERR}mismatched KeeperGrapherDrainService conf in ${CONF_FILE}, exiting ...${NC}" >&2 && exit 1
 
+    # to assume Keeper and Grapher use the same protocol for dataStoreAdminService
+    keeper_data_store_admin_protocol=$(jq '.chrono_keeper.KeeperDataStoreAdminService.rpc.protocol_conf' "${CONF_FILE}")
+    grapher_data_store_admin_protocol=$(jq '.chrono_grapher.DataStoreAdminService.rpc.protocol_conf' "${CONF_FILE}")
+    [[ "${keeper_data_store_admin_protocol}" != "${grapher_data_store_admin_protocol}" ]] && echo -e "${ERR}mismatched protocol for DataStoreAdminService in Keeper and Grapher conf in ${CONF_FILE}, exiting ...${NC}" >&2 && exit 1
+
+    [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Check rpc conf done${NC}"
+
     [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Check base conf file done${NC}"
 }
 

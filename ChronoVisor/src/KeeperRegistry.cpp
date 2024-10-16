@@ -51,6 +51,14 @@ int KeeperRegistry::InitializeRegistryService(ChronoLog::ConfigurationManager co
 
         delayedDataAdminExitSeconds = confManager.VISOR_CONF.DELAYED_DATA_ADMIN_EXIT_IN_SECS;
 
+        // Kun: This protocol will be used to create dataStoreAdminClient for both Keeper and Grapher.
+        // Since they share the same Thallium engine, we have to use the same protocol for both.
+        // This is a temporary solution until we have a better way to handle this.
+        // Currently, it is protected by the deployment script that ensures the same protocol is used for both.
+        // TODO (Kun): add DataStoreAdminService section to the configuration of ChronoVisor and make sure all three
+        //  ends (Keeper, Grapher, and Visor) use the same protocol.
+        dataStoreAdminServiceProtocol = confManager.KEEPER_CONF.KEEPER_DATA_STORE_ADMIN_SERVICE_CONF.RPC_CONF.PROTO_CONF;
+
         registryState = INITIALIZED;
         status = chronolog::CL_SUCCESS;
     }
@@ -275,8 +283,10 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const &keeper_re
         }
     }
 
-    //create a client of Keeper's DataStoreAdminService listenning at adminServiceId
-    std::string service_na_string("ofi+sockets://"); //TODO: add protocol to serviceId and keeperIdCard
+    //create a client of Keeper's DataStoreAdminService listening at adminServiceId
+    //std::string service_na_string("ofi+sockets://"); //TODO: add protocol to serviceId and keeperIdCard
+    std::string service_na_string(dataStoreAdminServiceProtocol + "://");
+
     service_na_string =
             admin_service_id.getIPasDottedString(service_na_string) + ":" + std::to_string(admin_service_id.port);
 
@@ -909,7 +919,8 @@ int KeeperRegistry::registerGrapherProcess(GrapherRegistrationMsg const & reg_ms
     }
 
     //create a client of the new grapher's DataStoreAdminService listenning at adminServiceId
-    std::string service_na_string("ofi+sockets://"); //TODO: add protocol string to serviceIdCard
+    //std::string service_na_string("ofi+sockets://"); //TODO: add protocol string to serviceIdCard
+    std::string service_na_string(dataStoreAdminServiceProtocol + "://");
     service_na_string =
             admin_service_id.getIPasDottedString(service_na_string) + ":" + std::to_string(admin_service_id.port);
 
@@ -1058,7 +1069,7 @@ void chl::KeeperRegistry::updateGrapherProcessStats(chl::GrapherStatsMsg const &
 
 bool chl::RecordingGroup::isActive() const
 {
-    //TODO: we might add a check for time since the last stats message received from 
+    //TODO: we might add a check for time since the last stats message received from
     // the processes listed as active 
 
     if(grapherProcess != nullptr && grapherProcess->active && activeKeeperCount >0)
