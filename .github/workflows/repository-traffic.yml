@@ -1,0 +1,30 @@
+name: Repository Traffic
+
+on:
+  schedule:
+    # Runs every Sunday at 11:55 PM UTC
+    - cron: "55 23 * * 0"
+  workflow_dispatch:
+
+jobs:
+  traffic:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout the repository
+      - uses: actions/checkout@v2
+
+      # Calculate traffic and clones and store in CSV file
+      - name: Repository Traffic
+        uses: sangonzal/repository-traffic-action@v0.1.6
+        env:
+          TRAFFIC_ACTION_TOKEN: ${{ secrets.TRAFFIC_ACTION_TOKEN }}
+
+      # Commit changes to the repository
+      - name: Commit changes
+        uses: EndBug/add-and-commit@v4
+        with:
+          author_name: EnekoGonzalez
+          message: "Update GitHub traffic data"
+          add: "./repo-traffic-data/*"
+          ref: "repo-traffic-data"  # commits to branch "traffic"
