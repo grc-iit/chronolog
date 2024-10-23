@@ -29,14 +29,11 @@ int chronolog::StoryChunkExtractorRDMA::processStoryChunk(StoryChunk*story_chunk
         start = std::chrono::high_resolution_clock::now();
 #endif
         size_t serialized_story_chunk_size;
-        char *serialized_buf = new char[MAX_BULK_MEM_SIZE];
         std::ostringstream oss(std::ios::binary);
-        oss.rdbuf()->pubsetbuf(serialized_buf, MAX_BULK_MEM_SIZE);
         cereal::BinaryOutputArchive oarchive(oss);
         oarchive(*story_chunk);
-//        std::string serialized_story_chunk = oss.str();
-//        serialized_story_chunk_size = serialized_story_chunk.size();
-        serialized_story_chunk_size = oss.tellp();
+        std::string serialized_story_chunk = oss.str();
+        serialized_story_chunk_size = serialized_story_chunk.size();
 
 #ifndef NDEBUG
         end = std::chrono::high_resolution_clock::now();
@@ -46,22 +43,20 @@ int chronolog::StoryChunkExtractorRDMA::processStoryChunk(StoryChunk*story_chunk
         LOG_DEBUG("[StoryChunkExtractorRDMA] Serialized story chunk size: {}", serialized_story_chunk_size);
 
         std::vector <std::pair <void*, std::size_t>> segments(1);
-//        segments[0].first = (void*)(serialized_story_chunk.data());
-        segments[0].first = (void*)(serialized_buf);
+        segments[0].first = (void*)(serialized_story_chunk.data());
         segments[0].second = serialized_story_chunk_size + 1; // TODO: (Kun) the extra byte might not be necessary
         tl::bulk tl_bulk = extraction_engine.expose(segments, tl::bulk_mode::read_only);
         LOG_DEBUG("[StoryChunkExtractorRDMA] Draining to Grapher with story chunk size: {} ...", tl_bulk.size());
 #ifndef NDEBUG
         start = std::chrono::high_resolution_clock::now();
 #endif
-        size_t result = drain_to_grapher.on(service_ph)(tl_bulk);
+        size_t result = drain_to_grapher.on(service_ph)(serialized_story_chunk_size, tl_bulk);
 #ifndef NDEBUG
         end = std::chrono::high_resolution_clock::now();
         LOG_INFO("[StoryChunkExtractorRDMA] Draining to Grapher took {} us",
                 std::chrono::duration_cast <std::chrono::nanoseconds>(end - start).count() / 1000.0);
 #endif
         LOG_DEBUG("[StoryChunkExtractorRDMA] Draining to Grapher returned with result: {}", result);
-        delete[] serialized_buf;
 
         if(result == serialized_story_chunk_size + 1) // TODO: (Kun) the extra byte might not be necessary
         {
