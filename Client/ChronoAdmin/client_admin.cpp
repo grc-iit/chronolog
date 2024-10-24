@@ -625,7 +625,7 @@ std::vector <std::string> &command_subs)
                       << std::endl;
             std::cout << "End-to-end bandwidth: " << (double)total_event_payload_size / global_e2e_duration / 1e6
                       << " MB/s" << std::endl;
-            std::cout << "Data access bandwidth: "
+            std::cout << "Data-access bandwidth: "
                       << (double)total_event_payload_size / writeEventTimer.getDuration() / 1e6 << " "
                                                                                                    "MB/s" << std::endl;
         }
@@ -651,7 +651,7 @@ std::vector <std::string> &command_subs)
                       << std::endl;
             std::cout << "End-to-end bandwidth: " << (double)total_event_payload_size / global_e2e_duration_ave / 1e6
                       << " MB/s" << std::endl;
-            std::cout << "Data access bandwidth: "
+            std::cout << "Data-access bandwidth: "
                       << (double)total_event_payload_size / writeEventTimer.getDurationAve() / 1e6 << " MB/s"
                       << std::endl;
         }
