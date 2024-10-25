@@ -32,11 +32,11 @@ public:
         get_engine().pop_finalize_callback(this);
     }
 
-    void record_story_chunk(tl::request const &request, uint64_t chunk_size, tl::bulk &b)
+    void record_story_chunk(tl::request const &request, tl::bulk &b)
     {
         try
         {
-            std::vector <char> mem_vec(chunk_size + 1);
+            std::vector <char> mem_vec(b.size());
             std::chrono::high_resolution_clock::time_point start, end;
             LOG_DEBUG("[GrapherRecordingService] StoryChunk recording RPC invoked, ThreadID={}", tl::thread::self_id());
             tl::endpoint ep = request.get_endpoint();
@@ -59,8 +59,8 @@ public:
 #ifndef NDEBUG
             start = std::chrono::high_resolution_clock::now();
 #endif
-            int ret = deserializedWithCereal(&mem_vec[0], b.size() - 1
-                                             , *story_chunk); // TODO: (Kun) the extra byte might not be necessary
+            int ret = deserializedWithCereal(&mem_vec[0], b.size()
+                                             , *story_chunk);
             if(ret != CL_SUCCESS)
             {
                 LOG_ERROR("[GrapherRecordingService] Failed to deserialize a story chunk, ThreadID={}"

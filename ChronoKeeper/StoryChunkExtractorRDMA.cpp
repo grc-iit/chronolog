@@ -44,13 +44,13 @@ int chronolog::StoryChunkExtractorRDMA::processStoryChunk(StoryChunk*story_chunk
 
         std::vector <std::pair <void*, std::size_t>> segments(1);
         segments[0].first = (void*)(serialized_story_chunk.data());
-        segments[0].second = serialized_story_chunk_size + 1; // TODO: (Kun) the extra byte might not be necessary
+        segments[0].second = serialized_story_chunk_size;
         tl::bulk tl_bulk = extraction_engine.expose(segments, tl::bulk_mode::read_only);
         LOG_DEBUG("[StoryChunkExtractorRDMA] Draining to Grapher with story chunk size: {} ...", tl_bulk.size());
 #ifndef NDEBUG
         start = std::chrono::high_resolution_clock::now();
 #endif
-        size_t result = drain_to_grapher.on(service_ph)(serialized_story_chunk_size, tl_bulk);
+        size_t result = drain_to_grapher.on(service_ph)(tl_bulk);
 #ifndef NDEBUG
         end = std::chrono::high_resolution_clock::now();
         LOG_INFO("[StoryChunkExtractorRDMA] Draining to Grapher took {} us",
@@ -58,7 +58,7 @@ int chronolog::StoryChunkExtractorRDMA::processStoryChunk(StoryChunk*story_chunk
 #endif
         LOG_DEBUG("[StoryChunkExtractorRDMA] Draining to Grapher returned with result: {}", result);
 
-        if(result == serialized_story_chunk_size + 1) // TODO: (Kun) the extra byte might not be necessary
+        if(result == serialized_story_chunk_size)
         {
             LOG_INFO("[StoryChunkExtractorRDMA] Successfully drained a story chunk to Grapher, StoryID: {}, "
                      "StartTime: {}", story_chunk->getStoryId(), story_chunk->getStartTime());
