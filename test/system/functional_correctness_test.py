@@ -4,18 +4,18 @@ import os
 
 # Base paths
 REPO_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))  # Locate repo root
-INSTALL_PATH = os.path.expanduser("~/chronolog")
-RELEASE_PATH = os.path.join(INSTALL_PATH, "Release")
-BIN_PATH = os.path.join(RELEASE_PATH, "bin")
-OUTPUT_PATH = os.path.join(RELEASE_PATH, "output")
-CONF_PATH = os.path.join(RELEASE_PATH, "conf")
 DEPLOY_PATH = os.path.join(REPO_PATH, "deploy")
-SPACK_SETUP_SCRIPT = os.path.join(os.path.expanduser("~"), "Spack", "spack", "share", "spack", "setup-env.sh")
+INSTALL_PATH = os.path.expanduser("~/chronolog/Release")
+BIN_PATH = os.path.join(INSTALL_PATH, "bin")
+OUTPUT_PATH = os.path.join(INSTALL_PATH, "output")
+CONF_PATH = os.path.join(INSTALL_PATH, "conf")
 
 
 # Utility Functions
 def run_command(command, shell=False):
-    """Executes a shell command and prints output."""
+    """
+    Executes a shell command and prints output.
+    """
     try:
         result = subprocess.run(command, shell=shell, check=True, executable="/bin/bash" if shell else None, text=True)
         print(result.stdout)
@@ -24,11 +24,14 @@ def run_command(command, shell=False):
 
 
 def generate_input_file():
-    """Creates a file with chronicle identifiers for testing."""
+    """
+    Creates a file with chronicle identifiers for testing.
+    """
     temp_input_path = os.path.join(BIN_PATH, "temp_input")
     os.makedirs(os.path.dirname(temp_input_path), exist_ok=True)
     with open(temp_input_path, "w") as f:
         f.writelines([f"chronicle_0_0.story_0_0.{i}\n" for i in range(1, 101)])
+    print("Input file generated")
 
 
 # Deployment and System Control Functions
@@ -48,9 +51,8 @@ def run_client():
     """
     generate_input_file()
     client_admin_command = f"""
-        . {SPACK_SETUP_SCRIPT} &&
         spack env activate -p {REPO_PATH} &&
-        export LD_LIBRARY_PATH={os.path.join(RELEASE_PATH, "lib")}:$LD_LIBRARY_PATH &&
+        export LD_LIBRARY_PATH={os.path.join(INSTALL_PATH, "lib")}:$LD_LIBRARY_PATH &&
         {os.path.join(BIN_PATH, "client_admin")} --config {os.path.join(CONF_PATH, "client_conf.json")} -f {os.path.join(BIN_PATH, "temp_input")}
     """
     run_command(client_admin_command, shell=True)
@@ -60,11 +62,8 @@ def stop_execution():
     """
     Stops the execution of the system.
     """
-    single_user_command = [
-        os.path.join(DEPLOY_PATH, "local_single_user_deploy.sh"), "-s", "-w", RELEASE_PATH
-    ]
+    single_user_command = [os.path.join(DEPLOY_PATH, "local_single_user_deploy.sh"), "-s", "-w", INSTALL_PATH]
     run_command(single_user_command)
-
 
 # Test Functions
 def test_message_storage_validation():
