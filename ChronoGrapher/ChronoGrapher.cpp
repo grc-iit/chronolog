@@ -14,6 +14,7 @@
 #include "DataStoreAdminService.h"
 #include "ConfigurationManager.h"
 #include "CSVFileChunkExtractor.h"
+#include "HDF5FileChunkExtractor.h"
 #include "cmd_arg_parse.h"
 
 // we will be using a combination of the uint32_t representation of the service IP address
@@ -136,7 +137,8 @@ int main(int argc, char**argv)
     chronolog::ChunkIngestionQueue ingestionQueue;
     std::string csv_files_directory = confManager.GRAPHER_CONF.EXTRACTOR_CONF.story_files_dir;
 
-    chronolog::CSVFileStoryChunkExtractor storyExtractor(process_id_string.str(), csv_files_directory);
+//    chronolog::CSVFileStoryChunkExtractor storyExtractor(process_id_string.str(), csv_files_directory);
+    chronolog::HDF5FileChunkExtractor storyExtractor(process_id_string.str(), csv_files_directory);
     chronolog::GrapherDataStore theDataStore(ingestionQueue, storyExtractor.getExtractionQueue());
 
     chronolog::ServiceId collectionServiceId(datastore_endpoint.first, datastore_endpoint.second
