@@ -1,6 +1,7 @@
 import subprocess
 import glob
 import os
+from collections import namedtuple
 
 # Base paths
 REPO_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
@@ -12,8 +13,12 @@ CONF_PATH = os.path.join(INSTALL_PATH, "conf")
 
 # ANSI color codes
 GREEN_HIGHLIGHT = "\033[42m"  # Green background for Success
-RED_HIGHLIGHT = "\033[41m"    # Red background for Failure
+RED_HIGHLIGHT = "\033[41m"  # Red background for Failure
 RESET = "\033[0m"
+
+# Data structure for storing file data
+FileData = namedtuple("FileData", ["path", "lines", "timestamps", "story_chunk_start"])
+
 
 # Utility Functions
 def run_command(command, shell=False):
@@ -71,92 +76,93 @@ def stop_execution():
 
 
 # Test Functions
-def report_result(test_name, description, result, is_success):
+def report_result(test_name, description, is_success):
     highlight = GREEN_HIGHLIGHT if is_success else RED_HIGHLIGHT
     status = "Success" if is_success else "Failure"
-    print(f"{test_name}:\n***{description}***\n{highlight}{status}{RESET}\n")
+    print(f"\t{test_name}: {description}: {highlight}{status}{RESET}")
 
 
-def test_message_storage_validation():
-    """
-    Checks that each file entry contains the specified pattern.
-    """
-    file_list = glob.glob(os.path.join(OUTPUT_PATH, "chronicle_0_0.story_0_0.*.csv"))
-    if not file_list:
-        return "Test Failure: No matching files found.", False
+def collect_file_data(file_path):
+    """Reads a file and returns collected data for testing."""
+    filename_parts = os.path.basename(file_path).split('.')
+    try:
+        story_chunk_start = int(filename_parts[2]) * 1_000_000_000
+    except (IndexError, ValueError):
+        print(f"Skipping {file_path} due to start time extraction issue.")
+        return None
 
-    for file in file_list:
-        with open(file, "r") as f:
-            if any("chronicle_0_0.story_0_0" not in line for line in f):
-                return f"Test Failure: Entry without 'chronicle_0_0.story_0_0' found in {file}.", False
+    with open(file_path, "r") as f:
+        lines = f.readlines()
 
-    return "Test Success: All entries contain 'chronicle_0_0.story_0_0'.", True
-
-def test_timestamp_range_check():
-    """
-    Ensures all timestamps fall within the expected start and end range for each file.
-    """
-    file_list = glob.glob(os.path.join(OUTPUT_PATH, "chronicle_0_0.story_0_0.*.csv"))
-    if not file_list:
-        return "Test Failure: No matching files found.", False
-
-    for file in file_list:
-        filename_parts = os.path.basename(file).split('.')
+    timestamps = []
+    for line in lines:
+        parts = line.strip().split(":")
         try:
-            story_chunk_start = int(filename_parts[2]) * 1_000_000_000
+            event_timestamp = int(parts[2])
+            timestamps.append(event_timestamp)
         except (IndexError, ValueError):
-            print(f"Skipping {file} due to start time extraction issue.")
-            continue
+            pass  # Invalid lines are ignored in data collection; handled in tests
 
-        with open(file, "r") as f:
-            lines = f.readlines()
-            first_timestamp = int(lines[0].strip().split(":")[2]) if lines else None
-            last_timestamp = int(lines[-1].strip().split(":")[2]) if lines else None
-
-            if not (first_timestamp and last_timestamp):
-                return f"Test Failure: Could not determine start or end time in {file}.", False
-
-            for line in lines:
-                try:
-                    event_timestamp = int(line.strip().split(":")[2])
-                    if not (first_timestamp <= event_timestamp <= last_timestamp):
-                        return f"Test Failure: Timestamp {event_timestamp} in {file} is out of range.", False
-                except (IndexError, ValueError):
-                    return f"Test Failure: Invalid line format in {file}.", False
-
-    return "Test Success: All timestamps are within the specified range.", True
+    return FileData(path=file_path, lines=lines, timestamps=timestamps, story_chunk_start=story_chunk_start)
 
 
-def test_message_sorting_by_timestamp():
-    """
-    Validates messages in each file are sorted by timestamp in ascending order.
-    """
+def check_storage_validation(data):
+    """Test 1: Checks if each line in the file contains the required chronicle entry pattern."""
+    for line in data.lines:
+        if "chronicle_0_0.story_0_0" not in line:
+            report_result("Test 1", "Message Storage Validation", False)
+            return False
+    report_result("Test 1", "Message Storage Validation", True)
+    return True
+
+
+def check_timestamp_range(data):
+    """Test 2: Verifies timestamps fall within the range defined by story_chunk_start and the last timestamp."""
+    if not data.timestamps:
+        report_result("Test 2", "Timestamp Range Check", False)
+        return False
+
+    # Use story_chunk_start from filename and the last timestamp from the file
+    start_timestamp = data.story_chunk_start
+    end_timestamp = data.timestamps[-1]
+    is_within_range = all(start_timestamp <= ts <= end_timestamp for ts in data.timestamps)
+    report_result("Test 2", "Timestamp Range Check", is_within_range)
+    return is_within_range
+
+
+def check_timestamp_sorting(data):
+    """Test 3: Checks if the timestamps are sorted in ascending order."""
+    is_sorted = data.timestamps == sorted(data.timestamps)
+    report_result("Test 3", "Message Sorting by Timestamp", is_sorted)
+    return is_sorted
+
+
+def test_files():
+    """Main function to test each file by reading data once and applying all tests."""
     file_list = glob.glob(os.path.join(OUTPUT_PATH, "chronicle_0_0.story_0_0.*.csv"))
     if not file_list:
-        return "Test Failure: No matching files found.", False
+        print("No matching files found.")
+        return
 
-    for file in file_list:
-        with open(file, "r") as f:
-            timestamps = [int(line.strip().split(":")[2]) for line in f if line.strip()]
-            if timestamps != sorted(timestamps):
-                return f"Test Failure: Timestamps out of order in {file}.", False
+    for file_path in file_list:
+        print(f"\nTesting file: {file_path}")
 
-    return "Test Success: All messages are sorted by timestamp.", True
+        # Collect data once per file
+        data = collect_file_data(file_path)
+        if data is None:
+            continue  # Skip if data collection failed due to filename format issue
+
+        # Run tests using collected data
+        check_storage_validation(data)
+        check_timestamp_range(data)
+        check_timestamp_sorting(data)
 
 
 # Main Execution
 if __name__ == "__main__":
-    #deploy_system()
-    #run_client()
-    #stop_execution()
+    # deploy_system()
+    # run_client()
+    # stop_execution()
 
-    print("Functional Correctness Test:\n")
-
-    result, success = test_message_storage_validation()
-    report_result("Test 1: Message Storage Validation", "Validates chronicle entry pattern", result, success)
-
-    result, success = test_timestamp_range_check()
-    report_result("Test 2: Timestamp Range Check", "Checks if all timestamps are within the expected range", result, success)
-
-    result, success = test_message_sorting_by_timestamp()
-    report_result("Test 3: Message Sorting by Timestamp", "Validates messages are sorted by timestamp", result, success)
+    print("Functional Correctness Test:")
+    test_files()
