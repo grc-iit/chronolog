@@ -1,7 +1,8 @@
+from collections import namedtuple
 import subprocess
 import glob
+import time
 import os
-from collections import namedtuple
 
 # Base paths
 REPO_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
@@ -18,7 +19,6 @@ RESET = "\033[0m"
 
 # Data structure for storing file data
 FileData = namedtuple("FileData", ["path", "lines", "timestamps", "story_chunk_start"])
-
 
 # Utility Functions
 def run_command(command, shell=False):
@@ -65,6 +65,8 @@ def run_client():
         {os.path.join(BIN_PATH, "client_admin")} --config {os.path.join(CONF_PATH, "client_conf.json")} -f {os.path.join(BIN_PATH, "temp_input")}
     """
     run_command(client_admin_command, shell=True)
+    time.sleep(30)
+    run_command(client_admin_command, shell=True)
 
 
 def stop_execution():
@@ -83,7 +85,9 @@ def report_result(test_name, description, is_success):
 
 
 def collect_file_data(file_path):
-    """Reads a file and returns collected data for testing."""
+    """
+    Reads a file and returns collected data for testing.
+    """
     filename_parts = os.path.basename(file_path).split('.')
     try:
         story_chunk_start = int(filename_parts[2]) * 1_000_000_000
@@ -107,7 +111,9 @@ def collect_file_data(file_path):
 
 
 def check_storage_validation(data):
-    """Test 1: Checks if each line in the file contains the required chronicle entry pattern."""
+    """
+    Test 1: Checks if each line in the file contains the required chronicle entry pattern.
+    """
     for line in data.lines:
         if "chronicle_0_0.story_0_0" not in line:
             report_result("Test 1", "Message Storage Validation", False)
@@ -117,7 +123,9 @@ def check_storage_validation(data):
 
 
 def check_timestamp_range(data):
-    """Test 2: Verifies timestamps fall within the range defined by story_chunk_start and the last timestamp."""
+    """
+    Test 2: Verifies timestamps fall within the range defined by story_chunk_start and the last timestamp.
+    """
     if not data.timestamps:
         report_result("Test 2", "Timestamp Range Check", False)
         return False
@@ -138,7 +146,9 @@ def check_timestamp_sorting(data):
 
 
 def test_files():
-    """Main function to test each file by reading data once and applying all tests."""
+    """
+    Main function to test each file by reading data once and applying all tests.
+    """
     file_list = glob.glob(os.path.join(OUTPUT_PATH, "chronicle_0_0.story_0_0.*.csv"))
     if not file_list:
         print("No matching files found.")
@@ -160,9 +170,9 @@ def test_files():
 
 # Main Execution
 if __name__ == "__main__":
-    # deploy_system()
-    # run_client()
-    # stop_execution()
+    deploy_system()
+    run_client()
+    stop_execution()
 
     print("Functional Correctness Test:")
     test_files()
