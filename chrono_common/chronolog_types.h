@@ -5,6 +5,7 @@
 #include <string>
 #include <ostream>
 #include <cstring>
+#include <tuple>
 #include "H5Cpp.h"
 
 namespace chronolog
@@ -135,30 +136,8 @@ public:
 
     bool operator==(const LogEventHVL &other) const
     {
-        if(storyId != other.storyId)
-        {
-            return false;
-        }
-        if(eventTime != other.eventTime)
-        {
-            return false;
-        }
-        if(clientId != other.clientId)
-        {
-            return false;
-        }
-        if(eventIndex != other.eventIndex)
-        {
-            return false;
-        }
-        for(hsize_t i = 0; i < logRecord.len; i++)
-        {
-            if(((uint8_t*)logRecord.p)[i] != ((uint8_t*)other.logRecord.p)[i])
-            {
-                return false;
-            }
-        }
-        return true;
+        return storyId == other.storyId && eventTime == other.eventTime && clientId == other.clientId &&
+               eventIndex == other.eventIndex;
     }
 
     bool operator!=(const LogEventHVL &other) const
@@ -168,7 +147,8 @@ public:
 
     bool operator<(const LogEventHVL &other) const
     {
-        return eventTime < other.eventTime;
+        return std::make_tuple(eventTime, clientId, eventIndex) <
+               std::make_tuple(other.eventTime, other.clientId, other.eventIndex);
     }
 
     LogEventHVL& operator=(const LogEventHVL& other) {
