@@ -1,9 +1,7 @@
 #ifndef CHRONOLOG_HDF5_FILE_CHUNK_EXTRACTOR_H
 #define CHRONOLOG_HDF5_FILE_CHUNK_EXTRACTOR_H
 
-#include "chronolog_types.h"
 #include "StoryChunkExtractor.h"
-#include "StoryChunkWriter.h"
 
 namespace chronolog
 {
