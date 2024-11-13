@@ -13,11 +13,12 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunkHVL &story_chunk)
     std::string file_name = rootDirectory + story_chunk.getChronicleName() + "." + story_chunk.getStoryName() + "." +
                             std::to_string(story_chunk.getStartTime() / 1000000000) + ".vlen.h5";
     hsize_t ret = 0;
+    std::unique_ptr<H5::H5File> file;
     try
     {
         LOG_DEBUG("[StoryChunkWriter] Creating StoryChunk file: {}", file_name);
-        auto *file = new H5::H5File(file_name, H5F_ACC_TRUNC);
-        sleep(1);
+        file = std::make_unique<H5::H5File>(file_name, H5F_ACC_TRUNC);
+
         LOG_DEBUG("[StoryChunkWriter] Writing StoryChunk to file...");
         ret = writeEvents(file, data);
         if(ret == 0)
@@ -25,10 +26,10 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunkHVL &story_chunk)
             LOG_ERROR("[StoryChunkWriter] Error writing StoryChunk to file.");
             return ret;
         }
+
         file->flush(H5F_SCOPE_GLOBAL);
         hsize_t file_size = file->getFileSize();
-        LOG_DEBUG("[StoryChunkWriter] Closing StoryChunk file, size: {}", file_size);
-        delete file;
+
         LOG_DEBUG("[StoryChunkWriter] Finished writing StoryChunk to file.");
         return file_size;
     }
@@ -46,23 +47,21 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunk &story_chunk)
     data.reserve(story_chunk.getEventCount());
     for(const auto &event: story_chunk)
     {
-        LogEventHVL event_hvl;
-        event_hvl.storyId = event.second.getStoryId();
-        event_hvl.eventTime = event.second.time();
-        event_hvl.clientId = event.second.getClientId();
-        event_hvl.eventIndex = event.second.index();
-        event_hvl.logRecord.len = event.second.logRecord.size();
-        event_hvl.logRecord.p = new uint8_t[event_hvl.logRecord.len];
-        std::memcpy(event_hvl.logRecord.p, event.second.logRecord.data(), event_hvl.logRecord.len);
+        hvl_t log_record;
+        log_record.len = event.second.logRecord.size();
+        log_record.p = new uint8_t[log_record.len];
+        LogEventHVL event_hvl(event.second.getStoryId(), event.second.time(), event.second.getClientId(),
+                              event.second.index(), log_record);
         data.push_back(event_hvl);
     }
     std::string file_name = rootDirectory + "/" + story_chunk.getChronicleName() + "." + story_chunk.getStoryName() + "." +
                             std::to_string(story_chunk.getStartTime() / 1000000000) + ".vlen.h5";
     hsize_t ret = 0;
+    std::unique_ptr<H5::H5File> file;
     try
     {
         LOG_DEBUG("[StoryChunkWriter] Creating StoryChunk file: {}", file_name);
-        auto *file = new H5::H5File(file_name, H5F_ACC_TRUNC);
+        file = std::make_unique<H5::H5File>(file_name, H5F_ACC_TRUNC);
 
         LOG_DEBUG("[StoryChunkWriter] Writing StoryChunk to file...");
         ret = writeEvents(file, data);
@@ -75,9 +74,6 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunk &story_chunk)
         file->flush(H5F_SCOPE_GLOBAL);
         hsize_t file_size = file->getFileSize();
 
-        LOG_DEBUG("[StoryChunkWriter] Closing StoryChunk file, size: {}", file_size);
-        delete file;
-
         LOG_DEBUG("[StoryChunkWriter] Finished writing StoryChunk to file.");
         ret = file_size;
     }
@@ -86,15 +82,10 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunk &story_chunk)
         LOG_ERROR("[StoryChunkWriter] FileIException: {}", error.getCDetailMsg());
         H5::FileIException::printErrorStack();
     }
-    for(auto &event: data)
-    {
-        delete[] static_cast<uint8_t *>(event.logRecord.p);
-        event.logRecord.p = nullptr;
-    }
     return ret;
 }
 
-hsize_t StoryChunkWriter::writeEvents(H5::H5File *file, std::vector <LogEventHVL> &data)
+hsize_t StoryChunkWriter::writeEvents(std::unique_ptr<H5::H5File> &file, std::vector <LogEventHVL> &data)
 {
     int ret = 0;
     try

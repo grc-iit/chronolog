@@ -2,6 +2,7 @@
 #define CHRONOLOG_STORY_CHUNK_WRITER_H
 
 #include <string>
+#include <memory>
 #include <H5Cpp.h>
 #include "chrono_monitor.h"
 #include "StoryChunk.h"
@@ -24,7 +25,7 @@ public:
 
     hsize_t writeStoryChunk(StoryChunk &story_chunk);
 
-    hsize_t writeEvents(H5::H5File *file, std::vector <LogEventHVL> &data);
+    hsize_t writeEvents(std::unique_ptr<H5::H5File> &file, std::vector <LogEventHVL> &data);
 
     H5::CompType createEventCompoundType();
 
