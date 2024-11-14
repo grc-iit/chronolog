@@ -21,9 +21,9 @@ OUTPUT_DIR=""
 # Files
 VISOR_BIN="${BIN_DIR}/chronovisor_server"
 KEEPER_BIN="${BIN_DIR}/chrono_keeper"
-CLIENT_BIN="${BIN_DIR}/client_lib_multi_storytellers"
 GRAPHER_BIN="${BIN_DIR}/chrono_grapher"
 CONF_FILE="${CONF_DIR}/default_conf.json"
+CLIENT_BIN=""  # Remove default value for client executable
 
 #Booleans
 deploy=false
@@ -267,18 +267,23 @@ deploy() {
     launch_process ${VISOR_BIN} "--config ${CONF_DIR}/visor_conf.json" "visor.log"
     sleep 2
     num_graphers=${NUM_GRAPHERS}
-    for (( i=1; i<num_graphers+1; i++ ))
+    for (( i=1; i<=num_graphers; i++ ))
     do
         launch_process ${GRAPHER_BIN} "--config ${CONF_DIR}/grapher_conf_$i.json" "grapher_$i.log"
     done
     sleep 2
     num_keepers=${NUM_KEEPERS}
-    for (( i=1; i<num_keepers+1; i++ ))
+    for (( i=1; i<=num_keepers; i++ ))
     do
         launch_process ${KEEPER_BIN} "--config ${CONF_DIR}/keeper_conf_$i.json" "keeper_$i.log"
     done
     sleep 2
-    launch_process ${CLIENT_BIN} "--config ${CONF_DIR}/client_conf.json" "client.log"
+
+    # Only run client if CLIENT_BIN is specified
+    if [[ -n "${CLIENT_BIN}" ]]; then
+        launch_process ${CLIENT_BIN} "--config ${CONF_DIR}/client_conf.json" "client.log"
+    fi
+
     echo -e "${DEBUG}Deployment done${NC}"
 }
 
@@ -342,7 +347,7 @@ usage() {
     echo "  -v|--visor          VISOR_BIN (default: work_dir/bin/chronovisor_server)"
     echo "  -g|--grapher        GRAPHER_BIN (default: work_dir/bin/chrono_grapher)"
     echo "  -p|--keeper         KEEPER_BIN (default: work_dir/bin/chrono_keeper)"
-    echo "  -c|--client         CLIENT_BIN (default: work_dir/bin/client_lib_multi_storytellers)"
+    echo "  -c|--client         CLIENT_BIN Client executable to run (optional)"
     echo "  -f|--conf_file      CONF_FILE (default: work_dir/conf/default_conf.json)"
 
     echo "  -n|--keepers        Set the total number of keeper processes. They will be assigned iteratively to the recording groups"
@@ -377,7 +382,6 @@ parse_args() {
                 BIN_DIR="${WORK_DIR}/bin"
                 VISOR_BIN="${BIN_DIR}/chronovisor_server"
                 KEEPER_BIN="${BIN_DIR}/chrono_keeper"
-                CLIENT_BIN="${BIN_DIR}/client_lib_multi_storytellers"
                 GRAPHER_BIN="${BIN_DIR}/chrono_grapher"
                 CONF_FILE="${CONF_DIR}/default_conf.json"
                 shift 2 ;;
