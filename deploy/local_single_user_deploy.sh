@@ -23,7 +23,6 @@ VISOR_BIN="${BIN_DIR}/chronovisor_server"
 KEEPER_BIN="${BIN_DIR}/chrono_keeper"
 GRAPHER_BIN="${BIN_DIR}/chrono_grapher"
 CONF_FILE="${CONF_DIR}/default_conf.json"
-CLIENT_BIN=""  # Remove default value for client executable
 
 #Booleans
 deploy=false
@@ -63,7 +62,6 @@ check_files() {
     echo -e "${INFO}Checking required files...${NC}"
     [[ ! -f ${VISOR_BIN} ]] && echo -e "${ERR}Visor binary file does not exist, exiting ...${NC}" && exit 1
     [[ ! -f ${KEEPER_BIN} ]] && echo -e "${ERR}Keeper binary file does not exist, exiting ...${NC}" && exit 1
-    [[ ! -f ${CLIENT_BIN} ]] && echo -e "${ERR}Client binary file does not exist, exiting ...${NC}" && exit 1
     [[ ! -f ${GRAPHER_BIN} ]] && echo -e "${ERR}Grapher binary file does not exist, exiting ...${NC}" && exit 1
     [[ ! -f ${CONF_FILE} ]] && echo -e "${ERR}Configuration file does not exist, exiting ...${NC}" && exit 1
     echo -e "${DEBUG}All required files are in place.${NC}"
@@ -169,15 +167,6 @@ generate_config_files() {
        '.chrono_visor.Monitoring.monitor.file = ($monitor_dir + "/" + $visor_monitoring_file_name)' "$default_conf" > "$visor_output_file"
     echo "Generated $visor_output_file"
 
-    # Generate client configuration file
-    local client_output_file="${conf_dir}/client_conf.json"
-    client_monitoring_file=$(jq -r '.chrono_client.Monitoring.monitor.file' "$default_conf")
-    client_monitoring_file_name=$(basename "$client_monitoring_file")
-    jq --arg monitor_dir "$monitor_dir" \
-        --arg client_monitoring_file_name "$client_monitoring_file_name" \
-       '.chrono_client.Monitoring.monitor.file = ($monitor_dir + "/" + $client_monitoring_file_name)' "$default_conf" > "$client_output_file"
-    echo "Generated $client_output_file"
-
     echo "Generate configuration files for all recording groups done"
 }
 
@@ -193,7 +182,6 @@ copy_shared_libs_recursive() {
     local linked_to_lib_path
 
     linked_to_lib_path="$(readlink -f ${lib_path})"
-    # Copy the library and maintain symbolic links recursively
     final_dest_lib_copies=false
     echo -e "${DEBUG}Copying ${lib_path} recursively ...${NC}"
     while [ "$final_dest_lib_copies" != true ]
@@ -209,7 +197,6 @@ copy_shared_libs_recursive() {
 }
 
 copy_shared_libs() {
-    # Copy shared libraries to the lib directory
     echo -e "${DEBUG}Copying shared libraries ...${NC}"
     mkdir -p ${LIB_DIR}
 
@@ -279,17 +266,11 @@ deploy() {
     done
     sleep 2
 
-    # Only run client if CLIENT_BIN is specified
-    if [[ -n "${CLIENT_BIN}" ]]; then
-        launch_process ${CLIENT_BIN} "--config ${CONF_DIR}/client_conf.json" "client.log"
-    fi
-
     echo -e "${DEBUG}Deployment done${NC}"
 }
 
 kill() {
     echo -e "${INFO}Killing ...${NC}"
-    kill_process ${CLIENT_BIN}
     kill_process ${KEEPER_BIN}
     kill_process ${GRAPHER_BIN}
     kill_process ${VISOR_BIN}
@@ -302,7 +283,6 @@ reset() {
     echo -e "${DEBUG}Delete all generated files${NC}"
 
     # Remove all config files
-    rm -f ${CONF_DIR}/client_conf.json
     rm -f ${CONF_DIR}/grapher_conf*.json
     rm -f ${CONF_DIR}/keeper_conf*.json
     rm -f ${CONF_DIR}/visor_conf.json
@@ -317,7 +297,7 @@ reset() {
 
 stop() {
     echo -e "${INFO}Stopping ...${NC}"
-    declare -a processes=("${CLIENT_BIN}" "${KEEPER_BIN}" "${GRAPHER_BIN}" "${VISOR_BIN}")
+    declare -a processes=("${KEEPER_BIN}" "${GRAPHER_BIN}" "${VISOR_BIN}")
     for process in "${processes[@]}"; do
         stop_process "${process}"
         while pgrep -f "${process}" >/dev/null; do
@@ -347,7 +327,6 @@ usage() {
     echo "  -v|--visor          VISOR_BIN (default: work_dir/bin/chronovisor_server)"
     echo "  -g|--grapher        GRAPHER_BIN (default: work_dir/bin/chrono_grapher)"
     echo "  -p|--keeper         KEEPER_BIN (default: work_dir/bin/chrono_keeper)"
-    echo "  -c|--client         CLIENT_BIN Client executable to run (optional)"
     echo "  -f|--conf_file      CONF_FILE (default: work_dir/conf/default_conf.json)"
 
     echo "  -n|--keepers        Set the total number of keeper processes. They will be assigned iteratively to the recording groups"
@@ -399,9 +378,6 @@ parse_args() {
                 shift 2 ;;
             -p|--keeper)
                 KEEPER_BIN=$(realpath "$2")
-                shift 2 ;;
-            -c|--client)
-                CLIENT_BIN=$(realpath "$2")
                 shift 2 ;;
             -f|--conf_file)
                 CONF_FILE=$(realpath "$2")
