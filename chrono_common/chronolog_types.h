@@ -147,8 +147,16 @@ public:
 
     bool operator<(const LogEventHVL &other) const
     {
-        return std::make_tuple(eventTime, clientId, eventIndex) <
-               std::make_tuple(other.eventTime, other.clientId, other.eventIndex);
+        if (eventTime < other.eventTime) {
+            return true;
+        } else if (eventTime == other.eventTime) {
+            if (clientId < other.clientId) {
+                return true;
+            } else if (clientId == other.clientId) {
+                return eventIndex < other.eventIndex;
+            }
+        }
+        return false;
     }
 
     LogEventHVL& operator=(const LogEventHVL& other) {
