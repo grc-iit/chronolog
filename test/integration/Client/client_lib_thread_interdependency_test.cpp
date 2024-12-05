@@ -17,6 +17,7 @@ struct thread_arg
 };
 
 chronolog::Client*client;
+std::vector<struct thread_arg> t_args;
 std::vector <int> shared_state;
 std::mutex shared_state_mutex;
 
@@ -61,8 +62,8 @@ void update_chronicle_threads_state(int tid, ThreadState new_state)
 {
     for(size_t i = 0; i < shared_state.size(); ++i)
     {
-        if(i == tid) continue;
-        if((i % 2 == tid % 2))
+        if(t_args[i].tid == tid) continue;
+        if((t_args[i].chronicle_name == t_args[tid].chronicle_name))
         {
             shared_state[i] = static_cast<int>(new_state);
             LOG_INFO("[ClientLibThreadInterdependencyTest] -Thread {}- Thread {} state updated to: {}", tid, i
@@ -75,8 +76,8 @@ void update_story_threads_state(int tid, ThreadState new_state)
 {
     for(size_t i = 0; i < shared_state.size(); ++i)
     {
-        if(i == tid) continue;
-        if((i % 2 == tid % 2) && ((i % 4) / 2 == (tid % 4) / 2))
+        if(t_args[i].tid == tid) continue;
+        if((t_args[i].chronicle_name == t_args[tid].chronicle_name) && (t_args[i].story_name == t_args[tid].story_name))
         {
             shared_state[i] = static_cast<int>(new_state);  // Update state
             LOG_INFO("[ClientLibThreadInterdependencyTest] -Thread {}- Thread {} state updated to: {}", tid, i
@@ -341,40 +342,38 @@ void thread_body(struct thread_arg*t)
 
 
     // Chronicle Variables
-    std::string chronicle_name = (t->tid % 2 == 0) ? "CHRONICLE_2" : "CHRONICLE_1";//"CHRONICLE";
     std::map <std::string, std::string> chronicle_attrs;
     chronicle_attrs.emplace("Priority", "High");
     int flags = 1;
     // Chronicle creation
-    int ret = client->CreateChronicle(chronicle_name, chronicle_attrs, flags);
+    int ret = client->CreateChronicle(t->chronicle_name, chronicle_attrs, flags);
     LOG_INFO("[ClientLibThreadInterdependencyTest] Chronicle created: tid={}, Ret: {}", t->tid, ret);
     check_chronicle_created(t->tid, ret);
 
 
     // Story Variables
-    std::string story_name = (t->tid % 4 < 2) ? "STORY_1" : "STORY_2";
     std::map <std::string, std::string> story_attrs;
     flags = 2;
     // Acquire story
-    auto acquire_ret = client->AcquireStory(chronicle_name, story_name, story_attrs, flags);
+    auto acquire_ret = client->AcquireStory(t->chronicle_name, t->story_name, story_attrs, flags);
     LOG_INFO("[ClientLibThreadInterdependencyTest] Story acquired: tid={}, Ret: {}", t->tid, acquire_ret.first);
     check_story_acquired(t->tid, acquire_ret.first);
 
 
     // Release the story
-    ret = client->ReleaseStory(chronicle_name, story_name);
+    ret = client->ReleaseStory(t->chronicle_name, t->story_name);
     LOG_INFO("[ClientLibThreadInterdependencyTest] Story released: tid={}, Ret: {}", t->tid, ret);
     check_story_released(t->tid, ret);
 
 
     // Destroy the story
-    ret = client->DestroyStory(chronicle_name, story_name);
+    ret = client->DestroyStory(t->chronicle_name, t->story_name);
     LOG_INFO("[ClientLibThreadInterdependencyTest] Story destroyed: tid={}, Ret: {}", t->tid, ret);
     check_story_destroyed(t->tid, ret);
 
 
     // Destroy the chronicle
-    ret = client->DestroyChronicle(chronicle_name);
+    ret = client->DestroyChronicle(t->chronicle_name);
     LOG_INFO("[ClientLibThreadInterdependencyTest] Chronicle destroyed: tid={}, Ret: {}", t->tid, ret);
     check_chronicle_destroyed(t->tid, ret);
 
@@ -419,7 +418,7 @@ int main(int argc, char**argv)
     // Initiate test
     LOG_INFO("[ClientLibThreadInterdependencyTest] Running test.");
     int num_threads = 8;
-    std::vector <struct thread_arg> t_args(num_threads);
+    t_args.resize(num_threads);
     std::vector <std::thread> workers(num_threads);
     shared_state.resize(num_threads, 0);
 
@@ -427,6 +426,8 @@ int main(int argc, char**argv)
     for(int i = 0; i < num_threads; i++)
     {
         t_args[i].tid = i;  // Assign thread ID
+        t_args[i].chronicle_name = (i % 2 == 0) ? "CHRONICLE_2" : "CHRONICLE_1";  // Assign Chronicle Name
+        t_args[i].story_name = (i % 4 < 2) ? "STORY_1" : "STORY_2";  // Assign Story Name
         std::thread t{thread_body, &t_args[i]};  // Start the thread
         workers[i] = std::move(t);  // Move thread to workers vector
     }
