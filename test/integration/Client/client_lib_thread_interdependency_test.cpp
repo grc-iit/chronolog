@@ -9,6 +9,7 @@
 #include <cstdlib>
 
 #define STORY_NAME_LEN 5
+#define DEFAULT_NUM_THREADS 4
 
 struct thread_arg
 {
@@ -18,7 +19,7 @@ struct thread_arg
 };
 
 chronolog::Client*client;
-std::vector<struct thread_arg> t_args;
+std::vector <struct thread_arg> t_args;
 std::vector <int> shared_state;
 std::mutex shared_state_mutex;
 
@@ -208,7 +209,8 @@ void check_story_released(int tid, int ret)
            static_cast<ThreadState>(shared_state[tid]) == ThreadState::CHRONICLE_DESTROYED)
         {
             LOG_INFO("[ClientLibThreadInterdependencyTest] -Thread {}- received a CL_ERR_NOT_ACQUIRED return value "
-                     "when trying to release a Story on a STORY_RELEASED,STORY_DESTROYED or CHRONICLE_DESTROYED state", tid);
+                     "when trying to release a Story on a STORY_RELEASED,STORY_DESTROYED or CHRONICLE_DESTROYED state"
+                     , tid);
         }
         else
         {
@@ -387,6 +389,32 @@ void thread_body(struct thread_arg*t)
     check_thread_finalized(t->tid, 0);
 }
 
+int parse_num_threads_arg(int argc, char**argv)
+{
+    // Check for additional arguments
+    if(argc > 1)
+    {
+        try
+        {
+            int num_threads = std::stoi(argv[1]); // Convert the first argument to an integer
+            if(num_threads > 0)
+            {
+                return num_threads;
+            }
+            else
+            {
+                std::cerr << "Number of threads must be greater than 0. Using default: " << DEFAULT_NUM_THREADS
+                          << std::endl;
+            }
+        }
+        catch(const std::exception &e)
+        {
+            std::cerr << "Invalid number of threads provided. Using default: " << DEFAULT_NUM_THREADS << std::endl;
+        }
+    }
+    return DEFAULT_NUM_THREADS;
+}
+
 
 int main(int argc, char**argv)
 {
@@ -420,9 +448,11 @@ int main(int argc, char**argv)
         return -1;
     }
 
+    // Parse number of threads from command line, default to DEFAULT_NUM_THREADS
+    int num_threads = parse_num_threads_arg(argc, argv);
+
     // Initiate test
-    LOG_INFO("[ClientLibThreadInterdependencyTest] Running test.");
-    int num_threads = 8;
+    LOG_INFO("[ClientLibThreadInterdependencyTest] Running test with " + std::to_string(num_threads) + " threads.");
     t_args.resize(num_threads);
     std::vector <std::thread> workers(num_threads);
     shared_state.resize(num_threads, 0);
