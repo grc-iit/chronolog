@@ -6,6 +6,7 @@
 #include "chrono_monitor.h"
 #include <vector>
 #include <bitset>
+#include <cstdlib>
 
 #define STORY_NAME_LEN 5
 
@@ -339,6 +340,10 @@ void thread_body(struct thread_arg*t)
 {
     // Thread Initialized
     check_thread_initialization(t->tid, 0);
+
+
+    // Introduce random sleep to increase state mixture possibilities
+    std::this_thread::sleep_for(std::chrono::milliseconds(rand() % 100));
 
 
     // Chronicle Variables
