@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.25)
 
 find_package(Thallium REQUIRED)
 find_package(spdlog REQUIRED)
+find_package(HDF5 REQUIRED COMPONENTS C CXX)
 
 #message("Chronographer CMakeLists - CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}")
 #message("Chronographer CMakeLists - CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
@@ -20,10 +21,13 @@ target_sources(chrono_grapher PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/GrapherDataStore.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/StoryChunkExtractor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/CSVFileChunkExtractor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/HDF5FileChunkExtractor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/StoryChunkWriter.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunk.cpp
     ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/src/chrono_monitor.cpp)
 
 target_link_libraries(chrono_grapher chronolog_client thallium)
+target_link_libraries(chrono_grapher ${HDF5_LIBRARIES})
 
 set_target_properties(chrono_grapher PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
 

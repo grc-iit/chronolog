@@ -10,8 +10,6 @@ namespace tl = thallium;
 namespace chronolog
 {
 
-#define MAX_BULK_MEM_SIZE (4 * 1024 * 1024)
-
 class StoryChunkExtractorRDMA: public StoryChunkExtractorBase
 {
 public:

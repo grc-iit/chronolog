@@ -375,7 +375,7 @@ int chronolog::ChronologClientImpl::ReleaseStory(std::string const &chronicle_na
     {
         LOG_WARNING("[ChronoLogClientImpl] No active writing handle found for story '{}' in chronicle '{}'.", story_name
                     , chronicle_name);
-        return chronolog::CL_ERR_NOT_EXIST;
+        return chronolog::CL_ERR_NOT_ACQUIRED;
     }
 
     storyteller->removeAcquiredStoryHandle(chronicle_name, story_name);
