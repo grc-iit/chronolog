@@ -1,12 +1,16 @@
 #include <chronolog_client.h>
+#include <cmd_arg_parse.h>
+#include "chrono_monitor.h"
 #include <common.h>
 #include <thread>
 #include <chrono>
-#include <cmd_arg_parse.h>
-#include "chrono_monitor.h"
 #include <vector>
 #include <bitset>
 #include <cstdlib>
+#include <random>
+#include <string>
+#include <algorithm>
+#include <iostream>
 
 #define STORY_NAME_LEN 5
 #define DEFAULT_NUM_THREADS 4
@@ -343,11 +347,8 @@ void thread_body(struct thread_arg*t)
     // Thread Initialized
     check_thread_initialization(t->tid, 0);
 
-
-    // Introduce random sleep to increase state mixture possibilities
-    std::this_thread::sleep_for(std::chrono::milliseconds(rand() % 100));
-
-
+    LOG_INFO("[ClientLibThreadInterdependencyTest] Thread Info: tid={}, Chronicle Name={}, Story Name={}", t->tid
+             , t->chronicle_name, t->story_name);
     // Chronicle Variables
     std::map <std::string, std::string> chronicle_attrs;
     chronicle_attrs.emplace("Priority", "High");
@@ -356,7 +357,6 @@ void thread_body(struct thread_arg*t)
     int ret = client->CreateChronicle(t->chronicle_name, chronicle_attrs, flags);
     LOG_INFO("[ClientLibThreadInterdependencyTest] Chronicle created: tid={}, Ret: {}", t->tid, ret);
     check_chronicle_created(t->tid, ret);
-
 
     // Story Variables
     std::map <std::string, std::string> story_attrs;
@@ -464,14 +464,43 @@ int main(int argc, char**argv)
     std::vector <std::thread> workers(num_threads);
     shared_state.resize(num_threads, 0);
 
+    // Randomization setup
+    std::random_device rd;
+    std::mt19937 gen(rd());
+
+    // Generate random assignments for story-to-thread
+    std::uniform_int_distribution <> story_dis(0, 3); // Range [0, 3] for 4 stories: 11, 12, 21, 22
+    std::vector <int> story_assignments(num_threads);
+    for(int i = 0; i < num_threads; ++i)
+    {
+        story_assignments[i] = story_dis(gen);
+    }
+
+    // Generate random sleep times
+    const int max_sleep_time = 10; // Define maximum sleep time in seconds
+    std::uniform_int_distribution <> sleep_dis(0, max_sleep_time);
+    std::vector <int> sleep_times(num_threads);
+    for(int i = 0; i < num_threads; ++i)
+    {
+        sleep_times[i] = sleep_dis(gen);
+    }
+
+    // Chronicle and story mapping
+    const std::vector <std::string> story_mapping = {"11", "12", "21", "22"};
+
     // Create and start the worker threads
     for(int i = 0; i < num_threads; i++)
     {
-        t_args[i].tid = i;  // Assign thread ID
-        t_args[i].chronicle_name = (i % 2 == 0) ? "CHRONICLE_2" : "CHRONICLE_1";  // Assign Chronicle Name
-        t_args[i].story_name = (i % 4 < 2) ? "STORY_1" : "STORY_2";  // Assign Story Name
-        std::thread t{thread_body, &t_args[i]};  // Start the thread
-        workers[i] = std::move(t);  // Move thread to workers vector
+        t_args[i].tid = i; // Assign thread ID
+        t_args[i].chronicle_name =
+                "CHRONICLE_" + story_mapping[story_assignments[i]].substr(0, 1); // Extract chronicle digit
+        t_args[i].story_name = "STORY_" + story_mapping[story_assignments[i]].substr(1, 1);       // Extract story digit
+
+        // Simulate sleep before task begins
+        std::this_thread::sleep_for(std::chrono::seconds(sleep_times[i]));
+
+        std::thread t{thread_body, &t_args[i]}; // Start the thread
+        workers[i] = std::move(t);             // Move thread to workers vector
     }
 
     // Join all worker threads to wait for their completion
