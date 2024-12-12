@@ -366,6 +366,13 @@ void thread_body(struct thread_arg*t)
     LOG_INFO("[ClientLibThreadInterdependencyTest] Story acquired: tid={}, Ret: {}", t->tid, acquire_ret.first);
     check_story_acquired(t->tid, acquire_ret.first);
 
+    auto story_handle = acquire_ret.second;
+    for(int i = 0; i < 100; ++i)
+    {
+        // Log an event to the story
+        story_handle->log_event("line " + std::to_string(i));
+        std::this_thread::sleep_for(std::chrono::milliseconds(i % 10));
+    }
 
     // Release the story
     ret = client->ReleaseStory(t->chronicle_name, t->story_name);
