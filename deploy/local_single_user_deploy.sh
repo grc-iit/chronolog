@@ -10,6 +10,8 @@ NC='\033[0m' # No Color
 NUM_KEEPERS=1
 NUM_GRAPHERS=1
 
+BUILD_TYPE="Release"
+
 # Directories
 WORK_DIR=""
 LIB_DIR=""
@@ -17,6 +19,7 @@ CONF_DIR=""
 BIN_DIR=""
 MONITOR_DIR=""
 OUTPUT_DIR=""
+INSTALL_DIR=""
 
 # Files
 VISOR_BIN="${BIN_DIR}/chronovisor_server"
@@ -25,17 +28,19 @@ GRAPHER_BIN="${BIN_DIR}/chrono_grapher"
 CONF_FILE="${CONF_DIR}/default_conf.json"
 
 #Booleans
-deploy=false
-reset=false
+build=false
+install=false
+start=false
 stop=false
-kill=false
+clean=false
 
-# Methods ______________________________________________________________________________________________________________
+EXEC_MODE_COUNT=0
 
+# Helper Methods _______________________________________________________________________________________________________
 check_dependencies() {
     local dependencies=("jq" "ldd" "nohup" "pkill" "readlink")
 
-    echo -e "${INFO}Checking required dependencies...${NC}"
+    echo -e "${DEBUG}Checking required dependencies...${NC}"
     for dep in "${dependencies[@]}"; do
         if ! command -v $dep &> /dev/null; then
             echo -e "${ERR}Dependency $dep is not installed. Please install it and try again.${NC}"
@@ -46,7 +51,7 @@ check_dependencies() {
 }
 
 check_directories() {
-    echo -e "${INFO}Checking required directories...${NC}"
+    echo -e "${DEBUG}Checking required directories...${NC}"
     local directories=("${WORK_DIR}" "${LIB_DIR}" "${CONF_DIR}" "${BIN_DIR}")
 
     for dir in "${directories[@]}"; do
@@ -59,7 +64,7 @@ check_directories() {
 }
 
 check_files() {
-    echo -e "${INFO}Checking required files...${NC}"
+    echo -e "${DEBUG}Checking required files...${NC}"
     [[ ! -f ${VISOR_BIN} ]] && echo -e "${ERR}Visor binary file does not exist, exiting ...${NC}" && exit 1
     [[ ! -f ${KEEPER_BIN} ]] && echo -e "${ERR}Keeper binary file does not exist, exiting ...${NC}" && exit 1
     [[ ! -f ${GRAPHER_BIN} ]] && echo -e "${ERR}Grapher binary file does not exist, exiting ...${NC}" && exit 1
@@ -216,8 +221,7 @@ copy_shared_libs() {
     echo -e "${DEBUG}Copy shared libraries done${NC}"
 }
 
-# Functions to launch and kill processes
-launch_process() {
+start_service() {
     local bin="$1"
     local args="$2"
     local monitor_file="$3"
@@ -225,135 +229,252 @@ launch_process() {
     LD_LIBRARY_PATH=${LIB_DIR} nohup ${bin} ${args} > ${MONITOR_DIR}/${monitor_file} 2>&1 &
 }
 
-kill_process() {
+kill_service() {
     local bin="$1"
     echo -e "${DEBUG}Killing $(basename ${bin}) ...${NC}"
     pkill -9 -f ${bin}
 }
 
-stop_process() {
+stop_service() {
     local bin="$1"
+    local timeout="$2"
+
+    # Stop all processes of the service in parallel
+    local start_time=$(date +%s)
     echo -e "${DEBUG}Stopping $(basename ${bin}) ...${NC}"
     pkill -f ${bin}
+
+    # Wait for processes to stop with a timeout
+    while true; do
+        if pgrep -f "${bin}" >/dev/null; then
+            echo -e "${DEBUG}Waiting for ${bin} to stop...${NC}"
+        else
+            echo -e "${DEBUG}All service processes stopped gracefully.${NC}"
+            break
+        fi
+        sleep 10
+        # Check if timeout is reached
+        local current_time=$(date +%s)
+        if (( current_time - start_time >= timeout )); then
+            echo -e "${DEBUG}Timeout reached while stopping processes. Forcing termination.${NC}"
+            if pgrep -f "${bin}" >/dev/null; then
+                kill_service ${bin}
+                echo -e "${DEBUG}Killed: ${bin} ${NC}"
+            fi
+            break
+        fi
+    done
+    echo ""
 }
 
-# Main functions for install, reset, and usage
-install() {
-    echo -e "${INFO}Installing ...${NC}"
+check_build_directory() {
+    local deploy_dir=$(realpath "$(dirname "$0")")  # Get the absolute path of the script's directory
+    local build_dir="${deploy_dir}/../build"       # Navigate to x/build from x/deploy
+
+    build_dir=$(realpath "${build_dir}" 2>/dev/null || echo "")
+
+    echo -e "${DEBUG}Checking for the existence of the build directory: ${build_dir}${NC}"
+
+    if [ -d "${build_dir}" ]; then
+        echo -e "${DEBUG}Build directory found: ${build_dir}${NC}"
+    else
+        echo -e "${ERR}Build directory not found at: ${build_dir}${NC}"
+        echo "Please ensure the build process has been completed successfully before proceeding."
+        exit 1
+    fi
+}
+
+check_installation() {
     check_dependencies
     check_directories
     check_files
-    copy_shared_libs
-    generate_config_files ${NUM_KEEPERS} ${CONF_FILE} ${CONF_DIR} ${OUTPUT_DIR} ${NUM_GRAPHERS} ${MONITOR_DIR}
-    echo -e "${DEBUG}Install done${NC}"
 }
 
-deploy() {
-    echo -e "${INFO}Deploying ...${NC}"
-    install
-    launch_process ${VISOR_BIN} "--config ${CONF_DIR}/visor_conf.json" "visor.log"
+check_work_dir() {
+    # Check if WORK_DIR is set
+    if [[ -z "${WORK_DIR}" ]]; then
+        echo -e "${ERR}WORK_DIR is mandatory on this mode. Please provide it using the -w or --work-dir option.${NC}"
+        usage
+        exit 1
+    fi
+}
+
+check_execution_stopped() {
+    echo -e "${DEBUG}Checking if ChronoLog processes are running...${NC}"
+    local active_processes=$(pgrep -la chrono)
+
+    if [[ -n "${active_processes}" ]]; then
+        echo -e "${ERR}ChronoLog processes are still running:${NC}"
+        echo "${active_processes}"
+        echo -e "${ERR}Please stop all ChronoLog processes before cleaning.${NC}"
+        exit 1
+    else
+        echo -e "${DEBUG}No active ChronoLog processes detected. Proceeding with cleaning.${NC}"
+    fi
+}
+
+# Main functions for install, reset, and usage__________________________________________________________________________
+build() {
+    echo -e "${INFO}Building ChronoLog...${NC}"
+
+    if [[ -n "$INSTALL_DIR" ]]; then
+        ./build.sh -type "$BUILD_TYPE" -install-path "$INSTALL_DIR"
+    else
+        ./build.sh -type "$BUILD_TYPE"
+    fi
+    echo -e "${INFO}ChronoLog Built.${NC}"
+}
+
+install() {
+    echo -e "${INFO}Installing ChronoLog...${NC}"
+    check_work_dir
+    check_build_directory
+    if [[ -x ./install.sh ]]; then
+        ./install.sh
+    else
+        echo -e "${RED}Error: ./install.sh is not executable or not found.${NC}"
+        exit 1
+    fi
+    copy_shared_libs
+    echo -e "${INFO}ChronoLog Installed.${NC}"
+}
+
+start() {
+    echo -e "${INFO}Preparing to start ChronoLog...${NC}"
+    check_work_dir
+    mkdir -p "${MONITOR_DIR}"
+    mkdir -p "${OUTPUT_DIR}"
+    check_installation
+    generate_config_files ${NUM_KEEPERS} ${CONF_FILE} ${CONF_DIR} ${OUTPUT_DIR} ${NUM_GRAPHERS} ${MONITOR_DIR}
+
+    echo -e "${INFO}Starting ChronoLog...${NC}"
+    start_service ${VISOR_BIN} "--config ${CONF_DIR}/visor_conf.json" "visor.launch.log"
     sleep 2
     num_graphers=${NUM_GRAPHERS}
     for (( i=1; i<=num_graphers; i++ ))
     do
-        launch_process ${GRAPHER_BIN} "--config ${CONF_DIR}/grapher_conf_$i.json" "grapher_$i.log"
+        start_service ${GRAPHER_BIN} "--config ${CONF_DIR}/grapher_conf_$i.json" "grapher_$i.launch.log"
     done
     sleep 2
     num_keepers=${NUM_KEEPERS}
     for (( i=1; i<=num_keepers; i++ ))
     do
-        launch_process ${KEEPER_BIN} "--config ${CONF_DIR}/keeper_conf_$i.json" "keeper_$i.log"
+        start_service ${KEEPER_BIN} "--config ${CONF_DIR}/keeper_conf_$i.json" "keeper_$i.launch.log"
     done
-    sleep 2
-
-    echo -e "${DEBUG}Deployment done${NC}"
+    echo -e "${INFO}ChronoLog Started.${NC}"
 }
 
-kill() {
-    echo -e "${INFO}Killing ...${NC}"
-    kill_process ${KEEPER_BIN}
-    kill_process ${GRAPHER_BIN}
-    kill_process ${VISOR_BIN}
-    echo -e "${DEBUG}Kill done${NC}"
+stop() {
+    echo -e "${INFO}Stopping ChronoLog...${NC}"
+    check_work_dir
+    stop_service ${KEEPER_BIN} 100
+    stop_service ${GRAPHER_BIN} 100
+    stop_service ${VISOR_BIN} 100
+    echo -e "${INFO}ChronoLog stopped.${NC}"
 }
 
-reset() {
-    echo -e "${INFO}Resetting...${NC}"
-    kill;
-    echo -e "${DEBUG}Delete all generated files${NC}"
-
-    # Remove all config files
+clean() {
+    echo -e "${INFO}Cleaning ChronoLog...${NC}"
+    check_work_dir
+    check_execution_stopped
+    echo -e "${DEBUG}Removing config files${NC}"
     rm -f ${CONF_DIR}/grapher_conf*.json
     rm -f ${CONF_DIR}/keeper_conf*.json
     rm -f ${CONF_DIR}/visor_conf.json
 
-    # Remove all monitor files
+    echo -e "${DEBUG}Removing log files${NC}"
     rm -f ${MONITOR_DIR}/*.log
 
-    # Remove all output files
+    echo -e "${DEBUG}Removing output files${NC}"
     rm -f ${OUTPUT_DIR}/*
-    echo -e "${DEBUG}Reset done${NC}"
+
+    echo -e "${INFO}ChronoLog cleaning done. ${NC}"
 }
 
-stop() {
-    echo -e "${INFO}Stopping ...${NC}"
-    declare -a processes=("${KEEPER_BIN}" "${GRAPHER_BIN}" "${VISOR_BIN}")
-    for process in "${processes[@]}"; do
-        stop_process "${process}"
-        while pgrep -f "${process}" >/dev/null; do
-            echo -e "${DEBUG}Waiting for ${process} to stop...${NC}"
-            sleep 10
-        done
-        echo -e "${DEBUG}${process} stop done${NC}"
-    done
-    echo -e "${DEBUG}All processes stopped${NC}"
-}
-
-# Usage function with new options
 usage() {
     echo "Usage: $0 [options]"
+    echo ""
     echo "Options:"
     echo "  -h|--help           Display this help and exit"
-
-    echo "  -d|--deploy         Start ChronoLog Deployment (default: false)"
+    echo ""
+    echo "Execution Modes (Select only ONE):"
+    echo "  -b|--build          Build ChronoLog (default: false)"
+    echo "  -i|--install        Install ChronoLog (default: false)"
+    echo "  -d|--start          Start ChronoLog Deployment (default: false)"
     echo "  -s|--stop           Stop ChronoLog Deployment (default: false)"
-    echo "  -r|--reset          Reset/CleanUp ChronoLog Deployment (default: false)"
-    echo "  -k|--kill           Terminate ChronoLog Deployment (default: false)"
-
-    echo "  -w|--work-dir       WORK_DIR Set the working directory (Mandatory)"
-    echo "  -m|--monitor_dir    MONITOR_DIR (default: work_dir/monitor)"
-    echo "  -u|--output_dir     OUTPUT_DIR (default: work_dir/output)"
-
-    echo "  -v|--visor          VISOR_BIN (default: work_dir/bin/chronovisor_server)"
-    echo "  -g|--grapher        GRAPHER_BIN (default: work_dir/bin/chrono_grapher)"
-    echo "  -p|--keeper         KEEPER_BIN (default: work_dir/bin/chrono_keeper)"
-    echo "  -f|--conf_file      CONF_FILE (default: work_dir/conf/default_conf.json)"
-
-    echo "  -n|--keepers        Set the total number of keeper processes. They will be assigned iteratively to the recording groups"
-    echo "  -j|--record-groups  Set the number of recording groups or grapher processes"
-
+    echo "  -c|--clean          Clean ChronoLog logging artifacts (default: false)"
+    echo "  Note: Only one execution mode can be selected per run."
+    echo ""
+    echo "Build Options:"
+    echo "  -t|--build-type     Define type of build: Debug | Release (default: Release) [Modes: Build]"
+    echo "  -l|--install-dir    Define installation directory (default: /home/$USER/chronolog/BUILD_TYPE) [Modes: Build]"
+    echo ""
+    echo "Deployment Options:"
+    echo "  -k|--keepers        Set the total number of keeper processes. They will be assigned iteratively to the recording groups [Modes: Start]"
+    echo "  -r|--record-groups  Set the number of recording groups or grapher processes [Modes: Start]"
+    echo ""
+    echo "Directory Settings:"
+    echo "  -w|--work-dir       WORK_DIR Set the working directory (Mandatory) [Modes: Install, Start, Stop, Clean]"
+    echo "  -m|--monitor-dir    MONITOR_DIR (default: work_dir/monitor) [Modes: Start]"
+    echo "  -u|--output-dir     OUTPUT_DIR (default: work_dir/output) [Modes: Start]"
+    echo ""
+    echo "Binary Paths:"
+    echo "  -v|--visor-bin      VISOR_BIN (default: work_dir/bin/chronovisor_server) [Modes: Start]"
+    echo "  -g|--grapher-bin    GRAPHER_BIN (default: work_dir/bin/chrono_grapher) [Modes: Start]"
+    echo "  -p|--keeper-bin     KEEPER_BIN (default: work_dir/bin/chrono_keeper) [Modes: Start]"
+    echo ""
+    echo "Configuration Settings:"
+    echo "  -f|--conf-file      CONF_FILE Path to the configuration file (default: work_dir/conf/default_conf.json) [Modes: Start]"
+    echo ""
+    echo "Examples:"
+    echo "  $0 --build --build-type Debug"
+    echo "  $0 --start --work-dir /path/to/workdir --conf-file /path/to/config.json"
+    echo ""
     exit 1
 }
 
-# Parse arguments to set variables
 parse_args() {
     while [[ "$#" -gt 0 ]]; do
         case "$1" in
-            -d|--deploy)
-                deploy=true
+             -h|--help)
+                usage;
                 shift ;;
-            -r|--reset)
-                reset=true
+            -b|--build)
+                build=true
+                ((EXEC_MODE_COUNT++))
                 shift ;;
-            -k|--kill)
-                kill=true
+            -i|--install)
+                install=true
+                ((EXEC_MODE_COUNT++))
+                shift ;;
+            -d|--start)
+                start=true
+                ((EXEC_MODE_COUNT++))
                 shift ;;
             -s|--stop)
                 stop=true
+                ((EXEC_MODE_COUNT++))
                 shift ;;
-            -h|--help)
-                usage;
+            -c|--clean)
+                clean=true
+                ((EXEC_MODE_COUNT++))
                 shift ;;
+            -t|--build-type)
+                BUILD_TYPE="$2"
+                if [[ "$BUILD_TYPE" != "Debug" && "$BUILD_TYPE" != "Release" ]]; then
+                    echo -e "${ERR}Invalid build type: $BUILD_TYPE. Must be 'Debug' or 'Release'.${NC}"
+                    usage
+                fi
+                shift 2 ;;
+            -l|--install-dir)
+                INSTALL_DIR=$(realpath "$2")
+                shift 2 ;;
+            -k|--keepers)
+                NUM_KEEPERS="$2"
+                shift 2 ;;
+            -r|--record-groups)
+                NUM_GRAPHERS="$2"
+                shift 2 ;;
             -w|--work-dir)
                 WORK_DIR="$2"
                 LIB_DIR="${WORK_DIR}/lib"
@@ -363,6 +484,8 @@ parse_args() {
                 KEEPER_BIN="${BIN_DIR}/chrono_keeper"
                 GRAPHER_BIN="${BIN_DIR}/chrono_grapher"
                 CONF_FILE="${CONF_DIR}/default_conf.json"
+                OUTPUT_DIR=${WORK_DIR}/output
+                MONITOR_DIR=${WORK_DIR}/monitor
                 shift 2 ;;
             -u|--output-dir)
                 OUTPUT_DIR=$(realpath "$2")
@@ -370,62 +493,55 @@ parse_args() {
             -m|--monitor-dir)
                 MONITOR_DIR=$(realpath "$2")
                 shift 2 ;;
-            -v|--visor)
+            -v|--visor-bin)
                 VISOR_BIN=$(realpath "$2")
                 shift 2 ;;
-            -g|--grapher)
+            -g|--grapher-bin)
                 GRAPHER_BIN=$(realpath "$2")
                 shift 2 ;;
-            -p|--keeper)
+            -p|--keeper-bin)
                 KEEPER_BIN=$(realpath "$2")
                 shift 2 ;;
-            -f|--conf_file)
+            -f|--conf-file)
                 CONF_FILE=$(realpath "$2")
                 CONF_DIR=$(dirname ${CONF_FILE})
-                shift 2 ;;
-            -j|--record-groups)
-                NUM_GRAPHERS="$2"
-                shift 2 ;;
-            -n|--keepers-group)
-                NUM_KEEPERS="$2"
                 shift 2 ;;
             *) echo -e "${ERR}Unknown option: $1${NC}"; usage ;;
         esac
     done
 
-    # Check if WORK_DIR is set
-    if [[ -z "${WORK_DIR}" ]]; then
-        echo -e "${ERR}WORK_DIR is mandatory. Please provide it using the -w or --work-dir option.${NC}"
+    # Check if multiple execution modes are selected
+    if [[ $EXEC_MODE_COUNT -gt 1 ]]; then
+        echo -e "${ERR}Error: Only one execution mode can be selected at a time. Please choose one of build, install, start, stop, or clean.${NC}"
+        usage
+        exit 1
+    elif [[ $EXEC_MODE_COUNT -eq 0 ]]; then
+        echo -e "${ERR}Error: Please specify an execution mode (build, install, start, stop, or clean).${NC}"
         usage
         exit 1
     fi
-
-    # Set default directories if not already set by the user
-    : "${OUTPUT_DIR:=${WORK_DIR}/output}"
-    : "${MONITOR_DIR:=${WORK_DIR}/monitor}"
-
-    # Ensure directories exist
-    mkdir -p "${MONITOR_DIR}"
-    mkdir -p "${OUTPUT_DIR}"
 }
 
 # Start execution of the script____________________________________________________________________________________
 parse_args "$@"
 
-if ${deploy}
+if ${build}
 then
-    deploy
-elif ${reset}
+    build
+elif ${install}
 then
-    reset
+    install
+elif ${start}
+then
+    start
 elif ${stop}
 then
     stop
-elif ${kill}
+elif ${clean}
 then
-    kill
+    clean
 else
-    echo -e "${ERR}Please select deploy or reset mode${NC}"
+    echo -e "${ERR}Please select build, install, start, stop or clean mode${NC}"
     usage
 fi
-echo -e "${INFO}Done${NC}"
+echo -e "${DEBUG}Done${NC}"
