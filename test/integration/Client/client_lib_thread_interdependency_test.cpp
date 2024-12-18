@@ -20,6 +20,7 @@ struct thread_arg
     int tid;
     std::string chronicle_name;
     std::string story_name;
+    int sleep_time;
 };
 
 chronolog::Client*client;
@@ -347,6 +348,9 @@ void thread_body(struct thread_arg*t)
     // Thread Initialized
     check_thread_initialization(t->tid, 0);
 
+    // Add random sleep times
+    std::this_thread::sleep_for(std::chrono::seconds(t->sleep_time));
+
     LOG_INFO("[ClientLibThreadInterdependencyTest] Thread Info: tid={}, Chronicle Name={}, Story Name={}", t->tid
              , t->chronicle_name, t->story_name);
     // Chronicle Variables
@@ -470,20 +474,10 @@ int main(int argc, char**argv)
 
     // Generate random assignments for story-to-thread
     std::uniform_int_distribution <> story_dis(0, 3); // Range [0, 3] for 4 stories: 11, 12, 21, 22
-    std::vector <int> story_assignments(num_threads);
-    for(int i = 0; i < num_threads; ++i)
-    {
-        story_assignments[i] = story_dis(gen);
-    }
 
     // Generate random sleep times
     const int max_sleep_time = 10; // Define maximum sleep time in seconds
     std::uniform_int_distribution <> sleep_dis(0, max_sleep_time);
-    std::vector <int> sleep_times(num_threads);
-    for(int i = 0; i < num_threads; ++i)
-    {
-        sleep_times[i] = sleep_dis(gen);
-    }
 
     // Chronicle and story mapping
     const std::vector <std::string> story_mapping = {"11", "12", "21", "22"};
@@ -492,13 +486,9 @@ int main(int argc, char**argv)
     for(int i = 0; i < num_threads; i++)
     {
         t_args[i].tid = i; // Assign thread ID
-        t_args[i].chronicle_name =
-                "CHRONICLE_" + story_mapping[story_assignments[i]].substr(0, 1); // Extract chronicle digit
-        t_args[i].story_name = "STORY_" + story_mapping[story_assignments[i]].substr(1, 1);       // Extract story digit
-
-        // Simulate sleep before task begins
-        std::this_thread::sleep_for(std::chrono::seconds(sleep_times[i]));
-
+        t_args[i].chronicle_name = "CHRONICLE_" + story_mapping[story_dis(gen)].substr(0, 1);
+        t_args[i].story_name = "STORY_" + story_mapping[story_dis(gen)].substr(1, 1);
+        t_args[i].sleep_time = sleep_dis(gen);
         std::thread t{thread_body, &t_args[i]}; // Start the thread
         workers[i] = std::move(t);             // Move thread to workers vector
     }
