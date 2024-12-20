@@ -47,11 +47,7 @@ public:
 
     void drainExtractionQueue();
 
-    virtual int processStoryChunk(StoryChunk*)  //=0
-    {
-        LOG_WARNING("[StoryChunkExtraction] Base processStoryChunk method called. Derived class should implement specific logic.");
-        return CL_SUCCESS;
-    }
+    virtual int processStoryChunk(StoryChunk*)  =0;
 
     void startExtractionThreads(int);
 

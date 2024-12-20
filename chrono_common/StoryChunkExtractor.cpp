@@ -28,7 +28,7 @@ void chronolog::StoryChunkExtractorBase::startExtractionThreads(int stream_count
         extractionStreams.push_back(std::move(es));
     }
 
-    for(int i = 0; i < 2 * stream_count; ++i)
+    for(int i = 0; i < stream_count; ++i)
     {
         tl::managed <tl::thread> th = extractionStreams[i % extractionStreams.size()]->make_thread([p = this]()
                                                                                                    { p->drainExtractionQueue(); });
@@ -114,6 +114,5 @@ void chronolog::StoryChunkExtractorBase::drainExtractionQueue()
                 chunkExtractionQueue.stashStoryChunk(storyChunk);
             }
         }
-        sleep(30);
     }
 }
