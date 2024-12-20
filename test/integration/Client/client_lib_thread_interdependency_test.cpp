@@ -1,22 +1,30 @@
 #include <chronolog_client.h>
+#include <cmd_arg_parse.h>
+#include "chrono_monitor.h"
 #include <common.h>
 #include <thread>
 #include <chrono>
-#include <cmd_arg_parse.h>
-#include "chrono_monitor.h"
 #include <vector>
 #include <bitset>
+#include <cstdlib>
+#include <random>
+#include <string>
+#include <algorithm>
+#include <iostream>
 
 #define STORY_NAME_LEN 5
+#define DEFAULT_NUM_THREADS 4
 
 struct thread_arg
 {
     int tid;
     std::string chronicle_name;
     std::string story_name;
+    int sleep_time;
 };
 
 chronolog::Client*client;
+std::vector <struct thread_arg> t_args;
 std::vector <int> shared_state;
 std::mutex shared_state_mutex;
 
@@ -61,8 +69,8 @@ void update_chronicle_threads_state(int tid, ThreadState new_state)
 {
     for(size_t i = 0; i < shared_state.size(); ++i)
     {
-        if(i == tid) continue;
-        if((i % 2 == tid % 2))
+        if(t_args[i].tid == tid) continue;
+        if((t_args[i].chronicle_name == t_args[tid].chronicle_name))
         {
             shared_state[i] = static_cast<int>(new_state);
             LOG_INFO("[ClientLibThreadInterdependencyTest] -Thread {}- Thread {} state updated to: {}", tid, i
@@ -75,8 +83,8 @@ void update_story_threads_state(int tid, ThreadState new_state)
 {
     for(size_t i = 0; i < shared_state.size(); ++i)
     {
-        if(i == tid) continue;
-        if((i % 2 == tid % 2) && ((i % 4) / 2 == (tid % 4) / 2))
+        if(t_args[i].tid == tid) continue;
+        if((t_args[i].chronicle_name == t_args[tid].chronicle_name) && (t_args[i].story_name == t_args[tid].story_name))
         {
             shared_state[i] = static_cast<int>(new_state);  // Update state
             LOG_INFO("[ClientLibThreadInterdependencyTest] -Thread {}- Thread {} state updated to: {}", tid, i
@@ -206,7 +214,8 @@ void check_story_released(int tid, int ret)
            static_cast<ThreadState>(shared_state[tid]) == ThreadState::CHRONICLE_DESTROYED)
         {
             LOG_INFO("[ClientLibThreadInterdependencyTest] -Thread {}- received a CL_ERR_NOT_ACQUIRED return value "
-                     "when trying to release a Story on a STORY_RELEASED,STORY_DESTROYED or CHRONICLE_DESTROYED state", tid);
+                     "when trying to release a Story on a STORY_RELEASED,STORY_DESTROYED or CHRONICLE_DESTROYED state"
+                     , tid);
         }
         else
         {
@@ -339,48 +348,82 @@ void thread_body(struct thread_arg*t)
     // Thread Initialized
     check_thread_initialization(t->tid, 0);
 
+    // Add random sleep times
+    std::this_thread::sleep_for(std::chrono::seconds(t->sleep_time));
 
+    LOG_INFO("[ClientLibThreadInterdependencyTest] Thread Info: tid={}, Chronicle Name={}, Story Name={}", t->tid
+             , t->chronicle_name, t->story_name);
     // Chronicle Variables
-    std::string chronicle_name = (t->tid % 2 == 0) ? "CHRONICLE_2" : "CHRONICLE_1";//"CHRONICLE";
     std::map <std::string, std::string> chronicle_attrs;
     chronicle_attrs.emplace("Priority", "High");
     int flags = 1;
     // Chronicle creation
-    int ret = client->CreateChronicle(chronicle_name, chronicle_attrs, flags);
+    int ret = client->CreateChronicle(t->chronicle_name, chronicle_attrs, flags);
     LOG_INFO("[ClientLibThreadInterdependencyTest] Chronicle created: tid={}, Ret: {}", t->tid, ret);
     check_chronicle_created(t->tid, ret);
 
-
     // Story Variables
-    std::string story_name = (t->tid % 4 < 2) ? "STORY_1" : "STORY_2";
     std::map <std::string, std::string> story_attrs;
     flags = 2;
     // Acquire story
-    auto acquire_ret = client->AcquireStory(chronicle_name, story_name, story_attrs, flags);
+    auto acquire_ret = client->AcquireStory(t->chronicle_name, t->story_name, story_attrs, flags);
     LOG_INFO("[ClientLibThreadInterdependencyTest] Story acquired: tid={}, Ret: {}", t->tid, acquire_ret.first);
     check_story_acquired(t->tid, acquire_ret.first);
 
+    auto story_handle = acquire_ret.second;
+    for(int i = 0; i < 100; ++i)
+    {
+        // Log an event to the story
+        story_handle->log_event("line " + std::to_string(i));
+        std::this_thread::sleep_for(std::chrono::milliseconds(i % 10));
+    }
 
     // Release the story
-    ret = client->ReleaseStory(chronicle_name, story_name);
+    ret = client->ReleaseStory(t->chronicle_name, t->story_name);
     LOG_INFO("[ClientLibThreadInterdependencyTest] Story released: tid={}, Ret: {}", t->tid, ret);
     check_story_released(t->tid, ret);
 
 
     // Destroy the story
-    ret = client->DestroyStory(chronicle_name, story_name);
+    ret = client->DestroyStory(t->chronicle_name, t->story_name);
     LOG_INFO("[ClientLibThreadInterdependencyTest] Story destroyed: tid={}, Ret: {}", t->tid, ret);
     check_story_destroyed(t->tid, ret);
 
 
     // Destroy the chronicle
-    ret = client->DestroyChronicle(chronicle_name);
+    ret = client->DestroyChronicle(t->chronicle_name);
     LOG_INFO("[ClientLibThreadInterdependencyTest] Chronicle destroyed: tid={}, Ret: {}", t->tid, ret);
     check_chronicle_destroyed(t->tid, ret);
 
 
     // Thread Finalized
     check_thread_finalized(t->tid, 0);
+}
+
+int parse_num_threads_arg(int argc, char**argv)
+{
+    // Check for additional arguments
+    if(argc > 1)
+    {
+        try
+        {
+            int num_threads = std::stoi(argv[1]); // Convert the first argument to an integer
+            if(num_threads > 0)
+            {
+                return num_threads;
+            }
+            else
+            {
+                std::cerr << "Number of threads must be greater than 0. Using default: " << DEFAULT_NUM_THREADS
+                          << std::endl;
+            }
+        }
+        catch(const std::exception &e)
+        {
+            std::cerr << "Invalid number of threads provided. Using default: " << DEFAULT_NUM_THREADS << std::endl;
+        }
+    }
+    return DEFAULT_NUM_THREADS;
 }
 
 
@@ -416,19 +459,38 @@ int main(int argc, char**argv)
         return -1;
     }
 
+    // Parse number of threads from command line, default to DEFAULT_NUM_THREADS
+    int num_threads = parse_num_threads_arg(argc, argv);
+
     // Initiate test
-    LOG_INFO("[ClientLibThreadInterdependencyTest] Running test.");
-    int num_threads = 8;
-    std::vector <struct thread_arg> t_args(num_threads);
+    LOG_INFO("[ClientLibThreadInterdependencyTest] Running test with " + std::to_string(num_threads) + " threads.");
+    t_args.resize(num_threads);
     std::vector <std::thread> workers(num_threads);
     shared_state.resize(num_threads, 0);
+
+    // Randomization setup
+    std::random_device rd;
+    std::mt19937 gen(rd());
+
+    // Generate random assignments for story-to-thread
+    std::uniform_int_distribution <> story_dis(0, 3); // Range [0, 3] for 4 stories: 11, 12, 21, 22
+
+    // Generate random sleep times
+    const int max_sleep_time = 10; // Define maximum sleep time in seconds
+    std::uniform_int_distribution <> sleep_dis(0, max_sleep_time);
+
+    // Chronicle and story mapping
+    const std::vector <std::string> story_mapping = {"11", "12", "21", "22"};
 
     // Create and start the worker threads
     for(int i = 0; i < num_threads; i++)
     {
-        t_args[i].tid = i;  // Assign thread ID
-        std::thread t{thread_body, &t_args[i]};  // Start the thread
-        workers[i] = std::move(t);  // Move thread to workers vector
+        t_args[i].tid = i; // Assign thread ID
+        t_args[i].chronicle_name = "CHRONICLE_" + story_mapping[story_dis(gen)].substr(0, 1);
+        t_args[i].story_name = "STORY_" + story_mapping[story_dis(gen)].substr(1, 1);
+        t_args[i].sleep_time = sleep_dis(gen);
+        std::thread t{thread_body, &t_args[i]}; // Start the thread
+        workers[i] = std::move(t);             // Move thread to workers vector
     }
 
     // Join all worker threads to wait for their completion
