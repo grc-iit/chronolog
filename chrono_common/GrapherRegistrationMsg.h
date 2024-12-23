@@ -34,11 +34,17 @@ public:
     template <typename SerArchiveT>
     void serialize(SerArchiveT &serT)
     {
-        serT&grapherIdCard;
-        serT&adminServiceId;
+        serT & grapherIdCard;
+        serT & adminServiceId;
     }
 
 };
+
+inline std::string to_string(GrapherRegistrationMsg const & msg)
+{
+    return std::string("GrapherRegistrationMsg{") + to_string(msg.getGrapherIdCard())
+        + std::string("}{admin:") + to_string(msg.getAdminServiceId()) + "}";
+}
 
 }//namespace
 
@@ -46,6 +52,12 @@ inline std::ostream &operator<<(std::ostream &out, chronolog::GrapherRegistratio
 {
     out << "GrapherRegistrationMsg{" << msg.getGrapherIdCard() << "}{admin:" << msg.getAdminServiceId() << "}";
     return out;
+}
+
+inline std::string & operator+= (std::string & a_string, chronolog::GrapherRegistrationMsg const &msg)
+{
+    a_string += chronolog::to_string(msg);
+    return a_string;
 }
 
 #endif

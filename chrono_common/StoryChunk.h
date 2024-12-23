@@ -13,9 +13,6 @@
 namespace chronolog
 {
 
-typedef uint64_t chrono_time;
-typedef uint32_t chrono_index;
-
 // StoryChunk contains all the events for the single story
 // for the duration [startTime, endTime[
 // startTime included, endTime excluded

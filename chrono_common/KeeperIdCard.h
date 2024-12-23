@@ -15,14 +15,6 @@
 namespace chronolog
 {
 
-// Keeper Process can be uniquely identified by the combination of
-// the host IP address + client_port
-
-typedef uint32_t        in_addr_t;
-typedef uint16_t        in_port_t;
-typedef std::pair <in_addr_t, in_port_t> service_endpoint;
-
-typedef uint32_t KeeperGroupId;
 
 class KeeperIdCard
 {
@@ -73,10 +65,19 @@ public:
         {   a_string += std::string(buffer); }
      return a_string;
     }
-
+ 
 };
 
+inline std::string to_string(chronolog::KeeperIdCard const& keeper_id_card)
+{
+    std::string a_string;
+    return std::string("KeeperIdCard{") + std::to_string(keeper_id_card.getGroupId()) + ":" +
+                keeper_id_card.getIPasDottedString(a_string) + ":" + std::to_string(keeper_id_card.getPort()) + ":" +
+                std::to_string(keeper_id_card.getProviderId()) + "}";
+}
+
 } //namespace chronolog
+
 
 inline bool operator==(chronolog::KeeperIdCard const& card1, chronolog::KeeperIdCard const& card2)
 {
@@ -94,11 +95,9 @@ inline std::ostream & operator<< (std::ostream & out , chronolog::KeeperIdCard c
     return out;
 }
 
-inline std::string& operator+= (std::string& a_string, chronolog::KeeperIdCard const& keeper_id_card)
+inline std::string & operator+= (std::string & a_string , chronolog::KeeperIdCard const & keeper_id_card)
 {
-    a_string += std::string("KeeperIdCard{") + std::to_string(keeper_id_card.getGroupId()) + ":" +
-                keeper_id_card.getIPasDottedString(a_string) + ":" + std::to_string(keeper_id_card.getPort()) + ":" +
-                std::to_string(keeper_id_card.getProviderId()) + "}";
+    a_string += chronolog::to_string(keeper_id_card);
     return a_string;
 }
 

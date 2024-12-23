@@ -138,6 +138,39 @@
         "story_files_dir" : "/tmp"
     }
  },
+ "chrono_player": {
+    "RecordingGroup": 7,
+    "DataStoreAdminService": {
+      "rpc": {
+        "protocol_conf": "ofi+sockets",
+        "service_ip": "127.0.0.1",
+        "service_base_port": 2222,
+        "service_provider_id": 22
+      }
+    },
+    "VisorRegistryService": {
+      "rpc": {
+        "protocol_conf": "ofi+sockets",
+        "service_ip": "127.0.0.1",
+        "service_base_port": 8888,
+        "service_provider_id": 88
+      }
+    },
+    "Monitoring": {
+      "monitor": {
+        "type": "file",
+        "file": "chrono_player.log",
+        "level": "debug",
+        "name": "ChronoPlayer",
+        "filesize": 1048576,
+        "filenum": 3,
+        "flushlevel": "debug"
+      }
+    },
+    "DataStoreInternals": {
+        "max_story_chunk_size": 4096
+    }
+ },
   "chrono_client": {
     "VisorClientPortalService": {
       "rpc": {

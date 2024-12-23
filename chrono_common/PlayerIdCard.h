@@ -1,5 +1,5 @@
-#ifndef GRAPHER_ID_CARD_H
-#define GRAPHER_ID_CARD_H
+#ifndef PLAYER_ID_CARD_H
+#define PLAYER_ID_CARD_H
 
 #include <arpa/inet.h>
 
@@ -7,7 +7,7 @@
 
 #include "ServiceId.h"
 
-// this class wrapps ChronoGrapher Process identification 
+// this class wrapps ChronoPlayer Process identification 
 // that will be used by all the ChronoLog Processes 
 // to both identofy the process and create RPC client channels 
 // to send the data to the RecordingService it contains
@@ -15,7 +15,7 @@
 namespace chronolog
 {
 
-class GrapherIdCard
+class PlayerIdCard
 {
     RecordingGroupId groupId;
     uint32_t ip_addr; //IP address as uint32_t in host byte order
@@ -23,21 +23,21 @@ class GrapherIdCard
     uint16_t tl_provider_id; // id of thallium service provider
 
 public:
-    GrapherIdCard(RecordingGroupId group_id = 0, uint32_t addr = 0, uint16_t a_port = 0, uint16_t provider_id = 0)
+    PlayerIdCard(RecordingGroupId group_id = 0, uint32_t addr = 0, uint16_t a_port = 0, uint16_t provider_id = 0)
         : groupId(group_id)
         , ip_addr(addr)
         , port(a_port)
         , tl_provider_id(provider_id)
     {}
 
-    GrapherIdCard(GrapherIdCard const& other)
+    PlayerIdCard(PlayerIdCard const& other)
         : groupId(other.getGroupId())
         , ip_addr(other.getIPaddr())
         , port(other.getPort())
         , tl_provider_id(other.getProviderId())
     {}
 
-    ~GrapherIdCard()=default;
+    ~PlayerIdCard()=default;
 
     RecordingGroupId getGroupId() const { return groupId; }
     uint32_t getIPaddr() const { return ip_addr; }
@@ -69,35 +69,35 @@ public:
     }
 
 };
- 
-inline std::string to_string( GrapherIdCard const & id_card)
+
+inline std::string to_string(PlayerIdCard const& id_card)
 {
-    std::string a_string;   
-    return std::string("GrapherIdCard{") + std::to_string(id_card.getGroupId()) + ":" +
+    std::string a_string;
+    return std::string("PlayerIdCard{") + std::to_string(id_card.getGroupId()) + ":" +
         id_card.getIPasDottedString(a_string) + ":" + std::to_string(id_card.getPort()) + ":" +
         std::to_string(id_card.getProviderId()) + "}";
 }
 
 } //namespace chronolog
 
-inline bool operator==(chronolog::GrapherIdCard const& card1, chronolog::GrapherIdCard const& card2)
+inline bool operator==(chronolog::PlayerIdCard const& card1, chronolog::PlayerIdCard const& card2)
 {
     return ((card1.getGroupId() == card2.getGroupId() && card1.getIPaddr() == card2.getIPaddr() &&
              card1.getPort() == card2.getPort() && card1.getProviderId() == card2.getProviderId())
                     ? true
                     : false);
 }
-inline std::ostream & operator<< (std::ostream & out , chronolog::GrapherIdCard const & id_card)
+inline std::ostream & operator<< (std::ostream & out , chronolog::PlayerIdCard const & id_card)
 {
     std::string a_string;
-    out << "GrapherIdCard{" << id_card.getGroupId() << ":" << id_card.getIPasDottedString(a_string) << ":"
+    out << "PlayerIdCard{" << id_card.getGroupId() << ":" << id_card.getIPasDottedString(a_string) << ":"
         << id_card.getPort() << ":" << id_card.getProviderId() << "}";
     return out;
 }
 
-inline std::string& operator+= (std::string& a_string, chronolog::GrapherIdCard const& id_card)
+inline std::string& operator+= (std::string& a_string, chronolog::PlayerIdCard const& id_card)
 {
-    a_string += std::string("GrapherIdCard{") + std::to_string(id_card.getGroupId()) + ":" +
+    a_string += std::string("PlayerIdCard{") + std::to_string(id_card.getGroupId()) + ":" +
                 id_card.getIPasDottedString(a_string) + ":" + std::to_string(id_card.getPort()) + ":" +
                 std::to_string(id_card.getProviderId()) + "}";
     return a_string;
