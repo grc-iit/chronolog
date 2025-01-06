@@ -52,18 +52,8 @@ int main(int argc, char**argv)
     for(int i = 0; i < NUM_CONNECTION; i++) client_ids.emplace_back(gen_random(8));
     for(int i = 0; i < NUM_CONNECTION; i++)
     {
-        switch(confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.RPC_IMPLEMENTATION)
-        {
-            case CHRONOLOG_THALLIUM_SOCKETS:
-            case CHRONOLOG_THALLIUM_TCP:
-            case CHRONOLOG_THALLIUM_ROCE:
-                server_uri = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.PROTO_CONF;
-                break;
-            default:
-                server_uri = "ofi+sockets";
-        }
-
-        server_uri += "://" + server_ip + ":" + std::to_string(base_port + i);
+        server_uri = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.PROTO_CONF;
+         + "://" + server_ip + ":" + std::to_string(base_port + i);
         t1 = std::chrono::steady_clock::now();
         ret = client.Connect();//server_uri, client_ids[i], flags); //, offset);
         assert(ret == chronolog::CL_SUCCESS);

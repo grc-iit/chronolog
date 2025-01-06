@@ -10,6 +10,10 @@ namespace chronolog
 
 typedef uint32_t RecordingGroupId;
 
+typedef uint32_t        in_addr_t;
+typedef uint16_t        in_port_t;
+typedef std::pair <in_addr_t, in_port_t> service_endpoint;
+
 class ServiceId
 {
 public:
@@ -44,6 +48,13 @@ public:
         return a_string;
     }
 };
+
+inline std::string to_string(ServiceId const& serviceId)
+{
+    std::string a_string;
+    return std::string("ServiceId{") + serviceId.getIPasDottedString(a_string) + ":" + std::to_string(serviceId.port) + ":" +
+                std::to_string(serviceId.provider_id) + "}";
+}
 
 }//namespace chronolog
 
