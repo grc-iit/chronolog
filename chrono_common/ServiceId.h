@@ -18,13 +18,15 @@ class ServiceId
 {
 public:
     ServiceId(uint32_t addr, uint16_t a_port, uint16_t a_provider_id)
-        : ip_addr(addr)
+        : protocol("ofi+sockets")
+        , ip_addr(addr)
         , port(a_port)
         , provider_id(a_provider_id)
     {}
 
     ~ServiceId() = default;
 
+    std::string protocol;//protocol string : ex "ofi+sockets"
     uint32_t ip_addr;    //32int IP representation in host notation
     uint16_t port;       //16int port representation in host notation
     uint16_t provider_id;//thalium provider id

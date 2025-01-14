@@ -16,8 +16,11 @@ target_sources(chrono_player PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/ChronoPlayer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/PlayerDataStore.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/ArchiveReadingAgent.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/PlaybackService.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/StoryChunkSender.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunk.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/StoryPipeline.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunkExtractor.cpp
     ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/src/chrono_monitor.cpp)
 
 target_link_libraries(chrono_player chronolog_client thallium)
