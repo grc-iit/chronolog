@@ -17,7 +17,7 @@ typedef std::pair <in_addr_t, in_port_t> service_endpoint;
 class ServiceId
 {
 public:
-    ServiceId(uint32_t addr, uint16_t a_port, uint16_t a_provider_id)
+    ServiceId(uint32_t addr = 0, uint16_t a_port = 0, uint16_t a_provider_id = 0)
         : protocol("ofi+sockets")
         , ip_addr(addr)
         , port(a_port)
@@ -30,6 +30,11 @@ public:
     uint32_t ip_addr;    //32int IP representation in host notation
     uint16_t port;       //16int port representation in host notation
     uint16_t provider_id;//thalium provider id
+
+    inline service_endpoint get_service_endpoint() const
+    {
+        return service_endpoint(ip_addr,port);
+    }
 
     template <typename SerArchiveT>
     void serialize(SerArchiveT& serT)
@@ -54,7 +59,7 @@ public:
 inline std::string to_string(ServiceId const& serviceId)
 {
     std::string a_string;
-    return std::string("ServiceId{") + serviceId.getIPasDottedString(a_string) + ":" + std::to_string(serviceId.port) + ":" +
+    return std::string("ServiceId{") +serviceId.protocol + ":" + serviceId.getIPasDottedString(a_string) + ":" + std::to_string(serviceId.port) + ":" +
                 std::to_string(serviceId.provider_id) + "}";
 }
 
@@ -64,14 +69,14 @@ inline std::string to_string(ServiceId const& serviceId)
 inline std::ostream& operator<<(std::ostream& out, chronolog::ServiceId const serviceId)
 {
     std::string a_string;
-    out << "ServiceId{" << serviceId.getIPasDottedString(a_string) << ":" << serviceId.port << ":" << serviceId.provider_id
+    out << "ServiceId{" << serviceId.protocol<<":"<<serviceId.getIPasDottedString(a_string) << ":" << serviceId.port << ":" << serviceId.provider_id
         << "}";
     return out;
 }
 
 inline std::string& operator+= (std::string& a_string, chronolog::ServiceId const& serviceId)
 {
-    a_string += std::string("ServiceId{") + serviceId.getIPasDottedString(a_string) + ":" + std::to_string(serviceId.port) + ":" +
+    a_string += std::string("ServiceId{") + serviceId.protocol + ":" + serviceId.getIPasDottedString(a_string) + ":" + std::to_string(serviceId.port) + ":" +
                 std::to_string(serviceId.provider_id) + "}";
     return a_string;
 }

@@ -2,6 +2,7 @@
 #include <cereal/archives/binary.hpp>
 
 #include "chrono_monitor.h"
+#include "chronolog_errcode.h"
 #include "StoryChunkSender.h"
 
 namespace tl = thallium;
@@ -98,3 +99,4 @@ int chronolog::StoryChunkSender::processStoryChunk(chronolog::StoryChunk*story_c
     LOG_ERROR("[StoryChunkSender] Failed to transfer StoryShunk, StoryId:{},StartTime:{}", story_chunk->getStoryId(), story_chunk->getStartTime());
     return chronolog::CL_ERR_STORY_CHUNK_EXTRACTION;
 }
+

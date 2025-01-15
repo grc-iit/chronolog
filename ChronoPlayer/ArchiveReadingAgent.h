@@ -8,7 +8,7 @@
 
 #include <thallium.hpp>
 
-#include "ArchiveReadingRequest.h"
+#include "ArchiveReadingRequestQueue.h"
 #include "StoryChunkIngestionQueue.h"
 
 namespace chronolog
