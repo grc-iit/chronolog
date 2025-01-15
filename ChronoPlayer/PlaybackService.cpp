@@ -11,6 +11,7 @@ chronolog::PlaybackService::PlaybackService(tl::engine &tl_engine, uint16_t serv
     , chronolog::ArchiveReadingRequestQueue & archive_reading_queue
     , chronolog::PlayerDataStore & data_store)
             : tl::provider <PlaybackService>(tl_engine, service_provider_id)
+            , playbackEngine(tl_engine)
             , theArchiveReadingRequestQueue(archive_reading_queue)
             , theDataStore(data_store)
 {
@@ -18,7 +19,7 @@ chronolog::PlaybackService::PlaybackService(tl::engine &tl_engine, uint16_t serv
         define("story_playback_request", &PlaybackService::story_playback_request);
 
         //set up callback for the case when the engine is being finalized while this provider is still alive
-        get_engine().push_finalize_callback(this, [p = this]()
+        playbackEngine.push_finalize_callback(this, [p = this]()
         { delete p; });
 
         std::stringstream ss;
@@ -32,7 +33,7 @@ chronolog::PlaybackService::~PlaybackService()
 {
         LOG_DEBUG("[PlaybackService] Destructor called. Cleaning up...");
         //remove provider finalization callback from the engine's list
-        get_engine().pop_finalize_callback(this);
+        playbackEngine.pop_finalize_callback(this);
 }
 
 //////////////////
@@ -67,7 +68,7 @@ void chronolog::PlaybackService::story_playback_request(tl::request const &reque
         {
         //create RDMA client of the requesting service 
         // using the service tl_engine and service_id provided in the request
-        storyChunkSender = chl::StoryChunkSender::CreateStoryChunkSender(*playbackServiceEngine, receiver_service_id);
+        storyChunkSender = chl::StoryChunkSender::CreateStoryChunkSender(playbackEngine, receiver_service_id);
         chunkSenders.insert(std::pair<chl::service_endpoint, chl::StoryChunkSender*>(receiver_service_id.get_service_endpoint(),storyChunkSender));
 
         }

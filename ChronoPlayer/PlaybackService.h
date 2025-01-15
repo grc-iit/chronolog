@@ -40,11 +40,12 @@ private:
     PlaybackService(tl::engine &tl_engine, uint16_t service_provider_id
         , ArchiveReadingRequestQueue & reading_queue, PlayerDataStore &data_store);
 
+    PlaybackService() = delete;
     PlaybackService(PlaybackService const &) = delete;
-
     PlaybackService &operator=(PlaybackService const &) = delete;
 
-    tl::engine * playbackServiceEngine;
+    tl::engine  playbackEngine;
+    // tl::pool playbackPool; for later use
     ArchiveReadingRequestQueue & theArchiveReadingRequestQueue;
     PlayerDataStore & theDataStore;
     std::mutex playbackServiceMutex;
