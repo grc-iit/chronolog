@@ -14,6 +14,8 @@
 #include "cmd_arg_parse.h"
 
 #include "ArchiveReadingAgent.h"
+#include "ArchiveReadingRequestQueue.h"
+#include "PlaybackService.h"
 
 // we will be using a combination of the uint32_t representation of the service IP address
 // and uint16_t representation of the port number
@@ -102,7 +104,55 @@ int main(int argc, char**argv)
     }
     LOG_INFO("[ChronoPlayer] DataStoreAdminService started successfully.");
 
-    // Instantiate GrapherRecordingService
+    // Instantiate PlaybackService
+    std::string PLAYBACK_SERVICE_PROTOCOL = confManager.PLAYER_CONF.PLAYBACK_SERVICE_CONF.PROTO_CONF;
+    std::string PLAYBACK_SERVICE_IP = confManager.PLAYER_CONF.PLAYBACK_SERVICE_CONF.IP;
+    uint16_t PLAYBACK_SERVICE_PORT = confManager.PLAYER_CONF.PLAYBACK_SERVICE_CONF.BASE_PORT;
+    uint16_t playback_service_provider_id = confManager.PLAYER_CONF.PLAYBACK_SERVICE_CONF.SERVICE_PROVIDER_ID;
+
+    // validate ip address, instantiate Playback Service and create IdCard
+
+    chronolog::service_endpoint playback_endpoint;
+    if(-1 == service_endpoint_from_dotted_string(PLAYBACK_SERVICE_IP, PLAYBACK_SERVICE_PORT, playback_endpoint))
+    {
+        LOG_CRITICAL("[ChronoPlayer] Failed to start PlaybackService. Invalid endpoint provided.");
+        return (-1);
+    }
+
+    tl::engine * playbackEngine = nullptr;
+    chronolog::PlaybackService * playbackService = nullptr;
+    chronolog::ArchiveReadingRequestQueue readingRequestQueue;
+
+    try
+    {
+        std::string PLAYBACK_SERVICE_NA_STRING = std::string(confManager.PLAYER_CONF.PLAYBACK_SERVICE_CONF.PROTO_CONF) 
+            + "://" + std::string(confManager.PLAYER_CONF.PLAYBACK_SERVICE_CONF.IP) + ":" +
+            std::to_string(confManager.PLAYER_CONF.PLAYBACK_SERVICE_CONF.BASE_PORT);
+
+        margo_instance_id playback_margo_id = margo_init(PLAYBACK_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1
+                                                           , 1);
+
+        playbackEngine = new tl::engine(playback_margo_id);
+
+        std::stringstream s3;
+        s3 << playbackEngine->self();
+        LOG_DEBUG("[ChronoPlayer] starting PlaybackService at address {} with ProviderID={}", s3.str()
+                  , playback_service_provider_id);
+
+        playbackService = chronolog::PlaybackService::CreatePlaybackService(*playbackEngine, playback_service_provider_id,readingRequestQueue);
+    }
+    catch(tl::exception const &)
+    {
+        LOG_ERROR("[ChronoPlayer]  failed to create playbackService");
+        playbackService = nullptr;
+    }
+
+    if(nullptr == playbackService)
+    {
+        LOG_CRITICAL("[ChronoPlayer] failed to create Playback Service exiting");
+        return (-1);
+    }
+
     chronolog::RecordingGroupId recording_group_id = confManager.PLAYER_CONF.RECORDING_GROUP;
  /*   std::string RECORDING_SERVICE_PROTOCOL = confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.PROTO_CONF;
     std::string RECORDING_SERVICE_IP = confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP;

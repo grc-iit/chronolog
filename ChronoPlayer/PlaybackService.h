@@ -9,7 +9,6 @@
 
 #include "ServiceId.h"
 #include "ArchiveReadingRequestQueue.h"
-#include "PlayerDataStore.h"
 
 namespace tl = thallium;
 
@@ -23,9 +22,9 @@ class PlaybackService: public tl::provider <PlaybackService>
 public:
     // Service should be created on the heap not the stack thus the constructor is private...
     static PlaybackService*
-    CreatePlaybackService(tl::engine &tl_engine, uint16_t service_provider_id, ArchiveReadingRequestQueue & archiveReadingQueue, PlayerDataStore &dataStore)
+    CreatePlaybackService(tl::engine &tl_engine, uint16_t service_provider_id, ArchiveReadingRequestQueue & archiveReadingQueue)
     {
-        return new PlaybackService(tl_engine, service_provider_id, archiveReadingQueue, dataStore);
+        return new PlaybackService(tl_engine, service_provider_id, archiveReadingQueue);
     }
 
     ~PlaybackService();
@@ -38,16 +37,14 @@ public:
 
 private:
     PlaybackService(tl::engine &tl_engine, uint16_t service_provider_id
-        , ArchiveReadingRequestQueue & reading_queue, PlayerDataStore &data_store);
+        , ArchiveReadingRequestQueue & reading_queue);
 
     PlaybackService() = delete;
     PlaybackService(PlaybackService const &) = delete;
     PlaybackService &operator=(PlaybackService const &) = delete;
 
     tl::engine  playbackEngine;
-    // tl::pool playbackPool; for later use
     ArchiveReadingRequestQueue & theArchiveReadingRequestQueue;
-    PlayerDataStore & theDataStore;
     std::mutex playbackServiceMutex;
     std::map<service_endpoint, StoryChunkSender*> chunkSenders;
 };

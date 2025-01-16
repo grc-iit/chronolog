@@ -1,4 +1,7 @@
 
+#include <map>
+#include <thallium.hpp>
+
 #include "chrono_monitor.h"
 
 #include "PlaybackService.h"
@@ -9,11 +12,10 @@ namespace chl = chronolog;
 
 chronolog::PlaybackService::PlaybackService(tl::engine &tl_engine, uint16_t service_provider_id
     , chronolog::ArchiveReadingRequestQueue & archive_reading_queue
-    , chronolog::PlayerDataStore & data_store)
+    )
             : tl::provider <PlaybackService>(tl_engine, service_provider_id)
             , playbackEngine(tl_engine)
             , theArchiveReadingRequestQueue(archive_reading_queue)
-            , theDataStore(data_store)
 {
         define("playback_service_available", &PlaybackService::playback_service_available);
         define("story_playback_request", &PlaybackService::story_playback_request);
