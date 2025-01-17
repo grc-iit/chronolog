@@ -127,7 +127,7 @@ void ChronoLog::ConfigurationManager::parseGrapherConf(json_object*json_conf)
 
 void ChronoLog::ConfigurationManager::parsePlayerConf(json_object*json_conf)
 {
-    std::cerr << "[ConfigurationManager] [chrono_player] Parsing ChronoPlayer configurationa";
+    std::cerr << "[ConfigurationManager] [chrono_player] Parsing ChronoPlayer configuration"<<std::endl;
     json_object_object_foreach(json_conf, key, val)
     {
         if(strcmp(key, "RecordingGroup") == 0)

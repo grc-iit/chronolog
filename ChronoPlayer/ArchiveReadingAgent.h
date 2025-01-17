@@ -46,9 +46,9 @@ class ArchiveReadingAgent
 
 public:
     ArchiveReadingAgent( ArchiveReadingRequestQueue & request_queue, StoryChunkIngestionQueue & ingestion_queue)
-        : agentState(UNKNOWN)
-        , theReadingRequestQueue(request_queue)
+        : theReadingRequestQueue(request_queue)
         , theIngestionQueue(ingestion_queue)
+        , agentState(UNKNOWN)
     {}
 
     ~ArchiveReadingAgent();
@@ -73,8 +73,8 @@ private:
     ArchiveReadingRequestQueue & theReadingRequestQueue;
     StoryChunkIngestionQueue & theIngestionQueue;
 
-    ReadingAgentState agentState;
     std::mutex agentStateMutex;
+    ReadingAgentState agentState;
     std::vector <thallium::managed <thallium::xstream>> archiveReadingStreams;
     std::vector <thallium::managed <thallium::thread>> archiveReadingThreads;
 
