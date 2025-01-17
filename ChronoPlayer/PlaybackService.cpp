@@ -5,7 +5,7 @@
 #include "chrono_monitor.h"
 
 #include "PlaybackService.h"
-#include "StoryChunkSender.h"
+#include "StoryChunkTransferAgent.h"
 
 namespace tl = thallium;
 namespace chl = chronolog;
@@ -55,8 +55,8 @@ void chronolog::PlaybackService::story_playback_request(tl::request const &reque
    // generate unique RequestId (service_provider_id + atomic query index)
    uint32_t requestId = 1;
        
-    chl::StoryChunkSender * storyChunkSender = nullptr;
-    // if we already have StorychunkSender & ExtractionQueue for this receiver,
+    chl::StoryChunkTransferAgent * storyChunkSender = nullptr;
+    // if we already have StoryChunkTransferAgent & ExtractionQueue for this receiver,
     // use it or add one otherwise
     {
         std::lock_guard<std::mutex> lock(playbackServiceMutex);
@@ -70,8 +70,8 @@ void chronolog::PlaybackService::story_playback_request(tl::request const &reque
         {
         //create RDMA client of the requesting service 
         // using the service tl_engine and service_id provided in the request
-        storyChunkSender = chl::StoryChunkSender::CreateStoryChunkSender(playbackEngine, receiver_service_id);
-        chunkSenders.insert(std::pair<chl::service_endpoint, chl::StoryChunkSender*>(receiver_service_id.get_service_endpoint(),storyChunkSender));
+        storyChunkSender = chl::StoryChunkTransferAgent::CreateStoryChunkTransferAgent(playbackEngine, receiver_service_id);
+        chunkSenders.insert(std::pair<chl::service_endpoint, chl::StoryChunkTransferAgent*>(receiver_service_id.get_service_endpoint(),storyChunkSender));
 
         }
     }

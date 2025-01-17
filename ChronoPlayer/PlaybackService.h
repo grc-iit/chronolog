@@ -15,7 +15,7 @@ namespace tl = thallium;
 namespace chronolog
 {
 
-class StoryChunkSender; 
+class StoryChunkTransferAgent; 
 
 class PlaybackService: public tl::provider <PlaybackService>
 {
@@ -46,7 +46,7 @@ private:
     tl::engine  playbackEngine;
     ArchiveReadingRequestQueue & theArchiveReadingRequestQueue;
     std::mutex playbackServiceMutex;
-    std::map<service_endpoint, StoryChunkSender*> chunkSenders;
+    std::map<service_endpoint, StoryChunkTransferAgent*> chunkSenders;
 };
 
 }// namespace chronolog

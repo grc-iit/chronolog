@@ -17,7 +17,7 @@ target_sources(chrono_player PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/PlayerDataStore.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/ArchiveReadingAgent.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/PlaybackService.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/StoryChunkSender.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/StoryChunkTransferAgent.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunk.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/StoryPipeline.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunkExtractor.cpp
