@@ -460,7 +460,7 @@ public:
                               << ". ChronoPlayer configuration is not found or is not an object." << std::endl;
                     exit(chronolog::CL_ERR_INVALID_CONF);
                 }
-                parsePlayerConf(chrono_player_conf);
+                //parsePlayerConf(chrono_player_conf);
             }
             else if(strcmp(key, "chrono_client") == 0)
             {
