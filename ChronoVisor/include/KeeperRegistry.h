@@ -16,6 +16,9 @@
 #include "GrapherIdCard.h"
 #include "GrapherRegistrationMsg.h"
 #include "GrapherStatsMsg.h"
+#include "PlayerIdCard.h"
+#include "PlayerRegistrationMsg.h"
+#include "PlayerStatsMsg.h"
 #include "ConfigurationManager.h"
 
 namespace chronolog
@@ -151,6 +154,10 @@ public:
         int registerGrapherProcess(GrapherRegistrationMsg const& reg_msg);
         int unregisterGrapherProcess(GrapherIdCard const& id_card);
         void updateGrapherProcessStats(GrapherStatsMsg const& );
+
+        int registerPlayerProcess(PlayerRegistrationMsg const& reg_msg);
+        int unregisterPlayerProcess(PlayerIdCard const& id_card);
+        void updatePlayerProcessStats(PlayerStatsMsg const& );
 
     private:
         KeeperRegistry(KeeperRegistry const&) = delete;//disable copying

@@ -1065,6 +1065,50 @@ void chl::KeeperRegistry::updateGrapherProcessStats(chl::GrapherStatsMsg const &
 
     }
 }
+
+
+int chl::KeeperRegistry::registerPlayerProcess(chl::PlayerRegistrationMsg const & reg_msg)
+{
+    int return_code = CL_ERR_UNKNOWN;
+    return return_code;
+}
+int chl::KeeperRegistry::unregisterPlayerProcess(chl::PlayerIdCard const& id_card)
+{
+    int return_code = CL_ERR_UNKNOWN;
+    return return_code;
+}
+
+void chl::KeeperRegistry::updatePlayerProcessStats(chl::PlayerStatsMsg const &statsMsg)
+{
+    // NOTE: we don't lock registryLock while updating the keeperProcess stats
+    // delayed destruction of keeperProcessEntry protects us from the case when
+    // stats message is received from the KeeperProcess that has unregistered
+    // on the other thread
+    if(is_shutting_down())
+    { return; }
+
+#ifdef DEBUG
+    std::string id_string;
+    id_string += stats.getPlayerIdCard;
+    LOG_DEBUG("[KeeperRegistry] Received PlayerStatsMsg from {}", id_string.str());
+#endif
+
+    auto group_iter = recordingGroups.find(statsMsg.getPlayerIdCard().getGroupId());
+    if(group_iter == recordingGroups.end())
+    { return; }
+
+    RecordingGroup& recording_group = ((*group_iter).second);
+/*    if(recording_group.grapherProcess != nullptr && recording_group.grapherProcess->active)
+    {
+        // there's no need to update stats of inactive process
+        recording_group.grapherProcess->lastStatsTime = std::chrono::steady_clock::now().time_since_epoch().count();
+        recording_group.grapherProcess->activeStoryCount = statsMsg.getActiveStoryCount();
+
+    }
+*/
+}
+
+
 ///////////////
 
 bool chl::RecordingGroup::isActive() const
