@@ -381,6 +381,7 @@ public:
         std::cout << "VISOR_CONF: " << VISOR_CONF.to_String().c_str() << std::endl;
         std::cout << "KEEPER_CONF: " << KEEPER_CONF.to_String().c_str() << std::endl;
         std::cout << "GRAPHER_CONF: " << GRAPHER_CONF.to_String().c_str() << std::endl;
+        std::cout << "PLAYER_CONF: " << PLAYER_CONF.to_String().c_str() << std::endl;
         std::cout << "CLIENT_CONF: " << CLIENT_CONF.to_String().c_str() << std::endl;
         std::cout << "******** End of configuration output ********" << std::endl;
     }
@@ -467,7 +468,7 @@ public:
                               << ". ChronoPlayer configuration is not found or is not an object." << std::endl;
                     exit(chronolog::CL_ERR_INVALID_CONF);
                 }
-                //parsePlayerConf(chrono_player_conf);
+                parsePlayerConf(chrono_player_conf);
             }
             else if(strcmp(key, "chrono_client") == 0)
             {
