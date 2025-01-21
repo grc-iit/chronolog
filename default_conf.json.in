@@ -11,7 +11,6 @@
   "chrono_visor": {
     "VisorClientPortalService": {
       "rpc": {
-        "rpc_implementation": "Thallium_sockets",
         "protocol_conf": "ofi+sockets",
         "service_ip": "127.0.0.1",
         "service_base_port": 5555,
@@ -20,7 +19,6 @@
     },
     "VisorKeeperRegistryService": {
       "rpc": {
-        "rpc_implementation": "Thallium_sockets",
         "protocol_conf": "ofi+sockets",
         "service_ip": "127.0.0.1",
         "service_base_port": 8888,
@@ -44,7 +42,6 @@
     "RecordingGroup": 7,
     "KeeperRecordingService": {
       "rpc": {
-        "rpc_implementation": "Thallium_sockets",
         "protocol_conf": "ofi+sockets",
         "service_ip": "127.0.0.1",
         "service_base_port": 6666,
@@ -53,7 +50,6 @@
     },
     "KeeperDataStoreAdminService": {
       "rpc": {
-        "rpc_implementation": "Thallium_sockets",
         "protocol_conf": "ofi+sockets",
         "service_ip": "127.0.0.1",
         "service_base_port": 7777,
@@ -62,7 +58,6 @@
     },
     "VisorKeeperRegistryService": {
       "rpc": {
-        "rpc_implementation": "Thallium_sockets",
         "protocol_conf": "ofi+sockets",
         "service_ip": "127.0.0.1",
         "service_base_port": 8888,
@@ -71,7 +66,6 @@
     },
     "KeeperGrapherDrainService": {
       "rpc": {
-        "rpc_implementation": "Thallium_sockets",
         "protocol_conf": "ofi+sockets",
         "service_ip": "127.0.0.1",
         "service_base_port": 3333,
@@ -95,7 +89,6 @@
     "RecordingGroup": 7,
     "KeeperGrapherDrainService": {
       "rpc": {
-        "rpc_implementation": "Thallium_sockets",
         "protocol_conf": "ofi+sockets",
         "service_ip": "127.0.0.1",
         "service_base_port": 3333,
@@ -104,7 +97,6 @@
     },
     "DataStoreAdminService": {
       "rpc": {
-        "rpc_implementation": "Thallium_sockets",
         "protocol_conf": "ofi+sockets",
         "service_ip": "127.0.0.1",
         "service_base_port": 4444,
@@ -113,7 +105,6 @@
     },
     "VisorRegistryService": {
       "rpc": {
-        "rpc_implementation": "Thallium_sockets",
         "protocol_conf": "ofi+sockets",
         "service_ip": "127.0.0.1",
         "service_base_port": 8888,
@@ -148,6 +139,14 @@
         "service_provider_id": 22
       }
     },
+    "PlaybackQueryService": {
+      "rpc": {
+        "protocol_conf": "ofi+sockets",
+        "service_ip": "127.0.0.1",
+        "service_base_port": 2225,
+        "service_provider_id": 25
+      }
+    },
     "VisorRegistryService": {
       "rpc": {
         "protocol_conf": "ofi+sockets",
@@ -166,15 +165,11 @@
         "filenum": 3,
         "flushlevel": "debug"
       }
-    },
-    "DataStoreInternals": {
-        "max_story_chunk_size": 4096
     }
  },
   "chrono_client": {
     "VisorClientPortalService": {
       "rpc": {
-        "rpc_implementation": "Thallium_sockets",
         "protocol_conf": "ofi+sockets",
         "service_ip": "127.0.0.1",
         "service_base_port": 5555,
