@@ -1066,16 +1066,154 @@ void chl::KeeperRegistry::updateGrapherProcessStats(chl::GrapherStatsMsg const &
     }
 }
 
+/////////////////
 
 int chl::KeeperRegistry::registerPlayerProcess(chl::PlayerRegistrationMsg const & reg_msg)
 {
-    int return_code = CL_ERR_UNKNOWN;
-    return return_code;
+    if(is_shutting_down()) { return chronolog::CL_ERR_UNKNOWN; }
+
+    chl::PlayerIdCard id_card = reg_msg.getPlayerIdCard();
+    chl::RecordingGroupId group_id = id_card.getGroupId();
+    chl::ServiceId admin_service_id = reg_msg.getAdminServiceId();
+
+    std::lock_guard<std::mutex> lock(registryLock);
+    if(is_shutting_down()) 
+    { return chronolog::CL_ERR_UNKNOWN; }
+
+    //find the recording group that new player process belongs to or create one 
+    auto group_iter = recordingGroups.find(group_id);
+    if(group_iter == recordingGroups.end())
+    {
+        auto insert_return =
+                recordingGroups.insert(std::pair<chl::RecordingGroupId, chl::RecordingGroup>(group_id, chl::RecordingGroup(group_id)));
+        if(false == insert_return.second)
+        {
+            LOG_ERROR("[ChronoProcessRegistry] player registration failed to find RecordingGroup {}", group_id);
+            return chl::CL_ERR_UNKNOWN;
+        }
+        else { group_iter = insert_return.first; }
+    }
+
+    chl::RecordingGroup& recording_group = ((*group_iter).second);
+
+    // it is possible that the Registry still retains the record of the previous re-incarnation of the player process
+    // check for this case and clean up the leftover record...
+
+    if(recording_group.playerProcess != nullptr)
+    {
+        // start delayed destruction for the lingering Adminclient to be safe...
+
+        chl::PlayerProcessEntry* player_process = recording_group.playerProcess;
+        if(player_process->active)
+        {
+            // start delayed destruction for the lingering Adminclient to be safe...
+
+            std::time_t delayedExitTime = std::chrono::high_resolution_clock::to_time_t(
+                    std::chrono::high_resolution_clock::now() + std::chrono::seconds(delayedDataAdminExitSeconds));
+
+            recording_group.startDelayedPlayerExit(*player_process, delayedExitTime);
+        }
+        else
+        {
+            //check if any existing delayed exit player processes can be cleared...
+            std::time_t current_time =
+                    std::chrono::high_resolution_clock::to_time_t(std::chrono::high_resolution_clock::now());
+            recording_group.clearDelayedExitPlayer(*player_process, current_time);
+        }
+
+        if(player_process->delayedExitPlayerClients.empty())
+        {
+            LOG_INFO("[ChronoProcessRegistry] registerplayerProcess has destroyed old entry for player {}", chl::to_string(id_card));
+            delete player_process;
+            recording_group.playerProcess = nullptr;
+        }
+        else
+        {
+            LOG_INFO("[ChronoProcessRegistry] registration for Player{} cant's proceed as previous playerClient isn't yet "
+                     "dismantled", chl::to_string(id_card));
+                     
+            return CL_ERR_UNKNOWN;
+        }
+    }
+
+    //create a client of the new player's DataStoreAdminService listenning at adminServiceId
+    //std::string service_na_string("ofi+sockets://"); //TODO: add protocol string to serviceIdCard
+    std::string service_na_string(dataStoreAdminServiceProtocol + "://");
+    service_na_string =
+            admin_service_id.getIPasDottedString(service_na_string) + ":" + std::to_string(admin_service_id.port);
+
+    chl::DataStoreAdminClient* collectionClient = chl::DataStoreAdminClient::CreateDataStoreAdminClient(
+            *registryEngine, service_na_string, admin_service_id.provider_id);
+    if(nullptr == collectionClient)
+    {
+        LOG_ERROR("[ChronoProcessRegistry] Register Player {} failed to create DataStoreAdminClient for {}: provider_id={}",
+                  chl::to_string(id_card), service_na_string, admin_service_id.provider_id);
+        return chl::CL_ERR_UNKNOWN;
+    }
+
+    //now create a new GrapherProcessEntry with the new DataAdminclient
+    recording_group.playerProcess = new chl::PlayerProcessEntry(id_card, admin_service_id);
+    recording_group.playerProcess->adminClient = collectionClient;
+    recording_group.playerProcess->active = true;
+
+    LOG_INFO("[KeeperRegistry] Register Player {} created DataStoreAdminClient for {}: provider_id={}",
+             chl::to_string(id_card), service_na_string, admin_service_id.provider_id);
+
+    // now that communnication with the Player is established and we are still holding registryLock
+    // check if the group is ready for active group rotation
+
+    LOG_INFO("[ChronoProcessRegistry]  has {} activeGroups; {} RecordingGroups ", activeGroups.size(), recordingGroups.size());
+    // we still holding registryLock
+    // update registryState if needed
+    if(activeGroups.size() > 0) 
+    { 
+        registryState = RUNNING; 
+    }
+    return chronolog::CL_SUCCESS;
 }
+/////////////////
+
 int chl::KeeperRegistry::unregisterPlayerProcess(chl::PlayerIdCard const& id_card)
 {
-    int return_code = CL_ERR_UNKNOWN;
-    return return_code;
+    std::lock_guard<std::mutex> lock(registryLock);
+    if(is_shutting_down()) { return chronolog::CL_ERR_UNKNOWN; }
+
+    auto group_iter = recordingGroups.find(id_card.getGroupId());
+    if(group_iter == recordingGroups.end()) 
+    { return chronolog::CL_SUCCESS; }
+
+    RecordingGroup& recording_group = ((*group_iter).second);
+
+    // we are about to unregister the player so the group can't perform playback duties 
+
+    // TODO: handle the case by notifying the clients that playback service is not available...
+
+
+    if(recording_group.playerProcess != nullptr && recording_group.playerProcess->active)
+    {
+        // start delayed destruction for the lingering Adminclient to be safe...
+        // to prevent the case of deleting the AdminClient while it might be waiting for rpc response on the
+        // other thread
+
+        std::time_t delayedExitTime = std::chrono::high_resolution_clock::to_time_t(
+                std::chrono::high_resolution_clock::now() + std::chrono::seconds(delayedDataAdminExitSeconds));
+        LOG_INFO("[ChronoProcessRegistry] starting delayedExit for player {} delayedExitTime={}", recording_group.playerProcess->idCardString,
+                 std::ctime(&delayedExitTime));
+
+        recording_group.startDelayedPlayerExit(*(recording_group.playerProcess), delayedExitTime);
+    }
+
+    // now that we are still holding registryLock
+    // update registryState if needed
+    LOG_INFO("[ChronoProcessRegistry] RecordingGroup {} has no chrono_player ", recording_group.groupId);
+        
+    LOG_INFO("[ChronoProcessRegistry]  has {} activeGroups; {} RecordingGroups ", activeGroups.size(), recordingGroups.size());
+    
+    // update registryState in case this was the last active recordingGroup
+    if(activeGroups.size() == 0)
+    { registryState = INITIALIZED; }
+
+    return chronolog::CL_SUCCESS;
 }
 
 void chl::KeeperRegistry::updatePlayerProcessStats(chl::PlayerStatsMsg const &statsMsg)
@@ -1098,14 +1236,13 @@ void chl::KeeperRegistry::updatePlayerProcessStats(chl::PlayerStatsMsg const &st
     { return; }
 
     RecordingGroup& recording_group = ((*group_iter).second);
-/*    if(recording_group.grapherProcess != nullptr && recording_group.grapherProcess->active)
+    if(recording_group.playerProcess != nullptr && recording_group.playerProcess->active)
     {
         // there's no need to update stats of inactive process
-        recording_group.grapherProcess->lastStatsTime = std::chrono::steady_clock::now().time_since_epoch().count();
-        recording_group.grapherProcess->activeStoryCount = statsMsg.getActiveStoryCount();
+        recording_group.playerProcess->lastStatsTime = std::chrono::steady_clock::now().time_since_epoch().count();
 
     }
-*/
+
 }
 
 
@@ -1154,6 +1291,34 @@ void chl::RecordingGroup::clearDelayedExitGrapher(chl::GrapherProcessEntry& grap
         grapher_process.delayedExitGrapherClients.pop_front();
     }
 }
+
+void chl::RecordingGroup::startDelayedPlayerExit(chl::PlayerProcessEntry& player_process,
+                                                  std::time_t delayedExitTime)
+{
+    player_process.active = false;
+
+    LOG_INFO("[ProcessRegistry] recording_group {} starts delayedExit for {}", groupId, player_process.idCardString);
+    if(player_process.adminClient != nullptr)
+    {
+        player_process.delayedExitPlayerClients.push_back(
+                std::pair<std::time_t, chl::DataStoreAdminClient*>(delayedExitTime, player_process.adminClient));
+        player_process.adminClient = nullptr;
+    }
+}
+
+void chl::RecordingGroup::clearDelayedExitPlayer(chl::PlayerProcessEntry& player_process, std::time_t current_time)
+{
+    while(!player_process.delayedExitPlayerClients.empty() &&
+          (current_time >= player_process.delayedExitPlayerClients.front().first))
+    {
+        LOG_INFO("[ChronoProcessRegistry] recording_Group {}, destroys delayed dataAdmindClient for {}", groupId,
+                  player_process.idCardString);
+        auto dataStoreClientPair = player_process.delayedExitPlayerClients.front();
+        if(dataStoreClientPair.second != nullptr) { delete dataStoreClientPair.second; }
+        player_process.delayedExitPlayerClients.pop_front();
+    }
+}
+
 
 void chl::RecordingGroup::startDelayedKeeperExit(chl::KeeperProcessEntry& keeper_process, std::time_t delayedExitTime)
 {
