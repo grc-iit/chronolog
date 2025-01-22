@@ -14,6 +14,7 @@
 #include "chronolog_client.h"
 #include "rpcVisorClient.h"
 #include "StorytellerClient.h"
+#include "ClientQueryService.h"
 
 namespace chronolog
 {
@@ -79,6 +80,8 @@ private:
     thallium::engine*tlEngine;
     RpcVisorClient*rpcVisorClient;
     StorytellerClient*storyteller;
+    ClientQueryService * queryService;
+    
     // ClocksourceManager *pClocksourceManager_;
 
     ChronologClientImpl(const ChronoLog::ConfigurationManager &conf_manager);
