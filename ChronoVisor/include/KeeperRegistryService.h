@@ -10,7 +10,10 @@
 #include "KeeperStatsMsg.h"
 #include "GrapherIdCard.h"
 #include "GrapherRegistrationMsg.h"
-#include "KeeperStatsMsg.h"
+#include "GrapherStatsMsg.h"
+#include "PlayerIdCard.h"
+#include "PlayerRegistrationMsg.h"
+#include "PlayerStatsMsg.h"
 #include "chrono_monitor.h"
 #include "KeeperRegistry.h"
 
@@ -31,7 +34,7 @@ private:
         std::stringstream ss, s1;
         ss << keeperMsg.getKeeperIdCard();
         s1 << keeperMsg.getAdminServiceId();
-        LOG_INFO("[KeeperRegistryService] New Keeper Registered: KeeperIdCard: {}, AdminServiceId: {}", ss.str(), s1.str());
+        LOG_INFO("[RegistryService] New Keeper Registered: KeeperIdCard: {}, AdminServiceId: {}", ss.str(), s1.str());
         return_code = theKeeperProcessRegistry.registerKeeperProcess(keeperMsg);
         request.respond(return_code);
     }
@@ -41,7 +44,7 @@ private:
         int return_code = 0;
         std::stringstream ss;
         ss << keeper_id_card;
-        LOG_INFO("[KeeperRegistryService] Keeper Unregistered: KeeperIdCard: {}", ss.str());
+        LOG_INFO("[RegistryService] Keeper Unregistered: KeeperIdCard: {}", ss.str());
         return_code = theKeeperProcessRegistry.unregisterKeeperProcess(keeper_id_card);
         request.respond(return_code);
     }
@@ -50,7 +53,7 @@ private:
     {
         std::stringstream ss;
         ss << keeper_stats_msg.getKeeperIdCard();
-        LOG_DEBUG("[KeeperRegistryService] Keeper Stats: KeeperIdCard: {}, ActiveStoryCount: {}", ss.str()
+        LOG_DEBUG("[RegistryService] Keeper Stats: KeeperIdCard: {}, ActiveStoryCount: {}", ss.str()
              , keeper_stats_msg.getActiveStoryCount());
         theKeeperProcessRegistry.updateKeeperProcessStats(keeper_stats_msg);
     }
@@ -60,7 +63,7 @@ private:
         int return_code = 0;
         std::stringstream ss;
         ss << registrationMsg;
-        LOG_INFO("[KeeperRegistryService] register_grapher: {}", ss.str());
+        LOG_INFO("[RegistryService] register_grapher: {}", ss.str());
         return_code = theKeeperProcessRegistry.registerGrapherProcess(registrationMsg);
         request.respond(return_code);
     }
@@ -76,9 +79,35 @@ private:
     {
         std::stringstream ss;
         ss << stats_msg.getGrapherIdCard();
-        LOG_DEBUG("[KeeperRegistryService] Grapher Stats: GrapherIdCard: {}, ActiveStoryCount: {}", ss.str()
+        LOG_DEBUG("[RegistryService] Grapher Stats: GrapherIdCard: {}, ActiveStoryCount: {}", ss.str()
              , stats_msg.getActiveStoryCount());
         theKeeperProcessRegistry.updateGrapherProcessStats(stats_msg);
+    }
+
+    void register_player(tl::request const &request, chronolog::PlayerRegistrationMsg const & registrationMsg)
+    {
+        int return_code = 0;
+        std::stringstream ss;
+        ss << registrationMsg;
+        LOG_INFO("[RegistryService] register_player: {}", chronolog::to_string(registrationMsg));
+        return_code = theKeeperProcessRegistry.registerPlayerProcess(registrationMsg);
+        request.respond(return_code);
+    }
+
+    void unregister_player(tl::request const &request, chronolog::PlayerIdCard const &id_card)
+    {
+        int return_code = 0;
+        LOG_INFO("[RegistryService] unregister_player: {}", chronolog::to_string(id_card));
+        return_code = theKeeperProcessRegistry.unregisterPlayerProcess(id_card);
+        request.respond(return_code);
+    }
+
+    void handle_player_stats_msg(chronolog::PlayerStatsMsg const & stats_msg)
+    {
+        std::stringstream ss;
+        ss << stats_msg.getPlayerIdCard();
+       // LOG_DEBUG("[KeeperRegistryService] Player Stats: PlayerIdCard: {}", chrono::to_string(stats_msg));
+        theKeeperProcessRegistry.updatePlayerProcessStats(stats_msg);
     }
 
 
@@ -92,6 +121,9 @@ private:
         define("register_grapher", &KeeperRegistryService::register_grapher);
         define("unregister_grapher", &KeeperRegistryService::unregister_grapher);
         define("handle_grapher_stats_msg", &KeeperRegistryService::handle_grapher_stats_msg, tl::ignore_return_value());
+        define("register_player", &KeeperRegistryService::register_player);
+        define("unregister_player", &KeeperRegistryService::unregister_player);
+        define("handle_player_stats_msg", &KeeperRegistryService::handle_player_stats_msg, tl::ignore_return_value());
         //setup finalization callback in case this ser vice provider is still alive when the engine is finalized
         get_engine().push_finalize_callback(this, [p = this]()
         { delete p; });
