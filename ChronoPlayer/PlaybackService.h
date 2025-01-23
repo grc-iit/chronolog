@@ -32,8 +32,8 @@ public:
     void playback_service_available(tl::request const &request);
 
     void
-    story_playback_request(tl::request const &request, std::string const &chronicle_name, std::string const &story_name
-                        , uint64_t start_time, uint64_t end_time, ServiceId const & requesting_service_id);
+    story_playback_request(tl::request const &request, ServiceId const & requesting_service_id, uint32_t query_id
+            , ChronicleName const &chronicle_name, StoryName const &story_name, chrono_time const& start_time, chrono_time const& end_time);
 
 private:
     PlaybackService(tl::engine &tl_engine, uint16_t service_provider_id
