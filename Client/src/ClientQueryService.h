@@ -12,7 +12,7 @@
 namespace chronolog
 {
 
-class PlaybackServiceClient;
+class PlaybackQueryRpcClient;
 class StoryChunk;
 
 struct StoryPlaybackQuery
@@ -23,7 +23,7 @@ struct StoryPlaybackQuery
     chrono_time startTime;
     chrono_time endTime;
     StoryId     storyId;
-    PlaybackServiceClient * playbackClient;
+    PlaybackQueryRpcClient * playbackRpcClient;
     std::map<uint64_t,StoryChunk*> PlaybackResponse;
 };
 
@@ -38,6 +38,8 @@ public:
     // send the playback request to the ChronoPlayer PlaybackService and return queryId
     uint32_t send_playback_query_request(ServiceId const& playback_service_id,
                 ChronicleName const&, StoryName const&,chrono_time const&, chrono_time const&);    
+
+    int receive_story_chunk();
 
 private:
     ClientQueryService(thallium::engine & tl_engine, ServiceId const&);
