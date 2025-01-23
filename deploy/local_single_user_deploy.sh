@@ -313,6 +313,32 @@ check_execution_stopped() {
     fi
 }
 
+# Activate Spack Environment
+activate_spack_environment() {
+    # Dynamically determine the script's directory
+    local script_dir
+    script_dir="$(cd "$(dirname "$0")" && pwd)"
+
+    # Assume Spack is at the repository root
+    local repo_root="${script_dir}/.."
+
+    # Check if Spack is available
+    if ! command -v spack &> /dev/null; then
+        echo -e "${ERR}Spack command not found. Please ensure Spack is installed and available in your PATH.${NC}"
+        exit 1
+    fi
+
+    # Try activating the Spack environment
+    echo -e "${INFO}Activating Spack environment in '${repo_root}'...${NC}"
+    if spack env activate -p "${repo_root}"; then
+        echo -e "${DEBUG}Spack environment activated successfully.${NC}"
+    else
+        echo -e "${ERR}Failed to activate Spack environment. Ensure it is properly configured.${NC}"
+        exit 1
+    fi
+}
+
+
 # Main functions for install, reset, and usage__________________________________________________________________________
 build() {
     echo -e "${INFO}Building ChronoLog...${NC}"
@@ -329,6 +355,8 @@ install() {
     echo -e "${INFO}Installing ChronoLog...${NC}"
     check_work_dir
     check_build_directory
+    activate_spack_environment
+
     if [[ -x ./install.sh ]]; then
         ./install.sh
     else
