@@ -16,6 +16,9 @@
 #include "GrapherIdCard.h"
 #include "GrapherRegistrationMsg.h"
 #include "GrapherStatsMsg.h"
+#include "PlayerIdCard.h"
+#include "PlayerRegistrationMsg.h"
+#include "PlayerStatsMsg.h"
 #include "ConfigurationManager.h"
 
 namespace chronolog
@@ -89,13 +92,44 @@ public:
     };
 
 
+    class PlayerProcessEntry
+    {
+    public:
+        PlayerProcessEntry(PlayerIdCard const& id_card, ServiceId const& admin_service_id)
+            : idCard(id_card)
+            , adminServiceId(admin_service_id)
+            , adminClient(nullptr)
+            , active(false)
+            , lastStatsTime(0)
+        {
+            idCardString += idCard;
+        }
+
+        PlayerProcessEntry(PlayerProcessEntry const& other) = default;
+        ~PlayerProcessEntry() = default;// Registry is reponsible for creating & deleting AdminClient
+
+        PlayerIdCard idCard;
+        ServiceId adminServiceId;
+        std::string idCardString;
+        DataStoreAdminClient* adminClient;
+        bool active;
+        uint64_t lastStatsTime;
+        uint32_t activeStoryCount;
+        std::list<std::pair<std::time_t, DataStoreAdminClient*>> delayedExitPlayerClients;
+    };
+
+
+
+
+
     class RecordingGroup
     {
     public:
-        RecordingGroup(RecordingGroupId group_id, GrapherProcessEntry* grapher_ptr = nullptr)
+        RecordingGroup(RecordingGroupId group_id, GrapherProcessEntry* grapher_ptr = nullptr, PlayerProcessEntry* player_ptr=nullptr)
             : groupId(group_id)
             , activeKeeperCount(0)
             , grapherProcess(grapher_ptr)
+            , playerProcess(player_ptr)
         {}
 
         RecordingGroup(RecordingGroup const& other) = default;
@@ -106,12 +140,15 @@ public:
         void clearDelayedExitGrapher(GrapherProcessEntry&, std::time_t);
         void startDelayedKeeperExit(KeeperProcessEntry&, std::time_t);
         void clearDelayedExitKeeper(KeeperProcessEntry&, std::time_t);
+        void startDelayedPlayerExit(PlayerProcessEntry&, std::time_t);
+        void clearDelayedExitPlayer(PlayerProcessEntry&, std::time_t);
 
         std::vector<KeeperIdCard>& getActiveKeepers(std::vector<KeeperIdCard>& keeper_id_cards);
 
         RecordingGroupId groupId;
         size_t activeKeeperCount;
         GrapherProcessEntry* grapherProcess;
+        PlayerProcessEntry* playerProcess;
         std::map<std::pair<uint32_t, uint16_t>, KeeperProcessEntry> keeperProcesses;
     };
 
@@ -152,12 +189,15 @@ public:
         int unregisterGrapherProcess(GrapherIdCard const& id_card);
         void updateGrapherProcessStats(GrapherStatsMsg const& );
 
+        int registerPlayerProcess(PlayerRegistrationMsg const& reg_msg);
+        int unregisterPlayerProcess(PlayerIdCard const& id_card);
+        void updatePlayerProcessStats(PlayerStatsMsg const& );
+
     private:
         KeeperRegistry(KeeperRegistry const&) = delete;//disable copying
         KeeperRegistry& operator=(KeeperRegistry const&) = delete;
 
-        int notifyGrapherOfStoryRecordingStart(RecordingGroup &, ChronicleName const &, StoryName const &, StoryId const &
-                                               , uint64_t);
+        int notifyGrapherOfStoryRecordingStart(RecordingGroup &, ChronicleName const &, StoryName const &, StoryId const & , uint64_t);
         int notifyGrapherOfStoryRecordingStop(RecordingGroup&, StoryId const&);
         int notifyKeepersOfStoryRecordingStart(RecordingGroup&, std::vector<KeeperIdCard> &, ChronicleName const &
                                                , StoryName const &, StoryId const &, uint64_t);

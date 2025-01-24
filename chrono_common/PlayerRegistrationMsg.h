@@ -13,13 +13,13 @@ class PlayerRegistrationMsg
 {
 
     PlayerIdCard playerIdCard;
-    ServiceId playbackServiceId;
+    ServiceId adminServiceId;
 
 public:
     PlayerRegistrationMsg(PlayerIdCard const& id_card = PlayerIdCard{0, 0, 0},
                            ServiceId const& service_id = ServiceId{0, 0, 0})
         : playerIdCard(id_card)
-        , playbackServiceId(service_id)
+        , adminServiceId(service_id)
 
     {}
 
@@ -28,14 +28,14 @@ public:
     PlayerIdCard const & getPlayerIdCard() const
     { return playerIdCard; }
 
-    ServiceId const & getPlaybackServiceId() const
-    { return playbackServiceId; }
+    ServiceId const & getAdminServiceId() const
+    { return adminServiceId; }
 
     template <typename SerArchiveT>
     void serialize(SerArchiveT &serT)
     {
         serT & playerIdCard;
-        serT & playbackServiceId;
+        serT & adminServiceId;
     }
 
 };
@@ -43,14 +43,14 @@ public:
 inline std::string to_string( PlayerRegistrationMsg const& msg)
 {
     return std::string("PlayerRegistrationMsg{") + to_string(msg.getPlayerIdCard())
-            + std::string("}{playback:") + to_string(msg.getPlaybackServiceId()) +"}";
+            + std::string("}{admin:") + to_string(msg.getAdminServiceId()) +"}";
 }
 
 }//namespace
 
 inline std::ostream &operator<<(std::ostream & out, chronolog::PlayerRegistrationMsg const &msg)
 {
-    out << "PlayerRegistrationMsg{" << msg.getPlayerIdCard() << "}{playback:" << msg.getPlaybackServiceId() << "}";
+    out << "PlayerRegistrationMsg{" << msg.getPlayerIdCard() << "}{admin:" << msg.getAdminServiceId() << "}";
     return out;
 }
 
