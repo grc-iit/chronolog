@@ -243,6 +243,7 @@ typedef struct PlayerConf_
 {
     uint32_t RECORDING_GROUP;
     RPCProviderConf DATA_STORE_ADMIN_SERVICE_CONF;
+    RPCProviderConf PLAYBACK_SERVICE_CONF;
     RPCProviderConf VISOR_REGISTRY_SERVICE_CONF;
     LogConf LOG_CONF;
     DataStoreConf  DATA_STORE_CONF;
@@ -256,6 +257,11 @@ typedef struct PlayerConf_
         DATA_STORE_ADMIN_SERVICE_CONF.BASE_PORT = 2222;
         DATA_STORE_ADMIN_SERVICE_CONF.SERVICE_PROVIDER_ID = 22;
 
+        PLAYBACK_SERVICE_CONF.PROTO_CONF = "ofi+sockets";
+        PLAYBACK_SERVICE_CONF.IP = "127.0.0.1";
+        PLAYBACK_SERVICE_CONF.BASE_PORT = 2225;
+        PLAYBACK_SERVICE_CONF.SERVICE_PROVIDER_ID = 25;
+
         VISOR_REGISTRY_SERVICE_CONF.PROTO_CONF = "ofi+sockets";
         VISOR_REGISTRY_SERVICE_CONF.IP = "127.0.0.1";
         VISOR_REGISTRY_SERVICE_CONF.BASE_PORT = 8888;
@@ -266,6 +272,7 @@ typedef struct PlayerConf_
     {
         return "[CHRONO_PLAYER_CONFIGURATION : RECORDING_GROUP: "+ std::to_string(RECORDING_GROUP) +
                ", DATA_STORE_ADMIN_SERVICE_CONF: " + DATA_STORE_ADMIN_SERVICE_CONF.to_String() +
+               ", PLAYBACK_SERVICE_CONF: " + PLAYBACK_SERVICE_CONF.to_String() +
                ", VISOR_REGISTRY_SERVICE_CONF: " + VISOR_REGISTRY_SERVICE_CONF.to_String() +
                ", LOG_CONF:" + LOG_CONF.to_String() +
                ", " + DATA_STORE_CONF.to_String() +
@@ -374,6 +381,7 @@ public:
         std::cout << "VISOR_CONF: " << VISOR_CONF.to_String().c_str() << std::endl;
         std::cout << "KEEPER_CONF: " << KEEPER_CONF.to_String().c_str() << std::endl;
         std::cout << "GRAPHER_CONF: " << GRAPHER_CONF.to_String().c_str() << std::endl;
+        std::cout << "PLAYER_CONF: " << PLAYER_CONF.to_String().c_str() << std::endl;
         std::cout << "CLIENT_CONF: " << CLIENT_CONF.to_String().c_str() << std::endl;
         std::cout << "******** End of configuration output ********" << std::endl;
     }
@@ -460,7 +468,7 @@ public:
                               << ". ChronoPlayer configuration is not found or is not an object." << std::endl;
                     exit(chronolog::CL_ERR_INVALID_CONF);
                 }
-                //parsePlayerConf(chrono_player_conf);
+                parsePlayerConf(chrono_player_conf);
             }
             else if(strcmp(key, "chrono_client") == 0)
             {

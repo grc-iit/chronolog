@@ -9,7 +9,7 @@
 #include "chrono_monitor.h"
 
 #include "StoryChunk.h"
-#include "ArchiveReadingRequest.h"
+#include "ArchiveReadingRequestQueue.h"
 #include "ArchiveReadingAgent.h"
 
 namespace chl = chronolog;

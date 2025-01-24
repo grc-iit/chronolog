@@ -1,5 +1,5 @@
-#ifndef ARCHIVE_READING_REQUEST_H
-#define ARCHIVE_READING_REQUEST_H
+#ifndef ARCHIVE_READING_REQUEST_QUEUE_H
+#define ARCHIVE_READING_REQUEST_QUEUE_H
 
 #include <mutex>
 #include <deque>
@@ -9,13 +9,24 @@
 namespace chronolog
 {
 
+class StoryChunkExtractionQueue;
+
 struct ArchiveReadingRequest
 {
+    StoryChunkExtractionQueue * storyChunkQueue;
     ChronicleName chronicleName;
     StoryName     storyName;
     chrono_time      startTime;
-    chrono_time      endTime;    
+    chrono_time      endTime;   
 
+    ArchiveReadingRequest( StoryChunkExtractionQueue* queue = nullptr, 
+        ChronicleName const& chronicle=std::string(), StoryName const& story=std::string(), chrono_time const& start=0, chrono_time const& end=0)
+    : storyChunkQueue(queue)
+    , chronicleName(chronicle)
+    , storyName(story)
+    , startTime(start)
+    , endTime()
+    { } 
 };
 
 class ArchiveReadingRequestQueue
@@ -46,7 +57,7 @@ public:
         }
         else 
         {
-            a_request = ArchiveReadingRequest{"","",0,0};
+            a_request = ArchiveReadingRequest{nullptr,"","",0,0};
         }
 
         return a_request;    
