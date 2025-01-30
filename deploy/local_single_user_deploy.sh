@@ -8,7 +8,7 @@ DEBUG='\033[0;33m'
 NC='\033[0m' # No Color
 
 NUM_KEEPERS=1
-NUM_GRAPHERS=1
+NUM_RECORDING_GROUPS=1
 
 BUILD_TYPE="Release"
 
@@ -25,6 +25,7 @@ INSTALL_DIR=""
 VISOR_BIN="${BIN_DIR}/chronovisor_server"
 KEEPER_BIN="${BIN_DIR}/chrono_keeper"
 GRAPHER_BIN="${BIN_DIR}/chrono_grapher"
+PLAYER_BIN="${BIN_DIR}/chrono_player"
 CONF_FILE="${CONF_DIR}/default_conf.json"
 
 #Booleans
@@ -68,6 +69,7 @@ check_files() {
     [[ ! -f ${VISOR_BIN} ]] && echo -e "${ERR}Visor binary file does not exist, exiting ...${NC}" && exit 1
     [[ ! -f ${KEEPER_BIN} ]] && echo -e "${ERR}Keeper binary file does not exist, exiting ...${NC}" && exit 1
     [[ ! -f ${GRAPHER_BIN} ]] && echo -e "${ERR}Grapher binary file does not exist, exiting ...${NC}" && exit 1
+    [[ ! -f ${PLAYER_BIN} ]] && echo -e "${ERR}Player binary file does not exist, exiting ...${NC}" && exit 1
     [[ ! -f ${CONF_FILE} ]] && echo -e "${ERR}Configuration file does not exist, exiting ...${NC}" && exit 1
     echo -e "${DEBUG}All required files are in place.${NC}"
 }
@@ -77,7 +79,7 @@ generate_config_files() {
     local default_conf=$2
     local conf_dir=$3
     local output_dir=$4
-    local num_graphers=$5
+    local num_recording_groups=$5
     local monitor_dir=$6
 
     mkdir -p "${monitor_dir}"
@@ -89,12 +91,12 @@ generate_config_files() {
     fi
 
     # Check if number of keepers and graphers are valid
-    if (( num_keepers <= 0 || num_graphers <= 0 )); then
+    if (( num_keepers <= 0 || num_recording_groups <= 0 )); then
         echo "Number of keepers and graphers must be greater than 0. Exiting..."
         exit 1
     fi
 
-    if (( num_keepers < num_graphers )); then
+    if (( num_keepers < num_recording_groups )); then
         echo "Number of keepers must be greater than or equal to the number of graphers. Exiting..."
         exit 1
     fi
@@ -105,11 +107,12 @@ generate_config_files() {
     local base_port_keeper_datastore=$(jq -r '.chrono_keeper.KeeperDataStoreAdminService.rpc.service_base_port' "$default_conf")
     local base_port_grapher_drain=$(jq -r '.chrono_grapher.KeeperGrapherDrainService.rpc.service_base_port' "$default_conf")
     local base_port_grapher_datastore=$(jq -r '.chrono_grapher.DataStoreAdminService.rpc.service_base_port' "$default_conf")
+    local base_port_player_datastore=$(jq -r '.chrono_player.DataStoreAdminService.rpc.service_base_port' "$default_conf")
 
     # Generate grapher configuration files
     echo "Generating grapher configuration files ..."
     mkdir -p "${output_dir}"
-    for (( i=0; i<num_graphers; i++ )); do
+    for (( i=0; i<num_recording_groups; i++ )); do
         local new_port_grapher_drain=$((base_port_grapher_drain + i))
         local new_port_grapher_datastore=$((base_port_grapher_datastore + i))
 
@@ -133,12 +136,33 @@ generate_config_files() {
         echo "Generated $grapher_output_file with ports $new_port_grapher_drain and $new_port_grapher_datastore"
     done
 
+    # Generate player configuration files
+    echo "Generating player configuration files ..."
+    for (( i=0; i<num_recording_groups; i++ )); do
+        local new_port_player_datastore=$((base_port_player_datastore + i))
+
+        local player_index=$((i + 1))
+        local player_output_file="${conf_dir}/player_conf_${player_index}.json"
+
+        player_monitoring_file=$(jq -r '.chrono_player.Monitoring.monitor.file' "$default_conf")
+        player_monitoring_file_name=$(basename "$player_monitoring_file")
+        jq --arg monitor_dir "$monitor_dir" \
+            --argjson new_port_player_datastore $new_port_player_datastore \
+            --argjson player_index "$player_index" \
+            --arg player_monitoring_file_name "$player_monitoring_file_name" \
+           '.chrono_player.RecordingGroup = $player_index |
+            .chrono_player.DataStoreAdminService.rpc.service_base_port = $new_port_player_datastore |
+            .chrono_player.Monitoring.monitor.file = ($monitor_dir + "/" + ($player_index | tostring) + "_" + $player_monitoring_file_name)' "$default_conf" > "$player_output_file"
+
+        echo "Generated $player_output_file with port $new_port_player_datastore"
+    done
+
     # Assign keepers to graphers iteratively
     echo "Generating keeper configuration files ..."
     for (( i=0; i<num_keepers; i++ )); do
         local new_port_keeper_record=$((base_port_keeper_record + i))
         local new_port_keeper_datastore=$((base_port_keeper_datastore + i))
-        local grapher_index=$((i % num_graphers + 1))
+        local grapher_index=$((i % num_recording_groups + 1))
         local new_port_keeper_drain=$((base_port_keeper_drain + grapher_index - 1))
 
         local keeper_index=$((i + 1))
@@ -373,15 +397,20 @@ start() {
     mkdir -p "${MONITOR_DIR}"
     mkdir -p "${OUTPUT_DIR}"
     check_installation
-    generate_config_files ${NUM_KEEPERS} ${CONF_FILE} ${CONF_DIR} ${OUTPUT_DIR} ${NUM_GRAPHERS} ${MONITOR_DIR}
+    generate_config_files ${NUM_KEEPERS} ${CONF_FILE} ${CONF_DIR} ${OUTPUT_DIR} ${NUM_RECORDING_GROUPS} ${MONITOR_DIR}
 
     echo -e "${INFO}Starting ChronoLog...${NC}"
     start_service ${VISOR_BIN} "--config ${CONF_DIR}/visor_conf.json" "visor.launch.log"
     sleep 2
-    num_graphers=${NUM_GRAPHERS}
-    for (( i=1; i<=num_graphers; i++ ))
+    num_record_group=${NUM_RECORDING_GROUPS}
+    for (( i=1; i<=num_record_group; i++ ))
     do
         start_service ${GRAPHER_BIN} "--config ${CONF_DIR}/grapher_conf_$i.json" "grapher_$i.launch.log"
+    done
+    sleep 2
+    for (( i=1; i<=num_record_group; i++ ))
+    do
+        start_service ${PLAYER_BIN} "--config ${CONF_DIR}/player_conf_$i.json" "player_$i.launch.log"
     done
     sleep 2
     num_keepers=${NUM_KEEPERS}
@@ -395,6 +424,7 @@ start() {
 stop() {
     echo -e "${INFO}Stopping ChronoLog...${NC}"
     check_work_dir
+    stop_service ${PLAYER_BIN} 100
     stop_service ${KEEPER_BIN} 100
     stop_service ${GRAPHER_BIN} 100
     stop_service ${VISOR_BIN} 100
@@ -407,6 +437,7 @@ clean() {
     check_execution_stopped
     echo -e "${DEBUG}Removing config files${NC}"
     rm -f ${CONF_DIR}/grapher_conf*.json
+    rm -f ${CONF_DIR}/player_conf*.json
     rm -f ${CONF_DIR}/keeper_conf*.json
     rm -f ${CONF_DIR}/visor_conf.json
 
@@ -450,6 +481,7 @@ usage() {
     echo "  -v|--visor-bin      VISOR_BIN (default: work_dir/bin/chronovisor_server) [Modes: Start]"
     echo "  -g|--grapher-bin    GRAPHER_BIN (default: work_dir/bin/chrono_grapher) [Modes: Start]"
     echo "  -p|--keeper-bin     KEEPER_BIN (default: work_dir/bin/chrono_keeper) [Modes: Start]"
+    echo "  -a|--player-bin     PLAYER_BIN (default: work_dir/bin/chrono_player) [Modes: Start]"
     echo ""
     echo "Configuration Settings:"
     echo "  -f|--conf-file      CONF_FILE Path to the configuration file (default: work_dir/conf/default_conf.json) [Modes: Start]"
@@ -501,7 +533,7 @@ parse_args() {
                 NUM_KEEPERS="$2"
                 shift 2 ;;
             -r|--record-groups)
-                NUM_GRAPHERS="$2"
+                NUM_RECORDING_GROUPS="$2"
                 shift 2 ;;
             -w|--work-dir)
                 WORK_DIR="$2"
@@ -511,6 +543,7 @@ parse_args() {
                 VISOR_BIN="${BIN_DIR}/chronovisor_server"
                 KEEPER_BIN="${BIN_DIR}/chrono_keeper"
                 GRAPHER_BIN="${BIN_DIR}/chrono_grapher"
+                PLAYER_BIN="${BIN_DIR}/chrono_player"
                 CONF_FILE="${CONF_DIR}/default_conf.json"
                 OUTPUT_DIR=${WORK_DIR}/output
                 MONITOR_DIR=${WORK_DIR}/monitor
@@ -529,6 +562,9 @@ parse_args() {
                 shift 2 ;;
             -p|--keeper-bin)
                 KEEPER_BIN=$(realpath "$2")
+                shift 2 ;;
+            -a|--player-bin)
+                PLAYER_BIN=$(realpath "$2")
                 shift 2 ;;
             -f|--conf-file)
                 CONF_FILE=$(realpath "$2")
