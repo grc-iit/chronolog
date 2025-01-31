@@ -27,7 +27,16 @@ public:
 
     hsize_t writeEvents(std::unique_ptr<H5::H5File> &file, std::vector <LogEventHVL> &data);
 
-    H5::CompType createEventCompoundType();
+    static H5::CompType createEventCompoundType()
+    {
+        H5::CompType data_type(sizeof(LogEventHVL));
+        data_type.insertMember("storyId", HOFFSET(LogEventHVL, storyId), H5::PredType::NATIVE_UINT64);
+        data_type.insertMember("eventTime", HOFFSET(LogEventHVL, eventTime), H5::PredType::NATIVE_UINT64);
+        data_type.insertMember("clientId", HOFFSET(LogEventHVL, clientId), H5::PredType::NATIVE_UINT32);
+        data_type.insertMember("eventIndex", HOFFSET(LogEventHVL, eventIndex), H5::PredType::NATIVE_UINT32);
+        data_type.insertMember("logRecord", HOFFSET(LogEventHVL, logRecord), H5::VarLenType(H5::PredType::NATIVE_UINT8));
+        return data_type;
+    }
 
 private:
     std::string rootDirectory;

@@ -20,8 +20,8 @@ target_sources(chrono_grapher PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/GrapherDataStore.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/CSVFileChunkExtractor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/HDF5FileChunkExtractor.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/StoryChunkWriter.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunk.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunkWriter.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/StoryPipeline.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunkExtractor.cpp
     ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/src/chrono_monitor.cpp)

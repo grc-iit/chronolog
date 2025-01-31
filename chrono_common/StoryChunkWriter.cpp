@@ -140,15 +140,4 @@ hsize_t StoryChunkWriter::writeEvents(std::unique_ptr<H5::H5File> &file, std::ve
     return ret;
 }
 
-H5::CompType StoryChunkWriter::createEventCompoundType()
-{
-    H5::CompType data_type(sizeof(LogEventHVL));
-    data_type.insertMember("storyId", HOFFSET(LogEventHVL, storyId), H5::PredType::NATIVE_UINT64);
-    data_type.insertMember("eventTime", HOFFSET(LogEventHVL, eventTime), H5::PredType::NATIVE_UINT64);
-    data_type.insertMember("clientId", HOFFSET(LogEventHVL, clientId), H5::PredType::NATIVE_UINT32);
-    data_type.insertMember("eventIndex", HOFFSET(LogEventHVL, eventIndex), H5::PredType::NATIVE_UINT32);
-    data_type.insertMember("logRecord", HOFFSET(LogEventHVL, logRecord), H5::VarLenType(H5::PredType::NATIVE_UINT8));
-    return data_type;
-}
-
 }

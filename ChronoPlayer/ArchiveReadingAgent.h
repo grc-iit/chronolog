@@ -10,6 +10,7 @@
 
 #include "ArchiveReadingRequestQueue.h"
 #include "StoryChunkIngestionQueue.h"
+#include "HDF5ArchiveReadingAgent.h"
 
 namespace chronolog
 {
@@ -45,10 +46,11 @@ class ArchiveReadingAgent
 
 
 public:
-    ArchiveReadingAgent( ArchiveReadingRequestQueue & request_queue, StoryChunkIngestionQueue & ingestion_queue)
+    ArchiveReadingAgent( ArchiveReadingRequestQueue & request_queue, StoryChunkIngestionQueue & ingestion_queue, std::string const & archive_path)
         : theReadingRequestQueue(request_queue)
         , theIngestionQueue(ingestion_queue)
         , agentState(UNKNOWN)
+        , theReadingAgent(archive_path)
     {}
 
     ~ArchiveReadingAgent();
@@ -79,7 +81,7 @@ private:
     std::vector <thallium::managed <thallium::thread>> archiveReadingThreads;
 
     //archiveSpecific readingAgent (template later on)
-    DummyReadingAgent theReadingAgent;
+    HDF5ArchiveReadingAgent theReadingAgent;
 
 };
 
