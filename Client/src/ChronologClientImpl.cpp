@@ -28,49 +28,71 @@ chronolog::ChronologClientImpl*chronolog::ChronologClientImpl::GetClientImplInst
 {
     chrono_monitor::initialize("file", "/tmp/chrono_client.log", spdlog::level::info, "chrono_client", 1024000, 3
                                , spdlog::level::warn);
+        
+    chronolog::ClientQueryServiceConf clientQueryServiceConf;
 
     std::lock_guard <std::mutex> lock_client(chronologClientMutex);
 
     if(chronologClientImplInstance == nullptr)
     {
-        chronologClientImplInstance = new ChronologClientImpl(visorClientPortalServiceConf);
+        chronologClientImplInstance = new ChronologClientImpl(clientQueryServiceConf, visorClientPortalServiceConf);
     }
 
     return chronologClientImplInstance;
 }
 
 ////////
-chronolog::ChronologClientImpl::ChronologClientImpl(const ChronoLog::ConfigurationManager &confManager): clientState(
-        UNKNOWN), clientLogin(""), hostId(0), pid(0), clientId(0), tlEngine(nullptr), rpcVisorClient(nullptr)
-                                                                                                         , storyteller(
-                nullptr)
+chronolog::ChronologClientImpl::ChronologClientImpl(const ChronoLog::ConfigurationManager &confManager)
+        : clientState(UNKNOWN)
+        , clientLogin("")
+        , hostId(0) , pid(0) , clientId(0)
+        , tlEngine(nullptr)
+        , rpcVisorClient(nullptr)
+        , storyteller(nullptr)
+        , storyReaderService(nullptr)
 {
-    //pClocksourceManager_ = ClocksourceManager::getInstance();
-    //pClocksourceManager_->setClocksourceType(CHRONOLOG_CONF->CLOCKSOURCE_TYPE);
-
     defineClientIdentity();
+
     tlEngine = new thallium::engine(confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.PROTO_CONF
-                                    , THALLIUM_CLIENT_MODE, true, 1);
+                                    , THALLIUM_SERVER_MODE, true, 1);
+
+    storyReaderService= chl::ClientQueryService::CreateClientQueryService(*tlEngine, 
+                        chl::ServiceId( confManager.CLIENT_CONF.CLIENT_QUERY_SERVICE_CONF.PROTO_CONF,
+                        hostId, confManager.CLIENT_CONF.CLIENT_QUERY_SERVICE_CONF.BASE_PORT,
+                        confManager.CLIENT_CONF.CLIENT_QUERY_SERVICE_CONF.SERVICE_PROVIDER_ID));
+                    
 
     std::string CLIENT_VISOR_NA_STRING =
             confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.PROTO_CONF + "://" +
             confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP + ":" +
             std::to_string(confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT);
+
     rpcVisorClient = chl::RpcVisorClient::CreateRpcVisorClient(*tlEngine, CLIENT_VISOR_NA_STRING
                                                                , confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID);
     storytellerRpcProtocol = confManager.KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.PROTO_CONF;
+
+    //tlEngine->wait_for_finalize();
 }
 ///////////////
 
-chronolog::ChronologClientImpl::ChronologClientImpl(const chronolog::ClientPortalServiceConf &clientPortalServiceConf)
-        : clientState(UNKNOWN), clientLogin(""), hostId(0), pid(0), clientId(0), tlEngine(nullptr), rpcVisorClient(
-        nullptr), storyteller(nullptr)
+chronolog::ChronologClientImpl::ChronologClientImpl(
+    chronolog::ClientQueryServiceConf const& clientQueryServiceConf,
+    chronolog::ClientPortalServiceConf const& clientPortalServiceConf)
+        : clientState(UNKNOWN)
+        , clientLogin("")
+        , hostId(0), pid(0), clientId(0)
+        , tlEngine(nullptr)
+        , rpcVisorClient(nullptr)
+        , storyteller(nullptr)
+        , storyReaderService(nullptr)
 {
-    //pClocksourceManager_ = ClocksourceManager::getInstance();
-    //pClocksourceManager_->setClocksourceType(CHRONOLOG_CONF->CLOCKSOURCE_TYPE);
 
     defineClientIdentity();
-    tlEngine = new thallium::engine(clientPortalServiceConf.proto_conf(), THALLIUM_CLIENT_MODE, true, 1);
+
+    tlEngine = new thallium::engine(clientQueryServiceConf.proto_conf(), THALLIUM_SERVER_MODE, true, 1);
+    
+    storyReaderService= chl::ClientQueryService::CreateClientQueryService(*tlEngine, chronolog::ServiceId(clientQueryServiceConf.proto_conf(), 
+                                        hostId, clientQueryServiceConf.port(), clientQueryServiceConf.provider_id()));
 
     std::string CLIENT_VISOR_NA_STRING =
             clientPortalServiceConf.proto_conf() + "://" + clientPortalServiceConf.ip() + ":" +
@@ -81,23 +103,6 @@ chronolog::ChronologClientImpl::ChronologClientImpl(const chronolog::ClientPorta
 }
 
 ////////
-
-chronolog::ChronologClientImpl::ChronologClientImpl(const std::string &protocol_string, const std::string &visor_ip
-                                                    , int visor_port, uint16_t visor_portal_service_provider)
-        : clientState(UNKNOWN), clientLogin(""), hostId(0), pid(0), clientId(0), tlEngine(nullptr), rpcVisorClient(
-        nullptr), storyteller(nullptr)
-{
-    //pClocksourceManager_ = ClocksourceManager::getInstance();
-    //pClocksourceManager_->setClocksourceType(CHRONOLOG_CONF->CLOCKSOURCE_TYPE);
-
-    defineClientIdentity();
-    tlEngine = new thallium::engine(protocol_string, THALLIUM_CLIENT_MODE, true, 1);
-
-    std::string client_visor_na_string = protocol_string + "://" + visor_ip + ":" + std::to_string(visor_port);
-
-    rpcVisorClient = chl::RpcVisorClient::CreateRpcVisorClient(*tlEngine, client_visor_na_string
-                                                               , visor_portal_service_provider);
-}
 
 void chronolog::ChronologClientImpl::defineClientIdentity()
 {
@@ -123,6 +128,9 @@ chronolog::ChronologClientImpl::~ChronologClientImpl()
 
     if(rpcVisorClient != nullptr)
     { delete rpcVisorClient; }
+
+    if(storyReaderService)
+    { delete storyReaderService; }
 
     if(tlEngine != nullptr)
     {
@@ -158,7 +166,7 @@ int chronolog::ChronologClientImpl::Connect()
         clientId = connectResponseMsg.getClientId();
         if(storyteller == nullptr)
         {
-            storyteller = new StorytellerClient(clockProxy, *tlEngine, clientId, storytellerRpcProtocol);
+            storyteller = new StorytellerClient(clockProxy, *storyReaderService, clientId, storytellerRpcProtocol);
         }
         //TODO: if we ever change the connection hashing algorithm we'd need to handle reconnection case with the new client_id 
     }
@@ -338,7 +346,8 @@ chronolog::ChronologClientImpl::AcquireStory(std::string const &chronicle_name, 
 
     storyHandle = storyteller->initializeStoryWritingHandle(chronicle_name, story_name
                                                             , acquireStoryResponse.getStoryId()
-                                                            , acquireStoryResponse.getKeepers());
+                                                            , acquireStoryResponse.getKeepers()
+                    , acquireStoryResponse.getPlayer());
 
     if(storyHandle == nullptr)
     {
@@ -539,3 +548,6 @@ chronolog::ChronologClientImpl::ShowStories(std::string const &chronicle_name, s
     }
     return stories;
 }
+
+//////////////////////////////
+

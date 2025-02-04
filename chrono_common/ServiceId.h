@@ -17,6 +17,13 @@ typedef std::pair <in_addr_t, in_port_t> service_endpoint;
 class ServiceId
 {
 public:
+    ServiceId(std::string const& protocol, uint32_t addr = 0, uint16_t a_port = 0, uint16_t a_provider_id = 0)
+        : protocol(protocol)
+        , ip_addr(addr)
+        , port(a_port)
+        , provider_id(a_provider_id)
+    {}
+
     ServiceId(uint32_t addr = 0, uint16_t a_port = 0, uint16_t a_provider_id = 0)
         : protocol("ofi+sockets")
         , ip_addr(addr)
@@ -39,9 +46,10 @@ public:
     template <typename SerArchiveT>
     void serialize(SerArchiveT& serT)
     {
-        serT& ip_addr;
-        serT& port;
-        serT& provider_id;
+        serT & protocol;
+        serT & ip_addr;
+        serT & port;
+        serT & provider_id;
     }
 
     std::string& getIPasDottedString(std::string& a_string) const

@@ -5,17 +5,99 @@
 #include <vector>
 #include <map>
 
-#include "ConfigurationManager.h"  //TODO: not sure this is a good idea , but will keep it for now ...
+#include "ConfigurationManager.h" 
 
 #include "ClientConfiguration.h"
 
-//TODO: rename Client to be ChronologClient 
-//TODO: remove ConfigurationManager from chronolog_client include fiels , should only be in the implementation files 
-// if needed at all
-
-
 namespace chronolog
 {
+
+typedef std::string StoryName;
+typedef std::string ChronicleName;
+typedef uint64_t ClientId;
+typedef uint64_t chrono_time;
+typedef uint32_t chrono_index;
+
+class Event
+{
+public:
+
+    Event(chrono_time event_time = 0, ClientId client_id = 0, chrono_index index = 0, std::string const &record = std::string())
+        : eventTime(event_time)
+        , clientId(client_id)
+        , eventIndex(index)
+        , logRecord(record)
+    { }
+
+    uint64_t time() const
+    { return eventTime; }
+
+    ClientId const & client_id() const
+    { return clientId; }
+
+    uint32_t index() const
+    { return eventIndex; }
+
+    std::string const& log_record() const
+    { return logRecord; }
+
+    Event( Event const& other)
+        : eventTime(other.time())
+        , clientId(other.client_id())
+        , eventIndex(other.index())
+        , logRecord(other.log_record())
+    { }
+
+    Event& operator= (const Event & other) 
+    {
+        if (this != &other) 
+        {
+            eventTime = other.time();
+            clientId = other.client_id();
+            eventIndex = other.index();
+            logRecord = other.log_record();
+        }
+        return *this;
+    }
+
+    bool operator== (const Event &other) const
+    {
+        return (eventTime == other.eventTime && clientId == other.clientId && eventIndex == other.eventIndex );
+    }
+
+    bool operator!= (const Event &other) const
+    { return !(*this == other); }
+
+    bool operator< (const Event &other) const
+    {
+        if( ( eventTime < other.time() ) 
+           || (eventTime == other.time() && clientId < other.client_id()) 
+           || (eventTime == other.time() && clientId == other.client_id() && eventIndex < other.index()) 
+          )
+        { 
+            return true; 
+        }
+        else
+        {
+            return false; 
+        }
+    }
+
+
+    inline std::string toString() const
+    {
+        return  "{Event: " + std::to_string(eventTime) + ":" + std::to_string(clientId) + ":" + std::to_string(eventIndex) +
+                          ":" + logRecord +"}";
+    }
+
+private:
+    
+    uint64_t eventTime;
+    ClientId clientId;
+    uint32_t eventIndex;
+    std::string logRecord;
+
+};
 
 class StoryHandle
 {
@@ -24,8 +106,7 @@ public:
 
     virtual int log_event(std::string const &) = 0;
 
-    // to be implemented with libfabric/thallium bulk transfer...
-    //virtual int log_event( size_t , void*) = 0;
+    virtual int playback_story(uint64_t start, uint64_t end, std::vector<Event> & playback_events) = 0;
 };
 
 class ChronologClientImpl;

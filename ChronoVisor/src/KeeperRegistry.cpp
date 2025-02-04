@@ -493,7 +493,8 @@ std::vector<KeeperIdCard>& RecordingGroup::getActiveKeepers(std::vector<KeeperId
 /////////////////
 int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName const& chronicle, StoryName const &story
                                                               , StoryId const &story_id
-                                                              , std::vector <KeeperIdCard> &vectorOfKeepers)
+                                                              , std::vector <KeeperIdCard> &vectorOfKeepers
+                                , ServiceId & player_service_id)
 {
     vectorOfKeepers.clear();
 
@@ -552,6 +553,10 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
                                                         story_start_time);
     }
 
+    if(rpc_return == CL_SUCCESS && recording_group->playerProcess != nullptr)
+    {
+        player_service_id = recording_group->playerProcess->playbackServiceId;
+    }
     return rpc_return;
 }
 

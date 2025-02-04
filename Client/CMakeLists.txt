@@ -15,10 +15,13 @@ add_library(chronolog_client
     ${CMAKE_CURRENT_SOURCE_DIR}/src/KeeperRecordingClient.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/StorytellerClient.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/StorytellerClient.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/PlaybackQueryRpcClient.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ClientQueryService.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ChronologClient.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ChronologClientImpl.cpp
     ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/src/chrono_monitor.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/ConfigurationManager.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunk.cpp
 )
 
 # Include directories for the library

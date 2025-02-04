@@ -4,16 +4,14 @@
 #include "chronolog_errcode.h"
 #include "ConfigurationManager.h"
 #include "ClientConfiguration.h"
-//#include "ClocksourceManager.h"
 
 #include "chronolog_types.h"
 
 
-//ClocksourceManager *ClocksourceManager::clocksourceManager_ = nullptr;
-
 #include "chronolog_client.h"
 #include "rpcVisorClient.h"
 #include "StorytellerClient.h"
+#include "ClientQueryService.h"
 
 namespace chronolog
 {
@@ -33,8 +31,10 @@ public:
     static std::mutex chronologClientMutex;
     static ChronologClientImpl*chronologClientImplInstance;
 
-    static ChronologClientImpl*GetClientImplInstance(ChronoLog::ConfigurationManager const &);
-    static ChronologClientImpl*GetClientImplInstance(chronolog::ClientPortalServiceConf const &);
+    static ChronologClientImpl*
+    GetClientImplInstance(ChronoLog::ConfigurationManager const &);
+    static ChronologClientImpl*
+    GetClientImplInstance(chronolog::ClientPortalServiceConf const &);
 
     // the classs is non-copyable
     ChronologClientImpl(ChronologClientImpl const &) = delete;
@@ -50,20 +50,20 @@ public:
     int CreateChronicle(std::string const &chronicle_name, const std::map <std::string, std::string> &attrs
                         , int &flags);
 
-    int DestroyChronicle(std::string const &chronicle_name); //, int &flags);
+    int DestroyChronicle(std::string const &chronicle_name); 
 
     std::pair <int, StoryHandle*> AcquireStory(std::string const &chronicle_name, std::string const &story_name
                                                , const std::map <std::string, std::string> &attrs
                                                , int &flags);
 
-    int ReleaseStory(std::string const &chronicle_name, std::string const &story_name); //, int &flags);
+    int ReleaseStory(std::string const &chronicle_name, std::string const &story_name); 
     int DestroyStory(std::string const &chronicle_name, std::string const &story_name);
 
     int GetChronicleAttr(std::string const &chronicle_name, const std::string &key, std::string &value);
 
     int EditChronicleAttr(std::string const &chronicle_name, const std::string &key, const std::string &value);
 
-    std::vector <std::string> &ShowChronicles(std::vector <std::string> &); //std::string &client_id);
+    std::vector <std::string> &ShowChronicles(std::vector <std::string> &);
     std::vector <std::string> &ShowStories(const std::string &chronicle_name, std::vector <std::string> &);
 
 private:
@@ -79,13 +79,10 @@ private:
     thallium::engine*tlEngine;
     RpcVisorClient*rpcVisorClient;
     StorytellerClient*storyteller;
-    // ClocksourceManager *pClocksourceManager_;
-
+    ClientQueryService * storyReaderService;
+    
     ChronologClientImpl(const ChronoLog::ConfigurationManager &conf_manager);
-    ChronologClientImpl(const chronolog::ClientPortalServiceConf &);
-
-    ChronologClientImpl(std::string const &protocol, const std::string &visor_ip, int visor_port
-                        , uint16_t service_provider);
+    ChronologClientImpl( ClientQueryServiceConf const& , ClientPortalServiceConf const&);
 
     void defineClientIdentity();
 

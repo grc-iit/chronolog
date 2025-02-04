@@ -7,10 +7,12 @@
 #include "../chrono_common/chronolog_types.h"
 #include "StorytellerClient.h"
 #include "KeeperRecordingClient.h"
+#include "PlaybackQueryRpcClient.h"
 
 namespace tl = thallium;
 
 namespace chl = chronolog;
+
 /////////////////////
 
 uint64_t chronolog::ChronologTimer::getTimestamp()
@@ -55,6 +57,18 @@ chronolog::StoryWritingHandle <KeeperChoicePolicy>::removeRecordingClient(chrono
     }
 }
 
+template <class KeeperChoicePolicy>
+void chronolog::StoryWritingHandle <KeeperChoicePolicy>::attachPlaybackQueryClient(PlaybackQueryRpcClient* playbackClient)
+{
+    playbackQueryClient = playbackClient;
+}
+
+template <class KeeperChoicePolicy>
+void chronolog::StoryWritingHandle <KeeperChoicePolicy>::detachPlaybackQueryClient()
+{
+    playbackQueryClient = nullptr;
+}
+
 //////////////////
 template <class KeeperChoicePolicy>
 int chronolog::StoryWritingHandle <KeeperChoicePolicy>::log_event(std::string const &event_record)
@@ -71,18 +85,36 @@ int chronolog::StoryWritingHandle <KeeperChoicePolicy>::log_event(std::string co
     }
 
     // INNA: make send event returm 0 in case of tl RPC failure ....
+    
     keeperRecordingClient->send_event_msg(log_event);
 
-    // Kun: do we have any reason to have a different errno definition than what we already have in errcode.h?
+    //INNA: we probably want to expose the timestamp as the return value here
+    // 0 indicates a failure to log as invalid timestamp
     return 1;
 }
 /////////////////////
-
+/*
 template <class KeeperChoicePolicy>
 int chronolog::StoryWritingHandle <KeeperChoicePolicy>::log_event(size_t, void*)
 {
     return 0;  // not implemented yet ; to be implemented with tl bulk transfer ... 
 }
+*/
+
+template <class KeeperChoicePolicy>
+int chronolog::StoryWritingHandle<KeeperChoicePolicy>::playback_story(uint64_t start_time, uint64_t end_time
+        , std::vector<chronolog::Event>& playback_events)
+{
+    playback_events.clear();
+
+    if(nullptr == playbackQueryClient)
+    { return chl::CL_ERR_NO_PLAYERS; }
+
+    playbackQueryClient->send_story_playback_request(chronicle, story, start_time, end_time);
+
+return chl::CL_SUCCESS;
+}
+
 //////////////////////////////////////////
 
 
@@ -91,6 +123,7 @@ chronolog::StorytellerClient::~StorytellerClient()
     LOG_DEBUG("[StorytellerClient] Destructor called.");
     {
         std::lock_guard <std::mutex> lock(acquiredStoryMapMutex);
+        //TODO: INNA: investigate why the folowing lines were commented out in the previous version
         /*
         for( auto story_record_iter : acquiredStoryHandles)
         {
@@ -105,6 +138,12 @@ chronolog::StorytellerClient::~StorytellerClient()
         delete keeper_client.second;
     }
     recordingClientMap.clear();
+    //delete playback clients
+    for(auto playback_client: playbackQueryClientMap)
+    {
+        delete playback_client.second;
+    }
+    playbackQueryClientMap.clear();
 }
 
 int chronolog::StorytellerClient::get_event_index()
@@ -135,7 +174,7 @@ int chronolog::StorytellerClient::addKeeperRecordingClient(chronolog::KeeperIdCa
                 rpc_protocol_string + "://" + keeper_id_card.getIPasDottedString(a_string) + ":" +
                 std::to_string(keeper_id_card.getPort());
         chronolog::KeeperRecordingClient*keeperRecordingClient = chronolog::KeeperRecordingClient::CreateKeeperRecordingClient(
-                client_engine, keeper_id_card, keeper_service_na_string);
+                theClientQueryService.get_service_engine(), keeper_id_card, keeper_service_na_string);
 
         auto insert_return = recordingClientMap.insert(
                 std::pair <std::pair <uint32_t, uint16_t>, chronolog::KeeperRecordingClient*>(
@@ -211,7 +250,8 @@ chronolog::StorytellerClient::findStoryWritingHandle(ChronicleName const &chroni
 chronolog::StoryHandle*
 chronolog::StorytellerClient::initializeStoryWritingHandle(ChronicleName const &chronicle, StoryName const &story
                                                            , StoryId const &story_id
-                                                           , std::vector <KeeperIdCard> const &vectorOfKeepers)
+                                                           , std::vector <KeeperIdCard> const &vectorOfKeepers
+                        , chl::ServiceId const & player_card)
 //INNA: TODO :KeeperChoicePolicy will have to be communicated here as well ....
 {
     std::lock_guard <std::mutex> lock(acquiredStoryMapMutex);
@@ -245,6 +285,14 @@ chronolog::StorytellerClient::initializeStoryWritingHandle(ChronicleName const &
         keeper_client_iter = recordingClientMap.find(
                 std::pair <uint32_t, uint16_t>(keeper_id_card.getIPaddr(), keeper_id_card.getPort()));
         storyWritingHandle->addRecordingClient((*keeper_client_iter).second);
+    }
+
+    // find existing or create a new one playbackQueryRpcClient
+    auto playbackQueryClient = theClientQueryService.addPlaybackQueryClient(player_card);
+
+    if(nullptr != playbackQueryClient)
+    {
+        storyWritingHandle->attachPlaybackQueryClient(playbackQueryClient);
     }
 
     auto insert_return = acquiredStoryHandles.insert(

@@ -195,6 +195,7 @@ chronolog::VisorClientPortal::AcquireStory(chl::ClientId const &client_id, std::
 {
     chronolog::StoryId story_id{0};
     std::vector <chronolog::KeeperIdCard> recording_keepers;
+    chl::ServiceId player; //ServiceID of ChronoPlayer providing playback service for this story
 
     if(!theKeeperRegistry->is_running())
     { return chronolog::AcquireStoryResponseMsg(chronolog::CL_ERR_NO_KEEPERS, story_id, recording_keepers); }
@@ -225,7 +226,7 @@ chronolog::VisorClientPortal::AcquireStory(chl::ClientId const &client_id, std::
     // so that they are ready to start recording this story
 
     if(chronolog::CL_SUCCESS != theKeeperRegistry->notifyRecordingGroupOfStoryRecordingStart(
-                                        chronicle_name, story_name, story_id, recording_keepers))
+                                        chronicle_name, story_name, story_id, recording_keepers, player))
     {
         // RPC notification to the keepers might have failed, release the newly acquired story
         chronicleMetaDirectory.release_story(client_id, chronicle_name, story_name, story_id);
@@ -234,7 +235,7 @@ chronolog::VisorClientPortal::AcquireStory(chl::ClientId const &client_id, std::
         return chronolog::AcquireStoryResponseMsg(chronolog::CL_ERR_NO_KEEPERS, story_id, recording_keepers);
     }
 
-    return chronolog::AcquireStoryResponseMsg(chronolog::CL_SUCCESS, story_id, recording_keepers);
+    return chronolog::AcquireStoryResponseMsg(chronolog::CL_SUCCESS, story_id, recording_keepers, player);
 }
 
 

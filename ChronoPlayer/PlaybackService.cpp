@@ -45,9 +45,8 @@ void chronolog::PlaybackService::playback_service_available(tl::request const &r
         request.respond(1);
 }
 
-void chronolog::PlaybackService::story_playback_request(tl::request const &request
-    , std::string const &chronicle_name, std::string const &story_name
-    , uint64_t start_time, uint64_t end_time, chronolog::ServiceId const & receiver_service_id)
+void chronolog::PlaybackService::story_playback_request(tl::request const &request,chl::ServiceId const & receiver_service_id, uint32_t query_id
+    ,chl::ChronicleName const &chronicle_name, chl::StoryName const &story_name, chl::chrono_time const& start_time, chl::chrono_time const& end_time)
 {
         LOG_INFO("[PlaybackService] PlaybackStoryRequest: ChronicleName={},StoryName={}", chronicle_name, story_name);
 

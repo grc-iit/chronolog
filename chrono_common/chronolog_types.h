@@ -61,7 +61,7 @@ public:
     bool operator==(const LogEvent &other) const
     {
         return (storyId == other.storyId && eventTime == other.eventTime && clientId == other.clientId &&
-                eventIndex == other.eventIndex && logRecord == other.logRecord);
+                eventIndex == other.eventIndex );
     }
 
     // convert to string

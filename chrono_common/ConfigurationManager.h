@@ -282,12 +282,14 @@ typedef struct PlayerConf_
 
 typedef struct ClientConf_
 {
+    RPCProviderConf CLIENT_QUERY_SERVICE_CONF;
     VisorClientPortalServiceConf VISOR_CLIENT_PORTAL_SERVICE_CONF;
     LogConf CLIENT_LOG_CONF;
 
     [[nodiscard]] std::string to_String() const
     {
-        return "[VISOR_CLIENT_PORTAL_SERVICE_CONF: " + VISOR_CLIENT_PORTAL_SERVICE_CONF.to_String() +
+        return "[CLIENT_QUERY_SERVICE_CONF: " + CLIENT_QUERY_SERVICE_CONF.to_String() +
+            ", [VISOR_CLIENT_PORTAL_SERVICE_CONF: " + VISOR_CLIENT_PORTAL_SERVICE_CONF.to_String() +
                ", CLIENT_LOG_CONF:" + CLIENT_LOG_CONF.to_String() + "]";
     }
 } ClientConf;
@@ -376,7 +378,6 @@ public:
     void PrintConf() const
     {
         std::cout << "******** Start of configuration output ********" << std::endl;
-        std::cout << "CLOCK_CONF: " << CLOCK_CONF.to_String().c_str() << std::endl;
         std::cout << "AUTH_CONF: " << AUTH_CONF.to_String().c_str() << std::endl;
         std::cout << "VISOR_CONF: " << VISOR_CONF.to_String().c_str() << std::endl;
         std::cout << "KEEPER_CONF: " << KEEPER_CONF.to_String().c_str() << std::endl;
@@ -972,7 +973,25 @@ private:
     {
         json_object_object_foreach(json_conf, key, val)
         {
-            if(strcmp(key, "VisorClientPortalService") == 0)
+            if(strcmp(key, "ClientQueryService") == 0)
+            {
+                assert(json_object_is_type(val, json_type_object));
+                json_object*visor_client_portal_service_conf = json_object_object_get(json_conf
+                                                                                      , "ClientQueryService");
+                json_object_object_foreach(visor_client_portal_service_conf, key, val)
+                {
+                    if(strcmp(key, "rpc") == 0)
+                    {
+                        parseRPCProviderConf(val, CLIENT_CONF.CLIENT_QUERY_SERVICE_CONF);
+                    }
+                    else
+                    {
+                        std::cerr << "[ConfigurationManager] Unknown ClientQueryService configuration: " << key
+                                  << std::endl;
+                    }
+                }
+            }
+            else if(strcmp(key, "VisorClientPortalService") == 0)
             {
                 assert(json_object_is_type(val, json_type_object));
                 json_object*visor_client_portal_service_conf = json_object_object_get(json_conf

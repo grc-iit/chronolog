@@ -97,6 +97,7 @@ public:
     public:
         PlayerProcessEntry(PlayerIdCard const& id_card, ServiceId const& admin_service_id)
             : idCard(id_card)
+            , playbackServiceId(ServiceId())
             , adminServiceId(admin_service_id)
             , adminClient(nullptr)
             , active(false)
@@ -109,6 +110,7 @@ public:
         ~PlayerProcessEntry() = default;// Registry is reponsible for creating & deleting AdminClient
 
         PlayerIdCard idCard;
+        ServiceId playbackServiceId;
         ServiceId adminServiceId;
         std::string idCardString;
         DataStoreAdminClient* adminClient;
@@ -182,7 +184,7 @@ public:
         void updateKeeperProcessStats(KeeperStatsMsg const& keeperStatsMsg);
 
         int notifyRecordingGroupOfStoryRecordingStart(ChronicleName const &, StoryName const &, StoryId const &
-                                                      , std::vector <KeeperIdCard> &);
+                                                      , std::vector <KeeperIdCard> &, ServiceId &);
         int notifyRecordingGroupOfStoryRecordingStop(StoryId const&);
 
         int registerGrapherProcess(GrapherRegistrationMsg const& reg_msg);
