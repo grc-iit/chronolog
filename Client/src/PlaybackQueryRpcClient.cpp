@@ -22,7 +22,7 @@ chl::PlaybackQueryRpcClient::PlaybackQueryRpcClient(chl::ClientQueryService & cl
     , playback_service_id(playback_service_id)
 {
     std::string service_addr_string= playback_service_id.protocol + "://";
-    service_addr_string += playback_service_id.getIPasDottedString(service_addr_string) 
+    service_addr_string += playback_service_id.get_ip_as_dotted_string(service_addr_string) 
                     + std::to_string(playback_service_id.port);
 
     playback_service_handle = tl::provider_handle(theClientQueryService.get_engine().lookup(service_addr_string), playback_service_id.provider_id);

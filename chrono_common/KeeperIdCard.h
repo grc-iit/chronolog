@@ -9,8 +9,8 @@
 
 // this class wrapps ChronoKeeper Process identification 
 // that will be used by all the ChronoLog Processes 
-// to both identofy the Keepr process and create RPC client channels 
-// to send the data to the Keeper Recording service
+// to both identify the Keepr process and create RPC client channels 
+// to send the data to the Keeper RecordingService and Keeper DataStoreAdminService
 
 namespace chronolog
 {
@@ -54,7 +54,7 @@ public:
         serT & tl_provider_id;
     }
 
-    std::string & getIPasDottedString ( std::string & a_string ) const
+    std::string & get_ip_as_dotted_string ( std::string & a_string ) const
     {
 
         char buffer[INET_ADDRSTRLEN];
@@ -72,7 +72,7 @@ inline std::string to_string(chronolog::KeeperIdCard const& keeper_id_card)
 {
     std::string a_string;
     return std::string("KeeperIdCard{") + std::to_string(keeper_id_card.getGroupId()) + ":" +
-                keeper_id_card.getIPasDottedString(a_string) + ":" + std::to_string(keeper_id_card.getPort()) + ":" +
+                keeper_id_card.get_ip_as_dotted_string(a_string) + ":" + std::to_string(keeper_id_card.getPort()) + ":" +
                 std::to_string(keeper_id_card.getProviderId()) + "}";
 }
 
@@ -90,7 +90,7 @@ inline std::ostream & operator<< (std::ostream & out , chronolog::KeeperIdCard c
 {
     std::string a_string;
     out << "KeeperIdCard{"<<keeper_id_card.getGroupId()
-       <<":"<<keeper_id_card.getIPasDottedString(a_string)<<":"<<keeper_id_card.getPort()
+       <<":"<<keeper_id_card.get_ip_as_dotted_string(a_string)<<":"<<keeper_id_card.getPort()
        <<":"<<keeper_id_card.getProviderId()<<"}";
     return out;
 }

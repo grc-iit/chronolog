@@ -1,0 +1,178 @@
+[2025-01-31 21:45:17.680] [ChronoClient] [info] [ClientLibMultiStorytellers] Running test.
+[2025-01-31 21:45:17.683] [ChronoClient] [info] [ChronologClientImpl] Client Identity - Login: parallels, EUID: 1000, HostID: 8323329, PID: 1389696
+[2025-01-31 21:45:17.773] [ChronoClient] [debug] [ClientQueryService] created  service ServiceId{ofi+sockets:0.127.1.1:5557:57}
+[2025-01-31 21:45:17.773] [ChronoClient] [debug] [RpcVisorClient] Initialized for Visor Service at ofi+sockets://127.0.0.1:5555 with ProviderID=55
+[2025-01-31 21:45:17.773] [ChronoClient] [debug] [RpcVisorClient] Initiating connection for Account=1000, HostID=8323329, PID=1389696
+[2025-01-31 21:45:17.788] [ChronoClient] [info] [RpcVisorClient] Connection successful for Account=1000, HostID=8323329, PID=1389696
+[2025-01-31 21:45:17.788] [ChronoClient] [debug] [ChronoLogClientImpl] Connection attempt to Visor completed. Response received: ConnectResponseMsg{0}{client_id:11746398923999318289}
+[2025-01-31 21:45:17.788] [ChronoClient] [debug] [StorytellerClient] Initialized with ClientID: 11746398923999318289
+[2025-01-31 21:45:17.788] [ChronoClient] [info] [RPCVisorClient] Initiating creation of chronicle: Name=CHRONICLE_2, Flags=1
+[2025-01-31 21:45:17.812] [ChronoClient] [info] [RPCVisorClient] Successfully created chronicle with Name=CHRONICLE_2, Flags=1
+[2025-01-31 21:45:17.812] [ChronoClient] [info] [ChronoLogClientImpl] Successfully created chronicle 'CHRONICLE_2'.
+[2025-01-31 21:45:17.812] [ChronoClient] [debug] [ClientLibMultiStorytellers] Chronicle created: tid=2, ChronicleName=CHRONICLE_2, Flags: 1
+[2025-01-31 21:45:17.812] [ChronoClient] [debug] [ChronoLogClientImpl] Attempting to acquire story. ChronicleName=CHRONICLE_2, StoryName=CfC6e
+[2025-01-31 21:45:17.812] [ChronoClient] [warning] [StorytellerClient::findStoryWritingHandle] StoryHandle not found for Chronicle: 'CHRONICLE_2' and Story: 'CfC6e'.
+[2025-01-31 21:45:17.812] [ChronoClient] [info] [RPCVisorClient] Initiating story acquisition: ChronicleName=CHRONICLE_2, StoryName=CfC6e
+[2025-01-31 21:45:17.828] [ChronoClient] [error] [RPCVisorClient] Failed to acquire story: ChronicleName=CHRONICLE_2, StoryName=CfC6e, Error Code=-14
+[2025-01-31 21:45:17.828] [ChronoClient] [debug] [ChronoLogClientImpl] Response from AcquireStory RPC call: AcquireStoryResponseMsg{-14}{story_id:0}{}{ServiceId{ofi+sockets:0.0.0.0:0:0}}
+[2025-01-31 21:45:17.828] [ChronoClient] [error] [ChronoLogClientImpl] Failed to acquire story 'CfC6e' from chronicle 'CHRONICLE_2'. Error code: -14
+[2025-01-31 21:45:17.828] [ChronoClient] [debug] [ClientLibMultiStorytellers] Story acquired: tid=2, ChronicleName=CHRONICLE_2, StoryName=CfC6e, Ret: -14
+[2025-01-31 21:45:17.828] [ChronoClient] [info] [RPCVisorClient] Initiating story destruction: ChronicleName=CHRONICLE_2, StoryName=CfC6e
+[2025-01-31 21:45:17.844] [ChronoClient] [error] [RPCVisorClient] Failed to destroy story: ChronicleName=CHRONICLE_2, StoryName=CfC6e, Error Code=-3
+[2025-01-31 21:45:17.844] [ChronoClient] [error] [ChronoLogClientImpl] Failed to destroy Story 'CfC6e' from Chronicle 'CHRONICLE_2'. Error code: -3
+[2025-01-31 21:45:17.844] [ChronoClient] [debug] [ClientLibMultiStorytellers] Story destroyed: tid=2, ChronicleName=CHRONICLE_2, StoryName=CfC6e, Ret: -3
+[2025-01-31 21:45:17.844] [ChronoClient] [info] [RPCVisorClient] Initiating destruction of chronicle: Name=CHRONICLE_2
+[2025-01-31 21:45:17.846] [ChronoClient] [info] [RPCVisorClient] Successfully destroyed chronicle: Name=CHRONICLE_2
+[2025-01-31 21:45:17.847] [ChronoClient] [info] [ChronoLogClientImpl] Successfully destroyed chronicle 'CHRONICLE_2'.
+[2025-01-31 21:45:17.847] [ChronoClient] [debug] [ClientLibMultiStorytellers] Chronicle destroyed: tid=2, ChronicleName=CHRONICLE_2
+[2025-01-31 21:45:17.847] [ChronoClient] [info] [RPCVisorClient] Initiating creation of chronicle: Name=CHRONICLE_1, Flags=1
+[2025-01-31 21:45:17.855] [ChronoClient] [info] [RPCVisorClient] Successfully created chronicle with Name=CHRONICLE_1, Flags=1
+[2025-01-31 21:45:17.855] [ChronoClient] [info] [ChronoLogClientImpl] Successfully created chronicle 'CHRONICLE_1'.
+[2025-01-31 21:45:17.855] [ChronoClient] [debug] [ClientLibMultiStorytellers] Chronicle created: tid=1, ChronicleName=CHRONICLE_1, Flags: 1
+[2025-01-31 21:45:17.855] [ChronoClient] [debug] [ChronoLogClientImpl] Attempting to acquire story. ChronicleName=CHRONICLE_1, StoryName=vpwde
+[2025-01-31 21:45:17.855] [ChronoClient] [warning] [StorytellerClient::findStoryWritingHandle] StoryHandle not found for Chronicle: 'CHRONICLE_1' and Story: 'vpwde'.
+[2025-01-31 21:45:17.855] [ChronoClient] [info] [RPCVisorClient] Initiating story acquisition: ChronicleName=CHRONICLE_1, StoryName=vpwde
+[2025-01-31 21:45:17.872] [ChronoClient] [error] [RPCVisorClient] Failed to acquire story: ChronicleName=CHRONICLE_1, StoryName=vpwde, Error Code=-14
+[2025-01-31 21:45:17.872] [ChronoClient] [debug] [ChronoLogClientImpl] Response from AcquireStory RPC call: AcquireStoryResponseMsg{-14}{story_id:0}{}{ServiceId{ofi+sockets:0.0.0.0:0:0}}
+[2025-01-31 21:45:17.872] [ChronoClient] [error] [ChronoLogClientImpl] Failed to acquire story 'vpwde' from chronicle 'CHRONICLE_1'. Error code: -14
+[2025-01-31 21:45:17.872] [ChronoClient] [debug] [ClientLibMultiStorytellers] Story acquired: tid=1, ChronicleName=CHRONICLE_1, StoryName=vpwde, Ret: -14
+[2025-01-31 21:45:17.872] [ChronoClient] [info] [RPCVisorClient] Initiating story destruction: ChronicleName=CHRONICLE_1, StoryName=vpwde
+[2025-01-31 21:45:17.884] [ChronoClient] [error] [RPCVisorClient] Failed to destroy story: ChronicleName=CHRONICLE_1, StoryName=vpwde, Error Code=-3
+[2025-01-31 21:45:17.884] [ChronoClient] [error] [ChronoLogClientImpl] Failed to destroy Story 'vpwde' from Chronicle 'CHRONICLE_1'. Error code: -3
+[2025-01-31 21:45:17.884] [ChronoClient] [debug] [ClientLibMultiStorytellers] Story destroyed: tid=1, ChronicleName=CHRONICLE_1, StoryName=vpwde, Ret: -3
+[2025-01-31 21:45:17.884] [ChronoClient] [info] [RPCVisorClient] Initiating destruction of chronicle: Name=CHRONICLE_1
+[2025-01-31 21:45:17.888] [ChronoClient] [info] [RPCVisorClient] Successfully destroyed chronicle: Name=CHRONICLE_1
+[2025-01-31 21:45:17.888] [ChronoClient] [info] [ChronoLogClientImpl] Successfully destroyed chronicle 'CHRONICLE_1'.
+[2025-01-31 21:45:17.888] [ChronoClient] [debug] [ClientLibMultiStorytellers] Chronicle destroyed: tid=1, ChronicleName=CHRONICLE_1
+[2025-01-31 21:45:17.888] [ChronoClient] [info] [RPCVisorClient] Initiating creation of chronicle: Name=CHRONICLE_1, Flags=1
+[2025-01-31 21:45:17.888] [ChronoClient] [info] [RPCVisorClient] Successfully created chronicle with Name=CHRONICLE_1, Flags=1
+[2025-01-31 21:45:17.888] [ChronoClient] [info] [ChronoLogClientImpl] Successfully created chronicle 'CHRONICLE_1'.
+[2025-01-31 21:45:17.888] [ChronoClient] [debug] [ClientLibMultiStorytellers] Chronicle created: tid=3, ChronicleName=CHRONICLE_1, Flags: 1
+[2025-01-31 21:45:17.888] [ChronoClient] [debug] [ChronoLogClientImpl] Attempting to acquire story. ChronicleName=CHRONICLE_1, StoryName=kJrlI
+[2025-01-31 21:45:17.888] [ChronoClient] [warning] [StorytellerClient::findStoryWritingHandle] StoryHandle not found for Chronicle: 'CHRONICLE_1' and Story: 'kJrlI'.
+[2025-01-31 21:45:17.888] [ChronoClient] [info] [RPCVisorClient] Initiating story acquisition: ChronicleName=CHRONICLE_1, StoryName=kJrlI
+[2025-01-31 21:45:17.888] [ChronoClient] [error] [RPCVisorClient] Failed to acquire story: ChronicleName=CHRONICLE_1, StoryName=kJrlI, Error Code=-14
+[2025-01-31 21:45:17.888] [ChronoClient] [debug] [ChronoLogClientImpl] Response from AcquireStory RPC call: AcquireStoryResponseMsg{-14}{story_id:0}{}{ServiceId{ofi+sockets:0.0.0.0:0:0}}
+[2025-01-31 21:45:17.888] [ChronoClient] [error] [ChronoLogClientImpl] Failed to acquire story 'kJrlI' from chronicle 'CHRONICLE_1'. Error code: -14
+[2025-01-31 21:45:17.888] [ChronoClient] [debug] [ClientLibMultiStorytellers] Story acquired: tid=3, ChronicleName=CHRONICLE_1, StoryName=kJrlI, Ret: -14
+[2025-01-31 21:45:17.888] [ChronoClient] [info] [RPCVisorClient] Initiating story destruction: ChronicleName=CHRONICLE_1, StoryName=kJrlI
+[2025-01-31 21:45:17.888] [ChronoClient] [error] [RPCVisorClient] Failed to destroy story: ChronicleName=CHRONICLE_1, StoryName=kJrlI, Error Code=-3
+[2025-01-31 21:45:17.888] [ChronoClient] [error] [ChronoLogClientImpl] Failed to destroy Story 'kJrlI' from Chronicle 'CHRONICLE_1'. Error code: -3
+[2025-01-31 21:45:17.888] [ChronoClient] [debug] [ClientLibMultiStorytellers] Story destroyed: tid=3, ChronicleName=CHRONICLE_1, StoryName=kJrlI, Ret: -3
+[2025-01-31 21:45:17.888] [ChronoClient] [info] [RPCVisorClient] Initiating destruction of chronicle: Name=CHRONICLE_1
+[2025-01-31 21:45:17.888] [ChronoClient] [info] [RPCVisorClient] Successfully destroyed chronicle: Name=CHRONICLE_1
+[2025-01-31 21:45:17.888] [ChronoClient] [info] [ChronoLogClientImpl] Successfully destroyed chronicle 'CHRONICLE_1'.
+[2025-01-31 21:45:17.888] [ChronoClient] [debug] [ClientLibMultiStorytellers] Chronicle destroyed: tid=3, ChronicleName=CHRONICLE_1
+[2025-01-31 21:45:17.888] [ChronoClient] [info] [RPCVisorClient] Initiating creation of chronicle: Name=CHRONICLE_2, Flags=1
+[2025-01-31 21:45:17.888] [ChronoClient] [info] [RPCVisorClient] Successfully created chronicle with Name=CHRONICLE_2, Flags=1
+[2025-01-31 21:45:17.888] [ChronoClient] [info] [ChronoLogClientImpl] Successfully created chronicle 'CHRONICLE_2'.
+[2025-01-31 21:45:17.888] [ChronoClient] [debug] [ClientLibMultiStorytellers] Chronicle created: tid=0, ChronicleName=CHRONICLE_2, Flags: 1
+[2025-01-31 21:45:17.888] [ChronoClient] [debug] [ChronoLogClientImpl] Attempting to acquire story. ChronicleName=CHRONICLE_2, StoryName=3Tm8K
+[2025-01-31 21:45:17.888] [ChronoClient] [warning] [StorytellerClient::findStoryWritingHandle] StoryHandle not found for Chronicle: 'CHRONICLE_2' and Story: '3Tm8K'.
+[2025-01-31 21:45:17.888] [ChronoClient] [info] [RPCVisorClient] Initiating story acquisition: ChronicleName=CHRONICLE_2, StoryName=3Tm8K
+[2025-01-31 21:45:17.889] [ChronoClient] [error] [RPCVisorClient] Failed to acquire story: ChronicleName=CHRONICLE_2, StoryName=3Tm8K, Error Code=-14
+[2025-01-31 21:45:17.889] [ChronoClient] [debug] [ChronoLogClientImpl] Response from AcquireStory RPC call: AcquireStoryResponseMsg{-14}{story_id:0}{}{ServiceId{ofi+sockets:0.0.0.0:0:0}}
+[2025-01-31 21:45:17.889] [ChronoClient] [error] [ChronoLogClientImpl] Failed to acquire story '3Tm8K' from chronicle 'CHRONICLE_2'. Error code: -14
+[2025-01-31 21:45:17.889] [ChronoClient] [debug] [ClientLibMultiStorytellers] Story acquired: tid=0, ChronicleName=CHRONICLE_2, StoryName=3Tm8K, Ret: -14
+[2025-01-31 21:45:17.889] [ChronoClient] [info] [RPCVisorClient] Initiating story destruction: ChronicleName=CHRONICLE_2, StoryName=3Tm8K
+[2025-01-31 21:45:17.889] [ChronoClient] [error] [RPCVisorClient] Failed to destroy story: ChronicleName=CHRONICLE_2, StoryName=3Tm8K, Error Code=-3
+[2025-01-31 21:45:17.889] [ChronoClient] [error] [ChronoLogClientImpl] Failed to destroy Story '3Tm8K' from Chronicle 'CHRONICLE_2'. Error code: -3
+[2025-01-31 21:45:17.889] [ChronoClient] [debug] [ClientLibMultiStorytellers] Story destroyed: tid=0, ChronicleName=CHRONICLE_2, StoryName=3Tm8K, Ret: -3
+[2025-01-31 21:45:17.889] [ChronoClient] [info] [RPCVisorClient] Initiating destruction of chronicle: Name=CHRONICLE_2
+[2025-01-31 21:45:17.889] [ChronoClient] [info] [RPCVisorClient] Successfully destroyed chronicle: Name=CHRONICLE_2
+[2025-01-31 21:45:17.889] [ChronoClient] [info] [ChronoLogClientImpl] Successfully destroyed chronicle 'CHRONICLE_2'.
+[2025-01-31 21:45:17.889] [ChronoClient] [debug] [ClientLibMultiStorytellers] Chronicle destroyed: tid=0, ChronicleName=CHRONICLE_2
+[2025-01-31 21:45:17.889] [ChronoClient] [info] [RPCVisorClient] Initiating disconnection for ClientID=11746398923999318289
+[2025-01-31 21:45:17.889] [ChronoClient] [info] [RPCVisorClient] Disconnection successful for ClientID=11746398923999318289
+[2025-01-31 21:45:17.889] [ChronoClient] [info] [ChronoLogClientImpl] Successfully disconnected from Visor.
+[2025-01-31 21:45:17.889] [ChronoClient] [debug] [StorytellerClient] Destructor called.
+[2025-01-31 21:45:17.889] [ChronoClient] [debug] [ClientQueryService] Destructor called. Cleaning up...
+[2025-01-31 21:45:52.797] [ChronoClient] [info] [ClientLibMultiStorytellers] Running test.
+[2025-01-31 21:45:52.797] [ChronoClient] [info] [ChronologClientImpl] Client Identity - Login: parallels, EUID: 1000, HostID: 8323329, PID: 1389808
+[2025-01-31 21:45:52.895] [ChronoClient] [debug] [ClientQueryService] created  service ServiceId{ofi+sockets:0.127.1.1:5557:57}
+[2025-01-31 21:45:52.895] [ChronoClient] [debug] [RpcVisorClient] Initialized for Visor Service at ofi+sockets://127.0.0.1:5555 with ProviderID=55
+[2025-01-31 21:45:52.895] [ChronoClient] [debug] [RpcVisorClient] Initiating connection for Account=1000, HostID=8323329, PID=1389808
+[2025-01-31 21:45:52.914] [ChronoClient] [info] [RpcVisorClient] Connection successful for Account=1000, HostID=8323329, PID=1389808
+[2025-01-31 21:45:52.914] [ChronoClient] [debug] [ChronoLogClientImpl] Connection attempt to Visor completed. Response received: ConnectResponseMsg{0}{client_id:18078038233267421772}
+[2025-01-31 21:45:52.914] [ChronoClient] [debug] [StorytellerClient] Initialized with ClientID: 18078038233267421772
+[2025-01-31 21:45:52.914] [ChronoClient] [info] [RPCVisorClient] Initiating creation of chronicle: Name=CHRONICLE_1, Flags=1
+[2025-01-31 21:45:52.932] [ChronoClient] [info] [RPCVisorClient] Successfully created chronicle with Name=CHRONICLE_1, Flags=1
+[2025-01-31 21:45:52.932] [ChronoClient] [info] [ChronoLogClientImpl] Successfully created chronicle 'CHRONICLE_1'.
+[2025-01-31 21:45:52.932] [ChronoClient] [debug] [ClientLibMultiStorytellers] Chronicle created: tid=3, ChronicleName=CHRONICLE_1, Flags: 1
+[2025-01-31 21:45:52.932] [ChronoClient] [debug] [ChronoLogClientImpl] Attempting to acquire story. ChronicleName=CHRONICLE_1, StoryName=KMbgt
+[2025-01-31 21:45:52.932] [ChronoClient] [warning] [StorytellerClient::findStoryWritingHandle] StoryHandle not found for Chronicle: 'CHRONICLE_1' and Story: 'KMbgt'.
+[2025-01-31 21:45:52.932] [ChronoClient] [info] [RPCVisorClient] Initiating story acquisition: ChronicleName=CHRONICLE_1, StoryName=KMbgt
+[2025-01-31 21:45:52.948] [ChronoClient] [error] [RPCVisorClient] Failed to acquire story: ChronicleName=CHRONICLE_1, StoryName=KMbgt, Error Code=-14
+[2025-01-31 21:45:52.948] [ChronoClient] [debug] [ChronoLogClientImpl] Response from AcquireStory RPC call: AcquireStoryResponseMsg{-14}{story_id:0}{}{ServiceId{ofi+sockets:0.0.0.0:0:0}}
+[2025-01-31 21:45:52.948] [ChronoClient] [error] [ChronoLogClientImpl] Failed to acquire story 'KMbgt' from chronicle 'CHRONICLE_1'. Error code: -14
+[2025-01-31 21:45:52.948] [ChronoClient] [debug] [ClientLibMultiStorytellers] Story acquired: tid=3, ChronicleName=CHRONICLE_1, StoryName=KMbgt, Ret: -14
+[2025-01-31 21:45:52.948] [ChronoClient] [info] [RPCVisorClient] Initiating story destruction: ChronicleName=CHRONICLE_1, StoryName=KMbgt
+[2025-01-31 21:45:52.952] [ChronoClient] [error] [RPCVisorClient] Failed to destroy story: ChronicleName=CHRONICLE_1, StoryName=KMbgt, Error Code=-3
+[2025-01-31 21:45:52.952] [ChronoClient] [error] [ChronoLogClientImpl] Failed to destroy Story 'KMbgt' from Chronicle 'CHRONICLE_1'. Error code: -3
+[2025-01-31 21:45:52.952] [ChronoClient] [debug] [ClientLibMultiStorytellers] Story destroyed: tid=3, ChronicleName=CHRONICLE_1, StoryName=KMbgt, Ret: -3
+[2025-01-31 21:45:52.952] [ChronoClient] [info] [RPCVisorClient] Initiating destruction of chronicle: Name=CHRONICLE_1
+[2025-01-31 21:45:52.956] [ChronoClient] [info] [RPCVisorClient] Successfully destroyed chronicle: Name=CHRONICLE_1
+[2025-01-31 21:45:52.956] [ChronoClient] [info] [ChronoLogClientImpl] Successfully destroyed chronicle 'CHRONICLE_1'.
+[2025-01-31 21:45:52.956] [ChronoClient] [debug] [ClientLibMultiStorytellers] Chronicle destroyed: tid=3, ChronicleName=CHRONICLE_1
+[2025-01-31 21:45:52.956] [ChronoClient] [info] [RPCVisorClient] Initiating creation of chronicle: Name=CHRONICLE_2, Flags=1
+[2025-01-31 21:45:52.972] [ChronoClient] [info] [RPCVisorClient] Successfully created chronicle with Name=CHRONICLE_2, Flags=1
+[2025-01-31 21:45:52.972] [ChronoClient] [info] [ChronoLogClientImpl] Successfully created chronicle 'CHRONICLE_2'.
+[2025-01-31 21:45:52.972] [ChronoClient] [debug] [ClientLibMultiStorytellers] Chronicle created: tid=2, ChronicleName=CHRONICLE_2, Flags: 1
+[2025-01-31 21:45:52.972] [ChronoClient] [debug] [ChronoLogClientImpl] Attempting to acquire story. ChronicleName=CHRONICLE_2, StoryName=BAs25
+[2025-01-31 21:45:52.972] [ChronoClient] [warning] [StorytellerClient::findStoryWritingHandle] StoryHandle not found for Chronicle: 'CHRONICLE_2' and Story: 'BAs25'.
+[2025-01-31 21:45:52.972] [ChronoClient] [info] [RPCVisorClient] Initiating story acquisition: ChronicleName=CHRONICLE_2, StoryName=BAs25
+[2025-01-31 21:45:52.977] [ChronoClient] [error] [RPCVisorClient] Failed to acquire story: ChronicleName=CHRONICLE_2, StoryName=BAs25, Error Code=-14
+[2025-01-31 21:45:52.977] [ChronoClient] [debug] [ChronoLogClientImpl] Response from AcquireStory RPC call: AcquireStoryResponseMsg{-14}{story_id:0}{}{ServiceId{ofi+sockets:0.0.0.0:0:0}}
+[2025-01-31 21:45:52.977] [ChronoClient] [error] [ChronoLogClientImpl] Failed to acquire story 'BAs25' from chronicle 'CHRONICLE_2'. Error code: -14
+[2025-01-31 21:45:52.977] [ChronoClient] [debug] [ClientLibMultiStorytellers] Story acquired: tid=2, ChronicleName=CHRONICLE_2, StoryName=BAs25, Ret: -14
+[2025-01-31 21:45:52.977] [ChronoClient] [info] [RPCVisorClient] Initiating story destruction: ChronicleName=CHRONICLE_2, StoryName=BAs25
+[2025-01-31 21:45:52.980] [ChronoClient] [error] [RPCVisorClient] Failed to destroy story: ChronicleName=CHRONICLE_2, StoryName=BAs25, Error Code=-3
+[2025-01-31 21:45:52.980] [ChronoClient] [error] [ChronoLogClientImpl] Failed to destroy Story 'BAs25' from Chronicle 'CHRONICLE_2'. Error code: -3
+[2025-01-31 21:45:52.980] [ChronoClient] [debug] [ClientLibMultiStorytellers] Story destroyed: tid=2, ChronicleName=CHRONICLE_2, StoryName=BAs25, Ret: -3
+[2025-01-31 21:45:52.980] [ChronoClient] [info] [RPCVisorClient] Initiating destruction of chronicle: Name=CHRONICLE_2
+[2025-01-31 21:45:52.980] [ChronoClient] [info] [RPCVisorClient] Successfully destroyed chronicle: Name=CHRONICLE_2
+[2025-01-31 21:45:52.980] [ChronoClient] [info] [ChronoLogClientImpl] Successfully destroyed chronicle 'CHRONICLE_2'.
+[2025-01-31 21:45:52.980] [ChronoClient] [debug] [ClientLibMultiStorytellers] Chronicle destroyed: tid=2, ChronicleName=CHRONICLE_2
+[2025-01-31 21:45:52.984] [ChronoClient] [info] [RPCVisorClient] Initiating creation of chronicle: Name=CHRONICLE_1, Flags=1
+[2025-01-31 21:45:52.984] [ChronoClient] [info] [RPCVisorClient] Successfully created chronicle with Name=CHRONICLE_1, Flags=1
+[2025-01-31 21:45:52.984] [ChronoClient] [info] [ChronoLogClientImpl] Successfully created chronicle 'CHRONICLE_1'.
+[2025-01-31 21:45:52.984] [ChronoClient] [debug] [ClientLibMultiStorytellers] Chronicle created: tid=1, ChronicleName=CHRONICLE_1, Flags: 1
+[2025-01-31 21:45:52.984] [ChronoClient] [debug] [ChronoLogClientImpl] Attempting to acquire story. ChronicleName=CHRONICLE_1, StoryName=Rc6cM
+[2025-01-31 21:45:52.984] [ChronoClient] [info] [RPCVisorClient] Initiating creation of chronicle: Name=CHRONICLE_2, Flags=1
+[2025-01-31 21:45:52.984] [ChronoClient] [info] [RPCVisorClient] Successfully created chronicle with Name=CHRONICLE_2, Flags=1
+[2025-01-31 21:45:52.984] [ChronoClient] [info] [ChronoLogClientImpl] Successfully created chronicle 'CHRONICLE_2'.
+[2025-01-31 21:45:52.984] [ChronoClient] [debug] [ClientLibMultiStorytellers] Chronicle created: tid=0, ChronicleName=CHRONICLE_2, Flags: 1
+[2025-01-31 21:45:52.984] [ChronoClient] [debug] [ChronoLogClientImpl] Attempting to acquire story. ChronicleName=CHRONICLE_2, StoryName=8oNn8
+[2025-01-31 21:45:52.984] [ChronoClient] [warning] [StorytellerClient::findStoryWritingHandle] StoryHandle not found for Chronicle: 'CHRONICLE_1' and Story: 'Rc6cM'.
+[2025-01-31 21:45:52.984] [ChronoClient] [info] [RPCVisorClient] Initiating story acquisition: ChronicleName=CHRONICLE_1, StoryName=Rc6cM
+[2025-01-31 21:45:52.984] [ChronoClient] [error] [RPCVisorClient] Failed to acquire story: ChronicleName=CHRONICLE_1, StoryName=Rc6cM, Error Code=-14
+[2025-01-31 21:45:52.984] [ChronoClient] [debug] [ChronoLogClientImpl] Response from AcquireStory RPC call: AcquireStoryResponseMsg{-14}{story_id:0}{}{ServiceId{ofi+sockets:0.0.0.0:0:0}}
+[2025-01-31 21:45:52.984] [ChronoClient] [error] [ChronoLogClientImpl] Failed to acquire story 'Rc6cM' from chronicle 'CHRONICLE_1'. Error code: -14
+[2025-01-31 21:45:52.984] [ChronoClient] [debug] [ClientLibMultiStorytellers] Story acquired: tid=1, ChronicleName=CHRONICLE_1, StoryName=Rc6cM, Ret: -14
+[2025-01-31 21:45:52.984] [ChronoClient] [info] [RPCVisorClient] Initiating story destruction: ChronicleName=CHRONICLE_1, StoryName=Rc6cM
+[2025-01-31 21:45:52.985] [ChronoClient] [error] [RPCVisorClient] Failed to destroy story: ChronicleName=CHRONICLE_1, StoryName=Rc6cM, Error Code=-3
+[2025-01-31 21:45:52.985] [ChronoClient] [error] [ChronoLogClientImpl] Failed to destroy Story 'Rc6cM' from Chronicle 'CHRONICLE_1'. Error code: -3
+[2025-01-31 21:45:52.985] [ChronoClient] [debug] [ClientLibMultiStorytellers] Story destroyed: tid=1, ChronicleName=CHRONICLE_1, StoryName=Rc6cM, Ret: -3
+[2025-01-31 21:45:52.985] [ChronoClient] [info] [RPCVisorClient] Initiating destruction of chronicle: Name=CHRONICLE_1
+[2025-01-31 21:45:52.985] [ChronoClient] [info] [RPCVisorClient] Successfully destroyed chronicle: Name=CHRONICLE_1
+[2025-01-31 21:45:52.985] [ChronoClient] [info] [ChronoLogClientImpl] Successfully destroyed chronicle 'CHRONICLE_1'.
+[2025-01-31 21:45:52.985] [ChronoClient] [debug] [ClientLibMultiStorytellers] Chronicle destroyed: tid=1, ChronicleName=CHRONICLE_1
+[2025-01-31 21:45:52.985] [ChronoClient] [warning] [StorytellerClient::findStoryWritingHandle] StoryHandle not found for Chronicle: 'CHRONICLE_2' and Story: '8oNn8'.
+[2025-01-31 21:45:52.985] [ChronoClient] [info] [RPCVisorClient] Initiating story acquisition: ChronicleName=CHRONICLE_2, StoryName=8oNn8
+[2025-01-31 21:45:52.985] [ChronoClient] [error] [RPCVisorClient] Failed to acquire story: ChronicleName=CHRONICLE_2, StoryName=8oNn8, Error Code=-14
+[2025-01-31 21:45:52.985] [ChronoClient] [debug] [ChronoLogClientImpl] Response from AcquireStory RPC call: AcquireStoryResponseMsg{-14}{story_id:0}{}{ServiceId{ofi+sockets:0.0.0.0:0:0}}
+[2025-01-31 21:45:52.985] [ChronoClient] [error] [ChronoLogClientImpl] Failed to acquire story '8oNn8' from chronicle 'CHRONICLE_2'. Error code: -14
+[2025-01-31 21:45:52.985] [ChronoClient] [debug] [ClientLibMultiStorytellers] Story acquired: tid=0, ChronicleName=CHRONICLE_2, StoryName=8oNn8, Ret: -14
+[2025-01-31 21:45:52.985] [ChronoClient] [info] [RPCVisorClient] Initiating story destruction: ChronicleName=CHRONICLE_2, StoryName=8oNn8
+[2025-01-31 21:45:52.985] [ChronoClient] [error] [RPCVisorClient] Failed to destroy story: ChronicleName=CHRONICLE_2, StoryName=8oNn8, Error Code=-3
+[2025-01-31 21:45:52.985] [ChronoClient] [error] [ChronoLogClientImpl] Failed to destroy Story '8oNn8' from Chronicle 'CHRONICLE_2'. Error code: -3
+[2025-01-31 21:45:52.985] [ChronoClient] [debug] [ClientLibMultiStorytellers] Story destroyed: tid=0, ChronicleName=CHRONICLE_2, StoryName=8oNn8, Ret: -3
+[2025-01-31 21:45:52.985] [ChronoClient] [info] [RPCVisorClient] Initiating destruction of chronicle: Name=CHRONICLE_2
+[2025-01-31 21:45:52.985] [ChronoClient] [info] [RPCVisorClient] Successfully destroyed chronicle: Name=CHRONICLE_2
+[2025-01-31 21:45:52.985] [ChronoClient] [info] [ChronoLogClientImpl] Successfully destroyed chronicle 'CHRONICLE_2'.
+[2025-01-31 21:45:52.985] [ChronoClient] [debug] [ClientLibMultiStorytellers] Chronicle destroyed: tid=0, ChronicleName=CHRONICLE_2
+[2025-01-31 21:45:52.985] [ChronoClient] [info] [RPCVisorClient] Initiating disconnection for ClientID=18078038233267421772
+[2025-01-31 21:45:52.985] [ChronoClient] [info] [RPCVisorClient] Disconnection successful for ClientID=18078038233267421772
+[2025-01-31 21:45:52.985] [ChronoClient] [info] [ChronoLogClientImpl] Successfully disconnected from Visor.
+[2025-01-31 21:45:52.985] [ChronoClient] [debug] [StorytellerClient] Destructor called.
+[2025-01-31 21:45:52.985] [ChronoClient] [debug] [ClientQueryService] Destructor called. Cleaning up...

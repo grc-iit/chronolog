@@ -171,7 +171,7 @@ int chronolog::StorytellerClient::addKeeperRecordingClient(chronolog::KeeperIdCa
     {
         std::string a_string;
         std::string keeper_service_na_string =
-                rpc_protocol_string + "://" + keeper_id_card.getIPasDottedString(a_string) + ":" +
+                rpc_protocol_string + "://" + keeper_id_card.get_ip_as_dotted_string(a_string) + ":" +
                 std::to_string(keeper_id_card.getPort());
         chronolog::KeeperRecordingClient*keeperRecordingClient = chronolog::KeeperRecordingClient::CreateKeeperRecordingClient(
                 theClientQueryService.get_service_engine(), keeper_id_card, keeper_service_na_string);

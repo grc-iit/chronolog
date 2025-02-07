@@ -29,7 +29,7 @@ int chronolog::CSVFileStoryChunkExtractor::processStoryChunk(StoryChunk*story_ch
 
     std::string chunk_filename(rootDirectory);
     chunk_filename += "/" + std::to_string(story_chunk->getStoryId()) + "." + std::to_string(story_chunk->getStartTime() / 1000000000) + ".";
-    keeperIdCard.getIPasDottedString(chunk_filename);
+    keeperIdCard.get_ip_as_dotted_string(chunk_filename);
     chunk_filename += "." + std::to_string(keeperIdCard.getPort()) + ".csv";
 
     tl::xstream es = tl::xstream::self();

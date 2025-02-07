@@ -56,7 +56,7 @@ public:
         serT & tl_provider_id;
     }
 
-    std::string & getIPasDottedString ( std::string & a_string ) const
+    std::string & get_ip_as_dotted_string ( std::string & a_string ) const
     {
 
         char buffer[INET_ADDRSTRLEN];
@@ -74,7 +74,7 @@ inline std::string to_string( GrapherIdCard const & id_card)
 {
     std::string a_string;   
     return std::string("GrapherIdCard{") + std::to_string(id_card.getGroupId()) + ":" +
-        id_card.getIPasDottedString(a_string) + ":" + std::to_string(id_card.getPort()) + ":" +
+        id_card.get_ip_as_dotted_string(a_string) + ":" + std::to_string(id_card.getPort()) + ":" +
         std::to_string(id_card.getProviderId()) + "}";
 }
 
@@ -90,7 +90,7 @@ inline bool operator==(chronolog::GrapherIdCard const& card1, chronolog::Grapher
 inline std::ostream & operator<< (std::ostream & out , chronolog::GrapherIdCard const & id_card)
 {
     std::string a_string;
-    out << "GrapherIdCard{" << id_card.getGroupId() << ":" << id_card.getIPasDottedString(a_string) << ":"
+    out << "GrapherIdCard{" << id_card.getGroupId() << ":" << id_card.get_ip_as_dotted_string(a_string) << ":"
         << id_card.getPort() << ":" << id_card.getProviderId() << "}";
     return out;
 }
@@ -98,7 +98,7 @@ inline std::ostream & operator<< (std::ostream & out , chronolog::GrapherIdCard 
 inline std::string& operator+= (std::string& a_string, chronolog::GrapherIdCard const& id_card)
 {
     a_string += std::string("GrapherIdCard{") + std::to_string(id_card.getGroupId()) + ":" +
-                id_card.getIPasDottedString(a_string) + ":" + std::to_string(id_card.getPort()) + ":" +
+                id_card.get_ip_as_dotted_string(a_string) + ":" + std::to_string(id_card.getPort()) + ":" +
                 std::to_string(id_card.getProviderId()) + "}";
     return a_string;
 }

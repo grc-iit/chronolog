@@ -13,7 +13,7 @@ chronolog::StoryChunkTransferAgent::StoryChunkTransferAgent(tl::engine &tl_engin
         , receiver_service_id(service_id)
 {
     std::string service_addr_string= receiver_service_id.protocol + "://";
-    service_addr_string += receiver_service_id.getIPasDottedString(service_addr_string) 
+    service_addr_string += receiver_service_id.get_ip_as_dotted_string(service_addr_string) 
                     + std::to_string(receiver_service_id.port);
 
     receiver_service_handle = tl::provider_handle(service_engine.lookup(service_addr_string), receiver_service_id.provider_id);

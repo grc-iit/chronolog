@@ -288,7 +288,7 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const &keeper_re
     std::string service_na_string(dataStoreAdminServiceProtocol + "://");
 
     service_na_string =
-            admin_service_id.getIPasDottedString(service_na_string) + ":" + std::to_string(admin_service_id.port);
+            admin_service_id.get_ip_as_dotted_string(service_na_string) + ":" + std::to_string(admin_service_id.port);
 
     DataStoreAdminClient*collectionClient = DataStoreAdminClient::CreateDataStoreAdminClient(*registryEngine
                                                                                              , service_na_string
@@ -927,7 +927,7 @@ int KeeperRegistry::registerGrapherProcess(GrapherRegistrationMsg const & reg_ms
     //std::string service_na_string("ofi+sockets://"); //TODO: add protocol string to serviceIdCard
     std::string service_na_string(dataStoreAdminServiceProtocol + "://");
     service_na_string =
-            admin_service_id.getIPasDottedString(service_na_string) + ":" + std::to_string(admin_service_id.port);
+            admin_service_id.get_ip_as_dotted_string(service_na_string) + ":" + std::to_string(admin_service_id.port);
 
     DataStoreAdminClient* collectionClient = DataStoreAdminClient::CreateDataStoreAdminClient(
             *registryEngine, service_na_string, admin_service_id.provider_id);
@@ -1142,10 +1142,7 @@ int chl::KeeperRegistry::registerPlayerProcess(chl::PlayerRegistrationMsg const 
     }
 
     //create a client of the new player's DataStoreAdminService listenning at adminServiceId
-    //std::string service_na_string("ofi+sockets://"); //TODO: add protocol string to serviceIdCard
-    std::string service_na_string(dataStoreAdminServiceProtocol + "://");
-    service_na_string =
-            admin_service_id.getIPasDottedString(service_na_string) + ":" + std::to_string(admin_service_id.port);
+    std::string service_na_string = admin_service_id.get_service_as_string(service_na_string);
 
     chl::DataStoreAdminClient* collectionClient = chl::DataStoreAdminClient::CreateDataStoreAdminClient(
             *registryEngine, service_na_string, admin_service_id.provider_id);
