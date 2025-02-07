@@ -102,8 +102,11 @@ int main(int argc, char**argv)
         LOG_CRITICAL("[ChronoKeeperInstance] Failed to start DataStoreAdminService. Invalid endpoint provided.");
         return (-1);
     }
-    LOG_INFO("[ChronoKeeperInstance] DataStoreAdminService started successfully.");
 
+    chronolog::ServiceId dataStoreServiceId( confManager.KEEPER_CONF.KEEPER_DATA_STORE_ADMIN_SERVICE_CONF.RPC_CONF.IP,
+                        datastore_endpoint, confManager.KEEPER_CONF.KEEPER_DATA_STORE_ADMIN_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID);
+
+ 
     /// KeeperRecordingService setup ___________________________________________________________________________________
     // Instantiate KeeperRecordingService
     std::string KEEPER_RECORDING_SERVICE_PROTOCOL = confManager.KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.PROTO_CONF;
@@ -178,8 +181,6 @@ int main(int argc, char**argv)
     chronolog::KeeperDataStore theDataStore(ingestionQueue, storyExtractor.getExtractionQueue());
 
     // Instantiate KeeperRecordingService
-    chronolog::ServiceId collectionServiceId(datastore_endpoint.first, datastore_endpoint.second
-                                             , datastore_service_provider_id);
     tl::engine*dataAdminEngine = nullptr;
 
     chronolog::DataStoreAdminService*keeperDataAdminService = nullptr;
@@ -203,6 +204,8 @@ int main(int argc, char**argv)
     {
         LOG_ERROR("[ChronoKeeperInstance] Keeper failed to create DataStoreAdminService");
     }
+
+    LOG_INFO("[ChronoKeeperInstance] DataStoreAdminService started successfully.");
 
     if(nullptr == keeperDataAdminService)
     {
@@ -268,7 +271,7 @@ int main(int argc, char**argv)
     while((chronolog::CL_SUCCESS != registration_status) && (retries > 0))
     {
         registration_status = keeperRegistryClient->send_register_msg(
-                chronolog::KeeperRegistrationMsg(keeperIdCard, collectionServiceId));
+                chronolog::KeeperRegistrationMsg(keeperIdCard, dataStoreServiceId));
         retries--;
     }
 

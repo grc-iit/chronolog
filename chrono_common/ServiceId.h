@@ -33,14 +33,14 @@ static int ip_addr_from_dotted_string_to_uint32(std::string const &ip_string, ui
 class ServiceId
 {
 public:
-    ServiceId(std::string const& protocol, uint32_t addr = 0, uint16_t a_port = 0, uint16_t a_provider_id = 0)
+    ServiceId(std::string const & protocol=std::string(), uint32_t addr = 0, uint16_t a_port = 0, uint16_t a_provider_id = 0)
         : protocol(protocol)
         , ip_addr(addr)
         , port(a_port)
         , provider_id(a_provider_id)
     {}
 
-    ServiceId(std::string const& protocol, std::string const& ip_string, uint16_t a_port = 0, uint16_t a_provider_id = 0)
+    ServiceId(std::string const & protocol, std::string const & ip_string, uint16_t a_port, uint16_t a_provider_id)
         : protocol(protocol)
         , ip_addr(0)
         , port(a_port)
@@ -49,13 +49,15 @@ public:
         ip_addr_from_dotted_string_to_uint32(ip_string, ip_addr);
     }
 
-    ServiceId(uint32_t addr = 0, uint16_t a_port = 0, uint16_t a_provider_id = 0)
-        : protocol("ofi+sockets")
-        , ip_addr(addr)
-        , port(a_port)
+    ServiceId( std::string const & protocol, service_endpoint const & endpoint, uint16_t a_provider_id)
+        : protocol(protocol)
+        , ip_addr(endpoint.first)
+        , port(endpoint.second)
         , provider_id(a_provider_id)
     {}
 
+    ServiceId(ServiceId const&) = default;
+    ServiceId & operator=(ServiceId const&) = default;
     ~ServiceId() = default;
 
 // we are using a combination of the uint32_t representation of the service IP address
@@ -114,6 +116,12 @@ inline std::string to_string(ServiceId const& serviceId)
 }
 
 }//namespace chronolog
+
+inline bool operator==(chronolog::ServiceId const& service_id_1, chronolog::ServiceId const& service_id_2)
+{
+    return ( (service_id_1.protocol == service_id_2.protocol) && (service_id_1.ip_addr == service_id_2.ip_addr)
+            && (service_id_1.port == service_id_2.port) && (service_id_1.provider_id == service_id_2.provider_id));
+}
 
 
 inline std::ostream& operator<<(std::ostream& out, chronolog::ServiceId const serviceId)

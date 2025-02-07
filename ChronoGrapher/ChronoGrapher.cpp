@@ -102,7 +102,9 @@ int main(int argc, char**argv)
         LOG_CRITICAL("[ChronoGrapher] Failed to start DataStoreAdminService. Invalid endpoint provided.");
         return (-1);
     }
-    LOG_INFO("[ChronoGrapher] DataStoreAdminService started successfully.");
+    
+    chronolog::ServiceId dataStoreServiceId(confManager.GRAPHER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.PROTO_CONF,
+                datastore_endpoint, confManager.GRAPHER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.SERVICE_PROVIDER_ID);
 
     // Instantiate GrapherRecordingService
     chronolog::RecordingGroupId recording_group_id = confManager.GRAPHER_CONF.RECORDING_GROUP;
@@ -141,8 +143,6 @@ int main(int argc, char**argv)
     chronolog::HDF5FileChunkExtractor storyExtractor(process_id_string.str(), csv_files_directory);
     chronolog::GrapherDataStore theDataStore(ingestionQueue, storyExtractor.getExtractionQueue());
 
-    chronolog::ServiceId collectionServiceId(datastore_endpoint.first, datastore_endpoint.second
-                                             , datastore_service_provider_id);
     tl::engine*dataAdminEngine = nullptr;
 
     chronolog::DataStoreAdminService*grapherDataAdminService = nullptr;
@@ -173,6 +173,7 @@ int main(int argc, char**argv)
         LOG_CRITICAL("[ChronoGrapher] failed to create DataStoreAdminService exiting");
         return (-1);
     }
+    LOG_INFO("[ChronoGrapher] DataStoreAdminService started successfully.");
 
     // Instantiate RecordingService
     tl::engine*recordingEngine = nullptr;
@@ -227,13 +228,14 @@ int main(int argc, char**argv)
     /// Registration with ChronoVisor __________________________________________________________________________________
     // try to register with chronoVisor a few times than log ERROR and exit...
     int registration_status = grapherRegistryClient->send_register_msg(
-            chronolog::GrapherRegistrationMsg(processIdCard, collectionServiceId));
+            chronolog::GrapherRegistrationMsg(processIdCard, dataStoreServiceId));
     //if the first attemp failes retry 
     int retries = 5;
     while((chronolog::CL_SUCCESS != registration_status) && (retries > 0))
     {
         registration_status = grapherRegistryClient->send_register_msg(
-                chronolog::GrapherRegistrationMsg(processIdCard, collectionServiceId));
+                chronolog::GrapherRegistrationMsg(processIdCard, dataStoreServiceId));
+
         sleep(5);
         retries--;
     }
