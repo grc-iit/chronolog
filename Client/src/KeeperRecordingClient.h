@@ -45,9 +45,9 @@ public:
             //LOG_TRACE("[KeeperRecordingClient] Sent event message: {} with return code: {}", ss.str(), return_code);
             return return_code;
         }
-        catch(thallium::exception const &)
+        catch(thallium::exception const & ex)
         {
-            LOG_ERROR("[KeeperRecordingClient] Failed to send event message due to an exception.");
+            LOG_ERROR("[KeeperRecordingClient] Failed to send event message to {} exception: {}", to_string(keeperIdCard), ex.what());
         }
         return (chronolog::CL_ERR_UNKNOWN);
     }
@@ -58,7 +58,7 @@ public:
     ~KeeperRecordingClient()
     {
         record_event.deregister();
-        LOG_DEBUG("[KeeperRecordingClient] Destructor called. Deregistered record_event.");
+        LOG_DEBUG("[KeeperRecordingClient] Destructor called {}", to_string(keeperIdCard));
     }
 
 private:
@@ -71,13 +71,13 @@ private:
     KeeperRecordingClient(tl::engine &tl_engine, KeeperIdCard const &keeper_id_card)
         : keeperIdCard(keeper_id_card)
     {
+        LOG_DEBUG("[KeeperRecordingClient] KeeperRecordingiClient Constructor for {}",to_string(keeper_id_card));
         std::string service_addr_string;
         keeperIdCard.getRecordingServiceId().get_service_as_string(service_addr_string);
 
         service_ph = tl::provider_handle(tl_engine.lookup(service_addr_string), keeper_id_card.getRecordingServiceId().getProviderId());
 
         record_event = tl_engine.define("record_event");
-        LOG_INFO("[KeeperRecordingClient] RecordingClient created for KeeperRecordingService at {}",to_string(keeper_id_card));
     }
 
 

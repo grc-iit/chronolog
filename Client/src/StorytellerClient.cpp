@@ -276,11 +276,19 @@ chronolog::StorytellerClient::initializeStoryWritingHandle(ChronicleName const &
     }
 
     // find existing or create a new one playbackQueryRpcClient
-    auto playbackQueryClient = theClientQueryService.addPlaybackQueryClient(player_card);
+    if(player_card.is_valid())
+    {   
+        auto playbackQueryClient = theClientQueryService.addPlaybackQueryClient(player_card);
 
-    if(nullptr != playbackQueryClient)
-    {
-        storyWritingHandle->attachPlaybackQueryClient(playbackQueryClient);
+        if(nullptr != playbackQueryClient)
+        {
+            storyWritingHandle->attachPlaybackQueryClient(playbackQueryClient);
+            LOG_DEBUG("[StorytellerClient] PlaybackQueryClient {}  attached to StoryHandle {} {}", chl::to_string(player_card),chronicle,story);
+        }
+    }
+    else
+    {        
+        LOG_DEBUG("[StorytellerClient] StoryHandle {} {} doesn't have PlaybackQueryClient", chronicle,story);
     }
 
     auto insert_return = acquiredStoryHandles.insert(
