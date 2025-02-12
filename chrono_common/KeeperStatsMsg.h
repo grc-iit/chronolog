@@ -17,7 +17,7 @@ class KeeperStatsMsg
 public:
 
 
-    KeeperStatsMsg(KeeperIdCard const & keeper_card = KeeperIdCard{0, 0, 0}, uint32_t count = 0)
+    KeeperStatsMsg(KeeperIdCard const & keeper_card = KeeperIdCard{}, uint32_t count = 0)
         : keeperIdCard(keeper_card)
         , active_story_count(count)
     {}

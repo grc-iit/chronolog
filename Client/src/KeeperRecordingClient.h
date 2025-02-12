@@ -20,16 +20,16 @@ class KeeperRecordingClient
 {
 
 public:
-    static KeeperRecordingClient*CreateKeeperRecordingClient(tl::engine &tl_engine, KeeperIdCard const &keeper_id_card
-                                                             , std::string const &keeper_rpc_string)
+    static KeeperRecordingClient*
+    CreateKeeperRecordingClient(tl::engine &tl_engine, KeeperIdCard const &keeper_id_card)
     {
         try
         {
-            return new KeeperRecordingClient(tl_engine, keeper_id_card, keeper_rpc_string);
+            return new KeeperRecordingClient(tl_engine, keeper_id_card);
         }
-        catch(tl::exception const &)
+        catch(tl::exception const & ex)
         {
-            LOG_ERROR("[KeeperRecordingClient] Failed to create KeeperRecordingClient due to an exception.");
+            LOG_ERROR("[KeeperRecordingClient] Failed to create KeeperRecordingClient exception {}",ex.what());
         }
         return nullptr;
     }
@@ -38,11 +38,11 @@ public:
     {
         try
         {
-            std::stringstream ss;
-            ss << eventMsg;
-            LOG_INFO("[KeeperRecordingClient] Sending event message: {}", ss.str());
+            //std::stringstream ss;
+            //ss << eventMsg;
+            //LOG_TRACE("[KeeperRecordingClient] Sending event message: {}", ss.str());
             int return_code = record_event.on(service_ph)(eventMsg);
-            LOG_INFO("[KeeperRecordingClient] Sent event message: {} with return code: {}", ss.str(), return_code);
+            //LOG_TRACE("[KeeperRecordingClient] Sent event message: {} with return code: {}", ss.str(), return_code);
             return return_code;
         }
         catch(thallium::exception const &)
@@ -52,7 +52,7 @@ public:
         return (chronolog::CL_ERR_UNKNOWN);
     }
 
-    KeeperIdCard const &getKeeperId() const
+    KeeperIdCard const & getKeeperId() const
     { return keeperIdCard; }
 
     ~KeeperRecordingClient()
@@ -64,19 +64,27 @@ public:
 private:
 
     KeeperIdCard keeperIdCard;
-    std::string service_addr;     // na address of Keeper Recording Service 
     tl::provider_handle service_ph;  //provider_handle for remote registry service
     tl::remote_procedure record_event;
 
     // constructor is private to make sure thalium rpc objects are created on the heap, not stack
-    KeeperRecordingClient(tl::engine &tl_engine, KeeperIdCard const &keeper_id_card
-                          , std::string const &keeper_service_addr): keeperIdCard(keeper_id_card), service_addr(
-            keeper_service_addr), service_ph(tl_engine.lookup(service_addr), keeper_id_card.getProviderId())
+    KeeperRecordingClient(tl::engine &tl_engine, KeeperIdCard const &keeper_id_card)
+        : keeperIdCard(keeper_id_card)
     {
-        LOG_INFO("[KeeperRecordingClient] RecordingClient created for KeeperRecordingService at {} with ProviderID={}"
-             , service_addr, keeperIdCard.getProviderId());
+        std::string service_addr_string;
+        keeperIdCard.getRecordingServiceId().get_service_as_string(service_addr_string);
+
+        service_ph = tl::provider_handle(tl_engine.lookup(service_addr_string), keeper_id_card.getRecordingServiceId().getProviderId());
+
         record_event = tl_engine.define("record_event");
+        LOG_INFO("[KeeperRecordingClient] RecordingClient created for KeeperRecordingService at {}",to_string(keeper_id_card));
     }
+
+
+    KeeperRecordingClient() = delete;
+    KeeperRecordingClient(KeeperRecordingClient const &) = delete;
+    KeeperRecordingClient &operator=(KeeperRecordingClient const &) = delete;
+
 };
 }
 

@@ -16,8 +16,8 @@ class GrapherRegistrationMsg
     ServiceId adminServiceId;
 
 public:
-    GrapherRegistrationMsg(GrapherIdCard const& id_card = GrapherIdCard{0, 0, 0},
-                           ServiceId const& admin_service_id = ServiceId{0, 0, 0})
+    GrapherRegistrationMsg(GrapherIdCard const& id_card = GrapherIdCard{},
+                           ServiceId const& admin_service_id = ServiceId{})
         : grapherIdCard(id_card)
         , adminServiceId(admin_service_id)
 

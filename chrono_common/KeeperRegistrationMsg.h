@@ -17,8 +17,8 @@ class KeeperRegistrationMsg
     ServiceId adminServiceId;
 
 public:
-    KeeperRegistrationMsg(KeeperIdCard const& keeper_card = KeeperIdCard{0, 0, 0},
-                          ServiceId const& admin_service_id = ServiceId{0, 0, 0})
+    KeeperRegistrationMsg(KeeperIdCard const& keeper_card = KeeperIdCard{},
+                          ServiceId const& admin_service_id = ServiceId{})
         : keeperIdCard(keeper_card)
         , adminServiceId(admin_service_id)
     {}

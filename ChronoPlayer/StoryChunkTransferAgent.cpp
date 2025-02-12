@@ -12,11 +12,9 @@ chronolog::StoryChunkTransferAgent::StoryChunkTransferAgent(tl::engine &tl_engin
         : service_engine(tl_engine) 
         , receiver_service_id(service_id)
 {
-    std::string service_addr_string= receiver_service_id.protocol + "://";
-    service_addr_string += receiver_service_id.get_ip_as_dotted_string(service_addr_string) 
-                    + std::to_string(receiver_service_id.port);
-
-    receiver_service_handle = tl::provider_handle(service_engine.lookup(service_addr_string), receiver_service_id.provider_id);
+    std::string service_addr_string;
+    receiver_service_id.get_service_as_string(service_addr_string);
+    receiver_service_handle = tl::provider_handle(service_engine.lookup(service_addr_string), receiver_service_id.getProviderId());
 
     receive_story_chunk = service_engine.define("receive_story_chunk");
 

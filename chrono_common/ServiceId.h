@@ -21,6 +21,7 @@ static int ip_addr_from_dotted_string_to_uint32(std::string const &ip_string, ui
     int inet_pton_return = inet_pton(AF_INET, ip_string.c_str(), &sa.sin_addr.s_addr); //returns 1 on success
     if(1 != inet_pton_return)
     {
+        ip_address=0;
         return(-1);
     }
 
@@ -32,6 +33,15 @@ static int ip_addr_from_dotted_string_to_uint32(std::string const &ip_string, ui
 
 class ServiceId
 {
+// we are using a combination of the uint32_t representation of the service IP address
+// and uint16_t representation of the port number to identify service endpoint
+// NOTE: both IP and port values ServiceId are kept in the host byte order, not the network order)
+
+    std::string protocol;//protocol string : ex "ofi+sockets"
+    uint32_t ip_addr;    //32int IP representation in host notation
+    uint16_t port;       //16int port representation in host notation
+    uint16_t provider_id;//thalium provider id
+
 public:
     ServiceId(std::string const & protocol=std::string(), uint32_t addr = 0, uint16_t a_port = 0, uint16_t a_provider_id = 0)
         : protocol(protocol)
@@ -60,14 +70,10 @@ public:
     ServiceId & operator=(ServiceId const&) = default;
     ~ServiceId() = default;
 
-// we are using a combination of the uint32_t representation of the service IP address
-// and uint16_t representation of the port number to identify service endpoint
-// NOTE: both IP and port values ServiceId are kept in the host byte order, not the network order)
-
-    std::string protocol;//protocol string : ex "ofi+sockets"
-    uint32_t ip_addr;    //32int IP representation in host notation
-    uint16_t port;       //16int port representation in host notation
-    uint16_t provider_id;//thalium provider id
+    std::string const& getProtocol() const { return protocol; }
+    uint32_t getIPaddr() const { return ip_addr; }
+    uint16_t getPort() const { return port;}
+    uint16_t getProviderId () const { return provider_id; }
 
     inline service_endpoint get_service_endpoint() const
     {
@@ -111,32 +117,37 @@ public:
 inline std::string to_string(ServiceId const& serviceId)
 {
     std::string a_string;
-    return std::string("ServiceId{") +serviceId.protocol + ":" + serviceId.get_ip_as_dotted_string(a_string) + ":" + std::to_string(serviceId.port) + ":" +
-                std::to_string(serviceId.provider_id) + "}";
+    return std::string("ServiceId{") +serviceId.getProtocol() + ":" + serviceId.get_ip_as_dotted_string(a_string) + ":" + std::to_string(serviceId.getPort()) + ":" +
+                std::to_string(serviceId.getProviderId()) + "}";
 }
 
 }//namespace chronolog
 
 inline bool operator==(chronolog::ServiceId const& service_id_1, chronolog::ServiceId const& service_id_2)
 {
-    return ( (service_id_1.protocol == service_id_2.protocol) && (service_id_1.ip_addr == service_id_2.ip_addr)
-            && (service_id_1.port == service_id_2.port) && (service_id_1.provider_id == service_id_2.provider_id));
+    return ( (service_id_1.getProtocol() == service_id_2.getProtocol()) && (service_id_1.getIPaddr() == service_id_2.getIPaddr())
+            && (service_id_1.getPort() == service_id_2.getPort()) && (service_id_1.getProviderId() == service_id_2.getProviderId()));
 }
 
 
 inline std::ostream& operator<<(std::ostream& out, chronolog::ServiceId const serviceId)
 {
     std::string a_string;
-    out << "ServiceId{" << serviceId.protocol<<":"<<serviceId.get_ip_as_dotted_string(a_string) << ":" << serviceId.port << ":" << serviceId.provider_id
-        << "}";
+    out << "ServiceId{" << serviceId.getProtocol()<<":"<<serviceId.get_ip_as_dotted_string(a_string) << ":" << serviceId.getPort() << ":" 
+        << serviceId.getProviderId() << "}";
     return out;
 }
 
 inline std::string& operator+= (std::string& a_string, chronolog::ServiceId const& serviceId)
 {
-    a_string += std::string("ServiceId{") + serviceId.protocol + ":" + serviceId.get_ip_as_dotted_string(a_string) + ":" + std::to_string(serviceId.port) + ":" +
-                std::to_string(serviceId.provider_id) + "}";
+    a_string += std::string("ServiceId{") + serviceId.getProtocol() + ":" + serviceId.get_ip_as_dotted_string(a_string) + ":" + std::to_string(serviceId.getPort()) + ":" +
+                std::to_string(serviceId.getProviderId()) + "}";
     return a_string;
 }
 
 #endif
+
+
+
+
+

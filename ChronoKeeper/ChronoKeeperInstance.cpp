@@ -103,7 +103,7 @@ int main(int argc, char**argv)
         return (-1);
     }
 
-    chronolog::ServiceId dataStoreServiceId( confManager.KEEPER_CONF.KEEPER_DATA_STORE_ADMIN_SERVICE_CONF.RPC_CONF.IP,
+    chronolog::ServiceId dataStoreServiceId( confManager.KEEPER_CONF.KEEPER_DATA_STORE_ADMIN_SERVICE_CONF.RPC_CONF.PROTO_CONF,
                         datastore_endpoint, confManager.KEEPER_CONF.KEEPER_DATA_STORE_ADMIN_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID);
 
  
@@ -114,9 +114,6 @@ int main(int argc, char**argv)
     uint16_t KEEPER_RECORDING_SERVICE_PORT = confManager.KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.BASE_PORT;
     uint16_t recording_service_provider_id = confManager.KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID;
 
-    std::string KEEPER_RECORDING_SERVICE_NA_STRING =
-            std::string(KEEPER_RECORDING_SERVICE_PROTOCOL) + "://" + std::string(KEEPER_RECORDING_SERVICE_IP) + ":" +
-            std::to_string(KEEPER_RECORDING_SERVICE_PORT);
 
     // validate ip address, instantiate Recording Service and create KeeperIdCard
 
@@ -131,12 +128,16 @@ int main(int argc, char**argv)
 
     // create KeeperIdCard to identify this Keeper process in ChronoVisor's KeeperRegistry
     chronolog::RecordingGroupId keeper_group_id = confManager.KEEPER_CONF.RECORDING_GROUP;
-    chronolog::KeeperIdCard keeperIdCard(keeper_group_id, recording_endpoint.first, recording_endpoint.second
-                                         , recording_service_provider_id);
+    chronolog::KeeperIdCard keeperIdCard(keeper_group_id, 
+            chronolog::ServiceId(confManager.KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.PROTO_CONF,
+            confManager.KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.IP,
+            confManager.KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.BASE_PORT,
+            confManager.KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID));
 
-    std::stringstream ss;
-    ss << keeperIdCard;
-    LOG_INFO("[ChronoKeeperInstance] KeeperIdCard: {}", ss.str());
+    std::string KEEPER_RECORDING_SERVICE_NA_STRING;
+    keeperIdCard.getRecordingServiceId().get_service_as_string(KEEPER_RECORDING_SERVICE_NA_STRING);
+
+    LOG_INFO("[ChronoKeeperInstance] KeeperIdCard: {}", chronolog::to_string(keeperIdCard));
 
     // Instantiate ChronoKeeper MemoryDataStore & ExtractorModule
     chronolog::IngestionQueue ingestionQueue;

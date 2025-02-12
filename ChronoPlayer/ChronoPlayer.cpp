@@ -111,33 +111,26 @@ int main(int argc, char**argv)
     try
     {
         std::string PLAYBACK_SERVICE_NA_STRING;
-// = std::string(confManager.PLAYER_CONF.PLAYBACK_SERVICE_CONF.PROTO_CONF) 
-  //          + "://" + std::string(confManager.PLAYER_CONF.PLAYBACK_SERVICE_CONF.IP) + ":" +
-    //        std::to_string(confManager.PLAYER_CONF.PLAYBACK_SERVICE_CONF.BASE_PORT);
 
         playbackServiceId.get_service_as_string(PLAYBACK_SERVICE_NA_STRING);
 
-        margo_instance_id playback_margo_id = margo_init(PLAYBACK_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1
-                                                           , 1);
+        margo_instance_id playback_margo_id = margo_init(PLAYBACK_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1 , 1);
 
         playbackEngine = new tl::engine(playback_margo_id);
 
-        std::stringstream s3;
-        s3 << playbackEngine->self();
-        LOG_DEBUG("[ChronoPlayer] starting PlaybackService at address {} with ProviderID={}", s3.str()
-                  , playback_service_provider_id);
+        LOG_DEBUG("[ChronoPlayer] starting PlaybackService at {}", chl::to_string(playbackServiceId));
 
-        playbackService = chronolog::PlaybackService::CreatePlaybackService(*playbackEngine, playbackServiceId.provider_id,readingRequestQueue);
+        playbackService = chronolog::PlaybackService::CreatePlaybackService(*playbackEngine, playbackServiceId.getProviderId(),readingRequestQueue);
     }
-    catch(tl::exception const &)
+    catch(tl::exception const & ex)
     {
-        LOG_ERROR("[ChronoPlayer]  failed to create playbackService");
+        LOG_ERROR("[ChronoPlayer]  failed to create playbackService at {} exception:{}", chl::to_string(playbackServiceId), ex.what());
         playbackService = nullptr;
     }
 
     if(nullptr == playbackService)
     {
-        LOG_CRITICAL("[ChronoPlayer] failed to create Playback Service exiting");
+        LOG_CRITICAL("[ChronoPlayer] failed to create Playback Service at {}; exiting", chl::to_string(playbackServiceId));
         return (-1);
     }
 
@@ -189,18 +182,18 @@ int main(int argc, char**argv)
         LOG_DEBUG("[ChronoPlayer] starting AdminService at {}", chl::to_string(playerAdminServiceId));
         
         playerStoreAdminService = chronolog::PlayerStoreAdminService::CreatePlayerStoreAdminService(*dataAdminEngine
-                                                                                                , playerAdminServiceId.provider_id
+                                                                                                , playerAdminServiceId.getProviderId()
                                                                                                 , theDataStore);
     }
-    catch(tl::exception const &)
+    catch(tl::exception const & ex)
     {
-        LOG_ERROR("[ChronoPlayer]  failed to create DataStoreAdminService");
+        LOG_ERROR("[ChronoPlayer]  failed to create DataStoreAdminService at {} exception:{}", chl::to_string(playerAdminServiceId), ex.what());
         playerStoreAdminService = nullptr;
     }
 
     if(nullptr == playerStoreAdminService)
     {
-        LOG_CRITICAL("[ChronoPlayer] failed to create DataStoreAdminService exiting");
+        LOG_CRITICAL("[ChronoPlayer] failed to create DataStoreAdminService at {} , exiting", chl::to_string(playerAdminServiceId));
         delete playbackService;
         return (-1);
     }

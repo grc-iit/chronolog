@@ -17,6 +17,8 @@
 #include "HDF5FileChunkExtractor.h"
 #include "cmd_arg_parse.h"
 
+namespace chl = chronolog;
+
 // we will be using a combination of the uint32_t representation of the service IP address
 // and uint16_t representation of the port number
 int
@@ -112,11 +114,16 @@ int main(int argc, char**argv)
     std::string RECORDING_SERVICE_IP = confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP;
     uint16_t RECORDING_SERVICE_PORT = confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT;
     uint16_t recording_service_provider_id = confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.SERVICE_PROVIDER_ID;
+    
+    chl::ServiceId recordingServiceId(confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.PROTO_CONF,
+                confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP,
+                confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT,
+                confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.SERVICE_PROVIDER_ID);
 
-    std::string RECORDING_SERVICE_NA_STRING =
-            std::string(RECORDING_SERVICE_PROTOCOL) + "://" + std::string(RECORDING_SERVICE_IP) + ":" +
-            std::to_string(RECORDING_SERVICE_PORT);
 
+    std::string RECORDING_SERVICE_NA_STRING;
+    recordingServiceId.get_service_as_string(RECORDING_SERVICE_NA_STRING);
+    
     // validate ip address, instantiate Recording Service and create IdCard
 
     chronolog::service_endpoint recording_endpoint;
@@ -128,19 +135,16 @@ int main(int argc, char**argv)
     LOG_INFO("[ChronoGrapher] RecordingService started successfully.");
 
     // create GrapherIdCard to identify this Grapher process in ChronoVisor's Registry
-    chronolog::GrapherIdCard processIdCard(recording_group_id, recording_endpoint.first, recording_endpoint.second
-                                           , recording_service_provider_id);
+    chronolog::GrapherIdCard processIdCard(recording_group_id, recordingServiceId);
 
-    std::stringstream process_id_string;
-    process_id_string << processIdCard;
-    LOG_INFO("[ChronoGrapher] GrapherIdCard: {}", process_id_string.str());
+    LOG_INFO("[ChronoGrapher] GrapherIdCard: {}", chl::to_string(processIdCard));
 
     // Instantiate MemoryDataStore & ExtractorModule
     chronolog::ChunkIngestionQueue ingestionQueue;
     std::string csv_files_directory = confManager.GRAPHER_CONF.EXTRACTOR_CONF.story_files_dir;
 
 //    chronolog::CSVFileStoryChunkExtractor storyExtractor(process_id_string.str(), csv_files_directory);
-    chronolog::HDF5FileChunkExtractor storyExtractor(process_id_string.str(), csv_files_directory);
+    chronolog::HDF5FileChunkExtractor storyExtractor(chl::to_string(processIdCard), csv_files_directory);
     chronolog::GrapherDataStore theDataStore(ingestionQueue, storyExtractor.getExtractionQueue());
 
     tl::engine*dataAdminEngine = nullptr;
@@ -156,8 +160,7 @@ int main(int argc, char**argv)
 
         std::stringstream s3;
         s3 << dataAdminEngine->self();
-        LOG_DEBUG("[ChronoGrapher] starting DataStoreAdminService at address {} with ProviderID={}", s3.str()
-                  , datastore_service_provider_id);
+        LOG_DEBUG("[ChronoGrapher] starting DataStoreAdminService at {} ", chl::to_string(dataStoreServiceId));
         grapherDataAdminService = chronolog::DataStoreAdminService::CreateDataStoreAdminService(*dataAdminEngine
                                                                                                 , datastore_service_provider_id
                                                                                                 , theDataStore);

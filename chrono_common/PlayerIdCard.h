@@ -22,7 +22,7 @@ class PlayerIdCard
 
 public:
 
-    PlayerIdCard(RecordingGroupId group_id = 0, ServiceId const& service_id= ServiceId())
+    PlayerIdCard(RecordingGroupId group_id = 0, ServiceId const& service_id= ServiceId{})
         : groupId(group_id)
         , playbackServiceId(service_id)
     {}
@@ -44,9 +44,6 @@ public:
 
     RecordingGroupId getGroupId() const { return groupId; }
     ServiceId const & getPlaybackServiceId() const { return playbackServiceId; }
-    uint32_t getIPaddr() const { return playbackServiceId.ip_addr; }
-    uint16_t getPort() const { return playbackServiceId.port;}
-    uint16_t getProviderId () const { return playbackServiceId.provider_id; }
 
 
     // serialization function used by thallium RPC providers
@@ -63,7 +60,7 @@ public:
 inline std::string to_string(PlayerIdCard const& id_card)
 {
     std::string a_string;
-    return std::string("PlayerIdCard{") + std::to_string(id_card.getGroupId()) + ":" +
+    return std::string("PlayerIdCard{Group{") + std::to_string(id_card.getGroupId()) + "}" +
             chronolog::to_string(id_card.getPlaybackServiceId())+"}";
 }
 
@@ -77,13 +74,13 @@ inline bool operator==(chronolog::PlayerIdCard const& card1, chronolog::PlayerId
 inline std::ostream & operator<< (std::ostream & out , chronolog::PlayerIdCard const & id_card)
 {
     std::string a_string;
-    out << "PlayerIdCard{" << id_card.getGroupId() << ":" << id_card.getPlaybackServiceId() << "}";
+    out << "PlayerIdCard{Group{" << id_card.getGroupId() << "}" << id_card.getPlaybackServiceId() << "}";
     return out;
 }
 
 inline std::string& operator+= (std::string& a_string, chronolog::PlayerIdCard const& id_card)
 {
-    a_string += std::string("PlayerIdCard{") + std::to_string(id_card.getGroupId()) + ":" + chronolog::to_string(id_card.getPlaybackServiceId()) + "}";
+    a_string += std::string("PlayerIdCard{Group{") + std::to_string(id_card.getGroupId()) + "}" + chronolog::to_string(id_card.getPlaybackServiceId()) + "}";
     return a_string;
 }
 
