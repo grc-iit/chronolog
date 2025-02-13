@@ -61,6 +61,7 @@ int main(int argc, char**argv)
     // visor.start(&keeperRegistry);
     theChronoVisorPortal.StartServices(confManager, &keeperRegistry);
 
+    // If services do not start successfully there should a graceful exit(-1) here 
     /////
     LOG_INFO("[chronovisor_instance] ChronoVisor Running...");
     while(keep_running)

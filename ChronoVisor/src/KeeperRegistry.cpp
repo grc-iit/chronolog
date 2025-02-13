@@ -243,10 +243,8 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const &keeper_re
 
     // unlikely but possible that the Registry still retains the record of the previous re-incarnation of hte Keeper process
     // running on the same host... check for this case and clean up the leftover record...
-    auto keeper_process_iter = recording_group.keeperProcesses.find(
-            std::pair<uint32_t, uint16_t>(keeper_id_card.getIPaddr(), keeper_id_card.getPort()));
-    std::stringstream id_string;
-    id_string << keeper_id_card;
+    auto keeper_process_iter = recording_group.keeperProcesses.find(keeper_id_card.getRecordingServiceId().get_service_endpoint());
+
     if(keeper_process_iter != recording_group.keeperProcesses.end())
     {
         // must be a case of the KeeperProcess exiting without unregistering or some unexpected break in communication...
@@ -257,8 +255,7 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const &keeper_re
             std::time_t delayedExitTime = std::chrono::high_resolution_clock::to_time_t(
                     std::chrono::high_resolution_clock::now() + std::chrono::seconds(delayedDataAdminExitSeconds));
             LOG_WARNING("[ChronoProcessRegistry] registerKeeperProcess: found old instance of dataAdminclient for {} "
-                        "delayedExitTime={}",
-                        id_string.str(), std::ctime(&delayedExitTime));
+                        "delayedExitTime={}", to_string(keeper_id_card), std::ctime(&delayedExitTime));
             ;
 
             recording_group.startDelayedKeeperExit((*keeper_process_iter).second, delayedExitTime);
@@ -267,47 +264,45 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const &keeper_re
         {
             std::time_t current_time =
                     std::chrono::high_resolution_clock::to_time_t(std::chrono::high_resolution_clock::now());
-            LOG_INFO("[ChronoProcessRegistry] registerKeeperProcess tries to clear dataAdmindClient for {}", id_string.str());
+            LOG_INFO("[ChronoProcessRegistry] registerKeeperProcess tries to clear dataAdmindClient for {}", to_string(keeper_id_card));
             recording_group.clearDelayedExitKeeper((*keeper_process_iter).second, current_time);
         }
 
         if((*keeper_process_iter).second.delayedExitClients.empty())
         {
-            LOG_INFO("[ChronoProcessRegistry] registerKeeperProcess has destroyed old entry for keeper {}",id_string.str());
+            LOG_INFO("[ChronoProcessRegistry] registerKeeperProcess has destroyed old entry for keeper {}", to_string(keeper_id_card));
             recording_group.keeperProcesses.erase(keeper_process_iter);
         }
         else
         {
-            LOG_INFO("[ChronoProcessRegistry] registration for Keeper {} cant's proceed as previous AdminClient is not yet dismantled", id_string.str());
+            LOG_INFO("[ChronoProcessRegistry] registration for Keeper {} cant's proceed as previous AdminClient is not yet dismantled", to_string(keeper_id_card));
             return CL_ERR_UNKNOWN;
         }
     }
 
     //create a client of Keeper's DataStoreAdminService listening at adminServiceId
-    //std::string service_na_string("ofi+sockets://"); //TODO: add protocol to serviceId and keeperIdCard
-    std::string service_na_string(dataStoreAdminServiceProtocol + "://");
 
-    service_na_string =
-            admin_service_id.getIPasDottedString(service_na_string) + ":" + std::to_string(admin_service_id.port);
+    std::string service_na_string;
+    admin_service_id.get_service_as_string(service_na_string);
 
     DataStoreAdminClient*collectionClient = DataStoreAdminClient::CreateDataStoreAdminClient(*registryEngine
                                                                                              , service_na_string
-                                                                                             , admin_service_id.provider_id);
+                                                                                             , admin_service_id.getProviderId());
     if(nullptr == collectionClient)
     {
-        LOG_ERROR("[ChronoProcessRegistry] Register Keeper: KeeperIdCard: {} failed to create DataStoreAdminClient for {}: provider_id={}"
-             , id_string.str(), service_na_string, admin_service_id.provider_id);
+        LOG_ERROR("[ChronoProcessRegistry] Register Keeper: {} failed to create DataStoreAdminClient for {}"
+             , to_string(keeper_id_card), to_string(admin_service_id));
         return chronolog::CL_ERR_UNKNOWN;
     }
 
     //now create a new KeeperRecord with the new DataAdminclient
     auto insert_return =
             recording_group.keeperProcesses.insert(std::pair<std::pair<uint32_t, uint16_t>, KeeperProcessEntry>(
-                    std::pair<uint32_t, uint16_t>(keeper_id_card.getIPaddr(), keeper_id_card.getPort()),
+                    keeper_id_card.getRecordingServiceId().get_service_endpoint(),
                     KeeperProcessEntry(keeper_id_card, admin_service_id)));
     if(false == insert_return.second)
     {
-        LOG_ERROR("[ChronoProcessRegistry] registration failed for Keeper {}", id_string.str());
+        LOG_ERROR("[ChronoProcessRegistry] registration failed for Keeper {}",to_string(keeper_id_card));
         delete collectionClient;
         return chronolog::CL_ERR_UNKNOWN;
     }
@@ -316,8 +311,8 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const &keeper_re
     (*insert_return.first).second.active = true;
     recording_group.activeKeeperCount += 1;
 
-    LOG_INFO("[ChronoProcessRegistry] Register Keeper: KeeperIdCard: {} created DataStoreAdminClient for {}: provider_id={}"
-         , id_string.str(), service_na_string, admin_service_id.provider_id);
+    LOG_INFO("[ChronoProcessRegistry] Register Keeper: {} created DataStoreAdminClient for {}"
+         , to_string(keeper_id_card), to_string(admin_service_id));
 
     LOG_INFO("[ChronoProcessRegistry] RecordingGroup {} has {} keepers", recording_group.groupId,
              recording_group.keeperProcesses.size());
@@ -355,8 +350,8 @@ int KeeperRegistry::unregisterKeeperProcess(KeeperIdCard const &keeper_id_card)
 
     RecordingGroup& recording_group = (*group_iter).second;
 
-    auto keeper_process_iter = recording_group.keeperProcesses.find(
-            std::pair<uint32_t, uint16_t>(keeper_id_card.getIPaddr(), keeper_id_card.getPort()));
+    auto keeper_process_iter = recording_group.keeperProcesses.find(keeper_id_card.getRecordingServiceId().get_service_endpoint());
+            
     if(keeper_process_iter == recording_group.keeperProcesses.end())
     { 
         //we don't have a record of this keeper, we have nothing to do
@@ -411,18 +406,13 @@ void KeeperRegistry::updateKeeperProcessStats(KeeperStatsMsg const &keeperStatsM
 
     KeeperIdCard keeper_id_card = keeperStatsMsg.getKeeperIdCard();
 
-#ifdef DEBUG
-    std::string id_string;
-    id_string += keeper_id_card;
-    LOG_DEBUG("[ChronoProcessRegistry] Received KeeperStatsMsg from {}", id_string.str());
-#endif
+    LOG_DEBUG("[ChronoProcessRegistry] Received KeeperStatsMsg from {}", chl::to_string(keeper_id_card));
 
     auto group_iter = recordingGroups.find(keeper_id_card.getGroupId());
     if(group_iter == recordingGroups.end()) { return; }
 
-    auto keeper_process_iter = (*group_iter)
-                                       .second.keeperProcesses.find(std::pair<uint32_t, uint16_t>(
-                                               keeper_id_card.getIPaddr(), keeper_id_card.getPort()));
+    auto keeper_process_iter = 
+        (*group_iter).second.keeperProcesses.find(keeper_id_card.getRecordingServiceId().get_service_endpoint());
     if(keeper_process_iter == (*group_iter).second.keeperProcesses.end() || !((*keeper_process_iter).second.active))
     {// however unlikely it is that the stats msg would be delivered for the keeper that's already unregistered
         // we should probably log a warning here...
@@ -698,16 +688,14 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart(RecordingGroup& recording
     for(KeeperIdCard keeper_id_card: vectorOfKeepersToNotify)
     {
         DataStoreAdminClient* dataAdminClient = nullptr;
-        std::stringstream id_string;
-        id_string << keeper_id_card;
         {
             // NOTE: we release the registryLock before sending rpc request so that we do not hold it for the duration of rpc communication.
             // We delay the destruction of unactive keeperProcessEntries that might be triggered by the keeper unregister call from a different thread
             // (see unregisterKeeperProcess()) to protect us from the unfortunate case of keeperProcessEntry.dataAdminClient object being deleted
             // while this thread is waiting for rpc response
             std::lock_guard<std::mutex> lock(registryLock);
-            auto keeper_process_iter = keeper_processes.find(
-                    std::pair<uint32_t, uint16_t>(keeper_id_card.getIPaddr(), keeper_id_card.getPort()));
+            auto keeper_process_iter = keeper_processes.find(keeper_id_card.getRecordingServiceId().get_service_endpoint());
+                    
             if((keeper_process_iter != keeper_processes.end() && (*keeper_process_iter).second.active) &&
                ((*keeper_process_iter).second.keeperAdminClient != nullptr))
             {
@@ -715,7 +703,7 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart(RecordingGroup& recording
             }
             else
             {
-                LOG_WARNING("[ChronoProcessRegistry] Keeper {} is not available for notification", id_string.str());
+                LOG_WARNING("[ChronoProcessRegistry] Keeper {} is not available for notification", to_string(keeper_id_card));
                 continue;
             }
         }
@@ -725,18 +713,18 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart(RecordingGroup& recording
             int rpc_return = dataAdminClient->send_start_story_recording(chronicle, story, storyId, story_start_time);
             if(rpc_return != CL_SUCCESS)
             {
-                LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to keeper {}", id_string.str());
+                LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to keeper {}", to_string(keeper_id_card));
             }
             else
             {
                 LOG_INFO("[ChronoProcessRegistry] Registry notified {} to start recording StoryID={} with StartTime={}",
-                         id_string.str(), storyId, story_start_time);
+                         to_string(keeper_id_card), storyId, story_start_time);
                 vectorOfKeepers.push_back(keeper_id_card);
             }
         }
         catch(thallium::exception const& ex)
         {
-            LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to keeper {}", id_string.str());
+            LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to keeper {}", to_string(keeper_id_card));
         }
     }
 
@@ -809,16 +797,13 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStop(RecordingGroup& recordingG
     for(KeeperIdCard keeper_id_card: vectorOfKeepers)
     {
         DataStoreAdminClient* dataAdminClient = nullptr;
-        std::stringstream id_string;
-        id_string << keeper_id_card;
         {
             // NOTE: we release the registryLock before sending rpc request so that we do not hold it for the duration of rpc communication.
             // We delay the destruction of unactive keeperProcessEntries that might be triggered by the keeper unregister call from a different thread
             // (see unregisterKeeperProcess()) to protect us from the unfortunate case of keeperProcessEntry.dataAdminClient object being deleted
             // while this thread is waiting for rpc response
             std::lock_guard<std::mutex> lock(registryLock);
-            auto keeper_process_iter = keeper_processes.find(
-                    std::pair<uint32_t, uint16_t>(keeper_id_card.getIPaddr(), keeper_id_card.getPort()));
+            auto keeper_process_iter = keeper_processes.find(keeper_id_card.getRecordingServiceId().get_service_endpoint());
             if((keeper_process_iter != keeper_processes.end() && (*keeper_process_iter).second.active) &&
                ((*keeper_process_iter).second.keeperAdminClient != nullptr))
             {
@@ -826,7 +811,7 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStop(RecordingGroup& recordingG
             }
             else
             {
-                LOG_WARNING("[ChronoProcessRegistry] Keeper {} is not available for notification", id_string.str());
+                LOG_WARNING("[ChronoProcessRegistry] Keeper {} is not available for notification", to_string(keeper_id_card));
                 continue;
             }
         }
@@ -835,16 +820,16 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStop(RecordingGroup& recordingG
             int rpc_return = dataAdminClient->send_stop_story_recording(storyId);
             if(rpc_return != CL_SUCCESS)
             {
-                LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to keeper {}", id_string.str());
+                LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to keeper {}", to_string(keeper_id_card));
             }
             else
             {
-                LOG_INFO("[ChronoProcessRegistry] Registry notified  {} to stop recording story {}", id_string.str(), storyId);
+                LOG_INFO("[ChronoProcessRegistry] Registry notified  {} to stop recording story {}", to_string(keeper_id_card), storyId);
             }
         }
         catch(thallium::exception const& ex)
         {
-            LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to keeper {}", id_string.str());
+            LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to keeper {}", to_string(keeper_id_card));
         }
     }
 
@@ -910,31 +895,29 @@ int KeeperRegistry::registerGrapherProcess(GrapherRegistrationMsg const & reg_ms
 
         if(grapher_process->delayedExitGrapherClients.empty())
         {
-            LOG_INFO("[ChronoProcessRegistry] registerGrapherProcess has destroyed old entry for grapher {}", id_string.str());
+            LOG_INFO("[ChronoProcessRegistry] registerGrapherProcess has destroyed old entry for grapher {}", chl::to_string(grapher_id_card));
             delete grapher_process;
             recording_group.grapherProcess = nullptr;
         }
         else
         {
             LOG_INFO("[ChronoProcessRegistry] registration for Grapher{} cant's proceed as previous grapherClient isn't yet "
-                     "dismantled",
-                     id_string.str());
+                     "dismantled", chl::to_string(grapher_id_card));
             return CL_ERR_UNKNOWN;
         }
     }
 
     //create a client of the new grapher's DataStoreAdminService listenning at adminServiceId
-    //std::string service_na_string("ofi+sockets://"); //TODO: add protocol string to serviceIdCard
-    std::string service_na_string(dataStoreAdminServiceProtocol + "://");
-    service_na_string =
-            admin_service_id.getIPasDottedString(service_na_string) + ":" + std::to_string(admin_service_id.port);
+
+    std::string service_na_string;
+    admin_service_id.get_service_as_string(service_na_string);
 
     DataStoreAdminClient* collectionClient = DataStoreAdminClient::CreateDataStoreAdminClient(
-            *registryEngine, service_na_string, admin_service_id.provider_id);
+            *registryEngine, service_na_string, admin_service_id.getProviderId());
     if(nullptr == collectionClient)
     {
         LOG_ERROR("[ChronoProcessRegistry] Register Grapher {} failed to create DataStoreAdminClient for {}: provider_id={}",
-                  id_string.str(), service_na_string, admin_service_id.provider_id);
+                  chl::to_string(grapher_id_card), chl::to_string(admin_service_id));
         return chronolog::CL_ERR_UNKNOWN;
     }
 
@@ -943,8 +926,8 @@ int KeeperRegistry::registerGrapherProcess(GrapherRegistrationMsg const & reg_ms
     recording_group.grapherProcess->adminClient = collectionClient;
     recording_group.grapherProcess->active = true;
 
-    LOG_INFO("[ChronoProcessRegistry] Register grapher {} created DataStoreAdminClient for {}: provider_id={}",
-             id_string.str(), service_na_string, admin_service_id.provider_id);
+    LOG_INFO("[ChronoProcessRegistry] Register grapher {} created DataStoreAdminClient for {}",
+                  chl::to_string(grapher_id_card), chl::to_string(admin_service_id));
 
     LOG_INFO("[ChronoProcessRegistry] RecordingGroup {} has a grappher and  {} keepers", recording_group.groupId,
              recording_group.keeperProcesses.size());
@@ -1142,17 +1125,17 @@ int chl::KeeperRegistry::registerPlayerProcess(chl::PlayerRegistrationMsg const 
     }
 
     //create a client of the new player's DataStoreAdminService listenning at adminServiceId
-    //std::string service_na_string("ofi+sockets://"); //TODO: add protocol string to serviceIdCard
-    std::string service_na_string(dataStoreAdminServiceProtocol + "://");
-    service_na_string =
-            admin_service_id.getIPasDottedString(service_na_string) + ":" + std::to_string(admin_service_id.port);
+    std::string service_na_string;
+    admin_service_id.get_service_as_string(service_na_string);
+
+    LOG_DEBUG("[ChronoProcessRegistry] creating AdminClient for service_na_string {}",service_na_string);
 
     chl::DataStoreAdminClient* collectionClient = chl::DataStoreAdminClient::CreateDataStoreAdminClient(
-            *registryEngine, service_na_string, admin_service_id.provider_id);
+            *registryEngine, service_na_string, admin_service_id.getProviderId());
     if(nullptr == collectionClient)
     {
-        LOG_ERROR("[ChronoProcessRegistry] Register Player {} failed to create DataStoreAdminClient for {}: provider_id={}",
-                  chl::to_string(id_card), service_na_string, admin_service_id.provider_id);
+        LOG_ERROR("[ChronoProcessRegistry] Register Player {} failed to create DataStoreAdminClient for {}",
+                  chl::to_string(id_card), chl::to_string(admin_service_id));
         return chl::CL_ERR_UNKNOWN;
     }
 
@@ -1161,8 +1144,8 @@ int chl::KeeperRegistry::registerPlayerProcess(chl::PlayerRegistrationMsg const 
     recording_group.playerProcess->adminClient = collectionClient;
     recording_group.playerProcess->active = true;
 
-    LOG_INFO("[ChronoProcessRegistry] Register Player {} created DataStoreAdminClient for {}: provider_id={}",
-             chl::to_string(id_card), service_na_string, admin_service_id.provider_id);
+    LOG_INFO("[ChronoProcessRegistry] Register Player {} created DataStoreAdminClient for {}",
+             chl::to_string(id_card), chl::to_string(admin_service_id));
 
     // now that communnication with the Player is established and we are still holding registryLock
     // check if the group is ready for active group rotation

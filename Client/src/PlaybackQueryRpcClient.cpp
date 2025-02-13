@@ -21,11 +21,10 @@ chl::PlaybackQueryRpcClient::PlaybackQueryRpcClient(chl::ClientQueryService & cl
     : theClientQueryService(clientQueryService)
     , playback_service_id(playback_service_id)
 {
-    std::string service_addr_string= playback_service_id.protocol + "://";
-    service_addr_string += playback_service_id.getIPasDottedString(service_addr_string) 
-                    + std::to_string(playback_service_id.port);
+    std::string service_addr_string;
+    playback_service_id.get_service_as_string(service_addr_string);
 
-    playback_service_handle = tl::provider_handle(theClientQueryService.get_engine().lookup(service_addr_string), playback_service_id.provider_id);
+    playback_service_handle = tl::provider_handle(theClientQueryService.get_engine().lookup(service_addr_string), playback_service_id.getProviderId());
 
     playback_service_available = theClientQueryService.get_engine().define("playback_service_available");
     story_playback_request = theClientQueryService.get_engine().define("story_playback_request");
@@ -47,7 +46,7 @@ int chl::PlaybackQueryRpcClient::is_playback_service_available()
     }
     catch (tl::exception const &ex)
     {
-        LOG_ERROR("[PlaybackQueryRpcClient] Playback Service unavailable at {}", chl::to_string(playback_service_id));
+        LOG_ERROR("[PlaybackQueryRpcClient] Playback Service unavailable at {}, exceptiomn:{}", chl::to_string(playback_service_id), ex.what());
     }
     
     return chl::CL_ERR_UNKNOWN;
@@ -61,6 +60,7 @@ int chl::PlaybackQueryRpcClient::send_story_playback_request(chl::ChronicleName 
     
     try
     {
+        LOG_DEBUG("[PlaybackQueryRpcClient] {} ; send_story_playback_request for Story {}{}", chl::to_string(playback_service_id), chronicle_name,story_name);
         story_playback_request.on(playback_service_handle)( theClientQueryService.get_service_id(), query_id, chronicle_name,story_name,start_time,end_time);
 
         return chl::CL_SUCCESS;
@@ -68,7 +68,7 @@ int chl::PlaybackQueryRpcClient::send_story_playback_request(chl::ChronicleName 
     } 
     catch (tl::exception const& ex)
     {
-
+        LOG_ERROR("[PlaybackQueryRpcClient] {} ; send_story_playback_request exception {}", chl::to_string(playback_service_id), ex.what());
     }
 
     return return_code;

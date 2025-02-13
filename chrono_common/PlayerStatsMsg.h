@@ -17,7 +17,7 @@ class PlayerStatsMsg
 public:
 
 
-    PlayerStatsMsg(PlayerIdCard const & player_card = PlayerIdCard{0, 0, 0}, uint32_t count = 0)
+    PlayerStatsMsg(PlayerIdCard const & player_card = PlayerIdCard{}, uint32_t count = 0)
         : playerIdCard(player_card)
         , active_story_count(count)
     {}

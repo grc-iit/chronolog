@@ -40,11 +40,10 @@ class StorytellerClient
 {
 public:
     StorytellerClient(ChronologTimer &chronolog_timer, ClientQueryService & clientQueryService
-           ,  ClientId const &client_id, std::string const &rpc_protocol = std::string("ofi+sockets"))
+           ,  ClientId const &client_id)
         : theTimer(chronolog_timer)
         , theClientQueryService(clientQueryService)
         , clientId(client_id)
-        , rpc_protocol_string(rpc_protocol)
     {
         LOG_DEBUG("[StorytellerClient] Initialized with ClientID: {}", clientId);
     }
@@ -80,7 +79,6 @@ private:
     ChronologTimer &theTimer;
     ClientQueryService & theClientQueryService;
     ClientId clientId;
-    std::string rpc_protocol_string;
     std::atomic <int> atomic_index;
 
     std::mutex recordingClientMapMutex;
@@ -98,10 +96,11 @@ template <class KeeperChoicePolicy>
 class StoryWritingHandle: public StoryHandle
 {
 public:
-    StoryWritingHandle(StorytellerClient &client, ChronicleName const &a_chronicle, StoryName const &a_story
-                       , StoryId const &story_id): theClient(client), chronicle(a_chronicle), story(a_story), storyId(
-            story_id), keeperChoicePolicy(new KeeperChoicePolicy)
-            , playbackQueryClient(nullptr)
+    StoryWritingHandle(StorytellerClient &client, ChronicleName const &a_chronicle, StoryName const &a_story , StoryId const &story_id)
+        : theClient(client)
+        , chronicle(a_chronicle), story(a_story), storyId(story_id)
+        , keeperChoicePolicy(new KeeperChoicePolicy)
+        , playbackQueryClient(nullptr)
     {
         LOG_DEBUG("[StoryWritingHandle] Initialized for Chronicle: {}, Story: {}", a_chronicle, a_story);
     }

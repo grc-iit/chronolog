@@ -16,8 +16,8 @@ class PlayerRegistrationMsg
     ServiceId adminServiceId;
 
 public:
-    PlayerRegistrationMsg(PlayerIdCard const& id_card = PlayerIdCard{0, 0, 0},
-                           ServiceId const& service_id = ServiceId{0, 0, 0})
+    PlayerRegistrationMsg(PlayerIdCard const& id_card = PlayerIdCard{},
+                           ServiceId const& service_id = ServiceId{})
         : playerIdCard(id_card)
         , adminServiceId(service_id)
 

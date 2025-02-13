@@ -17,7 +17,7 @@ class GrapherStatsMsg
 public:
 
 
-    GrapherStatsMsg(GrapherIdCard const & grapher_card = GrapherIdCard{0, 0, 0}, uint32_t count = 0)
+    GrapherStatsMsg(GrapherIdCard const & grapher_card = GrapherIdCard{}, uint32_t count = 0)
         : grapherIdCard(grapher_card)
         , active_story_count(count)
     {}

@@ -16,7 +16,7 @@ namespace chl = chronolog;
 
 
 chl::ClientQueryService::ClientQueryService(thallium::engine & tl_engine, chl::ServiceId const& client_service_id)
-        : tl::provider <ClientQueryService>(tl_engine, client_service_id.provider_id)
+        : tl::provider <ClientQueryService>(tl_engine, client_service_id.getProviderId())
         , queryServiceEngine(tl_engine)
         , queryServiceId(client_service_id)
 {

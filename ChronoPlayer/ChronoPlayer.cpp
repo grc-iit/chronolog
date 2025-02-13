@@ -17,33 +17,8 @@
 #include "ArchiveReadingRequestQueue.h"
 #include "PlaybackService.h"
 
-// we will be using a combination of the uint32_t representation of the service IP address
-// and uint16_t representation of the port number
-int
-service_endpoint_from_dotted_string(std::string const &ip_string, int port, std::pair <uint32_t, uint16_t> &endpoint)
-{
-    // we will be using a combination of the uint32_t representation of the service IP address
-    // and uint16_t representation of the port number
-    // NOTE: both IP and port values in the IdCard are in the host byte order, not the network order)
-    // to identify the Chrono process
-
-    struct sockaddr_in sa;
-    // translate the recording service dotted IP string into 32bit network byte order representation
-    int inet_pton_return = inet_pton(AF_INET, ip_string.c_str(), &sa.sin_addr.s_addr); //returns 1 on success
-    if(1 != inet_pton_return)
-    {
-        LOG_ERROR("[ChronoPlayer] Invalid IP address provided: {}", ip_string);
-        return (-1);
-    }
-
-    // translate 32bit ip from network into the host byte order
-    uint32_t ntoh_ip_addr = ntohl(sa.sin_addr.s_addr);
-    uint16_t ntoh_port = port;
-    endpoint = std::pair <uint32_t, uint16_t>(ntoh_ip_addr, ntoh_port);
-
-    LOG_DEBUG("[ChronoPlayer] Service endpoint created: IP={}, Port={}", ip_string, port);
-    return 1;
-}
+namespace chl = chronolog;
+namespace tl = thallium;
 
 volatile sig_atomic_t keep_running = true;
 
@@ -86,23 +61,28 @@ int main(int argc, char**argv)
     // instantiate DataStoreAdminService
 
     /// DataStoreAdminService setup ____________________________________________________________________________________
-    std::string datastore_service_ip = confManager.PLAYER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.IP;
+    /*std::string datastore_service_ip = confManager.PLAYER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.IP;
     int datastore_service_port = confManager.PLAYER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.BASE_PORT;
     std::string DATASTORE_SERVICE_NA_STRING =
             confManager.PLAYER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.PROTO_CONF + "://" + datastore_service_ip + ":" +
             std::to_string(datastore_service_port);
 
     uint16_t datastore_service_provider_id = confManager.PLAYER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.SERVICE_PROVIDER_ID;
-
+    
     chronolog::service_endpoint datastore_endpoint;
+    */
     // validate ip address, instantiate DataAdminService and create ServiceId to be included in RegistrationMsg
 
-    if(-1 == service_endpoint_from_dotted_string(datastore_service_ip, datastore_service_port, datastore_endpoint))
+    chronolog::ServiceId playerAdminServiceId( confManager.PLAYER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.PROTO_CONF,
+        confManager.PLAYER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.IP,
+        confManager.PLAYER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.BASE_PORT,
+        confManager.PLAYER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.SERVICE_PROVIDER_ID);
+
+    if( !playerAdminServiceId.is_valid())
     {
         LOG_CRITICAL("[ChronoPlayer] Failed to start DataStoreAdminService. Invalid endpoint provided.");
         return (-1);
     }
-    LOG_INFO("[ChronoPlayer] DataStoreAdminService started successfully.");
 
     // Instantiate PlaybackService
     std::string PLAYBACK_SERVICE_PROTOCOL = confManager.PLAYER_CONF.PLAYBACK_SERVICE_CONF.PROTO_CONF;
@@ -112,12 +92,17 @@ int main(int argc, char**argv)
 
     // validate ip address, instantiate Playback Service and create IdCard
 
-    chronolog::service_endpoint playback_endpoint;
-    if(-1 == service_endpoint_from_dotted_string(PLAYBACK_SERVICE_IP, PLAYBACK_SERVICE_PORT, playback_endpoint))
+    chronolog::ServiceId playbackServiceId( confManager.PLAYER_CONF.PLAYBACK_SERVICE_CONF.PROTO_CONF,
+        confManager.PLAYER_CONF.PLAYBACK_SERVICE_CONF.IP,
+        confManager.PLAYER_CONF.PLAYBACK_SERVICE_CONF.BASE_PORT,
+        confManager.PLAYER_CONF.PLAYBACK_SERVICE_CONF.SERVICE_PROVIDER_ID);
+
+    if( !playbackServiceId.is_valid())
     {
-        LOG_CRITICAL("[ChronoPlayer] Failed to start PlaybackService. Invalid endpoint provided.");
+        LOG_CRITICAL("[ChronoPlayer] Failed to start PlayerAdminService. Invalid endpoint provided.");
         return (-1);
     }
+
 
     tl::engine * playbackEngine = nullptr;
     chronolog::PlaybackService * playbackService = nullptr;
@@ -125,31 +110,27 @@ int main(int argc, char**argv)
 
     try
     {
-        std::string PLAYBACK_SERVICE_NA_STRING = std::string(confManager.PLAYER_CONF.PLAYBACK_SERVICE_CONF.PROTO_CONF) 
-            + "://" + std::string(confManager.PLAYER_CONF.PLAYBACK_SERVICE_CONF.IP) + ":" +
-            std::to_string(confManager.PLAYER_CONF.PLAYBACK_SERVICE_CONF.BASE_PORT);
+        std::string PLAYBACK_SERVICE_NA_STRING;
 
-        margo_instance_id playback_margo_id = margo_init(PLAYBACK_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1
-                                                           , 1);
+        playbackServiceId.get_service_as_string(PLAYBACK_SERVICE_NA_STRING);
+
+        margo_instance_id playback_margo_id = margo_init(PLAYBACK_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1 , 1);
 
         playbackEngine = new tl::engine(playback_margo_id);
 
-        std::stringstream s3;
-        s3 << playbackEngine->self();
-        LOG_DEBUG("[ChronoPlayer] starting PlaybackService at address {} with ProviderID={}", s3.str()
-                  , playback_service_provider_id);
+        LOG_DEBUG("[ChronoPlayer] starting PlaybackService at {}", chl::to_string(playbackServiceId));
 
-        playbackService = chronolog::PlaybackService::CreatePlaybackService(*playbackEngine, playback_service_provider_id,readingRequestQueue);
+        playbackService = chronolog::PlaybackService::CreatePlaybackService(*playbackEngine, playbackServiceId.getProviderId(),readingRequestQueue);
     }
-    catch(tl::exception const &)
+    catch(tl::exception const & ex)
     {
-        LOG_ERROR("[ChronoPlayer]  failed to create playbackService");
+        LOG_ERROR("[ChronoPlayer]  failed to create playbackService at {} exception:{}", chl::to_string(playbackServiceId), ex.what());
         playbackService = nullptr;
     }
 
     if(nullptr == playbackService)
     {
-        LOG_CRITICAL("[ChronoPlayer] failed to create Playback Service exiting");
+        LOG_CRITICAL("[ChronoPlayer] failed to create Playback Service at {}; exiting", chl::to_string(playbackServiceId));
         return (-1);
     }
 
@@ -173,13 +154,10 @@ int main(int argc, char**argv)
     }
     LOG_INFO("[ChronoGrapher] RecordingService started successfully.");
 */
-    // create PlayerIdCard to identify this Player process in ChronoVisor's Registry
-    chronolog::PlayerIdCard processIdCard(recording_group_id, datastore_endpoint.first, datastore_endpoint.second
-                                           , datastore_service_provider_id);
 
-    std::stringstream process_id_string;
-    process_id_string << processIdCard;
-    LOG_INFO("[ChronoPlayer] PlayerIdCard: {}", process_id_string.str());
+    // create PlayerIdCard to identify this Player process in ChronoVisor's Registry
+    chronolog::PlayerIdCard playerIdCard(recording_group_id, playbackServiceId);
+    LOG_INFO("[ChronoPlayer] created PlayerIdCard: {}", chl::to_string(playerIdCard));
 
     // Instantiate MemoryDataStore & ExtractorModule
     chronolog::StoryChunkIngestionQueue ingestionQueue;
@@ -187,40 +165,41 @@ int main(int argc, char**argv)
 
     chronolog::PlayerDataStore theDataStore(ingestionQueue, extractionQueue);
 
-    chronolog::ServiceId collectionServiceId(datastore_endpoint.first, datastore_endpoint.second
-                                             , datastore_service_provider_id);
     tl::engine * dataAdminEngine = nullptr;
 
     chronolog::PlayerStoreAdminService * playerStoreAdminService = nullptr;
 
     try
     {
+        std::string DATASTORE_SERVICE_NA_STRING;
+        playerAdminServiceId.get_service_as_string(DATASTORE_SERVICE_NA_STRING);
+
         margo_instance_id collection_margo_id = margo_init(DATASTORE_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1
                                                            , 1);
 
         dataAdminEngine = new tl::engine(collection_margo_id);
 
-        std::stringstream s3;
-        s3 << dataAdminEngine->self();
-        LOG_DEBUG("[ChronoPlayer] starting DataStoreAdminService at address {} with ProviderID={}", s3.str()
-                  , datastore_service_provider_id);
+        LOG_DEBUG("[ChronoPlayer] starting AdminService at {}", chl::to_string(playerAdminServiceId));
+        
         playerStoreAdminService = chronolog::PlayerStoreAdminService::CreatePlayerStoreAdminService(*dataAdminEngine
-                                                                                                , datastore_service_provider_id
+                                                                                                , playerAdminServiceId.getProviderId()
                                                                                                 , theDataStore);
     }
-    catch(tl::exception const &)
+    catch(tl::exception const & ex)
     {
-        LOG_ERROR("[ChronoPlayer]  failed to create DataStoreAdminService");
+        LOG_ERROR("[ChronoPlayer]  failed to create DataStoreAdminService at {} exception:{}", chl::to_string(playerAdminServiceId), ex.what());
         playerStoreAdminService = nullptr;
     }
 
     if(nullptr == playerStoreAdminService)
     {
-        LOG_CRITICAL("[ChronoPlayer] failed to create DataStoreAdminService exiting");
+        LOG_CRITICAL("[ChronoPlayer] failed to create DataStoreAdminService at {} , exiting", chl::to_string(playerAdminServiceId));
         delete playbackService;
         return (-1);
     }
 
+
+    LOG_INFO("[ChronoPlayer] started AdminService at {}", chl::to_string(playerAdminServiceId));
 
     /// RegistryClient SetUp _____________________________________________________________________________________
     // create RegistryClient and register the new Recording service with the Registry
@@ -245,13 +224,13 @@ int main(int argc, char**argv)
     /// Registration with ChronoVisor __________________________________________________________________________________
     // try to register with chronoVisor a few times than log ERROR and exit...
     int registration_status = playerRegistryClient->send_register_msg(
-            chronolog::PlayerRegistrationMsg(processIdCard, collectionServiceId));
+            chronolog::PlayerRegistrationMsg(playerIdCard, playerAdminServiceId));
     //if the first attemp failes retry 
     int retries = 5;
     while((chronolog::CL_SUCCESS != registration_status) && (retries > 0))
     {
         registration_status = playerRegistryClient->send_register_msg(
-                chronolog::PlayerRegistrationMsg(processIdCard, collectionServiceId));
+                chronolog::PlayerRegistrationMsg(playerIdCard, playerAdminServiceId));
         sleep(5);
         retries--;
     }
@@ -278,7 +257,7 @@ int main(int argc, char**argv)
     // now we are ready to ingest records coming from the storyteller clients ....
     // main thread would be sending stats message until keeper process receives
     // sigterm signal
-    chronolog::PlayerStatsMsg playerStatsMsg(processIdCard);
+    chronolog::PlayerStatsMsg playerStatsMsg(playerIdCard);
     while(keep_running)
     {
         playerRegistryClient->send_stats_msg(playerStatsMsg);
@@ -287,7 +266,7 @@ int main(int argc, char**argv)
 
     /// Unregister from ChronoVisor ____________________________________________________________________________________
     // Unregister from the chronoVisor so that no new story requests would be coming
-    playerRegistryClient->send_unregister_msg(processIdCard);
+    playerRegistryClient->send_unregister_msg(playerIdCard);
     delete playerRegistryClient;
 
     /// Stop services and shut down ____________________________________________________________________________________
