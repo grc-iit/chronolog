@@ -51,14 +51,6 @@ void writer_thread(struct thread_arg * t)
             std::this_thread::sleep_for(std::chrono::milliseconds(i % 10));
         }
 
-        // Release the story
-        ret = client->ReleaseStory(t->chronicle, t->story);
-        LOG_INFO("[ClientLibStoryReader] Writer thread tid={} released story {} {}, Ret: {}", t->tid , t->chronicle, t->story, ret);
-
-        // Assertion for successful story release or expected errors
-        assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NO_CONNECTION || ret == chronolog::CL_ERR_NOT_ACQUIRED);
-    }
-
     LOG_INFO("[ClientLibStoryReader] Writer thread tid={} exiting ", t->tid);
 }
 
@@ -77,6 +69,8 @@ void reader_thread(struct thread_arg * t)
     std::map <std::string, std::string> story_attrs;
     int flags = 1;
 
+    std::vector<chronolog::Event> playback_events;
+
     // Acquire the story
     auto acquire_ret = client->AcquireStory(t->chronicle, t->story, story_attrs, flags);
     LOG_INFO("[ClientLibStoryReader] Reader thread tid={} acquired story: {} {}, Ret: {}", t->tid , t->chronicle, t->story, acquire_ret.first);
@@ -87,12 +81,27 @@ void reader_thread(struct thread_arg * t)
 
     if(acquire_ret.first == chronolog::CL_SUCCESS)
     {
+        auto story_handle = acquire_ret.second;
+
+        LOG_INFO("[ClientLibStoryReader] Reader thread tid={} sending playback_request for story: {} {}", t->tid , t->chronicle, t->story);
+
+        ret = story_handle->playback_story(t->playback_start, (t->playback_start)+10000000, playback_events);
+
+        if(ret == chronolog::CL_ERR_NO_PLAYERS)
+        {   
+            LOG_INFO("[ClientLibStoryReader] Reader thread tid={} can't find Player for story: {} {}, Ret: {}", t->tid , t->chronicle, t->story, ret);
+        }
+        else
+        {
+            LOG_INFO("[ClientLibStoryReader] Reader thread tid={} found Player for story: {} {}, Ret: {}", t->tid , t->chronicle, t->story, ret);
+        }
+
         // Release the story
         ret = client->ReleaseStory(t->chronicle, t->story);
         LOG_INFO("[ClientLibStoryReader] Reader thread tid={} released story: {} {}, Ret: {}", t->tid , t->chronicle, t->story, ret);
 
         // Assertion for successful story release or expected errors
-        assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NO_CONNECTION);
+        assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NO_CONNECTION || ret == chronolog::CL_ERR_NOT_ACQUIRED);
     }
 
     LOG_INFO("[ClientLibStoryReader] Reader thread tid={} exiting", t->tid);

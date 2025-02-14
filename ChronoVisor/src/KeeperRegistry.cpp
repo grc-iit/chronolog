@@ -487,6 +487,7 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
                                 , ServiceId & player_service_id)
 {
     vectorOfKeepers.clear();
+    player_service_id = ServiceId{};
 
     RecordingGroup* recording_group = nullptr;
 
@@ -545,7 +546,7 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
 
     if(rpc_return == CL_SUCCESS && recording_group->playerProcess != nullptr)
     {
-        player_service_id = recording_group->playerProcess->playbackServiceId;
+        player_service_id = recording_group->playerProcess->idCard.getPlaybackServiceId(); 
     }
     return rpc_return;
 }
