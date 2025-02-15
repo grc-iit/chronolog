@@ -10,7 +10,7 @@
 
 
 <div style="text-align: center;">
-    <img src="https://raw.githubusercontent.com/grc-iit/ChronoLog/169-convert-readme-into-a-landing-page/doc/images/logos/logo-chronolog.png" alt="ChronoLog" width="200">
+    <img src="doc/images/logos/logo-chronolog.png" alt="ChronoLog" width="200">
 </div>
 
 This project will design and implement ChronoLog, a distributed and tiered shared log storage ecosystem.
@@ -38,45 +38,45 @@ Learn more detailed information about the project on ChronoLog's Wiki: https://g
 ## Members
 
 <a href="https://www.iit.edu">
-    <img src="https://raw.githubusercontent.com/grc-iit/ChronoLog/169-convert-readme-into-a-landing-page/doc/images/logos/IIT.png" alt="Illinois Tech" width="150">
+    <img src="doc/images/logos/IIT.png" alt="Illinois Tech" width="150">
 </a>
 
 <a href="https://www.uchicago.edu/">
-    <img src="https://raw.githubusercontent.com/grc-iit/ChronoLog/169-convert-readme-into-a-landing-page/doc/images/logos/university-of-chicago.png" alt="University Of Chicago" width="150">
+    <img src="doc/images/logos/university-of-chicago.png" alt="University Of Chicago" width="150">
 </a>
 
 ## Collaborators
 <a href="https://www.llnl.gov/">
-    <img src="https://raw.githubusercontent.com/grc-iit/ChronoLog/169-convert-readme-into-a-landing-page/doc/images/logos/llnl.jpg" alt="Lawrence Livermore National Lab" width="75">
+    <img src="doc/images/logos/llnl.jpg" alt="Lawrence Livermore National Lab" width="75">
 </a>
 <a href="https://www6.slac.stanford.edu/">
-    <img src="https://raw.githubusercontent.com/grc-iit/ChronoLog/169-convert-readme-into-a-landing-page/doc/images/logos/slac.png" alt="SLAC National Accelerator Lab" width="75">
+    <img src="doc/images/logos/slac.png" alt="SLAC National Accelerator Lab" width="75">
 </a>
 <a href="https://www.3redpartners.com/">
-    <img src="https://raw.githubusercontent.com/grc-iit/ChronoLog/169-convert-readme-into-a-landing-page/doc/images/logos/3red.png" alt="3RedPartners" width="75">
+    <img src="doc/images/logos/3red.png" alt="3RedPartners" width="75">
 </a>
 <a href="https://www.depaul.edu/">
-    <img src="https://raw.githubusercontent.com/grc-iit/ChronoLog/169-convert-readme-into-a-landing-page/doc/images/logos/depaul.png" alt="DePaul University" width="75">
+    <img src="doc/images/logos/depaul.png" alt="DePaul University" width="75">
 </a>
 <a href="https://www.wisc.edu/">
-    <img src="https://raw.githubusercontent.com/grc-iit/ChronoLog/169-convert-readme-into-a-landing-page/doc/images/logos/university-of-wisconsin.jpg" alt="University of Wisconsin Madison" width="75">
+    <img src="doc/images/logos/university-of-wisconsin.jpg" alt="University of Wisconsin Madison" width="75">
 </a>
 <a href="https://www.paratools.com/">
-    <img src="https://raw.githubusercontent.com/grc-iit/ChronoLog/169-convert-readme-into-a-landing-page/doc/images/logos/paratools.png" alt="ParaTools, Inc." width="75">
+    <img src="doc/images/logos/paratools.png" alt="ParaTools, Inc." width="75">
 </a>
 <a href="https://illinois.edu/">
-    <img src="https://raw.githubusercontent.com/grc-iit/ChronoLog/169-convert-readme-into-a-landing-page/doc/images/logos/university-of-illinois.jpg" alt="University of Illinois at Urbana-Champaign" width="75">
+    <img src="doc/images/logos/university-of-illinois.jpg" alt="University of Illinois at Urbana-Champaign" width="75">
 </a>
 <a href="https://www.anl.gov/">
-    <img src="https://raw.githubusercontent.com/grc-iit/ChronoLog/169-convert-readme-into-a-landing-page/doc/images/logos/argonne.jpeg" alt="Argonne National Lab" width="75">
+    <img src="doc/images/logos/argonne.jpeg" alt="Argonne National Lab" width="75">
 </a>
 <a href="https://omnibond.com/">
-    <img src="https://raw.githubusercontent.com/grc-iit/ChronoLog/169-convert-readme-into-a-landing-page/doc/images/logos/omnibond.png" alt="OmniBond Systems LLC" width="75">
+    <img src="doc/images/logos/omnibond.png" alt="OmniBond Systems LLC" width="75">
 </a>
 
 ## Sponsors
 <a href="https://www.nsf.gov">
-    <img src="https://raw.githubusercontent.com/grc-iit/ChronoLog/169-convert-readme-into-a-landing-page/doc/images/logos/nsf-fb7efe9286a9b499c5907d82af3e70fd.png" alt="NSFLOGO" width="150">
+    <img src="doc/images/logos/nsf-fb7efe9286a9b499c5907d82af3e70fd.png" alt="NSFLOGO" width="150">
 </a>
 
 National Science Foundation (NSF CSSI-2104013)
