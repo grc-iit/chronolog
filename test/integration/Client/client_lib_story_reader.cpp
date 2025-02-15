@@ -24,12 +24,11 @@ void writer_thread(struct thread_arg * t)
 
     // Local variable declarations
     int flags = 1;
-    int ret = chronolog::CL_ERR_UNKNOWN;;
     std::map <std::string, std::string> chronicle_attrs;
     std::map <std::string, std::string> story_attrs;
 
     // Create the chronicle
-    ret = client->CreateChronicle(t->chronicle, chronicle_attrs, flags);
+    int ret = client->CreateChronicle(t->chronicle, chronicle_attrs, flags);
     LOG_INFO("[ClientLibStoryReader] Chronicle created: tid={}, ChronicleName={}, Flags: {}", t->tid , t->chronicle, flags);
 
     // Acquire the story
@@ -50,6 +49,7 @@ void writer_thread(struct thread_arg * t)
             story_handle->log_event("line " + std::to_string(i));
             std::this_thread::sleep_for(std::chrono::milliseconds(i % 10));
         }
+    }
 
     LOG_INFO("[ClientLibStoryReader] Writer thread tid={} exiting ", t->tid);
 }
