@@ -61,18 +61,13 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/*
 
 # -------------------------------
-# Create a non-root user with home directory /home/chronolog
+# Create a non-root user
 # -------------------------------
 RUN useradd -m -u ${UID} -s /bin/bash ${USERNAME} && \
     echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${USERNAME}
 
-# Switch to that user
 USER $USERNAME 
-
-# Set the working directory to the user's home directory
 WORKDIR /home/$USERNAME
-
-# Example RUN command executed as '$USERNAME' in /home/$USERNAME
 RUN whoami && pwd
 
 # -------------------------------
@@ -91,6 +86,11 @@ RUN git clone --branch v0.21.2 https://github.com/spack/spack.git ${SPACK_ROOT} 
     && spack env activate -p . \
     && spack install -v
 
+RUN cd \
+    && printf '%s\n' \
+    'source  ${SPACK_ROOT}/share/spack/setup-env.sh' \
+    >> .bashrc
+
 # -------------------------------
 # Build and Install ChronoLog
 # -------------------------------
@@ -106,4 +106,7 @@ RUN cd ${CHRONOLOG_ROOT} \
     && cd build \
     && make install
 
+# -------------------------------
+# ChronoLog Welcome Message
+# -------------------------------
 CMD ["/bin/bash", "-c", "echo $'+-----------------------------------------------------------------------------------------+\n| ..######..##.....##.########...#######..##....##..#######..##........#######...######.. |\n| .##....##.##.....##.##.....##.##.....##.###...##.##.....##.##.......##.....##.##....##. |\n| .##.......##.....##.##.....##.##.....##.####..##.##.....##.##.......##.....##.##....... |\n| .##.......#########.########..##.....##.##.##.##.##.....##.##.......##.....##.##...#### |\n| .##.......##.....##.##...##...##.....##.##..####.##.....##.##.......##.....##.##....##. |\n| .##....##.##.....##.##....##..##.....##.##...###.##.....##.##.......##.....##.##....##. |\n| ..######..##.....##.##.....##..#######..##....##..#######..########..#######...######.. |\n+-----------------------------------------------------------------------------------------+\n|                                Welcome to ChronoLog                                     |\n|                                                                                         |\n| ChronoLog is a cutting-edge, distributed, and tiered shared log storage ecosystem       |\n| that leverages physical time to ensure total log ordering and elastic scaling           |\n| through intelligent auto-tiering. Designed as a robust foundation for innovation,       |\n| ChronoLog supports advanced plugins including a SQL-like query engine, a streaming      |\n| processor, a log-based key-value store, and a log-based TensorFlow module.              |\n|                                                                                         |\n| Version:                                                                                |\n|   This Docker image provides a lightweight ChronoLog instance for local deployment.     |\n|   It simplifies installation and understanding of the system. For advanced              |\n|   deployment options, including production-ready configurations, please visit:          |\n|                                                                                         |\n| Useful Links:                                                                           |\n|   • Website:    https://www.chronolog.dev                                               |\n|   • Repository: https://github.com/grc-iit/ChronoLog                                    |\n|   • Wiki:       https://github.com/grc-iit/ChronoLog/wiki                               |\n|                                                                                         |\n| Thank you for choosing ChronoLog. Enjoy your session!                                   |\n+-----------------------------------------------------------------------------------------+' && exec bash"]
