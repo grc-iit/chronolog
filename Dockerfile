@@ -1,14 +1,15 @@
 FROM ubuntu:22.04
 SHELL ["/bin/bash", "-c"]
 
-# Set environment variables
-ENV DEBIAN_FRONTEND=noninteractive
-ENV SPACK_ROOT="/opt/spack"
-ENV CHRONOLOG_ROOT="/opt/chronolog"
-
 # Define build arguments for non-root user creation
 ARG USERNAME=grc-iit
 ARG UID=1001
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+ENV SPACK_ROOT="/home/${USERNAME}/Spack"
+ENV CHRONOLOG_ROOT="/home/${USERNAME}/ChronoLog"
+ENV CHRONOLOG_INSTALL="/home/${USERNAME}/chronolog"
 
 # -------------------------------
 # Install dependencies
@@ -65,6 +66,15 @@ RUN apt-get update && \
 RUN useradd -m -u ${UID} -s /bin/bash ${USERNAME} && \
     echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${USERNAME}
 
+# Switch to that user
+USER $USERNAME 
+
+# Set the working directory to the user's home directory
+WORKDIR /home/$USERNAME
+
+# Example RUN command executed as '$USERNAME' in /home/$USERNAME
+RUN whoami && pwd
+
 # -------------------------------
 # Clone ChronoLog Repository
 # -------------------------------
@@ -89,15 +99,11 @@ RUN cd ${CHRONOLOG_ROOT} \
     && spack env activate -p . \
     && cmake --version \
     && mkdir build && cd build \
-    && cmake -DCMAKE_BUILD_TYPE=Release .. \
+    && cmake -DCMAKE_BUILD_TYPE=Release -DINSTALL_DIR=${CHRONOLOG_INSTALL} .. \
     && make all
 
 RUN cd ${CHRONOLOG_ROOT} \
     && cd build \
     && make install
-
-# Switch to non-root user
-USER ${USERNAME}
-WORKDIR /home/${USERNAME}
 
 CMD ["/bin/bash"]
