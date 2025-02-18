@@ -100,10 +100,7 @@ RUN cd ${CHRONOLOG_ROOT} \
     && cmake --version \
     && mkdir build && cd build \
     && cmake -DCMAKE_BUILD_TYPE=Release -DINSTALL_DIR=${CHRONOLOG_INSTALL} .. \
-    && make all
-
-RUN cd ${CHRONOLOG_ROOT} \
-    && cd build \
+    && make all \
     && make install
 
 # -------------------------------
