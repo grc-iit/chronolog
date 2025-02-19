@@ -99,9 +99,18 @@ RUN cd ${CHRONOLOG_ROOT} \
     && spack env activate -p . \
     && cmake --version \
     && mkdir build && cd build \
-    && cmake -DCMAKE_BUILD_TYPE=Release -DINSTALL_DIR=${CHRONOLOG_INSTALL} .. \
-    && make all \
-    && make install
+    && cmake -DCMAKE_BUILD_TYPE=Release -DINSTALL_DIR=${CHRONOLOG_INSTALL} -DCHRONOLOG_ENABLE_PYTHON_BINDINGS=ON .. \
+    && make all
+
+#RUN cd ${CHRONOLOG_ROOT} \
+#    && source ${SPACK_ROOT}/share/spack/setup-env.sh \
+#    && cd deploy \
+#    && ./local_single_user_deploy.sh -b -t Release -l ${CHRONOLOG_INSTALL}
+
+RUN cd ${CHRONOLOG_ROOT} \
+    && source ${SPACK_ROOT}/share/spack/setup-env.sh \
+    && cd deploy \
+    && ./local_single_user_deploy.sh -i -w ${CHRONOLOG_INSTALL}/Release
 
 # -------------------------------
 # ChronoLog Welcome Message
