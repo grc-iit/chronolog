@@ -13,7 +13,8 @@ struct thread_arg
     int tid;
     std::string chronicle;
     std::string story;
-    uint64_t playback_start;
+    uint64_t segment_start;
+    uint64_t segment_end;
 };
 
 chronolog::Client*client;
@@ -44,10 +45,14 @@ void writer_thread(struct thread_arg * t)
     if(chronolog::CL_SUCCESS == acquire_ret.first)
     {
         auto story_handle = acquire_ret.second;
-        for(int i = 0; i < 100; ++i)
+        uint64_t timestamp = 0;
+        for(int i = 0; i < 10; ++i)
         {
             // Log an event to the story
-            story_handle->log_event("line " + std::to_string(i));
+            timestamp = story_handle->log_event("line " + std::to_string(i));
+            if(i== 0)
+            { t->segment_start = timestamp; }
+            t->segment_end = timestamp;
             std::this_thread::sleep_for(std::chrono::milliseconds(i % 10));
         }
 
@@ -59,18 +64,29 @@ void writer_thread(struct thread_arg * t)
         assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NO_CONNECTION || ret == chronolog::CL_ERR_NOT_ACQUIRED);
     }
 
+    LOG_INFO("[ClientLibStoryReader] Writer thread tid={} finished logging messages for story {}-{} segment {}-{}", t->tid,t->chronicle,t->story, t->segment_start, t->segment_end);
     LOG_INFO("[ClientLibStoryReader] Writer thread tid={} exiting ", t->tid);
 }
 
 
 
-void reader_thread(struct thread_arg * t)
+void reader_thread( int tid, struct thread_arg * t)
 {
-    LOG_INFO("[ClientLibStoryReader] Reader thread tid={} starting", t->tid);
+    LOG_INFO("[ClientLibStoryReader] Reader thread tid={} starting",tid);
 
+   // t->chronicle="CHRONICLE";
+   // t->story="STORY";
+   // t->segment_start=1739909340680367449;
+   // t->segment_end=1739909342245021766;
     // make the reader thread sleep to allow the writer threads create the story and log some events 
     // allow the events to propagate through the keeper/grappher into ChronoLog store
-    sleep(30);
+    while(t->segment_end==0)
+    { 
+        LOG_INFO("[ClientLibStoryReader] Reader thread tid={} is waiting",tid);
+        sleep(60);
+    }
+
+    sleep(6*60);
 
     int ret = chronolog::CL_ERR_UNKNOWN;;
     std::map <std::string, std::string> chronicle_attrs;
@@ -79,7 +95,7 @@ void reader_thread(struct thread_arg * t)
 
     // Acquire the story
     auto acquire_ret = client->AcquireStory(t->chronicle, t->story, story_attrs, flags);
-    LOG_INFO("[ClientLibStoryReader] Reader thread tid={} acquired story: {} {}, Ret: {}", t->tid , t->chronicle, t->story, acquire_ret.first);
+    LOG_INFO("[ClientLibStoryReader] Reader thread tid={} acquired story: {} {}, Ret: {}", tid , t->chronicle, t->story, acquire_ret.first);
 
     // Assertion for successful story acquisition or expected errors
     assert(acquire_ret.first == chronolog::CL_SUCCESS || acquire_ret.first == chronolog::CL_ERR_NOT_EXIST ||
@@ -87,15 +103,30 @@ void reader_thread(struct thread_arg * t)
 
     if(acquire_ret.first == chronolog::CL_SUCCESS)
     {
+        auto story_handle = acquire_ret.second;
+
+        LOG_INFO("[ClientLibStoryReader] Reader thread tid={} sending playback_request for story: {} {} segment{}-{}", tid , t->chronicle, t->story, t->segment_start, t->segment_end);
+
+        ret = story_handle->playback_story(t->segment_start, (t->segment_end), playback_events);
+
+        if(ret == chronolog::CL_ERR_NO_PLAYERS)
+        {   
+            LOG_INFO("[ClientLibStoryReader] Reader thread tid={} can't find Player for story: {} {}, Ret: {}", tid , t->chronicle, t->story, ret);
+        }
+        else
+        {
+            LOG_INFO("[ClientLibStoryReader] Reader thread tid={} found Player for story: {} {}, Ret: {}",tid , t->chronicle, t->story, ret);
+        }
+
         // Release the story
         ret = client->ReleaseStory(t->chronicle, t->story);
-        LOG_INFO("[ClientLibStoryReader] Reader thread tid={} released story: {} {}, Ret: {}", t->tid , t->chronicle, t->story, ret);
+        LOG_INFO("[ClientLibStoryReader] Reader thread tid={} released story: {} {}, Ret: {}", tid , t->chronicle, t->story, ret);
 
         // Assertion for successful story release or expected errors
         assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NO_CONNECTION);
     }
 
-    LOG_INFO("[ClientLibStoryReader] Reader thread tid={} exiting", t->tid);
+    LOG_INFO("[ClientLibStoryReader] Reader thread tid={} exiting", tid);
 }
 
 
@@ -149,13 +180,14 @@ int main(int argc, char**argv)
         t_args[i].tid = i;
         t_args[i].chronicle = chronicle_name;
         t_args[i].story = story_name;
-        t_args[i].playback_start = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+        t_args[i].segment_start = 0; 
+        t_args[i].segment_end = 0;
 
-        // odd threads are writers , even threads are readers 
+        // even threads are writers , odd threads are readers 
         if( i%2 == 0)
-        {   workers[i] = std::move( std::thread(reader_thread, &t_args[i])); }
-        else
         {   workers[i] = std::move( std::thread(writer_thread, &t_args[i])); }
+        else
+        {   workers[i] = std::move( std::thread(reader_thread, i , &t_args[i-1])); }
         
     }
 
