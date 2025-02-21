@@ -71,9 +71,8 @@ void chronolog::StoryWritingHandle <KeeperChoicePolicy>::detachPlaybackQueryClie
 
 //////////////////
 template <class KeeperChoicePolicy>
-int chronolog::StoryWritingHandle <KeeperChoicePolicy>::log_event(std::string const &event_record)
+uint64_t chronolog::StoryWritingHandle <KeeperChoicePolicy>::log_event(std::string const &event_record)
 {
-
     chronolog::LogEvent log_event(storyId, theClient.getTimestamp(), theClient.getClientId()
                                   , theClient.get_event_index(), event_record);
 
@@ -84,13 +83,10 @@ int chronolog::StoryWritingHandle <KeeperChoicePolicy>::log_event(std::string co
         return 0;
     }
 
-    // INNA: make send event returm 0 in case of tl RPC failure ....
-    
-    keeperRecordingClient->send_event_msg(log_event);
-
-    //INNA: we probably want to expose the timestamp as the return value here
-    // 0 indicates a failure to log as invalid timestamp
-    return 1;
+    if(chronolog::CL_SUCCESS == keeperRecordingClient->send_event_msg(log_event))
+    { return log_event.eventTime; }
+    else
+    { return 0; }
 }
 /////////////////////
 /*
@@ -223,13 +219,13 @@ chronolog::StorytellerClient::findStoryWritingHandle(ChronicleName const &chroni
     auto story_record_iter = acquiredStoryHandles.find(std::pair <std::string, std::string>(chronicle, story));
     if(story_record_iter != acquiredStoryHandles.end())
     {
-        LOG_INFO("[StorytellerClient::findStoryWritingHandle] Found StoryHandle for Chronicle: '{}' and Story: '{}'."
+        LOG_DEBUG("[StorytellerClient::findStoryWritingHandle] Found StoryHandle for Chronicle: '{}' and Story: '{}'."
              , chronicle, story);
         return ((*story_record_iter).second);
     }
     else
     {
-        LOG_WARNING("[StorytellerClient::findStoryWritingHandle] StoryHandle not found for Chronicle: '{}' and Story: '{}'."
+        LOG_DEBUG("[StorytellerClient::findStoryWritingHandle] StoryHandle not found for Chronicle: '{}' and Story: '{}'."
              , chronicle, story);
         return (nullptr);
     }
