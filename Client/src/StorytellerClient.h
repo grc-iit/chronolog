@@ -107,7 +107,7 @@ public:
 
     virtual ~StoryWritingHandle();
 
-    virtual int log_event(std::string const &);
+    virtual uint64_t log_event(std::string const &);
 
    // virtual int log_event(size_t size, void*data);
 
