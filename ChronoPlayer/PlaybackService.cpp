@@ -71,7 +71,7 @@ void chronolog::PlaybackService::story_playback_request(tl::request const &reque
         // using the service tl_engine and service_id provided in the request
         storyChunkSender = chl::StoryChunkTransferAgent::CreateStoryChunkTransferAgent(playbackEngine, receiver_service_id);
         chunkSenders.insert(std::pair<chl::service_endpoint, chl::StoryChunkTransferAgent*>(receiver_service_id.get_service_endpoint(),storyChunkSender));
-
+        storyChunkSender->startExtractionThreads(1);
         }
     }
 

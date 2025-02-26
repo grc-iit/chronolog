@@ -55,7 +55,7 @@ int chronolog::StoryChunkTransferAgent::processStoryChunk(chronolog::StoryChunk*
         segments[0].first = (void*)(serialized_story_chunk.data());
         segments[0].second = serialized_story_chunk_size;
         tl::bulk tl_bulk = service_engine.expose(segments, tl::bulk_mode::read_only);
-        LOG_DEBUG("[StoryChunkAgent] Draining StoryChunk size: {} ...", tl_bulk.size());
+        LOG_DEBUG("[StoryChunkTransferAgent] Draining StoryChunk size: {} ...", tl_bulk.size());
 
         size_t bytes_transfered = receive_story_chunk.on(receiver_service_handle)(tl_bulk);
 
