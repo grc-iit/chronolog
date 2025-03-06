@@ -31,7 +31,7 @@ public:
     StoryChunkExtractorBase(): extractorState(UNKNOWN)
     {}
 
-    ~StoryChunkExtractorBase();
+    virtual ~StoryChunkExtractorBase();
 
     StoryChunkExtractionQueue &getExtractionQueue()
     {

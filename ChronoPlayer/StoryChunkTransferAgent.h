@@ -34,9 +34,10 @@ public:
     }
 
 
-   ~StoryChunkTransferAgent();
+   virtual ~StoryChunkTransferAgent();
 
     int processStoryChunk(StoryChunk*story_chunk) override;
+    bool is_receiver_available() const;
 
 private:
     tl::engine & service_engine;          // local tl::engine

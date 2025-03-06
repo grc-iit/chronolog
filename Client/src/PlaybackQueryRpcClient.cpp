@@ -24,6 +24,8 @@ chl::PlaybackQueryRpcClient::PlaybackQueryRpcClient(chl::ClientQueryService & cl
     std::string service_addr_string;
     playback_service_id.get_service_as_string(service_addr_string);
 
+    LOG_DEBUG("[PlaybackQueryRpcClient] create client for playback service {} created receiver {}", chl::to_string(playback_service_id),chl::to_string(theClientQueryService.get_service_id()));
+
     playback_service_handle = tl::provider_handle(theClientQueryService.get_engine().lookup(service_addr_string), playback_service_id.getProviderId());
 
     playback_service_available = theClientQueryService.get_engine().define("playback_service_available");
@@ -32,6 +34,8 @@ chl::PlaybackQueryRpcClient::PlaybackQueryRpcClient(chl::ClientQueryService & cl
 
 chl::PlaybackQueryRpcClient::~PlaybackQueryRpcClient()
 {
+    LOG_DEBUG("[PlaybackQueryRpcClient] destory client for playback service {} and receiver {}", chl::to_string(playback_service_id),chl::to_string(theClientQueryService.get_service_id()));
+
     playback_service_available.deregister();
     story_playback_request.deregister();
 }
@@ -57,11 +61,13 @@ int chl::PlaybackQueryRpcClient::send_story_playback_request(chl::ChronicleName 
     int return_code = chl::CL_ERR_UNKNOWN;
 
     uint32_t query_id = theClientQueryService.start_new_query( chronicle_name,story_name,start_time,end_time);
+        
+    LOG_DEBUG("[PlaybackQueryRpcClient] {} ; send_story_playback_request query_id {} for Story {}-{} receiver {}", query_id ,chl::to_string(playback_service_id), chronicle_name,story_name, chl::to_string(theClientQueryService.get_service_id()));
     
     try
     {
-        LOG_DEBUG("[PlaybackQueryRpcClient] {} ; send_story_playback_request for Story {}{}", chl::to_string(playback_service_id), chronicle_name,story_name);
         story_playback_request.on(playback_service_handle)( theClientQueryService.get_service_id(), query_id, chronicle_name,story_name,start_time,end_time);
+
 
         return chl::CL_SUCCESS;
 

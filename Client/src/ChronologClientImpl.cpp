@@ -58,7 +58,8 @@ chronolog::ChronologClientImpl::ChronologClientImpl(const ChronoLog::Configurati
 
     storyReaderService= chl::ClientQueryService::CreateClientQueryService(*tlEngine, 
                         chl::ServiceId( confManager.CLIENT_CONF.CLIENT_QUERY_SERVICE_CONF.PROTO_CONF,
-                        hostId, confManager.CLIENT_CONF.CLIENT_QUERY_SERVICE_CONF.BASE_PORT,
+                        confManager.CLIENT_CONF.CLIENT_QUERY_SERVICE_CONF.IP, confManager.CLIENT_CONF.CLIENT_QUERY_SERVICE_CONF.BASE_PORT,
+                        // INNA : thre's a bug in interpreting host id !!! hostId, confManager.CLIENT_CONF.CLIENT_QUERY_SERVICE_CONF.BASE_PORT,
                         confManager.CLIENT_CONF.CLIENT_QUERY_SERVICE_CONF.SERVICE_PROVIDER_ID));
                     
 

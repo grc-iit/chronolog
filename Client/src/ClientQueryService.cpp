@@ -23,7 +23,8 @@ chl::ClientQueryService::ClientQueryService(thallium::engine & tl_engine, chl::S
 
     LOG_DEBUG("[ClientQueryService] created  service {}", chl::to_string(queryServiceId));
 
-         define("receive_story_chunk", &ClientQueryService::receive_story_chunk, tl::ignore_return_value());
+         define("receiver_is_available", &ClientQueryService::receiver_is_available);//, tl::ignore_return_value());
+         define("receive_story_chunk", &ClientQueryService::receive_story_chunk);//, tl::ignore_return_value());
          //set up callback for the case when the engine is being finalized while this provider is still alive
          get_engine().push_finalize_callback(this, [p = this]()
          { delete p; });
@@ -107,9 +108,18 @@ void chronolog::ClientQueryService::removePlaybackQueryClient(chl::ServiceId con
     // to safely remove it
 }
 
+void chl::ClientQueryService::receiver_is_available(tl::request  const& request)
+{
+    
+    LOG_DEBUG("[ClientQueryService] receiver_is_availabe called on thread {}", tl::thread::self_id());
+
+    request.respond(true);
+}
 // build transfer of the Response StoryChunks
 void chl::ClientQueryService::receive_story_chunk(tl::request  const& request, tl::bulk &b)
 {
+    LOG_DEBUG("[ClientQueryService] receive_story_chunk called on thread {}", tl::thread::self_id());
+
     try
     {
         tl::endpoint ep = request.get_endpoint();
@@ -148,7 +158,7 @@ void chl::ClientQueryService::receive_story_chunk(tl::request  const& request, t
         LOG_DEBUG("[ClientQueryService] StoryChunk recording RPC responded {}, ThreadID={}", b.size()
                         , tl::thread::self_id());
  
-        // add StoryChunk to the QueryResponse Object 
+        // TODO: add StoryChunk to the QueryResponse Object 
         }
         catch(std::bad_alloc const &ex)
         {

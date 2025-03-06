@@ -65,6 +65,7 @@ public:
 
     uint32_t start_new_query(ChronicleName const&, StoryName const&, chrono_time const&, chrono_time const&);
 
+    void receiver_is_available(tl::request const&);
     void receive_story_chunk(tl::request const&, tl::bulk &);
 
 
