@@ -36,7 +36,7 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName &c
         try
         {
             LOG_DEBUG("[HDF5ArchiveReadingAgent] Opening file: {}", file_name);
-            file = std::make_unique <H5::H5File>(file_name, H5F_ACC_RDONLY);
+            file = std::make_unique <H5::H5File>(file_name, H5F_ACC_SWMR_READ);
 
             LOG_DEBUG("[HDF5ArchiveReadingAgent] Opening dataset: data");
             H5::DataSet dataset = file->openDataSet("/story_chunks/data.vlen_bytes");
