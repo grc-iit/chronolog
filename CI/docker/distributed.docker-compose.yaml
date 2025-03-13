@@ -1,0 +1,83 @@
+x-common: &x-common
+  image: gnosisrc/chronolog:latest
+  init: true
+  networks:
+    - chronolog_net
+  cap_add:
+    - SYS_ADMIN
+    - SYS_PTRACE
+  security_opt:
+    - seccomp:unconfined
+    - apparmor:unconfined
+  privileged: false
+  command: >
+    bash -c "sudo service ssh restart && sleep infinity"
+
+services:
+  c1:
+    <<: *x-common
+    hostname: c1
+    container_name: chronolog-c1
+    volumes:
+      - shared_home:/home/grc-iit
+  c2:
+    <<: *x-common
+    hostname: c2
+    container_name: chronolog-c2
+    volumes:
+      - shared_home:/home/grc-iit
+    depends_on:
+      - c1
+  c3:
+    <<: *x-common
+    hostname: c3
+    container_name: chronolog-c3
+    volumes:
+      - shared_home:/home/grc-iit
+    depends_on:
+      - c1
+  c4:
+    <<: *x-common
+    hostname: c4
+    container_name: chronolog-c4
+    volumes:
+      - shared_home:/home/grc-iit
+    depends_on:
+      - c1
+      - c2
+      - c3
+    command: >
+      bash -c "
+        sleep 5
+
+        # Generate SSH keys for c4 (if they don't exist)
+        mkdir -p /home/grc-iit/.ssh
+        ssh-keygen -t rsa -b 4096 -f /home/grc-iit/.ssh/id_rsa -N '' || true;
+
+        # Copy the public key to authorized_keys
+        cat /home/grc-iit/.ssh/id_rsa.pub > /home/grc-iit/.ssh/authorized_keys;
+
+        # Gather public keys
+        ssh-keyscan -t rsa,ed25519 c1 >> /home/grc-iit/.ssh/known_hosts;
+        ssh-keyscan -t rsa,ed25519 c2 >> /home/grc-iit/.ssh/known_hosts;
+        ssh-keyscan -t rsa,ed25519 c3 >> /home/grc-iit/.ssh/known_hosts;
+        ssh-keyscan -t rsa,ed25519 c4 >> /home/grc-iit/.ssh/known_hosts;
+
+        # Optional: Set appropriate permissions on .ssh directory and files
+        chmod 700 /home/grc-iit/.ssh;
+        chmod 600 /home/grc-iit/.ssh/id_rsa;
+        chmod 644 /home/grc-iit/.ssh/id_rsa.pub;
+        chmod 600 /home/grc-iit/.ssh/authorized_keys;
+
+        # Start the SSH server (if your image doesn't start it by default)
+        sudo service ssh restart && sleep infinity
+
+        # Export env USER for old deployment scripts
+        echo 'export USER=grc-iit' >> ~/.bashrc
+      "
+
+networks:
+  chronolog_net:
+
+volumes:
+  shared_home:
