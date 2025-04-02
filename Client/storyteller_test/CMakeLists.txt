@@ -9,8 +9,8 @@ add_executable(storyteller_test ${CMAKE_CURRENT_SOURCE_DIR}/storyteller_test.cpp
 
 target_link_libraries(storyteller_test chronolog_client thallium)
 
-configure_file(${CMAKE_SOURCE_DIR}/default_conf.json.in
-    ${CMAKE_CURRENT_BINARY_DIR}/default_conf.json COPYONLY)
+configure_file(${CMAKE_SOURCE_DIR}/conf/default_conf.json.in
+    ${CMAKE_CURRENT_BINARY_DIR}/conf/default_conf.json COPYONLY)
 
 set_target_properties(storyteller_test PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
 
@@ -21,5 +21,5 @@ install(
 
 # install configuration file
 install(
-    FILES ${CMAKE_SOURCE_DIR}/default_conf.json.in DESTINATION ${CHRONOLOG_INSTALL_CONF_DIR} RENAME default_conf.json
+    FILES ${CMAKE_SOURCE_DIR}/conf/default_conf.json.in DESTINATION ${CHRONOLOG_INSTALL_CONF_DIR} RENAME default_conf.json
 )

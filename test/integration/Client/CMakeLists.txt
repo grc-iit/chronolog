@@ -41,8 +41,8 @@ foreach(client ${client_mpi})
     add_dependencies(${client} copyserverlist)
     target_include_directories(${client} PRIVATE ${CMAKE_BINARY_DIR}/Client/include ${MPI_CXX_INCLUDE_DIRS})
     target_link_libraries(${client} chronolog_client ${MPI_CXX_LIBRARIES} -lpthread -lrt)
-    configure_file(${CMAKE_SOURCE_DIR}/default_conf.json.in
-        ${CMAKE_CURRENT_BINARY_DIR}/default_conf.json COPYONLY)
+    configure_file(${CMAKE_SOURCE_DIR}/conf/default_conf.json.in
+        ${CMAKE_CURRENT_BINARY_DIR}/conf/default_conf.json COPYONLY)
 endforeach()
 
 # install binaries
@@ -52,5 +52,5 @@ install(
 
 # install configuration file
 install(
-    FILES ${CMAKE_SOURCE_DIR}/default_conf.json.in DESTINATION ${CHRONOLOG_INSTALL_CONF_DIR} RENAME default_conf.json
+    FILES ${CMAKE_SOURCE_DIR}/conf/default_conf.json.in DESTINATION ${CHRONOLOG_INSTALL_CONF_DIR} RENAME default_conf.json
 )

@@ -41,5 +41,5 @@ target_include_directories(ingest_test PRIVATE
 target_link_libraries(ingest_test thallium)
 message("build target : ingest_test")
 
-configure_file(${CMAKE_SOURCE_DIR}/default_conf.json.in
-    ${CMAKE_CURRENT_BINARY_DIR}/default_conf.json COPYONLY)
+configure_file(${CMAKE_SOURCE_DIR}/conf/default_conf.json.in
+    ${CMAKE_CURRENT_BINARY_DIR}/conf/default_conf.json COPYONLY)

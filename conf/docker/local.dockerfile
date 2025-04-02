@@ -34,7 +34,7 @@ RUN id $UID && userdel $(id -un $UID) || : \
  && passwd -d $USERNAME
 
 # Switch to that user
-USER $USERNAME 
+USER $USERNAME
 
 # Set the working directory to the user's home directory
 WORKDIR /home/$USERNAME
