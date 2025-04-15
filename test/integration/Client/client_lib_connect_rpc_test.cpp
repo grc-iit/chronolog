@@ -4,8 +4,6 @@
 
 #include <chrono>
 #include <unordered_map>
-
-#include "ConfigurationManager.h"
 #include "chronolog_client.h"
 #include "common.h"
 #include <cassert>
@@ -16,30 +14,19 @@
 
 int main(int argc, char**argv)
 {
-    std::string conf_file_path;
-    conf_file_path = parse_conf_path_arg(argc, argv);
-    if(conf_file_path.empty())
-    {
-        std::exit(EXIT_FAILURE);
-    }
-    ChronoLog::ConfigurationManager confManager(conf_file_path);
-    int result = chronolog::chrono_monitor::initialize(confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE
-                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
-                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
-                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME
-                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILESIZE
-                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILENUM
-                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.FLUSHLEVEL);
+    chronolog::ClientPortalServiceConf portalConf("ofi+sockets", "127.0.0.1", 5555, 55);
+    int result = chronolog::chrono_monitor::initialize("file", "chronoclient_logfile.txt", spdlog::level::debug, "ChronoClient", 102400, 3, spdlog::level::warn);
+    
     if(result == 1)
     {
         exit(EXIT_FAILURE);
     }
     LOG_INFO("[ClientLibConnectRPCTest] Running test.");
 
-    std::string server_ip = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP;
-    int base_port = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT;
+    std::string server_ip = portalConf.ip();
+    int base_port = portalConf.port();
     int num_ports = 1; // Kun: hardcode for now
-    chronolog::Client client(confManager);
+    chronolog::Client client(portalConf);
     std::string server_uri;
     std::vector <std::string> client_ids;
     int flags = 0;
@@ -52,7 +39,7 @@ int main(int argc, char**argv)
     for(int i = 0; i < NUM_CONNECTION; i++) client_ids.emplace_back(gen_random(8));
     for(int i = 0; i < NUM_CONNECTION; i++)
     {
-        server_uri = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.PROTO_CONF;
+        server_uri = portalConf.proto_conf() + "://" + server_ip + ":" + std::to_string(base_port + i);
          + "://" + server_ip + ":" + std::to_string(base_port + i);
         t1 = std::chrono::steady_clock::now();
         ret = client.Connect();//server_uri, client_ids[i], flags); //, offset);

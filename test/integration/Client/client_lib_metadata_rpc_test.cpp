@@ -17,36 +17,23 @@
 
 int main(int argc, char**argv)
 {
-    std::string conf_file_path;
-    conf_file_path = parse_conf_path_arg(argc, argv);
-    if(conf_file_path.empty())
-    {
-        std::exit(EXIT_FAILURE);
-    }
-    ChronoLog::ConfigurationManager confManager(conf_file_path);
-    int result = chronolog::chrono_monitor::initialize(confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE
-                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
-                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
-                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME
-                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILESIZE
-                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILENUM
-                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.FLUSHLEVEL);
+    chronolog::ClientPortalServiceConf portalConf("ofi+sockets", "127.0.0.1", 5555, 55);
+    int result = chronolog::chrono_monitor::initialize("file", "chronoclient_logfile.txt", spdlog::level::debug, "ChronoClient", 102400, 3, spdlog::level::warn);
+
     if(result == 1)
     {
         exit(EXIT_FAILURE);
     }
     LOG_INFO("[ClientLibMetadataRPCTest] Running test.");
 
-    chronolog::Client client(confManager);
+    chronolog::Client client(portalConf);
     std::vector <std::string> chronicle_names;
     std::chrono::steady_clock::time_point t1, t2;
     std::chrono::duration <double, std::nano> duration_create_chronicle{}, duration_edit_chronicle_attr{}, duration_acquire_story{}, duration_release_story{}, duration_destroy_story{}, duration_get_chronicle_attr{}, duration_destroy_chronicle{}, duration_show_chronicles{}, duration_show_stories{};
     int flags;
     int ret;
     uint64_t offset = 0;
-    std::string server_uri = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.PROTO_CONF + "://" +
-                             confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP + std::to_string(
-            confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT);
+    std::string server_uri = portalConf.proto_conf() + "://" + portalConf.ip() + ":" + std::to_string(portalConf.port());
 
     std::string client_id = gen_random(8);
     LOG_INFO("[ClientLibMetadataRPCTest] Connecting to server with URI: {}", server_uri);

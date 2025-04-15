@@ -4,10 +4,12 @@
 #include <string>
 #include <vector>
 #include <map>
-
-#include "ConfigurationManager.h" 
+#include <cstdint>
+#include <fstream>
 
 #include "ClientConfiguration.h"
+#include "chronolog_errcode.h"
+
 
 namespace chronolog
 {
@@ -116,8 +118,6 @@ class ChronologClientImpl;
 class Client
 {
 public:
-    Client(ChronoLog::ConfigurationManager const &);
-    
     Client(ClientPortalServiceConf const &);
 
     ~Client();

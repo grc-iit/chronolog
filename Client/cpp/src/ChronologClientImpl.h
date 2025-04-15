@@ -2,13 +2,12 @@
 #define CHRONOLOG_CLIENT_IMPL_H
 
 #include "chronolog_errcode.h"
-#include "ConfigurationManager.h"
-#include "../include/ClientConfiguration.h"
+#include "ClientConfiguration.h"
 
 #include "chronolog_types.h"
 
 
-#include "../include/chronolog_client.h"
+#include "chronolog_client.h"
 #include "rpcVisorClient.h"
 #include "StorytellerClient.h"
 #include "ClientQueryService.h"
@@ -31,8 +30,6 @@ public:
     static std::mutex chronologClientMutex;
     static ChronologClientImpl*chronologClientImplInstance;
 
-    static ChronologClientImpl*
-    GetClientImplInstance(ChronoLog::ConfigurationManager const &);
     static ChronologClientImpl*
     GetClientImplInstance(chronolog::ClientPortalServiceConf const &);
 
@@ -79,8 +76,7 @@ private:
     RpcVisorClient*rpcVisorClient;
     StorytellerClient*storyteller;
     ClientQueryService * storyReaderService;
-    
-    ChronologClientImpl(const ChronoLog::ConfigurationManager &conf_manager);
+
     ChronologClientImpl( ClientQueryServiceConf const& , ClientPortalServiceConf const&);
 
     void defineClientIdentity();
