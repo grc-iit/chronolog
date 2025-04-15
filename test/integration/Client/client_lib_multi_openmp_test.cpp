@@ -10,20 +10,8 @@
 
 int main(int argc, char**argv)
 {
-    std::string conf_file_path;
-    conf_file_path = parse_conf_path_arg(argc, argv);
-    if(conf_file_path.empty())
-    {
-        std::exit(EXIT_FAILURE);
-    }
-    ChronoLog::ConfigurationManager confManager(conf_file_path);
-    int result = chronolog::chrono_monitor::initialize(confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE
-                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
-                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
-                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME
-                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILESIZE
-                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILENUM
-                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.FLUSHLEVEL);
+    chronolog::ClientPortalServiceConf portalConf("ofi+sockets", "127.0.0.1", 5555, 55);
+    int result = chronolog::chrono_monitor::initialize("file", "chronoclient_logfile.txt", spdlog::level::debug, "ChronoClient", 102400, 3, spdlog::level::warn);
     if(result == 1)
     {
         exit(EXIT_FAILURE);
@@ -31,15 +19,16 @@ int main(int argc, char**argv)
     LOG_INFO("[ClientLibMultiOpenMPTest] Running test.");
 
 
-    std::string server_ip = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP;
-    int base_port = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT;
-    chronolog::Client*client = new chronolog::Client(confManager);//protocol, server_ip, base_port);
+    std::string server_ip = portalConf.ip();
+    int base_port = portalConf.port();
+    chronolog::Client* client = nullptr;
+    client = new chronolog::Client(portalConf);
 
     int num_threads = 8;
 
     omp_set_num_threads(num_threads);
 
-    std::string server_uri = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.PROTO_CONF;
+    std::string server_uri = portalConf.proto_conf() + "://" + portalConf.ip() + ":" + std::to_string(portalConf.port());
     server_uri += "://" + server_ip + ":" + std::to_string(base_port);
     LOG_INFO("[ClientLibMultiOpenMPTest] Connecting to server at: {}", server_uri);
     int flags = 0;

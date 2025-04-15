@@ -1,6 +1,8 @@
 #ifndef CHRONOLOG_CLIENT_CONFIGURATION_H
 #define CHRONOLOG_CLIENT_CONFIGURATION_H
 
+#include <string>
+#include <cstdint>
 
 namespace chronolog
 {

@@ -430,19 +430,8 @@ int parse_num_threads_arg(int argc, char**argv)
 int main(int argc, char**argv)
 {
     // Configuration
-    std::string conf_file_path = parse_conf_path_arg(argc, argv);
-    if(conf_file_path.empty())
-    {
-        std::exit(EXIT_FAILURE);
-    }
-    ChronoLog::ConfigurationManager confManager(conf_file_path);
-    int result = chronolog::chrono_monitor::initialize(confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE
-                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
-                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
-                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME
-                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILESIZE
-                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILENUM
-                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.FLUSHLEVEL);
+    chronolog::ClientPortalServiceConf portalConf("ofi+sockets", "127.0.0.1", 5555, 55);
+    int result = chronolog::chrono_monitor::initialize("file", "chronoclient_logfile.txt", spdlog::level::debug, "ChronoClient", 102400, 3, spdlog::level::warn);
 
     if(result == 1)
     {
@@ -450,7 +439,7 @@ int main(int argc, char**argv)
     }
 
     // Set up client & Connect
-    client = new chronolog::Client(confManager);
+    client = new chronolog::Client(portalConf);
     int ret = client->Connect();
     if(chronolog::CL_SUCCESS != ret)
     {
