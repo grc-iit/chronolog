@@ -1,0 +1,52 @@
+cmake_minimum_required(VERSION 3.25)
+
+#message("ChronologClient CMakeLists - CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}")
+#message("ChronologClient CMakeLists - CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
+message("Building CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
+message("build target : chronolog_client (C++)")
+
+
+add_library(chronolog_client
+    include/chronolog_client.h
+    src/ChronologClientImpl.h
+    src/KeeperRecordingClient.h
+    src/StorytellerClient.h
+    src/StorytellerClient.cpp
+    src/PlaybackQueryRpcClient.cpp
+    src/ClientQueryService.cpp
+    src/ChronologClient.cpp
+    src/ChronologClientImpl.cpp
+    ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/src/chrono_monitor.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/ConfigurationManager.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunk.cpp
+)
+
+# Include directories for the library
+target_include_directories(chronolog_client PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/include
+    ${CMAKE_SOURCE_DIR}/chrono_common
+    ${CMAKE_SOURCE_DIR}/Client/include
+)
+
+target_link_libraries(chronolog_client thallium)
+
+################################
+
+# Define the header files to be copied
+set(PUBLIC_HEADER_FILES
+    include/chronolog_client.h
+    include/ClientConfiguration.h
+    ${CMAKE_SOURCE_DIR}/chrono_common/ConfigurationManager.h
+    ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/include/chronolog_errcode.h
+)
+
+# install library
+install(
+    TARGETS chronolog_client DESTINATION lib
+)
+
+# Install header files
+install(
+    FILES ${PUBLIC_HEADER_FILES} DESTINATION include
+)

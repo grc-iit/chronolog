@@ -3,12 +3,12 @@
 
 #include "chronolog_errcode.h"
 #include "ConfigurationManager.h"
-#include "ClientConfiguration.h"
+#include "../include/ClientConfiguration.h"
 
 #include "chronolog_types.h"
 
 
-#include "chronolog_client.h"
+#include "../include/chronolog_client.h"
 #include "rpcVisorClient.h"
 #include "StorytellerClient.h"
 #include "ClientQueryService.h"
