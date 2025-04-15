@@ -17,11 +17,11 @@ target_include_directories(chrono_keeper PRIVATE
     ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/include)
 
 target_sources(chrono_keeper PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/ChronoKeeperInstance.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/StoryPipeline.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/KeeperDataStore.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/CSVFileChunkExtractor.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/StoryChunkExtractorRDMA.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ChronoKeeperInstance.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/StoryPipeline.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/KeeperDataStore.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/CSVFileChunkExtractor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/StoryChunkExtractorRDMA.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunkExtractor.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunk.cpp
     ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/src/chrono_monitor.cpp)

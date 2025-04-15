@@ -16,10 +16,10 @@ target_include_directories(chrono_grapher PRIVATE
     ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/include)
 
 target_sources(chrono_grapher PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/ChronoGrapher.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/GrapherDataStore.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/CSVFileChunkExtractor.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/HDF5FileChunkExtractor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ChronoGrapher.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/GrapherDataStore.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/CSVFileChunkExtractor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/HDF5FileChunkExtractor.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunk.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunkWriter.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/StoryPipeline.cpp
