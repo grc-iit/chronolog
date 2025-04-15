@@ -24,6 +24,7 @@ target_sources(chrono_player PRIVATE
     ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunk.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/StoryPipeline.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunkExtractor.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/ConfigurationManager.cpp
     ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/src/chrono_monitor.cpp)
 
 target_link_libraries(chrono_player chronolog_client thallium)
@@ -62,6 +63,7 @@ target_link_libraries(playback_service_test chronolog_client thallium)
 add_executable(hdf5_archive_reader_test
     ${CMAKE_CURRENT_SOURCE_DIR}/HDF5ArchiveReadingAgentTest.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/HDF5ArchiveReadingAgent.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/ConfigurationManager.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunk.cpp)
 
 target_include_directories(hdf5_archive_reader_test PRIVATE
