@@ -69,7 +69,8 @@ int main()
         std::cout<<"TransferAgent is running"<<std::endl;
         transferAgent->is_receiver_available();
         
-        chl::StoryChunk storyChunk("Chronicle","Story", 1, std::chrono::high_resolution_clock::now().time_since_epoch().count());
+        chl::StoryChunk storyChunk("Chronicle","Story", 1, std::chrono::high_resolution_clock::now().time_since_epoch().count()
+                  ,  std::chrono::high_resolution_clock::now().time_since_epoch().count()+5000);
    
         for(int i =0; i< 5; ++i) 
         { 
