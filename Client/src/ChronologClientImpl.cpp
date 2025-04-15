@@ -9,20 +9,6 @@ namespace chl = chronolog;
 std::mutex chronolog::ChronologClientImpl::chronologClientMutex;
 chronolog::ChronologClientImpl*chronolog::ChronologClientImpl::chronologClientImplInstance{nullptr};
 
-
-chronolog::ChronologClientImpl*
-chronolog::ChronologClientImpl::GetClientImplInstance(ChronoLog::ConfigurationManager const &confManager)
-{
-    std::lock_guard <std::mutex> lock_client(chronologClientMutex);
-    if(chronologClientImplInstance == nullptr)
-    {
-        chronologClientImplInstance = new ChronologClientImpl(confManager);
-    }
-
-    return chronologClientImplInstance;
-}
-
-
 chronolog::ChronologClientImpl*chronolog::ChronologClientImpl::GetClientImplInstance(
         chronolog::ClientPortalServiceConf const &visorClientPortalServiceConf)
 {
@@ -42,39 +28,6 @@ chronolog::ChronologClientImpl*chronolog::ChronologClientImpl::GetClientImplInst
 }
 
 ////////
-chronolog::ChronologClientImpl::ChronologClientImpl(const ChronoLog::ConfigurationManager &confManager)
-        : clientState(UNKNOWN)
-        , clientLogin("")
-        , hostId(0) , pid(0) , clientId(0)
-        , tlEngine(nullptr)
-        , rpcVisorClient(nullptr)
-        , storyteller(nullptr)
-        , storyReaderService(nullptr)
-{
-    defineClientIdentity();
-
-    tlEngine = new thallium::engine(confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.PROTO_CONF
-                                    , THALLIUM_SERVER_MODE, true, 1);
-
-    storyReaderService= chl::ClientQueryService::CreateClientQueryService(*tlEngine, 
-                        chl::ServiceId( confManager.CLIENT_CONF.CLIENT_QUERY_SERVICE_CONF.PROTO_CONF,
-                        confManager.CLIENT_CONF.CLIENT_QUERY_SERVICE_CONF.IP, confManager.CLIENT_CONF.CLIENT_QUERY_SERVICE_CONF.BASE_PORT,
-                        // INNA : thre's a bug in interpreting host id !!! hostId, confManager.CLIENT_CONF.CLIENT_QUERY_SERVICE_CONF.BASE_PORT,
-                        confManager.CLIENT_CONF.CLIENT_QUERY_SERVICE_CONF.SERVICE_PROVIDER_ID));
-                    
-
-    std::string CLIENT_VISOR_NA_STRING =
-            confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.PROTO_CONF + "://" +
-            confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP + ":" +
-            std::to_string(confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT);
-
-    rpcVisorClient = chl::RpcVisorClient::CreateRpcVisorClient(*tlEngine, CLIENT_VISOR_NA_STRING
-                                                               , confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID);
-
-    //tlEngine->wait_for_finalize();
-}
-///////////////
-
 chronolog::ChronologClientImpl::ChronologClientImpl(
     chronolog::ClientQueryServiceConf const& clientQueryServiceConf,
     chronolog::ClientPortalServiceConf const& clientPortalServiceConf)

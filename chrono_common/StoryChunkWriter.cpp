@@ -17,7 +17,7 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunkHVL &story_chunk)
     try
     {
         LOG_DEBUG("[StoryChunkWriter] Creating StoryChunk file: {}", file_name);
-        file = std::make_unique<H5::H5File>(file_name, H5F_ACC_TRUNC);
+        file = std::make_unique<H5::H5File>(file_name, H5F_ACC_TRUNC | H5F_ACC_SWMR_WRITE);
 
         LOG_DEBUG("[StoryChunkWriter] Writing StoryChunk to file...");
         ret = writeEvents(file, data);
@@ -61,7 +61,7 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunk &story_chunk)
     try
     {
         LOG_DEBUG("[StoryChunkWriter] Creating StoryChunk file: {}", file_name);
-        file = std::make_unique<H5::H5File>(file_name, H5F_ACC_TRUNC);
+        file = std::make_unique<H5::H5File>(file_name, H5F_ACC_TRUNC | H5F_ACC_SWMR_WRITE);
 
         LOG_DEBUG("[StoryChunkWriter] Writing StoryChunk to file...");
         ret = writeEvents(file, data);

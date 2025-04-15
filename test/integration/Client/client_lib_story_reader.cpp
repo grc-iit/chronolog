@@ -128,22 +128,10 @@ void reader_thread( int tid, struct thread_arg * t)
 
 int main(int argc, char**argv)
 {
-    std::string conf_file_path;
-    conf_file_path = parse_conf_path_arg(argc, argv);
-    if(conf_file_path.empty())
-    {
-        std::exit(EXIT_FAILURE);
-    }
+    chronolog::ClientPortalServiceConf portalConf("ofi+sockets", "127.0.0.1", 5555, 55);
+    int result = chronolog::chrono_monitor::initialize("file", "/tmp/chrono_client.log", spdlog::level::debug, "ChronoClient", 102400, 3, spdlog::level::debug);
 
-    ChronoLogRPCImplementation protocol = CHRONOLOG_THALLIUM_SOCKETS;
-    ChronoLog::ConfigurationManager confManager(conf_file_path);
-    int result = chronolog::chrono_monitor::initialize(confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE
-                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
-                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
-                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME
-                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILESIZE
-                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILENUM
-                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.FLUSHLEVEL);
+
     if(result == 1)
     {
         exit(EXIT_FAILURE);
@@ -155,9 +143,9 @@ int main(int argc, char**argv)
     std::vector <struct thread_arg> t_args(num_threads);
     std::vector <std::thread> workers(num_threads);
 
-    std::string server_ip = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP;
-    int base_port = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT;
-    client = new chronolog::Client(confManager);
+//    std::string server_ip = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP;
+   // int base_port = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT;
+    client = new chronolog::Client(portalConf);
 
     int ret = client->Connect();
 

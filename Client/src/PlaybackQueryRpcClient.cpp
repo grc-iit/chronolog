@@ -66,6 +66,7 @@ int chl::PlaybackQueryRpcClient::send_story_playback_request(chl::ChronicleName 
     
     try
     {
+        LOG_DEBUG("[PlaybackQueryRpcClient] {} ; send_story_playback_request for Story {}{}", chl::to_string(playback_service_id), chronicle_name,story_name);
         story_playback_request.on(playback_service_handle)( theClientQueryService.get_service_id(), query_id, chronicle_name,story_name,start_time,end_time);
 
 
