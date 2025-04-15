@@ -31,7 +31,7 @@ target_link_libraries(chrono_player ${HDF5_LIBRARIES})
 
 set_target_properties(chrono_player PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
 
-####
+#### TransferAgentTest
 add_executable(transfer_agent_test
     ${CMAKE_CURRENT_SOURCE_DIR}/TransferAgentTest.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/StoryChunkTransferAgent.cpp
@@ -43,8 +43,22 @@ target_include_directories(transfer_agent_test PRIVATE
     ${CMAKE_SOURCE_DIR}/chrono_common
     ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/include)
 target_link_libraries(transfer_agent_test chronolog_client thallium)
-###
 
+#### PlaybackServiceTest
+add_executable(playback_service_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/PlaybackServiceTest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/PlaybackService.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/StoryChunkTransferAgent.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunkExtractor.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunk.cpp)
+
+target_include_directories(playback_service_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/chrono_common
+    ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/include)
+target_link_libraries(playback_service_test chronolog_client thallium)
+
+#### HDF5 ArchiveReader Test
 add_executable(hdf5_archive_reader_test
     ${CMAKE_CURRENT_SOURCE_DIR}/HDF5ArchiveReadingAgentTest.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/HDF5ArchiveReadingAgent.cpp

@@ -29,7 +29,7 @@ void writer_thread(struct thread_arg * t)
     std::map <std::string, std::string> story_attrs;
 
     // Create the chronicle
-    int ret = client->CreateChronicle(t->chronicle, chronicle_attrs, flags);
+    int ret= client->CreateChronicle(t->chronicle, chronicle_attrs, flags);
     LOG_INFO("[ClientLibStoryReader] Chronicle created: tid={}, ChronicleName={}, Flags: {}", t->tid , t->chronicle, flags);
 
     // Acquire the story
@@ -39,7 +39,7 @@ void writer_thread(struct thread_arg * t)
     // Assertion for successful story acquisition or expected errors
     assert(acquire_ret.first == chronolog::CL_SUCCESS || acquire_ret.first == chronolog::CL_ERR_NOT_EXIST ||
            acquire_ret.first == chronolog::CL_ERR_NO_KEEPERS);
-
+/*
     // If story acquisition is successful, log events to the story
     if(chronolog::CL_SUCCESS == acquire_ret.first)
     {
@@ -56,7 +56,7 @@ void writer_thread(struct thread_arg * t)
         }
     }
 
-    LOG_INFO("[ClientLibStoryReader] Writer thread tid={} finished logging messages for story {}-{} segment {}-{}", t->tid,t->chronicle,t->story, t->segment_start, t->segment_end);
+  */  LOG_INFO("[ClientLibStoryReader] Writer thread tid={} finished logging messages for story {}-{} segment {}-{}", t->tid,t->chronicle,t->story, t->segment_start, t->segment_end);
     LOG_INFO("[ClientLibStoryReader] Writer thread tid={} exiting ", t->tid);
 }
 
@@ -66,10 +66,10 @@ void reader_thread( int tid, struct thread_arg * t)
 {
     LOG_INFO("[ClientLibStoryReader] Reader thread tid={} starting",tid);
 
-   // t->chronicle="CHRONICLE";
-   // t->story="STORY";
-   // t->segment_start=1739909340680367449;
-   // t->segment_end=1739909342245021766;
+    t->chronicle="CHRONICLE";
+    t->story="STORY";
+    t->segment_start=1739909340680367449;
+    t->segment_end=1739909342245021766;
     // make the reader thread sleep to allow the writer threads create the story and log some events 
     // allow the events to propagate through the keeper/grappher into ChronoLog store
     while(t->segment_end==0)
@@ -78,14 +78,15 @@ void reader_thread( int tid, struct thread_arg * t)
         sleep(60);
     }
 
-    sleep(6*60);
-
     int ret = chronolog::CL_ERR_UNKNOWN;;
     std::map <std::string, std::string> chronicle_attrs;
     std::map <std::string, std::string> story_attrs;
     int flags = 1;
 
     std::vector<chronolog::Event> playback_events;
+    // Create the chronicle
+    client->CreateChronicle(t->chronicle, chronicle_attrs, flags);
+    LOG_INFO("[ClientLibStoryReader] Chronicle created: tid={}, ChronicleName={}, Flags: {}", t->tid , t->chronicle, flags);
 
     // Acquire the story
     auto acquire_ret = client->AcquireStory(t->chronicle, t->story, story_attrs, flags);
@@ -112,6 +113,7 @@ void reader_thread( int tid, struct thread_arg * t)
             LOG_INFO("[ClientLibStoryReader] Reader thread tid={} found Player for story: {} {}, Ret: {}",tid , t->chronicle, t->story, ret);
         }
 
+        sleep(6*60);
         // Release the story
         ret = client->ReleaseStory(t->chronicle, t->story);
         LOG_INFO("[ClientLibStoryReader] Reader thread tid={} released story: {} {}, Ret: {}", tid , t->chronicle, t->story, ret);
@@ -148,7 +150,7 @@ int main(int argc, char**argv)
     }
     LOG_INFO("[ClientLibStoryReader] Running...");
 
-    int num_threads = 4;
+    int num_threads = 2;
 
     std::vector <struct thread_arg> t_args(num_threads);
     std::vector <std::thread> workers(num_threads);
@@ -169,7 +171,7 @@ int main(int argc, char**argv)
     std::string chronicle_name("CHRONICLE");
     std::string story_name("STORY");
 
-    for(int i = 0; i < num_threads; ++i)
+   /* for(int i = 0; i < num_threads; ++i)
     {
         t_args[i].tid = i;
         t_args[i].chronicle = chronicle_name;
@@ -184,6 +186,9 @@ int main(int argc, char**argv)
         {   workers[i] = std::move( std::thread(reader_thread, i , &t_args[i-1])); }
         
     }
+*/
+    num_threads = 1;
+    workers[0] = std::move( std::thread(reader_thread, 0 , &t_args[0])); 
 
     for(int i = 0; i < num_threads; i++)
         workers[i].join();
