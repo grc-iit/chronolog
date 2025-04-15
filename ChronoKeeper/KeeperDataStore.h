@@ -8,9 +8,9 @@
 
 #include <thallium.hpp>
 
+#include <StoryChunkExtractionQueue.h>
 #include "IngestionQueue.h"
 #include "StoryPipeline.h"
-#include "StoryChunkExtractionQueue.h"
 
 
 namespace chronolog

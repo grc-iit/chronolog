@@ -7,8 +7,8 @@
 #include <cstdint>
 #include <fstream>
 
+#include <chronolog_errcode.h>
 #include "ClientConfiguration.h"
-#include "chronolog_errcode.h"
 
 
 namespace chronolog

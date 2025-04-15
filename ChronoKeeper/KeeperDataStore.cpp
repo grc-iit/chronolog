@@ -6,9 +6,9 @@
 
 #include <thallium.hpp>
 
-#include "chronolog_errcode.h"
-#include "KeeperDataStore.h"
-#include "chrono_monitor.h"
+#include <chronolog_errcode.h>
+#include <chrono_monitor.h>
+#include <KeeperDataStore.h>
 
 namespace chl = chronolog;
 namespace tl = thallium;

@@ -5,16 +5,16 @@
 #include <thallium.hpp>
 #include <thallium/serialization/stl/string.hpp>
 
-#include "KeeperIdCard.h"
-#include "KeeperRegistrationMsg.h"
-#include "KeeperStatsMsg.h"
-#include "GrapherIdCard.h"
-#include "GrapherRegistrationMsg.h"
-#include "GrapherStatsMsg.h"
-#include "PlayerIdCard.h"
-#include "PlayerRegistrationMsg.h"
-#include "PlayerStatsMsg.h"
-#include "chrono_monitor.h"
+#include <KeeperIdCard.h>
+#include <KeeperRegistrationMsg.h>
+#include <KeeperStatsMsg.h>
+#include <GrapherIdCard.h>
+#include <GrapherRegistrationMsg.h>
+#include <GrapherStatsMsg.h>
+#include <PlayerIdCard.h>
+#include <PlayerRegistrationMsg.h>
+#include <PlayerStatsMsg.h>
+#include <chrono_monitor.h>
 #include "KeeperRegistry.h"
 
 namespace tl = thallium;

@@ -6,9 +6,9 @@
 
 #include <thallium.hpp>
 
-#include "chronolog_errcode.h"
+#include <chronolog_errcode.h>
+#include <chrono_monitor.h>
 #include "GrapherDataStore.h"
-#include "chrono_monitor.h"
 
 namespace chl = chronolog;
 namespace tl = thallium;

@@ -14,7 +14,7 @@
 #include <chronolog_errcode.h>
 #include <chrono_monitor.h>
 
-#include "chronolog_types.h"
+#include <chronolog_types.h>
 
 enum StoryIndexingGranularity
 {

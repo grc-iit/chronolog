@@ -6,11 +6,11 @@
 #include <deque>
 #include <unordered_map>
 #include <mutex>
-#include "chrono_monitor.h"
+#include <chrono_monitor.h>
 
-#include "chronolog_types.h"
-#include "StoryChunk.h"
-#include "StoryChunkIngestionHandle.h"
+#include <chronolog_types.h>
+#include <StoryChunk.h>
+#include <StoryChunkIngestionHandle.h>
 
 //
 // IngestionQueue is a funnel into the MemoryDataStore

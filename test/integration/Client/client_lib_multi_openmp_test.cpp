@@ -4,7 +4,7 @@
 #include <thread>
 #include <omp.h>
 #include <cmd_arg_parse.h>
-#include "chrono_monitor.h"
+#include <chrono_monitor.h>
 
 #define STORY_NAME_LEN 32
 

@@ -7,9 +7,9 @@
 #include <mutex>
 #include <iostream>
 
-#include "chronolog_types.h"
-#include "StoryChunk.h"
-#include "StoryChunkExtractionQueue.h"
+#include <chronolog_types.h>
+#include <StoryChunk.h>
+#include <StoryChunkExtractionQueue.h>
 
 namespace chronolog
 {

@@ -6,12 +6,12 @@
 #include <thallium/serialization/stl/vector.hpp>
 #include <thallium/serialization/stl/unordered_map.hpp>
 
-#include "chronolog_types.h"
-#include "KeeperIdCard.h"
+#include <chronolog_types.h>
+#include <KeeperIdCard.h>
 
+#include <ConnectResponseMsg.h>
+#include <AcquireStoryResponseMsg.h>
 #include "VisorClientPortal.h"
-#include "ConnectResponseMsg.h"
-#include "AcquireStoryResponseMsg.h"
 
 namespace tl = thallium;
 

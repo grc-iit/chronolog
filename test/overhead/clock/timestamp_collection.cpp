@@ -7,7 +7,7 @@
 #include <thread>
 #include <sched.h>
 #include <unistd.h>
-#include "common.h"
+#include <common.h>
 
 #define NUM_TIMESTAMPS (1000 * 1000)
 

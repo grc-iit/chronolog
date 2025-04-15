@@ -4,18 +4,18 @@
 
 #include <signal.h>
 
-#include "GrapherIdCard.h"
+#include <ConfigurationManager.h>
+#include <GrapherIdCard.h>
+#include <StoryChunkExtractionQueue.h>
+#include <StoryChunkExtractor.h>
+#include <cmd_arg_parse.h>
 #include "GrapherRecordingService.h"
 #include "GrapherRegClient.h"
 #include "ChunkIngestionQueue.h"
-#include "StoryChunkExtractionQueue.h"
-#include "StoryChunkExtractor.h"
 #include "GrapherDataStore.h"
 #include "DataStoreAdminService.h"
-#include "ConfigurationManager.h"
 #include "CSVFileChunkExtractor.h"
 #include "HDF5FileChunkExtractor.h"
-#include "cmd_arg_parse.h"
 
 namespace chl = chronolog;
 

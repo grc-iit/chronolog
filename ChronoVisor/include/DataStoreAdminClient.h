@@ -4,8 +4,8 @@
 #include <iostream>
 #include <thallium.hpp>
 #include <thallium/serialization/stl/string.hpp>
-#include "chrono_monitor.h"
-#include "chronolog_types.h"
+#include <chrono_monitor.h>
+#include <chronolog_types.h>
 
 namespace tl = thallium;
 

@@ -1,8 +1,8 @@
 #include <unistd.h>
 #include <string>
+#include <city.h>
 #include "ChronologClientImpl.h"
 #include "StorytellerClient.h"
-#include "city.h"
 
 namespace chl = chronolog;
 

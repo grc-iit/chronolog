@@ -5,10 +5,10 @@
 #include <iostream>
 #include <deque>
 #include <mutex>
-#include "chrono_monitor.h"
+#include <chrono_monitor.h>
 
-#include "chronolog_types.h"
-#include "StoryChunk.h"
+#include <chronolog_types.h>
+#include <StoryChunk.h>
 
 namespace chronolog
 {

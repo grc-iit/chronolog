@@ -1,6 +1,6 @@
 #include <thallium/serialization/stl/vector.hpp>
 #include <cereal/archives/binary.hpp>
-#include "StoryChunkExtractorRDMA.h"
+#include <StoryChunkExtractorRDMA.h>
 
 namespace tl = thallium;
 

@@ -14,10 +14,10 @@
 #include <thallium/serialization/stl/vector.hpp>
 #include <thallium/serialization/stl/map.hpp>
 
-#include "chrono_monitor.h"
-#include "chronolog_types.h"
-#include "ConnectResponseMsg.h"
-#include "AcquireStoryResponseMsg.h"
+#include <chrono_monitor.h>
+#include <chronolog_types.h>
+#include <ConnectResponseMsg.h>
+#include <AcquireStoryResponseMsg.h>
 
 namespace tl = thallium;
 

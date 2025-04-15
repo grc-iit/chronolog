@@ -1,7 +1,7 @@
 #include <thallium.hpp>
-#include "ConfigurationManager.h"
-#include "StoryChunk.h"
-#include "cmd_arg_parse.h"
+#include <ConfigurationManager.h>
+#include <StoryChunk.h>
+#include <cmd_arg_parse.h>
 #include <cereal/archives/binary.hpp>
 
 namespace tl = thallium;

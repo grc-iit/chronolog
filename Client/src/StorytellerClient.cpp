@@ -4,7 +4,7 @@
 #include <chrono>
 #include <climits>
 
-#include "../chrono_common/chronolog_types.h"
+#include <../chrono_common/chronolog_types.h>
 #include "StorytellerClient.h"
 #include "KeeperRecordingClient.h"
 #include "PlaybackQueryRpcClient.h"

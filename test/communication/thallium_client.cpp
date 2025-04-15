@@ -10,7 +10,7 @@
 #include <thallium/serialization/stl/vector.hpp>
 #include <thallium/serialization/stl/string.hpp>
 #include <thallium/serialization/stl/array.hpp>
-#include "chrono_monitor.h"
+#include <chrono_monitor.h>
 
 namespace tl = thallium;
 using namespace std::chrono;

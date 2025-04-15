@@ -8,7 +8,7 @@
 #include <unordered_map>
 #include <regex>
 #include <filesystem>
-#include "chrono_monitor.h"
+#include <chrono_monitor.h>
 
 int main(int argc, char*argv[])
 {

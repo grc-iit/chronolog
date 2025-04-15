@@ -6,10 +6,10 @@
 #include <map>
 
 #include <thallium.hpp>
-#include "chrono_monitor.h"
-#include "KeeperIdCard.h"
-#include "chronolog_types.h"
-#include "chronolog_client.h"
+#include <chrono_monitor.h>
+#include <KeeperIdCard.h>
+#include <chronolog_types.h>
+#include <chronolog_client.h>
 
 #include "ClientQueryService.h"
 

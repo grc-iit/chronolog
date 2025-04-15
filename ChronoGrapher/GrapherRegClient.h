@@ -5,10 +5,10 @@
 #include <thallium/serialization/stl/string.hpp>
 #include <thallium.hpp>
 
-#include "GrapherIdCard.h"
-#include "GrapherRegistrationMsg.h"
-#include "GrapherStatsMsg.h"
-#include "chronolog_errcode.h"
+#include <GrapherIdCard.h>
+#include <GrapherRegistrationMsg.h>
+#include <GrapherStatsMsg.h>
+#include <chronolog_errcode.h>
 
 namespace tl = thallium;
 

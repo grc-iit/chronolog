@@ -9,17 +9,17 @@
 
 #include <thallium.hpp>
 
-#include "chronolog_types.h"
-#include "KeeperIdCard.h"
-#include "KeeperStatsMsg.h"
-#include "KeeperRegistrationMsg.h"
-#include "GrapherIdCard.h"
-#include "GrapherRegistrationMsg.h"
-#include "GrapherStatsMsg.h"
-#include "PlayerIdCard.h"
-#include "PlayerRegistrationMsg.h"
-#include "PlayerStatsMsg.h"
-#include "ConfigurationManager.h"
+#include <chronolog_types.h>
+#include <KeeperIdCard.h>
+#include <KeeperStatsMsg.h>
+#include <KeeperRegistrationMsg.h>
+#include <GrapherIdCard.h>
+#include <GrapherRegistrationMsg.h>
+#include <GrapherStatsMsg.h>
+#include <PlayerIdCard.h>
+#include <PlayerRegistrationMsg.h>
+#include <PlayerStatsMsg.h>
+#include <ConfigurationManager.h>
 
 namespace chronolog
 {

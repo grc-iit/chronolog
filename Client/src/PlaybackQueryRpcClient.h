@@ -3,9 +3,9 @@
 
 #include <thallium.hpp>
 
-#include "ServiceId.h"
-#include "chronolog_types.h"
-#include "chrono_monitor.h"
+#include <ServiceId.h>
+#include <chronolog_types.h>
+#include <chrono_monitor.h>
 
 #include "ClientQueryService.h"
 

@@ -3,8 +3,8 @@
 #include <thallium.hpp>
 #include <unistd.h>
 
-#include "StoryChunkExtractor.h"
-#include "chronolog_errcode.h"
+#include <StoryChunkExtractor.h>
+#include <chronolog_errcode.h>
 
 
 namespace tl = thallium;
