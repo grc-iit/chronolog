@@ -24,6 +24,7 @@ target_sources(chrono_grapher PRIVATE
     ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunkWriter.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/StoryPipeline.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunkExtractor.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/ConfigurationManager.cpp
     ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/src/chrono_monitor.cpp)
 
 target_link_libraries(chrono_grapher chronolog_client thallium)
