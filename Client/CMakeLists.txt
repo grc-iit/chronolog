@@ -39,7 +39,7 @@ target_link_libraries(chronolog_client thallium)
 set(PUBLIC_HEADER_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/chronolog_client.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/ClientConfiguration.h
-    ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/include/chronolog_errcode.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/client_errcode.h
 )
 
 # install library

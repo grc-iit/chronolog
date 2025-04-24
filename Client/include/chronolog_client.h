@@ -8,8 +8,7 @@
 #include <fstream>
 
 #include "ClientConfiguration.h"
-#include "chronolog_errcode.h"
-
+#include "client_errcode.h"
 
 namespace chronolog
 {
