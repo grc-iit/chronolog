@@ -33,8 +33,9 @@ typedef struct workload_conf_args_
 
 std::pair <std::string, workload_conf_args> cmd_arg_parse(int argc, char**argv)
 {
-    int rank;
+    int rank, size;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
     int opt;
     char*config_file = nullptr;
     workload_conf_args workload_args;
@@ -105,13 +106,13 @@ std::pair <std::string, workload_conf_args> cmd_arg_parse(int argc, char**argv)
                 std::cerr << "\nUsage: \n"
                              "-c|--config <config_file>\n"
                              "-i|--interactive\n"
-                             "-h|--chronicle_count <chronicle_count>\n"
-                             "-t|--story_count <story_count>\n"
-                             "-a|--min_event_size <min_event_size>\n"
-                             "-s|--ave_event_size <ave_event_size>\n"
-                             "-b|--max_event_size <max_event_size>\n"
-                             "-n|--event_count <event_count>\n"
-                             "-g|--event_interval <event_interval>\n"
+                             "-h|--chronicle_count <chronicle_count_per_proc>\n"
+                             "-t|--story_count <story_count_per_proc>\n"
+                             "-a|--min_event_size <min_event_size_in_byte>\n"
+                             "-s|--ave_event_size <ave_event_size_in_byte>\n"
+                             "-b|--max_event_size <max_event_size_in_byte>\n"
+                             "-n|--event_count <event_count_per_proc>\n"
+                             "-g|--event_interval <event_interval_in_us>\n"
                              "-r|--barrier\n"
                              "-f|--input <event_input_file>\n"
                              "-o|--shared_story\n"
@@ -137,25 +138,35 @@ std::pair <std::string, workload_conf_args> cmd_arg_parse(int argc, char**argv)
             else
             {
                 std::cout << "Interactive mode: off" << std::endl;
-                std::cout << "Chronicle count: " << workload_args.chronicle_count << std::endl;
-                std::cout << "Story count: " << workload_args.story_count << std::endl;
+                std::cout << "Number of processes: " << size << std::endl;
+                std::cout << "Chronicle count (#chronicles per proc): " << workload_args.chronicle_count << std::endl;
+                std::cout << "Story count (#stories per proc): " << workload_args.story_count << std::endl;
                 if(!workload_args.event_input_file.empty())
                 {
-                    std::cout << "Event input file specified: " << workload_args.event_input_file.c_str() << std::endl;
-                    std::cout << "Barrier: " << (workload_args.barrier ? "true" : "false") << std::endl;
-                    std::cout << "Shared story: " << (workload_args.shared_story ? "true" : "false") << std::endl;
+                    std::cout << "Event input file specified (event payloads in lines): " 
+                        << workload_args.event_input_file.c_str() << std::endl;
+                    std::cout << "Barrier (hold on next data access until completion of the previous one): " 
+                        << (workload_args.barrier ? "true" : "false") << std::endl;
+                    std::cout << "Shared story (all procs access the same story): " 
+                        << (workload_args.shared_story ? "true" : "false") << std::endl;
                 }
                 else
                 {
-                    std::cout << "No event input file specified, use default/specified separate conf args ..."
-                              << std::endl;
-                    std::cout << "Min event size: " << workload_args.min_event_size << std::endl;
-                    std::cout << "Ave event size: " << workload_args.ave_event_size << std::endl;
-                    std::cout << "Max event size: " << workload_args.max_event_size << std::endl;
-                    std::cout << "Event count: " << workload_args.event_count << std::endl;
-                    std::cout << "Event interval: " << workload_args.event_interval << std::endl;
-                    std::cout << "Barrier: " << (workload_args.barrier ? "true" : "false") << std::endl;
-                    std::cout << "Shared story: " << (workload_args.shared_story ? "true" : "false") << std::endl;
+                    std::cout << "No event input file specified, use default/specified separate conf args ..." 
+                        << std::endl;
+                    std::cout << "Min event size (minimum of event payload length following a normal distirbution): " 
+                        << workload_args.min_event_size << " B" << std::endl;
+                    std::cout << "Ave event size (median of event payload length following a normal distirbution): " 
+                        << workload_args.ave_event_size << " B" << std::endl;
+                    std::cout << "Max event size (maximum of event payload length following a normal distirbution): " 
+                        << workload_args.max_event_size << " B" << std::endl;
+                    std::cout << "Event count (#events per proc): " << workload_args.event_count << std::endl;
+                    std::cout << "Event interval (time in-between event accesses): " 
+                        << workload_args.event_interval << " us" << std::endl;
+                    std::cout << "Barrier (hold on next data access until completion of the previous one): " 
+                        << (workload_args.barrier ? "true" : "false") << std::endl;
+                    std::cout << "Shared story (all procs access the same story): " 
+                        << (workload_args.shared_story ? "true" : "false") << std::endl;
                 }
             }
         }
@@ -167,15 +178,22 @@ std::pair <std::string, workload_conf_args> cmd_arg_parse(int argc, char**argv)
         {
             std::cout << "No config file specified, using default settings instead:" << std::endl;
             std::cout << "Interactive mode: " << (workload_args.interactive ? "on" : "off") << std::endl;
-            std::cout << "Chronicle count: " << workload_args.chronicle_count << std::endl;
-            std::cout << "Story count: " << workload_args.story_count << std::endl;
-            std::cout << "Min event size: " << workload_args.min_event_size << std::endl;
-            std::cout << "Ave event size: " << workload_args.ave_event_size << std::endl;
-            std::cout << "Max event size: " << workload_args.max_event_size << std::endl;
-            std::cout << "Event count: " << workload_args.event_count << std::endl;
-            std::cout << "Event interval: " << workload_args.event_interval << std::endl;
-            std::cout << "Barrier: " << (workload_args.barrier ? "true" : "false") << std::endl;
-            std::cout << "Shared story: " << (workload_args.shared_story ? "true" : "false") << std::endl;
+            std::cout << "Number of processes: " << size << std::endl;
+            std::cout << "Chronicle count (#chronicles per proc): " << workload_args.chronicle_count << std::endl;
+            std::cout << "Story count (#stories per proc) : " << workload_args.story_count << std::endl;
+            std::cout << "Min event size (minimum of event payload length following a normal distirbution): " 
+                << workload_args.min_event_size << " B" << std::endl;
+            std::cout << "Ave event size (median of event payload length following a normal distirbution): " 
+                << workload_args.ave_event_size << " B" << std::endl;
+            std::cout << "Max event size (maximum of event payload length following a normal distirbution): " 
+                << workload_args.max_event_size << " B" << std::endl;
+            std::cout << "Event count (#events per proc): " << workload_args.event_count << std::endl;
+            std::cout << "Event interval (time in-between event accesses): " 
+                << workload_args.event_interval << " us" << std::endl;
+            std::cout << "Barrier (hold on next data access until completion of the previous one): " 
+                << (workload_args.barrier ? "true" : "false") << std::endl;
+            std::cout << "Shared story (all procs access the same story): " 
+                << (workload_args.shared_story ? "true" : "false") << std::endl;
         }
         return {};
     }
@@ -323,8 +341,17 @@ int main(int argc, char**argv)
     {
         conf_file_path = default_conf_file_path;
     }
-    chronolog::ClientPortalServiceConf portalConf("ofi+sockets", "127.0.0.1", 5555, 55);
-    int result = chronolog::chrono_monitor::initialize("file", "chronoclient_logfile.txt", spdlog::level::debug, "ChronoClient", 102400, 3, spdlog::level::warn);
+    std::string chronolog_client_log_file = "chronoclient_logfile.txt";
+    chronolog::ClientPortalServiceConf portalConf("ofi+sockets", "172.25.101.25", 5555, 55);
+    int result = chronolog::chrono_monitor::initialize("file", chronolog_client_log_file, spdlog::level::debug, 
+                                                       "ChronoClient", 102400, 3, spdlog::level::warn);
+    if(rank == 0)
+    {
+        std::cout << "ChronoVisor contact point: " << portalConf.proto_conf_ << std::string("://")
+            << portalConf.ip_ << std::string(":") << portalConf.port_ 
+            << std::string("@") << portalConf.provider_id_ << std::endl;
+        std::cout << "ChronoLog Client logging to: " << chronolog_client_log_file << std::endl;
+    }
 
     if(result == 1)
     {
@@ -475,7 +502,7 @@ std::vector <std::string> &command_subs)
                                             workload_args.event_count / workload_args.story_count;
                                     for(uint64_t k = 0; k < event_count_per_story; k++)
                                     {
-                                        if(workload_args.event_input_file.empty())
+                                        if(workload_args.evet_input_file.empty())
                                         {
                                             // randomly generate events size if range is specified
                                             writeEventTimer.pauseTimer();
@@ -593,63 +620,51 @@ std::vector <std::string> &command_subs)
     MPI_Reduce(&event_payload_size_per_rank, &total_event_payload_size, 1, MPI_UINT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
     if(rank == 0)
     {
-        std::cout << "======================================" << std::endl;
-        std::cout << "======== Performance results: ========" << std::endl;
-        std::cout << "======================================" << std::endl;
+        std::cout << "==================================================================" << std::endl;
+        std::cout << "=================      Performance results:      =================" << std::endl;
+        std::cout << "==================================================================" << std::endl;
         global_e2e_duration_ave /= size;
-        std::cout << "Total payload written: " << total_event_payload_size << std::endl;
+        std::cout << "Total payload written: " << total_event_payload_size << " bytes" << std::endl;
+        double connect_thpt, disconnect_thpt;
+        double create_chronicle_thpt, destroy_chronicle_thpt;
+        double acquire_story_thpt, release_story_thpt, destroy_story_thpt;
+        double e2e_bandwith, data_access_bw, data_access_thpt;
         if(workload_args.barrier)
         {
-            std::cout << "Connect throughput: " << (double)size / connectTimer.getDuration() << " op/s" << std::endl;
-            std::cout << "CreateChronicle throughput: "
-                      << (double)workload_args.chronicle_count * size / createChronicleTimer.getDuration() << " op/s"
-                      << std::endl;
-            std::cout << "AcquireStory throughput: "
-                      << (double)workload_args.story_count * size / acquireStoryTimer.getDuration() << " op/s"
-                      << std::endl;
-            std::cout << "ReleaseStory throughput: "
-                      << (double)workload_args.story_count * size / releaseStoryTimer.getDuration() << " op/s"
-                      << std::endl;
-            std::cout << "DestroyStory throughput: "
-                      << (double)workload_args.story_count * size / destroyStoryTimer.getDuration() << " op/s"
-                      << std::endl;
-            std::cout << "DestroyChronicle throughput: "
-                      << (double)workload_args.chronicle_count * size / destroyChronicleTimer.getDuration() << " op/s"
-                      << std::endl;
-            std::cout << "Disconnect throughput: " << (double)size / disconnectTimer.getDuration() << " op/s"
-                      << std::endl;
-            std::cout << "End-to-end bandwidth: " << (double)total_event_payload_size / global_e2e_duration / 1e6
-                      << " MB/s" << std::endl;
-            std::cout << "Data-access bandwidth: "
-                      << (double)total_event_payload_size / writeEventTimer.getDuration() / 1e6 << " "
-                                                                                                   "MB/s" << std::endl;
+            connect_thpt = (double)size / connectTimer.getDuration();
+            create_chronicle_thpt = (double)workload_args.chronicle_count * size / createChronicleTimer.getDuration();
+            acquire_story_thpt = (double)workload_args.story_count * size / acquireStoryTimer.getDuration();
+            release_story_thpt = (double)workload_args.story_count * size / releaseStoryTimer.getDuration();
+            destroy_story_thpt = (double)workload_args.story_count * size / destroyStoryTimer.getDuration();
+            destroy_chronicle_thpt = (double)workload_args.chronicle_count * size / destroyChronicleTimer.getDuration();
+            disconnect_thpt = (double)size / disconnectTimer.getDuration();
+            e2e_bandwith = (double)total_event_payload_size / global_e2e_duration / 1e6;
+            data_access_bw = (double)total_event_payload_size / writeEventTimer.getDuration() / 1e6;
+            data_access_thpt = (double)workload_args.event_count * size / writeEventTimer.getDuration() / 1e6;
         }
         else
         {
-            std::cout << "Connect throughput: " << (double)size / connectTimer.getDurationAve() << " op/s" << std::endl;
-            std::cout << "CreateChronicle throughput: "
-                      << (double)workload_args.chronicle_count * size / createChronicleTimer.getDurationAve() << " op/s"
-                      << std::endl;
-            std::cout << "AcquireStory throughput: "
-                      << (double)workload_args.story_count * size / acquireStoryTimer.getDurationAve() << " op/s"
-                      << std::endl;
-            std::cout << "ReleaseStory throughput: "
-                      << (double)workload_args.story_count * size / releaseStoryTimer.getDurationAve() << " op/s"
-                      << std::endl;
-            std::cout << "DestroyStory throughput: "
-                      << (double)workload_args.story_count * size / destroyStoryTimer.getDurationAve() << " op/s"
-                      << std::endl;
-            std::cout << "DestroyChronicle throughput: "
-                      << (double)workload_args.chronicle_count / destroyChronicleTimer.getDurationAve() << " op/s"
-                      << std::endl;
-            std::cout << "Disconnect throughput: " << (double)size / disconnectTimer.getDurationAve() << " op/s"
-                      << std::endl;
-            std::cout << "End-to-end bandwidth: " << (double)total_event_payload_size / global_e2e_duration_ave / 1e6
-                      << " MB/s" << std::endl;
-            std::cout << "Data-access bandwidth: "
-                      << (double)total_event_payload_size / writeEventTimer.getDurationAve() / 1e6 << " MB/s"
-                      << std::endl;
+            connect_thpt = (double)size / connectTimer.getDurationAve();
+            create_chronicle_thpt = (double)workload_args.chronicle_count * size / createChronicleTimer.getDurationAve();
+            acquire_story_thpt = (double)workload_args.story_count * size / acquireStoryTimer.getDurationAve();
+            release_story_thpt = (double)workload_args.story_count * size / releaseStoryTimer.getDurationAve();
+            destroy_story_thpt = (double)workload_args.story_count * size / destroyStoryTimer.getDurationAve();
+            destroy_chronicle_thpt = (double)workload_args.chronicle_count * size / destroyChronicleTimer.getDurationAve();
+            disconnect_thpt = (double)size / disconnectTimer.getDurationAve();
+            e2e_bandwith = (double)total_event_payload_size / global_e2e_duration / 1e6;
+            data_access_bw = (double)total_event_payload_size / writeEventTimer.getDurationAve() / 1e6;
+            data_access_thpt = (double)workload_args.event_count * size / writeEventTimer.getDurationAve() / 1e6;
         }
+        std::cout << "Connect throughput: " << connect_thpt << " connections/s" << std::endl;
+        std::cout << "CreateChronicle throughput: " << create_chronicle_thpt << " creations/s" << std::endl;
+        std::cout << "AcquireStory throughput: " << acquire_story_thpt << " acquisitions/s" << std::endl;
+        std::cout << "ReleaseStory throughput: " << release_story_thpt << " releases/s" << std::endl;
+        std::cout << "DestroyStory throughput: " << destroy_story_thpt << " destructions/s" << std::endl;
+        std::cout << "DestroyChronicle throughput: " << destroy_chronicle_thpt << " desctructions/s" << std::endl;
+        std::cout << "Disconnect throughput: " << disconnect_thpt << " disconnections/s" << std::endl;
+        std::cout << "End-to-end (incl. metadata time) bandwidth: " << e2e_bandwith << " MB/s" << std::endl;
+        std::cout << "Data-access (excl. metadata time) bandwidth: " << data_access_bw << " MB/s" << std::endl;
+        std::cout << "Data-access (excl. metadata time) throughput: " << data_access_thpt << " events/s" << std::endl;
     }
 
     MPI_Finalize();
