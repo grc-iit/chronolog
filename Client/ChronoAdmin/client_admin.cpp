@@ -502,7 +502,7 @@ std::vector <std::string> &command_subs)
                                             workload_args.event_count / workload_args.story_count;
                                     for(uint64_t k = 0; k < event_count_per_story; k++)
                                     {
-                                        if(workload_args.evet_input_file.empty())
+                                        if(workload_args.event_input_file.empty())
                                         {
                                             // randomly generate events size if range is specified
                                             writeEventTimer.pauseTimer();
