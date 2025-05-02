@@ -117,7 +117,7 @@ class ChronologClientImpl;
 class Client
 {
 public:
-    Client(ClientPortalServiceConf const &);
+    Client(ClientPortalServiceConf const &, ClientQueryServiceConf const& = ClientQueryServiceConf{"ofi+sockets","127.0.0.1",5557,57});
 
     ~Client();
 

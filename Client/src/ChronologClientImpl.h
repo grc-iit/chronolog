@@ -31,7 +31,7 @@ public:
     static ChronologClientImpl*chronologClientImplInstance;
 
     static ChronologClientImpl*
-    GetClientImplInstance(chronolog::ClientPortalServiceConf const &);
+    GetClientImplInstance(chronolog::ClientPortalServiceConf const &, chronolog::ClientQueryServiceConf const &);
 
     // the classs is non-copyable
     ChronologClientImpl(ChronologClientImpl const &) = delete;
@@ -77,7 +77,7 @@ private:
     StorytellerClient*storyteller;
     ClientQueryService * storyReaderService;
     
-    ChronologClientImpl( ClientQueryServiceConf const& , ClientPortalServiceConf const&);
+    ChronologClientImpl(ClientPortalServiceConf const&, chronolog::ClientQueryServiceConf const&);
 
     void defineClientIdentity();
 
