@@ -61,7 +61,6 @@ chronolog::ChronologClientImpl::ChronologClientImpl(
 
     }
 
-
     std::string VISOR_NA_STRING =
             clientPortalServiceConf.proto_conf() + "://" + clientPortalServiceConf.ip() + ":" +
             std::to_string(clientPortalServiceConf.port());
