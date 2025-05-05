@@ -104,6 +104,20 @@ public:
         serT&logEvents;
     }
 
+inline std::string to_string() const
+{
+        std::stringstream sstream;
+        sstream << "StoryChunk:{" << storyId << ":" << startTime << ":" << endTime << "} has " << logEvents.size()
+           << " events total";
+        for(auto const &event: logEvents)
+        {
+            sstream << std::endl <<"<" << std::get <0>(event.first) << ", " << std::get <1>(event.first) << ", "
+               << std::get <2>(event.first);
+        }
+        return sstream.str();
+}
+
+
 private:
     ChronicleName chronicleName;
     StoryName storyName;
@@ -113,6 +127,7 @@ private:
     uint64_t revisionTime;
     std::map <EventSequence, LogEvent> logEvents;
 };
+
 
 class StoryChunkHVL
 {
