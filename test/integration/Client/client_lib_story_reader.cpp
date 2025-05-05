@@ -39,7 +39,7 @@ void writer_thread(struct thread_arg * t)
     // Assertion for successful story acquisition or expected errors
     assert(acquire_ret.first == chronolog::CL_SUCCESS || acquire_ret.first == chronolog::CL_ERR_NOT_EXIST ||
            acquire_ret.first == chronolog::CL_ERR_NO_KEEPERS);
-/*
+
     // If story acquisition is successful, log events to the story
     if(chronolog::CL_SUCCESS == acquire_ret.first)
     {
@@ -56,7 +56,7 @@ void writer_thread(struct thread_arg * t)
         }
     }
 
-  */  LOG_INFO("[ClientLibStoryReader] Writer thread tid={} finished logging messages for story {}-{} segment {}-{}", t->tid,t->chronicle,t->story, t->segment_start, t->segment_end);
+    LOG_INFO("[ClientLibStoryReader] Writer thread tid={} finished logging messages for story {}-{} segment {}-{}", t->tid,t->chronicle,t->story, t->segment_start, t->segment_end);
     LOG_INFO("[ClientLibStoryReader] Writer thread tid={} exiting ", t->tid);
 }
 
@@ -66,10 +66,6 @@ void reader_thread( int tid, struct thread_arg * t)
 {
     LOG_INFO("[ClientLibStoryReader] Reader thread tid={} starting",tid);
 
-    t->chronicle="CHRONICLE";
-    t->story="STORY";
-    t->segment_start=1739909340680367449;
-    t->segment_end=1739909342245021766;
     // make the reader thread sleep to allow the writer threads create the story and log some events 
     // allow the events to propagate through the keeper/grappher into ChronoLog store
     while(t->segment_end==0)
@@ -113,7 +109,6 @@ void reader_thread( int tid, struct thread_arg * t)
             LOG_INFO("[ClientLibStoryReader] Reader thread tid={} found Player for story: {} {}, Ret: {}",tid , t->chronicle, t->story, ret);
         }
 
-        sleep(6*60);
         // Release the story
         ret = client->ReleaseStory(t->chronicle, t->story);
         LOG_INFO("[ClientLibStoryReader] Reader thread tid={} released story: {} {}, Ret: {}", tid , t->chronicle, t->story, ret);
@@ -129,6 +124,7 @@ void reader_thread( int tid, struct thread_arg * t)
 int main(int argc, char**argv)
 {
     chronolog::ClientPortalServiceConf portalConf("ofi+sockets", "127.0.0.1", 5555, 55);
+    chronolog::ClientQueryServiceConf clientQueryConf("ofi+sockets", "127.0.0.1", 5557, 57);
     int result = chronolog::chrono_monitor::initialize("file", "/tmp/chrono_client.log", spdlog::level::debug, "ChronoClient", 102400, 3, spdlog::level::debug);
 
 
@@ -143,9 +139,7 @@ int main(int argc, char**argv)
     std::vector <struct thread_arg> t_args(num_threads);
     std::vector <std::thread> workers(num_threads);
 
-//    std::string server_ip = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP;
-   // int base_port = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT;
-    client = new chronolog::Client(portalConf);
+    client = new chronolog::Client(portalConf, clientQueryConf);
 
     int ret = client->Connect();
 
@@ -156,10 +150,11 @@ int main(int argc, char**argv)
         return -1;
     }
 
+
     std::string chronicle_name("CHRONICLE");
     std::string story_name("STORY");
 
-   /* for(int i = 0; i < num_threads; ++i)
+   for(int i = 0; i < num_threads; ++i)
     {
         t_args[i].tid = i;
         t_args[i].chronicle = chronicle_name;
@@ -174,9 +169,6 @@ int main(int argc, char**argv)
         {   workers[i] = std::move( std::thread(reader_thread, i , &t_args[i-1])); }
         
     }
-*/
-    num_threads = 1;
-    workers[0] = std::move( std::thread(reader_thread, 0 , &t_args[0])); 
 
     for(int i = 0; i < num_threads; i++)
         workers[i].join();

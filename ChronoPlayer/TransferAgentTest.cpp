@@ -34,7 +34,7 @@ int main()
                                                     );
 
 
-    chl::ServiceId localServiceId("ofi+sockets", "127.0.0.1",5555,55);
+    chl::ServiceId localServiceId("ofi+sockets", "127.0.0.1",2225,25);
 
     std::string LOCAL_SERVICE_NA_STRING;
     localServiceId.get_service_as_string(LOCAL_SERVICE_NA_STRING);
