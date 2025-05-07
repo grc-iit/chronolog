@@ -93,6 +93,12 @@ void reader_thread( int tid, struct thread_arg * t)
     std::map <std::string, std::string> story_attrs;
     int flags = 1;
 
+    std::vector<chronolog::Event> playback_events;
+    // Create the chronicle
+    ret= client->CreateChronicle(t->chronicle, chronicle_attrs, flags);
+    LOG_INFO("[ClientLibStoryReader] Chronicle created: tid={}, ChronicleName={}, Flags: {}", t->tid , t->chronicle, flags);
+
+
     // Acquire the story
     auto acquire_ret = client->AcquireStory(t->chronicle, t->story, story_attrs, flags);
     LOG_INFO("[ClientLibStoryReader] Reader thread tid={} acquired story: {} {}, Ret: {}", tid , t->chronicle, t->story, acquire_ret.first);
@@ -154,10 +160,6 @@ int main(int argc, char**argv)
     }
     LOG_INFO("[ClientLibStoryReader] Running...");
 
-    int num_threads = 4;
-
-    std::vector <struct thread_arg> t_args(num_threads);
-    std::vector <std::thread> workers(num_threads);
 
     std::string server_ip = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP;
     int base_port = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT;
@@ -175,7 +177,28 @@ int main(int argc, char**argv)
     std::string chronicle_name("CHRONICLE");
     std::string story_name("STORY");
 
-    for(int i = 0; i < num_threads; ++i)
+
+// simple reader test for the case when we do know that HDF5 archive contains the story segment for the time range we'd like to read
+
+    LOG_INFO("[ClientLibStoryReader] Starting simple reader test for story: {}-{}", chronicle_name, story_name);
+    
+    struct thread_arg segment_arg{0, chronicle_name,story_name,1746486900000000000,1746486930000000000};
+
+    reader_thread(0, & segment_arg); 
+
+    LOG_INFO("[ClientLibStoryReader] Finished simple reader test for story: {}-{}", chronicle_name, story_name);
+
+
+//// writer reader test 
+    
+    LOG_INFO("[ClientLibStoryReader] Starting multithreaded writer / reader test for story: {}-{}", chronicle_name, story_name);
+
+    int num_threads = 2;
+
+    std::vector <struct thread_arg> t_args(num_threads);
+    std::vector <std::thread> workers(num_threads);
+
+   for(int i = 0; i < num_threads; ++i)
     {
         t_args[i].tid = i;
         t_args[i].chronicle = chronicle_name;
