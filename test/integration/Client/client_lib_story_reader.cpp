@@ -156,7 +156,6 @@ int main(int argc, char**argv)
 
     LOG_INFO("[ClientLibStoryReader] Running...");
 
-
     client = new chronolog::Client(portalConf, clientQueryConf);
 
     int ret = client->Connect();
