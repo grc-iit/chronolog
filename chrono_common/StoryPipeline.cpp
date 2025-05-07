@@ -279,9 +279,18 @@ void chronolog::StoryPipeline::mergeEvents(chronolog::StoryChunk &other_chunk)
     {
         // find the chunk_to_merge into : we are lookingt for
         // the chunk preceeding the one with the startTime > other_chunk.getStartTime()
-        chunk_to_merge_iter = --storyTimelineMap.upper_bound(other_chunk.getStartTime());
-        LOG_DEBUG("[StoryPipeline] StoryId {} timeline {}-{} : Merging in StoryChunk {}-{} starts with chunk {}", storyId, timelineStart, timelineEnd, 
-                other_chunk.getStartTime(), other_chunk.getEndTime(), (*chunk_to_merge_iter).second->getStartTime());
+        chunk_to_merge_iter = storyTimelineMap.upper_bound(other_chunk.getStartTime());
+        if(chunk_to_merge_iter != storyTimelineMap.begin())
+        {
+            chunk_to_merge_iter--;
+            LOG_DEBUG("[StoryPipeline] StoryId {} timeline {}-{} : Merging in StoryChunk {}-{} starts with chunk {}", storyId, timelineStart, timelineEnd,
+                    other_chunk.getStartTime(), other_chunk.getEndTime(), (*chunk_to_merge_iter).second->getStartTime());
+        }
+        else
+        {
+            LOG_ERROR("[StoryPipeline] StoryId {} timeline {}-{} : Merging in StoryChunk {}-{} - no chunk to merge into", storyId, timelineStart, timelineEnd,
+                    other_chunk.getStartTime(), other_chunk.getEndTime());
+        }
     }
     else
     {
