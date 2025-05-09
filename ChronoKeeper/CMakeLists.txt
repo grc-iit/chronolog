@@ -12,6 +12,7 @@ message("build target : chrono_keeper")
 
 add_executable(chrono_keeper)
 target_include_directories(chrono_keeper PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/chrono_common
     ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/include)

@@ -7,7 +7,7 @@
 #include <thallium.hpp>
 #include <array>
 #include <thallium/serialization/stl/vector.hpp>
-#include <../../ChronoAPI/ChronoLog/include/common.h>
+#include <common.h>
 #include <mpi.h>
 #include <chrono_monitor.h>
 
