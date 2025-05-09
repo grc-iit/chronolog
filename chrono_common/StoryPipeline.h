@@ -50,10 +50,10 @@ public:
     { return acceptanceWindow; }
 
     uint64_t getTimelineStart() const
-    { return timelineStart; }
+    { return (*storyTimelineMap.begin()).first; }//timelineStart; }
 
     uint64_t getTimelineEnd() const
-    { return timelineEnd; }
+    { return (*(--storyTimelineMap.end())).first;} //timelineEnd; }
 
 private:
 
