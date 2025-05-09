@@ -312,21 +312,21 @@ void chronolog::StoryPipeline::mergeEvents(chronolog::StoryChunk &other_chunk)
         {
           // other_chunk.getStarTime() is equal to the lower_bound, we start merging with  the chunk_to_merge_iter  
         
-            LOG_DEBUG("[StoryPipeline] StoryId {} timeline {}-{} : Merging in StoryChunk {}-{} starts with chunk {} - exact lower_bound", storyId, timelineStart, timelineEnd, other_chunk.getStartTime(), other_chunk.getEndTime(), (*chunk_to_merge_iter).second->getStartTime());
+            LOG_DEBUG("[StoryPipeline] StoryId {} timeline {}-{} : Merging in StoryChunk {}-{} starts with the lower_bound chunk {} - exact ", storyId, timelineStart, timelineEnd, other_chunk.getStartTime(), other_chunk.getEndTime(), (*chunk_to_merge_iter).second->getStartTime());
         }
         else if( other_chunk.getStartTime() < (*chunk_to_merge_iter).second->getStartTime())
         {
             // we are looking for the chunk preceeding the lower bound chunk
+            LOG_DEBUG("[StoryPipeline] StoryId {} timeline {}-{} : Merging in StoryChunk {}-{} starts with the lower_bound chunk {} ", storyId, timelineStart, timelineEnd, other_chunk.getStartTime(), other_chunk.getEndTime(), (*chunk_to_merge_iter).second->getStartTime());
 
             if(chunk_to_merge_iter != storyTimelineMap.begin())
             {
                 chunk_to_merge_iter--;
-                LOG_DEBUG("[StoryPipeline] StoryId {} timeline {}-{} : Merging in StoryChunk {}-{} starts with chunk {} preceeeds lower_bound", storyId, timelineStart, timelineEnd, other_chunk.getStartTime(), other_chunk.getEndTime(), (*chunk_to_merge_iter).second->getStartTime());
             }
             else
             {
-                LOG_ERROR("[StoryPipeline] StoryId {} timeline {}-{} : Merging in StoryChunk {}-{} - attempt to decrement map.begin", storyId, timelineStart, timelineEnd,
-                    other_chunk.getStartTime(), other_chunk.getEndTime());
+                LOG_ERROR("[StoryPipeline] StoryId {} timeline {}-{} : Merging in StoryChunk {}-{} - attempt to decrement map.begin {}", storyId, timelineStart, timelineEnd,
+                    other_chunk.getStartTime(), other_chunk.getEndTime(), (*chunk_to_merge_iter).second->getStartTime());
             }
         } 
     }
