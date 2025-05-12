@@ -10,7 +10,8 @@
 #include "chrono_monitor.h"
 
 //#define TRACE_CHUNKING
-#define TRACE_CHUNK_EXTRACTION
+//#define TRACE_CHUNK_EXTRACTION
+#define TRACE_MERGING 1
 
 namespace chl = chronolog;
 
@@ -267,46 +268,80 @@ void chronolog::StoryPipeline::mergeEvents(chronolog::StoryChunk &other_chunk)
 
     std::lock_guard <std::mutex> lock(sequencingMutex);
 
-    LOG_DEBUG("[StoryPipeline] StoryId {} timeline {}-{} : Merging StoryChunk {}-{} eventCount {}", storyId,timelineStart, timelineEnd,  other_chunk.getStartTime()
+    LOG_DEBUG("[StoryPipeline] StoryId {} timeline {}-{} : Merging in StoryChunk {}-{} eventCount {}", storyId,timelineStart, timelineEnd,  other_chunk.getStartTime()
          , other_chunk.getEndTime(), other_chunk.getEventCount());
 
-    // locate the storyChunk in the StoryPipeline with the time Key not less than
-    // other_chunk.startTime and start merging
+    // locate the storyChunk in the existing StoryPipeline with the time Key not less than
+    // other_chunk.startTime, and start merging 
+    // or extend the StoryPipeline in time so that the other chunk can be merged in
+
     std::map <uint64_t, chronolog::StoryChunk*>::iterator chunk_to_merge_iter;
 
-    if(timelineStart <= other_chunk.getStartTime())
+    if(other_chunk.getStartTime() < timelineStart)
     {
-        // find the chunk_to_merge into : we are lookingt for
-        // the chunk preceeding the one with the startTime > other_chunk.getStartTime()
-        chunk_to_merge_iter = --storyTimelineMap.upper_bound(other_chunk.getStartTime());
-        LOG_DEBUG("[StoryPipeline] StoryId {} timeline {}-{} : Merging StoryChunk {} starts with chunk {}", storyId, timelineStart, timelineEnd, 
-                other_chunk.getStartTime(), (*chunk_to_merge_iter).second->getStartTime());
-    }
-    else
-    {
-        // unlikely but possible that we get some delayed events and need to prepend some chunks
-        // extending the timeline back to the past
-        LOG_DEBUG("[StoryPipeline] StoryId {} timeline {}-{} : Merging StoryChunk {} -timelineStart {} prepending chunks ", storyId, timelineStart, timelineEnd, other_chunk.getStartTime(), timelineStart);
+        // it's unlikely but possible that we get some delayed events and need to prepend some chunks
+        // extending the timeline back into the past
+        LOG_DEBUG("[StoryPipeline] StoryId {} timeline {}-{} : Merging in StoryChunk {}-{} - prepending chunks ", storyId, timelineStart, timelineEnd, other_chunk.getStartTime(), other_chunk.getEndTime());
 
-        while(timelineStart > other_chunk.getStartTime())
+        while(other_chunk.getStartTime() < timelineStart)
         {
             chunk_to_merge_iter = chl::StoryPipeline::prependStoryChunk();
             if(chunk_to_merge_iter == storyTimelineMap.end())
             {
                 // if prepend fails we have no choice but to discard the events we can't merge !!
-                LOG_ERROR("[StoryPipeline] StoryId {} timeline {}-{} : Merge operation discards events between timestamps: {} and {}"
+                LOG_ERROR("[StoryPipeline] StoryId {} timeline {}-{} : Merging operation discards events between timestamps: {} and {}"
                      , storyId, timelineStart, timelineEnd, other_chunk.getStartTime(), timelineStart);
                 other_chunk.eraseEvents(other_chunk.getStartTime(), timelineStart);
                 chunk_to_merge_iter = storyTimelineMap.begin();
             }
         }
     }
-
-    // iterate through the storyTimelineMap draining the other_chunk events
-    while(chunk_to_merge_iter != storyTimelineMap.end() && !other_chunk.empty())
+    else if((other_chunk.getStartTime() >= timelineStart) && (other_chunk.getStartTime() < timelineEnd))
     {
-        LOG_DEBUG("[StoryPipeline] StoryId {} timeline {}-{} : Merging StoryChunk {} into chunk {}", storyId, timelineStart, timelineEnd, 
-                other_chunk.getStartTime(), (*chunk_to_merge_iter).second->getStartTime());
+        // we are looking for the lower_bound StoryChunk that is the chunk with the StartTime equal or greater than other_chunk-getStartTime()
+        
+        chunk_to_merge_iter = storyTimelineMap.lower_bound(other_chunk.getStartTime());
+        
+        if(chunk_to_merge_iter == storyTimelineMap.end())
+        {
+            LOG_ERROR("[StoryPipeline] StoryId {} timeline {}-{} : Merging in StoryChunk {}-{} - no existing chunk to merge into", storyId, timelineStart, timelineEnd,
+                    other_chunk.getStartTime(), other_chunk.getEndTime());
+            
+        }
+        else if( other_chunk.getStartTime() == (*chunk_to_merge_iter).second->getStartTime())
+        {
+          // other_chunk.getStarTime() is equal to the lower_bound, we start merging with  the chunk_to_merge_iter  
+        
+            LOG_DEBUG("[StoryPipeline] StoryId {} timeline {}-{} : Merging in StoryChunk {}-{} starts with chunk {} - exact lower_bound", storyId, timelineStart, timelineEnd, other_chunk.getStartTime(), other_chunk.getEndTime(), (*chunk_to_merge_iter).second->getStartTime());
+        }
+        else if( other_chunk.getStartTime() < (*chunk_to_merge_iter).second->getStartTime())
+        {
+            // we are looking for the chunk preceeding the lower bound chunk
+
+            if(chunk_to_merge_iter != storyTimelineMap.begin())
+            {
+                chunk_to_merge_iter--;
+                LOG_DEBUG("[StoryPipeline] StoryId {} timeline {}-{} : Merging in StoryChunk {}-{} starts with chunk {} preceeeds lower_bound", storyId, timelineStart, timelineEnd, other_chunk.getStartTime(), other_chunk.getEndTime(), (*chunk_to_merge_iter).second->getStartTime());
+            }
+            else
+            {
+                LOG_ERROR("[StoryPipeline] StoryId {} timeline {}-{} : Merging in StoryChunk {}-{} - attempt to decrement map.begin", storyId, timelineStart, timelineEnd,
+                    other_chunk.getStartTime(), other_chunk.getEndTime());
+            }
+        } 
+    }
+    else //case other_chunk.getStartTime() > timelineEnd
+    {
+        chunk_to_merge_iter = storyTimelineMap.end();
+    }
+
+
+    // if we found a valid StoryChunk in the pipeline to merge into start merging... 
+    // iterate through the storyTimelineMap draining the other_chunk events
+    while(chunk_to_merge_iter != storyTimelineMap.end() && !other_chunk.empty() && (other_chunk.firstEventTime() < timelineEnd))
+    {
+        LOG_DEBUG("[StoryPipeline] StoryId {} timeline {}-{} : Merging in StoryChunk {}-{} into chunk {}-{}", storyId, timelineStart, timelineEnd, 
+                other_chunk.getStartTime(),other_chunk.getEndTime(), (*chunk_to_merge_iter).second->getStartTime(),(*chunk_to_merge_iter).second->getEndTime());
         (*chunk_to_merge_iter).second->mergeEvents(other_chunk);
         chunk_to_merge_iter++;
     }
@@ -314,16 +349,32 @@ void chronolog::StoryPipeline::mergeEvents(chronolog::StoryChunk &other_chunk)
     // if there are still records in the other_chunk with the timestamps beyond the current timelineEnd
     // we extend the timeline forward by appending new chunks
 
-    while(!other_chunk.empty())
+    while(!other_chunk.empty() && (other_chunk.getEndTime() >= timelineEnd))
     {
-        LOG_DEBUG("[StoryPipeline] StoryId {} timeline {}-{} : Merging StoryChunk {} events {} - appending chunks", storyId, timelineStart, timelineEnd,
-                other_chunk.getStartTime(), other_chunk.getEventCount());
+        LOG_DEBUG("[StoryPipeline] StoryId {} timeline {}-{} : Merging StoryChunk {}-{} events {} - appending chunks", storyId, timelineStart, timelineEnd,
+                other_chunk.getStartTime(), other_chunk.getEndTime(), other_chunk.getEventCount());
         chunk_to_merge_iter = appendStoryChunk();
         if(chunk_to_merge_iter == storyTimelineMap.end())
         { break; }
-        LOG_DEBUG("[StoryPipeline] StoryId {} timeline {}-{} : Merging StoryChunk {} into chunk {}", storyId, timelineStart, timelineEnd, 
-                other_chunk.getStartTime(), (*chunk_to_merge_iter).second->getStartTime());
-        (*chunk_to_merge_iter).second->mergeEvents(other_chunk);
+        else if( other_chunk.firstEventTime() < timelineEnd)
+        { 
+            LOG_DEBUG("[StoryPipeline] StoryId {} timeline {}-{} : Merging in StoryChunk {}-{} into chunk {}-{}", storyId, timelineStart, timelineEnd, 
+                other_chunk.getStartTime(),other_chunk.getEndTime(), (*chunk_to_merge_iter).second->getStartTime(),(*chunk_to_merge_iter).second->getEndTime());
+            (*chunk_to_merge_iter).second->mergeEvents(other_chunk);
+        }
+    }
+
+
+    if(!other_chunk.empty())
+    {
+                // if merging fails we have no choice but to discard the events we can't merge !!
+        LOG_ERROR("[StoryPipeline] StoryId {} timeline {}-{} : Merge operation discards {} events in chunk {}-{}"
+                     , storyId, timelineStart, timelineEnd, other_chunk.getEventCount(), other_chunk.getStartTime(), other_chunk.getEndTime());
+#ifdef TRACE_MERGING
+        LOG_ERROR("[StoryPipeline] StoryId {} timeline {}-{} : Merge operation discards {} events in chunk {}"
+                     , storyId, timelineStart, timelineEnd, other_chunk.getEventCount(), other_chunk.to_string());
+#endif
+                other_chunk.eraseEvents(other_chunk.getStartTime(), other_chunk.getEndTime());
     }
 
     return;
