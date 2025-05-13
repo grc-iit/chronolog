@@ -10,7 +10,7 @@ namespace chronolog
 struct ClientPortalServiceConf   
 {
     ClientPortalServiceConf( const std::string & protocol="ofi+sockets", 
-            const std::string & service_ip="127.0.0.1", uint16_t service_port=22, uint16_t service_provider_id=22)
+            const std::string & service_ip="127.0.0.1", uint16_t service_port=5555, uint16_t service_provider_id=55)
         : proto_conf_(protocol)
         , ip_(service_ip)
         , port_(service_port)
