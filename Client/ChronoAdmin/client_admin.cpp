@@ -343,6 +343,7 @@ int main(int argc, char**argv)
     }
     std::string chronolog_client_log_file = "chronoclient_logfile.txt";
     chronolog::ClientPortalServiceConf portalConf("ofi+sockets", "172.25.101.25", 5555, 55);
+    chronolog::ClientQueryServiceConf queryConf("ofi+verbs", "172.25.101.25", 5557, 57);
     int result = chronolog::chrono_monitor::initialize("file", chronolog_client_log_file, spdlog::level::debug, 
                                                        "ChronoClient", 102400, 3, spdlog::level::warn);
     if(rank == 0)
@@ -358,7 +359,7 @@ int main(int argc, char**argv)
         exit(EXIT_FAILURE);
     }
 
-    chronolog::Client client(portalConf);
+    chronolog::Client client(portalConf, queryConf);
     chronolog::StoryHandle*story_handle;
 
     TimerWrapper connectTimer(workload_args.perf_test, "Connect");
