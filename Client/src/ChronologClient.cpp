@@ -1,8 +1,8 @@
 #include "ChronologClientImpl.h"
 
-chronolog::Client::Client(chronolog::ClientPortalServiceConf const &visorClientPortalServiceConf)
+chronolog::Client::Client(chronolog::ClientPortalServiceConf const &visorClientPortalServiceConf, chronolog::ClientQueryServiceConf const& clientQueryServiceConf)
 {
-    chronologClientImpl = chronolog::ChronologClientImpl::GetClientImplInstance(visorClientPortalServiceConf);
+    chronologClientImpl = chronolog::ChronologClientImpl::GetClientImplInstance(visorClientPortalServiceConf, clientQueryServiceConf);
 }
 
 chronolog::Client::~Client()
