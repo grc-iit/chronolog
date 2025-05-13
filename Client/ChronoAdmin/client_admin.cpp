@@ -155,11 +155,11 @@ std::pair <std::string, workload_conf_args> cmd_arg_parse(int argc, char**argv)
                     std::cout << "No event input file specified, use default/specified separate conf args ..." 
                         << std::endl;
                     std::cout << "Min event size (minimum of event payload length following a normal distirbution): " 
-                        << workload_args.min_event_size << " B" << std::endl;
+                        << workload_args.min_event_size << " bytes" << std::endl;
                     std::cout << "Ave event size (median of event payload length following a normal distirbution): " 
-                        << workload_args.ave_event_size << " B" << std::endl;
+                        << workload_args.ave_event_size << " bytes" << std::endl;
                     std::cout << "Max event size (maximum of event payload length following a normal distirbution): " 
-                        << workload_args.max_event_size << " B" << std::endl;
+                        << workload_args.max_event_size << " bytes" << std::endl;
                     std::cout << "Event count (#events per proc): " << workload_args.event_count << std::endl;
                     std::cout << "Event interval (time in-between event accesses): " 
                         << workload_args.event_interval << " us" << std::endl;
@@ -182,11 +182,11 @@ std::pair <std::string, workload_conf_args> cmd_arg_parse(int argc, char**argv)
             std::cout << "Chronicle count (#chronicles per proc): " << workload_args.chronicle_count << std::endl;
             std::cout << "Story count (#stories per proc) : " << workload_args.story_count << std::endl;
             std::cout << "Min event size (minimum of event payload length following a normal distirbution): " 
-                << workload_args.min_event_size << " B" << std::endl;
+                << workload_args.min_event_size << " bytes" << std::endl;
             std::cout << "Ave event size (median of event payload length following a normal distirbution): " 
-                << workload_args.ave_event_size << " B" << std::endl;
+                << workload_args.ave_event_size << " bytes" << std::endl;
             std::cout << "Max event size (maximum of event payload length following a normal distirbution): " 
-                << workload_args.max_event_size << " B" << std::endl;
+                << workload_args.max_event_size << " bytes" << std::endl;
             std::cout << "Event count (#events per proc): " << workload_args.event_count << std::endl;
             std::cout << "Event interval (time in-between event accesses): " 
                 << workload_args.event_interval << " us" << std::endl;
