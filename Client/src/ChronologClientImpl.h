@@ -1,7 +1,7 @@
 #ifndef CHRONOLOG_CLIENT_IMPL_H
 #define CHRONOLOG_CLIENT_IMPL_H
 
-#include "chronolog_errcode.h"
+#include "client_errcode.h"
 #include "ClientConfiguration.h"
 
 #include "chronolog_types.h"
