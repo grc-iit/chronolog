@@ -66,10 +66,6 @@ void reader_thread( int tid, struct thread_arg * t)
 {
     LOG_INFO("[ClientLibStoryReader] Reader thread tid={} starting",tid);
 
-   // t->chronicle="CHRONICLE";
-   // t->story="STORY";
-   // t->segment_start=1739909340680367449;
-   // t->segment_end=1739909342245021766;
     // make the reader thread sleep to allow the writer threads create the story and log some events 
     // allow the events to propagate through the keeper/grappher into ChronoLog store
     while(t->segment_end==0)
