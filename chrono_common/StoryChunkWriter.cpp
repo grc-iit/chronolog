@@ -49,10 +49,9 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunk &story_chunk)
     {
         hvl_t log_record;
         log_record.len = event.second.logRecord.size();
-        log_record.p = new uint8_t[log_record.len];
-        LogEventHVL event_hvl(event.second.getStoryId(), event.second.time(), event.second.getClientId(),
-                              event.second.index(), log_record);
-        data.push_back(event_hvl);
+        log_record.p = (void*)event.second.logRecord.data();
+        data.emplace_back(event.second.getStoryId(), event.second.time(), event.second.getClientId()
+                          ,event.second.index(), log_record);
     }
     std::string file_name = rootDirectory + "/" + story_chunk.getChronicleName() + "." + story_chunk.getStoryName() + "." +
                             std::to_string(story_chunk.getStartTime() / 1000000000) + ".vlen.h5";
