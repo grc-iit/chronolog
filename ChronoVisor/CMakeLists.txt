@@ -13,20 +13,22 @@ set(CMAKE_FIND_LIBRARY_TYPE STATIC)
 add_executable(chronovisor_server)
 
 target_sources(chronovisor_server PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/chronovisor_instance.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/VisorClientPortal.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/ClientRegistryManager.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/ClientRegistryRecord.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/ChronicleMetaDirectory.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/KeeperRegistry.cpp
+    src/chronovisor_instance.cpp
+    src/VisorClientPortal.cpp
+    src/ClientRegistryManager.cpp
+    src/ClientRegistryRecord.cpp
+    src/ChronicleMetaDirectory.cpp
+    src/KeeperRegistry.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/ConfigurationManager.cpp
     ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/src/city.cpp
-    ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/src/chrono_monitor.cpp)
+    ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/src/chrono_monitor.cpp
+)
 
 target_include_directories(chronovisor_server PRIVATE
     ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/include
     ${CMAKE_SOURCE_DIR}/chrono_common
-    ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    include
+)
 
 target_link_libraries(chronovisor_server chronolog_client thallium)
 

@@ -11,21 +11,23 @@ message("build target : chrono_grapher")
 
 add_executable(chrono_grapher)
 target_include_directories(chrono_grapher PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    include
     ${CMAKE_SOURCE_DIR}/chrono_common
-    ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/include)
+    ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/include
+)
 
 target_sources(chrono_grapher PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/ChronoGrapher.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/GrapherDataStore.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/CSVFileChunkExtractor.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/HDF5FileChunkExtractor.cpp
+    ChronoGrapher.cpp
+    GrapherDataStore.cpp
+    CSVFileChunkExtractor.cpp
+    HDF5FileChunkExtractor.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunk.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunkWriter.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/StoryPipeline.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunkExtractor.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/ConfigurationManager.cpp
-    ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/src/chrono_monitor.cpp)
+    ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/src/chrono_monitor.cpp
+)
 
 target_link_libraries(chrono_grapher chronolog_client thallium)
 target_link_libraries(chrono_grapher ${HDF5_LIBRARIES})

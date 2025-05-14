@@ -13,16 +13,16 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Source files for the library
 set(SOURCE_FILES
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/chronoemulator.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/story.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/chronicle.cpp
+    src/chronoemulator.cpp
+    src/story.cpp
+    src/chronicle.cpp
 )
 
 # Define the library target
 add_library(ChronoEmulator STATIC ${SOURCE_FILES})
 
 # Use target_include_directories instead of include_directories
-target_include_directories(ChronoEmulator PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(ChronoEmulator PUBLIC include)
 
 # If there are any dependencies, link them here
 # target_link_libraries(chronoemulator other_libraries)

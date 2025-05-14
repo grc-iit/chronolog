@@ -15,18 +15,18 @@ add_subdirectory(${CMAKE_SOURCE_DIR}/Plugins/chronoemulator)
 
 # Source files for the library
 set(SOURCE_FILES
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/chronokvs.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/chronokvs_mapper.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/chronokvs_memorymanager.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/chronokvs_utils.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/chronolog_client.cpp
+    src/chronokvs.cpp
+    src/chronokvs_mapper.cpp
+    src/chronokvs_memorymanager.cpp
+    src/chronokvs_utils.cpp
+    src/chronolog_client.cpp
 )
 
 # Define the library target
 add_library(ChronoKVS STATIC ${SOURCE_FILES})
 
 # Use target_include_directories instead of include_directories
-target_include_directories(ChronoKVS PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(ChronoKVS PUBLIC include)
 
 # If there are any dependencies, link them here
 target_link_libraries(ChronoKVS PUBLIC ChronoEmulator)
