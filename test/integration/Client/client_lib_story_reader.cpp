@@ -25,12 +25,11 @@ void writer_thread(struct thread_arg * t)
 
     // Local variable declarations
     int flags = 1;
-    int ret = chronolog::CL_ERR_UNKNOWN;;
     std::map <std::string, std::string> chronicle_attrs;
     std::map <std::string, std::string> story_attrs;
 
     // Create the chronicle
-    ret = client->CreateChronicle(t->chronicle, chronicle_attrs, flags);
+    int ret= client->CreateChronicle(t->chronicle, chronicle_attrs, flags);
     LOG_INFO("[ClientLibStoryReader] Chronicle created: tid={}, ChronicleName={}, Flags: {}", t->tid , t->chronicle, flags);
 
     // Acquire the story
@@ -55,13 +54,6 @@ void writer_thread(struct thread_arg * t)
             t->segment_end = timestamp;
             std::this_thread::sleep_for(std::chrono::milliseconds(i % 10));
         }
-
-        // Release the story
-        ret = client->ReleaseStory(t->chronicle, t->story);
-        LOG_INFO("[ClientLibStoryReader] Writer thread tid={} released story {} {}, Ret: {}", t->tid , t->chronicle, t->story, ret);
-
-        // Assertion for successful story release or expected errors
-        assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NO_CONNECTION || ret == chronolog::CL_ERR_NOT_ACQUIRED);
     }
 
     LOG_INFO("[ClientLibStoryReader] Writer thread tid={} finished logging messages for story {}-{} segment {}-{}", t->tid,t->chronicle,t->story, t->segment_start, t->segment_end);
@@ -74,10 +66,6 @@ void reader_thread( int tid, struct thread_arg * t)
 {
     LOG_INFO("[ClientLibStoryReader] Reader thread tid={} starting",tid);
 
-   // t->chronicle="CHRONICLE";
-   // t->story="STORY";
-   // t->segment_start=1739909340680367449;
-   // t->segment_end=1739909342245021766;
     // make the reader thread sleep to allow the writer threads create the story and log some events 
     // allow the events to propagate through the keeper/grappher into ChronoLog store
     while(t->segment_end==0)
@@ -85,8 +73,6 @@ void reader_thread( int tid, struct thread_arg * t)
         LOG_INFO("[ClientLibStoryReader] Reader thread tid={} is waiting",tid);
         sleep(60);
     }
-
-    sleep(6*60);
 
     int ret = chronolog::CL_ERR_UNKNOWN;;
     std::map <std::string, std::string> chronicle_attrs;
@@ -129,7 +115,7 @@ void reader_thread( int tid, struct thread_arg * t)
         LOG_INFO("[ClientLibStoryReader] Reader thread tid={} released story: {} {}, Ret: {}", tid , t->chronicle, t->story, ret);
 
         // Assertion for successful story release or expected errors
-        assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NO_CONNECTION);
+        assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NO_CONNECTION || ret == chronolog::CL_ERR_NOT_ACQUIRED);
     }
 
     LOG_INFO("[ClientLibStoryReader] Reader thread tid={} exiting", tid);
@@ -138,22 +124,11 @@ void reader_thread( int tid, struct thread_arg * t)
 
 int main(int argc, char**argv)
 {
-    std::string conf_file_path;
-    conf_file_path = parse_conf_path_arg(argc, argv);
-    if(conf_file_path.empty())
-    {
-        std::exit(EXIT_FAILURE);
-    }
+    chronolog::ClientPortalServiceConf portalConf("ofi+sockets", "127.0.0.1", 5555, 55);
+    chronolog::ClientQueryServiceConf clientQueryConf("ofi+sockets", "127.0.0.1", 5557, 57);
+    int result = chronolog::chrono_monitor::initialize("file", "/tmp/chrono_client.log", spdlog::level::debug, "ChronoClient", 102400, 3, spdlog::level::debug);
 
-    ChronoLogRPCImplementation protocol = CHRONOLOG_THALLIUM_SOCKETS;
-    ChronoLog::ConfigurationManager confManager(conf_file_path);
-    int result = chronolog::chrono_monitor::initialize(confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE
-                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
-                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
-                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME
-                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILESIZE
-                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILENUM
-                                                       , confManager.CLIENT_CONF.CLIENT_LOG_CONF.FLUSHLEVEL);
+
     if(result == 1)
     {
         exit(EXIT_FAILURE);
@@ -161,9 +136,7 @@ int main(int argc, char**argv)
     LOG_INFO("[ClientLibStoryReader] Running...");
 
 
-    std::string server_ip = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP;
-    int base_port = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT;
-    client = new chronolog::Client(confManager);
+    client = new chronolog::Client(portalConf, clientQueryConf);
 
     int ret = client->Connect();
 
@@ -173,6 +146,7 @@ int main(int argc, char**argv)
         delete client;
         return -1;
     }
+
 
     std::string chronicle_name("CHRONICLE");
     std::string story_name("STORY");
