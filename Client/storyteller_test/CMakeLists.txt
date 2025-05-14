@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.25)
 message("Building CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
 message("build target : storyteller_test")
 
-add_executable(storyteller_test ${CMAKE_CURRENT_SOURCE_DIR}/storyteller_test.cpp)
+add_executable(storyteller_test storyteller_test.cpp)
 
 target_link_libraries(storyteller_test chronolog_client thallium)
 

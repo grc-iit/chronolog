@@ -10,22 +10,22 @@ message("build target : chronolog_client")
 
 
 add_library(chronolog_client
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/chronolog_client.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/ChronologClientImpl.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/KeeperRecordingClient.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/StorytellerClient.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/StorytellerClient.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/PlaybackQueryRpcClient.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/ClientQueryService.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/ChronologClient.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/ChronologClientImpl.cpp
+    include/chronolog_client.h
+    src/ChronologClientImpl.h
+    src/KeeperRecordingClient.h
+    src/StorytellerClient.h
+    src/StorytellerClient.cpp
+    src/PlaybackQueryRpcClient.cpp
+    src/ClientQueryService.cpp
+    src/ChronologClient.cpp
+    src/ChronologClientImpl.cpp
     ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/src/chrono_monitor.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunk.cpp
 )
 
 # Include directories for the library
 target_include_directories(chronolog_client PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    include
     ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/include
     ${CMAKE_SOURCE_DIR}/chrono_common
     ${CMAKE_SOURCE_DIR}/Client/include
@@ -37,9 +37,9 @@ target_link_libraries(chronolog_client thallium)
 
 # Define the header files to be copied
 set(PUBLIC_HEADER_FILES
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/chronolog_client.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/ClientConfiguration.h
-    ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/include/chronolog_errcode.h
+    include/chronolog_client.h
+    include/ClientConfiguration.h
+    include/client_errcode.h
 )
 
 # install library

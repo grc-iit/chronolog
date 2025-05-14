@@ -10,7 +10,7 @@ message("Building CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
 message("build target : chrono_store")
 
 include_directories(
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    include
     ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/include
     ${CMAKE_SOURCE_DIR}/ChronoKeeper
     ${HDF5_INCLUDE_DIRS}         # HDF5 include directories
