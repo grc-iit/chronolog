@@ -5,7 +5,7 @@
 #include <thallium/serialization/stl/map.hpp>
 
 #include "chrono_monitor.h"
-#include "chronolog_errcode.h"
+#include "client_errcode.h"
 #include "ServiceId.h"
 #include "PlaybackQueryRpcClient.h"
 #include "ClientQueryService.h"

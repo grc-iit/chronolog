@@ -1,10 +1,8 @@
-
-
 #include <thallium.hpp>
 #include <thallium/serialization/stl/vector.hpp>
 #include <cereal/archives/binary.hpp>
 
-#include "chronolog_errcode.h"
+#include "client_errcode.h"
 #include "chrono_monitor.h"
 #include "StoryChunk.h"
 #include "ClientQueryService.h"
