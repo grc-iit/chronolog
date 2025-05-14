@@ -118,6 +118,16 @@ inline std::string to_string() const
 }
 
 
+    std::vector<LogEvent> &  getEventSeries( std::vector<LogEvent> & eventSeries)
+    {
+
+        for(auto const &event: logEvents)
+        {
+            eventSeries.push_back(event.second);
+        }
+        return eventSeries;
+    }
+
 private:
     ChronicleName chronicleName;
     StoryName storyName;
