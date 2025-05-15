@@ -316,6 +316,13 @@ chronolog::ChronologClientImpl::AcquireStory(std::string const &chronicle_name, 
                                                             , acquireStoryResponse.getKeepers()
                     , acquireStoryResponse.getPlayer());
 
+    if((nullptr != storyReaderService) && acquireStoryResponse.getPlayer().is_valid())
+    {
+        //prepare ClientQueryService for reading this story
+        storyReaderService->addStoryReader(chronicle_name, story_name, acquireStoryResponse.getPlayer());
+       // clientQueryService->addPlaybackQueryClient(chronicle_name, story_name, acquireStoryResponse.getPlayer());
+    }
+    
     if(storyHandle == nullptr)
     {
         LOG_ERROR("[ChronoLogClientImpl] Failed to initialize story handle for '{}' in chronicle '{}'.", story_name

@@ -20,16 +20,18 @@ class StoryChunk;
 
 struct StoryPlaybackQuery
 {
+    std::vector<LogEvent>  & eventSeries; 
     uint32_t queryId;
-    //PlaybackQueryRpcClient * playbackRpcClient;
     ChronicleName chronicleName;
     StoryName   storyName;
     chrono_time startTime;
     chrono_time endTime;
     std::map<uint64_t,StoryChunk*> PlaybackResponse;
 
-    StoryPlaybackQuery(uint32_t query_id, ChronicleName const& chronicle, StoryName const& story, chrono_time const& start, chrono_time const& end)
-    : queryId(query_id),chronicleName(chronicle), storyName(story), startTime(start),endTime(end)
+    StoryPlaybackQuery( std::vector<LogEvent> & playbackEvents, uint32_t query_id, 
+            ChronicleName const& chronicle, StoryName const& story, chrono_time const& start, chrono_time const& end)
+    : eventSeries(playbackEvents), queryId(query_id)
+    , chronicleName(chronicle), storyName(story), startTime(start),endTime(end)
     { }
 };
 
@@ -58,15 +60,19 @@ public:
     ServiceId const& get_service_id() const
     { return queryServiceId; }
 
+    int addStoryReader(ChronicleName const&, StoryName const&, ServiceId const&);
+    void removeStoryReader(ChronicleName const&, StoryName const&);
+ 
     // create PlaybackServiceRpcClient associated with the remote Playback Service
     PlaybackQueryRpcClient * addPlaybackQueryClient(ServiceId const& );
     // destroy PlaybackServiceRpcClient associated with the remote Playback Service
     void removePlaybackQueryClient(ServiceId const& );
 
-    uint32_t start_new_query(ChronicleName const&, StoryName const&, chrono_time const&, chrono_time const&);
+    uint32_t start_new_query(ChronicleName const&, StoryName const&, chrono_time const&, chrono_time const&, std::vector<LogEvent>&);
 
     void receive_story_chunk(tl::request const&, tl::bulk &);
 
+    int playback_story( ChronicleName const&, StoryName const&, uint64_t start, uint64_t end, std::vector<LogEvent> & playback_events);
 
 private:
     ClientQueryService(thallium::engine & tl_engine, ServiceId const&);
@@ -80,6 +86,8 @@ private:
     std::mutex queryServiceMutex;    
     std::atomic<int> queryIdIndex;
     std::map<uint32_t, StoryPlaybackQuery> activeQueryMap; // map of active queries by queryId
+    std::map<std::pair<ChronicleName,StoryName>, PlaybackQueryRpcClient*> storiesAcquiredForReading;
+    // map of QueryRpcClients by service_endpoint of the remote chrono_grapher PlaybackService
     std::map<service_endpoint, PlaybackQueryRpcClient*> playbackRpcClientMap; 
 };
 

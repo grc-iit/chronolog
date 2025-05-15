@@ -106,7 +106,7 @@ int chronolog::StoryWritingHandle<KeeperChoicePolicy>::playback_story(uint64_t s
     if(nullptr == playbackQueryClient)
     { return chl::CL_ERR_NO_PLAYERS; }
 
-    playbackQueryClient->send_story_playback_request(chronicle, story, start_time, end_time);
+    //playbackQueryClient->send_story_playback_request(chronicle, story, start_time, end_time);
 
 return chl::CL_SUCCESS;
 }

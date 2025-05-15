@@ -35,16 +35,40 @@ chl::ClientQueryService::~ClientQueryService()
 }
 
 
+///////////////
+int chl::ClientQueryService::addStoryReader(ChronicleName const&, StoryName const&, ServiceId const&)
+{
+    
+
+return chl::CL_SUCCESS;
+}
+
+void chl::ClientQueryService::removeStoryReader(ChronicleName const&, StoryName const&)
+{
+
+}
+
+////////////
+
+int chl::ClientQueryService::playback_story( chl::ChronicleName const& chronicle, chl::StoryName const& story, uint64_t start, uint64_t end, std::vector<chl::LogEvent> & playback_events)
+{
+
+    uint32_t query_id = start_new_query( chronicle, story, start, end, playback_events);
+
+
+return chl::CL_SUCCESS;
+}
+
 // record the newly issued query details and return queryId
 uint32_t chl::ClientQueryService::start_new_query(chl::ChronicleName const& chronicle, chl::StoryName const& story, 
-        chl::chrono_time const& start_time, chl::chrono_time const& end_time)
+        chl::chrono_time const& start_time, chl::chrono_time const& end_time, std::vector<chl::LogEvent> & playback_events)
 {
     std::lock_guard <std::mutex> lock(queryServiceMutex);
 
     uint32_t query_id = queryIdIndex++; 
 
     activeQueryMap.insert(std::pair<uint32_t, chl::StoryPlaybackQuery>
-                ( query_id, chl::StoryPlaybackQuery( query_id, chronicle, story, start_time, end_time)));
+                ( query_id, chl::StoryPlaybackQuery( playback_events, query_id, chronicle, story, start_time, end_time)));
 
     return query_id;
 }
