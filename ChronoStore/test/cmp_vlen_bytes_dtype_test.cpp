@@ -204,7 +204,7 @@ int writeStoryChunks(std::map <uint64_t, StoryChunk> &story_chunk_map, StoryChun
 //            if (story_file == H5I_INVALID_HID)
 //            {
 //                LOG_ERROR("Failed to create story file: {}", story_file_name.c_str());
-//                return CL_ERR_UNKNOWN;
+//                return chronolog::CL_ERR_UNKNOWN;
 //            }
 //            story_chunk_fd_map.emplace(story_id, story_file);
 //        }
@@ -344,7 +344,7 @@ int writeStoryChunks(std::map <uint64_t, StoryChunk> &story_chunk_map, StoryChun
 //            H5Fget_name(story_chunk_fd_map_it.second, story_file_name, file_name_len);
 //            LOG_ERROR("Failed to close file for story chunk: {}", story_file_name);
 //            free(story_file_name);
-//            return CL_ERR_UNKNOWN;
+//            return chronolog::CL_ERR_UNKNOWN;
 //        }
 //    }
     LOG_INFO("Done writing StoryChunks to Chronicle file ...");

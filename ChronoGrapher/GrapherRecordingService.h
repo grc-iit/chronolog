@@ -61,7 +61,7 @@ public:
 #endif
             int ret = deserializedWithCereal(&mem_vec[0], b.size()
                                              , *story_chunk);
-            if(ret != CL_SUCCESS)
+            if(ret != chronolog::CL_SUCCESS)
             {
                 LOG_ERROR("[GrapherRecordingService] Failed to deserialize a story chunk, ThreadID={}"
                           , tl::thread::self_id());
@@ -114,27 +114,27 @@ private:
             ss.write(buffer, size);
             cereal::BinaryInputArchive iarchive(ss);
             iarchive(story_chunk);
-            return CL_SUCCESS;
+            return chronolog::CL_SUCCESS;
         }
         catch(cereal::Exception const &ex)
         {
             LOG_ERROR("[GrapherRecordingService] Failed to deserialize a story chunk, size={}, ThreadID={}. "
                       "Cereal exception encountered.", ss.str().size(), tl::thread::self_id());
             LOG_ERROR("[GrapherRecordingService] Exception: {}", ex.what());
-            return CL_ERR_UNKNOWN;
+            return chronolog::CL_ERR_UNKNOWN;
         }
         catch(std::exception const &ex)
         {
             LOG_ERROR("[GrapherRecordingService] Failed to deserialize a story chunk, size={}, ThreadID={}. "
                       "std::exception encountered.", ss.str().size(), tl::thread::self_id());
             LOG_ERROR("[GrapherRecordingService] Exception: {}", ex.what());
-            return CL_ERR_UNKNOWN;
+            return chronolog::CL_ERR_UNKNOWN;
         }
         catch(...)
         {
             LOG_ERROR("[GrapherRecordingService] Failed to deserialize a story chunk, ThreadID={}. Unknown exception "
                       "encountered.", tl::thread::self_id());
-            return CL_ERR_UNKNOWN;
+            return chronolog::CL_ERR_UNKNOWN;
         }
     }
 

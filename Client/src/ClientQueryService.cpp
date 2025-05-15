@@ -128,7 +128,7 @@ void chl::ClientQueryService::receive_story_chunk(tl::request  const& request, t
         StoryChunk*story_chunk = new StoryChunk();
         int ret = deserializedWithCereal(&mem_vec[0], b.size()
                                                , *story_chunk);
-        if(ret != CL_SUCCESS)
+        if(ret != chronolog::CL_SUCCESS)
         {
             LOG_ERROR("[ClientQueryService] Failed to deserialize a story chunk, ThreadID={}"
                             , tl::thread::self_id());
@@ -163,7 +163,7 @@ int chl::ClientQueryService::deserializedWithCereal(char *buffer, size_t size, c
              ss.write(buffer, size);
              cereal::BinaryInputArchive iarchive(ss);
              iarchive(story_chunk);
-             return chl::CL_SUCCESS;
+             return chronolog::CL_SUCCESS;
          }
          catch(cereal::Exception const &ex)
         {
@@ -180,6 +180,6 @@ int chl::ClientQueryService::deserializedWithCereal(char *buffer, size_t size, c
              LOG_ERROR("[ClientQueryService] Failed to deserialize a story chunk, ThreadID={}. Unknown exception "
                        "encountered.", tl::thread::self_id());
          }
-        return chl::CL_ERR_UNKNOWN;
+        return chronolog::CL_ERR_UNKNOWN;
      }
 

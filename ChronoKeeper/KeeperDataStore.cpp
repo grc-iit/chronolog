@@ -66,7 +66,7 @@ int chronolog::KeeperDataStore::startStoryRecording(std::string const &chronicle
     {
         LOG_ERROR("[KeeperDataStore] Failed to create StoryPipeline for StoryID: {}. Possible memory or resource issue."
                   , story_id);
-        return CL_ERR_UNKNOWN;
+        return chronolog::CL_ERR_UNKNOWN;
     }
 }
 ////////////////////////

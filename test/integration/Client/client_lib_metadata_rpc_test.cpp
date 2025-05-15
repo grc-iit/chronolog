@@ -81,7 +81,7 @@ int main(int argc, char**argv)
         ret = client.EditChronicleAttr(chronicle_names[i], key, "2023-01-15");
         t2 = std::chrono::steady_clock::now();
         //FIXME:  is not working, the following assert will fail
-        //assert(ret == CL_SUCCESS || ret == CL_ERR_NO_KEEPERS);
+        //assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NO_KEEPERS);
         duration_edit_chronicle_attr += (t2 - t1);
 
         std::vector <std::string> story_names;
@@ -139,7 +139,7 @@ int main(int argc, char**argv)
         t1 = std::chrono::steady_clock::now();
         ret = client.GetChronicleAttr(chronicle_names[i], key, value);
         t2 = std::chrono::steady_clock::now();
-        //FIXME:assert(ret == CL_SUCCESS);
+        //FIXME:assert(ret == chronolog::CL_SUCCESS);
         //FIXME: returning data using parameter is not working, the following assert will fail
         //ASSERT(value, ==, "2023-01-15");
         duration_get_chronicle_attr += (t2 - t1);

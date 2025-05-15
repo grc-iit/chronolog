@@ -26,7 +26,7 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName &c
     {
         LOG_WARNING("[HDF5ArchiveReadingAgent] No matching files found for chronicle: '{}' and story: '{}'."
                     , chronicleName, storyName);
-        return CL_ERR_UNKNOWN;
+        return chronolog::CL_ERR_UNKNOWN;
     }
 
     do
@@ -95,7 +95,7 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName &c
         {
             LOG_ERROR("[HDF5ArchiveReadingAgent] FileIException: {}", error.getCDetailMsg());
             H5::FileIException::printErrorStack();
-            return CL_ERR_UNKNOWN;
+            return chronolog::CL_ERR_UNKNOWN;
         }
     } while(++start_it != end_it);
 

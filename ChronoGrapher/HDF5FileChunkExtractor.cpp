@@ -21,7 +21,7 @@ int HDF5FileChunkExtractor::processStoryChunk(StoryChunk *story_chunk)
     LOG_INFO("[HDF5FileChunkExtractor] Writing StoryChunk...");
     StoryChunkWriter chunkWriter(rootDirectory, "story_chunks", "data");
     hsize_t size = chunkWriter.writeStoryChunk(*story_chunk);
-    int ret = (size == 0) ? CL_ERR_UNKNOWN : CL_SUCCESS;
+    int ret = (size == 0) ? chronolog::CL_ERR_UNKNOWN : chronolog::CL_SUCCESS;
     if(size == 0)
     {
         LOG_ERROR("[HDF5FileChunkExtractor] Error writing StoryChunk to file.");
