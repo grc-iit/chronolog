@@ -109,7 +109,7 @@ int chronolog::VisorClientPortal::ClientConnect(uint32_t client_euid, uint32_t c
     {
         LOG_ERROR("client_euid={} is invalid", client_euid);
         //LOG_ERROR("client_euid=%u is invalid", client_euid);
-        return CL_ERR_INVALID_ARG;
+        return chronolog::CL_ERR_INVALID_ARG;
     }
     //TODO: consider different hashing mechanism that takesproduces uint32 hash value
     std::string client_account_for_hash =
@@ -138,10 +138,10 @@ int chronolog::VisorClientPortal::CreateChronicle(chl::ClientId const &client_id
     { return chronolog::CL_ERR_INVALID_ARG; }
 
     if(!chronicle_action_is_authorized(client_id, chronicle_name))
-    { return CL_ERR_NOT_AUTHORIZED; }
+    { return chronolog::CL_ERR_NOT_AUTHORIZED; }
 
     int return_code = chronicleMetaDirectory.create_chronicle(chronicle_name, attrs);
-    if(return_code == CL_SUCCESS)
+    if(return_code == chronolog::CL_SUCCESS)
     {
         LOG_INFO("[VisorClientPortal] Chronicle created: PID={}, ClientID={}, Name={}", getpid(), client_id
              , chronicle_name.c_str());
@@ -156,10 +156,10 @@ chronolog::VisorClientPortal::DestroyChronicle(chl::ClientId const &client_id, c
     { return chronolog::CL_ERR_INVALID_ARG; }
 
     if(!chronicle_action_is_authorized(client_id, chronicle_name))
-    { return CL_ERR_NOT_AUTHORIZED; }
+    { return chronolog::CL_ERR_NOT_AUTHORIZED; }
 
     int return_code = chronicleMetaDirectory.destroy_chronicle(chronicle_name);
-    if(return_code == CL_SUCCESS)
+    if(return_code == chronolog::CL_SUCCESS)
     {
         LOG_DEBUG("[VisorClientPortal] Chronicle destroyed: ClientID={}, ChronicleName={}", client_id
              , chronicle_name.c_str());
@@ -174,7 +174,7 @@ int chronolog::VisorClientPortal::DestroyStory(chl::ClientId const &client_id, s
     LOG_INFO("[VisorClientPortal] Story destroyed: PID={}, ChronicleName={}, StoryName={}", getpid(), chronicle_name.c_str()
          , story_name.c_str());
     if(!story_action_is_authorized(client_id, chronicle_name, story_name))
-    { return CL_ERR_NOT_AUTHORIZED; }
+    { return chronolog::CL_ERR_NOT_AUTHORIZED; }
 
     if(!chronicle_name.empty() && !story_name.empty())
     {
@@ -204,9 +204,9 @@ chronolog::VisorClientPortal::AcquireStory(chl::ClientId const &client_id, std::
     { return chronolog::AcquireStoryResponseMsg(chronolog::CL_ERR_INVALID_ARG, story_id, recording_keepers); }
 
     if(!story_action_is_authorized(client_id, chronicle_name, story_name))
-    { return chronolog::AcquireStoryResponseMsg(CL_ERR_NOT_AUTHORIZED, story_id, recording_keepers); }
+    { return chronolog::AcquireStoryResponseMsg(chronolog::CL_ERR_NOT_AUTHORIZED, story_id, recording_keepers); }
 
-    int ret = CL_ERR_UNKNOWN;
+    int ret = chronolog::CL_ERR_UNKNOWN;
 
     ret = chronicleMetaDirectory.acquire_story(client_id, chronicle_name, story_name, attrs, flags, story_id);
                                               
@@ -246,7 +246,7 @@ int chronolog::VisorClientPortal::ReleaseStory(chl::ClientId const &client_id, s
          , story_name.c_str());
 
     if(!story_action_is_authorized(client_id, chronicle_name, story_name))
-    { return CL_ERR_NOT_AUTHORIZED; }
+    { return chronolog::CL_ERR_NOT_AUTHORIZED; }
 
     StoryId story_id(0);
     auto return_code = chronicleMetaDirectory.release_story(client_id, chronicle_name, story_name, story_id);

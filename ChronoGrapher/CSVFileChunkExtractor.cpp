@@ -40,6 +40,6 @@ int chronolog::CSVFileStoryChunkExtractor::processStoryChunk(chronolog::StoryChu
     }
     chunk_fstream.close();
     LOG_DEBUG("[CSVFileStoryChunkExtractor] Finished processing StoryChunk. File={}", chunk_filename);
-    return CL_SUCCESS;
+    return chronolog::CL_SUCCESS;
 }
 

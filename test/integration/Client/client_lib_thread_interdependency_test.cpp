@@ -118,7 +118,7 @@ void check_chronicle_created(int tid, int ret)
         }
         else
         {
-            LOG_ERROR("[ClientLibThreadInterdependencyTest] -Thread {}- received a CL_SUCCESS when transitioning to "
+            LOG_ERROR("[ClientLibThreadInterdependencyTest] -Thread {}- received a chronolog::CL_SUCCESS when transitioning to "
                       "CHRONICLE_CREATED state from a state different than THREAD_INITIALIZED", tid);
         }
     }
@@ -127,13 +127,13 @@ void check_chronicle_created(int tid, int ret)
         if(static_cast<ThreadState>(shared_state[tid]) != ThreadState::UNKNOWN &&
            static_cast<ThreadState>(shared_state[tid]) != ThreadState::THREAD_INITIALIZED)
         {
-            LOG_INFO("[ClientLibThreadInterdependencyTest] -Thread {}- received a CL_ERR_CHRONICLE_EXISTS return "
+            LOG_INFO("[ClientLibThreadInterdependencyTest] -Thread {}- received a chronolog::CL_ERR_CHRONICLE_EXISTS return "
                      "value when trying to create a chronicle on a state different from UNKNOWN or THREAD_INITIALIZED"
                      , tid);
         }
         else
         {
-            LOG_ERROR("[ClientLibThreadInterdependencyTest] -Thread {}- received a CL_ERR_CHRONICLE_EXISTS return value"
+            LOG_ERROR("[ClientLibThreadInterdependencyTest] -Thread {}- received a chronolog::CL_ERR_CHRONICLE_EXISTS return value"
                       " when trying to create a chronicle on the UNKNOWN or THREAD_INITIALIZED state", tid);
         }
     }
@@ -159,12 +159,12 @@ void check_story_acquired(int tid, int ret)
         }
         else if(static_cast<ThreadState>(shared_state[tid]) == ThreadState::STORY_ACQUIRED)
         {
-            LOG_INFO("[ClientLibThreadInterdependencyTest] -Thread {}- received a CL_SUCCESS return value when trying"
+            LOG_INFO("[ClientLibThreadInterdependencyTest] -Thread {}- received a chronolog::CL_SUCCESS return value when trying"
                      " to acquire a Story on a STORY_ACQUIRED", tid);
         }
         else
         {
-            LOG_ERROR("[ClientLibThreadInterdependencyTest] -Thread {}- received a CL_SUCCESS return value when trying "
+            LOG_ERROR("[ClientLibThreadInterdependencyTest] -Thread {}- received a chronolog::CL_SUCCESS return value when trying "
                       "to acquire a story on a state different than CHRONICLE_CREATED, STORY_RELEASED, STORY_DESTROYED "
                       "or STORY_ACQUIRED", tid);
         }
@@ -174,12 +174,12 @@ void check_story_acquired(int tid, int ret)
         if(static_cast<ThreadState>(shared_state[tid]) == ThreadState::THREAD_INITIALIZED ||
            static_cast<ThreadState>(shared_state[tid]) == ThreadState::CHRONICLE_DESTROYED)
         {
-            LOG_INFO("[ClientLibThreadInterdependencyTest] -Thread {}- received a CL_ERR_NOT_EXIST return value when "
+            LOG_INFO("[ClientLibThreadInterdependencyTest] -Thread {}- received a chronolog::CL_ERR_NOT_EXIST return value when "
                      "trying to acquire a Story on a THREAD_INITIALIZED or CHRONICLE_DESTROYED", tid);
         }
         else
         {
-            LOG_ERROR("[ClientLibThreadInterdependencyTest] -Thread {}- received a CL_ERR_NOT_EXIST return value when "
+            LOG_ERROR("[ClientLibThreadInterdependencyTest] -Thread {}- received a chronolog::CL_ERR_NOT_EXIST return value when "
                       "trying to acquire a story on the THREAD_INITIALIZED or CHRONICLE_DESTROYED state", tid);
         }
     }
@@ -203,7 +203,7 @@ void check_story_released(int tid, int ret)
         }
         else
         {
-            LOG_ERROR("[ClientLibThreadInterdependencyTest] -Thread {}- received a CL_SUCCESS return value when "
+            LOG_ERROR("[ClientLibThreadInterdependencyTest] -Thread {}- received a chronolog::CL_SUCCESS return value when "
                       "trying to release a story on the a STORY_RELEASED state", tid);
         }
     }
@@ -213,13 +213,13 @@ void check_story_released(int tid, int ret)
            static_cast<ThreadState>(shared_state[tid]) == ThreadState::STORY_DESTROYED ||
            static_cast<ThreadState>(shared_state[tid]) == ThreadState::CHRONICLE_DESTROYED)
         {
-            LOG_INFO("[ClientLibThreadInterdependencyTest] -Thread {}- received a CL_ERR_NOT_ACQUIRED return value "
+            LOG_INFO("[ClientLibThreadInterdependencyTest] -Thread {}- received a chronolog::CL_ERR_NOT_ACQUIRED return value "
                      "when trying to release a Story on a STORY_RELEASED,STORY_DESTROYED or CHRONICLE_DESTROYED state"
                      , tid);
         }
         else
         {
-            LOG_ERROR("[ClientLibThreadInterdependencyTest] -Thread {}- received a CL_ERR_NOT_ACQUIRED return value "
+            LOG_ERROR("[ClientLibThreadInterdependencyTest] -Thread {}- received a chronolog::CL_ERR_NOT_ACQUIRED return value "
                       "when trying to release a story on the a state different from STORY_RELEASED, STORY_DESTROYED or"
                       " CHRONICLE_DESTROYED", tid);
         }
@@ -245,7 +245,7 @@ void check_story_destroyed(int tid, int ret)
         }
         else
         {
-            LOG_ERROR("[ClientLibThreadInterdependencyTest] -Thread {}- received a CL_SUCCESS return value when"
+            LOG_ERROR("[ClientLibThreadInterdependencyTest] -Thread {}- received a chronolog::CL_SUCCESS return value when"
                       " trying to destroy a story on a state different from STORY_RELEASED", tid);
         }
     }
@@ -253,12 +253,12 @@ void check_story_destroyed(int tid, int ret)
     {
         if(static_cast<ThreadState>(shared_state[tid]) == ThreadState::STORY_ACQUIRED)
         {
-            LOG_INFO("[ClientLibThreadInterdependencyTest] -Thread {}- received a CL_ERR_ACQUIRED return value when "
+            LOG_INFO("[ClientLibThreadInterdependencyTest] -Thread {}- received a chronolog::CL_ERR_ACQUIRED return value when "
                      "trying to destroy a Story on the STORY_ACQUIRED state.", tid);
         }
         else
         {
-            LOG_INFO("[ClientLibThreadInterdependencyTest] -Thread {}- received a CL_ERR_ACQUIRED return value when "
+            LOG_INFO("[ClientLibThreadInterdependencyTest] -Thread {}- received a chronolog::CL_ERR_ACQUIRED return value when "
                      "trying to destroy a story on a state different from STORY_ACQUIRED state.", tid);
         }
     }
@@ -267,12 +267,12 @@ void check_story_destroyed(int tid, int ret)
         if(static_cast<ThreadState>(shared_state[tid]) == ThreadState::STORY_DESTROYED ||
            static_cast<ThreadState>(shared_state[tid]) == ThreadState::CHRONICLE_DESTROYED)
         {
-            LOG_INFO("[ClientLibThreadInterdependencyTest] -Thread {}- received a CL_ERR_NOT_EXIST return value when "
+            LOG_INFO("[ClientLibThreadInterdependencyTest] -Thread {}- received a chronolog::CL_ERR_NOT_EXIST return value when "
                      " trying to destroy a Story on the STORY_DESTROYED or CHRONICLE_DESTROYED state.", tid);
         }
         else
         {
-            LOG_ERROR("[ClientLibThreadInterdependencyTest] -Thread {}- received a CL_ERR_NOT_EXIST return value when "
+            LOG_ERROR("[ClientLibThreadInterdependencyTest] -Thread {}- received a chronolog::CL_ERR_NOT_EXIST return value when "
                       "trying to destroy a story on a state different than STORY_DESTROYED or CHRONICLE_DESTROYED "
                       "state.", tid);
         }
@@ -298,7 +298,7 @@ void check_chronicle_destroyed(int tid, int ret)
         }
         else
         {
-            LOG_ERROR("[ClientLibThreadInterdependencyTest] -Thread {}- received a CL_SUCCESS return value when trying "
+            LOG_ERROR("[ClientLibThreadInterdependencyTest] -Thread {}- received a chronolog::CL_SUCCESS return value when trying "
                       "to destroy chronicle on a state different than STORY_RELEASED", tid);
         }
     }
@@ -306,12 +306,12 @@ void check_chronicle_destroyed(int tid, int ret)
     {
         if(static_cast<ThreadState>(shared_state[tid]) == ThreadState::STORY_ACQUIRED)
         {
-            LOG_INFO("[ClientLibThreadInterdependencyTest] -Thread {}- received a CL_ERR_ACQUIRED return value when "
+            LOG_INFO("[ClientLibThreadInterdependencyTest] -Thread {}- received a chronolog::CL_ERR_ACQUIRED return value when "
                      "trying to destroy chronicle on STORY_ACQUIRED state", tid);
         }
         else
         {
-            LOG_INFO("[ClientLibThreadInterdependencyTest] -Thread {}- received a CL_ERR_ACQUIRED return value when "
+            LOG_INFO("[ClientLibThreadInterdependencyTest] -Thread {}- received a chronolog::CL_ERR_ACQUIRED return value when "
                      "trying to destroy chronicle on a state different than STORY_ACQUIRED", tid);
         }
     }
@@ -319,12 +319,12 @@ void check_chronicle_destroyed(int tid, int ret)
     {
         if(static_cast<ThreadState>(shared_state[tid]) == ThreadState::CHRONICLE_DESTROYED)
         {
-            LOG_INFO("[ClientLibThreadInterdependencyTest] -Thread {}- received a CL_ERR_NOT_EXIST return value when "
+            LOG_INFO("[ClientLibThreadInterdependencyTest] -Thread {}- received a chronolog::CL_ERR_NOT_EXIST return value when "
                      "trying to destroy chronicle on a state STORY_DESTROYED or CHRONICLE_DESTROYED", tid);
         }
         else
         {
-            LOG_ERROR("[ClientLibThreadInterdependencyTest] -Thread {}- received a CL_ERR_NOT_EXIST return value when "
+            LOG_ERROR("[ClientLibThreadInterdependencyTest] -Thread {}- received a chronolog::CL_ERR_NOT_EXIST return value when "
                       "trying to destroy chronicle on a state different than STORY_DESTROYED or CHRONICLE_DESTROYED"
                       , tid);
         }

@@ -24,9 +24,9 @@ ChronicleMetaDirectory::~ChronicleMetaDirectory()
  * Create a Chronicle
  * @param name: name of the Chronicle
  * @param attrs: attributes associated with the Chronicle
- * @return CL_SUCCESS if succeed to create the Chronicle \n
- *         CL_ERR_CHRONICLE_EXISTS if a Chronicle with the same name already exists \n
- *         CL_ERR_UNKNOWN otherwise
+ * @return chronolog::CL_SUCCESS if succeed to create the Chronicle \n
+ *         chronolog::CL_ERR_CHRONICLE_EXISTS if a Chronicle with the same name already exists \n
+ *         chronolog::CL_ERR_UNKNOWN otherwise
  */
 int ChronicleMetaDirectory::create_chronicle(const std::string &name
                                              , const std::map <std::string, std::string> &attrs)
@@ -68,10 +68,10 @@ int ChronicleMetaDirectory::create_chronicle(const std::string &name
  * No need to check its Stories. Users are required to release all Stories before releasing a Chronicle
  * @param name: name of the Chronicle
  * @param flags: flags
- * @return CL_SUCCESS if succeed to destroy the Chronicle \n
- *         CL_ERR_NOT_EXIST if the Chronicle does not exist \n
- *         CL_ERR_ACQUIRED if the Chronicle is acquired by others and cannot be destroyed \n
- *         CL_ERR_UNKNOWN otherwise
+ * @return chronolog::CL_SUCCESS if succeed to destroy the Chronicle \n
+ *         chronolog::CL_ERR_NOT_EXIST if the Chronicle does not exist \n
+ *         chronolog::CL_ERR_ACQUIRED if the Chronicle is acquired by others and cannot be destroyed \n
+ *         chronolog::CL_ERR_UNKNOWN otherwise
  */
 int ChronicleMetaDirectory::destroy_chronicle(const std::string &name)
 {
@@ -137,10 +137,10 @@ int ChronicleMetaDirectory::destroy_chronicle(const std::string &name)
  * @param chronicle_name: name of the Chronicle that the Story belongs to
  * @param story_name: name of the Story
  * @param flags: flags
- * @return CL_SUCCESS if succeed to destroy the Story \n
- *         CL_ERR_ACQUIRED if the Story is acquired by others and cannot be destroyed \n
- *         CL_ERR_NOT_EXIST if the Chronicle does not exist \n
- *         CL_ERR_UNKNOWN otherwise
+ * @return chronolog::CL_SUCCESS if succeed to destroy the Story \n
+ *         chronolog::CL_ERR_ACQUIRED if the Story is acquired by others and cannot be destroyed \n
+ *         chronolog::CL_ERR_NOT_EXIST if the Chronicle does not exist \n
+ *         chronolog::CL_ERR_UNKNOWN otherwise
  */
 int ChronicleMetaDirectory::destroy_story(std::string const &chronicle_name, const std::string &story_name)
 {
@@ -195,9 +195,9 @@ int ChronicleMetaDirectory::destroy_story(std::string const &chronicle_name, con
  * @param story_name: name of the Story
  * @param flags: flags
  * @param story_id to populate with the story_id assigned to the story
- * @return CL_SUCCESS if succeed to destroy the Story \n
- *         CL_ERR_NOT_EXIST if the Chronicle does not exist \n
- *         CL_ERR_UNKNOWN otherwise
+ * @return chronolog::CL_SUCCESS if succeed to destroy the Story \n
+ *         chronolog::CL_ERR_NOT_EXIST if the Chronicle does not exist \n
+ *         chronolog::CL_ERR_UNKNOWN otherwise
  */
 int ChronicleMetaDirectory::acquire_story(chl::ClientId const &client_id, const std::string &chronicle_name
                                           , const std::string &story_name
@@ -255,9 +255,9 @@ int ChronicleMetaDirectory::acquire_story(chl::ClientId const &client_id, const 
  * @param story_name: name of the Story
  * @param flags: flags
  * @param story_id to populate with the story_id assigned to the story
- * @return CL_SUCCESS if succeed to destroy the Story \n
- *         CL_ERR_NOT_EXIST if the Chronicle does not exist \n
- *         CL_ERR_UNKNOWN otherwise
+ * @return chronolog::CL_SUCCESS if succeed to destroy the Story \n
+ *         chronolog::CL_ERR_NOT_EXIST if the Chronicle does not exist \n
+ *         chronolog::CL_ERR_UNKNOWN otherwise
  */
 //TO_DO return acquisition_count after the story has been released
 int ChronicleMetaDirectory::release_story(chl::ClientId const &client_id, const std::string &chronicle_name

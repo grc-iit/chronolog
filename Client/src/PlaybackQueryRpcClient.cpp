@@ -49,12 +49,12 @@ int chl::PlaybackQueryRpcClient::is_playback_service_available()
         LOG_ERROR("[PlaybackQueryRpcClient] Playback Service unavailable at {}, exceptiomn:{}", chl::to_string(playback_service_id), ex.what());
     }
     
-    return chl::CL_ERR_UNKNOWN;
+    return chronolog::CL_ERR_UNKNOWN;
 }
     
 int chl::PlaybackQueryRpcClient::send_story_playback_request(uint32_t query_id, chl::ChronicleName const &chronicle_name, chl::StoryName const &story_name, uint64_t start_time, uint64_t end_time)
 {
-    int return_code = chl::CL_ERR_UNKNOWN;
+    int return_code = chronolog::CL_ERR_UNKNOWN;
 
     //uint32_t query_id = theClientQueryService.start_new_query( chronicle_name,story_name,start_time,end_time);
     
@@ -63,7 +63,7 @@ int chl::PlaybackQueryRpcClient::send_story_playback_request(uint32_t query_id, 
         LOG_DEBUG("[PlaybackQueryRpcClient] {} ; send_story_playback_request for Story {}{}", chl::to_string(playback_service_id), chronicle_name,story_name);
         story_playback_request.on(playback_service_handle)( theClientQueryService.get_service_id(), query_id, chronicle_name,story_name,start_time,end_time);
 
-        return chl::CL_SUCCESS;
+        return chronolog::CL_SUCCESS;
 
     } 
     catch (tl::exception const& ex)

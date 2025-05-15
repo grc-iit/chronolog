@@ -276,7 +276,7 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const &keeper_re
         else
         {
             LOG_INFO("[ChronoProcessRegistry] registration for Keeper {} cant's proceed as previous AdminClient is not yet dismantled", to_string(keeper_id_card));
-            return CL_ERR_UNKNOWN;
+            return chronolog::CL_ERR_UNKNOWN;
         }
     }
 
@@ -355,7 +355,7 @@ int KeeperRegistry::unregisterKeeperProcess(KeeperIdCard const &keeper_id_card)
     if(keeper_process_iter == recording_group.keeperProcesses.end())
     { 
         //we don't have a record of this keeper, we have nothing to do
-        return CL_SUCCESS;
+        return chronolog::CL_SUCCESS;
     }
     else
     {
@@ -536,14 +536,14 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
     // the rpc code from DataAdminClients being destroyed while notification is in progress..
     int rpc_return = notifyGrapherOfStoryRecordingStart(*recording_group, chronicle, story, story_id, story_start_time);
 
-    if(rpc_return == CL_SUCCESS)
+    if(rpc_return == chronolog::CL_SUCCESS)
     {
         recording_group->getActiveKeepers(vectorOfKeepers);
         rpc_return = notifyKeepersOfStoryRecordingStart(*recording_group, vectorOfKeepers, chronicle, story, story_id,
                                                         story_start_time);
     }
 
-    if(rpc_return == CL_SUCCESS && recording_group->playerProcess != nullptr)
+    if(rpc_return == chronolog::CL_SUCCESS && recording_group->playerProcess != nullptr)
     {
         player_service_id = recording_group->playerProcess->playbackServiceId;
     }
@@ -589,7 +589,7 @@ int KeeperRegistry::notifyGrapherOfStoryRecordingStart(RecordingGroup &recording
     try
     {
         return_code = dataAdminClient->send_start_story_recording(chronicle, story, storyId, story_start_time);
-        if(return_code != CL_SUCCESS)
+        if(return_code != chronolog::CL_SUCCESS)
         {
             LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to {}", recordingGroup.grapherProcess->idCardString);
         }
@@ -647,7 +647,7 @@ int KeeperRegistry::notifyGrapherOfStoryRecordingStop(RecordingGroup& recordingG
     try
     {
         return_code = dataAdminClient->send_stop_story_recording(storyId);
-        if(return_code != CL_SUCCESS)
+        if(return_code != chronolog::CL_SUCCESS)
         {
             LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to grapher {}", id_string.str());
         }
@@ -711,7 +711,7 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart(RecordingGroup& recording
         try
         {
             int rpc_return = dataAdminClient->send_start_story_recording(chronicle, story, storyId, story_start_time);
-            if(rpc_return != CL_SUCCESS)
+            if(rpc_return != chronolog::CL_SUCCESS)
             {
                 LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to keeper {}", to_string(keeper_id_card));
             }
@@ -759,7 +759,7 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStop(StoryId const& stor
         if(story_iter == activeStories.end())
         {
             //we don't know of this story
-            return CL_SUCCESS;
+            return chronolog::CL_SUCCESS;
         }
 
         recording_group = (*story_iter).second;
@@ -779,7 +779,7 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStop(StoryId const& stor
         notifyGrapherOfStoryRecordingStop(*recording_group, story_id);
     }
 
-    return CL_SUCCESS;
+    return chronolog::CL_SUCCESS;
 }
 //////////////
 int KeeperRegistry::notifyKeepersOfStoryRecordingStop(RecordingGroup& recordingGroup,
@@ -818,7 +818,7 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStop(RecordingGroup& recordingG
         try
         {
             int rpc_return = dataAdminClient->send_stop_story_recording(storyId);
-            if(rpc_return != CL_SUCCESS)
+            if(rpc_return != chronolog::CL_SUCCESS)
             {
                 LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to keeper {}", to_string(keeper_id_card));
             }
@@ -903,7 +903,7 @@ int KeeperRegistry::registerGrapherProcess(GrapherRegistrationMsg const & reg_ms
         {
             LOG_INFO("[ChronoProcessRegistry] registration for Grapher{} cant's proceed as previous grapherClient isn't yet "
                      "dismantled", chl::to_string(grapher_id_card));
-            return CL_ERR_UNKNOWN;
+            return chronolog::CL_ERR_UNKNOWN;
         }
     }
 
@@ -1077,7 +1077,7 @@ int chl::KeeperRegistry::registerPlayerProcess(chl::PlayerRegistrationMsg const 
         if(false == insert_return.second)
         {
             LOG_ERROR("[ChronoProcessRegistry] player registration failed to find RecordingGroup {}", group_id);
-            return chl::CL_ERR_UNKNOWN;
+            return chronolog::CL_ERR_UNKNOWN;
         }
         else { group_iter = insert_return.first; }
     }
@@ -1120,7 +1120,7 @@ int chl::KeeperRegistry::registerPlayerProcess(chl::PlayerRegistrationMsg const 
             LOG_INFO("[ChronoProcessRegistry] registration for Player{} cant's proceed as previous playerClient isn't yet "
                      "dismantled", chl::to_string(id_card));
                      
-            return CL_ERR_UNKNOWN;
+            return chronolog::CL_ERR_UNKNOWN;
         }
     }
 
@@ -1136,7 +1136,7 @@ int chl::KeeperRegistry::registerPlayerProcess(chl::PlayerRegistrationMsg const 
     {
         LOG_ERROR("[ChronoProcessRegistry] Register Player {} failed to create DataStoreAdminClient for {}",
                   chl::to_string(id_card), chl::to_string(admin_service_id));
-        return chl::CL_ERR_UNKNOWN;
+        return chronolog::CL_ERR_UNKNOWN;
     }
 
     //now create a new GrapherProcessEntry with the new DataAdminclient

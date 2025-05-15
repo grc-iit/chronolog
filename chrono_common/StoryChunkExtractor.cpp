@@ -98,7 +98,7 @@ void chronolog::StoryChunkExtractorBase::drainExtractionQueue()
             }
             int ret = processStoryChunk(storyChunk);  // INNA: should add return type and handle the failure properly
             // free the memory or reset the startTime and return to the pool of prealocated chunks
-            if(ret == CL_SUCCESS)
+            if(ret == chronolog::CL_SUCCESS)
             {
                 LOG_DEBUG("[StoryChunkExtractionBase] StoryChunk processed successfully. ES Rank: {}, ULT ID: {}"
                           , es.get_rank(), thallium::thread::self_id());
