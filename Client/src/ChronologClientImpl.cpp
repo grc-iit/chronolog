@@ -11,6 +11,7 @@ chronolog::ChronologClientImpl*chronolog::ChronologClientImpl::chronologClientIm
 
 chronolog::ChronologClientImpl*chronolog::ChronologClientImpl::GetClientImplInstance(
         chronolog::ClientPortalServiceConf const &visorClientPortalServiceConf,
+        chronolog::ClientMode const& clientMode,
         chronolog::ClientQueryServiceConf const& clientQueryServiceConf)
 {
     chrono_monitor::initialize("file", "/tmp/chrono_client.log", spdlog::level::info, "chrono_client", 1024000, 3
@@ -20,7 +21,7 @@ chronolog::ChronologClientImpl*chronolog::ChronologClientImpl::GetClientImplInst
 
     if(chronologClientImplInstance == nullptr)
     {
-        chronologClientImplInstance = new ChronologClientImpl(visorClientPortalServiceConf, clientQueryServiceConf);
+        chronologClientImplInstance = new ChronologClientImpl(visorClientPortalServiceConf, clientMode,  clientQueryServiceConf);
     }
 
     return chronologClientImplInstance;
@@ -28,6 +29,7 @@ chronolog::ChronologClientImpl*chronolog::ChronologClientImpl::GetClientImplInst
 
 chronolog::ChronologClientImpl::ChronologClientImpl(
     chronolog::ClientPortalServiceConf const& clientPortalServiceConf,
+    chronolog::ClientMode const& clientMode,
     chronolog::ClientQueryServiceConf const& clientQueryServiceConf)
         : clientState(UNKNOWN)
         , clientLogin("")
@@ -39,16 +41,25 @@ chronolog::ChronologClientImpl::ChronologClientImpl(
 {
 
     defineClientIdentity();
-
-    std::string QUERY_SERVICE_NA_STRING =
+    
+    if(WRITER_MODE == clientMode)
+    {
+        tlEngine = new thallium::engine(clientPortalServiceConf.proto_conf(), THALLIUM_CLIENT_MODE, true, 1);
+    }
+    else
+    {
+        std::string QUERY_SERVICE_NA_STRING =
             clientQueryServiceConf.proto_conf() + "://" + clientQueryServiceConf.ip() + ":" +
             std::to_string(clientQueryServiceConf.port());
 
-    margo_instance_id margo_id = margo_init(QUERY_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 1);
-    tlEngine = new tl::engine(margo_id);
+        margo_instance_id margo_id = margo_init(QUERY_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 1);
+        tlEngine = new tl::engine(margo_id);
 
-    storyReaderService= chl::ClientQueryService::CreateClientQueryService(*tlEngine, chronolog::ServiceId(clientQueryServiceConf.proto_conf(), 
+        storyReaderService= chl::ClientQueryService::CreateClientQueryService(*tlEngine, chronolog::ServiceId(clientQueryServiceConf.proto_conf(), 
                                         clientQueryServiceConf.ip(), clientQueryServiceConf.port(), clientQueryServiceConf.provider_id()));
+
+    }
+
 
     std::string VISOR_NA_STRING =
             clientPortalServiceConf.proto_conf() + "://" + clientPortalServiceConf.ip() + ":" +
@@ -122,7 +133,7 @@ int chronolog::ChronologClientImpl::Connect()
         clientId = connectResponseMsg.getClientId();
         if(storyteller == nullptr)
         {
-            storyteller = new StorytellerClient(clockProxy, *storyReaderService, clientId);
+            storyteller = new StorytellerClient(clockProxy, *tlEngine, clientId);
         }
         //TODO: if we ever change the connection hashing algorithm we'd need to handle reconnection case with the new client_id 
     }
