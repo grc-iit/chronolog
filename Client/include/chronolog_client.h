@@ -117,7 +117,11 @@ class ChronologClientImpl;
 class Client
 {
 public:
-    Client(ClientPortalServiceConf const &, ClientQueryServiceConf const& = ClientQueryServiceConf{"ofi+sockets","127.0.0.1",5557,57});
+    // client is instantiated in writer only mode, capable of only producing events
+    Client(ClientPortalServiceConf const &);
+
+    //client is intantiated in writer/reader mode, capable of both producing and consuming events
+    Client(ClientPortalServiceConf const &, ClientQueryServiceConf const& );
 
     ~Client();
 
