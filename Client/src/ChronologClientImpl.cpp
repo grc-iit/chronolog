@@ -65,7 +65,7 @@ chronolog::ChronologClientImpl::ChronologClientImpl(
             clientPortalServiceConf.proto_conf() + "://" + clientPortalServiceConf.ip() + ":" +
             std::to_string(clientPortalServiceConf.port());
 
-    rpcVisorClient = chl::RpcVisorClient::CreateRpcVisorClient(*tlEngine, CLIENT_VISOR_NA_STRING
+    rpcVisorClient = chl::RpcVisorClient::CreateRpcVisorClient(*tlEngine, VISOR_NA_STRING
                                                                , clientPortalServiceConf.provider_id());
 }
 
