@@ -137,11 +137,19 @@ int main(int argc, char**argv)
     chronolog::ClientQueryServiceConf clientQueryConf("ofi+sockets", "127.0.0.1", 5557, 57);
     int result = chronolog::chrono_monitor::initialize("file", "/tmp/chrono_client.log", spdlog::level::debug, "ChronoClient", 102400, 3, spdlog::level::debug);
 
-
     if(result == 1)
     {
         exit(EXIT_FAILURE);
     }
+
+    bool run_hybrid_test = false;
+
+    if((argc==1) || (argc >1 && argv[1][0] == '1'))
+    { run_hybrid_test = false; }
+    else if(argc > 1 && argv[1][0] =='2')
+    { run_hybrid_test = true; }
+
+
     LOG_INFO("[ClientLibStoryReader] Running...");
 
 
@@ -171,8 +179,12 @@ int main(int argc, char**argv)
 
     LOG_INFO("[ClientLibStoryReader] Finished simple reader test for story: {}-{}", chronicle_name, story_name);
 
+    if( !run_hybrid_test )
+    {
+        return 1;
+    }
 
-//// writer reader test 
+//// hybrid writer-reader client test with multiple threads
     
     LOG_INFO("[ClientLibStoryReader] Starting multithreaded writer / reader test for story: {}-{}", chronicle_name, story_name);
 

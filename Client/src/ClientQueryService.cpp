@@ -116,6 +116,8 @@ chl::PlaybackQuery * chl::ClientQueryService::start_query(uint64_t timeout_time,
 
     uint32_t query_id = queryIdIndex++; 
 
+    //TODO add query_id to queryResponse object  and remove this line...
+    query_id=1;
     auto insert_return = activeQueryMap.insert(std::pair<uint32_t, chl::PlaybackQuery>
                 ( query_id, chl::PlaybackQuery( playback_events, query_id, timeout_time, chronicle, story, start_time, end_time)));
 
@@ -222,13 +224,30 @@ void chl::ClientQueryService::receive_story_chunk(tl::request  const& request, t
             request.respond(ret);
             return;
         }
+
         LOG_DEBUG("[ClientQueryService] StoryChunk received: StoryId {} StartTime {} eventCount {} ThreadID={}"
                         , story_chunk->getStoryId(), story_chunk->getStartTime(), story_chunk->getEventCount()
                         , tl::thread::self_id());
-  
+ 
+        // add StoryChunk to the Query response event series 
+        uint32_t query_id = 1; //TODO:  add query_id to query response transfer 
+        
+        // NOTE: by design threre would be only one receiving thread that's writing to the specific query object
+        // but we probably should take case of the possibility of the query timeout happenning while we are writing the response
+
+        auto query_iter = activeQueryMap.find(query_id);
+        if(query_iter != activeQueryMap.end())
+        {
+            LOG_DEBUG("[ClientQueryService] Query {} got StoryChunk {}-{} StartTime {} eventCount {} ThreadID={}"
+                        , query_id, story_chunk->getChronicleName(), story_chunk->getStoryName(), story_chunk->getStartTime(), story_chunk->getEventCount() , tl::thread::self_id());
+            story_chunk->extractEventSeries((*query_iter).second.eventSeries);
+            (*query_iter).second.completed=true;
+        }
+        
+        delete story_chunk;
+ 
         LOG_DEBUG("[ClientQueryService] StoryChunk recording RPC response {}, ThreadID={}", b.size()
                         , tl::thread::self_id());
-
         request.respond(b.size());
  
         // add StoryChunk to the QueryResponse Object 
@@ -267,4 +286,14 @@ int chl::ClientQueryService::deserializedWithCereal(char *buffer, size_t size, c
          }
         return chl::CL_ERR_UNKNOWN;
      }
+
+
+
+
+
+
+
+
+
+
 

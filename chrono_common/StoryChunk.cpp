@@ -1,5 +1,6 @@
 
 
+#include "chronolog_client.h" //for definition of chronolog::Event
 #include "StoryChunk.h"
 
 
@@ -206,3 +207,18 @@ std::map<chl::EventSequence, chl::LogEvent>::iterator chl::StoryChunk::eraseEven
 }
 
 ///////////////////
+
+std::vector<chl::Event> & chl::StoryChunk::extractEventSeries( std::vector<chl::Event> & event_series)
+{
+    // NOTE: event_series is a vector of chronolog::Event ( client facing event representation)
+    // while StoryChunk is using LogEvent (internal chronolog event representation)
+    
+    for(auto logEvent : logEvents)
+    {
+        event_series.push_back(chl::Event{ logEvent.second.eventTime, logEvent.second.clientId, logEvent.second.eventIndex, logEvent.second.logRecord});
+    }
+
+    logEvents.clear();
+    
+    return event_series;
+}
