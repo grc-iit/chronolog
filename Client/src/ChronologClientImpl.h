@@ -84,7 +84,7 @@ private:
     thallium::engine*tlEngine;
     RpcVisorClient*rpcVisorClient;
     StorytellerClient*storyteller;
-    ClientQueryService * storyReaderService; 
+    ClientQueryService * storyReaderService;
 
     ChronologClientImpl(ClientPortalServiceConf const&, ClientMode const &, chronolog::ClientQueryServiceConf const&);
 
