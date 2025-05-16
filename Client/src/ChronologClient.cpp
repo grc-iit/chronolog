@@ -2,7 +2,12 @@
 
 chronolog::Client::Client(chronolog::ClientPortalServiceConf const &visorClientPortalServiceConf)
 {
-    chronologClientImpl = chronolog::ChronologClientImpl::GetClientImplInstance(visorClientPortalServiceConf);
+    chronologClientImpl = chronolog::ChronologClientImpl::GetClientImplInstance(visorClientPortalServiceConf, chronolog::WRITER_MODE, chronolog::ClientQueryServiceConf{"","",0,0});
+}
+
+chronolog::Client::Client(chronolog::ClientPortalServiceConf const &visorClientPortalServiceConf, chronolog::ClientQueryServiceConf const& clientQueryServiceConf)
+{
+    chronologClientImpl = chronolog::ChronologClientImpl::GetClientImplInstance(visorClientPortalServiceConf, chronolog::READER_MODE, clientQueryServiceConf);
 }
 
 chronolog::Client::~Client()

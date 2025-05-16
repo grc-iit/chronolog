@@ -142,9 +142,10 @@ void chl::ClientQueryService::receive_story_chunk(tl::request  const& request, t
                         , story_chunk->getStoryId(), story_chunk->getStartTime(), story_chunk->getEventCount()
                         , tl::thread::self_id());
   
-        request.respond(b.size());
-        LOG_DEBUG("[ClientQueryService] StoryChunk recording RPC responded {}, ThreadID={}", b.size()
+        LOG_DEBUG("[ClientQueryService] StoryChunk recording RPC response {}, ThreadID={}", b.size()
                         , tl::thread::self_id());
+
+        request.respond(b.size());
  
         // add StoryChunk to the QueryResponse Object 
         }

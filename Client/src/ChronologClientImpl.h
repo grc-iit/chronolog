@@ -15,6 +15,12 @@
 namespace chronolog
 {
 
+enum ClientMode
+{
+    WRITER_MODE = 0,
+    READER_MODE = 1,
+};
+
 enum ChronologClientState
 {
     UNKNOWN = 0, CONNECTED = 1, READING = 2, WRITING = 3, SHUTTING_DOWN = 4
@@ -31,7 +37,7 @@ public:
     static ChronologClientImpl*chronologClientImplInstance;
 
     static ChronologClientImpl*
-    GetClientImplInstance(chronolog::ClientPortalServiceConf const &);
+    GetClientImplInstance(chronolog::ClientPortalServiceConf const &, ClientMode const& , chronolog::ClientQueryServiceConf const &);
 
     // the classs is non-copyable
     ChronologClientImpl(ChronologClientImpl const &) = delete;
@@ -77,7 +83,7 @@ private:
     StorytellerClient*storyteller;
     ClientQueryService * storyReaderService;
     
-    ChronologClientImpl( ClientQueryServiceConf const& , ClientPortalServiceConf const&);
+    ChronologClientImpl(ClientPortalServiceConf const&, ClientMode const &, chronolog::ClientQueryServiceConf const&);
 
     void defineClientIdentity();
 

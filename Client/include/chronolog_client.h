@@ -105,7 +105,7 @@ class StoryHandle
 public:
     virtual  ~StoryHandle();
 
-    virtual int log_event(std::string const &) = 0;
+    virtual uint64_t log_event(std::string const &) = 0;
 
     virtual int playback_story(uint64_t start, uint64_t end, std::vector<Event> & playback_events) = 0;
 };
@@ -117,7 +117,11 @@ class ChronologClientImpl;
 class Client
 {
 public:
+    // client is instantiated in writer only mode, capable of only producing events
     Client(ClientPortalServiceConf const &);
+
+    //client is intantiated in writer/reader mode, capable of both producing and consuming events
+    Client(ClientPortalServiceConf const &, ClientQueryServiceConf const& );
 
     ~Client();
 

@@ -60,7 +60,7 @@ chronolog::StoryWritingHandle <KeeperChoicePolicy>::removeRecordingClient(chrono
 template <class KeeperChoicePolicy>
 void chronolog::StoryWritingHandle <KeeperChoicePolicy>::attachPlaybackQueryClient(PlaybackQueryRpcClient* playbackClient)
 {
-    playbackQueryClient = playbackClient;
+//    playbackQueryClient = playbackClient;
 }
 
 template <class KeeperChoicePolicy>
@@ -71,9 +71,8 @@ void chronolog::StoryWritingHandle <KeeperChoicePolicy>::detachPlaybackQueryClie
 
 //////////////////
 template <class KeeperChoicePolicy>
-int chronolog::StoryWritingHandle <KeeperChoicePolicy>::log_event(std::string const &event_record)
+uint64_t chronolog::StoryWritingHandle <KeeperChoicePolicy>::log_event(std::string const &event_record)
 {
-
     chronolog::LogEvent log_event(storyId, theClient.getTimestamp(), theClient.getClientId()
                                   , theClient.get_event_index(), event_record);
 
@@ -84,13 +83,10 @@ int chronolog::StoryWritingHandle <KeeperChoicePolicy>::log_event(std::string co
         return 0;
     }
 
-    // INNA: make send event returm 0 in case of tl RPC failure ....
-    
-    keeperRecordingClient->send_event_msg(log_event);
-
-    //INNA: we probably want to expose the timestamp as the return value here
-    // 0 indicates a failure to log as invalid timestamp
-    return 1;
+    if(chronolog::CL_SUCCESS == keeperRecordingClient->send_event_msg(log_event))
+    { return log_event.eventTime; }
+    else
+    { return 0; }
 }
 /////////////////////
 /*
@@ -138,12 +134,14 @@ chronolog::StorytellerClient::~StorytellerClient()
         delete keeper_client.second;
     }
     recordingClientMap.clear();
+    /*
     //delete playback clients
     for(auto playback_client: playbackQueryClientMap)
     {
         delete playback_client.second;
     }
     playbackQueryClientMap.clear();
+    */
 }
 
 int chronolog::StorytellerClient::get_event_index()
@@ -170,7 +168,8 @@ int chronolog::StorytellerClient::addKeeperRecordingClient(chronolog::KeeperIdCa
     try
     {
         chronolog::KeeperRecordingClient*keeperRecordingClient = chronolog::KeeperRecordingClient::CreateKeeperRecordingClient(
-                theClientQueryService.get_service_engine(), keeper_id_card);
+                //theClientQueryService.get_service_engine(), keeper_id_card);
+                client_engine, keeper_id_card);
 
         auto insert_return = recordingClientMap.insert(
                 std::pair <std::pair <uint32_t, uint16_t>, chronolog::KeeperRecordingClient*>(
@@ -223,13 +222,13 @@ chronolog::StorytellerClient::findStoryWritingHandle(ChronicleName const &chroni
     auto story_record_iter = acquiredStoryHandles.find(std::pair <std::string, std::string>(chronicle, story));
     if(story_record_iter != acquiredStoryHandles.end())
     {
-        LOG_INFO("[StorytellerClient::findStoryWritingHandle] Found StoryHandle for Chronicle: '{}' and Story: '{}'."
+        LOG_DEBUG("[StorytellerClient::findStoryWritingHandle] Found StoryHandle for Chronicle: '{}' and Story: '{}'."
              , chronicle, story);
         return ((*story_record_iter).second);
     }
     else
     {
-        LOG_WARNING("[StorytellerClient::findStoryWritingHandle] StoryHandle not found for Chronicle: '{}' and Story: '{}'."
+        LOG_DEBUG("[StorytellerClient::findStoryWritingHandle] StoryHandle not found for Chronicle: '{}' and Story: '{}'."
              , chronicle, story);
         return (nullptr);
     }
@@ -276,7 +275,7 @@ chronolog::StorytellerClient::initializeStoryWritingHandle(ChronicleName const &
     }
 
     // find existing or create a new one playbackQueryRpcClient
-    if(player_card.is_valid())
+ /*   if(player_card.is_valid())
     {   
         auto playbackQueryClient = theClientQueryService.addPlaybackQueryClient(player_card);
 
@@ -290,7 +289,7 @@ chronolog::StorytellerClient::initializeStoryWritingHandle(ChronicleName const &
     {        
         LOG_DEBUG("[StorytellerClient] StoryHandle {} {} doesn't have PlaybackQueryClient", chronicle,story);
     }
-
+*/
     auto insert_return = acquiredStoryHandles.insert(
             std::pair <std::pair <std::string, std::string>, chronolog::StoryHandle*>(
                     std::pair <std::string, std::string>(chronicle, story), storyWritingHandle));
@@ -328,6 +327,7 @@ void chronolog::StorytellerClient::removeAcquiredStoryHandle(ChronicleName const
     {
         delete (*story_record_iter).second;
         acquiredStoryHandles.erase(story_record_iter);
+                //theClientQueryService.get_service_engine(), keeper_id_card);
         LOG_INFO("[StorytellerClient] Successfully removed StoryHandle for Chronicle: '{}' and Story: '{}'.", chronicle
              , story);
     }
