@@ -79,7 +79,7 @@ void reader_thread( int tid, struct thread_arg * t)
     std::map <std::string, std::string> story_attrs;
     int flags = 1;
 
-    std::vector<chronolog::Event> playback_events;
+    std::vector<chronolog::Event> replay_events;
     // Create the chronicle
     ret= client->CreateChronicle(t->chronicle, chronicle_attrs, flags);
     LOG_INFO("[ClientLibStoryReader] Chronicle created: tid={}, ChronicleName={}, Flags: {}", t->tid , t->chronicle, flags);
@@ -99,17 +99,26 @@ void reader_thread( int tid, struct thread_arg * t)
 
         LOG_INFO("[ClientLibStoryReader] Reader thread tid={} sending playback_request for story: {} {} segment{}-{}", tid , t->chronicle, t->story, t->segment_start, t->segment_end);
 
-        ret = story_handle->playback_story(t->segment_start, (t->segment_end), playback_events);
+        ret = client->ReplayStory(t->chronicle, t->story,t->segment_start, (t->segment_end), replay_events);
 
-        if(ret == chronolog::CL_ERR_NO_PLAYERS)
+        if(ret == chronolog::CL_SUCCESS)
         {   
-            LOG_INFO("[ClientLibStoryReader] Reader thread tid={} can't find Player for story: {} {}, Ret: {}", tid , t->chronicle, t->story, ret);
+        
+            LOG_INFO("[ClientLibStoryReader] Reader thread tid={} completed replay story{}-{}  event_series has {} events",
+                         tid , t->chronicle, t->story, replay_events.size());
+        
+            for( auto event: replay_events)
+            {
+                LOG_INFO("[ClientLibStoryReader] replay event{}", event.to_string());
+            }
         }
-        else
+        else 
         {
-            LOG_INFO("[ClientLibStoryReader] Reader thread tid={} found Player for story: {} {}, Ret: {}",tid , t->chronicle, t->story, ret);
+            LOG_INFO("[ClientLibStoryReader] Reader thread tid={} failed to replay story: {}-{}, Return_code: {}", tid , t->chronicle, t->story, ret);
         }
 
+        
+        
         // Release the story
         ret = client->ReleaseStory(t->chronicle, t->story);
         LOG_INFO("[ClientLibStoryReader] Reader thread tid={} released story: {} {}, Ret: {}", tid , t->chronicle, t->story, ret);

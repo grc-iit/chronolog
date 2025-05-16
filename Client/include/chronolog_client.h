@@ -85,7 +85,7 @@ public:
     }
 
 
-    inline std::string toString() const
+    inline std::string to_string() const
     {
         return  "{Event: " + std::to_string(eventTime) + ":" + std::to_string(clientId) + ":" + std::to_string(eventIndex) +
                           ":" + logRecord +"}";
@@ -107,6 +107,7 @@ public:
 
     virtual uint64_t log_event(std::string const &) = 0;
 
+//TODO: this should be removed ....    
     virtual int playback_story(uint64_t start, uint64_t end, std::vector<Event> & playback_events) = 0;
 };
 
@@ -148,6 +149,8 @@ public:
     std::vector <std::string> &ShowChronicles(std::vector <std::string> &);
 
     std::vector <std::string> &ShowStories(std::string const &chronicle_name, std::vector <std::string> &);
+    
+    int ReplayStory( std::string const & chronicle, std::string const & story, uint64_t start, uint64_t end, std::vector<Event> & event_series);
 
 private:
     ChronologClientImpl*chronologClientImpl;

@@ -4,6 +4,8 @@
 
 #include "client_errcode.h"
 #include "chrono_monitor.h"
+#include "chronolog_client.h"
+
 #include "StoryChunk.h"
 #include "ClientQueryService.h"
 #include "PlaybackQueryRpcClient.h"
@@ -36,42 +38,100 @@ chl::ClientQueryService::~ClientQueryService()
 
 
 ///////////////
-int chl::ClientQueryService::addStoryReader(ChronicleName const&, StoryName const&, ServiceId const&)
+int chl::ClientQueryService::addStoryReader(ChronicleName const& chronicle, StoryName const& story, ServiceId const& service_id)
 {
-    
+    chl::PlaybackQueryRpcClient * playbackRpcClient = addPlaybackQueryClient(service_id);
 
-return chl::CL_SUCCESS;
+    if( nullptr == playbackRpcClient)
+    {
+        return chl::CL_ERR_UNKNOWN;
+    }
+
+    std::lock_guard <std::mutex> lock(queryServiceMutex);
+    auto insert_return = acquiredStoryMap.insert(std::pair<std::pair<chl::ChronicleName,chl::StoryName>, chl::PlaybackQueryRpcClient*>(
+                                                        std::pair<chl::ChronicleName,chl::StoryName>(chronicle,story), playbackRpcClient));
+    
+    return ( insert_return.second ? chl::CL_SUCCESS : chl::CL_ERR_UNKNOWN);
 }
 
-void chl::ClientQueryService::removeStoryReader(ChronicleName const&, StoryName const&)
+void chl::ClientQueryService::removeStoryReader(chl::ChronicleName const & chronicle, chl::StoryName const & story)
 {
-
+    std::lock_guard <std::mutex> lock(queryServiceMutex);
+    acquiredStoryMap.erase(std::pair<chl::ChronicleName,chl::StoryName>(chronicle,story));
 }
 
 ////////////
 
-int chl::ClientQueryService::playback_story( chl::ChronicleName const& chronicle, chl::StoryName const& story, uint64_t start, uint64_t end, std::vector<chl::LogEvent> & playback_events)
+int chl::ClientQueryService::replay_story( chl::ChronicleName const& chronicle, chl::StoryName const& story, uint64_t start, uint64_t end, std::vector<chl::Event> & event_series)
 {
 
-    uint32_t query_id = start_new_query( chronicle, story, start, end, playback_events);
+    //check if the story has been acquired and the chrono_player is available for it 
 
+    auto storyReader_iter = acquiredStoryMap.find(std::pair<chl::ChronicleName,chl::StoryName>(chronicle, story));
 
-return chl::CL_SUCCESS;
+    if(storyReader_iter == acquiredStoryMap.end())
+    { return chl::CL_ERR_NOT_ACQUIRED; }
+
+    PlaybackQueryRpcClient * playbackRpcClient = (*storyReader_iter).second;
+
+    // instantiate new query object 
+
+    uint64_t current_time = 0; //
+    chl::PlaybackQuery * query = start_query( current_time+60, chronicle, story, start, end, event_series);
+
+    if(query == nullptr)
+    {   return chl::CL_ERR_UNKNOWN; }
+
+    //TODO: check that rpdQueryClient object can not be destroyed while we make the RPC call...
+
+    //send query request to the appropriate chrono_player PlaybackService
+    if( (playbackRpcClient == nullptr)
+    || ( playbackRpcClient->send_story_playback_request( query->queryId, chronicle, story, start,end) != chl::CL_SUCCESS))
+    {
+        stop_query(query->queryId);
+        return chl::CL_ERR_NO_PLAYERS;
+    }
+    
+    // now wait for the asynchronous response with periodic polling of the query status
+    // response will be received on a different thread
+    while( !query->completed /*&& current_time < query.timeout_time*/)
+    {
+        sleep(1);
+        //current_time =   //TODO: add timeout value
+    }
+
+    int ret_value = (query->completed == true ? chl::CL_SUCCESS : chl::CL_ERR_QUERY_TIMED_OUT );
+
+    // destroy query object and return to the caller
+    stop_query(query->queryId);
+
+    return ret_value;
 }
+//////
 
-// record the newly issued query details and return queryId
-uint32_t chl::ClientQueryService::start_new_query(chl::ChronicleName const& chronicle, chl::StoryName const& story, 
-        chl::chrono_time const& start_time, chl::chrono_time const& end_time, std::vector<chl::LogEvent> & playback_events)
+chl::PlaybackQuery * chl::ClientQueryService::start_query(uint64_t timeout_time, chl::ChronicleName const& chronicle, chl::StoryName const& story, 
+        chl::chrono_time const& start_time, chl::chrono_time const& end_time, std::vector<chl::Event> & playback_events)
 {
     std::lock_guard <std::mutex> lock(queryServiceMutex);
 
     uint32_t query_id = queryIdIndex++; 
 
-    activeQueryMap.insert(std::pair<uint32_t, chl::StoryPlaybackQuery>
-                ( query_id, chl::StoryPlaybackQuery( playback_events, query_id, chronicle, story, start_time, end_time)));
+    auto insert_return = activeQueryMap.insert(std::pair<uint32_t, chl::PlaybackQuery>
+                ( query_id, chl::PlaybackQuery( playback_events, query_id, timeout_time, chronicle, story, start_time, end_time)));
 
-    return query_id;
+    if(insert_return.second)
+    {   return & (*insert_return.first).second; }
+    else
+    {   return nullptr; }
 }
+
+void chl::ClientQueryService::stop_query(uint32_t query_id)
+{
+    std::lock_guard <std::mutex> lock(queryServiceMutex);
+
+    activeQueryMap.erase(query_id);
+}
+////
 
 // find or create PlaybackServiceRpcClient associated with the remote Playback Service
 chl::PlaybackQueryRpcClient * chronolog::ClientQueryService::addPlaybackQueryClient(chl::ServiceId const& player_card)

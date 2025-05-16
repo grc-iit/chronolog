@@ -69,8 +69,11 @@ public:
     std::vector <std::string> &ShowChronicles(std::vector <std::string> &);
     std::vector <std::string> &ShowStories(const std::string &chronicle_name, std::vector <std::string> &);
 
+    int replay_story( ChronicleName const&, StoryName const&, uint64_t start, uint64_t end, std::vector<Event> & eventSeries);
+
 private:
 
+    ClientMode clientMode;
     ChronologClientState clientState;
     std::string clientLogin;
     uint32_t euid;
@@ -81,8 +84,8 @@ private:
     thallium::engine*tlEngine;
     RpcVisorClient*rpcVisorClient;
     StorytellerClient*storyteller;
-    ClientQueryService * storyReaderService;
-    
+    ClientQueryService * storyReaderService; 
+
     ChronologClientImpl(ClientPortalServiceConf const&, ClientMode const &, chronolog::ClientQueryServiceConf const&);
 
     void defineClientIdentity();

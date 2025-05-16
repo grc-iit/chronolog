@@ -16,6 +16,8 @@ namespace chronolog
         CL_ERR_NO_CONNECTION = -8,         // No connection to ChronoVisor
         CL_ERR_NOT_AUTHORIZED = -9,        // Unauthorized operation
         CL_ERR_NO_PLAYERS = -10,           // No ChronoPlayers available
+        CL_ERR_NOT_READER_MODE = -11,      // Client is running in WRITER_MODE
+        CL_ERR_QUERY_TIMED_OUT             // Replay query timed out
     };
 }
 
