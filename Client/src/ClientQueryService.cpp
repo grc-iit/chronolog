@@ -19,7 +19,9 @@ chl::ClientQueryService::ClientQueryService(thallium::engine & tl_engine, chl::S
         : tl::provider <ClientQueryService>(tl_engine, client_service_id.getProviderId())
         , queryServiceEngine(tl_engine)
         , queryServiceId(client_service_id)
+        , queryTimeoutInSecs(180) // 3 mins
 {
+    std::atomic_init(&queryIndex,0);
 
     LOG_DEBUG("[ClientQueryService] created  service {}", chl::to_string(queryServiceId));
 
@@ -76,13 +78,14 @@ int chl::ClientQueryService::replay_story( chl::ChronicleName const& chronicle, 
 
     // instantiate new query object 
 
-    uint64_t current_time = 0; //
-    chl::PlaybackQuery * query = start_query( current_time+60, chronicle, story, start, end, event_series);
+    auto timeout_time = (std::chrono::steady_clock::now() + std::chrono::seconds(queryTimeoutInSecs)).time_since_epoch().count();
+
+    chl::PlaybackQuery * query = start_query( timeout_time, chronicle, story, start, end, event_series);
 
     if(query == nullptr)
     {   return chl::CL_ERR_UNKNOWN; }
 
-    //TODO: check that rpdQueryClient object can not be destroyed while we make the RPC call...
+    //TODO: check that rpcQueryClient object can not be destroyed while we make the RPC call...
 
     //send query request to the appropriate chrono_player PlaybackService
     if( (playbackRpcClient == nullptr)
@@ -94,10 +97,12 @@ int chl::ClientQueryService::replay_story( chl::ChronicleName const& chronicle, 
     
     // now wait for the asynchronous response with periodic polling of the query status
     // response will be received on a different thread
-    while( !query->completed /*&& current_time < query.timeout_time*/)
+
+    uint64_t current_time = std::chrono::steady_clock::now().time_since_epoch().count();
+    while( !query->completed && current_time < query->timeout_time)
     {
-        sleep(1);
-        //current_time =   //TODO: add timeout value
+        sleep(1);   //TODO: replace with finer granularity sleep...
+        current_time = std::chrono::steady_clock::now().time_since_epoch().count();
     }
 
     int ret_value = (query->completed == true ? chl::CL_SUCCESS : chl::CL_ERR_QUERY_TIMED_OUT );
@@ -114,8 +119,8 @@ chl::PlaybackQuery * chl::ClientQueryService::start_query(uint64_t timeout_time,
 {
     std::lock_guard <std::mutex> lock(queryServiceMutex);
 
-    uint32_t query_id = queryIdIndex++; 
-
+    uint32_t query_id = queryIndex++; 
+    
     //TODO add query_id to queryResponse object  and remove this line...
     query_id=1;
     auto insert_return = activeQueryMap.insert(std::pair<uint32_t, chl::PlaybackQuery>

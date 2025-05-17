@@ -29,7 +29,6 @@ struct PlaybackQuery
     StoryName   storyName;
     chrono_time startTime;
     chrono_time endTime;
-    std::map<uint64_t,StoryChunk*> PlaybackResponse;
 
     PlaybackQuery( std::vector<Event> & playbackEvents, uint32_t query_id, uint64_t timeout_time,
             ChronicleName const& chronicle, StoryName const& story, chrono_time const& start, chrono_time const& end)
@@ -88,7 +87,8 @@ private:
     thallium::engine  queryServiceEngine;
     ServiceId       queryServiceId;
     std::mutex queryServiceMutex;    
-    std::atomic<int> queryIdIndex;
+    std::atomic<uint32_t> queryIndex;
+    int  queryTimeoutInSecs;
     std::map<uint32_t, PlaybackQuery> activeQueryMap; // map of active queries by queryId
     std::map<std::pair<ChronicleName,StoryName>, PlaybackQueryRpcClient*> acquiredStoryMap;
     // map of QueryRpcClients by service_endpoint of the remote chrono_grapher PlaybackService
