@@ -275,7 +275,7 @@ int main(int argc, char*argv[])
 //        if (!std::filesystem::create_directory(chronicle_dir.c_str()))
 //        {
 //            LOG_ERROR("Failed to create chronicle directory: {}, errno: {}", chronicle_dir.c_str(), errno);
-//            return CL_ERR_UNKNOWN;
+//            return chronolog::CL_ERR_UNKNOWN;
 //        }
 //    }
 
@@ -305,7 +305,7 @@ int main(int argc, char*argv[])
 //            if (story_file == H5I_INVALID_HID)
 //            {
 //                LOG_ERROR("Failed to create story file: {}", story_file_name.c_str());
-//                return CL_ERR_UNKNOWN;
+//                return chronolog::CL_ERR_UNKNOWN;
 //            }
 //            story_chunk_fd_map.emplace(story_id, story_file);
 //        }
@@ -468,7 +468,7 @@ int main(int argc, char*argv[])
 //            H5Fget_name(story_chunk_fd_map_it.second, story_file_name, file_name_len);
 //            LOG_ERROR("Failed to close file for story chunk: {}", story_file_name);
 //            free(story_file_name);
-//            return CL_ERR_UNKNOWN;
+//            return chronolog::CL_ERR_UNKNOWN;
 //        }
 //    }
 

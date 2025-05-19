@@ -58,7 +58,7 @@ int chronolog::GrapherDataStore::startStoryRecording(std::string const &chronicl
     {
         LOG_ERROR("[GrapherDataStore] Failed to create StoryPipeline for StoryId: {}. Possible memory or resource issue."
                   , story_id);
-        return CL_ERR_UNKNOWN;
+        return chronolog::CL_ERR_UNKNOWN;
     }
 }
 ////////////////////////

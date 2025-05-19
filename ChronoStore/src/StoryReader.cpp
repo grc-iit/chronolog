@@ -46,7 +46,7 @@ std::map <uint64_t, chronolog::StoryChunk> StoryReader::readAllStories(const std
  * @param chronicle_name Chronicle name to read
  * @param story_file_name Story file name to read
  * @param story_chunk_map the map to store StoryChunk objects
- * @return CL_SUCCESS if successful, else error code
+ * @return chronolog::CL_SUCCESS if successful, else error code
  */
 int StoryReader::readStory(const std::string &chronicle_name, const std::string &story_file_name
                            , std::map <uint64_t, chronolog::StoryChunk> &story_chunk_map)
@@ -72,7 +72,7 @@ int StoryReader::readStory(const std::string &chronicle_name, const std::string 
  * Read all Story Chunks in the Story file
  * @param story_file Story file to read
  * @param story_chunk_map the map to store StoryChunk objects
- * @return CL_SUCCESS if successful, else error code
+ * @return chronolog::CL_SUCCESS if successful, else error code
  */
 int StoryReader::readAllStoryChunks(hid_t &story_file, std::map <uint64_t, chronolog::StoryChunk> &story_chunk_map)
 {
@@ -261,7 +261,7 @@ StoryReader::deserializeStoryChunk(char*story_chunk_json_str, std::string chroni
  * @param start_time start time of the range
  * @param end_time end time of the range
  * @param story_chunk_map map of Story Chunks to be populated
- * @return CL_SUCCESS on success, else error code
+ * @return chronolog::CL_SUCCESS on success, else error code
  */
 int StoryReader::readStoryRange(const std::string &chronicle_name, const uint64_t &story_id, uint64_t start_time
                                 , uint64_t end_time, std::map <uint64_t, chronolog::StoryChunk> &story_chunk_map)

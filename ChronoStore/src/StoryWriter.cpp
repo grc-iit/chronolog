@@ -214,7 +214,7 @@ int StoryWriter::writeStoryChunks(const std::map <uint64_t, chronolog::StoryChun
 //        if (story_chunk_dset < 0)
 //        {
 //            LOG_ERROR("Failed to open dataset for story chunk: {}", story_chunk_dset_name.c_str());
-//            return CL_ERR_UNKNOWN;
+//            return chronolog::CL_ERR_UNKNOWN;
 //        }
 
         // Write the Story Chunk to the dataset
