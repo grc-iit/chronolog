@@ -78,7 +78,6 @@ uint64_t chronolog::StoryWritingHandle <KeeperChoicePolicy>::log_event(std::stri
 }
 /////////////////////
 
-
 chronolog::StorytellerClient::~StorytellerClient()
 {
     LOG_DEBUG("[StorytellerClient] Destructor called.");
