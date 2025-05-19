@@ -7,9 +7,10 @@
 #include <thallium/serialization/stl/string.hpp>
 #include <thallium/serialization/stl/map.hpp>
 #include <thallium/serialization/stl/tuple.hpp>
-#include "chronolog_types.h"
-#include "chrono_monitor.h"
 
+#include "chrono_monitor.h"
+#include "chronolog_types.h"  //for chronolog::LogEvent definiiton
+#include "chronolog_client.h" //for chronolog::Event definition 
 namespace chronolog
 {
 

@@ -11,8 +11,6 @@
 #include "chronolog_types.h"
 #include "chronolog_client.h"
 
-//#include "ClientQueryService.h"
-
 namespace chronolog
 {
 
@@ -39,12 +37,11 @@ public:
 class StorytellerClient
 {
 public:
-    StorytellerClient(ChronologTimer &chronolog_timer //ClientQueryService & clientQueryService
+    StorytellerClient(ChronologTimer &chronolog_timer 
            , thallium::engine &client_tl_engine
            , ClientId const &client_id)
         : theTimer(chronolog_timer)
         , client_engine(client_tl_engine)
-        //, theClientQueryService(clientQueryService)
         , clientId(client_id)
     {
         LOG_DEBUG("[StorytellerClient] Initialized with ClientID: {}", clientId);
@@ -79,7 +76,6 @@ private:
 
     ChronologTimer &theTimer;
     thallium::engine & client_engine;
-    //ClientQueryService & theClientQueryService;
     ClientId clientId;
     std::atomic <int> atomic_index;
 
@@ -88,7 +84,6 @@ private:
 
     std::map <std::pair <uint32_t, uint16_t>, KeeperRecordingClient*> recordingClientMap;
     std::map <std::pair <std::string, std::string>, StoryHandle*> acquiredStoryHandles;
-    //std::map <std::pair <uint32_t, uint16_t>, PlaybackQueryRpcClient*> playbackQueryClientMap;
 
 };
 
@@ -102,7 +97,7 @@ public:
         : theClient(client)
         , chronicle(a_chronicle), story(a_story), storyId(story_id)
         , keeperChoicePolicy(new KeeperChoicePolicy)
-        , playbackQueryClient(nullptr)
+     //   , playbackQueryClient(nullptr)
     {
         LOG_DEBUG("[StoryWritingHandle] Initialized for Chronicle: {}, Story: {}", a_chronicle, a_story);
     }
@@ -113,13 +108,8 @@ public:
 
    // virtual int log_event(size_t size, void*data);
 
-    virtual int playback_story(uint64_t start, uint64_t end, std::vector<Event> & playback_events);
-
     void addRecordingClient(KeeperRecordingClient*);
     void removeRecordingClient(KeeperIdCard const &);
-
-    void attachPlaybackQueryClient(PlaybackQueryRpcClient*);
-    void detachPlaybackQueryClient();
 
 private:
 
@@ -128,7 +118,6 @@ private:
     StoryName story;
     StoryId storyId;
     KeeperChoicePolicy*keeperChoicePolicy;
-    PlaybackQueryRpcClient * playbackQueryClient;
     std::vector <KeeperRecordingClient*> storyKeepers;
     
 };
