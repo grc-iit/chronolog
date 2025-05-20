@@ -15,6 +15,11 @@ chl::StoryChunk::StoryChunk(chl::ChronicleName const &chronicle_name, chl::Story
                             , storyId(story_id)
                             , startTime(start_time), endTime(end_time), revisionTime(end_time)
 {
+    if(endTime <= startTime)
+    { 
+        endTime = (startTime+5000); 
+        revisionTime = endTime; 
+    }
 
 }
 
