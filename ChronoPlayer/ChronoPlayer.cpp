@@ -57,20 +57,8 @@ int main(int argc, char**argv)
     }
     LOG_INFO("Running ChronoPlayer ");
 
-    // Instantiate MemoryDataStore
     // instantiate DataStoreAdminService
 
-    /// DataStoreAdminService setup ____________________________________________________________________________________
-    /*std::string datastore_service_ip = confManager.PLAYER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.IP;
-    int datastore_service_port = confManager.PLAYER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.BASE_PORT;
-    std::string DATASTORE_SERVICE_NA_STRING =
-            confManager.PLAYER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.PROTO_CONF + "://" + datastore_service_ip + ":" +
-            std::to_string(datastore_service_port);
-
-    uint16_t datastore_service_provider_id = confManager.PLAYER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.SERVICE_PROVIDER_ID;
-    
-    chronolog::service_endpoint datastore_endpoint;
-    */
     // validate ip address, instantiate DataAdminService and create ServiceId to be included in RegistrationMsg
 
     chronolog::ServiceId playerAdminServiceId( confManager.PLAYER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.PROTO_CONF,
@@ -135,25 +123,6 @@ int main(int argc, char**argv)
     }
 
     chronolog::RecordingGroupId recording_group_id = confManager.PLAYER_CONF.RECORDING_GROUP;
- /*   std::string RECORDING_SERVICE_PROTOCOL = confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.PROTO_CONF;
-    std::string RECORDING_SERVICE_IP = confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP;
-    uint16_t RECORDING_SERVICE_PORT = confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT;
-    uint16_t recording_service_provider_id = confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.SERVICE_PROVIDER_ID;
-
-    std::string RECORDING_SERVICE_NA_STRING =
-            std::string(RECORDING_SERVICE_PROTOCOL) + "://" + std::string(RECORDING_SERVICE_IP) + ":" +
-            std::to_string(RECORDING_SERVICE_PORT);
-
-    // validate ip address, instantiate Recording Service and create IdCard
-
-    chronolog::service_endpoint recording_endpoint;
-    if(-1 == service_endpoint_from_dotted_string(RECORDING_SERVICE_IP, RECORDING_SERVICE_PORT, recording_endpoint))
-    {
-        LOG_CRITICAL("[ChronoGrapher] Failed to start RecordingService. Invalid endpoint provided.");
-        return (-1);
-    }
-    LOG_INFO("[ChronoGrapher] RecordingService started successfully.");
-*/
 
     // create PlayerIdCard to identify this Player process in ChronoVisor's Registry
     chronolog::PlayerIdCard playerIdCard(recording_group_id, playbackServiceId);
@@ -221,6 +190,11 @@ int main(int argc, char**argv)
         return (-1);
     }
 
+    chronolog::ArchiveReadingAgent * archiveReadingAgent = nullptr;
+
+    std::string archive_path = confManager.GRAPHER_CONF.EXTRACTOR_CONF.story_files_dir;
+    archiveReadingAgent = new chronolog::ArchiveReadingAgent(readingRequestQueue, archive_path);
+
     /// Registration with ChronoVisor __________________________________________________________________________________
     // try to register with chronoVisor a few times than log ERROR and exit...
     int registration_status = playerRegistryClient->send_register_msg(
@@ -238,6 +212,7 @@ int main(int argc, char**argv)
     if(chronolog::CL_SUCCESS != registration_status)
     {
         LOG_CRITICAL("[ChronoPlayer] Failed to register with ChronoVisor after multiple attempts. Exiting.");
+        delete archiveReadingAgent;
         delete playerRegistryClient;
         delete playerStoreAdminService;
         delete playbackService;
@@ -252,6 +227,8 @@ int main(int argc, char**argv)
    // theDataStore.startDataCollection(3);
     // start extraction streams & threads
     //storyExtractor.startExtractionThreads(2);
+    int NUMBER_ARCHIVE_READING_STREAMS = 1;
+    archiveReadingAgent->startArchiveReading(NUMBER_ARCHIVE_READING_STREAMS); 
 
     /// Main loop for sending stats message until receiving SIGTERM ____________________________________________________
     // now we are ready to ingest records coming from the storyteller clients ....
@@ -271,7 +248,9 @@ int main(int argc, char**argv)
 
     /// Stop services and shut down ____________________________________________________________________________________
     LOG_INFO("[ChronoPlayer] Initiating shutdown procedures.");
-    // Stop recording events
+    
+    archiveReadingAgent->shutdownArchiveReading(); 
+    delete archiveReadingAgent;
     delete playerStoreAdminService;
     delete playbackService;
     // Shutdown the Data Collection
