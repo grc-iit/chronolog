@@ -9,7 +9,6 @@
 #include <thallium.hpp>
 
 #include "ArchiveReadingRequestQueue.h"
-#include "StoryChunkIngestionQueue.h"
 #include "HDF5ArchiveReadingAgent.h"
 
 namespace chronolog
@@ -46,9 +45,8 @@ class ArchiveReadingAgent
 
 
 public:
-    ArchiveReadingAgent( ArchiveReadingRequestQueue & request_queue, StoryChunkIngestionQueue & ingestion_queue, std::string const & archive_path)
+    ArchiveReadingAgent( ArchiveReadingRequestQueue & request_queue, std::string const & archive_path)
         : theReadingRequestQueue(request_queue)
-        , theIngestionQueue(ingestion_queue)
         , agentState(UNKNOWN)
         , theReadingAgent(archive_path)
     {}
@@ -73,7 +71,6 @@ private:
     ArchiveReadingAgent &operator=(ArchiveReadingAgent const &) = delete;
 
     ArchiveReadingRequestQueue & theReadingRequestQueue;
-    StoryChunkIngestionQueue & theIngestionQueue;
 
     std::mutex agentStateMutex;
     ReadingAgentState agentState;
