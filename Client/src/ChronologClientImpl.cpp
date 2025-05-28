@@ -41,7 +41,7 @@ chronolog::ChronologClientImpl::ChronologClientImpl(
 {
 
     defineClientIdentity();
-    
+
     if(WRITER_MODE == clientMode)
     {
         tlEngine = new thallium::engine(clientPortalServiceConf.proto_conf(), THALLIUM_CLIENT_MODE, true, 1);
@@ -55,7 +55,7 @@ chronolog::ChronologClientImpl::ChronologClientImpl(
         margo_instance_id margo_id = margo_init(QUERY_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 1);
         tlEngine = new tl::engine(margo_id);
 
-        storyReaderService= chl::ClientQueryService::CreateClientQueryService(*tlEngine, chronolog::ServiceId(clientQueryServiceConf.proto_conf(), 
+        storyReaderService= chl::ClientQueryService::CreateClientQueryService(*tlEngine, chronolog::ServiceId(clientQueryServiceConf.proto_conf(),
                                         clientQueryServiceConf.ip(), clientQueryServiceConf.port(), clientQueryServiceConf.provider_id()));
 
     }
