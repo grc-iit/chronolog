@@ -35,9 +35,11 @@ public:
     {
         //  ClientId teller_id,  StoryId story_id,
         //  ChronoTick const& chrono_tick, std::string const& record)
+#ifndef NDEBUG
         std::stringstream ss;
         ss << log_event;
         LOG_DEBUG("[KeeperRecordingService] Recording event: {}", ss.str());
+#endif
         theIngestionQueue.ingestLogEvent(log_event);
         request.respond(chronolog::CL_SUCCESS);
     }
