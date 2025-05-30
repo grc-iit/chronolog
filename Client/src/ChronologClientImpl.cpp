@@ -31,7 +31,8 @@ chronolog::ChronologClientImpl::ChronologClientImpl(
     chronolog::ClientPortalServiceConf const& clientPortalServiceConf,
     chronolog::ClientMode const& clientMode,
     chronolog::ClientQueryServiceConf const& clientQueryServiceConf)
-        : clientState(UNKNOWN)
+        : clientMode(clientMode)
+        , clientState(UNKNOWN)
         , clientLogin("")
         , hostId(0), pid(0), clientId(0)
         , tlEngine(nullptr)
@@ -59,7 +60,6 @@ chronolog::ChronologClientImpl::ChronologClientImpl(
                                         clientQueryServiceConf.ip(), clientQueryServiceConf.port(), clientQueryServiceConf.provider_id()));
 
     }
-
 
     std::string VISOR_NA_STRING =
             clientPortalServiceConf.proto_conf() + "://" + clientPortalServiceConf.ip() + ":" +
@@ -316,6 +316,12 @@ chronolog::ChronologClientImpl::AcquireStory(std::string const &chronicle_name, 
                                                             , acquireStoryResponse.getKeepers()
                     , acquireStoryResponse.getPlayer());
 
+    if((nullptr != storyReaderService) && acquireStoryResponse.getPlayer().is_valid())
+    {
+        //prepare ClientQueryService for reading this story
+        storyReaderService->addStoryReader(chronicle_name, story_name, acquireStoryResponse.getPlayer());
+    }
+    
     if(storyHandle == nullptr)
     {
         LOG_ERROR("[ChronoLogClientImpl] Failed to initialize story handle for '{}' in chronicle '{}'.", story_name
@@ -340,6 +346,12 @@ int chronolog::ChronologClientImpl::ReleaseStory(std::string const &chronicle_na
         LOG_ERROR(
                 "[ChronoLogClientImpl] Failed to release story: Both chronicle_name and story_name must be provided.");
         return chronolog::CL_ERR_INVALID_ARG;
+    }
+    
+    if(storyReaderService)
+    {
+        //disengage storyReader
+        storyReaderService->removeStoryReader(chronicle_name, story_name);
     }
 
     std::lock_guard <std::mutex> lock_client(chronologClientMutex);
@@ -516,5 +528,24 @@ chronolog::ChronologClientImpl::ShowStories(std::string const &chronicle_name, s
     return stories;
 }
 
+////////////////////////////
+int 
+chronolog::ChronologClientImpl::replay_story( chronolog::ChronicleName const& chronicle, chronolog::StoryName const& story, uint64_t start, uint64_t end
+                , std::vector<chronolog::Event> & event_series)
+{
+    // this functionality is only available if the client is running in READER_MODE
+
+    if(WRITER_MODE == clientMode)
+    {
+        return chl::CL_ERR_NOT_READER_MODE;
+    }
+
+    if(nullptr == storyReaderService)
+    {
+        return chronolog::CL_ERR_NO_PLAYERS;
+    }
+
+    return storyReaderService->replay_story(chronicle, story, start, end, event_series);
+}
 //////////////////////////////
 

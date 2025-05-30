@@ -79,7 +79,7 @@ void reader_thread( int tid, struct thread_arg * t)
     std::map <std::string, std::string> story_attrs;
     int flags = 1;
 
-    std::vector<chronolog::Event> playback_events;
+    std::vector<chronolog::Event> replay_events;
     // Create the chronicle
     ret= client->CreateChronicle(t->chronicle, chronicle_attrs, flags);
     LOG_INFO("[ClientLibStoryReader] Chronicle created: tid={}, ChronicleName={}, Flags: {}", t->tid , t->chronicle, flags);
@@ -99,17 +99,26 @@ void reader_thread( int tid, struct thread_arg * t)
 
         LOG_INFO("[ClientLibStoryReader] Reader thread tid={} sending playback_request for story: {} {} segment{}-{}", tid , t->chronicle, t->story, t->segment_start, t->segment_end);
 
-        ret = story_handle->playback_story(t->segment_start, (t->segment_end), playback_events);
+        ret = client->ReplayStory(t->chronicle, t->story,t->segment_start, (t->segment_end), replay_events);
 
-        if(ret == chronolog::CL_ERR_NO_PLAYERS)
+        if(ret == chronolog::CL_SUCCESS)
         {   
-            LOG_INFO("[ClientLibStoryReader] Reader thread tid={} can't find Player for story: {} {}, Ret: {}", tid , t->chronicle, t->story, ret);
+        
+            LOG_INFO("[ClientLibStoryReader] Reader thread tid={} completed replay story{}-{}  event_series has {} events",
+                         tid , t->chronicle, t->story, replay_events.size());
+        
+            for( auto event: replay_events)
+            {
+                LOG_INFO("[ClientLibStoryReader] replay event{}", event.to_string());
+            }
         }
-        else
+        else 
         {
-            LOG_INFO("[ClientLibStoryReader] Reader thread tid={} found Player for story: {} {}, Ret: {}",tid , t->chronicle, t->story, ret);
+            LOG_INFO("[ClientLibStoryReader] Reader thread tid={} failed to replay story: {}-{}, Return_code: {}", tid , t->chronicle, t->story, ret);
         }
 
+        
+        
         // Release the story
         ret = client->ReleaseStory(t->chronicle, t->story);
         LOG_INFO("[ClientLibStoryReader] Reader thread tid={} released story: {} {}, Ret: {}", tid , t->chronicle, t->story, ret);
@@ -128,13 +137,20 @@ int main(int argc, char**argv)
     chronolog::ClientQueryServiceConf clientQueryConf("ofi+sockets", "127.0.0.1", 5557, 57);
     int result = chronolog::chrono_monitor::initialize("file", "/tmp/chrono_client.log", spdlog::level::debug, "ChronoClient", 102400, 3, spdlog::level::debug);
 
-
     if(result == 1)
     {
         exit(EXIT_FAILURE);
     }
-    LOG_INFO("[ClientLibStoryReader] Running...");
 
+    bool run_hybrid_test = false;
+
+    if((argc==1) || (argc >1 && argv[1][0] == '1'))
+    { run_hybrid_test = false; }
+    else if(argc > 1 && argv[1][0] =='2')
+    { run_hybrid_test = true; }
+
+
+    LOG_INFO("[ClientLibStoryReader] Running...");
 
     client = new chronolog::Client(portalConf, clientQueryConf);
 
@@ -162,8 +178,12 @@ int main(int argc, char**argv)
 
     LOG_INFO("[ClientLibStoryReader] Finished simple reader test for story: {}-{}", chronicle_name, story_name);
 
+    if( !run_hybrid_test )
+    {
+        return 1;
+    }
 
-//// writer reader test 
+//// hybrid writer-reader client test with multiple threads
     
     LOG_INFO("[ClientLibStoryReader] Starting multithreaded writer / reader test for story: {}-{}", chronicle_name, story_name);
 

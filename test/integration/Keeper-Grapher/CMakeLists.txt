@@ -22,6 +22,7 @@ target_sources(extract_test PRIVATE
 
 target_include_directories(extract_test PRIVATE
     include
+    ${CMAKE_SOURCE_DIR}/Client/include
     ${CMAKE_SOURCE_DIR}/chrono_common
     ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/include
 )
@@ -40,6 +41,7 @@ target_sources(ingest_test PRIVATE
 
 target_include_directories(ingest_test PRIVATE
     include
+    ${CMAKE_SOURCE_DIR}/Client/include
     ${CMAKE_SOURCE_DIR}/chrono_common
     ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/include
 )

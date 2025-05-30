@@ -52,11 +52,11 @@ int chl::PlaybackQueryRpcClient::is_playback_service_available()
     return chronolog::CL_ERR_UNKNOWN;
 }
     
-int chl::PlaybackQueryRpcClient::send_story_playback_request(chl::ChronicleName const &chronicle_name, chl::StoryName const &story_name, uint64_t start_time, uint64_t end_time)
+int chl::PlaybackQueryRpcClient::send_story_playback_request(uint32_t query_id, chl::ChronicleName const &chronicle_name, chl::StoryName const &story_name, uint64_t start_time, uint64_t end_time)
 {
     int return_code = chronolog::CL_ERR_UNKNOWN;
 
-    uint32_t query_id = theClientQueryService.start_new_query( chronicle_name,story_name,start_time,end_time);
+    //uint32_t query_id = theClientQueryService.start_new_query( chronicle_name,story_name,start_time,end_time);
     
     try
     {

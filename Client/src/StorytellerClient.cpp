@@ -4,7 +4,7 @@
 #include <chrono>
 #include <climits>
 
-#include "../chrono_common/chronolog_types.h"
+#include "chronolog_types.h"
 #include "StorytellerClient.h"
 #include "KeeperRecordingClient.h"
 #include "PlaybackQueryRpcClient.h"
@@ -57,18 +57,6 @@ chronolog::StoryWritingHandle <KeeperChoicePolicy>::removeRecordingClient(chrono
     }
 }
 
-template <class KeeperChoicePolicy>
-void chronolog::StoryWritingHandle <KeeperChoicePolicy>::attachPlaybackQueryClient(PlaybackQueryRpcClient* playbackClient)
-{
-//    playbackQueryClient = playbackClient;
-}
-
-template <class KeeperChoicePolicy>
-void chronolog::StoryWritingHandle <KeeperChoicePolicy>::detachPlaybackQueryClient()
-{
-    playbackQueryClient = nullptr;
-}
-
 //////////////////
 template <class KeeperChoicePolicy>
 uint64_t chronolog::StoryWritingHandle <KeeperChoicePolicy>::log_event(std::string const &event_record)
@@ -89,38 +77,14 @@ uint64_t chronolog::StoryWritingHandle <KeeperChoicePolicy>::log_event(std::stri
     { return 0; }
 }
 /////////////////////
-/*
-template <class KeeperChoicePolicy>
-int chronolog::StoryWritingHandle <KeeperChoicePolicy>::log_event(size_t, void*)
-{
-    return 0;  // not implemented yet ; to be implemented with tl bulk transfer ... 
-}
-*/
-
-template <class KeeperChoicePolicy>
-int chronolog::StoryWritingHandle<KeeperChoicePolicy>::playback_story(uint64_t start_time, uint64_t end_time
-        , std::vector<chronolog::Event>& playback_events)
-{
-    playback_events.clear();
-
-    if(nullptr == playbackQueryClient)
-    { return chronolog::CL_ERR_NO_PLAYERS; }
-
-    playbackQueryClient->send_story_playback_request(chronicle, story, start_time, end_time);
-
-return chronolog::CL_SUCCESS;
-}
-
-//////////////////////////////////////////
-
 
 chronolog::StorytellerClient::~StorytellerClient()
 {
     LOG_DEBUG("[StorytellerClient] Destructor called.");
     {
         std::lock_guard <std::mutex> lock(acquiredStoryMapMutex);
-        //TODO: INNA: investigate why the folowing lines were commented out in the previous version
         /*
+        //TODO: investigate why the folowing lines were commented out in the previous version
         for( auto story_record_iter : acquiredStoryHandles)
         {
             delete story_record_iter.second;
@@ -134,14 +98,6 @@ chronolog::StorytellerClient::~StorytellerClient()
         delete keeper_client.second;
     }
     recordingClientMap.clear();
-    /*
-    //delete playback clients
-    for(auto playback_client: playbackQueryClientMap)
-    {
-        delete playback_client.second;
-    }
-    playbackQueryClientMap.clear();
-    */
 }
 
 int chronolog::StorytellerClient::get_event_index()
@@ -168,7 +124,6 @@ int chronolog::StorytellerClient::addKeeperRecordingClient(chronolog::KeeperIdCa
     try
     {
         chronolog::KeeperRecordingClient*keeperRecordingClient = chronolog::KeeperRecordingClient::CreateKeeperRecordingClient(
-                //theClientQueryService.get_service_engine(), keeper_id_card);
                 client_engine, keeper_id_card);
 
         auto insert_return = recordingClientMap.insert(
@@ -274,22 +229,6 @@ chronolog::StorytellerClient::initializeStoryWritingHandle(ChronicleName const &
         storyWritingHandle->addRecordingClient((*keeper_client_iter).second);
     }
 
-    // find existing or create a new one playbackQueryRpcClient
- /*   if(player_card.is_valid())
-    {   
-        auto playbackQueryClient = theClientQueryService.addPlaybackQueryClient(player_card);
-
-        if(nullptr != playbackQueryClient)
-        {
-            storyWritingHandle->attachPlaybackQueryClient(playbackQueryClient);
-            LOG_DEBUG("[StorytellerClient] PlaybackQueryClient {}  attached to StoryHandle {} {}", chl::to_string(player_card),chronicle,story);
-        }
-    }
-    else
-    {        
-        LOG_DEBUG("[StorytellerClient] StoryHandle {} {} doesn't have PlaybackQueryClient", chronicle,story);
-    }
-*/
     auto insert_return = acquiredStoryHandles.insert(
             std::pair <std::pair <std::string, std::string>, chronolog::StoryHandle*>(
                     std::pair <std::string, std::string>(chronicle, story), storyWritingHandle));
@@ -327,7 +266,6 @@ void chronolog::StorytellerClient::removeAcquiredStoryHandle(ChronicleName const
     {
         delete (*story_record_iter).second;
         acquiredStoryHandles.erase(story_record_iter);
-                //theClientQueryService.get_service_engine(), keeper_id_card);
         LOG_INFO("[StorytellerClient] Successfully removed StoryHandle for Chronicle: '{}' and Story: '{}'.", chronicle
              , story);
     }

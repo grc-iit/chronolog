@@ -76,3 +76,8 @@ chronolog::Client::ShowStories(std::string const &chronicle_name, std::vector <s
 }
 
 
+int chronolog::Client::ReplayStory(std::string const & chronicle_name, std::string const & story_name, uint64_t start_time, uint64_t end_time
+                , std::vector<chronolog::Event> & event_series)
+{
+    return chronologClientImpl->replay_story(chronicle_name, story_name, start_time, end_time, event_series);
+}

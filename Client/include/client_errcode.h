@@ -15,7 +15,9 @@ enum ClientErrorCode {
     CL_ERR_NO_KEEPERS      = -7,   // No ChronoKeepers available
     CL_ERR_NO_CONNECTION   = -8,   // No connection to ChronoVisor
     CL_ERR_NOT_AUTHORIZED  = -9,   // Unauthorized operation
-    CL_ERR_NO_PLAYERS      = -10   // No ChronoPlayers available
+    CL_ERR_NO_PLAYERS      = -10,   // No ChronoPlayers available
+    CL_ERR_NOT_READER_MODE = -11,  // Client is running in WRITER_MODE
+    CL_ERR_QUERY_TIMED_OUT = -12   // Replay query timed out
 };
 
 // Convert enum value to its name (for logging)
@@ -32,6 +34,8 @@ inline const char* to_string(ClientErrorCode e) {
     case CL_ERR_NO_CONNECTION:   return "CL_ERR_NO_CONNECTION";
     case CL_ERR_NOT_AUTHORIZED:  return "CL_ERR_NOT_AUTHORIZED";
     case CL_ERR_NO_PLAYERS:      return "CL_ERR_NO_PLAYERS";
+    case CL_ERR_NOT_READER_MODE: return "CL_ERR_NOT_READER_MODE";
+    case CL_ERR_QUERY_TIMED_OUT: return "CL_ERR_QUERY_TIMED_OUT";
     default:                     return "UnknownClientErrorCode";
     }
 }
@@ -49,6 +53,8 @@ inline const char* to_string_client(int code) {
         case CL_ERR_NO_CONNECTION:
         case CL_ERR_NOT_AUTHORIZED:
         case CL_ERR_NO_PLAYERS:
+        case CL_ERR_NOT_READER_MODE:
+        case CL_ERR_QUERY_TIMED_OUT:
             return to_string(static_cast<chronolog::ClientErrorCode>(code));
         default:
             return "UnknownClientErrorCode";

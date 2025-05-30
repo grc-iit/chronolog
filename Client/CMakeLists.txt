@@ -52,5 +52,4 @@ install(
     FILES ${PUBLIC_HEADER_FILES} DESTINATION include 
 )
 
-add_subdirectory(storyteller_test)
 add_subdirectory(ChronoAdmin)

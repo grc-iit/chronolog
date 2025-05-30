@@ -7,9 +7,10 @@
 #include <thallium/serialization/stl/string.hpp>
 #include <thallium/serialization/stl/map.hpp>
 #include <thallium/serialization/stl/tuple.hpp>
-#include "chronolog_types.h"
-#include "chrono_monitor.h"
 
+#include "chrono_monitor.h"
+#include "chronolog_types.h"  //for chronolog::LogEvent definiiton
+#include "chronolog_client.h" //for chronolog::Event definition 
 namespace chronolog
 {
 
@@ -87,7 +88,7 @@ public:
                 , std::map <EventSequence, LogEvent>::const_iterator &last_pos);
 
     std::map <EventSequence, LogEvent>::iterator eraseEvents(uint64_t start_time, uint64_t end_time);
-
+    
     // serialization function used by thallium RPC providers
     template <typename SerArchiveT>
     void serialize(SerArchiveT &serT)
@@ -114,6 +115,7 @@ inline std::string to_string() const
         return sstream.str();
 }
 
+    std::vector<Event> & extractEventSeries( std::vector<Event> & event_series);
 
 private:
     ChronicleName chronicleName;
