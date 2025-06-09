@@ -283,7 +283,13 @@ void chronolog::StoryPipeline::mergeEvents(chronolog::StoryChunk &other_chunk)
     {
         // it's unlikely but possible that we get some delayed events and need to prepend some chunks
         // extending the timeline back into the past
-        LOG_DEBUG("[StoryPipeline] StoryId {} timeline {}-{} : Merging in StoryChunk {}-{} - prepending chunks ", storyId, timelineStart, timelineEnd, other_chunk.getStartTime(), other_chunk.getEndTime());
+        LOG_DEBUG("[StoryPipeline] StoryId {} timeline {}-{} : Merging in StoryChunk {}-{} 1stEventTime {} - need to prepend chunks ", storyId, timelineStart, timelineEnd, other_chunk.getStartTime(), other_chunk.getEndTime(),other_chunk.firstEventTime());
+
+        //we also increase the acceptance window for the slow story environment so that we do not have to keep prepending StoryChunks 
+        // and deal with auxiliary files if recording of this particular Story turns to be slow...
+        acceptanceWindow = (timelineStart - other_chunk.firstEventTime()) + 3000; //current delay + 3 microseconds buffer
+
+        LOG_INFO("[StoryPipeline] StoryId {} timeline {}-{} : increasing acceptanceWindow to {} seconds", storyId, timelineStart, timelineEnd, acceptanceWindow%1000000000);
 
         while(other_chunk.firstEventTime() < timelineStart)
         {
