@@ -48,7 +48,7 @@ void chronolog::PlaybackService::playback_service_available(tl::request const &r
 void chronolog::PlaybackService::story_playback_request(tl::request const &request,chl::ServiceId const & receiver_service_id, uint32_t query_id
     ,chl::ChronicleName const &chronicle_name, chl::StoryName const &story_name, chl::chrono_time const& start_time, chl::chrono_time const& end_time)
 {
-        LOG_INFO("[PlaybackService] PlaybackStoryRequest: ChronicleName={},StoryName={}", chronicle_name, story_name);
+        LOG_INFO("[PlaybackService] story_playback_request for receiver_service {} Story {}-{}", chl::to_string(receiver_service_id), chronicle_name, story_name);
 
    //ChronoPlayer is running and able to respond 
    // generate unique RequestId (service_provider_id + atomic query index)
@@ -71,7 +71,7 @@ void chronolog::PlaybackService::story_playback_request(tl::request const &reque
         // using the service tl_engine and service_id provided in the request
         storyChunkSender = chl::StoryChunkTransferAgent::CreateStoryChunkTransferAgent(playbackEngine, receiver_service_id);
         chunkSenders.insert(std::pair<chl::service_endpoint, chl::StoryChunkTransferAgent*>(receiver_service_id.get_service_endpoint(),storyChunkSender));
-
+        storyChunkSender->startExtractionThreads(1);
         }
     }
 

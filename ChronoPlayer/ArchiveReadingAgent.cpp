@@ -11,6 +11,7 @@
 #include "StoryChunk.h"
 #include "ArchiveReadingRequestQueue.h"
 #include "ArchiveReadingAgent.h"
+#include "StoryChunkExtractionQueue.h"
 
 namespace chl = chronolog;
 namespace tl = thallium;
@@ -44,7 +45,7 @@ void chronolog::ArchiveReadingAgent::archiveReadingTask()
 
         while( !listOfChunks.empty())
         {
-            theIngestionQueue.ingestStoryChunk(listOfChunks.front());
+            readingRequest.storyChunkQueue->stashStoryChunk(listOfChunks.front());
             listOfChunks.pop_front();
         }
                 

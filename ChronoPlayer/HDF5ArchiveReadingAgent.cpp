@@ -21,14 +21,16 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName &c
                                                                           , startTime / 1000000000));
     auto end_it = start_time_file_name_map_.upper_bound(std::make_tuple(chronicleName, storyName
                                                                         , endTime / 1000000000));
+    LOG_DEBUG("[HDF5ArchiveReadingAgent] readArchiveStory {}-{} range{}-{}", chronicleName,storyName, startTime,endTime);
+
 
     if(start_it == start_time_file_name_map_.end())
     {
-        LOG_WARNING("[HDF5ArchiveReadingAgent] No matching files found for chronicle: '{}' and story: '{}'."
-                    , chronicleName, storyName);
-        return chronolog::CL_ERR_UNKNOWN;
+        LOG_DEBUG("[HDF5ArchiveReadingAgent] No matching files found for story {}-{} in range {}-{}" , chronicleName, storyName, startTime,endTime);
+        return CL_ERR_UNKNOWN;
     }
 
+    LOG_DEBUG("[HDF5ArchiveReadingAgent] Found  matching files for story {}-{} in range {}-{}", chronicleName, storyName, startTime,endTime);
     do
     {
         std::string file_name = start_it->second;
@@ -38,34 +40,33 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName &c
             LOG_DEBUG("[HDF5ArchiveReadingAgent] Opening file: {}", file_name);
             file = std::make_unique <H5::H5File>(file_name, H5F_ACC_SWMR_READ);
 
-            LOG_DEBUG("[HDF5ArchiveReadingAgent] Opening dataset: data");
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] Opening dataset {}", file_name);
             H5::DataSet dataset = file->openDataSet("/story_chunks/data.vlen_bytes");
 
             H5::DataSpace dataspace = dataset.getSpace();
             hsize_t dims_out[2] = {0, 0};
             dataspace.getSimpleExtentDims(dims_out, nullptr);
-            LOG_DEBUG("[HDF5ArchiveReadingAgent] Reading dataset with {} events", dims_out[0]);
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] Reading dataset {} with {} events", file_name,dims_out[0]);
 
-            LOG_DEBUG("[StoryChunkWriter] Creating data type for events...");
             H5::CompType defined_comp_type = StoryChunkWriter::createEventCompoundType();
             H5::CompType probed_data_type = dataset.getCompType();
             if(probed_data_type.getNmembers() != defined_comp_type.getNmembers())
             {
-                std::cout << "Not a compound type with the same #members" << std::endl;
-                return -1;
+                LOG_WARNING("[HDF5ArchiveReadingAgent] Error reading dataset {} : Not a compound type with the same #members", file_name);
+                return CL_ERR_UNKNOWN;
             }
             if(probed_data_type != defined_comp_type)
             {
-                std::cout << "Compound type mismatch" << std::endl;
-                return -1;
+                LOG_WARNING("[HDF5ArchiveReadingAgent]Error reading dataset {} : Compound type mismatch", file_name);
+                return CL_ERR_UNKNOWN;
             }
 
-            LOG_DEBUG("[HDF5ArchiveReadingAgent] Reading data from dataset...");
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] Reading data from dataset {}",file_name);
             std::vector <LogEventHVL> data;
             data.resize(dims_out[0]);
             dataset.read(data.data(), defined_comp_type);
 
-            LOG_DEBUG("[HDF5ArchiveReadingAgent] Creating StoryChunk [{}, {})...", startTime, endTime);
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] Creating StoryChunk {}-{} range {}-{}...", chronicleName,storyName, startTime, endTime);
             auto *story_chunk = new StoryChunk(chronicleName, storyName, 0, startTime, endTime);
             uint64_t event_count = 0;
             for(auto const &event_hvl: data)
@@ -81,10 +82,9 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName &c
                 story_chunk->insertEvent(event);
                 event_count++;
             }
-            LOG_DEBUG("[HDF5ArchiveReadingAgent] Inserted {} events into StoryChunk [{}, {})."
-                      , event_count, startTime, endTime);
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] Inserted {} events into StoryChunk {}-{} range {}-{}"
+                      , event_count, chronicleName, storyName,startTime, endTime);
 
-            LOG_DEBUG("[HDF5ArchiveReadingAgent] Adding StoryChunk to list...");
             listOfChunks.emplace_back(story_chunk);
 
 //            dataset.close();
@@ -93,9 +93,12 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName &c
         }
         catch(H5::FileIException &error)
         {
-            LOG_ERROR("[HDF5ArchiveReadingAgent] FileIException: {}", error.getCDetailMsg());
+            LOG_ERROR("[HDF5ArchiveReadingAgent] reading file{} : FileIException: {}", file_name, error.getCDetailMsg());
+// INNA:  there's potential memory leak here ... need to cleanup the memory allocated for the StoryChunk.. 
+#ifdef DEBUG
             H5::FileIException::printErrorStack();
-            return chronolog::CL_ERR_UNKNOWN;
+#endif
+            return CL_ERR_UNKNOWN;
         }
     } while(++start_it != end_it);
 
@@ -151,29 +154,29 @@ int chronolog::HDF5ArchiveReadingAgent::fsMonitoringThreadFunc()
             auto *event = (struct inotify_event *)&buffer[i];
             if(event->mask&(IN_CREATE))
             {
-                std::cout << "A new file " << event->name << " is created, updating file map..." << std::endl;
+                LOG_DEBUG("[HDF5ArchiveReadingAgent] file {} created, updating file map...", event->name);
                 addFileToStartTimeFileNameMap(event->name);
             }
             else if(event->mask&(IN_DELETE))
             {
-                std::cout << "A file " << event->name << " is deleted, updating file map..." << std::endl;
+                LOG_DEBUG("[HDF5ArchiveReadingAgent] file {} deleted, updating file map...", event->name);
                 removeFileFromStartTimeFileNameMap(event->name);
             }
             else if(event->mask&(IN_MOVED_FROM))
             {
-                std::cout << "A file is renamed from " << event->name << std::endl;
+                LOG_DEBUG("[HDF5ArchiveReadingAgent] file is renamed from {}", event->name);
                 old_file_name = event->name;
             }
             else if(event->mask&(IN_MOVED_TO))
             {
                 if(old_file_name.empty())
                 {
-                    std::cout << "A new file " << event->name << " is created, updating file map..." << std::endl;
+                    LOG_DEBUG("[HDF5ArchiveReadingAgent] file {} created, updating file map...", event->name);
                     addFileToStartTimeFileNameMap(event->name);
                 }
                 else
                 {
-                    std::cout << "A file is renamed to " << event->name << " updating file map..." << std::endl;
+                    LOG_DEBUG("[HDF5ArchiveReadingAgent] file is renamed to {}, updating file map...",event->name);
                     std::string new_file_name = event->name;
                     renameFileInStartTimeFileNameMap(old_file_name, new_file_name);
                     old_file_name.clear();

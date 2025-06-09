@@ -14,24 +14,35 @@ chronolog::StoryChunkTransferAgent::StoryChunkTransferAgent(tl::engine &tl_engin
 {
     std::string service_addr_string;
     receiver_service_id.get_service_as_string(service_addr_string);
+    
+    LOG_DEBUG("[StoryChunkTransferAgent] Constructor for receiver service {} , service_string {}", chl::to_string(receiver_service_id), service_addr_string);
     receiver_service_handle = tl::provider_handle(service_engine.lookup(service_addr_string), receiver_service_id.getProviderId());
 
+    receiver_is_available = service_engine.define("receiver_is_available");
     receive_story_chunk = service_engine.define("receive_story_chunk");
 
-    LOG_DEBUG("[StoryChunkTransferAgent] created  sender to service {}", chl::to_string(receiver_service_id));
+    LOG_DEBUG("[StoryChunkTransferAgent] created agent for receiver service {}", chl::to_string(receiver_service_id));
 }
 
 chronolog::StoryChunkTransferAgent::~StoryChunkTransferAgent()
 {
+    receiver_is_available.deregister();
     receive_story_chunk.deregister();
-    LOG_DEBUG("[StoryChunkTransferAgent] Destroying sender to service {}", chl::to_string(receiver_service_id));
+    LOG_DEBUG("[StoryChunkTransferAgent] Destroying agent for receiver service {}", chl::to_string(receiver_service_id));
 }
 
+bool chronolog::StoryChunkTransferAgent::is_receiver_available() const
+{
+    bool ret_value = receiver_is_available.on(receiver_service_handle)( );
+
+    LOG_DEBUG("[StoryChunkTransferAgent] receiver_service {} is available {}", chl::to_string(receiver_service_id), ret_value);
+return ret_value;    
+}
 int chronolog::StoryChunkTransferAgent::processStoryChunk(chronolog::StoryChunk*story_chunk)
 {
     try
     {
-        LOG_DEBUG("[StoryChunkTransferAgent] Processing a story chunk, StoryID: {}, StartTime: {}"
+        LOG_DEBUG("[StoryChunkTransferAgent] agent for receiver {} processing a story chunk, StoryID: {}, StartTime: {}", chl::to_string(receiver_service_id)
                   , story_chunk->getStoryId(), story_chunk->getStartTime());
 #ifdef LOGTIME
         std::chrono::high_resolution_clock::time_point start, end;
@@ -55,7 +66,7 @@ int chronolog::StoryChunkTransferAgent::processStoryChunk(chronolog::StoryChunk*
         segments[0].first = (void*)(serialized_story_chunk.data());
         segments[0].second = serialized_story_chunk_size;
         tl::bulk tl_bulk = service_engine.expose(segments, tl::bulk_mode::read_only);
-        LOG_DEBUG("[StoryChunkAgent] Draining StoryChunk size: {} ...", tl_bulk.size());
+        LOG_DEBUG("[StoryChunkTransferAgent] Draining StoryChunk size: {} ...", tl_bulk.size());
 
         size_t bytes_transfered = receive_story_chunk.on(receiver_service_handle)(tl_bulk);
 

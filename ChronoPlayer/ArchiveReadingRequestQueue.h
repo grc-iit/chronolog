@@ -25,7 +25,7 @@ struct ArchiveReadingRequest
     , chronicleName(chronicle)
     , storyName(story)
     , startTime(start)
-    , endTime()
+    , endTime(end)
     { } 
 };
 
