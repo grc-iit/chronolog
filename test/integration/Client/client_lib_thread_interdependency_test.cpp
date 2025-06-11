@@ -359,7 +359,7 @@ void thread_body(struct thread_arg*t)
     int flags = 1;
     // Chronicle creation
     int ret = client->CreateChronicle(t->chronicle_name, chronicle_attrs, flags);
-    LOG_INFO("[ClientLibThreadInterdependencyTest] Chronicle created: tid={}, Ret: {}", t->tid, ret);
+    LOG_INFO("[ClientLibThreadInterdependencyTest] Chronicle created: tid={}, Ret: {}", t->tid, chronolog::to_string_client(ret));
     check_chronicle_created(t->tid, ret);
 
     // Story Variables
@@ -367,7 +367,7 @@ void thread_body(struct thread_arg*t)
     flags = 2;
     // Acquire story
     auto acquire_ret = client->AcquireStory(t->chronicle_name, t->story_name, story_attrs, flags);
-    LOG_INFO("[ClientLibThreadInterdependencyTest] Story acquired: tid={}, Ret: {}", t->tid, acquire_ret.first);
+    LOG_INFO("[ClientLibThreadInterdependencyTest] Story acquired: tid={}, Ret: {}", t->tid, chronolog::to_string_client(acquire_ret.first));
     check_story_acquired(t->tid, acquire_ret.first);
 
     auto story_handle = acquire_ret.second;
@@ -380,19 +380,19 @@ void thread_body(struct thread_arg*t)
 
     // Release the story
     ret = client->ReleaseStory(t->chronicle_name, t->story_name);
-    LOG_INFO("[ClientLibThreadInterdependencyTest] Story released: tid={}, Ret: {}", t->tid, ret);
+    LOG_INFO("[ClientLibThreadInterdependencyTest] Story released: tid={}, Ret: {}", t->tid, chronolog::to_string_client(ret));
     check_story_released(t->tid, ret);
 
 
     // Destroy the story
     ret = client->DestroyStory(t->chronicle_name, t->story_name);
-    LOG_INFO("[ClientLibThreadInterdependencyTest] Story destroyed: tid={}, Ret: {}", t->tid, ret);
+    LOG_INFO("[ClientLibThreadInterdependencyTest] Story destroyed: tid={}, Ret: {}", t->tid, chronolog::to_string_client(ret));
     check_story_destroyed(t->tid, ret);
 
 
     // Destroy the chronicle
     ret = client->DestroyChronicle(t->chronicle_name);
-    LOG_INFO("[ClientLibThreadInterdependencyTest] Chronicle destroyed: tid={}, Ret: {}", t->tid, ret);
+    LOG_INFO("[ClientLibThreadInterdependencyTest] Chronicle destroyed: tid={}, Ret: {}", t->tid, chronolog::to_string_client(ret));
     check_chronicle_destroyed(t->tid, ret);
 
 

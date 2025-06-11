@@ -76,7 +76,7 @@ public:
             else
             {
                 LOG_ERROR("[RPCVisorClient] Failed to disconnect ClientID={}. Unexpected return code: {}", client_id
-                     , result);
+                     , chronolog::to_string_client(result));
             }
             return result;
         }
@@ -103,7 +103,7 @@ public:
             else
             {
                 LOG_ERROR("[RPCVisorClient] Failed to create chronicle with Name={}, Flags={}. Unexpected return code: {}"
-                     , name.c_str(), flags, result);
+                     , name.c_str(), flags, chronolog::to_string_client(result));
             }
             return result;
         }
@@ -128,7 +128,7 @@ public:
             }
             else
             {
-                LOG_ERROR("[RPCVisorClient] Failed to destroy chronicle: Name={}, Error Code={}", name.c_str(), result);
+                LOG_ERROR("[RPCVisorClient] Failed to destroy chronicle: Name={}, Error Code={}", name.c_str(), chronolog::to_string_client(result));
             }
             return result;
         }
@@ -158,7 +158,7 @@ public:
             else
             {
                 LOG_ERROR("[RPCVisorClient] Failed to acquire story: ChronicleName={}, StoryName={}, Error Code={}"
-                     , chronicle_name.c_str(), story_name.c_str(), response.getErrorCode());
+                     , chronicle_name.c_str(), story_name.c_str(), chronolog::to_string_client(response.getErrorCode()));
             }
 
             return response;
@@ -187,7 +187,7 @@ public:
             else
             {
                 LOG_ERROR("[RPCVisorClient] Failed to release story: ChronicleName={}, StoryName={}, Error Code={}"
-                     , chronicle_name.c_str(), story_name.c_str(), resultCode);
+                     , chronicle_name.c_str(), story_name.c_str(), chronolog::to_string_client(resultCode));
             }
 
             return resultCode;
@@ -216,7 +216,7 @@ public:
             else
             {
                 LOG_ERROR("[RPCVisorClient] Failed to destroy story: ChronicleName={}, StoryName={}, Error Code={}"
-                     , chronicle_name.c_str(), story_name.c_str(), resultCode);
+                     , chronicle_name.c_str(), story_name.c_str(), chronolog::to_string_client(resultCode));
             }
 
             return resultCode;
@@ -245,7 +245,7 @@ public:
             else
             {
                 LOG_ERROR("[RPCVisorClient] Failed to retrieve attribute: ChronicleName={}, Key={}, Error Code={}"
-                     , name.c_str(), key.c_str(), resultCode);
+                     , name.c_str(), key.c_str(), chronolog::to_string_client(resultCode));
             }
 
             return resultCode;
@@ -275,7 +275,7 @@ public:
             else
             {
                 LOG_ERROR("[RPCVisorClient] Failed to modify attribute: ChronicleName={}, Key={}, NewValue={}, Error Code={}"
-                     , name.c_str(), key.c_str(), value.c_str(), resultCode);
+                     , name.c_str(), key.c_str(), value.c_str(), chronolog::to_string_client(resultCode));
             }
 
             return resultCode;

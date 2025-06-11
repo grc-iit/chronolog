@@ -145,7 +145,7 @@ void standaloneExtraction()
         start = std::chrono::high_resolution_clock::now();
         result = bulk_put_g.on(service_ph_g)(tl_bulk);
         end = std::chrono::high_resolution_clock::now();
-        LOG_DEBUG("[standalone_extract_test] T{}: RPC call on Grapher returned with result: {}", tid, result);
+        LOG_DEBUG("[standalone_extract_test] T{}: RPC call on Grapher returned with result: {}", tid, chronolog::to_string_client(result));
         LOG_INFO("[standalone_extract_test] T{}: RPC call on Grapher took {} us", tid,
                 std::chrono::duration_cast <std::chrono::nanoseconds>(end - start).count() / 1000.0);
 
@@ -157,7 +157,7 @@ void standaloneExtraction()
         else
         {
             LOG_ERROR("[standalone_extract_test] T{}: Failed to drain a story chunk to Grapher, Error Code: {}", tid
-                      , result);
+                      , chronolog::to_string_client(result));
         }
 
         // release memory

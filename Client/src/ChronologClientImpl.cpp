@@ -139,7 +139,7 @@ int chronolog::ChronologClientImpl::Connect()
     }
     else
     {
-        LOG_ERROR("[ChronoLogClientImpl] Connection attempt to Visor failed with error code: {}", return_code);
+        LOG_ERROR("[ChronoLogClientImpl] Connection attempt to Visor failed with error code: {}", chronolog::to_string_client(return_code));
     }
     return return_code;
 }
@@ -162,7 +162,7 @@ int chronolog::ChronologClientImpl::Disconnect()
     }
     else
     {
-        LOG_ERROR("[ChronoLogClientImpl] Failed to disconnect from Visor. Error code: {}", return_code);
+        LOG_ERROR("[ChronoLogClientImpl] Failed to disconnect from Visor. Error code: {}", chronolog::to_string_client(return_code));
     }
     return return_code;
 
@@ -196,7 +196,7 @@ int chronolog::ChronologClientImpl::CreateChronicle(std::string const &chronicle
     }
     else
     {
-        LOG_ERROR("[ChronoLogClientImpl] Failed to create chronicle '{}'. Error code: {}", chronicle_name, result);
+        LOG_ERROR("[ChronoLogClientImpl] Failed to create chronicle '{}'. Error code: {}", chronicle_name, chronolog::to_string_client(result));
     }
     return result;
 }
@@ -220,7 +220,7 @@ int chronolog::ChronologClientImpl::DestroyChronicle(std::string const &chronicl
     }
     else
     {
-        LOG_ERROR("[ChronoLogClientImpl] Failed to destroy chronicle '{}'. Error code: {}", chronicle_name, result);
+        LOG_ERROR("[ChronoLogClientImpl] Failed to destroy chronicle '{}'. Error code: {}", chronicle_name, chronolog::to_string_client(result));
     }
 
     return result;
@@ -255,7 +255,7 @@ int chronolog::ChronologClientImpl::DestroyStory(std::string const &chronicle_na
     else
     {
         LOG_ERROR("[ChronoLogClientImpl] Failed to destroy Story '{}' from Chronicle '{}'. Error code: {}", story_name
-                  , chronicle_name, result);
+                  , chronicle_name, chronolog::to_string_client(result));
     }
     return result;
 }
@@ -304,7 +304,7 @@ chronolog::ChronologClientImpl::AcquireStory(std::string const &chronicle_name, 
     if(acquireStoryResponse.getErrorCode() != chronolog::CL_SUCCESS)
     {
         LOG_ERROR("[ChronoLogClientImpl] Failed to acquire story '{}' from chronicle '{}'. Error code: {}", story_name
-                  , chronicle_name, acquireStoryResponse.getErrorCode());
+                  , chronicle_name, chronolog::to_string_client(acquireStoryResponse.getErrorCode()));
         return std::pair <int, chronolog::StoryHandle*>(acquireStoryResponse.getErrorCode(), nullptr);
     }
 
@@ -384,7 +384,7 @@ int chronolog::ChronologClientImpl::ReleaseStory(std::string const &chronicle_na
     if(releaseStatus != chronolog::CL_SUCCESS)
     {
         LOG_ERROR("[ChronoLogClientImpl] Failed to release story '{}' from chronicle '{}'. Error code: {}", story_name
-                  , chronicle_name, releaseStatus);
+                  , chronicle_name, chronolog::to_string_client(releaseStatus));
     }
     else
     {
@@ -422,7 +422,7 @@ int chronolog::ChronologClientImpl::GetChronicleAttr(std::string const &chronicl
     if(fetchStatus != chronolog::CL_SUCCESS)
     {
         LOG_ERROR("[ChronoLogClientImpl] Failed to fetch attribute '{}' for chronicle '{}'. Error code: {}", key
-                  , chronicle_name, fetchStatus);
+                  , chronicle_name, chronolog::to_string_client(fetchStatus));
     }
     else
     {
@@ -458,7 +458,7 @@ int chronolog::ChronologClientImpl::EditChronicleAttr(std::string const &chronic
     if(editStatus != chronolog::CL_SUCCESS)
     {
         LOG_ERROR("[ChronoLogClientImpl] Failed to edit attribute '{}' for chronicle '{}'. Error code: {}", key
-                  , chronicle_name, editStatus);
+                  , chronicle_name, chronolog::to_string_client(editStatus));
     }
     else
     {

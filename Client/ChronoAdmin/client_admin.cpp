@@ -254,7 +254,7 @@ test_acquire_story(chronolog::Client &client, const std::string &chronicle_name,
     story_acquisition_attrs.emplace("TieringPolicy", "Hot");
     std::pair <int, chronolog::StoryHandle*> acq_ret = client.AcquireStory(chronicle_name, story_name
                                                                            , story_acquisition_attrs, flags);
-//    LOG_DEBUG("acq_ret: {}", acq_ret.first);
+//    LOG_DEBUG("acq_ret: {}", to_string_client(acq_ret.first));
     assert(acq_ret.first == chronolog::CL_SUCCESS || acq_ret.first == chronolog::CL_ERR_ACQUIRED);
     return acq_ret.second;
 }
