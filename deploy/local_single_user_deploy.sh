@@ -162,6 +162,7 @@ generate_config_files() {
         player_monitoring_file=$(jq -r '.chrono_player.Monitoring.monitor.file' "$default_conf")
         player_monitoring_file_name=$(basename "$player_monitoring_file")
         jq --arg monitor_dir "$monitor_dir" \
+            --arg output_dir "$output_dir" \
             --argjson new_port_player_datastore $new_port_player_datastore \
             --argjson new_port_player_playback $new_port_player_playback \
             --argjson player_index "$player_index" \
@@ -169,7 +170,8 @@ generate_config_files() {
            '.chrono_player.RecordingGroup = $player_index |
             .chrono_player.PlayerStoreAdminService.rpc.service_base_port = $new_port_player_datastore |
             .chrono_player.PlaybackQueryService.rpc.service_base_port = $new_port_player_playback |
-            .chrono_player.Monitoring.monitor.file = ($monitor_dir + "/" + ($player_index | tostring) + "_" + $player_monitoring_file_name)' "$default_conf" > "$player_output_file"
+            .chrono_player.Monitoring.monitor.file = ($monitor_dir + "/" + ($player_index | tostring) + "_" + $player_monitoring_file_name) |
+            .chrono_player.ArchiveReaders.story_files_dir = ($output_dir + "/")' "$default_conf" >"$player_output_file"
 
         echo "Generated $player_output_file with port $new_port_player_datastore"
     done

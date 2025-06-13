@@ -53,3 +53,4 @@ install(
 )
 
 add_subdirectory(ChronoAdmin)
+add_subdirectory(examples)

@@ -471,7 +471,7 @@ std::vector<KeeperIdCard>& RecordingGroup::getActiveKeepers(std::vector<KeeperId
             iter = keeperProcesses.erase(iter);
         }
         else
-        {
+        { 
             LOG_INFO("ChronoProcessRegistry] getActiveKeepers still keeps keeperProcessEntry for keeper {} current_time={}",
                      (*iter).second.idCardString, std::ctime(&current_time));
             ++iter;
@@ -514,7 +514,7 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
             recording_group->getActiveKeepers(vectorOfKeepers); 
     
             //no need for notification , group processes are already recording this story
-            LOG_INFO("[ChronoProcessRegistry] RecordingGroup {} is already recording story {}", recording_group->groupId,story_id);
+            LOG_DEBUG("[ChronoProcessRegistry] RecordingGroup {} is already recording story {}", recording_group->groupId,story_id);
             
             return chronolog::CL_SUCCESS;
         }
@@ -527,7 +527,7 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
         activeStories[story_id] = recording_group;
     }
 
-    LOG_INFO("[ChronoProcessRegistry] selected RecordingGroup {} for story {}", recording_group->groupId, story_id);
+    LOG_DEBUG("[ChronoProcessRegistry] selected RecordingGroup {} for story {}", recording_group->groupId, story_id);
     
     uint64_t story_start_time = std::chrono::high_resolution_clock::now().time_since_epoch().count();
 
@@ -535,18 +535,35 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
     // notify Grapher and notifyKeepers functions use delayedExit logic to protect
     // the rpc code from DataAdminClients being destroyed while notification is in progress..
     int rpc_return = notifyGrapherOfStoryRecordingStart(*recording_group, chronicle, story, story_id, story_start_time);
-
-    if(rpc_return == chronolog::CL_SUCCESS)
+    
+    if( rpc_return != chronolog::CL_SUCCESS)
     {
-        recording_group->getActiveKeepers(vectorOfKeepers);
-        rpc_return = notifyKeepersOfStoryRecordingStart(*recording_group, vectorOfKeepers, chronicle, story, story_id,
+        LOG_WARNING("[ChronoProcessRegistry]  RecordingGroup {} failed to notify Grapher of Story {} Start : err_code {}", recording_group->groupId, story_id, rpc_return);
+        return rpc_return;
+    }
+
+    LOG_DEBUG("[ChronoProcessRegistry]  RecordingGroup {}  notified Grapher  of Story {} Start", recording_group->groupId, story_id);
+
+    recording_group->getActiveKeepers(vectorOfKeepers);
+    rpc_return = notifyKeepersOfStoryRecordingStart(*recording_group, vectorOfKeepers, chronicle, story, story_id,
                                                         story_start_time);
+    if( rpc_return != chronolog::CL_SUCCESS)
+    {
+        LOG_WARNING("[ChronoProcessRegistry]  RecordingGroup {} failed to notify Keepers of Story {} Start : err_code {}", 
+            recording_group->groupId, story_id, rpc_return);
+        vectorOfKeepers.clear();
+        return rpc_return;
     }
 
-    if(rpc_return == chronolog::CL_SUCCESS && recording_group->playerProcess != nullptr)
+    LOG_DEBUG("[ChronoProcessRegistry]  RecordingGroup {}  notified  Keepers of story {} Start", recording_group->groupId, story_id);
+
+    if(recording_group->playerProcess != nullptr)
     {
-        player_service_id = recording_group->playerProcess->playbackServiceId;
+        player_service_id = recording_group->playerProcess->idCard.getPlaybackServiceId();
     }
+
+    LOG_INFO("[ChronoProcessRegistry]  RecordingGroup {}  notified  of story {} Start : group has {} keepers and player {}", 
+        recording_group->groupId, story_id, vectorOfKeepers.size(), chl::to_string(player_service_id));
     return rpc_return;
 }
 
@@ -555,12 +572,12 @@ int KeeperRegistry::notifyGrapherOfStoryRecordingStart(RecordingGroup &recording
                                                        , StoryName const &story, StoryId const &storyId
                                                        , uint64_t story_start_time)
 {
-    int return_code = chronolog::CL_ERR_NO_KEEPERS;
+    int return_code = chronolog::CL_ERR_UNKNOWN;
 
     if(!is_running())
     {
         LOG_ERROR("[ChronoProcessRegistry] Registry has no active RecordingGroups to start recording story {}", storyId);
-        return chronolog::CL_ERR_NO_KEEPERS;
+        return chronolog::CL_ERR_UNKNOWN;
     }
 
     DataStoreAdminClient* dataAdminClient = nullptr;
@@ -610,7 +627,7 @@ int KeeperRegistry::notifyGrapherOfStoryRecordingStart(RecordingGroup &recording
 ///////////////
 int KeeperRegistry::notifyGrapherOfStoryRecordingStop(RecordingGroup& recordingGroup, StoryId const& storyId)
 {
-    int return_code = chronolog::CL_ERR_NO_KEEPERS;
+    int return_code = chronolog::CL_ERR_UNKNOWN;
 
     if(!is_running())
     {

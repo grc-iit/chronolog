@@ -1,5 +1,5 @@
-#ifndef CHRONOLOG_CLIENT_ERRORCODE_H
-#define CHRONOLOG_CLIENT_ERRORCODE_H
+#ifndef CHRONOLOG_CLIENT_ERRCODE_H
+#define CHRONOLOG_CLIENT_ERRCODE_H
 
 namespace chronolog {
 
@@ -63,4 +63,4 @@ inline const char* to_string_client(int code) {
 
 } // namespace chronolog
 
-#endif // CHRONOLOG_CLIENT_ERRORCODE_H
+#endif // CHRONOLOG_CLIENT_ERRCODE_H

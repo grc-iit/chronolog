@@ -48,7 +48,7 @@ void thread_body(struct thread_arg*t)
     // Acquire the story
     auto acquire_ret = client->AcquireStory(chronicle_name, story_name, story_attrs, flags);
     LOG_DEBUG("[ClientLibMultiStorytellers] Story acquired: tid={}, ChronicleName={}, StoryName={}, Ret: {}", t->tid
-              , chronicle_name, story_name, acquire_ret.first);
+              , chronicle_name, story_name, chronolog::to_string_client(acquire_ret.first));
 
     // Assertion for successful story acquisition or expected errors
     assert(acquire_ret.first == chronolog::CL_SUCCESS || acquire_ret.first == chronolog::CL_ERR_NOT_EXIST ||
@@ -68,7 +68,7 @@ void thread_body(struct thread_arg*t)
         // Release the story
         ret = client->ReleaseStory(chronicle_name, story_name);
         LOG_DEBUG("[ClientLibMultiStorytellers] Story released: tid={}, ChronicleName={}, StoryName={}, Ret: {}", t->tid
-                  , chronicle_name, story_name, ret);
+                  , chronicle_name, story_name, chronolog::to_string_client(ret));
 
         // Assertion for successful story release or expected errors
         assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NO_CONNECTION);
@@ -77,7 +77,7 @@ void thread_body(struct thread_arg*t)
     // Destroy the story
     ret = client->DestroyStory(chronicle_name, story_name);
     LOG_DEBUG("[ClientLibMultiStorytellers] Story destroyed: tid={}, ChronicleName={}, StoryName={}, Ret: {}", t->tid
-              , chronicle_name, story_name, ret);
+              , chronicle_name, story_name, chronolog::to_string_client(ret));
 
     // Assertion for successful story destruction or expected errors
     assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST || ret == chronolog::CL_ERR_ACQUIRED ||
