@@ -192,7 +192,7 @@ int main(int argc, char**argv)
 
     chronolog::ArchiveReadingAgent * archiveReadingAgent = nullptr;
 
-    std::string archive_path = confManager.GRAPHER_CONF.EXTRACTOR_CONF.story_files_dir;
+    std::string archive_path = confManager.PLAYER_CONF.READER_CONF.story_files_dir;
     archiveReadingAgent = new chronolog::ArchiveReadingAgent(readingRequestQueue, archive_path);
 
     /// Registration with ChronoVisor __________________________________________________________________________________

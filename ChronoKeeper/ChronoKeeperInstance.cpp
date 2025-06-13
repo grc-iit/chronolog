@@ -141,7 +141,7 @@ int main(int argc, char**argv)
 
     // Instantiate ChronoKeeper MemoryDataStore & ExtractorModule
     chronolog::IngestionQueue ingestionQueue;
-    std::string keeper_csv_files_directory = confManager.KEEPER_CONF.STORY_FILES_DIR;
+    std::string keeper_csv_files_directory = confManager.KEEPER_CONF.EXTRACTOR_CONF.story_files_dir;
     // Instantiate KeeperGrapherDrainService
     tl::engine*extractionEngine = nullptr;
     tl::remote_procedure drain_to_grapher;

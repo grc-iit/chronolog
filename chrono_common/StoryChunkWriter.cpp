@@ -1,4 +1,7 @@
+#include <filesystem>
 #include "StoryChunkWriter.h"
+
+namespace fs = std::filesystem;
 
 namespace chronolog
 {
@@ -53,12 +56,20 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunk &story_chunk)
         data.emplace_back(event.second.getStoryId(), event.second.time(), event.second.getClientId()
                           ,event.second.index(), log_record);
     }
-    std::string file_name = rootDirectory + "/" + story_chunk.getChronicleName() + "." + story_chunk.getStoryName() + "." +
+    std::string file_name = story_chunk.getChronicleName() + "." + story_chunk.getStoryName() + "." +
                             std::to_string(story_chunk.getStartTime() / 1000000000) + ".vlen.h5";
+    file_name = fs::path(rootDirectory) / fs::path(file_name);
     hsize_t ret = 0;
     std::unique_ptr<H5::H5File> file;
     try
     {
+        if(fs::exists(file_name))
+        {
+            file_name += ".aux";
+            LOG_DEBUG("[StoryChunkWriter] StoryChunk file already exists indicating extremely late events"
+                      ", use auxiliary file name instead: {}", file_name);
+        }
+
         LOG_DEBUG("[StoryChunkWriter] Creating StoryChunk file: {}", file_name);
         file = std::make_unique<H5::H5File>(file_name, H5F_ACC_TRUNC | H5F_ACC_SWMR_WRITE);
 
