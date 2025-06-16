@@ -170,7 +170,7 @@ generate_config_files() {
            '.chrono_player.RecordingGroup = $player_index |
             .chrono_player.PlayerStoreAdminService.rpc.service_base_port = $new_port_player_datastore |
             .chrono_player.PlaybackQueryService.rpc.service_base_port = $new_port_player_playback |
-            .chrono_player.Monitoring.monitor.file = ($monitor_dir + "/" + ($player_index | tostring) + "_" + $player_monitoring_file_name) | 
+            .chrono_player.Monitoring.monitor.file = ($monitor_dir + "/" + ($player_index | tostring) + "_" + $player_monitoring_file_name) |
             .chrono_player.ArchiveReaders.story_files_dir = ($output_dir + "/")' "$default_conf" >"$player_output_file"
 
         echo "Generated $player_output_file with port $new_port_player_datastore"
@@ -331,16 +331,19 @@ start() {
     start_service ${VISOR_BIN} "--config ${CONF_DIR}/visor_conf.json" "visor.launch.log"
     sleep 2
     num_record_group=${NUM_RECORDING_GROUPS}
-    for ((i = 1; i <= num_record_group; i++)); do
+    for (( i=1; i<=num_record_group; i++ ))
+    do
         start_service ${GRAPHER_BIN} "--config ${CONF_DIR}/grapher_conf_$i.json" "grapher_$i.launch.log"
     done
     sleep 2
-    for ((i = 1; i <= num_record_group; i++)); do
+    for (( i=1; i<=num_record_group; i++ ))
+    do
         start_service ${PLAYER_BIN} "--config ${CONF_DIR}/player_conf_$i.json" "player_$i.launch.log"
     done
     sleep 2
     num_keepers=${NUM_KEEPERS}
-    for ((i = 1; i <= num_keepers; i++)); do
+    for (( i=1; i<=num_keepers; i++ ))
+    do
         start_service ${KEEPER_BIN} "--config ${CONF_DIR}/keeper_conf_$i.json" "keeper_$i.launch.log"
     done
     echo -e "${INFO}ChronoLog Started.${NC}"

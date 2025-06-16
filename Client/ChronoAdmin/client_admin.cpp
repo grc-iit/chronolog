@@ -35,19 +35,19 @@ typedef struct workload_conf_args_
 void usage(char**argv)
 {
     std::cerr << "\nUsage: " << argv[0] << " [options]\n"
-                                           "-c|--config <config_file>\n"
-                                           "-i|--interactive\n"
-                                           "-h|--chronicle_count <chronicle_count>\n"
-                                           "-t|--story_count <story_count>\n"
-                                           "-a|--min_event_size <min_event_size>\n"
-                                           "-s|--ave_event_size <ave_event_size>\n"
-                                           "-b|--max_event_size <max_event_size>\n"
-                                           "-n|--event_count <event_count>\n"
-                                           "-g|--event_interval <event_interval>\n"
-                                           "-r|--barrier\n"
-                                           "-f|--event_payload_file <event_payload_file>\n"
-                                           "-o|--shared_story\n"
-                                           "-p|--perf\n" << argv[0] << std::endl;
+                 "-c|--config <config_file>\n"
+                 "-i|--interactive\n"
+                 "-h|--chronicle_count <chronicle_count>\n"
+                 "-t|--story_count <story_count>\n"
+                 "-a|--min_event_size <min_event_size>\n"
+                 "-s|--ave_event_size <ave_event_size>\n"
+                 "-b|--max_event_size <max_event_size>\n"
+                 "-n|--event_count <event_count>\n"
+                 "-g|--event_interval <event_interval>\n"
+                 "-r|--barrier\n"
+                 "-f|--event_payload_file <event_payload_file>\n"
+                 "-o|--shared_story\n"
+                 "-p|--perf\n" << argv[0] << std::endl;
 }
 
 void random_sleep()
@@ -475,7 +475,7 @@ int main(int argc, char**argv)
                   << "\t-d -c <chronicle_name>, destroy Chronicle <chronicle_name>\n" << "\t-disconnect\n" << std::endl;
 
         std::unordered_map <std::string, std::function <void(std::vector <std::string> &)>> command_map = {{  "-c", [&](
-                std::vector <std::string> &command_subs)
+std::vector <std::string> &command_subs)
         {
             assert(command_subs.size() == 2);
             std::string chronicle_name = command_subs[1];
@@ -626,94 +626,94 @@ int main(int argc, char**argv)
                 // write event test
                 std::string event_payload;
                 writeEventTimer.timeBlock([&]()
-                                          {
-                                              uint64_t event_count_per_story =
-                                                      workload_args.event_count / workload_args.story_count;
-                                              for(uint64_t k = 0; k < event_count_per_story; k++)
-                                              {
-                                                  if(workload_args.event_payload_file.empty())
-                                                  {
-                                                      // randomly generate events size if range is specified
-                                                      writeEventTimer.pauseTimer();
+                                {
+                                    uint64_t event_count_per_story =
+                                            workload_args.event_count / workload_args.story_count;
+                                    for(uint64_t k = 0; k < event_count_per_story; k++)
+                                    {
+                                        if(workload_args.event_payload_file.empty())
+                                        {
+                                            // randomly generate events size if range is specified
+                                            writeEventTimer.pauseTimer();
 
-                                                      uint64_t event_size;
-                                                      if(workload_args.ave_event_size == workload_args.min_event_size &&
-                                                         workload_args.ave_event_size == workload_args.max_event_size)
-                                                      {
-                                                          event_size = workload_args.ave_event_size;
-                                                      }
-                                                      else
-                                                      {
-                                                          event_size = (unsigned long)std::min(std::max(size_dist(gen),
-                                                                                                       (double)workload_args.min_event_size * 1.0),
-                                                                  (double)workload_args.max_event_size * 1.0);
-                                                      }
-                                                      event_payload = payload_str.substr(0, event_size);
-                                                      event_payload_size_per_rank += event_size;
-                                                      writeEventTimer.resumeTimer();
-                                                      ret_u = test_write_event(story_handle, event_payload);
-                                                      if(workload_args.barrier)
-                                                          MPI_Barrier(MPI_COMM_WORLD);
+                                            uint64_t event_size;
+                                            if(workload_args.ave_event_size == workload_args.min_event_size &&
+                                               workload_args.ave_event_size == workload_args.max_event_size)
+                                            {
+                                                event_size = workload_args.ave_event_size;
+                                            }
+                                            else
+                                            {
+                                                event_size = (unsigned long)std::min(std::max(size_dist(gen),
+                                                                                             (double)workload_args.min_event_size * 1.0),
+                                                        (double)workload_args.max_event_size * 1.0);
+                                            }
+                                            event_payload = payload_str.substr(0, event_size);
+                                            event_payload_size_per_rank += event_size;
+                                            writeEventTimer.resumeTimer();
+                                            ret_u = test_write_event(story_handle, event_payload);
+                                            if(workload_args.barrier)
+                                                MPI_Barrier(MPI_COMM_WORLD);
 
-                                                      if(workload_args.event_interval > 0)
-                                                          usleep(workload_args.event_interval);
-                                                  }
-                                                  else
-                                                  {
-                                                      // read event payload from input file line by line
-                                                      std::ifstream input_file(workload_args.event_payload_file);
+                                            if(workload_args.event_interval > 0)
+                                                usleep(workload_args.event_interval);
+                                        }
+                                        else
+                                        {
+                                            // read event payload from input file line by line
+                                            std::ifstream input_file(workload_args.event_payload_file);
 
-                                                      // check if the file opened successfully
-                                                      if(input_file.is_open())
-                                                      {
-                                                          writeEventTimer.pauseTimer();
-                                                          uint64_t bigbang_timestamp = get_bigbang_timestamp(input_file);
-                                                          uint64_t last_event_timestamp = bigbang_timestamp;
-                                                          uint64_t event_timestamp;
-                                                          struct timespec sleep_ts{};
-                                                          while(std::getline(input_file, event_payload))
-                                                          {
-                                                              if(event_payload.empty()) continue;
-                                                              event_timestamp = get_event_timestamp(event_payload);
-                                                              if(event_timestamp < last_event_timestamp)
-                                                              {
-                                                                  LOG_INFO(
-                                                                          "An Out-of-Order event is found, sleeping for 1 second ...");
-                                                                  sleep_ts.tv_sec = 1;
-                                                                  sleep_ts.tv_nsec = 0;
-                                                              }
-                                                              else
-                                                              {
-                                                                  sleep_ts.tv_sec =
-                                                                          (long)(event_timestamp - last_event_timestamp) /
-                                                                          1000000000;
-                                                                  sleep_ts.tv_nsec =
-                                                                          (long)(event_timestamp - last_event_timestamp) %
-                                                                          1000000000;
-                                                              }
-                                                              // TODO: (Kun) work around on failure when daytime changes
-                                                              if(sleep_ts.tv_sec > 3600) sleep_ts.tv_sec = 0;
-                                                              LOG_DEBUG(
-                                                                      "Sleeping for {}.{} seconds to emulate interval between events ..."
-                                                                      , sleep_ts.tv_sec, sleep_ts.tv_nsec);
-                                                              nanosleep(&sleep_ts, nullptr);
-                                                              last_event_timestamp = event_timestamp;
-                                                              event_payload_size_per_rank += event_payload.size();
-                                                              writeEventTimer.resumeTimer();
-                                                              ret_u = test_write_event(story_handle, event_payload);
-                                                              if(workload_args.barrier)
-                                                                  MPI_Barrier(MPI_COMM_WORLD);
-                                                          }
+                                            // check if the file opened successfully
+                                            if(input_file.is_open())
+                                            {
+                                                writeEventTimer.pauseTimer();
+                                                uint64_t bigbang_timestamp = get_bigbang_timestamp(input_file);
+                                                uint64_t last_event_timestamp = bigbang_timestamp;
+                                                uint64_t event_timestamp;
+                                                struct timespec sleep_ts{};
+                                                while(std::getline(input_file, event_payload))
+                                                {
+                                                    if(event_payload.empty()) continue;
+                                                    event_timestamp = get_event_timestamp(event_payload);
+                                                    if(event_timestamp < last_event_timestamp)
+                                                    {
+                                                        LOG_INFO(
+                                                                "An Out-of-Order event is found, sleeping for 1 second ...");
+                                                        sleep_ts.tv_sec = 1;
+                                                        sleep_ts.tv_nsec = 0;
+                                                    }
+                                                    else
+                                                    {
+                                                        sleep_ts.tv_sec =
+                                                                (long)(event_timestamp - last_event_timestamp) /
+                                                                1000000000;
+                                                        sleep_ts.tv_nsec =
+                                                                (long)(event_timestamp - last_event_timestamp) %
+                                                                1000000000;
+                                                    }
+                                                    // TODO: (Kun) work around on failure when daytime changes
+                                                    if(sleep_ts.tv_sec > 3600) sleep_ts.tv_sec = 0;
+                                                    LOG_DEBUG(
+                                                            "Sleeping for {}.{} seconds to emulate interval between events ..."
+                                                            , sleep_ts.tv_sec, sleep_ts.tv_nsec);
+                                                    nanosleep(&sleep_ts, nullptr);
+                                                    last_event_timestamp = event_timestamp;
+                                                    event_payload_size_per_rank += event_payload.size();
+                                                    writeEventTimer.resumeTimer();
+                                                    ret_u = test_write_event(story_handle, event_payload);
+                                                    if(workload_args.barrier)
+                                                        MPI_Barrier(MPI_COMM_WORLD);
+                                                }
 
-                                                          input_file.close();
-                                                      }
-                                                      else
-                                                      {
-                                                          std::cout << "Unable to open the file";
-                                                      }
-                                                  }
-                                              }
-                                          });
+                                                input_file.close();
+                                            }
+                                            else
+                                            {
+                                                std::cout << "Unable to open the file";
+                                            }
+                                        }
+                                    }
+                                });
 
                 // release story test
                 ret_i = releaseStoryTimer.timeBlock(test_release_story, client, chronicle_name, story_name);
