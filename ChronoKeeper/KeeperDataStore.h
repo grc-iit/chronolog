@@ -28,9 +28,13 @@ class KeeperDataStore
 
 
 public:
-    KeeperDataStore(IngestionQueue &ingestion_queue, StoryChunkExtractionQueue &extraction_queue): state(UNKNOWN)
-                                                                                                   , theIngestionQueue(
-                    ingestion_queue), theExtractionQueue(extraction_queue)
+    KeeperDataStore(IngestionQueue &ingestion_queue, StoryChunkExtractionQueue &extraction_queue
+            , uint16_t story_chunk_duration = 10, uint16_t access_window = 30)
+        : state(UNKNOWN)
+        , theIngestionQueue(ingestion_queue)
+        , theExtractionQueue(extraction_queue)
+        , defaultChunkDuration(story_chunk_duration)
+        , defaultAccessWindow(access_window)
     {}
 
     ~KeeperDataStore();
@@ -42,7 +46,7 @@ public:
     { return (SHUTTING_DOWN == state); }
 
     int startStoryRecording(ChronicleName const &, StoryName const &, StoryId const &, uint64_t start_time
-                            , uint32_t time_chunk_ranularity = 30, uint32_t access_window = 60);
+                            , uint32_t time_chunk_ranularity, uint32_t access_window);
 
     int stopStoryRecording(StoryId const &);
 
@@ -67,6 +71,8 @@ private:
     std::mutex dataStoreStateMutex;
     IngestionQueue &theIngestionQueue;
     StoryChunkExtractionQueue &theExtractionQueue;
+    uint16_t defaultChunkDuration;
+    uint16_t defaultAccessWindow;
     std::vector <thallium::managed <thallium::xstream>> dataStoreStreams;
     std::vector <thallium::managed <thallium::thread>> dataStoreThreads;
 

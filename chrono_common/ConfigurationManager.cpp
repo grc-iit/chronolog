@@ -93,6 +93,16 @@ void ChronoLog::ConfigurationManager::parseGrapherConf(json_object*json_conf)
                     assert(json_object_is_type(val, json_type_int));
                     GRAPHER_CONF.DATA_STORE_CONF.max_story_chunk_size = json_object_get_int(val);
                 }
+                else if(strcmp(key, "story_chunk_duration_secs") == 0)
+                {
+                    assert(json_object_is_type(val, json_type_int));
+                    GRAPHER_CONF.DATA_STORE_CONF.story_chunk_duration_secs = json_object_get_int(val);
+                }
+                else if(strcmp(key, "acceptance_window_secs") == 0)
+                {
+                    assert(json_object_is_type(val, json_type_int));
+                    GRAPHER_CONF.DATA_STORE_CONF.acceptance_window_secs = json_object_get_int(val);
+                }
                 else
                 {
                     std::cerr << "[ConfigurationManager] [chrono_grapher] Unknown DataStoreInternals configuration: "
