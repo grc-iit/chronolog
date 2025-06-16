@@ -47,7 +47,8 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunkHVL &story_chunk)
 
 std::string StoryChunkWriter::getStoryFileName(std::string const &root_dir, std::string const &base_file_name)
 {
-    const std::string rotated_prefix = base_file_name + ".aux.";
+    const std::string escaped_base_file_name = std::regex_replace(base_file_name, std::regex(R"([.^$|()\\*+?{}\[\]])"), R"(\$&)");
+    const std::string rotated_prefix = escaped_base_file_name + ".aux.";
 
     const std::regex rotated_pattern("^" + rotated_prefix + "([0-9]+)$");
 
