@@ -41,7 +41,7 @@ public:
     }
 
 private:
-    std::string getStoryFileName(std::string const &root_dir, std::string const &base_file_name);
+    std::string getStoryChunkFileName(std::string const &root_dir, std::string const &base_file_name);
 
     std::string rootDirectory;
     std::string groupName;

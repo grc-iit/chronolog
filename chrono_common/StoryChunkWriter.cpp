@@ -45,14 +45,17 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunkHVL &story_chunk)
     return ret;
 }
 
-std::string StoryChunkWriter::getStoryFileName(std::string const &root_dir, std::string const &base_file_name)
+std::string StoryChunkWriter::getStoryChunkFileName(std::string const &root_dir, std::string const &base_file_name)
 {
-    const std::string escaped_base_file_name = std::regex_replace(base_file_name, std::regex(R"([.^$|()\\*+?{}\[\]])"), R"(\$&)");
-    const std::string rotated_prefix = escaped_base_file_name + ".aux.";
+    const std::string base_file_name_no_ext = fs::path(base_file_name).stem().make_preferred().string();
+    const std::string escaped_base_file_name_no_ext = std::regex_replace(base_file_name_no_ext, std::regex(
+            R"([.^$|()\\*+?{}\[\]])"), R"(\$&)");
+    const std::string rotated_prefix = escaped_base_file_name_no_ext + "\\.";
+    const std::string ext = fs::path(base_file_name).extension().string();
 
-    const std::regex rotated_pattern("^" + rotated_prefix + "([0-9]+)$");
+    const std::regex rotated_pattern("^" + rotated_prefix + "([0-9]+)" + ext + "$");
 
-    long long max_n = -1; // Use -1 to indicate no numbered files have been found yet.
+    long long max_n = -1; // Means no numbered files have been found yet.
     bool base_exists = false;
 
     std::error_code ec;
@@ -96,27 +99,28 @@ std::string StoryChunkWriter::getStoryFileName(std::string const &root_dir, std:
         }
     }
 
-    fs::path next_filename;
+    fs::path next_filename_no_ext;
     if(max_n == -1)
     {
         // No numbered files were found.
         if(!base_exists)
         {
-            next_filename = base_file_name;
+            next_filename_no_ext = base_file_name_no_ext;
         }
         else
         {
-            next_filename = rotated_prefix + "1";
+            next_filename_no_ext = base_file_name_no_ext + ".1";
         }
     }
     else
     {
         // We found numbered files, so the next is max_n + 1.
-        next_filename = rotated_prefix + std::to_string(max_n + 1);
+        next_filename_no_ext = base_file_name_no_ext + "." + std::to_string(max_n + 1);
     }
 
-    LOG_DEBUG("[StoryChunkWriter] Next unique file name: {}", next_filename.string());
-    return root_dir / next_filename;
+    next_filename_no_ext += ext;
+    LOG_DEBUG("[StoryChunkWriter] Next unique file name: {}", next_filename_no_ext.string());
+    return (root_dir / next_filename_no_ext).make_preferred();
 }
 
 hsize_t StoryChunkWriter::writeStoryChunk(StoryChunk &story_chunk)
@@ -139,7 +143,7 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunk &story_chunk)
     try
     {
         LOG_DEBUG("[StoryChunkWriter] Making sure the StoryChunk file name is unique...");
-        file_name = getStoryFileName(rootDirectory, file_name);
+        file_name = getStoryChunkFileName(rootDirectory, file_name);
 
         LOG_DEBUG("[StoryChunkWriter] Creating StoryChunk file: {}", file_name);
         file = std::make_unique<H5::H5File>(file_name, H5F_ACC_TRUNC | H5F_ACC_SWMR_WRITE);
