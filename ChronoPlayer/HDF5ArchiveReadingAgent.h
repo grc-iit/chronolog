@@ -40,6 +40,10 @@ public:
         return 0;
     }
 
+    int readStoryChunkFile(const ChronicleName&, const StoryName&, uint64_t, uint64_t, std::list<StoryChunk*>&
+                          , const std::string &);
+    int readArchivedStoryInternal(const ChronicleName&, const StoryName&, uint64_t, uint64_t, std::list<StoryChunk*>&
+                                 , bool);
     int readArchivedStory(const ChronicleName&, const StoryName&, uint64_t, uint64_t, std::list<StoryChunk*>&);
 
     static std::string getChronicleName(const std::string &file_name)
@@ -128,7 +132,7 @@ private:
         {
             if(entry.path().extension() != ".h5")
             {
-                LOG_ERROR("[HDF5ArchiveReadingAgent] File {} is not an HDF5 file. Skipping this file."
+                LOG_DEBUG("[HDF5ArchiveReadingAgent] File {} is not an HDF5 file. Skipping this file."
                           , entry.path().string());
                 return false; // Skip non-HDF5 files
             }
@@ -140,13 +144,14 @@ private:
         }
         else
         {
-            LOG_ERROR("[HDF5ArchiveReadingAgent] File {} is not a regular file. Skipping this file.", entry.path().string());
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] File {} is not a regular file. Skipping this file."
+                      , entry.path().string());
             return false; // Skip non-regular files
         }
         std::ifstream file(entry.path());
         if(!file.is_open())
         {
-            LOG_ERROR("[HDF5ArchiveReadingAgent] Failed to open file: {}. Skipping this file.", entry.path().string());
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] Failed to open file: {}. Skipping this file.", entry.path().string());
             return false; // Skip files that cannot be opened
         }
         return true;
@@ -162,7 +167,6 @@ private:
     {
         // iterate over the HDF5 files in the archive directory to get the list of files
         // update the start_time_file_name_map_ with the start time and file name
-        std::lock_guard <std::mutex> lock(start_time_file_name_map_mutex_);
         std::error_code ec;
         auto it = fs::recursive_directory_iterator(archive_path_, fs::directory_options::skip_permission_denied, ec);
         if(ec)
@@ -171,6 +175,7 @@ private:
                       , archive_path_, ec.message());
             return -1; // Return error code on failure
         }
+        std::string file_name, chronicle_name, story_name;
         for(const auto &entry: it)
         {
             if(ec)
@@ -180,22 +185,11 @@ private:
                 ec.clear();
                 continue;
             }
-            if(!isValidArchiveFile(entry.path().string()))
-            {
-                LOG_ERROR("[HDF5ArchiveReadingAgent] Invalid archive file: {}. Skipping this file.", entry.path().string());
-                continue; // Skip invalid files
-            }
-            std::string chronicle_name = getChronicleName(entry.path().string());
-            std::string story_name = getStoryName(entry.path().string());
-            uint64_t start_time = getStartTime(entry.path().string());
-            if(start_time == 0)
-            {
-                LOG_ERROR("[HDF5ArchiveReadingAgent] Failed to extract start time from file: {}. Skipping this file."
-                          , entry.path().string());
-                continue; // Skip files with invalid start time
-            }
-            start_time_file_name_map_[std::make_tuple(chronicle_name, story_name, start_time)] = entry.path().string();
+
+            file_name = entry.path().string();
+            addFileToStartTimeFileNameMap(file_name);
         }
+
         LOG_DEBUG("[HDF5ArchiveReadingAgent] Created start_time_file_name_map_ with {} entries."
                   , start_time_file_name_map_.size());
         return 0;
@@ -206,7 +200,7 @@ private:
         std::lock_guard<std::mutex> lock(start_time_file_name_map_mutex_);
         if(!isValidArchiveFile(file_name))
         {
-            LOG_ERROR("[HDF5ArchiveReadingAgent] Invalid archive file: {}. Skipping this file.", file_name);
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] Invalid archive file: {}. Skipping this file.", file_name);
             return -1; // Skip invalid files
         }
         std::string chronicle_name = getChronicleName(file_name);
@@ -214,14 +208,22 @@ private:
         uint64_t start_time = getStartTime(file_name);
         if(start_time == 0)
         {
-            LOG_ERROR("[HDF5ArchiveReadingAgent] Failed to extract start time from file: {}. Skipping this file."
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] Failed to extract start time from file: {}. Skipping this file."
                       , file_name);
             return -1; // Skip files with invalid start time
         }
+        std::string file_name_number = fs::path(file_name).replace_extension("").extension().string().substr(1);
+        if(std::all_of(file_name_number.begin(), file_name_number.end(), ::isdigit))
+        {
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] {} is an auxiliary file. Skipping this file.", file_name);
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] start_time_file_name_map_ has {} entries."
+                      , start_time_file_name_map_.size());
+            return -1; // Skip files that already exist in the map
+        }
         start_time_file_name_map_[std::make_tuple(chronicle_name, story_name, start_time)] = file_name;
         LOG_DEBUG("[HDF5ArchiveReadingAgent] Added file {} to start_time_file_name_map_.", file_name);
-        LOG_DEBUG("[HDF5ArchiveReadingAgent] start_time_file_name_map_ has {} entries.",
-                  start_time_file_name_map_.size());
+        LOG_DEBUG("[HDF5ArchiveReadingAgent] start_time_file_name_map_ has {} entries."
+                  , start_time_file_name_map_.size());
         return 0;
     }
 
@@ -233,9 +235,17 @@ private:
         uint64_t start_time = getStartTime(file_name);
         if(start_time == 0)
         {
-            LOG_ERROR("[HDF5ArchiveReadingAgent] Failed to extract start time from file: {}. Skipping this file.",
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] Failed to extract start time from file: {}. Skipping this file.",
                       file_name);
             return -1; // Skip files with invalid start time
+        }
+        std::string file_name_number = fs::path(file_name).replace_extension("").extension().string().substr(1);
+        if(std::all_of(file_name_number.begin(), file_name_number.end(), ::isdigit))
+        {
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] {} is an auxiliary file. Skipping this file.", file_name);
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] start_time_file_name_map_ has {} entries."
+                      , start_time_file_name_map_.size());
+            return -1; // Skip files that already exist in the map
         }
         start_time_file_name_map_.erase(std::make_tuple(chronicle_name, story_name, start_time));
         LOG_DEBUG("[HDF5ArchiveReadingAgent] Removed file {} from start_time_file_name_map_.", file_name);

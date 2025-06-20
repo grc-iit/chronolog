@@ -21,6 +21,7 @@ target_sources(chrono_player PRIVATE
     PlaybackService.cpp
     StoryChunkTransferAgent.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunk.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunkWriter.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/StoryPipeline.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunkExtractor.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/ConfigurationManager.cpp
@@ -63,7 +64,8 @@ add_executable(hdf5_archive_reader_test
     HDF5ArchiveReadingAgentTest.cpp
     HDF5ArchiveReadingAgent.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/ConfigurationManager.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunk.cpp)
+    ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunk.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunkWriter.cpp)
 
 target_include_directories(hdf5_archive_reader_test PRIVATE
     include

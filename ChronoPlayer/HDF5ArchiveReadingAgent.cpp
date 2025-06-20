@@ -38,9 +38,120 @@ herr_t error_walker(unsigned int n, const H5E_error2_t *err_desc, void *client_d
     return 0;
 }
 
-int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName &chronicleName, const StoryName &storyName
-                                                          , uint64_t startTime, uint64_t endTime
-                                                          , std::list <StoryChunk *> &listOfChunks)
+int chronolog::HDF5ArchiveReadingAgent::readStoryChunkFile(const ChronicleName &chronicleName, const StoryName &storyName
+                                                            , uint64_t startTime, uint64_t endTime
+                                                            , std::list <StoryChunk *> &listOfChunks
+                                                            , const std::string &file_name)
+{
+    std::unique_ptr <H5::H5File> file;
+    StoryChunk *story_chunk = nullptr;
+    try
+    {
+        H5::Exception::dontPrint();
+
+        LOG_DEBUG("[HDF5ArchiveReadingAgent] Opening file {}", file_name);
+        file = std::make_unique <H5::H5File>(file_name, H5F_ACC_SWMR_READ);
+
+        std::string dataset_name = "/story_chunks/data.vlen_bytes";
+        LOG_DEBUG("[HDF5ArchiveReadingAgent] Opening dataset {}", dataset_name);
+        H5::DataSet dataset = file->openDataSet(dataset_name);
+
+        H5::DataSpace dataspace = dataset.getSpace();
+        hsize_t dims_out[2] = {0, 0};
+        dataspace.getSimpleExtentDims(dims_out, nullptr);
+        LOG_DEBUG("[HDF5ArchiveReadingAgent] Reading dataset {} with {} events", dataset_name, dims_out[0]);
+
+        H5::CompType defined_comp_type = StoryChunkWriter::createEventCompoundType();
+        H5::CompType probed_data_type = dataset.getCompType();
+        if(probed_data_type.getNmembers() != defined_comp_type.getNmembers())
+        {
+            LOG_WARNING(
+                    "[HDF5ArchiveReadingAgent] Error reading dataset {} : Not a compound type with the same #members"
+                    , file_name);
+            return CL_ERR_UNKNOWN;
+        }
+        if(probed_data_type != defined_comp_type)
+        {
+            LOG_WARNING("[HDF5ArchiveReadingAgent]Error reading dataset {} : Compound type mismatch", file_name);
+            return CL_ERR_UNKNOWN;
+        }
+
+        LOG_DEBUG("[HDF5ArchiveReadingAgent] Reading data from dataset {}", dataset_name);
+        std::vector <LogEventHVL> data;
+        data.resize(dims_out[0]);
+        dataset.read(data.data(), defined_comp_type);
+
+        LOG_DEBUG("[HDF5ArchiveReadingAgent] Creating StoryChunk {}-{} range {}-{}...", chronicleName, storyName
+                  , startTime, endTime);
+        story_chunk = new StoryChunk(chronicleName, storyName, 0, startTime, endTime);
+        for(auto const &event_hvl: data)
+        {
+            if(event_hvl.eventTime < startTime)
+            {
+                LOG_DEBUG("[HDF5ArchiveReadingAgent] Skipping event with time {} outside range {}-{}"
+                          , event_hvl.eventTime, startTime, endTime);
+                continue;
+            }
+            if(event_hvl.eventTime >= endTime)
+            {
+                LOG_DEBUG("[HDF5ArchiveReadingAgent] Stopping reading events at time {} outside range {}-{}"
+                          , event_hvl.eventTime, startTime, endTime);
+                break;
+            }
+
+            LogEvent event(event_hvl.storyId, event_hvl.eventTime, event_hvl.clientId, event_hvl.eventIndex
+                           , std::string(static_cast<char *>(event_hvl.logRecord.p), event_hvl.logRecord.len));
+            story_chunk->insertEvent(event);
+        }
+
+        if(story_chunk->getEventCount() > 0)
+        {
+            listOfChunks.emplace_back(story_chunk);
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] Inserted a StoryChunk with {} events {}-{} range {}-{} into list"
+                      , story_chunk->getEventCount(), chronicleName, storyName, startTime, endTime);
+        }
+        else
+        {
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] No events in {}-{} are in range {}-{}, "
+                      "no StoryChunk added to list", chronicleName, storyName, startTime, endTime);
+            delete story_chunk;
+        }
+    }
+    catch(H5::FileIException &error)
+    {
+        LOG_ERROR("[HDF5ArchiveReadingAgent] reading file {} : FileIException: {} in C Function: {}", file_name
+                  , error.getCDetailMsg(), error.getCFuncName());
+        ErrorReport report;
+        H5::Exception::walkErrorStack(H5E_WALK_UPWARD, error_walker, &report);
+        for(const auto &msg: report.messages)
+        {
+            LOG_ERROR("[HDF5ArchiveReadingAgent] {}", msg);
+        }
+
+        delete story_chunk;
+        return -1;
+    }
+    catch(H5::Exception &error)
+    {
+        LOG_ERROR("[HDF5ArchiveReadingAgent] reading file {} : Exception: {} in C Function: {}", file_name
+                  , error.getCDetailMsg(), error.getCFuncName());
+        ErrorReport report;
+        H5::Exception::walkErrorStack(H5E_WALK_UPWARD, error_walker, &report);
+        for(const auto &msg: report.messages)
+        {
+            LOG_ERROR("[HDF5ArchiveReadingAgent] {}", msg);
+        }
+        delete story_chunk;
+        return -1;
+    }
+    return 0;
+}
+
+int chronolog::HDF5ArchiveReadingAgent::readArchivedStoryInternal(const ChronicleName &chronicleName
+                                                                  , const StoryName &storyName, uint64_t startTime
+                                                                  , uint64_t endTime
+                                                                  , std::list <StoryChunk *> &listOfChunks
+                                                                  , bool readAuxFiles = false)
 {
     // find all HDF5 files in the archive directory the start time of which falls in the range [startTime, endTime)
     // for each file, read Events in the StoryChunk and add matched ones to the list of StoryChunks
@@ -68,113 +179,68 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName &c
             "[HDF5ArchiveReadingAgent] End iterator: chronicle name: {}, story name: {}, start time: {}, file name: {}"
             , std::get <0>(end_it->first), std::get <1>(end_it->first), std::get <2>(end_it->first), end_it->second);
 
+    fs::path file_full_path;
+    std::string file_name, next_file_name, next_file_number_str;
+
     for(auto it = start_it; it != end_it; ++it)
     {
-        fs::path file_full_path = fs::path(it->second);
-        std::string file_name = file_full_path.string();
-        std::unique_ptr <H5::H5File> file;
-        StoryChunk *story_chunk = nullptr;
-        try
+        file_full_path = fs::path(it->second);
+
+        // file_name should be in the format of /path/to/output/{chronicleName}.{storyName}.{startTime}.vlen.h5
+        file_name = file_full_path.string();
+        readStoryChunkFile(chronicleName, storyName, startTime, endTime, listOfChunks, file_name);
+
+        if(readAuxFiles)
         {
-            H5::Exception::dontPrint();
-
-            LOG_DEBUG("[HDF5ArchiveReadingAgent] Opening file: {}", file_name);
-            file = std::make_unique <H5::H5File>(file_name, H5F_ACC_SWMR_READ);
-
-            LOG_DEBUG("[HDF5ArchiveReadingAgent] Opening dataset {}", file_name);
-            H5::DataSet dataset = file->openDataSet("/story_chunks/data.vlen_bytes");
-
-            H5::DataSpace dataspace = dataset.getSpace();
-            hsize_t dims_out[2] = {0, 0};
-            dataspace.getSimpleExtentDims(dims_out, nullptr);
-            LOG_DEBUG("[HDF5ArchiveReadingAgent] Reading dataset {} with {} events", file_name, dims_out[0]);
-
-            H5::CompType defined_comp_type = StoryChunkWriter::createEventCompoundType();
-            H5::CompType probed_data_type = dataset.getCompType();
-            if(probed_data_type.getNmembers() != defined_comp_type.getNmembers())
+            // next_file_name should be in the format of {chronicleName}.{storyName}.{startTime}.vlen.{number}.h5
+            next_file_name = StoryChunkWriter::getStoryChunkFileName(archive_path_, file_full_path.filename().string());
+            next_file_number_str = fs::path(next_file_name).replace_extension("").extension().string().
+                                   substr(1);
+            if(next_file_number_str == "vlen")
             {
-                LOG_WARNING(
-                        "[HDF5ArchiveReadingAgent] Error reading dataset {} : Not a compound type with the same #members"
-                        , file_name);
-                return CL_ERR_UNKNOWN;
+                // should not happen, but just in case
+                LOG_ERROR("[HDF5ArchiveReadingAgent] getStoryChunkFileName returned a file name without a number: {},"
+                          " indicating main story chunk file {} does not exist. "
+                          , next_file_name, file_name);
+                return -1;
             }
-            if(probed_data_type != defined_comp_type)
+            else if(std::all_of(next_file_number_str.begin(), next_file_number_str.end(), ::isdigit))
             {
-                LOG_WARNING("[HDF5ArchiveReadingAgent]Error reading dataset {} : Compound type mismatch", file_name);
-                return CL_ERR_UNKNOWN;
-            }
-
-            LOG_DEBUG("[HDF5ArchiveReadingAgent] Reading data from dataset {}", file_name);
-            std::vector <LogEventHVL> data;
-            data.resize(dims_out[0]);
-            dataset.read(data.data(), defined_comp_type);
-
-            LOG_DEBUG("[HDF5ArchiveReadingAgent] Creating StoryChunk {}-{} range {}-{}...", chronicleName, storyName
-                      , startTime, endTime);
-            story_chunk = new StoryChunk(chronicleName, storyName, 0, startTime, endTime);
-            for(auto const &event_hvl: data)
-            {
-                if(event_hvl.eventTime < startTime)
+                // next_file_name is a numbered file, then read from .1 to .next_file_number_str-1
+                for(int i = 1; i < std::stoi(next_file_number_str); ++i)
                 {
-                    LOG_DEBUG("[HDF5ArchiveReadingAgent] Skipping event with time {} outside range {}-{}"
-                              , event_hvl.eventTime, startTime, endTime);
-                    continue;
+                    file_name = file_full_path.parent_path() / fs::path(file_full_path).replace_extension("").string();
+                    file_name += "." + std::to_string(i) + ".h5";
+                    // file_name should be /path/to/output/chronicleName.storyName.startTime.vlen.{i}.h5 now
+                    if(fs::exists(file_name))
+                    {
+                        LOG_DEBUG("[HDF5ArchiveReadingAgent] Reading numbered file: {}", file_name);
+                        readStoryChunkFile(chronicleName, storyName, startTime, endTime, listOfChunks, file_name);
+                    }
+                    else
+                    {
+                        LOG_DEBUG("[HDF5ArchiveReadingAgent] Numbered file {} does not exist, skipping.", file_name);
+                        continue; // Skip if the numbered file does not exist
+                    }
                 }
-                if(event_hvl.eventTime >= endTime)
-                {
-                    LOG_DEBUG("[HDF5ArchiveReadingAgent] Stopping reading events at time {} outside range {}-{}"
-                              , event_hvl.eventTime, startTime, endTime);
-                    break;
-                }
-
-                LogEvent event(event_hvl.storyId, event_hvl.eventTime, event_hvl.clientId, event_hvl.eventIndex
-                               , std::string(static_cast<char *>(event_hvl.logRecord.p), event_hvl.logRecord.len));
-                story_chunk->insertEvent(event);
-            }
-
-            if(story_chunk->getEventCount() > 0)
-            {
-                listOfChunks.emplace_back(story_chunk);
-                LOG_DEBUG("[HDF5ArchiveReadingAgent] Inserted a StoryChunk with {} events {}-{} range {}-{} into list"
-                          , story_chunk->getEventCount(), chronicleName, storyName, startTime, endTime);
             }
             else
             {
-                LOG_DEBUG("[HDF5ArchiveReadingAgent] No events in {}-{} are in range {}-{}, "
-                          "no StoryChunk added to list", chronicleName, storyName, startTime, endTime);
-                delete story_chunk;
+                LOG_ERROR("[HDF5ArchiveReadingAgent] Something went wrong with file name: {}.", file_name);
             }
-        }
-        catch(H5::FileIException &error)
-        {
-            LOG_ERROR("[HDF5ArchiveReadingAgent] reading file {} : FileIException: {} in C Function: {}", file_name
-                      , error.getCDetailMsg(), error.getCFuncName());
-            ErrorReport report;
-            H5::Exception::walkErrorStack(H5E_WALK_UPWARD, error_walker, &report);
-            for(const auto &msg: report.messages)
-            {
-                LOG_ERROR("[HDF5ArchiveReadingAgent] {}", msg);
-            }
-
-            delete story_chunk;
-            return CL_ERR_UNKNOWN;
-        }
-        catch(H5::Exception &error)
-        {
-            LOG_ERROR("[HDF5ArchiveReadingAgent] reading file {} : Exception: {} in C Function: {}", file_name
-                      , error.getCDetailMsg(), error.getCFuncName());
-            ErrorReport report;
-            H5::Exception::walkErrorStack(H5E_WALK_UPWARD, error_walker, &report);
-            for(const auto &msg: report.messages)
-            {
-                LOG_ERROR("[HDF5ArchiveReadingAgent] {}", msg);
-            }
-            delete story_chunk;
-            return CL_ERR_UNKNOWN;
         }
     }
 
     return 0;
+}
+
+int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName &chronicleName
+                                                          , const StoryName &storyName, uint64_t startTime
+                                                          , uint64_t endTime, std::list <StoryChunk *> &listOfChunks)
+{
+    LOG_DEBUG("[HDF5ArchiveReadingAgent] Reading archived story {}-{} range {}-{}, main file only"
+              , chronicleName, storyName, startTime, endTime);
+    return readArchivedStoryInternal(chronicleName, storyName, startTime, endTime, listOfChunks, false);
 }
 
 int chronolog::HDF5ArchiveReadingAgent::setUpFsMonitoring()

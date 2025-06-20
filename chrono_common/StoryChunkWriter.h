@@ -40,9 +40,10 @@ public:
         return data_type;
     }
 
-private:
-    std::string getStoryChunkFileName(std::string const &root_dir, std::string const &base_file_name);
+    // base_file_name should be in the format of chronicleName.storyName.startTime.vlen.h5, not including the path
+    static std::string getStoryChunkFileName(std::string const &root_dir, std::string const &base_file_name);
 
+private:
     std::string rootDirectory;
     std::string groupName;
     std::string dsetName;
