@@ -42,9 +42,9 @@ public:
 
     int readStoryChunkFile(const ChronicleName&, const StoryName&, uint64_t, uint64_t, std::list<StoryChunk*>&
                           , const std::string &);
-    int readArchivedStoryInternal(const ChronicleName&, const StoryName&, uint64_t, uint64_t, std::list<StoryChunk*>&
-                                 , bool);
-    int readArchivedStory(const ChronicleName&, const StoryName&, uint64_t, uint64_t, std::list<StoryChunk*>&);
+
+    int readArchivedStory(const ChronicleName&, const StoryName&, uint64_t, uint64_t, std::list<StoryChunk*>&
+                          , bool = false);
 
     static std::string getChronicleName(const std::string &file_name)
     {

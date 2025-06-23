@@ -147,16 +147,26 @@ int chronolog::HDF5ArchiveReadingAgent::readStoryChunkFile(const ChronicleName &
     return 0;
 }
 
-int chronolog::HDF5ArchiveReadingAgent::readArchivedStoryInternal(const ChronicleName &chronicleName
-                                                                  , const StoryName &storyName, uint64_t startTime
-                                                                  , uint64_t endTime
-                                                                  , std::list <StoryChunk *> &listOfChunks
-                                                                  , bool readAuxFiles = false)
+int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName &chronicleName
+                                                          , const StoryName &storyName
+                                                          , uint64_t startTime, uint64_t endTime
+                                                          , std::list <StoryChunk *> &listOfChunks
+                                                          , bool readAuxFiles)
 {
     // find all HDF5 files in the archive directory the start time of which falls in the range [startTime, endTime)
     // for each file, read Events in the StoryChunk and add matched ones to the list of StoryChunks
     // return the list of StoryChunks
     std::lock_guard <std::mutex> lock(start_time_file_name_map_mutex_);
+    if(!readAuxFiles)
+    {
+        LOG_DEBUG("[HDF5ArchiveReadingAgent] Reading archived story {}-{} range {}-{}, main file only"
+              , chronicleName, storyName, startTime, endTime);
+    }
+    else
+    {
+        LOG_DEBUG("[HDF5ArchiveReadingAgent] Reading archived story {}-{} range {}-{}, main and auxiliary files"
+              , chronicleName, storyName, startTime, endTime);
+    }
     auto start_it = start_time_file_name_map_.lower_bound(std::make_tuple(chronicleName, storyName, startTime));
     auto end_it = start_time_file_name_map_.upper_bound(std::make_tuple(chronicleName, storyName, endTime));
     LOG_DEBUG("[HDF5ArchiveReadingAgent] readArchiveStory {}-{} range {}-{}", chronicleName, storyName, startTime
@@ -232,15 +242,6 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStoryInternal(const Chronicl
     }
 
     return 0;
-}
-
-int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName &chronicleName
-                                                          , const StoryName &storyName, uint64_t startTime
-                                                          , uint64_t endTime, std::list <StoryChunk *> &listOfChunks)
-{
-    LOG_DEBUG("[HDF5ArchiveReadingAgent] Reading archived story {}-{} range {}-{}, main file only"
-              , chronicleName, storyName, startTime, endTime);
-    return readArchivedStoryInternal(chronicleName, storyName, startTime, endTime, listOfChunks, false);
 }
 
 int chronolog::HDF5ArchiveReadingAgent::setUpFsMonitoring()
