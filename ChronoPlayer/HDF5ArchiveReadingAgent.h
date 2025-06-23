@@ -144,7 +144,7 @@ private:
         }
         else
         {
-            LOG_DEBUG("[HDF5ArchiveReadingAgent] File {} is not a regular file. Skipping this file."
+            LOG_ERROR("[HDF5ArchiveReadingAgent] File {} is not a regular file. Skipping this file."
                       , entry.path().string());
             return false; // Skip non-regular files
         }
