@@ -89,11 +89,7 @@ std::string StoryChunkWriter::getStoryChunkFileName(std::string const &root_dir,
                 }
                 catch(const std::out_of_range &)
                 {
-                    // Number was too large to fit in a long long, ignore.
-                }
-                catch(const std::invalid_argument &)
-                {
-                    // Should not happen with this regex, but good practice.
+                    LOG_ERROR("[StoryChunkWriter] Number in file name '{}' is out of range.", match[1].str());
                 }
             }
         }
