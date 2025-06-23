@@ -55,7 +55,7 @@ std::string StoryChunkWriter::getStoryChunkFileName(std::string const &root_dir,
 
     const std::regex rotated_pattern("^" + rotated_prefix + "([0-9]+)" + ext + "$");
 
-    long long max_n = -1; // Means no numbered files have been found yet.
+    long long max_n = 0; // Means no numbered files have been found yet.
     bool base_exists = false;
 
     std::error_code ec;
@@ -96,17 +96,9 @@ std::string StoryChunkWriter::getStoryChunkFileName(std::string const &root_dir,
     }
 
     fs::path next_filename_no_ext;
-    if(max_n == -1)
+    if(!base_exists)
     {
-        // No numbered files were found.
-        if(!base_exists)
-        {
-            next_filename_no_ext = base_file_name_no_ext;
-        }
-        else
-        {
-            next_filename_no_ext = base_file_name_no_ext + ".1";
-        }
+        next_filename_no_ext = base_file_name_no_ext;
     }
     else
     {
