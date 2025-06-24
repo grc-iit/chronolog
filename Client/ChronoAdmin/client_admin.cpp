@@ -1,5 +1,8 @@
 #include <chronolog_client.h>
 #include <cmd_arg_parse.h>
+#include <chronolog_client.h>
+#include <ClientConfiguration.h>
+#include <client_cmd_arg_parse.h>
 #include <common.h>
 #include <cassert>
 #include <unistd.h>
@@ -227,7 +230,7 @@ std::pair <std::string, workload_conf_args> cmd_arg_parse(int argc, char**argv)
             std::cout << "Barrier: " << (workload_args.barrier ? "true" : "false") << std::endl;
             std::cout << "Shared story: " << (workload_args.shared_story ? "true" : "false") << std::endl;
         }
-        return {};
+        return {"", workload_args};
     }
 }
 
@@ -259,10 +262,10 @@ test_acquire_story(chronolog::Client &client, const std::string &chronicle_name,
     return acq_ret.second;
 }
 
-int test_write_event(chronolog::StoryHandle*story_handle, const std::string &event_payload)
+uint64_t test_write_event(chronolog::StoryHandle*story_handle, const std::string &event_payload)
 {
-    int ret = story_handle->log_event(event_payload);
-    assert(ret == 1);
+    uint64_t ret = story_handle->log_event(event_payload);
+    assert(ret > 0);
     return ret;
 }
 
@@ -415,24 +418,37 @@ int main(int argc, char**argv)
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-    std::string default_conf_file_path = "./default_conf.json";
-    std::pair <std::string, workload_conf_args> cmd_args = cmd_arg_parse(argc, argv);
+    std::pair<std::string, workload_conf_args> cmd_args = cmd_arg_parse(argc, argv);
     std::string conf_file_path = cmd_args.first;
     workload_conf_args workload_args = cmd_args.second;
-    if(conf_file_path.empty())
-    {
-        conf_file_path = default_conf_file_path;
-    }
-    chronolog::ClientPortalServiceConf portalConf("ofi+sockets", "127.0.0.1", 5555, 55);
-    int result = chronolog::chrono_monitor::initialize("file", "chronoclient_logfile.txt", spdlog::level::debug, "ChronoClient", 102400, 3, spdlog::level::warn);
 
-    if(result == 1)
-    {
+    chronolog::ClientConfiguration confManager;
+    if (!conf_file_path.empty()) {
+        if (!confManager.load_from_file(conf_file_path)) {
+            std::cerr << "[ClientAdmin] Failed to load configuration file '" << conf_file_path << "'. Using default values instead." << std::endl;
+        } else {
+            std::cout << "[ClientAdmin] Configuration file loaded successfully from '" << conf_file_path << "'." << std::endl;
+        }
+    } else {
+        std::cout << "[ClientAdmin] No configuration file provided. Using default values." << std::endl;
+    }
+    confManager.log_configuration();
+
+    // Initialize logging
+    int result = chronolog::chrono_monitor::initialize(confManager.LOG_CONF.LOGTYPE,
+                                                       confManager.LOG_CONF.LOGFILE,
+                                                       confManager.LOG_CONF.LOGLEVEL,
+                                                       confManager.LOG_CONF.LOGNAME,
+                                                       confManager.LOG_CONF.LOGFILESIZE,
+                                                       confManager.LOG_CONF.LOGFILENUM,
+                                                       confManager.LOG_CONF.FLUSHLEVEL);
+
+    if (result == 1) {
         exit(EXIT_FAILURE);
     }
 
-    chronolog::Client client(portalConf);
-    chronolog::StoryHandle*story_handle;
+    chronolog::Client client(confManager.PORTAL_CONF);
+    chronolog::StoryHandle* story_handle;
 
     TimerWrapper connectTimer(workload_args.perf_test, "Connect");
     TimerWrapper createChronicleTimer(workload_args.perf_test, "CreateChronicle");
@@ -443,21 +459,22 @@ int main(int argc, char**argv)
     TimerWrapper destroyChronicleTimer(workload_args.perf_test, "DestroyChronicle");
     TimerWrapper disconnectTimer(workload_args.perf_test, "Disconnect");
 
-    int ret;
+    int ret_i;
+    uint64_t ret_u;
     uint64_t event_payload_size_per_rank = 0;
 
     std::string client_id = gen_random(8);
 //    std::cout << "Generated client id: " << client_id << std::endl;
 
-    const std::string& server_protoc = portalConf.proto_conf();
-    const std::string& server_ip = portalConf.ip();
-    std::string server_port = std::to_string(portalConf.port());
-    std::string server_provider_id = std::to_string(portalConf.provider_id());
+    const std::string& server_protoc = confManager.PORTAL_CONF.PROTO_CONF;
+    const std::string& server_ip = confManager.PORTAL_CONF.IP;
+    std::string server_port = std::to_string(confManager.PORTAL_CONF.PORT);
+    std::string server_provider_id = std::to_string(confManager.PORTAL_CONF.PROVIDER_ID);
     std::string server_address = server_protoc + "://" + server_ip + ":" + server_port + "@" + server_provider_id;
 
     std::string username = getpwuid(getuid())->pw_name;
-    ret = connectTimer.timeBlock(&chronolog::Client::Connect, client);
-    assert(ret == chronolog::CL_SUCCESS);
+    ret_i = connectTimer.timeBlock(&chronolog::Client::Connect, client);
+    assert(ret_i == chronolog::CL_SUCCESS);
 
     std::cout << "Connected to server address: " << server_address << std::endl;
     std::string payload_str(MAX_EVENT_SIZE, 'a');
@@ -478,8 +495,8 @@ std::vector <std::string> &command_subs)
         {
             assert(command_subs.size() == 2);
             std::string chronicle_name = command_subs[1];
-            ret = test_create_chronicle(client, chronicle_name);
-            if(ret == chronolog::CL_SUCCESS)
+            ret_i = test_create_chronicle(client, chronicle_name);
+            if(ret_i == chronolog::CL_SUCCESS)
             {
                 std::cout << "Chronicle created successfully: " << chronicle_name << std::endl;
             }
@@ -508,13 +525,13 @@ std::vector <std::string> &command_subs)
                         assert(command_subs.size() == 4);
                         std::string chronicle_name = command_subs[2];
                         std::string story_name = command_subs[3];
-                        ret = test_release_story(client, chronicle_name, story_name);
-                        if(ret == chronolog::CL_SUCCESS)
+                        ret_i = test_release_story(client, chronicle_name, story_name);
+                        if(ret_i == chronolog::CL_SUCCESS)
                         {
                             std::cout << "Story released successfully: " << story_name << " in Chronicle "
                                       << chronicle_name << std::endl;
                         }
-                        else if(ret == chronolog::CL_ERR_NOT_EXIST)
+                        else if(ret_i == chronolog::CL_ERR_NOT_EXIST)
                         {
                             std::cout << "Story does not exist: " << story_name << " in Chronicle "
                                       << chronicle_name << std::endl;
@@ -526,8 +543,8 @@ std::vector <std::string> &command_subs)
                 {
                     assert(command_subs.size() == 2);
                     std::string event_payload = command_subs[1];
-                    ret = test_write_event(story_handle, event_payload);
-                    if(ret == 1)
+                    ret_u = test_write_event(story_handle, event_payload);
+                    if(ret_u > 0)
                     {
                         std::cout << "Event written successfully, payload length: " << event_payload.length()
                                   << std::endl;
@@ -540,16 +557,16 @@ std::vector <std::string> &command_subs)
                     {
                         assert(command_subs.size() == 3);
                         std::string chronicle_name = command_subs[2];
-                        ret = test_destroy_chronicle(client, chronicle_name);
-                        if(ret == chronolog::CL_SUCCESS)
+                        ret_i = test_destroy_chronicle(client, chronicle_name);
+                        if(ret_i == chronolog::CL_SUCCESS)
                         {
                             std::cout << "Chronicle destroyed successfully: " << chronicle_name << std::endl;
                         }
-                        else if(ret == chronolog::CL_ERR_ACQUIRED)
+                        else if(ret_i == chronolog::CL_ERR_ACQUIRED)
                         {
                             std::cout << "Chronicle is still acquired, cannot destroy: " << chronicle_name << std::endl;
                         }
-                        else if(ret == chronolog::CL_ERR_NOT_EXIST)
+                        else if(ret_i == chronolog::CL_ERR_NOT_EXIST)
                         {
                             std::cout << "Chronicle does not exist: " << chronicle_name << std::endl;
                         }
@@ -559,18 +576,18 @@ std::vector <std::string> &command_subs)
                         assert(command_subs.size() == 4);
                         std::string chronicle_name = command_subs[2];
                         std::string story_name = command_subs[3];
-                        ret = test_destroy_story(client, chronicle_name, story_name);
-                        if(ret == chronolog::CL_SUCCESS)
+                        ret_i = test_destroy_story(client, chronicle_name, story_name);
+                        if(ret_i == chronolog::CL_SUCCESS)
                         {
                             std::cout << "Story destroyed successfully: " << story_name << " in Chronicle "
                                       << chronicle_name << std::endl;
                         }
-                        else if(ret == chronolog::CL_ERR_ACQUIRED)
+                        else if(ret_i == chronolog::CL_ERR_ACQUIRED)
                         {
                             std::cout << "Story is still acquired, cannot destroy: " << story_name << " in Chronicle "
                                       << chronicle_name << std::endl;
                         }
-                        else if(ret == chronolog::CL_ERR_NOT_EXIST)
+                        else if(ret_i == chronolog::CL_ERR_NOT_EXIST)
                         {
                             std::cout << "Story does not exist: " << story_name << " in Chronicle "
                                       << chronicle_name << std::endl;
@@ -605,7 +622,7 @@ std::vector <std::string> &command_subs)
                 chronicle_name = "chronicle_" + std::to_string(i);
             else
                 chronicle_name = "chronicle_" + std::to_string(rank) + "_" + std::to_string(i);
-            ret = createChronicleTimer.timeBlock(test_create_chronicle, client, chronicle_name);
+            ret_i = createChronicleTimer.timeBlock(test_create_chronicle, client, chronicle_name);
             if(workload_args.barrier)
                 MPI_Barrier(MPI_COMM_WORLD);
 
@@ -650,7 +667,7 @@ std::vector <std::string> &command_subs)
                                             event_payload = payload_str.substr(0, event_size);
                                             event_payload_size_per_rank += event_size;
                                             writeEventTimer.resumeTimer();
-                                            ret = test_write_event(story_handle, event_payload);
+                                            ret_u = test_write_event(story_handle, event_payload);
                                             if(workload_args.barrier)
                                                 MPI_Barrier(MPI_COMM_WORLD);
 
@@ -699,7 +716,7 @@ std::vector <std::string> &command_subs)
                                                     last_event_timestamp = event_timestamp;
                                                     event_payload_size_per_rank += event_payload.size();
                                                     writeEventTimer.resumeTimer();
-                                                    ret = test_write_event(story_handle, event_payload);
+                                                    ret_u = test_write_event(story_handle, event_payload);
                                                     if(workload_args.barrier)
                                                         MPI_Barrier(MPI_COMM_WORLD);
                                                 }
@@ -715,26 +732,26 @@ std::vector <std::string> &command_subs)
                                 });
 
                 // release story test
-                ret = releaseStoryTimer.timeBlock(test_release_story, client, chronicle_name, story_name);
+                ret_i = releaseStoryTimer.timeBlock(test_release_story, client, chronicle_name, story_name);
                 if(workload_args.barrier)
                     MPI_Barrier(MPI_COMM_WORLD);
 
                 // destroy story test
-                ret = destroyStoryTimer.timeBlock(test_destroy_story, client, chronicle_name, story_name);
+                ret_i = destroyStoryTimer.timeBlock(test_destroy_story, client, chronicle_name, story_name);
                 if(workload_args.barrier)
                     MPI_Barrier(MPI_COMM_WORLD);
             }
 
             // destroy chronicle test
-            ret = destroyChronicleTimer.timeBlock(test_destroy_chronicle, client, chronicle_name);
+            ret_i = destroyChronicleTimer.timeBlock(test_destroy_chronicle, client, chronicle_name);
             if(workload_args.barrier)
                 MPI_Barrier(MPI_COMM_WORLD);
         }
     }
     double local_e2e_end = MPI_Wtime();
 
-    ret = disconnectTimer.timeBlock(&chronolog::Client::Disconnect, client);
-    assert(ret == chronolog::CL_SUCCESS);
+    ret_i = disconnectTimer.timeBlock(&chronolog::Client::Disconnect, client);
+    assert(ret_i == chronolog::CL_SUCCESS);
     if(workload_args.barrier)
         MPI_Barrier(MPI_COMM_WORLD);
 

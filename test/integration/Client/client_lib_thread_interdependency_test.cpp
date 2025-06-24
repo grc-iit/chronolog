@@ -11,6 +11,8 @@
 #include <string>
 #include <algorithm>
 #include <iostream>
+#include "ClientConfiguration.h"
+#include "client_cmd_arg_parse.h"
 
 #define STORY_NAME_LEN 5
 #define DEFAULT_NUM_THREADS 4
@@ -426,19 +428,40 @@ int parse_num_threads_arg(int argc, char**argv)
     return DEFAULT_NUM_THREADS;
 }
 
-
 int main(int argc, char**argv)
 {
-    // Configuration
-    chronolog::ClientPortalServiceConf portalConf("ofi+sockets", "127.0.0.1", 5555, 55);
-    int result = chronolog::chrono_monitor::initialize("file", "chronoclient_logfile.txt", spdlog::level::debug, "ChronoClient", 102400, 3, spdlog::level::warn);
-
-    if(result == 1)
-    {
-        std::exit(EXIT_FAILURE);
+    // Load configuration
+    std::string conf_file_path = chronolog::parse_conf_path_arg(argc, argv);
+    chronolog::ClientConfiguration confManager;
+    if (!conf_file_path.empty()) {
+        if (!confManager.load_from_file(conf_file_path)) {
+            std::cerr << "[ClientLibConnectRPCTest] Failed to load configuration file '" << conf_file_path << "'. Using default values instead." << std::endl;
+        } else {
+            std::cout << "[ClientLibConnectRPCTest] Configuration file loaded successfully from '" << conf_file_path << "'." << std::endl;
+        }
+    } else {
+        std::cout << "[ClientLibConnectRPCTest] No configuration file provided. Using default values." << std::endl;
     }
 
-    // Set up client & Connect
+    // Initialize logging
+    int result = chronolog::chrono_monitor::initialize(confManager.LOG_CONF.LOGTYPE,
+                                                       confManager.LOG_CONF.LOGFILE,
+                                                       confManager.LOG_CONF.LOGLEVEL,
+                                                       confManager.LOG_CONF.LOGNAME,
+                                                       confManager.LOG_CONF.LOGFILESIZE,
+                                                       confManager.LOG_CONF.LOGFILENUM,
+                                                       confManager.LOG_CONF.FLUSHLEVEL);
+    if (result == 1) {
+        return EXIT_FAILURE;
+    }
+
+    // Build portal config
+    chronolog::ClientPortalServiceConf portalConf;
+    portalConf.PROTO_CONF = confManager.PORTAL_CONF.PROTO_CONF;
+    portalConf.IP = confManager.PORTAL_CONF.IP;
+    portalConf.PORT = confManager.PORTAL_CONF.PORT;
+    portalConf.PROVIDER_ID = confManager.PORTAL_CONF.PROVIDER_ID;
+    
     client = new chronolog::Client(portalConf);
     int ret = client->Connect();
     if(chronolog::CL_SUCCESS != ret)

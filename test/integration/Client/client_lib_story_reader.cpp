@@ -5,6 +5,8 @@
 #include <chrono>
 #include <cmd_arg_parse.h>
 #include "chrono_monitor.h"
+#include "client_cmd_arg_parse.h"
+#include "ClientConfiguration.h"
 
 #define STORY_NAME_LEN 5
 
@@ -133,14 +135,44 @@ void reader_thread( int tid, struct thread_arg * t)
 
 int main(int argc, char**argv)
 {
-    chronolog::ClientPortalServiceConf portalConf("ofi+sockets", "127.0.0.1", 5555, 55);
-    chronolog::ClientQueryServiceConf clientQueryConf("ofi+sockets", "127.0.0.1", 5557, 57);
-    int result = chronolog::chrono_monitor::initialize("file", "/tmp/chrono_client.log", spdlog::level::debug, "ChronoClient", 102400, 3, spdlog::level::debug);
-
-    if(result == 1)
-    {
-        exit(EXIT_FAILURE);
+    // Load configuration
+    std::string conf_file_path = chronolog::parse_conf_path_arg(argc, argv);
+    chronolog::ClientConfiguration confManager;
+    if (!conf_file_path.empty()) {
+        if (!confManager.load_from_file(conf_file_path)) {
+            std::cerr << "[ClientLibConnectRPCTest] Failed to load configuration file '" << conf_file_path << "'. Using default values instead." << std::endl;
+        } else {
+            std::cout << "[ClientLibConnectRPCTest] Configuration file loaded successfully from '" << conf_file_path << "'." << std::endl;
+        }
+    } else {
+        std::cout << "[ClientLibConnectRPCTest] No configuration file provided. Using default values." << std::endl;
     }
+
+    // Initialize logging
+    int result = chronolog::chrono_monitor::initialize(confManager.LOG_CONF.LOGTYPE,
+                                                       confManager.LOG_CONF.LOGFILE,
+                                                       confManager.LOG_CONF.LOGLEVEL,
+                                                       confManager.LOG_CONF.LOGNAME,
+                                                       confManager.LOG_CONF.LOGFILESIZE,
+                                                       confManager.LOG_CONF.LOGFILENUM,
+                                                       confManager.LOG_CONF.FLUSHLEVEL);
+    if (result == 1) {
+        return EXIT_FAILURE;
+    }
+
+    // Build portal config
+    chronolog::ClientPortalServiceConf portalConf;
+    portalConf.PROTO_CONF = confManager.PORTAL_CONF.PROTO_CONF;
+    portalConf.IP = confManager.PORTAL_CONF.IP;
+    portalConf.PORT = confManager.PORTAL_CONF.PORT;
+    portalConf.PROVIDER_ID = confManager.PORTAL_CONF.PROVIDER_ID;
+
+    // Build query config
+    chronolog::ClientQueryServiceConf clientQueryConf;
+    portalConf.PROTO_CONF = confManager.QUERY_CONF.PROTO_CONF;
+    portalConf.IP = confManager.QUERY_CONF.IP;
+    portalConf.PORT = confManager.QUERY_CONF.PORT;
+    portalConf.PROVIDER_ID = confManager.QUERY_CONF.PROVIDER_ID;
 
     bool run_hybrid_test = false;
 
@@ -148,7 +180,6 @@ int main(int argc, char**argv)
     { run_hybrid_test = false; }
     else if(argc > 1 && argv[1][0] =='2')
     { run_hybrid_test = true; }
-
 
     LOG_INFO("[ClientLibStoryReader] Running...");
 
@@ -162,7 +193,6 @@ int main(int argc, char**argv)
         delete client;
         return -1;
     }
-
 
     std::string chronicle_name("CHRONICLE");
     std::string story_name("STORY");
