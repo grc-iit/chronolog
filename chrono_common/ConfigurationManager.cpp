@@ -34,7 +34,7 @@ void ChronoLog::ConfigurationManager::parseGrapherConf(json_object*json_conf)
         {
             assert(json_object_is_type(val, json_type_object));
             json_object* data_store_admin_service_conf = json_object_object_get(json_conf
-                                                                                      , "DataStoreAdminService");
+                                                                                , "DataStoreAdminService");
             json_object_object_foreach(data_store_admin_service_conf, key, val)
             {
                 if(strcmp(key, "rpc") == 0)
@@ -141,7 +141,7 @@ void ChronoLog::ConfigurationManager::parsePlayerConf(json_object*json_conf)
         {
             assert(json_object_is_type(val, json_type_object));
             json_object* data_store_admin_service_conf = json_object_object_get(json_conf
-                                                                                      , "PlayerStoreAdminService");
+                                                                                , "PlayerStoreAdminService");
             json_object_object_foreach(data_store_admin_service_conf, key, val)
             {
                 if(strcmp(key, "rpc") == 0)
@@ -159,7 +159,7 @@ void ChronoLog::ConfigurationManager::parsePlayerConf(json_object*json_conf)
         {
             assert(json_object_is_type(val, json_type_object));
             json_object* data_store_admin_service_conf = json_object_object_get(json_conf
-                                                                                      , "PlaybackQueryService");
+                                                                                , "PlaybackQueryService");
             json_object_object_foreach(data_store_admin_service_conf, key, val)
             {
                 if(strcmp(key, "rpc") == 0)
