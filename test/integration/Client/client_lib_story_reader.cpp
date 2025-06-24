@@ -169,10 +169,10 @@ int main(int argc, char**argv)
 
     // Build query config
     chronolog::ClientQueryServiceConf clientQueryConf;
-    portalConf.PROTO_CONF = confManager.QUERY_CONF.PROTO_CONF;
-    portalConf.IP = confManager.QUERY_CONF.IP;
-    portalConf.PORT = confManager.QUERY_CONF.PORT;
-    portalConf.PROVIDER_ID = confManager.QUERY_CONF.PROVIDER_ID;
+    clientQueryConf.PROTO_CONF = confManager.QUERY_CONF.PROTO_CONF;
+    clientQueryConf.IP = confManager.QUERY_CONF.IP;
+    clientQueryConf.PORT = confManager.QUERY_CONF.PORT;
+    clientQueryConf.PROVIDER_ID = confManager.QUERY_CONF.PROVIDER_ID;
 
     bool run_hybrid_test = false;
 
