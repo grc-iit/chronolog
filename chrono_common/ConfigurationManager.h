@@ -546,34 +546,34 @@ public:
     }
 
 private:
-  /*  void parseRPCImplConf(json_object*json_conf, ChronoLogRPCImplementation &rpc_impl)
-    {
-        if(json_object_is_type(json_conf, json_type_string))
-        {
-            const char*conf_str = json_object_get_string(json_conf);
-            if(strcmp(conf_str, "Thallium_sockets") == 0)
-            {
-                rpc_impl = CHRONOLOG_THALLIUM_SOCKETS;
-            }
-            else if(strcmp(conf_str, "Thallium_tcp") == 0)
-            {
-                rpc_impl = CHRONOLOG_THALLIUM_TCP;
-            }
-            else if(strcmp(conf_str, "Thallium_roce") == 0)
-            {
-                rpc_impl = CHRONOLOG_THALLIUM_ROCE;
-            }
-            else
-            {
-                std::cout << "[ConfigurationManager] Unknown rpc implementation: " << conf_str << std::endl;
-            }
-        }
-        else
-        {
-            std::cerr << "[ConfigurationManager] Invalid rpc implementation configuration" << std::endl;
-        }
-    }
-*/
+    /*  void parseRPCImplConf(json_object*json_conf, ChronoLogRPCImplementation &rpc_impl)
+      {
+          if(json_object_is_type(json_conf, json_type_string))
+          {
+              const char*conf_str = json_object_get_string(json_conf);
+              if(strcmp(conf_str, "Thallium_sockets") == 0)
+              {
+                  rpc_impl = CHRONOLOG_THALLIUM_SOCKETS;
+              }
+              else if(strcmp(conf_str, "Thallium_tcp") == 0)
+              {
+                  rpc_impl = CHRONOLOG_THALLIUM_TCP;
+              }
+              else if(strcmp(conf_str, "Thallium_roce") == 0)
+              {
+                  rpc_impl = CHRONOLOG_THALLIUM_ROCE;
+              }
+              else
+              {
+                  std::cout << "[ConfigurationManager] Unknown rpc implementation: " << conf_str << std::endl;
+              }
+          }
+          else
+          {
+              std::cerr << "[ConfigurationManager] Invalid rpc implementation configuration" << std::endl;
+          }
+      }
+  */
     void parselogLevelConf(json_object*json_conf, spdlog::level::level_enum &log_level)
     {
         if(json_object_is_type(json_conf, json_type_string))
