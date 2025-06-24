@@ -43,12 +43,14 @@ void chronolog::ArchiveReadingAgent::archiveReadingTask()
 
         theReadingAgent.readArchivedStory(readingRequest.chronicleName, readingRequest.storyName, readingRequest.startTime, readingRequest.endTime, listOfChunks);
 
-        while( !listOfChunks.empty())
+        LOG_DEBUG("[ReadingAgent] Read {} StoryChunks for Chronicle={}, Story={}, TimeRange=[{}, {})"
+                  , listOfChunks.size(), readingRequest.chronicleName, readingRequest.storyName
+                  , readingRequest.startTime, readingRequest.endTime);
+        while(!listOfChunks.empty())
         {
             readingRequest.storyChunkQueue->stashStoryChunk(listOfChunks.front());
             listOfChunks.pop_front();
         }
-                
     }
 
 }
