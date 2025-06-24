@@ -1,0 +1,181 @@
+name: ChronoLog CI Build, Install, Deploy
+
+on:
+  pull_request:
+    branches: [ develop ]
+
+jobs:
+  ci-check:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Build Docker image
+        run: docker build -t chronolog-ci .github/docker
+
+      - name: Run CI inside Docker container
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            chronolog-ci \
+            bash -c '
+              set -e
+              export INSTALL_BASE="${HOME}/chronolog-install/Debug"
+
+              ##################################
+              # Step 1: Spack Environment
+              ##################################
+              echo "[1/6] Setting up Spack..."
+              source /opt/spack/share/spack/setup-env.sh
+              spack env activate -p .
+              spack install
+
+              ##################################
+              # Step 2: Build ChronoLog
+              ##################################
+              echo "[2/6] Building ChronoLog..."
+              if [ -x /workspace/deploy/local_single_user_deploy.sh ]; then
+                cd /workspace/deploy
+                ./local_single_user_deploy.sh --build --build-type Debug --install-dir "${HOME}/chronolog-install/"
+                cd /workspace
+              else
+                echo "❌ Deploy script not found or not executable"
+                exit 1
+              fi
+
+              ##################################
+              # Step 3: Install ChronoLog
+              ##################################
+              echo "[3/6] Installing ChronoLog..."
+              if [ -x /workspace/deploy/local_single_user_deploy.sh ]; then
+                cd /workspace/deploy
+                ./local_single_user_deploy.sh -i -w "${INSTALL_BASE}"
+                cd /workspace
+              else
+                echo "❌ Deploy script not found or not executable"
+                exit 1
+              fi
+              ls -l "${INSTALL_BASE}"
+
+              ##################################
+              # Step 4: Post-Install Verification
+              ##################################
+              echo "[4/6] Verifying install..."
+              source /opt/spack/share/spack/setup-env.sh
+              spack env activate -p .
+              echo "LD_LIBRARY_PATH is: $LD_LIBRARY_PATH"
+              echo "PATH is: $PATH"
+
+              if [ -d "${INSTALL_BASE}/bin" ]; then
+                echo "✅ bin directory is found!"
+                ls -l "${INSTALL_BASE}/bin"
+              else
+                echo "❌ Install failed — bin directory not found"
+                exit 1
+              fi
+
+              main_binaries=(chronovisor_server chrono_keeper chrono_grapher chrono_player)
+              missing=0
+              declare -a missing_binaries
+
+              for exe in "${main_binaries[@]}"; do
+                ldd_log="/tmp/ldd_$exe.txt"
+                if [ ! -x "${INSTALL_BASE}/bin/$exe" ]; then
+                  echo "❌ $exe is missing or not executable in bin folder!"
+                  continue
+                else
+                  echo "✅ $exe is present and executable."
+                fi
+                echo "---- Checking dependencies for $exe ----"
+                ldd "${INSTALL_BASE}/bin/$exe" > "$ldd_log"
+                if grep "not found" "$ldd_log"; then
+                  echo "❌ $exe is missing one or more shared libraries!"
+                  echo "----- ldd output for $exe -----"
+                  cat "$ldd_log"
+                  missing=1
+                  missing_binaries+=("$exe")
+                else
+                  echo "✅ $exe dependencies OK."
+                fi
+              done
+
+              if [ "$missing" = 1 ]; then
+                echo ""
+                echo "========= SUMMARY OF ldd OUTPUTS FOR MAIN BINARIES ========="
+                for exe in "${main_binaries[@]}"; do
+                  echo "----- ldd output for $exe -----"
+                  cat "/tmp/ldd_$exe.txt" || echo "(no log found)"
+                  echo ""
+                done
+                echo "============================================================"
+                echo "❌ One or more required binaries failed verification."
+                exit 1
+              else
+                echo "✅ Install successfull! All required binaries present, executable, and dependencies resolved."
+              fi
+
+              ##################################
+              # Step 5: Deploy ChronoLog
+              ##################################
+              echo "[5/6] Deploying ChronoLog..."
+              if [ -x /workspace/deploy/local_single_user_deploy.sh ]; then
+                cd /workspace/deploy
+                ./local_single_user_deploy.sh -d -k 5 -r 3 -w "${INSTALL_BASE}"
+                cd /workspace
+              else
+                echo "❌ Deploy script not found or not executable"
+                exit 1
+              fi
+
+              ##################################
+              # Step 6: Check Deployment
+              ##################################
+              echo "[6/6] Verifying Deployment..."
+              sleep 5
+              echo "📦 Listing ChronoLog processes..."
+              pgrep -la chrono > /tmp/chrono_processes.txt || true
+              cat /tmp/chrono_processes.txt
+
+              echo "🔍 Checking required components..."
+              missing=0
+              for proc in chronovisor_server chrono_grapher chrono_player chrono_keeper; do
+                count=$(grep -c "$proc" /tmp/chrono_processes.txt || true)
+                case $proc in
+                  chronovisor_server)
+                    expected=1
+                    ;;
+                  chrono_grapher|chrono_player)
+                    expected=3
+                    ;;
+                  chrono_keeper)
+                    expected=5
+                    ;;
+                esac
+                if [ "$count" -eq "$expected" ]; then
+                  echo "✅ Found $count $proc (expected $expected)"
+                else
+                  echo "❌ Missing or wrong count: $proc (found $count, expected $expected)"
+                  missing=1
+                fi
+              done
+
+              if [ "$missing" != "1" ]; then
+                echo "✅ All ChronoLog components are running."
+              else
+                echo "❌ Deployment incomplete — some components are not running or wrong count."
+                echo "==== Dumping monitor logs ===="
+                if [ -d "${INSTALL_BASE}/monitor" ]; then
+                  for log in "${INSTALL_BASE}/monitor/"*; do
+                    echo "==== $log ===="
+                    cat "$log"
+                  done
+                else
+                  echo "No monitor logs found!"
+                fi
+                exit 1
+              fi
+            '
