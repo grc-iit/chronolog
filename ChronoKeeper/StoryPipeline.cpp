@@ -294,7 +294,17 @@ void chronolog::StoryPipeline::mergeEvents(chronolog::EventDeque &event_deque)
             }
         }
         else
-        {  //extend timeline backward
+        {  
+            // a case of seriously delayed event that arrives at the ChronoKeeper after the StoryChunk it belongs to has already been extracted from the StoryPipeline
+            // we need (1) to extend the pipeline into the past by prepending the story chunks and (2) to increase the acceptance window so that we don't have to keep prepending story chunks for the slow client - chrono_keeper connection case...
+             LOG_DEBUG("[StoryPipeline] StoryId {} timeline {}-{} : delayed event {} - need to prepend chunks ", storyId, timelineStart, timelineEnd, event.time());
+
+            //we also increase the acceptance window for the slow story environment so that we do not have to keep prepending StoryChunks 
+            // and deal with auxiliary files if recording of this particular Story turns to be slow...
+            acceptanceWindow = (timelineStart - event.time()) + 3000; //current delay + 3 microseconds buffer
+
+            LOG_INFO("[StoryPipeline] StoryId {} timeline {}-{} : increased acceptanceWindow to {} seconds", storyId, timelineStart, timelineEnd, acceptanceWindow%1000000000);
+
             while(event.time() < timelineStart)
             {
                 chunk_to_merge_iter = chl::StoryPipeline::prependStoryChunk();
