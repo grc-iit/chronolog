@@ -39,8 +39,6 @@ public:
 
     void mergeEvents(std::deque <LogEvent> &);
 
-    void mergeEvents(StoryChunk &);
-
     void extractDecayedStoryChunks(uint64_t);
 
     StoryId const &getStoryId() const
@@ -49,6 +47,13 @@ public:
     uint16_t getAcceptanceWindow() const
     { return acceptanceWindow; }
 
+    uint64_t TimelineStart() const
+    { return (*storyTimelineMap.begin()).first; }  // storyTimelineMap is never left empty 
+
+    uint64_t TimelineEnd() const
+    { return (*storyTimelineMap.rbegin()).second->getEndTime(); } // storyTimelineMap is never left empty
+
+
 private:
 
     StoryChunkExtractionQueue &theExtractionQueue;
@@ -56,7 +61,7 @@ private:
     ChronicleName chronicleName;
     StoryName storyName;
     uint64_t timelineStart;
-    uint64_t timelineEnd;
+    //uint64_t timelineEnd;
     uint64_t chunkGranularity;
     uint64_t acceptanceWindow;
     uint64_t revisionTime; //time of the most recent merge

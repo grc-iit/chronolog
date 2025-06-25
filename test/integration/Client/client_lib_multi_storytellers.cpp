@@ -41,7 +41,7 @@ void thread_body(struct thread_arg*t)
               , chronicle_name, flags);
 
     // Create attributes for the story
-    std::string story_name = gen_random(STORY_NAME_LEN);
+    std::string story_name = "STORY"; //gen_random(STORY_NAME_LEN);
     std::map <std::string, std::string> story_attrs;
     flags = 2;
 
