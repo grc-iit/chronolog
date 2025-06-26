@@ -23,7 +23,7 @@ class StoryPipeline
 public:
     StoryPipeline(StoryChunkExtractionQueue &, ChronicleName const &chronicle_name, StoryName const &story_name
                   , StoryId const &story_id, uint64_t start_time, uint16_t chunk_granularity = 60 // seconds
-                  , uint16_t acceptance_window = 300 // seconds
+                  , uint16_t acceptance_window = 120 // seconds
     );
 
     StoryPipeline(StoryPipeline const &) = delete;
@@ -37,8 +37,6 @@ public:
 
     void collectIngestedEvents();
 
-   // void mergeEvents(std::deque <LogEvent> &);
-
     void mergeEvents(StoryChunk &);
 
     void extractDecayedStoryChunks(uint64_t);
@@ -49,11 +47,11 @@ public:
     uint64_t getAcceptanceWindow() const
     { return acceptanceWindow; }
 
-    uint64_t getTimelineStart() const
-    { return timelineStart; }
+    uint64_t TimelineStart() const
+    { return (*storyTimelineMap.begin()).first; }  // storyTimelineMap is never left empty 
 
-    uint64_t getTimelineEnd() const
-    { return timelineEnd; }
+    uint64_t TimelineEnd() const
+    { return (*storyTimelineMap.rbegin()).second->getEndTime(); } // storyTimelineMap is never left empty
 
 private:
 
@@ -61,8 +59,6 @@ private:
     StoryId storyId;
     ChronicleName chronicleName;
     StoryName storyName;
-    uint64_t timelineStart;
-    uint64_t timelineEnd;
     uint64_t chunkGranularity;
     uint64_t acceptanceWindow;
     uint64_t revisionTime; //time of the most recent merge

@@ -79,7 +79,7 @@ int chronolog::GrapherDataStore::stopStoryRecording(chronolog::StoryId const &st
         pipelinesWaitingForExit[(*pipeline_iter).first] = (std::pair <chl::StoryPipeline*, uint64_t>(
                 (*pipeline_iter).second, exit_time));
         LOG_INFO("[GrapherDataStore] Scheduled pipeline to retire: StoryId {} timeline {}-{} acceptanceWindow {} retirementTime {}",
-                (*pipeline_iter).second->getStoryId(), (*pipeline_iter).second->getTimelineStart(), (*pipeline_iter).second->getTimelineEnd(),
+                (*pipeline_iter).second->getStoryId(), (*pipeline_iter).second->TimelineStart(), (*pipeline_iter).second->TimelineEnd(),
                 (*pipeline_iter).second->getAcceptanceWindow(), exit_time);
     }
     else
@@ -141,7 +141,7 @@ void chronolog::GrapherDataStore::retireDecayedPipelines()
                 //current_time >= pipeline exit_time
                 StoryPipeline * pipeline = (*pipeline_iter).second.first;
                 LOG_DEBUG("[GrapherDataStore] retiring pipeline StoryId {} timeline {}-{} acceptanceWindow {} retirementTime {}",
-                        pipeline->getStoryId(), pipeline->getTimelineStart(), pipeline->getTimelineEnd(), pipeline->getAcceptanceWindow(), (*pipeline_iter).second.second);
+                        pipeline->getStoryId(), pipeline->TimelineStart(), pipeline->TimelineEnd(), pipeline->getAcceptanceWindow(), (*pipeline_iter).second.second);
                 theMapOfStoryPipelines.erase(pipeline->getStoryId());
                 theIngestionQueue.removeStoryIngestionHandle(pipeline->getStoryId());
                 pipeline_iter = pipelinesWaitingForExit.erase(pipeline_iter);

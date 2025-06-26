@@ -66,7 +66,7 @@ void chronolog::PlayerDataStore::retireDecayedPipelines()
                 //current_time >= pipeline exit_time
                 StoryPipeline * pipeline = (*pipeline_iter).second.first;
                 LOG_DEBUG("[PlayerDataStore] retiring pipeline StoryId {} timeline {}-{} acceptanceWindow {} retirementTime {}",
-                        pipeline->getStoryId(), pipeline->getTimelineStart(), pipeline->getTimelineEnd(), pipeline->getAcceptanceWindow(), (*pipeline_iter).second.second);
+                        pipeline->getStoryId(), pipeline->TimelineStart(), pipeline->TimelineEnd(), pipeline->getAcceptanceWindow(), (*pipeline_iter).second.second);
                 theMapOfStoryPipelines.erase(pipeline->getStoryId());
                 theIngestionQueue.removeStoryIngestionHandle(pipeline->getStoryId());
                 pipeline_iter = pipelinesWaitingForExit.erase(pipeline_iter);
