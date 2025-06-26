@@ -55,7 +55,9 @@ install(
     TARGETS ${client_examples} DESTINATION bin
 )
 
-# install configuration file
+# install client configuration file
 install(
-    FILES ${CMAKE_SOURCE_DIR}/default_conf.json.in DESTINATION ${CHRONOLOG_INSTALL_CONF_DIR} RENAME default_conf.json
+    FILES ${CMAKE_SOURCE_DIR}/default_client_conf.json.in
+    DESTINATION ${CHRONOLOG_INSTALL_CONF_DIR}
+    RENAME default_client_conf.json
 )
