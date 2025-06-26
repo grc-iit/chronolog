@@ -107,7 +107,7 @@ usage() {
     echo ""
     echo "Configuration Settings:"
     echo "  -f|--conf-file <path>            Path to the configuration file (default: work_dir/conf/default_conf.json) [Modes: Start]"
-    echo "  -u|--client-conf-file <path>     Path to the client configuration file (default: work_dir/conf/client_conf.json) [Modes: Start]"
+    echo "  -n|--client-conf-file <path>     Path to the client configuration file (default: work_dir/conf/client_conf.json) [Modes: Start]"
     echo ""
     echo "Miscellaneous Options:"
     echo "  -e|--verbose                     Enable verbose output (default: false)"
