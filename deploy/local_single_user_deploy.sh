@@ -28,6 +28,7 @@ KEEPER_BIN="${BIN_DIR}/chrono_keeper"
 GRAPHER_BIN="${BIN_DIR}/chrono_grapher"
 PLAYER_BIN="${BIN_DIR}/chrono_player"
 CONF_FILE="${CONF_DIR}/default_conf.json"
+CLIENT_CONF_FILE="${CONF_DIR}/default_conf.json"
 
 #Booleans
 build=false
@@ -94,12 +95,18 @@ generate_config_files() {
     local output_dir=$4
     local num_recording_groups=$5
     local monitor_dir=$6
+    local client_conf_file=$7
 
     mkdir -p "${monitor_dir}"
 
     # Check if default configuration file exists
     if [ ! -f "$default_conf" ]; then
         echo "Default configuration file $default_conf not found."
+        exit 1
+    fi
+
+    if [ ! -f "$client_conf_file" ]; then
+        echo "Default configuration file $client_conf_file not found."
         exit 1
     fi
 
@@ -207,6 +214,7 @@ generate_config_files() {
     done
 
     # Generate visor configuration file
+    echo "Generating visor configuration file ..."
     local visor_output_file="${conf_dir}/visor_conf.json"
     visor_monitoring_file=$(jq -r '.chrono_visor.Monitoring.monitor.file' "$default_conf")
     visor_monitoring_file_name=$(basename "$visor_monitoring_file")
@@ -214,6 +222,17 @@ generate_config_files() {
         --arg visor_monitoring_file_name "$visor_monitoring_file_name" \
        '.chrono_visor.Monitoring.monitor.file = ($monitor_dir + "/" + $visor_monitoring_file_name)' "$default_conf" > "$visor_output_file"
     echo "Generated $visor_output_file"
+
+    # Generate client configuration file
+    echo "Generating client configuration file ..."
+    local client_output_file="${conf_dir}/client_conf.json"
+    client_monitoring_file=$(jq -r '.chrono_client.Monitoring.monitor.file' "$client_conf_file")
+    client_monitoring_file_name=$(basename "$client_monitoring_file")
+    jq --arg monitor_dir "$monitor_dir" \
+        --arg client_monitoring_file_name "$client_monitoring_file_name" \
+       '.chrono_client.Monitoring.monitor.file = ($monitor_dir + "/" + $client_monitoring_file_name)' "$client_conf_file" > "$client_output_file"
+    echo "Generated $client_output_file"
+
 
     echo "Generate configuration files for all recording groups done"
 }
@@ -250,6 +269,7 @@ check_files() {
     [[ ! -f ${GRAPHER_BIN} ]] && echo -e "${ERR}Grapher binary file does not exist, exiting ...${NC}" && exit 1
     [[ ! -f ${PLAYER_BIN} ]] && echo -e "${ERR}Player binary file does not exist, exiting ...${NC}" && exit 1
     [[ ! -f ${CONF_FILE} ]] && echo -e "${ERR}Configuration file does not exist, exiting ...${NC}" && exit 1
+    [[ ! -f ${CLIENT_CONF_FILE} ]] && echo -e "${ERR}Client configuration file does not exist, exiting ...${NC}" && exit 1
     echo -e "${DEBUG}All required files are in place.${NC}"
 }
 
@@ -326,7 +346,7 @@ start() {
     mkdir -p "${MONITOR_DIR}"
     mkdir -p "${OUTPUT_DIR}"
     check_installation
-    generate_config_files ${NUM_KEEPERS} ${CONF_FILE} ${CONF_DIR} ${OUTPUT_DIR} ${NUM_RECORDING_GROUPS} ${MONITOR_DIR}
+    generate_config_files ${NUM_KEEPERS} ${CONF_FILE} ${CONF_DIR} ${OUTPUT_DIR} ${NUM_RECORDING_GROUPS} ${MONITOR_DIR} ${CLIENT_CONF_FILE}
     echo -e "${INFO}Starting ChronoLog...${NC}"
     start_service ${VISOR_BIN} "--config ${CONF_DIR}/visor_conf.json" "visor.launch.log"
     sleep 2
@@ -368,6 +388,7 @@ clean() {
     rm -f ${CONF_DIR}/player_conf*.json
     rm -f ${CONF_DIR}/keeper_conf*.json
     rm -f ${CONF_DIR}/visor_conf.json
+    rm -f ${CONF_DIR}/client_conf.json
 
     echo -e "${DEBUG}Removing log files${NC}"
     rm -f ${MONITOR_DIR}/*.log
@@ -413,6 +434,7 @@ usage() {
     echo ""
     echo "Configuration Settings:"
     echo "  -f|--conf-file <path>            Path to the configuration file (default: work_dir/conf/default_conf.json) [Modes: Start]"
+    echo "  -n|--client-conf-file <path>     Path to the client configuration file (default: work_dir/conf/default_client_conf.json) [Modes: Start]"
     echo ""
     echo "Examples (Assume installing a Debug build to ~/chronolog_install):"
     echo ""
@@ -489,6 +511,7 @@ parse_args() {
                 GRAPHER_BIN="${BIN_DIR}/chrono_grapher"
                 PLAYER_BIN="${BIN_DIR}/chrono_player"
                 CONF_FILE="${CONF_DIR}/default_conf.json"
+                CLIENT_CONF_FILE="${CONF_DIR}/default_client_conf.json"
                 OUTPUT_DIR=${WORK_DIR}/output
                 MONITOR_DIR=${WORK_DIR}/monitor
                 shift 2 ;;
@@ -513,6 +536,9 @@ parse_args() {
             -f|--conf-file)
                 CONF_FILE=$(realpath "$2")
                 CONF_DIR=$(dirname ${CONF_FILE})
+                shift 2 ;;
+            -n|--client-conf-file)
+                CLIENT_CONF_FILE=$(realpath "$2")
                 shift 2 ;;
             *) echo -e "${ERR}Unknown option: $1${NC}"; usage ;;
         esac
