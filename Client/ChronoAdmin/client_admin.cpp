@@ -432,7 +432,10 @@ int main(int argc, char**argv)
     } else {
         std::cout << "[ClientAdmin] No configuration file provided. Using default values." << std::endl;
     }
+    
+    if (rank == 0) {
     confManager.log_configuration(std::cout);
+    }
 
     // Initialize logging
     int result = chronolog::chrono_monitor::initialize(confManager.LOG_CONF.LOGTYPE,
