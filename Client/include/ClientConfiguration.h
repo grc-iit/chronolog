@@ -38,7 +38,7 @@ public:
     ClientLogConf LOG_CONF;
 
     bool load_from_file(const std::string& path);
-    void log_configuration() const;
+    std::ostream& log_configuration(std::ostream& out) const;
 
 private:
     void parse_rpc(json_object* rpc_obj, std::string& proto, std::string& ip, uint16_t& port, uint16_t& provider_id);

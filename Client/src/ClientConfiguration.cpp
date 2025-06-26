@@ -97,29 +97,31 @@ spdlog::level::level_enum ClientConfiguration::parse_log_level(const std::string
     return spdlog::level::warn;
 }
 
-void ClientConfiguration::log_configuration() const {
-    std::cout << "===== ChronoLog Client Configuration =====" << std::endl;
+std::ostream& ClientConfiguration::log_configuration(std::ostream& out) const {
+    out << "===== ChronoLog Client Configuration =====" << std::endl;
 
-    std::cout << "[PORTAL_CONF]" << std::endl;
-    std::cout << "  protocol: " << PORTAL_CONF.PROTO_CONF << std::endl;
-    std::cout << "  IP: " << PORTAL_CONF.IP << std::endl;
-    std::cout << "  port: " << PORTAL_CONF.PORT << std::endl;
-    std::cout << "  provider ID: " << PORTAL_CONF.PROVIDER_ID << std::endl;
+    out << "[PORTAL_CONF]" << std::endl;
+    out << "  protocol: " << PORTAL_CONF.PROTO_CONF << std::endl;
+    out << "  IP: " << PORTAL_CONF.IP << std::endl;
+    out << "  port: " << PORTAL_CONF.PORT << std::endl;
+    out << "  provider ID: " << PORTAL_CONF.PROVIDER_ID << std::endl;
 
-    std::cout << "[QUERY_CONF]" << std::endl;
-    std::cout << "  protocol: " << QUERY_CONF.PROTO_CONF << std::endl;
-    std::cout << "  IP: " << QUERY_CONF.IP << std::endl;
-    std::cout << "  port: " << QUERY_CONF.PORT << std::endl;
-    std::cout << "  provider ID: " << QUERY_CONF.PROVIDER_ID << std::endl;
+    out << "[QUERY_CONF]" << std::endl;
+    out << "  protocol: " << QUERY_CONF.PROTO_CONF << std::endl;
+    out << "  IP: " << QUERY_CONF.IP << std::endl;
+    out << "  port: " << QUERY_CONF.PORT << std::endl;
+    out << "  provider ID: " << QUERY_CONF.PROVIDER_ID << std::endl;
 
-    std::cout << "[LOG_CONF]" << std::endl;
-    std::cout << "  type: " << LOG_CONF.LOGTYPE << std::endl;
-    std::cout << "  file: " << LOG_CONF.LOGFILE << std::endl;
-    std::cout << "  level: " << spdlog::level::to_string_view(LOG_CONF.LOGLEVEL).data() << std::endl;
-    std::cout << "  name: " << LOG_CONF.LOGNAME << std::endl;
-    std::cout << "  filesize: " << LOG_CONF.LOGFILESIZE << std::endl;
-    std::cout << "  filenum: " << LOG_CONF.LOGFILENUM << std::endl;
-    std::cout << "  flushlevel: " << spdlog::level::to_string_view(LOG_CONF.FLUSHLEVEL).data() << std::endl;
+    out << "[LOG_CONF]" << std::endl;
+    out << "  type: " << LOG_CONF.LOGTYPE << std::endl;
+    out << "  file: " << LOG_CONF.LOGFILE << std::endl;
+    out << "  level: " << spdlog::level::to_string_view(LOG_CONF.LOGLEVEL).data() << std::endl;
+    out << "  name: " << LOG_CONF.LOGNAME << std::endl;
+    out << "  filesize: " << LOG_CONF.LOGFILESIZE << std::endl;
+    out << "  filenum: " << LOG_CONF.LOGFILENUM << std::endl;
+    out << "  flushlevel: " << spdlog::level::to_string_view(LOG_CONF.FLUSHLEVEL).data() << std::endl;
+
+    return out;
 }
 
 }
