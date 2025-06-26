@@ -6,7 +6,6 @@
 #include <cmd_arg_parse.h>
 #include "chrono_monitor.h"
 #include "ClientConfiguration.h"
-#include "client_cmd_arg_parse.h"
 
 #define STORY_NAME_LEN 5
 
@@ -106,7 +105,7 @@ int main(int argc, char**argv)
     std::vector <std::thread> workers(num_threads);
 
     // Load configuration
-    std::string conf_file_path = chronolog::parse_conf_path_arg(argc, argv);
+    std::string conf_file_path = parse_conf_path_arg(argc, argv);
     chronolog::ClientConfiguration confManager;
     if (!conf_file_path.empty()) {
         if (!confManager.load_from_file(conf_file_path)) {

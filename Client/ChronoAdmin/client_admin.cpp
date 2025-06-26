@@ -2,7 +2,6 @@
 #include <cmd_arg_parse.h>
 #include <chronolog_client.h>
 #include <ClientConfiguration.h>
-#include <client_cmd_arg_parse.h>
 #include <common.h>
 #include <cassert>
 #include <unistd.h>
