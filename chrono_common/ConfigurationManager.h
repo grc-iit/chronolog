@@ -524,18 +524,6 @@ public:
                 }
                 parsePlayerConf(chrono_player_conf);
             }
-            else if(strcmp(key, "chrono_client") == 0)
-            {
-                json_object*chrono_client_conf = json_object_object_get(root, "chrono_client");
-                if(chrono_client_conf == nullptr || !json_object_is_type(chrono_client_conf, json_type_object))
-                {
-                    std::cerr << "[ConfigurationManager] Error while parsing configuration file "
-                              << conf_file_path.c_str()
-                              << ". ChronoClient configuration is not found or is not an object." << std::endl;
-                    exit(chronolog::CL_ERR_INVALID_CONF);
-                }
-                parseClientConf(chrono_client_conf);
-            }
             else
             {
                 std::cerr << "[ConfigurationManager] Unknown configuration item: " << key << std::endl;
@@ -1056,71 +1044,6 @@ private:
 
     void parseGrapherConf(json_object*json_conf);
     void parsePlayerConf(json_object*json_conf);
-
-    void parseClientConf(json_object*json_conf)
-    {
-        json_object_object_foreach(json_conf, key, val)
-        {
-            if(strcmp(key, "ClientQueryService") == 0)
-            {
-                assert(json_object_is_type(val, json_type_object));
-                json_object*visor_client_portal_service_conf = json_object_object_get(json_conf
-                                                                                      , "ClientQueryService");
-                json_object_object_foreach(visor_client_portal_service_conf, key, val)
-                {
-                    if(strcmp(key, "rpc") == 0)
-                    {
-                        parseRPCProviderConf(val, CLIENT_CONF.CLIENT_QUERY_SERVICE_CONF);
-                    }
-                    else
-                    {
-                        std::cerr << "[ConfigurationManager] [chrono_client] Unknown ClientQueryService configuration: "
-                                  << key << std::endl;
-                    }
-                }
-            }
-            else if(strcmp(key, "VisorClientPortalService") == 0)
-            {
-                assert(json_object_is_type(val, json_type_object));
-                json_object*visor_client_portal_service_conf = json_object_object_get(json_conf
-                                                                                      , "VisorClientPortalService");
-                json_object_object_foreach(visor_client_portal_service_conf, key, val)
-                {
-                    if(strcmp(key, "rpc") == 0)
-                    {
-                        parseRPCProviderConf(val, CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF);
-                    }
-                    else
-                    {
-                        std::cerr << "[ConfigurationManager] [chrono_client] Unknown VisorClientPortalService configuration: "
-                                  << key << std::endl;
-                    }
-                }
-            }
-            else if(strcmp(key, "Monitoring") == 0)
-            {
-                assert(json_object_is_type(val, json_type_object));
-                json_object*chronoclient_log = json_object_object_get(json_conf, "Monitoring");
-                json_object_object_foreach(chronoclient_log, key, val)
-                {
-                    if(strcmp(key, "monitor") == 0)
-                    {
-                        parseLogConf(val, CLIENT_CONF.CLIENT_LOG_CONF);
-                    }
-                    else
-                    {
-                        std::cerr << "[ConfigurationManager] [chrono_client] Unknown Monitoring configuration: "
-                                  << key << std::endl;
-                    }
-                }
-            }
-            else
-            {
-                std::cerr << "[ConfigurationManager] [chrono_client] Unknown Client configuration: "
-                          << key << std::endl;
-            }
-        }
-    }
 };
 }
 

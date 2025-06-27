@@ -3,6 +3,7 @@
 #include <common.h>
 #include <thread>
 #include <cmd_arg_parse.h>
+#include "ClientConfiguration.h"
 #include "chrono_monitor.h"
 
 #define STORY_NAME_LEN 32
@@ -87,27 +88,50 @@ int main(int argc, char**argv)
     std::vector <struct thread_arg> t_args(num_threads);
     std::vector <std::thread> workers(num_threads);
 
-    chronolog::ClientPortalServiceConf portalConf("ofi+sockets", "127.0.0.1", 5555, 55);
-    int result = chronolog::chrono_monitor::initialize("file", "chronoclient_logfile.txt", spdlog::level::debug, "ChronoClient", 102400, 3, spdlog::level::warn);
-    if(result == 1)
-    {
-        exit(EXIT_FAILURE);
+    // Load configuration
+    std::string conf_file_path = parse_conf_path_arg(argc, argv);
+    chronolog::ClientConfiguration confManager;
+    if (!conf_file_path.empty()) {
+        if (!confManager.load_from_file(conf_file_path)) {
+            std::cerr << "[ClientLibMultiPthreadTest] Failed to load configuration file '" << conf_file_path << "'. Using default values instead." << std::endl;
+        } else {
+            std::cout << "[ClientLibMultiPthreadTest] Configuration file loaded successfully from '" << conf_file_path << "'." << std::endl;
+        }
+    } else {
+        std::cout << "[ClientLibMultiPthreadTest] No configuration file provided. Using default values." << std::endl;
     }
+    confManager.log_configuration(std::cout);
+
+    // Initialize logging
+    int result = chronolog::chrono_monitor::initialize(confManager.LOG_CONF.LOGTYPE,
+                                                       confManager.LOG_CONF.LOGFILE,
+                                                       confManager.LOG_CONF.LOGLEVEL,
+                                                       confManager.LOG_CONF.LOGNAME,
+                                                       confManager.LOG_CONF.LOGFILESIZE,
+                                                       confManager.LOG_CONF.LOGFILENUM,
+                                                       confManager.LOG_CONF.FLUSHLEVEL);
+    if (result == 1) {
+        return EXIT_FAILURE;
+    }
+
+    // Build portal config
+    chronolog::ClientPortalServiceConf portalConf;
+    portalConf.PROTO_CONF = confManager.PORTAL_CONF.PROTO_CONF;
+    portalConf.IP = confManager.PORTAL_CONF.IP;
+    portalConf.PORT = confManager.PORTAL_CONF.PORT;
+    portalConf.PROVIDER_ID = confManager.PORTAL_CONF.PROVIDER_ID;
+
     LOG_INFO("[ClientLibMultiPthreadTest] Running test.");
 
-    std::string server_ip = portalConf.ip();
-    int base_port = portalConf.port();
     client = new chronolog::Client(portalConf);
+    int ret = client->Connect();
+    if (ret != chronolog::CL_SUCCESS) {
+        LOG_ERROR("[ClientLibMultiPThreadTest] Initial Connect failed: {}", chronolog::to_string_client(ret));
+        return EXIT_FAILURE;
+    }
 
-    std::string server_uri = portalConf.proto_conf() + "://" + portalConf.ip() + ":" + std::to_string(portalConf.port());
-    server_uri += "://" + server_ip + ":" + std::to_string(base_port);
-
-    int flags = 0;
-    uint64_t offset;
-    int ret = client->Connect(); //;server_uri, client_id, flags);//, offset);
-
-    for(int i = 0; i < num_threads; i++)
-    {
+    // Launch threads
+    for (int i = 0; i < num_threads; i++) {
         t_args[i].tid = i;
         t_args[i].client_id = client_id;
         std::thread t{thread_body, &t_args[i]};

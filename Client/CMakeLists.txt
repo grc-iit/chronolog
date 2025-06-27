@@ -19,6 +19,7 @@ add_library(chronolog_client
     src/ClientQueryService.cpp
     src/ChronologClient.cpp
     src/ChronologClientImpl.cpp
+    src/ClientConfiguration.cpp
     ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/src/chrono_monitor.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunk.cpp
 )
@@ -50,6 +51,13 @@ install(
 # Install header files
 install(
     FILES ${PUBLIC_HEADER_FILES} DESTINATION include 
+)
+
+# install client configuration file
+install(
+    FILES ${CMAKE_SOURCE_DIR}/default_client_conf.json.in
+    DESTINATION ${CHRONOLOG_INSTALL_CONF_DIR}
+    RENAME default_client_conf.json
 )
 
 add_subdirectory(ChronoAdmin)

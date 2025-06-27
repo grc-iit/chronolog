@@ -1,5 +1,7 @@
 #include <chronolog_client.h>
 #include <cmd_arg_parse.h>
+#include <chronolog_client.h>
+#include <ClientConfiguration.h>
 #include <common.h>
 #include <cassert>
 #include <unistd.h>
@@ -227,7 +229,7 @@ std::pair <std::string, workload_conf_args> cmd_arg_parse(int argc, char**argv)
             std::cout << "Barrier: " << (workload_args.barrier ? "true" : "false") << std::endl;
             std::cout << "Shared story: " << (workload_args.shared_story ? "true" : "false") << std::endl;
         }
-        return {};
+        return {"", workload_args};
     }
 }
 
@@ -415,24 +417,40 @@ int main(int argc, char**argv)
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-    std::string default_conf_file_path = "./default_conf.json";
-    std::pair <std::string, workload_conf_args> cmd_args = cmd_arg_parse(argc, argv);
+    std::pair<std::string, workload_conf_args> cmd_args = cmd_arg_parse(argc, argv);
     std::string conf_file_path = cmd_args.first;
     workload_conf_args workload_args = cmd_args.second;
-    if(conf_file_path.empty())
-    {
-        conf_file_path = default_conf_file_path;
-    }
-    chronolog::ClientPortalServiceConf portalConf("ofi+sockets", "127.0.0.1", 5555, 55);
-    int result = chronolog::chrono_monitor::initialize("file", "chronoclient_logfile.txt", spdlog::level::debug, "ChronoClient", 102400, 3, spdlog::level::warn);
 
-    if(result == 1)
-    {
+    chronolog::ClientConfiguration confManager;
+    if (!conf_file_path.empty()) {
+        if (!confManager.load_from_file(conf_file_path)) {
+            std::cerr << "[ClientAdmin] Failed to load configuration file '" << conf_file_path << "'. Using default values instead." << std::endl;
+        } else {
+            std::cout << "[ClientAdmin] Configuration file loaded successfully from '" << conf_file_path << "'." << std::endl;
+        }
+    } else {
+        std::cout << "[ClientAdmin] No configuration file provided. Using default values." << std::endl;
+    }
+    
+    if (rank == 0) {
+    confManager.log_configuration(std::cout);
+    }
+
+    // Initialize logging
+    int result = chronolog::chrono_monitor::initialize(confManager.LOG_CONF.LOGTYPE,
+                                                       confManager.LOG_CONF.LOGFILE,
+                                                       confManager.LOG_CONF.LOGLEVEL,
+                                                       confManager.LOG_CONF.LOGNAME,
+                                                       confManager.LOG_CONF.LOGFILESIZE,
+                                                       confManager.LOG_CONF.LOGFILENUM,
+                                                       confManager.LOG_CONF.FLUSHLEVEL);
+
+    if (result == 1) {
         exit(EXIT_FAILURE);
     }
 
-    chronolog::Client client(portalConf);
-    chronolog::StoryHandle*story_handle;
+    chronolog::Client client(confManager.PORTAL_CONF);
+    chronolog::StoryHandle* story_handle;
 
     TimerWrapper connectTimer(workload_args.perf_test, "Connect");
     TimerWrapper createChronicleTimer(workload_args.perf_test, "CreateChronicle");
@@ -450,10 +468,10 @@ int main(int argc, char**argv)
     std::string client_id = gen_random(8);
 //    std::cout << "Generated client id: " << client_id << std::endl;
 
-    const std::string& server_protoc = portalConf.proto_conf();
-    const std::string& server_ip = portalConf.ip();
-    std::string server_port = std::to_string(portalConf.port());
-    std::string server_provider_id = std::to_string(portalConf.provider_id());
+    const std::string& server_protoc = confManager.PORTAL_CONF.PROTO_CONF;
+    const std::string& server_ip = confManager.PORTAL_CONF.IP;
+    std::string server_port = std::to_string(confManager.PORTAL_CONF.PORT);
+    std::string server_provider_id = std::to_string(confManager.PORTAL_CONF.PROVIDER_ID);
     std::string server_address = server_protoc + "://" + server_ip + ":" + server_port + "@" + server_provider_id;
 
     std::string username = getpwuid(getuid())->pw_name;

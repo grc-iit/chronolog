@@ -45,28 +45,31 @@ chronolog::ChronologClientImpl::ChronologClientImpl(
     
     if(WRITER_MODE == clientMode)
     {
-        tlEngine = new thallium::engine(clientPortalServiceConf.proto_conf(), THALLIUM_CLIENT_MODE, true, 1);
+        tlEngine = new thallium::engine(clientPortalServiceConf.PROTO_CONF, THALLIUM_CLIENT_MODE, true, 1);
     }
     else
     {
         std::string QUERY_SERVICE_NA_STRING =
-            clientQueryServiceConf.proto_conf() + "://" + clientQueryServiceConf.ip() + ":" +
-            std::to_string(clientQueryServiceConf.port());
+            clientQueryServiceConf.PROTO_CONF
+ + "://" + clientQueryServiceConf.IP + ":" +
+            std::to_string(clientQueryServiceConf.PORT);
 
         margo_instance_id margo_id = margo_init(QUERY_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 1);
         tlEngine = new tl::engine(margo_id);
 
-        storyReaderService= chl::ClientQueryService::CreateClientQueryService(*tlEngine, chronolog::ServiceId(clientQueryServiceConf.proto_conf(), 
-                                        clientQueryServiceConf.ip(), clientQueryServiceConf.port(), clientQueryServiceConf.provider_id()));
+        storyReaderService= chl::ClientQueryService::CreateClientQueryService(*tlEngine, chronolog::ServiceId(clientQueryServiceConf.PROTO_CONF, 
+                                        clientQueryServiceConf.IP, clientQueryServiceConf.PORT, clientQueryServiceConf.PROVIDER_ID
+));
 
     }
 
     std::string VISOR_NA_STRING =
-            clientPortalServiceConf.proto_conf() + "://" + clientPortalServiceConf.ip() + ":" +
-            std::to_string(clientPortalServiceConf.port());
+            clientPortalServiceConf.PROTO_CONF + "://" + clientPortalServiceConf.IP + ":" +
+            std::to_string(clientPortalServiceConf.PORT);
 
     rpcVisorClient = chl::RpcVisorClient::CreateRpcVisorClient(*tlEngine, VISOR_NA_STRING
-                                                               , clientPortalServiceConf.provider_id());
+                                                               , clientPortalServiceConf.PROVIDER_ID
+);
 }
 
 ////////
@@ -548,4 +551,3 @@ chronolog::ChronologClientImpl::replay_story( chronolog::ChronicleName const& ch
     return storyReaderService->replay_story(chronicle, story, start, end, event_series);
 }
 //////////////////////////////
-

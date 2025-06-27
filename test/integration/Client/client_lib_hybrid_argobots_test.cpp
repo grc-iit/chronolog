@@ -7,6 +7,7 @@
 #include <mpi.h>
 #include <cmd_arg_parse.h>
 #include "chrono_monitor.h"
+#include "ClientConfiguration.h"
 
 chronolog::Client*client;
 
@@ -20,10 +21,10 @@ void thread_function(void*t)
     LOG_INFO("[ClientLibHybridArgobotsTest] Starting thread function for thread ID: {}", ((thread_arg*)t)->tid);
 
     chronolog::ClientPortalServiceConf portalConf;
-    std::string server_ip = portalConf.ip();
-    int base_port = portalConf.port();
+    std::string server_ip = portalConf.IP;
+    int base_port = portalConf.PORT;
     std::string client_id = gen_random(8);
-    std::string server_uri = portalConf.proto_conf() + "://" + portalConf.ip() + ":" + std::to_string(portalConf.port());
+    std::string server_uri = portalConf.PROTO_CONF + "://" + portalConf.IP + ":" + std::to_string(portalConf.PORT);
     int flags = 0;
 
     int ret = client->Connect(); // Connect to server using client_id and flags
@@ -51,16 +52,43 @@ int main(int argc, char**argv)
 
     MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &provided);
 
-    chronolog::ClientPortalServiceConf portalConf("ofi+sockets", "127.0.0.1", 5555, 55);
-    int result = chronolog::chrono_monitor::initialize("file", "chronoclient_logfile.txt", spdlog::level::debug, "ChronoClient", 102400, 3, spdlog::level::warn);
-    if(result == 1)
-    {
-        exit(EXIT_FAILURE);
+    // Load configuration
+    std::string conf_file_path = parse_conf_path_arg(argc, argv);
+    chronolog::ClientConfiguration confManager;
+    if (!conf_file_path.empty()) {
+        if (!confManager.load_from_file(conf_file_path)) {
+            std::cerr << "[ClientLibHybridArgobotsTest] Failed to load configuration file '" << conf_file_path << "'. Using default values instead." << std::endl;
+        } else {
+            std::cout << "[ClientLibHybridArgobotsTest] Configuration file loaded successfully from '" << conf_file_path << "'." << std::endl;
+        }
+    } else {
+        std::cout << "[ClientLibHybridArgobotsTest] No configuration file provided. Using default values." << std::endl;
     }
+    confManager.log_configuration(std::cout);
+
+    // Initialize logging
+    int result = chronolog::chrono_monitor::initialize(confManager.LOG_CONF.LOGTYPE,
+                                                       confManager.LOG_CONF.LOGFILE,
+                                                       confManager.LOG_CONF.LOGLEVEL,
+                                                       confManager.LOG_CONF.LOGNAME,
+                                                       confManager.LOG_CONF.LOGFILESIZE,
+                                                       confManager.LOG_CONF.LOGFILENUM,
+                                                       confManager.LOG_CONF.FLUSHLEVEL);
+    if (result == 1) {
+        return EXIT_FAILURE;
+    }
+
+    // Build portal config
+    chronolog::ClientPortalServiceConf portalConf;
+    portalConf.PROTO_CONF = confManager.PORTAL_CONF.PROTO_CONF;
+    portalConf.IP = confManager.PORTAL_CONF.IP;
+    portalConf.PORT = confManager.PORTAL_CONF.PORT;
+    portalConf.PROVIDER_ID = confManager.PORTAL_CONF.PROVIDER_ID;
+
     LOG_INFO("[ClientLibHybridArgobotsTest] Running test.");
 
-    std::string server_ip = portalConf.ip();
-    int base_port = portalConf.port();
+    std::string server_ip = portalConf.IP;
+    int base_port = portalConf.PORT;
     client = new chronolog::Client(portalConf);
 
     int num_xstreams = 8;

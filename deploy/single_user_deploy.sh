@@ -43,6 +43,7 @@ PLAYER_BIN_DIR=""
 
 # Configuration file and component-specific conf arguments
 CONF_FILE=""
+CLIENT_CONF_FILE=""
 VISOR_ARGS="--config ${CONF_FILE}"
 GRAPHER_ARGS="--config ${CONF_FILE}"
 KEEPER_ARGS="--config ${CONF_FILE}"
@@ -106,6 +107,7 @@ usage() {
     echo ""
     echo "Configuration Settings:"
     echo "  -f|--conf-file <path>            Path to the configuration file (default: work_dir/conf/default_conf.json) [Modes: Start]"
+    echo "  -n|--client-conf-file <path>     Path to the client configuration file (default: work_dir/conf/client_conf.json) [Modes: Start]"
     echo ""
     echo "Miscellaneous Options:"
     echo "  -e|--verbose                     Enable verbose output (default: false)"
@@ -181,10 +183,11 @@ check_bin_files() {
 check_rpc_comm_conf() {
     echo -e "${INFO}Checking if rpc conf matches on both communication ends ...${NC}"
     check_file_existence ${CONF_FILE}
+    check_file_existence ${CLIENT_CONF_FILE}
 
     # for VisorClientPortalService, Client->Visor
     visor_client_portal_rpc_in_visor=$(jq '.chrono_visor.VisorClientPortalService.rpc' "${CONF_FILE}")
-    visor_client_portal_rpc_in_client=$(jq '.chrono_client.VisorClientPortalService.rpc' "${CONF_FILE}")
+    visor_client_portal_rpc_in_client=$(jq '.chrono_client.VisorClientPortalService.rpc' "${CLIENT_CONF_FILE}")
     [[ "${visor_client_portal_rpc_in_visor}" != "${visor_client_portal_rpc_in_client}" ]] && echo -e "${ERR}mismatched VisorClientPortalService conf in ${CONF_FILE}, exiting ...${NC}" >&2 && exit 1
 
     # for VisorKeeperRegistryService, Keeper->Visor
@@ -315,22 +318,28 @@ update_visor_ip() {
         echo -e "${ERR}Cannot get ChronoVisor IP from hostname ${visor_host}, exiting ...${NC}" >&2
         exit 1
     fi
+
     echo -e "${INFO}Replacing ChronoVisor IP with ${visor_ip} ...${NC}"
+    # Config File
     jq ".chrono_visor.VisorClientPortalService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} >tmp.json && mv tmp.json ${CONF_FILE}
-    jq ".chrono_client.VisorClientPortalService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} >tmp.json && mv tmp.json ${CONF_FILE}
     jq ".chrono_visor.VisorKeeperRegistryService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} >tmp.json && mv tmp.json ${CONF_FILE}
     jq ".chrono_keeper.VisorKeeperRegistryService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} >tmp.json && mv tmp.json ${CONF_FILE}
     jq ".chrono_grapher.VisorRegistryService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} >tmp.json && mv tmp.json ${CONF_FILE}
     jq ".chrono_player.VisorRegistryService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} >tmp.json && mv tmp.json ${CONF_FILE}
 
+    # Client Config File
+    jq ".chrono_client.VisorClientPortalService.rpc.service_ip = \"${visor_ip}\"" "${CLIENT_CONF_FILE}" > tmp.json && mv tmp.json "${CLIENT_CONF_FILE}"
+
     [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Update ChronoVisor IP done${NC}"
 }
 
-update_visor_client_monitor_file_path() {
+update_visor_monitor_file_path() {
     visor_host=$(head -1 ${VISOR_HOSTS})
-    echo -e "${INFO}Updating monitoring file path ...${NC}"
-    jq ".chrono_visor.Monitoring.monitor.file = \"${MONITOR_DIR}/${VISOR_BIN_FILE_NAME}.${visor_host}.log\"" ${CONF_FILE} >tmp.json && mv tmp.json ${CONF_FILE}
-    jq ".chrono_client.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono_client.log\"" ${CONF_FILE} >tmp.json && mv tmp.json ${CONF_FILE}
+    jq ".chrono_visor.Monitoring.monitor.file = \"${MONITOR_DIR}/${VISOR_BIN_FILE_NAME}.${visor_host}.log\"" "${CONF_FILE}" > tmp.json && mv tmp.json "${CONF_FILE}"
+}
+
+update_client_monitor_file_path() {
+    jq ".chrono_client.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono_client.log\"" "${CLIENT_CONF_FILE}" > tmp.json && mv tmp.json "${CLIENT_CONF_FILE}"
 }
 
 generate_conf_for_each_keeper() {
@@ -649,7 +658,9 @@ start() {
 
     update_visor_ip
 
-    update_visor_client_monitor_file_path
+    update_visor_monitor_file_path
+    
+    update_client_monitor_file_path
 
     generate_conf_for_each_recording_group
 
@@ -796,6 +807,7 @@ clean() {
     # clean log files
     echo -e "${DEBUG}Removing log files ...${NC}"
     rm -f ${CONF_FILE}.*
+    rm -f ${CLIENT_CONF_FILE}.*
 
     # clean generated output files
     echo -e "${DEBUG}Removing output files ...${NC}"
@@ -805,7 +817,7 @@ clean() {
 }
 
 parse_args() {
-    TEMP=$(getopt -o t:l:w:m:u:v:g:p:a:q:k:o:f:j:r:hbidsce --long build-type:install-dir:work-dir:monitor-dir:output-dir:visor-bin:,grapher-bin:,keeper-bin:,player-bin:,visor-hosts:,grapher-hosts:,keeper-hosts:,conf-file:,job-id:,record-groups:,help,build,install,start,stop,clean,verbose -- "$@")
+    TEMP=$(getopt -o t:l:w:m:u:v:g:p:a:q:k:o:f:n:j:r:hbidsce --long build-type:install-dir:work-dir:monitor-dir:output-dir:visor-bin:,grapher-bin:,keeper-bin:,player-bin:,visor-hosts:,grapher-hosts:,keeper-hosts:,conf-file:,client-conf-file:,job-id:,record-groups:,help,build,install,start,stop,clean,verbose -- "$@")
     if [ $? != 0 ]; then
         echo -e "${ERR}Terminating ...${NC}" >&2
         exit 1
@@ -845,6 +857,7 @@ parse_args() {
             KEEPER_BIN_DIR=$(dirname ${KEEPER_BIN})
             PLAYER_BIN_DIR=$(dirname ${PLAYER_BIN})
             CONF_FILE="${CONF_DIR}/default_conf.json"
+            CLIENT_CONF_FILE="${CONF_DIR}/default_client_conf.json"
             VISOR_ARGS="--config ${CONF_FILE}"
             GRAPHER_ARGS="--config ${CONF_FILE}"
             KEEPER_ARGS="--config ${CONF_FILE}"
@@ -896,6 +909,9 @@ parse_args() {
         -f | --conf-file)
             CONF_FILE=$(realpath "$2")
             CONF_DIR=$(dirname ${CONF_FILE})
+            shift 2 ;;
+        -n | --client-conf-file)
+            CLIENT_CONF_FILE=$(realpath "$2")
             shift 2 ;;
         -j | --job-id)
             JOB_ID="$2"
