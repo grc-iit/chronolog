@@ -172,7 +172,7 @@ EOF
 docker compose -f dynamic-compose.yaml up -d
 
 # Update Chronolog repo
-docker exec -it chronolog-c1 bash -c "cd ~/chronolog_repo && git reset --hard origin/develop && git pull"
+docker exec -it chronolog-c1 bash -c "cd ~/chronolog_repo && git fetch origin && git reset --hard origin/pearc25 && git checkout pearc25 && git pull"
 
 # Prepare hosts file
 docker exec -it chronolog-c1 bash -c "rm -rf ~/chronolog_install/Release/conf/hosts_*"
