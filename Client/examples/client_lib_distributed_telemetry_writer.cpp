@@ -81,7 +81,7 @@ std::pair <std::string, workload_conf_args> cmd_arg_parse(int argc, char**argv)
     }
     else
     {
-        return {};
+        return {"", workload_args};
     }
 }
 
@@ -421,7 +421,7 @@ int main(int argc, char *argv[])
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-    std::string default_conf_file_path = "./default_conf.json";
+    std::string default_conf_file_path = "./default_client_conf.json";
     std::pair <std::string, workload_conf_args> cmd_args = cmd_arg_parse(argc, argv);
     std::string conf_file_path = cmd_args.first;
     workload_conf_args workload_args = cmd_args.second;
