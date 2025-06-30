@@ -15,11 +15,6 @@ target_include_directories(client_lib_distributed_telemetry_writer PRIVATE ${CMA
 target_link_libraries(client_lib_distributed_telemetry_writer chronolog_client -lpthread -lrt ${MPI_CXX_LIBRARIES})
 install(TARGETS client_lib_distributed_telemetry_writer DESTINATION bin)
 
-add_executable(client_lib_telemetry_reader client_lib_telemetry_reader.cpp)
-target_include_directories(client_lib_telemetry_reader PRIVATE ${CMAKE_BINARY_DIR}/Client/include)
-target_link_libraries(client_lib_telemetry_reader chronolog_client -lpthread -lrt)
-install(TARGETS client_lib_telemetry_reader DESTINATION bin)
-
 # install client configuration file
 install(
     FILES ${CMAKE_SOURCE_DIR}/default_client_conf.json.in
