@@ -25,7 +25,7 @@ chronolog::Client*client;
 
 namespace chl = chronolog;
 
-void reader_thread( int tid, struct thread_arg * t, std::vector<chronolog::Event>replay_events)
+void reader_thread( int tid, struct thread_arg * t, std::vector<chronolog::Event> &replay_events)
 {
     LOG_INFO("[ClientLibStoryReader] Reader thread tid={} starting",tid);
 
@@ -198,8 +198,8 @@ int main(int argc, char**argv)
         return -1;
     }
 
-    uint64_t start_time = 1746486900000000000;
-    uint64_t end_time = 1746486930000000000;
+    uint64_t start_time = 1600000000000000000;
+    uint64_t end_time = 2000000000000000000;
 
     std::vector<chronolog::Event> replay_event_series;
     
@@ -208,14 +208,17 @@ int main(int argc, char**argv)
     reader_thread(0, & segment_arg, replay_event_series); 
 
     LOG_INFO("[StoryReaderClient] Finished reader test for story: {}-{}", chronicle_name, story_name);
-
+    LOG_INFO("[StoryReaderClient] Replay event series has {} events", replay_event_series.size());
     
     std::ofstream output_csv_fstream;
 
     output_csv_fstream.open(output_csv_file_path, std::ofstream::out|std::ofstream::app);
-    for(auto event: replay_event_series)
+    for(const auto& event: replay_event_series)
     {
-        output_csv_fstream << event.time()<<','<<event.client_id()<<','<<event.index()<<','<<event.log_record() << std::endl;
+        output_csv_fstream << event.time() << ',' << event.client_id() << ',' << event.index() << ','
+                           << event.log_record() << std::endl;
+        std::cout << "Wrote event to CSV: " << event.time() << ',' << event.client_id() << ',' << event.index() << ','
+                  << event.log_record() << std::endl;
     }
     output_csv_fstream.close();
 
