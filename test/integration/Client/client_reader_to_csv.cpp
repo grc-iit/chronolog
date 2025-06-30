@@ -103,12 +103,12 @@ int parse_command_args(int argc, char**argv, std::string & config_file, std::str
 
 
     // Parse the command-line options
-    while((opt = getopt_long(argc, argv, "crsft:", long_options, nullptr)) != -1)
+    while((opt = getopt_long(argc, argv, "c:r:s:f:", long_options, nullptr)) != -1)
     {
         switch(opt)
         {
             case 'c':
-               config_file = std::string{argv[optind]};
+                config_file = std::string{argv[optind]};
                 break;
             case 'r':
                 chronicle = std::string{argv[optind]};
