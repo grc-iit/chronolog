@@ -89,47 +89,39 @@ void reader_thread( int tid, struct thread_arg * t, std::vector<chronolog::Event
 }
 
 int parse_command_args(int argc, char**argv, std::string & config_file, std::string & chronicle , std::string & story, std::string & output_csv_file)
-                  //  , uint64_t start_time, uint64_t end_time)
 {
     int opt=0;
 
-    // Define the long options and their corresponding short options
-    struct option long_options[] = {{"config", required_argument, 0, 'c'}
-                                    , {"chronicle", required_argument, 0, 'r'}
-                                    , {"story", required_argument, 0, 's'}
-                                    , {"csv_file", required_argument, 0, 'f'}
-                                    , {0       , 0                , 0, 0} // Terminate the options array
+    struct option long_options[] = {
+        {"config", required_argument, 0, 'c'},
+        {"chronicle", required_argument, 0, 'r'},
+        {"story", required_argument, 0, 's'},
+        {"csv_file", required_argument, 0, 'f'},
+        {0, 0, 0, 0}
     };
 
-
-    // Parse the command-line options
     while((opt = getopt_long(argc, argv, "c:r:s:f:", long_options, nullptr)) != -1)
     {
         switch(opt)
         {
             case 'c':
-                config_file = std::string{argv[optind]};
+                config_file = std::string{optarg};
                 break;
             case 'r':
-                chronicle = std::string{argv[optind]};
+                chronicle = std::string{optarg};
                 break;
             case 's':
-                story = std::string{argv[optind]};
+                story = std::string{optarg};
                 break;
             case 'f':
-                output_csv_file = std::string{argv[optind]};
-                break; 
-            //case 't':
-                //start_time = argv[optind];
-                //end_time = argv[optind+1];
+                output_csv_file = std::string{optarg};
+                break;
             default:
-                // Unknown option
                 std::cerr << "[cmd_arg_parse] Encountered an unknown option: " << static_cast<char>(opt) << std::endl;
-
         }
     }
 
-return 1;
+    return 1;
 }
 
 int main(int argc, char**argv)
