@@ -202,4 +202,7 @@ docker exec -it chronolog-c1 bash -c "cd ~/chronolog_repo/deploy && source ~/spa
 # Deploy ChronoLog
 docker exec -it chronolog-c1 bash -c "cd ~/chronolog_repo/deploy && ./single_user_deploy.sh -d -w ~/chronolog_install/Release"
 
+# Permissions for health check script
+docker exec -it chronolog-c1 bash -c "chmod +x ~/chronolog_repo/test/system/health_check.sh"
+
 echo "Deployed $NUM_CONTAINERS ChronoLog containers (1 for ChronoVisor, $NUM_KEEPERS for ChronoKeeper, $NUM_GRAPHERS for ChronoGrapher, and $NUM_PLAYERS for ChronoPlayer)"
