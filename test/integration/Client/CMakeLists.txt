@@ -13,9 +13,7 @@ set(client_examples
     client_lib_multi_argobots_test client_lib_multi_pthread_test  
     client_lib_thread_interdependency_test
     client_lib_multi_storytellers 
-    client_lib_story_reader
-    client_reader_to_csv
-    )
+    client_lib_story_reader)
 
 # Custom target to copy server_list.in file
 add_custom_target(copyserverlist ALL
