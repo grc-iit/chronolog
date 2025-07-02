@@ -25,7 +25,7 @@ chronolog::Client*client;
 
 namespace chl = chronolog;
 
-void reader_thread( int tid, struct thread_arg * t, std::vector<chronolog::Event> &replay_events)
+void reader_thread( int tid, struct thread_arg * t, std::vector<chronolog::Event> & replay_events)
 {
     LOG_INFO("[ClientLibStoryReader] Reader thread tid={} starting",tid);
 
@@ -88,7 +88,7 @@ void reader_thread( int tid, struct thread_arg * t, std::vector<chronolog::Event
     LOG_INFO("[ClientLibStoryReader] Reader thread tid={} exiting", tid);
 }
 
-int parse_command_args(int argc, char**argv, std::string & config_file, std::string & chronicle , std::string & story, std::string & output_csv_file)
+int parse_command_args(int argc, char**argv, std::string & config_file, std::string & chronicle , std::string & story, int & interval, std::string & output_csv_file)
                   //  , uint64_t start_time, uint64_t end_time)
 {
     int opt=0;
@@ -97,35 +97,35 @@ int parse_command_args(int argc, char**argv, std::string & config_file, std::str
     struct option long_options[] = {{"config", required_argument, 0, 'c'}
                                     , {"chronicle", required_argument, 0, 'r'}
                                     , {"story", required_argument, 0, 's'}
-                                    , {"csv_file", required_argument, 0, 'f'}
+                                    , {"interval", required_argument,0,'i'}
+                                    , {"output_file", required_argument, 0, 'f'}
                                     , {0       , 0                , 0, 0} // Terminate the options array
     };
 
 
     // Parse the command-line options
-    while((opt = getopt_long(argc, argv, "crsft:", long_options, nullptr)) != -1)
+    while((opt = getopt_long(argc, argv, "crsif:", long_options, nullptr)) != -1)
     {
         switch(opt)
         {
             case 'c':
-               config_file = std::string{argv[optind]};
+               config_file = std::string(argv[optind]);
                 break;
             case 'r':
-                chronicle = std::string{argv[optind]};
+                chronicle = std::string(argv[optind]);
                 break;
             case 's':
-                story = std::string{argv[optind]};
+                story = std::string(argv[optind]); 
+                break;
+            case 'i':
+                interval = std::stol(argv[optind]);
                 break;
             case 'f':
-                output_csv_file = std::string{argv[optind]};
+                output_csv_file = std::string(optarg);
                 break; 
-            //case 't':
-                //start_time = argv[optind];
-                //end_time = argv[optind+1];
             default:
                 // Unknown option
                 std::cerr << "[cmd_arg_parse] Encountered an unknown option: " << static_cast<char>(opt) << std::endl;
-
         }
     }
 
@@ -138,13 +138,15 @@ int main(int argc, char**argv)
     std::string conf_file_path("./default_client_conf.json");
     std::string chronicle_name("CHRONICLE");
     std::string story_name("STORY");
+    int interval_in_secs = 300;
     std::string output_csv_file_path("/tmp/chronolog_reader_client.csv");
 
-    parse_command_args(argc, argv, conf_file_path, chronicle_name, story_name, output_csv_file_path);
+    parse_command_args(argc, argv, conf_file_path, chronicle_name, story_name, interval_in_secs, output_csv_file_path);
 
     std::cout<<"Using configuration parameters : conf_file_path {"<< conf_file_path
             <<"} chronicle {"<<chronicle_name<<"} story {"<<story_name
-            <<"} output_csv_file_path {"<< output_csv_file_path <<"}";
+            <<"} output_csv_file_path {"<< output_csv_file_path 
+            <<"} interval {" << interval_in_secs<<" secs}"<<std::endl;
 
 
     chronolog::ClientConfiguration confManager;
@@ -198,8 +200,8 @@ int main(int argc, char**argv)
         return -1;
     }
 
-    uint64_t start_time = 1600000000000000000;
-    uint64_t end_time = 2000000000000000000;
+    uint64_t end_time = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+    uint64_t start_time = end_time - 1000000000*interval_in_secs;
 
     std::vector<chronolog::Event> replay_event_series;
     
