@@ -2,13 +2,14 @@
 #include <common.h>
 #include <thread>
 #include <chrono>
+#include <iomanip>
 #include <iostream>
 #include <fstream>
 #include <string>
 #include <getopt.h>
-//#include <cmd_arg_parse.h>
-#include "chrono_monitor.h"
-#include "ClientConfiguration.h"
+
+#include <chrono_monitor.h>
+#include <ClientConfiguration.h>
 #include <chronolog_client.h>
 
 
@@ -200,8 +201,21 @@ int main(int argc, char**argv)
         return -1;
     }
 
-    uint64_t end_time = std::chrono::high_resolution_clock::now().time_since_epoch().count();
-    uint64_t start_time = end_time - 1000000000*interval_in_secs;
+    auto end_point = std::chrono::high_resolution_clock::now();
+    auto start_point = end_point - std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds(interval_in_secs));
+
+    uint64_t start_time = start_point.time_since_epoch().count();
+    uint64_t end_time= end_point.time_since_epoch().count();
+
+    auto start_time_t = std::chrono::system_clock::to_time_t(start_point);
+    auto end_time_t = std::chrono::system_clock::to_time_t(end_point);
+    
+
+    std::cout <<"Replay time range "<<start_time <<" " << std::put_time(std::localtime(&start_time_t), "%Y-%m-%d %H:%M:%S.")<<start_time%1000000000 
+            <<" - "<< end_time << " " << std::put_time(std::localtime(&end_time_t), "%Y-%m-%d %H:%M:%S.") << end_time % 1000000000
+            << std::endl;
+
+    LOG_INFO("[StoryReaderClient] ReplayStory Request for story {}-{} time range {}-{}", chronicle_name,story_name ,start_time,end_time);
 
     std::vector<chronolog::Event> replay_event_series;
     
@@ -217,10 +231,9 @@ int main(int argc, char**argv)
     output_csv_fstream.open(output_csv_file_path, std::ofstream::out|std::ofstream::app);
     for(const auto& event: replay_event_series)
     {
-        output_csv_fstream << event.time() << ',' << event.client_id() << ',' << event.index() << ','
-                           << event.log_record() << std::endl;
-        std::cout << "Wrote event to CSV: " << event.time() << ',' << event.client_id() << ',' << event.index() << ','
-                  << event.log_record() << std::endl;
+        time_t event_time_t = event.time()/1000000000;
+        output_csv_fstream << std::put_time(std::localtime(&event_time_t), "%Y-%m-%d %H:%M:%S.")<<event.time()%1000000000 <<','
+            << event.client_id() << ',' << event.index() << ',' << event.log_record() << std::endl;
     }
     output_csv_fstream.close();
 
