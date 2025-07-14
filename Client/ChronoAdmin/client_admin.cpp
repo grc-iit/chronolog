@@ -110,7 +110,7 @@ std::pair <std::string, workload_conf_args> cmd_arg_parse(int argc, char **argv)
     // Define the long options and their corresponding short options
     struct option long_options[] = {{  "config"            , required_argument, nullptr, 'c'}
                                     , {"interactive"       , optional_argument, nullptr, 'i'}
-                                    , {"write"             , optional_argument, nullptr, 'w'}
+                                    , {"write"             , no_argument       , nullptr, 'w'}
                                     , {"read"              , optional_argument, nullptr, 'r'}
                                     , {"chronicle_count"   , required_argument, nullptr, 'h'}
                                     , {"story_count"       , required_argument, nullptr, 't'}
