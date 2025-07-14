@@ -1068,7 +1068,7 @@ std::vector <std::string> &command_subs)
                     replay_story_bw = (double)total_event_payload_size / replayStoryTimer.getDuration() / 1e6;
                     replay_story_thpt = (double)workload_args.event_count * size / replayStoryTimer.getDuration() / 1e6;
                 }
-                else if(workload_args.read)
+                else
                 {
                     record_event_bw = (double)total_event_payload_size / writeEventTimer.getDuration() / 1e6;
                     record_event_thpt = (double)workload_args.event_count * size / writeEventTimer.getDuration() / 1e6;
