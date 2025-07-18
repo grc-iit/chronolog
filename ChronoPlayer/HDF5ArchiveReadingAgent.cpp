@@ -185,7 +185,7 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName &c
             "[HDF5ArchiveReadingAgent] Start iterator: chronicle name: {}, story name: {}, start time: {}, file name: {}"
             , std::get <0>(start_it->first), std::get <1>(start_it->first), std::get <2>(start_it->first)
             , start_it->second);
-    if(end_it != start_time_file_name_map_.end())
+    if (end_it != start_time_file_name_map_.end())
     {
         LOG_DEBUG(
             "[HDF5ArchiveReadingAgent] End iterator: chronicle name: {}, story name: {}, start time: {}, file name: {}"
