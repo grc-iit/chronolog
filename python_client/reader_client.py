@@ -26,68 +26,48 @@
 # 
 #############################
 
-def main():
+def reader_client():
 
-    print("Basic test for py_chronolog_client")
-
-    # NOTE: if you having issues importing py_chronolog_client
-    # see post installation instructions at the top of this file
- 
     import py_chronolog_client
 
+    print("Basic test for py_chronolog_client reader ")
+    
     #create ClientPortalServiceConf instance with the connection credentials to ChronoVisor ClientPortalService
 
     clientConf = py_chronolog_client.ClientPortalServiceConf("ofi+sockets","127.0.0.1",5555,55);
+    clientQueryConf = py_chronolog_client.ClientQueryServiceConf("ofi+sockets","127.0.0.1",5557,57);
 
     # instantiate ChronoLog Client object
-    client = py_chronolog_client.Client(clientConf);
+    reader_client = py_chronolog_client.Client(clientConf, clientQueryConf);
 
-    #try to acquire the story 
-    # this should fail as the connection to the ChronoVisor hasn't been established yet
-    attrs=dict();
-    return_tuple = client.AcquireStory("py_chronicle", "my_story", attrs, 1);
-    print("\n Attempt to acquire story without ChronoVisor connection returns : ", return_tuple)
-    # (-15, None)
-
-
-    # Connect to the ChronoVisor for client authentication
-    # returns 0 on success and error_cde otherwise
-    return_code = client.Connect()
+    return_code = reader_client.Connect()
     print( "\n client.Connect() call returns:", return_code)
 
-    #create chronicle
-    return_code = client.CreateChronicle("py_chronicle", attrs, 1);
-    print("\n clientCreateCronicle() returned", return_code);
-
-    # acquire story that is part of "py_chronicle"
-    # returns a tuple [0, StoryHandle] on success
-    # and [error_code,None] otherwise
-    return_tuple = client.AcquireStory("py_chronicle", "my_story", attrs, 1);
-    
+    attrs=dict();
+    return_tuple = reader_client.AcquireStory("py_chronicle", "my_story", attrs, 1);
     print( "\n client.AcquireStory() returned:" , return_tuple)
 
-    if( return_tuple[0] == 0):
-    
-        print( "\n Aquired Story = my_story within chronicle = py_chronicle");
+    event_series = py_chronolog_client.EventList()   
+    return_code = reader_client.ReplayStory("py_chronicle","my_story", 1750968060000000000,1750968200000000000, event_series);
 
-        print("\n logging 4 events for my_story using the StoryHandle");
-        return_tuple[1].log_event("py_event");
-        return_tuple[1].log_event("py_event.2");
-        return_tuple[1].log_event("py_event.3");
-        return_tuple[1].log_event("py_event.4");
-    
+    print( "\n client.ReplayStory() call returns:", return_code)
+    print( "\n client.ReplayStory() call returns event_series : ", event_series, "with ", len(event_series)," events")
 
+    if len(event_series) >0 :
+        for event in event_series:
+            print("event:", event.time(),event.client_id(),event.index(),event.log_record())
+    
     # release acquired Story
     # returns 0 on success and error_code othewise
-    return_code = client.ReleaseStory("py_chronicle","my_story");
+    return_code = reader_client.ReleaseStory("py_chronicle","my_story");
     print("\n client.ReleaseStory() returned:", return_code);
-    
-    
-        
+
     # Disconenct the client from ChronoLog system
     # returns 0 on success and error_code otherwise
-    return_code = client.Disconnect()
+    return_code = reader_client.Disconnect()
     print("\n client.Disconnect() returned:", return_code);
 
+
 if __name__=="__main__":
-    main()
+
+    reader_client()
