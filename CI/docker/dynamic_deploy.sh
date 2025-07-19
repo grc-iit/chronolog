@@ -191,13 +191,13 @@ for i in $(seq 1 $NUM_CONTAINERS); do
 done
 
 # Force concretize and install dependencies in case of changes
-docker exec -it chronolog-c1 bash -c "cd ~/chronolog_repo && source ~/spack/share/spack/setup-env.sh && spack env activate . && cd deploy && spack concretize --force"
+docker exec -it chronolog-c1 bash -c "cd ~/chronolog_repo && source ~/spack/share/spack/setup-env.sh && spack env activate . && spack concretize --force"
 
 # Rebuild ChronoLog
-docker exec -it chronolog-c1 bash -c "cd ~/chronolog_repo && source ~/spack/share/spack/setup-env.sh && spack env activate . && cd deploy && ./single_user_deploy.sh -b -l ~/chronolog_install"
+docker exec -it chronolog-c1 bash -c "cd ~/chronolog_repo && source ~/spack/share/spack/setup-env.sh && spack env activate . && cd build && make -j"
 
 # Reinstall ChronoLog
-docker exec -it chronolog-c1 bash -c "cd ~/chronolog_repo/deploy && source ~/spack/share/spack/setup-env.sh && ./single_user_deploy.sh -i -w ~/chronolog_install/Release"
+docker exec -it chronolog-c1 bash -c "cd ~/chronolog_repo/build && source ~/spack/share/spack/setup-env.sh && make -j install"
 
 # Deploy ChronoLog
 docker exec -it chronolog-c1 bash -c "cd ~/chronolog_repo/deploy && ./single_user_deploy.sh -d -w ~/chronolog_install/Release"
