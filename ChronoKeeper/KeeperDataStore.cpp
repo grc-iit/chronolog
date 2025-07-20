@@ -178,10 +178,10 @@ void chronolog::KeeperDataStore::dataCollectionTask()
     {
         LOG_DEBUG("[KeeperDataStore] Running DataCollection iteration. ESrank={}, ThreadID={}", es.get_rank()
                   , tl::thread::self_id());
-        for(int i = 0; i < 6; ++i)
+        for(int i = 0; i < 1; ++i)
         {
             collectIngestedEvents();
-            sleep(10);
+            sleep(1);
         }
         extractDecayedStoryChunks();
         retireDecayedPipelines();
