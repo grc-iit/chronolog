@@ -1,6 +1,8 @@
 # Client/examples/CMakeLists.txt
 cmake_minimum_required(VERSION 3.25)
 
+find_package(MPI REQUIRED)
+
 message("Building Client/examples")
 
 # Writer example
