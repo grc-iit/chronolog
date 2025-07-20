@@ -21,7 +21,7 @@ target_link_libraries(client_lib_basic_example chronolog_client -lpthread -lrt)
 # Distributed Telemetry Writer example
 add_executable(client_lib_distributed_telemetry_writer client_lib_distributed_telemetry_writer.cpp)
 target_include_directories(client_lib_distributed_telemetry_writer PRIVATE ${CMAKE_BINARY_DIR}/Client/include)
-target_link_libraries(client_lib_distributed_telemetry_writer chronolog_client -lpthread -lrt)
+target_link_libraries(client_lib_distributed_telemetry_writer chronolog_client -lpthread -lrt ${MPI_CXX_LIBRARIES})
 
 # Optionally: install the example binaries
 install(TARGETS
