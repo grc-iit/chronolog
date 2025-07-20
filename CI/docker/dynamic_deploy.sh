@@ -194,7 +194,7 @@ done
 docker exec -it chronolog-c1 bash -c "cd ~/chronolog_repo && source ~/spack/share/spack/setup-env.sh && spack env activate . && cd deploy && spack concretize --force"
 
 # Rebuild ChronoLog
-docker exec -it chronolog-c1 bash -c "cd ~/chronolog_repo && source ~/spack/share/spack/setup-env.sh && spack env activate . && cd deploy && ./single_user_deploy.sh -b -l ~/chronolog_install"
+#docker exec -it chronolog-c1 bash -c "cd ~/chronolog_repo && source ~/spack/share/spack/setup-env.sh && spack env activate . && cd deploy && ./single_user_deploy.sh -b -l ~/chronolog_install"
 
 # Reinstall ChronoLog
 docker exec -it chronolog-c1 bash -c "cd ~/chronolog_repo/deploy && source ~/spack/share/spack/setup-env.sh && ./single_user_deploy.sh -i -w ~/chronolog_install/Release"
