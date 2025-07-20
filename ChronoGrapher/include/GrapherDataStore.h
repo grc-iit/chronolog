@@ -79,7 +79,7 @@ private:
     uint32_t story_chunk_duration_secs;
     uint32_t acceptance_window_secs;
     uint32_t inactive_pipeline_delay_secs;
-    
+
     std::vector <thallium::managed <thallium::xstream>> dataStoreStreams;
     std::vector <thallium::managed <thallium::thread>> dataStoreThreads;
 

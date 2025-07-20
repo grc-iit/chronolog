@@ -112,6 +112,6 @@ void chronolog::StoryChunkExtractorBase::drainExtractionQueue()
                 chunkExtractionQueue.stashStoryChunk(storyChunk);
             }
         }
-        sleep(3);
+        sleep(2);
     }
 }
