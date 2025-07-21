@@ -10,6 +10,12 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV DEBCONF_NOWARNINGS=yes
 ENV TZ=America/Chicago
 
+# First install the missing Perl module to prevent QEMU segfault
+#RUN apt-get update && apt-get install -y --no-install-recommends \
+#    libterm-readline-perl-perl \
+#    perl-modules \
+#    && rm -rf /var/lib/apt/lists/*
+
 # Install system dependencies
 RUN apt-get update \
 # && apt-mark hold libc6 libc-bin libc6-dev \
@@ -19,7 +25,9 @@ RUN apt-get update \
     libjson-c-dev libboost-dev libcereal-dev \
     git vim fuse sudo curl wget \
     libfuse-dev libssl-dev \
-    python3-dev bzip2 xz-utils jq net-tools lsof htop pssh bind9-dnsutils
+    python3-dev bzip2 xz-utils jq net-tools lsof htop pssh bind9-dnsutils \
+    apt-transport-https software-properties-common \
+    adduser libfontconfig1 musl
 
 RUN apt-get -y install --no-install-recommends \
     openssh-server \
@@ -49,7 +57,7 @@ WORKDIR /home/$USERNAME
 RUN cd \
  && git clone https://github.com/grc-iit/ChronoLog.git chronolog_repo\
  && cd chronolog_repo \
- && git switch develop \
+ && git switch pearc25 \
  && git pull
 
 # Install dependencies and ChronoLog, then clean Spack
@@ -58,7 +66,7 @@ RUN cd \
  && export SPACK_ROOT=$(pwd)/spack \
  && source spack/share/spack/setup-env.sh \
  && cd chronolog_repo \
- && spack env activate -p . \
+ && spack env activate . \
  && spack install -v \
  && mkdir -p build \
  && cd build \
@@ -73,8 +81,8 @@ RUN cd \
 RUN cd \
  && git clone https://github.com/ndenev/mpssh.git \
  && cd mpssh \
- && make -j \
- && sudo make -j install \
+ && make \
+ && sudo make install \
  && cd \
  && rm -rf mpssh
 
@@ -89,6 +97,12 @@ RUN cd \
  && printf '%s\n' \
     'export USER=grc-iit' \
     >> .bashrc
+
+# Install Grafana
+RUN cd \
+ && wget https://dl.grafana.com/enterprise/release/grafana-enterprise_12.0.2+security~01_amd64.deb \
+ && sudo dpkg -i ./grafana-enterprise_12.0.2+security~01_amd64.deb \
+ && rm ./grafana-enterprise_12.0.2+security~01_amd64.deb
 
 # Welcome message
 CMD ["/bin/bash", "-c", "echo $'+-----------------------------------------------------------------------------------------+\n| ..######..##.....##.########...#######..##....##..#######..##........#######...######.. |\n| .##....##.##.....##.##.....##.##.....##.###...##.##.....##.##.......##.....##.##....##. |\n| .##.......##.....##.##.....##.##.....##.####..##.##.....##.##.......##.....##.##....... |\n| .##.......#########.########..##.....##.##.##.##.##.....##.##.......##.....##.##...#### |\n| .##.......##.....##.##...##...##.....##.##..####.##.....##.##.......##.....##.##....##. |\n| .##....##.##.....##.##....##..##.....##.##...###.##.....##.##.......##.....##.##....##. |\n| ..######..##.....##.##.....##..#######..##....##..#######..########..#######...######.. |\n+-----------------------------------------------------------------------------------------+\n|                                Welcome to ChronoLog                                     |\n|                                                                                         |\n| ChronoLog is a cutting-edge, distributed, and tiered shared log storage ecosystem       |\n| that leverages physical time to ensure total log ordering and elastic scaling           |\n| through intelligent auto-tiering. Designed as a robust foundation for innovation,       |\n| ChronoLog supports advanced plugins including a SQL-like query engine, a streaming      |\n| processor, a log-based key-value store, and a log-based TensorFlow module.              |\n|                                                                                         |\n| Version:                                                                                |\n|   This Docker image provides a lightweight ChronoLog instance for local deployment.     |\n|   It simplifies installation and understanding of the system. For advanced              |\n|   deployment options, including production-ready configurations, please visit:          |\n|                                                                                         |\n| Useful Links:                                                                           |\n|   • Website:    https://www.chronolog.dev                                               |\n|   • Repository: https://github.com/grc-iit/ChronoLog                                    |\n|   • Wiki:       https://github.com/grc-iit/ChronoLog/wiki                               |\n|                                                                                         |\n| Thank you for choosing ChronoLog. Enjoy your session!                                   |\n+-----------------------------------------------------------------------------------------+' && exec bash"]
