@@ -48,7 +48,7 @@ def reader_client():
     print( "\n client.AcquireStory() returned:" , return_tuple)
 
     event_series = py_chronolog_client.EventList()   
-    return_code = reader_client.ReplayStory("py_chronicle","my_story", 1750968060000000000,1750968200000000000, event_series);
+    return_code = reader_client.ReplayStory("py_chronicle","my_story", 1, 2000000000000000000, event_series);
 
     print( "\n client.ReplayStory() call returns:", return_code)
     print( "\n client.ReplayStory() call returns event_series : ", event_series, "with ", len(event_series)," events")
