@@ -76,7 +76,7 @@ int main(int argc, char** argv) {
     story_handle->log_event("Event 3");
 
     // Wait for events to be processed
-    sleep(800);
+    sleep(120);
 
     // Read a story
     std::vector<chronolog::Event> events;
