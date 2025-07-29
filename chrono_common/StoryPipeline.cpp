@@ -19,8 +19,8 @@ namespace chl = chronolog;
 
 chronolog::StoryPipeline::StoryPipeline(StoryChunkExtractionQueue &extractionQueue, chronolog::ChronicleName const &chronicle_name
                                         , chronolog::StoryName const &story_name, chronolog::StoryId const &story_id
-                                        , uint64_t story_start_time, uint16_t chunk_granularity
-                                        , uint16_t acceptance_window)
+                                        , uint64_t story_start_time, uint32_t chunk_granularity
+                                        , uint32_t acceptance_window)
         : theExtractionQueue(extractionQueue)
         , storyId(story_id), chronicleName(chronicle_name), storyName(story_name)
         , chunkGranularity(chunk_granularity), acceptanceWindow(acceptance_window)

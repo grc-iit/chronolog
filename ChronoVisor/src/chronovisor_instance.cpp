@@ -39,27 +39,32 @@ int main(int argc, char**argv)
     {
         std::exit(EXIT_FAILURE);
     }
-    ChronoLog::ConfigurationManager confManager(conf_file_path);
-    int result = chronolog::chrono_monitor::initialize(confManager.VISOR_CONF.VISOR_LOG_CONF.LOGTYPE
-                                                       , confManager.VISOR_CONF.VISOR_LOG_CONF.LOGFILE
-                                                       , confManager.VISOR_CONF.VISOR_LOG_CONF.LOGLEVEL
-                                                       , confManager.VISOR_CONF.VISOR_LOG_CONF.LOGNAME
-                                                       , confManager.VISOR_CONF.VISOR_LOG_CONF.LOGFILESIZE
-                                                       , confManager.VISOR_CONF.VISOR_LOG_CONF.LOGFILENUM
-                                                       , confManager.VISOR_CONF.VISOR_LOG_CONF.FLUSHLEVEL);
+    chronolog::ConfigurationManager confManager(conf_file_path);
+    chronolog::VisorConfiguration VISOR_CONF = confManager.VISOR_CONF;
+
+    std::cout << "VISOR_CONFIGURATION " << VISOR_CONF.to_String() << std::endl;
+
+    int result = chronolog::chrono_monitor::initialize( VISOR_CONF.VISOR_LOG_CONF.LOGTYPE
+                                                       , VISOR_CONF.VISOR_LOG_CONF.LOGFILE
+                                                       , VISOR_CONF.VISOR_LOG_CONF.LOGLEVEL
+                                                       , VISOR_CONF.VISOR_LOG_CONF.LOGNAME
+                                                       , VISOR_CONF.VISOR_LOG_CONF.LOGFILESIZE
+                                                       , VISOR_CONF.VISOR_LOG_CONF.LOGFILENUM
+                                                       , VISOR_CONF.VISOR_LOG_CONF.FLUSHLEVEL);
     if(result == 1)
     {
         exit(EXIT_FAILURE);
     }
     LOG_INFO("[chronovisor_instance] Running Chronovisor Server.");
 
+   LOG_INFO("chronovisor_instance] VISOR CONFIGURATION {}", VISOR_CONF.to_String());
+
     chronolog::VisorClientPortal theChronoVisorPortal;
     chronolog::KeeperRegistry keeperRegistry;
 
-    // ChronoVisor::ChronoVisorServer2 visor(confManager);
-    keeperRegistry.InitializeRegistryService(confManager);//provider_id=22);
-    // visor.start(&keeperRegistry);
-    theChronoVisorPortal.StartServices(confManager, &keeperRegistry);
+    keeperRegistry.InitializeRegistryService(VISOR_CONF);
+
+    theChronoVisorPortal.StartServices(VISOR_CONF, &keeperRegistry);
 
     // If services do not start successfully there should a graceful exit(-1) here 
     /////

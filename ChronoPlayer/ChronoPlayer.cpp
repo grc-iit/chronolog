@@ -43,28 +43,34 @@ int main(int argc, char**argv)
     {
         std::exit(EXIT_FAILURE);
     }
-    ChronoLog::ConfigurationManager confManager(conf_file_path);
-    int result = chronolog::chrono_monitor::initialize(confManager.PLAYER_CONF.LOG_CONF.LOGTYPE
-                                                       , confManager.PLAYER_CONF.LOG_CONF.LOGFILE
-                                                       , confManager.PLAYER_CONF.LOG_CONF.LOGLEVEL
-                                                       , confManager.PLAYER_CONF.LOG_CONF.LOGNAME
-                                                       , confManager.PLAYER_CONF.LOG_CONF.LOGFILESIZE
-                                                       , confManager.PLAYER_CONF.LOG_CONF.LOGFILENUM
-                                                       , confManager.PLAYER_CONF.LOG_CONF.FLUSHLEVEL);
+    chronolog::ConfigurationManager confManager(conf_file_path);
+    chronolog::PlayerConfiguration PLAYER_CONF = confManager.PLAYER_CONF;
+
+    std::cout << "ChronoPlayer Configuration "<< PLAYER_CONF.to_String()<<std::endl;
+
+    int result = chronolog::chrono_monitor::initialize(PLAYER_CONF.LOG_CONF.LOGTYPE
+                                                       , PLAYER_CONF.LOG_CONF.LOGFILE
+                                                       , PLAYER_CONF.LOG_CONF.LOGLEVEL
+                                                       , PLAYER_CONF.LOG_CONF.LOGNAME
+                                                       , PLAYER_CONF.LOG_CONF.LOGFILESIZE
+                                                       , PLAYER_CONF.LOG_CONF.LOGFILENUM
+                                                       , PLAYER_CONF.LOG_CONF.FLUSHLEVEL);
     if(result == 1)
     {
         exit(EXIT_FAILURE);
     }
+
     LOG_INFO("Running ChronoPlayer ");
+    LOG_INFO("[ChronoPlayer]  Configuration {}", PLAYER_CONF.to_String());
 
     // instantiate DataStoreAdminService
 
     // validate ip address, instantiate DataAdminService and create ServiceId to be included in RegistrationMsg
 
-    chronolog::ServiceId playerAdminServiceId( confManager.PLAYER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.PROTO_CONF,
-        confManager.PLAYER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.IP,
-        confManager.PLAYER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.BASE_PORT,
-        confManager.PLAYER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.SERVICE_PROVIDER_ID);
+    chronolog::ServiceId playerAdminServiceId( PLAYER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.PROTO_CONF,
+        PLAYER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.IP,
+        PLAYER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.BASE_PORT,
+        PLAYER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.SERVICE_PROVIDER_ID);
 
     if( !playerAdminServiceId.is_valid())
     {
@@ -73,17 +79,17 @@ int main(int argc, char**argv)
     }
 
     // Instantiate PlaybackService
-    std::string PLAYBACK_SERVICE_PROTOCOL = confManager.PLAYER_CONF.PLAYBACK_SERVICE_CONF.PROTO_CONF;
-    std::string PLAYBACK_SERVICE_IP = confManager.PLAYER_CONF.PLAYBACK_SERVICE_CONF.IP;
-    uint16_t PLAYBACK_SERVICE_PORT = confManager.PLAYER_CONF.PLAYBACK_SERVICE_CONF.BASE_PORT;
-    uint16_t playback_service_provider_id = confManager.PLAYER_CONF.PLAYBACK_SERVICE_CONF.SERVICE_PROVIDER_ID;
+    std::string PLAYBACK_SERVICE_PROTOCOL = PLAYER_CONF.PLAYBACK_SERVICE_CONF.PROTO_CONF;
+    std::string PLAYBACK_SERVICE_IP = PLAYER_CONF.PLAYBACK_SERVICE_CONF.IP;
+    uint16_t PLAYBACK_SERVICE_PORT = PLAYER_CONF.PLAYBACK_SERVICE_CONF.BASE_PORT;
+    uint16_t playback_service_provider_id = PLAYER_CONF.PLAYBACK_SERVICE_CONF.SERVICE_PROVIDER_ID;
 
     // validate ip address, instantiate Playback Service and create IdCard
 
-    chronolog::ServiceId playbackServiceId( confManager.PLAYER_CONF.PLAYBACK_SERVICE_CONF.PROTO_CONF,
-        confManager.PLAYER_CONF.PLAYBACK_SERVICE_CONF.IP,
-        confManager.PLAYER_CONF.PLAYBACK_SERVICE_CONF.BASE_PORT,
-        confManager.PLAYER_CONF.PLAYBACK_SERVICE_CONF.SERVICE_PROVIDER_ID);
+    chronolog::ServiceId playbackServiceId( PLAYER_CONF.PLAYBACK_SERVICE_CONF.PROTO_CONF,
+        PLAYER_CONF.PLAYBACK_SERVICE_CONF.IP,
+        PLAYER_CONF.PLAYBACK_SERVICE_CONF.BASE_PORT,
+        PLAYER_CONF.PLAYBACK_SERVICE_CONF.SERVICE_PROVIDER_ID);
 
     if( !playbackServiceId.is_valid())
     {
@@ -122,7 +128,7 @@ int main(int argc, char**argv)
         return (-1);
     }
 
-    chronolog::RecordingGroupId recording_group_id = confManager.PLAYER_CONF.RECORDING_GROUP;
+    chronolog::RecordingGroupId recording_group_id = PLAYER_CONF.RECORDING_GROUP;
 
     // create PlayerIdCard to identify this Player process in ChronoVisor's Registry
     chronolog::PlayerIdCard playerIdCard(recording_group_id, playbackServiceId);
@@ -172,12 +178,12 @@ int main(int argc, char**argv)
 
     /// RegistryClient SetUp _____________________________________________________________________________________
     // create RegistryClient and register the new Recording service with the Registry
-    std::string REGISTRY_SERVICE_NA_STRING = confManager.PLAYER_CONF.VISOR_REGISTRY_SERVICE_CONF.PROTO_CONF + "://" +
-                                             confManager.PLAYER_CONF.VISOR_REGISTRY_SERVICE_CONF.IP + ":" +
+    std::string REGISTRY_SERVICE_NA_STRING = PLAYER_CONF.VISOR_REGISTRY_SERVICE_CONF.PROTO_CONF + "://" +
+                                             PLAYER_CONF.VISOR_REGISTRY_SERVICE_CONF.IP + ":" +
                                              std::to_string(
-                                                     confManager.PLAYER_CONF.VISOR_REGISTRY_SERVICE_CONF.BASE_PORT);
+                                                     PLAYER_CONF.VISOR_REGISTRY_SERVICE_CONF.BASE_PORT);
 
-    uint16_t REGISTRY_SERVICE_PROVIDER_ID = confManager.PLAYER_CONF.VISOR_REGISTRY_SERVICE_CONF.SERVICE_PROVIDER_ID;
+    uint16_t REGISTRY_SERVICE_PROVIDER_ID = PLAYER_CONF.VISOR_REGISTRY_SERVICE_CONF.SERVICE_PROVIDER_ID;
 
     chronolog::PlayerRegistryClient * playerRegistryClient = chronolog::PlayerRegistryClient::CreateRegistryClient(
             *dataAdminEngine, REGISTRY_SERVICE_NA_STRING, REGISTRY_SERVICE_PROVIDER_ID);
@@ -192,7 +198,7 @@ int main(int argc, char**argv)
 
     chronolog::ArchiveReadingAgent * archiveReadingAgent = nullptr;
 
-    std::string archive_path = confManager.PLAYER_CONF.READER_CONF.story_files_dir;
+    std::string archive_path = PLAYER_CONF.READER_CONF.story_files_dir;
     archiveReadingAgent = new chronolog::ArchiveReadingAgent(readingRequestQueue, archive_path);
 
     /// Registration with ChronoVisor __________________________________________________________________________________

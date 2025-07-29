@@ -68,33 +68,42 @@ int main(int argc, char**argv)
     conf_file_path = parse_conf_path_arg(argc, argv);
     if(conf_file_path.empty())
     {
+        std::cerr <<" ChronoGrapher needs the configuration file to start";
         std::exit(EXIT_FAILURE);
     }
-    ChronoLog::ConfigurationManager confManager(conf_file_path);
-    int result = chronolog::chrono_monitor::initialize(confManager.GRAPHER_CONF.LOG_CONF.LOGTYPE
-                                                       , confManager.GRAPHER_CONF.LOG_CONF.LOGFILE
-                                                       , confManager.GRAPHER_CONF.LOG_CONF.LOGLEVEL
-                                                       , confManager.GRAPHER_CONF.LOG_CONF.LOGNAME
-                                                       , confManager.GRAPHER_CONF.LOG_CONF.LOGFILESIZE
-                                                       , confManager.GRAPHER_CONF.LOG_CONF.LOGFILENUM
-                                                       , confManager.GRAPHER_CONF.LOG_CONF.FLUSHLEVEL);
+
+    chronolog::ConfigurationManager confManager(conf_file_path);
+    chronolog::GrapherConfiguration GRAPHER_CONF = confManager.GRAPHER_CONF;
+
+    std::cout << "ChronoGrapher Configuration "<< GRAPHER_CONF.to_String()<<std::endl;
+
+    int result = chronolog::chrono_monitor::initialize(GRAPHER_CONF.LOG_CONF.LOGTYPE
+                                                       , GRAPHER_CONF.LOG_CONF.LOGFILE
+                                                       , GRAPHER_CONF.LOG_CONF.LOGLEVEL
+                                                       , GRAPHER_CONF.LOG_CONF.LOGNAME
+                                                       , GRAPHER_CONF.LOG_CONF.LOGFILESIZE
+                                                       , GRAPHER_CONF.LOG_CONF.LOGFILENUM
+                                                       , GRAPHER_CONF.LOG_CONF.FLUSHLEVEL);
     if(result == 1)
     {
+        std::cerr <<" ChronoGrapher failed to initialize chrono_monitor, check the configuration settings";
         exit(EXIT_FAILURE);
     }
+
     LOG_INFO("Running ChronoGrapher ");
+    LOG_INFO("[ChronoGrapher] Configuration {}", GRAPHER_CONF.to_String());
 
     // Instantiate MemoryDataStore
     // instantiate DataStoreAdminService
 
     /// DataStoreAdminService setup ____________________________________________________________________________________
-    std::string datastore_service_ip = confManager.GRAPHER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.IP;
-    int datastore_service_port = confManager.GRAPHER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.BASE_PORT;
+    std::string datastore_service_ip = GRAPHER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.IP;
+    int datastore_service_port = GRAPHER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.BASE_PORT;
     std::string DATASTORE_SERVICE_NA_STRING =
-            confManager.GRAPHER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.PROTO_CONF + "://" + datastore_service_ip + ":" +
+            GRAPHER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.PROTO_CONF + "://" + datastore_service_ip + ":" +
             std::to_string(datastore_service_port);
 
-    uint16_t datastore_service_provider_id = confManager.GRAPHER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.SERVICE_PROVIDER_ID;
+    uint16_t datastore_service_provider_id = GRAPHER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.SERVICE_PROVIDER_ID;
 
     chronolog::service_endpoint datastore_endpoint;
     // validate ip address, instantiate DataAdminService and create ServiceId to be included in RegistrationMsg
@@ -105,20 +114,20 @@ int main(int argc, char**argv)
         return (-1);
     }
     
-    chronolog::ServiceId dataStoreServiceId(confManager.GRAPHER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.PROTO_CONF,
-                datastore_endpoint, confManager.GRAPHER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.SERVICE_PROVIDER_ID);
+    chronolog::ServiceId dataStoreServiceId(GRAPHER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.PROTO_CONF,
+                datastore_endpoint, GRAPHER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.SERVICE_PROVIDER_ID);
 
     // Instantiate GrapherRecordingService
-    chronolog::RecordingGroupId recording_group_id = confManager.GRAPHER_CONF.RECORDING_GROUP;
-    std::string RECORDING_SERVICE_PROTOCOL = confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.PROTO_CONF;
-    std::string RECORDING_SERVICE_IP = confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP;
-    uint16_t RECORDING_SERVICE_PORT = confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT;
-    uint16_t recording_service_provider_id = confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.SERVICE_PROVIDER_ID;
+    chronolog::RecordingGroupId recording_group_id = GRAPHER_CONF.RECORDING_GROUP;
+    std::string RECORDING_SERVICE_PROTOCOL = GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.PROTO_CONF;
+    std::string RECORDING_SERVICE_IP = GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP;
+    uint16_t RECORDING_SERVICE_PORT = GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT;
+    uint16_t recording_service_provider_id = GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.SERVICE_PROVIDER_ID;
     
-    chl::ServiceId recordingServiceId(confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.PROTO_CONF,
-                confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP,
-                confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT,
-                confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.SERVICE_PROVIDER_ID);
+    chl::ServiceId recordingServiceId(GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.PROTO_CONF,
+                GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP,
+                GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT,
+                GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.SERVICE_PROVIDER_ID);
 
 
     std::string RECORDING_SERVICE_NA_STRING;
@@ -141,11 +150,16 @@ int main(int argc, char**argv)
 
     // Instantiate MemoryDataStore & ExtractorModule
     chronolog::ChunkIngestionQueue ingestionQueue;
-    std::string csv_files_directory = confManager.GRAPHER_CONF.EXTRACTOR_CONF.story_files_dir;
+    std::string csv_files_directory = GRAPHER_CONF.EXTRACTOR_CONF.story_files_dir;
 
 //    chronolog::CSVFileStoryChunkExtractor storyExtractor(process_id_string.str(), csv_files_directory);
     chronolog::HDF5FileChunkExtractor storyExtractor(chl::to_string(processIdCard), csv_files_directory);
-    chronolog::GrapherDataStore theDataStore(ingestionQueue, storyExtractor.getExtractionQueue());
+
+    chronolog::GrapherDataStore theDataStore(ingestionQueue, storyExtractor.getExtractionQueue(),
+                GRAPHER_CONF.DATA_STORE_CONF.max_story_chunk_size,
+                GRAPHER_CONF.DATA_STORE_CONF.story_chunk_duration_secs,
+                GRAPHER_CONF.DATA_STORE_CONF.acceptance_window_secs,
+                GRAPHER_CONF.DATA_STORE_CONF.inactive_story_delay_secs);
 
     tl::engine*dataAdminEngine = nullptr;
 
@@ -210,12 +224,11 @@ int main(int argc, char**argv)
 
     /// RegistryClient SetUp _____________________________________________________________________________________
     // create RegistryClient and register the new Recording service with the Registry
-    std::string REGISTRY_SERVICE_NA_STRING = confManager.GRAPHER_CONF.VISOR_REGISTRY_SERVICE_CONF.PROTO_CONF + "://" +
-                                             confManager.GRAPHER_CONF.VISOR_REGISTRY_SERVICE_CONF.IP + ":" +
-                                             std::to_string(
-                                                     confManager.GRAPHER_CONF.VISOR_REGISTRY_SERVICE_CONF.BASE_PORT);
+    std::string REGISTRY_SERVICE_NA_STRING = GRAPHER_CONF.VISOR_REGISTRY_SERVICE_CONF.PROTO_CONF + "://" +
+                                             GRAPHER_CONF.VISOR_REGISTRY_SERVICE_CONF.IP + ":" +
+                                             std::to_string(GRAPHER_CONF.VISOR_REGISTRY_SERVICE_CONF.BASE_PORT);
 
-    uint16_t REGISTRY_SERVICE_PROVIDER_ID = confManager.GRAPHER_CONF.VISOR_REGISTRY_SERVICE_CONF.SERVICE_PROVIDER_ID;
+    uint16_t REGISTRY_SERVICE_PROVIDER_ID = GRAPHER_CONF.VISOR_REGISTRY_SERVICE_CONF.SERVICE_PROVIDER_ID;
 
     chronolog::GrapherRegistryClient*grapherRegistryClient = chronolog::GrapherRegistryClient::CreateRegistryClient(
             *dataAdminEngine, REGISTRY_SERVICE_NA_STRING, REGISTRY_SERVICE_PROVIDER_ID);

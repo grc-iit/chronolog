@@ -37,7 +37,7 @@ chronolog::StoryChunk*generateRandomStoryChunk()
     auto*story_chunk = new chronolog::StoryChunk(chronicle_name, story_name, story_id, start_time, end_time);
     for(int i = 0; i < NUM_EVENTS; ++i)
     {
-        chronolog::EventSequence event_sequence = chronolog::EventSequence(start_time, client_id, i);
+        //chronolog::EventSequence event_sequence = chronolog::EventSequence(start_time, client_id, i);
         chronolog::LogEvent event;
         event.storyId = story_id;
         event.clientId = client_id;
@@ -170,13 +170,13 @@ int main(int argc, char**argv)
 {
     std::string conf_file_path;
     conf_file_path = parse_conf_path_arg(argc, argv);
-    ChronoLog::ConfigurationManager confManager(conf_file_path);
-    int result = chronolog::chrono_monitor::initialize("console", confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILE
-                                                       , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGLEVEL
-                                                       , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGNAME
-                                                       , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILESIZE
-                                                       , confManager.KEEPER_CONF.KEEPER_LOG_CONF.LOGFILENUM
-                                                       , confManager.KEEPER_CONF.KEEPER_LOG_CONF.FLUSHLEVEL);
+    chronolog::ConfigurationManager confManager(conf_file_path);
+    int result = chronolog::chrono_monitor::initialize("console", confManager.KEEPER_CONF.LOG_CONF.LOGFILE
+                                                       , confManager.KEEPER_CONF.LOG_CONF.LOGLEVEL
+                                                       , confManager.KEEPER_CONF.LOG_CONF.LOGNAME
+                                                       , confManager.KEEPER_CONF.LOG_CONF.LOGFILESIZE
+                                                       , confManager.KEEPER_CONF.LOG_CONF.LOGFILENUM
+                                                       , confManager.KEEPER_CONF.LOG_CONF.FLUSHLEVEL);
     if(result == 1)
     {
         exit(EXIT_FAILURE);
@@ -192,7 +192,7 @@ int main(int argc, char**argv)
      * Standalone StoryChunk Extraction in a separate thread
      */
     // setup engine in client mode
-    std::string KEEPER_GRAPHER_PROTOCOL = confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.PROTO_CONF;
+    std::string KEEPER_GRAPHER_PROTOCOL = confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.PROTO_CONF;
     tl_engine_g = new tl::engine(KEEPER_GRAPHER_PROTOCOL + "://", THALLIUM_CLIENT_MODE);
     uint64_t tid = tl::thread::self_id();
     std::stringstream ss;
@@ -205,9 +205,9 @@ int main(int argc, char**argv)
 
     // get provider handle
     std::string KEEPER_GRAPHER_NA_STRING =
-            KEEPER_GRAPHER_PROTOCOL + "://" + confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.IP +
-            ":" + std::to_string(confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.BASE_PORT);
-    uint16_t extraction_provider_id = confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID;
+            KEEPER_GRAPHER_PROTOCOL + "://" + confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP +
+            ":" + std::to_string(confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT);
+    uint16_t extraction_provider_id = confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.SERVICE_PROVIDER_ID;
     LOG_DEBUG("[extract_test_main] T{}: Looking up {} at: {} with provider id {} ...", tid, rpc_name_g
               , KEEPER_GRAPHER_NA_STRING, extraction_provider_id);
     service_ph_g = tl::provider_handle(tl_engine_g->lookup(KEEPER_GRAPHER_NA_STRING), extraction_provider_id);

@@ -31,7 +31,7 @@ chronolog::VisorClientPortal::VisorClientPortal(): clientPortalState(chl::VisorC
 }
 
 ////////////////
-int chronolog::VisorClientPortal::StartServices(ChronoLog::ConfigurationManager const &confManager
+int chronolog::VisorClientPortal::StartServices(chronolog::VisorConfiguration const & VISOR_CONF
                                                 , chl::KeeperRegistry*keeperRegistry)
 {
     int return_status = chronolog::CL_ERR_UNKNOWN;
@@ -47,11 +47,11 @@ int chronolog::VisorClientPortal::StartServices(ChronoLog::ConfigurationManager 
     {
         // initialise thalium engine for KeeperRegistryService
         std::string CLIENT_PORTAL_SERVICE_NA_STRING =
-                confManager.VISOR_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.PROTO_CONF + "://" +
-                confManager.VISOR_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP + ":" +
-                std::to_string(confManager.VISOR_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT);
+                VISOR_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.PROTO_CONF + "://" +
+                VISOR_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.IP + ":" +
+                std::to_string(VISOR_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.BASE_PORT);
 
-        uint16_t provider_id = confManager.VISOR_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID;
+        uint16_t provider_id = VISOR_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.SERVICE_PROVIDER_ID;
         margo_instance_id margo_id = margo_init(CLIENT_PORTAL_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 2);
 
         if(MARGO_INSTANCE_NULL == margo_id)

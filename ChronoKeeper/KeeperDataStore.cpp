@@ -49,9 +49,8 @@ int chronolog::KeeperDataStore::startStoryRecording(std::string const &chronicle
     }
 
     auto result = theMapOfStoryPipelines.emplace(
-            std::pair <chl::StoryId, chl::StoryPipeline*>(story_id, new chl::StoryPipeline(theExtractionQueue, chronicle
-                                                                                           , story, story_id, start_time
-                                                                                           , time_chunk_duration)));
+            std::pair <chl::StoryId, chl::StoryPipeline*>(story_id, new chl::StoryPipeline(theExtractionQueue, chronicle, story, story_id, start_time
+                                        , story_chunk_duration_secs, acceptance_window_secs)));
 
     if(result.second)
     {

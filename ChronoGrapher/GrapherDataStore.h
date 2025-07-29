@@ -28,9 +28,16 @@ class GrapherDataStore
 
 
 public:
-    GrapherDataStore(ChunkIngestionQueue &ingestion_queue, StoryChunkExtractionQueue &extraction_queue): state(UNKNOWN)
-                                                                                                        , theIngestionQueue(
-                    ingestion_queue), theExtractionQueue(extraction_queue)
+    GrapherDataStore(ChunkIngestionQueue &ingestion_queue, StoryChunkExtractionQueue &extraction_queue
+                    , uint32_t max_chunk_size = 4096, uint32_t story_chunk_duration_secs = 60
+                    , uint32_t acceptance_window_secs = 180, uint32_t inactive_pipeline_delay_secs = 300 )
+        : state(UNKNOWN)
+        , theIngestionQueue(ingestion_queue)
+        , theExtractionQueue(extraction_queue)
+        , story_chunk_size(max_chunk_size)
+        , story_chunk_duration_secs(story_chunk_duration_secs)
+        , acceptance_window_secs(acceptance_window_secs)
+        , inactive_pipeline_delay_secs(inactive_pipeline_delay_secs)
     {}
 
     ~GrapherDataStore();
@@ -41,8 +48,7 @@ public:
     bool is_shutting_down() const
     { return (SHUTTING_DOWN == state); }
 
-    int startStoryRecording(ChronicleName const &, StoryName const &, StoryId const &, uint64_t start_time
-                            , uint32_t time_chunk_ranularity = 30, uint32_t access_window = 300);
+    int startStoryRecording(ChronicleName const &, StoryName const &, StoryId const &, uint64_t start_time);
 
     int stopStoryRecording(StoryId const &);
 
@@ -67,6 +73,12 @@ private:
     std::mutex dataStoreStateMutex;
     ChunkIngestionQueue &theIngestionQueue;
     StoryChunkExtractionQueue &theExtractionQueue;
+
+    uint32_t story_chunk_size;
+    uint32_t story_chunk_duration_secs;
+    uint32_t acceptance_window_secs;
+    uint32_t inactive_pipeline_delay_secs;
+    
     std::vector <thallium::managed <thallium::xstream>> dataStoreStreams;
     std::vector <thallium::managed <thallium::thread>> dataStoreThreads;
 
