@@ -116,7 +116,7 @@ cat >> dynamic-compose.yaml << EOF
 
 networks:
   chronolog_net:
-Your location
+
 volumes:
   shared_home:
 EOF
