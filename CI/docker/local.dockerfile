@@ -5,9 +5,15 @@ SHELL ["/bin/bash", "-c"]
 ARG USERNAME=grc-iit
 ARG UID=1001
 
+# Set noninteractive frontend
+ENV DEBIAN_FRONTEND=noninteractive
+ENV DEBCONF_NOWARNINGS=yes
+ENV TZ=America/Chicago
+
 # Install system dependencies
 RUN apt-get update \
- && apt-get -y upgrade \
+# && apt-mark hold libc6 libc-bin libc6-dev \
+# && apt-get -y upgrade \
  && DEBIAN_FRONTEND=noninteractive apt-get -y install \
     gcc g++ automake cmake libtool pkgconf \
     libjson-c-dev libboost-dev libcereal-dev \
@@ -49,6 +55,7 @@ RUN cd \
 # Install dependencies and ChronoLog, then clean Spack
 RUN cd \
  && git clone --branch v0.21.2 https://github.com/spack/spack.git \
+ && export SPACK_ROOT=$(pwd)/spack \
  && source spack/share/spack/setup-env.sh \
  && cd chronolog_repo \
  && spack env activate -p . \
@@ -66,8 +73,8 @@ RUN cd \
 RUN cd \
  && git clone https://github.com/ndenev/mpssh.git \
  && cd mpssh \
- && make \
- && sudo make install \
+ && make -j \
+ && sudo make -j install \
  && cd \
  && rm -rf mpssh
 

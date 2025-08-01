@@ -72,7 +72,7 @@ fi
 # Generate the docker-compose file dynamically
 cat > dynamic-compose.yaml << EOF
 x-common: &x-common
-  image: gnosisrc/chronolog:latest
+  image: gnosisrc/chronolog:pearc2025
   init: true
   networks:
     - chronolog_net
@@ -90,7 +90,7 @@ services:
 EOF
 
 # Generate the regular container services
-for i in $(seq 1 $(($NUM_CONTAINERS-1))); do
+for i in $(seq 1 $NUM_CONTAINERS); do
     cat >> dynamic-compose.yaml << EOF
   c$i:
     <<: *x-common
@@ -99,6 +99,14 @@ for i in $(seq 1 $(($NUM_CONTAINERS-1))); do
     volumes:
       - shared_home:/home/grc-iit
 EOF
+
+    # Map Grafana port on the first container
+    if [ $i -eq 1 ]; then
+        cat >> dynamic-compose.yaml << EOF
+    ports:
+      - "3000:3000"
+EOF
+    fi
 
     # Add dependencies starting from the second container
     if [ $i -gt 1 ]; then
@@ -136,7 +144,7 @@ done
 wait
 
 # Update Chronolog repo
-docker exec -it chronolog-c1 bash -c "cd ~/chronolog_repo && git reset --hard origin/develop && git pull"
+docker exec -it chronolog-c1 bash -c "cd ~/chronolog_repo && git pull"
 
 # Prepare hosts files
 docker exec -it chronolog-c1 bash -c "rm -rf ~/chronolog_install/Release/conf/hosts_*"
@@ -158,7 +166,8 @@ for i in $(seq 1 $NUM_CONTAINERS); do
 done
 
 # Force concretize and install dependencies in case of changes
-docker exec -it chronolog-c1 bash -c "cd ~/chronolog_repo && source ~/spack/share/spack/setup-env.sh && spack env activate . && spack concretize --force && spack install"
+# This command is commented out because it forces concretization of dependencies, which is not always necessary. Uncomment if dependency changes require re-concretization.
+#docker exec -it chronolog-c1 bash -c "cd ~/chronolog_repo && source ~/spack/share/spack/setup-env.sh && spack env activate . && spack concretize --force"
 
 # Rebuild ChronoLog
 docker exec -it chronolog-c1 bash -c "cd ~/chronolog_repo && source ~/spack/share/spack/setup-env.sh && spack env activate . && cd build && make -j"
@@ -168,5 +177,8 @@ docker exec -it chronolog-c1 bash -c "cd ~/chronolog_repo/build && source ~/spac
 
 # Deploy ChronoLog
 docker exec -it chronolog-c1 bash -c "cd ~/chronolog_repo/deploy && ./single_user_deploy.sh -d -w ~/chronolog_install/Release"
+
+# Start Grafana on the first container
+docker exec -it chronolog-c1 bash -c "sudo service grafana-server restart"
 
 echo "Deployed $NUM_CONTAINERS ChronoLog containers (1 for ChronoVisor, $NUM_KEEPERS for ChronoKeeper, $NUM_GRAPHERS for ChronoGrapher, and $NUM_PLAYERS for ChronoPlayer)"
