@@ -203,6 +203,7 @@ add_subdirectory(ChronoKeeper)
 add_subdirectory(ChronoGrapher)
 add_subdirectory(ChronoPlayer)
 add_subdirectory(ChronoStore)
+
 #if(CHRONOLOG_ENABLE_PYTHON_BINDINGS)
 message("Python bindings enabled")
 add_subdirectory(python_client)
