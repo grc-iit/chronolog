@@ -567,7 +567,7 @@ void interactive_replay_story(std::vector <std::string> &tokens, chronolog::Clie
 {
     if(tokens.size() != 5)
     {
-        std::cerr << "Usage: -r -s <chronicle_name> <story_name> <start_time> <end_time>" << std::endl;
+        std::cerr << "Usage: -r <chronicle_name> <story_name> <start_time> <end_time>" << std::endl;
         return;
     }
     int ret_i;
@@ -663,6 +663,7 @@ void interactive_destroy_chronicle(std::vector <std::string> &tokens, chronolog:
 
 int main(int argc, char **argv)
 {
+    // To suppress argobots warning
     std::string argobots_conf_str = R"({"argobots" : {"abt_mem_max_num_stacks" : 8
                                                     , "abt_thread_stacksize" : 2097152}})";
     margo_set_environment(argobots_conf_str.c_str());
@@ -681,31 +682,42 @@ int main(int argc, char **argv)
     {
         if(!confManager.load_from_file(conf_file_path))
         {
-            std::cerr << "[ClientAdmin] Failed to load configuration file '" << conf_file_path
-                      << "'. Using default values instead." << std::endl;
+            if(rank == 0)
+            {
+                std::cerr << "[ClientAdmin] Failed to load configuration file '" << conf_file_path
+                          << "'. Using default values instead." << std::endl;
+            }
         }
         else
         {
-            std::cout << "[ClientAdmin] Configuration file loaded successfully from '" << conf_file_path << "'."
-                      << std::endl;
+            if(rank == 0)
+            {
+                std::cout << "[ClientAdmin] Configuration file loaded successfully from '" << conf_file_path << "'."
+                          << std::endl;
+            }
         }
     }
     else
     {
-        std::cout << "[ClientAdmin] No configuration file provided. Using default values." << std::endl;
+        if(rank == 0)
+        {
+            std::cout << "[ClientAdmin] No configuration file provided. Using default values." << std::endl;
+        }
     }
 
-    if(rank == 0)
+    if (rank == 0)
     {
         confManager.log_configuration(std::cout);
     }
 
     // Initialize logging
-    int result = chronolog::chrono_monitor::initialize(confManager.LOG_CONF.LOGTYPE, confManager.LOG_CONF.LOGFILE
-                                                       , confManager.LOG_CONF.LOGLEVEL, confManager.LOG_CONF.LOGNAME
-                                                       , confManager.LOG_CONF.LOGFILESIZE
-                                                       , confManager.LOG_CONF.LOGFILENUM
-                                                       , confManager.LOG_CONF.FLUSHLEVEL);
+    int result = chronolog::chrono_monitor::initialize(confManager.LOG_CONF.LOGTYPE,
+                                                       confManager.LOG_CONF.LOGFILE,
+                                                       confManager.LOG_CONF.LOGLEVEL,
+                                                       confManager.LOG_CONF.LOGNAME,
+                                                       confManager.LOG_CONF.LOGFILESIZE,
+                                                       confManager.LOG_CONF.LOGFILENUM,
+                                                       confManager.LOG_CONF.FLUSHLEVEL);
 
     if(result == 1)
     {
@@ -753,7 +765,11 @@ int main(int argc, char **argv)
     ret_i = connectTimer.timeBlock(&chronolog::Client::Connect, client);
     assert(ret_i == chronolog::CL_SUCCESS);
 
-    std::cout << "Connected to server address: " << server_address << std::endl;
+    if(rank == 0)
+    {
+        std::cout << "Connected to server address: " << server_address << std::endl;
+    }
+
     std::string payload_str(MAX_EVENT_SIZE, 'a');
 
     double local_e2e_start = MPI_Wtime();
@@ -1024,7 +1040,6 @@ std::vector <std::string> &command_subs)
     double local_e2e_end = MPI_Wtime();
 
     ret_i = disconnectTimer.timeBlock(&chronolog::Client::Disconnect, client);
-//    std::cout << "Return value of Disconnect: " << chronolog::to_string_client(ret_i) << std::endl;
     assert(ret_i == chronolog::CL_SUCCESS);
     if(workload_args.barrier)
         MPI_Barrier(MPI_COMM_WORLD);
