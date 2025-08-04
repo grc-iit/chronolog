@@ -11,7 +11,6 @@
   "chrono_visor": {
     "VisorClientPortalService": {
       "rpc": {
-        "rpc_implementation": "Thallium_sockets",
         "protocol_conf": "ofi+sockets",
         "service_ip": "127.0.0.1",
         "service_base_port": 5555,
@@ -20,15 +19,14 @@
     },
     "VisorKeeperRegistryService": {
       "rpc": {
-        "rpc_implementation": "Thallium_sockets",
         "protocol_conf": "ofi+sockets",
         "service_ip": "127.0.0.1",
         "service_base_port": 8888,
         "service_provider_id": 88
       }
     },
-    "Logging": {
-      "log": {
+    "Monitoring": {
+      "monitor": {
         "type": "file",
         "file": "chrono_visor.log",
         "level": "debug",
@@ -44,7 +42,6 @@
     "RecordingGroup": 7,
     "KeeperRecordingService": {
       "rpc": {
-        "rpc_implementation": "Thallium_sockets",
         "protocol_conf": "ofi+sockets",
         "service_ip": "127.0.0.1",
         "service_base_port": 6666,
@@ -53,7 +50,6 @@
     },
     "KeeperDataStoreAdminService": {
       "rpc": {
-        "rpc_implementation": "Thallium_sockets",
         "protocol_conf": "ofi+sockets",
         "service_ip": "127.0.0.1",
         "service_base_port": 7777,
@@ -62,7 +58,6 @@
     },
     "VisorKeeperRegistryService": {
       "rpc": {
-        "rpc_implementation": "Thallium_sockets",
         "protocol_conf": "ofi+sockets",
         "service_ip": "127.0.0.1",
         "service_base_port": 8888,
@@ -71,15 +66,14 @@
     },
     "KeeperGrapherDrainService": {
       "rpc": {
-        "rpc_implementation": "Thallium_sockets",
         "protocol_conf": "ofi+sockets",
         "service_ip": "127.0.0.1",
         "service_base_port": 3333,
         "service_provider_id": 33
       }
     },
-    "Logging": {
-      "log": {
+    "Monitoring": {
+      "monitor": {
         "type": "file",
         "file": "chrono_keeper.log",
         "level": "debug",
@@ -89,13 +83,20 @@
         "flushlevel": "warning"
       }
     },
-    "story_files_dir": "/tmp/"
+    "DataStoreInternals": {
+      "max_story_chunk_size": 4096,
+      "story_chunk_duration_secs": 10,
+      "acceptance_window_secs": 15,
+      "inactive_story_delay_secs": 120
+    },
+    "Extractors": {
+      "story_files_dir": "/tmp"
+    }
   },
   "chrono_grapher": {
     "RecordingGroup": 7,
     "KeeperGrapherDrainService": {
       "rpc": {
-        "rpc_implementation": "Thallium_sockets",
         "protocol_conf": "ofi+sockets",
         "service_ip": "127.0.0.1",
         "service_base_port": 3333,
@@ -104,7 +105,6 @@
     },
     "DataStoreAdminService": {
       "rpc": {
-        "rpc_implementation": "Thallium_sockets",
         "protocol_conf": "ofi+sockets",
         "service_ip": "127.0.0.1",
         "service_base_port": 4444,
@@ -113,15 +113,14 @@
     },
     "VisorRegistryService": {
       "rpc": {
-        "rpc_implementation": "Thallium_sockets",
         "protocol_conf": "ofi+sockets",
         "service_ip": "127.0.0.1",
         "service_base_port": 8888,
         "service_provider_id": 88
       }
     },
-    "Logging": {
-      "log": {
+    "Monitoring": {
+      "monitor": {
         "type": "file",
         "file": "chrono_grapher.log",
         "level": "debug",
@@ -132,32 +131,60 @@
       }
     },
     "DataStoreInternals": {
-        "max_story_chunk_size": 4096
+      "max_story_chunk_size": 4096,
+      "story_chunk_duration_secs": 60,
+      "acceptance_window_secs": 180,
+      "inactive_story_delay_secs": 300
     },
     "Extractors": {
-        "story_files_dir" : "/tmp"
+      "story_files_dir": "/tmp"
     }
- },
-  "chrono_client": {
-    "VisorClientPortalService": {
+  },
+  "chrono_player": {
+    "RecordingGroup": 7,
+    "PlayerStoreAdminService": {
       "rpc": {
-        "rpc_implementation": "Thallium_sockets",
         "protocol_conf": "ofi+sockets",
         "service_ip": "127.0.0.1",
-        "service_base_port": 5555,
-        "service_provider_id": 55
+        "service_base_port": 2222,
+        "service_provider_id": 22
       }
     },
-    "Logging": {
-      "log": {
+    "PlaybackQueryService": {
+      "rpc": {
+        "protocol_conf": "ofi+sockets",
+        "service_ip": "127.0.0.1",
+        "service_base_port": 2225,
+        "service_provider_id": 25
+      }
+    },
+    "VisorRegistryService": {
+      "rpc": {
+        "protocol_conf": "ofi+sockets",
+        "service_ip": "127.0.0.1",
+        "service_base_port": 8888,
+        "service_provider_id": 88
+      }
+    },
+    "Monitoring": {
+      "monitor": {
         "type": "file",
-        "file": "chrono_client.log",
+        "file": "chrono_player.log",
         "level": "debug",
-        "name": "ChronoClient",
+        "name": "ChronoPlayer",
         "filesize": 1048576,
         "filenum": 3,
-        "flushlevel": "warning"
+        "flushlevel": "debug"
       }
+    },
+    "DataStoreInternals": {
+      "max_story_chunk_size": 4096,
+      "story_chunk_duration_secs": 60,
+      "acceptance_window_secs": 180,
+      "inactive_story_delay_secs": 300
+    },
+    "ArchiveReaders": {
+      "story_files_dir": "/tmp"
     }
   }
 }

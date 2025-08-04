@@ -1,4 +1,9 @@
-cmake_minimum_required(VERSION 3.17)
+cmake_minimum_required(VERSION 3.25)
+
+#message("ChronoEmulator CMakeLists - CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}")
+#message("ChronoEmulator CMakeLists - CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
+message("Building CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
+message("build target : ChronoEmulator")
 
 # Define the project and specify the required C++ standard
 project(ChronoEmulator LANGUAGES CXX)
@@ -17,7 +22,7 @@ set(SOURCE_FILES
 add_library(ChronoEmulator STATIC ${SOURCE_FILES})
 
 # Use target_include_directories instead of include_directories
-target_include_directories(ChronoEmulator PUBLIC ${PROJECT_SOURCE_DIR}/include)
+target_include_directories(ChronoEmulator PUBLIC include)
 
 # If there are any dependencies, link them here
 # target_link_libraries(chronoemulator other_libraries)

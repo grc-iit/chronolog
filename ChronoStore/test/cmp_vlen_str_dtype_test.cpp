@@ -13,7 +13,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <hdf5.h>
-#include <log.h>
+#include <chrono_monitor.h>
 #include <chronolog_errcode.h>
 //#include <story_chunk_test_utils.h>
 
@@ -213,8 +213,8 @@ int main(int argc, char*argv[])
     uint64_t story_id = STORY_ID; //dist(rng);
     uint64_t client_id = CLIENT_ID;
 
-    int result = Logger::initialize("console", "cmp_vlen_str_dtype_test.log", spdlog::level::debug
-                                    , "cmp_vlen_str_dtype_test", 102400, 1, spdlog::level::debug);
+    int result = chronolog::chrono_monitor::initialize("console", "cmp_vlen_str_dtype_test.log", spdlog::level::debug
+                                                       , "cmp_vlen_str_dtype_test", 102400, 1, spdlog::level::debug);
     if(result == 1)
     {
         exit(EXIT_FAILURE);
@@ -275,7 +275,7 @@ int main(int argc, char*argv[])
 //        if (!std::filesystem::create_directory(chronicle_dir.c_str()))
 //        {
 //            LOG_ERROR("Failed to create chronicle directory: {}, errno: {}", chronicle_dir.c_str(), errno);
-//            return CL_ERR_UNKNOWN;
+//            return chronolog::CL_ERR_UNKNOWN;
 //        }
 //    }
 
@@ -305,7 +305,7 @@ int main(int argc, char*argv[])
 //            if (story_file == H5I_INVALID_HID)
 //            {
 //                LOG_ERROR("Failed to create story file: {}", story_file_name.c_str());
-//                return CL_ERR_UNKNOWN;
+//                return chronolog::CL_ERR_UNKNOWN;
 //            }
 //            story_chunk_fd_map.emplace(story_id, story_file);
 //        }
@@ -468,7 +468,7 @@ int main(int argc, char*argv[])
 //            H5Fget_name(story_chunk_fd_map_it.second, story_file_name, file_name_len);
 //            LOG_ERROR("Failed to close file for story chunk: {}", story_file_name);
 //            free(story_file_name);
-//            return CL_ERR_UNKNOWN;
+//            return chronolog::CL_ERR_UNKNOWN;
 //        }
 //    }
 

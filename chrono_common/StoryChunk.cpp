@@ -1,5 +1,6 @@
 
 
+#include "chronolog_client.h" //for definition of chronolog::Event
 #include "StoryChunk.h"
 
 
@@ -7,12 +8,18 @@ namespace chl = chronolog;
 
 /////////////////////////
 
-chl::StoryChunk::StoryChunk(chl::StoryId const &story_id , uint64_t start_time , uint64_t end_time , uint32_t chunk_size )
-            : storyId(story_id)
-            , startTime(start_time)
-            , endTime(end_time)
-            , revisionTime(end_time)
+chl::StoryChunk::StoryChunk(chl::ChronicleName const &chronicle_name, chl::StoryName const &story_name
+                            , chl::StoryId const &story_id, uint64_t start_time
+                            , uint64_t end_time, uint32_t chunk_size)
+                            : chronicleName(chronicle_name), storyName(story_name)
+                            , storyId(story_id)
+                            , startTime(start_time), endTime(end_time), revisionTime(end_time)
 {
+    if(endTime <= startTime)
+    { 
+        endTime = (startTime+5000); 
+        revisionTime = endTime; 
+    }
 
 }
 
@@ -104,7 +111,7 @@ uint32_t chl::StoryChunk::mergeEvents(std::map<chl::EventSequence, chl::LogEvent
   
 uint32_t chl::StoryChunk::mergeEvents(chl::StoryChunk & other_chunk, uint64_t merge_start_time)
 {
-    LOG_TRACE("[StoryChunk] merge StoryId{} master chunk {}-{} : merging chunk {}-{} eventCount {}", storyId, startTime,
+    LOG_DEBUG("[StoryChunk] merge StoryId{} master chunk {}-{} : merging in chunk {}-{} eventCount {}", storyId, startTime,
               endTime, other_chunk.getStartTime(), other_chunk.getEndTime(), other_chunk.getEventCount());
 
     uint32_t merged_event_count = 0;
@@ -121,14 +128,14 @@ uint32_t chl::StoryChunk::mergeEvents(chl::StoryChunk & other_chunk, uint64_t me
             (merge_start_time < startTime ? other_chunk.lower_bound(startTime)
                                           : other_chunk.lower_bound(merge_start_time));
 
-    LOG_TRACE("[StoryChunk] merge StoryId{} master chunk {} : adjusted merge_start : other_chunk {}  merge_start {}",
-              storyId, startTime, other_chunk.getStartTime(),
+    LOG_DEBUG("[StoryChunk] merge StoryId{} master chunk {}-{} : adjusted merge_start : other_chunk {}-{}  merge_start {}",
+              storyId, startTime, endTime, other_chunk.getStartTime(),other_chunk.getEndTime(),
               (merge_start != other_chunk.end() ? (*merge_start).second.time() : (uint64_t)0));
 
     for(auto iter = merge_start; (iter != other_chunk.end()) && ((*iter).second.time() < endTime); ++iter)
     {
-        LOG_TRACE("[StoryChunk] merge StoryId{} master chunk {} : merging event {}, master endTime{}", storyId,
-                  startTime, (*iter).second.time(), endTime);
+        LOG_TRACE("[StoryChunk] merge StoryId {} master chunk {}-{} : merging event {} ", storyId,
+                  startTime, endTime, (*iter).second.time());
         if(insertEvent((*iter).second) > 0)
         {
             if(merged_event_count == 0) 
@@ -139,9 +146,8 @@ uint32_t chl::StoryChunk::mergeEvents(chl::StoryChunk & other_chunk, uint64_t me
         else
         {
             //stop at the first record that can't be merged
-            LOG_TRACE("[StoryChunk] merge StoryId {} master chunk {} : stopped merging due to event that couldn't be "
-                      "inserted.{}",
-                      storyId, startTime, (*iter).second.time());
+            LOG_ERROR("[StoryChunk] merge StoryId {} master chunk {}-{} : stopped merging in chunk {}-{} because of event {} ",
+                      storyId, startTime,endTime, other_chunk.getStartTime(), other_chunk.getEndTime(), (*iter).second.time());
             break;
         }
     }
@@ -151,14 +157,14 @@ uint32_t chl::StoryChunk::mergeEvents(chl::StoryChunk & other_chunk, uint64_t me
         //remove the merged records from the original map
         // removing recordis in range [first_merged, last_merged]
         other_chunk.eraseEvents(first_merged, ++last_merged);
-        LOG_TRACE("[StoryChunk] merge StoryId {} master chunk {} : merged {} records from chunk {} remaining "
+        LOG_DEBUG("[StoryChunk] merge StoryId {} master chunk {}-{} : merged in {} events from chunk {}-{} remaining "
                   "eventCount {}",
-                  storyId, startTime, merged_event_count, other_chunk.getStartTime(), other_chunk.getEventCount());
+                  storyId, startTime,endTime, merged_event_count, other_chunk.getStartTime(),other_chunk.getEndTime(), other_chunk.getEventCount());
     }
     else
     {
-        LOG_TRACE("[StoryChunk] merge StoryId {} master chunk {} : No events merged during the operation.", storyId,
-                  startTime);
+        LOG_DEBUG("[StoryChunk] merge StoryId {} master chunk {}-{} : No events merged in from chunk {}-{}", storyId,
+                  startTime,endTime, other_chunk.getStartTime(),other_chunk.getEndTime());
     }
 
     return merged_event_count;
@@ -206,3 +212,18 @@ std::map<chl::EventSequence, chl::LogEvent>::iterator chl::StoryChunk::eraseEven
 }
 
 ///////////////////
+
+std::vector<chl::Event> & chl::StoryChunk::extractEventSeries( std::vector<chl::Event> & event_series)
+{
+    // NOTE: event_series is a vector of chronolog::Event ( client facing event representation)
+    // while StoryChunk is using LogEvent (internal chronolog event representation)
+    
+    for(auto logEvent : logEvents)
+    {
+        event_series.push_back(chl::Event{ logEvent.second.eventTime, logEvent.second.clientId, logEvent.second.eventIndex, logEvent.second.logRecord});
+    }
+
+    logEvents.clear();
+    
+    return event_series;
+}

@@ -9,7 +9,7 @@
 #include <thallium/serialization/stl/vector.hpp>
 #include "../../ChronoAPI/ChronoLog/include/common.h"
 #include <mpi.h>
-#include "log.h"
+#include "chrono_monitor.h"
 
 #define WARM_UP_REPS 3
 #define MSG_SIZE (1 * 1024 * 1024)
@@ -24,12 +24,10 @@ void report_results(double duration_ave, double duration_min, double duration_ma
 {
     // Logging the results with descriptive headers for better context.
     LOG_INFO("[Performance Metrics Report (msg_size={}MB)(us)]", MSG_SIZE / (1024.0 * 1024.0));
-    LOG_INFO(
-            "-------------------------------------------------------------------------------------------------------");
+    LOG_INFO("-------------------------------------------------------------------------------------------------------");
     LOG_INFO("{:>16} {:>16} {:>16} {:>16} {:>16} {:>16}", "Ave Time", "Min Time", "Max Time", "Wall Time"
              , "Ave Init Time", "Ave Comm Time");
-    LOG_INFO(
-            "-------------------------------------------------------------------------------------------------------");
+    LOG_INFO("-------------------------------------------------------------------------------------------------------");
     LOG_INFO("{:>16.4f} {:>16.4f} {:>16.4f} {:>16.4f} {:>16.4f} {:>16.4f}", duration_ave, duration_min, duration_max
              , duration_wall, duration_init_ave, duration_comm_ave);
 }
@@ -86,8 +84,8 @@ int main(int argc, char**argv)
     MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
     MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
 
-    int result = Logger::initialize("console", "thallium_client_mpi.log", spdlog::level::debug, "thallium_client_mpi"
-                                    , 1048576, 5, spdlog::level::debug);
+    int result = chronolog::chrono_monitor::initialize("console", "thallium_client_mpi.log", spdlog::level::debug
+                                                       , "thallium_client_mpi", 1048576, 5, spdlog::level::debug);
     if(result == 1)
     {
         exit(EXIT_FAILURE);

@@ -4,6 +4,8 @@
 
 #include <string>
 #include <ostream>
+#include <cstring>
+#include <tuple>
 
 namespace chronolog
 {
@@ -58,7 +60,7 @@ public:
     bool operator==(const LogEvent &other) const
     {
         return (storyId == other.storyId && eventTime == other.eventTime && clientId == other.clientId &&
-                eventIndex == other.eventIndex && logRecord == other.logRecord);
+                eventIndex == other.eventIndex );
     }
 
     // convert to string
@@ -70,7 +72,6 @@ public:
         return str;
     }
 };
-
 }
 
 inline std::ostream &operator<<(std::ostream &out, chronolog::LogEvent const &event)

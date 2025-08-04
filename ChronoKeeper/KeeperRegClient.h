@@ -47,7 +47,7 @@ public:
         catch(tl::exception const &)
         {
             LOG_ERROR("[KeeperRegisterClient] Failed Sending Register Message.");
-            return CL_ERR_UNKNOWN;
+            return chronolog::CL_ERR_UNKNOWN;
         }
     }
 
@@ -63,7 +63,7 @@ public:
         catch(tl::exception const &)
         {
             LOG_ERROR("[KeeperRegisterClient] Failed Sending Unregistered Message.");
-            return CL_ERR_UNKNOWN;
+            return chronolog::CL_ERR_UNKNOWN;
         }
     }
 

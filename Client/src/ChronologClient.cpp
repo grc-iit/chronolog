@@ -1,14 +1,13 @@
 #include "ChronologClientImpl.h"
 
-
-chronolog::Client::Client(ChronoLog::ConfigurationManager const &confManager)
-{
-    chronologClientImpl = chronolog::ChronologClientImpl::GetClientImplInstance(confManager);
-}
-
 chronolog::Client::Client(chronolog::ClientPortalServiceConf const &visorClientPortalServiceConf)
 {
-    chronologClientImpl = chronolog::ChronologClientImpl::GetClientImplInstance(visorClientPortalServiceConf);
+    chronologClientImpl = chronolog::ChronologClientImpl::GetClientImplInstance(visorClientPortalServiceConf, chronolog::WRITER_MODE, chronolog::ClientQueryServiceConf{"","",0,0});
+}
+
+chronolog::Client::Client(chronolog::ClientPortalServiceConf const &visorClientPortalServiceConf, chronolog::ClientQueryServiceConf const& clientQueryServiceConf)
+{
+    chronologClientImpl = chronolog::ChronologClientImpl::GetClientImplInstance(visorClientPortalServiceConf, chronolog::READER_MODE, clientQueryServiceConf);
 }
 
 chronolog::Client::~Client()
@@ -77,3 +76,8 @@ chronolog::Client::ShowStories(std::string const &chronicle_name, std::vector <s
 }
 
 
+int chronolog::Client::ReplayStory(std::string const & chronicle_name, std::string const & story_name, uint64_t start_time, uint64_t end_time
+                , std::vector<chronolog::Event> & event_series)
+{
+    return chronologClientImpl->replay_story(chronicle_name, story_name, start_time, end_time, event_series);
+}

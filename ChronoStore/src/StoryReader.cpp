@@ -2,7 +2,7 @@
 
 #define H5_SIZEOF_SSIZE_T H5_SIZEOF_LONG_LONG
 
-#include <hdf5.h>
+
 #include <string>
 #include <vector>
 #include <filesystem>
@@ -12,7 +12,7 @@
 #include <chunkattr.h>
 #include <datasetreader.h>
 #include <datasetminmax.h>
-#include <log.h>
+#include <chrono_monitor.h>
 #include <chronolog_errcode.h>
 
 #define DEBUG 0 // Set to 1 ito print H5 error messages to console
@@ -46,7 +46,7 @@ std::map <uint64_t, chronolog::StoryChunk> StoryReader::readAllStories(const std
  * @param chronicle_name Chronicle name to read
  * @param story_file_name Story file name to read
  * @param story_chunk_map the map to store StoryChunk objects
- * @return CL_SUCCESS if successful, else error code
+ * @return chronolog::CL_SUCCESS if successful, else error code
  */
 int StoryReader::readStory(const std::string &chronicle_name, const std::string &story_file_name
                            , std::map <uint64_t, chronolog::StoryChunk> &story_chunk_map)
@@ -72,7 +72,7 @@ int StoryReader::readStory(const std::string &chronicle_name, const std::string 
  * Read all Story Chunks in the Story file
  * @param story_file Story file to read
  * @param story_chunk_map the map to store StoryChunk objects
- * @return CL_SUCCESS if successful, else error code
+ * @return chronolog::CL_SUCCESS if successful, else error code
  */
 int StoryReader::readAllStoryChunks(hid_t &story_file, std::map <uint64_t, chronolog::StoryChunk> &story_chunk_map)
 {
@@ -135,6 +135,12 @@ chronolog::StoryChunk StoryReader::readOneStoryChunk(hid_t &story_file, const st
     }
     LOG_DEBUG("read {} bytes from story_chunk_dset: {}", strlen(story_chunk_dset_buf), story_chunk_name.c_str());
 
+    // Read chronicle_name attribute
+    std::string chronicle_name = readStringAttribute(story_chunk_dset, "chronicle_name");
+
+    // Read story_name attribute
+    std::string story_name = readStringAttribute(story_chunk_dset, "story_name");
+
     // Read story_id_str attribute
     uint64_t story_id = readUint64Attribute(story_chunk_dset, "story_id");
 
@@ -145,7 +151,8 @@ chronolog::StoryChunk StoryReader::readOneStoryChunk(hid_t &story_file, const st
     uint64_t end_time = readUint64Attribute(story_chunk_dset, "end_time");
 
     // Convert Story Chunk bytes to map of Story Chunks
-    chronolog::StoryChunk story_chunk = deserializeStoryChunk(story_chunk_dset_buf, story_id, start_time, end_time);
+    chronolog::StoryChunk story_chunk = deserializeStoryChunk(story_chunk_dset_buf, chronicle_name, story_name
+                                                              , story_id, start_time, end_time);
 
     free(story_chunk_dset_buf);
     free(story_chunk_dset_dims);
@@ -203,17 +210,19 @@ uint64_t StoryReader::readUint64Attribute(hid_t &story_chunk_dset
 /**
  * Deserialize a Story Chunk from a JSON string
  * @param story_chunk_json_str JSON string read from a Story Chunk dataset
+ * @param chronicle_name Chronicle name
+ * @param story_name Story name
  * @param story_id StoryID
  * @param start_time start time of the Story Chunk
  * @param end_time end time of the Story Chunk
  * @return a Story Chunk
  */
 chronolog::StoryChunk
-StoryReader::deserializeStoryChunk(char*story_chunk_json_str, // NOLINT(*-convert-member-functions-to-static)
-        uint64_t story_id, uint64_t start_time, uint64_t end_time)
+StoryReader::deserializeStoryChunk(char*story_chunk_json_str, std::string chronicle_name, std::string story_name
+                                   , uint64_t story_id, uint64_t start_time, uint64_t end_time)
 {
     struct json_object*obj = json_tokener_parse(story_chunk_json_str);
-    chronolog::StoryChunk story_chunk(story_id, start_time, end_time);
+    chronolog::StoryChunk story_chunk(chronicle_name, story_name, story_id, start_time, end_time);
     enum json_type type = json_object_get_type(obj);
     if(type == json_type_object)
     {
@@ -252,7 +261,7 @@ StoryReader::deserializeStoryChunk(char*story_chunk_json_str, // NOLINT(*-conver
  * @param start_time start time of the range
  * @param end_time end time of the range
  * @param story_chunk_map map of Story Chunks to be populated
- * @return CL_SUCCESS on success, else error code
+ * @return chronolog::CL_SUCCESS on success, else error code
  */
 int StoryReader::readStoryRange(const std::string &chronicle_name, const uint64_t &story_id, uint64_t start_time
                                 , uint64_t end_time, std::map <uint64_t, chronolog::StoryChunk> &story_chunk_map)

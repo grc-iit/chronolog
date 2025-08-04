@@ -8,7 +8,8 @@
 #include <event.h>
 #include <datasetreader.h>
 #include <datasetminmax.h>
-#include <log.h>
+#include <chrono_monitor.h>
+#include <hdf5.h>
 
 class StoryReader
 {
@@ -17,7 +18,8 @@ private:
 
     // Deserialize StoryChunk from JSON string
     chronolog::StoryChunk
-    deserializeStoryChunk(char*story_chunk_json_str, uint64_t story_id, uint64_t start_time, uint64_t end_time);
+    deserializeStoryChunk(char*story_chunk_json_str, std::string chronicle_name, std::string story_name
+                          , uint64_t story_id, uint64_t start_time, uint64_t end_time);
 
     // Find all Story Chunks that overlap with the given time range of a Story
     std::vector <std::string>

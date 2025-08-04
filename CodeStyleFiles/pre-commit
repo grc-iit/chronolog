@@ -1,0 +1,38 @@
+#!/bin/bash
+
+# Exit immediately if a command exits with a non-zero status
+set -e
+
+# Get the root directory of the Git repository
+REPO_ROOT=$(git rev-parse --show-toplevel)
+
+# Adjust path to clang-format config if needed
+FORMAT_STYLE=file:"$REPO_ROOT/CodeStyleFiles/ChronoLog.clang-format"
+
+# Check if clang-format is installed
+if ! command -v clang-format &> /dev/null; then
+  echo "Error: clang-format is not installed or not in PATH."
+  exit 1
+fi
+
+# Check if the clang-format configuration file exists
+if [ ! -f "$REPO_ROOT/CodeStyleFiles/ChronoLog.clang-format" ]; then
+  echo "Error: clang-format configuration file not found at $REPO_ROOT/CodeStyleFiles/ChronoLog.clang-format."
+  exit 1
+fi
+
+# Get staged C++ files
+mapfile -t FILES < <(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(cpp|hpp|c|h)$' || true)
+
+# Only proceed if there are matching files
+if [ ${#FILES[@]} -eq 0 ]; then
+  exit 0
+fi
+
+# Format and re-stage each file
+for file in "${FILES[@]}"; do
+  if [ -f "$file" ]; then
+    clang-format -style="$FORMAT_STYLE" -i "$file"
+    git add "$file"
+  fi
+done

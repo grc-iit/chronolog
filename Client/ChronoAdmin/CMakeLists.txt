@@ -1,6 +1,11 @@
-cmake_minimum_required(VERSION 3.19)
+cmake_minimum_required(VERSION 3.25)
 
 find_package(MPI REQUIRED)
+
+#message("ClientAdmin CMakeLists - CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}")
+#message("ClientAdmin CMakeLists - CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
+message("Building CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
+message("build target : client_admin")
 
 add_executable(client_admin client_admin.cpp)
 
@@ -16,7 +21,9 @@ install(
     TARGETS client_admin DESTINATION bin
 )
 
-# install configuration file
+# install client configuration file
 install(
-    FILES ${CMAKE_CURRENT_SOURCE_DIR}/../../default_conf.json.in DESTINATION conf RENAME default_conf.json
+    FILES ${CMAKE_SOURCE_DIR}/default_client_conf.json.in
+    DESTINATION ${CHRONOLOG_INSTALL_CONF_DIR}
+    RENAME default_client_conf.json
 )

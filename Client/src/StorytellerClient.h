@@ -6,7 +6,7 @@
 #include <map>
 
 #include <thallium.hpp>
-#include "log.h"
+#include "chrono_monitor.h"
 #include "KeeperIdCard.h"
 #include "chronolog_types.h"
 #include "chronolog_client.h"
@@ -21,6 +21,7 @@ public:
 };
 
 class KeeperRecordingClient;
+class PlaybackQueryRpcClient;
 
 class RoundRobinKeeperChoice
 {
@@ -36,12 +37,12 @@ public:
 class StorytellerClient
 {
 public:
-    StorytellerClient(ChronologTimer &chronolog_timer, thallium::engine &client_tl_engine, ClientId const &client_id
-                      , std::string const &rpc_protocol = std::string("ofi+sockets")): theTimer(chronolog_timer)
-                                                                                       , client_engine(client_tl_engine)
-                                                                                       , clientId(client_id)
-                                                                                       , rpc_protocol_string(
-                    rpc_protocol)
+    StorytellerClient(ChronologTimer &chronolog_timer 
+           , thallium::engine &client_tl_engine
+           , ClientId const &client_id)
+        : theTimer(chronolog_timer)
+        , client_engine(client_tl_engine)
+        , clientId(client_id)
     {
         LOG_DEBUG("[StorytellerClient] Initialized with ClientID: {}", clientId);
     }
@@ -49,13 +50,12 @@ public:
     ~StorytellerClient();
 
     int addKeeperRecordingClient(KeeperIdCard const &);
-
     int removeKeeperRecordingClient(KeeperIdCard const &);
 
     StoryHandle*findStoryWritingHandle(ChronicleName const &, StoryName const &);
 
     StoryHandle*initializeStoryWritingHandle(ChronicleName const &, StoryName const &, StoryId const &
-                                             , std::vector <KeeperIdCard> const &);
+                                             , std::vector <KeeperIdCard> const &, ServiceId const&);
 
     void removeAcquiredStoryHandle(ChronicleName const &, StoryName const &);
 
@@ -67,6 +67,7 @@ public:
 
     int get_event_index();
 
+ //   ServiceId const& get_local_service_id() const    { return theClientQueryService.get_service_id(); }
 
 private:
     StorytellerClient(StorytellerClient const &) = delete;
@@ -74,9 +75,8 @@ private:
     StorytellerClient &operator=(StorytellerClient const &) = delete;
 
     ChronologTimer &theTimer;
-    thallium::engine &client_engine;
+    thallium::engine & client_engine;
     ClientId clientId;
-    std::string rpc_protocol_string;
     std::atomic <int> atomic_index;
 
     std::mutex recordingClientMapMutex;
@@ -93,21 +93,22 @@ template <class KeeperChoicePolicy>
 class StoryWritingHandle: public StoryHandle
 {
 public:
-    StoryWritingHandle(StorytellerClient &client, ChronicleName const &a_chronicle, StoryName const &a_story
-                       , StoryId const &story_id): theClient(client), chronicle(a_chronicle), story(a_story), storyId(
-            story_id), keeperChoicePolicy(new KeeperChoicePolicy)
+    StoryWritingHandle(StorytellerClient &client, ChronicleName const &a_chronicle, StoryName const &a_story , StoryId const &story_id)
+        : theClient(client)
+        , chronicle(a_chronicle), story(a_story), storyId(story_id)
+        , keeperChoicePolicy(new KeeperChoicePolicy)
+     //   , playbackQueryClient(nullptr)
     {
         LOG_DEBUG("[StoryWritingHandle] Initialized for Chronicle: {}, Story: {}", a_chronicle, a_story);
     }
 
     virtual ~StoryWritingHandle();
 
-    virtual int log_event(std::string const &);
+    virtual uint64_t log_event(std::string const &);
 
-    virtual int log_event(size_t size, void*data);
+   // virtual int log_event(size_t size, void*data);
 
     void addRecordingClient(KeeperRecordingClient*);
-
     void removeRecordingClient(KeeperIdCard const &);
 
 private:
@@ -118,7 +119,7 @@ private:
     StoryId storyId;
     KeeperChoicePolicy*keeperChoicePolicy;
     std::vector <KeeperRecordingClient*> storyKeepers;
-
+    
 };
 
 }//namespace

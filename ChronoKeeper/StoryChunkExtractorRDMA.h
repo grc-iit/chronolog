@@ -10,8 +10,6 @@ namespace tl = thallium;
 namespace chronolog
 {
 
-#define MAX_BULK_MEM_SIZE (2 * 1024 * 1024)
-
 class StoryChunkExtractorRDMA: public StoryChunkExtractorBase
 {
 public:
@@ -23,7 +21,7 @@ public:
     int processStoryChunk(StoryChunk*story_chunk) override;
 
 private:
-    char serialized_buf[MAX_BULK_MEM_SIZE];
+//    char serialized_buf[MAX_BULK_MEM_SIZE];
     tl::engine &extraction_engine;
     tl::remote_procedure drain_to_grapher;
     tl::provider_handle service_ph;

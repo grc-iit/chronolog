@@ -8,7 +8,7 @@
 #include <hdf5.h>
 #include <StoryWriter.h>
 #include <StoryReader.h>
-#include <log.h>
+#include <chrono_monitor.h>
 #include <story_chunk_test_utils.h>
 #include "chronolog_types.h"
 
@@ -17,9 +17,6 @@
 #define NUM_OF_TESTS 200
 
 #define CHRONICLE_ROOT_DIR "/home/kfeng/chronolog_store/"
-#define CLIENT_ID 1
-#define CHRONICLE_NAME "Ares_Monitoring"
-#define STORY_NAME "CPU_Utilization"
 
 bool compareLogEvent(const chronolog::LogEvent &event1, const chronolog::LogEvent &event2)
 {
@@ -98,7 +95,7 @@ void testWriteOperation(const std::map <uint64_t, chronolog::StoryChunk> &story_
 {
     std::string chronicle_root_dir = CHRONICLE_ROOT_DIR;
     StoryWriter writer(chronicle_root_dir);
-    writer.writeStoryChunks(story_chunk_map, chronicle_name);
+    writer.writeStoryChunks(story_chunk_map, chronicle_name, story_name);
 }
 
 void testRangeReadOperation(const std::string &chronicle_name, const uint64_t &story_id, uint64_t start_time
@@ -152,8 +149,8 @@ int main(int argc, char*argv[])
     uint64_t story_id = dist(rng);
     uint64_t client_id = CLIENT_ID;
 
-    int result = Logger::initialize("console", "hdf5_archiver_test.log", spdlog::level::debug, "hdf5_archiver_test"
-                                    , 102400, 1, spdlog::level::debug);
+    int result = chronolog::chrono_monitor::initialize("console", "hdf5_archiver_test.log", spdlog::level::debug
+                                                       , "hdf5_archiver_test", 102400, 1, spdlog::level::debug);
     if(result == 1)
     {
         exit(EXIT_FAILURE);

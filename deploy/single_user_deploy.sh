@@ -7,62 +7,149 @@ INFO='\033[7;49m\033[92m'
 DEBUG='\033[0;33m'
 NC='\033[0m' # No Color
 
-WORK_DIR="/home/${USER}/chronolog"
-LIB_DIR="${WORK_DIR}/lib"
-CONF_DIR="${WORK_DIR}/conf"
-OUTPUT_DIR="${WORK_DIR}/output"
+# Basics
+USER=$(whoami)
+
+# Default values
+BUILD_TYPE="Release"
+NUM_RECORDING_GROUP=1
+
+# Directories
+INSTALL_DIR=""
+REPO_ROOT=""
+SYS_LIB_DIR="/lib/x86_64-linux-gnu/"
+WORK_DIR=""
+LIB_DIR=""
+CONF_DIR=""
+BIN_DIR=""
+MONITOR_DIR=""
+OUTPUT_DIR=""
+
+# Binary names
 VISOR_BIN_FILE_NAME="chronovisor_server"
 GRAPHER_BIN_FILE_NAME="chrono_grapher"
 KEEPER_BIN_FILE_NAME="chrono_keeper"
-CLIENT_BIN_FILE_NAME="client_lib_multi_storytellers"
-VISOR_BIN="${WORK_DIR}/bin/${VISOR_BIN_FILE_NAME}"
-GRAPHER_BIN="${WORK_DIR}/bin/${GRAPHER_BIN_FILE_NAME}"
-KEEPER_BIN="${WORK_DIR}/bin/${KEEPER_BIN_FILE_NAME}"
-CLIENT_BIN="${WORK_DIR}/bin/${CLIENT_BIN_FILE_NAME}"
-VISOR_BIN_DIR=$(dirname ${VISOR_BIN})
-GRAPHER_BIN_DIR=$(dirname ${GRAPHER_BIN})
-KEEPER_BIN_DIR=$(dirname ${KEEPER_BIN})
-CLIENT_BIN_DIR=$(dirname ${CLIENT_BIN})
-CONF_FILE="${CONF_DIR}/default_conf.json"
+PLAYER_BIN_FILE_NAME="chrono_player"
+
+# Binary paths (default to empty)
+VISOR_BIN=""
+GRAPHER_BIN=""
+KEEPER_BIN=""
+PLAYER_BIN=""
+VISOR_BIN_DIR=""
+GRAPHER_BIN_DIR=""
+KEEPER_BIN_DIR=""
+PLAYER_BIN_DIR=""
+
+# Configuration file and component-specific conf arguments
+CONF_FILE=""
+CLIENT_CONF_FILE=""
 VISOR_ARGS="--config ${CONF_FILE}"
 GRAPHER_ARGS="--config ${CONF_FILE}"
 KEEPER_ARGS="--config ${CONF_FILE}"
-CLIENT_ARGS="--config ${CONF_FILE}"
-VISOR_HOSTS="${CONF_DIR}/hosts_visor"
-GRAPHER_HOSTS="${CONF_DIR}/hosts_grapher"
-KEEPER_HOSTS="${CONF_DIR}/hosts_keeper"
-CLIENT_HOSTS="${CONF_DIR}/hosts_client"
-[ -f "${GRAPHER_HOSTS}" ] && NUM_RECORDING_GROUP=$(wc -l < "${GRAPHER_HOSTS}") || NUM_RECORDING_GROUP=1
-HOSTNAME_HS_NET_SUFFIX="-40g"
+PLAYER_ARGS="--config ${CONF_FILE}"
+
+# Hosts files
+VISOR_HOSTS=""
+GRAPHER_HOSTS=""
+KEEPER_HOSTS=""
+PLAYER_HOSTS=""
+
+# Cluster specific settings
+HOSTNAME_HS_NET_SUFFIX=""
 JOB_ID=""
-deploy=false
+
+# Operation flags
+build=false
+install=false
+start=false
 stop=false
-kill=false
-reset=false
-local=false
+clean=false
+
+# Verbose flag
 verbose=false
 
 usage() {
-    echo "Usage: $0 -d|--deploy Start ChronoLog deployment (default: false)
-                               -s|--stop Stop ChronoLog deployment (default: false)
-                               -k|--kill Terminate ChronoLog deployment (default: false)
-                               -r|--reset Reset/cleanup ChronoLog deployment (default: false)
-                               -w|--work_dir WORK_DIR (default: ~/chronolog)
-                               -u|--output_dir OUTPUT_DIR (default: work_dir/output)
-                               -v|--visor VISOR_BIN (default: work_dir/bin/chronovisor_server)
-                               -g|--grapher GRAPHER_BIN (default: work_dir/bin/chrono_grapher)
-                               -p|--keeper KEEPER_BIN (default: work_dir/bin/chrono_keeper)
-                               -c|--client CLIENT_BIN (default: work_dir/bin/client_lib_multi_storytellers)
-                               -i|--visor_hosts VISOR_HOSTS (default: work_dir/conf/hosts_visor)
-                               -a|--grapher_hosts GRAPHER_HOSTS (default: work_dir/conf/hosts_grapher)
-                               -o|--keeper_hosts KEEPER_HOSTS (default: work_dir/conf/hosts_keeper)
-                               -t|--client_hosts CLIENT_HOSTS (default: work_dir/conf/hosts_client)
-                               -f|--conf_file CONF_FILE (default: work_dir/conf/default_conf.json)
-                               -j|--job_id JOB_ID (default: \"\", overwrites hosts files if set)
-                               -n|--num_recording_group NUM_RECORDING_GROUP (default: #hosts in GRAPHER_HOSTS if exists, 1 otherwise, overwrites hosts files if set)
-                               -e|--verbose Enable verbose output (default: false)
-                               -h|--help Print this page"
+    echo "Usage: $0 [options]"
+    echo ""
+    echo "Options:"
+    echo "  -h|--help           Display this help and exit"
+    echo ""
+    echo "Execution Modes (Select only ONE):"
+    echo "  -b|--build          Build ChronoLog (default: false)"
+    echo "  -i|--install        Install ChronoLog (default: false)"
+    echo "  -d|--start          Start ChronoLog Deployment (default: false)"
+    echo "  -s|--stop           Stop ChronoLog Deployment (default: false)"
+    echo "  -c|--clean          Clean ChronoLog logging artifacts and output of previous deployments (default: false)"
+    echo "  Note: Only one execution mode can be selected per run."
+    echo ""
+    echo "Build Options:"
+    echo "  -t|--build-type <Debug|Release>  Define type of build (default: Release) [Modes: Build]"
+    echo "  -l|--install-dir <path>          Define installation directory (default: /home/$USER/chronolog/BUILD_TYPE) [Modes: Build]"
+    echo ""
+    echo "Deployment Options:"
+    echo "  -r|--record-groups <number>      Set the number of RecordingGroups or ChronoGrapher processes [Modes: Start]"
+    echo "  -j|--job-id <number>             Set the Slurm job ID to get hosts from (default: \"\") [Modes: Start]"
+    echo "  -q|--visor-hosts <path>          Set the hosts file for ChronoVisor (default: work_dir/conf/hosts_visor) [Modes: Start]"
+    echo "  -k|--grapher-hosts <path>        Set the hosts file for ChronoGrapher (default: work_dir/conf/hosts_grapher) [Modes: Start]"
+    echo "  -o|--keeper-hosts <path>         Set the hosts file for ChronoKeeper (default: work_dir/conf/hosts_keeper) [Modes: Start]"
+    echo ""
+    echo "Directory Settings:"
+    echo "  -w|--work-dir <path>             Set the working directory (Mandatory) [Modes: Install, Start, Stop, Clean]"
+    echo "  -m|--monitor-dir <path>          Set the monitoring directory (default: work_dir/monitor) [Modes: Start]"
+    echo "  -u|--output-dir <path>           Set the output directory (default: work_dir/output) [Modes: Start]"
+    echo ""
+    echo "Binary Paths:"
+    echo "  -v|--visor-bin <path>            Path to the ChronoVisor binary (default: work_dir/bin/chronovisor_server) [Modes: Start]"
+    echo "  -g|--grapher-bin <path>          Path to the ChronoGrapher binary (default: work_dir/bin/chrono_grapher) [Modes: Start]"
+    echo "  -p|--keeper-bin <path>           Path to the ChronoKeeper binary (default: work_dir/bin/chrono_keeper) [Modes: Start]"
+    echo "  -a|--player-bin <path>           Path to the ChronoPlayer binary (default: work_dir/bin/chrono_player) [Modes: Start]"
+    echo ""
+    echo "Configuration Settings:"
+    echo "  -f|--conf-file <path>            Path to the configuration file (default: work_dir/conf/default_conf.json) [Modes: Start]"
+    echo "  -n|--client-conf-file <path>     Path to the client configuration file (default: work_dir/conf/client_conf.json) [Modes: Start]"
+    echo ""
+    echo "Miscellaneous Options:"
+    echo "  -e|--verbose                     Enable verbose output (default: false)"
+    echo ""
+    echo "Examples (Assume installing a Debug build to ~/chronolog_install):"
+    echo "  1) Builds ChronoLog in Release mode:"
+    echo "     $0 --build --build-type Debug --install-dir ~/chronolog_install"
+    echo ""
+    echo "  2) Installs ChronoLog to the specified installation directory (~/chronolog_install/Debug):"
+    echo "     $0 --install --work-dir ~/chronolog_install/Debug"
+    echo ""
+    echo "  3) Starts a ChronoLog deployment using the default configurations and paths,"
+    echo "     pulling the binaries, hosts, and configuration files from the specified work directory (~/chronolog_install/Debug):"
+    echo "     $0 --start --work-dir ~/chronolog_install/Debug"
+    echo ""
+    echo "  4) Starts a ChronoLog deployment using allocated nodes from Slurm job"
+    echo "     job_id from the specified work directory (~/chronolog_install/Debug),"
+    echo "     ChronoVisor will run on the first node, ChronoGrapher on the last node, and ChronoKeeper on all the nodes:"
+    echo "     $0 --start --work-dir ~/chronolog_install/Debug --job-id <job_id>"
+    echo ""
+    echo "  5) Starts a ChronoLog deployment using allocated nodes from Slurm job job_id,"
+    echo "     with 2 ChronoGrapher processes from the specified work directory (~/chronolog_install/Debug):"
+    echo "     $0 --start --work-dir ~/chronolog_install/Debug --job-id <job_id> --record-groups 2"
+    echo ""
+    echo "  6) Stops a ChronoLog deployment using the default configurations and paths"
+    echo "     from the specified work directory (~/chronolog_install/Debug):"
+    echo "     $0 --stop --work-dir ~/chronolog_install/Debug"
+    echo ""
     exit 1
+}
+
+check_dependencies() {
+    local dependencies=("jq" "mpssh" "ssh" "ldd" "nohup" "pkill" "readlink" "realpath")
+
+    echo -e "${DEBUG}Checking required dependencies...${NC}"
+    for dep in "${dependencies[@]}"; do
+        if ! command -v $dep &> /dev/null; then
+            echo -e "${ERR}Dependency $dep is not installed. Please install it and try again.${NC}"
+            exit 1
+        fi
+    done
+    echo -e "${DEBUG}All required dependencies are installed.${NC}"
 }
 
 check_file_existence() {
@@ -78,7 +165,7 @@ check_hosts_files() {
     check_file_existence ${VISOR_HOSTS}
     check_file_existence ${GRAPHER_HOSTS}
     check_file_existence ${KEEPER_HOSTS}
-    check_file_existence ${CLIENT_HOSTS}
+    check_file_existence ${PLAYER_HOSTS}
 
     [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Check hosts files done${NC}"
 }
@@ -88,7 +175,7 @@ check_bin_files() {
     check_file_existence ${VISOR_BIN}
     check_file_existence ${GRAPHER_BIN}
     check_file_existence ${KEEPER_BIN}
-    check_file_existence ${CLIENT_BIN}
+    check_file_existence ${PLAYER_BIN}
 
     [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Check binary files done${NC}"
 }
@@ -96,10 +183,11 @@ check_bin_files() {
 check_rpc_comm_conf() {
     echo -e "${INFO}Checking if rpc conf matches on both communication ends ...${NC}"
     check_file_existence ${CONF_FILE}
+    check_file_existence ${CLIENT_CONF_FILE}
 
     # for VisorClientPortalService, Client->Visor
     visor_client_portal_rpc_in_visor=$(jq '.chrono_visor.VisorClientPortalService.rpc' "${CONF_FILE}")
-    visor_client_portal_rpc_in_client=$(jq '.chrono_client.VisorClientPortalService.rpc' "${CONF_FILE}")
+    visor_client_portal_rpc_in_client=$(jq '.chrono_client.VisorClientPortalService.rpc' "${CLIENT_CONF_FILE}")
     [[ "${visor_client_portal_rpc_in_visor}" != "${visor_client_portal_rpc_in_client}" ]] && echo -e "${ERR}mismatched VisorClientPortalService conf in ${CONF_FILE}, exiting ...${NC}" >&2 && exit 1
 
     # for VisorKeeperRegistryService, Keeper->Visor
@@ -107,27 +195,40 @@ check_rpc_comm_conf() {
     visor_keeper_registry_rpc_in_keeper=$(jq '.chrono_keeper.VisorKeeperRegistryService.rpc' "${CONF_FILE}")
     [[ "${visor_keeper_registry_rpc_in_visor}" != "${visor_keeper_registry_rpc_in_keeper}" ]] && echo -e "${ERR}mismatched VisorKeeperRegistryService conf in ${CONF_FILE}, exiting ...${NC}" >&2 && exit 1
 
-    # for VisorRegistryService, Grapher->Visor
+    # for VisorGrapherRegistryService, Grapher->Visor
     visor_grapher_registry_rpc_in_grapher=$(jq '.chrono_grapher.VisorRegistryService.rpc' "${CONF_FILE}")
     [[ "${visor_keeper_registry_rpc_in_visor}" != "${visor_grapher_registry_rpc_in_grapher}" ]] && echo -e "${ERR}mismatched VisorGrapherRegistryService conf in ${CONF_FILE}, exiting ...${NC}" >&2 && exit 1
+
+    # for VisorPlayerRegistryService, Player->Visor
+    visor_player_registry_rpc_in_player=$(jq '.chrono_player.VisorRegistryService.rpc' "${CONF_FILE}")
+    [[ "${visor_keeper_registry_rpc_in_visor}" != "${visor_player_registry_rpc_in_player}" ]] && echo -e "${ERR}mismatched VisorPlayerRegistryService conf in ${CONF_FILE}, exiting ...${NC}" >&2 && exit 1
 
     # for KeeperGrapherDrainService, Keeper->Grapher
     keeper_grapher_drain_rpc_in_keeper=$(jq '.chrono_keeper.KeeperGrapherDrainService.rpc' "${CONF_FILE}")
     keeper_grapher_drain_rpc_in_grapher=$(jq '.chrono_grapher.KeeperGrapherDrainService.rpc' "${CONF_FILE}")
     [[ "${keeper_grapher_drain_rpc_in_keeper}" != "${keeper_grapher_drain_rpc_in_grapher}" ]] && echo -e "${ERR}mismatched KeeperGrapherDrainService conf in ${CONF_FILE}, exiting ...${NC}" >&2 && exit 1
 
-    [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Check base conf file done${NC}"
+    # to assure Keeper, Grapher and Player use the same protocol for dataStoreAdminService
+    keeper_data_store_admin_protocol=$(jq '.chrono_keeper.KeeperDataStoreAdminService.rpc.protocol_conf' "${CONF_FILE}")
+    grapher_data_store_admin_protocol=$(jq '.chrono_grapher.DataStoreAdminService.rpc.protocol_conf' "${CONF_FILE}")
+    player_data_store_admin_protocol=$(jq '.chrono_player.PlayerStoreAdminService.rpc.protocol_conf' "${CONF_FILE}")
+    [[ "${keeper_data_store_admin_protocol}" != "${grapher_data_store_admin_protocol}" ]] && echo -e "${ERR}mismatched protocol for DataStoreAdminService in Keeper and Grapher conf in ${CONF_FILE}, exiting ...${NC}" >&2 && exit 1
+    [[ "${keeper_data_store_admin_protocol}" != "${player_data_store_admin_protocol}" ]] && echo -e "${ERR}mismatched protocol for DataStoreAdminService in Keeper and Player conf in ${CONF_FILE}, exiting ...${NC}" >&2 && exit 1
+    [[ "${grapher_data_store_admin_protocol}" != "${player_data_store_admin_protocol}" ]] && echo -e "${ERR}mismatched protocol for DataStoreAdminService in Grapher and Player conf in ${CONF_FILE}, exiting ...${NC}" >&2 && exit 1
+
+    [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Check rpc conf done${NC}"
 }
 
 check_op_validity() {
     count=0
-    [[ $deploy == true ]] && ((count++))
+    [[ $build == true ]] && ((count++))
+    [[ $install == true ]] && ((count++))
+    [[ $start == true ]] && ((count++))
     [[ $stop == true ]] && ((count++))
-    [[ $kill == true ]] && ((count++))
-    [[ $reset == true ]] && ((count++))
+    [[ $clean == true ]] && ((count++))
 
     if [[ $count -ne 1 ]]; then
-        echo -e "${ERR}Error: Please select exactly one operation in deploy (-d), stop (-s), kill (-k) and reset (-r).${NC}" >&2
+        echo -e "${ERR}Error: Please select exactly one operation in build (-b), install (-i), start (-d), stop (-s), and clean (-c).${NC}" >&2
         usage
     fi
 }
@@ -137,10 +238,11 @@ check_recording_group_mapping() {
     local num_keepers
     local num_recording_group
 
-    num_keepers=$(wc -l < ${KEEPER_HOSTS})
+    touch ${KEEPER_HOSTS}
+    num_keepers=$(wc -l <${KEEPER_HOSTS})
     num_recording_group=${NUM_RECORDING_GROUP}
-    if [[ "${num_recording_group}" -lt 1 ]] || [[ "${num_recording_group}" -gt "${num_keepers}" ]] || (( num_keepers % num_recording_group != 0 )); then
-        echo -e "${ERR}NUM_RECORDING_GROUP must be greater than 0, less than or equal to the number of keepers (${num_keepers}), and a divisor of the number of keepers (${num_keepers}), exiting ...${NC}" >&2
+    if [[ "${num_recording_group}" -lt 1 ]] || [[ "${num_recording_group}" -gt "${num_keepers}" ]]; then
+        echo -e "${ERR}NUM_RECORDING_GROUP must be greater than 0, less than or equal to the number of keepers (${num_keepers}), exiting ...${NC}" >&2
         exit 1
     fi
 
@@ -164,8 +266,7 @@ copy_shared_libs_recursive() {
     echo -e "${DEBUG}Copying ${lib_path} recursively ...${NC}"
     while [ "$final_dest_lib_copies" != true ]; do
         cp -P "$lib_path" "$dest_path/"
-        if [ "$lib_path" == "$linked_to_lib_path" ]
-        then
+        if [ "$lib_path" == "$linked_to_lib_path" ]; then
             final_dest_lib_copies=true
         fi
         lib_path="$linked_to_lib_path"
@@ -185,13 +286,18 @@ copy_shared_libs() {
     done
 
     for lib in ${all_shared_libs}; do
-        if [[ -n ${lib} ]]
-        then
+        if [[ -n ${lib} ]]; then
             copy_shared_libs_recursive ${lib} ${LIB_DIR}
         fi
     done
 
     [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Copy shared libraries done${NC}"
+}
+
+detect_hs_net_suffix() {
+    if [[ $(hostname) == *ares* ]]; then
+        HOSTNAME_HS_NET_SUFFIX="-40g"
+    fi
 }
 
 get_host_ip() {
@@ -212,14 +318,28 @@ update_visor_ip() {
         echo -e "${ERR}Cannot get ChronoVisor IP from hostname ${visor_host}, exiting ...${NC}" >&2
         exit 1
     fi
+
     echo -e "${INFO}Replacing ChronoVisor IP with ${visor_ip} ...${NC}"
-    jq ".chrono_visor.VisorClientPortalService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} > tmp.json && mv tmp.json ${CONF_FILE}
-    jq ".chrono_client.VisorClientPortalService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} > tmp.json && mv tmp.json ${CONF_FILE}
-    jq ".chrono_visor.VisorKeeperRegistryService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} > tmp.json && mv tmp.json ${CONF_FILE}
-    jq ".chrono_keeper.VisorKeeperRegistryService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} > tmp.json && mv tmp.json ${CONF_FILE}
-    jq ".chrono_grapher.VisorRegistryService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} > tmp.json && mv tmp.json ${CONF_FILE}
+    # Config File
+    jq ".chrono_visor.VisorClientPortalService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} >tmp.json && mv tmp.json ${CONF_FILE}
+    jq ".chrono_visor.VisorKeeperRegistryService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} >tmp.json && mv tmp.json ${CONF_FILE}
+    jq ".chrono_keeper.VisorKeeperRegistryService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} >tmp.json && mv tmp.json ${CONF_FILE}
+    jq ".chrono_grapher.VisorRegistryService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} >tmp.json && mv tmp.json ${CONF_FILE}
+    jq ".chrono_player.VisorRegistryService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} >tmp.json && mv tmp.json ${CONF_FILE}
+
+    # Client Config File
+    jq ".chrono_client.VisorClientPortalService.rpc.service_ip = \"${visor_ip}\"" "${CLIENT_CONF_FILE}" > tmp.json && mv tmp.json "${CLIENT_CONF_FILE}"
 
     [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Update ChronoVisor IP done${NC}"
+}
+
+update_visor_monitor_file_path() {
+    visor_host=$(head -1 ${VISOR_HOSTS})
+    jq ".chrono_visor.Monitoring.monitor.file = \"${MONITOR_DIR}/${VISOR_BIN_FILE_NAME}.${visor_host}.log\"" "${CONF_FILE}" > tmp.json && mv tmp.json "${CONF_FILE}"
+}
+
+update_client_monitor_file_path() {
+    jq ".chrono_client.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono_client.log\"" "${CLIENT_CONF_FILE}" > tmp.json && mv tmp.json "${CLIENT_CONF_FILE}"
 }
 
 generate_conf_for_each_keeper() {
@@ -227,14 +347,14 @@ generate_conf_for_each_keeper() {
     local keeper_hosts_file=$2
     [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generating conf files for all ChronoKeepers in ${keeper_hosts_file} based on conf file ${base_conf_file} ...${NC}"
     while IFS= read -r keeper_host; do
-        remote_keeper_hostname=$(LD_LIBRARY_PATH=/lib/x86_64-linux-gnu/ ssh -n ${keeper_host} hostname)
+        remote_keeper_hostname=$(LD_LIBRARY_PATH="${SYS_LIB_DIR}" ssh -n ${keeper_host} hostname)
         [[ -z "${remote_keeper_hostname}" ]] && echo -e "${ERR}Cannot get hostname from ${keeper_host}, exiting ...${NC}" >&2 && exit 1
         [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generating conf file ${base_conf_file}.keeper.${remote_keeper_hostname} for ChronoKeeper ${remote_keeper_hostname} ...${NC}"
-        jq ".chrono_keeper.Logging.log.file = \"chrono_keeper.log.${remote_keeper_hostname}\"" "${base_conf_file}" > "${base_conf_file}.keeper.${remote_keeper_hostname}"
+        jq ".chrono_keeper.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono_keeper.${remote_keeper_hostname}.log\"" "${base_conf_file}" >"${base_conf_file}.keeper.${remote_keeper_hostname}"
         keeper_ip=$(get_host_ip ${keeper_host})
-        jq ".chrono_keeper.KeeperRecordingService.rpc.service_ip = \"${keeper_ip}\"" "${base_conf_file}.keeper.${remote_keeper_hostname}" > temp.json && mv temp.json "${base_conf_file}.keeper.${remote_keeper_hostname}"
-        jq ".chrono_keeper.KeeperDataStoreAdminService.rpc.service_ip = \"${keeper_ip}\"" "${base_conf_file}.keeper.${remote_keeper_hostname}" > temp.json && mv temp.json "${base_conf_file}.keeper.${remote_keeper_hostname}"
-    done < ${keeper_hosts_file}
+        jq ".chrono_keeper.KeeperRecordingService.rpc.service_ip = \"${keeper_ip}\"" "${base_conf_file}.keeper.${remote_keeper_hostname}" >temp.json && mv temp.json "${base_conf_file}.keeper.${remote_keeper_hostname}"
+        jq ".chrono_keeper.KeeperDataStoreAdminService.rpc.service_ip = \"${keeper_ip}\"" "${base_conf_file}.keeper.${remote_keeper_hostname}" >temp.json && mv temp.json "${base_conf_file}.keeper.${remote_keeper_hostname}"
+    done <${keeper_hosts_file}
 
     [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generate conf file for ChronoKeepers in ${keeper_hosts_file} done${NC}"
 }
@@ -244,58 +364,110 @@ generate_conf_for_each_grapher() {
     local grapher_hosts_file=$2
     [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generating conf files for all ChronoGraphers in ${grapher_hosts_file} based on conf file ${base_conf_file} ...${NC}"
     while IFS= read -r grapher_host; do
-        remote_grapher_hostname=$(LD_LIBRARY_PATH=/lib/x86_64-linux-gnu/ ssh -n ${grapher_host} hostname)
+        remote_grapher_hostname=$(LD_LIBRARY_PATH="${SYS_LIB_DIR}" ssh -n ${grapher_host} hostname)
         [[ -z "${remote_grapher_hostname}" ]] && echo -e "${ERR}Cannot get hostname from ${grapher_host}, exiting ...${NC}" >&2 && exit 1
         [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generating conf file ${base_conf_file}.grapher.${remote_grapher_hostname} for ChronoGrapher ${remote_grapher_hostname} ...${NC}"
-        jq ".chrono_grapher.Logging.log.file = \"chrono_grapher.log.${remote_grapher_hostname}\"" "${base_conf_file}" > "${base_conf_file}.grapher.${remote_grapher_hostname}"
+        jq ".chrono_grapher.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono_grapher.${remote_grapher_hostname}.log\"" "${base_conf_file}" >"${base_conf_file}.grapher.${remote_grapher_hostname}"
         #grapher_ip=$(get_host_ip ${grapher_host})
         #jq ".chrono_keeper.KeeperGrapherDrainService.rpc.service_ip = \"${grapher_ip}\"" "${base_conf_file}".grapher.${remote_grapher_hostname}" > temp.json && mv temp.json "${base_conf_file}.grapher.${remote_grapher_hostname}"
         #jq ".chrono_grapher.KeeperGrapherDrainService.rpc.service_ip = \"${grapher_ip}\"" "${base_conf_file}.grapher.${remote_grapher_hostname}" > temp.json && mv temp.json "${base_conf_file}.grapher.${remote_grapher_hostname}"
-    done < ${grapher_hosts_file}
+    done <${grapher_hosts_file}
 
     [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generate conf file for ChronoGraphers in ${grapher_hosts_file} done${NC}"
+}
+
+generate_conf_for_each_player() {
+    local base_conf_file=$1
+    local player_hosts_file=$2
+    [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generating conf files for all ChronoPlayers in ${player_hosts_file} based on conf file ${base_conf_file} ...${NC}"
+    while IFS= read -r player_host; do
+        remote_player_hostname=$(LD_LIBRARY_PATH="${SYS_LIB_DIR}" ssh -n ${player_host} hostname)
+        [[ -z "${remote_player_hostname}" ]] && echo -e "${ERR}Cannot get hostname from ${player_host}, exiting ...${NC}" >&2 && exit 1
+        [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generating conf file ${base_conf_file}.player.${remote_player_hostname} for ChronoPlayer ${remote_player_hostname} ...${NC}"
+        jq ".chrono_player.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono_player.${remote_player_hostname}.log\"" "${base_conf_file}" >"${base_conf_file}.player.${remote_player_hostname}"
+    done <${player_hosts_file}
+
+    [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generate conf file for ChronoPlayers in ${player_hosts_file} done${NC}"
 }
 
 generate_conf_for_each_recording_group() {
     echo -e "${INFO}Generating conf files for all RecordingGroups ...${NC}"
     mkdir -p ${OUTPUT_DIR}
-    # grapher in recording group i will use conf file ${CONF_FILE}.${i}
+    # grapher and player in recording group i will use conf file ${CONF_FILE}.${i}
     # keeper in recording group i will use conf file ${CONF_FILE}.${i}.${keeper_hostname}
     for i in $(seq 1 ${NUM_RECORDING_GROUP}); do
+        # check for number of nodes in Grapher and Player hosts file
         grapher_hosts_file="${GRAPHER_HOSTS}.${i}"
         keeper_hosts_file="${KEEPER_HOSTS}.${i}"
-        num_graphers_in_hosts_file=$(wc -l < ${grapher_hosts_file})
+        player_hosts_file="${PLAYER_HOSTS}.${i}"
+        num_graphers_in_hosts_file=$(wc -l <${grapher_hosts_file})
         [[ ${num_graphers_in_hosts_file} -ne 1 ]] && echo -e "${ERR}Exactly one node in ${grapher_hosts_file} is expected, exiting ...${NC}" >&2 && exit 1
+        num_players_in_hosts_file=$(wc -l <${player_hosts_file})
+        [[ ${num_players_in_hosts_file} -ne 1 ]] && echo -e "${ERR}Exactly one node in ${player_hosts_file} is expected, exiting ...${NC}" >&2 && exit 1
+
+        # get IP of Grapher node
         grapher_hostname=$(head -1 ${grapher_hosts_file})
         grapher_ip=$(get_host_ip ${grapher_hostname})
-        remote_grapher_hostname=$(LD_LIBRARY_PATH=/lib/x86_64-linux-gnu/ ssh -n ${grapher_hostname} hostname)
-        [[ -z "${remote_grapher_hostname}" ]] && echo -e "${ERR}Cannot get hostname from ${grapher_hostname}, exiting ...${NC}" >&2 && exit 1
+#        remote_grapher_hostname=$(LD_LIBRARY_PATH="${SYS_LIB_DIR}" ssh -n ${grapher_hostname} hostname)
+#        [[ -z "${remote_grapher_hostname}" ]] && echo -e "${ERR}Cannot get hostname from ${grapher_hostname}, exiting ...${NC}" >&2 && exit 1
+
+        # get IP of Player node
+        player_hostname=$(head -1 ${player_hosts_file})
+        player_ip=$(get_host_ip ${player_hostname})
+#        remote_player_hostname=$(LD_LIBRARY_PATH="${SYS_LIB_DIR}" ssh -n ${player_hostname} hostname)
+#        [[ -z "${remote_player_hostname}" ]] && echo -e "${ERR}Cannot get hostname from ${player_hostname}, exiting ...${NC}" >&2 && exit 1
+
+        # update conf file for Grapher, Keeper and Player
         [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Updating conf file for members in RecordingGroup ${i} ...${NC}"
-        jq ".chrono_grapher.DataStoreAdminService.rpc.service_ip = \"${grapher_ip}\"" "${CONF_FILE}" > "${CONF_FILE}.${i}"
-        jq ".chrono_keeper.RecordingGroup = ${i}" "${CONF_FILE}.${i}" > temp.json && mv temp.json "${CONF_FILE}.${i}"
-        jq ".chrono_grapher.RecordingGroup = ${i}" "${CONF_FILE}.${i}" > temp.json && mv temp.json "${CONF_FILE}.${i}"
-        jq ".chrono_keeper.KeeperGrapherDrainService.rpc.service_ip = \"${grapher_ip}\"" "${CONF_FILE}.${i}" > temp.json && mv temp.json "${CONF_FILE}.${i}"
-        jq ".chrono_grapher.KeeperGrapherDrainService.rpc.service_ip = \"${grapher_ip}\"" "${CONF_FILE}.${i}" > temp.json && mv temp.json "${CONF_FILE}.${i}"
-        jq ".chrono_grapher.Logging.log.file = \"chrono_grapher.log.${remote_grapher_hostname}\"" "${CONF_FILE}.${i}" > temp.json && mv temp.json "${CONF_FILE}.${i}"
-        jq ".chrono_keeper.story_files_dir = \"${OUTPUT_DIR}\"" "${CONF_FILE}.${i}" > temp.json && mv temp.json "${CONF_FILE}.${i}"
-        jq ".chrono_grapher.Extractors.story_files_dir = \"${OUTPUT_DIR}\"" "${CONF_FILE}.${i}" > temp.json && mv temp.json "${CONF_FILE}.${i}"
+        jq ".chrono_grapher.DataStoreAdminService.rpc.service_ip = \"${grapher_ip}\"" "${CONF_FILE}" >"${CONF_FILE}.${i}"
+        jq ".chrono_keeper.RecordingGroup = ${i}" "${CONF_FILE}.${i}" >temp.json && mv temp.json "${CONF_FILE}.${i}"
+        jq ".chrono_grapher.RecordingGroup = ${i}" "${CONF_FILE}.${i}" >temp.json && mv temp.json "${CONF_FILE}.${i}"
+        jq ".chrono_player.RecordingGroup = ${i}" "${CONF_FILE}.${i}" >temp.json && mv temp.json "${CONF_FILE}.${i}"
+        jq ".chrono_keeper.KeeperGrapherDrainService.rpc.service_ip = \"${grapher_ip}\"" "${CONF_FILE}.${i}" >temp.json && mv temp.json "${CONF_FILE}.${i}"
+        jq ".chrono_grapher.KeeperGrapherDrainService.rpc.service_ip = \"${grapher_ip}\"" "${CONF_FILE}.${i}" >temp.json && mv temp.json "${CONF_FILE}.${i}"
+        jq ".chrono_keeper.Extractors.story_files_dir = \"${OUTPUT_DIR}\"" "${CONF_FILE}.${i}" >temp.json && mv temp.json "${CONF_FILE}.${i}"
+        jq ".chrono_grapher.Extractors.story_files_dir = \"${OUTPUT_DIR}\"" "${CONF_FILE}.${i}" >temp.json && mv temp.json "${CONF_FILE}.${i}"
+        jq ".chrono_player.PlayerStoreAdminService.rpc.service_ip = \"${player_ip}\"" "${CONF_FILE}.${i}" >temp.json && mv temp.json "${CONF_FILE}.${i}"
+        jq ".chrono_player.PlaybackQueryService.rpc.service_ip = \"${player_ip}\"" "${CONF_FILE}.${i}" >temp.json && mv temp.json "${CONF_FILE}.${i}"
+        jq ".chrono_player.ArchiveReaders.story_files_dir = \"${OUTPUT_DIR}\"" "${CONF_FILE}.${i}" >temp.json && mv temp.json "${CONF_FILE}.${i}"
 
         generate_conf_for_each_keeper "${CONF_FILE}.${i}" "${keeper_hosts_file}"
 
         generate_conf_for_each_grapher "${CONF_FILE}.${i}" "${grapher_hosts_file}"
+
+        generate_conf_for_each_player "${CONF_FILE}.${i}" "${player_hosts_file}"
     done
     [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generate conf files for all RecordingGroups done${NC}"
 }
 
 prepare_hosts_for_recording_groups() {
+    num_keepers_processed=0
+    total_num_keepers=$(wc -l <${KEEPER_HOSTS})
+    min_num_keepers_in_group=$((total_num_keepers / NUM_RECORDING_GROUP))
+    missing_num_keepers_for_equal_group_size=$((NUM_RECORDING_GROUP - total_num_keepers + min_num_keepers_in_group * NUM_RECORDING_GROUP))
+    if [[ $missing_num_keepers_for_equal_group_size -eq 0 ]]; then
+        num_groups_with_extra_keeper=0
+    else
+        num_groups_with_extra_keeper=$((NUM_RECORDING_GROUP - missing_num_keepers_for_equal_group_size))
+    fi
     for i in $(seq 1 ${NUM_RECORDING_GROUP}); do
         echo -e "${DEBUG}Generating hosts file for RecordingGroup ${i}...${NC}"
-        total_num_keepers=$(wc -l < ${KEEPER_HOSTS})
-        num_keepers_in_group=$((total_num_keepers / NUM_RECORDING_GROUP))
-        start_line_num_in_keeper_hosts=$(((i - 1) * num_keepers_in_group + 1))
-        end_line_num_in_keeper_hosts=$((i * num_keepers_in_group))
-        sed -n "${start_line_num_in_keeper_hosts},${end_line_num_in_keeper_hosts}p" < ${KEEPER_HOSTS} > ${KEEPER_HOSTS}.${i}
-        sed -n "${i}p" < ${GRAPHER_HOSTS} > ${GRAPHER_HOSTS}.${i}
+        num_keepers_in_this_group=0
+        if [[ ${i} -le ${num_groups_with_extra_keeper} ]]; then
+            num_keepers_in_this_group=$((min_num_keepers_in_group + 1))
+        else
+            num_keepers_in_this_group=${min_num_keepers_in_group}
+        fi
+        [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Number of ChronoKeepers in RecordingGroup ${i}: ${num_keepers_in_this_group}${NC}"
+        start_line_num_in_keeper_hosts=$((num_keepers_processed + 1))
+        end_line_num_in_keeper_hosts=$((start_line_num_in_keeper_hosts + num_keepers_in_this_group - 1))
+        sed -n "${start_line_num_in_keeper_hosts},${end_line_num_in_keeper_hosts}p" <${KEEPER_HOSTS} >${KEEPER_HOSTS}.${i}
+        [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}ChronoKeeper hosts in RecordingGroup ${i}: ${NC}" && cat ${KEEPER_HOSTS}.${i}
+        sed -n "${i}p" <${GRAPHER_HOSTS} >${GRAPHER_HOSTS}.${i}
+        [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}ChronoGrapher host in RecordingGroup ${i}: ${NC}" && cat ${GRAPHER_HOSTS}.${i}
+        sed -n "${i}p" <${PLAYER_HOSTS} >${PLAYER_HOSTS}.${i}
+        [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}ChronoPlayer host in RecordingGroup ${i}: ${NC}" && cat ${PLAYER_HOSTS}.${i}
+        num_keepers_processed=$((end_line_num_in_keeper_hosts))
     done
 }
 
@@ -320,18 +492,28 @@ prepare_hosts() {
             hosts="$(scontrol show hostnames ${hosts_regex})"
         else
             echo -e "${DEBUG}JOB_ID is not set, use what are already in hosts files from ${CONF_DIR}${NC}"
+            check_file_existence ${VISOR_HOSTS}
+            check_file_existence ${GRAPHER_HOSTS}
+            check_file_existence ${KEEPER_HOSTS}
+            check_file_existence ${PLAYER_HOSTS}
         fi
     fi
 
     if [[ -n "${hosts}" ]]; then
+        # make sure we have enough nodes allocated
+        num_hosts=$(echo "${hosts}" | wc -l)
+        if [[ ${NUM_RECORDING_GROUP} -gt "${num_hosts}" ]]; then
+            echo -e "${ERR}There is no enough hosts for ${NUM_RECORDING_GROUP} RecordingGroups, only ${num_hosts} nodes are allocated, exiting ..${NC}"
+            exit 1
+        fi
         # use the first node as Visor by default
-        echo "${hosts}" | head -1 > ${VISOR_HOSTS}
+        echo "${hosts}" | head -1 >${VISOR_HOSTS}
         # use last num_recording_group nodes as Graphers by default
-        echo "${hosts}" | tail -${NUM_RECORDING_GROUP} > ${GRAPHER_HOSTS}
+        echo "${hosts}" | tail -${NUM_RECORDING_GROUP} >${GRAPHER_HOSTS}
         # use all nodes as Keepers by default
-        echo "${hosts}" > ${KEEPER_HOSTS}
-        # use all nodes as Clients by default
-        echo "${hosts}" > ${CLIENT_HOSTS}
+        echo "${hosts}" >${KEEPER_HOSTS}
+        # use last num_recording_group nodes as Players by default
+        echo "${hosts}" | tail -${NUM_RECORDING_GROUP} >${PLAYER_HOSTS}
     fi
 
     check_recording_group_mapping
@@ -341,22 +523,54 @@ prepare_hosts() {
     [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Prepare hosts file done${NC}"
 }
 
+check_build_directory() {
+    local deploy_dir=$(realpath "$(dirname "$0")")  # Get the absolute path of the script's directory
+    local build_dir="${deploy_dir}/../build"       # Navigate to x/build from x/deploy
+
+    build_dir=$(realpath "${build_dir}" 2>/dev/null || echo "")
+
+    echo -e "${DEBUG}Checking for the existence of the build directory: ${build_dir}${NC}"
+
+    if [ -d "${build_dir}" ]; then
+        echo -e "${DEBUG}Build directory found: ${build_dir}${NC}"
+    else
+        echo -e "${ERR}Build directory not found at: ${build_dir}${NC}"
+        echo "Please ensure the build process has been completed successfully before proceeding."
+        exit 1
+    fi
+}
+
+check_work_dir() {
+    # Check if WORK_DIR is set
+    if [[ -z "${WORK_DIR}" ]]; then
+        echo -e "${ERR}WORK_DIR is mandatory on this mode. Please provide it using the -w or --work-dir option.${NC}"
+        usage
+        exit 1
+    fi
+}
+
+# Main functions
+build() {
+    # build ChronoLog
+    if [[ -n "$INSTALL_DIR" ]]; then
+        "${REPO_ROOT}/deploy/build.sh" -type "$BUILD_TYPE" -install-path "$INSTALL_DIR"
+    else
+        "${REPO_ROOT}/deploy/build.sh" -type "$BUILD_TYPE"
+    fi
+}
+
 install() {
-    echo -e "${INFO}Installing ...${NC}"
+    check_work_dir
 
-    copy_shared_libs
+    check_build_directory
 
-    prepare_hosts
-
-    check_bin_files
-
-    update_visor_ip
-
-    generate_conf_for_each_recording_group
-
-    check_rpc_comm_conf
-
-    [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Install done${NC}"
+    install_script="${REPO_ROOT}/deploy/install.sh"
+    if [[ -x "$install_script" ]]; then
+        "$install_script" --lib-dir "${LIB_DIR}" --bin-dir "${BIN_DIR}"
+    else
+        echo -e "${RED}Error: $install_script is not executable or not found.${NC}"
+        exit 1
+    fi
 }
 
 parallel_remote_launch_processes() {
@@ -368,27 +582,32 @@ parallel_remote_launch_processes() {
     local hostname_suffix=""
     local simple_output_grep_keyword=""
 
-    if [[ "${local}" == "false" ]]; then
-        # use hostname suffix conf file only on Ares
-        hostname_suffix=".\$(hostname)"
-        if [[ "${verbose}" == "false" ]]; then
-            # grep only on Ares with simple output
-            simple_output_grep_keyword="ares-"
-        fi
+    # use hostname suffix conf file only on Ares
+    hostname_suffix=".\$(hostname)"
+    if [[ "${verbose}" == "false" ]]; then
+        # grep only on Ares with simple output
+        simple_output_grep_keyword="ares-"
     fi
 
     bin_path=${bin_dir}/${bin_filename}
-    LD_LIBRARY_PATH=/lib/x86_64-linux-gnu/ mpssh -f ${hosts_file} "cd ${bin_dir}; LD_LIBRARY_PATH=${lib_dir} nohup ${bin_path} ${args} > ${bin_filename}${hostname_suffix}.launch.log 2>&1 &" | grep "${simple_output_grep_keyword}" 2>&1
+    LD_LIBRARY_PATH="${SYS_LIB_DIR}" mpssh -s -f ${hosts_file} "cd ${bin_dir}; LD_LIBRARY_PATH=${lib_dir} nohup ${bin_path} ${args} > ${MONITOR_DIR}/${bin_filename}${hostname_suffix}.launch.log 2>&1 &" | grep "${simple_output_grep_keyword}" 2>&1
 }
 
 parallel_remote_stop_processes() {
     local hosts_file=$1
     local bin_filename=$2
 
-    LD_LIBRARY_PATH=/lib/x86_64-linux-gnu/ mpssh -f ${hosts_file} "pkill --signal 15 -ef ${bin_filename}" | grep -e "->" | grep -v ssh 2>&1
+    local timer=0
+    LD_LIBRARY_PATH="${SYS_LIB_DIR}" mpssh -s -f ${hosts_file} "pkill --signal 15 -ef ${bin_filename}" | grep -e "->" | grep -v ssh 2>&1
     while [[ -n $(parallel_remote_check_processes ${hosts_file} ${bin_filename}) ]]; do
         echo -e "${DEBUG}Some processes are still running, waiting for 10 seconds ...${NC}"
         sleep 10
+        timer=$((timer + 10))
+        if [[ ${timer} -gt 300 ]]; then
+            echo -e "${ERR}Killing processes after 5 minutes ...${NC}" >&2
+            parallel_remote_kill_processes ${hosts_file} ${bin_filename}
+            exit 1
+        fi
     done
 }
 
@@ -396,50 +615,63 @@ parallel_remote_kill_processes() {
     local hosts_file=$1
     local bin_filename=$2
 
-    LD_LIBRARY_PATH=/lib/x86_64-linux-gnu/ mpssh -f ${hosts_file} "pkill --signal 9 -ef ${bin_filename}" | grep -e "->" | grep -v ssh 2>&1
+    LD_LIBRARY_PATH="${SYS_LIB_DIR}" mpssh -s -f ${hosts_file} "pkill --signal 9 -ef ${bin_filename}" | grep -e "->" | grep -v ssh 2>&1
 }
 
 parallel_remote_check_processes() {
     local hosts_file=$1
     local bin_filename=$2
 
-    LD_LIBRARY_PATH=/lib/x86_64-linux-gnu/ mpssh -f ${hosts_file} "pgrep -fla ${bin_filename}" | grep -e "->" | grep -v ssh 2>&1
+    LD_LIBRARY_PATH="${SYS_LIB_DIR}" mpssh -s -f ${hosts_file} "pgrep -fla ${bin_filename}" | grep -e "->" | grep -v ssh 2>&1
 }
 
 parallel_remote_check_all() {
     # check Visor
-    echo -e "${DEBUG}Running ChronoVisor (only one is expected):${NC}"
+    if [[ "${install}" == "true" ]]; then
+        echo -e "${DEBUG}Running ChronoVisor (only one is expected):${NC}"
+    else
+        echo -e "${DEBUG}Running ChronoVisor:${NC}"
+    fi
     parallel_remote_check_processes ${VISOR_HOSTS} ${VISOR_BIN_FILE_NAME}
 
     # check Grapher and Keeper in group
-    echo -e "${DEBUG}Running ChronoKeepers:${NC}"
+    echo -e "${DEBUG}Running ChronoGraphers and ChronoKeepers:${NC}"
     for i in $(seq 1 ${NUM_RECORDING_GROUP}); do
+        echo -e "${DEBUG}RecordingGroup ${i}:${NC}"
         grapher_hosts_file="${GRAPHER_HOSTS}.${i}"
-        parallel_remote_check_processes ${grapher_hosts_file} ${GRAPHER_BIN_FILE_NAME}
         keeper_hosts_file="${KEEPER_HOSTS}.${i}"
+        player_hosts_file="${PLAYER_HOSTS}.${i}"
+        parallel_remote_check_processes ${grapher_hosts_file} ${GRAPHER_BIN_FILE_NAME}
         parallel_remote_check_processes ${keeper_hosts_file} ${KEEPER_BIN_FILE_NAME}
+        parallel_remote_check_processes ${player_hosts_file} ${PLAYER_BIN_FILE_NAME}
     done
-
-    # check Client
-    echo -e "${DEBUG}Running Client (may ended already):${NC}"
-    parallel_remote_check_processes ${CLIENT_HOSTS} ${CLIENT_BIN_FILE_NAME}
 }
 
-deploy() {
-    install
+start() {
+    check_work_dir
 
-    echo -e "${INFO}Deploying ...${NC}"
+    echo -e "${INFO}Starting ...${NC}"
 
     local hostname_suffix=""
     local simple_output_grep_keyword=""
 
-    if [[ "${local}" == "false" ]]; then
-        # use hostname suffix conf file only on Ares
-        hostname_suffix=".\$(hostname)"
-        if [[ "${verbose}" == "false" ]]; then
-            # grep only on Ares with simple output
-            simple_output_grep_keyword="ares-"
-        fi
+    prepare_hosts
+
+    update_visor_ip
+
+    update_visor_monitor_file_path
+    
+    update_client_monitor_file_path
+
+    generate_conf_for_each_recording_group
+
+    check_rpc_comm_conf
+
+    # use hostname suffix conf file only on Ares
+    hostname_suffix=".\$(hostname)"
+    if [[ "${verbose}" == "false" ]]; then
+        # grep only on Ares with simple output
+        simple_output_grep_keyword="ares-"
     fi
 
     # launch Visor
@@ -448,37 +680,43 @@ deploy() {
     VISOR_ARGS="--config ${CONF_FILE}"
     parallel_remote_launch_processes ${VISOR_BIN_DIR} ${LIB_DIR} ${VISOR_HOSTS} ${VISOR_BIN_FILE_NAME} "${VISOR_ARGS}"
 
-    # launch Grapher and Keeper in group
+    # launch Grapher, Keeper and Player in group
     for i in $(seq 1 ${NUM_RECORDING_GROUP}); do
         # launch Grapher
         local grapher_conf_file="${CONF_FILE}.${i}.grapher${hostname_suffix}"
-        echo -e "${DEBUG}Launching ChronoGraphers from ${grapher_hosts_file} using conf file ${grapher_conf_file} ...${NC}"
         GRAPHER_BIN="${GRAPHER_BIN_DIR}/${GRAPHER_BIN_FILE_NAME}"
         GRAPHER_ARGS="--config ${grapher_conf_file}"
         grapher_hosts_file="${GRAPHER_HOSTS}.${i}"
+        echo -e "${DEBUG}Launching ChronoGraphers from ${grapher_hosts_file} using conf file ${grapher_conf_file} ...${NC}"
         parallel_remote_launch_processes ${GRAPHER_BIN_DIR} ${LIB_DIR} ${grapher_hosts_file} ${GRAPHER_BIN_FILE_NAME} "${GRAPHER_ARGS}"
 
         # launch Keeper
         local keeper_conf_file="${CONF_FILE}.${i}.keeper${hostname_suffix}"
-        echo -e "${DEBUG}Launching ChronoKeepers from ${keeper_hosts_file} using conf file ${keeper_conf_file} ...${NC}"
         KEEPER_BIN="${KEEPER_BIN_DIR}/${KEEPER_BIN_FILE_NAME}"
         KEEPER_ARGS="--config ${keeper_conf_file}"
         keeper_hosts_file="${KEEPER_HOSTS}.${i}"
-        parallel_remote_launch_processes ${KEEPER_BIN_DIR} ${LIB_DIR} ${keeper_hosts_file} ${KEEPER_BIN_FILE_NAME} "${KEEPER_ARGS}"
-    done
+        echo -e "${DEBUG}Launching ChronoKeepers from ${keeper_hosts_file} using conf file ${keeper_conf_file} ...${NC}"
+        parallel_remote_launch_processes ${KEEPER_BIN_DIR} ${LIB_DIR} ${keeper_hosts_file} ${KEEPER_BIN_FILE_NAME} "${KEEPER_ARGS}" &
 
-    # launch Client
-    echo -e "${DEBUG}Launching Clients from ${CLIENT_HOSTS} using conf file ${CONF_FILE} ...${NC}"
-    CLIENT_BIN="${CLIENT_BIN_DIR}/${CLIENT_BIN_FILE_NAME}"
-    CLIENT_ARGS="--config ${CONF_FILE}"
-    parallel_remote_launch_processes ${CLIENT_BIN_DIR} ${LIB_DIR} ${CLIENT_HOSTS} ${CLIENT_BIN_FILE_NAME} "${CLIENT_ARGS}"
+        # launch Player
+        local player_conf_file="${CONF_FILE}.${i}.player${hostname_suffix}"
+        PLAYER_BIN="${PLAYER_BIN_DIR}/${PLAYER_BIN_FILE_NAME}"
+        PLAYER_ARGS="--config ${player_conf_file}"
+        player_hosts_file="${PLAYER_HOSTS}.${i}"
+        echo -e "${DEBUG}Launching ChronoPlayers from ${player_hosts_file} using conf file ${player_conf_file} ...${NC}"
+        parallel_remote_launch_processes ${PLAYER_BIN_DIR} ${LIB_DIR} ${player_hosts_file} ${PLAYER_BIN_FILE_NAME} "${PLAYER_ARGS}" &
+
+        wait
+    done
 
     parallel_remote_check_all
 
-    [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Deploy done${NC}"
+    [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Start done${NC}"
 }
 
 stop() {
+    check_work_dir
+
     echo -e "${INFO}Stopping ...${NC}"
 
     if [[ -z ${JOB_ID} ]]; then
@@ -489,9 +727,9 @@ stop() {
         prepare_hosts
     fi
 
-    # stop Client
-    echo -e "${DEBUG}Stopping Client ...${NC}"
-    parallel_remote_stop_processes ${CLIENT_HOSTS} ${CLIENT_BIN_FILE_NAME}
+    # stop Player
+    echo -e "${DEBUG}Stopping ChronoPlayer ...${NC}"
+    parallel_remote_stop_processes ${PLAYER_HOSTS} ${PLAYER_BIN_FILE_NAME} &
 
     # stop Keeper
     echo -e "${DEBUG}Stopping ChronoKeeper ...${NC}"
@@ -500,6 +738,8 @@ stop() {
     # stop Grapher
     echo -e "${DEBUG}Stopping ChronoGrapher ...${NC}"
     parallel_remote_stop_processes ${GRAPHER_HOSTS} ${GRAPHER_BIN_FILE_NAME}
+
+    wait
 
     # stop Visor
     echo -e "${DEBUG}Stopping ChronoVisor ...${NC}"
@@ -510,32 +750,14 @@ stop() {
     [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Stop done${NC}"
 }
 
-remove_generated_files() {
-    echo -e "${DEBUG}Removing generated log and conf files ...${NC}"
-    rm -f ${CONF_FILE}.*
-    rm -f ${KEEPER_HOSTS}*.*
-    rm -f ${GRAPHER_HOSTS}*.*
-    rm -f ${WORK_DIR}/bin/*.launch.log
-    rm -f ${KEEPER_BIN}.*
-    rm -f ${GRAPHER_BIN}.*
-    rm -f ${WORK_DIR}/bin/chrono_visor.log
-    rm -f ${WORK_DIR}/bin/chrono_client.log
-}
-
 kill() {
+    check_work_dir
+
     echo -e "${INFO}Killing ...${NC}"
 
-    if [[ -z ${JOB_ID} ]]; then
-        echo -e "${DEBUG}No JOB_ID provided, use hosts files in ${CONF_DIR}${NC}"
-        check_hosts_files
-    else
-        echo -e "${DEBUG}JOB_ID is provided, prepare hosts file first${NC}"
-        prepare_hosts
-    fi
-
-    # kill Client
-    echo -e "${DEBUG}Killing Client ...${NC}"
-    parallel_remote_kill_processes ${CLIENT_HOSTS} ${CLIENT_BIN_FILE_NAME}
+    # kill Player
+    echo -e "${DEBUG}Killing ChronoPlayer ...${NC}"
+    parallel_remote_kill_processes ${PLAYER_HOSTS} ${PLAYER_BIN_FILE_NAME}
 
     # kill Keeper
     echo -e "${DEBUG}Killing ChronoKeeper ...${NC}"
@@ -554,121 +776,179 @@ kill() {
     [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Kill done${NC}"
 }
 
-reset() {
-    echo -e "${INFO}Resetting ...${NC}"
+clean() {
+    echo -e "${INFO}Cleaning ...${NC}"
 
-    # kill
-    kill
+    # check if ChronoVisor is still running
+    echo -e "${DEBUG}Checking if ChronoVisor is still running${NC}"
+    [[ -n $(parallel_remote_check_processes ${VISOR_HOSTS} ${VISOR_BIN_FILE_NAME}) ]] && echo -e "${ERR}ChronoVisor is still running, please use stop (-s) to stop it first, exiting ...${NC}" >&2 && exit 1
 
-    # cleanup files
-    remove_generated_files
+    # check if Grapher and Keeper are still running in group
+    echo -e "${DEBUG}Checking if ChronoGraphers and ChronoKeepers are still running${NC}"
+    for i in $(seq 1 ${NUM_RECORDING_GROUP}); do
+        echo -e "${DEBUG}Checking RecordingGroup ${i}:${NC}"
+        grapher_hosts_file="${GRAPHER_HOSTS}.${i}"
+        keeper_hosts_file="${KEEPER_HOSTS}.${i}"
+        player_hosts_file="${PLAYER_HOSTS}.${i}"
+        [[ -n $(parallel_remote_check_processes ${grapher_hosts_file} ${GRAPHER_BIN_FILE_NAME}) ]] && echo -e "${ERR}ChronoGrapher is still running, please use stop (-s) to stop it first, exiting ...${NC}" >&2 && exit 1
+        [[ -n $(parallel_remote_check_processes ${keeper_hosts_file} ${KEEPER_BIN_FILE_NAME}) ]] && echo -e "${ERR}ChronoKeeper is still running, please use stop (-s) to stop it first, exiting ...${NC}" >&2 && exit 1
+        [[ -n $(parallel_remote_check_processes ${player_hosts_file} ${PLAYER_BIN_FILE_NAME}) ]] && echo -e "${ERR}ChronoPlayer is still running, please use stop (-s) to stop it first, exiting ...${NC}" >&2 && exit 1
+    done
 
-    [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Reset done${NC}"
+    # clean generated conf and hosts files
+    echo -e "${DEBUG}Removing conf and hosts files ...${NC}"
+    rm -f ${KEEPER_HOSTS}*.*
+    rm -f ${GRAPHER_HOSTS}*.*
+    rm -f ${PLAYER_HOSTS}*.*
+    rm -f ${KEEPER_BIN}.*
+    rm -f ${GRAPHER_BIN}.*
+    rm -f ${PLAYER_BIN}.*
+    rm -f ${MONITOR_DIR}/*.log
+
+    # clean log files
+    echo -e "${DEBUG}Removing log files ...${NC}"
+    rm -f ${CONF_FILE}.*
+    rm -f ${CLIENT_CONF_FILE}.*
+
+    # clean generated output files
+    echo -e "${DEBUG}Removing output files ...${NC}"
+    rm -f ${OUTPUT_DIR}/*
+
+    [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Clean done${NC}"
 }
 
 parse_args() {
-    TEMP=$(getopt -o w:u:v:a:g:p:c:i:o:t:f:j:n:hdskre --long work_dir:output_dir:visor:,grapher:,keeper:,client:,visor_hosts:,grapher_hosts:,keeper_hosts:,client_hosts:,conf_file:,job_id:,num_recording_group:,help,deploy,stop,kill,reset,verbose -- "$@" )
-    if [ $? != 0 ] ; then echo -e "${ERR}Terminating ...${NC}" >&2 ; exit 1 ; fi
+    TEMP=$(getopt -o t:l:w:m:u:v:g:p:a:q:k:o:f:n:j:r:hbidsce --long build-type:install-dir:work-dir:monitor-dir:output-dir:visor-bin:,grapher-bin:,keeper-bin:,player-bin:,visor-hosts:,grapher-hosts:,keeper-hosts:,conf-file:,client-conf-file:,job-id:,record-groups:,help,build,install,start,stop,clean,verbose -- "$@")
+    if [ $? != 0 ]; then
+        echo -e "${ERR}Terminating ...${NC}" >&2
+        exit 1
+    fi
 
     # Note the quotes around '$TEMP': they are essential!
     eval set -- "$TEMP"
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            -w|--work_dir)
-                WORK_DIR=$(realpath "$2")
-                LIB_DIR="${WORK_DIR}/lib"
-                CONF_DIR="${WORK_DIR}/conf"
-                VISOR_BIN_FILE_NAME="chronovisor_server"
-                KEEPER_BIN_FILE_NAME="chrono_keeper"
-                CLIENT_BIN_FILE_NAME="client_lib_multi_storytellers"
-                VISOR_BIN="${WORK_DIR}/bin/${VISOR_BIN_FILE_NAME}"
-                KEEPER_BIN="${WORK_DIR}/bin/${KEEPER_BIN_FILE_NAME}"
-                CLIENT_BIN="${WORK_DIR}/bin/${CLIENT_BIN_FILE_NAME}"
-                VISOR_BIN_DIR=$(dirname ${VISOR_BIN})
-                KEEPER_BIN_DIR=$(dirname ${KEEPER_BIN})
-                CLIENT_BIN_DIR=$(dirname ${CLIENT_BIN})
-                CONF_FILE="${CONF_DIR}/default_conf.json"
-                VISOR_ARGS="--config ${CONF_FILE}"
-                KEEPER_ARGS="--config ${CONF_FILE}"
-                CLIENT_ARGS="--config ${CONF_FILE}"
-                VISOR_HOSTS="${CONF_DIR}/hosts_visor"
-                KEEPER_HOSTS="${CONF_DIR}/hosts_keeper"
-                CLIENT_HOSTS="${CONF_DIR}/hosts_client"
-                shift 2 ;;
-            -u|--output_dir)
-                OUTPUT_DIR=$(realpath "$2")
-                mkdir -p ${OUTPUT_DIR}
-                shift 2 ;;
-            -v|--visor)
-                VISOR_BIN=$(realpath "$2")
-                VISOR_BIN_FILE_NAME=$(basename ${VISOR_BIN})
-                VISOR_BIN_DIR=$(dirname ${VISOR_BIN})
-                shift 2 ;;
-            -g|--grapher)
-                GRAPHER_BIN=$(realpath "$2")
-                GRAPHER_BIN_FILE_NAME=$(basename ${GRAPHER_BIN})
-                GRAPHER_BIN_DIR=$(dirname ${GRAPHER_BIN})
-                shift 2 ;;
-            -p|--keeper)
-                KEEPER_BIN=$(realpath "$2")
-                KEEPER_BIN_FILE_NAME=$(basename ${KEEPER_BIN})
-                KEEPER_BIN_DIR=$(dirname ${KEEPER_BIN})
-                shift 2 ;;
-            -c|--client)
-                CLIENT_BIN=$(realpath "$2")
-                CLIENT_BIN_FILE_NAME=$(basename ${CLIENT_BIN})
-                CLIENT_BIN_DIR=$(dirname ${CLIENT_BIN})
-                shift 2 ;;
-            -i|--visor_hosts)
-                VISOR_HOSTS=$(realpath "$2")
-                shift 2 ;;
-            -a|--grapher_hosts)
-                GRAPHER_HOSTS=$(realpath "$2")
-                shift 2 ;;
-            -o|--keeper_hosts)
-                KEEPER_HOSTS=$(realpath "$2")
-                shift 2 ;;
-            -t|--client_hosts)
-                CLIENT_HOSTS=$(realpath "$2")
-                shift 2 ;;
-            -f|--conf_file)
-                CONF_FILE=$(realpath "$2")
-                CONF_DIR=$(dirname ${CONF_FILE})
-                shift 2 ;;
-            -j|--job_id)
-                JOB_ID="$2"
-                shift 2 ;;
-            -n|--num_recording_group)
-                NUM_RECORDING_GROUP="$2"
-                shift 2 ;;
-            -h|--help)
+        -t | --build-type)
+            BUILD_TYPE="$2"
+            if [[ "$BUILD_TYPE" != "Debug" && "$BUILD_TYPE" != "Release" ]]; then
+                echo -e "${ERR}Invalid build type: $BUILD_TYPE. Must be 'Debug' or 'Release'.${NC}"
                 usage
-                shift 2 ;;
-            -d|--deploy)
-                deploy=true
-                shift ;;
-            -s|--stop)
-                stop=true
-                shift ;;
-            -k|--kill)
-                kill=true
-                shift ;;
-            -r|--reset)
-                reset=true
-                shift ;;
-            #-l|--local)
-                #local=true
-                #HOSTNAME_HS_NET_SUFFIX=""
-                #shift ;;
-            -e|--verbose)
-                verbose=true
-                shift ;;
-            --)
-                shift; break ;;
-            *)
-                echo -e "${ERR}Unknown option: $1${NC}"
-                exit 1
-                ;;
+            fi
+            shift 2 ;;
+        -l | --install-dir)
+            INSTALL_DIR=$(realpath "$2")
+            shift 2 ;;
+        -w | --work-dir)
+            mkdir -p $2
+            WORK_DIR=$(realpath "${2%/}")
+            LIB_DIR="${WORK_DIR}/lib"
+            CONF_DIR="${WORK_DIR}/conf"
+            BIN_DIR="${WORK_DIR}/bin"
+            MONITOR_DIR="${WORK_DIR}/monitor"
+            OUTPUT_DIR="${WORK_DIR}/output"
+            VISOR_BIN_FILE_NAME="chronovisor_server"
+            KEEPER_BIN_FILE_NAME="chrono_keeper"
+            GRAPHER_BIN_FILE_NAME="chrono_grapher"
+            VISOR_BIN="${WORK_DIR}/bin/${VISOR_BIN_FILE_NAME}"
+            GRAPHER_BIN="${WORK_DIR}/bin/${GRAPHER_BIN_FILE_NAME}"
+            KEEPER_BIN="${WORK_DIR}/bin/${KEEPER_BIN_FILE_NAME}"
+            PLAYER_BIN="${WORK_DIR}/bin/${PLAYER_BIN_FILE_NAME}"
+            VISOR_BIN_DIR=$(dirname ${VISOR_BIN})
+            GRAPHER_BIN_DIR=$(dirname ${GRAPHER_BIN})
+            KEEPER_BIN_DIR=$(dirname ${KEEPER_BIN})
+            PLAYER_BIN_DIR=$(dirname ${PLAYER_BIN})
+            CONF_FILE="${CONF_DIR}/default_conf.json"
+            CLIENT_CONF_FILE="${CONF_DIR}/default_client_conf.json"
+            VISOR_ARGS="--config ${CONF_FILE}"
+            GRAPHER_ARGS="--config ${CONF_FILE}"
+            KEEPER_ARGS="--config ${CONF_FILE}"
+            PLAYER_ARGS="--config ${CONF_FILE}"
+            VISOR_HOSTS="${CONF_DIR}/hosts_visor"
+            GRAPHER_HOSTS="${CONF_DIR}/hosts_grapher"
+            KEEPER_HOSTS="${CONF_DIR}/hosts_keeper"
+            PLAYER_HOSTS="${CONF_DIR}/hosts_player"
+            [ -f "${GRAPHER_HOSTS}" ] && NUM_RECORDING_GROUP=$(wc -l <"${GRAPHER_HOSTS}") || NUM_RECORDING_GROUP=1
+            mkdir -p ${MONITOR_DIR}
+            mkdir -p ${OUTPUT_DIR}
+            shift 2 ;;
+        -m | --monitor-dir)
+            MONITOR_DIR=$(realpath "$2")
+            shift 2 ;;
+        -u | --output-dir)
+            OUTPUT_DIR=$(realpath "$2")
+            mkdir -p ${OUTPUT_DIR}
+            shift 2 ;;
+        -v | --visor-bin)
+            VISOR_BIN=$(realpath "$2")
+            VISOR_BIN_FILE_NAME=$(basename ${VISOR_BIN})
+            VISOR_BIN_DIR=$(dirname ${VISOR_BIN})
+            shift 2 ;;
+        -g | --grapher-bin)
+            GRAPHER_BIN=$(realpath "$2")
+            GRAPHER_BIN_FILE_NAME=$(basename ${GRAPHER_BIN})
+            GRAPHER_BIN_DIR=$(dirname ${GRAPHER_BIN})
+            shift 2 ;;
+        -p | --keeper-bin)
+            KEEPER_BIN=$(realpath "$2")
+            KEEPER_BIN_FILE_NAME=$(basename ${KEEPER_BIN})
+            KEEPER_BIN_DIR=$(dirname ${KEEPER_BIN})
+            shift 2 ;;
+        -a | --player-bin)
+            PLAYER_BIN=$(realpath "$2")
+            PLAYER_BIN_FILE_NAME=$(basename ${PLAYER_BIN})
+            PLAYER_BIN_DIR=$(dirname ${PLAYER_BIN})
+            shift 2 ;;
+        -q | --visor-hosts)
+            VISOR_HOSTS=$(realpath "$2")
+            shift 2 ;;
+        -k | --grapher-hosts)
+            GRAPHER_HOSTS=$(realpath "$2")
+            shift 2 ;;
+        -o | --keeper-hosts)
+            KEEPER_HOSTS=$(realpath "$2")
+            shift 2 ;;
+        -f | --conf-file)
+            CONF_FILE=$(realpath "$2")
+            CONF_DIR=$(dirname ${CONF_FILE})
+            shift 2 ;;
+        -n | --client-conf-file)
+            CLIENT_CONF_FILE=$(realpath "$2")
+            shift 2 ;;
+        -j | --job-id)
+            JOB_ID="$2"
+            shift 2 ;;
+        -r | --record-groups)
+            NUM_RECORDING_GROUP="$2"
+            shift 2 ;;
+        -h | --help)
+            usage
+            shift 2 ;;
+        -b | --build)
+            build=true
+            shift ;;
+        -i | --install)
+            install=true
+            shift ;;
+        -d | --start)
+            start=true
+            shift ;;
+        -s | --stop)
+            stop=true
+            shift ;;
+        -c | --clean)
+            clean=true
+            shift ;;
+        -e | --verbose)
+            verbose=true
+            shift ;;
+        --)
+            shift
+            break
+            ;;
+        *)
+            echo -e "${ERR}Unknown option: $1${NC}"
+            exit 1
+            ;;
         esac
     done
 
@@ -676,19 +956,31 @@ parse_args() {
     shift $((OPTIND - 1))
 }
 
+# Parse arguments
 parse_args "$@"
+
+# Check dependencies
+check_dependencies
+
+# Set REPO_ROOT
+REPO_ROOT="$(realpath "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/..")"
 
 # Check if specified operation is allowed
 check_op_validity
 
-if ${deploy}; then
-    deploy
+# Ares-specific settings
+detect_hs_net_suffix
+
+if ${build}; then
+    build
+elif ${install}; then
+    install
+elif ${start}; then
+    start
 elif ${stop}; then
     stop
-elif ${kill}; then
-    kill
-elif ${reset}; then
-    reset
+elif ${clean}; then
+    clean
 fi
 
 echo -e "${INFO}Done${NC}"

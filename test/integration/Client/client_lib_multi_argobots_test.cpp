@@ -1,13 +1,11 @@
-//
-// Created by kfeng on 7/18/22.
-//
 #include <chronolog_client.h>
 #include <common.h>
 #include <thread>
 #include <abt.h>
 #include <atomic>
 #include <cmd_arg_parse.h>
-#include "log.h"
+#include "ClientConfiguration.h"
+#include "chrono_monitor.h"
 
 #define CHRONICLE_NAME_LEN 32
 #define STORY_NAME_LEN 32
@@ -35,8 +33,8 @@ void thread_function(void*tt)
     chronicle_attrs.emplace("IndexGranularity", "Millisecond");
     chronicle_attrs.emplace("TieringPolicy", "Hot");
     ret = client->CreateChronicle(chronicle_name, chronicle_attrs, flags);
-    LOG_DEBUG("[ClientLibMultiArgobotsTest] Thread (ID: {}) - Created Chronicle: {}. Return Code: {}", t->tid, chronicle_name
-         , ret);
+    LOG_DEBUG("[ClientLibMultiArgobotsTest] Thread (ID: {}) - Created Chronicle: {}. Return Code: {}", t->tid
+              , chronicle_name, ret);
     assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_CHRONICLE_EXISTS ||
            ret == chronolog::CL_ERR_NO_KEEPERS);
     flags = 1;
@@ -47,14 +45,16 @@ void thread_function(void*tt)
     story_attrs.emplace("TieringPolicy", "Hot");
     flags = 2;
     auto acquire_ret = client->AcquireStory(chronicle_name, story_name, story_attrs, flags);
-    LOG_DEBUG("[ClientLibMultiArgobotsTest] Thread ID: {} - Attempted to acquire Story: {} in Chronicle: {}. Result Code: {}"
-         , t->tid, story_name, chronicle_name, acquire_ret.first);
+    LOG_DEBUG(
+            "[ClientLibMultiArgobotsTest] Thread ID: {} - Attempted to acquire Story: {} in Chronicle: {}. Result Code: {}"
+            , t->tid, story_name, chronicle_name, acquire_ret.first);
     assert(acquire_ret.first == chronolog::CL_SUCCESS || acquire_ret.first == chronolog::CL_ERR_NOT_EXIST ||
            acquire_ret.first == chronolog::CL_ERR_NO_KEEPERS);
     ret = client->DestroyStory(chronicle_name, story_name);
 
-    LOG_DEBUG("[ClientLibMultiArgobotsTest] Thread ID: {} - Attempted to destroy story '{}' within chronicle '{}'. Result Code: {}"
-         , t->tid, story_name, chronicle_name, acquire_ret.first);
+    LOG_DEBUG(
+            "[ClientLibMultiArgobotsTest] Thread ID: {} - Attempted to destroy story '{}' within chronicle '{}'. Result Code: {}"
+            , t->tid, story_name, chronicle_name, acquire_ret.first);
     assert(ret == chronolog::CL_ERR_ACQUIRED || ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST ||
            ret == chronolog::CL_ERR_NO_KEEPERS);
     ret = client->Disconnect();
@@ -63,49 +63,65 @@ void thread_function(void*tt)
     assert(ret == chronolog::CL_ERR_ACQUIRED || ret == chronolog::CL_SUCCESS);
     ret = client->ReleaseStory(chronicle_name, story_name);
 
-    LOG_DEBUG("[ClientLibMultiArgobotsTest] Thread ID: {} - Released Story: {} from Chronicle: {}. Result Code: {}", t->tid
-         , story_name, chronicle_name, ret);
+    LOG_DEBUG("[ClientLibMultiArgobotsTest] Thread ID: {} - Released Story: {} from Chronicle: {}. Result Code: {}"
+              , t->tid, story_name, chronicle_name, ret);
     assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NO_KEEPERS || ret == chronolog::CL_ERR_NOT_EXIST);
     ret = client->DestroyStory(chronicle_name, story_name);
 
-    LOG_DEBUG("[ClientLibMultiArgobotsTest] Thread ID: {} - Destroyed Story: {} from Chronicle: {}. Result Code: {}", t->tid
-         , story_name, chronicle_name, ret);
+    LOG_DEBUG("[ClientLibMultiArgobotsTest] Thread ID: {} - Destroyed Story: {} from Chronicle: {}. Result Code: {}"
+              , t->tid, story_name, chronicle_name, ret);
     assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST || ret == chronolog::CL_ERR_ACQUIRED ||
            ret == chronolog::CL_ERR_NO_KEEPERS);
     ret = client->DestroyChronicle(chronicle_name);
     assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST || ret == chronolog::CL_ERR_ACQUIRED);
 }
 
-int main(int argc, char**argv)
-{
-    std::atomic <long> duration_connect{}, duration_disconnect{};
-    std::vector <std::thread> thread_vec;
-    uint64_t offset;
+int main(int argc, char** argv) {
+    std::atomic<long> duration_connect{}, duration_disconnect{};
+    std::vector<std::thread> thread_vec;
 
-    std::string conf_file_path;
-    conf_file_path = parse_conf_path_arg(argc, argv);
-    if(conf_file_path.empty())
-    {
-        std::exit(EXIT_FAILURE);
+    // Load configuration
+    std::string conf_file_path = parse_conf_path_arg(argc, argv);
+    chronolog::ClientConfiguration confManager;
+    if (!conf_file_path.empty()) {
+        if (!confManager.load_from_file(conf_file_path)) {
+            std::cerr << "[ClientLibMultiArgobotsTest] Failed to load configuration file '" << conf_file_path << "'. Using default values instead." << std::endl;
+        } else {
+            std::cout << "[ClientLibMultiArgobotsTest] Configuration file loaded successfully from '" << conf_file_path << "'." << std::endl;
+        }
+    } else {
+        std::cout << "[ClientLibMultiArgobotsTest] No configuration file provided. Using default values." << std::endl;
     }
-    ChronoLog::ConfigurationManager confManager(conf_file_path);
-    int result = Logger::initialize(confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILESIZE
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILENUM
-                                    , confManager.CLIENT_CONF.CLIENT_LOG_CONF.FLUSHLEVEL);
-    if(result == 1)
-    {
-        exit(EXIT_FAILURE);
+    confManager.log_configuration(std::cout);
+
+    // Initialize logging
+    int result = chronolog::chrono_monitor::initialize(confManager.LOG_CONF.LOGTYPE,
+                                                       confManager.LOG_CONF.LOGFILE,
+                                                       confManager.LOG_CONF.LOGLEVEL,
+                                                       confManager.LOG_CONF.LOGNAME,
+                                                       confManager.LOG_CONF.LOGFILESIZE,
+                                                       confManager.LOG_CONF.LOGFILENUM,
+                                                       confManager.LOG_CONF.FLUSHLEVEL);
+    if (result == 1) {
+        return EXIT_FAILURE;
     }
-    LOG_INFO("[ClientLibMultiArgobotsTest] Running test.");
 
+    // Build portal config
+    chronolog::ClientPortalServiceConf portalConf;
+    portalConf.PROTO_CONF = confManager.PORTAL_CONF.PROTO_CONF;
+    portalConf.IP = confManager.PORTAL_CONF.IP;
+    portalConf.PORT = confManager.PORTAL_CONF.PORT;
+    portalConf.PROVIDER_ID = confManager.PORTAL_CONF.PROVIDER_ID;
 
-    std::string server_ip = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.IP;
-    int base_port = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.BASE_PORT;
-    client = new chronolog::Client(confManager); //protocol, server_ip, base_port);
+    LOG_INFO("[ClientLibMultiArgobotsTest] Running test...");
+
+    client = new chronolog::Client(portalConf);
+    int ret = client->Connect();
+    if (ret != chronolog::CL_SUCCESS) {
+        LOG_ERROR("[ClientLibMultiArgobotsTest] Failed to connect, ret: {}", ret);
+        return EXIT_FAILURE;
+    }
+    LOG_INFO("[ClientLibMultiArgobotsTest] Connected successfully.");
 
     int num_xstreams = 8;
     int num_threads = 8;
@@ -116,11 +132,9 @@ int main(int argc, char**argv)
     std::vector <struct thread_arg> t_args(num_threads);;
 
     std::string client_id = gen_random(8);;
-    std::string server_uri = confManager.CLIENT_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF.RPC_CONF.PROTO_CONF;
-    server_uri += "://" + server_ip + ":" + std::to_string(base_port);
+    std::string server_uri = portalConf.PROTO_CONF + "://" + portalConf.IP + ":" + std::to_string(portalConf.PORT);
     int flags = 0;
 
-    int ret = client->Connect();//server_uri, client_id, flags);//, offset);
     if(ret == chronolog::CL_SUCCESS)
     {
         LOG_INFO("[ClientLibMultiArgobotsTest] Connected to the server successfully.");

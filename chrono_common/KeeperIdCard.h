@@ -9,46 +9,36 @@
 
 // this class wrapps ChronoKeeper Process identification 
 // that will be used by all the ChronoLog Processes 
-// to both identofy the Keepr process and create RPC client channels 
-// to send the data to the Keeper Recording service
+// to both identify the Keepr process and create RPC client channels 
+// to send the data to the Keeper RecordingService and Keeper DataStoreAdminService
 
 namespace chronolog
 {
 
-// Keeper Process can be uniquely identified by the combination of
-// the host IP address + client_port
-
-typedef uint32_t        in_addr_t;
-typedef uint16_t        in_port_t;
-typedef std::pair <in_addr_t, in_port_t> service_endpoint;
-
-typedef uint32_t KeeperGroupId;
 
 class KeeperIdCard
 {
 
-    RecordingGroupId keeper_group_id;
-    uint32_t ip_addr; //IP address as uint32_t in host byte order
-    uint16_t port;    //port number as uint16_t in host byte order
-    uint16_t tl_provider_id; // id of thallium service provider
+    RecordingGroupId groupId;
+    ServiceId recordingServiceId;
 
 public:
 
 
-    KeeperIdCard( uint32_t group_id = 0, uint32_t addr = 0, uint16_t a_port=0, uint16_t provider_id=0)
-        : keeper_group_id(group_id), ip_addr(addr), port(a_port),tl_provider_id(provider_id)
+    KeeperIdCard( uint32_t group_id = 0, ServiceId const& service_id = ServiceId{})
+        : groupId(group_id)
+        , recordingServiceId(service_id)
     {}
 
     KeeperIdCard( KeeperIdCard const& other)
-          : keeper_group_id(other.getGroupId()), ip_addr(other.getIPaddr()), port(other.getPort()),tl_provider_id(other.getProviderId())
-      {}
+        : groupId(other.getGroupId())
+        , recordingServiceId(other.getRecordingServiceId())
+    {}
 
     ~KeeperIdCard()=default;
 
-    RecordingGroupId getGroupId() const { return keeper_group_id; }
-    uint32_t getIPaddr() const {return ip_addr; }
-    uint16_t getPort() const { return port;}
-    uint16_t getProviderId () const { return tl_provider_id; }
+    RecordingGroupId getGroupId() const { return groupId; }
+    ServiceId const& getRecordingServiceId() const { return recordingServiceId; }
 
 
     // serialization function used by thallium RPC providers
@@ -56,49 +46,39 @@ public:
     template <typename SerArchiveT>
     void serialize( SerArchiveT & serT)
     {
-        serT & keeper_group_id;
-        serT & ip_addr;
-        serT & port;
-        serT & tl_provider_id;
-    }
-
-    std::string & getIPasDottedString ( std::string & a_string ) const
-    {
-
-        char buffer[INET_ADDRSTRLEN];
-        // convert ip from host to network byte order uint32_t
-        uint32_t ip_net_order = htonl(ip_addr);
-        // convert network byte order uint32_t to a dotted string
-        if (NULL != inet_ntop(AF_INET, &ip_net_order, buffer, INET_ADDRSTRLEN))
-        {   a_string += std::string(buffer); }
-     return a_string;
+        serT & groupId;
+        serT & recordingServiceId;
     }
 
 };
 
+inline std::string to_string(chronolog::KeeperIdCard const& keeper_id_card)
+{
+    std::string a_string;
+    return std::string("KeeperIdCard{Group{") + std::to_string(keeper_id_card.getGroupId()) + "}" 
+            + to_string(keeper_id_card.getRecordingServiceId()) + "}";
+}
+
 } //namespace chronolog
+
 
 inline bool operator==(chronolog::KeeperIdCard const& card1, chronolog::KeeperIdCard const& card2)
 {
-    return ( (card1.getIPaddr()==card2.getIPaddr() && card1.getPort() == card2.getPort()
-                && card1.getProviderId() == card2.getProviderId()) ? true : false );
+    return (card1.getRecordingServiceId()==card2.getRecordingServiceId());
 
 }
 
 inline std::ostream & operator<< (std::ostream & out , chronolog::KeeperIdCard const & keeper_id_card)
 {
     std::string a_string;
-    out << "KeeperIdCard{"<<keeper_id_card.getGroupId()
-       <<":"<<keeper_id_card.getIPasDottedString(a_string)<<":"<<keeper_id_card.getPort()
-       <<":"<<keeper_id_card.getProviderId()<<"}";
+    out << "KeeperIdCard{Group{"<<keeper_id_card.getGroupId() <<"}"
+       <<keeper_id_card.getRecordingServiceId()<<"}";
     return out;
 }
 
-inline std::string& operator+= (std::string& a_string, chronolog::KeeperIdCard const& keeper_id_card)
+inline std::string & operator+= (std::string & a_string , chronolog::KeeperIdCard const & keeper_id_card)
 {
-    a_string += std::string("KeeperIdCard{") + std::to_string(keeper_id_card.getGroupId()) + ":" +
-                keeper_id_card.getIPasDottedString(a_string) + ":" + std::to_string(keeper_id_card.getPort()) + ":" +
-                std::to_string(keeper_id_card.getProviderId()) + "}";
+    a_string += chronolog::to_string(keeper_id_card);
     return a_string;
 }
 
