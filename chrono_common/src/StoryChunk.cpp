@@ -1,7 +1,5 @@
-
-
-#include "chronolog_client.h" //for definition of chronolog::Event
-#include "StoryChunk.h"
+#include <chronolog_client.h>
+#include <StoryChunk.h>
 
 
 namespace chl = chronolog;

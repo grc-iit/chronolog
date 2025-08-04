@@ -146,8 +146,3 @@ inline std::string& operator+= (std::string& a_string, chronolog::ServiceId cons
 }
 
 #endif
-
-
-
-
-

@@ -1,7 +1,6 @@
 #ifndef CHUNK_EXTRACTION_QUEUE_H
 #define CHUNK_EXTRACTION_QUEUE_H
 
-
 #include <iostream>
 #include <deque>
 #include <mutex>
@@ -97,4 +96,3 @@ private:
 }
 
 #endif
-

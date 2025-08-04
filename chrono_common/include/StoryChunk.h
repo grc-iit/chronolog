@@ -9,9 +9,11 @@
 #include <thallium/serialization/stl/tuple.hpp>
 
 #include <chrono_monitor.h>
-#include <chronolog_client.h> //for chronolog::Event definition
+#include <chronolog_client.h>
 
-#include "chronolog_types.h"  //for chronolog::LogEvent definiiton
+#include "chronolog_types.h"  //for chronolog::LogEvent definition
+
+
 namespace chronolog
 {
 

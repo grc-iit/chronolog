@@ -6,6 +6,7 @@
 #include <cstring>
 #include <H5Cpp.h>
 
+
 namespace chronolog {
 
 class LogEventHVL

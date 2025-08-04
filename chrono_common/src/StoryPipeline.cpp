@@ -2,12 +2,11 @@
 #include <map>
 #include <mutex>
 
-
-#include "StoryChunk.h"
-#include "StoryPipeline.h"
-#include "StoryChunkIngestionHandle.h"
-#include "StoryChunkExtractionQueue.h"
-#include "chrono_monitor.h"
+#include <chrono_monitor.h>
+#include <StoryChunk.h>
+#include <StoryPipeline.h>
+#include <StoryChunkIngestionHandle.h>
+#include <StoryChunkExtractionQueue.h>
 
 //#define TRACE_CHUNKING
 //#define TRACE_CHUNK_EXTRACTION
