@@ -3,6 +3,7 @@
 
 #include <mutex>
 #include <deque>
+
 #include "StoryChunk.h"
 //
 // IngestionQueue is a funnel into the KeeperDataStore

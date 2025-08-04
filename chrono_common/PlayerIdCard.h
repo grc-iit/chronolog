@@ -2,7 +2,6 @@
 #define PLAYER_ID_CARD_H
 
 #include <arpa/inet.h>
-
 #include <iostream>
 
 #include "ServiceId.h"
