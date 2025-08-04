@@ -13,7 +13,7 @@ message("build target : chrono_keeper")
 add_executable(chrono_keeper)
 target_include_directories(chrono_keeper PRIVATE
     include
-    ${CMAKE_SOURCE_DIR}/chrono_common
+    ${CMAKE_SOURCE_DIR}/chrono_common/include
     ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/include
 )
 
@@ -23,9 +23,9 @@ target_sources(chrono_keeper PRIVATE
     KeeperDataStore.cpp
     CSVFileChunkExtractor.cpp
     StoryChunkExtractorRDMA.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunkExtractor.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunk.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/ConfigurationManager.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunkExtractor.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunk.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/src/ConfigurationManager.cpp
     ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/src/chrono_monitor.cpp
 )
 

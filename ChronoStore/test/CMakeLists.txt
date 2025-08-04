@@ -17,12 +17,12 @@ add_executable(hdf5_archiver_test
     ${CMAKE_SOURCE_DIR}/ChronoStore/include/StoryReader.h
     ${CMAKE_SOURCE_DIR}/ChronoStore/src/StoryReader.cpp
     ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/src/chrono_monitor.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunk.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunk.cpp
 )
 
 target_include_directories(hdf5_archiver_test PRIVATE
     ${CMAKE_SOURCE_DIR}/ChronoKeeper
-    ${CMAKE_SOURCE_DIR}/chrono_common
+    ${CMAKE_SOURCE_DIR}/chrono_common/include
     ${CMAKE_SOURCE_DIR}/ChronoKeeper/include
     .
 )
