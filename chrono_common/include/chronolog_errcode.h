@@ -1,7 +1,7 @@
 #ifndef CHRONOLOG_SERVER_ERRCODE_H
 #define CHRONOLOG_SERVER_ERRCODE_H
 
-#include "../../../Client/include/client_errcode.h"
+#include "../../Client/include/client_errcode.h"
 
 namespace chronolog {
 

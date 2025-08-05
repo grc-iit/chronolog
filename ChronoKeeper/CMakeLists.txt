@@ -14,7 +14,6 @@ add_executable(chrono_keeper)
 target_include_directories(chrono_keeper PRIVATE
     include
     ${CMAKE_SOURCE_DIR}/chrono_common/include
-    ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/include
 )
 
 target_sources(chrono_keeper PRIVATE
@@ -26,7 +25,7 @@ target_sources(chrono_keeper PRIVATE
     ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunkExtractor.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunk.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/src/ConfigurationManager.cpp
-    ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/src/chrono_monitor.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/src/chrono_monitor.cpp
 )
 
 target_link_libraries(chrono_keeper chronolog_client thallium)

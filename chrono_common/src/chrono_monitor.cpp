@@ -2,11 +2,13 @@
 // Created by eneko on 12/1/23.
 //
 
-#include "chrono_monitor.h"
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/sinks/rotating_file_sink.h>
 #include <iostream>
 #include <filesystem>
+
+#include <chrono_monitor.h>
+
 
 namespace chronolog
 {

@@ -4,10 +4,10 @@
 #include <iostream>
 #include <deque>
 #include <mutex>
-#include <chrono_monitor.h>
 
 #include "chronolog_types.h"
 #include "StoryChunk.h"
+#include "chrono_monitor.h"
 
 namespace chronolog
 {
