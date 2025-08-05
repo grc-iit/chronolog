@@ -20,7 +20,7 @@ add_library(chronolog_client
     src/ChronologClient.cpp
     src/ChronologClientImpl.cpp
     src/ClientConfiguration.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/chrono_monitor.cpp
+    ${CMAKE_SOURCE_DIR}/Client/src/chrono_monitor.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunk.cpp
 )
 

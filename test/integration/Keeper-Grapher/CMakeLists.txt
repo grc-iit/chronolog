@@ -17,7 +17,7 @@ target_sources(extract_test PRIVATE
     ${CMAKE_SOURCE_DIR}/chrono_common/include/chronolog_types.h
     ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunk.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/src/ConfigurationManager.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/chrono_monitor.cpp
+    ${CMAKE_SOURCE_DIR}/Client/src/chrono_monitor.cpp
 )
 
 target_include_directories(extract_test PRIVATE
@@ -35,7 +35,7 @@ target_sources(ingest_test PRIVATE
     ${CMAKE_SOURCE_DIR}/chrono_common/include/chronolog_types.h
     ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunk.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/src/ConfigurationManager.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/chrono_monitor.cpp
+    ${CMAKE_SOURCE_DIR}/Client/src/chrono_monitor.cpp
 )
 
 target_include_directories(ingest_test PRIVATE

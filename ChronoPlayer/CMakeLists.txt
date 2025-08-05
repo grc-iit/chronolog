@@ -11,6 +11,7 @@ add_executable(chrono_player  )
 target_include_directories(chrono_player PRIVATE
     include
     ${CMAKE_SOURCE_DIR}/chrono_common/include
+    ${CMAKE_SOURCE_DIR}/Client/include
 )
 
 target_sources(chrono_player PRIVATE
@@ -25,7 +26,7 @@ target_sources(chrono_player PRIVATE
     ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryPipeline.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunkExtractor.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/src/ConfigurationManager.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/chrono_monitor.cpp)
+    ${CMAKE_SOURCE_DIR}/Client/src/chrono_monitor.cpp)
 
 target_link_libraries(chrono_player chronolog_client thallium)
 target_link_libraries(chrono_player ${HDF5_LIBRARIES})
