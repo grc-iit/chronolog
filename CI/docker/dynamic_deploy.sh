@@ -90,8 +90,8 @@ services:
 EOF
 
 # Generate the regular container services
-for i in $(seq 1 $(($NUM_CONTAINERS-1))); do
-    cat >>dynamic-compose.yaml <<EOF
+for i in $(seq 1 $NUM_CONTAINERS); do
+    cat >> dynamic-compose.yaml << EOF
   c$i:
     <<: *x-common
     hostname: c$i
