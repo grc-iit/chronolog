@@ -2,7 +2,7 @@
 // Created by kfeng on 1/2/23.
 //
 
-#include "ClientInfo.h"
+#include <ClientInfo.h>
 
 std::ostream &operator<<(std::ostream &out, const ClientInfo &r)
 {

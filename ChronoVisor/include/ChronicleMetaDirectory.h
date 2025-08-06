@@ -4,7 +4,8 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <Chronicle.h>
+
+#include "Chronicle.h"
 #include "chronolog_types.h"
 
 class ClientRegistryManager;
