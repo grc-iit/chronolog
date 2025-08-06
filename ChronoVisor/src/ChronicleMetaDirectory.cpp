@@ -1,10 +1,11 @@
-#include <ChronicleMetaDirectory.h>
-#include "city.h"
 #include <chrono>
 #include <unistd.h>
 #include <mutex>
 #include <typedefs.h>
+
 #include <ClientRegistryManager.h>
+#include <ChronicleMetaDirectory.h>
+#include <city.h>
 
 namespace chl = chronolog;
 

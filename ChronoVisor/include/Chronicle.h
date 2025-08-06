@@ -8,12 +8,14 @@
 #include <unordered_map>
 #include <ostream>
 #include <atomic>
-#include <Story.h>
-#include <Archive.h>
-#include "city.h"
+#include <mutex>
+
+#include <city.h>
 #include <chrono_monitor.h>
 #include <chronolog_errcode.h>
-#include <mutex>
+
+#include "Story.h"
+#include "Archive.h"
 
 #define MAX_CHRONICLE_PROPERTY_LIST_SIZE 16
 #define MAX_CHRONICLE_METADATA_MAP_SIZE 16
