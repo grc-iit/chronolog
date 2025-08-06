@@ -40,6 +40,7 @@ set(PUBLIC_HEADER_FILES
     include/chronolog_client.h
     include/ClientConfiguration.h
     include/client_errcode.h
+    include/chrono_monitor.h
 )
 
 # install library
