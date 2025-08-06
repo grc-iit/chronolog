@@ -1,11 +1,10 @@
 #ifndef CHUNK_EXTRACTION_QUEUE_H
 #define CHUNK_EXTRACTION_QUEUE_H
 
-
 #include <iostream>
 #include <deque>
 #include <mutex>
-#include "chrono_monitor.h"
+#include <chrono_monitor.h>
 
 #include "chronolog_types.h"
 #include "StoryChunk.h"
@@ -97,4 +96,3 @@ private:
 }
 
 #endif
-

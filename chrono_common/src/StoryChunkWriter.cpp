@@ -1,6 +1,7 @@
 #include <filesystem>
 #include <regex>
-#include "StoryChunkWriter.h"
+
+#include <StoryChunkWriter.h>
 
 namespace fs = std::filesystem;
 

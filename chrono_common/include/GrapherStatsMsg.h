@@ -2,6 +2,7 @@
 #define GRAPHER_STATS_MSG_H
 
 #include <iostream>
+
 #include "GrapherIdCard.h"
 
 

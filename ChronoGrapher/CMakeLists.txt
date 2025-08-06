@@ -12,7 +12,7 @@ message("build target : chrono_grapher")
 add_executable(chrono_grapher)
 target_include_directories(chrono_grapher PRIVATE
     include
-    ${CMAKE_SOURCE_DIR}/chrono_common
+    ${CMAKE_SOURCE_DIR}/chrono_common/include
     ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/include
 )
 
@@ -21,11 +21,11 @@ target_sources(chrono_grapher PRIVATE
     GrapherDataStore.cpp
     CSVFileChunkExtractor.cpp
     HDF5FileChunkExtractor.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunk.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunkWriter.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/StoryPipeline.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunkExtractor.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/ConfigurationManager.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunk.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunkWriter.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryPipeline.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunkExtractor.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/src/ConfigurationManager.cpp
     ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/src/chrono_monitor.cpp
 )
 

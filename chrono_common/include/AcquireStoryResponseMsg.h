@@ -2,6 +2,7 @@
 #define STORY_ACQUISITION_RESPONSE_MSG_H
 
 #include <iostream>
+
 #include "chronolog_types.h"
 #include "ServiceId.h"
 #include "KeeperIdCard.h"

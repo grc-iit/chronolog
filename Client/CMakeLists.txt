@@ -21,14 +21,14 @@ add_library(chronolog_client
     src/ChronologClientImpl.cpp
     src/ClientConfiguration.cpp
     ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/src/chrono_monitor.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunk.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunk.cpp
 )
 
 # Include directories for the library
 target_include_directories(chronolog_client PUBLIC
     include
     ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/include
-    ${CMAKE_SOURCE_DIR}/chrono_common
+    ${CMAKE_SOURCE_DIR}/chrono_common/include
     ${CMAKE_SOURCE_DIR}/Client/include
 )
 

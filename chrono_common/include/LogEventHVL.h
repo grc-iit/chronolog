@@ -4,7 +4,8 @@
 
 #include <string>
 #include <cstring>
-#include "H5Cpp.h"
+#include <H5Cpp.h>
+
 
 namespace chronolog {
 

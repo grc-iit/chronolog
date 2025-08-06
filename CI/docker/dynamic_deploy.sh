@@ -26,24 +26,24 @@ NUM_PLAYERS=1
 # Parse command line arguments
 while getopts "n:k:g:p:h" opt; do
     case ${opt} in
-        n)
-            NUM_CONTAINERS=$OPTARG
-            ;;
-        k)
-            NUM_KEEPERS=$OPTARG
-            ;;
-        g)
-            NUM_GRAPHERS=$OPTARG
-            ;;
-        p)
-            NUM_PLAYERS=$OPTARG
-            ;;
-        h)
-            usage
-            ;;
-        \?)
-            usage
-            ;;
+    n)
+        NUM_CONTAINERS=$OPTARG
+        ;;
+    k)
+        NUM_KEEPERS=$OPTARG
+        ;;
+    g)
+        NUM_GRAPHERS=$OPTARG
+        ;;
+    p)
+        NUM_PLAYERS=$OPTARG
+        ;;
+    h)
+        usage
+        ;;
+    \?)
+        usage
+        ;;
     esac
 done
 
@@ -70,7 +70,7 @@ if [ $NUM_CONTAINERS -ne $(($NUM_KEEPERS + $NUM_GRAPHERS + $NUM_PLAYERS + 1)) ];
 fi
 
 # Generate the docker-compose file dynamically
-cat > dynamic-compose.yaml << EOF
+cat >dynamic-compose.yaml <<EOF
 x-common: &x-common
   image: gnosisrc/chronolog:latest
   init: true
@@ -102,7 +102,7 @@ EOF
 
     # Add dependencies starting from the second container
     if [ $i -gt 1 ]; then
-        cat >> dynamic-compose.yaml << EOF
+        cat >>dynamic-compose.yaml <<EOF
     depends_on:
       - c1
 EOF
@@ -110,7 +110,7 @@ EOF
 done
 
 # Add the setup command for the last container
-cat >> dynamic-compose.yaml << EOF
+cat >>dynamic-compose.yaml <<EOF
     environment:
       NUM_CONTAINERS: $NUM_CONTAINERS
 

@@ -1,9 +1,7 @@
 #include <unistd.h>
-
 #include <thallium.hpp>
-#include <unistd.h>
 
-#include "StoryChunkExtractor.h"
+#include <StoryChunkExtractor.h>
 
 
 namespace tl = thallium;
