@@ -11,7 +11,6 @@ message("build target : chrono_store")
 
 include_directories(
     include
-    ${CMAKE_SOURCE_DIR}/Client/include
     ${CMAKE_SOURCE_DIR}/chrono_common/include
     ${CMAKE_SOURCE_DIR}/ChronoKeeper
     ${HDF5_INCLUDE_DIRS}         # HDF5 include directories

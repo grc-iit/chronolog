@@ -26,7 +26,6 @@ target_sources(chronovisor_server PRIVATE
 
 target_include_directories(chronovisor_server PRIVATE
     ${CMAKE_SOURCE_DIR}/chrono_common/include
-    ${CMAKE_SOURCE_DIR}/Client/include
     include
 )
 

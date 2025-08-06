@@ -13,7 +13,6 @@ add_executable(chrono_grapher)
 target_include_directories(chrono_grapher PRIVATE
     include
     ${CMAKE_SOURCE_DIR}/chrono_common/include
-    ${CMAKE_SOURCE_DIR}/Client/include
 )
 
 target_sources(chrono_grapher PRIVATE

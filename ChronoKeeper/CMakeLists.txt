@@ -14,7 +14,6 @@ add_executable(chrono_keeper)
 target_include_directories(chrono_keeper PRIVATE
     include
     ${CMAKE_SOURCE_DIR}/chrono_common/include
-    ${CMAKE_SOURCE_DIR}/Client/include
 )
 
 target_sources(chrono_keeper PRIVATE
