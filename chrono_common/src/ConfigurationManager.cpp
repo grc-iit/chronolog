@@ -134,61 +134,62 @@ int chronolog::RPCProviderConf::parseJsonConf(json_object *json_conf)
 int chronolog::LogConf::parseJsonConf(json_object *json_conf)
 {
 
-    if(!json_object_is_type(json_conf, json_type_object))
-    {
-        std::cerr << "[LogConf] Logger configuration is not found or is not an object." << std::endl;
-        return (chronolog::CL_ERR_INVALID_CONF);
-    }
-    json_object_object_foreach(json_conf, key, json_val)
-    {
-        if(strcmp(key, "monitor") != 0)
+        if(!json_object_is_type(json_conf, json_type_object))
         {
-            std::cerr << "[LogConf] Unknown Log configuration key : " << key << std::endl;
+            std::cerr
+                    << "[LogConf] Logger configuration is not found or is not an object." << std::endl;
             return (chronolog::CL_ERR_INVALID_CONF);
         }
-
-        json_object_object_foreach(json_val, key, val)
+        json_object_object_foreach(json_conf, key, json_val)
         {
-            if(strcmp(key, "type") == 0)
+            if(strcmp(key, "monitor") != 0)
             {
-                assert(json_object_is_type(val, json_type_string));
-                LOGTYPE = json_object_get_string(val);
+                std::cerr << "[LogConf] Unknown Log configuration key : " << key << std::endl;
+                return (chronolog::CL_ERR_INVALID_CONF);
             }
-            else if(strcmp(key, "file") == 0)
+
+            json_object_object_foreach(json_val, key, val)
             {
-                assert(json_object_is_type(val, json_type_string));
-                LOGFILE = json_object_get_string(val);
+                if(strcmp(key, "type") == 0)
+                {
+                    assert(json_object_is_type(val, json_type_string));
+                    LOGTYPE = json_object_get_string(val);
+                }
+                else if(strcmp(key, "file") == 0)
+                {
+                    assert(json_object_is_type(val, json_type_string));
+                    LOGFILE = json_object_get_string(val);
+                }
+                else if(strcmp(key, "level") == 0)
+                {
+                    assert(json_object_is_type(val, json_type_string));
+                    parselogLevelConf(val, LOGLEVEL);
+                }
+                else if(strcmp(key, "name") == 0)
+                {
+                    assert(json_object_is_type(val, json_type_string));
+                    LOGNAME = json_object_get_string(val);
+                }
+                else if(strcmp(key, "filesize") == 0)
+                {
+                    assert(json_object_is_type(val, json_type_int));
+                    LOGFILESIZE = json_object_get_int(val);
+                }
+                else if(strcmp(key, "filenum") == 0)
+                {
+                    assert(json_object_is_type(val, json_type_int));
+                    LOGFILENUM = json_object_get_int(val);
+                }
+                else if(strcmp(key, "flushlevel") == 0)
+                {
+                    assert(json_object_is_type(val, json_type_string));
+                    parseFlushLevelConf(val, FLUSHLEVEL);
+                }
+                else
+                {
+                    std::cerr << "[LogConf] Unknown log configuration: " << key << std::endl;
+                }
             }
-            else if(strcmp(key, "level") == 0)
-            {
-                assert(json_object_is_type(val, json_type_string));
-                parselogLevelConf(val, LOGLEVEL);
-            }
-            else if(strcmp(key, "name") == 0)
-            {
-                assert(json_object_is_type(val, json_type_string));
-                LOGNAME = json_object_get_string(val);
-            }
-            else if(strcmp(key, "filesize") == 0)
-            {
-                assert(json_object_is_type(val, json_type_int));
-                LOGFILESIZE = json_object_get_int(val);
-            }
-            else if(strcmp(key, "filenum") == 0)
-            {
-                assert(json_object_is_type(val, json_type_int));
-                LOGFILENUM = json_object_get_int(val);
-            }
-            else if(strcmp(key, "flushlevel") == 0)
-            {
-                assert(json_object_is_type(val, json_type_string));
-                parseFlushLevelConf(val, FLUSHLEVEL);
-            }
-            else
-            {
-                std::cerr << "[LogConf] Unknown log configuration: " << key << std::endl;
-            }
-        }
     }
     return 1;
 }
@@ -408,15 +409,17 @@ int chronolog::GrapherConfiguration::parseJsonConf(json_object *json_conf)
                 }
                 else
                 {
-                    std::cerr << "[GrapherConfiguration] Unknown KeeperGrapherDrainService configuration: " << key
-                              << std::endl;
+                    std::cerr
+                            << "[GrapherConfiguration] Unknown KeeperGrapherDrainService configuration: "
+                            << key << std::endl;
                 }
             }
         }
         else if(strcmp(key, "DataStoreAdminService") == 0)
         {
             assert(json_object_is_type(val, json_type_object));
-            json_object *data_store_admin_service_conf = json_object_object_get(json_conf, "DataStoreAdminService");
+            json_object* data_store_admin_service_conf = json_object_object_get(json_conf
+                                                                                , "DataStoreAdminService");
             json_object_object_foreach(data_store_admin_service_conf, key, val)
             {
                 if(strcmp(key, "rpc") == 0)
@@ -425,15 +428,15 @@ int chronolog::GrapherConfiguration::parseJsonConf(json_object *json_conf)
                 }
                 else
                 {
-                    std::cerr << "[GrapherConfiguration] Unknown DataStoreAdminService configuration: " << key
-                              << std::endl;
+                    std::cerr << "[GrapherConfiguration] Unknown DataStoreAdminService configuration: "
+                              << key << std::endl;
                 }
             }
         }
         else if(strcmp(key, "VisorRegistryService") == 0)
         {
             assert(json_object_is_type(val, json_type_object));
-            json_object *visor_keeper_registry_service_conf = json_object_object_get(json_conf, "VisorRegistryService");
+            json_object*visor_keeper_registry_service_conf = json_object_object_get(json_conf, "VisorRegistryService");
             json_object_object_foreach(visor_keeper_registry_service_conf, key, val)
             {
                 if(strcmp(key, "rpc") == 0)
@@ -442,8 +445,8 @@ int chronolog::GrapherConfiguration::parseJsonConf(json_object *json_conf)
                 }
                 else
                 {
-                    std::cerr << "[GrapherConfiguration] Unknown VisorRegistryService configuration: " << key
-                              << std::endl;
+                    std::cerr << "[GrapherConfiguration] Unknown VisorRegistryService configuration: "
+                              << key << std::endl;
                 }
             }
         }
@@ -469,13 +472,13 @@ int chronolog::GrapherConfiguration::parseJsonConf(json_object *json_conf)
         else if(strcmp(key, "DataStoreInternals") == 0)
         {
             assert(json_object_is_type(val, json_type_object));
-            json_object *data_store_conf = json_object_object_get(json_conf, "DataStoreInternals");
+            json_object*data_store_conf = json_object_object_get(json_conf, "DataStoreInternals");
             DATA_STORE_CONF.parseJsonConf(data_store_conf);
         }
         else if(strcmp(key, "Extractors") == 0)
         {
             assert(json_object_is_type(val, json_type_object));
-            json_object *extractors = json_object_object_get(json_conf, "Extractors");
+            json_object*extractors = json_object_object_get(json_conf, "Extractors");
             json_object_object_foreach(extractors, key, val)
             {
                 if(strcmp(key, "story_files_dir") == 0)
@@ -485,7 +488,8 @@ int chronolog::GrapherConfiguration::parseJsonConf(json_object *json_conf)
                 }
                 else
                 {
-                    std::cerr << "[GrapherConfiguration] Unknown Extractors configuration " << key << std::endl;
+                    std::cerr << "[GrapherConfiguration] Unknown Extractors configuration " << key
+                              << std::endl;
                 }
             }
         }
@@ -510,7 +514,8 @@ int chronolog::PlayerConfiguration::parseJsonConf(json_object *json_conf)
         else if(strcmp(key, "PlayerStoreAdminService") == 0)
         {
             assert(json_object_is_type(val, json_type_object));
-            json_object *data_store_admin_service_conf = json_object_object_get(json_conf, "PlayerStoreAdminService");
+            json_object* data_store_admin_service_conf = json_object_object_get(json_conf
+                                                                                , "PlayerStoreAdminService");
             json_object_object_foreach(data_store_admin_service_conf, key, val)
             {
                 if(strcmp(key, "rpc") == 0)
@@ -519,6 +524,8 @@ int chronolog::PlayerConfiguration::parseJsonConf(json_object *json_conf)
                 }
                 else
                 {
+                    std::cerr << "[ConfigurationManager] [chrono_player] Unknown PlayerStoreAdminService configuration: "
+                              << key << std::endl;
                     std::cerr
                             << "[ConfigurationManager] [chrono_player] Unknown PlayerStoreAdminService configuration: "
                             << key << std::endl;
@@ -528,7 +535,8 @@ int chronolog::PlayerConfiguration::parseJsonConf(json_object *json_conf)
         else if(strcmp(key, "PlaybackQueryService") == 0)
         {
             assert(json_object_is_type(val, json_type_object));
-            json_object *data_store_admin_service_conf = json_object_object_get(json_conf, "PlaybackQueryService");
+            json_object* data_store_admin_service_conf = json_object_object_get(json_conf
+                                                                                , "PlaybackQueryService");
             json_object_object_foreach(data_store_admin_service_conf, key, val)
             {
                 if(strcmp(key, "rpc") == 0)
