@@ -1,21 +1,18 @@
 #include <unistd.h>
 #include <arpa/inet.h>
-#include <unistd.h>
-
 #include <signal.h>
 
-#include "KeeperRecordingService.h"
-#include "KeeperRegClient.h"
-#include "IngestionQueue.h"
-#include "StoryChunkExtractionQueue.h"
-#include "StoryChunkExtractor.h"
-#include "KeeperDataStore.h"
-#include "DataStoreAdminService.h"
-#include "ConfigurationManager.h"
-#include "StoryChunkExtractor.h"
-#include "CSVFileChunkExtractor.h"
-#include "cmd_arg_parse.h"
-#include "StoryChunkExtractorRDMA.h"
+#include <KeeperRecordingService.h>
+#include <KeeperRegClient.h>
+#include <IngestionQueue.h>
+#include <StoryChunkExtractionQueue.h>
+#include <StoryChunkExtractor.h>
+#include <KeeperDataStore.h>
+#include <DataStoreAdminService.h>
+#include <ConfigurationManager.h>
+#include <CSVFileChunkExtractor.h>
+#include <cmd_arg_parse.h>
+#include <StoryChunkExtractorRDMA.h>
 
 // we will be using a combination of the uint32_t representation of the service IP address
 // and uint16_t representation of the port number
@@ -256,7 +253,7 @@ int main(int argc, char**argv)
         return (-1);
     }
 
-    /// KeeperRegistryClient SetUp _____________________________________________________________________________________
+    /// KeeperRegistryClient Set Up _____________________________________________________________________________________
     // create KeeperRegistryClient and register the new KeeperRecording service with the KeeperRegistry
     std::string KEEPER_REGISTRY_SERVICE_NA_STRING =
             KEEPER_CONF.VISOR_REGISTRY_SERVICE_CONF.PROTO_CONF + "://" +

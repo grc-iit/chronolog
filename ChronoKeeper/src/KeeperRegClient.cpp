@@ -1,3 +1,7 @@
+#include <iostream>
+#include <cstdlib>
+#include <thallium.hpp>
+
 int main(int argc, char**argv)
 {
     if(argc != 3)
