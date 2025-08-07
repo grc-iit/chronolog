@@ -1,11 +1,9 @@
-
 #include <map>
 #include <thallium.hpp>
 
-#include "chrono_monitor.h"
-
-#include "PlaybackService.h"
-#include "StoryChunkTransferAgent.h"
+#include <chrono_monitor.h>
+#include <PlaybackService.h>
+#include <StoryChunkTransferAgent.h>
 
 namespace tl = thallium;
 namespace chl = chronolog;
@@ -85,5 +83,3 @@ void chronolog::PlaybackService::story_playback_request(tl::request const &reque
     // return requestId 
     request.respond(requestId);
 }
-
-
