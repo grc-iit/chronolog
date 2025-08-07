@@ -524,8 +524,6 @@ int chronolog::PlayerConfiguration::parseJsonConf(json_object *json_conf)
                 }
                 else
                 {
-                    std::cerr << "[ConfigurationManager] [chrono_player] Unknown PlayerStoreAdminService configuration: "
-                              << key << std::endl;
                     std::cerr
                             << "[ConfigurationManager] [chrono_player] Unknown PlayerStoreAdminService configuration: "
                             << key << std::endl;
