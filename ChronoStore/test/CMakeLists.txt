@@ -48,9 +48,10 @@ add_test(NAME hdf5_archiver_test COMMAND hdf5_archiver_test)
 #    cmp_vlen_bytes_dtype_test.cpp
 #    story_chunk_test_utils.h
 #    ../../Client/src/chrono_monitor.cpp)
-#    ${CMAKE_SOURCE_DIR}/Client/include
+
 #target_include_directories(cmp_vlen_bytes_dtype_test PRIVATE ../../ChronoKeeper
-#    ./)
+#    ./
+#    ${CMAKE_SOURCE_DIR}/Client/include)
 #target_link_libraries(cmp_vlen_bytes_dtype_test ${HDF5_LIBRARIES})
 #add_test(NAME cmp_vlen_bytes_dtype_test COMMAND cmp_vlen_bytes_dtype_test)
 
