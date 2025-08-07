@@ -6,12 +6,12 @@
 #include <vector>
 #include <mutex>
 #include <thallium.hpp>
+
 #include <chrono_monitor.h>
 
 #include "chronolog_types.h"
 #include "StoryChunkExtractionQueue.h"
 #include "chronolog_errcode.h"
-
 
 namespace tl = thallium;
 

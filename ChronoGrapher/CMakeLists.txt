@@ -13,7 +13,6 @@ add_executable(chrono_grapher)
 target_include_directories(chrono_grapher PRIVATE
     include
     ${CMAKE_SOURCE_DIR}/chrono_common/include
-    ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/include
 )
 
 target_sources(chrono_grapher PRIVATE
@@ -26,7 +25,7 @@ target_sources(chrono_grapher PRIVATE
     ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryPipeline.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunkExtractor.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/src/ConfigurationManager.cpp
-    ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/src/chrono_monitor.cpp
+    ${CMAKE_SOURCE_DIR}/Client/src/chrono_monitor.cpp
 )
 
 target_link_libraries(chrono_grapher chronolog_client thallium)

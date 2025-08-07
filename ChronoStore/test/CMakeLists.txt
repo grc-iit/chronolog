@@ -16,13 +16,14 @@ add_executable(hdf5_archiver_test
     ${CMAKE_SOURCE_DIR}/ChronoStore/src/StoryWriter.cpp
     ${CMAKE_SOURCE_DIR}/ChronoStore/include/StoryReader.h
     ${CMAKE_SOURCE_DIR}/ChronoStore/src/StoryReader.cpp
-    ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/src/chrono_monitor.cpp
+    ${CMAKE_SOURCE_DIR}/Client/src/chrono_monitor.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunk.cpp
 )
 
 target_include_directories(hdf5_archiver_test PRIVATE
     ${CMAKE_SOURCE_DIR}/ChronoKeeper
     ${CMAKE_SOURCE_DIR}/chrono_common/include
+    ${CMAKE_SOURCE_DIR}/Client/include
     ${CMAKE_SOURCE_DIR}/ChronoKeeper/include
     .
 )
@@ -35,8 +36,9 @@ add_test(NAME hdf5_archiver_test COMMAND hdf5_archiver_test)
 #add_executable(cmp_vlen_str_dtype_test
 #    cmp_vlen_str_dtype_test.cpp
 #    story_chunk_test_utils.h
-#    ../../ChronoAPI/ChronoLog/src/chrono_monitor.cpp)
+#    ../../Client/src/chrono_monitor.cpp)
 #target_include_directories(cmp_vlen_str_dtype_test PRIVATE ../../ChronoKeeper
+#    ${CMAKE_SOURCE_DIR}/Client/include
 #    ./)
 #target_link_libraries(cmp_vlen_str_dtype_test ${HDF5_LIBRARIES})
 #add_test(NAME cmp_vlen_str_dtype_test COMMAND cmp_vlen_str_dtype_test)
@@ -45,16 +47,21 @@ add_test(NAME hdf5_archiver_test COMMAND hdf5_archiver_test)
 #add_executable(cmp_vlen_bytes_dtype_test
 #    cmp_vlen_bytes_dtype_test.cpp
 #    story_chunk_test_utils.h
-#    ../../ChronoAPI/ChronoLog/src/chrono_monitor.cpp)
+#    ../../Client/src/chrono_monitor.cpp)
+
 #target_include_directories(cmp_vlen_bytes_dtype_test PRIVATE ../../ChronoKeeper
-#    ./)
+#    ./
+#    ${CMAKE_SOURCE_DIR}/Client/include)
 #target_link_libraries(cmp_vlen_bytes_dtype_test ${HDF5_LIBRARIES})
 #add_test(NAME cmp_vlen_bytes_dtype_test COMMAND cmp_vlen_bytes_dtype_test)
 
 # compound-vlen-bytes-based vs blob+map archiver implementation comparison
 add_executable(cmp_vlen_bytes_vs_blob_map
     cmp_vlen_bytes_vs_blob_map.cpp
-    ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/src/chrono_monitor.cpp
+    ${CMAKE_SOURCE_DIR}/Client/src/chrono_monitor.cpp
+)
+target_include_directories(cmp_vlen_bytes_vs_blob_map PRIVATE
+    ${CMAKE_SOURCE_DIR}/Client/include
 )
 target_link_libraries(cmp_vlen_bytes_vs_blob_map ${HDF5_LIBRARIES} thallium)
 add_test(NAME cmp_vlen_bytes_vs_blob_map COMMAND cmp_vlen_bytes_vs_blob_map)
