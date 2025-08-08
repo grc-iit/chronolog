@@ -11,6 +11,18 @@
 #include "StoryChunk.h"
 #include "StoryChunkExtractionQueue.h"
 
+// Added helper for the unit tests to test private functions
+#include <gtest/gtest.h>
+class StoryPipeline_TestAppendStoryChunk_testSuccess_Test;
+class StoryPipeline_TestPrependStoryChunk_testSuccess_Test;
+class StoryPipeline_TestFinalize_testNoPendingChunks_Test;
+class StoryPipeline_TestFinalize_testOnlyPassiveDeque_Test;
+class StoryPipeline_TestFinalize_testOnlyActiveDeque_Test;
+class StoryPipeline_TestFinalize_testMixedDeques_Test;
+class StoryPipeline_TestFinalize_testEmptyVsNonTimeline_Test;
+class StoryPipeline_TestFinalize_testFinalizeDoubleCall_Test;
+class StoryPipeline_TestFinalize_testFinalizeWithMixedTimeline_Test;
+
 namespace chronolog
 {
 
@@ -81,10 +93,21 @@ private:
     // map of storyChunks ordered by StoryChunck.startTime
     std::map <chrono_time, StoryChunk*> storyTimelineMap;
 
+    // Added friend tests for the unit tests to test private functions
+
+    FRIEND_TEST(::StoryPipeline_TestPrependStoryChunk, testSuccess);
     std::map <uint64_t, StoryChunk*>::iterator prependStoryChunk();
 
+    FRIEND_TEST(::StoryPipeline_TestAppendStoryChunk, testSuccess);
     std::map <uint64_t, StoryChunk*>::iterator appendStoryChunk();
 
+    FRIEND_TEST(::StoryPipeline_TestFinalize, testNoPendingChunks);
+    FRIEND_TEST(::StoryPipeline_TestFinalize, testOnlyPassiveDeque);
+    FRIEND_TEST(::StoryPipeline_TestFinalize, testOnlyActiveDeque);
+    FRIEND_TEST(::StoryPipeline_TestFinalize, testMixedDeques);
+    FRIEND_TEST(::StoryPipeline_TestFinalize, testEmptyVsNonTimeline);
+    FRIEND_TEST(::StoryPipeline_TestFinalize, testFinalizeDoubleCall);
+    FRIEND_TEST(::StoryPipeline_TestFinalize, testFinalizeWithMixedTimeline);
     void finalize();
 };
 
