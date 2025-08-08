@@ -8,7 +8,7 @@
 #include <thallium.hpp>
 #include <utility>
 
-#include "StoryChunkIngestionQueue.h"
+#include <StoryChunkIngestionQueue.h>
 
 namespace tl = thallium;
 namespace fs = std::filesystem;

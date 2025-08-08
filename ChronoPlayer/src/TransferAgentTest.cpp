@@ -1,12 +1,11 @@
-
 #include <chrono>
 #include <iostream>
 #include <signal.h>
 
-#include "chrono_monitor.h"
-#include "ServiceId.h"
-#include "StoryChunk.h"
-#include "StoryChunkTransferAgent.h"
+#include <chrono_monitor.h>
+#include <ServiceId.h>
+#include <StoryChunk.h>
+#include <StoryChunkTransferAgent.h>
 
 namespace tl = thallium;
 namespace chl = chronolog;

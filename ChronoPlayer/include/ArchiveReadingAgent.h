@@ -5,7 +5,6 @@
 #include <list>
 #include <map>
 #include <mutex>
-
 #include <thallium.hpp>
 
 #include "ArchiveReadingRequestQueue.h"

@@ -3,11 +3,10 @@
 
 #include <thallium.hpp>
 
-#include "chrono_monitor.h"
-#include "chronolog_types.h"
-
-#include "StoryChunkExtractor.h"
-#include "ServiceId.h"
+#include <chrono_monitor.h>
+#include <chronolog_types.h>
+#include <StoryChunkExtractor.h>
+#include <ServiceId.h>
 
 namespace tl = thallium;
 
