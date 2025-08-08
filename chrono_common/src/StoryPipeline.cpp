@@ -90,6 +90,8 @@ void chronolog::StoryPipeline::finalize()
             delete next_chunk; 
         }
         delete activeIngestionHandle;
+        // Added explicitly to avoid segfault in case of double free during manual calls to finalize
+        activeIngestionHandle = nullptr;
         LOG_INFO("[StoryPipeline] Finalized ingestion handle for storyId {}", storyId);
     }
 

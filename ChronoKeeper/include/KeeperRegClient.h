@@ -5,10 +5,10 @@
 #include <thallium/serialization/stl/string.hpp>
 #include <thallium.hpp>
 
-#include "KeeperIdCard.h"
-#include "KeeperRegistrationMsg.h"
-#include "KeeperStatsMsg.h"
-#include "chronolog_errcode.h"
+#include <KeeperIdCard.h>
+#include <KeeperRegistrationMsg.h>
+#include <KeeperStatsMsg.h>
+#include <chronolog_errcode.h>
 
 namespace tl = thallium;
 

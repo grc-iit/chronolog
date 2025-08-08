@@ -1,14 +1,14 @@
 #ifndef INGESTION_QUEUE_H
 #define INGESTION_QUEUE_H
 
-
 #include <iostream>
 #include <deque>
 #include <unordered_map>
 #include <mutex>
-#include "chrono_monitor.h"
 
-#include "chronolog_types.h"
+#include <chrono_monitor.h>
+#include <chronolog_types.h>
+
 #include "StoryIngestionHandle.h"
 
 //

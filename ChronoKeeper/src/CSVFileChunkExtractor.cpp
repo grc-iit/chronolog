@@ -2,10 +2,10 @@
 #include <fstream>
 #include <thallium.hpp>
 
-#include "chronolog_types.h"
-#include "chronolog_errcode.h"
-#include "KeeperIdCard.h"
-#include "CSVFileChunkExtractor.h"
+#include <chronolog_types.h>
+#include <chronolog_errcode.h>
+#include <KeeperIdCard.h>
+#include <CSVFileChunkExtractor.h>
 
 namespace tl = thallium;
 
@@ -49,4 +49,3 @@ int chronolog::CSVFileStoryChunkExtractor::processStoryChunk(StoryChunk*story_ch
 
     return chronolog::CL_SUCCESS;
 }
-
