@@ -2,16 +2,14 @@
 #include <list>
 #include <mutex>
 #include <chrono>
-
 #include <thallium.hpp>
 
-#include "chronolog_errcode.h"
-#include "chrono_monitor.h"
-
-#include "StoryChunk.h"
-#include "ArchiveReadingRequestQueue.h"
-#include "ArchiveReadingAgent.h"
-#include "StoryChunkExtractionQueue.h"
+#include <chronolog_errcode.h>
+#include <chrono_monitor.h>
+#include <StoryChunk.h>
+#include <ArchiveReadingRequestQueue.h>
+#include <ArchiveReadingAgent.h>
+#include <StoryChunkExtractionQueue.h>
 
 namespace chl = chronolog;
 namespace tl = thallium;

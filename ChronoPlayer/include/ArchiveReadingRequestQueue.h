@@ -4,7 +4,7 @@
 #include <mutex>
 #include <deque>
 
-#include "chronolog_types.h"
+#include <chronolog_types.h>
 
 namespace chronolog
 {

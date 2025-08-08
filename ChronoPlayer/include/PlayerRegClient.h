@@ -5,11 +5,12 @@
 #include <thallium/serialization/stl/string.hpp>
 #include <thallium.hpp>
 
-#include "PlayerIdCard.h"
-#include "PlayerRegistrationMsg.h"
-#include "PlayerStatsMsg.h"
-#include "chronolog_errcode.h"
-#include "chrono_monitor.h"
+#include <PlayerIdCard.h>
+#include <PlayerRegistrationMsg.h>
+#include <PlayerStatsMsg.h>
+#include <chronolog_errcode.h>
+#include <chrono_monitor.h>
+
 
 namespace tl = thallium;
 
