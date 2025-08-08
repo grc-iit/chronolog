@@ -5,12 +5,13 @@
 #include <list>
 #include <map>
 #include <mutex>
-
 #include <thallium.hpp>
 
+#include <StoryPipeline.h>
+#include <StoryChunkExtractionQueue.h>
+
 #include "ChunkIngestionQueue.h"
-#include "StoryPipeline.h"
-#include "StoryChunkExtractionQueue.h"
+
 
 
 namespace chronolog
