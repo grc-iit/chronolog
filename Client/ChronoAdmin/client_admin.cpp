@@ -1,7 +1,3 @@
-#include <chronolog_client.h>
-#include <cmd_arg_parse.h>
-#include <ClientConfiguration.h>
-#include <common.h>
 #include <cassert>
 #include <unistd.h>
 #include <pwd.h>
@@ -10,9 +6,14 @@
 #include <chrono>
 #include <cctype>
 #include <mpi.h>
-#include <chrono_monitor.h>
-#include <TimerWrapper.h>
 #include <margo.h>
+
+#include <chronolog_client.h>
+#include <ClientConfiguration.h>
+#include <chrono_monitor.h>
+#include <cmd_arg_parse.h>
+#include <TimerWrapper.h>
+#include <common.h>
 
 #define MAX_EVENT_SIZE (32 * 1024 * 1024)
 

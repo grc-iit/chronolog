@@ -2,11 +2,11 @@
 #include <thallium/serialization/stl/vector.hpp>
 #include <cereal/archives/binary.hpp>
 
-#include "client_errcode.h"
-#include "chrono_monitor.h"
-#include "chronolog_client.h"
+#include <client_errcode.h>
+#include <chrono_monitor.h>
+#include <chronolog_client.h>
+#include <StoryChunk.h>
 
-#include "StoryChunk.h"
 #include "ClientQueryService.h"
 #include "PlaybackQueryRpcClient.h"
 

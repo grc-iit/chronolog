@@ -1,13 +1,11 @@
 #ifndef CHRONOLOG_CLIENT_IMPL_H
 #define CHRONOLOG_CLIENT_IMPL_H
 
-#include "client_errcode.h"
-#include "ClientConfiguration.h"
+#include <client_errcode.h>
+#include <ClientConfiguration.h>
+#include <chronolog_types.h>
+#include <chronolog_client.h>
 
-#include "chronolog_types.h"
-
-
-#include "chronolog_client.h"
 #include "rpcVisorClient.h"
 #include "StorytellerClient.h"
 #include "ClientQueryService.h"

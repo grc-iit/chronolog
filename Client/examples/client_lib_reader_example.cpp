@@ -1,12 +1,12 @@
-#include <ClientConfiguration.h>
-#include <chronolog_client.h>
-
-#include <chrono_monitor.h>
-#include <cmd_arg_parse.h>
-
 #include <cassert>
 #include <common.h>
 #include <unistd.h>
+
+#include <ClientConfiguration.h>
+#include <chronolog_client.h>
+#include <chrono_monitor.h>
+#include <cmd_arg_parse.h>
+
 
 // This file is the reader part of the writer example also available on the same
 // folder. Therefore, the code assumes the existence of a chronicle and a story

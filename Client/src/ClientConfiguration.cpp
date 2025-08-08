@@ -1,6 +1,7 @@
-#include "ClientConfiguration.h"
 #include <json-c/json.h>
 #include <iostream>
+
+#include <ClientConfiguration.h>
 
 namespace chronolog {
 
