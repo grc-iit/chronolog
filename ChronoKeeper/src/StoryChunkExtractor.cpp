@@ -1,10 +1,8 @@
 #include <unistd.h>
-
 #include <thallium.hpp>
-#include <unistd.h>
 
-#include "StoryChunkExtractor.h"
-#include "chronolog_errcode.h"
+#include <StoryChunkExtractor.h>
+#include <chronolog_errcode.h>
 
 
 namespace tl = thallium;
@@ -117,4 +115,3 @@ void chronolog::StoryChunkExtractorBase::drainExtractionQueue()
         sleep(3);
     }
 }
-

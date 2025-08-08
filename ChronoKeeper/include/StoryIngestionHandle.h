@@ -4,6 +4,8 @@
 #include <mutex>
 #include <deque>
 
+#include <chronolog_types.h>
+
 //
 // IngestionQueue is a funnel into the KeeperDataStore
 // std::deque guarantees O(1) time for addidng elements and resizing 
@@ -63,4 +65,3 @@ private:
 }
 
 #endif
-
