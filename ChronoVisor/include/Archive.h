@@ -6,9 +6,10 @@
 #define CHRONOLOG_ARCHIVE_H
 
 #include <string>
-#include "city.h"
 #include <ostream>
 #include <unordered_map>
+
+#include <city.h>
 
 class Archive
 {
