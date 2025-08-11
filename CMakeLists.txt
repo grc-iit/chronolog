@@ -198,6 +198,7 @@ endif()
 # ChronoLog Components
 #-----------------------------------------------------------------------------
 add_subdirectory(Client)
+add_subdirectory(ClientAdmin)
 add_subdirectory(ChronoVisor)
 add_subdirectory(ChronoKeeper)
 add_subdirectory(ChronoGrapher)

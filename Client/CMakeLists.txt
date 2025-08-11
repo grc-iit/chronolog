@@ -60,5 +60,4 @@ install(
     RENAME default_client_conf.json
 )
 
-add_subdirectory(ChronoAdmin)
 add_subdirectory(examples)
