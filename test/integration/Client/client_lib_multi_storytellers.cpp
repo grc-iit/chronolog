@@ -1,11 +1,12 @@
-#include <chronolog_client.h>
 #include <cassert>
-#include <common.h>
 #include <thread>
 #include <chrono>
+
 #include <cmd_arg_parse.h>
-#include "chrono_monitor.h"
-#include "ClientConfiguration.h"
+#include <chronolog_client.h>
+#include <ClientConfiguration.h>
+#include <chrono_monitor.h>
+#include <common.h>
 
 #define STORY_NAME_LEN 5
 

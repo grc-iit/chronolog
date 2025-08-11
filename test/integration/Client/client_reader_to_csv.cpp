@@ -1,5 +1,4 @@
 #include <cassert>
-#include <common.h>
 #include <thread>
 #include <chrono>
 #include <iomanip>
@@ -8,9 +7,10 @@
 #include <string>
 #include <getopt.h>
 
-#include <chrono_monitor.h>
-#include <ClientConfiguration.h>
 #include <chronolog_client.h>
+#include <ClientConfiguration.h>
+#include <chrono_monitor.h>
+#include <common.h>
 
 
 struct thread_arg
