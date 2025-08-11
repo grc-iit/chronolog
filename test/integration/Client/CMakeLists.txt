@@ -37,8 +37,6 @@ foreach(client ${client_mpi})
     add_executable(${client} ${client}.cpp)
     target_include_directories(${client} PRIVATE ${CMAKE_BINARY_DIR}/Client/include ${MPI_CXX_INCLUDE_DIRS})
     target_link_libraries(${client} chronolog_client ${MPI_CXX_LIBRARIES} -lpthread -lrt)
-    configure_file(${CMAKE_SOURCE_DIR}/default_conf.json.in
-        ${CMAKE_CURRENT_BINARY_DIR}/default_conf.json COPYONLY)
 endforeach()
 
 # install binaries
