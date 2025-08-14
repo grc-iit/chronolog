@@ -66,7 +66,7 @@ int main(int argc, char*argv[])
         fout << "CLOCK_MONOTONIC\t";
         printStatLine(fout, duration_list);
         clock_getres(CLOCK_MONOTONIC, &res);
-        std::cout << "[HighResClockTest] Resolution (ns): {" << res.tv_sec * 1e9 + res.tv_nsec << std::endl;
+        std::cout << "[HighResClockTest] Resolution (ns): " << res.tv_sec * 1e9 + res.tv_nsec << std::endl;
         free(clock_list);
     }
 
