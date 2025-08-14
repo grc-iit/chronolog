@@ -19,10 +19,11 @@ RUN apt-get update \
     libjson-c-dev libboost-dev libcereal-dev \
     git vim fuse sudo curl wget \
     libfuse-dev libssl-dev \
-    python3-dev bzip2 xz-utils jq net-tools lsof htop pssh bind9-dnsutils
+    python3 python3-dev python3-pip \
+    bzip2 xz-utils jq net-tools lsof htop pssh procps bind9-dnsutils
 
 RUN apt-get -y install --no-install-recommends \
-    openssh-server \
+    openssh-server openssh-client \
   && printf '%s\n' \
     'PermitRootLogin yes' \
     'PasswordAuthentication yes' \
@@ -32,7 +33,8 @@ RUN apt-get -y install --no-install-recommends \
   && printf '%s\n' \
     'Host *' \
     '    StrictHostKeyChecking no' \
-    > /etc/ssh/ssh_config.d/ignore-host-key.conf
+    > /etc/ssh/ssh_config.d/ignore-host-key.conf \
+  && pip3 install pssh
 
 RUN id $UID && userdel $(id -un $UID) || : \
  && useradd -m -u $UID -s /bin/bash $USERNAME \
@@ -68,15 +70,6 @@ RUN cd \
  && cd ../deploy \
  # && ./local_single_user_deploy.sh -b --install-dir ~/chronolog_install/Release \
  && ./local_single_user_deploy.sh -i --work-dir ~/chronolog_install/Release
-
-# Install mpssh for distributed deployment
-RUN cd \
- && git clone https://github.com/ndenev/mpssh.git \
- && cd mpssh \
- && make -j \
- && sudo make -j install \
- && cd \
- && rm -rf mpssh
 
 # Source Spack on each shell
 RUN cd \
