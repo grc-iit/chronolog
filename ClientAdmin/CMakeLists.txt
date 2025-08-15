@@ -9,7 +9,7 @@ message("build target : client_admin")
 
 add_executable(client_admin client_admin.cpp)
 
-target_link_libraries(client_admin chronolog_client thallium ${MPI_CXX_LIBRARIES})
+target_link_libraries(client_admin chronolog_client ${MPI_CXX_LIBRARIES})
 
 configure_file(${CMAKE_SOURCE_DIR}/default_conf.json.in
     ${CMAKE_CURRENT_BINARY_DIR}/default_conf.json COPYONLY)

@@ -198,16 +198,13 @@ endif()
 # ChronoLog Components
 #-----------------------------------------------------------------------------
 add_subdirectory(Client)
+add_subdirectory(ClientAdmin)
 add_subdirectory(ChronoVisor)
 add_subdirectory(ChronoKeeper)
 add_subdirectory(ChronoGrapher)
 add_subdirectory(ChronoPlayer)
 add_subdirectory(ChronoStore)
 
-#if(CHRONOLOG_ENABLE_PYTHON_BINDINGS)
-message("Python bindings enabled")
-add_subdirectory(python_client)
-#endif()
 if(CHRONOLOG_BUILD_TESTING)
     enable_testing()
     add_subdirectory(test)
