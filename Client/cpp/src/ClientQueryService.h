@@ -6,10 +6,9 @@
 #include <mutex>
 #include <thallium.hpp>
 
-#include "chronolog_types.h"
-#include "ServiceId.h"
-
-#include "chronolog_client.h"
+#include <chronolog_types.h>
+#include <ServiceId.h>
+#include <chronolog_client.h>
 
 namespace tl = thallium;
 

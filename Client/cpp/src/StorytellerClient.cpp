@@ -1,12 +1,12 @@
 #include <iostream>
-
 #include <thallium.hpp>
 #include <chrono>
 #include <climits>
 
-#include "chronolog_types.h"
-#include "StorytellerClient.h"
+#include <chronolog_types.h>
+
 #include "KeeperRecordingClient.h"
+#include "StorytellerClient.h"
 #include "PlaybackQueryRpcClient.h"
 
 namespace tl = thallium;
