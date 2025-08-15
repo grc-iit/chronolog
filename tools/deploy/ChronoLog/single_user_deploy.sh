@@ -963,7 +963,7 @@ parse_args "$@"
 check_dependencies
 
 # Set REPO_ROOT
-REPO_ROOT="$(realpath "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/..")"
+REPO_ROOT="$(realpath "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../")"
 
 # Check if specified operation is allowed
 check_op_validity
