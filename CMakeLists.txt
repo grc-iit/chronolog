@@ -198,12 +198,12 @@ endif()
 # ChronoLog Components
 #-----------------------------------------------------------------------------
 add_subdirectory(Client)
-add_subdirectory(ClientAdmin)
 add_subdirectory(ChronoVisor)
 add_subdirectory(ChronoKeeper)
 add_subdirectory(ChronoGrapher)
 add_subdirectory(ChronoPlayer)
 add_subdirectory(ChronoStore)
+add_subdirectory(tools)
 
 if(CHRONOLOG_BUILD_TESTING)
     enable_testing()

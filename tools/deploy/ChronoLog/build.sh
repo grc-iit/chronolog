@@ -6,7 +6,7 @@ set -e
 # Default values and color codes
 BUILD_TYPE=""
 INSTALL_PATH=""  # Installation path is optional and starts empty
-REPO_ROOT="$(realpath "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/..")"
+REPO_ROOT="$(realpath "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../")"
 
 ERR='\033[7;37m\033[41m'
 INFO='\033[7;49m\033[92m'
