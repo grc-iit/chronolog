@@ -1,10 +1,11 @@
-#include "StoryChunk.h"
-#include "chrono_monitor.h"
 #include <atomic>
 #include <gtest/gtest.h>
 #include <map>
 #include <spdlog/spdlog.h>
 #include <thread>
+
+#include <StoryChunk.h>
+#include <chrono_monitor.h>
 
 namespace chl = chronolog;
 

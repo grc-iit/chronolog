@@ -9,7 +9,6 @@
 #include <fstream>
 #include <numeric>
 #include <complex>
-#include "chrono_monitor.h"
 
 //#define NO_LFENCE
 //#define NO_MFENCE
@@ -45,12 +44,12 @@ double cpu_base_frequency()
         regex_match(line, m, re);
         if(m.size() == 2)
         {
-            LOG_INFO("[Common] CPU freq obtained from /proc/cpuinfo: {} GHz", std::stod(m[1]));
+            std::cout << "[Common] CPU freq obtained from /proc/cpuinfo: " << std::stod(m[1]) << " GHz" << std::endl;
             return std::stod(m[1]);
         }
     }
     double freq = 3.8; // base clock of Ryzen 7 5700G is 3.8GHz
-    LOG_ERROR("[Common] Fail to get CPU freq from /proc/cpuinfo, returning hard-coded freq {} GHz", freq);
+    std::cout << "[Common] Fail to get CPU freq from /proc/cpuinfo, returning hard-coded freq " << freq << " GHz" << std::endl;
     return freq;
 }
 
@@ -88,7 +87,7 @@ void printVectorStats(std::vector <T> v)
     { return x - mean; });
     double sq_sum = std::inner_product(diff.begin(), diff.end(), diff.begin(), 0.0);
     double stdev = std::sqrt(sq_sum / v.size());
-    LOG_INFO("[Common] Min/Max/Mean/Median/Stddev (ns)\n{}\t{}\t{}\t{}\t{}", min, max, mean, median, stdev);
+    std::cout << "[Common] Min/Max/Mean/Median/Stddev (ns)\n" << min << "\t" << max << "\t" << mean << "\t" << median << "\t" << stdev << std::endl;
 }
 
 template <class T>
@@ -120,7 +119,7 @@ void writeListToFile(T*clock_list, int len, std::string &fname)
     std::ofstream outFile(fname, std::ios::trunc);
     if(!outFile.is_open())
     {
-        LOG_ERROR("[Common] Failed to open output file.");
+        std::cout << "[Common] Failed to open output file." << std::endl;
         exit(1);
     }
 
@@ -138,7 +137,7 @@ void writeVecToFile(std::vector <T> &clock_list, int len, std::string &fname)
     std::ofstream outFile(fname, std::ios::trunc);
     if(!outFile.is_open())
     {
-        LOG_ERROR("[Common] Failed to open output file.");
+        std::cout << "[Common] Failed to open output file." << std::endl;
         exit(1);
     }
 

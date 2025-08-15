@@ -1,8 +1,9 @@
-#include "StoryPipeline.h"
-#include "StoryChunkExtractionQueue.h"
-#include "StoryChunkIngestionHandle.h"
 #include <gtest/gtest.h>
 #include <limits>
+
+#include <StoryPipeline.h>
+#include <StoryChunkExtractionQueue.h>
+#include <StoryChunkIngestionHandle.h>
 
 namespace chl = chronolog;
 

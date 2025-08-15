@@ -2,9 +2,10 @@
 #include <random>
 #include <deque>
 #include <cereal/archives/binary.hpp>
-#include "StoryChunk.h"
-#include "cmd_arg_parse.h"
-#include "ConfigurationManager.h"
+
+#include <ConfigurationManager.h>
+#include <StoryChunk.h>
+#include <cmd_arg_parse.h>
 
 namespace tl = thallium;
 

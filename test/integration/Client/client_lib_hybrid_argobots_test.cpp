@@ -1,13 +1,13 @@
 #include <atomic>
-#include <chronolog_client.h>
-#include <common.h>
 #include <thread>
-#include <atomic>
 #include <abt.h>
 #include <mpi.h>
+
 #include <cmd_arg_parse.h>
-#include "chrono_monitor.h"
-#include "ClientConfiguration.h"
+#include <chronolog_client.h>
+#include <ClientConfiguration.h>
+#include <chrono_monitor.h>
+#include <common.h>
 
 chronolog::Client*client;
 

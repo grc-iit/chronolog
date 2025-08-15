@@ -1,11 +1,12 @@
-#include <chronolog_client.h>
-#include <common.h>
 #include <thread>
 #include <abt.h>
 #include <atomic>
+
 #include <cmd_arg_parse.h>
-#include "ClientConfiguration.h"
-#include "chrono_monitor.h"
+#include <chronolog_client.h>
+#include <ClientConfiguration.h>
+#include <chrono_monitor.h>
+#include <common.h>
 
 #define CHRONICLE_NAME_LEN 32
 #define STORY_NAME_LEN 32

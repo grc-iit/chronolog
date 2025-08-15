@@ -4,11 +4,11 @@
 #include <vector>
 #include <string>
 
-#include "chronolog_client.h"
-#include "common.h"
-#include "ClientConfiguration.h"
-#include "cmd_arg_parse.h"
-#include "chrono_monitor.h"
+#include <cmd_arg_parse.h>
+#include <chronolog_client.h>
+#include <ClientConfiguration.h>
+#include <chrono_monitor.h>
+#include <common.h>
 
 #define NUM_CHRONICLE 10
 #define NUM_STORY 10

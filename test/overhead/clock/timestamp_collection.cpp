@@ -7,6 +7,7 @@
 #include <thread>
 #include <sched.h>
 #include <unistd.h>
+
 #include "common.h"
 
 #define NUM_TIMESTAMPS (1000 * 1000)
@@ -23,8 +24,8 @@ void rdtscp_thread(void*args)
     thrd_args*arg = (thrd_args*)args;
     int thread_id = arg->thread_id;
     int sleep_time = arg->sleep_ns;
-    LOG_INFO("[TimestampCollection] Thread ID: {} is executing function {} on CPU Core: {} with a sleep interval of {} ns."
-         , thread_id, __FUNCTION__, cpu, sleep_time);
+    std::cout << "[TimestampCollection] Thread ID: " << thread_id << " is executing function " << __FUNCTION__ <<
+            " on CPU Core: " << cpu << " with a sleep interval of " << sleep_time << " ns." << std::endl;
     unsigned int proc_id;
     unsigned long long*clock_list = collect_w_rdtscp(NUM_TIMESTAMPS, proc_id, sleep_time);
     char hostname[256];
@@ -39,8 +40,8 @@ void clock_gettime_thread(void*args)
     thrd_args*arg = (thrd_args*)args;
     int thread_id = arg->thread_id;
     int sleep_time = arg->sleep_ns;
-    LOG_INFO("[TimestampCollection] Thread ID: {} is executing function {} on CPU Core: {} with a sleep interval of {} ns."
-         , thread_id, __FUNCTION__, cpu, sleep_time);
+    std::cout << "[TimestampCollection] Thread ID: " << thread_id << " is executing function " << __FUNCTION__ <<
+            " on CPU Core: " << cpu << " with a sleep interval of " << sleep_time << " ns." << std::endl;
     struct timespec*clock_list = collect_w_clock_gettime_tai(NUM_TIMESTAMPS, sleep_time);
     char hostname[256];
     gethostname(hostname, sizeof(hostname));
@@ -49,7 +50,7 @@ void clock_gettime_thread(void*args)
     for(int i = 0; i < NUM_TIMESTAMPS; i++)
         clock_list_ull.emplace_back(clock_list[i].tv_sec * 1e9 + clock_list[i].tv_nsec);
     writeVecToFile(clock_list_ull, NUM_TIMESTAMPS, fname);
-    LOG_INFO("[TimestampCollection] Thread ID: {} completed execution. Timestamps saved to file: {}", thread_id, fname);
+    std::cout << "[TimestampCollection] Thread ID: " << thread_id << " completed execution. Timestamps saved to file: " << fname << std::endl;
 }
 
 int main(int argc, char*argv[])
