@@ -524,8 +524,7 @@ prepare_hosts() {
 }
 
 check_build_directory() {
-    local deploy_dir=$(realpath "$(dirname "$0")")  # Get the absolute path of the script's directory
-    local build_dir="${deploy_dir}/../../../build"       # Navigate to x/build from x/deploy
+    local build_dir="${REPO_ROOT}/build"       # Navigate to build/ in the root dir of the repo
 
     build_dir=$(realpath "${build_dir}" 2>/dev/null || echo "")
 
