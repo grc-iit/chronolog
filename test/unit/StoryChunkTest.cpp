@@ -273,6 +273,10 @@ TEST(StoryChunk_TestInsertEvent, testIncorrectEventId)
 
 // Leave the event record name as nullptr
 // BUG -> Need to add a proper handling of nullptr at event creation
+/* Commenting out this test until we have new implementation of StoryChunk
+   at the moment LogEvent creation using the nullptr trips std::string constructor
+   so this is not really testing the StoryChunk anyway
+
 TEST(StoryChunk_TestInsertEvent, testNullEvent)
 {
     int storyId(1);
@@ -282,10 +286,12 @@ TEST(StoryChunk_TestInsertEvent, testNullEvent)
     int eventTime = 150, clientId = 2, eventIdx = 9;
     std::string record = "test";
     chl::LogEvent event(storyId, eventTime, clientId, eventIdx, nullptr);
-    chunk.insertEvent(event);
-
+    
+    retInsert = chunk.insertEvent(event);
+    
     EXPECT_EQ(chunk.getEventCount(), 0);
 }
+*/
 
 // Insert more events than the chunksize capacity nb of events
 // NOTE: This will be a test for the new StoryChunk Implementation, We can ignore this for now
@@ -630,19 +636,31 @@ TEST(StoryChunk_TestMergeEvents, testMixedChunkMerge)
 }
 
 
-// try calling merge events with a merge start time as after end time of the chunk
+// try calling merge events with a merge start_merge value passed being earlier than startime of both chunks or later than end time of both
+// expected behavior is that only the events that are within the master chunk boundaries will be merged from the other_chunk into the master chunk
 // BUG -> should not merge after end time of the chunk, should have got rejected
-TEST(StoryChunk_TestMergeEvents, testMergeStartTimeAfterEnd)
+TEST(StoryChunk_TestMergeEvents, testMergeStartTimeIncorrect)
 {
     initLogger();
-    chl::StoryChunk masterChunk("ChronicleName", "StoryName", 1, 0, 100, 10);
-    chl::StoryChunk otherChunk("ChronicleName", "StoryName", 1, 0, 100, 10);
-    otherChunk.insertEvent(chl::LogEvent(1, 10, 0, 0, "test"));
 
-    int retMerge = masterChunk.mergeEvents(otherChunk, 200);
-    EXPECT_EQ(retMerge, 0);
-    EXPECT_EQ(masterChunk.getEventCount(), 0);
+    chl::StoryChunk masterChunk("ChronicleName", "StoryName", 1, 20, 100, 10);
+    chl::StoryChunk otherChunk("ChronicleName", "StoryName", 1, 0, 150, 10);
+    otherChunk.insertEvent(chl::LogEvent(1, 10, 0, 0, "test"));
+    otherChunk.insertEvent(chl::LogEvent(1, 20, 0, 0, "test"));
+ 
+    int retMerge = masterChunk.mergeEvents(otherChunk, 8);
+    EXPECT_EQ(retMerge, 1);
+    EXPECT_EQ(masterChunk.getEventCount(), 1);
     EXPECT_EQ(otherChunk.getEventCount(), 1);
+
+    otherChunk.insertEvent(chl::LogEvent(1, 30, 0, 0, "test"));
+    otherChunk.insertEvent(chl::LogEvent(1, 130, 0, 0, "test"));
+
+    retMerge = masterChunk.mergeEvents(otherChunk, 200);
+    EXPECT_EQ(retMerge, 1);
+    EXPECT_EQ(masterChunk.getEventCount(), 2);
+    EXPECT_EQ(otherChunk.getEventCount(), 2);
+
 }
 
 // test merging a map of events to the main chunk
@@ -709,8 +727,8 @@ TEST(StoryChunk_TestMergeEvents, testEmptyAndHugePayloads)
     chl::StoryChunk chunk("ChronicleName", "StoryName", storyId, 100, 200, 10);
     int retMerge = chunk.mergeEvents(events, it);
 
-    EXPECT_EQ(retMerge, 2);
-    EXPECT_EQ(chunk.getEventCount(), 2);
+    EXPECT_EQ(retMerge, 1);
+    EXPECT_EQ(chunk.getEventCount(), 1);
 }
 
 
@@ -855,7 +873,7 @@ TEST(StoryChunk_TestEraseEvents, testEraseOutOfTime)
 {
     int storyId = 1;
     chl::StoryChunk chunk("ChronicleName", "StoryName", storyId, 0, 200, 10);
-    for(int t: {50, 150, 250}) chunk.insertEvent(chl::LogEvent(storyId, t, 0, 0, ""));
+    for(int t: {50, 150, 250}) chunk.insertEvent(chl::LogEvent(storyId, t, 0, 0, "test"));
     EXPECT_EQ(chunk.getEventCount(), 2);
 
     chunk.eraseEvents(250, 300);

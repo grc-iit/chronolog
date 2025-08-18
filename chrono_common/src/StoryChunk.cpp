@@ -32,7 +32,7 @@ chl::StoryChunk::~StoryChunk()
 
 int chl::StoryChunk::insertEvent(chl::LogEvent const &event)
     {
-        if((event.time() >= startTime) && (event.time() < endTime))
+        if((event.storyId == storyId) && (event.time() >= startTime) && (event.time() < endTime) && !event.logRecord.empty())
         {
             logEvents.insert(std::pair <chl::EventSequence, chl::LogEvent>({event.time(), event.clientId, event.index()}, event));
             return 1;
@@ -76,7 +76,7 @@ uint32_t chl::StoryChunk::mergeEvents(std::map<chl::EventSequence, chl::LogEvent
             last_merged = iter;
             merged_event_count++;
         }
-        else
+    /*    else
         {
             //stop at the first record that can't be merged
             LOG_TRACE("[StoryChunk] merge StoryId {} master chunk {} : stopped merging due to event that couldn't be "
@@ -84,6 +84,7 @@ uint32_t chl::StoryChunk::mergeEvents(std::map<chl::EventSequence, chl::LogEvent
                       storyId, startTime, (*iter).second.time());
             break;
         }
+*/
     }
 
     if(merged_event_count > 0)
@@ -141,13 +142,14 @@ uint32_t chl::StoryChunk::mergeEvents(chl::StoryChunk & other_chunk, uint64_t me
             last_merged = iter;
             merged_event_count++;
         }
-        else
+ /*       else
         {
             //stop at the first record that can't be merged
             LOG_ERROR("[StoryChunk] merge StoryId {} master chunk {}-{} : stopped merging in chunk {}-{} because of event {} ",
                       storyId, startTime,endTime, other_chunk.getStartTime(), other_chunk.getEndTime(), (*iter).second.time());
             break;
         }
+*/
     }
 
     if(merged_event_count > 0)
