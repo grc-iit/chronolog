@@ -10,7 +10,7 @@ DEBUG='\033[0;33m'
 NC='\033[0m' # No Color
 
 # Directories
-REPO_ROOT="$(realpath "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/..")"
+REPO_ROOT="$(realpath "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../")"
 LIB_DIR=""
 BIN_DIR=""
 

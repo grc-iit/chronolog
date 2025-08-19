@@ -524,8 +524,7 @@ prepare_hosts() {
 }
 
 check_build_directory() {
-    local deploy_dir=$(realpath "$(dirname "$0")")  # Get the absolute path of the script's directory
-    local build_dir="${deploy_dir}/../build"       # Navigate to x/build from x/deploy
+    local build_dir="${REPO_ROOT}/build"       # Navigate to build/ in the root dir of the repo
 
     build_dir=$(realpath "${build_dir}" 2>/dev/null || echo "")
 
@@ -553,9 +552,9 @@ check_work_dir() {
 build() {
     # build ChronoLog
     if [[ -n "$INSTALL_DIR" ]]; then
-        "${REPO_ROOT}/deploy/build.sh" -type "$BUILD_TYPE" -install-path "$INSTALL_DIR"
+        "${REPO_ROOT}/tools/deploy/ChronoLog/build.sh" -type "$BUILD_TYPE" -install-path "$INSTALL_DIR"
     else
-        "${REPO_ROOT}/deploy/build.sh" -type "$BUILD_TYPE"
+        "${REPO_ROOT}/tools/deploy/ChronoLog/build.sh" -type "$BUILD_TYPE"
     fi
 }
 
@@ -564,7 +563,7 @@ install() {
 
     check_build_directory
 
-    install_script="${REPO_ROOT}/deploy/install.sh"
+    install_script="${REPO_ROOT}/tools/deploy/ChronoLog/install.sh"
     if [[ -x "$install_script" ]]; then
         "$install_script" --lib-dir "${LIB_DIR}" --bin-dir "${BIN_DIR}"
     else
@@ -963,7 +962,7 @@ parse_args "$@"
 check_dependencies
 
 # Set REPO_ROOT
-REPO_ROOT="$(realpath "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/..")"
+REPO_ROOT="$(realpath "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../")"
 
 # Check if specified operation is allowed
 check_op_validity
