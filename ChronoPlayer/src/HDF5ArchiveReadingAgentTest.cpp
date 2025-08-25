@@ -1,101 +1,126 @@
 //
 // Created by kfeng on 1/14/25.
 //
-#include <csignal>
+#include <iostream>
+#include <filesystem>
+#include <thread>
+#include <chrono>
 #include <HDF5ArchiveReadingAgent.h>
-#include <ConfigurationManager.h>
-#include <cmd_arg_parse.h>
+#include <chrono_monitor.h>
 
-namespace tl = thallium;
+namespace fs = std::filesystem;
 
-std::atomic<bool> running(true);
-std::list<chronolog::StoryChunk*> list_of_chunks;
-chronolog::HDF5ArchiveReadingAgent* agent_ptr = nullptr;
-
-void signalHandler(int signum)
+void createTestFile(const std::string& path, const std::string& content = "test content")
 {
-    std::cout << "Interrupt signal (" << signum << ") received.\n";
-
-    for(auto &chunk: list_of_chunks)
-    {
-        delete chunk;
+    std::ofstream file(path);
+    if (file.is_open()) {
+        file << content;
+        file.close();
+        std::cout << "Created test file: " << path << std::endl;
+    } else {
+        std::cerr << "Failed to create test file: " << path << std::endl;
     }
-
-    if (agent_ptr)
-    {
-        agent_ptr->shutdown();
-    }
-    delete agent_ptr;
-
-    running = false;
-    std::exit(signum);
 }
 
-int main(int argc, char**argv)
+void deleteTestFile(const std::string& path)
 {
-//    uint64_t current_timestamp = std::chrono::high_resolution_clock::now().time_since_epoch().count();
-    std::string chronicle_name = "chronicle_0_0";
-    std::string story_name = "story_0_0";
-    uint64_t start_time = 1736800000000000000;
-    uint64_t end_time = start_time + 1000000000000000;
-
-    signal(SIGINT, signalHandler);
-
-    // Configure SetUp ________________________________________________________________________________________________
-    std::string conf_file_path;
-    conf_file_path = parse_conf_path_arg(argc, argv);
-    if(conf_file_path.empty())
-    {
-        std::exit(EXIT_FAILURE);
+    if (fs::remove(path)) {
+        std::cout << "Deleted test file: " << path << std::endl;
+    } else {
+        std::cerr << "Failed to delete test file: " << path << std::endl;
     }
-    chronolog::ConfigurationManager confManager(conf_file_path);
-    int result = chronolog::chrono_monitor::initialize(confManager.PLAYER_CONF.LOG_CONF.LOGTYPE
-                                                       , confManager.PLAYER_CONF.LOG_CONF.LOGFILE
-                                                       , confManager.PLAYER_CONF.LOG_CONF.LOGLEVEL
-                                                       , confManager.PLAYER_CONF.LOG_CONF.LOGNAME
-                                                       , confManager.PLAYER_CONF.LOG_CONF.LOGFILESIZE
-                                                       , confManager.PLAYER_CONF.LOG_CONF.LOGFILENUM
-                                                       , confManager.PLAYER_CONF.LOG_CONF.FLUSHLEVEL);
-    if(result == 1)
-    {
-        exit(EXIT_FAILURE);
+}
+
+void testInotifyMode(const std::string& test_dir)
+{
+    std::cout << "\n=== Testing Inotify Mode ===" << std::endl;
+    
+    // Create test directory
+    fs::create_directories(test_dir);
+    
+    // Initialize agent with inotify mode
+    chronolog::HDF5ArchiveReadingAgent agent(test_dir, false); // use_polling = false
+    
+    if (agent.initialize() != 0) {
+        std::cerr << "Failed to initialize agent in inotify mode" << std::endl;
+        return;
     }
+    
+    std::cout << "Agent initialized in inotify mode" << std::endl;
+    
+    // Wait a bit for monitoring to start
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    
+    // Create a test HDF5 file
+    std::string test_file = test_dir + "/chronicle_0_0.story_0_0.1736806500.vlen.h5";
+    createTestFile(test_file);
+    
+    // Wait for the monitoring to detect the file
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    
+    // Clean up
+    deleteTestFile(test_file);
+    agent.shutdown();
+    
+    std::cout << "Inotify mode test completed" << std::endl;
+}
 
-    tl::abt scope;
-
-    std::string archive_path = confManager.GRAPHER_CONF.EXTRACTOR_CONF.story_files_dir;
-    agent_ptr = new chronolog::HDF5ArchiveReadingAgent(archive_path);
-
-    agent_ptr->initialize();
-
-//    std::list<chronolog::StoryChunk*> list_of_chunks;
-    std::cout << "Reading events in range [" << start_time << ", " << end_time << "]" << std::endl;
-    agent_ptr->readArchivedStory(chronicle_name, story_name, start_time, end_time, list_of_chunks);
-    std::cout << list_of_chunks.size() << " chunks is returned." << std::endl;
-
-    bool all_events_within_time_range = true;
-    for(auto &chunk: list_of_chunks)
-    {
-        for(auto &event: *chunk)
-        {
-            if(event.second.eventTime < start_time || event.second.eventTime > end_time)
-            {
-                std::cout << "Error: event time " << event.second.eventTime << " out of range" << std::endl;
-                all_events_within_time_range = false;
-                break;
-            }
-        }
-        std::cout << "All " << chunk->getEventCount() << " events in the chunk are within the time range." << std::endl;
+void testPollingMode(const std::string& test_dir)
+{
+    std::cout << "\n=== Testing Polling Mode ===" << std::endl;
+    
+    // Create test directory
+    fs::create_directories(test_dir);
+    
+    // Initialize agent with polling mode
+    chronolog::HDF5ArchiveReadingAgent agent(test_dir, true, std::chrono::milliseconds(500)); // use_polling = true, 500ms interval
+    
+    if (agent.initialize() != 0) {
+        std::cerr << "Failed to initialize agent in polling mode" << std::endl;
+        return;
     }
-    if(all_events_within_time_range)
-    {
-        std::cout << "All events in all chunks are within the time range." << std::endl;
-    }
+    
+    std::cout << "Agent initialized in polling mode" << std::endl;
+    
+    // Wait a bit for monitoring to start
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    
+    // Create a test HDF5 file
+    std::string test_file = test_dir + "/chronicle_0_0.story_0_0.1736806500.vlen.h5";
+    createTestFile(test_file);
+    
+    // Wait for the polling to detect the file (should be within 500ms + buffer)
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    
+    // Clean up
+    deleteTestFile(test_file);
+    agent.shutdown();
+    
+    std::cout << "Polling mode test completed" << std::endl;
+}
 
-    while(running)
-    {
-        std::this_thread::sleep_for(std::chrono::seconds(10));
+int main(int argc, char* argv[])
+{
+    // Initialize logging
+    chronolog::chrono_monitor::initialize("console", "", spdlog::level::debug, "HDF5ArchiveReadingAgentTest", 0, 0, spdlog::level::debug);
+    
+    std::string test_dir = "/tmp/chronolog_test_monitoring";
+    
+    std::cout << "Testing HDF5ArchiveReadingAgent with both inotify and polling modes" << std::endl;
+    std::cout << "Test directory: " << test_dir << std::endl;
+    
+    try {
+        testInotifyMode(test_dir);
+        testPollingMode(test_dir);
+        
+        // Clean up test directory
+        fs::remove_all(test_dir);
+        
+        std::cout << "\nAll tests completed successfully!" << std::endl;
+        return 0;
     }
-
-    return 0;
+    catch (const std::exception& e) {
+        std::cerr << "Test failed with exception: " << e.what() << std::endl;
+        return 1;
+    }
 }

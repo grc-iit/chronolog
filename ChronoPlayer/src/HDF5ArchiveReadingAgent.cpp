@@ -253,14 +253,29 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName &c
 
 int chronolog::HDF5ArchiveReadingAgent::setUpFsMonitoring()
 {
-    LOG_DEBUG("[HDF5ArchiveReadingAgent] Setting up file system monitoring for archive directory: '{}' recursively."
-              , archive_path_);
+    if (use_polling_) {
+        LOG_DEBUG("[HDF5ArchiveReadingAgent] Setting up polling-based file system monitoring for archive directory: '{}'"
+                  , archive_path_);
+    } else {
+        LOG_DEBUG("[HDF5ArchiveReadingAgent] Setting up inotify-based file system monitoring for archive directory: '{}' recursively."
+                  , archive_path_);
+    }
+    
     tl::managed <tl::xstream> es = tl::xstream::create();
     archive_dir_monitoring_stream_ = std::move(es);
-    tl::managed <tl::thread> th = archive_dir_monitoring_stream_->make_thread([p = this]()
-                                                                              { p->fsMonitoringThreadFunc(); });
-    archive_dir_monitoring_thread_ = std::move(th);
-    LOG_DEBUG("[HDF5ArchiveReadingAgent] Started archive directory monitoring thread.");
+    
+    if (use_polling_) {
+        tl::managed <tl::thread> th = archive_dir_monitoring_stream_->make_thread([p = this]()
+                                                                                  { p->pollingMonitoringThreadFunc(); });
+        archive_dir_monitoring_thread_ = std::move(th);
+        LOG_DEBUG("[HDF5ArchiveReadingAgent] Started polling-based archive directory monitoring thread.");
+    } else {
+        tl::managed <tl::thread> th = archive_dir_monitoring_stream_->make_thread([p = this]()
+                                                                                  { p->inotifyMonitoringThreadFunc(); });
+        archive_dir_monitoring_thread_ = std::move(th);
+        LOG_DEBUG("[HDF5ArchiveReadingAgent] Started inotify-based archive directory monitoring thread.");
+    }
+    
     return 0;
 }
 
@@ -284,7 +299,7 @@ void chronolog::HDF5ArchiveReadingAgent::addRecursiveWatch(int inotify_fd, const
     }
 }
 
-int chronolog::HDF5ArchiveReadingAgent::fsMonitoringThreadFunc()
+int chronolog::HDF5ArchiveReadingAgent::inotifyMonitoringThreadFunc()
 {
     int inotifyFd = inotify_init();
     if(inotifyFd < 0)
@@ -381,4 +396,185 @@ int chronolog::HDF5ArchiveReadingAgent::fsMonitoringThreadFunc()
 
     return 0;
 }
+
+int chronolog::HDF5ArchiveReadingAgent::pollingMonitoringThreadFunc()
+{
+    LOG_DEBUG("[HDF5ArchiveReadingAgent] Starting polling-based file system monitoring for archive directory: '{}'"
+              , archive_path_);
+    
+    // Initial scan to establish baseline
+    scanFileSystem();
+    last_scan_time_ = std::chrono::steady_clock::now();
+    
+    while(true)
+    {
+        std::this_thread::sleep_for(polling_interval_);
+        
+        if (hasFileSystemChanged())
+        {
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] File system changes detected, updating file map...");
+            updateFileState();
+            scanFileSystem();
+        }
+    }
+    
+    return 0;
+}
+
+void chronolog::HDF5ArchiveReadingAgent::scanFileSystem()
+{
+    std::vector<FileInfo> current_state = getCurrentFileState();
+    std::lock_guard<std::mutex> lock(file_state_mutex_);
+    
+    // Compare with previous state and update file map
+    for (const auto& file_info : current_state)
+    {
+        auto it = previous_file_state_.find(file_info.path);
+        if (it == previous_file_state_.end())
+        {
+            // New file detected
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] New file detected: {}", file_info.path);
+            addFileToStartTimeFileNameMap(file_info.path);
+        }
+        else if (it->second.last_modified != file_info.last_modified)
+        {
+            // File modified - for HDF5 files, this might indicate new data
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] File modified: {}", file_info.path);
+            // Note: We don't need to update the file map for modifications since the file path hasn't changed
+        }
+    }
+    
+    // Check for deleted files
+    for (const auto& prev_file : previous_file_state_)
+    {
+        bool still_exists = false;
+        for (const auto& curr_file : current_state)
+        {
+            if (curr_file.path == prev_file.first)
+            {
+                still_exists = true;
+                break;
+            }
+        }
+        if (!still_exists)
+        {
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] File deleted: {}", prev_file.first);
+            removeFileFromStartTimeFileNameMap(prev_file.first);
+        }
+    }
+    
+    // Update previous state
+    previous_file_state_.clear();
+    for (const auto& file_info : current_state)
+    {
+        previous_file_state_[file_info.path] = file_info;
+    }
+}
+
+bool chronolog::HDF5ArchiveReadingAgent::hasFileSystemChanged()
+{
+    // Simple heuristic: check if any files have been modified since last scan
+    std::error_code ec;
+    auto current_time = std::chrono::steady_clock::now();
+    
+    for (const auto& entry : fs::recursive_directory_iterator(archive_path_, 
+                                                             fs::directory_options::skip_permission_denied, ec))
+    {
+        if (ec)
+        {
+            LOG_WARNING("[HDF5ArchiveReadingAgent] Error accessing path during change detection: {}", ec.message());
+            ec.clear();
+            continue;
+        }
+        
+        if (entry.is_regular_file())
+        {
+            auto last_write = fs::last_write_time(entry.path(), ec);
+            if (!ec)
+            {
+                // Convert both time points to nanoseconds since epoch for comparison
+                auto last_write_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    last_write.time_since_epoch()).count();
+                auto last_scan_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    last_scan_time_.time_since_epoch()).count();
+                
+                if (last_write_ns > last_scan_ns)
+                {
+                    return true;
+                }
+            }
+        }
+    }
+    
+    return false;
+}
+
+void chronolog::HDF5ArchiveReadingAgent::updateFileState()
+{
+    last_scan_time_ = std::chrono::steady_clock::now();
+}
+
+std::vector<chronolog::HDF5ArchiveReadingAgent::FileInfo> chronolog::HDF5ArchiveReadingAgent::getCurrentFileState()
+{
+    std::vector<FileInfo> current_state;
+    std::error_code ec;
+    
+    for (const auto& entry : fs::recursive_directory_iterator(archive_path_, 
+                                                             fs::directory_options::skip_permission_denied, ec))
+    {
+        if (ec)
+        {
+            LOG_WARNING("[HDF5ArchiveReadingAgent] Error accessing path during file state scan: {}", ec.message());
+            ec.clear();
+            continue;
+        }
+        
+        try
+        {
+            std::string path = entry.path().string();
+            bool is_dir = entry.is_directory(ec);
+            if (ec)
+            {
+                LOG_WARNING("[HDF5ArchiveReadingAgent] Error checking if path is directory: {}", ec.message());
+                ec.clear();
+                continue;
+            }
+            
+            if (is_dir)
+            {
+                // For directories, we only need basic info
+                current_state.emplace_back(path, fs::file_time_type{}, 0, true);
+            }
+            else
+            {
+                // For files, get detailed info
+                auto last_write = fs::last_write_time(entry.path(), ec);
+                if (ec)
+                {
+                    LOG_WARNING("[HDF5ArchiveReadingAgent] Error getting last write time for {}: {}", path, ec.message());
+                    ec.clear();
+                    continue;
+                }
+                
+                auto file_size = entry.file_size(ec);
+                if (ec)
+                {
+                    LOG_WARNING("[HDF5ArchiveReadingAgent] Error getting file size for {}: {}", path, ec.message());
+                    ec.clear();
+                    file_size = 0;
+                }
+                
+                current_state.emplace_back(path, last_write, file_size, false);
+            }
+        }
+        catch (const std::exception& e)
+        {
+            LOG_WARNING("[HDF5ArchiveReadingAgent] Exception during file state scan: {}", e.what());
+            continue;
+        }
+    }
+    
+    return current_state;
+}
+
 } // chronolog

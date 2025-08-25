@@ -7,6 +7,11 @@
 #include <filesystem>
 #include <thallium.hpp>
 #include <utility>
+#include <chrono>
+#include <vector>
+#include <thread>
+#include <fstream>
+#include <algorithm>
 
 #include <StoryChunkIngestionQueue.h>
 
@@ -18,9 +23,24 @@ namespace chronolog
 
 class HDF5ArchiveReadingAgent
 {
+    // File system state tracking for polling
+    struct FileInfo {
+        std::string path;
+        fs::file_time_type last_modified;
+        std::uintmax_t file_size;
+        bool is_directory;
+        
+        FileInfo() : file_size(0), is_directory(false) {}
+        FileInfo(const std::string& p, const fs::file_time_type& lm, std::uintmax_t fs, bool is_dir)
+            : path(p), last_modified(lm), file_size(fs), is_directory(is_dir) {}
+    };
+
 public:
-    explicit HDF5ArchiveReadingAgent(std::string const &archive_path)
+    explicit HDF5ArchiveReadingAgent(std::string const &archive_path, bool use_polling = false, 
+                                    std::chrono::milliseconds polling_interval = std::chrono::milliseconds(1000))
         : archive_path_(fs::absolute(expandTilde(fs::path(archive_path))).make_preferred().string())
+        , use_polling_(use_polling)
+        , polling_interval_(polling_interval)
     {}
 
     ~HDF5ArchiveReadingAgent() = default;
@@ -159,9 +179,16 @@ private:
 
     int setUpFsMonitoring();
 
+    // Inotify-based monitoring methods
     void addRecursiveWatch(int inotify_fd, const std::string& path, std::map<int, std::string>& wd_to_path);
+    int inotifyMonitoringThreadFunc();
 
-    int fsMonitoringThreadFunc();
+    // Polling-based monitoring methods
+    int pollingMonitoringThreadFunc();
+    void scanFileSystem();
+    bool hasFileSystemChanged();
+    void updateFileState();
+    std::vector<FileInfo> getCurrentFileState();
 
     int createStartTimeFileNameMap()
     {
@@ -270,6 +297,15 @@ private:
     std::mutex start_time_file_name_map_mutex_;
     tl::managed <tl::xstream> archive_dir_monitoring_stream_;
     tl::managed <tl::thread> archive_dir_monitoring_thread_;
+
+    // Feature flag and polling configuration
+    bool use_polling_;
+    std::chrono::milliseconds polling_interval_;
+    std::chrono::steady_clock::time_point last_scan_time_;
+    
+    // File system state tracking for polling
+    std::map<std::string, FileInfo> previous_file_state_;
+    std::mutex file_state_mutex_;
 };
 
 } // chronolog
