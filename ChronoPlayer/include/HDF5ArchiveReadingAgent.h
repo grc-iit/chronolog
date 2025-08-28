@@ -12,6 +12,8 @@
 #include <thread>
 #include <fstream>
 #include <algorithm>
+#include <unistd.h> // Required for access()
+#include <sys/stat.h> // Required for stat()
 
 #include <StoryChunkIngestionQueue.h>
 
@@ -24,7 +26,8 @@ namespace chronolog
 class HDF5ArchiveReadingAgent
 {
     // File system state tracking for polling
-    struct FileInfo {
+    struct FileInfo 
+    {
         std::string path;
         fs::file_time_type last_modified;
         std::uintmax_t file_size;
@@ -35,9 +38,22 @@ class HDF5ArchiveReadingAgent
             : path(p), last_modified(lm), file_size(fs), is_directory(is_dir) {}
     };
 
+    // Directory caching for performance optimization
+    struct DirectoryCache
+    {
+        fs::path path;
+        int64_t last_modified_ns;
+        int64_t last_check_time_ns;
+        bool has_changes;
+
+        DirectoryCache() : last_modified_ns(0), last_check_time_ns(0), has_changes(false) {}
+        DirectoryCache(const fs::path &p, int64_t lm_ns, int64_t lc_ns, bool changes)
+            : path(p), last_modified_ns(lm_ns), last_check_time_ns(lc_ns), has_changes(changes) {}
+    };
+
 public:
     explicit HDF5ArchiveReadingAgent(std::string const &archive_path, bool use_polling = false, 
-                                    std::chrono::milliseconds polling_interval = std::chrono::milliseconds(1000))
+                                    std::chrono::milliseconds polling_interval = std::chrono::milliseconds(5000))
         : archive_path_(fs::absolute(expandTilde(fs::path(archive_path))).make_preferred().string())
         , use_polling_(use_polling)
         , polling_interval_(polling_interval)
@@ -135,45 +151,30 @@ private:
     {
         fs::path expanded_full_path = fs::absolute(fs::path(file_name));
         LOG_DEBUG("[HDF5ArchiveReadingAgent] Checking if file {} is a valid archive file.", expanded_full_path.string());
+        
+        // Quick check: file extension first
+        if(expanded_full_path.extension() != ".h5")
+        {
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] File {} is not an HDF5 file. Skipping this file.", expanded_full_path.string());
+            return false;
+        }
+        
+        // Check if file exists and is readable using access()
+        if(access(expanded_full_path.c_str(), R_OK) != 0)
+        {
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] File {} is not readable. Skipping this file.", expanded_full_path.string());
+            return false;
+        }
+        
+        // Verify it's a regular file using filesystem
         fs::directory_entry entry(expanded_full_path);
         std::error_code ec;
-        if(!fs::exists(entry, ec))
+        if(!entry.is_regular_file(ec))
         {
-            LOG_ERROR("[HDF5ArchiveReadingAgent] File {} does not exist. Skipping this file.", file_name);
-            return false; // Skip files that do not exist
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] File {} is not a regular file. Skipping this file.", expanded_full_path.string());
+            return false;
         }
-        entry.refresh(ec);
-        if(ec)
-        {
-            LOG_ERROR("[HDF5ArchiveReadingAgent] Error accessing file {}: {}", file_name, ec.message());
-            return false; // Skip files that cannot be accessed
-        }
-        if(entry.is_regular_file(ec))
-        {
-            if(entry.path().extension() != ".h5")
-            {
-                LOG_DEBUG("[HDF5ArchiveReadingAgent] File {} is not an HDF5 file. Skipping this file."
-                          , entry.path().string());
-                return false; // Skip non-HDF5 files
-            }
-        }
-        else if(ec)
-        {
-            LOG_ERROR("[HDF5ArchiveReadingAgent] Error checking file {}: {}", entry.path().string(), ec.message());
-            return false; // Skip files that cannot be accessed
-        }
-        else
-        {
-            LOG_ERROR("[HDF5ArchiveReadingAgent] File {} is not a regular file. Skipping this file."
-                      , entry.path().string());
-            return false; // Skip non-regular files
-        }
-        std::ifstream file(entry.path());
-        if(!file.is_open())
-        {
-            LOG_DEBUG("[HDF5ArchiveReadingAgent] Failed to open file: {}. Skipping this file.", entry.path().string());
-            return false; // Skip files that cannot be opened
-        }
+        
         return true;
     }
 
@@ -187,8 +188,15 @@ private:
     int pollingMonitoringThreadFunc();
     void scanFileSystem();
     bool hasFileSystemChanged();
+    bool hasDirectoryChangedOptimized(const fs::path& dir_path, int64_t last_scan_ns, std::error_code& ec);
     void updateFileState();
     std::vector<FileInfo> getCurrentFileState();
+
+    // Directory caching methods
+    int64_t getDirectoryModificationTime(const fs::path& dir_path, std::error_code& ec);
+    bool hasDirectoryChangedWithCache(const fs::path& dir_path, int64_t last_scan_ns, std::error_code& ec);
+    void updateDirectoryCache(const fs::path& dir_path, int64_t last_modified_ns, int64_t check_time_ns, bool has_changes);
+    void clearDirectoryCache();
 
     int createStartTimeFileNameMap()
     {
@@ -306,6 +314,10 @@ private:
     // File system state tracking for polling
     std::map<std::string, FileInfo> previous_file_state_;
     std::mutex file_state_mutex_;
+
+    // Directory caching for performance optimization
+    std::map<fs::path, DirectoryCache> directory_cache_;
+    std::mutex directory_cache_mutex_;
 };
 
 } // chronolog
