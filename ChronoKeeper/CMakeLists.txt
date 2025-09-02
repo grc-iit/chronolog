@@ -30,8 +30,6 @@ target_sources(chrono_keeper PRIVATE
 
 target_link_libraries(chrono_keeper chronolog_client thallium)
 
-set_target_properties(chrono_keeper PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
-
 # install binary
 install(
     TARGETS chrono_keeper DESTINATION bin

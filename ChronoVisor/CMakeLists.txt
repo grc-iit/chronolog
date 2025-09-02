@@ -34,8 +34,6 @@ target_link_libraries(chronovisor_server chronolog_client thallium)
 
 #add_test(NAME ChronoVisorServerTest COMMAND chronovisor_server)
 
-set_target_properties(chronovisor_server PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
-
 # Install binary
 install(
     TARGETS chronovisor_server DESTINATION ${CHRONOLOG_INSTALL_BIN_DIR}

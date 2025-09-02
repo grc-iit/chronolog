@@ -31,8 +31,6 @@ target_sources(chrono_player PRIVATE
 target_link_libraries(chrono_player chronolog_client thallium)
 target_link_libraries(chrono_player ${HDF5_LIBRARIES})
 
-set_target_properties(chrono_player PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
-
 #### TransferAgentTest
 add_executable(transfer_agent_test
     src/TransferAgentTest.cpp

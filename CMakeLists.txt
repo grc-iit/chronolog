@@ -43,6 +43,16 @@ set(CHRONOLOG_INSTALL_LIB_DIR ${CMAKE_INSTALL_PREFIX}/lib)
 set(CHRONOLOG_INSTALL_BIN_DIR ${CMAKE_INSTALL_PREFIX}/bin)
 set(CHRONOLOG_INSTALL_CONF_DIR ${CMAKE_INSTALL_PREFIX}/conf)
 
+# Disable using link paths as RPATH
+set(CMAKE_INSTALL_RPATH_USE_LINK_PATH FALSE)
+
+# Set the RPATH explicitly
+set(CMAKE_INSTALL_RPATH "${CHRONOLOG_INSTALL_LIB_DIR}")
+
+# Make sure RPATH is not stripped during install
+set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
+set(CMAKE_SKIP_BUILD_RPATH FALSE)
+
 #------------------------------------------------------------------------------
 # Disallow in-source build. This checks that there is a defined and separate /build folder
 #------------------------------------------------------------------------------
