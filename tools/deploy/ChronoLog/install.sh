@@ -67,7 +67,7 @@ copy_shared_libs_recursive() {
     echo -e "${DEBUG}Copying ${lib_path} recursively ...${NC}"
     while [ "$final_dest_lib_copies" != true ]
     do
-        cp -P "$lib_path" "$dest_path/"
+        cp --update=none "$lib_path" "$dest_path/"
         if [ "$lib_path" == "$linked_to_lib_path" ]
         then
             final_dest_lib_copies=true
@@ -87,6 +87,8 @@ copy_shared_libs() {
         all_shared_libs=$(echo -e "${all_shared_libs}\n$(extract_shared_libraries ${bin_file})" | sort | uniq)
     done
 
+    echo -e "${DEBUG}All shared libraries: ${all_shared_libs}${NC}"
+
     for lib in ${all_shared_libs}; do
         if [[ -n ${lib} ]]
         then
@@ -95,6 +97,13 @@ copy_shared_libs() {
     done
 
     echo -e "${DEBUG}Copy shared libraries done${NC}"
+}
+
+update_rpath() {
+    echo -e "${DEBUG}Updating RPATH...${NC}"
+    chrpath -r ${LIB_DIR} ${BIN_DIR}/*
+    chrpath -r ${LIB_DIR} ${LIB_DIR}/*
+    echo -e "${DEBUG}RPATH updated${NC}"
 }
 
 activate_spack_environment() {
@@ -155,6 +164,7 @@ main() {
     navigate_to_build_directory
     make install
     copy_shared_libs
+    update_rpath
     echo -e "${INFO}ChronoLog Installed.${NC}"
 }
 main "$@"
