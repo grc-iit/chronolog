@@ -87,8 +87,6 @@ copy_shared_libs() {
         all_shared_libs=$(echo -e "${all_shared_libs}\n$(extract_shared_libraries ${bin_file})" | sort | uniq)
     done
 
-    echo -e "${DEBUG}All shared libraries: ${all_shared_libs}${NC}"
-
     for lib in ${all_shared_libs}; do
         if [[ -n ${lib} ]]
         then
@@ -101,8 +99,8 @@ copy_shared_libs() {
 
 update_rpath() {
     echo -e "${DEBUG}Updating RPATH...${NC}"
-    chrpath -r ${LIB_DIR} ${BIN_DIR}/*
-    chrpath -r ${LIB_DIR} ${LIB_DIR}/*
+    chrpath -r ${LIB_DIR} ${BIN_DIR}/* > /dev/null
+    chrpath -r ${LIB_DIR} ${LIB_DIR}/* > /dev/null
     echo -e "${DEBUG}RPATH updated${NC}"
 }
 
