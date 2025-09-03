@@ -49,9 +49,9 @@ set(CMAKE_INSTALL_RPATH_USE_LINK_PATH FALSE)
 # Set the RPATH explicitly
 set(CMAKE_INSTALL_RPATH "${CHRONOLOG_INSTALL_LIB_DIR}")
 
-# Make sure RPATH is not stripped during install
-set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
-set(CMAKE_SKIP_BUILD_RPATH FALSE)
+# Force RUNPATH instead of RPATH (RUNPATH has lower precedence)
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--enable-new-dtags")
+set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--enable-new-dtags")
 
 #------------------------------------------------------------------------------
 # Disallow in-source build. This checks that there is a defined and separate /build folder
