@@ -67,7 +67,7 @@ copy_shared_libs_recursive() {
     echo -e "${DEBUG}Copying ${lib_path} recursively ...${NC}"
     while [ "$final_dest_lib_copies" != true ]
     do
-        cp --update=none "$lib_path" "$dest_path/"
+        cp -n "$lib_path" "$dest_path/"
         if [ "$lib_path" == "$linked_to_lib_path" ]
         then
             final_dest_lib_copies=true
