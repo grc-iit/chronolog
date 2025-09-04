@@ -140,7 +140,7 @@ usage() {
 }
 
 check_dependencies() {
-    local dependencies=("jq" "pssh" "ssh" "ldd" "nohup" "pkill" "readlink" "realpath")
+    local dependencies=("jq" "parallel-ssh" "ssh" "ldd" "nohup" "pkill" "readlink" "realpath")
 
     echo -e "${DEBUG}Checking required dependencies...${NC}"
     for dep in "${dependencies[@]}"; do
@@ -596,7 +596,7 @@ parallel_remote_launch_processes() {
     fi
 
     bin_path=${bin_dir}/${bin_filename}
-    pssh -h ${hosts_file} -i "cd ${bin_dir}; nohup ${bin_path} ${args} > ${MONITOR_DIR}/${bin_filename}${hostname_suffix}.launch.log 2>&1 &" | grep "${simple_output_grep_keyword}" 2>&1
+    parallel-ssh -h ${hosts_file} -i "cd ${bin_dir}; nohup ${bin_path} ${args} > ${MONITOR_DIR}/${bin_filename}${hostname_suffix}.launch.log 2>&1 &" | grep "${simple_output_grep_keyword}" 2>&1
 }
 
 parallel_remote_stop_processes() {
@@ -604,7 +604,7 @@ parallel_remote_stop_processes() {
     local bin_filename=$2
 
     local timer=0
-    pssh -h ${hosts_file} -i "pkill --signal 15 -ef ${bin_filename}" 2>/dev/null
+    parallel-ssh -h ${hosts_file} -i "pkill --signal 15 -ef ${bin_filename}" 2>/dev/null
     while [[ -n $(parallel_remote_check_processes ${hosts_file} ${bin_filename}) ]]; do
         echo -e "${DEBUG}Some processes are still running, waiting for 10 seconds ...${NC}"
         sleep 10
@@ -621,14 +621,14 @@ parallel_remote_kill_processes() {
     local hosts_file=$1
     local bin_filename=$2
 
-    pssh -h ${hosts_file} -i "pkill --signal 9 -ef ${bin_filename}" 2>/dev/null
+    parallel-ssh -h ${hosts_file} -i "pkill --signal 9 -ef ${bin_filename}" 2>/dev/null
 }
 
 parallel_remote_check_processes() {
     local hosts_file=$1
     local bin_filename=$2
 
-    pssh -h ${hosts_file} -i "pgrep -fla ${bin_filename}" 2>/dev/null | grep -vE '^\[' | sed '/^$/d'
+    parallel-ssh -h ${hosts_file} -i "pgrep -fla ${bin_filename}" 2>/dev/null | grep -vE '^\[' | sed '/^$/d'
 }
 
 parallel_remote_check_all() {
