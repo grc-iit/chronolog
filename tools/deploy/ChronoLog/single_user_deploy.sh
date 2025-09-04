@@ -628,7 +628,7 @@ parallel_remote_check_processes() {
     local hosts_file=$1
     local bin_filename=$2
 
-    parallel-ssh -h ${hosts_file} -i "pgrep -fla ${bin_filename}" 2>/dev/null | grep -vE '^\[' | sed '/^$/d'
+    parallel-ssh -h ${hosts_file} -i "pgrep -fla ${bin_filename}" 2>/dev/null | sed '/^$/d' | grep -vE '^\[|ssh'
 }
 
 parallel_remote_check_all() {
