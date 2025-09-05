@@ -1,6 +1,9 @@
 #include <sys/inotify.h>
+#include <fcntl.h>
 #include <H5Cpp.h>
 #include <filesystem>
+#include <thread>
+#include <chrono>
 
 #include <chronolog_errcode.h>
 #include <StoryChunkWriter.h>
@@ -308,6 +311,21 @@ int chronolog::HDF5ArchiveReadingAgent::inotifyMonitoringThreadFunc()
         return -1;
     }
 
+    // Make the inotify file descriptor non-blocking
+    int flags = fcntl(inotifyFd, F_GETFL, 0);
+    if(flags < 0)
+    {
+        LOG_ERROR("[HDF5ArchiveReadingAgent] Failed to get inotify fd flags: {}", strerror(errno));
+        close(inotifyFd);
+        return -1;
+    }
+    if(fcntl(inotifyFd, F_SETFL, flags | O_NONBLOCK) < 0)
+    {
+        LOG_ERROR("[HDF5ArchiveReadingAgent] Failed to set inotify fd non-blocking: {}", strerror(errno));
+        close(inotifyFd);
+        return -1;
+    }
+
     std::map <int, std::string> wd_to_path;
     addRecursiveWatch(inotifyFd, archive_path_, wd_to_path);
 
@@ -315,13 +333,26 @@ int chronolog::HDF5ArchiveReadingAgent::inotifyMonitoringThreadFunc()
     const size_t bufLen = 1024 * (eventSize + 16);
     char buffer[bufLen];
 
-    while(true)
+    while(!shutdown_requested_.load())
     {
         ssize_t length = read(inotifyFd, buffer, bufLen);
         if(length < 0)
         {
+            if(errno == EAGAIN || errno == EWOULDBLOCK)
+            {
+                // No data available, sleep for monitoring interval and check shutdown flag
+                std::this_thread::sleep_for(monitoring_interval_);
+                continue;
+            }
             LOG_ERROR("[HDF5ArchiveReadingAgent] Failed to read inotify events: {}", strerror(errno));
             break;
+        }
+        
+        if(length == 0)
+        {
+            // No data available, sleep for monitoring interval and check shutdown flag
+            std::this_thread::sleep_for(monitoring_interval_);
+            continue;
         }
 
         std::string old_file_name;
@@ -406,9 +437,14 @@ int chronolog::HDF5ArchiveReadingAgent::pollingMonitoringThreadFunc()
     scanFileSystem();
     last_scan_time_ = std::chrono::steady_clock::now();
     
-    while(true)
+    while(!shutdown_requested_.load())
     {
-        std::this_thread::sleep_for(polling_interval_);
+        std::this_thread::sleep_for(monitoring_interval_);
+        
+        if(shutdown_requested_.load())
+        {
+            break;
+        }
         
         if(hasFileSystemChanged())
         {

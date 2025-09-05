@@ -12,6 +12,7 @@
 #include <thread>
 #include <fstream>
 #include <algorithm>
+#include <atomic>
 #include <unistd.h> // Required for access()
 #include <sys/stat.h> // Required for stat()
 
@@ -53,10 +54,11 @@ class HDF5ArchiveReadingAgent
 
 public:
     explicit HDF5ArchiveReadingAgent(std::string const &archive_path, bool use_polling = false, 
-                                    std::chrono::milliseconds polling_interval = std::chrono::milliseconds(5000))
+                                    std::chrono::milliseconds monitoring_interval = std::chrono::milliseconds(5000))
         : archive_path_(fs::absolute(expandTilde(fs::path(archive_path))).make_preferred().string())
         , use_polling_(use_polling)
-        , polling_interval_(polling_interval)
+        , monitoring_interval_(monitoring_interval)
+        , shutdown_requested_(false)
     {}
 
     ~HDF5ArchiveReadingAgent() = default;
@@ -71,6 +73,7 @@ public:
 
     int shutdown()
     {
+        shutdown_requested_.store(true);
         archive_dir_monitoring_stream_->join();
         archive_dir_monitoring_thread_->join();
         return 0;
@@ -306,9 +309,9 @@ private:
     tl::managed <tl::xstream> archive_dir_monitoring_stream_;
     tl::managed <tl::thread> archive_dir_monitoring_thread_;
 
-    // Feature flag and polling configuration
+    // Feature flag and monitoring configuration
     bool use_polling_;
-    std::chrono::milliseconds polling_interval_;
+    std::chrono::milliseconds monitoring_interval_;
     std::chrono::steady_clock::time_point last_scan_time_;
     
     // File system state tracking for polling
@@ -318,6 +321,9 @@ private:
     // Directory caching for performance optimization
     std::map<fs::path, DirectoryCache> directory_cache_;
     std::mutex directory_cache_mutex_;
+    
+    // Thread control
+    std::atomic<bool> shutdown_requested_;
 };
 
 } // chronolog
