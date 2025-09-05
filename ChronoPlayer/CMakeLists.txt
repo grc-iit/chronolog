@@ -78,6 +78,26 @@ target_link_directories(hdf5_archive_reader_test PRIVATE ${HDF5_LIBRARY_DIRS})
 target_link_libraries(hdf5_archive_reader_test chronolog_client thallium)
 target_link_libraries(hdf5_archive_reader_test ${HDF5_LIBRARIES})
 
+#### File System Monitoring Test
+add_executable(fs_monitoring_test
+    src/FSMonitoringTest.cpp
+    src/HDF5ArchiveReadingAgent.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/src/ConfigurationManager.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunk.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunkWriter.cpp
+    ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp)
+
+target_include_directories(fs_monitoring_test PRIVATE
+    include
+    ${CMAKE_SOURCE_DIR}/chrono_common/include
+    ${CMAKE_SOURCE_DIR}/Client/cpp/include
+)
+
+target_link_directories(fs_monitoring_test PRIVATE ${HDF5_LIBRARY_DIRS})
+
+target_link_libraries(fs_monitoring_test chronolog_client thallium)
+target_link_libraries(fs_monitoring_test ${HDF5_LIBRARIES})
+
 ####
 
 # install executables
