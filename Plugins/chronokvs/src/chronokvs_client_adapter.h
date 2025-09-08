@@ -6,7 +6,7 @@
 #include <optional>
 #include <unordered_map>
 #include <memory>
-#include "chronolog_client.h"
+#include <chronolog_client.h>
 
 namespace chronokvs
 {
@@ -14,8 +14,10 @@ namespace chronokvs
 class ChronoKVSClientAdapter
 {
 private:
-    std::shared_ptr<chronoemulator::ChronoEmulator> chronolog;
-    chronoemulator::StoryHandle* storyHandle;
+    std::unique_ptr<chronolog::Client> chronolog;
+    std::unique_ptr<chronolog::StoryHandle> storyHandle;
+    const std::string defaultChronicle = "ChronoKVSChronicle";
+    const std::string defaultStory = "ChronoKVSStore";
 
 public:
     ChronoKVSClientAdapter();
@@ -24,9 +26,7 @@ public:
 
     std::uint64_t storeEvent(const std::string &serializedEvent);
 
-    std::vector <std::string> retrieveEvents(std::uint64_t timestamp);
-
-    std::vector <std::string> retrieveEvents(std::uint64_t start_timestamp, std::uint64_t end_timestamp);
+    std::vector<std::string> retrieveEvents(std::uint64_t timestamp);
 };
 }
 #endif // CHRONOKVS_CLIENT_ADAPTER_H_
