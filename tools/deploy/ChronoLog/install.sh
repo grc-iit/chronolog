@@ -67,7 +67,7 @@ copy_shared_libs_recursive() {
     echo -e "${DEBUG}Copying ${lib_path} recursively ...${NC}"
     while [ "$final_dest_lib_copies" != true ]
     do
-        cp -P "$lib_path" "$dest_path/"
+        cp -n "$lib_path" "$dest_path/"
         if [ "$lib_path" == "$linked_to_lib_path" ]
         then
             final_dest_lib_copies=true
@@ -95,6 +95,39 @@ copy_shared_libs() {
     done
 
     echo -e "${DEBUG}Copy shared libraries done${NC}"
+}
+
+update_rpath() {
+    echo -e "${DEBUG}Updating RPATH...${NC}"
+
+    # Update RPATH for binaries
+    shopt -s nullglob
+    bin_files=("${BIN_DIR}"/*)
+    if [ ${#bin_files[@]} -eq 0 ]; then
+        echo -e "${INFO}No binaries found in ${BIN_DIR} to update RPATH.${NC}"
+    else
+        for f in "${bin_files[@]}"; do
+            if [ -f "$f" ]; then
+                chrpath -r "${LIB_DIR}" "$f" > /dev/null 2>&1 || \
+                    echo -e "${INFO}Skipping RPATH update for $f (no RPATH or not a valid ELF file).${NC}"
+            fi
+        done
+    fi
+
+    # Update RPATH for libraries
+    lib_files=("${LIB_DIR}"/*)
+    if [ ${#lib_files[@]} -eq 0 ]; then
+        echo -e "${INFO}No libraries found in ${LIB_DIR} to update RPATH.${NC}"
+    else
+        for f in "${lib_files[@]}"; do
+            if [ -f "$f" ]; then
+                chrpath -r "${LIB_DIR}" "$f" > /dev/null 2>&1 || \
+                    echo -e "${INFO}Skipping RPATH update for $f (no RPATH or not a valid ELF file).${NC}"
+            fi
+        done
+    fi
+    shopt -u nullglob
+    echo -e "${DEBUG}RPATH updated${NC}"
 }
 
 activate_spack_environment() {
@@ -155,6 +188,7 @@ main() {
     navigate_to_build_directory
     make install
     copy_shared_libs
+    update_rpath
     echo -e "${INFO}ChronoLog Installed.${NC}"
 }
 main "$@"

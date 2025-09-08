@@ -31,7 +31,10 @@ target_sources(chrono_grapher PRIVATE
 target_link_libraries(chrono_grapher chronolog_client thallium)
 target_link_libraries(chrono_grapher ${HDF5_LIBRARIES})
 
-set_target_properties(chrono_grapher PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
+set_target_properties(chrono_grapher PROPERTIES
+    BUILD_WITH_INSTALL_RPATH TRUE
+    SKIP_BUILD_RPATH TRUE
+)
 
 # install binary
 install(
