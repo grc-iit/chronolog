@@ -7,8 +7,7 @@
 #include <utility>
 #include <optional>
 #include <unordered_map>
-#include "chronolog_client.h"
-#include "chronokvs_memorymanager.h"
+#include "chronokvs_client_adapter.h"
 
 namespace chronokvs
 {
@@ -18,8 +17,7 @@ namespace chronokvs
 class ChronoKVSMapper
 {
 private:
-    std::unique_ptr <KeyToTimestampMappingManager> memoryManager;
-    std::unique_ptr <ChronoKVSClientAdapter> chronoClientAdapter;
+    std::unique_ptr<ChronoKVSClientAdapter> chronoClientAdapter;
 
 public:
     ChronoKVSMapper();

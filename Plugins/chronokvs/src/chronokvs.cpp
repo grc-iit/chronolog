@@ -7,7 +7,7 @@ namespace chronokvs
 
 ChronoKVS::ChronoKVS()
 {
-    mapper = std::make_unique <chronokvs_mapper>();
+    mapper = std::make_unique<ChronoKVSMapper>();
 }
 
 std::uint64_t ChronoKVS::put(const std::string &key, const std::string &value)

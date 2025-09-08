@@ -11,7 +11,7 @@ namespace chronokvs
 class ChronoKVS
 {
 private:
-    std::unique_ptr <chronokvs_mapper> mapper;
+    std::unique_ptr<ChronoKVSMapper> mapper;
 
 public:
 

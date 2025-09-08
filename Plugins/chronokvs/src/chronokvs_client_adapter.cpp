@@ -27,6 +27,8 @@ ChronoKVSClientAdapter::ChronoKVSClientAdapter()
     chronolog = std::make_unique<chronolog::Client>(portalConf, queryConf);
     int ret = chronolog->Connect();
     if (ret != chronolog::CL_SUCCESS) {
+        chronolog->Disconnect();
+        chronolog.reset();
         throw std::runtime_error("Failed to connect to ChronoLog");
     }
 
