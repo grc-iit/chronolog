@@ -17,8 +17,6 @@ add_subdirectory(${CMAKE_SOURCE_DIR}/Plugins/chronoemulator)
 set(SOURCE_FILES
     src/chronokvs.cpp
     src/chronokvs_mapper.cpp
-    src/chronokvs_memorymanager.cpp
-    src/chronokvs_utils.cpp
     src/chronolog_client.cpp
 )
 
