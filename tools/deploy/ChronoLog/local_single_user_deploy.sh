@@ -45,7 +45,7 @@ start_service() {
     local args="$2"
     local monitor_file="$3"
     echo -e "${DEBUG}Launching $bin $args ...${NC}"
-    LD_LIBRARY_PATH=${LIB_DIR} nohup ${bin} ${args} > ${MONITOR_DIR}/${monitor_file} 2>&1 &
+    nohup ${bin} ${args} > ${MONITOR_DIR}/${monitor_file} 2>&1 &
 }
 
 kill_service() {

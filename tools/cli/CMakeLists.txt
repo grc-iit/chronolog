@@ -11,10 +11,13 @@ add_executable(client_admin client_admin.cpp)
 
 target_link_libraries(client_admin chronolog_client ${MPI_CXX_LIBRARIES})
 
+set_target_properties(client_admin PROPERTIES
+    BUILD_WITH_INSTALL_RPATH TRUE
+    SKIP_BUILD_RPATH TRUE
+)
+
 configure_file(${CMAKE_SOURCE_DIR}/default_conf.json.in
     ${CMAKE_CURRENT_BINARY_DIR}/default_conf.json COPYONLY)
-
-set_target_properties(client_admin PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
 
 # install binary
 install(
