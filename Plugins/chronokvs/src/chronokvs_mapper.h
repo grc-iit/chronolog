@@ -11,9 +11,7 @@
 
 namespace chronokvs
 {
-/**
- * Handles mapping between key-value pairs and ChronoLog's data model.
- */
+
 class ChronoKVSMapper
 {
 private:
