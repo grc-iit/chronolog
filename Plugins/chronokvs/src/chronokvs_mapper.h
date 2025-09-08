@@ -15,24 +15,22 @@ namespace chronokvs
 /**
  * Handles mapping between key-value pairs and ChronoLog's data model.
  */
-class chronokvs_mapper
+class ChronoKVSMapper
 {
 private:
     std::unique_ptr <KeyToTimestampMappingManager> memoryManager;
-    std::unique_ptr <ChronologClient> chronoClient;
+    std::unique_ptr <ChronoKVSClientAdapter> chronoClientAdapter;
 
 public:
-    chronokvs_mapper();
+    ChronoKVSMapper();
 
-    ~chronokvs_mapper() = default;
+    ~ChronoKVSMapper() = default;
 
     std::uint64_t storeKeyValue(const std::string &key, const std::string &value);
 
-    std::vector <std::pair <std::string, std::string>> retrieveByTimestamp(std::uint64_t timestamp);
-
     std::vector <std::pair <std::uint64_t, std::string>> retrieveByKey(const std::string &key);
 
-    std::string retrieveByKeyAndTimestamp(const std::string &key, std::uint64_t timestamp);
+    std::string retrieveByKeyAndTs(const std::string &key, std::uint64_t timestamp);
 
 };
 }

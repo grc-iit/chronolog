@@ -1,36 +1,20 @@
 #include "chronokvs_mapper.h"
-#include "chronokvs_utils.h"
 
 namespace chronokvs
 {
-chronokvs_mapper::chronokvs_mapper()
+ChronoKVSMapper::ChronoKVSMapper()
 {
-    memoryManager = std::make_unique <KeyToTimestampMappingManager>();
-    chronoClient = std::make_unique <ChronologClient>();
+    chronoClientAdapter = std::make_unique <ChronoKVSClientAdapter>();
 }
 
-std::uint64_t chronokvs_mapper::storeKeyValue(const std::string &key, const std::string &value)
+std::uint64_t ChronoKVSMapper::storeKeyValue(const std::string &key, const std::string &value)
 {
     std::string serialized = serialize(key, value);
     std::uint64_t timestamp = chronoClient->storeEvent(serialized);
-    memoryManager->store(key, timestamp);
     return timestamp;
 }
 
-std::vector <std::pair <std::string, std::string>> chronokvs_mapper::retrieveByTimestamp(std::uint64_t timestamp)
-{
-    std::vector <std::string> serializedEvents = chronoClient->retrieveEvents(timestamp);
-    std::vector <std::pair <std::string, std::string>> keyValues;
-
-    keyValues.reserve(serializedEvents.size());
-    for(const std::string &serializedEvent: serializedEvents)
-    {
-        keyValues.push_back(deserialize(serializedEvent));
-    }
-    return keyValues;
-}
-
-std::vector <std::pair <std::uint64_t, std::string>> chronokvs_mapper::retrieveByKey(const std::string &key)
+std::vector <std::pair <std::uint64_t, std::string>> ChronoKVSMapper::retrieveByKey(const std::string &key)
 {
     std::vector <std::uint64_t> timestamps = memoryManager->retrieveByKey(key);
     std::vector <std::pair <std::uint64_t, std::string>> results;
@@ -52,7 +36,7 @@ std::vector <std::pair <std::uint64_t, std::string>> chronokvs_mapper::retrieveB
     return results;
 }
 
-std::string chronokvs_mapper::retrieveByKeyAndTimestamp(const std::string &key, std::uint64_t timestamp)
+std::string ChronoKVSMapper::retrieveByKeyAndTimestamp(const std::string &key, std::uint64_t timestamp)
 {
     std::vector <std::string> serializedEvents = chronoClient->retrieveEvents(timestamp);
     std::string value;
@@ -69,4 +53,5 @@ std::string chronokvs_mapper::retrieveByKeyAndTimestamp(const std::string &key, 
     }
     return value;
 }
+
 }

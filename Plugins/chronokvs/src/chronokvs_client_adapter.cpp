@@ -1,8 +1,9 @@
-#include "chronolog_client.h"
+#include "chronokvs_client_adapter.h"
 
 namespace chronokvs
 {
-ChronologClient::ChronologClient()
+
+ChronoKVSClientAdapter::ChronoKVSClientAdapter()
 {
     int flags = 0;
     chronolog = std::make_shared <chronoemulator::ChronoEmulator>();
@@ -12,19 +13,17 @@ ChronologClient::ChronologClient()
     storyHandle = handle;
 }
 
-ChronologClient::~ChronologClient()
+ChronoKVSClientAdapter::~ChronoKVSClientAdapter()
 {
     if(storyHandle != nullptr)
     {
         chronolog->ReleaseStory("defaultChronicle", "defaultStory");
-        chronolog->DestroyStory("defaultChronicle", "defaultStory");
     }
-    chronolog->DestroyChronicle("defaultChronicle");
     chronolog->Disconnect();
 }
 
 // Store an event in ChronoLog and return a timestamp
-std::uint64_t ChronologClient::storeEvent(const std::string &serializedEvent)
+std::uint64_t ChronoKVSClientAdapter::storeEvent(const std::string &serializedEvent)
 {
     if(storyHandle == nullptr)
     {
@@ -38,7 +37,7 @@ std::uint64_t ChronologClient::storeEvent(const std::string &serializedEvent)
 }
 
 // Retrieve an event from ChronoLog using a timestamp
-std::vector <std::string> ChronologClient::retrieveEvents(std::uint64_t timestamp)
+std::vector <std::string> ChronoKVSClientAdapter::retrieveEvents(std::uint64_t timestamp)
 {
     if(storyHandle == nullptr)
     {
