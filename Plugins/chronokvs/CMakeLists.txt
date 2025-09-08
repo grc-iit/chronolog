@@ -25,6 +25,9 @@ add_library(ChronoKVS STATIC ${SOURCE_FILES})
 # Use target_include_directories instead of include_directories
 target_include_directories(ChronoKVS PUBLIC include)
 
+# Link against chronolog_client library
+target_link_libraries(ChronoKVS PUBLIC chronolog_client -lpthread -lrt)
+
 # For installation (optional)
 install(TARGETS ChronoKVS DESTINATION lib)
 install(DIRECTORY include/ DESTINATION include)
