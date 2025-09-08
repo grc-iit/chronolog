@@ -11,7 +11,6 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-add_subdirectory(${CMAKE_SOURCE_DIR}/Plugins/chronoemulator)
 
 # Source files for the library
 set(SOURCE_FILES
@@ -25,9 +24,6 @@ add_library(ChronoKVS STATIC ${SOURCE_FILES})
 
 # Use target_include_directories instead of include_directories
 target_include_directories(ChronoKVS PUBLIC include)
-
-# If there are any dependencies, link them here
-target_link_libraries(ChronoKVS PUBLIC ChronoEmulator)
 
 # For installation (optional)
 install(TARGETS ChronoKVS DESTINATION lib)

@@ -5,7 +5,6 @@
 #include <vector>
 #include <optional>
 #include <unordered_map>
-#include "chronoemulator.h"
 
 namespace chronokvs
 {
@@ -14,9 +13,6 @@ namespace chronokvs
  */
 class ChronologClient
 {
-private:
-    std::shared_ptr <chronoemulator::ChronoEmulator> chronolog;
-    chronoemulator::StoryHandle*storyHandle;
 
 public:
     ChronologClient();
