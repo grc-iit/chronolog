@@ -17,8 +17,6 @@ public:
 
     ChronoKVS();
 
-     * @brief Destructs the ChronoKVS instance.
-     */
     ~ChronoKVS() = default;
 
     std::uint64_t put(const std::string &key, const std::string &value);
