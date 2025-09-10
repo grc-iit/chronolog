@@ -40,56 +40,62 @@ ChronoKVSClientAdapter::ChronoKVSClientAdapter()
         throw std::runtime_error("Failed to create chronicle");
     }
 
-    // Acquire story handle
-    std::map<std::string, std::string> story_attrs;
-    auto [status, handle] = chronolog->AcquireStory(defaultChronicle, defaultStory, story_attrs, flags);
-    if (status != chronolog::CL_SUCCESS) {
-        throw std::runtime_error("Failed to acquire story handle");
-    }
-    storyHandle = std::unique_ptr<chronolog::StoryHandle>(handle);
+    // No story handles are acquired in the constructor anymore
+    // They will be acquired on-demand when storing or retrieving events
 }
 
 ChronoKVSClientAdapter::~ChronoKVSClientAdapter()
 {
-    if (storyHandle) {
-        chronolog->ReleaseStory(defaultChronicle, defaultStory);
-        storyHandle.reset();
-    }
     if (chronolog) {
         chronolog->Disconnect();
     }
 }
 
-std::uint64_t ChronoKVSClientAdapter::storeEvent(const std::string &serializedEvent)
+std::uint64_t ChronoKVSClientAdapter::storeEvent(const std::string &key, const std::string &value)
 {
-    if (!storyHandle) {
-        throw std::runtime_error("Story handle is not initialized");
+    std::map<std::string, std::string> story_attrs;
+    int flags = 0;
+    auto [status, handle] = chronolog->AcquireStory(defaultChronicle, key, story_attrs, flags);
+    if (status != chronolog::CL_SUCCESS) {
+        throw std::runtime_error("Failed to acquire story handle for key: " + key);
     }
 
     // Log the event using the story handle
-    return storyHandle->log_event(serializedEvent);
+    auto timestamp = handle->log_event(value);
+    
+    // Release the story handle
+    chronolog->ReleaseStory(defaultChronicle, key);
+    
+    return timestamp;
 }
 
-std::vector<std::string> ChronoKVSClientAdapter::retrieveEvents(std::uint64_t timestamp)
+std::vector<EventData> ChronoKVSClientAdapter::retrieveEvents(const std::string &key, std::uint64_t start_ts, std::uint64_t end_ts)
 {
-    if (!storyHandle) {
-        throw std::runtime_error("Story handle is not initialized");
+    std::map<std::string, std::string> story_attrs;
+    int flags = 0;
+    auto [status, handle] = chronolog->AcquireStory(defaultChronicle, key, story_attrs, flags);
+    if (status != chronolog::CL_SUCCESS) {
+        throw std::runtime_error("Failed to acquire story handle for key: " + key);
     }
 
-    // Replay events for the specific timestamp
+    // Replay events for the given timestamp range
     std::vector<chronolog::Event> events;
-    int ret = chronolog->ReplayStory(defaultChronicle, defaultStory, timestamp, timestamp, events);
+    int ret = chronolog->ReplayStory(defaultChronicle, key, start_ts, end_ts, events);
+    
+    // Release the story handle
+    chronolog->ReleaseStory(defaultChronicle, key);
+    
     if (ret != chronolog::CL_SUCCESS) {
-        throw std::runtime_error("Failed to replay events");
+        throw std::runtime_error("Failed to replay events for key: " + key);
     }
 
-    // Extract event values
-    std::vector<std::string> values;
-    values.reserve(events.size());
+    // Extract event data
+    std::vector<EventData> eventDataList;
+    eventDataList.reserve(events.size());
     for (const auto& event : events) {
-        values.push_back(event.value);
+        eventDataList.emplace_back(event.time(), event.log_record());
     }
-    return values;
+    return eventDataList;
 }
 
 }
