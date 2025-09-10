@@ -5,10 +5,12 @@
 #include <vector>
 #include <memory>
 #include "chronokvs_types.h"
-#include "chronokvs_mapper.h"
 
 namespace chronokvs
 {
+
+// Forward declaration of the private mapper type (header lives in src/)
+class ChronoKVSMapper;
 
 class ChronoKVS
 {
@@ -19,7 +21,7 @@ public:
 
     ChronoKVS();
 
-    ~ChronoKVS() = default;
+    ~ChronoKVS();
 
     std::uint64_t put(const std::string &key, const std::string &value);
 

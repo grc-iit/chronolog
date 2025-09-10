@@ -10,6 +10,8 @@ ChronoKVS::ChronoKVS()
     mapper = std::make_unique<ChronoKVSMapper>();
 }
 
+ChronoKVS::~ChronoKVS() = default;
+
 std::uint64_t ChronoKVS::put(const std::string &key, const std::string &value)
 {
     return mapper->storeKeyValue(key, value);
