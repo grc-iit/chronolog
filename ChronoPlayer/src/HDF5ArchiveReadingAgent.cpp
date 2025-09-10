@@ -41,10 +41,11 @@ herr_t error_walker(unsigned int n, const H5E_error2_t *err_desc, void *client_d
     return 0;
 }
 
-int chronolog::HDF5ArchiveReadingAgent::readStoryChunkFile(const ChronicleName &chronicleName, const StoryName &storyName
-                                                            , uint64_t startTime, uint64_t endTime
-                                                            , std::list <StoryChunk *> &listOfChunks
-                                                            , const std::string &file_name)
+int chronolog::HDF5ArchiveReadingAgent::readStoryChunkFile(const ChronicleName& chronicleName
+                                                           , const StoryName& storyName
+                                                           , uint64_t startTime, uint64_t endTime
+                                                           , std::list<StoryChunk*>& listOfChunks
+                                                           , const std::string& file_name)
 {
     std::unique_ptr <H5::H5File> file;
     StoryChunk *story_chunk = nullptr;
