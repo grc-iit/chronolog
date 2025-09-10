@@ -20,7 +20,7 @@ std::string ChronoKVS::get(const std::string &key, std::uint64_t timestamp)
     return mapper->retrieveByKeyAndTs(key, timestamp);
 }
 
-std::vector <std::pair <std::uint64_t, std::string>> ChronoKVS::get_history(const std::string &key)
+std::vector<EventData> ChronoKVS::get_history(const std::string &key)
 {
     return mapper->retrieveByKey(key);
 }
