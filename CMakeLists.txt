@@ -204,6 +204,7 @@ add_subdirectory(ChronoGrapher)
 add_subdirectory(ChronoPlayer)
 add_subdirectory(ChronoStore)
 add_subdirectory(tools)
+add_subdirectory(Plugins)
 
 if(CHRONOLOG_BUILD_TESTING)
     enable_testing()

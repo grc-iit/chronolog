@@ -1,43 +1,95 @@
 cmake_minimum_required(VERSION 3.25)
 
-#message("ChronoKVS CMakeLists - CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}")
-#message("ChronoKVS CMakeLists - CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
-message("Building CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
-message("build target : ChronoKVS")
+# Project definition
+project(ChronoKVS
+    VERSION 0.1.0
+    DESCRIPTION "ChronoKVS Plugin for ChronoLog"
+    LANGUAGES CXX
+)
 
-# Define the project and specify the required C++ standard
-project(ChronoKVS LANGUAGES CXX)
+# Global properties and compiler settings
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+# Add compiler warnings
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
 
-# Source files for the library
-set(SOURCE_FILES
+# Define source files
+set(CHRONOKVS_SOURCES
     src/chronokvs.cpp
     src/chronokvs_mapper.cpp
-    src/chronolog_client.cpp
+    src/chronokvs_client_adapter.cpp
 )
 
-# Define the library target
-add_library(ChronoKVS STATIC ${SOURCE_FILES})
+# Define headers for IDE support
+set(CHRONOKVS_HEADERS
+    include/chronokvs.h
+    include/chronokvs_types.h
+    src/chronokvs_mapper.h
+    src/chronokvs_client_adapter.h
+)
 
-# Use target_include_directories instead of include_directories
-target_include_directories(ChronoKVS PUBLIC include)
+# Library target
+add_library(ChronoKVS STATIC
+    ${CHRONOKVS_SOURCES}
+    ${CHRONOKVS_HEADERS}
+)
 
-# Link against chronolog_client library
-target_link_libraries(ChronoKVS PUBLIC chronolog_client -lpthread -lrt)
+# Set target properties
+set_target_properties(ChronoKVS PROPERTIES
+    VERSION ${PROJECT_VERSION}
+    SOVERSION ${PROJECT_VERSION_MAJOR}
+    PUBLIC_HEADER "${CHRONOKVS_HEADERS}"
+)
 
-# For installation (optional)
-install(TARGETS ChronoKVS DESTINATION lib)
-install(DIRECTORY include/ DESTINATION include)
+# Include directories
+target_include_directories(ChronoKVS
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
 
-# Testing (optional)
-# enable_testing()
-# add_subdirectory(tests)
+# Dependencies
+find_package(Threads REQUIRED)
+target_link_libraries(ChronoKVS
+    PUBLIC
+        chronolog_client
+        Threads::Threads
+        rt
+)
 
-# Examples (optional)
-add_subdirectory(examples)
+# Installation rules
+include(GNUInstallDirs)
+install(TARGETS ChronoKVS
+    EXPORT ChronoKVSTargets
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/chronokvs
+)
 
-# Documentation (optional, add if you have custom CMake setup for docs)
-# add_subdirectory(docs)
+# Export targets
+install(EXPORT ChronoKVSTargets
+    FILE ChronoKVSTargets.cmake
+    NAMESPACE ChronoKVS::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/ChronoKVS
+)
+
+# Examples
+option(BUILD_EXAMPLES "Build example programs" ON)
+if(BUILD_EXAMPLES)
+    add_subdirectory(examples)
+endif()
+
+# Testing
+option(BUILD_TESTING "Build tests" OFF)
+if(BUILD_TESTING)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
