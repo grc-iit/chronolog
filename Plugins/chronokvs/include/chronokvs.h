@@ -3,7 +3,9 @@
 
 #include <string>
 #include <vector>
-#include "../src/chronokvs_mapper.h"
+#include <memory>
+#include "chronokvs_types.h"
+#include "chronokvs_mapper.h"
 
 namespace chronokvs
 {
@@ -23,7 +25,7 @@ public:
 
     std::string get(const std::string &key, uint64_t timestamp);
 
-    std::vector <std::pair <uint64_t, std::string>> get_history(const std::string &key);
+    std::vector<EventData> get_history(const std::string &key);
 };
 
 }

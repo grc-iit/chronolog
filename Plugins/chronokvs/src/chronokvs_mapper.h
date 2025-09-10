@@ -4,9 +4,9 @@
 #include <string>
 #include <vector>
 #include <memory>
-#include <utility>
 #include <optional>
 #include <unordered_map>
+#include "chronokvs_types.h"
 #include "chronokvs_client_adapter.h"
 
 namespace chronokvs
@@ -24,9 +24,9 @@ public:
 
     std::uint64_t storeKeyValue(const std::string &key, const std::string &value);
 
-    std::vector <std::pair <std::uint64_t, std::string>> retrieveByKey(const std::string &key);
-
     std::string retrieveByKeyAndTs(const std::string &key, std::uint64_t timestamp);
+
+    std::vector<EventData> retrieveByKey(const std::string &key);
 
 };
 }
