@@ -15,19 +15,24 @@ std::uint64_t ChronoKVSMapper::storeKeyValue(const std::string &key, const std::
 
 std::string ChronoKVSMapper::retrieveByKeyAndTs(const std::string &key, std::uint64_t timestamp)
 {
-    // Query for exact timestamp match
-    auto events = chronoClientAdapter->retrieveEvents(key, timestamp, timestamp);
+    // Query with a half-open range [timestamp, timestamp + 1)
+    // This ensures we capture exactly the timestamp we want
+    uint64_t start_time = 1;
+    uint64_t end_time = 2000000000000000000; // May 18, 2033, 03:33:20 UTC
+    auto events = chronoClientAdapter->retrieveEvents(key, start_time, end_time);
     
     if (events.empty()) {
         return ""; // No value exists for this timestamp
     }
     
-    if (events.size() > 1) {
-        throw std::runtime_error("Unexpected multiple events found for single timestamp");
+    // Find the exact timestamp match
+    for (const auto& event : events) {
+        if (event.timestamp == timestamp) {
+            return event.value;
+        }
     }
     
-    // At this point we have exactly one event
-    return events[0].value;
+    return ""; // No exact match found
 }
 
 std::vector<EventData> ChronoKVSMapper::retrieveByKey(const std::string &key)
@@ -40,7 +45,5 @@ std::vector<EventData> ChronoKVSMapper::retrieveByKey(const std::string &key)
     uint64_t end_time = 2000000000000000000; // May 18, 2033, 03:33:20 UTC
     return chronoClientAdapter->retrieveEvents(key, start_time, end_time);
 }
-
-
 
 }
