@@ -43,6 +43,16 @@ set(CHRONOLOG_INSTALL_LIB_DIR ${CMAKE_INSTALL_PREFIX}/lib)
 set(CHRONOLOG_INSTALL_BIN_DIR ${CMAKE_INSTALL_PREFIX}/bin)
 set(CHRONOLOG_INSTALL_CONF_DIR ${CMAKE_INSTALL_PREFIX}/conf)
 
+# Disable using link paths as RPATH
+set(CMAKE_INSTALL_RPATH_USE_LINK_PATH FALSE)
+
+# Set the RPATH explicitly
+set(CMAKE_INSTALL_RPATH "${CHRONOLOG_INSTALL_LIB_DIR}")
+
+# Force RUNPATH instead of RPATH (RUNPATH has lower precedence)
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--enable-new-dtags")
+set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--enable-new-dtags")
+
 #------------------------------------------------------------------------------
 # Disallow in-source build. This checks that there is a defined and separate /build folder
 #------------------------------------------------------------------------------
@@ -198,12 +208,12 @@ endif()
 # ChronoLog Components
 #-----------------------------------------------------------------------------
 add_subdirectory(Client)
-add_subdirectory(ClientAdmin)
 add_subdirectory(ChronoVisor)
 add_subdirectory(ChronoKeeper)
 add_subdirectory(ChronoGrapher)
 add_subdirectory(ChronoPlayer)
 add_subdirectory(ChronoStore)
+add_subdirectory(tools)
 
 if(CHRONOLOG_BUILD_TESTING)
     enable_testing()

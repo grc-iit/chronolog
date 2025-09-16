@@ -20,7 +20,7 @@ RUN apt-get update \
     git vim fuse sudo curl wget \
     libfuse-dev libssl-dev \
     python3 python3-dev python3-pip \
-    bzip2 xz-utils jq net-tools lsof htop pssh procps bind9-dnsutils
+    bzip2 xz-utils jq net-tools lsof htop pssh procps bind9-dnsutils chrpath
 
 RUN apt-get -y install --no-install-recommends \
     openssh-server openssh-client \

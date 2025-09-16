@@ -140,7 +140,7 @@ usage() {
 }
 
 check_dependencies() {
-    local dependencies=("jq" "pssh" "ssh" "ldd" "nohup" "pkill" "readlink" "realpath")
+    local dependencies=("jq" "parallel-ssh" "ssh" "ldd" "nohup" "pkill" "readlink" "realpath")
 
     echo -e "${DEBUG}Checking required dependencies...${NC}"
     for dep in "${dependencies[@]}"; do
@@ -311,6 +311,13 @@ get_host_ip() {
     echo "${host_ip}"
 }
 
+get_remote_hostname() {
+    local hostname=$1
+    local remote_hostname=""
+    remote_hostname=$(ssh -n ${hostname} hostname)
+    echo "${remote_hostname}"
+}
+
 update_visor_ip() {
     visor_host=$(head -1 ${VISOR_HOSTS})
     visor_ip=$(get_host_ip ${visor_host})
@@ -347,7 +354,7 @@ generate_conf_for_each_keeper() {
     local keeper_hosts_file=$2
     [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generating conf files for all ChronoKeepers in ${keeper_hosts_file} based on conf file ${base_conf_file} ...${NC}"
     while IFS= read -r keeper_host; do
-        remote_keeper_hostname=$(LD_LIBRARY_PATH="${SYS_LIB_DIR}" ssh -n ${keeper_host} hostname)
+        remote_keeper_hostname=$(get_remote_hostname ${keeper_host})
         [[ -z "${remote_keeper_hostname}" ]] && echo -e "${ERR}Cannot get hostname from ${keeper_host}, exiting ...${NC}" >&2 && exit 1
         [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generating conf file ${base_conf_file}.keeper.${remote_keeper_hostname} for ChronoKeeper ${remote_keeper_hostname} ...${NC}"
         jq ".chrono_keeper.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono_keeper.${remote_keeper_hostname}.log\"" "${base_conf_file}" >"${base_conf_file}.keeper.${remote_keeper_hostname}"
@@ -364,7 +371,7 @@ generate_conf_for_each_grapher() {
     local grapher_hosts_file=$2
     [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generating conf files for all ChronoGraphers in ${grapher_hosts_file} based on conf file ${base_conf_file} ...${NC}"
     while IFS= read -r grapher_host; do
-        remote_grapher_hostname=$(LD_LIBRARY_PATH="${SYS_LIB_DIR}" ssh -n ${grapher_host} hostname)
+        remote_grapher_hostname=$(get_remote_hostname ${grapher_host})
         [[ -z "${remote_grapher_hostname}" ]] && echo -e "${ERR}Cannot get hostname from ${grapher_host}, exiting ...${NC}" >&2 && exit 1
         [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generating conf file ${base_conf_file}.grapher.${remote_grapher_hostname} for ChronoGrapher ${remote_grapher_hostname} ...${NC}"
         jq ".chrono_grapher.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono_grapher.${remote_grapher_hostname}.log\"" "${base_conf_file}" >"${base_conf_file}.grapher.${remote_grapher_hostname}"
@@ -381,7 +388,7 @@ generate_conf_for_each_player() {
     local player_hosts_file=$2
     [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generating conf files for all ChronoPlayers in ${player_hosts_file} based on conf file ${base_conf_file} ...${NC}"
     while IFS= read -r player_host; do
-        remote_player_hostname=$(LD_LIBRARY_PATH="${SYS_LIB_DIR}" ssh -n ${player_host} hostname)
+        remote_player_hostname=$(get_remote_hostname ${player_host})
         [[ -z "${remote_player_hostname}" ]] && echo -e "${ERR}Cannot get hostname from ${player_host}, exiting ...${NC}" >&2 && exit 1
         [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generating conf file ${base_conf_file}.player.${remote_player_hostname} for ChronoPlayer ${remote_player_hostname} ...${NC}"
         jq ".chrono_player.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono_player.${remote_player_hostname}.log\"" "${base_conf_file}" >"${base_conf_file}.player.${remote_player_hostname}"
@@ -408,13 +415,13 @@ generate_conf_for_each_recording_group() {
         # get IP of Grapher node
         grapher_hostname=$(head -1 ${grapher_hosts_file})
         grapher_ip=$(get_host_ip ${grapher_hostname})
-#        remote_grapher_hostname=$(LD_LIBRARY_PATH="${SYS_LIB_DIR}" ssh -n ${grapher_hostname} hostname)
+#        remote_grapher_hostname=$(get_remote_hostname ${grapher_hostname})
 #        [[ -z "${remote_grapher_hostname}" ]] && echo -e "${ERR}Cannot get hostname from ${grapher_hostname}, exiting ...${NC}" >&2 && exit 1
 
         # get IP of Player node
         player_hostname=$(head -1 ${player_hosts_file})
         player_ip=$(get_host_ip ${player_hostname})
-#        remote_player_hostname=$(LD_LIBRARY_PATH="${SYS_LIB_DIR}" ssh -n ${player_hostname} hostname)
+#        remote_player_hostname=$(get_remote_hostname ${player_hostname})
 #        [[ -z "${remote_player_hostname}" ]] && echo -e "${ERR}Cannot get hostname from ${player_hostname}, exiting ...${NC}" >&2 && exit 1
 
         # update conf file for Grapher, Keeper and Player
@@ -524,8 +531,7 @@ prepare_hosts() {
 }
 
 check_build_directory() {
-    local deploy_dir=$(realpath "$(dirname "$0")")  # Get the absolute path of the script's directory
-    local build_dir="${deploy_dir}/../build"       # Navigate to x/build from x/deploy
+    local build_dir="${REPO_ROOT}/build"       # Navigate to build/ in the root dir of the repo
 
     build_dir=$(realpath "${build_dir}" 2>/dev/null || echo "")
 
@@ -553,9 +559,9 @@ check_work_dir() {
 build() {
     # build ChronoLog
     if [[ -n "$INSTALL_DIR" ]]; then
-        "${REPO_ROOT}/deploy/build.sh" -type "$BUILD_TYPE" -install-path "$INSTALL_DIR"
+        "${REPO_ROOT}/tools/deploy/ChronoLog/build.sh" -type "$BUILD_TYPE" -install-path "$INSTALL_DIR"
     else
-        "${REPO_ROOT}/deploy/build.sh" -type "$BUILD_TYPE"
+        "${REPO_ROOT}/tools/deploy/ChronoLog/build.sh" -type "$BUILD_TYPE"
     fi
 }
 
@@ -564,7 +570,7 @@ install() {
 
     check_build_directory
 
-    install_script="${REPO_ROOT}/deploy/install.sh"
+    install_script="${REPO_ROOT}/tools/deploy/ChronoLog/install.sh"
     if [[ -x "$install_script" ]]; then
         "$install_script" --lib-dir "${LIB_DIR}" --bin-dir "${BIN_DIR}"
     else
@@ -590,7 +596,7 @@ parallel_remote_launch_processes() {
     fi
 
     bin_path=${bin_dir}/${bin_filename}
-    LD_LIBRARY_PATH="${SYS_LIB_DIR}" pssh -h ${hosts_file} -i "cd ${bin_dir}; LD_LIBRARY_PATH=${lib_dir} nohup ${bin_path} ${args} > ${MONITOR_DIR}/${bin_filename}${hostname_suffix}.launch.log 2>&1 &" | grep "${simple_output_grep_keyword}" 2>&1
+    parallel-ssh -h ${hosts_file} -i "cd ${bin_dir}; nohup ${bin_path} ${args} > ${MONITOR_DIR}/${bin_filename}${hostname_suffix}.launch.log 2>&1 &" | grep "${simple_output_grep_keyword}" 2>&1
 }
 
 parallel_remote_stop_processes() {
@@ -598,7 +604,7 @@ parallel_remote_stop_processes() {
     local bin_filename=$2
 
     local timer=0
-    LD_LIBRARY_PATH="${SYS_LIB_DIR}" pssh -h ${hosts_file} -i "pkill --signal 15 -ef ${bin_filename}" 2>/dev/null
+    parallel-ssh -h ${hosts_file} -i "pkill --signal 15 -ef ${bin_filename}" 2>/dev/null
     while [[ -n $(parallel_remote_check_processes ${hosts_file} ${bin_filename}) ]]; do
         echo -e "${DEBUG}Some processes are still running, waiting for 10 seconds ...${NC}"
         sleep 10
@@ -615,14 +621,14 @@ parallel_remote_kill_processes() {
     local hosts_file=$1
     local bin_filename=$2
 
-    LD_LIBRARY_PATH="${SYS_LIB_DIR}" pssh -h ${hosts_file} -i "pkill --signal 9 -ef ${bin_filename}" 2>/dev/null
+    parallel-ssh -h ${hosts_file} -i "pkill --signal 9 -ef ${bin_filename}" 2>/dev/null
 }
 
 parallel_remote_check_processes() {
     local hosts_file=$1
     local bin_filename=$2
 
-    LD_LIBRARY_PATH="${SYS_LIB_DIR}" pssh -h ${hosts_file} -i "pgrep -fla ${bin_filename}" 2>/dev/null | grep -vE '^\[' | sed '/^$/d'
+    parallel-ssh -h ${hosts_file} -i "pgrep -fla ${bin_filename}" 2>/dev/null | sed '/^$/d' | grep -vE '^\[|ssh'
 }
 
 parallel_remote_check_all() {
@@ -963,7 +969,7 @@ parse_args "$@"
 check_dependencies
 
 # Set REPO_ROOT
-REPO_ROOT="$(realpath "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/..")"
+REPO_ROOT="$(realpath "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../")"
 
 # Check if specified operation is allowed
 check_op_validity

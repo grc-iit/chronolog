@@ -38,8 +38,8 @@ jobs:
               # Step 2: Build ChronoLog
               ##################################
               echo "[2/6] Building ChronoLog..."
-              if [ -x /workspace/deploy/local_single_user_deploy.sh ]; then
-                cd /workspace/deploy
+              if [ -x /workspace/tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
+                cd /workspace/tools/deploy/ChronoLog
                 ./local_single_user_deploy.sh --build --build-type Debug --install-dir "${HOME}/chronolog-install/"
                 cd /workspace
               else
@@ -51,8 +51,8 @@ jobs:
               # Step 3: Install ChronoLog
               ##################################
               echo "[3/6] Installing ChronoLog..."
-              if [ -x /workspace/deploy/local_single_user_deploy.sh ]; then
-                cd /workspace/deploy
+              if [ -x /workspace/tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
+                cd /workspace/tools/deploy/ChronoLog
                 ./local_single_user_deploy.sh -i -w "${INSTALL_BASE}"
                 cd /workspace
               else
@@ -122,8 +122,8 @@ jobs:
               # Step 5: Deploy ChronoLog
               ##################################
               echo "[5/6] Deploying ChronoLog..."
-              if [ -x /workspace/deploy/local_single_user_deploy.sh ]; then
-                cd /workspace/deploy
+              if [ -x /workspace/tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
+                cd /workspace/tools/deploy/ChronoLog
                 ./local_single_user_deploy.sh -d -k 5 -r 3 -w "${INSTALL_BASE}"
                 cd /workspace
               else
