@@ -1,4 +1,3 @@
-#include <iostream>
 #include "chronokvs.h"
 #include "chronokvs_mapper.h"
 
@@ -6,8 +5,8 @@ namespace chronokvs
 {
 
 ChronoKVS::ChronoKVS()
+    : mapper(std::make_unique<ChronoKVSMapper>())  // Use member initializer list
 {
-    mapper = std::make_unique<ChronoKVSMapper>();
 }
 
 ChronoKVS::~ChronoKVS() = default;
@@ -26,4 +25,5 @@ std::vector<EventData> ChronoKVS::get_history(const std::string &key)
 {
     return mapper->retrieveByKey(key);
 }
-}
+
+} // namespace chronokvs

@@ -3,6 +3,10 @@
 namespace chronokvs
 {
 
+// Constants for time range boundaries
+constexpr uint64_t MIN_TIMESTAMP = 1;  // Earliest possible timestamp
+constexpr uint64_t MAX_TIMESTAMP = 2000000000000000000;  // ~May 18, 2033 03:33:20 UTC
+
 ChronoKVSMapper::ChronoKVSMapper()
 {
     chronoClientAdapter = std::make_unique<ChronoKVSClientAdapter>();
@@ -15,35 +19,31 @@ std::uint64_t ChronoKVSMapper::storeKeyValue(const std::string &key, const std::
 
 std::string ChronoKVSMapper::retrieveByKeyAndTs(const std::string &key, std::uint64_t timestamp)
 {
-    // Query with a half-open range [timestamp, timestamp + 1)
-    // This ensures we capture exactly the timestamp we want
-    uint64_t start_time = 1;
-    uint64_t end_time = 2000000000000000000; // May 18, 2033, 03:33:20 UTC
-    auto events = chronoClientAdapter->retrieveEvents(key, start_time, end_time);
+    // TODO(Performance): Current implementation fetches all events due to issues with narrow time ranges
+    // causing timeouts. This should be optimized to use [timestamp, timestamp + 1) once the underlying
+    // timing issues are resolved.
+    auto events = chronoClientAdapter->retrieveEvents(key, MIN_TIMESTAMP, MAX_TIMESTAMP);
     
     if (events.empty()) {
-        return ""; // No value exists for this timestamp
+        return "";
     }
     
-    // Find the exact timestamp match
+    // Search for exact timestamp match in the retrieved events
     for (const auto& event : events) {
         if (event.timestamp == timestamp) {
             return event.value;
         }
     }
     
-    return ""; // No exact match found
+    return "";
 }
 
 std::vector<EventData> ChronoKVSMapper::retrieveByKey(const std::string &key)
 {
-    // Use an intentionally wide time range to ensure all events are captured.
-    // 'start_time' is set to 1 to include any valid timestamp from the beginning.
-    // 'end_time' is set to a very large value to ensure we read up to the latest
-    // events. This approach avoids missing any data due to timing uncertainties.
-    uint64_t start_time = 1;
-    uint64_t end_time = 2000000000000000000; // May 18, 2033, 03:33:20 UTC
-    return chronoClientAdapter->retrieveEvents(key, start_time, end_time);
+    // Retrieve all events for the given key using the full time range.
+    // This ensures we capture all events regardless of their timestamp,
+    // avoiding any potential data loss from timing uncertainties.
+    return chronoClientAdapter->retrieveEvents(key, MIN_TIMESTAMP, MAX_TIMESTAMP);
 }
 
 }
