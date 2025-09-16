@@ -38,9 +38,9 @@ for i in $(seq 1 ${REP})
 do
     echo "======================================================================================" >> ${OUTPUT_LOG_FILE}
     echo "Iteration ${i}" >> ${OUTPUT_LOG_FILE}
-    echo LD_LIBRARY_PATH=${CHRONOLOG_LIB_DIR} ${MPIEXEC_BIN} -n ${NUM_PROCS} -f "${HOST_FILE}.${NUM_NODES}" \
+    echo ${MPIEXEC_BIN} -n ${NUM_PROCS} -f "${HOST_FILE}.${NUM_NODES}" \
         "${CLIENT_ADMIN_BIN}" -c "${CONF_FILE}" ${cli_args}
-    LD_LIBRARY_PATH=${CHRONOLOG_LIB_DIR} ${MPIEXEC_BIN} -n ${NUM_PROCS} -f "${HOST_FILE}.${NUM_NODES}" \
+    ${MPIEXEC_BIN} -n ${NUM_PROCS} -f "${HOST_FILE}.${NUM_NODES}" \
         "${CLIENT_ADMIN_BIN}" -c "${CONF_FILE}" ${cli_args} >>${OUTPUT_LOG_FILE} 2>&1
 done
 

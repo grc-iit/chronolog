@@ -21,6 +21,10 @@ foreach(client ${client_examples})
     add_executable(${client} ${client}.cpp)
     target_include_directories(${client} PRIVATE ${CMAKE_BINARY_DIR}/Client/include)
     target_link_libraries(${client} chronolog_client -lpthread -lrt)
+    set_target_properties(${client} PROPERTIES
+        BUILD_WITH_INSTALL_RPATH TRUE
+        SKIP_BUILD_RPATH TRUE
+    )
 endforeach()
 
 set(client_openmp client_lib_multi_openmp_test)
@@ -29,6 +33,10 @@ foreach(client ${client_openmp})
     add_executable(${client} ${client}.cpp)
     target_include_directories(${client} PRIVATE ${CMAKE_BINARY_DIR}/Client/include)
     target_link_libraries(${client} chronolog_client OpenMP::OpenMP_CXX)
+    set_target_properties(${client} PROPERTIES
+        BUILD_WITH_INSTALL_RPATH TRUE
+        SKIP_BUILD_RPATH TRUE
+    )
 endforeach()
 
 set(client_mpi client_lib_hybrid_argobots_test)
@@ -37,6 +45,10 @@ foreach(client ${client_mpi})
     add_executable(${client} ${client}.cpp)
     target_include_directories(${client} PRIVATE ${CMAKE_BINARY_DIR}/Client/include ${MPI_CXX_INCLUDE_DIRS})
     target_link_libraries(${client} chronolog_client ${MPI_CXX_LIBRARIES} -lpthread -lrt)
+    set_target_properties(${client} PROPERTIES
+        BUILD_WITH_INSTALL_RPATH TRUE
+        SKIP_BUILD_RPATH TRUE
+    )
 endforeach()
 
 # install binaries
