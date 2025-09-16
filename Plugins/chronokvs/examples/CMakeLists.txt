@@ -1,14 +1,26 @@
-cmake_minimum_required(VERSION 3.25)
-project(ChronoKVS_Examples LANGUAGES CXX)
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
+add_executable(chronokvs_example chronokvs_example.cpp)
+add_executable(chronokvs_writer_example chronokvs_writer_example.cpp)
+add_executable(chronokvs_reader_example chronokvs_reader_example.cpp)
 
-# Add executable for the sample app
-add_executable(ChronoKVS_example1 chronokvs_example1.cpp)
+# Find required packages
+find_package(spdlog REQUIRED)
 
-# Link the ChronoLogKVS library with the sample app
-target_link_libraries(ChronoKVS_example1 ChronoKVS)
+# Include ChronoLog client headers for examples
+foreach(target chronokvs_example chronokvs_writer_example chronokvs_reader_example)
+    target_include_directories(${target}
+        PRIVATE
+            ${CMAKE_SOURCE_DIR}/Client/cpp/include  # Add path to ChronoLog client headers
+    )
+    target_link_libraries(${target} 
+        PRIVATE 
+            chronokvs
+            spdlog::spdlog
+    )
+endforeach()
 
-# Use target_include_directories to include the ChronoLogKVS headers
-target_include_directories(ChronoKVS_example1 PRIVATE ${PROJECT_SOURCE_DIR}/../include)
+# Put examples into bin/ on install
+install(TARGETS 
+    chronokvs_example
+    chronokvs_writer_example
+    chronokvs_reader_example
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
