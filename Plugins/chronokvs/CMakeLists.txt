@@ -53,9 +53,9 @@ target_link_libraries(chronokvs
 
 # Examples
 option(CHRONOKVS_BUILD_EXAMPLES "Build ChronoKVS examples" ON)
-if(CHRONOKVS_BUILD_EXAMPLES)
-    add_subdirectory(examples)
-endif()
+#if(CHRONOKVS_BUILD_EXAMPLES)
+#    add_subdirectory(examples)
+#endif()
 
 # Install (no export set; we’re inside the superbuild)
 install(TARGETS chronokvs
