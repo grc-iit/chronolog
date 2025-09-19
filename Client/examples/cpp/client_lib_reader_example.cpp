@@ -89,7 +89,7 @@ int main(int argc, char** argv)
     ret = client.ReplayStory(chronicle_name, story_name, start_time, end_time, events);
     std::cout << "[ClientExample] ReplayStory returned: " << chronolog::to_string_client(ret) << "\n";
 
-    if(ret != chronolog::CL_SUCCESS)
+    if(ret == chronolog::CL_SUCCESS)
     {
         std::cout << "[ClientExample] Replay succeeded with " << events.size() << " event(s):\n";
         for(const auto& ev: events) { std::cout << ev.to_string() << "\n"; }
