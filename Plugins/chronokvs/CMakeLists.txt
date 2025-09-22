@@ -1,46 +1,71 @@
 cmake_minimum_required(VERSION 3.25)
 
-#message("ChronoKVS CMakeLists - CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}")
-#message("ChronoKVS CMakeLists - CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
-message("Building CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
-message("build target : ChronoKVS")
+project(chronokvs
+    VERSION 0.1.0
+    DESCRIPTION "ChronoKVS Plugin for ChronoLog"
+    LANGUAGES CXX
+)
 
-# Define the project and specify the required C++ standard
-project(ChronoKVS LANGUAGES CXX)
+# Core
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-add_subdirectory(${CMAKE_SOURCE_DIR}/Plugins/chronoemulator)
+include(GNUInstallDirs)
 
-# Source files for the library
-set(SOURCE_FILES
+# RPATH so installed example can find libs in ../lib
+set(CMAKE_INSTALL_RPATH "$ORIGIN/../lib")
+set(CMAKE_BUILD_RPATH  "$ORIGIN;$ORIGIN/../lib")
+
+# Library
+add_library(chronokvs
     src/chronokvs.cpp
     src/chronokvs_mapper.cpp
-    src/chronokvs_memorymanager.cpp
-    src/chronokvs_utils.cpp
-    src/chronolog_client.cpp
+    src/chronokvs_client_adapter.cpp
 )
 
-# Define the library target
-add_library(ChronoKVS STATIC ${SOURCE_FILES})
+# Public headers use genex for build/install; private headers stay private
+target_include_directories(chronokvs
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
 
-# Use target_include_directories instead of include_directories
-target_include_directories(ChronoKVS PUBLIC include)
+# Bring in any header usage requirements exposed by chronolog_client, without making it public
+# (Some ChronoLog releases set PUBLIC includes on the client target.)
+target_include_directories(chronokvs PRIVATE
+    $<TARGET_PROPERTY:chronolog_client,INTERFACE_INCLUDE_DIRECTORIES>
+)
 
-# If there are any dependencies, link them here
-target_link_libraries(ChronoKVS PUBLIC ChronoEmulator)
+find_package(Threads REQUIRED)
 
-# For installation (optional)
-install(TARGETS ChronoKVS DESTINATION lib)
-install(DIRECTORY include/ DESTINATION include)
+# Link to the in-tree target from the superbuild
+target_link_libraries(chronokvs
+    PRIVATE
+        chronolog_client
+        rt
+    PUBLIC
+        Threads::Threads
+)
 
-# Testing (optional)
-# enable_testing()
-# add_subdirectory(tests)
+# Examples
+option(CHRONOKVS_BUILD_EXAMPLES "Build ChronoKVS examples" ON)
+#if(CHRONOKVS_BUILD_EXAMPLES)
+#    add_subdirectory(examples)
+#endif()
 
-# Examples (optional)
-add_subdirectory(examples)
+# Install (no export set; we’re inside the superbuild)
+install(TARGETS chronokvs
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
 
-# Documentation (optional, add if you have custom CMake setup for docs)
-# add_subdirectory(docs)
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+message(STATUS "ChronoKVS: superbuild mode enabled")
