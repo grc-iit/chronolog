@@ -191,7 +191,7 @@ private:
     int pollingMonitoringThreadFunc();
     void scanFileSystem();
     bool hasFileSystemChanged();
-    bool hasDirectoryChangedOptimized(const fs::path& dir_path, int64_t last_scan_ns, std::error_code& ec);
+    bool hasDirectoryChangedOptimizedRecursive(const fs::path& dir_path, int64_t last_scan_ns, std::error_code& ec);
     void updateFileState();
     std::vector<FileInfo> getCurrentFileState();
 
@@ -312,7 +312,7 @@ private:
     // Feature flag and monitoring configuration
     bool use_polling_;
     std::chrono::milliseconds monitoring_interval_;
-    std::chrono::steady_clock::time_point last_scan_time_;
+    std::chrono::system_clock::time_point last_scan_time_;
     
     // File system state tracking for polling
     std::map<std::string, FileInfo> previous_file_state_;
