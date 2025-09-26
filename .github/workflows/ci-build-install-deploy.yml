@@ -24,7 +24,7 @@ jobs:
             chronolog-ci \
             bash -c '
               set -e
-              export INSTALL_BASE="${HOME}/chronolog-install/Debug"
+              export INSTALL_BASE="${HOME}/chronolog-install"
 
               ##################################
               # Step 1: Spack Environment
@@ -39,11 +39,10 @@ jobs:
               ##################################
               echo "[2/6] Building ChronoLog..."
               if [ -x /workspace/tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
-                cd /workspace/tools/deploy/ChronoLog
-                ./local_single_user_deploy.sh --build --build-type Debug --install-dir "${HOME}/chronolog-install/"
                 cd /workspace
+                ./tools/deploy/ChronoLog/local_single_user_deploy.sh -b"
               else
-                echo "❌ Deploy script not found or not executable"
+                echo "❌ Build script not found or not executable"
                 exit 1
               fi
 
@@ -52,11 +51,10 @@ jobs:
               ##################################
               echo "[3/6] Installing ChronoLog..."
               if [ -x /workspace/tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
-                cd /workspace/tools/deploy/ChronoLog
-                ./local_single_user_deploy.sh -i -w "${INSTALL_BASE}"
                 cd /workspace
+                ./tools/deploy/ChronoLog/local_single_user_deploy.sh -i"
               else
-                echo "❌ Deploy script not found or not executable"
+                echo "❌ Install script not found or not executable"
                 exit 1
               fi
               ls -l "${INSTALL_BASE}"
@@ -123,9 +121,8 @@ jobs:
               ##################################
               echo "[5/6] Deploying ChronoLog..."
               if [ -x /workspace/tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
-                cd /workspace/tools/deploy/ChronoLog
-                ./local_single_user_deploy.sh -d -k 5 -r 3 -w "${INSTALL_BASE}"
                 cd /workspace
+                ./tools/deploy/ChronoLog/local_single_user_deploy.sh -d -k 5 -r 3 -w "${INSTALL_BASE}/chronolog"
               else
                 echo "❌ Deploy script not found or not executable"
                 exit 1
