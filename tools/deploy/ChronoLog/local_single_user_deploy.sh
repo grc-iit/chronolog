@@ -310,15 +310,26 @@ build() {
     fi
     
     echo -e "${DEBUG}Running: $build_cmd${NC}"
-    eval $build_cmd
+    if [[ -x "${REPO_ROOT}/tools/deploy/ChronoLog/build.sh" ]]; then
+        eval $build_cmd
+    else
+        echo -e "${RED}Error: ${REPO_ROOT}/tools/deploy/ChronoLog/build.sh is not executable or not found.${NC}"
+        exit 1
+    fi
 }
 
 install() {
-    install_script="${REPO_ROOT}/tools/deploy/ChronoLog/install.sh"
-    if [[ -x "$install_script" ]]; then
-        "$install_script" -t "${BUILD_TYPE}" -I "${INSTALL_DIR}"
+    local install_cmd="${REPO_ROOT}/tools/deploy/ChronoLog/install.sh -t ${BUILD_TYPE} -B ${BUILD_DIR}"
+    
+    if [[ -n "$INSTALL_DIR" ]]; then
+        install_cmd="$install_cmd -I $INSTALL_DIR"
+    fi
+    
+    echo -e "${DEBUG}Running: $install_cmd${NC}"
+    if [[ -x "${REPO_ROOT}/tools/deploy/ChronoLog/install.sh" ]]; then
+        eval $install_cmd
     else
-        echo -e "${RED}Error: $install_script is not executable or not found.${NC}"
+        echo -e "${RED}Error: ${REPO_ROOT}/tools/deploy/ChronoLog/install.sh is not executable or not found.${NC}"
         exit 1
     fi
 }
