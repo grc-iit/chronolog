@@ -202,44 +202,11 @@ check_spack() {
     echo -e "${INFO}All dependencies are installed and ready. Installing...${NC}"
 }
 
-determine_build_type() {
-    # Check which build directories exist to determine build type
-    DEBUG_EXISTS=false
-    RELEASE_EXISTS=false
-    
-    if [ -d "$BUILD_BASE_DIR/Debug" ] && [ -f "$BUILD_BASE_DIR/Debug/CMakeCache.txt" ]; then
-        DEBUG_EXISTS=true
-    fi
-    
-    if [ -d "$BUILD_BASE_DIR/Release" ] && [ -f "$BUILD_BASE_DIR/Release/CMakeCache.txt" ]; then
-        RELEASE_EXISTS=true
-    fi
-    
-    # If both exist, prefer Release (most common for deployment)
-    if [ "$RELEASE_EXISTS" = true ]; then
-        BUILD_TYPE="Release"
-        echo -e "${DEBUG}Multiple build types found, defaulting to Release${NC}"
-    elif [ "$DEBUG_EXISTS" = true ]; then
-        BUILD_TYPE="Debug"
-        echo -e "${DEBUG}Using Debug build directory${NC}"
-    else
-        echo -e "${ERR}No valid build directory found. Please run the build script first.${NC}"
-        echo -e "${ERR}Expected: $BUILD_BASE_DIR/Debug or $BUILD_BASE_DIR/Release${NC}"
-        exit 1
-    fi
-}
 
 navigate_to_build_directory() {
-    # Only determine build type if it wasn't provided as an argument
-    if [[ -z "$BUILD_TYPE" ]]; then
-        determine_build_type
-    else
-        echo -e "${DEBUG}Using build type from argument: ${BUILD_TYPE}${NC}"
-    fi
-    
     BUILD_DIR="$BUILD_BASE_DIR/${BUILD_TYPE}"
     
-    # Check if the determined build directory exists
+    # Check if the build directory exists
     if [ -d "${BUILD_DIR}" ] && [ -f "${BUILD_DIR}/CMakeCache.txt" ]; then
         echo -e "${DEBUG}Using build directory: ${BUILD_DIR}${NC}"
         cd ${BUILD_DIR}
