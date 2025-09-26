@@ -11,6 +11,8 @@ NC='\033[0m' # No Color
 NUM_KEEPERS=1
 NUM_RECORDING_GROUPS=1
 BUILD_TYPE="Release"
+BUILD_DIR="$HOME/chronolog-build"
+INSTALL_DIR="$HOME/chronolog-install"
 
 # Directories
 WORK_DIR=""
@@ -19,7 +21,6 @@ CONF_DIR=""
 BIN_DIR=""
 MONITOR_DIR=""
 OUTPUT_DIR=""
-INSTALL_DIR=""
 REPO_ROOT="$(realpath "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../")"
 
 # Files
@@ -85,8 +86,6 @@ stop_service() {
     done
     echo ""
 }
-
-
 
 generate_config_files() {
     local num_keepers=$1
@@ -273,21 +272,6 @@ check_files() {
     echo -e "${DEBUG}All required files are in place.${NC}"
 }
 
-check_build_directory() {
-    local build_dir="${REPO_ROOT}/build"       # Navigate to build/ in the root dir of the repo
-
-    build_dir=$(realpath "${build_dir}" 2>/dev/null || echo "")
-
-    echo -e "${DEBUG}Checking for the existence of the build directory: ${build_dir}${NC}"
-
-    if [ -d "${build_dir}" ]; then
-        echo -e "${DEBUG}Build directory found: ${build_dir}${NC}"
-    else
-        echo -e "${ERR}Build directory not found at: ${build_dir}${NC}"
-        echo "Please ensure the build process has been completed successfully before proceeding."
-        exit 1
-    fi
-}
 
 check_installation() {
     check_dependencies
@@ -320,19 +304,21 @@ check_execution_stopped() {
 
 # Main functions __________________________________________________________________________________________________________
 build() {
+    local build_cmd="${REPO_ROOT}/tools/deploy/ChronoLog/build.sh -t $BUILD_TYPE -B $BUILD_DIR"
+    
     if [[ -n "$INSTALL_DIR" ]]; then
-        "${REPO_ROOT}/tools/deploy/ChronoLog/build.sh" -type "$BUILD_TYPE" -install-path "$INSTALL_DIR"
-    else
-        "${REPO_ROOT}/tools/deploy/ChronoLog/build.sh" -type "$BUILD_TYPE"
+        build_cmd="$build_cmd -I $INSTALL_DIR"
     fi
+    
+    echo -e "${DEBUG}Running: $build_cmd${NC}"
+    eval $build_cmd
 }
 
 install() {
     check_work_dir
-    check_build_directory
     install_script="${REPO_ROOT}/tools/deploy/ChronoLog/install.sh"
     if [[ -x "$install_script" ]]; then
-        "$install_script" --lib-dir "${LIB_DIR}" --bin-dir "${BIN_DIR}"
+        "$install_script" -t "${BUILD_TYPE}" -I "${INSTALL_DIR}"
     else
         echo -e "${RED}Error: $install_script is not executable or not found.${NC}"
         exit 1
@@ -412,16 +398,17 @@ usage() {
     echo "  -c|--clean          Clean ChronoLog logging artifacts (default: false)"
     echo "  Note: Only one execution mode can be selected per run."
     echo ""
-    echo "Build Options:"
-    echo "  -t|--build-type <Debug|Release>  Define type of build (default: Release) [Modes: Build]"
-    echo "  -l|--install-dir <path>          Define installation directory (default: /home/$USER/chronolog/BUILD_TYPE) [Modes: Build]"
+    echo "Build & Install Options:"
+    echo "  -t|--build-type <Debug|Release>  Define type of build (default: Release) [Modes: Build, Install]"
+    echo "  -B|--build-dir <path>            Set the build directory (default: $HOME/chronolog-build/) [Modes: Build, Install]"
+    echo "  -I|--install-dir <path>          Set the installation directory (default: $HOME/chronolog-install/) [Modes: Build, Install]"
     echo ""
     echo "Deployment Options:"
     echo "  -k|--keepers <number>            Set the total number of keeper processes. They will be assigned iteratively to the recording groups (default: 1)[Modes: Start]"
     echo "  -r|--record-groups <number>      Set the number of recording groups or grapher processes (default: 1)[Modes: Start]"
     echo ""
     echo "Directory Settings:"
-    echo "  -w|--work-dir <path>             Set the working directory (Mandatory) [Modes: Install, Start, Stop, Clean]"
+    echo "  -w|--work-dir <path>             Set the working directory (default: $HOME/chronolog-install/chronolog) [Modes: Start, Stop, Clean]"
     echo "  -m|--monitor-dir <path>          Set the monitor directory (default: work_dir/monitor) [Modes: Start]"
     echo "  -u|--output-dir <path>           Set the output directory (default: work_dir/output) [Modes: Start]"
     echo ""
@@ -438,25 +425,24 @@ usage() {
     echo "Examples (Assume installing a Debug build to ~/chronolog_install):"
     echo ""
     echo "  1) Builds ChronoLog in Debug mode and installs it to ~/chronolog_install:"
-    echo "     $0 --build --build-type Debug --install-dir ~/chronolog_install"
+    echo "     $0 --build -t Debug -I ~/chronolog_install"
     echo ""
-    echo "  2) Installs ChronoLog to the working directory (~/chronolog_install/Debug):"
-    echo "     $0 --install --work-dir ~/chronolog_install/Debug"
+    echo "  2) Installs ChronoLog to the working directory (~/chronolog_install):"
+    echo "     $0 --install -I ~/chronolog_install"
     echo ""
     echo "  3) Starts a ChronoLog deployment using the default configuration and paths,"
-    echo "     with binaries from the working directory ~/chronolog_install/Debug:"
-    echo "     $0 --start --work-dir ~/chronolog_install/Debug"
+    echo "     with binaries from the working directory ~/chronolog_install:"
+    echo "     $0 --start --work-dir ~/chronolog_install/chronolog"
     echo ""
     echo "  4) Starts a ChronoLog deployment with 5 keeper processes and 2 grapher processes,"
-    echo "     using the working directory ~/chronolog_install/Debug:"
-    echo "     $0 -d -k 5 -r 2 --work-dir ~/chronolog_install/Debug"
+    echo "     using the working directory ~/chronolog_install/chronolog:"
+    echo "     $0 -d -k 5 -r 2 --work-dir ~/chronolog_install/chronolog"
     echo ""
-    echo "  5) Stops the ChronoLog deployment using the working directory ~/chronolog_install/Debug:"
-    echo "     $0 -s --work-dir ~/chronolog_install/Debug"
+    echo "  5) Stops the ChronoLog deployment using the working directory ~/chronolog_install/chronolog:"
+    echo "     $0 -s --work-dir ~/chronolog_install/chronolog"
     echo ""
     exit 1
 }
-
 
 parse_args() {
     while [[ "$#" -gt 0 ]]; do
@@ -491,7 +477,10 @@ parse_args() {
                     usage
                 fi
                 shift 2 ;;
-            -l|--install-dir)
+            -B|--build-dir)
+                BUILD_DIR=$(realpath "$2")
+                shift 2 ;;
+            -I|--install-dir)
                 INSTALL_DIR=$(realpath "$2")
                 shift 2 ;;
             -k|--keepers)
