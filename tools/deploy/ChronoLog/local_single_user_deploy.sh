@@ -13,23 +13,23 @@ NUM_RECORDING_GROUPS=1
 BUILD_TYPE="Release"
 BUILD_DIR="$HOME/chronolog-build"
 INSTALL_DIR="$HOME/chronolog-install"
+WORK_DIR="$HOME/chronolog-install/chronolog"
 
-# Directories
-WORK_DIR=""
-LIB_DIR=""
-CONF_DIR=""
-BIN_DIR=""
-MONITOR_DIR=""
-OUTPUT_DIR=""
+# Directories (with defaults)
+LIB_DIR="$HOME/chronolog-install/chronolog/lib"
+CONF_DIR="$HOME/chronolog-install/chronolog/conf"
+BIN_DIR="$HOME/chronolog-install/chronolog/bin"
+MONITOR_DIR="$HOME/chronolog-install/chronolog/monitor"
+OUTPUT_DIR="$HOME/chronolog-install/chronolog/output"
 REPO_ROOT="$(realpath "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../")"
 
-# Files
-VISOR_BIN="${BIN_DIR}/chronovisor_server"
-KEEPER_BIN="${BIN_DIR}/chrono_keeper"
-GRAPHER_BIN="${BIN_DIR}/chrono_grapher"
-PLAYER_BIN="${BIN_DIR}/chrono_player"
-CONF_FILE="${CONF_DIR}/default_conf.json"
-CLIENT_CONF_FILE="${CONF_DIR}/default_conf.json"
+# Files (with defaults)
+VISOR_BIN="$HOME/chronolog-install/chronolog/bin/chronovisor_server"
+KEEPER_BIN="$HOME/chronolog-install/chronolog/bin/chrono_keeper"
+GRAPHER_BIN="$HOME/chronolog-install/chronolog/bin/chrono_grapher"
+PLAYER_BIN="$HOME/chronolog-install/chronolog/bin/chrono_player"
+CONF_FILE="$HOME/chronolog-install/chronolog/conf/default_conf.json"
+CLIENT_CONF_FILE="$HOME/chronolog-install/chronolog/conf/default_client_conf.json"
 
 #Booleans
 build=false
@@ -280,11 +280,10 @@ check_installation() {
 }
 
 check_work_dir() {
-    # Check if WORK_DIR is set
+    # Set default WORK_DIR if not provided
     if [[ -z "${WORK_DIR}" ]]; then
-        echo -e "${ERR}WORK_DIR is mandatory on this mode. Please provide it using the -w or --work-dir option.${NC}"
-        usage
-        exit 1
+        WORK_DIR="$HOME/chronolog-install/chronolog"
+        echo -e "${DEBUG}Using default work directory: ${WORK_DIR}${NC}"
     fi
 }
 
@@ -315,7 +314,6 @@ build() {
 }
 
 install() {
-    check_work_dir
     install_script="${REPO_ROOT}/tools/deploy/ChronoLog/install.sh"
     if [[ -x "$install_script" ]]; then
         "$install_script" -t "${BUILD_TYPE}" -I "${INSTALL_DIR}"
