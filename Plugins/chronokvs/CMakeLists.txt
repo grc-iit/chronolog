@@ -14,9 +14,8 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 include(GNUInstallDirs)
 
-# RPATH so installed example can find libs in ../lib
-set(CMAKE_INSTALL_RPATH "$ORIGIN/../lib")
-set(CMAKE_BUILD_RPATH  "$ORIGIN;$ORIGIN/../lib")
+# RPATH configuration - use root policy
+# Note: Root CMakeLists.txt sets CMAKE_INSTALL_RPATH to ${CHRONOLOG_INSTALL_LIB_DIR}
 
 # Library
 add_library(chronokvs
@@ -29,9 +28,15 @@ add_library(chronokvs
 target_include_directories(chronokvs
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+        $<INSTALL_INTERFACE:${CHRONOLOG_INSTALL_INCLUDE_DIR}>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+# Set PUBLIC_HEADER property for automatic installation
+file(GLOB HEADER_FILES "${CMAKE_CURRENT_SOURCE_DIR}/include/*.h")
+set_target_properties(chronokvs PROPERTIES
+    PUBLIC_HEADER "${HEADER_FILES}"
 )
 
 # Bring in any header usage requirements exposed by chronolog_client, without making it public
@@ -57,15 +62,7 @@ option(CHRONOKVS_BUILD_EXAMPLES "Build ChronoKVS examples" ON)
 #    add_subdirectory(examples)
 #endif()
 
-# Install (no export set; we’re inside the superbuild)
-install(TARGETS chronokvs
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-)
-
-install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+# Install (no export set; we're inside the superbuild)
+chronolog_install_target(chronokvs)
 
 message(STATUS "ChronoKVS: superbuild mode enabled")

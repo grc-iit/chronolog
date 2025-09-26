@@ -31,17 +31,34 @@ endif()
 
 message("CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
 
-if(NOT DEFINED INSTALL_DIR)
-    set(INSTALL_DIR "/home/$ENV{USER}/chronolog" CACHE PATH "Installation directory")
+# --- Robust default for CMAKE_INSTALL_PREFIX (only if user didn't set one) ---
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+  if(DEFINED ENV{HOME} AND NOT "$ENV{HOME}" STREQUAL "")
+    set(CMAKE_INSTALL_PREFIX "$ENV{HOME}/chronolog-install" CACHE PATH "Install prefix" FORCE)
+  else()
+    message(FATAL_ERROR "Cannot determine HOME to set install prefix. Pass -DCMAKE_INSTALL_PREFIX=/path")
+  endif()
 endif()
+message(STATUS "CMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}")
 
-set(CMAKE_INSTALL_PREFIX ${INSTALL_DIR}/${CMAKE_BUILD_TYPE})
-message("Installation Directory CMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}")
+# Single, consistent layout
+set(CHRONOLOG_INSTALL_ROOT        "${CMAKE_INSTALL_PREFIX}/chronolog")
+set(CHRONOLOG_INSTALL_BIN_DIR     "${CHRONOLOG_INSTALL_ROOT}/bin")
+set(CHRONOLOG_INSTALL_LIB_DIR     "${CHRONOLOG_INSTALL_ROOT}/lib")
+set(CHRONOLOG_INSTALL_INCLUDE_DIR "${CHRONOLOG_INSTALL_ROOT}/include")
+set(CHRONOLOG_INSTALL_CONF_DIR    "${CHRONOLOG_INSTALL_ROOT}/conf")
 
-set(CHRONOLOG_INSTALL_INCLUDE_DIR ${CMAKE_INSTALL_PREFIX}/include)
-set(CHRONOLOG_INSTALL_LIB_DIR ${CMAKE_INSTALL_PREFIX}/lib)
-set(CHRONOLOG_INSTALL_BIN_DIR ${CMAKE_INSTALL_PREFIX}/bin)
-set(CHRONOLOG_INSTALL_CONF_DIR ${CMAKE_INSTALL_PREFIX}/conf)
+# Helper function for consistent target installation
+function(chronolog_install_target target_name)
+    install(TARGETS ${target_name}
+        RUNTIME DESTINATION ${CHRONOLOG_INSTALL_BIN_DIR}
+        LIBRARY DESTINATION ${CHRONOLOG_INSTALL_LIB_DIR}
+        ARCHIVE DESTINATION ${CHRONOLOG_INSTALL_LIB_DIR}
+        PUBLIC_HEADER DESTINATION ${CHRONOLOG_INSTALL_INCLUDE_DIR}
+    )
+    # Ensure per-target runtime path is aligned with root policy
+    set_target_properties(${target_name} PROPERTIES INSTALL_RPATH "${CHRONOLOG_INSTALL_LIB_DIR}")
+endfunction()
 
 # Disable using link paths as RPATH
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH FALSE)
@@ -54,12 +71,25 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--enable-new-dtags")
 set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--enable-new-dtags")
 
 #------------------------------------------------------------------------------
-# Disallow in-source build. This checks that there is a defined and separate /build folder
+# Disallow in-source build. This checks that there is a defined and separate build folder
 #------------------------------------------------------------------------------
 if("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_BINARY_DIR}")
     message(FATAL_ERROR
         "ChronoLog requires an out of source build."
         "Please create a separate binary directory and run CMake there.")
+endif()
+
+# Ensure we're building in the correct build subdirectory based on build type
+get_filename_component(BUILD_DIR_NAME "${CMAKE_BINARY_DIR}" NAME)
+if(NOT BUILD_DIR_NAME STREQUAL CMAKE_BUILD_TYPE)
+    get_filename_component(PARENT_DIR "${CMAKE_BINARY_DIR}" DIRECTORY)
+    get_filename_component(PARENT_NAME "${PARENT_DIR}" NAME)
+    if(NOT PARENT_NAME STREQUAL "chronolog-build")
+        message(WARNING 
+            "Recommended build directory structure: ~/chronolog-build/${CMAKE_BUILD_TYPE}\n"
+            "Current build directory: ${CMAKE_BINARY_DIR}\n"
+            "Consider using: $ENV{HOME}/chronolog-build/${CMAKE_BUILD_TYPE}")
+    endif()
 endif()
 
 #------------------------------------------------------------------------------

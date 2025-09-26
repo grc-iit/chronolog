@@ -99,11 +99,6 @@ set_target_properties(hdf5_archive_reader_test PROPERTIES
 ####
 
 # install executables
-install(
-    TARGETS chrono_player DESTINATION bin
-)
+chronolog_install_target(chrono_player)
 
-# install configuration file
-install(
-    FILES ${CMAKE_SOURCE_DIR}/default_conf.json.in DESTINATION ${CHRONOLOG_INSTALL_CONF_DIR} RENAME default_conf.json
-)
+# Configuration file is installed by ChronoVisor to avoid duplication
