@@ -23,9 +23,11 @@ std::string ChronoKVSMapper::retrieveByKeyAndTs(const std::string &key, std::uin
         return "";
     }
     
-    // Return the first event's value - the narrow range should only contain
-    // events with the exact timestamp we're looking for
-    return events[0].value;
+    // Return the first event's value only if its timestamp matches the requested timestamp
+    if (events[0].timestamp == timestamp) {
+        return events[0].value;
+    }
+    return "";
 }
 
 std::vector<EventData> ChronoKVSMapper::retrieveByKey(const std::string &key)
