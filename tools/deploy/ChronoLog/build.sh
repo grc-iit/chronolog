@@ -113,10 +113,6 @@ check_spack() {
 
 prepare_build_directory() {
     BUILD_DIR="$BUILD_BASE_DIR/$BUILD_TYPE"
-    if [ -d "$BUILD_DIR" ]; then
-        echo -e "${DEBUG}Build directory $BUILD_DIR exists. Removing it...${NC}"
-        rm -rf "$BUILD_DIR"
-    fi
     mkdir -p "$BUILD_DIR"
     cd "$BUILD_DIR"
 }
