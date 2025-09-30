@@ -210,10 +210,6 @@ navigate_to_build_directory() {
     if [ -d "${BUILD_DIR}" ] && [ -f "${BUILD_DIR}/CMakeCache.txt" ]; then
         echo -e "${DEBUG}Using build directory: ${BUILD_DIR}${NC}"
         cd ${BUILD_DIR}
-    # Check for legacy build directory as fallback
-    elif [ -d "${REPO_ROOT}/build" ] && [ -f "${REPO_ROOT}/build/CMakeCache.txt" ]; then
-        echo -e "${DEBUG}Legacy build directory found. Using it...${NC}"
-        cd ${REPO_ROOT}/build
     else
         echo -e "${ERR}Build directory not found: ${BUILD_DIR}${NC}"
         echo -e "${ERR}Please run the build script first with the appropriate build type.${NC}"
