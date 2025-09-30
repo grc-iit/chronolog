@@ -49,8 +49,8 @@ WORKDIR /home/$USERNAME
 
 # Get ChronoLog
 RUN cd \
- && git clone https://github.com/grc-iit/ChronoLog.git chronolog_repo\
- && cd chronolog_repo \
+ && git clone https://github.com/grc-iit/ChronoLog.git chronolog-repo\
+ && cd chronolog-repo \
  && git switch develop \
  && git pull
 
