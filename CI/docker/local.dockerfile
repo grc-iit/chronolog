@@ -59,7 +59,7 @@ RUN cd \
  && git clone --branch v0.21.2 https://github.com/spack/spack.git \
  && export SPACK_ROOT=$(pwd)/spack \
  && source spack/share/spack/setup-env.sh \
- && cd chronolog_repo \
+ && cd chronolog-repo \
  && ./tools/deploy/ChronoLog/local_single_user_deploy.sh -b \
  && ./tools/deploy/ChronoLog/local_single_user_deploy.sh -i
 
