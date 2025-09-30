@@ -73,10 +73,10 @@ jobs:
               echo "Checking: $file"
               
               # Create formatted version
-              clang-format -style=file:CodeStyleFiles/ChronoLog.clang-format "$file" > "/tmp/formatted/$(basename "$file")"
+              clang-format -style=file:CodeStyleFiles/ChronoLog.clang-format "$file" > "/tmp/formatted/$(echo "$file" | sed 's|/|_|g')"
               
               # Compare with original
-              if ! diff -q "$file" "/tmp/formatted/$(basename "$file")" > /dev/null; then
+              if ! diff -q "$file" "/tmp/formatted/$(echo "$file" | sed 's|/|_|g')" > /dev/null; then
                 echo "❌ Formatting issues found in: $file"
                 format_issues+=("$file")
               else
@@ -108,11 +108,11 @@ jobs:
               echo "Generating patch for: $file"
               
               # Create formatted version
-              clang-format -style=file:CodeStyleFiles/ChronoLog.clang-format "$file" > "/tmp/formatted/$(basename "$file")"
+              clang-format -style=file:CodeStyleFiles/ChronoLog.clang-format "$file" > "/tmp/formatted/$(echo "$file" | sed 's|/|_|g')"
               
               # Generate unified diff patch
               patch_file="format_patches/$(echo "$file" | sed 's|/|_|g').patch"
-              diff -u "$file" "/tmp/formatted/$(basename "$file")" > "$patch_file" || true
+              diff -u "$file" "/tmp/formatted/$(echo "$file" | sed 's|/|_|g')" > "$patch_file" || true
               
               echo "Patch created: $patch_file"
             fi
