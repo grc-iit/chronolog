@@ -134,7 +134,7 @@ build_project() {
     fi
 
     # Build (portable + parallel)
-    cmake --build . --parallel 2
+    cmake --build . --parallel $(nproc)
 
     echo -e "${DEBUG}ChronoLog built in ${BUILD_TYPE} mode${NC}"
 }
