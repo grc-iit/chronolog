@@ -836,14 +836,14 @@ parse_args() {
             fi
             shift 2 ;;
         -B | --build-dir)
-            BUILD_DIR=$(realpath "$2")
+            BUILD_DIR=$(realpath -m "$2")
             shift 2 ;;
         -I | --install-dir)
-            INSTALL_DIR=$(realpath "$2")
+            INSTALL_DIR=$(realpath -m "$2")
             shift 2 ;;
         -w | --work-dir)
             mkdir -p $2
-            WORK_DIR=$(realpath "${2%/}")
+            WORK_DIR=$(realpath -m "${2%/}")
             LIB_DIR="${WORK_DIR}/lib"
             CONF_DIR="${WORK_DIR}/conf"
             BIN_DIR="${WORK_DIR}/bin"
@@ -875,47 +875,47 @@ parse_args() {
             mkdir -p ${OUTPUT_DIR}
             shift 2 ;;
         -m | --monitor-dir)
-            MONITOR_DIR=$(realpath "$2")
+            MONITOR_DIR=$(realpath -m "$2")
             shift 2 ;;
         -u | --output-dir)
-            OUTPUT_DIR=$(realpath "$2")
+            OUTPUT_DIR=$(realpath -m "$2")
             mkdir -p ${OUTPUT_DIR}
             shift 2 ;;
         -v | --visor-bin)
-            VISOR_BIN=$(realpath "$2")
+            VISOR_BIN=$(realpath -m "$2")
             VISOR_BIN_FILE_NAME=$(basename ${VISOR_BIN})
             VISOR_BIN_DIR=$(dirname ${VISOR_BIN})
             shift 2 ;;
         -g | --grapher-bin)
-            GRAPHER_BIN=$(realpath "$2")
+            GRAPHER_BIN=$(realpath -m "$2")
             GRAPHER_BIN_FILE_NAME=$(basename ${GRAPHER_BIN})
             GRAPHER_BIN_DIR=$(dirname ${GRAPHER_BIN})
             shift 2 ;;
         -p | --keeper-bin)
-            KEEPER_BIN=$(realpath "$2")
+            KEEPER_BIN=$(realpath -m "$2")
             KEEPER_BIN_FILE_NAME=$(basename ${KEEPER_BIN})
             KEEPER_BIN_DIR=$(dirname ${KEEPER_BIN})
             shift 2 ;;
         -a | --player-bin)
-            PLAYER_BIN=$(realpath "$2")
+            PLAYER_BIN=$(realpath -m "$2")
             PLAYER_BIN_FILE_NAME=$(basename ${PLAYER_BIN})
             PLAYER_BIN_DIR=$(dirname ${PLAYER_BIN})
             shift 2 ;;
         -q | --visor-hosts)
-            VISOR_HOSTS=$(realpath "$2")
+            VISOR_HOSTS=$(realpath -m "$2")
             shift 2 ;;
         -k | --grapher-hosts)
-            GRAPHER_HOSTS=$(realpath "$2")
+            GRAPHER_HOSTS=$(realpath -m "$2")
             shift 2 ;;
         -o | --keeper-hosts)
-            KEEPER_HOSTS=$(realpath "$2")
+            KEEPER_HOSTS=$(realpath -m "$2")
             shift 2 ;;
         -f | --conf-file)
-            CONF_FILE=$(realpath "$2")
+            CONF_FILE=$(realpath -m "$2")
             CONF_DIR=$(dirname ${CONF_FILE})
             shift 2 ;;
         -n | --client-conf-file)
-            CLIENT_CONF_FILE=$(realpath "$2")
+            CLIENT_CONF_FILE=$(realpath -m "$2")
             shift 2 ;;
         -j | --job-id)
             JOB_ID="$2"

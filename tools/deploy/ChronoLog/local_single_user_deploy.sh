@@ -487,10 +487,10 @@ parse_args() {
                 fi
                 shift 2 ;;
             -B|--build-dir)
-                BUILD_DIR=$(realpath "$2")
+                BUILD_DIR=$(realpath -m "$2")
                 shift 2 ;;
             -I|--install-dir)
-                INSTALL_DIR=$(realpath "$2")
+                INSTALL_DIR=$(realpath -m "$2")
                 shift 2 ;;
             -k|--keepers)
                 NUM_KEEPERS="$2"
@@ -513,29 +513,29 @@ parse_args() {
                 MONITOR_DIR=${WORK_DIR}/monitor
                 shift 2 ;;
             -u|--output-dir)
-                OUTPUT_DIR=$(realpath "$2")
+                OUTPUT_DIR=$(realpath -m "$2")
                 shift 2 ;;
             -m|--monitor-dir)
-                MONITOR_DIR=$(realpath "$2")
+                MONITOR_DIR=$(realpath -m "$2")
                 shift 2 ;;
             -v|--visor-bin)
-                VISOR_BIN=$(realpath "$2")
+                VISOR_BIN=$(realpath -m "$2")
                 shift 2 ;;
             -g|--grapher-bin)
-                GRAPHER_BIN=$(realpath "$2")
+                GRAPHER_BIN=$(realpath -m "$2")
                 shift 2 ;;
             -p|--keeper-bin)
-                KEEPER_BIN=$(realpath "$2")
+                KEEPER_BIN=$(realpath -m "$2")
                 shift 2 ;;
             -a|--player-bin)
-                PLAYER_BIN=$(realpath "$2")
+                PLAYER_BIN=$(realpath -m "$2")
                 shift 2 ;;
             -f|--conf-file)
-                CONF_FILE=$(realpath "$2")
+                CONF_FILE=$(realpath -m "$2")
                 CONF_DIR=$(dirname ${CONF_FILE})
                 shift 2 ;;
             -n|--client-conf-file)
-                CLIENT_CONF_FILE=$(realpath "$2")
+                CLIENT_CONF_FILE=$(realpath -m "$2")
                 shift 2 ;;
             *) echo -e "${ERR}Unknown option: $1${NC}"; usage ;;
         esac

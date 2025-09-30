@@ -63,10 +63,10 @@ parse_arguments() {
                 fi
                 shift 2 ;;
             -B|--build-dir)
-                BUILD_BASE_DIR=$(realpath "$2")
+                BUILD_BASE_DIR=$(realpath -m "$2")
                 shift 2 ;;
             -I|--install-dir)
-                INSTALL_DIR=$(realpath "$2")
+                INSTALL_DIR=$(realpath -m "$2")
                 shift 2 ;;
             *) 
                 echo -e "${ERR}Unknown option: $1${NC}"
