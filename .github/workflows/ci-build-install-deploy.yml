@@ -40,7 +40,7 @@ jobs:
               echo "[2/6] Building ChronoLog..."
               if [ -x /workspace/tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
                 cd /workspace
-                ./tools/deploy/ChronoLog/local_single_user_deploy.sh -b"
+                ./tools/deploy/ChronoLog/local_single_user_deploy.sh -b
               else
                 echo "❌ Build script not found or not executable"
                 exit 1
@@ -52,7 +52,7 @@ jobs:
               echo "[3/6] Installing ChronoLog..."
               if [ -x /workspace/tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
                 cd /workspace
-                ./tools/deploy/ChronoLog/local_single_user_deploy.sh -i"
+                ./tools/deploy/ChronoLog/local_single_user_deploy.sh -i
               else
                 echo "❌ Install script not found or not executable"
                 exit 1
