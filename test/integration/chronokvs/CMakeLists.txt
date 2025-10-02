@@ -43,3 +43,15 @@ set_tests_properties(chronokvs_integration_test PROPERTIES
     TIMEOUT 300
     LABELS "integration;chronokvs"
 )
+
+# Set target properties for proper RPATH handling
+set_target_properties(chronokvs_integration_test PROPERTIES
+    BUILD_WITH_INSTALL_RPATH TRUE
+    SKIP_BUILD_RPATH TRUE
+)
+
+# Install the test executable
+install(
+    TARGETS chronokvs_integration_test
+    DESTINATION bin
+)

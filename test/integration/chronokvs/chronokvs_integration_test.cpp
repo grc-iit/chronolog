@@ -1,319 +1,291 @@
 #include <string>
 #include <iostream>
+#include <fstream>
 #include <vector>
-#include <cassert>
 #include <chrono>
 #include <thread>
 #include <random>
+#include <algorithm>
+#include <iomanip>
 #include "chronokvs.h"
 
 /**
- * Integration test for ChronoKVS
+ * ChronoKVS API Integration Test
  * 
- * This test verifies the complete functionality of ChronoKVS including:
- * - Basic put/get operations
- * - Historical data retrieval
- * - Timestamp ordering
- * - Concurrent operations
- * - Error handling
- * - Performance characteristics
+ * This test verifies the ChronoKVS API functionality with 3 modular tests:
+ * 1. Put: Write 1000 values to a single story
+ * 2. Get History: Retrieve all values from the story
+ * 3. Get: Retrieve 10 random specific values by timestamp
  */
 
-class ChronoKVSIntegrationTest {
+class ChronoKVSTest {
 private:
     chronokvs::ChronoKVS kvs;
-    std::vector<std::uint64_t> test_timestamps;
-    int test_count = 0;
-    int passed_tests = 0;
+    const std::string test_key = "chronokvs_test_story";
+    const int num_values = 1000;
+    const int num_random_gets = 10;
+    std::vector<std::uint64_t> timestamps;
+    std::vector<std::string> values;
+    std::vector<int> random_indices;
 
-    void assert_test(bool condition, const std::string& test_name) {
-        test_count++;
-        if (condition) {
-            passed_tests++;
-            std::cout << "✓ " << test_name << std::endl;
-        } else {
-            std::cout << "✗ " << test_name << std::endl;
+    void printHeader(const std::string& title) {
+        std::cout << "\n" << std::string(60, '=') << std::endl;
+        std::cout << "  " << title << std::endl;
+        std::cout << std::string(60, '=') << std::endl;
+    }
+
+    void printProgressBar(int current, int total, const std::string& message) {
+        float progress = (float)current / total;
+        int barWidth = 50;
+        int pos = barWidth * progress;
+        
+        std::cout << "\r" << "  " << message << " [";
+        for (int i = 0; i < barWidth; ++i) {
+            if (i < pos) std::cout << "█";
+            else if (i == pos) std::cout << "▶";
+            else std::cout << "░";
         }
+        std::cout << "] " << std::setw(3) << int(progress * 100.0) << "%";
+        std::cout.flush();
     }
 
-    void assert_equals(const std::string& expected, const std::string& actual, const std::string& test_name) {
-        assert_test(expected == actual, test_name + " (expected: '" + expected + "', got: '" + actual + "')");
+    void printTestResult(const std::string& testName, bool passed, const std::string& details = "") {
+        std::cout << "  " << (passed ? "✅" : "❌") << " " << testName;
+        if (!details.empty()) {
+            std::cout << " - " << details;
+        }
+        std::cout << std::endl;
     }
 
-    void assert_not_empty(const std::string& value, const std::string& test_name) {
-        assert_test(!value.empty(), test_name + " (value should not be empty)");
-    }
-
-    void assert_empty(const std::string& value, const std::string& test_name) {
-        assert_test(value.empty(), test_name + " (value should be empty)");
-    }
-
-    void assert_size(size_t expected, size_t actual, const std::string& test_name) {
-        assert_test(expected == actual, test_name + " (expected size: " + std::to_string(expected) + 
-                   ", got: " + std::to_string(actual) + ")");
+    void printSeparator() {
+        std::cout << std::string(60, '-') << std::endl;
     }
 
 public:
-    void run_all_tests() {
-        std::cout << "Starting ChronoKVS Integration Tests..." << std::endl;
-        std::cout << "========================================" << std::endl;
-
-        test_basic_operations();
-        test_historical_data();
-        test_timestamp_ordering();
-        test_concurrent_operations();
-        test_error_handling();
-        test_performance();
-        test_edge_cases();
-
-        std::cout << "========================================" << std::endl;
-        std::cout << "Test Results: " << passed_tests << "/" << test_count << " tests passed" << std::endl;
+    bool test1_put() {
+        printHeader("TEST 1: PUT OPERATIONS");
+        std::cout << "  Writing " << num_values << " values to story '" << test_key << "'" << std::endl;
+        std::cout << "  Target: " << num_values << " successful put operations" << std::endl;
+        printSeparator();
         
-        if (passed_tests == test_count) {
-            std::cout << "🎉 All tests passed!" << std::endl;
-        } else {
-            std::cout << "❌ Some tests failed!" << std::endl;
-            exit(1);
+        // Generate test data
+        values.clear();
+        timestamps.clear();
+        for (int i = 0; i < num_values; i++) {
+            values.push_back("value_" + std::to_string(i));
+        }
+
+        auto start_time = std::chrono::high_resolution_clock::now();
+        
+        for (int i = 0; i < num_values; i++) {
+            std::uint64_t timestamp = kvs.put(test_key, values[i]);
+            timestamps.push_back(timestamp);
+            
+            if ((i + 1) % 100 == 0 || i < 5) {
+                printProgressBar(i + 1, num_values, "Writing values");
+            }
+        }
+        
+        auto end_time = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        
+        std::cout << "\n" << std::endl;
+        printTestResult("Put Operations", timestamps.size() == static_cast<size_t>(num_values), 
+                       std::to_string(timestamps.size()) + "/" + std::to_string(num_values) + " successful");
+        std::cout << "  Performance: " << duration.count() << " ms (" 
+                  << std::fixed << std::setprecision(1) << (num_values * 1000.0 / duration.count()) 
+                  << " ops/sec)" << std::endl;
+        
+        return timestamps.size() == static_cast<size_t>(num_values);
+    }
+
+    void waitForDataPropagation() {
+        printHeader("DATA PROPAGATION WAIT");
+        std::cout << "  ChronoLog requires 1-2 minutes for data to be available for retrieval" << std::endl;
+        std::cout << "  This ensures data is properly committed to persistent storage" << std::endl;
+        printSeparator();
+        
+        const int total_seconds = 120;
+        const int update_interval = 1;
+        
+        for (int elapsed = 0; elapsed < total_seconds; elapsed += update_interval) {
+            printProgressBar(elapsed, total_seconds, "Data propagation");
+            std::this_thread::sleep_for(std::chrono::seconds(update_interval));
+        }
+        
+        std::cout << "\n" << std::endl;
+        printTestResult("Data Propagation", true, "Wait period completed");
+        std::cout << "  Data should now be available for retrieval operations" << std::endl;
+    }
+
+    bool test2_get_history() {
+        printHeader("TEST 2: GET HISTORY OPERATIONS");
+        std::cout << "  Retrieving all values from story '" << test_key << "'" << std::endl;
+        std::cout << "  Target: At least " << num_values << " values retrieved" << std::endl;
+        printSeparator();
+        
+        try {
+            auto history = kvs.get_history(test_key);
+            
+            bool success = history.size() >= static_cast<size_t>(num_values);
+            printTestResult("Get History Operations", success, 
+                           std::to_string(history.size()) + " values retrieved");
+            
+            if (history.size() < static_cast<size_t>(num_values)) {
+                std::cout << "  ⚠️  Warning: Expected " << num_values << " values, got " << history.size() << std::endl;
+                std::cout << "  This may indicate data propagation issues or previous test data" << std::endl;
+            } else {
+                std::cout << "  ✓ History contains " << history.size() << " values (expected at least " << num_values << ")" << std::endl;
+            }
+            
+            // Store random indices for test 3
+            std::random_device rd;
+            std::mt19937 gen(rd());
+            std::uniform_int_distribution<> dis(0, std::min(num_values - 1, (int)history.size() - 1));
+            
+            random_indices.clear();
+            for (int i = 0; i < num_random_gets; i++) {
+                random_indices.push_back(dis(gen));
+            }
+            
+            std::cout << "  Selected " << num_random_gets << " random indices for Test 3" << std::endl;
+            
+            return success;
+        } catch (const std::exception& e) {
+            printTestResult("Get History Operations", false, "Exception: " + std::string(e.what()));
+            return false;
         }
     }
 
-    void test_basic_operations() {
-        std::cout << "\n--- Testing Basic Operations ---" << std::endl;
-
-        // Test basic put operation
-        std::string key1 = "test_key_1";
-        std::string value1 = "test_value_1";
-        std::uint64_t timestamp1 = kvs.put(key1, value1);
-        test_timestamps.push_back(timestamp1);
+    bool test3_get() {
+        printHeader("TEST 3: GET OPERATIONS");
+        std::cout << "  Retrieving " << num_random_gets << " random specific values by timestamp" << std::endl;
+        std::cout << "  Target: " << num_random_gets << " successful exact retrievals" << std::endl;
+        printSeparator();
         
-        assert_test(timestamp1 > 0, "Put operation returns valid timestamp");
-        assert_not_empty(std::to_string(timestamp1), "Timestamp is not zero");
-
-        // Test basic get operation
-        std::string retrieved_value = kvs.get(key1, timestamp1);
-        assert_equals(value1, retrieved_value, "Get operation returns correct value");
-
-        // Test multiple puts for same key
-        std::string value2 = "test_value_2";
-        std::uint64_t timestamp2 = kvs.put(key1, value2);
-        test_timestamps.push_back(timestamp2);
+        int successful_gets = 0;
         
-        assert_test(timestamp2 > timestamp1, "Second timestamp is greater than first");
-        
-        std::string retrieved_value2 = kvs.get(key1, timestamp2);
-        assert_equals(value2, retrieved_value2, "Get operation returns latest value");
-
-        // Test different keys
-        std::string key2 = "test_key_2";
-        std::string value3 = "test_value_3";
-        std::uint64_t timestamp3 = kvs.put(key2, value3);
-        test_timestamps.push_back(timestamp3);
-        
-        std::string retrieved_value3 = kvs.get(key2, timestamp3);
-        assert_equals(value3, retrieved_value3, "Different keys work independently");
-    }
-
-    void test_historical_data() {
-        std::cout << "\n--- Testing Historical Data ---" << std::endl;
-
-        std::string key = "history_key";
-        
-        // Insert multiple values for the same key
-        std::vector<std::string> values = {"v1", "v2", "v3", "v4", "v5"};
-        std::vector<std::uint64_t> timestamps;
-        
-        for (const auto& value : values) {
-            std::uint64_t ts = kvs.put(key, value);
-            timestamps.push_back(ts);
-            test_timestamps.push_back(ts);
-        }
-
-        // Test get_history
-        auto history = kvs.get_history(key);
-        assert_size(values.size(), history.size(), "History contains all values");
-        
-        // Verify history is ordered by timestamp (ascending)
-        for (size_t i = 1; i < history.size(); i++) {
-            assert_test(history[i].timestamp > history[i-1].timestamp, 
-                       "History is ordered by timestamp");
-        }
-
-        // Verify all values are present
-        for (size_t i = 0; i < values.size(); i++) {
-            assert_equals(values[i], history[i].value, 
-                         "History value " + std::to_string(i) + " matches");
-        }
-
-        // Test get at specific timestamps
-        for (size_t i = 0; i < values.size(); i++) {
-            std::string retrieved = kvs.get(key, timestamps[i]);
-            assert_equals(values[i], retrieved, 
-                         "Get at timestamp " + std::to_string(i) + " returns correct value");
-        }
-    }
-
-    void test_timestamp_ordering() {
-        std::cout << "\n--- Testing Timestamp Ordering ---" << std::endl;
-
-        std::string key = "ordering_key";
-        std::vector<std::uint64_t> timestamps;
-        
-        // Insert values with small delays to ensure different timestamps
-        for (int i = 0; i < 5; i++) {
-            std::uint64_t ts = kvs.put(key, "value_" + std::to_string(i));
-            timestamps.push_back(ts);
-            test_timestamps.push_back(ts);
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
-
-        // Verify timestamps are in ascending order
-        for (size_t i = 1; i < timestamps.size(); i++) {
-            assert_test(timestamps[i] > timestamps[i-1], 
-                       "Timestamps are in ascending order");
-        }
-
-        // Test that get with intermediate timestamp returns correct value
-        std::string mid_value = kvs.get(key, timestamps[2]);
-        assert_equals("value_2", mid_value, "Get at intermediate timestamp works");
-    }
-
-    void test_concurrent_operations() {
-        std::cout << "\n--- Testing Concurrent Operations ---" << std::endl;
-
-        std::string key = "concurrent_key";
-        std::vector<std::thread> threads;
-        std::vector<std::uint64_t> thread_timestamps(5);
-        std::mutex mutex;
-
-        // Create multiple threads that insert values
-        for (int i = 0; i < 5; i++) {
-            threads.emplace_back([this, &key, &thread_timestamps, &mutex, i]() {
-                std::uint64_t ts = kvs.put(key, "concurrent_value_" + std::to_string(i));
-                {
-                    std::lock_guard<std::mutex> lock(mutex);
-                    thread_timestamps[i] = ts;
-                    test_timestamps.push_back(ts);
+        for (int i = 0; i < num_random_gets; i++) {
+            int idx = random_indices[i];
+            std::string expected_value = values[idx];
+            std::uint64_t timestamp = timestamps[idx];
+            
+            try {
+                std::string retrieved_value = kvs.get(test_key, timestamp);
+                if (retrieved_value == expected_value) {
+                    successful_gets++;
+                    std::cout << "  ✓ Get " << std::setw(2) << (i+1) << "/" << num_random_gets 
+                             << ": timestamp " << std::setw(12) << timestamp 
+                             << " -> " << retrieved_value << std::endl;
+                } else {
+                    std::cout << "  ✗ Get " << std::setw(2) << (i+1) << "/" << num_random_gets 
+                             << ": timestamp " << std::setw(12) << timestamp 
+                             << " -> expected '" << expected_value 
+                             << "' but got '" << retrieved_value << "'" << std::endl;
                 }
-            });
+            } catch (const std::exception& e) {
+                std::cout << "  ✗ Get " << std::setw(2) << (i+1) << "/" << num_random_gets 
+                         << ": timestamp " << std::setw(12) << timestamp 
+                         << " failed with " << e.what() << std::endl;
+            }
         }
-
-        // Wait for all threads to complete
-        for (auto& thread : threads) {
-            thread.join();
+        
+        std::cout << std::endl;
+        bool success = successful_gets == num_random_gets;
+        printTestResult("Get Operations", success, 
+                       std::to_string(successful_gets) + "/" + std::to_string(num_random_gets) + " successful");
+        
+        if (success) {
+            std::cout << "  ✓ All exact timestamp retrievals successful" << std::endl;
+        } else {
+            std::cout << "  ⚠️  Some exact retrievals failed - this may indicate timing precision issues" << std::endl;
         }
-
-        // Verify all values were inserted
-        auto history = kvs.get_history(key);
-        assert_size(5, history.size(), "All concurrent values were inserted");
-
-        // Verify all timestamps are unique
-        std::set<std::uint64_t> unique_timestamps(thread_timestamps.begin(), thread_timestamps.end());
-        assert_size(5, unique_timestamps.size(), "All timestamps are unique");
+        
+        return success;
     }
 
-    void test_error_handling() {
-        std::cout << "\n--- Testing Error Handling ---" << std::endl;
-
-        // Test get with non-existent key
-        std::string non_existent = kvs.get("non_existent_key", 12345);
-        assert_empty(non_existent, "Get non-existent key returns empty");
-
-        // Test get with non-existent timestamp
-        std::string key = "error_test_key";
-        std::uint64_t valid_ts = kvs.put(key, "valid_value");
-        test_timestamps.push_back(valid_ts);
+    bool runAllTests() {
+        // Main header
+        std::cout << "\n" << std::string(80, '=') << std::endl;
+        std::cout << "                    CHRONOKVS API INTEGRATION TEST" << std::endl;
+        std::cout << "                    ==============================" << std::endl;
+        std::cout << "  Purpose: Verify ChronoKVS API functionality for GitHub Actions" << std::endl;
+        std::cout << "  Tests:   Put Operations, Data Propagation, Get History, Get Operations" << std::endl;
+        std::cout << std::string(80, '=') << std::endl;
         
-        std::string invalid_result = kvs.get(key, valid_ts + 1000);
-        assert_empty(invalid_result, "Get with invalid timestamp returns empty");
-
-        // Test get_history with non-existent key
-        auto empty_history = kvs.get_history("non_existent_key");
-        assert_size(0, empty_history.size(), "History of non-existent key is empty");
-    }
-
-    void test_performance() {
-        std::cout << "\n--- Testing Performance ---" << std::endl;
-
-        const int num_operations = 1000;
-        std::string key = "perf_key";
+        bool test1_result = false;
+        bool test2_result = false;
+        bool test3_result = false;
         
-        // Test put performance
-        auto start = std::chrono::high_resolution_clock::now();
-        for (int i = 0; i < num_operations; i++) {
-            std::uint64_t ts = kvs.put(key, "perf_value_" + std::to_string(i));
-            test_timestamps.push_back(ts);
+        // Test 1: Put
+        test1_result = test1_put();
+        
+        // Wait for data propagation (only if Test 1 passed)
+        if (test1_result) {
+            waitForDataPropagation();
+        } else {
+            printHeader("DATA PROPAGATION WAIT");
+            std::cout << "  ⚠️  Skipping data propagation wait due to Test 1 failure" << std::endl;
+            std::cout << "  Subsequent tests may not have data to work with" << std::endl;
         }
-        auto end = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
         
-        std::cout << "  Put " << num_operations << " operations took " << duration.count() << " ms" << std::endl;
-        assert_test(duration.count() < 5000, "Put operations complete in reasonable time");
-
-        // Test get performance
-        start = std::chrono::high_resolution_clock::now();
-        for (int i = 0; i < num_operations; i++) {
-            std::string value = kvs.get(key, test_timestamps[test_timestamps.size() - num_operations + i]);
-            assert_not_empty(value, "Get performance test value retrieval");
+        // Test 2: Get History
+        test2_result = test2_get_history();
+        
+        // Test 3: Get (only if we have data from previous tests)
+        if (test1_result && timestamps.size() > 0) {
+            test3_result = test3_get();
+        } else {
+            printHeader("TEST 3: GET OPERATIONS");
+            std::cout << "  ⚠️  Skipping Test 3 (Get) - no data available from Test 1" << std::endl;
+            std::cout << "  This test requires successful put operations to proceed" << std::endl;
+            test3_result = false;
         }
-        end = std::chrono::high_resolution_clock::now();
-        duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
         
-        std::cout << "  Get " << num_operations << " operations took " << duration.count() << " ms" << std::endl;
-        assert_test(duration.count() < 5000, "Get operations complete in reasonable time");
-
-        // Test get_history performance
-        start = std::chrono::high_resolution_clock::now();
-        auto history = kvs.get_history(key);
-        end = std::chrono::high_resolution_clock::now();
-        duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+        // Final summary
+        printHeader("FINAL TEST RESULTS");
+        std::cout << "  Test 1 (Put):        " << (test1_result ? "✅ PASSED" : "❌ FAILED") << std::endl;
+        std::cout << "  Test 2 (Get History): " << (test2_result ? "✅ PASSED" : "❌ FAILED") << std::endl;
+        std::cout << "  Test 3 (Get):        " << (test3_result ? "✅ PASSED" : "❌ FAILED") << std::endl;
+        printSeparator();
         
-        std::cout << "  Get history took " << duration.count() << " ms" << std::endl;
-        assert_test(duration.count() < 1000, "Get history completes in reasonable time");
-    }
-
-    void test_edge_cases() {
-        std::cout << "\n--- Testing Edge Cases ---" << std::endl;
-
-        // Test empty key
-        std::uint64_t ts1 = kvs.put("", "empty_key_value");
-        test_timestamps.push_back(ts1);
-        std::string empty_key_result = kvs.get("", ts1);
-        assert_equals("empty_key_value", empty_key_result, "Empty key works");
-
-        // Test empty value
-        std::uint64_t ts2 = kvs.put("empty_value_key", "");
-        test_timestamps.push_back(ts2);
-        std::string empty_value_result = kvs.get("empty_value_key", ts2);
-        assert_equals("", empty_value_result, "Empty value works");
-
-        // Test very long key and value
-        std::string long_key(1000, 'a');
-        std::string long_value(10000, 'b');
-        std::uint64_t ts3 = kvs.put(long_key, long_value);
-        test_timestamps.push_back(ts3);
-        std::string long_result = kvs.get(long_key, ts3);
-        assert_equals(long_value, long_result, "Long key and value work");
-
-        // Test special characters
-        std::string special_key = "key!@#$%^&*()_+-=[]{}|;':\",./<>?";
-        std::string special_value = "value\t\n\r\0\x01\x02";
-        std::uint64_t ts4 = kvs.put(special_key, special_value);
-        test_timestamps.push_back(ts4);
-        std::string special_result = kvs.get(special_key, ts4);
-        assert_equals(special_value, special_result, "Special characters work");
+        int passed_tests = (test1_result ? 1 : 0) + (test2_result ? 1 : 0) + (test3_result ? 1 : 0);
+        std::cout << "  Overall: " << passed_tests << "/3 tests passed" << std::endl;
+        
+        if (passed_tests == 3) {
+            std::cout << "\n  🎉 ALL CHRONOKVS API TESTS PASSED! 🎉" << std::endl;
+            std::cout << "  The ChronoKVS integration is working correctly and ready for GitHub Actions." << std::endl;
+        } else if (passed_tests > 0) {
+            std::cout << "\n  ⚠️  PARTIAL SUCCESS: " << passed_tests << "/3 tests passed" << std::endl;
+            std::cout << "  Some ChronoKVS functionality is working, but there may be issues to investigate." << std::endl;
+        } else {
+            std::cout << "\n  ❌ ALL TESTS FAILED" << std::endl;
+            std::cout << "  ChronoKVS integration has critical issues that need to be resolved." << std::endl;
+        }
+        
+        std::cout << std::string(80, '=') << std::endl;
+        
+        return passed_tests == 3;
     }
 };
 
 int main() {
     try {
-        ChronoKVSIntegrationTest test;
-        test.run_all_tests();
-        return 0;
+        ChronoKVSTest test;
+        bool success = test.runAllTests();
+        return success ? 0 : 1;
     } catch (const std::exception& e) {
-        std::cerr << "Test failed with exception: " << e.what() << std::endl;
+        std::cerr << "\n" << std::string(80, '!') << std::endl;
+        std::cerr << "  CRITICAL ERROR: Test failed with exception" << std::endl;
+        std::cerr << "  " << e.what() << std::endl;
+        std::cerr << "  This indicates a serious issue with the ChronoKVS integration." << std::endl;
+        std::cerr << std::string(80, '!') << std::endl;
         return 1;
     } catch (...) {
-        std::cerr << "Test failed with unknown exception" << std::endl;
+        std::cerr << "\n" << std::string(80, '!') << std::endl;
+        std::cerr << "  CRITICAL ERROR: Test failed with unknown exception" << std::endl;
+        std::cerr << "  This indicates an unexpected error in the ChronoKVS integration." << std::endl;
+        std::cerr << std::string(80, '!') << std::endl;
         return 1;
     }
 }

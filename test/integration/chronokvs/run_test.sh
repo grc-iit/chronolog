@@ -27,6 +27,11 @@ fi
 
 # Run the test
 echo "Running ChronoKVS integration test..."
-./chronokvs_integration_test
+echo "Note: This test requires ChronoLog services to be running."
+echo "Start them with: ./tools/deploy/ChronoLog/deploy_local.sh"
+echo ""
+
+# Set library path and run the test
+LD_LIBRARY_PATH=./Plugins/chronokvs:$LD_LIBRARY_PATH ./chronokvs_integration_test
 
 echo "Test completed successfully!"
