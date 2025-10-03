@@ -22,7 +22,7 @@ Learn more at https://www.chronolog.dev
 
 > **🆕 NEW: ChronoLog MCP Available!**
 > 
-> ChronoLog now offers a comprehensive Model Context Protocol (MCP) server that enables seamless integration with Language Learning Models (LLMs). The ChronoLog MCP provides enterprise-grade logging capabilities, real-time event processing, and structured conversational interaction management.
+> ChronoLog now offers a comprehensive Model Context Protocol (MCP) server that enables seamless integration with Large Language Models (LLMs). The ChronoLog MCP provides enterprise-grade logging capabilities, real-time event processing, and structured conversational interaction management.
 > 
 > 📖 **Documentation:** [ChronoLog MCP Documentation](https://iowarp.github.io/iowarp-mcps/docs/mcps/chronolog/)
 
