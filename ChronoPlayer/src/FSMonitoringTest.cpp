@@ -45,8 +45,8 @@ void testInotifyMode(const std::string& test_dir)
     // Create test directory
     fs::create_directories(test_dir);
     
-    // Initialize agent with polling mode (explicitly set to true)
-    chronolog::HDF5ArchiveReadingAgent agent(test_dir, true);
+    // Initialize agent with inotify mode (explicitly set to false)
+    chronolog::HDF5ArchiveReadingAgent agent(test_dir, false);
     
     if(agent.initialize() != 0)
     {
