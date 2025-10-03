@@ -21,17 +21,18 @@ leveraging the time-based data distribution, a log-based key-value store, and a 
 Learn more at https://www.chronolog.dev
 
 
-<div style="border: 1px solid #555555; padding: 10px; border-radius: 5px; background-color: #888888;">
-  <p style="margin: 0;">
-    ChronoLog now offers a comprehensive Model Context Protocol (MCP) server that enables seamless integration with Language Learning Models (LLMs). The ChronoLog MCP provides enterprise-grade logging capabilities, real-time event processing, and structured conversational interaction management.
-  </p>
-  <p style="margin: 10px 0 0 0;">
-    <strong>Key Features:</strong> Session logging and analysis • Multi-session context sharing • Structured event documentation • Real-time event processing • Enterprise-grade logging capabilities
-  </p>
-  <p style="margin: 10px 0 0 0;">
-    For installation instructions, documentation, and examples, visit: <a href="https://iowarp.github.io/iowarp-mcps/docs/mcps/chronolog/" target="_blank">ChronoLog MCP Documentation</a>
-  </p>
-</div>
+> **🆕 NEW: ChronoLog MCP Available!**
+> 
+> ChronoLog now offers a comprehensive Model Context Protocol (MCP) server that enables seamless integration with Language Learning Models (LLMs). The ChronoLog MCP provides enterprise-grade logging capabilities, real-time event processing, and structured conversational interaction management.
+> 
+> **Key Features:**
+> - Session logging and analysis
+> - Multi-session context sharing  
+> - Structured event documentation
+> - Real-time event processing
+> - Enterprise-grade logging capabilities
+> 
+> 📖 **Documentation:** [ChronoLog MCP Documentation](https://iowarp.github.io/iowarp-mcps/docs/mcps/chronolog/)
 
 ## Wiki:
 Learn more detailed information about the project on ChronoLog's Wiki: https://github.com/grc-iit/ChronoLog/wiki/
