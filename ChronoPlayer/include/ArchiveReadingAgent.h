@@ -47,11 +47,7 @@ public:
     ArchiveReadingAgent( ArchiveReadingRequestQueue & request_queue, std::string const & archive_path)
         : theReadingRequestQueue(request_queue)
         , agentState(UNKNOWN)
-#ifdef CHRONOLOG_USE_POLLING_MONITORING
-        , theReadingAgent(archive_path, true)  // Force polling mode when CMake flag is set
-#else
-        , theReadingAgent(archive_path)
-#endif
+        , theReadingAgent(archive_path, true)  // Default to polling mode
     {}
 
     ~ArchiveReadingAgent();

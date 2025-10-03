@@ -53,7 +53,7 @@ class HDF5ArchiveReadingAgent
     };
 
 public:
-    explicit HDF5ArchiveReadingAgent(std::string const &archive_path, bool use_polling = false, 
+    explicit HDF5ArchiveReadingAgent(std::string const &archive_path, bool use_polling = true, 
                                     std::chrono::milliseconds monitoring_interval = std::chrono::milliseconds(5000))
         : archive_path_(fs::absolute(expandTilde(fs::path(archive_path))).make_preferred().string())
         , use_polling_(use_polling)

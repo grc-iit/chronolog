@@ -45,8 +45,8 @@ void testInotifyMode(const std::string& test_dir)
     // Create test directory
     fs::create_directories(test_dir);
     
-    // Initialize agent with inotify mode (use default use_polling=false)
-    chronolog::HDF5ArchiveReadingAgent agent(test_dir);
+    // Initialize agent with polling mode (explicitly set to true)
+    chronolog::HDF5ArchiveReadingAgent agent(test_dir, true);
     
     if(agent.initialize() != 0)
     {
@@ -80,7 +80,7 @@ void testPollingMode(const std::string& test_dir)
     // Create test directory
     fs::create_directories(test_dir);
     
-    // Initialize agent with polling mode (or forced by CMake flag)
+    // Initialize agent with polling mode (explicitly set)
     chronolog::HDF5ArchiveReadingAgent agent(test_dir, true, std::chrono::milliseconds(500)); // use_polling = true, 500ms monitoring interval
     
     if(agent.initialize() != 0)

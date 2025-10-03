@@ -4,16 +4,6 @@ find_package(Thallium REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(HDF5 REQUIRED COMPONENTS C CXX)
 
-# ChronoPlayer-specific options
-option(CHRONOLOG_USE_POLLING_MONITORING "Use polling-based file system monitoring instead of inotify" OFF)
-
-# Print monitoring mode information
-if(CHRONOLOG_USE_POLLING_MONITORING)
-    message(STATUS "ChronoPlayer: Using POLLING-based file system monitoring")
-else()
-    message(STATUS "ChronoPlayer: Using INOTIFY-based file system monitoring")
-endif()
-
 message("build target : chrono_player")
 
 add_executable(chrono_player  )
@@ -38,10 +28,6 @@ target_sources(chrono_player PRIVATE
     ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
 )
 
-# Add compile definition for polling monitoring if enabled
-if(CHRONOLOG_USE_POLLING_MONITORING)
-    target_compile_definitions(chrono_player PRIVATE CHRONOLOG_USE_POLLING_MONITORING=1)
-endif()
 
 target_link_libraries(chrono_player chronolog_client thallium)
 target_link_libraries(chrono_player ${HDF5_LIBRARIES})
@@ -101,10 +87,6 @@ target_include_directories(hdf5_archive_reader_test PRIVATE
     ${CMAKE_SOURCE_DIR}/chrono_common/include
 )
 
-# Add compile definition for polling monitoring if enabled
-if(CHRONOLOG_USE_POLLING_MONITORING)
-    target_compile_definitions(hdf5_archive_reader_test PRIVATE CHRONOLOG_USE_POLLING_MONITORING=1)
-endif()
 
 target_link_directories(hdf5_archive_reader_test PRIVATE ${HDF5_LIBRARY_DIRS})
 
@@ -126,10 +108,6 @@ target_include_directories(fs_monitoring_test PRIVATE
     ${CMAKE_SOURCE_DIR}/Client/cpp/include
 )
 
-# Add compile definition for polling monitoring if enabled
-if(CHRONOLOG_USE_POLLING_MONITORING)
-    target_compile_definitions(fs_monitoring_test PRIVATE CHRONOLOG_USE_POLLING_MONITORING=1)
-endif()
 
 target_link_directories(fs_monitoring_test PRIVATE ${HDF5_LIBRARY_DIRS})
 

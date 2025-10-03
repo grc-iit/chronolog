@@ -65,11 +65,7 @@ int main(int argc, char**argv)
     tl::abt scope;
 
     std::string archive_path = confManager.GRAPHER_CONF.EXTRACTOR_CONF.story_files_dir;
-#ifdef CHRONOLOG_USE_POLLING_MONITORING
-    agent_ptr = new chronolog::HDF5ArchiveReadingAgent(archive_path, true);  // Force polling mode when CMake flag is set
-#else
-    agent_ptr = new chronolog::HDF5ArchiveReadingAgent(archive_path);
-#endif
+    agent_ptr = new chronolog::HDF5ArchiveReadingAgent(archive_path, true);  // Default to polling mode
 
     agent_ptr->initialize();
 
