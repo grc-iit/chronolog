@@ -334,7 +334,7 @@ install() {
     if [[ -x "$install_script" ]]; then
         "$install_script" --lib-dir "${LIB_DIR}" --bin-dir "${BIN_DIR}"
     else
-        echo -e "${RED}Error: $install_script is not executable or not found.${NC}"
+        echo -e "${ERR}Error: $install_script is not executable or not found.${NC}"
         exit 1
     fi
 }
