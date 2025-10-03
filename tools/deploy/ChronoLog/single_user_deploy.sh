@@ -359,8 +359,8 @@ generate_conf_for_each_keeper() {
         [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generating conf file ${base_conf_file}.keeper.${remote_keeper_hostname} for ChronoKeeper ${remote_keeper_hostname} ...${NC}"
         jq ".chrono_keeper.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono_keeper.${remote_keeper_hostname}.log\"" "${base_conf_file}" >"${base_conf_file}.keeper.${remote_keeper_hostname}"
         keeper_ip=$(get_host_ip ${keeper_host})
-        jq ".chrono_keeper.KeeperRecordingService.rpc.service_ip = \"${keeper_ip}\"" "${base_conf_file}.keeper.${remote_keeper_hostname}" >temp.json && mv temp.json "${base_conf_file}.keeper.${remote_keeper_hostname}"
-        jq ".chrono_keeper.KeeperDataStoreAdminService.rpc.service_ip = \"${keeper_ip}\"" "${base_conf_file}.keeper.${remote_keeper_hostname}" >temp.json && mv temp.json "${base_conf_file}.keeper.${remote_keeper_hostname}"
+        jq ".chrono_keeper.KeeperRecordingService.rpc.service_ip = \"${keeper_ip}\"" "${base_conf_file}.keeper.${remote_keeper_hostname}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${base_conf_file}.keeper.${remote_keeper_hostname}"
+        jq ".chrono_keeper.KeeperDataStoreAdminService.rpc.service_ip = \"${keeper_ip}\"" "${base_conf_file}.keeper.${remote_keeper_hostname}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${base_conf_file}.keeper.${remote_keeper_hostname}"
     done <${keeper_hosts_file}
 
     [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generate conf file for ChronoKeepers in ${keeper_hosts_file} done${NC}"
@@ -376,8 +376,8 @@ generate_conf_for_each_grapher() {
         [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generating conf file ${base_conf_file}.grapher.${remote_grapher_hostname} for ChronoGrapher ${remote_grapher_hostname} ...${NC}"
         jq ".chrono_grapher.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono_grapher.${remote_grapher_hostname}.log\"" "${base_conf_file}" >"${base_conf_file}.grapher.${remote_grapher_hostname}"
         #grapher_ip=$(get_host_ip ${grapher_host})
-        #jq ".chrono_keeper.KeeperGrapherDrainService.rpc.service_ip = \"${grapher_ip}\"" "${base_conf_file}".grapher.${remote_grapher_hostname}" > temp.json && mv temp.json "${base_conf_file}.grapher.${remote_grapher_hostname}"
-        #jq ".chrono_grapher.KeeperGrapherDrainService.rpc.service_ip = \"${grapher_ip}\"" "${base_conf_file}.grapher.${remote_grapher_hostname}" > temp.json && mv temp.json "${base_conf_file}.grapher.${remote_grapher_hostname}"
+        #jq ".chrono_keeper.KeeperGrapherDrainService.rpc.service_ip = \"${grapher_ip}\"" "${base_conf_file}".grapher.${remote_grapher_hostname}" > ${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${base_conf_file}.grapher.${remote_grapher_hostname}"
+        #jq ".chrono_grapher.KeeperGrapherDrainService.rpc.service_ip = \"${grapher_ip}\"" "${base_conf_file}.grapher.${remote_grapher_hostname}" > ${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${base_conf_file}.grapher.${remote_grapher_hostname}"
     done <${grapher_hosts_file}
 
     [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generate conf file for ChronoGraphers in ${grapher_hosts_file} done${NC}"
@@ -427,16 +427,16 @@ generate_conf_for_each_recording_group() {
         # update conf file for Grapher, Keeper and Player
         [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Updating conf file for members in RecordingGroup ${i} ...${NC}"
         jq ".chrono_grapher.DataStoreAdminService.rpc.service_ip = \"${grapher_ip}\"" "${CONF_FILE}" >"${CONF_FILE}.${i}"
-        jq ".chrono_keeper.RecordingGroup = ${i}" "${CONF_FILE}.${i}" >temp.json && mv temp.json "${CONF_FILE}.${i}"
-        jq ".chrono_grapher.RecordingGroup = ${i}" "${CONF_FILE}.${i}" >temp.json && mv temp.json "${CONF_FILE}.${i}"
-        jq ".chrono_player.RecordingGroup = ${i}" "${CONF_FILE}.${i}" >temp.json && mv temp.json "${CONF_FILE}.${i}"
-        jq ".chrono_keeper.KeeperGrapherDrainService.rpc.service_ip = \"${grapher_ip}\"" "${CONF_FILE}.${i}" >temp.json && mv temp.json "${CONF_FILE}.${i}"
-        jq ".chrono_grapher.KeeperGrapherDrainService.rpc.service_ip = \"${grapher_ip}\"" "${CONF_FILE}.${i}" >temp.json && mv temp.json "${CONF_FILE}.${i}"
-        jq ".chrono_keeper.Extractors.story_files_dir = \"${OUTPUT_DIR}\"" "${CONF_FILE}.${i}" >temp.json && mv temp.json "${CONF_FILE}.${i}"
-        jq ".chrono_grapher.Extractors.story_files_dir = \"${OUTPUT_DIR}\"" "${CONF_FILE}.${i}" >temp.json && mv temp.json "${CONF_FILE}.${i}"
-        jq ".chrono_player.PlayerStoreAdminService.rpc.service_ip = \"${player_ip}\"" "${CONF_FILE}.${i}" >temp.json && mv temp.json "${CONF_FILE}.${i}"
-        jq ".chrono_player.PlaybackQueryService.rpc.service_ip = \"${player_ip}\"" "${CONF_FILE}.${i}" >temp.json && mv temp.json "${CONF_FILE}.${i}"
-        jq ".chrono_player.ArchiveReaders.story_files_dir = \"${OUTPUT_DIR}\"" "${CONF_FILE}.${i}" >temp.json && mv temp.json "${CONF_FILE}.${i}"
+        jq ".chrono_keeper.RecordingGroup = ${i}" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
+        jq ".chrono_grapher.RecordingGroup = ${i}" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
+        jq ".chrono_player.RecordingGroup = ${i}" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
+        jq ".chrono_keeper.KeeperGrapherDrainService.rpc.service_ip = \"${grapher_ip}\"" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
+        jq ".chrono_grapher.KeeperGrapherDrainService.rpc.service_ip = \"${grapher_ip}\"" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
+        jq ".chrono_keeper.Extractors.story_files_dir = \"${OUTPUT_DIR}\"" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
+        jq ".chrono_grapher.Extractors.story_files_dir = \"${OUTPUT_DIR}\"" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
+        jq ".chrono_player.PlayerStoreAdminService.rpc.service_ip = \"${player_ip}\"" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
+        jq ".chrono_player.PlaybackQueryService.rpc.service_ip = \"${player_ip}\"" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
+        jq ".chrono_player.ArchiveReaders.story_files_dir = \"${OUTPUT_DIR}\"" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
 
         generate_conf_for_each_keeper "${CONF_FILE}.${i}" "${keeper_hosts_file}"
 
@@ -482,10 +482,9 @@ prepare_hosts() {
     echo -e "${INFO}Preparing hosts files ...${NC}"
 
     hosts=""
-    if [ -n "$SLURM_JOB_ID" ]; then
-        echo -e "${DEBUG}Launched as a SLURM job, getting hosts from job ${SLURM_JOB_ID} ...${NC}"
-        echo -e "${DEBUG}Node list from this job will overwrite what's provided in all hosts files${NC}"
-        hosts="$(echo \"$SLURM_JOB_NODELIST\" | tr ',' '\n')"
+    if [ -n "$SLURM_STEP_ID" ]; then
+        echo -e "${ERR}ChronoLog does not support being launched using sbatch/srun, please create an interactive job and launch from a shell${NC}" >&2
+        exit 1
     else
         echo -e "${DEBUG}Launched from a shell, getting hosts from command line or presets ...${NC}"
         if [ -n "${JOB_ID}" ]; then
@@ -574,7 +573,7 @@ install() {
     if [[ -x "$install_script" ]]; then
         "$install_script" --lib-dir "${LIB_DIR}" --bin-dir "${BIN_DIR}"
     else
-        echo -e "${RED}Error: $install_script is not executable or not found.${NC}"
+        echo -e "${ERR}Error: $install_script is not executable or not found.${NC}"
         exit 1
     fi
 }
@@ -873,7 +872,7 @@ parse_args() {
             GRAPHER_HOSTS="${CONF_DIR}/hosts_grapher"
             KEEPER_HOSTS="${CONF_DIR}/hosts_keeper"
             PLAYER_HOSTS="${CONF_DIR}/hosts_player"
-            [ -f "${GRAPHER_HOSTS}" ] && NUM_RECORDING_GROUP=$(wc -l <"${GRAPHER_HOSTS}") || NUM_RECORDING_GROUP=1
+            [ -s "${GRAPHER_HOSTS}" ] && NUM_RECORDING_GROUP=$(wc -l <"${GRAPHER_HOSTS}")
             mkdir -p ${MONITOR_DIR}
             mkdir -p ${OUTPUT_DIR}
             shift 2 ;;
