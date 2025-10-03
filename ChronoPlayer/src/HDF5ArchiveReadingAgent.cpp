@@ -758,27 +758,11 @@ int64_t chronolog::HDF5ArchiveReadingAgent::getDirectoryModificationTime(const f
     auto dir_last_write = fs::last_write_time(dir_path, ec);
     if(!ec)
     {
-        // Get current system time for reference
-        auto now_sys = std::chrono::system_clock::now();
-        auto now_file = std::filesystem::file_time_type::clock::now();
-        
-        // Calculate the offset between file_time_type and system_clock
-        auto file_duration = dir_last_write.time_since_epoch();
-        auto file_now_duration = now_file.time_since_epoch();
-        auto sys_duration = now_sys.time_since_epoch();
-        
-        // Convert to system_clock time_point
-        auto offset = sys_duration - file_now_duration;
-        auto sys_time = std::chrono::system_clock::time_point(file_duration + offset);
-        
-        int64_t result = std::chrono::duration_cast<std::chrono::nanoseconds>(
-            sys_time.time_since_epoch()).count();
-            
-        LOG_DEBUG("[HDF5ArchiveReadingAgent] Directory {} modification time: {} ns", 
-                 dir_path.string(), formatWithCommas(result));
-        
-        return result;
+        return convertFileTimeToSystemClockNs(dir_last_write);
     }
+    LOG_WARNING("[HDF5ArchiveReadingAgent] Error getting directory modification time for {}: {}", 
+               dir_path.string(), ec.message());
+    ec.clear();
     return 0;
 }
 
