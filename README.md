@@ -20,17 +20,9 @@ ChronoLog will serve as a foundation for developing scalable new plugins, includ
 leveraging the time-based data distribution, a log-based key-value store, and a log-based TensorFlow module.
 Learn more at https://www.chronolog.dev
 
-
 > **🆕 NEW: ChronoLog MCP Available!**
 > 
 > ChronoLog now offers a comprehensive Model Context Protocol (MCP) server that enables seamless integration with Language Learning Models (LLMs). The ChronoLog MCP provides enterprise-grade logging capabilities, real-time event processing, and structured conversational interaction management.
-> 
-> **Key Features:**
-> - Session logging and analysis
-> - Multi-session context sharing  
-> - Structured event documentation
-> - Real-time event processing
-> - Enterprise-grade logging capabilities
 > 
 > 📖 **Documentation:** [ChronoLog MCP Documentation](https://iowarp.github.io/iowarp-mcps/docs/mcps/chronolog/)
 
