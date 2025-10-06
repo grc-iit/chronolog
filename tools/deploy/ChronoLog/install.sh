@@ -143,7 +143,7 @@ update_rpath() {
     else
         for f in "${bin_files[@]}"; do
             if [ -f "$f" ]; then
-                chrpath -r "${LIB_DIR}" "$f" > /dev/null 2>&1 || \
+                chrpath -r '$ORIGIN/../lib' "$f" > /dev/null 2>&1 || \
                     echo -e "${INFO}Skipping RPATH update for $f (no RPATH or not a valid ELF file).${NC}"
             fi
         done
@@ -156,13 +156,25 @@ update_rpath() {
     else
         for f in "${lib_files[@]}"; do
             if [ -f "$f" ]; then
-                chrpath -r "${LIB_DIR}" "$f" > /dev/null 2>&1 || \
+                chrpath -r '$ORIGIN/../lib' "$f" > /dev/null 2>&1 || \
                     echo -e "${INFO}Skipping RPATH update for $f (no RPATH or not a valid ELF file).${NC}"
             fi
         done
     fi
     shopt -u nullglob
     echo -e "${DEBUG}RPATH updated${NC}"
+}
+
+check_dependencies() {
+    local dependencies=("jq" "ldd" "nohup" "pkill" "readlink" "realpath" "chrpath")
+    echo -e "${DEBUG}Checking required dependencies...${NC}"
+    for dep in "${dependencies[@]}"; do
+        if ! command -v $dep &> /dev/null; then
+            echo -e "${ERR}Dependency $dep is not installed. Please install it and try again.${NC}"
+            exit 1
+        fi
+    done
+    echo -e "${DEBUG}All required dependencies are installed.${NC}"
 }
 
 activate_spack_environment() {
@@ -222,6 +234,7 @@ main() {
     parse_arguments "$@"
     echo -e "${INFO}Installing ChronoLog...${NC}"
     cd ${REPO_ROOT}
+    check_dependencies
     activate_spack_environment
     check_spack
     navigate_to_build_directory

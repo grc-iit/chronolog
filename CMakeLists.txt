@@ -33,11 +33,11 @@ message("CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
 
 # --- Robust default for CMAKE_INSTALL_PREFIX (only if user didn't set one) ---
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
-  if(DEFINED ENV{HOME} AND NOT "$ENV{HOME}" STREQUAL "")
-    set(CMAKE_INSTALL_PREFIX "$ENV{HOME}/chronolog-install" CACHE PATH "Install prefix" FORCE)
-  else()
-    message(FATAL_ERROR "Cannot determine HOME to set install prefix. Pass -DCMAKE_INSTALL_PREFIX=/path")
-  endif()
+    if(DEFINED ENV{HOME} AND NOT "$ENV{HOME}" STREQUAL "")
+        set(CMAKE_INSTALL_PREFIX "$ENV{HOME}/chronolog-install" CACHE PATH "Install prefix" FORCE)
+    else()
+        message(FATAL_ERROR "Cannot determine HOME to set install prefix. Pass -DCMAKE_INSTALL_PREFIX=/path")
+    endif()
 endif()
 message(STATUS "CMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}")
 
@@ -56,15 +56,15 @@ function(chronolog_install_target target_name)
         ARCHIVE DESTINATION ${CHRONOLOG_INSTALL_LIB_DIR}
         PUBLIC_HEADER DESTINATION ${CHRONOLOG_INSTALL_INCLUDE_DIR}
     )
-    # Ensure per-target runtime path is aligned with root policy
-    set_target_properties(${target_name} PROPERTIES INSTALL_RPATH "${CHRONOLOG_INSTALL_LIB_DIR}")
+    # Set both absolute and relative RPATH for portability
+    set_target_properties(${target_name} PROPERTIES INSTALL_RPATH "${CHRONOLOG_INSTALL_LIB_DIR};$ORIGIN/../lib")
 endfunction()
 
 # Disable using link paths as RPATH
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH FALSE)
 
-# Set the RPATH explicitly
-set(CMAKE_INSTALL_RPATH "${CHRONOLOG_INSTALL_LIB_DIR}")
+# Set both absolute and relative RPATH for maximum flexibility
+set(CMAKE_INSTALL_RPATH "${CHRONOLOG_INSTALL_LIB_DIR};$ORIGIN/../lib")
 
 # Force RUNPATH instead of RPATH (RUNPATH has lower precedence)
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--enable-new-dtags")
