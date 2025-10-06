@@ -4,7 +4,7 @@ FROM ubuntu:22.04
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y \
     git g++ python3 curl build-essential unzip tar \
-    libtool autoconf automake pkg-config jq lsof cmake
+    libtool autoconf automake pkg-config jq lsof cmake chrpath
 
 # Clone Spack
 RUN git clone --branch v0.21.2 https://github.com/spack/spack.git /opt/spack && \
