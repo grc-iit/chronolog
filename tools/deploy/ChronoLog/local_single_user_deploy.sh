@@ -237,7 +237,7 @@ generate_config_files() {
 }
 
 check_dependencies() {
-    local dependencies=("jq" "ldd" "nohup" "pkill" "readlink")
+    local dependencies=("jq" "ldd" "nohup" "pkill" "readlink" "realpath" "chrpath")
     echo -e "${DEBUG}Checking required dependencies...${NC}"
     for dep in "${dependencies[@]}"; do
         if ! command -v $dep &> /dev/null; then

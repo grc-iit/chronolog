@@ -142,7 +142,7 @@ usage() {
 }
 
 check_dependencies() {
-    local dependencies=("jq" "parallel-ssh" "ssh" "ldd" "nohup" "pkill" "readlink" "realpath")
+    local dependencies=("jq" "parallel-ssh" "ssh" "ldd" "nohup" "pkill" "readlink" "realpath" "chrpath")
 
     echo -e "${DEBUG}Checking required dependencies...${NC}"
     for dep in "${dependencies[@]}"; do
