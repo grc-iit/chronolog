@@ -61,7 +61,10 @@ public:
         , shutdown_requested_(false)
     {}
 
-    ~HDF5ArchiveReadingAgent() = default;
+    ~HDF5ArchiveReadingAgent()
+    {
+        shutdown();
+    }
 
     int initialize()
     {
@@ -73,6 +76,11 @@ public:
 
     int shutdown()
     {
+        if(shutdown_requested_.load() == true)
+        {
+            LOG_INFO("[HDF5ArchiveReadingAgent] Shutdown already requested. Skipping shutdown request.");
+            return 0;
+        }
         shutdown_requested_.store(true);
         archive_dir_monitoring_stream_->join();
         archive_dir_monitoring_thread_->join();
