@@ -60,10 +60,4 @@ if(CHRONOLOG_INSTALL_TESTS)
         chronolog_install_target(${client})
     endforeach()
     
-    # install client configuration file
-    install(
-        FILES ${CMAKE_SOURCE_DIR}/default_client_conf.json.in
-        DESTINATION ${CHRONOLOG_INSTALL_CONF_DIR}
-        RENAME default_client_conf.json
-    )
 endif()
