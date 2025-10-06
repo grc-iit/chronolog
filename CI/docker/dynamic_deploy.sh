@@ -139,22 +139,22 @@ wait
 docker exec -it chronolog-c1 bash -c "cd ~/chronolog-repo && git reset --hard origin/develop && git pull"
 
 # Prepare hosts files
-docker exec -it chronolog-c1 bash -c "rm -rf ~/chronolog-install/conf/hosts_*"
-docker exec -it chronolog-c1 bash -c "echo c1 > ~/chronolog-install/conf/hosts_visor"
+docker exec -it chronolog-c1 bash -c "rm -rf ~/chronolog-install/chronolog/conf/hosts_*"
+docker exec -it chronolog-c1 bash -c "echo c1 > ~/chronolog-install/chronolog/conf/hosts_visor"
 for i in $(seq 2 $(($NUM_KEEPERS + 1))); do
-    docker exec -it chronolog-c1 bash -c "echo c$i >> ~/chronolog-install/conf/hosts_keeper"
+    docker exec -it chronolog-c1 bash -c "echo c$i >> ~/chronolog-install/chronolog/conf/hosts_keeper"
 done
 for i in $(seq $(($NUM_KEEPERS + 2)) $(($NUM_KEEPERS + $NUM_GRAPHERS + 1))); do
-    docker exec -it chronolog-c1 bash -c "echo c$i >> ~/chronolog-install/conf/hosts_grapher"
+    docker exec -it chronolog-c1 bash -c "echo c$i >> ~/chronolog-install/chronolog/conf/hosts_grapher"
 done
 for i in $(seq $(($NUM_KEEPERS + $NUM_GRAPHERS + 2)) $(($NUM_KEEPERS + $NUM_GRAPHERS + $NUM_PLAYERS + 1))); do
-    docker exec -it chronolog-c1 bash -c "echo c$i >> ~/chronolog-install/conf/hosts_player"
+    docker exec -it chronolog-c1 bash -c "echo c$i >> ~/chronolog-install/chronolog/conf/hosts_player"
 done
 for i in $(seq 1 $NUM_CONTAINERS); do
-    docker exec -it chronolog-c1 bash -c "echo c$i >> ~/chronolog-install/conf/hosts_clients"
+    docker exec -it chronolog-c1 bash -c "echo c$i >> ~/chronolog-install/chronolog/conf/hosts_clients"
 done
 for i in $(seq 1 $NUM_CONTAINERS); do
-    docker exec -it chronolog-c1 bash -c "echo c$i >> ~/chronolog-install/conf/hosts_all"
+    docker exec -it chronolog-c1 bash -c "echo c$i >> ~/chronolog-install/chronolog/conf/hosts_all"
 done
 
 # Force concretize and install dependencies in case of changes
