@@ -13,23 +13,23 @@ NUM_RECORDING_GROUPS=1
 BUILD_TYPE="Release"
 BUILD_DIR="$HOME/chronolog-build"
 INSTALL_DIR="$HOME/chronolog-install"
-WORK_DIR="$HOME/chronolog-install/chronolog"
+WORK_DIR="$INSTALL_DIR/chronolog"
 
 # Directories (with defaults)
-LIB_DIR="$HOME/chronolog-install/chronolog/lib"
-CONF_DIR="$HOME/chronolog-install/chronolog/conf"
-BIN_DIR="$HOME/chronolog-install/chronolog/bin"
-MONITOR_DIR="$HOME/chronolog-install/chronolog/monitor"
-OUTPUT_DIR="$HOME/chronolog-install/chronolog/output"
+LIB_DIR="$WORK_DIR/lib"
+CONF_DIR="$WORK_DIR/conf"
+BIN_DIR="$WORK_DIR/bin"
+MONITOR_DIR="$WORK_DIR/monitor"
+OUTPUT_DIR="$WORK_DIR/output"
 REPO_ROOT="$(realpath "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../")"
 
 # Files (with defaults)
-VISOR_BIN="$HOME/chronolog-install/chronolog/bin/chronovisor_server"
-KEEPER_BIN="$HOME/chronolog-install/chronolog/bin/chrono_keeper"
-GRAPHER_BIN="$HOME/chronolog-install/chronolog/bin/chrono_grapher"
-PLAYER_BIN="$HOME/chronolog-install/chronolog/bin/chrono_player"
-CONF_FILE="$HOME/chronolog-install/chronolog/conf/default_conf.json"
-CLIENT_CONF_FILE="$HOME/chronolog-install/chronolog/conf/default_client_conf.json"
+VISOR_BIN="$WORK_DIR/bin/chronovisor_server"
+KEEPER_BIN="$WORK_DIR/bin/chrono_keeper"
+GRAPHER_BIN="$WORK_DIR/bin/chrono_grapher"
+PLAYER_BIN="$WORK_DIR/bin/chrono_player"
+CONF_FILE="$WORK_DIR/conf/default_conf.json"
+CLIENT_CONF_FILE="$WORK_DIR/conf/default_client_conf.json"
 
 #Booleans
 build=false
@@ -434,10 +434,10 @@ usage() {
     echo "Examples (Assume installing a Debug build to ~/chronolog_install):"
     echo ""
     echo "  1) Builds ChronoLog in Debug mode and installs it to ~/chronolog_install:"
-    echo "     $0 --build -t Debug -I ~/chronolog_install"
+    echo "     $0 --build --build-type Debug --install-dir ~/chronolog_install"
     echo ""
     echo "  2) Installs ChronoLog to the working directory (~/chronolog_install):"
-    echo "     $0 --install -I ~/chronolog_install"
+    echo "     $0 --install --install-dir ~/chronolog_install"
     echo ""
     echo "  3) Starts a ChronoLog deployment using the default configuration and paths,"
     echo "     with binaries from the working directory ~/chronolog_install:"
@@ -445,10 +445,10 @@ usage() {
     echo ""
     echo "  4) Starts a ChronoLog deployment with 5 keeper processes and 2 grapher processes,"
     echo "     using the working directory ~/chronolog_install/chronolog:"
-    echo "     $0 -d -k 5 -r 2 --work-dir ~/chronolog_install/chronolog"
+    echo "     $0 --start --keepers 5 --record-groups 2 --work-dir ~/chronolog_install/chronolog"
     echo ""
     echo "  5) Stops the ChronoLog deployment using the working directory ~/chronolog_install/chronolog:"
-    echo "     $0 -s --work-dir ~/chronolog_install/chronolog"
+    echo "     $0 --stop --work-dir ~/chronolog_install/chronolog"
     echo ""
     exit 1
 }
