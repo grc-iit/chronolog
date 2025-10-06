@@ -167,21 +167,27 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName &c
         LOG_DEBUG("[HDF5ArchiveReadingAgent] Reading archived story {}-{} range {}-{}, main and auxiliary files"
               , chronicleName, storyName, startTime, endTime);
     }
-    // Find the last file whose start time <= startTime for the SAME chronicle-story combination
-    auto start_it = start_time_file_name_map_.upper_bound(std::make_tuple(chronicleName, storyName, startTime));
-    if(start_it != start_time_file_name_map_.begin())
+    // Find files for the specific chronicle-story combination
+    auto chronicle_story_pair = std::make_pair(chronicleName, storyName);
+    auto chronicle_story_it = start_time_file_name_map_.find(chronicle_story_pair);
+    
+    if (chronicle_story_it == start_time_file_name_map_.end())
+    {
+        LOG_DEBUG("[HDF5ArchiveReadingAgent] No files found for story {}-{}", chronicleName, storyName);
+        return CL_ERR_UNKNOWN;
+    }
+    
+    auto& time_file_map = chronicle_story_it->second;
+    
+    // Find the last file whose start time <= startTime
+    auto start_it = time_file_map.upper_bound(startTime);
+    if(start_it != time_file_map.begin())
     {
         --start_it;
-        // Check if the decremented iterator still belongs to the same chronicle-story combination
-        if(std::get<0>(start_it->first) != chronicleName || std::get<1>(start_it->first) != storyName)
-        {
-            // The previous entry belongs to a different chronicle-story combination
-            ++start_it;
-        }
     }
 
-    // Find first file whose start time > endTime (this part you already have correct)
-    auto end_it = start_time_file_name_map_.upper_bound(std::make_tuple(chronicleName, storyName, endTime));
+    // Find first file whose start time > endTime
+    auto end_it = time_file_map.upper_bound(endTime);
     LOG_DEBUG("[HDF5ArchiveReadingAgent] readArchiveStory {}-{} range {}-{}", chronicleName, storyName
         , startTime, endTime);
 
@@ -196,18 +202,16 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName &c
               , startTime, endTime);
     LOG_DEBUG(
             "[HDF5ArchiveReadingAgent] Start iterator: chronicle name: {}, story name: {}, start time: {}, file name: {}"
-            , std::get <0>(start_it->first), std::get <1>(start_it->first), std::get <2>(start_it->first)
-            , start_it->second);
-    if(end_it != start_time_file_name_map_.end())
+            , chronicleName, storyName, start_it->first, start_it->second);
+    if(end_it != time_file_map.end())
     {
         LOG_DEBUG(
             "[HDF5ArchiveReadingAgent] End iterator: chronicle name: {}, story name: {}, start time: {}, file name: {}"
-            , std::get <0>(end_it->first), std::get <1>(end_it->first), std::get <2>(end_it->first)
-            , end_it->second);
+            , chronicleName, storyName, end_it->first, end_it->second);
     }
     else
     {
-        LOG_DEBUG("[HDF5ArchiveReadingAgent] End iterator: end of map");
+        LOG_DEBUG("[HDF5ArchiveReadingAgent] End iterator: end of time file map");
     }
 
     fs::path file_full_path;

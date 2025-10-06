@@ -220,10 +220,11 @@ private:
                       , start_time_file_name_map_.size());
             return -1; // Skip files that already exist in the map
         }
-        start_time_file_name_map_[std::make_tuple(chronicle_name, story_name, start_time)] = file_name;
+        start_time_file_name_map_[std::make_pair(chronicle_name, story_name)][start_time] = file_name;
         LOG_DEBUG("[HDF5ArchiveReadingAgent] Added file {} to start_time_file_name_map_.", file_name);
-        LOG_DEBUG("[HDF5ArchiveReadingAgent] start_time_file_name_map_ has {} entries."
-                  , start_time_file_name_map_.size());
+        LOG_DEBUG("[HDF5ArchiveReadingAgent] start_time_file_name_map_ has {} entries, entry: <{}, {}> has {} files"
+                  , start_time_file_name_map_.size(), chronicle_name, story_name
+                  , start_time_file_name_map_[std::make_pair(chronicle_name, story_name)].size());
         return 0;
     }
 
@@ -247,10 +248,21 @@ private:
                       , start_time_file_name_map_.size());
             return -1; // Skip files that already exist in the map
         }
-        start_time_file_name_map_.erase(std::make_tuple(chronicle_name, story_name, start_time));
+        auto chronicle_story_pair = std::make_pair(chronicle_name, story_name);
+        auto it = start_time_file_name_map_.find(chronicle_story_pair);
+        if (it != start_time_file_name_map_.end())
+        {
+            it->second.erase(start_time);
+            // Remove the chronicle-story entry if no more files exist for it
+            if (it->second.empty())
+            {
+                start_time_file_name_map_.erase(it);
+            }
+        }
         LOG_DEBUG("[HDF5ArchiveReadingAgent] Removed file {} from start_time_file_name_map_.", file_name);
-        LOG_DEBUG("[HDF5ArchiveReadingAgent] start_time_file_name_map_ has {} entries.",
-                  start_time_file_name_map_.size());
+        LOG_DEBUG("[HDF5ArchiveReadingAgent] start_time_file_name_map_ has {} entries, entry: <{}, {}> has {} files"
+                  , start_time_file_name_map_.size(), chronicle_name, story_name
+                  , start_time_file_name_map_[std::make_pair(chronicle_name, story_name)].size());
         return 0;
     }
 
@@ -266,7 +278,7 @@ private:
     }
 
     std::string archive_path_;
-    std::map<std::tuple<std::string, std::string, uint64_t>, std::string> start_time_file_name_map_;
+    std::map<std::pair<std::string, std::string>, std::map<uint64_t, std::string>> start_time_file_name_map_;
     std::mutex start_time_file_name_map_mutex_;
     tl::managed <tl::xstream> archive_dir_monitoring_stream_;
     tl::managed <tl::thread> archive_dir_monitoring_thread_;
