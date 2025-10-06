@@ -19,12 +19,12 @@ NUM_RECORDING_GROUP=1
 # Directories (with defaults)
 REPO_ROOT=""
 SYS_LIB_DIR="/lib/x86_64-linux-gnu/"
-WORK_DIR="$HOME/chronolog-install/chronolog"
-LIB_DIR="$HOME/chronolog-install/chronolog/lib"
-CONF_DIR="$HOME/chronolog-install/chronolog/conf"
-BIN_DIR="$HOME/chronolog-install/chronolog/bin"
-MONITOR_DIR="$HOME/chronolog-install/chronolog/monitor"
-OUTPUT_DIR="$HOME/chronolog-install/chronolog/output"
+WORK_DIR="$INSTALL_DIR/chronolog"
+LIB_DIR="$WORK_DIR/lib"
+CONF_DIR="$WORK_DIR/conf"
+BIN_DIR="$WORK_DIR/bin"
+MONITOR_DIR="$WORK_DIR/monitor"
+OUTPUT_DIR="$WORK_DIR/output"
 
 # Binary names
 VISOR_BIN_FILE_NAME="chronovisor_server"
@@ -43,18 +43,18 @@ KEEPER_BIN_DIR="$BIN_DIR"
 PLAYER_BIN_DIR="$BIN_DIR"
 
 # Configuration file and component-specific conf arguments (with defaults)
-CONF_FILE="$HOME/chronolog-install/chronolog/conf/default_conf.json"
-CLIENT_CONF_FILE="$HOME/chronolog-install/chronolog/conf/default_client_conf.json"
+CONF_FILE="$WORK_DIR/conf/default_conf.json"
+CLIENT_CONF_FILE="$WORK_DIR/conf/default_client_conf.json"
 VISOR_ARGS="--config ${CONF_FILE}"
 GRAPHER_ARGS="--config ${CONF_FILE}"
 KEEPER_ARGS="--config ${CONF_FILE}"
 PLAYER_ARGS="--config ${CONF_FILE}"
 
 # Hosts files (with defaults)
-VISOR_HOSTS="$HOME/chronolog-install/chronolog/conf/hosts_visor"
-GRAPHER_HOSTS="$HOME/chronolog-install/chronolog/conf/hosts_grapher"
-KEEPER_HOSTS="$HOME/chronolog-install/chronolog/conf/hosts_keeper"
-PLAYER_HOSTS="$HOME/chronolog-install/chronolog/conf/hosts_player"
+VISOR_HOSTS="$WORK_DIR/conf/hosts_visor"
+GRAPHER_HOSTS="$WORK_DIR/conf/hosts_grapher"
+KEEPER_HOSTS="$WORK_DIR/conf/hosts_keeper"
+PLAYER_HOSTS="$WORK_DIR/conf/hosts_player"
 
 # Cluster specific settings
 HOSTNAME_HS_NET_SUFFIX=""
@@ -534,7 +534,7 @@ prepare_hosts() {
 check_work_dir() {
     # Set default WORK_DIR if not provided
     if [[ -z "${WORK_DIR}" ]]; then
-        WORK_DIR="$HOME/chronolog-install/chronolog"
+        WORK_DIR="$INSTALL_DIR/chronolog"
         echo -e "${DEBUG}Using default work directory: ${WORK_DIR}${NC}"
     fi
 }
