@@ -195,6 +195,22 @@ private:
         return 0;
     }
 
+    void printStartTimeFileNameMapEntryCount(const std::string &chronicle_name, const std::string &story_name)
+    {
+        auto entry_it = start_time_file_name_map_.find(std::make_pair(chronicle_name, story_name));
+        if(entry_it != start_time_file_name_map_.end())
+        {
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] start_time_file_name_map_ has {} entries, entry: <{}, {}> has {} files"
+                      , start_time_file_name_map_.size(), chronicle_name, story_name
+                      , entry_it->second.size());
+        }
+        else
+        {
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] start_time_file_name_map_ has {} entries, entry: <{}, {}> does not exist"
+                      , start_time_file_name_map_.size(), chronicle_name, story_name);
+        }
+    }
+
     int addFileToStartTimeFileNameMap(const std::string &file_name)
     {
         std::lock_guard<std::mutex> lock(start_time_file_name_map_mutex_);
@@ -216,16 +232,12 @@ private:
         if(std::all_of(file_name_number.begin(), file_name_number.end(), ::isdigit))
         {
             LOG_DEBUG("[HDF5ArchiveReadingAgent] {} is an auxiliary file. Skipping this file.", file_name);
-            LOG_DEBUG("[HDF5ArchiveReadingAgent] start_time_file_name_map_ has {} entries, entry: <{}, {}> has {} files"
-                      , start_time_file_name_map_.size(), chronicle_name, story_name
-                      , start_time_file_name_map_[std::make_pair(chronicle_name, story_name)].size());
+            printStartTimeFileNameMapEntryCount(chronicle_name, story_name);
             return -1; // Skip files that already exist in the map
         }
         start_time_file_name_map_[std::make_pair(chronicle_name, story_name)][start_time] = file_name;
         LOG_DEBUG("[HDF5ArchiveReadingAgent] Added file {} to start_time_file_name_map_.", file_name);
-        LOG_DEBUG("[HDF5ArchiveReadingAgent] start_time_file_name_map_ has {} entries, entry: <{}, {}> has {} files"
-                  , start_time_file_name_map_.size(), chronicle_name, story_name
-                  , start_time_file_name_map_[std::make_pair(chronicle_name, story_name)].size());
+        printStartTimeFileNameMapEntryCount(chronicle_name, story_name);
         return 0;
     }
 
@@ -245,9 +257,7 @@ private:
         if(std::all_of(file_name_number.begin(), file_name_number.end(), ::isdigit))
         {
             LOG_DEBUG("[HDF5ArchiveReadingAgent] {} is an auxiliary file. Skipping this file.", file_name);
-            LOG_DEBUG("[HDF5ArchiveReadingAgent] start_time_file_name_map_ has {} entries, entry: <{}, {}> has {} files"
-                      , start_time_file_name_map_.size(), chronicle_name, story_name
-                      , start_time_file_name_map_[std::make_pair(chronicle_name, story_name)].size());
+            printStartTimeFileNameMapEntryCount(chronicle_name, story_name);
             return -1; // Skip files that already exist in the map
         }
         auto chronicle_story_pair = std::make_pair(chronicle_name, story_name);
@@ -262,18 +272,7 @@ private:
             }
         }
         LOG_DEBUG("[HDF5ArchiveReadingAgent] Removed file {} from start_time_file_name_map_.", file_name);
-        auto entry_it = start_time_file_name_map_.find(std::make_pair(chronicle_name, story_name));
-        if(entry_it != start_time_file_name_map_.end())
-        {
-            LOG_DEBUG("[HDF5ArchiveReadingAgent] start_time_file_name_map_ has {} entries, entry: <{}, {}> has {} files"
-                      , start_time_file_name_map_.size(), chronicle_name, story_name
-                      , entry_it->second.size());
-        }
-        else
-        {
-            LOG_DEBUG("[HDF5ArchiveReadingAgent] start_time_file_name_map_ has {} entries, entry: <{}, {}> does not exist"
-                      , start_time_file_name_map_.size(), chronicle_name, story_name);
-        }
+        printStartTimeFileNameMapEntryCount(chronicle_name, story_name);
         return 0;
     }
 
