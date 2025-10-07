@@ -252,19 +252,28 @@ private:
         }
         auto chronicle_story_pair = std::make_pair(chronicle_name, story_name);
         auto it = start_time_file_name_map_.find(chronicle_story_pair);
-        if (it != start_time_file_name_map_.end())
+        if(it != start_time_file_name_map_.end())
         {
             it->second.erase(start_time);
             // Remove the chronicle-story entry if no more files exist for it
-            if (it->second.empty())
+            if(it->second.empty())
             {
                 start_time_file_name_map_.erase(it);
             }
         }
         LOG_DEBUG("[HDF5ArchiveReadingAgent] Removed file {} from start_time_file_name_map_.", file_name);
-        LOG_DEBUG("[HDF5ArchiveReadingAgent] start_time_file_name_map_ has {} entries, entry: <{}, {}> has {} files"
-                  , start_time_file_name_map_.size(), chronicle_name, story_name
-                  , start_time_file_name_map_[std::make_pair(chronicle_name, story_name)].size());
+        auto entry_it = start_time_file_name_map_.find(std::make_pair(chronicle_name, story_name));
+        if(entry_it != start_time_file_name_map_.end())
+        {
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] start_time_file_name_map_ has {} entries, entry: <{}, {}> has {} files"
+                      , start_time_file_name_map_.size(), chronicle_name, story_name
+                      , entry_it->second.size());
+        }
+        else
+        {
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] start_time_file_name_map_ has {} entries, entry: <{}, {}> does not exist"
+                      , start_time_file_name_map_.size(), chronicle_name, story_name);
+        }
         return 0;
     }
 
