@@ -49,8 +49,8 @@ WORKDIR /home/$USERNAME
 
 # Get ChronoLog
 RUN cd \
- && git clone https://github.com/grc-iit/ChronoLog.git chronolog_repo\
- && cd chronolog_repo \
+ && git clone https://github.com/grc-iit/ChronoLog.git chronolog-repo\
+ && cd chronolog-repo \
  && git switch develop \
  && git pull
 
@@ -59,17 +59,9 @@ RUN cd \
  && git clone --branch v0.21.2 https://github.com/spack/spack.git \
  && export SPACK_ROOT=$(pwd)/spack \
  && source spack/share/spack/setup-env.sh \
- && cd chronolog_repo \
- && spack env activate -p . \
- && spack install -v \
- && mkdir -p build \
- && cd build \
- && export USER=$(whoami) \
- && cmake -DCMAKE_BUILD_TYPE=Release -DINSTALL_DIR=/home/$USERNAME/chronolog_install .. \
- && make -j \
- && cd ../deploy \
- # && ./local_single_user_deploy.sh -b --install-dir ~/chronolog_install/Release \
- && ./local_single_user_deploy.sh -i --work-dir ~/chronolog_install/Release
+ && cd chronolog-repo \
+ && ./tools/deploy/ChronoLog/local_single_user_deploy.sh -b \
+ && ./tools/deploy/ChronoLog/local_single_user_deploy.sh -i
 
 # Source Spack on each shell
 RUN cd \

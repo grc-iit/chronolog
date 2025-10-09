@@ -24,7 +24,7 @@ jobs:
             chronolog-ci \
             bash -c '
               set -e
-              export INSTALL_BASE="${HOME}/chronolog-install/Debug"
+              export INSTALL_BASE="${HOME}/chronolog-install"
 
               ##################################
               # Step 1: Spack Environment
@@ -39,11 +39,10 @@ jobs:
               ##################################
               echo "[2/6] Building ChronoLog..."
               if [ -x /workspace/tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
-                cd /workspace/tools/deploy/ChronoLog
-                ./local_single_user_deploy.sh --build --build-type Debug --install-dir "${HOME}/chronolog-install/"
                 cd /workspace
+                ./tools/deploy/ChronoLog/local_single_user_deploy.sh -b
               else
-                echo "❌ Deploy script not found or not executable"
+                echo "❌ Build script not found or not executable"
                 exit 1
               fi
 
@@ -52,14 +51,13 @@ jobs:
               ##################################
               echo "[3/6] Installing ChronoLog..."
               if [ -x /workspace/tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
-                cd /workspace/tools/deploy/ChronoLog
-                ./local_single_user_deploy.sh -i -w "${INSTALL_BASE}"
                 cd /workspace
+                ./tools/deploy/ChronoLog/local_single_user_deploy.sh -i
               else
-                echo "❌ Deploy script not found or not executable"
+                echo "❌ Install script not found or not executable"
                 exit 1
               fi
-              ls -l "${INSTALL_BASE}"
+              ls -l "${INSTALL_BASE}/chronolog"
 
               ##################################
               # Step 4: Post-Install Verification
@@ -70,9 +68,9 @@ jobs:
               echo "LD_LIBRARY_PATH is: $LD_LIBRARY_PATH"
               echo "PATH is: $PATH"
 
-              if [ -d "${INSTALL_BASE}/bin" ]; then
+              if [ -d "${INSTALL_BASE}/chronolog/bin" ]; then
                 echo "✅ bin directory is found!"
-                ls -l "${INSTALL_BASE}/bin"
+                ls -l "${INSTALL_BASE}/chronolog/bin"
               else
                 echo "❌ Install failed — bin directory not found"
                 exit 1
@@ -84,14 +82,14 @@ jobs:
 
               for exe in "${main_binaries[@]}"; do
                 ldd_log="/tmp/ldd_$exe.txt"
-                if [ ! -x "${INSTALL_BASE}/bin/$exe" ]; then
+                if [ ! -x "${INSTALL_BASE}/chronolog/bin/$exe" ]; then
                   echo "❌ $exe is missing or not executable in bin folder!"
                   continue
                 else
                   echo "✅ $exe is present and executable."
                 fi
                 echo "---- Checking dependencies for $exe ----"
-                ldd "${INSTALL_BASE}/bin/$exe" > "$ldd_log"
+                ldd "${INSTALL_BASE}/chronolog/bin/$exe" > "$ldd_log"
                 if grep "not found" "$ldd_log"; then
                   echo "❌ $exe is missing one or more shared libraries!"
                   echo "----- ldd output for $exe -----"
@@ -123,9 +121,8 @@ jobs:
               ##################################
               echo "[5/6] Deploying ChronoLog..."
               if [ -x /workspace/tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
-                cd /workspace/tools/deploy/ChronoLog
-                ./local_single_user_deploy.sh -d -k 5 -r 3 -w "${INSTALL_BASE}"
                 cd /workspace
+                ./tools/deploy/ChronoLog/local_single_user_deploy.sh -d -k 5 -r 3 -w "${INSTALL_BASE}/chronolog"
               else
                 echo "❌ Deploy script not found or not executable"
                 exit 1
@@ -168,8 +165,8 @@ jobs:
               else
                 echo "❌ Deployment incomplete — some components are not running or wrong count."
                 echo "==== Dumping monitor logs ===="
-                if [ -d "${INSTALL_BASE}/monitor" ]; then
-                  for log in "${INSTALL_BASE}/monitor/"*; do
+                if [ -d "${INSTALL_BASE}/chronolog/monitor" ]; then
+                  for log in "${INSTALL_BASE}/chronolog/monitor/"*; do
                     echo "==== $log ===="
                     cat "$log"
                   done

@@ -23,5 +23,5 @@ target_link_libraries(py_chronolog_client PUBLIC
 ###################################
 # Install targets
 ##################################
-install(TARGETS py_chronolog_client DESTINATION lib)
+chronolog_install_target(py_chronolog_client)
 
