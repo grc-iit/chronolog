@@ -1,7 +1,12 @@
-# ChronoKVS Integration Test CMakeLists.txt
+cmake_minimum_required(VERSION 3.25)
 
 # Find required packages
 find_package(Threads REQUIRED)
+
+#message("ChronoKVS Integration Test CMakeLists - CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}")
+#message("ChronoKVS Integration Test CMakeLists - CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
+message("Building CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
+message("Build target: ChronoKVS Integration Test")
 
 # Create the integration test executable
 add_executable(chronokvs_integration_test
@@ -22,15 +27,11 @@ target_include_directories(chronokvs_integration_test PRIVATE
 # Set C++ standard
 target_compile_features(chronokvs_integration_test PRIVATE cxx_std_17)
 
-# Compiler-specific options
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    target_compile_options(chronokvs_integration_test PRIVATE
-        -Wall
-        -Wextra
-        -Wpedantic
-        -Werror
-    )
-endif()
+# Set target properties for proper RPATH handling (following project pattern)
+set_target_properties(chronokvs_integration_test PROPERTIES
+    BUILD_WITH_INSTALL_RPATH TRUE
+    SKIP_BUILD_RPATH TRUE
+)
 
 # Add test to CTest
 add_test(NAME chronokvs_integration_test
@@ -44,14 +45,5 @@ set_tests_properties(chronokvs_integration_test PROPERTIES
     LABELS "integration;chronokvs"
 )
 
-# Set target properties for proper RPATH handling
-set_target_properties(chronokvs_integration_test PROPERTIES
-    BUILD_WITH_INSTALL_RPATH TRUE
-    SKIP_BUILD_RPATH TRUE
-)
-
-# Install the test executable
-install(
-    TARGETS chronokvs_integration_test
-    DESTINATION bin
-)
+# Install the test executable using the project's standard function
+chronolog_install_target(chronokvs_integration_test)
