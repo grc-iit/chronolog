@@ -4,8 +4,9 @@
 set -e
 
 # Default values and color codes
-BUILD_TYPE=""
+BUILD_TYPE="Release"  # Default build type
 INSTALL_PATH=""  # Installation path is optional and starts empty
+BUILD_BASE_DIR="$HOME/chronolog-build"  # Base build directory
 REPO_ROOT="$(realpath "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../")"
 
 ERR='\033[7;37m\033[41m'
@@ -14,26 +15,57 @@ DEBUG='\033[0;33m'
 NC='\033[0m' # No Color
 
 usage() {
-    echo "Usage: $0 -type <BuildType> [-install-path <Path>]"
-    echo "Example: $0 -type Debug"
-    echo "         $0 -type Release -install-path /custom/install/path"
+    echo "Usage: $0 [options]"
+    echo ""
+    echo "Options:"
+    echo "  -h|--help           Display this help and exit"
+    echo ""
+    echo "Build Options:"
+    echo "  -t|--build-type <Debug|Release>  Define type of build (default: Release)"
+    echo "  -B|--build-dir <path>            Set the build directory (default: $HOME/chronolog-build/)"
+    echo "  -I|--install-dir <path>          Set the installation directory (default: $HOME/chronolog-install/)"
+    echo ""
+    echo "Examples:"
+    echo ""
+    echo "  1) Build ChronoLog in Release mode (default):"
+    echo "     $0"
+    echo ""
+    echo "  2) Build ChronoLog in Debug mode:"
+    echo "     $0 --build-type Debug"
+    echo ""
+    echo "  3) Build ChronoLog in Release mode with custom install directory:"
+    echo "     $0 --install-dir /custom/install/path"
+    echo ""
+    echo "  4) Build ChronoLog in Debug mode with custom build directory:"
+    echo "     $0 --build-type Debug --build-dir /custom/build/path"
+    echo ""
     exit 1
 }
 
 parse_arguments() {
     while [[ "$#" -gt 0 ]]; do
-        case $1 in
-            -type) BUILD_TYPE="$2"; shift ;;
-            -install-path) INSTALL_PATH="$2"; shift ;;
-            *) echo "Unknown parameter passed: $1"; usage ;;
+        case "$1" in
+            -h|--help)
+                usage
+                shift ;;
+            -t|--build-type)
+                BUILD_TYPE="$2"
+                if [[ "$BUILD_TYPE" != "Debug" && "$BUILD_TYPE" != "Release" ]]; then
+                    echo -e "${ERR}Invalid build type: $BUILD_TYPE. Must be 'Debug' or 'Release'.${NC}"
+                    usage
+                fi
+                shift 2 ;;
+            -B|--build-dir)
+                BUILD_BASE_DIR=$(realpath -m "$2")
+                shift 2 ;;
+            -I|--install-dir)
+                INSTALL_PATH=$(realpath -m "$2")
+                shift 2 ;;
+            *) 
+                echo -e "${ERR}Unknown option: $1${NC}"
+                usage ;;
         esac
-        shift
     done
-
-    # Validate BUILD_TYPE
-    if [[ -z "$BUILD_TYPE" || ! "$BUILD_TYPE" =~ ^(Debug|Release)$ ]]; then
-        usage
-    fi
 
     # Optional: Validate INSTALL_PATH if specified
     if [[ -n "$INSTALL_PATH" && ! -d "$(dirname "$INSTALL_PATH")" ]]; then
@@ -80,31 +112,33 @@ check_spack() {
 }
 
 prepare_build_directory() {
-    if [ -d "$REPO_ROOT/build" ]; then
-        echo -e "${DEBUG}Build directory exists. Removing it...${NC}"
-        rm -rf "$REPO_ROOT/build"
-    fi
-    mkdir "$REPO_ROOT/build"
-    cd "$REPO_ROOT/build"
+    BUILD_DIR="$BUILD_BASE_DIR/$BUILD_TYPE"
+    mkdir -p "$BUILD_DIR"
+    cd "$BUILD_DIR"
 }
 
 build_project() {
     echo -e "${INFO}Building ChronoLog in ${BUILD_TYPE} mode.${NC}"
+
+    # Configure (always)
     if [[ -n "$INSTALL_PATH" ]]; then
-        echo -e "${DEBUG}Using installation path: ${INSTALL_PATH}${NC}"
-        cmake -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" -DINSTALL_DIR="${INSTALL_PATH}" ..
+        echo -e "${DEBUG}Using installation prefix: ${INSTALL_PATH}${NC}"
+        cmake -S "${REPO_ROOT}" -B . -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" -DCMAKE_INSTALL_PREFIX="${INSTALL_PATH}"
     else
-        echo -e "${DEBUG}No installation path specified, using default CMake settings [~/home/$USER/chronolog].${NC}"
-        cmake -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" ..
+        echo -e "${DEBUG}No installation path specified; using CMake defaults (your CMakeLists sets $HOME/chronolog-install).${NC}"
+        cmake -S "${REPO_ROOT}" -B . -DCMAKE_BUILD_TYPE="${BUILD_TYPE}"
     fi
-    make all
-    echo -e "${DEBUG}ChronoLog Built in ${BUILD_TYPE} mode${NC}"
+
+    # Build (portable + parallel)
+    cmake --build . --parallel $(nproc)
+
+    echo -e "${DEBUG}ChronoLog built in ${BUILD_TYPE} mode${NC}"
 }
 
 # Main function
 main() {
-    echo -e "${INFO}Building ChronoLog...${NC}"
     parse_arguments "$@"
+    echo -e "${INFO}Building ChronoLog...${NC}"
     cd ${REPO_ROOT}
     activate_spack_environment
     check_spack

@@ -3,6 +3,9 @@ cmake_minimum_required(VERSION 3.25)
 find_package(OpenMP)
 find_package(MPI)
 
+# Option to install test binaries
+option(CHRONOLOG_INSTALL_TESTS "Install test binaries" OFF)
+
 #message("ClientExamples CMakeLists - CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}")
 #message("ClientExamples CMakeLists - CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
 message("Building CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
@@ -51,14 +54,10 @@ foreach(client ${client_mpi})
     )
 endforeach()
 
-# install binaries
-install(
-    TARGETS ${client_examples} DESTINATION bin
-)
-
-# install client configuration file
-install(
-    FILES ${CMAKE_SOURCE_DIR}/default_client_conf.json.in
-    DESTINATION ${CHRONOLOG_INSTALL_CONF_DIR}
-    RENAME default_client_conf.json
-)
+# install binaries (only if tests are enabled)
+if(CHRONOLOG_INSTALL_TESTS)
+    foreach(client ${client_examples})
+        chronolog_install_target(${client})
+    endforeach()
+    
+endif()

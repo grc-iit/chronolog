@@ -11,24 +11,25 @@ NC='\033[0m' # No Color
 NUM_KEEPERS=1
 NUM_RECORDING_GROUPS=1
 BUILD_TYPE="Release"
+BUILD_DIR="$HOME/chronolog-build"
+INSTALL_DIR="$HOME/chronolog-install"
+WORK_DIR="$INSTALL_DIR/chronolog"
 
-# Directories
-WORK_DIR=""
-LIB_DIR=""
-CONF_DIR=""
-BIN_DIR=""
-MONITOR_DIR=""
-OUTPUT_DIR=""
-INSTALL_DIR=""
+# Directories (with defaults)
+LIB_DIR="$WORK_DIR/lib"
+CONF_DIR="$WORK_DIR/conf"
+BIN_DIR="$WORK_DIR/bin"
+MONITOR_DIR="$WORK_DIR/monitor"
+OUTPUT_DIR="$WORK_DIR/output"
 REPO_ROOT="$(realpath "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../")"
 
-# Files
-VISOR_BIN="${BIN_DIR}/chronovisor_server"
-KEEPER_BIN="${BIN_DIR}/chrono_keeper"
-GRAPHER_BIN="${BIN_DIR}/chrono_grapher"
-PLAYER_BIN="${BIN_DIR}/chrono_player"
-CONF_FILE="${CONF_DIR}/default_conf.json"
-CLIENT_CONF_FILE="${CONF_DIR}/default_conf.json"
+# Files (with defaults)
+VISOR_BIN="$WORK_DIR/bin/chronovisor_server"
+KEEPER_BIN="$WORK_DIR/bin/chrono_keeper"
+GRAPHER_BIN="$WORK_DIR/bin/chrono_grapher"
+PLAYER_BIN="$WORK_DIR/bin/chrono_player"
+CONF_FILE="$WORK_DIR/conf/default_conf.json"
+CLIENT_CONF_FILE="$WORK_DIR/conf/default_client_conf.json"
 
 #Booleans
 build=false
@@ -85,8 +86,6 @@ stop_service() {
     done
     echo ""
 }
-
-
 
 generate_config_files() {
     local num_keepers=$1
@@ -238,7 +237,7 @@ generate_config_files() {
 }
 
 check_dependencies() {
-    local dependencies=("jq" "ldd" "nohup" "pkill" "readlink")
+    local dependencies=("jq" "ldd" "nohup" "pkill" "readlink" "realpath" "chrpath")
     echo -e "${DEBUG}Checking required dependencies...${NC}"
     for dep in "${dependencies[@]}"; do
         if ! command -v $dep &> /dev/null; then
@@ -273,21 +272,6 @@ check_files() {
     echo -e "${DEBUG}All required files are in place.${NC}"
 }
 
-check_build_directory() {
-    local build_dir="${REPO_ROOT}/build"       # Navigate to build/ in the root dir of the repo
-
-    build_dir=$(realpath "${build_dir}" 2>/dev/null || echo "")
-
-    echo -e "${DEBUG}Checking for the existence of the build directory: ${build_dir}${NC}"
-
-    if [ -d "${build_dir}" ]; then
-        echo -e "${DEBUG}Build directory found: ${build_dir}${NC}"
-    else
-        echo -e "${ERR}Build directory not found at: ${build_dir}${NC}"
-        echo "Please ensure the build process has been completed successfully before proceeding."
-        exit 1
-    fi
-}
 
 check_installation() {
     check_dependencies
@@ -296,11 +280,10 @@ check_installation() {
 }
 
 check_work_dir() {
-    # Check if WORK_DIR is set
+    # Set default WORK_DIR if not provided
     if [[ -z "${WORK_DIR}" ]]; then
-        echo -e "${ERR}WORK_DIR is mandatory on this mode. Please provide it using the -w or --work-dir option.${NC}"
-        usage
-        exit 1
+        WORK_DIR="$HOME/chronolog-install/chronolog"
+        echo -e "${DEBUG}Using default work directory: ${WORK_DIR}${NC}"
     fi
 }
 
@@ -320,21 +303,33 @@ check_execution_stopped() {
 
 # Main functions __________________________________________________________________________________________________________
 build() {
+    local build_args=("${REPO_ROOT}/tools/deploy/ChronoLog/build.sh" "-t" "$BUILD_TYPE" "-B" "$BUILD_DIR")
+    
     if [[ -n "$INSTALL_DIR" ]]; then
-        "${REPO_ROOT}/tools/deploy/ChronoLog/build.sh" -type "$BUILD_TYPE" -install-path "$INSTALL_DIR"
+        build_args+=("-I" "$INSTALL_DIR")
+    fi
+    
+    echo -e "${DEBUG}Running: ${build_args[*]}${NC}"
+    if [[ -x "${REPO_ROOT}/tools/deploy/ChronoLog/build.sh" ]]; then
+        "${build_args[@]}"
     else
-        "${REPO_ROOT}/tools/deploy/ChronoLog/build.sh" -type "$BUILD_TYPE"
+        echo -e "${ERR}Error: ${REPO_ROOT}/tools/deploy/ChronoLog/build.sh is not executable or not found.${NC}"
+        exit 1
     fi
 }
 
 install() {
-    check_work_dir
-    check_build_directory
-    install_script="${REPO_ROOT}/tools/deploy/ChronoLog/install.sh"
-    if [[ -x "$install_script" ]]; then
-        "$install_script" --lib-dir "${LIB_DIR}" --bin-dir "${BIN_DIR}"
+    local install_args=("${REPO_ROOT}/tools/deploy/ChronoLog/install.sh" "-t" "$BUILD_TYPE" "-B" "$BUILD_DIR")
+    
+    if [[ -n "$INSTALL_DIR" ]]; then
+        install_args+=("-I" "$INSTALL_DIR")
+    fi
+    
+    echo -e "${DEBUG}Running: ${install_args[*]}${NC}"
+    if [[ -x "${REPO_ROOT}/tools/deploy/ChronoLog/install.sh" ]]; then
+        "${install_args[@]}"
     else
-        echo -e "${RED}Error: $install_script is not executable or not found.${NC}"
+        echo -e "${ERR}Error: ${REPO_ROOT}/tools/deploy/ChronoLog/install.sh is not executable or not found.${NC}"
         exit 1
     fi
 }
@@ -412,16 +407,17 @@ usage() {
     echo "  -c|--clean          Clean ChronoLog logging artifacts (default: false)"
     echo "  Note: Only one execution mode can be selected per run."
     echo ""
-    echo "Build Options:"
-    echo "  -t|--build-type <Debug|Release>  Define type of build (default: Release) [Modes: Build]"
-    echo "  -l|--install-dir <path>          Define installation directory (default: /home/$USER/chronolog/BUILD_TYPE) [Modes: Build]"
+    echo "Build & Install Options:"
+    echo "  -t|--build-type <Debug|Release>  Define type of build (default: Release) [Modes: Build, Install]"
+    echo "  -B|--build-dir <path>            Set the build directory (default: $HOME/chronolog-build/) [Modes: Build, Install]"
+    echo "  -I|--install-dir <path>          Set the installation directory (default: $HOME/chronolog-install/) [Modes: Build, Install]"
     echo ""
     echo "Deployment Options:"
     echo "  -k|--keepers <number>            Set the total number of keeper processes. They will be assigned iteratively to the recording groups (default: 1)[Modes: Start]"
     echo "  -r|--record-groups <number>      Set the number of recording groups or grapher processes (default: 1)[Modes: Start]"
     echo ""
     echo "Directory Settings:"
-    echo "  -w|--work-dir <path>             Set the working directory (Mandatory) [Modes: Install, Start, Stop, Clean]"
+    echo "  -w|--work-dir <path>             Set the working directory (default: $HOME/chronolog-install/chronolog) [Modes: Start, Stop, Clean]"
     echo "  -m|--monitor-dir <path>          Set the monitor directory (default: work_dir/monitor) [Modes: Start]"
     echo "  -u|--output-dir <path>           Set the output directory (default: work_dir/output) [Modes: Start]"
     echo ""
@@ -435,28 +431,27 @@ usage() {
     echo "  -f|--conf-file <path>            Path to the configuration file (default: work_dir/conf/default_conf.json) [Modes: Start]"
     echo "  -n|--client-conf-file <path>     Path to the client configuration file (default: work_dir/conf/default_client_conf.json) [Modes: Start]"
     echo ""
-    echo "Examples (Assume installing a Debug build to ~/chronolog_install):"
+    echo "Examples (Assume installing a Debug build to ~/chronolog-install):"
     echo ""
-    echo "  1) Builds ChronoLog in Debug mode and installs it to ~/chronolog_install:"
-    echo "     $0 --build --build-type Debug --install-dir ~/chronolog_install"
+    echo "  1) Builds ChronoLog in Debug mode and installs it to ~/chronolog-install:"
+    echo "     $0 --build --build-type Debug --install-dir ~/chronolog-install"
     echo ""
-    echo "  2) Installs ChronoLog to the working directory (~/chronolog_install/Debug):"
-    echo "     $0 --install --work-dir ~/chronolog_install/Debug"
+    echo "  2) Installs ChronoLog to the working directory (~/chronolog-install):"
+    echo "     $0 --install --install-dir ~/chronolog-install"
     echo ""
     echo "  3) Starts a ChronoLog deployment using the default configuration and paths,"
-    echo "     with binaries from the working directory ~/chronolog_install/Debug:"
-    echo "     $0 --start --work-dir ~/chronolog_install/Debug"
+    echo "     with binaries from the working directory ~/chronolog-install:"
+    echo "     $0 --start --work-dir ~/chronolog-install/chronolog"
     echo ""
     echo "  4) Starts a ChronoLog deployment with 5 keeper processes and 2 grapher processes,"
-    echo "     using the working directory ~/chronolog_install/Debug:"
-    echo "     $0 -d -k 5 -r 2 --work-dir ~/chronolog_install/Debug"
+    echo "     using the working directory ~/chronolog-install/chronolog:"
+    echo "     $0 --start --keepers 5 --record-groups 2 --work-dir ~/chronolog-install/chronolog"
     echo ""
-    echo "  5) Stops the ChronoLog deployment using the working directory ~/chronolog_install/Debug:"
-    echo "     $0 -s --work-dir ~/chronolog_install/Debug"
+    echo "  5) Stops the ChronoLog deployment using the working directory ~/chronolog-install/chronolog:"
+    echo "     $0 --stop --work-dir ~/chronolog-install/chronolog"
     echo ""
     exit 1
 }
-
 
 parse_args() {
     while [[ "$#" -gt 0 ]]; do
@@ -491,8 +486,11 @@ parse_args() {
                     usage
                 fi
                 shift 2 ;;
-            -l|--install-dir)
-                INSTALL_DIR=$(realpath "$2")
+            -B|--build-dir)
+                BUILD_DIR=$(realpath -m "$2")
+                shift 2 ;;
+            -I|--install-dir)
+                INSTALL_DIR=$(realpath -m "$2")
                 shift 2 ;;
             -k|--keepers)
                 NUM_KEEPERS="$2"
@@ -515,29 +513,29 @@ parse_args() {
                 MONITOR_DIR=${WORK_DIR}/monitor
                 shift 2 ;;
             -u|--output-dir)
-                OUTPUT_DIR=$(realpath "$2")
+                OUTPUT_DIR=$(realpath -m "$2")
                 shift 2 ;;
             -m|--monitor-dir)
-                MONITOR_DIR=$(realpath "$2")
+                MONITOR_DIR=$(realpath -m "$2")
                 shift 2 ;;
             -v|--visor-bin)
-                VISOR_BIN=$(realpath "$2")
+                VISOR_BIN=$(realpath -m "$2")
                 shift 2 ;;
             -g|--grapher-bin)
-                GRAPHER_BIN=$(realpath "$2")
+                GRAPHER_BIN=$(realpath -m "$2")
                 shift 2 ;;
             -p|--keeper-bin)
-                KEEPER_BIN=$(realpath "$2")
+                KEEPER_BIN=$(realpath -m "$2")
                 shift 2 ;;
             -a|--player-bin)
-                PLAYER_BIN=$(realpath "$2")
+                PLAYER_BIN=$(realpath -m "$2")
                 shift 2 ;;
             -f|--conf-file)
-                CONF_FILE=$(realpath "$2")
+                CONF_FILE=$(realpath -m "$2")
                 CONF_DIR=$(dirname ${CONF_FILE})
                 shift 2 ;;
             -n|--client-conf-file)
-                CLIENT_CONF_FILE=$(realpath "$2")
+                CLIENT_CONF_FILE=$(realpath -m "$2")
                 shift 2 ;;
             *) echo -e "${ERR}Unknown option: $1${NC}"; usage ;;
         esac

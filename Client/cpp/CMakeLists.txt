@@ -43,15 +43,13 @@ set(PUBLIC_HEADER_FILES
     include/chrono_monitor.h
 )
 
-# install library
-install(
-    TARGETS chronolog_client DESTINATION lib
+# Set PUBLIC_HEADER property for automatic installation
+set_target_properties(chronolog_client PROPERTIES
+    PUBLIC_HEADER "${PUBLIC_HEADER_FILES}"
 )
 
-# Install header files
-install(
-    FILES ${PUBLIC_HEADER_FILES} DESTINATION include
-)
+# install library and headers
+chronolog_install_target(chronolog_client)
 
 # install client configuration file
 install(
