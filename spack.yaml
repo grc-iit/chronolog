@@ -11,3 +11,17 @@ spack:
   - py-pybind11@2.11.1
   - googletest@1.12.1  cxxstd=17
   view: true
+  compilers:
+  - compiler:
+      spec: gcc@=13.3.0
+      paths:
+        cc: /usr/bin/gcc
+        cxx: /usr/bin/g++
+        f77: null
+        fc: null
+      flags: {}
+      operating_system: ubuntu24.04
+      target: aarch64
+      modules: []
+      environment: {}
+      extra_rpaths: []

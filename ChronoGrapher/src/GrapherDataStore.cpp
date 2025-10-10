@@ -169,7 +169,7 @@ void chronolog::GrapherDataStore::dataCollectionTask()
         for(int i = 0; i < 6; ++i)
         {
             collectIngestedEvents();
-            sleep(10);
+            sleep(1);
         }
         extractDecayedStoryChunks();
         retireDecayedPipelines();
