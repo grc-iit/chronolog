@@ -178,7 +178,7 @@ void chronolog::KeeperDataStore::dataCollectionTask()
         for(int i = 0; i < 6; ++i)
         {
             collectIngestedEvents();
-            sleep(1);
+            sleep(10);
         }
         extractDecayedStoryChunks();
         retireDecayedPipelines();
