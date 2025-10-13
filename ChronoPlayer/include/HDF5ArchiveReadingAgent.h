@@ -6,15 +6,11 @@
 #include <map>
 #include <filesystem>
 #include <thallium.hpp>
-#include <utility>
 #include <chrono>
 #include <vector>
-#include <thread>
-#include <fstream>
 #include <algorithm>
 #include <atomic>
 #include <unistd.h> // Required for access()
-#include <sys/stat.h> // Required for stat()
 
 #include <StoryChunkIngestionQueue.h>
 
