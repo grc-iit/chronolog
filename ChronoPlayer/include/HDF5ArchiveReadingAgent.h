@@ -197,12 +197,12 @@ private:
 
     void printStartTimeFileNameMapEntryCount(const std::string &chronicle_name, const std::string &story_name)
     {
-        auto entry_it = start_time_file_name_map_.find(std::make_pair(chronicle_name, story_name));
-        if(entry_it != start_time_file_name_map_.end())
+        auto chronicle_story_it = start_time_file_name_map_.find(std::make_pair(chronicle_name, story_name));
+        if(chronicle_story_it != start_time_file_name_map_.end())
         {
             LOG_DEBUG("[HDF5ArchiveReadingAgent] start_time_file_name_map_ has {} entries, entry: <{}, {}> has {} files"
                       , start_time_file_name_map_.size(), chronicle_name, story_name
-                      , entry_it->second.size());
+                      , chronicle_story_it->second.size());
         }
         else
         {
@@ -249,8 +249,8 @@ private:
         uint64_t start_time = getStartTime(file_name);
         if(start_time == 0)
         {
-            LOG_DEBUG("[HDF5ArchiveReadingAgent] Failed to extract start time from file: {}. Skipping this file.",
-                      file_name);
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] Failed to extract start time from file: {}. Skipping this file."
+                      , file_name);
             return -1; // Skip files with invalid start time
         }
         std::string file_name_number = fs::path(file_name).replace_extension("").extension().string().substr(1);
@@ -261,15 +261,13 @@ private:
             return -1; // Skip files that already exist in the map
         }
         auto chronicle_story_pair = std::make_pair(chronicle_name, story_name);
-        auto it = start_time_file_name_map_.find(chronicle_story_pair);
-        if(it != start_time_file_name_map_.end())
+        auto chronicle_story_it = start_time_file_name_map_.find(chronicle_story_pair);
+        if(chronicle_story_it != start_time_file_name_map_.end())
         {
-            it->second.erase(start_time);
+            chronicle_story_it->second.erase(start_time);
             // Remove the chronicle-story entry if no more files exist for it
-            if(it->second.empty())
-            {
-                start_time_file_name_map_.erase(it);
-            }
+            if(chronicle_story_it->second.empty())
+            { start_time_file_name_map_.erase(chronicle_story_it); }
         }
         LOG_DEBUG("[HDF5ArchiveReadingAgent] Removed file {} from start_time_file_name_map_.", file_name);
         printStartTimeFileNameMapEntryCount(chronicle_name, story_name);
@@ -280,8 +278,8 @@ private:
     {
         removeFileFromStartTimeFileNameMap(old_file_name);
         addFileToStartTimeFileNameMap(new_file_name);
-        LOG_DEBUG("[HDF5ArchiveReadingAgent] Renamed file {} to {} in start_time_file_name_map_.",
-                  old_file_name, new_file_name);
+        LOG_DEBUG("[HDF5ArchiveReadingAgent] Renamed file {} to {} in start_time_file_name_map_."
+                  , old_file_name, new_file_name);
         return 0;
     }
 
