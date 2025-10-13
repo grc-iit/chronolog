@@ -39,7 +39,22 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y wget gnupg software-properties-common
-          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+          
+          # Download and verify the LLVM GPG key fingerprint before trusting
+          wget -O /tmp/llvm-snapshot.gpg.key https://apt.llvm.org/llvm-snapshot.gpg.key
+          EXPECTED_FINGERPRINT="6084F3CF814B57C1CF12EFD515CF4D18AF4F7421"
+          ACTUAL_FINGERPRINT=$(gpg --with-colons --show-keys /tmp/llvm-snapshot.gpg.key | grep '^fpr' | head -n1 | cut -d: -f10)
+          
+          if [ "$ACTUAL_FINGERPRINT" = "$EXPECTED_FINGERPRINT" ]; then
+            echo "GPG key fingerprint verified successfully"
+            sudo cp /tmp/llvm-snapshot.gpg.key /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+          else
+            echo "GPG key fingerprint does not match!" >&2
+            echo "Expected: $EXPECTED_FINGERPRINT" >&2
+            echo "Actual: $ACTUAL_FINGERPRINT" >&2
+            exit 1
+          fi
+          
           sudo add-apt-repository -y "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main"
           sudo apt-get update
           sudo apt-get install -y clang-format-18
@@ -57,16 +72,20 @@ jobs:
             HEAD_SHA="${{ github.event.pull_request.head.sha }}"
             
             # Ensure we have the commits
-            git fetch origin "$BASE_SHA" || true
-            git fetch origin "$HEAD_SHA" || true
+            if ! git fetch origin "$BASE_SHA"; then
+              echo "Warning: git fetch for BASE_SHA ($BASE_SHA) failed." >&2
+            fi
+            if ! git fetch origin "$HEAD_SHA"; then
+              echo "Warning: git fetch for HEAD_SHA ($HEAD_SHA) failed." >&2
+            fi
             
             # Use the actual PR head, not the merge commit
-            git diff --name-only --diff-filter=ACMRT "$BASE_SHA" "$HEAD_SHA" | \
+            git diff --name-only --diff-filter=ACMR "$BASE_SHA" "$HEAD_SHA" | \
               grep -E '\.(cpp|h|hpp|cc|cxx|c)$' > changed_files.txt || true
 
             # Fallback: use origin/base...HEAD if no files detected
             if [ ! -s changed_files.txt ]; then
-              git diff --name-only --diff-filter=ACMRT origin/${{ github.base_ref }}...HEAD | \
+              git diff --name-only --diff-filter=ACMR origin/${{ github.base_ref }}...HEAD | \
                 grep -E '\.(cpp|h|hpp|cc|cxx|c)$' > changed_files.txt || true
             fi
           else
@@ -180,6 +199,7 @@ jobs:
             
             // Resolve artifact URL for this workflow run
             const runId = context.runId;
+            const runPageUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${runId}`;
             let artifactUrl = '';
             try {
               const { data } = await github.rest.actions.listWorkflowRunArtifacts({
@@ -216,12 +236,14 @@ jobs:
             if (artifactUrl) {
               commentBody += `1. **Download the patches** from the artifact: [clang-format-patches](${artifactUrl})\n`;
             } else {
-              const runPageUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${runId}`;
-              commentBody += `1. **Download the patches** from the run's artifacts: [Artifacts page](${runPageUrl}) (artifact name: \`clang-format-patches\`)\n`;
+              commentBody += `1. **Download the patches** from the workflow run artifacts:\n`;
+              commentBody += `   - Go to the [Actions run page](${runPageUrl})\n`;
+              commentBody += `   - Scroll down to the **Artifacts** section\n`;
+              commentBody += `   - Download \`clang-format-patches\`\n`;
             }
             commentBody += `2. **Apply the patches** to your local repository:\n`;
             commentBody += `   \`\`\`bash\n`;
-            commentBody += `   # Download and extract the artifact\n`;
+            commentBody += `   # Extract the downloaded artifact\n`;
             commentBody += `   # Then apply the combined patch:\n`;
             commentBody += `   git apply format_fixes.patch\n`;
             commentBody += `   \`\`\`\n\n`;
@@ -235,10 +257,9 @@ jobs:
             commentBody += `4. **Commit and push** the formatting changes\n\n`;
             commentBody += `> **Note:** This project uses clang-format-18. Different versions may format code differently.\n\n`;
             if (artifactUrl) {
-              commentBody += `### Format patches: [clang-format-patches](${artifactUrl}) ⬆️\n\n`;
+              commentBody += `### 📦 Format patches: [clang-format-patches](${artifactUrl}) | [Workflow run](${runPageUrl})\n\n`;
             } else {
-              const runPageUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${runId}`;
-              commentBody += `### Format patches are available in this run's artifacts: [Artifacts page](${runPageUrl}) ⬆️\n\n`;
+              commentBody += `### 📦 Format patches available in [workflow artifacts](${runPageUrl})\n\n`;
             }
             commentBody += `---\n`;
             commentBody += `*This check ensures consistent code style across the project.*`;
