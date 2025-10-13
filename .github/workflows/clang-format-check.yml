@@ -1,5 +1,13 @@
 name: Clang Format Check
 
+# This workflow checks C/C++ code formatting using clang-format-18
+# To format code locally, install clang-format-18:
+#   Ubuntu/Debian:
+#     wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+#     sudo add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main"
+#     sudo apt-get update && sudo apt-get install -y clang-format-18
+#   Then run: clang-format-18 -i -style=file:CodeStyleFiles/ChronoLog.clang-format <file>
+
 on:
   pull_request:
     branches: [ develop, main ]
@@ -16,29 +24,59 @@ jobs:
   clang-format-check:
     runs-on: ubuntu-22.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0  # Fetch full history for proper diff
 
-      - name: Install clang-format
+      - name: Install clang-format-18
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang-format
+          sudo apt-get install -y wget gnupg software-properties-common
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+          sudo add-apt-repository -y "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main"
+          sudo apt-get update
+          sudo apt-get install -y clang-format-18
 
       - name: Check clang-format version
-        run: clang-format --version
+        run: clang-format-18 --version
 
       - name: Find C/C++ files
         id: find-files
         run: |
           # Find all C/C++ files that are staged or modified in the PR
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            # Get the list of changed files in the PR
-            git diff --name-only --diff-filter=AM origin/${{ github.base_ref }}...HEAD | \
+            # Primary: use PR base/head SHAs
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+            echo "Base SHA: $BASE_SHA"
+            echo "Head SHA: $HEAD_SHA"
+            echo "Current HEAD: $(git rev-parse HEAD)"
+            echo "github.sha: ${{ github.sha }}"
+            
+            # Ensure we have the commits
+            git fetch origin "$BASE_SHA" || true
+            git fetch origin "$HEAD_SHA" || true
+            
+            # Use the actual PR head, not the merge commit
+            git diff --name-only --diff-filter=ACMRT "$BASE_SHA" "$HEAD_SHA" | \
               grep -E '\.(cpp|h|hpp|cc|cxx|c)$' > changed_files.txt || true
+            
+            echo "Files found via base..head SHA diff: $(wc -l < changed_files.txt 2>/dev/null || echo 0)"
+
+            # Secondary: changed-only using origin/base...HEAD (no repo-wide fallback)
+            if [ ! -s changed_files.txt ]; then
+              echo "No files detected via SHAs; trying origin/${{ github.base_ref }}...HEAD"
+              git diff --name-only --diff-filter=ACMRT origin/${{ github.base_ref }}...HEAD | \
+                grep -E '\.(cpp|h|hpp|cc|cxx|c)$' > changed_files.txt || true
+              echo "Files found via origin/base...HEAD: $(wc -l < changed_files.txt 2>/dev/null || echo 0)"
+            fi
           else
             # For other events, check all C/C++ files
             find . -name "*.cpp" -o -name "*.h" -o -name "*.hpp" -o -name "*.cc" -o -name "*.cxx" -o -name "*.c" | \
@@ -47,6 +85,22 @@ jobs:
           
           echo "Files to check:"
           cat changed_files.txt || echo "No C/C++ files found"
+          
+          echo ""
+          echo "=== DEBUG: Verifying files exist in working tree ==="
+          while IFS= read -r file; do
+            if [ -f "$file" ]; then
+              echo "✓ $file exists"
+              echo "  Line 46 (chronokvs) or 27 (pipeline):"
+              if [[ "$file" == *"chronokvs"* ]]; then
+                sed -n '46p' "$file" || true
+              elif [[ "$file" == *"Pipeline"* ]]; then
+                sed -n '27p' "$file" || true
+              fi
+            else
+              echo "✗ $file NOT FOUND"
+            fi
+          done < changed_files.txt
           
           # Count files
           file_count=$(wc -l < changed_files.txt 2>/dev/null || echo "0")
@@ -73,7 +127,7 @@ jobs:
               echo "Checking: $file"
               
               # Create formatted version
-              clang-format -style=file:CodeStyleFiles/ChronoLog.clang-format "$file" > "/tmp/formatted/$(echo "$file" | sed 's|/|_|g')"
+              clang-format-18 -style=file:CodeStyleFiles/ChronoLog.clang-format "$file" > "/tmp/formatted/$(echo "$file" | sed 's|/|_|g')"
               
               # Compare with original
               if ! diff -q "$file" "/tmp/formatted/$(echo "$file" | sed 's|/|_|g')" > /dev/null; then
@@ -108,7 +162,7 @@ jobs:
               echo "Generating patch for: $file"
               
               # Create formatted version
-              clang-format -style=file:CodeStyleFiles/ChronoLog.clang-format "$file" > "/tmp/formatted/$(echo "$file" | sed 's|/|_|g')"
+              clang-format-18 -style=file:CodeStyleFiles/ChronoLog.clang-format "$file" > "/tmp/formatted/$(echo "$file" | sed 's|/|_|g')"
               
               # Generate unified diff patch
               patch_file="format_patches/$(echo "$file" | sed 's|/|_|g').patch"
@@ -139,9 +193,26 @@ jobs:
         if: steps.format-check.outputs.has_format_issues == 'true' && github.event_name == 'pull_request'
         uses: actions/github-script@v7
         with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const fs = require('fs');
-            const path = require('path');
+            
+            // Resolve artifact URL for this workflow run
+            const runId = context.runId;
+            let artifactUrl = '';
+            try {
+              const { data } = await github.rest.actions.listWorkflowRunArtifacts({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                run_id: runId
+              });
+              const artifact = data.artifacts.find(a => a.name === 'clang-format-patches');
+              if (artifact) {
+                artifactUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${runId}/artifacts/${artifact.id}`;
+              }
+            } catch (e) {
+              console.log('Could not list artifacts for the run:', e.message);
+            }
             
             // Read the list of files with issues
             let issueFiles = [];
@@ -161,21 +232,33 @@ jobs:
             });
             
             commentBody += `\n### How to fix:\n\n`;
-            commentBody += `1. **Download the patches** from the "clang-format-patches" artifact above\n`;
+            if (artifactUrl) {
+              commentBody += `1. **Download the patches** from the artifact: [clang-format-patches](${artifactUrl})\n`;
+            } else {
+              const runPageUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${runId}`;
+              commentBody += `1. **Download the patches** from the run's artifacts: [Artifacts page](${runPageUrl}) (artifact name: \`clang-format-patches\`)\n`;
+            }
             commentBody += `2. **Apply the patches** to your local repository:\n`;
             commentBody += `   \`\`\`bash\n`;
             commentBody += `   # Download and extract the artifact\n`;
             commentBody += `   # Then apply the combined patch:\n`;
             commentBody += `   git apply format_fixes.patch\n`;
             commentBody += `   \`\`\`\n\n`;
-            commentBody += `3. **Or format manually** using clang-format:\n`;
+            commentBody += `3. **Or format manually** using clang-format-18:\n`;
             commentBody += `   \`\`\`bash\n`;
+            commentBody += `   # Ensure you have clang-format-18 installed (required for consistent formatting)\n`;
             issueFiles.forEach(file => {
-              commentBody += `   clang-format -i -style=file:CodeStyleFiles/ChronoLog.clang-format ${file}\n`;
+              commentBody += `   clang-format-18 -i -style=file:CodeStyleFiles/ChronoLog.clang-format ${file}\n`;
             });
             commentBody += `   \`\`\`\n\n`;
             commentBody += `4. **Commit and push** the formatting changes\n\n`;
-            commentBody += `### Format patches are available as artifacts above ⬆️\n\n`;
+            commentBody += `> **Note:** This project uses clang-format-18. Different versions may format code differently.\n\n`;
+            if (artifactUrl) {
+              commentBody += `### Format patches: [clang-format-patches](${artifactUrl}) ⬆️\n\n`;
+            } else {
+              const runPageUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${runId}`;
+              commentBody += `### Format patches are available in this run's artifacts: [Artifacts page](${runPageUrl}) ⬆️\n\n`;
+            }
             commentBody += `---\n`;
             commentBody += `*This check ensures consistent code style across the project.*`;
             
