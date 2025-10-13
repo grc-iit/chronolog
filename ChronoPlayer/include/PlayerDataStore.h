@@ -16,7 +16,7 @@ namespace chronolog
 {
 
 
-class PlayerDataStore
+class DataStore
 {
 
     enum DataStoreState
@@ -28,13 +28,13 @@ class PlayerDataStore
 
 
 public:
-    PlayerDataStore(StoryChunkIngestionQueue &ingestion_queue, StoryChunkExtractionQueue &extraction_queue)
+    DataStore(StoryChunkIngestionQueue &ingestion_queue, StoryChunkExtractionQueue &extraction_queue)
         : state(UNKNOWN)
         , theIngestionQueue(ingestion_queue)
         , theExtractionQueue(extraction_queue)
     {}
 
-    ~PlayerDataStore();
+    ~DataStore();
 
     bool is_running() const
     { return (RUNNING == state); }
@@ -60,9 +60,9 @@ public:
     void dataCollectionTask();
 
 private:
-    PlayerDataStore(PlayerDataStore const &) = delete;
+    DataStore(DataStore const &) = delete;
 
-    PlayerDataStore &operator=(PlayerDataStore const &) = delete;
+    DataStore &operator=(DataStore const &) = delete;
 
     DataStoreState state;
     std::mutex dataStoreStateMutex;

@@ -20,7 +20,7 @@ class PlayerStoreAdminService: public tl::provider <PlayerStoreAdminService>
 public:
     // Service should be created on the heap not the stack thus the constructor is private...
     static PlayerStoreAdminService*
-    CreatePlayerStoreAdminService(tl::engine &tl_engine, uint16_t service_provider_id, PlayerDataStore &dataStoreInstance)
+    CreatePlayerStoreAdminService(tl::engine &tl_engine, uint16_t service_provider_id, DataStore &dataStoreInstance)
     {
         return new PlayerStoreAdminService(tl_engine, service_provider_id, dataStoreInstance);
     }
@@ -61,7 +61,7 @@ public:
     }
 */
 private:
-    PlayerStoreAdminService(tl::engine &tl_engine, uint16_t service_provider_id, PlayerDataStore &data_store_instance)
+    PlayerStoreAdminService(tl::engine &tl_engine, uint16_t service_provider_id, DataStore &data_store_instance)
             : tl::provider <PlayerStoreAdminService>(tl_engine, service_provider_id), theDataStore(data_store_instance)
     {
         define("collection_service_available", &PlayerStoreAdminService::collection_service_available);
@@ -81,7 +81,7 @@ private:
 
     PlayerStoreAdminService &operator=(PlayerStoreAdminService const &) = delete;
 
-    PlayerDataStore &theDataStore;
+    DataStore &theDataStore;
 };
 
 }// namespace chronolog

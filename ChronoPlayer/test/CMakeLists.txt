@@ -23,6 +23,24 @@ set_target_properties(transfer_agent_test PROPERTIES
     SKIP_BUILD_RPATH TRUE
 )
 
+#### TransferAgentTest
+add_executable(extraction_test
+    ExtractionChainTest.cpp
+   # ${CMAKE_SOURCE_DIR}/ChronoPlayer/src/StoryChunkExtractionChain.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunk.cpp)
+
+target_include_directories(extraction_test PRIVATE
+    include
+    ${CMAKE_SOURCE_DIR}/ChronoPlayer/include
+    ${CMAKE_SOURCE_DIR}/chrono_common/include
+)
+target_link_libraries(extraction_test chronolog_client thallium)
+
+set_target_properties(extraction_test PROPERTIES
+    BUILD_WITH_INSTALL_RPATH TRUE
+    SKIP_BUILD_RPATH TRUE
+)
+
 #### PlaybackServiceTest
 add_executable(playback_service_test
     PlaybackServiceTest.cpp

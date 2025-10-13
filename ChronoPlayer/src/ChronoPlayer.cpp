@@ -135,7 +135,7 @@ int main(int argc, char**argv)
     chronolog::StoryChunkIngestionQueue ingestionQueue;
     chronolog::StoryChunkExtractionQueue extractionQueue;
 
-    chronolog::PlayerDataStore theDataStore(ingestionQueue, extractionQueue);
+    chronolog::DataStore theDataStore(ingestionQueue, extractionQueue);
 
     tl::engine * dataAdminEngine = nullptr;
 
@@ -223,13 +223,16 @@ int main(int argc, char**argv)
     }
     LOG_INFO("[ChronoPlayer] Successfully registered with ChronoVisor.");
 
-    /// Start data collection and extraction threads ___________________________________________________________________
+    /// Start DataStore data collection and extraction threads for handling most recent active story in-memory only segments__
     // services are successfully created and keeper process had registered with ChronoVisor
     // start all dataCollection and Extraction threads...
+    /// Start DataStore data collection and extraction threads for handling most recent active story in-memory only segments__
     tl::abt scope;
    // theDataStore.startDataCollection(3);
+
     // start extraction streams & threads
     //storyExtractor.startExtractionThreads(2);
+
     int NUMBER_ARCHIVE_READING_STREAMS = 1;
     archiveReadingAgent->startArchiveReading(NUMBER_ARCHIVE_READING_STREAMS); 
 
