@@ -55,10 +55,6 @@ jobs:
             # Primary: use PR base/head SHAs
             BASE_SHA="${{ github.event.pull_request.base.sha }}"
             HEAD_SHA="${{ github.event.pull_request.head.sha }}"
-            echo "Base SHA: $BASE_SHA"
-            echo "Head SHA: $HEAD_SHA"
-            echo "Current HEAD: $(git rev-parse HEAD)"
-            echo "github.sha: ${{ github.sha }}"
             
             # Ensure we have the commits
             git fetch origin "$BASE_SHA" || true
@@ -67,15 +63,11 @@ jobs:
             # Use the actual PR head, not the merge commit
             git diff --name-only --diff-filter=ACMRT "$BASE_SHA" "$HEAD_SHA" | \
               grep -E '\.(cpp|h|hpp|cc|cxx|c)$' > changed_files.txt || true
-            
-            echo "Files found via base..head SHA diff: $(wc -l < changed_files.txt 2>/dev/null || echo 0)"
 
-            # Secondary: changed-only using origin/base...HEAD (no repo-wide fallback)
+            # Fallback: use origin/base...HEAD if no files detected
             if [ ! -s changed_files.txt ]; then
-              echo "No files detected via SHAs; trying origin/${{ github.base_ref }}...HEAD"
               git diff --name-only --diff-filter=ACMRT origin/${{ github.base_ref }}...HEAD | \
                 grep -E '\.(cpp|h|hpp|cc|cxx|c)$' > changed_files.txt || true
-              echo "Files found via origin/base...HEAD: $(wc -l < changed_files.txt 2>/dev/null || echo 0)"
             fi
           else
             # For other events, check all C/C++ files
@@ -83,24 +75,13 @@ jobs:
               grep -v "./build/" | grep -v "./.git/" > changed_files.txt
           fi
           
-          echo "Files to check:"
-          cat changed_files.txt || echo "No C/C++ files found"
-          
-          echo ""
-          echo "=== DEBUG: Verifying files exist in working tree ==="
-          while IFS= read -r file; do
-            if [ -f "$file" ]; then
-              echo "✓ $file exists"
-              echo "  Line 46 (chronokvs) or 27 (pipeline):"
-              if [[ "$file" == *"chronokvs"* ]]; then
-                sed -n '46p' "$file" || true
-              elif [[ "$file" == *"Pipeline"* ]]; then
-                sed -n '27p' "$file" || true
-              fi
-            else
-              echo "✗ $file NOT FOUND"
-            fi
-          done < changed_files.txt
+          # Display files to check
+          if [ -s changed_files.txt ]; then
+            echo "Files to check ($(wc -l < changed_files.txt)):"
+            cat changed_files.txt
+          else
+            echo "No C/C++ files found to check"
+          fi
           
           # Count files
           file_count=$(wc -l < changed_files.txt 2>/dev/null || echo "0")
