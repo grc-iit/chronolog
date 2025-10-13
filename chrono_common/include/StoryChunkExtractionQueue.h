@@ -40,7 +40,7 @@ public:
         }
     }
 
-    StoryChunk*ejectStoryChunk()
+    StoryChunk * ejectStoryChunk()
     {
         std::lock_guard <std::mutex> lock(extractionQueueMutex);
         if(extractionDeque.empty())
@@ -57,13 +57,11 @@ public:
 
     int size()
     {
-        std::lock_guard <std::mutex> lock(extractionQueueMutex);
         return extractionDeque.size();
     }
 
     bool empty()
     {
-        std::lock_guard <std::mutex> lock(extractionQueueMutex);
         return extractionDeque.empty();
     }
 
@@ -88,7 +86,7 @@ public:
 private:
     StoryChunkExtractionQueue(StoryChunkExtractionQueue const &) = delete;
 
-    StoryChunkExtractionQueue &operator=(StoryChunkExtractionQueue const &) = delete;
+    StoryChunkExtractionQueue & operator=(StoryChunkExtractionQueue const &) = delete;
 
     std::mutex extractionQueueMutex;
     std::deque <StoryChunk*> extractionDeque;

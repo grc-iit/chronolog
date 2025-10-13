@@ -2,9 +2,7 @@
 #define STORY_CHUNK_EXTRACTOR_H
 
 #include <iostream>
-#include <deque>
-#include <vector>
-#include <mutex>
+#include <atomic>
 #include <thallium.hpp>
 
 #include <chrono_monitor.h>
@@ -22,7 +20,8 @@ class StoryChunkExtractorBase
 {
     enum ExtractorState
     {
-        UNKNOWN = 0, RUNNING = 1, //  active extraction threads
+        UNKNOWN = 0, 
+        RUNNING = 1, //  active extraction threads
         SHUTTING_DOWN = 2 // Shutting down extraction threads
     };
 
@@ -56,9 +55,8 @@ private:
     StoryChunkExtractorBase(StoryChunkExtractorBase const &) = delete;
 
     StoryChunkExtractorBase &operator=(StoryChunkExtractorBase const &) = delete;
-
-    ExtractorState extractorState;
-    std::mutex extractorMutex;
+    
+    std::atomic<ExtractorState> extractorState;
     StoryChunkExtractionQueue chunkExtractionQueue;
 
     std::vector <tl::managed <tl::xstream>> extractionStreams;
