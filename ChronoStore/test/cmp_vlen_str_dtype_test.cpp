@@ -9,6 +9,9 @@
 #include <unordered_map>
 #include <map>
 #include <filesystem>
+#include <cstdlib>
+#include <cstdint>
+#include <cstring>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>

@@ -5,6 +5,8 @@
 #include <chrono>
 #include <random>
 #include <filesystem>
+#include <cstdlib>
+#include <cstdint>
 #include <hdf5.h>
 #include <StoryWriter.h>
 #include <StoryReader.h>

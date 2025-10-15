@@ -8,10 +8,14 @@
 #include <unordered_map>
 #include <map>
 #include <filesystem>
+#include <cstdlib>
+#include <cstdint>
+#include <cstring>
+#include <cassert>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <cassert>
 #include <hdf5.h>
+#include <spdlog/spdlog.h>
 #include <chrono_monitor.h>
 #include <chronolog_errcode.h>
 //#include <story_chunk_test_utils.h>

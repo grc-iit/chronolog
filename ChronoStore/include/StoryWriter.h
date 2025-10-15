@@ -1,9 +1,12 @@
 #ifndef STORY_WRITER_H
 #define STORY_WRITER_H
 
-#include <iostream>
+#include <cstdint>
+#include <string>
 #include <vector>
 #include <map>
+#include <tuple>
+#include <utility>
 #include <event.h>
 #include <json-c/json.h>
 #include <StoryChunk.h>

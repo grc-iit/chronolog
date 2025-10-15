@@ -2,13 +2,22 @@
 
 //#define H5_SIZEOF_SSIZE_T H5_SIZEOF_LONG_LONG
 
-#include <fstream>
-#include <string>
+#include <hdf5.h>
+#include <json-c/json.h>
+#include <cerrno>
+#include <cstdlib>
 #include <cstring>
-#include <vector>
-#include <map>
-#include <unordered_map>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <map>
+#include <sstream>
+#include <string>
+#include <tuple>
+#include <type_traits>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <event.h>

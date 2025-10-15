@@ -5,7 +5,10 @@
 #ifndef CHRONOLOG_STORY_CHUNK_TEST_UTILS_H
 #define CHRONOLOG_STORY_CHUNK_TEST_UTILS_H
 
+#include <iostream>
+#include <map>
 #include <random>
+#include <string>
 #include <StoryChunk.h>
 
 #define CHRONICLE_NAME "Ares_Monitoring"

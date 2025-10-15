@@ -1,7 +1,9 @@
 #ifndef READ_H
 #define READ_H
 
-#include <iostream>
+#include <cstdint>
+#include <string>
+#include <vector>
 #include <map>
 #include <json-c/json.h>
 #include <StoryChunk.h>

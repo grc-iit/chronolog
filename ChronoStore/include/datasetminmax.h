@@ -1,5 +1,5 @@
-#include<iostream>
-#include<vector>
+#include <cstdint>
+#include <utility>
 
 #ifndef DATASET_MIN_MAX_H
 #define DATASET_MIN_MAX_H

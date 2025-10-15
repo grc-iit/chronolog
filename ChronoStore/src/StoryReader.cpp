@@ -2,11 +2,14 @@
 
 #define H5_SIZEOF_SSIZE_T H5_SIZEOF_LONG_LONG
 
-
+#include <hdf5.h>
+#include <json-c/json.h>
+#include <cstdlib>
+#include <cstring>
+#include <filesystem>
+#include <map>
 #include <string>
 #include <vector>
-#include <filesystem>
-#include <json-c/json.h>
 #include <StoryReader.h>
 #include <event.h>
 #include <chunkattr.h>

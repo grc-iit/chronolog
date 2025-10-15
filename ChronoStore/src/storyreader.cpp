@@ -3,7 +3,10 @@
 #define H5_SIZEOF_SSIZE_T H5_SIZEOF_LONG_LONG
 
 #include <hdf5.h>
+#include <climits>
+#include <new>
 #include <string>
+#include <utility>
 #include <vector>
 #include <storyreader.h>
 #include <event.h>

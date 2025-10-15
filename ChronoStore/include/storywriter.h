@@ -1,6 +1,5 @@
-#include<iostream>
-#include<vector>
-#include<event.h>
+#include <vector>
+#include <event.h>
 
 #ifndef WRITE_H
 #define WRITE_H

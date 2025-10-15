@@ -1,6 +1,8 @@
 #include <iostream>
 #include <string>
 #include <chrono>
+#include <cstdlib>
+#include <cstring>
 #include <H5Cpp.h>
 #include <utility>
 #include <vector>
