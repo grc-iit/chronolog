@@ -1,6 +1,13 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <signal.h>
+#include <string>
+#include <iostream>
+#include <cstdlib>
+#include <utility>
+#include <sstream>
+#include <mutex>
+#include <chrono>
 
 #include <GrapherIdCard.h>
 #include <GrapherRecordingService.h>

@@ -2,6 +2,10 @@
 #define GRAPHER_RECORDING_SERVICE_H
 
 #include <iostream>
+#include <vector>
+#include <chrono>
+#include <sstream>
+#include <exception>
 #include <margo.h>
 #include <thallium.hpp>
 #include <thallium/serialization/stl/string.hpp>
@@ -10,6 +14,7 @@
 #include <chronolog_errcode.h>
 #include <KeeperIdCard.h>
 #include <chronolog_types.h>
+#include <StoryChunk.h>
 
 #include "ChunkIngestionQueue.h"
 

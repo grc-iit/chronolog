@@ -1,7 +1,10 @@
 #ifndef CSV_FILE_CHUNK_EXTRACTOR_H
 #define CSV_FILE_CHUNK_EXTRACTOR_H
 
+#include <string>
+
 #include <chronolog_types.h>
+#include <StoryChunk.h>
 #include <StoryChunkExtractor.h>
 
 

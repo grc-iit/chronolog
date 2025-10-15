@@ -1,3 +1,6 @@
+#include <string>
+#include <thallium.hpp>
+
 #include <HDF5FileChunkExtractor.h>
 #include <StoryChunkWriter.h>
 
