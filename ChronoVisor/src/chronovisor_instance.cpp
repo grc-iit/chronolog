@@ -1,5 +1,8 @@
 #include <signal.h>
 #include <unistd.h>
+#include <iostream>
+#include <cstdlib>
+#include <string>
 
 #include <cmd_arg_parse.h>
 #include <KeeperRegistry.h>

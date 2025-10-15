@@ -1,8 +1,13 @@
 #include <chrono>
 #include <unistd.h>
 #include <mutex>
+#include <string>
+#include <map>
+#include <vector>
 #include <typedefs.h>
 
+#include <chrono_monitor.h>
+#include <chronolog_errcode.h>
 #include <ClientRegistryManager.h>
 #include <ChronicleMetaDirectory.h>
 #include <city.h>

@@ -5,10 +5,14 @@
 #ifndef CHRONOLOG_CHRONICLE_H
 #define CHRONOLOG_CHRONICLE_H
 
-#include <unordered_map>
-#include <ostream>
 #include <atomic>
+#include <cstdint>
+#include <map>
 #include <mutex>
+#include <ostream>
+#include <string>
+#include <unordered_map>
+#include <utility>
 
 #include <city.h>
 #include <chrono_monitor.h>

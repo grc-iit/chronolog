@@ -1,6 +1,9 @@
 #ifndef CLIENT_PORTAL_SERVICE_H
 #define CLIENT_PORTAL_SERVICE_H
 
+#include <cstdint>
+#include <map>
+
 #include <thallium.hpp>
 #include <thallium/serialization/stl/string.hpp>
 #include <thallium/serialization/stl/vector.hpp>

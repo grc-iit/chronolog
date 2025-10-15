@@ -2,6 +2,8 @@
 #define KEEPER_REGISTRY_SERVICE_H
 
 #include <iostream>
+#include <sstream>
+
 #include <thallium.hpp>
 #include <thallium/serialization/stl/string.hpp>
 

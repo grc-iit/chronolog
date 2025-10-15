@@ -4,6 +4,7 @@
 
 #include <unistd.h>
 #include <mutex>
+#include <sstream>
 
 #include <ClientRegistryManager.h>
 #include <chronolog_errcode.h>

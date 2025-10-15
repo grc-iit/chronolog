@@ -6,6 +6,8 @@
 #define SOCKETPP_CLIENTREGISTRYINFO_H
 
 #include <iostream>
+#include <ostream>
+#include <string>
 #include <utility>
 
 class ClientRegistryInfo

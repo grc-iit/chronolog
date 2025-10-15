@@ -1,6 +1,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <sstream>
 #include <sys/types.h>
 #include <unistd.h>
 

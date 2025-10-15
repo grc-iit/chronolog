@@ -1,7 +1,9 @@
 #ifndef DataStoreAdmin_CLIENT_H
 #define DataStoreAdmin_CLIENT_H
 
+#include <cstdint>
 #include <iostream>
+
 #include <thallium.hpp>
 #include <thallium/serialization/stl/string.hpp>
 

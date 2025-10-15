@@ -5,8 +5,9 @@
 #ifndef CHRONOLOG_ARCHIVE_H
 #define CHRONOLOG_ARCHIVE_H
 
-#include <string>
+#include <cstdint>
 #include <ostream>
+#include <string>
 #include <unordered_map>
 
 #include <city.h>

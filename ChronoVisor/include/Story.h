@@ -5,12 +5,16 @@
 #ifndef CHRONOLOG_STORY_H
 #define CHRONOLOG_STORY_H
 
-#include <unordered_map>
-#include <map>
 #include <atomic>
+#include <cstdint>
+#include <map>
+#include <mutex>
+#include <string>
+#include <unordered_map>
+#include <utility>
+
 #include <Event.h>
 #include <city.h>
-#include <mutex>
 #include <chronolog_errcode.h>
 #include <chrono_monitor.h>
 

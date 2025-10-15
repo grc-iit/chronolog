@@ -1,6 +1,9 @@
 #ifndef CHRONOLOG_CHRONICLEMETADIRECTORY_H
 #define CHRONOLOG_CHRONICLEMETADIRECTORY_H
 
+#include <cstdint>
+#include <map>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>

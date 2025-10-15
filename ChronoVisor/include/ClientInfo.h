@@ -5,7 +5,11 @@
 #ifndef CHRONOLOG_CLIENTINFO_H
 #define CHRONOLOG_CLIENTINFO_H
 
+#include <cstdint>
+#include <ostream>
 #include <sstream>
+#include <string>
+#include <unordered_map>
 
 class Story;
 

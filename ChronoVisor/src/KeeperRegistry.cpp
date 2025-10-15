@@ -1,4 +1,7 @@
 #include <iostream>
+#include <algorithm>
+#include <ctime>
+#include <cstdlib>
 #include <thallium.hpp>
 
 #include <KeeperRegistry.h>

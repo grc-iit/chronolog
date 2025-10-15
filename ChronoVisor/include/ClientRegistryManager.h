@@ -5,9 +5,10 @@
 #ifndef CHRONOLOG_CLIENTREGISTRYMANAGER_H
 #define CHRONOLOG_CLIENTREGISTRYMANAGER_H
 
+#include <memory>
+#include <mutex>
 #include <unordered_map>
 #include <vector>
-#include <memory>
 
 #include <chronolog_types.h>
 

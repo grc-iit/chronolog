@@ -2,9 +2,14 @@
 #define KEEPER_REGISTRY_H
 
 #include <chrono>
+#include <cstdint>
+#include <ctime>
+#include <list>
 #include <map>
 #include <mutex>
 #include <random>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include <thallium.hpp>
