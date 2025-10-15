@@ -1,12 +1,14 @@
-#include <thread>
-#include <chrono>
-#include <vector>
+#include <algorithm>
 #include <bitset>
+#include <cassert>
+#include <chrono>
 #include <cstdlib>
+#include <iostream>
+#include <mutex>
 #include <random>
 #include <string>
-#include <algorithm>
-#include <iostream>
+#include <thread>
+#include <vector>
 
 #include <cmd_arg_parse.h>
 #include <chronolog_client.h>

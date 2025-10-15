@@ -1,6 +1,11 @@
 #include <cassert>
-#include <thread>
 #include <chrono>
+#include <iostream>
+#include <map>
+#include <string>
+#include <thread>
+#include <unistd.h>
+#include <vector>
 
 #include <cmd_arg_parse.h>
 #include <chronolog_client.h>

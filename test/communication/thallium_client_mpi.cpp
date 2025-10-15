@@ -3,7 +3,12 @@
 //
 
 #include <iostream>
+#include <string>
+#include <vector>
+#include <cstdlib>
+#include <cstring>
 #include <chrono>
+#include <random>
 #include <thallium.hpp>
 #include <array>
 #include <thallium/serialization/stl/vector.hpp>

@@ -1,10 +1,14 @@
 #include <cassert>
-#include <thread>
 #include <chrono>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
-#include <fstream>
+#include <map>
 #include <string>
+#include <thread>
+#include <unistd.h>
+#include <vector>
+
 #include <getopt.h>
 
 #include <chronolog_client.h>

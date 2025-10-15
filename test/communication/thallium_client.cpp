@@ -4,6 +4,10 @@
 
 #include <iostream>
 #include <iomanip>
+#include <string>
+#include <vector>
+#include <cstdlib>
+#include <cstring>
 #include <chrono>
 #include <thallium.hpp>
 #include <array>

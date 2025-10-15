@@ -3,9 +3,13 @@
 //
 
 #include <iostream>
+#include <string>
+#include <vector>
+#include <cstdlib>
+#include <utility>
+#include <functional>
 #include <thallium.hpp>
 #include <array>
-#include <string>
 #include <thallium/serialization/stl/vector.hpp>
 #include <thread>
 #include <algorithm>

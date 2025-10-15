@@ -1,6 +1,10 @@
 #include <chrono>
-#include <unordered_map>
 #include <cassert>
+#include <cstdlib>
+#include <iostream>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 #include <cmd_arg_parse.h>
 #include <chronolog_client.h>

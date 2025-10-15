@@ -1,5 +1,10 @@
 #include <atomic>
+#include <cstdlib>
+#include <iostream>
+#include <string>
 #include <thread>
+#include <vector>
+
 #include <abt.h>
 #include <mpi.h>
 

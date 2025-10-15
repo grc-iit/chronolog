@@ -1,6 +1,19 @@
+// System headers
+#include <cstdlib>         // for exit(), EXIT_FAILURE
+#include <stdexcept>       // for std::exception
+
+// Standard library headers
+#include <string>          // for std::string
+#include <vector>          // for std::vector
+#include <chrono>          // for std::chrono::high_resolution_clock, std::chrono::duration_cast
+#include <sstream>         // for std::stringstream, std::istringstream
+#include <utility>         // for std::move, std::pair
+
+// Third-party headers
 #include <thallium.hpp>
 #include <cereal/archives/binary.hpp>
 
+// Project headers
 #include <ConfigurationManager.h>
 #include <StoryChunk.h>
 #include <cmd_arg_parse.h>

@@ -1,5 +1,11 @@
 #include <cassert>
+#include <cstdlib>
+#include <iostream>
+#include <map>
+#include <string>
 #include <thread>
+#include <vector>
+
 #include <omp.h>
 
 #include <cmd_arg_parse.h>

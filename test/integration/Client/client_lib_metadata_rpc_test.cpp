@@ -1,8 +1,9 @@
 #include <chrono>
 #include <cassert>
+#include <iostream>
 #include <map>
-#include <vector>
 #include <string>
+#include <vector>
 
 #include <cmd_arg_parse.h>
 #include <chronolog_client.h>
