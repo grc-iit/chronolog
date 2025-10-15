@@ -1,3 +1,9 @@
+#include <cstdint>
+#include <memory>
+#include <map>
+#include <string>
+#include <stdexcept>
+#include <vector>
 #include "chronokvs_client_adapter.h"
 #include <ClientConfiguration.h>
 

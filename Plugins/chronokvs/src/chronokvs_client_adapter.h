@@ -1,6 +1,7 @@
 #ifndef CHRONOKVS_CLIENT_ADAPTER_H_
 #define CHRONOKVS_CLIENT_ADAPTER_H_
 
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <optional>

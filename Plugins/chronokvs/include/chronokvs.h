@@ -1,6 +1,7 @@
 #ifndef CHRONOKVS_H_
 #define CHRONOKVS_H_
 
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <memory>

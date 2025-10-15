@@ -1,3 +1,7 @@
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <vector>
 #include "chronokvs.h"
 #include "chronokvs_mapper.h"
 

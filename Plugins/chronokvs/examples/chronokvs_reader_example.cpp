@@ -1,3 +1,5 @@
+#include <cstdint>
+#include <cstddef>
 #include <string>
 #include <iostream>
 #include <fstream>

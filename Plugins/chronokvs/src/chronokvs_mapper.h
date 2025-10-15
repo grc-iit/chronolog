@@ -1,6 +1,7 @@
 #ifndef KVS_MAPPER_H_
 #define KVS_MAPPER_H_
 
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <memory>
