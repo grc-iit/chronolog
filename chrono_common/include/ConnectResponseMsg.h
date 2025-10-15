@@ -4,6 +4,7 @@
 #include <iostream>
 
 #include "chronolog_types.h"
+#include "client_errcode.h"
 
 namespace chronolog
 {

@@ -4,6 +4,7 @@
 #include <map>
 #include <sstream>
 #include <string>
+#include <cstdint>
 
 #include "chronolog_types.h"
 #include "LogEventHVL.h"

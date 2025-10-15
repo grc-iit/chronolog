@@ -4,6 +4,7 @@
 
 #include <string>
 #include <cstring>
+#include <cstdint>
 #include <H5Cpp.h>
 
 

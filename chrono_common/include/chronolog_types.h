@@ -5,6 +5,7 @@
 #include <string>
 #include <ostream>
 #include <cstring>
+#include <cstdint>
 #include <tuple>
 
 namespace chronolog

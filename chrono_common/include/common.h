@@ -6,6 +6,8 @@
 #define CHRONOLOG_COMMON_H
 
 #include <random>
+#include <string>
+#include <climits>
 
 std::random_device rd;
 std::seed_seq ssq{rd()};

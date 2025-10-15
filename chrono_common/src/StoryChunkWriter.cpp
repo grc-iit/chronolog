@@ -1,5 +1,7 @@
+#include <algorithm>
 #include <filesystem>
 #include <regex>
+#include <stdexcept>
 
 #include <StoryChunkWriter.h>
 

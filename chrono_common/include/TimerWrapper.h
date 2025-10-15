@@ -6,6 +6,7 @@
 #define CHRONOLOG_TIMERWRAPPER_H
 
 #include <iostream>
+#include <string>
 #include <chrono>
 #include <functional>
 #include <mpi.h>

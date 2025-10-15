@@ -3,6 +3,7 @@
 
 #include <arpa/inet.h>
 #include <iostream>
+#include <cstdint>
 
 #include "ServiceId.h"
 
