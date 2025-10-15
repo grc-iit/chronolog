@@ -2,6 +2,10 @@
 #define KEEPER_RECORDING_SERVICE_H
 
 #include <iostream>
+#include <string>
+#include <sstream>
+#include <cstdint>
+
 #include <margo.h>
 #include <thallium.hpp>
 #include <thallium/serialization/stl/string.hpp>

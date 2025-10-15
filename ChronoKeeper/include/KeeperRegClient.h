@@ -2,6 +2,10 @@
 #define KEEPER_REG_CLIENT_H
 
 #include <iostream>
+#include <string>
+#include <sstream>
+#include <cstdint>
+
 #include <thallium/serialization/stl/string.hpp>
 #include <thallium.hpp>
 

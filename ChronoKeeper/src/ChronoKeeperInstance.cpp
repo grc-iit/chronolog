@@ -1,6 +1,12 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <signal.h>
+#include <cstdlib>
+#include <iostream>
+#include <sstream>
+#include <string>
+#include <utility>
+#include <cstdint>
 
 #include <KeeperRecordingService.h>
 #include <KeeperRegClient.h>

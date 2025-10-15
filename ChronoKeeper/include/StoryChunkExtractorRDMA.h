@@ -1,9 +1,12 @@
 #ifndef CHRONOLOG_STORYCHUNKEXTRACTORRDMA_H
 #define CHRONOLOG_STORYCHUNKEXTRACTORRDMA_H
 
+#include <thallium.hpp>
+
 #include <chronolog_types.h>
 #include <ConfigurationManager.h>
 
+#include "StoryChunk.h"
 #include "StoryChunkExtractor.h"
 
 namespace tl = thallium;

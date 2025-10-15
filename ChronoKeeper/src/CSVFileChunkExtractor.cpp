@@ -1,5 +1,7 @@
 #include <iostream>
 #include <fstream>
+#include <string>
+#include <cstdint>
 #include <thallium.hpp>
 
 #include <chronolog_types.h>

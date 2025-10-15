@@ -4,7 +4,9 @@
 #include <vector>
 #include <list>
 #include <map>
+#include <unordered_map>
 #include <mutex>
+#include <cstdint>
 
 #include <thallium.hpp>
 

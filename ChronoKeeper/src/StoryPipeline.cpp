@@ -1,6 +1,11 @@
 #include <deque>
 #include <map>
 #include <mutex>
+#include <string>
+#include <cstdint>
+#include <chrono>
+#include <ctime>
+#include <memory>
 
 #include <StoryChunk.h>
 #include <StoryPipeline.h>

@@ -6,6 +6,8 @@
 #include <map>
 #include <mutex>
 #include <iostream>
+#include <string>
+#include <cstdint>
 
 #include <chronolog_types.h>
 #include <StoryChunk.h>

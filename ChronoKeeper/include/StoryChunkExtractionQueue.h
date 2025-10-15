@@ -4,6 +4,8 @@
 #include <iostream>
 #include <deque>
 #include <mutex>
+#include <string>
+#include <sstream>
 
 #include <chrono_monitor.h>
 #include <chronolog_types.h>

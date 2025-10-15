@@ -5,6 +5,8 @@
 #include <deque>
 #include <unordered_map>
 #include <mutex>
+#include <string>
+#include <sstream>
 
 #include <chrono_monitor.h>
 #include <chronolog_types.h>
