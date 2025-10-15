@@ -1,6 +1,15 @@
 #ifndef CHRONOLOG_CLIENT_IMPL_H
 #define CHRONOLOG_CLIENT_IMPL_H
 
+#include <cstdint>
+#include <map>
+#include <mutex>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include <thallium.hpp>
+
 #include <client_errcode.h>
 #include <ClientConfiguration.h>
 #include <chronolog_types.h>

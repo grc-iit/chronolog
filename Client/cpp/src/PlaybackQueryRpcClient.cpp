@@ -1,3 +1,6 @@
+#include <cstdint>
+#include <string>
+
 #include <thallium.hpp>
 #include <thallium/serialization/serialize.hpp>
 #include <thallium/serialization/stl/string.hpp>

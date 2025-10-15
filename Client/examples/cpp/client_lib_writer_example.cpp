@@ -1,11 +1,12 @@
+#include <cstdlib>
+#include <iostream>
+#include <map>
+#include <string>
+
 #include <ClientConfiguration.h>
 #include <chronolog_client.h>
 #include <chrono_monitor.h>
 #include <cmd_arg_parse.h>
-
-#include <cassert>
-#include <common.h>
-#include <unistd.h>
 
 // This file is the writer part of the reader example also available in the same
 // folder. Therefore, the code is responsible for creating the chronicle and

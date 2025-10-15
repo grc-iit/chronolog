@@ -1,6 +1,8 @@
-#include <cassert>
-#include <common.h>
-#include <unistd.h>
+#include <cstdlib>
+#include <iostream>
+#include <map>
+#include <string>
+#include <vector>
 
 #include <ClientConfiguration.h>
 #include <chronolog_client.h>

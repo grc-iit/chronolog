@@ -2,8 +2,12 @@
 #define CLIENT_QUERY_SERVICE_H
 
 #include <atomic>
+#include <cstdint>
 #include <map>
 #include <mutex>
+#include <utility>
+#include <vector>
+
 #include <thallium.hpp>
 
 #include <chronolog_types.h>

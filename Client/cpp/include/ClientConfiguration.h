@@ -1,9 +1,11 @@
 #ifndef CHRONOLOG_CLIENT_CONFIGURATION_H
 #define CHRONOLOG_CLIENT_CONFIGURATION_H
 
+#include <ostream>
 #include <string>
-#include <spdlog/common.h>
+
 #include <json-c/json.h>
+#include <spdlog/common.h>
 
 namespace chronolog {
 

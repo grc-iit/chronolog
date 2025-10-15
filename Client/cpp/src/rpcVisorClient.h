@@ -1,11 +1,15 @@
 #ifndef RPC_VISOR_PORTAL_CLIENT_H
 #define RPC_VISOR_PORTAL_CLIENT_H
 
-#include <string>
-#include <map>
+#include <cstdint>
 #include <iostream>
+#include <map>
+#include <ostream>
+#include <string>
 #include <sys/types.h>
 #include <unistd.h>
+#include <vector>
+
 #include <thallium.hpp>
 #include <thallium/serialization/serialize.hpp>
 #include <thallium/serialization/stl/string.hpp>

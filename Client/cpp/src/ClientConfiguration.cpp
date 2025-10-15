@@ -1,5 +1,11 @@
-#include <json-c/json.h>
+#include <cstddef>
+#include <cstdint>
 #include <iostream>
+#include <ostream>
+#include <string>
+
+#include <json-c/json.h>
+#include <spdlog/spdlog.h>
 
 #include <ClientConfiguration.h>
 

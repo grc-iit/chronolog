@@ -1,8 +1,11 @@
 #ifndef CHRONOLOG_CHRONO_MONITOR_H
 #define CHRONOLOG_CHRONO_MONITOR_H
 
-#include <spdlog/spdlog.h>
+#include <memory>
 #include <mutex>
+#include <string>
+
+#include <spdlog/spdlog.h>
 
 namespace chronolog
 {

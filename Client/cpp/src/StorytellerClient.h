@@ -1,9 +1,14 @@
 #ifndef STORYTELLER_CLIENT_H
 #define STORYTELLER_CLIENT_H
 
-
 #include <atomic>
+#include <cstdint>
 #include <map>
+#include <mutex>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include <thallium.hpp>
 
 #include <chrono_monitor.h>

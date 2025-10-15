@@ -5,9 +5,10 @@
 #ifndef CHRONOLOG_CMD_ARG_PARSE_H
 #define CHRONOLOG_CMD_ARG_PARSE_H
 
+#include <cstdlib>
 #include <getopt.h>
-#include <string>
 #include <iostream>
+#include <string>
 
 std::string parse_conf_path_arg(int argc, char**argv)
 {

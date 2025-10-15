@@ -1,6 +1,9 @@
 #ifndef PLAYBACK_QUERY_RPC_CLIENT_H
 #define PLAYBACK_QUERY_RPC_CLIENT_H
 
+#include <cstdint>
+#include <string>
+
 #include <thallium.hpp>
 
 #include <ServiceId.h>

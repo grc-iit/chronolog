@@ -1,7 +1,14 @@
-#include <iostream>
-#include <thallium.hpp>
+#include <atomic>
 #include <chrono>
 #include <climits>
+#include <iostream>
+#include <map>
+#include <mutex>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include <thallium.hpp>
 
 #include <chronolog_types.h>
 

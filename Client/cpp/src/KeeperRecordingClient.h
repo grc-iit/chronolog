@@ -2,6 +2,8 @@
 #define KEEPER_RECORDING_CLIENT_H
 
 #include <iostream>
+#include <string>
+
 #include <thallium.hpp>
 #include <thallium/serialization/stl/string.hpp>
 
