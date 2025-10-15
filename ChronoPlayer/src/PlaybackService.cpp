@@ -1,4 +1,7 @@
 #include <map>
+#include <mutex>
+#include <sstream>
+#include <utility>
 #include <thallium.hpp>
 
 #include <chrono_monitor.h>

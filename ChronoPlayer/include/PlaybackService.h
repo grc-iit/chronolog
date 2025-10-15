@@ -1,10 +1,13 @@
 #ifndef PLAYBACK_SERVICE_H
 #define PLAYBACK_SERVICE_H
 
+#include <string>
+#include <cstdint>
 #include <iostream>
 #include <mutex>
 #include <thallium.hpp>
 
+#include <chrono_monitor.h>
 #include <chronolog_types.h>
 #include <ServiceId.h>
 

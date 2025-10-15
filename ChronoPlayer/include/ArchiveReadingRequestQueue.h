@@ -1,6 +1,8 @@
 #ifndef ARCHIVE_READING_REQUEST_QUEUE_H
 #define ARCHIVE_READING_REQUEST_QUEUE_H
 
+#include <string>
+#include <cstdint>
 #include <mutex>
 #include <deque>
 

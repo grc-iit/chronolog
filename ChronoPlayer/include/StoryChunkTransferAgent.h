@@ -1,6 +1,8 @@
 #ifndef CHRONOLOG_STORYCHUNK_TRANSFER_AGENT_H
 #define CHRONOLOG_STORYCHUNK_TRANSFER_AGENT_H
 
+#include <string>
+#include <cstdint>
 #include <thallium.hpp>
 
 #include <chrono_monitor.h>

@@ -1,6 +1,9 @@
 #include <chrono>
 #include <iostream>
+#include <string>
+#include <thread>
 #include <signal.h>
+#include <margo.h>
 
 #include <chrono_monitor.h>
 #include <ServiceId.h>

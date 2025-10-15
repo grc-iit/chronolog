@@ -1,9 +1,12 @@
 #ifndef PLAYER_DATA_STORE_H
 #define PLAYER_DATA_STORE_H
 
+#include <string>
+#include <cstdint>
 #include <vector>
 #include <list>
 #include <map>
+#include <unordered_map>
 #include <mutex>
 #include <thallium.hpp>
 

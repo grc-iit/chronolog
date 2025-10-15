@@ -2,6 +2,13 @@
 // Created by kfeng on 1/14/25.
 //
 #include <csignal>
+#include <iostream>
+#include <cstdlib>
+#include <string>
+#include <thread>
+#include <chrono>
+#include <list>
+#include <atomic>
 #include <HDF5ArchiveReadingAgent.h>
 #include <ConfigurationManager.h>
 #include <cmd_arg_parse.h>

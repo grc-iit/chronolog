@@ -1,6 +1,8 @@
 #ifndef ARCHIVE_READING_AGENT_H
 #define ARCHIVE_READING_AGENT_H
 
+#include <string>
+#include <cstdint>
 #include <vector>
 #include <list>
 #include <map>

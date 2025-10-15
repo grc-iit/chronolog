@@ -1,3 +1,9 @@
+#include <sstream>
+#include <string>
+#include <vector>
+#include <utility>
+#include <ios>
+#include <cstddef>
 #include <thallium/serialization/stl/vector.hpp>
 #include <cereal/archives/binary.hpp>
 

@@ -1,11 +1,14 @@
 #ifndef PlayerStoreAdmin_SERVICE_H
 #define PlayerStoreAdmin_SERVICE_H
 
+#include <string>
+#include <cstdint>
 #include <iostream>
 #include <margo.h>
 #include <thallium.hpp>
 #include <thallium/serialization/stl/string.hpp>
 
+#include <chrono_monitor.h>
 #include <chronolog_types.h>
 
 #include "PlayerDataStore.h"

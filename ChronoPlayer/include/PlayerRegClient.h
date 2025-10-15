@@ -1,15 +1,18 @@
 #ifndef PLAYER_REG_CLIENT_H
 #define PLAYER_REG_CLIENT_H
 
+#include <string>
+#include <cstdint>
+#include <sstream>
 #include <iostream>
 #include <thallium/serialization/stl/string.hpp>
 #include <thallium.hpp>
 
+#include <chrono_monitor.h>
 #include <PlayerIdCard.h>
 #include <PlayerRegistrationMsg.h>
 #include <PlayerStatsMsg.h>
 #include <chronolog_errcode.h>
-#include <chrono_monitor.h>
 
 
 namespace tl = thallium;

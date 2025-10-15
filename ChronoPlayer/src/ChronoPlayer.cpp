@@ -1,6 +1,12 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <signal.h>
+#include <cstdlib>
+#include <iostream>
+#include <string>
+#include <thread>
+#include <chrono>
+#include <margo.h>
 
 #include <PlayerIdCard.h>
 #include <PlayerRegClient.h>
