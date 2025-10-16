@@ -42,8 +42,8 @@ public:
 
 inline std::string to_string(chronolog::KeeperRegistrationMsg const & msg)
 {
-    return std::string("KeeperRegistrationMsg{") + to_string(msg.getKeeperIdCard()) + "}";
-        std::string( "}{admin:") + to_string(msg.getAdminServiceId()) + "}";
+    return std::string("KeeperRegistrationMsg{") + to_string(msg.getKeeperIdCard()) + 
+           "}{admin:" + to_string(msg.getAdminServiceId()) + "}";
 }
 
 
