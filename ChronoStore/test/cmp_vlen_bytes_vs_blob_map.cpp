@@ -114,6 +114,16 @@ struct LogEvent
     }
 };
 
+// POD struct for HDF5 serialization (standard-layout)
+struct StoryChunkPOD
+{
+    uint64_t storyId;
+    uint64_t startTime;
+    uint64_t endTime;
+    uint64_t revisionTime;
+    // Note: logEvents is handled separately as it's a complex type
+};
+
 struct StoryChunk
 {
     typedef uint64_t chrono_time;
@@ -325,6 +335,16 @@ struct StoryChunk2
     unsigned char*eventData{};
 };
 
+// POD struct for HDF5 serialization (standard-layout)
+struct OffsetMapEntryPOD
+{
+    uint64_t eventTime;      // First element of EventSequence tuple
+    uint32_t clientId;       // Second element of EventSequence tuple  
+    uint32_t eventIndex;     // Third element of EventSequence tuple
+    uint64_t offset;         // First element of EventOffsetSize tuple
+    uint64_t size;           // Second element of EventOffsetSize tuple
+};
+
 struct OffsetMapEntry
 {
     StoryChunk2::EventSequence eventId;
@@ -374,12 +394,13 @@ H5::CompType createEventCompoundType()
 
 H5::CompType createStoryChunkCompoundType()
 {
-    H5::CompType data_type(sizeof(StoryChunk));
-    data_type.insertMember("storyId", HOFFSET(StoryChunk, storyId), H5::PredType::NATIVE_UINT64);
-    data_type.insertMember("startTime", HOFFSET(StoryChunk, startTime), H5::PredType::NATIVE_UINT64);
-    data_type.insertMember("endTime", HOFFSET(StoryChunk, endTime), H5::PredType::NATIVE_UINT64);
-    data_type.insertMember("revisionTime", HOFFSET(StoryChunk, revisionTime), H5::PredType::NATIVE_UINT64);
-    data_type.insertMember("logEvents", HOFFSET(StoryChunk, logEvents), createEventCompoundType());
+    H5::CompType data_type(sizeof(StoryChunkPOD));
+    data_type.insertMember("storyId", HOFFSET(StoryChunkPOD, storyId), H5::PredType::NATIVE_UINT64);
+    data_type.insertMember("startTime", HOFFSET(StoryChunkPOD, startTime), H5::PredType::NATIVE_UINT64);
+    data_type.insertMember("endTime", HOFFSET(StoryChunkPOD, endTime), H5::PredType::NATIVE_UINT64);
+    data_type.insertMember("revisionTime", HOFFSET(StoryChunkPOD, revisionTime), H5::PredType::NATIVE_UINT64);
+    // Note: logEvents is handled separately as it's a complex type (std::map)
+    // data_type.insertMember("logEvents", HOFFSET(StoryChunk, logEvents), createEventCompoundType());
     return data_type;
 }
 
@@ -754,11 +775,12 @@ H5::CompType createEventOffsetSizeCompoundType()
 
 H5::CompType createOffsetMapEntryCompoundType()
 {
-    H5::CompType data_type(sizeof(OffsetMapEntry));
-    auto event_sequence_type = createEventSequenceCompoundType();
-    auto event_offset_size_type = createEventOffsetSizeCompoundType();
-    data_type.insertMember("eventId", HOFFSET(OffsetMapEntry, eventId), event_sequence_type);
-    data_type.insertMember("offsetSize", HOFFSET(OffsetMapEntry, offsetSize), event_offset_size_type);
+    H5::CompType data_type(sizeof(OffsetMapEntryPOD));
+    data_type.insertMember("eventTime", HOFFSET(OffsetMapEntryPOD, eventTime), H5::PredType::NATIVE_UINT64);
+    data_type.insertMember("clientId", HOFFSET(OffsetMapEntryPOD, clientId), H5::PredType::NATIVE_UINT32);
+    data_type.insertMember("eventIndex", HOFFSET(OffsetMapEntryPOD, eventIndex), H5::PredType::NATIVE_UINT32);
+    data_type.insertMember("offset", HOFFSET(OffsetMapEntryPOD, offset), H5::PredType::NATIVE_UINT64);
+    data_type.insertMember("size", HOFFSET(OffsetMapEntryPOD, size), H5::PredType::NATIVE_UINT64);
     return data_type;
 }
 
@@ -772,11 +794,17 @@ int writeMapAsKVPairs(H5::H5File*file, std::map <StoryChunk2::EventSequence, Sto
         auto*dataset = new H5::DataSet(
                 file->createDataSet("/" + group_name + "/" + story_chunk_dataset_name + ".meta", offset_dtype
                                     , *dataspace));
-        std::vector <OffsetMapEntry> offsetMapEntries;
+        std::vector <OffsetMapEntryPOD> offsetMapEntries;
         offsetMapEntries.reserve(offsetMap.size());
         for(auto const &entry: offsetMap)
         {
-            offsetMapEntries.emplace_back(entry.first, entry.second);
+            OffsetMapEntryPOD pod_entry;
+            pod_entry.eventTime = std::get<0>(entry.first);
+            pod_entry.clientId = std::get<1>(entry.first);
+            pod_entry.eventIndex = std::get<2>(entry.first);
+            pod_entry.offset = std::get<0>(entry.second);
+            pod_entry.size = std::get<1>(entry.second);
+            offsetMapEntries.push_back(pod_entry);
         }
         dataset->write(&offsetMapEntries.front(), offset_dtype);
         delete dataset;
@@ -805,9 +833,9 @@ int readMapAsKVPairs(std::map <StoryChunk2::EventSequence, StoryChunk2::EventOff
         hsize_t dims_out[2];
         dataspace.getSimpleExtentDims(dims_out, nullptr);
         H5::CompType probed_data_type = dataset.getCompType();
-        if(probed_data_type.getNmembers() != 2)
+        if(probed_data_type.getNmembers() != 5)
         {
-            std::cout << "Not a compound type with 2 members" << std::endl;
+            std::cout << "Not a compound type with 5 members" << std::endl;
             return -1;
         }
         H5::CompType defined_comp_type = createOffsetMapEntryCompoundType();
@@ -816,12 +844,14 @@ int readMapAsKVPairs(std::map <StoryChunk2::EventSequence, StoryChunk2::EventOff
             std::cout << "Compound type mismatch" << std::endl;
             return -1;
         }
-        std::vector <OffsetMapEntry> offsetMapEntries;
+        std::vector <OffsetMapEntryPOD> offsetMapEntries;
         offsetMapEntries.resize(dims_out[0]);
         dataset.read(offsetMapEntries.data(), defined_comp_type);
         for(auto const &entry: offsetMapEntries)
         {
-            offsetMap.insert({entry.eventId, entry.offsetSize});
+            StoryChunk2::EventSequence eventId(entry.eventTime, entry.clientId, entry.eventIndex);
+            StoryChunk2::EventOffsetSize offsetSize(entry.offset, entry.size);
+            offsetMap.insert({eventId, offsetSize});
         }
         return chronolog::CL_SUCCESS;
     }
