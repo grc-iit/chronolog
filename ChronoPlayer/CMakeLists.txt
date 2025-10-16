@@ -28,8 +28,11 @@ target_sources(chrono_player PRIVATE
     ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
 )
 
-target_link_libraries(chrono_player chronolog_client thallium)
-target_link_libraries(chrono_player ${HDF5_LIBRARIES})
+target_link_libraries(chrono_player 
+    chronolog_client 
+    thallium
+    ${HDF5_LIBRARIES}
+)
 
 set_target_properties(chrono_player PROPERTIES
     BUILD_WITH_INSTALL_RPATH TRUE
@@ -47,7 +50,10 @@ target_include_directories(transfer_agent_test PRIVATE
     include
     ${CMAKE_SOURCE_DIR}/chrono_common/include
 )
-target_link_libraries(transfer_agent_test chronolog_client thallium)
+target_link_libraries(transfer_agent_test 
+    chronolog_client 
+    thallium
+)
 
 set_target_properties(transfer_agent_test PROPERTIES
     BUILD_WITH_INSTALL_RPATH TRUE
@@ -66,7 +72,10 @@ target_include_directories(playback_service_test PRIVATE
     include
     ${CMAKE_SOURCE_DIR}/chrono_common/include
 )
-target_link_libraries(playback_service_test chronolog_client thallium)
+target_link_libraries(playback_service_test 
+    chronolog_client 
+    thallium
+)
 
 set_target_properties(playback_service_test PROPERTIES
     BUILD_WITH_INSTALL_RPATH TRUE
@@ -88,8 +97,11 @@ target_include_directories(hdf5_archive_reader_test PRIVATE
 
 target_link_directories(hdf5_archive_reader_test PRIVATE ${HDF5_LIBRARY_DIRS})
 
-target_link_libraries(hdf5_archive_reader_test chronolog_client thallium)
-target_link_libraries(hdf5_archive_reader_test ${HDF5_LIBRARIES})
+target_link_libraries(hdf5_archive_reader_test 
+    chronolog_client 
+    thallium
+    ${HDF5_LIBRARIES}
+)
 
 set_target_properties(hdf5_archive_reader_test PROPERTIES
     BUILD_WITH_INSTALL_RPATH TRUE

@@ -28,7 +28,10 @@ target_sources(chrono_keeper PRIVATE
     ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
 )
 
-target_link_libraries(chrono_keeper chronolog_client thallium)
+target_link_libraries(chrono_keeper 
+    chronolog_client 
+    thallium
+)
 
 set_target_properties(chrono_keeper PROPERTIES
     BUILD_WITH_INSTALL_RPATH TRUE
