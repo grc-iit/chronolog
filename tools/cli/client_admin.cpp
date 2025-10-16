@@ -6,7 +6,6 @@
 #include <unistd.h>
 #include <pwd.h>
 #include <getopt.h>
-#include <time.h>
 
 #include <algorithm>
 #include <chrono>
