@@ -20,13 +20,6 @@ configure_file(${CMAKE_SOURCE_DIR}/default_conf.json.in
     ${CMAKE_CURRENT_BINARY_DIR}/default_conf.json COPYONLY)
 
 # install binary
-install(
-    TARGETS client_admin DESTINATION bin
-)
+chronolog_install_target(client_admin)
 
-# install client configuration file
-install(
-    FILES ${CMAKE_SOURCE_DIR}/default_client_conf.json.in
-    DESTINATION ${CHRONOLOG_INSTALL_CONF_DIR}
-    RENAME default_client_conf.json
-)
+# Client configuration file is installed by Client/cpp to avoid duplication

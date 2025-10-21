@@ -25,17 +25,9 @@ target_include_directories(client_lib_distributed_telemetry_writer PRIVATE ${CMA
 target_link_libraries(client_lib_distributed_telemetry_writer chronolog_client -lpthread -lrt ${MPI_CXX_LIBRARIES})
 
 # Optionally: install the example binaries
-install(TARGETS
-    client_lib_writer_example
-    client_lib_reader_example
-    client_lib_basic_example
-    client_lib_distributed_telemetry_writer
-    DESTINATION bin
-)
+chronolog_install_target(client_lib_writer_example)
+chronolog_install_target(client_lib_reader_example)
+chronolog_install_target(client_lib_basic_example)
+chronolog_install_target(client_lib_distributed_telemetry_writer)
 
-# Install client configuration file
-install(
-    FILES ${CMAKE_SOURCE_DIR}/default_client_conf.json.in
-    DESTINATION ${CHRONOLOG_INSTALL_CONF_DIR}
-    RENAME default_client_conf.json
-)
+# Client configuration file is installed by Client/cpp to avoid duplication
