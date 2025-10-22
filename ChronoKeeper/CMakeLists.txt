@@ -36,11 +36,6 @@ set_target_properties(chrono_keeper PROPERTIES
 )
 
 # install binary
-install(
-    TARGETS chrono_keeper DESTINATION bin
-)
+chronolog_install_target(chrono_keeper)
 
-# install configuration file
-install(
-    FILES ${CMAKE_SOURCE_DIR}/default_conf.json.in DESTINATION ${CHRONOLOG_INSTALL_CONF_DIR} RENAME default_conf.json
-)
+# Configuration file is installed by ChronoVisor to avoid duplication

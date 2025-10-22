@@ -12,18 +12,19 @@ USER=$(whoami)
 
 # Default values
 BUILD_TYPE="Release"
+BUILD_DIR="$HOME/chronolog-build"
+INSTALL_DIR="$HOME/chronolog-install"
 NUM_RECORDING_GROUP=1
 
-# Directories
-INSTALL_DIR=""
+# Directories (with defaults)
 REPO_ROOT=""
 SYS_LIB_DIR="/lib/x86_64-linux-gnu/"
-WORK_DIR=""
-LIB_DIR=""
-CONF_DIR=""
-BIN_DIR=""
-MONITOR_DIR=""
-OUTPUT_DIR=""
+WORK_DIR="$INSTALL_DIR/chronolog"
+LIB_DIR="$WORK_DIR/lib"
+CONF_DIR="$WORK_DIR/conf"
+BIN_DIR="$WORK_DIR/bin"
+MONITOR_DIR="$WORK_DIR/monitor"
+OUTPUT_DIR="$WORK_DIR/output"
 
 # Binary names
 VISOR_BIN_FILE_NAME="chronovisor_server"
@@ -31,29 +32,29 @@ GRAPHER_BIN_FILE_NAME="chrono_grapher"
 KEEPER_BIN_FILE_NAME="chrono_keeper"
 PLAYER_BIN_FILE_NAME="chrono_player"
 
-# Binary paths (default to empty)
-VISOR_BIN=""
-GRAPHER_BIN=""
-KEEPER_BIN=""
-PLAYER_BIN=""
-VISOR_BIN_DIR=""
-GRAPHER_BIN_DIR=""
-KEEPER_BIN_DIR=""
-PLAYER_BIN_DIR=""
+# Binary paths (with defaults)
+VISOR_BIN="$BIN_DIR/$VISOR_BIN_FILE_NAME"
+GRAPHER_BIN="$BIN_DIR/$GRAPHER_BIN_FILE_NAME"
+KEEPER_BIN="$BIN_DIR/$KEEPER_BIN_FILE_NAME"
+PLAYER_BIN="$BIN_DIR/$PLAYER_BIN_FILE_NAME"
+VISOR_BIN_DIR="$BIN_DIR"
+GRAPHER_BIN_DIR="$BIN_DIR"
+KEEPER_BIN_DIR="$BIN_DIR"
+PLAYER_BIN_DIR="$BIN_DIR"
 
-# Configuration file and component-specific conf arguments
-CONF_FILE=""
-CLIENT_CONF_FILE=""
+# Configuration file and component-specific conf arguments (with defaults)
+CONF_FILE="$WORK_DIR/conf/default_conf.json"
+CLIENT_CONF_FILE="$WORK_DIR/conf/default_client_conf.json"
 VISOR_ARGS="--config ${CONF_FILE}"
 GRAPHER_ARGS="--config ${CONF_FILE}"
 KEEPER_ARGS="--config ${CONF_FILE}"
 PLAYER_ARGS="--config ${CONF_FILE}"
 
-# Hosts files
-VISOR_HOSTS=""
-GRAPHER_HOSTS=""
-KEEPER_HOSTS=""
-PLAYER_HOSTS=""
+# Hosts files (with defaults)
+VISOR_HOSTS="$WORK_DIR/conf/hosts_visor"
+GRAPHER_HOSTS="$WORK_DIR/conf/hosts_grapher"
+KEEPER_HOSTS="$WORK_DIR/conf/hosts_keeper"
+PLAYER_HOSTS="$WORK_DIR/conf/hosts_player"
 
 # Cluster specific settings
 HOSTNAME_HS_NET_SUFFIX=""
@@ -83,9 +84,10 @@ usage() {
     echo "  -c|--clean          Clean ChronoLog logging artifacts and output of previous deployments (default: false)"
     echo "  Note: Only one execution mode can be selected per run."
     echo ""
-    echo "Build Options:"
-    echo "  -t|--build-type <Debug|Release>  Define type of build (default: Release) [Modes: Build]"
-    echo "  -l|--install-dir <path>          Define installation directory (default: /home/$USER/chronolog/BUILD_TYPE) [Modes: Build]"
+    echo "Build & Install Options:"
+    echo "  -t|--build-type <Debug|Release>  Define type of build (default: Release) [Modes: Build, Install]"
+    echo "  -B|--build-dir <path>            Set the build directory (default: $HOME/chronolog-build/) [Modes: Build, Install]"
+    echo "  -I|--install-dir <path>          Set the installation directory (default: $HOME/chronolog-install/) [Modes: Build, Install]"
     echo ""
     echo "Deployment Options:"
     echo "  -r|--record-groups <number>      Set the number of RecordingGroups or ChronoGrapher processes [Modes: Start]"
@@ -95,7 +97,7 @@ usage() {
     echo "  -o|--keeper-hosts <path>         Set the hosts file for ChronoKeeper (default: work_dir/conf/hosts_keeper) [Modes: Start]"
     echo ""
     echo "Directory Settings:"
-    echo "  -w|--work-dir <path>             Set the working directory (Mandatory) [Modes: Install, Start, Stop, Clean]"
+    echo "  -w|--work-dir <path>             Set the working directory (default: $HOME/chronolog-install/chronolog) [Modes: Start, Stop, Clean]"
     echo "  -m|--monitor-dir <path>          Set the monitoring directory (default: work_dir/monitor) [Modes: Start]"
     echo "  -u|--output-dir <path>           Set the output directory (default: work_dir/output) [Modes: Start]"
     echo ""
@@ -112,35 +114,35 @@ usage() {
     echo "Miscellaneous Options:"
     echo "  -e|--verbose                     Enable verbose output (default: false)"
     echo ""
-    echo "Examples (Assume installing a Debug build to ~/chronolog_install):"
-    echo "  1) Builds ChronoLog in Release mode:"
-    echo "     $0 --build --build-type Debug --install-dir ~/chronolog_install"
+    echo "Examples (Assume installing a Debug build to ~/chronolog-install):"
+    echo "  1) Builds ChronoLog in Debug mode and installs it to ~/chronolog-install:"
+    echo "     $0 --build -t Debug -I ~/chronolog-install"
     echo ""
-    echo "  2) Installs ChronoLog to the specified installation directory (~/chronolog_install/Debug):"
-    echo "     $0 --install --work-dir ~/chronolog_install/Debug"
+    echo "  2) Installs ChronoLog to the working directory (~/chronolog-install):"
+    echo "     $0 --install -I ~/chronolog-install"
     echo ""
     echo "  3) Starts a ChronoLog deployment using the default configurations and paths,"
-    echo "     pulling the binaries, hosts, and configuration files from the specified work directory (~/chronolog_install/Debug):"
-    echo "     $0 --start --work-dir ~/chronolog_install/Debug"
+    echo "     pulling the binaries, hosts, and configuration files from the specified work directory (~/chronolog-install/chronolog):"
+    echo "     $0 --start --work-dir ~/chronolog-install/chronolog"
     echo ""
     echo "  4) Starts a ChronoLog deployment using allocated nodes from Slurm job"
-    echo "     job_id from the specified work directory (~/chronolog_install/Debug),"
+    echo "     job_id from the specified work directory (~/chronolog-install/chronolog),"
     echo "     ChronoVisor will run on the first node, ChronoGrapher on the last node, and ChronoKeeper on all the nodes:"
-    echo "     $0 --start --work-dir ~/chronolog_install/Debug --job-id <job_id>"
+    echo "     $0 --start --work-dir ~/chronolog-install/chronolog --job-id <job_id>"
     echo ""
     echo "  5) Starts a ChronoLog deployment using allocated nodes from Slurm job job_id,"
-    echo "     with 2 ChronoGrapher processes from the specified work directory (~/chronolog_install/Debug):"
-    echo "     $0 --start --work-dir ~/chronolog_install/Debug --job-id <job_id> --record-groups 2"
+    echo "     with 2 ChronoGrapher processes from the specified work directory (~/chronolog-install/chronolog):"
+    echo "     $0 --start --work-dir ~/chronolog-install/chronolog --job-id <job_id> --record-groups 2"
     echo ""
     echo "  6) Stops a ChronoLog deployment using the default configurations and paths"
-    echo "     from the specified work directory (~/chronolog_install/Debug):"
-    echo "     $0 --stop --work-dir ~/chronolog_install/Debug"
+    echo "     from the specified work directory (~/chronolog-install/chronolog):"
+    echo "     $0 --stop --work-dir ~/chronolog-install/chronolog"
     echo ""
     exit 1
 }
 
 check_dependencies() {
-    local dependencies=("jq" "parallel-ssh" "ssh" "ldd" "nohup" "pkill" "readlink" "realpath")
+    local dependencies=("jq" "parallel-ssh" "ssh" "ldd" "nohup" "pkill" "readlink" "realpath" "chrpath")
 
     echo -e "${DEBUG}Checking required dependencies...${NC}"
     for dep in "${dependencies[@]}"; do
@@ -529,51 +531,43 @@ prepare_hosts() {
     [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Prepare hosts file done${NC}"
 }
 
-check_build_directory() {
-    local build_dir="${REPO_ROOT}/build"       # Navigate to build/ in the root dir of the repo
-
-    build_dir=$(realpath "${build_dir}" 2>/dev/null || echo "")
-
-    echo -e "${DEBUG}Checking for the existence of the build directory: ${build_dir}${NC}"
-
-    if [ -d "${build_dir}" ]; then
-        echo -e "${DEBUG}Build directory found: ${build_dir}${NC}"
-    else
-        echo -e "${ERR}Build directory not found at: ${build_dir}${NC}"
-        echo "Please ensure the build process has been completed successfully before proceeding."
-        exit 1
-    fi
-}
-
 check_work_dir() {
-    # Check if WORK_DIR is set
+    # Set default WORK_DIR if not provided
     if [[ -z "${WORK_DIR}" ]]; then
-        echo -e "${ERR}WORK_DIR is mandatory on this mode. Please provide it using the -w or --work-dir option.${NC}"
-        usage
-        exit 1
+        WORK_DIR="$INSTALL_DIR/chronolog"
+        echo -e "${DEBUG}Using default work directory: ${WORK_DIR}${NC}"
     fi
 }
 
 # Main functions
 build() {
-    # build ChronoLog
+    local build_args=("${REPO_ROOT}/tools/deploy/ChronoLog/build.sh" "-t" "$BUILD_TYPE" "-B" "$BUILD_DIR")
+    
     if [[ -n "$INSTALL_DIR" ]]; then
-        "${REPO_ROOT}/tools/deploy/ChronoLog/build.sh" -type "$BUILD_TYPE" -install-path "$INSTALL_DIR"
+        build_args+=("-I" "$INSTALL_DIR")
+    fi
+    
+    echo -e "${DEBUG}Running: ${build_args[*]}${NC}"
+    if [[ -x "${REPO_ROOT}/tools/deploy/ChronoLog/build.sh" ]]; then
+        "${build_args[@]}"
     else
-        "${REPO_ROOT}/tools/deploy/ChronoLog/build.sh" -type "$BUILD_TYPE"
+        echo -e "${ERR}Error: ${REPO_ROOT}/tools/deploy/ChronoLog/build.sh is not executable or not found.${NC}"
+        exit 1
     fi
 }
 
 install() {
-    check_work_dir
-
-    check_build_directory
-
-    install_script="${REPO_ROOT}/tools/deploy/ChronoLog/install.sh"
-    if [[ -x "$install_script" ]]; then
-        "$install_script" --lib-dir "${LIB_DIR}" --bin-dir "${BIN_DIR}"
+    local install_args=("${REPO_ROOT}/tools/deploy/ChronoLog/install.sh" "-t" "$BUILD_TYPE" "-B" "$BUILD_DIR")
+    
+    if [[ -n "$INSTALL_DIR" ]]; then
+        install_args+=("-I" "$INSTALL_DIR")
+    fi
+    
+    echo -e "${DEBUG}Running: ${install_args[*]}${NC}"
+    if [[ -x "${REPO_ROOT}/tools/deploy/ChronoLog/install.sh" ]]; then
+        "${install_args[@]}"
     else
-        echo -e "${ERR}Error: $install_script is not executable or not found.${NC}"
+        echo -e "${ERR}Error: ${REPO_ROOT}/tools/deploy/ChronoLog/install.sh is not executable or not found.${NC}"
         exit 1
     fi
 }
@@ -823,7 +817,7 @@ clean() {
 }
 
 parse_args() {
-    TEMP=$(getopt -o t:l:w:m:u:v:g:p:a:q:k:o:f:n:j:r:hbidsce --long build-type:install-dir:work-dir:monitor-dir:output-dir:visor-bin:,grapher-bin:,keeper-bin:,player-bin:,visor-hosts:,grapher-hosts:,keeper-hosts:,conf-file:,client-conf-file:,job-id:,record-groups:,help,build,install,start,stop,clean,verbose -- "$@")
+    TEMP=$(getopt -o t:B:I:w:m:u:v:g:p:a:q:k:o:f:n:j:r:hbidsce --long build-type:build-dir:install-dir:work-dir:monitor-dir:output-dir:visor-bin:,grapher-bin:,keeper-bin:,player-bin:,visor-hosts:,grapher-hosts:,keeper-hosts:,conf-file:,client-conf-file:,job-id:,record-groups:,help,build,install,start,stop,clean,verbose -- "$@")
     if [ $? != 0 ]; then
         echo -e "${ERR}Terminating ...${NC}" >&2
         exit 1
@@ -840,12 +834,15 @@ parse_args() {
                 usage
             fi
             shift 2 ;;
-        -l | --install-dir)
-            INSTALL_DIR=$(realpath "$2")
+        -B | --build-dir)
+            BUILD_DIR=$(realpath -m "$2")
+            shift 2 ;;
+        -I | --install-dir)
+            INSTALL_DIR=$(realpath -m "$2")
             shift 2 ;;
         -w | --work-dir)
             mkdir -p $2
-            WORK_DIR=$(realpath "${2%/}")
+            WORK_DIR=$(realpath -m "${2%/}")
             LIB_DIR="${WORK_DIR}/lib"
             CONF_DIR="${WORK_DIR}/conf"
             BIN_DIR="${WORK_DIR}/bin"
@@ -877,47 +874,47 @@ parse_args() {
             mkdir -p ${OUTPUT_DIR}
             shift 2 ;;
         -m | --monitor-dir)
-            MONITOR_DIR=$(realpath "$2")
+            MONITOR_DIR=$(realpath -m "$2")
             shift 2 ;;
         -u | --output-dir)
-            OUTPUT_DIR=$(realpath "$2")
+            OUTPUT_DIR=$(realpath -m "$2")
             mkdir -p ${OUTPUT_DIR}
             shift 2 ;;
         -v | --visor-bin)
-            VISOR_BIN=$(realpath "$2")
+            VISOR_BIN=$(realpath -m "$2")
             VISOR_BIN_FILE_NAME=$(basename ${VISOR_BIN})
             VISOR_BIN_DIR=$(dirname ${VISOR_BIN})
             shift 2 ;;
         -g | --grapher-bin)
-            GRAPHER_BIN=$(realpath "$2")
+            GRAPHER_BIN=$(realpath -m "$2")
             GRAPHER_BIN_FILE_NAME=$(basename ${GRAPHER_BIN})
             GRAPHER_BIN_DIR=$(dirname ${GRAPHER_BIN})
             shift 2 ;;
         -p | --keeper-bin)
-            KEEPER_BIN=$(realpath "$2")
+            KEEPER_BIN=$(realpath -m "$2")
             KEEPER_BIN_FILE_NAME=$(basename ${KEEPER_BIN})
             KEEPER_BIN_DIR=$(dirname ${KEEPER_BIN})
             shift 2 ;;
         -a | --player-bin)
-            PLAYER_BIN=$(realpath "$2")
+            PLAYER_BIN=$(realpath -m "$2")
             PLAYER_BIN_FILE_NAME=$(basename ${PLAYER_BIN})
             PLAYER_BIN_DIR=$(dirname ${PLAYER_BIN})
             shift 2 ;;
         -q | --visor-hosts)
-            VISOR_HOSTS=$(realpath "$2")
+            VISOR_HOSTS=$(realpath -m "$2")
             shift 2 ;;
         -k | --grapher-hosts)
-            GRAPHER_HOSTS=$(realpath "$2")
+            GRAPHER_HOSTS=$(realpath -m "$2")
             shift 2 ;;
         -o | --keeper-hosts)
-            KEEPER_HOSTS=$(realpath "$2")
+            KEEPER_HOSTS=$(realpath -m "$2")
             shift 2 ;;
         -f | --conf-file)
-            CONF_FILE=$(realpath "$2")
+            CONF_FILE=$(realpath -m "$2")
             CONF_DIR=$(dirname ${CONF_FILE})
             shift 2 ;;
         -n | --client-conf-file)
-            CLIENT_CONF_FILE=$(realpath "$2")
+            CLIENT_CONF_FILE=$(realpath -m "$2")
             shift 2 ;;
         -j | --job-id)
             JOB_ID="$2"

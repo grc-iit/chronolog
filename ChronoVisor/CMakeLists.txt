@@ -38,9 +38,7 @@ set_target_properties(chronovisor_server PROPERTIES
 )
 
 # Install binary
-install(
-    TARGETS chronovisor_server DESTINATION ${CHRONOLOG_INSTALL_BIN_DIR}
-)
+chronolog_install_target(chronovisor_server)
 
 # Install configuration file
 install(
