@@ -223,7 +223,7 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName &c
     }
 
     // Find first file whose start time > endTime
-    auto end_it = time_file_map.upper_bound(endTime);
+    auto end_it = time_file_map.lower_bound(endTime);
     LOG_DEBUG("[HDF5ArchiveReadingAgent] readArchiveStory {}-{} range {}-{}", chronicleName, storyName
         , formatWithCommas(startTime), formatWithCommas(endTime));
 
