@@ -732,7 +732,7 @@ stop() {
 
   # stop Keeper
   echo -e "${DEBUG}Stopping ChronoKeeper ...${NC}"
-  parallel_remote_stop_processes ${KEEPER_HOSTS} ${KEEPER_BIN_FILE_NAME}
+  parallel_remote_stop_processes ${KEEPER_HOSTS} ${KEEPER_BIN_FILE_NAME} &
 
   wait
 
