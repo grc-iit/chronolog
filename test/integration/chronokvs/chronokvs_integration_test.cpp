@@ -45,7 +45,8 @@ private:
         std::cout << "\r" << "  " << message << " [";
         for(int i = 0; i < barWidth; ++i)
         {
-            if(i < pos) std::cout << "█";
+            if(i < pos)
+                std::cout << "█";
             else if(i == pos)
                 std::cout << "▶";
             else
@@ -58,7 +59,10 @@ private:
     void printTestResult(const std::string& testName, bool passed, const std::string& details = "")
     {
         std::cout << "  " << (passed ? "✅" : "❌") << " " << testName;
-        if(!details.empty()) { std::cout << " - " << details; }
+        if(!details.empty())
+        {
+            std::cout << " - " << details;
+        }
         std::cout << std::endl;
     }
 
@@ -84,14 +88,18 @@ public:
             std::uint64_t timestamp = kvs.put(test_key, values[i]);
             timestamps.push_back(timestamp);
 
-            if((i + 1) % 100 == 0 || i < 5) { printProgressBar(i + 1, num_values, "Writing values"); }
+            if((i + 1) % 100 == 0 || i < 5)
+            {
+                printProgressBar(i + 1, num_values, "Writing values");
+            }
         }
 
         auto end_time = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
 
         std::cout << "\n" << std::endl;
-        printTestResult("Put Operations", timestamps.size() == static_cast<size_t>(num_values),
+        printTestResult("Put Operations",
+                        timestamps.size() == static_cast<size_t>(num_values),
                         std::to_string(timestamps.size()) + "/" + std::to_string(num_values) + " successful");
         std::cout << "  Performance: " << duration.count() << " ms (" << std::fixed << std::setprecision(1)
                   << (num_values * 1000.0 / duration.count()) << " ops/sec)" << std::endl;
@@ -204,10 +212,14 @@ public:
 
         std::cout << std::endl;
         bool success = successful_gets == num_random_gets;
-        printTestResult("Get Operations", success,
+        printTestResult("Get Operations",
+                        success,
                         std::to_string(successful_gets) + "/" + std::to_string(num_random_gets) + " successful");
 
-        if(success) { std::cout << "  ✓ All exact timestamp retrievals successful" << std::endl; }
+        if(success)
+        {
+            std::cout << "  ✓ All exact timestamp retrievals successful" << std::endl;
+        }
         else
         {
             std::cout << "  ⚠️  Some exact retrievals failed - this may indicate timing precision issues" << std::endl;
@@ -234,7 +246,10 @@ public:
         test1_result = test1_put();
 
         // Wait for data propagation (only if Test 1 passed)
-        if(test1_result) { waitForDataPropagation(); }
+        if(test1_result)
+        {
+            waitForDataPropagation();
+        }
         else
         {
             printHeader("DATA PROPAGATION WAIT");
@@ -246,7 +261,10 @@ public:
         test2_result = test2_get_history();
 
         // Test 3: Get (only if we have data from previous tests)
-        if(test1_result && timestamps.size() > 0) { test3_result = test3_get(); }
+        if(test1_result && timestamps.size() > 0)
+        {
+            test3_result = test3_get();
+        }
         else
         {
             printHeader("TEST 3: GET OPERATIONS");
