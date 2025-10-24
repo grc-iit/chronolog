@@ -36,8 +36,8 @@ struct ClockConf
     [[nodiscard]] std::string to_String() const
     {
         return "CLOCKSOURCE_TYPE: " + std::string(getClocksourceTypeString(CLOCKSOURCE_TYPE)) +
-               ", DRIFT_CAL_SLEEP_SEC: " + std::to_string(DRIFT_CAL_SLEEP_SEC) + ", DRIFT_CAL_SLEEP_NSEC: " +
-               std::to_string(DRIFT_CAL_SLEEP_NSEC);
+               ", DRIFT_CAL_SLEEP_SEC: " + std::to_string(DRIFT_CAL_SLEEP_SEC) +
+               ", DRIFT_CAL_SLEEP_NSEC: " + std::to_string(DRIFT_CAL_SLEEP_NSEC);
     }
 };
 
@@ -51,15 +51,11 @@ struct AuthConf
         /* Authentication-related configurations */
         AUTH_TYPE = "RBAC";
         MODULE_PATH = "";
-
     }
 
     int parseJsonConf(json_object*);
 
-    [[nodiscard]] std::string to_String() const
-    {
-        return "AUTH_TYPE: " + AUTH_TYPE + ", MODULE_PATH: " + MODULE_PATH;
-    }
+    [[nodiscard]] std::string to_String() const { return "AUTH_TYPE: " + AUTH_TYPE + ", MODULE_PATH: " + MODULE_PATH; }
 };
 
 struct RPCProviderConf
@@ -73,9 +69,8 @@ struct RPCProviderConf
 
     [[nodiscard]] std::string to_String() const
     {
-        return "[PROTO_CONF: " +
-               PROTO_CONF + ", IP: " + IP + ", BASE_PORT: " + std::to_string(BASE_PORT) + ", SERVICE_PROVIDER_ID: " +
-               std::to_string(SERVICE_PROVIDER_ID) + ", PORTS: " + "]";
+        return "[PROTO_CONF: " + PROTO_CONF + ", IP: " + IP + ", BASE_PORT: " + std::to_string(BASE_PORT) +
+               ", SERVICE_PROVIDER_ID: " + std::to_string(SERVICE_PROVIDER_ID) + ", PORTS: " + "]";
     }
 };
 
@@ -89,11 +84,11 @@ struct LogConf
     size_t LOGFILENUM{};
     spdlog::level::level_enum FLUSHLEVEL{};
 
-    void parselogLevelConf(json_object*json_conf, spdlog::level::level_enum &log_level)
+    void parselogLevelConf(json_object* json_conf, spdlog::level::level_enum& log_level)
     {
         if(json_object_is_type(json_conf, json_type_string))
         {
-            const char*conf_str = json_object_get_string(json_conf);
+            const char* conf_str = json_object_get_string(json_conf);
             if(strcmp(conf_str, "trace") == 0)
             {
                 log_level = spdlog::level::trace;
@@ -133,11 +128,11 @@ struct LogConf
         }
     }
 
-    void parseFlushLevelConf(json_object*json_conf, spdlog::level::level_enum &flush_level)
+    void parseFlushLevelConf(json_object* json_conf, spdlog::level::level_enum& flush_level)
     {
         if(json_object_is_type(json_conf, json_type_string))
         {
-            const char*conf_str = json_object_get_string(json_conf);
+            const char* conf_str = json_object_get_string(json_conf);
             if(strcmp(conf_str, "trace") == 0)
             {
                 flush_level = spdlog::level::trace;
@@ -168,8 +163,10 @@ struct LogConf
             }
             else
             {
-                std::cout << "[ConfigurationManager] Unknown flush level: " << conf_str << "Set it to default value: "
-                                                                                           "Warning" << std::endl;
+                std::cout << "[ConfigurationManager] Unknown flush level: " << conf_str
+                          << "Set it to default value: "
+                             "Warning"
+                          << std::endl;
                 flush_level = spdlog::level::warn;
             }
         }
@@ -207,9 +204,9 @@ struct LogConf
 
     [[nodiscard]] std::string to_String() const
     {
-        return "[TYPE: " + LOGTYPE + ", FILE: " + LOGFILE + ", LEVEL: " + LevelToString(LOGLEVEL) + ", NAME: " +
-               LOGNAME + ", LOGFILESIZE: " + std::to_string(LOGFILESIZE) + ", LOGFILENUM: " +
-               std::to_string(LOGFILENUM) + ", FLUSH LEVEL: " + LevelToString(FLUSHLEVEL) + "]";
+        return "[TYPE: " + LOGTYPE + ", FILE: " + LOGFILE + ", LEVEL: " + LevelToString(LOGLEVEL) +
+               ", NAME: " + LOGNAME + ", LOGFILESIZE: " + std::to_string(LOGFILESIZE) +
+               ", LOGFILENUM: " + std::to_string(LOGFILENUM) + ", FLUSH LEVEL: " + LevelToString(FLUSHLEVEL) + "]";
     }
 };
 
@@ -220,18 +217,16 @@ struct DataStoreConf
     int acceptance_window_secs = 60;
     int inactive_story_delay_secs = 180;
 
-    DataStoreConf()
-    { }
+    DataStoreConf() {}
 
     int parseJsonConf(json_object*);
 
     [[nodiscard]] std::string to_String() const
     {
-        return  "[DATA_STORE_CONF: max_story_chunk_size: " + std::to_string(max_story_chunk_size) +
-                " story_chunk_duration_secs: " + std::to_string(story_chunk_duration_secs) +
-                " acceptance_window_secs: " + std::to_string(acceptance_window_secs) +
-                " inactive_story_delay_secs: " + std::to_string(inactive_story_delay_secs) +
-                "]";
+        return "[DATA_STORE_CONF: max_story_chunk_size: " + std::to_string(max_story_chunk_size) +
+               " story_chunk_duration_secs: " + std::to_string(story_chunk_duration_secs) +
+               " acceptance_window_secs: " + std::to_string(acceptance_window_secs) +
+               " inactive_story_delay_secs: " + std::to_string(inactive_story_delay_secs) + "]";
     }
 };
 
@@ -243,8 +238,7 @@ struct ExtractorReaderConf
 
     [[nodiscard]] std::string to_String() const
     {
-        return  "[EXTRACTOR_READER_CONF: STORY_FILES_DIR: " + story_files_dir +
-                "]";
+        return "[EXTRACTOR_READER_CONF: STORY_FILES_DIR: " + story_files_dir + "]";
     }
 };
 
@@ -278,8 +272,8 @@ struct VisorConfiguration
     {
         return "[VISOR_CLIENT_PORTAL_SERVICE_CONF: " + VISOR_CLIENT_PORTAL_SERVICE_CONF.to_String() +
                ", VISOR_KEEPER_REGISTRY_SERVICE_CONF: " + VISOR_KEEPER_REGISTRY_SERVICE_CONF.to_String() +
-               ", VISOR_LOG: " + VISOR_LOG_CONF.to_String() + ", DELAYED_DATA_ADMIN_EXIT_IN_SECS: " +
-               std::to_string(DELAYED_DATA_ADMIN_EXIT_IN_SECS) + "]";
+               ", VISOR_LOG: " + VISOR_LOG_CONF.to_String() +
+               ", DELAYED_DATA_ADMIN_EXIT_IN_SECS: " + std::to_string(DELAYED_DATA_ADMIN_EXIT_IN_SECS) + "]";
     }
 };
 
@@ -323,14 +317,12 @@ struct KeeperConfiguration
     int parseJsonConf(json_object*);
     [[nodiscard]] std::string to_String() const
     {
-        return "[CHRONO_GRAPHER_CONFIGURATION: RECORDING_GROUP: "+ std::to_string(RECORDING_GROUP) +
+        return "[CHRONO_GRAPHER_CONFIGURATION: RECORDING_GROUP: " + std::to_string(RECORDING_GROUP) +
                ", KEEPER_GRAPHER_DRAIN_SERVICE_CONF: " + KEEPER_GRAPHER_DRAIN_SERVICE_CONF.to_String() +
                ", DATA_STORE_ADMIN_SERVICE_CONF: " + DATA_STORE_ADMIN_SERVICE_CONF.to_String() +
                ", VISOR_REGISTRY_SERVICE_CONF: " + VISOR_REGISTRY_SERVICE_CONF.to_String() +
-               ", LOG_CONF: " + LOG_CONF.to_String() +
-               ", DATA_STORE_CONF: " + DATA_STORE_CONF.to_String() +
-               ", EXTRACTOR_CONF: " + EXTRACTOR_CONF.to_String() +
-               "]";
+               ", LOG_CONF: " + LOG_CONF.to_String() + ", DATA_STORE_CONF: " + DATA_STORE_CONF.to_String() +
+               ", EXTRACTOR_CONF: " + EXTRACTOR_CONF.to_String() + "]";
     }
 };
 
@@ -373,14 +365,12 @@ struct GrapherConfiguration
     int parseJsonConf(json_object*);
     [[nodiscard]] std::string to_String() const
     {
-        return "[CHRONO_GRAPHER_CONFIGURATION: RECORDING_GROUP: "+ std::to_string(RECORDING_GROUP) +
+        return "[CHRONO_GRAPHER_CONFIGURATION: RECORDING_GROUP: " + std::to_string(RECORDING_GROUP) +
                ", KEEPER_GRAPHER_DRAIN_SERVICE_CONF: " + KEEPER_GRAPHER_DRAIN_SERVICE_CONF.to_String() +
                ", DATA_STORE_ADMIN_SERVICE_CONF: " + DATA_STORE_ADMIN_SERVICE_CONF.to_String() +
                ", VISOR_REGISTRY_SERVICE_CONF: " + VISOR_REGISTRY_SERVICE_CONF.to_String() +
-               ", LOG_CONF: " + LOG_CONF.to_String() +
-               ", DATA_STORE_CONF: " + DATA_STORE_CONF.to_String() +
-               ", EXTRACTOR_CONF: " + EXTRACTOR_CONF.to_String() +
-               "]";
+               ", LOG_CONF: " + LOG_CONF.to_String() + ", DATA_STORE_CONF: " + DATA_STORE_CONF.to_String() +
+               ", EXTRACTOR_CONF: " + EXTRACTOR_CONF.to_String() + "]";
     }
 };
 
@@ -411,12 +401,12 @@ struct PlayerConfiguration
         VISOR_REGISTRY_SERVICE_CONF.IP = "127.0.0.1";
         VISOR_REGISTRY_SERVICE_CONF.BASE_PORT = 8888;
         VISOR_REGISTRY_SERVICE_CONF.SERVICE_PROVIDER_ID = 88;
-    
+
         DATA_STORE_CONF.max_story_chunk_size = 4096;
         DATA_STORE_CONF.story_chunk_duration_secs = 60;
         DATA_STORE_CONF.acceptance_window_secs = 180;
         DATA_STORE_CONF.inactive_story_delay_secs = 300;
-    
+
         READER_CONF.story_files_dir = "/tmp/";
     }
     int parseJsonConf(json_object*);
@@ -427,10 +417,8 @@ struct PlayerConfiguration
                ", DATA_STORE_ADMIN_SERVICE_CONF: " + DATA_STORE_ADMIN_SERVICE_CONF.to_String() +
                ", PLAYBACK_SERVICE_CONF: " + PLAYBACK_SERVICE_CONF.to_String() +
                ", VISOR_REGISTRY_SERVICE_CONF: " + VISOR_REGISTRY_SERVICE_CONF.to_String() +
-               ", LOG_CONF: " + LOG_CONF.to_String() +
-               ", DATA_STORE_CONF: " + DATA_STORE_CONF.to_String() +
-               ", READER_CONF: " + READER_CONF.to_String() +
-               "]";
+               ", LOG_CONF: " + LOG_CONF.to_String() + ", DATA_STORE_CONF: " + DATA_STORE_CONF.to_String() +
+               ", READER_CONF: " + READER_CONF.to_String() + "]";
     }
 };
 
@@ -445,24 +433,19 @@ public:
     PlayerConfiguration PLAYER_CONF{};
 
     ConfigurationManager()
-    : CLOCK_CONF{}
-    , AUTH_CONF{}
-    , VISOR_CONF{}
-    , KEEPER_CONF{}
-    , GRAPHER_CONF{}
-    , PLAYER_CONF{}
-    {
+        : CLOCK_CONF{}
+        , AUTH_CONF{}
+        , VISOR_CONF{}
+        , KEEPER_CONF{}
+        , GRAPHER_CONF{}
+        , PLAYER_CONF{}
+    {}
 
-    }
+    explicit ConfigurationManager(const std::string& conf_file_path) { LoadConfFromJSONFile(conf_file_path); }
 
-    explicit ConfigurationManager(const std::string &conf_file_path)
+    void LoadConfFromJSONFile(const std::string& conf_file_path)
     {
-        LoadConfFromJSONFile(conf_file_path);
-    }
-
-    void LoadConfFromJSONFile(const std::string &conf_file_path)
-    {
-        json_object*root = json_object_from_file(conf_file_path.c_str());
+        json_object* root = json_object_from_file(conf_file_path.c_str());
         if(root == nullptr)
         {
             std::cerr << "[ConfigurationManager] Failed to open configuration file at path: " << conf_file_path.c_str()
@@ -474,7 +457,7 @@ public:
         {
             if(strcmp(key, "clock") == 0)
             {
-                json_object*clock_conf = json_object_object_get(root, "clock");
+                json_object* clock_conf = json_object_object_get(root, "clock");
                 if(clock_conf == nullptr || !json_object_is_type(clock_conf, json_type_object))
                 {
                     std::cerr << "[ConfigurationManager] Error while parsing configuration file "
@@ -486,7 +469,7 @@ public:
             }
             else if(strcmp(key, "authentication") == 0)
             {
-                json_object*auth_conf = json_object_object_get(root, "authentication");
+                json_object* auth_conf = json_object_object_get(root, "authentication");
                 if(auth_conf == nullptr || !json_object_is_type(auth_conf, json_type_object))
                 {
                     std::cerr << "[ConfigurationManager] Error while parsing configuration file "
@@ -498,7 +481,7 @@ public:
             }
             else if(strcmp(key, "chrono_visor") == 0)
             {
-                json_object*chrono_visor_conf = json_object_object_get(root, "chrono_visor");
+                json_object* chrono_visor_conf = json_object_object_get(root, "chrono_visor");
                 if(chrono_visor_conf == nullptr || !json_object_is_type(chrono_visor_conf, json_type_object))
                 {
                     std::cerr << "[ConfigurationManager] Error while parsing configuration file "
@@ -510,7 +493,7 @@ public:
             }
             else if(strcmp(key, "chrono_keeper") == 0)
             {
-                json_object*chrono_keeper_conf = json_object_object_get(root, "chrono_keeper");
+                json_object* chrono_keeper_conf = json_object_object_get(root, "chrono_keeper");
                 if(chrono_keeper_conf == nullptr || !json_object_is_type(chrono_keeper_conf, json_type_object))
                 {
                     std::cerr << "[ConfigurationManager] Error while parsing configuration file "
@@ -522,7 +505,7 @@ public:
             }
             else if(strcmp(key, "chrono_grapher") == 0)
             {
-                json_object*chrono_grapher_conf = json_object_object_get(root, "chrono_grapher");
+                json_object* chrono_grapher_conf = json_object_object_get(root, "chrono_grapher");
                 if(chrono_grapher_conf == nullptr || !json_object_is_type(chrono_grapher_conf, json_type_object))
                 {
                     std::cerr << "[ConfigurationManager] Error while parsing configuration file "
@@ -534,7 +517,7 @@ public:
             }
             else if(strcmp(key, "chrono_player") == 0)
             {
-                json_object*chrono_player_conf = json_object_object_get(root, "chrono_player");
+                json_object* chrono_player_conf = json_object_object_get(root, "chrono_player");
                 if(chrono_player_conf == nullptr || !json_object_is_type(chrono_player_conf, json_type_object))
                 {
                     std::cerr << "[ConfigurationManager] Error while parsing configuration file "
@@ -548,6 +531,6 @@ public:
         json_object_put(root);
     }
 };
-}
+} // namespace chronolog
 
 #endif //CHRONOLOG_CONFIGURATIONMANAGER_H

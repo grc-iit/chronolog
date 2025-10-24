@@ -19,18 +19,17 @@ private:
     std::unique_ptr<ChronoKVSMapper> mapper;
 
 public:
-
     ChronoKVS();
 
     ~ChronoKVS();
 
-    std::uint64_t put(const std::string &key, const std::string &value);
+    std::uint64_t put(const std::string& key, const std::string& value);
 
-    std::string get(const std::string &key, uint64_t timestamp);
+    std::string get(const std::string& key, uint64_t timestamp);
 
-    std::vector<EventData> get_history(const std::string &key);
+    std::vector<EventData> get_history(const std::string& key);
 };
 
-}
+} // namespace chronokvs
 
 #endif // CHRONOKVS_H_

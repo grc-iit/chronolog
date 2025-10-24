@@ -15,23 +15,18 @@
 namespace chronolog
 {
 
-class DummyReadingAgent 
+class DummyReadingAgent
 {
 public:
-    DummyReadingAgent()
-    {}
-   
-    ~DummyReadingAgent()
-    {}
+    DummyReadingAgent() {}
 
-    int initialize()
-    { return 1; }
+    ~DummyReadingAgent() {}
 
-    int shutdown()
-    { return 1; }
+    int initialize() { return 1; }
 
-    int readArchivedStory( ChronicleName, StoryName, uint64_t, uint64_t, std::list<StoryChunk*>&)
-    { return 1; }
+    int shutdown() { return 1; }
+
+    int readArchivedStory(ChronicleName, StoryName, uint64_t, uint64_t, std::list<StoryChunk*>&) { return 1; }
 };
 
 class ArchiveReadingAgent
@@ -39,26 +34,24 @@ class ArchiveReadingAgent
 
     enum ReadingAgentState
     {
-        UNKNOWN = 0, 
-        RUNNING = 1,   
-        SHUTTING_DOWN = 2   
+        UNKNOWN = 0,
+        RUNNING = 1,
+        SHUTTING_DOWN = 2
     };
 
 
 public:
-    ArchiveReadingAgent( ArchiveReadingRequestQueue & request_queue, std::string const & archive_path)
+    ArchiveReadingAgent(ArchiveReadingRequestQueue& request_queue, std::string const& archive_path)
         : theReadingRequestQueue(request_queue)
         , agentState(UNKNOWN)
-        , theReadingAgent(archive_path, true)  // Default to polling mode
+        , theReadingAgent(archive_path, true) // Default to polling mode
     {}
 
     ~ArchiveReadingAgent();
 
-    bool is_running() const
-    { return (RUNNING == agentState); }
+    bool is_running() const { return (RUNNING == agentState); }
 
-    bool is_shutting_down() const
-    { return (SHUTTING_DOWN == agentState); }
+    bool is_shutting_down() const { return (SHUTTING_DOWN == agentState); }
 
     void startArchiveReading(int stream_count);
 
@@ -67,21 +60,20 @@ public:
     void archiveReadingTask();
 
 private:
-    ArchiveReadingAgent(ArchiveReadingAgent const &) = delete;
+    ArchiveReadingAgent(ArchiveReadingAgent const&) = delete;
 
-    ArchiveReadingAgent &operator=(ArchiveReadingAgent const &) = delete;
+    ArchiveReadingAgent& operator=(ArchiveReadingAgent const&) = delete;
 
-    ArchiveReadingRequestQueue & theReadingRequestQueue;
+    ArchiveReadingRequestQueue& theReadingRequestQueue;
 
     std::mutex agentStateMutex;
     ReadingAgentState agentState;
-    std::vector <thallium::managed <thallium::xstream>> archiveReadingStreams;
-    std::vector <thallium::managed <thallium::thread>> archiveReadingThreads;
+    std::vector<thallium::managed<thallium::xstream>> archiveReadingStreams;
+    std::vector<thallium::managed<thallium::thread>> archiveReadingThreads;
 
     //archiveSpecific readingAgent (template later on)
     HDF5ArchiveReadingAgent theReadingAgent;
-
 };
 
-}
+} // namespace chronolog
 #endif

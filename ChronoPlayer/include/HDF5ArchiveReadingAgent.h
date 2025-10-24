@@ -28,16 +28,23 @@ namespace chronolog
 class HDF5ArchiveReadingAgent
 {
     // File system state tracking for polling
-    struct FileInfo 
+    struct FileInfo
     {
         std::string path;
         fs::file_time_type last_modified;
         std::uintmax_t file_size;
         bool is_directory;
-        
-        FileInfo() : file_size(0), is_directory(false) {}
+
+        FileInfo()
+            : file_size(0)
+            , is_directory(false)
+        {}
         FileInfo(const std::string& p, const fs::file_time_type& lm, std::uintmax_t fs, bool is_dir)
-            : path(p), last_modified(lm), file_size(fs), is_directory(is_dir) {}
+            : path(p)
+            , last_modified(lm)
+            , file_size(fs)
+            , is_directory(is_dir)
+        {}
     };
 
     // Directory caching for performance optimization
@@ -48,29 +55,35 @@ class HDF5ArchiveReadingAgent
         int64_t last_check_time_ns;
         bool has_changes;
 
-        DirectoryCache() : last_modified_ns(0), last_check_time_ns(0), has_changes(false) {}
-        DirectoryCache(const fs::path &p, int64_t lm_ns, int64_t lc_ns, bool changes)
-            : path(p), last_modified_ns(lm_ns), last_check_time_ns(lc_ns), has_changes(changes) {}
+        DirectoryCache()
+            : last_modified_ns(0)
+            , last_check_time_ns(0)
+            , has_changes(false)
+        {}
+        DirectoryCache(const fs::path& p, int64_t lm_ns, int64_t lc_ns, bool changes)
+            : path(p)
+            , last_modified_ns(lm_ns)
+            , last_check_time_ns(lc_ns)
+            , has_changes(changes)
+        {}
     };
 
 public:
-    explicit HDF5ArchiveReadingAgent(std::string const &archive_path, bool use_polling = true, 
-                                    std::chrono::milliseconds monitoring_interval = std::chrono::milliseconds(5000))
+    explicit HDF5ArchiveReadingAgent(std::string const& archive_path,
+                                     bool use_polling = true,
+                                     std::chrono::milliseconds monitoring_interval = std::chrono::milliseconds(5000))
         : archive_path_(fs::absolute(expandTilde(fs::path(archive_path))).make_preferred().string())
         , use_polling_(use_polling)
         , monitoring_interval_(monitoring_interval)
         , shutdown_requested_(false)
     {}
 
-    ~HDF5ArchiveReadingAgent()
-    {
-        shutdown();
-    }
+    ~HDF5ArchiveReadingAgent() { shutdown(); }
 
     int initialize()
     {
-        LOG_INFO("[HDF5ArchiveReadingAgent] Initializing, scanning archive path {} recursively to create the map ..."
-                 , archive_path_);
+        LOG_INFO("[HDF5ArchiveReadingAgent] Initializing, scanning archive path {} recursively to create the map ...",
+                 archive_path_);
         createStartTimeFileNameMap();
         return setUpFsMonitoring();
     }
@@ -88,13 +101,21 @@ public:
         return 0;
     }
 
-    int readStoryChunkFile(const ChronicleName&, const StoryName&, uint64_t, uint64_t, std::list<StoryChunk*>&
-                          , const std::string &);
+    int readStoryChunkFile(const ChronicleName&,
+                           const StoryName&,
+                           uint64_t,
+                           uint64_t,
+                           std::list<StoryChunk*>&,
+                           const std::string&);
 
-    int readArchivedStory(const ChronicleName&, const StoryName&, uint64_t, uint64_t, std::list<StoryChunk*>&
-                          , bool = false);
+    int readArchivedStory(const ChronicleName&,
+                          const StoryName&,
+                          uint64_t,
+                          uint64_t,
+                          std::list<StoryChunk*>&,
+                          bool = false);
 
-    static std::string getChronicleName(const std::string &file_name)
+    static std::string getChronicleName(const std::string& file_name)
     {
         // Example file name: /home/kfeng/chronolog/Debug/output/chronicle_0_0.story_0_0.1736806500.vlen.h5
         std::string base_name = fs::path(file_name).filename().string();
@@ -102,7 +123,7 @@ public:
         return chronicle_name;
     }
 
-    static std::string getStoryName(const std::string &file_name)
+    static std::string getStoryName(const std::string& file_name)
     {
         // Example file name: /home/kfeng/chronolog/Debug/output/chronicle_0_0.story_0_0.1736806500.vlen.h5
         std::string base_name = fs::path(file_name).filename().string();
@@ -112,26 +133,27 @@ public:
         return story_name;
     }
 
-    static uint64_t getStartTime(const std::string &file_name)
+    static uint64_t getStartTime(const std::string& file_name)
     {
         // Example file name: /home/kfeng/chronolog/Debug/output/chronicle_0_0.story_0_0.1736806500.vlen.h5
-//        LOG_DEBUG("[HDF5ArchiveReadingAgent] Extracting start time from file name: {}", file_name);
+        //        LOG_DEBUG("[HDF5ArchiveReadingAgent] Extracting start time from file name: {}", file_name);
         std::string base_name = fs::path(file_name).filename().string();
         size_t first_dot = base_name.find_first_of('.');
         size_t second_dot = base_name.find_first_of('.', first_dot + 1);
         size_t third_dot = base_name.find_first_of('.', second_dot + 1);
         std::string start_time_str = base_name.substr(second_dot + 1, third_dot - second_dot - 1);
-//        LOG_DEBUG("[HDF5ArchiveReadingAgent] Extracted start time: {}", start_time_str);
+        //        LOG_DEBUG("[HDF5ArchiveReadingAgent] Extracted start time: {}", start_time_str);
         uint64_t start_time_in_ns = 0;
         try
         {
             start_time_in_ns = std::stoull(start_time_str) * 1000000000;
             LOG_DEBUG("[HDF5ArchiveReadingAgent] Use start time={} for file map", start_time_in_ns);
         }
-        catch(const std::exception &e)
+        catch(const std::exception& e)
         {
-            LOG_ERROR("[HDF5ArchiveReadingAgent] Failed to convert start time string '{}' to uint64_t: {}"
-                      , start_time_str, e.what());
+            LOG_ERROR("[HDF5ArchiveReadingAgent] Failed to convert start time string '{}' to uint64_t: {}",
+                      start_time_str,
+                      e.what());
         }
         return start_time_in_ns;
     }
@@ -141,52 +163,58 @@ private:
     {
         if(!path.empty() && path.string()[0] == '~')
         {
-            const char *home = getenv("HOME");
+            const char* home = getenv("HOME");
             if(home)
             {
                 fs::path expanded_path = fs::path(home) / path.string().substr(1);
-                LOG_DEBUG("[HDF5ArchiveReadingAgent] Expanding archive path from {} to {}"
-                          , path.string(), expanded_path.string());
+                LOG_DEBUG("[HDF5ArchiveReadingAgent] Expanding archive path from {} to {}",
+                          path.string(),
+                          expanded_path.string());
                 return expanded_path;
             }
             else
             {
-                LOG_ERROR("[HDF5ArchiveReadingAgent] HOME environment variable is not set. Cannot expand tilde in path: {}"
-                          , path.string());
+                LOG_ERROR("[HDF5ArchiveReadingAgent] HOME environment variable is not set. Cannot expand tilde in "
+                          "path: {}",
+                          path.string());
                 return path; // Return the original path if HOME is not set
             }
         }
         return path;
     }
 
-    bool isValidArchiveFile(const std::string &file_name)
+    bool isValidArchiveFile(const std::string& file_name)
     {
         fs::path expanded_full_path = fs::absolute(fs::path(file_name));
-        LOG_DEBUG("[HDF5ArchiveReadingAgent] Checking if file {} is a valid archive file.", expanded_full_path.string());
-        
+        LOG_DEBUG("[HDF5ArchiveReadingAgent] Checking if file {} is a valid archive file.",
+                  expanded_full_path.string());
+
         // Quick check: file extension first
         if(expanded_full_path.extension() != ".h5")
         {
-            LOG_DEBUG("[HDF5ArchiveReadingAgent] File {} is not an HDF5 file. Skipping this file.", expanded_full_path.string());
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] File {} is not an HDF5 file. Skipping this file.",
+                      expanded_full_path.string());
             return false;
         }
-        
+
         // Check if file exists and is readable using access()
         if(access(expanded_full_path.c_str(), R_OK) != 0)
         {
-            LOG_DEBUG("[HDF5ArchiveReadingAgent] File {} is not readable. Skipping this file.", expanded_full_path.string());
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] File {} is not readable. Skipping this file.",
+                      expanded_full_path.string());
             return false;
         }
-        
+
         // Verify it's a regular file using filesystem
         fs::directory_entry entry(expanded_full_path);
         std::error_code ec;
         if(!entry.is_regular_file(ec))
         {
-            LOG_DEBUG("[HDF5ArchiveReadingAgent] File {} is not a regular file. Skipping this file.", expanded_full_path.string());
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] File {} is not a regular file. Skipping this file.",
+                      expanded_full_path.string());
             return false;
         }
-        
+
         return true;
     }
 
@@ -207,7 +235,8 @@ private:
     // Directory caching methods
     int64_t getDirectoryModificationTime(const fs::path& dir_path, std::error_code& ec);
     bool hasDirectoryChangedWithCache(const fs::path& dir_path, int64_t last_scan_ns, std::error_code& ec);
-    void updateDirectoryCache(const fs::path& dir_path, int64_t last_modified_ns, int64_t check_time_ns, bool has_changes);
+    void
+    updateDirectoryCache(const fs::path& dir_path, int64_t last_modified_ns, int64_t check_time_ns, bool has_changes);
     void clearDirectoryCache();
 
     int createStartTimeFileNameMap()
@@ -218,12 +247,13 @@ private:
         auto it = fs::recursive_directory_iterator(archive_path_, fs::directory_options::skip_permission_denied, ec);
         if(ec)
         {
-            LOG_ERROR("[HDF5ArchiveReadingAgent] Failed to iterate recursively over archive directory '{}': {}"
-                      , archive_path_, ec.message());
+            LOG_ERROR("[HDF5ArchiveReadingAgent] Failed to iterate recursively over archive directory '{}': {}",
+                      archive_path_,
+                      ec.message());
             return -1; // Return error code on failure
         }
         std::string file_name, chronicle_name, story_name;
-        for(const auto &entry: it)
+        for(const auto& entry: it)
         {
             if(ec)
             {
@@ -237,12 +267,12 @@ private:
             addFileToStartTimeFileNameMap(file_name);
         }
 
-        LOG_DEBUG("[HDF5ArchiveReadingAgent] Created start_time_file_name_map_ with {} entries."
-                  , start_time_file_name_map_.size());
+        LOG_DEBUG("[HDF5ArchiveReadingAgent] Created start_time_file_name_map_ with {} entries.",
+                  start_time_file_name_map_.size());
         return 0;
     }
 
-    int addFileToStartTimeFileNameMap(const std::string &file_name)
+    int addFileToStartTimeFileNameMap(const std::string& file_name)
     {
         std::lock_guard<std::mutex> lock(start_time_file_name_map_mutex_);
         if(!isValidArchiveFile(file_name))
@@ -255,26 +285,26 @@ private:
         uint64_t start_time = getStartTime(file_name);
         if(start_time == 0)
         {
-            LOG_DEBUG("[HDF5ArchiveReadingAgent] Failed to extract start time from file: {}. Skipping this file."
-                      , file_name);
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] Failed to extract start time from file: {}. Skipping this file.",
+                      file_name);
             return -1; // Skip files with invalid start time
         }
         std::string file_name_number = fs::path(file_name).replace_extension("").extension().string().substr(1);
         if(std::all_of(file_name_number.begin(), file_name_number.end(), ::isdigit))
         {
             LOG_DEBUG("[HDF5ArchiveReadingAgent] {} is an auxiliary file. Skipping this file.", file_name);
-            LOG_DEBUG("[HDF5ArchiveReadingAgent] start_time_file_name_map_ has {} entries."
-                      , start_time_file_name_map_.size());
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] start_time_file_name_map_ has {} entries.",
+                      start_time_file_name_map_.size());
             return -1; // Skip files that already exist in the map
         }
         start_time_file_name_map_[std::make_tuple(chronicle_name, story_name, start_time)] = file_name;
         LOG_DEBUG("[HDF5ArchiveReadingAgent] Added file {} to start_time_file_name_map_.", file_name);
-        LOG_DEBUG("[HDF5ArchiveReadingAgent] start_time_file_name_map_ has {} entries."
-                  , start_time_file_name_map_.size());
+        LOG_DEBUG("[HDF5ArchiveReadingAgent] start_time_file_name_map_ has {} entries.",
+                  start_time_file_name_map_.size());
         return 0;
     }
 
-    int removeFileFromStartTimeFileNameMap(const std::string &file_name)
+    int removeFileFromStartTimeFileNameMap(const std::string& file_name)
     {
         std::lock_guard<std::mutex> lock(start_time_file_name_map_mutex_);
         std::string chronicle_name = getChronicleName(file_name);
@@ -290,8 +320,8 @@ private:
         if(std::all_of(file_name_number.begin(), file_name_number.end(), ::isdigit))
         {
             LOG_DEBUG("[HDF5ArchiveReadingAgent] {} is an auxiliary file. Skipping this file.", file_name);
-            LOG_DEBUG("[HDF5ArchiveReadingAgent] start_time_file_name_map_ has {} entries."
-                      , start_time_file_name_map_.size());
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] start_time_file_name_map_ has {} entries.",
+                      start_time_file_name_map_.size());
             return -1; // Skip files that already exist in the map
         }
         start_time_file_name_map_.erase(std::make_tuple(chronicle_name, story_name, start_time));
@@ -301,12 +331,13 @@ private:
         return 0;
     }
 
-    int renameFileInStartTimeFileNameMap(const std::string &old_file_name, const std::string &new_file_name)
+    int renameFileInStartTimeFileNameMap(const std::string& old_file_name, const std::string& new_file_name)
     {
         removeFileFromStartTimeFileNameMap(old_file_name);
         addFileToStartTimeFileNameMap(new_file_name);
         LOG_DEBUG("[HDF5ArchiveReadingAgent] Renamed file {} to {} in start_time_file_name_map_.",
-                  old_file_name, new_file_name);
+                  old_file_name,
+                  new_file_name);
         LOG_DEBUG("[HDF5ArchiveReadingAgent] start_time_file_name_map_ has {} entries.",
                   start_time_file_name_map_.size());
         return 0;
@@ -315,14 +346,14 @@ private:
     std::string archive_path_;
     std::map<std::tuple<std::string, std::string, uint64_t>, std::string> start_time_file_name_map_;
     std::mutex start_time_file_name_map_mutex_;
-    tl::managed <tl::xstream> archive_dir_monitoring_stream_;
-    tl::managed <tl::thread> archive_dir_monitoring_thread_;
+    tl::managed<tl::xstream> archive_dir_monitoring_stream_;
+    tl::managed<tl::thread> archive_dir_monitoring_thread_;
 
     // Feature flag and monitoring configuration
     bool use_polling_;
     std::chrono::milliseconds monitoring_interval_;
     std::chrono::system_clock::time_point last_scan_time_;
-    
+
     // File system state tracking for polling
     std::map<std::string, FileInfo> previous_file_state_;
     std::mutex file_state_mutex_;
@@ -330,11 +361,11 @@ private:
     // Directory caching for performance optimization
     std::map<fs::path, DirectoryCache> directory_cache_;
     std::mutex directory_cache_mutex_;
-    
+
     // Thread control
     std::atomic<bool> shutdown_requested_;
 };
 
-} // chronolog
+} // namespace chronolog
 
 #endif //CHRONOLOG_HDF5ARCHIVEREADINGAGENT_H

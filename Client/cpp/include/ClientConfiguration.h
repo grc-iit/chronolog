@@ -7,23 +7,27 @@
 #include <json-c/json.h>
 #include <spdlog/common.h>
 
-namespace chronolog {
+namespace chronolog
+{
 
-struct ClientPortalServiceConf {
+struct ClientPortalServiceConf
+{
     std::string PROTO_CONF = "ofi+sockets";
     std::string IP = "127.0.0.1";
     uint16_t PORT = 5555;
     uint16_t PROVIDER_ID = 55;
 };
 
-struct ClientQueryServiceConf {
+struct ClientQueryServiceConf
+{
     std::string PROTO_CONF = "ofi+sockets";
     std::string IP = "127.0.0.1";
     uint16_t PORT = 5557;
     uint16_t PROVIDER_ID = 57;
 };
 
-struct ClientLogConf {
+struct ClientLogConf
+{
     std::string LOGTYPE = "file";
     std::string LOGFILE = "chrono_client.log";
     spdlog::level::level_enum LOGLEVEL = spdlog::level::debug;
@@ -33,7 +37,8 @@ struct ClientLogConf {
     spdlog::level::level_enum FLUSHLEVEL = spdlog::level::warn;
 };
 
-class ClientConfiguration {
+class ClientConfiguration
+{
 public:
     ClientPortalServiceConf PORTAL_CONF;
     ClientQueryServiceConf QUERY_CONF;

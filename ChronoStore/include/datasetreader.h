@@ -8,9 +8,9 @@
 typedef struct DatasetReader
 {
     int status;
-    std::vector <Event> eventData;
+    std::vector<Event> eventData;
 
-    DatasetReader(int initialStatus, const std::vector <Event> &initialMinMax)
+    DatasetReader(int initialStatus, const std::vector<Event>& initialMinMax)
     {
         status = initialStatus;
         eventData = initialMinMax;

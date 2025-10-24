@@ -15,7 +15,7 @@ class CSVFileStoryChunkExtractor: public StoryChunkExtractorBase
 {
 
 public:
-    CSVFileStoryChunkExtractor(std::string const & chrono_process_id_card, std::string const &csv_files_root_dir);
+    CSVFileStoryChunkExtractor(std::string const& chrono_process_id_card, std::string const& csv_files_root_dir);
 
     ~CSVFileStoryChunkExtractor();
 
@@ -24,10 +24,8 @@ public:
 private:
     std::string chrono_process_id;
     std::string rootDirectory;
-
-
 };
 
 
-}
+} // namespace chronolog
 #endif

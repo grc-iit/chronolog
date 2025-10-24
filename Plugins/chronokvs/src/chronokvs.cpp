@@ -9,25 +9,21 @@ namespace chronokvs
 {
 
 ChronoKVS::ChronoKVS()
-    : mapper(std::make_unique<ChronoKVSMapper>())  // Use member initializer list
-{
-}
+    : mapper(std::make_unique<ChronoKVSMapper>()) // Use member initializer list
+{}
 
 ChronoKVS::~ChronoKVS() = default;
 
-std::uint64_t ChronoKVS::put(const std::string &key, const std::string &value)
+std::uint64_t ChronoKVS::put(const std::string& key, const std::string& value)
 {
     return mapper->storeKeyValue(key, value);
 }
 
-std::string ChronoKVS::get(const std::string &key, std::uint64_t timestamp)
+std::string ChronoKVS::get(const std::string& key, std::uint64_t timestamp)
 {
     return mapper->retrieveByKeyAndTs(key, timestamp);
 }
 
-std::vector<EventData> ChronoKVS::get_history(const std::string &key)
-{
-    return mapper->retrieveByKey(key);
-}
+std::vector<EventData> ChronoKVS::get_history(const std::string& key) { return mapper->retrieveByKey(key); }
 
 } // namespace chronokvs

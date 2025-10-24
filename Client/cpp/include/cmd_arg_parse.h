@@ -10,14 +10,15 @@
 #include <iostream>
 #include <string>
 
-std::string parse_conf_path_arg(int argc, char**argv)
+std::string parse_conf_path_arg(int argc, char** argv)
 {
     int opt;
-    char*config_file = nullptr;
+    char* config_file = nullptr;
 
     // Define the long options and their corresponding short options
-    struct option long_options[] = {{  "config", required_argument, 0, 'c'}
-                                    , {0       , 0                , 0, 0} // Terminate the options array
+    struct option long_options[] = {
+            {"config", required_argument, 0, 'c'},
+            {0, 0, 0, 0} // Terminate the options array
     };
 
     // Parse the command-line options
@@ -30,9 +31,9 @@ std::string parse_conf_path_arg(int argc, char**argv)
                 break;
             case '?':
                 // Invalid option or missing argument
-                std::cout
-                        << "[cmd_arg_parse] Invalid usage: Please provide a configuration file path using -c or --config option."
-                        << std::endl;
+                std::cout << "[cmd_arg_parse] Invalid usage: Please provide a configuration file path using -c or "
+                             "--config option."
+                          << std::endl;
                 exit(EXIT_FAILURE);
             default:
                 // Unknown option

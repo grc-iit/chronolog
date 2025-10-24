@@ -24,13 +24,13 @@ namespace tl = thallium;
 namespace chronolog
 {
 
-class KeeperRegistryService: public tl::provider <KeeperRegistryService>
+class KeeperRegistryService: public tl::provider<KeeperRegistryService>
 {
 
 private:
-    KeeperRegistry &theKeeperProcessRegistry;
+    KeeperRegistry& theKeeperProcessRegistry;
 
-    void register_keeper(tl::request const &request, chronolog::KeeperRegistrationMsg const &keeperMsg)
+    void register_keeper(tl::request const& request, chronolog::KeeperRegistrationMsg const& keeperMsg)
     {
         int return_code = 0;
         std::stringstream ss, s1;
@@ -41,7 +41,7 @@ private:
         request.respond(return_code);
     }
 
-    void unregister_keeper(tl::request const &request, chronolog::KeeperIdCard const &keeper_id_card)
+    void unregister_keeper(tl::request const& request, chronolog::KeeperIdCard const& keeper_id_card)
     {
         int return_code = 0;
         std::stringstream ss;
@@ -51,16 +51,17 @@ private:
         request.respond(return_code);
     }
 
-    void handle_stats_msg(chronolog::KeeperStatsMsg const &keeper_stats_msg)
+    void handle_stats_msg(chronolog::KeeperStatsMsg const& keeper_stats_msg)
     {
         std::stringstream ss;
         ss << keeper_stats_msg.getKeeperIdCard();
-        LOG_DEBUG("[RegistryService] Keeper Stats: KeeperIdCard: {}, ActiveStoryCount: {}", ss.str()
-             , keeper_stats_msg.getActiveStoryCount());
+        LOG_DEBUG("[RegistryService] Keeper Stats: KeeperIdCard: {}, ActiveStoryCount: {}",
+                  ss.str(),
+                  keeper_stats_msg.getActiveStoryCount());
         theKeeperProcessRegistry.updateKeeperProcessStats(keeper_stats_msg);
     }
 
-    void register_grapher(tl::request const &request, chronolog::GrapherRegistrationMsg const & registrationMsg)
+    void register_grapher(tl::request const& request, chronolog::GrapherRegistrationMsg const& registrationMsg)
     {
         int return_code = 0;
         std::stringstream ss;
@@ -70,23 +71,24 @@ private:
         request.respond(return_code);
     }
 
-    void unregister_grapher(tl::request const &request, chronolog::GrapherIdCard const &id_card)
+    void unregister_grapher(tl::request const& request, chronolog::GrapherIdCard const& id_card)
     {
         int return_code = 0;
         return_code = theKeeperProcessRegistry.unregisterGrapherProcess(id_card);
         request.respond(return_code);
     }
 
-    void handle_grapher_stats_msg(chronolog::GrapherStatsMsg const & stats_msg)
+    void handle_grapher_stats_msg(chronolog::GrapherStatsMsg const& stats_msg)
     {
         std::stringstream ss;
         ss << stats_msg.getGrapherIdCard();
-        LOG_DEBUG("[RegistryService] Grapher Stats: GrapherIdCard: {}, ActiveStoryCount: {}", ss.str()
-             , stats_msg.getActiveStoryCount());
+        LOG_DEBUG("[RegistryService] Grapher Stats: GrapherIdCard: {}, ActiveStoryCount: {}",
+                  ss.str(),
+                  stats_msg.getActiveStoryCount());
         theKeeperProcessRegistry.updateGrapherProcessStats(stats_msg);
     }
 
-    void register_player(tl::request const &request, chronolog::PlayerRegistrationMsg const & registrationMsg)
+    void register_player(tl::request const& request, chronolog::PlayerRegistrationMsg const& registrationMsg)
     {
         int return_code = 0;
         std::stringstream ss;
@@ -96,7 +98,7 @@ private:
         request.respond(return_code);
     }
 
-    void unregister_player(tl::request const &request, chronolog::PlayerIdCard const &id_card)
+    void unregister_player(tl::request const& request, chronolog::PlayerIdCard const& id_card)
     {
         int return_code = 0;
         LOG_INFO("[RegistryService] unregister_player: {}", chronolog::to_string(id_card));
@@ -104,18 +106,18 @@ private:
         request.respond(return_code);
     }
 
-    void handle_player_stats_msg(chronolog::PlayerStatsMsg const & stats_msg)
+    void handle_player_stats_msg(chronolog::PlayerStatsMsg const& stats_msg)
     {
         std::stringstream ss;
         ss << stats_msg.getPlayerIdCard();
-       // LOG_DEBUG("[KeeperRegistryService] Player Stats: PlayerIdCard: {}", chrono::to_string(stats_msg));
+        // LOG_DEBUG("[KeeperRegistryService] Player Stats: PlayerIdCard: {}", chrono::to_string(stats_msg));
         theKeeperProcessRegistry.updatePlayerProcessStats(stats_msg);
     }
 
 
-    KeeperRegistryService(tl::engine &tl_engine, uint16_t service_provider_id, KeeperRegistry &keeperRegistry)
-            : tl::provider <KeeperRegistryService>(tl_engine, service_provider_id), theKeeperProcessRegistry(
-            keeperRegistry)
+    KeeperRegistryService(tl::engine& tl_engine, uint16_t service_provider_id, KeeperRegistry& keeperRegistry)
+        : tl::provider<KeeperRegistryService>(tl_engine, service_provider_id)
+        , theKeeperProcessRegistry(keeperRegistry)
     {
         define("register_keeper", &KeeperRegistryService::register_keeper);
         define("unregister_keeper", &KeeperRegistryService::unregister_keeper);
@@ -127,28 +129,23 @@ private:
         define("unregister_player", &KeeperRegistryService::unregister_player);
         define("handle_player_stats_msg", &KeeperRegistryService::handle_player_stats_msg, tl::ignore_return_value());
         //setup finalization callback in case this ser vice provider is still alive when the engine is finalized
-        get_engine().push_finalize_callback(this, [p = this]()
-        { delete p; });
+        get_engine().push_finalize_callback(this, [p = this]() { delete p; });
     }
 
-    KeeperRegistryService(KeeperRegistryService const &) = delete;
+    KeeperRegistryService(KeeperRegistryService const&) = delete;
 
-    KeeperRegistryService &operator=(KeeperRegistryService const &) = delete;
+    KeeperRegistryService& operator=(KeeperRegistryService const&) = delete;
 
 
 public:
-
     static KeeperRegistryService*
-    CreateKeeperRegistryService(tl::engine &tl_engine, uint16_t service_provider_id, KeeperRegistry &keeperRegistry)
+    CreateKeeperRegistryService(tl::engine& tl_engine, uint16_t service_provider_id, KeeperRegistry& keeperRegistry)
     {
         return new KeeperRegistryService(tl_engine, service_provider_id, keeperRegistry);
     }
 
-    ~KeeperRegistryService()
-    {
-        get_engine().pop_finalize_callback(this);
-    }
+    ~KeeperRegistryService() { get_engine().pop_finalize_callback(this); }
 };
-}// namespace chronolog
+} // namespace chronolog
 
 #endif

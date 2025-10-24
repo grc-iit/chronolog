@@ -21,7 +21,7 @@ int main()
     std::uint64_t timestamp1 = chronoKVS.put(key1, value1);
     std::uint64_t timestamp2 = chronoKVS.put(key2, value2);
     std::uint64_t timestamp3 = chronoKVS.put(key2, value3);
-    
+
     std::cout << "Inserted values with timestamps:\n";
     std::cout << "1. key1=" << value1 << " timestamp=" << timestamp1 << "\n";
     std::cout << "2. key2=" << value2 << " timestamp=" << timestamp2 << "\n";
@@ -29,13 +29,16 @@ int main()
 
     // Save timestamps to a file for the reader
     std::ofstream timestampFile("chronokvs_timestamps.txt");
-    if (timestampFile.is_open()) {
+    if(timestampFile.is_open())
+    {
         timestampFile << timestamp1 << "\n";
         timestampFile << timestamp2 << "\n";
         timestampFile << timestamp3 << "\n";
         timestampFile.close();
         std::cout << "\nTimestamps have been saved to 'chronokvs_timestamps.txt'\n";
-    } else {
+    }
+    else
+    {
         std::cerr << "Error: Could not save timestamps to file\n";
     }
 

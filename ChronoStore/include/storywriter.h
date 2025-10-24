@@ -14,7 +14,7 @@ public:
 
     ~storywriter();
 
-    int writeStoryChunk(std::vector <Event>*storyChunk, const char*DATASET_NAME, const char*H5FILE_NAME);
+    int writeStoryChunk(std::vector<Event>* storyChunk, const char* DATASET_NAME, const char* H5FILE_NAME);
 };
 
 #endif

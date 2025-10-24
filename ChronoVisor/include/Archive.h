@@ -15,48 +15,37 @@
 class Archive
 {
 public:
-    Archive()
-    {};
+    Archive(){};
 
-    const std::string &getName() const
-    { return name_; }
+    const std::string& getName() const { return name_; }
 
-    const uint64_t &getAid() const
-    { return aid_; }
+    const uint64_t& getAid() const { return aid_; }
 
-    const uint64_t &getCid() const
-    { return cid_; }
+    const uint64_t& getCid() const { return cid_; }
 
-    const std::unordered_map <std::string, std::string> &getProperty() const
-    { return propertyList_; }
+    const std::unordered_map<std::string, std::string>& getProperty() const { return propertyList_; }
 
-    void setName(const std::string &name)
-    { name_ = name; }
+    void setName(const std::string& name) { name_ = name; }
 
-    void setAid(uint64_t aid)
-    { aid_ = aid; }
+    void setAid(uint64_t aid) { aid_ = aid; }
 
-    void setCid(uint64_t cid)
-    { cid_ = cid; }
+    void setCid(uint64_t cid) { cid_ = cid; }
 
-    void setProperty(const std::unordered_map <std::string, std::string> &attrs)
+    void setProperty(const std::unordered_map<std::string, std::string>& attrs)
     {
-        for(auto const &entry: attrs)
-        {
-            propertyList_.emplace(entry.first, entry.second);
-        }
+        for(auto const& entry: attrs) { propertyList_.emplace(entry.first, entry.second); }
     }
 
-    friend std::ostream &operator<<(std::ostream &os, const Archive &archive);
+    friend std::ostream& operator<<(std::ostream& os, const Archive& archive);
 
 private:
     std::string name_;
     uint64_t aid_{};
     uint64_t cid_{};
-    std::unordered_map <std::string, std::string> propertyList_;
+    std::unordered_map<std::string, std::string> propertyList_;
 };
 
-inline std::ostream &operator<<(std::ostream &os, const Archive &archive)
+inline std::ostream& operator<<(std::ostream& os, const Archive& archive)
 {
     os << "name: " << archive.name_ << ", " << "aid: " << archive.aid_ << ", " << "cid: " << archive.cid_;
     return os;

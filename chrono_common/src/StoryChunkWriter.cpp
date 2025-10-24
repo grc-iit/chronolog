@@ -9,14 +9,11 @@ namespace fs = std::filesystem;
 
 namespace chronolog
 {
-hsize_t StoryChunkWriter::writeStoryChunk(StoryChunkHVL &story_chunk)
+hsize_t StoryChunkWriter::writeStoryChunk(StoryChunkHVL& story_chunk)
 {
-    std::vector <LogEventHVL> data;
+    std::vector<LogEventHVL> data;
     data.reserve(story_chunk.getEventCount());
-    for(const auto &start: story_chunk)
-    {
-        data.push_back(start.second);
-    }
+    for(const auto& start: story_chunk) { data.push_back(start.second); }
     std::string file_name = rootDirectory + story_chunk.getChronicleName() + "." + story_chunk.getStoryName() + "." +
                             std::to_string(story_chunk.getStartTime() / 1000000000) + ".vlen.h5";
     hsize_t ret = 0;
@@ -40,7 +37,7 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunkHVL &story_chunk)
         LOG_DEBUG("[StoryChunkWriter] Finished writing StoryChunk to file.");
         return file_size;
     }
-    catch(H5::FileIException &error)
+    catch(H5::FileIException& error)
     {
         LOG_ERROR("[StoryChunkWriter] FileIException: {}", error.getCDetailMsg());
         H5::FileIException::printErrorStack();
@@ -48,11 +45,11 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunkHVL &story_chunk)
     return ret;
 }
 
-std::string StoryChunkWriter::getStoryChunkFileName(std::string const &root_dir, std::string const &base_file_name)
+std::string StoryChunkWriter::getStoryChunkFileName(std::string const& root_dir, std::string const& base_file_name)
 {
     const std::string base_file_name_no_ext = fs::path(base_file_name).stem().make_preferred().string();
-    const std::string escaped_base_file_name_no_ext = std::regex_replace(base_file_name_no_ext, std::regex(
-            R"([.^$|()\\*+?{}\[\]])"), R"(\$&)");
+    const std::string escaped_base_file_name_no_ext =
+            std::regex_replace(base_file_name_no_ext, std::regex(R"([.^$|()\\*+?{}\[\]])"), R"(\$&)");
     const std::string rotated_prefix = escaped_base_file_name_no_ext + "\\.";
     const std::string ext = fs::path(base_file_name).extension().string();
 
@@ -62,7 +59,7 @@ std::string StoryChunkWriter::getStoryChunkFileName(std::string const &root_dir,
     bool base_exists = false;
 
     std::error_code ec;
-    for(const auto &entry: fs::directory_iterator(root_dir, ec))
+    for(const auto& entry: fs::directory_iterator(root_dir, ec))
     {
         if(!entry.is_regular_file(ec))
         {
@@ -90,7 +87,7 @@ std::string StoryChunkWriter::getStoryChunkFileName(std::string const &root_dir,
                     long long current_n = std::stoll(match[1].str());
                     max_n = std::max(max_n, current_n);
                 }
-                catch(const std::out_of_range &)
+                catch(const std::out_of_range&)
                 {
                     LOG_ERROR("[StoryChunkWriter] Number in file name '{}' is out of range.", match[1].str());
                 }
@@ -114,21 +111,24 @@ std::string StoryChunkWriter::getStoryChunkFileName(std::string const &root_dir,
     return (root_dir / next_filename_no_ext).make_preferred();
 }
 
-hsize_t StoryChunkWriter::writeStoryChunk(StoryChunk &story_chunk)
+hsize_t StoryChunkWriter::writeStoryChunk(StoryChunk& story_chunk)
 {
-    std::vector <LogEventHVL> data;
+    std::vector<LogEventHVL> data;
     data.reserve(story_chunk.getEventCount());
-    for(const auto &event: story_chunk)
+    for(const auto& event: story_chunk)
     {
         hvl_t log_record;
         log_record.len = event.second.logRecord.size();
         log_record.p = (void*)event.second.logRecord.data();
-        data.emplace_back(event.second.getStoryId(), event.second.time(), event.second.getClientId()
-                          ,event.second.index(), log_record);
+        data.emplace_back(event.second.getStoryId(),
+                          event.second.time(),
+                          event.second.getClientId(),
+                          event.second.index(),
+                          log_record);
     }
     std::string file_name = story_chunk.getChronicleName() + "." + story_chunk.getStoryName() + "." +
                             std::to_string(story_chunk.getStartTime() / 1000000000) + ".vlen.h5";
-//    file_name = fs::path(rootDirectory) / fs::path(file_name);
+    //    file_name = fs::path(rootDirectory) / fs::path(file_name);
     hsize_t ret = 0;
     std::unique_ptr<H5::H5File> file;
     try
@@ -153,7 +153,7 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunk &story_chunk)
         LOG_DEBUG("[StoryChunkWriter] Finished writing StoryChunk to file.");
         ret = file_size;
     }
-    catch(H5::FileIException &error)
+    catch(H5::FileIException& error)
     {
         LOG_ERROR("[StoryChunkWriter] FileIException: {}", error.getCDetailMsg());
         H5::FileIException::printErrorStack();
@@ -161,7 +161,7 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunk &story_chunk)
     return ret;
 }
 
-hsize_t StoryChunkWriter::writeEvents(std::unique_ptr<H5::H5File> &file, std::vector <LogEventHVL> &data)
+hsize_t StoryChunkWriter::writeEvents(std::unique_ptr<H5::H5File>& file, std::vector<LogEventHVL>& data)
 {
     int ret = 0;
     try
@@ -170,18 +170,18 @@ hsize_t StoryChunkWriter::writeEvents(std::unique_ptr<H5::H5File> &file, std::ve
          * Create a group in the file
         */
         LOG_DEBUG("[StoryChunkWriter] Creating group: {}", groupName);
-        auto *group = new H5::Group(file->createGroup(groupName));
+        auto* group = new H5::Group(file->createGroup(groupName));
 
         hsize_t dim_size = data.size();
         LOG_DEBUG("[StoryChunkWriter] Creating dataspace with size: {}", dim_size);
-        auto *dataspace = new H5::DataSpace(numDims, &dim_size);
+        auto* dataspace = new H5::DataSpace(numDims, &dim_size);
 
         // target dtype for the file
         LOG_DEBUG("[StoryChunkWriter] Creating data type for events...");
         H5::CompType data_type = createEventCompoundType();
 
         LOG_DEBUG("[StoryChunkWriter] Creating dataset: {}", dsetName);
-        auto *dataset = new H5::DataSet(
+        auto* dataset = new H5::DataSet(
                 file->createDataSet("/" + groupName + "/" + dsetName + ".vlen_bytes", data_type, *dataspace));
 
         LOG_DEBUG("[StoryChunkWriter] Writing data to dataset...");
@@ -193,22 +193,22 @@ hsize_t StoryChunkWriter::writeEvents(std::unique_ptr<H5::H5File> &file, std::ve
 
         return data.size();
     }
-    catch(H5::FileIException &error)
+    catch(H5::FileIException& error)
     {
         LOG_ERROR("[StoryChunkWriter] FileIException: {}", error.getCDetailMsg());
         H5::FileIException::printErrorStack();
     }
-    catch(H5::DataSetIException &error)
+    catch(H5::DataSetIException& error)
     {
         LOG_ERROR("[StoryChunkWriter] DataSetIException: {}", error.getCDetailMsg());
         H5::DataSetIException::printErrorStack();
     }
-    catch(H5::DataSpaceIException &error)
+    catch(H5::DataSpaceIException& error)
     {
         LOG_ERROR("[StoryChunkWriter] DataSpaceIException: {}", error.getCDetailMsg());
         H5::DataSpaceIException::printErrorStack();
     }
-    catch(H5::DataTypeIException &error)
+    catch(H5::DataTypeIException& error)
     {
         LOG_ERROR("[StoryChunkWriter] DataTypeIException: {}", error.getCDetailMsg());
         H5::DataTypeIException::printErrorStack();
@@ -216,4 +216,4 @@ hsize_t StoryChunkWriter::writeEvents(std::unique_ptr<H5::H5File> &file, std::ve
     return ret;
 }
 
-}
+} // namespace chronolog

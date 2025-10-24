@@ -26,8 +26,7 @@ namespace chl = chronolog;
 
 // we will be using a combination of the uint32_t representation of the service IP address
 // and uint16_t representation of the port number
-int
-service_endpoint_from_dotted_string(std::string const &ip_string, int port, std::pair <uint32_t, uint16_t> &endpoint)
+int service_endpoint_from_dotted_string(std::string const& ip_string, int port, std::pair<uint32_t, uint16_t>& endpoint)
 {
     // we will be using a combination of the uint32_t representation of the service IP address
     // and uint16_t representation of the port number
@@ -46,7 +45,7 @@ service_endpoint_from_dotted_string(std::string const &ip_string, int port, std:
     // translate 32bit ip from network into the host byte order
     uint32_t ntoh_ip_addr = ntohl(sa.sin_addr.s_addr);
     uint16_t ntoh_port = port;
-    endpoint = std::pair <uint32_t, uint16_t>(ntoh_ip_addr, ntoh_port);
+    endpoint = std::pair<uint32_t, uint16_t>(ntoh_ip_addr, ntoh_port);
 
     LOG_DEBUG("[ChronoGrapher] Service endpoint created: IP={}, Port={}", ip_string, port);
     return 1;
@@ -63,7 +62,7 @@ void sigterm_handler(int)
 
 ///////////////////////////////////////////////
 
-int main(int argc, char**argv)
+int main(int argc, char** argv)
 {
     int exit_code = 0;
     signal(SIGTERM, sigterm_handler);
@@ -73,25 +72,25 @@ int main(int argc, char**argv)
     conf_file_path = parse_conf_path_arg(argc, argv);
     if(conf_file_path.empty())
     {
-        std::cerr <<" ChronoGrapher needs the configuration file to start";
+        std::cerr << " ChronoGrapher needs the configuration file to start";
         std::exit(EXIT_FAILURE);
     }
 
     chronolog::ConfigurationManager confManager(conf_file_path);
     chronolog::GrapherConfiguration GRAPHER_CONF = confManager.GRAPHER_CONF;
 
-    std::cout << "ChronoGrapher Configuration "<< GRAPHER_CONF.to_String()<<std::endl;
+    std::cout << "ChronoGrapher Configuration " << GRAPHER_CONF.to_String() << std::endl;
 
-    int result = chronolog::chrono_monitor::initialize(GRAPHER_CONF.LOG_CONF.LOGTYPE
-                                                       , GRAPHER_CONF.LOG_CONF.LOGFILE
-                                                       , GRAPHER_CONF.LOG_CONF.LOGLEVEL
-                                                       , GRAPHER_CONF.LOG_CONF.LOGNAME
-                                                       , GRAPHER_CONF.LOG_CONF.LOGFILESIZE
-                                                       , GRAPHER_CONF.LOG_CONF.LOGFILENUM
-                                                       , GRAPHER_CONF.LOG_CONF.FLUSHLEVEL);
+    int result = chronolog::chrono_monitor::initialize(GRAPHER_CONF.LOG_CONF.LOGTYPE,
+                                                       GRAPHER_CONF.LOG_CONF.LOGFILE,
+                                                       GRAPHER_CONF.LOG_CONF.LOGLEVEL,
+                                                       GRAPHER_CONF.LOG_CONF.LOGNAME,
+                                                       GRAPHER_CONF.LOG_CONF.LOGFILESIZE,
+                                                       GRAPHER_CONF.LOG_CONF.LOGFILENUM,
+                                                       GRAPHER_CONF.LOG_CONF.FLUSHLEVEL);
     if(result == 1)
     {
-        std::cerr <<" ChronoGrapher failed to initialize chrono_monitor, check the configuration settings";
+        std::cerr << " ChronoGrapher failed to initialize chrono_monitor, check the configuration settings";
         exit(EXIT_FAILURE);
     }
 
@@ -104,9 +103,8 @@ int main(int argc, char**argv)
     /// DataStoreAdminService setup ____________________________________________________________________________________
     std::string datastore_service_ip = GRAPHER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.IP;
     int datastore_service_port = GRAPHER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.BASE_PORT;
-    std::string DATASTORE_SERVICE_NA_STRING =
-            GRAPHER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.PROTO_CONF + "://" + datastore_service_ip + ":" +
-            std::to_string(datastore_service_port);
+    std::string DATASTORE_SERVICE_NA_STRING = GRAPHER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.PROTO_CONF + "://" +
+                                              datastore_service_ip + ":" + std::to_string(datastore_service_port);
 
     uint16_t datastore_service_provider_id = GRAPHER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.SERVICE_PROVIDER_ID;
 
@@ -118,9 +116,10 @@ int main(int argc, char**argv)
         LOG_CRITICAL("[ChronoGrapher] Failed to start DataStoreAdminService. Invalid endpoint provided.");
         return (-1);
     }
-    
+
     chronolog::ServiceId dataStoreServiceId(GRAPHER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.PROTO_CONF,
-                datastore_endpoint, GRAPHER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.SERVICE_PROVIDER_ID);
+                                            datastore_endpoint,
+                                            GRAPHER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.SERVICE_PROVIDER_ID);
 
     // Instantiate GrapherRecordingService
     chronolog::RecordingGroupId recording_group_id = GRAPHER_CONF.RECORDING_GROUP;
@@ -128,16 +127,16 @@ int main(int argc, char**argv)
     std::string RECORDING_SERVICE_IP = GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP;
     uint16_t RECORDING_SERVICE_PORT = GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT;
     uint16_t recording_service_provider_id = GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.SERVICE_PROVIDER_ID;
-    
+
     chl::ServiceId recordingServiceId(GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.PROTO_CONF,
-                GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP,
-                GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT,
-                GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.SERVICE_PROVIDER_ID);
+                                      GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP,
+                                      GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT,
+                                      GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.SERVICE_PROVIDER_ID);
 
 
     std::string RECORDING_SERVICE_NA_STRING;
     recordingServiceId.get_service_as_string(RECORDING_SERVICE_NA_STRING);
-    
+
     // validate ip address, instantiate Recording Service and create IdCard
 
     chronolog::service_endpoint recording_endpoint;
@@ -157,34 +156,36 @@ int main(int argc, char**argv)
     chronolog::ChunkIngestionQueue ingestionQueue;
     std::string csv_files_directory = GRAPHER_CONF.EXTRACTOR_CONF.story_files_dir;
 
-//    chronolog::CSVFileStoryChunkExtractor storyExtractor(process_id_string.str(), csv_files_directory);
+    //    chronolog::CSVFileStoryChunkExtractor storyExtractor(process_id_string.str(), csv_files_directory);
     chronolog::HDF5FileChunkExtractor storyExtractor(chl::to_string(processIdCard), csv_files_directory);
 
-    chronolog::GrapherDataStore theDataStore(ingestionQueue, storyExtractor.getExtractionQueue(),
-                GRAPHER_CONF.DATA_STORE_CONF.max_story_chunk_size,
-                GRAPHER_CONF.DATA_STORE_CONF.story_chunk_duration_secs,
-                GRAPHER_CONF.DATA_STORE_CONF.acceptance_window_secs,
-                GRAPHER_CONF.DATA_STORE_CONF.inactive_story_delay_secs);
+    chronolog::GrapherDataStore theDataStore(ingestionQueue,
+                                             storyExtractor.getExtractionQueue(),
+                                             GRAPHER_CONF.DATA_STORE_CONF.max_story_chunk_size,
+                                             GRAPHER_CONF.DATA_STORE_CONF.story_chunk_duration_secs,
+                                             GRAPHER_CONF.DATA_STORE_CONF.acceptance_window_secs,
+                                             GRAPHER_CONF.DATA_STORE_CONF.inactive_story_delay_secs);
 
-    tl::engine*dataAdminEngine = nullptr;
+    tl::engine* dataAdminEngine = nullptr;
 
-    chronolog::DataStoreAdminService*grapherDataAdminService = nullptr;
+    chronolog::DataStoreAdminService* grapherDataAdminService = nullptr;
 
     try
     {
-        margo_instance_id collection_margo_id = margo_init(DATASTORE_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1
-                                                           , 1);
+        margo_instance_id collection_margo_id =
+                margo_init(DATASTORE_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 1);
 
         dataAdminEngine = new tl::engine(collection_margo_id);
 
         std::stringstream s3;
         s3 << dataAdminEngine->self();
         LOG_DEBUG("[ChronoGrapher] starting DataStoreAdminService at {} ", chl::to_string(dataStoreServiceId));
-        grapherDataAdminService = chronolog::DataStoreAdminService::CreateDataStoreAdminService(*dataAdminEngine
-                                                                                                , datastore_service_provider_id
-                                                                                                , theDataStore);
+        grapherDataAdminService =
+                chronolog::DataStoreAdminService::CreateDataStoreAdminService(*dataAdminEngine,
+                                                                              datastore_service_provider_id,
+                                                                              theDataStore);
     }
-    catch(tl::exception const &)
+    catch(tl::exception const&)
     {
         LOG_ERROR("[ChronoGrapher]  failed to create DataStoreAdminService");
         grapherDataAdminService = nullptr;
@@ -198,8 +199,8 @@ int main(int argc, char**argv)
     LOG_INFO("[ChronoGrapher] DataStoreAdminService started successfully.");
 
     // Instantiate RecordingService
-    tl::engine*recordingEngine = nullptr;
-    chronolog::GrapherRecordingService*grapherRecordingService = nullptr;
+    tl::engine* recordingEngine = nullptr;
+    chronolog::GrapherRecordingService* grapherRecordingService = nullptr;
 
     try
     {
@@ -208,13 +209,15 @@ int main(int argc, char**argv)
 
         std::stringstream s1;
         s1 << recordingEngine->self();
-        LOG_INFO("[ChronoGrapher] starting RecordingService at {} with provider_id {}", s1.str()
-                 , recording_service_provider_id);
-        grapherRecordingService = chronolog::GrapherRecordingService::CreateRecordingService(*recordingEngine
-                                                                                             , recording_service_provider_id
-                                                                                             , ingestionQueue);
+        LOG_INFO("[ChronoGrapher] starting RecordingService at {} with provider_id {}",
+                 s1.str(),
+                 recording_service_provider_id);
+        grapherRecordingService =
+                chronolog::GrapherRecordingService::CreateRecordingService(*recordingEngine,
+                                                                           recording_service_provider_id,
+                                                                           ingestionQueue);
     }
-    catch(tl::exception const &)
+    catch(tl::exception const&)
     {
         LOG_ERROR("[ChronoGrapher] failed to create RecordingService");
         grapherRecordingService = nullptr;
@@ -235,8 +238,10 @@ int main(int argc, char**argv)
 
     uint16_t REGISTRY_SERVICE_PROVIDER_ID = GRAPHER_CONF.VISOR_REGISTRY_SERVICE_CONF.SERVICE_PROVIDER_ID;
 
-    chronolog::GrapherRegistryClient*grapherRegistryClient = chronolog::GrapherRegistryClient::CreateRegistryClient(
-            *dataAdminEngine, REGISTRY_SERVICE_NA_STRING, REGISTRY_SERVICE_PROVIDER_ID);
+    chronolog::GrapherRegistryClient* grapherRegistryClient =
+            chronolog::GrapherRegistryClient::CreateRegistryClient(*dataAdminEngine,
+                                                                   REGISTRY_SERVICE_NA_STRING,
+                                                                   REGISTRY_SERVICE_PROVIDER_ID);
 
     if(nullptr == grapherRegistryClient)
     {
@@ -250,7 +255,7 @@ int main(int argc, char**argv)
     // try to register with chronoVisor a few times than log ERROR and exit...
     int registration_status = grapherRegistryClient->send_register_msg(
             chronolog::GrapherRegistrationMsg(processIdCard, dataStoreServiceId));
-    //if the first attemp failes retry 
+    //if the first attemp failes retry
     int retries = 5;
     while((chronolog::CL_SUCCESS != registration_status) && (retries > 0))
     {

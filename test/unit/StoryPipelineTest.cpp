@@ -36,9 +36,9 @@ TEST(StoryPipeline_TestConstructors, testOnBoundaryStartTime)
     initLogger();
     chl::StoryChunkExtractionQueue q;
 
-    uint64_t startNs = 9ULL * NS;// 9s
-    uint16_t granS = 3;          // seconds
-    uint16_t windowS = 1;        // second
+    uint64_t startNs = 9ULL * NS; // 9s
+    uint16_t granS = 3;           // seconds
+    uint16_t windowS = 1;         // second
 
     ASSERT_NO_THROW({
         chl::StoryPipeline p(q, "C", "S", 1, startNs, granS, windowS);
@@ -60,9 +60,9 @@ TEST(StoryPipeline_TestConstructors, testNonBoundaryRounding)
     initLogger();
     chl::StoryChunkExtractionQueue q;
 
-    uint64_t startNs = 5500000000ULL;// 5.5 s
-    uint16_t granS = 3;              // seconds
-    uint16_t windowS = 1;            // seconds
+    uint64_t startNs = 5500000000ULL; // 5.5 s
+    uint16_t granS = 3;               // seconds
+    uint16_t windowS = 1;             // seconds
 
     ASSERT_NO_THROW({
         chl::StoryPipeline p(q, "C", "S", 2, startNs, granS, windowS);
@@ -483,7 +483,6 @@ TEST(StoryPipeline_TestFinalize, testNoPendingChunks)
     chl::StoryPipeline p(q, "C", "S", 1, 0, 1, 1);
     EXPECT_NO_THROW(p.finalize());
     EXPECT_EQ(q.size(), 0);
-
 }
 
 // Test if finalize processes the chunk in the passive deque
@@ -501,7 +500,6 @@ TEST(StoryPipeline_TestFinalize, testOnlyPassiveDeque)
 
     p.finalize();
     EXPECT_EQ(q.size(), 1);
-
 }
 
 // Test if finalize processes the chunk in the active deque
@@ -519,7 +517,6 @@ TEST(StoryPipeline_TestFinalize, testOnlyActiveDeque)
 
     p.finalize();
     EXPECT_EQ(q.size(), 1);
-
 }
 
 // Test if finalize handles both passive and active deques in FIFO

@@ -1,13 +1,13 @@
 // System headers
-#include <cstdlib>         // for exit(), EXIT_FAILURE
-#include <stdexcept>       // for std::exception
+#include <cstdlib>   // for exit(), EXIT_FAILURE
+#include <stdexcept> // for std::exception
 
 // Standard library headers
-#include <string>          // for std::string
-#include <vector>          // for std::vector
-#include <chrono>          // for std::chrono::high_resolution_clock, std::chrono::duration_cast
-#include <sstream>         // for std::stringstream, std::istringstream
-#include <utility>         // for std::move, std::pair
+#include <string>  // for std::string
+#include <vector>  // for std::vector
+#include <chrono>  // for std::chrono::high_resolution_clock, std::chrono::duration_cast
+#include <sstream> // for std::stringstream, std::istringstream
+#include <utility> // for std::move, std::pair
 
 // Third-party headers
 #include <thallium.hpp>
@@ -23,23 +23,20 @@ namespace tl = thallium;
 #define MAX_BULK_MEM_SIZE (1024 * 1024 * 4)
 #define NUM_STREAMS 4
 
-class StoryChunkRecordService: public tl::provider <StoryChunkRecordService>
+class StoryChunkRecordService: public tl::provider<StoryChunkRecordService>
 {
 public:
-    static StoryChunkRecordService*CreateStoryChunkRecordService(tl::engine &tl_engine
-                                                                 , tl::managed <tl::pool> &tl_pool
-                                                                 , uint16_t service_provider_id)
+    static StoryChunkRecordService*
+    CreateStoryChunkRecordService(tl::engine& tl_engine, tl::managed<tl::pool>& tl_pool, uint16_t service_provider_id)
     {
         return new StoryChunkRecordService(tl_engine, tl_pool, service_provider_id);
     }
 
-    StoryChunkRecordService(tl::engine &tl_engine, tl::managed <tl::pool> &tl_pool, uint16_t service_provider_id)
-            : tl::provider <StoryChunkRecordService>(tl_engine, service_provider_id)
+    StoryChunkRecordService(tl::engine& tl_engine, tl::managed<tl::pool>& tl_pool, uint16_t service_provider_id)
+        : tl::provider<StoryChunkRecordService>(tl_engine, service_provider_id)
     {
-        define("record_story_chunk", &StoryChunkRecordService::record_story_chunk, *tl_pool,
-                            tl::ignore_return_value());
-        get_engine().push_finalize_callback(this, [p = this]()
-        { delete p; });
+        define("record_story_chunk", &StoryChunkRecordService::record_story_chunk, *tl_pool, tl::ignore_return_value());
+        get_engine().push_finalize_callback(this, [p = this]() { delete p; });
         LOG_DEBUG("[StoryChunkRecordService] StoryChunkRecordService setup complete");
     }
 
@@ -49,7 +46,7 @@ public:
         get_engine().pop_finalize_callback(this);
     }
 
-    void record_story_chunk(tl::request const &request, tl::bulk &b)
+    void record_story_chunk(tl::request const& request, tl::bulk& b)
     {
         try
         {
@@ -59,8 +56,8 @@ public:
             LOG_DEBUG("[StoryChunkRecordService] ES{}:T{}: StoryChunk recording RPC invoked", esid, tid);
             tl::endpoint ep = request.get_endpoint();
             LOG_DEBUG("[StoryChunkRecordService] ES{}:T{}: Endpoint obtained", esid, tid);
-            std::vector <char> mem_vec(MAX_BULK_MEM_SIZE);
-            std::vector <std::pair <void*, std::size_t>> segments(1);
+            std::vector<char> mem_vec(MAX_BULK_MEM_SIZE);
+            std::vector<std::pair<void*, std::size_t>> segments(1);
             segments[0].first = (void*)(&mem_vec[0]);
             segments[0].second = mem_vec.size();
             LOG_DEBUG("[StoryChunkRecordService] ES{}:T{}: Bulk memory prepared, size: {}", esid, tid, mem_vec.size());
@@ -74,22 +71,27 @@ public:
             start = std::chrono::high_resolution_clock::now();
             deserializedWithCereal(&mem_vec[0], b.size() - 1, story_chunk);
             end = std::chrono::high_resolution_clock::now();
-            LOG_DEBUG("[StoryChunkRecordService] ES{}:T{}: StoryChunk received: StoryID: {}, StartTime: {}", esid, tid
-                      , story_chunk.getStoryId(), story_chunk.getStartTime());
-            LOG_INFO("[StoryChunkRecordService] ES{}:T{}: Deserialization took {} us", esid, tid,
-                    std::chrono::duration_cast <std::chrono::nanoseconds>(end - start).count() / 1000.0);
+            LOG_DEBUG("[StoryChunkRecordService] ES{}:T{}: StoryChunk received: StoryID: {}, StartTime: {}",
+                      esid,
+                      tid,
+                      story_chunk.getStoryId(),
+                      story_chunk.getStartTime());
+            LOG_INFO("[StoryChunkRecordService] ES{}:T{}: Deserialization took {} us",
+                     esid,
+                     tid,
+                     std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count() / 1000.0);
             request.respond(b.size());
             LOG_DEBUG("[StoryChunkRecordService] ES{}:T{}: StoryChunk recording RPC responded {}", esid, tid, b.size());
         }
-        catch(tl::exception &e)
+        catch(tl::exception& e)
         {
             LOG_ERROR("[StoryChunkRecordService] Fail to ingest story chunk, Thallium exception caught: {}", e.what());
         }
-        catch(cereal::Exception &e)
+        catch(cereal::Exception& e)
         {
             LOG_ERROR("[StoryChunkRecordService] Fail to ingest story chunk, Cereal exception caught: {}", e.what());
         }
-        catch(std::exception &e)
+        catch(std::exception& e)
         {
             LOG_ERROR("[StoryChunkRecordService] Fail to ingest story chunk, std::exception caught: {}", e.what());
         }
@@ -100,7 +102,7 @@ public:
     }
 
 private:
-    void deserializedWithCereal(char*buffer, size_t size, chronolog::StoryChunk &story_chunk)
+    void deserializedWithCereal(char* buffer, size_t size, chronolog::StoryChunk& story_chunk)
     {
         std::string str(buffer, buffer + size);
         std::istringstream iss(str);
@@ -109,17 +111,18 @@ private:
     }
 };
 
-int main(int argc, char**argv)
+int main(int argc, char** argv)
 {
     std::string conf_file_path;
     conf_file_path = parse_conf_path_arg(argc, argv);
     chronolog::ConfigurationManager confManager(conf_file_path);
-    int result = chronolog::chrono_monitor::initialize("console", confManager.GRAPHER_CONF.LOG_CONF.LOGFILE
-                                    , confManager.GRAPHER_CONF.LOG_CONF.LOGLEVEL
-                                    , confManager.GRAPHER_CONF.LOG_CONF.LOGNAME
-                                    , confManager.GRAPHER_CONF.LOG_CONF.LOGFILESIZE
-                                    , confManager.GRAPHER_CONF.LOG_CONF.LOGFILENUM
-                                    , confManager.GRAPHER_CONF.LOG_CONF.FLUSHLEVEL);
+    int result = chronolog::chrono_monitor::initialize("console",
+                                                       confManager.GRAPHER_CONF.LOG_CONF.LOGFILE,
+                                                       confManager.GRAPHER_CONF.LOG_CONF.LOGLEVEL,
+                                                       confManager.GRAPHER_CONF.LOG_CONF.LOGNAME,
+                                                       confManager.GRAPHER_CONF.LOG_CONF.LOGFILESIZE,
+                                                       confManager.GRAPHER_CONF.LOG_CONF.LOGFILENUM,
+                                                       confManager.GRAPHER_CONF.LOG_CONF.FLUSHLEVEL);
     if(result == 1)
     {
         exit(EXIT_FAILURE);
@@ -138,26 +141,23 @@ int main(int argc, char**argv)
     ss << extraction_engine.self();
     LOG_DEBUG("[standalone_ingest_test] Engine: {}", ss.str());
 
-    std::vector <tl::managed <tl::xstream>> tl_es_vec;
-    tl::managed <tl::pool> tl_pool = tl::pool::create(tl::pool::access::spmc);
+    std::vector<tl::managed<tl::xstream>> tl_es_vec;
+    tl::managed<tl::pool> tl_pool = tl::pool::create(tl::pool::access::spmc);
     LOG_DEBUG("[standalone_ingest_test] Pool created");
     for(int j = 0; j < NUM_STREAMS; j++)
     {
-        tl::managed <tl::xstream> es = tl::xstream::create(tl::scheduler::predef::deflt, *tl_pool);
+        tl::managed<tl::xstream> es = tl::xstream::create(tl::scheduler::predef::deflt, *tl_pool);
         LOG_DEBUG("[standalone_ingest_test] A new stream is created");
         tl_es_vec.push_back(std::move(es));
     }
 
     int service_provider_id = confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.SERVICE_PROVIDER_ID;
-    StoryChunkRecordService*story_chunk_recording_service = StoryChunkRecordService::CreateStoryChunkRecordService(
-            extraction_engine, tl_pool, service_provider_id);
+    StoryChunkRecordService* story_chunk_recording_service =
+            StoryChunkRecordService::CreateStoryChunkRecordService(extraction_engine, tl_pool, service_provider_id);
     LOG_DEBUG("[standalone_ingest_test] StoryChunkRecordService created");
 
     extraction_engine.wait_for_finalize();
-    for(int j = 0; j < NUM_STREAMS; j++)
-    {
-        tl_es_vec[j]->join();
-    }
+    for(int j = 0; j < NUM_STREAMS; j++) { tl_es_vec[j]->join(); }
 
     delete story_chunk_recording_service;
 

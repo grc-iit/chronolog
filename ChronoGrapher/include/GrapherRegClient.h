@@ -24,21 +24,20 @@ class GrapherRegistryClient
 
 public:
     static GrapherRegistryClient*
-    CreateRegistryClient(tl::engine &tl_engine, std::string const &registry_service_addr
-                               , uint16_t registry_provider_id)
+    CreateRegistryClient(tl::engine& tl_engine, std::string const& registry_service_addr, uint16_t registry_provider_id)
     {
         try
         {
             return new GrapherRegistryClient(tl_engine, registry_service_addr, registry_provider_id);
         }
-        catch(tl::exception const &)
+        catch(tl::exception const&)
         {
             LOG_ERROR("[GrapherRegistryClient] Failed to create GrapherRegistryClient");
             return nullptr;
         }
     }
 
-    int send_register_msg(GrapherRegistrationMsg const & grapherMsg)
+    int send_register_msg(GrapherRegistrationMsg const& grapherMsg)
     {
         try
         {
@@ -47,14 +46,14 @@ public:
             LOG_DEBUG("[GrapherRegistryClient] Sending Registration Message: {}", ss.str());
             return register_grapher.on(reg_service_ph)(grapherMsg);
         }
-        catch(tl::exception const &)
+        catch(tl::exception const&)
         {
             LOG_ERROR("[GrapherRegistryClient] Failed Sending Registration Message.");
             return chronolog::CL_ERR_UNKNOWN;
         }
     }
 
-    int send_unregister_msg(GrapherIdCard const &grapherIdCard)
+    int send_unregister_msg(GrapherIdCard const& grapherIdCard)
     {
         try
         {
@@ -63,14 +62,14 @@ public:
             LOG_DEBUG("[GrapherRegistryClient] Sending Unregister Message: {}", ss.str());
             return unregister_grapher.on(reg_service_ph)(grapherIdCard);
         }
-        catch(tl::exception const &)
+        catch(tl::exception const&)
         {
             LOG_ERROR("[GrapherRegistryClient] Failed Sending Unregistered Message.");
             return chronolog::CL_ERR_UNKNOWN;
         }
     }
 
-    void send_stats_msg(GrapherStatsMsg const & statsMsg)
+    void send_stats_msg(GrapherStatsMsg const& statsMsg)
     {
         try
         {
@@ -79,7 +78,7 @@ public:
             LOG_DEBUG("[GrapherRegistryClient] Sending Stats Message: {}", stats.str());
             handle_grapher_stats_msg.on(reg_service_ph)(statsMsg);
         }
-        catch(tl::exception const &)
+        catch(tl::exception const&)
         {
             LOG_ERROR("[GrapherRegisterClient] Failed Sending Stats Message.");
         }
@@ -94,25 +93,27 @@ public:
     }
 
 private:
-    std::string reg_service_addr;     // na address of Keeper Registry Service 
-    uint16_t reg_service_provider_id;          // KeeperRegistryService provider id
-    tl::provider_handle reg_service_ph;  //provider_handle for remote registry service
+    std::string reg_service_addr;       // na address of Keeper Registry Service
+    uint16_t reg_service_provider_id;   // KeeperRegistryService provider id
+    tl::provider_handle reg_service_ph; //provider_handle for remote registry service
     tl::remote_procedure register_grapher;
     tl::remote_procedure unregister_grapher;
     tl::remote_procedure handle_grapher_stats_msg;
 
     // constructor is private to make sure thalium rpc objects are created on the heap, not stack
-    GrapherRegistryClient(tl::engine &tl_engine, std::string const &registry_addr, uint16_t registry_provider_id)
-            : reg_service_addr(registry_addr), reg_service_provider_id(registry_provider_id), reg_service_ph(
-            tl_engine.lookup(registry_addr), registry_provider_id)
+    GrapherRegistryClient(tl::engine& tl_engine, std::string const& registry_addr, uint16_t registry_provider_id)
+        : reg_service_addr(registry_addr)
+        , reg_service_provider_id(registry_provider_id)
+        , reg_service_ph(tl_engine.lookup(registry_addr), registry_provider_id)
     {
-        LOG_DEBUG("[GrapherRegistryClient] Initialized for RegistryService at {} with ProviderID={}", registry_addr
-             , registry_provider_id);
+        LOG_DEBUG("[GrapherRegistryClient] Initialized for RegistryService at {} with ProviderID={}",
+                  registry_addr,
+                  registry_provider_id);
         register_grapher = tl_engine.define("register_grapher");
         unregister_grapher = tl_engine.define("unregister_grapher");
         handle_grapher_stats_msg = tl_engine.define("handle_grapher_stats_msg").disable_response();
     }
 };
-}
+} // namespace chronolog
 
 #endif

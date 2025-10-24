@@ -30,56 +30,60 @@ enum ClientMode
 
 enum ChronologClientState
 {
-    UNKNOWN = 0, CONNECTED = 1, READING = 2, WRITING = 3, SHUTTING_DOWN = 4
+    UNKNOWN = 0,
+    CONNECTED = 1,
+    READING = 2,
+    WRITING = 3,
+    SHUTTING_DOWN = 4
 };
 
 class ChronologClientImpl
 {
 public:
-
     // static mutex ensures that there'd be the single instance
     // of ChronologClientImpl ever created regardless of the
     // thread(s) GetClientImplInstance() is called from
     static std::mutex chronologClientMutex;
-    static ChronologClientImpl*chronologClientImplInstance;
+    static ChronologClientImpl* chronologClientImplInstance;
 
-    static ChronologClientImpl*
-    GetClientImplInstance(chronolog::ClientPortalServiceConf const &, ClientMode const& , chronolog::ClientQueryServiceConf const &);
+    static ChronologClientImpl* GetClientImplInstance(chronolog::ClientPortalServiceConf const&,
+                                                      ClientMode const&,
+                                                      chronolog::ClientQueryServiceConf const&);
 
     // the classs is non-copyable
-    ChronologClientImpl(ChronologClientImpl const &) = delete;
+    ChronologClientImpl(ChronologClientImpl const&) = delete;
 
-    ChronologClientImpl &operator=(ChronologClientImpl const &) = delete;
+    ChronologClientImpl& operator=(ChronologClientImpl const&) = delete;
 
     ~ChronologClientImpl();
 
     int Connect();
 
-    int Disconnect(); 
+    int Disconnect();
 
-    int CreateChronicle(std::string const &chronicle_name, const std::map <std::string, std::string> &attrs
-                        , int &flags);
+    int CreateChronicle(std::string const& chronicle_name, const std::map<std::string, std::string>& attrs, int& flags);
 
-    int DestroyChronicle(std::string const &chronicle_name); 
+    int DestroyChronicle(std::string const& chronicle_name);
 
-    std::pair <int, StoryHandle*> AcquireStory(std::string const &chronicle_name, std::string const &story_name
-                                               , const std::map <std::string, std::string> &attrs
-                                               , int &flags);
+    std::pair<int, StoryHandle*> AcquireStory(std::string const& chronicle_name,
+                                              std::string const& story_name,
+                                              const std::map<std::string, std::string>& attrs,
+                                              int& flags);
 
-    int ReleaseStory(std::string const &chronicle_name, std::string const &story_name); 
-    int DestroyStory(std::string const &chronicle_name, std::string const &story_name);
+    int ReleaseStory(std::string const& chronicle_name, std::string const& story_name);
+    int DestroyStory(std::string const& chronicle_name, std::string const& story_name);
 
-    int GetChronicleAttr(std::string const &chronicle_name, const std::string &key, std::string &value);
+    int GetChronicleAttr(std::string const& chronicle_name, const std::string& key, std::string& value);
 
-    int EditChronicleAttr(std::string const &chronicle_name, const std::string &key, const std::string &value);
+    int EditChronicleAttr(std::string const& chronicle_name, const std::string& key, const std::string& value);
 
-    std::vector <std::string> &ShowChronicles(std::vector <std::string> &);
-    std::vector <std::string> &ShowStories(const std::string &chronicle_name, std::vector <std::string> &);
+    std::vector<std::string>& ShowChronicles(std::vector<std::string>&);
+    std::vector<std::string>& ShowStories(const std::string& chronicle_name, std::vector<std::string>&);
 
-    int replay_story( ChronicleName const&, StoryName const&, uint64_t start, uint64_t end, std::vector<Event> & eventSeries);
+    int
+    replay_story(ChronicleName const&, StoryName const&, uint64_t start, uint64_t end, std::vector<Event>& eventSeries);
 
 private:
-
     ClientMode clientMode;
     ChronologClientState clientState;
     std::string clientLogin;
@@ -88,16 +92,15 @@ private:
     uint32_t pid;
     ClientId clientId;
     ChronologTimer clockProxy;
-    thallium::engine*tlEngine;
-    RpcVisorClient*rpcVisorClient;
-    StorytellerClient*storyteller;
-    ClientQueryService * storyReaderService;
+    thallium::engine* tlEngine;
+    RpcVisorClient* rpcVisorClient;
+    StorytellerClient* storyteller;
+    ClientQueryService* storyReaderService;
 
-    ChronologClientImpl(ClientPortalServiceConf const&, ClientMode const &, chronolog::ClientQueryServiceConf const&);
+    ChronologClientImpl(ClientPortalServiceConf const&, ClientMode const&, chronolog::ClientQueryServiceConf const&);
 
     void defineClientIdentity();
-
 };
 } //namespace chronolog
 
-#endif 
+#endif
