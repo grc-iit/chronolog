@@ -203,7 +203,8 @@ int chronolog::HDF5ArchiveReadingAgent::readStoryChunkFile(const ChronicleName& 
     }
     if(has_events_outside_range)
     {
-        LOG_DEBUG("[HDF5ArchiveReadingAgent] Some events are outside the range {}-{}, returning 1 to indicate no more files to read",
+        LOG_DEBUG("[HDF5ArchiveReadingAgent] Some events are outside the range {}-{}, returning 1 to indicate no more "
+                  "files to read",
                   formatWithCommas(startTime),
                   formatWithCommas(endTime));
         return 1;
@@ -273,7 +274,7 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName& c
     fs::path file_full_path;
     std::string file_name, next_file_name, next_file_number_str;
     bool has_no_more_files_to_read = false;
-    
+
     for(auto it = start_it; it != time_file_map.end(); ++it)
     {
         file_full_path = fs::path(it->second);
@@ -312,7 +313,12 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName& c
                     if(fs::exists(file_name))
                     {
                         LOG_DEBUG("[HDF5ArchiveReadingAgent] Reading numbered file: {}", file_name);
-                        int result = readStoryChunkFile(chronicleName, storyName, startTime, endTime, listOfChunks, file_name);
+                        int result = readStoryChunkFile(chronicleName,
+                                                        storyName,
+                                                        startTime,
+                                                        endTime,
+                                                        listOfChunks,
+                                                        file_name);
                         if(result == 1)
                         {
                             has_no_more_files_to_read = true;
