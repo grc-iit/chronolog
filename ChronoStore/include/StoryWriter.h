@@ -36,7 +36,7 @@ public:
     StoryWriter() = default;
 
     explicit StoryWriter(std::string& chronicle_root_dir)
-        : chronicle_root_dir(chronicle_root_dir){};
+        : chronicle_root_dir(chronicle_root_dir) {};
 
     ~StoryWriter() = default;
 

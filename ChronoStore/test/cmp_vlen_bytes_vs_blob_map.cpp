@@ -52,14 +52,14 @@ struct LogEvent
         , eventTime(0)
         , clientId(0)
         , eventIndex(0)
-        , logRecord(){};
+        , logRecord() {};
 
     LogEvent(uint64_t storyId, uint64_t eventTime, uint32_t clientId, uint32_t eventIndex, hvl_t logRecord)
         : storyId(storyId)
         , eventTime(eventTime)
         , clientId(clientId)
         , eventIndex(eventIndex)
-        , logRecord(logRecord){};
+        , logRecord(logRecord) {};
 
     [[nodiscard]] uint64_t const& time() const { return eventTime; }
 
