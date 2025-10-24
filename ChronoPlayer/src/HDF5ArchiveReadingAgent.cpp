@@ -82,6 +82,7 @@ int chronolog::HDF5ArchiveReadingAgent::readStoryChunkFile(const ChronicleName& 
 {
     std::unique_ptr<H5::H5File> file;
     StoryChunk* story_chunk = nullptr;
+    bool has_events_outside_range = false;
     try
     {
         H5::Exception::dontPrint();
@@ -142,6 +143,7 @@ int chronolog::HDF5ArchiveReadingAgent::readStoryChunkFile(const ChronicleName& 
                           formatWithCommas(event_hvl.eventTime),
                           formatWithCommas(startTime),
                           formatWithCommas(endTime));
+                has_events_outside_range = true;
                 break;
             }
 
@@ -199,7 +201,20 @@ int chronolog::HDF5ArchiveReadingAgent::readStoryChunkFile(const ChronicleName& 
         delete story_chunk;
         return -1;
     }
-    return 0;
+    if(has_events_outside_range)
+    {
+        LOG_DEBUG("[HDF5ArchiveReadingAgent] Some events are outside the range {}-{}, returning 1 to indicate no more files to read",
+                  formatWithCommas(startTime),
+                  formatWithCommas(endTime));
+        return 1;
+    }
+    else
+    {
+        LOG_DEBUG("[HDF5ArchiveReadingAgent] All events are within the range {}-{}, returning 0",
+                  formatWithCommas(startTime),
+                  formatWithCommas(endTime));
+        return 0;
+    }
 }
 
 int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName& chronicleName,
@@ -248,59 +263,29 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName& c
         --start_it;
     }
 
-    // Find first file whose start time > endTime
-    auto end_it = time_file_map.lower_bound(endTime);
-    LOG_DEBUG("[HDF5ArchiveReadingAgent] readArchiveStory {}-{} range {}-{}",
+    LOG_DEBUG("[HDF5ArchiveReadingAgent] Found the first file to read {} for story {}-{} in range {}-{}",
+              start_it->second,
               chronicleName,
               storyName,
               formatWithCommas(startTime),
               formatWithCommas(endTime));
-
-    if(start_it == end_it)
-    {
-        LOG_DEBUG("[HDF5ArchiveReadingAgent] No matching files found for story {}-{} in range {}-{}",
-                  chronicleName,
-                  storyName,
-                  formatWithCommas(startTime),
-                  formatWithCommas(endTime));
-        return CL_ERR_UNKNOWN;
-    }
-
-    LOG_DEBUG("[HDF5ArchiveReadingAgent] Found matching files for story {}-{} in range {}-{}",
-              chronicleName,
-              storyName,
-              formatWithCommas(startTime),
-              formatWithCommas(endTime));
-    LOG_DEBUG("[HDF5ArchiveReadingAgent] Start iterator: chronicle name: {}, story name: {}, start time: {}, file "
-              "name: {}",
-              chronicleName,
-              storyName,
-              formatWithCommas(start_it->first),
-              start_it->second);
-    if(end_it != time_file_map.end())
-    {
-        LOG_DEBUG("[HDF5ArchiveReadingAgent] End iterator: chronicle name: {}, story name: {}, start time: {}, file "
-                  "name: {}",
-                  chronicleName,
-                  storyName,
-                  formatWithCommas(end_it->first),
-                  end_it->second);
-    }
-    else
-    {
-        LOG_DEBUG("[HDF5ArchiveReadingAgent] End iterator: end of time file map");
-    }
 
     fs::path file_full_path;
     std::string file_name, next_file_name, next_file_number_str;
-
-    for(auto it = start_it; it != end_it; ++it)
+    bool has_no_more_files_to_read = false;
+    
+    for(auto it = start_it; it != time_file_map.end(); ++it)
     {
         file_full_path = fs::path(it->second);
 
         // file_name should be in the format of /path/to/output/{chronicleName}.{storyName}.{startTime}.vlen.h5
         file_name = file_full_path.string();
-        readStoryChunkFile(chronicleName, storyName, startTime, endTime, listOfChunks, file_name);
+        int result = readStoryChunkFile(chronicleName, storyName, startTime, endTime, listOfChunks, file_name);
+        if(result == 1)
+        {
+            has_no_more_files_to_read = true;
+            break;
+        }
 
         if(readAuxFiles)
         {
@@ -327,7 +312,11 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName& c
                     if(fs::exists(file_name))
                     {
                         LOG_DEBUG("[HDF5ArchiveReadingAgent] Reading numbered file: {}", file_name);
-                        readStoryChunkFile(chronicleName, storyName, startTime, endTime, listOfChunks, file_name);
+                        int result = readStoryChunkFile(chronicleName, storyName, startTime, endTime, listOfChunks, file_name);
+                        if(result == 1)
+                        {
+                            has_no_more_files_to_read = true;
+                        }
                     }
                     else
                     {
@@ -339,6 +328,13 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName& c
             else
             {
                 LOG_ERROR("[HDF5ArchiveReadingAgent] Something went wrong with file name: {}.", file_name);
+            }
+            if(has_no_more_files_to_read)
+            {
+                LOG_DEBUG("[HDF5ArchiveReadingAgent] Some events in this file are outside range {}-{}, break the loop",
+                          formatWithCommas(startTime),
+                          formatWithCommas(endTime));
+                break;
             }
         }
     }
