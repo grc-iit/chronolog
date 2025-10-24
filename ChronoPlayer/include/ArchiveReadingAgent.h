@@ -49,7 +49,7 @@ public:
     ArchiveReadingAgent( ArchiveReadingRequestQueue & request_queue, std::string const & archive_path)
         : theReadingRequestQueue(request_queue)
         , agentState(UNKNOWN)
-        , theReadingAgent(archive_path)
+        , theReadingAgent(archive_path, true)  // Default to polling mode
     {}
 
     ~ArchiveReadingAgent();

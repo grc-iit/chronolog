@@ -71,7 +71,7 @@ int main(int argc, char**argv)
     tl::abt scope;
 
     std::string archive_path = confManager.GRAPHER_CONF.EXTRACTOR_CONF.story_files_dir;
-    agent_ptr = new chronolog::HDF5ArchiveReadingAgent(archive_path);
+    agent_ptr = new chronolog::HDF5ArchiveReadingAgent(archive_path, true);  // Default to polling mode
 
     agent_ptr->initialize();
 
