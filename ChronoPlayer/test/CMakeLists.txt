@@ -86,3 +86,7 @@ set_target_properties(hdf5_archive_reader_test PROPERTIES
 )
 
 ####
+install(
+    TARGETS playback_service_test hdf5_archive_reader_test extraction_test  DESTINATION bin
+)
+

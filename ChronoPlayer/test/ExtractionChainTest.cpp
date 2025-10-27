@@ -5,7 +5,7 @@
 #include <chrono_monitor.h>
 #include <ServiceId.h>
 #include <StoryChunk.h>
-#include <StoryChunkExtractionChain.h>
+#include <StoryChunkExtractionModule.h>
 
 namespace tl = thallium;
 namespace chl = chronolog;
@@ -18,16 +18,44 @@ void sigterm_handler(int)
     return;
 }
 
+static constexpr uint64_t NS = 1000000000ULL;
+
+void chunk_contributor_thread( chl::StoryChunkExtractionQueue * extractionQueue, uint32_t thread_id)
+{
+    //auto thread_id_ = std::this_thread::get_id();
+    LOG_INFO( "[ExtractionModuleTest] starting contributing {} ",thread_id); //, std::to_string(thread_id_));
+
+    for(int k=0; k< 10; ++k) 
+    {
+        uint64_t time_now = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+        chl::StoryChunk * story_chunk = new chl::StoryChunk("Chronicle","Story", 1, time_now, time_now+500);
+   
+        for(int i =0; i< 10; ++i) 
+        { 
+            story_chunk->insertEvent(chl::LogEvent{ 1, time_now + i, thread_id, 1,
+                             "line "+std::to_string(i)});
+        }
+
+        extractionQueue->stashStoryChunk(story_chunk);
+    }
+
+ 
+    LOG_INFO( "[ExtractionModuleTest] exiting contributing {} ",thread_id);
+    std::this_thread::sleep_for(std::chrono::seconds(10));
+}
+
 int main()
 {
+    int contributor_threads = 5;
+    int extraction_threads =2;
 
     signal(SIGTERM, sigterm_handler);
 
     int result = chronolog::chrono_monitor::initialize( "file" //confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE
                                                     ,"/tmp/extraction_test.log"  //, confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
                                                     , spdlog::level::debug// confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
-                                                    , "ExtractionChainTest"//confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME
-                                                    , 10000//confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILESIZE
+                                                    , "ExtractionModuleTest"//confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME
+                                                    , 100000000//confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILESIZE
                                                     , 2//confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILENUM
                                                     , spdlog::level::debug//confManager.CLIENT_CONF.CLIENT_LOG_CONF.FLUSHLEVEL);
                                                     );
@@ -39,7 +67,10 @@ int main()
     localServiceId.get_service_as_string(LOCAL_SERVICE_NA_STRING);
 
     tl::engine * localEngine = nullptr;
-    chronolog::StoryChunkExtractionChain<chronolog::ExtractionTail> * storyChunkExtractionChain = nullptr;
+
+    chronolog::StoryChunkExtractionModule<chronolog::LoggingExtractor> * chunkExtractionModule = nullptr;
+
+    chronolog::LoggingExtractor extractionChain;
 
     chl::ServiceId queryServiceId("ofi+sockets", "127.0.0.1",5557,57);
     try
@@ -47,44 +78,62 @@ int main()
         margo_instance_id margo_id = margo_init(LOCAL_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 1);
         localEngine = new tl::engine(margo_id);
 
-        std::cout <<"started localEngine at "<< localEngine->self()<<std::endl;
+        //LOG_INFO( "[ExtractionModuleTest] started localEngine at {}", localEngine->self());
 
 
-        storyChunkExtractionChain = new chronolog::StoryChunkExtractionChain<chronolog::ExtractionTail>();
+        chunkExtractionModule = new chronolog::StoryChunkExtractionModule<chronolog::LoggingExtractor> (extractionChain);
 
     }
     catch(tl::exception const &)
     {
-        storyChunkExtractionChain = nullptr;
+        chunkExtractionModule = nullptr;
     }
 
-    if(nullptr == storyChunkExtractionChain)
+    if(nullptr == chunkExtractionModule)
     {
         return(-1);
     }
 
+    //Start extraction threads
+
+    chl::StoryChunkExtractionQueue & extractionQueue = chunkExtractionModule->getExtractionQueue();
+
+    chunkExtractionModule->startExtraction(extraction_threads);
+
+    //Start chunk contributing threads
+    std::thread contributors[contributor_threads];
+/*    for (int i = 0; i < contributor_threads; ++i) 
+    {
+        std::thread t{ chunk_contributor_thread, &extractionQueue, i};
+        contributors[i] = std::move(t);
+    }
+*/
+
+ static uint32_t thread_id = 0; 
  while( true ==  keep_running)
     {
-        std::cout<<"ExtractionChain is running"<<std::endl;
-  /*      transferAgent->is_receiver_available();
-        
-        chl::StoryChunk storyChunk("Chronicle","Story", 1, std::chrono::high_resolution_clock::now().time_since_epoch().count()
-                  ,  std::chrono::high_resolution_clock::now().time_since_epoch().count()+5000);
-   
-        for(int i =0; i< 5; ++i) 
-        { 
-            storyChunk.insertEvent(chl::LogEvent{ 1, storyChunk.getStartTime()+i, 2968,1,
-                             "line "+std::to_string(i)});
+        LOG_INFO( "[ExtractionModuleTest] ExtractionChainTest is running");
+
+        // now we will be starting a few contributor threads, that would stash a few StoryChunks on the extractionQueue, 
+        // peiodically than fall asleep until it's the next time to wake up and start some more contributor threads
+
+        // the StoryChunkExtraction module is expected to run in the background and take care of the extruction duties
+
+        for ( short int i =0; i < contributor_threads; ++i, ++thread_id) 
+        {
+            std::thread t{ chunk_contributor_thread, &extractionQueue, thread_id};
+            contributors[i] = std::move(t);
         }
-        std::cout<<"TransferAgent is sending storyChunk for story "<<storyChunk.getChronicleName()<<"-"<< storyChunk.getStoryName()<<"-"<<storyChunk.getStartTime()<<"-"<<storyChunk.getEndTime()<<" eventCount:"<<storyChunk.getEventCount()<<std::endl;
-        transferAgent->processStoryChunk(&storyChunk);
-i*/
-        sleep(3);
+        for(int i = 0; i < contributor_threads; ++i)
+        {    contributors[i].join(); }
+
+        std::this_thread::sleep_for(std::chrono::seconds(5));
     }
 
-    std::cout << "Shutting down  TransferAgent for "<<chl::to_string(queryServiceId)<<std::endl;
+    
+    LOG_INFO( "[ExtractionModuleTest] Shutting down StoryChunkExtractionModule for {}", chl::to_string(queryServiceId));
 
-    delete storyChunkExtractionChain;
+    delete chunkExtractionModule;
     delete localEngine;
 return 1;
 }
