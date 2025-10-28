@@ -28,6 +28,7 @@ target_sources(chrono_player PRIVATE
     ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
 )
 
+
 target_link_libraries(chrono_player chronolog_client thallium)
 target_link_libraries(chrono_player ${HDF5_LIBRARIES})
 
@@ -39,11 +40,6 @@ set_target_properties(chrono_player PROPERTIES
 add_subdirectory(test)
 
 # install executables
-install(
-    TARGETS chrono_player DESTINATION bin
-)
+chronolog_install_target(chrono_player)
 
-# install configuration file
-install(
-    FILES ${CMAKE_SOURCE_DIR}/default_conf.json.in DESTINATION ${CHRONOLOG_INSTALL_CONF_DIR} RENAME default_conf.json
-)
+# Configuration file is installed by ChronoVisor to avoid duplication

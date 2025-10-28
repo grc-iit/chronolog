@@ -9,6 +9,11 @@ INFO='\033[7;49m\033[92m'
 DEBUG='\033[0;33m'
 NC='\033[0m' # No Color
 
+# Default values
+BUILD_TYPE="Release"
+BUILD_BASE_DIR="$HOME/chronolog-build"
+INSTALL_DIR="$HOME/chronolog-install"
+
 # Directories
 REPO_ROOT="$(realpath "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../")"
 LIB_DIR=""
@@ -16,38 +21,68 @@ BIN_DIR=""
 
 parse_arguments() {
     usage() {
-        echo -e "Usage: $0 --bin-dir <BIN_DIR> --lib-dir <LIB_DIR>"
-        echo -e "\nOptions:"
-        echo -e "  --bin-dir <BIN_DIR>   Path to the directory containing binaries."
-        echo -e "  --lib-dir <LIB_DIR>   Path to the directory where shared libraries will be copied."
+        echo "Usage: $0 [options]"
+        echo ""
+        echo "Options:"
+        echo "  -h|--help           Display this help and exit"
+        echo ""
+        echo "Install Options:"
+        echo "  -t|--build-type <Debug|Release>  Define type of build (default: Release)"
+        echo "  -B|--build-dir <path>            Set the build directory (default: $HOME/chronolog-build/)"
+        echo "  -I|--install-dir <path>          Set the installation directory (default: $HOME/chronolog-install/)"
+        echo ""
+        echo "Examples:"
+        echo ""
+        echo "  1) Install ChronoLog in Release mode (default):"
+        echo "     $0"
+        echo ""
+        echo "  2) Install ChronoLog in Debug mode:"
+        echo "     $0 --build-type Debug"
+        echo ""
+        echo "  3) Install ChronoLog in Release mode with custom install directory:"
+        echo "     $0 --install-dir /custom/install/path"
+        echo ""
+        echo "  4) Install ChronoLog in Debug mode with custom build directory:"
+        echo "     $0 --build-type Debug --build-dir /custom/build/path"
+        echo ""
+        echo "Note: Installation will overwrite any existing installation in the specified directories."
+        echo "Debug and Release builds cannot coexist in the installation directory."
         exit 1
     }
 
     while [[ "$#" -gt 0 ]]; do
         case "$1" in
-            --bin-dir)
-                BIN_DIR="$2"
-                shift 2
-                ;;
-            --lib-dir)
-                LIB_DIR="$2"
-                shift 2
-                ;;
-            --help)
+            -h|--help)
                 usage
-                ;;
-            *)
-                echo -e "${ERR}Unknown argument: $1${NC}"
-                usage
-                ;;
+                shift ;;
+            -t|--build-type)
+                BUILD_TYPE="$2"
+                if [[ "$BUILD_TYPE" != "Debug" && "$BUILD_TYPE" != "Release" ]]; then
+                    echo -e "${ERR}Invalid build type: $BUILD_TYPE. Must be 'Debug' or 'Release'.${NC}"
+                    usage
+                fi
+                shift 2 ;;
+            -B|--build-dir)
+                BUILD_BASE_DIR=$(realpath -m "$2")
+                shift 2 ;;
+            -I|--install-dir)
+                INSTALL_DIR=$(realpath -m "$2")
+                shift 2 ;;
+            *) 
+                echo -e "${ERR}Unknown option: $1${NC}"
+                usage ;;
         esac
     done
 
-    # Ensure required variables are set
-    if [[ -z "${BIN_DIR}" || -z "${LIB_DIR}" ]]; then
-        echo -e "${ERR}Missing required arguments. Please provide --bin-dir and --lib-dir.${NC}"
-        usage
-    fi
+    # Set default directories
+    BIN_DIR="${INSTALL_DIR}/chronolog/bin"
+    LIB_DIR="${INSTALL_DIR}/chronolog/lib"
+    
+    echo -e "${DEBUG}Using build type: ${BUILD_TYPE}${NC}"
+    echo -e "${DEBUG}Using build directory: ${BUILD_BASE_DIR}/${BUILD_TYPE}${NC}"
+    echo -e "${DEBUG}Using install directory: ${INSTALL_DIR}${NC}"
+    echo -e "${DEBUG}Using binary directory: ${BIN_DIR}${NC}"
+    echo -e "${DEBUG}Using library directory: ${LIB_DIR}${NC}"
 }
 
 
@@ -108,7 +143,7 @@ update_rpath() {
     else
         for f in "${bin_files[@]}"; do
             if [ -f "$f" ]; then
-                chrpath -r "${LIB_DIR}" "$f" > /dev/null 2>&1 || \
+                chrpath -r '$ORIGIN/../lib' "$f" > /dev/null 2>&1 || \
                     echo -e "${INFO}Skipping RPATH update for $f (no RPATH or not a valid ELF file).${NC}"
             fi
         done
@@ -121,13 +156,25 @@ update_rpath() {
     else
         for f in "${lib_files[@]}"; do
             if [ -f "$f" ]; then
-                chrpath -r "${LIB_DIR}" "$f" > /dev/null 2>&1 || \
+                chrpath -r '$ORIGIN/../lib' "$f" > /dev/null 2>&1 || \
                     echo -e "${INFO}Skipping RPATH update for $f (no RPATH or not a valid ELF file).${NC}"
             fi
         done
     fi
     shopt -u nullglob
     echo -e "${DEBUG}RPATH updated${NC}"
+}
+
+check_dependencies() {
+    local dependencies=("jq" "ldd" "nohup" "pkill" "readlink" "realpath" "chrpath")
+    echo -e "${DEBUG}Checking required dependencies...${NC}"
+    for dep in "${dependencies[@]}"; do
+        if ! command -v $dep &> /dev/null; then
+            echo -e "${ERR}Dependency $dep is not installed. Please install it and try again.${NC}"
+            exit 1
+        fi
+    done
+    echo -e "${DEBUG}All required dependencies are installed.${NC}"
 }
 
 activate_spack_environment() {
@@ -167,22 +214,27 @@ check_spack() {
     echo -e "${INFO}All dependencies are installed and ready. Installing...${NC}"
 }
 
+
 navigate_to_build_directory() {
-    echo -e "${DEBUG}Checking for the presence of the 'build' directory...${NC}"
-    if [ -d "${REPO_ROOT}/build" ]; then
-        echo -e "${DEBUG}'build' directory found. Navigating to it...${NC}"
-        cd ${REPO_ROOT}/build
+    BUILD_DIR="$BUILD_BASE_DIR/${BUILD_TYPE}"
+    
+    # Check if the build directory exists
+    if [ -d "${BUILD_DIR}" ] && [ -f "${BUILD_DIR}/CMakeCache.txt" ]; then
+        echo -e "${DEBUG}Using build directory: ${BUILD_DIR}${NC}"
+        cd ${BUILD_DIR}
     else
-        echo -e "${ERR}Build directory not found. Please run the build script first.${NC}"
+        echo -e "${ERR}Build directory not found: ${BUILD_DIR}${NC}"
+        echo -e "${ERR}Please run the build script first with the appropriate build type.${NC}"
         exit 1
     fi
 }
 
 # Main function
 main() {
-    echo -e "${INFO}Installing ChronoLog...${NC}"
     parse_arguments "$@"
+    echo -e "${INFO}Installing ChronoLog...${NC}"
     cd ${REPO_ROOT}
+    check_dependencies
     activate_spack_environment
     check_spack
     navigate_to_build_directory

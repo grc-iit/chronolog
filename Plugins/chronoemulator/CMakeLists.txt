@@ -24,12 +24,17 @@ add_library(ChronoEmulator STATIC ${SOURCE_FILES})
 # Use target_include_directories instead of include_directories
 target_include_directories(ChronoEmulator PUBLIC include)
 
+# Set PUBLIC_HEADER property for automatic installation
+file(GLOB HEADER_FILES "include/*.h")
+set_target_properties(ChronoEmulator PROPERTIES
+    PUBLIC_HEADER "${HEADER_FILES}"
+)
+
 # If there are any dependencies, link them here
 # target_link_libraries(chronoemulator other_libraries)
 
 # For installation (optional)
-install(TARGETS ChronoEmulator DESTINATION lib)
-install(DIRECTORY include/ DESTINATION include)
+chronolog_install_target(ChronoEmulator)
 
 # Testing (optional)
 # enable_testing()
