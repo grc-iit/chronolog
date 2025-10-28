@@ -638,7 +638,6 @@ TEST(StoryChunk_TestMergeEvents, testMixedChunkMerge)
 
 // try calling merge events with a merge start_merge value passed being earlier than startime of both chunks or later than end time of both
 // expected behavior is that only the events that are within the master chunk boundaries will be merged from the other_chunk into the master chunk
-// BUG -> should not merge after end time of the chunk, should have got rejected
 TEST(StoryChunk_TestMergeEvents, testMergeStartTimeIncorrect)
 {
     initLogger();
@@ -647,7 +646,7 @@ TEST(StoryChunk_TestMergeEvents, testMergeStartTimeIncorrect)
     chl::StoryChunk otherChunk("ChronicleName", "StoryName", 1, 0, 150, 10);
     otherChunk.insertEvent(chl::LogEvent(1, 10, 0, 0, "test"));
     otherChunk.insertEvent(chl::LogEvent(1, 20, 0, 0, "test"));
- 
+
     int retMerge = masterChunk.mergeEvents(otherChunk, 8);
     EXPECT_EQ(retMerge, 1);
     EXPECT_EQ(masterChunk.getEventCount(), 1);
@@ -660,7 +659,6 @@ TEST(StoryChunk_TestMergeEvents, testMergeStartTimeIncorrect)
     EXPECT_EQ(retMerge, 1);
     EXPECT_EQ(masterChunk.getEventCount(), 2);
     EXPECT_EQ(otherChunk.getEventCount(), 2);
-
 }
 
 // test merging a map of events to the main chunk
