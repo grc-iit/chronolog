@@ -24,14 +24,14 @@ void chronolog::StoryChunkExtractorBase::startExtractionThreads(int stream_count
 
     for(int i = 0; i < stream_count; ++i)
     {
-        tl::managed <tl::xstream> es = tl::xstream::create();
+        tl::managed<tl::xstream> es = tl::xstream::create();
         extractionStreams.push_back(std::move(es));
     }
 
     for(int i = 0; i < stream_count; ++i)
     {
-        tl::managed <tl::thread> th = extractionStreams[i % extractionStreams.size()]->make_thread([p = this]()
-                                                                                                   { p->drainExtractionQueue(); });
+        tl::managed<tl::thread> th = extractionStreams[i % extractionStreams.size()]->make_thread(
+                [p = this]() { p->drainExtractionQueue(); });
         extractionThreads.push_back(std::move(th));
     }
 }
@@ -51,15 +51,9 @@ void chronolog::StoryChunkExtractorBase::shutdownExtractionThreads()
     LOG_DEBUG("[StoryChunkExtractionBase] Initiating shutdown. Queue size: {}", chunkExtractionQueue.size());
 
     // join threads & executionstreams while holding stateMutex
-    for(auto &eth: extractionThreads)
-    {
-        eth->join();
-    }
+    for(auto& eth: extractionThreads) { eth->join(); }
     LOG_DEBUG("[StoryChunkExtractionBase] Extraction threads successfully shut down.");
-    for(auto &es: extractionStreams)
-    {
-        es->join();
-    }
+    for(auto& es: extractionStreams) { es->join(); }
     LOG_DEBUG("[StoryChunkExtractionBase] Streams have been successfully closed.");
 }
 
@@ -83,14 +77,16 @@ void chronolog::StoryChunkExtractorBase::drainExtractionQueue()
     // and until the extractionQueue is drained in shutdown mode
     while((extractorState == RUNNING) || !chunkExtractionQueue.empty())
     {
-        LOG_DEBUG("[StoryChunkExtractionBase] Draining queue. ES Rank: {}, ULT ID: {}, Queue Size: {}", es.get_rank()
-                  , thallium::thread::self_id(), chunkExtractionQueue.size());
+        LOG_DEBUG("[StoryChunkExtractionBase] Draining queue. ES Rank: {}, ULT ID: {}, Queue Size: {}",
+                  es.get_rank(),
+                  thallium::thread::self_id(),
+                  chunkExtractionQueue.size());
 
         while(!chunkExtractionQueue.empty())
         {
-            StoryChunk*storyChunk = chunkExtractionQueue.ejectStoryChunk();
+            StoryChunk* storyChunk = chunkExtractionQueue.ejectStoryChunk();
             if(storyChunk == nullptr)
-                //the queue might have been drained by another thread before the current thread acquired extractionQueue mutex
+            //the queue might have been drained by another thread before the current thread acquired extractionQueue mutex
             {
                 LOG_WARNING("[StoryChunkExtractionBase] Failed to acquire a story chunk from the queue.");
                 break;
@@ -98,17 +94,22 @@ void chronolog::StoryChunkExtractorBase::drainExtractionQueue()
             int ret = processStoryChunk(storyChunk);
             if(ret == chronolog::CL_SUCCESS)
             {
-                LOG_DEBUG("[StoryChunkExtractionBase] Successfully processed a story chunk. ES Rank: {}, ULT ID: {}"
-                          , es.get_rank(), thallium::thread::self_id());
+                LOG_DEBUG("[StoryChunkExtractionBase] Successfully processed a story chunk. ES Rank: {}, ULT ID: {}",
+                          es.get_rank(),
+                          thallium::thread::self_id());
                 delete storyChunk;
             }
             else
             {
-                LOG_ERROR("[StoryChunkExtractionBase] Failed to process a story chunk, Error Code: {}. ES Rank: {}"
-                                  , ret, es.get_rank(), thallium::thread::self_id());
-                LOG_ERROR(
-                        "[StoryChunkExtractionBase] Stashing the story chunk for later processing... ES Rank: {}, ULT ID:"
-                        " {}", es.get_rank(), thallium::thread::self_id());
+                LOG_ERROR("[StoryChunkExtractionBase] Failed to process a story chunk, Error Code: {}. ES Rank: {}",
+                          ret,
+                          es.get_rank(),
+                          thallium::thread::self_id());
+                LOG_ERROR("[StoryChunkExtractionBase] Stashing the story chunk for later processing... ES Rank: {}, "
+                          "ULT ID:"
+                          " {}",
+                          es.get_rank(),
+                          thallium::thread::self_id());
                 chunkExtractionQueue.stashStoryChunk(storyChunk);
             }
         }

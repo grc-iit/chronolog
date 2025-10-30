@@ -13,7 +13,6 @@
 #include "ChunkIngestionQueue.h"
 
 
-
 namespace chronolog
 {
 
@@ -23,15 +22,19 @@ class GrapherDataStore
 
     enum DataStoreState
     {
-        UNKNOWN = 0, RUNNING = 1,    //  active stories
-        SHUTTING_DOWN = 2    // Shutting down services
+        UNKNOWN = 0,
+        RUNNING = 1,      //  active stories
+        SHUTTING_DOWN = 2 // Shutting down services
     };
 
 
 public:
-    GrapherDataStore(ChunkIngestionQueue &ingestion_queue, StoryChunkExtractionQueue &extraction_queue
-                    , uint32_t max_chunk_size = 4096, uint32_t story_chunk_duration_secs = 60
-                    , uint32_t acceptance_window_secs = 180, uint32_t inactive_pipeline_delay_secs = 300 )
+    GrapherDataStore(ChunkIngestionQueue& ingestion_queue,
+                     StoryChunkExtractionQueue& extraction_queue,
+                     uint32_t max_chunk_size = 4096,
+                     uint32_t story_chunk_duration_secs = 60,
+                     uint32_t acceptance_window_secs = 180,
+                     uint32_t inactive_pipeline_delay_secs = 300)
         : state(UNKNOWN)
         , theIngestionQueue(ingestion_queue)
         , theExtractionQueue(extraction_queue)
@@ -43,15 +46,13 @@ public:
 
     ~GrapherDataStore();
 
-    bool is_running() const
-    { return (RUNNING == state); }
+    bool is_running() const { return (RUNNING == state); }
 
-    bool is_shutting_down() const
-    { return (SHUTTING_DOWN == state); }
+    bool is_shutting_down() const { return (SHUTTING_DOWN == state); }
 
-    int startStoryRecording(ChronicleName const &, StoryName const &, StoryId const &, uint64_t start_time);
+    int startStoryRecording(ChronicleName const&, StoryName const&, StoryId const&, uint64_t start_time);
 
-    int stopStoryRecording(StoryId const &);
+    int stopStoryRecording(StoryId const&);
 
     void collectIngestedEvents();
 
@@ -66,28 +67,27 @@ public:
     void dataCollectionTask();
 
 private:
-    GrapherDataStore(GrapherDataStore const &) = delete;
+    GrapherDataStore(GrapherDataStore const&) = delete;
 
-    GrapherDataStore &operator=(GrapherDataStore const &) = delete;
+    GrapherDataStore& operator=(GrapherDataStore const&) = delete;
 
     DataStoreState state;
     std::mutex dataStoreStateMutex;
-    ChunkIngestionQueue &theIngestionQueue;
-    StoryChunkExtractionQueue &theExtractionQueue;
+    ChunkIngestionQueue& theIngestionQueue;
+    StoryChunkExtractionQueue& theExtractionQueue;
 
     uint32_t story_chunk_size;
     uint32_t story_chunk_duration_secs;
     uint32_t acceptance_window_secs;
     uint32_t inactive_pipeline_delay_secs;
 
-    std::vector <thallium::managed <thallium::xstream>> dataStoreStreams;
-    std::vector <thallium::managed <thallium::thread>> dataStoreThreads;
+    std::vector<thallium::managed<thallium::xstream>> dataStoreStreams;
+    std::vector<thallium::managed<thallium::thread>> dataStoreThreads;
 
     std::mutex dataStoreMutex;
-    std::unordered_map <StoryId, StoryPipeline*> theMapOfStoryPipelines;
-    std::unordered_map <StoryId, std::pair <StoryPipeline*, uint64_t>> pipelinesWaitingForExit;
-
+    std::unordered_map<StoryId, StoryPipeline*> theMapOfStoryPipelines;
+    std::unordered_map<StoryId, std::pair<StoryPipeline*, uint64_t>> pipelinesWaitingForExit;
 };
 
-}
+} // namespace chronolog
 #endif
