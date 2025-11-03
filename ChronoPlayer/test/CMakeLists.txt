@@ -23,24 +23,6 @@ set_target_properties(transfer_agent_test PROPERTIES
     SKIP_BUILD_RPATH TRUE
 )
 
-#### TransferAgentTest
-add_executable(extraction_test
-    ExtractionChainTest.cpp
-   # ${CMAKE_SOURCE_DIR}/ChronoPlayer/src/StoryChunkExtractionChain.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunk.cpp)
-
-target_include_directories(extraction_test PRIVATE
-    include
-    ${CMAKE_SOURCE_DIR}/ChronoPlayer/include
-    ${CMAKE_SOURCE_DIR}/chrono_common/include
-)
-target_link_libraries(extraction_test chronolog_client thallium)
-
-set_target_properties(extraction_test PROPERTIES
-    BUILD_WITH_INSTALL_RPATH TRUE
-    SKIP_BUILD_RPATH TRUE
-)
-
 #### PlaybackServiceTest
 add_executable(playback_service_test
     PlaybackServiceTest.cpp
@@ -77,8 +59,7 @@ target_include_directories(hdf5_archive_reader_test PRIVATE
 
 target_link_directories(hdf5_archive_reader_test PRIVATE ${HDF5_LIBRARY_DIRS})
 
-target_link_libraries(hdf5_archive_reader_test chronolog_client thallium)
-target_link_libraries(hdf5_archive_reader_test ${HDF5_LIBRARIES})
+target_link_libraries(hdf5_archive_reader_test chronolog_client thallium ${HDF5_LIBRARIES})
 
 set_target_properties(hdf5_archive_reader_test PROPERTIES
     BUILD_WITH_INSTALL_RPATH TRUE
@@ -86,7 +67,6 @@ set_target_properties(hdf5_archive_reader_test PROPERTIES
 )
 
 ####
-install(
-    TARGETS playback_service_test hdf5_archive_reader_test extraction_test  DESTINATION bin
-)
+chronolog_install_target(playback_service_test)
+chronolog_install_target(hdf5_archive_reader_test)
 

@@ -29,8 +29,7 @@ target_sources(chrono_player PRIVATE
 )
 
 
-target_link_libraries(chrono_player chronolog_client thallium)
-target_link_libraries(chrono_player ${HDF5_LIBRARIES})
+target_link_libraries(chrono_player chronolog_client thallium ${HDF5_LIBRARIES})
 
 set_target_properties(chrono_player PROPERTIES
     BUILD_WITH_INSTALL_RPATH TRUE
