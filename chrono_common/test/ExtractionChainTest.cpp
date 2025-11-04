@@ -72,34 +72,28 @@ int main()
     chronolog::LoggingExtractor logging_extractor;
     chronolog::StoryChunkExtractorCSV csv_extractor(localServiceId,"/tmp/");
 
-    //chronolog::StoryChunkExtractionModule<chl::LoggingExtractor > * chunkExtractionModule = nullptr;
-    chronolog::StoryChunkExtractionModule< chronolog::StoryChunkExtractorCSV > * chunkExtractionModule = nullptr;
-    
+    chl::ExtractorChain extractorChain1(csv_extractor);
+    chl::ExtractorChain extractorChain2(logging_extractor,csv_extractor);
+
+
     try
     {
         margo_instance_id margo_id = margo_init(LOCAL_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 1);
         localEngine = new tl::engine(margo_id);
 
-
-       // chunkExtractionModule = new chronolog::StoryChunkExtractionModule<chl::LoggingExtractor> (logging_extractor);
-        chunkExtractionModule = new chronolog::StoryChunkExtractionModule<chl::StoryChunkExtractorCSV> (csv_extractor);
-
     }
     catch(tl::exception const &)
-    {
-        chunkExtractionModule = nullptr;
-    }
-
-    if(nullptr == chunkExtractionModule)
     {
         return(-1);
     }
 
+
+    chronolog::StoryChunkExtractionModule extractionModule(logging_extractor,csv_extractor);   
     //Start extraction threads
 
-    chl::StoryChunkExtractionQueue & extractionQueue = chunkExtractionModule->getExtractionQueue();
+    chl::StoryChunkExtractionQueue & extractionQueue = extractionModule.getExtractionQueue();
 
-    chunkExtractionModule->startExtraction(extraction_threads);
+    extractionModule.startExtraction(extraction_threads);
 
     //Start chunk contributing threads
     std::thread contributors[contributor_threads];
@@ -128,7 +122,8 @@ int main()
     
     LOG_INFO( "[ExtractionModuleTest] Shutting down StoryChunkExtractionModule for {}", chl::to_string(localServiceId));
 
-    delete chunkExtractionModule;
+    extractionModule.shutdownExtraction();
+
     delete localEngine;
 return 1;
 }

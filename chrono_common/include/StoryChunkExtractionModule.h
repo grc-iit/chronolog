@@ -27,7 +27,9 @@ template <typename T, typename... Args>
 class ExtractorChain {
 public:
     ExtractorChain(const T& extractor, const Args&... rest)
-        : the_extractor(extractor), the_rest(rest...) {}
+        : the_extractor(extractor)
+        , the_rest(rest...) 
+    {}
 
     constexpr size_t size() const { return 1 + the_rest.size(); }
 
@@ -35,7 +37,7 @@ public:
     
     const ExtractorChain<Args...>& get_rest() const { return the_rest; }
 
-    StoryChunk * process_chunk( StoryChunk* some_chunk) const { return the_extractor.process_chunk(the_rest.process_chunk(some_chunk)); }
+    StoryChunk * process_chunk( StoryChunk* some_chunk) { return the_extractor.process_chunk(the_rest.process_chunk(some_chunk)); }
 
 private:
     T the_extractor;
@@ -46,13 +48,15 @@ private:
 template <typename T>
 class ExtractorChain<T> {
 public:
-    ExtractorChain(const T& an_extractor) : the_extractor(an_extractor) {}
+    ExtractorChain(const T& an_extractor) 
+        : the_extractor(an_extractor) 
+    {}
 
     constexpr size_t size() const { return 1; }
 
     const T& extractor() const { return the_extractor; }
    
-    StoryChunk * process_chunk( StoryChunk* some_chunk) const { return the_extractor.process_chunk(some_chunk); }
+    StoryChunk * process_chunk( StoryChunk* some_chunk) { return the_extractor.process_chunk(some_chunk); }
 
 private:
     T the_extractor;
@@ -60,7 +64,7 @@ private:
 
 ////////
 ///////////////////////////
-template <typename T>
+template <typename... Args>
 class StoryChunkExtractionModule
 {
     enum State
@@ -71,9 +75,9 @@ class StoryChunkExtractionModule
     };
 
 public:
-    StoryChunkExtractionModule( T & extractors)
+    StoryChunkExtractionModule( const Args&... extractors)
     : state(UNKNOWN)
-    , extractorChain(extractors)
+    , extractorChain(extractors...)
     {}
 
     StoryChunkExtractionQueue & getExtractionQueue()
@@ -196,10 +200,10 @@ private:
     StoryChunkExtractionModule & operator=(StoryChunkExtractionModule const &) = delete;
     
 
-    std::atomic<State> state; 
-    StoryChunkExtractionQueue chunkExtractionQueue;
+    std::atomic<State>          state; 
+    StoryChunkExtractionQueue   chunkExtractionQueue;
 
-    T & extractorChain;
+    ExtractorChain <Args...>    extractorChain;
 
     std::vector <tl::managed <tl::xstream>> extractionStreams;
     std::vector <tl::managed <tl::thread>> extractionThreads;
