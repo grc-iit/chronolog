@@ -1,4 +1,3 @@
-#include "chronokvs.h"
 #include <algorithm>
 #include <chrono>
 #include <fstream>
@@ -8,6 +7,8 @@
 #include <string>
 #include <thread>
 #include <vector>
+
+#include "chronokvs.h"
 
 /**
  * ChronoKVS API Integration Test
