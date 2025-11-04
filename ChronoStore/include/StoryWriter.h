@@ -7,10 +7,11 @@
 #include <map>
 #include <tuple>
 #include <utility>
-#include <event.h>
 #include <json-c/json.h>
-#include <StoryChunk.h>
 #include <hdf5.h>
+
+#include <StoryChunk.h>
+#include <event.h>
 
 class StoryWriter
 {

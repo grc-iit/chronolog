@@ -13,13 +13,14 @@
 #include <map>
 #include <sstream>
 #include <string>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <tuple>
 #include <type_traits>
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include <sys/stat.h>
-#include <sys/types.h>
+
 #include <event.h>
 #include <chunkattr.h>
 #include <StoryWriter.h>

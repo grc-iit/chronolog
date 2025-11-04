@@ -1,8 +1,9 @@
 #include <string>
 #include <thallium.hpp>
 
-#include <HDF5FileChunkExtractor.h>
 #include <StoryChunkWriter.h>
+
+#include "HDF5FileChunkExtractor.h"
 
 namespace tl = thallium;
 

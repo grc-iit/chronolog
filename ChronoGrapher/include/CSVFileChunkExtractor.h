@@ -3,9 +3,9 @@
 
 #include <string>
 
-#include <chronolog_types.h>
 #include <StoryChunk.h>
 #include <StoryChunkExtractor.h>
+#include <chronolog_types.h>
 
 
 namespace chronolog

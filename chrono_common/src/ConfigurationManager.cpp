@@ -1,4 +1,4 @@
-#include <ConfigurationManager.h>
+#include "ConfigurationManager.h"
 
 
 int chronolog::ClockConf::parseJsonConf(json_object *clock_conf)

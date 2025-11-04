@@ -5,7 +5,6 @@
 #include <string>
 #include <sstream>
 #include <cstdint>
-
 #include <thallium/serialization/stl/string.hpp>
 #include <thallium.hpp>
 

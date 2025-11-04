@@ -7,12 +7,11 @@
 #include <mutex>
 #include <iostream>
 
+#include <gtest/gtest.h>
+
 #include "chronolog_types.h"
 #include "StoryChunk.h"
 #include "StoryChunkExtractionQueue.h"
-
-// Added helper for the unit tests to test private functions
-#include <gtest/gtest.h>
 class StoryPipeline_TestAppendStoryChunk_testSuccess_Test;
 class StoryPipeline_TestPrependStoryChunk_testSuccess_Test;
 class StoryPipeline_TestFinalize_testNoPendingChunks_Test;
