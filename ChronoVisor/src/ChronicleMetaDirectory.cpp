@@ -1,7 +1,6 @@
 #include <chrono>
 #include <unistd.h>
 #include <mutex>
-#include <typedefs.h>
 
 #include <ClientRegistryManager.h>
 #include <ChronicleMetaDirectory.h>
@@ -174,7 +173,7 @@ int ChronicleMetaDirectory::destroy_story(std::string const &chronicle_name, con
             return chronolog::CL_ERR_ACQUIRED;
         }
         /* Ask the Chronicle to destroy the Story */
-        CL_Status res = pChronicle->removeStory(chronicle_name, story_name);
+        auto res = pChronicle->removeStory(chronicle_name, story_name);
         if(res != chronolog::CL_SUCCESS)
         {
             LOG_ERROR("[ChronicleMetaDirectory] Fail to remove StoryName={} in ChronicleName={}", story_name.c_str()
