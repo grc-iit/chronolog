@@ -5,6 +5,7 @@
 #include <list>
 #include <map>
 #include <mutex>
+#include <unordered_map>
 #include <thallium.hpp>
 
 #include <StoryPipeline.h>

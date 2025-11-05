@@ -1,4 +1,7 @@
 #include <unistd.h>
+#include <string>
+#include <cstdint>
+#include <memory>
 #include <thallium.hpp>
 
 #include <StoryChunkExtractor.h>

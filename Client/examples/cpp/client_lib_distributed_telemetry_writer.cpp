@@ -1,14 +1,16 @@
-#include <mpi.h>
-#include <fstream>
-#include <sstream>
-#include <unistd.h>
 #include <cassert>
 #include <chrono>
-#include <thread>
-#include <iostream>
-#include <iomanip>
+#include <cstdlib>
+#include <fstream>
 #include <getopt.h>
+#include <iomanip>
+#include <iostream>
 #include <margo.h>
+#include <mpi.h>
+#include <sstream>
+#include <string>
+#include <thread>
+#include <unistd.h>
 
 #include <chronolog_client.h>
 
@@ -20,27 +22,29 @@ typedef struct workload_conf_args_
     int interval_seconds = 5;
 } workload_conf_args;
 
-void usage(char**argv)
+void usage(char** argv)
 {
-    std::cerr << "\nUsage: " << argv[0] << " [options]\n"
-                                           "-c|--config <config_file>\n"
-                                           "-d|--duration <duration>\n"
-                                           "-i|--interval <interval>\n" << argv[0] << std::endl;
+    std::cerr << "\nUsage: " << argv[0]
+              << " [options]\n"
+                 "-c|--config <config_file>\n"
+                 "-d|--duration <duration>\n"
+                 "-i|--interval <interval>\n"
+              << argv[0] << std::endl;
 }
 
-std::pair <std::string, workload_conf_args> cmd_arg_parse(int argc, char**argv)
+std::pair<std::string, workload_conf_args> cmd_arg_parse(int argc, char** argv)
 {
     int rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     int opt;
-    char *config_file = nullptr;
+    char* config_file = nullptr;
     workload_conf_args workload_args;
 
     // Define the long options and their corresponding short options
-    struct option long_options[] = {{  "config"  , required_argument, nullptr, 'c'}
-                                    , {"duration", optional_argument, nullptr, 'd'}
-                                    , {"interval", optional_argument, nullptr, 'i'}
-                                    , {nullptr   , 0                , nullptr, 0}};
+    struct option long_options[] = {{"config", required_argument, nullptr, 'c'},
+                                    {"duration", optional_argument, nullptr, 'd'},
+                                    {"interval", optional_argument, nullptr, 'i'},
+                                    {nullptr, 0, nullptr, 0}};
 
     // Parse the command-line options
     while((opt = getopt_long(argc, argv, "c:d:i:", long_options, nullptr)) != -1)
@@ -71,14 +75,16 @@ std::pair <std::string, workload_conf_args> cmd_arg_parse(int argc, char**argv)
     if(rank == 0)
     {
         std::cout << "[DistributedTelemetryWriter] Config file: " << (config_file ? config_file : "None") << std::endl;
-        std::cout << "[DistributedTelemetryWriter] Duration: " << workload_args.duration_seconds << " seconds" << std::endl;
-        std::cout << "[DistributedTelemetryWriter] Interval: " << workload_args.interval_seconds << " seconds" << std::endl;
+        std::cout << "[DistributedTelemetryWriter] Duration: " << workload_args.duration_seconds << " seconds"
+                  << std::endl;
+        std::cout << "[DistributedTelemetryWriter] Interval: " << workload_args.interval_seconds << " seconds"
+                  << std::endl;
     }
 
     // Return the config file and workload args
     if(config_file)
     {
-        return {std::pair <std::string, workload_conf_args>((config_file), workload_args)};
+        return {std::pair<std::string, workload_conf_args>((config_file), workload_args)};
     }
     else
     {
@@ -101,12 +107,12 @@ private:
     int rank{};
     int size{};
     std::string node_name;
-    chronolog::Client *client{};
+    chronolog::Client* client{};
 
     // Story handles for different metrics - using traditional pointers
-    chronolog::StoryHandle *cpu_story_handle;
-    chronolog::StoryHandle *memory_story_handle;
-    chronolog::StoryHandle *network_story_handle;
+    chronolog::StoryHandle* cpu_story_handle;
+    chronolog::StoryHandle* memory_story_handle;
+    chronolog::StoryHandle* network_story_handle;
 
     // CPU monitoring - system-wide
     unsigned long long last_total_cpu_time{};
@@ -117,7 +123,9 @@ private:
     long baseline_tx_bytes{};
 
 public:
-    TelemetryCollector(int rank, int size): rank(rank), size(size)
+    TelemetryCollector(int rank, int size)
+        : rank(rank)
+        , size(size)
     {
         // Get node name
         char hostname[256];
@@ -136,7 +144,7 @@ public:
         network_story_handle = nullptr;
     }
 
-    bool initializeChronoLog(chronolog::ClientConfiguration &confManager)
+    bool initializeChronoLog(chronolog::ClientConfiguration& confManager)
     {
         // Configure the client connection
         chronolog::ClientPortalServiceConf portalConf = confManager.PORTAL_CONF;
@@ -150,7 +158,7 @@ public:
 
         // Create a chronicle named after the hostname
         std::string chronicle_name = node_name;
-        std::map <std::string, std::string> chronicle_attrs;
+        std::map<std::string, std::string> chronicle_attrs;
         chronicle_attrs["description"] = "System telemetry metrics for node " + node_name;
         chronicle_attrs["node"] = node_name;
         int flags = 0;
@@ -158,7 +166,7 @@ public:
         assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_CHRONICLE_EXISTS);
 
         // Acquire stories for different metrics
-        std::map <std::string, std::string> story_attrs;
+        std::map<std::string, std::string> story_attrs;
         story_attrs["node"] = node_name;
         story_attrs["rank"] = std::to_string(rank);
 
@@ -209,7 +217,7 @@ public:
         }
     }
 
-    void getSystemCpuTimes(unsigned long long &total_time, unsigned long long &idle_time)
+    void getSystemCpuTimes(unsigned long long& total_time, unsigned long long& idle_time)
     {
         std::ifstream stat_file("/proc/stat");
         std::string line;
@@ -290,7 +298,7 @@ public:
         return (double)mem_used / 1024.0; // Convert from KB to MB
     }
 
-    void getNetworkStats(long &rx_bytes, long &tx_bytes)
+    void getNetworkStats(long& rx_bytes, long& tx_bytes)
     {
         std::ifstream net_dev("/proc/net/dev");
         std::string line;
@@ -338,10 +346,10 @@ public:
         return metrics;
     }
 
-    void logMetrics(const SystemMetrics &metrics)
+    void logMetrics(const SystemMetrics& metrics)
     {
         auto time_since_epoch = metrics.timestamp.time_since_epoch();
-        auto millis = std::chrono::duration_cast <std::chrono::milliseconds>(time_since_epoch).count();
+        auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(time_since_epoch).count();
 
         // Log CPU usage to cpu_usage story
         std::ostringstream cpu_entry;
@@ -357,9 +365,9 @@ public:
 
         // Log network usage to network_usage story
         std::ostringstream network_entry;
-        network_entry << "{" << "\"timestamp\":" << millis << R"(,"node":")" << node_name << "\"" << ",\"rank\":"
-                      << rank << ",\"network_rx_bytes\":" << metrics.network_rx_bytes << ",\"network_tx_bytes\":"
-                      << metrics.network_tx_bytes << "}";
+        network_entry << "{" << "\"timestamp\":" << millis << R"(,"node":")" << node_name << "\""
+                      << ",\"rank\":" << rank << ",\"network_rx_bytes\":" << metrics.network_rx_bytes
+                      << ",\"network_tx_bytes\":" << metrics.network_tx_bytes << "}";
         network_story_handle->log_event(std::to_string(metrics.network_rx_bytes) + "," +
                                         std::to_string(metrics.network_tx_bytes));
     }
@@ -371,8 +379,8 @@ public:
 
         if(rank == 0)
         {
-            std::cout << "[DistributedTelemetryWriter] Starting telemetry collection for " << duration_seconds << " seconds with "
-                      << interval_seconds << "s intervals\n";
+            std::cout << "[DistributedTelemetryWriter] Starting telemetry collection for " << duration_seconds
+                      << " seconds with " << interval_seconds << "s intervals\n";
             std::cout << "[DistributedTelemetryWriter] Chronicle: " << node_name << "\n";
             std::cout << "[DistributedTelemetryWriter] Stories: cpu_usage, memory_usage, network_usage\n";
         }
@@ -387,8 +395,9 @@ public:
 
             if(rank == 0)
             {
-                auto elapsed = std::chrono::duration_cast <std::chrono::seconds>(
-                        std::chrono::steady_clock::now() - start_time).count();
+                auto elapsed =
+                        std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - start_time)
+                                .count();
                 std::cout << "[DistributedTelemetryWriter] Collected metrics at " << elapsed << "s - "
                           << "CPU: " << std::fixed << std::setprecision(1) << metrics.cpu_usage << "%, "
                           << "Memory: " << std::setprecision(1) << metrics.memory_usage_mb << "MB, "
@@ -406,7 +415,7 @@ public:
     }
 };
 
-int main(int argc, char *argv[])
+int main(int argc, char* argv[])
 {
     // To suppress argobots warning
     std::string argobots_conf_str = R"({"argobots" : {"abt_mem_max_num_stacks" : 8
@@ -423,7 +432,7 @@ int main(int argc, char *argv[])
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
     std::string default_conf_file_path = "./default_conf.json";
-    std::pair <std::string, workload_conf_args> cmd_args = cmd_arg_parse(argc, argv);
+    std::pair<std::string, workload_conf_args> cmd_args = cmd_arg_parse(argc, argv);
     std::string conf_file_path = cmd_args.first;
     workload_conf_args workload_args = cmd_args.second;
     if(conf_file_path.empty())
@@ -441,8 +450,8 @@ int main(int argc, char *argv[])
         }
         else
         {
-            std::cout << "[DistributedTelemetryWriter] Configuration file loaded successfully from '" << conf_file_path << "'."
-                      << std::endl;
+            std::cout << "[DistributedTelemetryWriter] Configuration file loaded successfully from '" << conf_file_path
+                      << "'." << std::endl;
         }
     }
     else
@@ -455,12 +464,9 @@ int main(int argc, char *argv[])
         confManager.log_configuration(std::cout);
     }
 
-    std::cout << "[DistributedTelemetryWriter] Monitoring system stats on " << rank << "-th node out of "
-                                                                            << size << " nodes every "
-                                                                            << workload_args.interval_seconds
-                                                                            << " seconds for "
-                                                                            << workload_args.duration_seconds
-                                                                            << " seconds" << std::endl;
+    std::cout << "[DistributedTelemetryWriter] Monitoring system stats on " << rank << "-th node out of " << size
+              << " nodes every " << workload_args.interval_seconds << " seconds for " << workload_args.duration_seconds
+              << " seconds" << std::endl;
 
     TelemetryCollector collector(rank, size);
 

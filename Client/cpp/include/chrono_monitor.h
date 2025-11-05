@@ -1,8 +1,11 @@
 #ifndef CHRONOLOG_CHRONO_MONITOR_H
 #define CHRONOLOG_CHRONO_MONITOR_H
 
-#include <spdlog/spdlog.h>
+#include <memory>
 #include <mutex>
+#include <string>
+
+#include <spdlog/spdlog.h>
 
 namespace chronolog
 {
@@ -67,7 +70,6 @@ namespace chronolog
 class chrono_monitor
 {
 public:
-
     /**
      * @brief Initializes the logger with the specified configuration.
      *
@@ -86,10 +88,13 @@ public:
      * @return             Returns 0 if the logger was initialized successfully,
      *                     and returns 1 if there was an error during initialization.
      */
-    static int initialize(const std::string &logType, const std::string &location, spdlog::level::level_enum logLevel
-                          , const std::string &loggerName, const std::size_t &logFileSize = 104857600
-                          , const std::size_t &logFileNum = 3
-                          , spdlog::level::level_enum flushLevel = spdlog::level::warn);
+    static int initialize(const std::string& logType,
+                          const std::string& location,
+                          spdlog::level::level_enum logLevel,
+                          const std::string& loggerName,
+                          const std::size_t& logFileSize = 104857600,
+                          const std::size_t& logFileNum = 3,
+                          spdlog::level::level_enum flushLevel = spdlog::level::warn);
 
 
     /**
@@ -100,12 +105,12 @@ public:
      *
      * @return Reference to spdlog::logger instance.
      */
-    static spdlog::logger &getInstance();
+    static spdlog::logger& getInstance();
 
     // Delete copy constructor and assignment operator
-    chrono_monitor(const chrono_monitor &) = delete;
+    chrono_monitor(const chrono_monitor&) = delete;
 
-    chrono_monitor &operator=(const chrono_monitor &) = delete;
+    chrono_monitor& operator=(const chrono_monitor&) = delete;
 
     ~chrono_monitor() = default;
 
@@ -118,7 +123,7 @@ private:
      *
      * This static member holds the instance of the spdlog logger used by the Logger class.
      */
-    static std::shared_ptr <spdlog::logger> logger;
+    static std::shared_ptr<spdlog::logger> logger;
 
     /**
      * @brief Mutex for thread safety.

@@ -1,4 +1,11 @@
 #include <sys/inotify.h>
+#include <unistd.h>
+#include <cstring>
+#include <cerrno>
+#include <memory>
+#include <vector>
+#include <string>
+#include <algorithm>
 #include <fcntl.h>
 #include <H5Cpp.h>
 #include <filesystem>

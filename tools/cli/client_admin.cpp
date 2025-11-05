@@ -1,10 +1,24 @@
 #include <cassert>
+#include <cerrno>
+#include <cstdlib>
+#include <cstring>
+#include <ctime>
 #include <unistd.h>
 #include <pwd.h>
 #include <getopt.h>
-#include <functional>
+
+#include <algorithm>
 #include <chrono>
 #include <cctype>
+#include <fstream>
+#include <functional>
+#include <iostream>
+#include <map>
+#include <random>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
 #include <mpi.h>
 #include <margo.h>
 
@@ -35,25 +49,27 @@ typedef struct workload_conf_args_
     bool perf_test = false;
 } workload_conf_args;
 
-void usage(char **argv)
+void usage(char** argv)
 {
-    std::cerr << "\nUsage: " << argv[0] << " [options]\n"
-                                           "-c|--config <config_file>\n"
-                                           "-i|--interactive\tInteract with ChronoLog like a shell\n"
-                                           "-w|--write\t\tRecord events\n"
-                                           "-r|--read\t\tRetrieve events\n"
-                                           "-h|--chronicle_count <chronicle_count_per_proc>\n"
-                                           "-t|--story_count <story_count_per_proc>\n"
-                                           "-a|--min_event_size <min_event_size_in_byte>\n"
-                                           "-s|--ave_event_size <ave_event_size_in_byte>\n"
-                                           "-b|--max_event_size <max_event_size_in_byte>\n"
-                                           "-n|--event_count <event_count_per_proc>\n"
-                                           "-g|--event_interval <event_interval_in_us>\n"
-                                           "-y|--barrier\t\tHold next API call until completion of previous one\n"
-                                           "-f|--event_payload_file <event_payload_file>\n"
-                                           "-o|--shared_story\tAll procs record events to the same chronicle\n"
-                                           "-p|--perf\t\tReport performance metrics after completion\n"
-                                           "-u|--usage\t\tPrint this page\n" << std::endl;
+    std::cerr << "\nUsage: " << argv[0]
+              << " [options]\n"
+                 "-c|--config <config_file>\n"
+                 "-i|--interactive\tInteract with ChronoLog like a shell\n"
+                 "-w|--write\t\tRecord events\n"
+                 "-r|--read\t\tRetrieve events\n"
+                 "-h|--chronicle_count <chronicle_count_per_proc>\n"
+                 "-t|--story_count <story_count_per_proc>\n"
+                 "-a|--min_event_size <min_event_size_in_byte>\n"
+                 "-s|--ave_event_size <ave_event_size_in_byte>\n"
+                 "-b|--max_event_size <max_event_size_in_byte>\n"
+                 "-n|--event_count <event_count_per_proc>\n"
+                 "-g|--event_interval <event_interval_in_us>\n"
+                 "-y|--barrier\t\tHold next API call until completion of previous one\n"
+                 "-f|--event_payload_file <event_payload_file>\n"
+                 "-o|--shared_story\tAll procs record events to the same chronicle\n"
+                 "-p|--perf\t\tReport performance metrics after completion\n"
+                 "-u|--usage\t\tPrint this page\n"
+              << std::endl;
 }
 
 void random_sleep()
@@ -66,24 +82,19 @@ void random_sleep()
     usleep(usec * rank);
 }
 
-std::string &trim_string(std::string &str)
+std::string& trim_string(std::string& str)
 {
     // Trim leading space
-    str.erase(str.begin(), std::find_if(str.begin(), str.end(), [](unsigned char ch)
-    {
-        return !std::isspace(ch);
-    }));
+    str.erase(str.begin(), std::find_if(str.begin(), str.end(), [](unsigned char ch) { return !std::isspace(ch); }));
     // Trim trailing space
-    str.erase(std::find_if(str.rbegin(), str.rend(), [](unsigned char ch)
-    {
-        return !std::isspace(ch);
-    }).base(), str.end());
+    str.erase(std::find_if(str.rbegin(), str.rend(), [](unsigned char ch) { return !std::isspace(ch); }).base(),
+              str.end());
     return str;
 }
 
-uint64_t get_uint64_t_from_string(const std::string &str)
+uint64_t get_uint64_t_from_string(const std::string& str)
 {
-    char *endptr;
+    char* endptr;
     errno = 0; // Reset errno before calling strtoull
     uint64_t value = strtoull(str.c_str(), &endptr, 10);
     if(*endptr != '\0')
@@ -99,33 +110,33 @@ uint64_t get_uint64_t_from_string(const std::string &str)
     return value;
 }
 
-std::pair <std::string, workload_conf_args> cmd_arg_parse(int argc, char **argv)
+std::pair<std::string, workload_conf_args> cmd_arg_parse(int argc, char** argv)
 {
     int rank, size;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     int opt;
-    char *config_file = nullptr;
+    char* config_file = nullptr;
     workload_conf_args workload_args;
 
     // Define the long options and their corresponding short options
-    struct option long_options[] = {{  "config"            , required_argument, nullptr, 'c'}
-                                    , {"interactive"       , optional_argument, nullptr, 'i'}
-                                    , {"write"             , no_argument       , nullptr, 'w'}
-                                    , {"read"              , optional_argument, nullptr, 'r'}
-                                    , {"chronicle_count"   , required_argument, nullptr, 'h'}
-                                    , {"story_count"       , required_argument, nullptr, 't'}
-                                    , {"min_event_size"    , required_argument, nullptr, 'a'}
-                                    , {"ave_event_size"    , required_argument, nullptr, 's'}
-                                    , {"max_event_size"    , required_argument, nullptr, 'b'}
-                                    , {"event_count"       , required_argument, nullptr, 'n'}
-                                    , {"event_interval"    , required_argument, nullptr, 'g'}
-                                    , {"barrier"           , optional_argument, nullptr, 'y'}
-                                    , {"event_payload_file", optional_argument, nullptr, 'f'}
-                                    , {"shared_story"      , optional_argument, nullptr, 'o'}
-                                    , {"perf"              , optional_argument, nullptr, 'p'}
-                                    , {"usage"             , no_argument       , nullptr, 'u'}
-                                    , {nullptr             , 0                , nullptr, 0}};
+    struct option long_options[] = {{"config", required_argument, nullptr, 'c'},
+                                    {"interactive", optional_argument, nullptr, 'i'},
+                                    {"write", no_argument, nullptr, 'w'},
+                                    {"read", optional_argument, nullptr, 'r'},
+                                    {"chronicle_count", required_argument, nullptr, 'h'},
+                                    {"story_count", required_argument, nullptr, 't'},
+                                    {"min_event_size", required_argument, nullptr, 'a'},
+                                    {"ave_event_size", required_argument, nullptr, 's'},
+                                    {"max_event_size", required_argument, nullptr, 'b'},
+                                    {"event_count", required_argument, nullptr, 'n'},
+                                    {"event_interval", required_argument, nullptr, 'g'},
+                                    {"barrier", optional_argument, nullptr, 'y'},
+                                    {"event_payload_file", optional_argument, nullptr, 'f'},
+                                    {"shared_story", optional_argument, nullptr, 'o'},
+                                    {"perf", optional_argument, nullptr, 'p'},
+                                    {"usage", no_argument, nullptr, 'u'},
+                                    {nullptr, 0, nullptr, 0}};
 
     // Parse the command-line options
     while((opt = getopt_long(argc, argv, "c:iwrh:t:a:s:b:n:g:yf:opu", long_options, nullptr)) != -1)
@@ -215,21 +226,21 @@ std::pair <std::string, workload_conf_args> cmd_arg_parse(int argc, char **argv)
                 if(!workload_args.event_payload_file.empty())
                 {
                     std::cout << "Event payload file specified (event payloads in lines): "
-                        << workload_args.event_payload_file.c_str() << std::endl;
+                              << workload_args.event_payload_file.c_str() << std::endl;
                 }
                 else
                 {
                     std::cout << "No event payload file specified, use default/specified separate conf args ..."
-                        << std::endl;
+                              << std::endl;
                     std::cout << "Min event size (minimum of event payload length following a normal distribution): "
-                        << workload_args.min_event_size << " bytes" << std::endl;
+                              << workload_args.min_event_size << " bytes" << std::endl;
                     std::cout << "Ave event size (median of event payload length following a normal distribution): "
-                        << workload_args.ave_event_size << " bytes" << std::endl;
+                              << workload_args.ave_event_size << " bytes" << std::endl;
                     std::cout << "Max event size (maximum of event payload length following a normal distribution): "
-                        << workload_args.max_event_size << " bytes" << std::endl;
+                              << workload_args.max_event_size << " bytes" << std::endl;
                     std::cout << "Event count (#events per proc): " << workload_args.event_count << std::endl;
-                    std::cout << "Event interval (time in-between event accesses): "
-                        << workload_args.event_interval << " us" << std::endl;
+                    std::cout << "Event interval (time in-between event accesses): " << workload_args.event_interval
+                              << " us" << std::endl;
                 }
                 std::cout << "Barrier (hold on next ChronoLog API call until completion of the previous one): "
                           << (workload_args.barrier ? "true" : "false") << std::endl;
@@ -237,7 +248,7 @@ std::pair <std::string, workload_conf_args> cmd_arg_parse(int argc, char **argv)
                           << (workload_args.shared_story ? "true" : "false") << std::endl;
             }
         }
-        return {std::pair <std::string, workload_conf_args>((config_file), workload_args)};
+        return {std::pair<std::string, workload_conf_args>((config_file), workload_args)};
     }
     else
     {
@@ -249,27 +260,27 @@ std::pair <std::string, workload_conf_args> cmd_arg_parse(int argc, char **argv)
             std::cout << "Chronicle count (#chronicles per proc): " << workload_args.chronicle_count << std::endl;
             std::cout << "Story count (#stories per proc) : " << workload_args.story_count << std::endl;
             std::cout << "Min event size (minimum of event payload length following a normal distribution): "
-                << workload_args.min_event_size << " bytes" << std::endl;
+                      << workload_args.min_event_size << " bytes" << std::endl;
             std::cout << "Ave event size (median of event payload length following a normal distribution): "
-                << workload_args.ave_event_size << " bytes" << std::endl;
+                      << workload_args.ave_event_size << " bytes" << std::endl;
             std::cout << "Max event size (maximum of event payload length following a normal distribution): "
-                << workload_args.max_event_size << " bytes" << std::endl;
+                      << workload_args.max_event_size << " bytes" << std::endl;
             std::cout << "Event count (#events per proc): " << workload_args.event_count << std::endl;
-            std::cout << "Event interval (time in-between event accesses): "
-                << workload_args.event_interval << " us" << std::endl;
+            std::cout << "Event interval (time in-between event accesses): " << workload_args.event_interval << " us"
+                      << std::endl;
             std::cout << "Barrier (hold on next data access until completion of the previous one): "
-                << (workload_args.barrier ? "true" : "false") << std::endl;
+                      << (workload_args.barrier ? "true" : "false") << std::endl;
             std::cout << "Shared story (all procs access the same story): "
-                << (workload_args.shared_story ? "true" : "false") << std::endl;
+                      << (workload_args.shared_story ? "true" : "false") << std::endl;
         }
         return {"", workload_args};
     }
 }
 
-int test_create_chronicle(chronolog::Client &client, const std::string &chronicle_name)
+int test_create_chronicle(chronolog::Client& client, const std::string& chronicle_name)
 {
     int ret, flags = 0;
-    std::map <std::string, std::string> chronicle_attrs;
+    std::map<std::string, std::string> chronicle_attrs;
     chronicle_attrs.emplace("Priority", "High");
     chronicle_attrs.emplace("IndexGranularity", "Millisecond");
     chronicle_attrs.emplace("TieringPolicy", "Hot");
@@ -278,61 +289,65 @@ int test_create_chronicle(chronolog::Client &client, const std::string &chronicl
     return ret;
 }
 
-std::pair <int, chronolog::StoryHandle *>
-test_acquire_story(chronolog::Client &client, const std::string &chronicle_name, const std::string &story_name)
+std::pair<int, chronolog::StoryHandle*>
+test_acquire_story(chronolog::Client& client, const std::string& chronicle_name, const std::string& story_name)
 {
-//    random_sleep();
+    //    random_sleep();
     int flags = 0;
-    std::map <std::string, std::string> story_acquisition_attrs;
+    std::map<std::string, std::string> story_acquisition_attrs;
     story_acquisition_attrs.emplace("Priority", "High");
     story_acquisition_attrs.emplace("IndexGranularity", "Millisecond");
     story_acquisition_attrs.emplace("TieringPolicy", "Hot");
-    std::pair <int, chronolog::StoryHandle *> acq_ret = client.AcquireStory(chronicle_name, story_name
-                                                                            , story_acquisition_attrs, flags);
-//    LOG_DEBUG("acq_ret: {}", to_string_client(acq_ret.first));
-//    assert(acq_ret.first == chronolog::CL_SUCCESS || acq_ret.first == chronolog::CL_ERR_ACQUIRED);
+    std::pair<int, chronolog::StoryHandle*> acq_ret =
+            client.AcquireStory(chronicle_name, story_name, story_acquisition_attrs, flags);
+    //    LOG_DEBUG("acq_ret: {}", to_string_client(acq_ret.first));
+    //    assert(acq_ret.first == chronolog::CL_SUCCESS || acq_ret.first == chronolog::CL_ERR_ACQUIRED);
     return acq_ret;
 }
 
-uint64_t test_write_event(chronolog::StoryHandle *story_handle, const std::string &event_payload)
+uint64_t test_write_event(chronolog::StoryHandle* story_handle, const std::string& event_payload)
 {
     uint64_t ret = story_handle->log_event(event_payload);
     assert(ret > 0);
     return ret;
 }
 
-int test_replay_story(chronolog::Client &client, const std::string &chronicle_name, const std::string &story_name
-                      , uint64_t start_time, uint64_t end_time, std::vector <chronolog::Event> &replay_events)
+int test_replay_story(chronolog::Client& client,
+                      const std::string& chronicle_name,
+                      const std::string& story_name,
+                      uint64_t start_time,
+                      uint64_t end_time,
+                      std::vector<chronolog::Event>& replay_events)
 {
     int ret = client.ReplayStory(chronicle_name, story_name, start_time, end_time, replay_events);
     assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST);
     return ret;
 }
 
-int test_release_story(chronolog::Client &client, const std::string &chronicle_name, const std::string &story_name)
+int test_release_story(chronolog::Client& client, const std::string& chronicle_name, const std::string& story_name)
 {
     int ret = client.ReleaseStory(chronicle_name, story_name);
     assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST);
     return ret;
 }
 
-int test_destroy_chronicle(chronolog::Client &client, const std::string &chronicle_name)
+int test_destroy_chronicle(chronolog::Client& client, const std::string& chronicle_name)
 {
     int ret = client.DestroyChronicle(chronicle_name);
     assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST || ret == chronolog::CL_ERR_ACQUIRED);
     return ret;
 }
 
-int test_destroy_story(chronolog::Client &client, const std::string &chronicle_name, const std::string &story_name)
+int test_destroy_story(chronolog::Client& client, const std::string& chronicle_name, const std::string& story_name)
 {
     int ret = client.DestroyStory(chronicle_name, story_name);
     assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST || ret == chronolog::CL_ERR_ACQUIRED);
     return ret;
 }
 
-std::vector <std::string> parse_command_line(const std::string &line)
+std::vector<std::string> parse_command_line(const std::string& line)
 {
-    std::vector <std::string> tokens;
+    std::vector<std::string> tokens;
     std::string current_token;
     bool in_quotes = false;
 
@@ -386,15 +401,15 @@ std::vector <std::string> parse_command_line(const std::string &line)
 }
 
 // function to extract and execute commands from command line input
-void command_dispatcher(const std::string &command_line, std::unordered_map <std::string, std::function <void(
-        std::vector <std::string> &)>> command_map)
+void command_dispatcher(const std::string& command_line,
+                        std::unordered_map<std::string, std::function<void(std::vector<std::string>&)>> command_map)
 {
     if(command_line.empty())
     {
         return;
     }
 
-    std::vector <std::string> parsed_tokens = parse_command_line(command_line);
+    std::vector<std::string> parsed_tokens = parse_command_line(command_line);
 
     if(parsed_tokens.empty())
     {
@@ -414,7 +429,7 @@ void command_dispatcher(const std::string &command_line, std::unordered_map <std
     }
 }
 
-uint64_t get_event_timestamp(std::string &event_line)
+uint64_t get_event_timestamp(std::string& event_line)
 {
     /*
      * Supported log files: syslog, auth.log, kern.log, ufw.log on Ubuntu
@@ -429,7 +444,7 @@ uint64_t get_event_timestamp(std::string &event_line)
     std::tm timeinfo{};
     auto now = std::chrono::system_clock::now();
     std::time_t current_time = std::chrono::system_clock::to_time_t(now);
-    std::tm *time_info_now = std::localtime(&current_time);
+    std::tm* time_info_now = std::localtime(&current_time);
     // assume the log file is generated in the same year as the current time
     timeinfo.tm_year = time_info_now->tm_year;
     strptime(timestamp_str.c_str(), "%b %d %H:%M:%S", &timeinfo);
@@ -437,7 +452,7 @@ uint64_t get_event_timestamp(std::string &event_line)
     return timestamp;
 }
 
-uint64_t get_bigbang_timestamp(std::ifstream &file)
+uint64_t get_bigbang_timestamp(std::ifstream& file)
 {
     std::string line;
     std::getline(file, line);
@@ -446,7 +461,7 @@ uint64_t get_bigbang_timestamp(std::ifstream &file)
     return bigbang_timestamp;
 }
 
-void interactive_create_chronicle(std::vector <std::string> &tokens, chronolog::Client &client)
+void interactive_create_chronicle(std::vector<std::string>& tokens, chronolog::Client& client)
 {
     if(tokens.size() != 2)
     {
@@ -471,7 +486,7 @@ void interactive_create_chronicle(std::vector <std::string> &tokens, chronolog::
     }
 }
 
-chronolog::StoryHandle* interactive_acquire_story(std::vector <std::string> &tokens, chronolog::Client &client)
+chronolog::StoryHandle* interactive_acquire_story(std::vector<std::string>& tokens, chronolog::Client& client)
 {
     if(tokens.size() != 4)
     {
@@ -479,21 +494,19 @@ chronolog::StoryHandle* interactive_acquire_story(std::vector <std::string> &tok
         return nullptr;
     }
     int ret_i;
-    chronolog::StoryHandle *story_handle = nullptr;
-    const std::string &chronicle_name = tokens[2];
-    const std::string &story_name = tokens[3];
+    chronolog::StoryHandle* story_handle = nullptr;
+    const std::string& chronicle_name = tokens[2];
+    const std::string& story_name = tokens[3];
     auto ret = test_acquire_story(client, chronicle_name, story_name);
     ret_i = ret.first;
     story_handle = ret.second;
     if(ret_i == chronolog::CL_SUCCESS)
     {
-        std::cout << "Story acquired successfully: " << story_name << " in Chronicle "
-                  << chronicle_name << std::endl;
+        std::cout << "Story acquired successfully: " << story_name << " in Chronicle " << chronicle_name << std::endl;
     }
     else if(ret_i == chronolog::CL_ERR_ACQUIRED)
     {
-        std::cout << "Story already acquired: " << story_name << " in Chronicle " << chronicle_name
-                  << std::endl;
+        std::cout << "Story already acquired: " << story_name << " in Chronicle " << chronicle_name << std::endl;
     }
     else if(ret_i == chronolog::CL_ERR_NOT_EXIST)
     {
@@ -507,7 +520,7 @@ chronolog::StoryHandle* interactive_acquire_story(std::vector <std::string> &tok
     return story_handle;
 }
 
-void interactive_release_story(std::vector <std::string> &tokens, chronolog::Client &client)
+void interactive_release_story(std::vector<std::string>& tokens, chronolog::Client& client)
 {
     if(tokens.size() != 4)
     {
@@ -520,13 +533,11 @@ void interactive_release_story(std::vector <std::string> &tokens, chronolog::Cli
     ret_i = test_release_story(client, chronicle_name, story_name);
     if(ret_i == chronolog::CL_SUCCESS)
     {
-        std::cout << "Story released successfully: " << story_name << " in Chronicle "
-                  << chronicle_name << std::endl;
+        std::cout << "Story released successfully: " << story_name << " in Chronicle " << chronicle_name << std::endl;
     }
     else if(ret_i == chronolog::CL_ERR_NOT_EXIST)
     {
-        std::cout << "Story does not exist: " << story_name << " in Chronicle " << chronicle_name
-                  << std::endl;
+        std::cout << "Story does not exist: " << story_name << " in Chronicle " << chronicle_name << std::endl;
     }
     else
     {
@@ -535,7 +546,7 @@ void interactive_release_story(std::vector <std::string> &tokens, chronolog::Cli
     }
 }
 
-void interactive_write_event(std::vector <std::string> &tokens, chronolog::StoryHandle *story_handle)
+void interactive_write_event(std::vector<std::string>& tokens, chronolog::StoryHandle* story_handle)
 {
     if(tokens.size() < 2)
     {
@@ -555,8 +566,7 @@ void interactive_write_event(std::vector <std::string> &tokens, chronolog::Story
     ret_u = test_write_event(story_handle, event_payload);
     if(ret_u > 0)
     {
-        std::cout << "Event written successfully, payload length: " << event_payload.length()
-                  << std::endl;
+        std::cout << "Event written successfully, payload length: " << event_payload.length() << std::endl;
     }
     else
     {
@@ -564,7 +574,7 @@ void interactive_write_event(std::vector <std::string> &tokens, chronolog::Story
     }
 }
 
-void interactive_replay_story(std::vector <std::string> &tokens, chronolog::Client &client)
+void interactive_replay_story(std::vector<std::string>& tokens, chronolog::Client& client)
 {
     if(tokens.size() != 5)
     {
@@ -576,22 +586,17 @@ void interactive_replay_story(std::vector <std::string> &tokens, chronolog::Clie
     const std::string& story_name = tokens[2];
     uint64_t start_time = get_uint64_t_from_string(tokens[3]);
     uint64_t end_time = get_uint64_t_from_string(tokens[4]);
-    std::vector <chronolog::Event> replay_events;
+    std::vector<chronolog::Event> replay_events;
     ret_i = test_replay_story(client, chronicle_name, story_name, start_time, end_time, replay_events);
     if(ret_i == chronolog::CL_SUCCESS)
     {
-        std::cout << "Replay successful, retrieved " << replay_events.size() << " events from "
-                  << chronicle_name << " story " << story_name << " between "
-                  << start_time << " and " << end_time << std::endl;
-        for(const auto &event: replay_events)
-        {
-            std::cout << event.to_string() << std::endl;
-        }
+        std::cout << "Replay successful, retrieved " << replay_events.size() << " events from " << chronicle_name
+                  << " story " << story_name << " between " << start_time << " and " << end_time << std::endl;
+        for(const auto& event: replay_events) { std::cout << event.to_string() << std::endl; }
     }
     else if(ret_i == chronolog::CL_ERR_NOT_EXIST)
     {
-        std::cout << "Story does not exist: " << story_name << " in Chronicle " << chronicle_name
-                  << std::endl;
+        std::cout << "Story does not exist: " << story_name << " in Chronicle " << chronicle_name << std::endl;
     }
     else
     {
@@ -600,7 +605,7 @@ void interactive_replay_story(std::vector <std::string> &tokens, chronolog::Clie
     }
 }
 
-void interactive_destroy_story(std::vector <std::string> &tokens, chronolog::Client &client)
+void interactive_destroy_story(std::vector<std::string>& tokens, chronolog::Client& client)
 {
     if(tokens.size() != 4)
     {
@@ -613,18 +618,16 @@ void interactive_destroy_story(std::vector <std::string> &tokens, chronolog::Cli
     ret_i = test_destroy_story(client, chronicle_name, story_name);
     if(ret_i == chronolog::CL_SUCCESS)
     {
-        std::cout << "Story destroyed successfully: " << story_name << " in Chronicle "
-                  << chronicle_name << std::endl;
+        std::cout << "Story destroyed successfully: " << story_name << " in Chronicle " << chronicle_name << std::endl;
     }
     else if(ret_i == chronolog::CL_ERR_ACQUIRED)
     {
-        std::cout << "Story is still acquired, cannot destroy: " << story_name << " in Chronicle "
-                  << chronicle_name << std::endl;
+        std::cout << "Story is still acquired, cannot destroy: " << story_name << " in Chronicle " << chronicle_name
+                  << std::endl;
     }
     else if(ret_i == chronolog::CL_ERR_NOT_EXIST)
     {
-        std::cout << "Story does not exist: " << story_name << " in Chronicle " << chronicle_name
-                  << std::endl;
+        std::cout << "Story does not exist: " << story_name << " in Chronicle " << chronicle_name << std::endl;
     }
     else
     {
@@ -633,7 +636,7 @@ void interactive_destroy_story(std::vector <std::string> &tokens, chronolog::Cli
     }
 }
 
-void interactive_destroy_chronicle(std::vector <std::string> &tokens, chronolog::Client &client)
+void interactive_destroy_chronicle(std::vector<std::string>& tokens, chronolog::Client& client)
 {
     if(tokens.size() != 3)
     {
@@ -662,7 +665,7 @@ void interactive_destroy_chronicle(std::vector <std::string> &tokens, chronolog:
     }
 }
 
-int main(int argc, char **argv)
+int main(int argc, char** argv)
 {
     // To suppress argobots warning
     std::string argobots_conf_str = R"({"argobots" : {"abt_mem_max_num_stacks" : 8
@@ -674,7 +677,7 @@ int main(int argc, char **argv)
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-    std::pair <std::string, workload_conf_args> cmd_args = cmd_arg_parse(argc, argv);
+    std::pair<std::string, workload_conf_args> cmd_args = cmd_arg_parse(argc, argv);
     std::string conf_file_path = cmd_args.first;
     workload_conf_args workload_args = cmd_args.second;
 
@@ -706,7 +709,7 @@ int main(int argc, char **argv)
         }
     }
 
-    if (rank == 0)
+    if(rank == 0)
     {
         confManager.log_configuration(std::cout);
     }
@@ -734,10 +737,9 @@ int main(int argc, char **argv)
         std::cout << "[ClientAdmin] Running in write mode." << std::endl;
     }
 
-    chronolog::Client client = workload_args.read ?
-                               chronolog::Client(confManager.PORTAL_CONF, confManager.QUERY_CONF) :
-                               chronolog::Client(confManager.PORTAL_CONF);
-    chronolog::StoryHandle *story_handle;
+    chronolog::Client client = workload_args.read ? chronolog::Client(confManager.PORTAL_CONF, confManager.QUERY_CONF)
+                                                  : chronolog::Client(confManager.PORTAL_CONF);
+    chronolog::StoryHandle* story_handle;
 
     TimerWrapper connectTimer(workload_args.perf_test, "Connect");
     TimerWrapper createChronicleTimer(workload_args.perf_test, "CreateChronicle");
@@ -754,10 +756,10 @@ int main(int argc, char **argv)
     uint64_t event_payload_size_per_rank = 0;
 
     std::string client_id = gen_random(8);
-//    std::cout << "Generated client id: " << client_id << std::endl;
+    //    std::cout << "Generated client id: " << client_id << std::endl;
 
-    const std::string &server_protoc = confManager.PORTAL_CONF.PROTO_CONF;
-    const std::string &server_ip = confManager.PORTAL_CONF.IP;
+    const std::string& server_protoc = confManager.PORTAL_CONF.PROTO_CONF;
+    const std::string& server_ip = confManager.PORTAL_CONF.IP;
     std::string server_port = std::to_string(confManager.PORTAL_CONF.PORT);
     std::string server_provider_id = std::to_string(confManager.PORTAL_CONF.PROVIDER_ID);
     std::string server_address = server_protoc + "://" + server_ip + ":" + server_port + "@" + server_provider_id;
@@ -777,58 +779,52 @@ int main(int argc, char **argv)
     if(workload_args.interactive)
     {
         // Interactive mode, accept commands from stdin
-        std::cout << "Metadata operations: \n" << "\t-c <chronicle_name> , create a Chronicle <chronicle_name>\n"
+        std::cout << "Metadata operations: \n"
+                  << "\t-c <chronicle_name> , create a Chronicle <chronicle_name>\n"
                   << "\t-a -s <chronicle_name> <story_name>, acquire Story <story_name> in Chronicle <chronicle_name>\n"
                   << "\t-w <event_string>, write Event with <event_string> as payload\n"
                   << "\t-r <chronicle_name> <story_name> <start_time> <end_time>, read Events in Story <story_name> of "
                      "Chronicle <chronicle_name> from <start_time> to <end_time>\n"
                   << "\t-q -s <chronicle_name> <story_name>, release Story <story_name> in Chronicle <chronicle_name>\n"
                   << "\t-d -s <chronicle_name> <story_name>, destroy Story <story_name> in Chronicle <chronicle_name>\n"
-                  << "\t-d -c <chronicle_name>, destroy Chronicle <chronicle_name>\n" << "\t-disconnect\n" << std::endl;
+                  << "\t-d -c <chronicle_name>, destroy Chronicle <chronicle_name>\n"
+                  << "\t-disconnect\n"
+                  << std::endl;
 
-        std::unordered_map <std::string, std::function <void(std::vector <std::string> &)>> command_map = {{  "-c", [&](
-std::vector <std::string> &command_subs)
-        {
-            interactive_create_chronicle(command_subs, client);
-        }}
-                                                                                                           , {"-a", [&](
-                        std::vector <std::string> &command_subs)
-                {
-                    if(command_subs[1] == "-s")
-                    {
-                        story_handle = interactive_acquire_story(command_subs, client);
-                    }
-                }}
-                                                                                                           , {"-q", [&](
-                        std::vector <std::string> &command_subs)
-                {
-                    if(command_subs[1] == "-s")
-                    {
-                        interactive_release_story(command_subs, client);
-                    }
-                }}
-                                                                                                           , {"-w", [&](
-                        std::vector <std::string> &command_subs)
-                {
-                    interactive_write_event(command_subs, story_handle);
-                }}
-                                                                                                           , {"-r", [&](
-                        std::vector <std::string> &command_subs)
-                {
-                    interactive_replay_story(command_subs, client);
-                }}
-                                                                                                           , {"-d", [&](
-                        std::vector <std::string> &command_subs)
-                {
-                    if(command_subs[1] == "-c")
-                    {
-                        interactive_destroy_chronicle(command_subs, client);
-                    }
-                    else if(command_subs[1] == "-s")
-                    {
-                        interactive_destroy_story(command_subs, client);
-                    }
-                }}};
+        std::unordered_map<std::string, std::function<void(std::vector<std::string>&)>> command_map = {
+                {"-c",
+                 [&](std::vector<std::string>& command_subs) { interactive_create_chronicle(command_subs, client); }},
+                {"-a",
+                 [&](std::vector<std::string>& command_subs)
+                 {
+                     if(command_subs[1] == "-s")
+                     {
+                         story_handle = interactive_acquire_story(command_subs, client);
+                     }
+                 }},
+                {"-q",
+                 [&](std::vector<std::string>& command_subs)
+                 {
+                     if(command_subs[1] == "-s")
+                     {
+                         interactive_release_story(command_subs, client);
+                     }
+                 }},
+                {"-w",
+                 [&](std::vector<std::string>& command_subs) { interactive_write_event(command_subs, story_handle); }},
+                {"-r", [&](std::vector<std::string>& command_subs) { interactive_replay_story(command_subs, client); }},
+                {"-d",
+                 [&](std::vector<std::string>& command_subs)
+                 {
+                     if(command_subs[1] == "-c")
+                     {
+                         interactive_destroy_chronicle(command_subs, client);
+                     }
+                     else if(command_subs[1] == "-s")
+                     {
+                         interactive_destroy_story(command_subs, client);
+                     }
+                 }}};
 
         std::string command_line;
         while(true)
@@ -836,7 +832,8 @@ std::vector <std::string> &command_subs)
             command_line.clear();
             std::getline(std::cin, command_line);
             command_line = trim_string(command_line);
-            if(command_line == "-disconnect") break;
+            if(command_line == "-disconnect")
+                break;
             command_dispatcher(command_line, command_map);
         }
     }
@@ -847,7 +844,7 @@ std::vector <std::string> &command_subs)
         std::mt19937 gen(rand_device());
         std::uniform_int_distribution char_dist(0, 255);
         double sigma = (double)(workload_args.max_event_size - workload_args.min_event_size) / 6;
-        std::normal_distribution <double> size_dist((double)workload_args.ave_event_size, sigma);
+        std::normal_distribution<double> size_dist((double)workload_args.ave_event_size, sigma);
         MPI_Barrier(MPI_COMM_WORLD);
         for(uint64_t i = 0; i < workload_args.chronicle_count; i++)
         {
@@ -876,20 +873,19 @@ std::vector <std::string> &command_subs)
                 if(workload_args.write && ret_i != chronolog::CL_SUCCESS)
                 {
                     std::cerr << "Failed to acquire story: " << story_name << " in Chronicle: " << chronicle_name
-                                                             << ", ret: " << chronolog::to_string_client(ret_i)
-                                                             << std::endl;
+                              << ", ret: " << chronolog::to_string_client(ret_i) << std::endl;
                     exit(EXIT_FAILURE);
                 }
                 else if(workload_args.read && ret_i == chronolog::CL_ERR_NOT_EXIST)
                 {
                     std::cerr << "Story does not exist: " << story_name << " in Chronicle: " << chronicle_name
-                                                          << ", ret: " << chronolog::to_string_client(ret_i)
-                                                          << std::endl;
-                    std::cout << "Please make sure a write test with the same configuration is executed before the read test."
+                              << ", ret: " << chronolog::to_string_client(ret_i) << std::endl;
+                    std::cout << "Please make sure a write test with the same configuration is executed before the "
+                                 "read test."
                               << std::endl;
                     exit(EXIT_FAILURE);
                 }
-//                std::cout << "Return value of AcquireStory: " << chronolog::to_string_client(ret_i) << std::endl;
+                //                std::cout << "Return value of AcquireStory: " << chronolog::to_string_client(ret_i) << std::endl;
                 if(workload_args.barrier)
                     MPI_Barrier(MPI_COMM_WORLD);
 
@@ -897,125 +893,128 @@ std::vector <std::string> &command_subs)
                 {
                     // replay story test
                     uint64_t start_time = 0, end_time = UINT64_MAX;
-                    std::vector <chronolog::Event> replay_events;
-                    uint64_t event_count_per_story =
-                            workload_args.event_count / workload_args.story_count;
+                    std::vector<chronolog::Event> replay_events;
+                    uint64_t event_count_per_story = workload_args.event_count / workload_args.story_count;
                     event_payload_size_per_rank = 0;
-                    replayStoryTimer.timeBlock([&]()
-                                               {
-                                                   for(uint64_t k = 0; k < event_count_per_story; k++)
-                                                   {
-                                                       ret_u = test_replay_story(client, chronicle_name, story_name, start_time, end_time
-                                                                                 , replay_events);
-                                                       replayStoryTimer.pauseTimer();
-                                                       for(const auto &event: replay_events)
-                                                       {
-                                                           event_payload_size_per_rank += event.log_record().size();
-                                                       }
+                    replayStoryTimer.timeBlock(
+                            [&]()
+                            {
+                                for(uint64_t k = 0; k < event_count_per_story; k++)
+                                {
+                                    ret_u = test_replay_story(client,
+                                                              chronicle_name,
+                                                              story_name,
+                                                              start_time,
+                                                              end_time,
+                                                              replay_events);
+                                    replayStoryTimer.pauseTimer();
+                                    for(const auto& event: replay_events)
+                                    {
+                                        event_payload_size_per_rank += event.log_record().size();
+                                    }
 
-                                                       if(workload_args.event_interval > 0)
-                                                           usleep(workload_args.event_interval);
-                                                   }
-                                               });
+                                    if(workload_args.event_interval > 0)
+                                        usleep(workload_args.event_interval);
+                                }
+                            });
                 }
                 else
                 {
                     // write event test
                     std::string event_payload;
-                    writeEventTimer.timeBlock([&]()
-                                              {
-                                                  uint64_t event_count_per_story =
-                                                          workload_args.event_count / workload_args.story_count;
-                                                  for(uint64_t k = 0; k < event_count_per_story; k++)
-                                                  {
-                                                      if(workload_args.event_payload_file.empty())
-                                                      {
-                                                          // randomly generate events size if range is specified
-                                                          writeEventTimer.pauseTimer();
+                    writeEventTimer.timeBlock(
+                            [&]()
+                            {
+                                uint64_t event_count_per_story = workload_args.event_count / workload_args.story_count;
+                                for(uint64_t k = 0; k < event_count_per_story; k++)
+                                {
+                                    if(workload_args.event_payload_file.empty())
+                                    {
+                                        // randomly generate events size if range is specified
+                                        writeEventTimer.pauseTimer();
 
-                                                          uint64_t event_size;
-                                                          if(workload_args.ave_event_size ==
-                                                             workload_args.min_event_size &&
-                                                             workload_args.ave_event_size ==
-                                                             workload_args.max_event_size)
-                                                          {
-                                                              event_size = workload_args.ave_event_size;
-                                                          }
-                                                          else
-                                                          {
-                                                              event_size = (unsigned long)std::min(
-                                                                      std::max(size_dist(gen),
-                                                                              (double)workload_args.min_event_size *
-                                                                              1.0),
-                                                                      (double)workload_args.max_event_size * 1.0);
-                                                          }
-                                                          event_payload = payload_str.substr(0, event_size);
-                                                          event_payload_size_per_rank += event_size;
-                                                          writeEventTimer.resumeTimer();
-                                                          ret_u = test_write_event(story_handle, event_payload);
-                                                          if(workload_args.barrier)
-                                                              MPI_Barrier(MPI_COMM_WORLD);
+                                        uint64_t event_size;
+                                        if(workload_args.ave_event_size == workload_args.min_event_size &&
+                                           workload_args.ave_event_size == workload_args.max_event_size)
+                                        {
+                                            event_size = workload_args.ave_event_size;
+                                        }
+                                        else
+                                        {
+                                            event_size = (unsigned long)std::min(
+                                                    std::max(size_dist(gen),
+                                                             (double)workload_args.min_event_size * 1.0),
+                                                    (double)workload_args.max_event_size * 1.0);
+                                        }
+                                        event_payload = payload_str.substr(0, event_size);
+                                        event_payload_size_per_rank += event_size;
+                                        writeEventTimer.resumeTimer();
+                                        ret_u = test_write_event(story_handle, event_payload);
+                                        if(workload_args.barrier)
+                                            MPI_Barrier(MPI_COMM_WORLD);
 
-                                                          if(workload_args.event_interval > 0)
-                                                              usleep(workload_args.event_interval);
-                                                      }
-                                                      else
-                                                      {
-                                                          // read event payload from payload file line by line
-                                                          std::ifstream input_file(workload_args.event_payload_file);
+                                        if(workload_args.event_interval > 0)
+                                            usleep(workload_args.event_interval);
+                                    }
+                                    else
+                                    {
+                                        // read event payload from payload file line by line
+                                        std::ifstream input_file(workload_args.event_payload_file);
 
-                                                          // check if the file opened successfully
-                                                          if(input_file.is_open())
-                                                          {
-                                                              writeEventTimer.pauseTimer();
-                                                              uint64_t bigbang_timestamp = get_bigbang_timestamp(
-                                                                      input_file);
-                                                              uint64_t last_event_timestamp = bigbang_timestamp;
-                                                              uint64_t event_timestamp;
-                                                              struct timespec sleep_ts{};
-                                                              while(std::getline(input_file, event_payload))
-                                                              {
-                                                                  if(event_payload.empty()) continue;
-                                                                  event_timestamp = get_event_timestamp(event_payload);
-                                                                  if(event_timestamp < last_event_timestamp)
-                                                                  {
-                                                                      LOG_INFO(
-                                                                              "An Out-of-Order event is found, sleeping for 1 second ...");
-                                                                      sleep_ts.tv_sec = 1;
-                                                                      sleep_ts.tv_nsec = 0;
-                                                                  }
-                                                                  else
-                                                                  {
-                                                                      sleep_ts.tv_sec = (long)(event_timestamp -
-                                                                                               last_event_timestamp) /
-                                                                                        1000000000;
-                                                                      sleep_ts.tv_nsec = (long)(event_timestamp -
-                                                                                                last_event_timestamp) %
-                                                                                         1000000000;
-                                                                  }
-                                                                  // TODO: (Kun) work around on failure when daytime changes
-                                                                  if(sleep_ts.tv_sec > 3600) sleep_ts.tv_sec = 0;
-                                                                  LOG_DEBUG(
-                                                                          "Sleeping for {}.{} seconds to emulate interval between events ..."
-                                                                          , sleep_ts.tv_sec, sleep_ts.tv_nsec);
-                                                                  nanosleep(&sleep_ts, nullptr);
-                                                                  last_event_timestamp = event_timestamp;
-                                                                  event_payload_size_per_rank += event_payload.size();
-                                                                  writeEventTimer.resumeTimer();
-                                                                  ret_u = test_write_event(story_handle, event_payload);
-                                                                  if(workload_args.barrier)
-                                                                      MPI_Barrier(MPI_COMM_WORLD);
-                                                              }
+                                        // check if the file opened successfully
+                                        if(input_file.is_open())
+                                        {
+                                            writeEventTimer.pauseTimer();
+                                            uint64_t bigbang_timestamp = get_bigbang_timestamp(input_file);
+                                            uint64_t last_event_timestamp = bigbang_timestamp;
+                                            uint64_t event_timestamp;
+                                            struct timespec sleep_ts
+                                            {
+                                            };
+                                            while(std::getline(input_file, event_payload))
+                                            {
+                                                if(event_payload.empty())
+                                                    continue;
+                                                event_timestamp = get_event_timestamp(event_payload);
+                                                if(event_timestamp < last_event_timestamp)
+                                                {
+                                                    LOG_INFO("An Out-of-Order event is found, sleeping for 1 second "
+                                                             "...");
+                                                    sleep_ts.tv_sec = 1;
+                                                    sleep_ts.tv_nsec = 0;
+                                                }
+                                                else
+                                                {
+                                                    sleep_ts.tv_sec =
+                                                            (long)(event_timestamp - last_event_timestamp) / 1000000000;
+                                                    sleep_ts.tv_nsec =
+                                                            (long)(event_timestamp - last_event_timestamp) % 1000000000;
+                                                }
+                                                // TODO: (Kun) work around on failure when daytime changes
+                                                if(sleep_ts.tv_sec > 3600)
+                                                    sleep_ts.tv_sec = 0;
+                                                LOG_DEBUG("Sleeping for {}.{} seconds to emulate interval between "
+                                                          "events ...",
+                                                          sleep_ts.tv_sec,
+                                                          sleep_ts.tv_nsec);
+                                                nanosleep(&sleep_ts, nullptr);
+                                                last_event_timestamp = event_timestamp;
+                                                event_payload_size_per_rank += event_payload.size();
+                                                writeEventTimer.resumeTimer();
+                                                ret_u = test_write_event(story_handle, event_payload);
+                                                if(workload_args.barrier)
+                                                    MPI_Barrier(MPI_COMM_WORLD);
+                                            }
 
-                                                              input_file.close();
-                                                          }
-                                                          else
-                                                          {
-                                                              std::cout << "Unable to open the file";
-                                                          }
-                                                      }
-                                                  }
-                                              });
+                                            input_file.close();
+                                        }
+                                        else
+                                        {
+                                            std::cout << "Unable to open the file";
+                                        }
+                                    }
+                                }
+                            });
                 }
 
                 if(workload_args.barrier)
@@ -1055,8 +1054,13 @@ std::vector <std::string> &command_subs)
         MPI_Reduce(&local_e2e_duration, &global_e2e_duration_ave, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
 
         uint64_t total_event_payload_size = 0;
-        MPI_Reduce(&event_payload_size_per_rank, &total_event_payload_size, 1, MPI_UINT64_T, MPI_SUM, 0
-                   , MPI_COMM_WORLD);
+        MPI_Reduce(&event_payload_size_per_rank,
+                   &total_event_payload_size,
+                   1,
+                   MPI_UINT64_T,
+                   MPI_SUM,
+                   0,
+                   MPI_COMM_WORLD);
         if(rank == 0)
         {
             std::cout << "==================================================================" << std::endl;
@@ -1072,11 +1076,13 @@ std::vector <std::string> &command_subs)
             if(workload_args.barrier)
             {
                 connect_thpt = (double)size / connectTimer.getDuration();
-                create_chronicle_thpt = (double)workload_args.chronicle_count * size / createChronicleTimer.getDuration();
+                create_chronicle_thpt =
+                        (double)workload_args.chronicle_count * size / createChronicleTimer.getDuration();
                 acquire_story_thpt = (double)workload_args.story_count * size / acquireStoryTimer.getDuration();
                 release_story_thpt = (double)workload_args.story_count * size / releaseStoryTimer.getDuration();
                 destroy_story_thpt = (double)workload_args.story_count * size / destroyStoryTimer.getDuration();
-                destroy_chronicle_thpt = (double)workload_args.chronicle_count * size / destroyChronicleTimer.getDuration();
+                destroy_chronicle_thpt =
+                        (double)workload_args.chronicle_count * size / destroyChronicleTimer.getDuration();
                 disconnect_thpt = (double)size / disconnectTimer.getDuration();
                 e2e_bandwidth = (double)total_event_payload_size / global_e2e_duration / 1e6;
                 if(workload_args.read)
@@ -1093,23 +1099,26 @@ std::vector <std::string> &command_subs)
             else
             {
                 connect_thpt = (double)size / connectTimer.getDurationAve();
-                create_chronicle_thpt = (double)workload_args.chronicle_count * size / createChronicleTimer.getDurationAve();
+                create_chronicle_thpt =
+                        (double)workload_args.chronicle_count * size / createChronicleTimer.getDurationAve();
                 acquire_story_thpt = (double)workload_args.story_count * size / acquireStoryTimer.getDurationAve();
                 release_story_thpt = (double)workload_args.story_count * size / releaseStoryTimer.getDurationAve();
                 destroy_story_thpt = (double)workload_args.story_count * size / destroyStoryTimer.getDurationAve();
-                destroy_chronicle_thpt = (double)workload_args.chronicle_count * size / destroyChronicleTimer.getDurationAve();
+                destroy_chronicle_thpt =
+                        (double)workload_args.chronicle_count * size / destroyChronicleTimer.getDurationAve();
                 disconnect_thpt = (double)size / disconnectTimer.getDurationAve();
                 e2e_bandwidth = (double)total_event_payload_size / global_e2e_duration / 1e6;
                 if(workload_args.read)
                 {
                     replay_story_bw = (double)total_event_payload_size / replayStoryTimer.getDurationAve() / 1e6;
-                    replay_story_thpt = (double)workload_args.event_count * size / replayStoryTimer.getDurationAve() / 1e6;
-
+                    replay_story_thpt =
+                            (double)workload_args.event_count * size / replayStoryTimer.getDurationAve() / 1e6;
                 }
                 else
                 {
                     record_event_bw = (double)total_event_payload_size / writeEventTimer.getDurationAve() / 1e6;
-                    record_event_thpt = (double)workload_args.event_count * size / writeEventTimer.getDurationAve() / 1e6;
+                    record_event_thpt =
+                            (double)workload_args.event_count * size / writeEventTimer.getDurationAve() / 1e6;
                 }
             }
             std::cout << "Connect throughput: " << connect_thpt << " connections/s" << std::endl;
@@ -1122,13 +1131,17 @@ std::vector <std::string> &command_subs)
             std::cout << "End-to-end (incl. metadata time) bandwidth: " << e2e_bandwidth << " MB/s" << std::endl;
             if(workload_args.read)
             {
-                std::cout << "Replay-story (incl. metadata time) bandwidth: " << replay_story_bw << " MB/s" << std::endl;
-                std::cout << "Replay-story (incl. metadata time) throughput: " << replay_story_thpt << " events/s" << std::endl;
+                std::cout << "Replay-story (incl. metadata time) bandwidth: " << replay_story_bw << " MB/s"
+                          << std::endl;
+                std::cout << "Replay-story (incl. metadata time) throughput: " << replay_story_thpt << " events/s"
+                          << std::endl;
             }
             else
             {
-                std::cout << "Record-event (incl. metadata time) bandwidth: " << record_event_bw << " MB/s" << std::endl;
-                std::cout << "Record-event (incl. metadata time) throughput: " << record_event_thpt << " events/s" << std::endl;
+                std::cout << "Record-event (incl. metadata time) bandwidth: " << record_event_bw << " MB/s"
+                          << std::endl;
+                std::cout << "Record-event (incl. metadata time) throughput: " << record_event_thpt << " events/s"
+                          << std::endl;
             }
         }
     }

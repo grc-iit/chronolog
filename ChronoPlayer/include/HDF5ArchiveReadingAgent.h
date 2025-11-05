@@ -1,6 +1,10 @@
 #ifndef CHRONOLOG_HDF5ARCHIVEREADINGAGENT_H
 #define CHRONOLOG_HDF5ARCHIVEREADINGAGENT_H
 
+#include <cstdlib>
+#include <fstream>
+#include <algorithm>
+#include <cctype>
 #include <list>
 #include <string>
 #include <map>
@@ -12,6 +16,7 @@
 #include <atomic>
 #include <unistd.h> // Required for access()
 
+#include <chrono_monitor.h>
 #include <StoryChunkIngestionQueue.h>
 
 namespace tl = thallium;

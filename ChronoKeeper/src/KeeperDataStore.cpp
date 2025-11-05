@@ -2,6 +2,9 @@
 #include <map>
 #include <mutex>
 #include <chrono>
+#include <string>
+#include <cstdint>
+#include <memory>
 #include <thallium.hpp>
 
 #include <chronolog_errcode.h>

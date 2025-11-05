@@ -4,6 +4,7 @@
 #include <iostream>
 
 #include "chronolog_types.h"
+#include "client_errcode.h"
 
 namespace chronolog
 {
@@ -14,34 +15,34 @@ class ConnectResponseMsg
     ClientId clientId;
 
 public:
-
-    ConnectResponseMsg(): error_code(chronolog::CL_SUCCESS), clientId(0)
+    ConnectResponseMsg()
+        : error_code(chronolog::CL_SUCCESS)
+        , clientId(0)
     {}
 
-    ConnectResponseMsg(int code, ClientId const &client_id): error_code(code), clientId(client_id)
+    ConnectResponseMsg(int code, ClientId const& client_id)
+        : error_code(code)
+        , clientId(client_id)
     {}
 
     ~ConnectResponseMsg() = default;
 
-    int getErrorCode() const
-    { return error_code; }
+    int getErrorCode() const { return error_code; }
 
-    ClientId const &getClientId() const
-    { return clientId; }
+    ClientId const& getClientId() const { return clientId; }
 
     template <typename SerArchiveT>
-    void serialize(SerArchiveT &serT)
+    void serialize(SerArchiveT& serT)
     {
-        serT&error_code;
-        serT&clientId;
+        serT & error_code;
+        serT & clientId;
     }
-
 };
 
-}//namespace
+} // namespace chronolog
 
 
-inline std::ostream &operator<<(std::ostream &out, chronolog::ConnectResponseMsg const &msg)
+inline std::ostream& operator<<(std::ostream& out, chronolog::ConnectResponseMsg const& msg)
 {
     out << "ConnectResponseMsg{" << msg.getErrorCode() << "}{client_id:" << msg.getClientId() << "}";
     return out;
