@@ -4,9 +4,6 @@
 #include <iostream>
 #include <type_traits>
 
-//#include <deque>
-//#include <vector>
-//#include <mutex>
 #include <atomic>
 #include <thallium.hpp>
 
@@ -14,7 +11,6 @@
 #include <chronolog_errcode.h>
 #include <StoryChunk.h>
 #include <StoryChunkExtractionQueue.h>
-#include <chronolog_errcode.h>
 
 namespace tl = thallium;
 
@@ -37,7 +33,11 @@ public:
     
     const ExtractorChain<Args...>& get_rest() const { return the_rest; }
 
-    StoryChunk * process_chunk( StoryChunk* some_chunk) { return the_extractor.process_chunk(the_rest.process_chunk(some_chunk)); }
+    int process_chunk( StoryChunk* some_chunk) 
+    { 
+        the_extractor.process_chunk(some_chunk);
+        return the_rest.process_chunk(some_chunk); 
+    }
 
 private:
     T the_extractor;
@@ -56,14 +56,17 @@ public:
 
     const T& extractor() const { return the_extractor; }
    
-    StoryChunk * process_chunk( StoryChunk* some_chunk) { return the_extractor.process_chunk(some_chunk); }
+    int process_chunk( StoryChunk* some_chunk) 
+    { 
+        return the_extractor.process_chunk(some_chunk); 
+    }
 
 private:
     T the_extractor;
 };
 
-////////
 ///////////////////////////
+
 template <typename... Args>
 class StoryChunkExtractionModule
 {
@@ -106,15 +109,18 @@ public:
             {
                 // chunkExtractionQueue has internal mutex protecting its integrity
                 StoryChunk* story_chunk = chunkExtractionQueue.ejectStoryChunk();
+
+                // the queue might have been drained by another thread before the current thread acquired extractionQueue mutex
+                // in this case the nullptr is returned..
                 if(story_chunk != nullptr)
                 {
-                    //the queue might have been drained by another thread before the current thread acquired extractionQueue mutex
-                    LOG_DEBUG("[StoryChunkExtractionModule] tl::stream rank={}, tl::thread_id={} processing chunk {}-{} {}-{} eventCount {}", 
-                        es.get_rank(), thallium::thread::self_id(), 
+                    LOG_DEBUG("[StoryChunkExtractionModule] tl::thread_id={} processing chunk StoryId={} {}-{} {}-{} eventCount {}", 
+                        thallium::thread::self_id(), story_chunk->getStoryId(),
                         story_chunk->getChronicleName(),story_chunk->getStoryName(),story_chunk->getStartTime(), story_chunk->getEndTime(),story_chunk->getEventCount());
                     
                     // each extractor in the chain would handle its own intermittent failure appropriately
                     extractorChain.process_chunk(story_chunk); 
+
                     // free the memory or reset the chunk to the original state and return it to the pool of prealocated chunks
                     delete story_chunk;
                 }
@@ -209,18 +215,6 @@ private:
     std::vector <tl::managed <tl::thread>> extractionThreads;
 };
 
-
-class LoggingExtractor
-{
-public:
-    StoryChunk* process_chunk(StoryChunk* chunk)
-    {
-        LOG_DEBUG("[LoggingExtractor] processing chunk {}-{} {}-{} eventCount {}"
-            , chunk->getChronicleName(), chunk->getStoryName(), chunk->getStartTime(), chunk->getEndTime(), chunk->getEventCount());
-
-        return chunk;
-    }
-};
 
 }
 

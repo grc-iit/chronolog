@@ -16,23 +16,23 @@ chronolog::StoryChunkExtractorCSV::StoryChunkExtractorCSV(chronolog::ServiceId c
         , outputDirectory(csv_files_dir)
 {}
 
-/////////////
-chl::StoryChunk * chronolog::StoryChunkExtractorCSV::process_chunk(StoryChunk*story_chunk)
+//////////
+int chronolog::StoryChunkExtractorCSV::process_chunk(StoryChunk* story_chunk)
 {
-    std::ofstream chunk_fstream;
+    
+    LOG_DEBUG("[StoryChunkExtractorCSV] tl::thread_id={} processing chunk StoryId={} {}-{} {}-{} eventCount {}",         
+                        thallium::thread::self_id(), story_chunk->getStoryId(),
+                        story_chunk->getChronicleName(),story_chunk->getStoryName(),story_chunk->getStartTime(), story_chunk->getEndTime(),story_chunk->getEventCount());
 
     // chunk_filename: outputDirectory/storyId.chunkStartTime.serviceIP.port.csv
 
+    std::ofstream chunk_fstream;
     std::string chunk_filename(outputDirectory);
     chunk_filename += "/" + story_chunk->getChronicleName() + "."+ story_chunk->getStoryName() + "."; 
     serviceId.get_ip_as_dotted_string(chunk_filename);
     chunk_filename += "." + std::to_string(serviceId.getPort()) + "." + std::to_string(story_chunk->getStartTime()/1000000000) + ".csv";
 
-    tl::xstream es = tl::xstream::self();
-    LOG_INFO("[CSVFileStoryChunkExtractor] Processing StoryChunk: ES={}, ULT={}, StoryID={}, StartTime={}", es.get_rank()
-         , tl::thread::self_id(), story_chunk->getStoryId(), story_chunk->getStartTime());
-
-    // current thread if the only one that has this storyChunk and the only one that's writing to this chunk csv file 
+    // current thread is the only one holding this story_chunk and the only one that's writing to this chunk csv file 
     // thus no additional locking is needed ... 
     chunk_fstream.open(chunk_filename, std::ofstream::out|std::ofstream::app);
     for(auto event_iter = story_chunk->begin(); event_iter != story_chunk->end(); ++event_iter)
@@ -41,7 +41,8 @@ chl::StoryChunk * chronolog::StoryChunkExtractorCSV::process_chunk(StoryChunk*st
         chunk_fstream << event << std::endl;
     }
     chunk_fstream.close();
-    LOG_DEBUG("[StoryChunkExtractorCSV] Finished processing StoryChunk. File={}", chunk_filename);
 
-    return story_chunk;
+    LOG_DEBUG("[StoryChunkExtractorCSV] Finished processing chunk StoryID={} StartTime={} File={}", story_chunk->getStoryId(), story_chunk->getStartTime(), chunk_filename);
+
+    return chl::CL_SUCCESS;
 }
