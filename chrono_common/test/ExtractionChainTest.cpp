@@ -6,7 +6,9 @@
 #include <ServiceId.h>
 #include <StoryChunk.h>
 #include <StoryChunkExtractionModule.h>
+#include <ChunkLoggingExtractor.h>
 #include <ChunkExtractorCSV.h>
+#include <ChunkExtractorRDMA.h>
 
 namespace tl = thallium;
 namespace chl = chronolog;
@@ -23,26 +25,27 @@ static constexpr uint64_t NS = 1000000000ULL;
 
 void chunk_contributor_thread( chl::StoryChunkExtractionQueue * extractionQueue, uint32_t thread_id)
 {
-    //auto thread_id_ = std::this_thread::get_id();
-    LOG_INFO( "[ExtractionModuleTest] starting contributing {} ",thread_id); //, std::to_string(thread_id_));
+    LOG_INFO( "[ExtractionModuleTest] starting contributing thread {} ",thread_id); 
 
-    for(int k=0; k< 10; ++k) 
+    for(unsigned int k=0; k< 10; ++k) 
     {
-        uint64_t time_now = std::chrono::high_resolution_clock::now().time_since_epoch().count();
-        chl::StoryChunk * story_chunk = new chl::StoryChunk("Chronicle","Story", 1, time_now, time_now+500);
+        auto time_now = std::chrono::high_resolution_clock::now();
+        uint64_t chunk_starttime = time_now.time_since_epoch().count();
+        uint64_t chunk_endtime = (time_now + std::chrono::seconds(5)).time_since_epoch().count();
+
+        chl::StoryChunk * story_chunk = new chl::StoryChunk("Chronicle","Story"+std::to_string(k), k, chunk_starttime,chunk_endtime);
    
-        for(int i =0; i< 10; ++i) 
+        for(unsigned int i =0; i< 10; ++i) 
         { 
-            story_chunk->insertEvent(chl::LogEvent{ 1, time_now + i, thread_id, 1,
-                             "line "+std::to_string(i)});
+            story_chunk->insertEvent(chl::LogEvent{ k, chunk_starttime + i, thread_id, 1,
+                             "thread " + std::to_string(thread_id)+ " line " + std::to_string(i)});
         }
 
         extractionQueue->stashStoryChunk(story_chunk);
     }
 
  
-    LOG_INFO( "[ExtractionModuleTest] exiting contributing {} ",thread_id);
-    std::this_thread::sleep_for(std::chrono::seconds(10));
+    LOG_INFO( "[ExtractionModuleTest] exiting contributing thread {} ",thread_id);
 }
 
 int main()
@@ -87,8 +90,11 @@ int main()
         return(-1);
     }
 
+    chl::ServiceId receiving_service_id;
+    chl::StoryChunkExtractorRDMA rdma_extractor(*localEngine, receiving_service_id);
 
-    chronolog::StoryChunkExtractionModule extractionModule(logging_extractor,csv_extractor);   
+
+    chronolog::StoryChunkExtractionModule extractionModule(logging_extractor, rdma_extractor);   
     //Start extraction threads
 
     chl::StoryChunkExtractionQueue & extractionQueue = extractionModule.getExtractionQueue();
@@ -103,8 +109,8 @@ int main()
     {
         LOG_INFO( "[ExtractionModuleTest] ExtractionChainTest is running");
 
-        // now we will be starting a few contributor threads, that would stash a few StoryChunks on the extractionQueue, 
-        // peiodically than fall asleep until it's the next time to wake up and start some more contributor threads
+        // now the main thread will start a few contributor threads, that would stash a few StoryChunks on the extractionQueue, 
+        // than fall asleep until it's time to wake up and start some more contributor threads...
 
         // the StoryChunkExtraction module is expected to run in the background and take care of the extruction duties
 
@@ -116,7 +122,7 @@ int main()
         for(int i = 0; i < contributor_threads; ++i)
         {    contributors[i].join(); }
 
-        std::this_thread::sleep_for(std::chrono::seconds(5));
+        std::this_thread::sleep_for(std::chrono::seconds(20));
     }
 
     

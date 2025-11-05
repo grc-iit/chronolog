@@ -18,7 +18,7 @@ public:
 
     StoryChunkExtractorCSV() = default;
 
-    StoryChunk * process_chunk(StoryChunk*);
+    int process_chunk(StoryChunk*);
 
 private:
     ServiceId serviceId;
