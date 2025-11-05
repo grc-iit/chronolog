@@ -89,8 +89,8 @@ void chronolog::StoryChunkExtractorBase::drainExtractionQueue()
         {
             StoryChunk* storyChunk = chunkExtractionQueue.ejectStoryChunk();
             if(storyChunk == nullptr)
-            //the queue might have been drained by another thread before the current thread acquired extractionQueue mutex
             {
+                //the queue might have been drained by another thread before the current thread acquired extractionQueue mutex
                 LOG_WARNING("[StoryChunkExtractionBase] Failed to acquire a story chunk from the queue.");
                 break;
             }
@@ -116,6 +116,6 @@ void chronolog::StoryChunkExtractorBase::drainExtractionQueue()
                 chunkExtractionQueue.stashStoryChunk(storyChunk);
             }
         }
-        sleep(3);
+        sleep(2);
     }
 }
