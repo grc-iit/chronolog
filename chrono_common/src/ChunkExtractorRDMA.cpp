@@ -10,21 +10,79 @@
 namespace tl = thallium;
 namespace chl = chronolog;
 
-chronolog::StoryChunkExtractorRDMA::StoryChunkExtractorRDMA(tl::engine &tl_engine, chronolog::ServiceId const& receiver_service_id)
-        : sender_tl_engine(tl_engine) 
+chronolog::StoryChunkExtractorRDMA::StoryChunkExtractorRDMA(tl::engine &tl_engine, chronolog::ServiceId const& receiving_service_id)
+        : sender_tl_engine(tl_engine)
+        , receiver_service_id(receiving_service_id) 
         , rdma_sender(nullptr)
 {
-    LOG_DEBUG("[ChunkExtractorRDMA] Constructor : receiver service {} ", chl::to_string(receiver_service_id));
+    try
+    {
+        rdma_sender = RDMATransferAgent::CreateRDMATransferAgent(sender_tl_engine, receiver_service_id);
+        LOG_TRACE("[ChunkExtractorRDMA] Constructor created rdma_sender for receiver_service {} ", chl::to_string(receiver_service_id));
+    }
+    catch(...)
+    {
+        LOG_ERROR("[ChunkExtractorRDMA] Constructor : failed to create rdma_sender for receiver_service {} ", chl::to_string(receiver_service_id));
+        rdma_sender = nullptr;
+    }
 
-    rdma_sender = RDMATransferAgent::CreateRDMATransferAgent(sender_tl_engine, receiver_service_id);
 }
+
+chronolog::StoryChunkExtractorRDMA::StoryChunkExtractorRDMA( StoryChunkExtractorRDMA const& other)
+        : sender_tl_engine(other.get_sender_engine())
+        , receiver_service_id(other.get_receiver_service_id()) 
+        , rdma_sender(nullptr)
+{
+    try
+    {
+        rdma_sender = RDMATransferAgent::CreateRDMATransferAgent(sender_tl_engine, receiver_service_id);
+        LOG_TRACE("[ChunkExtractorRDMA] Constructor copy: created rdma_sender for receiver_service {} ", chl::to_string(receiver_service_id));
+    }
+    catch(...)
+    {
+        LOG_ERROR("[ChunkExtractorRDMA] Constructor: failed to create rdma_sender for receiver_service {} ", chl::to_string(receiver_service_id));
+        rdma_sender = nullptr;
+    }
+    
+}
+
+chl::StoryChunkExtractorRDMA & chronolog::StoryChunkExtractorRDMA::operator=( StoryChunkExtractorRDMA const& other)
+{
+    if(this != &other)
+    {
+        if(rdma_sender != nullptr)
+        {
+            LOG_TRACE("[ChunkExtractorRDMA] assingment : deleting receiver_service {} ", chl::to_string(receiver_service_id));
+
+            delete rdma_sender;
+        }
+
+        sender_tl_engine = other.get_sender_engine();
+        receiver_service_id = other.get_receiver_service_id(); 
+    
+        try
+        {
+            rdma_sender = RDMATransferAgent::CreateRDMATransferAgent(sender_tl_engine, receiver_service_id);
+            LOG_TRACE("[ChunkExtractorRDMA] assingment: created rdma_sender for receiver_service {} ", chl::to_string(receiver_service_id));
+        }
+        catch(...)
+        {
+            LOG_ERROR("[ChunkExtractorRDMA] assignment: failed to create rdma_sender for receiver_service {} ", chl::to_string(receiver_service_id));
+            rdma_sender = nullptr;
+        }  
+    }
+
+    return *this;
+}
+    
 
 chronolog::StoryChunkExtractorRDMA::~StoryChunkExtractorRDMA()
 {
-    LOG_DEBUG("[RDMATransferAgent] Destructor" );
     if(rdma_sender != nullptr)
+    {
+        LOG_TRACE("[ChunkExtractorRDMA] Destructor: deleting receiver_service {} ", chl::to_string(receiver_service_id));
         delete rdma_sender;
-
+    }
 }
 
 ////
@@ -50,9 +108,9 @@ int chronolog::StoryChunkExtractorRDMA::process_chunk(chronolog::StoryChunk * st
 
         auto transfer_return = rdma_sender->transfer_serialized_bulk(serialized_story_chunk);
 
-        if(transfer_return != chl::CL_SUCCESS)
+        if(transfer_return == chl::CL_SUCCESS)
         {
-            LOG_DEBUG("[ChunkExtractorRDMA] Transfered StoryChunk StoryId={} StartTime={}", story_chunk->getStoryId(), story_chunk->getStartTime());
+            LOG_INFO("[ChunkExtractorRDMA] Transfered StoryChunk StoryId={} StartTime={}", story_chunk->getStoryId(), story_chunk->getStartTime());
         }
         else
         {
@@ -74,5 +132,5 @@ int chronolog::StoryChunkExtractorRDMA::process_chunk(chronolog::StoryChunk * st
         LOG_ERROR("[ChunkExtractorRDMA] Exception while  transferring StoryChunkiStoryId={} StartTime={}", story_chunk->getStoryId(), story_chunk->getStartTime());
     }
 
-return chl::CL_ERR_UNKNOWN;
+return chl::CL_ERR_STORY_CHUNK_EXTRACTION;
 }
