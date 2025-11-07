@@ -90,7 +90,7 @@ int main()
         return(-1);
     }
 
-    chl::ServiceId receiving_service_id;
+    chl::ServiceId receiving_service_id("ofi+sockets","127.0.0.1",3333,33);
     chl::StoryChunkExtractorRDMA rdma_extractor(*localEngine, receiving_service_id);
 
 
