@@ -1,6 +1,9 @@
-#include <cassert>
-#include <common.h>
+#include <cstdlib>
+#include <iostream>
+#include <map>
+#include <string>
 #include <unistd.h>
+#include <vector>
 
 #include <ClientConfiguration.h>
 #include <chronolog_client.h>
@@ -36,11 +39,17 @@ int main(int argc, char** argv)
     confManager.log_configuration(std::cout);
 
     // Initialize logging
-    int result = chronolog::chrono_monitor::initialize(
-            confManager.LOG_CONF.LOGTYPE, confManager.LOG_CONF.LOGFILE, confManager.LOG_CONF.LOGLEVEL,
-            confManager.LOG_CONF.LOGNAME, confManager.LOG_CONF.LOGFILESIZE, confManager.LOG_CONF.LOGFILENUM,
-            confManager.LOG_CONF.FLUSHLEVEL);
-    if(result == 1) { return EXIT_FAILURE; }
+    int result = chronolog::chrono_monitor::initialize(confManager.LOG_CONF.LOGTYPE,
+                                                       confManager.LOG_CONF.LOGFILE,
+                                                       confManager.LOG_CONF.LOGLEVEL,
+                                                       confManager.LOG_CONF.LOGNAME,
+                                                       confManager.LOG_CONF.LOGFILESIZE,
+                                                       confManager.LOG_CONF.LOGFILENUM,
+                                                       confManager.LOG_CONF.FLUSHLEVEL);
+    if(result == 1)
+    {
+        return EXIT_FAILURE;
+    }
 
     // Build portal configs
     chronolog::ClientPortalServiceConf portalConf;

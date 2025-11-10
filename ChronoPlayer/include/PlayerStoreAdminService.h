@@ -1,11 +1,14 @@
 #ifndef PlayerStoreAdmin_SERVICE_H
 #define PlayerStoreAdmin_SERVICE_H
 
+#include <string>
+#include <cstdint>
 #include <iostream>
 #include <margo.h>
 #include <thallium.hpp>
 #include <thallium/serialization/stl/string.hpp>
 
+#include <chrono_monitor.h>
 #include <chronolog_types.h>
 
 #include "PlayerDataStore.h"
@@ -15,12 +18,13 @@ namespace tl = thallium;
 namespace chronolog
 {
 
-class PlayerStoreAdminService: public tl::provider <PlayerStoreAdminService>
+class PlayerStoreAdminService: public tl::provider<PlayerStoreAdminService>
 {
 public:
     // Service should be created on the heap not the stack thus the constructor is private...
-    static PlayerStoreAdminService*
-    CreatePlayerStoreAdminService(tl::engine &tl_engine, uint16_t service_provider_id, DataStore &dataStoreInstance)
+    static PlayerStoreAdminService* CreatePlayerStoreAdminService(tl::engine& tl_engine,
+                                                                  uint16_t service_provider_id,
+                                                                  PlayerDataStore& dataStoreInstance)
     {
         return new PlayerStoreAdminService(tl_engine, service_provider_id, dataStoreInstance);
     }
@@ -32,18 +36,15 @@ public:
         get_engine().pop_finalize_callback(this);
     }
 
-    void collection_service_available(tl::request const &request)
-    {
-        request.respond(1);
-    }
+    void collection_service_available(tl::request const& request) { request.respond(1); }
 
-    void shutdown_data_collection(tl::request const &request)
+    void shutdown_data_collection(tl::request const& request)
     {
         int status = 1;
         theDataStore.shutdownDataCollection();
         request.respond(status);
     }
-/*
+    /*
     void
     StartStoryRecording(tl::request const &request, std::string const &chronicle_name, std::string const &story_name
                         , StoryId const &story_id, uint64_t start_time)
@@ -61,29 +62,29 @@ public:
     }
 */
 private:
-    PlayerStoreAdminService(tl::engine &tl_engine, uint16_t service_provider_id, DataStore &data_store_instance)
-            : tl::provider <PlayerStoreAdminService>(tl_engine, service_provider_id), theDataStore(data_store_instance)
+    PlayerStoreAdminService(tl::engine& tl_engine, uint16_t service_provider_id, PlayerDataStore& data_store_instance)
+        : tl::provider<PlayerStoreAdminService>(tl_engine, service_provider_id)
+        , theDataStore(data_store_instance)
     {
         define("collection_service_available", &PlayerStoreAdminService::collection_service_available);
         define("shutdown_data_collection", &PlayerStoreAdminService::shutdown_data_collection);
         //define("start_story_recording", &DataStoreAdminService::StartStoryRecording);
         //define("stop_story_recording", &DataStoreAdminService::StopStoryRecording);
         //set up callback for the case when the engine is being finalized while this provider is still alive
-        get_engine().push_finalize_callback(this, [p = this]()
-        { delete p; });
+        get_engine().push_finalize_callback(this, [p = this]() { delete p; });
 
         std::stringstream ss;
         ss << get_engine().self();
         LOG_INFO("[PlayerStoreAdminService] Constructed at {}. ProviderID={}", ss.str(), service_provider_id);
     }
 
-    PlayerStoreAdminService(PlayerStoreAdminService const &) = delete;
+    PlayerStoreAdminService(PlayerStoreAdminService const&) = delete;
 
-    PlayerStoreAdminService &operator=(PlayerStoreAdminService const &) = delete;
+    PlayerStoreAdminService& operator=(PlayerStoreAdminService const&) = delete;
 
-    DataStore &theDataStore;
+    PlayerDataStore& theDataStore;
 };
 
-}// namespace chronolog
+} // namespace chronolog
 
 #endif

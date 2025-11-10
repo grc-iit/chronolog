@@ -1,9 +1,12 @@
 #ifndef PLAYER_DATA_STORE_H
 #define PLAYER_DATA_STORE_H
 
+#include <string>
+#include <cstdint>
 #include <vector>
 #include <list>
 #include <map>
+#include <unordered_map>
 #include <mutex>
 #include <thallium.hpp>
 
@@ -16,32 +19,30 @@ namespace chronolog
 {
 
 
-class DataStore
+class PlayerDataStore
 {
 
     enum DataStoreState
     {
-        UNKNOWN = 0, 
-        RUNNING = 1,    //  active stories
-        SHUTTING_DOWN = 2    // Shutting down services
+        UNKNOWN = 0,
+        RUNNING = 1,      //  active stories
+        SHUTTING_DOWN = 2 // Shutting down services
     };
 
 
 public:
-    DataStore(StoryChunkIngestionQueue &ingestion_queue, StoryChunkExtractionQueue &extraction_queue)
+    PlayerDataStore(StoryChunkIngestionQueue& ingestion_queue, StoryChunkExtractionQueue& extraction_queue)
         : state(UNKNOWN)
         , theIngestionQueue(ingestion_queue)
         , theExtractionQueue(extraction_queue)
     {}
 
-    ~DataStore();
+    ~PlayerDataStore();
 
-    bool is_running() const
-    { return (RUNNING == state); }
+    bool is_running() const { return (RUNNING == state); }
 
-    bool is_shutting_down() const
-    { return (SHUTTING_DOWN == state); }
-/*
+    bool is_shutting_down() const { return (SHUTTING_DOWN == state); }
+    /*
     int startStoryRecording(ChronicleName const &, StoryName const &, StoryId const &, uint64_t start_time
                             , uint32_t time_chunk_ranularity = 30, uint32_t access_window = 300);
 
@@ -60,22 +61,21 @@ public:
     void dataCollectionTask();
 
 private:
-    DataStore(DataStore const &) = delete;
+    PlayerDataStore(PlayerDataStore const&) = delete;
 
-    DataStore &operator=(DataStore const &) = delete;
+    PlayerDataStore& operator=(PlayerDataStore const&) = delete;
 
     DataStoreState state;
     std::mutex dataStoreStateMutex;
-    StoryChunkIngestionQueue &theIngestionQueue;
-    StoryChunkExtractionQueue &theExtractionQueue;
-    std::vector <thallium::managed <thallium::xstream>> dataStoreStreams;
-    std::vector <thallium::managed <thallium::thread>> dataStoreThreads;
+    StoryChunkIngestionQueue& theIngestionQueue;
+    StoryChunkExtractionQueue& theExtractionQueue;
+    std::vector<thallium::managed<thallium::xstream>> dataStoreStreams;
+    std::vector<thallium::managed<thallium::thread>> dataStoreThreads;
 
     std::mutex dataStoreMutex;
-    std::unordered_map <StoryId, StoryPipeline*> theMapOfStoryPipelines;
-    std::unordered_map <StoryId, std::pair <StoryPipeline*, uint64_t>> pipelinesWaitingForExit;
-
+    std::unordered_map<StoryId, StoryPipeline*> theMapOfStoryPipelines;
+    std::unordered_map<StoryId, std::pair<StoryPipeline*, uint64_t>> pipelinesWaitingForExit;
 };
 
-}
+} // namespace chronolog
 #endif

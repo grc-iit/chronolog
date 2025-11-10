@@ -1,11 +1,12 @@
+#include <cstdlib>
+#include <iostream>
+#include <map>
+#include <string>
+
 #include <ClientConfiguration.h>
 #include <chronolog_client.h>
 #include <chrono_monitor.h>
 #include <cmd_arg_parse.h>
-
-#include <cassert>
-#include <common.h>
-#include <unistd.h>
 
 // This file is the writer part of the reader example also available in the same
 // folder. Therefore, the code is responsible for creating the chronicle and
@@ -41,23 +42,29 @@ int main(int argc, char** argv)
     confManager.log_configuration(std::cout);
 
     // Initialize logging
-    int result = chronolog::chrono_monitor::initialize(
-            confManager.LOG_CONF.LOGTYPE, confManager.LOG_CONF.LOGFILE, confManager.LOG_CONF.LOGLEVEL,
-            confManager.LOG_CONF.LOGNAME, confManager.LOG_CONF.LOGFILESIZE, confManager.LOG_CONF.LOGFILENUM,
-            confManager.LOG_CONF.FLUSHLEVEL);
-    if(result == 1) { return EXIT_FAILURE; }
+    int result = chronolog::chrono_monitor::initialize(confManager.LOG_CONF.LOGTYPE,
+                                                       confManager.LOG_CONF.LOGFILE,
+                                                       confManager.LOG_CONF.LOGLEVEL,
+                                                       confManager.LOG_CONF.LOGNAME,
+                                                       confManager.LOG_CONF.LOGFILESIZE,
+                                                       confManager.LOG_CONF.LOGFILENUM,
+                                                       confManager.LOG_CONF.FLUSHLEVEL);
+    if(result == 1)
+    {
+        return EXIT_FAILURE;
+    }
 
-  // Build portal config
-  chronolog::ClientPortalServiceConf portalConf;
-  portalConf.PROTO_CONF = confManager.PORTAL_CONF.PROTO_CONF;
-  portalConf.IP = confManager.PORTAL_CONF.IP;
-  portalConf.PORT = confManager.PORTAL_CONF.PORT;
-  portalConf.PROVIDER_ID = confManager.PORTAL_CONF.PROVIDER_ID;
+    // Build portal config
+    chronolog::ClientPortalServiceConf portalConf;
+    portalConf.PROTO_CONF = confManager.PORTAL_CONF.PROTO_CONF;
+    portalConf.IP = confManager.PORTAL_CONF.IP;
+    portalConf.PORT = confManager.PORTAL_CONF.PORT;
+    portalConf.PROVIDER_ID = confManager.PORTAL_CONF.PROVIDER_ID;
 
-  LOG_INFO("[ClientExample] Starting ChronoLog Client Example");
+    LOG_INFO("[ClientExample] Starting ChronoLog Client Example");
 
-  // Create a ChronoLog client
-  chronolog::Client client(portalConf);
+    // Create a ChronoLog client
+    chronolog::Client client(portalConf);
 
     /// Connect to ChronoVisor
     int ret = client.Connect();
@@ -91,6 +98,6 @@ int main(int argc, char** argv)
     ret = client.Disconnect();
     std::cout << "[ClientExample] Disconnect returned: " << chronolog::to_string_client(ret) << "\n";
 
-  LOG_INFO("[ClientExample] Finished successfully");
-  return 0;
+    LOG_INFO("[ClientExample] Finished successfully");
+    return 0;
 }
