@@ -81,46 +81,61 @@ Learn more detailed information about the project on ChronoLog's Wiki: https://g
 
 ## Members
 
-<a href="https://www.iit.edu">
-    <img src="doc/images/logos/IIT.png" alt="Illinois Tech" width="150">
-</a>
+ChronoLog is developed by leading academic institutions committed to advancing distributed storage systems research.
 
-<a href="https://www.uchicago.edu/">
-    <img src="doc/images/logos/university-of-chicago.png" alt="University Of Chicago" width="150">
-</a>
+<p align="center">
+  <a href="https://www.iit.edu">
+    <img src="doc/images/logos/IIT.png" alt="Illinois Institute of Technology" width="150" style="margin: 10px;">
+  </a>
+  <a href="https://www.uchicago.edu/">
+    <img src="doc/images/logos/university-of-chicago.png" alt="University of Chicago" width="150" style="margin: 10px;">
+  </a>
+</p>
 
 ## Collaborators
-<a href="https://www.llnl.gov/">
-    <img src="doc/images/logos/llnl.jpg" alt="Lawrence Livermore National Lab" width="75">
-</a>
-<a href="https://www6.slac.stanford.edu/">
-    <img src="doc/images/logos/slac.png" alt="SLAC National Accelerator Lab" width="75">
-</a>
-<a href="https://www.3redpartners.com/">
-    <img src="doc/images/logos/3red.png" alt="3RedPartners" width="75">
-</a>
-<a href="https://www.depaul.edu/">
-    <img src="doc/images/logos/depaul.png" alt="DePaul University" width="75">
-</a>
-<a href="https://www.wisc.edu/">
-    <img src="doc/images/logos/university-of-wisconsin.jpg" alt="University of Wisconsin Madison" width="75">
-</a>
-<a href="https://www.paratools.com/">
-    <img src="doc/images/logos/paratools.png" alt="ParaTools, Inc." width="75">
-</a>
-<a href="https://illinois.edu/">
-    <img src="doc/images/logos/university-of-illinois.jpg" alt="University of Illinois at Urbana-Champaign" width="75">
-</a>
-<a href="https://www.anl.gov/">
-    <img src="doc/images/logos/argonne.jpeg" alt="Argonne National Lab" width="75">
-</a>
-<a href="https://omnibond.com/">
-    <img src="doc/images/logos/omnibond.png" alt="OmniBond Systems LLC" width="75">
-</a>
+
+We are grateful for the collaboration and support from our research and industry partners.
+
+<p align="center">
+  <a href="https://www.llnl.gov/">
+    <img src="doc/images/logos/llnl.jpg" alt="Lawrence Livermore National Laboratory" width="120" style="margin: 10px;">
+  </a>
+  <a href="https://www6.slac.stanford.edu/">
+    <img src="doc/images/logos/slac.png" alt="SLAC National Accelerator Laboratory" width="120" style="margin: 10px;">
+  </a>
+  <a href="https://www.anl.gov/">
+    <img src="doc/images/logos/argonne.jpeg" alt="Argonne National Laboratory" width="120" style="margin: 10px;">
+  </a>
+  <a href="https://www.wisc.edu/">
+    <img src="doc/images/logos/university-of-wisconsin.jpg" alt="University of Wisconsin-Madison" width="120" style="margin: 10px;">
+  </a>
+  <a href="https://illinois.edu/">
+    <img src="doc/images/logos/university-of-illinois.jpg" alt="University of Illinois at Urbana-Champaign" width="120" style="margin: 10px;">
+  </a>
+  <a href="https://www.depaul.edu/">
+    <img src="doc/images/logos/depaul.png" alt="DePaul University" width="120" style="margin: 10px;">
+  </a>
+  <a href="https://www.paratools.com/">
+    <img src="doc/images/logos/paratools.png" alt="ParaTools, Inc." width="120" style="margin: 10px;">
+  </a>
+  <a href="https://www.3redpartners.com/">
+    <img src="doc/images/logos/3red.png" alt="3RedPartners" width="120" style="margin: 10px;">
+  </a>
+  <a href="https://omnibond.com/">
+    <img src="doc/images/logos/omnibond.png" alt="OmniBond Systems LLC" width="120" style="margin: 10px;">
+  </a>
+</p>
 
 ## Sponsors
-<a href="https://www.nsf.gov">
-    <img src="doc/images/logos/nsf-fb7efe9286a9b499c5907d82af3e70fd.png" alt="NSFLOGO" width="150">
-</a>
 
-National Science Foundation (NSF CSSI-2104013)
+ChronoLog development is supported by the following organizations:
+
+<p align="center">
+  <a href="https://www.nsf.gov">
+    <img src="doc/images/logos/nsf-fb7efe9286a9b499c5907d82af3e70fd.png" alt="National Science Foundation" width="200" style="margin: 10px;">
+  </a>
+</p>
+
+<p align="center">
+  <strong>National Science Foundation (NSF CSSI-2104013)</strong>
+</p>
