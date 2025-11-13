@@ -1,8 +1,10 @@
 #include <iostream>
 #include <cstdlib>
+#include <string>
+#include <cstdint>
 #include <thallium.hpp>
 
-int main(int argc, char**argv)
+int main(int argc, char** argv)
 {
     if(argc != 3)
     {

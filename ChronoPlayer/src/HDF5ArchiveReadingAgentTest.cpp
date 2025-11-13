@@ -2,6 +2,13 @@
 // Created by kfeng on 1/14/25.
 //
 #include <csignal>
+#include <iostream>
+#include <cstdlib>
+#include <string>
+#include <thread>
+#include <chrono>
+#include <list>
+#include <atomic>
 #include <HDF5ArchiveReadingAgent.h>
 #include <ConfigurationManager.h>
 #include <cmd_arg_parse.h>
@@ -16,12 +23,9 @@ void signalHandler(int signum)
 {
     std::cout << "Interrupt signal (" << signum << ") received.\n";
 
-    for(auto &chunk: list_of_chunks)
-    {
-        delete chunk;
-    }
+    for(auto& chunk: list_of_chunks) { delete chunk; }
 
-    if (agent_ptr)
+    if(agent_ptr)
     {
         agent_ptr->shutdown();
     }
@@ -31,9 +35,9 @@ void signalHandler(int signum)
     std::exit(signum);
 }
 
-int main(int argc, char**argv)
+int main(int argc, char** argv)
 {
-//    uint64_t current_timestamp = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+    //    uint64_t current_timestamp = std::chrono::high_resolution_clock::now().time_since_epoch().count();
     std::string chronicle_name = "chronicle_0_0";
     std::string story_name = "story_0_0";
     uint64_t start_time = 1736800000000000000;
@@ -49,13 +53,13 @@ int main(int argc, char**argv)
         std::exit(EXIT_FAILURE);
     }
     chronolog::ConfigurationManager confManager(conf_file_path);
-    int result = chronolog::chrono_monitor::initialize(confManager.PLAYER_CONF.LOG_CONF.LOGTYPE
-                                                       , confManager.PLAYER_CONF.LOG_CONF.LOGFILE
-                                                       , confManager.PLAYER_CONF.LOG_CONF.LOGLEVEL
-                                                       , confManager.PLAYER_CONF.LOG_CONF.LOGNAME
-                                                       , confManager.PLAYER_CONF.LOG_CONF.LOGFILESIZE
-                                                       , confManager.PLAYER_CONF.LOG_CONF.LOGFILENUM
-                                                       , confManager.PLAYER_CONF.LOG_CONF.FLUSHLEVEL);
+    int result = chronolog::chrono_monitor::initialize(confManager.PLAYER_CONF.LOG_CONF.LOGTYPE,
+                                                       confManager.PLAYER_CONF.LOG_CONF.LOGFILE,
+                                                       confManager.PLAYER_CONF.LOG_CONF.LOGLEVEL,
+                                                       confManager.PLAYER_CONF.LOG_CONF.LOGNAME,
+                                                       confManager.PLAYER_CONF.LOG_CONF.LOGFILESIZE,
+                                                       confManager.PLAYER_CONF.LOG_CONF.LOGFILENUM,
+                                                       confManager.PLAYER_CONF.LOG_CONF.FLUSHLEVEL);
     if(result == 1)
     {
         exit(EXIT_FAILURE);
@@ -64,19 +68,19 @@ int main(int argc, char**argv)
     tl::abt scope;
 
     std::string archive_path = confManager.GRAPHER_CONF.EXTRACTOR_CONF.story_files_dir;
-    agent_ptr = new chronolog::HDF5ArchiveReadingAgent(archive_path);
+    agent_ptr = new chronolog::HDF5ArchiveReadingAgent(archive_path, true); // Default to polling mode
 
     agent_ptr->initialize();
 
-//    std::list<chronolog::StoryChunk*> list_of_chunks;
+    //    std::list<chronolog::StoryChunk*> list_of_chunks;
     std::cout << "Reading events in range [" << start_time << ", " << end_time << "]" << std::endl;
     agent_ptr->readArchivedStory(chronicle_name, story_name, start_time, end_time, list_of_chunks);
     std::cout << list_of_chunks.size() << " chunks is returned." << std::endl;
 
     bool all_events_within_time_range = true;
-    for(auto &chunk: list_of_chunks)
+    for(auto& chunk: list_of_chunks)
     {
-        for(auto &event: *chunk)
+        for(auto& event: *chunk)
         {
             if(event.second.eventTime < start_time || event.second.eventTime > end_time)
             {
@@ -92,10 +96,7 @@ int main(int argc, char**argv)
         std::cout << "All events in all chunks are within the time range." << std::endl;
     }
 
-    while(running)
-    {
-        std::this_thread::sleep_for(std::chrono::seconds(10));
-    }
+    while(running) { std::this_thread::sleep_for(std::chrono::seconds(10)); }
 
     return 0;
 }

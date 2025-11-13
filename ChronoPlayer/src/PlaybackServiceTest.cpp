@@ -1,6 +1,9 @@
 #include <chrono>
 #include <iostream>
+#include <string>
+#include <thread>
 #include <signal.h>
+#include <margo.h>
 
 #include <chrono_monitor.h>
 #include <ServiceId.h>
@@ -15,7 +18,7 @@ namespace chl = chronolog;
 bool keep_running = true;
 void sigterm_handler(int)
 {
-    std::cout<< "Received SIGTERM signal. Initiating shutdown procedure."<<std::endl;
+    std::cout << "Received SIGTERM signal. Initiating shutdown procedure." << std::endl;
     keep_running = false;
     return;
 }
@@ -25,25 +28,32 @@ int main()
 
     signal(SIGTERM, sigterm_handler);
 
-    int result = chronolog::chrono_monitor::initialize( "file" //confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE
-                                                    ,"/tmp/TransferAgent.log"  //, confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
-                                                    , spdlog::level::debug// confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
-                                                    , "CronoPlayer"//confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME
-                                                    , 10000//confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILESIZE
-                                                    , 2//confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILENUM
-                                                    , spdlog::level::debug//confManager.CLIENT_CONF.CLIENT_LOG_CONF.FLUSHLEVEL);
-                                                    );
+    int result = chronolog::chrono_monitor::initialize(
+            "file" //confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE
+            ,
+            "/tmp/TransferAgent.log" //, confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
+            ,
+            spdlog::level::debug // confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
+            ,
+            "CronoPlayer" //confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME
+            ,
+            10000 //confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILESIZE
+            ,
+            2 //confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILENUM
+            ,
+            spdlog::level::debug //confManager.CLIENT_CONF.CLIENT_LOG_CONF.FLUSHLEVEL);
+    );
 
 
-    chl::ServiceId localServiceId("ofi+sockets", "127.0.0.1",5555,55);
+    chl::ServiceId localServiceId("ofi+sockets", "127.0.0.1", 5555, 55);
 
     std::string LOCAL_SERVICE_NA_STRING;
     localServiceId.get_service_as_string(LOCAL_SERVICE_NA_STRING);
 
-    tl::engine * localEngine = nullptr;
-    chl::PlaybackService * playbackService = nullptr;
+    tl::engine* localEngine = nullptr;
+    chl::PlaybackService* playbackService = nullptr;
 
-    chl::ServiceId queryServiceId("ofi+sockets", "127.0.0.1",5557,57);
+    chl::ServiceId queryServiceId("ofi+sockets", "127.0.0.1", 5557, 57);
 
     chl::ArchiveReadingRequestQueue readingRequestQueue;
 
@@ -52,24 +62,27 @@ int main()
         margo_instance_id margo_id = margo_init(LOCAL_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 1);
         localEngine = new tl::engine(margo_id);
 
-        std::cout <<"started localEngine at "<< localEngine->self()<<std::endl;
+        std::cout << "started localEngine at " << localEngine->self() << std::endl;
 
 
-        chl::PlaybackService * playbackService = chl::PlaybackService::CreatePlaybackService( *localEngine, localServiceId.getProviderId(),readingRequestQueue);
+        chl::PlaybackService* playbackService =
+                chl::PlaybackService::CreatePlaybackService(*localEngine,
+                                                            localServiceId.getProviderId(),
+                                                            readingRequestQueue);
     }
-    catch(tl::exception const &)
+    catch(tl::exception const&)
     {
         playbackService = nullptr;
     }
 
     if(nullptr == playbackService)
     {
-        return(-1);
+        return (-1);
     }
 
- while( true ==  keep_running)
+    while(true == keep_running)
     {
-/*
+        /*
         std::cout<<"TransferAgent is running"<<std::endl;
         transferAgent->is_receiver_available();
         
@@ -84,12 +97,13 @@ int main()
         std::cout<<"TransferAgent is sending storyChunk for story "<<storyChunk.getChronicleName()<<"-"<< storyChunk.getStoryName()<<"-"<<storyChunk.getStartTime()<<"-"<<storyChunk.getEndTime()<<" eventCount:"<<storyChunk.getEventCount()<<std::endl;
         transferAgent->processStoryChunk(&storyChunk);
 
-  */      sleep(3);
+  */
+        sleep(3);
     }
 
-    std::cout << "Shutting down  TransferAgent for "<<chl::to_string(queryServiceId)<<std::endl;
+    std::cout << "Shutting down  TransferAgent for " << chl::to_string(queryServiceId) << std::endl;
 
     delete playbackService;
     delete localEngine;
-return 1;
+    return 1;
 }

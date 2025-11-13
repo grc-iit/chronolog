@@ -1,6 +1,7 @@
 #ifndef CHRONOKVS_CLIENT_ADAPTER_H_
 #define CHRONOKVS_CLIENT_ADAPTER_H_
 
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <optional>
@@ -23,9 +24,9 @@ public:
 
     ~ChronoKVSClientAdapter();
 
-    std::uint64_t storeEvent(const std::string &key, const std::string &value);
+    std::uint64_t storeEvent(const std::string& key, const std::string& value);
 
-    std::vector<EventData> retrieveEvents(const std::string &key, std::uint64_t start_ts, std::uint64_t end_ts);
+    std::vector<EventData> retrieveEvents(const std::string& key, std::uint64_t start_ts, std::uint64_t end_ts);
 };
-}
+} // namespace chronokvs
 #endif // CHRONOKVS_CLIENT_ADAPTER_H_
