@@ -1,30 +1,66 @@
-# ChronoLog
-![OPEN SOURCE](https://img.shields.io/badge/GNOSIS_RESEARCH_CENTER-blue)
-![OPEN SOURCE](https://img.shields.io/badge/OPEN_SOURCE-grey)
-[![License](https://img.shields.io/github/license/grc-iit/ChronoLog.svg)](LICENSE)
-[![GitHub issues](https://img.shields.io/github/issues/grc-iit/ChronoLog.svg)](https://github.com/grc-iit/ChronoLog/issues)
-
-[![Main_Branch](https://img.shields.io/badge/Branch-Main-green)](https://github.com/grc-iit/ChronoLog/tree/main)
-[![Develop_Branch](https://img.shields.io/badge/Branch-Develop-yellow)](https://github.com/grc-iit/ChronoLog/tree/develop)
-[![GitHub release](https://img.shields.io/github/release/grc-iit/ChronoLog.svg)](https://github.com/grc-iit/ChronoLog/releases/latest)
-
-
-<div style="text-align: center;">
-    <img src="doc/images/logos/logo-chronolog.png" alt="ChronoLog" width="200">
-</div>
-
-This project will design and implement ChronoLog, a distributed and tiered shared log storage ecosystem.
-ChronoLog uses physical time to distribute log entries while providing total log ordering.
-It also utilizes multiple storage tiers to elastically scale the log capacity (i.e., auto-tiering).
-ChronoLog will serve as a foundation for developing scalable new plugins, including a SQL-like query engine for log data, a streaming processor
-leveraging the time-based data distribution, a log-based key-value store, and a log-based TensorFlow module.
-Learn more at https://www.chronolog.dev
-
-> **🆕 NEW: ChronoLog MCP Available!**
+> **NEW: ChronoLog MCP Available!**
 > 
 > ChronoLog now offers a comprehensive Model Context Protocol (MCP) server that enables seamless integration with Large Language Models (LLMs). The ChronoLog MCP provides enterprise-grade logging capabilities, real-time event processing, and structured conversational interaction management.
 > 
 > 📖 **Documentation:** [ChronoLog MCP Documentation](https://iowarp.github.io/iowarp-mcps/docs/mcps/chronolog/)
+<p align="center">
+  <a href="https://www.chronolog.dev">
+    <img src="doc/images/logos/logo-chronolog.png" alt="ChronoLog logo" width="25%">
+  </a>
+</p>
+
+<h1 align="center">ChronoLog</h1>
+
+<p align="center"><strong>Distributed Shared Tiered Log Store</strong></p>
+
+<p align="center">A distributed and tiered shared log storage ecosystem that uses physical time to distribute log entries while providing total log ordering.</p>
+
+<p align="center">
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/grc-iit/ChronoLog.svg" /></a>
+  <a href="https://github.com/grc-iit/ChronoLog"><img alt="ChronoLog" src="https://img.shields.io/badge/ChronoLog-GitHub-blue.svg" /></a>
+  <a href="https://grc.iit.edu/"><img alt="GRC" src="https://img.shields.io/badge/GRC-Website-blue.svg" /></a>
+  <a href="https://www.chronolog.dev"><img alt="Website" src="https://img.shields.io/badge/Website-ChronoLog-blue.svg" /></a>
+  <a href="https://github.com/grc-iit/ChronoLog/issues"><img alt="GitHub Issues" src="https://img.shields.io/github/issues/grc-iit/ChronoLog.svg" /></a>
+  <a href="https://github.com/grc-iit/ChronoLog/releases/latest"><img alt="GitHub Release" src="https://img.shields.io/github/release/grc-iit/ChronoLog.svg" /></a>
+</p>
+
+## Overview
+
+**ChronoLog** is a distributed, tiered shared log storage system that provides scalable log storage with time-based data ordering and total log ordering guarantees. By leveraging physical time for data distribution and utilizing multiple storage tiers for elastic capacity scaling, ChronoLog eliminates the need for a central sequencer while maintaining high performance and scalability.
+
+The system's modular, plugin-based architecture serves as a foundation for building scalable applications, including SQL-like query engines, streaming processors, log-based key-value stores, and machine learning integration modules.
+
+<p align="center">
+  <img src="doc/images/ChronoLogDesign.png" alt="ChronoLog Architecture" width="60%">
+</p>
+
+### Key Features
+
+ChronoLog is built on four foundational pillars:
+
+- **Time-Structured Ingestion** — Events are chunked and organized by physical time, enabling high-throughput parallel writes without a central sequencer.
+
+- **Tiered & Efficient Storage** — StoryChunks flow across fast and scalable storage tiers, automatically balancing performance and capacity.
+
+- **Concurrent Access at Scale** — Multi-writer, multi-reader support with zero coordination overhead, optimized for both RDMA and TCP networks.
+
+- **Modular, Extensible Serving Layer** — Plugin-based architecture enables custom services to run directly on the log, supporting diverse application requirements.
+
+### Use Cases
+
+ChronoLog's flexible architecture supports a wide range of applications:
+
+- **SQL-like Query Engine** — Query and analyze log data with SQL semantics, leveraging time-based data distribution for efficient processing.
+
+- **Streaming Processor** — Real-time event processing and analytics on time-ordered log streams for monitoring, alerting, and data pipeline applications.
+
+- **Log-based Key-Value Store** — Build distributed key-value stores on ChronoLog's ordered log abstraction with strong consistency guarantees.
+
+- **Machine Learning Integration** — TensorFlow module for training and inference workflows using time-ordered data streams.
+
+- **Enterprise Logging** — Enterprise-grade logging with real-time event processing and structured interaction management via the MCP server.
+
+For more information, visit [chronolog.dev](https://www.chronolog.dev).
 
 ## Wiki:
 Learn more detailed information about the project on ChronoLog's Wiki: https://github.com/grc-iit/ChronoLog/wiki/
