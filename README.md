@@ -85,8 +85,8 @@ ChronoLog is developed by leading academic institutions committed to advancing d
 
 | Institution | Website |
 |------------|---------|
-| Illinois Institute of Technology | [iit.edu](https://www.iit.edu) |
-| University of Chicago | [uchicago.edu](https://www.uchicago.edu) |
+| <img src="doc/images/logos/IIT.png" alt="Illinois Institute of Technology" width="60"> Illinois Institute of Technology | [iit.edu](https://www.iit.edu) |
+| <img src="doc/images/logos/university-of-chicago.png" alt="University of Chicago" width="60"> University of Chicago | [uchicago.edu](https://www.uchicago.edu) |
 
 ## Collaborators
 
@@ -94,19 +94,19 @@ We are grateful for the collaboration and support from our research and industry
 
 | Organization | Website |
 |-------------|---------|
-| Lawrence Livermore National Laboratory | [llnl.gov](https://www.llnl.gov) |
-| SLAC National Accelerator Laboratory | [slac.stanford.edu](https://www6.slac.stanford.edu) |
-| Argonne National Laboratory | [anl.gov](https://www.anl.gov) |
-| University of Wisconsin-Madison | [wisc.edu](https://www.wisc.edu) |
-| University of Illinois at Urbana-Champaign | [illinois.edu](https://illinois.edu) |
-| DePaul University | [depaul.edu](https://www.depaul.edu) |
-| ParaTools, Inc. | [paratools.com](https://www.paratools.com) |
-| 3RedPartners | [3redpartners.com](https://www.3redpartners.com) |
-| OmniBond Systems LLC | [omnibond.com](https://omnibond.com) |
+| <img src="doc/images/logos/llnl.jpg" alt="Lawrence Livermore National Laboratory" width="60"> Lawrence Livermore National Laboratory | [llnl.gov](https://www.llnl.gov) |
+| <img src="doc/images/logos/slac.png" alt="SLAC National Accelerator Laboratory" width="60"> SLAC National Accelerator Laboratory | [slac.stanford.edu](https://www6.slac.stanford.edu) |
+| <img src="doc/images/logos/argonne.jpeg" alt="Argonne National Laboratory" width="60"> Argonne National Laboratory | [anl.gov](https://www.anl.gov) |
+| <img src="doc/images/logos/university-of-wisconsin.jpg" alt="University of Wisconsin-Madison" width="60"> University of Wisconsin-Madison | [wisc.edu](https://www.wisc.edu) |
+| <img src="doc/images/logos/university-of-illinois.jpg" alt="University of Illinois at Urbana-Champaign" width="60"> University of Illinois at Urbana-Champaign | [illinois.edu](https://illinois.edu) |
+| <img src="doc/images/logos/depaul.png" alt="DePaul University" width="60"> DePaul University | [depaul.edu](https://www.depaul.edu) |
+| <img src="doc/images/logos/paratools.png" alt="ParaTools, Inc." width="60"> ParaTools, Inc. | [paratools.com](https://www.paratools.com) |
+| <img src="doc/images/logos/3red.png" alt="3RedPartners" width="60"> 3RedPartners | [3redpartners.com](https://www.3redpartners.com) |
+| <img src="doc/images/logos/omnibond.png" alt="OmniBond Systems LLC" width="60"> OmniBond Systems LLC | [omnibond.com](https://omnibond.com) |
 
 ## Sponsors
 
-ChronoLog development is supported by the following organizations:
+ChronoLog development is supported by:
 
 <p align="center">
   <a href="https://www.nsf.gov">
