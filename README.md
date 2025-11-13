@@ -30,9 +30,11 @@
 
 The system's modular, plugin-based architecture serves as a foundation for building scalable applications, including SQL-like query engines, streaming processors, log-based key-value stores, and machine learning integration modules.
 
+<!--
 <p align="center">
   <img src="doc/images/ChronoLogDesign.png" alt="ChronoLog Architecture" width="60%">
 </p>
+-->
 
 ### Key Features
 
