@@ -25,37 +25,34 @@ public:
 
     ~KeeperRegistrationMsg() = default;
 
-    KeeperIdCard const &getKeeperIdCard() const
-    { return keeperIdCard; }
+    KeeperIdCard const& getKeeperIdCard() const { return keeperIdCard; }
 
-    ServiceId const &getAdminServiceId() const
-    { return adminServiceId; }
+    ServiceId const& getAdminServiceId() const { return adminServiceId; }
 
     template <typename SerArchiveT>
-    void serialize(SerArchiveT & serT)
+    void serialize(SerArchiveT& serT)
     {
         serT & keeperIdCard;
         serT & adminServiceId;
     }
-
 };
 
-inline std::string to_string(chronolog::KeeperRegistrationMsg const & msg)
+inline std::string to_string(chronolog::KeeperRegistrationMsg const& msg)
 {
-    return std::string("KeeperRegistrationMsg{") + to_string(msg.getKeeperIdCard()) + 
+    return std::string("KeeperRegistrationMsg{") + to_string(msg.getKeeperIdCard()) +
            "}{admin:" + to_string(msg.getAdminServiceId()) + "}";
 }
 
 
-}//namespace
+} // namespace chronolog
 
-inline std::ostream &operator<<(std::ostream &out, chronolog::KeeperRegistrationMsg const &msg)
+inline std::ostream& operator<<(std::ostream& out, chronolog::KeeperRegistrationMsg const& msg)
 {
     out << "KeeperRegistrationMsg{" << msg.getKeeperIdCard() << "}{admin:" << msg.getAdminServiceId() << "}";
     return out;
 }
 
-inline std::string & operator+= (std::string &a_string, chronolog::KeeperRegistrationMsg const & msg)
+inline std::string& operator+=(std::string& a_string, chronolog::KeeperRegistrationMsg const& msg)
 {
     a_string += chronolog::to_string(msg);
     return a_string;
