@@ -129,8 +129,6 @@ ChronoLog development is supported by:
 Illinois Institute of Technology  
 *Advancing the Future of Scalable Computing and Data-Driven Discovery*
 
-United States of America
-
 **Connect with us:**  
 🌐 [Website](https://grc.iit.edu) • 🐦 [X (Twitter)](https://twitter.com/grc_iit) • 💼 [LinkedIn](https://www.linkedin.com/school/gnosis-research-center) • 📺 [YouTube](https://www.youtube.com/@grc-iit) • ✉️ [Email](mailto:grc@illinoistech.edu)
 </div>
