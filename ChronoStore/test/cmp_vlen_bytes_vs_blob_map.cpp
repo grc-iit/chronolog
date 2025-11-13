@@ -338,7 +338,7 @@ struct StoryChunk2
 struct OffsetMapEntryPOD
 {
     uint64_t eventTime;  // First element of EventSequence tuple
-    uint32_t clientId; // Second element of EventSequence tuple
+    uint32_t clientId;   // Second element of EventSequence tuple
     uint32_t eventIndex; // Third element of EventSequence tuple
     uint64_t offset;     // First element of EventOffsetSize tuple
     uint64_t size;       // Second element of EventOffsetSize tuple
