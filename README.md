@@ -64,6 +64,7 @@ ChronoLog's flexible architecture supports a wide range of applications:
 
 For more information, visit [chronolog.dev](https://www.chronolog.dev).
 
+<!--
 ## Wiki:
 Learn more detailed information about the project on ChronoLog's Wiki: https://github.com/grc-iit/ChronoLog/wiki/
 
@@ -117,6 +118,7 @@ ChronoLog development is supported by:
 <p align="center">
   <strong>National Science Foundation (NSF CSSI-2104013)</strong>
 </p>
+-->
 
 ---
 <div align="center">
