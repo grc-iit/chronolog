@@ -1,8 +1,7 @@
 > [!IMPORTANT]
 > **ChronoLog MCP is now available.**
 > Integrate ChronoLog directly with LLMs through our new MCP server for real-time logging, event processing, and structured interactions.  
-> [Code](https://github.com/iowarp/agent-toolkit/tree/main/agent-toolkit-mcp-servers/chronolog)
-> [Documentation](https://www.iowarp.ai/docs/agent-toolkit/mcp#system-monitoring-2-servers-14-tools)
+> [Code](https://github.com/iowarp/agent-toolkit/tree/main/agent-toolkit-mcp-servers/chronolog) - [Documentation](https://www.iowarp.ai/docs/agent-toolkit/mcp#system-monitoring-2-servers-14-tools)
 
 <p align="center">
   <a href="https://www.chronolog.dev">
