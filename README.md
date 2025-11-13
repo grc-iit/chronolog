@@ -117,3 +117,13 @@ ChronoLog development is supported by:
 <p align="center">
   <strong>National Science Foundation (NSF CSSI-2104013)</strong>
 </p>
+
+<div align="center">
+
+<img src="https://grc.iit.edu/img/logo.png" alt="Gnosis Research Center" width="60">
+
+**Gnosis Research Center**  
+Illinois Institute of Technology  
+*Advancing the Future of Scalable Computing and Data-Driven Discovery*
+
+</div>
