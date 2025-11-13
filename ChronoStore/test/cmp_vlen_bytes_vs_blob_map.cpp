@@ -337,11 +337,11 @@ struct StoryChunk2
 // POD struct for HDF5 serialization (standard-layout)
 struct OffsetMapEntryPOD
 {
-    uint64_t eventTime;      // First element of EventSequence tuple
-    uint32_t clientId;       // Second element of EventSequence tuple  
-    uint32_t eventIndex;     // Third element of EventSequence tuple
-    uint64_t offset;         // First element of EventOffsetSize tuple
-    uint64_t size;           // Second element of EventOffsetSize tuple
+    uint64_t eventTime;  // First element of EventSequence tuple
+    uint32_t clientId;   // Second element of EventSequence tuple
+    uint32_t eventIndex; // Third element of EventSequence tuple
+    uint64_t offset;     // First element of EventOffsetSize tuple
+    uint64_t size;       // Second element of EventOffsetSize tuple
 };
 
 struct OffsetMapEntry
@@ -797,9 +797,9 @@ int writeMapAsKVPairs(H5::H5File* file, std::map<StoryChunk2::EventSequence, Sto
         hsize_t max_dims = offsetMap.size();
         auto* dataspace = new H5::DataSpace(n_dims, &max_dims);
         auto offset_dtype = createOffsetMapEntryCompoundType();
-        auto* dataset = new H5::DataSet(
-                file->createDataSet("/" + group_name + "/" + story_chunk_dataset_name + ".meta", offset_dtype,
-                                    *dataspace));
+        auto* dataset = new H5::DataSet(file->createDataSet("/" + group_name + "/" + story_chunk_dataset_name + ".meta",
+                                                            offset_dtype,
+                                                            *dataspace));
         std::vector<OffsetMapEntryPOD> offsetMapEntries;
         offsetMapEntries.reserve(offsetMap.size());
         for(auto const& entry: offsetMap)
