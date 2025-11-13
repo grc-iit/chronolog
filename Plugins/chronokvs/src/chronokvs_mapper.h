@@ -1,6 +1,7 @@
 #ifndef KVS_MAPPER_H_
 #define KVS_MAPPER_H_
 
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <memory>
@@ -22,12 +23,11 @@ public:
 
     ~ChronoKVSMapper() = default;
 
-    std::uint64_t storeKeyValue(const std::string &key, const std::string &value);
+    std::uint64_t storeKeyValue(const std::string& key, const std::string& value);
 
-    std::string retrieveByKeyAndTs(const std::string &key, std::uint64_t timestamp);
+    std::string retrieveByKeyAndTs(const std::string& key, std::uint64_t timestamp);
 
-    std::vector<EventData> retrieveByKey(const std::string &key);
-
+    std::vector<EventData> retrieveByKey(const std::string& key);
 };
-}
+} // namespace chronokvs
 #endif // KVS_MAPPER_H_

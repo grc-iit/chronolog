@@ -1,5 +1,8 @@
 #include <signal.h>
 #include <unistd.h>
+#include <iostream>
+#include <cstdlib>
+#include <string>
 
 #include <cmd_arg_parse.h>
 #include <KeeperRegistry.h>
@@ -16,7 +19,7 @@ void sigterm_handler(int)
 
 
 ///////////////////////////////////////////////
-int main(int argc, char**argv)
+int main(int argc, char** argv)
 {
     signal(SIGTERM, sigterm_handler);
 
@@ -43,20 +46,20 @@ int main(int argc, char**argv)
 
     std::cout << "VISOR_CONFIGURATION " << VISOR_CONF.to_String() << std::endl;
 
-    int result = chronolog::chrono_monitor::initialize( VISOR_CONF.VISOR_LOG_CONF.LOGTYPE
-                                                       , VISOR_CONF.VISOR_LOG_CONF.LOGFILE
-                                                       , VISOR_CONF.VISOR_LOG_CONF.LOGLEVEL
-                                                       , VISOR_CONF.VISOR_LOG_CONF.LOGNAME
-                                                       , VISOR_CONF.VISOR_LOG_CONF.LOGFILESIZE
-                                                       , VISOR_CONF.VISOR_LOG_CONF.LOGFILENUM
-                                                       , VISOR_CONF.VISOR_LOG_CONF.FLUSHLEVEL);
+    int result = chronolog::chrono_monitor::initialize(VISOR_CONF.VISOR_LOG_CONF.LOGTYPE,
+                                                       VISOR_CONF.VISOR_LOG_CONF.LOGFILE,
+                                                       VISOR_CONF.VISOR_LOG_CONF.LOGLEVEL,
+                                                       VISOR_CONF.VISOR_LOG_CONF.LOGNAME,
+                                                       VISOR_CONF.VISOR_LOG_CONF.LOGFILESIZE,
+                                                       VISOR_CONF.VISOR_LOG_CONF.LOGFILENUM,
+                                                       VISOR_CONF.VISOR_LOG_CONF.FLUSHLEVEL);
     if(result == 1)
     {
         exit(EXIT_FAILURE);
     }
     LOG_INFO("[chronovisor_instance] Running Chronovisor Server.");
 
-   LOG_INFO("chronovisor_instance] VISOR CONFIGURATION {}", VISOR_CONF.to_String());
+    LOG_INFO("chronovisor_instance] VISOR CONFIGURATION {}", VISOR_CONF.to_String());
 
     chronolog::VisorClientPortal theChronoVisorPortal;
     chronolog::KeeperRegistry keeperRegistry;
@@ -65,13 +68,10 @@ int main(int argc, char**argv)
 
     theChronoVisorPortal.StartServices(VISOR_CONF, &keeperRegistry);
 
-    // If services do not start successfully there should a graceful exit(-1) here 
+    // If services do not start successfully there should a graceful exit(-1) here
     /////
     LOG_INFO("[chronovisor_instance] ChronoVisor Running...");
-    while(keep_running)
-    {
-        sleep(10);
-    }
+    while(keep_running) { sleep(10); }
 
     theChronoVisorPortal.ShutdownServices();
     keeperRegistry.ShutdownRegistryService();
