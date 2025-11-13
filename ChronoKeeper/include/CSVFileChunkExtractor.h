@@ -1,9 +1,12 @@
 #ifndef CSV_FILE_CHUNK_EXTRACTOR_H
 #define CSV_FILE_CHUNK_EXTRACTOR_H
 
+#include <string>
+
 #include <chronolog_types.h>
 #include <KeeperIdCard.h>
 
+#include "StoryChunk.h"
 #include "StoryChunkExtractor.h"
 
 
@@ -14,7 +17,7 @@ class CSVFileStoryChunkExtractor: public StoryChunkExtractorBase
 {
 
 public:
-    CSVFileStoryChunkExtractor(KeeperIdCard const &keeper_id_card, std::string const &csv_files_root_dir);
+    CSVFileStoryChunkExtractor(KeeperIdCard const& keeper_id_card, std::string const& csv_files_root_dir);
 
     ~CSVFileStoryChunkExtractor();
 
@@ -23,10 +26,8 @@ public:
 private:
     KeeperIdCard keeperIdCard;
     std::string rootDirectory;
-
-
 };
 
 
-}
+} // namespace chronolog
 #endif

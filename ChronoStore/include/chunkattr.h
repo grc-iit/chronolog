@@ -1,4 +1,4 @@
-#include<iostream>
+#include <cstdint>
 
 #ifndef CHUNK_ATTR_H
 #define CHUNK_ATTR_H

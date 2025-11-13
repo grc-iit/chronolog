@@ -6,6 +6,8 @@
 #include <map>
 #include <mutex>
 #include <iostream>
+#include <string>
+#include <cstdint>
 
 #include <chronolog_types.h>
 #include <StoryChunk.h>
@@ -22,42 +24,45 @@ class StoryPipeline
 {
 
 public:
-    StoryPipeline(StoryChunkExtractionQueue &, std::string const &chronicle_name, std::string const &story_name
-                  , StoryId const &story_id, uint64_t start_time, uint32_t chunk_granularity = 15 // seconds
-                  , uint32_t acceptance_window = 30 // seconds
+    StoryPipeline(StoryChunkExtractionQueue&,
+                  std::string const& chronicle_name,
+                  std::string const& story_name,
+                  StoryId const& story_id,
+                  uint64_t start_time,
+                  uint32_t chunk_granularity = 15 // seconds
+                  ,
+                  uint32_t acceptance_window = 30 // seconds
     );
 
-    StoryPipeline(StoryPipeline const &) = delete;
+    StoryPipeline(StoryPipeline const&) = delete;
 
-    StoryPipeline &operator=(StoryPipeline const &) = delete;
+    StoryPipeline& operator=(StoryPipeline const&) = delete;
 
     ~StoryPipeline();
 
 
-    StoryIngestionHandle*getActiveIngestionHandle();
+    StoryIngestionHandle* getActiveIngestionHandle();
 
     void collectIngestedEvents();
 
-    void mergeEvents(std::deque <LogEvent> &);
+    void mergeEvents(std::deque<LogEvent>&);
 
     void extractDecayedStoryChunks(uint64_t);
 
-    StoryId const &getStoryId() const
-    { return storyId; }
+    StoryId const& getStoryId() const { return storyId; }
 
-    uint16_t getAcceptanceWindow() const
-    { return acceptanceWindow; }
+    uint16_t getAcceptanceWindow() const { return acceptanceWindow; }
 
-    uint64_t TimelineStart() const
-    { return (*storyTimelineMap.begin()).first; }  // storyTimelineMap is never left empty 
+    uint64_t TimelineStart() const { return (*storyTimelineMap.begin()).first; } // storyTimelineMap is never left empty
 
     uint64_t TimelineEnd() const
-    { return (*storyTimelineMap.rbegin()).second->getEndTime(); } // storyTimelineMap is never left empty
+    {
+        return (*storyTimelineMap.rbegin()).second->getEndTime();
+    } // storyTimelineMap is never left empty
 
 
 private:
-
-    StoryChunkExtractionQueue &theExtractionQueue;
+    StoryChunkExtractionQueue& theExtractionQueue;
     StoryId storyId;
     ChronicleName chronicleName;
     StoryName storyName;
@@ -70,27 +75,27 @@ private:
     // mutex used to protect the IngestionQueue from concurrent access
     // by RecordingService threads
     std::mutex ingestionMutex;
-    // two ingestion queues so that they can take turns playing 
+    // two ingestion queues so that they can take turns playing
     // active/passive ingestion duty
-    // 
-    std::deque <LogEvent> eventQueue1;
-    std::deque <LogEvent> eventQueue2;
+    //
+    std::deque<LogEvent> eventQueue1;
+    std::deque<LogEvent> eventQueue2;
 
-    StoryIngestionHandle*activeIngestionHandle;
+    StoryIngestionHandle* activeIngestionHandle;
 
-    // mutex used to protect Story sequencing operations 
+    // mutex used to protect Story sequencing operations
     // from concurrent access by the DataStore Sequencing threads
     std::mutex sequencingMutex;
 
     // map of storyChunks ordered by StoryChunck.startTime
-    std::map <chrono_time, StoryChunk*> storyTimelineMap;
+    std::map<chrono_time, StoryChunk*> storyTimelineMap;
 
-    std::map <uint64_t, StoryChunk*>::iterator prependStoryChunk();
+    std::map<uint64_t, StoryChunk*>::iterator prependStoryChunk();
 
-    std::map <uint64_t, StoryChunk*>::iterator appendStoryChunk();
+    std::map<uint64_t, StoryChunk*>::iterator appendStoryChunk();
 
     void finalize();
 };
 
-}
+} // namespace chronolog
 #endif

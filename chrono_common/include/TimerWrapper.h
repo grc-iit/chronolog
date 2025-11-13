@@ -6,6 +6,7 @@
 #define CHRONOLOG_TIMERWRAPPER_H
 
 #include <iostream>
+#include <string>
 #include <chrono>
 #include <functional>
 #include <mpi.h>
@@ -14,13 +15,15 @@
 class TimerWrapper
 {
 public:
-    TimerWrapper(bool enable_timing, const std::string &name): name(name), enabled(enable_timing)
+    TimerWrapper(bool enable_timing, const std::string& name)
+        : name(name)
+        , enabled(enable_timing)
     {
         int rank;
         MPI_Comm_rank(MPI_COMM_WORLD, &rank);
         if(rank == 0)
         {
-//            std::cout << "Resolution of timer " << name << ": " << MPI_Wtick() << " second.\n";
+            //            std::cout << "Resolution of timer " << name << ": " << MPI_Wtick() << " second.\n";
             int global_time_flag;
             int flag;
             MPI_Attr_get(MPI_COMM_SELF, MPI_WTIME_IS_GLOBAL, &global_time_flag, &flag);
@@ -29,22 +32,24 @@ public:
                 // If the attribute exists, print its value
                 if(!global_time_flag)
                 {
-                    std::cerr << "MPI_Wtime clocks are NOT synchronized across all processes for timer " << name <<
-                    std::endl;
+                    std::cerr << "MPI_Wtime clocks are NOT synchronized across all processes for timer " << name
+                              << std::endl;
                 }
             }
             else
             {
-                std::cerr << "MPI_WTIME_IS_GLOBAL is not available in this MPI implementation for timer " << name <<
-                std::endl;
+                std::cerr << "MPI_WTIME_IS_GLOBAL is not available in this MPI implementation for timer " << name
+                          << std::endl;
             }
         }
     }
 
     // Timing wrapper for functions that return non-void
-    template <typename Func, typename... Args, typename RetType = decltype(std::invoke(std::declval <Func>()
-                                                                                       , std::declval <Args>()...)), typename std::enable_if <!std::is_void <RetType>::value, int>::type = 0>
-    auto timeBlock(Func &&func, Args &&... args) -> RetType
+    template <typename Func,
+              typename... Args,
+              typename RetType = decltype(std::invoke(std::declval<Func>(), std::declval<Args>()...)),
+              typename std::enable_if<!std::is_void<RetType>::value, int>::type = 0>
+    auto timeBlock(Func&& func, Args&&... args) -> RetType
     {
         if(enabled)
         {
@@ -52,8 +57,7 @@ public:
             MPI_Comm_rank(MPI_COMM_WORLD, &rank);
             MPI_Comm_size(MPI_COMM_WORLD, &size);
             double local_start_time = MPI_Wtime();
-            auto result = std::invoke(std::forward <Func>(func), std::forward <Args>(
-                    args)...);  // Call function or block
+            auto result = std::invoke(std::forward<Func>(func), std::forward<Args>(args)...); // Call function or block
             double local_end_time = MPI_Wtime();
             double local_elapsed = local_end_time - local_start_time;
             double global_start_time, global_end_time;
@@ -71,18 +75,20 @@ public:
                 duration_ave += elapsed_ave;
                 duration_max += elapsed_max;
             }
-            return result;  // Return the result of the function or block
+            return result; // Return the result of the function or block
         }
         else
         {
-            return std::invoke(std::forward <Func>(func), std::forward <Args>(args)...);  // Call without timing
+            return std::invoke(std::forward<Func>(func), std::forward<Args>(args)...); // Call without timing
         }
     }
 
     // Timing wrapper for functions that return void
-    template <typename Func, typename... Args, typename RetType = decltype(std::invoke(std::declval <Func>()
-                                                                                       , std::declval <Args>()...)), typename std::enable_if <std::is_void <RetType>::value, int>::type = 0>
-    void timeBlock(Func &&func, Args &&... args)
+    template <typename Func,
+              typename... Args,
+              typename RetType = decltype(std::invoke(std::declval<Func>(), std::declval<Args>()...)),
+              typename std::enable_if<std::is_void<RetType>::value, int>::type = 0>
+    void timeBlock(Func&& func, Args&&... args)
     {
         if(enabled)
         {
@@ -90,7 +96,7 @@ public:
             MPI_Comm_rank(MPI_COMM_WORLD, &rank);
             MPI_Comm_size(MPI_COMM_WORLD, &size);
             double local_start_time = MPI_Wtime();
-            std::invoke(std::forward <Func>(func), std::forward <Args>(args)...);  // Call function or block
+            std::invoke(std::forward<Func>(func), std::forward<Args>(args)...); // Call function or block
             double local_end_time = MPI_Wtime();
             double local_elapsed = local_end_time - local_start_time;
             double global_start_time, global_end_time;
@@ -111,15 +117,12 @@ public:
         }
         else
         {
-            std::invoke(std::forward <Func>(func), std::forward <Args>(args)...);  // Call without timing
+            std::invoke(std::forward<Func>(func), std::forward<Args>(args)...); // Call without timing
         }
     }
 
     // Pause timer
-    void pauseTimer()
-    {
-        pause_time = MPI_Wtime();
-    }
+    void pauseTimer() { pause_time = MPI_Wtime(); }
 
     // Resume timer
     void resumeTimer()
@@ -153,37 +156,25 @@ public:
     }
 
     // Get end-to-end duration of last call
-    [[nodiscard]] double getDuration() const
-    {
-        return e2e_duration;
-    }
+    [[nodiscard]] double getDuration() const { return e2e_duration; }
 
     // Get max duration of last call
-    [[nodiscard]] double getDurationMax() const
-    {
-        return duration_max;
-    }
+    [[nodiscard]] double getDurationMax() const { return duration_max; }
 
     // Get min duration of last call
-    [[nodiscard]] double getDurationMin() const
-    {
-        return duration_min;
-    }
+    [[nodiscard]] double getDurationMin() const { return duration_min; }
 
     // Get ave duration of last call
-    [[nodiscard]] double getDurationAve() const
-    {
-        return duration_ave;
-    }
+    [[nodiscard]] double getDurationAve() const { return duration_ave; }
 
 private:
-    std::string name;  // Name of the timer
-    bool enabled;  // Flag to enable or disable timing
-    double e2e_duration;  // End-to-end duration of last call
-    double duration_min;  // Min duration of last call
-    double duration_ave;  // Ave duration of last call
-    double duration_max;  // Max duration of last call
-    double pause_time;  // Time of pause
+    std::string name;    // Name of the timer
+    bool enabled;        // Flag to enable or disable timing
+    double e2e_duration; // End-to-end duration of last call
+    double duration_min; // Min duration of last call
+    double duration_ave; // Ave duration of last call
+    double duration_max; // Max duration of last call
+    double pause_time;   // Time of pause
 };
 
 #endif //CHRONOLOG_TIMERWRAPPER_H

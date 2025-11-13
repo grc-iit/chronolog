@@ -6,11 +6,13 @@
 #define CHRONOLOG_COMMON_H
 
 #include <random>
+#include <string>
+#include <climits>
 
 std::random_device rd;
 std::seed_seq ssq{rd()};
 std::default_random_engine mt{rd()};
-std::uniform_int_distribution <int> dist(0, INT32_MAX);
+std::uniform_int_distribution<int> dist(0, INT32_MAX);
 
 std::string gen_random(const int len)
 {
@@ -20,10 +22,7 @@ std::string gen_random(const int len)
     std::string tmp_s;
     tmp_s.reserve(len);
 
-    for(int i = 0; i < len; ++i)
-    {
-        tmp_s += alphanum[dist(mt) % (sizeof(alphanum) - 1)];
-    }
+    for(int i = 0; i < len; ++i) { tmp_s += alphanum[dist(mt) % (sizeof(alphanum) - 1)]; }
 
     return tmp_s;
 }

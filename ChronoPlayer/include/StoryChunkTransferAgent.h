@@ -1,6 +1,8 @@
 #ifndef CHRONOLOG_STORYCHUNK_TRANSFER_AGENT_H
 #define CHRONOLOG_STORYCHUNK_TRANSFER_AGENT_H
 
+#include <string>
+#include <cstdint>
 #include <thallium.hpp>
 
 #include <chrono_monitor.h>
@@ -16,16 +18,15 @@ namespace chronolog
 class StoryChunkTransferAgent: public StoryChunkExtractorBase
 {
 public:
-
-    static StoryChunkTransferAgent *
-    CreateStoryChunkTransferAgent(tl::engine &tl_engine , ServiceId const & receiver_service_id)
+    static StoryChunkTransferAgent* CreateStoryChunkTransferAgent(tl::engine& tl_engine,
+                                                                  ServiceId const& receiver_service_id)
     {
-        StoryChunkTransferAgent * storyChunkTransferAgent = nullptr;
+        StoryChunkTransferAgent* storyChunkTransferAgent = nullptr;
         try
         {
             storyChunkTransferAgent = new StoryChunkTransferAgent(tl_engine, receiver_service_id);
         }
-        catch(tl::exception const &ex)
+        catch(tl::exception const& ex)
         {
             LOG_ERROR("[StoryChunkTransferAgent] Failed to create StoryChunkTransferAgent for service");
         }
@@ -33,24 +34,24 @@ public:
     }
 
 
-   virtual ~StoryChunkTransferAgent();
+    virtual ~StoryChunkTransferAgent();
 
-    int processStoryChunk(StoryChunk*story_chunk) override;
+    int processStoryChunk(StoryChunk* story_chunk) override;
     bool is_receiver_available() const;
 
 private:
-    tl::engine & service_engine;          // local tl::engine
-    ServiceId   receiver_service_id;              // remote receiver service ServiceId
-    tl::provider_handle receiver_service_handle;  // tl::provider_handle for remote receiver service
+    tl::engine& service_engine;                  // local tl::engine
+    ServiceId receiver_service_id;               // remote receiver service ServiceId
+    tl::provider_handle receiver_service_handle; // tl::provider_handle for remote receiver service
     tl::remote_procedure receiver_is_available;
     tl::remote_procedure receive_story_chunk;
 
     // constructor is private to make sure thalium rpc objects are created on the heap, not stack
-    StoryChunkTransferAgent(tl::engine &tl_engine, ServiceId const& receiver_service_id);
+    StoryChunkTransferAgent(tl::engine& tl_engine, ServiceId const& receiver_service_id);
 };
 
 
-}
+} // namespace chronolog
 
 
 #endif //CHRONOLOG_STORYCHUNK_SENDER_H
