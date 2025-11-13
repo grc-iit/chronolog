@@ -27,8 +27,9 @@ target_include_directories(thallium_server PRIVATE
     ${CMAKE_SOURCE_DIR}/Client/cpp/include
 )
 target_link_libraries(thallium_server 
-    PRIVATE thallium
-    PUBLIC "-pthread"
+    PRIVATE
+        thallium
+        "-pthread"
 )
 add_test(NAME CommThalliumServer COMMAND thallium_server)
 
@@ -50,7 +51,7 @@ add_executable(thallium_client_mpi
     thallium_client_mpi.cpp
     ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
 )
-target_include_directories(thallium_client_mpi PRIVATE
+target_include_directories(thallium_client_mpi SYSTEM PRIVATE
     ${CMAKE_SOURCE_DIR}/chrono_common/include
     ${CMAKE_SOURCE_DIR}/Client/cpp/include
     ${MPI_INCLUDE_PATH}
