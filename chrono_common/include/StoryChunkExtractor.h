@@ -20,48 +20,47 @@ class StoryChunkExtractorBase
 {
     enum ExtractorState
     {
-        UNKNOWN = 0, 
-        RUNNING = 1, //  active extraction threads
+        UNKNOWN = 0,
+        RUNNING = 1,      //  active extraction threads
         SHUTTING_DOWN = 2 // Shutting down extraction threads
     };
 
 public:
-    StoryChunkExtractorBase(): extractorState(UNKNOWN)
+    StoryChunkExtractorBase()
+        : extractorState(UNKNOWN)
     {}
 
     ~StoryChunkExtractorBase();
 
-    StoryChunkExtractionQueue &getExtractionQueue()
+    StoryChunkExtractionQueue& getExtractionQueue()
     {
         LOG_DEBUG("[StoryChunkExtraction] Current size of extraction queue: {}", chunkExtractionQueue.size());
         return chunkExtractionQueue;
     }
 
-    bool is_running() const
-    { return (extractorState == RUNNING); }
+    bool is_running() const { return (extractorState == RUNNING); }
 
-    bool is_shutting_down() const
-    { return (extractorState == SHUTTING_DOWN); }
+    bool is_shutting_down() const { return (extractorState == SHUTTING_DOWN); }
 
     void drainExtractionQueue();
 
-    virtual int processStoryChunk(StoryChunk*)  =0;
+    virtual int processStoryChunk(StoryChunk*) = 0;
 
     void startExtractionThreads(int);
 
     void shutdownExtractionThreads();
 
 private:
-    StoryChunkExtractorBase(StoryChunkExtractorBase const &) = delete;
+    StoryChunkExtractorBase(StoryChunkExtractorBase const&) = delete;
 
-    StoryChunkExtractorBase &operator=(StoryChunkExtractorBase const &) = delete;
-    
+    StoryChunkExtractorBase& operator=(StoryChunkExtractorBase const&) = delete;
+
     std::atomic<ExtractorState> extractorState;
     StoryChunkExtractionQueue chunkExtractionQueue;
 
-    std::vector <tl::managed <tl::xstream>> extractionStreams;
-    std::vector <tl::managed <tl::thread>> extractionThreads;
+    std::vector<tl::managed<tl::xstream>> extractionStreams;
+    std::vector<tl::managed<tl::thread>> extractionThreads;
 };
-}
+} // namespace chronolog
 
 #endif
