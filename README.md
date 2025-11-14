@@ -24,6 +24,38 @@
   <a href="https://github.com/grc-iit/ChronoLog/releases/latest"><img alt="GitHub Release" src="https://img.shields.io/github/release/grc-iit/ChronoLog.svg" /></a>
 </p>
 
+
+<p align="center">
+  A project from:
+</p>
+
+<p align="center">
+  <a href="https://www.iit.edu">
+    <img src="doc/images/logos/IIT.png" alt="Illinois Tech" width="80" style="margin: 5px;">
+  </a>
+  <a href="https://www.uchicago.edu">
+    <img src="doc/images/logos/university-of-chicago.png" alt="UChicago" width="80" style="margin: 5px;">
+  </a>
+</p>
+
+<p align="center">
+  <strong>Illinois Tech</strong> &nbsp;&nbsp;&nbsp; <strong>UChicago</strong>
+</p>
+
+<p align="center">
+  Supported by:
+</p>
+
+<p align="center">
+  <a href="https://www.nsf.gov">
+    <img src="doc/images/logos/nsf-fb7efe9286a9b499c5907d82af3e70fd.png" alt="National Science Foundation" width="100" style="margin: 5px;">
+  </a>
+</p>
+
+<p align="center">
+  <strong>National Science Foundation (NSF CSSI-2104013)</strong>
+</p>
+
 ## Overview
 
 **ChronoLog** is a distributed, tiered shared log storage system that provides scalable log storage with time-based data ordering and total log ordering guarantees. By leveraging physical time for data distribution and utilizing multiple storage tiers for elastic capacity scaling, ChronoLog eliminates the need for a central sequencer while maintaining high performance and scalability.
