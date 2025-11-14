@@ -38,7 +38,8 @@ public:
         get_engine().pop_finalize_callback(this);
     }
 
-    void record_story_chunk(tl::request const& request, tl::bulk& b)
+
+    void receive_story_chunk(tl::request const& request, tl::bulk& b)
     {
         try
         {
@@ -113,7 +114,7 @@ private:
         : tl::provider<GrapherRecordingService>(tl_engine, service_provider_id)
         , theIngestionQueue(ingestion_queue)
     {
-        define("record_story_chunk", &GrapherRecordingService::record_story_chunk, tl::ignore_return_value());
+        define("receive_story_chunk", &GrapherRecordingService::receive_story_chunk);
         //set up callback for the case when the engine is being finalized while this provider is still alive
         get_engine().push_finalize_callback(this, [p = this]() { delete p; });
     }

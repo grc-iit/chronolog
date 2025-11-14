@@ -20,12 +20,13 @@ target_sources(chrono_keeper PRIVATE
     src/ChronoKeeperInstance.cpp
     src/StoryPipeline.cpp
     src/KeeperDataStore.cpp
-    src/CSVFileChunkExtractor.cpp
-    src/StoryChunkExtractorRDMA.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunkExtractor.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/include/StoryChunkExtractionModule.h
     ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunk.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/src/ConfigurationManager.cpp
     ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/src/ChunkExtractorCSV.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/src/ChunkExtractorRDMA.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/src/RDMATransferAgent.cpp
 )
 
 target_link_libraries(chrono_keeper chronolog_client thallium)
