@@ -160,6 +160,33 @@ docker ps
 
 <!--### 📦 Spack Installation-->
 
+## Documentation
+
+Comprehensive documentation and tutorials are available on our [Wiki](https://github.com/grc-iit/ChronoLog/wiki). The documentation covers everything from getting started to advanced configuration and deployment strategies.
+
+### 📚 Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Getting Started](https://github.com/grc-iit/ChronoLog/wiki/01.-Getting-Started) | Introduction and first steps with ChronoLog |
+| [Installation](https://github.com/grc-iit/ChronoLog/wiki/02.-Installation) | Detailed installation guides and requirements |
+| [Configuration](https://github.com/grc-iit/ChronoLog/wiki/03.-Configuration) | Configuration options and settings |
+| [Deployment](https://github.com/grc-iit/ChronoLog/wiki/04.-Deployment) | Deployment strategies and best practices |
+| [Client API](https://github.com/grc-iit/ChronoLog/wiki/05.-Client-API) | API reference and usage examples |
+| [Client Examples](https://github.com/grc-iit/ChronoLog/wiki/06.-Client-Examples) | Code examples and use cases |
+| [Architecture](https://github.com/grc-iit/ChronoLog/wiki/07.-Architecture) | System architecture and design principles |
+| [Plugins](https://github.com/grc-iit/ChronoLog/wiki/08.-Plugins) | Plugin development and integration |
+| [Code Style Guidelines](https://github.com/grc-iit/ChronoLog/wiki/09.-Code-Style-Guidelines) | Coding standards and conventions |
+| [Contributors Guidelines](https://github.com/grc-iit/ChronoLog/wiki/10.-Contributors-Guidelines) | Guidelines for contributing to ChronoLog |
+
+### 🎓 Tutorials
+
+| Tutorial | Description |
+|----------|-------------|
+| [Tutorial 1: First Steps with ChronoLog](https://github.com/grc-iit/ChronoLog/wiki/Tutorial-1:-First-Steps-with-ChronoLog) | Get started with your first ChronoLog deployment |
+| [Tutorial 2: How to run a Performance test](https://github.com/grc-iit/ChronoLog/wiki/Tutorial-2:-How-to-run-a-Performance-test) | Learn how to benchmark and test ChronoLog performance |
+| [Tutorial 3: Running ChronoLog with Docker (single node)](https://github.com/grc-iit/ChronoLog/wiki/Tutorial-3:-Running-ChronoLog-with-Docker-(single-node)) | Deploy ChronoLog on a single node using Docker |
+| [Tutorial 4: Running ChronoLog with Docker (Multi node)](https://github.com/grc-iit/ChronoLog/wiki/Tutorial-4:-Running-ChronoLog-with-Docker-(Multi-node)) | Deploy ChronoLog across multiple nodes using Docker |
 
 ## Collaborators
 
