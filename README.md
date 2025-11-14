@@ -95,33 +95,65 @@ Learn more detailed information about the project on ChronoLog's Wiki: https://g
 
 ### 🐳 Docker Installation <img src="https://img.shields.io/badge/Recommended-0097a7?style=flat&logoColor=white" alt="Recommended">
 
-The easiest way to get started with ChronoLog is using Docker. We provide both single-node and multi-node deployment options.
+#### Single-Node Deployment
 
-#### Single-Node Deployment (Recommended for Getting Started)
-
-Pull and run the ChronoLog Docker image:
+Pull Docker image:
 
 ```bash
 docker pull gnosisrc/chronolog:latest
+```
+
+Run container interactively:
+
+```bash
 docker run -it --rm --name chronolog-instance gnosisrc/chronolog:latest
 ```
 
-Inside the container, deploy ChronoLog components:
+Deploy components:
 
 ```bash
-cd /home/grc-iit/chronolog_repo/deploy
-./local_single_user_deploy.sh -d -w /home/grc-iit/chronolog_install/Release
+/home/grc-iit/chronolog_repo/deploy/local_single_user_deploy.sh -d -w /home/grc-iit/chronolog_install/Release
 ```
 
-Verify deployment with `pgrep -la chrono` to see all running components.
+Verify deployment:
+
+```bash
+pgrep -la chrono
+```
+**For detailed setup instructions, troubleshooting, and advanced configuration, see:** [Single-node Docker tutorial](https://github.com/grc-iit/ChronoLog/wiki/Tutorial-3:-Running-ChronoLog-with-Docker-(single-node))
 
 #### Multi-Node Deployment
 
-For distributed deployments, use Docker Compose with the automated deployment script. See the [multi-node tutorial](https://github.com/grc-iit/ChronoLog/wiki/Tutorial-4:-Running-ChronoLog-with-Docker-(Multi-node)) for detailed instructions.
+Pull Docker image:
 
-**For detailed setup instructions and troubleshooting, see:**
-- [Single-node Docker tutorial](https://github.com/grc-iit/ChronoLog/wiki/Tutorial-3:-Running-ChronoLog-with-Docker-(single-node))
-- [Multi-node Docker tutorial](https://github.com/grc-iit/ChronoLog/wiki/Tutorial-4:-Running-ChronoLog-with-Docker-(Multi-node))
+```bash
+docker pull gnosisrc/chronolog:latest
+```
+
+Download deployment script:
+
+```bash
+wget https://raw.githubusercontent.com/grc-iit/ChronoLog/refs/heads/develop/CI/docker/dynamic_deploy.sh
+```
+
+```bash
+chmod +x dynamic_deploy.sh
+```
+
+Run default deployment:
+
+```bash
+./dynamic_deploy.sh
+```
+
+Verify containers:
+
+```bash
+docker ps
+```
+
+**For detailed setup instructions, troubleshooting, and advanced configuration, see:**
+[Multi-node Docker tutorial](https://github.com/grc-iit/ChronoLog/wiki/Tutorial-4:-Running-ChronoLog-with-Docker-(Multi-node))
 
 ### 📦 Spack Installation
 
