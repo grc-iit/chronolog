@@ -25,14 +25,23 @@
 </p>
 
 <p align="center">
-  <strong>Created by:</strong><br>
-  <a href="https://www.iit.edu">Illinois Tech</a> &nbsp;&nbsp; <a href="https://www.uchicago.edu">UChicago</a>
-</p>
-
-<p align="center">
-  <strong>Supported by:</strong><br>
-  <a href="https://www.nsf.gov"><img src="doc/images/logos/nsf-fb7efe9286a9b499c5907d82af3e70fd.png" alt="National Science Foundation" width="80"></a><br>
-  National Science Foundation (NSF CSSI-2104013)
+  <strong>Created by:</strong><br><br>
+  <table align="center">
+    <tr>
+      <td align="center" style="padding: 0 20px;">
+        <a href="https://www.iit.edu">
+          <img src="doc/images/logos/IIT.png" alt="Illinois Tech" width="120"><br>
+          <strong>Illinois Tech</strong>
+        </a>
+      </td>
+      <td align="center" style="padding: 0 20px;">
+        <a href="https://www.uchicago.edu">
+          <img src="doc/images/logos/university-of-chicago.png" alt="UChicago" width="120"><br>
+          <strong>UChicago</strong>
+        </a>
+      </td>
+    </tr>
+  </table>
 </p>
 
 
@@ -267,3 +276,9 @@ Illinois Institute of Technology
 **Connect with us:**  
 🌐 [Website](https://grc.iit.edu) • 🐦 [X (Twitter)](https://twitter.com/grc_iit) • 💼 [LinkedIn](https://www.linkedin.com/school/gnosis-research-center) • 📺 [YouTube](https://www.youtube.com/@grc_iit) • ✉️ [Email](mailto:grc@illinoistech.edu)
 </div>
+<br>
+<p align="center">
+  <strong>Sponsored by:</strong><br>
+  <a href="https://www.nsf.gov"><img src="doc/images/logos/nsf-fb7efe9286a9b499c5907d82af3e70fd.png" alt="National Science Foundation" width="100"></a><br>
+  National Science Foundation (NSF CSSI-2104013)
+</p>
