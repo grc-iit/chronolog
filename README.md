@@ -28,13 +28,13 @@
   <strong>Members</strong><br><br>
   <table border="0" cellpadding="0" cellspacing="0" align="center">
     <tr>
-      <td align="center" style="padding: 0 30px; border: none;">
+      <td align="center" style="padding: 0 10px; border: none;">
         <a href="https://www.iit.edu">
           <img src="doc/images/logos/IIT.png" alt="Illinois Tech" width="120"><br>
           <strong>Illinois Tech</strong>
         </a>
       </td>
-      <td align="center" style="padding: 0 30px; border: none;">
+      <td align="center" style="padding: 0 10px; border: none;">
         <a href="https://www.uchicago.edu">
           <img src="doc/images/logos/university-of-chicago.png" alt="UChicago" width="120"><br>
           <strong>UChicago</strong>
