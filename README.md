@@ -89,12 +89,39 @@ Learn more detailed information about the project on ChronoLog's Wiki: https://g
 
 ## Installation
 
+> [!NOTE]
+> **ChronoLog is designed for deployment on distributed clusters and complex environments.**
+> For comprehensive installation guides, configuration details, and deployment strategies, please refer to our [detailed documentation on the Wiki](https://github.com/grc-iit/ChronoLog/wiki/).
+
 ### 🐳 Docker Installation <img src="https://img.shields.io/badge/Recommended-0097a7?style=flat&logoColor=white" alt="Recommended">
 
-<!-- Add your Docker installation instructions here -->
+The easiest way to get started with ChronoLog is using Docker. We provide both single-node and multi-node deployment options.
 
-### 🛠️ Manual Installation
-<!-- Add your Docker installation instructions here -->
+#### Single-Node Deployment (Recommended for Getting Started)
+
+Pull and run the ChronoLog Docker image:
+
+```bash
+docker pull gnosisrc/chronolog:latest
+docker run -it --rm --name chronolog-instance gnosisrc/chronolog:latest
+```
+
+Inside the container, deploy ChronoLog components:
+
+```bash
+cd /home/grc-iit/chronolog_repo/deploy
+./local_single_user_deploy.sh -d -w /home/grc-iit/chronolog_install/Release
+```
+
+Verify deployment with `pgrep -la chrono` to see all running components.
+
+#### Multi-Node Deployment
+
+For distributed deployments, use Docker Compose with the automated deployment script. See the [multi-node tutorial](https://github.com/grc-iit/ChronoLog/wiki/Tutorial-4:-Running-ChronoLog-with-Docker-(Multi-node)) for detailed instructions.
+
+**For detailed setup instructions and troubleshooting, see:**
+- [Single-node Docker tutorial](https://github.com/grc-iit/ChronoLog/wiki/Tutorial-3:-Running-ChronoLog-with-Docker-(single-node))
+- [Multi-node Docker tutorial](https://github.com/grc-iit/ChronoLog/wiki/Tutorial-4:-Running-ChronoLog-with-Docker-(Multi-node))
 
 ### 📦 Spack Installation
 
