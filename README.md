@@ -25,36 +25,35 @@
 </p>
 
 
-<p align="center">
-  Created by:
-</p>
-
-<p align="center">
-  <a href="https://www.iit.edu">
-    <img src="doc/images/logos/IIT.png" alt="Illinois Tech" width="80" ">
-  </a>
-  <a href="https://www.uchicago.edu">
-    <img src="doc/images/logos/university-of-chicago.png" alt="UChicago" width="80" ">
-  </a>
-</p>
-
-<p align="center">
-  <strong>Illinois Tech</strong> &nbsp;&nbsp;&nbsp; <strong>UChicago</strong>
-</p>
-
-<p align="center">
-  Supported by:
-</p>
-
-<p align="center">
-  <a href="https://www.nsf.gov">
-    <img src="doc/images/logos/nsf-fb7efe9286a9b499c5907d82af3e70fd.png" alt="National Science Foundation" width="100" ">
-  </a>
-</p>
-
-<p align="center">
-  <strong>National Science Foundation (NSF CSSI-2104013)</strong>
-</p>
+<table align="center" style="width: 100%; border: none;">
+  <tr>
+    <td align="center" style="width: 50%; border: none;">
+      <p><strong>Created by:</strong></p>
+      <p>
+        <a href="https://www.iit.edu">
+          <img src="doc/images/logos/IIT.png" alt="Illinois Tech" width="80">
+        </a>
+        <a href="https://www.uchicago.edu">
+          <img src="doc/images/logos/university-of-chicago.png" alt="UChicago" width="80">
+        </a>
+      </p>
+      <p>
+        <strong>Illinois Tech</strong> &nbsp;&nbsp;&nbsp; <strong>UChicago</strong>
+      </p>
+    </td>
+    <td align="center" style="width: 50%; border: none;">
+      <p><strong>Supported by:</strong></p>
+      <p>
+        <a href="https://www.nsf.gov">
+          <img src="doc/images/logos/nsf-fb7efe9286a9b499c5907d82af3e70fd.png" alt="National Science Foundation" width="100">
+        </a>
+      </p>
+      <p>
+        <strong>National Science Foundation (NSF CSSI-2104013)</strong>
+      </p>
+    </td>
+  </tr>
+</table>
 
 ## Overview
 
