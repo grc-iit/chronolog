@@ -24,37 +24,23 @@
   <a href="https://github.com/grc-iit/ChronoLog/releases/latest"><img alt="GitHub Release" src="https://img.shields.io/github/release/grc-iit/ChronoLog.svg" /></a>
 </p>
 
-<table width="100%" style="border: none; border-collapse: collapse;">
-<tr style="border: none;">
-<td align="center" style="border: none; padding: 0;">
-<p><strong>Created by:</strong></p>
-<p>
-<a href="https://www.iit.edu"><img src="doc/images/logos/IIT.png" alt="Illinois Tech" width="60"></a>
-<a href="https://www.uchicago.edu"><img src="doc/images/logos/university-of-chicago.png" alt="UChicago" width="60"></a>
+<p align="center">
+  <strong>Created by:</strong><br>
+  <a href="https://www.iit.edu">Illinois Tech</a> &nbsp;&nbsp; <a href="https://www.uchicago.edu">UChicago</a>
 </p>
-<p>Illinois Tech &nbsp;&nbsp; UChicago</p>
-</td>
-<td align="center" style="border: none; padding: 0;">
-<p><strong>Supported by:</strong></p>
-<p>
-<a href="https://www.nsf.gov"><img src="doc/images/logos/nsf-fb7efe9286a9b499c5907d82af3e70fd.png" alt="National Science Foundation" width="80"></a>
+
+<p align="center">
+  <strong>Supported by:</strong><br>
+  <a href="https://www.nsf.gov"><img src="doc/images/logos/nsf-fb7efe9286a9b499c5907d82af3e70fd.png" alt="National Science Foundation" width="80"></a><br>
+  National Science Foundation (NSF CSSI-2104013)
 </p>
-<p>National Science Foundation (NSF CSSI-2104013)</p>
-</td>
-</tr>
-</table>
+
 
 ## Overview
 
 **ChronoLog** is a distributed, tiered shared log storage system that provides scalable log storage with time-based data ordering and total log ordering guarantees. By leveraging physical time for data distribution and utilizing multiple storage tiers for elastic capacity scaling, ChronoLog eliminates the need for a central sequencer while maintaining high performance and scalability.
 
 The system's modular, plugin-based architecture serves as a foundation for building scalable applications, including SQL-like query engines, streaming processors, log-based key-value stores, and machine learning integration modules.
-
-<!--
-<p align="center">
-  <img src="doc/images/ChronoLogDesign.png" alt="ChronoLog Architecture" width="60%">
-</p>
--->
 
 ### Key Features
 
@@ -101,6 +87,121 @@ Learn more detailed information about the project on ChronoLog's Wiki: https://g
 </div>
 -->
 
+## Installation
+
+<div>
+  <input type="radio" id="tab-manual" name="install-tabs" checked>
+  <label for="tab-manual">Manual Installation</label>
+  <input type="radio" id="tab-docker" name="install-tabs">
+  <label for="tab-docker">Docker Installation</label>
+  
+  <div class="tab-content" id="content-manual">
+    
+### Prerequisites
+
+Before installing ChronoLog, ensure you have the following dependencies:
+
+- **CMake** (version 3.25 or higher)
+- **Spack** package manager
+- **C++ compiler** with C++17 support
+- **Thallium**, **spdlog**, and **HDF5** libraries (managed via Spack)
+
+### Step 1: Clone the Repository
+
+Clone the ChronoLog repository to your local machine:
+
+```bash
+git clone https://github.com/grc-iit/ChronoLog.git
+cd ChronoLog
+```
+
+### Step 2: Set Up Spack Environment
+
+Activate your Spack environment and install dependencies:
+
+```bash
+source /opt/spack/share/spack/setup-env.sh
+spack env activate -p .
+spack install
+```
+
+### Step 3: Build ChronoLog
+
+Configure and build ChronoLog using CMake:
+
+```bash
+mkdir -p build
+cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+cmake --build . --parallel $(nproc)
+```
+
+### Step 4: Install ChronoLog
+
+Install ChronoLog to the default location (`$HOME/chronolog-install`) or specify a custom path:
+
+```bash
+# Default installation
+cmake --install .
+
+# Or with custom install prefix
+cmake --install . --prefix /custom/install/path
+```
+
+The installation will place binaries in `$HOME/chronolog-install/chronolog/bin/` and libraries in `$HOME/chronolog-install/chronolog/lib/`.
+
+### Alternative: Using Build Script
+
+You can also use the provided build script for a streamlined installation:
+
+```bash
+./tools/deploy/ChronoLog/build.sh --build-type Release
+./tools/deploy/ChronoLog/install.sh
+```
+
+  </div>
+  
+  <div class="tab-content" id="content-docker">
+    <!-- Add your Docker installation instructions here -->
+    Test docker
+  </div>
+</div>
+
+<style>
+  div > input[type="radio"] {
+    display: none;
+  }
+  
+  div > label {
+    display: inline-block;
+    padding: 10px 20px;
+    margin-right: 5px;
+    cursor: pointer;
+    border: 1px solid #ddd;
+    border-bottom: none;
+    border-radius: 5px 5px 0 0;
+    background-color: #f5f5f5;
+  }
+  
+  div > input[type="radio"]:checked + label {
+    background-color: #fff;
+    border-bottom: 1px solid #fff;
+    margin-bottom: -1px;
+  }
+  
+  .tab-content {
+    display: none;
+    padding: 20px;
+    border: 1px solid #ddd;
+    border-radius: 0 5px 5px 5px;
+  }
+  
+  #tab-manual:checked ~ #content-manual,
+  #tab-docker:checked ~ #content-docker {
+    display: block;
+  }
+</style>
+
 ## Collaborators
 
 We are grateful for the collaboration and support from our research and industry partners.
@@ -127,7 +228,9 @@ We are grateful for the collaboration and support from our research and industry
 <br>
 
 ---
+
 <br>
+
 <div align="center">
 
 <img src="https://grc.iit.edu/img/logo.png" alt="Gnosis Research Center" width="60">
