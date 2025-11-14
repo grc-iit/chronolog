@@ -25,16 +25,16 @@
 </p>
 
 <p align="center">
-  <strong>Created by:</strong><br><br>
-  <table align="center">
+  <strong>Members</strong><br><br>
+  <table align="center" style="border: none; border-collapse: collapse;">
     <tr>
-      <td align="center" style="padding: 0 20px;">
+      <td align="center" style="padding: 0 20px; border: none;">
         <a href="https://www.iit.edu">
           <img src="doc/images/logos/IIT.png" alt="Illinois Tech" width="120"><br>
           <strong>Illinois Tech</strong>
         </a>
       </td>
-      <td align="center" style="padding: 0 20px;">
+      <td align="center" style="padding: 0 20px; border: none;">
         <a href="https://www.uchicago.edu">
           <img src="doc/images/logos/university-of-chicago.png" alt="UChicago" width="120"><br>
           <strong>UChicago</strong>
