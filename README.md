@@ -96,6 +96,7 @@ Learn more detailed information about the project on ChronoLog's Wiki: https://g
 ### 🐳 Docker Installation <img src="https://img.shields.io/badge/Recommended-0097a7?style=flat&logoColor=white" alt="Recommended">
 
 #### Single-Node Deployment
+![Single Node Docker Deployment](doc/images/docker-single-node.png)
 
 Pull Docker image:
 
@@ -123,6 +124,8 @@ pgrep -la chrono
 **For detailed setup instructions, troubleshooting, and advanced configuration, see:** [Single-node Docker tutorial](https://github.com/grc-iit/ChronoLog/wiki/Tutorial-3:-Running-ChronoLog-with-Docker-(single-node))
 
 #### Multi-Node Deployment
+
+![Multi Node Docker Deployment](doc/images/docker-multi-node.png)
 
 Pull Docker image:
 
