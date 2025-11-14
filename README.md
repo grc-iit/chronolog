@@ -146,7 +146,7 @@ chmod +x dynamic_deploy.sh
 Run default deployment:
 
 ```bash
-./dynamic_deploy.sh
+./dynamic_deploy.sh -n 7 -k 2 -g 2 -p 2
 ```
 
 Verify containers:
