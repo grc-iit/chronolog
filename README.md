@@ -24,31 +24,30 @@
   <a href="https://github.com/grc-iit/ChronoLog/releases/latest"><img alt="GitHub Release" src="https://img.shields.io/github/release/grc-iit/ChronoLog.svg" /></a>
 </p>
 
-
 <div align="center">
-  <div style="display: inline-block; vertical-align: top; margin: 0 40px;">
-    <p>Created by:</p>
-    <p>
+  <div style="display: inline-block; vertical-align: top; margin: 0 20px;">
+    <p style="margin: 0; font-size: 0.9em;">Created by:</p>
+    <p style="margin: 5px 0;">
       <a href="https://www.iit.edu">
-        <img src="doc/images/logos/IIT.png" alt="Illinois Tech" width="80">
+        <img src="doc/images/logos/IIT.png" alt="Illinois Tech" width="50">
       </a>
       <a href="https://www.uchicago.edu">
-        <img src="doc/images/logos/university-of-chicago.png" alt="UChicago" width="80">
+        <img src="doc/images/logos/university-of-chicago.png" alt="UChicago" width="50">
       </a>
     </p>
-    <p>
-      Illinois Tech &nbsp;&nbsp;&nbsp; UChicago
+    <p style="margin: 0; font-size: 0.85em;">
+      Illinois Tech &nbsp;&nbsp; UChicago
     </p>
   </div>
-  <div style="display: inline-block; vertical-align: top; margin: 0 40px;">
-    <p>Supported by:</p>
-    <p>
+  <div style="display: inline-block; vertical-align: top; margin: 0 20px;">
+    <p style="margin: 0; font-size: 0.9em;">Supported by:</p>
+    <p style="margin: 5px 0;">
       <a href="https://www.nsf.gov">
-        <img src="doc/images/logos/nsf-fb7efe9286a9b499c5907d82af3e70fd.png" alt="National Science Foundation" width="80">
+        <img src="doc/images/logos/nsf-fb7efe9286a9b499c5907d82af3e70fd.png" alt="National Science Foundation" width="60">
       </a>
     </p>
-    <p>
-      National Science Foundation (NSF CSSI-2104013)
+    <p style="margin: 0; font-size: 0.85em;">
+      National Science Foundation<br>(NSF CSSI-2104013)
     </p>
   </div>
 </div>
