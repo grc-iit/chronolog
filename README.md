@@ -27,7 +27,7 @@
 
 <div align="center">
   <div style="display: inline-block; vertical-align: top; margin: 0 40px;">
-    <p><strong>Created by:</strong></p>
+    <p>Created by:</p>
     <p>
       <a href="https://www.iit.edu">
         <img src="doc/images/logos/IIT.png" alt="Illinois Tech" width="80">
@@ -37,18 +37,18 @@
       </a>
     </p>
     <p>
-      <strong>Illinois Tech</strong> &nbsp;&nbsp;&nbsp; <strong>UChicago</strong>
+      Illinois Tech &nbsp;&nbsp;&nbsp; UChicago
     </p>
   </div>
   <div style="display: inline-block; vertical-align: top; margin: 0 40px;">
-    <p><strong>Supported by:</strong></p>
+    <p>Supported by:</p>
     <p>
       <a href="https://www.nsf.gov">
-        <img src="doc/images/logos/nsf-fb7efe9286a9b499c5907d82af3e70fd.png" alt="National Science Foundation" width="100">
+        <img src="doc/images/logos/nsf-fb7efe9286a9b499c5907d82af3e70fd.png" alt="National Science Foundation" width="80">
       </a>
     </p>
     <p>
-      <strong>National Science Foundation (NSF CSSI-2104013)</strong>
+      National Science Foundation (NSF CSSI-2104013)
     </p>
   </div>
 </div>
