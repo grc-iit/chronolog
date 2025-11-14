@@ -26,22 +26,20 @@
 
 <p align="center">
   <strong>Members</strong><br><br>
-  <table align="center" style="border: none; border-collapse: collapse;">
-    <tr>
-      <td align="center" style="padding: 0 20px; border: none;">
-        <a href="https://www.iit.edu">
-          <img src="doc/images/logos/IIT.png" alt="Illinois Tech" width="120"><br>
-          <strong>Illinois Tech</strong>
-        </a>
-      </td>
-      <td align="center" style="padding: 0 20px; border: none;">
-        <a href="https://www.uchicago.edu">
-          <img src="doc/images/logos/university-of-chicago.png" alt="UChicago" width="120"><br>
-          <strong>UChicago</strong>
-        </a>
-      </td>
-    </tr>
-  </table>
+  <div style="text-align: center;">
+    <span style="display: inline-block; margin: 0 20px; text-align: center;">
+      <a href="https://www.iit.edu">
+        <img src="doc/images/logos/IIT.png" alt="Illinois Tech" width="120"><br>
+        <strong>Illinois Tech</strong>
+      </a>
+    </span>
+    <span style="display: inline-block; margin: 0 20px; text-align: center;">
+      <a href="https://www.uchicago.edu">
+        <img src="doc/images/logos/university-of-chicago.png" alt="UChicago" width="120"><br>
+        <strong>UChicago</strong>
+      </a>
+    </span>
+  </div>
 </p>
 
 
