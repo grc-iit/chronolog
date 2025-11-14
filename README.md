@@ -89,7 +89,7 @@ Learn more detailed information about the project on ChronoLog's Wiki: https://g
 
 ## Installation
 
-### 🐳 Docker Installation <img src="https://img.shields.io/badge/Recommended-0097a7?style=flat&logo=docker&logoColor=white" alt="Recommended">
+### 🐳 Docker Installation <img src="https://img.shields.io/badge/Recommended-0097a7?style=flat&logoColor=white" alt="Recommended">
 
 <!-- Add your Docker installation instructions here -->
 
