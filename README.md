@@ -52,15 +52,15 @@ ChronoLog is built on four foundational pillars:
 
 ChronoLog's flexible architecture supports a wide range of applications:
 
-- **SQL-like Query Engine** — Query and analyze log data with SQL semantics, leveraging time-based data distribution for efficient processing.
+- **AI & LLM Integration** — MCP server for seamless LLM integration with enterprise logging and real-time event processing.
 
-- **Streaming Processor** — Real-time event processing and analytics on time-ordered log streams for monitoring, alerting, and data pipeline applications.
+- **Machine Learning & Training** — TensorFlow module for training and inference workflows using time-ordered data streams.
 
-- **Log-based Key-Value Store** — Build distributed key-value stores on ChronoLog's ordered log abstraction with strong consistency guarantees.
+- **SQL-like Query Engine** — Query and analyze log data with SQL semantics and time-based distribution.
 
-- **Machine Learning Integration** — TensorFlow module for training and inference workflows using time-ordered data streams.
+- **Streaming Processor** — Real-time event processing and analytics for monitoring, alerting, and data pipelines.
 
-- **Enterprise Logging** — Enterprise-grade logging with real-time event processing and structured interaction management via the MCP server.
+- **Log-based Key-Value Store** — Distributed key-value stores with strong consistency guarantees.
 
 For more information, visit [chronolog.dev](https://www.chronolog.dev).
 
@@ -130,5 +130,5 @@ Illinois Institute of Technology
 *Advancing the Future of Scalable Computing and Data-Driven Discovery*
 
 **Connect with us:**  
-🌐 [Website](https://grc.iit.edu) • 🐦 [X (Twitter)](https://twitter.com/grc_iit) • 💼 [LinkedIn](https://www.linkedin.com/school/gnosis-research-center) • 📺 [YouTube](https://www.youtube.com/@grc-iit) • ✉️ [Email](mailto:grc@illinoistech.edu)
+🌐 [Website](https://grc.iit.edu) • 🐦 [X (Twitter)](https://twitter.com/grc_iit) • 💼 [LinkedIn](https://www.linkedin.com/school/gnosis-research-center) • 📺 [YouTube](https://www.youtube.com/@grc_iit) • ✉️ [Email](mailto:grc@illinoistech.edu)
 </div>
