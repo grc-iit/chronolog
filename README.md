@@ -89,118 +89,16 @@ Learn more detailed information about the project on ChronoLog's Wiki: https://g
 
 ## Installation
 
-<div>
-  <input type="radio" id="tab-manual" name="install-tabs" checked>
-  <label for="tab-manual">Manual Installation</label>
-  <input type="radio" id="tab-docker" name="install-tabs">
-  <label for="tab-docker">Docker Installation</label>
-  
-  <div class="tab-content" id="content-manual">
-    
-### Prerequisites
+### 🐳 Docker Installation <span style="background-color:#e0f7fa;color:#00796b;font-size:0.9em;border-radius:4px;padding:2px 6px;margin-left:10px;">Recommended</span>
 
-Before installing ChronoLog, ensure you have the following dependencies:
+<!-- Add your Docker installation instructions here -->
 
-- **CMake** (version 3.25 or higher)
-- **Spack** package manager
-- **C++ compiler** with C++17 support
-- **Thallium**, **spdlog**, and **HDF5** libraries (managed via Spack)
+### 🛠️ Manual Installation
+<!-- Add your Docker installation instructions here -->
 
-### Step 1: Clone the Repository
+### 📦 Spack Installation
 
-Clone the ChronoLog repository to your local machine:
 
-```bash
-git clone https://github.com/grc-iit/ChronoLog.git
-cd ChronoLog
-```
-
-### Step 2: Set Up Spack Environment
-
-Activate your Spack environment and install dependencies:
-
-```bash
-source /opt/spack/share/spack/setup-env.sh
-spack env activate -p .
-spack install
-```
-
-### Step 3: Build ChronoLog
-
-Configure and build ChronoLog using CMake:
-
-```bash
-mkdir -p build
-cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-cmake --build . --parallel $(nproc)
-```
-
-### Step 4: Install ChronoLog
-
-Install ChronoLog to the default location (`$HOME/chronolog-install`) or specify a custom path:
-
-```bash
-# Default installation
-cmake --install .
-
-# Or with custom install prefix
-cmake --install . --prefix /custom/install/path
-```
-
-The installation will place binaries in `$HOME/chronolog-install/chronolog/bin/` and libraries in `$HOME/chronolog-install/chronolog/lib/`.
-
-### Alternative: Using Build Script
-
-You can also use the provided build script for a streamlined installation:
-
-```bash
-./tools/deploy/ChronoLog/build.sh --build-type Release
-./tools/deploy/ChronoLog/install.sh
-```
-
-  </div>
-  
-  <div class="tab-content" id="content-docker">
-    <!-- Add your Docker installation instructions here -->
-    Test docker
-  </div>
-</div>
-
-<style>
-  div > input[type="radio"] {
-    display: none;
-  }
-  
-  div > label {
-    display: inline-block;
-    padding: 10px 20px;
-    margin-right: 5px;
-    cursor: pointer;
-    border: 1px solid #ddd;
-    border-bottom: none;
-    border-radius: 5px 5px 0 0;
-    background-color: #f5f5f5;
-  }
-  
-  div > input[type="radio"]:checked + label {
-    background-color: #fff;
-    border-bottom: 1px solid #fff;
-    margin-bottom: -1px;
-  }
-  
-  .tab-content {
-    display: none;
-    padding: 20px;
-    border: 1px solid #ddd;
-    border-radius: 0 5px 5px 5px;
-  }
-  
-  #tab-manual:checked ~ #content-manual,
-  #tab-docker:checked ~ #content-docker {
-    display: block;
-  }
-</style>
 
 ## Collaborators
 
