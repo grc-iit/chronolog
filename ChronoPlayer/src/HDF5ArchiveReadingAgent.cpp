@@ -133,7 +133,12 @@ int chronolog::HDF5ArchiveReadingAgent::readStoryChunkFile(const ChronicleName& 
                   storyName,
                   formatWithCommas(startTime),
                   formatWithCommas(endTime));
-        story_chunk = new StoryChunk(chronicleName, storyName, 0, startTime, endTime);
+        uint64_t story_id = 0;
+        if(!data.empty())
+        {
+            story_id = data[0].storyId;
+        }
+        story_chunk = new StoryChunk(chronicleName, storyName, story_id, startTime, endTime);
         for(auto const& event_hvl: data)
         {
             if(event_hvl.eventTime < startTime)
@@ -146,7 +151,7 @@ int chronolog::HDF5ArchiveReadingAgent::readStoryChunkFile(const ChronicleName& 
             }
             if(event_hvl.eventTime >= endTime)
             {
-                LOG_DEBUG("[HDF5ArchiveReadingAgent] Stopping reading events at time {} outside range {}-{}",
+                LOG_DEBUG("[HDF5ArchiveReadingAgent] Stopping reading events with time {} outside range {}-{}",
                           formatWithCommas(event_hvl.eventTime),
                           formatWithCommas(startTime),
                           formatWithCommas(endTime));
@@ -159,7 +164,22 @@ int chronolog::HDF5ArchiveReadingAgent::readStoryChunkFile(const ChronicleName& 
                            event_hvl.clientId,
                            event_hvl.eventIndex,
                            std::string(static_cast<char*>(event_hvl.logRecord.p), event_hvl.logRecord.len));
-            story_chunk->insertEvent(event);
+            if(story_chunk->insertEvent(event) == 0)
+            {
+                LOG_WARNING("[HDF5ArchiveReadingAgent] Failed to insert event with time {} into StoryChunk {}-{}",
+                            formatWithCommas(event_hvl.eventTime),
+                            chronicleName,
+                            storyName);
+            }
+            else
+            {
+                LOG_DEBUG("[HDF5ArchiveReadingAgent] Inserted a new event with time {} into StoryChunk {}-{}, "
+                          "the chunk has {} events now",
+                          formatWithCommas(event_hvl.eventTime),
+                          chronicleName,
+                          storyName,
+                          story_chunk->getEventCount());
+            }
         }
 
         if(story_chunk->getEventCount() > 0)
