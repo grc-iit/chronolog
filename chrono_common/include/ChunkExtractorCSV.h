@@ -14,7 +14,7 @@ class StoryChunkExtractorCSV
 {
 
 public:
-    StoryChunkExtractorCSV(ServiceId const & service_id, std::string const &csv_files_dir);
+    StoryChunkExtractorCSV(ServiceId const& service_id, std::string const& csv_files_dir);
 
     StoryChunkExtractorCSV() = default;
 
@@ -23,10 +23,8 @@ public:
 private:
     ServiceId serviceId;
     std::string outputDirectory;
-
-
 };
 
 
-}
+} // namespace chronolog
 #endif
