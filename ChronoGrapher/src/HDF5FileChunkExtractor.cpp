@@ -1,40 +1,45 @@
 #include <string>
 #include <thallium.hpp>
 
+#include <StoryChunk.h>
 #include <StoryChunkWriter.h>
-
-#include "HDF5FileChunkExtractor.h"
+#include <HDF5FileChunkExtractor.h>
 
 namespace tl = thallium;
 
-namespace chronolog
-{
-HDF5FileChunkExtractor::HDF5FileChunkExtractor(const std::string& chrono_process_id_card,
-                                               const std::string& hdf5_files_root_dir)
-    : chrono_process_id(chrono_process_id_card)
-    , rootDirectory(hdf5_files_root_dir)
-{}
+namespace chl = chronolog;
 
-HDF5FileChunkExtractor::~HDF5FileChunkExtractor()
+chronolog::HDF5FileChunkExtractor::HDF5FileChunkExtractor( const std::string& hdf5_files_root_dir)
+    :rootDirectory(hdf5_files_root_dir)
 {
-    LOG_INFO("[HDF5FileChunkExtractor] Destructor called. Cleaning up...");
+    LOG_DEBUG("[HDF5FileChunkExtractor] Destructor called. Cleaning up...");
 }
 
-int HDF5FileChunkExtractor::processStoryChunk(StoryChunk* story_chunk)
+chronolog::HDF5FileChunkExtractor::~HDF5FileChunkExtractor()
 {
-    LOG_INFO("[HDF5FileChunkExtractor] Writing StoryChunk...");
+    LOG_DEBUG("[HDF5FileChunkExtractor] Destructor called. Cleaning up...");
+}
+
+int chronolog::HDF5FileChunkExtractor::process_chunk(chl::StoryChunk* story_chunk)
+{
+    LOG_INFO("[HDF5FileChunkExtractor] tl::thread_id={} processing chunk StoryId={} {}-{} {}-{} eventCount {}",
+                        thallium::thread::self_id(), story_chunk->getStoryId(),
+                        story_chunk->getChronicleName(),story_chunk->getStoryName(),story_chunk->getStartTime(), story_chunk->getEndTime(),story_chunk->getEventCount());
+
     StoryChunkWriter chunkWriter(rootDirectory, "story_chunks", "data");
     hsize_t size = chunkWriter.writeStoryChunk(*story_chunk);
-    int ret = (size == 0) ? chronolog::CL_ERR_UNKNOWN : chronolog::CL_SUCCESS;
     if(size == 0)
     {
-        LOG_ERROR("[HDF5FileChunkExtractor] Error writing StoryChunk to file.");
+        LOG_ERROR("[HDF5FileChunkExtractor] Error writing StoryChunk to file: StoryId={} {}-{} {}-{} eventCount {}",
+            story_chunk->getStoryId(),
+            story_chunk->getChronicleName(),story_chunk->getStoryName(),story_chunk->getStartTime(), story_chunk->getEndTime(),story_chunk->getEventCount());
+        return chl::CL_ERR_UNKNOWN;
     }
     else
     {
-        LOG_INFO("[HDF5FileChunkExtractor] StoryChunk written to file.");
+        LOG_INFO("[HDF5FileChunkExtractor] StoryChunk written to file: StoryId={} {}-{} {}-{} eventCount {}",
+            story_chunk->getStoryId(),
+            story_chunk->getChronicleName(),story_chunk->getStoryName(),story_chunk->getStartTime(), story_chunk->getEndTime(),story_chunk->getEventCount());
+        return chl::CL_SUCCESS;
     }
-    LOG_DEBUG("[HDF5FileChunkExtractor] Finished processing StoryChunk.");
-    return ret;
 }
-} // namespace chronolog
