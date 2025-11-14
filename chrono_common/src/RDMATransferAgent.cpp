@@ -47,7 +47,7 @@ return ret_value;
 }
 
 ///////////////////////////////////
-int chronolog::RDMATransferAgent::transfer_serialized_bulk( std::string const& serialized_story_chunk)
+int chronolog::RDMATransferAgent::transfer_serialized_story_chunk( std::string const& serialized_story_chunk)
 {
     try
     {
