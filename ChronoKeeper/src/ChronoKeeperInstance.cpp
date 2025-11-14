@@ -172,19 +172,16 @@ int main(int argc, char** argv)
     catch(tl::exception const&)
     {
         LOG_ERROR("[ChronoKeeperInstance] Keeper failed to create extraction engine");
-        return(-1);
+        return (-1);
     }
 
     chl::ServiceId grapherReceivingServiceId(KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.PROTO_CONF,
-                        KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP,
-                        KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT,
-                        KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.SERVICE_PROVIDER_ID);
+                                             KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP,
+                                             KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT,
+                                             KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.SERVICE_PROVIDER_ID);
 
-    chl::StoryChunkExtractorRDMA  single_endpoint_rdma_extractor(*extractionEngine, grapherReceivingServiceId);
-    chronolog::StoryChunkExtractionModule extractionModule(
-            chl::LoggingExtractor(), 
-            single_endpoint_rdma_extractor
-            );
+    chl::StoryChunkExtractorRDMA single_endpoint_rdma_extractor(*extractionEngine, grapherReceivingServiceId);
+    chronolog::StoryChunkExtractionModule extractionModule(chl::LoggingExtractor(), single_endpoint_rdma_extractor);
 
     chronolog::KeeperDataStore theDataStore(ingestionQueue,
                                             extractionModule.getExtractionQueue(),
