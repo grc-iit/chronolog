@@ -163,10 +163,7 @@ int main(int argc, char** argv)
     chl::LoggingExtractor logging_extractor;
     chl::HDF5FileChunkExtractor hdf5_extractor(archive_directory);
 
-    chronolog::StoryChunkExtractionModule extractionModule(
-            logging_extractor,
-            hdf5_extractor
-            );
+    chronolog::StoryChunkExtractionModule extractionModule(logging_extractor, hdf5_extractor);
 
     chronolog::GrapherDataStore theDataStore(ingestionQueue,
                                              extractionModule.getExtractionQueue(),

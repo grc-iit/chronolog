@@ -12,7 +12,7 @@ class StoryChunk;
 class HDF5FileChunkExtractor
 {
 public:
-    HDF5FileChunkExtractor( std::string const& hdf5_files_root_dir);
+    HDF5FileChunkExtractor(std::string const& hdf5_files_root_dir);
 
     ~HDF5FileChunkExtractor();
 
