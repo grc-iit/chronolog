@@ -10,7 +10,6 @@ namespace tl = thallium;
 
 void chronolog::StoryChunkExtractorBase::startExtractionThreads(int stream_count)
 {
-    std::lock_guard lock(extractorMutex);
 
     if(extractorState == RUNNING)
     {
@@ -38,7 +37,6 @@ void chronolog::StoryChunkExtractorBase::startExtractionThreads(int stream_count
 
 void chronolog::StoryChunkExtractorBase::shutdownExtractionThreads()
 {
-    std::lock_guard lock(extractorMutex);
 
     if(extractorState == SHUTTING_DOWN)
     {
@@ -61,6 +59,7 @@ chronolog::StoryChunkExtractorBase::~StoryChunkExtractorBase()
 {
     LOG_DEBUG("[StoryChunkExtractionBase] Destructor called. Initiating shutdown sequence.");
 
+    drainExtractionQueue();
     shutdownExtractionThreads();
 
     extractionThreads.clear();
@@ -114,6 +113,6 @@ void chronolog::StoryChunkExtractorBase::drainExtractionQueue()
                 chunkExtractionQueue.stashStoryChunk(storyChunk);
             }
         }
-        sleep(3);
+        sleep(1);
     }
 }
