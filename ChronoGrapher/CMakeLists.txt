@@ -28,8 +28,11 @@ target_sources(chrono_grapher PRIVATE
     ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
 )
 
-target_link_libraries(chrono_grapher chronolog_client thallium)
-target_link_libraries(chrono_grapher ${HDF5_LIBRARIES})
+target_link_libraries(chrono_grapher 
+    chronolog_client 
+    thallium
+    ${HDF5_LIBRARIES}
+)
 
 set_target_properties(chrono_grapher PROPERTIES
     BUILD_WITH_INSTALL_RPATH TRUE

@@ -9,7 +9,10 @@ message("build target : client_admin")
 
 add_executable(client_admin client_admin.cpp)
 
-target_link_libraries(client_admin chronolog_client ${MPI_CXX_LIBRARIES})
+target_link_libraries(client_admin 
+    chronolog_client 
+    ${MPI_CXX_LIBRARIES}
+)
 
 set_target_properties(client_admin PROPERTIES
     BUILD_WITH_INSTALL_RPATH TRUE

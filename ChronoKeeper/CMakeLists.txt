@@ -29,7 +29,10 @@ target_sources(chrono_keeper PRIVATE
     ${CMAKE_SOURCE_DIR}/chrono_common/src/RDMATransferAgent.cpp
 )
 
-target_link_libraries(chrono_keeper chronolog_client thallium)
+target_link_libraries(chrono_keeper 
+    chronolog_client 
+    thallium
+)
 
 set_target_properties(chrono_keeper PROPERTIES
     BUILD_WITH_INSTALL_RPATH TRUE

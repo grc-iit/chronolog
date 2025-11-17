@@ -30,7 +30,10 @@ target_include_directories(chronovisor_server PRIVATE
     include
 )
 
-target_link_libraries(chronovisor_server chronolog_client thallium)
+target_link_libraries(chronovisor_server 
+    chronolog_client 
+    thallium
+)
 
 set_target_properties(chronovisor_server PROPERTIES
     BUILD_WITH_INSTALL_RPATH TRUE

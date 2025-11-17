@@ -5,9 +5,6 @@ cmake_minimum_required(VERSION 3.25)
 message("Building CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
 message("build target : ChronoStore Tests")
 
-include_directories(${CMAKE_SOURCE_DIR}/ChronoStore/include)
-include_directories(${HDF5_INCLUDE_DIRS})
-
 # JSON-based archiver implementation
 add_executable(hdf5_archiver_test
     hdf5_archiver_test.cpp
@@ -21,15 +18,19 @@ add_executable(hdf5_archiver_test
 )
 
 target_include_directories(hdf5_archiver_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/ChronoStore/include
     ${CMAKE_SOURCE_DIR}/ChronoKeeper
     ${CMAKE_SOURCE_DIR}/chrono_common/include
     ${CMAKE_SOURCE_DIR}/Client/cpp/include
     ${CMAKE_SOURCE_DIR}/ChronoKeeper/include
+    ${HDF5_INCLUDE_DIRS}
     .
 )
 
-target_link_libraries(hdf5_archiver_test ${HDF5_LIBRARIES})
-target_link_libraries(hdf5_archiver_test thallium)
+target_link_libraries(hdf5_archiver_test 
+    ${HDF5_LIBRARIES} 
+    thallium
+)
 add_test(NAME hdf5_archiver_test COMMAND hdf5_archiver_test)
 
 # compound-vlen-string-based archiver implementation
@@ -62,6 +63,10 @@ add_executable(cmp_vlen_bytes_vs_blob_map
 )
 target_include_directories(cmp_vlen_bytes_vs_blob_map PRIVATE
     ${CMAKE_SOURCE_DIR}/Client/cpp/include
+    ${CMAKE_SOURCE_DIR}/chrono_common/include
 )
-target_link_libraries(cmp_vlen_bytes_vs_blob_map ${HDF5_LIBRARIES} thallium)
+target_link_libraries(cmp_vlen_bytes_vs_blob_map 
+    ${HDF5_LIBRARIES} 
+    thallium
+)
 add_test(NAME cmp_vlen_bytes_vs_blob_map COMMAND cmp_vlen_bytes_vs_blob_map)
