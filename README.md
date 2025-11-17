@@ -195,7 +195,7 @@ Comprehensive documentation and tutorials are available on our [Wiki](https://gi
 | [Tutorial 1: First Steps with ChronoLog](https://github.com/grc-iit/ChronoLog/wiki/Tutorial-1:-First-Steps-with-ChronoLog) | Get started with your first ChronoLog deployment |
 | [Tutorial 2: How to run a Performance test](https://github.com/grc-iit/ChronoLog/wiki/Tutorial-2:-How-to-run-a-Performance-test) | Learn how to benchmark and test ChronoLog performance |
 | [Tutorial 3: Running ChronoLog with Docker (single node)](https://github.com/grc-iit/ChronoLog/wiki/Tutorial-3:-Running-ChronoLog-with-Docker-(single-node)) | Deploy ChronoLog on a single node using Docker |
-| [Tutorial 4: Running ChronoLog with Docker (Multi node)](https://github.com/grc-iit/ChronoLog/wiki/Tutorial-4:-Running-ChronoLog-with-Docker-(Multi-node)) | Deploy ChronoLog across multiple nodes using Docker |
+| [Tutorial 4: Running ChronoLog with Docker (Multi-Node)](https://github.com/grc-iit/ChronoLog/wiki/Tutorial-4:-Running-ChronoLog-with-Docker-(Multi-node)) | Deploy ChronoLog across multiple nodes using Docker |
 
 ## Collaborators
 
