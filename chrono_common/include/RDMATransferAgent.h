@@ -37,8 +37,7 @@ public:
 
     ~RDMATransferAgent();
 
-    //    int transfer_story_chunk(StoryChunk*story_chunk);
-    int transfer_serialized_bulk(std::string const& chunk);
+    int transfer_serialized_story_chunk(std::string const& chunk);
     bool is_receiver_available() const;
 
 private:

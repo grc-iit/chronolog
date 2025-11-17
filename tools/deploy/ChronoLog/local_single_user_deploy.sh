@@ -69,14 +69,14 @@ stop_service() {
         if pgrep -f "${bin}" >/dev/null; then
             echo -e "${DEBUG}Waiting for ${bin} to stop...${NC}"
         else
-            echo -e "${DEBUG}All service processes stopped gracefully.${NC}"
+            echo -e "${DEBUG}All ${bin} processes stopped gracefully.${NC}"
             break
         fi
         sleep 10
         # Check if timeout is reached
         local current_time=$(date +%s)
         if (( current_time - start_time >= timeout )); then
-            echo -e "${DEBUG}Timeout reached while stopping processes. Forcing termination.${NC}"
+            echo -e "${DEBUG}Timeout reached while stopping ${bin} processes. Forcing termination.${NC}"
             if pgrep -f "${bin}" >/dev/null; then
                 kill_service ${bin}
                 echo -e "${DEBUG}Killed: ${bin} ${NC}"
@@ -370,7 +370,7 @@ stop() {
     stop_service ${KEEPER_BIN} 100
     stop_service ${GRAPHER_BIN} 100
     stop_service ${VISOR_BIN} 100
-    echo -e "${INFO}ChronoLog stopped.${NC}"
+    echo -e "${INFO}All ChronoLog processes stopped.${NC}"
 }
 
 clean() {

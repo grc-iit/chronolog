@@ -51,7 +51,7 @@ bool chronolog::RDMATransferAgent::is_receiver_available() const
 }
 
 ///////////////////////////////////
-int chronolog::RDMATransferAgent::transfer_serialized_bulk(std::string const& serialized_story_chunk)
+int chronolog::RDMATransferAgent::transfer_serialized_story_chunk(std::string const& serialized_story_chunk)
 {
     try
     {
