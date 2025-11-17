@@ -165,7 +165,7 @@ docker ps
 ```
 
 **For detailed setup instructions, troubleshooting, and advanced configuration, see:**
-[Multi-node Docker tutorial](https://github.com/grc-iit/ChronoLog/wiki/Tutorial-4:-Running-ChronoLog-with-Docker-(Multi-node))
+[Multi-Node Docker tutorial](https://github.com/grc-iit/ChronoLog/wiki/Tutorial-4:-Running-ChronoLog-with-Docker-(Multi-node))
 
 <!--### 📦 Spack Installation-->
 
