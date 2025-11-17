@@ -3,23 +3,22 @@
 
 #include <string>
 
-#include <StoryChunk.h>
-#include <StoryChunkExtractor.h>
 
 namespace chronolog
 {
 
-class HDF5FileChunkExtractor: public StoryChunkExtractorBase
+class StoryChunk;
+
+class HDF5FileChunkExtractor
 {
 public:
-    HDF5FileChunkExtractor(std::string const& chrono_process_id_card, std::string const& hdf5_files_root_dir);
+    HDF5FileChunkExtractor(std::string const& hdf5_files_root_dir);
 
     ~HDF5FileChunkExtractor();
 
-    virtual int processStoryChunk(StoryChunk*);
+    int process_chunk(StoryChunk*);
 
 private:
-    std::string chrono_process_id;
     std::string rootDirectory;
 };
 
