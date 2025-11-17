@@ -25,7 +25,9 @@ target_include_directories(extract_test PRIVATE
     ${CMAKE_SOURCE_DIR}/chrono_common/include
 )
 
-target_link_libraries(extract_test thallium)
+target_link_libraries(extract_test 
+    thallium
+)
 message("build target : extract_test")
 
 add_executable(ingest_test)
@@ -42,7 +44,9 @@ target_include_directories(ingest_test PRIVATE
     ${CMAKE_SOURCE_DIR}/chrono_common/include
 )
 
-target_link_libraries(ingest_test thallium)
+target_link_libraries(ingest_test 
+    thallium
+)
 message("build target : ingest_test")
 
 configure_file(${CMAKE_SOURCE_DIR}/default_conf.json.in
