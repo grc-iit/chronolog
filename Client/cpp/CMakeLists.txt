@@ -3,12 +3,13 @@ cmake_minimum_required(VERSION 3.25)
 find_package(Thallium REQUIRED)
 find_package(spdlog REQUIRED)
 
-#message("ChronologClient CMakeLists - CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}")
-#message("ChronologClient CMakeLists - CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
-message("Building CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
-message("build target : chronolog_client")
+# json-c is needed because ClientConfiguration.h (public header) includes json-c/json.h
+# PkgConfig is already found in root CMakeLists.txt, but we check for json-c here
+pkg_check_modules(JSON-C REQUIRED json-c)
 
-
+#------------------------------------------------------------------------------
+# chronolog_client Library
+#------------------------------------------------------------------------------
 add_library(chronolog_client
     include/chronolog_client.h
     src/ChronologClientImpl.h
@@ -25,15 +26,48 @@ add_library(chronolog_client
 )
 
 # Include directories for the library
-target_include_directories(chronolog_client PUBLIC
-    include
-    ${CMAKE_SOURCE_DIR}/chrono_common/include
-    ${CMAKE_SOURCE_DIR}/Client/cpp/include
+# PUBLIC: Headers needed by consumers of this library
+# Use generator expressions to handle build vs install interfaces
+target_include_directories(chronolog_client
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:${CHRONOLOG_INSTALL_INCLUDE_DIR}>
+        # json-c and spdlog are PUBLIC because public headers include them
+        ${JSON-C_INCLUDE_DIRS}
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/chrono_common/include
+        ${CMAKE_SOURCE_DIR}/Client/cpp/include
 )
 
-target_link_libraries(chronolog_client thallium)
+# Link dependencies
+# thallium is PRIVATE - it's an implementation detail, not part of the public API
+# json-c is PRIVATE - only library implementation needs to link, consumers just need headers
+target_link_directories(chronolog_client
+    PRIVATE
+        ${JSON-C_LIBRARY_DIRS}
+)
 
-################################
+target_link_libraries(chronolog_client
+    PRIVATE
+        thallium
+        ${JSON-C_LIBRARIES}
+)
+
+# Link spdlog as PUBLIC since ClientConfiguration.h and chrono_monitor.h include spdlog headers
+# Consumers of this library need spdlog includes
+if(TARGET spdlog::spdlog)
+    target_link_libraries(chronolog_client
+        PUBLIC
+            spdlog::spdlog
+    )
+else()
+    # Fallback: manually add spdlog include directories if target not available
+    target_include_directories(chronolog_client
+        PUBLIC
+            ${spdlog_INCLUDE_DIRS}
+    )
+endif()
 
 # Define the header files to be copied
 set(PUBLIC_HEADER_FILES
@@ -48,10 +82,11 @@ set_target_properties(chronolog_client PROPERTIES
     PUBLIC_HEADER "${PUBLIC_HEADER_FILES}"
 )
 
-# install library and headers
+#------------------------------------------------------------------------------
+# Install library, headers, and configuration file
+#------------------------------------------------------------------------------
 chronolog_install_target(chronolog_client)
 
-# install client configuration file
 install(
     FILES ${CMAKE_SOURCE_DIR}/default_client_conf.json.in
     DESTINATION ${CHRONOLOG_INSTALL_CONF_DIR}
