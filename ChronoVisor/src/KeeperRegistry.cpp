@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <ctime>
 #include <cstdlib>
+#include <unistd.h>
 #include <thallium.hpp>
 
 #include <KeeperRegistry.h>
