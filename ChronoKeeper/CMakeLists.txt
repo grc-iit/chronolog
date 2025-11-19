@@ -13,32 +13,33 @@ message("build target : chrono_keeper")
 add_executable(chrono_keeper)
 target_include_directories(chrono_keeper PRIVATE
     include
-    ${CMAKE_SOURCE_DIR}/chrono_common
-    ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/include
+    ${CMAKE_SOURCE_DIR}/chrono_common/include
 )
 
 target_sources(chrono_keeper PRIVATE
-    ChronoKeeperInstance.cpp
-    StoryPipeline.cpp
-    KeeperDataStore.cpp
-    CSVFileChunkExtractor.cpp
-    StoryChunkExtractorRDMA.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunkExtractor.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/StoryChunk.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/ConfigurationManager.cpp
-    ${CMAKE_SOURCE_DIR}/ChronoAPI/ChronoLog/src/chrono_monitor.cpp
+    src/ChronoKeeperInstance.cpp
+    src/StoryPipeline.cpp
+    src/KeeperDataStore.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/include/StoryChunkExtractionModule.h
+    ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunk.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/src/ConfigurationManager.cpp
+    ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/src/ChunkExtractorCSV.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/src/ChunkExtractorRDMA.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/src/RDMATransferAgent.cpp
 )
 
-target_link_libraries(chrono_keeper chronolog_client thallium)
+target_link_libraries(chrono_keeper 
+    chronolog_client 
+    thallium
+)
 
-set_target_properties(chrono_keeper PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
+set_target_properties(chrono_keeper PROPERTIES
+    BUILD_WITH_INSTALL_RPATH TRUE
+    SKIP_BUILD_RPATH TRUE
+)
 
 # install binary
-install(
-    TARGETS chrono_keeper DESTINATION bin
-)
+chronolog_install_target(chrono_keeper)
 
-# install configuration file
-install(
-    FILES ${CMAKE_SOURCE_DIR}/default_conf.json.in DESTINATION ${CHRONOLOG_INSTALL_CONF_DIR} RENAME default_conf.json
-)
+# Configuration file is installed by ChronoVisor to avoid duplication

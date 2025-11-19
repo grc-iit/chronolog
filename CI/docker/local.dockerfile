@@ -19,10 +19,11 @@ RUN apt-get update \
     libjson-c-dev libboost-dev libcereal-dev \
     git vim fuse sudo curl wget \
     libfuse-dev libssl-dev \
-    python3-dev bzip2 xz-utils jq net-tools lsof htop pssh bind9-dnsutils
+    python3 python3-dev python3-pip \
+    bzip2 xz-utils jq net-tools lsof htop pssh procps bind9-dnsutils chrpath
 
 RUN apt-get -y install --no-install-recommends \
-    openssh-server \
+    openssh-server openssh-client \
   && printf '%s\n' \
     'PermitRootLogin yes' \
     'PasswordAuthentication yes' \
@@ -32,7 +33,8 @@ RUN apt-get -y install --no-install-recommends \
   && printf '%s\n' \
     'Host *' \
     '    StrictHostKeyChecking no' \
-    > /etc/ssh/ssh_config.d/ignore-host-key.conf
+    > /etc/ssh/ssh_config.d/ignore-host-key.conf \
+  && pip3 install pssh
 
 RUN id $UID && userdel $(id -un $UID) || : \
  && useradd -m -u $UID -s /bin/bash $USERNAME \
@@ -47,8 +49,8 @@ WORKDIR /home/$USERNAME
 
 # Get ChronoLog
 RUN cd \
- && git clone https://github.com/grc-iit/ChronoLog.git chronolog_repo\
- && cd chronolog_repo \
+ && git clone https://github.com/grc-iit/ChronoLog.git chronolog-repo\
+ && cd chronolog-repo \
  && git switch develop \
  && git pull
 
@@ -57,26 +59,9 @@ RUN cd \
  && git clone --branch v0.21.2 https://github.com/spack/spack.git \
  && export SPACK_ROOT=$(pwd)/spack \
  && source spack/share/spack/setup-env.sh \
- && cd chronolog_repo \
- && spack env activate -p . \
- && spack install -v \
- && mkdir -p build \
- && cd build \
- && export USER=$(whoami) \
- && cmake -DCMAKE_BUILD_TYPE=Release -DINSTALL_DIR=/home/$USERNAME/chronolog_install .. \
- && make -j \
- && cd ../deploy \
- # && ./local_single_user_deploy.sh -b --install-dir ~/chronolog_install/Release \
- && ./local_single_user_deploy.sh -i --work-dir ~/chronolog_install/Release
-
-# Install mpssh for distributed deployment
-RUN cd \
- && git clone https://github.com/ndenev/mpssh.git \
- && cd mpssh \
- && make -j \
- && sudo make -j install \
- && cd \
- && rm -rf mpssh
+ && cd chronolog-repo \
+ && ./tools/deploy/ChronoLog/local_single_user_deploy.sh -b \
+ && ./tools/deploy/ChronoLog/local_single_user_deploy.sh -i
 
 # Source Spack on each shell
 RUN cd \

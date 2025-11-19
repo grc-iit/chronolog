@@ -1,11 +1,16 @@
-#include <chronolog_client.h>
 #include <cassert>
-#include <common.h>
-#include <thread>
 #include <chrono>
+#include <iostream>
+#include <map>
+#include <string>
+#include <thread>
+#include <vector>
+
 #include <cmd_arg_parse.h>
-#include "chrono_monitor.h"
-#include "ClientConfiguration.h"
+#include <chronolog_client.h>
+#include <ClientConfiguration.h>
+#include <chrono_monitor.h>
+#include <common.h>
 
 #define STORY_NAME_LEN 5
 
@@ -15,9 +20,9 @@ struct thread_arg
     std::string client_id;
 };
 
-chronolog::Client*client;
+chronolog::Client* client;
 
-void thread_body(struct thread_arg*t)
+void thread_body(struct thread_arg* t)
 {
     // Local variable declarations
     int flags = 0;
@@ -32,24 +37,29 @@ void thread_body(struct thread_arg*t)
         chronicle_name = "CHRONICLE_1";
 
     // Create attributes for the chronicle
-    std::map <std::string, std::string> chronicle_attrs;
+    std::map<std::string, std::string> chronicle_attrs;
     chronicle_attrs.emplace("Priority", "High");
     flags = 1;
 
     // Create the chronicle
     ret = client->CreateChronicle(chronicle_name, chronicle_attrs, flags);
-    LOG_DEBUG("[ClientLibMultiStorytellers] Chronicle created: tid={}, ChronicleName={}, Flags: {}", t->tid
-              , chronicle_name, flags);
+    LOG_DEBUG("[ClientLibMultiStorytellers] Chronicle created: tid={}, ChronicleName={}, Flags: {}",
+              t->tid,
+              chronicle_name,
+              flags);
 
     // Create attributes for the story
     std::string story_name = "STORY"; //gen_random(STORY_NAME_LEN);
-    std::map <std::string, std::string> story_attrs;
+    std::map<std::string, std::string> story_attrs;
     flags = 2;
 
     // Acquire the story
     auto acquire_ret = client->AcquireStory(chronicle_name, story_name, story_attrs, flags);
-    LOG_DEBUG("[ClientLibMultiStorytellers] Story acquired: tid={}, ChronicleName={}, StoryName={}, Ret: {}", t->tid
-              , chronicle_name, story_name, chronolog::to_string_client(acquire_ret.first));
+    LOG_DEBUG("[ClientLibMultiStorytellers] Story acquired: tid={}, ChronicleName={}, StoryName={}, Ret: {}",
+              t->tid,
+              chronicle_name,
+              story_name,
+              chronolog::to_string_client(acquire_ret.first));
 
     // Assertion for successful story acquisition or expected errors
     assert(acquire_ret.first == chronolog::CL_SUCCESS || acquire_ret.first == chronolog::CL_ERR_NOT_EXIST ||
@@ -68,8 +78,11 @@ void thread_body(struct thread_arg*t)
 
         // Release the story
         ret = client->ReleaseStory(chronicle_name, story_name);
-        LOG_DEBUG("[ClientLibMultiStorytellers] Story released: tid={}, ChronicleName={}, StoryName={}, Ret: {}", t->tid
-                  , chronicle_name, story_name, chronolog::to_string_client(ret));
+        LOG_DEBUG("[ClientLibMultiStorytellers] Story released: tid={}, ChronicleName={}, StoryName={}, Ret: {}",
+                  t->tid,
+                  chronicle_name,
+                  story_name,
+                  chronolog::to_string_client(ret));
 
         // Assertion for successful story release or expected errors
         assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NO_CONNECTION);
@@ -77,8 +90,11 @@ void thread_body(struct thread_arg*t)
 
     // Destroy the story
     ret = client->DestroyStory(chronicle_name, story_name);
-    LOG_DEBUG("[ClientLibMultiStorytellers] Story destroyed: tid={}, ChronicleName={}, StoryName={}, Ret: {}", t->tid
-              , chronicle_name, story_name, chronolog::to_string_client(ret));
+    LOG_DEBUG("[ClientLibMultiStorytellers] Story destroyed: tid={}, ChronicleName={}, StoryName={}, Ret: {}",
+              t->tid,
+              chronicle_name,
+              story_name,
+              chronolog::to_string_client(ret));
 
     // Assertion for successful story destruction or expected errors
     assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST || ret == chronolog::CL_ERR_ACQUIRED ||
@@ -94,26 +110,34 @@ void thread_body(struct thread_arg*t)
 }
 
 
-int main(int argc, char**argv)
+int main(int argc, char** argv)
 {
     int provided;
     std::string client_id = gen_random(8);
 
     int num_threads = 4;
 
-    std::vector <struct thread_arg> t_args(num_threads);
-    std::vector <std::thread> workers(num_threads);
+    std::vector<struct thread_arg> t_args(num_threads);
+    std::vector<std::thread> workers(num_threads);
 
     // Load configuration
     std::string conf_file_path = parse_conf_path_arg(argc, argv);
     chronolog::ClientConfiguration confManager;
-    if (!conf_file_path.empty()) {
-        if (!confManager.load_from_file(conf_file_path)) {
-            std::cerr << "[ClientLibMultiStorytellers] Failed to load configuration file '" << conf_file_path << "'. Using default values instead." << std::endl;
-        } else {
-            std::cout << "[ClientLibMultiStorytellers] Configuration file loaded successfully from '" << conf_file_path << "'." << std::endl;
+    if(!conf_file_path.empty())
+    {
+        if(!confManager.load_from_file(conf_file_path))
+        {
+            std::cerr << "[ClientLibMultiStorytellers] Failed to load configuration file '" << conf_file_path
+                      << "'. Using default values instead." << std::endl;
         }
-    } else {
+        else
+        {
+            std::cout << "[ClientLibMultiStorytellers] Configuration file loaded successfully from '" << conf_file_path
+                      << "'." << std::endl;
+        }
+    }
+    else
+    {
         std::cout << "[ClientLibMultiStorytellers] No configuration file provided. Using default values." << std::endl;
     }
     confManager.log_configuration(std::cout);
@@ -126,7 +150,8 @@ int main(int argc, char**argv)
                                                        confManager.LOG_CONF.LOGFILESIZE,
                                                        confManager.LOG_CONF.LOGFILENUM,
                                                        confManager.LOG_CONF.FLUSHLEVEL);
-    if (result == 1) {
+    if(result == 1)
+    {
         return EXIT_FAILURE;
     }
 
@@ -158,8 +183,7 @@ int main(int argc, char**argv)
         workers[i] = std::move(t);
     }
 
-    for(int i = 0; i < num_threads; i++)
-        workers[i].join();
+    for(int i = 0; i < num_threads; i++) workers[i].join();
 
     ret = client->Disconnect();
     delete client;

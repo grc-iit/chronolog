@@ -8,7 +8,6 @@
 #include <unordered_map>
 #include <regex>
 #include <filesystem>
-#include "chrono_monitor.h"
 
 int main(int argc, char*argv[])
 {
@@ -34,7 +33,7 @@ int main(int argc, char*argv[])
         }
 
         // Open the file and read its contents
-        LOG_INFO("Reading from file {}", entry.path().string());
+        std::cout << "Reading from file " << entry.path().string() << std::endl;
         /*std::cout << "reading from file " << entry.path().string() << std::endl;*/
 
         std::ifstream file(entry.path());
@@ -46,10 +45,10 @@ int main(int argc, char*argv[])
             total_count++;
         }
     }
-    LOG_INFO("{} unique numbers are read", count_map.size());
+    std::cout << count_map.size() << " unique numbers are read" << std::endl;
     /*std::cout << count_map.size() << " unique numbers are read" << std::endl;*/
     double collision_ratio = 1 - count_map.size() * 1.0 / total_count;
-    LOG_INFO("Collision ratio: {}%", collision_ratio * 100);
+    std::cout << "Collision ratio: " << collision_ratio * 100 << "%" << std::endl;
     /*std::cout << "Collision ratio: " << collision_ratio * 100 << "%" << std::endl;*/
 
 
