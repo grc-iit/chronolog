@@ -138,7 +138,7 @@ int main(int argc, char** argv)
 
     std::string RECORDING_SERVICE_NA_STRING;
     recordingServiceId.get_service_as_string(RECORDING_SERVICE_NA_STRING);
-    
+
     // validate ip address, instantiate Recording Service and create IdCard
     chronolog::service_endpoint recording_endpoint;
     if(-1 == service_endpoint_from_dotted_string(RECORDING_SERVICE_IP, RECORDING_SERVICE_PORT, recording_endpoint))

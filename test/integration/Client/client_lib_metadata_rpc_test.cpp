@@ -164,7 +164,7 @@ int main(int argc, char** argv)
             duration_release_story += (t2 - t1);
         }
 
-            flags = 8;
+        flags = 8;
         for(int j = 0; j < NUM_STORY; j++)
         {
             t1 = std::chrono::steady_clock::now();
