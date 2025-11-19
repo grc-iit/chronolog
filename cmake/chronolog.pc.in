@@ -1,0 +1,13 @@
+prefix=@CMAKE_INSTALL_PREFIX@
+exec_prefix=${prefix}
+libdir=${prefix}/chronolog/lib
+includedir=${prefix}/chronolog/include
+
+Name: Chronolog
+Description: ChronoLog Client Library
+Version: @CHRONOLOG_PACKAGE_VERSION@
+Libs: -L${libdir} -lchronolog_client
+Cflags: -I${includedir}
+Requires: json-c
+Requires.private: 
+

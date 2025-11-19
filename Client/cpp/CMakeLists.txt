@@ -85,7 +85,23 @@ set_target_properties(chronolog_client PROPERTIES
 #------------------------------------------------------------------------------
 # Install library, headers, and configuration file
 #------------------------------------------------------------------------------
-chronolog_install_target(chronolog_client)
+# Install target with export
+install(TARGETS chronolog_client
+    EXPORT ChronologTargets
+    RUNTIME DESTINATION ${CHRONOLOG_INSTALL_BIN_DIR}
+    LIBRARY DESTINATION ${CHRONOLOG_INSTALL_LIB_DIR}
+    ARCHIVE DESTINATION ${CHRONOLOG_INSTALL_LIB_DIR}
+    PUBLIC_HEADER DESTINATION ${CHRONOLOG_INSTALL_INCLUDE_DIR}
+)
+# Set both absolute and relative RPATH for portability
+set_target_properties(chronolog_client PROPERTIES INSTALL_RPATH "${CHRONOLOG_INSTALL_LIB_DIR};$ORIGIN/../lib")
+
+# Export target for CMake config files
+install(EXPORT ChronologTargets
+    FILE ChronologTargets.cmake
+    NAMESPACE Chronolog::
+    DESTINATION ${CHRONOLOG_INSTALL_ROOT}/lib/cmake/Chronolog
+)
 
 install(
     FILES ${CMAKE_SOURCE_DIR}/default_client_conf.json.in
