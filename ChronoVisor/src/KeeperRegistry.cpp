@@ -1,12 +1,14 @@
 #include <iostream>
-
+#include <algorithm>
+#include <ctime>
+#include <cstdlib>
 #include <thallium.hpp>
 
-#include "KeeperRegistry.h"
-#include "KeeperRegistryService.h"
-#include "DataStoreAdminClient.h"
-#include "chrono_monitor.h"
-#include "ConfigurationManager.h"
+#include <KeeperRegistry.h>
+#include <KeeperRegistryService.h>
+#include <DataStoreAdminClient.h>
+#include <chrono_monitor.h>
+#include <ConfigurationManager.h>
 /////////////////////////
 
 namespace tl = thallium;
@@ -15,13 +17,15 @@ namespace chl = chronolog;
 namespace chronolog
 {
 
-int KeeperRegistry::InitializeRegistryService(VisorConfiguration const & VISOR_CONF)
+int KeeperRegistry::InitializeRegistryService(VisorConfiguration const& VISOR_CONF)
 {
     int status = chronolog::CL_ERR_UNKNOWN;
-    std::lock_guard <std::mutex> lock(registryLock);
+    std::lock_guard<std::mutex> lock(registryLock);
 
     if(registryState != UNKNOWN)
-    { return chronolog::CL_SUCCESS; }
+    {
+        return chronolog::CL_SUCCESS;
+    }
 
     try
     {
@@ -39,7 +43,8 @@ int KeeperRegistry::InitializeRegistryService(VisorConfiguration const & VISOR_C
             LOG_CRITICAL("[ChronoProcessRegistry] Failed to initialize margo_instance");
             return -1;
         }
-        LOG_INFO("[ChronoProcessRegistry] margo_instance initialized with NA_STRING {}", KEEPER_REGISTRY_SERVICE_NA_STRING);
+        LOG_INFO("[ChronoProcessRegistry] margo_instance initialized with NA_STRING {}",
+                 KEEPER_REGISTRY_SERVICE_NA_STRING);
 
         registryEngine = new tl::engine(margo_id);
 
@@ -62,13 +67,12 @@ int KeeperRegistry::InitializeRegistryService(VisorConfiguration const & VISOR_C
         registryState = INITIALIZED;
         status = chronolog::CL_SUCCESS;
     }
-    catch(tl::exception const &ex)
+    catch(tl::exception const& ex)
     {
         LOG_ERROR("[ChronoProcessRegistry] Failed to start");
     }
 
     return status;
-
 }
 
 KeeperRegistry::KeeperRegistry()
@@ -82,7 +86,7 @@ KeeperRegistry::KeeperRegistry()
     // TODO: reseach the seeding of Mersense Twister int number generator
 
     size_t new_seed = std::chrono::high_resolution_clock::to_time_t(std::chrono::high_resolution_clock::now());
-    mt_random.seed(new_seed);//initial seed for the 32 int Mersene Twister generator
+    mt_random.seed(new_seed); //initial seed for the 32 int Mersene Twister generator
 }
 
 /////////////////
@@ -91,7 +95,7 @@ int KeeperRegistry::ShutdownRegistryService()
 {
 
 
-    std::lock_guard <std::mutex> lock(registryLock);
+    std::lock_guard<std::mutex> lock(registryLock);
 
     if(is_shutting_down())
     {
@@ -125,7 +129,10 @@ int KeeperRegistry::ShutdownRegistryService()
                 if(grapher_process->active)
                 {
                     LOG_INFO("[ChronoProcessRegistry] Sending shutdown to grapher {}", id_string.str());
-                    if(grapher_process->adminClient != nullptr) { grapher_process->adminClient->shutdown_collection(); }
+                    if(grapher_process->adminClient != nullptr)
+                    {
+                        grapher_process->adminClient->shutdown_collection();
+                    }
 
                     // start delayed destruction for the lingering Adminclient to be safe...
                     recording_group.startDelayedGrapherExit(*grapher_process, delayedExitTime);
@@ -158,18 +165,21 @@ int KeeperRegistry::ShutdownRegistryService()
                     (*process_iter).second.keeperAdminClient->shutdown_collection();
 
                     LOG_INFO("[ChronoProcessRegistry] shutdown: starting delayedExit for keeper {} delayedExitTime={}",
-                             id_string.str(), std::ctime(&delayedExitTime));
+                             id_string.str(),
+                             std::ctime(&delayedExitTime));
                     recording_group.startDelayedKeeperExit((*process_iter).second, delayedExitTime);
                 }
                 else
                 {
-                    LOG_INFO("[ChronoProcessRegistry] shutdown: clear delayedAdminClient for keeper {}", id_string.str());
+                    LOG_INFO("[ChronoProcessRegistry] shutdown: clear delayedAdminClient for keeper {}",
+                             id_string.str());
                     recording_group.clearDelayedExitKeeper((*process_iter).second, current_time);
                 }
 
                 if((*process_iter).second.delayedExitClients.empty())
                 {
-                    LOG_INFO("[ChronoProcessRegistry] shutdown : destroys old keeperProcessEntry for {}", id_string.str());
+                    LOG_INFO("[ChronoProcessRegistry] shutdown : destroys old keeperProcessEntry for {}",
+                             id_string.str());
                     process_iter = recording_group.keeperProcesses.erase(process_iter);
                 }
                 else
@@ -192,12 +202,17 @@ int KeeperRegistry::ShutdownRegistryService()
             }
         }
 
-        if(!recordingGroups.empty()) { sleep(1); }
+        if(!recordingGroups.empty())
+        {
+            sleep(1);
+        }
     }
 
 
     if(nullptr != keeperRegistryService)
-    { delete keeperRegistryService; }
+    {
+        delete keeperRegistryService;
+    }
     return chronolog::CL_SUCCESS;
 }
 
@@ -210,16 +225,20 @@ KeeperRegistry::~KeeperRegistry()
 /////////////////
 
 
-int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const &keeper_reg_msg)
+int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const& keeper_reg_msg)
 {
 
     if(is_shutting_down())
-    { return chronolog::CL_ERR_UNKNOWN; }
+    {
+        return chronolog::CL_ERR_UNKNOWN;
+    }
 
-    std::lock_guard <std::mutex> lock(registryLock);
+    std::lock_guard<std::mutex> lock(registryLock);
     //re-check state after ther lock is aquired
     if(is_shutting_down())
-    { return chronolog::CL_ERR_UNKNOWN; }
+    {
+        return chronolog::CL_ERR_UNKNOWN;
+    }
 
     KeeperIdCard keeper_id_card = keeper_reg_msg.getKeeperIdCard();
     ServiceId admin_service_id = keeper_reg_msg.getAdminServiceId();
@@ -228,22 +247,27 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const &keeper_re
     auto group_iter = recordingGroups.find(keeper_id_card.getGroupId());
     if(group_iter == recordingGroups.end())
     {
-        auto insert_return = recordingGroups.insert(std::pair<RecordingGroupId, RecordingGroup>(
-                keeper_id_card.getGroupId(), RecordingGroup(keeper_id_card.getGroupId())));
+        auto insert_return = recordingGroups.insert(
+                std::pair<RecordingGroupId, RecordingGroup>(keeper_id_card.getGroupId(),
+                                                            RecordingGroup(keeper_id_card.getGroupId())));
         if(false == insert_return.second)
         {
             LOG_ERROR("[ChronoProcessRegistry] keeper registration failed to find RecordingGroup {}",
                       keeper_id_card.getGroupId());
             return chronolog::CL_ERR_UNKNOWN;
         }
-        else { group_iter = insert_return.first; }
+        else
+        {
+            group_iter = insert_return.first;
+        }
     }
 
     RecordingGroup& recording_group = (*group_iter).second;
 
     // unlikely but possible that the Registry still retains the record of the previous re-incarnation of hte Keeper process
     // running on the same host... check for this case and clean up the leftover record...
-    auto keeper_process_iter = recording_group.keeperProcesses.find(keeper_id_card.getRecordingServiceId().get_service_endpoint());
+    auto keeper_process_iter =
+            recording_group.keeperProcesses.find(keeper_id_card.getRecordingServiceId().get_service_endpoint());
 
     if(keeper_process_iter != recording_group.keeperProcesses.end())
     {
@@ -255,7 +279,9 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const &keeper_re
             std::time_t delayedExitTime = std::chrono::high_resolution_clock::to_time_t(
                     std::chrono::high_resolution_clock::now() + std::chrono::seconds(delayedDataAdminExitSeconds));
             LOG_WARNING("[ChronoProcessRegistry] registerKeeperProcess: found old instance of dataAdminclient for {} "
-                        "delayedExitTime={}", to_string(keeper_id_card), std::ctime(&delayedExitTime));
+                        "delayedExitTime={}",
+                        to_string(keeper_id_card),
+                        std::ctime(&delayedExitTime));
             ;
 
             recording_group.startDelayedKeeperExit((*keeper_process_iter).second, delayedExitTime);
@@ -264,18 +290,22 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const &keeper_re
         {
             std::time_t current_time =
                     std::chrono::high_resolution_clock::to_time_t(std::chrono::high_resolution_clock::now());
-            LOG_INFO("[ChronoProcessRegistry] registerKeeperProcess tries to clear dataAdmindClient for {}", to_string(keeper_id_card));
+            LOG_INFO("[ChronoProcessRegistry] registerKeeperProcess tries to clear dataAdmindClient for {}",
+                     to_string(keeper_id_card));
             recording_group.clearDelayedExitKeeper((*keeper_process_iter).second, current_time);
         }
 
         if((*keeper_process_iter).second.delayedExitClients.empty())
         {
-            LOG_INFO("[ChronoProcessRegistry] registerKeeperProcess has destroyed old entry for keeper {}", to_string(keeper_id_card));
+            LOG_INFO("[ChronoProcessRegistry] registerKeeperProcess has destroyed old entry for keeper {}",
+                     to_string(keeper_id_card));
             recording_group.keeperProcesses.erase(keeper_process_iter);
         }
         else
         {
-            LOG_INFO("[ChronoProcessRegistry] registration for Keeper {} cant's proceed as previous AdminClient is not yet dismantled", to_string(keeper_id_card));
+            LOG_INFO("[ChronoProcessRegistry] registration for Keeper {} cant's proceed as previous AdminClient is not "
+                     "yet dismantled",
+                     to_string(keeper_id_card));
             return chronolog::CL_ERR_UNKNOWN;
         }
     }
@@ -285,13 +315,15 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const &keeper_re
     std::string service_na_string;
     admin_service_id.get_service_as_string(service_na_string);
 
-    DataStoreAdminClient*collectionClient = DataStoreAdminClient::CreateDataStoreAdminClient(*registryEngine
-                                                                                             , service_na_string
-                                                                                             , admin_service_id.getProviderId());
+    DataStoreAdminClient* collectionClient =
+            DataStoreAdminClient::CreateDataStoreAdminClient(*registryEngine,
+                                                             service_na_string,
+                                                             admin_service_id.getProviderId());
     if(nullptr == collectionClient)
     {
-        LOG_ERROR("[ChronoProcessRegistry] Register Keeper: {} failed to create DataStoreAdminClient for {}"
-             , to_string(keeper_id_card), to_string(admin_service_id));
+        LOG_ERROR("[ChronoProcessRegistry] Register Keeper: {} failed to create DataStoreAdminClient for {}",
+                  to_string(keeper_id_card),
+                  to_string(admin_service_id));
         return chronolog::CL_ERR_UNKNOWN;
     }
 
@@ -302,7 +334,7 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const &keeper_re
                     KeeperProcessEntry(keeper_id_card, admin_service_id)));
     if(false == insert_return.second)
     {
-        LOG_ERROR("[ChronoProcessRegistry] registration failed for Keeper {}",to_string(keeper_id_card));
+        LOG_ERROR("[ChronoProcessRegistry] registration failed for Keeper {}", to_string(keeper_id_card));
         delete collectionClient;
         return chronolog::CL_ERR_UNKNOWN;
     }
@@ -311,49 +343,64 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const &keeper_re
     (*insert_return.first).second.active = true;
     recording_group.activeKeeperCount += 1;
 
-    LOG_INFO("[ChronoProcessRegistry] Register Keeper: {} created DataStoreAdminClient for {}"
-         , to_string(keeper_id_card), to_string(admin_service_id));
+    LOG_INFO("[ChronoProcessRegistry] Register Keeper: {} created DataStoreAdminClient for {}",
+             to_string(keeper_id_card),
+             to_string(admin_service_id));
 
-    LOG_INFO("[ChronoProcessRegistry] RecordingGroup {} has {} keepers", recording_group.groupId,
+    LOG_INFO("[ChronoProcessRegistry] RecordingGroup {} has {} keepers",
+             recording_group.groupId,
              recording_group.keeperProcesses.size());
 
     // check if this is the first keeper for the recording group and the group is ready to be part of
     //  the activeGroups rotation
-    
+
     if(recording_group.isActive() && recording_group.activeKeeperCount == 1)
     {
         activeGroups.push_back(&recording_group);
         size_t new_seed = std::chrono::high_resolution_clock::to_time_t(std::chrono::high_resolution_clock::now());
-        mt_random.seed(new_seed);//re-seed the mersene_twister_generator
+        mt_random.seed(new_seed); //re-seed the mersene_twister_generator
         group_id_distribution =
-                std::uniform_int_distribution<size_t>(0, activeGroups.size() - 1);//reset the distribution range
+                std::uniform_int_distribution<size_t>(0, activeGroups.size() - 1); //reset the distribution range
     }
 
-    LOG_INFO("[ChronoProcessRegistry]  has {} activeGroups; {} RecordingGroups ", activeGroups.size(), recordingGroups.size());
-    if(activeGroups.size() > 0) { registryState = RUNNING; }
+    LOG_INFO("[ChronoProcessRegistry]  has {} activeGroups; {} RecordingGroups ",
+             activeGroups.size(),
+             recordingGroups.size());
+    if(activeGroups.size() > 0)
+    {
+        registryState = RUNNING;
+    }
     return chronolog::CL_SUCCESS;
 }
 /////////////////
 
-int KeeperRegistry::unregisterKeeperProcess(KeeperIdCard const &keeper_id_card)
+int KeeperRegistry::unregisterKeeperProcess(KeeperIdCard const& keeper_id_card)
 {
     if(is_shutting_down())
-    { return chronolog::CL_ERR_UNKNOWN; }
+    {
+        return chronolog::CL_ERR_UNKNOWN;
+    }
 
     std::lock_guard<std::mutex> lock(registryLock);
     //check again after the lock is acquired
     if(is_shutting_down())
-    { return chronolog::CL_ERR_UNKNOWN; }
+    {
+        return chronolog::CL_ERR_UNKNOWN;
+    }
 
     auto group_iter = recordingGroups.find(keeper_id_card.getGroupId());
-    if(group_iter == recordingGroups.end()) { return chronolog::CL_SUCCESS; }
+    if(group_iter == recordingGroups.end())
+    {
+        return chronolog::CL_SUCCESS;
+    }
 
     RecordingGroup& recording_group = (*group_iter).second;
 
-    auto keeper_process_iter = recording_group.keeperProcesses.find(keeper_id_card.getRecordingServiceId().get_service_endpoint());
-            
+    auto keeper_process_iter =
+            recording_group.keeperProcesses.find(keeper_id_card.getRecordingServiceId().get_service_endpoint());
+
     if(keeper_process_iter == recording_group.keeperProcesses.end())
-    { 
+    {
         //we don't have a record of this keeper, we have nothing to do
         return chronolog::CL_SUCCESS;
     }
@@ -365,11 +412,13 @@ int KeeperRegistry::unregisterKeeperProcess(KeeperIdCard const &keeper_id_card)
         {
             activeGroups.erase(std::remove(activeGroups.begin(), activeGroups.end(), &recording_group));
             if(activeGroups.size() > 0)
-            {//reset the group distribution
-                size_t new_seed = std::chrono::high_resolution_clock::to_time_t(std::chrono::high_resolution_clock::now());
-                mt_random.seed(new_seed);//re-seed the mersene_twister_generator
+            { //reset the group distribution
+                size_t new_seed =
+                        std::chrono::high_resolution_clock::to_time_t(std::chrono::high_resolution_clock::now());
+                mt_random.seed(new_seed); //re-seed the mersene_twister_generator
                 group_id_distribution =
-                    std::uniform_int_distribution<size_t>(0, activeGroups.size() - 1);//reset the distribution range
+                        std::uniform_int_distribution<size_t>(0,
+                                                              activeGroups.size() - 1); //reset the distribution range
             }
         }
 
@@ -383,38 +432,49 @@ int KeeperRegistry::unregisterKeeperProcess(KeeperIdCard const &keeper_id_card)
         recording_group.startDelayedKeeperExit((*keeper_process_iter).second, delayedExitTime);
     }
 
-    LOG_INFO("[ChronoProcessRegistry] RecordingGroup {} has {} keepers", recording_group.groupId,
+    LOG_INFO("[ChronoProcessRegistry] RecordingGroup {} has {} keepers",
+             recording_group.groupId,
              recording_group.keeperProcesses.size());
 
-    LOG_INFO("[ChronoProcessRegistry]  has {} activeGroups; {} RecordingGroups ", activeGroups.size(), recordingGroups.size());
-    
+    LOG_INFO("[ChronoProcessRegistry]  has {} activeGroups; {} RecordingGroups ",
+             activeGroups.size(),
+             recordingGroups.size());
+
     // update registryState if needed
-    if(!is_shutting_down() && activeGroups.size() == 0) { registryState = INITIALIZED; }
+    if(!is_shutting_down() && activeGroups.size() == 0)
+    {
+        registryState = INITIALIZED;
+    }
 
     return chronolog::CL_SUCCESS;
 }
 /////////////////
 
-void KeeperRegistry::updateKeeperProcessStats(KeeperStatsMsg const &keeperStatsMsg)
+void KeeperRegistry::updateKeeperProcessStats(KeeperStatsMsg const& keeperStatsMsg)
 {
     // NOTE: we don't lock registryLock while updating the keeperProcess stats
     // delayed destruction of keeperProcessEntry protects us from the case when
     // stats message is received from the KeeperProcess that has unregistered
     // on the other thread
     if(is_shutting_down())
-    { return; }
+    {
+        return;
+    }
 
     KeeperIdCard keeper_id_card = keeperStatsMsg.getKeeperIdCard();
 
     LOG_DEBUG("[ChronoProcessRegistry] Received KeeperStatsMsg from {}", chl::to_string(keeper_id_card));
 
     auto group_iter = recordingGroups.find(keeper_id_card.getGroupId());
-    if(group_iter == recordingGroups.end()) { return; }
+    if(group_iter == recordingGroups.end())
+    {
+        return;
+    }
 
-    auto keeper_process_iter = 
-        (*group_iter).second.keeperProcesses.find(keeper_id_card.getRecordingServiceId().get_service_endpoint());
+    auto keeper_process_iter =
+            (*group_iter).second.keeperProcesses.find(keeper_id_card.getRecordingServiceId().get_service_endpoint());
     if(keeper_process_iter == (*group_iter).second.keeperProcesses.end() || !((*keeper_process_iter).second.active))
-    {// however unlikely it is that the stats msg would be delivered for the keeper that's already unregistered
+    { // however unlikely it is that the stats msg would be delivered for the keeper that's already unregistered
         // we should probably log a warning here...
         return;
     }
@@ -450,10 +510,15 @@ std::vector<KeeperIdCard>& RecordingGroup::getActiveKeepers(std::vector<KeeperId
               (current_time >= (*iter).second.delayedExitClients.front().first))
         {
             auto dataStoreClientPair = (*iter).second.delayedExitClients.front();
-            LOG_INFO("[ChronoProcessRegistry] getActiveKeepers() destroys dataAdminClient for keeper {} current_time={} delayedExitTime={}", 
-                    (*iter).second.idCardString, ctime(&current_time), ctime(&(*iter).second.delayedExitClients.front
-                    ().first));
-            if(dataStoreClientPair.second != nullptr) { delete dataStoreClientPair.second; }
+            LOG_INFO("[ChronoProcessRegistry] getActiveKeepers() destroys dataAdminClient for keeper {} "
+                     "current_time={} delayedExitTime={}",
+                     (*iter).second.idCardString,
+                     ctime(&current_time),
+                     ctime(&(*iter).second.delayedExitClients.front().first));
+            if(dataStoreClientPair.second != nullptr)
+            {
+                delete dataStoreClientPair.second;
+            }
             (*iter).second.delayedExitClients.pop_front();
         }
 
@@ -466,14 +531,18 @@ std::vector<KeeperIdCard>& RecordingGroup::getActiveKeepers(std::vector<KeeperId
         else if((*iter).second.delayedExitClients.empty())
         {
             // it's safe to erase the entry for unregistered keeper process
-            LOG_INFO("[ChronoProcessRegistry] getActiveKeepers() destroys keeperProcessEntry for keeper {} current_time={}",
-                     (*iter).second.idCardString, std::ctime(&current_time));
+            LOG_INFO("[ChronoProcessRegistry] getActiveKeepers() destroys keeperProcessEntry for keeper {} "
+                     "current_time={}",
+                     (*iter).second.idCardString,
+                     std::ctime(&current_time));
             iter = keeperProcesses.erase(iter);
         }
         else
-        { 
-            LOG_INFO("ChronoProcessRegistry] getActiveKeepers still keeps keeperProcessEntry for keeper {} current_time={}",
-                     (*iter).second.idCardString, std::ctime(&current_time));
+        {
+            LOG_INFO("ChronoProcessRegistry] getActiveKeepers still keeps keeperProcessEntry for keeper {} "
+                     "current_time={}",
+                     (*iter).second.idCardString,
+                     std::ctime(&current_time));
             ++iter;
         }
     }
@@ -481,10 +550,11 @@ std::vector<KeeperIdCard>& RecordingGroup::getActiveKeepers(std::vector<KeeperId
     return keeper_id_cards;
 }
 /////////////////
-int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName const& chronicle, StoryName const &story
-                                                              , StoryId const &story_id
-                                                              , std::vector <KeeperIdCard> &vectorOfKeepers
-                                , ServiceId & player_service_id)
+int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName const& chronicle,
+                                                              StoryName const& story,
+                                                              StoryId const& story_id,
+                                                              std::vector<KeeperIdCard>& vectorOfKeepers,
+                                                              ServiceId& player_service_id)
 {
     vectorOfKeepers.clear();
 
@@ -496,7 +566,8 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
         std::lock_guard<std::mutex> lock(registryLock);
         if(!is_running())
         {
-            LOG_ERROR("[ChronoProcessRegistry] Registry has no active RecordingGroups to start recording story {}", story_id);
+            LOG_ERROR("[ChronoProcessRegistry] Registry has no active RecordingGroups to start recording story {}",
+                      story_id);
             return chronolog::CL_ERR_NO_KEEPERS;
         }
 
@@ -511,11 +582,13 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
             //and implement group re-assignment procedure when we have recording processes dynamically coming and going..
 
             recording_group = (*story_iter).second;
-            recording_group->getActiveKeepers(vectorOfKeepers); 
-    
+            recording_group->getActiveKeepers(vectorOfKeepers);
+
             //no need for notification , group processes are already recording this story
-            LOG_DEBUG("[ChronoProcessRegistry] RecordingGroup {} is already recording story {}", recording_group->groupId,story_id);
-            
+            LOG_DEBUG("[ChronoProcessRegistry] RecordingGroup {} is already recording story {}",
+                      recording_group->groupId,
+                      story_id);
+
             return chronolog::CL_SUCCESS;
         }
 
@@ -528,55 +601,77 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
     }
 
     LOG_DEBUG("[ChronoProcessRegistry] selected RecordingGroup {} for story {}", recording_group->groupId, story_id);
-    
+
     uint64_t story_start_time = std::chrono::high_resolution_clock::now().time_since_epoch().count();
 
     // the registryLock is released by this point..
     // notify Grapher and notifyKeepers functions use delayedExit logic to protect
     // the rpc code from DataAdminClients being destroyed while notification is in progress..
     int rpc_return = notifyGrapherOfStoryRecordingStart(*recording_group, chronicle, story, story_id, story_start_time);
-    
-    if( rpc_return != chronolog::CL_SUCCESS)
+
+    if(rpc_return != chronolog::CL_SUCCESS)
     {
-        LOG_WARNING("[ChronoProcessRegistry]  RecordingGroup {} failed to notify Grapher of Story {} Start : err_code {}", recording_group->groupId, story_id, rpc_return);
+        LOG_WARNING(
+                "[ChronoProcessRegistry]  RecordingGroup {} failed to notify Grapher of Story {} Start : err_code {}",
+                recording_group->groupId,
+                story_id,
+                rpc_return);
         return rpc_return;
     }
 
-    LOG_DEBUG("[ChronoProcessRegistry]  RecordingGroup {}  notified Grapher  of Story {} Start", recording_group->groupId, story_id);
+    LOG_DEBUG("[ChronoProcessRegistry]  RecordingGroup {}  notified Grapher  of Story {} Start",
+              recording_group->groupId,
+              story_id);
 
     recording_group->getActiveKeepers(vectorOfKeepers);
-    rpc_return = notifyKeepersOfStoryRecordingStart(*recording_group, vectorOfKeepers, chronicle, story, story_id,
-                                                        story_start_time);
-    if( rpc_return != chronolog::CL_SUCCESS)
+    rpc_return = notifyKeepersOfStoryRecordingStart(*recording_group,
+                                                    vectorOfKeepers,
+                                                    chronicle,
+                                                    story,
+                                                    story_id,
+                                                    story_start_time);
+    if(rpc_return != chronolog::CL_SUCCESS)
     {
-        LOG_WARNING("[ChronoProcessRegistry]  RecordingGroup {} failed to notify Keepers of Story {} Start : err_code {}", 
-            recording_group->groupId, story_id, rpc_return);
+        LOG_WARNING(
+                "[ChronoProcessRegistry]  RecordingGroup {} failed to notify Keepers of Story {} Start : err_code {}",
+                recording_group->groupId,
+                story_id,
+                rpc_return);
         vectorOfKeepers.clear();
         return rpc_return;
     }
 
-    LOG_DEBUG("[ChronoProcessRegistry]  RecordingGroup {}  notified  Keepers of story {} Start", recording_group->groupId, story_id);
+    LOG_DEBUG("[ChronoProcessRegistry]  RecordingGroup {}  notified  Keepers of story {} Start",
+              recording_group->groupId,
+              story_id);
 
     if(recording_group->playerProcess != nullptr)
     {
         player_service_id = recording_group->playerProcess->idCard.getPlaybackServiceId();
     }
 
-    LOG_INFO("[ChronoProcessRegistry]  RecordingGroup {}  notified  of story {} Start : group has {} keepers and player {}", 
-        recording_group->groupId, story_id, vectorOfKeepers.size(), chl::to_string(player_service_id));
+    LOG_INFO("[ChronoProcessRegistry]  RecordingGroup {}  notified  of story {} Start : group has {} keepers and "
+             "player {}",
+             recording_group->groupId,
+             story_id,
+             vectorOfKeepers.size(),
+             chl::to_string(player_service_id));
     return rpc_return;
 }
 
 ////////////////
-int KeeperRegistry::notifyGrapherOfStoryRecordingStart(RecordingGroup &recordingGroup, ChronicleName const &chronicle
-                                                       , StoryName const &story, StoryId const &storyId
-                                                       , uint64_t story_start_time)
+int KeeperRegistry::notifyGrapherOfStoryRecordingStart(RecordingGroup& recordingGroup,
+                                                       ChronicleName const& chronicle,
+                                                       StoryName const& story,
+                                                       StoryId const& storyId,
+                                                       uint64_t story_start_time)
 {
     int return_code = chronolog::CL_ERR_UNKNOWN;
 
     if(!is_running())
     {
-        LOG_ERROR("[ChronoProcessRegistry] Registry has no active RecordingGroups to start recording story {}", storyId);
+        LOG_ERROR("[ChronoProcessRegistry] Registry has no active RecordingGroups to start recording story {}",
+                  storyId);
         return chronolog::CL_ERR_UNKNOWN;
     }
 
@@ -601,24 +696,31 @@ int KeeperRegistry::notifyGrapherOfStoryRecordingStart(RecordingGroup &recording
         }
     }
 
-    if(dataAdminClient == nullptr) { return return_code; }
+    if(dataAdminClient == nullptr)
+    {
+        return return_code;
+    }
 
     try
     {
         return_code = dataAdminClient->send_start_story_recording(chronicle, story, storyId, story_start_time);
         if(return_code != chronolog::CL_SUCCESS)
         {
-            LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to {}", recordingGroup.grapherProcess->idCardString);
+            LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to {}",
+                        recordingGroup.grapherProcess->idCardString);
         }
         else
         {
             LOG_INFO("[ChronoProcessRegistry] Registry notified {} to start recording StoryID={} with StartTime={}",
-                     recordingGroup.grapherProcess->idCardString, storyId, story_start_time);
+                     recordingGroup.grapherProcess->idCardString,
+                     storyId,
+                     story_start_time);
         }
     }
     catch(thallium::exception const& ex)
     {
-        LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to grapher {}", recordingGroup.grapherProcess->idCardString);
+        LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to grapher {}",
+                    recordingGroup.grapherProcess->idCardString);
     }
 
     return return_code;
@@ -631,7 +733,8 @@ int KeeperRegistry::notifyGrapherOfStoryRecordingStop(RecordingGroup& recordingG
 
     if(!is_running())
     {
-        LOG_ERROR("[ChronoProcessRegistry] Registry has no active RecordingGroups to start recording story {}", storyId);
+        LOG_ERROR("[ChronoProcessRegistry] Registry has no active RecordingGroups to start recording story {}",
+                  storyId);
         return chronolog::CL_ERR_NO_KEEPERS;
     }
 
@@ -659,7 +762,10 @@ int KeeperRegistry::notifyGrapherOfStoryRecordingStop(RecordingGroup& recordingG
         }
     }
 
-    if(dataAdminClient == nullptr) { return return_code; }
+    if(dataAdminClient == nullptr)
+    {
+        return return_code;
+    }
 
     try
     {
@@ -670,7 +776,8 @@ int KeeperRegistry::notifyGrapherOfStoryRecordingStop(RecordingGroup& recordingG
         }
         else
         {
-            LOG_INFO("[ChronoProcessRegistry] Registry notified grapher {} to stop recording StoryID={} ", id_string.str(),
+            LOG_INFO("[ChronoProcessRegistry] Registry notified grapher {} to stop recording StoryID={} ",
+                     id_string.str(),
                      storyId);
         }
     }
@@ -683,17 +790,20 @@ int KeeperRegistry::notifyGrapherOfStoryRecordingStop(RecordingGroup& recordingG
 }
 /////////////////////
 
-int KeeperRegistry::notifyKeepersOfStoryRecordingStart(RecordingGroup& recordingGroup
-                                                       , std::vector <KeeperIdCard> &vectorOfKeepers
-                                                       , ChronicleName const &chronicle, StoryName const &story
-                                                       , StoryId const &storyId, uint64_t story_start_time)
+int KeeperRegistry::notifyKeepersOfStoryRecordingStart(RecordingGroup& recordingGroup,
+                                                       std::vector<KeeperIdCard>& vectorOfKeepers,
+                                                       ChronicleName const& chronicle,
+                                                       StoryName const& story,
+                                                       StoryId const& storyId,
+                                                       uint64_t story_start_time)
 {
 
     // if there are no activeGroups ready for recording
     // we are out of luck...
     if(!is_running())
     {
-        LOG_ERROR("[ChronoProcessRegistry] Registry has no active RecordingGroups to start recording story {}", storyId);
+        LOG_ERROR("[ChronoProcessRegistry] Registry has no active RecordingGroups to start recording story {}",
+                  storyId);
         return chronolog::CL_ERR_NO_KEEPERS;
     }
 
@@ -711,8 +821,9 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart(RecordingGroup& recording
             // (see unregisterKeeperProcess()) to protect us from the unfortunate case of keeperProcessEntry.dataAdminClient object being deleted
             // while this thread is waiting for rpc response
             std::lock_guard<std::mutex> lock(registryLock);
-            auto keeper_process_iter = keeper_processes.find(keeper_id_card.getRecordingServiceId().get_service_endpoint());
-                    
+            auto keeper_process_iter =
+                    keeper_processes.find(keeper_id_card.getRecordingServiceId().get_service_endpoint());
+
             if((keeper_process_iter != keeper_processes.end() && (*keeper_process_iter).second.active) &&
                ((*keeper_process_iter).second.keeperAdminClient != nullptr))
             {
@@ -720,7 +831,8 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart(RecordingGroup& recording
             }
             else
             {
-                LOG_WARNING("[ChronoProcessRegistry] Keeper {} is not available for notification", to_string(keeper_id_card));
+                LOG_WARNING("[ChronoProcessRegistry] Keeper {} is not available for notification",
+                            to_string(keeper_id_card));
                 continue;
             }
         }
@@ -730,18 +842,22 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart(RecordingGroup& recording
             int rpc_return = dataAdminClient->send_start_story_recording(chronicle, story, storyId, story_start_time);
             if(rpc_return != chronolog::CL_SUCCESS)
             {
-                LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to keeper {}", to_string(keeper_id_card));
+                LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to keeper {}",
+                            to_string(keeper_id_card));
             }
             else
             {
                 LOG_INFO("[ChronoProcessRegistry] Registry notified {} to start recording StoryID={} with StartTime={}",
-                         to_string(keeper_id_card), storyId, story_start_time);
+                         to_string(keeper_id_card),
+                         storyId,
+                         story_start_time);
                 vectorOfKeepers.push_back(keeper_id_card);
             }
         }
         catch(thallium::exception const& ex)
         {
-            LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to keeper {}", to_string(keeper_id_card));
+            LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to keeper {}",
+                        to_string(keeper_id_card));
         }
     }
 
@@ -766,7 +882,8 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStop(StoryId const& stor
         std::lock_guard<std::mutex> lock(registryLock);
         if(!is_running())
         {
-            LOG_ERROR("[ChronoProcessRegistry] Registry has no active RecordingGroups to start recording story {}", story_id);
+            LOG_ERROR("[ChronoProcessRegistry] Registry has no active RecordingGroups to start recording story {}",
+                      story_id);
             return chronolog::CL_ERR_NO_KEEPERS;
         }
 
@@ -780,7 +897,10 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStop(StoryId const& stor
         }
 
         recording_group = (*story_iter).second;
-        if(recording_group != nullptr) { recording_group->getActiveKeepers(vectorOfKeepers); }
+        if(recording_group != nullptr)
+        {
+            recording_group->getActiveKeepers(vectorOfKeepers);
+        }
 
         activeStories.erase(story_iter);
     }
@@ -792,7 +912,7 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStop(StoryId const& stor
         // the rpc code from DataAdminClients being destroyed while notification is in progress..
 
         notifyKeepersOfStoryRecordingStop(*recording_group, vectorOfKeepers, story_id);
-     
+
         notifyGrapherOfStoryRecordingStop(*recording_group, story_id);
     }
 
@@ -820,7 +940,8 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStop(RecordingGroup& recordingG
             // (see unregisterKeeperProcess()) to protect us from the unfortunate case of keeperProcessEntry.dataAdminClient object being deleted
             // while this thread is waiting for rpc response
             std::lock_guard<std::mutex> lock(registryLock);
-            auto keeper_process_iter = keeper_processes.find(keeper_id_card.getRecordingServiceId().get_service_endpoint());
+            auto keeper_process_iter =
+                    keeper_processes.find(keeper_id_card.getRecordingServiceId().get_service_endpoint());
             if((keeper_process_iter != keeper_processes.end() && (*keeper_process_iter).second.active) &&
                ((*keeper_process_iter).second.keeperAdminClient != nullptr))
             {
@@ -828,7 +949,8 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStop(RecordingGroup& recordingG
             }
             else
             {
-                LOG_WARNING("[ChronoProcessRegistry] Keeper {} is not available for notification", to_string(keeper_id_card));
+                LOG_WARNING("[ChronoProcessRegistry] Keeper {} is not available for notification",
+                            to_string(keeper_id_card));
                 continue;
             }
         }
@@ -837,16 +959,20 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStop(RecordingGroup& recordingG
             int rpc_return = dataAdminClient->send_stop_story_recording(storyId);
             if(rpc_return != chronolog::CL_SUCCESS)
             {
-                LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to keeper {}", to_string(keeper_id_card));
+                LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to keeper {}",
+                            to_string(keeper_id_card));
             }
             else
             {
-                LOG_INFO("[ChronoProcessRegistry] Registry notified  {} to stop recording story {}", to_string(keeper_id_card), storyId);
+                LOG_INFO("[ChronoProcessRegistry] Registry notified  {} to stop recording story {}",
+                         to_string(keeper_id_card),
+                         storyId);
             }
         }
         catch(thallium::exception const& ex)
         {
-            LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to keeper {}", to_string(keeper_id_card));
+            LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to keeper {}",
+                        to_string(keeper_id_card));
         }
     }
 
@@ -855,9 +981,12 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStop(RecordingGroup& recordingG
 
 ////////////////////////////
 
-int KeeperRegistry::registerGrapherProcess(GrapherRegistrationMsg const & reg_msg)
+int KeeperRegistry::registerGrapherProcess(GrapherRegistrationMsg const& reg_msg)
 {
-    if(is_shutting_down()) { return chronolog::CL_ERR_UNKNOWN; }
+    if(is_shutting_down())
+    {
+        return chronolog::CL_ERR_UNKNOWN;
+    }
 
     GrapherIdCard grapher_id_card = reg_msg.getGrapherIdCard();
     RecordingGroupId group_id = grapher_id_card.getGroupId();
@@ -865,7 +994,10 @@ int KeeperRegistry::registerGrapherProcess(GrapherRegistrationMsg const & reg_ms
 
     std::lock_guard<std::mutex> lock(registryLock);
     //re-check state after ther lock is aquired
-    if(is_shutting_down()) { return chronolog::CL_ERR_UNKNOWN; }
+    if(is_shutting_down())
+    {
+        return chronolog::CL_ERR_UNKNOWN;
+    }
 
     //find the group that grapher belongs to in the registry
     auto group_iter = recordingGroups.find(group_id);
@@ -878,7 +1010,10 @@ int KeeperRegistry::registerGrapherProcess(GrapherRegistrationMsg const & reg_ms
             LOG_ERROR("[ChronoProcessRegistry] keeper registration failed to find RecordingGroup {}", group_id);
             return chronolog::CL_ERR_UNKNOWN;
         }
-        else { group_iter = insert_return.first; }
+        else
+        {
+            group_iter = insert_return.first;
+        }
     }
 
     RecordingGroup& recording_group = ((*group_iter).second);
@@ -912,14 +1047,17 @@ int KeeperRegistry::registerGrapherProcess(GrapherRegistrationMsg const & reg_ms
 
         if(grapher_process->delayedExitGrapherClients.empty())
         {
-            LOG_INFO("[ChronoProcessRegistry] registerGrapherProcess has destroyed old entry for grapher {}", chl::to_string(grapher_id_card));
+            LOG_INFO("[ChronoProcessRegistry] registerGrapherProcess has destroyed old entry for grapher {}",
+                     chl::to_string(grapher_id_card));
             delete grapher_process;
             recording_group.grapherProcess = nullptr;
         }
         else
         {
-            LOG_INFO("[ChronoProcessRegistry] registration for Grapher{} cant's proceed as previous grapherClient isn't yet "
-                     "dismantled", chl::to_string(grapher_id_card));
+            LOG_INFO("[ChronoProcessRegistry] registration for Grapher{} cant's proceed as previous grapherClient "
+                     "isn't yet "
+                     "dismantled",
+                     chl::to_string(grapher_id_card));
             return chronolog::CL_ERR_UNKNOWN;
         }
     }
@@ -929,12 +1067,16 @@ int KeeperRegistry::registerGrapherProcess(GrapherRegistrationMsg const & reg_ms
     std::string service_na_string;
     admin_service_id.get_service_as_string(service_na_string);
 
-    DataStoreAdminClient* collectionClient = DataStoreAdminClient::CreateDataStoreAdminClient(
-            *registryEngine, service_na_string, admin_service_id.getProviderId());
+    DataStoreAdminClient* collectionClient =
+            DataStoreAdminClient::CreateDataStoreAdminClient(*registryEngine,
+                                                             service_na_string,
+                                                             admin_service_id.getProviderId());
     if(nullptr == collectionClient)
     {
-        LOG_ERROR("[ChronoProcessRegistry] Register Grapher {} failed to create DataStoreAdminClient for {}: provider_id={}",
-                  chl::to_string(grapher_id_card), chl::to_string(admin_service_id));
+        LOG_ERROR("[ChronoProcessRegistry] Register Grapher {} failed to create DataStoreAdminClient for {}: "
+                  "provider_id={}",
+                  chl::to_string(grapher_id_card),
+                  chl::to_string(admin_service_id));
         return chronolog::CL_ERR_UNKNOWN;
     }
 
@@ -944,9 +1086,11 @@ int KeeperRegistry::registerGrapherProcess(GrapherRegistrationMsg const & reg_ms
     recording_group.grapherProcess->active = true;
 
     LOG_INFO("[ChronoProcessRegistry] Register grapher {} created DataStoreAdminClient for {}",
-                  chl::to_string(grapher_id_card), chl::to_string(admin_service_id));
+             chl::to_string(grapher_id_card),
+             chl::to_string(admin_service_id));
 
-    LOG_INFO("[ChronoProcessRegistry] RecordingGroup {} has a grappher and  {} keepers", recording_group.groupId,
+    LOG_INFO("[ChronoProcessRegistry] RecordingGroup {} has a grappher and  {} keepers",
+             recording_group.groupId,
              recording_group.keeperProcesses.size());
 
     // now that communnication with the Grapher is established and we are still holding registryLock
@@ -954,19 +1098,21 @@ int KeeperRegistry::registerGrapherProcess(GrapherRegistrationMsg const & reg_ms
     if(recording_group.isActive())
     {
         activeGroups.push_back(&recording_group);
-        
+
         //reset the group distribution
         size_t new_seed = std::chrono::high_resolution_clock::to_time_t(std::chrono::high_resolution_clock::now());
-        mt_random.seed(new_seed);//re-seed the mersene_twister_generator
+        mt_random.seed(new_seed); //re-seed the mersene_twister_generator
         group_id_distribution = std::uniform_int_distribution<size_t>(0, activeGroups.size() - 1);
     }
 
-    LOG_INFO("[ChronoProcessRegistry]  has {} activeGroups; {} RecordingGroups ", activeGroups.size(), recordingGroups.size());
+    LOG_INFO("[ChronoProcessRegistry]  has {} activeGroups; {} RecordingGroups ",
+             activeGroups.size(),
+             recordingGroups.size());
     // we still holding registryLock
     // update registryState if needed
-    if(activeGroups.size() > 0) 
-    { 
-        registryState = RUNNING; 
+    if(activeGroups.size() > 0)
+    {
+        registryState = RUNNING;
     }
     return chronolog::CL_SUCCESS;
 }
@@ -976,39 +1122,53 @@ int KeeperRegistry::unregisterGrapherProcess(GrapherIdCard const& grapher_id_car
 {
     std::lock_guard<std::mutex> lock(registryLock);
     //check again after the lock is acquired
-    if(is_shutting_down()) { return chronolog::CL_ERR_UNKNOWN; }
+    if(is_shutting_down())
+    {
+        return chronolog::CL_ERR_UNKNOWN;
+    }
 
     auto group_iter = recordingGroups.find(grapher_id_card.getGroupId());
-    if(group_iter == recordingGroups.end()) { return chronolog::CL_SUCCESS; }
+    if(group_iter == recordingGroups.end())
+    {
+        return chronolog::CL_SUCCESS;
+    }
 
     RecordingGroup& recording_group = ((*group_iter).second);
 
-    // we are about to unregister the grapher so the group can't perform recording duties 
+    // we are about to unregister the grapher so the group can't perform recording duties
     // if it were an active recordingGroup before remove it from rotation
     if(recording_group.isActive())
     {
         auto active_group_iter = activeGroups.begin();
-        while (active_group_iter != activeGroups.end())
+        while(active_group_iter != activeGroups.end())
         {
-            if((*active_group_iter) != &recording_group) 
-            { ++active_group_iter;}
+            if((*active_group_iter) != &recording_group)
+            {
+                ++active_group_iter;
+            }
             else
-            { break; }
+            {
+                break;
+            }
         }
 
         if(active_group_iter != activeGroups.end())
         {
             //INNA: what do we do with any active Stories that this group were recordng? force release them and notify clients?
             // wait for the new grapher?
-            LOG_INFO("[ChronoProcessRegistry] RecordingGroup {} is not active; activeGroups.size{}", recording_group.groupId,activeGroups.size());
+            LOG_INFO("[ChronoProcessRegistry] RecordingGroup {} is not active; activeGroups.size{}",
+                     recording_group.groupId,
+                     activeGroups.size());
             activeGroups.erase(active_group_iter);
             if(activeGroups.size() > 0)
             {
                 //reset the group distribution
-                size_t new_seed = std::chrono::high_resolution_clock::to_time_t(std::chrono::high_resolution_clock::now());
-                mt_random.seed(new_seed);//re-seed the mersene_twister_generator
+                size_t new_seed =
+                        std::chrono::high_resolution_clock::to_time_t(std::chrono::high_resolution_clock::now());
+                mt_random.seed(new_seed); //re-seed the mersene_twister_generator
                 group_id_distribution =
-                    std::uniform_int_distribution<size_t>(0, activeGroups.size() - 1);//reset the distribution range
+                        std::uniform_int_distribution<size_t>(0,
+                                                              activeGroups.size() - 1); //reset the distribution range
             }
         }
     }
@@ -1021,7 +1181,8 @@ int KeeperRegistry::unregisterGrapherProcess(GrapherIdCard const& grapher_id_car
 
         std::time_t delayedExitTime = std::chrono::high_resolution_clock::to_time_t(
                 std::chrono::high_resolution_clock::now() + std::chrono::seconds(delayedDataAdminExitSeconds));
-        LOG_INFO("[ChronoProcessRegistry] starting delayedExit for grapher {} delayedExitTime={}", recording_group.grapherProcess->idCardString,
+        LOG_INFO("[ChronoProcessRegistry] starting delayedExit for grapher {} delayedExitTime={}",
+                 recording_group.grapherProcess->idCardString,
                  std::ctime(&delayedExitTime));
 
         recording_group.startDelayedGrapherExit(*(recording_group.grapherProcess), delayedExitTime);
@@ -1029,27 +1190,35 @@ int KeeperRegistry::unregisterGrapherProcess(GrapherIdCard const& grapher_id_car
 
     // now that we are still holding registryLock
     // update registryState if needed
-    LOG_INFO("[ChronoProcessRegistry] RecordingGroup {} has no grapher and  {} keepers", recording_group.groupId,
+    LOG_INFO("[ChronoProcessRegistry] RecordingGroup {} has no grapher and  {} keepers",
+             recording_group.groupId,
              recording_group.keeperProcesses.size());
-        
-    LOG_INFO("[ChronoProcessRegistry]  has {} activeGroups; {} RecordingGroups ", activeGroups.size(), recordingGroups.size());
-    
+
+    LOG_INFO("[ChronoProcessRegistry]  has {} activeGroups; {} RecordingGroups ",
+             activeGroups.size(),
+             recordingGroups.size());
+
     // update registryState in case this was the last active recordingGroup
-    if(activeGroups.size() == 0) { registryState = INITIALIZED; }
+    if(activeGroups.size() == 0)
+    {
+        registryState = INITIALIZED;
+    }
 
     return chronolog::CL_SUCCESS;
 }
 
-}//namespace chronolog
+} //namespace chronolog
 
-void chl::KeeperRegistry::updateGrapherProcessStats(chl::GrapherStatsMsg const &statsMsg)
+void chl::KeeperRegistry::updateGrapherProcessStats(chl::GrapherStatsMsg const& statsMsg)
 {
     // NOTE: we don't lock registryLock while updating the keeperProcess stats
     // delayed destruction of keeperProcessEntry protects us from the case when
     // stats message is received from the KeeperProcess that has unregistered
     // on the other thread
     if(is_shutting_down())
-    { return; }
+    {
+        return;
+    }
 
 #ifdef DEBUG
     std::string id_string;
@@ -1058,8 +1227,10 @@ void chl::KeeperRegistry::updateGrapherProcessStats(chl::GrapherStatsMsg const &
 #endif
 
     auto group_iter = recordingGroups.find(statsMsg.getGrapherIdCard().getGroupId());
-    if(group_iter == recordingGroups.end()) 
-    { return; }
+    if(group_iter == recordingGroups.end())
+    {
+        return;
+    }
 
     RecordingGroup& recording_group = ((*group_iter).second);
     if(recording_group.grapherProcess != nullptr && recording_group.grapherProcess->active)
@@ -1067,36 +1238,43 @@ void chl::KeeperRegistry::updateGrapherProcessStats(chl::GrapherStatsMsg const &
         // there's no need to update stats of inactive process
         recording_group.grapherProcess->lastStatsTime = std::chrono::steady_clock::now().time_since_epoch().count();
         recording_group.grapherProcess->activeStoryCount = statsMsg.getActiveStoryCount();
-
     }
 }
 
 /////////////////
 
-int chl::KeeperRegistry::registerPlayerProcess(chl::PlayerRegistrationMsg const & reg_msg)
+int chl::KeeperRegistry::registerPlayerProcess(chl::PlayerRegistrationMsg const& reg_msg)
 {
-    if(is_shutting_down()) { return chronolog::CL_ERR_UNKNOWN; }
+    if(is_shutting_down())
+    {
+        return chronolog::CL_ERR_UNKNOWN;
+    }
 
     chl::PlayerIdCard id_card = reg_msg.getPlayerIdCard();
     chl::RecordingGroupId group_id = id_card.getGroupId();
     chl::ServiceId admin_service_id = reg_msg.getAdminServiceId();
 
     std::lock_guard<std::mutex> lock(registryLock);
-    if(is_shutting_down()) 
-    { return chronolog::CL_ERR_UNKNOWN; }
+    if(is_shutting_down())
+    {
+        return chronolog::CL_ERR_UNKNOWN;
+    }
 
-    //find the recording group that new player process belongs to or create one 
+    //find the recording group that new player process belongs to or create one
     auto group_iter = recordingGroups.find(group_id);
     if(group_iter == recordingGroups.end())
     {
-        auto insert_return =
-                recordingGroups.insert(std::pair<chl::RecordingGroupId, chl::RecordingGroup>(group_id, chl::RecordingGroup(group_id)));
+        auto insert_return = recordingGroups.insert(
+                std::pair<chl::RecordingGroupId, chl::RecordingGroup>(group_id, chl::RecordingGroup(group_id)));
         if(false == insert_return.second)
         {
             LOG_ERROR("[ChronoProcessRegistry] player registration failed to find RecordingGroup {}", group_id);
             return chronolog::CL_ERR_UNKNOWN;
         }
-        else { group_iter = insert_return.first; }
+        else
+        {
+            group_iter = insert_return.first;
+        }
     }
 
     chl::RecordingGroup& recording_group = ((*group_iter).second);
@@ -1128,15 +1306,18 @@ int chl::KeeperRegistry::registerPlayerProcess(chl::PlayerRegistrationMsg const 
 
         if(player_process->delayedExitPlayerClients.empty())
         {
-            LOG_INFO("[ChronoProcessRegistry] registerplayerProcess has destroyed old entry for player {}", chl::to_string(id_card));
+            LOG_INFO("[ChronoProcessRegistry] registerplayerProcess has destroyed old entry for player {}",
+                     chl::to_string(id_card));
             delete player_process;
             recording_group.playerProcess = nullptr;
         }
         else
         {
-            LOG_INFO("[ChronoProcessRegistry] registration for Player{} cant's proceed as previous playerClient isn't yet "
-                     "dismantled", chl::to_string(id_card));
-                     
+            LOG_INFO("[ChronoProcessRegistry] registration for Player{} cant's proceed as previous playerClient isn't "
+                     "yet "
+                     "dismantled",
+                     chl::to_string(id_card));
+
             return chronolog::CL_ERR_UNKNOWN;
         }
     }
@@ -1145,14 +1326,17 @@ int chl::KeeperRegistry::registerPlayerProcess(chl::PlayerRegistrationMsg const 
     std::string service_na_string;
     admin_service_id.get_service_as_string(service_na_string);
 
-    LOG_DEBUG("[ChronoProcessRegistry] creating AdminClient for service_na_string {}",service_na_string);
+    LOG_DEBUG("[ChronoProcessRegistry] creating AdminClient for service_na_string {}", service_na_string);
 
-    chl::DataStoreAdminClient* collectionClient = chl::DataStoreAdminClient::CreateDataStoreAdminClient(
-            *registryEngine, service_na_string, admin_service_id.getProviderId());
+    chl::DataStoreAdminClient* collectionClient =
+            chl::DataStoreAdminClient::CreateDataStoreAdminClient(*registryEngine,
+                                                                  service_na_string,
+                                                                  admin_service_id.getProviderId());
     if(nullptr == collectionClient)
     {
         LOG_ERROR("[ChronoProcessRegistry] Register Player {} failed to create DataStoreAdminClient for {}",
-                  chl::to_string(id_card), chl::to_string(admin_service_id));
+                  chl::to_string(id_card),
+                  chl::to_string(admin_service_id));
         return chronolog::CL_ERR_UNKNOWN;
     }
 
@@ -1162,17 +1346,20 @@ int chl::KeeperRegistry::registerPlayerProcess(chl::PlayerRegistrationMsg const 
     recording_group.playerProcess->active = true;
 
     LOG_INFO("[ChronoProcessRegistry] Register Player {} created DataStoreAdminClient for {}",
-             chl::to_string(id_card), chl::to_string(admin_service_id));
+             chl::to_string(id_card),
+             chl::to_string(admin_service_id));
 
     // now that communnication with the Player is established and we are still holding registryLock
     // check if the group is ready for active group rotation
 
-    LOG_INFO("[ChronoProcessRegistry]  has {} activeGroups; {} RecordingGroups ", activeGroups.size(), recordingGroups.size());
+    LOG_INFO("[ChronoProcessRegistry]  has {} activeGroups; {} RecordingGroups ",
+             activeGroups.size(),
+             recordingGroups.size());
     // we still holding registryLock
     // update registryState if needed
-    if(activeGroups.size() > 0) 
-    { 
-        registryState = RUNNING; 
+    if(activeGroups.size() > 0)
+    {
+        registryState = RUNNING;
     }
     return chronolog::CL_SUCCESS;
 }
@@ -1181,15 +1368,20 @@ int chl::KeeperRegistry::registerPlayerProcess(chl::PlayerRegistrationMsg const 
 int chl::KeeperRegistry::unregisterPlayerProcess(chl::PlayerIdCard const& id_card)
 {
     std::lock_guard<std::mutex> lock(registryLock);
-    if(is_shutting_down()) { return chronolog::CL_ERR_UNKNOWN; }
+    if(is_shutting_down())
+    {
+        return chronolog::CL_ERR_UNKNOWN;
+    }
 
     auto group_iter = recordingGroups.find(id_card.getGroupId());
-    if(group_iter == recordingGroups.end()) 
-    { return chronolog::CL_SUCCESS; }
+    if(group_iter == recordingGroups.end())
+    {
+        return chronolog::CL_SUCCESS;
+    }
 
     RecordingGroup& recording_group = ((*group_iter).second);
 
-    // we are about to unregister the player so the group can't perform playback duties 
+    // we are about to unregister the player so the group can't perform playback duties
 
     // TODO: handle the case by notifying the clients that playback service is not available...
 
@@ -1202,7 +1394,8 @@ int chl::KeeperRegistry::unregisterPlayerProcess(chl::PlayerIdCard const& id_car
 
         std::time_t delayedExitTime = std::chrono::high_resolution_clock::to_time_t(
                 std::chrono::high_resolution_clock::now() + std::chrono::seconds(delayedDataAdminExitSeconds));
-        LOG_INFO("[ChronoProcessRegistry] starting delayedExit for player {} delayedExitTime={}", recording_group.playerProcess->idCardString,
+        LOG_INFO("[ChronoProcessRegistry] starting delayedExit for player {} delayedExitTime={}",
+                 recording_group.playerProcess->idCardString,
                  std::ctime(&delayedExitTime));
 
         recording_group.startDelayedPlayerExit(*(recording_group.playerProcess), delayedExitTime);
@@ -1211,24 +1404,30 @@ int chl::KeeperRegistry::unregisterPlayerProcess(chl::PlayerIdCard const& id_car
     // now that we are still holding registryLock
     // update registryState if needed
     LOG_INFO("[ChronoProcessRegistry] RecordingGroup {} has no chrono_player ", recording_group.groupId);
-        
-    LOG_INFO("[ChronoProcessRegistry]  has {} activeGroups; {} RecordingGroups ", activeGroups.size(), recordingGroups.size());
-    
+
+    LOG_INFO("[ChronoProcessRegistry]  has {} activeGroups; {} RecordingGroups ",
+             activeGroups.size(),
+             recordingGroups.size());
+
     // update registryState in case this was the last active recordingGroup
     if(activeGroups.size() == 0)
-    { registryState = INITIALIZED; }
+    {
+        registryState = INITIALIZED;
+    }
 
     return chronolog::CL_SUCCESS;
 }
 
-void chl::KeeperRegistry::updatePlayerProcessStats(chl::PlayerStatsMsg const &statsMsg)
+void chl::KeeperRegistry::updatePlayerProcessStats(chl::PlayerStatsMsg const& statsMsg)
 {
     // NOTE: we don't lock registryLock while updating the keeperProcess stats
     // delayed destruction of keeperProcessEntry protects us from the case when
     // stats message is received from the KeeperProcess that has unregistered
     // on the other thread
     if(is_shutting_down())
-    { return; }
+    {
+        return;
+    }
 
 #ifdef DEBUG
     std::string id_string;
@@ -1238,27 +1437,25 @@ void chl::KeeperRegistry::updatePlayerProcessStats(chl::PlayerStatsMsg const &st
 
     auto group_iter = recordingGroups.find(statsMsg.getPlayerIdCard().getGroupId());
     if(group_iter == recordingGroups.end())
-    { return; }
+    {
+        return;
+    }
 
     RecordingGroup& recording_group = ((*group_iter).second);
     if(recording_group.playerProcess != nullptr && recording_group.playerProcess->active)
     {
         // there's no need to update stats of inactive process
         recording_group.playerProcess->lastStatsTime = std::chrono::steady_clock::now().time_since_epoch().count();
-
     }
-
 }
-
-
 ///////////////
 
 bool chl::RecordingGroup::isActive() const
 {
     //TODO: we might add a check for time since the last stats message received from
-    // the processes listed as active 
+    // the processes listed as active
 
-    if(grapherProcess != nullptr && grapherProcess->active && activeKeeperCount >0)
+    if(grapherProcess != nullptr && grapherProcess->active && activeKeeperCount > 0)
     {
         LOG_DEBUG("[ChronoProcessRegistry RecordingGroup {} is active", groupId);
         return true;
@@ -1275,7 +1472,9 @@ void chl::RecordingGroup::startDelayedGrapherExit(chl::GrapherProcessEntry& grap
 {
     grapher_process.active = false;
 
-    LOG_INFO("[ChronoProcessRegistry] recording_group {} starts delayedExit for {}", groupId, grapher_process.idCardString);
+    LOG_INFO("[ChronoProcessRegistry] recording_group {} starts delayedExit for {}",
+             groupId,
+             grapher_process.idCardString);
     if(grapher_process.adminClient != nullptr)
     {
         grapher_process.delayedExitGrapherClients.push_back(
@@ -1289,20 +1488,25 @@ void chl::RecordingGroup::clearDelayedExitGrapher(chl::GrapherProcessEntry& grap
     while(!grapher_process.delayedExitGrapherClients.empty() &&
           (current_time >= grapher_process.delayedExitGrapherClients.front().first))
     {
-        LOG_INFO("[ChronoProcessRegistry] recording_Group {}, destroys delayed dataAdmindClient for {}", groupId,
-                  grapher_process.idCardString);
+        LOG_INFO("[ChronoProcessRegistry] recording_Group {}, destroys delayed dataAdmindClient for {}",
+                 groupId,
+                 grapher_process.idCardString);
         auto dataStoreClientPair = grapher_process.delayedExitGrapherClients.front();
-        if(dataStoreClientPair.second != nullptr) { delete dataStoreClientPair.second; }
+        if(dataStoreClientPair.second != nullptr)
+        {
+            delete dataStoreClientPair.second;
+        }
         grapher_process.delayedExitGrapherClients.pop_front();
     }
 }
 
-void chl::RecordingGroup::startDelayedPlayerExit(chl::PlayerProcessEntry& player_process,
-                                                  std::time_t delayedExitTime)
+void chl::RecordingGroup::startDelayedPlayerExit(chl::PlayerProcessEntry& player_process, std::time_t delayedExitTime)
 {
     player_process.active = false;
 
-    LOG_INFO("[ChronoProcessRegistry] recording_group {} starts delayedExit for {}", groupId, player_process.idCardString);
+    LOG_INFO("[ChronoProcessRegistry] recording_group {} starts delayedExit for {}",
+             groupId,
+             player_process.idCardString);
     if(player_process.adminClient != nullptr)
     {
         player_process.delayedExitPlayerClients.push_back(
@@ -1316,10 +1520,14 @@ void chl::RecordingGroup::clearDelayedExitPlayer(chl::PlayerProcessEntry& player
     while(!player_process.delayedExitPlayerClients.empty() &&
           (current_time >= player_process.delayedExitPlayerClients.front().first))
     {
-        LOG_INFO("[ChronoProcessRegistry] recording_Group {}, destroys delayed dataAdmindClient for {}", groupId,
-                  player_process.idCardString);
+        LOG_INFO("[ChronoProcessRegistry] recording_Group {}, destroys delayed dataAdmindClient for {}",
+                 groupId,
+                 player_process.idCardString);
         auto dataStoreClientPair = player_process.delayedExitPlayerClients.front();
-        if(dataStoreClientPair.second != nullptr) { delete dataStoreClientPair.second; }
+        if(dataStoreClientPair.second != nullptr)
+        {
+            delete dataStoreClientPair.second;
+        }
         player_process.delayedExitPlayerClients.pop_front();
     }
 }
@@ -1335,7 +1543,9 @@ void chl::RecordingGroup::startDelayedKeeperExit(chl::KeeperProcessEntry& keeper
     keeper_process.active = false;
     activeKeeperCount -= 1;
 
-    LOG_INFO("[ChronoProcessRegistry] recording_group {} starts delayedExit for {}", groupId, keeper_process.idCardString);
+    LOG_INFO("[ChronoProcessRegistry] recording_group {} starts delayedExit for {}",
+             groupId,
+             keeper_process.idCardString);
     if(keeper_process.keeperAdminClient != nullptr)
     {
         keeper_process.delayedExitClients.push_back(
@@ -1349,9 +1559,14 @@ void chl::RecordingGroup::clearDelayedExitKeeper(chl::KeeperProcessEntry& keeper
     while(!keeper_process.delayedExitClients.empty() &&
           (current_time >= keeper_process.delayedExitClients.front().first))
     {
-        LOG_INFO("[ChronoProcessRegistry] recording_group {} destroys delayed dataAdminClient for {}", groupId, keeper_process.idCardString);
+        LOG_INFO("[ChronoProcessRegistry] recording_group {} destroys delayed dataAdminClient for {}",
+                 groupId,
+                 keeper_process.idCardString);
         auto dataStoreClientPair = keeper_process.delayedExitClients.front();
-        if(dataStoreClientPair.second != nullptr) { delete dataStoreClientPair.second; }
+        if(dataStoreClientPair.second != nullptr)
+        {
+            delete dataStoreClientPair.second;
+        }
         keeper_process.delayedExitClients.pop_front();
     }
 }

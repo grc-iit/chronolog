@@ -9,27 +9,26 @@
 #include <fstream>
 #include <numeric>
 #include <complex>
-#include "chrono_monitor.h"
 
 //#define NO_LFENCE
 //#define NO_MFENCE
 
-#ifdef    NO_LFENCE
-#define   lfence()
+#ifdef NO_LFENCE
+#define lfence()
 #else
 
 #include <emmintrin.h>
 
-#define   lfence()  _mm_lfence()
+#define lfence() _mm_lfence()
 #endif
 
-#ifdef    NO_MFENCE
-#define   mfence()
+#ifdef NO_MFENCE
+#define mfence()
 #else
 
 #include <emmintrin.h>
 
-#define   mfence()  _mm_mfence()
+#define mfence() _mm_mfence()
 #endif
 
 #define TEST_REPS (10000 * 1000)
@@ -45,12 +44,13 @@ double cpu_base_frequency()
         regex_match(line, m, re);
         if(m.size() == 2)
         {
-            LOG_INFO("[Common] CPU freq obtained from /proc/cpuinfo: {} GHz", std::stod(m[1]));
+            std::cout << "[Common] CPU freq obtained from /proc/cpuinfo: " << std::stod(m[1]) << " GHz" << std::endl;
             return std::stod(m[1]);
         }
     }
     double freq = 3.8; // base clock of Ryzen 7 5700G is 3.8GHz
-    LOG_ERROR("[Common] Fail to get CPU freq from /proc/cpuinfo, returning hard-coded freq {} GHz", freq);
+    std::cout << "[Common] Fail to get CPU freq from /proc/cpuinfo, returning hard-coded freq " << freq << " GHz"
+              << std::endl;
     return freq;
 }
 
@@ -73,7 +73,7 @@ static long diff_in_ns(struct timespec t1, struct timespec t2)
 }
 
 template <class T>
-void printVectorStats(std::vector <T> v)
+void printVectorStats(std::vector<T> v)
 {
     T min = *std::min_element(v.begin(), v.end());
     T max = *std::max_element(v.begin(), v.end());
@@ -83,16 +83,16 @@ void printVectorStats(std::vector <T> v)
     double sum = std::accumulate(v.begin(), v.end(), 0.0);
     double mean = sum / v.size();
 
-    std::vector <double> diff(v.size());
-    std::transform(v.begin(), v.end(), diff.begin(), [mean](double x)
-    { return x - mean; });
+    std::vector<double> diff(v.size());
+    std::transform(v.begin(), v.end(), diff.begin(), [mean](double x) { return x - mean; });
     double sq_sum = std::inner_product(diff.begin(), diff.end(), diff.begin(), 0.0);
     double stdev = std::sqrt(sq_sum / v.size());
-    LOG_INFO("[Common] Min/Max/Mean/Median/Stddev (ns)\n{}\t{}\t{}\t{}\t{}", min, max, mean, median, stdev);
+    std::cout << "[Common] Min/Max/Mean/Median/Stddev (ns)\n"
+              << min << "\t" << max << "\t" << mean << "\t" << median << "\t" << stdev << std::endl;
 }
 
 template <class T>
-void writeVectorStatsToFile(std::vector <T> v)
+void writeVectorStatsToFile(std::vector<T> v)
 {
     sort(v.begin(), v.end());
     std::ofstream fout("data.csv");
@@ -107,45 +107,41 @@ void writeVectorStatsToFile(std::vector <T> v)
     //    T q4 = v.at(TEST_REPS * 0.999);
     T whishi = v.at(TEST_REPS * 0.9999 - 1);
     T max = v.at(TEST_REPS - 2);
-    fout << min << "\t" << whislo << "\t" << q1 << "\t"
+    fout << min << "\t" << whislo << "\t" << q1
+         << "\t"
          //         << q2 << "\t"
-         << med << "\t" << q3 << "\t"
+         << med << "\t" << q3
+         << "\t"
          //         << q4 << "\t"
          << whishi << "\t" << max << std::endl;
 }
 
 template <class T>
-void writeListToFile(T*clock_list, int len, std::string &fname)
+void writeListToFile(T* clock_list, int len, std::string& fname)
 {
     std::ofstream outFile(fname, std::ios::trunc);
     if(!outFile.is_open())
     {
-        LOG_ERROR("[Common] Failed to open output file.");
+        std::cout << "[Common] Failed to open output file." << std::endl;
         exit(1);
     }
 
-    for(int i = 0; i < len; i++)
-    {
-        outFile << *(clock_list + i) << std::endl;
-    }
+    for(int i = 0; i < len; i++) { outFile << *(clock_list + i) << std::endl; }
 
     outFile.close();
 }
 
 template <class T>
-void writeVecToFile(std::vector <T> &clock_list, int len, std::string &fname)
+void writeVecToFile(std::vector<T>& clock_list, int len, std::string& fname)
 {
     std::ofstream outFile(fname, std::ios::trunc);
     if(!outFile.is_open())
     {
-        LOG_ERROR("[Common] Failed to open output file.");
+        std::cout << "[Common] Failed to open output file." << std::endl;
         exit(1);
     }
 
-    for(int i = 0; i < len; i++)
-    {
-        outFile << clock_list[i] << std::endl;
-    }
+    for(int i = 0; i < len; i++) { outFile << clock_list[i] << std::endl; }
 
     outFile.close();
 }
@@ -164,9 +160,9 @@ inline void emulate_event_interval(int sleep_time)
     }
 }
 
-unsigned long long*collect_w_rdtsc(int test_reps, int sleep_time = 0)
+unsigned long long* collect_w_rdtsc(int test_reps, int sleep_time = 0)
 {
-    unsigned long long*clock_list = (unsigned long long*)malloc((test_reps + 1) * sizeof(unsigned long long));
+    unsigned long long* clock_list = (unsigned long long*)malloc((test_reps + 1) * sizeof(unsigned long long));
     for(int i = 0; i < test_reps + 1; i++)
     {
         mfence();
@@ -178,9 +174,9 @@ unsigned long long*collect_w_rdtsc(int test_reps, int sleep_time = 0)
     return clock_list;
 }
 
-unsigned long long*collect_w_rdtscp(int test_reps, unsigned int proc_id, int sleep_time = 0)
+unsigned long long* collect_w_rdtscp(int test_reps, unsigned int proc_id, int sleep_time = 0)
 {
-    unsigned long long*clock_list = (unsigned long long*)malloc((test_reps + 1) * sizeof(unsigned long long));
+    unsigned long long* clock_list = (unsigned long long*)malloc((test_reps + 1) * sizeof(unsigned long long));
     for(int i = 0; i < test_reps + 1; i++)
     {
         clock_list[i] = __builtin_ia32_rdtscp(&proc_id);
@@ -191,9 +187,9 @@ unsigned long long*collect_w_rdtscp(int test_reps, unsigned int proc_id, int sle
     return clock_list;
 }
 
-struct timespec*collect_w_clock_gettime_tai(int test_reps, int sleep_time = 0)
+struct timespec* collect_w_clock_gettime_tai(int test_reps, int sleep_time = 0)
 {
-    struct timespec*clock_list = (struct timespec*)malloc((test_reps + 1) * sizeof(struct timespec));
+    struct timespec* clock_list = (struct timespec*)malloc((test_reps + 1) * sizeof(struct timespec));
     for(int i = 0; i < test_reps + 1; i++)
     {
         mfence();
@@ -205,9 +201,9 @@ struct timespec*collect_w_clock_gettime_tai(int test_reps, int sleep_time = 0)
     return clock_list;
 }
 
-struct timespec*collect_w_clock_gettime_mono(int test_reps, int sleep_time = 0)
+struct timespec* collect_w_clock_gettime_mono(int test_reps, int sleep_time = 0)
 {
-    struct timespec*clock_list = (struct timespec*)malloc((test_reps + 1) * sizeof(struct timespec));
+    struct timespec* clock_list = (struct timespec*)malloc((test_reps + 1) * sizeof(struct timespec));
     for(int i = 0; i < test_reps + 1; i++)
     {
         mfence();
@@ -219,9 +215,9 @@ struct timespec*collect_w_clock_gettime_mono(int test_reps, int sleep_time = 0)
     return clock_list;
 }
 
-struct timespec*collect_w_clock_gettime_mono_raw(int test_reps, int sleep_time = 0)
+struct timespec* collect_w_clock_gettime_mono_raw(int test_reps, int sleep_time = 0)
 {
-    struct timespec*clock_list = (struct timespec*)malloc((test_reps + 1) * sizeof(struct timespec));
+    struct timespec* clock_list = (struct timespec*)malloc((test_reps + 1) * sizeof(struct timespec));
     for(int i = 0; i < test_reps + 1; i++)
     {
         mfence();
@@ -233,9 +229,9 @@ struct timespec*collect_w_clock_gettime_mono_raw(int test_reps, int sleep_time =
     return clock_list;
 }
 
-my_clock::time_point*collect_w_std_high_res_clock_alap(int test_reps, int sleep_time = 0)
+my_clock::time_point* collect_w_std_high_res_clock_alap(int test_reps, int sleep_time = 0)
 {
-    my_clock::time_point*clock_list = (my_clock::time_point*)malloc((test_reps + 1) * sizeof(my_clock::time_point));
+    my_clock::time_point* clock_list = (my_clock::time_point*)malloc((test_reps + 1) * sizeof(my_clock::time_point));
     for(int i = 0; i < test_reps; i++)
     {
         mfence();
@@ -247,9 +243,9 @@ my_clock::time_point*collect_w_std_high_res_clock_alap(int test_reps, int sleep_
     return clock_list;
 }
 
-unsigned long long*collect_w_std_high_res_clock_imme(int test_reps, int sleep_time = 0)
+unsigned long long* collect_w_std_high_res_clock_imme(int test_reps, int sleep_time = 0)
 {
-    unsigned long long*clock_list = (unsigned long long*)malloc((test_reps + 1) * sizeof(unsigned long long));
+    unsigned long long* clock_list = (unsigned long long*)malloc((test_reps + 1) * sizeof(unsigned long long));
     for(int i = 0; i < test_reps; i++)
     {
         mfence();
@@ -261,14 +257,13 @@ unsigned long long*collect_w_std_high_res_clock_imme(int test_reps, int sleep_ti
     return clock_list;
 }
 
-void convert_ull_to_double_vec(unsigned long long*clock_list, int len, std::vector <double> &duration_list)
+void convert_ull_to_double_vec(unsigned long long* clock_list, int len, std::vector<double>& duration_list)
 {
     duration_list.reserve(len);
-    for(int i = 0; i < len; i++)
-        duration_list.push_back((clock_list[i + 1] - clock_list[i]) * CPU_GHZ_INV);
+    for(int i = 0; i < len; i++) duration_list.push_back((clock_list[i + 1] - clock_list[i]) * CPU_GHZ_INV);
 }
 
-void convert_timespec_to_ull_vec(struct timespec*clock_list, int len, std::vector <unsigned long long> &duration_list)
+void convert_timespec_to_ull_vec(struct timespec* clock_list, int len, std::vector<unsigned long long>& duration_list)
 {
     duration_list.reserve(len);
     for(int i = 0; i < len; i++)
@@ -279,9 +274,9 @@ void convert_timespec_to_ull_vec(struct timespec*clock_list, int len, std::vecto
     }
 }
 
-void convert_time_point_to_double_vec(my_clock::time_point*clock_list, int len, std::vector <double> &duration_list)
+void convert_time_point_to_double_vec(my_clock::time_point* clock_list, int len, std::vector<double>& duration_list)
 {
-    std::vector <duration <double, std::nano>> duration_list_nanosecond;
+    std::vector<duration<double, std::nano>> duration_list_nanosecond;
     duration_list_nanosecond.reserve(len);
     duration_list.reserve(len);
     for(int i = 0; i < len; i++)
@@ -299,7 +294,7 @@ void convert_time_point_to_double_vec(my_clock::time_point*clock_list, int len, 
 }
 
 template <class T>
-void printStatLine(std::ofstream &fout, std::vector <T> &duration_list)
+void printStatLine(std::ofstream& fout, std::vector<T>& duration_list)
 {
     int len = duration_list.size();
     fout << duration_list.at(0) << "\t" << duration_list.at(len * 0.001) << "\t" << duration_list.at(len * 0.01) << "\t"

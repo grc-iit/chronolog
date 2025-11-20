@@ -1,0 +1,28 @@
+cmake_minimum_required(VERSION 3.25)
+
+find_package(MPI REQUIRED)
+
+#message("ClientAdmin CMakeLists - CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}")
+#message("ClientAdmin CMakeLists - CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
+message("Building CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
+message("build target : client_admin")
+
+add_executable(client_admin client_admin.cpp)
+
+target_link_libraries(client_admin 
+    chronolog_client 
+    ${MPI_CXX_LIBRARIES}
+)
+
+set_target_properties(client_admin PROPERTIES
+    BUILD_WITH_INSTALL_RPATH TRUE
+    SKIP_BUILD_RPATH TRUE
+)
+
+configure_file(${CMAKE_SOURCE_DIR}/default_conf.json.in
+    ${CMAKE_CURRENT_BINARY_DIR}/default_conf.json COPYONLY)
+
+# install binary
+chronolog_install_target(client_admin)
+
+# Client configuration file is installed by Client/cpp to avoid duplication
