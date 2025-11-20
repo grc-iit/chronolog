@@ -15,37 +15,40 @@ int main()
 {
     // Test that we can include the header
     std::cout << "Testing pkg-config discovery of Chronolog package..." << std::endl;
-    
+
     // Test that we can use types from the namespace
     chronolog::Event test_event(54321, 98765, 1, "pkgconfig_test_event");
-    
+
     // Verify basic functionality
-    if (test_event.time() != 54321) {
+    if(test_event.time() != 54321)
+    {
         std::cerr << "ERROR: Event time mismatch" << std::endl;
         return 1;
     }
-    
-    if (test_event.client_id() != 98765) {
+
+    if(test_event.client_id() != 98765)
+    {
         std::cerr << "ERROR: Event client_id mismatch" << std::endl;
         return 1;
     }
-    
-    if (test_event.index() != 1) {
+
+    if(test_event.index() != 1)
+    {
         std::cerr << "ERROR: Event index mismatch" << std::endl;
         return 1;
     }
-    
-    if (test_event.log_record() != "pkgconfig_test_event") {
+
+    if(test_event.log_record() != "pkgconfig_test_event")
+    {
         std::cerr << "ERROR: Event log_record mismatch" << std::endl;
         return 1;
     }
-    
+
     std::cout << "SUCCESS: pkg-config discovery test passed!" << std::endl;
     std::cout << "  - pkg-config can locate chronolog.pc" << std::endl;
     std::cout << "  - Compiler flags (Cflags) are correct" << std::endl;
     std::cout << "  - Linker flags (Libs) are correct" << std::endl;
     std::cout << "  - Headers are accessible and functional" << std::endl;
-    
+
     return 0;
 }
-
