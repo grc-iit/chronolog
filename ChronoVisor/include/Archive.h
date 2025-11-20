@@ -15,7 +15,7 @@
 class Archive
 {
 public:
-    Archive(){};
+    Archive() {};
 
     const std::string& getName() const { return name_; }
 

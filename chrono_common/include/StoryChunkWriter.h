@@ -19,7 +19,7 @@ public:
         : rootDirectory(root_dir)
         , groupName(group_name)
         , dsetName(dset_name)
-        , numDims(1){};
+        , numDims(1) {};
 
     ~StoryChunkWriter() { LOG_INFO("[StoryChunkWriter] Destructor called. Cleaning up..."); }
 

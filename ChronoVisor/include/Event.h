@@ -13,7 +13,7 @@ class Event
 {
 public:
     Event()
-        : data_(nullptr){};
+        : data_(nullptr) {};
 
     const uint64_t& getSid() const { return sid_; }
 
