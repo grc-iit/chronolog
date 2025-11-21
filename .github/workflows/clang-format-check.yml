@@ -245,13 +245,13 @@ jobs:
             commentBody += `   \`\`\`\n\n`;
             commentBody += `3. **Or format manually** using clang-format-18:\n`;
             commentBody += `   \`\`\`bash\n`;
-            commentBody += `   # Ensure you have clang-format-18 installed (required for consistent formatting)\n`;
+            commentBody += `   # Ensure you have clang-format-18 version 18.1.3 installed (required for consistent formatting)\n`;
             issueFiles.forEach(file => {
               commentBody += `   clang-format-18 -i -style=file:CodeStyleFiles/ChronoLog.clang-format ${file}\n`;
             });
             commentBody += `   \`\`\`\n\n`;
             commentBody += `4. **Commit and push** the formatting changes\n\n`;
-            commentBody += `> **Note:** This project uses clang-format-18. Different versions may format code differently.\n\n`;
+            commentBody += `> **Note:** This project uses clang-format-18 version 18.1.3. Different versions may format code differently.\n\n`;
             if (artifactUrl) {
               commentBody += `### 📦 Format patches: [clang-format-patches](${artifactUrl}) | [Workflow run](${runPageUrl})\n\n`;
             } else {
