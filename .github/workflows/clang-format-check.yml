@@ -1,10 +1,8 @@
 name: Clang Format Check
 
-# This workflow checks C/C++ code formatting using clang-format-18
-# To format code locally, install clang-format-18:
-#   Ubuntu/Debian:
-#     wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
-#     sudo add-apt-repository "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-18 main"
+# This workflow checks C/C++ code formatting using clang-format-18 (version 18.1.3)
+# To format code locally, install clang-format-18 from default Ubuntu repositories:
+#   Ubuntu 24.04:
 #     sudo apt-get update && sudo apt-get install -y clang-format-18
 #   Then run: clang-format-18 -i -style=file:CodeStyleFiles/ChronoLog.clang-format <file>
 
@@ -39,25 +37,12 @@ jobs:
       - name: Install clang-format-18
         run: |
           sudo apt-get update
-          sudo apt-get install -y wget gnupg software-properties-common
           
-          # Download and verify the LLVM GPG key fingerprint before trusting
-          wget -O /tmp/llvm-snapshot.gpg.key https://apt.llvm.org/llvm-snapshot.gpg.key
-          EXPECTED_FINGERPRINT="6084F3CF814B57C1CF12EFD515CF4D18AF4F7421"
-          ACTUAL_FINGERPRINT=$(gpg --with-colons --show-keys /tmp/llvm-snapshot.gpg.key | grep '^fpr' | head -n1 | cut -d: -f10)
+          # List available versions from default Ubuntu repositories
+          echo "Available clang-format-18 versions in default repositories:"
+          apt-cache madison clang-format-18 || apt-cache policy clang-format-18 || echo "clang-format-18 not found in default repos"
           
-          if [ "$ACTUAL_FINGERPRINT" = "$EXPECTED_FINGERPRINT" ]; then
-            echo "GPG key fingerprint verified successfully"
-            sudo cp /tmp/llvm-snapshot.gpg.key /etc/apt/trusted.gpg.d/apt.llvm.org.asc
-          else
-            echo "GPG key fingerprint does not match!" >&2
-            echo "Expected: $EXPECTED_FINGERPRINT" >&2
-            echo "Actual: $ACTUAL_FINGERPRINT" >&2
-            exit 1
-          fi
-          
-          sudo add-apt-repository -y "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-18 main"
-          sudo apt-get update
+          # Install clang-format-18 from default Ubuntu repositories
           sudo apt-get install -y clang-format-18
 
       - name: Check clang-format version
