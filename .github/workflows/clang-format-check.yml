@@ -19,6 +19,7 @@ on:
       - '**/*.cxx'
       - '**/*.c'
       - 'CodeStyleFiles/ChronoLog.clang-format'
+  workflow_dispatch:
 
 jobs:
   clang-format-check:
@@ -32,7 +33,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref }}
           fetch-depth: 0  # Fetch full history for proper diff
 
       - name: Install clang-format-18
