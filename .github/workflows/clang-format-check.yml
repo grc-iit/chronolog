@@ -4,7 +4,7 @@ name: Clang Format Check
 # To format code locally, install clang-format-18:
 #   Ubuntu/Debian:
 #     wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
-#     sudo add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main"
+#     sudo add-apt-repository "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-18 main"
 #     sudo apt-get update && sudo apt-get install -y clang-format-18
 #   Then run: clang-format-18 -i -style=file:CodeStyleFiles/ChronoLog.clang-format <file>
 
@@ -22,7 +22,7 @@ on:
 
 jobs:
   clang-format-check:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -55,12 +55,22 @@ jobs:
             exit 1
           fi
           
-          sudo add-apt-repository -y "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main"
+          sudo add-apt-repository -y "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-18 main"
           sudo apt-get update
           sudo apt-get install -y clang-format-18
 
       - name: Check clang-format version
-        run: clang-format-18 --version
+        run: |
+          echo "=== Clang Format Version Check ==="
+          clang-format-18 --version
+          echo "=================================="
+          VERSION=$(clang-format-18 --version | head -n1)
+          echo "Installed version: $VERSION"
+          if echo "$VERSION" | grep -q "18.1.3"; then
+            echo "✅ Version 18.1.3 detected (expected)"
+          else
+            echo "⚠️  Version may differ from expected 18.1.3"
+          fi
 
       - name: Find C/C++ files
         id: find-files
