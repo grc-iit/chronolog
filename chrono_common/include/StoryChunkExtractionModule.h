@@ -23,6 +23,11 @@ template <typename T, typename... Args>
 class ExtractorChain
 {
 public:
+    ExtractorChain ( const T* extractor, const Args*... rest)
+        : the_extractor(*extractor)
+        , the_rest(rest...)
+    { }
+
     ExtractorChain(const T& extractor, const Args&... rest)
         : the_extractor(extractor)
         , the_rest(rest...)

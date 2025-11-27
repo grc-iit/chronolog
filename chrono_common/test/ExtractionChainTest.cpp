@@ -2,6 +2,7 @@
 #include <iostream>
 #include <signal.h>
 
+#include <cmd_arg_parse.h>
 #include <chrono_monitor.h>
 #include <ServiceId.h>
 #include <StoryChunk.h>
@@ -9,6 +10,7 @@
 #include <ChunkLoggingExtractor.h>
 #include <ChunkExtractorCSV.h>
 #include <ChunkExtractorRDMA.h>
+#include <ExtractionChainConfiguration.h>
 
 namespace tl = thallium;
 namespace chl = chronolog;
@@ -53,8 +55,12 @@ void chunk_contributor_thread(chl::StoryChunkExtractionQueue* extractionQueue, u
     LOG_INFO("[ExtractionModuleTest] exiting contributing thread {} ", thread_id);
 }
 
-int main()
+int main(int argc, char** argv)
 {
+
+    std::string config_file = parse_conf_path_arg(argc, argv);
+    chl::ExtractionChainConfiguration extractionChainConfiguration( config_file);
+
     int contributor_threads = 5;
     int extraction_threads = 2;
 
@@ -100,6 +106,7 @@ int main()
     {
         return (-1);
     }
+
 
     chl::ServiceId receiving_service_id("ofi+sockets", "127.0.0.1", 3333, 33);
     chl::StoryChunkExtractorRDMA rdma_extractor(*localEngine, receiving_service_id);

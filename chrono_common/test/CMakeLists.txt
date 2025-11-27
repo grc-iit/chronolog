@@ -10,6 +10,7 @@ add_executable(extraction_chain_test
     ${CMAKE_SOURCE_DIR}/chrono_common/src/ChunkExtractorCSV.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/src/RDMATransferAgent.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/src/ChunkExtractorRDMA.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/src/ExtractionChainConfiguration.cpp
     )
 
 target_include_directories(extraction_chain_test PRIVATE
