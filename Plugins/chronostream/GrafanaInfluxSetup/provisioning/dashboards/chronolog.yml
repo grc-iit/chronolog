@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: 'ChronoLog'
+    orgId: 1
+    folder: 'ChronoLog'
+    type: file
+    allowUiUpdates: true
+    updateIntervalSeconds: 10
+    options:
+      path: /var/lib/grafana/dashboards
