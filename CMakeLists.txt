@@ -111,6 +111,7 @@ option(CHRONOLOG_USE_ADDRESS_SANITIZER "Enable -fsanitize=address in Debug build
 option(CHRONOLOG_USE_THREAD_SANITIZER "Enable -fsanitize=thread in Debug builds" OFF)
 option(CHRONOLOG_BUILD_TESTING "Build the testing tree." ON)
 option(CHRONOLOG_ENABLE_DOXYGEN "Enable Doxygen documentation generation." OFF)
+option(CHRONOLOG_WITH_STREAMING "Build to stream to Grafana through InfluxDB" ON)
 
 #------------------------------------------------------------------------------
 # Define the compiler flags
