@@ -1,17 +1,15 @@
 cmake_minimum_required(VERSION 3.25)
 
 find_package(Thallium REQUIRED)
-find_package(spdlog REQUIRED)
 find_package(HDF5 REQUIRED COMPONENTS C CXX)
 
-#message("Chronographer CMakeLists - CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}")
-#message("Chronographer CMakeLists - CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
-message("Building CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
-message("build target : chrono_grapher")
-
+#------------------------------------------------------------------------------
+# ChronoGrapher Executable
+#------------------------------------------------------------------------------
 add_executable(chrono_grapher)
+
 target_include_directories(chrono_grapher PRIVATE
-    include
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/chrono_common/include
 )
 
@@ -28,10 +26,11 @@ target_sources(chrono_grapher PRIVATE
     ${CMAKE_SOURCE_DIR}/chrono_common/src/ConfigurationManager.cpp
 )
 
-target_link_libraries(chrono_grapher 
-    chronolog_client 
-    thallium
-    ${HDF5_LIBRARIES}
+target_link_libraries(chrono_grapher
+    PRIVATE
+        chronolog_client
+        thallium
+        ${HDF5_LIBRARIES}
 )
 
 set_target_properties(chrono_grapher PROPERTIES
@@ -39,7 +38,9 @@ set_target_properties(chrono_grapher PROPERTIES
     SKIP_BUILD_RPATH TRUE
 )
 
-# install binary
+#------------------------------------------------------------------------------
+# Install binary
+#------------------------------------------------------------------------------
 chronolog_install_target(chrono_grapher)
 
 # Configuration file is installed by ChronoVisor to avoid duplication
