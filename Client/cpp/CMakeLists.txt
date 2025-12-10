@@ -5,6 +5,7 @@ find_package(spdlog REQUIRED)
 
 # json-c is needed because ClientConfiguration.h (public header) includes json-c/json.h
 # PkgConfig is already found in root CMakeLists.txt, but we check for json-c here
+find_package(PkgConfig REQUIRED)
 pkg_check_modules(JSON-C REQUIRED json-c)
 
 #------------------------------------------------------------------------------
