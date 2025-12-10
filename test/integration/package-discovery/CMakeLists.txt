@@ -52,10 +52,10 @@ if(EXISTS "${CHRONOLOG_CONFIG_FILE}" AND EXISTS "${CHRONOLOG_PC_FILE}")
         message(STATUS "  But it appears to be from an older version")
     endif()
 else()
-    # Package not installed yet - tests will be skipped
-    message(WARNING "Package discovery tests: Package not installed yet. "
-                    "These tests require installation first. Run 'make install' or 'cmake --install .' "
-                    "then reconfigure to enable these tests.")
+    # Package not installed yet - we'll build the tests anyway, but they'll use the build tree
+    message(STATUS "Package discovery tests: Package not installed yet. "
+                    "Tests will be built but will use build tree. For full package discovery testing, "
+                    "install the package first, then reconfigure.")
     message(STATUS "  Expected config file: ${CHRONOLOG_CONFIG_FILE}")
     message(STATUS "  Expected pkg-config file: ${CHRONOLOG_PC_FILE}")
 endif()
@@ -73,50 +73,58 @@ set(ENV{PKG_CONFIG_PATH} "${CHRONOLOG_PKGCONFIG_DIR}:$ENV{PKG_CONFIG_PATH}")
 #------------------------------------------------------------------------------
 # This test verifies that find_package(Chronolog) works correctly and that
 # the Chronolog::chronolog_client target from the installed package can be used.
-# It uses the installed CMake config files, not the build tree.
-if(CHRONOLOG_PACKAGE_INSTALLED)
-    add_executable(test_cmake_discovery
-        test_cmake_discovery.cpp
-    )
+# It uses the installed CMake config files if available, otherwise the build tree.
+add_executable(test_cmake_discovery
+    test_cmake_discovery.cpp
+)
 
+if(CHRONOLOG_PACKAGE_INSTALLED)
     # Use find_package to discover the installed Chronolog package
     # This will find ChronologConfig.cmake from the install directory
     find_package(Chronolog REQUIRED)
-
+    
     # Link against the installed Chronolog::chronolog_client target
     # This target provides all necessary include directories and link libraries
     # from the installation, not the build tree
     target_link_libraries(test_cmake_discovery PRIVATE Chronolog::chronolog_client)
-
+    
     # Set properties for proper RPATH handling
     set_target_properties(test_cmake_discovery PROPERTIES
         BUILD_WITH_INSTALL_RPATH TRUE
         SKIP_BUILD_RPATH TRUE
     )
-
-    # Add as a CTest test
-    add_test(NAME PackageDiscovery_CMake COMMAND test_cmake_discovery)
-
-    # Install the test executable (useful for verifying installation)
-    chronolog_install_target(test_cmake_discovery)
 else()
-    message(STATUS "Skipping CMake discovery test - package not installed")
+    # Package not installed - use build tree instead
+    # Link against the build tree chronolog_client target
+    target_link_libraries(test_cmake_discovery PRIVATE chronolog_client)
+    
+    # Include directories from build tree
+    target_include_directories(test_cmake_discovery PRIVATE
+        ${CMAKE_SOURCE_DIR}/Client/cpp/include
+    )
 endif()
+
+# Add as a CTest test
+add_test(NAME PackageDiscovery_CMake COMMAND test_cmake_discovery)
+
+# Install the test executable (useful for verifying installation)
+chronolog_install_target(test_cmake_discovery)
 
 #------------------------------------------------------------------------------
 # Test 2: pkg-config Discovery
 #------------------------------------------------------------------------------
 # This test verifies that pkg-config can find the installed chronolog.pc file
 # and that the compiler/linker flags work correctly.
-# It uses the installed pkg-config file, not the build tree.
-if(CHRONOLOG_PACKAGE_INSTALLED)
-    add_executable(test_pkgconfig_discovery
-        test_pkgconfig_discovery.cpp
-    )
+# It uses the installed pkg-config file if available, otherwise the build tree.
+add_executable(test_pkgconfig_discovery
+    test_pkgconfig_discovery.cpp
+)
 
+find_package(PkgConfig REQUIRED)
+
+if(CHRONOLOG_PACKAGE_INSTALLED)
     # Use pkg-config to discover the installed chronolog package
     # This will find chronolog.pc from the install directory
-    find_package(PkgConfig REQUIRED)
     pkg_check_modules(CHRONOLOG REQUIRED chronolog)
 
     # Use the flags from pkg-config (from the installed .pc file)
@@ -124,25 +132,29 @@ if(CHRONOLOG_PACKAGE_INSTALLED)
     target_include_directories(test_pkgconfig_discovery PRIVATE ${CHRONOLOG_INCLUDE_DIRS})
     target_link_directories(test_pkgconfig_discovery PRIVATE ${CHRONOLOG_LIBRARY_DIRS})
     target_link_libraries(test_pkgconfig_discovery PRIVATE ${CHRONOLOG_LIBRARIES})
-
-    # Also need json-c (required dependency from chronolog.pc)
-    pkg_check_modules(JSON-C REQUIRED json-c)
-    target_include_directories(test_pkgconfig_discovery PRIVATE ${JSON-C_INCLUDE_DIRS})
-    target_link_directories(test_pkgconfig_discovery PRIVATE ${JSON-C_LIBRARY_DIRS})
-    target_link_libraries(test_pkgconfig_discovery PRIVATE ${JSON-C_LIBRARIES})
-
+    
     # Set properties for proper RPATH handling
     set_target_properties(test_pkgconfig_discovery PROPERTIES
         BUILD_WITH_INSTALL_RPATH TRUE
         SKIP_BUILD_RPATH TRUE
     )
-
-    # Add as a CTest test
-    add_test(NAME PackageDiscovery_pkgconfig COMMAND test_pkgconfig_discovery)
-
-    # Install the test executable (useful for verifying installation)
-    chronolog_install_target(test_pkgconfig_discovery)
 else()
-    message(STATUS "Skipping pkg-config discovery test - package not installed")
+    # Package not installed - use build tree instead
+    target_include_directories(test_pkgconfig_discovery PRIVATE
+        ${CMAKE_SOURCE_DIR}/Client/cpp/include
+    )
+    target_link_libraries(test_pkgconfig_discovery PRIVATE chronolog_client)
 endif()
+
+# Also need json-c (required dependency from chronolog.pc)
+pkg_check_modules(JSON-C REQUIRED json-c)
+target_include_directories(test_pkgconfig_discovery PRIVATE ${JSON-C_INCLUDE_DIRS})
+target_link_directories(test_pkgconfig_discovery PRIVATE ${JSON-C_LIBRARY_DIRS})
+target_link_libraries(test_pkgconfig_discovery PRIVATE ${JSON-C_LIBRARIES})
+
+# Add as a CTest test
+add_test(NAME PackageDiscovery_pkgconfig COMMAND test_pkgconfig_discovery)
+
+# Install the test executable (useful for verifying installation)
+chronolog_install_target(test_pkgconfig_discovery)
 

@@ -6,10 +6,8 @@ find_dependency(spdlog REQUIRED)
 
 # json-c is needed for public headers (ClientConfiguration.h includes json-c/json.h)
 # We use pkg-config for json-c as it's typically not a CMake package
-find_package(PkgConfig QUIET)
-if(PkgConfig_FOUND)
-    pkg_check_modules(JSON-C QUIET json-c)
-endif()
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(JSON-C REQUIRED json-c)
 
 # Include the exported targets
 # This must come after finding dependencies since the targets reference them

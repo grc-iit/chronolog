@@ -32,6 +32,12 @@ int main()
         return 1;
     }
 
+    if(test_event.index() != 0)
+    {
+        std::cerr << "ERROR: Event index mismatch" << std::endl;
+        return 1;
+    }
+
     if(test_event.log_record() != "test_event")
     {
         std::cerr << "ERROR: Event log_record mismatch" << std::endl;
