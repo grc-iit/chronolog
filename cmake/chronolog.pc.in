@@ -3,11 +3,13 @@ exec_prefix=${prefix}
 libdir=${prefix}/chronolog/lib
 includedir=${prefix}/chronolog/include
 
-Name: Chronolog
+Name: ChronoLog
 Description: ChronoLog Client Library
 Version: @CHRONOLOG_PACKAGE_VERSION@
 Libs: -L${libdir} -lchronolog_client
 Cflags: -I${includedir}
+# Note: json-c is required because ClientConfiguration.h (public header) includes json-c/json.h
+# Users need json-c installed if using ChronoLog outside of a spack environment
 Requires: json-c
 Requires.private: thallium spdlog
 
