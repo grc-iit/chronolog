@@ -16,7 +16,6 @@
 
 #include <ClientConfiguration.h>
 #include <chronolog_client.h>
-#include <chronolog_errcode.h>
 
 using namespace std::chrono_literals;
 namespace chl = chronolog;
