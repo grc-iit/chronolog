@@ -52,11 +52,7 @@ jobs:
           echo "=================================="
           VERSION=$(clang-format-18 --version | head -n1)
           echo "Installed version: $VERSION"
-          if echo "$VERSION" | grep -q "18.1.3"; then
-            echo "✅ Version 18.1.3 detected (expected)"
-          else
-            echo "⚠️  Version may differ from expected 18.1.3"
-          fi
+          echo "✅ Using clang-format-18 from Ubuntu 24.04 default repositories"
 
       - name: Find C/C++ files
         id: find-files
@@ -245,13 +241,13 @@ jobs:
             commentBody += `   \`\`\`\n\n`;
             commentBody += `3. **Or format manually** using clang-format-18:\n`;
             commentBody += `   \`\`\`bash\n`;
-            commentBody += `   # Ensure you have clang-format-18 version 18.1.3 installed (required for consistent formatting)\n`;
+            commentBody += `   # Ensure you have clang-format-18 from Ubuntu 24.04 default repositories installed (required for consistent formatting)\n`;
             issueFiles.forEach(file => {
               commentBody += `   clang-format-18 -i -style=file:CodeStyleFiles/ChronoLog.clang-format ${file}\n`;
             });
             commentBody += `   \`\`\`\n\n`;
             commentBody += `4. **Commit and push** the formatting changes\n\n`;
-            commentBody += `> **Note:** This project uses clang-format-18 version 18.1.3. Different versions may format code differently.\n\n`;
+            commentBody += `> **Note:** This project uses clang-format-18 from Ubuntu 24.04 default repositories. Different versions may format code differently.\n\n`;
             if (artifactUrl) {
               commentBody += `### 📦 Format patches: [clang-format-patches](${artifactUrl}) | [Workflow run](${runPageUrl})\n\n`;
             } else {
