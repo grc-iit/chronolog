@@ -1,17 +1,14 @@
 cmake_minimum_required(VERSION 3.25)
 
 find_package(Thallium REQUIRED)
-find_package(spdlog REQUIRED)
 
-#message("StoryChunkDrainTest CMakeLists - CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}")
-#message("StoryChunkDrainTest CMakeLists - CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
-message("Building CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
-message("Build Target: StoryChunkDrainTest")
+#------------------------------------------------------------------------------
+# Story Chunk Drain Test Executables
+#------------------------------------------------------------------------------
 
-add_custom_target(story_chunk_drain_test)
-add_dependencies(story_chunk_drain_test extract_test ingest_test)
-
+# Extract Test
 add_executable(extract_test)
+
 target_sources(extract_test PRIVATE
     extract_test.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunk.cpp
@@ -20,17 +17,18 @@ target_sources(extract_test PRIVATE
 )
 
 target_include_directories(extract_test PRIVATE
-    include
     ${CMAKE_SOURCE_DIR}/Client/cpp/include
     ${CMAKE_SOURCE_DIR}/chrono_common/include
 )
 
-target_link_libraries(extract_test 
-    thallium
+target_link_libraries(extract_test
+    PRIVATE
+        thallium
 )
-message("build target : extract_test")
 
+# Ingest Test
 add_executable(ingest_test)
+
 target_sources(ingest_test PRIVATE
     ingest_test.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunk.cpp
@@ -39,15 +37,26 @@ target_sources(ingest_test PRIVATE
 )
 
 target_include_directories(ingest_test PRIVATE
-    include
     ${CMAKE_SOURCE_DIR}/Client/cpp/include
     ${CMAKE_SOURCE_DIR}/chrono_common/include
 )
 
-target_link_libraries(ingest_test 
-    thallium
+target_link_libraries(ingest_test
+    PRIVATE
+        thallium
 )
-message("build target : ingest_test")
 
-configure_file(${CMAKE_SOURCE_DIR}/default_conf.json.in
-    ${CMAKE_CURRENT_BINARY_DIR}/default_conf.json COPYONLY)
+#------------------------------------------------------------------------------
+# Custom Target and Configuration
+#------------------------------------------------------------------------------
+add_custom_target(story_chunk_drain_test)
+add_dependencies(story_chunk_drain_test
+    extract_test
+    ingest_test
+)
+
+configure_file(
+    ${CMAKE_SOURCE_DIR}/default_conf.json.in
+    ${CMAKE_CURRENT_BINARY_DIR}/default_conf.json
+    COPYONLY
+)
