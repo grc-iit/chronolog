@@ -9,5 +9,5 @@ Version: @CHRONOLOG_PACKAGE_VERSION@
 Libs: -L${libdir} -lchronolog_client
 Cflags: -I${includedir}
 Requires: json-c
-Requires.private: 
+Requires.private: thallium spdlog
 
