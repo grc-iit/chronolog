@@ -42,7 +42,6 @@ set_target_properties(test_cmake_discovery PROPERTIES
 )
 
 # Add as a CTest test
-enable_testing()
 add_test(NAME PackageDiscovery_CMake COMMAND test_cmake_discovery)
 
 # Install the test executable (useful for verifying installation)
