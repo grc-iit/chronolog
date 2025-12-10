@@ -1,6 +1,18 @@
 @PACKAGE_INIT@
 
+# Find required dependencies before including targets
+# spdlog is a PUBLIC dependency (public headers include spdlog headers)
+find_dependency(spdlog REQUIRED)
+
+# json-c is needed for public headers (ClientConfiguration.h includes json-c/json.h)
+# We use pkg-config for json-c as it's typically not a CMake package
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(JSON-C QUIET json-c)
+endif()
+
 # Include the exported targets
+# This must come after finding dependencies since the targets reference them
 include("${CMAKE_CURRENT_LIST_DIR}/ChronologTargets.cmake")
 
 # Check required components (if any were requested)

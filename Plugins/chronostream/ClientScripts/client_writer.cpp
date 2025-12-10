@@ -1,5 +1,4 @@
 #include <chrono>
-#include <common.h>
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>

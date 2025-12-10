@@ -32,13 +32,27 @@ set(CHRONOLOG_PKGCONFIG_DIR "${CHRONOLOG_INSTALL_ROOT}/lib/pkgconfig")
 set(CHRONOLOG_CONFIG_FILE "${CHRONOLOG_CMAKE_CONFIG_DIR}/ChronologConfig.cmake")
 set(CHRONOLOG_PC_FILE "${CHRONOLOG_PKGCONFIG_DIR}/chronolog.pc")
 
+# Check if config files exist and if the config file has the dependency finding code
+# (to detect if it's an old version that needs to be reinstalled)
+set(CHRONOLOG_PACKAGE_INSTALLED FALSE)
 if(EXISTS "${CHRONOLOG_CONFIG_FILE}" AND EXISTS "${CHRONOLOG_PC_FILE}")
-    # Package is installed - we can test package discovery
-    set(CHRONOLOG_PACKAGE_INSTALLED TRUE)
-    message(STATUS "Package discovery tests: Using installed package at ${CMAKE_INSTALL_PREFIX}")
+    # Check if the config file has the dependency finding code (added in recent update)
+    file(READ "${CHRONOLOG_CONFIG_FILE}" CONFIG_FILE_CONTENT)
+    if(CONFIG_FILE_CONTENT MATCHES "find_dependency\\(spdlog")
+        # Package is installed with the correct config file - we can test package discovery
+        set(CHRONOLOG_PACKAGE_INSTALLED TRUE)
+        message(STATUS "Package discovery tests: Using installed package at ${CMAKE_INSTALL_PREFIX}")
+    else()
+        # Config file exists but is outdated - needs reinstall
+        set(CHRONOLOG_PACKAGE_INSTALLED FALSE)
+        message(WARNING "Package discovery tests: Installed config file is outdated. "
+                        "Please run 'make install' or 'cmake --install .' to update the installed package, "
+                        "then reconfigure to enable these tests.")
+        message(STATUS "  Found config file: ${CHRONOLOG_CONFIG_FILE}")
+        message(STATUS "  But it appears to be from an older version")
+    endif()
 else()
     # Package not installed yet - tests will be skipped
-    set(CHRONOLOG_PACKAGE_INSTALLED FALSE)
     message(WARNING "Package discovery tests: Package not installed yet. "
                     "These tests require installation first. Run 'make install' or 'cmake --install .' "
                     "then reconfigure to enable these tests.")
