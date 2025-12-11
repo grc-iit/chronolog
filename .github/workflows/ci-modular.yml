@@ -150,7 +150,7 @@ jobs:
           tar -czf build-artifact.tar.gz build/
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: chronolog-build
           path: build-artifact.tar.gz
@@ -181,7 +181,7 @@ jobs:
           spack install
 
       - name: Download build artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: chronolog-build
 
@@ -265,7 +265,7 @@ jobs:
           tar -czf install-artifact.tar.gz -C "${INSTALL_BASE}" chronolog/
 
       - name: Upload install artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: chronolog-install
           path: install-artifact.tar.gz
@@ -296,7 +296,7 @@ jobs:
           spack install
 
       - name: Download install artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: chronolog-install
 
@@ -366,47 +366,3 @@ jobs:
             fi
             exit 1
           fi
-
-  test:
-    runs-on: ubuntu-22.04
-    needs: [build, prepare-docker-image]
-    timeout-minutes: 30
-    container:
-      image: ${{ needs.prepare-docker-image.outputs.image-name }}
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-      options: --user root
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-        with:
-          ref: ${{ github.event.inputs.branch != '' && github.event.inputs.branch || (github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref) }}
-
-      - name: Setup Spack environment
-        run: |
-          set -e
-          source /opt/spack/share/spack/setup-env.sh
-          spack env activate -p .
-          spack install
-
-      - name: Download build artifact
-        uses: actions/download-artifact@v3
-        with:
-          name: chronolog-build
-
-      - name: Extract build artifact
-        run: |
-          tar -xzf build-artifact.tar.gz
-
-      - name: Run tests
-        run: |
-          set -e
-          source /opt/spack/share/spack/setup-env.sh
-          spack env activate -p .
-          
-          # Add test execution commands here
-          echo "Running tests..."
-          # cd build && ctest --output-on-failure
-          echo "⚠️ Tests not yet implemented"
