@@ -277,6 +277,16 @@ install(
 )
 
 #------------------------------------------------------------------------------
+# Deploy-from-install helper scripts
+#------------------------------------------------------------------------------
+install(
+    PROGRAMS
+        tools/deploy/ChronoLog/deploy_local.sh
+        tools/deploy/ChronoLog/deploy_cluster.sh
+    DESTINATION ${CHRONOLOG_INSTALL_ROOT}/tools
+)
+
+#------------------------------------------------------------------------------
 # Custom Targets
 #------------------------------------------------------------------------------
 add_custom_target(make_all cd ${CMAKE_BINARY_DIR} && make)
