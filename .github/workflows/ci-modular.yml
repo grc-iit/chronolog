@@ -116,10 +116,10 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  build:
+  spack-setup:
     runs-on: ubuntu-22.04
     needs: prepare-docker-image
-    timeout-minutes: 60
+    timeout-minutes: 45
     container:
       image: ${{ needs.prepare-docker-image.outputs.image-name }}
       credentials:
@@ -139,7 +139,62 @@ jobs:
           set -e
           source /opt/spack/share/spack/setup-env.sh
           spack env activate -p .
+          echo "✅ Spack environment activated"
+
+      - name: Install Spack dependencies
+        shell: bash
+        run: |
+          set -e
+          source /opt/spack/share/spack/setup-env.sh
+          spack env activate -p .
+          echo "[1/2] Installing Spack dependencies..."
           spack install
+          echo "✅ Spack dependencies installed successfully"
+
+      - name: Verify Spack installation
+        shell: bash
+        run: |
+          set -e
+          source /opt/spack/share/spack/setup-env.sh
+          spack env activate -p .
+          echo "Spack environment status:"
+          spack env status
+          echo "✅ Spack environment verified"
+
+  build:
+    runs-on: ubuntu-22.04
+    needs: [spack-setup, prepare-docker-image]
+    timeout-minutes: 30
+    container:
+      image: ${{ needs.prepare-docker-image.outputs.image-name }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      options: --user root
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.inputs.branch != '' && github.event.inputs.branch || (github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref) }}
+
+      - name: Setup Spack environment
+        shell: bash
+        run: |
+          set -e
+          source /opt/spack/share/spack/setup-env.sh
+          spack env activate -p .
+          echo "✅ Spack environment activated"
+
+      - name: Install Spack dependencies
+        shell: bash
+        run: |
+          set -e
+          source /opt/spack/share/spack/setup-env.sh
+          spack env activate -p .
+          echo "[2/2] Installing Spack dependencies (cached)..."
+          spack install
+          echo "✅ Spack dependencies ready"
 
       - name: Build ChronoLog
         shell: bash
@@ -148,12 +203,14 @@ jobs:
           source /opt/spack/share/spack/setup-env.sh
           spack env activate -p .
           
+          echo "[2/2] Building ChronoLog..."
           if [ -x ./tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
             ./tools/deploy/ChronoLog/local_single_user_deploy.sh -b
           else
             echo "❌ Build script not found or not executable"
             exit 1
           fi
+          echo "✅ ChronoLog build completed"
 
       - name: Create build artifact
         run: |
@@ -169,7 +226,7 @@ jobs:
 
   install:
     runs-on: ubuntu-22.04
-    needs: [build, prepare-docker-image]
+    needs: [build, spack-setup, prepare-docker-image]
     timeout-minutes: 30
     container:
       image: ${{ needs.prepare-docker-image.outputs.image-name }}
