@@ -2,10 +2,16 @@ name: ChronoLog CI (Modular)
 
 on:
   pull_request:
-    branches: [ develop ]
+    # Run on any open PR to any branch
   push:
     branches: [ develop ]
   workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to checkout and run workflow on'
+        required: false
+        default: ''
+        type: string
 
 env:
   REGISTRY: ghcr.io
@@ -24,6 +30,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.inputs.branch != '' && github.event.inputs.branch || (github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref) }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
@@ -45,13 +53,21 @@ jobs:
             type=ref,event=pr
             type=sha,prefix={{branch}}-
             type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=pr-${{ github.event.pull_request.number }},enable=${{ github.event_name == 'pull_request' }}
+            type=raw,value=pr-${{ github.event.pull_request.number }},enable=${{ github.event_name == 'pull_request' && github.event.pull_request.number != '' }}
 
       - name: Set image tag for jobs
         id: set-tag
         run: |
           if [ "${{ github.event_name }}" == "pull_request" ]; then
             echo "tag=pr-${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            # For manual runs, use the selected branch or default to latest
+            if [ "${{ github.ref }}" == "refs/heads/develop" ] || [ "${{ github.ref }}" == "refs/heads/main" ]; then
+              echo "tag=latest" >> $GITHUB_OUTPUT
+            else
+              BRANCH_NAME=${GITHUB_REF#refs/heads/}
+              echo "tag=${BRANCH_NAME}" >> $GITHUB_OUTPUT
+            fi
           elif [ "${{ github.ref }}" == "refs/heads/develop" ] || [ "${{ github.ref }}" == "refs/heads/main" ]; then
             echo "tag=latest" >> $GITHUB_OUTPUT
           else
@@ -64,6 +80,14 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" == "pull_request" ]; then
             TAG="pr-${{ github.event.pull_request.number }}"
+          elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            # For manual runs, use the selected branch or default to latest
+            if [ "${{ github.ref }}" == "refs/heads/develop" ] || [ "${{ github.ref }}" == "refs/heads/main" ]; then
+              TAG="latest"
+            else
+              BRANCH_NAME=${GITHUB_REF#refs/heads/}
+              TAG="${BRANCH_NAME}"
+            fi
           elif [ "${{ github.ref }}" == "refs/heads/develop" ] || [ "${{ github.ref }}" == "refs/heads/main" ]; then
             TAG="latest"
           else
@@ -95,6 +119,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.inputs.branch != '' && github.event.inputs.branch || (github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref) }}
 
       - name: Setup Spack environment
         run: |
@@ -142,6 +168,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.inputs.branch != '' && github.event.inputs.branch || (github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref) }}
 
       - name: Setup Spack environment
         run: |
@@ -255,6 +283,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.inputs.branch != '' && github.event.inputs.branch || (github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref) }}
 
       - name: Setup Spack environment
         run: |
@@ -349,6 +379,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.inputs.branch != '' && github.event.inputs.branch || (github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref) }}
 
       - name: Setup Spack environment
         run: |
