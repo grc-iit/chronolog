@@ -134,6 +134,7 @@ jobs:
           ref: ${{ github.event.inputs.branch != '' && github.event.inputs.branch || (github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref) }}
 
       - name: Setup Spack environment
+        shell: bash
         run: |
           set -e
           source /opt/spack/share/spack/setup-env.sh
@@ -141,6 +142,7 @@ jobs:
           spack install
 
       - name: Build ChronoLog
+        shell: bash
         run: |
           set -e
           source /opt/spack/share/spack/setup-env.sh
@@ -183,6 +185,7 @@ jobs:
           ref: ${{ github.event.inputs.branch != '' && github.event.inputs.branch || (github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref) }}
 
       - name: Setup Spack environment
+        shell: bash
         run: |
           set -e
           source /opt/spack/share/spack/setup-env.sh
@@ -199,6 +202,7 @@ jobs:
           tar -xzf build-artifact.tar.gz
 
       - name: Install ChronoLog
+        shell: bash
         run: |
           set -e
           source /opt/spack/share/spack/setup-env.sh
@@ -212,6 +216,7 @@ jobs:
           fi
 
       - name: Verify installation
+        shell: bash
         run: |
           set -e
           source /opt/spack/share/spack/setup-env.sh
@@ -298,6 +303,7 @@ jobs:
           ref: ${{ github.event.inputs.branch != '' && github.event.inputs.branch || (github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref) }}
 
       - name: Setup Spack environment
+        shell: bash
         run: |
           set -e
           source /opt/spack/share/spack/setup-env.sh
@@ -316,6 +322,7 @@ jobs:
           ls -la "${INSTALL_BASE}/chronolog"
 
       - name: Deploy ChronoLog
+        shell: bash
         run: |
           set -e
           source /opt/spack/share/spack/setup-env.sh
