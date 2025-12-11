@@ -51,7 +51,7 @@ int main()
     // We use default configuration and don't connect, so this is safe for discovery testing.
     chronolog::ClientPortalServiceConf portal_conf;
     chronolog::Client client(portal_conf);
-    
+
     // Verify the client object was created (destructor will be called automatically)
     // This ensures the library symbols are actually linked, not just header-included
 
