@@ -4,7 +4,9 @@ on:
   pull_request:
     # Run on any open PR to any branch
   push:
-    branches: [ develop ]
+    branches: 
+      - develop
+      - 499-refactor-build-install-workflow  # Temporary: for testing
   workflow_dispatch:
     inputs:
       branch:
