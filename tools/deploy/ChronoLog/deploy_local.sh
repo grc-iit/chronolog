@@ -285,7 +285,6 @@ refresh_paths_for_work_dir() {
     BIN_DIR="${WORK_DIR}/bin"
     MONITOR_DIR="${WORK_DIR}/monitor"
     OUTPUT_DIR="${WORK_DIR}/output"
-    VISOR_BIN="${BIN_DIR}/chronovisor_server}"
     VISOR_BIN="${BIN_DIR}/chronovisor_server"
     KEEPER_BIN="${BIN_DIR}/chrono_keeper"
     GRAPHER_BIN="${BIN_DIR}/chrono_grapher"
