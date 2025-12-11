@@ -20,6 +20,7 @@ jobs:
       packages: write
     outputs:
       image-tag: ${{ steps.set-tag.outputs.tag }}
+      image-name: ${{ steps.set-image-name.outputs.full-name }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -30,7 +31,7 @@ jobs:
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v2
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
@@ -38,7 +39,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v4
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ghcr.io/${{ github.repository }}/chronolog-ci
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -58,6 +59,19 @@ jobs:
             echo "tag=${BRANCH_NAME}" >> $GITHUB_OUTPUT
           fi
 
+      - name: Set full image name
+        id: set-image-name
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            TAG="pr-${{ github.event.pull_request.number }}"
+          elif [ "${{ github.ref }}" == "refs/heads/develop" ] || [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            TAG="latest"
+          else
+            BRANCH_NAME=${GITHUB_REF#refs/heads/}
+            TAG="${BRANCH_NAME}"
+          fi
+          echo "full-name=ghcr.io/${{ github.repository }}/chronolog-ci:${TAG}" >> $GITHUB_OUTPUT
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
         with:
@@ -72,7 +86,7 @@ jobs:
     needs: prepare-docker-image
     timeout-minutes: 60
     container:
-      image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prepare-docker-image.outputs.image-tag }}
+      image: ${{ needs.prepare-docker-image.outputs.image-name }}
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -119,7 +133,7 @@ jobs:
     needs: [build, prepare-docker-image]
     timeout-minutes: 30
     container:
-      image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prepare-docker-image.outputs.image-tag }}
+      image: ${{ needs.prepare-docker-image.outputs.image-name }}
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -232,7 +246,7 @@ jobs:
     needs: [install, prepare-docker-image]
     timeout-minutes: 30
     container:
-      image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prepare-docker-image.outputs.image-tag }}
+      image: ${{ needs.prepare-docker-image.outputs.image-name }}
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -326,7 +340,7 @@ jobs:
     needs: [build, prepare-docker-image]
     timeout-minutes: 30
     container:
-      image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prepare-docker-image.outputs.image-tag }}
+      image: ${{ needs.prepare-docker-image.outputs.image-name }}
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
