@@ -45,11 +45,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set repository name (lowercase)
+        id: repo-name
+        run: |
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "name=${REPO_LOWER}" >> $GITHUB_OUTPUT
+
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v4
         with:
-          images: ghcr.io/${{ github.repository }}/chronolog-ci
+          images: ghcr.io/${{ steps.repo-name.outputs.name }}/chronolog-ci
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -80,6 +86,9 @@ jobs:
       - name: Set full image name
         id: set-image-name
         run: |
+          # Convert repository name to lowercase (Docker requirement)
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          
           if [ "${{ github.event_name }}" == "pull_request" ]; then
             TAG="pr-${{ github.event.pull_request.number }}"
           elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
@@ -96,7 +105,7 @@ jobs:
             BRANCH_NAME=${GITHUB_REF#refs/heads/}
             TAG="${BRANCH_NAME}"
           fi
-          echo "full-name=ghcr.io/${{ github.repository }}/chronolog-ci:${TAG}" >> $GITHUB_OUTPUT
+          echo "full-name=ghcr.io/${REPO_LOWER}/chronolog-ci:${TAG}" >> $GITHUB_OUTPUT
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
