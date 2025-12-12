@@ -119,13 +119,12 @@ jobs:
   spack-setup:
     runs-on: ubuntu-22.04
     needs: prepare-docker-image
+    permissions:
+      contents: read
+      packages: write
     timeout-minutes: 90
-    container:
-      image: ${{ needs.prepare-docker-image.outputs.image-name }}
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-      options: --user root
+    outputs:
+      image-name: ${{ steps.set-spack-image-name.outputs.full-name }}
 
     steps:
       - name: Checkout code
@@ -133,40 +132,85 @@ jobs:
         with:
           ref: ${{ github.event.inputs.branch != '' && github.event.inputs.branch || (github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref) }}
 
-      - name: Setup Spack environment
-        shell: bash
-        run: |
-          set -e
-          source /opt/spack/share/spack/setup-env.sh
-          spack env activate -p .
-          echo "✅ Spack environment activated"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
 
-      - name: Install Spack dependencies
-        shell: bash
-        run: |
-          set -e
-          source /opt/spack/share/spack/setup-env.sh
-          spack env activate -p .
-          echo "[1/2] Installing Spack dependencies..."
-          spack install
-          echo "✅ Spack dependencies installed successfully"
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Verify Spack installation
-        shell: bash
+      - name: Pull base Docker image
+        run: |
+          docker pull "${{ needs.prepare-docker-image.outputs.image-name }}"
+
+      - name: Set Spack image name
+        id: set-spack-image-name
+        run: |
+          # Convert repository name to lowercase (Docker requirement)
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            TAG="pr-${{ github.event.pull_request.number }}-spack"
+          elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            if [ "${{ github.ref }}" == "refs/heads/develop" ] || [ "${{ github.ref }}" == "refs/heads/main" ]; then
+              TAG="latest-spack"
+            else
+              BRANCH_NAME=${GITHUB_REF#refs/heads/}
+              TAG="${BRANCH_NAME}-spack"
+            fi
+          elif [ "${{ github.ref }}" == "refs/heads/develop" ] || [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            TAG="latest-spack"
+          else
+            BRANCH_NAME=${GITHUB_REF#refs/heads/}
+            TAG="${BRANCH_NAME}-spack"
+          fi
+          echo "full-name=ghcr.io/${REPO_LOWER}/chronolog-ci:${TAG}" >> $GITHUB_OUTPUT
+
+      - name: Install Spack dependencies in container
         run: |
           set -e
-          source /opt/spack/share/spack/setup-env.sh
-          spack env activate -p .
-          echo "Spack environment status:"
-          spack env status
-          echo "✅ Spack environment verified"
+          BASE_IMAGE="${{ needs.prepare-docker-image.outputs.image-name }}"
+          SPACK_IMAGE="${{ steps.set-spack-image-name.outputs.full-name }}"
+          
+          # Run container with workspace mounted and install Spack dependencies
+          # Use --cidfile to capture the container ID before it exits
+          CONTAINER_ID=$(docker create --user root \
+            -v "${{ github.workspace }}:/workspace" \
+            -w /workspace \
+            "$BASE_IMAGE" \
+            bash -c "
+              set -e
+              source /opt/spack/share/spack/setup-env.sh
+              spack env activate -p .
+              echo '[1/2] Installing Spack dependencies...'
+              spack install
+              echo '✅ Spack dependencies installed successfully'
+              echo 'Spack environment status:'
+              spack env status
+            ")
+          
+          # Start the container and wait for it to complete
+          docker start -a "$CONTAINER_ID"
+          
+          # Commit the stopped container to a new image with Spack dependencies
+          docker commit "$CONTAINER_ID" "$SPACK_IMAGE"
+          
+          # Clean up
+          docker rm "$CONTAINER_ID"
+          
+      - name: Push Spack image
+        run: |
+          docker push "${{ steps.set-spack-image-name.outputs.full-name }}"
 
   build:
     runs-on: ubuntu-22.04
     needs: [spack-setup, prepare-docker-image]
     timeout-minutes: 30
     container:
-      image: ${{ needs.prepare-docker-image.outputs.image-name }}
+      image: ${{ needs.spack-setup.outputs.image-name }}
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -184,17 +228,7 @@ jobs:
           set -e
           source /opt/spack/share/spack/setup-env.sh
           spack env activate -p .
-          echo "✅ Spack environment activated"
-
-      - name: Install Spack dependencies
-        shell: bash
-        run: |
-          set -e
-          source /opt/spack/share/spack/setup-env.sh
-          spack env activate -p .
-          echo "[2/2] Installing Spack dependencies (cached)..."
-          spack install
-          echo "✅ Spack dependencies ready"
+          echo "✅ Spack environment activated (dependencies already installed)"
 
       - name: Build ChronoLog
         shell: bash
@@ -229,7 +263,7 @@ jobs:
     needs: [build, spack-setup, prepare-docker-image]
     timeout-minutes: 30
     container:
-      image: ${{ needs.prepare-docker-image.outputs.image-name }}
+      image: ${{ needs.spack-setup.outputs.image-name }}
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -247,7 +281,7 @@ jobs:
           set -e
           source /opt/spack/share/spack/setup-env.sh
           spack env activate -p .
-          spack install
+          echo "✅ Spack environment activated (dependencies already installed)"
 
       - name: Download build artifact
         uses: actions/download-artifact@v4
@@ -344,10 +378,10 @@ jobs:
 
   deploy:
     runs-on: ubuntu-22.04
-    needs: [install, prepare-docker-image]
+    needs: [install, spack-setup, prepare-docker-image]
     timeout-minutes: 30
     container:
-      image: ${{ needs.prepare-docker-image.outputs.image-name }}
+      image: ${{ needs.spack-setup.outputs.image-name }}
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -365,7 +399,7 @@ jobs:
           set -e
           source /opt/spack/share/spack/setup-env.sh
           spack env activate -p .
-          spack install
+          echo "✅ Spack environment activated (dependencies already installed)"
 
       - name: Download install artifact
         uses: actions/download-artifact@v4
