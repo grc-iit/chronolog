@@ -55,7 +55,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v4
         with:
-          images: ghcr.io/${{ steps.repo-name.outputs.name }}/chronolog-ci
+          images: ghcr.io/${{ steps.repo-name.outputs.name }}/chronolog
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -106,7 +106,7 @@ jobs:
           fi
           
           TAG="chronolog-base-${BASE_TAG}"
-          echo "full-name=ghcr.io/${REPO_LOWER}/chronolog-ci:${TAG}" >> $GITHUB_OUTPUT
+          echo "full-name=ghcr.io/${REPO_LOWER}/chronolog:${TAG}" >> $GITHUB_OUTPUT
           echo "Base image tag: ${TAG}"
 
       - name: Build and push Docker image
@@ -173,7 +173,7 @@ jobs:
           fi
           
           TAG="chronolog-spack-${BASE_TAG}"
-          echo "full-name=ghcr.io/${REPO_LOWER}/chronolog-ci:${TAG}" >> $GITHUB_OUTPUT
+          echo "full-name=ghcr.io/${REPO_LOWER}/chronolog:${TAG}" >> $GITHUB_OUTPUT
           echo "Spack image tag: ${TAG}"
 
       - name: Install Spack dependencies in container
@@ -265,175 +265,220 @@ jobs:
           fi
           
           TAG="chronolog-${BASE_TAG}"
-          echo "full-name=ghcr.io/${REPO_LOWER}/chronolog-ci:${TAG}" >> $GITHUB_OUTPUT
+          echo "full-name=ghcr.io/${REPO_LOWER}/chronolog:${TAG}" >> $GITHUB_OUTPUT
           echo "Final image tag: ${TAG}"
 
-      - name: Build, Install, Deploy, Test, Stop, and Clean ChronoLog
+      - name: Create container for build and deploy
+        id: create-container
         run: |
           set -e
           SPACK_IMAGE="${{ needs.spack-setup.outputs.image-name }}"
-          FINAL_IMAGE="${{ steps.set-final-image-name.outputs.full-name }}"
-          
-          # Run container with workspace mounted and perform all steps
           CONTAINER_ID=$(docker create --user root \
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace \
             "$SPACK_IMAGE" \
-            bash -c "
-              set -e
-              source /opt/spack/share/spack/setup-env.sh
-              spack env activate -p .
-              
-              # Use default install directory from script
-              WORK_DIR=\"\$HOME/chronolog-install/chronolog\"
-              
-              ##################################
-              # Step 1: Build ChronoLog
-              ##################################
-              echo '[1/7] Building ChronoLog...'
-              if [ -x ./tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
-                ./tools/deploy/ChronoLog/local_single_user_deploy.sh -b
+            tail -f /dev/null)
+          echo "container-id=${CONTAINER_ID}" >> $GITHUB_OUTPUT
+          docker start "$CONTAINER_ID"
+          echo "Container created and started: ${CONTAINER_ID}"
+
+      - name: Setup Spack environment in container
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker exec "$CONTAINER_ID" bash -c "
+            source /opt/spack/share/spack/setup-env.sh
+            spack env activate -p .
+            echo '✅ Spack environment activated'
+          "
+
+      - name: Build ChronoLog
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker exec "$CONTAINER_ID" bash -c "
+            set -e
+            source /opt/spack/share/spack/setup-env.sh
+            spack env activate -p .
+            echo '[1/7] Building ChronoLog...'
+            if [ -x ./tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
+              ./tools/deploy/ChronoLog/local_single_user_deploy.sh -b
+            else
+              echo '❌ Build script not found or not executable'
+              exit 1
+            fi
+            echo '✅ ChronoLog build completed'
+          "
+
+      - name: Install ChronoLog
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker exec "$CONTAINER_ID" bash -c "
+            set -e
+            source /opt/spack/share/spack/setup-env.sh
+            spack env activate -p .
+            echo '[2/7] Installing ChronoLog...'
+            if [ -x ./tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
+              ./tools/deploy/ChronoLog/local_single_user_deploy.sh -i
+            else
+              echo '❌ Install script not found or not executable'
+              exit 1
+            fi
+            echo '✅ ChronoLog installation completed'
+          "
+
+      - name: Verify Installation
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker exec "$CONTAINER_ID" bash -c "
+            set -e
+            source /opt/spack/share/spack/setup-env.sh
+            spack env activate -p .
+            WORK_DIR=\"\$HOME/chronolog-install/chronolog\"
+            echo '[3/7] Verifying installation...'
+            if [ -d \"\${WORK_DIR}/bin\" ]; then
+              echo '✅ bin directory found'
+              ls -l \"\${WORK_DIR}/bin\"
+            else
+              echo '❌ Install failed — bin directory not found'
+              exit 1
+            fi
+            main_binaries=(chronovisor_server chrono_keeper chrono_grapher chrono_player)
+            missing=0
+            for exe in \"\${main_binaries[@]}\"; do
+              if [ ! -x \"\${WORK_DIR}/bin/\$exe\" ]; then
+                echo \"❌ \$exe is missing or not executable!\"
+                missing=1
               else
-                echo '❌ Build script not found or not executable'
-                exit 1
+                echo \"✅ \$exe is present and executable\"
               fi
-              echo '✅ ChronoLog build completed'
-              
-              ##################################
-              # Step 2: Install ChronoLog
-              ##################################
-              echo '[2/7] Installing ChronoLog...'
-              if [ -x ./tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
-                ./tools/deploy/ChronoLog/local_single_user_deploy.sh -i
+            done
+            if [ \"\$missing\" = 1 ]; then
+              echo '❌ Installation verification failed'
+              exit 1
+            fi
+            echo '✅ Installation verification passed'
+          "
+
+      - name: Deploy ChronoLog
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker exec "$CONTAINER_ID" bash -c "
+            set -e
+            source /opt/spack/share/spack/setup-env.sh
+            spack env activate -p .
+            WORK_DIR=\"\$HOME/chronolog-install/chronolog\"
+            echo '[4/7] Deploying ChronoLog...'
+            if [ -x ./tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
+              ./tools/deploy/ChronoLog/local_single_user_deploy.sh -d -k 5 -r 3 -w \"\${WORK_DIR}\"
+            else
+              echo '❌ Deploy script not found or not executable'
+              exit 1
+            fi
+            echo '✅ ChronoLog deployment started'
+          "
+
+      - name: Verify Deployment
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker exec "$CONTAINER_ID" bash -c "
+            set -e
+            source /opt/spack/share/spack/setup-env.sh
+            spack env activate -p .
+            WORK_DIR=\"\$HOME/chronolog-install/chronolog\"
+            echo '[5/7] Verifying deployment...'
+            echo 'Waiting for services to start...'
+            sleep 5
+            echo '📦 Listing ChronoLog processes...'
+            pgrep -la chrono > /tmp/chrono_processes.txt || true
+            cat /tmp/chrono_processes.txt
+            echo '🔍 Checking required components...'
+            missing=0
+            for proc in chronovisor_server chrono_grapher chrono_player chrono_keeper; do
+              count=\$(grep -c \"\$proc\" /tmp/chrono_processes.txt || true)
+              case \$proc in
+                chronovisor_server)
+                  expected=1
+                  ;;
+                chrono_grapher|chrono_player)
+                  expected=3
+                  ;;
+                chrono_keeper)
+                  expected=5
+                  ;;
+              esac
+              if [ \"\$count\" -eq \"\$expected\" ]; then
+                echo \"✅ Found \$count \$proc (expected \$expected)\"
               else
-                echo '❌ Install script not found or not executable'
-                exit 1
+                echo \"❌ Missing or wrong count: \$proc (found \$count, expected \$expected)\"
+                missing=1
               fi
-              echo '✅ ChronoLog installation completed'
-              
-              ##################################
-              # Step 3: Verify Installation
-              ##################################
-              echo '[3/7] Verifying installation...'
-              if [ -d \"\${WORK_DIR}/bin\" ]; then
-                echo '✅ bin directory found'
-                ls -l \"\${WORK_DIR}/bin\"
-              else
-                echo '❌ Install failed — bin directory not found'
-                exit 1
+            done
+            if [ \"\$missing\" != \"0\" ]; then
+              echo '❌ Deployment verification failed'
+              echo '==== Dumping monitor logs ===='
+              if [ -d \"\${WORK_DIR}/monitor\" ]; then
+                for log in \"\${WORK_DIR}/monitor/\"*; do
+                  echo \"==== \$log ====\"
+                  cat \"\$log\"
+                done
               fi
-              
-              main_binaries=(chronovisor_server chrono_keeper chrono_grapher chrono_player)
-              missing=0
-              for exe in \"\${main_binaries[@]}\"; do
-                if [ ! -x \"\${WORK_DIR}/bin/\$exe\" ]; then
-                  echo \"❌ \$exe is missing or not executable!\"
-                  missing=1
-                else
-                  echo \"✅ \$exe is present and executable\"
-                fi
-              done
-              
-              if [ \"\$missing\" = 1 ]; then
-                echo '❌ Installation verification failed'
-                exit 1
-              fi
-              echo '✅ Installation verification passed'
-              
-              ##################################
-              # Step 4: Deploy ChronoLog
-              ##################################
-              echo '[4/7] Deploying ChronoLog...'
-              if [ -x ./tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
-                ./tools/deploy/ChronoLog/local_single_user_deploy.sh -d -k 5 -r 3 -w \"\${WORK_DIR}\"
-              else
-                echo '❌ Deploy script not found or not executable'
-                exit 1
-              fi
-              echo '✅ ChronoLog deployment started'
-              
-              ##################################
-              # Step 5: Verify Deployment
-              ##################################
-              echo '[5/7] Verifying deployment...'
-              echo 'Waiting for services to start...'
-              sleep 5
-              
-              echo '📦 Listing ChronoLog processes...'
-              pgrep -la chrono > /tmp/chrono_processes.txt || true
-              cat /tmp/chrono_processes.txt
-              
-              echo '🔍 Checking required components...'
-              missing=0
-              for proc in chronovisor_server chrono_grapher chrono_player chrono_keeper; do
-                count=\$(grep -c \"\$proc\" /tmp/chrono_processes.txt || true)
-                case \$proc in
-                  chronovisor_server)
-                    expected=1
-                    ;;
-                  chrono_grapher|chrono_player)
-                    expected=3
-                    ;;
-                  chrono_keeper)
-                    expected=5
-                    ;;
-                esac
-                if [ \"\$count\" -eq \"\$expected\" ]; then
-                  echo \"✅ Found \$count \$proc (expected \$expected)\"
-                else
-                  echo \"❌ Missing or wrong count: \$proc (found \$count, expected \$expected)\"
-                  missing=1
-                fi
-              done
-              
-              if [ \"\$missing\" != \"0\" ]; then
-                echo '❌ Deployment verification failed'
-                echo '==== Dumping monitor logs ===='
-                if [ -d \"\${WORK_DIR}/monitor\" ]; then
-                  for log in \"\${WORK_DIR}/monitor/\"*; do
-                    echo \"==== \$log ====\"
-                    cat \"\$log\"
-                  done
-                fi
-                exit 1
-              fi
-              echo '✅ Deployment verification passed'
-              
-              ##################################
-              # Step 6: Stop ChronoLog
-              ##################################
-              echo '[6/7] Stopping ChronoLog...'
-              if [ -x ./tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
-                ./tools/deploy/ChronoLog/local_single_user_deploy.sh -s -w \"\${WORK_DIR}\"
-              else
-                echo '❌ Stop script not found or not executable'
-                exit 1
-              fi
-              echo '✅ ChronoLog stopped'
-              
-              ##################################
-              # Step 7: Clean ChronoLog
-              ##################################
-              echo '[7/7] Cleaning ChronoLog...'
-              if [ -x ./tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
-                ./tools/deploy/ChronoLog/local_single_user_deploy.sh -c -w \"\${WORK_DIR}\"
-              else
-                echo '❌ Clean script not found or not executable'
-                exit 1
-              fi
-              echo '✅ ChronoLog cleaned'
-              
-              echo '✅ All steps completed successfully!'
-            ")
-          
-          # Start the container and wait for it to complete
-          docker start -a "$CONTAINER_ID"
-          
-          # Commit the stopped container to a new image with all artifacts
+              exit 1
+            fi
+            echo '✅ Deployment verification passed'
+          "
+
+      - name: Stop ChronoLog
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker exec "$CONTAINER_ID" bash -c "
+            set -e
+            source /opt/spack/share/spack/setup-env.sh
+            spack env activate -p .
+            WORK_DIR=\"\$HOME/chronolog-install/chronolog\"
+            echo '[6/7] Stopping ChronoLog...'
+            if [ -x ./tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
+              ./tools/deploy/ChronoLog/local_single_user_deploy.sh -s -w \"\${WORK_DIR}\"
+            else
+              echo '❌ Stop script not found or not executable'
+              exit 1
+            fi
+            echo '✅ ChronoLog stopped'
+          "
+
+      - name: Clean ChronoLog
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker exec "$CONTAINER_ID" bash -c "
+            set -e
+            source /opt/spack/share/spack/setup-env.sh
+            spack env activate -p .
+            WORK_DIR=\"\$HOME/chronolog-install/chronolog\"
+            echo '[7/7] Cleaning ChronoLog...'
+            if [ -x ./tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
+              ./tools/deploy/ChronoLog/local_single_user_deploy.sh -c -w \"\${WORK_DIR}\"
+            else
+              echo '❌ Clean script not found or not executable'
+              exit 1
+            fi
+            echo '✅ ChronoLog cleaned'
+          "
+
+      - name: Commit and tag final image
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          FINAL_IMAGE="${{ steps.set-final-image-name.outputs.full-name }}"
+          docker stop "$CONTAINER_ID"
           docker commit "$CONTAINER_ID" "$FINAL_IMAGE"
-          
-          # Clean up
           docker rm "$CONTAINER_ID"
+          echo "✅ Final image committed: ${FINAL_IMAGE}"
           
       - name: Push final image
         run: |
