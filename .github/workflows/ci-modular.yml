@@ -114,7 +114,9 @@ jobs:
         with:
           context: .github/docker
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: |
+            ${{ steps.meta.outputs.tags }}
+            ${{ steps.set-image-name.outputs.full-name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
