@@ -249,7 +249,13 @@ jobs:
       - name: Create build artifact
         run: |
           # Package the build directory for the next job
-          tar -czf build-artifact.tar.gz build/
+          # The build script creates $HOME/chronolog-build/Release
+          if [ -d "$HOME/chronolog-build" ]; then
+            tar -czf build-artifact.tar.gz -C "$HOME" chronolog-build/
+          else
+            echo "❌ Build directory not found at $HOME/chronolog-build"
+            exit 1
+          fi
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -290,7 +296,8 @@ jobs:
 
       - name: Extract build artifact
         run: |
-          tar -xzf build-artifact.tar.gz
+          # Extract to $HOME so the install script can find it at $HOME/chronolog-build
+          tar -xzf build-artifact.tar.gz -C "$HOME"
 
       - name: Install ChronoLog
         shell: bash
