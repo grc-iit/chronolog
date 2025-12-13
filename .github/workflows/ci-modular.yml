@@ -448,7 +448,39 @@ jobs:
               echo '❌ Stop script not found or not executable'
               exit 1
             fi
-            echo '✅ ChronoLog stopped'
+            echo '✅ ChronoLog stop command completed'
+          "
+
+      - name: Verify all processes stopped
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker exec "$CONTAINER_ID" bash -c "
+            set -e
+            echo 'Verifying all ChronoLog processes are stopped...'
+            max_wait=30
+            wait_interval=2
+            elapsed=0
+            while [ \$elapsed -lt \$max_wait ]; do
+              running=\$(pgrep -c chrono || echo 0)
+              if [ \"\$running\" = \"0\" ]; then
+                echo '✅ All ChronoLog processes stopped'
+                exit 0
+              fi
+              echo \"Waiting for processes to stop... (\$running still running, waited \$elapsed seconds)\"
+              sleep \$wait_interval
+              elapsed=\$((elapsed + wait_interval))
+            done
+            echo '⚠️ Some processes still running after wait period, force killing...'
+            pkill -9 chrono || true
+            sleep 2
+            running=\$(pgrep -c chrono || echo 0)
+            if [ \"\$running\" != \"0\" ]; then
+              echo \"❌ Failed to stop all processes (\$running still running)\"
+              pgrep -la chrono || true
+              exit 1
+            fi
+            echo '✅ All ChronoLog processes stopped (force killed)'
           "
 
       - name: Clean ChronoLog
