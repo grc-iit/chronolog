@@ -80,7 +80,7 @@ jobs:
             BASE_TAG="${BRANCH_NAME}"
           fi
           
-          TAG="chronolog-base-${BASE_TAG}"
+          TAG="base-chronolog-${BASE_TAG}"
           echo "full-name=ghcr.io/${REPO_LOWER}/chronolog:${TAG}" >> $GITHUB_OUTPUT
           echo "Base image tag: ${TAG}"
 
@@ -146,7 +146,7 @@ jobs:
           set -e
           BASE_IMAGE="${{ steps.set-base-image-name.outputs.full-name }}"
           
-          # If force-rebuild is enabled, always rebuild
+          # If force-rebuild is enabled via workflow_dispatch, always rebuild
           if [ "${{ github.event_name }}" == "workflow_dispatch" ] && [ "${{ github.event.inputs.force-rebuild }}" == "true" ]; then
             echo "spack-files-changed=true" >> $GITHUB_OUTPUT
             echo "image-exists=false" >> $GITHUB_OUTPUT
@@ -272,7 +272,9 @@ jobs:
 
       - name: Pull base Docker image
         run: |
+          # This pulls the base-chronolog image created in the previous job
           docker pull "${{ needs.chronolog-base.outputs.image-name }}"
+          echo "Pulled image: ${{ needs.chronolog-base.outputs.image-name }}"
 
       - name: Set final image name
         id: set-final-image-name
@@ -304,7 +306,9 @@ jobs:
         id: create-container
         run: |
           set -e
+          # Uses the base-chronolog image from the previous job
           BASE_IMAGE="${{ needs.chronolog-base.outputs.image-name }}"
+          echo "Using base image: ${BASE_IMAGE}"
           CONTAINER_ID=$(docker create --user root \
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace \
