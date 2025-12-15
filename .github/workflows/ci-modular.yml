@@ -135,6 +135,7 @@ jobs:
         uses: actions/checkout@v3
         with:
           ref: ${{ github.event.inputs.branch != '' && github.event.inputs.branch || (github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref) }}
+          fetch-depth: 0
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
@@ -176,7 +177,50 @@ jobs:
           echo "full-name=ghcr.io/${REPO_LOWER}/chronolog:${TAG}" >> $GITHUB_OUTPUT
           echo "Spack image tag: ${TAG}"
 
+      - name: Check if Spack files changed
+        id: check-spack-changes
+        run: |
+          set -e
+          SPACK_IMAGE="${{ steps.set-spack-image-name.outputs.full-name }}"
+          
+          # Check if spack.yaml files have changed
+          CHANGED=""
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            # For PRs, check against the base branch
+            BASE_REF="${{ github.event.pull_request.base.ref }}"
+            # Fetch the base branch for comparison
+            git fetch origin ${BASE_REF}:${BASE_REF} 2>/dev/null || true
+            CHANGED=$(git diff --name-only ${BASE_REF}...HEAD 2>/dev/null | grep -E '^(spack\.yaml|Client/spack\.yaml)$' || true)
+          else
+            # For pushes, check the last commit (if available)
+            if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
+              CHANGED=$(git diff --name-only HEAD~1 HEAD | grep -E '^(spack\.yaml|Client/spack\.yaml)$' || true)
+            else
+              # First commit or no history, assume changed
+              CHANGED="spack.yaml"
+            fi
+          fi
+          
+          if [ -n "$CHANGED" ]; then
+            echo "spack-files-changed=true" >> $GITHUB_OUTPUT
+            echo "✅ Spack files changed, will rebuild image"
+            echo "Changed files: $CHANGED"
+          else
+            echo "spack-files-changed=false" >> $GITHUB_OUTPUT
+            echo "ℹ️ Spack files unchanged, checking if image exists..."
+            
+            # Try to pull the existing image
+            if docker pull "$SPACK_IMAGE" 2>/dev/null; then
+              echo "image-exists=true" >> $GITHUB_OUTPUT
+              echo "✅ Existing Spack image found, will skip rebuild"
+            else
+              echo "image-exists=false" >> $GITHUB_OUTPUT
+              echo "⚠️ Existing Spack image not found, will rebuild"
+            fi
+          fi
+
       - name: Install Spack dependencies in container
+        if: steps.check-spack-changes.outputs.spack-files-changed == 'true' || steps.check-spack-changes.outputs.image-exists == 'false'
         run: |
           set -e
           BASE_IMAGE="${{ needs.prepare-docker-image.outputs.image-name }}"
@@ -209,6 +253,7 @@ jobs:
           docker rm "$CONTAINER_ID"
           
       - name: Push Spack image
+        if: steps.check-spack-changes.outputs.spack-files-changed == 'true' || steps.check-spack-changes.outputs.image-exists == 'false'
         run: |
           docker push "${{ steps.set-spack-image-name.outputs.full-name }}"
 
