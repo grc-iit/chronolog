@@ -19,6 +19,7 @@
 #include <ArchiveReadingAgent.h>
 #include <ArchiveReadingRequestQueue.h>
 #include <PlaybackService.h>
+#include <ChronoPlayerConfiguration.h>
 
 namespace chl = chronolog;
 namespace tl = thallium;

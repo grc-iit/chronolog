@@ -16,6 +16,7 @@ target_include_directories(chronovisor_server PRIVATE
 
 target_sources(chronovisor_server PRIVATE
     src/chronovisor_instance.cpp
+    src/ChronoVisorConfiguration.cpp
     src/VisorClientPortal.cpp
     src/ClientRegistryManager.cpp
     src/ClientRegistryRecord.cpp

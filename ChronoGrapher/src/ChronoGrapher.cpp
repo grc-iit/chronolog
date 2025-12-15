@@ -22,7 +22,7 @@
 #include <ChunkExtractorCSV.h>
 #include <HDF5FileChunkExtractor.h>
 #include <cmd_arg_parse.h>
-
+#include <ChronoGrapherConfiguration.h>
 
 namespace chl = chronolog;
 namespace tl = thallium;

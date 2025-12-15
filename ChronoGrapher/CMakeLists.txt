@@ -15,6 +15,7 @@ target_include_directories(chrono_grapher PRIVATE
 
 target_sources(chrono_grapher PRIVATE
     src/ChronoGrapher.cpp
+    src/ChronoGrapherConfiguration.cpp
     src/GrapherDataStore.cpp
     src/HDF5FileChunkExtractor.cpp
     ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp

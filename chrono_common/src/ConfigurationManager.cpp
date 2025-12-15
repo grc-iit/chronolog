@@ -1,6 +1,9 @@
 #include "ConfigurationManager.h"
 
 
+namespace chl = chronolog;
+
+
 int chronolog::ClockConf::parseJsonConf(json_object* clock_conf)
 {
     json_object_object_foreach(clock_conf, key, val)
@@ -644,4 +647,94 @@ int chronolog::DataStoreConf::parseJsonConf(json_object* data_store_json_conf)
     }
 
     return 1;
+}
+
+///////////////////
+
+void chl::ConfigurationManager::LoadConfFromJSONFile(const std::string& conf_file_path)
+{
+        json_object* root = json_object_from_file(conf_file_path.c_str());
+        if(root == nullptr)
+        {
+            std::cerr << "[ConfigurationManager] Failed to open configuration file at path: " << conf_file_path.c_str()
+                      << ". Exiting..." << std::endl;
+            exit(chronolog::CL_ERR_UNKNOWN);
+        }
+
+        json_object_object_foreach(root, key, val)
+        {
+            if(strcmp(key, "clock") == 0)
+            {
+                json_object* clock_conf = json_object_object_get(root, "clock");
+                if(clock_conf == nullptr || !json_object_is_type(clock_conf, json_type_object))
+                {
+                    std::cerr << "[ConfigurationManager] Error while parsing configuration file "
+                              << conf_file_path.c_str() << ". Clock configuration is not found or is not an object."
+                              << std::endl;
+                    exit(chronolog::CL_ERR_INVALID_CONF);
+                }
+                CLOCK_CONF.parseJsonConf(clock_conf);
+            }
+            else if(strcmp(key, "authentication") == 0)
+            {
+                json_object* auth_conf = json_object_object_get(root, "authentication");
+                if(auth_conf == nullptr || !json_object_is_type(auth_conf, json_type_object))
+                {
+                    std::cerr << "[ConfigurationManager] Error while parsing configuration file "
+                              << conf_file_path.c_str()
+                              << ". Authentication configuration is not found or is not an object." << std::endl;
+                    exit(chronolog::CL_ERR_INVALID_CONF);
+                }
+                AUTH_CONF.parseJsonConf(auth_conf);
+            }
+            else if(strcmp(key, "chrono_visor") == 0)
+            {
+                json_object* chrono_visor_conf = json_object_object_get(root, "chrono_visor");
+                if(chrono_visor_conf == nullptr || !json_object_is_type(chrono_visor_conf, json_type_object))
+                {
+                    std::cerr << "[ConfigurationManager] Error while parsing configuration file "
+                              << conf_file_path.c_str()
+                              << ". ChronoVisor configuration is not found or is not an object." << std::endl;
+                    exit(chronolog::CL_ERR_INVALID_CONF);
+                }
+                VISOR_CONF.parseJsonConf(chrono_visor_conf);
+            }
+            else if(strcmp(key, "chrono_keeper") == 0)
+            {
+                json_object* chrono_keeper_conf = json_object_object_get(root, "chrono_keeper");
+                if(chrono_keeper_conf == nullptr || !json_object_is_type(chrono_keeper_conf, json_type_object))
+                {
+                    std::cerr << "[ConfigurationManager] Error while parsing configuration file "
+                              << conf_file_path.c_str()
+                              << ". ChronoKeeper configuration is not found or is not an object." << std::endl;
+                    exit(chronolog::CL_ERR_INVALID_CONF);
+                }
+                KEEPER_CONF.parseJsonConf(chrono_keeper_conf);
+            }
+            else if(strcmp(key, "chrono_grapher") == 0)
+            {
+                json_object* chrono_grapher_conf = json_object_object_get(root, "chrono_grapher");
+                if(chrono_grapher_conf == nullptr || !json_object_is_type(chrono_grapher_conf, json_type_object))
+                {
+                    std::cerr << "[ConfigurationManager] Error while parsing configuration file "
+                              << conf_file_path.c_str()
+                              << ". ChronoGrapher configuration is not found or is not an object." << std::endl;
+                    exit(chronolog::CL_ERR_INVALID_CONF);
+                }
+                GRAPHER_CONF.parseJsonConf(chrono_grapher_conf);
+            }
+            else if(strcmp(key, "chrono_player") == 0)
+            {
+                json_object* chrono_player_conf = json_object_object_get(root, "chrono_player");
+                if(chrono_player_conf == nullptr || !json_object_is_type(chrono_player_conf, json_type_object))
+                {
+                    std::cerr << "[ConfigurationManager] Error while parsing configuration file "
+                              << conf_file_path.c_str()
+                              << ". ChronoPlayer configuration is not found or is not an object." << std::endl;
+                    exit(chronolog::CL_ERR_INVALID_CONF);
+                }
+                PLAYER_CONF.parseJsonConf(chrono_player_conf);
+            }
+        }
+        json_object_put(root);
 }

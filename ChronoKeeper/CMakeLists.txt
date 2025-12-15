@@ -14,6 +14,7 @@ target_include_directories(chrono_keeper PRIVATE
 
 target_sources(chrono_keeper PRIVATE
     src/ChronoKeeperInstance.cpp
+    src/ChronoKeeperConfiguration.cpp
     src/StoryPipeline.cpp
     src/KeeperDataStore.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/include/StoryChunkExtractionModule.h

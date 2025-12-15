@@ -14,11 +14,13 @@
 #include <StoryChunkExtractionQueue.h>
 #include <KeeperDataStore.h>
 #include <DataStoreAdminService.h>
-#include <ConfigurationManager.h>
 #include <cmd_arg_parse.h>
 #include <StoryChunkExtractionModule.h>
 #include <ChunkLoggingExtractor.h>
 #include <ChunkExtractorRDMA.h>
+
+#include <ConfigurationManager.h>
+#include <ChronoKeeperConfiguration.h>
 
 namespace chl = chronolog;
 namespace tl = thallium;

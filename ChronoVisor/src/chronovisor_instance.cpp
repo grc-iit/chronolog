@@ -8,6 +8,7 @@
 #include <KeeperRegistry.h>
 #include <chrono_monitor.h>
 #include <VisorClientPortal.h>
+#include <ChronoVisorConfiguration.h>
 
 volatile sig_atomic_t keep_running = true;
 

@@ -12,11 +12,31 @@
 #include <sstream>
 #include <spdlog/common.h>
 
-#include "enum.h"
 #include "chronolog_errcode.h"
 
 namespace chronolog
 {
+
+enum ClocksourceType
+{
+    C_STYLE = 0, CPP_STYLE = 1, TSC = 2
+};
+
+inline const char*getClocksourceTypeString(ClocksourceType type)
+{
+    switch(type)
+    {
+        case C_STYLE:
+            return "C_STYLE";
+        case CPP_STYLE:
+            return "CPP_STYLE";
+        case TSC:
+            return "TSC";
+        default:
+            return "UNKNOWN";
+    }
+}
+
 struct ClockConf
 {
     ClocksourceType CLOCKSOURCE_TYPE;
@@ -242,7 +262,7 @@ struct ExtractorReaderConf
     }
 };
 
-
+/*
 struct VisorConfiguration
 {
     RPCProviderConf VISOR_CLIENT_PORTAL_SERVICE_CONF;
@@ -325,6 +345,7 @@ struct KeeperConfiguration
                ", EXTRACTOR_CONF: " + EXTRACTOR_CONF.to_String() + "]";
     }
 };
+*/
 
 struct GrapherConfiguration
 {

@@ -15,6 +15,7 @@ target_include_directories(chrono_player PRIVATE
 
 target_sources(chrono_player PRIVATE
     src/ChronoPlayer.cpp
+    src/ChronoPlayerConfigurarion.cpp
     src/PlayerDataStore.cpp
     src/ArchiveReadingAgent.cpp
     src/HDF5ArchiveReadingAgent.cpp
