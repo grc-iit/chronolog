@@ -1,6 +1,6 @@
 
-#ifndef EXTRACTION_CHAIN_CONFIG_H
-#define EXTRACTION_CHAIN_CONFIG_H
+#ifndef EXTRACTION_MODULE_CONFIG_H
+#define EXTRACTION_MODULE_CONFIG_H
 
 #include <iostream>
 #include <json-c/json.h>
@@ -33,34 +33,28 @@ public:
 };
         
     
-class ExtractionChainConfiguration
+class ExtractionModuleConfiguration
 {
 public:
 
-    ExtractionChainConfiguration( std::string const&);
-    ExtractionChainConfiguration( json_object * );
+    ExtractionModuleConfiguration( std::string const&);
+    ExtractionModuleConfiguration( json_object * );
 
+    
     int parse_json_conf(json_object*);
+    int update_config(std::string const&);
+    int update_config(json_object * );
 
-    bool is_valid() const;
-
+    int get_extraction_thread_number() const { return extraction_thread_number; }
     std::vector<ExtractorConfiguration> const & get_extractors() const {return extractors;}
 
+    bool is_valid() const;
+    std::string & to_string(std::string &) const;
+
 private:
+    uint16_t    extraction_thread_number;
     std::vector<ExtractorConfiguration> extractors;
 };
-/*
-std::string & to_string( std::string & a_string, ExtractionChainConfiguration const & extraction_chain_conf) 
-{
-    a_string += "{ ExtractionChainConfiguration ";
-    
-    for ( auto & extractor_conf : extraction_chain_conf.get_extractors())
-        a_string += extractor_conf.to_string(a_string);        
-    a_string += " }";
 
-    return a_string;
-
-}
-*/
 } // namespace chronolog
 #endif

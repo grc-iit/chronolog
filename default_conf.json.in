@@ -84,15 +84,31 @@
       }
     },
     "DataStoreInternals": {
-      "max_story_chunk_size": 4096,
-      "story_chunk_duration_secs": 10,
-      "acceptance_window_secs": 15,
-      "inactive_story_delay_secs": 120
+        "max_story_chunk_size": 4096,
+        "story_chunk_duration_secs": 10,
+        "acceptance_window_secs": 15,
+        "inactive_story_delay_secs": 120
     },
-    "Extractors": {
-      "story_files_dir": "/tmp"
+    "ExtractionModule"{
+        "extraction_thread_number":2,
+        "extractors": {
+            "extractor"{
+                "type": "csv_extractor",
+                "csv_archive_dir": "/tmp/csv_archive"
+            },
+            "extractor"{
+                "type": "rdma_extractor",
+                "grapher_receiving_endpoint": {
+                    "protocol_conf": "ofi+sockets",
+                    "service_ip": "127.0.0.1",
+                    "service_base_port": 3333,
+                    "service_provider_id": 33
+                }
+            }
+        }
     }
-  },
+},
+
   "chrono_grapher": {
     "RecordingGroup": 7,
     "KeeperGrapherDrainService": {
@@ -138,8 +154,18 @@
     },
     "Extractors": {
       "story_files_dir": "/tmp"
+    },
+    "ExtractionModule"{
+        "extraction_thread_number":2,
+        "extractors": {
+            "extractor"{
+                "type": "hdf5_extractor",
+                "hdf5_archive_dir": "/tmp/hdf5_archive/"
+            }
+        }
     }
-  },
+},
+
   "chrono_player": {
     "RecordingGroup": 7,
     "PlayerStoreAdminService": {

@@ -10,7 +10,7 @@
 #include <ChunkLoggingExtractor.h>
 #include <ChunkExtractorCSV.h>
 #include <ChunkExtractorRDMA.h>
-#include <ExtractionChainConfiguration.h>
+#include <ExtractionModuleConfiguration.h>
 
 namespace tl = thallium;
 namespace chl = chronolog;
@@ -59,7 +59,7 @@ int main(int argc, char** argv)
 {
 
     std::string config_file = parse_conf_path_arg(argc, argv);
-    chl::ExtractionChainConfiguration extractionChainConfiguration( config_file);
+    chl::ExtractionModuleConfiguration extractionChainConfiguration( config_file);
 
     int contributor_threads = 5;
     int extraction_threads = 2;
