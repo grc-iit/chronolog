@@ -21,19 +21,21 @@ env:
   INSTALL_BASE: /home/runner/chronolog-install
 
 jobs:
-  prepare-docker-image:
+  chronolog-base:
     runs-on: ubuntu-22.04
     permissions:
       contents: read
       packages: write
+    timeout-minutes: 90
     outputs:
-      image-tag: ${{ steps.set-tag.outputs.tag }}
-      image-name: ${{ steps.set-image-name.outputs.full-name }}
+      image-name: ${{ steps.set-base-image-name.outputs.full-name }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
           ref: ${{ github.event.inputs.branch != '' && github.event.inputs.branch || (github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref) }}
+          fetch-depth: 0
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
@@ -51,40 +53,8 @@ jobs:
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           echo "name=${REPO_LOWER}" >> $GITHUB_OUTPUT
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v4
-        with:
-          images: ghcr.io/${{ steps.repo-name.outputs.name }}/chronolog
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=sha,prefix={{branch}}-
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=pr-${{ github.event.pull_request.number }},enable=${{ github.event_name == 'pull_request' && github.event.pull_request.number != '' }}
-
-      - name: Set image tag for jobs
-        id: set-tag
-        run: |
-          if [ "${{ github.event_name }}" == "pull_request" ]; then
-            echo "tag=pr-${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
-          elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            # For manual runs, use the selected branch or default to latest
-            if [ "${{ github.ref }}" == "refs/heads/develop" ] || [ "${{ github.ref }}" == "refs/heads/main" ]; then
-              echo "tag=latest" >> $GITHUB_OUTPUT
-            else
-              BRANCH_NAME=${GITHUB_REF#refs/heads/}
-              echo "tag=${BRANCH_NAME}" >> $GITHUB_OUTPUT
-            fi
-          elif [ "${{ github.ref }}" == "refs/heads/develop" ] || [ "${{ github.ref }}" == "refs/heads/main" ]; then
-            echo "tag=latest" >> $GITHUB_OUTPUT
-          else
-            BRANCH_NAME=${GITHUB_REF#refs/heads/}
-            echo "tag=${BRANCH_NAME}" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Set full image name
-        id: set-image-name
+      - name: Set base image name
+        id: set-base-image-name
         run: |
           # Convert repository name to lowercase (Docker requirement)
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
@@ -109,79 +79,11 @@ jobs:
           echo "full-name=ghcr.io/${REPO_LOWER}/chronolog:${TAG}" >> $GITHUB_OUTPUT
           echo "Base image tag: ${TAG}"
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v4
-        with:
-          context: .github/docker
-          push: true
-          tags: |
-            ${{ steps.meta.outputs.tags }}
-            ${{ steps.set-image-name.outputs.full-name }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  spack-setup:
-    runs-on: ubuntu-22.04
-    needs: prepare-docker-image
-    permissions:
-      contents: read
-      packages: write
-    timeout-minutes: 90
-    outputs:
-      image-name: ${{ steps.set-spack-image-name.outputs.full-name }}
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-        with:
-          ref: ${{ github.event.inputs.branch != '' && github.event.inputs.branch || (github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref) }}
-          fetch-depth: 0
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v2
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Pull base Docker image
-        run: |
-          docker pull "${{ needs.prepare-docker-image.outputs.image-name }}"
-
-      - name: Set Spack image name
-        id: set-spack-image-name
-        run: |
-          # Convert repository name to lowercase (Docker requirement)
-          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          
-          if [ "${{ github.event_name }}" == "pull_request" ]; then
-            BASE_TAG="pr-${{ github.event.pull_request.number }}"
-          elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            if [ "${{ github.ref }}" == "refs/heads/develop" ] || [ "${{ github.ref }}" == "refs/heads/main" ]; then
-              BASE_TAG="latest"
-            else
-              BRANCH_NAME=${GITHUB_REF#refs/heads/}
-              BASE_TAG="${BRANCH_NAME}"
-            fi
-          elif [ "${{ github.ref }}" == "refs/heads/develop" ] || [ "${{ github.ref }}" == "refs/heads/main" ]; then
-            BASE_TAG="latest"
-          else
-            BRANCH_NAME=${GITHUB_REF#refs/heads/}
-            BASE_TAG="${BRANCH_NAME}"
-          fi
-          
-          TAG="chronolog-spack-${BASE_TAG}"
-          echo "full-name=ghcr.io/${REPO_LOWER}/chronolog:${TAG}" >> $GITHUB_OUTPUT
-          echo "Spack image tag: ${TAG}"
-
       - name: Check if Spack files changed
         id: check-spack-changes
         run: |
           set -e
-          SPACK_IMAGE="${{ steps.set-spack-image-name.outputs.full-name }}"
+          BASE_IMAGE="${{ steps.set-base-image-name.outputs.full-name }}"
           
           # Check if spack.yaml files have changed
           CHANGED=""
@@ -210,24 +112,34 @@ jobs:
             echo "ℹ️ Spack files unchanged, checking if image exists..."
             
             # Try to pull the existing image
-            if docker pull "$SPACK_IMAGE" 2>/dev/null; then
+            if docker pull "$BASE_IMAGE" 2>/dev/null; then
               echo "image-exists=true" >> $GITHUB_OUTPUT
-              echo "✅ Existing Spack image found, will skip rebuild"
+              echo "✅ Existing base image found, will skip rebuild"
             else
               echo "image-exists=false" >> $GITHUB_OUTPUT
-              echo "⚠️ Existing Spack image not found, will rebuild"
+              echo "⚠️ Existing base image not found, will rebuild"
             fi
           fi
+
+      - name: Build base Docker image
+        if: steps.check-spack-changes.outputs.spack-files-changed == 'true' || steps.check-spack-changes.outputs.image-exists == 'false'
+        uses: docker/build-push-action@v4
+        with:
+          context: .github/docker
+          push: false
+          tags: ${{ steps.set-base-image-name.outputs.full-name }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          load: true
 
       - name: Install Spack dependencies in container
         if: steps.check-spack-changes.outputs.spack-files-changed == 'true' || steps.check-spack-changes.outputs.image-exists == 'false'
         run: |
           set -e
-          BASE_IMAGE="${{ needs.prepare-docker-image.outputs.image-name }}"
-          SPACK_IMAGE="${{ steps.set-spack-image-name.outputs.full-name }}"
+          BASE_IMAGE="${{ steps.set-base-image-name.outputs.full-name }}"
+          FINAL_IMAGE="${{ steps.set-base-image-name.outputs.full-name }}"
           
           # Run container with workspace mounted and install Spack dependencies
-          # Use --cidfile to capture the container ID before it exits
           CONTAINER_ID=$(docker create --user root \
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace \
@@ -236,7 +148,7 @@ jobs:
               set -e
               source /opt/spack/share/spack/setup-env.sh
               spack env activate -p .
-              echo '[1/2] Installing Spack dependencies...'
+              echo 'Installing Spack dependencies...'
               spack install
               echo '✅ Spack dependencies installed successfully'
               echo 'Spack environment status:'
@@ -247,19 +159,19 @@ jobs:
           docker start -a "$CONTAINER_ID"
           
           # Commit the stopped container to a new image with Spack dependencies
-          docker commit "$CONTAINER_ID" "$SPACK_IMAGE"
+          docker commit "$CONTAINER_ID" "$FINAL_IMAGE"
           
           # Clean up
           docker rm "$CONTAINER_ID"
-          
-      - name: Push Spack image
+
+      - name: Push base image
         if: steps.check-spack-changes.outputs.spack-files-changed == 'true' || steps.check-spack-changes.outputs.image-exists == 'false'
         run: |
-          docker push "${{ steps.set-spack-image-name.outputs.full-name }}"
+          docker push "${{ steps.set-base-image-name.outputs.full-name }}"
 
   build-install-deploy:
     runs-on: ubuntu-22.04
-    needs: [spack-setup, prepare-docker-image]
+    needs: chronolog-base
     permissions:
       contents: read
       packages: write
@@ -283,9 +195,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Pull Spack Docker image
+      - name: Pull base Docker image
         run: |
-          docker pull "${{ needs.spack-setup.outputs.image-name }}"
+          docker pull "${{ needs.chronolog-base.outputs.image-name }}"
 
       - name: Set final image name
         id: set-final-image-name
@@ -317,11 +229,11 @@ jobs:
         id: create-container
         run: |
           set -e
-          SPACK_IMAGE="${{ needs.spack-setup.outputs.image-name }}"
+          BASE_IMAGE="${{ needs.chronolog-base.outputs.image-name }}"
           CONTAINER_ID=$(docker create --user root \
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace \
-            "$SPACK_IMAGE" \
+            "$BASE_IMAGE" \
             tail -f /dev/null)
           echo "container-id=${CONTAINER_ID}" >> $GITHUB_OUTPUT
           docker start "$CONTAINER_ID"
