@@ -23,7 +23,7 @@ usage() {
     echo "Build Options:"
     echo "  -t|--build-type <Debug|Release>  Define type of build (default: Release)"
     echo "  -B|--build-dir <path>            Set the build directory (default: $HOME/chronolog-build/)"
-    echo "  -I|--install-dir <path>          Set the installation directory (default: $HOME/chronolog-install/)"
+#    echo "  -I|--install-dir <path>          Set the installation directory (default: $HOME/chronolog-install/)"
     echo ""
     echo "Examples:"
     echo ""
@@ -33,10 +33,10 @@ usage() {
     echo "  2) Build ChronoLog in Debug mode:"
     echo "     $0 --build-type Debug"
     echo ""
-    echo "  3) Build ChronoLog in Release mode with custom install directory:"
-    echo "     $0 --install-dir /custom/install/path"
-    echo ""
-    echo "  4) Build ChronoLog in Debug mode with custom build directory:"
+#    echo "  3) Build ChronoLog in Release mode with custom install directory:"
+#    echo "     $0 --install-dir /custom/install/path"
+#    echo ""
+    echo "  3) Build ChronoLog in Debug mode with custom build directory:"
     echo "     $0 --build-type Debug --build-dir /custom/build/path"
     echo ""
     exit 1
@@ -58,9 +58,9 @@ parse_arguments() {
             -B|--build-dir)
                 BUILD_BASE_DIR=$(realpath -m "$2")
                 shift 2 ;;
-            -I|--install-dir)
-                INSTALL_PATH=$(realpath -m "$2")
-                shift 2 ;;
+#            -I|--install-dir)
+#                INSTALL_PATH=$(realpath -m "$2")
+#                shift 2 ;;
             *) 
                 echo -e "${ERR}Unknown option: $1${NC}"
                 usage ;;
@@ -68,10 +68,10 @@ parse_arguments() {
     done
 
     # Optional: Validate INSTALL_PATH if specified
-    if [[ -n "$INSTALL_PATH" && ! -d "$(dirname "$INSTALL_PATH")" ]]; then
-        echo -e "${ERR}Invalid install path: ${INSTALL_PATH}. Parent directory does not exist.${NC}"
-        exit 1
-    fi
+#    if [[ -n "$INSTALL_PATH" && ! -d "$(dirname "$INSTALL_PATH")" ]]; then
+#        echo -e "${ERR}Invalid install path: ${INSTALL_PATH}. Parent directory does not exist.${NC}"
+#        exit 1
+#    fi
 }
 
 activate_spack_environment() {
