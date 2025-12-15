@@ -109,12 +109,18 @@ jobs:
             echo "Changed files: $CHANGED"
           else
             echo "spack-files-changed=false" >> $GITHUB_OUTPUT
-            echo "ℹ️ Spack files unchanged, checking if image exists..."
+            echo "ℹ️ Spack files unchanged, checking if image exists and has Spack installed..."
             
             # Try to pull the existing image
             if docker pull "$BASE_IMAGE" 2>/dev/null; then
-              echo "image-exists=true" >> $GITHUB_OUTPUT
-              echo "✅ Existing base image found, will skip rebuild"
+              # Verify that Spack is actually installed in the image
+              if docker run --rm "$BASE_IMAGE" test -f /opt/spack/share/spack/setup-env.sh 2>/dev/null; then
+                echo "image-exists=true" >> $GITHUB_OUTPUT
+                echo "✅ Existing base image found with Spack installed, will skip rebuild"
+              else
+                echo "image-exists=false" >> $GITHUB_OUTPUT
+                echo "⚠️ Existing image found but Spack not installed, will rebuild"
+              fi
             else
               echo "image-exists=false" >> $GITHUB_OUTPUT
               echo "⚠️ Existing base image not found, will rebuild"
@@ -416,52 +422,70 @@ jobs:
             echo '[6.5/7] Verifying all ChronoLog processes are stopped...'
             
             # Wait a moment for stop command to fully complete
-            sleep 2
+            sleep 3
             
-            # Check for specific ChronoLog processes and print results
+            # Use pgrep without -f to match only process names (not full command line)
+            # This avoids matching the bash script itself
             echo 'Checking for chronovisor_server processes...'
-            VISOR_PIDS=\$(pgrep -f 'chronovisor_server' 2>/dev/null || true)
+            VISOR_PIDS=\$(pgrep '^chronovisor_server$' 2>/dev/null || true)
             if [ -n \"\$VISOR_PIDS\" ]; then
               echo \"❌ Found chronovisor_server processes: \$VISOR_PIDS\"
-              pgrep -f 'chronovisor_server' -la || true
+              ps -fp \$VISOR_PIDS || true
             else
               echo '✅ No chronovisor_server processes found'
             fi
             
             echo 'Checking for chrono_grapher processes...'
-            GRAPHER_PIDS=\$(pgrep -f 'chrono_grapher' 2>/dev/null || true)
+            GRAPHER_PIDS=\$(pgrep '^chrono_grapher$' 2>/dev/null || true)
             if [ -n \"\$GRAPHER_PIDS\" ]; then
               echo \"❌ Found chrono_grapher processes: \$GRAPHER_PIDS\"
-              pgrep -f 'chrono_grapher' -la || true
+              ps -fp \$GRAPHER_PIDS || true
             else
               echo '✅ No chrono_grapher processes found'
             fi
             
             echo 'Checking for chrono_player processes...'
-            PLAYER_PIDS=\$(pgrep -f 'chrono_player' 2>/dev/null || true)
+            PLAYER_PIDS=\$(pgrep '^chrono_player$' 2>/dev/null || true)
             if [ -n \"\$PLAYER_PIDS\" ]; then
               echo \"❌ Found chrono_player processes: \$PLAYER_PIDS\"
-              pgrep -f 'chrono_player' -la || true
+              ps -fp \$PLAYER_PIDS || true
             else
               echo '✅ No chrono_player processes found'
             fi
             
             echo 'Checking for chrono_keeper processes...'
-            KEEPER_PIDS=\$(pgrep -f 'chrono_keeper' 2>/dev/null || true)
+            KEEPER_PIDS=\$(pgrep '^chrono_keeper$' 2>/dev/null || true)
             if [ -n \"\$KEEPER_PIDS\" ]; then
               echo \"❌ Found chrono_keeper processes: \$KEEPER_PIDS\"
-              pgrep -f 'chrono_keeper' -la || true
+              ps -fp \$KEEPER_PIDS || true
             else
               echo '✅ No chrono_keeper processes found'
             fi
             
-            # Check if any processes are still running
-            ALL_PIDS=\$(pgrep -f 'chronovisor_server|chrono_grapher|chrono_player|chrono_keeper' 2>/dev/null || true)
+            # Collect all remaining ChronoLog processes
+            ALL_PIDS=\$(pgrep '^chrono' 2>/dev/null || true)
             if [ -n \"\$ALL_PIDS\" ]; then
-              echo '❌ Some ChronoLog processes are still running'
-              echo 'All remaining processes:'
-              pgrep -f 'chronovisor_server|chrono_grapher|chrono_player|chrono_keeper' -la || true
-              exit 1
+              echo ''
+              echo '❌ ERROR: ChronoLog processes are still running after stop command!'
+              echo 'All remaining ChronoLog processes:'
+              ps -fp \$ALL_PIDS || true
+              echo ''
+              echo 'Attempting force kill...'
+              pkill -9 '^chronovisor_server$' 2>/dev/null || true
+              pkill -9 '^chrono_grapher$' 2>/dev/null || true
+              pkill -9 '^chrono_player$' 2>/dev/null || true
+              pkill -9 '^chrono_keeper$' 2>/dev/null || true
+              sleep 2
+              
+              # Final check
+              REMAINING=\$(pgrep '^chrono' 2>/dev/null || true)
+              if [ -n \"\$REMAINING\" ]; then
+                echo '❌ CRITICAL: Force kill failed, processes still running:'
+                ps -fp \$REMAINING || true
+                exit 1
+              else
+                echo '✅ Force kill successful, all processes stopped'
+              fi
             else
               echo '✅ All ChronoLog processes stopped successfully'
             fi
