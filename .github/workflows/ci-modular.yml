@@ -14,6 +14,11 @@ on:
         required: false
         default: ''
         type: string
+      force-rebuild:
+        description: 'Force rebuild of base image (delete existing image first)'
+        required: false
+        default: false
+        type: boolean
 
 env:
   REGISTRY: ghcr.io
@@ -79,11 +84,75 @@ jobs:
           echo "full-name=ghcr.io/${REPO_LOWER}/chronolog:${TAG}" >> $GITHUB_OUTPUT
           echo "Base image tag: ${TAG}"
 
+      - name: Delete existing image (force rebuild)
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.force-rebuild == 'true'
+        run: |
+          set -e
+          BASE_IMAGE="${{ steps.set-base-image-name.outputs.full-name }}"
+          echo "🗑️ Force rebuild enabled - deleting existing image: ${BASE_IMAGE}"
+          
+          # Extract package info
+          IMAGE_NAME=$(echo "${BASE_IMAGE}" | sed 's|ghcr.io/||' | cut -d: -f1)
+          IMAGE_TAG=$(echo "${BASE_IMAGE}" | cut -d: -f2)
+          PACKAGE_NAME=$(echo "${IMAGE_NAME}" | cut -d/ -f2)
+          OWNER=$(echo "${IMAGE_NAME}" | cut -d/ -f1)
+          
+          echo "Package: ${PACKAGE_NAME}, Tag: ${IMAGE_TAG}, Owner: ${OWNER}"
+          
+          # Try to delete via GitHub API (works for both user and org packages)
+          # First, try org endpoint
+          VERSION_ID=$(curl -s \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/orgs/${OWNER}/packages/container/${PACKAGE_NAME}/versions" 2>/dev/null \
+            | jq -r ".[] | select(.metadata.container.tags[] == \"${IMAGE_TAG}\") | .id" | head -1) || VERSION_ID=""
+          
+          # If not found, try user endpoint
+          if [ -z "$VERSION_ID" ] || [ "$VERSION_ID" == "null" ]; then
+            VERSION_ID=$(curl -s \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/users/${OWNER}/packages/container/${PACKAGE_NAME}/versions" 2>/dev/null \
+              | jq -r ".[] | select(.metadata.container.tags[] == \"${IMAGE_TAG}\") | .id" | head -1) || VERSION_ID=""
+          fi
+          
+          if [ -n "$VERSION_ID" ] && [ "$VERSION_ID" != "null" ]; then
+            echo "Found version ID: ${VERSION_ID}, deleting..."
+            # Try org endpoint first
+            if curl -X DELETE \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/orgs/${OWNER}/packages/container/${PACKAGE_NAME}/versions/${VERSION_ID}" 2>/dev/null; then
+              echo "✅ Image version deleted successfully (org endpoint)"
+            # If that fails, try user endpoint
+            elif curl -X DELETE \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/users/${OWNER}/packages/container/${PACKAGE_NAME}/versions/${VERSION_ID}" 2>/dev/null; then
+              echo "✅ Image version deleted successfully (user endpoint)"
+            else
+              echo "⚠️ Failed to delete via API, but continuing..."
+            fi
+          else
+            echo "ℹ️ Image version not found (may not exist yet), continuing..."
+          fi
+          
+          # Also try to delete locally if it exists
+          docker rmi "${BASE_IMAGE}" 2>/dev/null || echo "Image not found locally, skipping local deletion"
+
       - name: Check if Spack files changed
         id: check-spack-changes
         run: |
           set -e
           BASE_IMAGE="${{ steps.set-base-image-name.outputs.full-name }}"
+          
+          # If force-rebuild is enabled, always rebuild
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ] && [ "${{ github.event.inputs.force-rebuild }}" == "true" ]; then
+            echo "spack-files-changed=true" >> $GITHUB_OUTPUT
+            echo "image-exists=false" >> $GITHUB_OUTPUT
+            echo "🔄 Force rebuild enabled, will rebuild image"
+            exit 0
+          fi
           
           # Check if spack.yaml files have changed
           CHANGED=""
