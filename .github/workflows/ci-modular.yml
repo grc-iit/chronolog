@@ -309,7 +309,7 @@ jobs:
           # Uses the base-chronolog image from the previous job
           BASE_IMAGE="${{ needs.chronolog-base.outputs.image-name }}"
           echo "Using base image: ${BASE_IMAGE}"
-          CONTAINER_ID=$(docker create --user root \
+          CONTAINER_ID=$(docker create --user root --init \
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace \
             "$BASE_IMAGE" \
