@@ -58,32 +58,33 @@ kill_service() {
 stop_service() {
     local bin=$(basename "$1") 
     local timeout="$2"
+    local script_pid=$$
 
     # Stop all processes of the service
     local start_time=$(date +%s)
     echo -e "${DEBUG}Stopping ${bin} ...${NC}"
     
-    # Use -x for exact program name match (avoids matching this script)
-    pkill -x "${bin}" 2>/dev/null || true
+    # Match full command line but exclude this script's process tree
+    pgrep -f "/${bin}" | grep -v "^${script_pid}$" | xargs -r kill 2>/dev/null || true
 
     # Wait for processes to stop with a timeout
     local wait_interval=2
     while true; do
-        # Check if processes are still running (exact program name match)
-        if pgrep -x "${bin}" >/dev/null 2>&1; then
+        # Check if processes are still running (exclude this script)
+        if pgrep -f "/${bin}" | grep -v "^${script_pid}$" | grep -q .; then
             local current_time=$(date +%s)
             local elapsed=$((current_time - start_time))
             
             if (( elapsed >= timeout )); then
                 echo -e "${ERR}Timeout reached (${timeout}s) while stopping ${bin} processes.${NC}"
                 echo -e "${DEBUG}Forcing termination with SIGKILL...${NC}"
-                pkill -9 -x "${bin}" 2>/dev/null || true
+                pgrep -f "/${bin}" | grep -v "^${script_pid}$" | xargs -r kill -9 2>/dev/null || true
                 sleep 2
                 
                 # Final check after force kill
-                if pgrep -x "${bin}" >/dev/null 2>&1; then
+                if pgrep -f "/${bin}" | grep -v "^${script_pid}$" | grep -q .; then
                     echo -e "${ERR}CRITICAL: Failed to stop ${bin} processes even with SIGKILL!${NC}"
-                    pgrep -x "${bin}" -la || true
+                    pgrep -f "/${bin}" -la || true
                     return 1
                 else
                     echo -e "${DEBUG}Force killed ${bin} processes.${NC}"
