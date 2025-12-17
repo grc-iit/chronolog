@@ -477,22 +477,14 @@ jobs:
             spack env activate -p .
             echo '[6/7] Stopping ChronoLog...'
             
-            # Check process states before stopping
             echo 'Process states before stop:'
             ps aux | grep -E 'chrono_player|chrono_keeper|chrono_grapher|chronovisor_server' | grep -v grep || true
             
-            if [ -x ./tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
-              # Try to stop, but don't fail if it doesn't work (container will be destroyed anyway)
-              ./tools/deploy/ChronoLog/local_single_user_deploy.sh -s || {
-                echo '⚠️ Warning: Stop script failed, but continuing (processes will be cleaned up with container)'
-                echo 'Final process states:'
-                ps aux | grep -E 'chrono_player|chrono_keeper|chrono_grapher|chronovisor_server' | grep -v grep || true
-                exit 0
-              }
-            else
-              echo '❌ Stop script not found or not executable'
-              exit 1
-            fi
+            ./tools/deploy/ChronoLog/local_single_user_deploy.sh -s
+            
+            echo 'Process states after stop:'
+            ps aux | grep -E 'chrono_player|chrono_keeper|chrono_grapher|chronovisor_server' | grep -v grep || true
+            
             echo '✅ ChronoLog stop command completed'
           "
 
