@@ -63,27 +63,27 @@ stop_service() {
     local start_time=$(date +%s)
     echo -e "${DEBUG}Stopping ${bin} ...${NC}"
     
-    # Use exact process name matching to avoid matching bash scripts
-    pkill "^${bin}$" 2>/dev/null || true
+    # Use -f to match against full command line (handles long binary names)
+    pkill -f "${bin}" 2>/dev/null || true
 
     # Wait for processes to stop with a timeout
     local wait_interval=2
     while true; do
-        # Check if processes are still running (exact name match)
-        if pgrep "^${bin}$" >/dev/null 2>&1; then
+        # Check if processes are still running (match full command line)
+        if pgrep -f "${bin}" >/dev/null 2>&1; then
             local current_time=$(date +%s)
             local elapsed=$((current_time - start_time))
             
             if (( elapsed >= timeout )); then
                 echo -e "${ERR}Timeout reached (${timeout}s) while stopping ${bin} processes.${NC}"
                 echo -e "${DEBUG}Forcing termination with SIGKILL...${NC}"
-                pkill -9 "^${bin}$" 2>/dev/null || true
+                pkill -9 -f "${bin}" 2>/dev/null || true
                 sleep 2
                 
                 # Final check after force kill
-                if pgrep "^${bin}$" >/dev/null 2>&1; then
+                if pgrep -f "${bin}" >/dev/null 2>&1; then
                     echo -e "${ERR}CRITICAL: Failed to stop ${bin} processes even with SIGKILL!${NC}"
-                    pgrep "^${bin}$" -la || true
+                    pgrep -f "${bin}" -la || true
                     return 1
                 else
                     echo -e "${DEBUG}Force killed ${bin} processes.${NC}"
