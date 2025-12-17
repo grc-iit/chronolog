@@ -482,9 +482,6 @@ jobs:
             
             ./tools/deploy/ChronoLog/local_single_user_deploy.sh -s
             
-            echo 'Process states after stop:'
-            ps aux | grep -E 'chrono_player|chrono_keeper|chrono_grapher|chronovisor_server' | grep -v grep || true
-            
             echo '✅ ChronoLog stop command completed'
           "
 
@@ -495,71 +492,13 @@ jobs:
           docker exec "$CONTAINER_ID" bash -c "
             echo '[6.5/7] Verifying all ChronoLog processes are stopped...'
             
-            # Wait a moment for stop command to fully complete
-            sleep 3
-            
-            # Use pgrep -f to match full command line (process names are truncated to 15 chars)
-            # Use -x with full binary path patterns to avoid matching this script
-            check_process() {
-              local name=\$1
-              local pids=\$(pgrep -f \"bin/\${name}\" 2>/dev/null || true)
-              if [ -n \"\$pids\" ]; then
-                echo \"⚠️ Found \${name} processes: \$pids\"
-                ps -fp \$pids || true
-                return 1
-              else
-                echo \"✅ No \${name} processes found\"
-                return 0
-              fi
-            }
-            
-            echo 'Checking for chronovisor_server processes...'
-            check_process chronovisor_server || true
-            
-            echo 'Checking for chrono_grapher processes...'
-            check_process chrono_grapher || true
-            
-            echo 'Checking for chrono_player processes...'
-            check_process chrono_player || true
-            
-            echo 'Checking for chrono_keeper processes...'
-            check_process chrono_keeper || true
-            
-            # Collect all remaining ChronoLog processes (match bin/ to avoid matching scripts)
-            ALL_PIDS=\$(pgrep -f 'bin/chrono' 2>/dev/null || true)
-            if [ -n \"\$ALL_PIDS\" ]; then
-              echo ''
-              echo '⚠️ WARNING: ChronoLog processes are still running after stop command!'
-              echo 'All remaining ChronoLog processes with state:'
-              ps aux | head -1  # Header
-              for pid in \$ALL_PIDS; do
-                ps aux | awk -v pid=\"\$pid\" '\$2 == pid' || true
-              done
-              echo ''
-              echo 'Attempting force kill...'
-              pkill -9 -f 'bin/chronovisor_server' 2>/dev/null || true
-              pkill -9 -f 'bin/chrono_grapher' 2>/dev/null || true
-              pkill -9 -f 'bin/chrono_player' 2>/dev/null || true
-              pkill -9 -f 'bin/chrono_keeper' 2>/dev/null || true
-              sleep 2
-              
-              # Final check
-              REMAINING=\$(pgrep -f 'bin/chrono' 2>/dev/null || true)
-              if [ -n \"\$REMAINING\" ]; then
-                echo '⚠️ WARNING: Force kill failed, processes still running (likely in D state):'
-                ps aux | head -1  # Header
-                for pid in \$REMAINING; do
-                  ps aux | awk -v pid=\"\$pid\" '\$2 == pid' || true
-                done
-                echo ''
-                echo 'ℹ️ These processes are likely stuck in uninterruptible sleep (D state).'
-                echo 'ℹ️ They will be cleaned up when the container is destroyed.'
-                echo 'ℹ️ Continuing workflow...'
-              else
-                echo '✅ Force kill successful, all processes stopped'
-              fi
-            else
+            REMAINING=\$(ps aux | grep -E 'chrono_player|chrono_keeper|chrono_grapher|chronovisor_server' | grep -v grep || true)
+            if [ -z \"\$REMAINING\" ]; then
               echo '✅ All ChronoLog processes stopped successfully'
+            else
+              echo '❌ ChronoLog processes still running:'
+              echo \"\$REMAINING\"
+              exit 1
             fi
           "
 
