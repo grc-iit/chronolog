@@ -621,6 +621,18 @@ jobs:
             fi
             spack env activate -d . 2>/dev/null || spack env activate -p . 2>/dev/null || true
             echo '[3/5] Deploying ChronoLog...'
+            # Clean up any existing ChronoLog processes before deployment
+            echo '🧹 Cleaning up any existing ChronoLog processes...'
+            pkill -9 -f 'chrono' || true
+            sleep 2
+            # Verify cleanup
+            REMAINING_PROCS=\$(pgrep -la chrono || true)
+            if [ -n \"\$REMAINING_PROCS\" ]; then
+              echo '⚠️ Some ChronoLog processes still running after cleanup:'
+              echo \"\$REMAINING_PROCS\"
+            else
+              echo '✅ All ChronoLog processes cleaned up'
+            fi
             if [ -x ./tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
               ./tools/deploy/ChronoLog/local_single_user_deploy.sh -d -k 2 -r 2 -w \"\${WORK_DIR}\"
             else
@@ -656,12 +668,14 @@ jobs:
             echo 'Waiting for services to start...'
             sleep 10
             echo '📦 Listing ChronoLog processes...'
-            pgrep -la chrono > /tmp/chrono_processes.txt || true
-            cat /tmp/chrono_processes.txt
+            # Use home directory instead of /tmp to avoid permission issues
+            PROCESS_LIST=\"/home/grc-iit/chrono_processes.txt\"
+            pgrep -la chrono > \"\${PROCESS_LIST}\" || true
+            cat \"\${PROCESS_LIST}\"
             echo '🔍 Checking required components...'
             missing=0
             for proc in chronovisor_server chrono_grapher chrono_player chrono_keeper; do
-              count=\$(grep -c \"\$proc\" /tmp/chrono_processes.txt || true)
+              count=\$(grep -c \"\$proc\" \"\${PROCESS_LIST}\" || true)
               case \$proc in
                 chronovisor_server)
                   expected=1
@@ -686,11 +700,15 @@ jobs:
               if [ -d \"\${WORK_DIR}/monitor\" ]; then
                 for log in \"\${WORK_DIR}/monitor/\"*; do
                   echo \"==== \$log ====\"
-                  cat \"\$log\"
+                  cat \"\$log\" 2>/dev/null || echo \"Could not read \$log\"
                 done
+              else
+                echo '⚠️ Monitor directory not found'
               fi
               exit 1
             fi
+            # Clean up process list file
+            rm -f \"\${PROCESS_LIST}\"
             echo '✅ Deployment verification passed'
           "
 
@@ -723,25 +741,46 @@ jobs:
             MPIEXEC_BIN=\$(spack location -i openmpi)/bin/mpiexec
             
             if [ ! -f \"\${MPIEXEC_BIN}\" ]; then
-              MPIEXEC_BIN=\$(which mpiexec)
+              echo '⚠️ mpiexec not found via Spack, trying which...'
+              MPIEXEC_BIN=\$(which mpiexec 2>/dev/null || echo '')
             fi
             
-            if [ ! -f \"\${MPIEXEC_BIN}\" ]; then
+            if [ -z \"\${MPIEXEC_BIN}\" ] || [ ! -f \"\${MPIEXEC_BIN}\" ]; then
               echo '❌ mpiexec not found'
+              echo 'Attempting to locate openmpi installation...'
+              spack find -p openmpi || true
               exit 1
             fi
             
             CLIENT_ADMIN_BIN=\${WORK_DIR}/bin/client_admin
             HOSTS_FILE=\${WORK_DIR}/conf/hosts_client
-            CONF_FILE=\${WORK_DIR}/conf/default_client_conf.json
+            # Use the client config file (not the server config)
+            CONF_FILE=\${WORK_DIR}/conf/client_conf.json
+            
+            # Check if client_conf.json exists, if not try default_client_conf.json
+            if [ ! -f \"\${CONF_FILE}\" ]; then
+              echo '⚠️ client_conf.json not found, trying default_client_conf.json...'
+              CONF_FILE=\${WORK_DIR}/conf/default_client_conf.json
+            fi
             
             if [ ! -f \"\${CLIENT_ADMIN_BIN}\" ]; then
-              echo '❌ client_admin binary not found'
+              echo '❌ client_admin binary not found at \${CLIENT_ADMIN_BIN}'
+              echo 'Contents of bin directory:'
+              ls -la \${WORK_DIR}/bin/ || echo 'bin directory not found'
               exit 1
             fi
             
             if [ ! -f \"\${HOSTS_FILE}\" ]; then
-              echo '❌ hosts_client file not found'
+              echo '❌ hosts_client file not found at \${HOSTS_FILE}'
+              echo 'Contents of conf directory:'
+              ls -la \${WORK_DIR}/conf/ || echo 'conf directory not found'
+              exit 1
+            fi
+            
+            if [ ! -f \"\${CONF_FILE}\" ]; then
+              echo '❌ Client config file not found at \${CONF_FILE}'
+              echo 'Contents of conf directory:'
+              ls -la \${WORK_DIR}/conf/ || echo 'conf directory not found'
               exit 1
             fi
             
@@ -750,13 +789,33 @@ jobs:
             echo \"  CLIENT_ADMIN: \${CLIENT_ADMIN_BIN}\"
             echo \"  HOSTS_FILE: \${HOSTS_FILE}\"
             echo \"  CONF_FILE: \${CONF_FILE}\"
+            echo 'Contents of hosts_client:'
+            cat \"\${HOSTS_FILE}\"
             
-            \${MPIEXEC_BIN} -n 4 -f \${HOSTS_FILE} \
+            # Test SSH connectivity before running MPI
+            echo 'Testing SSH connectivity to hosts...'
+            while IFS= read -r host; do
+              if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 \"\$host\" 'echo SSH to \$HOSTNAME successful' 2>&1; then
+                echo \"✅ SSH to \$host successful\"
+              else
+                echo \"❌ SSH to \$host failed\"
+              fi
+            done < \"\${HOSTS_FILE}\"
+            
+            # Run the client performance test with proper error handling
+            echo 'Launching MPI client test...'
+            if \${MPIEXEC_BIN} -n 4 -f \${HOSTS_FILE} \
               \${CLIENT_ADMIN_BIN} \
               --config \${CONF_FILE} \
-              -a 4096 -b 4096 -s 4096 -n 4096 -t 1 -h 1 -p -r
-            
-            echo '✅ Client performance test completed'
+              -a 4096 -b 4096 -s 4096 -n 4096 -t 1 -h 1 -p -r; then
+              echo '✅ Client performance test completed successfully'
+            else
+              TEST_EXIT_CODE=\$?
+              echo \"❌ Client performance test failed with exit code \${TEST_EXIT_CODE}\"
+              echo 'Checking if ChronoLog services are still running...'
+              pgrep -la chrono || echo 'No ChronoLog processes found'
+              exit \${TEST_EXIT_CODE}
+            fi
           "
 
       - name: Stop ChronoLog
