@@ -198,21 +198,8 @@ jobs:
           # Convert repository name to lowercase (Docker requirement)
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           
-          if [ "${{ github.event_name }}" == "pull_request" ]; then
-            BASE_TAG="pr-${{ github.event.pull_request.number }}"
-          elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            if [ "${{ github.ref }}" == "refs/heads/develop" ] || [ "${{ github.ref }}" == "refs/heads/main" ]; then
-              BASE_TAG="latest"
-            else
-              BRANCH_NAME=${GITHUB_REF#refs/heads/}
-              BASE_TAG="${BRANCH_NAME}"
-            fi
-          elif [ "${{ github.ref }}" == "refs/heads/develop" ] || [ "${{ github.ref }}" == "refs/heads/main" ]; then
-            BASE_TAG="latest"
-          else
-            BRANCH_NAME=${GITHUB_REF#refs/heads/}
-            BASE_TAG="${BRANCH_NAME}"
-          fi
+          # Final image always uses 'latest' tag (shared across all branches)
+          BASE_TAG="latest"
           
           TAG="chronolog-${BASE_TAG}"
           echo "full-name=ghcr.io/${REPO_LOWER}/chronolog:${TAG}" >> $GITHUB_OUTPUT
