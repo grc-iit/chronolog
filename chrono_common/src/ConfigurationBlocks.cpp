@@ -1,4 +1,4 @@
-#include "ConfigurationManager.h"
+#include <ConfigurationBlocks.h>
 
 
 namespace chl = chronolog;

@@ -19,7 +19,7 @@ target_sources(chrono_keeper PRIVATE
     src/KeeperDataStore.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/include/StoryChunkExtractionModule.h
     ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunk.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/ConfigurationManager.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/src/ConfigurationBlocks.cpp
     ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/src/ChunkExtractorCSV.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/src/ChunkExtractorRDMA.cpp

@@ -24,7 +24,7 @@ target_sources(chrono_grapher PRIVATE
     ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryPipeline.cpp
     ${CMAKE_SOURCE_DIR}/chrono_common/include/StoryChunkExtractionModule.h
     ${CMAKE_SOURCE_DIR}/chrono_common/src/ChunkExtractorCSV.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/ConfigurationManager.cpp
+    ${CMAKE_SOURCE_DIR}/chrono_common/src/ConfigurationBlocks.cpp
 )
 
 target_link_libraries(chrono_grapher

@@ -12,7 +12,7 @@
 #include <sstream>
 #include <spdlog/common.h>
 
-#include <ConfigurationManager.h>
+#include <ConfigurationBlocks.h>
 
 namespace chronolog
 {

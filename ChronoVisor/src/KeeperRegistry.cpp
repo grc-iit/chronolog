@@ -9,7 +9,8 @@
 #include <KeeperRegistryService.h>
 #include <DataStoreAdminClient.h>
 #include <chrono_monitor.h>
-#include <ConfigurationManager.h>
+#include <ConfigurationBlocks.h>
+
 /////////////////////////
 
 namespace tl = thallium;

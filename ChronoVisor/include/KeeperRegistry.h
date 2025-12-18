@@ -24,7 +24,7 @@
 #include "PlayerIdCard.h"
 #include "PlayerRegistrationMsg.h"
 #include "PlayerStatsMsg.h"
-#include "ConfigurationManager.h"
+#include "ConfigurationBlocks.h"
 
 namespace chronolog
 {

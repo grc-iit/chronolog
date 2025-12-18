@@ -11,7 +11,7 @@
 
 #include "chronolog_errcode.h"
 
-#include <ConfigurationManager.h>
+#include <ConfigurationBlocks.h>
 
 namespace chronolog
 {

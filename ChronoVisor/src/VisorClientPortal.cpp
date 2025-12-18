@@ -5,7 +5,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include <ConfigurationManager.h>
+#include <ConfigurationBlocks.h>
 #include <chronolog_types.h>
 #include <VisorClientPortal.h>
 #include <KeeperRegistry.h>

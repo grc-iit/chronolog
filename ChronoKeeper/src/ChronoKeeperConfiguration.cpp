@@ -1,5 +1,5 @@
 #include <chronolog_errcode.h>
-#include <ConfigurationManager.h>
+#include <ConfigurationBlocks.h>
 #include <ChronoKeeperConfiguration.h>
 
 namespace chl = chronolog;

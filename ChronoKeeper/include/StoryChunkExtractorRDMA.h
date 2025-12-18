@@ -4,7 +4,6 @@
 #include <thallium.hpp>
 
 #include <chronolog_types.h>
-#include <ConfigurationManager.h>
 
 #include "StoryChunk.h"
 #include "StoryChunkExtractor.h"

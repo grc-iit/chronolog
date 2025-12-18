@@ -6,7 +6,7 @@
 #include <cstring>
 #include <json-c/json.h>
 
-#include <ConfigurationManager.h>
+#include <ConfigurationBlocks.h>
 
 namespace chronolog
 {

@@ -8,7 +8,7 @@
 #include <thallium.hpp>
 
 #include <chronolog_types.h>
-#include <ConfigurationManager.h>
+#include <ConfigurationBlocks.h>
 #include <ChronoVisorConfiguration.h>
 
 #include "ClientRegistryManager.h"
