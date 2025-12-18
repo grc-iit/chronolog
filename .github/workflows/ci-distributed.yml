@@ -845,27 +845,53 @@ jobs:
             export LD_LIBRARY_PATH=\${WORK_DIR}/lib:\$LD_LIBRARY_PATH
             
             # Find mpiexec with better error messages
-            # Try multiple methods: spack find, spack location, which, and find
+            # Try multiple methods: find first (most reliable), then spack, then which
             echo '🔍 Locating mpiexec...'
             MPIEXEC_BIN=''
             
-            # First try spack find -p mpich (more reliable than spack location)
+            # First try find (most reliable, works even if Spack env is not configured)
+            echo 'Searching for mpiexec using find...'
+            FOUND_MPIEXEC=\$(find /opt /usr -name mpiexec -type f 2>/dev/null | head -1)
+            if [ -n \"\${FOUND_MPIEXEC}\" ]; then
+              FOUND_MPIEXEC=\$(echo \"\${FOUND_MPIEXEC}\" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+              echo \"  Found candidate: \${FOUND_MPIEXEC}\"
+              if [ -f \"\${FOUND_MPIEXEC}\" ] && [ -x \"\${FOUND_MPIEXEC}\" ]; then
+                MPIEXEC_BIN=\"\${FOUND_MPIEXEC}\"
+                echo \"✅ Found mpiexec via find: \${MPIEXEC_BIN}\"
+              else
+                echo \"  ⚠️ Found but not accessible: \${FOUND_MPIEXEC}\"
+                echo \"    File exists: \$([ -f \"\${FOUND_MPIEXEC}\" ] && echo 'yes' || echo 'no')\"
+                echo \"    Executable: \$([ -x \"\${FOUND_MPIEXEC}\" ] && echo 'yes' || echo 'no')\"
+              fi
+            else
+              echo '  No mpiexec found in /opt or /usr via initial find'
+            fi
+            
+            # Then try spack find -p mpich (more reliable than spack location)
             if [ -z \"\${MPIEXEC_BIN}\" ]; then
-              MPICH_OUTPUT=\$(spack find -p mpich 2>/dev/null || echo '')
+              echo 'Trying spack find -p mpich...'
+              MPICH_OUTPUT=\$(spack find -p mpich 2>&1 || echo '')
               if [ -n \"\${MPICH_OUTPUT}\" ]; then
+                echo \"  spack find -p mpich output: \${MPICH_OUTPUT}\"
                 # Extract path from spack find -p output (last field of lines containing mpich)
-                MPICH_PATH=\$(echo \"\${MPICH_OUTPUT}\" | grep -E 'mpich@' | awk '{print \$NF}' | head -1 || echo '')
-                if [ -n \"\${MPICH_PATH}\" ] && [ -f \"\${MPICH_PATH}/bin/mpiexec\" ]; then
-                  MPIEXEC_BIN=\"\${MPICH_PATH}/bin/mpiexec\"
-                  echo '✅ Found mpiexec via spack find mpich'
+                MPICH_PATH=\$(echo \"\${MPICH_OUTPUT}\" | grep -E 'mpich@' | awk '{print \$NF}' | head -1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' || echo '')
+                if [ -n \"\${MPICH_PATH}\" ]; then
+                  echo \"  Extracted MPICH_PATH: \${MPICH_PATH}\"
+                  if [ -f \"\${MPICH_PATH}/bin/mpiexec\" ] && [ -x \"\${MPICH_PATH}/bin/mpiexec\" ]; then
+                    MPIEXEC_BIN=\"\${MPICH_PATH}/bin/mpiexec\"
+                    echo '✅ Found mpiexec via spack find mpich'
+                  else
+                    echo \"  ⚠️ Path found but mpiexec not accessible at \${MPICH_PATH}/bin/mpiexec\"
+                  fi
                 fi
               fi
             fi
             
             # Then try spack location -i mpich
             if [ -z \"\${MPIEXEC_BIN}\" ]; then
-              MPICH_DIR=\$(spack location -i mpich 2>/dev/null || echo '')
-              if [ -n \"\${MPICH_DIR}\" ] && [ -f \"\${MPICH_DIR}/bin/mpiexec\" ]; then
+              echo 'Trying spack location -i mpich...'
+              MPICH_DIR=\$(spack location -i mpich 2>&1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' || echo '')
+              if [ -n \"\${MPICH_DIR}\" ] && [ \"\${MPICH_DIR}\" != 'No package matches the query: mpich' ] && [ -f \"\${MPICH_DIR}/bin/mpiexec\" ] && [ -x \"\${MPICH_DIR}/bin/mpiexec\" ]; then
                 MPIEXEC_BIN=\"\${MPICH_DIR}/bin/mpiexec\"
                 echo '✅ Found mpiexec via Spack mpich location'
               fi
@@ -873,21 +899,29 @@ jobs:
             
             # Then try spack find -p openmpi
             if [ -z \"\${MPIEXEC_BIN}\" ]; then
-              OPENMPI_OUTPUT=\$(spack find -p openmpi 2>/dev/null || echo '')
+              echo 'Trying spack find -p openmpi...'
+              OPENMPI_OUTPUT=\$(spack find -p openmpi 2>&1 || echo '')
               if [ -n \"\${OPENMPI_OUTPUT}\" ]; then
+                echo \"  spack find -p openmpi output: \${OPENMPI_OUTPUT}\"
                 # Extract path from spack find -p output (last field of lines containing openmpi)
-                OPENMPI_PATH=\$(echo \"\${OPENMPI_OUTPUT}\" | grep -E 'openmpi@' | awk '{print \$NF}' | head -1 || echo '')
-                if [ -n \"\${OPENMPI_PATH}\" ] && [ -f \"\${OPENMPI_PATH}/bin/mpiexec\" ]; then
-                  MPIEXEC_BIN=\"\${OPENMPI_PATH}/bin/mpiexec\"
-                  echo '✅ Found mpiexec via spack find openmpi'
+                OPENMPI_PATH=\$(echo \"\${OPENMPI_OUTPUT}\" | grep -E 'openmpi@' | awk '{print \$NF}' | head -1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' || echo '')
+                if [ -n \"\${OPENMPI_PATH}\" ]; then
+                  echo \"  Extracted OPENMPI_PATH: \${OPENMPI_PATH}\"
+                  if [ -f \"\${OPENMPI_PATH}/bin/mpiexec\" ] && [ -x \"\${OPENMPI_PATH}/bin/mpiexec\" ]; then
+                    MPIEXEC_BIN=\"\${OPENMPI_PATH}/bin/mpiexec\"
+                    echo '✅ Found mpiexec via spack find openmpi'
+                  else
+                    echo \"  ⚠️ Path found but mpiexec not accessible at \${OPENMPI_PATH}/bin/mpiexec\"
+                  fi
                 fi
               fi
             fi
             
             # Then try spack location -i openmpi
             if [ -z \"\${MPIEXEC_BIN}\" ]; then
-              OPENMPI_DIR=\$(spack location -i openmpi 2>/dev/null || echo '')
-              if [ -n \"\${OPENMPI_DIR}\" ] && [ -f \"\${OPENMPI_DIR}/bin/mpiexec\" ]; then
+              echo 'Trying spack location -i openmpi...'
+              OPENMPI_DIR=\$(spack location -i openmpi 2>&1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' || echo '')
+              if [ -n \"\${OPENMPI_DIR}\" ] && [ \"\${OPENMPI_DIR}\" != 'No package matches the query: openmpi' ] && [ -f \"\${OPENMPI_DIR}/bin/mpiexec\" ] && [ -x \"\${OPENMPI_DIR}/bin/mpiexec\" ]; then
                 MPIEXEC_BIN=\"\${OPENMPI_DIR}/bin/mpiexec\"
                 echo '✅ Found mpiexec via Spack openmpi location'
               fi
@@ -895,58 +929,34 @@ jobs:
             
             # Then try which
             if [ -z \"\${MPIEXEC_BIN}\" ]; then
-              MPIEXEC_BIN=\$(which mpiexec 2>/dev/null || echo '')
-              if [ -n \"\${MPIEXEC_BIN}\" ] && [ -f \"\${MPIEXEC_BIN}\" ]; then
+              echo 'Trying which mpiexec...'
+              MPIEXEC_BIN=\$(which mpiexec 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' || echo '')
+              if [ -n \"\${MPIEXEC_BIN}\" ] && [ -f \"\${MPIEXEC_BIN}\" ] && [ -x \"\${MPIEXEC_BIN}\" ]; then
                 echo '✅ Found mpiexec via which'
               else
                 MPIEXEC_BIN=''
               fi
             fi
             
-            # Try find in /opt (broader search than /opt/spack)
+            # Final fallback: try all find results and use the first executable found
             if [ -z \"\${MPIEXEC_BIN}\" ]; then
-              echo 'Searching for mpiexec in /opt...'
-              FOUND_MPIEXEC=\$(find /opt -name mpiexec -type f 2>/dev/null | head -1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' || echo '')
-              if [ -n \"\${FOUND_MPIEXEC}\" ]; then
-                echo \"  Found candidate: \${FOUND_MPIEXEC}\"
-                if [ -f \"\${FOUND_MPIEXEC}\" ] && [ -x \"\${FOUND_MPIEXEC}\" ]; then
-                  MPIEXEC_BIN=\"\${FOUND_MPIEXEC}\"
-                  echo '✅ Found mpiexec via find in /opt'
-                else
-                  echo \"  ⚠️ Found but not accessible: \${FOUND_MPIEXEC}\"
-                fi
-              fi
-            fi
-            
-            # Final fallback: try find in /opt/spack (nested paths)
-            if [ -z \"\${MPIEXEC_BIN}\" ]; then
-              echo 'Searching for mpiexec in /opt/spack...'
-              FOUND_MPIEXEC=\$(find /opt/spack -name mpiexec -type f 2>/dev/null | head -1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' || echo '')
-              if [ -n \"\${FOUND_MPIEXEC}\" ]; then
-                echo \"  Found candidate: \${FOUND_MPIEXEC}\"
-                if [ -f \"\${FOUND_MPIEXEC}\" ] && [ -x \"\${FOUND_MPIEXEC}\" ]; then
-                  MPIEXEC_BIN=\"\${FOUND_MPIEXEC}\"
-                  echo '✅ Found mpiexec via find in /opt/spack'
-                else
-                  echo \"  ⚠️ Found but not accessible: \${FOUND_MPIEXEC}\"
-                fi
-              fi
-            fi
-            
-            # If still not found, try a more aggressive search and use the first executable found
-            if [ -z \"\${MPIEXEC_BIN}\" ]; then
-              echo 'Performing aggressive search for mpiexec...'
-              ALL_MPIEXEC=\$(find /opt /usr -name mpiexec -type f 2>/dev/null | head -5 || echo '')
+              echo 'Performing final aggressive search for mpiexec...'
+              ALL_MPIEXEC=\$(find /opt /usr -name mpiexec -type f 2>/dev/null | head -10 || echo '')
               if [ -n \"\${ALL_MPIEXEC}\" ]; then
                 echo 'Found mpiexec candidates:'
                 echo \"\${ALL_MPIEXEC}\"
                 # Try each candidate until we find one that works
                 while IFS= read -r candidate; do
                   candidate=\$(echo \"\${candidate}\" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-                  if [ -n \"\${candidate}\" ] && [ -f \"\${candidate}\" ] && [ -x \"\${candidate}\" ]; then
-                    MPIEXEC_BIN=\"\${candidate}\"
-                    echo \"✅ Found working mpiexec: \${MPIEXEC_BIN}\"
-                    break
+                  if [ -n \"\${candidate}\" ]; then
+                    echo \"  Testing candidate: \${candidate}\"
+                    if [ -f \"\${candidate}\" ] && [ -x \"\${candidate}\" ]; then
+                      MPIEXEC_BIN=\"\${candidate}\"
+                      echo \"✅ Found working mpiexec: \${MPIEXEC_BIN}\"
+                      break
+                    else
+                      echo \"    ⚠️ Not accessible (exists: \$([ -f \"\${candidate}\" ] && echo 'yes' || echo 'no'), executable: \$([ -x \"\${candidate}\" ] && echo 'yes' || echo 'no'))\"
+                    fi
                   fi
                 done <<< \"\${ALL_MPIEXEC}\"
               fi
@@ -954,20 +964,30 @@ jobs:
             
             if [ -z \"\${MPIEXEC_BIN}\" ] || [ ! -f \"\${MPIEXEC_BIN}\" ] || [ ! -x \"\${MPIEXEC_BIN}\" ]; then
               echo '❌ mpiexec not found after exhaustive search'
-              echo 'Attempting to locate MPI installation...'
+              echo ''
+              echo '=== Diagnostic Information ==='
               echo 'Checking for mpich:'
-              spack find -p mpich || true
+              spack find -p mpich 2>&1 || echo 'spack find -p mpich failed'
+              echo ''
               echo 'Checking for openmpi:'
-              spack find -p openmpi || true
-              echo 'Searching for mpiexec in system...'
-              find /opt /usr -name mpiexec -type f 2>/dev/null | head -10 || true
+              spack find -p openmpi 2>&1 || echo 'spack find -p openmpi failed'
+              echo ''
+              echo 'Searching for mpiexec in system:'
+              find /opt /usr -name mpiexec -type f 2>/dev/null | head -10 || echo 'No mpiexec found'
+              echo ''
               echo 'Current PATH:'
               echo \$PATH
-              echo 'Checking if mpiexec is in PATH...'
-              which -a mpiexec || echo 'mpiexec not in PATH'
+              echo ''
+              echo 'Checking if mpiexec is in PATH:'
+              which -a mpiexec 2>&1 || echo 'mpiexec not in PATH'
+              echo ''
+              echo 'Listing /opt/spack directories:'
+              ls -la /opt/spack/opt/spack/ 2>/dev/null | head -20 || echo 'Cannot list /opt/spack'
               exit 1
             fi
             echo \"✅ Using mpiexec at: \${MPIEXEC_BIN}\"
+            echo \"   Verifying mpiexec works: \${MPIEXEC_BIN} --version\"
+            \${MPIEXEC_BIN} --version 2>&1 || echo '⚠️ mpiexec --version failed, but continuing...'
             
             # Verify required files and binaries
             CLIENT_ADMIN_BIN=\${WORK_DIR}/bin/client_admin
