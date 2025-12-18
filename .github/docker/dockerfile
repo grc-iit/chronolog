@@ -13,7 +13,7 @@ ENV TZ=America/Chicago
 # Install system dependencies (merged from both dockerfiles)
 RUN apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get -y install \
-    gcc g++ automake cmake libtool pkgconf pkg-config \
+    gcc g++ automake cmake libtool pkgconf \
     libjson-c-dev libboost-dev libcereal-dev \
     git vim fuse sudo curl wget \
     libfuse-dev libssl-dev \
