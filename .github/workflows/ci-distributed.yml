@@ -277,34 +277,78 @@ jobs:
           
           if [ "$USE_FINAL_IMAGE" == "true" ]; then
             echo '[1/5] Copying ChronoLog installation from main CI image...'
-            # The main CI workflow installs to /root/chronolog-install/chronolog
+            # The main CI workflow installs to ${HOME}/chronolog-install/chronolog (which is /home/grc-iit/chronolog-install/chronolog)
             # We need to copy it to /home/grc-iit/chronolog-install/chronolog for the grc-iit user
+            # First, let's check where the installation actually is in the image
+            echo '🔍 Searching for ChronoLog installation in image...'
+            docker exec chronolog-c1 bash -c "
+              echo 'Checking /home/grc-iit/chronolog-install/chronolog...'
+              if [ -d /home/grc-iit/chronolog-install/chronolog ]; then
+                echo '✅ Found at /home/grc-iit/chronolog-install/chronolog'
+                ls -la /home/grc-iit/chronolog-install/chronolog/ | head -20
+              fi
+              echo 'Checking /root/chronolog-install/chronolog...'
+              if [ -d /root/chronolog-install/chronolog ]; then
+                echo '✅ Found at /root/chronolog-install/chronolog'
+                ls -la /root/chronolog-install/chronolog/ | head -20
+              fi
+              echo 'Checking /home/runner/chronolog-install/chronolog...'
+              if [ -d /home/runner/chronolog-install/chronolog ]; then
+                echo '✅ Found at /home/runner/chronolog-install/chronolog'
+                ls -la /home/runner/chronolog-install/chronolog/ | head -20
+              fi
+            " || true
+            
             for i in $(seq 1 7); do
               docker exec chronolog-c$i bash -c "
                 set -e
                 # Create target directory
                 mkdir -p /home/grc-iit/chronolog-install
                 
-                # Copy from root's installation if it exists (from main CI workflow image)
-                if [ -d /root/chronolog-install/chronolog ]; then
+                # Try multiple possible locations (in order of likelihood)
+                if [ -d /home/grc-iit/chronolog-install/chronolog ] && [ -d /home/grc-iit/chronolog-install/chronolog/bin ]; then
+                  echo '✅ ChronoLog already exists at /home/grc-iit/chronolog-install/chronolog'
+                  chown -R grc-iit:grc-iit /home/grc-iit/chronolog-install
+                elif [ -d /root/chronolog-install/chronolog ]; then
                   echo 'Copying from /root/chronolog-install/chronolog...'
                   cp -r /root/chronolog-install/chronolog /home/grc-iit/chronolog-install/
                   chown -R grc-iit:grc-iit /home/grc-iit/chronolog-install
-                  echo '✅ Copied ChronoLog installation'
+                  echo '✅ Copied ChronoLog installation from /root'
+                elif [ -d /home/runner/chronolog-install/chronolog ]; then
+                  echo 'Copying from /home/runner/chronolog-install/chronolog...'
+                  cp -r /home/runner/chronolog-install/chronolog /home/grc-iit/chronolog-install/
+                  chown -R grc-iit:grc-iit /home/grc-iit/chronolog-install
+                  echo '✅ Copied ChronoLog installation from /home/runner'
                 else
-                  echo '⚠️ ChronoLog not found in /root, checking /home/runner...'
-                  # Also check /home/runner (where CI workflow might install)
-                  if [ -d /home/runner/chronolog-install/chronolog ]; then
-                    cp -r /home/runner/chronolog-install/chronolog /home/grc-iit/chronolog-install/
-                    chown -R grc-iit:grc-iit /home/grc-iit/chronolog-install
-                    echo '✅ Copied ChronoLog installation from /home/runner'
-                  else
-                    echo '❌ ChronoLog installation not found in image'
-                    exit 1
-                  fi
+                  echo '❌ ChronoLog installation not found in image'
+                  echo 'Searched in:'
+                  echo '  - /home/grc-iit/chronolog-install/chronolog'
+                  echo '  - /root/chronolog-install/chronolog'
+                  echo '  - /home/runner/chronolog-install/chronolog'
+                  exit 1
                 fi
               "
             done
+            
+            # Verify the installation was copied correctly
+            echo '🔍 Verifying copied installation...'
+            docker exec chronolog-c1 bash -c "
+              WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
+              if [ -d \"\${WORK_DIR}\" ]; then
+                echo '✅ Installation directory exists'
+                echo 'Contents of installation directory:'
+                ls -la \"\${WORK_DIR}\" | head -20
+                if [ -d \"\${WORK_DIR}/bin\" ]; then
+                  echo '✅ bin directory exists'
+                  echo 'Contents of bin directory:'
+                  ls -la \"\${WORK_DIR}/bin\" | head -20
+                else
+                  echo '❌ bin directory not found'
+                fi
+              else
+                echo '❌ Installation directory not found'
+              fi
+            "
             echo '✅ ChronoLog installation ready (copied from image)'
           else
             echo '[1/5] Building and installing ChronoLog (using base image)...'
@@ -515,11 +559,26 @@ jobs:
               echo '⚠️ Could not activate Spack environment, continuing anyway...'
             }
             echo '[2/5] Verifying installation...'
+            echo 'Checking installation directory structure...'
+            echo \"WORK_DIR: \${WORK_DIR}\"
+            if [ -d \"\${WORK_DIR}\" ]; then
+              echo '✅ Installation directory exists'
+              echo 'Contents:'
+              ls -la \"\${WORK_DIR}\"
+            else
+              echo '❌ Installation directory not found'
+              echo 'Searching for chronolog-install directories...'
+              find /home/grc-iit -type d -name 'chronolog-install' 2>/dev/null | head -10
+              exit 1
+            fi
             if [ -d \"\${WORK_DIR}/bin\" ]; then
               echo '✅ bin directory found'
-              ls -l \"\${WORK_DIR}/bin\"
+              echo 'Contents of bin directory:'
+              ls -la \"\${WORK_DIR}/bin\"
             else
               echo '❌ Install failed — bin directory not found'
+              echo 'Searching for bin directories...'
+              find \"\${WORK_DIR}\" -type d -name 'bin' 2>/dev/null | head -10
               exit 1
             fi
             main_binaries=(chronovisor_server chrono_keeper chrono_grapher chrono_player client_admin)
