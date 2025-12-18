@@ -102,6 +102,11 @@ jobs:
               - seccomp:unconfined
               - apparmor:unconfined
             privileged: false
+            # Add resource limits to prevent OOM kills
+            mem_limit: 4g
+            mem_reservation: 2g
+            cpus: 2
+            shm_size: 512m
             command: >
               bash -c "sleep infinity"
 
@@ -621,25 +626,55 @@ jobs:
             fi
             spack env activate -d . 2>/dev/null || spack env activate -p . 2>/dev/null || true
             echo '[3/5] Deploying ChronoLog...'
+            
+            # Check system resources before deployment
+            echo '📊 System resources before deployment:'
+            echo 'Memory:'
+            free -h || true
+            echo 'Disk:'
+            df -h /home/grc-iit || true
+            
             # Clean up any existing ChronoLog processes before deployment
+            # Use specific process names to avoid killing unrelated processes
             echo '🧹 Cleaning up any existing ChronoLog processes...'
-            pkill -9 -f 'chrono' || true
+            for proc in chrono_player chrono_keeper chrono_grapher chronovisor_server client_admin; do
+              if pgrep -f \"\$proc\" > /dev/null; then
+                echo \"  Stopping \$proc...\"
+                pkill -9 -f \"\$proc\" 2>/dev/null || true
+              fi
+            done
             sleep 2
+            
             # Verify cleanup
-            REMAINING_PROCS=\$(pgrep -la chrono || true)
+            echo '🔍 Verifying cleanup...'
+            REMAINING_PROCS=\$(pgrep -la 'chrono_player|chrono_keeper|chrono_grapher|chronovisor_server' || true)
             if [ -n \"\$REMAINING_PROCS\" ]; then
               echo '⚠️ Some ChronoLog processes still running after cleanup:'
               echo \"\$REMAINING_PROCS\"
+              echo 'Attempting force cleanup...'
+              pkill -9 -f 'chrono_player' || true
+              pkill -9 -f 'chrono_keeper' || true
+              pkill -9 -f 'chrono_grapher' || true
+              pkill -9 -f 'chronovisor_server' || true
+              sleep 2
             else
               echo '✅ All ChronoLog processes cleaned up'
             fi
+            
+            # Deploy ChronoLog
             if [ -x ./tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
+              echo '🚀 Starting ChronoLog deployment...'
               ./tools/deploy/ChronoLog/local_single_user_deploy.sh -d -k 2 -r 2 -w \"\${WORK_DIR}\"
             else
               echo '❌ Deploy script not found or not executable'
+              ls -la ./tools/deploy/ChronoLog/ || true
               exit 1
             fi
+            
             echo '✅ ChronoLog deployment started'
+            echo '📊 System resources after deployment:'
+            echo 'Memory:'
+            free -h || true
           "
 
       - name: Verify Deployment
@@ -665,28 +700,37 @@ jobs:
             fi
             spack env activate -d . 2>/dev/null || spack env activate -p . 2>/dev/null || true
             echo '[4/5] Verifying deployment...'
+            
+            # Check system resources
+            echo '📊 System resources during verification:'
+            echo 'Memory:'
+            free -h || true
+            
             echo 'Waiting for services to start...'
-            sleep 10
+            # Give services more time to fully start
+            sleep 15
+            
             echo '📦 Listing ChronoLog processes...'
-            # Use home directory instead of /tmp to avoid permission issues
             PROCESS_LIST=\"/home/grc-iit/chrono_processes.txt\"
             pgrep -la chrono > \"\${PROCESS_LIST}\" || true
             cat \"\${PROCESS_LIST}\"
+            
             echo '🔍 Checking required components...'
             missing=0
-            for proc in chronovisor_server chrono_grapher chrono_player chrono_keeper; do
+            # Based on local_single_user_deploy.sh -k 2 -r 2:
+            # - 1 chronovisor_server
+            # - 2 chrono_grapher (one per recording group)
+            # - 2 chrono_player (one per recording group)
+            # - 2 chrono_keeper (as specified by -k 2)
+            declare -A expected_counts
+            expected_counts[chronovisor_server]=1
+            expected_counts[chrono_grapher]=2
+            expected_counts[chrono_player]=2
+            expected_counts[chrono_keeper]=2
+            
+            for proc in \"\${!expected_counts[@]}\"; do
               count=\$(grep -c \"\$proc\" \"\${PROCESS_LIST}\" || true)
-              case \$proc in
-                chronovisor_server)
-                  expected=1
-                  ;;
-                chrono_grapher|chrono_player)
-                  expected=2
-                  ;;
-                chrono_keeper)
-                  expected=2
-                  ;;
-              esac
+              expected=\${expected_counts[\$proc]}
               if [ \"\$count\" -eq \"\$expected\" ]; then
                 echo \"✅ Found \$count \$proc (expected \$expected)\"
               else
@@ -694,19 +738,38 @@ jobs:
                 missing=1
               fi
             done
+            
             if [ \"\$missing\" != \"0\" ]; then
               echo '❌ Deployment verification failed'
+              echo ''
+              echo '==== System Resource Status ===='
+              echo 'Memory:'
+              free -h || true
+              echo ''
+              echo 'Disk:'
+              df -h /home/grc-iit || true
+              echo ''
+              echo '==== All Running Processes (chrono*) ===='
+              ps aux | grep chrono | grep -v grep || echo 'No chrono processes found'
+              echo ''
               echo '==== Dumping monitor logs ===='
               if [ -d \"\${WORK_DIR}/monitor\" ]; then
                 for log in \"\${WORK_DIR}/monitor/\"*; do
-                  echo \"==== \$log ====\"
-                  cat \"\$log\" 2>/dev/null || echo \"Could not read \$log\"
+                  if [ -f \"\$log\" ]; then
+                    echo \"==== \$log ====\"
+                    tail -100 \"\$log\" 2>/dev/null || echo \"Could not read \$log\"
+                    echo ''
+                  fi
                 done
               else
                 echo '⚠️ Monitor directory not found'
+                echo 'Searching for monitor directory...'
+                find /home/grc-iit -type d -name monitor 2>/dev/null | head -5
               fi
+              rm -f \"\${PROCESS_LIST}\" || true
               exit 1
             fi
+            
             # Clean up process list file
             rm -f \"\${PROCESS_LIST}\"
             echo '✅ Deployment verification passed'
@@ -736,9 +799,17 @@ jobs:
             spack env activate -d . 2>/dev/null || spack env activate -p . 2>/dev/null || true
             echo '[5/5] Running client performance test...'
             
+            # Check system resources
+            echo '📊 System resources before test:'
+            echo 'Memory:'
+            free -h || true
+            
             # Set up environment
             export LD_LIBRARY_PATH=\${WORK_DIR}/lib:\$LD_LIBRARY_PATH
-            MPIEXEC_BIN=\$(spack location -i openmpi)/bin/mpiexec
+            
+            # Find mpiexec with better error messages
+            echo '🔍 Locating mpiexec...'
+            MPIEXEC_BIN=\$(spack location -i openmpi 2>/dev/null)/bin/mpiexec || MPIEXEC_BIN=''
             
             if [ ! -f \"\${MPIEXEC_BIN}\" ]; then
               echo '⚠️ mpiexec not found via Spack, trying which...'
@@ -747,14 +818,17 @@ jobs:
             
             if [ -z \"\${MPIEXEC_BIN}\" ] || [ ! -f \"\${MPIEXEC_BIN}\" ]; then
               echo '❌ mpiexec not found'
-              echo 'Attempting to locate openmpi installation...'
+              echo 'Attempting to locate OpenMPI installation...'
               spack find -p openmpi || true
+              echo 'Searching for mpiexec in system...'
+              find /opt -name mpiexec 2>/dev/null | head -5 || true
               exit 1
             fi
+            echo \"✅ Found mpiexec at: \${MPIEXEC_BIN}\"
             
+            # Verify required files and binaries
             CLIENT_ADMIN_BIN=\${WORK_DIR}/bin/client_admin
             HOSTS_FILE=\${WORK_DIR}/conf/hosts_client
-            # Use the client config file (not the server config)
             CONF_FILE=\${WORK_DIR}/conf/client_conf.json
             
             # Check if client_conf.json exists, if not try default_client_conf.json
@@ -763,57 +837,112 @@ jobs:
               CONF_FILE=\${WORK_DIR}/conf/default_client_conf.json
             fi
             
+            echo '🔍 Verifying required files...'
             if [ ! -f \"\${CLIENT_ADMIN_BIN}\" ]; then
-              echo '❌ client_admin binary not found at \${CLIENT_ADMIN_BIN}'
+              echo '❌ client_admin binary not found at' \"\${CLIENT_ADMIN_BIN}\"
               echo 'Contents of bin directory:'
-              ls -la \${WORK_DIR}/bin/ || echo 'bin directory not found'
+              ls -la \${WORK_DIR}/bin/ 2>/dev/null || echo 'bin directory not found'
               exit 1
             fi
+            echo \"✅ client_admin found\"
             
             if [ ! -f \"\${HOSTS_FILE}\" ]; then
-              echo '❌ hosts_client file not found at \${HOSTS_FILE}'
+              echo '❌ hosts_client file not found at' \"\${HOSTS_FILE}\"
               echo 'Contents of conf directory:'
-              ls -la \${WORK_DIR}/conf/ || echo 'conf directory not found'
+              ls -la \${WORK_DIR}/conf/ 2>/dev/null || echo 'conf directory not found'
               exit 1
             fi
+            echo \"✅ hosts_client found\"
             
             if [ ! -f \"\${CONF_FILE}\" ]; then
-              echo '❌ Client config file not found at \${CONF_FILE}'
-              echo 'Contents of conf directory:'
-              ls -la \${WORK_DIR}/conf/ || echo 'conf directory not found'
+              echo '❌ Client config file not found at' \"\${CONF_FILE}\"
+              echo 'Available config files:'
+              ls -la \${WORK_DIR}/conf/*.json 2>/dev/null || echo 'No config files found'
               exit 1
             fi
+            echo \"✅ Client config found\"
             
-            echo 'Running client_admin with:'
+            echo ''
+            echo '📋 Test configuration:'
             echo \"  MPIEXEC: \${MPIEXEC_BIN}\"
             echo \"  CLIENT_ADMIN: \${CLIENT_ADMIN_BIN}\"
             echo \"  HOSTS_FILE: \${HOSTS_FILE}\"
             echo \"  CONF_FILE: \${CONF_FILE}\"
-            echo 'Contents of hosts_client:'
+            echo ''
+            echo '📋 Contents of hosts_client:'
             cat \"\${HOSTS_FILE}\"
+            echo ''
+            
+            # Verify ChronoLog services are still running
+            echo '🔍 Checking ChronoLog services status...'
+            RUNNING_PROCS=\$(pgrep -la chrono || true)
+            if [ -z \"\$RUNNING_PROCS\" ]; then
+              echo '❌ No ChronoLog processes found! Services may have crashed.'
+              echo 'Checking monitor logs...'
+              if [ -d \"\${WORK_DIR}/monitor\" ]; then
+                for log in \"\${WORK_DIR}/monitor/\"*; do
+                  if [ -f \"\$log\" ]; then
+                    echo \"==== Last 20 lines of \$log ====\"
+                    tail -20 \"\$log\" 2>/dev/null || true
+                    echo ''
+                  fi
+                done
+              fi
+              exit 1
+            fi
+            echo 'ChronoLog processes running:'
+            echo \"\$RUNNING_PROCS\"
+            echo ''
             
             # Test SSH connectivity before running MPI
-            echo 'Testing SSH connectivity to hosts...'
+            echo '🔌 Testing SSH connectivity to all client hosts...'
+            SSH_FAILED=0
             while IFS= read -r host; do
-              if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 \"\$host\" 'echo SSH to \$HOSTNAME successful' 2>&1; then
-                echo \"✅ SSH to \$host successful\"
-              else
-                echo \"❌ SSH to \$host failed\"
+              if [ -n \"\$host\" ]; then
+                if timeout 5 ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=5 \"\$host\" 'echo SSH OK' > /dev/null 2>&1; then
+                  echo \"  ✅ SSH to \$host successful\"
+                else
+                  echo \"  ❌ SSH to \$host failed\"
+                  SSH_FAILED=1
+                fi
               fi
             done < \"\${HOSTS_FILE}\"
             
-            # Run the client performance test with proper error handling
-            echo 'Launching MPI client test...'
-            if \${MPIEXEC_BIN} -n 4 -f \${HOSTS_FILE} \
+            if [ \"\$SSH_FAILED\" -eq 1 ]; then
+              echo '❌ SSH connectivity test failed for one or more hosts'
+              echo 'Checking SSH service status...'
+              service ssh status || true
+              exit 1
+            fi
+            echo '✅ All SSH connectivity tests passed'
+            echo ''
+            
+            # Run the client performance test with timeout and proper error handling
+            echo '🚀 Launching MPI client test...'
+            echo 'Command: mpiexec -n 4 -f hosts_client client_admin --config client_conf.json -a 4096 -b 4096 -s 4096 -n 4096 -t 1 -h 1 -p -r'
+            echo ''
+            
+            if timeout 300 \${MPIEXEC_BIN} -n 4 -f \${HOSTS_FILE} \
               \${CLIENT_ADMIN_BIN} \
               --config \${CONF_FILE} \
               -a 4096 -b 4096 -s 4096 -n 4096 -t 1 -h 1 -p -r; then
+              echo ''
               echo '✅ Client performance test completed successfully'
+              echo '📊 Final system resources:'
+              free -h || true
             else
               TEST_EXIT_CODE=\$?
+              echo ''
               echo \"❌ Client performance test failed with exit code \${TEST_EXIT_CODE}\"
-              echo 'Checking if ChronoLog services are still running...'
+              if [ \"\$TEST_EXIT_CODE\" -eq 124 ]; then
+                echo '⚠️ Test timed out after 300 seconds'
+              fi
+              echo ''
+              echo '🔍 Checking if ChronoLog services are still running...'
               pgrep -la chrono || echo 'No ChronoLog processes found'
+              echo ''
+              echo '📊 System resources after failure:'
+              free -h || true
               exit \${TEST_EXIT_CODE}
             fi
           "
@@ -821,19 +950,17 @@ jobs:
       - name: Stop ChronoLog
         if: always()
         run: |
-          set -e
           docker exec --user grc-iit chronolog-c1 bash -c "
-            set -e
             WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
-            cd /home/grc-iit/chronolog-repo
-            source /opt/spack/share/spack/setup-env.sh
+            cd /home/grc-iit/chronolog-repo 2>/dev/null || true
+            source /opt/spack/share/spack/setup-env.sh 2>/dev/null || true
             # Check if .spack-env exists and handle permission issues
             if [ -d .spack-env ]; then
               if [ -L .spack-env ]; then
-                TARGET=\$(readlink .spack-env)
+                TARGET=\$(readlink .spack-env 2>/dev/null)
                 if [[ \"\$TARGET\" == /workspace* ]]; then
                   echo '⚠️ .spack-env is a symlink to /workspace, removing and recreating...'
-                  rm -f .spack-env
+                  rm -f .spack-env 2>/dev/null || true
                 fi
               fi
               if [ ! -w .spack-env ]; then
@@ -841,10 +968,47 @@ jobs:
               fi
             fi
             spack env activate -d . 2>/dev/null || spack env activate -p . 2>/dev/null || true
+            
             echo 'Stopping ChronoLog...'
-            ./tools/deploy/ChronoLog/local_single_user_deploy.sh -s -w \"\${WORK_DIR}\" || true
-            echo '✅ ChronoLog stop command completed'
-          "
+            echo '📊 System resources before stopping:'
+            free -h 2>/dev/null || true
+            
+            # List running processes before stop
+            echo 'ChronoLog processes before stop:'
+            pgrep -la chrono 2>/dev/null || echo 'No ChronoLog processes running'
+            
+            # Try to use the deploy script to stop gracefully
+            if [ -x ./tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
+              ./tools/deploy/ChronoLog/local_single_user_deploy.sh -s -w \"\${WORK_DIR}\" 2>/dev/null || {
+                echo '⚠️ Graceful stop failed, attempting force stop...'
+                for proc in chrono_player chrono_keeper chrono_grapher chronovisor_server; do
+                  pkill -9 -f \"\$proc\" 2>/dev/null || true
+                done
+              }
+            else
+              echo '⚠️ Deploy script not found, performing manual cleanup...'
+              for proc in chrono_player chrono_keeper chrono_grapher chronovisor_server; do
+                pkill -9 -f \"\$proc\" 2>/dev/null || true
+              done
+            fi
+            
+            # Give processes time to shut down
+            sleep 2
+            
+            # Verify all processes are stopped
+            REMAINING=\$(pgrep -la chrono 2>/dev/null || true)
+            if [ -n \"\$REMAINING\" ]; then
+              echo '⚠️ Some processes still running after stop:'
+              echo \"\$REMAINING\"
+              echo 'Force killing remaining processes...'
+              pkill -9 -f chrono 2>/dev/null || true
+              sleep 1
+            fi
+            
+            echo '✅ ChronoLog stop completed'
+            echo 'Final process check:'
+            pgrep -la chrono 2>/dev/null || echo 'No ChronoLog processes running'
+          " || echo "⚠️ Stop command had errors but continuing cleanup"
 
       - name: Clean up containers
         if: always()
