@@ -1,14 +1,13 @@
-name: ChronoLog CI (Modular)
+name: ChronoLog CI
 
 on:
   pull_request:
     branches: [develop, main]
   push:
-    branches: [develop, main, 499-refactor-build-install-workflow]  # Temporary: 499 branch for testing
+    branches: [develop, main]
     paths:
       - 'spack.yaml'
       - 'Client/spack.yaml'
-      - '.github/workflows/ci-modular.yml'  # Temporary: trigger on workflow changes for testing
   workflow_dispatch:
 
 env:
@@ -457,3 +456,4 @@ jobs:
       - name: Push final image
         run: |
           docker push "${{ steps.set-final-image-name.outputs.full-name }}"
+
