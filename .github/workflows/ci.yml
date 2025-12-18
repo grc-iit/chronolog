@@ -13,7 +13,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}/chronolog-ci
-  INSTALL_BASE: /home/runner/chronolog-install
+  INSTALL_BASE: /home/grc-iit/chronolog-install
 
 jobs:
   chronolog-base:
@@ -255,7 +255,11 @@ jobs:
             spack env activate -p .
             echo '[1/7] Building ChronoLog...'
             if [ -x ./tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
-              ./tools/deploy/ChronoLog/local_single_user_deploy.sh -b
+              # Build with install directory set to /home/grc-iit/chronolog-install to match local.dockerfile
+              INSTALL_DIR=\"/home/grc-iit/chronolog-install\"
+              mkdir -p \"\${INSTALL_DIR}\"
+              chown -R grc-iit:grc-iit \"\${INSTALL_DIR}\" || true
+              ./tools/deploy/ChronoLog/local_single_user_deploy.sh -b -I \"\${INSTALL_DIR}\"
             else
               echo '❌ Build script not found or not executable'
               exit 1
@@ -273,7 +277,11 @@ jobs:
             spack env activate -p .
             echo '[2/7] Installing ChronoLog...'
             if [ -x ./tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
-              ./tools/deploy/ChronoLog/local_single_user_deploy.sh -i
+              # Install to /home/grc-iit/chronolog-install to match local.dockerfile
+              INSTALL_DIR=\"/home/grc-iit/chronolog-install\"
+              mkdir -p \"\${INSTALL_DIR}\"
+              chown -R grc-iit:grc-iit \"\${INSTALL_DIR}\" || true
+              ./tools/deploy/ChronoLog/local_single_user_deploy.sh -i -I \"\${INSTALL_DIR}\"
             else
               echo '❌ Install script not found or not executable'
               exit 1
@@ -289,7 +297,7 @@ jobs:
             set -e
             source /opt/spack/share/spack/setup-env.sh
             spack env activate -p .
-            WORK_DIR=\"\$HOME/chronolog-install/chronolog\"
+            WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
             echo '[3/7] Verifying installation...'
             if [ -d \"\${WORK_DIR}/bin\" ]; then
               echo '✅ bin directory found'
@@ -323,7 +331,7 @@ jobs:
             set -e
             source /opt/spack/share/spack/setup-env.sh
             spack env activate -p .
-            WORK_DIR=\"\$HOME/chronolog-install/chronolog\"
+            WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
             echo '[4/7] Deploying ChronoLog...'
             if [ -x ./tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
               ./tools/deploy/ChronoLog/local_single_user_deploy.sh -d -k 5 -r 3 -w \"\${WORK_DIR}\"
@@ -342,7 +350,7 @@ jobs:
             set -e
             source /opt/spack/share/spack/setup-env.sh
             spack env activate -p .
-            WORK_DIR=\"\$HOME/chronolog-install/chronolog\"
+            WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
             echo '[5/7] Verifying deployment...'
             echo 'Waiting for services to start...'
             sleep 5
@@ -426,7 +434,7 @@ jobs:
           docker exec "$CONTAINER_ID" bash -c "
             source /opt/spack/share/spack/setup-env.sh
             spack env activate -p .
-            WORK_DIR=\"\$HOME/chronolog-install/chronolog\"
+            WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
             echo '[7/7] Cleaning ChronoLog...'
             if [ -x ./tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
               # Clean script checks if processes are stopped, so skip that check if processes are stuck

@@ -6,6 +6,14 @@ RUN apt-get update && \
     git g++ python3 curl build-essential unzip tar \
     libtool autoconf automake pkg-config jq lsof cmake chrpath
 
+# Create grc-iit user to match local.dockerfile
+ARG USERNAME=grc-iit
+ARG UID=1001
+RUN id $UID && userdel $(id -un $UID) || : \
+ && useradd -m -u $UID -s /bin/bash $USERNAME \
+ && echo "$USERNAME ALL=(ALL:ALL) NOPASSWD: ALL" >> /etc/sudoers.d/$USERNAME \
+ && passwd -d $USERNAME
+
 # Clone Spack
 RUN git clone --branch v0.21.2 https://github.com/spack/spack.git /opt/spack && \
     echo "source /opt/spack/share/spack/setup-env.sh" >> /etc/bash.bashrc
