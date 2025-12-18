@@ -4,13 +4,14 @@ FROM ubuntu:22.04
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y \
     git g++ python3 curl build-essential unzip tar \
-    libtool autoconf automake pkg-config jq lsof cmake chrpath
+    libtool autoconf automake pkg-config jq lsof cmake chrpath sudo
 
 # Create grc-iit user to match local.dockerfile
 ARG USERNAME=grc-iit
 ARG UID=1001
 RUN id $UID && userdel $(id -un $UID) || : \
  && useradd -m -u $UID -s /bin/bash $USERNAME \
+ && mkdir -p /etc/sudoers.d \
  && echo "$USERNAME ALL=(ALL:ALL) NOPASSWD: ALL" >> /etc/sudoers.d/$USERNAME \
  && passwd -d $USERNAME
 
