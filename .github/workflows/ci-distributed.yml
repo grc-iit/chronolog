@@ -326,16 +326,16 @@ jobs:
                   echo '✅ Copied ChronoLog installation from /root'
                 elif [ -d /home/runner/chronolog-install/chronolog ]; then
                   echo 'Copying from /home/runner/chronolog-install/chronolog...'
-                  cp -r /home/runner/chronolog-install/chronolog /home/grc-iit/chronolog-install/
-                  chown -R grc-iit:grc-iit /home/grc-iit/chronolog-install
-                  echo '✅ Copied ChronoLog installation from /home/runner'
-                else
-                  echo '❌ ChronoLog installation not found in image'
+                    cp -r /home/runner/chronolog-install/chronolog /home/grc-iit/chronolog-install/
+                    chown -R grc-iit:grc-iit /home/grc-iit/chronolog-install
+                    echo '✅ Copied ChronoLog installation from /home/runner'
+                  else
+                    echo '❌ ChronoLog installation not found in image'
                   echo 'Searched in:'
                   echo '  - /home/grc-iit/chronolog-install/chronolog'
                   echo '  - /root/chronolog-install/chronolog'
                   echo '  - /home/runner/chronolog-install/chronolog'
-                  exit 1
+                    exit 1
                 fi
               "
             done
@@ -726,13 +726,13 @@ jobs:
           set -e
           WORK_DIR="/home/grc-iit/chronolog-install/chronolog"
           
-          echo '[4/5] Verifying deployment...'
+            echo '[4/5] Verifying deployment...'
           
           # Check system resources on c1
           echo '📊 System resources during verification:'
           docker exec chronolog-c1 bash -c "free -h || true" || true
           
-          echo 'Waiting for services to start...'
+            echo 'Waiting for services to start...'
           # Give services more time to fully start
           sleep 15
           
@@ -752,8 +752,8 @@ jobs:
           echo "Collected process list:"
           cat "${PROCESS_LIST}" || echo "No processes found"
           
-          echo '🔍 Checking required components...'
-          missing=0
+            echo '🔍 Checking required components...'
+            missing=0
           # Based on hosts files prepared:
           # - 1 chronovisor_server on c1
           # - 2 chrono_grapher (one per recording group, on c4, c5)
@@ -772,12 +772,12 @@ jobs:
               echo "✅ Found $count $proc (expected $expected)"
             else
               echo "❌ Missing or wrong count: $proc (found $count, expected $expected)"
-              missing=1
-            fi
-          done
+                missing=1
+              fi
+            done
           
           if [ "$missing" != "0" ]; then
-            echo '❌ Deployment verification failed'
+              echo '❌ Deployment verification failed'
             echo ''
             echo '==== System Resource Status (c1) ===='
             docker exec chronolog-c1 bash -c "free -h || true" || true
@@ -790,12 +790,12 @@ jobs:
               docker exec chronolog-c$i bash -c "ps aux | grep chrono | grep -v grep || echo 'No chrono processes found'" || true
             done
             echo ''
-            echo '==== Dumping monitor logs ===='
+              echo '==== Dumping monitor logs ===='
             docker exec chronolog-c1 bash -c "
               if [ -d \"${WORK_DIR}/monitor\" ]; then
                 for log in \"${WORK_DIR}/monitor/\"*; do
                   if [ -f \"\$log\" ]; then
-                    echo \"==== \$log ====\"
+                  echo \"==== \$log ====\"
                     tail -100 \"\$log\" 2>/dev/null || echo \"Could not read \$log\"
                     echo ''
                   fi
@@ -807,12 +807,12 @@ jobs:
               fi
             " || true
             rm -f "${PROCESS_LIST}" || true
-            exit 1
-          fi
+              exit 1
+            fi
           
           # Clean up process list file
           rm -f "${PROCESS_LIST}"
-          echo '✅ Deployment verification passed'
+            echo '✅ Deployment verification passed'
 
       - name: Run Client Performance Test
         run: |
@@ -1141,7 +1141,7 @@ jobs:
             # Check if client_conf.json exists, if not try default_client_conf.json
             if [ ! -f \"\${CONF_FILE}\" ]; then
               echo '⚠️ client_conf.json not found, trying default_client_conf.json...'
-              CONF_FILE=\${WORK_DIR}/conf/default_client_conf.json
+            CONF_FILE=\${WORK_DIR}/conf/default_client_conf.json
             fi
             
             echo '🔍 Verifying required files...'
@@ -1224,8 +1224,43 @@ jobs:
             echo '✅ All SSH connectivity tests passed'
             echo ''
             
-            # Run the client performance test with timeout and proper error handling
-            echo '🚀 Launching MPI client test...'
+            # Display client configuration for debugging
+            echo '📋 Client configuration file contents:'
+            cat \"\${CONF_FILE}\" || echo '⚠️ Could not read config file'
+            echo ''
+            
+            # Run the client performance test (write mode first, then read mode)
+            # Write test: create and write data
+            echo '🚀 [1/2] Running write test...'
+            echo 'Command: mpiexec -n 4 -f hosts_client client_admin --config client_conf.json -a 4096 -b 4096 -s 4096 -n 4096 -t 1 -h 1 -p'
+            echo ''
+            
+            if timeout 300 \${MPIEXEC_BIN} -n 4 -f \${HOSTS_FILE} \
+              \${CLIENT_ADMIN_BIN} \
+              --config \${CONF_FILE} \
+              -a 4096 -b 4096 -s 4096 -n 4096 -t 1 -h 1 -p; then
+              echo ''
+              echo '✅ Write test completed successfully'
+              echo 'Waiting 5 seconds before read test...'
+              sleep 5
+            else
+              WRITE_EXIT_CODE=\$?
+              echo ''
+              echo \"❌ Write test failed with exit code \${WRITE_EXIT_CODE}\"
+              if [ \"\$WRITE_EXIT_CODE\" -eq 124 ]; then
+                echo '⚠️ Write test timed out after 300 seconds'
+              fi
+              echo ''
+              echo '🔍 Checking if ChronoLog services are still running...'
+              pgrep -la chrono || echo 'No ChronoLog processes found'
+              echo ''
+              echo '📊 System resources after write test failure:'
+              free -h || true
+              exit \${WRITE_EXIT_CODE}
+            fi
+            
+            # Read test: read back the data we just wrote
+            echo '🚀 [2/2] Running read test...'
             echo 'Command: mpiexec -n 4 -f hosts_client client_admin --config client_conf.json -a 4096 -b 4096 -s 4096 -n 4096 -t 1 -h 1 -p -r'
             echo ''
             
@@ -1234,23 +1269,23 @@ jobs:
               --config \${CONF_FILE} \
               -a 4096 -b 4096 -s 4096 -n 4096 -t 1 -h 1 -p -r; then
               echo ''
-              echo '✅ Client performance test completed successfully'
+              echo '✅ Client performance test completed successfully (both write and read)'
               echo '📊 Final system resources:'
               free -h || true
             else
-              TEST_EXIT_CODE=\$?
+              READ_EXIT_CODE=\$?
               echo ''
-              echo \"❌ Client performance test failed with exit code \${TEST_EXIT_CODE}\"
-              if [ \"\$TEST_EXIT_CODE\" -eq 124 ]; then
-                echo '⚠️ Test timed out after 300 seconds'
+              echo \"❌ Read test failed with exit code \${READ_EXIT_CODE}\"
+              if [ \"\$READ_EXIT_CODE\" -eq 124 ]; then
+                echo '⚠️ Read test timed out after 300 seconds'
               fi
               echo ''
               echo '🔍 Checking if ChronoLog services are still running...'
               pgrep -la chrono || echo 'No ChronoLog processes found'
               echo ''
-              echo '📊 System resources after failure:'
+              echo '📊 System resources after read test failure:'
               free -h || true
-              exit \${TEST_EXIT_CODE}
+              exit \${READ_EXIT_CODE}
             fi
           "
 
