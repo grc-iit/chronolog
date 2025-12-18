@@ -847,21 +847,48 @@ jobs:
             export LD_LIBRARY_PATH=\${WORK_DIR}/lib:\$LD_LIBRARY_PATH
             
             # Find mpiexec with better error messages
-            # Try multiple methods: check common locations first, then find, then spack, then which
+            # Try multiple methods: check Spack env view first (expected location), then common locations, then find, then spack, then which
             echo '🔍 Locating mpiexec...'
             MPIEXEC_BIN=''
             
-            # First check common locations directly (fastest and most reliable)
-            echo 'Checking common mpiexec locations...'
-            for candidate in /usr/bin/mpiexec /usr/local/bin/mpiexec /opt/view/bin/mpiexec; do
-              if [ -f \"\${candidate}\" ] && [ -x \"\${candidate}\" ]; then
-                MPIEXEC_BIN=\"\${candidate}\"
-                echo \"✅ Found mpiexec at common location: \${MPIEXEC_BIN}\"
-                break
+            # First check the Spack environment view directory (expected location based on user example)
+            # This is where mpiexec should be when Spack environment is activated: ~/chronolog-repo/.spack-env/view/bin/mpiexec
+            echo 'Checking Spack environment view directory (expected location)...'
+            SPACK_ENV_VIEW_BIN=\"/home/grc-iit/chronolog-repo/.spack-env/view/bin/mpiexec\"
+            if [ -f \"\${SPACK_ENV_VIEW_BIN}\" ] && [ -x \"\${SPACK_ENV_VIEW_BIN}\" ]; then
+              MPIEXEC_BIN=\"\${SPACK_ENV_VIEW_BIN}\"
+              echo \"✅ Found mpiexec at Spack environment view: \${MPIEXEC_BIN}\"
+            else
+              echo \"  Checking \${SPACK_ENV_VIEW_BIN}: \$([ -f \"\${SPACK_ENV_VIEW_BIN}\" ] && echo 'exists' || echo 'not found')\"
+              # Check if the directory exists
+              if [ -d \"/home/grc-iit/chronolog-repo/.spack-env/view/bin\" ]; then
+                echo \"  Directory exists, listing contents:\"
+                ls -la \"/home/grc-iit/chronolog-repo/.spack-env/view/bin\" | head -10 || true
               else
-                echo \"  Checking \${candidate}: \$([ -f \"\${candidate}\" ] && echo 'exists' || echo 'not found')\"
+                echo \"  Directory /home/grc-iit/chronolog-repo/.spack-env/view/bin does not exist\"
+                # Check if .spack-env exists at all
+                if [ -d \"/home/grc-iit/chronolog-repo/.spack-env\" ]; then
+                  echo \"  .spack-env directory exists, listing:\"
+                  ls -la \"/home/grc-iit/chronolog-repo/.spack-env\" | head -10 || true
+                else
+                  echo \"  .spack-env directory does not exist\"
+                fi
               fi
-            done
+            fi
+            
+            # Then check common locations directly (fastest and most reliable)
+            if [ -z \"\${MPIEXEC_BIN}\" ]; then
+              echo 'Checking common mpiexec locations...'
+              for candidate in /usr/bin/mpiexec /usr/local/bin/mpiexec /opt/view/bin/mpiexec; do
+                if [ -f \"\${candidate}\" ] && [ -x \"\${candidate}\" ]; then
+                  MPIEXEC_BIN=\"\${candidate}\"
+                  echo \"✅ Found mpiexec at common location: \${MPIEXEC_BIN}\"
+                  break
+                else
+                  echo \"  Checking \${candidate}: \$([ -f \"\${candidate}\" ] && echo 'exists' || echo 'not found')\"
+                fi
+              done
+            fi
             
             # Then try find (works even if Spack env is not configured)
             if [ -z \"\${MPIEXEC_BIN}\" ]; then
@@ -910,6 +937,43 @@ jobs:
                 fi
               else
                 echo '  /opt/software directory does not exist'
+              fi
+            fi
+            
+            # Try searching in /opt/spack/opt/spack/ (where Spack installs packages in the Docker image)
+            if [ -z \"\${MPIEXEC_BIN}\" ]; then
+              echo 'Searching for mpich in /opt/spack/opt/spack/...'
+              if [ -d /opt/spack/opt/spack ]; then
+                # Find mpich directories
+                MPICH_DIRS=\$(find /opt/spack/opt/spack -type d -name '*mpich*' 2>/dev/null | head -5)
+                if [ -n \"\${MPICH_DIRS}\" ]; then
+                  echo \"  Found mpich directories:\"
+                  echo \"\${MPICH_DIRS}\"
+                  while IFS= read -r mpich_dir; do
+                    if [ -f \"\${mpich_dir}/bin/mpiexec\" ] && [ -x \"\${mpich_dir}/bin/mpiexec\" ]; then
+                      MPIEXEC_BIN=\"\${mpich_dir}/bin/mpiexec\"
+                      echo \"✅ Found mpiexec in /opt/spack/opt/spack: \${MPIEXEC_BIN}\"
+                      break
+                    fi
+                  done <<< \"\${MPICH_DIRS}\"
+                else
+                  echo '  No mpich directories found in /opt/spack/opt/spack'
+                  # Try direct find for mpiexec
+                  DIRECT_MPIEXEC=\$(find /opt/spack/opt/spack -name mpiexec -type f 2>/dev/null | head -5)
+                  if [ -n \"\${DIRECT_MPIEXEC}\" ]; then
+                    echo \"  Found mpiexec directly:\"
+                    echo \"\${DIRECT_MPIEXEC}\"
+                    while IFS= read -r mpiexec_path; do
+                      if [ -f \"\${mpiexec_path}\" ] && [ -x \"\${mpiexec_path}\" ]; then
+                        MPIEXEC_BIN=\"\${mpiexec_path}\"
+                        echo \"✅ Found executable mpiexec: \${MPIEXEC_BIN}\"
+                        break
+                      fi
+                    done <<< \"\${DIRECT_MPIEXEC}\"
+                  fi
+                fi
+              else
+                echo '  /opt/spack/opt/spack directory does not exist'
               fi
             fi
             
@@ -993,8 +1057,8 @@ jobs:
             # Final fallback: try all find results and use the first executable found
             if [ -z \"\${MPIEXEC_BIN}\" ]; then
               echo 'Performing final aggressive search for mpiexec...'
-              # Search in multiple locations
-              ALL_MPIEXEC=\$(find /opt /usr /usr/local -name mpiexec -type f 2>/dev/null | head -20 || echo '')
+              # Search in multiple locations including chronolog-repo
+              ALL_MPIEXEC=\$(find /home/grc-iit/chronolog-repo /opt /usr /usr/local -name mpiexec -type f 2>/dev/null | head -20 || echo '')
               if [ -n \"\${ALL_MPIEXEC}\" ]; then
                 echo 'Found mpiexec candidates:'
                 echo \"\${ALL_MPIEXEC}\"
@@ -1021,6 +1085,13 @@ jobs:
               echo '❌ mpiexec not found after exhaustive search'
               echo ''
               echo '=== Diagnostic Information ==='
+              echo 'Checking Spack environment view (expected location):'
+              echo \"  /home/grc-iit/chronolog-repo/.spack-env/view/bin/mpiexec: \$([ -f \"/home/grc-iit/chronolog-repo/.spack-env/view/bin/mpiexec\" ] && echo 'exists' || echo 'not found')\"
+              if [ -d \"/home/grc-iit/chronolog-repo/.spack-env/view/bin\" ]; then
+                echo \"  Contents of .spack-env/view/bin:\"
+                ls -la \"/home/grc-iit/chronolog-repo/.spack-env/view/bin\" | head -10 || true
+              fi
+              echo ''
               echo 'Checking common locations:'
               for loc in /usr/bin/mpiexec /usr/local/bin/mpiexec /opt/view/bin/mpiexec; do
                 echo \"  \${loc}: \$([ -f \"\${loc}\" ] && echo 'exists' || echo 'not found')\"
@@ -1040,7 +1111,7 @@ jobs:
               spack find -p openmpi 2>&1 || echo 'spack find -p openmpi failed'
               echo ''
               echo 'Searching for mpiexec in system:'
-              find /opt /usr /usr/local -name mpiexec -type f 2>/dev/null | head -20 || echo 'No mpiexec found'
+              find /home/grc-iit/chronolog-repo /opt /usr /usr/local -name mpiexec -type f 2>/dev/null | head -20 || echo 'No mpiexec found'
               echo ''
               echo 'Current PATH:'
               echo \$PATH
