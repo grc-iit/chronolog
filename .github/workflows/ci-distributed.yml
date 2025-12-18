@@ -168,8 +168,8 @@ jobs:
           NUM_CONTAINERS=7
           for i in $(seq 1 $NUM_CONTAINERS); do
             docker exec chronolog-c$i bash -c "
-              # Install openssh-server and sudo if not present
-              apt-get update && apt-get install -y openssh-server sudo || true
+              # Install openssh-server, sudo, and parallel-ssh (required for single_user_deploy.sh)
+              apt-get update && apt-get install -y openssh-server sudo pssh || true
               
               # Create user if it doesn't exist
               if ! id -u grc-iit >/dev/null 2>&1; then
@@ -523,9 +523,9 @@ jobs:
               mkdir -p \${SPACK_USER_CACHE_PATH}
               
               echo 'Building ChronoLog...'
-              ./tools/deploy/ChronoLog/local_single_user_deploy.sh -b
+              ./tools/deploy/ChronoLog/single_user_deploy.sh -b
               echo 'Installing ChronoLog...'
-              ./tools/deploy/ChronoLog/local_single_user_deploy.sh -i
+              ./tools/deploy/ChronoLog/single_user_deploy.sh -i
               echo '✅ ChronoLog built and installed'
             "
             # Copy installation to other containers via shared volume
@@ -644,9 +644,9 @@ jobs:
               echo '🧹 Attempting graceful cleanup using deploy script...'
               
               # Try to use the deploy script's stop function for graceful shutdown
-              if [ -x ./tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
+              if [ -x ./tools/deploy/ChronoLog/single_user_deploy.sh ]; then
                 echo 'Using deploy script to stop services gracefully...'
-                ./tools/deploy/ChronoLog/local_single_user_deploy.sh -s -w \"\${WORK_DIR}\" 2>/dev/null || {
+                ./tools/deploy/ChronoLog/single_user_deploy.sh -s -w \"\${WORK_DIR}\" 2>/dev/null || {
                   echo '⚠️ Graceful stop via deploy script failed, will continue anyway'
                 }
                 sleep 3
@@ -698,10 +698,12 @@ jobs:
             # Now enable strict error handling for deployment
             set -e
             
-            # Deploy ChronoLog
-            if [ -x ./tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
+            # Deploy ChronoLog using single_user_deploy.sh (distributed deployment)
+            if [ -x ./tools/deploy/ChronoLog/single_user_deploy.sh ]; then
               echo '🚀 Starting ChronoLog deployment...'
-              ./tools/deploy/ChronoLog/local_single_user_deploy.sh -d -k 2 -r 2 -w \"\${WORK_DIR}\"
+              # single_user_deploy.sh uses hosts files to determine distribution
+              # NUM_RECORDING_GROUP is auto-detected from hosts_grapher file
+              ./tools/deploy/ChronoLog/single_user_deploy.sh -d -w \"\${WORK_DIR}\"
             else
               echo '❌ Deploy script not found or not executable'
               ls -la ./tools/deploy/ChronoLog/ || true
@@ -748,17 +750,26 @@ jobs:
             sleep 15
             
             echo '📦 Listing ChronoLog processes...'
+            # For distributed deployment, we need to check processes across all containers
+            # single_user_deploy.sh distributes processes, so we check on each container
             PROCESS_LIST=\"/home/grc-iit/chrono_processes.txt\"
-            pgrep -la chrono > \"\${PROCESS_LIST}\" || true
+            rm -f \"\${PROCESS_LIST}\"
+            
+            # Check processes on each container
+            for i in \$(seq 1 7); do
+              echo \"Checking processes on c\$i...\"
+              docker exec chronolog-c\$i pgrep -la chrono >> \"\${PROCESS_LIST}\" 2>/dev/null || true
+            done
+            
             cat \"\${PROCESS_LIST}\"
             
             echo '🔍 Checking required components...'
             missing=0
-            # Based on local_single_user_deploy.sh -k 2 -r 2:
-            # - 1 chronovisor_server
-            # - 2 chrono_grapher (one per recording group)
-            # - 2 chrono_player (one per recording group)
-            # - 2 chrono_keeper (as specified by -k 2)
+            # Based on hosts files prepared:
+            # - 1 chronovisor_server on c1
+            # - 2 chrono_grapher (one per recording group, on c4, c5)
+            # - 2 chrono_player (one per recording group, on c6, c7)
+            # - 2 chrono_keeper (on c2, c3)
             declare -A expected_counts
             expected_counts[chronovisor_server]=1
             expected_counts[chrono_grapher]=2
@@ -1209,71 +1220,30 @@ jobs:
             echo '📊 System resources before stopping:'
             free -h 2>/dev/null || true
             
-            # List running processes before stop
+            # List running processes before stop (check across all containers)
             echo 'ChronoLog processes before stop:'
-            pgrep -la chrono 2>/dev/null || echo 'No ChronoLog processes running'
+            for i in \$(seq 1 7); do
+              echo \"Processes on c\$i:\"
+              docker exec chronolog-c\$i pgrep -la chrono 2>/dev/null || echo 'No ChronoLog processes running'
+            done
             
-            # Check if any processes are actually running
-            RUNNING_PROCS=\$(pgrep -la 'chrono_player|chrono_keeper|chrono_grapher|chronovisor_server|client_admin' 2>/dev/null || true)
-            if [ -z \"\$RUNNING_PROCS\" ]; then
-              echo '✅ No ChronoLog processes found, nothing to stop'
+            # Use the deploy script to stop gracefully (it handles distributed processes)
+            if [ -x ./tools/deploy/ChronoLog/single_user_deploy.sh ]; then
+              echo 'Using deploy script for graceful stop...'
+              ./tools/deploy/ChronoLog/single_user_deploy.sh -s -w \"\${WORK_DIR}\" 2>/dev/null || {
+                echo '⚠️ Graceful stop via deploy script failed, attempting manual cleanup...'
+              }
+              sleep 3
             else
-              echo 'Found running processes, attempting graceful stop...'
-              
-              # Try to use the deploy script to stop gracefully
-              if [ -x ./tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
-                echo 'Using deploy script for graceful stop...'
-                ./tools/deploy/ChronoLog/local_single_user_deploy.sh -s -w \"\${WORK_DIR}\" 2>/dev/null || {
-                  echo '⚠️ Graceful stop via deploy script failed, attempting manual cleanup...'
-                }
-                sleep 3
-              else
-                echo '⚠️ Deploy script not found, performing manual cleanup...'
-              fi
-              
-              # Check if processes are still running after graceful stop
-              REMAINING=\$(pgrep -la 'chrono_player|chrono_keeper|chrono_grapher|chronovisor_server|client_admin' 2>/dev/null || true)
-              if [ -n \"\$REMAINING\" ]; then
-                echo '⚠️ Some processes still running after graceful stop:'
-                echo \"\$REMAINING\"
-                echo 'Attempting SIGTERM first...'
-                
-                # Try SIGTERM first for each process type
-                for proc in chrono_player chrono_keeper chrono_grapher chronovisor_server client_admin; do
-                  if pgrep -f \"\$proc\" > /dev/null 2>&1; then
-                    echo \"  Sending SIGTERM to \$proc...\"
-                    pkill -f \"\$proc\" 2>/dev/null || true
-                  fi
-                done
-                sleep 2
-                
-                # Check again and only use SIGKILL if necessary
-                STILL_RUNNING=\$(pgrep -la 'chrono_player|chrono_keeper|chrono_grapher|chronovisor_server|client_admin' 2>/dev/null || true)
-                if [ -n \"\$STILL_RUNNING\" ]; then
-                  echo '⚠️ Some processes did not stop with SIGTERM, using SIGKILL...'
-                  for proc in chrono_player chrono_keeper chrono_grapher chronovisor_server client_admin; do
-                    if pgrep -f \"\$proc\" > /dev/null 2>&1; then
-                      echo \"  Sending SIGKILL to \$proc...\"
-                      pkill -9 -f \"\$proc\" 2>/dev/null || true
-                    fi
-                  done
-                  sleep 1
-                fi
-              fi
-              
-              # Final verification
-              FINAL_CHECK=\$(pgrep -la 'chrono_player|chrono_keeper|chrono_grapher|chronovisor_server|client_admin' 2>/dev/null || true)
-              if [ -n \"\$FINAL_CHECK\" ]; then
-                echo '⚠️ Warning: Some processes may still be running after cleanup:'
-                echo \"\$FINAL_CHECK\"
-              else
-                echo '✅ All ChronoLog processes stopped'
-              fi
+              echo '⚠️ Deploy script not found, performing manual cleanup...'
             fi
             
-            echo '✅ ChronoLog stop completed'
+            # Final verification (check across all containers)
             echo 'Final process check:'
-            pgrep -la chrono 2>/dev/null || echo 'No ChronoLog processes running'
+            for i in \$(seq 1 7); do
+              echo \"Processes on c\$i:\"
+              docker exec chronolog-c\$i pgrep -la chrono 2>/dev/null || echo 'No ChronoLog processes running'
+            done
           " || echo "⚠️ Stop command had errors but continuing cleanup"
 
       - name: Clean up containers
