@@ -1134,10 +1134,23 @@ jobs:
             \${MPIEXEC_BIN} --version 2>&1 || echo '⚠️ mpiexec --version failed, but continuing...'
             
             # Verify required files and binaries
+            # Use the same path structure as dynamic_deploy.sh: ~/chronolog-install/chronolog
+            # WORK_DIR is already set to /home/grc-iit/chronolog-install/chronolog
             CLIENT_ADMIN_BIN=\${WORK_DIR}/bin/client_admin
             HOSTS_FILE=\${WORK_DIR}/conf/hosts_client
             # Use default_client_conf.json as shown in user's example
             CONF_FILE=\${WORK_DIR}/conf/default_client_conf.json
+            
+            echo '🔍 Verifying installation paths...'
+            echo \"  WORK_DIR: \${WORK_DIR}\"
+            echo \"  Current directory: \$(pwd)\"
+            echo \"  HOME: \${HOME}\"
+            echo \"  Checking if WORK_DIR exists: \$([ -d \${WORK_DIR} ] && echo 'yes' || echo 'no')\"
+            if [ -d \${WORK_DIR} ]; then
+              echo \"  Contents of WORK_DIR:\"
+              ls -la \${WORK_DIR} | head -10
+            fi
+            echo ''
             
             echo '🔍 Verifying required files...'
             if [ ! -f \"\${CLIENT_ADMIN_BIN}\" ]; then
@@ -1227,18 +1240,33 @@ jobs:
             # Run the client performance test
             # Use the exact command structure from the user's example
             # The user's example: mpiexec -n 4 -f hosts_client client_admin --config default_client_conf.json -a 4096 -b 4096 -s 4096 -n 4096 -t 1 -h 1 -p -r
+            # Note: The user's example uses relative paths from ~, but we use absolute paths which should work the same
             echo '🚀 Running client performance test...'
             echo 'Command:'
             echo \"  \${MPIEXEC_BIN} -n 4 -f \${HOSTS_FILE} \${CLIENT_ADMIN_BIN} --config \${CONF_FILE} -a 4096 -b 4096 -s 4096 -n 4096 -t 1 -h 1 -p -r\"
             echo ''
+            echo 'Path verification:'
+            echo \"  MPIEXEC_BIN: \${MPIEXEC_BIN} (\$([ -f \${MPIEXEC_BIN} ] && echo 'exists' || echo 'NOT FOUND'))\"
+            echo \"  CLIENT_ADMIN_BIN: \${CLIENT_ADMIN_BIN} (\$([ -f \${CLIENT_ADMIN_BIN} ] && echo 'exists' || echo 'NOT FOUND'))\"
+            echo \"  HOSTS_FILE: \${HOSTS_FILE} (\$([ -f \${HOSTS_FILE} ] && echo 'exists' || echo 'NOT FOUND'))\"
+            echo \"  CONF_FILE: \${CONF_FILE} (\$([ -f \${CONF_FILE} ] && echo 'exists' || echo 'NOT FOUND'))\"
+            echo ''
             
             # Set LD_LIBRARY_PATH as shown in user's example
             export LD_LIBRARY_PATH=\${WORK_DIR}/lib:\$LD_LIBRARY_PATH
+            echo \"  LD_LIBRARY_PATH: \${LD_LIBRARY_PATH}\"
+            echo ''
+            
+            # Change to the work directory to match user's example (which runs from the install directory)
+            cd \${WORK_DIR}
+            echo \"  Changed to directory: \$(pwd)\"
+            echo ''
             
             # Run the test (write and read in one command with -r flag)
-            if \${MPIEXEC_BIN} -n 4 -f \${HOSTS_FILE} \
-              \${CLIENT_ADMIN_BIN} \
-              --config \${CONF_FILE} \
+            # Use relative paths from WORK_DIR to match user's example more closely
+            if \${MPIEXEC_BIN} -n 4 -f conf/hosts_client \
+              bin/client_admin \
+              --config conf/default_client_conf.json \
               -a 4096 -b 4096 -s 4096 -n 4096 -t 1 -h 1 -p -r; then
               echo ''
               echo '✅ Client performance test completed successfully'
