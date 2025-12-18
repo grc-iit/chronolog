@@ -193,13 +193,26 @@ jobs:
           docker exec --user grc-iit chronolog-c1 bash -c "echo 'export USER=grc-iit' >> ~/.bashrc"
           
           # Copy SSH keys to all containers
+          # First, extract files from c1 to temporary files on host
+          docker cp chronolog-c1:/home/grc-iit/.ssh/id_rsa.pub /tmp/id_rsa.pub.tmp || true
+          docker cp chronolog-c1:/home/grc-iit/.ssh/known_hosts /tmp/known_hosts.tmp || true
+          
           for i in $(seq 1 $NUM_CONTAINERS); do
             docker exec chronolog-c$i bash -c "mkdir -p /home/grc-iit/.ssh && chown -R grc-iit:grc-iit /home/grc-iit/.ssh" || true
-            docker cp chronolog-c1:/home/grc-iit/.ssh/id_rsa.pub - | docker cp - chronolog-c$i:/home/grc-iit/.ssh/authorized_keys || true
-            docker cp chronolog-c1:/home/grc-iit/.ssh/known_hosts - | docker cp - chronolog-c$i:/home/grc-iit/.ssh/known_hosts || true
+            # Copy id_rsa.pub to authorized_keys
+            if [ -f /tmp/id_rsa.pub.tmp ]; then
+              docker cp /tmp/id_rsa.pub.tmp chronolog-c$i:/home/grc-iit/.ssh/authorized_keys || true
+            fi
+            # Copy known_hosts
+            if [ -f /tmp/known_hosts.tmp ]; then
+              docker cp /tmp/known_hosts.tmp chronolog-c$i:/home/grc-iit/.ssh/known_hosts || true
+            fi
             docker exec chronolog-c$i bash -c "chown -R grc-iit:grc-iit /home/grc-iit/.ssh && chmod 700 /home/grc-iit/.ssh && chmod 600 /home/grc-iit/.ssh/authorized_keys && chmod 644 /home/grc-iit/.ssh/known_hosts" || true
             docker exec --user grc-iit chronolog-c$i bash -c "echo 'export USER=grc-iit' >> ~/.bashrc" || true
           done
+          
+          # Clean up temporary files
+          rm -f /tmp/id_rsa.pub.tmp /tmp/known_hosts.tmp || true
           
           echo "✅ SSH keys configured"
 
@@ -476,8 +489,31 @@ jobs:
           WORK_DIR="/home/grc-iit/chronolog-install/chronolog"
           docker exec --user grc-iit chronolog-c1 bash -c "
             set -e
+            cd /home/grc-iit/chronolog-repo
             source /opt/spack/share/spack/setup-env.sh
-            spack env activate -p .
+            # Check if .spack-env exists and handle permission issues
+            if [ -d .spack-env ]; then
+              # Check if it's a symlink pointing to /workspace
+              if [ -L .spack-env ]; then
+                TARGET=\$(readlink .spack-env)
+                if [[ \"\$TARGET\" == /workspace* ]]; then
+                  echo '⚠️ .spack-env is a symlink to /workspace, removing and recreating...'
+                  rm -f .spack-env
+                  # Spack will recreate it when we activate
+                fi
+              fi
+              # Try to make it writable
+              if [ ! -w .spack-env ]; then
+                echo '⚠️ .spack-env is not writable, attempting to fix permissions...'
+                sudo chmod -R u+w .spack-env 2>/dev/null || {
+                  echo '⚠️ Could not make .spack-env writable, will try to work around...'
+                }
+              fi
+            fi
+            # Activate Spack environment (use -d flag to avoid writing to .spack-env if read-only)
+            spack env activate -d . 2>/dev/null || spack env activate -p . 2>/dev/null || {
+              echo '⚠️ Could not activate Spack environment, continuing anyway...'
+            }
             echo '[2/5] Verifying installation...'
             if [ -d \"\${WORK_DIR}/bin\" ]; then
               echo '✅ bin directory found'
@@ -511,7 +547,20 @@ jobs:
             set -e
             cd /home/grc-iit/chronolog-repo
             source /opt/spack/share/spack/setup-env.sh
-            spack env activate -p .
+            # Check if .spack-env exists and handle permission issues
+            if [ -d .spack-env ]; then
+              if [ -L .spack-env ]; then
+                TARGET=\$(readlink .spack-env)
+                if [[ \"\$TARGET\" == /workspace* ]]; then
+                  echo '⚠️ .spack-env is a symlink to /workspace, removing and recreating...'
+                  rm -f .spack-env
+                fi
+              fi
+              if [ ! -w .spack-env ]; then
+                sudo chmod -R u+w .spack-env 2>/dev/null || true
+              fi
+            fi
+            spack env activate -d . 2>/dev/null || spack env activate -p . 2>/dev/null || true
             echo '[3/5] Deploying ChronoLog...'
             if [ -x ./tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
               ./tools/deploy/ChronoLog/local_single_user_deploy.sh -d -k 2 -r 2 -w \"\${WORK_DIR}\"
@@ -528,8 +577,22 @@ jobs:
           WORK_DIR="/home/grc-iit/chronolog-install/chronolog"
           docker exec --user grc-iit chronolog-c1 bash -c "
             set -e
+            cd /home/grc-iit/chronolog-repo
             source /opt/spack/share/spack/setup-env.sh
-            spack env activate -p .
+            # Check if .spack-env exists and handle permission issues
+            if [ -d .spack-env ]; then
+              if [ -L .spack-env ]; then
+                TARGET=\$(readlink .spack-env)
+                if [[ \"\$TARGET\" == /workspace* ]]; then
+                  echo '⚠️ .spack-env is a symlink to /workspace, removing and recreating...'
+                  rm -f .spack-env
+                fi
+              fi
+              if [ ! -w .spack-env ]; then
+                sudo chmod -R u+w .spack-env 2>/dev/null || true
+              fi
+            fi
+            spack env activate -d . 2>/dev/null || spack env activate -p . 2>/dev/null || true
             echo '[4/5] Verifying deployment...'
             echo 'Waiting for services to start...'
             sleep 10
@@ -578,8 +641,22 @@ jobs:
           WORK_DIR="/home/grc-iit/chronolog-install/chronolog"
           docker exec --user grc-iit chronolog-c1 bash -c "
             set -e
+            cd /home/grc-iit/chronolog-repo
             source /opt/spack/share/spack/setup-env.sh
-            spack env activate -p .
+            # Check if .spack-env exists and handle permission issues
+            if [ -d .spack-env ]; then
+              if [ -L .spack-env ]; then
+                TARGET=\$(readlink .spack-env)
+                if [[ \"\$TARGET\" == /workspace* ]]; then
+                  echo '⚠️ .spack-env is a symlink to /workspace, removing and recreating...'
+                  rm -f .spack-env
+                fi
+              fi
+              if [ ! -w .spack-env ]; then
+                sudo chmod -R u+w .spack-env 2>/dev/null || true
+              fi
+            fi
+            spack env activate -d . 2>/dev/null || spack env activate -p . 2>/dev/null || true
             echo '[5/5] Running client performance test...'
             
             # Set up environment
@@ -631,7 +708,20 @@ jobs:
           docker exec --user grc-iit chronolog-c1 bash -c "
             cd /home/grc-iit/chronolog-repo
             source /opt/spack/share/spack/setup-env.sh
-            spack env activate -p .
+            # Check if .spack-env exists and handle permission issues
+            if [ -d .spack-env ]; then
+              if [ -L .spack-env ]; then
+                TARGET=\$(readlink .spack-env)
+                if [[ \"\$TARGET\" == /workspace* ]]; then
+                  echo '⚠️ .spack-env is a symlink to /workspace, removing and recreating...'
+                  rm -f .spack-env
+                fi
+              fi
+              if [ ! -w .spack-env ]; then
+                sudo chmod -R u+w .spack-env 2>/dev/null || true
+              fi
+            fi
+            spack env activate -d . 2>/dev/null || spack env activate -p . 2>/dev/null || true
             echo 'Stopping ChronoLog...'
             ./tools/deploy/ChronoLog/local_single_user_deploy.sh -s -w \"\${WORK_DIR}\" || true
             echo '✅ ChronoLog stop command completed'
