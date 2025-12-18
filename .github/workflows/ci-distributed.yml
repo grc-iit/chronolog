@@ -724,90 +724,76 @@ jobs:
       - name: Verify Deployment
         run: |
           set -e
-          docker exec --user grc-iit chronolog-c1 bash -c "
-            set -e
-            WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
-            cd /home/grc-iit/chronolog-repo
-            source /opt/spack/share/spack/setup-env.sh
-            # Check if .spack-env exists and handle permission issues
-            if [ -d .spack-env ]; then
-              if [ -L .spack-env ]; then
-                TARGET=\$(readlink .spack-env)
-                if [[ \"\$TARGET\" == /workspace* ]]; then
-                  echo '⚠️ .spack-env is a symlink to /workspace, removing and recreating...'
-                  rm -f .spack-env
-                fi
-              fi
-              if [ ! -w .spack-env ]; then
-                sudo chmod -R u+w .spack-env 2>/dev/null || true
-              fi
+          WORK_DIR="/home/grc-iit/chronolog-install/chronolog"
+          
+          echo '[4/5] Verifying deployment...'
+          
+          # Check system resources on c1
+          echo '📊 System resources during verification:'
+          docker exec chronolog-c1 bash -c "free -h || true" || true
+          
+          echo 'Waiting for services to start...'
+          # Give services more time to fully start
+          sleep 15
+          
+          echo '📦 Listing ChronoLog processes across all containers...'
+          # For distributed deployment, we need to check processes across all containers
+          # single_user_deploy.sh distributes processes, so we check on each container
+          # Run docker exec from the host (not from inside a container)
+          PROCESS_LIST="/tmp/chrono_processes.txt"
+          rm -f "${PROCESS_LIST}"
+          
+          # Check processes on each container (from host)
+          for i in $(seq 1 7); do
+            echo "Checking processes on c$i..."
+            docker exec chronolog-c$i pgrep -la chrono >> "${PROCESS_LIST}" 2>/dev/null || true
+          done
+          
+          echo "Collected process list:"
+          cat "${PROCESS_LIST}" || echo "No processes found"
+          
+          echo '🔍 Checking required components...'
+          missing=0
+          # Based on hosts files prepared:
+          # - 1 chronovisor_server on c1
+          # - 2 chrono_grapher (one per recording group, on c4, c5)
+          # - 2 chrono_player (one per recording group, on c6, c7)
+          # - 2 chrono_keeper (on c2, c3)
+          declare -A expected_counts
+          expected_counts[chronovisor_server]=1
+          expected_counts[chrono_grapher]=2
+          expected_counts[chrono_player]=2
+          expected_counts[chrono_keeper]=2
+          
+          for proc in "${!expected_counts[@]}"; do
+            count=$(grep -c "$proc" "${PROCESS_LIST}" || echo "0")
+            expected=${expected_counts[$proc]}
+            if [ "$count" -eq "$expected" ]; then
+              echo "✅ Found $count $proc (expected $expected)"
+            else
+              echo "❌ Missing or wrong count: $proc (found $count, expected $expected)"
+              missing=1
             fi
-            spack env activate -d . 2>/dev/null || spack env activate -p . 2>/dev/null || true
-            echo '[4/5] Verifying deployment...'
-            
-            # Check system resources
-            echo '📊 System resources during verification:'
-            echo 'Memory:'
-            free -h || true
-            
-            echo 'Waiting for services to start...'
-            # Give services more time to fully start
-            sleep 15
-            
-            echo '📦 Listing ChronoLog processes...'
-            # For distributed deployment, we need to check processes across all containers
-            # single_user_deploy.sh distributes processes, so we check on each container
-            PROCESS_LIST=\"/home/grc-iit/chrono_processes.txt\"
-            rm -f \"\${PROCESS_LIST}\"
-            
-            # Check processes on each container
-            for i in \$(seq 1 7); do
-              echo \"Checking processes on c\$i...\"
-              docker exec chronolog-c\$i pgrep -la chrono >> \"\${PROCESS_LIST}\" 2>/dev/null || true
+          done
+          
+          if [ "$missing" != "0" ]; then
+            echo '❌ Deployment verification failed'
+            echo ''
+            echo '==== System Resource Status (c1) ===='
+            docker exec chronolog-c1 bash -c "free -h || true" || true
+            echo ''
+            docker exec chronolog-c1 bash -c "df -h /home/grc-iit || true" || true
+            echo ''
+            echo '==== All Running Processes (chrono*) on each container ===='
+            for i in $(seq 1 7); do
+              echo "--- Processes on c$i ---"
+              docker exec chronolog-c$i bash -c "ps aux | grep chrono | grep -v grep || echo 'No chrono processes found'" || true
             done
-            
-            cat \"\${PROCESS_LIST}\"
-            
-            echo '🔍 Checking required components...'
-            missing=0
-            # Based on hosts files prepared:
-            # - 1 chronovisor_server on c1
-            # - 2 chrono_grapher (one per recording group, on c4, c5)
-            # - 2 chrono_player (one per recording group, on c6, c7)
-            # - 2 chrono_keeper (on c2, c3)
-            declare -A expected_counts
-            expected_counts[chronovisor_server]=1
-            expected_counts[chrono_grapher]=2
-            expected_counts[chrono_player]=2
-            expected_counts[chrono_keeper]=2
-            
-            for proc in \"\${!expected_counts[@]}\"; do
-              count=\$(grep -c \"\$proc\" \"\${PROCESS_LIST}\" || true)
-              expected=\${expected_counts[\$proc]}
-              if [ \"\$count\" -eq \"\$expected\" ]; then
-                echo \"✅ Found \$count \$proc (expected \$expected)\"
-              else
-                echo \"❌ Missing or wrong count: \$proc (found \$count, expected \$expected)\"
-                missing=1
-              fi
-            done
-            
-            if [ \"\$missing\" != \"0\" ]; then
-              echo '❌ Deployment verification failed'
-              echo ''
-              echo '==== System Resource Status ===='
-              echo 'Memory:'
-              free -h || true
-              echo ''
-              echo 'Disk:'
-              df -h /home/grc-iit || true
-              echo ''
-              echo '==== All Running Processes (chrono*) ===='
-              ps aux | grep chrono | grep -v grep || echo 'No chrono processes found'
-              echo ''
-              echo '==== Dumping monitor logs ===='
-              if [ -d \"\${WORK_DIR}/monitor\" ]; then
-                for log in \"\${WORK_DIR}/monitor/\"*; do
+            echo ''
+            echo '==== Dumping monitor logs ===='
+            docker exec chronolog-c1 bash -c "
+              if [ -d \"${WORK_DIR}/monitor\" ]; then
+                for log in \"${WORK_DIR}/monitor/\"*; do
                   if [ -f \"\$log\" ]; then
                     echo \"==== \$log ====\"
                     tail -100 \"\$log\" 2>/dev/null || echo \"Could not read \$log\"
@@ -819,14 +805,14 @@ jobs:
                 echo 'Searching for monitor directory...'
                 find /home/grc-iit -type d -name monitor 2>/dev/null | head -5
               fi
-              rm -f \"\${PROCESS_LIST}\" || true
-              exit 1
-            fi
-            
-            # Clean up process list file
-            rm -f \"\${PROCESS_LIST}\"
-            echo '✅ Deployment verification passed'
-          "
+            " || true
+            rm -f "${PROCESS_LIST}" || true
+            exit 1
+          fi
+          
+          # Clean up process list file
+          rm -f "${PROCESS_LIST}"
+          echo '✅ Deployment verification passed'
 
       - name: Run Client Performance Test
         run: |
