@@ -355,15 +355,51 @@ jobs:
               echo '✅ Spack dependencies ready'
             " || echo '⚠️ Spack dependency installation had issues, continuing...'
             
-            # Patch the install script to handle read-only database
+            # Make .spack-env directory writable
             docker exec chronolog-c1 bash -c "
               set -e
-              INSTALL_SCRIPT=/home/grc-iit/chronolog-repo/tools/deploy/ChronoLog/install.sh
+              REPO_DIR=/home/grc-iit/chronolog-repo
+              SPACK_ENV_DIR=\${REPO_DIR}/.spack-env
+              if [ -d \${SPACK_ENV_DIR} ]; then
+                chmod -R u+w \${SPACK_ENV_DIR} 2>/dev/null || {
+                  echo '⚠️ Could not make .spack-env writable, will try to patch scripts'
+                }
+                # Remove transaction lock if it exists and is read-only
+                if [ -f \${SPACK_ENV_DIR}/transaction_lock ]; then
+                  chmod u+w \${SPACK_ENV_DIR}/transaction_lock 2>/dev/null || rm -f \${SPACK_ENV_DIR}/transaction_lock 2>/dev/null || true
+                fi
+                echo '✅ Spack environment directory prepared'
+              else
+                echo '⚠️ .spack-env directory not found, will be created by Spack'
+              fi
+            " || echo '⚠️ Could not prepare .spack-env directory, will proceed anyway'
+            
+            # Patch both build.sh and install.sh to handle read-only locks
+            docker exec chronolog-c1 bash -c "
+              set -e
+              REPO_DIR=/home/grc-iit/chronolog-repo
+              
+              # Patch install.sh
+              INSTALL_SCRIPT=\${REPO_DIR}/tools/deploy/ChronoLog/install.sh
               if [ -f \${INSTALL_SCRIPT} ]; then
-                # Create a backup
                 cp \${INSTALL_SCRIPT} \${INSTALL_SCRIPT}.bak
-                # Use awk to do the patching
                 awk '
+                  /spack concretize/ {
+                    print \"    # Check if .spack-env directory is writable before concretizing\"
+                    print \"    if [ -w .spack-env ] 2>/dev/null || [ ! -d .spack-env ]; then\"
+                    print \"        # Remove transaction lock if it exists and is read-only\"
+                    print \"        if [ -f .spack-env/transaction_lock ] && [ ! -w .spack-env/transaction_lock ] 2>/dev/null; then\"
+                    print \"            rm -f .spack-env/transaction_lock 2>/dev/null || true\"
+                    print \"        fi\"
+                    print \"        if ! spack concretize; then\"
+                    print \"            echo -e \\\"\\\${DEBUG}Spack concretization failed. Exiting.\\\${NC}\\\"\"
+                    print \"            exit 1\"
+                    print \"        fi\"
+                    print \"    else\"
+                    print \"        echo -e \\\"\\\${DEBUG}Spack environment directory is read-only, skipping concretize (environment should already be concretized)\\\${NC}\\\"\"
+                    print \"    fi\"
+                    next
+                  }
                   /spack install -v/ {
                     print \"    if [ -w /opt/spack/opt/spack/.spack-db ] 2>/dev/null; then\"
                     print \"        spack install -v\"
@@ -375,9 +411,44 @@ jobs:
                   { print }
                 ' \${INSTALL_SCRIPT}.bak > \${INSTALL_SCRIPT}
                 chmod +x \${INSTALL_SCRIPT}
-                echo '✅ Patched install script to handle read-only database'
+                echo '✅ Patched install.sh'
               fi
-            " || echo '⚠️ Could not patch install script, will proceed anyway'
+              
+              # Patch build.sh
+              BUILD_SCRIPT=\${REPO_DIR}/tools/deploy/ChronoLog/build.sh
+              if [ -f \${BUILD_SCRIPT} ]; then
+                cp \${BUILD_SCRIPT} \${BUILD_SCRIPT}.bak
+                awk '
+                  /spack concretize/ {
+                    print \"    # Check if .spack-env directory is writable before concretizing\"
+                    print \"    if [ -w .spack-env ] 2>/dev/null || [ ! -d .spack-env ]; then\"
+                    print \"        # Remove transaction lock if it exists and is read-only\"
+                    print \"        if [ -f .spack-env/transaction_lock ] && [ ! -w .spack-env/transaction_lock ] 2>/dev/null; then\"
+                    print \"            rm -f .spack-env/transaction_lock 2>/dev/null || true\"
+                    print \"        fi\"
+                    print \"        if ! spack concretize; then\"
+                    print \"            echo -e \\\"\\\${DEBUG}Spack concretization failed. Exiting.\\\${NC}\\\"\"
+                    print \"            exit 1\"
+                    print \"        fi\"
+                    print \"    else\"
+                    print \"        echo -e \\\"\\\${DEBUG}Spack environment directory is read-only, skipping concretize (environment should already be concretized)\\\${NC}\\\"\"
+                    print \"    fi\"
+                    next
+                  }
+                  /spack install -v/ {
+                    print \"    if [ -w /opt/spack/opt/spack/.spack-db ] 2>/dev/null; then\"
+                    print \"        spack install -v\"
+                    print \"    else\"
+                    print \"        echo -e \\\"\\\${DEBUG}Spack database is read-only, skipping install (dependencies should already be installed)\\\${NC}\\\"\"
+                    print \"    fi\"
+                    next
+                  }
+                  { print }
+                ' \${BUILD_SCRIPT}.bak > \${BUILD_SCRIPT}
+                chmod +x \${BUILD_SCRIPT}
+                echo '✅ Patched build.sh'
+              fi
+            " || echo '⚠️ Could not patch scripts, will proceed anyway'
             
             # Now build and install ChronoLog as grc-iit user
             docker exec --user grc-iit chronolog-c1 bash -c "
