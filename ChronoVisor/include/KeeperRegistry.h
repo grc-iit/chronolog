@@ -177,7 +177,7 @@ public:
 
     bool is_shutting_down() const { return (SHUTTING_DOWN == registryState); }
 
-    int InitializeRegistryService(VisorConfiguration const&);
+    int InitializeRegistryService(RPCProviderConf const& , size_t delayed_exit_secs);
 
     int ShutdownRegistryService();
 

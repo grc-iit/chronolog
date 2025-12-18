@@ -9,7 +9,6 @@
 #include <json-c/json.h>
 #include <spdlog/common.h>
 
-#include "enum.h"
 #include "chronolog_errcode.h"
 
 #include <ConfigurationManager.h>

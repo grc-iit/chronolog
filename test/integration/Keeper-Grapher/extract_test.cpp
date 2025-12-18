@@ -19,6 +19,7 @@
 
 // Project headers
 #include <ConfigurationManager.h>
+#include <ChronoKeeperConfiguration.h>
 #include <StoryChunk.h>
 #include <cmd_arg_parse.h>
 
@@ -196,13 +197,20 @@ int main(int argc, char** argv)
     std::string conf_file_path;
     conf_file_path = parse_conf_path_arg(argc, argv);
     chronolog::ConfigurationManager confManager(conf_file_path);
+    chronolog::KeeperConfiguration KEEPER_CONF;
+    if (KEEPER_CONF.parseJsonConf(confManager.KEEPER_JSON_CONF) != chronolog::CL_SUCCESS)
+    {
+        std::cerr << "[standalone_ingest_test] Invalid KEEPER configuration. Exiting"; 
+        exit(EXIT_FAILURE);
+    }
+
     int result = chronolog::chrono_monitor::initialize("console",
-                                                       confManager.KEEPER_CONF.LOG_CONF.LOGFILE,
-                                                       confManager.KEEPER_CONF.LOG_CONF.LOGLEVEL,
-                                                       confManager.KEEPER_CONF.LOG_CONF.LOGNAME,
-                                                       confManager.KEEPER_CONF.LOG_CONF.LOGFILESIZE,
-                                                       confManager.KEEPER_CONF.LOG_CONF.LOGFILENUM,
-                                                       confManager.KEEPER_CONF.LOG_CONF.FLUSHLEVEL);
+                                                       KEEPER_CONF.LOG_CONF.LOGFILE,
+                                                       KEEPER_CONF.LOG_CONF.LOGLEVEL,
+                                                       KEEPER_CONF.LOG_CONF.LOGNAME,
+                                                       KEEPER_CONF.LOG_CONF.LOGFILESIZE,
+                                                       KEEPER_CONF.LOG_CONF.LOGFILENUM,
+                                                       KEEPER_CONF.LOG_CONF.FLUSHLEVEL);
     if(result == 1)
     {
         exit(EXIT_FAILURE);
@@ -218,7 +226,7 @@ int main(int argc, char** argv)
      * Standalone StoryChunk Extraction in a separate thread
      */
     // setup engine in client mode
-    std::string KEEPER_GRAPHER_PROTOCOL = confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.PROTO_CONF;
+    std::string KEEPER_GRAPHER_PROTOCOL = KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.PROTO_CONF;
     tl_engine_g = new tl::engine(KEEPER_GRAPHER_PROTOCOL + "://", THALLIUM_CLIENT_MODE);
     uint64_t tid = tl::thread::self_id();
     std::stringstream ss;
@@ -231,9 +239,9 @@ int main(int argc, char** argv)
 
     // get provider handle
     std::string KEEPER_GRAPHER_NA_STRING =
-            KEEPER_GRAPHER_PROTOCOL + "://" + confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP + ":" +
-            std::to_string(confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT);
-    uint16_t extraction_provider_id = confManager.KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.SERVICE_PROVIDER_ID;
+            KEEPER_GRAPHER_PROTOCOL + "://" + KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP + ":" +
+            std::to_string(KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT);
+    uint16_t extraction_provider_id = KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.SERVICE_PROVIDER_ID;
     LOG_DEBUG("[extract_test_main] T{}: Looking up {} at: {} with provider id {} ...",
               tid,
               rpc_name_g,

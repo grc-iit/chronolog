@@ -45,12 +45,16 @@ int main(int argc, char** argv)
     conf_file_path = parse_conf_path_arg(argc, argv);
     if(conf_file_path.empty())
     {
+        std::cerr << "[ChronoPlayer] Invalid configuration file path. Exiting"; 
         std::exit(EXIT_FAILURE);
     }
     chronolog::ConfigurationManager confManager(conf_file_path);
-    chronolog::PlayerConfiguration PLAYER_CONF = confManager.PLAYER_CONF;
-
-    std::cout << "ChronoPlayer Configuration " << PLAYER_CONF.to_String() << std::endl;
+    chronolog::PlayerConfiguration PLAYER_CONF;
+    if (PLAYER_CONF.parseJsonConf(confManager.PLAYER_JSON_CONF) != chronolog::CL_SUCCESS)
+    {
+        std::cerr << "[ChronoPlayer] Invalid PLAYER configuration. Exiting"; 
+        exit(EXIT_FAILURE);
+    }
 
     int result = chronolog::chrono_monitor::initialize(PLAYER_CONF.LOG_CONF.LOGTYPE,
                                                        PLAYER_CONF.LOG_CONF.LOGFILE,
@@ -64,7 +68,7 @@ int main(int argc, char** argv)
         exit(EXIT_FAILURE);
     }
 
-    LOG_INFO("Running ChronoPlayer ");
+    LOG_INFO("[ChronoPlayer] Running ChronoPlayer ");
     LOG_INFO("[ChronoPlayer]  Configuration {}", PLAYER_CONF.to_String());
 
     // instantiate DataStoreAdminService

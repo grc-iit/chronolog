@@ -13,6 +13,7 @@
 #include <spdlog/common.h>
 
 #include <ConfigurationManager.h>
+
 namespace chronolog
 {
 

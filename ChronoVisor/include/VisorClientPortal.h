@@ -9,6 +9,7 @@
 
 #include <chronolog_types.h>
 #include <ConfigurationManager.h>
+#include <ChronoVisorConfiguration.h>
 
 #include "ClientRegistryManager.h"
 #include "ChronicleMetaDirectory.h"
@@ -40,7 +41,7 @@ public:
 
     ~VisorClientPortal();
 
-    int StartServices(VisorConfiguration const&, KeeperRegistry*);
+    int StartServices(RPCProviderConf const&, KeeperRegistry*);
 
     void ShutdownServices();
 

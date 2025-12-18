@@ -1,3 +1,4 @@
+#include <chronolog_errcode.h>
 #include <ConfigurationManager.h>
 
 #include <ChronoVisorConfiguration.h>
@@ -7,6 +8,9 @@ namespace chl = chronolog;
 
 int chronolog::VisorConfiguration::parseJsonConf(json_object* json_conf)
 {
+    if(json_conf == nullptr || !json_object_is_type(json_conf, json_type_object))
+    { return chl::CL_ERR_INVALID_CONF;  }
+ 
     json_object_object_foreach(json_conf, key, val)
     {
         if(strcmp(key, "VisorClientPortalService") == 0)
