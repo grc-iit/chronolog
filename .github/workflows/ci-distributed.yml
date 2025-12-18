@@ -384,7 +384,8 @@ jobs:
               if [ -f \${INSTALL_SCRIPT} ]; then
                 cp \${INSTALL_SCRIPT} \${INSTALL_SCRIPT}.bak
                 awk '
-                  /spack concretize/ {
+                  BEGIN { skip_until_fi = 0 }
+                  /if ! spack concretize/ {
                     print \"    # Check if .spack-env directory is writable before concretizing\"
                     print \"    if [ -w .spack-env ] 2>/dev/null || [ ! -d .spack-env ]; then\"
                     print \"        # Remove transaction lock if it exists and is read-only\"
@@ -398,9 +399,17 @@ jobs:
                     print \"    else\"
                     print \"        echo -e \\\"\\\${DEBUG}Spack environment directory is read-only, skipping concretize (environment should already be concretized)\\\${NC}\\\"\"
                     print \"    fi\"
+                    skip_until_fi = 1
                     next
                   }
-                  /spack install -v/ {
+                  skip_until_fi == 1 && /^[[:space:]]*fi[[:space:]]*$/ {
+                    skip_until_fi = 0
+                    next
+                  }
+                  skip_until_fi == 1 {
+                    next
+                  }
+                  /^[[:space:]]*spack install -v[[:space:]]*$/ {
                     print \"    if [ -w /opt/spack/opt/spack/.spack-db ] 2>/dev/null; then\"
                     print \"        spack install -v\"
                     print \"    else\"
@@ -419,7 +428,8 @@ jobs:
               if [ -f \${BUILD_SCRIPT} ]; then
                 cp \${BUILD_SCRIPT} \${BUILD_SCRIPT}.bak
                 awk '
-                  /spack concretize/ {
+                  BEGIN { skip_until_fi = 0 }
+                  /if ! spack concretize/ {
                     print \"    # Check if .spack-env directory is writable before concretizing\"
                     print \"    if [ -w .spack-env ] 2>/dev/null || [ ! -d .spack-env ]; then\"
                     print \"        # Remove transaction lock if it exists and is read-only\"
@@ -433,9 +443,17 @@ jobs:
                     print \"    else\"
                     print \"        echo -e \\\"\\\${DEBUG}Spack environment directory is read-only, skipping concretize (environment should already be concretized)\\\${NC}\\\"\"
                     print \"    fi\"
+                    skip_until_fi = 1
                     next
                   }
-                  /spack install -v/ {
+                  skip_until_fi == 1 && /^[[:space:]]*fi[[:space:]]*$/ {
+                    skip_until_fi = 0
+                    next
+                  }
+                  skip_until_fi == 1 {
+                    next
+                  }
+                  /^[[:space:]]*spack install -v[[:space:]]*$/ {
                     print \"    if [ -w /opt/spack/opt/spack/.spack-db ] 2>/dev/null; then\"
                     print \"        spack install -v\"
                     print \"    else\"
