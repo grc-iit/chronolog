@@ -43,25 +43,8 @@ jobs:
           # Convert repository name to lowercase (Docker requirement)
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           
-          # Use the same image naming logic as the main CI workflow
-          if [ "${{ github.event_name }}" == "pull_request" ]; then
-            BASE_TAG="pr-${{ github.event.pull_request.number }}"
-          elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            if [ "${{ github.ref }}" == "refs/heads/develop" ] || [ "${{ github.ref }}" == "refs/heads/main" ]; then
-              BASE_TAG="latest"
-            else
-              BRANCH_NAME=${GITHUB_REF#refs/heads/}
-              BASE_TAG="${BRANCH_NAME}"
-            fi
-          elif [ "${{ github.ref }}" == "refs/heads/develop" ] || [ "${{ github.ref }}" == "refs/heads/main" ]; then
-            BASE_TAG="latest"
-          else
-            BRANCH_NAME=${GITHUB_REF#refs/heads/}
-            BASE_TAG="${BRANCH_NAME}"
-          fi
-          
-          TAG="chronolog-${BASE_TAG}"
-          IMAGE_NAME="ghcr.io/${REPO_LOWER}/chronolog:${TAG}"
+          # Always use chronolog-latest image
+          IMAGE_NAME="ghcr.io/${REPO_LOWER}/chronolog:chronolog-latest"
           echo "full-name=${IMAGE_NAME}" >> $GITHUB_OUTPUT
           echo "Using image from main CI workflow: ${IMAGE_NAME}"
 
