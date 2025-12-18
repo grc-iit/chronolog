@@ -91,22 +91,26 @@ jobs:
             echo "Changed files: $CHANGED"
           else
             echo "spack-files-changed=false" >> $GITHUB_OUTPUT
-            echo "ℹ️ Spack files unchanged, checking if image exists and has Spack installed..."
-            
-            # Try to pull the existing image
-            if docker pull "$BASE_IMAGE" 2>/dev/null; then
-              # Verify that Spack is actually installed in the image
-              if docker run --rm "$BASE_IMAGE" test -f /opt/spack/share/spack/setup-env.sh 2>/dev/null; then
-                echo "image-exists=true" >> $GITHUB_OUTPUT
-                echo "✅ Existing base image found with Spack installed, will skip rebuild"
-              else
-                echo "image-exists=false" >> $GITHUB_OUTPUT
-                echo "⚠️ Existing image found but Spack not installed, will rebuild"
-              fi
-            else
-              echo "image-exists=false" >> $GITHUB_OUTPUT
-              echo "⚠️ Existing base image not found, will rebuild"
-            fi
+            # FORCE_REBUILD: Comment out the image check block below to force rebuild
+            # echo "ℹ️ Spack files unchanged, checking if image exists and has Spack installed..."
+            # 
+            # # Try to pull the existing image
+            # if docker pull "$BASE_IMAGE" 2>/dev/null; then
+            #   # Verify that Spack is actually installed in the image
+            #   if docker run --rm "$BASE_IMAGE" test -f /home/grc-iit/spack/share/spack/setup-env.sh 2>/dev/null; then
+            #     echo "image-exists=true" >> $GITHUB_OUTPUT
+            #     echo "✅ Existing base image found with Spack installed, will skip rebuild"
+            #   else
+            #     echo "image-exists=false" >> $GITHUB_OUTPUT
+            #     echo "⚠️ Existing image found but Spack not installed, will rebuild"
+            #   fi
+            # else
+            #   echo "image-exists=false" >> $GITHUB_OUTPUT
+            #   echo "⚠️ Existing base image not found, will rebuild"
+            # fi
+            # Force rebuild when check is commented out
+            echo "image-exists=false" >> $GITHUB_OUTPUT
+            echo "🔄 Image check commented out, forcing rebuild"
           fi
 
       - name: Build base Docker image
@@ -129,12 +133,13 @@ jobs:
           
           # Run container with workspace mounted and install Spack dependencies
           CONTAINER_ID=$(docker create --user root \
-            -v "${{ github.workspace }}:/workspace" \
-            -w /workspace \
+            -v "${{ github.workspace }}:/home/grc-iit/chronolog-repo" \
+            -w /home/grc-iit/chronolog-repo \
             "$BASE_IMAGE" \
             bash -c "
               set -e
-              source /opt/spack/share/spack/setup-env.sh
+              chown -R grc-iit:grc-iit /home/grc-iit/chronolog-repo
+              source /home/grc-iit/spack/share/spack/setup-env.sh
               spack env activate -p .
               echo 'Installing Spack dependencies...'
               spack install
@@ -213,10 +218,10 @@ jobs:
           BASE_IMAGE="${{ needs.chronolog-base.outputs.image-name }}"
           echo "Using base image: ${BASE_IMAGE}"
           CONTAINER_ID=$(docker create --user root --init \
-            -v "${{ github.workspace }}:/workspace" \
-            -w /workspace \
+            -v "${{ github.workspace }}:/home/grc-iit/chronolog-repo" \
+            -w /home/grc-iit/chronolog-repo \
             "$BASE_IMAGE" \
-            tail -f /dev/null)
+            bash -c "chown -R grc-iit:grc-iit /home/grc-iit/chronolog-repo && tail -f /dev/null")
           echo "container-id=${CONTAINER_ID}" >> $GITHUB_OUTPUT
           docker start "$CONTAINER_ID"
           echo "Container created and started: ${CONTAINER_ID}"
@@ -240,7 +245,7 @@ jobs:
           set -e
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
           docker exec "$CONTAINER_ID" bash -c "
-            source /opt/spack/share/spack/setup-env.sh
+            source /home/grc-iit/spack/share/spack/setup-env.sh
             spack env activate -p .
             echo '✅ Spack environment activated'
           "
@@ -251,7 +256,7 @@ jobs:
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
           docker exec "$CONTAINER_ID" bash -c "
             set -e
-            source /opt/spack/share/spack/setup-env.sh
+            source /home/grc-iit/spack/share/spack/setup-env.sh
             spack env activate -p .
             echo '[1/7] Building ChronoLog...'
             if [ -x ./tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
@@ -273,7 +278,7 @@ jobs:
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
           docker exec "$CONTAINER_ID" bash -c "
             set -e
-            source /opt/spack/share/spack/setup-env.sh
+            source /home/grc-iit/spack/share/spack/setup-env.sh
             spack env activate -p .
             echo '[2/7] Installing ChronoLog...'
             if [ -x ./tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
@@ -295,7 +300,7 @@ jobs:
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
           docker exec "$CONTAINER_ID" bash -c "
             set -e
-            source /opt/spack/share/spack/setup-env.sh
+            source /home/grc-iit/spack/share/spack/setup-env.sh
             spack env activate -p .
             WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
             echo '[3/7] Verifying installation...'
@@ -329,7 +334,7 @@ jobs:
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
           docker exec "$CONTAINER_ID" bash -c "
             set -e
-            source /opt/spack/share/spack/setup-env.sh
+            source /home/grc-iit/spack/share/spack/setup-env.sh
             spack env activate -p .
             WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
             echo '[4/7] Deploying ChronoLog...'
@@ -348,7 +353,7 @@ jobs:
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
           docker exec "$CONTAINER_ID" bash -c "
             set -e
-            source /opt/spack/share/spack/setup-env.sh
+            source /home/grc-iit/spack/share/spack/setup-env.sh
             spack env activate -p .
             WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
             echo '[5/7] Verifying deployment...'
@@ -398,7 +403,7 @@ jobs:
           set -e
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
           docker exec "$CONTAINER_ID" bash -c "
-            source /opt/spack/share/spack/setup-env.sh
+            source /home/grc-iit/spack/share/spack/setup-env.sh
             spack env activate -p .
             echo '[6/7] Stopping ChronoLog...'
             
@@ -432,7 +437,7 @@ jobs:
           set -e
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
           docker exec "$CONTAINER_ID" bash -c "
-            source /opt/spack/share/spack/setup-env.sh
+            source /home/grc-iit/spack/share/spack/setup-env.sh
             spack env activate -p .
             WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
             echo '[7/7] Cleaning ChronoLog...'
