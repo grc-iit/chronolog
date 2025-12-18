@@ -168,8 +168,13 @@ jobs:
           NUM_CONTAINERS=7
           for i in $(seq 1 $NUM_CONTAINERS); do
             docker exec chronolog-c$i bash -c "
-              # Install openssh-server, sudo, and parallel-ssh (required for single_user_deploy.sh)
-              apt-get update && apt-get install -y openssh-server sudo pssh || true
+              # Install dependencies required for single_user_deploy.sh
+              # - openssh-server, sudo: for SSH access
+              # - pssh (parallel-ssh): for distributed process launching
+              # - dnsutils: provides dig command for hostname resolution
+              # - jq: JSON processor for config file parsing
+              # - chrpath: for library path manipulation
+              apt-get update && apt-get install -y openssh-server sudo pssh dnsutils jq chrpath || true
               
               # Create user if it doesn't exist
               if ! id -u grc-iit >/dev/null 2>&1; then
