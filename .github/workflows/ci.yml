@@ -29,7 +29,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref }}
           fetch-depth: 0
 
       - name: Set up Docker Buildx
@@ -174,7 +174,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
@@ -233,6 +233,20 @@ jobs:
           echo "container-id=${CONTAINER_ID}" >> $GITHUB_OUTPUT
           docker start "$CONTAINER_ID"
           echo "Container created and started: ${CONTAINER_ID}"
+
+      - name: Verify code checkout
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker exec "$CONTAINER_ID" bash -c "
+            echo '=== Verifying code checkout ==='
+            echo 'Current directory: \$(pwd)'
+            echo 'Git branch: \$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo \"detached\")'
+            echo 'Git commit: \$(git rev-parse HEAD)'
+            echo 'Git status:'
+            git status --short || true
+            echo '================================'
+          "
 
       - name: Setup Spack environment in container
         run: |
