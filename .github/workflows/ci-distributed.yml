@@ -845,31 +845,81 @@ jobs:
             export LD_LIBRARY_PATH=\${WORK_DIR}/lib:\$LD_LIBRARY_PATH
             
             # Find mpiexec with better error messages
-            # Try multiple methods: find first (most reliable), then spack, then which
+            # Try multiple methods: check common locations first, then find, then spack, then which
             echo '🔍 Locating mpiexec...'
             MPIEXEC_BIN=''
             
-            # First try find (most reliable, works even if Spack env is not configured)
-            echo 'Searching for mpiexec using find...'
-            FOUND_MPIEXEC=\$(find /opt /usr -name mpiexec -type f 2>/dev/null | head -1)
-            if [ -n \"\${FOUND_MPIEXEC}\" ]; then
-              FOUND_MPIEXEC=\$(echo \"\${FOUND_MPIEXEC}\" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-              echo \"  Found candidate: \${FOUND_MPIEXEC}\"
-              if [ -f \"\${FOUND_MPIEXEC}\" ] && [ -x \"\${FOUND_MPIEXEC}\" ]; then
-                MPIEXEC_BIN=\"\${FOUND_MPIEXEC}\"
-                echo \"✅ Found mpiexec via find: \${MPIEXEC_BIN}\"
+            # First check common locations directly (fastest and most reliable)
+            echo 'Checking common mpiexec locations...'
+            for candidate in /usr/bin/mpiexec /usr/local/bin/mpiexec /opt/view/bin/mpiexec; do
+              if [ -f \"\${candidate}\" ] && [ -x \"\${candidate}\" ]; then
+                MPIEXEC_BIN=\"\${candidate}\"
+                echo \"✅ Found mpiexec at common location: \${MPIEXEC_BIN}\"
+                break
               else
-                echo \"  ⚠️ Found but not accessible: \${FOUND_MPIEXEC}\"
-                echo \"    File exists: \$([ -f \"\${FOUND_MPIEXEC}\" ] && echo 'yes' || echo 'no')\"
-                echo \"    Executable: \$([ -x \"\${FOUND_MPIEXEC}\" ] && echo 'yes' || echo 'no')\"
+                echo \"  Checking \${candidate}: \$([ -f \"\${candidate}\" ] && echo 'exists' || echo 'not found')\"
               fi
-            else
-              echo '  No mpiexec found in /opt or /usr via initial find'
+            done
+            
+            # Then try find (works even if Spack env is not configured)
+            if [ -z \"\${MPIEXEC_BIN}\" ]; then
+              echo 'Searching for mpiexec using find...'
+              # Store find output for debugging
+              FIND_OUTPUT=\$(find /opt /usr -name mpiexec -type f 2>&1)
+              FIND_EXIT=\$?
+              echo \"  find exit code: \${FIND_EXIT}\"
+              if [ -n \"\${FIND_OUTPUT}\" ]; then
+                echo \"  find output (first 10 lines):\"
+                echo \"\${FIND_OUTPUT}\" | head -10
+                FOUND_MPIEXEC=\$(echo \"\${FIND_OUTPUT}\" | head -1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                if [ -n \"\${FOUND_MPIEXEC}\" ]; then
+                  echo \"  Found candidate: \${FOUND_MPIEXEC}\"
+                  if [ -f \"\${FOUND_MPIEXEC}\" ] && [ -x \"\${FOUND_MPIEXEC}\" ]; then
+                    MPIEXEC_BIN=\"\${FOUND_MPIEXEC}\"
+                    echo \"✅ Found mpiexec via find: \${MPIEXEC_BIN}\"
+                  else
+                    echo \"  ⚠️ Found but not accessible: \${FOUND_MPIEXEC}\"
+                    echo \"    File exists: \$([ -f \"\${FOUND_MPIEXEC}\" ] && echo 'yes' || echo 'no')\"
+                    echo \"    Executable: \$([ -x \"\${FOUND_MPIEXEC}\" ] && echo 'yes' || echo 'no')\"
+                  fi
+                fi
+              else
+                echo '  No mpiexec found in /opt or /usr via find'
+              fi
+            fi
+            
+            # Try searching in /opt/software directly (where Spack installs packages)
+            if [ -z \"\${MPIEXEC_BIN}\" ]; then
+              echo 'Searching for mpich in /opt/software...'
+              if [ -d /opt/software ]; then
+                MPICH_DIRS=\$(find /opt/software -type d -name '*mpich*' 2>/dev/null | head -5)
+                if [ -n \"\${MPICH_DIRS}\" ]; then
+                  echo \"  Found mpich directories:\"
+                  echo \"\${MPICH_DIRS}\"
+                  while IFS= read -r mpich_dir; do
+                    if [ -f \"\${mpich_dir}/bin/mpiexec\" ] && [ -x \"\${mpich_dir}/bin/mpiexec\" ]; then
+                      MPIEXEC_BIN=\"\${mpich_dir}/bin/mpiexec\"
+                      echo \"✅ Found mpiexec in /opt/software: \${MPIEXEC_BIN}\"
+                      break
+                    fi
+                  done <<< \"\${MPICH_DIRS}\"
+                else
+                  echo '  No mpich directories found in /opt/software'
+                fi
+              else
+                echo '  /opt/software directory does not exist'
+              fi
             fi
             
             # Then try spack find -p mpich (more reliable than spack location)
             if [ -z \"\${MPIEXEC_BIN}\" ]; then
               echo 'Trying spack find -p mpich...'
+              # Try activating the Spack environment from /opt/spack-environment if it exists
+              if [ -d /opt/spack-environment ]; then
+                echo '  Activating Spack environment from /opt/spack-environment...'
+                cd /opt/spack-environment && spack env activate . 2>/dev/null || true
+                cd /home/grc-iit/chronolog-repo
+              fi
               MPICH_OUTPUT=\$(spack find -p mpich 2>&1 || echo '')
               if [ -n \"\${MPICH_OUTPUT}\" ]; then
                 echo \"  spack find -p mpich output: \${MPICH_OUTPUT}\"
@@ -941,7 +991,8 @@ jobs:
             # Final fallback: try all find results and use the first executable found
             if [ -z \"\${MPIEXEC_BIN}\" ]; then
               echo 'Performing final aggressive search for mpiexec...'
-              ALL_MPIEXEC=\$(find /opt /usr -name mpiexec -type f 2>/dev/null | head -10 || echo '')
+              # Search in multiple locations
+              ALL_MPIEXEC=\$(find /opt /usr /usr/local -name mpiexec -type f 2>/dev/null | head -20 || echo '')
               if [ -n \"\${ALL_MPIEXEC}\" ]; then
                 echo 'Found mpiexec candidates:'
                 echo \"\${ALL_MPIEXEC}\"
@@ -959,6 +1010,8 @@ jobs:
                     fi
                   fi
                 done <<< \"\${ALL_MPIEXEC}\"
+              else
+                echo '  No mpiexec candidates found in /opt, /usr, or /usr/local'
               fi
             fi
             
@@ -966,14 +1019,26 @@ jobs:
               echo '❌ mpiexec not found after exhaustive search'
               echo ''
               echo '=== Diagnostic Information ==='
-              echo 'Checking for mpich:'
+              echo 'Checking common locations:'
+              for loc in /usr/bin/mpiexec /usr/local/bin/mpiexec /opt/view/bin/mpiexec; do
+                echo \"  \${loc}: \$([ -f \"\${loc}\" ] && echo 'exists' || echo 'not found')\"
+              done
+              echo ''
+              echo 'Checking for mpich in /opt/software:'
+              if [ -d /opt/software ]; then
+                find /opt/software -type d -name '*mpich*' 2>/dev/null | head -5 || echo 'No mpich directories found'
+              else
+                echo '  /opt/software does not exist'
+              fi
+              echo ''
+              echo 'Checking for mpich via Spack:'
               spack find -p mpich 2>&1 || echo 'spack find -p mpich failed'
               echo ''
-              echo 'Checking for openmpi:'
+              echo 'Checking for openmpi via Spack:'
               spack find -p openmpi 2>&1 || echo 'spack find -p openmpi failed'
               echo ''
               echo 'Searching for mpiexec in system:'
-              find /opt /usr -name mpiexec -type f 2>/dev/null | head -10 || echo 'No mpiexec found'
+              find /opt /usr /usr/local -name mpiexec -type f 2>/dev/null | head -20 || echo 'No mpiexec found'
               echo ''
               echo 'Current PATH:'
               echo \$PATH
@@ -981,7 +1046,13 @@ jobs:
               echo 'Checking if mpiexec is in PATH:'
               which -a mpiexec 2>&1 || echo 'mpiexec not in PATH'
               echo ''
-              echo 'Listing /opt/spack directories:'
+              echo 'Listing /opt/software (if exists):'
+              ls -la /opt/software 2>/dev/null | head -20 || echo 'Cannot list /opt/software'
+              echo ''
+              echo 'Listing /opt/view (if exists):'
+              ls -la /opt/view 2>/dev/null | head -20 || echo 'Cannot list /opt/view'
+              echo ''
+              echo 'Listing /opt/spack directories (if exists):'
               ls -la /opt/spack/opt/spack/ 2>/dev/null | head -20 || echo 'Cannot list /opt/spack'
               exit 1
             fi
