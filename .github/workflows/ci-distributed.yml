@@ -1229,10 +1229,58 @@ jobs:
             cat \"\${CONF_FILE}\" || echo '⚠️ Could not read config file'
             echo ''
             
+            # Configure MPI environment for Docker networking
+            # MPICH/Hydra needs to know which network interface to use in Docker
+            echo '🔧 Configuring MPI environment for Docker...'
+            # Detect the Docker network interface (usually eth0)
+            DOCKER_IFACE=\$(ip route | grep default | awk '{print \$5}' | head -1 || echo 'eth0')
+            echo \"  Detected network interface: \${DOCKER_IFACE}\"
+            
+            # Set MPI environment variables for better Docker compatibility
+            export HYDRA_IFACE=\${DOCKER_IFACE}
+            export HYDRA_DEBUG=0  # Set to 1 for verbose debugging if needed
+            export HYDRA_BOOTSTRAP=ssh
+            export HYDRA_BOOTSTRAP_EXEC=ssh
+            export HYDRA_HOST_FILE=\${HOSTS_FILE}
+            
+            # Ensure MPI can write temporary files
+            export TMPDIR=/tmp
+            export HYDRA_TMPDIR=/tmp
+            
+            # Additional MPICH-specific settings for Docker
+            export MPICH_NEMESIS_NETMOD=tcp
+            export MPICH_SMP_SINGLE_COPY_MODE=NONE
+            
+            # Test MPI daemon startup with a simple command first
+            echo '🧪 Testing MPI daemon startup with simple command...'
+            if \${MPIEXEC_BIN} -n 1 -f \${HOSTS_FILE} hostname > /dev/null 2>&1; then
+              echo '✅ MPI daemon test passed'
+            else
+              echo '⚠️ MPI daemon test failed, but continuing with full test...'
+              echo '  This might indicate SSH or network issues'
+            fi
+            echo ''
+            
             # Run the client performance test (write mode first, then read mode)
             # Write test: create and write data
             echo '🚀 [1/2] Running write test...'
             echo 'Command: mpiexec -n 4 -f hosts_client client_admin --config client_conf.json -a 4096 -b 4096 -s 4096 -n 4096 -t 1 -h 1 -p'
+            echo 'MPI Environment:'
+            echo \"  HYDRA_IFACE=\${HYDRA_IFACE}\"
+            echo \"  HYDRA_BOOTSTRAP=\${HYDRA_BOOTSTRAP}\"
+            echo \"  MPICH_NEMESIS_NETMOD=\${MPICH_NEMESIS_NETMOD}\"
+            echo ''
+            
+            # Verify SSH is running on all target containers
+            echo '🔍 Verifying SSH service on all target containers...'
+            for i in \$(seq 1 4); do
+              if docker exec chronolog-c\$i service ssh status > /dev/null 2>&1 || docker exec chronolog-c\$i systemctl is-active ssh > /dev/null 2>&1; then
+                echo \"  ✅ SSH is running on c\$i\"
+              else
+                echo \"  ⚠️ SSH might not be running on c\$i, attempting to start...\"
+                docker exec chronolog-c\$i service ssh start > /dev/null 2>&1 || docker exec chronolog-c\$i /etc/init.d/ssh start > /dev/null 2>&1 || true
+              fi
+            done
             echo ''
             
             if timeout 300 \${MPIEXEC_BIN} -n 4 -f \${HOSTS_FILE} \
@@ -1251,7 +1299,23 @@ jobs:
                 echo '⚠️ Write test timed out after 300 seconds'
               fi
               echo ''
-              echo '🔍 Checking if ChronoLog services are still running...'
+              echo '🔍 Diagnostic information:'
+              echo '  Checking SSH connectivity again...'
+              for i in \$(seq 1 4); do
+                if timeout 5 ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=5 \"c\$i\" 'echo OK' > /dev/null 2>&1; then
+                  echo \"    ✅ SSH to c\$i works\"
+                else
+                  echo \"    ❌ SSH to c\$i failed\"
+                fi
+              done
+              echo ''
+              echo '  Checking MPI daemon processes...'
+              for i in \$(seq 1 4); do
+                echo \"    Processes on c\$i:\"
+                docker exec chronolog-c\$i pgrep -la hydra 2>/dev/null || echo \"      No hydra processes found\"
+              done
+              echo ''
+              echo '  Checking if ChronoLog services are still running...'
               pgrep -la chrono || echo 'No ChronoLog processes found'
               echo ''
               echo '📊 System resources after write test failure:'
