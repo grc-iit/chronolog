@@ -91,26 +91,22 @@ jobs:
             echo "Changed files: $CHANGED"
           else
             echo "spack-files-changed=false" >> $GITHUB_OUTPUT
-            # FORCE_REBUILD: Comment out the image check block below to force rebuild
-            # echo "ℹ️ Spack files unchanged, checking if image exists and has Spack installed..."
-            # 
-            # # Try to pull the existing image
-            # if docker pull "$BASE_IMAGE" 2>/dev/null; then
-            #   # Verify that Spack is actually installed in the image
-            #   if docker run --rm "$BASE_IMAGE" test -f /home/grc-iit/spack/share/spack/setup-env.sh 2>/dev/null; then
-            #     echo "image-exists=true" >> $GITHUB_OUTPUT
-            #     echo "✅ Existing base image found with Spack installed, will skip rebuild"
-            #   else
-            #     echo "image-exists=false" >> $GITHUB_OUTPUT
-            #     echo "⚠️ Existing image found but Spack not installed, will rebuild"
-            #   fi
-            # else
-            #   echo "image-exists=false" >> $GITHUB_OUTPUT
-            #   echo "⚠️ Existing base image not found, will rebuild"
-            # fi
-            # Force rebuild when check is commented out
-            echo "image-exists=false" >> $GITHUB_OUTPUT
-            echo "🔄 Image check commented out, forcing rebuild"
+            echo "ℹ️ Spack files unchanged, checking if image exists and has Spack installed..."
+            
+            # Try to pull the existing image
+            if docker pull "$BASE_IMAGE" 2>/dev/null; then
+              # Verify that Spack is actually installed in the image
+              if docker run --rm "$BASE_IMAGE" test -f /home/grc-iit/spack/share/spack/setup-env.sh 2>/dev/null; then
+                echo "image-exists=true" >> $GITHUB_OUTPUT
+                echo "✅ Existing base image found with Spack installed, will skip rebuild"
+              else
+                echo "image-exists=false" >> $GITHUB_OUTPUT
+                echo "⚠️ Existing image found but Spack not installed, will rebuild"
+              fi
+            else
+              echo "image-exists=false" >> $GITHUB_OUTPUT
+              echo "⚠️ Existing base image not found, will rebuild"
+            fi
           fi
 
       - name: Build base Docker image
@@ -232,9 +228,9 @@ jobs:
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
           docker exec "$CONTAINER_ID" bash -c "
             echo '=== Verifying code checkout ==='
-            echo 'Current directory: \$(pwd)'
-            echo 'Git branch: \$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo \"detached\")'
-            echo 'Git commit: \$(git rev-parse HEAD)'
+            echo \"Current directory: \$(pwd)\"
+            echo \"Git branch: \$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo 'detached')\"
+            echo \"Git commit: \$(git rev-parse HEAD)\"
             echo 'Git status:'
             git status --short || true
             echo '================================'
