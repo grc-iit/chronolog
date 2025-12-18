@@ -905,23 +905,54 @@ jobs:
             
             # Try find in /opt (broader search than /opt/spack)
             if [ -z \"\${MPIEXEC_BIN}\" ]; then
-              FOUND_MPIEXEC=\$(find /opt -name mpiexec -type f 2>/dev/null | head -1 || echo '')
-              if [ -n \"\${FOUND_MPIEXEC}\" ] && [ -f \"\${FOUND_MPIEXEC}\" ]; then
-                MPIEXEC_BIN=\"\${FOUND_MPIEXEC}\"
-                echo '✅ Found mpiexec via find in /opt'
+              echo 'Searching for mpiexec in /opt...'
+              FOUND_MPIEXEC=\$(find /opt -name mpiexec -type f 2>/dev/null | head -1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' || echo '')
+              if [ -n \"\${FOUND_MPIEXEC}\" ]; then
+                echo \"  Found candidate: \${FOUND_MPIEXEC}\"
+                if [ -f \"\${FOUND_MPIEXEC}\" ] && [ -x \"\${FOUND_MPIEXEC}\" ]; then
+                  MPIEXEC_BIN=\"\${FOUND_MPIEXEC}\"
+                  echo '✅ Found mpiexec via find in /opt'
+                else
+                  echo \"  ⚠️ Found but not accessible: \${FOUND_MPIEXEC}\"
+                fi
               fi
             fi
             
             # Final fallback: try find in /opt/spack (nested paths)
             if [ -z \"\${MPIEXEC_BIN}\" ]; then
-              FOUND_MPIEXEC=\$(find /opt/spack -name mpiexec -type f 2>/dev/null | head -1 || echo '')
-              if [ -n \"\${FOUND_MPIEXEC}\" ] && [ -f \"\${FOUND_MPIEXEC}\" ]; then
-                MPIEXEC_BIN=\"\${FOUND_MPIEXEC}\"
-                echo '✅ Found mpiexec via find in /opt/spack'
+              echo 'Searching for mpiexec in /opt/spack...'
+              FOUND_MPIEXEC=\$(find /opt/spack -name mpiexec -type f 2>/dev/null | head -1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' || echo '')
+              if [ -n \"\${FOUND_MPIEXEC}\" ]; then
+                echo \"  Found candidate: \${FOUND_MPIEXEC}\"
+                if [ -f \"\${FOUND_MPIEXEC}\" ] && [ -x \"\${FOUND_MPIEXEC}\" ]; then
+                  MPIEXEC_BIN=\"\${FOUND_MPIEXEC}\"
+                  echo '✅ Found mpiexec via find in /opt/spack'
+                else
+                  echo \"  ⚠️ Found but not accessible: \${FOUND_MPIEXEC}\"
+                fi
               fi
             fi
             
-            if [ -z \"\${MPIEXEC_BIN}\" ] || [ ! -f \"\${MPIEXEC_BIN}\" ]; then
+            # If still not found, try a more aggressive search and use the first executable found
+            if [ -z \"\${MPIEXEC_BIN}\" ]; then
+              echo 'Performing aggressive search for mpiexec...'
+              ALL_MPIEXEC=\$(find /opt /usr -name mpiexec -type f 2>/dev/null | head -5 || echo '')
+              if [ -n \"\${ALL_MPIEXEC}\" ]; then
+                echo 'Found mpiexec candidates:'
+                echo \"\${ALL_MPIEXEC}\"
+                # Try each candidate until we find one that works
+                while IFS= read -r candidate; do
+                  candidate=\$(echo \"\${candidate}\" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                  if [ -n \"\${candidate}\" ] && [ -f \"\${candidate}\" ] && [ -x \"\${candidate}\" ]; then
+                    MPIEXEC_BIN=\"\${candidate}\"
+                    echo \"✅ Found working mpiexec: \${MPIEXEC_BIN}\"
+                    break
+                  fi
+                done <<< \"\${ALL_MPIEXEC}\"
+              fi
+            fi
+            
+            if [ -z \"\${MPIEXEC_BIN}\" ] || [ ! -f \"\${MPIEXEC_BIN}\" ] || [ ! -x \"\${MPIEXEC_BIN}\" ]; then
               echo '❌ mpiexec not found after exhaustive search'
               echo 'Attempting to locate MPI installation...'
               echo 'Checking for mpich:'
@@ -929,7 +960,11 @@ jobs:
               echo 'Checking for openmpi:'
               spack find -p openmpi || true
               echo 'Searching for mpiexec in system...'
-              find /opt -name mpiexec 2>/dev/null | head -5 || true
+              find /opt /usr -name mpiexec -type f 2>/dev/null | head -10 || true
+              echo 'Current PATH:'
+              echo \$PATH
+              echo 'Checking if mpiexec is in PATH...'
+              which -a mpiexec || echo 'mpiexec not in PATH'
               exit 1
             fi
             echo \"✅ Using mpiexec at: \${MPIEXEC_BIN}\"
