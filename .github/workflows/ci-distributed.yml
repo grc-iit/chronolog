@@ -607,7 +607,7 @@ jobs:
         run: |
           set -e
           docker exec --user grc-iit chronolog-c1 bash -c "
-            set -e
+            # Do not use set -e in cleanup section to avoid container termination
             WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
             cd /home/grc-iit/chronolog-repo
             source /opt/spack/share/spack/setup-env.sh
@@ -635,31 +635,68 @@ jobs:
             df -h /home/grc-iit || true
             
             # Clean up any existing ChronoLog processes before deployment
-            # Use specific process names to avoid killing unrelated processes
-            echo '🧹 Cleaning up any existing ChronoLog processes...'
-            for proc in chrono_player chrono_keeper chrono_grapher chronovisor_server client_admin; do
-              if pgrep -f \"\$proc\" > /dev/null; then
-                echo \"  Stopping \$proc...\"
-                pkill -9 -f \"\$proc\" 2>/dev/null || true
+            # First check if any processes are running
+            echo '🔍 Checking for existing ChronoLog processes...'
+            EXISTING_PROCS=\$(pgrep -la 'chrono_player|chrono_keeper|chrono_grapher|chronovisor_server|client_admin' 2>/dev/null || true)
+            if [ -n \"\$EXISTING_PROCS\" ]; then
+              echo '⚠️ Found existing ChronoLog processes:'
+              echo \"\$EXISTING_PROCS\"
+              echo '🧹 Attempting graceful cleanup using deploy script...'
+              
+              # Try to use the deploy script's stop function for graceful shutdown
+              if [ -x ./tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
+                echo 'Using deploy script to stop services gracefully...'
+                ./tools/deploy/ChronoLog/local_single_user_deploy.sh -s -w \"\${WORK_DIR}\" 2>/dev/null || {
+                  echo '⚠️ Graceful stop via deploy script failed, will continue anyway'
+                }
+                sleep 3
               fi
-            done
-            sleep 2
-            
-            # Verify cleanup
-            echo '🔍 Verifying cleanup...'
-            REMAINING_PROCS=\$(pgrep -la 'chrono_player|chrono_keeper|chrono_grapher|chronovisor_server' || true)
-            if [ -n \"\$REMAINING_PROCS\" ]; then
-              echo '⚠️ Some ChronoLog processes still running after cleanup:'
-              echo \"\$REMAINING_PROCS\"
-              echo 'Attempting force cleanup...'
-              pkill -9 -f 'chrono_player' || true
-              pkill -9 -f 'chrono_keeper' || true
-              pkill -9 -f 'chrono_grapher' || true
-              pkill -9 -f 'chronovisor_server' || true
-              sleep 2
+              
+              # Check if processes are still running after graceful stop
+              REMAINING=\$(pgrep -la 'chrono_player|chrono_keeper|chrono_grapher|chronovisor_server|client_admin' 2>/dev/null || true)
+              if [ -n \"\$REMAINING\" ]; then
+                echo '⚠️ Some processes still running after graceful stop:'
+                echo \"\$REMAINING\"
+                echo 'Attempting individual process cleanup (SIGTERM first, then SIGKILL)...'
+                
+                # Try graceful kill (SIGTERM) first for each process type
+                for proc in chrono_player chrono_keeper chrono_grapher chronovisor_server client_admin; do
+                  if pgrep -f \"\$proc\" > /dev/null 2>&1; then
+                    echo \"  Sending SIGTERM to \$proc...\"
+                    pkill -f \"\$proc\" 2>/dev/null || true
+                  fi
+                done
+                sleep 2
+                
+                # Check again and only use SIGKILL if necessary
+                STILL_RUNNING=\$(pgrep -la 'chrono_player|chrono_keeper|chrono_grapher|chronovisor_server|client_admin' 2>/dev/null || true)
+                if [ -n \"\$STILL_RUNNING\" ]; then
+                  echo '⚠️ Some processes did not stop with SIGTERM, using SIGKILL...'
+                  for proc in chrono_player chrono_keeper chrono_grapher chronovisor_server client_admin; do
+                    if pgrep -f \"\$proc\" > /dev/null 2>&1; then
+                      echo \"  Sending SIGKILL to \$proc...\"
+                      pkill -9 -f \"\$proc\" 2>/dev/null || true
+                    fi
+                  done
+                  sleep 1
+                fi
+              fi
+              
+              # Final verification
+              FINAL_CHECK=\$(pgrep -la 'chrono_player|chrono_keeper|chrono_grapher|chronovisor_server|client_admin' 2>/dev/null || true)
+              if [ -n \"\$FINAL_CHECK\" ]; then
+                echo '⚠️ Warning: Some processes may still be running after cleanup:'
+                echo \"\$FINAL_CHECK\"
+                echo 'Proceeding with deployment anyway...'
+              else
+                echo '✅ All ChronoLog processes cleaned up'
+              fi
             else
-              echo '✅ All ChronoLog processes cleaned up'
+              echo '✅ No existing ChronoLog processes found'
             fi
+            
+            # Now enable strict error handling for deployment
+            set -e
             
             # Deploy ChronoLog
             if [ -x ./tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
@@ -950,7 +987,9 @@ jobs:
       - name: Stop ChronoLog
         if: always()
         run: |
+          # Do not fail if stop command has errors - this is cleanup
           docker exec --user grc-iit chronolog-c1 bash -c "
+            # Do not use set -e here - we want cleanup to continue even if some commands fail
             WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
             cd /home/grc-iit/chronolog-repo 2>/dev/null || true
             source /opt/spack/share/spack/setup-env.sh 2>/dev/null || true
@@ -977,32 +1016,62 @@ jobs:
             echo 'ChronoLog processes before stop:'
             pgrep -la chrono 2>/dev/null || echo 'No ChronoLog processes running'
             
-            # Try to use the deploy script to stop gracefully
-            if [ -x ./tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
-              ./tools/deploy/ChronoLog/local_single_user_deploy.sh -s -w \"\${WORK_DIR}\" 2>/dev/null || {
-                echo '⚠️ Graceful stop failed, attempting force stop...'
-                for proc in chrono_player chrono_keeper chrono_grapher chronovisor_server; do
-                  pkill -9 -f \"\$proc\" 2>/dev/null || true
-                done
-              }
+            # Check if any processes are actually running
+            RUNNING_PROCS=\$(pgrep -la 'chrono_player|chrono_keeper|chrono_grapher|chronovisor_server|client_admin' 2>/dev/null || true)
+            if [ -z \"\$RUNNING_PROCS\" ]; then
+              echo '✅ No ChronoLog processes found, nothing to stop'
             else
-              echo '⚠️ Deploy script not found, performing manual cleanup...'
-              for proc in chrono_player chrono_keeper chrono_grapher chronovisor_server; do
-                pkill -9 -f \"\$proc\" 2>/dev/null || true
-              done
-            fi
-            
-            # Give processes time to shut down
-            sleep 2
-            
-            # Verify all processes are stopped
-            REMAINING=\$(pgrep -la chrono 2>/dev/null || true)
-            if [ -n \"\$REMAINING\" ]; then
-              echo '⚠️ Some processes still running after stop:'
-              echo \"\$REMAINING\"
-              echo 'Force killing remaining processes...'
-              pkill -9 -f chrono 2>/dev/null || true
-              sleep 1
+              echo 'Found running processes, attempting graceful stop...'
+              
+              # Try to use the deploy script to stop gracefully
+              if [ -x ./tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
+                echo 'Using deploy script for graceful stop...'
+                ./tools/deploy/ChronoLog/local_single_user_deploy.sh -s -w \"\${WORK_DIR}\" 2>/dev/null || {
+                  echo '⚠️ Graceful stop via deploy script failed, attempting manual cleanup...'
+                }
+                sleep 3
+              else
+                echo '⚠️ Deploy script not found, performing manual cleanup...'
+              fi
+              
+              # Check if processes are still running after graceful stop
+              REMAINING=\$(pgrep -la 'chrono_player|chrono_keeper|chrono_grapher|chronovisor_server|client_admin' 2>/dev/null || true)
+              if [ -n \"\$REMAINING\" ]; then
+                echo '⚠️ Some processes still running after graceful stop:'
+                echo \"\$REMAINING\"
+                echo 'Attempting SIGTERM first...'
+                
+                # Try SIGTERM first for each process type
+                for proc in chrono_player chrono_keeper chrono_grapher chronovisor_server client_admin; do
+                  if pgrep -f \"\$proc\" > /dev/null 2>&1; then
+                    echo \"  Sending SIGTERM to \$proc...\"
+                    pkill -f \"\$proc\" 2>/dev/null || true
+                  fi
+                done
+                sleep 2
+                
+                # Check again and only use SIGKILL if necessary
+                STILL_RUNNING=\$(pgrep -la 'chrono_player|chrono_keeper|chrono_grapher|chronovisor_server|client_admin' 2>/dev/null || true)
+                if [ -n \"\$STILL_RUNNING\" ]; then
+                  echo '⚠️ Some processes did not stop with SIGTERM, using SIGKILL...'
+                  for proc in chrono_player chrono_keeper chrono_grapher chronovisor_server client_admin; do
+                    if pgrep -f \"\$proc\" > /dev/null 2>&1; then
+                      echo \"  Sending SIGKILL to \$proc...\"
+                      pkill -9 -f \"\$proc\" 2>/dev/null || true
+                    fi
+                  done
+                  sleep 1
+                fi
+              fi
+              
+              # Final verification
+              FINAL_CHECK=\$(pgrep -la 'chrono_player|chrono_keeper|chrono_grapher|chronovisor_server|client_admin' 2>/dev/null || true)
+              if [ -n \"\$FINAL_CHECK\" ]; then
+                echo '⚠️ Warning: Some processes may still be running after cleanup:'
+                echo \"\$FINAL_CHECK\"
+              else
+                echo '✅ All ChronoLog processes stopped'
+              fi
             fi
             
             echo '✅ ChronoLog stop completed'
