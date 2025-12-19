@@ -751,9 +751,20 @@ jobs:
           docker exec --user grc-iit chronolog-c1 bash -c "
             set -e
             WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
-            cd /home/grc-iit/chronolog-repo
+            REPO_DIR=\"/home/grc-iit/chronolog-repo\"
+            cd \${REPO_DIR}
             source /home/grc-iit/spack/share/spack/setup-env.sh
+            
+            # Activate and set up spack environment
+            echo '📦 Setting up spack environment...'
             spack env activate -d . 2>/dev/null || spack env activate -p . 2>/dev/null || true
+            
+            # Ensure environment is concretized for current architecture
+            if [ ! -d \"\${REPO_DIR}/.spack-env/view\" ]; then
+              echo '📦 Regenerating spack environment for current architecture...'
+              spack concretize --force 2>&1 || echo '⚠️ spack concretize had issues'
+            fi
+            
             echo '[2/5] Verifying installation...'
             if [ -d \"\${WORK_DIR}/bin\" ]; then
               echo '✅ bin directory found'
@@ -785,9 +796,13 @@ jobs:
           docker exec --user grc-iit chronolog-c1 bash -c "
             set -e
             WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
-            cd /home/grc-iit/chronolog-repo
+            REPO_DIR=\"/home/grc-iit/chronolog-repo\"
+            cd \${REPO_DIR}
             source /home/grc-iit/spack/share/spack/setup-env.sh
+            
+            # Activate and set up spack environment
             spack env activate -d . 2>/dev/null || spack env activate -p . 2>/dev/null || true
+            
             echo '[3/5] Deploying ChronoLog...'
             
             # Deploy ChronoLog using single_user_deploy.sh (distributed deployment)
@@ -857,15 +872,66 @@ jobs:
           docker exec --user grc-iit chronolog-c1 bash -c "
             set -e
             WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
-            cd /home/grc-iit/chronolog-repo
+            REPO_DIR=\"/home/grc-iit/chronolog-repo\"
+            cd \${REPO_DIR}
             source /home/grc-iit/spack/share/spack/setup-env.sh
-            spack env activate -d . 2>/dev/null || spack env activate -p . 2>/dev/null || true
+            
+            # Activate spack environment and ensure it's properly set up
+            echo '📦 Setting up spack environment...'
+            if spack env activate -d . 2>/dev/null; then
+              echo '✅ Spack environment activated'
+            else
+              echo '⚠️ Could not activate spack environment with -d flag, trying -p flag...'
+              spack env activate -p . 2>/dev/null || true
+            fi
+            
+            # Check if environment needs to be concretized (creates the view)
+            if [ ! -d \"\${REPO_DIR}/.spack-env/view\" ]; then
+              echo '📦 Spack view not found, running spack concretize...'
+              spack concretize --force 2>&1 || echo '⚠️ spack concretize returned non-zero'
+            fi
+            
             echo '[5/5] Running client performance test...'
             
-            # Find mpiexec
-            MPIEXEC_BIN=\$(find /home/grc-iit/spack/opt/spack -name mpiexec -type f 2>/dev/null | head -1)
+            # Find mpiexec - check multiple possible locations
+            # 1. Try spack environment view (when spack env is activated with view: true)
+            # 2. Try PATH (after spack env activation)
+            # 3. Fall back to searching in spack opt directory (for both files and symlinks)
+            MPIEXEC_BIN=\"\"
+            
+            # First, try the spack environment view directory
+            if [ -x \"\${REPO_DIR}/.spack-env/view/bin/mpiexec\" ]; then
+              MPIEXEC_BIN=\"\${REPO_DIR}/.spack-env/view/bin/mpiexec\"
+              echo \"Found mpiexec in spack view\"
+            # Then try which (should work if spack env activated correctly)
+            elif command -v mpiexec &> /dev/null; then
+              MPIEXEC_BIN=\$(which mpiexec)
+              echo \"Found mpiexec in PATH\"
+            # Fall back to searching spack opt directory (include symlinks with -type f,l)
+            else
+              echo \"Searching for mpiexec in spack opt directory...\"
+              # Try finding executable files or symlinks
+              MPIEXEC_BIN=\$(find /home/grc-iit/spack/opt/spack -name mpiexec \\( -type f -o -type l \\) -executable 2>/dev/null | head -1)
+              if [ -z \"\${MPIEXEC_BIN}\" ]; then
+                # If still not found, try broader search
+                MPIEXEC_BIN=\$(find /home/grc-iit/spack/opt/spack -name mpiexec 2>/dev/null | head -1)
+              fi
+            fi
+            
             if [ -z \"\${MPIEXEC_BIN}\" ] || [ ! -x \"\${MPIEXEC_BIN}\" ]; then
               echo '❌ mpiexec not found'
+              echo 'Debug info:'
+              echo \"  REPO_DIR: \${REPO_DIR}\"
+              echo \"  Checking .spack-env/view/: \"
+              ls -la \"\${REPO_DIR}/.spack-env/\" 2>/dev/null || echo '    .spack-env/ not found'
+              echo \"  Checking .spack-env/view/bin/: \"
+              ls -la \"\${REPO_DIR}/.spack-env/view/bin/\" 2>/dev/null | head -20 || echo '    Directory not found'
+              echo \"  PATH: \$PATH\"
+              echo \"  which mpiexec: \$(which mpiexec 2>/dev/null || echo 'not in PATH')\"
+              echo \"  Spack find mpich: \"
+              spack find -p mpich 2>/dev/null || echo '    mpich not found in spack'
+              echo \"  Searching in spack opt (any mpiexec): \"
+              find /home/grc-iit/spack/opt/spack -name mpiexec 2>/dev/null | head -5 || echo '    none found'
               exit 1
             fi
             echo \"✅ Using mpiexec at: \${MPIEXEC_BIN}\"
