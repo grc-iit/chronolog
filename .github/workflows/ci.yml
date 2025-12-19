@@ -20,7 +20,7 @@ env:
 
 jobs:
   chronolog-base:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write
@@ -133,7 +133,7 @@ jobs:
           echo "✅ Base image pushed successfully to ghcr.io"
 
   build-install-deploy:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     needs: chronolog-base
     permissions:
       contents: read
