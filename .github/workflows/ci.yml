@@ -172,12 +172,20 @@ jobs:
           # Convert repository name to lowercase (Docker requirement)
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           
-          # Final image always uses 'latest' tag (shared across all branches)
-          BASE_TAG="latest"
+          # Use branch name for Docker image tag
+          # For PRs, use the head branch; for pushes, use the current branch
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BRANCH_NAME="${{ github.head_ref }}"
+          else
+            BRANCH_NAME="${{ github.ref_name }}"
+          fi
           
-          TAG="chronolog-${BASE_TAG}"
+          # Sanitize branch name for Docker tag (replace / with -, remove invalid characters)
+          BRANCH_TAG=$(echo "$BRANCH_NAME" | sed 's/\//-/g' | sed 's/[^a-zA-Z0-9._-]/-/g')
+          
+          TAG="chronolog-${BRANCH_TAG}"
           echo "full-name=ghcr.io/${REPO_LOWER}/chronolog:${TAG}" >> $GITHUB_OUTPUT
-          echo "Final image tag: ${TAG}"
+          echo "Final image tag: ${TAG} (from branch: ${BRANCH_NAME})"
 
       - name: Create container for build and deploy
         id: create-container
