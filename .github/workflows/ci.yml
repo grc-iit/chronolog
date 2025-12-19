@@ -121,6 +121,7 @@ jobs:
           load: true
 
       - name: Install Spack dependencies in container
+        id: install-spack-deps
         if: steps.check-spack-changes.outputs.spack-files-changed == 'true' || steps.check-spack-changes.outputs.image-exists == 'false'
         run: |
           set -e
@@ -152,12 +153,18 @@ jobs:
           
           # Clean up
           docker rm "$CONTAINER_ID"
+          
+          # Mark that we installed Spack dependencies (image needs to be pushed)
+          echo "spack-deps-installed=true" >> $GITHUB_OUTPUT
 
       - name: Push base image
         # Only push base image from develop/main, never from PRs
+        # Push if Spack files changed, image doesn't exist, or Spack deps were installed
         if: |
           github.event_name != 'pull_request' &&
-          (steps.check-spack-changes.outputs.spack-files-changed == 'true' || steps.check-spack-changes.outputs.image-exists == 'false')
+          (steps.check-spack-changes.outputs.spack-files-changed == 'true' || 
+           steps.check-spack-changes.outputs.image-exists == 'false' ||
+           steps.install-spack-deps.outputs.spack-deps-installed == 'true')
         run: |
           docker push "${{ steps.set-base-image-name.outputs.full-name }}"
 
