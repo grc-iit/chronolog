@@ -7,7 +7,10 @@ on:
     branches: [develop, main]
     paths:
       - 'spack.yaml'
+      - 'spack.lock'
       - 'Client/spack.yaml'
+      - 'Client/spack.lock'
+      - '.github/docker/**'
   workflow_dispatch:
 
 env:
@@ -48,20 +51,35 @@ jobs:
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           echo "name=${REPO_LOWER}" >> $GITHUB_OUTPUT
 
-      - name: Set base image name
+      - name: Compute base image hash
+        id: basehash
+        run: |
+          echo "hash=${{ hashFiles('spack.lock', 'Client/spack.lock', 'spack.yaml', 'Client/spack.yaml', '.github/docker/**') }}" >> $GITHUB_OUTPUT
+
+      - name: Set base image name (immutable)
         id: set-base-image-name
         run: |
-          # Convert repository name to lowercase (Docker requirement)
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          
-          # Base image always uses 'latest' tag (shared across all branches)
-          BASE_TAG="latest"
-          
-          TAG="base-chronolog-${BASE_TAG}"
+          HASH="${{ steps.basehash.outputs.hash }}"
+          TAG="base-${HASH}"
           echo "full-name=ghcr.io/${REPO_LOWER}/chronolog:${TAG}" >> $GITHUB_OUTPUT
           echo "Base image tag: ${TAG}"
 
+      - name: Try to pull cached base image
+        id: pull-base
+        run: |
+          set -e
+          IMAGE="${{ steps.set-base-image-name.outputs.full-name }}"
+          if docker pull "$IMAGE" 2>/dev/null; then
+            echo "hit=true" >> $GITHUB_OUTPUT
+            echo "✅ Base image already exists: $IMAGE"
+          else
+            echo "hit=false" >> $GITHUB_OUTPUT
+            echo "ℹ️ Base image not found, will build: $IMAGE"
+          fi
+
       - name: Build base Docker image
+        if: steps.pull-base.outputs.hit != 'true'
         id: build-base-docker-image
         uses: docker/build-push-action@v4
         with:
@@ -73,6 +91,7 @@ jobs:
           load: true
 
       - name: Install Spack dependencies in container
+        if: steps.pull-base.outputs.hit != 'true'
         id: install-spack-deps
         run: |
           set -e
@@ -106,6 +125,7 @@ jobs:
           docker rm "$CONTAINER_ID"
 
       - name: Push base image
+        if: steps.pull-base.outputs.hit != 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false)
         run: |
           set -e
           echo "🚀 Pushing base image: ${{ steps.set-base-image-name.outputs.full-name }}"
@@ -140,7 +160,7 @@ jobs:
 
       - name: Pull base Docker image
         run: |
-          # This pulls the base-chronolog image created in the previous job
+          # This pulls the base image (with hashed tag) created in the previous job
           docker pull "${{ needs.chronolog-base.outputs.image-name }}"
           echo "Pulled image: ${{ needs.chronolog-base.outputs.image-name }}"
 
@@ -161,7 +181,7 @@ jobs:
         id: create-container
         run: |
           set -e
-          # Uses the base-chronolog image from the previous job
+          # Uses the base image (with hashed tag) from the previous job
           BASE_IMAGE="${{ needs.chronolog-base.outputs.image-name }}"
           echo "Using base image: ${BASE_IMAGE}"
           CONTAINER_ID=$(docker create --user root --init \
