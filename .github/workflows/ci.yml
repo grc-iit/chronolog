@@ -219,6 +219,19 @@ jobs:
             echo '✅ Spack environment activated'
           "
 
+      - name: Reconcretize Spack environment for current architecture
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker exec "$CONTAINER_ID" bash -c "
+            set -e
+            source /home/grc-iit/spack/share/spack/setup-env.sh
+            spack env activate -p .
+            echo 'Reconcretizing Spack environment for current architecture...'
+            spack concretize --force
+            echo '✅ Spack environment reconcretized'
+          "
+
       - name: Build ChronoLog
         run: |
           set -e
