@@ -1145,7 +1145,7 @@ jobs:
             \${MPIEXEC_BIN} --version 2>&1 || echo '⚠️ mpiexec --version failed, but continuing...'
             
             # Verify required files and binaries
-            # Use the same path structure as dynamic_deploy.sh: ~/chronolog-install/chronolog
+            # Use the same path structure as .github/scripts/dynamic_deploy.sh: ~/chronolog-install/chronolog
             # WORK_DIR is already set to /home/grc-iit/chronolog-install/chronolog
             CLIENT_ADMIN_BIN=\${WORK_DIR}/bin/client_admin
             HOSTS_FILE=\${WORK_DIR}/conf/hosts_client
