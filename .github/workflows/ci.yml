@@ -110,6 +110,7 @@ jobs:
           fi
 
       - name: Build base Docker image
+        id: build-base-docker-image
         if: steps.check-spack-changes.outputs.spack-files-changed == 'true' || steps.check-spack-changes.outputs.image-exists == 'false'
         uses: docker/build-push-action@v4
         with:
@@ -156,11 +157,11 @@ jobs:
 
       - name: Push base image
         # Only push base image from develop/main, never from PRs
-        # Push whenever we built/installed (same condition as build and install steps)
+        # Push whenever we built/installed (check if build or install steps ran)
         if: |
           github.event_name != 'pull_request' &&
-          (steps.check-spack-changes.outputs.spack-files-changed == 'true' || 
-           steps.check-spack-changes.outputs.image-exists == 'false')
+          (steps.build-base-docker-image.outcome == 'success' || 
+           steps.install-spack-deps.outcome == 'success')
         run: |
           docker push "${{ steps.set-base-image-name.outputs.full-name }}"
 
