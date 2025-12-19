@@ -5,6 +5,9 @@ on:
     workflows: ["ChronoLog CI"]
     types:
       - completed
+  pull_request:
+    branches: [develop, main]
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 env:
@@ -14,8 +17,11 @@ env:
 
 jobs:
   distributed-test:
-    # Only run if the triggering workflow succeeded
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    # Run on workflow_dispatch, successful workflow_run, or pull_request
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+      github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -26,7 +32,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.ref }}
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || (github.event_name == 'pull_request' && github.event.pull_request.head.sha) || github.ref }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
@@ -46,6 +52,7 @@ jobs:
           
           # Use branch name for Docker image tag (matching ci.yml logic)
           # For workflow_run, get the branch from the triggering workflow
+          # For pull_request, use the head branch (PR branch)
           # For workflow_dispatch, use the current branch
           if [ "${{ github.event_name }}" = "workflow_run" ]; then
             # For workflow_run, get the branch from the triggering workflow
@@ -56,6 +63,9 @@ jobs:
               # Fallback: try to extract from head_sha or use ref_name
               BRANCH_NAME="${{ github.event.workflow_run.head_branch || github.ref_name }}"
             fi
+          elif [ "${{ github.event_name }}" = "pull_request" ]; then
+            # For pull_request, use the head branch (PR branch name)
+            BRANCH_NAME="${{ github.head_ref }}"
           else
             # For workflow_dispatch, use the current branch
             BRANCH_NAME="${{ github.ref_name }}"
@@ -77,15 +87,41 @@ jobs:
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           
           echo "Attempting to pull final image from main CI workflow: ${IMAGE_NAME}"
-          if docker pull "${IMAGE_NAME}" 2>/dev/null; then
-            echo "✅ Successfully pulled final image from main CI workflow"
-            docker tag "${IMAGE_NAME}" "ghcr.io/${REPO_LOWER}/chronolog:latest"
-            echo "use-final-image=true" >> $GITHUB_OUTPUT
-          else
-            echo "❌ Final image not found: ${IMAGE_NAME}"
+          
+          # For PRs, wait a bit and retry in case the image was just pushed
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            MAX_RETRIES=10
+            RETRY_COUNT=0
+            while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+              if docker pull "${IMAGE_NAME}" 2>/dev/null; then
+                echo "✅ Successfully pulled final image from main CI workflow"
+                docker tag "${IMAGE_NAME}" "ghcr.io/${REPO_LOWER}/chronolog:latest"
+                echo "use-final-image=true" >> $GITHUB_OUTPUT
+                exit 0
+              else
+                RETRY_COUNT=$((RETRY_COUNT + 1))
+                if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                  echo "⏳ Image not ready yet, waiting 30 seconds (attempt $RETRY_COUNT/$MAX_RETRIES)..."
+                  sleep 30
+                fi
+              fi
+            done
+            echo "❌ Final image not found after $MAX_RETRIES attempts: ${IMAGE_NAME}"
             echo "⚠️ Please ensure the main CI workflow (ci.yml) has completed successfully"
             echo "The image should be tagged as: chronolog-{branch-name}"
             exit 1
+          else
+            # For workflow_run and workflow_dispatch, try once
+            if docker pull "${IMAGE_NAME}" 2>/dev/null; then
+              echo "✅ Successfully pulled final image from main CI workflow"
+              docker tag "${IMAGE_NAME}" "ghcr.io/${REPO_LOWER}/chronolog:latest"
+              echo "use-final-image=true" >> $GITHUB_OUTPUT
+            else
+              echo "❌ Final image not found: ${IMAGE_NAME}"
+              echo "⚠️ Please ensure the main CI workflow (ci.yml) has completed successfully"
+              echo "The image should be tagged as: chronolog-{branch-name}"
+              exit 1
+            fi
           fi
 
       - name: Set up distributed deployment
