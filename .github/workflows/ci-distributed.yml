@@ -5,7 +5,6 @@ on:
     workflows: ["ChronoLog CI"]
     types:
       - completed
-    branches: [develop, main]
   workflow_dispatch:
 
 env:
@@ -16,7 +15,7 @@ env:
 jobs:
   distributed-test:
     # Only run if the triggering workflow succeeded
-    if: github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -50,9 +49,11 @@ jobs:
           # For workflow_dispatch, use the current branch
           if [ "${{ github.event_name }}" = "workflow_run" ]; then
             # For workflow_run, get the branch from the triggering workflow
+            # For PRs, head_branch contains the PR branch name (matching ci.yml's github.head_ref)
+            # For pushes, head_branch contains the branch name
             BRANCH_NAME="${{ github.event.workflow_run.head_branch }}"
-            if [ -z "$BRANCH_NAME" ]; then
-              # Fallback to ref_name if head_branch is not available
+            if [ -z "$BRANCH_NAME" ] || [ "$BRANCH_NAME" = "null" ]; then
+              # Fallback: try to extract from head_sha or use ref_name
               BRANCH_NAME="${{ github.event.workflow_run.head_branch || github.ref_name }}"
             fi
           else
