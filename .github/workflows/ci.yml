@@ -157,11 +157,10 @@ jobs:
 
       - name: Push base image
         # Only push base image from develop/main, never from PRs
-        # Push whenever we built/installed (check if build or install steps ran)
+        # Push whenever we successfully installed Spack dependencies (final image with Spack deps)
         if: |
           github.event_name != 'pull_request' &&
-          (steps.build-base-docker-image.outcome == 'success' || 
-           steps.install-spack-deps.outcome == 'success')
+          steps.install-spack-deps.outcome == 'success'
         run: |
           docker push "${{ steps.set-base-image-name.outputs.full-name }}"
 
