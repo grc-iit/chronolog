@@ -1312,10 +1312,17 @@ jobs:
             
             # Run the test (write and read in one command with -r flag)
             # Use relative paths from WORK_DIR to match user's example more closely
-            if \${MPIEXEC_BIN} -n 4 -f conf/hosts_client \
+            # Add timeout to prevent hanging (5 minutes should be enough for the test)
+            # Add verbose MPI output to debug connection issues
+            echo 'Starting test with 5 minute timeout and verbose MPI output...'
+            echo 'Note: The test will write data first (-p) then read it back (-r)'
+            echo 'This may take some time depending on the data size...'
+            
+            # Run with verbose output to see what MPI is doing
+            if timeout 300 \${MPIEXEC_BIN} -l -n 4 -f conf/hosts_client \
               bin/client_admin \
               --config conf/default_client_conf.json \
-              -a 4096 -b 4096 -s 4096 -n 4096 -t 1 -h 1 -p -r; then
+              -a 4096 -b 4096 -s 4096 -n 4096 -t 1 -h 1 -p -r 2>&1 | tee /tmp/mpi_test_output.log; then
               echo ''
               echo '✅ Client performance test completed successfully'
               echo '📊 Final system resources:'
@@ -1323,13 +1330,41 @@ jobs:
             else
               TEST_EXIT_CODE=\$?
               echo ''
-              echo \"❌ Client performance test failed with exit code \${TEST_EXIT_CODE}\"
+              if [ \$TEST_EXIT_CODE -eq 124 ]; then
+                echo '❌ Client performance test timed out after 5 minutes'
+                echo 'This might indicate:'
+                echo '  - ChronoLog services are not responding'
+                echo '  - Network connectivity issues between containers'
+                echo '  - MPI processes are stuck waiting'
+              else
+                echo \"❌ Client performance test failed with exit code \${TEST_EXIT_CODE}\"
+              fi
               echo ''
               echo '🔍 Checking if ChronoLog services are still running...'
               pgrep -la chrono || echo 'No ChronoLog processes found'
               echo ''
+              echo '🔍 Checking MPI processes...'
+              pgrep -la mpiexec || echo 'No mpiexec processes found'
+              pgrep -la client_admin || echo 'No client_admin processes found'
+              echo ''
+              echo '📋 MPI test output (if available):'
+              if [ -f /tmp/mpi_test_output.log ]; then
+                tail -50 /tmp/mpi_test_output.log || true
+              fi
+              echo ''
               echo '📊 System resources after test failure:'
               free -h || true
+              echo ''
+              echo '📋 Checking ChronoLog monitor logs for errors...'
+              if [ -d \"\${WORK_DIR}/monitor\" ]; then
+                for log in \"\${WORK_DIR}/monitor/\"*; do
+                  if [ -f \"\$log\" ]; then
+                    echo \"==== Last 20 lines of \$log ====\"
+                    tail -20 \"\$log\" 2>/dev/null || true
+                    echo ''
+                  fi
+                done
+              fi
               exit \${TEST_EXIT_CODE}
             fi
           "
