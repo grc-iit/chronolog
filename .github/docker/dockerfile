@@ -34,7 +34,7 @@ RUN apt-get -y install --no-install-recommends \
     'Host *' \
     '    StrictHostKeyChecking no' \
     > /etc/ssh/ssh_config.d/ignore-host-key.conf \
-  && pip3 install pssh
+  && pip3 install --break-system-packages pssh
 
 # Create grc-iit user to match local.dockerfile
 RUN id $UID && userdel $(id -un $UID) || : \
