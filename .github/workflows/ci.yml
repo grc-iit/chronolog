@@ -108,6 +108,8 @@ jobs:
               chown -R grc-iit:grc-iit /home/grc-iit/chronolog-repo
               source /home/grc-iit/spack/share/spack/setup-env.sh
               spack env activate -p .
+              echo 'Reconcretizing Spack environment for current architecture...'
+              spack concretize --force
               echo 'Installing Spack dependencies...'
               spack install
               echo '✅ Spack dependencies installed successfully'
