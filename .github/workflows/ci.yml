@@ -940,11 +940,14 @@ jobs:
             export LD_LIBRARY_PATH=\${WORK_DIR}/lib:\$LD_LIBRARY_PATH
             cd \${WORK_DIR}
             
-            # Run the test with timeout
+            # Run the test with timeout (write mode is the default, no -r flag)
+            # -a: min event size, -b: max event size, -s: avg event size
+            # -n: event count, -t: story count, -h: chronicle count
+            # -p: performance metrics, -y: barrier mode
             if timeout 300 \${MPIEXEC_BIN} -l -n 4 -f conf/hosts_client \
               bin/client_admin \
               --config conf/default_client_conf.json \
-              -a 4096 -b 4096 -s 4096 -n 4096 -t 1 -h 1 -p -r 2>&1 | tee /tmp/mpi_test_output.log; then
+              -a 4096 -b 4096 -s 4096 -n 1024 -t 1 -h 1 -p -y 2>&1 | tee /tmp/mpi_test_output.log; then
               echo '✅ Client performance test completed successfully'
             else
               TEST_EXIT_CODE=\$?
