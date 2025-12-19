@@ -1,21 +1,23 @@
 name: ChronoLog CI - Distributed Environment
 
 on:
-  pull_request:
+  workflow_run:
+    workflows: ["ChronoLog CI"]
+    types:
+      - completed
     branches: [develop, main]
-  push:
-    # Run on every commit to any branch for testing
-    branches-ignore: []
   workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}/chronolog-ci
-  INSTALL_BASE: /home/runner/chronolog-install
+  INSTALL_BASE: /home/grc-iit/chronolog-install
 
 jobs:
   distributed-test:
-    runs-on: ubuntu-22.04
+    # Only run if the triggering workflow succeeded
+    if: github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write
@@ -25,7 +27,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref }}
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.ref }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
@@ -43,12 +45,30 @@ jobs:
           # Convert repository name to lowercase (Docker requirement)
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           
-          # Always use chronolog-latest image
-          IMAGE_NAME="ghcr.io/${REPO_LOWER}/chronolog:chronolog-latest"
+          # Use branch name for Docker image tag (matching ci.yml logic)
+          # For workflow_run, get the branch from the triggering workflow
+          # For workflow_dispatch, use the current branch
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            # For workflow_run, get the branch from the triggering workflow
+            BRANCH_NAME="${{ github.event.workflow_run.head_branch }}"
+            if [ -z "$BRANCH_NAME" ]; then
+              # Fallback to ref_name if head_branch is not available
+              BRANCH_NAME="${{ github.event.workflow_run.head_branch || github.ref_name }}"
+            fi
+          else
+            # For workflow_dispatch, use the current branch
+            BRANCH_NAME="${{ github.ref_name }}"
+          fi
+          
+          # Sanitize branch name for Docker tag (replace / with -, remove invalid characters)
+          BRANCH_TAG=$(echo "$BRANCH_NAME" | sed 's/\//-/g' | sed 's/[^a-zA-Z0-9._-]/-/g')
+          
+          TAG="chronolog-${BRANCH_TAG}"
+          IMAGE_NAME="ghcr.io/${REPO_LOWER}/chronolog:${TAG}"
           echo "full-name=${IMAGE_NAME}" >> $GITHUB_OUTPUT
-          echo "Using image from main CI workflow: ${IMAGE_NAME}"
+          echo "Using image from main CI workflow: ${IMAGE_NAME} (branch: ${BRANCH_NAME})"
 
-      - name: Pull Docker image (final or base as fallback)
+      - name: Pull Docker image from main CI workflow
         id: pull-image
         run: |
           set -e
@@ -61,19 +81,10 @@ jobs:
             docker tag "${IMAGE_NAME}" "ghcr.io/${REPO_LOWER}/chronolog:latest"
             echo "use-final-image=true" >> $GITHUB_OUTPUT
           else
-            echo "⚠️ Final image not found, falling back to base image"
-            # Try to pull the base image instead
-            BASE_IMAGE="ghcr.io/${REPO_LOWER}/chronolog:base-chronolog-latest"
-            echo "Attempting to pull base image: ${BASE_IMAGE}"
-            if docker pull "${BASE_IMAGE}" 2>/dev/null; then
-              echo "✅ Successfully pulled base image, will build ChronoLog"
-              docker tag "${BASE_IMAGE}" "ghcr.io/${REPO_LOWER}/chronolog:latest"
-              echo "use-final-image=false" >> $GITHUB_OUTPUT
-            else
-              echo "❌ Neither final nor base image found"
-              echo "⚠️ Please ensure the main CI workflow has run at least once to create the base image"
-              exit 1
-            fi
+            echo "❌ Final image not found: ${IMAGE_NAME}"
+            echo "⚠️ Please ensure the main CI workflow (ci.yml) has completed successfully"
+            echo "The image should be tagged as: chronolog-{branch-name}"
+            exit 1
           fi
 
       - name: Set up distributed deployment
@@ -367,7 +378,7 @@ jobs:
             docker exec chronolog-c1 bash -c "
               set -e
               # Create writable overlay for Spack database
-              DB_DIR=/opt/spack/opt/spack/.spack-db
+              DB_DIR=/home/grc-iit/spack/opt/spack/.spack-db
               if [ -d \${DB_DIR} ]; then
                 # Try to make it writable
                 chmod -R u+w \${DB_DIR} 2>/dev/null || {
@@ -379,7 +390,7 @@ jobs:
                   fi
                   # Create a symlink or copy approach won't work, so we'll try a different method
                   # Make parent directories writable if possible
-                  chmod u+w /opt/spack/opt/spack 2>/dev/null || true
+                  chmod u+w /home/grc-iit/spack/opt/spack 2>/dev/null || true
                   chmod u+w \${DB_DIR} 2>/dev/null || true
                 }
               else
@@ -394,7 +405,7 @@ jobs:
             docker exec chronolog-c1 bash -c "
               set -e
               cd /home/grc-iit/chronolog-repo
-              source /opt/spack/share/spack/setup-env.sh
+              source /home/grc-iit/spack/share/spack/setup-env.sh
               spack env activate -p .
               echo 'Installing/verifying Spack dependencies (as root)...'
               # Root should be able to write to /opt/spack if it's not truly read-only
@@ -460,7 +471,7 @@ jobs:
                     next
                   }
                   /^[[:space:]]*spack install -v[[:space:]]*$/ {
-                    print \"    if [ -w /opt/spack/opt/spack/.spack-db ] 2>/dev/null; then\"
+                    print \"    if [ -w /home/grc-iit/spack/opt/spack/.spack-db ] 2>/dev/null; then\"
                     print \"        spack install -v\"
                     print \"    else\"
                     print \"        echo -e \\\"\\\${DEBUG}Spack database is read-only, skipping install (dependencies should already be installed)\\\${NC}\\\"\"
@@ -504,7 +515,7 @@ jobs:
                     next
                   }
                   /^[[:space:]]*spack install -v[[:space:]]*$/ {
-                    print \"    if [ -w /opt/spack/opt/spack/.spack-db ] 2>/dev/null; then\"
+                    print \"    if [ -w /home/grc-iit/spack/opt/spack/.spack-db ] 2>/dev/null; then\"
                     print \"        spack install -v\"
                     print \"    else\"
                     print \"        echo -e \\\"\\\${DEBUG}Spack database is read-only, skipping install (dependencies should already be installed)\\\${NC}\\\"\"
@@ -522,7 +533,7 @@ jobs:
             docker exec --user grc-iit chronolog-c1 bash -c "
               set -e
               cd /home/grc-iit/chronolog-repo
-              source /opt/spack/share/spack/setup-env.sh
+              source /home/grc-iit/spack/share/spack/setup-env.sh
               spack env activate -p .
               export SPACK_USER_CACHE_PATH=\${HOME}/.spack-cache
               mkdir -p \${SPACK_USER_CACHE_PATH}
@@ -544,7 +555,7 @@ jobs:
             set -e
             WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
             cd /home/grc-iit/chronolog-repo
-            source /opt/spack/share/spack/setup-env.sh
+            source /home/grc-iit/spack/share/spack/setup-env.sh
             # Check if .spack-env exists and handle permission issues
             if [ -d .spack-env ]; then
               # Check if it's a symlink pointing to /workspace
@@ -615,7 +626,7 @@ jobs:
             # Do not use set -e in cleanup section to avoid container termination
             WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
             cd /home/grc-iit/chronolog-repo
-            source /opt/spack/share/spack/setup-env.sh
+            source /home/grc-iit/spack/share/spack/setup-env.sh
             # Check if .spack-env exists and handle permission issues
             if [ -d .spack-env ]; then
               if [ -L .spack-env ]; then
@@ -821,7 +832,7 @@ jobs:
             set -e
             WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
             cd /home/grc-iit/chronolog-repo
-            source /opt/spack/share/spack/setup-env.sh
+            source /home/grc-iit/spack/share/spack/setup-env.sh
             # Check if .spack-env exists and handle permission issues
             if [ -d .spack-env ]; then
               if [ -L .spack-env ]; then
@@ -940,26 +951,26 @@ jobs:
               fi
             fi
             
-            # Try searching in /opt/spack/opt/spack/ (where Spack installs packages in the Docker image)
+            # Try searching in /home/grc-iit/spack/opt/spack/ (where Spack installs packages in the Docker image)
             if [ -z \"\${MPIEXEC_BIN}\" ]; then
-              echo 'Searching for mpich in /opt/spack/opt/spack/...'
-              if [ -d /opt/spack/opt/spack ]; then
+              echo 'Searching for mpich in /home/grc-iit/spack/opt/spack/...'
+              if [ -d /home/grc-iit/spack/opt/spack ]; then
                 # Find mpich directories
-                MPICH_DIRS=\$(find /opt/spack/opt/spack -type d -name '*mpich*' 2>/dev/null | head -5)
+                MPICH_DIRS=\$(find /home/grc-iit/spack/opt/spack -type d -name '*mpich*' 2>/dev/null | head -5)
                 if [ -n \"\${MPICH_DIRS}\" ]; then
                   echo \"  Found mpich directories:\"
                   echo \"\${MPICH_DIRS}\"
                   while IFS= read -r mpich_dir; do
                     if [ -f \"\${mpich_dir}/bin/mpiexec\" ] && [ -x \"\${mpich_dir}/bin/mpiexec\" ]; then
                       MPIEXEC_BIN=\"\${mpich_dir}/bin/mpiexec\"
-                      echo \"✅ Found mpiexec in /opt/spack/opt/spack: \${MPIEXEC_BIN}\"
+                      echo \"✅ Found mpiexec in /home/grc-iit/spack/opt/spack: \${MPIEXEC_BIN}\"
                       break
                     fi
                   done <<< \"\${MPICH_DIRS}\"
                 else
-                  echo '  No mpich directories found in /opt/spack/opt/spack'
+                  echo '  No mpich directories found in /home/grc-iit/spack/opt/spack'
                   # Try direct find for mpiexec
-                  DIRECT_MPIEXEC=\$(find /opt/spack/opt/spack -name mpiexec -type f 2>/dev/null | head -5)
+                  DIRECT_MPIEXEC=\$(find /home/grc-iit/spack/opt/spack -name mpiexec -type f 2>/dev/null | head -5)
                   if [ -n \"\${DIRECT_MPIEXEC}\" ]; then
                     echo \"  Found mpiexec directly:\"
                     echo \"\${DIRECT_MPIEXEC}\"
@@ -973,17 +984,17 @@ jobs:
                   fi
                 fi
               else
-                echo '  /opt/spack/opt/spack directory does not exist'
+                echo '  /home/grc-iit/spack/opt/spack directory does not exist'
               fi
             fi
             
             # Then try spack find -p mpich (more reliable than spack location)
             if [ -z \"\${MPIEXEC_BIN}\" ]; then
               echo 'Trying spack find -p mpich...'
-              # Try activating the Spack environment from /opt/spack-environment if it exists
-              if [ -d /opt/spack-environment ]; then
-                echo '  Activating Spack environment from /opt/spack-environment...'
-                cd /opt/spack-environment && spack env activate . 2>/dev/null || true
+              # Try activating the Spack environment from /home/grc-iit/chronolog-repo if it exists
+              if [ -d /home/grc-iit/chronolog-repo ]; then
+                echo '  Activating Spack environment from /home/grc-iit/chronolog-repo...'
+                cd /home/grc-iit/chronolog-repo && spack env activate . 2>/dev/null || true
                 cd /home/grc-iit/chronolog-repo
               fi
               MPICH_OUTPUT=\$(spack find -p mpich 2>&1 || echo '')
@@ -1126,7 +1137,7 @@ jobs:
               ls -la /opt/view 2>/dev/null | head -20 || echo 'Cannot list /opt/view'
               echo ''
               echo 'Listing /opt/spack directories (if exists):'
-              ls -la /opt/spack/opt/spack/ 2>/dev/null | head -20 || echo 'Cannot list /opt/spack'
+              ls -la /home/grc-iit/spack/opt/spack/ 2>/dev/null | head -20 || echo 'Cannot list /opt/spack'
               exit 1
             fi
             echo \"✅ Using mpiexec at: \${MPIEXEC_BIN}\"
@@ -1294,7 +1305,7 @@ jobs:
             # Do not use set -e here - we want cleanup to continue even if some commands fail
             WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
             cd /home/grc-iit/chronolog-repo 2>/dev/null || true
-            source /opt/spack/share/spack/setup-env.sh 2>/dev/null || true
+            source /home/grc-iit/spack/share/spack/setup-env.sh 2>/dev/null || true
             # Check if .spack-env exists and handle permission issues
             if [ -d .spack-env ]; then
               if [ -L .spack-env ]; then
