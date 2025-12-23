@@ -14,6 +14,7 @@ add_executable(client_writer
 target_include_directories(client_writer
     PRIVATE
     ${GRAFANA_STREAM_PUBLIC_INCLUDE}
+    ${CMAKE_SOURCE_DIR}/chrono_common/include
 )
 
 target_link_libraries(client_writer
