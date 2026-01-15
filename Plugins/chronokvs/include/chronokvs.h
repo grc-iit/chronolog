@@ -28,6 +28,8 @@ public:
     std::string get(const std::string& key, uint64_t timestamp);
 
     std::vector<EventData> get_history(const std::string& key);
+
+    std::vector<EventData> get_range(const std::string& key, uint64_t start_timestamp, uint64_t end_timestamp);
 };
 
 } // namespace chronokvs
