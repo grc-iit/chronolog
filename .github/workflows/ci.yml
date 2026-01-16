@@ -7,9 +7,7 @@ on:
     branches: [develop, main]
     paths:
       - 'spack.yaml'
-      - 'spack.lock'
       - 'Client/spack.yaml'
-      - 'Client/spack.lock'
       - '.github/docker/**'
   workflow_dispatch:
 
