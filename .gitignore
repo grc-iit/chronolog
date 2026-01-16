@@ -9,3 +9,5 @@ CMakeLists.txt.user
 
 # spack
 .spack-env/
+spack.lock
+**/spack.lock
