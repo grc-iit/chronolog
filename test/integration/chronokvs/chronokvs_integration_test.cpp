@@ -299,17 +299,17 @@ public:
                 if(range_success)
                 {
                     successful_ranges++;
-                    std::cout << "  ✓ Range " << std::setw(2) << (i + 1) << "/" << num_range_tests
-                              << ": [" << std::setw(12) << start_ts << ", " << std::setw(12) << end_ts
-                              << ") -> " << range_events.size() << " events (expected at least " << expected_count
-                              << ")" << std::endl;
+                    std::cout << "  ✓ Range " << std::setw(2) << (i + 1) << "/" << num_range_tests << ": ["
+                              << std::setw(12) << start_ts << ", " << std::setw(12) << end_ts << ") -> "
+                              << range_events.size() << " events (expected at least " << expected_count << ")"
+                              << std::endl;
                 }
                 else
                 {
-                    std::cout << "  ✗ Range " << std::setw(2) << (i + 1) << "/" << num_range_tests
-                              << ": [" << std::setw(12) << start_ts << ", " << std::setw(12) << end_ts
-                              << ") -> " << range_events.size() << " events (expected at least " << expected_count
-                              << ")" << std::endl;
+                    std::cout << "  ✗ Range " << std::setw(2) << (i + 1) << "/" << num_range_tests << ": ["
+                              << std::setw(12) << start_ts << ", " << std::setw(12) << end_ts << ") -> "
+                              << range_events.size() << " events (expected at least " << expected_count << ")"
+                              << std::endl;
                 }
 
                 // Verify that all retrieved events are within the range
@@ -319,8 +319,8 @@ public:
                     if(event.timestamp < start_ts || event.timestamp >= end_ts)
                     {
                         all_in_range = false;
-                        std::cout << "    ⚠️  Event with timestamp " << event.timestamp
-                                  << " is outside the range [" << start_ts << ", " << end_ts << ")" << std::endl;
+                        std::cout << "    ⚠️  Event with timestamp " << event.timestamp << " is outside the range ["
+                                  << start_ts << ", " << end_ts << ")" << std::endl;
                     }
                 }
 
@@ -331,9 +331,8 @@ public:
             }
             catch(const std::exception& e)
             {
-                std::cout << "  ✗ Range " << std::setw(2) << (i + 1) << "/" << num_range_tests
-                          << ": [" << std::setw(12) << start_ts << ", " << std::setw(12) << end_ts
-                          << ") failed with " << e.what() << std::endl;
+                std::cout << "  ✗ Range " << std::setw(2) << (i + 1) << "/" << num_range_tests << ": [" << std::setw(12)
+                          << start_ts << ", " << std::setw(12) << end_ts << ") failed with " << e.what() << std::endl;
             }
         }
 
@@ -341,7 +340,8 @@ public:
         bool success = successful_ranges >= min_successful;
         printTestResult("Get Range Operations",
                         success,
-                        std::to_string(successful_ranges) + "/" + std::to_string(num_range_tests) + " successful (need at least " + std::to_string(min_successful) + ")");
+                        std::to_string(successful_ranges) + "/" + std::to_string(num_range_tests) +
+                                " successful (need at least " + std::to_string(min_successful) + ")");
 
         if(success)
         {
@@ -413,7 +413,8 @@ public:
         {
             printHeader("TEST 4: GET RANGE OPERATIONS");
             std::cout << "  ⚠️  Skipping Test 4 (Get Range) - insufficient history data from Test 2" << std::endl;
-            std::cout << "  This test requires at least 10 events in history to proceed (got " << history_events.size() << ")" << std::endl;
+            std::cout << "  This test requires at least 10 events in history to proceed (got " << history_events.size()
+                      << ")" << std::endl;
             test4_result = false;
         }
 
@@ -425,8 +426,8 @@ public:
         std::cout << "  Test 4 (Get Range):  " << (test4_result ? "✅ PASSED" : "❌ FAILED") << std::endl;
         printSeparator();
 
-        int passed_tests = (test1_result ? 1 : 0) + (test2_result ? 1 : 0) + (test3_result ? 1 : 0)
-                           + (test4_result ? 1 : 0);
+        int passed_tests =
+                (test1_result ? 1 : 0) + (test2_result ? 1 : 0) + (test3_result ? 1 : 0) + (test4_result ? 1 : 0);
         std::cout << "  Overall: " << passed_tests << "/4 tests passed" << std::endl;
 
         if(passed_tests == 4)

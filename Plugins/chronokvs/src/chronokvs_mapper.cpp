@@ -45,7 +45,9 @@ std::vector<EventData> ChronoKVSMapper::retrieveByKey(const std::string& key)
     return chronoClientAdapter->retrieveEvents(key, MIN_TIMESTAMP, MAX_TIMESTAMP);
 }
 
-std::vector<EventData> ChronoKVSMapper::retrieveByKeyAndRange(const std::string& key, std::uint64_t start_timestamp, std::uint64_t end_timestamp)
+std::vector<EventData> ChronoKVSMapper::retrieveByKeyAndRange(const std::string& key,
+                                                              std::uint64_t start_timestamp,
+                                                              std::uint64_t end_timestamp)
 {
     // Retrieve events for the given key within the specified time range [start_timestamp, end_timestamp)
     return chronoClientAdapter->retrieveEvents(key, start_timestamp, end_timestamp);
