@@ -58,33 +58,49 @@ kill_service() {
 stop_service() {
     local bin=$(basename "$1") 
     local timeout="$2"
+    local script_pid=$$
 
-    # Stop all processes of the service in parallel
+    # Stop all processes of the service
     local start_time=$(date +%s)
-    echo -e "${DEBUG}Stopping $(basename ${bin}) ...${NC}"
-    pkill -f ${bin}
+    echo -e "${DEBUG}Stopping ${bin} ...${NC}"
+    
+    # Match full command line but exclude this script's process tree
+    pgrep -f "/${bin}" | grep -v "^${script_pid}$" | xargs -r kill 2>/dev/null || true
 
     # Wait for processes to stop with a timeout
+    local wait_interval=2
     while true; do
-        if pgrep -f "${bin}" >/dev/null; then
-            echo -e "${DEBUG}Waiting for ${bin} to stop...${NC}"
+        # Check if processes are still running (exclude this script)
+        if pgrep -f "/${bin}" | grep -v "^${script_pid}$" | grep -q .; then
+            local current_time=$(date +%s)
+            local elapsed=$((current_time - start_time))
+            
+            if (( elapsed >= timeout )); then
+                echo -e "${ERR}Timeout reached (${timeout}s) while stopping ${bin} processes.${NC}"
+                echo -e "${DEBUG}Forcing termination with SIGKILL...${NC}"
+                pgrep -f "/${bin}" | grep -v "^${script_pid}$" | xargs -r kill -9 2>/dev/null || true
+                sleep 2
+                
+                # Final check after force kill
+                if pgrep -f "/${bin}" | grep -v "^${script_pid}$" | grep -q .; then
+                    echo -e "${ERR}CRITICAL: Failed to stop ${bin} processes even with SIGKILL!${NC}"
+                    pgrep -f "/${bin}" -la || true
+                    return 1
+                else
+                    echo -e "${DEBUG}Force killed ${bin} processes.${NC}"
+                    break
+                fi
+            else
+                echo -e "${DEBUG}Waiting for ${bin} to stop... (${elapsed}/${timeout}s)${NC}"
+                sleep $wait_interval
+            fi
         else
             echo -e "${DEBUG}All ${bin} processes stopped gracefully.${NC}"
             break
         fi
-        sleep 10
-        # Check if timeout is reached
-        local current_time=$(date +%s)
-        if (( current_time - start_time >= timeout )); then
-            echo -e "${DEBUG}Timeout reached while stopping ${bin} processes. Forcing termination.${NC}"
-            if pgrep -f "${bin}" >/dev/null; then
-                kill_service ${bin}
-                echo -e "${DEBUG}Killed: ${bin} ${NC}"
-            fi
-            break
-        fi
     done
     echo ""
+    return 0
 }
 
 generate_config_files() {
@@ -289,11 +305,25 @@ check_work_dir() {
 
 check_execution_stopped() {
     echo -e "${DEBUG}Checking if ChronoLog processes are running...${NC}"
-    local active_processes=$(pgrep -la chrono)
+    local script_pid=$$
+    
+    # Use exact pattern matching to find ChronoLog processes (avoiding false positives)
+    # Check for each ChronoLog binary using the same pattern as stop_service()
+    local visor_bin=$(basename "${VISOR_BIN}")
+    local keeper_bin=$(basename "${KEEPER_BIN}")
+    local grapher_bin=$(basename "${GRAPHER_BIN}")
+    local player_bin=$(basename "${PLAYER_BIN}")
+    
+    local active_processes=$(
+        { pgrep -f "/${visor_bin}" 2>/dev/null || true; } | grep -v "^${script_pid}$"
+        { pgrep -f "/${keeper_bin}" 2>/dev/null || true; } | grep -v "^${script_pid}$"
+        { pgrep -f "/${grapher_bin}" 2>/dev/null || true; } | grep -v "^${script_pid}$"
+        { pgrep -f "/${player_bin}" 2>/dev/null || true; } | grep -v "^${script_pid}$"
+    )
 
     if [[ -n "${active_processes}" ]]; then
         echo -e "${ERR}ChronoLog processes are still running:${NC}"
-        echo "${active_processes}"
+        ps -fp ${active_processes} || true
         echo -e "${ERR}Please stop all ChronoLog processes before cleaning.${NC}"
         exit 1
     else
@@ -366,11 +396,30 @@ start() {
 stop() {
     echo -e "${INFO}Stopping ChronoLog...${NC}"
     check_work_dir
-    stop_service ${PLAYER_BIN} 100
-    stop_service ${KEEPER_BIN} 100
-    stop_service ${GRAPHER_BIN} 100
-    stop_service ${VISOR_BIN} 100
-    echo -e "${INFO}All ChronoLog processes stopped.${NC}"
+    
+    local failed=0
+    
+    # Stop player and keeper in parallel
+    stop_service ${PLAYER_BIN} 30 &
+    local player_pid=$!
+    stop_service ${KEEPER_BIN} 30 &
+    local keeper_pid=$!
+    
+    # Wait for both to complete
+    wait $player_pid || failed=1
+    wait $keeper_pid || failed=1
+    
+    # Stop grapher and visor sequentially
+    stop_service ${GRAPHER_BIN} 30 || failed=1
+    stop_service ${VISOR_BIN} 30 || failed=1
+    
+    if [ "$failed" -eq 1 ]; then
+        echo -e "${ERR}Some ChronoLog processes failed to stop properly.${NC}"
+        return 1
+    fi
+    
+    echo -e "${INFO}All ChronoLog processes stopped successfully.${NC}"
+    return 0
 }
 
 clean() {
