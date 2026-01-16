@@ -398,8 +398,18 @@ stop() {
     check_work_dir
     
     local failed=0
-    stop_service ${PLAYER_BIN} 30 || failed=1
-    stop_service ${KEEPER_BIN} 30 || failed=1
+    
+    # Stop player and keeper in parallel
+    stop_service ${PLAYER_BIN} 30 &
+    local player_pid=$!
+    stop_service ${KEEPER_BIN} 30 &
+    local keeper_pid=$!
+    
+    # Wait for both to complete
+    wait $player_pid || failed=1
+    wait $keeper_pid || failed=1
+    
+    # Stop grapher and visor sequentially
     stop_service ${GRAPHER_BIN} 30 || failed=1
     stop_service ${VISOR_BIN} 30 || failed=1
     
