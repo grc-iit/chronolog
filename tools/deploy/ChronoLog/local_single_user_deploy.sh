@@ -305,12 +305,25 @@ check_work_dir() {
 
 check_execution_stopped() {
     echo -e "${DEBUG}Checking if ChronoLog processes are running...${NC}"
+    local script_pid=$$
+    
     # Use exact pattern matching to find ChronoLog processes (avoiding false positives)
-    local active_processes=$(pgrep '^chrono' 2>/dev/null || true)
+    # Check for each ChronoLog binary using the same pattern as stop_service()
+    local visor_bin=$(basename "${VISOR_BIN}")
+    local keeper_bin=$(basename "${KEEPER_BIN}")
+    local grapher_bin=$(basename "${GRAPHER_BIN}")
+    local player_bin=$(basename "${PLAYER_BIN}")
+    
+    local active_processes=$(
+        { pgrep -f "/${visor_bin}" 2>/dev/null || true; } | grep -v "^${script_pid}$"
+        { pgrep -f "/${keeper_bin}" 2>/dev/null || true; } | grep -v "^${script_pid}$"
+        { pgrep -f "/${grapher_bin}" 2>/dev/null || true; } | grep -v "^${script_pid}$"
+        { pgrep -f "/${player_bin}" 2>/dev/null || true; } | grep -v "^${script_pid}$"
+    )
 
     if [[ -n "${active_processes}" ]]; then
         echo -e "${ERR}ChronoLog processes are still running:${NC}"
-        ps -fp ${active_processes} || pgrep '^chrono' -la
+        ps -fp ${active_processes} || true
         echo -e "${ERR}Please stop all ChronoLog processes before cleaning.${NC}"
         exit 1
     else
