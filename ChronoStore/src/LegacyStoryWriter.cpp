@@ -9,7 +9,7 @@
 #include <vector>
 #include <event.h>
 #include <chunkattr.h>
-#include <storywriter.h>
+#include <LegacyStoryWriter.h>
 
 #define DATASET_RANK 1 // Dataset dimension
 #define ATTRIBUTE_CHUNKMETADATA "ChunkMetadata"
@@ -20,11 +20,11 @@
 #define DEBUG 0          // Set to 1 to print H5 error messages to console
 #define CHUNK_SIZE 40000 // Number of events equal to page size of 4MB
 
-// Constructor storywriter
-storywriter::storywriter() {}
+// Constructor LegacyStoryWriter
+LegacyStoryWriter::LegacyStoryWriter() {}
 
-// Destructor storywriter
-storywriter::~storywriter() {}
+// Destructor LegacyStoryWriter
+LegacyStoryWriter::~LegacyStoryWriter() {}
 
 /**
  * Write/Append data to storyDataset. 
@@ -33,7 +33,7 @@ storywriter::~storywriter() {}
  * @param CHRONICLE: chronicle name
  * @return: 0 if successful, else -1, if failed.
  */
-int storywriter::writeStoryChunk(std::vector<Event>* storyChunk, const char* STORY, const char* CHRONICLE)
+int LegacyStoryWriter::writeStoryChunk(std::vector<Event>* storyChunk, const char* STORY, const char* CHRONICLE)
 {
 
     // Disable automatic printing of HDF5 error stack to console

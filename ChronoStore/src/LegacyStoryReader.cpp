@@ -8,7 +8,7 @@
 #include <string>
 #include <utility>
 #include <vector>
-#include <storyreader.h>
+#include <LegacyStoryReader.h>
 #include <event.h>
 #include <chunkattr.h>
 #include <datasetreader.h>
@@ -22,11 +22,11 @@
 #define DEBUG 0 // Set to 1 ito print H5 error messages to console
 
 
-// Constructor storyreader
-storyreader::storyreader() {}
+// Constructor LegacyStoryReader
+LegacyStoryReader::LegacyStoryReader() {}
 
-// Destructor storyreader
-storyreader::~storyreader() {}
+// Destructor LegacyStoryReader
+LegacyStoryReader::~LegacyStoryReader() {}
 
 // Search first chunk to retrieve
 int64_t searchFirstChunk(std::vector<ChunkAttr>* chunkAttributeData,
@@ -97,7 +97,7 @@ int64_t searchLastChunk(std::vector<ChunkAttr>* chunkAttributeData,
  *          return {-1,EventData}   (Empty EventData) if failed.
  */
 DatasetReader
-storyreader::readFromDataset(std::pair<uint64_t, uint64_t> range, const char* STORY, const char* CHRONICLE)
+LegacyStoryReader::readFromDataset(std::pair<uint64_t, uint64_t> range, const char* STORY, const char* CHRONICLE)
 {
     // Disable automatic printing of HDF5 error stack
     if(!DEBUG)
@@ -311,7 +311,7 @@ release_resources:
  * @return: struct DatasetMinMax ->{0,MinMax} (MinMax is pair consisting of Min nd Max of dataset respectively) if successful, else \n
  *          return {-1,MinMax}   (MinMax empty) if failed.
  */
-DatasetMinMax storyreader::readDatasetRange(const char* STORY, const char* CHRONICLE)
+DatasetMinMax LegacyStoryReader::readDatasetRange(const char* STORY, const char* CHRONICLE)
 {
 
     std::pair<uint64_t, uint64_t> datasetRange;

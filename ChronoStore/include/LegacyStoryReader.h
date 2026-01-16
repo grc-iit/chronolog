@@ -4,17 +4,17 @@
 #include <datasetreader.h>
 #include <datasetminmax.h>
 
-#ifndef READ_H
-#define READ_H
+#ifndef LEGACY_STORY_READER_H
+#define LEGACY_STORY_READER_H
 
-class storyreader
+class LegacyStoryReader
 {
 private:
     /* data */
 public:
-    storyreader(/* args */);
+    LegacyStoryReader(/* args */);
 
-    ~storyreader();
+    ~LegacyStoryReader();
 
     // Read data from H5 dataset
     DatasetReader readFromDataset(std::pair<uint64_t, uint64_t> range, const char* STORY, const char* CHRONICLE);

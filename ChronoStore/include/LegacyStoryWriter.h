@@ -1,18 +1,18 @@
 #include <vector>
 #include <event.h>
 
-#ifndef WRITE_H
-#define WRITE_H
+#ifndef LEGACY_STORY_WRITER_H
+#define LEGACY_STORY_WRITER_H
 
-class storywriter
+class LegacyStoryWriter
 {
 private:
     /* data */
 
 public:
-    storywriter(/* args */);
+    LegacyStoryWriter(/* args */);
 
-    ~storywriter();
+    ~LegacyStoryWriter();
 
     int writeStoryChunk(std::vector<Event>* storyChunk, const char* DATASET_NAME, const char* H5FILE_NAME);
 };
