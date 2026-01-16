@@ -138,7 +138,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    timeout-minutes: 60
+    timeout-minutes: 90
     outputs:
       image-name: ${{ steps.set-final-image-name.outputs.full-name }}
 
