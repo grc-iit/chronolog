@@ -388,10 +388,9 @@ public:
 
             // Find the actual earliest event from history_events for comparison
             auto expected_earliest = std::min_element(history_events.begin(),
-                                                     history_events.end(),
-                                                     [](const chronokvs::EventData& a, const chronokvs::EventData& b) {
-                                                         return a.timestamp < b.timestamp;
-                                                     });
+                                                      history_events.end(),
+                                                      [](const chronokvs::EventData& a, const chronokvs::EventData& b)
+                                                      { return a.timestamp < b.timestamp; });
 
             bool timestamp_match = earliest.timestamp == expected_earliest->timestamp;
             bool value_match = earliest.value == expected_earliest->value;
@@ -518,7 +517,7 @@ public:
         printSeparator();
 
         int passed_tests = (test1_result ? 1 : 0) + (test2_result ? 1 : 0) + (test3_result ? 1 : 0) +
-                          (test4_result ? 1 : 0) + (test5_result ? 1 : 0);
+                           (test4_result ? 1 : 0) + (test5_result ? 1 : 0);
         std::cout << "  Overall: " << passed_tests << "/5 tests passed" << std::endl;
 
         if(passed_tests == 5)

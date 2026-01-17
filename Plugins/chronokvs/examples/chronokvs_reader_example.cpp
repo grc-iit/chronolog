@@ -106,8 +106,8 @@ int main()
     auto earliestEvent = chronoKVS.get_earliest(key2);
     if(earliestEvent.has_value())
     {
-        std::cout << "Earliest event - Timestamp: " << earliestEvent->timestamp << "\nValue    : " << earliestEvent->value
-                  << "\n";
+        std::cout << "Earliest event - Timestamp: " << earliestEvent->timestamp
+                  << "\nValue    : " << earliestEvent->value << "\n";
     }
     else
     {
