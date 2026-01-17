@@ -34,6 +34,8 @@ public:
     retrieveByKeyAndRange(const std::string& key, std::uint64_t start_timestamp, std::uint64_t end_timestamp);
 
     std::optional<EventData> retrieveEarliestByKey(const std::string& key);
+
+    std::optional<EventData> retrieveLatestByKey(const std::string& key);
 };
 } // namespace chronokvs
 #endif // KVS_MAPPER_H_

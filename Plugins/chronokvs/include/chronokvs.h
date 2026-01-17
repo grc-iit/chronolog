@@ -33,6 +33,8 @@ public:
     std::vector<EventData> get_range(const std::string& key, uint64_t start_timestamp, uint64_t end_timestamp);
 
     std::optional<EventData> get_earliest(const std::string& key);
+
+    std::optional<EventData> get_latest(const std::string& key);
 };
 
 } // namespace chronokvs
