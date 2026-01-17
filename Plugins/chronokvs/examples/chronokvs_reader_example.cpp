@@ -101,5 +101,18 @@ int main()
         }
     }
 
+    // Read and display the earliest event for key2
+    std::cout << "Reading earliest event for key2:\n";
+    auto earliestEvent = chronoKVS.get_earliest(key2);
+    if(earliestEvent.has_value())
+    {
+        std::cout << "Earliest event - Timestamp: " << earliestEvent->timestamp << "\nValue    : " << earliestEvent->value
+                  << "\n";
+    }
+    else
+    {
+        std::cout << "No events found for key2\n";
+    }
+
     return 0;
 }

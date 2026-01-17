@@ -7,6 +7,7 @@
 #include <memory>
 #include <optional>
 #include <unordered_map>
+#include <algorithm>
 #include "chronokvs_types.h"
 #include "chronokvs_client_adapter.h"
 
@@ -31,6 +32,8 @@ public:
 
     std::vector<EventData>
     retrieveByKeyAndRange(const std::string& key, std::uint64_t start_timestamp, std::uint64_t end_timestamp);
+
+    std::optional<EventData> retrieveEarliestByKey(const std::string& key);
 };
 } // namespace chronokvs
 #endif // KVS_MAPPER_H_

@@ -58,4 +58,26 @@ std::vector<EventData> ChronoKVSMapper::retrieveByKeyAndRange(const std::string&
     return chronoClientAdapter->retrieveEvents(key, start_timestamp, end_timestamp);
 }
 
+std::optional<EventData> ChronoKVSMapper::retrieveEarliestByKey(const std::string& key)
+{
+    // Retrieve all events for the given key and return the one with the earliest timestamp.
+    // Constants for time range boundaries
+    constexpr uint64_t MIN_TIMESTAMP = 1;                   // Earliest possible timestamp
+    constexpr uint64_t MAX_TIMESTAMP = 2000000000000000000; // ~May 18, 2033 03:33:20 UTC
+
+    auto events = chronoClientAdapter->retrieveEvents(key, MIN_TIMESTAMP, MAX_TIMESTAMP);
+
+    if(events.empty())
+    {
+        return std::nullopt;
+    }
+
+    // Find the event with the minimum timestamp
+    auto earliest = std::min_element(events.begin(),
+                                     events.end(),
+                                     [](const EventData& a, const EventData& b) { return a.timestamp < b.timestamp; });
+
+    return *earliest;
+}
+
 } // namespace chronokvs
