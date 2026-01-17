@@ -7,9 +7,7 @@ on:
     branches: [develop, main]
     paths:
       - 'spack.yaml'
-      - 'spack.lock'
       - 'Client/spack.yaml'
-      - 'Client/spack.lock'
       - '.github/docker/**'
   workflow_dispatch:
 
@@ -54,7 +52,7 @@ jobs:
       - name: Compute base image hash
         id: basehash
         run: |
-          echo "hash=${{ hashFiles('spack.lock', 'Client/spack.lock', 'spack.yaml', 'Client/spack.yaml', '.github/docker/**') }}" >> $GITHUB_OUTPUT
+          echo "hash=${{ hashFiles('spack.yaml', 'Client/spack.yaml', '.github/docker/**') }}" >> $GITHUB_OUTPUT
 
       - name: Set base image name (immutable)
         id: set-base-image-name
@@ -140,7 +138,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    timeout-minutes: 60
+    timeout-minutes: 90
     outputs:
       image-name: ${{ steps.set-final-image-name.outputs.full-name }}
 
@@ -983,4 +981,3 @@ jobs:
         run: |
           docker compose -f dynamic-compose.yaml down -v
           echo "✅ Containers cleaned up"
-

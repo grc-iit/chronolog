@@ -222,6 +222,61 @@ if(CHRONOLOG_BUILD_TESTING)
 endif()
 
 #------------------------------------------------------------------------------
+# CMake Package Configuration Files
+#------------------------------------------------------------------------------
+include(CMakePackageConfigHelpers)
+include(GNUInstallDirs)
+
+# Generate the version file
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/ChronologConfigVersion.cmake"
+    VERSION ${CHRONOLOG_PACKAGE_VERSION}
+    COMPATIBILITY AnyNewerVersion
+)
+
+# Configure the config file
+# First, create a version-aware intermediate file
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ChronologConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/ChronologConfig.cmake.intermediate"
+    @ONLY
+)
+
+# Then use configure_package_config_file to add PACKAGE_INIT and handle PATH_VARS
+# This will process @PACKAGE_INIT@ and @PACKAGE_CHRONOLOG_INSTALL_*@ variables
+configure_package_config_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/ChronologConfig.cmake.intermediate"
+    "${CMAKE_CURRENT_BINARY_DIR}/ChronologConfig.cmake"
+    INSTALL_DESTINATION ${CHRONOLOG_INSTALL_ROOT}/lib/cmake/Chronolog
+    PATH_VARS CHRONOLOG_INSTALL_INCLUDE_DIR CHRONOLOG_INSTALL_LIB_DIR
+)
+
+# Install CMake config files
+install(
+    FILES
+        "${CMAKE_CURRENT_BINARY_DIR}/ChronologConfig.cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/ChronologConfigVersion.cmake"
+    DESTINATION ${CHRONOLOG_INSTALL_ROOT}/lib/cmake/Chronolog
+)
+
+#------------------------------------------------------------------------------
+# pkg-config Support
+#------------------------------------------------------------------------------
+# Configure the pkg-config file
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/chronolog.pc.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/chronolog.pc"
+    @ONLY
+)
+
+# Install pkg-config file
+# Install to chronolog/lib/pkgconfig to match the installation structure
+install(
+    FILES "${CMAKE_CURRENT_BINARY_DIR}/chronolog.pc"
+    DESTINATION ${CHRONOLOG_INSTALL_ROOT}/lib/pkgconfig
+)
+
+#------------------------------------------------------------------------------
 # Custom Targets
 #------------------------------------------------------------------------------
 add_custom_target(make_all cd ${CMAKE_BINARY_DIR} && make)
