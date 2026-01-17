@@ -389,10 +389,9 @@ public:
 
             // Find the actual earliest event from history_events for comparison
             auto expected_earliest = std::min_element(history_events.begin(),
-                                                     history_events.end(),
-                                                     [](const chronokvs::EventData& a, const chronokvs::EventData& b) {
-                                                         return a.timestamp < b.timestamp;
-                                                     });
+                                                      history_events.end(),
+                                                      [](const chronokvs::EventData& a, const chronokvs::EventData& b)
+                                                      { return a.timestamp < b.timestamp; });
 
             bool timestamp_match = earliest.timestamp == expected_earliest->timestamp;
             bool value_match = earliest.value == expected_earliest->value;
@@ -461,26 +460,25 @@ public:
 
             // Find the actual latest event from history_events for comparison
             auto expected_latest = std::max_element(history_events.begin(),
-                                                   history_events.end(),
-                                                   [](const chronokvs::EventData& a, const chronokvs::EventData& b) {
-                                                       return a.timestamp < b.timestamp;
-                                                   });
+                                                    history_events.end(),
+                                                    [](const chronokvs::EventData& a, const chronokvs::EventData& b)
+                                                    { return a.timestamp < b.timestamp; });
 
             bool timestamp_match = latest.timestamp == expected_latest->timestamp;
             bool value_match = latest.value == expected_latest->value;
 
             if(timestamp_match && value_match)
             {
-                std::cout << "  ✓ Get Latest: timestamp " << std::setw(12) << latest.timestamp << " -> "
-                          << latest.value << std::endl;
+                std::cout << "  ✓ Get Latest: timestamp " << std::setw(12) << latest.timestamp << " -> " << latest.value
+                          << std::endl;
                 std::cout << "    Matches expected latest event from history" << std::endl;
                 printTestResult("Get Latest Operations", true, "Latest event retrieved correctly");
                 return true;
             }
             else
             {
-                std::cout << "  ✗ Get Latest: timestamp " << std::setw(12) << latest.timestamp << " -> "
-                          << latest.value << std::endl;
+                std::cout << "  ✗ Get Latest: timestamp " << std::setw(12) << latest.timestamp << " -> " << latest.value
+                          << std::endl;
                 if(!timestamp_match)
                 {
                     std::cout << "    ⚠️  Timestamp mismatch: expected " << expected_latest->timestamp << ", got "
@@ -607,7 +605,7 @@ public:
         printSeparator();
 
         int passed_tests = (test1_result ? 1 : 0) + (test2_result ? 1 : 0) + (test3_result ? 1 : 0) +
-                          (test4_result ? 1 : 0) + (test5_result ? 1 : 0) + (test6_result ? 1 : 0);
+                           (test4_result ? 1 : 0) + (test5_result ? 1 : 0) + (test6_result ? 1 : 0);
         std::cout << "  Overall: " << passed_tests << "/6 tests passed" << std::endl;
 
         if(passed_tests == 6)

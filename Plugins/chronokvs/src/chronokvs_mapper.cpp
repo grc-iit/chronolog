@@ -96,8 +96,8 @@ std::optional<EventData> ChronoKVSMapper::retrieveLatestByKey(const std::string&
 
     // Find the event with the maximum timestamp
     auto latest = std::max_element(events.begin(),
-                                  events.end(),
-                                  [](const EventData& a, const EventData& b) { return a.timestamp < b.timestamp; });
+                                   events.end(),
+                                   [](const EventData& a, const EventData& b) { return a.timestamp < b.timestamp; });
 
     return *latest;
 }
