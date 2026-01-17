@@ -49,7 +49,12 @@ std::vector<EventData> ChronoKVSMapper::retrieveByKeyAndRange(const std::string&
                                                               std::uint64_t start_timestamp,
                                                               std::uint64_t end_timestamp)
 {
-    // Retrieve events for the given key within the specified time range [start_timestamp, end_timestamp)
+    // Retrieve events for the given key within the specified time range [start_timestamp, end_timestamp).
+    // If the range is empty or invalid (start_timestamp >= end_timestamp), return no events.
+    if(start_timestamp >= end_timestamp)
+    {
+        return std::vector<EventData>{};
+    }
     return chronoClientAdapter->retrieveEvents(key, start_timestamp, end_timestamp);
 }
 

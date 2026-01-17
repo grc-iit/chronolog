@@ -283,8 +283,11 @@ public:
                 auto range_events = kvs.get_range(test_key, start_ts, end_ts);
 
                 // Count how many events should be in this range from the available history
+                // Note: We iterate over ALL events, not just [start_idx, end_idx], because
+                // if end_ts was adjusted (line 278), the actual query range may include events
+                // outside the original slice
                 int expected_count = 0;
-                for(int j = start_idx; j <= end_idx; j++)
+                for(std::size_t j = 0; j < history_events.size(); j++)
                 {
                     if(history_events[j].timestamp >= start_ts && history_events[j].timestamp < end_ts)
                     {
@@ -294,7 +297,22 @@ public:
 
                 // Verify we got at least the expected number of events
                 // (may be more due to data propagation from previous tests)
-                bool range_success = range_events.size() >= static_cast<size_t>(expected_count);
+                bool count_check = range_events.size() >= static_cast<size_t>(expected_count);
+
+                // Verify that all retrieved events are within the range
+                bool all_in_range = true;
+                for(const auto& event: range_events)
+                {
+                    if(event.timestamp < start_ts || event.timestamp >= end_ts)
+                    {
+                        all_in_range = false;
+                        std::cout << "    ⚠️  Event with timestamp " << event.timestamp << " is outside the range ["
+                                  << start_ts << ", " << end_ts << ")" << std::endl;
+                    }
+                }
+
+                // Range is successful only if both checks pass
+                bool range_success = count_check && all_in_range;
 
                 if(range_success)
                 {
@@ -310,23 +328,6 @@ public:
                               << std::setw(12) << start_ts << ", " << std::setw(12) << end_ts << ") -> "
                               << range_events.size() << " events (expected at least " << expected_count << ")"
                               << std::endl;
-                }
-
-                // Verify that all retrieved events are within the range
-                bool all_in_range = true;
-                for(const auto& event: range_events)
-                {
-                    if(event.timestamp < start_ts || event.timestamp >= end_ts)
-                    {
-                        all_in_range = false;
-                        std::cout << "    ⚠️  Event with timestamp " << event.timestamp << " is outside the range ["
-                                  << start_ts << ", " << end_ts << ")" << std::endl;
-                    }
-                }
-
-                if(!all_in_range)
-                {
-                    range_success = false;
                 }
             }
             catch(const std::exception& e)
