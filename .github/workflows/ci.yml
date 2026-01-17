@@ -233,9 +233,14 @@ jobs:
             set -e
             source /home/grc-iit/spack/share/spack/setup-env.sh
             spack env activate -p .
-            echo 'Reconcretizing Spack environment for current architecture...'
-            spack concretize --force
-            echo '✅ Spack environment reconcretized'
+            # Only reconcretize if the environment view doesn't exist or is incomplete
+            if [ ! -d \".spack-env/view\" ] || [ ! -d \".spack-env/view/bin\" ]; then
+              echo 'Reconcretizing Spack environment for current architecture...'
+              spack concretize --force
+              echo '✅ Spack environment reconcretized'
+            else
+              echo '✅ Spack environment already concretized, skipping reconcretization'
+            fi
           "
 
       - name: Build ChronoLog
@@ -846,7 +851,18 @@ jobs:
           expected_counts[chrono_keeper]=2
           
           for proc in "${!expected_counts[@]}"; do
-            count=$(grep -c "$proc" "${PROCESS_LIST}" || echo "0")
+            # Get count, ensuring we get a clean integer (handle empty file, multiple lines, etc.)
+            if [ ! -f "${PROCESS_LIST}" ] || [ ! -s "${PROCESS_LIST}" ]; then
+              count=0
+            else
+              count=$(grep -c "$proc" "${PROCESS_LIST}" 2>/dev/null || echo "0")
+              # Ensure count is a single integer (strip any whitespace/newlines)
+              count=$(echo "$count" | tr -d '[:space:]' | head -1)
+              # Default to 0 if count is empty or not a number
+              if [ -z "$count" ] || ! [[ "$count" =~ ^[0-9]+$ ]]; then
+                count=0
+              fi
+            fi
             expected=${expected_counts[$proc]}
             if [ "$count" -eq "$expected" ]; then
               echo "✅ Found $count $proc (expected $expected)"
@@ -858,6 +874,16 @@ jobs:
           
           if [ "$missing" != "0" ]; then
             echo '❌ Deployment verification failed'
+            echo ''
+            echo 'Debugging information:'
+            echo 'Checking processes on each container individually:'
+            for i in $(seq 1 7); do
+              echo "--- Container c$i ---"
+              docker exec chronolog-c$i ps aux | grep -E 'chrono|visor' | grep -v grep || echo "No chrono processes found"
+            done
+            echo ''
+            echo 'Checking deployment logs if available:'
+            docker exec chronolog-c1 bash -c "ls -la /home/grc-iit/chronolog-install/chronolog/monitor/ 2>/dev/null || echo 'No monitor directory'" || true
             exit 1
           fi
           
