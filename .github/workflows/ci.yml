@@ -234,7 +234,7 @@ jobs:
             source /home/grc-iit/spack/share/spack/setup-env.sh
             spack env activate -p .
             # Only reconcretize if the environment view doesn't exist or is incomplete
-            if [ ! -d \".spack-env/view\" ] || [ ! -d \".spack-env/view/bin\" ]; then
+            if [ ! -d \".spack-env/view\" ] || [ ! -d \".spack-env/view/bin\" ] || [ ! -d \".spack-env/view/lib\" ]; then
               echo 'Reconcretizing Spack environment for current architecture...'
               spack concretize --force
               echo '✅ Spack environment reconcretized'
@@ -617,36 +617,16 @@ jobs:
           set -e
           NUM_CONTAINERS=7
           
-          # Prepare SSH keys and known hosts (remove -it flags for CI, run as grc-iit user)
+          # Prepare SSH keys and known hosts
+          # Since all containers share /home/grc-iit via shared_home volume, files created in c1
+          # are automatically visible in all containers - no need to copy them
           docker exec --user grc-iit chronolog-c1 bash -c "mkdir -p /home/grc-iit/.ssh && ssh-keygen -t rsa -b 4096 -f /home/grc-iit/.ssh/id_rsa -N '' || true"
           docker exec --user grc-iit chronolog-c1 bash -c "cat /home/grc-iit/.ssh/id_rsa.pub > /home/grc-iit/.ssh/authorized_keys"
           docker exec --user grc-iit chronolog-c1 bash -c "for i in \$(seq 1 $NUM_CONTAINERS); do ssh-keyscan -t rsa,ed25519 c\$i >> /home/grc-iit/.ssh/known_hosts 2>/dev/null; done"
           docker exec chronolog-c1 bash -c "chown -R grc-iit:grc-iit /home/grc-iit/.ssh && chmod 700 /home/grc-iit/.ssh && chmod 600 /home/grc-iit/.ssh/id_rsa && chmod 644 /home/grc-iit/.ssh/id_rsa.pub && chmod 600 /home/grc-iit/.ssh/authorized_keys"
           docker exec --user grc-iit chronolog-c1 bash -c "echo 'export USER=grc-iit' >> ~/.bashrc"
           
-          # Copy SSH keys to all containers
-          # First, extract files from c1 to temporary files on host
-          docker cp chronolog-c1:/home/grc-iit/.ssh/id_rsa.pub /tmp/id_rsa.pub.tmp || true
-          docker cp chronolog-c1:/home/grc-iit/.ssh/known_hosts /tmp/known_hosts.tmp || true
-          
-          for i in $(seq 1 $NUM_CONTAINERS); do
-            docker exec chronolog-c$i bash -c "mkdir -p /home/grc-iit/.ssh && chown -R grc-iit:grc-iit /home/grc-iit/.ssh" || true
-            # Copy id_rsa.pub to authorized_keys
-            if [ -f /tmp/id_rsa.pub.tmp ]; then
-              docker cp /tmp/id_rsa.pub.tmp chronolog-c$i:/home/grc-iit/.ssh/authorized_keys || true
-            fi
-            # Copy known_hosts
-            if [ -f /tmp/known_hosts.tmp ]; then
-              docker cp /tmp/known_hosts.tmp chronolog-c$i:/home/grc-iit/.ssh/known_hosts || true
-            fi
-            docker exec chronolog-c$i bash -c "chown -R grc-iit:grc-iit /home/grc-iit/.ssh && chmod 700 /home/grc-iit/.ssh && chmod 600 /home/grc-iit/.ssh/authorized_keys && chmod 644 /home/grc-iit/.ssh/known_hosts" || true
-            docker exec --user grc-iit chronolog-c$i bash -c "echo 'export USER=grc-iit' >> ~/.bashrc" || true
-          done
-          
-          # Clean up temporary files
-          rm -f /tmp/id_rsa.pub.tmp /tmp/known_hosts.tmp || true
-          
-          echo "✅ SSH keys configured"
+          echo "✅ SSH keys configured (shared across all containers via shared_home volume)"
 
       - name: Copy workspace to containers
         run: |
@@ -707,25 +687,23 @@ jobs:
           set -e
           echo '[1/5] Copying ChronoLog installation from local deployment image...'
           # The local deployment workflow installs to /home/grc-iit/chronolog-install/chronolog
-          # Copy it to all containers
-          for i in $(seq 1 7); do
-            docker exec chronolog-c$i bash -c "
-              set -e
-              # Create target directory
-              mkdir -p /home/grc-iit/chronolog-install
-              
-              # The installation should already be in the image at /home/grc-iit/chronolog-install/chronolog
-              if [ -d /home/grc-iit/chronolog-install/chronolog ] && [ -d /home/grc-iit/chronolog-install/chronolog/bin ]; then
-                echo '✅ ChronoLog already exists at /home/grc-iit/chronolog-install/chronolog'
-                chown -R grc-iit:grc-iit /home/grc-iit/chronolog-install
-              else
-                echo '❌ ChronoLog installation not found in image'
-                echo 'Searched in:'
-                echo '  - /home/grc-iit/chronolog-install/chronolog'
-                exit 1
-              fi
-            "
-          done
+          # Since all containers share /home/grc-iit via shared_home volume, we only need to check once
+          docker exec chronolog-c1 bash -c "
+            set -e
+            # Create target directory
+            mkdir -p /home/grc-iit/chronolog-install
+            
+            # The installation should already be in the image at /home/grc-iit/chronolog-install/chronolog
+            if [ -d /home/grc-iit/chronolog-install/chronolog ] && [ -d /home/grc-iit/chronolog-install/chronolog/bin ]; then
+              echo '✅ ChronoLog already exists at /home/grc-iit/chronolog-install/chronolog'
+              chown -R grc-iit:grc-iit /home/grc-iit/chronolog-install
+            else
+              echo '❌ ChronoLog installation not found in image'
+              echo 'Searched in:'
+              echo '  - /home/grc-iit/chronolog-install/chronolog'
+              exit 1
+            fi
+          "
           
           # Verify the installation was copied correctly
           echo '🔍 Verifying installation...'
@@ -833,46 +811,111 @@ jobs:
           PROCESS_LIST="/tmp/chrono_processes.txt"
           rm -f "${PROCESS_LIST}"
           
-          # Check processes on each container
+          # Check processes on each container, prefixing each line with container name
           for i in $(seq 1 7); do
             echo "Checking processes on c$i..."
-            docker exec chronolog-c$i pgrep -la chrono >> "${PROCESS_LIST}" 2>/dev/null || true
+            docker exec chronolog-c$i pgrep -la chrono 2>/dev/null | sed "s/^/c$i /" >> "${PROCESS_LIST}" || true
           done
           
           echo "Collected process list:"
           cat "${PROCESS_LIST}" || echo "No processes found"
           
-          echo '🔍 Checking required components...'
+          echo '🔍 Checking required components (count and host distribution)...'
           missing=0
-          declare -A expected_counts
-          expected_counts[chronovisor_server]=1
-          expected_counts[chrono_grapher]=2
-          expected_counts[chrono_player]=2
-          expected_counts[chrono_keeper]=2
           
-          for proc in "${!expected_counts[@]}"; do
-            # Get count, ensuring we get a clean integer (handle empty file, multiple lines, etc.)
+          # Read expected host assignments from host files
+          WORK_DIR="/home/grc-iit/chronolog-install/chronolog"
+          EXPECTED_VISOR_HOSTS=$(docker exec chronolog-c1 bash -c "cat ${WORK_DIR}/conf/hosts_visor 2>/dev/null" | tr '\n' ' ' | xargs)
+          EXPECTED_KEEPER_HOSTS=$(docker exec chronolog-c1 bash -c "cat ${WORK_DIR}/conf/hosts_keeper 2>/dev/null" | tr '\n' ' ' | xargs)
+          EXPECTED_GRAPHER_HOSTS=$(docker exec chronolog-c1 bash -c "cat ${WORK_DIR}/conf/hosts_grapher 2>/dev/null" | tr '\n' ' ' | xargs)
+          EXPECTED_PLAYER_HOSTS=$(docker exec chronolog-c1 bash -c "cat ${WORK_DIR}/conf/hosts_player 2>/dev/null" | tr '\n' ' ' | xargs)
+          
+          echo "Expected host assignments:"
+          echo "  chronovisor_server: ${EXPECTED_VISOR_HOSTS}"
+          echo "  chrono_keeper: ${EXPECTED_KEEPER_HOSTS}"
+          echo "  chrono_grapher: ${EXPECTED_GRAPHER_HOSTS}"
+          echo "  chrono_player: ${EXPECTED_PLAYER_HOSTS}"
+          
+          # Function to check process distribution
+          check_process_distribution() {
+            local proc_name=$1
+            local expected_hosts=$2
+            local expected_count=$3
+            
+            # Count total occurrences
             if [ ! -f "${PROCESS_LIST}" ] || [ ! -s "${PROCESS_LIST}" ]; then
               count=0
             else
-              count=$(grep -c "$proc" "${PROCESS_LIST}" 2>/dev/null || echo "0")
-              # Ensure count is a single integer (strip any whitespace/newlines)
+              count=$(grep -c "$proc_name" "${PROCESS_LIST}" 2>/dev/null || echo "0")
               count=$(echo "$count" | tr -d '[:space:]' | head -1)
-              # Default to 0 if count is empty or not a number
               if [ -z "$count" ] || ! [[ "$count" =~ ^[0-9]+$ ]]; then
                 count=0
               fi
             fi
-            expected=${expected_counts[$proc]}
-            if [ "$count" -eq "$expected" ]; then
-              echo "✅ Found $count $proc (expected $expected)"
-            else
-              echo "❌ Missing or wrong count: $proc (found $count, expected $expected)"
-              missing=1
+            
+            # Check count
+            if [ "$count" -ne "$expected_count" ]; then
+              echo "❌ Wrong count for $proc_name: found $count, expected $expected_count"
+              return 1
             fi
-          done
+            
+            # Check host distribution
+            local missing_hosts=""
+            local extra_hosts=""
+            for host in $expected_hosts; do
+              if ! grep -q "^${host}.*${proc_name}" "${PROCESS_LIST}" 2>/dev/null; then
+                missing_hosts="${missing_hosts} ${host}"
+              fi
+            done
+            
+            # Check for processes on unexpected hosts
+            local found_hosts=$(grep "${proc_name}" "${PROCESS_LIST}" 2>/dev/null | awk '{print $1}' | sort -u | tr '\n' ' ' | xargs)
+            for found_host in $found_hosts; do
+              local is_expected=false
+              for expected_host in $expected_hosts; do
+                if [ "$found_host" = "$expected_host" ]; then
+                  is_expected=true
+                  break
+                fi
+              done
+              if [ "$is_expected" = "false" ]; then
+                extra_hosts="${extra_hosts} ${found_host}"
+              fi
+            done
+            
+            if [ -n "$missing_hosts" ]; then
+              echo "❌ $proc_name missing on expected hosts:${missing_hosts}"
+              return 1
+            fi
+            
+            if [ -n "$extra_hosts" ]; then
+              echo "❌ $proc_name found on unexpected hosts:${extra_hosts}"
+              return 1
+            fi
+            
+            echo "✅ $proc_name: found $count processes on correct hosts (${expected_hosts})"
+            return 0
+          }
+          
+          # Check each process type
+          if ! check_process_distribution "chronovisor_server" "$EXPECTED_VISOR_HOSTS" 1; then
+            missing=1
+          fi
+          
+          if ! check_process_distribution "chrono_keeper" "$EXPECTED_KEEPER_HOSTS" 2; then
+            missing=1
+          fi
+          
+          if ! check_process_distribution "chrono_grapher" "$EXPECTED_GRAPHER_HOSTS" 2; then
+            missing=1
+          fi
+          
+          if ! check_process_distribution "chrono_player" "$EXPECTED_PLAYER_HOSTS" 2; then
+            missing=1
+          fi
           
           if [ "$missing" != "0" ]; then
+            echo ''
             echo '❌ Deployment verification failed'
             echo ''
             echo 'Debugging information:'
@@ -888,7 +931,7 @@ jobs:
           fi
           
           rm -f "${PROCESS_LIST}"
-          echo '✅ Deployment verification passed'
+          echo '✅ Deployment verification passed (count and host distribution correct)'
 
       - name: Run Client Performance Test
         run: |
