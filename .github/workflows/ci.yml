@@ -814,7 +814,7 @@ jobs:
           # Check processes on each container, prefixing each line with container name
           for i in $(seq 1 7); do
             echo "Checking processes on c$i..."
-            docker exec chronolog-c$i pgrep -la chrono 2>/dev/null | sed "s/^/c$i /" >> "${PROCESS_LIST}" || true
+            docker exec chronolog-c$i pgrep -la 'chronovisor_server|chrono_keeper|chrono_grapher|chrono_player' 2>/dev/null | sed "s/^/c$i /" >> "${PROCESS_LIST}" || true
           done
           
           echo "Collected process list:"
