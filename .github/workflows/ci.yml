@@ -812,9 +812,10 @@ jobs:
           rm -f "${PROCESS_LIST}"
           
           # Check processes on each container in parallel, prefixing each line with container name
+          # Using ps + grep -E for reliable extended regex support across systems
           for i in $(seq 1 7); do
             {
-              docker exec chronolog-c$i pgrep -la 'chronovisor_server|chrono_keeper|chrono_grapher|chrono_player' 2>/dev/null | sed "s/^/c$i /" >> "${PROCESS_LIST}.c$i" || true
+              docker exec chronolog-c$i ps -eo pid,args 2>/dev/null | grep -E 'chronovisor_server|chrono_keeper|chrono_grapher|chrono_player' | grep -v grep | sed "s/^/c$i /" >> "${PROCESS_LIST}.c$i" || true
             } &
           done
           wait
