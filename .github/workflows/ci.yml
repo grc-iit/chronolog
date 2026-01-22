@@ -876,17 +876,11 @@ jobs:
               fi
             done
             
-            # Check for processes on unexpected hosts
+            # Check for processes on unexpected hosts - O(m+n) using pattern matching
             local found_hosts=$(grep "${proc_name}" "${PROCESS_LIST}" 2>/dev/null | awk '{print $1}' | sort -u | tr '\n' ' ' | xargs)
+            local expected_hosts_pattern=" ${expected_hosts} "
             for found_host in $found_hosts; do
-              local is_expected=false
-              for expected_host in $expected_hosts; do
-                if [ "$found_host" = "$expected_host" ]; then
-                  is_expected=true
-                  break
-                fi
-              done
-              if [ "$is_expected" = "false" ]; then
+              if [[ ! "${expected_hosts_pattern}" =~ " ${found_host} " ]]; then
                 extra_hosts="${extra_hosts} ${found_host}"
               fi
             done
