@@ -811,10 +811,18 @@ jobs:
           PROCESS_LIST="/tmp/chrono_processes.txt"
           rm -f "${PROCESS_LIST}"
           
-          # Check processes on each container, prefixing each line with container name
+          # Check processes on each container in parallel, prefixing each line with container name
           for i in $(seq 1 7); do
-            echo "Checking processes on c$i..."
-            docker exec chronolog-c$i pgrep -la 'chronovisor_server|chrono_keeper|chrono_grapher|chrono_player' 2>/dev/null | sed "s/^/c$i /" >> "${PROCESS_LIST}" || true
+            {
+              docker exec chronolog-c$i pgrep -la 'chronovisor_server|chrono_keeper|chrono_grapher|chrono_player' 2>/dev/null | sed "s/^/c$i /" >> "${PROCESS_LIST}.c$i" || true
+            } &
+          done
+          wait
+
+          # Combine results from all containers
+          for i in $(seq 1 7); do
+            cat "${PROCESS_LIST}.c$i" >> "${PROCESS_LIST}" 2>/dev/null || true
+            rm -f "${PROCESS_LIST}.c$i"
           done
           
           echo "Collected process list:"
