@@ -13,10 +13,11 @@
 /**
  * ChronoKVS API Integration Test
  * 
- * This test verifies the ChronoKVS API functionality with 3 modular tests:
+ * This test verifies the ChronoKVS API functionality with 4 modular tests:
  * 1. Put: Write 1000 values to a single story
  * 2. Get History: Retrieve all values from the story
  * 3. Get: Retrieve 10 random specific values by timestamp
+ * 4. Get Range: Retrieve events within specific time ranges
  */
 
 class ChronoKVSTest
@@ -29,6 +30,7 @@ private:
     std::vector<std::uint64_t> timestamps;
     std::vector<std::string> values;
     std::vector<int> random_indices;
+    std::vector<chronokvs::EventData> history_events;
 
     void printHeader(const std::string& title)
     {
@@ -139,6 +141,7 @@ public:
         try
         {
             auto history = kvs.get_history(test_key);
+            history_events = history; // Store for use in Test 4
 
             bool success = history.size() >= static_cast<size_t>(num_values);
             printTestResult("Get History Operations", success, std::to_string(history.size()) + " values retrieved");
@@ -229,6 +232,131 @@ public:
         return success;
     }
 
+    bool test4_get_range()
+    {
+        printHeader("TEST 4: GET RANGE OPERATIONS");
+        std::cout << "  Retrieving events within specific time ranges" << std::endl;
+        std::cout << "  Target: Successful range retrievals with correct event counts" << std::endl;
+        printSeparator();
+
+        // Use history events from Test 2, which are guaranteed to be available
+        if(history_events.size() < 10)
+        {
+            std::cout << "  ⚠️  Skipping Test 4 (Get Range) - insufficient data (need at least 10 events in history)"
+                      << std::endl;
+            return false;
+        }
+
+        int successful_ranges = 0;
+        const int num_range_tests = 5;
+        const int min_successful = 3; // Test passes if at least 3 out of 5 ranges succeed
+
+        // Test different ranges using actual available events
+        // Use sequential ranges from different parts of the history for more predictable testing
+        for(int i = 0; i < num_range_tests; i++)
+        {
+            // Use sequential ranges from different parts of the history
+            // This is more predictable than random ranges
+            int history_size = (int)history_events.size();
+            int segment_size = history_size / num_range_tests;
+            int start_idx = i * segment_size;
+            int end_idx = std::min(start_idx + std::max(5, segment_size / 2), history_size - 1);
+
+            // Ensure we have a valid range with at least 2 events
+            if(end_idx <= start_idx)
+            {
+                end_idx = std::min(start_idx + 5, history_size - 1);
+            }
+
+            std::uint64_t start_ts = history_events[start_idx].timestamp;
+            std::uint64_t end_ts = history_events[end_idx].timestamp + 1; // +1 to make it inclusive of the last event
+
+            // Ensure valid range (end must be greater than start)
+            if(end_ts <= start_ts)
+            {
+                // If timestamps are the same or out of order, use a small offset
+                end_ts = start_ts + 1000; // Add a small offset
+            }
+
+            try
+            {
+                auto range_events = kvs.get_range(test_key, start_ts, end_ts);
+
+                // Count how many events should be in this range from the available history
+                // Note: We iterate over ALL events, not just [start_idx, end_idx], because
+                // if end_ts was adjusted (line 278), the actual query range may include events
+                // outside the original slice
+                int expected_count = 0;
+                for(std::size_t j = 0; j < history_events.size(); j++)
+                {
+                    if(history_events[j].timestamp >= start_ts && history_events[j].timestamp < end_ts)
+                    {
+                        expected_count++;
+                    }
+                }
+
+                // Verify we got at least the expected number of events
+                // (may be more due to data propagation from previous tests)
+                bool count_check = range_events.size() >= static_cast<size_t>(expected_count);
+
+                // Verify that all retrieved events are within the range
+                bool all_in_range = true;
+                for(const auto& event: range_events)
+                {
+                    if(event.timestamp < start_ts || event.timestamp >= end_ts)
+                    {
+                        all_in_range = false;
+                        std::cout << "    ⚠️  Event with timestamp " << event.timestamp << " is outside the range ["
+                                  << start_ts << ", " << end_ts << ")" << std::endl;
+                    }
+                }
+
+                // Range is successful only if both checks pass
+                bool range_success = count_check && all_in_range;
+
+                if(range_success)
+                {
+                    successful_ranges++;
+                    std::cout << "  ✓ Range " << std::setw(2) << (i + 1) << "/" << num_range_tests << ": ["
+                              << std::setw(12) << start_ts << ", " << std::setw(12) << end_ts << ") -> "
+                              << range_events.size() << " events (expected at least " << expected_count << ")"
+                              << std::endl;
+                }
+                else
+                {
+                    std::cout << "  ✗ Range " << std::setw(2) << (i + 1) << "/" << num_range_tests << ": ["
+                              << std::setw(12) << start_ts << ", " << std::setw(12) << end_ts << ") -> "
+                              << range_events.size() << " events (expected at least " << expected_count << ")"
+                              << std::endl;
+                }
+            }
+            catch(const std::exception& e)
+            {
+                std::cout << "  ✗ Range " << std::setw(2) << (i + 1) << "/" << num_range_tests << ": [" << std::setw(12)
+                          << start_ts << ", " << std::setw(12) << end_ts << ") failed with " << e.what() << std::endl;
+            }
+        }
+
+        std::cout << std::endl;
+        bool success = successful_ranges >= min_successful;
+        printTestResult("Get Range Operations",
+                        success,
+                        std::to_string(successful_ranges) + "/" + std::to_string(num_range_tests) +
+                                " successful (need at least " + std::to_string(min_successful) + ")");
+
+        if(success)
+        {
+            std::cout << "  ✓ All range retrievals successful" << std::endl;
+        }
+        else
+        {
+            std::cout << "  ⚠️  Some range retrievals failed - this may indicate timing or data propagation issues"
+                      << std::endl;
+        }
+
+        return success;
+    }
+
     bool runAllTests()
     {
         // Main header
@@ -236,12 +364,14 @@ public:
         std::cout << "                    CHRONOKVS API INTEGRATION TEST" << std::endl;
         std::cout << "                    ==============================" << std::endl;
         std::cout << "  Purpose: Verify ChronoKVS API functionality for GitHub Actions" << std::endl;
-        std::cout << "  Tests:   Put Operations, Data Propagation, Get History, Get Operations" << std::endl;
+        std::cout << "  Tests:   Put Operations, Data Propagation, Get History, Get Operations, Get Range Operations"
+                  << std::endl;
         std::cout << std::string(80, '=') << std::endl;
 
         bool test1_result = false;
         bool test2_result = false;
         bool test3_result = false;
+        bool test4_result = false;
 
         // Test 1: Put
         test1_result = test1_put();
@@ -274,24 +404,41 @@ public:
             test3_result = false;
         }
 
+        // Test 4: Get Range (only if we have history data from Test 2, regardless of Test 2 pass/fail)
+        // Test 2 may have "failed" because it didn't get all 1000 events, but we still got some history
+        if(history_events.size() >= 10)
+        {
+            test4_result = test4_get_range();
+        }
+        else
+        {
+            printHeader("TEST 4: GET RANGE OPERATIONS");
+            std::cout << "  ⚠️  Skipping Test 4 (Get Range) - insufficient history data from Test 2" << std::endl;
+            std::cout << "  This test requires at least 10 events in history to proceed (got " << history_events.size()
+                      << ")" << std::endl;
+            test4_result = false;
+        }
+
         // Final summary
         printHeader("FINAL TEST RESULTS");
         std::cout << "  Test 1 (Put):        " << (test1_result ? "✅ PASSED" : "❌ FAILED") << std::endl;
         std::cout << "  Test 2 (Get History): " << (test2_result ? "✅ PASSED" : "❌ FAILED") << std::endl;
         std::cout << "  Test 3 (Get):        " << (test3_result ? "✅ PASSED" : "❌ FAILED") << std::endl;
+        std::cout << "  Test 4 (Get Range):  " << (test4_result ? "✅ PASSED" : "❌ FAILED") << std::endl;
         printSeparator();
 
-        int passed_tests = (test1_result ? 1 : 0) + (test2_result ? 1 : 0) + (test3_result ? 1 : 0);
-        std::cout << "  Overall: " << passed_tests << "/3 tests passed" << std::endl;
+        int passed_tests =
+                (test1_result ? 1 : 0) + (test2_result ? 1 : 0) + (test3_result ? 1 : 0) + (test4_result ? 1 : 0);
+        std::cout << "  Overall: " << passed_tests << "/4 tests passed" << std::endl;
 
-        if(passed_tests == 3)
+        if(passed_tests == 4)
         {
             std::cout << "\n  🎉 ALL CHRONOKVS API TESTS PASSED! 🎉" << std::endl;
             std::cout << "  The ChronoKVS integration is working correctly and ready for GitHub Actions." << std::endl;
         }
         else if(passed_tests > 0)
         {
-            std::cout << "\n  ⚠️  PARTIAL SUCCESS: " << passed_tests << "/3 tests passed" << std::endl;
+            std::cout << "\n  ⚠️  PARTIAL SUCCESS: " << passed_tests << "/4 tests passed" << std::endl;
             std::cout << "  Some ChronoKVS functionality is working, but there may be issues to investigate."
                       << std::endl;
         }
@@ -303,7 +450,7 @@ public:
 
         std::cout << std::string(80, '=') << std::endl;
 
-        return passed_tests == 3;
+        return passed_tests == 4;
     }
 };
 

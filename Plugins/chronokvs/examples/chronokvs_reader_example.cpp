@@ -85,5 +85,21 @@ int main()
         std::cout << "No value found\n";
     }
 
+    // Read and display events in a time range for key2
+    std::cout << "\nReading events for key2 in time range [" << timestamps[1] << ", " << timestamps[2] + 1 << "):\n";
+    auto rangeEvents = chronoKVS.get_range(key2, timestamps[1], timestamps[2] + 1);
+    if(rangeEvents.empty())
+    {
+        std::cout << "No events found in the specified time range\n";
+    }
+    else
+    {
+        std::cout << "Found " << rangeEvents.size() << " events in the time range:\n";
+        for(const auto& event: rangeEvents)
+        {
+            std::cout << "Timestamp: " << event.timestamp << "\nValue    : " << event.value << "\n\n";
+        }
+    }
+
     return 0;
 }
