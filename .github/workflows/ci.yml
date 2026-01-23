@@ -817,7 +817,7 @@ jobs:
           docker exec --user grc-iit chronolog-c1 bash -c "
             rm -rf ${PSSH_OUT_DIR}
             mkdir -p ${PSSH_OUT_DIR}
-            pssh -h ${WORK_DIR}/conf/hosts_all -o ${PSSH_OUT_DIR} -t 30 \"ps -eo pid,args 2>/dev/null | grep -E 'chronovisor_server|chrono_keeper|chrono_grapher|chrono_player' | grep -v grep || true\"
+            parallel-ssh -h ${WORK_DIR}/conf/hosts_all -o ${PSSH_OUT_DIR} -t 30 \"ps -eo pid,args 2>/dev/null | grep -E 'chronovisor_server|chrono_keeper|chrono_grapher|chrono_player' | grep -v grep || true\"
             # Combine results, prefixing each line with container name
             for host_file in ${PSSH_OUT_DIR}/*; do
               host=\$(basename \"\$host_file\")
