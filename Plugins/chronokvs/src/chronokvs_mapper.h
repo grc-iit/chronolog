@@ -28,6 +28,9 @@ public:
     std::string retrieveByKeyAndTs(const std::string& key, std::uint64_t timestamp);
 
     std::vector<EventData> retrieveByKey(const std::string& key);
+
+    std::vector<EventData>
+    retrieveByKeyAndRange(const std::string& key, std::uint64_t start_timestamp, std::uint64_t end_timestamp);
 };
 } // namespace chronokvs
 #endif // KVS_MAPPER_H_
