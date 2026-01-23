@@ -128,20 +128,13 @@ EOF
 docker compose -f dynamic-compose.yaml up -d
 
 # Prepare SSH keys and known hosts (remove -it flags for CI compatibility)
+# Since all containers share /home/grc-iit via shared_home volume, operations on c1
+# are automatically visible in all containers - no need to copy files to each container
 docker exec chronolog-c1 bash -c "mkdir -p /home/grc-iit/.ssh && ssh-keygen -t rsa -b 4096 -f /home/grc-iit/.ssh/id_rsa -N '' || true"
 docker exec chronolog-c1 bash -c "cat /home/grc-iit/.ssh/id_rsa.pub > /home/grc-iit/.ssh/authorized_keys"
 docker exec chronolog-c1 bash -c "for i in \$(seq 1 $NUM_CONTAINERS); do ssh-keyscan -t rsa,ed25519 c\$i >> /home/grc-iit/.ssh/known_hosts 2>/dev/null; done"
-docker exec chronolog-c1 bash -c "chmod 700 /home/grc-iit/.ssh && chmod 600 /home/grc-iit/.ssh/id_rsa && chmod 644 /home/grc-iit/.ssh/id_rsa.pub && chmod 600 /home/grc-iit/.ssh/authorized_keys"
+docker exec chronolog-c1 bash -c "chown -R grc-iit:grc-iit /home/grc-iit/.ssh && chmod 700 /home/grc-iit/.ssh && chmod 600 /home/grc-iit/.ssh/id_rsa && chmod 644 /home/grc-iit/.ssh/id_rsa.pub && chmod 600 /home/grc-iit/.ssh/authorized_keys"
 docker exec chronolog-c1 bash -c "echo 'export USER=grc-iit' >> ~/.bashrc"
-
-# Copy SSH keys to all containers
-for i in $(seq 1 $NUM_CONTAINERS); do
-    docker exec chronolog-c$i bash -c "mkdir -p /home/grc-iit/.ssh && chown -R grc-iit:grc-iit /home/grc-iit/.ssh" || true
-    docker cp chronolog-c1:/home/grc-iit/.ssh/id_rsa.pub chronolog-c$i:/home/grc-iit/.ssh/authorized_keys || true
-    docker cp chronolog-c1:/home/grc-iit/.ssh/known_hosts chronolog-c$i:/home/grc-iit/.ssh/known_hosts || true
-    docker exec chronolog-c$i bash -c "chown -R grc-iit:grc-iit /home/grc-iit/.ssh && chmod 700 /home/grc-iit/.ssh && chmod 600 /home/grc-iit/.ssh/authorized_keys && chmod 644 /home/grc-iit/.ssh/known_hosts" || true
-    docker exec chronolog-c$i bash -c "echo 'export USER=grc-iit' >> ~/.bashrc" || true
-done
 
 # Prepare hosts files (using absolute paths matching ci.yml)
 docker exec chronolog-c1 bash -c "rm -rf /home/grc-iit/chronolog-install/chronolog/conf/hosts_*" || true
