@@ -811,20 +811,22 @@ jobs:
           PROCESS_LIST="/tmp/chrono_processes.txt"
           rm -f "${PROCESS_LIST}"
           
-          # Check processes on each container in parallel, prefixing each line with container name
-          # Using ps + grep -E for reliable extended regex support across systems
-          for i in $(seq 1 7); do
-            {
-              docker exec chronolog-c$i ps -eo pid,args 2>/dev/null | grep -E 'chronovisor_server|chrono_keeper|chrono_grapher|chrono_player' | grep -v grep | sed "s/^/c$i /" >> "${PROCESS_LIST}.c$i" || true
-            } &
-          done
-          wait
-
-          # Combine results from all containers
-          for i in $(seq 1 7); do
-            cat "${PROCESS_LIST}.c$i" >> "${PROCESS_LIST}" 2>/dev/null || true
-            rm -f "${PROCESS_LIST}.c$i"
-          done
+          # Check processes on each container in parallel using pssh
+          # pssh outputs to individual files per host, avoiding output interleaving issues
+          PSSH_OUT_DIR="/tmp/pssh_processes"
+          docker exec --user grc-iit chronolog-c1 bash -c "
+            rm -rf ${PSSH_OUT_DIR}
+            mkdir -p ${PSSH_OUT_DIR}
+            pssh -h ${WORK_DIR}/conf/hosts_all -o ${PSSH_OUT_DIR} -t 30 \"ps -eo pid,args 2>/dev/null | grep -E 'chronovisor_server|chrono_keeper|chrono_grapher|chrono_player' | grep -v grep || true\"
+            # Combine results, prefixing each line with container name
+            for host_file in ${PSSH_OUT_DIR}/*; do
+              host=\$(basename \"\$host_file\")
+              if [ -f \"\$host_file\" ] && [ -s \"\$host_file\" ]; then
+                sed \"s/^/\$host /\" \"\$host_file\"
+              fi
+            done
+            rm -rf ${PSSH_OUT_DIR}
+          " > "${PROCESS_LIST}"
           
           echo "Collected process list:"
           cat "${PROCESS_LIST}" || echo "No processes found"
