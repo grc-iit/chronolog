@@ -16,7 +16,6 @@ add_executable(hdf5_archiver_test
     ${CMAKE_SOURCE_DIR}/ChronoStore/include/StoryReader.h
     ${CMAKE_SOURCE_DIR}/ChronoStore/src/StoryReader.cpp
     ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunk.cpp
 )
 
 target_include_directories(hdf5_archiver_test PRIVATE
@@ -30,6 +29,7 @@ target_include_directories(hdf5_archiver_test PRIVATE
 
 target_link_libraries(hdf5_archiver_test
     PRIVATE
+        chrono_common
         ${HDF5_LIBRARIES}
         thallium
 )

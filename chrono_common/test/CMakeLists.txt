@@ -7,10 +7,6 @@ find_package(Thallium REQUIRED)
 #------------------------------------------------------------------------------
 add_executable(extraction_chain_test
     ExtractionChainTest.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunk.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/ChunkExtractorCSV.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/RDMATransferAgent.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/ChunkExtractorRDMA.cpp
 )
 
 target_include_directories(extraction_chain_test PRIVATE
@@ -19,6 +15,7 @@ target_include_directories(extraction_chain_test PRIVATE
 
 target_link_libraries(extraction_chain_test
     PRIVATE
+        chrono_common
         chronolog_client
         thallium
 )
