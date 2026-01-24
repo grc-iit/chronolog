@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 find_package(Thallium REQUIRED)
+find_package(HDF5 REQUIRED COMPONENTS C CXX)
 
 #------------------------------------------------------------------------------
 # chrono_common Library
@@ -29,6 +30,7 @@ target_include_directories(chrono_common
 target_link_libraries(chrono_common
     PRIVATE
         thallium
+        ${HDF5_LIBRARIES}
 )
 
 # Get all header files from include directory
