@@ -1,5 +1,45 @@
 cmake_minimum_required(VERSION 3.25)
 
-message("building chrono_common tests")
+find_package(Thallium REQUIRED)
 
+#------------------------------------------------------------------------------
+# chrono_common Library
+#------------------------------------------------------------------------------
+add_library(chrono_common ${CHRONOLOG_LIBTYPE}
+    src/city.cpp
+    src/ConfigurationManager.cpp
+    src/StoryChunk.cpp
+    src/StoryChunkExtractor.cpp
+    src/StoryChunkWriter.cpp
+    src/StoryPipeline.cpp
+    src/ChunkExtractorCSV.cpp
+    src/ChunkExtractorRDMA.cpp
+    src/RDMATransferAgent.cpp
+)
+
+target_include_directories(chrono_common
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:${CHRONOLOG_INSTALL_INCLUDE_DIR}>
+)
+
+target_link_libraries(chrono_common
+    PRIVATE
+        thallium
+)
+
+set_target_properties(chrono_common PROPERTIES
+    BUILD_WITH_INSTALL_RPATH TRUE
+    SKIP_BUILD_RPATH TRUE
+)
+
+#------------------------------------------------------------------------------
+# Install library
+#------------------------------------------------------------------------------
+chronolog_install_target(chrono_common)
+
+#------------------------------------------------------------------------------
+# Tests
+#------------------------------------------------------------------------------
+message("building chrono_common tests")
 add_subdirectory(test)
