@@ -20,7 +20,10 @@ add_library(chrono_common ${CHRONOLOG_LIBTYPE}
 target_include_directories(chrono_common
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/Client/cpp/include>
         $<INSTALL_INTERFACE:${CHRONOLOG_INSTALL_INCLUDE_DIR}>
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/Client/cpp/include
 )
 
 target_link_libraries(chrono_common
