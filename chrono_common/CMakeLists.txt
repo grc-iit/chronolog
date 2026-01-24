@@ -28,15 +28,19 @@ target_link_libraries(chrono_common
         thallium
 )
 
+# Get all header files from include directory
+file(GLOB CHRONO_COMMON_PUBLIC_HEADERS "${CMAKE_CURRENT_SOURCE_DIR}/include/*.h")
+
 set_target_properties(chrono_common PROPERTIES
     BUILD_WITH_INSTALL_RPATH TRUE
     SKIP_BUILD_RPATH TRUE
+    PUBLIC_HEADER "${CHRONO_COMMON_PUBLIC_HEADERS}"
 )
 
 #------------------------------------------------------------------------------
-# Install library
+# Note: chrono_common is installed via Client/CMakeLists.txt with the
+# ChronologTargets export to ensure proper CMake export semantics
 #------------------------------------------------------------------------------
-chronolog_install_target(chrono_common)
 
 #------------------------------------------------------------------------------
 # Tests
