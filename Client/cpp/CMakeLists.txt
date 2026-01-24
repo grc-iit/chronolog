@@ -23,7 +23,6 @@ add_library(chronolog_client
     src/ChronologClientImpl.cpp
     src/ClientConfiguration.cpp
     ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunk.cpp
 )
 
 # Include directories for the library
@@ -51,6 +50,7 @@ target_link_directories(chronolog_client
 
 target_link_libraries(chronolog_client
     PRIVATE
+        chrono_common
         thallium
         ${JSON-C_LIBRARIES}
 )
