@@ -12,7 +12,7 @@
 
 /**
  * ChronoKVS API Integration Test
- * 
+ *
  * This test verifies the ChronoKVS API functionality with 6 modular tests:
  * 1. Put: Write 1000 values to a single story
  * 2. Get History: Retrieve all values from the story
@@ -143,7 +143,7 @@ public:
         try
         {
             auto history = kvs.get_history(test_key);
-            history_events = history; // Store for use in Test 4
+            history_events = history; // Store for use in subsequent tests
 
             bool success = history.size() >= static_cast<size_t>(num_values);
             printTestResult("Get History Operations", success, std::to_string(history.size()) + " values retrieved");
@@ -348,7 +348,7 @@ public:
 
         if(success)
         {
-            std::cout << "  ✓ All range retrievals successful" << std::endl;
+            std::cout << "  ✓ Sufficient range retrievals successful" << std::endl;
         }
         else
         {
