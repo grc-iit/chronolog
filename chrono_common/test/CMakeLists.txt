@@ -38,6 +38,7 @@ target_include_directories(chunk_consumer_service_test PRIVATE
 
 target_link_libraries(chunk_consumer_service_test
     PRIVATE
+        chrono_common
         chronolog_client
         thallium
 )
