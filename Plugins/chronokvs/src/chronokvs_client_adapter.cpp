@@ -57,16 +57,35 @@ ChronoKVSClientAdapter::~ChronoKVSClientAdapter()
 {
     if(chronolog)
     {
+        // Release all cached story handles before disconnecting
+        std::lock_guard<std::mutex> lock(cacheMutex);
+        std::cerr << "[ChronoKVS] Releasing " << handleCache.size() << " cached story handles" << std::endl;
+        for(const auto& [key, handle]: handleCache)
+        {
+            std::cerr << "[ChronoKVS] Releasing cached handle for key='" << key << "'" << std::endl;
+            chronolog->ReleaseStory(defaultChronicle, key);
+        }
+        handleCache.clear();
+
         std::cerr << "[ChronoKVS] Disconnecting from ChronoLog" << std::endl;
         chronolog->Disconnect();
     }
 }
 
-std::uint64_t ChronoKVSClientAdapter::storeEvent(const std::string& key, const std::string& value)
+chronolog::StoryHandle* ChronoKVSClientAdapter::getOrAcquireHandle(const std::string& key)
 {
-    std::cerr << "[ChronoKVS] Storing event for key='" << key << "' (value_size=" << value.size() << ")" << std::endl;
+    std::lock_guard<std::mutex> lock(cacheMutex);
 
-    // Acquire a story handle for the given key
+    // Check if handle is already cached
+    auto it = handleCache.find(key);
+    if(it != handleCache.end())
+    {
+        std::cerr << "[ChronoKVS] Cache hit for key='" << key << "'" << std::endl;
+        return it->second;
+    }
+
+    // Cache miss - acquire new handle
+    std::cerr << "[ChronoKVS] Cache miss for key='" << key << "', acquiring new handle" << std::endl;
     std::map<std::string, std::string> story_attrs;
     auto [status, handle] = chronolog->AcquireStory(defaultChronicle, key, story_attrs, DEFAULT_FLAGS);
     if(status != chronolog::CL_SUCCESS)
@@ -77,14 +96,19 @@ std::uint64_t ChronoKVSClientAdapter::storeEvent(const std::string& key, const s
                                  ", error code: " + std::to_string(status));
     }
 
-    // RAII-style story handle management using scope guard
-    struct StoryHandleGuard
-    {
-        chronolog::Client* client;
-        const std::string& chronicle;
-        const std::string& key;
-        ~StoryHandleGuard() { client->ReleaseStory(chronicle, key); }
-    } guard{chronolog.get(), defaultChronicle, key};
+    // Store in cache and return
+    handleCache[key] = handle;
+    std::cerr << "[ChronoKVS] Cached new handle for key='" << key << "' (cache size: " << handleCache.size() << ")"
+              << std::endl;
+    return handle;
+}
+
+std::uint64_t ChronoKVSClientAdapter::storeEvent(const std::string& key, const std::string& value)
+{
+    std::cerr << "[ChronoKVS] Storing event for key='" << key << "' (value_size=" << value.size() << ")" << std::endl;
+
+    // Get cached handle or acquire a new one
+    chronolog::StoryHandle* handle = getOrAcquireHandle(key);
 
     auto timestamp = handle->log_event(value);
     std::cerr << "[ChronoKVS] Event stored successfully for key='" << key << "' with timestamp=" << timestamp
@@ -98,25 +122,8 @@ ChronoKVSClientAdapter::retrieveEvents(const std::string& key, std::uint64_t sta
     std::cerr << "[ChronoKVS] Retrieving events for key='" << key << "' range=[" << start_ts << ", " << end_ts << ")"
               << std::endl;
 
-    // Acquire a story handle for the given key
-    std::map<std::string, std::string> story_attrs;
-    auto [status, handle] = chronolog->AcquireStory(defaultChronicle, key, story_attrs, DEFAULT_FLAGS);
-    if(status != chronolog::CL_SUCCESS)
-    {
-        std::cerr << "[ChronoKVS] Failed to acquire story handle for key='" << key << "' with error code: " << status
-                  << std::endl;
-        throw std::runtime_error("Failed to acquire story handle for key: " + key +
-                                 ", error code: " + std::to_string(status));
-    }
-
-    // RAII-style story handle management
-    struct StoryHandleGuard
-    {
-        chronolog::Client* client;
-        const std::string& chronicle;
-        const std::string& key;
-        ~StoryHandleGuard() { client->ReleaseStory(chronicle, key); }
-    } guard{chronolog.get(), defaultChronicle, key};
+    // Ensure handle is acquired/cached (needed for ReplayStory to work)
+    getOrAcquireHandle(key);
 
     // Retrieve events for the specified time range
     std::vector<chronolog::Event> events;
