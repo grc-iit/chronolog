@@ -16,6 +16,7 @@ target_include_directories(chronokvs_integration_test PRIVATE
 target_link_libraries(chronokvs_integration_test
     PRIVATE
         chronokvs
+        chronolog_client
         Threads::Threads
 )
 

@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -9,6 +10,8 @@
 #include <vector>
 
 #include "chronokvs.h"
+#include <ClientConfiguration.h>
+#include <chrono_monitor.h>
 
 /**
  * ChronoKVS API Integration Test
@@ -635,6 +638,21 @@ int main()
 {
     try
     {
+        // Load configuration and initialize logger
+        chronolog::ClientConfiguration confManager;
+        int result = chronolog::chrono_monitor::initialize(confManager.LOG_CONF.LOGTYPE,
+                                                          confManager.LOG_CONF.LOGFILE,
+                                                          confManager.LOG_CONF.LOGLEVEL,
+                                                          confManager.LOG_CONF.LOGNAME,
+                                                          confManager.LOG_CONF.LOGFILESIZE,
+                                                          confManager.LOG_CONF.LOGFILENUM,
+                                                          confManager.LOG_CONF.FLUSHLEVEL);
+        if(result == 1)
+        {
+            std::cerr << "Failed to initialize logger" << std::endl;
+            return EXIT_FAILURE;
+        }
+
         ChronoKVSTest test;
         bool success = test.runAllTests();
         return success ? 0 : 1;

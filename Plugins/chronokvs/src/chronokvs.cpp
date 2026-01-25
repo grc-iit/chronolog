@@ -5,6 +5,7 @@
 
 #include "chronokvs.h"
 #include "chronokvs_mapper.h"
+#include <chrono_monitor.h>
 
 namespace chronokvs
 {
@@ -17,24 +18,39 @@ ChronoKVS::~ChronoKVS() = default;
 
 std::uint64_t ChronoKVS::put(const std::string& key, const std::string& value)
 {
+    LOG_DEBUG("[ChronoKVS] put() called for key='{}' (value_size={})", key, value.size());
     return mapper->storeKeyValue(key, value);
 }
 
 std::string ChronoKVS::get(const std::string& key, std::uint64_t timestamp)
 {
+    LOG_DEBUG("[ChronoKVS] get() called for key='{}' at timestamp={}", key, timestamp);
     return mapper->retrieveByKeyAndTs(key, timestamp);
 }
 
-std::vector<EventData> ChronoKVS::get_history(const std::string& key) { return mapper->retrieveByKey(key); }
+std::vector<EventData> ChronoKVS::get_history(const std::string& key)
+{
+    LOG_DEBUG("[ChronoKVS] get_history() called for key='{}'", key);
+    return mapper->retrieveByKey(key);
+}
 
 std::vector<EventData>
 ChronoKVS::get_range(const std::string& key, std::uint64_t start_timestamp, std::uint64_t end_timestamp)
 {
+    LOG_DEBUG("[ChronoKVS] get_range() called for key='{}' range=[{}, {})", key, start_timestamp, end_timestamp);
     return mapper->retrieveByKeyAndRange(key, start_timestamp, end_timestamp);
 }
 
-std::optional<EventData> ChronoKVS::get_earliest(const std::string& key) { return mapper->retrieveEarliestByKey(key); }
+std::optional<EventData> ChronoKVS::get_earliest(const std::string& key)
+{
+    LOG_DEBUG("[ChronoKVS] get_earliest() called for key='{}'", key);
+    return mapper->retrieveEarliestByKey(key);
+}
 
-std::optional<EventData> ChronoKVS::get_latest(const std::string& key) { return mapper->retrieveLatestByKey(key); }
+std::optional<EventData> ChronoKVS::get_latest(const std::string& key)
+{
+    LOG_DEBUG("[ChronoKVS] get_latest() called for key='{}'", key);
+    return mapper->retrieveLatestByKey(key);
+}
 
 } // namespace chronokvs
