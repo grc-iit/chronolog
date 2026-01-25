@@ -1,4 +1,5 @@
 #include <cstdint>
+#include <iostream>
 #include <memory>
 #include <map>
 #include <string>
@@ -6,8 +7,6 @@
 #include <vector>
 #include "chronokvs_client_adapter.h"
 #include <ClientConfiguration.h>
-#include <chrono_monitor.h>
-#include <client_errcode.h>
 
 namespace chronokvs
 {
@@ -31,54 +30,49 @@ ChronoKVSClientAdapter::ChronoKVSClientAdapter()
                                                 confManager.QUERY_CONF.PROVIDER_ID};
 
     // Initialize and connect the ChronoLog client
-    LOG_INFO("[ChronoKVS] Connecting to ChronoLog at {}:{}", portalConf.IP, portalConf.PORT);
+    std::cerr << "[ChronoKVS] Connecting to ChronoLog at " << portalConf.IP << ":" << portalConf.PORT << std::endl;
     chronolog = std::make_unique<chronolog::Client>(portalConf, queryConf);
     if(int ret = chronolog->Connect(); ret != chronolog::CL_SUCCESS)
     {
-        LOG_ERROR("[ChronoKVS] Connection failed with error code: {}",
-                  chronolog::to_string(static_cast<chronolog::ClientErrorCode>(ret)));
+        std::cerr << "[ChronoKVS] Connection failed with error code: " << ret << std::endl;
         chronolog->Disconnect();
         chronolog.reset();
-        throw std::runtime_error("Failed to connect to ChronoLog: " +
-                                 std::string(chronolog::to_string(static_cast<chronolog::ClientErrorCode>(ret))));
+        throw std::runtime_error("Failed to connect to ChronoLog with error code: " + std::to_string(ret));
     }
-    LOG_INFO("[ChronoKVS] Connected successfully");
+    std::cerr << "[ChronoKVS] Connected successfully" << std::endl;
 
     // Ensure the default chronicle exists
     std::map<std::string, std::string> chronicle_attrs;
     if(int ret = chronolog->CreateChronicle(defaultChronicle, chronicle_attrs, DEFAULT_FLAGS);
        ret != chronolog::CL_SUCCESS && ret != chronolog::CL_ERR_CHRONICLE_EXISTS)
     {
-        LOG_ERROR("[ChronoKVS] Failed to create chronicle '{}' with error code: {}",
-                  defaultChronicle, chronolog::to_string(static_cast<chronolog::ClientErrorCode>(ret)));
-        throw std::runtime_error("Failed to create chronicle: " +
-                                 std::string(chronolog::to_string(static_cast<chronolog::ClientErrorCode>(ret))));
+        std::cerr << "[ChronoKVS] Failed to create chronicle '" << defaultChronicle << "' with error code: " << ret << std::endl;
+        throw std::runtime_error("Failed to create chronicle with error code: " + std::to_string(ret));
     }
-    LOG_DEBUG("[ChronoKVS] Chronicle '{}' ready for operations", defaultChronicle);
+    std::cerr << "[ChronoKVS] Chronicle '" << defaultChronicle << "' ready for operations" << std::endl;
 }
 
 ChronoKVSClientAdapter::~ChronoKVSClientAdapter()
 {
     if(chronolog)
     {
-        LOG_DEBUG("[ChronoKVS] Disconnecting from ChronoLog");
+        std::cerr << "[ChronoKVS] Disconnecting from ChronoLog" << std::endl;
         chronolog->Disconnect();
     }
 }
 
 std::uint64_t ChronoKVSClientAdapter::storeEvent(const std::string& key, const std::string& value)
 {
-    LOG_DEBUG("[ChronoKVS] Storing event for key='{}' (value_size={})", key, value.size());
+    std::cerr << "[ChronoKVS] Storing event for key='" << key << "' (value_size=" << value.size() << ")" << std::endl;
 
     // Acquire a story handle for the given key
     std::map<std::string, std::string> story_attrs;
     auto [status, handle] = chronolog->AcquireStory(defaultChronicle, key, story_attrs, DEFAULT_FLAGS);
     if(status != chronolog::CL_SUCCESS)
     {
-        LOG_ERROR("[ChronoKVS] Failed to acquire story handle for key='{}' with error code: {}",
-                  key, chronolog::to_string(static_cast<chronolog::ClientErrorCode>(status)));
+        std::cerr << "[ChronoKVS] Failed to acquire story handle for key='" << key << "' with error code: " << status << std::endl;
         throw std::runtime_error("Failed to acquire story handle for key: " + key +
-                                 ", error: " + std::string(chronolog::to_string(static_cast<chronolog::ClientErrorCode>(status))));
+                                 ", error code: " + std::to_string(status));
     }
 
     // RAII-style story handle management using scope guard
@@ -91,24 +85,23 @@ std::uint64_t ChronoKVSClientAdapter::storeEvent(const std::string& key, const s
     } guard{chronolog.get(), defaultChronicle, key};
 
     auto timestamp = handle->log_event(value);
-    LOG_DEBUG("[ChronoKVS] Event stored successfully for key='{}' with timestamp={}", key, timestamp);
+    std::cerr << "[ChronoKVS] Event stored successfully for key='" << key << "' with timestamp=" << timestamp << std::endl;
     return timestamp;
 }
 
 std::vector<EventData>
 ChronoKVSClientAdapter::retrieveEvents(const std::string& key, std::uint64_t start_ts, std::uint64_t end_ts)
 {
-    LOG_DEBUG("[ChronoKVS] Retrieving events for key='{}' range=[{}, {})", key, start_ts, end_ts);
+    std::cerr << "[ChronoKVS] Retrieving events for key='" << key << "' range=[" << start_ts << ", " << end_ts << ")" << std::endl;
 
     // Acquire a story handle for the given key
     std::map<std::string, std::string> story_attrs;
     auto [status, handle] = chronolog->AcquireStory(defaultChronicle, key, story_attrs, DEFAULT_FLAGS);
     if(status != chronolog::CL_SUCCESS)
     {
-        LOG_ERROR("[ChronoKVS] Failed to acquire story handle for key='{}' with error code: {}",
-                  key, chronolog::to_string(static_cast<chronolog::ClientErrorCode>(status)));
+        std::cerr << "[ChronoKVS] Failed to acquire story handle for key='" << key << "' with error code: " << status << std::endl;
         throw std::runtime_error("Failed to acquire story handle for key: " + key +
-                                 ", error: " + std::string(chronolog::to_string(static_cast<chronolog::ClientErrorCode>(status))));
+                                 ", error code: " + std::to_string(status));
     }
 
     // RAII-style story handle management
@@ -124,10 +117,9 @@ ChronoKVSClientAdapter::retrieveEvents(const std::string& key, std::uint64_t sta
     std::vector<chronolog::Event> events;
     if(int ret = chronolog->ReplayStory(defaultChronicle, key, start_ts, end_ts, events); ret != chronolog::CL_SUCCESS)
     {
-        LOG_ERROR("[ChronoKVS] Failed to replay events for key='{}' with error code: {}",
-                  key, chronolog::to_string(static_cast<chronolog::ClientErrorCode>(ret)));
+        std::cerr << "[ChronoKVS] Failed to replay events for key='" << key << "' with error code: " << ret << std::endl;
         throw std::runtime_error("Failed to replay events for key: " + key +
-                                 ", error: " + std::string(chronolog::to_string(static_cast<chronolog::ClientErrorCode>(ret))));
+                                 ", error code: " + std::to_string(ret));
     }
 
     // Transform ChronoLog events into EventData objects
@@ -135,7 +127,7 @@ ChronoKVSClientAdapter::retrieveEvents(const std::string& key, std::uint64_t sta
     eventDataList.reserve(events.size());
     for(const auto& event: events) { eventDataList.emplace_back(event.time(), event.log_record()); }
 
-    LOG_DEBUG("[ChronoKVS] Retrieved {} events for key='{}'", eventDataList.size(), key);
+    std::cerr << "[ChronoKVS] Retrieved " << eventDataList.size() << " events for key='" << key << "'" << std::endl;
     return eventDataList;
 }
 
