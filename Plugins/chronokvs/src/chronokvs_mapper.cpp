@@ -76,15 +76,18 @@ std::vector<EventData> ChronoKVSMapper::retrieveByKeyAndRange(const std::string&
     // Validate timestamp range
     if(start_timestamp >= end_timestamp)
     {
-        std::cerr << "[ChronoKVS] Invalid timestamp range for key='" << key << "': start_timestamp=" << start_timestamp << " >= end_timestamp=" << end_timestamp << std::endl;
+        std::cerr << "[ChronoKVS] Invalid timestamp range for key='" << key << "': start_timestamp=" << start_timestamp
+                  << " >= end_timestamp=" << end_timestamp << std::endl;
         throw std::invalid_argument("Invalid timestamp range: start_timestamp must be less than end_timestamp");
     }
 
-    std::cerr << "[ChronoKVS] Retrieving events for key='" << key << "' range=[" << start_timestamp << ", " << end_timestamp << ")" << std::endl;
+    std::cerr << "[ChronoKVS] Retrieving events for key='" << key << "' range=[" << start_timestamp << ", "
+              << end_timestamp << ")" << std::endl;
 
     // Retrieve events for the given key within the specified time range [start_timestamp, end_timestamp).
     auto events = chronoClientAdapter->retrieveEvents(key, start_timestamp, end_timestamp);
-    std::cerr << "[ChronoKVS] Retrieved " << events.size() << " events for key='" << key << "' in range=[" << start_timestamp << ", " << end_timestamp << ")" << std::endl;
+    std::cerr << "[ChronoKVS] Retrieved " << events.size() << " events for key='" << key << "' in range=["
+              << start_timestamp << ", " << end_timestamp << ")" << std::endl;
     return events;
 }
 
@@ -108,7 +111,8 @@ std::optional<EventData> ChronoKVSMapper::retrieveEarliestByKey(const std::strin
                                      events.end(),
                                      [](const EventData& a, const EventData& b) { return a.timestamp < b.timestamp; });
 
-    std::cerr << "[ChronoKVS] Found earliest event for key='" << key << "' with timestamp=" << earliest->timestamp << std::endl;
+    std::cerr << "[ChronoKVS] Found earliest event for key='" << key << "' with timestamp=" << earliest->timestamp
+              << std::endl;
     return *earliest;
 }
 
@@ -132,7 +136,8 @@ std::optional<EventData> ChronoKVSMapper::retrieveLatestByKey(const std::string&
                                    events.end(),
                                    [](const EventData& a, const EventData& b) { return a.timestamp < b.timestamp; });
 
-    std::cerr << "[ChronoKVS] Found latest event for key='" << key << "' with timestamp=" << latest->timestamp << std::endl;
+    std::cerr << "[ChronoKVS] Found latest event for key='" << key << "' with timestamp=" << latest->timestamp
+              << std::endl;
     return *latest;
 }
 
