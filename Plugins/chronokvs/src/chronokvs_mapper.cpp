@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+
 #include "chronokvs_mapper.h"
 
 namespace chronokvs
