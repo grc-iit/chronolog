@@ -33,4 +33,6 @@ ChronoKVS::get_range(const std::string& key, std::uint64_t start_timestamp, std:
     return mapper->retrieveByKeyAndRange(key, start_timestamp, end_timestamp);
 }
 
+std::optional<EventData> ChronoKVS::get_earliest(const std::string& key) { return mapper->retrieveEarliestByKey(key); }
+
 } // namespace chronokvs
