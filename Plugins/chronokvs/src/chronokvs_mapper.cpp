@@ -10,8 +10,8 @@ namespace chronokvs
 {
 
 // Constants for time range boundaries (used across multiple retrieval methods)
-constexpr uint64_t MIN_TIMESTAMP = 1;                   // Earliest possible timestamp
-constexpr uint64_t MAX_TIMESTAMP = UINT64_MAX;          // Maximum possible uint64_t value
+constexpr uint64_t MIN_TIMESTAMP = 1;          // Earliest possible timestamp
+constexpr uint64_t MAX_TIMESTAMP = UINT64_MAX; // Maximum possible uint64_t value
 
 ChronoKVSMapper::ChronoKVSMapper() { chronoClientAdapter = std::make_unique<ChronoKVSClientAdapter>(); }
 
