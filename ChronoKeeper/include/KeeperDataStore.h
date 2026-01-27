@@ -11,7 +11,7 @@
 #include <thallium.hpp>
 
 #include "IngestionQueue.h"
-#include "StoryPipeline.h"
+#include "KeeperStoryPipeline.h"
 #include "StoryChunkExtractionQueue.h"
 
 
@@ -93,8 +93,8 @@ private:
     std::vector<thallium::managed<thallium::thread>> dataStoreThreads;
 
     std::mutex dataStoreMutex;
-    std::unordered_map<StoryId, StoryPipeline*> theMapOfStoryPipelines;
-    std::unordered_map<StoryId, std::pair<StoryPipeline*, uint64_t>> pipelinesWaitingForExit;
+    std::unordered_map<StoryId, KeeperStoryPipeline*> theMapOfStoryPipelines;
+    std::unordered_map<StoryId, std::pair<KeeperStoryPipeline*, uint64_t>> pipelinesWaitingForExit;
 };
 
 } // namespace chronolog

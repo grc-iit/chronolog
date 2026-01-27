@@ -1,5 +1,5 @@
-#ifndef STORY_PIPELINE_H
-#define STORY_PIPELINE_H
+#ifndef KEEPER_STORY_PIPELINE_H
+#define KEEPER_STORY_PIPELINE_H
 
 #include <deque>
 #include <list>
@@ -20,25 +20,25 @@ namespace chronolog
 
 class StoryIngestionHandle;
 
-class StoryPipeline
+class KeeperStoryPipeline
 {
 
 public:
-    StoryPipeline(StoryChunkExtractionQueue&,
-                  std::string const& chronicle_name,
-                  std::string const& story_name,
-                  StoryId const& story_id,
-                  uint64_t start_time,
-                  uint32_t chunk_granularity = 15 // seconds
-                  ,
-                  uint32_t acceptance_window = 30 // seconds
+    KeeperStoryPipeline(StoryChunkExtractionQueue&,
+                        std::string const& chronicle_name,
+                        std::string const& story_name,
+                        StoryId const& story_id,
+                        uint64_t start_time,
+                        uint32_t chunk_granularity = 15 // seconds
+                        ,
+                        uint32_t acceptance_window = 30 // seconds
     );
 
-    StoryPipeline(StoryPipeline const&) = delete;
+    KeeperStoryPipeline(KeeperStoryPipeline const&) = delete;
 
-    StoryPipeline& operator=(StoryPipeline const&) = delete;
+    KeeperStoryPipeline& operator=(KeeperStoryPipeline const&) = delete;
 
-    ~StoryPipeline();
+    ~KeeperStoryPipeline();
 
 
     StoryIngestionHandle* getActiveIngestionHandle();
