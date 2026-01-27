@@ -21,12 +21,12 @@ namespace chl = chronolog;
 ////////////////////////
 
 chronolog::KeeperStoryPipeline::KeeperStoryPipeline(StoryChunkExtractionQueue& extractionQueue,
-                                        std::string const& chronicle_name,
-                                        std::string const& story_name,
-                                        chronolog::StoryId const& story_id,
-                                        uint64_t story_start_time,
-                                        uint32_t chunk_granularity,
-                                        uint32_t acceptance_window)
+                                                    std::string const& chronicle_name,
+                                                    std::string const& story_name,
+                                                    chronolog::StoryId const& story_id,
+                                                    uint64_t story_start_time,
+                                                    uint32_t chunk_granularity,
+                                                    uint32_t acceptance_window)
     : theExtractionQueue(extractionQueue)
     , storyId(story_id)
     , chronicleName(chronicle_name)
@@ -342,7 +342,9 @@ void chronolog::KeeperStoryPipeline::mergeEvents(chronolog::EventDeque& event_de
             }
             else
             {
-                LOG_ERROR("[KeeperStoryPipeline] StoryID: {} - Discarding event with timestamp: {}", storyId, event.time());
+                LOG_ERROR("[KeeperStoryPipeline] StoryID: {} - Discarding event with timestamp: {}",
+                          storyId,
+                          event.time());
             }
         }
         else
@@ -379,7 +381,9 @@ void chronolog::KeeperStoryPipeline::mergeEvents(chronolog::EventDeque& event_de
             }
             else
             {
-                LOG_ERROR("[KeeperStoryPipeline] StoryID: {} - Discarding event with timestamp: {}", storyId, event.time());
+                LOG_ERROR("[KeeperStoryPipeline] StoryID: {} - Discarding event with timestamp: {}",
+                          storyId,
+                          event.time());
             }
         }
         event_deque.pop_front();

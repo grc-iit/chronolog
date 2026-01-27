@@ -51,13 +51,13 @@ int chronolog::KeeperDataStore::startStoryRecording(std::string const& chronicle
 
     auto result = theMapOfStoryPipelines.emplace(
             std::pair<chl::StoryId, chl::KeeperStoryPipeline*>(story_id,
-                                                         new chl::KeeperStoryPipeline(theExtractionQueue,
-                                                                                chronicle,
-                                                                                story,
-                                                                                story_id,
-                                                                                start_time,
-                                                                                story_chunk_duration_secs,
-                                                                                acceptance_window_secs)));
+                                                               new chl::KeeperStoryPipeline(theExtractionQueue,
+                                                                                            chronicle,
+                                                                                            story,
+                                                                                            story_id,
+                                                                                            start_time,
+                                                                                            story_chunk_duration_secs,
+                                                                                            acceptance_window_secs)));
 
     if(result.second)
     {
@@ -70,9 +70,9 @@ int chronolog::KeeperDataStore::startStoryRecording(std::string const& chronicle
     }
     else
     {
-        LOG_ERROR(
-                "[KeeperDataStore] Failed to create KeeperStoryPipeline for StoryID: {}. Possible memory or resource issue.",
-                story_id);
+        LOG_ERROR("[KeeperDataStore] Failed to create KeeperStoryPipeline for StoryID: {}. Possible memory or resource "
+                  "issue.",
+                  story_id);
         return chronolog::CL_ERR_UNKNOWN;
     }
 }
@@ -93,9 +93,10 @@ int chronolog::KeeperDataStore::stopStoryRecording(chronolog::StoryId const& sto
                              (*pipeline_iter).second->getAcceptanceWindow();
         pipelinesWaitingForExit[(*pipeline_iter).first] =
                 (std::pair<chl::KeeperStoryPipeline*, uint64_t>((*pipeline_iter).second, exit_time));
-        LOG_INFO("[KeeperDataStore] Added KeeperStoryPipeline to waiting list for finalization. StoryID={}, ExitTime={}",
-                 story_id,
-                 exit_time);
+        LOG_INFO(
+                "[KeeperDataStore] Added KeeperStoryPipeline to waiting list for finalization. StoryID={}, ExitTime={}",
+                story_id,
+                exit_time);
     }
     else
     {
@@ -108,7 +109,8 @@ int chronolog::KeeperDataStore::stopStoryRecording(chronolog::StoryId const& sto
 
 void chronolog::KeeperDataStore::collectIngestedEvents()
 {
-    LOG_DEBUG("[KeeperDataStore] Initiating collection of ingested events. Current state={}, Active KeeperStoryPipelines={}, "
+    LOG_DEBUG("[KeeperDataStore] Initiating collection of ingested events. Current state={}, Active "
+              "KeeperStoryPipelines={}, "
               "PipelinesWaitingForExit={}, ThreadID={}",
               state,
               theMapOfStoryPipelines.size(),
@@ -247,11 +249,12 @@ void chronolog::KeeperDataStore::startDataCollection(int stream_count)
 
 void chronolog::KeeperDataStore::shutdownDataCollection()
 {
-    LOG_INFO("[KeeperDataStore] Initiating shutdown of DataCollection. CurrentState={}, Active KeeperStoryPipelines={}, "
-             "PipelinesWaitingForExit={}",
-             state,
-             theMapOfStoryPipelines.size(),
-             pipelinesWaitingForExit.size());
+    LOG_INFO(
+            "[KeeperDataStore] Initiating shutdown of DataCollection. CurrentState={}, Active KeeperStoryPipelines={}, "
+            "PipelinesWaitingForExit={}",
+            state,
+            theMapOfStoryPipelines.size(),
+            pipelinesWaitingForExit.size());
 
     // switch the state to shuttingDown
     std::lock_guard storeLock(dataStoreStateMutex);
