@@ -19,19 +19,15 @@ target_include_directories(story_chunk_test PRIVATE
 
 target_link_libraries(story_chunk_test PRIVATE
     GTest::gtest_main
+    chrono_common
     chronolog_client
 )
 
 gtest_discover_tests(story_chunk_test)
 
 # StoryPipelineTest
-set(STORYPIPE_SOURCES
-    StoryPipelineTest.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryPipeline.cpp
-)
-
 add_executable(story_pipeline_test
-    ${STORYPIPE_SOURCES}
+    StoryPipelineTest.cpp
 )
 
 target_include_directories(story_pipeline_test PRIVATE
@@ -41,6 +37,7 @@ target_include_directories(story_pipeline_test PRIVATE
 
 target_link_libraries(story_pipeline_test PRIVATE
     GTest::gtest_main
+    chrono_common
     chronolog_client
 )
 
