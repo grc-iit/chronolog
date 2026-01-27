@@ -6,7 +6,7 @@ find_package(HDF5 REQUIRED COMPONENTS C CXX)
 #------------------------------------------------------------------------------
 # chrono_common Library
 #------------------------------------------------------------------------------
-add_library(chrono_common ${CHRONOLOG_LIBTYPE}
+add_library(chrono_common STATIC
     src/city.cpp
     src/ConfigurationManager.cpp
     src/StoryChunk.cpp
@@ -37,8 +37,7 @@ target_link_libraries(chrono_common
 file(GLOB CHRONO_COMMON_PUBLIC_HEADERS "${CMAKE_CURRENT_SOURCE_DIR}/include/*.h")
 
 set_target_properties(chrono_common PROPERTIES
-    BUILD_WITH_INSTALL_RPATH TRUE
-    SKIP_BUILD_RPATH TRUE
+    POSITION_INDEPENDENT_CODE ON
     PUBLIC_HEADER "${CHRONO_COMMON_PUBLIC_HEADERS}"
 )
 

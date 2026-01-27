@@ -32,7 +32,7 @@ int chronolog::KeeperDataStore::startStoryRecording(std::string const& chronicle
 {
     LOG_INFO("[KeeperDataStore] Start recording story: Chronicle={}, Story={}, StoryID={}", chronicle, story, story_id);
 
-    // Get dataStoreMutex, check for story_id_presense & add new StoryPipeline if needed
+    // Get dataStoreMutex, check for story_id_presense & add new KeeperStoryPipeline if needed
     std::lock_guard storeLock(dataStoreMutex);
     auto pipeline_iter = theMapOfStoryPipelines.find(story_id);
     if(pipeline_iter != theMapOfStoryPipelines.end())
@@ -50,8 +50,8 @@ int chronolog::KeeperDataStore::startStoryRecording(std::string const& chronicle
     }
 
     auto result = theMapOfStoryPipelines.emplace(
-            std::pair<chl::StoryId, chl::StoryPipeline*>(story_id,
-                                                         new chl::StoryPipeline(theExtractionQueue,
+            std::pair<chl::StoryId, chl::KeeperStoryPipeline*>(story_id,
+                                                         new chl::KeeperStoryPipeline(theExtractionQueue,
                                                                                 chronicle,
                                                                                 story,
                                                                                 story_id,
@@ -61,9 +61,9 @@ int chronolog::KeeperDataStore::startStoryRecording(std::string const& chronicle
 
     if(result.second)
     {
-        LOG_INFO("[KeeperDataStore] New StoryPipeline created successfully. StoryID: {}", story_id);
+        LOG_INFO("[KeeperDataStore] New KeeperStoryPipeline created successfully. StoryID: {}", story_id);
         pipeline_iter = result.first;
-        //engage StoryPipeline with the IngestionQueue
+        //engage KeeperStoryPipeline with the IngestionQueue
         StoryIngestionHandle* ingestionHandle = (*pipeline_iter).second->getActiveIngestionHandle();
         theIngestionQueue.addStoryIngestionHandle(story_id, ingestionHandle);
         return chronolog::CL_SUCCESS;
@@ -71,7 +71,7 @@ int chronolog::KeeperDataStore::startStoryRecording(std::string const& chronicle
     else
     {
         LOG_ERROR(
-                "[KeeperDataStore] Failed to create StoryPipeline for StoryID: {}. Possible memory or resource issue.",
+                "[KeeperDataStore] Failed to create KeeperStoryPipeline for StoryID: {}. Possible memory or resource issue.",
                 story_id);
         return chronolog::CL_ERR_UNKNOWN;
     }
@@ -81,7 +81,7 @@ int chronolog::KeeperDataStore::startStoryRecording(std::string const& chronicle
 int chronolog::KeeperDataStore::stopStoryRecording(chronolog::StoryId const& story_id)
 {
     LOG_DEBUG("[KeeperDataStore] Initiating stop recording for StoryID={}", story_id);
-    // we do not yet disengage the StoryPipeline from the IngestionQueue right away
+    // we do not yet disengage the KeeperStoryPipeline from the IngestionQueue right away
     // but put it on the WaitingForExit list to be finalized, persisted to disk , and
     // removed from memory at exit_time = now+acceptance_window...
     // unless there's a new story acquisition request comes before that moment
@@ -92,8 +92,8 @@ int chronolog::KeeperDataStore::stopStoryRecording(chronolog::StoryId const& sto
         uint64_t exit_time = std::chrono::high_resolution_clock::now().time_since_epoch().count() +
                              (*pipeline_iter).second->getAcceptanceWindow();
         pipelinesWaitingForExit[(*pipeline_iter).first] =
-                (std::pair<chl::StoryPipeline*, uint64_t>((*pipeline_iter).second, exit_time));
-        LOG_INFO("[KeeperDataStore] Added StoryPipeline to waiting list for finalization. StoryID={}, ExitTime={}",
+                (std::pair<chl::KeeperStoryPipeline*, uint64_t>((*pipeline_iter).second, exit_time));
+        LOG_INFO("[KeeperDataStore] Added KeeperStoryPipeline to waiting list for finalization. StoryID={}, ExitTime={}",
                  story_id,
                  exit_time);
     }
@@ -108,7 +108,7 @@ int chronolog::KeeperDataStore::stopStoryRecording(chronolog::StoryId const& sto
 
 void chronolog::KeeperDataStore::collectIngestedEvents()
 {
-    LOG_DEBUG("[KeeperDataStore] Initiating collection of ingested events. Current state={}, Active StoryPipelines={}, "
+    LOG_DEBUG("[KeeperDataStore] Initiating collection of ingested events. Current state={}, Active KeeperStoryPipelines={}, "
               "PipelinesWaitingForExit={}, ThreadID={}",
               state,
               theMapOfStoryPipelines.size(),
@@ -129,7 +129,7 @@ void chronolog::KeeperDataStore::collectIngestedEvents()
 void chronolog::KeeperDataStore::extractDecayedStoryChunks()
 {
     LOG_DEBUG("[KeeperDataStore] Initiating extraction of decayed story chunks. Current state={}, Active "
-              "StoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}",
+              "KeeperStoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}",
               state,
               theMapOfStoryPipelines.size(),
               pipelinesWaitingForExit.size(),
@@ -149,7 +149,7 @@ void chronolog::KeeperDataStore::extractDecayedStoryChunks()
 void chronolog::KeeperDataStore::retireDecayedPipelines()
 {
     LOG_DEBUG("[KeeperDataStore] Initiating retirement of decayed pipelines. Current state={}, Active "
-              "StoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}",
+              "KeeperStoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}",
               state,
               theMapOfStoryPipelines.size(),
               pipelinesWaitingForExit.size(),
@@ -165,7 +165,7 @@ void chronolog::KeeperDataStore::retireDecayedPipelines()
             if(current_time >= (*pipeline_iter).second.second)
             {
                 //current_time >= pipeline exit_time
-                StoryPipeline* pipeline = (*pipeline_iter).second.first;
+                KeeperStoryPipeline* pipeline = (*pipeline_iter).second.first;
                 theMapOfStoryPipelines.erase(pipeline->getStoryId());
                 theIngestionQueue.removeIngestionHandle(pipeline->getStoryId());
                 pipeline_iter = pipelinesWaitingForExit.erase(pipeline_iter); //pipeline->getStoryId());
@@ -179,7 +179,7 @@ void chronolog::KeeperDataStore::retireDecayedPipelines()
     }
     //swipe through pipelineswaiting and remove all those with nullptr
     LOG_DEBUG("[KeeperDataStore] Completed retirement of decayed pipelines. Current state={}, Active "
-              "StoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}",
+              "KeeperStoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}",
               state,
               theMapOfStoryPipelines.size(),
               pipelinesWaitingForExit.size(),
@@ -247,7 +247,7 @@ void chronolog::KeeperDataStore::startDataCollection(int stream_count)
 
 void chronolog::KeeperDataStore::shutdownDataCollection()
 {
-    LOG_INFO("[KeeperDataStore] Initiating shutdown of DataCollection. CurrentState={}, Active StoryPipelines={}, "
+    LOG_INFO("[KeeperDataStore] Initiating shutdown of DataCollection. CurrentState={}, Active KeeperStoryPipelines={}, "
              "PipelinesWaitingForExit={}",
              state,
              theMapOfStoryPipelines.size(),
@@ -275,7 +275,7 @@ void chronolog::KeeperDataStore::shutdownDataCollection()
             {
                 uint64_t exit_time = current_time + (*pipeline_iter).second->getAcceptanceWindow();
                 pipelinesWaitingForExit[(*pipeline_iter).first] =
-                        (std::pair<chl::StoryPipeline*, uint64_t>((*pipeline_iter).second, exit_time));
+                        (std::pair<chl::KeeperStoryPipeline*, uint64_t>((*pipeline_iter).second, exit_time));
             }
         }
     }
@@ -296,9 +296,9 @@ void chronolog::KeeperDataStore::shutdownDataCollection()
 //
 chronolog::KeeperDataStore::~KeeperDataStore()
 {
-    LOG_INFO("[KeeperDataStore] Destructor called. Initiating shutdown. Active StoryPipelines count={}",
+    LOG_INFO("[KeeperDataStore] Destructor called. Initiating shutdown. Active KeeperStoryPipelines count={}",
              theMapOfStoryPipelines.size());
     shutdownDataCollection();
-    LOG_INFO("[KeeperDataStore] Shutdown completed successfully. Active StoryPipelines count={}",
+    LOG_INFO("[KeeperDataStore] Shutdown completed successfully. Active KeeperStoryPipelines count={}",
              theMapOfStoryPipelines.size());
 }
