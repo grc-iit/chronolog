@@ -86,8 +86,9 @@ set_target_properties(chronolog_client PROPERTIES
 #------------------------------------------------------------------------------
 # Install library, headers, and configuration file
 #------------------------------------------------------------------------------
-# Install chrono_common and chronolog_client with export
-install(TARGETS chrono_common chronolog_client
+# Install chronolog_client with export (chrono_common is not installed as it's
+# only used internally by server-side ChronoLog components)
+install(TARGETS chronolog_client
     EXPORT ChronologTargets
     RUNTIME DESTINATION ${CHRONOLOG_INSTALL_BIN_DIR}
     LIBRARY DESTINATION ${CHRONOLOG_INSTALL_LIB_DIR}

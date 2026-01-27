@@ -22,7 +22,6 @@ target_include_directories(chrono_common
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/Client/cpp/include>
-        $<INSTALL_INTERFACE:${CHRONOLOG_INSTALL_INCLUDE_DIR}>
     PRIVATE
         ${CMAKE_SOURCE_DIR}/Client/cpp/include
 )
@@ -42,8 +41,8 @@ set_target_properties(chrono_common PROPERTIES
 )
 
 #------------------------------------------------------------------------------
-# Note: chrono_common is installed via Client/CMakeLists.txt with the
-# ChronologTargets export to ensure proper CMake export semantics
+# Note: chrono_common is not installed. It is only used internally by
+# server-side ChronoLog components (ChronoKeeper, ChronoGrapher, etc.)
 #------------------------------------------------------------------------------
 
 #------------------------------------------------------------------------------
