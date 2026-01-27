@@ -21,13 +21,12 @@ target_sources(chronovisor_server PRIVATE
     src/ClientRegistryRecord.cpp
     src/ChronicleMetaDirectory.cpp
     src/KeeperRegistry.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/ConfigurationManager.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/city.cpp
     ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
 )
 
 target_link_libraries(chronovisor_server
     PRIVATE
+        chrono_common
         chronolog_client
         thallium
 )
