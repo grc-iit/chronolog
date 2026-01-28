@@ -64,6 +64,20 @@ public:
      *     events exist for that key.
      */
     std::optional<EventData> get_earliest(const std::string& key);
+
+    /**
+     * @brief Retrieve the latest event for the given key.
+     *
+     * Looks up the latest (most recent) event associated with @p key.
+     *
+     * @param key
+     *     The key whose latest event should be retrieved.
+     *
+     * @return std::optional<EventData>
+     *     The latest event for the specified key, or std::nullopt if no
+     *     events exist for that key.
+     */
+    std::optional<EventData> get_latest(const std::string& key);
 };
 
 } // namespace chronokvs

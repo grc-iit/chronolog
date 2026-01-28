@@ -13,12 +13,13 @@
 /**
  * ChronoKVS API Integration Test
  *
- * This test verifies the ChronoKVS API functionality with 5 modular tests:
+ * This test verifies the ChronoKVS API functionality with 6 modular tests:
  * 1. Put: Write 1000 values to a single story
  * 2. Get History: Retrieve all values from the story
  * 3. Get: Retrieve 10 random specific values by timestamp
  * 4. Get Range: Retrieve events within specific time ranges
  * 5. Get Earliest: Retrieve the earliest event for a key
+ * 6. Get Latest: Retrieve the latest event for a key
  */
 
 class ChronoKVSTest
@@ -429,6 +430,77 @@ public:
         }
     }
 
+    bool test6_get_latest()
+    {
+        printHeader("TEST 6: GET LATEST OPERATIONS");
+        std::cout << "  Retrieving the latest event for a key" << std::endl;
+        std::cout << "  Target: Successful latest event retrieval with correct timestamp" << std::endl;
+        printSeparator();
+
+        // Use history events from Test 2, which are guaranteed to be available
+        if(history_events.size() < 1)
+        {
+            std::cout << "  ⚠️  Skipping Test 6 (Get Latest) - insufficient data (need at least 1 event in history)"
+                      << std::endl;
+            return false;
+        }
+
+        try
+        {
+            auto latest_opt = kvs.get_latest(test_key);
+
+            if(!latest_opt.has_value())
+            {
+                std::cout << "  ✗ Get Latest: No events found for key '" << test_key << "'" << std::endl;
+                printTestResult("Get Latest Operations", false, "No events found");
+                return false;
+            }
+
+            auto latest = latest_opt.value();
+
+            // Find the actual latest event from history_events for comparison
+            auto expected_latest = std::max_element(history_events.begin(),
+                                                    history_events.end(),
+                                                    [](const chronokvs::EventData& a, const chronokvs::EventData& b)
+                                                    { return a.timestamp < b.timestamp; });
+
+            bool timestamp_match = latest.timestamp == expected_latest->timestamp;
+            bool value_match = latest.value == expected_latest->value;
+
+            if(timestamp_match && value_match)
+            {
+                std::cout << "  ✓ Get Latest: timestamp " << std::setw(12) << latest.timestamp << " -> " << latest.value
+                          << std::endl;
+                std::cout << "    Matches expected latest event from history" << std::endl;
+                printTestResult("Get Latest Operations", true, "Latest event retrieved correctly");
+                return true;
+            }
+            else
+            {
+                std::cout << "  ✗ Get Latest: timestamp " << std::setw(12) << latest.timestamp << " -> " << latest.value
+                          << std::endl;
+                if(!timestamp_match)
+                {
+                    std::cout << "    ⚠️  Timestamp mismatch: expected " << expected_latest->timestamp << ", got "
+                              << latest.timestamp << std::endl;
+                }
+                if(!value_match)
+                {
+                    std::cout << "    ⚠️  Value mismatch: expected '" << expected_latest->value << "', got '"
+                              << latest.value << "'" << std::endl;
+                }
+                printTestResult("Get Latest Operations", false, "Latest event does not match expected");
+                return false;
+            }
+        }
+        catch(const std::exception& e)
+        {
+            std::cout << "  ✗ Get Latest: failed with " << e.what() << std::endl;
+            printTestResult("Get Latest Operations", false, "Exception: " + std::string(e.what()));
+            return false;
+        }
+    }
+
     bool runAllTests()
     {
         // Main header
@@ -437,7 +509,7 @@ public:
         std::cout << "                    ==============================" << std::endl;
         std::cout << "  Purpose: Verify ChronoKVS API functionality for GitHub Actions" << std::endl;
         std::cout << "  Tests:   Put Operations, Data Propagation, Get History, Get Operations, Get Range Operations, "
-                     "Get Earliest Operations"
+                     "Get Earliest Operations, Get Latest Operations"
                   << std::endl;
         std::cout << std::string(80, '=') << std::endl;
 
@@ -446,6 +518,7 @@ public:
         bool test3_result = false;
         bool test4_result = false;
         bool test5_result = false;
+        bool test6_result = false;
 
         // Test 1: Put
         test1_result = test1_put();
@@ -507,6 +580,20 @@ public:
             test5_result = false;
         }
 
+        // Test 6: Get Latest (only if we have history data from Test 2, regardless of Test 2 pass/fail)
+        if(history_events.size() >= 1)
+        {
+            test6_result = test6_get_latest();
+        }
+        else
+        {
+            printHeader("TEST 6: GET LATEST OPERATIONS");
+            std::cout << "  ⚠️  Skipping Test 6 (Get Latest) - insufficient history data from Test 2" << std::endl;
+            std::cout << "  This test requires at least 1 event in history to proceed (got " << history_events.size()
+                      << ")" << std::endl;
+            test6_result = false;
+        }
+
         // Final summary
         printHeader("FINAL TEST RESULTS");
         std::cout << "  Test 1 (Put):        " << (test1_result ? "✅ PASSED" : "❌ FAILED") << std::endl;
@@ -514,20 +601,21 @@ public:
         std::cout << "  Test 3 (Get):        " << (test3_result ? "✅ PASSED" : "❌ FAILED") << std::endl;
         std::cout << "  Test 4 (Get Range):  " << (test4_result ? "✅ PASSED" : "❌ FAILED") << std::endl;
         std::cout << "  Test 5 (Get Earliest): " << (test5_result ? "✅ PASSED" : "❌ FAILED") << std::endl;
+        std::cout << "  Test 6 (Get Latest): " << (test6_result ? "✅ PASSED" : "❌ FAILED") << std::endl;
         printSeparator();
 
         int passed_tests = (test1_result ? 1 : 0) + (test2_result ? 1 : 0) + (test3_result ? 1 : 0) +
-                           (test4_result ? 1 : 0) + (test5_result ? 1 : 0);
-        std::cout << "  Overall: " << passed_tests << "/5 tests passed" << std::endl;
+                           (test4_result ? 1 : 0) + (test5_result ? 1 : 0) + (test6_result ? 1 : 0);
+        std::cout << "  Overall: " << passed_tests << "/6 tests passed" << std::endl;
 
-        if(passed_tests == 5)
+        if(passed_tests == 6)
         {
             std::cout << "\n  🎉 ALL CHRONOKVS API TESTS PASSED! 🎉" << std::endl;
             std::cout << "  The ChronoKVS integration is working correctly and ready for GitHub Actions." << std::endl;
         }
         else if(passed_tests > 0)
         {
-            std::cout << "\n  ⚠️  PARTIAL SUCCESS: " << passed_tests << "/5 tests passed" << std::endl;
+            std::cout << "\n  ⚠️  PARTIAL SUCCESS: " << passed_tests << "/6 tests passed" << std::endl;
             std::cout << "  Some ChronoKVS functionality is working, but there may be issues to investigate."
                       << std::endl;
         }
@@ -539,7 +627,7 @@ public:
 
         std::cout << std::string(80, '=') << std::endl;
 
-        return passed_tests == 5;
+        return passed_tests == 6;
     }
 };
 

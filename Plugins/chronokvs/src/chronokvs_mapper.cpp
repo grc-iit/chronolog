@@ -79,4 +79,24 @@ std::optional<EventData> ChronoKVSMapper::retrieveEarliestByKey(const std::strin
     return *earliest;
 }
 
+std::optional<EventData> ChronoKVSMapper::retrieveLatestByKey(const std::string& key)
+{
+    // Retrieve all events for the given key and return the one with the latest timestamp.
+    auto events = chronoClientAdapter->retrieveEvents(key, MIN_TIMESTAMP, MAX_TIMESTAMP);
+
+    if(events.empty())
+    {
+        return std::nullopt;
+    }
+
+    // Find the event with the maximum timestamp.
+    // Note: We use max_element because the underlying storage does not guarantee
+    // events are returned in timestamp order.
+    auto latest = std::max_element(events.begin(),
+                                   events.end(),
+                                   [](const EventData& a, const EventData& b) { return a.timestamp < b.timestamp; });
+
+    return *latest;
+}
+
 } // namespace chronokvs

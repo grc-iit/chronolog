@@ -114,5 +114,18 @@ int main()
         std::cout << "No events found for key2\n";
     }
 
+    // Read and display the latest event for key2
+    std::cout << "\nReading latest event for key2:\n";
+    auto latestEvent = chronoKVS.get_latest(key2);
+    if(latestEvent.has_value())
+    {
+        std::cout << "Latest event - Timestamp: " << latestEvent->timestamp << "\nValue    : " << latestEvent->value
+                  << "\n";
+    }
+    else
+    {
+        std::cout << "No events found for key2\n";
+    }
+
     return 0;
 }
