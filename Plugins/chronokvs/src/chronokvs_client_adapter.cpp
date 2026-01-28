@@ -5,8 +5,10 @@
 #include <string>
 #include <stdexcept>
 #include <vector>
-#include "chronokvs_client_adapter.h"
 #include <ClientConfiguration.h>
+
+#include "chronokvs_client_adapter.h"
+
 
 namespace chronokvs
 {
