@@ -20,16 +20,12 @@ target_sources(chrono_player PRIVATE
     src/HDF5ArchiveReadingAgent.cpp
     src/PlaybackService.cpp
     src/StoryChunkTransferAgent.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunk.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunkWriter.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryPipeline.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunkExtractor.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/ConfigurationManager.cpp
     ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
 )
 
 target_link_libraries(chrono_player
     PRIVATE
+        chrono_common
         chronolog_client
         thallium
         ${HDF5_LIBRARIES}
@@ -48,8 +44,6 @@ set_target_properties(chrono_player PROPERTIES
 add_executable(transfer_agent_test
     src/TransferAgentTest.cpp
     src/StoryChunkTransferAgent.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunkExtractor.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunk.cpp
 )
 
 target_include_directories(transfer_agent_test PRIVATE
@@ -59,6 +53,7 @@ target_include_directories(transfer_agent_test PRIVATE
 
 target_link_libraries(transfer_agent_test
     PRIVATE
+        chrono_common
         chronolog_client
         thallium
 )
@@ -73,8 +68,6 @@ add_executable(playback_service_test
     src/PlaybackServiceTest.cpp
     src/PlaybackService.cpp
     src/StoryChunkTransferAgent.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunkExtractor.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunk.cpp
 )
 
 target_include_directories(playback_service_test PRIVATE
@@ -84,6 +77,7 @@ target_include_directories(playback_service_test PRIVATE
 
 target_link_libraries(playback_service_test
     PRIVATE
+        chrono_common
         chronolog_client
         thallium
 )
@@ -97,9 +91,6 @@ set_target_properties(playback_service_test PROPERTIES
 add_executable(hdf5_archive_reader_test
     src/HDF5ArchiveReadingAgentTest.cpp
     src/HDF5ArchiveReadingAgent.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/ConfigurationManager.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunk.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunkWriter.cpp
 )
 
 target_include_directories(hdf5_archive_reader_test PRIVATE
@@ -113,6 +104,7 @@ target_link_directories(hdf5_archive_reader_test PRIVATE
 
 target_link_libraries(hdf5_archive_reader_test
     PRIVATE
+        chrono_common
         chronolog_client
         thallium
         ${HDF5_LIBRARIES}
@@ -127,9 +119,6 @@ set_target_properties(hdf5_archive_reader_test PROPERTIES
 add_executable(fs_monitoring_test
     src/FSMonitoringTest.cpp
     src/HDF5ArchiveReadingAgent.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/ConfigurationManager.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunk.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunkWriter.cpp
     ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
 )
 
@@ -145,6 +134,7 @@ target_link_directories(fs_monitoring_test PRIVATE
 
 target_link_libraries(fs_monitoring_test
     PRIVATE
+        chrono_common
         chronolog_client
         thallium
         ${HDF5_LIBRARIES}

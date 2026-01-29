@@ -10,6 +10,7 @@
  */
 
 #include <iostream>
+
 #include <chronolog_client.h>
 #include <ClientConfiguration.h>
 

@@ -41,31 +41,294 @@ clean=false
 EXEC_MODE_COUNT=0
 
 # Helper Methods _______________________________________________________________________________________________________
-run_deploy_local() {
-    local mode="$1"
-    local deploy_script="${REPO_ROOT}/tools/deploy/ChronoLog/deploy_local.sh"
+start_service() {
+    local bin="$1"
+    local args="$2"
+    local monitor_file="$3"
+    echo -e "${DEBUG}Launching $bin $args ...${NC}"
+    nohup ${bin} ${args} > ${MONITOR_DIR}/${monitor_file} 2>&1 &
+}
 
-    if [[ ! -x "${deploy_script}" ]]; then
-        echo -e "${ERR}Error: ${deploy_script} is not executable or not found.${NC}"
+kill_service() {
+    local bin=$(basename "$1")
+    echo -e "${DEBUG}Killing $(basename ${bin}) ...${NC}"
+    pkill -9 -f ${bin}
+}
+
+stop_service() {
+    local bin=$(basename "$1") 
+    local timeout="$2"
+    local script_pid=$$
+
+    # Stop all processes of the service
+    local start_time=$(date +%s)
+    echo -e "${DEBUG}Stopping ${bin} ...${NC}"
+    
+    # Match full command line but exclude this script's process tree
+    pgrep -f "/${bin}" | grep -v "^${script_pid}$" | xargs -r kill 2>/dev/null || true
+
+    # Wait for processes to stop with a timeout
+    local wait_interval=2
+    while true; do
+        # Check if processes are still running (exclude this script)
+        if pgrep -f "/${bin}" | grep -v "^${script_pid}$" | grep -q .; then
+            local current_time=$(date +%s)
+            local elapsed=$((current_time - start_time))
+            
+            if (( elapsed >= timeout )); then
+                echo -e "${ERR}Timeout reached (${timeout}s) while stopping ${bin} processes.${NC}"
+                echo -e "${DEBUG}Forcing termination with SIGKILL...${NC}"
+                pgrep -f "/${bin}" | grep -v "^${script_pid}$" | xargs -r kill -9 2>/dev/null || true
+                sleep 2
+                
+                # Final check after force kill
+                if pgrep -f "/${bin}" | grep -v "^${script_pid}$" | grep -q .; then
+                    echo -e "${ERR}CRITICAL: Failed to stop ${bin} processes even with SIGKILL!${NC}"
+                    pgrep -f "/${bin}" -la || true
+                    return 1
+                else
+                    echo -e "${DEBUG}Force killed ${bin} processes.${NC}"
+                    break
+                fi
+            else
+                echo -e "${DEBUG}Waiting for ${bin} to stop... (${elapsed}/${timeout}s)${NC}"
+                sleep $wait_interval
+            fi
+        else
+            echo -e "${DEBUG}All ${bin} processes stopped gracefully.${NC}"
+            break
+        fi
+    done
+    echo ""
+    return 0
+}
+
+generate_config_files() {
+    local num_keepers=$1
+    local default_conf=$2
+    local conf_dir=$3
+    local output_dir=$4
+    local num_recording_groups=$5
+    local monitor_dir=$6
+    local client_conf_file=$7
+
+    mkdir -p "${monitor_dir}"
+
+    # Check if default configuration file exists
+    if [ ! -f "$default_conf" ]; then
+        echo "Default configuration file $default_conf not found."
         exit 1
     fi
 
-    local args=("${deploy_script}" "${mode}"
-        "-k" "${NUM_KEEPERS}"
-        "-r" "${NUM_RECORDING_GROUPS}"
-        "-w" "${WORK_DIR}"
-        "-m" "${MONITOR_DIR}"
-        "-u" "${OUTPUT_DIR}"
-        "-v" "${VISOR_BIN}"
-        "-g" "${GRAPHER_BIN}"
-        "-p" "${KEEPER_BIN}"
-        "-a" "${PLAYER_BIN}"
-        "-f" "${CONF_FILE}"
-        "-n" "${CLIENT_CONF_FILE}"
+    if [ ! -f "$client_conf_file" ]; then
+        echo "Default configuration file $client_conf_file not found."
+        exit 1
+    fi
+
+    # Check if number of keepers and graphers are valid
+    if (( num_keepers <= 0 || num_recording_groups <= 0 )); then
+        echo "Number of keepers and graphers must be greater than 0. Exiting..."
+        exit 1
+    fi
+
+    if (( num_keepers < num_recording_groups )); then
+        echo "Number of keepers must be greater than or equal to the number of graphers. Exiting..."
+        exit 1
+    fi
+
+    # Extract initial ports from the configuration file
+    local base_port_keeper_record=$(jq -r '.chrono_keeper.KeeperRecordingService.rpc.service_base_port' "$default_conf")
+    local base_port_keeper_drain=$(jq -r '.chrono_keeper.KeeperGrapherDrainService.rpc.service_base_port' "$default_conf")
+    local base_port_keeper_datastore=$(jq -r '.chrono_keeper.KeeperDataStoreAdminService.rpc.service_base_port' "$default_conf")
+    local base_port_grapher_drain=$(jq -r '.chrono_grapher.KeeperGrapherDrainService.rpc.service_base_port' "$default_conf")
+    local base_port_grapher_datastore=$(jq -r '.chrono_grapher.DataStoreAdminService.rpc.service_base_port' "$default_conf")
+    local base_port_player_datastore=$(jq -r '.chrono_player.PlayerStoreAdminService.rpc.service_base_port' "$default_conf")
+    local base_port_player_playback=$(jq -r '.chrono_player.PlaybackQueryService.rpc.service_base_port' "$default_conf")
+
+    # Generate grapher configuration files
+    echo "Generating grapher configuration files ..."
+    mkdir -p "${output_dir}"
+    for (( i=0; i<num_recording_groups; i++ )); do
+        local new_port_grapher_drain=$((base_port_grapher_drain + i))
+        local new_port_grapher_datastore=$((base_port_grapher_datastore + i))
+
+        local grapher_index=$((i + 1))
+        local grapher_output_file="${conf_dir}/grapher_conf_${grapher_index}.json"
+
+        grapher_monitoring_file=$(jq -r '.chrono_grapher.Monitoring.monitor.file' "$default_conf")
+        grapher_monitoring_file_name=$(basename "$grapher_monitoring_file")
+        jq --arg monitor_dir "$monitor_dir" \
+            --arg output_dir "$output_dir" \
+            --argjson new_port_grapher_drain $new_port_grapher_drain \
+            --argjson new_port_grapher_datastore $new_port_grapher_datastore \
+            --argjson grapher_index "$grapher_index" \
+            --arg grapher_monitoring_file_name "$grapher_monitoring_file_name" \
+           '.chrono_grapher.RecordingGroup = $grapher_index |
+            .chrono_grapher.KeeperGrapherDrainService.rpc.service_base_port = $new_port_grapher_drain |
+            .chrono_grapher.DataStoreAdminService.rpc.service_base_port = $new_port_grapher_datastore |
+            .chrono_grapher.Monitoring.monitor.file = ($monitor_dir + "/" + ($grapher_index | tostring) + "_" + $grapher_monitoring_file_name) |
+            .chrono_grapher.Extractors.story_files_dir = ($output_dir + "/")' "$default_conf" > "$grapher_output_file"
+
+        echo "Generated $grapher_output_file with ports $new_port_grapher_drain and $new_port_grapher_datastore"
+    done
+
+    # Generate player configuration files
+    echo "Generating player configuration files ..."
+    for (( i=0; i<num_recording_groups; i++ )); do
+        local new_port_player_datastore=$((base_port_player_datastore + i))
+        local new_port_player_playback=$((base_port_player_playback + i))
+
+        local player_index=$((i + 1))
+        local player_output_file="${conf_dir}/player_conf_${player_index}.json"
+
+        player_monitoring_file=$(jq -r '.chrono_player.Monitoring.monitor.file' "$default_conf")
+        player_monitoring_file_name=$(basename "$player_monitoring_file")
+        jq --arg monitor_dir "$monitor_dir" \
+            --arg output_dir "$output_dir" \
+            --argjson new_port_player_datastore $new_port_player_datastore \
+            --argjson new_port_player_playback $new_port_player_playback \
+            --argjson player_index "$player_index" \
+            --arg player_monitoring_file_name "$player_monitoring_file_name" \
+           '.chrono_player.RecordingGroup = $player_index |
+            .chrono_player.PlayerStoreAdminService.rpc.service_base_port = $new_port_player_datastore |
+            .chrono_player.PlaybackQueryService.rpc.service_base_port = $new_port_player_playback |
+            .chrono_player.Monitoring.monitor.file = ($monitor_dir + "/" + ($player_index | tostring) + "_" + $player_monitoring_file_name) |
+            .chrono_player.ArchiveReaders.story_files_dir = ($output_dir + "/")' "$default_conf" >"$player_output_file"
+
+        echo "Generated $player_output_file with port $new_port_player_datastore"
+    done
+
+    # Assign keepers to graphers iteratively
+    echo "Generating keeper configuration files ..."
+    for (( i=0; i<num_keepers; i++ )); do
+        local new_port_keeper_record=$((base_port_keeper_record + i))
+        local new_port_keeper_datastore=$((base_port_keeper_datastore + i))
+        local grapher_index=$((i % num_recording_groups + 1))
+        local new_port_keeper_drain=$((base_port_keeper_drain + grapher_index - 1))
+
+        local keeper_index=$((i + 1))
+        local keeper_output_file="${conf_dir}/keeper_conf_${keeper_index}.json"
+
+        keeper_monitoring_file=$(jq -r '.chrono_keeper.Monitoring.monitor.file' "$default_conf")
+        keeper_monitoring_file_name=$(basename "$keeper_monitoring_file")
+        jq --arg monitor_dir "$monitor_dir" \
+            --arg output_dir "$output_dir" \
+            --argjson new_port_keeper_record $new_port_keeper_record \
+            --argjson new_port_keeper_drain $new_port_keeper_drain \
+            --argjson new_port_keeper_datastore $new_port_keeper_datastore \
+            --argjson grapher_index "$grapher_index" \
+            --arg keeper_index "$keeper_index" \
+            --arg keeper_monitoring_file_name "$keeper_monitoring_file_name" \
+            '.chrono_keeper.KeeperRecordingService.rpc.service_base_port = $new_port_keeper_record |
+            .chrono_keeper.KeeperGrapherDrainService.rpc.service_base_port = $new_port_keeper_drain |
+            .chrono_keeper.KeeperDataStoreAdminService.rpc.service_base_port = $new_port_keeper_datastore |
+            .chrono_keeper.story_files_dir = ($output_dir + "/") |
+            .chrono_keeper.RecordingGroup = $grapher_index |
+            .chrono_keeper.Monitoring.monitor.file = ($monitor_dir + "/" + ($keeper_index | tostring) + "_" + $keeper_monitoring_file_name)' "$default_conf" > "$keeper_output_file"
+        echo "Generated $keeper_output_file with ports $new_port_keeper_record, $new_port_keeper_datastore, and $new_port_keeper_drain"
+    done
+
+    # Generate visor configuration file
+    echo "Generating visor configuration file ..."
+    local visor_output_file="${conf_dir}/visor_conf.json"
+    visor_monitoring_file=$(jq -r '.chrono_visor.Monitoring.monitor.file' "$default_conf")
+    visor_monitoring_file_name=$(basename "$visor_monitoring_file")
+    jq --arg monitor_dir "$monitor_dir" \
+        --arg visor_monitoring_file_name "$visor_monitoring_file_name" \
+       '.chrono_visor.Monitoring.monitor.file = ($monitor_dir + "/" + $visor_monitoring_file_name)' "$default_conf" > "$visor_output_file"
+    echo "Generated $visor_output_file"
+
+    # Generate client configuration file
+    echo "Generating client configuration file ..."
+    local client_output_file="${conf_dir}/client_conf.json"
+    client_monitoring_file=$(jq -r '.chrono_client.Monitoring.monitor.file' "$client_conf_file")
+    client_monitoring_file_name=$(basename "$client_monitoring_file")
+    jq --arg monitor_dir "$monitor_dir" \
+        --arg client_monitoring_file_name "$client_monitoring_file_name" \
+       '.chrono_client.Monitoring.monitor.file = ($monitor_dir + "/" + $client_monitoring_file_name)' "$client_conf_file" > "$client_output_file"
+    echo "Generated $client_output_file"
+
+
+    echo "Generate configuration files for all recording groups done"
+}
+
+check_dependencies() {
+    local dependencies=("jq" "ldd" "nohup" "pkill" "readlink" "realpath" "chrpath")
+    echo -e "${DEBUG}Checking required dependencies...${NC}"
+    for dep in "${dependencies[@]}"; do
+        if ! command -v $dep &> /dev/null; then
+            echo -e "${ERR}Dependency $dep is not installed. Please install it and try again.${NC}"
+            exit 1
+        fi
+    done
+    echo -e "${DEBUG}All required dependencies are installed.${NC}"
+}
+
+check_directories() {
+    echo -e "${DEBUG}Checking required directories...${NC}"
+    local directories=("${WORK_DIR}" "${LIB_DIR}" "${CONF_DIR}" "${BIN_DIR}")
+
+    for dir in "${directories[@]}"; do
+        if [[ ! -d ${dir} ]]; then
+            echo -e "${ERR}Directory ${dir} does not exist. Please create it and try again.${NC}"
+            exit 1
+        fi
+    done
+    echo -e "${DEBUG}All required directories are in place.${NC}"
+}
+
+check_files() {
+    echo -e "${DEBUG}Checking required files...${NC}"
+    [[ ! -f ${VISOR_BIN} ]] && echo -e "${ERR}Visor binary file does not exist, exiting ...${NC}" && exit 1
+    [[ ! -f ${KEEPER_BIN} ]] && echo -e "${ERR}Keeper binary file does not exist, exiting ...${NC}" && exit 1
+    [[ ! -f ${GRAPHER_BIN} ]] && echo -e "${ERR}Grapher binary file does not exist, exiting ...${NC}" && exit 1
+    [[ ! -f ${PLAYER_BIN} ]] && echo -e "${ERR}Player binary file does not exist, exiting ...${NC}" && exit 1
+    [[ ! -f ${CONF_FILE} ]] && echo -e "${ERR}Configuration file does not exist, exiting ...${NC}" && exit 1
+    [[ ! -f ${CLIENT_CONF_FILE} ]] && echo -e "${ERR}Client configuration file does not exist, exiting ...${NC}" && exit 1
+    echo -e "${DEBUG}All required files are in place.${NC}"
+}
+
+
+check_installation() {
+    check_dependencies
+    check_directories
+    check_files
+}
+
+check_work_dir() {
+    # Set default WORK_DIR if not provided
+    if [[ -z "${WORK_DIR}" ]]; then
+        WORK_DIR="$HOME/chronolog-install/chronolog"
+        echo -e "${DEBUG}Using default work directory: ${WORK_DIR}${NC}"
+    fi
+}
+
+check_execution_stopped() {
+    echo -e "${DEBUG}Checking if ChronoLog processes are running...${NC}"
+    local script_pid=$$
+
+    # Use exact pattern matching to find ChronoLog processes (avoiding false positives)
+    # Check for each ChronoLog binary using the same pattern as stop_service()
+    local visor_bin=$(basename "${VISOR_BIN}")
+    local keeper_bin=$(basename "${KEEPER_BIN}")
+    local grapher_bin=$(basename "${GRAPHER_BIN}")
+    local player_bin=$(basename "${PLAYER_BIN}")
+
+    local active_processes=$(
+        { pgrep -f "/${visor_bin}" 2>/dev/null || true; } | grep -v "^${script_pid}$"
+        { pgrep -f "/${keeper_bin}" 2>/dev/null || true; } | grep -v "^${script_pid}$"
+        { pgrep -f "/${grapher_bin}" 2>/dev/null || true; } | grep -v "^${script_pid}$"
+        { pgrep -f "/${player_bin}" 2>/dev/null || true; } | grep -v "^${script_pid}$"
     )
 
-    echo -e "${DEBUG}Running: ${args[*]}${NC}"
-    "${args[@]}"
+    if [[ -n "${active_processes}" ]]; then
+        echo -e "${ERR}ChronoLog processes are still running:${NC}"
+        ps -fp ${active_processes} || true
+        echo -e "${ERR}Please stop all ChronoLog processes before cleaning.${NC}"
+        exit 1
+    else
+        echo -e "${DEBUG}No active ChronoLog processes detected. Proceeding with cleaning.${NC}"
+    fi
 }
 
 # Main functions __________________________________________________________________________________________________________
@@ -103,17 +366,80 @@ install() {
 
 start() {
     echo -e "${INFO}Preparing to start ChronoLog...${NC}"
-    run_deploy_local "--start"
+    check_work_dir
+    mkdir -p "${MONITOR_DIR}"
+    mkdir -p "${OUTPUT_DIR}"
+    check_installation
+    generate_config_files ${NUM_KEEPERS} ${CONF_FILE} ${CONF_DIR} ${OUTPUT_DIR} ${NUM_RECORDING_GROUPS} ${MONITOR_DIR} ${CLIENT_CONF_FILE}
+    echo -e "${INFO}Starting ChronoLog...${NC}"
+    start_service ${VISOR_BIN} "--config ${CONF_DIR}/visor_conf.json" "visor.launch.log"
+    sleep 2
+    num_record_group=${NUM_RECORDING_GROUPS}
+    for (( i=1; i<=num_record_group; i++ ))
+    do
+        start_service ${GRAPHER_BIN} "--config ${CONF_DIR}/grapher_conf_$i.json" "grapher_$i.launch.log"
+    done
+    sleep 2
+    for (( i=1; i<=num_record_group; i++ ))
+    do
+        start_service ${PLAYER_BIN} "--config ${CONF_DIR}/player_conf_$i.json" "player_$i.launch.log"
+    done
+    sleep 2
+    num_keepers=${NUM_KEEPERS}
+    for (( i=1; i<=num_keepers; i++ ))
+    do
+        start_service ${KEEPER_BIN} "--config ${CONF_DIR}/keeper_conf_$i.json" "keeper_$i.launch.log"
+    done
+    echo -e "${INFO}ChronoLog Started.${NC}"
 }
 
 stop() {
     echo -e "${INFO}Stopping ChronoLog...${NC}"
-    run_deploy_local "--stop"
+    check_work_dir
+
+    local failed=0
+
+    # Stop player and keeper in parallel
+    stop_service ${PLAYER_BIN} 30 &
+    local player_pid=$!
+    stop_service ${KEEPER_BIN} 30 &
+    local keeper_pid=$!
+
+    # Wait for both to complete
+    wait $player_pid || failed=1
+    wait $keeper_pid || failed=1
+
+    # Stop grapher and visor sequentially
+    stop_service ${GRAPHER_BIN} 30 || failed=1
+    stop_service ${VISOR_BIN} 30 || failed=1
+    
+    if [ "$failed" -eq 1 ]; then
+        echo -e "${ERR}Some ChronoLog processes failed to stop properly.${NC}"
+        return 1
+    fi
+    
+    echo -e "${INFO}All ChronoLog processes stopped successfully.${NC}"
+    return 0
 }
 
 clean() {
     echo -e "${INFO}Cleaning ChronoLog...${NC}"
-    run_deploy_local "--clean"
+    check_work_dir
+    check_execution_stopped
+    echo -e "${DEBUG}Removing config files${NC}"
+    rm -f ${CONF_DIR}/grapher_conf*.json
+    rm -f ${CONF_DIR}/player_conf*.json
+    rm -f ${CONF_DIR}/keeper_conf*.json
+    rm -f ${CONF_DIR}/visor_conf.json
+    rm -f ${CONF_DIR}/client_conf.json
+
+    echo -e "${DEBUG}Removing log files${NC}"
+    rm -f ${MONITOR_DIR}/*.log
+
+    echo -e "${DEBUG}Removing output files${NC}"
+    rm -f ${OUTPUT_DIR}/*
+
+    echo -e "${INFO}ChronoLog cleaning done. ${NC}"
 }
 
 usage() {

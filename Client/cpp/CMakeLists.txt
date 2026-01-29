@@ -23,7 +23,6 @@ add_library(chronolog_client
     src/ChronologClientImpl.cpp
     src/ClientConfiguration.cpp
     ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunk.cpp
 )
 
 # Include directories for the library
@@ -51,6 +50,7 @@ target_link_directories(chronolog_client
 
 target_link_libraries(chronolog_client
     PRIVATE
+        chrono_common
         thallium
         ${JSON-C_LIBRARIES}
 )
@@ -86,7 +86,8 @@ set_target_properties(chronolog_client PROPERTIES
 #------------------------------------------------------------------------------
 # Install library, headers, and configuration file
 #------------------------------------------------------------------------------
-# Install target with export
+# Install chronolog_client with export (chrono_common is not installed as it's
+# only used internally by server-side ChronoLog components)
 install(TARGETS chronolog_client
     EXPORT ChronologTargets
     RUNTIME DESTINATION ${CHRONOLOG_INSTALL_BIN_DIR}

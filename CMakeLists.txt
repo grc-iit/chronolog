@@ -206,8 +206,8 @@ endif()
 #------------------------------------------------------------------------------
 # ChronoLog Components
 #------------------------------------------------------------------------------
-add_subdirectory(Client)
 add_subdirectory(chrono_common)
+add_subdirectory(Client)
 add_subdirectory(ChronoVisor)
 add_subdirectory(ChronoKeeper)
 add_subdirectory(ChronoGrapher)
@@ -274,16 +274,6 @@ configure_file(
 install(
     FILES "${CMAKE_CURRENT_BINARY_DIR}/chronolog.pc"
     DESTINATION ${CHRONOLOG_INSTALL_ROOT}/lib/pkgconfig
-)
-
-#------------------------------------------------------------------------------
-# Deploy-from-install helper scripts
-#------------------------------------------------------------------------------
-install(
-    PROGRAMS
-        tools/deploy/ChronoLog/deploy_local.sh
-        tools/deploy/ChronoLog/deploy_cluster.sh
-    DESTINATION ${CHRONOLOG_INSTALL_ROOT}/tools
 )
 
 #------------------------------------------------------------------------------

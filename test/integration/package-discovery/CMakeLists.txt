@@ -130,13 +130,25 @@ if(CHRONOLOG_PACKAGE_INSTALLED)
     # Use the flags from pkg-config (from the installed .pc file)
     # These point to the installed include and lib directories
     target_include_directories(test_pkgconfig_discovery PRIVATE ${CHRONOLOG_INCLUDE_DIRS})
-    target_link_directories(test_pkgconfig_discovery PRIVATE ${CHRONOLOG_LIBRARY_DIRS})
-    target_link_libraries(test_pkgconfig_discovery PRIVATE ${CHRONOLOG_LIBRARIES})
+    
+    # Create an imported library target for the installed chronolog_client library
+    # This prevents CMake from resolving to the build tree library
+    add_library(chronolog_client_imported SHARED IMPORTED)
+    # CHRONOLOG_LIBRARY_DIRS is a list, so we need to get the first element
+    list(GET CHRONOLOG_LIBRARY_DIRS 0 CHRONOLOG_LIB_DIR)
+    set_target_properties(chronolog_client_imported PROPERTIES
+        IMPORTED_LOCATION "${CHRONOLOG_LIB_DIR}/libchronolog_client.so"
+    )
+    
+    # Link against the imported target (not the build tree target)
+    target_link_libraries(test_pkgconfig_discovery PRIVATE chronolog_client_imported)
     
     # Set properties for proper RPATH handling
+    # Use the library directories from pkg-config for RPATH
     set_target_properties(test_pkgconfig_discovery PROPERTIES
-        BUILD_WITH_INSTALL_RPATH TRUE
-        SKIP_BUILD_RPATH TRUE
+        BUILD_RPATH "${CHRONOLOG_LIBRARY_DIRS}"
+        INSTALL_RPATH "${CHRONOLOG_LIBRARY_DIRS}"
+        BUILD_WITH_INSTALL_RPATH FALSE
     )
 else()
     # Package not installed - use build tree instead
