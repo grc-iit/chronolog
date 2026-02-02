@@ -11,6 +11,7 @@
 #include <chronolog_client.h>
 
 #include "chronokvs_types.h"
+#include "chronokvs_logger.h"
 
 namespace chronokvs
 {
@@ -20,9 +21,10 @@ class ChronoKVSClientAdapter
 private:
     std::unique_ptr<chronolog::Client> chronolog;
     const std::string defaultChronicle = "ChronoKVSChronicle";
+    LogLevel logLevel_;
 
 public:
-    ChronoKVSClientAdapter();
+    explicit ChronoKVSClientAdapter(LogLevel level);
 
     ~ChronoKVSClientAdapter();
 
