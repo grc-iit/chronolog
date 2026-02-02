@@ -318,7 +318,7 @@ check_work_dir() {
 check_execution_stopped() {
     echo -e "${DEBUG}Checking if ChronoLog processes are running...${NC}"
     local active_processes
-    active_processes=$(pgrep -la chrono)
+    active_processes=$(pgrep -la chrono || true)
 
     if [[ -n "${active_processes}" ]]; then
         echo -e "${ERR}ChronoLog processes are still running:${NC}"
