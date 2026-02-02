@@ -94,11 +94,14 @@ std::vector<EventData> ChronoKVSMapper::retrieveByKeyAndRange(const std::string&
 
 std::optional<EventData> ChronoKVSMapper::retrieveEarliestByKey(const std::string& key)
 {
+    CHRONOKVS_DEBUG(logLevel_, "Retrieving earliest event for key='", key, "'");
+
     // Retrieve all events for the given key and return the one with the earliest timestamp.
     auto events = chronoClientAdapter->retrieveEvents(key, MIN_TIMESTAMP, MAX_TIMESTAMP);
 
     if(events.empty())
     {
+        CHRONOKVS_DEBUG(logLevel_, "No events found for key='", key, "'");
         return std::nullopt;
     }
 
@@ -109,16 +112,20 @@ std::optional<EventData> ChronoKVSMapper::retrieveEarliestByKey(const std::strin
                                      events.end(),
                                      [](const EventData& a, const EventData& b) { return a.timestamp < b.timestamp; });
 
+    CHRONOKVS_DEBUG(logLevel_, "Found earliest event for key='", key, "' at timestamp=", earliest->timestamp);
     return *earliest;
 }
 
 std::optional<EventData> ChronoKVSMapper::retrieveLatestByKey(const std::string& key)
 {
+    CHRONOKVS_DEBUG(logLevel_, "Retrieving latest event for key='", key, "'");
+
     // Retrieve all events for the given key and return the one with the latest timestamp.
     auto events = chronoClientAdapter->retrieveEvents(key, MIN_TIMESTAMP, MAX_TIMESTAMP);
 
     if(events.empty())
     {
+        CHRONOKVS_DEBUG(logLevel_, "No events found for key='", key, "'");
         return std::nullopt;
     }
 
@@ -129,6 +136,7 @@ std::optional<EventData> ChronoKVSMapper::retrieveLatestByKey(const std::string&
                                    events.end(),
                                    [](const EventData& a, const EventData& b) { return a.timestamp < b.timestamp; });
 
+    CHRONOKVS_DEBUG(logLevel_, "Found latest event for key='", key, "' at timestamp=", latest->timestamp);
     return *latest;
 }
 
