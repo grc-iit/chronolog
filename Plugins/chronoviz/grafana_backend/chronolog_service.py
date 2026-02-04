@@ -268,26 +268,13 @@ async def connect_client(conn_config: Optional[ConnectionConfig] = None):
             query_provider_id=config.query_provider_id,
         )
 
-    # Disconnect and fully destroy existing client if any
-    # CRITICAL: Must fully clean up the old client before creating a new one
-    # to avoid C++ state issues that cause segfaults in subsequent tests
+    # If already connected, just return success (idempotent operation)
     if client is not None:
-        try:
-            # Disconnect first
-            def _disconnect_old():
-                with _client_lock:
-                    if client is not None:
-                        client.Disconnect()
-            await asyncio.to_thread(_disconnect_old)
-        except Exception as e:
-            logger.warning(f"Error disconnecting old client: {e}")
-        finally:
-            # Explicitly set to None and let Python GC clean it up
-            # This ensures the C++ object is fully destroyed
-            client = None
-            # Force garbage collection to ensure C++ object is destroyed
-            import gc
-            gc.collect()
+        logger.info("Client already connected, returning success")
+        return ConnectionResponse(
+            success=True,
+            message="Already connected to ChronoLog service"
+        )
 
     try:
         # Create configuration objects
