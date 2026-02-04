@@ -42,3 +42,18 @@ target_link_libraries(story_pipeline_test PRIVATE
 )
 
 gtest_discover_tests(story_pipeline_test)
+
+# ChronoKVSLoggerTest
+add_executable(chronokvs_logger_test
+    ChronoKVSLoggerTest.cpp
+)
+
+target_include_directories(chronokvs_logger_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/Plugins/chronokvs/include
+)
+
+target_link_libraries(chronokvs_logger_test PRIVATE
+    GTest::gtest_main
+)
+
+gtest_discover_tests(chronokvs_logger_test)
