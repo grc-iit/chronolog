@@ -77,18 +77,37 @@ std::vector<EventData> ChronoKVSMapper::retrieveByKeyAndRange(const std::string&
     // Validate timestamp range
     if(start_timestamp >= end_timestamp)
     {
-        CHRONOKVS_ERROR(logLevel_, "Invalid timestamp range for key='", key, "': start_timestamp=", start_timestamp,
-                        " >= end_timestamp=", end_timestamp);
+        CHRONOKVS_ERROR(logLevel_,
+                        "Invalid timestamp range for key='",
+                        key,
+                        "': start_timestamp=",
+                        start_timestamp,
+                        " >= end_timestamp=",
+                        end_timestamp);
         throw std::invalid_argument("Invalid timestamp range: start_timestamp must be less than end_timestamp");
     }
 
-    CHRONOKVS_DEBUG(logLevel_, "Retrieving events for key='", key, "' range=[", start_timestamp, ", ",
-                    end_timestamp, ")");
+    CHRONOKVS_DEBUG(logLevel_,
+                    "Retrieving events for key='",
+                    key,
+                    "' range=[",
+                    start_timestamp,
+                    ", ",
+                    end_timestamp,
+                    ")");
 
     // Retrieve events for the given key within the specified time range [start_timestamp, end_timestamp).
     auto events = chronoClientAdapter->retrieveEvents(key, start_timestamp, end_timestamp);
-    CHRONOKVS_DEBUG(logLevel_, "Retrieved ", events.size(), " events for key='", key, "' in range=[",
-                    start_timestamp, ", ", end_timestamp, ")");
+    CHRONOKVS_DEBUG(logLevel_,
+                    "Retrieved ",
+                    events.size(),
+                    " events for key='",
+                    key,
+                    "' in range=[",
+                    start_timestamp,
+                    ", ",
+                    end_timestamp,
+                    ")");
     return events;
 }
 
