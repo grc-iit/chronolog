@@ -49,14 +49,22 @@ inline const char* logLevelToString(LogLevel level)
 {
     switch(level)
     {
-        case LogLevel::TRACE: return "TRACE";
-        case LogLevel::DEBUG: return "DEBUG";
-        case LogLevel::INFO: return "INFO";
-        case LogLevel::WARNING: return "WARNING";
-        case LogLevel::ERROR: return "ERROR";
-        case LogLevel::CRITICAL: return "CRITICAL";
-        case LogLevel::OFF: return "OFF";
-        default: return "UNKNOWN";
+        case LogLevel::TRACE:
+            return "TRACE";
+        case LogLevel::DEBUG:
+            return "DEBUG";
+        case LogLevel::INFO:
+            return "INFO";
+        case LogLevel::WARNING:
+            return "WARNING";
+        case LogLevel::ERROR:
+            return "ERROR";
+        case LogLevel::CRITICAL:
+            return "CRITICAL";
+        case LogLevel::OFF:
+            return "OFF";
+        default:
+            return "UNKNOWN";
     }
 }
 
@@ -73,7 +81,7 @@ inline void log_message(LogLevel level, const std::string& message)
 /**
  * @brief Variadic template helper for formatting log messages
  */
-template<typename... Args>
+template <typename... Args>
 inline std::string format_log_message(const char* fmt, Args&&... args)
 {
     std::ostringstream oss;
@@ -87,15 +95,12 @@ inline std::string format_log_message(const char* fmt, Args&&... args)
 /**
  * @brief Specialization for single string argument (most common case)
  */
-inline std::string format_log_message(const char* msg)
-{
-    return std::string(msg);
-}
+inline std::string format_log_message(const char* msg) { return std::string(msg); }
 
 /**
  * @brief Specialization for string with one argument
  */
-template<typename T>
+template <typename T>
 inline std::string format_log_message(const char* fmt, T&& arg)
 {
     std::ostringstream oss;
@@ -114,60 +119,60 @@ inline std::string format_log_message(const char* fmt, T&& arg)
  * These are completely removed in Release builds (zero overhead)
  */
 #ifdef NDEBUG
-    #define CHRONOKVS_TRACE(level, ...)
-    #define CHRONOKVS_DEBUG(level, ...)
+#define CHRONOKVS_TRACE(level, ...)
+#define CHRONOKVS_DEBUG(level, ...)
 #else
-    #define CHRONOKVS_TRACE(level, ...) \
-        do { \
-            if ((level) <= chronokvs::LogLevel::TRACE) { \
-                chronokvs::log_message(chronokvs::LogLevel::TRACE, \
-                    chronokvs::format_log_message(__VA_ARGS__)); \
-            } \
-        } while(0)
+#define CHRONOKVS_TRACE(level, ...)                                                                                    \
+    do {                                                                                                               \
+        if((level) <= chronokvs::LogLevel::TRACE)                                                                      \
+        {                                                                                                              \
+            chronokvs::log_message(chronokvs::LogLevel::TRACE, chronokvs::format_log_message(__VA_ARGS__));            \
+        }                                                                                                              \
+    } while(0)
 
-    #define CHRONOKVS_DEBUG(level, ...) \
-        do { \
-            if ((level) <= chronokvs::LogLevel::DEBUG) { \
-                chronokvs::log_message(chronokvs::LogLevel::DEBUG, \
-                    chronokvs::format_log_message(__VA_ARGS__)); \
-            } \
-        } while(0)
+#define CHRONOKVS_DEBUG(level, ...)                                                                                    \
+    do {                                                                                                               \
+        if((level) <= chronokvs::LogLevel::DEBUG)                                                                      \
+        {                                                                                                              \
+            chronokvs::log_message(chronokvs::LogLevel::DEBUG, chronokvs::format_log_message(__VA_ARGS__));            \
+        }                                                                                                              \
+    } while(0)
 #endif
 
 /**
  * INFO, WARNING, ERROR, CRITICAL macros - always available
  * These work in both Debug and Release builds
  */
-#define CHRONOKVS_INFO(level, ...) \
-    do { \
-        if ((level) <= chronokvs::LogLevel::INFO) { \
-            chronokvs::log_message(chronokvs::LogLevel::INFO, \
-                chronokvs::format_log_message(__VA_ARGS__)); \
-        } \
+#define CHRONOKVS_INFO(level, ...)                                                                                     \
+    do {                                                                                                               \
+        if((level) <= chronokvs::LogLevel::INFO)                                                                       \
+        {                                                                                                              \
+            chronokvs::log_message(chronokvs::LogLevel::INFO, chronokvs::format_log_message(__VA_ARGS__));             \
+        }                                                                                                              \
     } while(0)
 
-#define CHRONOKVS_WARNING(level, ...) \
-    do { \
-        if ((level) <= chronokvs::LogLevel::WARNING) { \
-            chronokvs::log_message(chronokvs::LogLevel::WARNING, \
-                chronokvs::format_log_message(__VA_ARGS__)); \
-        } \
+#define CHRONOKVS_WARNING(level, ...)                                                                                  \
+    do {                                                                                                               \
+        if((level) <= chronokvs::LogLevel::WARNING)                                                                    \
+        {                                                                                                              \
+            chronokvs::log_message(chronokvs::LogLevel::WARNING, chronokvs::format_log_message(__VA_ARGS__));          \
+        }                                                                                                              \
     } while(0)
 
-#define CHRONOKVS_ERROR(level, ...) \
-    do { \
-        if ((level) <= chronokvs::LogLevel::ERROR) { \
-            chronokvs::log_message(chronokvs::LogLevel::ERROR, \
-                chronokvs::format_log_message(__VA_ARGS__)); \
-        } \
+#define CHRONOKVS_ERROR(level, ...)                                                                                    \
+    do {                                                                                                               \
+        if((level) <= chronokvs::LogLevel::ERROR)                                                                      \
+        {                                                                                                              \
+            chronokvs::log_message(chronokvs::LogLevel::ERROR, chronokvs::format_log_message(__VA_ARGS__));            \
+        }                                                                                                              \
     } while(0)
 
-#define CHRONOKVS_CRITICAL(level, ...) \
-    do { \
-        if ((level) <= chronokvs::LogLevel::CRITICAL) { \
-            chronokvs::log_message(chronokvs::LogLevel::CRITICAL, \
-                chronokvs::format_log_message(__VA_ARGS__)); \
-        } \
+#define CHRONOKVS_CRITICAL(level, ...)                                                                                 \
+    do {                                                                                                               \
+        if((level) <= chronokvs::LogLevel::CRITICAL)                                                                   \
+        {                                                                                                              \
+            chronokvs::log_message(chronokvs::LogLevel::CRITICAL, chronokvs::format_log_message(__VA_ARGS__));         \
+        }                                                                                                              \
     } while(0)
 
 #endif // CHRONOKVS_LOGGER_H

@@ -37,7 +37,14 @@ std::vector<EventData> ChronoKVS::get_history(const std::string& key)
 std::vector<EventData>
 ChronoKVS::get_range(const std::string& key, std::uint64_t start_timestamp, std::uint64_t end_timestamp)
 {
-    CHRONOKVS_DEBUG(logLevel_, "get_range() called for key='", key, "' range=[", start_timestamp, ", ", end_timestamp, ")");
+    CHRONOKVS_DEBUG(logLevel_,
+                    "get_range() called for key='",
+                    key,
+                    "' range=[",
+                    start_timestamp,
+                    ", ",
+                    end_timestamp,
+                    ")");
     return mapper->retrieveByKeyAndRange(key, start_timestamp, end_timestamp);
 }
 
