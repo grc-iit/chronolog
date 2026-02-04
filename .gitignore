@@ -1,3 +1,4 @@
+# build
 build/
 
 # clion
@@ -11,19 +12,15 @@ CMakeLists.txt.user
 .spack-env/
 spack.lock
 **/spack.lock
-spack.yaml
 
+# cache
 .cache/
 
-.cursor/
-
-.code/
-
+# logs
 *.log
 
+# docker
 dynamic-compose.yaml
-
-bash_history
 
 # Temp files
 __pycache__/
