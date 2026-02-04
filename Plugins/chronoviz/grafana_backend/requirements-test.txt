@@ -1,0 +1,16 @@
+# Test dependencies for ChronoLog Grafana Backend
+
+# Main dependencies
+-r requirements.txt
+
+# Testing frameworks
+pytest>=7.4.0
+pytest-cov>=4.1.0
+pytest-forked>=1.6.0
+coverage>=7.0.0
+
+# HTTP testing for FastAPI
+httpx>=0.24.0
+
+
+

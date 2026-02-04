@@ -1,0 +1,34 @@
+{
+  "$schema": "https://raw.githubusercontent.com/grafana/grafana/main/docs/sources/developers/plugins/plugin.schema.json",
+  "type": "datasource",
+  "name": "ChronoLog",
+  "id": "chronolog-datasource",
+  "metrics": true,
+  "logs": true,
+  "annotations": true,
+  "alerting": false,
+  "info": {
+    "description": "ChronoLog distributed log store data source for Grafana",
+    "author": {
+      "name": "ChronoLog Team"
+    },
+    "keywords": ["chronolog", "logs", "distributed", "timeseries"],
+    "logos": {
+      "small": "img/logo.svg",
+      "large": "img/logo.svg"
+    },
+    "links": [
+      {
+        "name": "Documentation",
+        "url": "https://github.com/ChronoLog"
+      }
+    ],
+    "version": "1.0.0",
+    "updated": "2024-01-01"
+  },
+  "dependencies": {
+    "grafanaDependency": ">=9.0.0",
+    "plugins": []
+  }
+}
+

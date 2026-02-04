@@ -1,0 +1,19 @@
+# ChronoLog Data Source Provisioning
+# This file automatically configures the ChronoLog data source in Grafana
+
+apiVersion: 1
+
+datasources:
+  - name: ChronoLog
+    type: chronolog-datasource
+    access: proxy
+    uid: chronolog
+    orgId: 1
+    version: 1
+    isDefault: false
+    jsonData:
+      backendUrl: http://localhost:8080
+      defaultChronicleName: kfeng-EVO-X2
+      defaultStoryName: cpu_usage
+    editable: true
+
