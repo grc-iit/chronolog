@@ -183,14 +183,15 @@ public:
         }
         catch(tl::exception const& e)
         {
-            std::cout << "hello it's me, thallium exception" << std::endl;
             LOG_ERROR("[RPCVisorClient] Failed to acquire story {} from chronicle {}. Thallium exception encountered.",
                       story_name.c_str(),
                       chronicle_name.c_str());
         }
         catch(std::exception const& e)
         {
-            std::cout << "hello it's me, non-thallium exception" << std::endl;
+            LOG_ERROR("[RPCVisorClient] Failed to acquire story {} from chronicle {}. Non-Thallium exception encountered.",
+                      story_name.c_str(),
+                      chronicle_name.c_str());
         }
         return (AcquireStoryResponseMsg(chronolog::CL_ERR_UNKNOWN, 0, std::vector<KeeperIdCard>{}));
     }
@@ -462,7 +463,6 @@ private:
         }
         catch(tl::exception const& ex)
         {
-            std::cout << "thallium exception during defining rpc procedures" << std::endl;
             LOG_ERROR("[RpcVisorClient] Thallium exception during RPC procedure definitions: {}", ex.what());
             throw;
         }
