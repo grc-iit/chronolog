@@ -120,8 +120,24 @@ ChronoKVSClientAdapter::retrieveEvents(const std::string& key, std::uint64_t sta
 {
     CHRONOKVS_DEBUG(logLevel_, "Retrieving events for key='", key, "' range=[", start_ts, ", ", end_ts, ")");
 
-    // Ensure handle is acquired/cached (needed for ReplayStory to work)
-    getOrAcquireHandle(key);
+    // Acquire a story handle for the given key
+    std::map<std::string, std::string> story_attrs;
+    auto [status, handle] = chronolog->AcquireStory(defaultChronicle, key, story_attrs, DEFAULT_FLAGS);
+    if(status != chronolog::CL_SUCCESS)
+    {
+        CHRONOKVS_ERROR(logLevel_, "Failed to acquire story handle for key='", key, "' with error code: ", status);
+        throw std::runtime_error("Failed to acquire story handle for key: " + key +
+                                 ", error code: " + std::to_string(status));
+    }
+
+    // RAII-style story handle management
+    struct StoryHandleGuard
+    {
+        chronolog::Client* client;
+        const std::string& chronicle;
+        const std::string& key;
+        ~StoryHandleGuard() { client->ReleaseStory(chronicle, key); }
+    } guard{chronolog.get(), defaultChronicle, key};
 
     // Retrieve events for the specified time range
     std::vector<chronolog::Event> events;
