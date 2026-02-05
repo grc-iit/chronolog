@@ -61,4 +61,10 @@ std::optional<EventData> ChronoKVS::get_latest(const std::string& key)
     return mapper->retrieveLatestByKey(key);
 }
 
+void ChronoKVS::flush()
+{
+    CHRONOKVS_DEBUG(logLevel_, "flush() called - releasing cached handles");
+    mapper->flush();
+}
+
 } // namespace chronokvs

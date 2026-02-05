@@ -38,6 +38,8 @@ public:
     std::optional<EventData> retrieveEarliestByKey(const std::string& key);
 
     std::optional<EventData> retrieveLatestByKey(const std::string& key);
+
+    void flush();
 };
 } // namespace chronokvs
 #endif // KVS_MAPPER_H_
