@@ -161,9 +161,6 @@ std::optional<EventData> ChronoKVSMapper::retrieveLatestByKey(const std::string&
     return *latest;
 }
 
-void ChronoKVSMapper::flush()
-{
-    chronoClientAdapter->flush();
-}
+void ChronoKVSMapper::flush() { chronoClientAdapter->flush(); }
 
 } // namespace chronokvs
