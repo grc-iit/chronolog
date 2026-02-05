@@ -6,7 +6,9 @@
 #include <vector>
 #include <memory>
 #include <optional>
+
 #include "chronokvs_types.h"
+#include "chronokvs_logger.h"
 
 namespace chronokvs
 {
@@ -18,9 +20,20 @@ class ChronoKVS
 {
 private:
     std::unique_ptr<ChronoKVSMapper> mapper;
+    LogLevel logLevel_;
 
 public:
-    ChronoKVS();
+    /**
+     * @brief Construct a ChronoKVS instance with optional log level
+     * @param level The logging level to use. Default is DEBUG in debug builds, ERROR in release builds.
+     */
+    explicit ChronoKVS(LogLevel level = getDefaultLogLevel());
+
+    /**
+     * @brief Get the current log level
+     * @return The current LogLevel
+     */
+    LogLevel getLogLevel() const { return logLevel_; }
 
     ~ChronoKVS();
 

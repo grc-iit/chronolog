@@ -7,7 +7,9 @@
 #include <memory>
 #include <optional>
 #include <unordered_map>
+
 #include "chronokvs_types.h"
+#include "chronokvs_logger.h"
 #include "chronokvs_client_adapter.h"
 
 namespace chronokvs
@@ -17,9 +19,10 @@ class ChronoKVSMapper
 {
 private:
     std::unique_ptr<ChronoKVSClientAdapter> chronoClientAdapter;
+    LogLevel logLevel_;
 
 public:
-    ChronoKVSMapper();
+    explicit ChronoKVSMapper(LogLevel level);
 
     ~ChronoKVSMapper() = default;
 

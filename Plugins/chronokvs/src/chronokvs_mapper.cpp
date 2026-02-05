@@ -5,67 +5,70 @@
 #include <vector>
 #include <algorithm>
 #include <stdexcept>
+
 #include "chronokvs_mapper.h"
 
 namespace chronokvs
 {
 
 // Constants for time range boundaries (used across multiple retrieval methods)
-constexpr uint64_t MIN_TIMESTAMP = 1;                   // Earliest possible timestamp
-constexpr uint64_t MAX_TIMESTAMP = 2000000000000000000; // ~May 18, 2033 03:33:20 UTC
+constexpr uint64_t MIN_TIMESTAMP = 1;          // Earliest possible timestamp
+constexpr uint64_t MAX_TIMESTAMP = UINT64_MAX; // Maximum possible uint64_t value
 
-ChronoKVSMapper::ChronoKVSMapper() { chronoClientAdapter = std::make_unique<ChronoKVSClientAdapter>(); }
+ChronoKVSMapper::ChronoKVSMapper(LogLevel level)
+    : logLevel_(level)
+{
+    chronoClientAdapter = std::make_unique<ChronoKVSClientAdapter>(level);
+}
 
 std::uint64_t ChronoKVSMapper::storeKeyValue(const std::string& key, const std::string& value)
 {
     // Input validation
     if(key.empty())
     {
-        std::cerr << "[ChronoKVS] Invalid input: key cannot be empty" << std::endl;
+        CHRONOKVS_ERROR(logLevel_, "Invalid input: key cannot be empty");
         throw std::invalid_argument("Key cannot be empty");
     }
     if(value.empty())
     {
-        std::cerr << "[ChronoKVS] Invalid input: value cannot be empty for key='" << key << "'" << std::endl;
+        CHRONOKVS_ERROR(logLevel_, "Invalid input: value cannot be empty for key='", key, "'");
         throw std::invalid_argument("Value cannot be empty");
     }
 
-    std::cerr << "[ChronoKVS] Storing key-value pair: key='" << key << "', value_size=" << value.size() << std::endl;
+    CHRONOKVS_DEBUG(logLevel_, "Storing key-value pair: key='", key, "', value_size=", value.size());
     return chronoClientAdapter->storeEvent(key, value);
 }
 
 std::string ChronoKVSMapper::retrieveByKeyAndTs(const std::string& key, std::uint64_t timestamp)
 {
-    std::cerr << "[ChronoKVS] Retrieving value for key='" << key << "' at timestamp=" << timestamp << std::endl;
+    CHRONOKVS_DEBUG(logLevel_, "Retrieving value for key='", key, "' at timestamp=", timestamp);
 
     // Retrieve events in the narrow time range [timestamp, timestamp + 1)
     auto events = chronoClientAdapter->retrieveEvents(key, timestamp, timestamp + 1);
 
     if(events.empty())
     {
-        std::cerr << "[ChronoKVS] No events found for key='" << key << "' at timestamp=" << timestamp << std::endl;
+        CHRONOKVS_DEBUG(logLevel_, "No events found for key='", key, "' at timestamp=", timestamp);
         return "";
     }
 
     // Return the first event's value only if its timestamp matches the requested timestamp
     if(events[0].timestamp == timestamp)
     {
-        std::cerr << "[ChronoKVS] Found event for key='" << key << "' at timestamp=" << timestamp << std::endl;
+        CHRONOKVS_DEBUG(logLevel_, "Found event for key='", key, "' at timestamp=", timestamp);
         return events[0].value;
     }
-    std::cerr << "[ChronoKVS] No event found for key='" << key << "' at exact timestamp=" << timestamp << std::endl;
+    CHRONOKVS_DEBUG(logLevel_, "No event found for key='", key, "' at exact timestamp=", timestamp);
     return "";
 }
 
 std::vector<EventData> ChronoKVSMapper::retrieveByKey(const std::string& key)
 {
-    std::cerr << "[ChronoKVS] Retrieving all events for key='" << key << "'" << std::endl;
-
     // Retrieve all events for the given key using the full time range.
     // This ensures we capture all events regardless of their timestamp,
     // avoiding any potential data loss from timing uncertainties.
     auto events = chronoClientAdapter->retrieveEvents(key, MIN_TIMESTAMP, MAX_TIMESTAMP);
-    std::cerr << "[ChronoKVS] Retrieved " << events.size() << " events for key='" << key << "'" << std::endl;
+    CHRONOKVS_DEBUG(logLevel_, "Retrieved ", events.size(), " events for key='", key, "'");
     return events;
 }
 
@@ -76,31 +79,50 @@ std::vector<EventData> ChronoKVSMapper::retrieveByKeyAndRange(const std::string&
     // Validate timestamp range
     if(start_timestamp >= end_timestamp)
     {
-        std::cerr << "[ChronoKVS] Invalid timestamp range for key='" << key << "': start_timestamp=" << start_timestamp
-                  << " >= end_timestamp=" << end_timestamp << std::endl;
+        CHRONOKVS_ERROR(logLevel_,
+                        "Invalid timestamp range for key='",
+                        key,
+                        "': start_timestamp=",
+                        start_timestamp,
+                        " >= end_timestamp=",
+                        end_timestamp);
         throw std::invalid_argument("Invalid timestamp range: start_timestamp must be less than end_timestamp");
     }
 
-    std::cerr << "[ChronoKVS] Retrieving events for key='" << key << "' range=[" << start_timestamp << ", "
-              << end_timestamp << ")" << std::endl;
+    CHRONOKVS_DEBUG(logLevel_,
+                    "Retrieving events for key='",
+                    key,
+                    "' range=[",
+                    start_timestamp,
+                    ", ",
+                    end_timestamp,
+                    ")");
 
     // Retrieve events for the given key within the specified time range [start_timestamp, end_timestamp).
     auto events = chronoClientAdapter->retrieveEvents(key, start_timestamp, end_timestamp);
-    std::cerr << "[ChronoKVS] Retrieved " << events.size() << " events for key='" << key << "' in range=["
-              << start_timestamp << ", " << end_timestamp << ")" << std::endl;
+    CHRONOKVS_DEBUG(logLevel_,
+                    "Retrieved ",
+                    events.size(),
+                    " events for key='",
+                    key,
+                    "' in range=[",
+                    start_timestamp,
+                    ", ",
+                    end_timestamp,
+                    ")");
     return events;
 }
 
 std::optional<EventData> ChronoKVSMapper::retrieveEarliestByKey(const std::string& key)
 {
-    std::cerr << "[ChronoKVS] Retrieving earliest event for key='" << key << "'" << std::endl;
+    CHRONOKVS_DEBUG(logLevel_, "Retrieving earliest event for key='", key, "'");
 
     // Retrieve all events for the given key and return the one with the earliest timestamp.
     auto events = chronoClientAdapter->retrieveEvents(key, MIN_TIMESTAMP, MAX_TIMESTAMP);
 
     if(events.empty())
     {
-        std::cerr << "[ChronoKVS] No events found for key='" << key << "'" << std::endl;
+        CHRONOKVS_DEBUG(logLevel_, "No events found for key='", key, "'");
         return std::nullopt;
     }
 
@@ -111,21 +133,20 @@ std::optional<EventData> ChronoKVSMapper::retrieveEarliestByKey(const std::strin
                                      events.end(),
                                      [](const EventData& a, const EventData& b) { return a.timestamp < b.timestamp; });
 
-    std::cerr << "[ChronoKVS] Found earliest event for key='" << key << "' with timestamp=" << earliest->timestamp
-              << std::endl;
+    CHRONOKVS_DEBUG(logLevel_, "Found earliest event for key='", key, "' at timestamp=", earliest->timestamp);
     return *earliest;
 }
 
 std::optional<EventData> ChronoKVSMapper::retrieveLatestByKey(const std::string& key)
 {
-    std::cerr << "[ChronoKVS] Retrieving latest event for key='" << key << "'" << std::endl;
+    CHRONOKVS_DEBUG(logLevel_, "Retrieving latest event for key='", key, "'");
 
     // Retrieve all events for the given key and return the one with the latest timestamp.
     auto events = chronoClientAdapter->retrieveEvents(key, MIN_TIMESTAMP, MAX_TIMESTAMP);
 
     if(events.empty())
     {
-        std::cerr << "[ChronoKVS] No events found for key='" << key << "'" << std::endl;
+        CHRONOKVS_DEBUG(logLevel_, "No events found for key='", key, "'");
         return std::nullopt;
     }
 
@@ -136,8 +157,7 @@ std::optional<EventData> ChronoKVSMapper::retrieveLatestByKey(const std::string&
                                    events.end(),
                                    [](const EventData& a, const EventData& b) { return a.timestamp < b.timestamp; });
 
-    std::cerr << "[ChronoKVS] Found latest event for key='" << key << "' with timestamp=" << latest->timestamp
-              << std::endl;
+    CHRONOKVS_DEBUG(logLevel_, "Found latest event for key='", key, "' at timestamp=", latest->timestamp);
     return *latest;
 }
 
