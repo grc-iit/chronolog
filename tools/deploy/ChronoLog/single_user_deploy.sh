@@ -250,7 +250,7 @@ clean() {
 }
 
 parse_args() {
-  TEMP=$(getopt -o t:B:I:w:m:u:v:g:p:a:q:k:o:f:n:j:r:hbidsce --long build-type:build-dir:install-dir:work-dir:monitor-dir:output-dir:visor-bin:,grapher-bin:,keeper-bin:,player-bin:,visor-hosts:,grapher-hosts:,keeper-hosts:,conf-file:,client-conf-file:,job-id:,record-groups:,help,build,install,start,stop,clean,verbose -- "$@")
+  TEMP=$(getopt -o t:B:I:w:m:u:v:g:p:a:q:k:o:f:n:j:r:hbidsce --long build-type:,build-dir:,install-dir:,work-dir:,monitor-dir:,output-dir:,visor-bin:,grapher-bin:,keeper-bin:,player-bin:,visor-hosts:,grapher-hosts:,keeper-hosts:,conf-file:,client-conf-file:,job-id:,record-groups:,help,build,install,start,stop,clean,verbose -- "$@")
   if [ $? != 0 ]; then
     echo -e "${ERR}Terminating ...${NC}" >&2
     exit 1

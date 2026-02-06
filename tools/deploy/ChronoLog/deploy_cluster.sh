@@ -677,7 +677,7 @@ clean() {
 }
 
 parse_args() {
-  TEMP=$(getopt -o w:m:u:v:g:p:a:q:k:o:f:n:j:r:hdsc e --long work-dir:,monitor-dir:,output-dir:,visor-bin:,grapher-bin:,keeper-bin:,player-bin:,visor-hosts:,grapher-hosts:,keeper-hosts:,conf-file:,client-conf-file:,job-id:,record-groups:,help,start,stop,clean,verbose -- "$@")
+  TEMP=$(getopt -o w:m:u:v:g:p:a:q:k:o:f:n:j:r:hdsce --long work-dir:,monitor-dir:,output-dir:,visor-bin:,grapher-bin:,keeper-bin:,player-bin:,visor-hosts:,grapher-hosts:,keeper-hosts:,conf-file:,client-conf-file:,job-id:,record-groups:,help,start,stop,clean,verbose -- "$@")
   if [ $? != 0 ]; then
     echo -e "${ERR}Terminating ...${NC}" >&2
     exit 1
