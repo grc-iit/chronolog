@@ -143,7 +143,7 @@ check_hosts_files() {
   check_file_existence "${KEEPER_HOSTS}"
   check_file_existence "${PLAYER_HOSTS}"
 
-  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Check hosts files done${NC}"
+  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Check hosts files done${NC}" || true
 }
 
 check_bin_files() {
@@ -153,7 +153,7 @@ check_bin_files() {
   check_file_existence "${KEEPER_BIN}"
   check_file_existence "${PLAYER_BIN}"
 
-  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Check binary files done${NC}"
+  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Check binary files done${NC}" || true
 }
 
 check_rpc_comm_conf() {
@@ -192,7 +192,7 @@ check_rpc_comm_conf() {
   [[ "${keeper_data_store_admin_protocol}" != "${player_data_store_admin_protocol}" ]] && echo -e "${ERR}mismatched protocol for DataStoreAdminService in Keeper and Player conf in ${CONF_FILE}, exiting ...${NC}" >&2 && exit 1
   [[ "${grapher_data_store_admin_protocol}" != "${player_data_store_admin_protocol}" ]] && echo -e "${ERR}mismatched protocol for DataStoreAdminService in Grapher and Player conf in ${CONF_FILE}, exiting ...${NC}" >&2 && exit 1
 
-  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Check rpc conf done${NC}"
+  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Check rpc conf done${NC}" || true
 }
 
 check_op_validity() {
@@ -220,7 +220,7 @@ check_recording_group_mapping() {
     exit 1
   fi
 
-  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Check recording group mapping done${NC}"
+  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Check recording group mapping done${NC}" || true
 }
 
 extract_shared_libraries() {
@@ -263,7 +263,7 @@ copy_shared_libs() {
     fi
   done
 
-  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Copy shared libraries done${NC}"
+  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Copy shared libraries done${NC}" || true
 }
 
 detect_hs_net_suffix() {
@@ -309,7 +309,7 @@ update_visor_ip() {
   # Client Config File
   jq ".chrono_client.VisorClientPortalService.rpc.service_ip = \"${visor_ip}\"" "${CLIENT_CONF_FILE}" >tmp.json && mv tmp.json "${CLIENT_CONF_FILE}"
 
-  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Update ChronoVisor IP done${NC}"
+  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Update ChronoVisor IP done${NC}" || true
 }
 
 update_visor_monitor_file_path() {
@@ -324,46 +324,46 @@ update_client_monitor_file_path() {
 generate_conf_for_each_keeper() {
   local base_conf_file=$1
   local keeper_hosts_file=$2
-  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generating conf files for all ChronoKeepers in ${keeper_hosts_file} based on conf file ${base_conf_file} ...${NC}"
+  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generating conf files for all ChronoKeepers in ${keeper_hosts_file} based on conf file ${base_conf_file} ...${NC}" || true
   while IFS= read -r keeper_host; do
     remote_keeper_hostname=$(get_remote_hostname ${keeper_host})
     [[ -z "${remote_keeper_hostname}" ]] && echo -e "${ERR}Cannot get hostname from ${keeper_host}, exiting ...${NC}" >&2 && exit 1
-    [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generating conf file ${base_conf_file}.keeper.${remote_keeper_hostname} for ChronoKeeper ${remote_keeper_hostname} ...${NC}"
+    [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generating conf file ${base_conf_file}.keeper.${remote_keeper_hostname} for ChronoKeeper ${remote_keeper_hostname} ...${NC}" || true
     jq ".chrono_keeper.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono_keeper.${remote_keeper_hostname}.log\"" "${base_conf_file}" >"${base_conf_file}.keeper.${remote_keeper_hostname}"
     keeper_ip=$(get_host_ip ${keeper_host})
     jq ".chrono_keeper.KeeperRecordingService.rpc.service_ip = \"${keeper_ip}\"" "${base_conf_file}.keeper.${remote_keeper_hostname}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${base_conf_file}.keeper.${remote_keeper_hostname}"
     jq ".chrono_keeper.KeeperDataStoreAdminService.rpc.service_ip = \"${keeper_ip}\"" "${base_conf_file}.keeper.${remote_keeper_hostname}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${base_conf_file}.keeper.${remote_keeper_hostname}"
   done <${keeper_hosts_file}
 
-  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generate conf file for ChronoKeepers in ${keeper_hosts_file} done${NC}"
+  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generate conf file for ChronoKeepers in ${keeper_hosts_file} done${NC}" || true
 }
 
 generate_conf_for_each_grapher() {
   local base_conf_file=$1
   local grapher_hosts_file=$2
-  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generating conf files for all ChronoGraphers in ${grapher_hosts_file} based on conf file ${base_conf_file} ...${NC}"
+  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generating conf files for all ChronoGraphers in ${grapher_hosts_file} based on conf file ${base_conf_file} ...${NC}" || true
   while IFS= read -r grapher_host; do
     remote_grapher_hostname=$(get_remote_hostname ${grapher_host})
     [[ -z "${remote_grapher_hostname}" ]] && echo -e "${ERR}Cannot get hostname from ${grapher_host}, exiting ...${NC}" >&2 && exit 1
-    [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generating conf file ${base_conf_file}.grapher.${remote_grapher_hostname} for ChronoGrapher ${remote_grapher_hostname} ...${NC}"
+    [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generating conf file ${base_conf_file}.grapher.${remote_grapher_hostname} for ChronoGrapher ${remote_grapher_hostname} ...${NC}" || true
     jq ".chrono_grapher.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono_grapher.${remote_grapher_hostname}.log\"" "${base_conf_file}" >"${base_conf_file}.grapher.${remote_grapher_hostname}"
   done <${grapher_hosts_file}
 
-  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generate conf file for ChronoGraphers in ${grapher_hosts_file} done${NC}"
+  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generate conf file for ChronoGraphers in ${grapher_hosts_file} done${NC}" || true
 }
 
 generate_conf_for_each_player() {
   local base_conf_file=$1
   local player_hosts_file=$2
-  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generating conf files for all ChronoPlayers in ${player_hosts_file} based on conf file ${base_conf_file} ...${NC}"
+  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generating conf files for all ChronoPlayers in ${player_hosts_file} based on conf file ${base_conf_file} ...${NC}" || true
   while IFS= read -r player_host; do
     remote_player_hostname=$(get_remote_hostname ${player_host})
     [[ -z "${remote_player_hostname}" ]] && echo -e "${ERR}Cannot get hostname from ${player_host}, exiting ...${NC}" >&2 && exit 1
-    [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generating conf file ${base_conf_file}.player.${remote_player_hostname} for ChronoPlayer ${remote_player_hostname} ...${NC}"
+    [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generating conf file ${base_conf_file}.player.${remote_player_hostname} for ChronoPlayer ${remote_player_hostname} ...${NC}" || true
     jq ".chrono_player.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono_player.${remote_player_hostname}.log\"" "${base_conf_file}" >"${base_conf_file}.player.${remote_player_hostname}"
   done <${player_hosts_file}
 
-  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generate conf file for ChronoPlayers in ${player_hosts_file} done${NC}"
+  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generate conf file for ChronoPlayers in ${player_hosts_file} done${NC}" || true
 }
 
 generate_conf_for_each_recording_group() {
@@ -383,7 +383,7 @@ generate_conf_for_each_recording_group() {
     player_hostname=$(head -1 ${player_hosts_file})
     player_ip=$(get_host_ip ${player_hostname})
 
-    [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Updating conf file for RecordingGroup ${i} ...${NC}"
+    [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Updating conf file for RecordingGroup ${i} ...${NC}" || true
     jq ".chrono_grapher.DataStoreAdminService.rpc.service_ip = \"${grapher_ip}\"" "${CONF_FILE}" >"${CONF_FILE}.${i}"
     jq ".chrono_keeper.RecordingGroup = ${i}" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
     jq ".chrono_grapher.RecordingGroup = ${i}" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
@@ -400,7 +400,7 @@ generate_conf_for_each_recording_group() {
     generate_conf_for_each_grapher "${CONF_FILE}.${i}" "${grapher_hosts_file}"
     generate_conf_for_each_player "${CONF_FILE}.${i}" "${player_hosts_file}"
   done
-  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generate conf files for all RecordingGroups done${NC}"
+  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generate conf files for all RecordingGroups done${NC}" || true
 }
 
 prepare_hosts_for_recording_groups() {
@@ -421,15 +421,15 @@ prepare_hosts_for_recording_groups() {
     else
       num_keepers_in_this_group=${min_num_keepers_in_group}
     fi
-    [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Number of ChronoKeepers in RecordingGroup ${i}: ${num_keepers_in_this_group}${NC}"
+    [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Number of ChronoKeepers in RecordingGroup ${i}: ${num_keepers_in_this_group}${NC}" || true
     start_line_num_in_keeper_hosts=$((num_keepers_processed + 1))
     end_line_num_in_keeper_hosts=$((start_line_num_in_keeper_hosts + num_keepers_in_this_group - 1))
     sed -n "${start_line_num_in_keeper_hosts},${end_line_num_in_keeper_hosts}p" <${KEEPER_HOSTS} >${KEEPER_HOSTS}.${i}
-    [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}ChronoKeeper hosts in RecordingGroup ${i}: ${NC}" && cat ${KEEPER_HOSTS}.${i}
+    [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}ChronoKeeper hosts in RecordingGroup ${i}: ${NC}" && cat ${KEEPER_HOSTS}.${i} || true
     sed -n "${i}p" <${GRAPHER_HOSTS} >${GRAPHER_HOSTS}.${i}
-    [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}ChronoGrapher host in RecordingGroup ${i}: ${NC}" && cat ${GRAPHER_HOSTS}.${i}
+    [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}ChronoGrapher host in RecordingGroup ${i}: ${NC}" && cat ${GRAPHER_HOSTS}.${i} || true
     sed -n "${i}p" <${PLAYER_HOSTS} >${PLAYER_HOSTS}.${i}
-    [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}ChronoPlayer host in RecordingGroup ${i}: ${NC}" && cat ${PLAYER_HOSTS}.${i}
+    [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}ChronoPlayer host in RecordingGroup ${i}: ${NC}" && cat ${PLAYER_HOSTS}.${i} || true
     num_keepers_processed=$((end_line_num_in_keeper_hosts))
   done
 }
@@ -476,7 +476,7 @@ prepare_hosts() {
   check_recording_group_mapping
   prepare_hosts_for_recording_groups
 
-  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Prepare hosts file done${NC}"
+  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Prepare hosts file done${NC}" || true
 }
 
 check_work_dir() {
@@ -511,7 +511,7 @@ parallel_remote_stop_processes() {
   local bin_name
   bin_name=$(basename "${bin_path}")
   local timer=0
-  parallel-ssh -h ${hosts_file} -i "pkill --signal 15 -ef ${bin_path}" 2>/dev/null
+  parallel-ssh -h ${hosts_file} -i "pkill --signal 15 -ef ${bin_path}" 2>/dev/null || true
   while [[ -n $(parallel_remote_check_processes ${hosts_file} ${bin_path}) ]]; do
     echo -e "${DEBUG}${bin_name} processes are still running, waiting for 10 seconds ...${NC}"
     sleep 10
@@ -528,7 +528,7 @@ parallel_remote_kill_processes() {
   local hosts_file=$1
   local bin_path=$2
 
-  parallel-ssh -h ${hosts_file} -i "pkill --signal 9 -ef ${bin_path}" 2>/dev/null
+  parallel-ssh -h ${hosts_file} -i "pkill --signal 9 -ef ${bin_path}" 2>/dev/null || true
 }
 
 parallel_remote_check_processes() {
@@ -605,7 +605,7 @@ start() {
   done
 
   parallel_remote_check_all
-  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Start done${NC}"
+  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Start done${NC}" || true
 }
 
 stop() {
@@ -639,7 +639,7 @@ stop() {
 
   parallel_remote_check_all
 
-  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Stop done${NC}"
+  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Stop done${NC}" || true
 }
 
 clean() {
@@ -673,7 +673,7 @@ clean() {
   rm -f ${CLIENT_CONF_FILE}.*
   rm -f ${OUTPUT_DIR}/*
 
-  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Clean done${NC}"
+  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Clean done${NC}" || true
 }
 
 parse_args() {
