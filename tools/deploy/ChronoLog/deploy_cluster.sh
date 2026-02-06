@@ -506,39 +506,41 @@ parallel_remote_launch_processes() {
 
 parallel_remote_stop_processes() {
   local hosts_file=$1
-  local bin_filename=$2
+  local bin_path=$2
 
+  local bin_name
+  bin_name=$(basename "${bin_path}")
   local timer=0
-  parallel-ssh -h ${hosts_file} -i "pkill --signal 15 -ef ${bin_filename}" 2>/dev/null
-  while [[ -n $(parallel_remote_check_processes ${hosts_file} ${bin_filename}) ]]; do
-    echo -e "${DEBUG}${bin_filename} processes are still running, waiting for 10 seconds ...${NC}"
+  parallel-ssh -h ${hosts_file} -i "pkill --signal 15 -ef ${bin_path}" 2>/dev/null
+  while [[ -n $(parallel_remote_check_processes ${hosts_file} ${bin_path}) ]]; do
+    echo -e "${DEBUG}${bin_name} processes are still running, waiting for 10 seconds ...${NC}"
     sleep 10
     timer=$((timer + 10))
     if [[ ${timer} -gt 300 ]]; then
-      echo -e "${ERR}Killing ${bin_filename} processes after 5 minutes ...${NC}" >&2
-      parallel_remote_kill_processes ${hosts_file} ${bin_filename}
-      echo -e "${ERR}${bin_filename} processes are killed${NC}" >&2
+      echo -e "${ERR}Killing ${bin_name} processes after 5 minutes ...${NC}" >&2
+      parallel_remote_kill_processes ${hosts_file} ${bin_path}
+      echo -e "${ERR}${bin_name} processes are killed${NC}" >&2
     fi
   done
 }
 
 parallel_remote_kill_processes() {
   local hosts_file=$1
-  local bin_filename=$2
+  local bin_path=$2
 
-  parallel-ssh -h ${hosts_file} -i "pkill --signal 9 -ef ${bin_filename}" 2>/dev/null
+  parallel-ssh -h ${hosts_file} -i "pkill --signal 9 -ef ${bin_path}" 2>/dev/null
 }
 
 parallel_remote_check_processes() {
   local hosts_file=$1
-  local bin_filename=$2
+  local bin_path=$2
 
-  parallel-ssh -h ${hosts_file} -i "pgrep -fla ${bin_filename}" 2>/dev/null | sed '/^$/d' | grep -vE '^\[|ssh' || true
+  parallel-ssh -h ${hosts_file} -i "pgrep -fla ${bin_path}" 2>/dev/null | sed '/^$/d' | grep -vE '^\[|ssh' || true
 }
 
 parallel_remote_check_all() {
   echo -e "${DEBUG}Running ChronoVisor:${NC}"
-  parallel_remote_check_processes ${VISOR_HOSTS} ${VISOR_BIN_FILE_NAME}
+  parallel_remote_check_processes ${VISOR_HOSTS} ${VISOR_BIN}
 
   echo -e "${DEBUG}Running ChronoGraphers, ChronoKeepers, and ChronoPlayers:${NC}"
   for i in $(seq 1 ${NUM_RECORDING_GROUP}); do
@@ -546,9 +548,9 @@ parallel_remote_check_all() {
     grapher_hosts_file="${GRAPHER_HOSTS}.${i}"
     keeper_hosts_file="${KEEPER_HOSTS}.${i}"
     player_hosts_file="${PLAYER_HOSTS}.${i}"
-    parallel_remote_check_processes ${grapher_hosts_file} ${GRAPHER_BIN_FILE_NAME}
-    parallel_remote_check_processes ${keeper_hosts_file} ${KEEPER_BIN_FILE_NAME}
-    parallel_remote_check_processes ${player_hosts_file} ${PLAYER_BIN_FILE_NAME}
+    parallel_remote_check_processes ${grapher_hosts_file} ${GRAPHER_BIN}
+    parallel_remote_check_processes ${keeper_hosts_file} ${KEEPER_BIN}
+    parallel_remote_check_processes ${player_hosts_file} ${PLAYER_BIN}
   done
 }
 
@@ -620,20 +622,20 @@ stop() {
   fi
 
   echo -e "${DEBUG}Stopping ChronoPlayer ...${NC}"
-  parallel_remote_stop_processes ${PLAYER_HOSTS} ${PLAYER_BIN_FILE_NAME} &
+  parallel_remote_stop_processes ${PLAYER_HOSTS} ${PLAYER_BIN} &
 
   echo -e "${DEBUG}Stopping ChronoKeeper ...${NC}"
-  parallel_remote_stop_processes ${KEEPER_HOSTS} ${KEEPER_BIN_FILE_NAME} &
+  parallel_remote_stop_processes ${KEEPER_HOSTS} ${KEEPER_BIN} &
 
   wait
 
   echo -e "${DEBUG}Stopping ChronoGrapher ...${NC}"
-  parallel_remote_stop_processes ${GRAPHER_HOSTS} ${GRAPHER_BIN_FILE_NAME}
+  parallel_remote_stop_processes ${GRAPHER_HOSTS} ${GRAPHER_BIN}
 
   wait
 
   echo -e "${DEBUG}Stopping ChronoVisor ...${NC}"
-  parallel_remote_stop_processes ${VISOR_HOSTS} ${VISOR_BIN_FILE_NAME}
+  parallel_remote_stop_processes ${VISOR_HOSTS} ${VISOR_BIN}
 
   parallel_remote_check_all
 
@@ -644,7 +646,7 @@ clean() {
   echo -e "${INFO}Cleaning ...${NC}"
 
   echo -e "${DEBUG}Checking if ChronoVisor is still running${NC}"
-  [[ -n $(parallel_remote_check_processes ${VISOR_HOSTS} ${VISOR_BIN_FILE_NAME}) ]] && echo -e "${ERR}ChronoVisor is still running, please use stop (-s) to stop it first, exiting ...${NC}" >&2 && exit 1
+  [[ -n $(parallel_remote_check_processes ${VISOR_HOSTS} ${VISOR_BIN}) ]] && echo -e "${ERR}ChronoVisor is still running, please use stop (-s) to stop it first, exiting ...${NC}" >&2 && exit 1
 
   echo -e "${DEBUG}Checking if ChronoGraphers, ChronoKeepers, and ChronoPlayers are still running${NC}"
   for i in $(seq 1 ${NUM_RECORDING_GROUP}); do
@@ -652,9 +654,9 @@ clean() {
     grapher_hosts_file="${GRAPHER_HOSTS}.${i}"
     keeper_hosts_file="${KEEPER_HOSTS}.${i}"
     player_hosts_file="${PLAYER_HOSTS}.${i}"
-    [[ -n $(parallel_remote_check_processes ${grapher_hosts_file} ${GRAPHER_BIN_FILE_NAME}) ]] && echo -e "${ERR}ChronoGrapher is still running, please use stop (-s) to stop it first, exiting ...${NC}" >&2 && exit 1
-    [[ -n $(parallel_remote_check_processes ${keeper_hosts_file} ${KEEPER_BIN_FILE_NAME}) ]] && echo -e "${ERR}ChronoKeeper is still running, please use stop (-s) to stop it first, exiting ...${NC}" >&2 && exit 1
-    [[ -n $(parallel_remote_check_processes ${player_hosts_file} ${PLAYER_BIN_FILE_NAME}) ]] && echo -e "${ERR}ChronoPlayer is still running, please use stop (-s) to stop it first, exiting ...${NC}" >&2 && exit 1
+    [[ -n $(parallel_remote_check_processes ${grapher_hosts_file} ${GRAPHER_BIN}) ]] && echo -e "${ERR}ChronoGrapher is still running, please use stop (-s) to stop it first, exiting ...${NC}" >&2 && exit 1
+    [[ -n $(parallel_remote_check_processes ${keeper_hosts_file} ${KEEPER_BIN}) ]] && echo -e "${ERR}ChronoKeeper is still running, please use stop (-s) to stop it first, exiting ...${NC}" >&2 && exit 1
+    [[ -n $(parallel_remote_check_processes ${player_hosts_file} ${PLAYER_BIN}) ]] && echo -e "${ERR}ChronoPlayer is still running, please use stop (-s) to stop it first, exiting ...${NC}" >&2 && exit 1
   done
 
   echo -e "${DEBUG}Removing conf and hosts files ...${NC}"
