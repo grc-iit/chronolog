@@ -197,9 +197,9 @@ check_rpc_comm_conf() {
 
 check_op_validity() {
   count=0
-  [[ $start == true ]] && ((count++))
-  [[ $stop == true ]] && ((count++))
-  [[ $clean == true ]] && ((count++))
+  [[ $start == true ]] && count=$((count + 1))
+  [[ $stop == true ]] && count=$((count + 1))
+  [[ $clean == true ]] && count=$((count + 1))
 
   if [[ $count -ne 1 ]]; then
     echo -e "${ERR}Error: Please select exactly one operation in start (-d), stop (-s), and clean (-c).${NC}" >&2

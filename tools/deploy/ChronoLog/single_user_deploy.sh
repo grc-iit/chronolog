@@ -153,11 +153,11 @@ usage() {
 
 check_op_validity() {
   count=0
-  [[ $build == true ]] && ((count++))
-  [[ $install == true ]] && ((count++))
-  [[ $start == true ]] && ((count++))
-  [[ $stop == true ]] && ((count++))
-  [[ $clean == true ]] && ((count++))
+  [[ $build == true ]] && count=$((count + 1))
+  [[ $install == true ]] && count=$((count + 1))
+  [[ $start == true ]] && count=$((count + 1))
+  [[ $stop == true ]] && count=$((count + 1))
+  [[ $clean == true ]] && count=$((count + 1))
 
   if [[ $count -ne 1 ]]; then
     echo -e "${ERR}Error: Please select exactly one operation in build (-b), install (-i), start (-d), stop (-s), and clean (-c).${NC}" >&2
@@ -421,16 +421,23 @@ parse_args "$@"
 # Check if specified operation is allowed
 check_op_validity
 
+rc=0
+
 if ${build}; then
-  build
+  build || rc=$?
 elif ${install}; then
-  install
+  install || rc=$?
 elif ${start}; then
-  start
+  start || rc=$?
 elif ${stop}; then
-  stop
+  stop || rc=$?
 elif ${clean}; then
-  clean
+  clean || rc=$?
+fi
+
+if [ $rc -ne 0 ]; then
+  echo -e "${ERR}Operation failed (exit code ${rc})${NC}" >&2
+  exit $rc
 fi
 
 echo -e "${INFO}Done${NC}"
