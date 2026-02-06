@@ -53,37 +53,39 @@ start_service() {
 }
 
 kill_service() {
-    local bin
-    bin=$(basename "$1")
-    echo -e "${DEBUG}Killing ${bin} ...${NC}"
+    local bin="$1"
+    local name
+    name=$(basename "$bin")
+    echo -e "${DEBUG}Killing ${name} ...${NC}"
     pkill -9 -f "${bin}"
 }
 
 stop_service() {
-    local bin
-    bin=$(basename "$1")
+    local bin="$1"
+    local name
+    name=$(basename "$bin")
     local timeout="$2"
 
     local start_time
     start_time=$(date +%s)
-    echo -e "${DEBUG}Stopping ${bin} ...${NC}"
+    echo -e "${DEBUG}Stopping ${name} ...${NC}"
     pkill -f "${bin}" || true
 
     while true; do
         if pgrep -f "${bin}" >/dev/null; then
-            echo -e "${DEBUG}Waiting for ${bin} to stop...${NC}"
+            echo -e "${DEBUG}Waiting for ${name} to stop...${NC}"
         else
-            echo -e "${DEBUG}All ${bin} processes stopped gracefully.${NC}"
+            echo -e "${DEBUG}All ${name} processes stopped gracefully.${NC}"
             break
         fi
         sleep 10
         local current_time
         current_time=$(date +%s)
         if (( current_time - start_time >= timeout )); then
-            echo -e "${DEBUG}Timeout reached while stopping ${bin}. Forcing termination.${NC}"
+            echo -e "${DEBUG}Timeout reached while stopping ${name}. Forcing termination.${NC}"
             if pgrep -f "${bin}" >/dev/null; then
                 kill_service "${bin}"
-                echo -e "${DEBUG}Killed: ${bin} ${NC}"
+                echo -e "${DEBUG}Killed: ${name} ${NC}"
             fi
             break
         fi
