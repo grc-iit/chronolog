@@ -1,0 +1,223 @@
+# ChronoLog — Full Reference for AI Agents
+
+> A distributed shared tiered log store with time-based data ordering.
+> Project website: https://chronolog.dev
+> GitHub: https://github.com/grc-iit/ChronoLog
+> License: BSD-2-Clause
+> Funding: NSF CSSI-2104013 ($4M)
+
+---
+
+## 1. Project Overview
+
+ChronoLog is a distributed log storage ecosystem created by the Gnosis Research Center (GRC) at Illinois Institute of Technology. It introduces two key innovations:
+
+1. **Physical Time as the Ordering Mechanism**: Traditional distributed logs rely on centralized sequencers or locking protocols. ChronoLog uses physical time itself as the natural ordering principle, enabling lock-free concurrent writes with immediate entry visibility and no coordination overhead.
+
+2. **Automatic Multi-Tier Storage**: Log data flows automatically from fast ingestion nodes through intermediate tiers to persistent archival storage — balancing access latency with capacity. This 3D distribution (horizontal across nodes, vertical across tiers, temporal by time) enables elastic capacity scaling without manual data management.
+
+ChronoLog targets activity data — things that happen rather than things that are — from scientific instruments producing terabytes per second to AI agent audit trails.
+
+---
+
+## 2. Architecture
+
+### 2.1 Core Components
+
+Five distributed services form a pipeline from ingestion to archival:
+
+**ChronoVisor** (Central coordination)
+- Handles client connections and holds chronicle metadata
+- Acts as the global clock enforcing time synchronization
+- Deployed on a head node
+- Entry point for all client operations
+
+**ChronoKeeper** (Hot tier — fast ingestion)
+- Serves record() and playback() operations
+- Stores events in a distributed journal on compute nodes
+- Co-located with application processes for zero-copy writes via RDMA
+- Microsecond-level ingestion latency
+
+**ChronoGrapher** (Warm tier — aggregation & flushing)
+- DAG pipeline: event collection → story building → story writing
+- Assembles individual log entries into time-ordered stories (StoryChunks)
+- Flushes to lower storage tiers while maintaining global ordering
+- Elastic and real-time
+
+**ChronoPlayer** (Cross-tier reads)
+- Executes replay() operations across all storage tiers
+- Serves from hot, warm, or cold storage transparently
+- Merges results into a single time-ordered stream
+- Fully decoupled from the write path
+
+**ChronoStore** (Cold tier — persistent storage)
+- Manages persistent storage in HDF5 containers
+- Elastic capacity with device-aware access optimization
+- Optimized for sequential and range-based access patterns
+
+### 2.2 Data Model
+
+- **Chronicle**: A named data structure consisting of events ordered by physical time. Analogous to a topic, stream, or ledger. Created, acquired, and released by clients (like opening/closing a file).
+- **Event**: A single key-value pair. Key = ChronoTick (monotonically increasing integer = time distance from chronicle creation). Value = uninterpreted byte array (format-agnostic).
+- **ChronoTick**: Positive integer representing time offset from base timestamp. Physical time is the ordering mechanism — no centralized sequencer.
+- **Story**: A sorted, immutable collection of events. Unit of data movement between tiers. Built by ChronoGrapher.
+
+### 2.3 Dealing with Physical Time
+
+**Clock Uncertainty**: Server nodes synchronize with ChronoVisor during initialization and periodically. Clients use ChronoTicks as relative time distances from a base clock.
+
+**Backdated Events**: An Acceptance Time Window (ATW) equal to twice the measured network latency absorbs out-of-order events gracefully.
+
+**Event Collisions**: Configurable collision semantics: Idempotent (last write wins), Redundancy (keep all), Ordering (preserve arrival order), Sequentiality (strict sequence).
+
+### 2.4 Design Advantages
+
+| Feature | Traditional (Kafka/BookKeeper/Corfu) | ChronoLog |
+|---|---|---|
+| Log-tail location | Locking | Lock-free |
+| I/O isolation | Varies | Yes |
+| Storage elasticity | Manual | Automatic |
+| Log hot zones | Yes | No |
+| Log capacity | Limited | Infinite |
+| Entry visibility | Delayed | Immediate |
+| Per-entry overhead | Moderate-High | None |
+| Tiered storage | No | Yes |
+
+---
+
+## 3. Plugin & Connector Ecosystem
+
+### 3.1 SQL Query Plugin
+Query log data with SQL semantics. Physical time ordering enables efficient temporal range scans without auxiliary indices. Translates SELECT/WHERE/GROUP BY into ChronoPlayer replay operations.
+
+### 3.2 Pub/Sub & Streaming
+Publish-subscribe and real-time event streaming built on ChronoGrapher's DAG pipeline. Custom operators can be attached at each stage for filtering, aggregation, or transformation.
+
+### 3.3 Key-Value Store (ChronoKVS)
+Time-series KV semantics on top of the ordered log. Each key maps to a chronicle, updates appended as timestamped entries. No Paxos/Raft overhead — log ordering is free.
+
+### 3.4 AI Agent Memory & MCP Server
+ChronoLog as persistent memory backend for autonomous AI agents. The official MCP server (part of IOWarp Agent Toolkit) lets any MCP-compatible agent create chronicles, record events, replay history, and query by time range.
+
+MCP Tools:
+- chronicle.create — new memory log
+- chronicle.record — store event
+- chronicle.replay — retrieve history
+- chronicle.query — search by time
+
+Use cases: conversation logging, agent audit trails, cross-session memory, system monitoring.
+
+GitHub: https://github.com/iowarp/agent-toolkit/tree/main/agent-toolkit-mcp-servers/chronolog
+
+### 3.5 ML & Training Pipelines
+TensorFlow integration for feeding time-ordered data streams directly into training and inference pipelines. Provides a native tf.data.Dataset source backed by ChronoLog stories.
+
+---
+
+## 4. Target Domains
+
+- **Scientific Computing**: Astrophysics, genomics, climate modeling, materials science telemetry
+- **AI & Agentic Workflows**: LLM context logging, model provenance, AI agent memory via MCP
+- **HPC System Monitoring**: Distributed telemetry across compute clusters (validated on IIT's Ares cluster)
+- **Workflow Orchestration**: Integration with Parsl, funcX, Flux for task execution tracking
+- **IoT & Edge**: Time-synchronized sensor event streams with tiered storage
+- **Financial & Compliance**: Activity logging with total ordering and immediate visibility for audit trails
+
+---
+
+## 5. Client API
+
+### 5.1 Quick Start (Docker)
+
+```bash
+docker pull gnosisrc/chronolog:latest
+docker run -it --rm --name chronolog gnosisrc/chronolog:latest
+/home/grc-iit/chronolog_repo/deploy/local_single_user_deploy.sh -d -w /home/grc-iit/chronolog_install/Release
+```
+
+### 5.2 Core Operations
+
+- `chronicle.create(name, attrs)` — Create a new chronicle
+- `chronicle.acquire(name)` — Open a chronicle for writing
+- `chronicle.release(name)` — Close a chronicle
+- `chronicle.destroy(name)` — Delete a chronicle
+- `event.record(chronicle, data)` — Append an event (timestamped automatically)
+- `event.playback(chronicle, t_start, t_end)` — Read events in a time range
+- `event.replay(chronicle, t_start, t_end)` — Replay events across all tiers
+
+### 5.3 Languages
+
+- C++ (primary): libchronolog
+- Python bindings available
+- MCP protocol for AI agents
+
+---
+
+## 6. Implementation Details
+
+- **Language**: C++17
+- **Transport**: RDMA (primary), TCP (fallback)
+- **Persistent Backend**: HDF5
+- **Containerization**: Docker (gnosisrc/chronolog on Docker Hub)
+- **Deployment**: Local, distributed, SLURM
+- **License**: BSD-2-Clause
+
+---
+
+## 7. Team & Organization
+
+**Gnosis Research Center (GRC)** at Illinois Institute of Technology
+
+Principal Investigators:
+- Dr. Xian-He Sun (PI) — University Distinguished Professor, IEEE Fellow, Editor-in-Chief of IEEE TPDS
+- Dr. Anthony Kougkas (Co-PI, Project Lead) — Associate Research Professor, founder of ChronoLog
+- Dr. Kyle Chard (Co-PI) — University of Chicago, ecosystem partnerships
+
+Researchers & Engineers:
+- Dr. Jaime Cernuda Garcia — HStream, HFlow, Hades
+- Dr. Luke Logan — LabStor, MegaMmap
+- Izzet Yildirim — WisIO, I/O analysis
+- Eneko Gonzalez — Core engineering
+- Dr. Kun Feng — Hermes, data-intensive applications
+- Inna Brodkin — University of Chicago
+
+---
+
+## 8. Collaborators
+
+- Argonne National Laboratory (funcX, Colmena)
+- University of Chicago (Parsl, Dark Energy Science Collaboration)
+- Lawrence Livermore National Lab (Sonar, Flux)
+- SLAC National Accelerator Lab (Rubin Observatory)
+- UW-Madison (CyberGIS)
+- UIUC (Parsl workflows)
+- DePaul University (indexing)
+- IFSH at IIT (genomics)
+- 3Red Partners (financial trading)
+- ParaTools, Inc. (TAU Performance System)
+- OmniBond Systems (OrangeFS)
+
+---
+
+## 9. Selected Publications
+
+1. A. Kougkas et al., "ChronoLog: A Distributed Shared Tiered Log Store with Time-based Data Ordering," MSST 2020
+2. L. Logan et al., "MegaMmap: Blurring the Boundary Between Memory and Storage," SC'24
+3. M. Tang et al., "DaYu: Optimizing Distributed Scientific Workflows," CLUSTER'24
+4. J. Ye et al., "Characterizing KV Caching on Transformer Inferences," IPDPS'25
+5. I. Yildirim et al., "WisIO: Automated I/O Bottleneck Detection," ICS'25
+6. L. Logan et al., "LabStor: Modular Platform for Customized I/O Stacks," SC'22
+7. K. Bateman et al., "LuxIO: Intelligent Resource Provisioning," HiPC'22
+
+---
+
+## 10. Links
+
+- Website: https://chronolog.dev
+- GitHub: https://github.com/grc-iit/ChronoLog
+- Docker Hub: https://hub.docker.com/r/gnosisrc/chronolog
+- Wiki/Docs: https://github.com/grc-iit/ChronoLog/wiki
+- Community Chat: https://chronolog.zulipchat.com/
+- MCP Server: https://github.com/iowarp/agent-toolkit/tree/main/agent-toolkit-mcp-servers/chronolog
+- GRC Website: https://grc.iit.edu
+- NSF Award: https://www.nsf.gov/awardsearch/showAward?AWD_ID=2104013
