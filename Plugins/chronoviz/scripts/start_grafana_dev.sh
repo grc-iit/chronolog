@@ -1,10 +1,30 @@
 #!/bin/bash
 # Start ChronoLog Grafana Development Environment
+#
+# Default: run Grafana + backend via Docker Compose.
+# Use --local to run only the backend locally (Grafana must be started separately).
+#
+# Usage:
+#   ./start_grafana_dev.sh           # Docker (default)
+#   ./start_grafana_dev.sh --local   # Local backend only
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+case "${1:-}" in
+  -h|--help)
+    echo "Usage: $0 [OPTION]"
+    echo ""
+    echo "Start ChronoLog Grafana dev environment. Default is Docker."
+    echo ""
+    echo "  (no args)   Use Docker Compose (Grafana + backend)"
+    echo "  --local     Run backend only on host (venv + env vars)"
+    echo "  -h, --help  Show this help"
+    exit 0
+    ;;
+esac
 
 echo "=== ChronoLog Grafana Development Environment ==="
 
@@ -20,7 +40,7 @@ fi
 echo "Building Grafana plugin..."
 "$SCRIPT_DIR/build_grafana_plugin.sh"
 
-# Check if we should use Docker or run locally
+# Default: Docker. Use --local for local backend only.
 if [ "$1" == "--local" ]; then
   echo ""
   echo "=== Starting Local Development ==="
@@ -64,9 +84,20 @@ else
 
   cd "$PROJECT_ROOT"
 
+  # Use docker compose (V2) if available, else docker-compose (V1)
+  if docker compose version >/dev/null 2>&1; then
+    DOCKER_COMPOSE="docker compose"
+  elif command -v docker-compose >/dev/null 2>&1; then
+    DOCKER_COMPOSE="docker-compose"
+  else
+    echo "ERROR: Neither 'docker compose' nor 'docker-compose' found. Install Docker Compose."
+    exit 1
+  fi
+  echo "Using: $DOCKER_COMPOSE"
+
   # Export variables for docker-compose
   export CHRONOLOG_INSTALL_PATH
 
   # Start services
-  docker compose up --build
+  $DOCKER_COMPOSE up --build
 fi

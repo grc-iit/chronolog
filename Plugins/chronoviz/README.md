@@ -12,18 +12,13 @@ ChronoViz consists of three main components:
 
 ## Architecture
 
+Request flow: Grafana UI loads the plugin; the plugin sends HTTP requests to the Python backend; the backend uses the C++ client library, which connects to the ChronoLog service.
+
 ```
-┌─────────────┐     ┌──────────────┐     ┌─────────────┐     ┌──────────────┐
-│   Grafana   │────▶│  ChronoViz   │────▶│   Python    │────▶│  ChronoLog   │
-│     UI      │     │   Plugin     │     │   Backend   │     │   Service    │
-└─────────────┘     └──────────────┘     └─────────────┘     └──────────────┘
-                                                │
-                                                ▼
-                                         ┌─────────────┐
-                                         │    C++      │
-                                         │  Client     │
-                                         │  Library    │
-                                         └─────────────┘
+┌─────────────┐     ┌──────────────┐     ┌─────────────┐     ┌─────────────┐     ┌──────────────┐
+│   Grafana   │────▶│  ChronoViz   │────▶│   Python    │────▶│    C++      │────▶│  ChronoLog   │
+│     UI      │     │   Plugin     │     │   Backend   │     │ Client Lib  │     │   Service    │
+└─────────────┘     └──────────────┘     └─────────────┘     └─────────────┘     └──────────────┘
 ```
 
 ## Quick Start
@@ -31,20 +26,21 @@ ChronoViz consists of three main components:
 ### Prerequisites
 
 - ChronoLog service running and accessible
-- ChronoLog client library installed (default: `~/chronolog-install/chronolog/lib`)
-- Docker and Docker Compose (for containerized deployment)
-- OR Node.js 18+ and Python 3.9+ (for local development)
+- **Docker and Docker Compose** (default way to run; ChronoLog client library is used from `CHRONOLOG_INSTALL_PATH`, default `~/chronolog-install/chronolog/lib`)
+- *Optional for local dev:* Node.js 18+ and Python 3.9+ and ChronoLog client library on the host
 
-### Using Docker Compose (Recommended)
+### Quick Start (Docker — default)
 
-1. **Set environment variables**:
+The start script uses **Docker** by default. No arguments needed.
+
+1. **Set environment variables** (for the backend container and plugin build):
    ```bash
    export CHRONOLOG_INSTALL_PATH=~/chronolog-install
    export CHRONOLOG_PORTAL_IP=127.0.0.1
    export CHRONOLOG_QUERY_IP=127.0.0.1
    ```
 
-2. **Start the services**:
+2. **Start Grafana and the backend**:
    ```bash
    cd Plugins/chronoviz
    ./scripts/start_grafana_dev.sh
@@ -55,9 +51,11 @@ ChronoViz consists of three main components:
    - Username: `admin`
    - Password: `admin`
 
-The ChronoLog data source will be automatically provisioned.
+The ChronoLog data source is provisioned automatically.
 
-### Local Development
+### Local development (no Docker)
+
+To run only the backend on the host and start Grafana yourself:
 
 1. **Build the plugin**:
    ```bash
@@ -169,10 +167,15 @@ npm run build
 
 ### Running the Backend
 
+**Default (Docker):** From `Plugins/chronoviz`, run `./scripts/start_grafana_dev.sh` with no arguments. Grafana and the backend run in containers.
+
+**Local backend only:** Use the start script with `--local` (creates/uses a venv and sets env for you), or run the backend manually — see [Grafana Backend README](grafana_backend/README.md) for venv and required env vars:
+
 ```bash
 cd grafana_backend
 pip install -r requirements.txt
 export CHRONOLOG_LIB_PATH=~/chronolog-install/chronolog/lib
+export LD_LIBRARY_PATH=$CHRONOLOG_LIB_PATH:$LD_LIBRARY_PATH
 python chronolog_service.py
 ```
 
@@ -229,6 +232,7 @@ Apache-2.0
 
 ## Related Documentation
 
+- [Grafana Backend README](grafana_backend/README.md) - Backend setup, env vars, and running locally
 - [Grafana Plugin README](grafana_plugin/README.md) - Detailed plugin documentation
 - [ChronoLog Documentation](../../README.md) - Main ChronoLog documentation
 

@@ -48,7 +48,7 @@ This plugin enables Grafana to query and visualize data from ChronoLog chronicle
    export CHRONOLOG_QUERY_PORT=5557
    ```
 
-2. **Build and start services**:
+2. **Build and start services** (script uses Docker by default):
    ```bash
    cd /path/to/ChronoLog/Plugins/chronoviz
    ./scripts/start_grafana_dev.sh

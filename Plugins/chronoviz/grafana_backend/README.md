@@ -42,17 +42,20 @@ Configure via environment variables (see `env.example`):
 
 ## Running
 
-### Local Development
+### Recommended: Docker (start script)
+
+From the ChronoViz plugin root, the start script **defaults to Docker** and runs both Grafana and this backend:
 
 ```bash
-export CHRONOLOG_LIB_PATH=~/chronolog-install/chronolog/lib
-export PYTHONPATH=$CHRONOLOG_LIB_PATH:$PYTHONPATH
-export LD_LIBRARY_PATH=$CHRONOLOG_LIB_PATH:$LD_LIBRARY_PATH
-
-python chronolog_service.py
+cd Plugins/chronoviz
+./scripts/start_grafana_dev.sh
 ```
 
-### Using Docker
+No arguments: Docker Compose starts the backend (and Grafana). ChronoLog libs are mounted from `CHRONOLOG_INSTALL_PATH`. See the [ChronoViz README](../README.md) for prerequisites and env vars.
+
+### Using Docker (backend image only)
+
+To build and run only the backend container:
 
 ```bash
 docker build -t chronolog-backend .
@@ -60,6 +63,33 @@ docker run -p 8080:8080 \
   -v ~/chronolog-install/chronolog/lib:/opt/chronolog/lib:ro \
   -e CHRONOLOG_PORTAL_IP=host.docker.internal \
   chronolog-backend
+```
+
+### Local development (no Docker)
+
+Use when you want to run the backend on the host (e.g. to attach a debugger or avoid rebuilding the image).
+
+**Option A — start script with `--local`:** From `Plugins/chronoviz` run `./scripts/start_grafana_dev.sh --local`. The script creates/activates a venv and sets required env vars.
+
+**Option B — run manually:** You need a venv (recommended) and these environment variables:
+
+- **`CHRONOLOG_LIB_PATH`** — Required. Path to the directory containing `py_chronolog_client*.so` (and the ChronoLog C++ client lib). The service adds this to `sys.path` for the Python import.
+- **`LD_LIBRARY_PATH`** — Required when running outside Docker. The Python bindings load the C++ client shared library at runtime; the dynamic linker must see this path (e.g. include `$CHRONOLOG_LIB_PATH`).
+- **`PYTHONPATH`** — Optional if `CHRONOLOG_LIB_PATH` is set (the service inserts it into `sys.path`). Setting it is still recommended for consistency and for running tests or other scripts that import the service before it runs.
+
+Example:
+
+```bash
+# Optional: use a venv (recommended)
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+export CHRONOLOG_LIB_PATH=~/chronolog-install/chronolog/lib
+export LD_LIBRARY_PATH=$CHRONOLOG_LIB_PATH:$LD_LIBRARY_PATH
+export PYTHONPATH=$CHRONOLOG_LIB_PATH:$PYTHONPATH
+
+python chronolog_service.py
 ```
 
 ## API Endpoints
@@ -258,9 +288,10 @@ logging.basicConfig(level=logging.DEBUG)
 
 ### Import Error: py_chronolog_client not found
 
-- Ensure `CHRONOLOG_LIB_PATH` is set correctly
-- Verify the Python bindings are built
-- Check `PYTHONPATH` includes the library path
+- Ensure `CHRONOLOG_LIB_PATH` is set correctly (required)
+- Set `LD_LIBRARY_PATH` to include `$CHRONOLOG_LIB_PATH` so the C++ client shared library can be loaded
+- Optionally set `PYTHONPATH` to include the library path (the service also adds `CHRONOLOG_LIB_PATH` to `sys.path` when set)
+- Verify the Python bindings are built: `ls $CHRONOLOG_LIB_PATH/py_chronolog_client*.so`
 
 ### Connection Failed
 
