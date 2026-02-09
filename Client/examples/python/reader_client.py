@@ -31,7 +31,7 @@ def reader_client():
     import py_chronolog_client
 
     print("Basic test for py_chronolog_client reader ")
-    
+
     #create ClientPortalServiceConf instance with the connection credentials to ChronoVisor ClientPortalService
 
     clientConf = py_chronolog_client.ClientPortalServiceConf("ofi+sockets","127.0.0.1",5555,55);
@@ -44,11 +44,11 @@ def reader_client():
     print( "\n client.Connect() call returns:", return_code)
 
     attrs=dict();
-    return_tuple = reader_client.AcquireStory("kfeng-EVO-X2", "memory_usage", attrs, 1);
+    return_tuple = reader_client.AcquireStory("py_chronicle", "my_story", attrs, 1);
     print( "\n client.AcquireStory() returned:" , return_tuple)
 
-    event_series = py_chronolog_client.EventList()   
-    return_code = reader_client.ReplayStory("kfeng-EVO-X2","memory_usage", 1000000000000000000, 2000000000000000000, event_series);
+    event_series = py_chronolog_client.EventList()
+    return_code = reader_client.ReplayStory("py_chronicle","my_story", 1750968060000000000,1750968200000000000, event_series);
 
     print( "\n client.ReplayStory() call returns:", return_code)
     print( "\n client.ReplayStory() call returns event_series : ", event_series, "with ", len(event_series)," events")
@@ -56,10 +56,10 @@ def reader_client():
     if len(event_series) >0 :
         for event in event_series:
             print("event:", event.time(),event.client_id(),event.index(),event.log_record())
-    
+
     # release acquired Story
     # returns 0 on success and error_code othewise
-    return_code = reader_client.ReleaseStory("kfeng-EVO-X2","memory_usage");
+    return_code = reader_client.ReleaseStory("py_chronicle","my_story");
     print("\n client.ReleaseStory() returned:", return_code);
 
     # Disconenct the client from ChronoLog system
@@ -69,10 +69,5 @@ def reader_client():
 
 
 if __name__=="__main__":
-
-    reader_client()
-
-    import time
-    time.sleep(10)
 
     reader_client()
