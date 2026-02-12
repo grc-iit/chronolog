@@ -398,13 +398,14 @@ jobs:
           docker exec "$CONTAINER_ID" bash -c "
             source /home/grc-iit/spack/share/spack/setup-env.sh
             spack env activate -p .
+            WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
             echo '[6/7] Stopping ChronoLog...'
-            
+
             echo 'Process states before stop:'
             ps aux | grep -E 'chrono_player|chrono_keeper|chrono_grapher|chronovisor_server' | grep -v grep || true
-            
-            ./tools/deploy/ChronoLog/local_single_user_deploy.sh -s
-            
+
+            ./tools/deploy/ChronoLog/local_single_user_deploy.sh -s -w \"\${WORK_DIR}\"
+
             echo '✅ ChronoLog stop command completed'
           "
 
@@ -436,7 +437,7 @@ jobs:
             echo '[7/7] Cleaning ChronoLog...'
             if [ -x ./tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
               # Clean script checks if processes are stopped, so skip that check if processes are stuck
-              ./tools/deploy/ChronoLog/local_single_user_deploy.sh -c || {
+              ./tools/deploy/ChronoLog/local_single_user_deploy.sh -c -w \"\${WORK_DIR}\" || {
                 echo '⚠️ Warning: Clean script failed (likely due to stuck processes), but continuing'
                 echo 'ℹ️ Container will be destroyed anyway, cleaning up what we can...'
                 rm -rf \"\${WORK_DIR}/monitor/\"*.log 2>/dev/null || true
