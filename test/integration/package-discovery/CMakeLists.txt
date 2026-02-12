@@ -4,169 +4,105 @@ cmake_minimum_required(VERSION 3.25)
 # Package Discovery Tests
 #------------------------------------------------------------------------------
 # These tests verify that Chronolog can be discovered and used by external
-# projects using both CMake find_package() and pkg-config.
+# projects. Configuration and build NEVER depend on the install prefix, so
+# cmake .. succeeds even when the install prefix contains stale config/pkg-config
+# files but missing libs/headers (partial install state).
 #
-# IMPORTANT: These tests MUST be run AFTER installation. They use the installed
-# package discovery mechanisms (CMake config files and pkg-config files) and
-# will fail if the package has not been installed.
-#
-# The tests are configured to use:
-# 1. CMAKE_PREFIX_PATH pointing to the install prefix (for CMake discovery)
-# 2. PKG_CONFIG_PATH pointing to <install-prefix>/chronolog/lib/pkgconfig
-#
-# These tests verify that:
-# - The installed CMake config files work correctly
-# - The installed pkg-config file works correctly
-# - Headers and libraries from the install directory are accessible
-# - The package can be used by external projects
+# Test layout:
+# 1. PackageDiscovery_CMake / PackageDiscovery_pkgconfig
+#    - Built and linked against the BUILD TREE (chronolog_client target).
+#    - Always runnable; verify that the client library works.
+# 2. PackageDiscovery_Installed_CMake / PackageDiscovery_Installed_pkgconfig
+#    - Run at CTest time via CMake -P scripts.
+#    - Validate find_package(Chronolog) / pkg-config against the INSTALLED
+#      prefix only when required artifacts exist (config + library + headers).
+#    - If install is incomplete, tests are SKIPPED (exit 0) with a clear message.
+#    - If install is complete but discovery fails, tests FAIL with a clear message.
 #------------------------------------------------------------------------------
 
-# Get the install prefix and set up paths for package discovery
-# Note: We use the install prefix so tests use the installed package files
-set(CHRONOLOG_INSTALL_ROOT "${CMAKE_INSTALL_PREFIX}/chronolog")
-set(CHRONOLOG_CMAKE_CONFIG_DIR "${CHRONOLOG_INSTALL_ROOT}/lib/cmake/Chronolog")
-set(CHRONOLOG_PKGCONFIG_DIR "${CHRONOLOG_INSTALL_ROOT}/lib/pkgconfig")
-
-# Check if the package has been installed
-# The config files are only available after installation
-set(CHRONOLOG_CONFIG_FILE "${CHRONOLOG_CMAKE_CONFIG_DIR}/ChronologConfig.cmake")
-set(CHRONOLOG_PC_FILE "${CHRONOLOG_PKGCONFIG_DIR}/chronolog.pc")
-
-# Check if config files exist and if the config file has the dependency finding code
-# (to detect if it's an old version that needs to be reinstalled)
-set(CHRONOLOG_PACKAGE_INSTALLED FALSE)
-if(EXISTS "${CHRONOLOG_CONFIG_FILE}" AND EXISTS "${CHRONOLOG_PC_FILE}")
-    # Check if the config file has the dependency finding code (added in recent update)
-    file(READ "${CHRONOLOG_CONFIG_FILE}" CONFIG_FILE_CONTENT)
-    if(CONFIG_FILE_CONTENT MATCHES "find_dependency\\(spdlog")
-        # Package is installed with the correct config file - we can test package discovery
-        set(CHRONOLOG_PACKAGE_INSTALLED TRUE)
-        message(STATUS "Package discovery tests: Using installed package at ${CMAKE_INSTALL_PREFIX}")
-    else()
-        # Config file exists but is outdated - needs reinstall
-        set(CHRONOLOG_PACKAGE_INSTALLED FALSE)
-        message(WARNING "Package discovery tests: Installed config file is outdated. "
-                        "Please run 'make install' or 'cmake --install .' to update the installed package, "
-                        "then reconfigure to enable these tests.")
-        message(STATUS "  Found config file: ${CHRONOLOG_CONFIG_FILE}")
-        message(STATUS "  But it appears to be from an older version")
-    endif()
-else()
-    # Package not installed yet - we'll build the tests anyway, but they'll use the build tree
-    message(STATUS "Package discovery tests: Package not installed yet. "
-                    "Tests will be built but will use build tree. For full package discovery testing, "
-                    "install the package first, then reconfigure.")
-    message(STATUS "  Expected config file: ${CHRONOLOG_CONFIG_FILE}")
-    message(STATUS "  Expected pkg-config file: ${CHRONOLOG_PC_FILE}")
-endif()
-
-# Set CMAKE_PREFIX_PATH to include the install prefix for find_package()
-# This allows find_package(Chronolog) to locate the installed config files
-list(APPEND CMAKE_PREFIX_PATH "${CMAKE_INSTALL_PREFIX}")
-
-# Set PKG_CONFIG_PATH to include the install pkgconfig directory
-# This allows pkg-config to find the installed chronolog.pc file
-set(ENV{PKG_CONFIG_PATH} "${CHRONOLOG_PKGCONFIG_DIR}:$ENV{PKG_CONFIG_PATH}")
-
 #------------------------------------------------------------------------------
-# Test 1: CMake find_package() Discovery
+# Test 1: CMake discovery (build-tree)
 #------------------------------------------------------------------------------
-# This test verifies that find_package(Chronolog) works correctly and that
-# the Chronolog::chronolog_client target from the installed package can be used.
-# It uses the installed CMake config files if available, otherwise the build tree.
+# Always use the build tree so configure never fails due to install prefix state.
 add_executable(test_cmake_discovery
     test_cmake_discovery.cpp
 )
+target_link_libraries(test_cmake_discovery PRIVATE chronolog_client)
+target_include_directories(test_cmake_discovery PRIVATE
+    ${CMAKE_SOURCE_DIR}/Client/cpp/include
+)
 
-if(CHRONOLOG_PACKAGE_INSTALLED)
-    # Use find_package to discover the installed Chronolog package
-    # This will find ChronologConfig.cmake from the install directory
-    find_package(Chronolog REQUIRED)
-    
-    # Link against the installed Chronolog::chronolog_client target
-    # This target provides all necessary include directories and link libraries
-    # from the installation, not the build tree
-    target_link_libraries(test_cmake_discovery PRIVATE Chronolog::chronolog_client)
-    
-    # Set properties for proper RPATH handling
-    set_target_properties(test_cmake_discovery PROPERTIES
-        BUILD_WITH_INSTALL_RPATH TRUE
-        SKIP_BUILD_RPATH TRUE
-    )
-else()
-    # Package not installed - use build tree instead
-    # Link against the build tree chronolog_client target
-    target_link_libraries(test_cmake_discovery PRIVATE chronolog_client)
-    
-    # Include directories from build tree
-    target_include_directories(test_cmake_discovery PRIVATE
-        ${CMAKE_SOURCE_DIR}/Client/cpp/include
-    )
-endif()
-
-# Add as a CTest test
 add_test(NAME PackageDiscovery_CMake COMMAND test_cmake_discovery)
-
-# Install the test executable (useful for verifying installation)
-chronolog_install_target(test_cmake_discovery)
+# Not installed: this test runs from the build tree only; installed-prefix tests use their own mini app.
 
 #------------------------------------------------------------------------------
-# Test 2: pkg-config Discovery
+# Test 2: pkg-config discovery (build-tree)
 #------------------------------------------------------------------------------
-# This test verifies that pkg-config can find the installed chronolog.pc file
-# and that the compiler/linker flags work correctly.
-# It uses the installed pkg-config file if available, otherwise the build tree.
 add_executable(test_pkgconfig_discovery
     test_pkgconfig_discovery.cpp
 )
+target_include_directories(test_pkgconfig_discovery PRIVATE
+    ${CMAKE_SOURCE_DIR}/Client/cpp/include
+)
+target_link_libraries(test_pkgconfig_discovery PRIVATE chronolog_client)
 
 find_package(PkgConfig REQUIRED)
-
-if(CHRONOLOG_PACKAGE_INSTALLED)
-    # Use pkg-config to discover the installed chronolog package
-    # This will find chronolog.pc from the install directory
-    pkg_check_modules(CHRONOLOG REQUIRED chronolog)
-
-    # Use the flags from pkg-config (from the installed .pc file)
-    # These point to the installed include and lib directories
-    target_include_directories(test_pkgconfig_discovery PRIVATE ${CHRONOLOG_INCLUDE_DIRS})
-    
-    # Create an imported library target for the installed chronolog_client library
-    # This prevents CMake from resolving to the build tree library
-    add_library(chronolog_client_imported SHARED IMPORTED)
-    # CHRONOLOG_LIBRARY_DIRS is a list, so we need to get the first element
-    list(GET CHRONOLOG_LIBRARY_DIRS 0 CHRONOLOG_LIB_DIR)
-    set_target_properties(chronolog_client_imported PROPERTIES
-        IMPORTED_LOCATION "${CHRONOLOG_LIB_DIR}/libchronolog_client.so"
-    )
-    
-    # Link against the imported target (not the build tree target)
-    target_link_libraries(test_pkgconfig_discovery PRIVATE chronolog_client_imported)
-    
-    # Set properties for proper RPATH handling
-    # Use the library directories from pkg-config for RPATH
-    set_target_properties(test_pkgconfig_discovery PROPERTIES
-        BUILD_RPATH "${CHRONOLOG_LIBRARY_DIRS}"
-        INSTALL_RPATH "${CHRONOLOG_LIBRARY_DIRS}"
-        BUILD_WITH_INSTALL_RPATH FALSE
-    )
-else()
-    # Package not installed - use build tree instead
-    target_include_directories(test_pkgconfig_discovery PRIVATE
-        ${CMAKE_SOURCE_DIR}/Client/cpp/include
-    )
-    target_link_libraries(test_pkgconfig_discovery PRIVATE chronolog_client)
-endif()
-
-# Also need json-c (required dependency from chronolog.pc)
 pkg_check_modules(JSON-C REQUIRED json-c)
 target_include_directories(test_pkgconfig_discovery PRIVATE ${JSON-C_INCLUDE_DIRS})
 target_link_directories(test_pkgconfig_discovery PRIVATE ${JSON-C_LIBRARY_DIRS})
 target_link_libraries(test_pkgconfig_discovery PRIVATE ${JSON-C_LIBRARIES})
 
-# Add as a CTest test
 add_test(NAME PackageDiscovery_pkgconfig COMMAND test_pkgconfig_discovery)
+# Not installed: this test runs from the build tree only; installed-prefix tests use their own mini app.
 
-# Install the test executable (useful for verifying installation)
-chronolog_install_target(test_pkgconfig_discovery)
+#------------------------------------------------------------------------------
+# Installed-prefix discovery tests (run at CTest time, do not affect configure)
+#------------------------------------------------------------------------------
+# These tests run only when ctest is executed. They check that the install
+# prefix (if fully installed) allows find_package(Chronolog) and pkg-config
+# to work. They never block cmake .. or make.
+# Pass the project's CMAKE_PREFIX_PATH so the discovery subproject can find
+# the same dependencies (spdlog, json-c, etc.) that the main build used.
+set(_discovery_script_dir "${CMAKE_CURRENT_SOURCE_DIR}")
+set(_discovery_binary_dir "${CMAKE_CURRENT_BINARY_DIR}")
+list(JOIN CMAKE_PREFIX_PATH ";" _extra_prefix_path)
 
+# Pass spdlog_DIR if set (e.g. from Spack or -Dspdlog_DIR=...), so the discovery subproject can find spdlog
+set(_spdlog_dir_arg "")
+if(DEFINED spdlog_DIR AND NOT spdlog_DIR STREQUAL "")
+    set(_spdlog_dir_arg "-DSPDLOG_DIR=${spdlog_DIR}")
+endif()
+# Note: If spdlog was found via CMAKE_PREFIX_PATH only (no spdlog_DIR), EXTRA_CMAKE_PREFIX_PATH must contain that path.
+
+add_test(
+    NAME PackageDiscovery_Installed_CMake
+    COMMAND ${CMAKE_COMMAND}
+        -DCHRONOLOG_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
+        -DCMAKE_EXECUTABLE=${CMAKE_COMMAND}
+        -DTEST_BINARY_DIR=${_discovery_binary_dir}
+        -DEXTRA_CMAKE_PREFIX_PATH=${_extra_prefix_path}
+        ${_spdlog_dir_arg}
+        -P ${_discovery_script_dir}/RunPackageDiscoveryCMake.cmake
+    WORKING_DIRECTORY ${_discovery_binary_dir}
+)
+set_tests_properties(PackageDiscovery_Installed_CMake PROPERTIES
+    ENVIRONMENT "PKG_CONFIG_PATH=$ENV{PKG_CONFIG_PATH}"
+)
+
+add_test(
+    NAME PackageDiscovery_Installed_pkgconfig
+    COMMAND ${CMAKE_COMMAND}
+        -DCHRONOLOG_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
+        -DCMAKE_EXECUTABLE=${CMAKE_COMMAND}
+        -DTEST_BINARY_DIR=${_discovery_binary_dir}
+        -DEXTRA_CMAKE_PREFIX_PATH=${_extra_prefix_path}
+        -P ${_discovery_script_dir}/RunPackageDiscoveryPkgConfig.cmake
+    WORKING_DIRECTORY ${_discovery_binary_dir}
+)
+set_tests_properties(PackageDiscovery_Installed_pkgconfig PROPERTIES
+    ENVIRONMENT "PKG_CONFIG_PATH=$ENV{PKG_CONFIG_PATH}"
+)
+
+# Allow installed discovery tests to be skipped when install is not present
+# (script exits 0 on skip); no need to set PASS_REGULAR_EXPRESSION here
+# since the script uses message(STATUS) for skip and message(FATAL_ERROR) for failure.
