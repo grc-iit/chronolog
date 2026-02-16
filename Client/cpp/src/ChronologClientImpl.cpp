@@ -8,7 +8,6 @@
 
 #include <city.h>
 #include <margo.h>
-#include <spdlog/spdlog.h>
 #include <thallium.hpp>
 
 #include "ChronologClientImpl.h"
@@ -26,11 +25,11 @@ chronolog::ChronologClientImpl* chronolog::ChronologClientImpl::GetClientImplIns
 {
     chrono_monitor::initialize("file",
                                "/tmp/chrono_client.log",
-                               spdlog::level::info,
+                               chronolog::LogLevel::info,
                                "chrono_client",
                                1024000,
                                3,
-                               spdlog::level::warn);
+                               chronolog::LogLevel::warn);
 
     std::lock_guard<std::mutex> lock_client(chronologClientMutex);
 

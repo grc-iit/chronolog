@@ -15,7 +15,6 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <hdf5.h>
-#include <spdlog/spdlog.h>
 #include <chrono_monitor.h>
 #include <chronolog_errcode.h>
 //#include <story_chunk_test_utils.h>
@@ -523,11 +522,11 @@ int main(int argc, char* argv[])
 
     int result = chronolog::chrono_monitor::initialize("console",
                                                        "cmp_vlen_bytes_dtype_test.log",
-                                                       spdlog::level::debug,
+                                                       chronolog::LogLevel::debug,
                                                        "cmp_vlen_bytes_dtype_test",
                                                        102400,
                                                        1,
-                                                       spdlog::level::debug);
+                                                       chronolog::LogLevel::debug);
     if(result == 1)
     {
         exit(EXIT_FAILURE);

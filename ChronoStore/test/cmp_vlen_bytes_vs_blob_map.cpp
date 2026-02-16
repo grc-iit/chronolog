@@ -1200,11 +1200,11 @@ int main(int argc, char* argv[])
 {
     int result = chronolog::chrono_monitor::initialize("console",
                                                        "cmp_vlen_bytes_vs_blob_map.log",
-                                                       spdlog::level::debug,
+                                                       chronolog::LogLevel::debug,
                                                        "cmp_vlen_bytes_vs_blob_map",
                                                        102400,
                                                        1,
-                                                       spdlog::level::debug);
+                                                       chronolog::LogLevel::debug);
     if(result == 1)
     {
         exit(EXIT_FAILURE);

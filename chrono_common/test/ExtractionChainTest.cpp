@@ -65,7 +65,7 @@ int main()
             ,
             "/tmp/extraction_test.log" //, confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
             ,
-            spdlog::level::debug // confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
+            chronolog::LogLevel::debug // confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
             ,
             "ExtractionModuleTest" //confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME
             ,
@@ -73,7 +73,7 @@ int main()
             ,
             2 //confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILENUM
             ,
-            spdlog::level::debug //confManager.CLIENT_CONF.CLIENT_LOG_CONF.FLUSHLEVEL);
+            chronolog::LogLevel::debug //confManager.CLIENT_CONF.CLIENT_LOG_CONF.FLUSHLEVEL);
     );
 
 

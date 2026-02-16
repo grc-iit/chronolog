@@ -62,17 +62,10 @@ add_test(NAME PackageDiscovery_pkgconfig COMMAND test_pkgconfig_discovery)
 # prefix (if fully installed) allows find_package(Chronolog) and pkg-config
 # to work. They never block cmake .. or make.
 # Pass the project's CMAKE_PREFIX_PATH so the discovery subproject can find
-# the same dependencies (spdlog, json-c, etc.) that the main build used.
+# the same dependencies (json-c, etc.) that the main build used.
 set(_discovery_script_dir "${CMAKE_CURRENT_SOURCE_DIR}")
 set(_discovery_binary_dir "${CMAKE_CURRENT_BINARY_DIR}")
 list(JOIN CMAKE_PREFIX_PATH ";" _extra_prefix_path)
-
-# Pass spdlog_DIR if set (e.g. from Spack or -Dspdlog_DIR=...), so the discovery subproject can find spdlog
-set(_spdlog_dir_arg "")
-if(DEFINED spdlog_DIR AND NOT spdlog_DIR STREQUAL "")
-    set(_spdlog_dir_arg "-DSPDLOG_DIR=${spdlog_DIR}")
-endif()
-# Note: If spdlog was found via CMAKE_PREFIX_PATH only (no spdlog_DIR), EXTRA_CMAKE_PREFIX_PATH must contain that path.
 
 add_test(
     NAME PackageDiscovery_Installed_CMake
@@ -81,7 +74,6 @@ add_test(
         -DCMAKE_EXECUTABLE=${CMAKE_COMMAND}
         -DTEST_BINARY_DIR=${_discovery_binary_dir}
         -DEXTRA_CMAKE_PREFIX_PATH=${_extra_prefix_path}
-        ${_spdlog_dir_arg}
         -P ${_discovery_script_dir}/RunPackageDiscoveryCMake.cmake
     WORKING_DIRECTORY ${_discovery_binary_dir}
 )
