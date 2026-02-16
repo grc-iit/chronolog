@@ -33,15 +33,9 @@ inline std::string to_str(const T& val)
     }
 }
 
-inline std::string format(const char* fmt_str)
-{
-    return std::string(fmt_str);
-}
+inline std::string format(const char* fmt_str) { return std::string(fmt_str); }
 
-inline std::string format(const std::string& fmt_str)
-{
-    return fmt_str;
-}
+inline std::string format(const std::string& fmt_str) { return fmt_str; }
 
 template <typename... Args>
 inline std::string format(const char* fmt_str, const Args&... args)
@@ -91,9 +85,13 @@ public:
      *
      * @return 0 on success, 1 on error.
      */
-    static int initialize(const std::string& logType, const std::string& location, LogLevel logLevel,
-                          const std::string& loggerName, std::size_t logFileSize = 104857600,
-                          std::size_t logFileNum = 3, LogLevel flushLevel = LogLevel::warn);
+    static int initialize(const std::string& logType,
+                          const std::string& location,
+                          LogLevel logLevel,
+                          const std::string& loggerName,
+                          std::size_t logFileSize = 104857600,
+                          std::size_t logFileNum = 3,
+                          LogLevel flushLevel = LogLevel::warn);
 
     static void trace(const std::string& msg);
     static void debug(const std::string& msg);

@@ -2,6 +2,7 @@
 #include <chrono>
 #include <iostream>
 #include <signal.h>
+#include <thread>
 
 #include <chrono_monitor.h>
 #include <ServiceId.h>

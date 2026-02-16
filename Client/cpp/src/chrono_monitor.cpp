@@ -21,8 +21,12 @@ static spdlog::level::level_enum to_spdlog_level(LogLevel level)
     return static_cast<spdlog::level::level_enum>(static_cast<int>(level));
 }
 
-int chrono_monitor::initialize(const std::string& logType, const std::string& location, LogLevel logLevel,
-                               const std::string& loggerName, std::size_t logFileSize, std::size_t logFileNum,
+int chrono_monitor::initialize(const std::string& logType,
+                               const std::string& location,
+                               LogLevel logLevel,
+                               const std::string& loggerName,
+                               std::size_t logFileSize,
+                               std::size_t logFileNum,
                                LogLevel flushLevel)
 {
     std::lock_guard<std::mutex> lock(g_mutex);
