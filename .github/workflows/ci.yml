@@ -190,13 +190,15 @@ jobs:
         run: |
           set -e
           # Uses the base image (with hashed tag) from the previous job
+          # Mount workspace at /mnt/workspace so we can copy it into /home/grc-iit/chronolog-repo before commit
+          # (bind mounts are not included in docker commit; the repo would be missing in the published image otherwise)
           BASE_IMAGE="${{ needs.chronolog-base.outputs.image-name }}"
           echo "Using base image: ${BASE_IMAGE}"
           CONTAINER_ID=$(docker create --user root --init \
-            -v "${{ github.workspace }}:/home/grc-iit/chronolog-repo" \
-            -w /home/grc-iit/chronolog-repo \
+            -v "${{ github.workspace }}:/mnt/workspace" \
+            -w /mnt/workspace \
             "$BASE_IMAGE" \
-            bash -c "chown -R grc-iit:grc-iit /home/grc-iit/chronolog-repo && tail -f /dev/null")
+            bash -c "chown -R grc-iit:grc-iit /mnt/workspace && tail -f /dev/null")
           echo "container-id=${CONTAINER_ID}" >> $GITHUB_OUTPUT
           docker start "$CONTAINER_ID"
           echo "Container created and started: ${CONTAINER_ID}"
@@ -205,7 +207,7 @@ jobs:
         run: |
           set -e
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
-          docker exec "$CONTAINER_ID" bash -c "
+          docker exec -w /mnt/workspace "$CONTAINER_ID" bash -c "
             echo '=== Verifying code checkout ==='
             echo \"Current directory: \$(pwd)\"
             echo \"Git branch: \$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo 'detached')\"
@@ -219,7 +221,7 @@ jobs:
         run: |
           set -e
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
-          docker exec "$CONTAINER_ID" bash -c "
+          docker exec -w /mnt/workspace "$CONTAINER_ID" bash -c "
             source /home/grc-iit/spack/share/spack/setup-env.sh
             spack env activate -p .
             echo '✅ Spack environment activated'
@@ -229,7 +231,7 @@ jobs:
         run: |
           set -e
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
-          docker exec "$CONTAINER_ID" bash -c "
+          docker exec -w /mnt/workspace "$CONTAINER_ID" bash -c "
             set -e
             source /home/grc-iit/spack/share/spack/setup-env.sh
             spack env activate -p .
@@ -247,7 +249,7 @@ jobs:
         run: |
           set -e
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
-          docker exec "$CONTAINER_ID" bash -c "
+          docker exec -w /mnt/workspace "$CONTAINER_ID" bash -c "
             set -e
             source /home/grc-iit/spack/share/spack/setup-env.sh
             spack env activate -p .
@@ -269,7 +271,7 @@ jobs:
         run: |
           set -e
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
-          docker exec "$CONTAINER_ID" bash -c "
+          docker exec -w /mnt/workspace "$CONTAINER_ID" bash -c "
             set -e
             source /home/grc-iit/spack/share/spack/setup-env.sh
             spack env activate -p .
@@ -291,7 +293,7 @@ jobs:
         run: |
           set -e
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
-          docker exec "$CONTAINER_ID" bash -c "
+          docker exec -w /mnt/workspace "$CONTAINER_ID" bash -c "
             set -e
             source /home/grc-iit/spack/share/spack/setup-env.sh
             spack env activate -p .
@@ -325,7 +327,7 @@ jobs:
         run: |
           set -e
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
-          docker exec "$CONTAINER_ID" bash -c "
+          docker exec -w /mnt/workspace "$CONTAINER_ID" bash -c "
             set -e
             source /home/grc-iit/spack/share/spack/setup-env.sh
             spack env activate -p .
@@ -344,7 +346,7 @@ jobs:
         run: |
           set -e
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
-          docker exec "$CONTAINER_ID" bash -c "
+          docker exec -w /mnt/workspace "$CONTAINER_ID" bash -c "
             set -e
             source /home/grc-iit/spack/share/spack/setup-env.sh
             spack env activate -p .
@@ -395,7 +397,7 @@ jobs:
         run: |
           set -e
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
-          docker exec "$CONTAINER_ID" bash -c "
+          docker exec -w /mnt/workspace "$CONTAINER_ID" bash -c "
             source /home/grc-iit/spack/share/spack/setup-env.sh
             spack env activate -p .
             WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
@@ -413,7 +415,7 @@ jobs:
         run: |
           set -e
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
-          docker exec "$CONTAINER_ID" bash -c "
+          docker exec -w /mnt/workspace "$CONTAINER_ID" bash -c "
             echo '[6.5/7] Verifying all ChronoLog processes are stopped...'
             
             REMAINING=\$(ps aux | grep -E 'chrono_player|chrono_keeper|chrono_grapher|chronovisor_server' | grep -v grep || true)
@@ -430,7 +432,7 @@ jobs:
         run: |
           set -e
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
-          docker exec "$CONTAINER_ID" bash -c "
+          docker exec -w /mnt/workspace "$CONTAINER_ID" bash -c "
             source /home/grc-iit/spack/share/spack/setup-env.sh
             spack env activate -p .
             WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
@@ -451,13 +453,28 @@ jobs:
             echo '✅ ChronoLog cleaned'
           "
 
+      - name: Copy workspace into image for published image
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          # Bind mounts are not included in docker commit. Copy the repo into the container
+          # filesystem so the published image contains ChronoLog source at /home/grc-iit/chronolog-repo.
+          docker exec "$CONTAINER_ID" bash -c "
+            set -e
+            rm -rf /home/grc-iit/chronolog-repo
+            cp -a /mnt/workspace /home/grc-iit/chronolog-repo
+            chown -R grc-iit:grc-iit /home/grc-iit/chronolog-repo
+            echo '✅ Workspace copied to /home/grc-iit/chronolog-repo for image commit'
+          "
+
       - name: Commit and tag final image
         run: |
           set -e
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
           FINAL_IMAGE="${{ steps.set-final-image-name.outputs.full-name }}"
           docker stop "$CONTAINER_ID"
-          docker commit "$CONTAINER_ID" "$FINAL_IMAGE"
+          # Set default USER to grc-iit so running the image locally avoids permission issues
+          docker commit --change "USER grc-iit" "$CONTAINER_ID" "$FINAL_IMAGE"
           docker rm "$CONTAINER_ID"
           echo "✅ Final image committed: ${FINAL_IMAGE}"
           
