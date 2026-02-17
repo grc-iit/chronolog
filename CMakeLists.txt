@@ -43,7 +43,9 @@ message(STATUS "CMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}")
 
 # Single, consistent layout
 # bin/ = supported/runtime executables only
-# examples/ = runnable examples and sample clients
+# examples/ = runnable examples (installed names: chrono-<component>-example-<role>, same as bin/)
+#   - Client: chrono-client-example-writer, -reader, -basic, -distributed-telemetry-writer
+#   - ChronoKVS: chrono-chronokvs-example-writer, -reader
 # tests/ = test executables (non-release or gated)
 set(CHRONOLOG_INSTALL_ROOT        "${CMAKE_INSTALL_PREFIX}/chronolog")
 set(CHRONOLOG_INSTALL_BIN_DIR     "${CHRONOLOG_INSTALL_ROOT}/bin")
