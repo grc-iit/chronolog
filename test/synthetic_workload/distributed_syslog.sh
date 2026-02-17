@@ -3,7 +3,7 @@
 NUM_NODES=4
 NUM_PROCS=96
 HOST_FILE=client_hosts
-CLIENT_ADMIN_BIN=/home/${USER}/chronolog/bin/client_admin
+CLIENT_ADMIN_BIN=/home/${USER}/chronolog/bin/chrono-client-admin
 CONF_FILE=/home/${USER}/chronolog/conf/default_conf.json
 INPUT_FILE=/var/log/syslog
 

@@ -27,6 +27,7 @@ target_link_libraries(chrono_keeper
 )
 
 set_target_properties(chrono_keeper PROPERTIES
+    OUTPUT_NAME chrono-keeper
     BUILD_WITH_INSTALL_RPATH TRUE
     SKIP_BUILD_RPATH TRUE
 )

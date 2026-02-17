@@ -32,6 +32,7 @@ target_link_libraries(chrono_player
 )
 
 set_target_properties(chrono_player PROPERTIES
+    OUTPUT_NAME chrono-player
     BUILD_WITH_INSTALL_RPATH TRUE
     SKIP_BUILD_RPATH TRUE
 )

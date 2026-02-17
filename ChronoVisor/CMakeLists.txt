@@ -32,6 +32,7 @@ target_link_libraries(chronovisor_server
 )
 
 set_target_properties(chronovisor_server PROPERTIES
+    OUTPUT_NAME chrono-visor
     BUILD_WITH_INSTALL_RPATH TRUE
     SKIP_BUILD_RPATH TRUE
 )

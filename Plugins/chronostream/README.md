@@ -99,10 +99,10 @@ Launch the below commands on your terminal to get the session ready
 ps -ef | grep chrono
 
 # Sample output:
-user    3238201       1  0 Nov14 pts/7    00:02:20 /home/user/chronolog-install/chronolog/bin/chronovisor_server --config /home/user/chronolog-install/chronolog/conf/visor_conf.json
-user    3238284       1  0 Nov14 pts/7    00:01:21 /home/user/chronolog-install/chronolog/bin/chrono_grapher --config /home/user/chronolog-install/chronolog/conf/grapher_conf_1.json
-user    3238351       1  0 Nov14 pts/7    00:01:15 /home/user/chronolog-install/chronolog/bin/chrono_player --config /home/user/chronolog-install/chronolog/conf/player_conf_1.json
-user    3238431       1 11 Nov14 pts/7    00:41:17 /home/user/chronolog-install/chronolog/bin/chrono_keeper --config /home/user/chronolog-install/chronolog/conf/keeper_conf_1.json
+user    3238201       1  0 Nov14 pts/7    00:02:20 /home/user/chronolog-install/chronolog/bin/chrono-visor --config /home/user/chronolog-install/chronolog/conf/visor_conf.json
+user    3238284       1  0 Nov14 pts/7    00:01:21 /home/user/chronolog-install/chronolog/bin/chrono-grapher --config /home/user/chronolog-install/chronolog/conf/grapher_conf_1.json
+user    3238351       1  0 Nov14 pts/7    00:01:15 /home/user/chronolog-install/chronolog/bin/chrono-player --config /home/user/chronolog-install/chronolog/conf/player_conf_1.json
+user    3238431       1 11 Nov14 pts/7    00:41:17 /home/user/chronolog-install/chronolog/bin/chrono-keeper --config /home/user/chronolog-install/chronolog/conf/keeper_conf_1.json
 
 # To stop the ChronoLog processes
 ./local_single_user_deploy.sh -s -w $INSTALL_DIR
