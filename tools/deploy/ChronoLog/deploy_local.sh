@@ -147,18 +147,15 @@ generate_config_files() {
         local grapher_index=$((i + 1))
         local grapher_output_file="${conf_dir}/chrono-grapher-conf-${grapher_index}.json"
 
-        grapher_monitoring_file=$(jq -r '.chrono_grapher.Monitoring.monitor.file' "$default_conf")
-        grapher_monitoring_file_name=$(basename "$grapher_monitoring_file")
         jq --arg monitor_dir "$monitor_dir" \
             --arg output_dir "$output_dir" \
             --argjson new_port_grapher_drain $new_port_grapher_drain \
             --argjson new_port_grapher_datastore $new_port_grapher_datastore \
             --argjson grapher_index "$grapher_index" \
-            --arg grapher_monitoring_file_name "$grapher_monitoring_file_name" \
            '.chrono_grapher.RecordingGroup = $grapher_index |
             .chrono_grapher.KeeperGrapherDrainService.rpc.service_base_port = $new_port_grapher_drain |
             .chrono_grapher.DataStoreAdminService.rpc.service_base_port = $new_port_grapher_datastore |
-            .chrono_grapher.Monitoring.monitor.file = ($monitor_dir + "/" + ($grapher_index | tostring) + "_" + $grapher_monitoring_file_name) |
+            .chrono_grapher.Monitoring.monitor.file = ($monitor_dir + "/chrono-grapher-" + ($grapher_index | tostring) + ".log") |
             .chrono_grapher.Extractors.story_files_dir = ($output_dir + "/")' "$default_conf" > "$grapher_output_file"
 
         echo "Generated $grapher_output_file with ports $new_port_grapher_drain and $new_port_grapher_datastore"
@@ -172,18 +169,15 @@ generate_config_files() {
         local player_index=$((i + 1))
         local player_output_file="${conf_dir}/chrono-player-conf-${player_index}.json"
 
-        player_monitoring_file=$(jq -r '.chrono_player.Monitoring.monitor.file' "$default_conf")
-        player_monitoring_file_name=$(basename "$player_monitoring_file")
         jq --arg monitor_dir "$monitor_dir" \
             --arg output_dir "$output_dir" \
             --argjson new_port_player_datastore $new_port_player_datastore \
             --argjson new_port_player_playback $new_port_player_playback \
             --argjson player_index "$player_index" \
-            --arg player_monitoring_file_name "$player_monitoring_file_name" \
            '.chrono_player.RecordingGroup = $player_index |
             .chrono_player.PlayerStoreAdminService.rpc.service_base_port = $new_port_player_datastore |
             .chrono_player.PlaybackQueryService.rpc.service_base_port = $new_port_player_playback |
-            .chrono_player.Monitoring.monitor.file = ($monitor_dir + "/" + ($player_index | tostring) + "_" + $player_monitoring_file_name) |
+            .chrono_player.Monitoring.monitor.file = ($monitor_dir + "/chrono-player-" + ($player_index | tostring) + ".log") |
             .chrono_player.ArchiveReaders.story_files_dir = ($output_dir + "/")' "$default_conf" >"$player_output_file"
 
         echo "Generated $player_output_file with port $new_port_player_datastore"
@@ -199,8 +193,6 @@ generate_config_files() {
         local keeper_index=$((i + 1))
         local keeper_output_file="${conf_dir}/chrono-keeper-conf-${keeper_index}.json"
 
-        keeper_monitoring_file=$(jq -r '.chrono_keeper.Monitoring.monitor.file' "$default_conf")
-        keeper_monitoring_file_name=$(basename "$keeper_monitoring_file")
         jq --arg monitor_dir "$monitor_dir" \
             --arg output_dir "$output_dir" \
             --argjson new_port_keeper_record $new_port_keeper_record \
@@ -208,20 +200,18 @@ generate_config_files() {
             --argjson new_port_keeper_datastore $new_port_keeper_datastore \
             --argjson grapher_index "$grapher_index" \
             --arg keeper_index "$keeper_index" \
-            --arg keeper_monitoring_file_name "$keeper_monitoring_file_name" \
             '.chrono_keeper.KeeperRecordingService.rpc.service_base_port = $new_port_keeper_record |
             .chrono_keeper.KeeperGrapherDrainService.rpc.service_base_port = $new_port_keeper_drain |
             .chrono_keeper.KeeperDataStoreAdminService.rpc.service_base_port = $new_port_keeper_datastore |
             .chrono_keeper.story_files_dir = ($output_dir + "/") |
             .chrono_keeper.RecordingGroup = $grapher_index |
-            .chrono_keeper.Monitoring.monitor.file = ($monitor_dir + "/" + ($keeper_index | tostring) + "_" + $keeper_monitoring_file_name)' "$default_conf" > "$keeper_output_file"
+            .chrono_keeper.Monitoring.monitor.file = ($monitor_dir + "/chrono-keeper-" + ($keeper_index | tostring) + ".log")' "$default_conf" > "$keeper_output_file"
         echo "Generated $keeper_output_file with ports $new_port_keeper_record, $new_port_keeper_datastore, and $new_port_keeper_drain"
     done
 
     echo "Generating visor configuration file ..."
     local visor_output_file="${conf_dir}/chrono-visor-conf.json"
-    visor_monitoring_file=$(jq -r '.chrono_visor.Monitoring.monitor.file' "$default_conf")
-    visor_monitoring_file_name=$(basename "$visor_monitoring_file")
+    visor_monitoring_file_name=$(jq -r '.chrono_visor.Monitoring.monitor.file | split("/") | last' "$default_conf")
     jq --arg monitor_dir "$monitor_dir" \
         --arg visor_monitoring_file_name "$visor_monitoring_file_name" \
        '.chrono_visor.Monitoring.monitor.file = ($monitor_dir + "/" + $visor_monitoring_file_name)' "$default_conf" > "$visor_output_file"
@@ -229,8 +219,7 @@ generate_config_files() {
 
     echo "Generating client configuration file ..."
     local client_output_file="${conf_dir}/chrono-client-conf.json"
-    client_monitoring_file=$(jq -r '.chrono_client.Monitoring.monitor.file' "$client_conf_file")
-    client_monitoring_file_name=$(basename "$client_monitoring_file")
+    client_monitoring_file_name=$(jq -r '.chrono_client.Monitoring.monitor.file | split("/") | last' "$client_conf_file")
     jq --arg monitor_dir "$monitor_dir" \
         --arg client_monitoring_file_name "$client_monitoring_file_name" \
        '.chrono_client.Monitoring.monitor.file = ($monitor_dir + "/" + $client_monitoring_file_name)' "$client_conf_file" > "$client_output_file"
@@ -340,18 +329,18 @@ start() {
     check_installation
     generate_config_files "${NUM_KEEPERS}" "${CONF_FILE}" "${CONF_DIR}" "${OUTPUT_DIR}" "${NUM_RECORDING_GROUPS}" "${MONITOR_DIR}" "${CLIENT_CONF_FILE}"
     echo -e "${INFO}Starting ChronoLog...${NC}"
-    start_service "${VISOR_BIN}" "--config ${CONF_DIR}/chrono-visor-conf.json" "visor.launch.log"
+    start_service "${VISOR_BIN}" "--config ${CONF_DIR}/chrono-visor-conf.json" "chrono-visor-1.launch.log"
     sleep 2
     for (( i=1; i<=NUM_RECORDING_GROUPS; i++ )); do
-        start_service "${GRAPHER_BIN}" "--config ${CONF_DIR}/chrono-grapher-conf-$i.json" "grapher_$i.launch.log"
+        start_service "${GRAPHER_BIN}" "--config ${CONF_DIR}/chrono-grapher-conf-$i.json" "chrono-grapher-$i.launch.log"
     done
     sleep 2
     for (( i=1; i<=NUM_RECORDING_GROUPS; i++ )); do
-        start_service "${PLAYER_BIN}" "--config ${CONF_DIR}/chrono-player-conf-$i.json" "player_$i.launch.log"
+        start_service "${PLAYER_BIN}" "--config ${CONF_DIR}/chrono-player-conf-$i.json" "chrono-player-$i.launch.log"
     done
     sleep 2
     for (( i=1; i<=NUM_KEEPERS; i++ )); do
-        start_service "${KEEPER_BIN}" "--config ${CONF_DIR}/chrono-keeper-conf-$i.json" "keeper_$i.launch.log"
+        start_service "${KEEPER_BIN}" "--config ${CONF_DIR}/chrono-keeper-conf-$i.json" "chrono-keeper-$i.launch.log"
     done
     echo -e "${INFO}ChronoLog Started.${NC}"
 }

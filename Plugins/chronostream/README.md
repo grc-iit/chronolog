@@ -168,7 +168,7 @@ Sample output:
   provider ID: 57
 [LOG_CONF]
   type: file
-  file: /home/user/chronolog-install/chronolog/monitor/chrono_client.log
+  file: /home/user/chronolog-install/chronolog/monitor/chrono-client.log
   level: debug
   name: ChronoClient
   filesize: 1048576

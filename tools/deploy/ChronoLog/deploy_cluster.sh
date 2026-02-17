@@ -314,11 +314,11 @@ update_visor_ip() {
 
 update_visor_monitor_file_path() {
   visor_host=$(head -1 ${VISOR_HOSTS})
-  jq ".chrono_visor.Monitoring.monitor.file = \"${MONITOR_DIR}/${VISOR_BIN_FILE_NAME}.${visor_host}.log\"" "${CONF_FILE}" >tmp.json && mv tmp.json "${CONF_FILE}"
+  jq ".chrono_visor.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono-visor-${visor_host}.log\"" "${CONF_FILE}" >tmp.json && mv tmp.json "${CONF_FILE}"
 }
 
 update_client_monitor_file_path() {
-  jq ".chrono_client.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono_client.log\"" "${CLIENT_CONF_FILE}" >tmp.json && mv tmp.json "${CLIENT_CONF_FILE}"
+  jq ".chrono_client.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono-client.log\"" "${CLIENT_CONF_FILE}" >tmp.json && mv tmp.json "${CLIENT_CONF_FILE}"
 }
 
 generate_conf_for_each_keeper() {
@@ -329,7 +329,7 @@ generate_conf_for_each_keeper() {
     remote_keeper_hostname=$(get_remote_hostname ${keeper_host})
     [[ -z "${remote_keeper_hostname}" ]] && echo -e "${ERR}Cannot get hostname from ${keeper_host}, exiting ...${NC}" >&2 && exit 1
     [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generating conf file ${base_conf_file}.keeper.${remote_keeper_hostname} for ChronoKeeper ${remote_keeper_hostname} ...${NC}" || true
-    jq ".chrono_keeper.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono_keeper.${remote_keeper_hostname}.log\"" "${base_conf_file}" >"${base_conf_file}.keeper.${remote_keeper_hostname}"
+    jq ".chrono_keeper.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono-keeper-${remote_keeper_hostname}.log\"" "${base_conf_file}" >"${base_conf_file}.keeper.${remote_keeper_hostname}"
     keeper_ip=$(get_host_ip ${keeper_host})
     jq ".chrono_keeper.KeeperRecordingService.rpc.service_ip = \"${keeper_ip}\"" "${base_conf_file}.keeper.${remote_keeper_hostname}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${base_conf_file}.keeper.${remote_keeper_hostname}"
     jq ".chrono_keeper.KeeperDataStoreAdminService.rpc.service_ip = \"${keeper_ip}\"" "${base_conf_file}.keeper.${remote_keeper_hostname}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${base_conf_file}.keeper.${remote_keeper_hostname}"
@@ -346,7 +346,7 @@ generate_conf_for_each_grapher() {
     remote_grapher_hostname=$(get_remote_hostname ${grapher_host})
     [[ -z "${remote_grapher_hostname}" ]] && echo -e "${ERR}Cannot get hostname from ${grapher_host}, exiting ...${NC}" >&2 && exit 1
     [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generating conf file ${base_conf_file}.grapher.${remote_grapher_hostname} for ChronoGrapher ${remote_grapher_hostname} ...${NC}" || true
-    jq ".chrono_grapher.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono_grapher.${remote_grapher_hostname}.log\"" "${base_conf_file}" >"${base_conf_file}.grapher.${remote_grapher_hostname}"
+    jq ".chrono_grapher.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono-grapher-${remote_grapher_hostname}.log\"" "${base_conf_file}" >"${base_conf_file}.grapher.${remote_grapher_hostname}"
   done <${grapher_hosts_file}
 
   [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generate conf file for ChronoGraphers in ${grapher_hosts_file} done${NC}" || true
@@ -360,7 +360,7 @@ generate_conf_for_each_player() {
     remote_player_hostname=$(get_remote_hostname ${player_host})
     [[ -z "${remote_player_hostname}" ]] && echo -e "${ERR}Cannot get hostname from ${player_host}, exiting ...${NC}" >&2 && exit 1
     [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generating conf file ${base_conf_file}.player.${remote_player_hostname} for ChronoPlayer ${remote_player_hostname} ...${NC}" || true
-    jq ".chrono_player.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono_player.${remote_player_hostname}.log\"" "${base_conf_file}" >"${base_conf_file}.player.${remote_player_hostname}"
+    jq ".chrono_player.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono-player-${remote_player_hostname}.log\"" "${base_conf_file}" >"${base_conf_file}.player.${remote_player_hostname}"
   done <${player_hosts_file}
 
   [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generate conf file for ChronoPlayers in ${player_hosts_file} done${NC}" || true
@@ -495,7 +495,7 @@ parallel_remote_launch_processes() {
   local hostname_suffix=""
   local simple_output_grep_keyword=""
 
-  hostname_suffix=".\$(hostname)"
+  hostname_suffix="-\$(hostname)"
   if [[ "${verbose}" == "false" ]]; then
     simple_output_grep_keyword="ares-"
   fi

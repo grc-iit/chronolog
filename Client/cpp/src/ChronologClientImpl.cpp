@@ -25,7 +25,7 @@ chronolog::ChronologClientImpl* chronolog::ChronologClientImpl::GetClientImplIns
         chronolog::ClientQueryServiceConf const& clientQueryServiceConf)
 {
     chrono_monitor::initialize("file",
-                               "/tmp/chrono_client.log",
+                               "/tmp/chrono-client.log",
                                spdlog::level::info,
                                "chrono_client",
                                1024000,

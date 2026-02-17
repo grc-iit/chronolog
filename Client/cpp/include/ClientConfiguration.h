@@ -29,7 +29,7 @@ struct ClientQueryServiceConf
 struct ClientLogConf
 {
     std::string LOGTYPE = "file";
-    std::string LOGFILE = "chrono_client.log";
+    std::string LOGFILE = "chrono-client.log";
     spdlog::level::level_enum LOGLEVEL = spdlog::level::debug;
     std::string LOGNAME = "ChronoClient";
     size_t LOGFILESIZE = 1048576;

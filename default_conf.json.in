@@ -28,7 +28,7 @@
     "Monitoring": {
       "monitor": {
         "type": "file",
-        "file": "chrono_visor.log",
+        "file": "chrono-visor-1.log",
         "level": "debug",
         "name": "ChronoVisor",
         "filesize": 104857600,
@@ -75,7 +75,7 @@
     "Monitoring": {
       "monitor": {
         "type": "file",
-        "file": "chrono_keeper.log",
+        "file": "chrono-keeper-1.log",
         "level": "debug",
         "name": "ChronoKeeper",
         "filesize": 1048576,
@@ -122,7 +122,7 @@
     "Monitoring": {
       "monitor": {
         "type": "file",
-        "file": "chrono_grapher.log",
+        "file": "chrono-grapher-1.log",
         "level": "debug",
         "name": "ChronoGrapher",
         "filesize": 1048576,
@@ -169,7 +169,7 @@
     "Monitoring": {
       "monitor": {
         "type": "file",
-        "file": "chrono_player.log",
+        "file": "chrono-player-1.log",
         "level": "debug",
         "name": "ChronoPlayer",
         "filesize": 1048576,
