@@ -606,8 +606,9 @@ jobs:
         run: |
           set -e
           NUM_CONTAINERS=7
+          # Image defaults to USER grc-iit; run as root to install packages and start SSH
           for i in $(seq 1 $NUM_CONTAINERS); do
-            docker exec chronolog-c$i bash -c "
+            docker exec --user root chronolog-c$i bash -c "
               # Install dependencies required for single_user_deploy.sh
               # - openssh-server, sudo: for SSH access
               # - pssh (parallel-ssh): for distributed process launching
@@ -641,7 +642,8 @@ jobs:
           docker exec --user grc-iit chronolog-c1 bash -c "mkdir -p /home/grc-iit/.ssh && ssh-keygen -t rsa -b 4096 -f /home/grc-iit/.ssh/id_rsa -N '' || true"
           docker exec --user grc-iit chronolog-c1 bash -c "cat /home/grc-iit/.ssh/id_rsa.pub > /home/grc-iit/.ssh/authorized_keys"
           docker exec --user grc-iit chronolog-c1 bash -c "for i in \$(seq 1 $NUM_CONTAINERS); do ssh-keyscan -t rsa,ed25519 c\$i >> /home/grc-iit/.ssh/known_hosts 2>/dev/null; done"
-          docker exec chronolog-c1 bash -c "chown -R grc-iit:grc-iit /home/grc-iit/.ssh && chmod 700 /home/grc-iit/.ssh && chmod 600 /home/grc-iit/.ssh/id_rsa && chmod 644 /home/grc-iit/.ssh/id_rsa.pub && chmod 600 /home/grc-iit/.ssh/authorized_keys"
+          # chown/chmod require root when container default user is grc-iit
+          docker exec --user root chronolog-c1 bash -c "chown -R grc-iit:grc-iit /home/grc-iit/.ssh && chmod 700 /home/grc-iit/.ssh && chmod 600 /home/grc-iit/.ssh/id_rsa && chmod 644 /home/grc-iit/.ssh/id_rsa.pub && chmod 600 /home/grc-iit/.ssh/authorized_keys"
           docker exec --user grc-iit chronolog-c1 bash -c "echo 'export USER=grc-iit' >> ~/.bashrc"
           
           echo "✅ SSH keys configured (shared across all containers via shared_home volume)"
@@ -650,7 +652,7 @@ jobs:
         run: |
           set -e
           # Copy workspace to shared location in c1 (as root, then change ownership)
-          docker exec chronolog-c1 bash -c "mkdir -p /home/grc-iit/chronolog-repo && cp -r /workspace/* /home/grc-iit/chronolog-repo/ 2>/dev/null || true && chown -R grc-iit:grc-iit /home/grc-iit/chronolog-repo"
+          docker exec --user root chronolog-c1 bash -c "mkdir -p /home/grc-iit/chronolog-repo && cp -r /workspace/* /home/grc-iit/chronolog-repo/ 2>/dev/null || true && chown -R grc-iit:grc-iit /home/grc-iit/chronolog-repo"
           echo "✅ Workspace copied to containers"
 
       - name: Prepare hosts files
@@ -664,7 +666,7 @@ jobs:
           WORK_DIR="/home/grc-iit/chronolog-install/chronolog"
           
           # Create conf directory (as root, then change ownership)
-          docker exec chronolog-c1 bash -c "mkdir -p ${WORK_DIR}/conf && chown -R grc-iit:grc-iit ${WORK_DIR}"
+          docker exec --user root chronolog-c1 bash -c "mkdir -p ${WORK_DIR}/conf && chown -R grc-iit:grc-iit ${WORK_DIR}"
           
           # Prepare hosts files (run as grc-iit user)
           docker exec --user grc-iit chronolog-c1 bash -c "rm -rf ${WORK_DIR}/conf/hosts_*"
@@ -698,7 +700,7 @@ jobs:
           done
           
           echo "✅ Hosts files prepared"
-          docker exec chronolog-c1 bash -c "ls -la ${WORK_DIR}/conf/"
+          docker exec --user root chronolog-c1 bash -c "ls -la ${WORK_DIR}/conf/"
 
       - name: Setup ChronoLog (copy from image)
         run: |
@@ -706,7 +708,7 @@ jobs:
           echo '[1/5] Copying ChronoLog installation from local deployment image...'
           # The local deployment workflow installs to /home/grc-iit/chronolog-install/chronolog
           # Since all containers share /home/grc-iit via shared_home volume, we only need to check once
-          docker exec chronolog-c1 bash -c "
+          docker exec --user root chronolog-c1 bash -c "
             set -e
             # Create target directory
             mkdir -p /home/grc-iit/chronolog-install
@@ -725,7 +727,7 @@ jobs:
           
           # Verify the installation was copied correctly
           echo '🔍 Verifying installation...'
-          docker exec chronolog-c1 bash -c "
+          docker exec --user root chronolog-c1 bash -c "
             WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
             if [ -d \"\${WORK_DIR}\" ]; then
               echo '✅ Installation directory exists'
