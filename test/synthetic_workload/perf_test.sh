@@ -19,7 +19,7 @@ CHRONOLOG_LIB_DIR=${CHRONOLOG_INSTALL_DIR}/lib
 HOST_FILE=${CHRONOLOG_INSTALL_DIR}/conf/hosts_client
 CLIENT_ADMIN_BIN=${CHRONOLOG_BIN_DIR}/chrono-client-admin
 MPIEXEC_BIN="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../.spack-env/view/bin/mpiexec"
-CONF_FILE=/home/${USER}/chronolog/${BUILD_TYPE}/conf/default_conf.json
+CONF_FILE=/home/${USER}/chronolog/${BUILD_TYPE}/conf/default-chrono-conf.json
 OUTPUT_LOG_FILE=./perf_test.log
 
 [[ -f ${HOST_FILE} ]] || { echo "Host file not found: ${HOST_FILE}"; exit 1; }

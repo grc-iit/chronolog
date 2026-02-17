@@ -34,8 +34,8 @@ VISOR_BIN="${BIN_DIR}/chrono-visor"
 KEEPER_BIN="${BIN_DIR}/chrono-keeper"
 GRAPHER_BIN="${BIN_DIR}/chrono-grapher"
 PLAYER_BIN="${BIN_DIR}/chrono-player"
-CONF_FILE="${CONF_DIR}/default_conf.json"
-CLIENT_CONF_FILE="${CONF_DIR}/default_client_conf.json"
+CONF_FILE="${CONF_DIR}/default-chrono-conf.json"
+CLIENT_CONF_FILE="${CONF_DIR}/default-chrono-client-conf.json"
 
 # Flags
 start=false
@@ -145,7 +145,7 @@ generate_config_files() {
         local new_port_grapher_datastore=$((base_port_grapher_datastore + i))
 
         local grapher_index=$((i + 1))
-        local grapher_output_file="${conf_dir}/grapher_conf_${grapher_index}.json"
+        local grapher_output_file="${conf_dir}/chrono-grapher-conf-${grapher_index}.json"
 
         grapher_monitoring_file=$(jq -r '.chrono_grapher.Monitoring.monitor.file' "$default_conf")
         grapher_monitoring_file_name=$(basename "$grapher_monitoring_file")
@@ -170,7 +170,7 @@ generate_config_files() {
         local new_port_player_playback=$((base_port_player_playback + i))
 
         local player_index=$((i + 1))
-        local player_output_file="${conf_dir}/player_conf_${player_index}.json"
+        local player_output_file="${conf_dir}/chrono-player-conf-${player_index}.json"
 
         player_monitoring_file=$(jq -r '.chrono_player.Monitoring.monitor.file' "$default_conf")
         player_monitoring_file_name=$(basename "$player_monitoring_file")
@@ -197,7 +197,7 @@ generate_config_files() {
         local new_port_keeper_drain=$((base_port_keeper_drain + grapher_index - 1))
 
         local keeper_index=$((i + 1))
-        local keeper_output_file="${conf_dir}/keeper_conf_${keeper_index}.json"
+        local keeper_output_file="${conf_dir}/chrono-keeper-conf-${keeper_index}.json"
 
         keeper_monitoring_file=$(jq -r '.chrono_keeper.Monitoring.monitor.file' "$default_conf")
         keeper_monitoring_file_name=$(basename "$keeper_monitoring_file")
@@ -219,7 +219,7 @@ generate_config_files() {
     done
 
     echo "Generating visor configuration file ..."
-    local visor_output_file="${conf_dir}/visor_conf.json"
+    local visor_output_file="${conf_dir}/chrono-visor-conf.json"
     visor_monitoring_file=$(jq -r '.chrono_visor.Monitoring.monitor.file' "$default_conf")
     visor_monitoring_file_name=$(basename "$visor_monitoring_file")
     jq --arg monitor_dir "$monitor_dir" \
@@ -228,7 +228,7 @@ generate_config_files() {
     echo "Generated $visor_output_file"
 
     echo "Generating client configuration file ..."
-    local client_output_file="${conf_dir}/client_conf.json"
+    local client_output_file="${conf_dir}/chrono-client-conf.json"
     client_monitoring_file=$(jq -r '.chrono_client.Monitoring.monitor.file' "$client_conf_file")
     client_monitoring_file_name=$(basename "$client_monitoring_file")
     jq --arg monitor_dir "$monitor_dir" \
@@ -291,8 +291,8 @@ refresh_paths_for_work_dir() {
     KEEPER_BIN="${BIN_DIR}/chrono-keeper"
     GRAPHER_BIN="${BIN_DIR}/chrono-grapher"
     PLAYER_BIN="${BIN_DIR}/chrono-player"
-    CONF_FILE="${CONF_DIR}/default_conf.json"
-    CLIENT_CONF_FILE="${CONF_DIR}/default_client_conf.json"
+    CONF_FILE="${CONF_DIR}/default-chrono-conf.json"
+    CLIENT_CONF_FILE="${CONF_DIR}/default-chrono-client-conf.json"
 }
 
 check_work_dir() {
@@ -340,18 +340,18 @@ start() {
     check_installation
     generate_config_files "${NUM_KEEPERS}" "${CONF_FILE}" "${CONF_DIR}" "${OUTPUT_DIR}" "${NUM_RECORDING_GROUPS}" "${MONITOR_DIR}" "${CLIENT_CONF_FILE}"
     echo -e "${INFO}Starting ChronoLog...${NC}"
-    start_service "${VISOR_BIN}" "--config ${CONF_DIR}/visor_conf.json" "visor.launch.log"
+    start_service "${VISOR_BIN}" "--config ${CONF_DIR}/chrono-visor-conf.json" "visor.launch.log"
     sleep 2
     for (( i=1; i<=NUM_RECORDING_GROUPS; i++ )); do
-        start_service "${GRAPHER_BIN}" "--config ${CONF_DIR}/grapher_conf_$i.json" "grapher_$i.launch.log"
+        start_service "${GRAPHER_BIN}" "--config ${CONF_DIR}/chrono-grapher-conf-$i.json" "grapher_$i.launch.log"
     done
     sleep 2
     for (( i=1; i<=NUM_RECORDING_GROUPS; i++ )); do
-        start_service "${PLAYER_BIN}" "--config ${CONF_DIR}/player_conf_$i.json" "player_$i.launch.log"
+        start_service "${PLAYER_BIN}" "--config ${CONF_DIR}/chrono-player-conf-$i.json" "player_$i.launch.log"
     done
     sleep 2
     for (( i=1; i<=NUM_KEEPERS; i++ )); do
-        start_service "${KEEPER_BIN}" "--config ${CONF_DIR}/keeper_conf_$i.json" "keeper_$i.launch.log"
+        start_service "${KEEPER_BIN}" "--config ${CONF_DIR}/chrono-keeper-conf-$i.json" "keeper_$i.launch.log"
     done
     echo -e "${INFO}ChronoLog Started.${NC}"
 }
@@ -371,11 +371,11 @@ clean() {
     check_work_dir
     check_execution_stopped
     echo -e "${DEBUG}Removing config files${NC}"
-    rm -f "${CONF_DIR}/grapher_conf"*.json
-    rm -f "${CONF_DIR}/player_conf"*.json
-    rm -f "${CONF_DIR}/keeper_conf"*.json
-    rm -f "${CONF_DIR}/visor_conf.json"
-    rm -f "${CONF_DIR}/client_conf.json"
+    rm -f "${CONF_DIR}/chrono-grapher-conf"*.json
+    rm -f "${CONF_DIR}/chrono-player-conf"*.json
+    rm -f "${CONF_DIR}/chrono-keeper-conf"*.json
+    rm -f "${CONF_DIR}/chrono-visor-conf.json"
+    rm -f "${CONF_DIR}/chrono-client-conf.json"
 
     echo -e "${DEBUG}Removing log files${NC}"
     rm -f "${MONITOR_DIR}"/*.log
@@ -410,8 +410,8 @@ usage() {
     echo "  -a|--player-bin <path>           Path to ChronoPlayer binary (default: work_dir/bin/chrono-player)"
     echo ""
     echo "Configuration Settings:"
-    echo "  -f|--conf-file <path>            Path to configuration file (default: work_dir/conf/default_conf.json)"
-    echo "  -n|--client-conf-file <path>     Path to client configuration file (default: work_dir/conf/default_client_conf.json)"
+    echo "  -f|--conf-file <path>            Path to configuration file (default: work_dir/conf/default-chrono-conf.json)"
+    echo "  -n|--client-conf-file <path>     Path to client configuration file (default: work_dir/conf/default-chrono-client-conf.json)"
     echo ""
     echo "Examples:"
     echo "  Start with defaults from install tree:"
@@ -457,8 +457,8 @@ parse_args() {
                 KEEPER_BIN="${BIN_DIR}/chrono-keeper"
                 GRAPHER_BIN="${BIN_DIR}/chrono-grapher"
                 PLAYER_BIN="${BIN_DIR}/chrono-player"
-                CONF_FILE="${CONF_DIR}/default_conf.json"
-                CLIENT_CONF_FILE="${CONF_DIR}/default_client_conf.json"
+                CONF_FILE="${CONF_DIR}/default-chrono-conf.json"
+                CLIENT_CONF_FILE="${CONF_DIR}/default-chrono-client-conf.json"
                 OUTPUT_DIR="${WORK_DIR}/output"
                 MONITOR_DIR="${WORK_DIR}/monitor"
                 shift 2 ;;

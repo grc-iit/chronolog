@@ -108,5 +108,5 @@ install(EXPORT ChronologTargets
 install(
     FILES ${CMAKE_SOURCE_DIR}/default_client_conf.json.in
     DESTINATION ${CHRONOLOG_INSTALL_CONF_DIR}
-    RENAME default_client_conf.json
+    RENAME default-chrono-client-conf.json
 )

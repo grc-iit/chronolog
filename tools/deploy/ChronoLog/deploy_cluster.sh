@@ -44,8 +44,8 @@ KEEPER_BIN_DIR="${BIN_DIR}"
 PLAYER_BIN_DIR="${BIN_DIR}"
 
 # Configuration file and component-specific conf arguments (with defaults)
-CONF_FILE="${WORK_DIR}/conf/default_conf.json"
-CLIENT_CONF_FILE="${WORK_DIR}/conf/default_client_conf.json"
+CONF_FILE="${WORK_DIR}/conf/default-chrono-conf.json"
+CLIENT_CONF_FILE="${WORK_DIR}/conf/default-chrono-client-conf.json"
 VISOR_ARGS="--config ${CONF_FILE}"
 GRAPHER_ARGS="--config ${CONF_FILE}"
 KEEPER_ARGS="--config ${CONF_FILE}"
@@ -96,8 +96,8 @@ usage() {
   echo "  -a|--player-bin <path>           ChronoPlayer binary (default: work_dir/bin/chrono-player)"
   echo ""
   echo "Configuration Settings:"
-  echo "  -f|--conf-file <path>            Main configuration file (default: work_dir/conf/default_conf.json)"
-  echo "  -n|--client-conf-file <path>     Client configuration file (default: work_dir/conf/default_client_conf.json)"
+  echo "  -f|--conf-file <path>            Main configuration file (default: work_dir/conf/default-chrono-conf.json)"
+  echo "  -n|--client-conf-file <path>     Client configuration file (default: work_dir/conf/default-chrono-client-conf.json)"
   echo ""
   echo "Miscellaneous Options:"
   echo "  -e|--verbose                     Enable verbose output"
@@ -705,8 +705,8 @@ parse_args() {
       GRAPHER_BIN_DIR=$(dirname ${GRAPHER_BIN})
       KEEPER_BIN_DIR=$(dirname ${KEEPER_BIN})
       PLAYER_BIN_DIR=$(dirname ${PLAYER_BIN})
-      CONF_FILE="${CONF_DIR}/default_conf.json"
-      CLIENT_CONF_FILE="${CONF_DIR}/default_client_conf.json"
+      CONF_FILE="${CONF_DIR}/default-chrono-conf.json"
+      CLIENT_CONF_FILE="${CONF_DIR}/default-chrono-client-conf.json"
       VISOR_ARGS="--config ${CONF_FILE}"
       GRAPHER_ARGS="--config ${CONF_FILE}"
       KEEPER_ARGS="--config ${CONF_FILE}"

@@ -4,7 +4,7 @@ NUM_NODES=4
 NUM_PROCS=96
 HOST_FILE=client_hosts
 CLIENT_ADMIN_BIN=/home/${USER}/chronolog/bin/chrono-client-admin
-CONF_FILE=/home/${USER}/chronolog/conf/default_conf.json
+CONF_FILE=/home/${USER}/chronolog/conf/default-chrono-conf.json
 INPUT_FILE=/var/log/syslog
 
 head -${NUM_NODES} ${HOST_FILE} > "${HOST_FILE}.${NUM_NODES}"

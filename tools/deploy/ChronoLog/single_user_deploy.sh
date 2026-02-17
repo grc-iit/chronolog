@@ -53,8 +53,8 @@ KEEPER_BIN_DIR="$BIN_DIR"
 PLAYER_BIN_DIR="$BIN_DIR"
 
 # Configuration file and component-specific conf arguments (with defaults)
-CONF_FILE="$WORK_DIR/conf/default_conf.json"
-CLIENT_CONF_FILE="$WORK_DIR/conf/default_client_conf.json"
+CONF_FILE="$WORK_DIR/conf/default-chrono-conf.json"
+CLIENT_CONF_FILE="$WORK_DIR/conf/default-chrono-client-conf.json"
 VISOR_ARGS="--config ${CONF_FILE}"
 GRAPHER_ARGS="--config ${CONF_FILE}"
 KEEPER_ARGS="--config ${CONF_FILE}"
@@ -118,8 +118,8 @@ usage() {
   echo "  -a|--player-bin <path>           Path to the ChronoPlayer binary (default: work_dir/bin/chrono-player) [Modes: Start]"
   echo ""
   echo "Configuration Settings:"
-  echo "  -f|--conf-file <path>            Path to the configuration file (default: work_dir/conf/default_conf.json) [Modes: Start]"
-  echo "  -n|--client-conf-file <path>     Path to the client configuration file (default: work_dir/conf/client_conf.json) [Modes: Start]"
+  echo "  -f|--conf-file <path>            Path to the configuration file (default: work_dir/conf/default-chrono-conf.json) [Modes: Start]"
+  echo "  -n|--client-conf-file <path>     Path to the client configuration file (default: work_dir/conf/chrono-client-conf.json) [Modes: Start]"
   echo ""
   echo "Miscellaneous Options:"
   echo "  -e|--verbose                     Enable verbose output (default: false)"
@@ -227,8 +227,8 @@ delegate_to_deploy_cluster() {
   [[ "${GRAPHER_BIN}" != "${WORK_DIR}/bin/chrono-grapher" ]] && args+=("--grapher-bin" "${GRAPHER_BIN}")
   [[ "${KEEPER_BIN}" != "${WORK_DIR}/bin/chrono-keeper" ]] && args+=("--keeper-bin" "${KEEPER_BIN}")
   [[ "${PLAYER_BIN}" != "${WORK_DIR}/bin/chrono-player" ]] && args+=("--player-bin" "${PLAYER_BIN}")
-  [[ "${CONF_FILE}" != "${WORK_DIR}/conf/default_conf.json" ]] && args+=("--conf-file" "${CONF_FILE}")
-  [[ "${CLIENT_CONF_FILE}" != "${WORK_DIR}/conf/default_client_conf.json" ]] && args+=("--client-conf-file" "${CLIENT_CONF_FILE}")
+  [[ "${CONF_FILE}" != "${WORK_DIR}/conf/default-chrono-conf.json" ]] && args+=("--conf-file" "${CONF_FILE}")
+  [[ "${CLIENT_CONF_FILE}" != "${WORK_DIR}/conf/default-chrono-client-conf.json" ]] && args+=("--client-conf-file" "${CLIENT_CONF_FILE}")
   [[ "${VISOR_HOSTS}" != "${WORK_DIR}/conf/hosts_visor" ]] && args+=("--visor-hosts" "${VISOR_HOSTS}")
   [[ "${GRAPHER_HOSTS}" != "${WORK_DIR}/conf/hosts_grapher" ]] && args+=("--grapher-hosts" "${GRAPHER_HOSTS}")
   [[ "${KEEPER_HOSTS}" != "${WORK_DIR}/conf/hosts_keeper" ]] && args+=("--keeper-hosts" "${KEEPER_HOSTS}")
@@ -295,8 +295,8 @@ parse_args() {
       GRAPHER_BIN_DIR=$(dirname ${GRAPHER_BIN})
       KEEPER_BIN_DIR=$(dirname ${KEEPER_BIN})
       PLAYER_BIN_DIR=$(dirname ${PLAYER_BIN})
-      CONF_FILE="${CONF_DIR}/default_conf.json"
-      CLIENT_CONF_FILE="${CONF_DIR}/default_client_conf.json"
+      CONF_FILE="${CONF_DIR}/default-chrono-conf.json"
+      CLIENT_CONF_FILE="${CONF_DIR}/default-chrono-client-conf.json"
       VISOR_ARGS="--config ${CONF_FILE}"
       GRAPHER_ARGS="--config ${CONF_FILE}"
       KEEPER_ARGS="--config ${CONF_FILE}"
