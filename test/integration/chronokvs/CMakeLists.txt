@@ -42,6 +42,6 @@ set_tests_properties(chronokvs_integration_test PROPERTIES
 )
 
 #------------------------------------------------------------------------------
-# Install test executable
+# Install test executable to tests/
 #------------------------------------------------------------------------------
-chronolog_install_target(chronokvs_integration_test)
+chronolog_install_target(chronokvs_integration_test DESTINATION tests)

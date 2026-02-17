@@ -75,11 +75,11 @@ target_link_libraries(client_lib_distributed_telemetry_writer
 )
 
 #------------------------------------------------------------------------------
-# Install example binaries
+# Install example binaries to examples/
 #------------------------------------------------------------------------------
-chronolog_install_target(client_lib_writer_example)
-chronolog_install_target(client_lib_reader_example)
-chronolog_install_target(client_lib_basic_example)
-chronolog_install_target(client_lib_distributed_telemetry_writer)
+chronolog_install_target(client_lib_writer_example DESTINATION examples)
+chronolog_install_target(client_lib_reader_example DESTINATION examples)
+chronolog_install_target(client_lib_basic_example DESTINATION examples)
+chronolog_install_target(client_lib_distributed_telemetry_writer DESTINATION examples)
 
 # Client configuration file is installed by Client/cpp to avoid duplication

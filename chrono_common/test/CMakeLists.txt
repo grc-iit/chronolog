@@ -49,7 +49,7 @@ set_target_properties(chunk_consumer_service_test PROPERTIES
 )
 
 #------------------------------------------------------------------------------
-# Install executables
+# Install test executables to tests/
 #------------------------------------------------------------------------------
-chronolog_install_target(extraction_chain_test)
-chronolog_install_target(chunk_consumer_service_test)
+chronolog_install_target(extraction_chain_test DESTINATION tests)
+chronolog_install_target(chunk_consumer_service_test DESTINATION tests)

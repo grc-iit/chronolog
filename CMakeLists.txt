@@ -42,21 +42,44 @@ endif()
 message(STATUS "CMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}")
 
 # Single, consistent layout
+# bin/ = supported/runtime executables only
+# examples/ = runnable examples and sample clients
+# tests/ = test executables (non-release or gated)
 set(CHRONOLOG_INSTALL_ROOT        "${CMAKE_INSTALL_PREFIX}/chronolog")
 set(CHRONOLOG_INSTALL_BIN_DIR     "${CHRONOLOG_INSTALL_ROOT}/bin")
+set(CHRONOLOG_INSTALL_EXAMPLES_DIR "${CHRONOLOG_INSTALL_ROOT}/examples")
+set(CHRONOLOG_INSTALL_TESTS_DIR   "${CHRONOLOG_INSTALL_ROOT}/tests")
 set(CHRONOLOG_INSTALL_LIB_DIR     "${CHRONOLOG_INSTALL_ROOT}/lib")
 set(CHRONOLOG_INSTALL_INCLUDE_DIR "${CHRONOLOG_INSTALL_ROOT}/include")
 set(CHRONOLOG_INSTALL_CONF_DIR    "${CHRONOLOG_INSTALL_ROOT}/conf")
 
-# Helper function for consistent target installation
+# Helper function for consistent target installation.
+# Usage: chronolog_install_target(target_name [DESTINATION bin|examples|tests])
+# Default DESTINATION is bin. Use examples/ for sample clients, tests/ for test executables.
 function(chronolog_install_target target_name)
+    set(_runtime_dest "${CHRONOLOG_INSTALL_BIN_DIR}")
+    set(_dest_arg "${ARGV1}")
+    if(ARGC GREATER 2 AND ARGV1 STREQUAL "DESTINATION")
+        set(_dest_arg "${ARGV2}")
+    elseif(ARGC GREATER 1)
+        set(_dest_arg "${ARGV1}")
+    endif()
+    if(NOT _dest_arg STREQUAL "")
+        if(_dest_arg STREQUAL "examples")
+            set(_runtime_dest "${CHRONOLOG_INSTALL_EXAMPLES_DIR}")
+        elseif(_dest_arg STREQUAL "tests")
+            set(_runtime_dest "${CHRONOLOG_INSTALL_TESTS_DIR}")
+        elseif(NOT _dest_arg STREQUAL "bin")
+            message(WARNING "chronolog_install_target(${target_name}): unknown DESTINATION '${_dest_arg}', using bin")
+        endif()
+    endif()
     install(TARGETS ${target_name}
-        RUNTIME DESTINATION ${CHRONOLOG_INSTALL_BIN_DIR}
+        RUNTIME DESTINATION ${_runtime_dest}
         LIBRARY DESTINATION ${CHRONOLOG_INSTALL_LIB_DIR}
         ARCHIVE DESTINATION ${CHRONOLOG_INSTALL_LIB_DIR}
         PUBLIC_HEADER DESTINATION ${CHRONOLOG_INSTALL_INCLUDE_DIR}
     )
-    # Set both absolute and relative RPATH for portability
+    # Set both absolute and relative RPATH for portability (examples/tests need ../lib)
     set_target_properties(${target_name} PROPERTIES INSTALL_RPATH "${CHRONOLOG_INSTALL_LIB_DIR};$ORIGIN/../lib")
 endfunction()
 

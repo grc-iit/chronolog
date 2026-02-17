@@ -33,7 +33,9 @@ target_include_directories(test_cmake_discovery PRIVATE
 )
 
 add_test(NAME PackageDiscovery_CMake COMMAND test_cmake_discovery)
-# Not installed: this test runs from the build tree only; installed-prefix tests use their own mini app.
+
+# Install discovery test executables to tests/ (for optional install-tree runs)
+chronolog_install_target(test_cmake_discovery DESTINATION tests)
 
 #------------------------------------------------------------------------------
 # Test 2: pkg-config discovery (build-tree)
@@ -53,7 +55,9 @@ target_link_directories(test_pkgconfig_discovery PRIVATE ${JSON-C_LIBRARY_DIRS})
 target_link_libraries(test_pkgconfig_discovery PRIVATE ${JSON-C_LIBRARIES})
 
 add_test(NAME PackageDiscovery_pkgconfig COMMAND test_pkgconfig_discovery)
-# Not installed: this test runs from the build tree only; installed-prefix tests use their own mini app.
+
+# Install discovery test executables to tests/
+chronolog_install_target(test_pkgconfig_discovery DESTINATION tests)
 
 #------------------------------------------------------------------------------
 # Installed-prefix discovery tests (run at CTest time, do not affect configure)

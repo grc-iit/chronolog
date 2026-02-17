@@ -4,6 +4,6 @@ add_executable(chronokvs_reader_example chronokvs_reader_example.cpp)
 target_link_libraries(chronokvs_writer_example PRIVATE chronokvs)
 target_link_libraries(chronokvs_reader_example PRIVATE chronokvs)
 
-# Install examples using the project's standard installation function
-chronolog_install_target(chronokvs_writer_example)
-chronolog_install_target(chronokvs_reader_example)
+# Install examples to examples/
+chronolog_install_target(chronokvs_writer_example DESTINATION examples)
+chronolog_install_target(chronokvs_reader_example DESTINATION examples)

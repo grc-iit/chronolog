@@ -142,10 +142,10 @@ set_target_properties(client_lib_hybrid_argobots_test PROPERTIES
 )
 
 #------------------------------------------------------------------------------
-# Install test binaries (only if enabled)
+# Install test binaries to tests/ (only if enabled)
 #------------------------------------------------------------------------------
 if(CHRONOLOG_INSTALL_TESTS)
     foreach(client ${client_examples})
-        chronolog_install_target(${client})
+        chronolog_install_target(${client} DESTINATION tests)
     endforeach()
 endif()
