@@ -110,6 +110,9 @@ void chronolog::ChronologClientImpl::defineClientIdentity()
 
 chronolog::ChronologClientImpl::~ChronologClientImpl()
 {
+    // Best-effort disconnect so the visor can remove the client record; safe to call when already SHUTTING_DOWN.
+    Disconnect();
+
     if(storyteller != nullptr)
     {
         delete storyteller;
@@ -183,14 +186,19 @@ int chronolog::ChronologClientImpl::Disconnect()
     auto return_code = rpcVisorClient->Disconnect(clientId);
     if(return_code == chronolog::CL_SUCCESS)
     {
-        clientState = SHUTTING_DOWN;
         LOG_INFO("[ChronoLogClientImpl] Successfully disconnected from Visor.");
     }
     else
     {
         LOG_ERROR("[ChronoLogClientImpl] Failed to disconnect from Visor. Error code: {}",
                   chronolog::to_string_client(return_code));
+        if(return_code == chronolog::CL_ERR_ACQUIRED)
+        {
+            LOG_WARNING("[ChronoLogClientImpl] Visor reports client still has acquired stories; client record not removed. Client is safe to delete.");
+        }
     }
+    // Always transition to SHUTTING_DOWN so destructor and delete client_ are safe regardless of RPC result.
+    clientState = SHUTTING_DOWN;
     return return_code;
 }
 

@@ -9,7 +9,7 @@ enum ClientErrorCode {
     CL_ERR_UNKNOWN         = -1,   // Generic error
     CL_ERR_INVALID_ARG     = -2,   // Invalid input
     CL_ERR_NOT_EXIST       = -3,   // Missing Chronicle, Story, or property
-    CL_ERR_ACQUIRED        = -4,   // Already acquired, cannot destroy
+    CL_ERR_ACQUIRED        = -4,   // Already acquired, cannot destroy; from Disconnect: client still has acquired stories, visor cannot remove client record
     CL_ERR_NOT_ACQUIRED    = -5,   // Not acquired, cannot release
     CL_ERR_CHRONICLE_EXISTS= -6,   // Chronicle already exists
     CL_ERR_NO_KEEPERS      = -7,   // No ChronoKeepers available

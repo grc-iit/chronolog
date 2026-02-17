@@ -111,7 +111,13 @@ public:
 class ChronologClientImpl;
 
 // top level Chronolog Client...
-// implementation details are in the ChronologClientImpl class 
+// implementation details are in the ChronologClientImpl class
+//
+// Recommended shutdown sequence (writer): for each acquired story call ReleaseStory(), then DestroyStory(),
+// then DestroyChronicle() if desired, then Disconnect(). Call Disconnect() before destroying the Client.
+// If Disconnect() returns CL_ERR_ACQUIRED (-4), the visor could not remove the client record because
+// the client still had acquired stories; the client is still safe to delete. The destructor will call
+// Disconnect() as best-effort; you may always safely delete the Client regardless of Disconnect() return value.
 class Client
 {
 public:
