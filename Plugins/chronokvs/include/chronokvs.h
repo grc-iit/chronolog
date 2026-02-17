@@ -90,6 +90,18 @@ public:
      *     events exist for that key.
      */
     std::optional<EventData> get_latest(const std::string& key);
+
+    /**
+     * @brief Flush all cached story handles to commit pending writes.
+     *
+     * ChronoKVS caches story handles to improve write performance by avoiding
+     * repeated acquire/release cycles. Call this method to release all cached
+     * handles and ensure data is committed for propagation.
+     *
+     * This should be called before waiting for data to be available for read
+     * operations, or when you need to ensure all writes are committed.
+     */
+    void flush();
 };
 
 } // namespace chronokvs

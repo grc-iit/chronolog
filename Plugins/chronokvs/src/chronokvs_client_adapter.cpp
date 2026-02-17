@@ -58,16 +58,35 @@ ChronoKVSClientAdapter::~ChronoKVSClientAdapter()
 {
     if(chronolog)
     {
+        // Release all cached story handles before disconnecting
+        std::lock_guard<std::mutex> lock(cacheMutex);
+        CHRONOKVS_INFO(logLevel_, "Releasing ", handleCache.size(), " cached story handles");
+        for(const auto& [key, handle]: handleCache)
+        {
+            CHRONOKVS_DEBUG(logLevel_, "Releasing cached handle for key='", key, "'");
+            chronolog->ReleaseStory(defaultChronicle, key);
+        }
+        handleCache.clear();
+
         CHRONOKVS_INFO(logLevel_, "Disconnecting from ChronoLog");
         chronolog->Disconnect();
     }
 }
 
-std::uint64_t ChronoKVSClientAdapter::storeEvent(const std::string& key, const std::string& value)
+chronolog::StoryHandle* ChronoKVSClientAdapter::getOrAcquireHandle(const std::string& key)
 {
-    CHRONOKVS_DEBUG(logLevel_, "Storing event for key='", key, "' (value_size=", value.size(), ")");
+    std::lock_guard<std::mutex> lock(cacheMutex);
 
-    // Acquire a story handle for the given key
+    // Check if handle is already cached
+    auto it = handleCache.find(key);
+    if(it != handleCache.end())
+    {
+        CHRONOKVS_DEBUG(logLevel_, "Cache hit for key='", key, "'");
+        return it->second;
+    }
+
+    // Cache miss - acquire new handle
+    CHRONOKVS_DEBUG(logLevel_, "Cache miss for key='", key, "', acquiring new handle");
     std::map<std::string, std::string> story_attrs;
     auto [status, handle] = chronolog->AcquireStory(defaultChronicle, key, story_attrs, DEFAULT_FLAGS);
     if(status != chronolog::CL_SUCCESS)
@@ -77,14 +96,31 @@ std::uint64_t ChronoKVSClientAdapter::storeEvent(const std::string& key, const s
                                  ", error code: " + std::to_string(status));
     }
 
-    // RAII-style story handle management using scope guard
-    struct StoryHandleGuard
+    // Store in cache and return
+    handleCache[key] = handle;
+    CHRONOKVS_DEBUG(logLevel_, "Cached new handle for key='", key, "' (cache size: ", handleCache.size(), ")");
+    return handle;
+}
+
+void ChronoKVSClientAdapter::flushCachedHandle(const std::string& key)
+{
+    std::lock_guard<std::mutex> lock(cacheMutex);
+
+    auto it = handleCache.find(key);
+    if(it != handleCache.end())
     {
-        chronolog::Client* client;
-        const std::string& chronicle;
-        const std::string& key;
-        ~StoryHandleGuard() { client->ReleaseStory(chronicle, key); }
-    } guard{chronolog.get(), defaultChronicle, key};
+        CHRONOKVS_DEBUG(logLevel_, "Flushing cached handle for key='", key, "' before read operation");
+        chronolog->ReleaseStory(defaultChronicle, key);
+        handleCache.erase(it);
+    }
+}
+
+std::uint64_t ChronoKVSClientAdapter::storeEvent(const std::string& key, const std::string& value)
+{
+    CHRONOKVS_DEBUG(logLevel_, "Storing event for key='", key, "' (value_size=", value.size(), ")");
+
+    // Get cached handle or acquire a new one
+    chronolog::StoryHandle* handle = getOrAcquireHandle(key);
 
     auto timestamp = handle->log_event(value);
     CHRONOKVS_DEBUG(logLevel_, "Event stored successfully for key='", key, "' with timestamp=", timestamp);
@@ -96,7 +132,12 @@ ChronoKVSClientAdapter::retrieveEvents(const std::string& key, std::uint64_t sta
 {
     CHRONOKVS_DEBUG(logLevel_, "Retrieving events for key='", key, "' range=[", start_ts, ", ", end_ts, ")");
 
-    // Acquire a story handle for the given key
+    // Flush any cached write handle for this key to ensure data is committed and visible
+    // This is necessary because ChronoLog requires the story handle to be released
+    // before events can be replayed (read consistency semantics)
+    flushCachedHandle(key);
+
+    // Acquire a fresh handle for the read operation
     std::map<std::string, std::string> story_attrs;
     auto [status, handle] = chronolog->AcquireStory(defaultChronicle, key, story_attrs, DEFAULT_FLAGS);
     if(status != chronolog::CL_SUCCESS)
@@ -106,7 +147,8 @@ ChronoKVSClientAdapter::retrieveEvents(const std::string& key, std::uint64_t sta
                                  ", error code: " + std::to_string(status));
     }
 
-    // RAII-style story handle management
+    // RAII-style story handle management for reads
+    // We don't cache read handles - they are released immediately after the read
     struct StoryHandleGuard
     {
         chronolog::Client* client;
@@ -130,6 +172,26 @@ ChronoKVSClientAdapter::retrieveEvents(const std::string& key, std::uint64_t sta
 
     CHRONOKVS_DEBUG(logLevel_, "Retrieved ", eventDataList.size(), " events for key='", key, "'");
     return eventDataList;
+}
+
+void ChronoKVSClientAdapter::flush()
+{
+    std::lock_guard<std::mutex> lock(cacheMutex);
+
+    if(handleCache.empty())
+    {
+        CHRONOKVS_DEBUG(logLevel_, "Flush called but no cached handles to release");
+        return;
+    }
+
+    CHRONOKVS_INFO(logLevel_, "Flushing ", handleCache.size(), " cached story handles");
+    for(const auto& [key, handle]: handleCache)
+    {
+        CHRONOKVS_DEBUG(logLevel_, "Releasing cached handle for key='", key, "'");
+        chronolog->ReleaseStory(defaultChronicle, key);
+    }
+    handleCache.clear();
+    CHRONOKVS_INFO(logLevel_, "All cached handles released - data committed for propagation");
 }
 
 } // namespace chronokvs

@@ -1,8 +1,9 @@
+#include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
-#include <algorithm>
 
 #include "chronokvs_mapper.h"
 
@@ -158,5 +159,7 @@ std::optional<EventData> ChronoKVSMapper::retrieveLatestByKey(const std::string&
     CHRONOKVS_DEBUG(logLevel_, "Found latest event for key='", key, "' at timestamp=", latest->timestamp);
     return *latest;
 }
+
+void ChronoKVSMapper::flush() { chronoClientAdapter->flush(); }
 
 } // namespace chronokvs
