@@ -457,6 +457,9 @@ jobs:
         run: |
           set -e
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          # Deploy/Clean steps run as root and create files under chronolog-install (conf/, monitor/, etc.).
+          # Ensure everything under /home/grc-iit is owned by grc-iit so the image works when run as that user.
+          docker exec "$CONTAINER_ID" bash -c "chown -R grc-iit:grc-iit /home/grc-iit"
           # Bind mounts are not included in docker commit. Copy the repo into the container
           # filesystem so the published image contains ChronoLog source at /home/grc-iit/chronolog-repo.
           docker exec "$CONTAINER_ID" bash -c "
