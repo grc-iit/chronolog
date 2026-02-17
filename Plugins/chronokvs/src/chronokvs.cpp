@@ -1,4 +1,5 @@
 #include <cstdint>
+#include <iostream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -58,6 +59,12 @@ std::optional<EventData> ChronoKVS::get_latest(const std::string& key)
 {
     CHRONOKVS_DEBUG(logLevel_, "get_latest() called for key='", key, "'");
     return mapper->retrieveLatestByKey(key);
+}
+
+void ChronoKVS::flush()
+{
+    CHRONOKVS_DEBUG(logLevel_, "flush() called - releasing cached handles");
+    mapper->flush();
 }
 
 } // namespace chronokvs
