@@ -4,10 +4,9 @@ find_package(Thallium REQUIRED)
 find_package(HDF5 REQUIRED COMPONENTS C CXX)
 
 #------------------------------------------------------------------------------
-# Test Executables
+# ChronoStore unit tests
 #------------------------------------------------------------------------------
 
-# HDF5 Archiver Test
 add_executable(hdf5_archiver_test
     hdf5_archiver_test.cpp
     story_chunk_test_utils.h
@@ -24,19 +23,26 @@ target_include_directories(hdf5_archiver_test PRIVATE
     ${CMAKE_SOURCE_DIR}/chrono_common/include
     ${CMAKE_SOURCE_DIR}/Client/cpp/include
     ${HDF5_INCLUDE_DIRS}
-    .
+    ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-target_link_libraries(hdf5_archiver_test
-    PRIVATE
-        chrono_common
-        ${HDF5_LIBRARIES}
-        thallium
+target_link_libraries(hdf5_archiver_test PRIVATE
+    chrono_common
+    ${HDF5_LIBRARIES}
+    thallium
 )
 
-add_test(NAME hdf5_archiver_test COMMAND hdf5_archiver_test)
+set_target_properties(hdf5_archiver_test PROPERTIES
+    OUTPUT_NAME chronolog-test-store-hdf5-archiver
+)
 
-# Compound VLEN Bytes vs Blob+Map Comparison Test
+add_test(NAME Unit_ChronoStore_HDF5Archiver COMMAND hdf5_archiver_test)
+chronolog_install_target(hdf5_archiver_test DESTINATION tests)
+
+#------------------------------------------------------------------------------
+# Compound VLEN Bytes vs Blob+Map comparison test
+#------------------------------------------------------------------------------
+
 add_executable(cmp_vlen_bytes_vs_blob_map
     cmp_vlen_bytes_vs_blob_map.cpp
     ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
@@ -47,10 +53,14 @@ target_include_directories(cmp_vlen_bytes_vs_blob_map PRIVATE
     ${CMAKE_SOURCE_DIR}/chrono_common/include
 )
 
-target_link_libraries(cmp_vlen_bytes_vs_blob_map
-    PRIVATE
-        ${HDF5_LIBRARIES}
-        thallium
+target_link_libraries(cmp_vlen_bytes_vs_blob_map PRIVATE
+    ${HDF5_LIBRARIES}
+    thallium
 )
 
-add_test(NAME cmp_vlen_bytes_vs_blob_map COMMAND cmp_vlen_bytes_vs_blob_map)
+set_target_properties(cmp_vlen_bytes_vs_blob_map PROPERTIES
+    OUTPUT_NAME chronolog-test-store-vlen-bytes-vs-blob-map
+)
+
+add_test(NAME Unit_ChronoStore_CmpVlenBytesVsBlobMap COMMAND cmp_vlen_bytes_vs_blob_map)
+chronolog_install_target(cmp_vlen_bytes_vs_blob_map DESTINATION tests)

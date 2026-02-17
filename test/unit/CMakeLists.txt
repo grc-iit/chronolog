@@ -4,7 +4,14 @@ find_package(GTest REQUIRED)
 include(GoogleTest)
 
 #------------------------------------------------------------------------------
-# Unit Test Executables
+# Unit test subdirectories (chrono_common, ChronoStore, ChronoPlayer)
+#------------------------------------------------------------------------------
+add_subdirectory(chrono_common)
+add_subdirectory(ChronoStore)
+add_subdirectory(ChronoPlayer)
+
+#------------------------------------------------------------------------------
+# Unit Test Executables (GTest-based, in-tree)
 #------------------------------------------------------------------------------
 
 # StoryChunkTest
@@ -23,7 +30,9 @@ target_link_libraries(story_chunk_test PRIVATE
     chronolog_client
 )
 
+set_target_properties(story_chunk_test PROPERTIES OUTPUT_NAME chronolog-test-common-story-chunk)
 gtest_discover_tests(story_chunk_test)
+chronolog_install_target(story_chunk_test DESTINATION tests)
 
 # StoryPipelineTest
 add_executable(story_pipeline_test
@@ -41,7 +50,9 @@ target_link_libraries(story_pipeline_test PRIVATE
     chronolog_client
 )
 
+set_target_properties(story_pipeline_test PROPERTIES OUTPUT_NAME chronolog-test-common-story-pipeline)
 gtest_discover_tests(story_pipeline_test)
+chronolog_install_target(story_pipeline_test DESTINATION tests)
 
 # ChronoKVSLoggerTest
 add_executable(chronokvs_logger_test
@@ -56,4 +67,6 @@ target_link_libraries(chronokvs_logger_test PRIVATE
     GTest::gtest_main
 )
 
+set_target_properties(chronokvs_logger_test PROPERTIES OUTPUT_NAME chronolog-test-chronokvs-logger)
 gtest_discover_tests(chronokvs_logger_test)
+chronolog_install_target(chronokvs_logger_test DESTINATION tests)

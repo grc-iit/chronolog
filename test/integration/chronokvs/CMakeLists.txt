@@ -24,6 +24,7 @@ target_compile_features(chronokvs_integration_test PRIVATE
 )
 
 set_target_properties(chronokvs_integration_test PROPERTIES
+    OUTPUT_NAME chronolog-test-chronokvs-integration
     BUILD_WITH_INSTALL_RPATH TRUE
     SKIP_BUILD_RPATH TRUE
 )
