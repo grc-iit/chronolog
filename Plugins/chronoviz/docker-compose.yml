@@ -20,9 +20,13 @@ services:
       - CHRONOLOG_QUERY_PORT=${CHRONOLOG_QUERY_PORT:-5557}
       - CHRONOLOG_QUERY_PROVIDER_ID=${CHRONOLOG_QUERY_PROVIDER_ID:-57}
       - CHRONOLOG_AUTO_CONNECT=${CHRONOLOG_AUTO_CONNECT:-false}
+      - CHRONOLOG_CONF_FILE=${CHRONOLOG_CONF_FILE:-}
+      - CHRONOLOG_INSTALL_PATH=/opt
     volumes:
       # Mount ChronoLog library for Python bindings
       - ${CHRONOLOG_INSTALL_PATH:-~/chronolog-install}/chronolog/lib:/opt/chronolog/lib:ro
+      # Mount conf for client config file (e.g. default_client_conf.json)
+      - ${CHRONOLOG_INSTALL_PATH:-~/chronolog-install}/chronolog/conf:/opt/chronolog/conf:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
       interval: 30s

@@ -34,6 +34,8 @@ export interface ChronoLogDataSourceOptions extends DataSourceJsonData {
   defaultChronicleName?: string;
   /** Default story name for new queries (optional) */
   defaultStoryName?: string;
+  /** Path to ChronoLog client config JSON on the backend host (optional, default: install_dir/chronolog/conf/default_client_conf.json) */
+  clientConfFile?: string;
 }
 
 /**
@@ -60,6 +62,8 @@ export interface ConnectRequest {
   query_ip?: string;
   query_port?: number;
   query_provider_id?: number;
+  /** Path to client config JSON on the backend host */
+  conf_file?: string;
 }
 
 /**

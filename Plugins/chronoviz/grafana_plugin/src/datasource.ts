@@ -199,41 +199,43 @@ export class DataSource extends DataSourceApi<ChronoLogQuery, ChronoLogDataSourc
         };
       }
 
-      // Try to connect if not already connected
-      // Backend /connect endpoint accepts optional ConnectionConfig or uses environment defaults
-      if (!health.connected) {
-        try {
-          const connectResponse = await lastValueFrom(
-            getBackendSrv().fetch<{ success: boolean; message: string }>({
-              url: `${this.backendUrl}/connect`,
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              // Send empty object - backend will use environment variable defaults
-              data: {},
-            })
-          );
+      // Always call /connect during Save & Test so the backend validates with
+      // the current config (conf file, module config, etc.).  The backend will
+      // disconnect any stale connection before reconnecting.
+      try {
+        const connectData: Record<string, string | undefined> = {};
+        if (this.instanceSettings.jsonData.clientConfFile) {
+          connectData.conf_file = this.instanceSettings.jsonData.clientConfFile;
+        }
+        const connectResponse = await lastValueFrom(
+          getBackendSrv().fetch<{ success: boolean; message: string }>({
+            url: `${this.backendUrl}/connect`,
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            data: Object.keys(connectData).length > 0 ? connectData : {},
+          })
+        );
 
-          if (!connectResponse.data.success) {
-            return {
-              status: 'warning',
-              message: `Backend running but connection failed: ${connectResponse.data.message}`,
-            };
-          }
-        } catch (connectError: any) {
-          // Handle 503 Service Unavailable (client not connected)
-          if (connectError?.status === 503) {
-            return {
-              status: 'warning',
-              message: 'Backend running but could not connect to ChronoLog service. Check ChronoLog services are running.',
-            };
-          }
+        if (!connectResponse.data.success) {
           return {
             status: 'warning',
-            message: `Backend running but connection failed: ${connectError instanceof Error ? connectError.message : String(connectError)}`,
+            message: `Backend running but connection failed: ${connectResponse.data.message}`,
           };
         }
+      } catch (connectError: any) {
+        // Handle 503 Service Unavailable (client not connected)
+        if (connectError?.status === 503) {
+          return {
+            status: 'warning',
+            message: 'Backend running but could not connect to ChronoLog service. Check ChronoLog services are running.',
+          };
+        }
+        return {
+          status: 'warning',
+          message: `Backend running but connection failed: ${connectError instanceof Error ? connectError.message : String(connectError)}`,
+        };
       }
 
       return {

@@ -13,18 +13,30 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-case "${1:-}" in
-  -h|--help)
-    echo "Usage: $0 [OPTION]"
-    echo ""
-    echo "Start ChronoLog Grafana dev environment. Default is Docker."
-    echo ""
-    echo "  (no args)   Use Docker Compose (Grafana + backend)"
-    echo "  --local     Run backend only on host (venv + env vars)"
-    echo "  -h, --help  Show this help"
-    exit 0
-    ;;
-esac
+# Parse optional --conf before the main mode
+CHRONOLOG_CONF_FILE=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -c|--conf)
+      CHRONOLOG_CONF_FILE="$2"
+      shift 2
+      ;;
+    -h|--help)
+      echo "Usage: $0 [OPTION] [--local]"
+      echo ""
+      echo "Start ChronoLog Grafana dev environment. Default is Docker."
+      echo ""
+      echo "  (no args)   Use Docker Compose (Grafana + backend)"
+      echo "  --local     Run backend only on host (venv + env vars)"
+      echo "  -c, --conf FILE  Path to ChronoLog client config JSON (default: install_dir/chronolog/conf/default_client_conf.json)"
+      echo "  -h, --help  Show this help"
+      exit 0
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
 
 echo "=== ChronoLog Grafana Development Environment ==="
 
@@ -40,8 +52,11 @@ fi
 echo "Building Grafana plugin..."
 "$SCRIPT_DIR/build_grafana_plugin.sh"
 
+# Export for docker-compose (Docker mode) or use when starting backend (local mode)
+export CHRONOLOG_CONF_FILE
+
 # Default: Docker. Use --local for local backend only.
-if [ "$1" == "--local" ]; then
+if [ "${1:-}" == "--local" ]; then
   echo ""
   echo "=== Starting Local Development ==="
 
@@ -63,8 +78,8 @@ if [ "$1" == "--local" ]; then
   export PYTHONPATH="$CHRONOLOG_LIB_PATH:$PYTHONPATH"
   export LD_LIBRARY_PATH="$CHRONOLOG_LIB_PATH:$LD_LIBRARY_PATH"
 
-  # Start the backend
-  python chronolog_service.py &
+  # Start the backend (pass --conf if CHRONOLOG_CONF_FILE is set)
+  python chronolog_service.py ${CHRONOLOG_CONF_FILE:+--conf "$CHRONOLOG_CONF_FILE"} &
   BACKEND_PID=$!
 
   echo "Backend started with PID: $BACKEND_PID"

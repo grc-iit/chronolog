@@ -44,6 +44,16 @@ export function ConfigEditor(props: Props) {
     });
   };
 
+  const onClientConfFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    onOptionsChange({
+      ...options,
+      jsonData: {
+        ...jsonData,
+        clientConfFile: event.target.value || undefined,
+      },
+    });
+  };
+
   const onApiKeyChange = (event: ChangeEvent<HTMLInputElement>) => {
     onOptionsChange({
       ...options,
@@ -85,6 +95,18 @@ export function ConfigEditor(props: Props) {
             value={jsonData.backendUrl || ''}
             onChange={onBackendUrlChange}
             placeholder="http://localhost:8080"
+            width={50}
+          />
+        </InlineField>
+        <InlineField
+          label="Client Config File"
+          labelWidth={20}
+          tooltip="Optional path to ChronoLog client config JSON on the backend host. Leave empty to use default (install_dir/chronolog/conf/default_client_conf.json)"
+        >
+          <Input
+            value={jsonData.clientConfFile || ''}
+            onChange={onClientConfFileChange}
+            placeholder="$CHRONOLOG_INSTALL_PATH/chronolog/conf/default_client_conf.json"
             width={50}
           />
         </InlineField>
@@ -142,7 +164,7 @@ export function ConfigEditor(props: Props) {
           <pre style={{ backgroundColor: '#2d2d2d', padding: '8px', borderRadius: '4px', overflow: 'auto' }}>
             {`cd grafana_backend
 pip install -r requirements.txt
-python chronolog_service.py`}
+python chronolog_service.py  # optional: --conf /path/to/client_conf.json`}
           </pre>
 
           <p style={{ marginTop: '15px', marginBottom: '10px' }}>
