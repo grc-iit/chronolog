@@ -323,6 +323,27 @@ jobs:
             echo '✅ Installation verification passed'
           "
 
+      - name: Create chronolog install tarball
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          TAR_PATH="/tmp/chronolog-install.tar"
+          docker exec "$CONTAINER_ID" bash -c "
+            set -e
+            tar -C /home/grc-iit/chronolog-install -cvf /tmp/chronolog-install.tar chronolog
+            echo '✅ Tarball created at /tmp/chronolog-install.tar'
+          "
+          docker cp "$CONTAINER_ID:${TAR_PATH}" "${{ github.workspace }}/chronolog-install.tar"
+          echo "✅ Tarball copied to workspace: chronolog-install.tar"
+          ls -la "${{ github.workspace }}/chronolog-install.tar"
+
+      - name: Upload chronolog install artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: chronolog-install-${{ github.run_id }}
+          path: ${{ github.workspace }}/chronolog-install.tar
+          retention-days: 30
+
       - name: Deploy ChronoLog
         run: |
           set -e
