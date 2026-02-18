@@ -120,13 +120,17 @@ prepare_build_directory() {
 build_project() {
     echo -e "${INFO}Building ChronoLog in ${BUILD_TYPE} mode.${NC}"
 
+    # Find the Python executable from the active environment
+    PYTHON_EXEC=$(which python3)
+    echo -e "${DEBUG}Using Python executable: ${PYTHON_EXEC}${NC}"
+
     # Configure (always)
     if [[ -n "$INSTALL_PATH" ]]; then
         echo -e "${DEBUG}Using installation prefix: ${INSTALL_PATH}${NC}"
-        cmake -S "${REPO_ROOT}" -B . -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" -DCMAKE_INSTALL_PREFIX="${INSTALL_PATH}"
+        cmake -S "${REPO_ROOT}" -B . -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" -DCMAKE_INSTALL_PREFIX="${INSTALL_PATH}" -DPython_EXECUTABLE="${PYTHON_EXEC}"
     else
         echo -e "${DEBUG}No installation path specified; using CMake defaults (your CMakeLists sets $HOME/chronolog-install).${NC}"
-        cmake -S "${REPO_ROOT}" -B . -DCMAKE_BUILD_TYPE="${BUILD_TYPE}"
+        cmake -S "${REPO_ROOT}" -B . -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" -DPython_EXECUTABLE="${PYTHON_EXEC}"
     fi
 
     # Build (portable + parallel)
