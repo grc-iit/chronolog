@@ -120,14 +120,19 @@ prepare_build_directory() {
 build_project() {
     echo -e "${INFO}Building ChronoLog in ${BUILD_TYPE} mode.${NC}"
 
-    # Configure (always)
+    # Configure (always). Debug builds enable install of test executables to chronolog/tests/
+    local cmake_args=(-S "${REPO_ROOT}" -B . -DCMAKE_BUILD_TYPE="${BUILD_TYPE}")
     if [[ -n "$INSTALL_PATH" ]]; then
         echo -e "${DEBUG}Using installation prefix: ${INSTALL_PATH}${NC}"
-        cmake -S "${REPO_ROOT}" -B . -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" -DCMAKE_INSTALL_PREFIX="${INSTALL_PATH}"
+        cmake_args+=(-DCMAKE_INSTALL_PREFIX="${INSTALL_PATH}")
     else
         echo -e "${DEBUG}No installation path specified; using CMake defaults (your CMakeLists sets $HOME/chronolog-install).${NC}"
-        cmake -S "${REPO_ROOT}" -B . -DCMAKE_BUILD_TYPE="${BUILD_TYPE}"
     fi
+    if [[ "$BUILD_TYPE" == "Debug" ]]; then
+        echo -e "${DEBUG}Debug build: enabling installation of test executables (CHRONOLOG_INSTALL_TESTS=ON).${NC}"
+        cmake_args+=(-DCHRONOLOG_INSTALL_TESTS=ON)
+    fi
+    cmake "${cmake_args[@]}"
 
     # Build (portable + parallel)
     cmake --build . --parallel $(nproc)

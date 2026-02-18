@@ -19,7 +19,7 @@ endif()
 
 # Thallium Server Test
 add_executable(thallium_server
-    thallium_server.cpp
+    thallium_server_test.cpp
     ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
 )
 
@@ -38,7 +38,7 @@ add_test(NAME Communication_Thallium_ServerRepeaterRpc COMMAND thallium_server)
 
 # Thallium Client Test
 add_executable(thallium_client
-    thallium_client.cpp
+    thallium_client_test.cpp
     ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
 )
 
@@ -57,7 +57,7 @@ set_tests_properties(Communication_Thallium_ClientSendRecvOrRdma PROPERTIES MANU
 
 # Thallium Client MPI Test
 add_executable(thallium_client_mpi
-    thallium_client_mpi.cpp
+    thallium_client_mpi_test.cpp
     ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
 )
 
@@ -75,3 +75,7 @@ target_link_libraries(thallium_client_mpi
 )
 
 add_test(NAME Communication_Thallium_ClientMpi COMMAND thallium_client_mpi)
+
+# Thallium protocol multi-node script (SLURM/squeue; run manually)
+add_test(NAME Communication_Thallium_ProtocolScript COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/thallium_protocol_test.sh)
+set_tests_properties(Communication_Thallium_ProtocolScript PROPERTIES MANUAL TRUE)

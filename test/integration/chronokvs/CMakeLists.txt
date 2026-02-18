@@ -42,7 +42,6 @@ set_tests_properties(Integration_ChronoKVS_PluginIntegration PROPERTIES
     LABELS "integration;chronokvs"
 )
 
-#------------------------------------------------------------------------------
-# Install test executable to tests/
-#------------------------------------------------------------------------------
-chronolog_install_target(chronokvs_integration_test DESTINATION tests)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(chronokvs_integration_test DESTINATION tests)
+endif()

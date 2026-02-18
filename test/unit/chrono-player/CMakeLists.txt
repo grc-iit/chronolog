@@ -8,7 +8,7 @@ find_package(HDF5 REQUIRED COMPONENTS C CXX)
 #------------------------------------------------------------------------------
 
 add_executable(transfer_agent_test
-    TransferAgentTest.cpp
+    chrono_player_transfer_agent_test.cpp
     ${CMAKE_SOURCE_DIR}/ChronoPlayer/src/StoryChunkTransferAgent.cpp
 )
 
@@ -32,12 +32,14 @@ set_target_properties(transfer_agent_test PROPERTIES
 
 add_test(NAME Unit_ChronoPlayer_StoryChunkTransferAgent COMMAND transfer_agent_test)
 set_tests_properties(Unit_ChronoPlayer_StoryChunkTransferAgent PROPERTIES DISABLED TRUE)
-chronolog_install_target(transfer_agent_test DESTINATION tests)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(transfer_agent_test DESTINATION tests)
+endif()
 
 #------------------------------------------------------------------------------
 
 add_executable(playback_service_test
-    PlaybackServiceTest.cpp
+    chrono_player_playback_service_test.cpp
     ${CMAKE_SOURCE_DIR}/ChronoPlayer/src/PlaybackService.cpp
     ${CMAKE_SOURCE_DIR}/ChronoPlayer/src/StoryChunkTransferAgent.cpp
 )
@@ -62,12 +64,14 @@ set_target_properties(playback_service_test PROPERTIES
 
 add_test(NAME Unit_ChronoPlayer_PlaybackServiceLifecycle COMMAND playback_service_test)
 set_tests_properties(Unit_ChronoPlayer_PlaybackServiceLifecycle PROPERTIES DISABLED TRUE)
-chronolog_install_target(playback_service_test DESTINATION tests)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(playback_service_test DESTINATION tests)
+endif()
 
 #------------------------------------------------------------------------------
 
 add_executable(hdf5_archive_reader_test
-    HDF5ArchiveReadingAgentTest.cpp
+    chrono_player_hdf5_archive_reader_test.cpp
     ${CMAKE_SOURCE_DIR}/ChronoPlayer/src/HDF5ArchiveReadingAgent.cpp
 )
 
@@ -92,12 +96,14 @@ set_target_properties(hdf5_archive_reader_test PROPERTIES
 )
 
 add_test(NAME Unit_ChronoPlayer_HDF5ArchiveReadingAgent COMMAND hdf5_archive_reader_test)
-chronolog_install_target(hdf5_archive_reader_test DESTINATION tests)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(hdf5_archive_reader_test DESTINATION tests)
+endif()
 
 #------------------------------------------------------------------------------
 
 add_executable(fs_monitoring_test
-    FSMonitoringTest.cpp
+    chrono_player_fs_monitoring_test.cpp
     ${CMAKE_SOURCE_DIR}/ChronoPlayer/src/HDF5ArchiveReadingAgent.cpp
     ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
 )
@@ -123,4 +129,6 @@ set_target_properties(fs_monitoring_test PROPERTIES
 )
 
 add_test(NAME Unit_ChronoPlayer_FileSystemMonitoring COMMAND fs_monitoring_test)
-chronolog_install_target(fs_monitoring_test DESTINATION tests)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(fs_monitoring_test DESTINATION tests)
+endif()

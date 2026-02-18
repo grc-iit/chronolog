@@ -25,7 +25,7 @@ cmake_minimum_required(VERSION 3.25)
 #------------------------------------------------------------------------------
 # Always use the build tree so configure never fails due to install prefix state.
 add_executable(test_cmake_discovery
-    test_cmake_discovery.cpp
+    package_discovery_cmake_test.cpp
 )
 target_link_libraries(test_cmake_discovery PRIVATE chronolog_client)
 target_include_directories(test_cmake_discovery PRIVATE
@@ -35,14 +35,15 @@ set_target_properties(test_cmake_discovery PROPERTIES OUTPUT_NAME chronolog-test
 
 add_test(NAME PackageDiscovery_CMakeFindPackage COMMAND test_cmake_discovery)
 
-# Install discovery test executables to tests/ (for optional install-tree runs)
-chronolog_install_target(test_cmake_discovery DESTINATION tests)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(test_cmake_discovery DESTINATION tests)
+endif()
 
 #------------------------------------------------------------------------------
 # Test 2: pkg-config discovery (build-tree)
 #------------------------------------------------------------------------------
 add_executable(test_pkgconfig_discovery
-    test_pkgconfig_discovery.cpp
+    package_discovery_pkgconfig_test.cpp
 )
 target_include_directories(test_pkgconfig_discovery PRIVATE
     ${CMAKE_SOURCE_DIR}/Client/cpp/include
@@ -58,8 +59,9 @@ target_link_libraries(test_pkgconfig_discovery PRIVATE ${JSON-C_LIBRARIES})
 
 add_test(NAME PackageDiscovery_PkgConfig COMMAND test_pkgconfig_discovery)
 
-# Install discovery test executables to tests/
-chronolog_install_target(test_pkgconfig_discovery DESTINATION tests)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(test_pkgconfig_discovery DESTINATION tests)
+endif()
 
 #------------------------------------------------------------------------------
 # Installed-prefix discovery tests (run at CTest time, do not affect configure)

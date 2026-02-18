@@ -8,7 +8,7 @@ find_package(HDF5 REQUIRED COMPONENTS C CXX)
 #------------------------------------------------------------------------------
 
 add_executable(hdf5_archiver_test
-    hdf5_archiver_test.cpp
+    chrono_store_hdf5_archiver_test.cpp
     story_chunk_test_utils.h
     ${CMAKE_SOURCE_DIR}/ChronoStore/include/StoryWriter.h
     ${CMAKE_SOURCE_DIR}/ChronoStore/src/StoryWriter.cpp
@@ -37,14 +37,16 @@ set_target_properties(hdf5_archiver_test PROPERTIES
 )
 
 add_test(NAME Unit_ChronoStore_HDF5ArchiverWriteReadRoundtrip COMMAND hdf5_archiver_test)
-chronolog_install_target(hdf5_archiver_test DESTINATION tests)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(hdf5_archiver_test DESTINATION tests)
+endif()
 
 #------------------------------------------------------------------------------
 # Compound VLEN Bytes vs Blob+Map comparison test
 #------------------------------------------------------------------------------
 
 add_executable(cmp_vlen_bytes_vs_blob_map
-    cmp_vlen_bytes_vs_blob_map.cpp
+    chrono_store_vlen_bytes_vs_blob_map_test.cpp
     ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
 )
 
@@ -63,4 +65,6 @@ set_target_properties(cmp_vlen_bytes_vs_blob_map PROPERTIES
 )
 
 add_test(NAME Unit_ChronoStore_VlenBytesVsBlobMapComparison COMMAND cmp_vlen_bytes_vs_blob_map)
-chronolog_install_target(cmp_vlen_bytes_vs_blob_map DESTINATION tests)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(cmp_vlen_bytes_vs_blob_map DESTINATION tests)
+endif()
