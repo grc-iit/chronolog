@@ -1,5 +1,7 @@
 @PACKAGE_INIT@
 
+include(CMakeFindDependencyMacro)
+
 # Find required dependencies before including targets
 # spdlog is a PUBLIC dependency (public headers include spdlog headers)
 find_dependency(spdlog REQUIRED)

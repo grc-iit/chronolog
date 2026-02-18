@@ -9,6 +9,7 @@
 #include <unordered_map>
 
 #include "chronokvs_types.h"
+#include "chronokvs_logger.h"
 #include "chronokvs_client_adapter.h"
 
 namespace chronokvs
@@ -18,9 +19,10 @@ class ChronoKVSMapper
 {
 private:
     std::unique_ptr<ChronoKVSClientAdapter> chronoClientAdapter;
+    LogLevel logLevel_;
 
 public:
-    ChronoKVSMapper();
+    explicit ChronoKVSMapper(LogLevel level);
 
     ~ChronoKVSMapper() = default;
 
@@ -36,6 +38,8 @@ public:
     std::optional<EventData> retrieveEarliestByKey(const std::string& key);
 
     std::optional<EventData> retrieveLatestByKey(const std::string& key);
+
+    void flush();
 };
 } // namespace chronokvs
 #endif // KVS_MAPPER_H_

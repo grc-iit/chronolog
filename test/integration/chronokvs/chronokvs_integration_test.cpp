@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -522,6 +523,16 @@ public:
 
         // Test 1: Put
         test1_result = test1_put();
+
+        // Flush cached handles to commit writes before waiting for propagation
+        // This is necessary because ChronoKVS caches story handles for write performance,
+        // and data must be committed (handle released) before it can be read back
+        if(test1_result)
+        {
+            std::cout << "\n  Flushing cached handles to commit writes..." << std::endl;
+            kvs.flush();
+            std::cout << "  ✓ Handles flushed - data committed for propagation" << std::endl;
+        }
 
         // Wait for data propagation (only if Test 1 passed)
         if(test1_result)
