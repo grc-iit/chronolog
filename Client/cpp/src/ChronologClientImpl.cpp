@@ -194,7 +194,8 @@ int chronolog::ChronologClientImpl::Disconnect()
                   chronolog::to_string_client(return_code));
         if(return_code == chronolog::CL_ERR_ACQUIRED)
         {
-            LOG_WARNING("[ChronoLogClientImpl] Visor reports client still has acquired stories; client record not removed. Client is safe to delete.");
+            LOG_WARNING("[ChronoLogClientImpl] Visor reports client still has acquired stories; client record not "
+                        "removed. Client is safe to delete.");
         }
     }
     // Always transition to SHUTTING_DOWN so destructor and delete client_ are safe regardless of RPC result.
