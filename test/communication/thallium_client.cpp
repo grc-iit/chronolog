@@ -24,9 +24,9 @@ int main(int argc, char** argv)
 {
     if(argc < 5)
     {
-        LOG_ERROR("Insufficient arguments provided. Usage: {} <address> <sendrecv|rdma> <msg_size> [repetition]",
-                  argv[0]);
-        exit(0);
+        std::cout << "Communication_Thallium_ClientSendRecvOrRdma: no server address or args; skipping "
+                     "(run manually with: <address> <sendrecv|rdma> <msg_size> [repetition])." << std::endl;
+        return 0;
     }
     std::string server_address = argv[1];
     std::string protocol = server_address.substr(0, server_address.find_first_of(':'));

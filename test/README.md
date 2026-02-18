@@ -55,9 +55,22 @@ So `ls chronolog/tests/` shows a consistent, sortable set (e.g. all `chronolog-t
 
 ### CTest names
 
-- CTest names use a consistent prefix when possible: `Unit_<Component>_<Test>`, `PackageDiscovery_*`, etc., so you can filter with `ctest -R Unit_` or `ctest -R PackageDiscovery`.
+All CTest names follow the pattern **`<Type>_<Component>_<WhatIsTested>`**:
+
+- **Type**: `Unit`, `Integration`, `Communication`, `PackageDiscovery`, `Overhead`
+- **Component**: `ChronoCommon`, `ChronoStore`, `ChronoPlayer`, `KeeperGrapher`, `Thallium`, `ChronoKVS`, `Discovery`, `Lock`, `Clock`
+- **WhatIsTested**: Short descriptor (e.g. `StoryChunkExtract`, `HDF5ArchiverWriteReadRoundtrip`)
+
+Examples: `Unit_ChronoCommon_StoryChunk_TestConstructors.testEmptyConstructor`, `Integration_ChronoKVS_PluginIntegration`, `PackageDiscovery_CMakeFindPackage`. Filter with `ctest -R Unit_`, `ctest -R Integration_`, or `ctest -R PackageDiscovery`.
+
+Some tests are **DISABLED** (Margo/service tests: extraction chain, chunk consumer, transfer agent, playback service) or **MANUAL** (Thallium client); run them explicitly or with `ctest -N` to list.
+
+### Why are some tests disabled?
+
+Four tests are disabled by default because they start **Margo/Thallium** services or agents that either run indefinitely (infinite or long-lived loops), expect a remote peer (e.g. a receiver or Grapher), or are designed to be stopped with SIGTERM. When run under CTest with no server and no timeout, they would hang, segfault, or fail. They remain in the suite so you can run them manually when the right environment is available (e.g. start a receiver, then run the test with a timeout or SIGTERM). The disabled tests are: **Unit_ChronoCommon_ExtractionChain**, **Unit_ChronoCommon_ChunkConsumerService**, **Unit_ChronoPlayer_StoryChunkTransferAgent**, **Unit_ChronoPlayer_PlaybackServiceLifecycle**.
 
 ## Notes
 
 - **system/** and **synthetic_workload/** are not part of the CMake/CTest tree; run their scripts manually as needed.
+- Keeper-Grapher and HDF5ArchiveReadingAgent tests skip (exit 0) when no config path is provided; run manually with `--conf <path>` for full runs.
 - Some tests (e.g. extraction chain, chunk consumer, Thallium server/client) run long or require SIGTERM to stop; use timeouts or run in isolation as needed.

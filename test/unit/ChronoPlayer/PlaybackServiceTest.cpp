@@ -65,7 +65,7 @@ int main()
         std::cout << "started localEngine at " << localEngine->self() << std::endl;
 
 
-        chl::PlaybackService* playbackService =
+        playbackService =
                 chl::PlaybackService::CreatePlaybackService(*localEngine,
                                                             localServiceId.getProviderId(),
                                                             readingRequestQueue);

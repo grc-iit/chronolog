@@ -30,7 +30,8 @@ set_target_properties(transfer_agent_test PROPERTIES
     SKIP_BUILD_RPATH TRUE
 )
 
-add_test(NAME Unit_ChronoPlayer_TransferAgent COMMAND transfer_agent_test)
+add_test(NAME Unit_ChronoPlayer_StoryChunkTransferAgent COMMAND transfer_agent_test)
+set_tests_properties(Unit_ChronoPlayer_StoryChunkTransferAgent PROPERTIES DISABLED TRUE)
 chronolog_install_target(transfer_agent_test DESTINATION tests)
 
 #------------------------------------------------------------------------------
@@ -59,7 +60,8 @@ set_target_properties(playback_service_test PROPERTIES
     SKIP_BUILD_RPATH TRUE
 )
 
-add_test(NAME Unit_ChronoPlayer_PlaybackService COMMAND playback_service_test)
+add_test(NAME Unit_ChronoPlayer_PlaybackServiceLifecycle COMMAND playback_service_test)
+set_tests_properties(Unit_ChronoPlayer_PlaybackServiceLifecycle PROPERTIES DISABLED TRUE)
 chronolog_install_target(playback_service_test DESTINATION tests)
 
 #------------------------------------------------------------------------------
@@ -89,7 +91,7 @@ set_target_properties(hdf5_archive_reader_test PROPERTIES
     SKIP_BUILD_RPATH TRUE
 )
 
-add_test(NAME Unit_ChronoPlayer_HDF5ArchiveReader COMMAND hdf5_archive_reader_test)
+add_test(NAME Unit_ChronoPlayer_HDF5ArchiveReadingAgent COMMAND hdf5_archive_reader_test)
 chronolog_install_target(hdf5_archive_reader_test DESTINATION tests)
 
 #------------------------------------------------------------------------------
@@ -120,5 +122,5 @@ set_target_properties(fs_monitoring_test PROPERTIES
     SKIP_BUILD_RPATH TRUE
 )
 
-add_test(NAME Unit_ChronoPlayer_FSMonitoring COMMAND fs_monitoring_test)
+add_test(NAME Unit_ChronoPlayer_FileSystemMonitoring COMMAND fs_monitoring_test)
 chronolog_install_target(fs_monitoring_test DESTINATION tests)

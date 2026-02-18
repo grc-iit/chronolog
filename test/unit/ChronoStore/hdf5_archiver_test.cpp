@@ -146,27 +146,50 @@ std::map<uint64_t, chronolog::StoryChunk> testReadAllOperation(const std::string
  * @param argv[4]: minimum Event size
  * @param argv[5]: maximum Event size
  * @param argv[6]: standard deviation of Event size
+ * @param argv[7]: startTime
+ * @param argv[8]: endTime
+ * If fewer than 8 args are given, runs with default values (CTest-friendly minimal run).
  */
 int main(int argc, char* argv[])
 {
-    if(argc < 8)
+    std::random_device rd;
+    std::mt19937_64 rng(rd());
+    std::uniform_int_distribution<uint64_t> dist(0, UINT64_MAX);
+    uint64_t num_story_chunks;
+    uint64_t num_events_per_story_chunk;
+    uint64_t mean_event_size;
+    uint64_t min_event_size;
+    uint64_t max_event_size;
+    double stddev;
+    uint64_t start_time;
+    uint64_t end_time;
+
+    if(argc >= 8)
+    {
+        num_story_chunks = strtol(argv[1], nullptr, 10);
+        num_events_per_story_chunk = strtol(argv[2], nullptr, 10);
+        mean_event_size = strtol(argv[3], nullptr, 10);
+        min_event_size = strtol(argv[4], nullptr, 10);
+        max_event_size = strtol(argv[5], nullptr, 10);
+        stddev = strtod(argv[6], nullptr);
+        start_time = strtol(argv[7], nullptr, 10);
+        end_time = strtol(argv[8], nullptr, 10);
+    }
+    else
     {
         std::cout << "Usage: " << argv[0]
                   << " #StoryChunks #EventsInEachChunk meanEventSize minEventSize maxEventSize stddev"
                   << " startTime endTime" << std::endl;
-        return 1;
+        std::cout << "Running with default values (minimal CTest run)." << std::endl;
+        num_story_chunks = 2;
+        num_events_per_story_chunk = 5;
+        mean_event_size = 64;
+        min_event_size = 1;
+        max_event_size = 128;
+        stddev = 10.0;
+        start_time = 1000;
+        end_time = 10000;
     }
-    std::random_device rd;
-    std::mt19937_64 rng(rd());
-    std::uniform_int_distribution<uint64_t> dist(0, UINT64_MAX);
-    uint64_t num_story_chunks = strtol(argv[1], nullptr, 10);
-    uint64_t num_events_per_story_chunk = strtol(argv[2], nullptr, 10);
-    uint64_t mean_event_size = strtol(argv[3], nullptr, 10);
-    uint64_t min_event_size = strtol(argv[4], nullptr, 10);
-    uint64_t max_event_size = strtol(argv[5], nullptr, 10);
-    double stddev = strtod(argv[6], nullptr);
-    uint64_t start_time = strtol(argv[7], nullptr, 10);
-    uint64_t end_time = strtol(argv[8], nullptr, 10);
     std::string chronicle_name = CHRONICLE_NAME;
     std::string story_name = STORY_NAME;
     uint64_t story_id = dist(rng);

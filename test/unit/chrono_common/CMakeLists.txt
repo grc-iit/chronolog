@@ -27,7 +27,8 @@ set_target_properties(extraction_chain_test PROPERTIES
     SKIP_BUILD_RPATH TRUE
 )
 
-add_test(NAME Unit_chrono_common_ExtractionChain COMMAND extraction_chain_test)
+add_test(NAME Unit_ChronoCommon_ExtractionChain COMMAND extraction_chain_test)
+set_tests_properties(Unit_ChronoCommon_ExtractionChain PROPERTIES DISABLED TRUE)
 chronolog_install_target(extraction_chain_test DESTINATION tests)
 
 #------------------------------------------------------------------------------
@@ -53,5 +54,6 @@ set_target_properties(chunk_consumer_service_test PROPERTIES
     SKIP_BUILD_RPATH TRUE
 )
 
-add_test(NAME Unit_chrono_common_ChunkConsumerService COMMAND chunk_consumer_service_test)
+add_test(NAME Unit_ChronoCommon_ChunkConsumerService COMMAND chunk_consumer_service_test)
+set_tests_properties(Unit_ChronoCommon_ChunkConsumerService PROPERTIES DISABLED TRUE)
 chronolog_install_target(chunk_consumer_service_test DESTINATION tests)

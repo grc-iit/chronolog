@@ -9,10 +9,10 @@ cmake_minimum_required(VERSION 3.25)
 # files but missing libs/headers (partial install state).
 #
 # Test layout:
-# 1. PackageDiscovery_CMake / PackageDiscovery_pkgconfig
+# 1. PackageDiscovery_CMakeFindPackage / PackageDiscovery_PkgConfig
 #    - Built and linked against the BUILD TREE (chronolog_client target).
 #    - Always runnable; verify that the client library works.
-# 2. PackageDiscovery_Installed_CMake / PackageDiscovery_Installed_pkgconfig
+# 2. PackageDiscovery_Installed_CMakeFindPackage / PackageDiscovery_Installed_PkgConfig
 #    - Run at CTest time via CMake -P scripts.
 #    - Validate find_package(Chronolog) / pkg-config against the INSTALLED
 #      prefix only when required artifacts exist (config + library + headers).
@@ -33,7 +33,7 @@ target_include_directories(test_cmake_discovery PRIVATE
 )
 set_target_properties(test_cmake_discovery PROPERTIES OUTPUT_NAME chronolog-test-discovery-cmake)
 
-add_test(NAME PackageDiscovery_CMake COMMAND test_cmake_discovery)
+add_test(NAME PackageDiscovery_CMakeFindPackage COMMAND test_cmake_discovery)
 
 # Install discovery test executables to tests/ (for optional install-tree runs)
 chronolog_install_target(test_cmake_discovery DESTINATION tests)
@@ -56,7 +56,7 @@ target_include_directories(test_pkgconfig_discovery PRIVATE ${JSON-C_INCLUDE_DIR
 target_link_directories(test_pkgconfig_discovery PRIVATE ${JSON-C_LIBRARY_DIRS})
 target_link_libraries(test_pkgconfig_discovery PRIVATE ${JSON-C_LIBRARIES})
 
-add_test(NAME PackageDiscovery_pkgconfig COMMAND test_pkgconfig_discovery)
+add_test(NAME PackageDiscovery_PkgConfig COMMAND test_pkgconfig_discovery)
 
 # Install discovery test executables to tests/
 chronolog_install_target(test_pkgconfig_discovery DESTINATION tests)
@@ -81,7 +81,7 @@ endif()
 # Note: If spdlog was found via CMAKE_PREFIX_PATH only (no spdlog_DIR), EXTRA_CMAKE_PREFIX_PATH must contain that path.
 
 add_test(
-    NAME PackageDiscovery_Installed_CMake
+    NAME PackageDiscovery_Installed_CMakeFindPackage
     COMMAND ${CMAKE_COMMAND}
         -DCHRONOLOG_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
         -DCMAKE_EXECUTABLE=${CMAKE_COMMAND}
@@ -91,12 +91,12 @@ add_test(
         -P ${_discovery_script_dir}/RunPackageDiscoveryCMake.cmake
     WORKING_DIRECTORY ${_discovery_binary_dir}
 )
-set_tests_properties(PackageDiscovery_Installed_CMake PROPERTIES
+set_tests_properties(PackageDiscovery_Installed_CMakeFindPackage PROPERTIES
     ENVIRONMENT "PKG_CONFIG_PATH=$ENV{PKG_CONFIG_PATH}"
 )
 
 add_test(
-    NAME PackageDiscovery_Installed_pkgconfig
+    NAME PackageDiscovery_Installed_PkgConfig
     COMMAND ${CMAKE_COMMAND}
         -DCHRONOLOG_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
         -DCMAKE_EXECUTABLE=${CMAKE_COMMAND}
@@ -105,7 +105,7 @@ add_test(
         -P ${_discovery_script_dir}/RunPackageDiscoveryPkgConfig.cmake
     WORKING_DIRECTORY ${_discovery_binary_dir}
 )
-set_tests_properties(PackageDiscovery_Installed_pkgconfig PROPERTIES
+set_tests_properties(PackageDiscovery_Installed_PkgConfig PROPERTIES
     ENVIRONMENT "PKG_CONFIG_PATH=$ENV{PKG_CONFIG_PATH}"
 )
 

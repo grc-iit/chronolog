@@ -36,7 +36,7 @@ set_target_properties(hdf5_archiver_test PROPERTIES
     OUTPUT_NAME chronolog-test-store-hdf5-archiver
 )
 
-add_test(NAME Unit_ChronoStore_HDF5Archiver COMMAND hdf5_archiver_test)
+add_test(NAME Unit_ChronoStore_HDF5ArchiverWriteReadRoundtrip COMMAND hdf5_archiver_test)
 chronolog_install_target(hdf5_archiver_test DESTINATION tests)
 
 #------------------------------------------------------------------------------
@@ -62,5 +62,5 @@ set_target_properties(cmp_vlen_bytes_vs_blob_map PROPERTIES
     OUTPUT_NAME chronolog-test-store-vlen-bytes-vs-blob-map
 )
 
-add_test(NAME Unit_ChronoStore_CmpVlenBytesVsBlobMap COMMAND cmp_vlen_bytes_vs_blob_map)
+add_test(NAME Unit_ChronoStore_VlenBytesVsBlobMapComparison COMMAND cmp_vlen_bytes_vs_blob_map)
 chronolog_install_target(cmp_vlen_bytes_vs_blob_map DESTINATION tests)
