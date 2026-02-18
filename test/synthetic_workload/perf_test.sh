@@ -12,14 +12,15 @@ BARRIER=true
 
 NUM_NODES=4
 NUM_PROCS=4
-BUILD_TYPE=Release
-CHRONOLOG_INSTALL_DIR=/home/${USER}/chronolog/${BUILD_TYPE}
-CHRONOLOG_BIN_DIR=${CHRONOLOG_INSTALL_DIR}/bin
-CHRONOLOG_LIB_DIR=${CHRONOLOG_INSTALL_DIR}/lib
-HOST_FILE=${CHRONOLOG_INSTALL_DIR}/conf/hosts_client
-CLIENT_ADMIN_BIN=${CHRONOLOG_BIN_DIR}/chrono-client-admin
+# Standard install layout (matches tools/deploy/ChronoLog/install.sh: INSTALL_DIR/chronolog)
+INSTALL_DIR="${INSTALL_DIR:-$HOME/chronolog-install}"
+CHRONOLOG_WORK_DIR="${INSTALL_DIR}/chronolog"
+CHRONOLOG_BIN_DIR="${CHRONOLOG_WORK_DIR}/bin"
+CHRONOLOG_LIB_DIR="${CHRONOLOG_WORK_DIR}/lib"
+HOST_FILE="${CHRONOLOG_WORK_DIR}/conf/hosts_client"
+CLIENT_ADMIN_BIN="${CHRONOLOG_BIN_DIR}/chrono-client-admin"
 MPIEXEC_BIN="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../.spack-env/view/bin/mpiexec"
-CONF_FILE=/home/${USER}/chronolog/${BUILD_TYPE}/conf/default-chrono-conf.json
+CONF_FILE="${CHRONOLOG_WORK_DIR}/conf/default-chrono-conf.json"
 OUTPUT_LOG_FILE=./perf_test.log
 
 [[ -f ${HOST_FILE} ]] || { echo "Host file not found: ${HOST_FILE}"; exit 1; }

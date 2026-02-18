@@ -25,6 +25,8 @@ target_link_libraries(extract_test
         thallium
 )
 
+add_test(NAME Integration_KeeperGrapher_Extract COMMAND extract_test)
+
 # Ingest Test
 add_executable(ingest_test)
 
@@ -43,6 +45,8 @@ target_link_libraries(ingest_test
         chrono_common
         thallium
 )
+
+add_test(NAME Integration_KeeperGrapher_Ingest COMMAND ingest_test)
 
 #------------------------------------------------------------------------------
 # Custom Target and Configuration
