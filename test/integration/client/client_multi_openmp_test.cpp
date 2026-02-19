@@ -107,15 +107,16 @@ int main(int argc, char** argv)
             ret = client.DestroyStory(chronicle_name, story_name);
             LOG_INFO("[ClientLibMultiOpenMPTest] Thread {} destroying story: {}", i, story_name);
 
-            assert(ret == chronolog::CL_ERR_ACQUIRED || ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NO_KEEPERS);
+            assert(ret == chronolog::CL_ERR_ACQUIRED || ret == chronolog::CL_SUCCESS ||
+                   ret == chronolog::CL_ERR_NO_KEEPERS);
             ret = client.ReleaseStory(chronicle_name, story_name);
             assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NO_KEEPERS);
             ret = client.DestroyStory(chronicle_name, story_name);
-            assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST || ret == chronolog::CL_ERR_ACQUIRED ||
-                   ret == chronolog::CL_ERR_NO_KEEPERS);
+            assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST ||
+                   ret == chronolog::CL_ERR_ACQUIRED || ret == chronolog::CL_ERR_NO_KEEPERS);
             ret = client.DestroyChronicle(chronicle_name);
-            assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST || ret == chronolog::CL_ERR_ACQUIRED ||
-                   ret == chronolog::CL_ERR_NO_KEEPERS);
+            assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST ||
+                   ret == chronolog::CL_ERR_ACQUIRED || ret == chronolog::CL_ERR_NO_KEEPERS);
             LOG_INFO("[ClientLibMultiOpenMPTest] Thread {} destroying chronicle: {}", i, chronicle_name);
 
             ret = client.Disconnect();

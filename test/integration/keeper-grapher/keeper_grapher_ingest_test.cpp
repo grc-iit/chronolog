@@ -117,7 +117,8 @@ int main(int argc, char** argv)
     conf_file_path = parse_conf_path_arg(argc, argv);
     if(conf_file_path.empty())
     {
-        std::cout << "Integration_KeeperGrapher_StoryChunkIngest: no config path provided; skipping (run manually with --conf <path>)."
+        std::cout << "Integration_KeeperGrapher_StoryChunkIngest: no config path provided; skipping (run manually with "
+                     "--conf <path>)."
                   << std::endl;
         return 0;
     }

@@ -29,8 +29,8 @@ static std::string getChronicleRootDir()
             p += '/';
         return p;
     }
-    std::filesystem::path tmp =
-        std::filesystem::temp_directory_path() / ("chronolog_hdf5_archiver_test_" + std::to_string(static_cast<long>(getpid())));
+    std::filesystem::path tmp = std::filesystem::temp_directory_path() /
+                                ("chronolog_hdf5_archiver_test_" + std::to_string(static_cast<long>(getpid())));
     return tmp.string() + "/";
 }
 
@@ -128,9 +128,8 @@ void testRangeReadOperation(const std::string& chronicle_root_dir,
     sr.readStoryRange(chronicle_name, story_id, start_time, end_time, story_chunk_map);
 }
 
-std::map<uint64_t, chronolog::StoryChunk> testReadAllOperation(const std::string& chronicle_root_dir,
-                                                               uint64_t story_id,
-                                                               std::string& chronicle_name)
+std::map<uint64_t, chronolog::StoryChunk>
+testReadAllOperation(const std::string& chronicle_root_dir, uint64_t story_id, std::string& chronicle_name)
 {
     std::map<uint64_t, chronolog::StoryChunk> story_chunk_map;
     std::string root_dir(chronicle_root_dir);
@@ -254,7 +253,7 @@ int main(int argc, char* argv[])
     // Test read operation
     std::cout << "Testing read operation..." << std::endl;
     std::map<uint64_t, chronolog::StoryChunk> story_chunk_map2 =
-        testReadAllOperation(chronicle_root_dir, story_id, chronicle_name);
+            testReadAllOperation(chronicle_root_dir, story_id, chronicle_name);
 
     // Validate read all results
     std::cout << "Validating read all results ..." << std::endl;
@@ -283,11 +282,11 @@ int main(int argc, char* argv[])
     uint64_t range_end_time = range_start_time + dist(rng) % (end_time - range_start_time);
     std::map<uint64_t, chronolog::StoryChunk> story_chunk_map3;
     testRangeReadOperation(chronicle_root_dir,
-                          chronicle_name,
-                          story_id,
-                          range_start_time,
-                          range_end_time,
-                          story_chunk_map3);
+                           chronicle_name,
+                           story_id,
+                           range_start_time,
+                           range_end_time,
+                           story_chunk_map3);
 
     // Generate reference range read results to validate
     std::map<uint64_t, chronolog::StoryChunk> story_chunk_map4;

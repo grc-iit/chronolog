@@ -26,7 +26,8 @@ void thread_body(struct thread_arg* t)
     int ret = client.Connect();
     if(ret != chronolog::CL_SUCCESS)
     {
-        LOG_ERROR("[ClientLibMultiPThreadTest] Thread (ID: {}) Connect failed: {}", t->tid,
+        LOG_ERROR("[ClientLibMultiPThreadTest] Thread (ID: {}) Connect failed: {}",
+                  t->tid,
                   chronolog::to_string_client(ret));
         return;
     }
@@ -104,7 +105,8 @@ void thread_body(struct thread_arg* t)
              chronolog::to_string_client(ret2));
 
     ret2 = client.Disconnect();
-    LOG_INFO("[ClientLibMultiPThreadTest] Thread (ID: {}) - Disconnect result: {}", t->tid,
+    LOG_INFO("[ClientLibMultiPThreadTest] Thread (ID: {}) - Disconnect result: {}",
+             t->tid,
              chronolog::to_string_client(ret2));
     LOG_INFO("[ClientLibMultiPThreadTest] Thread (ID: {}) - Execution completed.", t->tid);
 }

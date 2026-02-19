@@ -25,7 +25,8 @@ int main(int argc, char** argv)
     if(argc < 5)
     {
         std::cout << "Communication_Thallium_ClientSendRecvOrRdma: no server address or args; skipping "
-                     "(run manually with: <address> <sendrecv|rdma> <msg_size> [repetition])." << std::endl;
+                     "(run manually with: <address> <sendrecv|rdma> <msg_size> [repetition])."
+                  << std::endl;
         return 0;
     }
     std::string server_address = argv[1];

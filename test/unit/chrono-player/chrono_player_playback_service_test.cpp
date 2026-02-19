@@ -65,10 +65,9 @@ int main()
         std::cout << "started localEngine at " << localEngine->self() << std::endl;
 
 
-        playbackService =
-                chl::PlaybackService::CreatePlaybackService(*localEngine,
-                                                            localServiceId.getProviderId(),
-                                                            readingRequestQueue);
+        playbackService = chl::PlaybackService::CreatePlaybackService(*localEngine,
+                                                                      localServiceId.getProviderId(),
+                                                                      readingRequestQueue);
     }
     catch(tl::exception const&)
     {
