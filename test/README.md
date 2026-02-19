@@ -21,7 +21,7 @@ Kafka deploy/validation scripts live under `tools/deploy/others/Kafka/` (e.g. `r
   `ctest` or `ctest -R Unit_` for unit tests, `ctest -R Integration_` for integration (excluding MANUAL), `ctest -R Integration_Client_` for client integration (MANUAL), etc. Use `ctest -N` to list all tests including MANUAL and DISABLED.
 
 - **What runs where:**  
-  (1) **CTest** — unit, integration (keeper-grapher, chronokvs, package-discovery), communication, overhead (on x86). (2) **Client integration** — all Client executables are registered as **MANUAL** CTest (`Integration_Client_*`); run with `ctest -R Integration_Client_ -M Manual` when a ChronoVisor/Keeper is available, or run the binaries by hand. (3) **system/** and **synthetic_workload/** — not in CTest; run their scripts manually (see Manual tests).
+  (1) **CTest** — unit, integration (keeper-grapher, chronokvs, package-discovery), communication, overhead (on x86). (2) **Client integration** — all Client executables are registered as **MANUAL** CTest (`Integration_Client_*`). **All `Integration_Client_*` tests require a running ChronoVisor/Keeper** and are excluded from default `ctest`; run them with `ctest -R Integration_Client_ -M Manual` when the server is available, or run the binaries by hand with the correct config (e.g. `--conf <path>`). (3) **system/** and **synthetic_workload/** — not in CTest; run their scripts manually (see Manual tests).
 
 - **Install layout:**  
   Test executables are installed under `<prefix>/chronolog/tests/` **only when `CHRONOLOG_INSTALL_TESTS` is ON** (default OFF). When ON, all installable tests are installed: unit (chrono-common, chrono-store, chrono-player, chronokvs), package-discovery, chronokvs integration, and client integration (`chronolog-test-client-*`). Communication, overhead, and keeper-grapher tests are never installed (build-tree only). See Installed test executables below.
@@ -114,7 +114,7 @@ All CTest names follow the pattern **`<Type>_<Component>_<WhatIsTested>`**:
 
 Examples: `Unit_ChronoCommon_StoryChunk_TestConstructors.testEmptyConstructor`, `Integration_ChronoKVS_PluginIntegration`, `PackageDiscovery_CMakeFindPackage`. Filter with `ctest -R Unit_`, `ctest -R Integration_`, or `ctest -R PackageDiscovery`.
 
-Some tests are **DISABLED** (Margo/service tests: extraction chain, chunk consumer, transfer agent, playback service) or **MANUAL** (Thallium client, all Client integration tests `Integration_Client_*`, `Overhead_Clock_Script`, `Communication_Thallium_ProtocolScript`); run them explicitly or with `ctest -N` to list.
+Some tests are **DISABLED** (Margo/service tests: extraction chain, chunk consumer, transfer agent, playback service) or **MANUAL** (Thallium client, all Client integration tests `Integration_Client_*`, `Integration_ChronoKVS_PluginIntegration`, `Overhead_Clock_Script`, `Communication_Thallium_ProtocolScript`); run them explicitly or with `ctest -N` to list.
 
 ### Why are some tests disabled?
 
@@ -130,6 +130,7 @@ These are not run by default CTest; run them by hand when the right environment 
 - **overhead/clock/clock_cset_shield_test.sh** — Script for clock tests with cset shield (requires root/cgroup; not cgroupv2). Run from the build dir: `test/overhead/clock/clock_cset_shield_test.sh <path_to_clock_test_binary>` (e.g. the built `high_res_clock_test`). Registered as MANUAL CTest `Overhead_Clock_Script`.
 - **communication/thallium_protocol_test.sh** — Thallium multi-node test for HPC (SLURM/squeue, ssh). Run with `-j`, `-s`, `-c`, `-n` as needed. Registered as MANUAL CTest `Communication_Thallium_ProtocolScript`.
 - **overhead/kmod/** — Optional kernel module (`kmod_rdtsc_rdtscp`); not part of CTest. Build and load manually if needed.
+- **Integration_ChronoKVS_PluginIntegration** — Requires a running ChronoLog stack and runs a long data-propagation wait; use `ctest -R Integration_ChronoKVS_PluginIntegration -M Manual` when the stack is available. If run without a server, the test exits 0 (skipped).
 
 ## Notes
 

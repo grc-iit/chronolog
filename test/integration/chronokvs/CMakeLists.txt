@@ -38,6 +38,7 @@ add_test(NAME Integration_ChronoKVS_PluginIntegration
 )
 
 set_tests_properties(Integration_ChronoKVS_PluginIntegration PROPERTIES
+    MANUAL TRUE
     TIMEOUT 300
     LABELS "integration;chronokvs"
 )
