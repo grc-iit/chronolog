@@ -5,7 +5,10 @@ set -e
 
 # Git runs hooks with a minimal PATH (often without ~/.local/bin, etc.).
 # Prepend common locations so clang-format is found when installed there.
-export PATH="${HOME}/.local/bin:/usr/local/bin:/usr/bin:${PATH}"
+# Only change PATH when this script is run (not sourced), to avoid modifying the parent shell.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  export PATH="${HOME}/.local/bin:/usr/local/bin:/usr/bin:${PATH}"
+fi
 
 # Get the root directory of the Git repository
 REPO_ROOT=$(git rev-parse --show-toplevel)
