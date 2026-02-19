@@ -3,15 +3,22 @@
 # Exit immediately if a command exits with a non-zero status
 set -e
 
+# Git runs hooks with a minimal PATH (often without ~/.local/bin, etc.).
+# Prepend common locations so clang-format is found when installed there.
+export PATH="${HOME}/.local/bin:/usr/local/bin:/usr/bin:${PATH}"
+
 # Get the root directory of the Git repository
 REPO_ROOT=$(git rev-parse --show-toplevel)
 
 # Adjust path to clang-format config if needed
 FORMAT_STYLE=file:"$REPO_ROOT/CodeStyleFiles/ChronoLog.clang-format"
 
-# Check if clang-format is installed
-if ! command -v clang-format &> /dev/null; then
-  echo "Error: clang-format is not installed or not in PATH."
+# Use clang-format-18 by default; override with CLANG_FORMAT if needed
+CLANG_FORMAT_CMD="${CLANG_FORMAT:-clang-format-18}"
+if ! command -v "$CLANG_FORMAT_CMD" &> /dev/null; then
+  echo "Error: clang-format-18 is not installed or not in PATH."
+  echo "If it is installed, ensure it is in one of: $HOME/.local/bin, /usr/local/bin, /usr/bin"
+  echo "Or set CLANG_FORMAT to the binary name or path (e.g. export CLANG_FORMAT=clang-format-18)."
   exit 1
 fi
 
@@ -32,7 +39,7 @@ fi
 # Format and re-stage each file
 for file in "${FILES[@]}"; do
   if [ -f "$file" ]; then
-    clang-format -style="$FORMAT_STYLE" -i "$file"
+    "$CLANG_FORMAT_CMD" -style="$FORMAT_STYLE" -i "$file"
     git add "$file"
   fi
 done
