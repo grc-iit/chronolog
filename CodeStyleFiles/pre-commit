@@ -9,10 +9,31 @@ REPO_ROOT=$(git rev-parse --show-toplevel)
 # Adjust path to clang-format config if needed
 FORMAT_STYLE=file:"$REPO_ROOT/CodeStyleFiles/ChronoLog.clang-format"
 
-# Check if clang-format is installed
-if ! command -v clang-format &> /dev/null; then
-  echo "Error: clang-format is not installed or not in PATH."
-  exit 1
+# Resolve clang-format: search custom paths and PATH without modifying parent shell
+CLANG_FORMAT_NAME="${CLANG_FORMAT:-clang-format-18}"
+CLANG_FORMAT_CMD=
+if [[ -n "${CLANG_FORMAT:-}" && "$CLANG_FORMAT" == /* ]] && [ -x "$CLANG_FORMAT" ]; then
+  CLANG_FORMAT_CMD="$CLANG_FORMAT"
+else
+  SEARCH_DIRS=( "${HOME}/.local/bin" "/usr/local/bin" "/usr/bin" )
+  for d in "${SEARCH_DIRS[@]}"; do
+    if [ -x "$d/$CLANG_FORMAT_NAME" ]; then
+      CLANG_FORMAT_CMD="$d/$CLANG_FORMAT_NAME"
+      break
+    fi
+  done
+  if [[ -z "$CLANG_FORMAT_CMD" ]]; then
+    found=$(command -v "$CLANG_FORMAT_NAME" 2>/dev/null) || true
+    if [[ -n "$found" ]]; then
+      CLANG_FORMAT_CMD=$found
+    fi
+  fi
+  if [[ -z "$CLANG_FORMAT_CMD" ]]; then
+    echo "Error: clang-format-18 is not installed or not in PATH."
+    echo "If it is installed, ensure it is in one of: $HOME/.local/bin, /usr/local/bin, /usr/bin"
+    echo "Or set CLANG_FORMAT to the binary name or path (e.g. export CLANG_FORMAT=clang-format-18)."
+    exit 1
+  fi
 fi
 
 # Check if the clang-format configuration file exists
@@ -32,7 +53,7 @@ fi
 # Format and re-stage each file
 for file in "${FILES[@]}"; do
   if [ -f "$file" ]; then
-    clang-format -style="$FORMAT_STYLE" -i "$file"
+    "$CLANG_FORMAT_CMD" -style="$FORMAT_STYLE" -i "$file"
     git add "$file"
   fi
 done
