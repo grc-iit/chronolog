@@ -1,13 +1,106 @@
-build/
+# ChronoLog — ignore build, IDE, and local artifacts
 
-# clion
+# --------------------------
+# Build
+# --------------------------
+build/
+compile_commands.json
+
+# --------------------------
+# IDEs
+# --------------------------
+# CLion
 .idea/
 cmake-build-*/
 
-# qt creator
+# Qt Creator
 CMakeLists.txt.user
 
-# spack
+# --------------------------
+# Spack
+# --------------------------
 .spack-env/
 spack.lock
 **/spack.lock
+
+# --------------------------
+# Python
+# --------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+.venv/
+*.egg-info/
+*.egg
+dist/
+
+# --------------------------
+# Testing / coverage
+# --------------------------
+Testing/
+DartConfiguration.tcl
+*.gcno
+*.gcda
+*.gcov
+lcov.info
+coverage/
+
+# --------------------------
+# AI / agent tooling (local)
+# --------------------------
+.cursor/
+.claude/
+.aider/
+.aider*
+.windsurf/
+.codeium/
+.copilot/
+.github/copilot/
+.continue/          # Continue.dev
+.kite/
+.tabnine/
+.llm/
+.ai/
+.prompts/
+
+# Some agents/editors create these
+.mcp/
+.agent/
+.agents/
+.sessions/
+.chat/
+.conversations/
+
+# --------------------------
+# Local dev (never commit)
+# --------------------------
+.local/
+.localdev/
+.dev/
+.local-dev/
+local-dev/
+chronolog-install/
+tmp/
+tmp*/
+.cache/
+logs/
+*.log
+
+# --------------------------
+# Backup / patch
+# --------------------------
+*.bak
+*.orig
+*.rej
+
+# --------------------------
+# OS / editor noise
+# --------------------------
+.DS_Store
+Thumbs.db
+.vscode/
+*.swp
+*.swo
+*~
