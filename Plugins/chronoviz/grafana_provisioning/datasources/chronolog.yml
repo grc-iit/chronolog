@@ -13,7 +13,7 @@ datasources:
     isDefault: false
     jsonData:
       backendUrl: http://localhost:8080
-      defaultChronicleName: kfeng-EVO-X2
-      defaultStoryName: cpu_usage
+      defaultChronicleName: CHRONICLE_NAME
+      defaultStoryName: STORY_NAME
     editable: true
 
