@@ -292,6 +292,7 @@ logging.basicConfig(level=logging.DEBUG)
 - Set `LD_LIBRARY_PATH` to include `$CHRONOLOG_LIB_PATH` so the C++ client shared library can be loaded
 - Optionally set `PYTHONPATH` to include the library path (the service also adds `CHRONOLOG_LIB_PATH` to `sys.path` when set)
 - Verify the Python bindings are built: `ls $CHRONOLOG_LIB_PATH/py_chronolog_client*.so`
+- Verify the Python bindings are built with correct Python version: it should be something like `py_chronolog_client.cpython-311-x86_64-linux-gnu.so` where 311 indicates it's built with Python 3.11
 
 ### Connection Failed
 
@@ -305,6 +306,12 @@ logging.basicConfig(level=logging.DEBUG)
 - Check time range is correct (nanoseconds since epoch)
 - Ensure data exists in the time range
 - Verify story is acquired before querying (or use `/query` which handles this automatically)
+
+### Config File Not Taking Effect
+
+- Verify config file path
+- Check debug log of `start_grafana_dev.sh`
+- Make sure config file exists in the grafana backend container, not the host
 
 ### Segfaults in Tests
 
