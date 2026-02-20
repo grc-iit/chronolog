@@ -12,20 +12,19 @@ This plugin enables Grafana to query and visualize data from ChronoLog chronicle
 ## Architecture
 
 ```
-┌─────────────────┐     ┌─────────────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│  Grafana UI     │────▶│  ChronoLog Plugin   │────▶│  Python Backend  │────▶│  ChronoLog      │
-│  (Dashboard)    │     │  (TypeScript)       │     │  (FastAPI)       │     │  Service        │
-└─────────────────┘     └─────────────────────┘     └──────────────────┘     └─────────────────┘
-                               │                           │
-                               │                           │ Uses py_chronolog_client
-                               │                           │ (pybind11 bindings)
-                               │                           ▼
-                               │                    ┌──────────────────┐
-                               │                    │  C++ Client Lib  │
-                               │                    │  (libchronolog   │
-                               └───────HTTP─────────│   _client.so)    │
-                                                    └──────────────────┘
+┌──────────────┐     ┌───────────────────┐            ┌─────────────────┐  py_chronolog_client  ┌─────────────────┐     ┌──────────────┐
+│  Grafana UI  │────▶│  ChronoLog Plugin │───HTTP────▶│ Python Backend  │────(pybind11)────────▶│  C++ Client Lib │────▶│  ChronoLog   │
+│  (Dashboard) │     │ (TypeScript/React)│  REST API  │ (FastAPI)       │                       │ (libchronolog   │ RPC │  Service     │
+└──────────────┘     └───────────────────┘            └─────────────────┘                       │  _client.so)    │     └──────────────┘
+                                                                                                └─────────────────┘
 ```
+
+### Data Flow
+
+1. User selects a chronicle, story, and time range in the Grafana dashboard
+2. The **TypeScript plugin** converts the time range from milliseconds to nanoseconds and sends a `POST /query` request to the backend
+3. The **Python backend** acquires the story handle, calls `ReplayStory()` via the C++ client, then releases the handle
+4. Events are returned as JSON and transformed into Grafana DataFrames (Time, Log, Client ID, Index fields)
 
 ## Prerequisites
 
@@ -109,14 +108,23 @@ The Python backend can be configured via environment variables:
 | `CHRONOLOG_QUERY_PORT` | `5557` | Query service port |
 | `CHRONOLOG_QUERY_PROVIDER_ID` | `57` | Query provider ID |
 | `CHRONOLOG_AUTO_CONNECT` | `false` | Auto-connect on startup |
+| `CHRONOLOG_CONF_FILE` | - | Path to client config JSON file (overrides individual env vars) |
+| `CHRONOLOG_INSTALL_PATH` | `~/chronolog-install` | Base install path used to locate the default config file |
 
 ### Grafana Data Source Configuration
 
 1. Go to **Configuration > Data Sources** in Grafana
 2. Click **Add data source**
 3. Search for **ChronoLog**
-4. Configure the **Backend URL** (e.g., `http://localhost:8080`)
-5. Click **Save & Test**
+4. Configure the fields below and click **Save & Test**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| Backend URL | Yes | URL of the Python backend service (e.g., `http://localhost:8080`) |
+| Client Config File | No | Path to ChronoLog client config JSON on the backend host. Leave empty to use the backend's default config. |
+| Default Chronicle | No | Default chronicle name pre-filled in new queries |
+| Default Story | No | Default story name pre-filled in new queries |
+| API Key | No | Optional API key for backend authentication (stored securely) |
 
 ## Usage
 
@@ -153,18 +161,21 @@ You can use template variables for dynamic queries:
 - **List chronicles**: Query `chronicles` or `*`
 - **List stories**: Query `stories(chronicle_name)`
 
+> **Note**: Template variables depend on the `/chronicles`, `/stories`, and `/search` backend endpoints, which are not yet fully implemented. The plugin handles this gracefully and will return empty results until these endpoints are available.
+
 ## API Endpoints
 
 The Python backend exposes the following endpoints:
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Health check |
+| Endpoint | Method | Description | Status |
+|----------|--------|-------------|--------|
+| `/` | GET | Service info (used by Grafana health checks) |
+| `/health` | GET | Health check and connection status |
 | `/connect` | POST | Connect to ChronoLog service |
 | `/disconnect` | POST | Disconnect from service |
-| `/chronicles` | GET | List all chronicles |
-| `/stories/{chronicle}` | GET | List stories in a chronicle |
-| `/query` | POST | Query events from a story |
+| `/query` | POST | Query events from a story (auto-acquires/releases) |
+| `/acquire` | POST | Manually acquire a story handle |
+| `/release` | POST | Manually release a story handle |
 
 ### Query Example
 
