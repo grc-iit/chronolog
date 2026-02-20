@@ -23,8 +23,7 @@
         "url": "https://github.com/ChronoLog"
       }
     ],
-    "version": "1.0.0",
-    "updated": "2024-01-01"
+    "version": "1.0.0"
   },
   "dependencies": {
     "grafanaDependency": ">=9.0.0",
