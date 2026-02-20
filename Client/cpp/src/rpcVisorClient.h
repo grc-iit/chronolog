@@ -189,7 +189,8 @@ public:
         }
         catch(std::exception const& e)
         {
-            LOG_ERROR("[RPCVisorClient] Failed to acquire story {} from chronicle {}. Non-Thallium exception encountered.",
+            LOG_ERROR("[RPCVisorClient] Failed to acquire story {} from chronicle {}. Non-Thallium exception "
+                      "encountered.",
                       story_name.c_str(),
                       chronicle_name.c_str());
         }
