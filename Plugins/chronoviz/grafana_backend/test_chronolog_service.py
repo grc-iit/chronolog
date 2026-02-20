@@ -141,7 +141,7 @@ class TestChronoLogService:
             try:
                 # Try to disconnect synchronously
                 chronolog_service.client.Disconnect()
-            except:
+            except Exception:
                 pass
             finally:
                 # Explicitly set to None and force garbage collection
