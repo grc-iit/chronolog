@@ -1,6 +1,6 @@
 # ChronoLog Tests
 
-All ChronoLog tests live under this `test/` directory (there is no other test tree; legacy `ChronoStore/test/` has been removed). Tests are built when `CHRONOLOG_BUILD_TESTING` is ON (default) and registered with CTest.
+All ChronoLog tests live under this `test/` directory (there is no other test tree; legacy `ChronoStore/test/` has been removed). Tests are built only when `CHRONOLOG_BUILD_TESTING` is ON (default) **and** `CMAKE_BUILD_TYPE` is `Debug`; they are then registered with CTest. Release builds do not include the test tree, so no test executables are built or installed in Release (the installation folder stays free of tests). To run tests, configure with `-DCMAKE_BUILD_TYPE=Debug`.
 
 ## Layout
 
@@ -16,6 +16,8 @@ All ChronoLog tests live under this `test/` directory (there is no other test tr
 Kafka deploy/validation scripts live under `tools/deploy/others/Kafka/` (e.g. `read-write-test.sh`, `end-to-end-lat-test.sh`) and are not part of the CTest tree.
 
 ## Running tests
+
+Tests are only built when `CMAKE_BUILD_TYPE=Debug`; use a Debug build directory to run CTest.
 
 - **From build dir:**  
   `ctest` or `ctest -R Unit_` for unit tests, `ctest -R Integration_` for integration (excluding MANUAL), `ctest -R Integration_Client_` for client integration (MANUAL), etc. Use `ctest -N` to list all tests including MANUAL and DISABLED.

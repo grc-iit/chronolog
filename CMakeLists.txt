@@ -134,7 +134,7 @@ option(BUILD_SHARED_LIBS "Build with shared libraries." ON)
 option(CHRONOLOG_ENABLE_COVERAGE "Enable code coverage." OFF)
 option(CHRONOLOG_USE_ADDRESS_SANITIZER "Enable -fsanitize=address in Debug builds" ON)
 option(CHRONOLOG_USE_THREAD_SANITIZER "Enable -fsanitize=thread in Debug builds" OFF)
-option(CHRONOLOG_BUILD_TESTING "Build the testing tree." ON)
+option(CHRONOLOG_BUILD_TESTING "Build the testing tree (Debug mode only)." ON)
 option(CHRONOLOG_INSTALL_TESTS "Install test executables to chronolog/tests/ (unit, integration, client)." OFF)
 option(CHRONOLOG_ENABLE_DOXYGEN "Enable Doxygen documentation generation." OFF)
 option(CHRONOLOG_WITH_STREAMING "Build to stream to Grafana through InfluxDB" ON)
@@ -222,10 +222,15 @@ add_custom_target(lint COMMAND cpplint --recursive
     ${CMAKE_CURRENT_SOURCE_DIR})
 
 #------------------------------------------------------------------------------
-# Testing
+# Testing (only in Debug mode; Release install has no test tree)
 #------------------------------------------------------------------------------
-if(CHRONOLOG_BUILD_TESTING)
-    message(STATUS "Tests enable")
+set(CHRONOLOG_BUILD_TESTS_NOW ${CHRONOLOG_BUILD_TESTING})
+if(CHRONOLOG_BUILD_TESTING AND NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(CHRONOLOG_BUILD_TESTS_NOW OFF)
+    message(STATUS "Tests are built only in Debug mode; skipping test tree in Release.")
+endif()
+if(CHRONOLOG_BUILD_TESTS_NOW)
+    message(STATUS "Tests enabled")
     include(CTest)
 endif()
 
@@ -242,7 +247,7 @@ add_subdirectory(ChronoStore)
 add_subdirectory(tools)
 add_subdirectory(Plugins)
 
-if(CHRONOLOG_BUILD_TESTING)
+if(CHRONOLOG_BUILD_TESTS_NOW)
     enable_testing()
     add_subdirectory(test)
 endif()
