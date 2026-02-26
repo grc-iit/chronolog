@@ -1,0 +1,56 @@
+# ChronoLog
+
+> A distributed shared tiered log store with time-based data ordering
+
+ChronoLog is an NSF-funded ($4M CSSI-2104013) open-source distributed log storage ecosystem that uses physical time as the ordering mechanism, eliminating centralized sequencers and enabling auto-tiered storage across multiple layers.
+
+## Quick Links
+
+- [Homepage](https://chronolog.dev)
+- [Architecture](https://chronolog.dev/architecture/)
+- [Use Cases & Plugins](https://chronolog.dev/use-cases/)
+- [Documentation](https://chronolog.dev/docs/)
+- [About & Team](https://chronolog.dev/about/)
+- [GitHub Repository](https://github.com/grc-iit/ChronoLog)
+- [Docker Hub](https://hub.docker.com/r/gnosisrc/chronolog)
+- [Community (Zulip)](https://chronolog.zulipchat.com/)
+- [Full AI-readable context](https://chronolog.dev/llms-full.txt)
+
+## Core Concepts
+
+- **Chronicle**: A named, time-ordered collection of events (analogous to a topic or stream)
+- **Event**: A key-value pair where the key is a ChronoTick (physical time offset)
+- **ChronoTick**: Monotonically increasing integer representing time distance from a chronicle's creation
+- **Story**: A sorted, immutable partition of a chronicle used for tiered data movement
+
+## Architecture Components
+
+- **ChronoVisor**: Central coordination, metadata, distributed clock synchronization
+- **ChronoKeeper**: Fast ingestion tier with RDMA, microsecond latency (hot tier)
+- **ChronoGrapher**: DAG pipeline for event collection, story building, flushing (warm tier)
+- **ChronoPlayer**: Cross-tier historical reads and replay
+- **ChronoStore**: Persistent archival in HDF5 containers (cold tier)
+
+## Plugin Ecosystem
+
+- SQL Query Plugin
+- Pub/Sub & Streaming
+- Key-Value Store (ChronoKVS)
+- AI Agent Memory via MCP Server
+- ML & Training Pipelines (TensorFlow integration)
+
+## Getting Started
+
+```bash
+docker pull gnosisrc/chronolog:latest
+docker run -it --rm --name chronolog gnosisrc/chronolog:latest
+```
+
+## API
+
+- C++ and Python client libraries via `libchronolog`
+- MCP Server for AI agent integration: [ChronoLog MCP Server](https://github.com/iowarp/agent-toolkit/tree/main/agent-toolkit-mcp-servers/chronolog)
+
+## License
+
+BSD-2-Clause
