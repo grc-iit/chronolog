@@ -99,7 +99,6 @@ Client integration tests are also installed (when the flag is ON) with:
 | `chronolog-test-client-thread-interdependency` | Thread interdependency test |
 | `chronolog-test-client-multi-storytellers` | Multi-storytellers client |
 | `chronolog-test-client-story-reader` | Story reader client |
-| `chronolog-test-client-reader-to-csv` | Reader to CSV |
 | `chronolog-test-client-multi-argobots` | Multi Argobots client test |
 | `chronolog-test-client-multi-openmp` | Multi OpenMP client test |
 | `chronolog-test-client-hybrid-argobots` | Hybrid MPI+Argobots client test |

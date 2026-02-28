@@ -233,7 +233,7 @@ int main(int argc, char** argv)
 
     if(chronolog::CL_SUCCESS != ret)
     {
-        std::cout << "[StoryReaderClient] ChronoLog server not available; ReaderToCsv test skipped." << std::endl;
+        std::cout << "[StoryReaderClient] ChronoLog server not available; reader-to-csv example skipped." << std::endl;
         delete client;
         return 0;
     }

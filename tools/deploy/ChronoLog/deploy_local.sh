@@ -329,7 +329,7 @@ start() {
     check_installation
     generate_config_files "${NUM_KEEPERS}" "${CONF_FILE}" "${CONF_DIR}" "${OUTPUT_DIR}" "${NUM_RECORDING_GROUPS}" "${MONITOR_DIR}" "${CLIENT_CONF_FILE}"
     echo -e "${INFO}Starting ChronoLog...${NC}"
-    start_service "${VISOR_BIN}" "--config ${CONF_DIR}/chrono-visor-conf.json" "chrono-visor-1.launch.log"
+    start_service "${VISOR_BIN}" "--config ${CONF_DIR}/chrono-visor-conf.json" "chrono-visor.launch.log"
     sleep 2
     for (( i=1; i<=NUM_RECORDING_GROUPS; i++ )); do
         start_service "${GRAPHER_BIN}" "--config ${CONF_DIR}/chrono-grapher-conf-$i.json" "chrono-grapher-$i.launch.log"
