@@ -92,8 +92,8 @@ parse_arguments() {
 
 extract_shared_libraries() {
     local executable="$1"
-    # Exclude only core runtime (do not copy); include libatomic and other /lib libs needed by client
-    ldd_output=$(ldd ${executable} 2>/dev/null | grep '=>' | awk '{print $3}' | grep -v 'not' | grep -v -E '(ld-linux|libc\.so|libm\.so|libpthread|libdl\.so)')
+    # Exclude system libs under /lib and /lib64 so we only copy Spack-provided libs
+    ldd_output=$(ldd ${executable} 2>/dev/null | grep '=>' | awk '{print $3}' | grep -v 'not' | grep -v '^/lib')
     echo "${ldd_output}"
 }
 
