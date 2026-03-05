@@ -62,22 +62,36 @@ int main(int argc, char** argv)
 
     LOG_INFO("[ClientLibMultiOpenMPTest] Running test.");
 
+    std::string server_ip = portalConf.IP;
+    int base_port = portalConf.PORT;
+    chronolog::Client* client = nullptr;
+    client = new chronolog::Client(portalConf);
+
     int num_threads = 8;
+
     omp_set_num_threads(num_threads);
 
+    std::string server_uri = portalConf.PROTO_CONF + "://" + portalConf.IP + ":" + std::to_string(portalConf.PORT);
+    server_uri += "://" + server_ip + ":" + std::to_string(base_port);
+    LOG_INFO("[ClientLibMultiOpenMPTest] Connecting to server at: {}", server_uri);
+    int flags = 0;
+    uint64_t offset;
+
+    std::string client_id = gen_random(8);
+    int ret = client->Connect(); //server_uri, client_id, flags);//, offset);
+    if(ret != chronolog::CL_SUCCESS)
+    {
+        LOG_ERROR("[ClientLibMultiOpenMPTest] Connect failed: {}", chronolog::to_string_client(ret));
+        delete client;
+        return EXIT_FAILURE;
+    }
+    LOG_INFO("[ClientLibMultiOpenMPTest] Successfully connected to the server.");
 #pragma omp parallel
     {
 #pragma omp for
         for(int i = 0; i < num_threads; i++)
         {
-            chronolog::Client client(portalConf);
-            int ret = client.Connect();
-            if(ret != chronolog::CL_SUCCESS)
-            {
-                LOG_ERROR("[ClientLibMultiOpenMPTest] Thread {} Connect failed", i);
-                continue;
-            }
-
+            int ret;
             int flags = 0;
             std::string chronicle_name;
             if(i % 2 == 0)
@@ -89,7 +103,7 @@ int main(int argc, char** argv)
             chronicle_attrs.emplace("IndexGranularity", "Millisecond");
             chronicle_attrs.emplace("TieringPolicy", "Hot");
 
-            ret = client.CreateChronicle(chronicle_name, chronicle_attrs, flags);
+            ret = client->CreateChronicle(chronicle_name, chronicle_attrs, flags);
             LOG_INFO("[ClientLibMultiOpenMPTest] Thread {} creating chronicle: {}", i, chronicle_name);
 
             flags = 1;
@@ -101,28 +115,34 @@ int main(int argc, char** argv)
             story_attrs.emplace("IndexGranularity", "Millisecond");
             story_attrs.emplace("TieringPolicy", "Hot");
             flags = 2;
-            auto acquire_ret = client.AcquireStory(chronicle_name, story_name, story_attrs, flags);
+            auto acquire_ret = client->AcquireStory(chronicle_name, story_name, story_attrs, flags);
 
-            assert(acquire_ret.first == chronolog::CL_SUCCESS || acquire_ret.first == chronolog::CL_ERR_NO_KEEPERS);
-            ret = client.DestroyStory(chronicle_name, story_name);
+            assert(acquire_ret.first == chronolog::CL_SUCCESS);
+            ret = client->DestroyStory(chronicle_name, story_name); //, flags);
             LOG_INFO("[ClientLibMultiOpenMPTest] Thread {} destroying story: {}", i, story_name);
 
-            assert(ret == chronolog::CL_ERR_ACQUIRED || ret == chronolog::CL_SUCCESS ||
-                   ret == chronolog::CL_ERR_NO_KEEPERS);
-            ret = client.ReleaseStory(chronicle_name, story_name);
-            assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NO_KEEPERS);
-            ret = client.DestroyStory(chronicle_name, story_name);
+            assert(ret == chronolog::CL_ERR_ACQUIRED);
+            ret = client->Disconnect(); //client_id, flags);
+            assert(ret == chronolog::CL_ERR_ACQUIRED);
+            ret = client->ReleaseStory(chronicle_name, story_name); //, flags);
+            assert(ret == chronolog::CL_SUCCESS);
+            ret = client->DestroyStory(chronicle_name, story_name); //, flags);
             assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST ||
-                   ret == chronolog::CL_ERR_ACQUIRED || ret == chronolog::CL_ERR_NO_KEEPERS);
-            ret = client.DestroyChronicle(chronicle_name);
+                   ret == chronolog::CL_ERR_ACQUIRED);
+            ret = client->DestroyChronicle(chronicle_name); //, flags);
             assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST ||
-                   ret == chronolog::CL_ERR_ACQUIRED || ret == chronolog::CL_ERR_NO_KEEPERS);
+                   ret == chronolog::CL_ERR_ACQUIRED);
             LOG_INFO("[ClientLibMultiOpenMPTest] Thread {} destroying chronicle: {}", i, chronicle_name);
-
-            ret = client.Disconnect();
         }
     }
 
+    // Disconnecting from the server
+    LOG_INFO("[ClientLibMultiOpenMPTest] Disconnecting from the server.");
+    ret = client->Disconnect();
+    assert(ret == chronolog::CL_SUCCESS);
     LOG_INFO("[ClientLibMultiOpenMPTest] Disconnected successfully.");
+
+    delete client;
+
     return 0;
 }

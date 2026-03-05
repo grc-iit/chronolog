@@ -17,24 +17,16 @@ struct thread_arg
 {
     int tid;
     std::string client_id;
-    chronolog::ClientPortalServiceConf portal_conf;
 };
+
+chronolog::Client* client;
 
 void thread_body(struct thread_arg* t)
 {
-    chronolog::Client client(t->portal_conf);
-    int ret = client.Connect();
-    if(ret != chronolog::CL_SUCCESS)
-    {
-        LOG_ERROR("[ClientLibMultiPThreadTest] Thread (ID: {}) Connect failed: {}",
-                  t->tid,
-                  chronolog::to_string_client(ret));
-        return;
-    }
-
     LOG_INFO("[ClientLibMultiPThreadTest] Thread (ID: {}) - Starting execution.", t->tid);
     int flags = 0;
-    int ret2;
+    uint64_t offset;
+    int ret;
     std::string chronicle_name;
     if(t->tid % 2 == 0)
         chronicle_name = "Chronicle_2";
@@ -46,11 +38,11 @@ void thread_body(struct thread_arg* t)
     chronicle_attrs.emplace("Priority", "High");
     chronicle_attrs.emplace("IndexGranularity", "Millisecond");
     chronicle_attrs.emplace("TieringPolicy", "Hot");
-    ret2 = client.CreateChronicle(chronicle_name, chronicle_attrs, flags);
+    ret = client->CreateChronicle(chronicle_name, chronicle_attrs, flags);
     LOG_INFO("[ClientLibMultiPThreadTest] Thread (ID: {}) - CreateChronicle result for {}: {}",
              t->tid,
              chronicle_name,
-             chronolog::to_string_client(ret2));
+             chronolog::to_string_client(ret));
 
     flags = 1;
     std::string story_name = gen_random(STORY_NAME_LEN);
@@ -61,53 +53,53 @@ void thread_body(struct thread_arg* t)
     story_attrs.emplace("IndexGranularity", "Millisecond");
     story_attrs.emplace("TieringPolicy", "Hot");
     flags = 2;
-    auto acquire_ret = client.AcquireStory(chronicle_name, story_name, story_attrs, flags);
+    auto acquire_ret = client->AcquireStory(chronicle_name, story_name, story_attrs, flags);
     LOG_INFO("[ClientLibMultiPThreadTest] Thread (ID: {}) - AcquireStory result for {}:{} - {}",
              t->tid,
              chronicle_name,
              story_name,
              chronolog::to_string_client(acquire_ret.first));
 
-    assert(acquire_ret.first == chronolog::CL_SUCCESS || acquire_ret.first == chronolog::CL_ERR_NOT_EXIST ||
-           acquire_ret.first == chronolog::CL_ERR_NO_KEEPERS);
-    ret2 = client.DestroyStory(chronicle_name, story_name);
+    assert(acquire_ret.first == chronolog::CL_SUCCESS || acquire_ret.first == chronolog::CL_ERR_NOT_EXIST);
+    ret = client->DestroyStory(chronicle_name, story_name); //, flags);
     LOG_INFO("[ClientLibMultiPThreadTest] Thread (ID: {}) - DestroyStory result for {}:{} - {}",
              t->tid,
              chronicle_name,
              story_name,
-             chronolog::to_string_client(ret2));
+             chronolog::to_string_client(ret));
 
-    assert(ret2 == chronolog::CL_ERR_ACQUIRED || ret2 == chronolog::CL_SUCCESS || ret2 == chronolog::CL_ERR_NOT_EXIST);
-    ret2 = client.ReleaseStory(chronicle_name, story_name);
+    assert(ret == chronolog::CL_ERR_ACQUIRED || ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST);
+    ret = client->Disconnect(); //t->client_id, flags);
+    LOG_INFO("[ClientLibMultiPThreadTest] Thread (ID: {}) - Disconnect result: {}",
+             t->tid,
+             chronolog::to_string_client(ret));
+
+    assert(ret == chronolog::CL_ERR_ACQUIRED || ret == chronolog::CL_SUCCESS);
+    ret = client->ReleaseStory(chronicle_name, story_name); //, flags);
     LOG_INFO("[ClientLibMultiPThreadTest] Thread (ID: {}) - ReleaseStory result for {}:{} - {}",
              t->tid,
              chronicle_name,
              story_name,
-             chronolog::to_string_client(ret2));
+             chronolog::to_string_client(ret));
 
-    assert(ret2 == chronolog::CL_SUCCESS || ret2 == chronolog::CL_ERR_NO_CONNECTION);
-    ret2 = client.DestroyStory(chronicle_name, story_name);
+    assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NO_CONNECTION);
+    ret = client->DestroyStory(chronicle_name, story_name); //, flags);
     LOG_INFO("[ClientLibMultiPThreadTest] Thread (ID: {}) - DestroyStory result for {}:{} - {}",
              t->tid,
              chronicle_name,
              story_name,
-             chronolog::to_string_client(ret2));
+             chronolog::to_string_client(ret));
 
-    assert(ret2 == chronolog::CL_SUCCESS || ret2 == chronolog::CL_ERR_NOT_EXIST || ret2 == chronolog::CL_ERR_ACQUIRED ||
-           ret2 == chronolog::CL_ERR_NO_CONNECTION);
+    assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST || ret == chronolog::CL_ERR_ACQUIRED ||
+           ret == chronolog::CL_ERR_NO_CONNECTION);
 
-    ret2 = client.DestroyChronicle(chronicle_name);
-    assert(ret2 == chronolog::CL_SUCCESS || ret2 == chronolog::CL_ERR_NOT_EXIST || ret2 == chronolog::CL_ERR_ACQUIRED ||
-           ret2 == chronolog::CL_ERR_NO_CONNECTION);
+    ret = client->DestroyChronicle(chronicle_name); //, flags);
+    assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST || ret == chronolog::CL_ERR_ACQUIRED ||
+           ret == chronolog::CL_ERR_NO_CONNECTION);
     LOG_INFO("[ClientLibMultiPThreadTest] Thread (ID: {}) - DestroyChronicle result for {}: {}",
              t->tid,
              chronicle_name,
-             chronolog::to_string_client(ret2));
-
-    ret2 = client.Disconnect();
-    LOG_INFO("[ClientLibMultiPThreadTest] Thread (ID: {}) - Disconnect result: {}",
-             t->tid,
-             chronolog::to_string_client(ret2));
+             chronolog::to_string_client(ret));
     LOG_INFO("[ClientLibMultiPThreadTest] Thread (ID: {}) - Execution completed.", t->tid);
 }
 
@@ -165,16 +157,27 @@ int main(int argc, char** argv)
 
     LOG_INFO("[ClientLibMultiPthreadTest] Running test.");
 
+    client = new chronolog::Client(portalConf);
+    int ret = client->Connect();
+    if(ret != chronolog::CL_SUCCESS)
+    {
+        LOG_ERROR("[ClientLibMultiPThreadTest] Initial Connect failed: {}", chronolog::to_string_client(ret));
+        return EXIT_FAILURE;
+    }
+
+    // Launch threads
     for(int i = 0; i < num_threads; i++)
     {
         t_args[i].tid = i;
         t_args[i].client_id = client_id;
-        t_args[i].portal_conf = portalConf;
         std::thread t{thread_body, &t_args[i]};
         workers[i] = std::move(t);
     }
 
     for(int i = 0; i < num_threads; i++) workers[i].join();
+
+    ret = client->Disconnect(); //client_id, flags);
+    delete client;
 
     return 0;
 }
