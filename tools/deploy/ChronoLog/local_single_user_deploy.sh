@@ -162,8 +162,8 @@ usage() {
     echo "  -a|--player-bin <path>           Path to the ChronoPlayer binary (default: work_dir/bin/chrono-player) [Modes: Start]"
     echo ""
     echo "Configuration Settings:"
-echo "  -f|--conf-file <path>            Path to the configuration file (default: work_dir/conf/default-chrono-conf.json) [Modes: Start]"
-  echo "  -n|--client-conf-file <path>     Path to the client configuration file (default: work_dir/conf/default-chrono-client-conf.json) [Modes: Start]"
+    echo "  -f|--conf-file <path>            Path to the configuration file (default: work_dir/conf/default-chrono-conf.json) [Modes: Start]"
+    echo "  -n|--client-conf-file <path>     Path to the client configuration file (default: work_dir/conf/default-chrono-client-conf.json) [Modes: Start]"
     echo ""
     echo "Examples (Assume installing a Debug build to ~/chronolog-install):"
     echo ""
@@ -190,7 +190,7 @@ echo "  -f|--conf-file <path>            Path to the configuration file (default
 parse_args() {
     while [[ "$#" -gt 0 ]]; do
         case "$1" in
-             -h|--help)
+            -h|--help)
                 usage;
                 shift ;;
             -b|--build)
@@ -241,8 +241,8 @@ parse_args() {
                 KEEPER_BIN="${BIN_DIR}/chrono-keeper"
                 GRAPHER_BIN="${BIN_DIR}/chrono-grapher"
                 PLAYER_BIN="${BIN_DIR}/chrono-player"
-CONF_FILE="${CONF_DIR}/default-chrono-conf.json"
-      CLIENT_CONF_FILE="${CONF_DIR}/default-chrono-client-conf.json"
+                CONF_FILE="${CONF_DIR}/default-chrono-conf.json"
+                CLIENT_CONF_FILE="${CONF_DIR}/default-chrono-client-conf.json"
                 OUTPUT_DIR=${WORK_DIR}/output
                 MONITOR_DIR=${WORK_DIR}/monitor
                 shift 2 ;;
