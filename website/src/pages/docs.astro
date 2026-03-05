@@ -1,0 +1,145 @@
+---
+import Layout from '../layouts/Layout.astro';
+
+const docs = [
+  { title: 'Getting Started', href: 'https://github.com/grc-iit/ChronoLog/wiki/01.-Getting-Started', desc: 'Introduction and first steps with ChronoLog.' },
+  { title: 'Installation', href: 'https://github.com/grc-iit/ChronoLog/wiki/02.-Installation', desc: 'Detailed installation guides and requirements.' },
+  { title: 'Configuration', href: 'https://github.com/grc-iit/ChronoLog/wiki/03.-Configuration', desc: 'Configuration options and settings.' },
+  { title: 'Deployment', href: 'https://github.com/grc-iit/ChronoLog/wiki/04.-Deployment', desc: 'Local, distributed, and SLURM deployment strategies.' },
+  { title: 'Client API', href: 'https://github.com/grc-iit/ChronoLog/wiki/05.-Client-API', desc: 'C++ and Python API reference and usage examples.' },
+  { title: 'Client Examples', href: 'https://github.com/grc-iit/ChronoLog/wiki/06.-Client-Examples', desc: 'Code examples and use cases.' },
+  { title: 'Architecture', href: 'https://github.com/grc-iit/ChronoLog/wiki/07.-Architecture', desc: 'System architecture and design principles.' },
+  { title: 'Plugins', href: 'https://github.com/grc-iit/ChronoLog/wiki/08.-Plugins', desc: 'Plugin development and integration.' },
+];
+
+const tutorials = [
+  { title: 'First Steps with ChronoLog', href: 'https://github.com/grc-iit/ChronoLog/wiki/Tutorial-1:-First-Steps-with-ChronoLog', desc: 'Get started with your first deployment.' },
+  { title: 'Running a Performance Test', href: 'https://github.com/grc-iit/ChronoLog/wiki/Tutorial-2:-How-to-run-a-Performance-test', desc: 'Benchmark and test ChronoLog performance.' },
+  { title: 'Docker Single-Node', href: 'https://github.com/grc-iit/ChronoLog/wiki/Tutorial-3:-Running-ChronoLog-with-Docker-(single-node)', desc: 'Deploy on a single node using Docker.' },
+  { title: 'Docker Multi-Node', href: 'https://github.com/grc-iit/ChronoLog/wiki/Tutorial-4:-Running-ChronoLog-with-Docker-(Multi-node)', desc: 'Deploy across multiple nodes using Docker.' },
+];
+---
+
+<Layout
+  title="Documentation"
+  description="ChronoLog documentation: getting started guides, installation, configuration, deployment, client API reference, tutorials, and Docker quickstart."
+  keywords="ChronoLog documentation, getting started, installation, API reference, tutorials, Docker, deployment, client library, libchronolog, configuration"
+>
+  <section class="max-w-6xl mx-auto px-6 py-20">
+    <h1 class="text-3xl md:text-4xl font-extrabold mb-4">Documentation</h1>
+    <p class="text-text-muted text-lg max-w-3xl mb-14 leading-relaxed">
+      Guides, tutorials, and API reference are maintained on the <a href="https://github.com/grc-iit/ChronoLog/wiki" target="_blank" class="text-lime hover:underline">GitHub Wiki</a>. For questions and discussion, join the community on <a href="https://chronolog.zulipchat.com/" target="_blank" class="text-lime hover:underline">Zulip</a>.
+    </p>
+
+    <!-- Quick start -->
+    <div class="bg-bg-card border border-lime/30 rounded-xl p-6 mb-14">
+      <h2 class="text-lg font-bold text-lime mb-3">Quick Start with Docker</h2>
+      <p class="text-sm text-text-muted mb-4">The fastest way to explore ChronoLog is through our Docker image:</p>
+      <div class="bg-bg rounded-lg p-4 font-mono text-sm text-text-muted overflow-x-auto">
+        <p class="mb-1"><span class="text-lime">$</span> docker pull gnosisrc/chronolog:latest</p>
+        <p class="mb-1"><span class="text-lime">$</span> docker run -it --rm --name chronolog gnosisrc/chronolog:latest</p>
+        <p><span class="text-lime">$</span> /home/grc-iit/chronolog_repo/deploy/local_single_user_deploy.sh -d -w /home/grc-iit/chronolog_install/Release</p>
+      </div>
+    </div>
+
+    <!-- Data Model -->
+    <h2 class="text-2xl font-bold mb-6">Data Model</h2>
+    <p class="text-text-muted text-sm mb-6 max-w-3xl leading-relaxed">ChronoLog organizes data around four core concepts. Understanding these is essential before working with the API.</p>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-14">
+      <div class="bg-bg-alt border border-border rounded-xl p-5">
+        <div class="flex items-center gap-2 mb-2">
+          <div class="w-2 h-2 rounded-full bg-lime"></div>
+          <h3 class="font-semibold text-text">Chronicle</h3>
+        </div>
+        <p class="text-sm text-text-muted leading-relaxed">A named data structure consisting of a collection of events ordered by physical time. Analogous to a topic, stream, or ledger in other systems. Each chronicle is created, acquired, and released by clients -- similar to opening and closing a file.</p>
+      </div>
+      <div class="bg-bg-alt border border-border rounded-xl p-5">
+        <div class="flex items-center gap-2 mb-2">
+          <div class="w-2 h-2 rounded-full bg-lime"></div>
+          <h3 class="font-semibold text-text">Event</h3>
+        </div>
+        <p class="text-sm text-text-muted leading-relaxed">A single data unit stored as a key-value pair. The key is a <strong class="text-text">ChronoTick</strong> (a monotonically increasing integer representing the time distance from the chronicle's creation timestamp). The value is an uninterpreted byte array -- ChronoLog is format-agnostic.</p>
+      </div>
+      <div class="bg-bg-alt border border-border rounded-xl p-5">
+        <div class="flex items-center gap-2 mb-2">
+          <div class="w-2 h-2 rounded-full bg-lime"></div>
+          <h3 class="font-semibold text-text">ChronoTick</h3>
+        </div>
+        <p class="text-sm text-text-muted leading-relaxed">A monotonically increasing positive integer that serves as the event key. Represents the time distance (offset) from a chronicle's base timestamp. Physical time is the ordering mechanism -- no centralized sequencer assigns these values.</p>
+      </div>
+      <div class="bg-bg-alt border border-border rounded-xl p-5">
+        <div class="flex items-center gap-2 mb-2">
+          <div class="w-2 h-2 rounded-full bg-lime"></div>
+          <h3 class="font-semibold text-text">Story</h3>
+        </div>
+        <p class="text-sm text-text-muted leading-relaxed">A division (partition) of a chronicle -- a sorted, immutable collection of events. Stories are optimized for sequential access and serve as the unit of data movement between storage tiers. ChronoGrapher builds stories from individual events.</p>
+      </div>
+    </div>
+
+    <!-- Resources bar -->
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-14">
+      <a href="https://github.com/grc-iit/ChronoLog" target="_blank" rel="noopener noreferrer" class="flex items-center gap-3 bg-bg-alt border border-border rounded-xl p-5 hover:border-lime/40 transition-colors group">
+        <svg class="w-6 h-6 text-text-muted group-hover:text-lime transition-colors flex-shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+        <div>
+          <h3 class="font-semibold text-sm text-text group-hover:text-lime transition-colors">GitHub Repository</h3>
+          <p class="text-xs text-text-muted">Source code and issues</p>
+        </div>
+      </a>
+      <a href="https://hub.docker.com/r/gnosisrc/chronolog" target="_blank" rel="noopener noreferrer" class="flex items-center gap-3 bg-bg-alt border border-border rounded-xl p-5 hover:border-lime/40 transition-colors group">
+        <svg class="w-6 h-6 text-text-muted group-hover:text-lime transition-colors flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 7.5l-2.25-1.313M21 7.5v2.25m0-2.25l-2.25 1.313M3 7.5l2.25-1.313M3 7.5l2.25 1.313M3 7.5v2.25m9 3l2.25-1.313M12 12.75l-2.25-1.313M12 12.75V15m0 6.75l2.25-1.313M12 21.75V19.5m0 2.25l-2.25-1.313m0-16.875L12 2.25l2.25 1.313M21 14.25v2.25l-2.25 1.313m-13.5 0L3 16.5v-2.25"/></svg>
+        <div>
+          <h3 class="font-semibold text-sm text-text group-hover:text-lime transition-colors">Docker Hub</h3>
+          <p class="text-xs text-text-muted">gnosisrc/chronolog</p>
+        </div>
+      </a>
+      <a href="https://chronolog.zulipchat.com/" target="_blank" rel="noopener noreferrer" class="flex items-center gap-3 bg-bg-alt border border-border rounded-xl p-5 hover:border-lime/40 transition-colors group">
+        <svg class="w-6 h-6 text-text-muted group-hover:text-lime transition-colors flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 01-.825-.242m9.345-8.334a2.126 2.126 0 00-.476-.095 48.64 48.64 0 00-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0011.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155"/></svg>
+        <div>
+          <h3 class="font-semibold text-sm text-text group-hover:text-lime transition-colors">Zulip Community</h3>
+          <p class="text-xs text-text-muted">Chat and support</p>
+        </div>
+      </a>
+    </div>
+
+    <!-- Documentation links -->
+    <h2 class="text-2xl font-bold mb-6">Guides</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-14">
+      {docs.map(d => (
+        <a href={d.href} target="_blank" rel="noopener noreferrer" class="bg-bg-alt border border-border rounded-xl p-5 hover:border-lime/40 transition-colors group block">
+          <div class="flex items-center justify-between mb-1">
+            <h3 class="font-semibold text-text group-hover:text-lime transition-colors">{d.title}</h3>
+            <svg class="w-4 h-4 text-text-muted group-hover:text-lime transition-colors" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+          </div>
+          <p class="text-sm text-text-muted">{d.desc}</p>
+        </a>
+      ))}
+    </div>
+
+    <!-- Tutorials -->
+    <h2 class="text-2xl font-bold mb-6">Tutorials</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-14">
+      {tutorials.map((t, i) => (
+        <a href={t.href} target="_blank" rel="noopener noreferrer" class="bg-bg-alt border border-border rounded-xl p-5 hover:border-lime/40 transition-colors group block">
+          <div class="flex items-center gap-3 mb-1">
+            <span class="text-xs font-bold text-lime bg-lime/10 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">{i + 1}</span>
+            <h3 class="font-semibold text-text group-hover:text-lime transition-colors">{t.title}</h3>
+          </div>
+          <p class="text-sm text-text-muted ml-9">{t.desc}</p>
+        </a>
+      ))}
+    </div>
+
+    <!-- AI Integration -->
+    <h2 class="text-2xl font-bold mb-6">AI Integration</h2>
+    <a href="https://github.com/iowarp/agent-toolkit/tree/main/agent-toolkit-mcp-servers/chronolog" target="_blank" rel="noopener noreferrer" class="block bg-bg-card border border-border rounded-xl p-6 hover:border-lime/40 transition-colors group">
+      <div class="flex items-center gap-3 mb-2">
+        <div class="w-8 h-8 rounded-lg bg-lime/15 flex items-center justify-center flex-shrink-0">
+          <svg class="w-4 h-4 text-lime" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>
+        </div>
+        <h3 class="font-semibold text-text group-hover:text-lime transition-colors">ChronoLog MCP Server</h3>
+        <svg class="w-4 h-4 text-text-muted group-hover:text-lime transition-colors ml-auto" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+      </div>
+      <p class="text-sm text-text-muted leading-relaxed">Model Context Protocol server for connecting AI agents to ChronoLog, part of the IOWarp Agent Toolkit. Enables LLMs to create chronicles, record events, and query time-ordered data.</p>
+    </a>
+  </section>
+</Layout>

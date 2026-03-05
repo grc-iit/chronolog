@@ -1,0 +1,214 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout
+  title="Architecture"
+  description="ChronoLog system architecture: ChronoVisor, ChronoKeeper, ChronoGrapher, ChronoPlayer, and ChronoStore. Physical time ordering, auto-tiering, and distributed clock synchronization."
+  keywords="ChronoLog architecture, ChronoVisor, ChronoKeeper, ChronoGrapher, ChronoPlayer, ChronoStore, distributed systems, RDMA, HDF5, tiered storage, physical time, clock synchronization"
+>
+  <section class="max-w-6xl mx-auto px-6 py-20">
+    <h1 class="text-3xl md:text-4xl font-extrabold mb-4">Architecture</h1>
+    <p class="text-text-muted text-lg max-w-3xl mb-14 leading-relaxed">
+      ChronoLog leverages physical time for total ordering and utilizes multiple storage tiers for 3D data distribution -- horizontal, vertical, and temporal.
+    </p>
+
+    <!-- The Shared Log as a Universal Primitive -->
+    <div class="bg-gradient-to-r from-lime/5 via-bg-card to-lime/5 border border-lime/20 rounded-2xl p-8 mb-16">
+      <h2 class="text-xl font-bold mb-2">The Shared Log: A Universal Primitive</h2>
+      <p class="text-text-muted text-sm leading-relaxed mb-6">A distributed shared log is one of the most powerful abstractions in systems design. It can serve as the foundation for a remarkably wide range of distributed data infrastructure.</p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div class="flex items-start gap-3">
+          <div class="w-1.5 h-1.5 rounded-full bg-lime mt-2 flex-shrink-0"></div>
+          <div class="text-sm"><strong class="text-text">Source of strong consistency</strong><span class="text-text-muted"> -- a global shared truth for distributed processes</span></div>
+        </div>
+        <div class="flex items-start gap-3">
+          <div class="w-1.5 h-1.5 rounded-full bg-lime mt-2 flex-shrink-0"></div>
+          <div class="text-sm"><strong class="text-text">Durable data store</strong><span class="text-text-muted"> -- fast appends with commit semantics</span></div>
+        </div>
+        <div class="flex items-start gap-3">
+          <div class="w-1.5 h-1.5 rounded-full bg-lime mt-2 flex-shrink-0"></div>
+          <div class="text-sm"><strong class="text-text">Arbitrator</strong><span class="text-text-muted"> -- transactional isolation, atomicity, and durability</span></div>
+        </div>
+        <div class="flex items-start gap-3">
+          <div class="w-1.5 h-1.5 rounded-full bg-lime mt-2 flex-shrink-0"></div>
+          <div class="text-sm"><strong class="text-text">Consensus engine</strong><span class="text-text-muted"> -- consistent replication and indexing services</span></div>
+        </div>
+        <div class="flex items-start gap-3">
+          <div class="w-1.5 h-1.5 rounded-full bg-lime mt-2 flex-shrink-0"></div>
+          <div class="text-sm"><strong class="text-text">Execution history</strong><span class="text-text-muted"> -- replica creation and deterministic replay</span></div>
+        </div>
+        <div class="flex items-start gap-3">
+          <div class="w-1.5 h-1.5 rounded-full bg-lime mt-2 flex-shrink-0"></div>
+          <div class="text-sm"><strong class="text-text">Data integration hub</strong><span class="text-text-muted"> -- scalable warehousing and pipelining</span></div>
+        </div>
+      </div>
+      <p class="text-text-muted text-xs mt-5 italic">ChronoLog's core challenge: how to balance log ordering, write-availability, capacity scaling, parallelism, entry discoverability, and performance -- all at once.</p>
+    </div>
+
+    <!-- Main Design Diagram -->
+    <div class="bg-bg-card border border-border rounded-xl p-4 mb-4">
+      <img src="/images/design-15413d3184fde0039e0937fe3ef53d07.svg" alt="ChronoLog Detailed System Design" class="w-full rounded-lg" />
+    </div>
+    <p class="text-xs text-text-muted text-center mb-16">ChronoLog system design: clients, ChronoVisor, ChronoKeeper, ChronoGrapher, and storage tiers</p>
+
+    <!-- Log-Centric Data Model -->
+    <h2 class="text-2xl font-bold mb-6">Distributed Shared Log Paradigm</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-16 items-center">
+      <div>
+        <p class="text-text-muted leading-relaxed mb-4">
+          ChronoLog organizes data around the <strong class="text-text">distributed shared log</strong> paradigm. Applications across Edge and HPC systems produce and process log data through a common storage model.
+        </p>
+        <p class="text-text-muted leading-relaxed">
+          Data flows from ChronoKeeper (hot tier) through ChronoGrapher (warm tier) to ChronoStore (cold tier) automatically, matching I/O production rates with elastic resource provisioning.
+        </p>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-4">
+        <img src="/images/paradigm-1d265a5b3f99a9936fc4605049749e14.svg" alt="Distributed Shared Log Paradigm" class="w-full rounded-lg" />
+        <p class="text-xs text-text-muted text-center mt-2">The distributed shared log paradigm across Edge and HPC domains</p>
+      </div>
+    </div>
+
+    <!-- Core Components -->
+    <h2 class="text-2xl font-bold mb-8">Core Components</h2>
+
+    <!-- ChronoVisor -->
+    <div class="bg-bg-alt border border-border rounded-xl p-6 hover:border-lime/30 transition-colors mb-6">
+      <div class="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
+        <h3 class="font-bold text-lg text-lime">ChronoVisor</h3>
+        <span class="text-xs font-medium text-text-muted bg-bg-card px-2.5 py-0.5 rounded-full w-fit">Central coordination</span>
+      </div>
+      <p class="text-sm text-text-muted leading-relaxed">Handles client connections, holds chronicle metadata, acts as the global clock enforcing time synchronization. Deployed on a head node. ChronoVisor is the entry point for all client operations -- it resolves chronicle names to their physical locations and coordinates the distributed clock protocol that keeps all nodes synchronized within a bounded skew.</p>
+    </div>
+
+    <!-- ChronoKeeper -->
+    <div class="bg-bg-alt border border-border rounded-xl p-6 hover:border-lime/30 transition-colors mb-4">
+      <div class="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
+        <h3 class="font-bold text-lg text-lime">ChronoKeeper</h3>
+        <span class="text-xs font-medium text-text-muted bg-bg-card px-2.5 py-0.5 rounded-full w-fit">Fast ingestion tier</span>
+      </div>
+      <p class="text-sm text-text-muted leading-relaxed mb-4">Serves record() and playback() operations. Stores events in a distributed journal on compute nodes with fast flash storage. ChronoKeeper nodes are co-located with application processes, enabling zero-copy writes via RDMA and achieving microsecond-level ingestion latency.</p>
+    </div>
+    <div class="bg-bg-card border border-border rounded-xl p-4 mb-6">
+      <img src="/images/chronokeeper-748b9121ea32d501e5134955b1a9acc4.svg" alt="ChronoKeeper Features and Operations" class="w-full rounded-lg" />
+      <p class="text-xs text-text-muted text-center mt-2">ChronoKeeper features: record/playback operations, distributed journaling, RDMA transport</p>
+    </div>
+
+    <!-- ChronoGrapher -->
+    <div class="bg-bg-alt border border-border rounded-xl p-6 hover:border-lime/30 transition-colors mb-4">
+      <div class="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
+        <h3 class="font-bold text-lg text-lime">ChronoGrapher</h3>
+        <span class="text-xs font-medium text-text-muted bg-bg-card px-2.5 py-0.5 rounded-full w-fit">Aggregation & flushing</span>
+      </div>
+      <p class="text-sm text-text-muted leading-relaxed mb-4">Continuously ingests events from ChronoKeeper using a DAG pipeline: event collection, story building, and story writing. Elastic and real-time. ChronoGrapher assembles individual log entries into time-ordered stories (StoryChunks), then flushes them to lower storage tiers while maintaining the global ordering invariant.</p>
+    </div>
+    <div class="bg-bg-card border border-border rounded-xl p-4 mb-6">
+      <img src="/images/chronographer-e68152f8899959ad1c9696b01967dfbd.svg" alt="ChronoGrapher DAG Pipeline" class="w-full rounded-lg" />
+      <p class="text-xs text-text-muted text-center mt-2">ChronoGrapher DAG pipeline: event collection, story building, story writing</p>
+    </div>
+
+    <!-- ChronoPlayer -->
+    <div class="bg-bg-alt border border-border rounded-xl p-6 hover:border-lime/30 transition-colors mb-4">
+      <div class="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
+        <h3 class="font-bold text-lg text-lime">ChronoPlayer</h3>
+        <span class="text-xs font-medium text-text-muted bg-bg-card px-2.5 py-0.5 rounded-full w-fit">Historical reads</span>
+      </div>
+      <p class="text-sm text-text-muted leading-relaxed mb-4">Executes replay() operations across all storage tiers. Implements real-time, decoupled, and elastic data retrieval. ChronoPlayer can serve replay requests from any tier -- hot data from ChronoKeeper, warm data from ChronoGrapher's intermediate storage, or cold data from ChronoStore's HDF5 backend -- transparently merging results into a single ordered stream.</p>
+    </div>
+    <div class="bg-bg-card border border-border rounded-xl p-4 mb-6">
+      <img src="/images/chronoplayer-0fb14b96bd4a6457f4405aa39316a5e2.svg" alt="ChronoPlayer Architecture" class="w-full rounded-lg" />
+      <p class="text-xs text-text-muted text-center mt-2">ChronoPlayer: real-time, decoupled, and elastic data retrieval across tiers</p>
+    </div>
+
+    <!-- ChronoStore -->
+    <div class="bg-bg-alt border border-border rounded-xl p-6 hover:border-lime/30 transition-colors mb-16">
+      <div class="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
+        <h3 class="font-bold text-lg text-lime">ChronoStore</h3>
+        <span class="text-xs font-medium text-text-muted bg-bg-card px-2.5 py-0.5 rounded-full w-fit">Persistent storage</span>
+      </div>
+      <p class="text-sm text-text-muted leading-relaxed">Manages intermediate and backend storage (HDF5). Can grow or shrink resources dynamically for elastic capacity. ChronoStore provides the cold tier in the storage hierarchy, persisting StoryChunks in HDF5 containers optimized for sequential and range-based access patterns typical of log data.</p>
+    </div>
+
+    <!-- Dealing with Physical Time -->
+    <h2 class="text-2xl font-bold mb-4">Dealing with Physical Time</h2>
+    <p class="text-text-muted text-sm leading-relaxed mb-6 max-w-3xl">Using physical time to order events across distributed nodes introduces real challenges. ChronoLog provides solutions to each of them.</p>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
+      <div class="bg-bg-alt border border-border rounded-xl p-6">
+        <h3 class="font-bold text-sm text-lime mb-2">Clock Uncertainty</h3>
+        <p class="text-xs text-text-muted leading-relaxed mb-3">Different machines have different clock offsets and drift rates. ChronoLog tames this by having server nodes synchronize with ChronoVisor during initialization and periodically thereafter. Clients use ChronoTicks as <em>relative</em> time distances from a base clock, eliminating the need for globally synchronized wall clocks.</p>
+      </div>
+      <div class="bg-bg-alt border border-border rounded-xl p-6">
+        <h3 class="font-bold text-sm text-lime mb-2">Backdated Events</h3>
+        <p class="text-xs text-text-muted leading-relaxed mb-3">Network non-determinism means events may arrive after later events, violating chronicle immutability. ChronoLog defines an <strong class="text-text">Acceptance Time Window (ATW)</strong> -- a moving window equal to twice the measured network latency -- within which out-of-order events are gracefully absorbed and correctly ordered.</p>
+      </div>
+      <div class="bg-bg-alt border border-border rounded-xl p-6">
+        <h3 class="font-bold text-sm text-lime mb-2">Event Collisions</h3>
+        <p class="text-xs text-text-muted leading-relaxed mb-3">At coarser time granularities, multiple events may map to the same ChronoTick. ChronoLog handles collisions with configurable semantics: <em>Idempotent</em> (last write wins), <em>Redundancy</em> (keep all), <em>Ordering</em> (preserve arrival order), and <em>Sequentiality</em> (maintain strict sequence). The right choice depends on workload requirements.</p>
+      </div>
+    </div>
+
+    <!-- Software Stack -->
+    <h2 class="text-2xl font-bold mb-6">Software Contributions</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-center mb-16">
+      <div class="bg-bg-card border border-border rounded-xl p-4">
+        <img src="/images/software-453e49cd0d12ee1907c1fd4ea8e024b0.png" alt="ChronoLog Software Stack" class="w-full rounded-lg" />
+        <p class="text-xs text-text-muted text-center mt-2">Software contributions: core services, client library, and plugins</p>
+      </div>
+      <div>
+        <p class="text-text-muted leading-relaxed mb-4">
+          ChronoLog's software ecosystem spans three layers: the <strong class="text-text">core distributed services</strong> (ChronoVisor, ChronoKeeper, ChronoGrapher, ChronoPlayer, ChronoStore), a <strong class="text-text">client library</strong> (libchronolog) providing the chronicle API, and a <strong class="text-text">plugin framework</strong> enabling SQL queries, streaming analytics, KV stores, and ML pipelines.
+        </p>
+        <p class="text-text-muted leading-relaxed">
+          The system is implemented in C++17 with RDMA and TCP transport backends, HDF5 for persistent storage, and a modular architecture that allows new plugins to be developed independently.
+        </p>
+      </div>
+    </div>
+
+    <!-- Full Feature Comparison -->
+    <h2 class="text-2xl font-bold mb-6">Feature Comparison</h2>
+    <div class="bg-bg-card border border-border rounded-xl p-6 mb-16 overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-border text-left">
+            <th class="pb-3 pr-4 font-semibold text-text">Feature</th>
+            <th class="pb-3 pr-4 font-semibold text-text-muted">Bookkeeper / Kafka / DLog</th>
+            <th class="pb-3 pr-4 font-semibold text-text-muted">Corfu / SloG / ZLog</th>
+            <th class="pb-3 font-semibold text-lime">ChronoLog</th>
+          </tr>
+        </thead>
+        <tbody class="text-text-muted">
+          <tr class="border-b border-border/50"><td class="py-2.5 pr-4">Locating the log-tail</td><td class="py-2.5 pr-4">Locking</td><td class="py-2.5 pr-4">Locking</td><td class="py-2.5 text-lime">Lock-free</td></tr>
+          <tr class="border-b border-border/50"><td class="py-2.5 pr-4">I/O isolation</td><td class="py-2.5 pr-4">Yes</td><td class="py-2.5 pr-4">No</td><td class="py-2.5 text-lime">Yes</td></tr>
+          <tr class="border-b border-border/50"><td class="py-2.5 pr-4">I/O parallelism (readers-to-servers)</td><td class="py-2.5 pr-4">1-to-N</td><td class="py-2.5 pr-4">M-to-N</td><td class="py-2.5 text-lime">M-to-N</td></tr>
+          <tr class="border-b border-border/50"><td class="py-2.5 pr-4">Storage elasticity</td><td class="py-2.5 pr-4">Manual</td><td class="py-2.5 pr-4">Manual</td><td class="py-2.5 text-lime">Automatic</td></tr>
+          <tr class="border-b border-border/50"><td class="py-2.5 pr-4">Log hot zones</td><td class="py-2.5 pr-4">Yes</td><td class="py-2.5 pr-4">Yes</td><td class="py-2.5 text-lime">No</td></tr>
+          <tr class="border-b border-border/50"><td class="py-2.5 pr-4">Log capacity</td><td class="py-2.5 pr-4">Limited</td><td class="py-2.5 pr-4">Limited</td><td class="py-2.5 text-lime">Infinite</td></tr>
+          <tr class="border-b border-border/50"><td class="py-2.5 pr-4">Operation parallelism</td><td class="py-2.5 pr-4">Limited</td><td class="py-2.5 pr-4">Limited</td><td class="py-2.5 text-lime">Full</td></tr>
+          <tr class="border-b border-border/50"><td class="py-2.5 pr-4">Granularity of data distribution</td><td class="py-2.5 pr-4">Coarse (stripe)</td><td class="py-2.5 pr-4">Fine (entry)</td><td class="py-2.5 text-lime">Fine (time-chunk)</td></tr>
+          <tr class="border-b border-border/50"><td class="py-2.5 pr-4">Log total ordering</td><td class="py-2.5 pr-4">Eventual</td><td class="py-2.5 pr-4">Immediate</td><td class="py-2.5 text-lime">Total</td></tr>
+          <tr class="border-b border-border/50"><td class="py-2.5 pr-4">Log entry visibility</td><td class="py-2.5 pr-4">End of epoch</td><td class="py-2.5 pr-4">After sequencing</td><td class="py-2.5 text-lime">Immediate</td></tr>
+          <tr class="border-b border-border/50"><td class="py-2.5 pr-4">Storage overhead per entry</td><td class="py-2.5 pr-4">Moderate</td><td class="py-2.5 pr-4">High</td><td class="py-2.5 text-lime">None</td></tr>
+          <tr><td class="py-2.5 pr-4">Tiered storage</td><td class="py-2.5 pr-4">No</td><td class="py-2.5 pr-4">No</td><td class="py-2.5 text-lime">Yes</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Auto-tiering -->
+    <h2 class="text-2xl font-bold mb-6">Auto-Tiering</h2>
+    <div class="bg-bg-alt border border-border rounded-xl p-6">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        {[
+          { label: 'Real-time flushing', desc: 'Data flows to lower tiers continuously as it arrives.' },
+          { label: 'Tunable parallelism', desc: 'Resource elasticity adjusts to incoming traffic patterns.' },
+          { label: 'Device-aware access', desc: 'Storage operations are optimized per device type.' },
+          { label: 'Server-pull eviction', desc: 'Decoupled from client operations for minimal impact.' },
+        ].map(item => (
+          <div>
+            <h4 class="font-semibold text-sm text-lime mb-1">{item.label}</h4>
+            <p class="text-xs text-text-muted leading-relaxed">{item.desc}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+</Layout>
