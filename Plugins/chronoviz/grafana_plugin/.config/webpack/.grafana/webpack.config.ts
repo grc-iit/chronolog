@@ -3,12 +3,11 @@
  * This is a simplified version - the full version is provided by @grafana/create-plugin
  */
 
-const path = require('path');
-const { DefinePlugin } = require('webpack');
-const CopyWebpackPlugin = require('copy-webpack-plugin');
-const ForkTsCheckerWebpackPlugin = require('fork-ts-checker-webpack-plugin');
-const ESLintPlugin = require('eslint-webpack-plugin');
-const ReplaceInFileWebpackPlugin = require('replace-in-file-webpack-plugin');
+import path = require('path');
+import webpack = require('webpack');
+const { DefinePlugin } = webpack;
+import CopyWebpackPlugin = require('copy-webpack-plugin');
+import ForkTsCheckerWebpackPlugin = require('fork-ts-checker-webpack-plugin');
 
 const SOURCE_DIR = path.resolve(process.cwd(), 'src');
 const DIST_DIR = path.resolve(process.cwd(), 'dist');
@@ -129,5 +128,5 @@ const config = async (env: Record<string, string>) => {
   };
 };
 
-module.exports = config;
+export = config;
 

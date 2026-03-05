@@ -1,4 +1,10 @@
 {
+  "ts-node": {
+    "compilerOptions": {
+      "module": "commonjs",
+      "noImplicitAny": false
+    }
+  },
   "compilerOptions": {
     "alwaysStrict": true,
     "declaration": false,
