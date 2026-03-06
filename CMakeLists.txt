@@ -42,21 +42,46 @@ endif()
 message(STATUS "CMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}")
 
 # Single, consistent layout
+# bin/ = supported/runtime executables only
+# examples/ = runnable examples (installed names: chrono-<component>-example-<role>, same as bin/)
+#   - Client: chrono-client-example-writer, -reader, -basic, -distributed-telemetry-writer
+#   - ChronoKVS: chrono-chronokvs-example-writer, -reader
+# tests/ = test executables (non-release or gated)
 set(CHRONOLOG_INSTALL_ROOT        "${CMAKE_INSTALL_PREFIX}/chronolog")
 set(CHRONOLOG_INSTALL_BIN_DIR     "${CHRONOLOG_INSTALL_ROOT}/bin")
+set(CHRONOLOG_INSTALL_EXAMPLES_DIR "${CHRONOLOG_INSTALL_ROOT}/examples")
+set(CHRONOLOG_INSTALL_TESTS_DIR   "${CHRONOLOG_INSTALL_ROOT}/tests")
 set(CHRONOLOG_INSTALL_LIB_DIR     "${CHRONOLOG_INSTALL_ROOT}/lib")
 set(CHRONOLOG_INSTALL_INCLUDE_DIR "${CHRONOLOG_INSTALL_ROOT}/include")
 set(CHRONOLOG_INSTALL_CONF_DIR    "${CHRONOLOG_INSTALL_ROOT}/conf")
 
-# Helper function for consistent target installation
+# Helper function for consistent target installation.
+# Usage: chronolog_install_target(target_name [DESTINATION bin|examples|tests])
+# Default DESTINATION is bin. Use examples/ for sample clients, tests/ for test executables.
 function(chronolog_install_target target_name)
+    set(_runtime_dest "${CHRONOLOG_INSTALL_BIN_DIR}")
+    set(_dest_arg "${ARGV1}")
+    if(ARGC GREATER 2 AND ARGV1 STREQUAL "DESTINATION")
+        set(_dest_arg "${ARGV2}")
+    elseif(ARGC GREATER 1)
+        set(_dest_arg "${ARGV1}")
+    endif()
+    if(NOT _dest_arg STREQUAL "")
+        if(_dest_arg STREQUAL "examples")
+            set(_runtime_dest "${CHRONOLOG_INSTALL_EXAMPLES_DIR}")
+        elseif(_dest_arg STREQUAL "tests")
+            set(_runtime_dest "${CHRONOLOG_INSTALL_TESTS_DIR}")
+        elseif(NOT _dest_arg STREQUAL "bin")
+            message(WARNING "chronolog_install_target(${target_name}): unknown DESTINATION '${_dest_arg}', using bin")
+        endif()
+    endif()
     install(TARGETS ${target_name}
-        RUNTIME DESTINATION ${CHRONOLOG_INSTALL_BIN_DIR}
+        RUNTIME DESTINATION ${_runtime_dest}
         LIBRARY DESTINATION ${CHRONOLOG_INSTALL_LIB_DIR}
         ARCHIVE DESTINATION ${CHRONOLOG_INSTALL_LIB_DIR}
         PUBLIC_HEADER DESTINATION ${CHRONOLOG_INSTALL_INCLUDE_DIR}
     )
-    # Set both absolute and relative RPATH for portability
+    # Set both absolute and relative RPATH for portability (examples/tests need ../lib)
     set_target_properties(${target_name} PROPERTIES INSTALL_RPATH "${CHRONOLOG_INSTALL_LIB_DIR};$ORIGIN/../lib")
 endfunction()
 
@@ -109,7 +134,13 @@ option(BUILD_SHARED_LIBS "Build with shared libraries." ON)
 option(CHRONOLOG_ENABLE_COVERAGE "Enable code coverage." OFF)
 option(CHRONOLOG_USE_ADDRESS_SANITIZER "Enable -fsanitize=address in Debug builds" ON)
 option(CHRONOLOG_USE_THREAD_SANITIZER "Enable -fsanitize=thread in Debug builds" OFF)
-option(CHRONOLOG_BUILD_TESTING "Build the testing tree." ON)
+option(CHRONOLOG_BUILD_TESTING "Build the testing tree (Debug mode only)." ON)
+if(DEFINED ENV{CHRONOLOG_INSTALL_TESTS})
+    set(_chronolog_install_tests_default "$ENV{CHRONOLOG_INSTALL_TESTS}")
+else()
+    set(_chronolog_install_tests_default "OFF")
+endif()
+option(CHRONOLOG_INSTALL_TESTS "Install test executables to chronolog/tests/ (unit, integration, client)." ${_chronolog_install_tests_default})
 option(CHRONOLOG_ENABLE_DOXYGEN "Enable Doxygen documentation generation." OFF)
 option(CHRONOLOG_WITH_STREAMING "Build to stream to Grafana through InfluxDB" ON)
 
@@ -196,10 +227,15 @@ add_custom_target(lint COMMAND cpplint --recursive
     ${CMAKE_CURRENT_SOURCE_DIR})
 
 #------------------------------------------------------------------------------
-# Testing
+# Testing (only in Debug mode; Release install has no test tree)
 #------------------------------------------------------------------------------
-if(CHRONOLOG_BUILD_TESTING)
-    message(STATUS "Tests enable")
+set(CHRONOLOG_BUILD_TESTS_NOW ${CHRONOLOG_BUILD_TESTING})
+if(CHRONOLOG_BUILD_TESTING AND NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(CHRONOLOG_BUILD_TESTS_NOW OFF)
+    message(STATUS "Tests are built only in Debug mode; skipping test tree in Release.")
+endif()
+if(CHRONOLOG_BUILD_TESTS_NOW)
+    message(STATUS "Tests enabled")
     include(CTest)
 endif()
 
@@ -216,7 +252,7 @@ add_subdirectory(ChronoStore)
 add_subdirectory(tools)
 add_subdirectory(Plugins)
 
-if(CHRONOLOG_BUILD_TESTING)
+if(CHRONOLOG_BUILD_TESTS_NOW)
     enable_testing()
     add_subdirectory(test)
 endif()

@@ -10,7 +10,7 @@ find_package(Thallium REQUIRED)
 add_executable(extract_test)
 
 target_sources(extract_test PRIVATE
-    extract_test.cpp
+    keeper_grapher_extract_test.cpp
     ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
 )
 
@@ -25,11 +25,13 @@ target_link_libraries(extract_test
         thallium
 )
 
+add_test(NAME Integration_KeeperGrapher_StoryChunkExtract COMMAND extract_test)
+
 # Ingest Test
 add_executable(ingest_test)
 
 target_sources(ingest_test PRIVATE
-    ingest_test.cpp
+    keeper_grapher_ingest_test.cpp
     ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
 )
 
@@ -43,6 +45,8 @@ target_link_libraries(ingest_test
         chrono_common
         thallium
 )
+
+add_test(NAME Integration_KeeperGrapher_StoryChunkIngest COMMAND ingest_test)
 
 #------------------------------------------------------------------------------
 # Custom Target and Configuration

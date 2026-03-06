@@ -29,6 +29,7 @@ target_link_libraries(client_admin PRIVATE
 )
 
 set_target_properties(client_admin PROPERTIES
+    OUTPUT_NAME chrono-client-admin
     BUILD_WITH_INSTALL_RPATH TRUE
     SKIP_BUILD_RPATH TRUE
 )

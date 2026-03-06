@@ -10,10 +10,4 @@ find_package(spdlog REQUIRED)
 message("Building CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
 message("build target : chrono_store")
 
-# Note: ChronoStore currently only contains test targets and library sources
-# The main executable target is not defined here, only in test subdirectory
-
-option(BUILD_TEST_DIRECTORY "Build Test Directory" ON)
-if(BUILD_TEST_DIRECTORY)
-    add_subdirectory(test)
-endif()
+# Note: ChronoStore test executables are built from test/unit/ChronoStore/

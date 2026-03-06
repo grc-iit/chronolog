@@ -306,7 +306,7 @@ jobs:
               echo '❌ Install failed — bin directory not found'
               exit 1
             fi
-            main_binaries=(chronovisor_server chrono_keeper chrono_grapher chrono_player)
+            main_binaries=(chrono-visor chrono-keeper chrono-grapher chrono-player)
             missing=0
             for exe in \"\${main_binaries[@]}\"; do
               if [ ! -x \"\${WORK_DIR}/bin/\$exe\" ]; then
@@ -380,16 +380,16 @@ jobs:
             cat /tmp/chrono_processes.txt
             echo '🔍 Checking required components...'
             missing=0
-            for proc in chronovisor_server chrono_grapher chrono_player chrono_keeper; do
+            for proc in chrono-visor chrono-grapher chrono-player chrono-keeper; do
               count=\$(grep -c \"\$proc\" /tmp/chrono_processes.txt || true)
               case \$proc in
-                chronovisor_server)
+                chrono-visor)
                   expected=1
                   ;;
-                chrono_grapher|chrono_player)
+                chrono-grapher|chrono-player)
                   expected=3
                   ;;
-                chrono_keeper)
+                chrono-keeper)
                   expected=5
                   ;;
               esac
@@ -425,7 +425,7 @@ jobs:
             echo '[6/7] Stopping ChronoLog...'
 
             echo 'Process states before stop:'
-            ps aux | grep -E 'chrono_player|chrono_keeper|chrono_grapher|chronovisor_server' | grep -v grep || true
+            ps aux | grep -E 'chrono-player|chrono-keeper|chrono-grapher|chrono-visor' | grep -v grep || true
 
             ./tools/deploy/ChronoLog/local_single_user_deploy.sh -s -w \"\${WORK_DIR}\"
 
@@ -439,7 +439,7 @@ jobs:
           docker exec -w /mnt/workspace "$CONTAINER_ID" bash -c "
             echo '[6.5/7] Verifying all ChronoLog processes are stopped...'
             
-            REMAINING=\$(ps aux | grep -E 'chrono_player|chrono_keeper|chrono_grapher|chronovisor_server' | grep -v grep || true)
+            REMAINING=\$(ps aux | grep -E 'chrono-player|chrono-keeper|chrono-grapher|chrono-visor' | grep -v grep || true)
             if [ -z \"\$REMAINING\" ]; then
               echo '✅ All ChronoLog processes stopped successfully'
             else
@@ -798,7 +798,7 @@ jobs:
               echo '❌ Install failed — bin directory not found'
               exit 1
             fi
-            main_binaries=(chronovisor_server chrono_keeper chrono_grapher chrono_player client_admin)
+            main_binaries=(chrono-visor chrono-keeper chrono-grapher chrono-player chrono-client-admin)
             missing=0
             for exe in \"\${main_binaries[@]}\"; do
               if [ ! -x \"\${WORK_DIR}/bin/\$exe\" ]; then
@@ -861,7 +861,7 @@ jobs:
           docker exec --user grc-iit chronolog-c1 bash -c "
             rm -rf ${PSSH_OUT_DIR}
             mkdir -p ${PSSH_OUT_DIR}
-            parallel-ssh -h ${WORK_DIR}/conf/hosts_all -o ${PSSH_OUT_DIR} -t 30 \"ps -eo pid,args 2>/dev/null | grep -E 'chronovisor_server|chrono_keeper|chrono_grapher|chrono_player' | grep -v grep || true\"
+            parallel-ssh -h ${WORK_DIR}/conf/hosts_all -o ${PSSH_OUT_DIR} -t 30 \"ps -eo pid,args 2>/dev/null | grep -E 'chrono-visor|chrono-keeper|chrono-grapher|chrono-player' | grep -v grep || true\"
             # Combine results, prefixing each line with container name
             for host_file in ${PSSH_OUT_DIR}/*; do
               host=\$(basename \"\$host_file\")
@@ -886,10 +886,10 @@ jobs:
           EXPECTED_PLAYER_HOSTS=$(docker exec chronolog-c1 bash -c "cat ${WORK_DIR}/conf/hosts_player 2>/dev/null" | tr '\n' ' ' | xargs)
           
           echo "Expected host assignments:"
-          echo "  chronovisor_server: ${EXPECTED_VISOR_HOSTS}"
-          echo "  chrono_keeper: ${EXPECTED_KEEPER_HOSTS}"
-          echo "  chrono_grapher: ${EXPECTED_GRAPHER_HOSTS}"
-          echo "  chrono_player: ${EXPECTED_PLAYER_HOSTS}"
+          echo "  chrono-visor: ${EXPECTED_VISOR_HOSTS}"
+          echo "  chrono-keeper: ${EXPECTED_KEEPER_HOSTS}"
+          echo "  chrono-grapher: ${EXPECTED_GRAPHER_HOSTS}"
+          echo "  chrono-player: ${EXPECTED_PLAYER_HOSTS}"
           
           # Function to check process distribution
           check_process_distribution() {
@@ -947,19 +947,19 @@ jobs:
           }
           
           # Check each process type
-          if ! check_process_distribution "chronovisor_server" "$EXPECTED_VISOR_HOSTS" 1; then
+          if ! check_process_distribution "chrono-visor" "$EXPECTED_VISOR_HOSTS" 1; then
             missing=1
           fi
           
-          if ! check_process_distribution "chrono_keeper" "$EXPECTED_KEEPER_HOSTS" 2; then
+          if ! check_process_distribution "chrono-keeper" "$EXPECTED_KEEPER_HOSTS" 2; then
             missing=1
           fi
           
-          if ! check_process_distribution "chrono_grapher" "$EXPECTED_GRAPHER_HOSTS" 2; then
+          if ! check_process_distribution "chrono-grapher" "$EXPECTED_GRAPHER_HOSTS" 2; then
             missing=1
           fi
           
-          if ! check_process_distribution "chrono_player" "$EXPECTED_PLAYER_HOSTS" 2; then
+          if ! check_process_distribution "chrono-player" "$EXPECTED_PLAYER_HOSTS" 2; then
             missing=1
           fi
           
@@ -1061,8 +1061,8 @@ jobs:
             # -n: event count, -t: story count, -h: chronicle count
             # -p: performance metrics, -y: barrier mode
             if timeout 300 \${MPIEXEC_BIN} -l -n 4 -f conf/hosts_client \
-              bin/client_admin \
-              --config conf/default_client_conf.json \
+              bin/chrono-client-admin \
+              --config conf/default-chrono-client-conf.json \
               -a 4096 -b 4096 -s 4096 -n 1024 -t 1 -h 1 -p -y 2>&1 | tee /tmp/mpi_test_output.log; then
               echo '✅ Client performance test completed successfully'
             else

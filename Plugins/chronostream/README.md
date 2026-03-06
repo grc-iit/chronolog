@@ -99,10 +99,10 @@ Launch the below commands on your terminal to get the session ready
 ps -ef | grep chrono
 
 # Sample output:
-user    3238201       1  0 Nov14 pts/7    00:02:20 /home/user/chronolog-install/chronolog/bin/chronovisor_server --config /home/user/chronolog-install/chronolog/conf/visor_conf.json
-user    3238284       1  0 Nov14 pts/7    00:01:21 /home/user/chronolog-install/chronolog/bin/chrono_grapher --config /home/user/chronolog-install/chronolog/conf/grapher_conf_1.json
-user    3238351       1  0 Nov14 pts/7    00:01:15 /home/user/chronolog-install/chronolog/bin/chrono_player --config /home/user/chronolog-install/chronolog/conf/player_conf_1.json
-user    3238431       1 11 Nov14 pts/7    00:41:17 /home/user/chronolog-install/chronolog/bin/chrono_keeper --config /home/user/chronolog-install/chronolog/conf/keeper_conf_1.json
+user    3238201       1  0 Nov14 pts/7    00:02:20 /home/user/chronolog-install/chronolog/bin/chrono-visor --config /home/user/chronolog-install/chronolog/conf/chrono-visor-conf.json
+user    3238284       1  0 Nov14 pts/7    00:01:21 /home/user/chronolog-install/chronolog/bin/chrono-grapher --config /home/user/chronolog-install/chronolog/conf/chrono-grapher-conf-1.json
+user    3238351       1  0 Nov14 pts/7    00:01:15 /home/user/chronolog-install/chronolog/bin/chrono-player --config /home/user/chronolog-install/chronolog/conf/chrono-player-conf-1.json
+user    3238431       1 11 Nov14 pts/7    00:41:17 /home/user/chronolog-install/chronolog/bin/chrono-keeper --config /home/user/chronolog-install/chronolog/conf/chrono-keeper-conf-1.json
 
 # To stop the ChronoLog processes
 ./local_single_user_deploy.sh -s -w $INSTALL_DIR
@@ -112,13 +112,13 @@ user    3238431       1 11 Nov14 pts/7    00:41:17 /home/user/chronolog-install/
 Launch the client writer script to write the story events
 ``` bash
 export CHRONICLE=grafana_chronicle
-$INSTALL_DIR/bin/client_writer -c $INSTALL_DIR/conf/default_client_conf.json -r "$CHRONICLE" -d 120 -i 5 
+$INSTALL_DIR/bin/client_writer -c $INSTALL_DIR/conf/default-chrono-client-conf.json -r "$CHRONICLE" -d 120 -i 5 
 ```
 Sample output:
 ``` bash
 [ChronoLog] user@localhost:~/Desktop/ChronoLog$ export CHRONICLE=grafana_chronicle
-[ChronoLog] user@localhost:~/Desktop/ChronoLog$ $INSTALL_DIR/bin/client_writer -c $INSTALL_DIR/conf/default_client_conf.json -r "$CHRONICLE" -d 120 -i 5 
-[writer] config=/home/user/chronolog-install/chronolog/conf/default_client_conf.json chronicle=grafana_chronicle duration=120s interval=5s
+[ChronoLog] user@localhost:~/Desktop/ChronoLog$ $INSTALL_DIR/bin/client_writer -c $INSTALL_DIR/conf/default-chrono-client-conf.json -r "$CHRONICLE" -d 120 -i 5 
+[writer] config=/home/user/chronolog-install/chronolog/conf/default-chrono-client-conf.json chronicle=grafana_chronicle duration=120s interval=5s
 [debug] stories under grafana_chronicle:
 [writer] cpu=0.0% mem=1341.2MB net=0,0 bytes
 [writer] cpu=3.9% mem=1338.8MB net=13614,35196 bytes
@@ -149,12 +149,12 @@ Sample output:
 ### 6. Launch the client reader
 Launch the client reader script to stream the events to Grafana through InfluxDB after a few seconds (30-45 seconds)
 ``` bash
-$INSTALL_DIR/bin/client_reader_stream_influx -c $INSTALL_DIR/conf/default_client_conf.json -r "$CHRONICLE" -s cpu_usage,memory_usage,network_usage --window-sec 300 --poll-interval-sec 5 --influx-url "$INFLUX_URL" --influx-token "$INFLUX_TOKEN"
+$INSTALL_DIR/bin/client_reader_stream_influx -c $INSTALL_DIR/conf/default-chrono-client-conf.json -r "$CHRONICLE" -s cpu_usage,memory_usage,network_usage --window-sec 300 --poll-interval-sec 5 --influx-url "$INFLUX_URL" --influx-token "$INFLUX_TOKEN"
 ```
 Sample output:
 ``` bash
-[ChronoLog] user@localhost:~/Desktop/ChronoLog/build$ $INSTALL_DIR/bin/client_reader_stream_influx -c $INSTALL_DIR/conf/default_client_conf.json -r "$CHRONICLE" -s cpu_usage,memory_usage,network_usage --window-sec 300  --poll-interval-sec 5 --influx-url "$INFLUX_URL" --influx-token "$INFLUX_TOKEN"
-[client_reader_stream] Config loaded from '/home/user/chronolog-install/chronolog/conf/default_client_conf.json'
+[ChronoLog] user@localhost:~/Desktop/ChronoLog/build$ $INSTALL_DIR/bin/client_reader_stream_influx -c $INSTALL_DIR/conf/default-chrono-client-conf.json -r "$CHRONICLE" -s cpu_usage,memory_usage,network_usage --window-sec 300  --poll-interval-sec 5 --influx-url "$INFLUX_URL" --influx-token "$INFLUX_TOKEN"
+[client_reader_stream] Config loaded from '/home/user/chronolog-install/chronolog/conf/default-chrono-client-conf.json'
 ===== ChronoLog Client Configuration =====
 [PORTAL_CONF]
   protocol: ofi+sockets
@@ -168,7 +168,7 @@ Sample output:
   provider ID: 57
 [LOG_CONF]
   type: file
-  file: /home/user/chronolog-install/chronolog/monitor/chrono_client.log
+  file: /home/user/chronolog-install/chronolog/monitor/chrono-client.log
   level: debug
   name: ChronoClient
   filesize: 1048576

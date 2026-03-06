@@ -37,10 +37,10 @@ MONITOR_DIR="$WORK_DIR/monitor"
 OUTPUT_DIR="$WORK_DIR/output"
 
 # Binary names
-VISOR_BIN_FILE_NAME="chronovisor_server"
-GRAPHER_BIN_FILE_NAME="chrono_grapher"
-KEEPER_BIN_FILE_NAME="chrono_keeper"
-PLAYER_BIN_FILE_NAME="chrono_player"
+VISOR_BIN_FILE_NAME="chrono-visor"
+GRAPHER_BIN_FILE_NAME="chrono-grapher"
+KEEPER_BIN_FILE_NAME="chrono-keeper"
+PLAYER_BIN_FILE_NAME="chrono-player"
 
 # Binary paths (with defaults)
 VISOR_BIN="$BIN_DIR/$VISOR_BIN_FILE_NAME"
@@ -53,8 +53,8 @@ KEEPER_BIN_DIR="$BIN_DIR"
 PLAYER_BIN_DIR="$BIN_DIR"
 
 # Configuration file and component-specific conf arguments (with defaults)
-CONF_FILE="$WORK_DIR/conf/default_conf.json"
-CLIENT_CONF_FILE="$WORK_DIR/conf/default_client_conf.json"
+CONF_FILE="$WORK_DIR/conf/default-chrono-conf.json"
+CLIENT_CONF_FILE="$WORK_DIR/conf/default-chrono-client-conf.json"
 VISOR_ARGS="--config ${CONF_FILE}"
 GRAPHER_ARGS="--config ${CONF_FILE}"
 KEEPER_ARGS="--config ${CONF_FILE}"
@@ -112,14 +112,14 @@ usage() {
   echo "  -u|--output-dir <path>           Set the output directory (default: work_dir/output) [Modes: Start]"
   echo ""
   echo "Binary Paths:"
-  echo "  -v|--visor-bin <path>            Path to the ChronoVisor binary (default: work_dir/bin/chronovisor_server) [Modes: Start]"
-  echo "  -g|--grapher-bin <path>          Path to the ChronoGrapher binary (default: work_dir/bin/chrono_grapher) [Modes: Start]"
-  echo "  -p|--keeper-bin <path>           Path to the ChronoKeeper binary (default: work_dir/bin/chrono_keeper) [Modes: Start]"
-  echo "  -a|--player-bin <path>           Path to the ChronoPlayer binary (default: work_dir/bin/chrono_player) [Modes: Start]"
+  echo "  -v|--visor-bin <path>            Path to the ChronoVisor binary (default: work_dir/bin/chrono-visor) [Modes: Start]"
+  echo "  -g|--grapher-bin <path>          Path to the ChronoGrapher binary (default: work_dir/bin/chrono-grapher) [Modes: Start]"
+  echo "  -p|--keeper-bin <path>           Path to the ChronoKeeper binary (default: work_dir/bin/chrono-keeper) [Modes: Start]"
+  echo "  -a|--player-bin <path>           Path to the ChronoPlayer binary (default: work_dir/bin/chrono-player) [Modes: Start]"
   echo ""
   echo "Configuration Settings:"
-  echo "  -f|--conf-file <path>            Path to the configuration file (default: work_dir/conf/default_conf.json) [Modes: Start]"
-  echo "  -n|--client-conf-file <path>     Path to the client configuration file (default: work_dir/conf/client_conf.json) [Modes: Start]"
+  echo "  -f|--conf-file <path>            Path to the configuration file (default: work_dir/conf/default-chrono-conf.json) [Modes: Start]"
+  echo "  -n|--client-conf-file <path>     Path to the client configuration file (default: work_dir/conf/chrono-client-conf.json) [Modes: Start]"
   echo ""
   echo "Miscellaneous Options:"
   echo "  -e|--verbose                     Enable verbose output (default: false)"
@@ -223,12 +223,12 @@ delegate_to_deploy_cluster() {
   # Pass custom paths if they differ from defaults derived from WORK_DIR
   [[ "${MONITOR_DIR}" != "${WORK_DIR}/monitor" ]] && args+=("--monitor-dir" "${MONITOR_DIR}")
   [[ "${OUTPUT_DIR}" != "${WORK_DIR}/output" ]] && args+=("--output-dir" "${OUTPUT_DIR}")
-  [[ "${VISOR_BIN}" != "${WORK_DIR}/bin/chronovisor_server" ]] && args+=("--visor-bin" "${VISOR_BIN}")
-  [[ "${GRAPHER_BIN}" != "${WORK_DIR}/bin/chrono_grapher" ]] && args+=("--grapher-bin" "${GRAPHER_BIN}")
-  [[ "${KEEPER_BIN}" != "${WORK_DIR}/bin/chrono_keeper" ]] && args+=("--keeper-bin" "${KEEPER_BIN}")
-  [[ "${PLAYER_BIN}" != "${WORK_DIR}/bin/chrono_player" ]] && args+=("--player-bin" "${PLAYER_BIN}")
-  [[ "${CONF_FILE}" != "${WORK_DIR}/conf/default_conf.json" ]] && args+=("--conf-file" "${CONF_FILE}")
-  [[ "${CLIENT_CONF_FILE}" != "${WORK_DIR}/conf/default_client_conf.json" ]] && args+=("--client-conf-file" "${CLIENT_CONF_FILE}")
+  [[ "${VISOR_BIN}" != "${WORK_DIR}/bin/chrono-visor" ]] && args+=("--visor-bin" "${VISOR_BIN}")
+  [[ "${GRAPHER_BIN}" != "${WORK_DIR}/bin/chrono-grapher" ]] && args+=("--grapher-bin" "${GRAPHER_BIN}")
+  [[ "${KEEPER_BIN}" != "${WORK_DIR}/bin/chrono-keeper" ]] && args+=("--keeper-bin" "${KEEPER_BIN}")
+  [[ "${PLAYER_BIN}" != "${WORK_DIR}/bin/chrono-player" ]] && args+=("--player-bin" "${PLAYER_BIN}")
+  [[ "${CONF_FILE}" != "${WORK_DIR}/conf/default-chrono-conf.json" ]] && args+=("--conf-file" "${CONF_FILE}")
+  [[ "${CLIENT_CONF_FILE}" != "${WORK_DIR}/conf/default-chrono-client-conf.json" ]] && args+=("--client-conf-file" "${CLIENT_CONF_FILE}")
   [[ "${VISOR_HOSTS}" != "${WORK_DIR}/conf/hosts_visor" ]] && args+=("--visor-hosts" "${VISOR_HOSTS}")
   [[ "${GRAPHER_HOSTS}" != "${WORK_DIR}/conf/hosts_grapher" ]] && args+=("--grapher-hosts" "${GRAPHER_HOSTS}")
   [[ "${KEEPER_HOSTS}" != "${WORK_DIR}/conf/hosts_keeper" ]] && args+=("--keeper-hosts" "${KEEPER_HOSTS}")
@@ -284,9 +284,9 @@ parse_args() {
       BIN_DIR="${WORK_DIR}/bin"
       MONITOR_DIR="${WORK_DIR}/monitor"
       OUTPUT_DIR="${WORK_DIR}/output"
-      VISOR_BIN_FILE_NAME="chronovisor_server"
-      KEEPER_BIN_FILE_NAME="chrono_keeper"
-      GRAPHER_BIN_FILE_NAME="chrono_grapher"
+      VISOR_BIN_FILE_NAME="chrono-visor"
+      KEEPER_BIN_FILE_NAME="chrono-keeper"
+      GRAPHER_BIN_FILE_NAME="chrono-grapher"
       VISOR_BIN="${WORK_DIR}/bin/${VISOR_BIN_FILE_NAME}"
       GRAPHER_BIN="${WORK_DIR}/bin/${GRAPHER_BIN_FILE_NAME}"
       KEEPER_BIN="${WORK_DIR}/bin/${KEEPER_BIN_FILE_NAME}"
@@ -295,8 +295,8 @@ parse_args() {
       GRAPHER_BIN_DIR=$(dirname ${GRAPHER_BIN})
       KEEPER_BIN_DIR=$(dirname ${KEEPER_BIN})
       PLAYER_BIN_DIR=$(dirname ${PLAYER_BIN})
-      CONF_FILE="${CONF_DIR}/default_conf.json"
-      CLIENT_CONF_FILE="${CONF_DIR}/default_client_conf.json"
+      CONF_FILE="${CONF_DIR}/default-chrono-conf.json"
+      CLIENT_CONF_FILE="${CONF_DIR}/default-chrono-client-conf.json"
       VISOR_ARGS="--config ${CONF_FILE}"
       GRAPHER_ARGS="--config ${CONF_FILE}"
       KEEPER_ARGS="--config ${CONF_FILE}"

@@ -19,7 +19,7 @@
     "Monitoring": {
       "monitor": {
         "type": "file",
-        "file": "chrono_client.log",
+        "file": "chrono-client.log",
         "level": "debug",
         "name": "ChronoClient",
         "filesize": 1048576,
