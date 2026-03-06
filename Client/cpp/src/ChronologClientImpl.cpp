@@ -10,6 +10,7 @@
 #include <margo.h>
 #include <thallium.hpp>
 
+#include <chrono_monitor.h>
 #include "ChronologClientImpl.h"
 #include "StorytellerClient.h"
 

@@ -18,7 +18,25 @@ static std::mutex g_mutex;
 
 static spdlog::level::level_enum to_spdlog_level(LogLevel level)
 {
-    return static_cast<spdlog::level::level_enum>(static_cast<int>(level));
+    switch(level)
+    {
+        case LogLevel::trace:
+            return spdlog::level::trace;
+        case LogLevel::debug:
+            return spdlog::level::debug;
+        case LogLevel::info:
+            return spdlog::level::info;
+        case LogLevel::warn:
+            return spdlog::level::warn;
+        case LogLevel::err:
+            return spdlog::level::err;
+        case LogLevel::critical:
+            return spdlog::level::critical;
+        case LogLevel::off:
+            return spdlog::level::off;
+        default:
+            return spdlog::level::info;
+    }
 }
 
 int chrono_monitor::initialize(const std::string& logType,
