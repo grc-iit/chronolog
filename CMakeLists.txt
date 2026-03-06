@@ -5,20 +5,21 @@ if(NOT DEFINED CMAKE_MACOSX_RPATH)
     set(CMAKE_MACOSX_RPATH 0)
 endif()
 
-project(ChronoLog LANGUAGES CXX C)
+project(ChronoLog VERSION 2.5.0 LANGUAGES CXX C)
 
 #------------------------------------------------------------------------------
 # Version information
 #------------------------------------------------------------------------------
-set(CHRONOLOG_VERSION_MAJOR "0")
-set(CHRONOLOG_VERSION_MINOR "7")
-set(CHRONOLOG_VERSION_PATCH "0")
+# Derive version variables from CMake project VERSION (set above)
+set(CHRONOLOG_VERSION_MAJOR "${PROJECT_VERSION_MAJOR}")
+set(CHRONOLOG_VERSION_MINOR "${PROJECT_VERSION_MINOR}")
+set(CHRONOLOG_VERSION_PATCH "${PROJECT_VERSION_PATCH}")
 set(CHRONOLOG_PACKAGE "ChronoLog")
 set(CHRONOLOG_PACKAGE_NAME "CHRONOLOG")
-set(CHRONOLOG_PACKAGE_VERSION "${CHRONOLOG_VERSION_MAJOR}.${CHRONOLOG_VERSION_MINOR}.${CHRONOLOG_VERSION_PATCH}")
-set(CHRONOLOG_PACKAGE_VERSION_MAJOR "${CHRONOLOG_VERSION_MAJOR}.${CHRONOLOG_VERSION_MINOR}")
-set(CHRONOLOG_PACKAGE_VERSION_MINOR "${CHRONOLOG_VERSION_PATCH}")
-set(CHRONOLOG_PACKAGE_STRING "${CHRONOLOG_PACKAGE_NAME} ${CHRONOLOG_PACKAGE_VERSION}")
+set(CHRONOLOG_PACKAGE_VERSION "${PROJECT_VERSION}")
+set(CHRONOLOG_PACKAGE_VERSION_MAJOR "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}")
+set(CHRONOLOG_PACKAGE_VERSION_MINOR "${PROJECT_VERSION_PATCH}")
+set(CHRONOLOG_PACKAGE_STRING "${CHRONOLOG_PACKAGE_NAME} ${PROJECT_VERSION}")
 set(CHRONOLOG_PACKAGE_TARNAME "${CHRONOLOG_PACKAGE}")
 
 #------------------------------------------------------------------------------
@@ -313,6 +314,21 @@ install(
 )
 
 #------------------------------------------------------------------------------
+# Runtime Version Header
+#------------------------------------------------------------------------------
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/version.h.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/chronolog_version.h"
+    @ONLY
+)
+
+install(
+    FILES "${CMAKE_CURRENT_BINARY_DIR}/chronolog_version.h"
+    DESTINATION ${CHRONOLOG_INSTALL_INCLUDE_DIR}/chronolog
+    RENAME version.h
+)
+
+#------------------------------------------------------------------------------
 # Deploy-from-install helper scripts
 #------------------------------------------------------------------------------
 install(
@@ -326,3 +342,28 @@ install(
 # Custom Targets
 #------------------------------------------------------------------------------
 add_custom_target(make_all cd ${CMAKE_BINARY_DIR} && make)
+
+#------------------------------------------------------------------------------
+# Packaging (must come after all install() calls)
+#------------------------------------------------------------------------------
+include(cmake/CPackConfig.cmake)
+include(CPack)
+
+# package_release: builds the CPack TGZ then renames it to add the platform
+# suffix, giving the final name: chronolog-<version>-<system>-<processor>.tar.gz
+# Usage: cmake --build . --target package_release
+get_filename_component(_cmake_bin_dir "${CMAKE_COMMAND}" DIRECTORY)
+find_program(_cpack_program cpack HINTS "${_cmake_bin_dir}" REQUIRED)
+string(TOLOWER "${CMAKE_SYSTEM_NAME}" _system_lower)
+set(_pkg_base    "${CPACK_PACKAGE_NAME}-${CHRONOLOG_PACKAGE_VERSION}")
+set(_pkg_release "${_pkg_base}-${_system_lower}-${CMAKE_SYSTEM_PROCESSOR}")
+
+add_custom_target(package_release
+    COMMAND "${_cpack_program}" --config "${CMAKE_BINARY_DIR}/CPackConfig.cmake" -B "${CMAKE_BINARY_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E rename
+        "${CMAKE_BINARY_DIR}/${_pkg_base}.tar.gz"
+        "${CMAKE_BINARY_DIR}/${_pkg_release}.tar.gz"
+    WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+    COMMENT "Creating ${_pkg_release}.tar.gz"
+    VERBATIM
+)

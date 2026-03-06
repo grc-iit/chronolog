@@ -1,0 +1,16 @@
+Bootstrap: docker
+From: ghcr.io/grc-iit/chronolog/chronolog-ci:chronolog-main
+
+%environment
+    export PATH=/home/grc-iit/chronolog-install/chronolog/bin:$PATH
+    export LD_LIBRARY_PATH=/home/grc-iit/chronolog-install/chronolog/lib:$LD_LIBRARY_PATH
+    export CHRONOLOG_CONF_DIR=/home/grc-iit/chronolog-install/chronolog/conf
+
+%runscript
+    exec "$@"
+
+%labels
+    Author      GRC-IIT, Illinois Institute of Technology
+    Version     0.7.0
+    Homepage    https://github.com/grc-iit/ChronoLog
+    License     BSD-2-Clause

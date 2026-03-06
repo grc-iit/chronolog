@@ -1,0 +1,226 @@
+name: ChronoLog Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/chronolog-ci
+  INSTALL_BASE: /home/grc-iit/chronolog-install
+
+jobs:
+  build-release:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: read
+    timeout-minutes: 120
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      arch:    ${{ steps.version.outputs.arch }}
+
+    steps:
+      - name: Checkout code at tag
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Extract version and arch
+        id: version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ARCH="$(uname -m)"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "arch=${ARCH}"       >> $GITHUB_OUTPUT
+
+      - name: Verify CMake version matches git tag
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          CMAKE_VERSION=$(grep -m1 'project(ChronoLog VERSION' CMakeLists.txt \
+            | sed 's/.*VERSION[[:space:]]\+\([0-9][0-9.]*\).*/\1/')
+          if [ "${CMAKE_VERSION}" != "${TAG_VERSION}" ]; then
+            echo "❌ Version mismatch: CMakeLists.txt has ${CMAKE_VERSION} but tag is ${GITHUB_REF_NAME}"
+            exit 1
+          fi
+          echo "✅ Version ${CMAKE_VERSION} matches tag ${GITHUB_REF_NAME}"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set repository name (lowercase)
+        id: repo-name
+        run: |
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "name=${REPO_LOWER}" >> $GITHUB_OUTPUT
+
+      - name: Compute base image hash
+        id: basehash
+        run: |
+          echo "hash=${{ hashFiles('spack.yaml', 'Client/spack.yaml', '.github/docker/**') }}" >> $GITHUB_OUTPUT
+
+      - name: Set base image name
+        id: base-image
+        run: |
+          BASE_TAG="ghcr.io/${{ steps.repo-name.outputs.name }}:hash-${{ steps.basehash.outputs.hash }}"
+          echo "full-name=${BASE_TAG}" >> $GITHUB_OUTPUT
+
+      - name: Create release container
+        id: create-container
+        run: |
+          CONTAINER_ID=$(docker create \
+            --name chronolog-release \
+            -v "${{ github.workspace }}:/mnt/workspace" \
+            --user grc-iit \
+            "${{ steps.base-image.outputs.full-name }}" \
+            bash -c "sleep infinity")
+          docker start "${CONTAINER_ID}"
+          echo "container-id=${CONTAINER_ID}" >> $GITHUB_OUTPUT
+
+      - name: Setup Spack environment in container
+        run: |
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker exec -w /mnt/workspace "$CONTAINER_ID" bash -c "
+            source /home/grc-iit/spack/share/spack/setup-env.sh
+            spack env activate .
+            spack load --first thallium
+            echo 'Spack env activated and thallium loaded'
+          "
+
+      - name: Build ChronoLog (Release)
+        run: |
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          INSTALL_DIR="${{ env.INSTALL_BASE }}"
+          docker exec -w /mnt/workspace "$CONTAINER_ID" bash -c "
+            source /home/grc-iit/spack/share/spack/setup-env.sh
+            spack env activate .
+            spack load --first thallium
+            if [ -x ./tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
+              ./tools/deploy/ChronoLog/local_single_user_deploy.sh -b -I \"\${INSTALL_DIR}\"
+            else
+              echo '❌ Build script not found or not executable'
+              exit 1
+            fi
+          "
+
+      - name: Install ChronoLog (with lib bundling + chrpath)
+        run: |
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          INSTALL_DIR="${{ env.INSTALL_BASE }}"
+          docker exec -w /mnt/workspace "$CONTAINER_ID" bash -c "
+            source /home/grc-iit/spack/share/spack/setup-env.sh
+            spack env activate .
+            spack load --first thallium
+            if [ -x ./tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
+              ./tools/deploy/ChronoLog/local_single_user_deploy.sh -i -I \"\${INSTALL_DIR}\"
+            else
+              echo '❌ Install script not found or not executable'
+              exit 1
+            fi
+          "
+
+      - name: Build CPack TGZ package
+        run: |
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          VERSION="${{ steps.version.outputs.version }}"
+          docker exec -w /mnt/workspace "$CONTAINER_ID" bash -c "
+            source /home/grc-iit/spack/share/spack/setup-env.sh
+            spack env activate .
+            spack load --first thallium
+            BUILD_DIR=\$(find /home/grc-iit/chronolog-build -maxdepth 1 -type d -name 'Release' 2>/dev/null | head -1)
+            if [ -z \"\${BUILD_DIR}\" ]; then
+              echo '❌ Release build directory not found'
+              exit 1
+            fi
+            cmake --build \"\${BUILD_DIR}\" --target package
+            echo \"CPack artifacts:\"
+            ls -lh \"\${BUILD_DIR}\"/chronolog-*.tar.gz || true
+          "
+
+      - name: Copy artifacts out of container
+        run: |
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          VERSION="${{ steps.version.outputs.version }}"
+          ARCH="${{ steps.version.outputs.arch }}"
+          mkdir -p /tmp/chronolog-artifacts
+
+          # Self-contained tarball (produced by install.sh / deploy script)
+          docker exec "$CONTAINER_ID" bash -c "
+            INSTALL_DIR=\"\${{ env.INSTALL_BASE }}\"
+            cd \"\${INSTALL_DIR}\"
+            tar czf /tmp/chronolog-self-contained.tar.gz chronolog/
+          "
+          docker cp "$CONTAINER_ID:/tmp/chronolog-self-contained.tar.gz" \
+            "/tmp/chronolog-artifacts/chronolog-${VERSION}-${ARCH}-self-contained.tar.gz"
+
+          # Developer (CPack TGZ)
+          BUILD_DIR=$(docker exec "$CONTAINER_ID" bash -c "find /home/grc-iit/chronolog-build -maxdepth 1 -type d -name 'Release' 2>/dev/null | head -1")
+          CPACK_TGZ=$(docker exec "$CONTAINER_ID" bash -c "ls \"${BUILD_DIR}\"/chronolog-*.tar.gz 2>/dev/null | head -1")
+          if [ -n "${CPACK_TGZ}" ]; then
+            docker cp "$CONTAINER_ID:${CPACK_TGZ}" \
+              "/tmp/chronolog-artifacts/chronolog-${VERSION}-${ARCH}-devel.tar.gz"
+          fi
+
+      - name: Stop and remove container
+        if: always()
+        run: docker rm -f chronolog-release || true
+
+      - name: Generate SHA256 checksums
+        run: |
+          cd /tmp/chronolog-artifacts
+          sha256sum chronolog-*.tar.gz > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: chronolog-release-${{ steps.version.outputs.version }}
+          path: /tmp/chronolog-artifacts/
+          retention-days: 5
+
+  create-github-release:
+    needs: build-release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout (for tag annotation)
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Extract tag annotation body
+        id: tag-body
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          BODY=$(git tag -l --format='%(contents)' "${TAG}" || echo "Release ${TAG}")
+          # Write to file to preserve newlines
+          echo "${BODY}" > /tmp/release-body.txt
+          echo "body-file=/tmp/release-body.txt" >> $GITHUB_OUTPUT
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: chronolog-release-${{ needs.build-release.outputs.version }}
+          path: /tmp/release-artifacts/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name:   ${{ github.ref_name }}
+          name:       ChronoLog ${{ needs.build-release.outputs.version }}
+          body_path:  ${{ steps.tag-body.outputs.body-file }}
+          make_latest: true
+          files: |
+            /tmp/release-artifacts/chronolog-*-self-contained.tar.gz
+            /tmp/release-artifacts/chronolog-*-devel.tar.gz
+            /tmp/release-artifacts/SHA256SUMS
