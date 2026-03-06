@@ -190,15 +190,13 @@ jobs:
         run: |
           set -e
           # Uses the base image (with hashed tag) from the previous job
-          # Mount workspace at /mnt/workspace so we can copy it into /home/grc-iit/chronolog-repo before commit
-          # (bind mounts are not included in docker commit; the repo would be missing in the published image otherwise)
           BASE_IMAGE="${{ needs.chronolog-base.outputs.image-name }}"
           echo "Using base image: ${BASE_IMAGE}"
           CONTAINER_ID=$(docker create --user root --init \
-            -v "${{ github.workspace }}:/mnt/workspace" \
-            -w /mnt/workspace \
+            -v "${{ github.workspace }}:/home/grc-iit/chronolog-repo" \
+            -w /home/grc-iit/chronolog-repo \
             "$BASE_IMAGE" \
-            bash -c "chown -R grc-iit:grc-iit /mnt/workspace && tail -f /dev/null")
+            bash -c "chown -R grc-iit:grc-iit /home/grc-iit/chronolog-repo && tail -f /dev/null")
           echo "container-id=${CONTAINER_ID}" >> $GITHUB_OUTPUT
           docker start "$CONTAINER_ID"
           echo "Container created and started: ${CONTAINER_ID}"
@@ -207,7 +205,7 @@ jobs:
         run: |
           set -e
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
-          docker exec -w /mnt/workspace "$CONTAINER_ID" bash -c "
+          docker exec "$CONTAINER_ID" bash -c "
             echo '=== Verifying code checkout ==='
             echo \"Current directory: \$(pwd)\"
             echo \"Git branch: \$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo 'detached')\"
@@ -221,7 +219,7 @@ jobs:
         run: |
           set -e
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
-          docker exec -w /mnt/workspace "$CONTAINER_ID" bash -c "
+          docker exec "$CONTAINER_ID" bash -c "
             source /home/grc-iit/spack/share/spack/setup-env.sh
             spack env activate -p .
             echo '✅ Spack environment activated'
@@ -231,7 +229,7 @@ jobs:
         run: |
           set -e
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
-          docker exec -w /mnt/workspace "$CONTAINER_ID" bash -c "
+          docker exec "$CONTAINER_ID" bash -c "
             set -e
             source /home/grc-iit/spack/share/spack/setup-env.sh
             spack env activate -p .
@@ -249,7 +247,7 @@ jobs:
         run: |
           set -e
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
-          docker exec -w /mnt/workspace "$CONTAINER_ID" bash -c "
+          docker exec "$CONTAINER_ID" bash -c "
             set -e
             source /home/grc-iit/spack/share/spack/setup-env.sh
             spack env activate -p .
@@ -271,7 +269,7 @@ jobs:
         run: |
           set -e
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
-          docker exec -w /mnt/workspace "$CONTAINER_ID" bash -c "
+          docker exec "$CONTAINER_ID" bash -c "
             set -e
             source /home/grc-iit/spack/share/spack/setup-env.sh
             spack env activate -p .
@@ -293,7 +291,7 @@ jobs:
         run: |
           set -e
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
-          docker exec -w /mnt/workspace "$CONTAINER_ID" bash -c "
+          docker exec "$CONTAINER_ID" bash -c "
             set -e
             source /home/grc-iit/spack/share/spack/setup-env.sh
             spack env activate -p .
@@ -323,32 +321,11 @@ jobs:
             echo '✅ Installation verification passed'
           "
 
-      - name: Create chronolog install tarball
-        run: |
-          set -e
-          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
-          TAR_PATH="/tmp/chronolog-install.tar"
-          docker exec "$CONTAINER_ID" bash -c "
-            set -e
-            tar -C /home/grc-iit/chronolog-install -cvf /tmp/chronolog-install.tar chronolog
-            echo '✅ Tarball created at /tmp/chronolog-install.tar'
-          "
-          docker cp "$CONTAINER_ID:${TAR_PATH}" "${{ github.workspace }}/chronolog-install.tar"
-          echo "✅ Tarball copied to workspace: chronolog-install.tar"
-          ls -la "${{ github.workspace }}/chronolog-install.tar"
-
-      - name: Upload chronolog install artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: chronolog-install-${{ github.run_id }}
-          path: ${{ github.workspace }}/chronolog-install.tar
-          retention-days: 30
-
       - name: Deploy ChronoLog
         run: |
           set -e
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
-          docker exec -w /mnt/workspace "$CONTAINER_ID" bash -c "
+          docker exec "$CONTAINER_ID" bash -c "
             set -e
             source /home/grc-iit/spack/share/spack/setup-env.sh
             spack env activate -p .
@@ -367,7 +344,7 @@ jobs:
         run: |
           set -e
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
-          docker exec -w /mnt/workspace "$CONTAINER_ID" bash -c "
+          docker exec "$CONTAINER_ID" bash -c "
             set -e
             source /home/grc-iit/spack/share/spack/setup-env.sh
             spack env activate -p .
@@ -418,7 +395,7 @@ jobs:
         run: |
           set -e
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
-          docker exec -w /mnt/workspace "$CONTAINER_ID" bash -c "
+          docker exec "$CONTAINER_ID" bash -c "
             source /home/grc-iit/spack/share/spack/setup-env.sh
             spack env activate -p .
             WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
@@ -436,7 +413,7 @@ jobs:
         run: |
           set -e
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
-          docker exec -w /mnt/workspace "$CONTAINER_ID" bash -c "
+          docker exec "$CONTAINER_ID" bash -c "
             echo '[6.5/7] Verifying all ChronoLog processes are stopped...'
             
             REMAINING=\$(ps aux | grep -E 'chrono-player|chrono-keeper|chrono-grapher|chrono-visor' | grep -v grep || true)
@@ -453,7 +430,7 @@ jobs:
         run: |
           set -e
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
-          docker exec -w /mnt/workspace "$CONTAINER_ID" bash -c "
+          docker exec "$CONTAINER_ID" bash -c "
             source /home/grc-iit/spack/share/spack/setup-env.sh
             spack env activate -p .
             WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
@@ -474,31 +451,13 @@ jobs:
             echo '✅ ChronoLog cleaned'
           "
 
-      - name: Copy workspace into image for published image
-        run: |
-          set -e
-          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
-          # Deploy/Clean steps run as root and create files under chronolog-install (conf/, monitor/, etc.).
-          # Ensure everything under /home/grc-iit is owned by grc-iit so the image works when run as that user.
-          docker exec "$CONTAINER_ID" bash -c "chown -R grc-iit:grc-iit /home/grc-iit"
-          # Bind mounts are not included in docker commit. Copy the repo into the container
-          # filesystem so the published image contains ChronoLog source at /home/grc-iit/chronolog-repo.
-          docker exec "$CONTAINER_ID" bash -c "
-            set -e
-            rm -rf /home/grc-iit/chronolog-repo
-            cp -a /mnt/workspace /home/grc-iit/chronolog-repo
-            chown -R grc-iit:grc-iit /home/grc-iit/chronolog-repo
-            echo '✅ Workspace copied to /home/grc-iit/chronolog-repo for image commit'
-          "
-
       - name: Commit and tag final image
         run: |
           set -e
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
           FINAL_IMAGE="${{ steps.set-final-image-name.outputs.full-name }}"
           docker stop "$CONTAINER_ID"
-          # Set default USER to grc-iit so running the image locally avoids permission issues
-          docker commit --change "USER grc-iit" "$CONTAINER_ID" "$FINAL_IMAGE"
+          docker commit "$CONTAINER_ID" "$FINAL_IMAGE"
           docker rm "$CONTAINER_ID"
           echo "✅ Final image committed: ${FINAL_IMAGE}"
           
@@ -630,9 +589,8 @@ jobs:
         run: |
           set -e
           NUM_CONTAINERS=7
-          # Image defaults to USER grc-iit; run as root to install packages and start SSH
           for i in $(seq 1 $NUM_CONTAINERS); do
-            docker exec --user root chronolog-c$i bash -c "
+            docker exec chronolog-c$i bash -c "
               # Install dependencies required for single_user_deploy.sh
               # - openssh-server, sudo: for SSH access
               # - pssh (parallel-ssh): for distributed process launching
@@ -666,8 +624,7 @@ jobs:
           docker exec --user grc-iit chronolog-c1 bash -c "mkdir -p /home/grc-iit/.ssh && ssh-keygen -t rsa -b 4096 -f /home/grc-iit/.ssh/id_rsa -N '' || true"
           docker exec --user grc-iit chronolog-c1 bash -c "cat /home/grc-iit/.ssh/id_rsa.pub > /home/grc-iit/.ssh/authorized_keys"
           docker exec --user grc-iit chronolog-c1 bash -c "for i in \$(seq 1 $NUM_CONTAINERS); do ssh-keyscan -t rsa,ed25519 c\$i >> /home/grc-iit/.ssh/known_hosts 2>/dev/null; done"
-          # chown/chmod require root when container default user is grc-iit
-          docker exec --user root chronolog-c1 bash -c "chown -R grc-iit:grc-iit /home/grc-iit/.ssh && chmod 700 /home/grc-iit/.ssh && chmod 600 /home/grc-iit/.ssh/id_rsa && chmod 644 /home/grc-iit/.ssh/id_rsa.pub && chmod 600 /home/grc-iit/.ssh/authorized_keys"
+          docker exec chronolog-c1 bash -c "chown -R grc-iit:grc-iit /home/grc-iit/.ssh && chmod 700 /home/grc-iit/.ssh && chmod 600 /home/grc-iit/.ssh/id_rsa && chmod 644 /home/grc-iit/.ssh/id_rsa.pub && chmod 600 /home/grc-iit/.ssh/authorized_keys"
           docker exec --user grc-iit chronolog-c1 bash -c "echo 'export USER=grc-iit' >> ~/.bashrc"
           
           echo "✅ SSH keys configured (shared across all containers via shared_home volume)"
@@ -676,7 +633,7 @@ jobs:
         run: |
           set -e
           # Copy workspace to shared location in c1 (as root, then change ownership)
-          docker exec --user root chronolog-c1 bash -c "mkdir -p /home/grc-iit/chronolog-repo && cp -r /workspace/* /home/grc-iit/chronolog-repo/ 2>/dev/null || true && chown -R grc-iit:grc-iit /home/grc-iit/chronolog-repo"
+          docker exec chronolog-c1 bash -c "mkdir -p /home/grc-iit/chronolog-repo && cp -r /workspace/* /home/grc-iit/chronolog-repo/ 2>/dev/null || true && chown -R grc-iit:grc-iit /home/grc-iit/chronolog-repo"
           echo "✅ Workspace copied to containers"
 
       - name: Prepare hosts files
@@ -690,7 +647,7 @@ jobs:
           WORK_DIR="/home/grc-iit/chronolog-install/chronolog"
           
           # Create conf directory (as root, then change ownership)
-          docker exec --user root chronolog-c1 bash -c "mkdir -p ${WORK_DIR}/conf && chown -R grc-iit:grc-iit ${WORK_DIR}"
+          docker exec chronolog-c1 bash -c "mkdir -p ${WORK_DIR}/conf && chown -R grc-iit:grc-iit ${WORK_DIR}"
           
           # Prepare hosts files (run as grc-iit user)
           docker exec --user grc-iit chronolog-c1 bash -c "rm -rf ${WORK_DIR}/conf/hosts_*"
@@ -724,7 +681,7 @@ jobs:
           done
           
           echo "✅ Hosts files prepared"
-          docker exec --user root chronolog-c1 bash -c "ls -la ${WORK_DIR}/conf/"
+          docker exec chronolog-c1 bash -c "ls -la ${WORK_DIR}/conf/"
 
       - name: Setup ChronoLog (copy from image)
         run: |
@@ -732,7 +689,7 @@ jobs:
           echo '[1/5] Copying ChronoLog installation from local deployment image...'
           # The local deployment workflow installs to /home/grc-iit/chronolog-install/chronolog
           # Since all containers share /home/grc-iit via shared_home volume, we only need to check once
-          docker exec --user root chronolog-c1 bash -c "
+          docker exec chronolog-c1 bash -c "
             set -e
             # Create target directory
             mkdir -p /home/grc-iit/chronolog-install
@@ -751,7 +708,7 @@ jobs:
           
           # Verify the installation was copied correctly
           echo '🔍 Verifying installation...'
-          docker exec --user root chronolog-c1 bash -c "
+          docker exec chronolog-c1 bash -c "
             WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
             if [ -d \"\${WORK_DIR}\" ]; then
               echo '✅ Installation directory exists'
