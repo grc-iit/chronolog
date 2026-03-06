@@ -372,7 +372,11 @@ get_filename_component(_cmake_bin_dir "${CMAKE_COMMAND}" DIRECTORY)
 find_program(_cpack_program cpack HINTS "${_cmake_bin_dir}" REQUIRED)
 string(TOLOWER "${CMAKE_SYSTEM_NAME}" _system_lower)
 set(_pkg_base    "${CPACK_PACKAGE_NAME}-${CHRONOLOG_PACKAGE_VERSION}")
-set(_pkg_release "${_pkg_base}-${_system_lower}-${CMAKE_SYSTEM_PROCESSOR}")
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(_pkg_release "${_pkg_base}-${_system_lower}-${CMAKE_SYSTEM_PROCESSOR}-debug")
+else()
+    set(_pkg_release "${_pkg_base}-${_system_lower}-${CMAKE_SYSTEM_PROCESSOR}")
+endif()
 
 add_custom_target(package_release
     COMMAND "${_cpack_program}" --config "${CMAKE_BINARY_DIR}/CPackConfig.cmake" -B "${CMAKE_BINARY_DIR}"
