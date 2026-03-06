@@ -7,6 +7,7 @@ set -e
 BUILD_TYPE="Release"  # Default build type
 INSTALL_PATH=""  # Installation path is optional and starts empty
 BUILD_BASE_DIR="$HOME/chronolog-build"  # Base build directory
+PYTHON_EXECUTABLE=""
 REPO_ROOT="$(realpath "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../")"
 
 ERR='\033[7;37m\033[41m'
@@ -111,6 +112,37 @@ check_spack() {
     echo -e "${INFO}All dependencies are installed and ready.${NC}"
 }
 
+configure_spack_python() {
+    local spack_view_python="${REPO_ROOT}/.spack-env/view/bin/python3"
+
+    # Prefer the active environment view directly when available.
+    if [[ -x "${spack_view_python}" ]]; then
+        PYTHON_EXECUTABLE="${spack_view_python}"
+    else
+        # Fallback for environments without a view: load python from the active Spack env.
+        if ! spack load --first python; then
+            echo -e "${ERR}Failed to load Python from the active Spack environment.${NC}"
+            exit 1
+        fi
+        PYTHON_EXECUTABLE="$(command -v python3 || true)"
+    fi
+
+    if [[ -z "${PYTHON_EXECUTABLE}" || ! -x "${PYTHON_EXECUTABLE}" ]]; then
+        echo -e "${ERR}Unable to resolve a usable python3 executable from Spack.${NC}"
+        exit 1
+    fi
+
+    local resolved_python
+    resolved_python="$("${PYTHON_EXECUTABLE}" -c 'import os,sys; print(os.path.realpath(sys.executable))')"
+    if [[ "${resolved_python}" == *"miniconda"* || "${resolved_python}" == *"anaconda"* || "${resolved_python}" == *"/conda/" ]]; then
+        echo -e "${ERR}Resolved Python still points to Conda (${resolved_python}).${NC}"
+        echo -e "${ERR}Please verify the Spack environment includes Python and is installed.${NC}"
+        exit 1
+    fi
+
+    echo -e "${INFO}Using Python from Spack: ${resolved_python}${NC}"
+}
+
 prepare_build_directory() {
     BUILD_DIR="$BUILD_BASE_DIR/$BUILD_TYPE"
     mkdir -p "$BUILD_DIR"
@@ -121,7 +153,7 @@ build_project() {
     echo -e "${INFO}Building ChronoLog in ${BUILD_TYPE} mode.${NC}"
 
     # Configure (always). Debug builds enable install of test executables to chronolog/tests/
-    local cmake_args=(-S "${REPO_ROOT}" -B . -DCMAKE_BUILD_TYPE="${BUILD_TYPE}")
+    local cmake_args=(-S "${REPO_ROOT}" -B . -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" -DPython_EXECUTABLE="${PYTHON_EXECUTABLE}")
     if [[ -n "$INSTALL_PATH" ]]; then
         echo -e "${DEBUG}Using installation prefix: ${INSTALL_PATH}${NC}"
         cmake_args+=(-DCMAKE_INSTALL_PREFIX="${INSTALL_PATH}")
@@ -147,6 +179,7 @@ main() {
     cd ${REPO_ROOT}
     activate_spack_environment
     check_spack
+    configure_spack_python
     prepare_build_directory
     build_project
     echo -e "${INFO}ChronoLog Built.${NC}"
