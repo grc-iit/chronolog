@@ -30,7 +30,7 @@ Tests are only built when `CMAKE_BUILD_TYPE=Debug`; use a Debug build directory 
 
 ## Install policy (what goes to `chronolog/tests/`)
 
-One flag controls all test installation: **`CHRONOLOG_INSTALL_TESTS`** (CMake option, default OFF). When ON, every test that is designated installable is installed; when OFF, nothing is installed to `chronolog/tests/`.
+One flag controls all test installation: **`CHRONOLOG_INSTALL_TESTS`** (CMake option, default OFF). When ON, every test that is designated installable is installed; when OFF, nothing is installed to `chronolog/tests/`. The default can be overridden by the `CHRONOLOG_INSTALL_TESTS` environment variable (e.g. `export CHRONOLOG_INSTALL_TESTS=ON`).
 
 `<prefix>/chronolog/tests/` is for **post-install verification**. Only tests that are self-contained, portable, useful after install, and stable are designated installable (and then only installed when the flag is ON). The following are **never** installed (build-tree only): keeper-grapher (config + Keeper/Grapher required), communication (Thallium transport-layer), overhead (x86 or benchmark-only), system/, synthetic_workload/.
 
