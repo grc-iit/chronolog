@@ -257,16 +257,22 @@ jobs:
         run: |
           set -e
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
-          VERSION="${{ steps.extract-version.outputs.version }}"
           mkdir -p /tmp/chronolog-artifacts
 
-          docker exec "$CONTAINER_ID" bash -c "
-            cat \"\$HOME/chronolog-build/Release/chronolog-${VERSION}-linux-x86_64.tar.gz\"
-          " > /tmp/chronolog-artifacts/chronolog-${VERSION}-linux-x86_64.tar.gz
+          # Locate the tarballs by glob (CPack uses CHRONOLOG_PACKAGE_VERSION from
+          # CMakeLists.txt, which may differ from the git tag suffix)
+          RELEASE_TAR=$(docker exec "$CONTAINER_ID" bash -c \
+            "ls \$HOME/chronolog-build/Release/chronolog-*-linux-x86_64.tar.gz 2>/dev/null | head -1")
+          DEBUG_TAR=$(docker exec "$CONTAINER_ID" bash -c \
+            "ls \$HOME/chronolog-build/Debug/chronolog-*-linux-x86_64-debug.tar.gz 2>/dev/null | head -1")
 
-          docker exec "$CONTAINER_ID" bash -c "
-            cat \"\$HOME/chronolog-build/Debug/chronolog-${VERSION}-linux-x86_64-debug.tar.gz\"
-          " > /tmp/chronolog-artifacts/chronolog-${VERSION}-linux-x86_64-debug.tar.gz
+          echo "Release tarball: ${RELEASE_TAR}"
+          echo "Debug tarball:   ${DEBUG_TAR}"
+
+          docker exec "$CONTAINER_ID" bash -c "cat '${RELEASE_TAR}'" \
+            > /tmp/chronolog-artifacts/$(basename "${RELEASE_TAR}")
+          docker exec "$CONTAINER_ID" bash -c "cat '${DEBUG_TAR}'" \
+            > /tmp/chronolog-artifacts/$(basename "${DEBUG_TAR}")
 
           echo "Artifacts:"
           ls -lh /tmp/chronolog-artifacts/
