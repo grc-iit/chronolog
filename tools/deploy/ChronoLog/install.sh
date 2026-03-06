@@ -77,17 +77,22 @@ parse_arguments() {
     # Set default directories
     BIN_DIR="${INSTALL_DIR}/chronolog/bin"
     LIB_DIR="${INSTALL_DIR}/chronolog/lib"
-    
+    EXAMPLES_DIR="${INSTALL_DIR}/chronolog/examples"
+    TESTS_DIR="${INSTALL_DIR}/chronolog/tests"
+
     echo -e "${DEBUG}Using build type: ${BUILD_TYPE}${NC}"
     echo -e "${DEBUG}Using build directory: ${BUILD_BASE_DIR}/${BUILD_TYPE}${NC}"
     echo -e "${DEBUG}Using install directory: ${INSTALL_DIR}${NC}"
     echo -e "${DEBUG}Using binary directory: ${BIN_DIR}${NC}"
     echo -e "${DEBUG}Using library directory: ${LIB_DIR}${NC}"
+    echo -e "${DEBUG}Using examples directory: ${EXAMPLES_DIR}${NC}"
+    echo -e "${DEBUG}Using tests directory: ${TESTS_DIR}${NC}"
 }
 
 
 extract_shared_libraries() {
     local executable="$1"
+    # Exclude system libs under /lib and /lib64 so we only copy Spack-provided libs
     ldd_output=$(ldd ${executable} 2>/dev/null | grep '=>' | awk '{print $3}' | grep -v 'not' | grep -v '^/lib')
     echo "${ldd_output}"
 }
@@ -122,6 +127,20 @@ copy_shared_libs() {
         all_shared_libs=$(echo -e "${all_shared_libs}\n$(extract_shared_libraries ${bin_file})" | sort | uniq)
     done
 
+    if [ -d "${EXAMPLES_DIR}" ]; then
+        for bin_file in "${EXAMPLES_DIR}"/*; do
+            echo -e "${DEBUG}Extracting shared libraries from ${bin_file} ...${NC}";
+            all_shared_libs=$(echo -e "${all_shared_libs}\n$(extract_shared_libraries ${bin_file})" | sort | uniq)
+        done
+    fi
+
+    if [ -d "${TESTS_DIR}" ]; then
+        for bin_file in "${TESTS_DIR}"/*; do
+            echo -e "${DEBUG}Extracting shared libraries from ${bin_file} ...${NC}";
+            all_shared_libs=$(echo -e "${all_shared_libs}\n$(extract_shared_libraries ${bin_file})" | sort | uniq)
+        done
+    fi
+
     for lib in ${all_shared_libs}; do
         if [[ -n ${lib} ]]
         then
@@ -147,6 +166,36 @@ update_rpath() {
                     echo -e "${INFO}Skipping RPATH update for $f (no RPATH or not a valid ELF file).${NC}"
             fi
         done
+    fi
+
+    # Update RPATH for examples
+    if [ -d "${EXAMPLES_DIR}" ]; then
+        example_files=("${EXAMPLES_DIR}"/*)
+        if [ ${#example_files[@]} -eq 0 ]; then
+            echo -e "${INFO}No executables found in ${EXAMPLES_DIR} to update RPATH.${NC}"
+        else
+            for f in "${example_files[@]}"; do
+                if [ -f "$f" ]; then
+                    chrpath -r '$ORIGIN/../lib' "$f" > /dev/null 2>&1 || \
+                        echo -e "${INFO}Skipping RPATH update for $f (no RPATH or not a valid ELF file).${NC}"
+                fi
+            done
+        fi
+    fi
+
+    # Update RPATH for tests
+    if [ -d "${TESTS_DIR}" ]; then
+        test_files=("${TESTS_DIR}"/*)
+        if [ ${#test_files[@]} -eq 0 ]; then
+            echo -e "${INFO}No executables found in ${TESTS_DIR} to update RPATH.${NC}"
+        else
+            for f in "${test_files[@]}"; do
+                if [ -f "$f" ]; then
+                    chrpath -r '$ORIGIN/../lib' "$f" > /dev/null 2>&1 || \
+                        echo -e "${INFO}Skipping RPATH update for $f (no RPATH or not a valid ELF file).${NC}"
+                fi
+            done
+        fi
     fi
 
     # Update RPATH for libraries

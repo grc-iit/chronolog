@@ -1,4 +1,7 @@
 #!/bin/bash
+# Thallium protocol multi-node test for HPC (e.g. SLURM). Requires squeue, scontrol, ssh.
+# Server and clients run on separate nodes; SERVER_IP detection is Ares-specific (172.25).
+# Override work dir with THALLIUM_TEST_WORK_DIR or -s/-c; override node set with -j.
 
 help() {
   echo "Usage: $0 [-j job_id] [-s server_bin] [-c client_bin] [-n num_clients]"
@@ -9,9 +12,13 @@ help() {
   echo "  -c    Client executable binary (default: thallium_client)"
   echo "  -n    Number of clients (default: 1)"
   echo ""
+  echo "  THALLIUM_TEST_WORK_DIR  Directory containing server/client binaries (default: script dir)."
+  echo "  Run from build tree or set THALLIUM_TEST_WORK_DIR to your build/test/communication path."
+  echo ""
 }
 
-WORK_DIR="/mnt/common/kfeng/CLionProjects/ChronoLog_dev/decouple_conf_manager/ChronoLog/build/test/communication"
+# Default: env THALLIUM_TEST_WORK_DIR, or directory containing this script
+WORK_DIR="${THALLIUM_TEST_WORK_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 SERVER_BIN="thallium_server"
 CLIENT_BIN="thallium_client"
 num_clients=1
@@ -58,7 +65,8 @@ fi
 eval "node_array=${ext_node_list}"
 SERVER_HOST="${node_array[0]}"
 CLIENT_HOSTS="${node_array[@]:1:num_clients}"
-SERVER_IP=$(ssh ${SERVER_HOST} "ip addr show | grep 172.25 | awk '{print \$2}' | sed 's/^[[:space:]]*//' | cut -d' ' -f2 | cut -d'/' -f1") # only works for Ares
+# Ares-specific: grep 172.25 for node IP; on other clusters set SERVER_IP or adjust this command
+SERVER_IP=$(ssh ${SERVER_HOST} "ip addr show | grep 172.25 | awk '{print \$2}' | sed 's/^[[:space:]]*//' | cut -d' ' -f2 | cut -d'/' -f1")
 SERVER_PORT=5555
 MODES=("sendrecv" "rdma")
 PROTOS=("sockets" "tcp" "verbs")

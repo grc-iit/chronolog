@@ -1,9 +1,21 @@
+# ChronoKVS runnable examples (installed as chrono-chronokvs-example-<role>)
 add_executable(chronokvs_writer_example chronokvs_writer_example.cpp)
 add_executable(chronokvs_reader_example chronokvs_reader_example.cpp)
 
 target_link_libraries(chronokvs_writer_example PRIVATE chronokvs)
 target_link_libraries(chronokvs_reader_example PRIVATE chronokvs)
 
-# Install examples using the project's standard installation function
-chronolog_install_target(chronokvs_writer_example)
-chronolog_install_target(chronokvs_reader_example)
+set_target_properties(chronokvs_writer_example PROPERTIES
+    OUTPUT_NAME chrono-chronokvs-example-writer
+    BUILD_WITH_INSTALL_RPATH TRUE
+    SKIP_BUILD_RPATH TRUE
+)
+set_target_properties(chronokvs_reader_example PROPERTIES
+    OUTPUT_NAME chrono-chronokvs-example-reader
+    BUILD_WITH_INSTALL_RPATH TRUE
+    SKIP_BUILD_RPATH TRUE
+)
+
+# Install to chronolog/examples/
+chronolog_install_target(chronokvs_writer_example DESTINATION examples)
+chronolog_install_target(chronokvs_reader_example DESTINATION examples)

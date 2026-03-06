@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-add_subdirectory(Client)
-add_subdirectory(Keeper-Grapher)
+add_subdirectory(client)
+add_subdirectory(keeper-grapher)
 add_subdirectory(chronokvs)
 add_subdirectory(package-discovery)

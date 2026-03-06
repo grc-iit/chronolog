@@ -652,6 +652,12 @@ int main()
     }
     catch(const std::exception& e)
     {
+        std::string msg(e.what());
+        if(msg.find("Failed to connect") != std::string::npos)
+        {
+            std::cout << "\n  ChronoKVS integration test skipped (no ChronoLog server available)." << std::endl;
+            return 0;
+        }
         std::cerr << "\n" << std::string(80, '!') << std::endl;
         std::cerr << "  CRITICAL ERROR: Test failed with exception" << std::endl;
         std::cerr << "  " << e.what() << std::endl;

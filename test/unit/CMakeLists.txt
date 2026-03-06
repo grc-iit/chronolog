@@ -4,56 +4,9 @@ find_package(GTest REQUIRED)
 include(GoogleTest)
 
 #------------------------------------------------------------------------------
-# Unit Test Executables
+# Unit test subdirectories (one component per folder)
 #------------------------------------------------------------------------------
-
-# StoryChunkTest
-add_executable(story_chunk_test
-    StoryChunkTest.cpp
-)
-
-target_include_directories(story_chunk_test PRIVATE
-    ${CMAKE_SOURCE_DIR}/chrono_common/include
-    ${CMAKE_SOURCE_DIR}/Client/cpp/include
-)
-
-target_link_libraries(story_chunk_test PRIVATE
-    GTest::gtest_main
-    chrono_common
-    chronolog_client
-)
-
-gtest_discover_tests(story_chunk_test)
-
-# StoryPipelineTest
-add_executable(story_pipeline_test
-    StoryPipelineTest.cpp
-)
-
-target_include_directories(story_pipeline_test PRIVATE
-    ${CMAKE_SOURCE_DIR}/chrono_common/include
-    ${CMAKE_SOURCE_DIR}/Client/cpp/include
-)
-
-target_link_libraries(story_pipeline_test PRIVATE
-    GTest::gtest_main
-    chrono_common
-    chronolog_client
-)
-
-gtest_discover_tests(story_pipeline_test)
-
-# ChronoKVSLoggerTest
-add_executable(chronokvs_logger_test
-    ChronoKVSLoggerTest.cpp
-)
-
-target_include_directories(chronokvs_logger_test PRIVATE
-    ${CMAKE_SOURCE_DIR}/Plugins/chronokvs/include
-)
-
-target_link_libraries(chronokvs_logger_test PRIVATE
-    GTest::gtest_main
-)
-
-gtest_discover_tests(chronokvs_logger_test)
+add_subdirectory(chrono-common)
+add_subdirectory(chrono-store)
+add_subdirectory(chrono-player)
+add_subdirectory(chronokvs)

@@ -46,7 +46,5 @@ set_target_properties(chrono_common PROPERTIES
 #------------------------------------------------------------------------------
 
 #------------------------------------------------------------------------------
-# Tests
+# Tests: moved to test/unit/chrono_common/
 #------------------------------------------------------------------------------
-message("building chrono_common tests")
-add_subdirectory(test)

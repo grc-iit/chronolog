@@ -28,10 +28,10 @@ MONITOR_DIR="${WORK_DIR}/monitor"
 OUTPUT_DIR="${WORK_DIR}/output"
 
 # Binary names
-VISOR_BIN_FILE_NAME="chronovisor_server"
-GRAPHER_BIN_FILE_NAME="chrono_grapher"
-KEEPER_BIN_FILE_NAME="chrono_keeper"
-PLAYER_BIN_FILE_NAME="chrono_player"
+VISOR_BIN_FILE_NAME="chrono-visor"
+GRAPHER_BIN_FILE_NAME="chrono-grapher"
+KEEPER_BIN_FILE_NAME="chrono-keeper"
+PLAYER_BIN_FILE_NAME="chrono-player"
 
 # Binary paths (with defaults)
 VISOR_BIN="${BIN_DIR}/${VISOR_BIN_FILE_NAME}"
@@ -44,8 +44,8 @@ KEEPER_BIN_DIR="${BIN_DIR}"
 PLAYER_BIN_DIR="${BIN_DIR}"
 
 # Configuration file and component-specific conf arguments (with defaults)
-CONF_FILE="${WORK_DIR}/conf/default_conf.json"
-CLIENT_CONF_FILE="${WORK_DIR}/conf/default_client_conf.json"
+CONF_FILE="${WORK_DIR}/conf/default-chrono-conf.json"
+CLIENT_CONF_FILE="${WORK_DIR}/conf/default-chrono-client-conf.json"
 VISOR_ARGS="--config ${CONF_FILE}"
 GRAPHER_ARGS="--config ${CONF_FILE}"
 KEEPER_ARGS="--config ${CONF_FILE}"
@@ -90,14 +90,14 @@ usage() {
   echo "  -u|--output-dir <path>           Output directory (default: work_dir/output)"
   echo ""
   echo "Binary Paths:"
-  echo "  -v|--visor-bin <path>            ChronoVisor binary (default: work_dir/bin/chronovisor_server)"
-  echo "  -g|--grapher-bin <path>          ChronoGrapher binary (default: work_dir/bin/chrono_grapher)"
-  echo "  -p|--keeper-bin <path>           ChronoKeeper binary (default: work_dir/bin/chrono_keeper)"
-  echo "  -a|--player-bin <path>           ChronoPlayer binary (default: work_dir/bin/chrono_player)"
+  echo "  -v|--visor-bin <path>            ChronoVisor binary (default: work_dir/bin/chrono-visor)"
+  echo "  -g|--grapher-bin <path>          ChronoGrapher binary (default: work_dir/bin/chrono-grapher)"
+  echo "  -p|--keeper-bin <path>           ChronoKeeper binary (default: work_dir/bin/chrono-keeper)"
+  echo "  -a|--player-bin <path>           ChronoPlayer binary (default: work_dir/bin/chrono-player)"
   echo ""
   echo "Configuration Settings:"
-  echo "  -f|--conf-file <path>            Main configuration file (default: work_dir/conf/default_conf.json)"
-  echo "  -n|--client-conf-file <path>     Client configuration file (default: work_dir/conf/default_client_conf.json)"
+  echo "  -f|--conf-file <path>            Main configuration file (default: work_dir/conf/default-chrono-conf.json)"
+  echo "  -n|--client-conf-file <path>     Client configuration file (default: work_dir/conf/default-chrono-client-conf.json)"
   echo ""
   echo "Miscellaneous Options:"
   echo "  -e|--verbose                     Enable verbose output"
@@ -314,11 +314,11 @@ update_visor_ip() {
 
 update_visor_monitor_file_path() {
   visor_host=$(head -1 ${VISOR_HOSTS})
-  jq ".chrono_visor.Monitoring.monitor.file = \"${MONITOR_DIR}/${VISOR_BIN_FILE_NAME}.${visor_host}.log\"" "${CONF_FILE}" >tmp.json && mv tmp.json "${CONF_FILE}"
+  jq ".chrono_visor.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono-visor-${visor_host}.log\"" "${CONF_FILE}" >tmp.json && mv tmp.json "${CONF_FILE}"
 }
 
 update_client_monitor_file_path() {
-  jq ".chrono_client.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono_client.log\"" "${CLIENT_CONF_FILE}" >tmp.json && mv tmp.json "${CLIENT_CONF_FILE}"
+  jq ".chrono_client.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono-client.log\"" "${CLIENT_CONF_FILE}" >tmp.json && mv tmp.json "${CLIENT_CONF_FILE}"
 }
 
 generate_conf_for_each_keeper() {
@@ -329,7 +329,7 @@ generate_conf_for_each_keeper() {
     remote_keeper_hostname=$(get_remote_hostname ${keeper_host})
     [[ -z "${remote_keeper_hostname}" ]] && echo -e "${ERR}Cannot get hostname from ${keeper_host}, exiting ...${NC}" >&2 && exit 1
     [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generating conf file ${base_conf_file}.keeper.${remote_keeper_hostname} for ChronoKeeper ${remote_keeper_hostname} ...${NC}" || true
-    jq ".chrono_keeper.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono_keeper.${remote_keeper_hostname}.log\"" "${base_conf_file}" >"${base_conf_file}.keeper.${remote_keeper_hostname}"
+    jq ".chrono_keeper.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono-keeper-${remote_keeper_hostname}.log\"" "${base_conf_file}" >"${base_conf_file}.keeper.${remote_keeper_hostname}"
     keeper_ip=$(get_host_ip ${keeper_host})
     jq ".chrono_keeper.KeeperRecordingService.rpc.service_ip = \"${keeper_ip}\"" "${base_conf_file}.keeper.${remote_keeper_hostname}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${base_conf_file}.keeper.${remote_keeper_hostname}"
     jq ".chrono_keeper.KeeperDataStoreAdminService.rpc.service_ip = \"${keeper_ip}\"" "${base_conf_file}.keeper.${remote_keeper_hostname}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${base_conf_file}.keeper.${remote_keeper_hostname}"
@@ -346,7 +346,7 @@ generate_conf_for_each_grapher() {
     remote_grapher_hostname=$(get_remote_hostname ${grapher_host})
     [[ -z "${remote_grapher_hostname}" ]] && echo -e "${ERR}Cannot get hostname from ${grapher_host}, exiting ...${NC}" >&2 && exit 1
     [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generating conf file ${base_conf_file}.grapher.${remote_grapher_hostname} for ChronoGrapher ${remote_grapher_hostname} ...${NC}" || true
-    jq ".chrono_grapher.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono_grapher.${remote_grapher_hostname}.log\"" "${base_conf_file}" >"${base_conf_file}.grapher.${remote_grapher_hostname}"
+    jq ".chrono_grapher.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono-grapher-${remote_grapher_hostname}.log\"" "${base_conf_file}" >"${base_conf_file}.grapher.${remote_grapher_hostname}"
   done <${grapher_hosts_file}
 
   [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generate conf file for ChronoGraphers in ${grapher_hosts_file} done${NC}" || true
@@ -360,7 +360,7 @@ generate_conf_for_each_player() {
     remote_player_hostname=$(get_remote_hostname ${player_host})
     [[ -z "${remote_player_hostname}" ]] && echo -e "${ERR}Cannot get hostname from ${player_host}, exiting ...${NC}" >&2 && exit 1
     [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generating conf file ${base_conf_file}.player.${remote_player_hostname} for ChronoPlayer ${remote_player_hostname} ...${NC}" || true
-    jq ".chrono_player.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono_player.${remote_player_hostname}.log\"" "${base_conf_file}" >"${base_conf_file}.player.${remote_player_hostname}"
+    jq ".chrono_player.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono-player-${remote_player_hostname}.log\"" "${base_conf_file}" >"${base_conf_file}.player.${remote_player_hostname}"
   done <${player_hosts_file}
 
   [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generate conf file for ChronoPlayers in ${player_hosts_file} done${NC}" || true
@@ -495,7 +495,7 @@ parallel_remote_launch_processes() {
   local hostname_suffix=""
   local simple_output_grep_keyword=""
 
-  hostname_suffix=".\$(hostname)"
+  hostname_suffix="-\$(hostname)"
   if [[ "${verbose}" == "false" ]]; then
     simple_output_grep_keyword="ares-"
   fi
@@ -694,9 +694,9 @@ parse_args() {
       BIN_DIR="${WORK_DIR}/bin"
       MONITOR_DIR="${WORK_DIR}/monitor"
       OUTPUT_DIR="${WORK_DIR}/output"
-      VISOR_BIN_FILE_NAME="chronovisor_server"
-      KEEPER_BIN_FILE_NAME="chrono_keeper"
-      GRAPHER_BIN_FILE_NAME="chrono_grapher"
+      VISOR_BIN_FILE_NAME="chrono-visor"
+      KEEPER_BIN_FILE_NAME="chrono-keeper"
+      GRAPHER_BIN_FILE_NAME="chrono-grapher"
       VISOR_BIN="${WORK_DIR}/bin/${VISOR_BIN_FILE_NAME}"
       GRAPHER_BIN="${WORK_DIR}/bin/${GRAPHER_BIN_FILE_NAME}"
       KEEPER_BIN="${WORK_DIR}/bin/${KEEPER_BIN_FILE_NAME}"
@@ -705,8 +705,8 @@ parse_args() {
       GRAPHER_BIN_DIR=$(dirname ${GRAPHER_BIN})
       KEEPER_BIN_DIR=$(dirname ${KEEPER_BIN})
       PLAYER_BIN_DIR=$(dirname ${PLAYER_BIN})
-      CONF_FILE="${CONF_DIR}/default_conf.json"
-      CLIENT_CONF_FILE="${CONF_DIR}/default_client_conf.json"
+      CONF_FILE="${CONF_DIR}/default-chrono-conf.json"
+      CLIENT_CONF_FILE="${CONF_DIR}/default-chrono-client-conf.json"
       VISOR_ARGS="--config ${CONF_FILE}"
       GRAPHER_ARGS="--config ${CONF_FILE}"
       KEEPER_ARGS="--config ${CONF_FILE}"
