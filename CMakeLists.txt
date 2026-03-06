@@ -10,8 +10,8 @@ project(ChronoLog LANGUAGES CXX C)
 #------------------------------------------------------------------------------
 # Version information
 #------------------------------------------------------------------------------
-set(CHRONOLOG_VERSION_MAJOR "0")
-set(CHRONOLOG_VERSION_MINOR "7")
+set(CHRONOLOG_VERSION_MAJOR "2")
+set(CHRONOLOG_VERSION_MINOR "5")
 set(CHRONOLOG_VERSION_PATCH "0")
 set(CHRONOLOG_PACKAGE "ChronoLog")
 set(CHRONOLOG_PACKAGE_NAME "CHRONOLOG")
