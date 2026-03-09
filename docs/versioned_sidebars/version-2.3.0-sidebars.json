@@ -1,0 +1,8 @@
+{
+  "gettingStartedSidebar": ["getting-started"],
+  "architectureSidebar": ["architecture"],
+  "clientSidebar": ["client"],
+  "pluginsSidebar": ["plugins"],
+  "tutorialsSidebar": ["tutorials"],
+  "forDevelopersSidebar": ["for-developers"]
+}

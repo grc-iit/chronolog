@@ -37,6 +37,20 @@ const config: Config = {
           sidebarPath: './sidebars.ts',
           editUrl:
             'https://github.com/grc-iit/ChronoLog/tree/main/docs/',
+          lastVersion: '2.4.0',
+          includeCurrentVersion: false,
+          versions: {
+            '2.4.0': {
+              label: '2.4.0',
+              path: '',
+              badge: true,
+            },
+            '2.3.0': {
+              label: '2.3.0',
+              path: '2.3.0',
+              badge: true,
+            },
+          },
         },
         blog: false,
         theme: {
@@ -60,9 +74,44 @@ const config: Config = {
       items: [
         {
           type: 'docSidebar',
-          sidebarId: 'tutorialSidebar',
+          sidebarId: 'gettingStartedSidebar',
           position: 'left',
-          label: 'Docs',
+          label: 'Getting Started',
+        },
+        {
+          type: 'docSidebar',
+          sidebarId: 'architectureSidebar',
+          position: 'left',
+          label: 'Architecture',
+        },
+        {
+          type: 'docSidebar',
+          sidebarId: 'clientSidebar',
+          position: 'left',
+          label: 'Client',
+        },
+        {
+          type: 'docSidebar',
+          sidebarId: 'pluginsSidebar',
+          position: 'left',
+          label: 'Plugins',
+        },
+        {
+          type: 'docSidebar',
+          sidebarId: 'tutorialsSidebar',
+          position: 'left',
+          label: 'Tutorials',
+        },
+        {
+          type: 'docSidebar',
+          sidebarId: 'forDevelopersSidebar',
+          position: 'left',
+          label: 'For Developers',
+        },
+        {
+          type: 'docsVersionDropdown',
+          docsPluginId: 'default',
+          position: 'right',
         },
         {
           href: 'https://github.com/grc-iit/ChronoLog',
@@ -102,7 +151,7 @@ const config: Config = {
             },
             {
               label: 'Documentation',
-              to: '/docs/intro',
+              to: '/docs/getting-started',
             },
             {
               label: 'GitHub',

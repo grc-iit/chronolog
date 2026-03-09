@@ -11,32 +11,32 @@ type FeatureItem = {
 
 const FeatureList: FeatureItem[] = [
   {
-    title: 'Easy to Use',
+    title: 'Multi-Tiered Storage',
     Svg: require('@site/static/img/undraw_docusaurus_mountain.svg').default,
     description: (
       <>
-        Docusaurus was designed from the ground up to be easily installed and
-        used to get your website up and running quickly.
+        Leverages multiple storage tiers (e.g., persistent memory, flash) to scale
+        log capacity and optimize performance with automatic tiering.
       </>
     ),
   },
   {
-    title: 'Focus on What Matters',
+    title: 'High Concurrency',
     Svg: require('@site/static/img/undraw_docusaurus_tree.svg').default,
     description: (
       <>
-        Docusaurus lets you focus on your docs, and we&apos;ll do the chores. Go
-        ahead and move your docs into the <code>docs</code> directory.
+        Supports multiple writers and multiple readers (MWMR) for efficient
+        concurrent access to the log across distributed environments.
       </>
     ),
   },
   {
-    title: 'Powered by React',
+    title: 'Total Ordering',
     Svg: require('@site/static/img/undraw_docusaurus_react.svg').default,
     description: (
       <>
-        Extend or customize your website layout by reusing React. Docusaurus can
-        be extended while reusing the same header and footer.
+        Physical time-based ordering guarantees strict ordering of log entries
+        without expensive synchronization operations.
       </>
     ),
   },
