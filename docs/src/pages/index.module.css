@@ -1,23 +1,230 @@
-/**
- * CSS files with the .module.css suffix will be treated as CSS modules
- * and scoped locally.
- */
-
+/* Hero */
 .heroBanner {
-  padding: 4rem 0;
+  padding: 5rem 0 4rem;
   text-align: center;
-  position: relative;
-  overflow: hidden;
+  background: linear-gradient(
+    160deg,
+    var(--chronolog-hero-bg-start) 0%,
+    var(--chronolog-hero-bg-end) 100%
+  );
+  color: #fff;
 }
 
 @media screen and (max-width: 996px) {
   .heroBanner {
-    padding: 2rem;
+    padding: 3rem 1.5rem;
   }
+}
+
+.heroLogo {
+  height: 200px;
+  margin-bottom: 1.5rem;
+}
+
+.heroTitle {
+  font-size: 3rem;
+  font-weight: 800;
+  color: #fff;
+  margin-bottom: 1rem;
+}
+
+.heroTagline {
+  font-size: 1.25rem;
+  color: rgba(255, 255, 255, 0.85);
+  max-width: 640px;
+  margin: 0 auto 2rem;
 }
 
 .buttons {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+/* Stats Bar */
+.statsBar {
+  background: var(--chronolog-hero-bg-end);
+  padding: 1rem 0;
+}
+
+.statsRow {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.statBadge {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 20px;
+  color: #fff;
+  padding: 0.35rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Shared section */
+.section {
+  padding: 4rem 0;
+}
+
+.sectionAlt {
+  padding: 4rem 0;
+  background: var(--chronolog-section-alt-bg);
+}
+
+.sectionHeading {
+  text-align: center;
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  color: var(--ifm-color-primary-dark);
+}
+
+.sectionSubheading {
+  text-align: center;
+  color: var(--ifm-color-content-secondary);
+  margin-bottom: 2.5rem;
+  font-size: 1.05rem;
+}
+
+/* Architecture */
+.archImg {
+  display: block;
+  max-width: 860px;
+  width: 100%;
+  margin: 0 auto 1.25rem;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.archCaption {
+  text-align: center;
+  color: var(--ifm-color-content-secondary);
+  font-size: 0.9rem;
+}
+
+/* Use-case cards */
+.useCaseCol {
+  margin-bottom: 1.5rem;
+}
+
+.useCaseCard {
+  border-left: 4px solid var(--ifm-color-primary);
+  background: var(--ifm-card-background-color);
+  border-radius: 0 8px 8px 0;
+  padding: 1.25rem 1.5rem;
+  height: 100%;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.useCaseIcon {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+}
+
+.useCaseTitle {
+  font-weight: 700;
+  font-size: 1rem;
+  margin-bottom: 0.4rem;
+}
+
+.useCaseDesc {
+  font-size: 0.9rem;
+  color: var(--ifm-color-content-secondary);
+  margin: 0;
+}
+
+/* Quick-start cards */
+.quickCol {
+  margin-bottom: 1.5rem;
+}
+
+.quickCard {
+  background: var(--ifm-card-background-color);
+  border: 1px solid var(--chronolog-card-border);
+  border-radius: 8px;
+  padding: 2rem 1.5rem;
+  text-align: center;
+  height: 100%;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.quickCard:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.quickIcon {
+  font-size: 2.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.quickTitle {
+  font-weight: 700;
+  font-size: 1.05rem;
+  margin-bottom: 0.5rem;
+}
+
+.quickDesc {
+  font-size: 0.9rem;
+  color: var(--ifm-color-content-secondary);
+  margin-bottom: 1.25rem;
+}
+
+/* Innovation cards */
+.innovationCol {
+  margin-bottom: 1.5rem;
+}
+
+.innovationCard {
+  text-align: center;
+  background: var(--ifm-card-background-color);
+  border: 1px solid var(--chronolog-card-border);
+  border-radius: 8px;
+  padding: 2rem 1.5rem;
+  height: 100%;
+}
+
+.innovationIcon {
+  font-size: 2.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.innovationTitle {
+  font-weight: 700;
+  font-size: 1.05rem;
+  margin-bottom: 0.5rem;
+  color: var(--ifm-color-primary-dark);
+}
+
+.innovationDesc {
+  font-size: 0.9rem;
+  color: var(--ifm-color-content-secondary);
+  margin: 0;
+}
+
+/* NSF Banner */
+.nsfBanner {
+  padding: 3rem 0;
+  background: var(--chronolog-section-alt-bg);
+  text-align: center;
+  border-top: 1px solid var(--ifm-color-emphasis-200);
+}
+
+.nsfLogo {
+  height: 70px;
+  margin-bottom: 1rem;
+}
+
+.nsfText {
+  max-width: 640px;
+  margin: 0 auto 1rem;
+  font-size: 0.9rem;
+  color: var(--ifm-color-content-secondary);
 }

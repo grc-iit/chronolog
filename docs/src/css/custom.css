@@ -34,3 +34,18 @@
 .navbar__logo {
   height: 4rem;
 }
+
+/* ChronoLog landing page custom properties */
+:root {
+  --chronolog-hero-bg-start: #1a3a2a;
+  --chronolog-hero-bg-end: #0d2118;
+  --chronolog-card-border: rgba(46, 133, 85, 0.4);
+  --chronolog-section-alt-bg: #f6f8f6;
+}
+
+[data-theme='dark'] {
+  --chronolog-hero-bg-start: #0d2118;
+  --chronolog-hero-bg-end: #050f0a;
+  --chronolog-card-border: rgba(37, 194, 160, 0.4);
+  --chronolog-section-alt-bg: #1a1a1a;
+}
