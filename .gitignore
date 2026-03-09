@@ -74,6 +74,13 @@ coverage/
 .conversations/
 
 # --------------------------
+# Docusaurus (docs/)
+# --------------------------
+docs/node_modules/
+docs/.docusaurus/
+docs/build/
+
+# --------------------------
 # Local dev (never commit)
 # --------------------------
 .local/
