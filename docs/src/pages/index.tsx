@@ -13,7 +13,7 @@ function Hero() {
     <header className={styles.heroBanner}>
       <div className="container">
         <img
-          src="/img/chronolog-full-logo.png"
+          src="/img/chronolog-full-logo-transparent.webp"
           alt="ChronoLog logo"
           className={styles.heroLogo}
         />
