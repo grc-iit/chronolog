@@ -12,12 +12,7 @@ function Hero() {
   return (
     <header className={styles.heroBanner}>
       <div className="container">
-        <img
-          src="/img/chronolog-full-logo-transparent.webp"
-          alt="ChronoLog logo"
-          className={styles.heroLogo}
-        />
-        <Heading as="h1" className={styles.heroTitle}>
+<Heading as="h1" className={styles.heroTitle}>
           {siteConfig.title}
         </Heading>
         <p className={styles.heroTagline}>{siteConfig.tagline}</p>

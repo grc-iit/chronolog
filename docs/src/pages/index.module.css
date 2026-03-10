@@ -1,12 +1,18 @@
 /* Hero */
 .heroBanner {
+  min-height: 80vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 5rem 0 4rem;
   text-align: center;
-  background: linear-gradient(
-    160deg,
-    var(--chronolog-hero-bg-start) 0%,
-    var(--chronolog-hero-bg-end) 100%
-  );
+  background:
+    linear-gradient(
+      160deg,
+      rgba(26, 58, 42, 0.75) 0%,
+      rgba(13, 33, 24, 0.82) 100%
+    ),
+    url('/img/Group 10.png') center / cover no-repeat;
   color: #fff;
 }
 

@@ -37,17 +37,17 @@ const config: Config = {
           sidebarPath: './sidebars.ts',
           editUrl:
             'https://github.com/grc-iit/ChronoLog/tree/main/docs/',
-          lastVersion: '2.4.0',
+          lastVersion: '2.5.0',
           includeCurrentVersion: false,
           versions: {
-            '2.4.0': {
-              label: '2.4.0',
+            '2.5.0': {
+              label: '2.5.0',
               path: '',
               badge: true,
             },
-            '2.3.0': {
-              label: '2.3.0',
-              path: '2.3.0',
+            '2.4.0': {
+              label: '2.4.0',
+              path: '2.4.0',
               badge: true,
             },
           },
