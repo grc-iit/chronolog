@@ -114,6 +114,11 @@ const config: Config = {
           position: 'right',
         },
         {
+          href: 'https://chronolog.dev',
+          label: 'Website',
+          position: 'right',
+        },
+        {
           href: 'https://github.com/grc-iit/ChronoLog',
           label: 'GitHub',
           position: 'right',

@@ -3,8 +3,22 @@
     "intro",
     "getting-started",
     "installation",
-    "configuration",
-    "deployment"
+    {
+      "type": "category",
+      "label": "Configuration",
+      "items": [
+        "configuration-default-file",
+        "configuration-usage"
+      ]
+    },
+    {
+      "type": "category",
+      "label": "Deployment",
+      "items": [
+        "deployment-single-node",
+        "deployment-distributed"
+      ]
+    }
   ],
   "architectureSidebar": [
     {
