@@ -77,17 +77,17 @@ type QuickStartItem = {icon: string; title: string; desc: string; link: string; 
 const quickStarts: QuickStartItem[] = [
   {
     icon: '🐳',
-    title: 'Single Node only',
+    title: 'Single Node',
     desc: 'Spin up a complete ChronoLog stack on a single machine in minutes using Docker Compose.',
     link: '/docs/tutorials/docker/docker-single-node',
-    label: 'Single Node only',
+    label: 'Single Node',
   },
   {
     icon: '🌐',
-    title: 'Docker Multi Node',
+    title: 'Multi Node',
     desc: 'Deploy a distributed ChronoLog cluster across multiple hosts with Docker networking.',
     link: '/docs/tutorials/docker/docker-multi-node',
-    label: 'Multi Node Guide',
+    label: 'Multi Node',
   },
   {
     icon: '📖',

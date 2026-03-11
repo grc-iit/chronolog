@@ -1,9 +1,9 @@
 ---
 sidebar_position: 2
-title: "Running ChronoLog with Docker (Multi Node)"
+title: "Multi Node"
 ---
 
-# Running ChronoLog with Docker (Multi Node)
+# Multi Node
 
 ## Welcome!
 
@@ -17,7 +17,7 @@ This simplified tutorial will guide you through quickly setting up **ChronoLog**
 - Customize your ChronoLog deployment with flexible configuration options.
 - Easily interact with and verify your ChronoLog setup.
 
-For a **simpler single-node setup**, see our guide: [Single Node only](./docker-single-node).
+For a **simpler single-node setup**, see our guide: [Single Node](./docker-single-node).
 
 ## Prerequisites: Docker & Docker Compose
 
