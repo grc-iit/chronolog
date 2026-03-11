@@ -19,7 +19,7 @@ function Hero() {
         <div className={styles.buttons}>
           <Link
             className="button button--primary button--lg"
-            to="/docs/intro">
+            to="/docs/getting-started/overview">
             Get Started
           </Link>
         </div>
@@ -79,21 +79,21 @@ const quickStarts: QuickStartItem[] = [
     icon: '🐳',
     title: 'Single Node',
     desc: 'Spin up a complete ChronoLog stack on a single machine in minutes using Docker Compose.',
-    link: '/docs/tutorials/docker/docker-single-node',
+    link: '/docs/tutorials/docker-single-node/running-chronolog',
     label: 'Single Node',
   },
   {
     icon: '🌐',
     title: 'Multi Node',
     desc: 'Deploy a distributed ChronoLog cluster across multiple hosts with Docker networking.',
-    link: '/docs/tutorials/docker/docker-multi-node',
+    link: '/docs/tutorials/docker-multi-node/running-chronolog',
     label: 'Multi Node',
   },
   {
     icon: '📖',
     title: 'Full Documentation',
     desc: 'Explore the complete reference: architecture, configuration, API, and advanced topics.',
-    link: '/docs/intro',
+    link: '/docs/getting-started/overview',
     label: 'Browse Docs',
   },
 ];

@@ -6,6 +6,14 @@ import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
   title: 'ChronoLog',
+  customFields: {
+    // Documents which sidebar IDs belong to each version — kept in sync with
+    // versioned_sidebars/ and the swizzled DocSidebarNavbarItem component.
+    navbarSidebarsByVersion: {
+      '2.5.0': ['gettingStartedSidebar', 'userGuideSidebar', 'clientApiSidebar', 'pluginsSidebar', 'tutorialsSidebar', 'contributingSidebar'],
+      '2.4.0': ['gettingStartedSidebar', 'architectureSidebar', 'clientSidebar', 'pluginsSidebar', 'tutorialsSidebar', 'forDevelopersSidebar'],
+    },
+  },
   tagline: 'A Distributed Shared Tiered Log Service for Large-Scale Science',
   favicon: 'img/favicon.ico',
 
@@ -80,6 +88,19 @@ const config: Config = {
         },
         {
           type: 'docSidebar',
+          sidebarId: 'userGuideSidebar',
+          position: 'left',
+          label: 'User Guide',
+        },
+        {
+          type: 'docSidebar',
+          sidebarId: 'clientApiSidebar',
+          position: 'left',
+          label: 'Client API',
+        },
+        // 2.4.0-specific sidebar items (hidden when viewing 2.5.0 via swizzled DocSidebarNavbarItem)
+        {
+          type: 'docSidebar',
           sidebarId: 'architectureSidebar',
           position: 'left',
           label: 'Architecture',
@@ -101,6 +122,12 @@ const config: Config = {
           sidebarId: 'tutorialsSidebar',
           position: 'left',
           label: 'Tutorials',
+        },
+        {
+          type: 'docSidebar',
+          sidebarId: 'contributingSidebar',
+          position: 'left',
+          label: 'Contributing',
         },
         {
           type: 'docSidebar',
@@ -156,7 +183,7 @@ const config: Config = {
             },
             {
               label: 'Documentation',
-              to: '/docs/getting-started',
+              to: '/docs/getting-started/overview',
             },
             {
               label: 'GitHub',
