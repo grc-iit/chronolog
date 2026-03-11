@@ -68,7 +68,7 @@ Execute the following command to start the performance test:
 
 Once you run the test, the log will display several sections, including system status, configuration details, and performance results.
 
-### 1. System Run Mode
+### System Run Mode
 
 After executing the command, you will see the system's operational status:
 
@@ -83,7 +83,7 @@ Shared story: false
 [ConfigurationManager] Loading configuration from file: /home/$USER/chronolog/Debug/conf/default_conf.json
 ```
 
-### 2. Configuration Details
+### Configuration Details
 
 The system will then output its configuration settings:
 
@@ -96,7 +96,7 @@ CLIENT_CONF: [VISOR_CLIENT_PORTAL_SERVICE_CONF: [RPC_CONF: [PROTO_CONF: ofi+sock
 ******** End of configuration output ********
 ```
 
-### 3. Performance Results
+### Performance Results
 
 Finally, the system will display the performance test results:
 

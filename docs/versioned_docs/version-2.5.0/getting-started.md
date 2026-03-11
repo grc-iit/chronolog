@@ -11,7 +11,7 @@ import TabItem from '@theme/TabItem';
 <Tabs>
 <TabItem value="build-from-source" label="Build from Source" default>
 
-## 1.1 Checkout ChronoLog
+## Checkout ChronoLog
 
 To get started with ChronoLog, the first step involves cloning the repository to your system. To do so:
 
@@ -19,9 +19,9 @@ To get started with ChronoLog, the first step involves cloning the repository to
 git clone https://github.com/grc-iit/ChronoLog.git
 ```
 
-## 1.2 Prerequisites
+## Prerequisites
 
-### 1.2.1 Spack
+### Spack
 
 ChronoLog requires various packages managed by Spack. To ensure compatibility and stability, we recommend using Spack version [v0.21.2 (2024-03-01)](https://github.com/spack/spack/releases/tag/v0.21.2). Follow the steps below to install and configure Spack:
 
@@ -30,11 +30,11 @@ git clone --branch v0.21.2 https://github.com/spack/spack.git
 source /path-to-where-spack-was-cloned/spack/share/spack/setup-env.sh
 ```
 
-## 1.3 Installing Dependencies
+## Installing Dependencies
 
 Currently, most of the dependencies are listed in `spack.yaml` and can be installed via Spack. `gcc` and `g++` will be needed to build ChronoLog.
 
-### 1.3.1 Setting Up the Spack Environment
+### Setting Up the Spack Environment
 
 A Spack environment needs to be created and activated using the following commands.
 
@@ -50,7 +50,7 @@ To check if the environment is activated the following can be executed:
 spack env status
 ```
 
-### 1.3.2 Dependency Installation Commands
+### Dependency Installation Commands
 
 If the environment is properly activated, it can be installed:
 
@@ -62,15 +62,15 @@ spack install -v
 Installation can take more than 30 minutes.
 :::
 
-## 1.4 Building ChronoLog
+## Building ChronoLog
 
-### 1.4.1 Preparation
+### Preparation
 
 :::caution
 Ensure (by using `spack env status`) all building steps are performed within the activated Spack environment to allow CMake to locate necessary dependencies.
 :::
 
-### 1.4.2 Build Commands
+### Build Commands
 
 For building ChronoLog the following commands must be executed.
 
@@ -85,7 +85,7 @@ cmake ..
 make all
 ```
 
-## 1.5 Executable Files Description
+## Executable Files Description
 
 Building ChronoLog generates the following executables:
 
@@ -96,7 +96,7 @@ Building ChronoLog generates the following executables:
 </TabItem>
 <TabItem value="tarball" label="Tarball">
 
-## 1. Download the Tarball
+## Download the Tarball
 
 Download the latest pre-built binary tarball from the [ChronoLog GitHub Releases](https://github.com/grc-iit/ChronoLog/releases) page.
 
@@ -105,14 +105,14 @@ Download the latest pre-built binary tarball from the [ChronoLog GitHub Releases
 wget https://github.com/grc-iit/ChronoLog/releases/download/v<version>/chronolog-v<version>-linux-x86_64.tar.gz
 ```
 
-## 2. Extract the Archive
+## Extract the Archive
 
 ```bash
 tar -xzf chronolog-v<version>-linux-x86_64.tar.gz
 cd chronolog-v<version>-linux-x86_64
 ```
 
-## 3. Verify Executables
+## Verify Executables
 
 After extracting, the `bin/` directory should contain the following executables:
 
@@ -126,7 +126,7 @@ After extracting, the `bin/` directory should contain the following executables:
 ls bin/
 ```
 
-## 4. Set Up Configuration
+## Set Up Configuration
 
 The default configuration file is located at `conf/default_conf.json`. Review and adjust it for your environment before starting ChronoLog.
 
@@ -140,17 +140,17 @@ Refer to the [Configuration](./configuration-usage.md) documentation for a full 
 </TabItem>
 <TabItem value="docker" label="Docker">
 
-## 1. Prerequisites
+## Prerequisites
 
 Ensure [Docker](https://docs.docker.com/get-docker/) is installed and the Docker daemon is running on your system.
 
-## 2. Pull the ChronoLog Image
+## Pull the ChronoLog Image
 
 ```bash
 docker pull gnosisrc/chronolog:latest
 ```
 
-## 3. Run the Container
+## Run the Container
 
 ```bash
 docker run -it --rm gnosisrc/chronolog:latest bash
@@ -158,7 +158,7 @@ docker run -it --rm gnosisrc/chronolog:latest bash
 
 This opens an interactive shell inside the container with ChronoLog pre-installed.
 
-## 4. Deploy ChronoLog
+## Deploy ChronoLog
 
 Inside the container, run the single-node deployment script:
 
@@ -166,7 +166,7 @@ Inside the container, run the single-node deployment script:
 ./local_single_user_deploy.sh --start --install-dir /home/user/chronolog
 ```
 
-## 5. Verify Deployment
+## Verify Deployment
 
 Check that the ChronoLog processes are running:
 
@@ -176,7 +176,7 @@ pgrep -la chrono
 
 You should see `chronovisor_server`, `chrono_keeper`, `chrono_grapher`, and `chrono_player` listed.
 
-## 6. Next Steps
+## Next Steps
 
 For advanced Docker usage including multi-node and distributed deployments, see the [Single Node Deployment](./deployment-single-node.md) guide.
 

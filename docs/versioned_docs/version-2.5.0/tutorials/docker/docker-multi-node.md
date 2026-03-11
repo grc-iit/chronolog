@@ -23,12 +23,12 @@ For a **simpler single-node setup**, see our guide: [Running ChronoLog with Dock
 
 ChronoLog runs inside **Docker containers**, orchestrated by **Docker Compose**, for easy multi-node management.
 
-### 1. Install Docker & Docker Compose
+### Install Docker & Docker Compose
 
 - [Docker Installation Guide](https://docs.docker.com/get-docker/)
 - [Docker Compose Installation Guide](https://docs.docker.com/compose/install/)
 
-### 2. Verify Installation
+### Verify Installation
 
 ```bash
 docker --version
