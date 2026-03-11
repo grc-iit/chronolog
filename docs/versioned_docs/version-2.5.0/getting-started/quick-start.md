@@ -11,7 +11,224 @@ import TabItem from '@theme/TabItem';
 Get ChronoLog running on your machine in minutes. Choose the method that best fits your environment:
 
 <Tabs>
-<TabItem value="docker" label="Docker" default>
+<TabItem value="source" label="Build from Source" default>
+
+## Prerequisites
+
+### Spack
+
+ChronoLog requires various packages managed by Spack. We recommend using Spack version [v0.21.2 (2024-03-01)](https://github.com/spack/spack/releases/tag/v0.21.2):
+
+:::info
+Spack v0.21.2 is required due to an incompatibility between newer Spack versions and spdlog. This will be resolved in a future release.
+:::
+
+Clone Spack at the required version:
+
+```bash
+git clone --branch v0.21.2 https://github.com/spack/spack.git
+```
+
+Load Spack into your shell environment:
+
+```bash
+source /path-to-where-spack-was-cloned/spack/share/spack/setup-env.sh
+```
+
+## Checkout ChronoLog
+
+Clone the ChronoLog repository:
+
+```bash
+git clone https://github.com/grc-iit/ChronoLog.git
+```
+
+## Installing Dependencies
+
+Enter the repository and check out the stable release:
+
+```bash
+cd ChronoLog
+```
+
+```bash
+git checkout v2.5.0
+```
+
+Activate the Spack environment defined in the repository:
+
+```bash
+spack env activate -p .
+```
+
+Install all required dependencies:
+
+```bash
+spack install -v
+```
+
+:::info
+Installation can take more than 30 minutes.
+:::
+
+## Building ChronoLog
+
+Create and enter the build directory:
+
+```bash
+mkdir build && cd build
+```
+
+Configure the build with CMake:
+
+```bash
+# Use Debug instead of Release for a debug build
+cmake -DCMAKE_BUILD_TYPE=Release ..
+```
+
+Compile ChronoLog:
+
+```bash
+make all
+```
+
+## Install
+
+Install ChronoLog to the default directory:
+
+```bash
+make install
+```
+
+This installs executables, libraries, configuration, and deploy scripts into `~/chronolog-install/chronolog/`.
+
+## Start ChronoLog
+
+Run the deployment script from the install tree:
+
+```bash
+~/chronolog-install/chronolog/tools/deploy_local.sh --start
+```
+
+## Verify Deployment
+
+Check that the ChronoLog processes are running:
+
+```bash
+pgrep -la chrono
+```
+
+You should see `chrono-visor`, `chrono-keeper`, `chrono-grapher`, and `chrono-player` listed.
+
+## Stop ChronoLog
+
+To stop all ChronoLog services:
+
+```bash
+~/chronolog-install/chronolog/tools/deploy_local.sh --stop
+```
+
+To also remove generated logs and configuration artifacts:
+
+```bash
+~/chronolog-install/chronolog/tools/deploy_local.sh --clean
+```
+
+## Next Steps
+
+For full deployment options and configuration, see the [Single Node Deployment](/docs/user-guide/deployment/single-node) guide.
+
+</TabItem>
+<TabItem value="tarball" label="Release Archive">
+
+## Download the Tarball
+
+Download the pre-built binary tarball for v2.5.0 from the [ChronoLog GitHub Releases](https://github.com/grc-iit/ChronoLog/releases) page:
+
+```bash
+wget https://github.com/grc-iit/ChronoLog/releases/download/v2.5.0/chronolog-2.5.0-linux-x86_64.tar.gz
+```
+
+## Extract the Archive
+
+Extract the tarball:
+
+```bash
+tar -xzf chronolog-2.5.0-linux-x86_64.tar.gz
+```
+
+Enter the extracted directory:
+
+```bash
+cd chronolog-2.5.0
+```
+
+## Verify Executables
+
+After extracting, the `bin/` directory should contain the following executables:
+
+- `chrono-visor` — ChronoVisor server
+- `chrono-keeper` — ChronoKeeper server
+- `chrono-grapher` — ChronoGrapher server
+- `chrono-player` — ChronoPlayer server
+- `chrono-client-admin` — Admin/workload generator tool
+
+List the contents of the `bin/` directory to confirm:
+
+```bash
+ls bin/
+```
+
+## Set Up Configuration
+
+The default configuration file is located at `conf/default-chrono-conf.json`. Review and adjust it for your environment before starting ChronoLog.
+
+View the default configuration:
+
+```bash
+cat conf/default-chrono-conf.json
+```
+
+Refer to the [Configuration](/docs/user-guide/configuration/overview) documentation for a full description of all available options.
+
+## Start ChronoLog
+
+From inside the extracted directory (`chronolog-2.5.0`), run the deployment script:
+
+```bash
+tools/deploy_local.sh --start
+```
+
+## Verify Deployment
+
+Check that the ChronoLog processes are running:
+
+```bash
+pgrep -la chrono
+```
+
+You should see `chrono-visor`, `chrono-keeper`, `chrono-grapher`, and `chrono-player` listed.
+
+## Stop ChronoLog
+
+To stop all ChronoLog services:
+
+```bash
+tools/deploy_local.sh --stop
+```
+
+To also remove generated logs and configuration artifacts:
+
+```bash
+tools/deploy_local.sh --clean
+```
+
+## Next Steps
+
+For full deployment options and configuration, see the [Single Node Deployment](/docs/user-guide/deployment/single-node) guide.
+
+</TabItem>
+<TabItem value="docker" label="Docker">
 
 ## Prerequisites
 
@@ -54,108 +271,17 @@ You should see `chronovisor_server`, `chrono_keeper`, `chrono_grapher`, and `chr
 For step-by-step Docker tutorials, see the [Single Node Tutorial](/docs/tutorials/docker-single-node/running-chronolog) and [Multi Node Tutorial](/docs/tutorials/docker-multi-node/running-chronolog).
 
 </TabItem>
-<TabItem value="tarball" label="Tarball">
-
-## Download the Tarball
-
-Download the latest pre-built binary tarball from the [ChronoLog GitHub Releases](https://github.com/grc-iit/ChronoLog/releases) page.
-
-```bash
-# Replace <version> with the actual release version, e.g. 2.5.0
-wget https://github.com/grc-iit/ChronoLog/releases/download/v<version>/chronolog-v<version>-linux-x86_64.tar.gz
-```
-
-## Extract the Archive
-
-```bash
-tar -xzf chronolog-v<version>-linux-x86_64.tar.gz
-cd chronolog-v<version>-linux-x86_64
-```
-
-## Verify Executables
-
-After extracting, the `bin/` directory should contain the following executables:
-
-- `chronovisor_server` — ChronoVisor server
-- `chrono_keeper` — ChronoKeeper server
-- `chrono_grapher` — ChronoGrapher server
-- `chrono_player` — ChronoPlayer server
-- `client_admin` — Admin/workload generator tool
-
-```bash
-ls bin/
-```
-
-## Set Up Configuration
-
-The default configuration file is located at `conf/default_conf.json`. Review and adjust it for your environment before starting ChronoLog.
-
-```bash
-# View the default configuration
-cat conf/default_conf.json
-```
-
-Refer to the [Configuration](/docs/user-guide/configuration/overview) documentation for a full description of all available options.
-
-</TabItem>
-<TabItem value="source" label="Build from Source">
-
-## Checkout ChronoLog
-
-```bash
-git clone https://github.com/grc-iit/ChronoLog.git
-```
-
-## Prerequisites
-
-### Spack
-
-ChronoLog requires various packages managed by Spack. We recommend using Spack version [v0.21.2 (2024-03-01)](https://github.com/spack/spack/releases/tag/v0.21.2):
-
-```bash
-git clone --branch v0.21.2 https://github.com/spack/spack.git
-source /path-to-where-spack-was-cloned/spack/share/spack/setup-env.sh
-```
-
-## Installing Dependencies
-
-```bash
-cd ChronoLog
-git switch develop
-spack env activate -p .
-spack install -v
-```
+<TabItem value="spack" label="Spack">
 
 :::info
-Installation can take more than 30 minutes.
-:::
-
-## Building ChronoLog
-
-:::caution
-Ensure (by using `spack env status`) all building steps are performed within the activated Spack environment.
-:::
+Spack installation support for ChronoLog is coming soon. Once available, you will be able to install ChronoLog directly via:
 
 ```bash
-cd ChronoLog
-git switch develop
-mkdir build && cd build
-cmake ..
-make all
+spack install chronolog
 ```
 
-## Install
-
-```bash
-make install
-```
-
-This installs executables and dependencies into the default directory (`~/chronolog`).
-
-</TabItem>
-<TabItem value="native-linux" label="Native Linux">
-
-For a full native Linux setup tutorial (without Docker), see the [Native Linux Tutorial](/docs/tutorials/native-linux/first-steps).
+In the meantime, use the **Build from Source** tab to install ChronoLog using Spack for dependency management.
+:::
 
 </TabItem>
 </Tabs>
