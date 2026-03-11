@@ -152,8 +152,6 @@ make install
 
 This installs executables and dependencies into the default directory (`~/chronolog`).
 
-For detailed installation and build options, see [Building from Source](/docs/user-guide/installation/building-from-source).
-
 </TabItem>
 <TabItem value="native-linux" label="Native Linux">
 
