@@ -1,13 +1,15 @@
 ---
-sidebar_position: 2
-title: "Multi Node"
+sidebar_position: 1
+title: "Running ChronoLog"
 ---
 
-# Multi Node
+# Running ChronoLog with Docker (Multi Node)
 
 ## Welcome!
 
 This simplified tutorial will guide you through quickly setting up **ChronoLog** in a multi-node environment using our automated deployment script. By the end, you'll have a fully operational **distributed ChronoLog system**, with minimal setup steps required.
+
+If you're looking for a simpler single-node setup instead, see [Docker (single node) - Running ChronoLog](../docker-single-node/running-chronolog).
 
 ## Overview
 
@@ -16,8 +18,6 @@ This simplified tutorial will guide you through quickly setting up **ChronoLog**
 - Quickly deploy ChronoLog using our automated script.
 - Customize your ChronoLog deployment with flexible configuration options.
 - Easily interact with and verify your ChronoLog setup.
-
-For a **simpler single-node setup**, see our guide: [Single Node](./docker-single-node).
 
 ## Prerequisites: Docker & Docker Compose
 
@@ -89,44 +89,6 @@ Check your deployment:
 docker ps
 ```
 
-## Running a Client Performance Test
+## Next: Client Performance Test
 
-### Step 1: Generate Client Hosts File
-
-Run the following command directly from your host machine:
-
-```bash
-docker exec chronolog-c1 bash -c 'echo "chronolog-c1" > ~/chronolog_install/Release/conf/hosts_client'
-```
-
-### Step 2: Run Client Performance Test
-
-Execute the performance test directly:
-
-```bash
-docker exec chronolog-c1 bash -c 'LD_LIBRARY_PATH=~/chronolog_install/Release/lib ~/chronolog_repo/.spack-env/view/bin/mpiexec -n 4 -f ~/chronolog_install/Release/conf/hosts_client ~/chronolog_install/Release/bin/client_admin --config ~/chronolog_install/Release/conf/default_client_conf.json -a 4096 -b 4096 -s 4096 -n 4096 -t 1 -h 1 -p -r'
-```
-
-## Stopping ChronoLog
-
-Stop all containers:
-
-```bash
-docker compose -f dynamic-compose.yaml down
-```
-
-Remove volumes (optional):
-
-```bash
-docker compose -f dynamic-compose.yaml down -v
-```
-
-## What's Next?
-
-With ChronoLog running, you can:
-
-- **Deploy workloads within containers**.
-- **Integrate ChronoLog into your infrastructure**.
-- **Customize setups** based on your needs.
-
-Stay tuned for further advanced tutorials!
+Once your multi-node deployment is running, continue with the [Client + Performance test](./client-performance-test) to generate load and validate the distributed setup.
