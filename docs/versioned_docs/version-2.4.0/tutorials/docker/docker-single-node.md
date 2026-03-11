@@ -172,8 +172,8 @@ docker rm chronolog-instance
 
 Now that you have ChronoLog running in Docker, you're ready to:
 
-- Explore different **ChronoLog deployment options** by checking the [Deployment](/docs/deployment) guide.
-- Discover the potential of **ChronoLog Clients**: [Client Examples](/docs/client/basic-client-api) (Basic Client, Interactive Client, Scripted Client & Python Client).
+- Explore different **ChronoLog deployment options** by checking the [Deployment](../../deployment) guide.
+- Discover the potential of **ChronoLog Clients**: [Client Examples](../../client/client-examples/basic-client-api) (Basic Client, Interactive Client, Scripted Client & Python Client).
 - Start **building your own applications** on top of ChronoLog.
 
 In our next tutorial, we'll show you how to **run ChronoLog in a multi-node setup**, so stay tuned!

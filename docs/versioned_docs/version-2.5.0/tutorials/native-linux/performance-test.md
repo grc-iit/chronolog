@@ -23,7 +23,7 @@ To check if ChronoLog is running, execute the following command:
 pgrep -laf "chronovisor_server|chrono_grapher|chrono_keeper|chrono_player"
 ```
 
-If this command does not return any output, it means ChronoLog is not running. In that case, follow the instructions in the [First Steps with ChronoLog](/docs/tutorials/first-steps) tutorial to set up and start the system.
+If this command does not return any output, it means ChronoLog is not running. In that case, follow the instructions in the [First Steps with ChronoLog](./first-steps) tutorial to set up and start the system.
 
 ---
 
@@ -122,6 +122,6 @@ These values provide insight into how efficiently ChronoLog is handling operatio
 
 Congratulations! You have successfully run a performance test on ChronoLog using the **Scripted Client Admin** tool. This process allows you to measure system throughput and analyze performance under different conditions.
 
-If you encountered any issues, double-check that the system is running and verify your script file. For additional support, refer to the [First Steps with ChronoLog](/docs/tutorials/first-steps) tutorial or reach out to the ChronoLog community.
+If you encountered any issues, double-check that the system is running and verify your script file. For additional support, refer to the [First Steps with ChronoLog](./first-steps) tutorial or reach out to the ChronoLog community.
 
 Stay tuned for the next tutorial!

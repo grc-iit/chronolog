@@ -17,7 +17,7 @@ This simplified tutorial will guide you through quickly setting up **ChronoLog**
 - Customize your ChronoLog deployment with flexible configuration options.
 - Easily interact with and verify your ChronoLog setup.
 
-For a **simpler single-node setup**, see our guide: [Running ChronoLog with Docker (Single Node)](/docs/tutorials/docker-single-node).
+For a **simpler single-node setup**, see our guide: [Running ChronoLog with Docker (Single Node)](./docker-single-node).
 
 ## Prerequisites: Docker & Docker Compose
 

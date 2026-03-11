@@ -77,10 +77,10 @@ type QuickStartItem = {icon: string; title: string; desc: string; link: string; 
 const quickStarts: QuickStartItem[] = [
   {
     icon: '🐳',
-    title: 'Docker Single Node',
+    title: 'Single Node only',
     desc: 'Spin up a complete ChronoLog stack on a single machine in minutes using Docker Compose.',
     link: '/docs/tutorials/docker/docker-single-node',
-    label: 'Single Node Guide',
+    label: 'Single Node only',
   },
   {
     icon: '🌐',
