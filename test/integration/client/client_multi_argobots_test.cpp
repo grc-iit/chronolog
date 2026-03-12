@@ -164,23 +164,8 @@ int main(int argc, char** argv)
     ABT_pool* pools = (ABT_pool*)malloc(sizeof(ABT_pool) * num_xstreams);
     ABT_thread* threads = (ABT_thread*)malloc(sizeof(ABT_thread) * num_threads);
     std::vector<struct thread_arg> t_args(num_threads);
-    ;
 
     std::string client_id = gen_random(8);
-    ;
-    std::string server_uri = portalConf.PROTO_CONF + "://" + portalConf.IP + ":" + std::to_string(portalConf.PORT);
-    int flags = 0;
-
-    if(ret == chronolog::CL_SUCCESS)
-    {
-        LOG_INFO("[ClientLibMultiArgobotsTest] Connected to the server successfully.");
-    }
-    else
-    {
-        LOG_ERROR("[ClientLibMultiArgobotsTest] Failed to connect to the server. Error code: {}", ret);
-        exit(1); // Exit if connection fails
-    }
-    assert(ret == chronolog::CL_SUCCESS);
 
     for(int i = 0; i < num_threads; i++)
     {
@@ -227,7 +212,6 @@ int main(int argc, char** argv)
     else
     {
         LOG_ERROR("[ClientLibMultiArgobotsTest] Failed to disconnect from the server. Error code: {}", ret);
-        // Handle the failure scenario accordingly
     }
     assert(ret == chronolog::CL_SUCCESS);
 

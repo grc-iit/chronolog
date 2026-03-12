@@ -267,7 +267,9 @@ int main(int argc, char** argv)
 
     if(!run_hybrid_test)
     {
-        return 1;
+        ret = client->Disconnect();
+        delete client;
+        return 0;
     }
 
     //// hybrid writer-reader client test with multiple threads

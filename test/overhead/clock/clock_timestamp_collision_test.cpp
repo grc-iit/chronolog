@@ -9,21 +9,22 @@
 #include <regex>
 #include <filesystem>
 
-int main(int argc, char*argv[])
+int main(int argc, char* argv[])
 {
     // Define the path to the directory containing the files
     std::string dir_path = "./";
-    if(argc > 1) dir_path = argv[1];
+    if(argc > 1)
+        dir_path = argv[1];
 
     // Define the regular expression to match the file names
     std::regex file_regex("clock_gettime_thread.*");
 
     // Define an unordered map to store the count of each number
-    std::unordered_map <uint64_t, uint64_t> count_map;
+    std::unordered_map<uint64_t, uint64_t> count_map;
 
     // Loop over all files in the directory
     uint64_t total_count = 0;
-    for(const auto &entry: std::filesystem::directory_iterator(dir_path))
+    for(const auto& entry: std::filesystem::directory_iterator(dir_path))
     {
         // Check if the file name matches the regular expression
         std::string filename = entry.path().filename().string();
@@ -53,17 +54,17 @@ int main(int argc, char*argv[])
 
 
     // Open a file to write the duplicate numbers and their counts
-//    std::ofstream out_file("duplicates.txt", std::ios::trunc);
+    //    std::ofstream out_file("duplicates.txt", std::ios::trunc);
 
     // Loop over the entries in the map and write the duplicates to the output file
-//    for (const auto& entry : count_map) {
-//        if (entry.second > 1) {
-//            out_file << entry.first << " " << entry.second << std::endl;
-//        }
-//    }
+    //    for (const auto& entry : count_map) {
+    //        if (entry.second > 1) {
+    //            out_file << entry.first << " " << entry.second << std::endl;
+    //        }
+    //    }
 
     // Close the output file
-//    out_file.close();
+    //    out_file.close();
 
     return 0;
 }

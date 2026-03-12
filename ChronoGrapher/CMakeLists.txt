@@ -29,6 +29,7 @@ target_link_libraries(chrono_grapher
 )
 
 set_target_properties(chrono_grapher PROPERTIES
+    OUTPUT_NAME chrono-grapher
     BUILD_WITH_INSTALL_RPATH TRUE
     SKIP_BUILD_RPATH TRUE
 )

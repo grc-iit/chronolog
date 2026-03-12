@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <cstdlib>
 #include <cstdint>
+#include <unistd.h>
 #include <hdf5.h>
 #include <StoryWriter.h>
 #include <StoryReader.h>
@@ -18,7 +19,20 @@
 #define CHRONICLE "C1.h5"
 #define NUM_OF_TESTS 200
 
-#define CHRONICLE_ROOT_DIR "/home/kfeng/chronolog_store/"
+/** Chronicle root directory for test data. Use env CHRONOLOG_TEST_STORE_DIR or a unique temp path. */
+static std::string getChronicleRootDir()
+{
+    if(const char* env_p = std::getenv("CHRONOLOG_TEST_STORE_DIR"))
+    {
+        std::string p(env_p);
+        if(!p.empty() && p.back() != '/')
+            p += '/';
+        return p;
+    }
+    std::filesystem::path tmp = std::filesystem::temp_directory_path() /
+                                ("chronolog_hdf5_archiver_test_" + std::to_string(static_cast<long>(getpid())));
+    return tmp.string() + "/";
+}
 
 bool compareLogEvent(const chronolog::LogEvent& event1, const chronolog::LogEvent& event2)
 {
@@ -94,30 +108,32 @@ bool compareStoryChunkMaps(std::map<uint64_t, chronolog::StoryChunk>& map1,
 
 void testWriteOperation(const std::map<uint64_t, chronolog::StoryChunk>& story_chunk_map,
                         std::string& chronicle_name,
-                        std::string& story_name)
+                        std::string& story_name,
+                        const std::string& chronicle_root_dir)
 {
-    std::string chronicle_root_dir = CHRONICLE_ROOT_DIR;
-    StoryWriter writer(chronicle_root_dir);
+    std::string root_dir(chronicle_root_dir);
+    StoryWriter writer(root_dir);
     writer.writeStoryChunks(story_chunk_map, chronicle_name, story_name);
 }
 
-void testRangeReadOperation(const std::string& chronicle_name,
+void testRangeReadOperation(const std::string& chronicle_root_dir,
+                            const std::string& chronicle_name,
                             const uint64_t& story_id,
                             uint64_t start_time,
                             uint64_t end_time,
                             std::map<uint64_t, chronolog::StoryChunk>& story_chunk_map)
 {
-    std::string chronicle_root_dir = CHRONICLE_ROOT_DIR;
-    StoryReader sr(chronicle_root_dir);
+    std::string root_dir(chronicle_root_dir);
+    StoryReader sr(root_dir);
     sr.readStoryRange(chronicle_name, story_id, start_time, end_time, story_chunk_map);
 }
 
-std::map<uint64_t, chronolog::StoryChunk> testReadAllOperation(uint64_t story_id, std::string& chronicle_name)
+std::map<uint64_t, chronolog::StoryChunk>
+testReadAllOperation(const std::string& chronicle_root_dir, uint64_t story_id, std::string& chronicle_name)
 {
-    hid_t status;
     std::map<uint64_t, chronolog::StoryChunk> story_chunk_map;
-    std::string chronicle_root_dir = CHRONICLE_ROOT_DIR;
-    StoryReader sr(chronicle_root_dir);
+    std::string root_dir(chronicle_root_dir);
+    StoryReader sr(root_dir);
     story_chunk_map = sr.readAllStories(chronicle_name);
     return story_chunk_map;
 }
@@ -129,27 +145,50 @@ std::map<uint64_t, chronolog::StoryChunk> testReadAllOperation(uint64_t story_id
  * @param argv[4]: minimum Event size
  * @param argv[5]: maximum Event size
  * @param argv[6]: standard deviation of Event size
+ * @param argv[7]: startTime
+ * @param argv[8]: endTime
+ * If fewer than 8 args are given, runs with default values (CTest-friendly minimal run).
  */
 int main(int argc, char* argv[])
 {
-    if(argc < 8)
+    std::random_device rd;
+    std::mt19937_64 rng(rd());
+    std::uniform_int_distribution<uint64_t> dist(0, UINT64_MAX);
+    uint64_t num_story_chunks;
+    uint64_t num_events_per_story_chunk;
+    uint64_t mean_event_size;
+    uint64_t min_event_size;
+    uint64_t max_event_size;
+    double stddev;
+    uint64_t start_time;
+    uint64_t end_time;
+
+    if(argc >= 8)
+    {
+        num_story_chunks = strtol(argv[1], nullptr, 10);
+        num_events_per_story_chunk = strtol(argv[2], nullptr, 10);
+        mean_event_size = strtol(argv[3], nullptr, 10);
+        min_event_size = strtol(argv[4], nullptr, 10);
+        max_event_size = strtol(argv[5], nullptr, 10);
+        stddev = strtod(argv[6], nullptr);
+        start_time = strtol(argv[7], nullptr, 10);
+        end_time = strtol(argv[8], nullptr, 10);
+    }
+    else
     {
         std::cout << "Usage: " << argv[0]
                   << " #StoryChunks #EventsInEachChunk meanEventSize minEventSize maxEventSize stddev"
                   << " startTime endTime" << std::endl;
-        return 1;
+        std::cout << "Running with default values (minimal CTest run)." << std::endl;
+        num_story_chunks = 2;
+        num_events_per_story_chunk = 5;
+        mean_event_size = 64;
+        min_event_size = 1;
+        max_event_size = 128;
+        stddev = 10.0;
+        start_time = 1000;
+        end_time = 10000;
     }
-    std::random_device rd;
-    std::mt19937_64 rng(rd());
-    std::uniform_int_distribution<uint64_t> dist(0, UINT64_MAX);
-    uint64_t num_story_chunks = strtol(argv[1], nullptr, 10);
-    uint64_t num_events_per_story_chunk = strtol(argv[2], nullptr, 10);
-    uint64_t mean_event_size = strtol(argv[3], nullptr, 10);
-    uint64_t min_event_size = strtol(argv[4], nullptr, 10);
-    uint64_t max_event_size = strtol(argv[5], nullptr, 10);
-    double stddev = strtod(argv[6], nullptr);
-    uint64_t start_time = strtol(argv[7], nullptr, 10);
-    uint64_t end_time = strtol(argv[8], nullptr, 10);
     std::string chronicle_name = CHRONICLE_NAME;
     std::string story_name = STORY_NAME;
     uint64_t story_id = dist(rng);
@@ -167,7 +206,14 @@ int main(int argc, char* argv[])
         exit(EXIT_FAILURE);
     }
 
-    std::cout << "StoryID: " << story_id << std::endl
+    std::string chronicle_root_dir = getChronicleRootDir();
+    std::string dir_for_create = chronicle_root_dir;
+    if(!dir_for_create.empty() && dir_for_create.back() == '/')
+        dir_for_create.pop_back();
+    std::filesystem::create_directories(dir_for_create);
+
+    std::cout << "Chronicle root dir: " << chronicle_root_dir << std::endl
+              << "StoryID: " << story_id << std::endl
               << "#StoryChunks: " << num_story_chunks << std::endl
               << "#EventsInEachChunk: " << num_events_per_story_chunk << std::endl
               << "meanEventSize: " << mean_event_size << std::endl
@@ -194,19 +240,20 @@ int main(int argc, char* argv[])
 
     // Clean up Chronicle directory
     std::cout << "Cleaning up Chronicle directory..." << std::endl;
-    for(const auto& entry: std::filesystem::directory_iterator(CHRONICLE_ROOT_DIR))
+    for(const auto& entry: std::filesystem::directory_iterator(dir_for_create))
     {
         std::filesystem::remove_all(entry.path());
     }
-    std::filesystem::create_directory(CHRONICLE_ROOT_DIR);
+    std::filesystem::create_directory(dir_for_create);
 
     // Test write operation
     std::cout << "Testing write operation..." << std::endl;
-    testWriteOperation(story_chunk_map, chronicle_name, story_name);
+    testWriteOperation(story_chunk_map, chronicle_name, story_name, chronicle_root_dir);
 
     // Test read operation
     std::cout << "Testing read operation..." << std::endl;
-    std::map<uint64_t, chronolog::StoryChunk> story_chunk_map2 = testReadAllOperation(story_id, chronicle_name);
+    std::map<uint64_t, chronolog::StoryChunk> story_chunk_map2 =
+            testReadAllOperation(chronicle_root_dir, story_id, chronicle_name);
 
     // Validate read all results
     std::cout << "Validating read all results ..." << std::endl;
@@ -234,7 +281,12 @@ int main(int argc, char* argv[])
     uint64_t range_start_time = start_time + dist(rng) % (end_time - start_time) / 2;
     uint64_t range_end_time = range_start_time + dist(rng) % (end_time - range_start_time);
     std::map<uint64_t, chronolog::StoryChunk> story_chunk_map3;
-    testRangeReadOperation(chronicle_name, story_id, range_start_time, range_end_time, story_chunk_map3);
+    testRangeReadOperation(chronicle_root_dir,
+                           chronicle_name,
+                           story_id,
+                           range_start_time,
+                           range_end_time,
+                           story_chunk_map3);
 
     // Generate reference range read results to validate
     std::map<uint64_t, chronolog::StoryChunk> story_chunk_map4;
