@@ -112,6 +112,8 @@ void chronolog::ChronologClientImpl::defineClientIdentity()
 chronolog::ChronologClientImpl::~ChronologClientImpl()
 {
     // Best-effort disconnect so the visor can remove the client record; safe to call when already SHUTTING_DOWN.
+    // NOTE: if stories are still acquired, Disconnect() returns CL_ERR_ACQUIRED and the client record is not removed.
+    // TODO(#543): remove this limitation once the Visor auto-releases acquired stories on Disconnect().
     Disconnect();
 
     if(storyteller != nullptr)
