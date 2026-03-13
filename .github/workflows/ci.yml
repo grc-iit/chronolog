@@ -451,6 +451,19 @@ jobs:
             echo '✅ ChronoLog cleaned'
           "
 
+      - name: Copy chronolog-install from container
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker cp "$CONTAINER_ID:/home/grc-iit/chronolog-install" ./chronolog-install
+
+      - name: Upload chronolog-install artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: chronolog-install-${{ github.head_ref || github.ref_name }}
+          path: ./chronolog-install
+          retention-days: 7
+
       - name: Commit and tag final image
         run: |
           set -e
