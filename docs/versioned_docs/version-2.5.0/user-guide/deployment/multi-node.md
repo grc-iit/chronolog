@@ -3,41 +3,140 @@ sidebar_position: 2
 title: "Multi-Node Deployment"
 ---
 
-# Distributed Deployment
+# Multi-Node (Cluster) Deployment
 
-ChronoLog is designed to work in a distributed environment. We prepare a script at `deploy/single_user_deploy.sh` to help deploying it in a distributed environment.
+`deploy_cluster.sh` deploys ChronoLog across multiple nodes using `parallel-ssh` for remote process management. Like `deploy_local.sh`, it operates on an already-installed ChronoLog tree and supports starting, stopping, and cleaning only — no build or install steps. The script is located at `tools/deploy/ChronoLog/deploy_cluster.sh` in the repository.
 
-[mpssh](https://github.com/ndenev/mpssh) and [jq](https://jqlang.github.io/jq/) are needed to run the script. Passwordless SSH needs to be configured for the script to work.
+## Prerequisites
 
-By default, the script reads hosts files, `hosts_visor`, `hosts_keeper`, `hosts_grapher`, and `hosts_client` to be specific, under `~/chronolog/conf` directory for the hosts to run the ChronoLog server daemons.
+The following tools must be available on `PATH` of the **launch node**:
 
-If the cluster uses **Slurm** for job scheduling, you can deploy ChronoLog in your active job using the following command:
+| Tool | Purpose |
+|------|---------|
+| `jq` | Parse and generate JSON configuration files |
+| `parallel-ssh` | Launch/stop remote processes in parallel |
+| `ssh` | Remote command execution and hostname resolution |
+| `ldd` | Inspect shared library dependencies |
+| `nohup` | Run processes independent of the shell session |
+| `pkill` | Stop processes by name/path |
+| `readlink` | Resolve symbolic links |
+| `realpath` | Canonicalize file paths |
+| `chrpath` | Adjust RPATH entries in binaries |
+
+**Passwordless SSH** must be configured from the launch node to all cluster nodes. The ChronoLog installation tree (`<work-dir>`) must be accessible at the same path on all nodes (e.g., via a shared filesystem).
+
+## Host Files
+
+Without a Slurm job ID, the script reads host lists from plain-text files under `<work-dir>/conf/`, one hostname per line:
+
+| File | Role |
+|------|------|
+| `hosts_visor` | Node(s) running ChronoVisor — typically one entry |
+| `hosts_grapher` | Nodes running ChronoGraphers — one per recording group |
+| `hosts_player` | Nodes running ChronoPlayers — one per recording group |
+| `hosts_keeper` | Nodes running ChronoKeepers — all keeper nodes |
+
+Example `hosts_keeper`:
+
+```
+node01
+node02
+node03
+node04
+```
+
+Keepers are distributed evenly across recording groups. With 4 keepers and 2 recording groups, each group gets 2 keepers.
+
+## Slurm Integration
+
+When `--job-id <JOB_ID>` is provided, the script derives the node list from the active Slurm job and overwrites the host files:
+
+- First node → ChronoVisor
+- Last `N` nodes → ChronoGraphers and ChronoPlayers (one per recording group)
+- All nodes → ChronoKeepers
+
+:::important
+ChronoLog must be launched from an **interactive job shell**, not via `sbatch` or `srun`. The script will exit with an error if it detects it is running inside an `srun` step.
+:::
+
+To start an interactive session first:
 
 ```bash
-./deploy/single_user_deploy.sh -d -n NUM_RECORDING_GROUP -j JOB_ID
+salloc -N 8 --time=01:00:00
+# then, from the interactive shell:
+./deploy_cluster.sh --start --job-id $SLURM_JOB_ID --record-groups 2
 ```
 
-The script will fetch the node list from Slurm, assign the first node to run the ChronoVisor, all the nodes to run ChronoKeepers, and the last `NUM_RECORDING_GROUP` nodes to run ChronoGraphers. The `client_lib_multi_storytellers` use case will be launched at last to test if the deployment is successful.
+## Recording Groups
 
+`--record-groups` controls how many ChronoGrapher + ChronoPlayer pairs are deployed. Each recording group handles a disjoint subset of ChronoKeepers. Increasing the number of recording groups improves write throughput for large deployments.
+
+The value of `--record-groups` must be ≤ the total number of keeper nodes.
+
+## Execution Modes
+
+Exactly one mode must be specified per invocation:
+
+| Mode | Description |
+|------|-------------|
+| `--start` | Start all ChronoLog processes across the cluster |
+| `--stop` | Stop all ChronoLog processes gracefully (force-kills after 5 minutes) |
+| `--clean` | Remove generated config files, per-group host files, logs, and output. All processes must be stopped first. |
+
+## Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-w, --work-dir <path>` | Script location `/../` | Root of the installed ChronoLog tree |
+| `-r, --record-groups <n>` | `1` (or count of lines in `hosts_grapher` if it exists) | Number of recording groups |
+| `-j, --job-id <id>` | _(none)_ | Slurm job ID; overrides host files when set |
+| `-m, --monitor-dir <path>` | `<work-dir>/monitor` | Directory for remote process launch logs |
+| `-u, --output-dir <path>` | `<work-dir>/output` | Directory for story file output |
+| `-v, --visor-bin <path>` | `<work-dir>/bin/chrono-visor` | Path to the ChronoVisor binary |
+| `-g, --grapher-bin <path>` | `<work-dir>/bin/chrono-grapher` | Path to the ChronoGrapher binary |
+| `-p, --keeper-bin <path>` | `<work-dir>/bin/chrono-keeper` | Path to the ChronoKeeper binary |
+| `-a, --player-bin <path>` | `<work-dir>/bin/chrono-player` | Path to the ChronoPlayer binary |
+| `-f, --conf-file <path>` | `<work-dir>/conf/default-chrono-conf.json` | Main configuration template |
+| `-n, --client-conf-file <path>` | `<work-dir>/conf/default-chrono-client-conf.json` | Client configuration template |
+| `-q, --visor-hosts <path>` | `<work-dir>/conf/hosts_visor` | Override path to visor host file |
+| `-k, --grapher-hosts <path>` | `<work-dir>/conf/hosts_grapher` | Override path to grapher host file |
+| `-o, --keeper-hosts <path>` | `<work-dir>/conf/hosts_keeper` | Override path to keeper host file |
+| `-e, --verbose` | `false` | Enable verbose output |
+
+## Examples
+
+Start with pre-configured host files (default work-dir):
+
+```bash
+./deploy_cluster.sh --start
 ```
-Usage:
--d|--deploy Start ChronoLog deployment (default: false)
--s|--stop Stop ChronoLog deployment (default: false)
--k|--kill Terminate ChronoLog deployment (default: false)
--r|--reset Reset/cleanup ChronoLog deployment (default: false)
--w|--work_dir WORK_DIR (default: ~/chronolog)
--u|--output_dir OUTPUT_DIR (default: work_dir/output)
--v|--visor VISOR_BIN (default: work_dir/bin/chronovisor_server)
--g|--grapher GRAPHER_BIN (default: work_dir/bin/chrono_grapher)
--p|--keeper KEEPER_BIN (default: work_dir/bin/chrono_keeper)
--c|--client CLIENT_BIN (default: work_dir/bin/client_lib_multi_storytellers)
--i|--visor_hosts VISOR_HOSTS (default: work_dir/conf/hosts_visor)
--a|--grapher_hosts GRAPHER_HOSTS (default: work_dir/conf/hosts_grapher)
--o|--keeper_hosts KEEPER_HOSTS (default: work_dir/conf/hosts_keeper)
--t|--client_hosts CLIENT_HOSTS (default: work_dir/conf/hosts_client)
--f|--conf_file CONF_FILE (default: work_dir/conf/default_conf.json)
--j|--job_id JOB_ID (default: "", overwrites hosts files if set)
--n|--num_recording_group NUM_RECORDING_GROUP (default: #hosts in GRAPHER_HOSTS if exists, 1 otherwise, overwrites hosts files if set)
--e|--verbose Enable verbose output (default: false)
--h|--help Print this page
+
+Start using a Slurm job with 2 recording groups:
+
+```bash
+./deploy_cluster.sh --start --job-id $SLURM_JOB_ID --record-groups 2
+```
+
+Start from a custom installation with 3 recording groups:
+
+```bash
+./deploy_cluster.sh --start --work-dir /shared/chronolog --record-groups 3
+```
+
+Stop the deployment using existing host files:
+
+```bash
+./deploy_cluster.sh --stop
+```
+
+Stop using a Slurm job (re-derives hosts from job):
+
+```bash
+./deploy_cluster.sh --stop --job-id $SLURM_JOB_ID
+```
+
+Clean up generated files (run after stopping):
+
+```bash
+./deploy_cluster.sh --clean
 ```

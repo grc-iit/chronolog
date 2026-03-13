@@ -5,86 +5,111 @@ title: "Single Node Deployment"
 
 # Single Node Deployment
 
-This document provides a technical reference for the ChronoLog deployment script. It describes the script's purpose, functionalities, command-line arguments, and usage.
+`deploy_local.sh` deploys ChronoLog on a single machine from an already-installed ChronoLog tree. It handles starting, stopping, and cleaning only — it does not build or install. The script is located at `tools/deploy/ChronoLog/deploy_local.sh` in the repository, and is also copied into the installed tree at `<work-dir>/deploy/deploy_local.sh`.
 
-### Overview
+## Prerequisites
 
-The ChronoLog deployment script is a Bash utility that streamlines building, installing, starting, stopping, and cleaning a ChronoLog deployment environment. It automates tasks such as generating configuration files, managing processes, and organizing output and log directories.
+The following tools must be available on `PATH`:
 
-Key functionalities include:
+| Tool | Purpose |
+|------|---------|
+| `jq` | Parse and generate JSON configuration files |
+| `ldd` | Inspect shared library dependencies |
+| `nohup` | Run processes independent of the shell session |
+| `pkill` | Stop processes by name/path |
+| `readlink` | Resolve symbolic links |
+| `realpath` | Canonicalize file paths |
+| `chrpath` | Adjust RPATH entries in binaries |
 
-1. **Building** (Compile the ChronoLog project)
-2. **Installing** (Copy the compiled binaries and libraries to a target location)
-3. **Starting** (Start Visor, Grapher, Player, and Keeper processes in the ChronoLog environment)
-4. **Stopping** (Stop all ChronoLog processes gracefully)
-5. **Cleaning** (Remove generated configuration and log files)
+## Directory Layout
 
-### Execution Modes (choose only one)
+The script operates on a ChronoLog installation tree with the following structure:
 
-- **-b | --build**: Build ChronoLog with the specified build type (Debug or Release).
-- **-i | --install**: Install ChronoLog binaries and libraries into target directories. Requires a --work-dir to define where it installs by default.
-- **-d | --start**: Start the ChronoLog services. Requires a --work-dir, which houses the lib, bin, and conf directories, as well as output and monitoring directories.
-- **-s | --stop**: Stop all ChronoLog services (Visor, Grapher, Player, Keeper). Requires --work-dir.
-- **-c | --clean**: Remove generated configuration files, logs, and output artifacts. Requires --work-dir and ensures no ChronoLog processes are active.
-
-### Options
-
-| **Option** | **Description** |
-|------------|-----------------|
-| `-h, --help` | Display script usage help and exit. |
-| `-b, --build` | **(Mode)** Build ChronoLog. |
-| `-i, --install` | **(Mode)** Install ChronoLog. |
-| `-d, --start` | **(Mode)** Start ChronoLog services. |
-| `-s, --stop` | **(Mode)** Stop ChronoLog services. |
-| `-c, --clean` | **(Mode)** Clean log and config artifacts. |
-| `-w, --install-dir` | **(Mandatory)** Sets the working directory containing `bin/`, `lib/`, `conf/`, etc. |
-| `-t, --build-type` | **(Optional)** Define the build type: **Debug** or **Release** (default: **Release**). |
-| `-k, --keepers` | **(Optional)** Number of **Keeper** processes to launch (default: **1**). |
-| `-r, --record-groups` | **(Optional)** Number of **Recording Groups**/**Grapher** processes (default: **1**). |
-| `-m, --monitor-dir` | **(Optional)** Directory for log output (default: `$INSTALL_DIR/monitor`). |
-| `-u, --output-dir` | **(Optional)** Directory for generated output (default: `$INSTALL_DIR/output`). |
-| `-v, --visor-bin` | **(Optional)** Path to the **ChronoVisor** binary (default: `$INSTALL_DIR/bin/chronovisor_server`). |
-| `-g, --grapher-bin` | **(Optional)** Path to the **ChronoGrapher** binary (default: `$INSTALL_DIR/bin/chrono_grapher`). |
-| `-p, --keeper-bin` | **(Optional)** Path to the **ChronoKeeper** binary (default: `$INSTALL_DIR/bin/chrono_keeper`). |
-| `-a, --player-bin` | **(Optional)** Path to the **ChronoPlayer** binary (default: `$INSTALL_DIR/bin/chrono_player`). |
-| `-f, --conf-file` | **(Optional)** Path to the **default_conf.json** (default: `$INSTALL_DIR/conf/default_conf.json`). |
-
-### Examples
-
-1. Build the project in Debug mode:
-
-```bash
-./local_single_user_deploy.sh --build --build-type Debug --install-dir /home/user/chronolog/Debug
+```
+<work-dir>/
+├── bin/          # ChronoLog binaries (chrono-visor, chrono-keeper, …)
+├── lib/          # Shared libraries
+├── conf/         # Configuration files (default-chrono-conf.json, …)
+├── monitor/      # Log output (created automatically)
+└── output/       # Story file output (created automatically)
 ```
 
-2. Install into the default directories (requires a built project and a valid work-dir):
+If `--work-dir` is not specified, the script first looks relative to its own location, then falls back to `$HOME/chronolog-install/chronolog`.
+
+## Configuration Files
+
+The script expects two template configuration files under `<work-dir>/conf/`:
+
+- `default-chrono-conf.json` — main configuration for all server components
+- `default-chrono-client-conf.json` — configuration for ChronoLog clients
+
+At startup, per-component configuration files are generated from these templates (e.g., `chrono-keeper-conf-1.json`, `chrono-grapher-conf-1.json`, etc.) and written back into `conf/`. These generated files are removed by `--clean`.
+
+## Execution Modes
+
+Exactly one mode must be specified per invocation:
+
+| Mode | Description |
+|------|-------------|
+| `--start` | Start all ChronoLog processes |
+| `--stop` | Stop all ChronoLog processes gracefully (force-kills after timeout) |
+| `--clean` | Remove generated config files, logs, and output artifacts. Requires all processes to be stopped first. |
+
+## Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-w, --work-dir <path>` | Script location `/../` or `$HOME/chronolog-install/chronolog` | Root of the installed ChronoLog tree |
+| `-k, --keepers <n>` | `1` | Total number of ChronoKeeper processes |
+| `-r, --record-groups <n>` | `1` | Number of recording groups (one ChronoGrapher + one ChronoPlayer per group) |
+| `-m, --monitor-dir <path>` | `<work-dir>/monitor` | Directory for process launch logs |
+| `-u, --output-dir <path>` | `<work-dir>/output` | Directory for story file output |
+| `-v, --visor-bin <path>` | `<work-dir>/bin/chrono-visor` | Path to the ChronoVisor binary |
+| `-g, --grapher-bin <path>` | `<work-dir>/bin/chrono-grapher` | Path to the ChronoGrapher binary |
+| `-p, --keeper-bin <path>` | `<work-dir>/bin/chrono-keeper` | Path to the ChronoKeeper binary |
+| `-a, --player-bin <path>` | `<work-dir>/bin/chrono-player` | Path to the ChronoPlayer binary |
+| `-f, --conf-file <path>` | `<work-dir>/conf/default-chrono-conf.json` | Main configuration template |
+| `-n, --client-conf-file <path>` | `<work-dir>/conf/default-chrono-client-conf.json` | Client configuration template |
+
+## Process Startup Order
+
+When `--start` is invoked, processes are launched in the following order, with 2-second delays between groups:
+
+1. **ChronoVisor** — the central coordinator
+2. **ChronoGraphers** — one per recording group (after 2 s)
+3. **ChronoPlayers** — one per recording group (after 2 s)
+4. **ChronoKeepers** — distributed evenly across recording groups (after 2 s)
+
+All processes are launched with `nohup` and their output is written to `<monitor-dir>/`.
+
+## Examples
+
+Start with default settings (auto-detects installation):
 
 ```bash
-./local_single_user_deploy.sh --install --install-dir /home/user/chronolog/Debug
+./deploy_local.sh --start
 ```
 
-3. Start ChronoLog with 5 Keeper processes and 2 Recording Groups:
+Start with 5 keepers and 2 recording groups:
 
 ```bash
-./local_single_user_deploy.sh --start --keepers 5 --record-groups 2 --install-dir /home/user/chronolog/Debug
+./deploy_local.sh --start --keepers 5 --record-groups 2
 ```
 
-4. Stop ChronoLog deployment:
+Start from a custom installation directory:
 
 ```bash
-./local_single_user_deploy.sh --stop --install-dir /home/user/chronolog/Debug
+./deploy_local.sh --start --work-dir /path/to/install
 ```
 
-5. Clean logs and generated config files:
+Stop the deployment:
 
 ```bash
-./local_single_user_deploy.sh --clean --install-dir /home/user/chronolog/Debug
+./deploy_local.sh --stop
 ```
 
-### Important Notes
+Clean up generated files (run after stopping):
 
-- Ensure only one mode (--build, --install, --start, --stop, --clean) is used per execution.
-- `INSTALL_DIR` is mandatory.
-- This script relies on certain dependencies: `jq`, `ldd`, `nohup`, `pkill`, `readlink`. Make sure they are installed.
-
----
+```bash
+./deploy_local.sh --clean
+```
