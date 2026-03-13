@@ -1,5 +1,6 @@
 # ChronoLog Data Source Provisioning
 # This file automatically configures the ChronoLog data source in Grafana
+# Backend URL port: set CHRONOLOG_BACKEND_SERVICE_PORT (default 8080) in the Grafana environment
 
 apiVersion: 1
 
@@ -12,7 +13,7 @@ datasources:
     version: 1
     isDefault: false
     jsonData:
-      backendUrl: http://localhost:8080
+      backendUrl: http://localhost:${CHRONOLOG_BACKEND_SERVICE_PORT}
       defaultChronicleName: CHRONICLE_NAME
       defaultStoryName: STORY_NAME
     editable: true

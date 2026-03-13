@@ -11,7 +11,7 @@ services:
     network_mode: host
     environment:
       - HOST=0.0.0.0
-      - PORT=8080
+      - CHRONOLOG_BACKEND_SERVICE_PORT=${CHRONOLOG_BACKEND_SERVICE_PORT:-8080}
       - CHRONOLOG_PROTOCOL=ofi+sockets
       - CHRONOLOG_PORTAL_IP=${CHRONOLOG_PORTAL_IP:-127.0.0.1}
       - CHRONOLOG_PORTAL_PORT=${CHRONOLOG_PORTAL_PORT:-5555}
@@ -28,7 +28,7 @@ services:
       # Mount conf for client config file (e.g. default_client_conf.json)
       - ${CHRONOLOG_INSTALL_PATH:-~/chronolog-install}/chronolog/conf:/opt/chronolog/conf:ro
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      test: ["CMD", "sh", "-c", "python -c \"import urllib.request, os; p=os.environ.get('CHRONOLOG_BACKEND_SERVICE_PORT','8080'); urllib.request.urlopen('http://localhost:'+p+'/health')\""]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -41,6 +41,8 @@ services:
     container_name: chronolog-grafana
     network_mode: host
     environment:
+      - GF_SERVER_HTTP_PORT=${GRAFANA_PORT:-3000}
+      - CHRONOLOG_BACKEND_SERVICE_PORT=${CHRONOLOG_BACKEND_SERVICE_PORT:-8080}
       - GF_SECURITY_ADMIN_USER=${GF_ADMIN_USER:-admin}
       - GF_SECURITY_ADMIN_PASSWORD=${GF_ADMIN_PASSWORD:-admin}
       - GF_USERS_ALLOW_SIGN_UP=false

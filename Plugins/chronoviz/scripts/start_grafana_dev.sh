@@ -30,6 +30,8 @@ while [[ $# -gt 0 ]]; do
       echo "  --local     Run backend only on host (venv + env vars)"
       echo "  -c, --conf FILE  Path to ChronoLog client config JSON (default: install_dir/chronolog/conf/default_client_conf.json)"
       echo "  -h, --help  Show this help"
+      echo ""
+      echo "Environment: GRAFANA_PORT (default 3000), CHRONOLOG_BACKEND_SERVICE_PORT (default 8080)"
       exit 0
       ;;
     *)
@@ -78,15 +80,21 @@ if [ "${1:-}" == "--local" ]; then
   export PYTHONPATH="$CHRONOLOG_LIB_PATH:$PYTHONPATH"
   export LD_LIBRARY_PATH="$CHRONOLOG_LIB_PATH:$LD_LIBRARY_PATH"
 
+  # Backend port: from env or default 8080
+  CHRONOLOG_BACKEND_SERVICE_PORT="${CHRONOLOG_BACKEND_SERVICE_PORT:-8080}"
+  export CHRONOLOG_BACKEND_SERVICE_PORT
+
   # Start the backend (pass --conf if CHRONOLOG_CONF_FILE is set)
   python chronolog_service.py ${CHRONOLOG_CONF_FILE:+--conf "$CHRONOLOG_CONF_FILE"} &
   BACKEND_PID=$!
 
+  GRAFANA_PORT="${GRAFANA_PORT:-3000}"
   echo "Backend started with PID: $BACKEND_PID"
   echo ""
   echo "=== Services Running ==="
-  echo "Backend: http://localhost:8080"
-  echo "Backend health: http://localhost:8080/health"
+  echo "Backend: http://localhost:${CHRONOLOG_BACKEND_SERVICE_PORT}"
+  echo "Backend health: http://localhost:${CHRONOLOG_BACKEND_SERVICE_PORT}/health"
+  echo "Grafana (start separately): http://localhost:${GRAFANA_PORT}"
   echo ""
   echo "Now start Grafana and configure the ChronoLog data source"
   echo "Press Ctrl+C to stop the backend"
@@ -109,9 +117,14 @@ else
     exit 1
   fi
   echo "Using: $DOCKER_COMPOSE"
+  GRAFANA_PORT="${GRAFANA_PORT:-3000}"
+  echo "Grafana: http://localhost:${GRAFANA_PORT}"
+  echo "Backend: http://localhost:${CHRONOLOG_BACKEND_SERVICE_PORT:-8080}"
+  echo ""
 
   # Export variables for docker-compose
   export CHRONOLOG_INSTALL_PATH
+  export GRAFANA_PORT
 
   # Start services
   $DOCKER_COMPOSE up --build

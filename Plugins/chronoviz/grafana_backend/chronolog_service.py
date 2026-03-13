@@ -789,7 +789,7 @@ if __name__ == "__main__":
         logger.info("No conf file specified, using environment/default config")
 
     host = os.getenv("HOST", "0.0.0.0")
-    port = int(os.getenv("PORT", "8080"))
+    port = int(os.getenv("CHRONOLOG_BACKEND_SERVICE_PORT", "8080"))
 
     uvicorn.run(
         "chronolog_service:app",
