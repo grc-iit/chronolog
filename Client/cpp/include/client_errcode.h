@@ -7,13 +7,12 @@ namespace chronolog
 // A simple enum for client-only errors:
 enum ClientErrorCode
 {
-    CL_SUCCESS = 0,          // Success
-    CL_ERR_UNKNOWN = -1,     // Generic error
-    CL_ERR_INVALID_ARG = -2, // Invalid input
-    CL_ERR_NOT_EXIST = -3,   // Missing Chronicle, Story, or property
-    CL_ERR_ACQUIRED =
-            -4, // Already acquired, cannot destroy; from Disconnect: client still has acquired stories, visor cannot remove client record
-    CL_ERR_NOT_ACQUIRED = -5,     // Not acquired, cannot release
+    CL_SUCCESS = 0,               // Success
+    CL_ERR_UNKNOWN = -1,          // Generic error
+    CL_ERR_INVALID_ARG = -2,      // Invalid input
+    CL_ERR_NOT_EXIST = -3,        // Missing Chronicle, Story, or property
+    CL_ERR_ACQUIRED = -4,         // Already acquired; cannot be destroyed; unsafe to disconnect
+    CL_ERR_NOT_ACQUIRED = -5,     // Not acquired; cannot be released
     CL_ERR_CHRONICLE_EXISTS = -6, // Chronicle already exists
     CL_ERR_NO_KEEPERS = -7,       // No ChronoKeepers available
     CL_ERR_NO_CONNECTION = -8,    // No connection to ChronoVisor
