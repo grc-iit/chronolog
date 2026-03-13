@@ -12,7 +12,6 @@
 #include <sstream>
 
 #include "log_level.h"
-
 #include "enum.h"
 #include "chronolog_errcode.h"
 
