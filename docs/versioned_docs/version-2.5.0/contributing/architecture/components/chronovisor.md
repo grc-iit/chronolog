@@ -9,7 +9,7 @@ title: "ChronoVisor"
 
 ChronoVisor acts as the client-facing portal managing the client connections and data access requests and it also maintains the registry of active recording processes and distributes the load of data recording between the recording process groups.
 
-![ChronoVisor](/img/ChronoVisor.jpg)
+![ChronoVisor](/component-icons/chrono-visor-plain.svg)
 
 - **Client Portal RPC Service** manages communication sessions between the client applications and ChronoVisor using a multithreaded engine for efficient concurrent connections.
 - **Client Authentication Module** authenticates the clients before they are granted access to data. We are using the operating system's authentication in the 1st ChronoLog release. We plan to implement role-based authentication in later releases.

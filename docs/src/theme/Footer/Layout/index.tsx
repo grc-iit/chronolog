@@ -34,7 +34,7 @@ export default function FooterLayout({
               {copyright}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <img src="/img/nsf.png" alt="NSF" style={{ height: '1.5rem' }} />
+              <img src="/logos/nsf.png" alt="NSF" style={{ height: '1.5rem' }} />
               <span>NSF CSSI-2104013</span>
             </div>
           </div>

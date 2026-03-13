@@ -9,7 +9,7 @@ title: "ChronoPlayer"
 
 The ChronoPlayer design is the logical continuation of the internal design of ChronoKeeper and ChronoGrapher servers, as it is also based on the Story Pipeline model.
 
-![ChronoPlayer](/img/ChronoPlayer.jpg)
+![ChronoPlayer](/component-icons/chrono-player-plain.svg)
 
 - **Player Registry Client** is the client side of RPC communication between the ChronoPlayer process and ChronoVisor's ProcessRegistryService. Player Registry Client is used to send Register/Unregister messages and periodic Heartbeat/Statistics messages to the ChronoVisor.
 - **Player Data Store Admin Service** is the service listening to the Start/Stop Story recording notifications from the ChronoVisor, these notifications trigger instantiation or dismantling of the appropriate active StoryPipelines based on the clients data access requests.

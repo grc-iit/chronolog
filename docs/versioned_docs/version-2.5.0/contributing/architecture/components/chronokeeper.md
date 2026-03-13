@@ -9,7 +9,7 @@ title: "ChronoKeeper"
 
 Most ChronoLog deployments would have ChronoKeeper processes installed on the majority of the compute nodes and each Recording Group is expected to have multiple ChronoKeeper processes.
 
-![ChronoKeeper](/img/ChronoKeeper.jpg)
+![ChronoKeeper](/component-icons/chrono-keeper-plain.svg)
 
 - **Keeper Data Store is the main ChronoKeeper module**. Keeper Data Store is the collection of Story Pipelines for all the actively recorded stories for the Recording Group that this ChronoKeeper process is part of. Keeper Data Store instantiates the Story Pipeline for the specific Story when the ChronoKeeper receives StartStoryRecording notification for this Story and dismantles the Story Pipeline shortly after being notified to StopStoryRecording. The Keeper Data Store sequencing threads are responsible for sequencing the ingested log events and grouping them into the time-range bound StoryChunks. (See ChronoLog Story Pipeline Data Model for reference)
 - **Keeper Recording Service** listens to the incoming streams of log events from the client applications and passes the events to the Ingestion Queue module for processing.

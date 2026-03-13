@@ -131,7 +131,7 @@ function NsfBanner() {
   return (
     <div className={styles.nsfBanner}>
       <div className="container">
-        <img src="/img/nsf.png" alt="NSF logo" className={styles.nsfLogo} />
+        <img src="/logos/nsf.png" alt="NSF logo" className={styles.nsfLogo} />
         <p className={styles.nsfText}>
           ChronoLog is supported by the National Science Foundation (NSF) under
           awards 2126967 and 2104013. Any opinions, findings, and conclusions or

@@ -76,7 +76,7 @@ const config: Config = {
     navbar: {
       logo: {
         alt: 'ChronoLog',
-        src: 'img/chronolog-full-logo-transparent.webp',
+        src: 'logos/chronolog-full-logo-transparent.webp',
         height: 64,
       },
       items: [
@@ -161,7 +161,7 @@ const config: Config = {
             {
               html: `
                 <a href="https://chronolog.dev" class="footer__logo-link">
-                  <img src="/img/chronolog-full-logo-transparent.webp" alt="ChronoLog logo" class="footer__logo-img" style="height: 5rem; border-radius: 0.25rem; margin-bottom: 1rem;" />
+                  <img src="/logos/chronolog-full-logo-transparent.webp" alt="ChronoLog logo" class="footer__logo-img" style="height: 5rem; border-radius: 0.25rem; margin-bottom: 1rem;" />
                 </a>
                 <p class="footer__description" style="font-size: 0.875rem; color: var(--ifm-footer-link-color); line-height: 1.625;">
                   A distributed and tiered shared log storage ecosystem. Funded by NSF (CSSI-2104013).

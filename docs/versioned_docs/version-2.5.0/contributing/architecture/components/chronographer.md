@@ -9,7 +9,7 @@ title: "ChronoGrapher"
 
 The ChronoGrapher design follows the StoryPipeline Data Model and mirrors the design of the ChronoKeeper. The ChronoLog deployment allows for only one ChronoGrapher process within the RecordingGroup, and it's usually deployed on the storage node.
 
-![ChronoGrapher](/img/ChronoGrapher.jpg)
+![ChronoGrapher](/component-icons/chrono-grapher-plain.svg)
 
 - **Recording Process Registry Client** is the client side of RPC communication between the ChronoGrapher process and ChronoVisor's RecordingProcessRegistryService. RecordingProcessRegistryClient is used to send Register/Unregister and periodic Heartbeat/Statistics messages to the ChronoVisor.
 - **DataStore Admin Service** is the service listening to the Start/Stop Story recording notifications from the ChronoVisor, these notifications trigger instantiation or dismantling of the appropriate StoryPipelines based on the clients data access requests.
