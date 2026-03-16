@@ -9,7 +9,7 @@ title: "ChronoVisor"
 
 ChronoVisor acts as the client-facing portal, managing client connections and data access requests. It also maintains the registry of active recording processes and distributes the load of data recording across the recording process groups.
 
-![ChronoVisor Internal Diagram](/diagrams/chrono-visor-internal-diagram.png)
+![ChronoVisor Internal Diagram](/diagrams/chrono-visor-internal-diagram.jpg)
 
 
 | Component | Description |
