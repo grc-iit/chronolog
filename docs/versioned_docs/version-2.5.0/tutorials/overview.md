@@ -27,10 +27,3 @@ A distributed deployment walkthrough using Docker across multiple nodes, includi
 - [Running ChronoLog](./docker-multi-node/running-chronolog.md) — automated multi-node deployment with Docker and the deployment script
 - [Client + Performance Test](./docker-multi-node/client-performance-test.md) — running client performance tests on the multi-node deployment
 
-### CSV Export
-
-- [CSV Export](./csv-export.md) — export story data to CSV format for external analysis and visualization
-
-### Distributed Telemetry
-
-- [Distributed Telemetry](./distributed-telemetry.md) — collect and store distributed system telemetry data using ChronoLog
