@@ -5,23 +5,13 @@ title: "Overview"
 
 # Contributing Overview
 
-The Contributing section is for developers who want to understand ChronoLog's internals or contribute code to the project. It covers the system architecture, data model, development environment setup, and the guidelines that keep the codebase consistent.
+The Contributing section is for developers who want to contribute code to the project. It covers development environment setup and the guidelines that keep the codebase consistent.
+
+:::tip Looking for Architecture or Data Model?
+These sections have moved to the [User Guide](../user-guide/overview.md), where they serve as conceptual foundations for configuration, deployment, and operations.
+:::
 
 ## What's in this section
-
-### Architecture
-
-A top-down look at how ChronoLog is structured, from the high-level data flow to the internals of each component:
-
-- [System Overview](./Architecture/system-overview.md) — tiered storage, data flow, and component interactions
-- **Component deep-dives** — [ChronoVisor](./Architecture/chronovisor.md), [ChronoKeeper](./Architecture/chronokeeper.md), [ChronoGrapher](./Architecture/chronographer.md), and [ChronoPlayer](./Architecture/chronoplayer.md)
-
-### Data Model
-
-Formal definitions of ChronoLog's core abstractions and how data moves through the system:
-
-- [Data Model Overview](./data-model/overview.md) — Event, Story, Chronicle, and StoryChunk as data structures
-- [Distributed Story Pipeline](./data-model/story-pipeline.md) — story chunks, pipelines, and event sequencing across storage tiers
 
 ### Development
 

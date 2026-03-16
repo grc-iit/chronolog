@@ -5,9 +5,23 @@ title: "Overview"
 
 # User Guide Overview
 
-The User Guide covers everything you need to configure, deploy, and operate a ChronoLog system. Whether you are standing up a single-node development instance or running a multi-node cluster on an HPC system, the sections below walk you through each stage.
+The User Guide covers everything you need to understand, configure, deploy, and operate a ChronoLog system. Whether you are standing up a single-node development instance or running a multi-node cluster on an HPC system, the sections below walk you through each stage.
 
 ## What's in this section
+
+### Architecture
+
+A top-down look at how ChronoLog is structured, from the high-level data flow to the internals of each component:
+
+- [System Overview](./architecture/system-overview.md) — tiered storage, data flow, and component interactions
+- **Component deep-dives** — [ChronoVisor](./architecture/chronovisor.md), [ChronoKeeper](./architecture/chronokeeper.md), [ChronoGrapher](./architecture/chronographer.md), and [ChronoPlayer](./architecture/chronoplayer.md)
+
+### Data Model
+
+Formal definitions of ChronoLog's core abstractions and how data moves through the system:
+
+- [Data Model Overview](./data-model/overview.md) — Event, Story, Chronicle, and StoryChunk as data structures
+- [Distributed Story Pipeline](./data-model/story-pipeline.md) — story chunks, pipelines, and event sequencing across storage tiers
 
 ### Configuration
 
