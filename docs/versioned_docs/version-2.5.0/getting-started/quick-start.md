@@ -271,17 +271,4 @@ You should see `chronovisor_server`, `chrono_keeper`, `chrono_grapher`, and `chr
 For step-by-step Docker tutorials, see the [Single Node Tutorial](/docs/tutorials/docker-single-node/running-chronolog) and [Multi Node Tutorial](/docs/tutorials/docker-multi-node/running-chronolog).
 
 </TabItem>
-<TabItem value="spack" label="Spack">
-
-:::info
-Spack installation support for ChronoLog is coming soon. Once available, you will be able to install ChronoLog directly via:
-
-```bash
-spack install chronolog
-```
-
-In the meantime, use the **Build from Source** tab to install ChronoLog using Spack for dependency management.
-:::
-
-</TabItem>
 </Tabs>
