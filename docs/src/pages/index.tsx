@@ -152,7 +152,7 @@ export default function Home(): ReactNode {
   const {siteConfig} = useDocusaurusContext();
   return (
     <Layout
-      title="Home"
+      title="Docs"
       description="ChronoLog: A distributed shared tiered log store for large-scale science. High-performance, multi-tiered storage with time-based ordering.">
       <Hero />
       <StatsBar />

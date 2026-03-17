@@ -6,7 +6,7 @@
 
 /* You can override the default Infima variables here. */
 :root {
-  --ifm-navbar-height: 5rem;
+  --ifm-navbar-height: 4rem;
   --ifm-color-primary: #2e8555;
   --ifm-color-primary-dark: #29784c;
   --ifm-color-primary-darker: #277148;
@@ -37,7 +37,8 @@
 
 /* Navbar: allow larger logo (Infima caps .navbar__logo at 2rem) */
 .navbar__logo {
-  height: 4rem;
+  height: 3rem;
+  margin: 0.25rem 0.75rem 0.25rem 0;
 }
 
 /* ChronoLog landing page custom properties */

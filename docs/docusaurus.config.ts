@@ -15,7 +15,7 @@ const config: Config = {
     },
   },
   tagline: 'A Distributed Shared Tiered Log Service for Large-Scale Science',
-  favicon: 'img/favicon.ico',
+  favicon: 'img/chronolog-favicon.png',
 
   // Future flags, see https://docusaurus.io/docs/api/docusaurus-config#future
   future: {
@@ -76,7 +76,8 @@ const config: Config = {
     navbar: {
       logo: {
         alt: 'ChronoLog',
-        src: 'logos/chronolog-full-logo-transparent.webp',
+        src: 'img/chronolog-logo-light.png',
+        srcDark: 'img/chronolog-logo-no-background.png',
         height: 64,
       },
       items: [
@@ -161,7 +162,7 @@ const config: Config = {
             {
               html: `
                 <a href="https://chronolog.dev" class="footer__logo-link">
-                  <img src="/logos/chronolog-full-logo-transparent.webp" alt="ChronoLog logo" class="footer__logo-img" style="height: 5rem; border-radius: 0.25rem; margin-bottom: 1rem;" />
+                  <img src="/img/chronolog-logo-no-background.png" alt="ChronoLog logo" class="footer__logo-img" style="height: 5rem; border-radius: 0.25rem; margin-bottom: 1rem;" />
                 </a>
                 <p class="footer__description" style="font-size: 0.875rem; color: var(--ifm-footer-link-color); line-height: 1.625;">
                   A distributed and tiered shared log storage ecosystem. Funded by NSF (CSSI-2104013).
