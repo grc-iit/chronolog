@@ -113,11 +113,11 @@ int main(int argc, char** argv)
 
     int result = chronolog::chrono_monitor::initialize("console",
                                                        "thallium_client_mpi.log",
-                                                       spdlog::level::debug,
+                                                       chronolog::LogLevel::debug,
                                                        "thallium_client_mpi",
                                                        1048576,
                                                        5,
-                                                       spdlog::level::debug);
+                                                       chronolog::LogLevel::debug);
     if(result == 1)
     {
         exit(EXIT_FAILURE);

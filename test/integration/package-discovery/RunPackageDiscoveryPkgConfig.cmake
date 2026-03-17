@@ -43,7 +43,7 @@ if(NOT EXISTS "${KEY_HEADER}")
 endif()
 
 # Run a minimal project that uses pkg_check_modules(chronolog)
-# Pass EXTRA_CMAKE_PREFIX_PATH so the subproject can find dependencies (e.g. spdlog) if needed
+# Pass EXTRA_CMAKE_PREFIX_PATH so the subproject can find dependencies (e.g. json-c) if needed
 set(SUBDIR "${TEST_BINARY_DIR}/PackageDiscoveryPkgConfigBuild")
 file(MAKE_DIRECTORY "${SUBDIR}")
 

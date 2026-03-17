@@ -5,7 +5,8 @@
 #include <string>
 
 #include <json-c/json.h>
-#include <spdlog/common.h>
+
+#include "log_level.h"
 
 namespace chronolog
 {
@@ -29,12 +30,12 @@ struct ClientQueryServiceConf
 struct ClientLogConf
 {
     std::string LOGTYPE = "file";
-    std::string LOGFILE = "chrono-client.log";
-    spdlog::level::level_enum LOGLEVEL = spdlog::level::debug;
+    std::string LOGFILE = "chrono_client.log";
+    LogLevel LOGLEVEL = LogLevel::debug;
     std::string LOGNAME = "ChronoClient";
     size_t LOGFILESIZE = 1048576;
     size_t LOGFILENUM = 3;
-    spdlog::level::level_enum FLUSHLEVEL = spdlog::level::warn;
+    LogLevel FLUSHLEVEL = LogLevel::warn;
 };
 
 class ClientConfiguration
@@ -50,7 +51,7 @@ public:
 private:
     void parse_rpc(json_object* rpc_obj, std::string& proto, std::string& ip, uint16_t& port, uint16_t& provider_id);
     void parse_log(json_object* log_obj);
-    spdlog::level::level_enum parse_log_level(const std::string& level_str);
+    LogLevel parse_log_level(const std::string& level_str);
 };
 
 } // namespace chronolog

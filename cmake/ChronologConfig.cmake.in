@@ -3,9 +3,6 @@
 include(CMakeFindDependencyMacro)
 
 # Find required dependencies before including targets
-# spdlog is a PUBLIC dependency (public headers include spdlog headers)
-find_dependency(spdlog REQUIRED)
-
 # json-c is needed for public headers (ClientConfiguration.h includes json-c/json.h)
 # We use pkg-config for json-c as it's typically not a CMake package
 find_package(PkgConfig REQUIRED)

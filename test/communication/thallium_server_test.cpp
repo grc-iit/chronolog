@@ -43,11 +43,11 @@ int main(int argc, char** argv)
 
     int result = chronolog::chrono_monitor::initialize("console",
                                                        "thallium_server.log",
-                                                       spdlog::level::debug,
+                                                       chronolog::LogLevel::debug,
                                                        "thallium_server",
                                                        1048576,
                                                        5,
-                                                       spdlog::level::debug);
+                                                       chronolog::LogLevel::debug);
     if(result == 1)
     {
         exit(EXIT_FAILURE);

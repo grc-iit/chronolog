@@ -32,7 +32,7 @@ target_include_directories(chronolog_client
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:${CHRONOLOG_INSTALL_INCLUDE_DIR}>
-        # json-c and spdlog are PUBLIC because public headers include them
+        # json-c is PUBLIC because public headers include json-c/json.h
         ${JSON-C_INCLUDE_DIRS}
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -55,17 +55,15 @@ target_link_libraries(chronolog_client
         ${JSON-C_LIBRARIES}
 )
 
-# Link spdlog as PUBLIC since ClientConfiguration.h and chrono_monitor.h include spdlog headers
-# Consumers of this library need spdlog includes
+# spdlog is PRIVATE: public headers no longer expose spdlog types
 if(TARGET spdlog::spdlog)
     target_link_libraries(chronolog_client
-        PUBLIC
+        PRIVATE
             spdlog::spdlog
     )
 else()
-    # Fallback: manually add spdlog include directories if target not available
     target_include_directories(chronolog_client
-        PUBLIC
+        PRIVATE
             ${spdlog_INCLUDE_DIRS}
     )
 endif()
@@ -75,6 +73,7 @@ set(PUBLIC_HEADER_FILES
     include/chronolog_client.h
     include/ClientConfiguration.h
     include/client_errcode.h
+    include/log_level.h
     include/chrono_monitor.h
 )
 
