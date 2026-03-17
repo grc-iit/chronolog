@@ -48,7 +48,7 @@ import Layout from '../layouts/Layout.astro';
 
     <!-- Main Design Diagram -->
     <div class="bg-bg-card border border-border rounded-xl p-4 mb-4">
-      <img src="/images/design-15413d3184fde0039e0937fe3ef53d07.svg" alt="ChronoLog Detailed System Design" class="w-full rounded-lg" />
+      <img src="/images/design.svg" alt="ChronoLog Detailed System Design" class="w-full rounded-lg" />
     </div>
     <p class="text-xs text-text-muted text-center mb-16">ChronoLog system design: clients, ChronoVisor, ChronoKeeper, ChronoGrapher, and storage tiers</p>
 
@@ -64,7 +64,7 @@ import Layout from '../layouts/Layout.astro';
         </p>
       </div>
       <div class="bg-bg-card border border-border rounded-xl p-4">
-        <img src="/images/paradigm-1d265a5b3f99a9936fc4605049749e14.svg" alt="Distributed Shared Log Paradigm" class="w-full rounded-lg" />
+        <img src="/images/paradigm.svg" alt="Distributed Shared Log Paradigm" class="w-full rounded-lg" />
         <p class="text-xs text-text-muted text-center mt-2">The distributed shared log paradigm across Edge and HPC domains</p>
       </div>
     </div>
@@ -90,7 +90,7 @@ import Layout from '../layouts/Layout.astro';
       <p class="text-sm text-text-muted leading-relaxed mb-4">Serves record() and playback() operations. Stores events in a distributed journal on compute nodes with fast flash storage. ChronoKeeper nodes are co-located with application processes, enabling zero-copy writes via RDMA and achieving microsecond-level ingestion latency.</p>
     </div>
     <div class="bg-bg-card border border-border rounded-xl p-4 mb-6">
-      <img src="/images/chronokeeper-748b9121ea32d501e5134955b1a9acc4.svg" alt="ChronoKeeper Features and Operations" class="w-full rounded-lg" />
+      <img src="/images/chronokeeper.svg" alt="ChronoKeeper Features and Operations" class="w-full rounded-lg" />
       <p class="text-xs text-text-muted text-center mt-2">ChronoKeeper features: record/playback operations, distributed journaling, RDMA transport</p>
     </div>
 
@@ -103,7 +103,7 @@ import Layout from '../layouts/Layout.astro';
       <p class="text-sm text-text-muted leading-relaxed mb-4">Continuously ingests events from ChronoKeeper using a DAG pipeline: event collection, story building, and story writing. Elastic and real-time. ChronoGrapher assembles individual log entries into time-ordered stories (StoryChunks), then flushes them to lower storage tiers while maintaining the global ordering invariant.</p>
     </div>
     <div class="bg-bg-card border border-border rounded-xl p-4 mb-6">
-      <img src="/images/chronographer-e68152f8899959ad1c9696b01967dfbd.svg" alt="ChronoGrapher DAG Pipeline" class="w-full rounded-lg" />
+      <img src="/images/chronographer.svg" alt="ChronoGrapher DAG Pipeline" class="w-full rounded-lg" />
       <p class="text-xs text-text-muted text-center mt-2">ChronoGrapher DAG pipeline: event collection, story building, story writing</p>
     </div>
 
@@ -116,7 +116,7 @@ import Layout from '../layouts/Layout.astro';
       <p class="text-sm text-text-muted leading-relaxed mb-4">Executes replay() operations across all storage tiers. Implements real-time, decoupled, and elastic data retrieval. ChronoPlayer can serve replay requests from any tier -- hot data from ChronoKeeper, warm data from ChronoGrapher's intermediate storage, or cold data from ChronoStore's HDF5 backend -- transparently merging results into a single ordered stream.</p>
     </div>
     <div class="bg-bg-card border border-border rounded-xl p-4 mb-6">
-      <img src="/images/chronoplayer-0fb14b96bd4a6457f4405aa39316a5e2.svg" alt="ChronoPlayer Architecture" class="w-full rounded-lg" />
+      <img src="/images/chronoplayer.svg" alt="ChronoPlayer Architecture" class="w-full rounded-lg" />
       <p class="text-xs text-text-muted text-center mt-2">ChronoPlayer: real-time, decoupled, and elastic data retrieval across tiers</p>
     </div>
 
@@ -151,7 +151,7 @@ import Layout from '../layouts/Layout.astro';
     <h2 class="text-2xl font-bold mb-6">Software Contributions</h2>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-center mb-16">
       <div class="bg-bg-card border border-border rounded-xl p-4">
-        <img src="/images/software-453e49cd0d12ee1907c1fd4ea8e024b0.png" alt="ChronoLog Software Stack" class="w-full rounded-lg" />
+        <img src="/images/software-stack.png" alt="ChronoLog Software Stack" class="w-full rounded-lg" />
         <p class="text-xs text-text-muted text-center mt-2">Software contributions: core services, client library, and plugins</p>
       </div>
       <div>
