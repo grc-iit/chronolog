@@ -1,7 +1,6 @@
 #include <atomic>
 #include <gtest/gtest.h>
 #include <map>
-#include <spdlog/spdlog.h>
 #include <string>
 #include <thread>
 #include <vector>
@@ -349,7 +348,7 @@ TEST(StoryChunk_TestInsertEvent, testInsertLargeEventRecord)
 // Need to init chrono logger to avoid abort when we call mergeevents()
 static void initLogger()
 {
-    int ret = chl::chrono_monitor::initialize("console", "", spdlog::level::debug, "unit_test_logger");
+    int ret = chl::chrono_monitor::initialize("console", "", chronolog::LogLevel::debug, "unit_test_logger");
     ASSERT_EQ(ret, 0);
 }
 
