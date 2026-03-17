@@ -196,11 +196,11 @@ int main(int argc, char* argv[])
 
     int result = chronolog::chrono_monitor::initialize("console",
                                                        "hdf5_archiver_test.log",
-                                                       spdlog::level::debug,
+                                                       chronolog::LogLevel::debug,
                                                        "hdf5_archiver_test",
                                                        102400,
                                                        1,
-                                                       spdlog::level::debug);
+                                                       chronolog::LogLevel::debug);
     if(result == 1)
     {
         exit(EXIT_FAILURE);

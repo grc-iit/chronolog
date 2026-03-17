@@ -5,7 +5,6 @@
 #include <string>
 
 #include <json-c/json.h>
-#include <spdlog/spdlog.h>
 
 #include <ClientConfiguration.h>
 
@@ -109,23 +108,23 @@ void ClientConfiguration::parse_log(json_object* log_obj)
         LOG_CONF.FLUSHLEVEL = parse_log_level(json_object_get_string(value));
 }
 
-spdlog::level::level_enum ClientConfiguration::parse_log_level(const std::string& level_str)
+LogLevel ClientConfiguration::parse_log_level(const std::string& level_str)
 {
     if(level_str == "trace")
-        return spdlog::level::trace;
+        return LogLevel::trace;
     if(level_str == "debug")
-        return spdlog::level::debug;
+        return LogLevel::debug;
     if(level_str == "info")
-        return spdlog::level::info;
+        return LogLevel::info;
     if(level_str == "warning")
-        return spdlog::level::warn;
+        return LogLevel::warn;
     if(level_str == "error")
-        return spdlog::level::err;
+        return LogLevel::err;
     if(level_str == "critical")
-        return spdlog::level::critical;
+        return LogLevel::critical;
     if(level_str == "off")
-        return spdlog::level::off;
-    return spdlog::level::warn;
+        return LogLevel::off;
+    return LogLevel::warn;
 }
 
 std::ostream& ClientConfiguration::log_configuration(std::ostream& out) const
@@ -147,11 +146,11 @@ std::ostream& ClientConfiguration::log_configuration(std::ostream& out) const
     out << "[LOG_CONF]" << std::endl;
     out << "  type: " << LOG_CONF.LOGTYPE << std::endl;
     out << "  file: " << LOG_CONF.LOGFILE << std::endl;
-    out << "  level: " << spdlog::level::to_string_view(LOG_CONF.LOGLEVEL).data() << std::endl;
+    out << "  level: " << chronolog::to_string(LOG_CONF.LOGLEVEL) << std::endl;
     out << "  name: " << LOG_CONF.LOGNAME << std::endl;
     out << "  filesize: " << LOG_CONF.LOGFILESIZE << std::endl;
     out << "  filenum: " << LOG_CONF.LOGFILENUM << std::endl;
-    out << "  flushlevel: " << spdlog::level::to_string_view(LOG_CONF.FLUSHLEVEL).data() << std::endl;
+    out << "  flushlevel: " << chronolog::to_string(LOG_CONF.FLUSHLEVEL) << std::endl;
 
     return out;
 }
