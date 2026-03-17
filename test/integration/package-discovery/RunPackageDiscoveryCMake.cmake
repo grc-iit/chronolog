@@ -53,7 +53,7 @@ set(SUBDIR "${TEST_BINARY_DIR}/PackageDiscoveryCMakeBuild")
 file(MAKE_DIRECTORY "${SUBDIR}")
 
 # find_package(Chronolog) looks for <prefix>/lib/cmake/Chronolog; we install to <install_prefix>/chronolog/lib/cmake/Chronolog
-# Prepend Chronolog prefix; append project's CMAKE_PREFIX_PATH so spdlog/json-c (and other deps) are findable
+# Prepend Chronolog prefix; append project's CMAKE_PREFIX_PATH so json-c (and other deps) are findable
 set(CHRONOLOG_PREFIX "${CHRONOLOG_INSTALL_PREFIX}/chronolog")
 if(DEFINED EXTRA_CMAKE_PREFIX_PATH AND NOT EXTRA_CMAKE_PREFIX_PATH STREQUAL "")
     set(SUBPROJECT_PREFIX_PATH "${CHRONOLOG_PREFIX};${EXTRA_CMAKE_PREFIX_PATH}")
@@ -66,11 +66,7 @@ file(WRITE "${SUBDIR}/CMakeLists.txt" "${CMAKE_LISTS}")
 set(TINY_CPP "#include <chronolog_client.h>\nint main() { (void)chronolog::ClientPortalServiceConf(); return 0; }\n")
 file(WRITE "${SUBDIR}/tiny.cpp" "${TINY_CPP}")
 
-# Pass through spdlog_DIR so the subproject can find spdlog (e.g. when main project used -Dspdlog_DIR=...)
 set(SUBPROJECT_CMAKE_ARGS -B build -S . -DCMAKE_BUILD_TYPE=Release)
-if(DEFINED SPDLOG_DIR AND NOT SPDLOG_DIR STREQUAL "")
-    list(APPEND SUBPROJECT_CMAKE_ARGS -Dspdlog_DIR=${SPDLOG_DIR})
-endif()
 
 execute_process(
     COMMAND ${CMAKE_EXECUTABLE} ${SUBPROJECT_CMAKE_ARGS}
