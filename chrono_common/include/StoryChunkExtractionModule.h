@@ -131,7 +131,7 @@ public:
             }
             else
             {
-                usleep(1000);   // 1 ms: allow OS thread to sleep when queue is idle
+                usleep(1000); // 1 ms: allow OS thread to sleep when queue is idle
             }
         }
     }
