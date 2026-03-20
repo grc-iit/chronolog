@@ -4,6 +4,7 @@
 #include <iostream>
 #include <type_traits>
 
+#include <unistd.h>
 #include <atomic>
 #include <thallium.hpp>
 
@@ -130,7 +131,7 @@ public:
             }
             else
             {
-                tl::thread::self().yield();
+                usleep(1000);   // 1 ms: allow OS thread to sleep when queue is idle
             }
         }
     }
