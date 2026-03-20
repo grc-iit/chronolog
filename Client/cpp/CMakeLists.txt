@@ -82,6 +82,12 @@ set_target_properties(chronolog_client PROPERTIES
     PUBLIC_HEADER "${PUBLIC_HEADER_FILES}"
 )
 
+# Versioned shared library (symlinks libchronolog_client.so, .so.<SOVERSION> created by install)
+set_target_properties(chronolog_client PROPERTIES
+    VERSION ${CHRONOLOG_PACKAGE_VERSION}
+    SOVERSION ${CHRONOLOG_VERSION_MAJOR}
+)
+
 #------------------------------------------------------------------------------
 # Install library, headers, and configuration file
 #------------------------------------------------------------------------------

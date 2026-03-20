@@ -39,6 +39,13 @@ set_target_properties(chronokvs PROPERTIES
     PUBLIC_HEADER "${HEADER_FILES}"
 )
 
+# Versioned shared library (symlinks libchronokvs.so, .so.<SOVERSION> created by install)
+# Use root ChronoLog version so installed lib aligns with package release
+set_target_properties(chronokvs PROPERTIES
+    VERSION ${CHRONOLOG_PACKAGE_VERSION}
+    SOVERSION ${CHRONOLOG_VERSION_MAJOR}
+)
+
 # Bring in any header usage requirements exposed by chronolog_client, without making it public
 # (Some ChronoLog releases set PUBLIC includes on the client target.)
 target_include_directories(chronokvs PRIVATE
