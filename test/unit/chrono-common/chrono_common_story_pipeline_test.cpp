@@ -12,7 +12,7 @@ namespace chl = chronolog;
 // init chronolog logger
 static void initLogger()
 {
-    int ret = chl::chrono_monitor::initialize("console", "", spdlog::level::debug, "unit_test_logger");
+    int ret = chl::chrono_monitor::initialize("console", "", chronolog::LogLevel::debug, "unit_test_logger");
     ASSERT_EQ(ret, 0);
 }
 

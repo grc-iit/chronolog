@@ -118,11 +118,11 @@ int main(int argc, char* argv[])
     // Initialize logging
     chronolog::chrono_monitor::initialize("console",
                                           "",
-                                          spdlog::level::debug,
+                                          chronolog::LogLevel::debug,
                                           "HDF5ArchiveReadingAgentTest",
                                           0,
                                           0,
-                                          spdlog::level::debug);
+                                          chronolog::LogLevel::debug);
 
     std::string test_dir = std::string(getenv("HOME")) + "/chronolog/Debug/output";
 
