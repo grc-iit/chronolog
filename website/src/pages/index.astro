@@ -42,6 +42,25 @@ const jsonLd = {
     "priceCurrency": "USD"
   }
 };
+
+const logos = [
+  { src: '/images/logos/nsf.png', alt: 'National Science Foundation' },
+  { src: '/images/logos/argonne.jpeg', alt: 'Argonne National Laboratory' },
+  { src: '/images/logos/llnl.jpg', alt: 'Lawrence Livermore National Laboratory' },
+  { src: '/images/logos/slac.png', alt: 'SLAC National Accelerator Laboratory' },
+  { src: '/images/logos/iit.png', alt: 'Illinois Institute of Technology' },
+  { src: '/images/logos/grc-logo.png', alt: 'Gnosis Research Center' },
+  { src: '/images/logos/grc-social-card.png', alt: 'GRC' },
+  { src: '/images/logos/university-of-chicago.png', alt: 'University of Chicago' },
+  { src: '/images/logos/university-of-illinois.jpg', alt: 'University of Illinois' },
+  { src: '/images/logos/university-of-wisconsin.jpg', alt: 'University of Wisconsin' },
+  { src: '/images/logos/depaul.png', alt: 'DePaul University' },
+  { src: '/images/logos/omnibond.png', alt: 'Omnibond' },
+  { src: '/images/logos/3red.png', alt: '3Red Partners' },
+  { src: '/images/logos/paratools.png', alt: 'ParaTools' },
+  { src: '/images/logos/parsl.svg', alt: 'Parsl' },
+  { src: '/images/logos/ifsh.jpg', alt: 'Institute for Food Safety and Health' },
+];
 ---
 
 <Layout
@@ -53,16 +72,16 @@ const jsonLd = {
   <!-- Hero -->
   <section class="relative overflow-hidden">
     <div class="absolute inset-0 bg-gradient-to-br from-lime/5 via-transparent to-slate-brand/10"></div>
-    <div class="max-w-6xl mx-auto px-6 py-24 md:py-32 relative">
-      <div class="flex flex-col md:flex-row items-center gap-12">
+    <div class="max-w-6xl mx-auto px-6 py-12 md:py-16 relative">
+      <div class="flex flex-col md:flex-row items-center gap-8">
         <div class="flex-1 text-center md:text-left">
-          <p class="text-lime font-semibold text-sm tracking-widest uppercase mb-4">NSF-Funded Cyberinfrastructure</p>
-          <h1 class="text-4xl md:text-5xl lg:text-6xl font-extrabold leading-tight mb-4">
+          <p class="text-lime font-semibold text-sm tracking-widest uppercase mb-3">NSF-Funded Cyberinfrastructure</p>
+          <h1 class="text-4xl md:text-5xl lg:text-6xl font-extrabold leading-tight mb-3">
             Distributed Shared<br />
             <span class="text-lime">Tiered Log Store</span>
           </h1>
-          <p class="text-base text-text italic mb-6 max-w-xl">Activity data describe things that happen rather than things that are.</p>
-          <p class="text-lg text-text-muted leading-relaxed max-w-xl mb-6">
+          <p class="text-base text-text italic mb-4 max-w-xl">Activity data describe things that happen rather than things that are.</p>
+          <p class="text-base text-text-muted leading-relaxed max-w-xl mb-4">
             ChronoLog is a distributed log storage ecosystem that uses <strong class="text-text">physical time</strong> as the ordering mechanism - eliminating centralized sequencers and enabling auto-tiered storage across multiple layers. Built to capture the velocity and variety of modern activity data: from scientific instruments producing terabytes per second to AI agent audit trails.
           </p>
           <div class="flex flex-wrap gap-2 justify-center md:justify-start mb-2">
@@ -74,7 +93,7 @@ const jsonLd = {
               <span class={`px-2.5 py-1 rounded-full text-xs font-medium border ${stat.color}`}>{stat.label}</span>
             ))}
           </div>
-          <div class="flex flex-wrap gap-2 justify-center md:justify-start mb-6">
+          <div class="flex flex-wrap gap-2 justify-center md:justify-start mb-4">
             {[
               { label: 'MCP for AI Agents', color: 'bg-lime/10 text-lime border-lime/20' },
               { label: 'Docker Available', color: 'bg-slate-brand/20 text-text border-slate-brand/30' },
@@ -95,36 +114,19 @@ const jsonLd = {
           </div>
         </div>
         <div class="flex-shrink-0 hidden md:block">
-          <img src="/images/chronolog-full-logo-transparent.webp" alt="ChronoLog logo — distributed shared tiered log store" width="480" height="480" class="w-[26rem] lg:w-[30rem] drop-shadow-[0_0_30px_rgba(195,224,77,0.25)]" />
+          <img src="/images/chronolog-full-logo-transparent.webp" alt="ChronoLog logo — distributed shared tiered log store" width="480" height="480" class="w-[20rem] lg:w-[24rem] drop-shadow-[0_0_30px_rgba(195,224,77,0.25)]" />
         </div>
       </div>
     </div>
   </section>
 
   <!-- Collaborators & Partners -->
-  <section class="border-y border-border bg-bg-alt/50">
-    <div class="max-w-6xl mx-auto px-6 py-8">
+  <section class="border-y border-border bg-bg-alt/50 overflow-hidden">
+    <div class="px-6 py-8">
       <p class="text-xs text-text-muted uppercase tracking-widest text-center mb-6">Collaborators & Partners</p>
-      <div class="grid grid-cols-4 md:grid-cols-8 gap-x-6 gap-y-6 items-center justify-items-center">
-        {[
-          { src: '/images/logos/nsf.png', alt: 'National Science Foundation' },
-          { src: '/images/logos/argonne.jpeg', alt: 'Argonne National Laboratory' },
-          { src: '/images/logos/llnl.jpg', alt: 'Lawrence Livermore National Laboratory' },
-          { src: '/images/logos/slac.png', alt: 'SLAC National Accelerator Laboratory' },
-          { src: '/images/logos/iit.png', alt: 'Illinois Institute of Technology' },
-          { src: '/images/logos/grc-logo.png', alt: 'Gnosis Research Center' },
-          { src: '/images/logos/grc-social-card.png', alt: 'GRC' },
-          { src: '/images/logos/university-of-chicago.png', alt: 'University of Chicago' },
-          { src: '/images/logos/university-of-illinois.jpg', alt: 'University of Illinois' },
-          { src: '/images/logos/university-of-wisconsin.jpg', alt: 'University of Wisconsin' },
-          { src: '/images/logos/depaul.png', alt: 'DePaul University' },
-          { src: '/images/logos/omnibond.png', alt: 'Omnibond' },
-          { src: '/images/logos/3red.png', alt: '3Red Partners' },
-          { src: '/images/logos/paratools.png', alt: 'ParaTools' },
-          { src: '/images/logos/parsl.svg', alt: 'Parsl' },
-          { src: '/images/logos/ifsh.jpg', alt: 'Institute for Food Safety and Health' },
-        ].map(logo => (
-          <img src={logo.src} alt={logo.alt} class="h-12 object-contain grayscale opacity-70 hover:grayscale-0 hover:opacity-100 transition-all duration-300" />
+      <div class="marquee-track">
+        {[...logos, ...logos].map(logo => (
+          <img src={logo.src} alt={logo.alt} class="h-16 min-w-[6rem] max-w-[10rem] object-contain grayscale opacity-70 hover:grayscale-0 hover:opacity-100 transition-all duration-300 shrink-0" />
         ))}
       </div>
     </div>
@@ -134,7 +136,7 @@ const jsonLd = {
   <section class="border-y border-border">
     <div class="max-w-6xl mx-auto px-6 py-20">
       <h2 class="text-2xl md:text-3xl font-bold text-center mb-4">An Extensible Platform</h2>
-      <p class="text-text-muted text-center max-w-2xl mx-auto mb-12">ChronoLog is designed as a foundation that other systems build upon. Its plugin architecture enables diverse workloads through a common log infrastructure.</p>
+      <p class="text-text-muted text-center max-w-2xl mx-auto mb-12">ChronoLog is designed as a foundation that other systems build upon. Its extensible architecture supports <strong class="text-text">plugins</strong> for query, streaming, and storage workloads, and <strong class="text-text">AI integrations</strong> that connect the log to agents and LLM-based systems via protocols like MCP.</p>
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <div class="bg-bg-card border border-border rounded-xl p-6 hover:border-lime/40 transition-colors group">
           <div class="w-10 h-10 rounded-lg bg-lime/10 flex items-center justify-center mb-4">

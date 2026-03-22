@@ -27,20 +27,23 @@ const plugins = [
     linkLabel: '',
   },
   {
-    title: 'AI Agent Memory & MCP Server',
-    image: '/images/use-cases/ai-agent-memory.webp',
-    desc: 'ChronoLog as the persistent memory backend for autonomous AI agents. The official MCP (Model Context Protocol) server lets any MCP-compatible agent -- Claude, GPT, custom LLM systems -- create, query, and replay time-ordered logs natively.',
-    detail: 'AI agents need durable, time-ordered memory that persists across sessions and scales across agents. ChronoLog\'s chronicle abstraction maps naturally to agent memory: each agent (or conversation) gets a chronicle, every action or observation is a timestamped entry, and replay enables full context reconstruction. The MCP server exposes chronicle.create, chronicle.record, chronicle.replay, and chronicle.query as tools, enabling use cases like conversation audit trails, cross-agent shared memory, real-time system monitoring by AI operators, and long-horizon planning with historical context. Part of the IOWarp Agent Toolkit.',
-    link: 'https://github.com/iowarp/agent-toolkit/tree/main/agent-toolkit-mcp-servers/chronolog',
-    linkLabel: 'ChronoLog MCP Server on GitHub',
-  },
-  {
     title: 'ML & Training Pipelines',
     image: '/images/use-cases/ml-training.webp',
     desc: 'TensorFlow integration module for feeding time-ordered data streams directly into training and inference workflows, eliminating separate preprocessing stages.',
     detail: 'The module provides a native tf.data.Dataset source backed by ChronoLog stories. ChronoKeeper handles real-time feature logging from distributed training jobs, while ChronoPlayer enables multiple training workers to read historical data concurrently through parallel replay.',
     link: '',
     linkLabel: '',
+  },
+];
+
+const aiIntegrations = [
+  {
+    title: 'AI Agent Memory & MCP Server',
+    image: '/images/use-cases/ai-agent-memory.webp',
+    desc: 'ChronoLog as the persistent memory backend for autonomous AI agents. The official MCP (Model Context Protocol) server lets any MCP-compatible agent -- Claude, GPT, custom LLM systems -- create, query, and replay time-ordered logs natively.',
+    detail: 'AI agents need durable, time-ordered memory that persists across sessions and scales across agents. ChronoLog\'s chronicle abstraction maps naturally to agent memory: each agent (or conversation) gets a chronicle, every action or observation is a timestamped entry, and replay enables full context reconstruction. The MCP server exposes chronicle.create, chronicle.record, chronicle.replay, and chronicle.query as tools, enabling use cases like conversation audit trails, cross-agent shared memory, real-time system monitoring by AI operators, and long-horizon planning with historical context. Part of the IOWarp Agent Toolkit.',
+    link: 'https://github.com/iowarp/agent-toolkit/tree/main/agent-toolkit-mcp-servers/chronolog',
+    linkLabel: 'ChronoLog MCP Server on GitHub',
   },
 ];
 ---
@@ -53,13 +56,37 @@ const plugins = [
   <section class="max-w-6xl mx-auto px-6 py-20">
     <h1 class="text-3xl md:text-4xl font-extrabold mb-4">Integrations</h1>
     <p class="text-text-muted text-lg max-w-3xl mb-14 leading-relaxed">
-      ChronoLog's plugin architecture enables diverse applications to share a common, time-ordered log infrastructure. Browse the current and emerging connectors below.
+      ChronoLog's extensible architecture supports two categories of integrations: <strong class="text-text">Plugins</strong> that extend the log with query, streaming, and storage semantics, and <strong class="text-text">AI Integrations</strong> that connect ChronoLog to AI agents and LLM-based systems via protocols like MCP.
     </p>
 
-    <!-- Plugin connector layer -->
-    <h2 class="text-2xl font-bold mb-6">Plugin & Connector Layer</h2>
-    <div class="space-y-8">
+    <!-- Plugins -->
+    <h2 class="text-2xl font-bold mb-6">Plugins</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
       {plugins.map(p => (
+        <div class="bg-bg-card border border-border rounded-xl overflow-hidden hover:border-lime/40 transition-colors group">
+          <img src={p.image} alt={p.title} class="w-full aspect-[16/9] object-cover" />
+          <div class="p-5 md:p-6">
+            <h3 class="font-semibold text-xl text-text mb-2 group-hover:text-lime transition-colors">{p.title}</h3>
+            <p class="text-sm text-text-muted leading-relaxed mb-4">{p.desc}</p>
+            <div class="bg-bg/50 border border-border/50 rounded-lg p-4">
+              <h4 class="text-xs font-semibold text-lime uppercase tracking-wider mb-2">How It Works</h4>
+              <p class="text-sm text-text-muted leading-relaxed">{p.detail}</p>
+              {p.link && (
+                <a href={p.link} target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 mt-3 text-xs text-lime font-medium hover:underline">
+                  {p.linkLabel}
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+
+    <!-- AI Integrations -->
+    <h2 class="text-2xl font-bold mb-6 mt-16">AI Integrations</h2>
+    <div class="space-y-8">
+      {aiIntegrations.map(p => (
         <div class="bg-bg-card border border-border rounded-xl overflow-hidden hover:border-lime/40 transition-colors group">
           <img src={p.image} alt={p.title} class="w-full aspect-[21/9] object-cover" />
           <div class="p-6 md:p-8">
