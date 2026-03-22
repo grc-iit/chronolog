@@ -3,12 +3,12 @@ import Layout from '../layouts/Layout.astro';
 ---
 
 <Layout
-  title="Architecture"
-  description="ChronoLog system architecture: ChronoVisor, ChronoKeeper, ChronoGrapher, ChronoPlayer, and ChronoStore. Physical time ordering, auto-tiering, and distributed clock synchronization."
-  keywords="ChronoLog architecture, ChronoVisor, ChronoKeeper, ChronoGrapher, ChronoPlayer, ChronoStore, distributed systems, RDMA, HDF5, tiered storage, physical time, clock synchronization"
+  title="How it works"
+  description="How ChronoLog works: ChronoVisor, ChronoKeeper, ChronoGrapher, ChronoPlayer, and ChronoStore. Physical time ordering, auto-tiering, and distributed clock synchronization."
+  keywords="ChronoLog how it works, ChronoVisor, ChronoKeeper, ChronoGrapher, ChronoPlayer, ChronoStore, distributed systems, RDMA, HDF5, tiered storage, physical time, clock synchronization"
 >
   <section class="max-w-6xl mx-auto px-6 py-20">
-    <h1 class="text-3xl md:text-4xl font-extrabold mb-4">Architecture</h1>
+    <h1 class="text-3xl md:text-4xl font-extrabold mb-4">How it works</h1>
     <p class="text-text-muted text-lg max-w-3xl mb-14 leading-relaxed">
       ChronoLog leverages physical time for total ordering and utilizes multiple storage tiers for 3D data distribution -- horizontal, vertical, and temporal.
     </p>
@@ -208,6 +208,181 @@ import Layout from '../layouts/Layout.astro';
             <p class="text-xs text-text-muted leading-relaxed">{item.desc}</p>
           </div>
         ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- Design Philosophy -->
+  <section>
+    <div class="max-w-6xl mx-auto px-6 py-20">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-12 items-start">
+        <div>
+          <h2 class="text-2xl md:text-3xl font-bold mb-6">Design Philosophy</h2>
+          <p class="text-text-muted leading-relaxed mb-4">
+            Existing distributed log systems (Kafka, BookKeeper, Corfu) were designed for different eras and constraints. ChronoLog explores a fundamentally different point in the design space -- one where time itself provides ordering, tiering provides capacity, and plugins provide versatility.
+          </p>
+          <p class="text-text-muted leading-relaxed mb-6">
+            This isn't about replacing existing systems. It's about understanding what becomes possible when you rethink the log abstraction from the ground up for modern HPC, scientific, and AI workloads.
+          </p>
+        </div>
+        <div class="bg-bg-card border border-border rounded-xl p-6">
+          <h3 class="font-semibold text-text mb-4 text-sm">ChronoLog's Approach</h3>
+          <div class="space-y-4 text-sm">
+            <div class="flex items-start gap-3">
+              <div class="w-1.5 h-1.5 rounded-full bg-lime mt-2 flex-shrink-0"></div>
+              <div><strong class="text-text">Lock-free log tail</strong><span class="text-text-muted"> -- physical time eliminates contention at the append point</span></div>
+            </div>
+            <div class="flex items-start gap-3">
+              <div class="w-1.5 h-1.5 rounded-full bg-lime mt-2 flex-shrink-0"></div>
+              <div><strong class="text-text">I/O isolation</strong><span class="text-text-muted"> -- writers and readers operate on separate paths</span></div>
+            </div>
+            <div class="flex items-start gap-3">
+              <div class="w-1.5 h-1.5 rounded-full bg-lime mt-2 flex-shrink-0"></div>
+              <div><strong class="text-text">Elastic capacity</strong><span class="text-text-muted"> -- auto-tiering grows storage without manual intervention</span></div>
+            </div>
+            <div class="flex items-start gap-3">
+              <div class="w-1.5 h-1.5 rounded-full bg-lime mt-2 flex-shrink-0"></div>
+              <div><strong class="text-text">No hot zones</strong><span class="text-text-muted"> -- time-chunked distribution avoids hotspots</span></div>
+            </div>
+            <div class="flex items-start gap-3">
+              <div class="w-1.5 h-1.5 rounded-full bg-lime mt-2 flex-shrink-0"></div>
+              <div><strong class="text-text">Immediate visibility</strong><span class="text-text-muted"> -- entries are readable the moment they are written</span></div>
+            </div>
+            <div class="flex items-start gap-3">
+              <div class="w-1.5 h-1.5 rounded-full bg-lime mt-2 flex-shrink-0"></div>
+              <div><strong class="text-text">Zero per-entry overhead</strong><span class="text-text-muted"> -- no metadata tax on individual log entries</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Software Architecture -->
+  <section class="bg-bg-alt border-y border-border">
+    <div class="max-w-6xl mx-auto px-6 py-20">
+      <h2 class="text-2xl md:text-3xl font-bold text-center mb-4">Software Architecture</h2>
+      <p class="text-text-muted text-center max-w-3xl mx-auto mb-12">Five distributed services form a pipeline from ingestion to archival. Data flows through physical-time-ordered tiers automatically -- no manual data movement required.</p>
+
+      <!-- Data flow pipeline -->
+      <div class="flex flex-col md:flex-row items-stretch gap-3 mb-12">
+        <!-- Client -->
+        <div class="flex-1 bg-bg-card border border-border rounded-xl p-5 relative">
+          <div class="flex items-center gap-2 mb-2">
+            <div class="w-2 h-2 rounded-full bg-text-muted"></div>
+            <h3 class="font-bold text-sm text-text">Client App</h3>
+          </div>
+          <p class="text-xs text-text-muted leading-relaxed">C++ or Python application using <strong class="text-text">libchronolog</strong> to create chronicles, record events, and replay history.</p>
+          <div class="hidden md:flex absolute -right-3 top-1/2 -translate-y-1/2 z-10 text-lime">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+          </div>
+        </div>
+        <!-- ChronoVisor -->
+        <div class="flex-1 bg-bg-card border border-lime/30 rounded-xl p-5 relative">
+          <div class="flex items-center gap-2 mb-2">
+            <div class="w-2 h-2 rounded-full bg-lime"></div>
+            <h3 class="font-bold text-sm text-lime">ChronoVisor</h3>
+          </div>
+          <p class="text-xs text-text-muted leading-relaxed">Central coordination: chronicle metadata, client connections, and <strong class="text-text">distributed clock synchronization</strong> across all nodes.</p>
+          <div class="hidden md:flex absolute -right-3 top-1/2 -translate-y-1/2 z-10 text-lime">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+          </div>
+        </div>
+        <!-- ChronoKeeper -->
+        <div class="flex-1 bg-bg-card border border-lime/30 rounded-xl p-5 relative">
+          <div class="flex items-center gap-2 mb-2">
+            <div class="w-2 h-2 rounded-full bg-lime"></div>
+            <h3 class="font-bold text-sm text-lime">ChronoKeeper</h3>
+            <span class="text-[10px] text-text-muted bg-bg/50 px-1.5 py-0.5 rounded">Hot</span>
+          </div>
+          <p class="text-xs text-text-muted leading-relaxed">Fast ingestion on compute nodes via <strong class="text-text">RDMA</strong>. Serves record() and real-time playback() with microsecond latency.</p>
+          <div class="hidden md:flex absolute -right-3 top-1/2 -translate-y-1/2 z-10 text-lime">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+          </div>
+        </div>
+        <!-- ChronoGrapher -->
+        <div class="flex-1 bg-bg-card border border-lime/30 rounded-xl p-5 relative">
+          <div class="flex items-center gap-2 mb-2">
+            <div class="w-2 h-2 rounded-full bg-lime"></div>
+            <h3 class="font-bold text-sm text-lime">ChronoGrapher</h3>
+            <span class="text-[10px] text-text-muted bg-bg/50 px-1.5 py-0.5 rounded">Warm</span>
+          </div>
+          <p class="text-xs text-text-muted leading-relaxed">DAG pipeline: event collection, <strong class="text-text">story building</strong>, and continuous flushing to lower tiers. Real-time and elastic.</p>
+          <div class="hidden md:flex absolute -right-3 top-1/2 -translate-y-1/2 z-10 text-lime">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+          </div>
+        </div>
+        <!-- ChronoStore -->
+        <div class="flex-1 bg-bg-card border border-lime/30 rounded-xl p-5">
+          <div class="flex items-center gap-2 mb-2">
+            <div class="w-2 h-2 rounded-full bg-lime"></div>
+            <h3 class="font-bold text-sm text-lime">ChronoStore</h3>
+            <span class="text-[10px] text-text-muted bg-bg/50 px-1.5 py-0.5 rounded">Cold</span>
+          </div>
+          <p class="text-xs text-text-muted leading-relaxed">Persistent archival in <strong class="text-text">HDF5</strong> containers. Elastic capacity with device-aware access optimization.</p>
+        </div>
+      </div>
+
+      <!-- ChronoPlayer spanning across -->
+      <div class="bg-gradient-to-r from-lime/5 via-bg-card to-lime/5 border border-lime/20 rounded-xl p-5 mb-12">
+        <div class="flex flex-col md:flex-row md:items-center gap-4">
+          <div class="flex items-center gap-2 flex-shrink-0">
+            <div class="w-2 h-2 rounded-full bg-lime"></div>
+            <h3 class="font-bold text-sm text-lime">ChronoPlayer</h3>
+            <span class="text-[10px] text-text-muted bg-bg/50 px-1.5 py-0.5 rounded">All tiers</span>
+          </div>
+          <p class="text-xs text-text-muted leading-relaxed">Reads span all tiers transparently. ChronoPlayer serves replay() requests from hot, warm, or cold storage and merges results into a single time-ordered stream. Fully decoupled from the write path.</p>
+        </div>
+      </div>
+
+      <!-- Implementation highlights -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="bg-bg-card border border-border rounded-lg p-4 text-center">
+          <p class="text-lg font-bold text-lime mb-1">C++17</p>
+          <p class="text-xs text-text-muted">Core implementation</p>
+        </div>
+        <div class="bg-bg-card border border-border rounded-lg p-4 text-center">
+          <p class="text-lg font-bold text-lime mb-1">RDMA</p>
+          <p class="text-xs text-text-muted">Zero-copy transport</p>
+        </div>
+        <div class="bg-bg-card border border-border rounded-lg p-4 text-center">
+          <p class="text-lg font-bold text-lime mb-1">HDF5</p>
+          <p class="text-xs text-text-muted">Persistent backend</p>
+        </div>
+        <div class="bg-bg-card border border-border rounded-lg p-4 text-center">
+          <p class="text-lg font-bold text-lime mb-1">Docker</p>
+          <p class="text-xs text-text-muted">Containerized deployment</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Who Uses ChronoLog -->
+  <section>
+    <div class="max-w-6xl mx-auto px-6 py-16">
+      <h2 class="text-xl font-bold text-center mb-2">Part of a Broader Ecosystem</h2>
+      <p class="text-text-muted text-center max-w-xl mx-auto mb-8 text-sm">ChronoLog serves as foundational infrastructure for other projects, AI systems, and research frameworks.</p>
+      <div class="grid grid-cols-2 sm:grid-cols-5 gap-4 max-w-5xl mx-auto">
+        <div class="bg-bg-card border border-border rounded-xl p-5 text-center">
+          <h3 class="font-semibold text-text text-sm mb-1">IOWarp</h3>
+          <p class="text-xs text-text-muted">Internal logging and pub/sub abstractions</p>
+        </div>
+        <div class="bg-bg-card border border-border rounded-xl p-5 text-center">
+          <h3 class="font-semibold text-text text-sm mb-1">AI Agents</h3>
+          <p class="text-xs text-text-muted">MCP-based agent memory and audit trails</p>
+        </div>
+        <div class="bg-bg-card border border-border rounded-xl p-5 text-center">
+          <h3 class="font-semibold text-text text-sm mb-1">Parsl Workflows</h3>
+          <p class="text-xs text-text-muted">Task execution logging and provenance</p>
+        </div>
+        <div class="bg-bg-card border border-border rounded-xl p-5 text-center">
+          <h3 class="font-semibold text-text text-sm mb-1">DOE Labs</h3>
+          <p class="text-xs text-text-muted">Available at national lab partner sites</p>
+        </div>
+        <div class="bg-bg-card border border-border rounded-xl p-5 text-center">
+          <h3 class="font-semibold text-text text-sm mb-1">IFSH Genomics</h3>
+          <p class="text-xs text-text-muted">Genomic sequencing pipeline data at IIT</p>
+        </div>
       </div>
     </div>
   </section>

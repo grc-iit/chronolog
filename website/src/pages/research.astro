@@ -1,0 +1,115 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout
+  title="Research"
+  description="Research publications and scientific context behind ChronoLog, a distributed shared tiered log store developed by the Gnosis Research Center at Illinois Institute of Technology."
+  keywords="ChronoLog research, publications, distributed systems, HPC, shared log, tiered storage, Gnosis Research Center"
+>
+  <section class="max-w-6xl mx-auto px-6 py-20">
+    <h1 class="text-3xl md:text-4xl font-extrabold mb-4">Research</h1>
+    <p class="text-text-muted text-lg max-w-3xl leading-relaxed">
+      The scientific foundations and peer-reviewed research behind ChronoLog, developed by the Gnosis Research Center at Illinois Institute of Technology.
+    </p>
+  </section>
+
+  <!-- Core Innovation -->
+  <section>
+    <div class="max-w-6xl mx-auto px-6 py-20">
+      <h2 class="text-2xl md:text-3xl font-bold text-center mb-4">Two Key Innovations</h2>
+      <p class="text-text-muted text-center max-w-2xl mx-auto mb-12">ChronoLog rethinks distributed logging from first principles, introducing two ideas that set it apart from existing systems.</p>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div class="bg-bg-card border border-border rounded-xl overflow-hidden hover:border-lime/30 transition-colors">
+          <img src="/images/physical-time.webp" alt="Physical Time Ordering — ChronoLog uses physical time as the natural ordering mechanism" width="600" height="338" class="w-full aspect-video object-cover" />
+          <div class="p-8 pt-5">
+            <h3 class="text-xl font-bold text-text mb-3">Physical Time as the Ordering Mechanism</h3>
+            <p class="text-text-muted leading-relaxed">Traditional distributed logs rely on centralized sequencers or locking protocols to order entries -- creating bottlenecks at scale. ChronoLog uses physical time itself as the natural ordering principle, enabling lock-free concurrent writes with immediate entry visibility and no coordination overhead.</p>
+          </div>
+        </div>
+        <div class="bg-bg-card border border-border rounded-xl overflow-hidden hover:border-lime/30 transition-colors">
+          <img src="/images/auto-tiering.webp" alt="Automatic Multi-Tier Storage — data flows from hot to warm to cold tiers" width="600" height="338" class="w-full aspect-video object-cover" />
+          <div class="p-8 pt-5">
+            <h3 class="text-xl font-bold text-text mb-3">Automatic Multi-Tier Storage</h3>
+            <p class="text-text-muted leading-relaxed">Log data flows automatically from fast ingestion nodes through intermediate tiers to persistent archival storage -- balancing access latency with capacity. This 3D distribution (horizontal across nodes, vertical across tiers, temporal by time) enables elastic capacity scaling without manual data management.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Selected Publications -->
+  <section class="border-y border-border bg-bg-alt/50">
+    <div class="max-w-6xl mx-auto px-6 py-16">
+      <h2 class="text-2xl md:text-3xl font-bold text-center mb-3">Selected Publications</h2>
+      <p class="text-text-muted text-center max-w-2xl mx-auto mb-10">Peer-reviewed research behind ChronoLog, published at top-tier HPC, systems, and parallel computing venues.</p>
+      <div class="space-y-4 max-w-4xl mx-auto">
+        {[
+          {
+            title: 'ChronoLog: A Distributed Shared Tiered Log Store with Time-based Data Ordering',
+            authors: 'A. Kougkas, H. Devarajan, K. Bateman, J. Cernuda, N. Rajesh, X.-H. Sun',
+            venue: 'MSST 2020',
+            venueFull: '36th Intl. Conference on Massive Storage Systems and Technology',
+            link: 'http://www.cs.iit.edu/~scs/testing/scs_website/assets/files/kougkas2020chronolog.pdf',
+            highlight: true,
+          },
+          {
+            title: 'MegaMmap: Blurring the Boundary Between Memory and Storage for Data-Intensive Workloads',
+            authors: 'L. Logan, A. Kougkas, X.-H. Sun',
+            venue: 'SC\'24',
+            venueFull: 'Intl. Conference for High Performance Computing, Networking, Storage, and Analysis',
+            link: 'https://doi.org/10.1109/SC41406.2024.00114',
+            highlight: false,
+          },
+          {
+            title: 'DaYu: Optimizing Distributed Scientific Workflows by Decoding Dataflow Semantics and Dynamics',
+            authors: 'M. Tang, J. Cernuda, J. Ye, L. Guo, et al.',
+            venue: 'CLUSTER\'24',
+            venueFull: 'IEEE Intl. Conference on Cluster Computing',
+            link: 'https://doi.org/10.1109/CLUSTER59578.2024.00038',
+            highlight: false,
+          },
+          {
+            title: 'Characterizing the Behavior and Impact of KV Caching on Transformer Inferences under Concurrency',
+            authors: 'J. Ye, J. Cernuda, A. Maurya, X.-H. Sun, A. Kougkas, B. Nicolae',
+            venue: 'IPDPS\'25',
+            venueFull: '39th IEEE Intl. Parallel & Distributed Processing Symposium',
+            link: '',
+            highlight: false,
+          },
+          {
+            title: 'WisIO: Automated I/O Bottleneck Detection with Multi-Perspective Views for HPC Workflows',
+            authors: 'I. Yildirim, H. Devarajan, A. Kougkas, X.-H. Sun, K. Mohror',
+            venue: 'ICS\'25',
+            venueFull: '39th Intl. Conference on Supercomputing',
+            link: '',
+            highlight: false,
+          },
+        ].map(pub => (
+          <article class={`bg-bg-card border rounded-xl p-5 transition-colors ${pub.highlight ? 'border-lime/30 hover:border-lime/50' : 'border-border hover:border-lime/20'}`}>
+            <div class="flex flex-col sm:flex-row sm:items-start gap-3">
+              <span class={`text-xs font-bold px-2.5 py-1 rounded flex-shrink-0 ${pub.highlight ? 'bg-lime/15 text-lime' : 'bg-bg/50 text-text-muted'}`}>{pub.venue}</span>
+              <div class="flex-1 min-w-0">
+                <h3 class="font-semibold text-sm text-text leading-snug mb-1">{pub.title}</h3>
+                <p class="text-xs text-text-muted mb-1">{pub.authors}</p>
+                <p class="text-xs text-text-muted italic">{pub.venueFull}</p>
+                {pub.link && (
+                  <a href={pub.link} target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 mt-2 text-xs text-lime font-medium hover:underline">
+                    {pub.link.includes('doi.org') ? 'DOI' : 'PDF'}
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                  </a>
+                )}
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+      <p class="text-center mt-8">
+        <a href="/about/" class="inline-flex items-center gap-2 text-sm text-lime font-medium hover:underline">
+          View all publications & team
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+        </a>
+      </p>
+    </div>
+  </section>
+</Layout>
