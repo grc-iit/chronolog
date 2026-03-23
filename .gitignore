@@ -104,3 +104,30 @@ Thumbs.db
 *.swp
 *.swo
 *~
+
+# --------------------------
+# Generated / Node & JS
+# --------------------------
+node_modules/
+.npm/
+.yarn/
+.pnp.*
+.next/
+.nuxt/
+.output/
+.parcel-cache/
+.turbo/
+*.tsbuildinfo
+.eslintcache
+.npm-debug.log*
+.yarn-integrity
+
+# --------------------------
+# Other generated
+# --------------------------
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
