@@ -3,12 +3,22 @@ import Layout from '../layouts/Layout.astro';
 
 const plugins = [
   {
+    title: 'Key-Value Store (ChronoKVS)',
+    image: '/images/use-cases/key-value-store.webp',
+    desc: 'Time-series key-value semantics on top of the ordered log. Each key maps to a chronicle, and updates are appended as timestamped entries with built-in ordering guarantees.',
+    detail: 'By building a KV store on ChronoLog\'s totally ordered log, write ordering comes for free -- no Paxos or Raft consensus overhead. The log-structured merge approach means writes are always sequential, while ChronoLog\'s time-based ordering provides linearizability across distributed replicas.',
+    link: '',
+    linkLabel: '',
+    comingSoon: false,
+  },
+  {
     title: 'SQL Query Plugin',
     image: '/images/use-cases/sql-query.webp',
     desc: 'Query and analyze log data with familiar SQL semantics. Physical time ordering enables efficient temporal range scans without the need for auxiliary indices or pre-built materialized views.',
     detail: 'The SQL plugin translates SELECT/WHERE/GROUP BY statements into ChronoPlayer replay operations. Because the underlying data is already sorted by time, range queries like "all events between T1 and T2" require no B-tree lookups -- they map directly to sequential reads across the relevant time window.',
     link: '',
     linkLabel: '',
+    comingSoon: true,
   },
   {
     title: 'Pub/Sub & Streaming',
@@ -17,14 +27,7 @@ const plugins = [
     detail: 'Events flow through a three-stage DAG: event collection from ChronoKeeper, story building (assembling related events into coherent stories), and story writing (persisting to lower tiers). Custom operators can be attached at each stage for filtering, aggregation, or transformation -- enabling real-time analytics on top of the shared log without external stream processing frameworks.',
     link: '',
     linkLabel: '',
-  },
-  {
-    title: 'Key-Value Store (ChronoKVS)',
-    image: '/images/use-cases/key-value-store.webp',
-    desc: 'Time-series key-value semantics on top of the ordered log. Each key maps to a chronicle, and updates are appended as timestamped entries with built-in ordering guarantees.',
-    detail: 'By building a KV store on ChronoLog\'s totally ordered log, write ordering comes for free -- no Paxos or Raft consensus overhead. The log-structured merge approach means writes are always sequential, while ChronoLog\'s time-based ordering provides linearizability across distributed replicas.',
-    link: '',
-    linkLabel: '',
+    comingSoon: true,
   },
   {
     title: 'ML & Training Pipelines',
@@ -33,6 +36,7 @@ const plugins = [
     detail: 'The module provides a native tf.data.Dataset source backed by ChronoLog stories. ChronoKeeper handles real-time feature logging from distributed training jobs, while ChronoPlayer enables multiple training workers to read historical data concurrently through parallel replay.',
     link: '',
     linkLabel: '',
+    comingSoon: true,
   },
 ];
 
@@ -63,7 +67,10 @@ const aiIntegrations = [
     <h2 class="text-2xl font-bold mb-6">Plugins</h2>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
       {plugins.map(p => (
-        <div class="bg-bg-card border border-border rounded-xl overflow-hidden hover:border-lime/40 transition-colors group">
+        <div class="bg-bg-card border border-border rounded-xl overflow-hidden hover:border-lime/40 transition-colors group relative">
+          {p.comingSoon && (
+            <span class="absolute top-3 right-3 z-10 bg-yellow-500/90 text-black text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full">Coming Soon</span>
+          )}
           <img src={p.image} alt={p.title} class="w-full aspect-[16/9] object-cover" />
           <div class="p-5 md:p-6">
             <h3 class="font-semibold text-xl text-text mb-2 group-hover:text-lime transition-colors">{p.title}</h3>
