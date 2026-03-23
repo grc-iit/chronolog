@@ -29,6 +29,7 @@ const navLinks = [
   { href: '/use-cases/', label: 'Use Cases' },
   { href: '/integrations/', label: 'Integrations' },
   { href: '/how-it-works/', label: 'How it works' },
+  { href: '/releases/', label: 'Releases' },
   { href: '/research/', label: 'Research' },
   { href: '/about/', label: 'About' },
 ];
@@ -92,17 +93,17 @@ const navLinks = [
     <nav class="sticky top-0 z-50 bg-bg/80 backdrop-blur-lg border-b border-border">
       <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
         <!-- Logo (text only) -->
-        <a href="/" class="flex items-center gap-3 group">
-          <span class="text-xl font-bold text-lime tracking-tight" style="font-family: 'Space Grotesk', sans-serif;">ChronoLog</span>
+        <a href="/" class="flex items-center group">
+          <img src="/images/chronolog-full-logo-transparent.webp" alt="ChronoLog" class="h-12 w-auto" />
         </a>
 
         <!-- Desktop nav -->
-        <div class="hidden md:flex items-center gap-1">
+        <div class="hidden md:flex items-center gap-0">
           {navLinks.map(link => (
             <a
               href={link.href}
               class:list={[
-                'px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                'px-2 py-2 rounded-lg text-sm font-medium transition-colors',
                 currentPath === link.href
                   ? 'bg-lime/15 text-lime'
                   : 'text-text-muted hover:text-text hover:bg-white/5'
@@ -111,10 +112,11 @@ const navLinks = [
               {link.label}
             </a>
           ))}
+          <div class="w-px h-5 bg-border mx-2"></div>
           <a
             href="/docs/"
             class:list={[
-              'ml-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5',
+              'px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5',
               currentPath === '/docs/'
                 ? 'bg-lime/15 text-lime'
                 : 'text-text-muted hover:text-text hover:bg-white/5'
@@ -184,37 +186,49 @@ const navLinks = [
     <!-- Footer -->
     <footer class="border-t border-border bg-bg-alt">
       <div class="max-w-6xl mx-auto px-6 py-12">
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div class="flex flex-col md:flex-row md:justify-between gap-8">
           <!-- Branding -->
-          <div>
-            <a href="/" class="flex items-center gap-3 mb-4">
-              <img src="/images/chronolog-logo-no-background.png" alt="ChronoLog logo — distributed shared tiered log store" class="h-20 rounded" />
+          <div class="md:max-w-xs shrink-0">
+            <a href="/" class="flex items-center mb-4">
+              <img src="/images/chronolog-full-logo-transparent.webp" alt="ChronoLog logo — distributed shared tiered log store" class="h-20" />
             </a>
             <p class="text-sm text-text-muted leading-relaxed">
               A distributed and tiered shared log storage ecosystem. Funded by NSF (CSSI-2104013).
             </p>
           </div>
-          <!-- Links -->
-          <div>
-            <h4 class="text-sm font-semibold text-text mb-3">Project</h4>
-            <ul class="space-y-2 text-sm text-text-muted">
-              <li><a href="/how-it-works/" class="hover:text-lime transition-colors">How it works</a></li>
-              <li><a href="/use-cases/" class="hover:text-lime transition-colors">Use Cases</a></li>
-              <li><a href="/integrations/" class="hover:text-lime transition-colors">Integrations</a></li>
-              <li><a href="/research/" class="hover:text-lime transition-colors">Research</a></li>
-              <li><a href="/docs/" class="hover:text-lime transition-colors">Documentation</a></li>
-              <li><a href="https://github.com/grc-iit/ChronoLog" target="_blank" class="hover:text-lime transition-colors">GitHub</a></li>
-            </ul>
-          </div>
-          <!-- GRC -->
-          <div>
-            <h4 class="text-sm font-semibold text-text mb-3">Gnosis Research Center</h4>
-            <ul class="space-y-2 text-sm text-text-muted">
-              <li><a href="https://grc.iit.edu" target="_blank" class="hover:text-lime transition-colors">Website</a></li>
-              <li><a href="https://twitter.com/grc_iit" target="_blank" class="hover:text-lime transition-colors">X (Twitter)</a></li>
-              <li><a href="https://www.linkedin.com/school/gnosis-research-center" target="_blank" class="hover:text-lime transition-colors">LinkedIn</a></li>
-              <li><a href="mailto:grc@illinoistech.edu" class="hover:text-lime transition-colors">grc@illinoistech.edu</a></li>
-            </ul>
+          <!-- Link columns -->
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 md:gap-6">
+            <!-- Project col 1 -->
+            <div>
+              <h4 class="text-sm font-semibold text-text mb-3">Project</h4>
+              <ul class="space-y-2 text-sm text-text-muted">
+                <li><a href="/" class="hover:text-lime transition-colors">Home</a></li>
+                <li><a href="/use-cases/" class="hover:text-lime transition-colors">Use Cases</a></li>
+                <li><a href="/integrations/" class="hover:text-lime transition-colors">Integrations</a></li>
+                <li><a href="/how-it-works/" class="hover:text-lime transition-colors">How it works</a></li>
+                <li><a href="/releases/" class="hover:text-lime transition-colors">Releases</a></li>
+              </ul>
+            </div>
+            <!-- Project col 2 -->
+            <div>
+              <h4 class="text-sm font-semibold text-text mb-3">Resources</h4>
+              <ul class="space-y-2 text-sm text-text-muted">
+                <li><a href="/research/" class="hover:text-lime transition-colors">Research</a></li>
+                <li><a href="/about/" class="hover:text-lime transition-colors">About</a></li>
+                <li><a href="/docs/" class="hover:text-lime transition-colors">Documentation</a></li>
+                <li><a href="https://github.com/grc-iit/ChronoLog" target="_blank" rel="noopener noreferrer" class="hover:text-lime transition-colors">GitHub</a></li>
+              </ul>
+            </div>
+            <!-- GRC -->
+            <div>
+              <h4 class="text-sm font-semibold text-text mb-3">Gnosis Research Center</h4>
+              <ul class="space-y-2 text-sm text-text-muted">
+                <li><a href="https://grc.iit.edu" target="_blank" rel="noopener noreferrer" class="hover:text-lime transition-colors">Website</a></li>
+                <li><a href="https://twitter.com/grc_iit" target="_blank" rel="noopener noreferrer" class="hover:text-lime transition-colors">X (Twitter)</a></li>
+                <li><a href="https://www.linkedin.com/school/gnosis-research-center" target="_blank" rel="noopener noreferrer" class="hover:text-lime transition-colors">LinkedIn</a></li>
+                <li><a href="mailto:grc@illinoistech.edu" class="hover:text-lime transition-colors">grc@illinoistech.edu</a></li>
+              </ul>
+            </div>
           </div>
         </div>
         <div class="mt-10 pt-6 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-text-muted">

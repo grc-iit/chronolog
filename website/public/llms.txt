@@ -8,7 +8,8 @@ ChronoLog is an NSF-funded ($4M CSSI-2104013) open-source distributed log storag
 
 - [Homepage](https://chronolog.dev)
 - [How it works](https://chronolog.dev/how-it-works/)
-- [Use Cases & Plugins](https://chronolog.dev/use-cases/)
+- [Use Cases](https://chronolog.dev/use-cases/)
+- [Integrations & Plugins](https://chronolog.dev/integrations/)
 - [Documentation](https://chronolog.dev/docs/)
 - [About & Team](https://chronolog.dev/about/)
 - [GitHub Repository](https://github.com/grc-iit/ChronoLog)
