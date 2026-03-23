@@ -50,116 +50,19 @@ const organizationLd = {
   }
 };
 
-const publicationsLd = [
-  {
-    "@context": "https://schema.org",
-    "@type": "ScholarlyArticle",
-    "name": "ChronoLog: A Distributed Shared Tiered Log Store with Time-based Data Ordering",
-    "author": [
-      { "@type": "Person", "name": "Anthony Kougkas" },
-      { "@type": "Person", "name": "Hariharan Devarajan" },
-      { "@type": "Person", "name": "Keith Bateman" },
-      { "@type": "Person", "name": "Jaime Cernuda" },
-      { "@type": "Person", "name": "Neeraj Rajesh" },
-      { "@type": "Person", "name": "Xian-He Sun" },
-    ],
-    "datePublished": "2020",
-    "publisher": { "@type": "Organization", "name": "MSST" },
-    "url": "http://www.cs.iit.edu/~scs/testing/scs_website/assets/files/kougkas2020chronolog.pdf",
-  },
-  {
-    "@context": "https://schema.org",
-    "@type": "ScholarlyArticle",
-    "name": "MegaMmap: Blurring the Boundary Between Memory and Storage for Data-Intensive Workloads",
-    "author": [
-      { "@type": "Person", "name": "Luke Logan" },
-      { "@type": "Person", "name": "Anthony Kougkas" },
-      { "@type": "Person", "name": "Xian-He Sun" },
-    ],
-    "datePublished": "2024",
-    "publisher": { "@type": "Organization", "name": "SC'24" },
-    "url": "https://doi.org/10.1109/SC41406.2024.00114",
-  },
-];
-
-const publications = [
-  {
-    authors: 'A. Kougkas, H. Devarajan, K. Bateman, J. Cernuda, N. Rajesh, X.-H. Sun',
-    title: 'ChronoLog: A Distributed Shared Tiered Log Store with Time-based Data Ordering',
-    venue: 'MSST 2020',
-    link: 'http://www.cs.iit.edu/~scs/testing/scs_website/assets/files/kougkas2020chronolog.pdf',
-  },
-  {
-    authors: 'L. Logan, A. Kougkas, X.-H. Sun',
-    title: 'MegaMmap: Blurring the Boundary Between Memory and Storage for Data-Intensive Workloads',
-    venue: 'SC\'24',
-    link: 'https://doi.org/10.1109/SC41406.2024.00114',
-  },
-  {
-    authors: 'J. Ye, J. Cernuda, N. Rajesh, K. Bateman, et al.',
-    title: 'Viper: A High-Performance I/O Framework for Transparently Updating, Storing, and Transferring Deep Neural Network Models',
-    venue: 'ICPP\'24',
-    link: 'https://doi.org/10.1145/3673038.3673070',
-  },
-  {
-    authors: 'J. Cernuda, J. Ye, A. Kougkas, X.-H. Sun',
-    title: 'HStream: A Hierarchical Data Streaming Engine for High-Throughput Scientific Applications',
-    venue: 'ICPP\'24',
-    link: 'https://doi.org/10.1145/3673038.3673150',
-  },
-  {
-    authors: 'M. Tang, J. Cernuda, J. Ye, L. Guo, et al.',
-    title: 'DaYu: Optimizing Distributed Scientific Workflows by Decoding Dataflow Semantics and Dynamics',
-    venue: 'CLUSTER\'24',
-    link: 'https://doi.org/10.1109/CLUSTER59578.2024.00038',
-  },
-  {
-    authors: 'J. Ye, J. Cernuda, A. Maurya, X.-H. Sun, A. Kougkas, B. Nicolae',
-    title: 'Characterizing the Behavior and Impact of KV Caching on Transformer Inferences under Concurrency',
-    venue: 'IPDPS\'25',
-    link: '',
-  },
-  {
-    authors: 'I. Yildirim, H. Devarajan, A. Kougkas, X.-H. Sun, K. Mohror',
-    title: 'WisIO: Automated I/O Bottleneck Detection with Multi-Perspective Views for HPC Workflows',
-    venue: 'ICS\'25',
-    link: '',
-  },
-  {
-    authors: 'L. Logan, J. Cernuda Garcia, J. Lofstead, X.-H. Sun, A. Kougkas',
-    title: 'LabStor: A Modular and Extensible Platform for Developing High-Performance, Customized I/O Stacks in Userspace',
-    venue: 'SC\'22',
-    link: '',
-  },
-  {
-    authors: 'K. Bateman, N. Rajesh, J. Cernuda Garcia, L. Logan, J. Ye, S. Herbein, A. Kougkas, X.-H. Sun',
-    title: 'LuxIO: Intelligent Resource Provisioning and Auto-Configuration for Storage Services',
-    venue: 'HiPC\'22',
-    link: '',
-  },
-];
 ---
 
 <Layout
   title="About"
   description="ChronoLog team, collaborators, publications, and background. Created by the Gnosis Research Center at Illinois Institute of Technology, funded by a $4M NSF CSSI grant."
   keywords="ChronoLog team, Gnosis Research Center, Illinois Tech, Anthony Kougkas, Xian-He Sun, NSF CSSI, publications, collaborators, distributed systems research"
-  jsonLd={[organizationLd, ...publicationsLd]}
+  jsonLd={[organizationLd]}
 >
   <section class="max-w-6xl mx-auto px-6 py-20">
     <h1 class="text-3xl md:text-4xl font-extrabold mb-4">About ChronoLog</h1>
     <p class="text-text-muted text-lg max-w-3xl mb-14 leading-relaxed">
       ChronoLog is a multi-year research effort to build a distributed shared log storage ecosystem grounded in a novel idea: using physical time as the ordering mechanism. Created and led by the Gnosis Research Center (GRC) at Illinois Institute of Technology, supported by a $4M National Science Foundation CSSI grant.
     </p>
-
-    <!-- Background -->
-    <div class="mb-16">
-      <h2 class="text-2xl font-bold mb-4">Background</h2>
-      <div class="text-text-muted leading-relaxed space-y-4 max-w-3xl">
-        <p>Modern scientific instruments, IoT networks, and distributed services generate massive volumes of activity data -- things that happen rather than things that are. Distributed log stores are the natural infrastructure for capturing, ordering, and retrieving this data, but existing systems face fundamental trade-offs between total ordering, concurrent access, and capacity scaling.</p>
-        <p>ChronoLog explores a different point in the design space: by using <strong class="text-text">physical time</strong> as the ordering principle and <strong class="text-text">automatic multi-tier storage</strong> for elastic capacity, it aims to resolve these trade-offs simultaneously. The project has been under active development since 2020, led by GRC with partnerships across DOE national laboratories and integrated into the broader HPC ecosystem through collaborators.</p>
-      </div>
-    </div>
 
     <!-- Team -->
     <div class="mb-16">
@@ -173,7 +76,7 @@ const publications = [
           <span class="text-xs font-medium text-text-muted group-hover:text-lime transition-colors">GRC</span>
         </a>
         <a href="https://www.iit.edu" target="_blank" class="flex flex-col items-center gap-2 group">
-          <img src="/images/logos/IIT.png" alt="Illinois Tech" class="h-16 rounded" />
+          <img src="/images/logos/iit.png" alt="Illinois Tech" class="h-16 rounded" />
           <span class="text-xs font-medium text-text-muted group-hover:text-lime transition-colors">Illinois Tech</span>
         </a>
         <a href="https://www.uchicago.edu" target="_blank" class="flex flex-col items-center gap-2 group">
@@ -232,37 +135,11 @@ const publications = [
       </div>
     </div>
 
-    <!-- Publications -->
-    <div class="mb-16">
-      <h2 class="text-2xl font-bold mb-6">Publications</h2>
-      <div class="space-y-4">
-        {publications.map(pub => (
-          <div class="bg-bg-card border border-border rounded-xl p-5">
-            <div class="flex items-start justify-between gap-4">
-              <div class="flex-1">
-                <p class="text-text leading-relaxed text-sm mb-1">
-                  <strong>{pub.title}</strong>
-                </p>
-                <p class="text-xs text-text-muted">{pub.authors}</p>
-              </div>
-              <span class="text-xs font-bold text-lime bg-lime/10 px-2.5 py-1 rounded-full flex-shrink-0">{pub.venue}</span>
-            </div>
-            {pub.link && (
-              <a href={pub.link} target="_blank" class="inline-flex items-center gap-1.5 mt-2 text-xs text-lime font-medium hover:underline">
-                DOI / PDF
-                <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
-              </a>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-
     <!-- Sponsor -->
     <div>
       <h2 class="text-2xl font-bold mb-6">Sponsor</h2>
       <div class="bg-bg-alt border border-border rounded-xl p-6 flex items-center gap-6">
-        <img src="/images/logos/nsf-fb7efe9286a9b499c5907d82af3e70fd.png" alt="NSF" class="h-16 flex-shrink-0" />
+        <img src="/images/logos/nsf.png" alt="NSF" class="h-16 flex-shrink-0" />
         <div>
           <p class="font-semibold text-text">National Science Foundation</p>
           <p class="text-sm text-text-muted">Grant NSF CSSI-2104013</p>

@@ -1,0 +1,397 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout
+  title="How it works"
+  description="How ChronoLog works: a distributed shared log for activity data using physical time ordering and automatic multi-tier storage. Data model, architecture, and API overview."
+  keywords="ChronoLog how it works, distributed log, shared log, physical time ordering, tiered storage, chronicle, story, event, ChronoVisor, ChronoKeeper, ChronoGrapher, ChronoPlayer, ChronoStore"
+>
+  <!-- 1. Core Concept Intro -->
+  <section class="bg-gradient-to-b from-lime/5 to-transparent border-b border-border">
+    <div class="max-w-6xl mx-auto px-6 py-20">
+      <h1 class="text-3xl md:text-5xl font-extrabold mb-6">How it Works</h1>
+      <p class="text-text text-xl md:text-2xl max-w-4xl mb-6 leading-relaxed font-medium">
+        ChronoLog is a distributed shared log for <strong class="text-lime">activity data</strong> with concurrent <strong class="text-lime">multi-writer</strong> and <strong class="text-lime">multi-reader</strong> access.
+      </p>
+      <p class="text-text-muted text-base md:text-lg max-w-3xl mb-12 leading-relaxed">
+        To understand ChronoLog, start with its foundation. A shared log is one of the most powerful abstractions in distributed systems: a durable data store, a consensus mechanism, an execution history for deterministic replay, and a data integration hub. ChronoLog provides this primitive at scale for HPC, scientific, and AI workloads.
+      </p>
+
+      <h2 class="text-sm font-semibold text-lime uppercase tracking-wider mb-4">It all starts with two core research ideas</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <div class="bg-bg-card border border-lime/20 rounded-xl p-6">
+          <h3 class="font-bold text-lg text-text mb-2">Physical time as ordering</h3>
+          <p class="text-sm text-text-muted leading-relaxed">Events are ordered by physical timestamps &mdash;no centralized sequencer or locks. Multiple writers append concurrently from any node.</p>
+        </div>
+        <div class="bg-bg-card border border-lime/20 rounded-xl p-6">
+          <h3 class="font-bold text-lg text-text mb-2">Automatic multi-tier storage</h3>
+          <p class="text-sm text-text-muted leading-relaxed">Data flows automatically from fast compute-node storage through intermediate tiers to long-term archival. Capacity scales elastically.</p>
+        </div>
+      </div>
+      <p class="text-text-muted text-xs">
+        <a href="/research/" class="text-lime hover:underline">Explore the research behind these ideas &rarr;</a>
+      </p>
+    </div>
+  </section>
+
+  <!-- 2. What Makes ChronoLog Different -->
+  <section class="bg-bg-alt border-y border-border">
+    <div class="max-w-6xl mx-auto px-6 py-20">
+      <h2 class="text-2xl font-bold mb-4">What Makes ChronoLog Different</h2>
+      <p class="text-text-muted text-sm leading-relaxed mb-6 max-w-3xl">
+        With these principles in place, what sets ChronoLog apart? Traditional distributed logs rely on centralized sequencers or consensus protocols to order events. ChronoLog uses <strong class="text-text">physical time itself</strong>, which enables lock-free appends, immediate visibility, and elastic capacity, but it introduces three challenges that ChronoLog solves.
+      </p>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+        <div class="bg-bg-card border border-border rounded-xl p-6">
+          <h3 class="font-bold text-sm text-lime mb-2">Clock Uncertainty</h3>
+          <p class="text-xs text-text-muted leading-relaxed">Different machines have different clock offsets and drift rates. ChronoLog synchronizes server nodes with ChronoVisor during initialization and periodically thereafter. Clients use <strong class="text-text">ChronoTicks</strong> as relative time distances from a base clock, eliminating the need for globally synchronized wall clocks.</p>
+        </div>
+        <div class="bg-bg-card border border-border rounded-xl p-6">
+          <h3 class="font-bold text-sm text-lime mb-2">Late / Backdated Events</h3>
+          <p class="text-xs text-text-muted leading-relaxed">Network non-determinism means events may arrive after later events, violating ordering. ChronoLog defines an <strong class="text-text">Acceptance Time Window (ATW)</strong>, a moving window equal to twice the measured network latency, within which out-of-order events are gracefully absorbed and correctly ordered.</p>
+        </div>
+        <div class="bg-bg-card border border-border rounded-xl p-6">
+          <h3 class="font-bold text-sm text-lime mb-2">Timestamp Collisions</h3>
+          <p class="text-xs text-text-muted leading-relaxed">At coarser time granularities, multiple events may share the same ChronoTick. ChronoLog disambiguates using <strong class="text-text">(clientId, index)</strong> pairs and configurable collision semantics: idempotent, redundancy, ordering, or sequentiality, chosen per workload.</p>
+        </div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-6">
+        <h3 class="font-semibold text-text mb-4 text-sm">The Result</h3>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+          <div class="flex items-start gap-3">
+            <div class="w-1.5 h-1.5 rounded-full bg-lime mt-2 flex-shrink-0"></div>
+            <div><strong class="text-text">Lock-free log tail</strong><span class="text-text-muted"> &mdash; no contention at the append point</span></div>
+          </div>
+          <div class="flex items-start gap-3">
+            <div class="w-1.5 h-1.5 rounded-full bg-lime mt-2 flex-shrink-0"></div>
+            <div><strong class="text-text">I/O isolation</strong><span class="text-text-muted"> &mdash; writers and readers on separate paths</span></div>
+          </div>
+          <div class="flex items-start gap-3">
+            <div class="w-1.5 h-1.5 rounded-full bg-lime mt-2 flex-shrink-0"></div>
+            <div><strong class="text-text">Elastic capacity</strong><span class="text-text-muted"> &mdash; auto-tiering without manual intervention</span></div>
+          </div>
+          <div class="flex items-start gap-3">
+            <div class="w-1.5 h-1.5 rounded-full bg-lime mt-2 flex-shrink-0"></div>
+            <div><strong class="text-text">No hot zones</strong><span class="text-text-muted"> &mdash; time-based distribution avoids hotspots</span></div>
+          </div>
+          <div class="flex items-start gap-3">
+            <div class="w-1.5 h-1.5 rounded-full bg-lime mt-2 flex-shrink-0"></div>
+            <div><strong class="text-text">Immediate visibility</strong><span class="text-text-muted"> &mdash; entries readable the moment they are written</span></div>
+          </div>
+          <div class="flex items-start gap-3">
+            <div class="w-1.5 h-1.5 rounded-full bg-lime mt-2 flex-shrink-0"></div>
+            <div><strong class="text-text">Zero per-entry overhead</strong><span class="text-text-muted"> &mdash; no metadata tax on individual entries</span></div>
+          </div>
+        </div>
+        <p class="text-text-muted text-xs mt-5">
+          For detailed comparisons with Kafka, BookKeeper, Corfu, and other systems, see the <a href="/research/" class="text-lime hover:underline">Research page</a>.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. Data Model -->
+  <section>
+    <div class="max-w-6xl mx-auto px-6 py-20">
+      <h2 class="text-2xl font-bold mb-4">Data Model</h2>
+      <p class="text-text-muted text-sm leading-relaxed mb-8 max-w-3xl">
+        With the core ideas and their implications understood, let's look at how data is actually structured. ChronoLog organizes data through three core concepts: Events, Stories, and Chronicles. These abstractions define how data is logically structured.
+      </p>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10">
+        <div class="bg-bg-alt border border-border rounded-xl p-6">
+          <div class="flex items-center gap-3 mb-3">
+            <span class="text-xs font-bold text-lime bg-lime/10 w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0">1</span>
+            <h3 class="font-bold text-lg text-text">Chronicle</h3>
+          </div>
+          <p class="text-sm text-text-muted leading-relaxed">A named collection of related Stories that share a common context or namespace. Chronicles are the top-level unit used to organize data and manage access.</p>
+        </div>
+        <div class="bg-bg-alt border border-border rounded-xl p-6">
+          <div class="flex items-center gap-3 mb-3">
+            <span class="text-xs font-bold text-lime bg-lime/10 w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0">2</span>
+            <h3 class="font-bold text-lg text-text">Story</h3>
+          </div>
+          <p class="text-sm text-text-muted leading-relaxed">A logical, time-ordered stream of Events representing a single topic, task, or activity. Stories preserve the chronological order of every Event they contain.</p>
+        </div>
+        <div class="bg-bg-alt border border-border rounded-xl p-6">
+          <div class="flex items-center gap-3 mb-3">
+            <span class="text-xs font-bold text-lime bg-lime/10 w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0">3</span>
+            <h3 class="font-bold text-lg text-text">Event</h3>
+          </div>
+          <p class="text-sm text-text-muted leading-relaxed">The smallest unit of data in ChronoLog &mdash; immutable, timestamped, and uniquely identified. Events are generated by clients and attributed to a specific Story.</p>
+        </div>
+      </div>
+
+      <!-- Nested containment diagram -->
+      <p class="text-text-muted text-sm leading-relaxed mb-6 max-w-3xl">
+        The diagram below shows how these three concepts nest in a real-world example: a monitoring chronicle containing three sensor stories, each holding a sequence of events.
+      </p>
+      <div class="mb-6 overflow-x-auto">
+        <svg viewBox="0 0 680 180" class="w-full" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, sans-serif">
+
+          <!-- Chronicle outer box -->
+          <rect x="10" y="10" width="660" height="140" rx="8" fill="#1e2330" stroke="#c3e04d" stroke-width="1.5"/>
+
+          <!-- Chronicle label at top left -->
+          <text x="20" y="24" fill="#c3e04d" font-size="9" font-weight="600">Chronicle "IIT_UC_Ares_Monitoring"</text>
+
+          <!-- Story: Test — contains E1, E5, E8 -->
+          <rect x="24" y="32" width="636" height="32" rx="5" fill="#252b3b" stroke="#4a90a4" stroke-width="0.75"/>
+          <text x="34" y="44" fill="#a0c8d8" font-size="8" font-weight="600">Story "Test"</text>
+          <rect x="168" y="37" width="32" height="16" rx="4" fill="#1e2330" stroke="#c3e04d" stroke-width="0.75" stroke-opacity="0.5"/>
+          <text x="184" y="49" text-anchor="middle" fill="#e8eaed" font-size="7">E1</text>
+          <rect x="328" y="37" width="32" height="16" rx="4" fill="#1e2330" stroke="#c3e04d" stroke-width="0.75" stroke-opacity="0.5"/>
+          <text x="344" y="49" text-anchor="middle" fill="#e8eaed" font-size="7">E5</text>
+          <rect x="448" y="37" width="32" height="16" rx="4" fill="#1e2330" stroke="#c3e04d" stroke-width="0.75" stroke-opacity="0.5"/>
+          <text x="464" y="49" text-anchor="middle" fill="#e8eaed" font-size="7">E8</text>
+
+          <!-- Story: Precipitation — contains E2, E4, E7, E10 -->
+          <rect x="24" y="72" width="636" height="32" rx="5" fill="#252b3b" stroke="#4a90a4" stroke-width="0.75"/>
+          <text x="34" y="84" fill="#a0c8d8" font-size="8" font-weight="600">Story "Precipitation"</text>
+          <rect x="208" y="77" width="32" height="16" rx="4" fill="#1e2330" stroke="#c3e04d" stroke-width="0.75" stroke-opacity="0.5"/>
+          <text x="224" y="89" text-anchor="middle" fill="#e8eaed" font-size="7">E2</text>
+          <rect x="288" y="77" width="32" height="16" rx="4" fill="#1e2330" stroke="#c3e04d" stroke-width="0.75" stroke-opacity="0.5"/>
+          <text x="304" y="89" text-anchor="middle" fill="#e8eaed" font-size="7">E4</text>
+          <rect x="408" y="77" width="32" height="16" rx="4" fill="#1e2330" stroke="#c3e04d" stroke-width="0.75" stroke-opacity="0.5"/>
+          <text x="424" y="89" text-anchor="middle" fill="#e8eaed" font-size="7">E7</text>
+          <rect x="528" y="77" width="32" height="16" rx="4" fill="#1e2330" stroke="#c3e04d" stroke-width="0.75" stroke-opacity="0.5"/>
+          <text x="544" y="89" text-anchor="middle" fill="#e8eaed" font-size="7">E10</text>
+
+          <!-- Story: Temperature — contains E3, E6, E9, E11, E12 -->
+          <rect x="24" y="112" width="636" height="32" rx="5" fill="#252b3b" stroke="#4a90a4" stroke-width="0.75"/>
+          <text x="34" y="124" fill="#a0c8d8" font-size="8" font-weight="600">Story "Temperature"</text>
+          <rect x="248" y="117" width="32" height="16" rx="4" fill="#1e2330" stroke="#c3e04d" stroke-width="0.75" stroke-opacity="0.5"/>
+          <text x="264" y="129" text-anchor="middle" fill="#e8eaed" font-size="7">E3</text>
+          <rect x="368" y="117" width="32" height="16" rx="4" fill="#1e2330" stroke="#c3e04d" stroke-width="0.75" stroke-opacity="0.5"/>
+          <text x="384" y="129" text-anchor="middle" fill="#e8eaed" font-size="7">E6</text>
+          <rect x="488" y="117" width="32" height="16" rx="4" fill="#1e2330" stroke="#c3e04d" stroke-width="0.75" stroke-opacity="0.5"/>
+          <text x="504" y="129" text-anchor="middle" fill="#e8eaed" font-size="7">E9</text>
+          <rect x="568" y="117" width="32" height="16" rx="4" fill="#1e2330" stroke="#c3e04d" stroke-width="0.75" stroke-opacity="0.5"/>
+          <text x="584" y="129" text-anchor="middle" fill="#e8eaed" font-size="7">E11</text>
+          <rect x="608" y="117" width="32" height="16" rx="4" fill="#1e2330" stroke="#c3e04d" stroke-width="0.75" stroke-opacity="0.5"/>
+          <text x="624" y="129" text-anchor="middle" fill="#e8eaed" font-size="7">E12</text>
+
+          <!-- Time arrow (outside chronicle) -->
+          <line x1="160" y1="162" x2="640" y2="162" stroke="#c3e04d" stroke-width="0.75" stroke-opacity="0.4"/>
+          <polygon points="642,162 636,159 636,165" fill="#c3e04d" fill-opacity="0.4"/>
+          <text x="152" y="165" text-anchor="end" fill="#c3e04d" fill-opacity="0.5" font-size="7">time</text>
+
+          <!-- Time tick marks aligned with events -->
+          <line x1="184" y1="159" x2="184" y2="165" stroke="#c3e04d" stroke-width="0.5" stroke-opacity="0.3"/>
+          <text x="184" y="174" text-anchor="middle" fill="#c3e04d" fill-opacity="0.35" font-size="6">t1</text>
+          <line x1="224" y1="159" x2="224" y2="165" stroke="#c3e04d" stroke-width="0.5" stroke-opacity="0.3"/>
+          <text x="224" y="174" text-anchor="middle" fill="#c3e04d" fill-opacity="0.35" font-size="6">t2</text>
+          <line x1="264" y1="159" x2="264" y2="165" stroke="#c3e04d" stroke-width="0.5" stroke-opacity="0.3"/>
+          <text x="264" y="174" text-anchor="middle" fill="#c3e04d" fill-opacity="0.35" font-size="6">t3</text>
+          <line x1="304" y1="159" x2="304" y2="165" stroke="#c3e04d" stroke-width="0.5" stroke-opacity="0.3"/>
+          <text x="304" y="174" text-anchor="middle" fill="#c3e04d" fill-opacity="0.35" font-size="6">t4</text>
+          <line x1="344" y1="159" x2="344" y2="165" stroke="#c3e04d" stroke-width="0.5" stroke-opacity="0.3"/>
+          <text x="344" y="174" text-anchor="middle" fill="#c3e04d" fill-opacity="0.35" font-size="6">t5</text>
+          <line x1="384" y1="159" x2="384" y2="165" stroke="#c3e04d" stroke-width="0.5" stroke-opacity="0.3"/>
+          <text x="384" y="174" text-anchor="middle" fill="#c3e04d" fill-opacity="0.35" font-size="6">t6</text>
+          <line x1="424" y1="159" x2="424" y2="165" stroke="#c3e04d" stroke-width="0.5" stroke-opacity="0.3"/>
+          <text x="424" y="174" text-anchor="middle" fill="#c3e04d" fill-opacity="0.35" font-size="6">t7</text>
+          <line x1="464" y1="159" x2="464" y2="165" stroke="#c3e04d" stroke-width="0.5" stroke-opacity="0.3"/>
+          <text x="464" y="174" text-anchor="middle" fill="#c3e04d" fill-opacity="0.35" font-size="6">t8</text>
+          <line x1="504" y1="159" x2="504" y2="165" stroke="#c3e04d" stroke-width="0.5" stroke-opacity="0.3"/>
+          <text x="504" y="174" text-anchor="middle" fill="#c3e04d" fill-opacity="0.35" font-size="6">t9</text>
+          <line x1="544" y1="159" x2="544" y2="165" stroke="#c3e04d" stroke-width="0.5" stroke-opacity="0.3"/>
+          <text x="544" y="174" text-anchor="middle" fill="#c3e04d" fill-opacity="0.35" font-size="6">t10</text>
+          <line x1="584" y1="159" x2="584" y2="165" stroke="#c3e04d" stroke-width="0.5" stroke-opacity="0.3"/>
+          <text x="584" y="174" text-anchor="middle" fill="#c3e04d" fill-opacity="0.35" font-size="6">t11</text>
+          <line x1="624" y1="159" x2="624" y2="165" stroke="#c3e04d" stroke-width="0.5" stroke-opacity="0.3"/>
+          <text x="624" y="174" text-anchor="middle" fill="#c3e04d" fill-opacity="0.35" font-size="6">t12</text>
+        </svg>
+      </div>
+
+      <p class="text-text-muted text-xs text-center">
+        <a href="https://github.com/grc-iit/ChronoLog/wiki/05.-Client-API" target="_blank" class="text-lime hover:underline">Learn more in the docs &rarr;</a>
+      </p>
+    </div>
+  </section>
+
+  <!-- 4. Software Architecture -->
+  <section class="bg-bg-alt border-y border-border">
+    <div class="max-w-6xl mx-auto px-6 py-20">
+      <h2 class="text-2xl font-bold mb-4">Software Architecture</h2>
+      <p class="text-text-muted text-sm leading-relaxed max-w-3xl mb-8">The data model defines what ChronoLog stores &mdash; the architecture defines how. Five distributed services form a pipeline from ingestion to archival. Data flows through time-ordered tiers automatically.</p>
+
+      <!-- Data flow pipeline -->
+      <div class="flex flex-col md:flex-row items-stretch gap-3 mb-12">
+        <!-- Client -->
+        <div class="flex-1 bg-bg-card border border-border rounded-xl p-5 relative">
+          <div class="flex items-center gap-2 mb-2">
+            <div class="w-2 h-2 rounded-full bg-text-muted"></div>
+            <h3 class="font-bold text-sm text-text">Client App</h3>
+          </div>
+          <p class="text-xs text-text-muted leading-relaxed">Your application. Uses <strong class="text-text">libchronolog</strong> (C++ or Python) to create chronicles, record events, and replay history.</p>
+          <div class="hidden md:flex absolute -right-3 top-1/2 -translate-y-1/2 z-10 text-lime">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+          </div>
+        </div>
+        <!-- ChronoVisor -->
+        <div class="flex-1 bg-bg-card border border-lime/30 rounded-xl p-5 relative">
+          <div class="flex items-center gap-2 mb-2">
+            <div class="w-2 h-2 rounded-full bg-lime"></div>
+            <h3 class="font-bold text-sm text-lime">ChronoVisor</h3>
+          </div>
+          <p class="text-xs text-text-muted leading-relaxed">Central coordination: chronicle metadata, client connections, and <strong class="text-text">distributed clock synchronization</strong> across all nodes.</p>
+          <div class="hidden md:flex absolute -right-3 top-1/2 -translate-y-1/2 z-10 text-lime">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+          </div>
+        </div>
+        <!-- ChronoKeeper -->
+        <div class="flex-1 bg-bg-card border border-lime/30 rounded-xl p-5 relative">
+          <div class="flex items-center gap-2 mb-2">
+            <div class="w-2 h-2 rounded-full bg-lime"></div>
+            <h3 class="font-bold text-sm text-lime">ChronoKeeper</h3>
+            <span class="text-[10px] text-text-muted bg-bg/50 px-1.5 py-0.5 rounded">Hot</span>
+          </div>
+          <p class="text-xs text-text-muted leading-relaxed">Fast ingestion on compute nodes via <strong class="text-text">RDMA</strong>. Serves record() and real-time playback() with microsecond latency.</p>
+          <div class="hidden md:flex absolute -right-3 top-1/2 -translate-y-1/2 z-10 text-lime">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+          </div>
+        </div>
+        <!-- ChronoGrapher -->
+        <div class="flex-1 bg-bg-card border border-lime/30 rounded-xl p-5 relative">
+          <div class="flex items-center gap-2 mb-2">
+            <div class="w-2 h-2 rounded-full bg-lime"></div>
+            <h3 class="font-bold text-sm text-lime">ChronoGrapher</h3>
+            <span class="text-[10px] text-text-muted bg-bg/50 px-1.5 py-0.5 rounded">Warm</span>
+          </div>
+          <p class="text-xs text-text-muted leading-relaxed">DAG pipeline: event collection, <strong class="text-text">story building</strong>, and continuous flushing to lower tiers. Real-time and elastic.</p>
+          <div class="hidden md:flex absolute -right-3 top-1/2 -translate-y-1/2 z-10 text-lime">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+          </div>
+        </div>
+        <!-- ChronoStore -->
+        <div class="flex-1 bg-bg-card border border-lime/30 rounded-xl p-5">
+          <div class="flex items-center gap-2 mb-2">
+            <div class="w-2 h-2 rounded-full bg-lime"></div>
+            <h3 class="font-bold text-sm text-lime">ChronoStore</h3>
+            <span class="text-[10px] text-text-muted bg-bg/50 px-1.5 py-0.5 rounded">Cold</span>
+          </div>
+          <p class="text-xs text-text-muted leading-relaxed">Persistent archival in <strong class="text-text">HDF5</strong> containers. Elastic capacity with device-aware access optimization.</p>
+        </div>
+      </div>
+
+      <!-- ChronoPlayer spanning across -->
+      <div class="bg-gradient-to-r from-lime/5 via-bg-card to-lime/5 border border-lime/20 rounded-xl p-5 mb-12">
+        <div class="flex flex-col md:flex-row md:items-center gap-4">
+          <div class="flex items-center gap-2 flex-shrink-0">
+            <div class="w-2 h-2 rounded-full bg-lime"></div>
+            <h3 class="font-bold text-sm text-lime">ChronoPlayer</h3>
+            <span class="text-[10px] text-text-muted bg-bg/50 px-1.5 py-0.5 rounded">All tiers</span>
+          </div>
+          <p class="text-xs text-text-muted leading-relaxed">Reads span all tiers transparently. ChronoPlayer serves replay() requests from hot, warm, or cold storage and merges results into a single time-ordered stream. Fully decoupled from the write path.</p>
+        </div>
+      </div>
+
+      <!-- Implementation highlights -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="bg-bg-card border border-border rounded-lg p-4 text-center">
+          <p class="text-lg font-bold text-lime mb-1">C++17</p>
+          <p class="text-xs text-text-muted">Core implementation</p>
+        </div>
+        <div class="bg-bg-card border border-border rounded-lg p-4 text-center">
+          <p class="text-lg font-bold text-lime mb-1">RDMA</p>
+          <p class="text-xs text-text-muted">Zero-copy transport</p>
+        </div>
+        <div class="bg-bg-card border border-border rounded-lg p-4 text-center">
+          <p class="text-lg font-bold text-lime mb-1">HDF5</p>
+          <p class="text-xs text-text-muted">Persistent backend</p>
+        </div>
+        <div class="bg-bg-card border border-border rounded-lg p-4 text-center">
+          <p class="text-lg font-bold text-lime mb-1">Docker</p>
+          <p class="text-xs text-text-muted">Containerized deployment</p>
+        </div>
+      </div>
+      <p class="text-xs text-text-muted text-center mt-6">
+        <a href="https://github.com/grc-iit/ChronoLog/wiki/07.-Architecture" target="_blank" class="text-lime hover:underline">Deep dive into each component in the docs &rarr;</a>
+      </p>
+    </div>
+  </section>
+
+  <!-- 5. Software Ecosystem -->
+  <section>
+    <div class="max-w-6xl mx-auto px-6 py-20">
+      <h2 class="text-2xl font-bold mb-4">Software Ecosystem</h2>
+      <p class="text-text-muted text-sm leading-relaxed max-w-3xl mb-8">
+        There is a lot going on both inside ChronoLog and around it. Its software ecosystem spans three layers: the <strong class="text-text">core distributed services</strong> (ChronoVisor, ChronoKeeper, ChronoGrapher, ChronoPlayer, ChronoStore), a <strong class="text-text">client library</strong> (libchronolog) providing the chronicle API in C++ and Python, and a <strong class="text-text">plugin framework</strong> enabling higher-level data systems to be built on top of the shared log.
+      </p>
+
+      <!-- Three layers -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+        <div class="bg-bg-card border border-lime/20 rounded-xl p-6">
+          <h3 class="font-bold text-sm text-lime mb-2">Core Services</h3>
+          <p class="text-xs text-text-muted leading-relaxed">Five distributed services forming the ingestion-to-archival pipeline. Implemented in C++17 with RDMA and TCP transport backends and HDF5 for persistent storage.</p>
+        </div>
+        <div class="bg-bg-card border border-lime/20 rounded-xl p-6">
+          <h3 class="font-bold text-sm text-lime mb-2">Client Library</h3>
+          <p class="text-xs text-text-muted leading-relaxed">libchronolog exposes the full chronicle API: connect, create chronicles, acquire stories, record events, and replay history. Available in C++ and Python.</p>
+        </div>
+        <div class="bg-bg-card border border-lime/20 rounded-xl p-6">
+          <h3 class="font-bold text-sm text-lime mb-2">Plugin Framework</h3>
+          <p class="text-xs text-text-muted leading-relaxed">A modular architecture that allows new plugins to be developed independently: SQL queries, streaming analytics, key-value stores, ML pipelines, and more.</p>
+        </div>
+      </div>
+
+      <!-- Broader ecosystem -->
+      <h3 class="text-sm font-semibold text-lime uppercase tracking-wider mb-4">Part of a broader ecosystem</h3>
+      <p class="text-text-muted text-sm leading-relaxed max-w-3xl mb-6">
+        ChronoLog serves as foundational infrastructure for other projects, AI systems, and research frameworks.
+      </p>
+      <div class="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-6">
+        <div class="bg-bg-alt border border-border rounded-xl p-5">
+          <h3 class="font-semibold text-text text-sm mb-1">IOWarp</h3>
+          <p class="text-xs text-text-muted">Internal logging and pub/sub abstractions</p>
+        </div>
+        <div class="bg-bg-alt border border-border rounded-xl p-5">
+          <h3 class="font-semibold text-text text-sm mb-1">AI Agents</h3>
+          <p class="text-xs text-text-muted">MCP-based agent memory and audit trails</p>
+        </div>
+        <div class="bg-bg-alt border border-border rounded-xl p-5">
+          <h3 class="font-semibold text-text text-sm mb-1">Parsl Workflows</h3>
+          <p class="text-xs text-text-muted">Task execution logging and provenance</p>
+        </div>
+        <div class="bg-bg-alt border border-border rounded-xl p-5">
+          <h3 class="font-semibold text-text text-sm mb-1">DOE Labs</h3>
+          <p class="text-xs text-text-muted">Available at national lab partner sites</p>
+        </div>
+        <div class="bg-bg-alt border border-border rounded-xl p-5">
+          <h3 class="font-semibold text-text text-sm mb-1">IFSH Genomics</h3>
+          <p class="text-xs text-text-muted">Genomic sequencing pipeline data at IIT</p>
+        </div>
+      </div>
+      <p class="text-text-muted text-xs">
+        <a href="/integrations/" class="text-lime hover:underline">Explore all integrations &rarr;</a>
+        <span class="mx-2 text-border">|</span>
+        <a href="https://grc.iit.edu" target="_blank" class="text-lime hover:underline">Gnosis Research Center &rarr;</a>
+      </p>
+    </div>
+  </section>
+
+  <!-- Dive Deeper CTA -->
+  <section class="border-t border-border bg-bg-alt">
+    <div class="max-w-4xl mx-auto px-6 py-16 text-center">
+      <h2 class="text-2xl md:text-3xl font-bold mb-4">Dive Deeper</h2>
+      <p class="text-text-muted leading-relaxed mb-8 max-w-2xl mx-auto">
+        Now that you have the full picture, it's time to get hands-on. The documentation has everything else &mdash;architecture deep dives, API references, deployment guides, and tutorials.
+      </p>
+      <div class="flex flex-wrap gap-4 justify-center">
+        <a href="https://docs.chronolog.dev" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 px-6 py-3 bg-lime text-charcoal font-semibold rounded-lg hover:bg-lime-light transition-colors">
+          Read the Docs
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+        </a>
+        <a href="https://github.com/grc-iit/ChronoLog" target="_blank" class="inline-flex items-center gap-2 px-6 py-3 border border-border text-text font-semibold rounded-lg hover:bg-white/5 transition-colors">
+          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+          GitHub
+        </a>
+        <a href="https://chronolog.zulipchat.com/" target="_blank" class="inline-flex items-center gap-2 px-6 py-3 border border-border text-text font-semibold rounded-lg hover:bg-white/5 transition-colors">
+          Community (Zulip)
+        </a>
+      </div>
+    </div>
+  </section>
+</Layout>
