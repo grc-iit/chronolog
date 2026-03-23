@@ -140,7 +140,7 @@ int ClientRegistryManager::add_client_record(chl::ClientId const& client_id, con
               static_cast<void*>(clientRegistry_),
               clientRegistry_->size());
     std::lock_guard<std::mutex> lock(g_clientRegistryMutex_);
-    if(clientRegistry_->insert_or_assign(client_id, record).second)
+    if(clientRegistry_->insert_or_assign(client_id, record).first != clientRegistry_->end())
     {
         LOG_DEBUG("[ClientRegistryManager] An entry for ClientID={} has been added to Client Registry at {}",
                   client_id,
