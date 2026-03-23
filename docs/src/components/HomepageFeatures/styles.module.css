@@ -8,7 +8,7 @@
   font-size: 2rem;
   font-weight: 700;
   margin-bottom: 0.5rem;
-  color: var(--ifm-color-primary-dark);
+  color: var(--ifm-color-primary);
 }
 
 .sectionSubheading {
@@ -25,7 +25,7 @@
 .featureCard {
   background: var(--ifm-card-background-color);
   border: 1px solid var(--chronolog-card-border);
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 1.5rem;
   height: 100%;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
@@ -33,7 +33,7 @@
 
 .featureCard:hover {
   transform: translateY(-4px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
 }
 
 .featureIcon {
@@ -45,7 +45,7 @@
   font-size: 1.1rem;
   font-weight: 600;
   margin-bottom: 0.5rem;
-  color: var(--ifm-color-primary-dark);
+  color: var(--ifm-color-primary);
 }
 
 .featureDesc {

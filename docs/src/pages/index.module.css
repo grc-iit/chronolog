@@ -9,11 +9,11 @@
   background:
     linear-gradient(
       160deg,
-      rgba(26, 58, 42, 0.75) 0%,
-      rgba(13, 33, 24, 0.82) 100%
+      rgba(30, 34, 43, 0.85) 0%,
+      rgba(37, 42, 53, 0.92) 100%
     ),
     url('/img/chronolog-isometric.jpg') center / cover no-repeat;
-  color: #fff;
+  color: #e4e7ed;
 }
 
 @media screen and (max-width: 996px) {
@@ -36,7 +36,7 @@
 
 .heroTagline {
   font-size: 1.25rem;
-  color: rgba(255, 255, 255, 0.85);
+  color: rgba(228, 231, 237, 0.85);
   max-width: 640px;
   margin: 0 auto 2rem;
 }
@@ -51,7 +51,7 @@
 
 /* Stats Bar */
 .statsBar {
-  background: var(--chronolog-hero-bg-end);
+  background: #252a35;
   padding: 1rem 0;
 }
 
@@ -64,10 +64,10 @@
 }
 
 .statBadge {
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(195, 224, 77, 0.1);
+  border: 1px solid rgba(195, 224, 77, 0.25);
   border-radius: 20px;
-  color: #fff;
+  color: #c3e04d;
   padding: 0.35rem 1rem;
   font-size: 0.875rem;
   font-weight: 600;
@@ -89,7 +89,7 @@
   font-size: 2rem;
   font-weight: 700;
   margin-bottom: 0.5rem;
-  color: var(--ifm-color-primary-dark);
+  color: var(--ifm-color-primary);
 }
 
 .sectionSubheading {
@@ -105,8 +105,8 @@
   max-width: 860px;
   width: 100%;
   margin: 0 auto 1.25rem;
-  border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
 .archCaption {
@@ -123,7 +123,7 @@
 .useCaseCard {
   border-left: 4px solid var(--ifm-color-primary);
   background: var(--ifm-card-background-color);
-  border-radius: 0 8px 8px 0;
+  border-radius: 0 12px 12px 0;
   padding: 1.25rem 1.5rem;
   height: 100%;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
@@ -154,7 +154,7 @@
 .quickCard {
   background: var(--ifm-card-background-color);
   border: 1px solid var(--chronolog-card-border);
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 2rem 1.5rem;
   text-align: center;
   height: 100%;
@@ -163,7 +163,7 @@
 
 .quickCard:hover {
   transform: translateY(-4px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
 }
 
 .quickIcon {
@@ -192,7 +192,7 @@
   text-align: center;
   background: var(--ifm-card-background-color);
   border: 1px solid var(--chronolog-card-border);
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 2rem 1.5rem;
   height: 100%;
 }
@@ -206,7 +206,7 @@
   font-weight: 700;
   font-size: 1.05rem;
   margin-bottom: 0.5rem;
-  color: var(--ifm-color-primary-dark);
+  color: var(--ifm-color-primary);
 }
 
 .innovationDesc {
@@ -220,7 +220,7 @@
   padding: 3rem 0;
   background: var(--chronolog-section-alt-bg);
   text-align: center;
-  border-top: 1px solid var(--ifm-color-emphasis-200);
+  border-top: 1px solid var(--ifm-color-emphasis-300);
 }
 
 .nsfLogo {
