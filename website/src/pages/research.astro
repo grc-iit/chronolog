@@ -112,32 +112,7 @@ const msst2020Ld = {
     </div>
   </section>
 
-  <!-- 3. Core Innovations -->
-  <section>
-    <div class="max-w-6xl mx-auto px-6 py-20">
-      <h2 class="text-2xl md:text-3xl font-bold text-center mb-4">Two Key Innovations</h2>
-      <p class="text-text-muted text-center max-w-2xl mx-auto mb-12">ChronoLog rethinks distributed logging from first principles, introducing two ideas that set it apart from existing systems.</p>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-        <div class="bg-bg-card border border-border rounded-xl overflow-hidden hover:border-lime/30 transition-colors">
-          <img src="/images/physical-time.webp" alt="Physical Time Ordering — ChronoLog uses physical time as the natural ordering mechanism" width="600" height="338" class="w-full aspect-video object-cover" />
-          <div class="p-8 pt-5">
-            <h3 class="text-xl font-bold text-text mb-3">Physical Time as the Ordering Mechanism</h3>
-            <p class="text-text-muted leading-relaxed">Instead of centralized sequencers or locking protocols, ChronoLog uses physical timestamps as the natural ordering principle. This enables lock-free concurrent writes with immediate entry visibility and no coordination overhead.</p>
-          </div>
-        </div>
-        <div class="bg-bg-card border border-border rounded-xl overflow-hidden hover:border-lime/30 transition-colors">
-          <img src="/images/auto-tiering.webp" alt="Automatic Multi-Tier Storage — data flows from hot to warm to cold tiers" width="600" height="338" class="w-full aspect-video object-cover" />
-          <div class="p-8 pt-5">
-            <h3 class="text-xl font-bold text-text mb-3">Automatic Multi-Tier Storage</h3>
-            <p class="text-text-muted leading-relaxed">Log data flows automatically from fast ingestion nodes through intermediate tiers to persistent archival storage, balancing access latency with capacity. This 3D distribution enables elastic scaling without manual data management.</p>
-          </div>
-        </div>
-      </div>
-      <p class="text-text-muted text-xs text-center mt-6">The sections below explore the theoretical foundations and design decisions behind these innovations.</p>
-    </div>
-  </section>
-
-  <!-- 4. Physical Time in Depth -->
+  <!-- 3. Physical Time in Depth -->
   <section class="bg-bg-alt border-y border-border">
     <div class="max-w-6xl mx-auto px-6 py-20">
       <h2 class="text-2xl md:text-3xl font-bold mb-4">Dealing with Physical Time</h2>

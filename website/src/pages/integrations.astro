@@ -45,7 +45,7 @@ const aiIntegrations = [
     title: 'AI Agent Memory & MCP Server',
     image: '/images/use-cases/ai-agent-memory.webp',
     desc: 'ChronoLog as the persistent memory backend for autonomous AI agents. The official MCP (Model Context Protocol) server lets any MCP-compatible agent -- Claude, GPT, custom LLM systems -- create, query, and replay time-ordered logs natively.',
-    detail: 'AI agents need durable, time-ordered memory that persists across sessions and scales across agents. ChronoLog\'s chronicle abstraction maps naturally to agent memory: each agent (or conversation) gets a chronicle, every action or observation is a timestamped entry, and replay enables full context reconstruction. The MCP server exposes chronicle.create, chronicle.record, chronicle.replay, and chronicle.query as tools, enabling use cases like conversation audit trails, cross-agent shared memory, real-time system monitoring by AI operators, and long-horizon planning with historical context. Part of the IOWarp Agent Toolkit.',
+    detail: 'AI agents need durable, time-ordered memory that persists across sessions and scales across agents. ChronoLog\'s chronicle abstraction maps naturally to agent memory: each agent (or conversation) gets a chronicle, every action or observation is a timestamped entry, and replay enables full context reconstruction. The MCP server exposes chronicle.create, chronicle.record, chronicle.replay, and chronicle.query as tools, enabling use cases like conversation audit trails, cross-agent shared memory, real-time system monitoring by AI operators, and long-horizon planning with historical context. Part of the IOWarp Agent Toolkit (the broader I/O middleware framework that ChronoLog is part of).',
     link: 'https://github.com/iowarp/agent-toolkit/tree/main/agent-toolkit-mcp-servers/chronolog',
     linkLabel: 'ChronoLog MCP Server on GitHub',
   },
@@ -60,7 +60,7 @@ const aiIntegrations = [
   <section class="max-w-6xl mx-auto px-6 py-20">
     <h1 class="text-3xl md:text-4xl font-extrabold mb-4">Integrations</h1>
     <p class="text-text-muted text-lg max-w-3xl mb-14 leading-relaxed">
-      ChronoLog's extensible architecture supports two categories of integrations: <strong class="text-text">Plugins</strong> that extend the log with query, streaming, and storage semantics, and <strong class="text-text">AI Integrations</strong> that connect ChronoLog to AI agents and LLM-based systems via protocols like MCP.
+      ChronoLog's extensible architecture supports two categories of integrations: <strong class="text-text">Plugins</strong> that extend the log with query, streaming, and storage semantics, and <strong class="text-text">AI Integrations</strong> that connect ChronoLog to AI agents and LLM-based systems via protocols like MCP (Model Context Protocol, an open standard for connecting AI agents to external tools).
     </p>
 
     <!-- Plugins -->

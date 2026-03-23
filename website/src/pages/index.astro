@@ -102,7 +102,7 @@ const logos = [
             ))}
           </div>
           <div class="flex flex-wrap gap-4 justify-center md:justify-start">
-            <a href="/docs/" class="inline-flex items-center gap-2 px-6 py-3 bg-lime text-charcoal font-semibold rounded-lg hover:bg-lime-light transition-colors">
+            <a href="https://docs.chronolog.dev" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 px-6 py-3 bg-lime text-charcoal font-semibold rounded-lg hover:bg-lime-light transition-colors">
               Explore the Docs
               <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
             </a>
@@ -120,7 +120,7 @@ const logos = [
   </section>
 
   <!-- Collaborators & Partners -->
-  <section class="border-y border-border bg-bg-alt/50 overflow-hidden">
+  <section class="border-y border-border overflow-hidden">
     <div class="px-6 py-8">
       <p class="text-xs text-text-muted uppercase tracking-widest text-center mb-6">Collaborators & Partners</p>
       <div class="marquee-track">
@@ -131,104 +131,164 @@ const logos = [
     </div>
   </section>
 
-  <!-- Plugin & Connector Ecosystem -->
+  <!-- What Makes ChronoLog Different -->
   <section class="border-y border-border">
     <div class="max-w-6xl mx-auto px-6 py-20">
-      <h2 class="text-2xl md:text-3xl font-bold text-center mb-4">An Extensible Platform</h2>
-      <p class="text-text-muted text-center max-w-2xl mx-auto mb-12">ChronoLog is designed as a foundation that other systems build upon. Its extensible architecture supports <strong class="text-text">plugins</strong> for query, streaming, and storage workloads, and <strong class="text-text">AI integrations</strong> that connect the log to agents and LLM-based systems via protocols like MCP.</p>
-      <a href="/integrations/" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div class="bg-bg-card border border-border rounded-xl p-6 hover:border-lime/40 transition-colors group">
+      <h2 class="text-2xl md:text-3xl font-bold text-center mb-4">What Makes ChronoLog Different</h2>
+      <p class="text-text-muted text-center max-w-2xl mx-auto mb-12">Traditional distributed logs rely on centralized sequencers and consensus protocols to order events. ChronoLog takes a fundamentally different approach.</p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div class="bg-bg-card border border-border rounded-xl p-6">
           <div class="w-10 h-10 rounded-lg bg-lime/10 flex items-center justify-center mb-4">
-            <svg class="w-5 h-5 text-lime" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375"/></svg>
+            <svg class="w-5 h-5 text-lime" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
           </div>
-          <h3 class="font-semibold text-text mb-2 group-hover:text-lime transition-colors">SQL Query Plugin</h3>
-          <p class="text-sm text-text-muted leading-relaxed">Query log data with familiar SQL semantics. Time-based ordering enables efficient range scans without auxiliary indices.</p>
+          <h3 class="font-semibold text-text mb-2">Physical Time Ordering</h3>
+          <p class="text-sm text-text-muted leading-relaxed">Uses synchronized physical clocks instead of Paxos/Raft consensus to order events. No centralized sequencer bottleneck.</p>
         </div>
-        <div class="bg-bg-card border border-border rounded-xl p-6 hover:border-lime/40 transition-colors group">
+        <div class="bg-bg-card border border-border rounded-xl p-6">
           <div class="w-10 h-10 rounded-lg bg-lime/10 flex items-center justify-center mb-4">
-            <svg class="w-5 h-5 text-lime" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"/></svg>
+            <svg class="w-5 h-5 text-lime" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"/></svg>
           </div>
-          <h3 class="font-semibold text-text mb-2 group-hover:text-lime transition-colors">Pub/Sub & Streaming</h3>
-          <p class="text-sm text-text-muted leading-relaxed">Publish-subscribe patterns and real-time streaming built on ChronoGrapher's DAG pipeline. Used internally by IOWarp.</p>
+          <h3 class="font-semibold text-text mb-2">Lock-Free Concurrent Writes</h3>
+          <p class="text-sm text-text-muted leading-relaxed">Multiple distributed writers append simultaneously without coordination. I/O paths are fully isolated between processes.</p>
         </div>
-        <div class="bg-bg-card border border-border rounded-xl p-6 hover:border-lime/40 transition-colors group">
+        <div class="bg-bg-card border border-border rounded-xl p-6">
           <div class="w-10 h-10 rounded-lg bg-lime/10 flex items-center justify-center mb-4">
-            <svg class="w-5 h-5 text-lime" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 14.25h13.5m-13.5 0a3 3 0 01-3-3m3 3a3 3 0 100 6h13.5a3 3 0 100-6m-16.5-3a3 3 0 013-3h13.5a3 3 0 013 3m-19.5 0a4.5 4.5 0 01.9-2.7L5.737 5.1a3.375 3.375 0 012.7-1.35h7.126c1.062 0 2.062.5 2.7 1.35l2.587 3.45a4.5 4.5 0 01.9 2.7"/></svg>
+            <svg class="w-5 h-5 text-lime" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6.429 9.75L2.25 12l4.179 2.25m0-4.5l5.571 3 5.571-3m-11.142 0L2.25 7.5 12 2.25l9.75 5.25-4.179 2.25m0 0L21.75 12l-4.179 2.25m0 0l4.179 2.25L12 21.75 2.25 16.5l4.179-2.25m11.142 0l-5.571 3-5.571-3"/></svg>
           </div>
-          <h3 class="font-semibold text-text mb-2 group-hover:text-lime transition-colors">Key-Value Store</h3>
-          <p class="text-sm text-text-muted leading-relaxed">ChronoKVS provides time-series key-value semantics on top of the ordered log, with built-in consistency guarantees.</p>
+          <h3 class="font-semibold text-text mb-2">Auto-Tiered Storage</h3>
+          <p class="text-sm text-text-muted leading-relaxed">Data moves automatically across hot, warm, and cold storage tiers. Elastic capacity without manual data management.</p>
         </div>
-        <div class="bg-bg-card border border-border rounded-xl p-6 hover:border-lime/40 transition-colors group">
+        <div class="bg-bg-card border border-border rounded-xl p-6">
           <div class="w-10 h-10 rounded-lg bg-lime/10 flex items-center justify-center mb-4">
-            <svg class="w-5 h-5 text-lime" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.26 10.147a60.438 60.438 0 00-.491 6.347A48.62 48.62 0 0112 20.904a48.62 48.62 0 018.232-4.41 60.46 60.46 0 00-.491-6.347m-15.482 0a50.636 50.636 0 00-2.658-.813A59.906 59.906 0 0112 3.493a59.903 59.903 0 0110.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.717 50.717 0 0112 13.489a50.702 50.702 0 017.74-3.342"/></svg>
+            <svg class="w-5 h-5 text-lime" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
           </div>
-          <h3 class="font-semibold text-text mb-2 group-hover:text-lime transition-colors">ML & Training</h3>
-          <p class="text-sm text-text-muted leading-relaxed">TensorFlow integration for feeding time-ordered data streams directly into training and inference pipelines.</p>
+          <h3 class="font-semibold text-text mb-2">Immediate Visibility</h3>
+          <p class="text-sm text-text-muted leading-relaxed">Events are visible to readers as soon as they are written. Total ordering with concurrent access at scale.</p>
         </div>
-      </a>
-      <div class="mt-10 bg-gradient-to-r from-lime/5 via-bg-card to-lime/5 border border-lime/20 rounded-2xl p-8 md:p-10">
-        <div class="grid grid-cols-1 md:grid-cols-5 gap-8 items-center">
-          <div class="md:col-span-3">
-            <div class="flex items-center gap-2 mb-4">
-              <div class="w-8 h-8 rounded-lg bg-lime/15 flex items-center justify-center">
-                <svg class="w-4.5 h-4.5 text-lime" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z"/></svg>
-              </div>
-              <h2 class="text-xl md:text-2xl font-bold">ChronoLog for AI Agent Memory</h2>
-            </div>
-            <p class="text-text-muted leading-relaxed mb-4">
-              AI agents need persistent, time-ordered memory. ChronoLog provides exactly that -- a distributed log that serves as the <strong class="text-text">shared memory backend</strong> for autonomous agents, LLM-based systems, and agentic workflows. Every agent action, observation, and reasoning step can be recorded as a time-stamped chronicle entry, creating a queryable audit trail across conversations and sessions.
-            </p>
-            <p class="text-text-muted leading-relaxed mb-5">
-              The official <strong class="text-text">ChronoLog MCP server</strong>, part of the IOWarp Agent Toolkit, exposes chronicle operations as Model Context Protocol tools -- so any MCP-compatible AI agent can create logs, record events, replay history, and query by time range natively.
-            </p>
-            <a href="https://github.com/iowarp/agent-toolkit/tree/main/agent-toolkit-mcp-servers/chronolog" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 bg-lime text-charcoal text-sm font-semibold rounded-lg hover:bg-lime-light transition-colors">
-              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
-              ChronoLog MCP Server
-            </a>
-          </div>
-          <div class="md:col-span-2 bg-bg rounded-xl p-5 border border-border/50 font-mono text-xs text-text-muted leading-relaxed">
-            <p class="text-lime mb-2">// Agent memory via MCP</p>
-            <p class="mb-1"><span class="text-slate-light">tools:</span></p>
-            <p class="mb-1 pl-3">chronicle.create <span class="text-text-muted">- new memory log</span></p>
-            <p class="mb-1 pl-3">chronicle.record <span class="text-text-muted">- store event</span></p>
-            <p class="mb-1 pl-3">chronicle.replay <span class="text-text-muted">- retrieve history</span></p>
-            <p class="mb-3 pl-3">chronicle.query  <span class="text-text-muted">- search by time</span></p>
-            <p class="text-lime mb-2">// Use cases</p>
-            <p class="mb-1 pl-3">- Conversation logging</p>
-            <p class="mb-1 pl-3">- Agent audit trails</p>
-            <p class="mb-1 pl-3">- Cross-session memory</p>
-            <p class="pl-3">- System monitoring</p>
-          </div>
-        </div>
+      </div>
+      <div class="text-center mt-8">
+        <a href="/how-it-works/" class="inline-flex items-center gap-2 text-sm text-lime font-medium hover:underline">
+          Learn more
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+        </a>
       </div>
     </div>
   </section>
 
-  <!-- Community & Adoption -->
+  <!-- Architecture Overview -->
   <section class="bg-bg-alt border-y border-border">
     <div class="max-w-6xl mx-auto px-6 py-20">
-      <h2 class="text-2xl md:text-3xl font-bold text-center mb-4">Community & Adoption</h2>
-      <p class="text-text-muted text-center max-w-2xl mx-auto mb-12">ChronoLog's impact extends beyond its codebase. From graduate classrooms to national lab clusters, the project has a growing community of researchers, students, and collaborators.</p>
+      <h2 class="text-2xl md:text-3xl font-bold text-center mb-4">How It Works</h2>
+      <p class="text-text-muted text-center max-w-2xl mx-auto mb-12">ChronoLog separates ingestion, ordering, persistence, and replay into five specialized services that form a tiered pipeline.</p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div class="bg-bg-card border border-border rounded-xl p-5 text-center">
+          <div class="text-text font-bold text-lg mb-1">ChronoVisor</div>
+          <p class="text-xs text-text-muted">Coordination & clock synchronization</p>
+        </div>
+        <div class="bg-bg-card border border-border rounded-xl p-5 text-center">
+          <div class="text-text font-bold text-lg mb-1">ChronoKeeper</div>
+          <p class="text-xs text-text-muted">Fast ingestion via RDMA (hot tier)</p>
+        </div>
+        <div class="bg-bg-card border border-border rounded-xl p-5 text-center">
+          <div class="text-text font-bold text-lg mb-1">ChronoGrapher</div>
+          <p class="text-xs text-text-muted">Event assembly & story building (warm tier)</p>
+        </div>
+        <div class="bg-bg-card border border-border rounded-xl p-5 text-center">
+          <div class="text-text font-bold text-lg mb-1">ChronoStore</div>
+          <p class="text-xs text-text-muted">Persistent archival in HDF5 (cold tier)</p>
+        </div>
+        <div class="bg-bg-card border border-border rounded-xl p-5 text-center">
+          <div class="text-text font-bold text-lg mb-1">ChronoPlayer</div>
+          <p class="text-xs text-text-muted">Cross-tier reads & replay</p>
+        </div>
+      </div>
+      <div class="text-center mt-8">
+        <a href="/how-it-works/" class="inline-flex items-center gap-2 text-sm text-lime font-medium hover:underline">
+          Learn more
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Plugin & Connector Ecosystem -->
+  <section class="border-y border-border">
+    <div class="max-w-6xl mx-auto px-6 py-20">
+      <h2 class="text-2xl md:text-3xl font-bold text-center mb-4">An Extensible Platform</h2>
+      <p class="text-text-muted text-center max-w-2xl mx-auto mb-12">ChronoLog is designed as a foundation that other systems build upon. Its plugin architecture supports query, streaming, storage, and AI integration workloads.</p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
+        <a href="/integrations/" class="bg-bg-card border border-border rounded-xl p-6 hover:border-lime/40 transition-colors group block">
+          <div class="w-10 h-10 rounded-lg bg-lime/10 flex items-center justify-center mb-4">
+            <svg class="w-5 h-5 text-lime" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375"/></svg>
+          </div>
+          <h3 class="font-semibold text-text mb-2 group-hover:text-lime transition-colors">SQL Query</h3>
+          <p class="text-sm text-text-muted leading-relaxed">Familiar SQL semantics over time-ordered log data.</p>
+        </a>
+        <a href="/integrations/" class="bg-bg-card border border-border rounded-xl p-6 hover:border-lime/40 transition-colors group block">
+          <div class="w-10 h-10 rounded-lg bg-lime/10 flex items-center justify-center mb-4">
+            <svg class="w-5 h-5 text-lime" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"/></svg>
+          </div>
+          <h3 class="font-semibold text-text mb-2 group-hover:text-lime transition-colors">Pub/Sub & Streaming</h3>
+          <p class="text-sm text-text-muted leading-relaxed">Real-time event streaming via ChronoGrapher's DAG pipeline.</p>
+        </a>
+        <a href="/integrations/" class="bg-bg-card border border-border rounded-xl p-6 hover:border-lime/40 transition-colors group block">
+          <div class="w-10 h-10 rounded-lg bg-lime/10 flex items-center justify-center mb-4">
+            <svg class="w-5 h-5 text-lime" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 14.25h13.5m-13.5 0a3 3 0 01-3-3m3 3a3 3 0 100 6h13.5a3 3 0 100-6m-16.5-3a3 3 0 013-3h13.5a3 3 0 013 3m-19.5 0a4.5 4.5 0 01.9-2.7L5.737 5.1a3.375 3.375 0 012.7-1.35h7.126c1.062 0 2.062.5 2.7 1.35l2.587 3.45a4.5 4.5 0 01.9 2.7"/></svg>
+          </div>
+          <h3 class="font-semibold text-text mb-2 group-hover:text-lime transition-colors">Key-Value Store</h3>
+          <p class="text-sm text-text-muted leading-relaxed">Time-series KV semantics with built-in ordering guarantees.</p>
+        </a>
+        <a href="/integrations/" class="bg-bg-card border border-border rounded-xl p-6 hover:border-lime/40 transition-colors group block">
+          <div class="w-10 h-10 rounded-lg bg-lime/10 flex items-center justify-center mb-4">
+            <svg class="w-5 h-5 text-lime" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.26 10.147a60.438 60.438 0 00-.491 6.347A48.62 48.62 0 0112 20.904a48.62 48.62 0 018.232-4.41 60.46 60.46 0 00-.491-6.347m-15.482 0a50.636 50.636 0 00-2.658-.813A59.906 59.906 0 0112 3.493a59.903 59.903 0 0110.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.717 50.717 0 0112 13.489a50.702 50.702 0 017.74-3.342"/></svg>
+          </div>
+          <h3 class="font-semibold text-text mb-2 group-hover:text-lime transition-colors">ML & Training</h3>
+          <p class="text-sm text-text-muted leading-relaxed">TensorFlow integration for time-ordered data pipelines.</p>
+        </a>
+        <a href="/integrations/" class="bg-bg-card border border-lime/20 rounded-xl p-6 hover:border-lime/40 transition-colors group block">
+          <div class="w-10 h-10 rounded-lg bg-lime/10 flex items-center justify-center mb-4">
+            <svg class="w-5 h-5 text-lime" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>
+          </div>
+          <h3 class="font-semibold text-text mb-2 group-hover:text-lime transition-colors">AI Agent Memory</h3>
+          <p class="text-sm text-text-muted leading-relaxed">MCP server for persistent agent memory and audit trails.</p>
+        </a>
+      </div>
+      <div class="text-center mt-8">
+        <a href="/integrations/" class="inline-flex items-center gap-2 text-sm text-lime font-medium hover:underline">
+          Learn more
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Project at a Glance -->
+  <section class="bg-bg-alt border-y border-border">
+    <div class="max-w-6xl mx-auto px-6 py-20">
+      <h2 class="text-2xl md:text-3xl font-bold text-center mb-4">Project at a Glance</h2>
+      <p class="text-text-muted text-center max-w-2xl mx-auto mb-12">ChronoLog is a multi-year research effort backed by the National Science Foundation and developed in partnership with DOE national laboratories and universities.</p>
       <div class="grid grid-cols-2 md:grid-cols-5 gap-5 mb-12">
         <div class="bg-bg-card border border-border rounded-xl p-5 text-center">
-          <div class="text-3xl font-extrabold text-lime mb-1">300+</div>
-          <p class="text-xs text-text-muted leading-tight">Attendees at ChronoLog presentations, webinars, and classroom sessions</p>
+          <div class="text-3xl font-extrabold text-lime mb-1">$4M</div>
+          <p class="text-xs text-text-muted leading-tight">NSF CSSI grant funding</p>
         </div>
         <div class="bg-bg-card border border-border rounded-xl p-5 text-center">
-          <div class="text-3xl font-extrabold text-lime mb-1">2,000+</div>
-          <p class="text-xs text-text-muted leading-tight">GitHub visitors per year, with growing adoption across research communities</p>
+          <div class="text-3xl font-extrabold text-lime mb-1">5</div>
+          <p class="text-xs text-text-muted leading-tight">Peer-reviewed publications at top-tier venues (SC, MSST, CLUSTER, IPDPS, ICS)</p>
         </div>
         <div class="bg-bg-card border border-border rounded-xl p-5 text-center">
-          <div class="text-3xl font-extrabold text-lime mb-1">15+</div>
-          <p class="text-xs text-text-muted leading-tight">PhD researchers using ChronoLog as a backend for distributed logging</p>
+          <div class="text-3xl font-extrabold text-lime mb-1">4+</div>
+          <p class="text-xs text-text-muted leading-tight">Years of active development since 2020</p>
         </div>
         <div class="bg-bg-card border border-border rounded-xl p-5 text-center">
-          <div class="text-3xl font-extrabold text-lime mb-1">5+</div>
-          <p class="text-xs text-text-muted leading-tight">Cluster installations, including GRC and DOE partner sites</p>
+          <div class="text-3xl font-extrabold text-lime mb-1">10+</div>
+          <p class="text-xs text-text-muted leading-tight">Partner institutions including DOE national labs, universities, and industry</p>
         </div>
         <div class="bg-bg-card border border-border rounded-xl p-5 text-center">
-          <div class="text-3xl font-extrabold text-lime mb-1">3</div>
-          <p class="text-xs text-text-muted leading-tight">Active community domains: FaaS, scientific data repositories, and system telemetry</p>
+          <div class="w-full flex items-center justify-center mb-1">
+            <svg class="w-8 h-8 text-lime" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 14.25h13.5m-13.5 0a3 3 0 01-3-3m3 3a3 3 0 100 6h13.5a3 3 0 100-6m-16.5-3a3 3 0 013-3h13.5a3 3 0 013 3m-19.5 0a4.5 4.5 0 01.9-2.7L5.737 5.1a3.375 3.375 0 012.7-1.35h7.126c1.062 0 2.062.5 2.7 1.35l2.587 3.45a4.5 4.5 0 01.9 2.7"/></svg>
+          </div>
+          <p class="text-xs text-text-muted leading-tight">Deployed at national laboratory partner sites and university clusters</p>
         </div>
       </div>
       <div class="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
@@ -254,6 +314,12 @@ const logos = [
           <p class="text-xs text-text-muted leading-relaxed">Active installations on the GRC research cluster and available at DOE partner sites. Used for continuous research workloads including HPC system monitoring and provenance tracking.</p>
         </div>
       </div>
+      <div class="text-center mt-8">
+        <a href="/about/" class="inline-flex items-center gap-2 text-sm text-lime font-medium hover:underline">
+          Learn more
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+        </a>
+      </div>
     </div>
   </section>
 
@@ -265,14 +331,14 @@ const logos = [
         ChronoLog is open source and welcoming collaborators. Whether you're a researcher exploring distributed log abstractions, a developer building on the plugin ecosystem, or an institution looking for scalable logging infrastructure -- we'd like to hear from you.
       </p>
       <div class="flex flex-wrap gap-4 justify-center">
-        <a href="/docs/" class="inline-flex items-center gap-2 px-6 py-3 bg-lime text-charcoal font-semibold rounded-lg hover:bg-lime-light transition-colors">
+        <a href="https://docs.chronolog.dev" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 px-6 py-3 bg-lime text-charcoal font-semibold rounded-lg hover:bg-lime-light transition-colors">
           Documentation
           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
         </a>
-        <a href="https://chronolog.zulipchat.com/" target="_blank" class="inline-flex items-center gap-2 px-6 py-3 border border-border text-text font-semibold rounded-lg hover:bg-white/5 transition-colors">
+        <a href="https://chronolog.zulipchat.com/" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 px-6 py-3 border border-border text-text font-semibold rounded-lg hover:bg-white/5 transition-colors">
           Community (Zulip)
         </a>
-        <a href="https://github.com/grc-iit/ChronoLog" target="_blank" class="inline-flex items-center gap-2 px-6 py-3 border border-border text-text font-semibold rounded-lg hover:bg-white/5 transition-colors">
+        <a href="https://github.com/grc-iit/ChronoLog" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 px-6 py-3 border border-border text-text font-semibold rounded-lg hover:bg-white/5 transition-colors">
           <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
           GitHub
         </a>

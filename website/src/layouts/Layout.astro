@@ -114,13 +114,10 @@ const navLinks = [
           ))}
           <div class="w-px h-5 bg-border mx-2"></div>
           <a
-            href="/docs/"
-            class:list={[
-              'px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5',
-              currentPath === '/docs/'
-                ? 'bg-lime/15 text-lime'
-                : 'text-text-muted hover:text-text hover:bg-white/5'
-            ]}
+            href="https://docs.chronolog.dev"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="px-3 py-2 rounded-lg text-sm font-medium text-text-muted hover:text-text hover:bg-white/5 transition-colors flex items-center gap-1.5"
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" /></svg>
             Docs
@@ -158,15 +155,7 @@ const navLinks = [
               {link.label}
             </a>
           ))}
-          <a
-            href="/docs/"
-            class:list={[
-              'px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5',
-              currentPath === '/docs/'
-                ? 'bg-lime/15 text-lime'
-                : 'text-text-muted hover:text-text hover:bg-white/5'
-            ]}
-          >
+          <a href="https://docs.chronolog.dev" target="_blank" rel="noopener noreferrer" class="px-3 py-2 rounded-lg text-sm font-medium text-text-muted hover:text-text hover:bg-white/5 flex items-center gap-1.5">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" /></svg>
             Docs
           </a>
@@ -215,7 +204,7 @@ const navLinks = [
               <ul class="space-y-2 text-sm text-text-muted">
                 <li><a href="/research/" class="hover:text-lime transition-colors">Research</a></li>
                 <li><a href="/about/" class="hover:text-lime transition-colors">About</a></li>
-                <li><a href="/docs/" class="hover:text-lime transition-colors">Documentation</a></li>
+                <li><a href="https://docs.chronolog.dev" target="_blank" rel="noopener noreferrer" class="hover:text-lime transition-colors">Documentation</a></li>
                 <li><a href="https://github.com/grc-iit/ChronoLog" target="_blank" rel="noopener noreferrer" class="hover:text-lime transition-colors">GitHub</a></li>
               </ul>
             </div>
