@@ -96,14 +96,78 @@ A mutex-protected FIFO `std::deque<StoryChunk*>` for chunks that are ready to be
 
 The complete path from event arrival to persistent storage:
 
-```
-RPC arrival
-  → StoryChunkIngestionQueue (route by StoryId)
-    → StoryChunkIngestionHandle (double-buffered active/passive)
-      → DataStore merge (combine partial chunks)
-        → StoryChunkExtractionQueue (FIFO)
-          → StoryChunkWriter
-            → HDF5 file
-```
+<svg viewBox="0 0 480 470" width="100%" xmlns="http://www.w3.org/2000/svg" fontFamily="system-ui, sans-serif">
+  <rect x="0" y="0" width="480" height="470" rx="10" fill="#1e2330"/>
+
+  {/* Title */}
+  <text x="240" y="20" textAnchor="middle" fill="#c3e04d" fontSize="10" fontWeight="600">DATA FLOW: EVENT ARRIVAL TO PERSISTENT STORAGE</text>
+
+  {/* Step 1: RPC Arrival */}
+  <rect x="40" y="35" width="400" height="42" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
+  <circle cx="56" cy="51" r="3" fill="#c3e04d" fillOpacity="0.8"/>
+  <text x="66" y="55" fill="#c3e04d" fontSize="9" fontWeight="600">RPC Arrival</text>
+  <text x="66" y="68" fill="#9ca3b0" fontSize="7">Partial StoryChunks from ChronoKeepers</text>
+
+  {/* Arrow 1 */}
+  <line x1="240" y1="77" x2="240" y2="95" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
+  <polygon points="240,97 236,91 244,91" fill="#c3e04d" fillOpacity="0.6"/>
+
+  {/* Step 2: StoryChunkIngestionQueue */}
+  <rect x="40" y="97" width="400" height="42" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
+  <circle cx="56" cy="113" r="3" fill="#c3e04d" fillOpacity="0.8"/>
+  <text x="66" y="117" fill="#c3e04d" fontSize="9" fontWeight="600">StoryChunkIngestionQueue</text>
+  <text x="66" y="130" fill="#9ca3b0" fontSize="7">Route by StoryId to per-story handle</text>
+
+  {/* Arrow 2 */}
+  <line x1="240" y1="139" x2="240" y2="157" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
+  <polygon points="240,159 236,153 244,153" fill="#c3e04d" fillOpacity="0.6"/>
+
+  {/* Step 3: StoryChunkIngestionHandle */}
+  <rect x="40" y="159" width="400" height="42" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
+  <circle cx="56" cy="175" r="3" fill="#c3e04d" fillOpacity="0.8"/>
+  <text x="66" y="179" fill="#c3e04d" fontSize="9" fontWeight="600">StoryChunkIngestionHandle</text>
+  <text x="66" y="192" fill="#9ca3b0" fontSize="7">Double-buffered active/passive queues</text>
+
+  {/* Arrow 3 */}
+  <line x1="240" y1="201" x2="240" y2="219" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
+  <polygon points="240,221 236,215 244,215" fill="#c3e04d" fillOpacity="0.6"/>
+
+  {/* Step 4: DataStore Merge */}
+  <rect x="40" y="221" width="400" height="42" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
+  <circle cx="56" cy="237" r="3" fill="#c3e04d" fillOpacity="0.8"/>
+  <text x="66" y="241" fill="#c3e04d" fontSize="9" fontWeight="600">DataStore Merge</text>
+  <text x="66" y="254" fill="#9ca3b0" fontSize="7">Combine partial chunks into complete StoryChunks</text>
+
+  {/* Arrow 4 */}
+  <line x1="240" y1="263" x2="240" y2="281" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
+  <polygon points="240,283 236,277 244,277" fill="#c3e04d" fillOpacity="0.6"/>
+
+  {/* Step 5: StoryChunkExtractionQueue */}
+  <rect x="40" y="283" width="400" height="42" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
+  <circle cx="56" cy="299" r="3" fill="#c3e04d" fillOpacity="0.8"/>
+  <text x="66" y="303" fill="#c3e04d" fontSize="9" fontWeight="600">StoryChunkExtractionQueue</text>
+  <text x="66" y="316" fill="#9ca3b0" fontSize="7">FIFO queue for finalized chunks</text>
+
+  {/* Arrow 5 */}
+  <line x1="240" y1="325" x2="240" y2="343" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
+  <polygon points="240,345 236,339 244,339" fill="#c3e04d" fillOpacity="0.6"/>
+
+  {/* Step 6: StoryChunkWriter */}
+  <rect x="40" y="345" width="400" height="42" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
+  <circle cx="56" cy="361" r="3" fill="#c3e04d" fillOpacity="0.8"/>
+  <text x="66" y="365" fill="#c3e04d" fontSize="9" fontWeight="600">StoryChunkWriter</text>
+  <text x="66" y="378" fill="#9ca3b0" fontSize="7">Serialize and write to persistent storage</text>
+
+  {/* Arrow 6 */}
+  <line x1="240" y1="387" x2="240" y2="405" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
+  <polygon points="240,407 236,401 244,401" fill="#c3e04d" fillOpacity="0.6"/>
+
+  {/* Step 7: HDF5 File (terminal node) */}
+  <rect x="40" y="407" width="400" height="42" rx="6" fill="#252b3b" stroke="#3a4050" strokeWidth="0.75"/>
+  <circle cx="56" cy="423" r="3" fill="#c3e04d" fillOpacity="0.8"/>
+  <text x="66" y="427" fill="#e4e7ed" fontSize="9" fontWeight="600">HDF5 File</text>
+  <text x="66" y="440" fill="#9ca3b0" fontSize="7">Persistent on-disk storage</text>
+
+</svg>
 
 At each stage, the data representation evolves: raw `LogEvent` objects in `StoryChunk` containers flow through the in-memory pipeline, and are converted to `LogEventHVL` / `StoryChunkHVL` representations at the persistence boundary for HDF5 storage.
