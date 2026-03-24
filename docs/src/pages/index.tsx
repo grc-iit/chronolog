@@ -1,5 +1,4 @@
 import type {ReactNode} from 'react';
-import clsx from 'clsx';
 import Link from '@docusaurus/Link';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import Layout from '@theme/Layout';
@@ -12,15 +11,22 @@ function Hero() {
   return (
     <header className={styles.heroBanner}>
       <div className="container">
-<Heading as="h1" className={styles.heroTitle}>
+        <Heading as="h1" className={styles.heroTitle}>
           {siteConfig.title}
         </Heading>
         <p className={styles.heroTagline}>{siteConfig.tagline}</p>
         <div className={styles.buttons}>
-          <Link
-            className="button button--primary button--lg"
-            to="/docs/getting-started/overview">
+          <Link className={styles.btnPrimary} to="/docs/getting-started/overview">
             Get Started
+            <svg className={styles.btnIcon} viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M3 10a.75.75 0 01.75-.75h10.638l-3.96-3.72a.75.75 0 011.04-1.06l5.25 4.93a.75.75 0 010 1.1l-5.25 4.93a.75.75 0 01-1.04-1.06l3.96-3.72H3.75A.75.75 0 013 10z" clipRule="evenodd" />
+            </svg>
+          </Link>
+          <Link className={styles.btnOutline} href="https://github.com/grc-iit/ChronoLog">
+            <svg className={styles.btnIcon} viewBox="0 0 16 16" fill="currentColor">
+              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
+            </svg>
+            GitHub
           </Link>
         </div>
       </div>
@@ -28,206 +34,113 @@ function Hero() {
   );
 }
 
-function StatsBar() {
-  const stats = [
-    'v2.4.0',
-    'Distributed',
-    'HPC-Scale',
-    'Multi-Tiered',
-    'Open Source',
-  ];
-  return (
-    <div className={styles.statsBar}>
-      <div className="container">
-        <div className={styles.statsRow}>
-          {stats.map((s) => (
-            <span key={s} className={styles.statBadge}>{s}</span>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
+type DocSection = {
+  title: string;
+  link: string;
+  description: string;
+  icon: ReactNode;
+};
 
-function ArchitectureSection() {
-  return (
-    <section className={styles.section}>
-      <div className="container">
-        <Heading as="h2" className={styles.sectionHeading}>
-          Architecture
-        </Heading>
-        <p className={styles.sectionSubheading}>
-          A layered design separating ingestion, storage, and retrieval for maximum scalability
-        </p>
-        <svg viewBox="0 0 720 710" width="100%" xmlns="http://www.w3.org/2000/svg" fontFamily="system-ui, sans-serif" className={styles.archImg} role="img" aria-label="ChronoLog architecture diagram">
-          <rect x="0" y="0" width="720" height="710" rx="10" fill="#1e2330"/>
-          <text x="355" y="16" textAnchor="middle" fill="#9ca3b0" fontSize="8" fontWeight="600">CLIENT APPLICATIONS</text>
-          <rect x="30" y="24" width="100" height="28" rx="5" fill="#252b3b" stroke="#3a4050" strokeWidth="0.75"/>
-          <text x="80" y="42" textAnchor="middle" fill="#e4e7ed" fontSize="8">GraphDB</text>
-          <rect x="140" y="24" width="100" height="28" rx="5" fill="#252b3b" stroke="#3a4050" strokeWidth="0.75"/>
-          <text x="190" y="42" textAnchor="middle" fill="#e4e7ed" fontSize="8">NoSQL</text>
-          <rect x="250" y="24" width="100" height="28" rx="5" fill="#252b3b" stroke="#3a4050" strokeWidth="0.75"/>
-          <text x="300" y="42" textAnchor="middle" fill="#e4e7ed" fontSize="8">Monitoring</text>
-          <rect x="360" y="24" width="100" height="28" rx="5" fill="#252b3b" stroke="#3a4050" strokeWidth="0.75"/>
-          <text x="410" y="42" textAnchor="middle" fill="#e4e7ed" fontSize="8">BigTable</text>
-          <rect x="470" y="24" width="100" height="28" rx="5" fill="#252b3b" stroke="#3a4050" strokeWidth="0.75"/>
-          <text x="520" y="42" textAnchor="middle" fill="#e4e7ed" fontSize="8">Telemetry</text>
-          <rect x="580" y="24" width="100" height="28" rx="5" fill="#252b3b" stroke="#3a4050" strokeWidth="0.75"/>
-          <text x="630" y="42" textAnchor="middle" fill="#e4e7ed" fontSize="8">Streams</text>
-          <line x1="360" y1="54" x2="360" y2="68" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
-          <polygon points="360,70 356,64 364,64" fill="#c3e04d" fillOpacity="0.5"/>
-          <rect x="30" y="78" width="650" height="38" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.6"/>
-          <text x="355" y="102" textAnchor="middle" fill="#c3e04d" fontSize="10" fontWeight="600">ChronoLog Client API</text>
-          <text x="24" y="132" fill="#9ca3b0" fontSize="7" fontWeight="600">CLIENT LAYER</text>
-          <line x1="20" y1="138" x2="700" y2="138" stroke="#9ca3b0" strokeWidth="0.75" strokeDasharray="6,4" strokeOpacity="0.4"/>
-          <text x="24" y="156" fill="#9ca3b0" fontSize="7" fontWeight="600">CONTROL PLANE</text>
-          <rect x="30" y="168" width="650" height="440" rx="8" fill="none" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.25" strokeDasharray="8,4"/>
-          <text x="42" y="182" fill="#c3e04d" fontSize="8" fontWeight="600" fillOpacity="0.6">CHRONOLOG CLUSTER</text>
-          <rect x="60" y="192" width="220" height="68" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
-          <circle cx="76" cy="210" r="3" fill="#c3e04d" fillOpacity="0.8"/>
-          <text x="84" y="214" fill="#c3e04d" fontSize="10" fontWeight="600">chrono-visor</text>
-          <text x="72" y="230" fill="#9ca3b0" fontSize="7">Metadata management, chronicle</text>
-          <text x="72" y="240" fill="#9ca3b0" fontSize="7">registry, clock sync, client connections</text>
-          <line x1="20" y1="280" x2="700" y2="280" stroke="#9ca3b0" strokeWidth="0.75" strokeDasharray="6,4" strokeOpacity="0.4"/>
-          <text x="24" y="298" fill="#9ca3b0" fontSize="7" fontWeight="600">DATA PLANE</text>
-          <rect x="230" y="308" width="430" height="220" rx="6" fill="none" stroke="#4a90a4" strokeWidth="0.75" strokeDasharray="6,3" strokeOpacity="0.4"/>
-          <text x="242" y="322" fill="#4a90a4" fontSize="8" fontWeight="600" fillOpacity="0.7">RECORDING GROUP</text>
-          <rect x="340" y="334" width="210" height="68" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
-          <circle cx="356" cy="352" r="3" fill="#c3e04d" fillOpacity="0.8"/>
-          <text x="364" y="356" fill="#c3e04d" fontSize="10" fontWeight="600">chrono-keeper</text>
-          <text x="356" y="372" fill="#9ca3b0" fontSize="7">Hot-tier ingestion via RDMA, real-time</text>
-          <text x="356" y="382" fill="#9ca3b0" fontSize="7">{"record() and playback() with µs latency"}</text>
-          <rect x="255" y="430" width="195" height="68" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
-          <circle cx="271" cy="448" r="3" fill="#c3e04d" fillOpacity="0.8"/>
-          <text x="279" y="452" fill="#c3e04d" fontSize="10" fontWeight="600">chrono-grapher</text>
-          <text x="271" y="468" fill="#9ca3b0" fontSize="7">DAG pipeline: event collection, story</text>
-          <text x="271" y="478" fill="#9ca3b0" fontSize="7">building, merging, flushing to lower tiers</text>
-          <rect x="478" y="430" width="165" height="68" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
-          <circle cx="494" cy="448" r="3" fill="#c3e04d" fillOpacity="0.8"/>
-          <text x="502" y="452" fill="#c3e04d" fontSize="10" fontWeight="600">chrono-player</text>
-          <text x="494" y="468" fill="#9ca3b0" fontSize="7">{"Serves replay() across hot, warm,"}</text>
-          <text x="494" y="478" fill="#9ca3b0" fontSize="7">cold tiers into a time-ordered stream</text>
-          <rect x="60" y="558" width="600" height="38" rx="6" fill="#252b3b" stroke="#3a4050" strokeWidth="0.75"/>
-          <text x="360" y="582" textAnchor="middle" fill="#e4e7ed" fontSize="10">HDF5 on PFS</text>
-          <line x1="20" y1="618" x2="700" y2="618" stroke="#9ca3b0" strokeWidth="0.75" strokeDasharray="6,4" strokeOpacity="0.4"/>
-          <text x="24" y="636" fill="#9ca3b0" fontSize="7" fontWeight="600">STORAGE PLANE</text>
-          <rect x="140" y="644" width="440" height="40" rx="6" fill="#252b3b" stroke="#3a4050" strokeWidth="0.75"/>
-          <text x="360" y="669" textAnchor="middle" fill="#e4e7ed" fontSize="10">EXTERNAL STORAGE</text>
-          <line x1="155" y1="124" x2="155" y2="190" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
-          <polygon points="155,192 151,186 159,186" fill="#c3e04d" fillOpacity="0.6"/>
-          <line x1="450" y1="124" x2="450" y2="332" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
-          <polygon points="450,334 446,328 454,328" fill="#c3e04d" fillOpacity="0.6"/>
-          <line x1="155" y1="262" x2="155" y2="360" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
-          <line x1="155" y1="360" x2="228" y2="360" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
-          <polygon points="230,360 224,356 224,364" fill="#c3e04d" fillOpacity="0.6"/>
-          <line x1="445" y1="404" x2="445" y2="428" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
-          <polygon points="445,430 441,424 449,424" fill="#c3e04d" fillOpacity="0.6"/>
-          <line x1="352" y1="500" x2="352" y2="556" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
-          <polygon points="352,558 348,552 356,552" fill="#c3e04d" fillOpacity="0.6"/>
-          <line x1="560" y1="500" x2="560" y2="556" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
-          <polygon points="560,558 556,552 564,552" fill="#c3e04d" fillOpacity="0.6"/>
-          <line x1="560" y1="430" x2="560" y2="118" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
-          <polygon points="560,116 556,122 564,122" fill="#c3e04d" fillOpacity="0.6"/>
-          <line x1="360" y1="598" x2="360" y2="642" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
-          <polygon points="360,644 356,638 364,638" fill="#c3e04d" fillOpacity="0.6"/>
-        </svg>
-        <p className={styles.archCaption}>
-          ChronoLog system architecture — ChronoVisor, ChronoKeeper, ChronoGrapher, and ChronoPlayer layers
-        </p>
-      </div>
-    </section>
-  );
-}
-
-type QuickStartItem = {icon: string; title: string; desc: string; link: string; label: string};
-
-const quickStarts: QuickStartItem[] = [
+const docSections: DocSection[] = [
   {
-    icon: '🐳',
-    title: 'Single Node',
-    desc: 'Spin up a complete ChronoLog stack on a single machine in minutes using Docker Compose.',
-    link: '/docs/tutorials/docker-single-node/running-chronolog',
-    label: 'Single Node',
-  },
-  {
-    icon: '🌐',
-    title: 'Multi Node',
-    desc: 'Deploy a distributed ChronoLog cluster across multiple hosts with Docker networking.',
-    link: '/docs/tutorials/docker-multi-node/running-chronolog',
-    label: 'Multi Node',
-  },
-  {
-    icon: '📖',
-    title: 'Full Documentation',
-    desc: 'Explore the complete reference: architecture, configuration, API, and advanced topics.',
+    title: 'Getting Started',
     link: '/docs/getting-started/overview',
-    label: 'Browse Docs',
+    description: 'Installation, core concepts, and your first deployment.',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 2L12 14M12 14L8 10M12 14L16 10" />
+        <path d="M4 20h16" />
+      </svg>
+    ),
+  },
+  {
+    title: 'User Guide',
+    link: '/docs/user-guide/overview',
+    description: 'Architecture, data model, configuration, and operations.',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 19.5A2.5 2.5 0 016.5 17H20" />
+        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" />
+      </svg>
+    ),
+  },
+  {
+    title: 'Client API',
+    link: '/docs/client/overview',
+    description: 'C++, Python, and CLI reference with examples.',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="16 18 22 12 16 6" />
+        <polyline points="8 6 2 12 8 18" />
+      </svg>
+    ),
+  },
+  {
+    title: 'Plugins',
+    link: '/docs/plugins/overview',
+    description: 'ChronoKVS, ChronoStream, and extensibility.',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+      </svg>
+    ),
+  },
+  {
+    title: 'Tutorials',
+    link: '/docs/tutorials/overview',
+    description: 'Docker single-node, multi-node, and native Linux walkthroughs.',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+        <line x1="8" y1="21" x2="16" y2="21" />
+        <line x1="12" y1="17" x2="12" y2="21" />
+      </svg>
+    ),
+  },
+  {
+    title: 'Contributing',
+    link: '/docs/contributing/overview',
+    description: 'Development setup, guidelines, and workflow.',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="18" cy="18" r="3" />
+        <circle cx="6" cy="6" r="3" />
+        <path d="M6 21V9a9 9 0 009 9" />
+      </svg>
+    ),
   },
 ];
 
-function QuickStartSection() {
+function DocSectionsGrid() {
   return (
-    <section className={styles.sectionAlt}>
+    <section className={styles.docSections}>
       <div className="container">
-        <Heading as="h2" className={styles.sectionHeading}>
-          Quick Start
-        </Heading>
-        <p className={styles.sectionSubheading}>
-          Get ChronoLog running in your environment
-        </p>
-        <div className="row">
-          {quickStarts.map((qs) => (
-            <div key={qs.title} className={clsx('col col--4', styles.quickCol)}>
-              <div className={styles.quickCard}>
-                <div className={styles.quickIcon} aria-hidden="true">{qs.icon}</div>
-                <div className={styles.quickTitle}>{qs.title}</div>
-                <p className={styles.quickDesc}>{qs.desc}</p>
-                <Link className="button button--primary button--sm" to={qs.link}>
-                  {qs.label}
-                </Link>
-              </div>
-            </div>
+        <div className={styles.docGrid}>
+          {docSections.map((section) => (
+            <Link
+              key={section.title}
+              className={styles.docCard}
+              to={section.link}>
+              <div className={styles.docCardIcon}>{section.icon}</div>
+              <div className={styles.docCardTitle}>{section.title}</div>
+              <p className={styles.docCardDesc}>{section.description}</p>
+            </Link>
           ))}
         </div>
       </div>
     </section>
-  );
-}
-
-function NsfBanner() {
-  return (
-    <div className={styles.nsfBanner}>
-      <div className="container">
-        <img src="/logos/nsf.png" alt="NSF logo" className={styles.nsfLogo} />
-        <p className={styles.nsfText}>
-          ChronoLog is supported by the National Science Foundation (NSF) under
-          awards 2126967 and 2104013. Any opinions, findings, and conclusions or
-          recommendations expressed here are those of the author(s) and do not
-          necessarily reflect the views of the NSF.
-        </p>
-        <Link
-          className="button button--outline button--primary button--sm"
-          href="https://github.com/grc-iit/ChronoLog">
-          View on GitHub
-        </Link>
-      </div>
-    </div>
   );
 }
 
 export default function Home(): ReactNode {
-  const {siteConfig} = useDocusaurusContext();
   return (
     <Layout
       title="Docs"
-      description="ChronoLog: A distributed shared tiered log store for large-scale science. High-performance, multi-tiered storage with time-based ordering.">
+      description="ChronoLog documentation — installation, API reference, tutorials, and guides for the distributed shared tiered log service.">
       <Hero />
-      <StatsBar />
       <main>
-        <ArchitectureSection />
-        <QuickStartSection />
+        <DocSectionsGrid />
       </main>
-      <NsfBanner />
     </Layout>
   );
 }
