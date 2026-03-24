@@ -17,7 +17,7 @@ Get ChronoLog running on your machine in minutes. Choose the method that best fi
 
 ### Spack
 
-ChronoLog requires various packages managed by Spack. We recommend using Spack version [v0.21.2 (2024-03-01)](https://github.com/spack/spack/releases/tag/v0.21.2):
+ChronoLog requires various packages managed by Spack:
 
 :::info
 Spack v0.21.2 is required due to an incompatibility between newer Spack versions and spdlog. This will be resolved in a future release.

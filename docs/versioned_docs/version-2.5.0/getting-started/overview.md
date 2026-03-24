@@ -138,6 +138,8 @@ ChronoLog is being developed by a team of researchers and engineers at Illinois 
 
 We gratefully acknowledge the support of the National Science Foundation (NSF) for funding this project. We also thank our collaborators from various scientific and engineering domains for their valuable insights and feedback.
 
-### Publication
+:::info Publication
 
 A. Kougkas, H. Devarajan, K. Bateman, J. Cernuda, N. Rajesh, X.-H. Sun. "[ChronoLog: A Distributed Shared Tiered Log Store with Time-based Data Ordering](http://www.cs.iit.edu/~scs/testing/scs_website/assets/files/kougkas2020chronolog.pdf)," Proceedings of the 36th International Conference on Massive Storage Systems and Technology (MSST 2020).
+
+:::
