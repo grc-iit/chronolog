@@ -32,43 +32,154 @@ A **Recording Group** is a logical grouping of recording processes that work tog
 
 ### Write path
 
-```
-Client Application
-  │  LogEvent (storyId, timestamp, clientId, eventIndex, record)
-  ▼
-ChronoVisor (port 5555, provider 55)
-  │  AcquireStory → assigns story to a Recording Group
-  │  Notifies Keepers/Grapher/Player via DataStoreAdmin RPCs
-  ▼
-ChronoKeeper (port 5555)
-  │  Ingestion Queue → Story Pipeline (in-memory)
-  │  Events are grouped into time-range-bound partial StoryChunks
-  │  Retired chunks enter the StoryChunk Extraction Queue
-  ▼
-ChronoGrapher (port 9999, provider 99 — RDMA drain)
-  │  Receives partial StoryChunks from all Keepers in the group
-  │  Merges partials into complete StoryChunks via its own Story Pipeline
-  │  Archives complete chunks to persistent storage
-  ▼
-HDF5 Archives (POSIX filesystem on storage node)
-```
+<svg viewBox="0 0 720 130" width="100%" xmlns="http://www.w3.org/2000/svg" fontFamily="system-ui, sans-serif">
+  <rect x="0" y="0" width="720" height="130" rx="10" fill="#1e2330"/>
+
+  {/* Title */}
+  <text x="360" y="20" textAnchor="middle" fill="#c3e04d" fontSize="10" fontWeight="600">WRITE PATH</text>
+
+  {/* Client Application */}
+  <rect x="14" y="36" width="120" height="80" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
+  <circle cx="30" cy="52" r="3" fill="#c3e04d" fillOpacity="0.8"/>
+  <text x="38" y="56" fill="#c3e04d" fontSize="8" fontWeight="600">Client App</text>
+  <text x="24" y="72" fill="#9ca3b0" fontSize="6">LogEvent (storyId,</text>
+  <text x="24" y="81" fill="#9ca3b0" fontSize="6">timestamp, clientId,</text>
+  <text x="24" y="90" fill="#9ca3b0" fontSize="6">eventIndex, record)</text>
+
+  {/* Arrow 1 */}
+  <line x1="134" y1="76" x2="150" y2="76" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
+  <polygon points="152,76 146,72 146,80" fill="#c3e04d" fillOpacity="0.5"/>
+
+  {/* ChronoVisor */}
+  <rect x="154" y="36" width="120" height="80" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
+  <circle cx="170" cy="52" r="3" fill="#c3e04d" fillOpacity="0.8"/>
+  <text x="178" y="56" fill="#c3e04d" fontSize="8" fontWeight="600">ChronoVisor</text>
+  <text x="164" y="72" fill="#9ca3b0" fontSize="6">{"AcquireStory → assigns"}</text>
+  <text x="164" y="81" fill="#9ca3b0" fontSize="6">story to Recording Group.</text>
+  <text x="164" y="90" fill="#9ca3b0" fontSize="6">Notifies Keepers/Grapher</text>
+  <text x="164" y="99" fill="#9ca3b0" fontSize="6">via DataStoreAdmin RPCs</text>
+  <text x="214" y="108" textAnchor="middle" fill="#9ca3b0" fontSize="5" fontStyle="italic">port 5555, provider 55</text>
+
+  {/* Arrow 2 */}
+  <line x1="274" y1="76" x2="290" y2="76" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
+  <polygon points="292,76 286,72 286,80" fill="#c3e04d" fillOpacity="0.5"/>
+
+  {/* ChronoKeeper */}
+  <rect x="294" y="36" width="130" height="80" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
+  <circle cx="310" cy="52" r="3" fill="#c3e04d" fillOpacity="0.8"/>
+  <text x="318" y="56" fill="#c3e04d" fontSize="8" fontWeight="600">ChronoKeeper</text>
+  <text x="304" y="72" fill="#9ca3b0" fontSize="6">{"Ingestion Queue → Story"}</text>
+  <text x="304" y="81" fill="#9ca3b0" fontSize="6">Pipeline (in-memory). Events</text>
+  <text x="304" y="90" fill="#9ca3b0" fontSize="6">grouped into partial StoryChunks.</text>
+  <text x="304" y="99" fill="#9ca3b0" fontSize="6">Retired chunks extracted</text>
+  <text x="359" y="108" textAnchor="middle" fill="#9ca3b0" fontSize="5" fontStyle="italic">port 5555</text>
+
+  {/* Arrow 3 */}
+  <line x1="424" y1="76" x2="440" y2="76" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
+  <polygon points="442,76 436,72 436,80" fill="#c3e04d" fillOpacity="0.5"/>
+
+  {/* ChronoGrapher */}
+  <rect x="444" y="36" width="130" height="80" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
+  <circle cx="460" cy="52" r="3" fill="#c3e04d" fillOpacity="0.8"/>
+  <text x="468" y="56" fill="#c3e04d" fontSize="8" fontWeight="600">ChronoGrapher</text>
+  <text x="454" y="72" fill="#9ca3b0" fontSize="6">Receives partial StoryChunks</text>
+  <text x="454" y="81" fill="#9ca3b0" fontSize="6">from all Keepers. Merges into</text>
+  <text x="454" y="90" fill="#9ca3b0" fontSize="6">complete chunks. Archives to</text>
+  <text x="454" y="99" fill="#9ca3b0" fontSize="6">persistent storage</text>
+  <text x="509" y="108" textAnchor="middle" fill="#9ca3b0" fontSize="5" fontStyle="italic">{"port 9999, provider 99 — RDMA"}</text>
+
+  {/* Arrow 4 */}
+  <line x1="574" y1="76" x2="590" y2="76" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
+  <polygon points="592,76 586,72 586,80" fill="#c3e04d" fillOpacity="0.5"/>
+
+  {/* HDF5 Archives */}
+  <rect x="594" y="36" width="112" height="80" rx="6" fill="#252b3b" stroke="#3a4050" strokeWidth="0.75"/>
+  <circle cx="610" cy="52" r="3" fill="#c3e04d" fillOpacity="0.8"/>
+  <text x="618" y="56" fill="#e4e7ed" fontSize="8" fontWeight="600">HDF5 Archives</text>
+  <text x="604" y="72" fill="#9ca3b0" fontSize="6">POSIX filesystem</text>
+  <text x="604" y="81" fill="#9ca3b0" fontSize="6">on storage node</text>
+
+</svg>
+
+1. Client calls `LogEvent()` with timestamped record → sent to ChronoVisor
+2. ChronoVisor assigns the story to a Recording Group → notifies all group processes
+3. ChronoKeeper ingests events into in-memory Story Pipeline → groups into partial StoryChunks
+4. Retired chunks are drained via RDMA bulk transfer to ChronoGrapher
+5. ChronoGrapher merges partials from all Keepers → archives complete StoryChunks to HDF5
 
 ### Read path
 
-```
-Client Application
-  │  ReplayStory(storyId, startTime, endTime)
-  ▼
-ChronoVisor
-  │  Routes query to ChronoPlayer in the appropriate Recording Group
-  ▼
-ChronoPlayer
-  ├── Player Data Store (in-memory) — most recent merged chunks
-  └── Archive Reading Agent — reads from HDF5 persistent storage
-  │
-  ▼
-Playback Response Transfer Agent → bulk transfer back to client
-```
+<svg viewBox="0 0 720 470" width="100%" xmlns="http://www.w3.org/2000/svg" fontFamily="system-ui, sans-serif">
+  <rect x="0" y="0" width="720" height="470" rx="10" fill="#1e2330"/>
+
+  {/* Title */}
+  <text x="360" y="20" textAnchor="middle" fill="#c3e04d" fontSize="10" fontWeight="600">READ PATH</text>
+
+  {/* Client Application */}
+  <rect x="110" y="36" width="500" height="44" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
+  <circle cx="126" cy="54" r="3" fill="#c3e04d" fillOpacity="0.8"/>
+  <text x="134" y="58" fill="#c3e04d" fontSize="10" fontWeight="600">Client Application</text>
+  <text x="126" y="72" fill="#9ca3b0" fontSize="7">ReplayStory(storyId, startTime, endTime)</text>
+
+  {/* Arrow 1 */}
+  <line x1="360" y1="80" x2="360" y2="114" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
+  <polygon points="360,116 356,110 364,110" fill="#c3e04d" fillOpacity="0.5"/>
+
+  {/* ChronoVisor */}
+  <rect x="110" y="118" width="500" height="48" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
+  <circle cx="126" cy="136" r="3" fill="#c3e04d" fillOpacity="0.8"/>
+  <text x="134" y="140" fill="#c3e04d" fontSize="10" fontWeight="600">ChronoVisor</text>
+  <text x="126" y="156" fill="#9ca3b0" fontSize="7">Routes query to ChronoPlayer in the appropriate Recording Group</text>
+
+  {/* Arrow 2 */}
+  <line x1="360" y1="166" x2="360" y2="198" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
+  <polygon points="360,200 356,194 364,194" fill="#c3e04d" fillOpacity="0.5"/>
+
+  {/* ChronoPlayer container (dashed) */}
+  <rect x="50" y="192" width="620" height="178" rx="8" fill="none" stroke="#4a90a4" strokeWidth="0.75" strokeDasharray="6,3" strokeOpacity="0.4"/>
+  <text x="62" y="206" fill="#4a90a4" fontSize="8" fontWeight="600" fillOpacity="0.7">CHRONOPLAYER</text>
+
+  {/* ChronoPlayer box */}
+  <rect x="160" y="212" width="400" height="38" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
+  <circle cx="176" cy="232" r="3" fill="#c3e04d" fillOpacity="0.8"/>
+  <text x="184" y="236" fill="#c3e04d" fontSize="10" fontWeight="600">ChronoPlayer</text>
+  <text x="340" y="236" fill="#9ca3b0" fontSize="7">Queries both in-memory and archival data sources</text>
+
+  {/* Fork arrow left */}
+  <line x1="280" y1="250" x2="205" y2="296" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
+  <polygon points="203,298 200,291 208,292" fill="#c3e04d" fillOpacity="0.5"/>
+
+  {/* Fork arrow right */}
+  <line x1="440" y1="250" x2="515" y2="296" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
+  <polygon points="517,298 512,292 520,291" fill="#c3e04d" fillOpacity="0.5"/>
+
+  {/* Player Data Store (left branch) */}
+  <rect x="70" y="300" width="270" height="48" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
+  <circle cx="86" cy="318" r="3" fill="#c3e04d" fillOpacity="0.8"/>
+  <text x="94" y="322" fill="#c3e04d" fontSize="9" fontWeight="600">Player Data Store (in-memory)</text>
+  <text x="86" y="338" fill="#9ca3b0" fontSize="7">Most recent merged chunks</text>
+
+  {/* Archive Reading Agent (right branch) */}
+  <rect x="380" y="300" width="270" height="48" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
+  <circle cx="396" cy="318" r="3" fill="#c3e04d" fillOpacity="0.8"/>
+  <text x="404" y="322" fill="#c3e04d" fontSize="9" fontWeight="600">Archive Reading Agent</text>
+  <text x="396" y="338" fill="#9ca3b0" fontSize="7">Reads from HDF5 persistent storage</text>
+
+  {/* Converge arrow left */}
+  <line x1="205" y1="348" x2="355" y2="404" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
+
+  {/* Converge arrow right */}
+  <line x1="515" y1="348" x2="365" y2="404" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
+
+  {/* Converge arrowhead */}
+  <polygon points="360,406 356,400 364,400" fill="#c3e04d" fillOpacity="0.5"/>
+
+  {/* Playback Response Transfer Agent */}
+  <rect x="110" y="408" width="500" height="44" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
+  <circle cx="126" cy="426" r="3" fill="#c3e04d" fillOpacity="0.8"/>
+  <text x="134" y="430" fill="#c3e04d" fontSize="10" fontWeight="600">Playback Response Transfer Agent</text>
+  <text x="126" y="444" fill="#9ca3b0" fontSize="7">{"Bulk transfer back to client → merged, time-ordered event stream"}</text>
+</svg>
 
 The Player maintains an in-memory copy of the most recent story segments (the same chunks sent to ChronoGrapher), so recent events can be served before they are fully committed to the archive tier.
 
