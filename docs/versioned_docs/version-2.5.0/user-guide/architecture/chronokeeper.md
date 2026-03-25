@@ -7,7 +7,7 @@ title: "ChronoKeeper"
 
 **ChronoKeeper** is the component responsible for fast ingestion of the log events coming from the client processes, efficiently grouping them into partial StoryChunks and moving them down to the lower tier of ChronoLog system.
 
-Most ChronoLog deployments would have ChronoKeeper processes installed on the majority of the compute nodes and each Recording Group is expected to have multiple ChronoKeeper processes.
+Most ChronoLog deployments would have ChronoKeeper processes running on the majority of the compute nodes and each Recording Group is expected to have multiple ChronoKeeper processes.
 
 <svg viewBox="0 0 720 590" width="100%" xmlns="http://www.w3.org/2000/svg" fontFamily="system-ui, sans-serif">
   <rect x="0" y="0" width="720" height="590" rx="10" fill="#1e2330"/>
@@ -19,12 +19,12 @@ Most ChronoLog deployments would have ChronoKeeper processes installed on the ma
 
   <g transform="translate(0, 30)">
   {/* Top annotation */}
-  <text x="680" y="16" textAnchor="end" fill="#9ca3b0" fontSize="7" fontStyle="italic">Individual Events are streamed from the</text>
-  <text x="680" y="26" textAnchor="end" fill="#9ca3b0" fontSize="7" fontStyle="italic">Client processes to the ChronoKeepers</text>
+  <text x="500" y="16" textAnchor="end" fill="#9ca3b0" fontSize="7" fontStyle="italic">Individual Events are streamed from the</text>
+  <text x="500" y="26" textAnchor="end" fill="#9ca3b0" fontSize="7" fontStyle="italic">Client processes to the ChronoKeepers</text>
 
   {/* Arrow from annotation to Recording Service */}
-  <line x1="580" y1="30" x2="445" y2="46" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
-  <polygon points="445,48 441,42 449,42" fill="#c3e04d" fillOpacity="0.6"/>
+  <line x1="440" y1="30" x2="440" y2="46" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
+  <polygon points="440,48 436,42 444,42" fill="#c3e04d" fillOpacity="0.6"/>
 
   {/* Keeper Recording Service */}
   <rect x="190" y="48" width="500" height="34" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
@@ -175,7 +175,7 @@ Most ChronoLog deployments would have ChronoKeeper processes installed on the ma
   <rect x="10" y="240" width="165" height="50" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
   <circle cx="26" cy="260" r="3" fill="#c3e04d" fillOpacity="0.8"/>
   <text x="34" y="264" fill="#c3e04d" fontSize="9" fontWeight="600">DataStore Admin Service</text>
-  <text x="26" y="278" fill="#9ca3b0" fontSize="6.5">{"Start/Stop Story notifications"}</text>
+  <text x="26" y="278" fill="#9ca3b0" fontSize="6.5">{"Start/Stop Story recording notifications"}</text>
   {/* Arrow coming in from left */}
   <line x1="2" y1="260" x2="10" y2="260" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
   <polygon points="10,260 4,256 4,264" fill="#c3e04d" fillOpacity="0.6"/>
@@ -195,10 +195,10 @@ Most ChronoLog deployments would have ChronoKeeper processes installed on the ma
   <text x="214" y="427" fill="#c3e04d" fontSize="10" fontWeight="600">StoryChunk Extraction Queue</text>
 
   {/* Arrows to extractors */}
-  <line x1="350" y1="440" x2="310" y2="462" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
-  <polygon points="310,464 306,458 314,458" fill="#c3e04d" fillOpacity="0.6"/>
-  <line x1="530" y1="440" x2="570" y2="462" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
-  <polygon points="570,464 566,458 574,458" fill="#c3e04d" fillOpacity="0.6"/>
+  <line x1="350" y1="440" x2="300" y2="462" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
+  <polygon points="300,464 296,458 304,458" fill="#c3e04d" fillOpacity="0.6"/>
+  <line x1="530" y1="440" x2="560" y2="462" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
+  <polygon points="560,464 556,458 564,458" fill="#c3e04d" fillOpacity="0.6"/>
 
   {/* CSV File Extractor */}
   <rect x="190" y="464" width="220" height="40" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
@@ -221,12 +221,12 @@ Most ChronoLog deployments would have ChronoKeeper processes installed on the ma
   </g>
 </svg>
 
-| Component | Description |
-|-----------|-------------|
-| **Keeper Data Store** | The main ChronoKeeper module. A collection of Story Pipelines for all actively recorded stories in the Recording Group. Instantiates a Story Pipeline when ChronoKeeper receives a StartStoryRecording notification and dismantles it after StopStoryRecording. Sequencing threads are responsible for ordering ingested log events and grouping them into time-range bound StoryChunks. (See ChronoLog Story Pipeline Data Model for reference.) |
-| **Keeper Recording Service** | Listens to incoming streams of log events from client applications and passes the events to the Ingestion Queue module for processing. |
-| **Ingestion Queue** | A collection of IngestionHandles for actively recorded stories the ChronoKeeper is expecting events for. Receives log events from the Keeper Recording Service and attributes them to the appropriate Story Ingestion Handles. Story Ingestion Handle is part of the Story Pipeline object exposed to the Ingestion Queue at instantiation time. |
-| **StoryChunk Extraction Queue** | A mutex-protected deque of StoryChunk pointers, serving as the communication boundary between the Keeper Data Store and StoryChunk Extractor modules. |
-| **StoryChunk Extractors** | ChronoKeeper has two extractor types: **CSVFileStoryChunkExtractor** writes retired StoryChunks to a configurable local POSIX directory; **StoryChunkExtractorRDMA** drains retired StoryChunks to ChronoGrapher over an RDMA communication channel. Extractors can be chained if needed. |
-| **KeeperRegistryClient** | The client side of RPC communication between the ChronoKeeper process and ChronoVisor's Recording Process Registry Service. Sends Register/Unregister and Heartbeat/Statistics messages to ChronoVisor. |
-| **DataStoreAdminService** | Listens to Start/Stop Story recording notifications from ChronoVisor. These notifications trigger instantiation or dismantling of the appropriate StoryPipelines based on client data access requests. |
+| Component                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ---------------------------------| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Keeper Data Store**           | The main ChronoKeeper module. A collection of Story pipelines for all actively recorded Stories in the Recording Group. Instantiates a Story pipeline when ChronoKeeper receives a StartStoryRecording notification and dismantles it after StopStoryRecording. Sequencing threads are responsible for ordering ingested log events and grouping them into time-range bound StoryChunks. (See ChronoLog Story Pipeline Data Model for reference.) |
+| **Keeper Recording Service**    | Listens to incoming streams of log events from client applications and passes the events to the Ingestion Queue module for processing.                                                                                                                                                                                                                                                                                                            |
+| **Ingestion Queue**             | A collection of IngestionHandles for actively recorded stories the ChronoKeeper is expecting events for. Receives log events from the Keeper Recording Service and attributes them to the appropriate Story Ingestion Handles. Story Ingestion Handle is part of the Story Pipeline object exposed to the Ingestion Queue at instantiation time.                                                                                                  |
+| **StoryChunk Extraction Queue** | A mutex-protected deque of StoryChunk pointers, serving as the communication boundary between the Keeper Data Store and StoryChunk Extractor modules.                                                                                                                                                                                                                                                                                             |
+| **StoryChunk Extractors**       | ChronoKeeper has two extractor types: **CSVFileStoryChunkExtractor** writes retired StoryChunks to a configurable local POSIX directory; **StoryChunkExtractorRDMA** drains retired StoryChunks to ChronoGrapher over an RDMA communication channel. Extractors can be chained if needed.                                                                                                                                                         |
+| **KeeperRegistryClient**        | The client side of RPC communication between the ChronoKeeper process and ChronoVisor's Recording Process Registry Service. Sends register/unregister and heartbeat/statistics messages to ChronoVisor.                                                                                                                                                                                                                                           |
+| **DataStoreAdminService**       | Listens to Start/Stop Story recording notifications from ChronoVisor. These notifications trigger instantiation or dismantling of the appropriate StoryPipelines based on client data access requests.                                                                                                                                                                                                                                            |

@@ -5,26 +5,26 @@ title: "System Overview"
 
 # System Overview
 
-ChronoLog is a distributed, tiered log storage system designed for high-performance computing (HPC) environments. It captures, sequences, and archives streams of timestamped events — called **Stories** — without relying on a central sequencer. Each event carries a physical timestamp assigned at the source, and ChronoLog's pipeline progressively merges and orders these events as they move through storage tiers. The system is built on Thallium RPC with OFI transport and supports RDMA for high-throughput bulk data movement.
+ChronoLog is a distributed, tiered log storage system designed for High-Performance Computing (HPC) environments. It captures, sequences, and archives streams of timestamped **Events** — called **Stories** — without relying on a central sequencer. Each **Event** carries a physical timestamp assigned at the source, and ChronoLog's pipeline progressively merges and orders these **Events** as they move through storage tiers. The system is built on Thallium RPC with OFI transport and supports RDMA for high-throughput bulk data movement.
 
 ## Component Architecture
 
 ChronoLog is composed of five main components, each running as an independent process:
 
-| Component | Role | Typical deployment |
-|-----------|------|--------------------|
-| [**ChronoVisor**](./chronovisor.md) | Orchestrator — client portal, metadata directory, process registry, load balancing | One per deployment, on a dedicated node |
-| [**ChronoKeeper**](./chronokeeper.md) | Fast event ingestion — receives log events from clients, groups them into partial StoryChunks | Many per deployment, on compute nodes |
-| [**ChronoGrapher**](./chronographer.md) | Merge and archive — merges partial StoryChunks into complete ones, writes to HDF5 persistent storage | One per Recording Group, on a storage node |
-| [**ChronoPlayer**](./chronoplayer.md) | Read-back — serves story replay queries from both in-memory data and HDF5 archives | One per Recording Group, on a storage node |
-| **Client Library** | Application-facing API (`chronolog_client.h`) for connecting, creating Chronicles/Stories, recording events, and replaying data | Linked into client applications |
+| Component                                      | Role                                                                                                                                    | Typical deployment                             |
+| ------------------------------------------------| -----------------------------------------------------------------------------------------------------------------------------------------| ------------------------------------------------|
+| [**ChronoVisor**](./chronovisor.md)            | Orchestrator — client portal, metadata directory, process registry, load balancing                                                      | One per deployment, on a dedicated node        |
+| [**ChronoKeeper**](./chronokeeper.md)          | Fast event ingestion — receives log events from clients, groups them into partial **StoryChunks**                                       | Many per deployment, on compute nodes          |
+| [**ChronoGrapher**](./chronographer.md)        | Merge and archive — merges partial **StoryChunks** into complete ones, writes to persistent storage as HDF5 files                       | One per **Recording Group**, on a storage node |
+| [**ChronoPlayer**](./chronoplayer.md)          | Read-back — serves story replay queries from both in-memory data and HDF5 archives                                                      | One per **Recording Group**, on a storage node |
+| [**Client Library**](../../client/overview.md) | Application-facing API (`chronolog_client.h`) for connecting, creating **Chronicles**/**Stories**, recording events, and replaying data | Linked into client applications                |
 
 ## Recording Groups
 
 A **Recording Group** is a logical grouping of recording processes that work together to handle a subset of the story recording workload:
 
 - Each group contains **multiple ChronoKeepers**, **one ChronoGrapher**, and **one ChronoPlayer**.
-- ChronoVisor assigns newly acquired stories to a recording group using uniform random distribution for load balancing.
+- ChronoVisor assigns newly acquired **Stories** to a recording group using uniform random distribution for load balancing.
 - All processes in a group register with ChronoVisor and send periodic heartbeat/statistics messages so that ChronoVisor can monitor group health and composition.
 - A deployment can have multiple Recording Groups, allowing ChronoLog to scale horizontally by adding more groups.
 
@@ -32,80 +32,88 @@ A **Recording Group** is a logical grouping of recording processes that work tog
 
 ### Write path
 
-<svg viewBox="0 0 720 130" width="100%" xmlns="http://www.w3.org/2000/svg" fontFamily="system-ui, sans-serif">
-  <rect x="0" y="0" width="720" height="130" rx="10" fill="#1e2330"/>
+<svg viewBox="0 0 800 130" width="100%" xmlns="http://www.w3.org/2000/svg" fontFamily="system-ui, sans-serif">
+  <rect x="0" y="0" width="800" height="130" rx="10" fill="#1e2330"/>
 
   {/* Title */}
-  <text x="360" y="20" textAnchor="middle" fill="#c3e04d" fontSize="10" fontWeight="600">WRITE PATH</text>
+  <text x="400" y="20" textAnchor="middle" fill="#c3e04d" fontSize="10" fontWeight="600">WRITE PATH</text>
 
   {/* Client Application */}
-  <rect x="14" y="36" width="120" height="80" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
-  <circle cx="30" cy="52" r="3" fill="#c3e04d" fillOpacity="0.8"/>
-  <text x="38" y="56" fill="#c3e04d" fontSize="8" fontWeight="600">Client App</text>
-  <text x="24" y="72" fill="#9ca3b0" fontSize="6">LogEvent (storyId,</text>
-  <text x="24" y="81" fill="#9ca3b0" fontSize="6">timestamp, clientId,</text>
-  <text x="24" y="90" fill="#9ca3b0" fontSize="6">eventIndex, record)</text>
+  <rect x="16" y="36" width="108" height="80" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
+  <circle cx="32" cy="52" r="3" fill="#c3e04d" fillOpacity="0.8"/>
+  <text x="40" y="56" fill="#c3e04d" fontSize="8" fontWeight="600">Client App</text>
+  <text x="24" y="72" fill="#9ca3b0" fontSize="6">log_event(record)</text>
 
-  {/* Arrow 1 */}
-  <line x1="134" y1="76" x2="150" y2="76" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
-  <polygon points="152,76 146,72 146,80" fill="#c3e04d" fillOpacity="0.5"/>
+  {/* Arrow — App → Client Library */}
+  <line x1="124" y1="76" x2="136" y2="76" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
+  <polygon points="138,76 132,72 132,80" fill="#c3e04d" fillOpacity="0.5"/>
+
+  {/* Client Library */}
+  <rect x="142" y="36" width="98" height="80" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
+  <circle cx="158" cy="52" r="3" fill="#c3e04d" fillOpacity="0.8"/>
+  <text x="166" y="56" fill="#c3e04d" fontSize="8" fontWeight="600">Client Library</text>
+  <text x="150" y="81" fill="#9ca3b0" fontSize="6">Timestamps record,</text>
+  <text x="150" y="90" fill="#9ca3b0" fontSize="6">calls RPC to send</text>
+  <text x="150" y="99" fill="#9ca3b0" fontSize="6">event to ChronoVisor</text>
+
+  {/* Arrow — Client Library → ChronoVisor */}
+  <line x1="240" y1="76" x2="252" y2="76" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
+  <polygon points="254,76 248,72 248,80" fill="#c3e04d" fillOpacity="0.5"/>
 
   {/* ChronoVisor */}
-  <rect x="154" y="36" width="120" height="80" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
-  <circle cx="170" cy="52" r="3" fill="#c3e04d" fillOpacity="0.8"/>
-  <text x="178" y="56" fill="#c3e04d" fontSize="8" fontWeight="600">ChronoVisor</text>
-  <text x="164" y="72" fill="#9ca3b0" fontSize="6">{"AcquireStory → assigns"}</text>
-  <text x="164" y="81" fill="#9ca3b0" fontSize="6">story to Recording Group.</text>
-  <text x="164" y="90" fill="#9ca3b0" fontSize="6">Notifies Keepers/Grapher</text>
-  <text x="164" y="99" fill="#9ca3b0" fontSize="6">via DataStoreAdmin RPCs</text>
-  <text x="214" y="108" textAnchor="middle" fill="#9ca3b0" fontSize="5" fontStyle="italic">port 5555, provider 55</text>
+  <rect x="258" y="36" width="115" height="80" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
+  <circle cx="274" cy="52" r="3" fill="#c3e04d" fillOpacity="0.8"/>
+  <text x="282" y="56" fill="#c3e04d" fontSize="8" fontWeight="600">ChronoVisor</text>
+  <text x="268" y="72" fill="#9ca3b0" fontSize="6">{"AcquireStory → assigns"}</text>
+  <text x="268" y="81" fill="#9ca3b0" fontSize="6">story to Recording Group.</text>
+  <text x="268" y="90" fill="#9ca3b0" fontSize="6">Notifies Keepers/Grapher</text>
+  <text x="268" y="99" fill="#9ca3b0" fontSize="6">via DataStoreAdmin RPCs</text>
 
-  {/* Arrow 2 */}
-  <line x1="274" y1="76" x2="290" y2="76" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
-  <polygon points="292,76 286,72 286,80" fill="#c3e04d" fillOpacity="0.5"/>
+  {/* Arrow — ChronoVisor → ChronoKeeper */}
+  <line x1="373" y1="76" x2="385" y2="76" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
+  <polygon points="387,76 381,72 381,80" fill="#c3e04d" fillOpacity="0.5"/>
 
   {/* ChronoKeeper */}
-  <rect x="294" y="36" width="130" height="80" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
-  <circle cx="310" cy="52" r="3" fill="#c3e04d" fillOpacity="0.8"/>
-  <text x="318" y="56" fill="#c3e04d" fontSize="8" fontWeight="600">ChronoKeeper</text>
-  <text x="304" y="72" fill="#9ca3b0" fontSize="6">{"Ingestion Queue → Story"}</text>
-  <text x="304" y="81" fill="#9ca3b0" fontSize="6">Pipeline (in-memory). Events</text>
-  <text x="304" y="90" fill="#9ca3b0" fontSize="6">grouped into partial StoryChunks.</text>
-  <text x="304" y="99" fill="#9ca3b0" fontSize="6">Retired chunks extracted</text>
-  <text x="359" y="108" textAnchor="middle" fill="#9ca3b0" fontSize="5" fontStyle="italic">port 5555</text>
+  <rect x="393" y="36" width="125" height="80" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
+  <circle cx="409" cy="52" r="3" fill="#c3e04d" fillOpacity="0.8"/>
+  <text x="417" y="56" fill="#c3e04d" fontSize="8" fontWeight="600">ChronoKeeper</text>
+  <text x="403" y="72" fill="#9ca3b0" fontSize="6">{"Ingestion Queue → Story"}</text>
+  <text x="403" y="81" fill="#9ca3b0" fontSize="6">Pipeline (in-memory). Events</text>
+  <text x="403" y="90" fill="#9ca3b0" fontSize="6">grouped into partial StoryChunks.</text>
+  <text x="403" y="99" fill="#9ca3b0" fontSize="6">Retired chunks extracted</text>
 
-  {/* Arrow 3 */}
-  <line x1="424" y1="76" x2="440" y2="76" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
-  <polygon points="442,76 436,72 436,80" fill="#c3e04d" fillOpacity="0.5"/>
+  {/* Arrow — ChronoKeeper → ChronoGrapher */}
+  <line x1="518" y1="76" x2="530" y2="76" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
+  <polygon points="532,76 526,72 526,80" fill="#c3e04d" fillOpacity="0.5"/>
 
   {/* ChronoGrapher */}
-  <rect x="444" y="36" width="130" height="80" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
-  <circle cx="460" cy="52" r="3" fill="#c3e04d" fillOpacity="0.8"/>
-  <text x="468" y="56" fill="#c3e04d" fontSize="8" fontWeight="600">ChronoGrapher</text>
-  <text x="454" y="72" fill="#9ca3b0" fontSize="6">Receives partial StoryChunks</text>
-  <text x="454" y="81" fill="#9ca3b0" fontSize="6">from all Keepers. Merges into</text>
-  <text x="454" y="90" fill="#9ca3b0" fontSize="6">complete chunks. Archives to</text>
-  <text x="454" y="99" fill="#9ca3b0" fontSize="6">persistent storage</text>
-  <text x="509" y="108" textAnchor="middle" fill="#9ca3b0" fontSize="5" fontStyle="italic">{"port 9999, provider 99 — RDMA"}</text>
+  <rect x="540" y="36" width="125" height="80" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
+  <circle cx="556" cy="52" r="3" fill="#c3e04d" fillOpacity="0.8"/>
+  <text x="564" y="56" fill="#c3e04d" fontSize="8" fontWeight="600">ChronoGrapher</text>
+  <text x="550" y="72" fill="#9ca3b0" fontSize="6">Receives partial StoryChunks</text>
+  <text x="550" y="81" fill="#9ca3b0" fontSize="6">from all Keepers. Merges into</text>
+  <text x="550" y="90" fill="#9ca3b0" fontSize="6">complete chunks. Archives to</text>
+  <text x="550" y="99" fill="#9ca3b0" fontSize="6">persistent storage</text>
 
-  {/* Arrow 4 */}
-  <line x1="574" y1="76" x2="590" y2="76" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
-  <polygon points="592,76 586,72 586,80" fill="#c3e04d" fillOpacity="0.5"/>
+  {/* Arrow — ChronoGrapher → HDF5 */}
+  <line x1="665" y1="76" x2="677" y2="76" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
+  <polygon points="679,76 673,72 673,80" fill="#c3e04d" fillOpacity="0.5"/>
 
   {/* HDF5 Archives */}
-  <rect x="594" y="36" width="112" height="80" rx="6" fill="#252b3b" stroke="#3a4050" strokeWidth="0.75"/>
-  <circle cx="610" cy="52" r="3" fill="#c3e04d" fillOpacity="0.8"/>
-  <text x="618" y="56" fill="#e4e7ed" fontSize="8" fontWeight="600">HDF5 Archives</text>
-  <text x="604" y="72" fill="#9ca3b0" fontSize="6">POSIX filesystem</text>
-  <text x="604" y="81" fill="#9ca3b0" fontSize="6">on storage node</text>
+  <rect x="685" y="36" width="99" height="80" rx="6" fill="#252b3b" stroke="#3a4050" strokeWidth="0.75"/>
+  <circle cx="701" cy="52" r="3" fill="#c3e04d" fillOpacity="0.8"/>
+  <text x="709" y="56" fill="#e4e7ed" fontSize="8" fontWeight="600">HDF5 Archives</text>
+  <text x="695" y="72" fill="#9ca3b0" fontSize="6">POSIX filesystem</text>
+  <text x="695" y="81" fill="#9ca3b0" fontSize="6">on storage node</text>
 
 </svg>
 
-1. Client calls `LogEvent()` with timestamped record → sent to ChronoVisor
-2. ChronoVisor assigns the story to a Recording Group → notifies all group processes
-3. ChronoKeeper ingests events into in-memory Story Pipeline → groups into partial StoryChunks
-4. Retired chunks are drained via RDMA bulk transfer to ChronoGrapher
-5. ChronoGrapher merges partials from all Keepers → archives complete StoryChunks to HDF5
+1. Client app calls `log_event()` with payload → passes to Client library
+2. Client library timestamps the Event → sends to ChronoVisor
+3. ChronoVisor assigns the Story to a Recording Group → notifies all group processes
+4. ChronoKeeper ingests Events into in-memory Story Pipeline → groups into partial StoryChunks
+5. Retired chunks are drained via RDMA bulk transfer to ChronoGrapher
+6. ChronoGrapher merges partials from all Keepers → archives complete StoryChunks to HDF5 archive files
 
 ### Read path
 
@@ -185,17 +193,17 @@ The Player maintains an in-memory copy of the most recent story segments (the sa
 
 ## Communication Model
 
-ChronoLog uses [Thallium](https://mochi.readthedocs.io/en/latest/thallium.html) as its RPC framework, layered on top of Mercury and OFI (OpenFabrics Interfaces). The default transport protocol is `ofi+sockets`; for InfiniBand clusters, `ofi+verbs` enables native RDMA.
+ChronoLog uses [Thallium](https://mochi.readthedocs.io/en/latest/thallium.html) as its RPC framework, layered on top of Mercury and OFI (OpenFabrics Interfaces). The default transport protocol is `ofi+sockets`; for clusters with RDMA support, `ofi+verbs` enables native RDMA.
 
 ### Default service ports and provider IDs
 
-| Service | Port | Provider ID |
-|---------|------|-------------|
-| Visor Client Portal | 5555 | 55 |
-| Visor Keeper Registry | 8888 | 88 |
-| Keeper Recording Service | 5555 | — |
-| Keeper→Grapher Drain (RDMA) | 9999 | 99 |
-| DataStore Admin Service | 4444 | 44 |
+| Service                     | Port | Provider ID |
+| -----------------------------| ------| -------------|
+| Visor Client Portal         | 5555 | 55          |
+| Visor Keeper Registry       | 8888 | 88          |
+| Keeper Recording Service    | 6666 | 66          |
+| Keeper→Grapher Drain (RDMA) | 9999 | 99          |
+| DataStore Admin Service     | 4444 | 44          |
 
 ### Registration and heartbeat protocol
 
@@ -205,14 +213,14 @@ ChronoLog uses [Thallium](https://mochi.readthedocs.io/en/latest/thallium.html) 
 
 ## Key Concepts
 
-| Term | Definition |
-|------|------------|
-| **Chronicle** | A named collection of Stories. Carries metadata, indexing granularity, type (standard/priority), and a tiering policy. |
-| **Story** | An individual, named log stream within a Chronicle. The unit of data acquisition — clients acquire and release stories. |
-| **StoryChunk** | A time-range-bound container of log events for a single story. Defined by a start time and end time; events within are ordered by timestamp. |
-| **LogEvent** | A single timestamped record: `{storyId, eventTime, clientId, eventIndex, logRecord}`. |
-| **StoryPipeline** | The processing pipeline inside Keepers, Graphers, and Players that ingests events/chunks, orders them by time, groups them into StoryChunks, and retires completed chunks to the next tier. |
-| **Recording Group** | A set of Keeper + Grapher + Player processes that collectively handle story recording for a subset of the workload. |
+| Term                | Definition                                                                                                                                                                                  |
+| ---------------------| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Chronicle**       | A named collection of Stories. Carries metadata, indexing granularity, type (standard/priority), and a tiering policy.                                                                      |
+| **Story**           | An individual, named log stream within a Chronicle. The unit of data acquisition — clients acquire and release stories.                                                                     |
+| **StoryChunk**      | A time-range-bound container of log events for a single story. Defined by a start time and end time; events within are ordered by timestamp.                                                |
+| **LogEvent**        | A single timestamped record: `{storyId, eventTime, clientId, eventIndex, logRecord}`.                                                                                                       |
+| **StoryPipeline**   | The processing pipeline inside Keepers, Graphers, and Players that ingests events/chunks, orders them by time, groups them into StoryChunks, and retires completed chunks to the next tier. |
+| **Recording Group** | A set of Keeper + Grapher + Player processes that collectively handle story recording for a subset of the workload.                                                                         |
 
 For detailed data structure definitions, see the [Data Model](../data-model/overview.md) section.
 
@@ -220,15 +228,15 @@ For detailed data structure definitions, see the [Data Model](../data-model/over
 
 ChronoLog implements a three-tier storage hierarchy that progressively trades latency for capacity:
 
-| Tier | Location | Component | Medium | Purpose |
-|------|----------|-----------|--------|---------|
-| **Hot** | Compute nodes | ChronoKeeper | In-memory (Story Pipeline) | Fast event ingestion with sub-second latency |
-| **Warm** | Storage node | ChronoGrapher / ChronoPlayer | In-memory (Story Pipeline) | Chunk merging, recent-data playback |
-| **Cold** | Storage node | ChronoGrapher (archiver) | HDF5 files on POSIX filesystem | Long-term persistent archive |
+| Tier     | Location      | Component                    | Medium                         | Purpose                                      |
+| ----------| ---------------| ------------------------------| --------------------------------| ----------------------------------------------|
+| **Hot**  | Compute nodes | ChronoKeeper                 | In-memory (Story Pipeline)     | Fast event ingestion with sub-second latency |
+| **Warm** | Storage node  | ChronoGrapher / ChronoPlayer | In-memory (Story Pipeline)     | Chunk merging, recent-data playback          |
+| **Cold** | Storage node  | ChronoGrapher                | HDF5 files on POSIX filesystem | Long-term persistent archive                 |
 
 Data moves automatically from hot to cold:
 - **Keepers** retire partial StoryChunks once they exceed the configured chunk duration (default: 30 seconds) or the story stops recording.
-- **Graphers** merge partials from all Keepers into complete StoryChunks and archive them to HDF5.
+- **Graphers** merge partials from all Keepers into complete StoryChunks and archive them to HDF5 files.
 - **Players** maintain a warm copy of recent chunks for fast read-back while the archive catches up.
 
 Tiering policy can be set per-Chronicle (`normal`, `hot`, or `cold`) to bias toward performance or capacity.

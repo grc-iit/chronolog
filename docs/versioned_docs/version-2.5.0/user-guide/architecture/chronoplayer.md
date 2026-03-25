@@ -9,6 +9,8 @@ title: "ChronoPlayer"
 
 The ChronoPlayer design is the logical continuation of the internal design of ChronoKeeper and ChronoGrapher servers, as it is also based on the Story Pipeline model.
 
+There are two different APIs to get events back. **Playback()** retrievies Events at the end of the Story. **Replay()** requests history Events in earlier time range of a Story.
+
 <svg viewBox="0 0 720 710" width="100%" xmlns="http://www.w3.org/2000/svg" fontFamily="system-ui, sans-serif">
   <rect x="0" y="0" width="720" height="710" rx="10" fill="#1e2330"/>
 
@@ -18,11 +20,11 @@ The ChronoPlayer design is the logical continuation of the internal design of Ch
   <text x="32" y="44" fill="#c3e04d" fontSize="8" fontWeight="600" fillOpacity="0.6">CHRONOPLAYER</text>
 
   <g transform="translate(0, 30)">
-  {/* Top annotation */}
-  <text x="680" y="16" textAnchor="end" fill="#9ca3b0" fontSize="7" fontStyle="italic">Partial StoryChunks from ChronoKeepers</text>
+  {/* Top annotation — centered on Player Recording Service */}
+  <text x="520" y="18" textAnchor="middle" fill="#9ca3b0" fontSize="7" fontStyle="italic">Partial StoryChunks from ChronoKeepers</text>
 
-  {/* Arrow from annotation to Player Recording Service */}
-  <line x1="570" y1="20" x2="520" y2="46" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
+  {/* Arrow from annotation to Player Recording Service (vertical, box center x = 520) */}
+  <line x1="520" y1="24" x2="520" y2="42" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
   <polygon points="520,48 516,42 524,42" fill="#c3e04d" fillOpacity="0.6"/>
 
   {/* Player Recording Service */}
@@ -171,33 +173,33 @@ The ChronoPlayer design is the logical continuation of the internal design of Ch
   <rect x="623" y="276" width="20" height="14" rx="2" fill="#1e2330" stroke="#3a4050" strokeWidth="0.5"/>
   <rect x="647" y="276" width="20" height="14" rx="2" fill="#1e2330" stroke="#3a4050" strokeWidth="0.5"/>
 
-  {/* Playback Service */}
-  <text x="18" y="356" fill="#9ca3b0" fontSize="6.5" fontStyle="italic">Playback Requests</text>
+  {/* Playback/Replay Service */}
+  <text x="18" y="356" fill="#9ca3b0" fontSize="6.5" fontStyle="italic">Playback/Replay Requests</text>
   <text x="18" y="364" fill="#9ca3b0" fontSize="6.5" fontStyle="italic">from Client Applications</text>
-  {/* Arrow into Playback Service from left */}
+  {/* Arrow into Playback/Replay Service from left */}
   <line x1="10" y1="388" x2="18" y2="388" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
   <polygon points="18,388 12,384 12,392" fill="#c3e04d" fillOpacity="0.6"/>
   <rect x="18" y="372" width="220" height="40" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
   <circle cx="34" cy="392" r="3" fill="#c3e04d" fillOpacity="0.8"/>
-  <text x="42" y="396" fill="#c3e04d" fontSize="10" fontWeight="600">Playback Service</text>
+  <text x="42" y="396" fill="#c3e04d" fontSize="10" fontWeight="600">Playback/Replay Service</text>
 
-  {/* Arrow from Data Store down to Playback Service */}
+  {/* Arrow from Data Store down to Playback/Replay Service */}
   <line x1="250" y1="280" x2="140" y2="370" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
   <polygon points="140,372 136,366 144,366" fill="#c3e04d" fillOpacity="0.6"/>
 
-  {/* Playback Response Transfer Agent 1 */}
+  {/* Playback/Replay Response Transfer Agent 1 */}
   <rect x="18" y="432" width="280" height="36" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
   <circle cx="34" cy="450" r="3" fill="#c3e04d" fillOpacity="0.8"/>
-  <text x="42" y="454" fill="#c3e04d" fontSize="9" fontWeight="600">Playback Response Transfer Agent</text>
+  <text x="42" y="454" fill="#c3e04d" fontSize="9" fontWeight="600">Playback/Replay Response Transfer Agent for Story 1</text>
 
-  {/* Arrow from Playback Service to Transfer Agent 1 */}
+  {/* Arrow from Playback/Replay Service to Transfer Agent 1 */}
   <line x1="128" y1="412" x2="128" y2="430" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
   <polygon points="128,432 124,426 132,426" fill="#c3e04d" fillOpacity="0.6"/>
 
-  {/* Playback Response Transfer Agent 2 */}
+  {/* Playback/Replay Response Transfer Agent 2 */}
   <rect x="18" y="484" width="280" height="36" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
   <circle cx="34" cy="502" r="3" fill="#c3e04d" fillOpacity="0.8"/>
-  <text x="42" y="506" fill="#c3e04d" fontSize="9" fontWeight="600">Playback Response Transfer Agent</text>
+  <text x="42" y="506" fill="#c3e04d" fontSize="9" fontWeight="600">Playback/Replay Response Transfer Agent for Story 2</text>
 
   {/* Arrow from Transfer Agent 1 to Transfer Agent 2 */}
   <line x1="128" y1="468" x2="128" y2="482" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
@@ -209,7 +211,7 @@ The ChronoPlayer design is the logical continuation of the internal design of Ch
   <polygon points="10,502 16,498 16,506" fill="#c3e04d" fillOpacity="0.6"/>
   <line x1="16" y1="502" x2="18" y2="502" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
 
-  <text x="18" y="536" fill="#9ca3b0" fontSize="6.5" fontStyle="italic">Playback Responses</text>
+  <text x="18" y="536" fill="#9ca3b0" fontSize="6.5" fontStyle="italic">Playback/Replay Responses</text>
   <text x="18" y="544" fill="#9ca3b0" fontSize="6.5" fontStyle="italic">to Client Applications</text>
 
   {/* Archive Reading Agent */}
@@ -218,13 +220,13 @@ The ChronoPlayer design is the logical continuation of the internal design of Ch
   <text x="424" y="396" fill="#c3e04d" fontSize="10" fontWeight="600">Archive Reading Agent</text>
   <text x="424" y="410" fill="#9ca3b0" fontSize="7">{"Reads from HDF5 Archives"}</text>
 
-  {/* Arrow from Data Store down to Archive Reading Agent */}
-  <line x1="535" y1="336" x2="535" y2="370" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
-  <polygon points="535,372 531,366 539,366" fill="#c3e04d" fillOpacity="0.6"/>
+  {/* Arrow from Archive Reading Agent up to Player Data Store */}
+  <line x1="535" y1="372" x2="535" y2="342" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
+  <polygon points="535,336 531,342 539,342" fill="#c3e04d" fillOpacity="0.6"/>
 
-  {/* Arrow from Archive Reading Agent down to Persistent Storage */}
-  <line x1="535" y1="422" x2="535" y2="470" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
-  <polygon points="535,472 531,466 539,466" fill="#c3e04d" fillOpacity="0.6"/>
+  {/* Arrow from Persistent Storage up to Archive Reading Agent */}
+  <line x1="535" y1="472" x2="535" y2="428" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
+  <polygon points="535,422 531,428 539,428" fill="#c3e04d" fillOpacity="0.6"/>
 
   {/* Persistent Storage Tier */}
   <rect x="400" y="472" width="270" height="40" rx="6" fill="#252b3b" stroke="#3a4050" strokeWidth="0.75"/>
@@ -243,12 +245,12 @@ The ChronoPlayer design is the logical continuation of the internal design of Ch
   </g>
 </svg>
 
-| Component | Description |
-|-----------|-------------|
-| **Player Registry Client** | The client side of RPC communication between the ChronoPlayer process and ChronoVisor's ProcessRegistryService. Used to send Register/Unregister and periodic Heartbeat/Statistics messages to ChronoVisor. |
-| **Player Data Store Admin Service** | Listens to Start/Stop Story recording notifications from ChronoVisor. These notifications trigger instantiation or dismantling of the appropriate active StoryPipelines based on client data access requests. |
-| **Player Recording Service** | The RPC service that receives partial StoryChunks from ChronoKeeper processes — the same partial story chunks sent to ChronoGrapher to be merged and committed to the Persistent Storage layer. |
-| **Player Data Store** | Maintains the most recent segment of StoryPipeline for every active story, applying the same chunk merging logic as ChronoGrapher. This allows ChronoPlayer to have the most recent story events sorted, merged, and available for playback requests before they are available in the slower Persistent Storage layer. |
-| **Playback Service** | Listens to Story replay queries from client applications and serves responses. Returns all sorted events for a specific story within the requested time range. The most recent events may come from the active Player Data Store; the majority of requests are satisfied from the Persistent Storage layer. |
-| **Playback Response Transfer Agent** | The RPC client responsible for bulk transfer of the range query response event series back to the requesting client application. Instantiated by the Playback Service for each client query, using the client's response-receiving service credentials provided in the query request. |
-| **Archive Reading Agent** | Reads Chronicle and Story data persisted in HDF5 Archives, extracts the subset of events relevant to the requested range query, and transforms them into ChronoLog StoryChunks for use by the Playback Service. |
+| Component                                   | Description                                                                                                                                                                                                                                                                                                                   |
+| ---------------------------------------------| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Player Registry Client**                  | The client side of RPC communication between the ChronoPlayer process and ChronoVisor's ProcessRegistryService. Used to send register/unregister and periodic heartbeat/statistics messages to ChronoVisor.                                                                                                                   |
+| **Player Data Store Admin Service**         | Listens to Start/Stop Story recording notifications from ChronoVisor. These notifications trigger instantiation or dismantling of the appropriate active StoryPipelines based on client data access requests.                                                                                                                 |
+| **Player Recording Service**                | The RPC service that receives partial StoryChunks from ChronoKeeper processes — the same partial story chunks sent to ChronoGrapher to be merged and committed to the Persistent Storage layer.                                                                                                                               |
+| **Player Data Store**                       | Maintains the most recent segment of StoryPipeline for every active story, applying the same chunk merging logic as ChronoGrapher. This allows ChronoPlayer to have the most recent story events sorted, merged, and available for playback/replay requests before they are available in the slower Persistent Storage layer. |
+| **Playback/Replay Service**                 | Listens to Story playback/replay queries from client applications and serves responses. Returns all sorted events for a specific story within the requested time range. The most recent events may come from the active Player Data Store; the majority of requests are satisfied from the Persistent Storage layer.          |
+| **Playback/Replay Response Transfer Agent** | The RPC client responsible for bulk transfer of the range query response event series back to the requesting client application. Instantiated by the Playback Service for each client query, using the client's response-receiving service credentials provided in the query request.                                         |
+| **Archive Reading Agent**                   | Reads Chronicle and Story data persisted in HDF5 Archives, extracts the subset of events relevant to the requested range query as StoryChunks for use by the Playback Service.                                                                                                                                                |

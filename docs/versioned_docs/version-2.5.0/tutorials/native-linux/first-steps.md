@@ -75,7 +75,7 @@ Once it's installed, you're one step closer to launching ChronoLog.
 Navigate to the "deploy" folder inside the ChronoLog repository:
 
 ```bash
-cd /path-to-repo/deploy
+cd /path-to-repo/tools/deploy
 ```
 
 Replace `/path-to-repo/` with the actual path to where you cloned the ChronoLog repository.
@@ -99,7 +99,7 @@ This will compile the project in Debug mode. Don't worry if it takes a little wh
 Now, let's install ChronoLog to your local machine. Run:
 
 ```bash
-./local_single_user_deploy.sh -i -w /home/$USER/chronolog/Debug
+./local_single_user_deploy.sh -i -t Debug
 ```
 
 This sets up ChronoLog in a local directory so you can use it.
@@ -111,7 +111,7 @@ This sets up ChronoLog in a local directory so you can use it.
 You're almost there! To deploy ChronoLog, simply run:
 
 ```bash
-./local_single_user_deploy.sh -d -w /home/$USER/chronolog/Debug
+./local_single_user_deploy.sh -d -w /home/$USER/chronolog-install/chronolog/
 ```
 
 ChronoLog is now deployed and ready for action.
@@ -123,7 +123,7 @@ ChronoLog is now deployed and ready for action.
 Let's make sure everything is running smoothly. Use this command to verify:
 
 ```bash
-pgrep -laf "chronovisor_server|chrono_grapher|chrono_keeper|chrono_player"
+pgrep -fla "chrono-visor|chrono-grapher|chrono-keeper|chrono-player"
 ```
 
 If you see 4 processes like the ones listed on the command, congratulations! ChronoLog is successfully installed and deployed on your system. You're ready to start exploring its capabilities.
@@ -136,10 +136,10 @@ Now that you've got ChronoLog installed and deployed, it's time to explore its c
 
 ### Step 8: Launch the Interactive Client Admin
 
-Let's fire up the interactive client! Open your terminal, navigate to the /bin directory on the location where ChronoLog is installed, and run:
+Let's fire up the interactive client! Open your terminal, navigate to the `/bin` directory on the location where ChronoLog is installed (`/home/$USER/chronolog-install/chronolog/bin` by default), and run:
 
 ```bash
-client_admin -i ../conf/visor_conf.json
+./chrono-client_admin -i ../conf/default-chrono-client-conf.json
 ```
 
 This will launch the interactive interface, where you can manage **Chronicles**, **Stories**, and **Events** directly.
@@ -166,7 +166,7 @@ Stories are individual data streams within a Chronicle. Story needs to be acquir
 -a -s my_chronicle my_story
 ```
 
-This creates a Story named `my_story` in the Chronicle `my_chronicle`. Now you're ready to start logging events!
+This creates a Story named `my_story` in the Chronicle `my_chronicle` and acquires it. Now you're ready to start logging events!
 
 ---
 

@@ -15,21 +15,21 @@ Before starting, ensure that you have completed **Tutorial 1** (First Steps with
 
 ---
 
-## Step 1: Verify System is Running
+## Step 1: Verify ChronoLog is Running
 
 To check if ChronoLog is running, execute the following command:
 
 ```bash
-pgrep -laf "chronovisor_server|chrono_grapher|chrono_keeper|chrono_player"
+pgrep -fla "chrono-visor|chrono-grapher|chrono-keeper|chrono-player"
 ```
 
-If this command does not return any output, it means ChronoLog is not running. In that case, follow the instructions in the [First Steps with ChronoLog](./first-steps) tutorial to set up and start the system.
+If this command does not show all four ChronoLog services, it means ChronoLog is not running properly. In that case, follow the instructions in the [First Steps with ChronoLog](./first-steps) tutorial to set up and start the system.
 
 ---
 
-## Step 2: Prepare the Scripted Client Admin Test
+## Step 2: Prepare the Payload file (Optional)
 
-We will use **Scripted Client Admin** to run a performance test. To do this, create a script file (e.g., `scripted.sh`) containing a set of messages to be sent during the test.
+We will use **Scripted Client Admin** to run a performance test. To do this, create a payload file (e.g., `payload.txt`) containing a set of messages to be sent during the test.
 
 Example:
 
@@ -53,34 +53,34 @@ event 10
 Execute the following command to start the performance test:
 
 ```bash
-./client_admin -f scripted.sh -c /home/$USER/chronolog/Debug/conf/default_conf.json --perf
+./chrono-client_admin -f payload.txt -c /home/$USER/chronolog-install/chronolog/conf/default-chrono-client-conf.json --perf
 ```
 
 ### Breakdown of the Command
 
-- `-f scripted.sh`: Specifies the script file containing test commands.
-- `-c /home/$USER/chronolog/Debug/conf/default_conf.json`: Points to the system's configuration file.
+- `-f payload.txt`: Specifies the payload file containing all event payloads, one event per line.
+- `-c /home/$USER/chronolog-install/chronolog/conf/default-chrono-client-conf.json`: Points to the system's configuration file for clients.
 - `--perf`: Enables performance testing mode.
 
 ---
 
-## Step 4: Analyze the Log Output
+## Step 4: Analyze the Output
 
-Once you run the test, the log will display several sections, including system status, configuration details, and performance results.
+Once you run the test, the result will display several sections, including system status, configuration details, and performance results.
 
-### System Run Mode
+### Parameters
 
 After executing the command, you will see the system's operational status:
 
 ```bash
-Config file specified: /home/$USER/chronolog/Debug/conf/default_conf.json
+Config file specified: /home/$USER/chronolog-install/chronolog/conf/default-chrono-conf.json
 Interactive mode: off
 Chronicle count: 1
 Story count: 1
 Event input file specified: scripted.sh
 Barrier: false
 Shared story: false
-[ConfigurationManager] Loading configuration from file: /home/$USER/chronolog/Debug/conf/default_conf.json
+[ConfigurationManager] Loading configuration from file: /home/$USER/chronolog-install/chronolog/conf/default-chrono-conf.json
 ```
 
 ### Configuration Details
@@ -104,16 +104,17 @@ Finally, the system will display the performance test results:
 ======================================
 ======== Performance results: ========
 ======================================
-Total payload written: 229
-Connect throughput: 895.689 op/s
-CreateChronicle throughput: 1870.4 op/s
-AcquireStory throughput: 640.482 op/s
-ReleaseStory throughput: 1341.22 op/s
-DestroyStory throughput: 10957.6 op/s
-DestroyChronicle throughput: 10387.3 op/s
-Disconnect throughput: 11117.4 op/s
-End-to-end bandwidth: 0.0491442 MB/s
-Data-access bandwidth: 0.143056 MB/s
+Total payload written: 1638400000 bytes
+Connect throughput: 844.619 connections/s
+CreateChronicle throughput: 4093.63 creations/s
+AcquireStory throughput: 554.781 acquisitions/s
+ReleaseStory throughput: 247.978 releases/s
+DestroyStory throughput: 1119.15 destructions/s
+DestroyChronicle throughput: 6111.26 destructions/s
+Disconnect throughput: 217.764 disconnections/s
+End-to-end (incl. metadata time) bandwidth: 209.729 MB/s
+Record-event (incl. metadata time) bandwidth: 26.8209 MB/s
+Record-event (incl. metadata time) throughput: 0.00654807 events/s
 ```
 
 These values provide insight into how efficiently ChronoLog is handling operations.

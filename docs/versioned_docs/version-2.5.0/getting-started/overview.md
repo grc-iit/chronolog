@@ -39,8 +39,8 @@ ChronoLog is a scalable, high-performance distributed shared log store designed 
 
   <rect x="60" y="192" width="220" height="68" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
   <circle cx="76" cy="210" r="3" fill="#c3e04d" fillOpacity="0.8"/>
-  <text x="84" y="214" fill="#c3e04d" fontSize="10" fontWeight="600">chrono-visor</text>
-  <text x="72" y="230" fill="#9ca3b0" fontSize="7">Metadata management, chronicle</text>
+  <text x="84" y="214" fill="#c3e04d" fontSize="10" fontWeight="600">ChronoVisor</text>
+  <text x="72" y="230" fill="#9ca3b0" fontSize="7">Metadata (Chronicle and Story) management</text>
   <text x="72" y="240" fill="#9ca3b0" fontSize="7">registry, clock sync, client connections</text>
 
   <line x1="20" y1="280" x2="700" y2="280" stroke="#9ca3b0" strokeWidth="0.75" strokeDasharray="6,4" strokeOpacity="0.4"/>
@@ -52,24 +52,24 @@ ChronoLog is a scalable, high-performance distributed shared log store designed 
 
   <rect x="340" y="334" width="210" height="68" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
   <circle cx="356" cy="352" r="3" fill="#c3e04d" fillOpacity="0.8"/>
-  <text x="364" y="356" fill="#c3e04d" fontSize="10" fontWeight="600">chrono-keeper</text>
+  <text x="364" y="356" fill="#c3e04d" fontSize="10" fontWeight="600">ChronoKeeper</text>
   <text x="356" y="372" fill="#9ca3b0" fontSize="7">Hot-tier ingestion via RDMA, real-time</text>
   <text x="356" y="382" fill="#9ca3b0" fontSize="7">{"record() and playback() with µs latency"}</text>
 
   <rect x="255" y="430" width="195" height="68" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
   <circle cx="271" cy="448" r="3" fill="#c3e04d" fillOpacity="0.8"/>
-  <text x="279" y="452" fill="#c3e04d" fontSize="10" fontWeight="600">chrono-grapher</text>
+  <text x="279" y="452" fill="#c3e04d" fontSize="10" fontWeight="600">ChronoGrapher</text>
   <text x="271" y="468" fill="#9ca3b0" fontSize="7">DAG pipeline: event collection, story</text>
   <text x="271" y="478" fill="#9ca3b0" fontSize="7">building, merging, flushing to lower tiers</text>
 
   <rect x="478" y="430" width="165" height="68" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
   <circle cx="494" cy="448" r="3" fill="#c3e04d" fillOpacity="0.8"/>
-  <text x="502" y="452" fill="#c3e04d" fontSize="10" fontWeight="600">chrono-player</text>
+  <text x="502" y="452" fill="#c3e04d" fontSize="10" fontWeight="600">ChronoPlayer</text>
   <text x="494" y="468" fill="#9ca3b0" fontSize="7">{"Serves replay() across hot, warm,"}</text>
   <text x="494" y="478" fill="#9ca3b0" fontSize="7">cold tiers into a time-ordered stream</text>
 
   <rect x="60" y="558" width="600" height="38" rx="6" fill="#252b3b" stroke="#3a4050" strokeWidth="0.75"/>
-  <text x="360" y="582" textAnchor="middle" fill="#e4e7ed" fontSize="10">HDF5 on PFS</text>
+  <text x="360" y="582" textAnchor="middle" fill="#e4e7ed" fontSize="10">PFS</text>
 
   <line x1="20" y1="618" x2="700" y2="618" stroke="#9ca3b0" strokeWidth="0.75" strokeDasharray="6,4" strokeOpacity="0.4"/>
 
@@ -80,21 +80,21 @@ ChronoLog is a scalable, high-performance distributed shared log store designed 
   <line x1="155" y1="124" x2="155" y2="190" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
   <polygon points="155,192 151,186 159,186" fill="#c3e04d" fillOpacity="0.6"/>
 
-  <line x1="450" y1="124" x2="450" y2="332" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
-  <polygon points="450,334 446,328 454,328" fill="#c3e04d" fillOpacity="0.6"/>
+  <line x1="445" y1="124" x2="445" y2="332" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
+  <polygon points="445,334 441,328 449,328" fill="#c3e04d" fillOpacity="0.6"/>
 
   <line x1="155" y1="262" x2="155" y2="360" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
   <line x1="155" y1="360" x2="228" y2="360" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
   <polygon points="230,360 224,356 224,364" fill="#c3e04d" fillOpacity="0.6"/>
 
-  <line x1="445" y1="404" x2="445" y2="428" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
-  <polygon points="445,430 441,424 449,424" fill="#c3e04d" fillOpacity="0.6"/>
+  <line x1="405" y1="404" x2="405" y2="428" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
+  <polygon points="405,430 401,424 409,424" fill="#c3e04d" fillOpacity="0.6"/>
 
   <line x1="352" y1="500" x2="352" y2="556" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
   <polygon points="352,558 348,552 356,552" fill="#c3e04d" fillOpacity="0.6"/>
 
-  <line x1="560" y1="500" x2="560" y2="556" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
-  <polygon points="560,558 556,552 564,552" fill="#c3e04d" fillOpacity="0.6"/>
+  <line x1="560" y1="556" x2="560" y2="502" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
+  <polygon points="560,500 556,506 564,506" fill="#c3e04d" fillOpacity="0.6"/>
 
   <line x1="560" y1="430" x2="560" y2="118" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
   <polygon points="560,116 556,122 564,122" fill="#c3e04d" fillOpacity="0.6"/>

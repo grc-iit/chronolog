@@ -72,8 +72,8 @@ ChronoLog organizes data in a three-level hierarchy:
   <text x="525" y="196" textAnchor="middle" fill="#9ca3b0" fontSize="7" fontStyle="italic">ordered by time</text>
 </svg>
 
-- A **Chronicle** is a top-level namespace that groups related data streams together.
-- A **Story** is a time-ordered sequence of events within a Chronicle — think of it as a single log stream or sensor feed.
+- A **Chronicle** is a top-level collection that groups Stories together.
+- A **Story** is a time-ordered sequence of Events — think of it as a single log stream or sensor feed.
 - An **Event** is the smallest unit of data: a timestamped log record attached to a Story.
 
 *For field-level details and ordering guarantees, see the [Data Model Overview](../user-guide/data-model/overview.md).*
@@ -82,12 +82,12 @@ ChronoLog organizes data in a three-level hierarchy:
 
 ChronoLog is a distributed system composed of four services:
 
-| Component | Role |
-|---|---|
-| **ChronoVisor** | Manages client sessions, metadata, and service discovery |
-| **ChronoKeeper** | Ingests events from clients at high throughput |
-| **ChronoGrapher** | Merges and persists event data to long-term storage |
-| **ChronoPlayer** | Serves historical replay queries |
+| Component         | Role                                                     |
+| -------------------| ----------------------------------------------------------|
+| **ChronoVisor**   | Manages client sessions, metadata, and service discovery |
+| **ChronoKeeper**  | Ingests Events from clients at high throughput           |
+| **ChronoGrapher** | Merges and persists Event data to long-term storage      |
+| **ChronoPlayer**  | Serves historical replay queries                         |
 
 The ChronoLog client library abstracts all inter-service communication — your application code talks to a single API, not to individual services.
 
@@ -101,7 +101,7 @@ A typical ChronoLog session follows these steps:
 2. **Create a Chronicle** (or use an existing one)
 3. **Acquire a Story** within the Chronicle
 4. **Log Events** to the Story
-5. **Replay** the Story to read back events in time order
+5. **Replay** the Story to read back Events in time order
 6. **Release** the Story when done writing
 7. **Disconnect** from the cluster
 

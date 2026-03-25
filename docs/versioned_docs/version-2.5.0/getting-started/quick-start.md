@@ -9,9 +9,106 @@ import TabItem from '@theme/TabItem';
 # Quick Start
 
 Get ChronoLog running on your machine in minutes. Choose the method that best fits your environment:
+- ChronoLog can be installed via three primary methods:
+  - Pre-built binary tarball (no build tools required, no source code either)
+  - Source build using CMake and Make (for advanced users and developers)
+  - Official Docker image (for containerized deployments with both source code and pre-installed build)
+- Each method fully supports single-node or multi-node local and distributed development.
+- See below for detailed, step-by-step instructions for each option.
+
 
 <Tabs>
-<TabItem value="source" label="Build from Source" default>
+<TabItem value="tarball" label="Release Archive" default>
+
+## Download the Tarball
+
+Download the pre-built binary tarball for v2.5.0 from the [ChronoLog GitHub Releases](https://github.com/grc-iit/ChronoLog/releases) page:
+
+```bash
+wget https://github.com/grc-iit/ChronoLog/releases/download/v2.5.0/chronolog-2.5.0-linux-x86_64.tar.gz
+```
+
+## Extract the Archive
+
+Extract the tarball:
+
+```bash
+tar -xzf chronolog-2.5.0-linux-x86_64.tar.gz
+```
+
+Enter the extracted directory:
+
+```bash
+cd chronolog-2.5.0
+```
+
+## Verify Executables
+
+After extracting, the `bin/` directory should contain the following executables:
+
+- `chrono-visor` — ChronoVisor server
+- `chrono-keeper` — ChronoKeeper server
+- `chrono-grapher` — ChronoGrapher server
+- `chrono-player` — ChronoPlayer server
+- `chrono-client-admin` — CLI tool
+
+List the contents of the `bin/` directory to confirm:
+
+```bash
+ls bin/
+```
+
+## Set Up Configuration
+
+The default configuration file is located at `conf/default-chrono-conf.json`. Review and adjust it for your environment before starting ChronoLog.
+
+View the default configuration:
+
+```bash
+cat conf/default-chrono-conf.json
+```
+
+Refer to the [Configuration](/docs/user-guide/configuration/overview) documentation for a full description of all available options.
+
+## Start ChronoLog
+
+From inside the extracted directory (`chronolog-2.5.0`), run the deployment script:
+
+```bash
+tools/deploy_local.sh --start
+```
+
+## Verify Deployment
+
+Check that the ChronoLog processes are running:
+
+```bash
+pgrep -fla 'chrono-visor|chrono-keeper|chrono-grapher|chrono-player'
+```
+
+You should see `chrono-visor`, `chrono-keeper`, `chrono-grapher`, and `chrono-player` listed.
+
+## Stop ChronoLog
+
+To stop all ChronoLog services:
+
+```bash
+tools/deploy_local.sh --stop
+```
+
+To also remove generated logs, configuration artifacts and stored data:
+
+```bash
+tools/deploy_local.sh --clean
+```
+
+## Next Steps
+
+For full deployment options and configuration, see the [Single Node Deployment](/docs/user-guide/deployment/single-node) guide.
+
+</TabItem>
+
+<TabItem value="source" label="Build from Source">
 
 ## Prerequisites
 
@@ -49,9 +146,6 @@ Enter the repository and check out the stable release:
 
 ```bash
 cd ChronoLog
-```
-
-```bash
 git checkout v2.5.0
 ```
 
@@ -115,7 +209,7 @@ Run the deployment script from the install tree:
 Check that the ChronoLog processes are running:
 
 ```bash
-pgrep -la chrono
+pgrep -fla 'chrono-visor|chrono-keeper|chrono-grapher|chrono-player'
 ```
 
 You should see `chrono-visor`, `chrono-keeper`, `chrono-grapher`, and `chrono-player` listed.
@@ -128,7 +222,7 @@ To stop all ChronoLog services:
 ~/chronolog-install/chronolog/tools/deploy_local.sh --stop
 ```
 
-To also remove generated logs and configuration artifacts:
+To also remove generated logs, configuration artifacts and stored data:
 
 ```bash
 ~/chronolog-install/chronolog/tools/deploy_local.sh --clean
@@ -139,95 +233,7 @@ To also remove generated logs and configuration artifacts:
 For full deployment options and configuration, see the [Single Node Deployment](/docs/user-guide/deployment/single-node) guide.
 
 </TabItem>
-<TabItem value="tarball" label="Release Archive">
 
-## Download the Tarball
-
-Download the pre-built binary tarball for v2.5.0 from the [ChronoLog GitHub Releases](https://github.com/grc-iit/ChronoLog/releases) page:
-
-```bash
-wget https://github.com/grc-iit/ChronoLog/releases/download/v2.5.0/chronolog-2.5.0-linux-x86_64.tar.gz
-```
-
-## Extract the Archive
-
-Extract the tarball:
-
-```bash
-tar -xzf chronolog-2.5.0-linux-x86_64.tar.gz
-```
-
-Enter the extracted directory:
-
-```bash
-cd chronolog-2.5.0
-```
-
-## Verify Executables
-
-After extracting, the `bin/` directory should contain the following executables:
-
-- `chrono-visor` — ChronoVisor server
-- `chrono-keeper` — ChronoKeeper server
-- `chrono-grapher` — ChronoGrapher server
-- `chrono-player` — ChronoPlayer server
-- `chrono-client-admin` — Admin/workload generator tool
-
-List the contents of the `bin/` directory to confirm:
-
-```bash
-ls bin/
-```
-
-## Set Up Configuration
-
-The default configuration file is located at `conf/default-chrono-conf.json`. Review and adjust it for your environment before starting ChronoLog.
-
-View the default configuration:
-
-```bash
-cat conf/default-chrono-conf.json
-```
-
-Refer to the [Configuration](/docs/user-guide/configuration/overview) documentation for a full description of all available options.
-
-## Start ChronoLog
-
-From inside the extracted directory (`chronolog-2.5.0`), run the deployment script:
-
-```bash
-tools/deploy_local.sh --start
-```
-
-## Verify Deployment
-
-Check that the ChronoLog processes are running:
-
-```bash
-pgrep -la chrono
-```
-
-You should see `chrono-visor`, `chrono-keeper`, `chrono-grapher`, and `chrono-player` listed.
-
-## Stop ChronoLog
-
-To stop all ChronoLog services:
-
-```bash
-tools/deploy_local.sh --stop
-```
-
-To also remove generated logs and configuration artifacts:
-
-```bash
-tools/deploy_local.sh --clean
-```
-
-## Next Steps
-
-For full deployment options and configuration, see the [Single Node Deployment](/docs/user-guide/deployment/single-node) guide.
-
-</TabItem>
 <TabItem value="docker" label="Docker">
 
 ## Prerequisites
@@ -253,7 +259,8 @@ This opens an interactive shell inside the container with ChronoLog pre-installe
 Inside the container, run the single-node deployment script:
 
 ```bash
-./local_single_user_deploy.sh --start --install-dir /home/user/chronolog
+cd ~/chronolog-repo/tools/deploy/ChronoLog
+./local_single_user_deploy.sh --start --install-dir /home/$USER/chronolog-install
 ```
 
 ## Verify Deployment
@@ -261,10 +268,10 @@ Inside the container, run the single-node deployment script:
 Check that the ChronoLog processes are running:
 
 ```bash
-pgrep -la chrono
+pgrep -fla 'chrono-visor|chrono-keeper|chrono-grapher|chrono-player'
 ```
 
-You should see `chronovisor_server`, `chrono_keeper`, `chrono_grapher`, and `chrono_player` listed.
+You should see `chrono-visor`, `chrono-keeper`, `chrono-grapher`, and `chrono-player` listed.
 
 ## Next Steps
 

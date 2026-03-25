@@ -20,16 +20,16 @@ Keepers, Graphers, and Players all register with ChronoVisor on startup. If Chro
 
 **Check for port conflicts.** Default ports used by ChronoLog:
 
-| Service | Default port |
-|---|---|
-| ChronoVisor — client portal | 5555 |
-| ChronoVisor — keeper registry | 8888 |
-| ChronoKeeper — recording service | 6666 |
-| ChronoKeeper — datastore admin | 7777 |
-| ChronoKeeper — grapher drain | 3333 |
-| ChronoGrapher — datastore admin | 4444 |
-| ChronoPlayer — store admin | 2222 |
-| ChronoPlayer — playback query | 2225 |
+| Service                          | Default port |
+| ----------------------------------| --------------|
+| ChronoVisor — client portal      | 5555         |
+| ChronoVisor — keeper registry    | 8888         |
+| ChronoKeeper — recording service | 6666         |
+| ChronoKeeper — datastore admin   | 7777         |
+| ChronoKeeper — grapher drain     | 3333         |
+| ChronoGrapher — datastore admin  | 4444         |
+| ChronoPlayer — store admin       | 2222         |
+| ChronoPlayer — playback query    | 2225         |
 
 ```bash
 ss -tlnp | grep -E '5555|8888|6666|7777|3333|4444|2222|2225'
