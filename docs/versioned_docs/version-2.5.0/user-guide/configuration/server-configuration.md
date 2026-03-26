@@ -42,27 +42,24 @@ The configuration file is divided into sections for different components of Chro
 - **`module_location`**: File path to the authentication module.
 
 #### **ChronoVisor Configuration (`chrono_visor`)**
-- **`VisorClientPortalService`**: Specifies the RPC configuration used for the Visor Client Portal Service. This service is responsible for facilitating communication between the ChronoVisor and its clients.
-- **`VisorKeeperRegistryService`**: Specifies the RPC configuration used for the Visor Keeper Registry Service. This service is responsible for registering and managing Keepers in the ChronoVisor's ecosystem.
-- **`Monitoring`**: Monitoring options specific to the ChronoClient. These options control how logging and monitoring are configured for the ChronoVisor.
+- **`VisorClientPortalService`**: Specifies the RPC configuration used for the Visor-Client Portal Service. This service is responsible for facilitating communication between the ChronoVisor and its clients.
+- **`VisorKeeperRegistryService`**: Specifies the RPC configuration used for the Visor-Keeper Registry Service. This service is responsible for registering and managing ChronoKeepers in the ChronoVisor's ecosystem.
 - **`delayed_data_admin_exit_in_secs`**: Specifies the delay (in seconds) before the data admin service exits gracefully. This allows ongoing processes to complete before shutdown.
 
 #### **ChronoKeeper Configuration (`chrono_keeper`)**
-- **`RecordingGroup`**: Identifier for the recording group used by the Keeper. It defines a logical grouping of data for storage and retrieval.
+- **`RecordingGroup`**: Identifier for the recording group used by the ChronoKeeper. It defines a logical grouping of data for storage and retrieval.
 - **`KeeperRecordingService`**: Specifies the RPC configuration used for the Keeper Recording Service, which handles the recording of data into the storage system.
-- **`KeeperDataStoreAdminService`**: Specifies the RPC configuration used for the Keeper Data Store Administration Service, which manages administrative tasks related to the Keeper's data store.
-- **`VisorKeeperRegistryService`**: Specifies the RPC configuration used for the Visor Keeper Registry Service, enabling communication between the ChronoKeeper and the ChronoVisor.
-- **`KeeperGrapherDrainService`**: Specifies the RPC configuration used for the Keeper Grapher Drain Service, which handles data transfers between the Keeper and the ChronoGrapher.
-- **`Monitoring`**: Monitoring options specific to the ChronoKeeper. These options control how logging and monitoring are configured for the Keeper.
-- **`story_files_dir`**: Directory path for storing story-related files. This is where the Keeper stores serialized story data.
+- **`KeeperDataStoreAdminService`**: Specifies the RPC configuration used for the Keeper Data Store Administration Service, which manages administrative tasks related to the ChronoKeeper's data store.
+- **`VisorKeeperRegistryService`**: Specifies the RPC configuration used for the Visor-Keeper Registry Service, enabling communication between the ChronoKeeper and the ChronoVisor.
+- **`KeeperGrapherDrainService`**: Specifies the RPC configuration used for the Keeper-Grapher Drain Service, which handles data transfers between the ChronoKeeper and the ChronoGrapher.
+- **`story_files_dir`**: Directory path for storing story-related files. This is where the ChronoKeeper stores serialized story data.
 
 #### **ChronoGrapher Configuration (`chrono_grapher`)**
-- **`RecordingGroup`**: Identifier for the recording group used by the Grapher. It defines a logical grouping of data for storage and retrieval.
-- **`KeeperGrapherDrainService`**: Specifies the RPC configuration used for the Keeper Grapher Drain Service, which transfers data from the Keeper to the Grapher.
-- **`DataStoreAdminService`**: Specifies the RPC configuration used for the Data Store Administration Service, which manages administrative tasks related to the Grapher's data store.
-- **`VisorRegistryService`**: Specifies the RPC configuration used for the Visor Registry Service, which facilitates communication between the Grapher and the Visor.
-- **`Monitoring`**: Monitoring options specific to the ChronoGrapher. These options control how logging and monitoring are configured for the Grapher.
-- **`DataStoreInternals`**: Internal settings for the Grapher's data store. For example:
+- **`RecordingGroup`**: Identifier for the recording group used by the ChronoGrapher. It defines a logical grouping of data for storage and retrieval.
+- **`KeeperGrapherDrainService`**: Specifies the RPC configuration used for the Keeper-Grapher Drain Service, which transfers data from the ChronoKeeper to the ChronoGrapher.
+- **`DataStoreAdminService`**: Specifies the RPC configuration used for the Data Store Administration Service, which manages administrative tasks related to the ChronoGrapher's data store.
+- **`VisorRegistryService`**: Specifies the RPC configuration used for the Visor Registry Service, which facilitates communication between the ChronoGrapher and the ChronoVisor.
+- **`DataStoreInternals`**: Internal settings for the ChronoGrapher's data store. For example:
     - **`max_story_chunk_size`**: Maximum size (in bytes) of individual story chunks to optimize performance and storage efficiency.
 - **`Extractors`**:
     - **`story_files_dir`**: Directory for storing extracted story files used during data retrieval.
@@ -71,11 +68,9 @@ The configuration file is divided into sections for different components of Chro
 - **`RecordingGroup`**: Identifier for the recording group used by the ChronoPlayer. It defines a logical grouping of data for playback.
 - **`PlayerStoreAdminService`**: Specifies the RPC configuration used for the Player Store Administration Service, which manages playback-related administrative tasks.
 - **`PlaybackQueryService`**: Specifies the RPC configuration used for the Playback Query Service, which processes data queries for playback.
-- **`VisorRegistryService`**: Specifies the RPC configuration used for the Visor Registry Service, which enables communication between the Player and the Visor.
-- **`Monitoring`**: Monitoring options specific to the ChronoPlayer. These options control how logging and monitoring are configured for the Player.
+- **`VisorRegistryService`**: Specifies the RPC configuration used for the Visor Registry Service, which enables communication between the ChronoPlayer and the ChronoVisor.
 
 #### **ChronoClient Configuration (`chrono_client`)**
-- **`VisorClientPortalService`**: Specifies the RPC configuration used for the Visor Client Portal Service. This service manages communication between the ChronoClient and the Visor.
-- **`Monitoring`**: Monitoring options specific to the ChronoClient. These options control how logging and monitoring are configured for the Client.
+- **`VisorClientPortalService`**: Specifies the RPC configuration used for the Visor-Client Portal Service. This service manages communication between the ChronoClient and the ChronoVisor.
 
 ---

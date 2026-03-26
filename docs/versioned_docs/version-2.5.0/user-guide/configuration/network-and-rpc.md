@@ -5,6 +5,8 @@ title: "Network & RPC"
 
 # Network & RPC Configuration
 
+ChronoLog includes built-in scripts installed under `tools/` under the installation directory to help deploy ChronoLog in both local and distributed setups. The remaining sections on this page describe manual network and RPC configuration.
+
 ChronoLog uses [Thallium](https://mochi.readthedocs.io/en/latest/thallium.html) (a Mochi RPC framework built on Mercury) for all inter-component communication. Every service endpoint in the configuration follows the same `rpc` block structure.
 
 ## RPC Block Structure
