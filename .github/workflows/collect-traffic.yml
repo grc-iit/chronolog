@@ -1,4 +1,4 @@
-name: Repository Traffic
+name: "ChronoLog: Collect Traffic"
 
 on:
   schedule:
