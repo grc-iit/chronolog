@@ -1,4 +1,4 @@
-name: Clang Format Check
+name: "ChronoLog: Check Format"
 
 # This workflow checks C/C++ code formatting using clang-format-18 (default Ubuntu 24.04 version)
 # To format code locally, install clang-format-18 from default Ubuntu repositories:
