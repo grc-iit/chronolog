@@ -253,4 +253,4 @@ Tiering policy can be set per-Chronicle (`normal`, `hot`, or `cold`) to bias tow
 ## Further Reading
 
 - **Component deep-dives:** [ChronoVisor](./chronovisor.md) | [ChronoKeeper](./chronokeeper.md) | [ChronoGrapher](./chronographer.md) | [ChronoPlayer](./chronoplayer.md)
-- **Data Model:** [Overview](../data-model/overview.md) | [Core Types](../data-model/core-types.md) | [Storage and Serialization](../data-model/storage-and-serialization.md)
+- **Data Model:** [Overview](../data-model/overview.md)

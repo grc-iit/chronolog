@@ -30,6 +30,3 @@ Events follow a well-defined path through the system. Client applications create
 |---|---|
 | Concept definitions and details | [Concepts](./concepts.md) |
 | Distributed pipeline design | [Distributed Story Pipeline](./story-pipeline.md) |
-| C++ type definitions and APIs | [Core Types](./core-types.md) |
-| HDF5 storage and serialization | [Storage and Serialization](./storage-and-serialization.md) |
-| Service networking identities | [Service Identities](./service-identities.md) |

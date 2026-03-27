@@ -43,10 +43,3 @@ Once configured, ChronoLog can be deployed in several ways depending on your env
 - **[Multi-Node](./deployment/multi-node.md)** — distributed deployment across multiple hosts using the deployment script and Slurm integration
 - **[Docker Compose](./deployment/docker-compose.md)** — containerized deployment with service definitions and scaling
 
-### Operations
-
-After deployment, the operations sub-section helps you keep your system healthy:
-
-- **[Monitoring & Logging](./operations/monitoring-and-logging.md)** — log levels, log file locations, and how to interpret output from each component
-- **[Troubleshooting](./operations/troubleshooting.md)** — common issues and their solutions, from connection failures to deployment problems
-- **[Error Codes](./operations/error-codes.md)** — a comprehensive reference of server-side error codes with recommended actions
