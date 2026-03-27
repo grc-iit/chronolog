@@ -42,11 +42,14 @@ When you call a plugin operation, it serializes the call arguments into a Chrono
 |---|---|---|
 | [ChronoKVS](./chronokvs.md) | Multi-version key-value store | State auditing, configuration history, temporal lookups |
 | [ChronoStream](./chronostream.md) | Event stream consumer | Real-time processing, ordered delivery, stream replay |
+| [ChronoViz](./chronoviz.md) | Grafana data source | Dashboard visualization, interactive exploration, time-range queries |
 
 ## Choosing a plugin
 
 Use **ChronoKVS** when your application works with named key-value pairs and you need to query past values, reconstruct state at a specific point in time, or audit how a value has changed. It is a good fit for configuration stores, metadata registries, or any system where "what was the value of X at time T?" is a meaningful question.
 
 Use **ChronoStream** when your application produces or consumes a continuous flow of events and you need ordered, at-least-once delivery with the ability to replay from any point in the stream. It is a good fit for telemetry pipelines, event-driven architectures, and distributed tracing backends.
+
+Use **ChronoViz** when you want to explore and visualize ChronoLog data interactively through Grafana dashboards. It connects Grafana directly to a running ChronoLog service, letting you browse chronicles and stories, query events over arbitrary time ranges, and render the results in any Grafana panel without writing custom export scripts.
 
 If neither plugin fits your use case, the raw ChronoLog [C++ client API](../client/cpp/overview.md) is always available and provides full control over record layout and storage semantics.
