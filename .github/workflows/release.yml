@@ -51,10 +51,10 @@ jobs:
       - name: Set base image name
         id: set-base-image-name
         run: |
-          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           HASH="${{ steps.basehash.outputs.hash }}"
-          TAG="base-${HASH}"
-          echo "full-name=ghcr.io/${REPO_LOWER}/chronolog:${TAG}" >> $GITHUB_OUTPUT
+          TAG="sha-${HASH}"
+          echo "full-name=ghcr.io/${OWNER}/chronolog-base:${TAG}" >> $GITHUB_OUTPUT
           echo "Base image tag: ${TAG}"
 
       - name: Try to pull cached base image
@@ -120,7 +120,7 @@ jobs:
     needs: base-image
     permissions:
       contents: read
-      packages: read
+      packages: write
     timeout-minutes: 120
     outputs:
       version: ${{ steps.extract-version.outputs.version }}
@@ -215,6 +215,58 @@ jobs:
             ls \"\${BUILD_DIR}/\"chronolog-*-linux-*.tar.gz
           "
 
+      - name: Copy Release tarball out of container
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          mkdir -p /tmp/chronolog-artifacts
+          RELEASE_TAR=$(docker exec "$CONTAINER_ID" bash -c \
+            "ls \$HOME/chronolog-build/Release/chronolog-*-linux-x86_64.tar.gz 2>/dev/null | head -1")
+          echo "Release tarball: ${RELEASE_TAR}"
+          docker exec "$CONTAINER_ID" bash -c "cat '${RELEASE_TAR}'" \
+            > /tmp/chronolog-artifacts/$(basename "${RELEASE_TAR}")
+
+      - name: Commit release Docker image
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          VERSION="${{ steps.extract-version.outputs.version }}"
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+
+          # Clean build artifacts and prepare image environment
+          docker exec "$CONTAINER_ID" bash -c "
+            set -e
+            rm -rf /home/grc-iit/chronolog-build
+            echo 'export PATH=${{ env.RELEASE_INSTALL }}/chronolog/bin:\$PATH' >> /home/grc-iit/.bashrc
+            echo 'export LD_LIBRARY_PATH=${{ env.RELEASE_INSTALL }}/chronolog/lib:\$LD_LIBRARY_PATH' >> /home/grc-iit/.bashrc
+          "
+
+          # Commit the running container as the release image
+          docker commit \
+            --change 'ENV PATH=${{ env.RELEASE_INSTALL }}/chronolog/bin:$PATH' \
+            --change 'ENV LD_LIBRARY_PATH=${{ env.RELEASE_INSTALL }}/chronolog/lib' \
+            --change 'ENV CHRONOLOG_HOME=${{ env.RELEASE_INSTALL }}/chronolog' \
+            --change 'LABEL org.opencontainers.image.title=ChronoLog' \
+            --change "LABEL org.opencontainers.image.version=${VERSION}" \
+            --change 'LABEL org.opencontainers.image.source=https://github.com/grc-iit/ChronoLog' \
+            --change 'USER grc-iit' \
+            --change 'WORKDIR ${{ env.RELEASE_INSTALL }}/chronolog' \
+            "$CONTAINER_ID" "ghcr.io/${OWNER}/chronolog:v${VERSION}"
+
+          docker tag "ghcr.io/${OWNER}/chronolog:v${VERSION}" \
+                     "ghcr.io/${OWNER}/chronolog:latest"
+
+          echo "Release image committed: ghcr.io/${OWNER}/chronolog:v${VERSION}"
+
+      - name: Push release Docker image
+        run: |
+          set -e
+          VERSION="${{ steps.extract-version.outputs.version }}"
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          docker push "ghcr.io/${OWNER}/chronolog:v${VERSION}"
+          docker push "ghcr.io/${OWNER}/chronolog:latest"
+          echo "Release images pushed to GHCR"
+
       - name: Build Debug package
         run: |
           set -e
@@ -253,24 +305,13 @@ jobs:
             ls \"\${BUILD_DIR}/\"chronolog-*-linux-*-debug.tar.gz
           "
 
-      - name: Copy tarballs out of container
+      - name: Copy Debug tarball out of container
         run: |
           set -e
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
-          mkdir -p /tmp/chronolog-artifacts
-
-          # Locate the tarballs by glob (CPack uses CHRONOLOG_PACKAGE_VERSION from
-          # CMakeLists.txt, which may differ from the git tag suffix)
-          RELEASE_TAR=$(docker exec "$CONTAINER_ID" bash -c \
-            "ls \$HOME/chronolog-build/Release/chronolog-*-linux-x86_64.tar.gz 2>/dev/null | head -1")
           DEBUG_TAR=$(docker exec "$CONTAINER_ID" bash -c \
             "ls \$HOME/chronolog-build/Debug/chronolog-*-linux-x86_64-debug.tar.gz 2>/dev/null | head -1")
-
-          echo "Release tarball: ${RELEASE_TAR}"
-          echo "Debug tarball:   ${DEBUG_TAR}"
-
-          docker exec "$CONTAINER_ID" bash -c "cat '${RELEASE_TAR}'" \
-            > /tmp/chronolog-artifacts/$(basename "${RELEASE_TAR}")
+          echo "Debug tarball: ${DEBUG_TAR}"
           docker exec "$CONTAINER_ID" bash -c "cat '${DEBUG_TAR}'" \
             > /tmp/chronolog-artifacts/$(basename "${DEBUG_TAR}")
 
