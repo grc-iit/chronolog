@@ -1167,8 +1167,8 @@ jobs:
             --change 'ENV PATH=/home/grc-iit/chronolog-install/chronolog/bin:$PATH' \
             --change 'ENV LD_LIBRARY_PATH=/home/grc-iit/chronolog-install/chronolog/lib' \
             --change 'ENV CHRONOLOG_HOME=/home/grc-iit/chronolog-install/chronolog' \
-            --change 'LABEL org.opencontainers.image.title=ChronoLog Developer Image' \
-            --change 'LABEL org.opencontainers.image.description=Debug build with source code for development' \
+            --change "LABEL org.opencontainers.image.title=\"ChronoLog Developer Image\"" \
+            --change "LABEL org.opencontainers.image.description=\"Debug build with source code for development\"" \
             --change "LABEL org.opencontainers.image.revision=${{ github.sha }}" \
             --change 'LABEL org.opencontainers.image.source=https://github.com/grc-iit/ChronoLog' \
             --change 'USER grc-iit' \
