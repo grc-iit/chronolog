@@ -58,7 +58,7 @@
   --ifm-font-color-secondary: #9ca3b0;
 
   /* Navbar */
-  --ifm-navbar-background-color: rgba(30, 34, 43, 0.8);
+  --ifm-navbar-background-color: #1e222b;
   --ifm-navbar-link-color: #e4e7ed;
   --ifm-navbar-link-hover-color: #c3e04d;
 
@@ -85,9 +85,12 @@
 }
 
 /* ── Navbar ── */
-.navbar {
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+@media (min-width: 997px) {
+  [data-theme='dark'] .navbar {
+    background-color: rgba(30, 34, 43, 0.8);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
 }
 
 /* Hide external link icons in navbar */
