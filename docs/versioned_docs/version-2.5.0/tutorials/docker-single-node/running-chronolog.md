@@ -32,13 +32,13 @@ If you see a version number, you're good to go!
 
 ### Step 1: Pull the ChronoLog Docker Image
 
-First, pull the pre-built ChronoLog image from Docker Hub:
+First, pull the pre-built ChronoLog image from GitHub Container Registry:
 
 ```bash
-docker pull gnosisrc/chronolog:latest
+docker pull ghcr.io/grc-iit/chronolog:v2.5.0
 ```
 
-This downloads the latest ChronoLog image to your local machine, ensuring you have the most up-to-date version.
+This downloads the ChronoLog v2.5.0 image to your local machine, with a pre-installed release build ready to use.
 
 ---
 
@@ -47,7 +47,7 @@ This downloads the latest ChronoLog image to your local machine, ensuring you ha
 Next, launch the ChronoLog container:
 
 ```bash
-docker run -it --rm --name chronolog-instance gnosisrc/chronolog:latest
+docker run -it --rm --name chronolog-instance ghcr.io/grc-iit/chronolog:v2.5.0
 ```
 
 This command:
@@ -57,7 +57,7 @@ This command:
 - **Removes** the container (`--rm`) when it stops, so it doesn't persist unnecessarily.
 - **Assigns a name** (`--name chronolog-instance`) for easier reference.
 
-Once executed, you should see a welcome message. At this point, you are **inside** the ChronoLog container.
+Once executed, you should see a welcome message. At this point, you are **inside** the ChronoLog container. The working directory is automatically set to the ChronoLog installation (`$CHRONOLOG_HOME`).
 
 ---
 
@@ -72,8 +72,8 @@ docker ps
 You should see a container named `chronolog-instance`. For example:
 
 ```bash
-CONTAINER ID   IMAGE                        COMMAND       CREATED          STATUS          PORTS     NAMES
-bfbc93af1d50   gnosisrc/chronolog:latest    "/bin/bash"   X seconds ago    Up X seconds             chronolog-instance
+CONTAINER ID   IMAGE                                    COMMAND       CREATED          STATUS          PORTS     NAMES
+bfbc93af1d50   ghcr.io/grc-iit/chronolog:v2.5.0        "/bin/bash"   X seconds ago    Up X seconds             chronolog-instance
 ```
 
 This indicates your ChronoLog container is up and running successfully!
@@ -82,21 +82,15 @@ This indicates your ChronoLog container is up and running successfully!
 
 With the ChronoLog environment set up, it's time to deploy the system. We'll use the ChronoLog single-node deployment script to start all necessary components.
 
-### Step 1: Navigate to the Deployment Scripts Folder
+### Step 1: Run the Deployment Script
 
-Inside the container, navigate to the deployment scripts directory:
-
-```bash
-cd /home/grc-iit/chronolog_repo/deploy
-```
-
-### Step 2: Run the Deployment Script
-
-Execute the deployment script to start the ChronoLog system:
+Inside the container, execute the deployment script to start the ChronoLog system:
 
 ```bash
-./local_single_user_deploy.sh -d -w /home/grc-iit/chronolog_install/Release
+tools/deploy_local.sh --start
 ```
+
+No `cd` is needed — the container's working directory is already set to the ChronoLog installation.
 
 This command will deploy a **basic ChronoLog architecture**, including:
 
@@ -105,24 +99,38 @@ This command will deploy a **basic ChronoLog architecture**, including:
 - One **ChronoGrapher** (query and indexing service)
 - One **ChronoPlayer** (stream processor)
 
-### Step 3: Verify That ChronoLog Components Are Running
+### Step 2: Verify That ChronoLog Components Are Running
 
 To ensure all components are properly deployed, run the following command:
 
 ```bash
-pgrep -la chrono
+pgrep -fla 'chrono-visor|chrono-keeper|chrono-grapher|chrono-player'
 ```
 
 You should see an active process for each ChronoLog component:
 
 ```bash
-/home/grc-iit/chronolog_install/Release/bin/chronovisor_server --config /home/grc-iit/chronolog_install/Release/conf/visor_conf.json
-/home/grc-iit/chronolog_install/Release/bin/chrono_grapher --config /home/grc-iit/chronolog_install/Release/conf/grapher_conf_1.json
-/home/grc-iit/chronolog_install/Release/bin/chrono_player --config /home/grc-iit/chronolog_install/Release/conf/player_conf_1.json
-/home/grc-iit/chronolog_install/Release/bin/chrono_keeper --config /home/grc-iit/chronolog_install/Release/conf/keeper_conf_1.json
+/home/grc-iit/chronolog-release-install/chronolog/bin/chrono-visor ...
+/home/grc-iit/chronolog-release-install/chronolog/bin/chrono-keeper ...
+/home/grc-iit/chronolog-release-install/chronolog/bin/chrono-grapher ...
+/home/grc-iit/chronolog-release-install/chronolog/bin/chrono-player ...
 ```
 
 If all four processes appear, your ChronoLog deployment is successfully running!
+
+## Stop ChronoLog
+
+To stop all ChronoLog services:
+
+```bash
+tools/deploy_local.sh --stop
+```
+
+To also remove generated logs, configuration artifacts and stored data:
+
+```bash
+tools/deploy_local.sh --clean
+```
 
 ## Next: Client + Performance test
 

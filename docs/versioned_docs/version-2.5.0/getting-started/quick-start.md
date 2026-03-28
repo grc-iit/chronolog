@@ -12,7 +12,7 @@ Get ChronoLog running on your machine in minutes. Choose the method that best fi
 - ChronoLog can be installed via three primary methods:
   - Pre-built binary tarball (no build tools required, no source code either)
   - Source build using CMake and Make (for advanced users and developers)
-  - Official Docker image (for containerized deployments with both source code and pre-installed build)
+  - Official Docker image (for containerized deployments with a pre-installed release build)
 - Each method fully supports single-node or multi-node local and distributed development.
 - See below for detailed, step-by-step instructions for each option.
 
@@ -242,25 +242,54 @@ Ensure [Docker](https://docs.docker.com/get-docker/) is installed and the Docker
 
 ## Pull the ChronoLog Image
 
+Pull the official ChronoLog image from GitHub Container Registry:
+
 ```bash
-docker pull gnosisrc/chronolog:latest
+docker pull ghcr.io/grc-iit/chronolog:v2.5.0
 ```
 
 ## Run the Container
 
 ```bash
-docker run -it --rm gnosisrc/chronolog:latest bash
+docker run -it --rm ghcr.io/grc-iit/chronolog:v2.5.0 bash
 ```
 
-This opens an interactive shell inside the container with ChronoLog pre-installed.
+This opens an interactive shell inside the container with ChronoLog pre-installed. The working directory is automatically set to the ChronoLog installation (`$CHRONOLOG_HOME`).
 
-## Deploy ChronoLog
+## Verify Executables
 
-Inside the container, run the single-node deployment script:
+After entering the container, the `bin/` directory should contain the following executables:
+
+- `chrono-visor` — ChronoVisor server
+- `chrono-keeper` — ChronoKeeper server
+- `chrono-grapher` — ChronoGrapher server
+- `chrono-player` — ChronoPlayer server
+- `chrono-client-admin` — CLI tool
+
+List the contents of the `bin/` directory to confirm:
 
 ```bash
-cd ~/chronolog-repo/tools/deploy/ChronoLog
-./local_single_user_deploy.sh --start --install-dir /home/$USER/chronolog-install
+ls bin/
+```
+
+## Set Up Configuration
+
+The default configuration file is located at `conf/default-chrono-conf.json`. Review and adjust it for your environment before starting ChronoLog.
+
+View the default configuration:
+
+```bash
+cat conf/default-chrono-conf.json
+```
+
+Refer to the [Configuration](/docs/user-guide/configuration/overview) documentation for a full description of all available options.
+
+## Start ChronoLog
+
+Inside the container, run the deployment script:
+
+```bash
+tools/deploy_local.sh --start
 ```
 
 ## Verify Deployment
@@ -272,6 +301,20 @@ pgrep -fla 'chrono-visor|chrono-keeper|chrono-grapher|chrono-player'
 ```
 
 You should see `chrono-visor`, `chrono-keeper`, `chrono-grapher`, and `chrono-player` listed.
+
+## Stop ChronoLog
+
+To stop all ChronoLog services:
+
+```bash
+tools/deploy_local.sh --stop
+```
+
+To also remove generated logs, configuration artifacts and stored data:
+
+```bash
+tools/deploy_local.sh --clean
+```
 
 ## Next Steps
 

@@ -7,7 +7,7 @@ title: "Running ChronoLog"
 
 ## Welcome!
 
-This simplified tutorial will guide you through quickly setting up **ChronoLog** in a multi-node environment using our automated deployment script. By the end, you'll have a fully operational **distributed ChronoLog system**, with minimal setup steps required.
+This tutorial will guide you through quickly setting up **ChronoLog** in a multi-node environment using our automated deployment script. By the end, you'll have a fully operational **distributed ChronoLog system**, with minimal setup steps required.
 
 If you're looking for a simpler single-node setup instead, see [Docker (single node) - Running ChronoLog](../docker-single-node/running-chronolog).
 
@@ -43,7 +43,7 @@ docker compose version
 ### Step 1: Pull ChronoLog Docker Image
 
 ```bash
-docker pull gnosisrc/chronolog:latest
+docker pull ghcr.io/grc-iit/chronolog:v2.5.0
 ```
 
 ### Step 2: Download the Deployment Script
@@ -81,12 +81,28 @@ Example:
 ./dynamic_deploy.sh -n 7 -k 2 -g 2 -p 2
 ```
 
-This example will deploy a docker instance for the ChronoVisor, 2 instances for ChronoKeepers, 2 for ChronoGraphers and 2 for ChronoPlayers.
+This example will deploy a Docker instance for the ChronoVisor, 2 instances for ChronoKeepers, 2 for ChronoGraphers and 2 for ChronoPlayers.
+
+The script uses the pre-built ChronoLog release image — no source code compilation is needed. It generates a Docker Compose file, starts the containers, configures SSH between them, and deploys ChronoLog services across the cluster.
 
 Check your deployment:
 
 ```bash
 docker ps
+```
+
+## Stopping ChronoLog
+
+Stop all containers:
+
+```bash
+docker compose -f dynamic-compose.yaml down
+```
+
+Remove volumes (required when upgrading to a new ChronoLog image version):
+
+```bash
+docker compose -f dynamic-compose.yaml down -v
 ```
 
 ## Next: Client Performance Test
