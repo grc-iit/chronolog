@@ -145,10 +145,10 @@ jobs:
           set -e
           BASE_IMAGE="${{ needs.chronolog-base.outputs.image-name }}"
           CONTAINER_ID=$(docker create --user root --init \
-            -v "${{ github.workspace }}:/home/grc-iit/chronolog-repo" \
-            -w /home/grc-iit/chronolog-repo \
+            -v "${{ github.workspace }}:/tmp/chronolog-src" \
+            -w /tmp/chronolog-src \
             "$BASE_IMAGE" \
-            bash -c "chown -R grc-iit:grc-iit /home/grc-iit/chronolog-repo && tail -f /dev/null")
+            bash -c "chown -R grc-iit:grc-iit /tmp/chronolog-src && tail -f /dev/null")
           echo "container-id=${CONTAINER_ID}" >> $GITHUB_OUTPUT
           docker start "$CONTAINER_ID"
 
@@ -195,14 +195,15 @@ jobs:
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
           docker exec "$CONTAINER_ID" bash -c "
             set -e
-            # Copy source into container (bind-mount content does not survive docker commit)
-            cp -a /home/grc-iit/chronolog-repo /home/grc-iit/chronolog-src
-            # Remove build artifacts to reduce image size
+            # Copy source into container at chronolog-repo (bind-mount does not survive docker commit)
+            cp -a /tmp/chronolog-src /home/grc-iit/chronolog-repo
+            # Fix ownership of install tree (built as root; grc-iit needs write access for monitor/output dirs)
+            chown -R grc-iit:grc-iit /home/grc-iit/chronolog-install
+            # Remove CMake build artifacts to reduce image size
             rm -rf /home/grc-iit/chronolog-build
             # Add runtime environment to bashrc
             echo 'export PATH=/home/grc-iit/chronolog-install/chronolog/bin:\$PATH' >> /home/grc-iit/.bashrc
             echo 'export LD_LIBRARY_PATH=/home/grc-iit/chronolog-install/chronolog/lib:\$LD_LIBRARY_PATH' >> /home/grc-iit/.bashrc
-            echo 'cd /home/grc-iit/chronolog-src' >> /home/grc-iit/.bashrc
           "
 
       - name: Commit and push dev image
@@ -221,7 +222,7 @@ jobs:
             --change "LABEL org.opencontainers.image.revision=${{ github.sha }}" \
             --change 'LABEL org.opencontainers.image.source=https://github.com/grc-iit/ChronoLog' \
             --change 'USER grc-iit' \
-            --change 'WORKDIR /home/grc-iit/chronolog-src' \
+            --change 'WORKDIR /home/grc-iit' \
             "$CONTAINER_ID" "ghcr.io/${OWNER}/chronolog-dev:develop"
 
           docker push "ghcr.io/${OWNER}/chronolog-dev:develop"
