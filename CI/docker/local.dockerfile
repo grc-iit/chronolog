@@ -1,4 +1,4 @@
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
 SHELL ["/bin/bash", "-c"]
 
@@ -20,7 +20,8 @@ RUN apt-get update \
     git vim fuse sudo curl wget \
     libfuse-dev libssl-dev \
     python3 python3-dev python3-pip \
-    bzip2 xz-utils jq net-tools lsof htop pssh procps bind9-dnsutils chrpath
+    bzip2 xz-utils jq net-tools lsof htop pssh procps bind9-dnsutils chrpath \
+    build-essential unzip tar autoconf
 
 RUN apt-get -y install --no-install-recommends \
     openssh-server openssh-client \
@@ -34,7 +35,7 @@ RUN apt-get -y install --no-install-recommends \
     'Host *' \
     '    StrictHostKeyChecking no' \
     > /etc/ssh/ssh_config.d/ignore-host-key.conf \
-  && pip3 install pssh
+  && pip3 install --break-system-packages pssh
 
 RUN id $UID && userdel $(id -un $UID) || : \
  && useradd -m -u $UID -s /bin/bash $USERNAME \
