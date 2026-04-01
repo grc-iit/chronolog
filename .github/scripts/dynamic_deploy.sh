@@ -9,7 +9,7 @@ usage() {
     echo "  -k NUM_KEEPERS          Number of ChronoKeepers to deploy (minimum 1, default: 1)"
     echo "  -g NUM_GRAPHERS         Number of ChronoGraphers to deploy (minimum 1, default: 1)"
     echo "  -p NUM_PLAYERS          Number of ChronoPlayers to deploy (minimum 1, default: 1)"
-    echo "  -i IMAGE_NAME           Docker image name to use (default: gnosisrc/chronolog:latest)"
+    echo "  -i IMAGE_NAME           Docker image name to use (default: ghcr.io/grc-iit/chronolog:latest)"
     echo "  -h                      Display this help message"
     echo
     echo "Example:"
@@ -23,7 +23,7 @@ NUM_CONTAINERS=4
 NUM_KEEPERS=1
 NUM_GRAPHERS=1
 NUM_PLAYERS=1
-IMAGE_NAME="gnosisrc/chronolog:latest"
+IMAGE_NAME="ghcr.io/grc-iit/chronolog:latest"
 
 # Parse command line arguments
 while getopts "n:k:g:p:i:h" opt; do
@@ -88,6 +88,10 @@ x-common: &x-common
     - seccomp:unconfined
     - apparmor:unconfined
   privileged: false
+  mem_limit: 4g
+  mem_reservation: 2g
+  cpus: 2
+  shm_size: 512m
   command: >
     bash -c "sleep infinity"
 
@@ -127,48 +131,54 @@ EOF
 # Launch the dynamically generated docker-compose file
 docker compose -f dynamic-compose.yaml up -d
 
+# Install dependencies required by single_user_deploy.sh in all containers
+for i in $(seq 1 $NUM_CONTAINERS); do
+    docker exec chronolog-c$i bash -c "apt-get update && apt-get install -y openssh-server sudo pssh dnsutils jq chrpath || true"
+done
+
 # Prepare SSH keys and known hosts (remove -it flags for CI compatibility)
 # Since all containers share /home/grc-iit via shared_home volume, operations on c1
 # are automatically visible in all containers - no need to copy files to each container
-docker exec chronolog-c1 bash -c "mkdir -p /home/grc-iit/.ssh && ssh-keygen -t rsa -b 4096 -f /home/grc-iit/.ssh/id_rsa -N '' || true"
-docker exec chronolog-c1 bash -c "cat /home/grc-iit/.ssh/id_rsa.pub > /home/grc-iit/.ssh/authorized_keys"
-docker exec chronolog-c1 bash -c "for i in \$(seq 1 $NUM_CONTAINERS); do ssh-keyscan -t rsa,ed25519 c\$i >> /home/grc-iit/.ssh/known_hosts 2>/dev/null; done"
+docker exec --user grc-iit chronolog-c1 bash -c "mkdir -p /home/grc-iit/.ssh && ssh-keygen -t rsa -b 4096 -f /home/grc-iit/.ssh/id_rsa -N '' || true"
+docker exec --user grc-iit chronolog-c1 bash -c "cat /home/grc-iit/.ssh/id_rsa.pub > /home/grc-iit/.ssh/authorized_keys"
+docker exec --user grc-iit chronolog-c1 bash -c "for i in \$(seq 1 $NUM_CONTAINERS); do ssh-keyscan -t rsa,ed25519 c\$i >> /home/grc-iit/.ssh/known_hosts 2>/dev/null; done"
 docker exec chronolog-c1 bash -c "chown -R grc-iit:grc-iit /home/grc-iit/.ssh && chmod 700 /home/grc-iit/.ssh && chmod 600 /home/grc-iit/.ssh/id_rsa && chmod 644 /home/grc-iit/.ssh/id_rsa.pub && chmod 600 /home/grc-iit/.ssh/authorized_keys"
-docker exec chronolog-c1 bash -c "echo 'export USER=grc-iit' >> ~/.bashrc"
+docker exec --user grc-iit chronolog-c1 bash -c "echo 'export USER=grc-iit' >> ~/.bashrc"
 
-# Prepare hosts files (using absolute paths matching ci.yml)
-docker exec chronolog-c1 bash -c "rm -rf /home/grc-iit/chronolog-install/chronolog/conf/hosts_*" || true
-docker exec chronolog-c1 bash -c "mkdir -p /home/grc-iit/chronolog-install/chronolog/conf" || true
-docker exec chronolog-c1 bash -c "echo c1 > /home/grc-iit/chronolog-install/chronolog/conf/hosts_visor"
+# Prepare hosts files
+WORK_DIR="/home/grc-iit/chronolog-install/chronolog"
+docker exec chronolog-c1 bash -c "mkdir -p ${WORK_DIR}/conf && chown -R grc-iit:grc-iit ${WORK_DIR}" || true
+docker exec --user grc-iit chronolog-c1 bash -c "rm -rf ${WORK_DIR}/conf/hosts_*"
+docker exec --user grc-iit chronolog-c1 bash -c "echo c1 > ${WORK_DIR}/conf/hosts_visor"
 for i in $(seq 2 $(($NUM_KEEPERS + 1))); do
-    docker exec chronolog-c1 bash -c "echo c$i >> /home/grc-iit/chronolog-install/chronolog/conf/hosts_keeper"
+    docker exec --user grc-iit chronolog-c1 bash -c "echo c$i >> ${WORK_DIR}/conf/hosts_keeper"
 done
 for i in $(seq $(($NUM_KEEPERS + 2)) $(($NUM_KEEPERS + $NUM_GRAPHERS + 1))); do
-    docker exec chronolog-c1 bash -c "echo c$i >> /home/grc-iit/chronolog-install/chronolog/conf/hosts_grapher"
+    docker exec --user grc-iit chronolog-c1 bash -c "echo c$i >> ${WORK_DIR}/conf/hosts_grapher"
 done
 for i in $(seq $(($NUM_KEEPERS + $NUM_GRAPHERS + 2)) $(($NUM_KEEPERS + $NUM_GRAPHERS + $NUM_PLAYERS + 1))); do
-    docker exec chronolog-c1 bash -c "echo c$i >> /home/grc-iit/chronolog-install/chronolog/conf/hosts_player"
+    docker exec --user grc-iit chronolog-c1 bash -c "echo c$i >> ${WORK_DIR}/conf/hosts_player"
 done
 for i in $(seq 1 $NUM_CONTAINERS); do
-    docker exec chronolog-c1 bash -c "echo c$i >> /home/grc-iit/chronolog-install/chronolog/conf/hosts_clients"
+    docker exec --user grc-iit chronolog-c1 bash -c "echo c$i >> ${WORK_DIR}/conf/hosts_clients"
 done
 for i in $(seq 1 $NUM_CONTAINERS); do
-    docker exec chronolog-c1 bash -c "echo c$i >> /home/grc-iit/chronolog-install/chronolog/conf/hosts_all"
+    docker exec --user grc-iit chronolog-c1 bash -c "echo c$i >> ${WORK_DIR}/conf/hosts_all"
 done
 
 # Note: The following build/install steps are typically done in the CI workflow
 # They are included here for reference but may be skipped if using a pre-built image
 # Force concretize and install dependencies in case of changes
-# docker exec chronolog-c1 bash -c "cd /home/grc-iit/chronolog-repo && source /home/grc-iit/spack/share/spack/setup-env.sh && spack env activate . && spack concretize --force && spack install"
+# docker exec --user grc-iit chronolog-c1 bash -c "cd /home/grc-iit/chronolog-repo && source /home/grc-iit/spack/share/spack/setup-env.sh && spack env activate . && spack concretize --force && spack install"
 
-# Build ChronoLog using new build script
-# docker exec chronolog-c1 bash -c "cd /home/grc-iit/chronolog-repo && source /home/grc-iit/spack/share/spack/setup-env.sh && spack env activate . && ./tools/deploy/ChronoLog/single_user_deploy.sh -b"
+# Build ChronoLog
+# docker exec --user grc-iit chronolog-c1 bash -c "cd /home/grc-iit/chronolog-repo && source /home/grc-iit/spack/share/spack/setup-env.sh && spack env activate . && ./tools/deploy/ChronoLog/local_single_user_deploy.sh -b -I /home/grc-iit/chronolog-install"
 
-# Install ChronoLog using new install script
-# docker exec chronolog-c1 bash -c "cd /home/grc-iit/chronolog-repo && source /home/grc-iit/spack/share/spack/setup-env.sh && spack env activate . && ./tools/deploy/ChronoLog/single_user_deploy.sh -i"
+# Install ChronoLog
+# docker exec --user grc-iit chronolog-c1 bash -c "cd /home/grc-iit/chronolog-repo && source /home/grc-iit/spack/share/spack/setup-env.sh && spack env activate . && ./tools/deploy/ChronoLog/local_single_user_deploy.sh -i -I /home/grc-iit/chronolog-install"
 
-# Deploy ChronoLog using new unified work directory
-# docker exec chronolog-c1 bash -c "cd /home/grc-iit/chronolog-repo && ./tools/deploy/ChronoLog/single_user_deploy.sh -d -w /home/grc-iit/chronolog-install/chronolog"
+# Deploy ChronoLog (distributed)
+# docker exec --user grc-iit chronolog-c1 bash -c "cd /home/grc-iit/chronolog-repo && ./tools/deploy/ChronoLog/single_user_deploy.sh -d -w /home/grc-iit/chronolog-install/chronolog"
 
 echo "Deployed $NUM_CONTAINERS ChronoLog containers (1 for ChronoVisor, $NUM_KEEPERS for ChronoKeeper, $NUM_GRAPHERS for ChronoGrapher, and $NUM_PLAYERS for ChronoPlayer)"
 
