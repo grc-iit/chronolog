@@ -132,33 +132,39 @@ Ensure [Docker](https://docs.docker.com/get-docker/) is installed and the Docker
 docker --version
 ```
 
-## Pull the ChronoLog Image
+## Pull the ChronoLog Dev Image
 
 ```bash
-docker pull gnosisrc/chronolog:latest
+docker pull ghcr.io/grc-iit/chronolog-dev:develop
 ```
 
-The image comes with **all dependencies pre-installed** (Spack environment, compilers, MPI, Mochi stack, etc.), so there is no additional setup required.
+The image is automatically published on every push to the `develop` branch by the CI pipeline. It comes with:
+- All Spack dependencies pre-installed
+- A **Debug build** of ChronoLog compiled and installed at `/home/grc-iit/chronolog-install/chronolog`
+- The full source tree at `/home/grc-iit/chronolog-src`
+- `PATH`, `LD_LIBRARY_PATH`, and `CHRONOLOG_HOME` already configured
+
+No additional setup is required to start building or running.
 
 ## Run the Container
 
 ```bash
-docker run -it --rm gnosisrc/chronolog:latest bash
+docker run -it --rm ghcr.io/grc-iit/chronolog-dev:develop bash
 ```
 
-This opens an interactive shell inside the container, ready for building.
+This opens an interactive shell as the `grc-iit` user, starting in `/home/grc-iit/chronolog-src` with ChronoLog already built and installed.
 
-## Mount Local Source (Recommended)
+## Mount Local Source (Recommended for Active Development)
 
-For a typical development workflow — edit on your host, build inside the container — bind-mount your local ChronoLog checkout:
+To develop with your own local edits — edit on the host, build inside the container — bind-mount your local ChronoLog checkout over the baked-in source:
 
 ```bash
 docker run -it --rm \
-  -v $(pwd):/home/user/ChronoLog \
-  gnosisrc/chronolog:latest bash
+  -v $(pwd):/home/grc-iit/chronolog-src \
+  ghcr.io/grc-iit/chronolog-dev:develop bash
 ```
 
-Run this command from the root of your cloned `ChronoLog` repository. Any changes you make on the host are immediately visible inside the container and vice versa.
+Run this from the root of your cloned `ChronoLog` repository. Your local changes are immediately visible inside the container. After editing, run the build and install scripts to apply them (see [Building for Development](./building-for-development.md)).
 
 </TabItem>
 </Tabs>
