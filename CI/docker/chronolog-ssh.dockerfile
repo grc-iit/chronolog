@@ -1,15 +1,8 @@
-FROM scslab/chronolog:0.1
+FROM ghcr.io/grc-iit/chronolog:latest
 ENV DEBIAN_FRONTEND="noninteractive"
 
-RUN apt-get install -y openssh-server sudo
-
-RUN passwd -d root
-
-RUN mkdir /var/run/sshd
-RUN sed -i'' -e's/^#PermitRootLogin prohibit-password$/PermitRootLogin yes/' /etc/ssh/sshd_config \
-        && sed -i'' -e's/^#PasswordAuthentication yes$/PasswordAuthentication yes/' /etc/ssh/sshd_config \
-        && sed -i'' -e's/^#PermitEmptyPasswords no$/PermitEmptyPasswords yes/' /etc/ssh/sshd_config \
-        && sed -i'' -e's/^UsePAM yes/UsePAM no/' /etc/ssh/sshd_config
+# SSH server and configuration are already set up in the base image.
+# Just expose port 22 and start sshd as grc-iit (via sudo).
 
 EXPOSE 22
 CMD ["/usr/bin/sudo", "/usr/sbin/sshd", "-D"]

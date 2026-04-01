@@ -43,39 +43,33 @@ RUN id $UID && userdel $(id -un $UID) || : \
  && echo "$USERNAME ALL=(ALL:ALL) NOPASSWD: ALL" >> /etc/sudoers.d/$USERNAME \
  && passwd -d $USERNAME
 
-# Setup user's home directory and bashrc (matching local.dockerfile)
-RUN mkdir -p /home/$USERNAME \
- && chown -R $USERNAME:$USERNAME /home/$USERNAME
-
-# Switch to user to install Spack in their home directory (matching local.dockerfile)
+# Switch to user to install Spack in their home directory
 USER $USERNAME
 WORKDIR /home/$USERNAME
 
-# Clone Spack to user's home directory (matching local.dockerfile)
+# Clone Spack to user's home directory
 RUN git clone --branch v0.21.2 https://github.com/spack/spack.git ~/spack
 
 # Setup Spack in PATH (using user's home directory)
 ENV SPACK_ROOT=/home/$USERNAME/spack
 ENV PATH=$SPACK_ROOT/bin:$PATH
 
-# Source Spack in user's bashrc (matching local.dockerfile)
+# Source Spack in user's bashrc
 RUN printf '%s\n' \
     'source ~/spack/share/spack/setup-env.sh' \
     'export USER=grc-iit' \
     >> ~/.bashrc
 
-# Switch back to root for system-wide Spack access (for CI workflow)
+# Source Spack in system bashrc so root can also use it (needed for CI chown steps)
 USER root
-
-# Source Spack in system bashrc for root access
 RUN echo "source /home/$USERNAME/spack/share/spack/setup-env.sh" >> /etc/bash.bashrc
 
-# Create chronolog-repo directory (matching local.dockerfile)
+# Create chronolog-repo directory with correct ownership
 RUN mkdir -p /home/$USERNAME/chronolog-repo \
  && chown -R $USERNAME:$USERNAME /home/$USERNAME/chronolog-repo
 
-# Set working directory to user's home (matching local.dockerfile)
-# The workflow will mount code to /home/$USERNAME/chronolog-repo and use -w to set working directory
+# Return to grc-iit user; CI workflows override with --user root when needed
+USER $USERNAME
 WORKDIR /home/$USERNAME
 
 # Welcome message
