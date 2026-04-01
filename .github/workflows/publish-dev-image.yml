@@ -196,7 +196,8 @@ jobs:
           docker exec "$CONTAINER_ID" bash -c "
             set -e
             # Copy source into container at chronolog-repo (bind-mount does not survive docker commit)
-            cp -a /tmp/chronolog-src /home/grc-iit/chronolog-repo
+            mkdir -p /home/grc-iit/chronolog-repo
+            cp -a /tmp/chronolog-src/. /home/grc-iit/chronolog-repo/
             # Fix ownership of install tree (built as root; grc-iit needs write access for monitor/output dirs)
             chown -R grc-iit:grc-iit /home/grc-iit/chronolog-install
             # Remove CMake build artifacts to reduce image size
