@@ -74,11 +74,11 @@ coverage/
 .conversations/
 
 # --------------------------
-# Docusaurus (docs/)
+# Docusaurus (docs-website/)
 # --------------------------
-docs/node_modules/
-docs/.docusaurus/
-docs/build/
+docs-website/node_modules/
+docs-website/.docusaurus/
+docs-website/build/
 
 # --------------------------
 # Local dev (never commit)
