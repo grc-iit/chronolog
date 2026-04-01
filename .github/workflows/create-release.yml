@@ -115,7 +115,7 @@ jobs:
           echo "Pushing base image: ${{ steps.set-base-image-name.outputs.full-name }}"
           docker push "${{ steps.set-base-image-name.outputs.full-name }}"
 
-  publish-docker-image:
+  publish-docker-release-image:
     runs-on: ubuntu-24.04
     needs: base-image
     permissions:
@@ -290,7 +290,7 @@ jobs:
           path: /tmp/chronolog-artifacts/*.tar.gz
           retention-days: 7
 
-  publish-debug-image:
+  publish-docker-debug-image:
     runs-on: ubuntu-24.04
     needs: base-image
     permissions:
@@ -421,7 +421,7 @@ jobs:
             --change 'ENV PATH=${{ env.DEBUG_INSTALL }}/chronolog/bin:$PATH' \
             --change 'ENV LD_LIBRARY_PATH=${{ env.DEBUG_INSTALL }}/chronolog/lib' \
             --change 'ENV CHRONOLOG_HOME=${{ env.DEBUG_INSTALL }}/chronolog' \
-            --change 'LABEL org.opencontainers.image.title=ChronoLog Debug' \
+            --change 'LABEL org.opencontainers.image.title="ChronoLog Debug"' \
             --change "LABEL org.opencontainers.image.version=${VERSION}" \
             --change 'LABEL org.opencontainers.image.source=https://github.com/grc-iit/ChronoLog' \
             --change 'USER grc-iit' \
@@ -455,7 +455,7 @@ jobs:
 
   publish-release:
     runs-on: ubuntu-24.04
-    needs: [publish-docker-image, publish-debug-image]
+    needs: [publish-docker-release-image, publish-docker-debug-image]
     permissions:
       contents: write
     timeout-minutes: 30
@@ -464,20 +464,20 @@ jobs:
       - name: Download Release tarball
         uses: actions/download-artifact@v4
         with:
-          name: chronolog-${{ needs.publish-docker-image.outputs.version }}-release-tarball
+          name: chronolog-${{ needs.publish-docker-release-image.outputs.version }}-release-tarball
           path: /tmp/chronolog-artifacts
 
       - name: Download Debug tarball
         uses: actions/download-artifact@v4
         with:
-          name: chronolog-${{ needs.publish-debug-image.outputs.version }}-debug-tarball
+          name: chronolog-${{ needs.publish-docker-debug-image.outputs.version }}-debug-tarball
           path: /tmp/chronolog-artifacts
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-          name: ChronoLog ${{ needs.publish-docker-image.outputs.version }}
+          name: ChronoLog ${{ needs.publish-docker-release-image.outputs.version }}
           generate_release_notes: true
           draft: false
           prerelease: false
