@@ -23,8 +23,8 @@ const config: Config = {
   },
 
   // Set the production url of your site here
-  url: 'https://docs.chronolog.dev',
-  baseUrl: '/',
+  url: 'https://chronolog.dev',
+  baseUrl: '/docs/',
 
   // GitHub pages deployment config.
   organizationName: 'grc-iit',
@@ -67,6 +67,7 @@ const config: Config = {
       'classic',
       {
         docs: {
+          routeBasePath: '/',
           sidebarPath: './sidebars.ts',
           editUrl:
             'https://github.com/grc-iit/ChronoLog/tree/main/docs/',
@@ -210,7 +211,7 @@ const config: Config = {
             },
             {
               label: 'Documentation',
-              to: '/docs/getting-started/overview',
+              to: '/getting-started/overview',
             },
             {
               label: 'GitHub',
