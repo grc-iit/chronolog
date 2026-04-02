@@ -1,0 +1,138 @@
+/**
+ * Any CSS included here will be global. The classic template
+ * bundles Infima by default. Infima is a CSS framework designed to
+ * work well for content-centric websites.
+ */
+
+/* ── Selection highlight (matches website) ── */
+::selection {
+  background-color: #c3e04d;
+  color: #2a2f3a;
+}
+
+/* ── Light mode ── */
+:root {
+  --ifm-navbar-height: 4rem;
+
+  /* Primary = lime-dark (readable on white backgrounds) */
+  --ifm-color-primary: #9ab832;
+  --ifm-color-primary-dark: #8aa52c;
+  --ifm-color-primary-darker: #829b2a;
+  --ifm-color-primary-darkest: #6b7f22;
+  --ifm-color-primary-light: #a8c63e;
+  --ifm-color-primary-lighter: #b3ce4f;
+  --ifm-color-primary-lightest: #c3e04d;
+
+  /* Font */
+  --ifm-font-family-base: 'Inter', system-ui, -apple-system, sans-serif;
+  --ifm-heading-font-family: 'Inter', system-ui, -apple-system, sans-serif;
+
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(154, 184, 50, 0.15);
+
+  /* ChronoLog custom properties – light mode */
+  --chronolog-hero-bg-start: #1e222b;
+  --chronolog-hero-bg-end: #252a35;
+  --chronolog-card-border: rgba(154, 184, 50, 0.3);
+  --chronolog-section-alt-bg: #f4f5f7;
+}
+
+/* ── Dark mode ── */
+[data-theme='dark'] {
+  /* Primary = lime */
+  --ifm-color-primary: #c3e04d;
+  --ifm-color-primary-dark: #b8d93a;
+  --ifm-color-primary-darker: #aece32;
+  --ifm-color-primary-darkest: #9ab832;
+  --ifm-color-primary-light: #cce56a;
+  --ifm-color-primary-lighter: #d4ea7a;
+  --ifm-color-primary-lightest: #e0f09a;
+
+  /* Backgrounds (from website tokens) */
+  --ifm-background-color: #1e222b;
+  --ifm-background-surface-color: #252a35;
+  --ifm-card-background-color: #2e3340;
+
+  /* Text */
+  --ifm-font-color-base: #e4e7ed;
+  --ifm-font-color-secondary: #9ca3b0;
+
+  /* Navbar */
+  --ifm-navbar-background-color: #1e222b;
+  --ifm-navbar-link-color: #e4e7ed;
+  --ifm-navbar-link-hover-color: #c3e04d;
+
+  /* Footer */
+  --ifm-footer-background-color: #252a35;
+  --ifm-footer-color: #9ca3b0;
+  --ifm-footer-link-color: #9ca3b0;
+  --ifm-footer-link-hover-color: #c3e04d;
+  --ifm-footer-title-color: #e4e7ed;
+
+  /* Borders */
+  --ifm-color-emphasis-300: #3a4050;
+  --ifm-toc-border-color: #3a4050;
+  --ifm-hr-border-color: #3a4050;
+
+  /* Code */
+  --docusaurus-highlighted-code-line-bg: rgba(195, 224, 77, 0.15);
+
+  /* ChronoLog custom properties – dark mode */
+  --chronolog-hero-bg-start: #1e222b;
+  --chronolog-hero-bg-end: #252a35;
+  --chronolog-card-border: rgba(195, 224, 77, 0.35);
+  --chronolog-section-alt-bg: #252a35;
+}
+
+/* ── Navbar ── */
+@media (min-width: 997px) {
+  [data-theme='dark'] .navbar {
+    background-color: rgba(30, 34, 43, 0.8);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+}
+
+/* Hide external link icons in navbar */
+.navbar__item .navbar__link svg {
+  display: none;
+}
+
+/* Allow larger logo (Infima caps .navbar__logo at 2rem) */
+.navbar__logo {
+  height: 3rem;
+  margin: 0.25rem 0.75rem 0.25rem 0;
+}
+
+/* ── Dark-mode sidebar ── */
+[data-theme='dark'] .menu {
+  background-color: #1e222b;
+}
+
+[data-theme='dark'] .menu__link--active:not(.menu__link--sublist) {
+  background-color: rgba(195, 224, 77, 0.1);
+}
+
+/* ── Dark-mode buttons (match website primary/secondary pattern) ── */
+[data-theme='dark'] .button--primary {
+  background-color: #c3e04d;
+  border-color: #c3e04d;
+  color: #2a2f3a;
+}
+
+[data-theme='dark'] .button--primary:hover {
+  background-color: #d4ea7a;
+  border-color: #d4ea7a;
+  color: #2a2f3a;
+}
+
+[data-theme='dark'] .button--outline.button--primary {
+  color: #e4e7ed;
+  border-color: #3a4050;
+}
+
+[data-theme='dark'] .button--outline.button--primary:hover {
+  background-color: rgba(195, 224, 77, 0.1);
+  border-color: #c3e04d;
+  color: #c3e04d;
+}

@@ -33,3 +33,21 @@ body {
 html {
   scroll-behavior: smooth;
 }
+
+/* ── Logo marquee ── */
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee 60s linear infinite;
+  gap: 3rem;
+  align-items: center;
+}
+
+.marquee-track:hover {
+  animation-play-state: paused;
+}

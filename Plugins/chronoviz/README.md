@@ -103,14 +103,14 @@ chronoviz/
 
 ### Backend Service Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
+| Variable                 | Default               | Description                    |
+| --------------------------| -----------------------| --------------------------------|
 | `CHRONOLOG_INSTALL_PATH` | `~/chronolog-install` | Path to ChronoLog installation |
-| `CHRONOLOG_PORTAL_IP` | `127.0.0.1` | Portal service IP |
-| `CHRONOLOG_PORTAL_PORT` | `5555` | Portal service port |
-| `CHRONOLOG_QUERY_IP` | `127.0.0.1` | Query service IP |
-| `CHRONOLOG_QUERY_PORT` | `5557` | Query service port |
-| `CHRONOLOG_AUTO_CONNECT` | `false` | Auto-connect on startup |
+| `CHRONOLOG_PORTAL_IP`    | `127.0.0.1`           | Portal service IP              |
+| `CHRONOLOG_PORTAL_PORT`  | `5555`                | Portal service port            |
+| `CHRONOLOG_QUERY_IP`     | `127.0.0.1`           | Query service IP               |
+| `CHRONOLOG_QUERY_PORT`   | `5557`                | Query service port             |
+| `CHRONOLOG_AUTO_CONNECT` | `false`               | Auto-connect on startup        |
 
 ### Grafana Data Source Settings
 

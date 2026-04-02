@@ -1,49 +1,6 @@
 ---
 import Layout from '../layouts/Layout.astro';
 
-const plugins = [
-  {
-    title: 'SQL Query Plugin',
-    image: '/images/use-cases/sql-query.webp',
-    desc: 'Query and analyze log data with familiar SQL semantics. Physical time ordering enables efficient temporal range scans without the need for auxiliary indices or pre-built materialized views.',
-    detail: 'The SQL plugin translates SELECT/WHERE/GROUP BY statements into ChronoPlayer replay operations. Because the underlying data is already sorted by time, range queries like "all events between T1 and T2" require no B-tree lookups -- they map directly to sequential reads across the relevant time window.',
-    link: '',
-    linkLabel: '',
-  },
-  {
-    title: 'Pub/Sub & Streaming',
-    image: '/images/use-cases/pubsub-streaming.webp',
-    desc: 'Publish-subscribe and real-time event streaming built on ChronoGrapher\'s internal DAG pipeline. IOWarp uses this layer for internal logging and building higher-level stream abstractions.',
-    detail: 'Events flow through a three-stage DAG: event collection from ChronoKeeper, story building (assembling related events into coherent stories), and story writing (persisting to lower tiers). Custom operators can be attached at each stage for filtering, aggregation, or transformation -- enabling real-time analytics on top of the shared log without external stream processing frameworks.',
-    link: '',
-    linkLabel: '',
-  },
-  {
-    title: 'Key-Value Store (ChronoKVS)',
-    image: '/images/use-cases/key-value-store.webp',
-    desc: 'Time-series key-value semantics on top of the ordered log. Each key maps to a chronicle, and updates are appended as timestamped entries with built-in ordering guarantees.',
-    detail: 'By building a KV store on ChronoLog\'s totally ordered log, write ordering comes for free -- no Paxos or Raft consensus overhead. The log-structured merge approach means writes are always sequential, while ChronoLog\'s time-based ordering provides linearizability across distributed replicas.',
-    link: '',
-    linkLabel: '',
-  },
-  {
-    title: 'AI Agent Memory & MCP Server',
-    image: '/images/use-cases/ai-agent-memory.webp',
-    desc: 'ChronoLog as the persistent memory backend for autonomous AI agents. The official MCP (Model Context Protocol) server lets any MCP-compatible agent -- Claude, GPT, custom LLM systems -- create, query, and replay time-ordered logs natively.',
-    detail: 'AI agents need durable, time-ordered memory that persists across sessions and scales across agents. ChronoLog\'s chronicle abstraction maps naturally to agent memory: each agent (or conversation) gets a chronicle, every action or observation is a timestamped entry, and replay enables full context reconstruction. The MCP server exposes chronicle.create, chronicle.record, chronicle.replay, and chronicle.query as tools, enabling use cases like conversation audit trails, cross-agent shared memory, real-time system monitoring by AI operators, and long-horizon planning with historical context. Part of the IOWarp Agent Toolkit.',
-    link: 'https://github.com/iowarp/agent-toolkit/tree/main/agent-toolkit-mcp-servers/chronolog',
-    linkLabel: 'ChronoLog MCP Server on GitHub',
-  },
-  {
-    title: 'ML & Training Pipelines',
-    image: '/images/use-cases/ml-training.webp',
-    desc: 'TensorFlow integration module for feeding time-ordered data streams directly into training and inference workflows, eliminating separate preprocessing stages.',
-    detail: 'The module provides a native tf.data.Dataset source backed by ChronoLog stories. ChronoKeeper handles real-time feature logging from distributed training jobs, while ChronoPlayer enables multiple training workers to read historical data concurrently through parallel replay.',
-    link: '',
-    linkLabel: '',
-  },
-];
-
 const domains = [
   { title: 'Scientific Computing', image: '/images/use-cases/scientific-computing.webp', desc: 'Astrophysics, genomics, climate modeling, materials science -- capturing massive telemetry and simulation data across distributed instruments.' },
   { title: 'AI & Agentic Workflows', image: '/images/use-cases/ai-agent-memory.webp', desc: 'LLM context logging, model provenance, and AI agent memory via the official ChronoLog MCP server and the IOWarp Agent Toolkit.' },
@@ -56,38 +13,14 @@ const domains = [
 
 <Layout
   title="Use Cases"
-  description="Application domains and plugin ecosystem powered by ChronoLog: SQL queries, pub/sub streaming, key-value store, AI agent memory via MCP, and ML training pipelines."
-  keywords="ChronoLog use cases, SQL query plugin, pub/sub streaming, key-value store, AI agent memory, MCP server, ML training, scientific computing, HPC monitoring, IoT edge, financial compliance"
+  description="Target application domains for ChronoLog: scientific computing, AI workflows, HPC monitoring, workflow orchestration, IoT, and financial compliance."
+  keywords="ChronoLog use cases, scientific computing, AI workflows, HPC monitoring, workflow orchestration, IoT edge, financial compliance"
 >
   <section class="max-w-6xl mx-auto px-6 py-20">
-    <h1 class="text-3xl md:text-4xl font-extrabold mb-4">Use Cases & Plugin Ecosystem</h1>
+    <h1 class="text-3xl md:text-4xl font-extrabold mb-4">Use Cases</h1>
     <p class="text-text-muted text-lg max-w-3xl mb-14 leading-relaxed">
-      ChronoLog is designed as a platform -- its plugin architecture enables diverse applications to share a common, time-ordered log infrastructure. Here are the current and emerging integration points.
+      ChronoLog's time-ordered log infrastructure serves a wide range of application domains. Here are the current and emerging target areas.
     </p>
-
-    <!-- Plugin connector use cases -->
-    <h2 class="text-2xl font-bold mb-6">Plugin & Connector Layer</h2>
-    <div class="space-y-8 mb-20">
-      {plugins.map(p => (
-        <div class="bg-bg-card border border-border rounded-xl overflow-hidden hover:border-lime/40 transition-colors group">
-          <img src={p.image} alt={p.title} class="w-full aspect-[21/9] object-cover" />
-          <div class="p-6 md:p-8">
-            <h3 class="font-semibold text-xl text-text mb-2 group-hover:text-lime transition-colors">{p.title}</h3>
-            <p class="text-sm text-text-muted leading-relaxed mb-4">{p.desc}</p>
-            <div class="bg-bg/50 border border-border/50 rounded-lg p-4">
-              <h4 class="text-xs font-semibold text-lime uppercase tracking-wider mb-2">How It Works</h4>
-              <p class="text-sm text-text-muted leading-relaxed">{p.detail}</p>
-              {p.link && (
-                <a href={p.link} target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 mt-3 text-xs text-lime font-medium hover:underline">
-                  {p.linkLabel}
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
-                </a>
-              )}
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
 
     <!-- Target domains -->
     <h2 class="text-2xl font-bold mb-8">Target Domains</h2>
