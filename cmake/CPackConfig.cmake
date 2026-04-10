@@ -80,18 +80,6 @@ set(CPACK_SOURCE_IGNORE_FILES
     "_CPack_Packages/"
 )
 
-# --- RPM-specific settings ---------------------------------------------------
-set(CPACK_RPM_PACKAGE_LICENSE  "BSD-2-Clause")
-set(CPACK_RPM_PACKAGE_GROUP    "System Environment/Daemons")
-set(CPACK_RPM_PACKAGE_REQUIRES "json-c >= 0.13")
-set(CPACK_RPM_PACKAGE_DESCRIPTION
-"ChronoLog is a distributed, hierarchical, and tiered chronicle-based logging
-system designed for high-performance recording and playback of time-ordered
-event streams across HPC clusters.
-
-Components: ChronoVisor, ChronoKeeper, ChronoGrapher, ChronoPlayer, chronolog_client.")
-
-# --- DEB-specific settings ---------------------------------------------------
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "libjson-c5 (>= 0.13)")
-set(CPACK_DEBIAN_PACKAGE_SECTION "net")
-set(CPACK_DEBIAN_PACKAGE_MAINTAINER "${CPACK_PACKAGE_CONTACT}")
+# RPM- and DEB-specific settings live in their own config files
+# (cmake/CPackRPMConfig.cmake.in / CPackDEBConfig.cmake.in), configured by
+# CMake at build time and invoked separately by the package_release target.

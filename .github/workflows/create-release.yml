@@ -239,7 +239,13 @@ jobs:
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
           mkdir -p /tmp/chronolog-artifacts
           RELEASE_TAR=$(docker exec "$CONTAINER_ID" bash -c \
-            "ls \$HOME/chronolog-build/Release/chronolog-*-linux-x86_64.tar.gz 2>/dev/null | head -1")
+            "ls \$HOME/chronolog-build/Release/chronolog-*-linux-*.tar.gz 2>/dev/null | grep -v debug" || true)
+          if [ -z "${RELEASE_TAR}" ]; then
+            echo "ERROR: no release tarball found" >&2; exit 1
+          fi
+          if [ "$(echo "${RELEASE_TAR}" | wc -l)" -ne 1 ]; then
+            echo "ERROR: expected exactly 1 release tarball; found: ${RELEASE_TAR}" >&2; exit 1
+          fi
           echo "Release tarball: ${RELEASE_TAR}"
           docker exec "$CONTAINER_ID" bash -c "cat '${RELEASE_TAR}'" \
             > /tmp/chronolog-artifacts/$(basename "${RELEASE_TAR}")
@@ -249,8 +255,11 @@ jobs:
           set -e
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
           DEB_FILE=$(docker exec "$CONTAINER_ID" bash -c \
-            "ls \$HOME/chronolog-build/Release/chronolog_*-linux-amd64.deb 2>/dev/null | head -1" || true)
+            "ls \$HOME/chronolog-build/Release/chronolog_*-linux-*.deb 2>/dev/null | grep -v debug" || true)
           if [ -n "$DEB_FILE" ]; then
+            if [ "$(echo "${DEB_FILE}" | wc -l)" -ne 1 ]; then
+              echo "ERROR: expected exactly 1 release DEB; found: ${DEB_FILE}" >&2; exit 1
+            fi
             echo "Release DEB: ${DEB_FILE}"
             docker exec "$CONTAINER_ID" bash -c "cat '${DEB_FILE}'" \
               > /tmp/chronolog-artifacts/$(basename "${DEB_FILE}")
@@ -319,6 +328,7 @@ jobs:
         with:
           name: chronolog-${{ steps.extract-version.outputs.version }}-install-tree
           path: /tmp/chronolog-install-tree/chronolog-install.tar.gz
+          # Short retention: only needed by build-rpm-release, which runs immediately after.
           retention-days: 1
 
   publish-docker-debug-image:
@@ -427,7 +437,13 @@ jobs:
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
           mkdir -p /tmp/chronolog-artifacts
           DEBUG_TAR=$(docker exec "$CONTAINER_ID" bash -c \
-            "ls \$HOME/chronolog-build/Debug/chronolog-*-linux-x86_64-debug.tar.gz 2>/dev/null | head -1")
+            "ls \$HOME/chronolog-build/Debug/chronolog-*-linux-*-debug.tar.gz 2>/dev/null" || true)
+          if [ -z "${DEBUG_TAR}" ]; then
+            echo "ERROR: no debug tarball found" >&2; exit 1
+          fi
+          if [ "$(echo "${DEBUG_TAR}" | wc -l)" -ne 1 ]; then
+            echo "ERROR: expected exactly 1 debug tarball; found: ${DEBUG_TAR}" >&2; exit 1
+          fi
           echo "Debug tarball: ${DEBUG_TAR}"
           docker exec "$CONTAINER_ID" bash -c "cat '${DEBUG_TAR}'" \
             > /tmp/chronolog-artifacts/$(basename "${DEBUG_TAR}")
@@ -437,8 +453,11 @@ jobs:
           set -e
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
           DEB_FILE=$(docker exec "$CONTAINER_ID" bash -c \
-            "ls \$HOME/chronolog-build/Debug/chronolog_*-linux-amd64-debug.deb 2>/dev/null | head -1" || true)
+            "ls \$HOME/chronolog-build/Debug/chronolog_*-linux-*-debug.deb 2>/dev/null" || true)
           if [ -n "$DEB_FILE" ]; then
+            if [ "$(echo "${DEB_FILE}" | wc -l)" -ne 1 ]; then
+              echo "ERROR: expected exactly 1 debug DEB; found: ${DEB_FILE}" >&2; exit 1
+            fi
             echo "Debug DEB: ${DEB_FILE}"
             docker exec "$CONTAINER_ID" bash -c "cat '${DEB_FILE}'" \
               > /tmp/chronolog-artifacts/$(basename "${DEB_FILE}")
@@ -513,6 +532,7 @@ jobs:
         with:
           name: chronolog-${{ steps.extract-version.outputs.version }}-debug-install-tree
           path: /tmp/chronolog-debug-install-tree/chronolog-debug-install.tar.gz
+          # Short retention: only needed by build-rpm-debug, which runs immediately after.
           retention-days: 1
 
   build-rpm-release:
@@ -546,33 +566,43 @@ jobs:
       - name: Generate CPackRPMConfig.cmake
         run: |
           VERSION="${{ needs.publish-docker-release-image.outputs.version }}"
+          if [ -z "${VERSION}" ]; then
+            echo "ERROR: version not provided" >&2; exit 1
+          fi
           BASE_VERSION="${VERSION%%-*}"
+          if [ -z "${BASE_VERSION}" ]; then
+            echo "ERROR: failed to extract base version from ${VERSION}" >&2; exit 1
+          fi
+          # Architecture is derived at runtime; the CMake template uses @CMAKE_SYSTEM_PROCESSOR@
+          # which is not available here since CMake is not run in this Rocky container.
+          ARCH="$(uname -m)"
           cat > /tmp/CPackRPMConfig.cmake << EOF
           set(CPACK_PACKAGE_NAME        "chronolog")
           set(CPACK_PACKAGE_VENDOR      "GRC-IIT, Illinois Institute of Technology")
           set(CPACK_PACKAGE_CONTACT     "egonzalez30@illinoistech.edu")
           set(CPACK_PACKAGE_VERSION     "${BASE_VERSION}")
           set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "ChronoLog: Distributed Chronicle Logging System")
-          set(CPACK_PACKAGE_DESCRIPTION
-          "ChronoLog is a distributed, hierarchical, and tiered chronicle-based logging
-          system designed for high-performance recording and playback of time-ordered
-          event streams across HPC clusters.
-          Installed to /opt/chronolog. All non-system libraries are bundled.
-          Components: ChronoVisor, ChronoKeeper, ChronoGrapher, ChronoPlayer, chronolog_client.")
           set(CPACK_GENERATOR "RPM")
           set(CPACK_INSTALL_CMAKE_PROJECTS "")
           set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY OFF)
+          # Path matches the extraction location in the "Extract install tree" step above.
           set(CPACK_INSTALLED_DIRECTORIES "/tmp/chronolog-install/chronolog" "opt/chronolog")
-          set(CPACK_PACKAGE_FILE_NAME   "chronolog-${BASE_VERSION}-1.x86_64")
+          set(CPACK_PACKAGE_FILE_NAME   "chronolog-${BASE_VERSION}-1.${ARCH}")
           set(CPACK_RPM_PACKAGE_RELEASE      "1")
           set(CPACK_RPM_PACKAGE_LICENSE      "BSD-2-Clause")
           set(CPACK_RPM_PACKAGE_GROUP        "System Environment/Daemons")
-          set(CPACK_RPM_PACKAGE_ARCHITECTURE "x86_64")
+          set(CPACK_RPM_PACKAGE_ARCHITECTURE "${ARCH}")
           set(CPACK_RPM_PACKAGE_PREFIX       "/opt")
           set(CPACK_RPM_PACKAGE_REQUIRES     "json-c >= 0.13")
           set(CPACK_RPM_PACKAGE_DESCRIPTION
           "ChronoLog is a distributed, hierarchical, and tiered chronicle-based logging
-          system for HPC clusters. Installed to /opt/chronolog (bundled libraries).")
+          system designed for high-performance recording and playback of time-ordered
+          event streams across HPC clusters.
+
+          Installed to /opt/chronolog (self-contained: all non-system libraries bundled).
+
+          Components: ChronoVisor, ChronoKeeper, ChronoGrapher, ChronoPlayer,
+                      chronolog_client library, ChronoKVS plugin.")
           EOF
 
       - name: Build RPM
@@ -586,8 +616,9 @@ jobs:
         run: |
           VERSION="${{ needs.publish-docker-release-image.outputs.version }}"
           BASE_VERSION="${VERSION%%-*}"
-          mv /tmp/rpm-output/chronolog-${BASE_VERSION}-1.x86_64.rpm \
-             /tmp/rpm-output/chronolog-${BASE_VERSION}-linux-x86_64.rpm
+          ARCH="$(uname -m)"
+          mv /tmp/rpm-output/chronolog-${BASE_VERSION}-1.${ARCH}.rpm \
+             /tmp/rpm-output/chronolog-${BASE_VERSION}-linux-${ARCH}.rpm
           echo "Final RPM: $(ls /tmp/rpm-output/)"
 
       - name: Upload RPM artifact
@@ -605,6 +636,8 @@ jobs:
     permissions:
       contents: read
     timeout-minutes: 30
+    outputs:
+      version: ${{ needs.publish-docker-debug-image.outputs.version }}
 
     steps:
       - name: Install build tools
@@ -626,33 +659,43 @@ jobs:
       - name: Generate CPackRPMConfig.cmake for debug
         run: |
           VERSION="${{ needs.publish-docker-debug-image.outputs.version }}"
+          if [ -z "${VERSION}" ]; then
+            echo "ERROR: version not provided" >&2; exit 1
+          fi
           BASE_VERSION="${VERSION%%-*}"
+          if [ -z "${BASE_VERSION}" ]; then
+            echo "ERROR: failed to extract base version from ${VERSION}" >&2; exit 1
+          fi
+          # Architecture is derived at runtime; the CMake template uses @CMAKE_SYSTEM_PROCESSOR@
+          # which is not available here since CMake is not run in this Rocky container.
+          ARCH="$(uname -m)"
           cat > /tmp/CPackRPMDebugConfig.cmake << EOF
           set(CPACK_PACKAGE_NAME        "chronolog")
           set(CPACK_PACKAGE_VENDOR      "GRC-IIT, Illinois Institute of Technology")
           set(CPACK_PACKAGE_CONTACT     "egonzalez30@illinoistech.edu")
           set(CPACK_PACKAGE_VERSION     "${BASE_VERSION}")
           set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "ChronoLog: Distributed Chronicle Logging System (Debug)")
-          set(CPACK_PACKAGE_DESCRIPTION
-          "ChronoLog is a distributed, hierarchical, and tiered chronicle-based logging
-          system designed for high-performance recording and playback of time-ordered
-          event streams across HPC clusters. Debug build.
-          Installed to /opt/chronolog. All non-system libraries are bundled.
-          Components: ChronoVisor, ChronoKeeper, ChronoGrapher, ChronoPlayer, chronolog_client.")
           set(CPACK_GENERATOR "RPM")
           set(CPACK_INSTALL_CMAKE_PROJECTS "")
           set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY OFF)
+          # Path matches the extraction location in the "Extract debug install tree" step above.
           set(CPACK_INSTALLED_DIRECTORIES "/tmp/chronolog-debug-install/chronolog" "opt/chronolog")
-          set(CPACK_PACKAGE_FILE_NAME   "chronolog-${BASE_VERSION}-linux-x86_64-debug")
+          set(CPACK_PACKAGE_FILE_NAME   "chronolog-${BASE_VERSION}-linux-${ARCH}-debug")
           set(CPACK_RPM_PACKAGE_RELEASE      "1")
           set(CPACK_RPM_PACKAGE_LICENSE      "BSD-2-Clause")
           set(CPACK_RPM_PACKAGE_GROUP        "System Environment/Daemons")
-          set(CPACK_RPM_PACKAGE_ARCHITECTURE "x86_64")
+          set(CPACK_RPM_PACKAGE_ARCHITECTURE "${ARCH}")
           set(CPACK_RPM_PACKAGE_PREFIX       "/opt")
           set(CPACK_RPM_PACKAGE_REQUIRES     "json-c >= 0.13")
           set(CPACK_RPM_PACKAGE_DESCRIPTION
           "ChronoLog is a distributed, hierarchical, and tiered chronicle-based logging
-          system for HPC clusters. Debug build. Installed to /opt/chronolog (bundled libraries).")
+          system designed for high-performance recording and playback of time-ordered
+          event streams across HPC clusters. Debug build.
+
+          Installed to /opt/chronolog (self-contained: all non-system libraries bundled).
+
+          Components: ChronoVisor, ChronoKeeper, ChronoGrapher, ChronoPlayer,
+                      chronolog_client library, ChronoKVS plugin.")
           EOF
 
       - name: Build debug RPM
