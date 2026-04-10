@@ -10,12 +10,11 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV DEBCONF_NOWARNINGS=yes
 ENV TZ=America/Chicago
 
-# Enable the universe repository (required for rpm-build on Ubuntu 24.04)
-RUN sed -i 's/Components: main restricted/Components: main restricted universe/' \
-    /etc/apt/sources.list.d/ubuntu.sources
-
 # Install system dependencies (merged from both dockerfiles)
-RUN apt-get update \
+# The universe repository is enabled inline so rpm-build is resolvable on Ubuntu 24.04.
+RUN echo "deb http://archive.ubuntu.com/ubuntu noble universe" \
+        > /etc/apt/sources.list.d/universe.list \
+ && apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get -y install \
     gcc g++ automake cmake libtool pkgconf \
     libjson-c-dev libboost-dev libcereal-dev \
