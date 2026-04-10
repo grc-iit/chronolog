@@ -415,8 +415,13 @@ set(_rpm_src  "${_pkg_base}-1.${CMAKE_SYSTEM_PROCESSOR}.rpm")
 set(_rpm_dest "${_pkg_base}-${_system_lower}-${CMAKE_SYSTEM_PROCESSOR}.rpm")
 
 # DEB output names (CPack produces name_ver-release_arch.deb)
+# Debug builds get a -debug suffix so release and debug DEBs can coexist as artifacts.
 set(_deb_src  "chronolog_${CHRONOLOG_PACKAGE_VERSION}-1_${CHRONOLOG_DEB_ARCH}.deb")
-set(_deb_dest "chronolog_${CHRONOLOG_PACKAGE_VERSION}-${_system_lower}-${CHRONOLOG_DEB_ARCH}.deb")
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(_deb_dest "chronolog_${CHRONOLOG_PACKAGE_VERSION}-${_system_lower}-${CHRONOLOG_DEB_ARCH}-debug.deb")
+else()
+    set(_deb_dest "chronolog_${CHRONOLOG_PACKAGE_VERSION}-${_system_lower}-${CHRONOLOG_DEB_ARCH}.deb")
+endif()
 
 if(CHRONOLOG_RPMBUILD)
     message(STATUS "CPack: rpmbuild found at ${CHRONOLOG_RPMBUILD} — RPM packages will be built")

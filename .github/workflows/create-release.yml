@@ -209,6 +209,16 @@ jobs:
             ./tools/deploy/ChronoLog/install.sh -t Release -I '${{ env.RELEASE_INSTALL }}'
           "
 
+      - name: Export install tree for RPM build
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          mkdir -p /tmp/chronolog-install-tree
+          docker exec "$CONTAINER_ID" bash -c \
+            "tar czf - -C '${{ env.RELEASE_INSTALL }}' chronolog" \
+            > /tmp/chronolog-install-tree/chronolog-install.tar.gz
+          echo "Install tree exported: $(du -sh /tmp/chronolog-install-tree/chronolog-install.tar.gz)"
+
       - name: Create Release tarball
         run: |
           set -e
@@ -219,8 +229,8 @@ jobs:
             spack env activate -p .
             BUILD_DIR=\"\$HOME/chronolog-build/Release\"
             cmake --build \"\${BUILD_DIR}\" --target package_release
-            echo 'Release tarball created:'
-            ls \"\${BUILD_DIR}/\"chronolog-*-linux-*.tar.gz
+            echo 'Release packages created:'
+            ls \"\${BUILD_DIR}/\"chronolog-*-linux-*.tar.gz \"\${BUILD_DIR}/\"chronolog_*-linux-*.deb 2>/dev/null || true
           "
 
       - name: Copy Release tarball out of container
@@ -233,6 +243,20 @@ jobs:
           echo "Release tarball: ${RELEASE_TAR}"
           docker exec "$CONTAINER_ID" bash -c "cat '${RELEASE_TAR}'" \
             > /tmp/chronolog-artifacts/$(basename "${RELEASE_TAR}")
+
+      - name: Copy Release DEB out of container
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          DEB_FILE=$(docker exec "$CONTAINER_ID" bash -c \
+            "ls \$HOME/chronolog-build/Release/chronolog_*-linux-amd64.deb 2>/dev/null | head -1" || true)
+          if [ -n "$DEB_FILE" ]; then
+            echo "Release DEB: ${DEB_FILE}"
+            docker exec "$CONTAINER_ID" bash -c "cat '${DEB_FILE}'" \
+              > /tmp/chronolog-artifacts/$(basename "${DEB_FILE}")
+          else
+            echo "No DEB package found — skipping"
+          fi
 
       - name: Commit release Docker image
         run: |
@@ -283,12 +307,19 @@ jobs:
           docker stop "$CONTAINER_ID" || true
           docker rm "$CONTAINER_ID" || true
 
-      - name: Upload Release tarball as workflow artifact
+      - name: Upload Release packages as workflow artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: chronolog-${{ steps.extract-version.outputs.version }}-release-tarball
-          path: /tmp/chronolog-artifacts/*.tar.gz
+          name: chronolog-${{ steps.extract-version.outputs.version }}-release-packages
+          path: /tmp/chronolog-artifacts/
           retention-days: 7
+
+      - name: Upload install tree for RPM build
+        uses: actions/upload-artifact@v4
+        with:
+          name: chronolog-${{ steps.extract-version.outputs.version }}-install-tree
+          path: /tmp/chronolog-install-tree/chronolog-install.tar.gz
+          retention-days: 1
 
   publish-docker-debug-image:
     runs-on: ubuntu-24.04
@@ -386,8 +417,8 @@ jobs:
             spack env activate -p .
             BUILD_DIR=\"\$HOME/chronolog-build/Debug\"
             cmake --build \"\${BUILD_DIR}\" --target package_release
-            echo 'Debug tarball created:'
-            ls \"\${BUILD_DIR}/\"chronolog-*-linux-*-debug.tar.gz
+            echo 'Debug packages created:'
+            ls \"\${BUILD_DIR}/\"chronolog-*-linux-*-debug.tar.gz \"\${BUILD_DIR}/\"chronolog_*-linux-*-debug.deb 2>/dev/null || true
           "
 
       - name: Copy Debug tarball out of container
@@ -400,6 +431,20 @@ jobs:
           echo "Debug tarball: ${DEBUG_TAR}"
           docker exec "$CONTAINER_ID" bash -c "cat '${DEBUG_TAR}'" \
             > /tmp/chronolog-artifacts/$(basename "${DEBUG_TAR}")
+
+      - name: Copy Debug DEB out of container
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          DEB_FILE=$(docker exec "$CONTAINER_ID" bash -c \
+            "ls \$HOME/chronolog-build/Debug/chronolog_*-linux-amd64-debug.deb 2>/dev/null | head -1" || true)
+          if [ -n "$DEB_FILE" ]; then
+            echo "Debug DEB: ${DEB_FILE}"
+            docker exec "$CONTAINER_ID" bash -c "cat '${DEB_FILE}'" \
+              > /tmp/chronolog-artifacts/$(basename "${DEB_FILE}")
+          else
+            echo "No debug DEB package found — skipping"
+          fi
 
       - name: Commit debug Docker image
         run: |
@@ -446,32 +491,121 @@ jobs:
           docker stop "$CONTAINER_ID" || true
           docker rm "$CONTAINER_ID" || true
 
-      - name: Upload Debug tarball as workflow artifact
+      - name: Upload Debug packages as workflow artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: chronolog-${{ steps.extract-version.outputs.version }}-debug-tarball
-          path: /tmp/chronolog-artifacts/*.tar.gz
+          name: chronolog-${{ steps.extract-version.outputs.version }}-debug-packages
+          path: /tmp/chronolog-artifacts/
+          retention-days: 7
+
+  build-rpm-release:
+    runs-on: ubuntu-24.04
+    needs: publish-docker-release-image
+    container:
+      image: rockylinux:9
+    permissions:
+      contents: read
+    timeout-minutes: 30
+    outputs:
+      version: ${{ needs.publish-docker-release-image.outputs.version }}
+
+    steps:
+      - name: Install build tools
+        run: dnf install -y cmake rpm-build
+
+      - name: Download install tree
+        uses: actions/download-artifact@v4
+        with:
+          name: chronolog-${{ needs.publish-docker-release-image.outputs.version }}-install-tree
+          path: ${{ github.workspace }}
+
+      - name: Extract install tree
+        run: |
+          mkdir -p /tmp/chronolog-install
+          tar xzf "${{ github.workspace }}/chronolog-install.tar.gz" -C /tmp/chronolog-install
+          echo "Install tree:"
+          ls /tmp/chronolog-install/
+
+      - name: Generate CPackRPMConfig.cmake
+        run: |
+          VERSION="${{ needs.publish-docker-release-image.outputs.version }}"
+          cat > /tmp/CPackRPMConfig.cmake << EOF
+          set(CPACK_PACKAGE_NAME        "chronolog")
+          set(CPACK_PACKAGE_VENDOR      "GRC-IIT, Illinois Institute of Technology")
+          set(CPACK_PACKAGE_CONTACT     "eneko.gonzalez@iit.edu")
+          set(CPACK_PACKAGE_VERSION     "${VERSION}")
+          set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "ChronoLog: Distributed Chronicle Logging System")
+          set(CPACK_PACKAGE_DESCRIPTION
+          "ChronoLog is a distributed, hierarchical, and tiered chronicle-based logging
+          system designed for high-performance recording and playback of time-ordered
+          event streams across HPC clusters.
+          Installed to /opt/chronolog. All non-system libraries are bundled.
+          Components: ChronoVisor, ChronoKeeper, ChronoGrapher, ChronoPlayer, chronolog_client.")
+          set(CPACK_GENERATOR "RPM")
+          set(CPACK_INSTALL_CMAKE_PROJECTS "")
+          set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY OFF)
+          set(CPACK_INSTALLED_DIRECTORIES "/tmp/chronolog-install/chronolog" "opt/chronolog")
+          set(CPACK_PACKAGE_FILE_NAME   "chronolog-${VERSION}-1.x86_64")
+          set(CPACK_RPM_PACKAGE_RELEASE      "1")
+          set(CPACK_RPM_PACKAGE_LICENSE      "BSD-2-Clause")
+          set(CPACK_RPM_PACKAGE_GROUP        "System Environment/Daemons")
+          set(CPACK_RPM_PACKAGE_ARCHITECTURE "x86_64")
+          set(CPACK_RPM_PACKAGE_PREFIX       "/opt")
+          set(CPACK_RPM_PACKAGE_REQUIRES     "json-c >= 0.13")
+          set(CPACK_RPM_PACKAGE_DESCRIPTION
+          "ChronoLog is a distributed, hierarchical, and tiered chronicle-based logging
+          system for HPC clusters. Installed to /opt/chronolog (bundled libraries).")
+          EOF
+
+      - name: Build RPM
+        run: |
+          mkdir -p /tmp/rpm-output
+          cpack --config /tmp/CPackRPMConfig.cmake -G RPM -B /tmp/rpm-output
+          echo "RPM output:"
+          ls /tmp/rpm-output/*.rpm
+
+      - name: Rename RPM with platform suffix
+        run: |
+          VERSION="${{ needs.publish-docker-release-image.outputs.version }}"
+          mv /tmp/rpm-output/chronolog-${VERSION}-1.x86_64.rpm \
+             /tmp/rpm-output/chronolog-${VERSION}-linux-x86_64.rpm
+          echo "Final RPM: $(ls /tmp/rpm-output/)"
+
+      - name: Upload RPM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: chronolog-${{ needs.publish-docker-release-image.outputs.version }}-rpm
+          path: /tmp/rpm-output/chronolog-*-linux-x86_64.rpm
           retention-days: 7
 
   publish-release:
     runs-on: ubuntu-24.04
-    needs: [publish-docker-release-image, publish-docker-debug-image]
+    needs: [publish-docker-release-image, publish-docker-debug-image, build-rpm-release]
     permissions:
       contents: write
     timeout-minutes: 30
 
     steps:
-      - name: Download Release tarball
+      - name: Download Release packages
         uses: actions/download-artifact@v4
         with:
-          name: chronolog-${{ needs.publish-docker-release-image.outputs.version }}-release-tarball
+          name: chronolog-${{ needs.publish-docker-release-image.outputs.version }}-release-packages
           path: /tmp/chronolog-artifacts
 
-      - name: Download Debug tarball
+      - name: Download Debug packages
         uses: actions/download-artifact@v4
         with:
-          name: chronolog-${{ needs.publish-docker-debug-image.outputs.version }}-debug-tarball
+          name: chronolog-${{ needs.publish-docker-debug-image.outputs.version }}-debug-packages
           path: /tmp/chronolog-artifacts
+
+      - name: Download RPM package
+        uses: actions/download-artifact@v4
+        with:
+          name: chronolog-${{ needs.publish-docker-release-image.outputs.version }}-rpm
+          path: /tmp/chronolog-artifacts
+
+      - name: List release artifacts
+        run: ls -lh /tmp/chronolog-artifacts/
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
@@ -481,6 +615,6 @@ jobs:
           generate_release_notes: true
           draft: false
           prerelease: false
-          files: /tmp/chronolog-artifacts/*.tar.gz
+          files: /tmp/chronolog-artifacts/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
