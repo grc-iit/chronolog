@@ -11,9 +11,11 @@ ENV DEBCONF_NOWARNINGS=yes
 ENV TZ=America/Chicago
 
 # Install system dependencies (merged from both dockerfiles)
-# The universe repository is enabled inline so rpm-build is resolvable on Ubuntu 24.04.
-RUN echo "deb http://archive.ubuntu.com/ubuntu noble universe" \
-        > /etc/apt/sources.list.d/universe.list \
+# Ubuntu 24.04 uses DEB822-format sources (ubuntu.sources); universe must be added
+# to the Components field of that file — not as a separate legacy deb line — to
+# avoid the "Conflicting values set for Signed-By" apt error.
+# rpm-build (provides rpmbuild) lives in the universe component.
+RUN sed -i '/^Components:/ s/$/ universe/' /etc/apt/sources.list.d/ubuntu.sources \
  && apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get -y install \
     gcc g++ automake cmake libtool pkgconf \
