@@ -582,6 +582,8 @@ jobs:
           set(CPACK_PACKAGE_CONTACT     "egonzalez30@illinoistech.edu")
           set(CPACK_PACKAGE_VERSION     "${BASE_VERSION}")
           set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "ChronoLog: Distributed Chronicle Logging System")
+          # CPACK_PACKAGE_DESCRIPTION is required by CPack when running standalone (no CMake context).
+          set(CPACK_PACKAGE_DESCRIPTION "ChronoLog: distributed, hierarchical, chronicle-based logging system for HPC clusters. Installed to /opt/chronolog (self-contained).")
           set(CPACK_GENERATOR "RPM")
           set(CPACK_INSTALL_CMAKE_PROJECTS "")
           set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY OFF)
@@ -675,6 +677,8 @@ jobs:
           set(CPACK_PACKAGE_CONTACT     "egonzalez30@illinoistech.edu")
           set(CPACK_PACKAGE_VERSION     "${BASE_VERSION}")
           set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "ChronoLog: Distributed Chronicle Logging System (Debug)")
+          # CPACK_PACKAGE_DESCRIPTION is required by CPack when running standalone (no CMake context).
+          set(CPACK_PACKAGE_DESCRIPTION "ChronoLog: distributed, hierarchical, chronicle-based logging system for HPC clusters. Debug build. Installed to /opt/chronolog (self-contained).")
           set(CPACK_GENERATOR "RPM")
           set(CPACK_INSTALL_CMAKE_PROJECTS "")
           set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY OFF)
