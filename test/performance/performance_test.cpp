@@ -11,12 +11,10 @@
 #include <chrono>
 #include <cctype>
 #include <fstream>
-#include <functional>
 #include <iostream>
 #include <map>
 #include <random>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include <mpi.h>
@@ -28,6 +26,10 @@
 #include <cmd_arg_parse.h>
 #include <TimerWrapper.h>
 #include <common.h>
+
+// Scripted ChronoLog performance/regression test.
+// Extracted from tools/cli/client_admin.cpp; the interactive shell counterpart
+// lives in tools/cli/client_cli.cpp.
 
 #define MAX_EVENT_SIZE (32 * 1024 * 1024)
 
@@ -42,19 +44,17 @@ typedef struct workload_conf_args_
     uint64_t event_interval = 0;
     bool barrier = false;
     std::string event_payload_file;
-    bool interactive = false;
     bool write = true;
     bool read = false;
     bool shared_story = false;
     bool perf_test = false;
 } workload_conf_args;
 
-void usage(char** argv)
+static void usage(char** argv)
 {
     std::cerr << "\nUsage: " << argv[0]
               << " [options]\n"
                  "-c|--config <config_file>\n"
-                 "-i|--interactive\tInteract with ChronoLog like a shell\n"
                  "-w|--write\t\tRecord events\n"
                  "-r|--read\t\tRetrieve events\n"
                  "-h|--chronicle_count <chronicle_count_per_proc>\n"
@@ -72,7 +72,7 @@ void usage(char** argv)
               << std::endl;
 }
 
-void random_sleep()
+[[maybe_unused]] static void random_sleep()
 {
     int rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -82,17 +82,7 @@ void random_sleep()
     usleep(usec * rank);
 }
 
-std::string& trim_string(std::string& str)
-{
-    // Trim leading space
-    str.erase(str.begin(), std::find_if(str.begin(), str.end(), [](unsigned char ch) { return !std::isspace(ch); }));
-    // Trim trailing space
-    str.erase(std::find_if(str.rbegin(), str.rend(), [](unsigned char ch) { return !std::isspace(ch); }).base(),
-              str.end());
-    return str;
-}
-
-uint64_t get_uint64_t_from_string(const std::string& str)
+static uint64_t get_uint64_t_from_string(const std::string& str)
 {
     char* endptr;
     errno = 0; // Reset errno before calling strtoull
@@ -110,7 +100,7 @@ uint64_t get_uint64_t_from_string(const std::string& str)
     return value;
 }
 
-std::pair<std::string, workload_conf_args> cmd_arg_parse(int argc, char** argv)
+static std::pair<std::string, workload_conf_args> cmd_arg_parse(int argc, char** argv)
 {
     int rank, size;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -119,9 +109,7 @@ std::pair<std::string, workload_conf_args> cmd_arg_parse(int argc, char** argv)
     char* config_file = nullptr;
     workload_conf_args workload_args;
 
-    // Define the long options and their corresponding short options
     struct option long_options[] = {{"config", required_argument, nullptr, 'c'},
-                                    {"interactive", optional_argument, nullptr, 'i'},
                                     {"write", no_argument, nullptr, 'w'},
                                     {"read", optional_argument, nullptr, 'r'},
                                     {"chronicle_count", required_argument, nullptr, 'h'},
@@ -138,16 +126,12 @@ std::pair<std::string, workload_conf_args> cmd_arg_parse(int argc, char** argv)
                                     {"usage", no_argument, nullptr, 'u'},
                                     {nullptr, 0, nullptr, 0}};
 
-    // Parse the command-line options
-    while((opt = getopt_long(argc, argv, "c:iwrh:t:a:s:b:n:g:yf:opu", long_options, nullptr)) != -1)
+    while((opt = getopt_long(argc, argv, "c:wrh:t:a:s:b:n:g:yf:opu", long_options, nullptr)) != -1)
     {
         switch(opt)
         {
             case 'c':
                 config_file = optarg;
-                break;
-            case 'i':
-                workload_args.interactive = true;
                 break;
             case 'w':
                 workload_args.write = true;
@@ -190,63 +174,51 @@ std::pair<std::string, workload_conf_args> cmd_arg_parse(int argc, char** argv)
                 workload_args.perf_test = true;
                 break;
             case 'u':
-                // Print usage information
                 if(rank == 0)
                 {
                     usage(argv);
                 }
                 exit(EXIT_SUCCESS);
             case '?':
-                // Invalid option or missing argument
                 usage(argv);
                 exit(EXIT_FAILURE);
             default:
-                // Unknown option
                 std::cerr << "Unknown option: " << opt << std::endl;
                 exit(EXIT_FAILURE);
         }
     }
 
-    // Check if the config file option is provided
     if(config_file)
     {
         if(rank == 0)
         {
             std::cout << "Config file specified: " << config_file << std::endl;
-            if(workload_args.interactive)
+            std::cout << "Number of processes: " << size << std::endl;
+            std::cout << "Chronicle count (#chronicles per proc): " << workload_args.chronicle_count << std::endl;
+            std::cout << "Story count (#stories per proc): " << workload_args.story_count << std::endl;
+            if(!workload_args.event_payload_file.empty())
             {
-                std::cout << "Interactive mode: on" << std::endl;
+                std::cout << "Event payload file specified (event payloads in lines): "
+                          << workload_args.event_payload_file.c_str() << std::endl;
             }
             else
             {
-                std::cout << "Interactive mode: off" << std::endl;
-                std::cout << "Number of processes: " << size << std::endl;
-                std::cout << "Chronicle count (#chronicles per proc): " << workload_args.chronicle_count << std::endl;
-                std::cout << "Story count (#stories per proc): " << workload_args.story_count << std::endl;
-                if(!workload_args.event_payload_file.empty())
-                {
-                    std::cout << "Event payload file specified (event payloads in lines): "
-                              << workload_args.event_payload_file.c_str() << std::endl;
-                }
-                else
-                {
-                    std::cout << "No event payload file specified, use default/specified separate conf args ..."
-                              << std::endl;
-                    std::cout << "Min event size (minimum of event payload length following a normal distribution): "
-                              << workload_args.min_event_size << " bytes" << std::endl;
-                    std::cout << "Ave event size (median of event payload length following a normal distribution): "
-                              << workload_args.ave_event_size << " bytes" << std::endl;
-                    std::cout << "Max event size (maximum of event payload length following a normal distribution): "
-                              << workload_args.max_event_size << " bytes" << std::endl;
-                    std::cout << "Event count (#events per proc): " << workload_args.event_count << std::endl;
-                    std::cout << "Event interval (time in-between event accesses): " << workload_args.event_interval
-                              << " us" << std::endl;
-                }
-                std::cout << "Barrier (hold on next ChronoLog API call until completion of the previous one): "
-                          << (workload_args.barrier ? "true" : "false") << std::endl;
-                std::cout << "Shared story (all procs access the same story): "
-                          << (workload_args.shared_story ? "true" : "false") << std::endl;
+                std::cout << "No event payload file specified, use default/specified separate conf args ..."
+                          << std::endl;
+                std::cout << "Min event size (minimum of event payload length following a normal distribution): "
+                          << workload_args.min_event_size << " bytes" << std::endl;
+                std::cout << "Ave event size (median of event payload length following a normal distribution): "
+                          << workload_args.ave_event_size << " bytes" << std::endl;
+                std::cout << "Max event size (maximum of event payload length following a normal distribution): "
+                          << workload_args.max_event_size << " bytes" << std::endl;
+                std::cout << "Event count (#events per proc): " << workload_args.event_count << std::endl;
+                std::cout << "Event interval (time in-between event accesses): " << workload_args.event_interval
+                          << " us" << std::endl;
             }
+            std::cout << "Barrier (hold on next ChronoLog API call until completion of the previous one): "
+                      << (workload_args.barrier ? "true" : "false") << std::endl;
+            std::cout << "Shared story (all procs access the same story): "
+                      << (workload_args.shared_story ? "true" : "false") << std::endl;
         }
         return {std::pair<std::string, workload_conf_args>((config_file), workload_args)};
     }
@@ -255,7 +227,6 @@ std::pair<std::string, workload_conf_args> cmd_arg_parse(int argc, char** argv)
         if(rank == 0)
         {
             std::cout << "No config file specified, using default settings instead:" << std::endl;
-            std::cout << "Interactive mode: " << (workload_args.interactive ? "on" : "off") << std::endl;
             std::cout << "Number of processes: " << size << std::endl;
             std::cout << "Chronicle count (#chronicles per proc): " << workload_args.chronicle_count << std::endl;
             std::cout << "Story count (#stories per proc) : " << workload_args.story_count << std::endl;
@@ -277,7 +248,7 @@ std::pair<std::string, workload_conf_args> cmd_arg_parse(int argc, char** argv)
     }
 }
 
-int test_create_chronicle(chronolog::Client& client, const std::string& chronicle_name)
+static int test_create_chronicle(chronolog::Client& client, const std::string& chronicle_name)
 {
     int ret, flags = 0;
     std::map<std::string, std::string> chronicle_attrs;
@@ -289,147 +260,58 @@ int test_create_chronicle(chronolog::Client& client, const std::string& chronicl
     return ret;
 }
 
-std::pair<int, chronolog::StoryHandle*>
+static std::pair<int, chronolog::StoryHandle*>
 test_acquire_story(chronolog::Client& client, const std::string& chronicle_name, const std::string& story_name)
 {
-    //    random_sleep();
     int flags = 0;
     std::map<std::string, std::string> story_acquisition_attrs;
     story_acquisition_attrs.emplace("Priority", "High");
     story_acquisition_attrs.emplace("IndexGranularity", "Millisecond");
     story_acquisition_attrs.emplace("TieringPolicy", "Hot");
-    std::pair<int, chronolog::StoryHandle*> acq_ret =
-            client.AcquireStory(chronicle_name, story_name, story_acquisition_attrs, flags);
-    //    LOG_DEBUG("acq_ret: {}", to_string_client(acq_ret.first));
-    //    assert(acq_ret.first == chronolog::CL_SUCCESS || acq_ret.first == chronolog::CL_ERR_ACQUIRED);
-    return acq_ret;
+    return client.AcquireStory(chronicle_name, story_name, story_acquisition_attrs, flags);
 }
 
-uint64_t test_write_event(chronolog::StoryHandle* story_handle, const std::string& event_payload)
+static uint64_t test_write_event(chronolog::StoryHandle* story_handle, const std::string& event_payload)
 {
     uint64_t ret = story_handle->log_event(event_payload);
     assert(ret > 0);
     return ret;
 }
 
-int test_replay_story(chronolog::Client& client,
-                      const std::string& chronicle_name,
-                      const std::string& story_name,
-                      uint64_t start_time,
-                      uint64_t end_time,
-                      std::vector<chronolog::Event>& replay_events)
+static int test_replay_story(chronolog::Client& client,
+                             const std::string& chronicle_name,
+                             const std::string& story_name,
+                             uint64_t start_time,
+                             uint64_t end_time,
+                             std::vector<chronolog::Event>& replay_events)
 {
     int ret = client.ReplayStory(chronicle_name, story_name, start_time, end_time, replay_events);
     assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST);
     return ret;
 }
 
-int test_release_story(chronolog::Client& client, const std::string& chronicle_name, const std::string& story_name)
+static int test_release_story(chronolog::Client& client, const std::string& chronicle_name, const std::string& story_name)
 {
     int ret = client.ReleaseStory(chronicle_name, story_name);
     assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST);
     return ret;
 }
 
-int test_destroy_chronicle(chronolog::Client& client, const std::string& chronicle_name)
+static int test_destroy_chronicle(chronolog::Client& client, const std::string& chronicle_name)
 {
     int ret = client.DestroyChronicle(chronicle_name);
     assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST || ret == chronolog::CL_ERR_ACQUIRED);
     return ret;
 }
 
-int test_destroy_story(chronolog::Client& client, const std::string& chronicle_name, const std::string& story_name)
+static int test_destroy_story(chronolog::Client& client, const std::string& chronicle_name, const std::string& story_name)
 {
     int ret = client.DestroyStory(chronicle_name, story_name);
     assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST || ret == chronolog::CL_ERR_ACQUIRED);
     return ret;
 }
 
-std::vector<std::string> parse_command_line(const std::string& line)
-{
-    std::vector<std::string> tokens;
-    std::string current_token;
-    bool in_quotes = false;
-
-    for(char ch: line)
-    {
-        if(ch == '\"')
-        {
-            if(in_quotes)
-            {
-                tokens.push_back(current_token);
-                current_token.clear();
-                in_quotes = false;
-            }
-            else
-            {
-                if(!current_token.empty())
-                {
-                    tokens.push_back(current_token);
-                    current_token.clear();
-                }
-                in_quotes = true;
-            }
-        }
-        else if(std::isspace(static_cast<unsigned char>(ch)) && !in_quotes)
-        {
-            if(!current_token.empty())
-            {
-                tokens.push_back(current_token);
-                current_token.clear();
-            }
-        }
-        else
-        {
-            current_token += ch;
-        }
-    }
-
-    if(!current_token.empty())
-    {
-        tokens.push_back(current_token);
-    }
-
-    if(in_quotes)
-    {
-        std::cerr << "Error: Unterminated quote in command line: " << line << std::endl;
-        tokens.clear(); // Clear tokens to indicate an error
-        return tokens;  // Return an empty list to signal failure
-    }
-
-    return tokens;
-}
-
-// function to extract and execute commands from command line input
-void command_dispatcher(const std::string& command_line,
-                        std::unordered_map<std::string, std::function<void(std::vector<std::string>&)>> command_map)
-{
-    if(command_line.empty())
-    {
-        return;
-    }
-
-    std::vector<std::string> parsed_tokens = parse_command_line(command_line);
-
-    if(parsed_tokens.empty())
-    {
-        return;
-    }
-
-    // Find the command in the map.
-    std::string command_name = trim_string(parsed_tokens[0]);
-    auto it = command_map.find(command_name);
-    if(it != command_map.end())
-    {
-        it->second(parsed_tokens);
-    }
-    else
-    {
-        std::cerr << "Error: Command not found: '" << parsed_tokens[0] << "'" << std::endl;
-    }
-}
-
-uint64_t get_event_timestamp(std::string& event_line)
+static uint64_t get_event_timestamp(std::string& event_line)
 {
     /*
      * Supported log files: syslog, auth.log, kern.log, ufw.log on Ubuntu
@@ -452,217 +334,13 @@ uint64_t get_event_timestamp(std::string& event_line)
     return timestamp;
 }
 
-uint64_t get_bigbang_timestamp(std::ifstream& file)
+static uint64_t get_bigbang_timestamp(std::ifstream& file)
 {
     std::string line;
     std::getline(file, line);
     uint64_t bigbang_timestamp = get_event_timestamp(line);
     file.seekg(0, std::ios::beg);
     return bigbang_timestamp;
-}
-
-void interactive_create_chronicle(std::vector<std::string>& tokens, chronolog::Client& client)
-{
-    if(tokens.size() != 2)
-    {
-        std::cerr << "Usage: -c <chronicle_name>" << std::endl;
-        return;
-    }
-    int ret_i;
-    const std::string& chronicle_name = tokens[1];
-    ret_i = test_create_chronicle(client, chronicle_name);
-    if(ret_i == chronolog::CL_SUCCESS)
-    {
-        std::cout << "Chronicle created successfully: " << chronicle_name << std::endl;
-    }
-    else if(ret_i == chronolog::CL_ERR_CHRONICLE_EXISTS)
-    {
-        std::cout << "Chronicle already exists: " << chronicle_name << std::endl;
-    }
-    else
-    {
-        std::cout << "Failed to create Chronicle: " << chronicle_name
-                  << ", return code: " << chronolog::to_string_client(ret_i) << std::endl;
-    }
-}
-
-chronolog::StoryHandle* interactive_acquire_story(std::vector<std::string>& tokens, chronolog::Client& client)
-{
-    if(tokens.size() != 4)
-    {
-        std::cerr << "Usage: -a -s <chronicle_name> <story_name>" << std::endl;
-        return nullptr;
-    }
-    int ret_i;
-    chronolog::StoryHandle* story_handle = nullptr;
-    const std::string& chronicle_name = tokens[2];
-    const std::string& story_name = tokens[3];
-    auto ret = test_acquire_story(client, chronicle_name, story_name);
-    ret_i = ret.first;
-    story_handle = ret.second;
-    if(ret_i == chronolog::CL_SUCCESS)
-    {
-        std::cout << "Story acquired successfully: " << story_name << " in Chronicle " << chronicle_name << std::endl;
-    }
-    else if(ret_i == chronolog::CL_ERR_ACQUIRED)
-    {
-        std::cout << "Story already acquired: " << story_name << " in Chronicle " << chronicle_name << std::endl;
-    }
-    else if(ret_i == chronolog::CL_ERR_NOT_EXIST)
-    {
-        std::cout << "Chronicle does not exist: " << chronicle_name << std::endl;
-    }
-    else
-    {
-        std::cout << "Failed to acquire story: " << story_name << " in Chronicle " << chronicle_name
-                  << ", return code: " << chronolog::to_string_client(ret_i) << std::endl;
-    }
-    return story_handle;
-}
-
-void interactive_release_story(std::vector<std::string>& tokens, chronolog::Client& client)
-{
-    if(tokens.size() != 4)
-    {
-        std::cerr << "Usage: -q -s <chronicle_name> <story_name>" << std::endl;
-        return;
-    }
-    int ret_i;
-    const std::string& chronicle_name = tokens[2];
-    const std::string& story_name = tokens[3];
-    ret_i = test_release_story(client, chronicle_name, story_name);
-    if(ret_i == chronolog::CL_SUCCESS)
-    {
-        std::cout << "Story released successfully: " << story_name << " in Chronicle " << chronicle_name << std::endl;
-    }
-    else if(ret_i == chronolog::CL_ERR_NOT_EXIST)
-    {
-        std::cout << "Story does not exist: " << story_name << " in Chronicle " << chronicle_name << std::endl;
-    }
-    else
-    {
-        std::cout << "Failed to release story: " << story_name << " in Chronicle " << chronicle_name
-                  << ", return code: " << chronolog::to_string_client(ret_i) << std::endl;
-    }
-}
-
-void interactive_write_event(std::vector<std::string>& tokens, chronolog::StoryHandle* story_handle)
-{
-    if(tokens.size() < 2)
-    {
-        std::cerr << "Usage: -w <event_payload>" << std::endl;
-        return;
-    }
-    uint64_t ret_u;
-    std::string event_payload;
-    for(size_t i = 1; i < tokens.size(); ++i)
-    {
-        if(i > 1)
-        {
-            event_payload += " ";
-        }
-        event_payload += tokens[i];
-    }
-    ret_u = test_write_event(story_handle, event_payload);
-    if(ret_u > 0)
-    {
-        std::cout << "Event written successfully, payload length: " << event_payload.length() << std::endl;
-    }
-    else
-    {
-        std::cout << "Failed to write event, return code: " << ret_u << std::endl;
-    }
-}
-
-void interactive_replay_story(std::vector<std::string>& tokens, chronolog::Client& client)
-{
-    if(tokens.size() != 5)
-    {
-        std::cerr << "Usage: -r <chronicle_name> <story_name> <start_time> <end_time>" << std::endl;
-        return;
-    }
-    int ret_i;
-    const std::string& chronicle_name = tokens[1];
-    const std::string& story_name = tokens[2];
-    uint64_t start_time = get_uint64_t_from_string(tokens[3]);
-    uint64_t end_time = get_uint64_t_from_string(tokens[4]);
-    std::vector<chronolog::Event> replay_events;
-    ret_i = test_replay_story(client, chronicle_name, story_name, start_time, end_time, replay_events);
-    if(ret_i == chronolog::CL_SUCCESS)
-    {
-        std::cout << "Replay successful, retrieved " << replay_events.size() << " events from " << chronicle_name
-                  << " story " << story_name << " between " << start_time << " and " << end_time << std::endl;
-        for(const auto& event: replay_events) { std::cout << event.to_string() << std::endl; }
-    }
-    else if(ret_i == chronolog::CL_ERR_NOT_EXIST)
-    {
-        std::cout << "Story does not exist: " << story_name << " in Chronicle " << chronicle_name << std::endl;
-    }
-    else
-    {
-        std::cout << "Failed to replay story: " << story_name << " in Chronicle " << chronicle_name
-                  << ", return code: " << chronolog::to_string_client(ret_i) << std::endl;
-    }
-}
-
-void interactive_destroy_story(std::vector<std::string>& tokens, chronolog::Client& client)
-{
-    if(tokens.size() != 4)
-    {
-        std::cerr << "Usage: -d -s <chronicle_name> <story_name>" << std::endl;
-        return;
-    }
-    int ret_i;
-    const std::string& chronicle_name = tokens[2];
-    const std::string& story_name = tokens[3];
-    ret_i = test_destroy_story(client, chronicle_name, story_name);
-    if(ret_i == chronolog::CL_SUCCESS)
-    {
-        std::cout << "Story destroyed successfully: " << story_name << " in Chronicle " << chronicle_name << std::endl;
-    }
-    else if(ret_i == chronolog::CL_ERR_ACQUIRED)
-    {
-        std::cout << "Story is still acquired, cannot destroy: " << story_name << " in Chronicle " << chronicle_name
-                  << std::endl;
-    }
-    else if(ret_i == chronolog::CL_ERR_NOT_EXIST)
-    {
-        std::cout << "Story does not exist: " << story_name << " in Chronicle " << chronicle_name << std::endl;
-    }
-    else
-    {
-        std::cout << "Failed to destroy Story: " << story_name << " in Chronicle " << chronicle_name
-                  << ", return code: " << chronolog::to_string_client(ret_i) << std::endl;
-    }
-}
-
-void interactive_destroy_chronicle(std::vector<std::string>& tokens, chronolog::Client& client)
-{
-    if(tokens.size() != 3)
-    {
-        std::cerr << "Usage: -d -c <chronicle_name>" << std::endl;
-        return;
-    }
-    int ret_i;
-    const std::string& chronicle_name = tokens[2];
-    ret_i = test_destroy_chronicle(client, chronicle_name);
-    if(ret_i == chronolog::CL_SUCCESS)
-    {
-        std::cout << "Chronicle destroyed successfully: " << chronicle_name << std::endl;
-    }
-    else if(ret_i == chronolog::CL_ERR_ACQUIRED)
-    {
-        std::cout << "Chronicle is still acquired, cannot destroy: " << chronicle_name << std::endl;
-    }
-    else if(ret_i == chronolog::CL_ERR_NOT_EXIST)
-    {
-        std::cout << "Chronicle does not exist: " << chronicle_name << std::endl;
-    }
-    else
-    {
-        std::cout << "Failed to destroy Chronicle: " << chronicle_name
-                  << ", return code: " << chronolog::to_string_client(ret_i) << std::endl;
-    }
 }
 
 int main(int argc, char** argv)
@@ -688,7 +366,7 @@ int main(int argc, char** argv)
         {
             if(rank == 0)
             {
-                std::cerr << "[ClientAdmin] Failed to load configuration file '" << conf_file_path
+                std::cerr << "[PerformanceTest] Failed to load configuration file '" << conf_file_path
                           << "'. Using default values instead." << std::endl;
             }
         }
@@ -696,7 +374,7 @@ int main(int argc, char** argv)
         {
             if(rank == 0)
             {
-                std::cout << "[ClientAdmin] Configuration file loaded successfully from '" << conf_file_path << "'."
+                std::cout << "[PerformanceTest] Configuration file loaded successfully from '" << conf_file_path << "'."
                           << std::endl;
             }
         }
@@ -705,7 +383,7 @@ int main(int argc, char** argv)
     {
         if(rank == 0)
         {
-            std::cout << "[ClientAdmin] No configuration file provided. Using default values." << std::endl;
+            std::cout << "[PerformanceTest] No configuration file provided. Using default values." << std::endl;
         }
     }
 
@@ -730,11 +408,11 @@ int main(int argc, char** argv)
 
     if(workload_args.read)
     {
-        std::cout << "[ClientAdmin] Running in read mode." << std::endl;
+        std::cout << "[PerformanceTest] Running in read mode." << std::endl;
     }
     else
     {
-        std::cout << "[ClientAdmin] Running in write mode." << std::endl;
+        std::cout << "[PerformanceTest] Running in write mode." << std::endl;
     }
 
     chronolog::Client client = workload_args.read ? chronolog::Client(confManager.PORTAL_CONF, confManager.QUERY_CONF)
@@ -756,7 +434,6 @@ int main(int argc, char** argv)
     uint64_t event_payload_size_per_rank = 0;
 
     std::string client_id = gen_random(8);
-    //    std::cout << "Generated client id: " << client_id << std::endl;
 
     const std::string& server_protoc = confManager.PORTAL_CONF.PROTO_CONF;
     const std::string& server_ip = confManager.PORTAL_CONF.IP;
@@ -776,68 +453,6 @@ int main(int argc, char** argv)
     std::string payload_str(MAX_EVENT_SIZE, 'a');
 
     double local_e2e_start = MPI_Wtime();
-    if(workload_args.interactive)
-    {
-        // Interactive mode, accept commands from stdin
-        std::cout << "Metadata operations: \n"
-                  << "\t-c <chronicle_name> , create a Chronicle <chronicle_name>\n"
-                  << "\t-a -s <chronicle_name> <story_name>, acquire Story <story_name> in Chronicle <chronicle_name>\n"
-                  << "\t-w <event_string>, write Event with <event_string> as payload\n"
-                  << "\t-r <chronicle_name> <story_name> <start_time> <end_time>, read Events in Story <story_name> of "
-                     "Chronicle <chronicle_name> from <start_time> to <end_time>\n"
-                  << "\t-q -s <chronicle_name> <story_name>, release Story <story_name> in Chronicle <chronicle_name>\n"
-                  << "\t-d -s <chronicle_name> <story_name>, destroy Story <story_name> in Chronicle <chronicle_name>\n"
-                  << "\t-d -c <chronicle_name>, destroy Chronicle <chronicle_name>\n"
-                  << "\t-disconnect\n"
-                  << std::endl;
-
-        std::unordered_map<std::string, std::function<void(std::vector<std::string>&)>> command_map = {
-                {"-c",
-                 [&](std::vector<std::string>& command_subs) { interactive_create_chronicle(command_subs, client); }},
-                {"-a",
-                 [&](std::vector<std::string>& command_subs)
-                 {
-                     if(command_subs[1] == "-s")
-                     {
-                         story_handle = interactive_acquire_story(command_subs, client);
-                     }
-                 }},
-                {"-q",
-                 [&](std::vector<std::string>& command_subs)
-                 {
-                     if(command_subs[1] == "-s")
-                     {
-                         interactive_release_story(command_subs, client);
-                     }
-                 }},
-                {"-w",
-                 [&](std::vector<std::string>& command_subs) { interactive_write_event(command_subs, story_handle); }},
-                {"-r", [&](std::vector<std::string>& command_subs) { interactive_replay_story(command_subs, client); }},
-                {"-d",
-                 [&](std::vector<std::string>& command_subs)
-                 {
-                     if(command_subs[1] == "-c")
-                     {
-                         interactive_destroy_chronicle(command_subs, client);
-                     }
-                     else if(command_subs[1] == "-s")
-                     {
-                         interactive_destroy_story(command_subs, client);
-                     }
-                 }}};
-
-        std::string command_line;
-        while(true)
-        {
-            command_line.clear();
-            std::getline(std::cin, command_line);
-            command_line = trim_string(command_line);
-            if(command_line == "-disconnect")
-                break;
-            command_dispatcher(command_line, command_map);
-        }
-    }
-    else
     {
         // Non-interactive mode, execute workload via command line arguments
         std::random_device rand_device;
@@ -885,7 +500,6 @@ int main(int argc, char** argv)
                               << std::endl;
                     exit(EXIT_FAILURE);
                 }
-                //                std::cout << "Return value of AcquireStory: " << chronolog::to_string_client(ret_i) << std::endl;
                 if(workload_args.barrier)
                     MPI_Barrier(MPI_COMM_WORLD);
 
@@ -1044,7 +658,7 @@ int main(int argc, char** argv)
     if(workload_args.barrier)
         MPI_Barrier(MPI_COMM_WORLD);
 
-    if(workload_args.perf_test && !workload_args.interactive)
+    if(workload_args.perf_test)
     {
         double local_e2e_duration = local_e2e_end - local_e2e_start;
         double global_e2e_start, global_e2e_end, global_e2e_duration_ave, global_e2e_duration;
