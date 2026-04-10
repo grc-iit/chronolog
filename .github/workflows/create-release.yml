@@ -446,6 +446,16 @@ jobs:
             echo "No debug DEB package found — skipping"
           fi
 
+      - name: Export debug install tree for RPM build
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          mkdir -p /tmp/chronolog-debug-install-tree
+          docker exec "$CONTAINER_ID" bash -c \
+            "tar czf - -C '${{ env.DEBUG_INSTALL }}' chronolog" \
+            > /tmp/chronolog-debug-install-tree/chronolog-debug-install.tar.gz
+          echo "Debug install tree exported: $(du -sh /tmp/chronolog-debug-install-tree/chronolog-debug-install.tar.gz)"
+
       - name: Commit debug Docker image
         run: |
           set -e
@@ -498,6 +508,13 @@ jobs:
           path: /tmp/chronolog-artifacts/
           retention-days: 7
 
+      - name: Upload debug install tree for RPM build
+        uses: actions/upload-artifact@v4
+        with:
+          name: chronolog-${{ steps.extract-version.outputs.version }}-debug-install-tree
+          path: /tmp/chronolog-debug-install-tree/chronolog-debug-install.tar.gz
+          retention-days: 1
+
   build-rpm-release:
     runs-on: ubuntu-24.04
     needs: publish-docker-release-image
@@ -529,11 +546,12 @@ jobs:
       - name: Generate CPackRPMConfig.cmake
         run: |
           VERSION="${{ needs.publish-docker-release-image.outputs.version }}"
+          BASE_VERSION="${VERSION%%-*}"
           cat > /tmp/CPackRPMConfig.cmake << EOF
           set(CPACK_PACKAGE_NAME        "chronolog")
           set(CPACK_PACKAGE_VENDOR      "GRC-IIT, Illinois Institute of Technology")
           set(CPACK_PACKAGE_CONTACT     "eneko.gonzalez@iit.edu")
-          set(CPACK_PACKAGE_VERSION     "${VERSION}")
+          set(CPACK_PACKAGE_VERSION     "${BASE_VERSION}")
           set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "ChronoLog: Distributed Chronicle Logging System")
           set(CPACK_PACKAGE_DESCRIPTION
           "ChronoLog is a distributed, hierarchical, and tiered chronicle-based logging
@@ -545,7 +563,7 @@ jobs:
           set(CPACK_INSTALL_CMAKE_PROJECTS "")
           set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY OFF)
           set(CPACK_INSTALLED_DIRECTORIES "/tmp/chronolog-install/chronolog" "opt/chronolog")
-          set(CPACK_PACKAGE_FILE_NAME   "chronolog-${VERSION}-1.x86_64")
+          set(CPACK_PACKAGE_FILE_NAME   "chronolog-${BASE_VERSION}-1.x86_64")
           set(CPACK_RPM_PACKAGE_RELEASE      "1")
           set(CPACK_RPM_PACKAGE_LICENSE      "BSD-2-Clause")
           set(CPACK_RPM_PACKAGE_GROUP        "System Environment/Daemons")
@@ -567,20 +585,93 @@ jobs:
       - name: Rename RPM with platform suffix
         run: |
           VERSION="${{ needs.publish-docker-release-image.outputs.version }}"
-          mv /tmp/rpm-output/chronolog-${VERSION}-1.x86_64.rpm \
-             /tmp/rpm-output/chronolog-${VERSION}-linux-x86_64.rpm
+          BASE_VERSION="${VERSION%%-*}"
+          mv /tmp/rpm-output/chronolog-${BASE_VERSION}-1.x86_64.rpm \
+             /tmp/rpm-output/chronolog-${BASE_VERSION}-linux-x86_64.rpm
           echo "Final RPM: $(ls /tmp/rpm-output/)"
 
       - name: Upload RPM artifact
         uses: actions/upload-artifact@v4
         with:
           name: chronolog-${{ needs.publish-docker-release-image.outputs.version }}-rpm
-          path: /tmp/rpm-output/chronolog-*-linux-x86_64.rpm
+          path: /tmp/rpm-output/*.rpm
+          retention-days: 7
+
+  build-rpm-debug:
+    runs-on: ubuntu-24.04
+    needs: publish-docker-debug-image
+    container:
+      image: rockylinux:9
+    permissions:
+      contents: read
+    timeout-minutes: 30
+
+    steps:
+      - name: Install build tools
+        run: dnf install -y cmake rpm-build
+
+      - name: Download debug install tree
+        uses: actions/download-artifact@v4
+        with:
+          name: chronolog-${{ needs.publish-docker-debug-image.outputs.version }}-debug-install-tree
+          path: /tmp/chronolog-debug-install-tree
+
+      - name: Extract debug install tree
+        run: |
+          mkdir -p /tmp/chronolog-debug-install
+          tar xzf /tmp/chronolog-debug-install-tree/chronolog-debug-install.tar.gz -C /tmp/chronolog-debug-install
+          echo "Debug install tree:"
+          ls /tmp/chronolog-debug-install/
+
+      - name: Generate CPackRPMConfig.cmake for debug
+        run: |
+          VERSION="${{ needs.publish-docker-debug-image.outputs.version }}"
+          BASE_VERSION="${VERSION%%-*}"
+          cat > /tmp/CPackRPMDebugConfig.cmake << EOF
+          set(CPACK_PACKAGE_NAME        "chronolog")
+          set(CPACK_PACKAGE_VENDOR      "GRC-IIT, Illinois Institute of Technology")
+          set(CPACK_PACKAGE_CONTACT     "eneko.gonzalez@iit.edu")
+          set(CPACK_PACKAGE_VERSION     "${BASE_VERSION}")
+          set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "ChronoLog: Distributed Chronicle Logging System (Debug)")
+          set(CPACK_PACKAGE_DESCRIPTION
+          "ChronoLog is a distributed, hierarchical, and tiered chronicle-based logging
+          system designed for high-performance recording and playback of time-ordered
+          event streams across HPC clusters. Debug build.
+          Installed to /opt/chronolog. All non-system libraries are bundled.
+          Components: ChronoVisor, ChronoKeeper, ChronoGrapher, ChronoPlayer, chronolog_client.")
+          set(CPACK_GENERATOR "RPM")
+          set(CPACK_INSTALL_CMAKE_PROJECTS "")
+          set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY OFF)
+          set(CPACK_INSTALLED_DIRECTORIES "/tmp/chronolog-debug-install/chronolog" "opt/chronolog")
+          set(CPACK_PACKAGE_FILE_NAME   "chronolog-${BASE_VERSION}-linux-x86_64-debug")
+          set(CPACK_RPM_PACKAGE_RELEASE      "1")
+          set(CPACK_RPM_PACKAGE_LICENSE      "BSD-2-Clause")
+          set(CPACK_RPM_PACKAGE_GROUP        "System Environment/Daemons")
+          set(CPACK_RPM_PACKAGE_ARCHITECTURE "x86_64")
+          set(CPACK_RPM_PACKAGE_PREFIX       "/opt")
+          set(CPACK_RPM_PACKAGE_REQUIRES     "json-c >= 0.13")
+          set(CPACK_RPM_PACKAGE_DESCRIPTION
+          "ChronoLog is a distributed, hierarchical, and tiered chronicle-based logging
+          system for HPC clusters. Debug build. Installed to /opt/chronolog (bundled libraries).")
+          EOF
+
+      - name: Build debug RPM
+        run: |
+          mkdir -p /tmp/rpm-debug-output
+          cpack --config /tmp/CPackRPMDebugConfig.cmake -G RPM -B /tmp/rpm-debug-output
+          echo "Debug RPM output:"
+          ls /tmp/rpm-debug-output/*.rpm
+
+      - name: Upload debug RPM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: chronolog-${{ needs.publish-docker-debug-image.outputs.version }}-rpm-debug
+          path: /tmp/rpm-debug-output/*.rpm
           retention-days: 7
 
   publish-release:
     runs-on: ubuntu-24.04
-    needs: [publish-docker-release-image, publish-docker-debug-image, build-rpm-release]
+    needs: [publish-docker-release-image, publish-docker-debug-image, build-rpm-release, build-rpm-debug]
     permissions:
       contents: write
     timeout-minutes: 30
@@ -598,10 +689,16 @@ jobs:
           name: chronolog-${{ needs.publish-docker-debug-image.outputs.version }}-debug-packages
           path: /tmp/chronolog-artifacts
 
-      - name: Download RPM package
+      - name: Download Release RPM package
         uses: actions/download-artifact@v4
         with:
           name: chronolog-${{ needs.publish-docker-release-image.outputs.version }}-rpm
+          path: /tmp/chronolog-artifacts
+
+      - name: Download Debug RPM package
+        uses: actions/download-artifact@v4
+        with:
+          name: chronolog-${{ needs.publish-docker-debug-image.outputs.version }}-rpm-debug
           path: /tmp/chronolog-artifacts
 
       - name: List release artifacts
