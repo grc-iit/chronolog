@@ -12,7 +12,7 @@
 # --- General package metadata ------------------------------------------------
 set(CPACK_PACKAGE_NAME        "chronolog")
 set(CPACK_PACKAGE_VENDOR      "GRC-IIT, Illinois Institute of Technology")
-set(CPACK_PACKAGE_CONTACT     "eneko.gonzalez@iit.edu")
+set(CPACK_PACKAGE_CONTACT     "egonzalez30@illinoistech.edu")
 set(CPACK_PACKAGE_VERSION     "@CHRONOLOG_PACKAGE_VERSION@")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
     "ChronoLog: Distributed Chronicle Logging System")
@@ -51,7 +51,7 @@ set(CPACK_PACKAGE_FILE_NAME
 
 # --- DEB-specific settings ---------------------------------------------------
 set(CPACK_DEBIAN_PACKAGE_RELEASE      "1")
-set(CPACK_DEBIAN_PACKAGE_MAINTAINER   "eneko.gonzalez@iit.edu")
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER   "egonzalez30@illinoistech.edu")
 set(CPACK_DEBIAN_PACKAGE_SECTION      "net")
 set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "@CHRONOLOG_DEB_ARCH@")
 

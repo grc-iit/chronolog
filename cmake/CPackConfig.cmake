@@ -7,7 +7,7 @@
 # --- General package metadata ------------------------------------------------
 set(CPACK_PACKAGE_NAME        "chronolog")
 set(CPACK_PACKAGE_VENDOR      "GRC-IIT, Illinois Institute of Technology")
-set(CPACK_PACKAGE_CONTACT     "eneko.gonzalez@iit.edu")
+set(CPACK_PACKAGE_CONTACT     "egonzalez30@illinoistech.edu")
 set(CPACK_PACKAGE_VERSION     "${CHRONOLOG_PACKAGE_VERSION}")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
     "ChronoLog: Distributed Chronicle Logging System")
