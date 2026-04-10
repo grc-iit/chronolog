@@ -10,6 +10,10 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV DEBCONF_NOWARNINGS=yes
 ENV TZ=America/Chicago
 
+# Enable the universe repository (required for rpm-build on Ubuntu 24.04)
+RUN sed -i 's/Components: main restricted/Components: main restricted universe/' \
+    /etc/apt/sources.list.d/ubuntu.sources
+
 # Install system dependencies (merged from both dockerfiles)
 RUN apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get -y install \
