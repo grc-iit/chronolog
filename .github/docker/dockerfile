@@ -19,7 +19,8 @@ RUN apt-get update \
     libfuse-dev libssl-dev \
     python3 python3-dev python3-pip \
     bzip2 xz-utils jq net-tools lsof htop pssh procps bind9-dnsutils chrpath \
-    build-essential unzip tar autoconf
+    build-essential unzip tar autoconf \
+    rpm-build dpkg
 
 # Install SSH server and client with configuration
 RUN apt-get -y install --no-install-recommends \

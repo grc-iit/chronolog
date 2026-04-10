@@ -58,20 +58,13 @@ set(CPACK_PACKAGE_FILE_NAME
     "${CPACK_PACKAGE_NAME}-${CHRONOLOG_PACKAGE_VERSION}")
 
 # --- Generators --------------------------------------------------------------
-# Always produce a TGZ. Add RPM when rpmbuild is present on this host.
+# This file drives the TGZ run only.  RPM and DEB each have their own config
+# file (cmake/CPackRPMConfig.cmake.in / CPackDEBConfig.cmake.in) that is
+# configured at cmake time and invoked separately by the package_release target.
+# Keeping generators separate is required because CPACK_INSTALLED_DIRECTORIES
+# cannot be overridden per-generator: TGZ needs "chronolog-VERSION/" as the
+# top-level dir while RPM/DEB must place files at "opt/chronolog" (→ /opt/chronolog).
 set(CPACK_GENERATOR "TGZ")
-
-find_program(RPMBUILD_FOUND rpmbuild)
-if(RPMBUILD_FOUND)
-    list(APPEND CPACK_GENERATOR "RPM")
-    message(STATUS "CPack: rpmbuild found — RPM generator enabled")
-endif()
-
-find_program(DPKG_FOUND dpkg-deb)
-if(DPKG_FOUND)
-    list(APPEND CPACK_GENERATOR "DEB")
-    message(STATUS "CPack: dpkg-deb found — DEB generator enabled")
-endif()
 
 # --- Source ignore patterns --------------------------------------------------
 set(CPACK_SOURCE_IGNORE_FILES
