@@ -517,12 +517,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: chronolog-${{ needs.publish-docker-release-image.outputs.version }}-install-tree
-          path: ${{ github.workspace }}
+          path: /tmp/chronolog-install-tree
 
       - name: Extract install tree
         run: |
           mkdir -p /tmp/chronolog-install
-          tar xzf "${{ github.workspace }}/chronolog-install.tar.gz" -C /tmp/chronolog-install
+          tar xzf /tmp/chronolog-install-tree/chronolog-install.tar.gz -C /tmp/chronolog-install
           echo "Install tree:"
           ls /tmp/chronolog-install/
 
