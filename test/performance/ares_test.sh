@@ -38,6 +38,7 @@ set -u -o pipefail
 : "${TOOLS_DIR:=$INSTALL_DIR/tools}"
 : "${TESTS_DIR:=$INSTALL_DIR/tests}"
 : "${PERF_BIN:=$TESTS_DIR/chrono-performance-test}"
+: "${MPIRUN:=mpirun}"                    # full path if not in $PATH
 : "${DEPLOY_SCRIPT:=$TOOLS_DIR/deploy_cluster.sh}"
 : "${CONF_FILE:=$CONF_DIR/default-chrono-conf.json}"
 : "${CLIENT_CONF_FILE:=$CONF_DIR/default-chrono-client-conf.json}"
@@ -133,6 +134,7 @@ cp -- "${BASH_SOURCE[0]}" "$LOG_DIR/ares_test_${STAMP}.sh.snapshot"
     printf 'TOOLS_DIR=%s\n'        "$TOOLS_DIR"
     printf 'TESTS_DIR=%s\n'        "$TESTS_DIR"
     printf 'PERF_BIN=%s\n'         "$PERF_BIN"
+    printf 'MPIRUN=%s\n'           "$MPIRUN"
     printf 'DEPLOY_SCRIPT=%s\n'    "$DEPLOY_SCRIPT"
     printf 'CONF_FILE=%s\n'        "$CONF_FILE"
     printf 'CLIENT_CONF_FILE=%s\n' "$CLIENT_CONF_FILE"
@@ -595,7 +597,7 @@ run_one_perf_test() {
     # We wrap everything in `timeout` so a hung run cannot block the matrix.
     # --kill-after fires SIGKILL 5s after SIGTERM if the run did not exit.
     local mpirun_cmd=(
-        mpirun
+        "$MPIRUN"
         --hostfile "$CLIENT_HOSTS"
         -np "$total_clients"
         "$PERF_BIN"
