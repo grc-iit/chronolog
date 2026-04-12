@@ -411,22 +411,10 @@ pkill_chrono_everywhere() {
     # mpssh -f <host_file> "<remote cmd>" fans out the kill in parallel. We
     # target one component type per hosts file so the visor hosts file is
     # never touched by keeper/grapher/player patterns and vice versa.
-    # Guard: hosts files may not exist on the first invocation (e.g. if
-    # cleanup_on_exit fires before the first write_hosts_files).
-    local role file
-    for role in visor keeper grapher player; do
-        case "$role" in
-            visor)   file="$VISOR_HOSTS"   ;;
-            keeper)  file="$KEEPER_HOSTS"  ;;
-            grapher) file="$GRAPHER_HOSTS" ;;
-            player)  file="$PLAYER_HOSTS"  ;;
-        esac
-        if [[ ! -f "$file" && "$DRY_RUN" != "1" ]]; then
-            log "    skip pkill chrono-${role}: $file does not exist yet"
-            continue
-        fi
-        run_cmd "mpssh pkill chrono-${role}" mpssh -f "$file" "pkill -9 -f chrono-${role} || true"
-    done
+    run_cmd "mpssh pkill chrono-visor"   mpssh -f "$VISOR_HOSTS"   "pkill -9 -f chrono-visor || true"
+    run_cmd "mpssh pkill chrono-keeper"  mpssh -f "$KEEPER_HOSTS"  "pkill -9 -f chrono-keeper || true"
+    run_cmd "mpssh pkill chrono-grapher" mpssh -f "$GRAPHER_HOSTS" "pkill -9 -f chrono-grapher || true"
+    run_cmd "mpssh pkill chrono-player"  mpssh -f "$PLAYER_HOSTS"  "pkill -9 -f chrono-player || true"
 }
 
 set_protocol_in_conf() {
@@ -664,13 +652,12 @@ cleanup_on_exit() {
     log ""
     log "cleanup_on_exit (exit_code=$ec)"
 
-    # stop_cluster and pkill both need hosts files. If they haven't been
-    # written yet (e.g. the script failed before the first write_hosts_files),
-    # skip the component teardown — there's nothing running to kill.
+    # pkill needs hosts files. If the script failed before write_hosts_files
+    # ever ran, there's nothing running to kill anyway — skip teardown.
     if [[ -f "$VISOR_HOSTS" || "$DRY_RUN" == "1" ]]; then
         pkill_chrono_everywhere || true
     else
-        log "hosts files do not exist yet — skipping component teardown"
+        log "hosts files do not exist — skipping component teardown"
     fi
 
     # Always scancel the perf job so nodes are released on any failure.
@@ -706,6 +693,7 @@ main() {
     discover_nodes
 
     local prev_scale=""
+    local first_iteration=1
     local scale proto conf rep per_node nnodes test
 
     for scale in "${COMPONENT_SCALES[@]}"; do
@@ -721,12 +709,14 @@ main() {
         for proto in "${PROTOCOLS[@]}"; do
             section "SCALE=$scale PROTOCOL=$proto"
 
-            # Fresh deployment for every (scale, protocol) pair: a protocol
-            # switch requires tearing down every component and restarting it
-            # against the updated conf file. pkill handles both the
-            # "previous protocol still running" case and the "first iteration
-            # of a new scale with stale components from the prior scale" case.
-            pkill_chrono_everywhere
+            # Kill any running components before (re)deploying with the new
+            # protocol. On the very first iteration the nodes are assumed
+            # clean, so we skip the pkill — no prior deployment to tear down.
+            if (( first_iteration )); then
+                first_iteration=0
+            else
+                pkill_chrono_everywhere
+            fi
             set_protocol_in_conf "$proto"
             deploy_cluster "$scale"
             if ! verify_components_running; then
