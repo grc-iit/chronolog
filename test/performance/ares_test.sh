@@ -53,14 +53,15 @@ set -u -o pipefail
 : "${SLURM_TIME_LIMIT:=04:00:00}"
 : "${SLURM_JOB_NAME:=chronolog-perf}"
 
-LOG_DIR="${LOG_DIR:-$(pwd)/ares_test_logs}"
 STAMP="$(date +%Y%m%d_%H%M%S)"
+LOG_DIR="${LOG_DIR:-$(pwd)/ares_test_logs_${STAMP}}"
 LOG_FILE="${LOG_FILE:-$LOG_DIR/ares_test_${STAMP}.log}"
 # CMD_LOG_FILE holds a clean, reviewable list of every command the driver
 # would execute (one per line, with section comments) — useful to skim the
 # matrix without wading through the full timestamped log. Derived from
 # LOG_FILE so the two files share a stamp.
 CMD_LOG_FILE="${CMD_LOG_FILE:-${LOG_FILE%.log}.cmd.log}"
+CONF_LOG_FILE="${CONF_LOG_FILE:-${LOG_FILE%.log}.conf.log}"
 RESULT_FILE="${RESULT_FILE:-$LOG_DIR/ares_test_${STAMP}.results}"
 
 mkdir -p "$LOG_DIR"
@@ -113,6 +114,62 @@ EVENT_COUNT_DEFAULT=1000
 EVENT_SIZE_DEFAULT=4096
 EVENT_INTERVAL_US=0
 CHRONICLE_COUNT=1
+
+# ---------------------------------------------------------------------------
+# Snapshots — freeze the script source and resolved config into the log dir
+# so every run is fully reproducible even if the script or env changes later.
+# ---------------------------------------------------------------------------
+
+# Snapshot the script itself.
+cp -- "${BASH_SOURCE[0]}" "$LOG_DIR/ares_test_${STAMP}.sh.snapshot"
+
+# Snapshot all configuration scalars and arrays into a separate conf log.
+{
+    printf '# ares_test.sh configuration snapshot — %s\n\n' "$STAMP"
+    printf '# --- Paths ---\n'
+    printf 'INSTALL_DIR=%s\n'      "$INSTALL_DIR"
+    printf 'CONF_DIR=%s\n'         "$CONF_DIR"
+    printf 'BIN_DIR=%s\n'          "$BIN_DIR"
+    printf 'TOOLS_DIR=%s\n'        "$TOOLS_DIR"
+    printf 'TESTS_DIR=%s\n'        "$TESTS_DIR"
+    printf 'PERF_BIN=%s\n'         "$PERF_BIN"
+    printf 'DEPLOY_SCRIPT=%s\n'    "$DEPLOY_SCRIPT"
+    printf 'CONF_FILE=%s\n'        "$CONF_FILE"
+    printf 'CLIENT_CONF_FILE=%s\n' "$CLIENT_CONF_FILE"
+    printf 'CLIENT_HOSTS=%s\n'     "$CLIENT_HOSTS"
+    printf 'VISOR_HOSTS=%s\n'      "$VISOR_HOSTS"
+    printf 'KEEPER_HOSTS=%s\n'     "$KEEPER_HOSTS"
+    printf 'GRAPHER_HOSTS=%s\n'    "$GRAPHER_HOSTS"
+    printf 'PLAYER_HOSTS=%s\n'     "$PLAYER_HOSTS"
+    printf '\n# --- Runtime knobs ---\n'
+    printf 'DRY_RUN=%s\n'          "$DRY_RUN"
+    printf 'PER_TEST_TIMEOUT_SEC=%s\n' "$PER_TEST_TIMEOUT_SEC"
+    printf 'REPS=%s\n'             "$REPS"
+    printf 'SLURM_PARTITION=%s\n'  "$SLURM_PARTITION"
+    printf 'SLURM_TIME_LIMIT=%s\n' "$SLURM_TIME_LIMIT"
+    printf 'SLURM_JOB_NAME=%s\n'   "$SLURM_JOB_NAME"
+    printf '\n# --- Node layout ---\n'
+    printf 'VISOR_NODES=%s\n'      "$VISOR_NODES"
+    printf 'MAX_COMP_NODES=%s\n'   "$MAX_COMP_NODES"
+    printf 'MAX_CLIENT_NODES=%s\n' "$MAX_CLIENT_NODES"
+    printf 'TOTAL_NODES=%s\n'      "$TOTAL_NODES"
+    printf '\n# --- Workload ---\n'
+    printf 'EVENT_COUNT_DEFAULT=%s\n' "$EVENT_COUNT_DEFAULT"
+    printf 'EVENT_SIZE_DEFAULT=%s\n'  "$EVENT_SIZE_DEFAULT"
+    printf 'EVENT_INTERVAL_US=%s\n'   "$EVENT_INTERVAL_US"
+    printf 'CHRONICLE_COUNT=%s\n'     "$CHRONICLE_COUNT"
+    printf '\n# --- Arrays ---\n'
+    printf 'COMPONENT_SCALES=(%s)\n'  "${COMPONENT_SCALES[*]}"
+    printf 'PROTOCOLS=(%s)\n'         "${PROTOCOLS[*]}"
+    printf 'CLIENT_CONFIGS_ARR=(%s)\n' "${CLIENT_CONFIGS_ARR[*]}"
+    printf 'TESTS=(%s)\n'             "${TESTS[*]}"
+    printf '\n# --- Log files ---\n'
+    printf 'LOG_DIR=%s\n'     "$LOG_DIR"
+    printf 'LOG_FILE=%s\n'    "$LOG_FILE"
+    printf 'CMD_LOG_FILE=%s\n' "$CMD_LOG_FILE"
+    printf 'CONF_LOG_FILE=%s\n' "$CONF_LOG_FILE"
+    printf 'RESULT_FILE=%s\n' "$RESULT_FILE"
+} > "$CONF_LOG_FILE"
 
 # ---------------------------------------------------------------------------
 # Logging helpers
@@ -354,10 +411,22 @@ pkill_chrono_everywhere() {
     # mpssh -f <host_file> "<remote cmd>" fans out the kill in parallel. We
     # target one component type per hosts file so the visor hosts file is
     # never touched by keeper/grapher/player patterns and vice versa.
-    run_cmd "mpssh pkill chrono-visor"   mpssh -f "$VISOR_HOSTS"   "pkill -9 -f chrono-visor || true"
-    run_cmd "mpssh pkill chrono-keeper"  mpssh -f "$KEEPER_HOSTS"  "pkill -9 -f chrono-keeper || true"
-    run_cmd "mpssh pkill chrono-grapher" mpssh -f "$GRAPHER_HOSTS" "pkill -9 -f chrono-grapher || true"
-    run_cmd "mpssh pkill chrono-player"  mpssh -f "$PLAYER_HOSTS"  "pkill -9 -f chrono-player || true"
+    # Guard: hosts files may not exist on the first invocation (e.g. if
+    # cleanup_on_exit fires before the first write_hosts_files).
+    local role file
+    for role in visor keeper grapher player; do
+        case "$role" in
+            visor)   file="$VISOR_HOSTS"   ;;
+            keeper)  file="$KEEPER_HOSTS"  ;;
+            grapher) file="$GRAPHER_HOSTS" ;;
+            player)  file="$PLAYER_HOSTS"  ;;
+        esac
+        if [[ ! -f "$file" && "$DRY_RUN" != "1" ]]; then
+            log "    skip pkill chrono-${role}: $file does not exist yet"
+            continue
+        fi
+        run_cmd "mpssh pkill chrono-${role}" mpssh -f "$file" "pkill -9 -f chrono-${role} || true"
+    done
 }
 
 set_protocol_in_conf() {
@@ -438,10 +507,21 @@ verify_components_running() {
         fi
     }
 
-    _check visor   chrono-visor   "$VISOR_HOSTS"
-    _check keeper  chrono-keeper  "$KEEPER_HOSTS"
-    _check grapher chrono-grapher "$GRAPHER_HOSTS"
-    _check player  chrono-player  "$PLAYER_HOSTS"
+    local role hfile pattern
+    for role in visor keeper grapher player; do
+        case "$role" in
+            visor)   hfile="$VISOR_HOSTS";   pattern="chrono-visor"   ;;
+            keeper)  hfile="$KEEPER_HOSTS";  pattern="chrono-keeper"  ;;
+            grapher) hfile="$GRAPHER_HOSTS"; pattern="chrono-grapher" ;;
+            player)  hfile="$PLAYER_HOSTS";  pattern="chrono-player"  ;;
+        esac
+        if [[ ! -f "$hfile" && "$DRY_RUN" != "1" ]]; then
+            log "    ERROR: $hfile does not exist — cannot verify $role"
+            failed=1
+            continue
+        fi
+        _check "$role" "$pattern" "$hfile"
+    done
 
     if (( failed != 0 )); then
         log "ERROR: one or more components failed to start"
@@ -583,9 +663,19 @@ cleanup_on_exit() {
     local ec=$?
     log ""
     log "cleanup_on_exit (exit_code=$ec)"
-    stop_cluster || true
+
+    # stop_cluster and pkill both need hosts files. If they haven't been
+    # written yet (e.g. the script failed before the first write_hosts_files),
+    # skip the component teardown — there's nothing running to kill.
+    if [[ -f "$VISOR_HOSTS" || "$DRY_RUN" == "1" ]]; then
+        pkill_chrono_everywhere || true
+    else
+        log "hosts files do not exist yet — skipping component teardown"
+    fi
+
+    # Always scancel the perf job so nodes are released on any failure.
     if [[ "$DRY_RUN" != "1" && -n "${PERF_JOB_ID:-}" ]]; then
-        log "[SLURM] releasing allocation"
+        log "[SLURM] releasing allocation (scancel $PERF_JOB_ID)"
         log_cmd "scancel $PERF_JOB_ID"
         scancel "$PERF_JOB_ID" || true
     else
