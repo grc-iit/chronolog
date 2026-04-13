@@ -65,10 +65,17 @@ CMD_LOG_FILE="${CMD_LOG_FILE:-${LOG_FILE%.log}.cmd.log}"
 CONF_LOG_FILE="${CONF_LOG_FILE:-${LOG_FILE%.log}.conf.log}"
 RESULT_FILE="${RESULT_FILE:-$LOG_DIR/ares_test_${STAMP}.results}"
 
+LOG_DIR_PARENT="$(dirname "$LOG_DIR")"
+LOG_DIR_BASE="$(basename "$LOG_DIR")"
+LATEST_LINK="${LOG_DIR_PARENT}/ares_test_logs_latest"
+
 mkdir -p "$LOG_DIR"
 : > "$LOG_FILE"
 : > "$CMD_LOG_FILE"
 : > "$RESULT_FILE"
+
+# Point the "latest" symlink at this run's log dir.
+ln -sfn "$LOG_DIR_BASE" "$LATEST_LINK"
 
 # Fixed component scales (symmetric: N keepers == N graphers == N players).
 COMPONENT_SCALES=(1 2 4)
@@ -387,6 +394,9 @@ write_hosts_files() {
 
 write_client_hosts_file() {
     # $1 = #client_per_node, $2 = #nodes
+    # The hosts file is plain hostnames only (one per line), same format as
+    # the component hosts files. Slots/pernode info is passed to mpirun via
+    # --npernode at launch time, not baked into the file.
     local per_node="$1"
     local nnodes="$2"
     if (( nnodes > MAX_CLIENT_NODES )); then
@@ -394,14 +404,7 @@ write_client_hosts_file() {
         return 1
     fi
     local subset=("${CLIENT_POOL[@]:0:$nnodes}")
-
-    # mpirun-style hostfile: "<host> slots=<per_node>"
-    local content=""
-    local h
-    for h in "${subset[@]}"; do
-        content+="${h} slots=${per_node}"$'\n'
-    done
-    write_file "$CLIENT_HOSTS" "${content%$'\n'}"
+    write_file "$CLIENT_HOSTS" "$(printf '%s\n' "${subset[@]}")"
 }
 
 # ---------------------------------------------------------------------------
@@ -413,10 +416,23 @@ pkill_chrono_everywhere() {
     # mpssh -f <host_file> "<remote cmd>" fans out the kill in parallel. We
     # target one component type per hosts file so the visor hosts file is
     # never touched by keeper/grapher/player patterns and vice versa.
-    run_cmd "mpssh pkill chrono-visor"   mpssh -f "$VISOR_HOSTS"   "pkill -9 -f chrono-visor || true"
-    run_cmd "mpssh pkill chrono-keeper"  mpssh -f "$KEEPER_HOSTS"  "pkill -9 -f chrono-keeper || true"
-    run_cmd "mpssh pkill chrono-grapher" mpssh -f "$GRAPHER_HOSTS" "pkill -9 -f chrono-grapher || true"
-    run_cmd "mpssh pkill chrono-player"  mpssh -f "$PLAYER_HOSTS"  "pkill -9 -f chrono-player || true"
+    # A pkill failure (no match, unreachable node, ssh hiccup) is logged as
+    # a warning but never aborts the run — worst case the next deploy starts
+    # on top of a stale process and we'll see it in verify_components_running.
+    local role file
+    for role in visor keeper grapher player; do
+        case "$role" in
+            visor)   file="$VISOR_HOSTS"   ;;
+            keeper)  file="$KEEPER_HOSTS"  ;;
+            grapher) file="$GRAPHER_HOSTS" ;;
+            player)  file="$PLAYER_HOSTS"  ;;
+        esac
+        if ! run_shell "mpssh pkill chrono-${role}" \
+                "mpssh -f '$file' \"pkill -9 -f chrono-${role} || true\""; then
+            log "WARNING: pkill chrono-${role} via mpssh returned non-zero — continuing"
+        fi
+    done
+    return 0
 }
 
 set_protocol_in_conf() {
@@ -600,6 +616,7 @@ run_one_perf_test() {
         "$MPIRUN"
         --hostfile "$CLIENT_HOSTS"
         -np "$total_clients"
+        --npernode "$per_node"
         "$PERF_BIN"
         # shellcheck disable=SC2086
         $common $specific
@@ -671,7 +688,11 @@ cleanup_on_exit() {
         log "[SLURM] releasing allocation (dry-run)"
         log_cmd "scancel \$PERF_JOB_ID"
     fi
+    # Refresh the latest symlink so it always points to the most recent run,
+    # even if that run failed.
+    ln -sfn "$LOG_DIR_BASE" "$LATEST_LINK"
     log "done. log=$LOG_FILE cmd_log=$CMD_LOG_FILE results=$RESULT_FILE"
+    log "latest -> $LATEST_LINK"
     exit $ec
 }
 trap cleanup_on_exit EXIT INT TERM
