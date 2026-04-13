@@ -26,8 +26,8 @@ set(CHRONOLOG_PACKAGE_TARNAME "${CHRONOLOG_PACKAGE}")
 # Setup install and output Directories
 #------------------------------------------------------------------------------
 # Validate CMAKE_BUILD_TYPE
-if( NOT DEFINED CMAKE_BUILD_TYPE OR NOT (CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "Release"))
-    message(FATAL_ERROR "Please, define CMAKE_BUILD_TYPE that is either Debug or Release")
+if( NOT DEFINED CMAKE_BUILD_TYPE OR NOT (CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo"))
+    message(FATAL_ERROR "Please, define CMAKE_BUILD_TYPE that is either Debug, Release, or RelWithDebInfo")
 endif()
 
 message(STATUS "CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
@@ -161,6 +161,12 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     message(STATUS "Compiling ChronoLog in Debug Mode")
     add_compile_options(-O0)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wno-unused-parameter -Wno-unused-variable -O0 -g")
+elseif(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+    # Profiling build: CMake provides -O2 -g -DNDEBUG by default.
+    # Only add -lm; do NOT add -O3 so that -O2 and debug symbols are preserved
+    # and inlining stays moderate enough for perf annotate to resolve symbols.
+    message(STATUS "Compiling ChronoLog in RelWithDebInfo Mode (profiling-friendly)")
+    add_compile_options(-lm)
 else()
     message(STATUS "Compiling ChronoLog in Release Mode")
     add_compile_options(-O3 -lm)
@@ -262,6 +268,11 @@ add_subdirectory(Plugins)
 if(CHRONOLOG_BUILD_TESTS_NOW)
     enable_testing()
     add_subdirectory(test)
+else()
+    # Performance regression harness ships in every build type (including
+    # Release) so the perf matrix can be run against optimized binaries. The
+    # rest of the test tree remains Debug-only.
+    add_subdirectory(test/performance)
 endif()
 
 #------------------------------------------------------------------------------

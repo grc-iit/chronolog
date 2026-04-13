@@ -8,6 +8,8 @@ BUILD_TYPE="Release"  # Default build type
 INSTALL_PATH=""  # Installation path is optional and starts empty
 BUILD_BASE_DIR="$HOME/chronolog-build"  # Base build directory
 PYTHON_EXECUTABLE=""
+EXTRA_CXX_FLAGS=""
+EXTRA_C_FLAGS=""
 REPO_ROOT="$(realpath "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../")"
 
 ERR='\033[7;37m\033[41m'
@@ -22,9 +24,11 @@ usage() {
     echo "  -h|--help           Display this help and exit"
     echo ""
     echo "Build Options:"
-    echo "  -t|--build-type <Debug|Release>  Define type of build (default: Release)"
+    echo "  -t|--build-type <Debug|Release|RelWithDebInfo>  Define type of build (default: Release)"
     echo "  -B|--build-dir <path>            Set the build directory (default: $HOME/chronolog-build/)"
     echo "  -I|--install-dir <path>          Set the installation directory (default: $HOME/chronolog-install/)"
+    echo "  --cxx-flags <flags>              Extra flags appended to CMAKE_CXX_FLAGS (e.g. '-O2 -g -fno-omit-frame-pointer')"
+    echo "  --c-flags   <flags>              Extra flags appended to CMAKE_C_FLAGS"
     echo ""
     echo "Examples:"
     echo ""
@@ -51,8 +55,8 @@ parse_arguments() {
                 shift ;;
             -t|--build-type)
                 BUILD_TYPE="$2"
-                if [[ "$BUILD_TYPE" != "Debug" && "$BUILD_TYPE" != "Release" ]]; then
-                    echo -e "${ERR}Invalid build type: $BUILD_TYPE. Must be 'Debug' or 'Release'.${NC}"
+                if [[ "$BUILD_TYPE" != "Debug" && "$BUILD_TYPE" != "Release" && "$BUILD_TYPE" != "RelWithDebInfo" ]]; then
+                    echo -e "${ERR}Invalid build type: $BUILD_TYPE. Must be 'Debug', 'Release', or 'RelWithDebInfo'.${NC}"
                     usage
                 fi
                 shift 2 ;;
@@ -62,7 +66,13 @@ parse_arguments() {
             -I|--install-dir)
                 INSTALL_PATH=$(realpath -m "$2")
                 shift 2 ;;
-            *) 
+            --cxx-flags)
+                EXTRA_CXX_FLAGS="$2"
+                shift 2 ;;
+            --c-flags)
+                EXTRA_C_FLAGS="$2"
+                shift 2 ;;
+            *)
                 echo -e "${ERR}Unknown option: $1${NC}"
                 usage ;;
         esac
@@ -163,6 +173,14 @@ build_project() {
     if [[ "$BUILD_TYPE" == "Debug" ]]; then
         echo -e "${DEBUG}Debug build: enabling installation of test executables (CHRONOLOG_INSTALL_TESTS=ON).${NC}"
         cmake_args+=(-DCHRONOLOG_INSTALL_TESTS=ON)
+    fi
+    if [[ -n "$EXTRA_CXX_FLAGS" ]]; then
+        echo -e "${DEBUG}Extra CXX flags: ${EXTRA_CXX_FLAGS}${NC}"
+        cmake_args+=(-DCMAKE_CXX_FLAGS="${EXTRA_CXX_FLAGS}")
+    fi
+    if [[ -n "$EXTRA_C_FLAGS" ]]; then
+        echo -e "${DEBUG}Extra C flags: ${EXTRA_C_FLAGS}${NC}"
+        cmake_args+=(-DCMAKE_C_FLAGS="${EXTRA_C_FLAGS}")
     fi
     cmake "${cmake_args[@]}"
 

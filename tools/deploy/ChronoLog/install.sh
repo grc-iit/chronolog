@@ -27,7 +27,7 @@ parse_arguments() {
         echo "  -h|--help           Display this help and exit"
         echo ""
         echo "Install Options:"
-        echo "  -t|--build-type <Debug|Release>  Define type of build (default: Release)"
+        echo "  -t|--build-type <Debug|Release|RelWithDebInfo>  Define type of build (default: Release)"
         echo "  -B|--build-dir <path>            Set the build directory (default: $HOME/chronolog-build/)"
         echo "  -I|--install-dir <path>          Set the installation directory (default: $HOME/chronolog-install/)"
         echo ""
@@ -57,8 +57,8 @@ parse_arguments() {
                 shift ;;
             -t|--build-type)
                 BUILD_TYPE="$2"
-                if [[ "$BUILD_TYPE" != "Debug" && "$BUILD_TYPE" != "Release" ]]; then
-                    echo -e "${ERR}Invalid build type: $BUILD_TYPE. Must be 'Debug' or 'Release'.${NC}"
+                if [[ "$BUILD_TYPE" != "Debug" && "$BUILD_TYPE" != "Release" && "$BUILD_TYPE" != "RelWithDebInfo" ]]; then
+                    echo -e "${ERR}Invalid build type: $BUILD_TYPE. Must be 'Debug', 'Release', or 'RelWithDebInfo'.${NC}"
                     usage
                 fi
                 shift 2 ;;
