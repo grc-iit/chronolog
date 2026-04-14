@@ -32,7 +32,28 @@ public:
         , PLAYER_JSON_CONF{nullptr}
     {}
 
-    explicit ConfigurationManager(const std::string& conf_file_path) { LoadConfFromJSONFile(conf_file_path); }
+    ~ConfigurationManager()
+    {
+        if(VISOR_JSON_CONF)
+            json_object_put(VISOR_JSON_CONF);
+        if(KEEPER_JSON_CONF)
+            json_object_put(KEEPER_JSON_CONF);
+        if(GRAPHER_JSON_CONF)
+            json_object_put(GRAPHER_JSON_CONF);
+        if(PLAYER_JSON_CONF)
+            json_object_put(PLAYER_JSON_CONF);
+    }
+
+    explicit ConfigurationManager(const std::string& conf_file_path)
+        : CLOCK_CONF{}
+        , AUTH_CONF{}
+        , VISOR_JSON_CONF{nullptr}
+        , KEEPER_JSON_CONF{nullptr}
+        , GRAPHER_JSON_CONF{nullptr}
+        , PLAYER_JSON_CONF{nullptr}
+    {
+        LoadConfFromJSONFile(conf_file_path);
+    }
 
     void LoadConfFromJSONFile(const std::string& conf_file_path)
     {
@@ -74,33 +95,33 @@ public:
             {
                 json_object* chrono_visor_conf = json_object_object_get(root, "chrono_visor");
 
-                if(chrono_visor_conf != nullptr || json_object_is_type(chrono_visor_conf, json_type_object))
+                if(chrono_visor_conf != nullptr && json_object_is_type(chrono_visor_conf, json_type_object))
                 {
-                    VISOR_JSON_CONF = chrono_visor_conf;
+                    VISOR_JSON_CONF = json_object_get(chrono_visor_conf);
                 }
             }
             else if(strcmp(key, "chrono_keeper") == 0)
             {
                 json_object* chrono_keeper_conf = json_object_object_get(root, "chrono_keeper");
-                if(chrono_keeper_conf != nullptr || json_object_is_type(chrono_keeper_conf, json_type_object))
+                if(chrono_keeper_conf != nullptr && json_object_is_type(chrono_keeper_conf, json_type_object))
                 {
-                    KEEPER_JSON_CONF = chrono_keeper_conf;
+                    KEEPER_JSON_CONF = json_object_get(chrono_keeper_conf);
                 }
             }
             else if(strcmp(key, "chrono_grapher") == 0)
             {
                 json_object* chrono_grapher_conf = json_object_object_get(root, "chrono_grapher");
-                if(chrono_grapher_conf != nullptr || json_object_is_type(chrono_grapher_conf, json_type_object))
+                if(chrono_grapher_conf != nullptr && json_object_is_type(chrono_grapher_conf, json_type_object))
                 {
-                    GRAPHER_JSON_CONF = chrono_grapher_conf;
+                    GRAPHER_JSON_CONF = json_object_get(chrono_grapher_conf);
                 }
             }
             else if(strcmp(key, "chrono_player") == 0)
             {
                 json_object* chrono_player_conf = json_object_object_get(root, "chrono_player");
-                if(chrono_player_conf != nullptr || json_object_is_type(chrono_player_conf, json_type_object))
+                if(chrono_player_conf != nullptr && json_object_is_type(chrono_player_conf, json_type_object))
                 {
-                    PLAYER_JSON_CONF = chrono_player_conf;
+                    PLAYER_JSON_CONF = json_object_get(chrono_player_conf);
                 }
             }
         }
