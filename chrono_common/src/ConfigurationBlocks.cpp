@@ -58,7 +58,7 @@ int chronolog::ClockConf::parseJsonConf(json_object* clock_conf)
             }
         }
     }
-    return 1;
+    return chronolog::CL_SUCCESS;
 }
 
 int chronolog::AuthConf::parseJsonConf(json_object* auth_conf)
@@ -99,7 +99,7 @@ int chronolog::AuthConf::parseJsonConf(json_object* auth_conf)
             }
         }
     }
-    return 1;
+    return chronolog::CL_SUCCESS;
 }
 
 int chronolog::RPCProviderConf::parseJsonConf(json_object* json_conf)
@@ -108,22 +108,38 @@ int chronolog::RPCProviderConf::parseJsonConf(json_object* json_conf)
     {
         if(strcmp(key, "protocol_conf") == 0)
         {
-            assert(json_object_is_type(val, json_type_string));
+            if(!json_object_is_type(val, json_type_string))
+            {
+                std::cerr << "[RPCProviderConf] Invalid 'protocol_conf': expected string" << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
             PROTO_CONF = json_object_get_string(val);
         }
         else if(strcmp(key, "service_ip") == 0)
         {
-            assert(json_object_is_type(val, json_type_string));
+            if(!json_object_is_type(val, json_type_string))
+            {
+                std::cerr << "[RPCProviderConf] Invalid 'service_ip': expected string" << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
             IP = json_object_get_string(val);
         }
         else if(strcmp(key, "service_base_port") == 0)
         {
-            assert(json_object_is_type(val, json_type_int));
+            if(!json_object_is_type(val, json_type_int))
+            {
+                std::cerr << "[RPCProviderConf] Invalid 'service_base_port': expected integer" << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
             BASE_PORT = json_object_get_int(val);
         }
         else if(strcmp(key, "service_provider_id") == 0)
         {
-            assert(json_object_is_type(val, json_type_int));
+            if(!json_object_is_type(val, json_type_int))
+            {
+                std::cerr << "[RPCProviderConf] Invalid 'service_provider_id': expected integer" << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
             SERVICE_PROVIDER_ID = json_object_get_int(val);
         }
         else
@@ -131,7 +147,7 @@ int chronolog::RPCProviderConf::parseJsonConf(json_object* json_conf)
             std::cerr << "[RPCProviderConf] Unknown client end configuration: " << key << std::endl;
         }
     }
-    return 1;
+    return chronolog::CL_SUCCESS;
 }
 
 int chronolog::LogConf::parseJsonConf(json_object* json_conf)
@@ -154,37 +170,65 @@ int chronolog::LogConf::parseJsonConf(json_object* json_conf)
         {
             if(strcmp(key, "type") == 0)
             {
-                assert(json_object_is_type(val, json_type_string));
+                if(!json_object_is_type(val, json_type_string))
+                {
+                    std::cerr << "[LogConf] Invalid 'type': expected string" << std::endl;
+                    return chl::CL_ERR_INVALID_CONF;
+                }
                 LOGTYPE = json_object_get_string(val);
             }
             else if(strcmp(key, "file") == 0)
             {
-                assert(json_object_is_type(val, json_type_string));
+                if(!json_object_is_type(val, json_type_string))
+                {
+                    std::cerr << "[LogConf] Invalid 'file': expected string" << std::endl;
+                    return chl::CL_ERR_INVALID_CONF;
+                }
                 LOGFILE = json_object_get_string(val);
             }
             else if(strcmp(key, "level") == 0)
             {
-                assert(json_object_is_type(val, json_type_string));
+                if(!json_object_is_type(val, json_type_string))
+                {
+                    std::cerr << "[LogConf] Invalid 'level': expected string" << std::endl;
+                    return chl::CL_ERR_INVALID_CONF;
+                }
                 parselogLevelConf(val, LOGLEVEL);
             }
             else if(strcmp(key, "name") == 0)
             {
-                assert(json_object_is_type(val, json_type_string));
+                if(!json_object_is_type(val, json_type_string))
+                {
+                    std::cerr << "[LogConf] Invalid 'name': expected string" << std::endl;
+                    return chl::CL_ERR_INVALID_CONF;
+                }
                 LOGNAME = json_object_get_string(val);
             }
             else if(strcmp(key, "filesize") == 0)
             {
-                assert(json_object_is_type(val, json_type_int));
+                if(!json_object_is_type(val, json_type_int))
+                {
+                    std::cerr << "[LogConf] Invalid 'filesize': expected integer" << std::endl;
+                    return chl::CL_ERR_INVALID_CONF;
+                }
                 LOGFILESIZE = json_object_get_int(val);
             }
             else if(strcmp(key, "filenum") == 0)
             {
-                assert(json_object_is_type(val, json_type_int));
+                if(!json_object_is_type(val, json_type_int))
+                {
+                    std::cerr << "[LogConf] Invalid 'filenum': expected integer" << std::endl;
+                    return chl::CL_ERR_INVALID_CONF;
+                }
                 LOGFILENUM = json_object_get_int(val);
             }
             else if(strcmp(key, "flushlevel") == 0)
             {
-                assert(json_object_is_type(val, json_type_string));
+                if(!json_object_is_type(val, json_type_string))
+                {
+                    std::cerr << "[LogConf] Invalid 'flushlevel': expected string" << std::endl;
+                    return chl::CL_ERR_INVALID_CONF;
+                }
                 parseFlushLevelConf(val, FLUSHLEVEL);
             }
             else
@@ -193,7 +237,7 @@ int chronolog::LogConf::parseJsonConf(json_object* json_conf)
             }
         }
     }
-    return 1;
+    return chronolog::CL_SUCCESS;
 }
 
 
@@ -203,22 +247,38 @@ int chronolog::DataStoreConf::parseJsonConf(json_object* data_store_json_conf)
     {
         if(strcmp(key, "max_story_chunk_size") == 0)
         {
-            assert(json_object_is_type(val, json_type_int));
+            if(!json_object_is_type(val, json_type_int))
+            {
+                std::cerr << "[DataStoreConf] Invalid 'max_story_chunk_size': expected integer" << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
             max_story_chunk_size = json_object_get_int(val);
         }
         else if(strcmp(key, "story_chunk_duration_secs") == 0)
         {
-            assert(json_object_is_type(val, json_type_int));
+            if(!json_object_is_type(val, json_type_int))
+            {
+                std::cerr << "[DataStoreConf] Invalid 'story_chunk_duration_secs': expected integer" << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
             story_chunk_duration_secs = json_object_get_int(val);
         }
         else if(strcmp(key, "acceptance_window_secs") == 0)
         {
-            assert(json_object_is_type(val, json_type_int));
+            if(!json_object_is_type(val, json_type_int))
+            {
+                std::cerr << "[DataStoreConf] Invalid 'acceptance_window_secs': expected integer" << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
             acceptance_window_secs = json_object_get_int(val);
         }
         else if(strcmp(key, "inactive_story_delay_secs") == 0)
         {
-            assert(json_object_is_type(val, json_type_int));
+            if(!json_object_is_type(val, json_type_int))
+            {
+                std::cerr << "[DataStoreConf] Invalid 'inactive_story_delay_secs': expected integer" << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
             inactive_story_delay_secs = json_object_get_int(val);
         }
         else
@@ -227,7 +287,7 @@ int chronolog::DataStoreConf::parseJsonConf(json_object* data_store_json_conf)
         }
     }
 
-    return 1;
+    return chronolog::CL_SUCCESS;
 }
 
 ///////////////////
