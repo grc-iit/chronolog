@@ -392,8 +392,8 @@ configure_file(
 
 # --- package_release target --------------------------------------------------
 # Produces: chronolog-<version>-<system>-<processor>.tar.gz  (always)
-#           chronolog-<version>-1.<arch>.rpm                  (if rpmbuild present)
-#           chronolog_<version>-1_<arch>.deb                  (if dpkg-deb present)
+#           chronolog-<version>-<system>-<processor>.rpm      (if rpmbuild present)
+#           chronolog-<version>-<system>-<processor>.deb      (if dpkg-deb present)
 # Usage: cmake --build . --target package_release
 get_filename_component(_cmake_bin_dir "${CMAKE_COMMAND}" DIRECTORY)
 find_program(_cpack_program cpack HINTS "${_cmake_bin_dir}" REQUIRED)
@@ -414,13 +414,14 @@ endif()
 set(_rpm_src  "${_pkg_base}-1.${CMAKE_SYSTEM_PROCESSOR}.rpm")
 set(_rpm_dest "${_pkg_base}-${_system_lower}-${CMAKE_SYSTEM_PROCESSOR}.rpm")
 
-# DEB output names (CPack produces name_ver-release_arch.deb)
+# DEB output names (CPack produces name_ver-release_arch.deb internally)
+# Renamed on output to match the tarball/RPM convention: name-ver-system-processor.deb
 # Debug builds get a -debug suffix so release and debug DEBs can coexist as artifacts.
 set(_deb_src  "chronolog_${CHRONOLOG_PACKAGE_VERSION}-1_${CHRONOLOG_DEB_ARCH}.deb")
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set(_deb_dest "chronolog_${CHRONOLOG_PACKAGE_VERSION}-${_system_lower}-${CHRONOLOG_DEB_ARCH}-debug.deb")
+    set(_deb_dest "${_pkg_base}-${_system_lower}-${CMAKE_SYSTEM_PROCESSOR}-debug.deb")
 else()
-    set(_deb_dest "chronolog_${CHRONOLOG_PACKAGE_VERSION}-${_system_lower}-${CHRONOLOG_DEB_ARCH}.deb")
+    set(_deb_dest "${_pkg_base}-${_system_lower}-${CMAKE_SYSTEM_PROCESSOR}.deb")
 endif()
 
 if(CHRONOLOG_RPMBUILD)

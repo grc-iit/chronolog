@@ -230,7 +230,7 @@ jobs:
             BUILD_DIR=\"\$HOME/chronolog-build/Release\"
             cmake --build \"\${BUILD_DIR}\" --target package_release
             echo 'Release packages created:'
-            ls \"\${BUILD_DIR}/\"chronolog-*-linux-*.tar.gz \"\${BUILD_DIR}/\"chronolog_*-linux-*.deb 2>/dev/null || true
+            ls \"\${BUILD_DIR}/\"chronolog-*-linux-*.tar.gz \"\${BUILD_DIR}/\"chronolog-*-linux-*.deb 2>/dev/null || true
           "
 
       - name: Copy Release tarball out of container
@@ -255,7 +255,7 @@ jobs:
           set -e
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
           DEB_FILE=$(docker exec "$CONTAINER_ID" bash -c \
-            "ls \$HOME/chronolog-build/Release/chronolog_*-linux-*.deb 2>/dev/null | grep -v debug" || true)
+            "ls \$HOME/chronolog-build/Release/chronolog-*-linux-*.deb 2>/dev/null | grep -v debug" || true)
           if [ -n "$DEB_FILE" ]; then
             if [ "$(echo "${DEB_FILE}" | wc -l)" -ne 1 ]; then
               echo "ERROR: expected exactly 1 release DEB; found: ${DEB_FILE}" >&2; exit 1
@@ -428,7 +428,7 @@ jobs:
             BUILD_DIR=\"\$HOME/chronolog-build/Debug\"
             cmake --build \"\${BUILD_DIR}\" --target package_release
             echo 'Debug packages created:'
-            ls \"\${BUILD_DIR}/\"chronolog-*-linux-*-debug.tar.gz \"\${BUILD_DIR}/\"chronolog_*-linux-*-debug.deb 2>/dev/null || true
+            ls \"\${BUILD_DIR}/\"chronolog-*-linux-*-debug.tar.gz \"\${BUILD_DIR}/\"chronolog-*-linux-*-debug.deb 2>/dev/null || true
           "
 
       - name: Copy Debug tarball out of container
@@ -453,7 +453,7 @@ jobs:
           set -e
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
           DEB_FILE=$(docker exec "$CONTAINER_ID" bash -c \
-            "ls \$HOME/chronolog-build/Debug/chronolog_*-linux-*-debug.deb 2>/dev/null" || true)
+            "ls \$HOME/chronolog-build/Debug/chronolog-*-linux-*-debug.deb 2>/dev/null" || true)
           if [ -n "$DEB_FILE" ]; then
             if [ "$(echo "${DEB_FILE}" | wc -l)" -ne 1 ]; then
               echo "ERROR: expected exactly 1 debug DEB; found: ${DEB_FILE}" >&2; exit 1
