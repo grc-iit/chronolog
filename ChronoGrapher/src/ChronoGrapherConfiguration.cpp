@@ -119,5 +119,5 @@ int chronolog::GrapherConfiguration::parseJsonConf(json_object* json_conf)
             std::cerr << "[GrapherConfiguration] Unknown Grapher configuration " << key << std::endl;
         }
     }
-    return 1;
+    return chronolog::CL_SUCCESS;
 }

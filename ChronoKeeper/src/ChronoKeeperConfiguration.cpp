@@ -139,5 +139,5 @@ int chronolog::KeeperConfiguration::parseJsonConf(json_object* json_conf)
             std::cerr << "[ConfigurationManager] [chrono_keeper] Unknown Keeper configuration: " << key << std::endl;
         }
     }
-    return 1;
+    return chronolog::CL_SUCCESS;
 }

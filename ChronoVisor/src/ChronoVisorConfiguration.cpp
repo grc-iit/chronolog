@@ -71,5 +71,5 @@ int chronolog::VisorConfiguration::parseJsonConf(json_object* json_conf)
             std::cerr << "[VisorConfiguration] Unknown Visor configuration: " << key << std::endl;
         }
     }
-    return 1;
+    return chronolog::CL_SUCCESS;
 }

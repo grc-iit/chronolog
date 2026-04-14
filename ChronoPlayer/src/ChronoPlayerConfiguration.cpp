@@ -119,5 +119,5 @@ int chronolog::PlayerConfiguration::parseJsonConf(json_object* json_conf)
             std::cerr << "[ConfigurationManager][chrono_player] Unknown Player configuration " << key << std::endl;
         }
     }
-    return 1;
+    return chronolog::CL_SUCCESS;
 }
