@@ -17,11 +17,11 @@ class ConfigurationManager
 {
 public:
     ClockConf CLOCK_CONF;
-    AuthConf AUTH_CONF; 
-    json_object * VISOR_JSON_CONF;
-    json_object * KEEPER_JSON_CONF;
-    json_object * GRAPHER_JSON_CONF;
-    json_object * PLAYER_JSON_CONF;
+    AuthConf AUTH_CONF;
+    json_object* VISOR_JSON_CONF;
+    json_object* KEEPER_JSON_CONF;
+    json_object* GRAPHER_JSON_CONF;
+    json_object* PLAYER_JSON_CONF;
 
     ConfigurationManager()
         : CLOCK_CONF{}
@@ -73,7 +73,7 @@ public:
             else if(strcmp(key, "chrono_visor") == 0)
             {
                 json_object* chrono_visor_conf = json_object_object_get(root, "chrono_visor");
-            
+
                 if(chrono_visor_conf != nullptr || json_object_is_type(chrono_visor_conf, json_type_object))
                 {
                     VISOR_JSON_CONF = chrono_visor_conf;

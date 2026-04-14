@@ -77,10 +77,10 @@ int main(int argc, char** argv)
     }
     chronolog::ConfigurationManager confManager(conf_file_path);
 
-     chronolog::KeeperConfiguration KEEPER_CONF;
-    if (KEEPER_CONF.parseJsonConf(confManager.KEEPER_JSON_CONF) != chronolog::CL_SUCCESS)
+    chronolog::KeeperConfiguration KEEPER_CONF;
+    if(KEEPER_CONF.parseJsonConf(confManager.KEEPER_JSON_CONF) != chronolog::CL_SUCCESS)
     {
-        std::cerr << "[ChronoKeeper] Invalid KEEPER configuration. Exiting"; 
+        std::cerr << "[ChronoKeeper] Invalid KEEPER configuration. Exiting";
         exit(EXIT_FAILURE);
     }
 

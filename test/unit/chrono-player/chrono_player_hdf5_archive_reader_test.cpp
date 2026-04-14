@@ -58,9 +58,9 @@ int main(int argc, char** argv)
     }
     chronolog::ConfigurationManager confManager(conf_file_path);
     chronolog::PlayerConfiguration PLAYER_CONF;
-    if (PLAYER_CONF.parseJsonConf(confManager.PLAYER_JSON_CONF) != chronolog::CL_SUCCESS)
+    if(PLAYER_CONF.parseJsonConf(confManager.PLAYER_JSON_CONF) != chronolog::CL_SUCCESS)
     {
-       std::cerr << "[HDF5ReadingAgentTest] Invalid configuration. Exiting"; 
+        std::cerr << "[HDF5ReadingAgentTest] Invalid configuration. Exiting";
         exit(EXIT_FAILURE);
     }
 

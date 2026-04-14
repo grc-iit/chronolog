@@ -10,7 +10,7 @@
 
 namespace chronolog
 {
-	
+
 struct GrapherConfiguration
 {
     uint32_t RECORDING_GROUP{};
@@ -61,4 +61,4 @@ struct GrapherConfiguration
 
 } // namespace chronolog
 
-#endif 
+#endif

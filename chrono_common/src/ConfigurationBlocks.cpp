@@ -231,4 +231,3 @@ int chronolog::DataStoreConf::parseJsonConf(json_object* data_store_json_conf)
 }
 
 ///////////////////
-

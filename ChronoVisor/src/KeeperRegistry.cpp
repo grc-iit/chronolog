@@ -19,8 +19,8 @@ namespace chl = chronolog;
 namespace chronolog
 {
 
-int KeeperRegistry::InitializeRegistryService(chl::RPCProviderConf const& VISOR_KEEPER_REGISTRY_SERVICE_CONF
-                       , size_t DELAYED_DATA_ADMIN_EXIT_IN_SECS )
+int KeeperRegistry::InitializeRegistryService(chl::RPCProviderConf const& VISOR_KEEPER_REGISTRY_SERVICE_CONF,
+                                              size_t DELAYED_DATA_ADMIN_EXIT_IN_SECS)
 {
     int status = chronolog::CL_ERR_UNKNOWN;
     std::lock_guard<std::mutex> lock(registryLock);
@@ -33,10 +33,9 @@ int KeeperRegistry::InitializeRegistryService(chl::RPCProviderConf const& VISOR_
     try
     {
         // initialise thalium engine for KeeperRegistryService
-        std::string KEEPER_REGISTRY_SERVICE_NA_STRING =
-                VISOR_KEEPER_REGISTRY_SERVICE_CONF.PROTO_CONF + "://" +
-                VISOR_KEEPER_REGISTRY_SERVICE_CONF.IP + ":" +
-                std::to_string(VISOR_KEEPER_REGISTRY_SERVICE_CONF.BASE_PORT);
+        std::string KEEPER_REGISTRY_SERVICE_NA_STRING = VISOR_KEEPER_REGISTRY_SERVICE_CONF.PROTO_CONF + "://" +
+                                                        VISOR_KEEPER_REGISTRY_SERVICE_CONF.IP + ":" +
+                                                        std::to_string(VISOR_KEEPER_REGISTRY_SERVICE_CONF.BASE_PORT);
 
         uint16_t provider_id = VISOR_KEEPER_REGISTRY_SERVICE_CONF.SERVICE_PROVIDER_ID;
         margo_instance_id margo_id = margo_init(KEEPER_REGISTRY_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 2);

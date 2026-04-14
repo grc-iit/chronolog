@@ -65,4 +65,4 @@ struct KeeperConfiguration
 
 } // namespace chronolog
 
-#endif 
+#endif

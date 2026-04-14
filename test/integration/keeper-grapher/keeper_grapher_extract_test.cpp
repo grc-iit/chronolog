@@ -205,9 +205,9 @@ int main(int argc, char** argv)
     }
     chronolog::ConfigurationManager confManager(conf_file_path);
     chronolog::KeeperConfiguration KEEPER_CONF;
-    if (KEEPER_CONF.parseJsonConf(confManager.KEEPER_JSON_CONF) != chronolog::CL_SUCCESS)
+    if(KEEPER_CONF.parseJsonConf(confManager.KEEPER_JSON_CONF) != chronolog::CL_SUCCESS)
     {
-        std::cerr << "[standalone_ingest_test] Invalid KEEPER configuration. Exiting"; 
+        std::cerr << "[standalone_ingest_test] Invalid KEEPER configuration. Exiting";
         exit(EXIT_FAILURE);
     }
 
@@ -245,9 +245,9 @@ int main(int argc, char** argv)
     LOG_DEBUG("[extract_test_main] T{}: RPC defined with name: {}", tid, rpc_name_g);
 
     // get provider handle
-    std::string KEEPER_GRAPHER_NA_STRING =
-            KEEPER_GRAPHER_PROTOCOL + "://" + KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP + ":" +
-            std::to_string(KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT);
+    std::string KEEPER_GRAPHER_NA_STRING = KEEPER_GRAPHER_PROTOCOL + "://" +
+                                           KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP + ":" +
+                                           std::to_string(KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT);
     uint16_t extraction_provider_id = KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.SERVICE_PROVIDER_ID;
     LOG_DEBUG("[extract_test_main] T{}: Looking up {} at: {} with provider id {} ...",
               tid,

@@ -81,9 +81,9 @@ int main(int argc, char** argv)
 
     chronolog::ConfigurationManager confManager(conf_file_path);
     chronolog::GrapherConfiguration GRAPHER_CONF;
-    if (GRAPHER_CONF.parseJsonConf(confManager.GRAPHER_JSON_CONF) != chronolog::CL_SUCCESS)
+    if(GRAPHER_CONF.parseJsonConf(confManager.GRAPHER_JSON_CONF) != chronolog::CL_SUCCESS)
     {
-        std::cerr << "[ChronoGrapher] Invalid GRAPHER configuration. Exiting"; 
+        std::cerr << "[ChronoGrapher] Invalid GRAPHER configuration. Exiting";
         exit(EXIT_FAILURE);
     }
 

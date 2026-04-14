@@ -19,10 +19,12 @@ namespace chronolog
 
 enum ClocksourceType
 {
-    C_STYLE = 0, CPP_STYLE = 1, TSC = 2
+    C_STYLE = 0,
+    CPP_STYLE = 1,
+    TSC = 2
 };
 
-inline const char*getClocksourceTypeString(ClocksourceType type)
+inline const char* getClocksourceTypeString(ClocksourceType type)
 {
     switch(type)
     {

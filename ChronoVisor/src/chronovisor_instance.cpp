@@ -44,11 +44,11 @@ int main(int argc, char** argv)
         std::exit(EXIT_FAILURE);
     }
     chronolog::ConfigurationManager confManager(conf_file_path);
- 
+
     chronolog::VisorConfiguration VISOR_CONF;
-    if (VISOR_CONF.parseJsonConf(confManager.VISOR_JSON_CONF) != chronolog::CL_SUCCESS)
+    if(VISOR_CONF.parseJsonConf(confManager.VISOR_JSON_CONF) != chronolog::CL_SUCCESS)
     {
-        std::cerr << "[CHRONO_VISOR] Invalid VISOR configuration. Exiting"; 
+        std::cerr << "[CHRONO_VISOR] Invalid VISOR configuration. Exiting";
         exit(EXIT_FAILURE);
     }
 
@@ -70,7 +70,8 @@ int main(int argc, char** argv)
     chronolog::VisorClientPortal theChronoVisorPortal;
     chronolog::KeeperRegistry keeperRegistry;
 
-    keeperRegistry.InitializeRegistryService(VISOR_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF, VISOR_CONF.DELAYED_DATA_ADMIN_EXIT_IN_SECS);
+    keeperRegistry.InitializeRegistryService(VISOR_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF,
+                                             VISOR_CONF.DELAYED_DATA_ADMIN_EXIT_IN_SECS);
 
     theChronoVisorPortal.StartServices(VISOR_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF, &keeperRegistry);
 

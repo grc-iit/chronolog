@@ -61,4 +61,4 @@ struct PlayerConfiguration
 
 } // namespace chronolog
 
-#endif 
+#endif

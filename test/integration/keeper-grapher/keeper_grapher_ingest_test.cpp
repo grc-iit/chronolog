@@ -125,9 +125,9 @@ int main(int argc, char** argv)
     }
     chronolog::ConfigurationManager confManager(conf_file_path);
     chronolog::GrapherConfiguration GRAPHER_CONF;
-    if (GRAPHER_CONF.parseJsonConf(confManager.GRAPHER_JSON_CONF) != chronolog::CL_SUCCESS)
+    if(GRAPHER_CONF.parseJsonConf(confManager.GRAPHER_JSON_CONF) != chronolog::CL_SUCCESS)
     {
-        std::cerr << "[standalone_ingest_test] Invalid Grapher configuration. Exiting"; 
+        std::cerr << "[standalone_ingest_test] Invalid Grapher configuration. Exiting";
         exit(EXIT_FAILURE);
     }
     int result = chronolog::chrono_monitor::initialize("console",
@@ -146,10 +146,9 @@ int main(int argc, char** argv)
     /**
      * Keeper-push
      */
-    std::string KEEPER_COLLECTOR_NA_STRING =
-            GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.PROTO_CONF + "://" +
-            GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP + ":" +
-            std::to_string(GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT);
+    std::string KEEPER_COLLECTOR_NA_STRING = GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.PROTO_CONF + "://" +
+                                             GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP + ":" +
+                                             std::to_string(GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT);
     tl::engine extraction_engine = tl::engine(KEEPER_COLLECTOR_NA_STRING, THALLIUM_SERVER_MODE);
     std::stringstream ss;
     ss << extraction_engine.self();
