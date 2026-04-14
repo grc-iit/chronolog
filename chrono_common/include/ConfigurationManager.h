@@ -77,7 +77,12 @@ public:
                               << std::endl;
                     exit(chronolog::CL_ERR_INVALID_CONF);
                 }
-                CLOCK_CONF.parseJsonConf(clock_conf);
+                if(CLOCK_CONF.parseJsonConf(clock_conf) != chronolog::CL_SUCCESS)
+                {
+                    std::cerr << "[ConfigurationManager] Error while parsing clock configuration in "
+                              << conf_file_path.c_str() << std::endl;
+                    exit(chronolog::CL_ERR_INVALID_CONF);
+                }
             }
             else if(strcmp(key, "authentication") == 0)
             {
@@ -89,7 +94,12 @@ public:
                               << ". Authentication configuration is not found or is not an object." << std::endl;
                     exit(chronolog::CL_ERR_INVALID_CONF);
                 }
-                AUTH_CONF.parseJsonConf(auth_conf);
+                if(AUTH_CONF.parseJsonConf(auth_conf) != chronolog::CL_SUCCESS)
+                {
+                    std::cerr << "[ConfigurationManager] Error while parsing authentication configuration in "
+                              << conf_file_path.c_str() << std::endl;
+                    exit(chronolog::CL_ERR_INVALID_CONF);
+                }
             }
             else if(strcmp(key, "chrono_visor") == 0)
             {
