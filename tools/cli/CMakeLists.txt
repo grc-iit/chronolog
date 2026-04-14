@@ -14,6 +14,7 @@ add_executable(client_admin
 target_include_directories(client_admin PRIVATE
     ${CMAKE_SOURCE_DIR}/chrono_common/include
     ${CMAKE_SOURCE_DIR}/Client/cpp/include
+    ${MPI_INCLUDE_PATH}
     ${MARGO_INCLUDE_DIRS}
 )
 
@@ -28,6 +29,7 @@ target_link_libraries(client_admin PRIVATE
 )
 
 set_target_properties(client_admin PROPERTIES
+    OUTPUT_NAME chrono-client-admin
     BUILD_WITH_INSTALL_RPATH TRUE
     SKIP_BUILD_RPATH TRUE
 )

@@ -5,5 +5,5 @@ target_link_libraries(lock_overhead_test
         rt
 )
 
-add_test(NAME LockOverhead COMMAND lock_overhead_test)
+add_test(NAME Overhead_Lock_ContentionBenchmark COMMAND lock_overhead_test)
 

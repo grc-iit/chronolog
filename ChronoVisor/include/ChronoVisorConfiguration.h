@@ -10,7 +10,6 @@
 #include <unordered_map>
 #include <json-c/json.h>
 #include <sstream>
-#include <spdlog/common.h>
 
 #include <ConfigurationBlocks.h>
 

@@ -22,18 +22,18 @@ target_sources(chronovisor_server PRIVATE
     src/ClientRegistryRecord.cpp
     src/ChronicleMetaDirectory.cpp
     src/KeeperRegistry.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/ConfigurationBlocks.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/city.cpp
-    ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
+#    ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
 )
 
 target_link_libraries(chronovisor_server
     PRIVATE
+        chrono_common
         chronolog_client
         thallium
 )
 
 set_target_properties(chronovisor_server PROPERTIES
+    OUTPUT_NAME chrono-visor
     BUILD_WITH_INSTALL_RPATH TRUE
     SKIP_BUILD_RPATH TRUE
 )
@@ -46,5 +46,5 @@ chronolog_install_target(chronovisor_server)
 install(
     FILES ${CMAKE_SOURCE_DIR}/default_conf.json.in
     DESTINATION ${CHRONOLOG_INSTALL_CONF_DIR}
-    RENAME default_conf.json
+    RENAME default-chrono-conf.json
 )

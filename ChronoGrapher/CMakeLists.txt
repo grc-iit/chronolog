@@ -18,23 +18,18 @@ target_sources(chrono_grapher PRIVATE
     src/ChronoGrapherConfiguration.cpp
     src/GrapherDataStore.cpp
     src/HDF5FileChunkExtractor.cpp
-    ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunk.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryChunkWriter.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/StoryPipeline.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/include/StoryChunkExtractionModule.h
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/ChunkExtractorCSV.cpp
-    ${CMAKE_SOURCE_DIR}/chrono_common/src/ConfigurationBlocks.cpp
 )
 
 target_link_libraries(chrono_grapher
     PRIVATE
+        chrono_common
         chronolog_client
         thallium
         ${HDF5_LIBRARIES}
 )
 
 set_target_properties(chrono_grapher PROPERTIES
+    OUTPUT_NAME chrono-grapher
     BUILD_WITH_INSTALL_RPATH TRUE
     SKIP_BUILD_RPATH TRUE
 )

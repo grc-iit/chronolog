@@ -8,6 +8,7 @@
 
 #include <chronolog_errcode.h>
 #include <ConfigurationBlocks.h>
+#include "log_level.h"
 
 namespace chronolog
 {

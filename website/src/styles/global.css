@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+/* ── ChronoLog brand tokens (derived from the logo) ── */
+@theme {
+  --color-lime: #c3e04d;
+  --color-lime-light: #d4ea7a;
+  --color-lime-dark: #9ab832;
+  --color-slate-brand: #5a6577;
+  --color-slate-light: #737f94;
+  --color-slate-dark: #3d4555;
+  --color-charcoal: #2a2f3a;
+  --color-bg: #1e222b;
+  --color-bg-alt: #252a35;
+  --color-bg-card: #2e3340;
+  --color-text: #e4e7ed;
+  --color-text-muted: #9ca3b0;
+  --color-border: #3a4050;
+}
+
+/* ── Base ── */
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+::selection {
+  background-color: var(--color-lime);
+  color: var(--color-charcoal);
+}
+
+/* ── Smooth scroll ── */
+html {
+  scroll-behavior: smooth;
+}
+
+/* ── Logo marquee ── */
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee 60s linear infinite;
+  gap: 3rem;
+  align-items: center;
+}
+
+.marquee-track:hover {
+  animation-play-state: paused;
+}

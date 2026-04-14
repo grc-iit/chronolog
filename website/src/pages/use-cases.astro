@@ -1,0 +1,39 @@
+---
+import Layout from '../layouts/Layout.astro';
+
+const domains = [
+  { title: 'Scientific Computing', image: '/images/use-cases/scientific-computing.webp', desc: 'Astrophysics, genomics, climate modeling, materials science -- capturing massive telemetry and simulation data across distributed instruments.' },
+  { title: 'AI & Agentic Workflows', image: '/images/use-cases/ai-agent-memory.webp', desc: 'LLM context logging, model provenance, and AI agent memory via the official ChronoLog MCP server and the IOWarp Agent Toolkit.' },
+  { title: 'HPC System Monitoring', image: '/images/use-cases/hpc-monitoring.webp', desc: 'Distributed telemetry collection across compute clusters, validated on IIT\'s Ares cluster with SLURM-based deployments.' },
+  { title: 'Workflow Orchestration', image: '/images/use-cases/workflow-orchestration.webp', desc: 'Integration with Parsl, funcX, and Flux for tracking task execution, data provenance, and workflow-level I/O optimization.' },
+  { title: 'IoT & Edge', image: '/images/use-cases/iot-edge.webp', desc: 'Distributed event streams from sensor networks requiring time-synchronized collection and tiered long-term storage.' },
+  { title: 'Financial & Compliance', image: '/images/use-cases/financial-compliance.webp', desc: 'Activity logging requiring total ordering with immediate visibility for audit trails and regulatory compliance.' },
+];
+---
+
+<Layout
+  title="Use Cases"
+  description="Target application domains for ChronoLog: scientific computing, AI workflows, HPC monitoring, workflow orchestration, IoT, and financial compliance."
+  keywords="ChronoLog use cases, scientific computing, AI workflows, HPC monitoring, workflow orchestration, IoT edge, financial compliance"
+>
+  <section class="max-w-6xl mx-auto px-6 py-20">
+    <h1 class="text-3xl md:text-4xl font-extrabold mb-4">Use Cases</h1>
+    <p class="text-text-muted text-lg max-w-3xl mb-14 leading-relaxed">
+      ChronoLog's time-ordered log infrastructure serves a wide range of application domains. Here are the current and emerging target areas.
+    </p>
+
+    <!-- Target domains -->
+    <h2 class="text-2xl font-bold mb-8">Target Domains</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      {domains.map(d => (
+        <div class="bg-bg-alt border border-border rounded-xl overflow-hidden hover:border-lime/30 transition-colors group">
+          <img src={d.image} alt={d.title} class="w-full aspect-video object-cover" />
+          <div class="p-5">
+            <h3 class="font-semibold text-text mb-1 group-hover:text-lime transition-colors">{d.title}</h3>
+            <p class="text-sm text-text-muted leading-relaxed">{d.desc}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  </section>
+</Layout>

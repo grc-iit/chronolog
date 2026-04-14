@@ -7,7 +7,6 @@
 #include <cassert>
 #include <unordered_map>
 #include <json-c/json.h>
-#include <spdlog/common.h>
 
 #include "chronolog_errcode.h"
 

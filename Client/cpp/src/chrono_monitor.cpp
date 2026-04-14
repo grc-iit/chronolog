@@ -1,8 +1,3 @@
-//
-// Created by eneko on 12/1/23.
-//
-
-#include <cstddef>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
@@ -15,23 +10,45 @@
 
 #include <chrono_monitor.h>
 
-
 namespace chronolog
 {
 
-std::shared_ptr<spdlog::logger> chrono_monitor::logger = nullptr;
-std::mutex chrono_monitor::mutex;
+static std::shared_ptr<spdlog::logger> g_logger = nullptr;
+static std::mutex g_mutex;
+
+static spdlog::level::level_enum to_spdlog_level(LogLevel level)
+{
+    switch(level)
+    {
+        case LogLevel::trace:
+            return spdlog::level::trace;
+        case LogLevel::debug:
+            return spdlog::level::debug;
+        case LogLevel::info:
+            return spdlog::level::info;
+        case LogLevel::warn:
+            return spdlog::level::warn;
+        case LogLevel::err:
+            return spdlog::level::err;
+        case LogLevel::critical:
+            return spdlog::level::critical;
+        case LogLevel::off:
+            return spdlog::level::off;
+        default:
+            return spdlog::level::info;
+    }
+}
 
 int chrono_monitor::initialize(const std::string& logType,
                                const std::string& location,
-                               spdlog::level::level_enum logLevel,
+                               LogLevel logLevel,
                                const std::string& loggerName,
-                               const std::size_t& logFileSize,
-                               const std::size_t& logFileNum,
-                               spdlog::level::level_enum flushLevel)
+                               std::size_t logFileSize,
+                               std::size_t logFileNum,
+                               LogLevel flushLevel)
 {
-    std::lock_guard<std::mutex> lock(mutex);
-    if(logger)
+    std::lock_guard<std::mutex> lock(g_mutex);
+    if(g_logger)
     {
         return 0;
     }
@@ -40,12 +57,6 @@ int chrono_monitor::initialize(const std::string& logType,
         std::shared_ptr<spdlog::sinks::sink> sink = nullptr;
         if(logType == "file")
         {
-            /*
-             * There is an alternative for rotating daily:
-             * Link: https://github.com/gabime/spdlog/blob/v1.x/include/spdlog/sinks/daily_file_sink.h
-             * They use C++ standard library clock:
-             * Link: https://github.com/gabime/spdlog/blob/696db97f672e9082e50e50af315d0f4234c82397/include/spdlog/common.h#L141
-             */
             sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(location, logFileSize, logFileNum);
         }
         else if(logType == "console")
@@ -57,28 +68,63 @@ int chrono_monitor::initialize(const std::string& logType,
             std::cerr << "[Logger] Invalid log type" << std::endl;
             return 1;
         }
-        logger = std::make_shared<spdlog::logger>(loggerName, sink);
-        logger->flush_on(flushLevel);
-        logger->set_level(logLevel);
+        g_logger = std::make_shared<spdlog::logger>(loggerName, sink);
+        g_logger->flush_on(to_spdlog_level(flushLevel));
+        g_logger->set_level(to_spdlog_level(logLevel));
     }
     catch(const spdlog::spdlog_ex& ex)
     {
         std::cerr << "[Logger] Logger initialization failed: " << ex.what() << std::endl;
         return 1;
     }
-    return 0; // already initialized
+    return 0;
 }
 
-spdlog::logger& chrono_monitor::getInstance()
+void chrono_monitor::trace(const std::string& msg)
 {
-    if(logger)
+    if(g_logger)
     {
-        return *logger;
+        g_logger->trace(msg);
     }
-    else
+}
+
+void chrono_monitor::debug(const std::string& msg)
+{
+    if(g_logger)
     {
-        std::cerr << "[Logger] Logger not initialized. Ending the program..." << std::endl;
-        std::exit(EXIT_FAILURE);
+        g_logger->debug(msg);
+    }
+}
+
+void chrono_monitor::info(const std::string& msg)
+{
+    if(g_logger)
+    {
+        g_logger->info(msg);
+    }
+}
+
+void chrono_monitor::warn(const std::string& msg)
+{
+    if(g_logger)
+    {
+        g_logger->warn(msg);
+    }
+}
+
+void chrono_monitor::error(const std::string& msg)
+{
+    if(g_logger)
+    {
+        g_logger->error(msg);
+    }
+}
+
+void chrono_monitor::critical(const std::string& msg)
+{
+    if(g_logger)
+    {
+        g_logger->critical(msg);
     }
 }
 

@@ -9,7 +9,8 @@
 #include <cassert>
 #include <json-c/json.h>
 #include <sstream>
-#include <spdlog/common.h>
+
+#include <log_level.h>
 
 #include "chronolog_errcode.h"
 
@@ -97,44 +98,44 @@ struct LogConf
 {
     std::string LOGTYPE;
     std::string LOGFILE;
-    spdlog::level::level_enum LOGLEVEL{};
+    LogLevel LOGLEVEL{};
     std::string LOGNAME;
     size_t LOGFILESIZE{};
     size_t LOGFILENUM{};
-    spdlog::level::level_enum FLUSHLEVEL{};
+    LogLevel FLUSHLEVEL{};
 
-    void parselogLevelConf(json_object* json_conf, spdlog::level::level_enum& log_level)
+    void parselogLevelConf(json_object* json_conf, LogLevel& log_level)
     {
         if(json_object_is_type(json_conf, json_type_string))
         {
             const char* conf_str = json_object_get_string(json_conf);
             if(strcmp(conf_str, "trace") == 0)
             {
-                log_level = spdlog::level::trace;
+                log_level = LogLevel::trace;
             }
             else if(strcmp(conf_str, "info") == 0)
             {
-                log_level = spdlog::level::info;
+                log_level = LogLevel::info;
             }
             else if(strcmp(conf_str, "debug") == 0)
             {
-                log_level = spdlog::level::debug;
+                log_level = LogLevel::debug;
             }
             else if(strcmp(conf_str, "warning") == 0)
             {
-                log_level = spdlog::level::warn;
+                log_level = LogLevel::warn;
             }
             else if(strcmp(conf_str, "error") == 0)
             {
-                log_level = spdlog::level::err;
+                log_level = LogLevel::err;
             }
             else if(strcmp(conf_str, "critical") == 0)
             {
-                log_level = spdlog::level::critical;
+                log_level = LogLevel::critical;
             }
             else if(strcmp(conf_str, "off") == 0)
             {
-                log_level = spdlog::level::off;
+                log_level = LogLevel::off;
             }
             else
             {
@@ -147,38 +148,38 @@ struct LogConf
         }
     }
 
-    void parseFlushLevelConf(json_object* json_conf, spdlog::level::level_enum& flush_level)
+    void parseFlushLevelConf(json_object* json_conf, LogLevel& flush_level)
     {
         if(json_object_is_type(json_conf, json_type_string))
         {
             const char* conf_str = json_object_get_string(json_conf);
             if(strcmp(conf_str, "trace") == 0)
             {
-                flush_level = spdlog::level::trace;
+                flush_level = LogLevel::trace;
             }
             else if(strcmp(conf_str, "info") == 0)
             {
-                flush_level = spdlog::level::info;
+                flush_level = LogLevel::info;
             }
             else if(strcmp(conf_str, "debug") == 0)
             {
-                flush_level = spdlog::level::debug;
+                flush_level = LogLevel::debug;
             }
             else if(strcmp(conf_str, "warning") == 0)
             {
-                flush_level = spdlog::level::warn;
+                flush_level = LogLevel::warn;
             }
             else if(strcmp(conf_str, "error") == 0)
             {
-                flush_level = spdlog::level::err;
+                flush_level = LogLevel::err;
             }
             else if(strcmp(conf_str, "critical") == 0)
             {
-                flush_level = spdlog::level::critical;
+                flush_level = LogLevel::critical;
             }
             else if(strcmp(conf_str, "off") == 0)
             {
-                flush_level = spdlog::level::off;
+                flush_level = LogLevel::off;
             }
             else
             {
@@ -186,7 +187,7 @@ struct LogConf
                           << "Set it to default value: "
                              "Warning"
                           << std::endl;
-                flush_level = spdlog::level::warn;
+                flush_level = LogLevel::warn;
             }
         }
         else
@@ -195,24 +196,23 @@ struct LogConf
         }
     }
 
-    // Helper function to convert spdlog::level::level_enum to string
-    static std::string LevelToString(spdlog::level::level_enum level)
+    static std::string LevelToString(LogLevel level)
     {
         switch(level)
         {
-            case spdlog::level::trace:
+            case LogLevel::trace:
                 return "TRACE";
-            case spdlog::level::debug:
+            case LogLevel::debug:
                 return "DEBUG";
-            case spdlog::level::info:
+            case LogLevel::info:
                 return "INFO";
-            case spdlog::level::warn:
+            case LogLevel::warn:
                 return "WARN";
-            case spdlog::level::err:
+            case LogLevel::err:
                 return "ERROR";
-            case spdlog::level::critical:
+            case LogLevel::critical:
                 return "CRITICAL";
-            case spdlog::level::off:
+            case LogLevel::off:
                 return "OFF";
             default:
                 return "UNKNOWN";

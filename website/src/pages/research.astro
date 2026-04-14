@@ -1,0 +1,518 @@
+---
+import Layout from '../layouts/Layout.astro';
+
+const publications = [
+  {
+    authors: 'A. Kougkas, H. Devarajan, K. Bateman, J. Cernuda, N. Rajesh, X.-H. Sun',
+    title: 'ChronoLog: A Distributed Shared Tiered Log Store with Time-based Data Ordering',
+    venue: 'MSST 2020',
+    link: 'http://www.cs.iit.edu/~scs/testing/scs_website/assets/files/kougkas2020chronolog.pdf',
+  },
+  {
+    authors: 'L. Logan, A. Kougkas, X.-H. Sun',
+    title: 'MegaMmap: Blurring the Boundary Between Memory and Storage for Data-Intensive Workloads',
+    venue: 'SC\'24',
+    link: 'https://doi.org/10.1109/SC41406.2024.00114',
+  },
+  {
+    authors: 'M. Tang, J. Cernuda, J. Ye, L. Guo, et al.',
+    title: 'DaYu: Optimizing Distributed Scientific Workflows by Decoding Dataflow Semantics and Dynamics',
+    venue: 'CLUSTER\'24',
+    link: 'https://doi.org/10.1109/CLUSTER59578.2024.00038',
+  },
+  {
+    authors: 'J. Ye, J. Cernuda, A. Maurya, X.-H. Sun, A. Kougkas, B. Nicolae',
+    title: 'Characterizing the Behavior and Impact of KV Caching on Transformer Inferences under Concurrency',
+    venue: 'IPDPS\'25',
+    link: '',
+  },
+  {
+    authors: 'I. Yildirim, H. Devarajan, A. Kougkas, X.-H. Sun, K. Mohror',
+    title: 'WisIO: Automated I/O Bottleneck Detection with Multi-Perspective Views for HPC Workflows',
+    venue: 'ICS\'25',
+    link: '',
+  },
+];
+
+const msst2020Ld = {
+  "@context": "https://schema.org",
+  "@type": "ScholarlyArticle",
+  "name": "ChronoLog: A Distributed Shared Tiered Log Store with Time-based Data Ordering",
+  "author": [
+    { "@type": "Person", "name": "Anthony Kougkas" },
+    { "@type": "Person", "name": "Hariharan Devarajan" },
+    { "@type": "Person", "name": "Keith Bateman" },
+    { "@type": "Person", "name": "Jaime Cernuda" },
+    { "@type": "Person", "name": "Neeraj Rajesh" },
+    { "@type": "Person", "name": "Xian-He Sun" },
+  ],
+  "datePublished": "2020",
+  "publisher": { "@type": "Organization", "name": "MSST" },
+  "url": "http://www.cs.iit.edu/~scs/testing/scs_website/assets/files/kougkas2020chronolog.pdf",
+};
+---
+
+<Layout
+  title="Research"
+  description="Scientific foundations of ChronoLog: physical time ordering, multi-tier storage, and design-space analysis. Research questions, evaluation results, and peer-reviewed publications from the Gnosis Research Center."
+  keywords="ChronoLog research, physical time ordering, distributed log, acceptance time window, clock synchronization, multi-tier storage, HPC, MSST, Gnosis Research Center, Kafka comparison, Corfu comparison"
+  jsonLd={msst2020Ld}
+>
+  <!-- 1. Hero -->
+  <section class="bg-gradient-to-b from-lime/5 to-transparent border-b border-border">
+    <div class="max-w-6xl mx-auto px-6 py-20">
+      <h1 class="text-3xl md:text-5xl font-extrabold mb-6">The Science Behind ChronoLog</h1>
+      <p class="text-text text-xl md:text-2xl max-w-4xl mb-6 leading-relaxed font-medium">
+        Modern scientific instruments, IoT networks, and AI systems generate massive volumes of <strong class="text-lime">activity data</strong> &mdash; things that happen rather than things that are.
+      </p>
+      <p class="text-text-muted text-base md:text-lg max-w-3xl mb-6 leading-relaxed">
+        Distributed log stores are the natural infrastructure for capturing, ordering, and retrieving this data. But existing systems face fundamental trade-offs between total ordering, concurrent access, and capacity scaling. ChronoLog explores a different point in the design space: using physical time itself as the ordering principle.
+      </p>
+      <p class="text-text-muted text-xs">
+        For a system overview and architecture walkthrough, see <a href="/how-it-works/" class="text-lime hover:underline">How it works</a>. This page covers the research questions, theoretical foundations, and evaluated results.
+      </p>
+    </div>
+  </section>
+
+  <!-- 2. Research Questions -->
+  <section class="bg-bg-alt border-y border-border">
+    <div class="max-w-6xl mx-auto px-6 py-20">
+      <h2 class="text-2xl md:text-3xl font-bold text-center mb-4">Research Questions</h2>
+      <p class="text-text-muted text-center max-w-2xl mx-auto mb-12">The scientific questions driving ChronoLog's design and evaluation.</p>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="bg-bg-card border border-border rounded-xl p-6 hover:border-lime/20 transition-colors">
+          <div class="flex items-center gap-3 mb-3">
+            <span class="text-xs font-bold text-lime bg-lime/10 w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0">1</span>
+            <h3 class="font-bold text-text">Can physical time replace central sequencers?</h3>
+          </div>
+          <p class="text-sm text-text-muted leading-relaxed">When can bounded-skew physical clocks provide total ordering without consensus protocols or centralized sequencers? What are the assumptions and trade-offs?</p>
+        </div>
+        <div class="bg-bg-card border border-border rounded-xl p-6 hover:border-lime/20 transition-colors">
+          <div class="flex items-center gap-3 mb-3">
+            <span class="text-xs font-bold text-lime bg-lime/10 w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0">2</span>
+            <h3 class="font-bold text-text">Total ordering with immediate visibility at scale</h3>
+          </div>
+          <p class="text-sm text-text-muted leading-relaxed">Can a distributed log guarantee both total event ordering and immediate read-after-write visibility without stalling writers or requiring global coordination?</p>
+        </div>
+        <div class="bg-bg-card border border-border rounded-xl p-6 hover:border-lime/20 transition-colors">
+          <div class="flex items-center gap-3 mb-3">
+            <span class="text-xs font-bold text-lime bg-lime/10 w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0">3</span>
+            <h3 class="font-bold text-text">3D data distribution</h3>
+          </div>
+          <p class="text-sm text-text-muted leading-relaxed">How to scale capacity and performance by distributing data horizontally across nodes, vertically across storage tiers, and temporally by time-bounded chunks?</p>
+        </div>
+        <div class="bg-bg-card border border-border rounded-xl p-6 hover:border-lime/20 transition-colors">
+          <div class="flex items-center gap-3 mb-3">
+            <span class="text-xs font-bold text-lime bg-lime/10 w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0">4</span>
+            <h3 class="font-bold text-text">Decoupled ingestion and persistence</h3>
+          </div>
+          <p class="text-sm text-text-muted leading-relaxed">How to separate fast write paths from durable archival without data loss, and what batching strategies optimize throughput while preserving ordering guarantees?</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. Physical Time in Depth -->
+  <section class="bg-bg-alt border-y border-border">
+    <div class="max-w-6xl mx-auto px-6 py-20">
+      <h2 class="text-2xl md:text-3xl font-bold mb-4">Dealing with Physical Time</h2>
+      <p class="text-text-muted text-sm leading-relaxed mb-10 max-w-3xl">
+        Using physical time as the ordering mechanism is powerful but introduces three fundamental challenges. ChronoLog addresses each with specific mechanisms and formal guarantees.
+      </p>
+
+      <!-- 4a. Clock Model -->
+      <div class="bg-bg-card border border-border border-l-4 border-l-lime rounded-xl p-6 mb-6">
+        <h3 class="font-bold text-text mb-3">Clock Model & Assumptions</h3>
+        <p class="text-sm text-text-muted leading-relaxed mb-4">
+          ChronoLog assumes that node clocks are synchronized within a bounded skew using NTP or similar protocols. Rather than requiring globally accurate wall clocks, ChronoLog introduces <strong class="text-text">ChronoTicks</strong> &mdash; relative time distances measured from a base clock established during initialization by ChronoVisor. This eliminates dependency on absolute wall-clock accuracy while preserving ordering guarantees within the bounded-skew envelope.
+        </p>
+        <div class="mb-4 overflow-x-auto">
+          <svg viewBox="0 0 680 130" class="w-full max-w-3xl" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, sans-serif">
+            <!-- Background -->
+            <rect x="0" y="0" width="680" height="130" fill="none"/>
+
+            <!-- Bounded skew envelope -->
+            <polygon points="120,28 600,23 600,47 120,42" fill="#c3e04d" fill-opacity="0.06" stroke="#c3e04d" stroke-width="0.5" stroke-opacity="0.2"/>
+            <polygon points="120,68 600,73 600,97 120,92" fill="#c3e04d" fill-opacity="0.06" stroke="#c3e04d" stroke-width="0.5" stroke-opacity="0.2"/>
+
+            <!-- Node A timeline -->
+            <text x="20" y="40" fill="#c3e04d" font-size="9" font-weight="600">Node A</text>
+            <line x1="120" y1="35" x2="600" y2="35" stroke="#e4e7ed" stroke-width="1" stroke-opacity="0.4"/>
+            <!-- Tick marks on Node A -->
+            <circle cx="200" cy="35" r="3" fill="#c3e04d" fill-opacity="0.8"/>
+            <circle cx="300" cy="35" r="3" fill="#c3e04d" fill-opacity="0.8"/>
+            <circle cx="420" cy="35" r="3" fill="#c3e04d" fill-opacity="0.8"/>
+            <circle cx="520" cy="35" r="3" fill="#c3e04d" fill-opacity="0.8"/>
+
+            <!-- Node B timeline -->
+            <text x="20" y="85" fill="#c3e04d" font-size="9" font-weight="600">Node B</text>
+            <line x1="120" y1="80" x2="600" y2="80" stroke="#e4e7ed" stroke-width="1" stroke-opacity="0.4"/>
+            <!-- Tick marks on Node B (slightly offset to show skew) -->
+            <circle cx="206" cy="80" r="3" fill="#c3e04d" fill-opacity="0.8"/>
+            <circle cx="308" cy="80" r="3" fill="#c3e04d" fill-opacity="0.8"/>
+            <circle cx="425" cy="80" r="3" fill="#c3e04d" fill-opacity="0.8"/>
+            <circle cx="526" cy="80" r="3" fill="#c3e04d" fill-opacity="0.8"/>
+
+            <!-- Skew bound annotations -->
+            <line x1="200" y1="38" x2="206" y2="77" stroke="#c3e04d" stroke-width="0.5" stroke-dasharray="3,3" stroke-opacity="0.4"/>
+            <line x1="300" y1="38" x2="308" y2="77" stroke="#c3e04d" stroke-width="0.5" stroke-dasharray="3,3" stroke-opacity="0.4"/>
+
+            <!-- Skew bound label -->
+            <text x="340" y="62" fill="#9ca3b0" font-size="8" text-anchor="middle">bounded skew (δ)</text>
+            <line x1="310" y1="57" x2="310" y2="67" stroke="#9ca3b0" stroke-width="0.5"/>
+            <line x1="305" y1="57" x2="315" y2="57" stroke="#9ca3b0" stroke-width="0.5"/>
+            <line x1="305" y1="67" x2="315" y2="67" stroke="#9ca3b0" stroke-width="0.5"/>
+
+            <!-- ChronoTick label -->
+            <text x="200" y="22" fill="#c3e04d" fill-opacity="0.6" font-size="7" text-anchor="middle">CT₀</text>
+            <text x="300" y="22" fill="#c3e04d" fill-opacity="0.6" font-size="7" text-anchor="middle">CT₁</text>
+            <text x="420" y="22" fill="#c3e04d" fill-opacity="0.6" font-size="7" text-anchor="middle">CT₂</text>
+            <text x="520" y="22" fill="#c3e04d" fill-opacity="0.6" font-size="7" text-anchor="middle">CT₃</text>
+
+            <!-- Time arrow -->
+            <line x1="120" y1="118" x2="600" y2="118" stroke="#c3e04d" stroke-width="0.75" stroke-opacity="0.3"/>
+            <polygon points="602,118 596,115 596,121" fill="#c3e04d" fill-opacity="0.3"/>
+            <text x="112" y="121" text-anchor="end" fill="#c3e04d" fill-opacity="0.4" font-size="7">time</text>
+          </svg>
+        </div>
+        <p class="text-xs text-text-muted leading-relaxed">
+          Periodic re-synchronization ensures drift stays within bounds. The key invariant: if two events are separated by more than δ (the skew bound), their physical-time ordering is guaranteed correct across all nodes.
+        </p>
+      </div>
+
+      <!-- 4b. ATW -->
+      <div class="bg-bg-card border border-border border-l-4 border-l-lime rounded-xl p-6 mb-6">
+        <h3 class="font-bold text-text mb-3">Acceptance Time Window (ATW)</h3>
+        <p class="text-sm text-text-muted leading-relaxed mb-4">
+          Network non-determinism means events may arrive at ingestion nodes after later-timestamped events. The <strong class="text-text">Acceptance Time Window</strong> is defined as twice the measured network latency (ATW = 2λ). Within this window, out-of-order events are absorbed and correctly positioned in the time-ordered sequence. After the window closes, the ordering becomes immutable.
+        </p>
+        <div class="mb-4 overflow-x-auto">
+          <svg viewBox="0 0 680 110" class="w-full max-w-3xl" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, sans-serif">
+            <!-- Timeline -->
+            <line x1="60" y1="45" x2="640" y2="45" stroke="#e4e7ed" stroke-width="1" stroke-opacity="0.4"/>
+            <polygon points="642,45 636,42 636,48" fill="#e4e7ed" fill-opacity="0.4"/>
+
+            <!-- ATW window (shaded region) -->
+            <rect x="340" y="20" width="180" height="50" rx="4" fill="#c3e04d" fill-opacity="0.08" stroke="#c3e04d" stroke-width="1" stroke-opacity="0.3" stroke-dasharray="4,3"/>
+            <text x="430" y="15" fill="#c3e04d" font-size="8" font-weight="600" text-anchor="middle">Acceptance Time Window (2λ)</text>
+
+            <!-- Immutable region -->
+            <rect x="80" y="26" width="255" height="38" rx="4" fill="#252b3b" stroke="#3a4050" stroke-width="0.5"/>
+            <text x="207" y="37" fill="#9ca3b0" font-size="7" text-anchor="middle">immutable ordering</text>
+
+            <!-- Events in immutable region -->
+            <rect x="110" y="42" width="26" height="14" rx="3" fill="#1e2330" stroke="#c3e04d" stroke-width="0.75" stroke-opacity="0.6"/>
+            <text x="123" y="52" text-anchor="middle" fill="#e8eaed" font-size="7">E1</text>
+            <rect x="170" y="42" width="26" height="14" rx="3" fill="#1e2330" stroke="#c3e04d" stroke-width="0.75" stroke-opacity="0.6"/>
+            <text x="183" y="52" text-anchor="middle" fill="#e8eaed" font-size="7">E2</text>
+            <rect x="240" y="42" width="26" height="14" rx="3" fill="#1e2330" stroke="#c3e04d" stroke-width="0.75" stroke-opacity="0.6"/>
+            <text x="253" y="52" text-anchor="middle" fill="#e8eaed" font-size="7">E3</text>
+            <rect x="300" y="42" width="26" height="14" rx="3" fill="#1e2330" stroke="#c3e04d" stroke-width="0.75" stroke-opacity="0.6"/>
+            <text x="313" y="52" text-anchor="middle" fill="#e8eaed" font-size="7">E4</text>
+
+            <!-- Events in ATW (being absorbed) -->
+            <rect x="370" y="42" width="26" height="14" rx="3" fill="#1e2330" stroke="#c3e04d" stroke-width="1"/>
+            <text x="383" y="52" text-anchor="middle" fill="#c3e04d" font-size="7">E6</text>
+            <rect x="430" y="42" width="26" height="14" rx="3" fill="#1e2330" stroke="#c3e04d" stroke-width="1"/>
+            <text x="443" y="52" text-anchor="middle" fill="#c3e04d" font-size="7">E7</text>
+
+            <!-- Late event arriving (absorbed) -->
+            <rect x="400" y="42" width="26" height="14" rx="3" fill="#c3e04d" fill-opacity="0.15" stroke="#c3e04d" stroke-width="1"/>
+            <text x="413" y="52" text-anchor="middle" fill="#c3e04d" font-size="7">E5</text>
+            <path d="M 413 80 L 413 58" stroke="#c3e04d" stroke-width="0.75" stroke-dasharray="2,2" fill="none" marker-end="url(#arrowLime)"/>
+            <text x="413" y="90" fill="#c3e04d" font-size="7" text-anchor="middle">late arrival</text>
+            <text x="413" y="99" fill="#c3e04d" fill-opacity="0.6" font-size="7" text-anchor="middle">(absorbed)</text>
+
+            <!-- Rejected event (after window) -->
+            <rect x="560" y="42" width="26" height="14" rx="3" fill="#1e2330" stroke="#9ca3b0" stroke-width="0.75" stroke-opacity="0.4" stroke-dasharray="2,2"/>
+            <text x="573" y="52" text-anchor="middle" fill="#9ca3b0" font-size="7">E?</text>
+            <text x="573" y="75" fill="#9ca3b0" font-size="7" text-anchor="middle">too late</text>
+            <text x="573" y="84" fill="#9ca3b0" fill-opacity="0.6" font-size="7" text-anchor="middle">(rejected)</text>
+
+            <!-- Arrow marker -->
+            <defs>
+              <marker id="arrowLime" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M 0 0 L 6 3 L 0 6 Z" fill="#c3e04d" fill-opacity="0.7"/>
+              </marker>
+            </defs>
+
+            <!-- Time labels -->
+            <text x="52" y="48" text-anchor="end" fill="#c3e04d" fill-opacity="0.4" font-size="7">time</text>
+          </svg>
+        </div>
+        <p class="text-xs text-text-muted leading-relaxed">
+          The ATW creates a trade-off: a wider window absorbs more out-of-order events but delays the point at which ordering becomes immutable. ChronoLog sizes the ATW dynamically based on measured network conditions.
+        </p>
+      </div>
+
+      <!-- 4c. Collision Semantics -->
+      <div class="bg-bg-card border border-border border-l-4 border-l-lime rounded-xl p-6">
+        <h3 class="font-bold text-text mb-3">Collision Semantics</h3>
+        <p class="text-sm text-text-muted leading-relaxed mb-4">
+          At coarser time granularities, multiple events from different writers may share the same ChronoTick. ChronoLog disambiguates using <strong class="text-text">(clientId, index)</strong> pairs and provides four configurable collision semantics, chosen per workload:
+        </p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div class="bg-bg-alt rounded-lg p-4">
+            <h4 class="text-sm font-semibold text-text mb-1">Idempotent</h4>
+            <p class="text-xs text-text-muted leading-relaxed">Last writer wins. Duplicate timestamps from the same client overwrite previous entries.</p>
+          </div>
+          <div class="bg-bg-alt rounded-lg p-4">
+            <h4 class="text-sm font-semibold text-text mb-1">Redundancy</h4>
+            <p class="text-xs text-text-muted leading-relaxed">All entries kept. Every event is stored regardless of timestamp overlap.</p>
+          </div>
+          <div class="bg-bg-alt rounded-lg p-4">
+            <h4 class="text-sm font-semibold text-text mb-1">Ordering</h4>
+            <p class="text-xs text-text-muted leading-relaxed">Deterministic tiebreak. Events with identical timestamps are ordered by (clientId, index).</p>
+          </div>
+          <div class="bg-bg-alt rounded-lg p-4">
+            <h4 class="text-sm font-semibold text-text mb-1">Sequentiality</h4>
+            <p class="text-xs text-text-muted leading-relaxed">Serialized access. Concurrent same-tick writes are serialized to produce a strict total order.</p>
+          </div>
+        </div>
+        <p class="text-xs text-text-muted leading-relaxed mt-4">
+          This flexibility allows applications to select the semantics that match their consistency and performance requirements, rather than forcing a one-size-fits-all approach.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. Design Rationale -->
+  <section>
+    <div class="max-w-6xl mx-auto px-6 py-20">
+      <h2 class="text-2xl md:text-3xl font-bold text-center mb-4">Architecture Rationale</h2>
+      <p class="text-text-muted text-center max-w-2xl mx-auto mb-12">Why ChronoLog's architecture is shaped the way it is &mdash; three design-space arguments.</p>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="bg-bg-card border border-border rounded-xl p-6 hover:border-lime/20 transition-colors">
+          <h3 class="font-bold text-sm text-lime mb-3">Decoupled Server-Pull</h3>
+          <p class="text-sm text-text-muted leading-relaxed">
+            Writers push events to ChronoKeeper (hot tier) and return immediately. ChronoGrapher pulls asynchronously for story building and flushing to lower tiers. This decouples ingestion latency from persistence latency &mdash; writers are never stalled by slow storage.
+          </p>
+        </div>
+        <div class="bg-bg-card border border-border rounded-xl p-6 hover:border-lime/20 transition-colors">
+          <h3 class="font-bold text-sm text-lime mb-3">StoryChunks as Throughput Unit</h3>
+          <p class="text-sm text-text-muted leading-relaxed">
+            The unit that moves through the storage pipeline is a <strong class="text-text">StoryChunk</strong> &mdash; a time-bounded batch of events, not individual entries. This amortizes per-event overhead and enables efficient bulk I/O. Chunk boundaries are temporal, not size-based.
+          </p>
+        </div>
+        <div class="bg-bg-card border border-border rounded-xl p-6 hover:border-lime/20 transition-colors">
+          <h3 class="font-bold text-sm text-lime mb-3">I/O Path Separation</h3>
+          <p class="text-sm text-text-muted leading-relaxed">
+            Writes flow through ChronoKeeper; reads flow through ChronoPlayer. These are fully decoupled paths, eliminating the read-write contention that plagues systems with shared log-tail access and enabling independent scaling of ingestion and query workloads.
+          </p>
+        </div>
+      </div>
+      <p class="text-text-muted text-xs text-center mt-8">
+        For the full architecture walkthrough with component descriptions, see <a href="/how-it-works/" class="text-lime hover:underline">How it works</a>.
+      </p>
+    </div>
+  </section>
+
+  <!-- 6. How ChronoLog Compares -->
+  <section class="bg-bg-alt border-y border-border">
+    <div class="max-w-6xl mx-auto px-6 py-20">
+      <h2 class="text-2xl md:text-3xl font-bold text-center mb-4">How ChronoLog Compares</h2>
+      <p class="text-text-muted text-center max-w-2xl mx-auto mb-10">ChronoLog occupies a different point in the design space compared to partition-based systems (Kafka, BookKeeper) and sequencer-based systems (Corfu, SloG, ZLog).</p>
+
+      <div class="bg-bg-card border border-border rounded-xl p-6 mb-8 overflow-x-auto">
+        <table class="w-full text-sm text-left">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="py-3 pr-4 font-semibold text-text-muted text-xs uppercase tracking-wider">Feature</th>
+              <th class="py-3 px-4 font-semibold text-text-muted text-xs uppercase tracking-wider">BookKeeper / Kafka / DLog</th>
+              <th class="py-3 px-4 font-semibold text-text-muted text-xs uppercase tracking-wider">Corfu / SloG / ZLog</th>
+              <th class="py-3 pl-4 font-semibold text-lime text-xs uppercase tracking-wider">ChronoLog</th>
+            </tr>
+          </thead>
+          <tbody class="text-xs">
+            {[
+              ['Locating the log-tail', 'Locking', 'Locking', 'Lock-free'],
+              ['I/O isolation', 'Yes', 'No', 'Yes'],
+              ['I/O parallelism (readers-to-servers)', '1-to-N', 'M-to-N', 'M-to-N'],
+              ['Storage elasticity', 'Manual', 'Manual', 'Automatic'],
+              ['Log hot zones', 'Yes', 'Yes', 'No'],
+              ['Log capacity', 'Limited', 'Limited', 'Infinite'],
+              ['Operation parallelism', 'Limited', 'Limited', 'Full'],
+              ['Granularity of data distribution', 'Coarse (stripe)', 'Fine (entry)', 'Fine (time-chunk)'],
+              ['Log total ordering', 'Eventual', 'Immediate', 'Total'],
+              ['Log entry visibility', 'End of epoch', 'After sequencing', 'Immediate'],
+              ['Storage overhead per entry', 'Moderate', 'High', 'None'],
+              ['Tiered storage', 'No', 'No', 'Yes'],
+            ].map(([feature, bk, corfu, cl]) => (
+              <tr class="border-b border-border/50 hover:bg-white/[0.02] transition-colors">
+                <td class="py-2.5 pr-4 text-text font-medium">{feature}</td>
+                <td class="py-2.5 px-4 text-text-muted">{bk}</td>
+                <td class="py-2.5 px-4 text-text-muted">{corfu}</td>
+                <td class="py-2.5 pl-4 text-lime font-medium">{cl}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="max-w-3xl mx-auto">
+        <h3 class="font-semibold text-text mb-4 text-sm">Key Differentiators</h3>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+          <div class="flex items-start gap-3">
+            <div class="w-1.5 h-1.5 rounded-full bg-lime mt-2 flex-shrink-0"></div>
+            <div><strong class="text-text">Lock-free log tail</strong><span class="text-text-muted"> &mdash; no sequencer or lock at the append point</span></div>
+          </div>
+          <div class="flex items-start gap-3">
+            <div class="w-1.5 h-1.5 rounded-full bg-lime mt-2 flex-shrink-0"></div>
+            <div><strong class="text-text">M-to-N I/O parallelism</strong><span class="text-text-muted"> &mdash; always, not 1-to-1 or 1-to-N</span></div>
+          </div>
+          <div class="flex items-start gap-3">
+            <div class="w-1.5 h-1.5 rounded-full bg-lime mt-2 flex-shrink-0"></div>
+            <div><strong class="text-text">Vertical + horizontal elasticity</strong><span class="text-text-muted"> &mdash; not horizontal-only or fixed-capacity</span></div>
+          </div>
+          <div class="flex items-start gap-3">
+            <div class="w-1.5 h-1.5 rounded-full bg-lime mt-2 flex-shrink-0"></div>
+            <div><strong class="text-text">Per-event distribution</strong><span class="text-text-muted"> &mdash; not partition or page-level granularity</span></div>
+          </div>
+          <div class="flex items-start gap-3">
+            <div class="w-1.5 h-1.5 rounded-full bg-lime mt-2 flex-shrink-0"></div>
+            <div><strong class="text-text">Immediate visibility</strong><span class="text-text-muted"> &mdash; not eventual or epoch-delayed</span></div>
+          </div>
+          <div class="flex items-start gap-3">
+            <div class="w-1.5 h-1.5 rounded-full bg-lime mt-2 flex-shrink-0"></div>
+            <div><strong class="text-text">Zero per-entry metadata</strong><span class="text-text-muted"> &mdash; no per-event overhead tax</span></div>
+          </div>
+        </div>
+        <p class="text-xs text-text-muted mt-6">From: Kougkas et al., "ChronoLog: A Distributed Shared Tiered Log Store with Time-based Data Ordering," MSST 2020.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7. Evaluation Highlights -->
+  <section>
+    <div class="max-w-6xl mx-auto px-6 py-20">
+      <h2 class="text-2xl md:text-3xl font-bold text-center mb-4">Evaluation Highlights</h2>
+      <p class="text-text-muted text-center max-w-2xl mx-auto mb-12">High-level takeaways from experimental evaluation.</p>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="bg-bg-card border border-border rounded-xl p-6">
+          <p class="text-lg font-bold text-lime mb-2">Scalable MWMR Ingestion</p>
+          <p class="text-sm text-text-muted leading-relaxed">Write throughput scales with the number of concurrent writers and ChronoKeeper nodes. StoryChunk-level batching amortizes coordination overhead, enabling sustained high-throughput multi-writer, multi-reader workloads.</p>
+        </div>
+        <div class="bg-bg-card border border-border rounded-xl p-6">
+          <p class="text-lg font-bold text-lime mb-2">Tiering Cost / Performance</p>
+          <p class="text-sm text-text-muted leading-relaxed">Automatic migration from hot (DRAM/NVMe) through warm (SSD) to cold (HDF5/PFS) trades access latency for capacity without manual intervention. Warm-tier reads remain sub-millisecond for recent data.</p>
+        </div>
+        <div class="bg-bg-card border border-border rounded-xl p-6">
+          <p class="text-lg font-bold text-lime mb-2">RDMA Transport</p>
+          <p class="text-sm text-text-muted leading-relaxed">Zero-copy RDMA transport reduces per-event ingestion overhead to the microsecond range. A TCP fallback is available for environments without RDMA fabric, maintaining the same API semantics.</p>
+        </div>
+      </div>
+      <p class="text-text-muted text-xs text-center mt-8">For detailed benchmarks and methodology, see the publications below.</p>
+    </div>
+  </section>
+
+  <!-- 8. Selected Publications -->
+  <section class="bg-bg-alt border-y border-border">
+    <div class="max-w-6xl mx-auto px-6 py-16">
+      <h2 class="text-2xl md:text-3xl font-bold text-center mb-3">Selected Publications</h2>
+      <p class="text-text-muted text-center max-w-2xl mx-auto mb-10">Peer-reviewed research behind ChronoLog, published at top-tier HPC, systems, and parallel computing venues.</p>
+
+      <!-- Core ChronoLog -->
+      <h3 class="text-xs font-bold text-lime uppercase tracking-widest mb-4 max-w-4xl mx-auto">Core ChronoLog</h3>
+      <div class="space-y-4 max-w-4xl mx-auto mb-10">
+        {publications.filter((_, i) => i === 0).map(pub => (
+          <div class="bg-bg-card border border-border rounded-xl p-5">
+            <div class="flex items-start justify-between gap-4">
+              <div class="flex-1">
+                <p class="text-text leading-relaxed text-sm mb-1">
+                  <strong>{pub.title}</strong>
+                </p>
+                <p class="text-xs text-text-muted">{pub.authors}</p>
+              </div>
+              <span class="text-xs font-bold text-lime bg-lime/10 px-2.5 py-1 rounded-full flex-shrink-0">{pub.venue}</span>
+            </div>
+            {pub.link && (
+              <a href={pub.link} target="_blank" class="inline-flex items-center gap-1.5 mt-2 text-xs text-lime font-medium hover:underline">
+                DOI / PDF
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+              </a>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <!-- Ecosystem & Related -->
+      <h3 class="text-xs font-bold text-lime uppercase tracking-widest mb-4 max-w-4xl mx-auto">Ecosystem & Related</h3>
+      <div class="space-y-4 max-w-4xl mx-auto">
+        {publications.filter((_, i) => i > 0).map(pub => (
+          <div class="bg-bg-card border border-border rounded-xl p-5">
+            <div class="flex items-start justify-between gap-4">
+              <div class="flex-1">
+                <p class="text-text leading-relaxed text-sm mb-1">
+                  <strong>{pub.title}</strong>
+                </p>
+                <p class="text-xs text-text-muted">{pub.authors}</p>
+              </div>
+              <span class="text-xs font-bold text-lime bg-lime/10 px-2.5 py-1 rounded-full flex-shrink-0">{pub.venue}</span>
+            </div>
+            {pub.link && (
+              <a href={pub.link} target="_blank" class="inline-flex items-center gap-1.5 mt-2 text-xs text-lime font-medium hover:underline">
+                DOI / PDF
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+              </a>
+            )}
+          </div>
+        ))}
+      </div>
+      <p class="text-center mt-8">
+        <a href="/about/" class="inline-flex items-center gap-2 text-sm text-lime font-medium hover:underline">
+          View all publications & team
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+        </a>
+      </p>
+    </div>
+  </section>
+
+  <!-- 9. Research Threads -->
+  <section>
+    <div class="max-w-6xl mx-auto px-6 py-20">
+      <h2 class="text-2xl md:text-3xl font-bold text-center mb-4">Active Research Directions</h2>
+      <p class="text-text-muted text-center max-w-2xl mx-auto mb-12">Open research threads enabled by ChronoLog's shared log primitive.</p>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <a href="/integrations/" class="bg-bg-alt border border-border rounded-xl p-5 hover:border-lime/20 transition-colors group">
+          <h3 class="font-semibold text-text text-sm mb-1 group-hover:text-lime transition-colors">Workflows & Provenance</h3>
+          <p class="text-xs text-text-muted">Task execution logging and provenance capture for scientific workflow systems like Parsl and funcX.</p>
+        </a>
+        <a href="/use-cases/" class="bg-bg-alt border border-border rounded-xl p-5 hover:border-lime/20 transition-colors group">
+          <h3 class="font-semibold text-text text-sm mb-1 group-hover:text-lime transition-colors">Monitoring & Telemetry</h3>
+          <p class="text-xs text-text-muted">HPC system telemetry with integration into Sonar and Flux job scheduler for distributed observability.</p>
+        </a>
+        <a href="/integrations/" class="bg-bg-alt border border-border rounded-xl p-5 hover:border-lime/20 transition-colors group">
+          <h3 class="font-semibold text-text text-sm mb-1 group-hover:text-lime transition-colors">Agent Memory & Audit</h3>
+          <p class="text-xs text-text-muted">Durable, replayable memory and audit trails for AI agent systems via the MCP server interface.</p>
+        </a>
+        <a href="/integrations/" class="bg-bg-alt border border-border rounded-xl p-5 hover:border-lime/20 transition-colors group">
+          <h3 class="font-semibold text-text text-sm mb-1 group-hover:text-lime transition-colors">Stream & Query Processing</h3>
+          <p class="text-xs text-text-muted">SQL queries, streaming analytics, and key-value store plugins built on top of the shared log.</p>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- 10. Collaboration CTA -->
+  <section class="border-t border-border bg-bg-alt">
+    <div class="max-w-4xl mx-auto px-6 py-16 text-center">
+      <h2 class="text-2xl md:text-3xl font-bold mb-4">Collaborate With Us</h2>
+      <p class="text-text-muted leading-relaxed mb-8 max-w-2xl mx-auto">
+        ChronoLog is an active, NSF-funded research project at the <a href="https://grc.iit.edu" target="_blank" class="text-lime hover:underline">Gnosis Research Center</a>. We welcome collaborations with research labs, national facilities, and industry partners.
+      </p>
+      <div class="flex flex-wrap gap-4 justify-center">
+        <a href="mailto:akougkas@iit.edu" class="inline-flex items-center gap-2 px-6 py-3 bg-lime text-charcoal font-semibold rounded-lg hover:bg-lime-light transition-colors">
+          Contact the Team
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+        </a>
+        <a href="https://github.com/grc-iit/ChronoLog" target="_blank" class="inline-flex items-center gap-2 px-6 py-3 border border-border text-text font-semibold rounded-lg hover:bg-white/5 transition-colors">
+          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+          GitHub
+        </a>
+        <a href="https://chronolog.zulipchat.com/" target="_blank" class="inline-flex items-center gap-2 px-6 py-3 border border-border text-text font-semibold rounded-lg hover:bg-white/5 transition-colors">
+          Community (Zulip)
+        </a>
+      </div>
+    </div>
+  </section>
+</Layout>

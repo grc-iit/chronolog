@@ -181,9 +181,16 @@ public:
 
             return response;
         }
-        catch(tl::exception const&)
+        catch(tl::exception const& e)
         {
             LOG_ERROR("[RPCVisorClient] Failed to acquire story {} from chronicle {}. Thallium exception encountered.",
+                      story_name.c_str(),
+                      chronicle_name.c_str());
+        }
+        catch(std::exception const& e)
+        {
+            LOG_ERROR("[RPCVisorClient] Failed to acquire story {} from chronicle {}. Non-Thallium exception "
+                      "encountered.",
                       story_name.c_str(),
                       chronicle_name.c_str());
         }
@@ -441,17 +448,25 @@ private:
         LOG_DEBUG("[RpcVisorClient] Initialized for Visor Service at {} with ProviderID={}",
                   service_addr,
                   service_provider_id);
-        visor_connect = tl_engine.define("Connect");
-        visor_disconnect = tl_engine.define("Disconnect");
-        create_chronicle = tl_engine.define("CreateChronicle");
-        destroy_chronicle = tl_engine.define("DestroyChronicle");
-        get_chronicle_attr = tl_engine.define("GetChronicleAttr");
-        edit_chronicle_attr = tl_engine.define("EditChronicleAttr");
-        acquire_story = tl_engine.define("AcquireStory");
-        release_story = tl_engine.define("ReleaseStory");
-        destroy_story = tl_engine.define("DestroyStory");
-        show_chronicles = tl_engine.define("ShowChronicles");
-        show_stories = tl_engine.define("ShowStories");
+        try
+        {
+            visor_connect = tl_engine.define("Connect");
+            visor_disconnect = tl_engine.define("Disconnect");
+            create_chronicle = tl_engine.define("CreateChronicle");
+            destroy_chronicle = tl_engine.define("DestroyChronicle");
+            get_chronicle_attr = tl_engine.define("GetChronicleAttr");
+            edit_chronicle_attr = tl_engine.define("EditChronicleAttr");
+            acquire_story = tl_engine.define("AcquireStory");
+            release_story = tl_engine.define("ReleaseStory");
+            destroy_story = tl_engine.define("DestroyStory");
+            show_chronicles = tl_engine.define("ShowChronicles");
+            show_stories = tl_engine.define("ShowStories");
+        }
+        catch(tl::exception const& ex)
+        {
+            LOG_ERROR("[RpcVisorClient] Thallium exception during RPC procedure definitions: {}", ex.what());
+            throw;
+        }
     }
 };
 
