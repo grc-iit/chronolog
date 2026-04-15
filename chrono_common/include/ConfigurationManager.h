@@ -4,443 +4,56 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
-#include <fstream>
-#include <iostream>
-#include <cassert>
-#include <unordered_map>
 #include <json-c/json.h>
-#include <sstream>
 
+#include <chronolog_errcode.h>
+#include <ConfigurationBlocks.h>
 #include "log_level.h"
-#include "enum.h"
-#include "chronolog_errcode.h"
 
 namespace chronolog
 {
-struct ClockConf
-{
-    ClocksourceType CLOCKSOURCE_TYPE;
-    uint64_t DRIFT_CAL_SLEEP_SEC;
-    uint64_t DRIFT_CAL_SLEEP_NSEC;
-
-    ClockConf()
-    {
-        /* Clock-related configurations */
-        CLOCKSOURCE_TYPE = ClocksourceType::C_STYLE;
-        DRIFT_CAL_SLEEP_SEC = 10;
-        DRIFT_CAL_SLEEP_NSEC = 0;
-    }
-
-    int parseJsonConf(json_object*);
-
-    [[nodiscard]] std::string to_String() const
-    {
-        return "CLOCKSOURCE_TYPE: " + std::string(getClocksourceTypeString(CLOCKSOURCE_TYPE)) +
-               ", DRIFT_CAL_SLEEP_SEC: " + std::to_string(DRIFT_CAL_SLEEP_SEC) +
-               ", DRIFT_CAL_SLEEP_NSEC: " + std::to_string(DRIFT_CAL_SLEEP_NSEC);
-    }
-};
-
-struct AuthConf
-{
-    std::string AUTH_TYPE;
-    std::string MODULE_PATH;
-
-    AuthConf()
-    {
-        /* Authentication-related configurations */
-        AUTH_TYPE = "RBAC";
-        MODULE_PATH = "";
-    }
-
-    int parseJsonConf(json_object*);
-
-    [[nodiscard]] std::string to_String() const { return "AUTH_TYPE: " + AUTH_TYPE + ", MODULE_PATH: " + MODULE_PATH; }
-};
-
-struct RPCProviderConf
-{
-    std::string PROTO_CONF;
-    std::string IP;
-    uint16_t BASE_PORT{};
-    uint16_t SERVICE_PROVIDER_ID{};
-
-    int parseJsonConf(json_object*);
-
-    [[nodiscard]] std::string to_String() const
-    {
-        return "[PROTO_CONF: " + PROTO_CONF + ", IP: " + IP + ", BASE_PORT: " + std::to_string(BASE_PORT) +
-               ", SERVICE_PROVIDER_ID: " + std::to_string(SERVICE_PROVIDER_ID) + ", PORTS: " + "]";
-    }
-};
-
-struct LogConf
-{
-    std::string LOGTYPE;
-    std::string LOGFILE;
-    LogLevel LOGLEVEL{};
-    std::string LOGNAME;
-    size_t LOGFILESIZE{};
-    size_t LOGFILENUM{};
-    LogLevel FLUSHLEVEL{};
-
-    void parselogLevelConf(json_object* json_conf, LogLevel& log_level)
-    {
-        if(json_object_is_type(json_conf, json_type_string))
-        {
-            const char* conf_str = json_object_get_string(json_conf);
-            if(strcmp(conf_str, "trace") == 0)
-            {
-                log_level = LogLevel::trace;
-            }
-            else if(strcmp(conf_str, "info") == 0)
-            {
-                log_level = LogLevel::info;
-            }
-            else if(strcmp(conf_str, "debug") == 0)
-            {
-                log_level = LogLevel::debug;
-            }
-            else if(strcmp(conf_str, "warning") == 0)
-            {
-                log_level = LogLevel::warn;
-            }
-            else if(strcmp(conf_str, "error") == 0)
-            {
-                log_level = LogLevel::err;
-            }
-            else if(strcmp(conf_str, "critical") == 0)
-            {
-                log_level = LogLevel::critical;
-            }
-            else if(strcmp(conf_str, "off") == 0)
-            {
-                log_level = LogLevel::off;
-            }
-            else
-            {
-                std::cout << "[ConfigurationManager] Unknown log level: " << conf_str << std::endl;
-            }
-        }
-        else
-        {
-            std::cerr << "[ConfigurationManager] Invalid Log Level implementation configuration" << std::endl;
-        }
-    }
-
-    void parseFlushLevelConf(json_object* json_conf, LogLevel& flush_level)
-    {
-        if(json_object_is_type(json_conf, json_type_string))
-        {
-            const char* conf_str = json_object_get_string(json_conf);
-            if(strcmp(conf_str, "trace") == 0)
-            {
-                flush_level = LogLevel::trace;
-            }
-            else if(strcmp(conf_str, "info") == 0)
-            {
-                flush_level = LogLevel::info;
-            }
-            else if(strcmp(conf_str, "debug") == 0)
-            {
-                flush_level = LogLevel::debug;
-            }
-            else if(strcmp(conf_str, "warning") == 0)
-            {
-                flush_level = LogLevel::warn;
-            }
-            else if(strcmp(conf_str, "error") == 0)
-            {
-                flush_level = LogLevel::err;
-            }
-            else if(strcmp(conf_str, "critical") == 0)
-            {
-                flush_level = LogLevel::critical;
-            }
-            else if(strcmp(conf_str, "off") == 0)
-            {
-                flush_level = LogLevel::off;
-            }
-            else
-            {
-                std::cout << "[ConfigurationManager] Unknown flush level: " << conf_str
-                          << "Set it to default value: "
-                             "Warning"
-                          << std::endl;
-                flush_level = LogLevel::warn;
-            }
-        }
-        else
-        {
-            std::cerr << "[ConfigurationManager] Invalid Flush Level implementation configuration" << std::endl;
-        }
-    }
-
-    static std::string LevelToString(LogLevel level)
-    {
-        switch(level)
-        {
-            case LogLevel::trace:
-                return "TRACE";
-            case LogLevel::debug:
-                return "DEBUG";
-            case LogLevel::info:
-                return "INFO";
-            case LogLevel::warn:
-                return "WARN";
-            case LogLevel::err:
-                return "ERROR";
-            case LogLevel::critical:
-                return "CRITICAL";
-            case LogLevel::off:
-                return "OFF";
-            default:
-                return "UNKNOWN";
-        }
-    }
-
-    int parseJsonConf(json_object*);
-
-    [[nodiscard]] std::string to_String() const
-    {
-        return "[TYPE: " + LOGTYPE + ", FILE: " + LOGFILE + ", LEVEL: " + LevelToString(LOGLEVEL) +
-               ", NAME: " + LOGNAME + ", LOGFILESIZE: " + std::to_string(LOGFILESIZE) +
-               ", LOGFILENUM: " + std::to_string(LOGFILENUM) + ", FLUSH LEVEL: " + LevelToString(FLUSHLEVEL) + "]";
-    }
-};
-
-struct DataStoreConf
-{
-    int max_story_chunk_size = 4096;
-    int story_chunk_duration_secs = 30;
-    int acceptance_window_secs = 60;
-    int inactive_story_delay_secs = 180;
-
-    DataStoreConf() {}
-
-    int parseJsonConf(json_object*);
-
-    [[nodiscard]] std::string to_String() const
-    {
-        return "[DATA_STORE_CONF: max_story_chunk_size: " + std::to_string(max_story_chunk_size) +
-               " story_chunk_duration_secs: " + std::to_string(story_chunk_duration_secs) +
-               " acceptance_window_secs: " + std::to_string(acceptance_window_secs) +
-               " inactive_story_delay_secs: " + std::to_string(inactive_story_delay_secs) + "]";
-    }
-};
-
-struct ExtractorReaderConf
-{
-    std::string story_files_dir;
-
-    int parseJsonConf(json_object*);
-
-    [[nodiscard]] std::string to_String() const
-    {
-        return "[EXTRACTOR_READER_CONF: STORY_FILES_DIR: " + story_files_dir + "]";
-    }
-};
-
-
-struct VisorConfiguration
-{
-    RPCProviderConf VISOR_CLIENT_PORTAL_SERVICE_CONF;
-    RPCProviderConf VISOR_KEEPER_REGISTRY_SERVICE_CONF;
-    LogConf VISOR_LOG_CONF;
-    size_t DELAYED_DATA_ADMIN_EXIT_IN_SECS{};
-
-    VisorConfiguration()
-    {
-        /* Visor-related configurations */
-        VISOR_CLIENT_PORTAL_SERVICE_CONF.PROTO_CONF = "ofi+sockets";
-        VISOR_CLIENT_PORTAL_SERVICE_CONF.IP = "127.0.0.1";
-        VISOR_CLIENT_PORTAL_SERVICE_CONF.BASE_PORT = 5555;
-        VISOR_CLIENT_PORTAL_SERVICE_CONF.SERVICE_PROVIDER_ID = 55;
-
-        VISOR_KEEPER_REGISTRY_SERVICE_CONF.PROTO_CONF = "ofi+sockets";
-        VISOR_KEEPER_REGISTRY_SERVICE_CONF.IP = "127.0.0.1";
-        VISOR_KEEPER_REGISTRY_SERVICE_CONF.BASE_PORT = 8888;
-        VISOR_KEEPER_REGISTRY_SERVICE_CONF.SERVICE_PROVIDER_ID = 88;
-
-        DELAYED_DATA_ADMIN_EXIT_IN_SECS = 3;
-    }
-
-    int parseJsonConf(json_object*);
-
-    [[nodiscard]] std::string to_String() const
-    {
-        return "[VISOR_CLIENT_PORTAL_SERVICE_CONF: " + VISOR_CLIENT_PORTAL_SERVICE_CONF.to_String() +
-               ", VISOR_KEEPER_REGISTRY_SERVICE_CONF: " + VISOR_KEEPER_REGISTRY_SERVICE_CONF.to_String() +
-               ", VISOR_LOG: " + VISOR_LOG_CONF.to_String() +
-               ", DELAYED_DATA_ADMIN_EXIT_IN_SECS: " + std::to_string(DELAYED_DATA_ADMIN_EXIT_IN_SECS) + "]";
-    }
-};
-
-struct KeeperConfiguration
-{
-    uint32_t RECORDING_GROUP;
-    RPCProviderConf KEEPER_RECORDING_SERVICE_CONF;
-    RPCProviderConf DATA_STORE_ADMIN_SERVICE_CONF;
-    RPCProviderConf VISOR_REGISTRY_SERVICE_CONF;
-    RPCProviderConf KEEPER_GRAPHER_DRAIN_SERVICE_CONF;
-    DataStoreConf DATA_STORE_CONF{};
-    ExtractorReaderConf EXTRACTOR_CONF;
-    LogConf LOG_CONF;
-
-    KeeperConfiguration()
-    {
-        RECORDING_GROUP = 0;
-        KEEPER_GRAPHER_DRAIN_SERVICE_CONF.PROTO_CONF = "ofi+sockets";
-        KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP = "127.0.0.1";
-        KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT = 9999;
-        KEEPER_GRAPHER_DRAIN_SERVICE_CONF.SERVICE_PROVIDER_ID = 99;
-
-        DATA_STORE_ADMIN_SERVICE_CONF.PROTO_CONF = "ofi+sockets";
-        DATA_STORE_ADMIN_SERVICE_CONF.IP = "127.0.0.1";
-        DATA_STORE_ADMIN_SERVICE_CONF.BASE_PORT = 4444;
-        DATA_STORE_ADMIN_SERVICE_CONF.SERVICE_PROVIDER_ID = 44;
-
-        VISOR_REGISTRY_SERVICE_CONF.PROTO_CONF = "ofi+sockets";
-        VISOR_REGISTRY_SERVICE_CONF.IP = "127.0.0.1";
-        VISOR_REGISTRY_SERVICE_CONF.BASE_PORT = 8888;
-        VISOR_REGISTRY_SERVICE_CONF.SERVICE_PROVIDER_ID = 88;
-
-        DATA_STORE_CONF.max_story_chunk_size = 4096;
-        DATA_STORE_CONF.story_chunk_duration_secs = 30;
-        DATA_STORE_CONF.acceptance_window_secs = 10;
-        DATA_STORE_CONF.inactive_story_delay_secs = 180;
-
-        EXTRACTOR_CONF.story_files_dir = "/tmp/";
-    }
-
-    int parseJsonConf(json_object*);
-    [[nodiscard]] std::string to_String() const
-    {
-        return "[CHRONO_GRAPHER_CONFIGURATION: RECORDING_GROUP: " + std::to_string(RECORDING_GROUP) +
-               ", KEEPER_GRAPHER_DRAIN_SERVICE_CONF: " + KEEPER_GRAPHER_DRAIN_SERVICE_CONF.to_String() +
-               ", DATA_STORE_ADMIN_SERVICE_CONF: " + DATA_STORE_ADMIN_SERVICE_CONF.to_String() +
-               ", VISOR_REGISTRY_SERVICE_CONF: " + VISOR_REGISTRY_SERVICE_CONF.to_String() +
-               ", LOG_CONF: " + LOG_CONF.to_String() + ", DATA_STORE_CONF: " + DATA_STORE_CONF.to_String() +
-               ", EXTRACTOR_CONF: " + EXTRACTOR_CONF.to_String() + "]";
-    }
-};
-
-struct GrapherConfiguration
-{
-    uint32_t RECORDING_GROUP{};
-    RPCProviderConf KEEPER_GRAPHER_DRAIN_SERVICE_CONF;
-    RPCProviderConf DATA_STORE_ADMIN_SERVICE_CONF;
-    RPCProviderConf VISOR_REGISTRY_SERVICE_CONF;
-    LogConf LOG_CONF;
-    DataStoreConf DATA_STORE_CONF{};
-    ExtractorReaderConf EXTRACTOR_CONF;
-
-    GrapherConfiguration()
-    {
-        RECORDING_GROUP = 0;
-        KEEPER_GRAPHER_DRAIN_SERVICE_CONF.PROTO_CONF = "ofi+sockets";
-        KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP = "127.0.0.1";
-        KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT = 9999;
-        KEEPER_GRAPHER_DRAIN_SERVICE_CONF.SERVICE_PROVIDER_ID = 99;
-
-        DATA_STORE_ADMIN_SERVICE_CONF.PROTO_CONF = "ofi+sockets";
-        DATA_STORE_ADMIN_SERVICE_CONF.IP = "127.0.0.1";
-        DATA_STORE_ADMIN_SERVICE_CONF.BASE_PORT = 4444;
-        DATA_STORE_ADMIN_SERVICE_CONF.SERVICE_PROVIDER_ID = 44;
-
-        VISOR_REGISTRY_SERVICE_CONF.PROTO_CONF = "ofi+sockets";
-        VISOR_REGISTRY_SERVICE_CONF.IP = "127.0.0.1";
-        VISOR_REGISTRY_SERVICE_CONF.BASE_PORT = 8888;
-        VISOR_REGISTRY_SERVICE_CONF.SERVICE_PROVIDER_ID = 88;
-
-        DATA_STORE_CONF.max_story_chunk_size = 4096;
-        DATA_STORE_CONF.story_chunk_duration_secs = 60;
-        DATA_STORE_CONF.acceptance_window_secs = 180;
-        DATA_STORE_CONF.inactive_story_delay_secs = 300;
-
-        EXTRACTOR_CONF.story_files_dir = "/tmp/";
-    }
-
-    int parseJsonConf(json_object*);
-    [[nodiscard]] std::string to_String() const
-    {
-        return "[CHRONO_GRAPHER_CONFIGURATION: RECORDING_GROUP: " + std::to_string(RECORDING_GROUP) +
-               ", KEEPER_GRAPHER_DRAIN_SERVICE_CONF: " + KEEPER_GRAPHER_DRAIN_SERVICE_CONF.to_String() +
-               ", DATA_STORE_ADMIN_SERVICE_CONF: " + DATA_STORE_ADMIN_SERVICE_CONF.to_String() +
-               ", VISOR_REGISTRY_SERVICE_CONF: " + VISOR_REGISTRY_SERVICE_CONF.to_String() +
-               ", LOG_CONF: " + LOG_CONF.to_String() + ", DATA_STORE_CONF: " + DATA_STORE_CONF.to_String() +
-               ", EXTRACTOR_CONF: " + EXTRACTOR_CONF.to_String() + "]";
-    }
-};
-
-struct PlayerConfiguration
-{
-    uint32_t RECORDING_GROUP;
-    RPCProviderConf DATA_STORE_ADMIN_SERVICE_CONF;
-    RPCProviderConf PLAYBACK_SERVICE_CONF;
-    RPCProviderConf VISOR_REGISTRY_SERVICE_CONF;
-    LogConf LOG_CONF;
-    DataStoreConf DATA_STORE_CONF{};
-    ExtractorReaderConf READER_CONF;
-
-    PlayerConfiguration()
-    {
-        RECORDING_GROUP = 0;
-        DATA_STORE_ADMIN_SERVICE_CONF.PROTO_CONF = "ofi+sockets";
-        DATA_STORE_ADMIN_SERVICE_CONF.IP = "127.0.0.1";
-        DATA_STORE_ADMIN_SERVICE_CONF.BASE_PORT = 2222;
-        DATA_STORE_ADMIN_SERVICE_CONF.SERVICE_PROVIDER_ID = 22;
-
-        PLAYBACK_SERVICE_CONF.PROTO_CONF = "ofi+sockets";
-        PLAYBACK_SERVICE_CONF.IP = "127.0.0.1";
-        PLAYBACK_SERVICE_CONF.BASE_PORT = 2225;
-        PLAYBACK_SERVICE_CONF.SERVICE_PROVIDER_ID = 25;
-
-        VISOR_REGISTRY_SERVICE_CONF.PROTO_CONF = "ofi+sockets";
-        VISOR_REGISTRY_SERVICE_CONF.IP = "127.0.0.1";
-        VISOR_REGISTRY_SERVICE_CONF.BASE_PORT = 8888;
-        VISOR_REGISTRY_SERVICE_CONF.SERVICE_PROVIDER_ID = 88;
-
-        DATA_STORE_CONF.max_story_chunk_size = 4096;
-        DATA_STORE_CONF.story_chunk_duration_secs = 60;
-        DATA_STORE_CONF.acceptance_window_secs = 180;
-        DATA_STORE_CONF.inactive_story_delay_secs = 300;
-
-        READER_CONF.story_files_dir = "/tmp/";
-    }
-    int parseJsonConf(json_object*);
-
-    [[nodiscard]] std::string to_String() const
-    {
-        return "[CHRONO_PLAYER_CONFIGURATION: RECORDING_GROUP: " + std::to_string(RECORDING_GROUP) +
-               ", DATA_STORE_ADMIN_SERVICE_CONF: " + DATA_STORE_ADMIN_SERVICE_CONF.to_String() +
-               ", PLAYBACK_SERVICE_CONF: " + PLAYBACK_SERVICE_CONF.to_String() +
-               ", VISOR_REGISTRY_SERVICE_CONF: " + VISOR_REGISTRY_SERVICE_CONF.to_String() +
-               ", LOG_CONF: " + LOG_CONF.to_String() + ", DATA_STORE_CONF: " + DATA_STORE_CONF.to_String() +
-               ", READER_CONF: " + READER_CONF.to_String() + "]";
-    }
-};
 
 class ConfigurationManager
 {
 public:
-    ClockConf CLOCK_CONF{};
-    AuthConf AUTH_CONF{};
-    VisorConfiguration VISOR_CONF{};
-    KeeperConfiguration KEEPER_CONF{};
-    GrapherConfiguration GRAPHER_CONF{};
-    PlayerConfiguration PLAYER_CONF{};
+    ClockConf CLOCK_CONF;
+    AuthConf AUTH_CONF;
+    json_object* VISOR_JSON_CONF;
+    json_object* KEEPER_JSON_CONF;
+    json_object* GRAPHER_JSON_CONF;
+    json_object* PLAYER_JSON_CONF;
 
     ConfigurationManager()
         : CLOCK_CONF{}
         , AUTH_CONF{}
-        , VISOR_CONF{}
-        , KEEPER_CONF{}
-        , GRAPHER_CONF{}
-        , PLAYER_CONF{}
+        , VISOR_JSON_CONF{nullptr}
+        , KEEPER_JSON_CONF{nullptr}
+        , GRAPHER_JSON_CONF{nullptr}
+        , PLAYER_JSON_CONF{nullptr}
     {}
 
-    explicit ConfigurationManager(const std::string& conf_file_path) { LoadConfFromJSONFile(conf_file_path); }
+    ~ConfigurationManager()
+    {
+        if(VISOR_JSON_CONF)
+            json_object_put(VISOR_JSON_CONF);
+        if(KEEPER_JSON_CONF)
+            json_object_put(KEEPER_JSON_CONF);
+        if(GRAPHER_JSON_CONF)
+            json_object_put(GRAPHER_JSON_CONF);
+        if(PLAYER_JSON_CONF)
+            json_object_put(PLAYER_JSON_CONF);
+    }
+
+    explicit ConfigurationManager(const std::string& conf_file_path)
+        : CLOCK_CONF{}
+        , AUTH_CONF{}
+        , VISOR_JSON_CONF{nullptr}
+        , KEEPER_JSON_CONF{nullptr}
+        , GRAPHER_JSON_CONF{nullptr}
+        , PLAYER_JSON_CONF{nullptr}
+    {
+        LoadConfFromJSONFile(conf_file_path);
+    }
 
     void LoadConfFromJSONFile(const std::string& conf_file_path)
     {
@@ -464,7 +77,12 @@ public:
                               << std::endl;
                     exit(chronolog::CL_ERR_INVALID_CONF);
                 }
-                CLOCK_CONF.parseJsonConf(clock_conf);
+                if(CLOCK_CONF.parseJsonConf(clock_conf) != chronolog::CL_SUCCESS)
+                {
+                    std::cerr << "[ConfigurationManager] Error while parsing clock configuration in "
+                              << conf_file_path.c_str() << std::endl;
+                    exit(chronolog::CL_ERR_INVALID_CONF);
+                }
             }
             else if(strcmp(key, "authentication") == 0)
             {
@@ -476,55 +94,45 @@ public:
                               << ". Authentication configuration is not found or is not an object." << std::endl;
                     exit(chronolog::CL_ERR_INVALID_CONF);
                 }
-                AUTH_CONF.parseJsonConf(auth_conf);
+                if(AUTH_CONF.parseJsonConf(auth_conf) != chronolog::CL_SUCCESS)
+                {
+                    std::cerr << "[ConfigurationManager] Error while parsing authentication configuration in "
+                              << conf_file_path.c_str() << std::endl;
+                    exit(chronolog::CL_ERR_INVALID_CONF);
+                }
             }
             else if(strcmp(key, "chrono_visor") == 0)
             {
                 json_object* chrono_visor_conf = json_object_object_get(root, "chrono_visor");
-                if(chrono_visor_conf == nullptr || !json_object_is_type(chrono_visor_conf, json_type_object))
+
+                if(chrono_visor_conf != nullptr && json_object_is_type(chrono_visor_conf, json_type_object))
                 {
-                    std::cerr << "[ConfigurationManager] Error while parsing configuration file "
-                              << conf_file_path.c_str()
-                              << ". ChronoVisor configuration is not found or is not an object." << std::endl;
-                    exit(chronolog::CL_ERR_INVALID_CONF);
+                    VISOR_JSON_CONF = json_object_get(chrono_visor_conf);
                 }
-                VISOR_CONF.parseJsonConf(chrono_visor_conf);
             }
             else if(strcmp(key, "chrono_keeper") == 0)
             {
                 json_object* chrono_keeper_conf = json_object_object_get(root, "chrono_keeper");
-                if(chrono_keeper_conf == nullptr || !json_object_is_type(chrono_keeper_conf, json_type_object))
+                if(chrono_keeper_conf != nullptr && json_object_is_type(chrono_keeper_conf, json_type_object))
                 {
-                    std::cerr << "[ConfigurationManager] Error while parsing configuration file "
-                              << conf_file_path.c_str()
-                              << ". ChronoKeeper configuration is not found or is not an object." << std::endl;
-                    exit(chronolog::CL_ERR_INVALID_CONF);
+                    KEEPER_JSON_CONF = json_object_get(chrono_keeper_conf);
                 }
-                KEEPER_CONF.parseJsonConf(chrono_keeper_conf);
             }
             else if(strcmp(key, "chrono_grapher") == 0)
             {
                 json_object* chrono_grapher_conf = json_object_object_get(root, "chrono_grapher");
-                if(chrono_grapher_conf == nullptr || !json_object_is_type(chrono_grapher_conf, json_type_object))
+                if(chrono_grapher_conf != nullptr && json_object_is_type(chrono_grapher_conf, json_type_object))
                 {
-                    std::cerr << "[ConfigurationManager] Error while parsing configuration file "
-                              << conf_file_path.c_str()
-                              << ". ChronoGrapher configuration is not found or is not an object." << std::endl;
-                    exit(chronolog::CL_ERR_INVALID_CONF);
+                    GRAPHER_JSON_CONF = json_object_get(chrono_grapher_conf);
                 }
-                GRAPHER_CONF.parseJsonConf(chrono_grapher_conf);
             }
             else if(strcmp(key, "chrono_player") == 0)
             {
                 json_object* chrono_player_conf = json_object_object_get(root, "chrono_player");
-                if(chrono_player_conf == nullptr || !json_object_is_type(chrono_player_conf, json_type_object))
+                if(chrono_player_conf != nullptr && json_object_is_type(chrono_player_conf, json_type_object))
                 {
-                    std::cerr << "[ConfigurationManager] Error while parsing configuration file "
-                              << conf_file_path.c_str()
-                              << ". ChronoPlayer configuration is not found or is not an object." << std::endl;
-                    exit(chronolog::CL_ERR_INVALID_CONF);
+                    PLAYER_JSON_CONF = json_object_get(chrono_player_conf);
                 }
-                PLAYER_CONF.parseJsonConf(chrono_player_conf);
             }
         }
         json_object_put(root);

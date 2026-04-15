@@ -9,7 +9,8 @@
 #include <KeeperRegistryService.h>
 #include <DataStoreAdminClient.h>
 #include <chrono_monitor.h>
-#include <ConfigurationManager.h>
+#include <ConfigurationBlocks.h>
+
 /////////////////////////
 
 namespace tl = thallium;
@@ -18,7 +19,8 @@ namespace chl = chronolog;
 namespace chronolog
 {
 
-int KeeperRegistry::InitializeRegistryService(VisorConfiguration const& VISOR_CONF)
+int KeeperRegistry::InitializeRegistryService(chl::RPCProviderConf const& VISOR_KEEPER_REGISTRY_SERVICE_CONF,
+                                              size_t DELAYED_DATA_ADMIN_EXIT_IN_SECS)
 {
     int status = chronolog::CL_ERR_UNKNOWN;
     std::lock_guard<std::mutex> lock(registryLock);
@@ -31,12 +33,11 @@ int KeeperRegistry::InitializeRegistryService(VisorConfiguration const& VISOR_CO
     try
     {
         // initialise thalium engine for KeeperRegistryService
-        std::string KEEPER_REGISTRY_SERVICE_NA_STRING =
-                VISOR_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.PROTO_CONF + "://" +
-                VISOR_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.IP + ":" +
-                std::to_string(VISOR_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.BASE_PORT);
+        std::string KEEPER_REGISTRY_SERVICE_NA_STRING = VISOR_KEEPER_REGISTRY_SERVICE_CONF.PROTO_CONF + "://" +
+                                                        VISOR_KEEPER_REGISTRY_SERVICE_CONF.IP + ":" +
+                                                        std::to_string(VISOR_KEEPER_REGISTRY_SERVICE_CONF.BASE_PORT);
 
-        uint16_t provider_id = VISOR_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF.SERVICE_PROVIDER_ID;
+        uint16_t provider_id = VISOR_KEEPER_REGISTRY_SERVICE_CONF.SERVICE_PROVIDER_ID;
         margo_instance_id margo_id = margo_init(KEEPER_REGISTRY_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 2);
 
         if(MARGO_INSTANCE_NULL == margo_id)
@@ -55,7 +56,7 @@ int KeeperRegistry::InitializeRegistryService(VisorConfiguration const& VISOR_CO
 
         keeperRegistryService = KeeperRegistryService::CreateKeeperRegistryService(*registryEngine, provider_id, *this);
 
-        delayedDataAdminExitSeconds = VISOR_CONF.DELAYED_DATA_ADMIN_EXIT_IN_SECS;
+        delayedDataAdminExitSeconds = DELAYED_DATA_ADMIN_EXIT_IN_SECS;
 
         // Kun: This protocol will be used to create dataStoreAdminClient for both Keeper and Grapher.
         // Since they share the same Thallium engine, we have to use the same protocol for both.
