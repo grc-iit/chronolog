@@ -8,8 +8,7 @@
 #include <thallium.hpp>
 
 #include <chronolog_types.h>
-#include <ConfigurationBlocks.h>
-#include <ChronoVisorConfiguration.h>
+#include <ConfigurationManager.h>
 
 #include "ClientRegistryManager.h"
 #include "ChronicleMetaDirectory.h"
@@ -41,7 +40,7 @@ public:
 
     ~VisorClientPortal();
 
-    int StartServices(RPCProviderConf const&, KeeperRegistry*);
+    int StartServices(VisorConfiguration const&, KeeperRegistry*);
 
     void ShutdownServices();
 

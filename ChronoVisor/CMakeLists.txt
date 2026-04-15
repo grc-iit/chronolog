@@ -16,13 +16,12 @@ target_include_directories(chronovisor_server PRIVATE
 
 target_sources(chronovisor_server PRIVATE
     src/chronovisor_instance.cpp
-    src/ChronoVisorConfiguration.cpp
     src/VisorClientPortal.cpp
     src/ClientRegistryManager.cpp
     src/ClientRegistryRecord.cpp
     src/ChronicleMetaDirectory.cpp
     src/KeeperRegistry.cpp
-#    ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
+    ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
 )
 
 target_link_libraries(chronovisor_server

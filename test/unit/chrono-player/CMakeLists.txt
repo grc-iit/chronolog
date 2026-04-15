@@ -72,7 +72,6 @@ endif()
 
 add_executable(hdf5_archive_reader_test
     chrono_player_hdf5_archive_reader_test.cpp
-    ${CMAKE_SOURCE_DIR}/ChronoPlayer/src/ChronoPlayerConfiguration.cpp
     ${CMAKE_SOURCE_DIR}/ChronoPlayer/src/HDF5ArchiveReadingAgent.cpp
 )
 

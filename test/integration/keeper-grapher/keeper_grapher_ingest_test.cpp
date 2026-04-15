@@ -15,7 +15,6 @@
 
 // Project headers
 #include <ConfigurationManager.h>
-#include <ChronoGrapherConfiguration.h>
 #include <StoryChunk.h>
 #include <cmd_arg_parse.h>
 
@@ -124,19 +123,13 @@ int main(int argc, char** argv)
         return 0;
     }
     chronolog::ConfigurationManager confManager(conf_file_path);
-    chronolog::GrapherConfiguration GRAPHER_CONF;
-    if(GRAPHER_CONF.parseJsonConf(confManager.GRAPHER_JSON_CONF) != chronolog::CL_SUCCESS)
-    {
-        std::cerr << "[standalone_ingest_test] Invalid Grapher configuration. Exiting";
-        exit(EXIT_FAILURE);
-    }
     int result = chronolog::chrono_monitor::initialize("console",
-                                                       GRAPHER_CONF.LOG_CONF.LOGFILE,
-                                                       GRAPHER_CONF.LOG_CONF.LOGLEVEL,
-                                                       GRAPHER_CONF.LOG_CONF.LOGNAME,
-                                                       GRAPHER_CONF.LOG_CONF.LOGFILESIZE,
-                                                       GRAPHER_CONF.LOG_CONF.LOGFILENUM,
-                                                       GRAPHER_CONF.LOG_CONF.FLUSHLEVEL);
+                                                       confManager.GRAPHER_CONF.LOG_CONF.LOGFILE,
+                                                       confManager.GRAPHER_CONF.LOG_CONF.LOGLEVEL,
+                                                       confManager.GRAPHER_CONF.LOG_CONF.LOGNAME,
+                                                       confManager.GRAPHER_CONF.LOG_CONF.LOGFILESIZE,
+                                                       confManager.GRAPHER_CONF.LOG_CONF.LOGFILENUM,
+                                                       confManager.GRAPHER_CONF.LOG_CONF.FLUSHLEVEL);
     if(result == 1)
     {
         exit(EXIT_FAILURE);
@@ -146,9 +139,10 @@ int main(int argc, char** argv)
     /**
      * Keeper-push
      */
-    std::string KEEPER_COLLECTOR_NA_STRING = GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.PROTO_CONF + "://" +
-                                             GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP + ":" +
-                                             std::to_string(GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT);
+    std::string KEEPER_COLLECTOR_NA_STRING =
+            confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.PROTO_CONF + "://" +
+            confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP + ":" +
+            std::to_string(confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT);
     tl::engine extraction_engine = tl::engine(KEEPER_COLLECTOR_NA_STRING, THALLIUM_SERVER_MODE);
     std::stringstream ss;
     ss << extraction_engine.self();
@@ -164,7 +158,7 @@ int main(int argc, char** argv)
         tl_es_vec.push_back(std::move(es));
     }
 
-    int service_provider_id = GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.SERVICE_PROVIDER_ID;
+    int service_provider_id = confManager.GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.SERVICE_PROVIDER_ID;
     StoryChunkRecordService* story_chunk_recording_service =
             StoryChunkRecordService::CreateStoryChunkRecordService(extraction_engine, tl_pool, service_provider_id);
     LOG_DEBUG("[standalone_ingest_test] StoryChunkRecordService created");

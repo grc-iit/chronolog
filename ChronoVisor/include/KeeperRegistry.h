@@ -24,7 +24,7 @@
 #include "PlayerIdCard.h"
 #include "PlayerRegistrationMsg.h"
 #include "PlayerStatsMsg.h"
-#include "ConfigurationBlocks.h"
+#include "ConfigurationManager.h"
 
 namespace chronolog
 {
@@ -177,7 +177,7 @@ public:
 
     bool is_shutting_down() const { return (SHUTTING_DOWN == registryState); }
 
-    int InitializeRegistryService(RPCProviderConf const&, size_t delayed_exit_secs);
+    int InitializeRegistryService(VisorConfiguration const&);
 
     int ShutdownRegistryService();
 
