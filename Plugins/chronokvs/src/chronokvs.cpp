@@ -4,14 +4,18 @@
 #include <string>
 #include <vector>
 
+#include <chimaera/chimaera.h>
+
 #include "chronokvs.h"
 #include "chronokvs_mapper.h"
 
 namespace chronokvs
 {
 
-ChronoKVS::ChronoKVS(LogLevel level)
-    : mapper(std::make_unique<ChronoKVSMapper>(level))
+ChronoKVS::ChronoKVS(const chi::PoolId& keeper_pool_id,
+                     const chi::PoolId& player_pool_id,
+                     LogLevel level)
+    : mapper(std::make_unique<ChronoKVSMapper>(level, keeper_pool_id, player_pool_id))
     , logLevel_(level)
 {}
 

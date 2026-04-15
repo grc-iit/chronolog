@@ -40,11 +40,14 @@ class Client : public chi::ContainerClient {
       const std::string& chronicle_name,
       const std::string& story_name,
       chi::u64 start_time,
-      chi::u64 end_time) {
+      chi::u64 end_time,
+      hipc::ShmPtr<> event_data,
+      chi::u64 buffer_size) {
     auto* ipc_manager = CHI_IPC;
     auto task = ipc_manager->NewTask<ReplayStoryTask>(
         chi::CreateTaskId(), pool_id_, pool_query,
-        chronicle_name, story_name, start_time, end_time);
+        chronicle_name, story_name, start_time, end_time,
+        event_data, buffer_size);
     return ipc_manager->Send(task);
   }
 

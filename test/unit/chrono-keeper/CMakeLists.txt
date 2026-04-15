@@ -14,7 +14,6 @@ add_executable(keeper_runtime_test
 
 target_include_directories(keeper_runtime_test PRIVATE
     ${CMAKE_SOURCE_DIR}/chrono_common/include
-    ${CMAKE_SOURCE_DIR}/Client/cpp/include
 )
 
 target_link_libraries(keeper_runtime_test PRIVATE
@@ -39,7 +38,6 @@ add_executable(grapher_store_player_test
 
 target_include_directories(grapher_store_player_test PRIVATE
     ${CMAKE_SOURCE_DIR}/chrono_common/include
-    ${CMAKE_SOURCE_DIR}/Client/cpp/include
 )
 
 target_link_libraries(grapher_store_player_test PRIVATE

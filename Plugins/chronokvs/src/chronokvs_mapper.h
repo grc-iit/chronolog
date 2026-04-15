@@ -22,7 +22,9 @@ private:
     LogLevel logLevel_;
 
 public:
-    explicit ChronoKVSMapper(LogLevel level);
+    ChronoKVSMapper(LogLevel level,
+                    const chi::PoolId& keeper_pool_id,
+                    const chi::PoolId& player_pool_id);
 
     ~ChronoKVSMapper() = default;
 

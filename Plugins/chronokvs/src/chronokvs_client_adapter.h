@@ -38,7 +38,9 @@ private:
     void flushCachedHandle(const std::string& key);
 
 public:
-    explicit ChronoKVSClientAdapter(LogLevel level);
+    explicit ChronoKVSClientAdapter(LogLevel level,
+                                    const chi::PoolId& keeper_pool_id,
+                                    const chi::PoolId& player_pool_id);
 
     ~ChronoKVSClientAdapter();
 

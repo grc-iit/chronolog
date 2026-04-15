@@ -9,11 +9,11 @@
 
 #include <chronolog_types.h>
 #include <StoryChunk.h>
+#include <CteHelper.h>
 
 #include <string>
 #include <map>
 #include <mutex>
-#include <filesystem>
 
 namespace chronolog::player {
 
@@ -24,13 +24,11 @@ class Runtime : public chi::Container {
  private:
   Client client_;
 
-  // Archive root directory for HDF5 files
+  // Archive root (kept for config compatibility)
   std::string archive_root_;
 
-  // File index: (chronicle, story) -> map<start_time_ns, filepath>
-  std::mutex index_mutex_;
-  std::map<std::pair<std::string, std::string>,
-           std::map<uint64_t, std::string>> file_index_;
+  // CTE integration for reading stored chunks
+  chronolog::CteHelper cte_helper_;
 
  public:
   Runtime() = default;

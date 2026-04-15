@@ -11,6 +11,7 @@
 #include <StoryChunk.h>
 #include <StoryPipeline.h>
 #include <StoryChunkExtractionQueue.h>
+#include <CteHelper.h>
 
 #include <deque>
 #include <map>
@@ -94,6 +95,10 @@ class Runtime : public chi::Container {
 
   // Extraction queue for sealed story chunks
   chronolog::StoryChunkExtractionQueue extraction_queue_;
+
+  // CTE integration for storing extracted chunks
+  chronolog::CteHelper cte_helper_;
+  std::map<std::string, wrp_cte::core::TagId> tag_cache_;
 
  public:
   Runtime() = default;

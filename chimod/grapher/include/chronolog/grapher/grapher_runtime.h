@@ -12,6 +12,7 @@
 #include <StoryPipeline.h>
 #include <StoryChunkExtractionQueue.h>
 #include <StoryChunkIngestionHandle.h>
+#include <CteHelper.h>
 
 #include <unordered_map>
 #include <mutex>
@@ -39,6 +40,10 @@ class Runtime : public chi::Container {
 
   // Track total merge operations
   chi::u64 merge_counter_ = 0;
+
+  // CTE integration for chunk storage
+  chronolog::CteHelper cte_helper_;
+  std::map<std::string, wrp_cte::core::TagId> tag_cache_;
 
  public:
   Runtime() = default;

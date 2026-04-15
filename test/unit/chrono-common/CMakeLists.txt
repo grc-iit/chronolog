@@ -14,7 +14,6 @@ add_executable(story_chunk_test
 
 target_include_directories(story_chunk_test PRIVATE
     ${CMAKE_SOURCE_DIR}/chrono_common/include
-    ${CMAKE_SOURCE_DIR}/Client/cpp/include
 )
 
 target_link_libraries(story_chunk_test PRIVATE
@@ -35,7 +34,6 @@ add_executable(story_pipeline_test
 
 target_include_directories(story_pipeline_test PRIVATE
     ${CMAKE_SOURCE_DIR}/chrono_common/include
-    ${CMAKE_SOURCE_DIR}/Client/cpp/include
 )
 
 target_compile_definitions(story_pipeline_test PRIVATE CHRONOLOG_ENABLE_GTEST_FRIENDS)

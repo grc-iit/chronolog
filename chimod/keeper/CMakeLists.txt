@@ -5,7 +5,6 @@ add_chimod_client(
     src/keeper_client.cc
   INCLUDE_DIRECTORIES
     ${CMAKE_SOURCE_DIR}/chrono_common/include
-    ${CMAKE_SOURCE_DIR}/Client/cpp/include
 )
 
 add_chimod_runtime(
@@ -14,7 +13,6 @@ add_chimod_runtime(
     src/autogen/keeper_lib_exec.cc
   INCLUDE_DIRECTORIES
     ${CMAKE_SOURCE_DIR}/chrono_common/include
-    ${CMAKE_SOURCE_DIR}/Client/cpp/include
 )
 
 # Link chrono_common as PRIVATE to avoid export-set issues

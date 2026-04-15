@@ -1,101 +1,42 @@
 #include "chronolog/player/player_runtime.h"
 
-#include <filesystem>
 #include <string>
 #include <algorithm>
+#include <cstring>
+
+#include <CteHelper.h>
+#include <StoryChunkSerializer.h>
 
 namespace chronolog::player {
 
 // =========================================================================
-// Helper: scan archive directory and populate file_index_
+// Helper: pack one event into the SHM buffer
+// Format: [u64 time][u64 client_id][u32 index][u32 record_len][char[] record]
+// Returns bytes written, or 0 if buffer full.
 // =========================================================================
-static void scanArchiveDirectory(
-    const std::string& archive_root,
-    std::map<std::pair<std::string, std::string>,
-             std::map<uint64_t, std::string>>& file_index) {
-  namespace fs = std::filesystem;
+static uint64_t packEvent(char* buf, uint64_t buf_size, uint64_t offset,
+                          uint64_t ev_time, uint64_t client_id,
+                          uint32_t ev_index, const std::string& record) {
+  constexpr uint64_t kHeaderSize =
+      sizeof(uint64_t) + sizeof(uint64_t) + sizeof(uint32_t) + sizeof(uint32_t);
+  uint32_t record_len = static_cast<uint32_t>(record.size());
+  uint64_t needed = kHeaderSize + record_len;
+  if (offset + needed > buf_size) return 0;
 
-  file_index.clear();
-
-  if (!fs::exists(archive_root) || !fs::is_directory(archive_root)) {
-    // Archive root doesn't exist yet - will be populated later
-    return;
-  }
-
-  std::error_code ec;
-  for (auto& entry : fs::recursive_directory_iterator(archive_root, ec)) {
-    if (!entry.is_regular_file()) continue;
-
-    std::string ext = entry.path().extension().string();
-    if (ext != ".dat" && ext != ".h5") continue;
-
-    // Filename format: chronicle.story.startSec.endSec.ext
-    std::string stem = entry.path().stem().string();  // without final ext
-    // But .h5 stem still has the rest; we need the full filename minus path
-    std::string filename = entry.path().filename().string();
-
-    // Split filename by '.'
-    // Expected: chronicle.story.startSec.endSec.ext
-    // We need at least 5 parts
-    std::vector<std::string> parts;
-    size_t pos = 0;
-    std::string token;
-    std::string tmp = filename;
-    while ((pos = tmp.find('.')) != std::string::npos) {
-      parts.push_back(tmp.substr(0, pos));
-      tmp = tmp.substr(pos + 1);
-    }
-    parts.push_back(tmp);  // last part (extension)
-
-    if (parts.size() < 5) {
-      // skip malformed archive file
-      continue;
-    }
-
-    // Last part is extension, second-to-last is endSec, third-to-last is startSec
-    // Everything before that forms chronicle.story
-    std::string extension = parts.back();
-    parts.pop_back();
-    std::string end_sec_str = parts.back();
-    parts.pop_back();
-    std::string start_sec_str = parts.back();
-    parts.pop_back();
-
-    // Remaining parts: first is chronicle, rest form story name
-    if (parts.size() < 2) {
-      // skip file with missing chronicle/story
-      continue;
-    }
-
-    std::string chronicle_name = parts[0];
-    std::string story_name = parts[1];
-    // If there were extra dots in the story name, rejoin
-    for (size_t i = 2; i < parts.size(); ++i) {
-      story_name += "." + parts[i];
-    }
-
-    uint64_t start_time_secs = 0;
-    uint64_t end_time_secs = 0;
-    try {
-      start_time_secs = std::stoull(start_sec_str);
-      end_time_secs = std::stoull(end_sec_str);
-    } catch (...) {
-      // skip file with bad timestamps
-      continue;
-    }
-
-    // Convert seconds to nanoseconds for index key
-    uint64_t start_time_ns = start_time_secs * 1000000000ULL;
-
-    auto key = std::make_pair(chronicle_name, story_name);
-    file_index[key][start_time_ns] = entry.path().string();
-
-    // indexed: entry -> (chronicle, story) [start - end]
-  }
+  memcpy(buf + offset, &ev_time, sizeof(ev_time));
+  offset += sizeof(ev_time);
+  memcpy(buf + offset, &client_id, sizeof(client_id));
+  offset += sizeof(client_id);
+  memcpy(buf + offset, &ev_index, sizeof(ev_index));
+  offset += sizeof(ev_index);
+  memcpy(buf + offset, &record_len, sizeof(record_len));
+  offset += sizeof(record_len);
+  memcpy(buf + offset, record.data(), record_len);
+  return needed;
 }
 
 // =========================================================================
-// Create - Initialize container with archive_root from params
+// Create - Initialize container
 // =========================================================================
 chi::TaskResume Runtime::Create(hipc::FullPtr<CreateTask> task,
                                 chi::RunContext& rctx) {
@@ -103,17 +44,7 @@ chi::TaskResume Runtime::Create(hipc::FullPtr<CreateTask> task,
   auto params = task->GetParams();
   archive_root_ = params.archive_root_;
 
-  HLOG(kDebug, "player: Create pool {} archive_root={}",
-       task->pool_id_, archive_root_);
-
-  // Build the initial file index
-  {
-    std::lock_guard<std::mutex> lock(index_mutex_);
-    scanArchiveDirectory(archive_root_, file_index_);
-  }
-
-  HLOG(kInfo, "player: indexed {} story entries from archive",
-       file_index_.size());
+  HLOG(kInfo, "player: Create pool {} (CTE-backed)", task->pool_id_);
 
   (void)rctx;
   CHI_CO_RETURN;
@@ -126,10 +57,6 @@ chi::TaskResume Runtime::Create(hipc::FullPtr<CreateTask> task,
 chi::TaskResume Runtime::Destroy(hipc::FullPtr<DestroyTask> task,
                                  chi::RunContext& rctx) {
   CHI_TASK_BODY_BEGIN
-  {
-    std::lock_guard<std::mutex> lock(index_mutex_);
-    file_index_.clear();
-  }
   task->return_code_ = 0;
   task->error_message_ = "";
   (void)rctx;
@@ -138,17 +65,11 @@ chi::TaskResume Runtime::Destroy(hipc::FullPtr<DestroyTask> task,
 }
 
 // =========================================================================
-// Monitor - Rescan archive directory to pick up new files
+// Monitor - No-op (CTE handles its own maintenance)
 // =========================================================================
 chi::TaskResume Runtime::Monitor(hipc::FullPtr<MonitorTask> task,
                                  chi::RunContext& rctx) {
   CHI_TASK_BODY_BEGIN
-  {
-    std::lock_guard<std::mutex> lock(index_mutex_);
-    scanArchiveDirectory(archive_root_, file_index_);
-  }
-  HLOG(kDebug, "player: Monitor rescan complete, {} story entries indexed",
-       file_index_.size());
   task->SetReturnCode(0);
   (void)rctx;
   CHI_CO_RETURN;
@@ -156,7 +77,7 @@ chi::TaskResume Runtime::Monitor(hipc::FullPtr<MonitorTask> task,
 }
 
 // =========================================================================
-// ReplayStory - Count archive files overlapping the query time range
+// ReplayStory - Query CTE for matching blobs and return events
 // =========================================================================
 chi::TaskResume Runtime::ReplayStory(hipc::FullPtr<ReplayStoryTask> task,
                                      chi::RunContext& rctx) {
@@ -166,30 +87,63 @@ chi::TaskResume Runtime::ReplayStory(hipc::FullPtr<ReplayStoryTask> task,
   uint64_t start_time = task->start_time_;
   uint64_t end_time = task->end_time_;
 
-  uint32_t count = 0;
-  {
-    std::lock_guard<std::mutex> lock(index_mutex_);
-    auto key = std::make_pair(chronicle_name, story_name);
-    auto it = file_index_.find(key);
-    if (it != file_index_.end()) {
-      const auto& time_map = it->second;
-      // upper_bound(start_time) gives the first entry with key > start_time.
-      // We step back one to include the file that may contain start_time.
-      auto upper = time_map.upper_bound(start_time);
-      if (upper != time_map.begin()) {
-        --upper;
+  // Get the output buffer
+  char* buf = nullptr;
+  uint64_t buf_size = task->buffer_size_;
+  if (!task->event_data_.IsNull() && buf_size > 0) {
+    auto char_ptr = task->event_data_.template Cast<char>();
+    hipc::FullPtr<char> buf_fullptr = CHI_IPC->ToFullPtr<char>(char_ptr);
+    buf = buf_fullptr.ptr_;
+  }
+
+  uint32_t total_events = 0;
+  uint64_t offset = 0;
+
+  if (buf != nullptr) {
+    // Get CTE tag for this chronicle
+    auto tag_id = cte_helper_.getOrCreateTag(chronicle_name);
+    auto blobs = cte_helper_.listChunks(tag_id);
+
+    // Filter blobs by story name and time range overlap
+    for (const auto& blob_name : blobs) {
+      std::string parsed_story;
+      uint64_t blob_start, blob_end;
+      if (!chronolog::StoryChunkSerializer::parseBlobName(
+              blob_name, parsed_story, blob_start, blob_end)) {
+        continue;
       }
-      // Count all files from upper through those whose start_time < end_time
-      for (auto file_it = upper; file_it != time_map.end(); ++file_it) {
-        if (file_it->first >= end_time) break;
-        ++count;
+      if (parsed_story != story_name) continue;
+      if (blob_start >= end_time || blob_end <= start_time) continue;
+
+      // Fetch chunk from CTE
+      chronolog::StoryChunk* chunk = cte_helper_.getChunk(tag_id, blob_name);
+      if (!chunk) continue;
+
+      // Pack matching events into the output buffer
+      for (auto it = chunk->begin(); it != chunk->end(); ++it) {
+        const chronolog::LogEvent& ev = it->second;
+        if (ev.eventTime < start_time || ev.eventTime >= end_time) continue;
+
+        uint64_t written = packEvent(
+            buf, buf_size, offset,
+            ev.eventTime, ev.clientId, ev.eventIndex, ev.logRecord);
+        if (written == 0) {
+          delete chunk;
+          goto done;  // buffer full
+        }
+        offset += written;
+        ++total_events;
       }
+      delete chunk;
     }
   }
 
-  task->event_count_ = count;
-  HLOG(kDebug, "player: ReplayStory {}/{} [{}-{}] matched {} archive files",
-       chronicle_name, story_name, start_time, end_time, count);
+done:
+  task->event_count_ = total_events;
+  task->bytes_written_ = offset;
+  HLOG(kDebug, "player: ReplayStory {}/{} [{}-{}] returned {} events ({} bytes)",
+       chronicle_name, story_name, start_time, end_time,
+       total_events, offset);
 
   task->SetReturnCode(0);
   (void)rctx;
@@ -198,35 +152,12 @@ chi::TaskResume Runtime::ReplayStory(hipc::FullPtr<ReplayStoryTask> task,
 }
 
 // =========================================================================
-// ReplayChronicle - Aggregate file counts across all stories in a chronicle
+// ReplayChronicle - Replay all stories in a chronicle
 // =========================================================================
 chi::TaskResume Runtime::ReplayChronicle(
     hipc::FullPtr<ReplayChronicleTask> task, chi::RunContext& rctx) {
   CHI_TASK_BODY_BEGIN
-  std::string chronicle_name(task->chronicle_name_.c_str());
-  uint64_t start_time = task->start_time_;
-  uint64_t end_time = task->end_time_;
-
-  uint32_t total_count = 0;
-  {
-    std::lock_guard<std::mutex> lock(index_mutex_);
-    for (const auto& [key, time_map] : file_index_) {
-      if (key.first != chronicle_name) continue;
-
-      auto upper = time_map.upper_bound(start_time);
-      if (upper != time_map.begin()) {
-        --upper;
-      }
-      for (auto file_it = upper; file_it != time_map.end(); ++file_it) {
-        if (file_it->first >= end_time) break;
-        ++total_count;
-      }
-    }
-  }
-
-  HLOG(kDebug, "player: ReplayChronicle {} [{}-{}] matched {} archive files",
-       chronicle_name, start_time, end_time, total_count);
-
+  // TODO: Implement via CTE tag query
   task->SetReturnCode(0);
   (void)rctx;
   CHI_CO_RETURN;
@@ -234,7 +165,7 @@ chi::TaskResume Runtime::ReplayChronicle(
 }
 
 // =========================================================================
-// GetStoryInfo - Find earliest and latest times for a story
+// GetStoryInfo - Find earliest and latest times for a story via CTE
 // =========================================================================
 chi::TaskResume Runtime::GetStoryInfo(hipc::FullPtr<GetStoryInfoTask> task,
                                       chi::RunContext& rctx) {
@@ -245,20 +176,23 @@ chi::TaskResume Runtime::GetStoryInfo(hipc::FullPtr<GetStoryInfoTask> task,
   uint64_t earliest = UINT64_MAX;
   uint64_t latest = 0;
 
-  {
-    std::lock_guard<std::mutex> lock(index_mutex_);
-    auto key = std::make_pair(chronicle_name, story_name);
-    auto it = file_index_.find(key);
-    if (it != file_index_.end() && !it->second.empty()) {
-      // Keys are start_time_ns, sorted ascending
-      earliest = it->second.begin()->first;
-      latest = it->second.rbegin()->first;
+  auto tag_id = cte_helper_.getOrCreateTag(chronicle_name);
+  auto blobs = cte_helper_.listChunks(tag_id);
+
+  for (const auto& blob_name : blobs) {
+    std::string parsed_story;
+    uint64_t blob_start, blob_end;
+    if (!chronolog::StoryChunkSerializer::parseBlobName(
+            blob_name, parsed_story, blob_start, blob_end)) {
+      continue;
     }
+    if (parsed_story != story_name) continue;
+
+    if (blob_start < earliest) earliest = blob_start;
+    if (blob_end > latest) latest = blob_end;
   }
 
-  if (earliest == UINT64_MAX) {
-    earliest = 0;
-  }
+  if (earliest == UINT64_MAX) earliest = 0;
 
   task->earliest_time_ = earliest;
   task->latest_time_ = latest;
@@ -273,7 +207,7 @@ chi::TaskResume Runtime::GetStoryInfo(hipc::FullPtr<GetStoryInfoTask> task,
 }
 
 // =========================================================================
-// GetWorkRemaining - Report pending work for scheduler
+// GetWorkRemaining
 // =========================================================================
 chi::u64 Runtime::GetWorkRemaining() const {
   return 0;

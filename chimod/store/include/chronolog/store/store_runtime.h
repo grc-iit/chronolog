@@ -9,10 +9,10 @@
 
 #include <chronolog_types.h>
 #include <StoryChunk.h>
+#include <CteHelper.h>
 
 #include <string>
 #include <mutex>
-#include <filesystem>
 
 namespace chronolog::store {
 
@@ -28,6 +28,9 @@ class Runtime : public chi::Container {
 
   // Track archive operations
   chi::u64 archive_counter_ = 0;
+
+  // CTE integration
+  chronolog::CteHelper cte_helper_;
 
  public:
   Runtime() = default;

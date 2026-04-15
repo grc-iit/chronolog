@@ -14,10 +14,12 @@ namespace chronokvs
 constexpr uint64_t MIN_TIMESTAMP = 1;          // Earliest possible timestamp
 constexpr uint64_t MAX_TIMESTAMP = UINT64_MAX; // Maximum possible uint64_t value
 
-ChronoKVSMapper::ChronoKVSMapper(LogLevel level)
+ChronoKVSMapper::ChronoKVSMapper(LogLevel level,
+                                 const chi::PoolId& keeper_pool_id,
+                                 const chi::PoolId& player_pool_id)
     : logLevel_(level)
 {
-    chronoClientAdapter = std::make_unique<ChronoKVSClientAdapter>(level);
+    chronoClientAdapter = std::make_unique<ChronoKVSClientAdapter>(level, keeper_pool_id, player_pool_id);
 }
 
 std::uint64_t ChronoKVSMapper::storeKeyValue(const std::string& key, const std::string& value)

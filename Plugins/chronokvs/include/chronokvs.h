@@ -24,10 +24,14 @@ private:
 
 public:
     /**
-     * @brief Construct a ChronoKVS instance with optional log level
+     * @brief Construct a ChronoKVS instance.
+     * @param keeper_pool_id The chimaera pool ID for the keeper chimod.
+     * @param player_pool_id The chimaera pool ID for the player chimod.
      * @param level The logging level to use. Default is DEBUG in debug builds, ERROR in release builds.
      */
-    explicit ChronoKVS(LogLevel level = getDefaultLogLevel());
+    ChronoKVS(const chi::PoolId& keeper_pool_id,
+              const chi::PoolId& player_pool_id,
+              LogLevel level = getDefaultLogLevel());
 
     /**
      * @brief Get the current log level

@@ -278,6 +278,11 @@ add_subdirectory(chimod/grapher)
 add_subdirectory(chimod/player)
 add_subdirectory(chimod/store)
 
+#------------------------------------------------------------------------------
+# ChronoLog Plugins
+#------------------------------------------------------------------------------
+add_subdirectory(Plugins)
+
 if(CHRONOLOG_BUILD_TESTS_NOW)
     enable_testing()
     add_subdirectory(test)

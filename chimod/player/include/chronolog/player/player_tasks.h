@@ -40,13 +40,19 @@ struct ReplayStoryTask : public chi::Task {
   IN chi::priv::string story_name_;
   IN chi::u64 start_time_;
   IN chi::u64 end_time_;
-  OUT chi::u32 event_count_;
+  IN hipc::ShmPtr<> event_data_;    // Caller-allocated SHM buffer for output events
+  IN chi::u64 buffer_size_;         // Size of allocated buffer in bytes
+  OUT chi::u32 event_count_;        // Number of events written to buffer
+  OUT chi::u64 bytes_written_;      // Actual bytes written to buffer
 
   ReplayStoryTask()
       : chi::Task(),
         chronicle_name_(CHI_PRIV_ALLOC),
         story_name_(CHI_PRIV_ALLOC),
-        start_time_(0), end_time_(0), event_count_(0) {}
+        start_time_(0), end_time_(0),
+        event_data_(hipc::ShmPtr<>::GetNull()),
+        buffer_size_(0),
+        event_count_(0), bytes_written_(0) {}
 
   explicit ReplayStoryTask(
       const chi::TaskId& task_node,
@@ -55,11 +61,16 @@ struct ReplayStoryTask : public chi::Task {
       const std::string& chronicle_name,
       const std::string& story_name,
       chi::u64 start_time,
-      chi::u64 end_time)
+      chi::u64 end_time,
+      hipc::ShmPtr<> event_data,
+      chi::u64 buffer_size)
       : chi::Task(task_node, pool_id, pool_query, Method::kReplayStory),
         chronicle_name_(CHI_PRIV_ALLOC, chronicle_name),
         story_name_(CHI_PRIV_ALLOC, story_name),
-        start_time_(start_time), end_time_(end_time), event_count_(0) {
+        start_time_(start_time), end_time_(end_time),
+        event_data_(event_data),
+        buffer_size_(buffer_size),
+        event_count_(0), bytes_written_(0) {
     task_id_ = task_node;
     pool_id_ = pool_id;
     method_ = Method::kReplayStory;
@@ -70,13 +81,16 @@ struct ReplayStoryTask : public chi::Task {
   template<typename Archive>
   HSHM_CROSS_FUN void SerializeIn(Archive& ar) {
     Task::SerializeIn(ar);
-    ar(chronicle_name_, story_name_, start_time_, end_time_);
+    ar(chronicle_name_, story_name_, start_time_, end_time_,
+       event_data_, buffer_size_);
+    ar.bulk(event_data_, buffer_size_, BULK_EXPOSE);
   }
 
   template<typename Archive>
   HSHM_CROSS_FUN void SerializeOut(Archive& ar) {
     Task::SerializeOut(ar);
-    ar(event_count_);
+    ar(event_count_, bytes_written_);
+    ar.bulk(event_data_, bytes_written_, BULK_XFER);
   }
 
   void Copy(const hipc::FullPtr<ReplayStoryTask>& other) {
@@ -85,7 +99,10 @@ struct ReplayStoryTask : public chi::Task {
     story_name_ = other->story_name_;
     start_time_ = other->start_time_;
     end_time_ = other->end_time_;
+    event_data_ = other->event_data_;
+    buffer_size_ = other->buffer_size_;
     event_count_ = other->event_count_;
+    bytes_written_ = other->bytes_written_;
   }
 
   void Aggregate(const hipc::FullPtr<chi::Task>& other_base) {

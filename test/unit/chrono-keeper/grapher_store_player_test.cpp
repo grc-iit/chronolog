@@ -129,234 +129,129 @@ TEST_F(GrapherTest, MultiplePipelinesIndependent) {
 }
 
 // =========================================================================
-// STORE DOMAIN LOGIC TESTS
+// STORY CHUNK SERIALIZER TESTS
 // =========================================================================
 
-class StoreTest : public ::testing::Test {
+#include <StoryChunkSerializer.h>
+
+class SerializerTest : public ::testing::Test {
  protected:
-  std::string archive_root;
-
-  void SetUp() override {
-    initLogger();
-    archive_root = "/tmp/chronolog_test_store_" +
-                   std::to_string(std::chrono::steady_clock::now()
-                                      .time_since_epoch().count());
-    fs::create_directories(archive_root);
-  }
-
-  void TearDown() override {
-    fs::remove_all(archive_root);
-  }
+  void SetUp() override { initLogger(); }
 };
 
-TEST_F(StoreTest, ArchiveCreatesDirectoryAndFile) {
-  std::string chronicle = "weather";
-  std::string story = "station1";
-  uint64_t start = 10 * NS;
-  uint64_t end = 20 * NS;
+TEST_F(SerializerTest, SerializeDeserializeRoundTrip) {
+  chl::StoryChunk chunk("weather", "station1", 42, 100 * NS, 200 * NS);
+  chunk.insertEvent(chl::LogEvent(42, 110 * NS, 1, 0, "temp=25.5"));
+  chunk.insertEvent(chl::LogEvent(42, 120 * NS, 1, 1, "temp=26.0"));
+  chunk.insertEvent(chl::LogEvent(42, 130 * NS, 2, 0, "humidity=80%"));
 
-  // Simulate store ArchiveChunk logic
-  fs::path chronicle_dir = fs::path(archive_root) / chronicle;
-  fs::create_directories(chronicle_dir);
+  ASSERT_EQ(chunk.getEventCount(), 3);
 
-  uint64_t start_s = start / NS;
-  uint64_t end_s = end / NS;
-  std::string filename = chronicle + "." + story + "." +
-                         std::to_string(start_s) + "." +
-                         std::to_string(end_s) + ".dat";
-  fs::path filepath = chronicle_dir / filename;
+  // Serialize
+  size_t buf_size = chl::StoryChunkSerializer::computeSerializedSize(chunk);
+  ASSERT_GT(buf_size, 0);
 
-  std::ofstream ofs(filepath, std::ios::out | std::ios::trunc);
-  ASSERT_TRUE(ofs.is_open());
-  ofs << "story_id=42\n";
-  ofs << "start_time=" << start << "\n";
-  ofs << "end_time=" << end << "\n";
-  ofs.close();
+  std::vector<char> buf(buf_size);
+  size_t written = chl::StoryChunkSerializer::serialize(chunk, buf.data(), buf_size);
+  ASSERT_EQ(written, buf_size);
 
-  EXPECT_TRUE(fs::exists(filepath));
-  EXPECT_GT(fs::file_size(filepath), 0);
-}
+  // Deserialize
+  chl::StoryChunk* restored = chl::StoryChunkSerializer::deserialize(buf.data(), buf_size);
+  ASSERT_NE(restored, nullptr);
 
-TEST_F(StoreTest, ReadChunkFindsOverlappingFiles) {
-  std::string chronicle = "weather";
-  std::string story = "station1";
+  EXPECT_EQ(restored->getChronicleName(), "weather");
+  EXPECT_EQ(restored->getStoryName(), "station1");
+  EXPECT_EQ(restored->getStoryId(), 42);
+  EXPECT_EQ(restored->getStartTime(), 100 * NS);
+  EXPECT_EQ(restored->getEndTime(), 200 * NS);
+  EXPECT_EQ(restored->getEventCount(), 3);
 
-  fs::path chronicle_dir = fs::path(archive_root) / chronicle;
-  fs::create_directories(chronicle_dir);
-
-  // Create three archive files with different time ranges
-  auto create_file = [&](uint64_t start_s, uint64_t end_s) {
-    std::string fname = chronicle + "." + story + "." +
-                        std::to_string(start_s) + "." +
-                        std::to_string(end_s) + ".dat";
-    std::ofstream ofs(chronicle_dir / fname);
-    ofs << "data\n";
-    ofs.close();
-  };
-
-  create_file(10, 20);  // [10s, 20s)
-  create_file(20, 30);  // [20s, 30s)
-  create_file(30, 40);  // [30s, 40s)
-
-  // Query [15s, 25s) should match files [10,20) and [20,30)
-  uint64_t query_start_s = 15;
-  uint64_t query_end_s = 25;
-  std::string prefix = chronicle + "." + story + ".";
-
-  uint32_t match_count = 0;
-  for (const auto& entry : fs::directory_iterator(chronicle_dir)) {
-    if (!entry.is_regular_file()) continue;
-    std::string fname = entry.path().filename().string();
-    if (fname.rfind(prefix, 0) != 0) continue;
-    if (fname.substr(fname.size() - 4) != ".dat") continue;
-
-    std::string suffix = fname.substr(prefix.size());
-    suffix = suffix.substr(0, suffix.size() - 4);
-    auto dot_pos = suffix.find('.');
-    if (dot_pos == std::string::npos) continue;
-
-    uint64_t file_start = std::stoull(suffix.substr(0, dot_pos));
-    uint64_t file_end = std::stoull(suffix.substr(dot_pos + 1));
-
-    if (file_start < query_end_s && file_end > query_start_s) {
-      match_count++;
-    }
+  // Verify events match
+  auto orig_it = chunk.begin();
+  auto rest_it = restored->begin();
+  for (; orig_it != chunk.end() && rest_it != restored->end();
+       ++orig_it, ++rest_it) {
+    EXPECT_EQ(orig_it->second.eventTime, rest_it->second.eventTime);
+    EXPECT_EQ(orig_it->second.clientId, rest_it->second.clientId);
+    EXPECT_EQ(orig_it->second.eventIndex, rest_it->second.eventIndex);
+    EXPECT_EQ(orig_it->second.logRecord, rest_it->second.logRecord);
   }
 
-  EXPECT_EQ(match_count, 2);
+  delete restored;
 }
 
-TEST_F(StoreTest, ListArchivesFindsChronicleDirectories) {
-  fs::create_directories(fs::path(archive_root) / "weather");
-  fs::create_directories(fs::path(archive_root) / "sensors");
-  fs::create_directories(fs::path(archive_root) / "logs");
+TEST_F(SerializerTest, EmptyChunkRoundTrip) {
+  chl::StoryChunk chunk("logs", "app1", 99, 0, 10 * NS);
+  ASSERT_EQ(chunk.getEventCount(), 0);
 
-  int count = 0;
-  for (const auto& entry : fs::directory_iterator(archive_root)) {
-    if (entry.is_directory()) count++;
-  }
-  EXPECT_EQ(count, 3);
+  size_t buf_size = chl::StoryChunkSerializer::computeSerializedSize(chunk);
+  std::vector<char> buf(buf_size);
+  size_t written = chl::StoryChunkSerializer::serialize(chunk, buf.data(), buf_size);
+  ASSERT_EQ(written, buf_size);
+
+  chl::StoryChunk* restored = chl::StoryChunkSerializer::deserialize(buf.data(), buf_size);
+  ASSERT_NE(restored, nullptr);
+  EXPECT_EQ(restored->getChronicleName(), "logs");
+  EXPECT_EQ(restored->getStoryName(), "app1");
+  EXPECT_EQ(restored->getEventCount(), 0);
+
+  delete restored;
 }
 
-// =========================================================================
-// PLAYER DOMAIN LOGIC TESTS
-// =========================================================================
+TEST_F(SerializerTest, BufferTooSmallReturnsZero) {
+  chl::StoryChunk chunk("c", "s", 1, 0, NS);
+  chunk.insertEvent(chl::LogEvent(1, 1, 1, 0, "data"));
 
-class PlayerTest : public ::testing::Test {
- protected:
-  std::string archive_root;
-  // File index type matching player runtime
-  std::map<std::pair<std::string, std::string>,
-           std::map<uint64_t, std::string>> file_index;
-
-  void SetUp() override {
-    initLogger();
-    archive_root = "/tmp/chronolog_test_player_" +
-                   std::to_string(std::chrono::steady_clock::now()
-                                      .time_since_epoch().count());
-    fs::create_directories(archive_root);
-  }
-
-  void TearDown() override {
-    fs::remove_all(archive_root);
-  }
-
-  void createArchiveFile(const std::string& chronicle,
-                         const std::string& story,
-                         uint64_t start_s, uint64_t end_s) {
-    fs::path dir = fs::path(archive_root) / chronicle;
-    fs::create_directories(dir);
-    std::string fname = chronicle + "." + story + "." +
-                        std::to_string(start_s) + "." +
-                        std::to_string(end_s) + ".dat";
-    std::ofstream ofs(dir / fname);
-    ofs << "data\n";
-    ofs.close();
-
-    // Also add to index
-    auto key = std::make_pair(chronicle, story);
-    file_index[key][start_s * NS] = (dir / fname).string();
-  }
-};
-
-TEST_F(PlayerTest, ScanBuildsIndex) {
-  createArchiveFile("weather", "station1", 10, 20);
-  createArchiveFile("weather", "station1", 20, 30);
-  createArchiveFile("weather", "station2", 10, 20);
-
-  EXPECT_EQ(file_index.size(), 2);  // 2 unique (chronicle, story) pairs
-  auto key1 = std::make_pair(std::string("weather"), std::string("station1"));
-  EXPECT_EQ(file_index[key1].size(), 2);  // 2 time entries
+  size_t needed = chl::StoryChunkSerializer::computeSerializedSize(chunk);
+  std::vector<char> buf(needed / 2);  // too small
+  size_t written = chl::StoryChunkSerializer::serialize(chunk, buf.data(), buf.size());
+  EXPECT_EQ(written, 0);
 }
 
-TEST_F(PlayerTest, ReplayStoryFindsOverlappingFiles) {
-  createArchiveFile("weather", "station1", 10, 20);
-  createArchiveFile("weather", "station1", 20, 30);
-  createArchiveFile("weather", "station1", 30, 40);
-
-  // Query [15*NS, 25*NS)
-  uint64_t start_time = 15 * NS;
-  uint64_t end_time = 25 * NS;
-
-  auto key = std::make_pair(std::string("weather"), std::string("station1"));
-  auto it = file_index.find(key);
-  ASSERT_NE(it, file_index.end());
-
-  const auto& time_map = it->second;
-  auto upper = time_map.upper_bound(start_time);
-  if (upper != time_map.begin()) --upper;
-
-  uint32_t count = 0;
-  for (auto file_it = upper; file_it != time_map.end(); ++file_it) {
-    if (file_it->first >= end_time) break;
-    count++;
-  }
-
-  EXPECT_EQ(count, 2);  // Files starting at 10s and 20s
+TEST_F(SerializerTest, MakeBlobName) {
+  std::string name = chl::StoryChunkSerializer::makeBlobName("station1", 100, 200);
+  EXPECT_EQ(name, "station1.100.200");
 }
 
-TEST_F(PlayerTest, GetStoryInfoFindsMinMax) {
-  createArchiveFile("weather", "station1", 10, 20);
-  createArchiveFile("weather", "station1", 20, 30);
-  createArchiveFile("weather", "station1", 50, 60);
-
-  auto key = std::make_pair(std::string("weather"), std::string("station1"));
-  auto it = file_index.find(key);
-  ASSERT_NE(it, file_index.end());
-
-  uint64_t earliest = it->second.begin()->first;
-  uint64_t latest = it->second.rbegin()->first;
-
-  EXPECT_EQ(earliest, 10 * NS);
-  EXPECT_EQ(latest, 50 * NS);
+TEST_F(SerializerTest, ParseBlobName) {
+  std::string story;
+  uint64_t start, end;
+  ASSERT_TRUE(chl::StoryChunkSerializer::parseBlobName("station1.100.200", story, start, end));
+  EXPECT_EQ(story, "station1");
+  EXPECT_EQ(start, 100);
+  EXPECT_EQ(end, 200);
 }
 
-TEST_F(PlayerTest, ReplayChronicleAcrossStories) {
-  createArchiveFile("weather", "station1", 10, 20);
-  createArchiveFile("weather", "station2", 15, 25);
-  createArchiveFile("sensors", "temp1", 10, 20);
-
-  // Query all weather stories in [0, 30*NS)
-  uint64_t start_time = 0;
-  uint64_t end_time = 30 * NS;
-  std::string chronicle = "weather";
-
-  uint32_t total = 0;
-  for (const auto& [key, time_map] : file_index) {
-    if (key.first != chronicle) continue;
-    auto upper = time_map.upper_bound(start_time);
-    if (upper != time_map.begin()) --upper;
-    for (auto file_it = upper; file_it != time_map.end(); ++file_it) {
-      if (file_it->first >= end_time) break;
-      total++;
-    }
-  }
-
-  EXPECT_EQ(total, 2);  // station1 + station2
+TEST_F(SerializerTest, ParseBlobNameInvalid) {
+  std::string story;
+  uint64_t start, end;
+  EXPECT_FALSE(chl::StoryChunkSerializer::parseBlobName("invalid", story, start, end));
+  EXPECT_FALSE(chl::StoryChunkSerializer::parseBlobName("a.b", story, start, end));
 }
 
-TEST_F(PlayerTest, EmptyIndexReturnsNoResults) {
-  auto key = std::make_pair(std::string("nonexistent"), std::string("story"));
-  auto it = file_index.find(key);
-  EXPECT_EQ(it, file_index.end());
+TEST_F(SerializerTest, ParseBlobNameWithDotsInStory) {
+  std::string story;
+  uint64_t start, end;
+  ASSERT_TRUE(chl::StoryChunkSerializer::parseBlobName("my.station.100.200", story, start, end));
+  EXPECT_EQ(story, "my.station");
+  EXPECT_EQ(start, 100);
+  EXPECT_EQ(end, 200);
+}
+
+TEST_F(SerializerTest, LargePayloadRoundTrip) {
+  chl::StoryChunk chunk("bigdata", "stream1", 7, 0, 100 * NS);
+  std::string large_record(8192, 'X');
+  chunk.insertEvent(chl::LogEvent(7, 50 * NS, 1, 0, large_record));
+
+  size_t buf_size = chl::StoryChunkSerializer::computeSerializedSize(chunk);
+  std::vector<char> buf(buf_size);
+  size_t written = chl::StoryChunkSerializer::serialize(chunk, buf.data(), buf_size);
+  ASSERT_EQ(written, buf_size);
+
+  chl::StoryChunk* restored = chl::StoryChunkSerializer::deserialize(buf.data(), buf_size);
+  ASSERT_NE(restored, nullptr);
+  EXPECT_EQ(restored->getEventCount(), 1);
+  EXPECT_EQ(restored->begin()->second.logRecord, large_record);
+
+  delete restored;
 }

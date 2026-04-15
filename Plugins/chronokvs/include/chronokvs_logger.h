@@ -18,25 +18,25 @@ namespace chronokvs
  */
 enum class LogLevel : std::uint8_t
 {
-    TRACE = 0,    // Most verbose - function entry/exit, detailed flow
-    DEBUG = 1,    // Debug information - parameters, intermediate states
-    INFO = 2,     // Informational - significant operations
-    WARNING = 3,  // Warning - potential issues
-    ERROR = 4,    // Error - operation failures
-    CRITICAL = 5, // Critical - severe failures
-    OFF = 6       // No logging
+    LvlTrace = 0,    // Most verbose - function entry/exit, detailed flow
+    LvlDebug = 1,    // Debug information - parameters, intermediate states
+    LvlInfo = 2,     // Informational - significant operations
+    LvlWarning = 3,  // Warning - potential issues
+    LvlError = 4,    // Error - operation failures
+    LvlCritical = 5, // Critical - severe failures
+    LvlOff = 6       // No logging
 };
 
 /**
  * @brief Get the default log level based on build type
- * @return LogLevel::DEBUG in Debug builds, LogLevel::ERROR in Release builds
+ * @return LogLevel::LvlDebug in Debug builds, LogLevel::LvlError in Release builds
  */
 inline LogLevel getDefaultLogLevel()
 {
 #ifdef NDEBUG
-    return LogLevel::ERROR; // Release: errors only
+    return LogLevel::LvlError; // Release: errors only
 #else
-    return LogLevel::DEBUG; // Debug: show debug logs
+    return LogLevel::LvlDebug; // Debug: show debug logs
 #endif
 }
 
@@ -49,19 +49,19 @@ inline const char* logLevelToString(LogLevel level)
 {
     switch(level)
     {
-        case LogLevel::TRACE:
+        case LogLevel::LvlTrace:
             return "TRACE";
-        case LogLevel::DEBUG:
+        case LogLevel::LvlDebug:
             return "DEBUG";
-        case LogLevel::INFO:
+        case LogLevel::LvlInfo:
             return "INFO";
-        case LogLevel::WARNING:
+        case LogLevel::LvlWarning:
             return "WARNING";
-        case LogLevel::ERROR:
+        case LogLevel::LvlError:
             return "ERROR";
-        case LogLevel::CRITICAL:
+        case LogLevel::LvlCritical:
             return "CRITICAL";
-        case LogLevel::OFF:
+        case LogLevel::LvlOff:
             return "OFF";
         default:
             return "UNKNOWN";
@@ -124,17 +124,17 @@ inline std::string format_log_message(const char* fmt, T&& arg)
 #else
 #define CHRONOKVS_TRACE(level, ...)                                                                                    \
     do {                                                                                                               \
-        if((level) <= chronokvs::LogLevel::TRACE)                                                                      \
+        if((level) <= chronokvs::LogLevel::LvlTrace)                                                                      \
         {                                                                                                              \
-            chronokvs::log_message(chronokvs::LogLevel::TRACE, chronokvs::format_log_message(__VA_ARGS__));            \
+            chronokvs::log_message(chronokvs::LogLevel::LvlTrace, chronokvs::format_log_message(__VA_ARGS__));            \
         }                                                                                                              \
     } while(0)
 
 #define CHRONOKVS_DEBUG(level, ...)                                                                                    \
     do {                                                                                                               \
-        if((level) <= chronokvs::LogLevel::DEBUG)                                                                      \
+        if((level) <= chronokvs::LogLevel::LvlDebug)                                                                      \
         {                                                                                                              \
-            chronokvs::log_message(chronokvs::LogLevel::DEBUG, chronokvs::format_log_message(__VA_ARGS__));            \
+            chronokvs::log_message(chronokvs::LogLevel::LvlDebug, chronokvs::format_log_message(__VA_ARGS__));            \
         }                                                                                                              \
     } while(0)
 #endif
@@ -145,33 +145,33 @@ inline std::string format_log_message(const char* fmt, T&& arg)
  */
 #define CHRONOKVS_INFO(level, ...)                                                                                     \
     do {                                                                                                               \
-        if((level) <= chronokvs::LogLevel::INFO)                                                                       \
+        if((level) <= chronokvs::LogLevel::LvlInfo)                                                                       \
         {                                                                                                              \
-            chronokvs::log_message(chronokvs::LogLevel::INFO, chronokvs::format_log_message(__VA_ARGS__));             \
+            chronokvs::log_message(chronokvs::LogLevel::LvlInfo, chronokvs::format_log_message(__VA_ARGS__));             \
         }                                                                                                              \
     } while(0)
 
 #define CHRONOKVS_WARNING(level, ...)                                                                                  \
     do {                                                                                                               \
-        if((level) <= chronokvs::LogLevel::WARNING)                                                                    \
+        if((level) <= chronokvs::LogLevel::LvlWarning)                                                                    \
         {                                                                                                              \
-            chronokvs::log_message(chronokvs::LogLevel::WARNING, chronokvs::format_log_message(__VA_ARGS__));          \
+            chronokvs::log_message(chronokvs::LogLevel::LvlWarning, chronokvs::format_log_message(__VA_ARGS__));          \
         }                                                                                                              \
     } while(0)
 
 #define CHRONOKVS_ERROR(level, ...)                                                                                    \
     do {                                                                                                               \
-        if((level) <= chronokvs::LogLevel::ERROR)                                                                      \
+        if((level) <= chronokvs::LogLevel::LvlError)                                                                      \
         {                                                                                                              \
-            chronokvs::log_message(chronokvs::LogLevel::ERROR, chronokvs::format_log_message(__VA_ARGS__));            \
+            chronokvs::log_message(chronokvs::LogLevel::LvlError, chronokvs::format_log_message(__VA_ARGS__));            \
         }                                                                                                              \
     } while(0)
 
 #define CHRONOKVS_CRITICAL(level, ...)                                                                                 \
     do {                                                                                                               \
-        if((level) <= chronokvs::LogLevel::CRITICAL)                                                                   \
+        if((level) <= chronokvs::LogLevel::LvlCritical)                                                                   \
         {                                                                                                              \
-            chronokvs::log_message(chronokvs::LogLevel::CRITICAL, chronokvs::format_log_message(__VA_ARGS__));         \
+            chronokvs::log_message(chronokvs::LogLevel::LvlCritical, chronokvs::format_log_message(__VA_ARGS__));         \
         }                                                                                                              \
     } while(0)
 

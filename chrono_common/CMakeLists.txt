@@ -12,18 +12,21 @@ add_library(chrono_common STATIC
     src/StoryChunk.cpp
     src/StoryChunkWriter.cpp
     src/StoryPipeline.cpp
-    ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
+    src/chrono_monitor.cpp
+    src/ChronologClient.cpp
+    src/CteHelper.cpp
 )
 
 target_include_directories(chrono_common
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/Client/cpp/include>
-    PRIVATE
-        ${CMAKE_SOURCE_DIR}/Client/cpp/include
 )
 
 target_link_libraries(chrono_common
+    PUBLIC
+        chronolog_keeper_client
+        chronolog_player_client
+        wrp_cte_core_client
     PRIVATE
         ${HDF5_LIBRARIES}
         spdlog::spdlog

@@ -4,7 +4,8 @@
 #include <string>
 #include <stdexcept>
 #include <vector>
-#include <ClientConfiguration.h>
+
+#include <chimaera/chimaera.h>
 
 #include "chronokvs_client_adapter.h"
 
@@ -12,40 +13,16 @@
 namespace chronokvs
 {
 
-// Default flags for ChronoLog operations - not const since the API requires non-const reference
-static int DEFAULT_FLAGS = 0;
-
-ChronoKVSClientAdapter::ChronoKVSClientAdapter(LogLevel level)
+ChronoKVSClientAdapter::ChronoKVSClientAdapter(LogLevel level,
+                                               const chi::PoolId& keeper_pool_id,
+                                               const chi::PoolId& player_pool_id)
     : logLevel_(level)
 {
-    chronolog::ClientConfiguration confManager;
-
-    // Configure portal and query services from the configuration manager
-    chronolog::ClientPortalServiceConf portalConf{confManager.PORTAL_CONF.PROTO_CONF,
-                                                  confManager.PORTAL_CONF.IP,
-                                                  confManager.PORTAL_CONF.PORT,
-                                                  confManager.PORTAL_CONF.PROVIDER_ID};
-
-    chronolog::ClientQueryServiceConf queryConf{confManager.QUERY_CONF.PROTO_CONF,
-                                                confManager.QUERY_CONF.IP,
-                                                confManager.QUERY_CONF.PORT,
-                                                confManager.QUERY_CONF.PROVIDER_ID};
-
-    // Initialize and connect the ChronoLog client
-    CHRONOKVS_INFO(logLevel_, "Connecting to ChronoLog at ", portalConf.IP, ":", portalConf.PORT);
-    chronolog = std::make_unique<chronolog::Client>(portalConf, queryConf);
-    if(int ret = chronolog->Connect(); ret != chronolog::CL_SUCCESS)
-    {
-        CHRONOKVS_ERROR(logLevel_, "Connection failed with error code: ", ret);
-        chronolog->Disconnect();
-        chronolog.reset();
-        throw std::runtime_error("Failed to connect to ChronoLog with error code: " + std::to_string(ret));
-    }
-    CHRONOKVS_INFO(logLevel_, "Connected successfully");
+    CHRONOKVS_INFO(logLevel_, "Initializing ChronoLog client wrapper");
+    chronolog = std::make_unique<chronolog::Client>(keeper_pool_id, player_pool_id);
 
     // Ensure the default chronicle exists
-    std::map<std::string, std::string> chronicle_attrs;
-    if(int ret = chronolog->CreateChronicle(defaultChronicle, chronicle_attrs, DEFAULT_FLAGS);
+    if(int ret = chronolog->CreateChronicle(defaultChronicle);
        ret != chronolog::CL_SUCCESS && ret != chronolog::CL_ERR_CHRONICLE_EXISTS)
     {
         CHRONOKVS_ERROR(logLevel_, "Failed to create chronicle '", defaultChronicle, "' with error code: ", ret);
@@ -58,7 +35,7 @@ ChronoKVSClientAdapter::~ChronoKVSClientAdapter()
 {
     if(chronolog)
     {
-        // Release all cached story handles before disconnecting
+        // Release all cached story handles before destroying client
         std::lock_guard<std::mutex> lock(cacheMutex);
         CHRONOKVS_INFO(logLevel_, "Releasing ", handleCache.size(), " cached story handles");
         for(const auto& [key, handle]: handleCache)
@@ -67,9 +44,6 @@ ChronoKVSClientAdapter::~ChronoKVSClientAdapter()
             chronolog->ReleaseStory(defaultChronicle, key);
         }
         handleCache.clear();
-
-        CHRONOKVS_INFO(logLevel_, "Disconnecting from ChronoLog");
-        chronolog->Disconnect();
     }
 }
 
@@ -87,8 +61,7 @@ chronolog::StoryHandle* ChronoKVSClientAdapter::getOrAcquireHandle(const std::st
 
     // Cache miss - acquire new handle
     CHRONOKVS_DEBUG(logLevel_, "Cache miss for key='", key, "', acquiring new handle");
-    std::map<std::string, std::string> story_attrs;
-    auto [status, handle] = chronolog->AcquireStory(defaultChronicle, key, story_attrs, DEFAULT_FLAGS);
+    auto [status, handle] = chronolog->AcquireStory(defaultChronicle, key);
     if(status != chronolog::CL_SUCCESS)
     {
         CHRONOKVS_ERROR(logLevel_, "Failed to acquire story handle for key='", key, "' with error code: ", status);
@@ -133,13 +106,10 @@ ChronoKVSClientAdapter::retrieveEvents(const std::string& key, std::uint64_t sta
     CHRONOKVS_DEBUG(logLevel_, "Retrieving events for key='", key, "' range=[", start_ts, ", ", end_ts, ")");
 
     // Flush any cached write handle for this key to ensure data is committed and visible
-    // This is necessary because ChronoLog requires the story handle to be released
-    // before events can be replayed (read consistency semantics)
     flushCachedHandle(key);
 
     // Acquire a fresh handle for the read operation
-    std::map<std::string, std::string> story_attrs;
-    auto [status, handle] = chronolog->AcquireStory(defaultChronicle, key, story_attrs, DEFAULT_FLAGS);
+    auto [status, handle] = chronolog->AcquireStory(defaultChronicle, key);
     if(status != chronolog::CL_SUCCESS)
     {
         CHRONOKVS_ERROR(logLevel_, "Failed to acquire story handle for key='", key, "' with error code: ", status);
@@ -148,7 +118,6 @@ ChronoKVSClientAdapter::retrieveEvents(const std::string& key, std::uint64_t sta
     }
 
     // RAII-style story handle management for reads
-    // We don't cache read handles - they are released immediately after the read
     struct StoryHandleGuard
     {
         chronolog::Client* client;

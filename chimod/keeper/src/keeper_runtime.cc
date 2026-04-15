@@ -6,6 +6,8 @@
 
 #include <chronolog_types.h>
 #include <StoryChunk.h>
+#include <CteHelper.h>
+#include <StoryChunkSerializer.h>
 
 namespace chronolog::keeper {
 
@@ -143,8 +145,28 @@ chi::TaskResume Runtime::Monitor(hipc::FullPtr<MonitorTask> task, chi::RunContex
     }
   }
 
-  // TODO Phase 4: Process extraction queue - CTE PutBlob (Phase 2 integration)
-  // For now, sealed chunks accumulate in extraction_queue_
+  // Phase 4: Drain extraction queue → CTE PutBlob
+  {
+    while (!extraction_queue_.empty()) {
+      chronolog::StoryChunk* chunk = extraction_queue_.ejectStoryChunk();
+      if (!chunk) break;
+      if (!chunk->empty()) {
+        // Get or create CTE tag for this chronicle
+        std::string chronicle = chunk->getChronicleName();
+        auto tag_it = tag_cache_.find(chronicle);
+        if (tag_it == tag_cache_.end()) {
+          auto tag_id = cte_helper_.getOrCreateTag(chronicle);
+          tag_cache_[chronicle] = tag_id;
+          tag_it = tag_cache_.find(chronicle);
+        }
+        cte_helper_.putChunk(tag_it->second, *chunk, 0.8f);
+        HLOG(kDebug, "keeper: CTE PutBlob chronicle={} story={} [{}-{}]",
+             chronicle, chunk->getStoryName(),
+             chunk->getStartTime(), chunk->getEndTime());
+      }
+      delete chunk;
+    }
+  }
 
   task->SetReturnCode(0);
   (void)rctx;

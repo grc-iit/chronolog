@@ -3,6 +3,8 @@
 #include <chrono>
 #include <chronolog_types.h>
 #include <StoryChunk.h>
+#include <CteHelper.h>
+#include <StoryChunkSerializer.h>
 
 namespace chronolog::grapher {
 
@@ -59,7 +61,27 @@ chi::TaskResume Runtime::Monitor(hipc::FullPtr<MonitorTask> task, chi::RunContex
     }
   }
 
-  // TODO: Forward sealed chunks from extraction_queue_ to store
+  // Forward sealed chunks from extraction_queue_ to CTE at warm score
+  {
+    while (!extraction_queue_.empty()) {
+      chronolog::StoryChunk* chunk = extraction_queue_.ejectStoryChunk();
+      if (!chunk) break;
+      if (!chunk->empty()) {
+        std::string chronicle = chunk->getChronicleName();
+        auto tag_it = tag_cache_.find(chronicle);
+        if (tag_it == tag_cache_.end()) {
+          auto tag_id = cte_helper_.getOrCreateTag(chronicle);
+          tag_cache_[chronicle] = tag_id;
+          tag_it = tag_cache_.find(chronicle);
+        }
+        cte_helper_.putChunk(tag_it->second, *chunk, 0.5f);
+        HLOG(kDebug, "grapher: CTE PutBlob (warm) chronicle={} story={} [{}-{}]",
+             chronicle, chunk->getStoryName(),
+             chunk->getStartTime(), chunk->getEndTime());
+      }
+      delete chunk;
+    }
+  }
 
   task->SetReturnCode(0);
   (void)rctx;
@@ -100,16 +122,24 @@ chi::TaskResume Runtime::MergeChunks(hipc::FullPtr<MergeChunksTask> task, chi::R
     it = story_pipelines_.find(story_id);
   }
 
-  // Create a StoryChunk spanning the merge window
-  // The chunk data would normally come from CTE GetBlob (Phase 2),
-  // but for now we create an empty chunk to track the merge window
-  std::string id_str = std::to_string(story_id);
-  chronolog::StoryChunk merge_chunk(
-      id_str, id_str, story_id, window_start, window_end);
+  // Fetch chunk from CTE (written by keeper at hot score)
+  {
+    std::string id_str = std::to_string(story_id);
+    std::string blob_name = chronolog::StoryChunkSerializer::makeBlobName(
+        id_str, window_start, window_end);
 
-  // Merge the chunk events into the pipeline timeline
-  if (!merge_chunk.empty()) {
-    it->second->mergeEvents(merge_chunk);
+    auto tag_it = tag_cache_.find(id_str);
+    if (tag_it == tag_cache_.end()) {
+      auto tag_id = cte_helper_.getOrCreateTag(id_str);
+      tag_cache_[id_str] = tag_id;
+      tag_it = tag_cache_.find(id_str);
+    }
+
+    chronolog::StoryChunk* fetched = cte_helper_.getChunk(tag_it->second, blob_name);
+    if (fetched && !fetched->empty()) {
+      it->second->mergeEvents(*fetched);
+    }
+    delete fetched;
   }
 
   // Extract any chunks that have decayed past the acceptance window
@@ -137,6 +167,24 @@ chi::TaskResume Runtime::FlushStory(hipc::FullPtr<FlushStoryTask> task, chi::Run
     // Extract all remaining chunks before destroying the pipeline
     it->second->extractDecayedStoryChunks(
         std::numeric_limits<uint64_t>::max());
+
+    // Flush extracted chunks to CTE at cold/archive score
+    while (!extraction_queue_.empty()) {
+      chronolog::StoryChunk* chunk = extraction_queue_.ejectStoryChunk();
+      if (!chunk) break;
+      if (!chunk->empty()) {
+        std::string chronicle = chunk->getChronicleName();
+        auto tag_it = tag_cache_.find(chronicle);
+        if (tag_it == tag_cache_.end()) {
+          auto tag_id = cte_helper_.getOrCreateTag(chronicle);
+          tag_cache_[chronicle] = tag_id;
+          tag_it = tag_cache_.find(chronicle);
+        }
+        cte_helper_.putChunk(tag_it->second, *chunk, 0.2f);
+      }
+      delete chunk;
+    }
+
     delete it->second;
     story_pipelines_.erase(it);
   }

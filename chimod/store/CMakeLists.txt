@@ -5,7 +5,6 @@ add_chimod_client(
     src/store_client.cc
   INCLUDE_DIRECTORIES
     ${CMAKE_SOURCE_DIR}/chrono_common/include
-    ${CMAKE_SOURCE_DIR}/Client/cpp/include
 )
 
 add_chimod_runtime(
@@ -14,7 +13,6 @@ add_chimod_runtime(
     src/autogen/store_lib_exec.cc
   INCLUDE_DIRECTORIES
     ${CMAKE_SOURCE_DIR}/chrono_common/include
-    ${CMAKE_SOURCE_DIR}/Client/cpp/include
 )
 
 target_link_libraries(chronolog_store_runtime PRIVATE chrono_common)

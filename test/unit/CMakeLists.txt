@@ -11,4 +11,4 @@ add_subdirectory(chrono-keeper)
 add_subdirectory(chrono-store)
 # chrono-player tests depend on old Thallium architecture — disabled pending rewrite
 # add_subdirectory(chrono-player)
-# add_subdirectory(chronokvs)
+add_subdirectory(chronokvs)

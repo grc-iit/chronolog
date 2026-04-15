@@ -13,24 +13,24 @@ namespace ckvs = chronokvs;
 TEST(ChronoKVSLogger_LogLevel, TestLevelValues)
 {
     // Verify level ordering (most verbose to least verbose)
-    EXPECT_LT(static_cast<int>(ckvs::LogLevel::TRACE), static_cast<int>(ckvs::LogLevel::DEBUG));
-    EXPECT_LT(static_cast<int>(ckvs::LogLevel::DEBUG), static_cast<int>(ckvs::LogLevel::INFO));
-    EXPECT_LT(static_cast<int>(ckvs::LogLevel::INFO), static_cast<int>(ckvs::LogLevel::WARNING));
-    EXPECT_LT(static_cast<int>(ckvs::LogLevel::WARNING), static_cast<int>(ckvs::LogLevel::ERROR));
-    EXPECT_LT(static_cast<int>(ckvs::LogLevel::ERROR), static_cast<int>(ckvs::LogLevel::CRITICAL));
-    EXPECT_LT(static_cast<int>(ckvs::LogLevel::CRITICAL), static_cast<int>(ckvs::LogLevel::OFF));
+    EXPECT_LT(static_cast<int>(ckvs::LogLevel::LvlTrace), static_cast<int>(ckvs::LogLevel::LvlDebug));
+    EXPECT_LT(static_cast<int>(ckvs::LogLevel::LvlDebug), static_cast<int>(ckvs::LogLevel::LvlInfo));
+    EXPECT_LT(static_cast<int>(ckvs::LogLevel::LvlInfo), static_cast<int>(ckvs::LogLevel::LvlWarning));
+    EXPECT_LT(static_cast<int>(ckvs::LogLevel::LvlWarning), static_cast<int>(ckvs::LogLevel::LvlError));
+    EXPECT_LT(static_cast<int>(ckvs::LogLevel::LvlError), static_cast<int>(ckvs::LogLevel::LvlCritical));
+    EXPECT_LT(static_cast<int>(ckvs::LogLevel::LvlCritical), static_cast<int>(ckvs::LogLevel::LvlOff));
 }
 
 TEST(ChronoKVSLogger_LogLevel, TestExactValues)
 {
     // Verify exact numeric values as documented
-    EXPECT_EQ(static_cast<int>(ckvs::LogLevel::TRACE), 0);
-    EXPECT_EQ(static_cast<int>(ckvs::LogLevel::DEBUG), 1);
-    EXPECT_EQ(static_cast<int>(ckvs::LogLevel::INFO), 2);
-    EXPECT_EQ(static_cast<int>(ckvs::LogLevel::WARNING), 3);
-    EXPECT_EQ(static_cast<int>(ckvs::LogLevel::ERROR), 4);
-    EXPECT_EQ(static_cast<int>(ckvs::LogLevel::CRITICAL), 5);
-    EXPECT_EQ(static_cast<int>(ckvs::LogLevel::OFF), 6);
+    EXPECT_EQ(static_cast<int>(ckvs::LogLevel::LvlTrace), 0);
+    EXPECT_EQ(static_cast<int>(ckvs::LogLevel::LvlDebug), 1);
+    EXPECT_EQ(static_cast<int>(ckvs::LogLevel::LvlInfo), 2);
+    EXPECT_EQ(static_cast<int>(ckvs::LogLevel::LvlWarning), 3);
+    EXPECT_EQ(static_cast<int>(ckvs::LogLevel::LvlError), 4);
+    EXPECT_EQ(static_cast<int>(ckvs::LogLevel::LvlCritical), 5);
+    EXPECT_EQ(static_cast<int>(ckvs::LogLevel::LvlOff), 6);
 }
 
 /* ----------------------------------
@@ -41,10 +41,10 @@ TEST(ChronoKVSLogger_DefaultLevel, TestBuildTypeDefault)
 {
 #ifdef NDEBUG
     // Release build: default should be ERROR
-    EXPECT_EQ(ckvs::getDefaultLogLevel(), ckvs::LogLevel::ERROR);
+    EXPECT_EQ(ckvs::getDefaultLogLevel(), ckvs::LogLevel::LvlError);
 #else
     // Debug build: default should be DEBUG
-    EXPECT_EQ(ckvs::getDefaultLogLevel(), ckvs::LogLevel::DEBUG);
+    EXPECT_EQ(ckvs::getDefaultLogLevel(), ckvs::LogLevel::LvlDebug);
 #endif
 }
 
@@ -54,13 +54,13 @@ TEST(ChronoKVSLogger_DefaultLevel, TestBuildTypeDefault)
 
 TEST(ChronoKVSLogger_LogLevelToString, TestAllLevels)
 {
-    EXPECT_STREQ(ckvs::logLevelToString(ckvs::LogLevel::TRACE), "TRACE");
-    EXPECT_STREQ(ckvs::logLevelToString(ckvs::LogLevel::DEBUG), "DEBUG");
-    EXPECT_STREQ(ckvs::logLevelToString(ckvs::LogLevel::INFO), "INFO");
-    EXPECT_STREQ(ckvs::logLevelToString(ckvs::LogLevel::WARNING), "WARNING");
-    EXPECT_STREQ(ckvs::logLevelToString(ckvs::LogLevel::ERROR), "ERROR");
-    EXPECT_STREQ(ckvs::logLevelToString(ckvs::LogLevel::CRITICAL), "CRITICAL");
-    EXPECT_STREQ(ckvs::logLevelToString(ckvs::LogLevel::OFF), "OFF");
+    EXPECT_STREQ(ckvs::logLevelToString(ckvs::LogLevel::LvlTrace), "TRACE");
+    EXPECT_STREQ(ckvs::logLevelToString(ckvs::LogLevel::LvlDebug), "DEBUG");
+    EXPECT_STREQ(ckvs::logLevelToString(ckvs::LogLevel::LvlInfo), "INFO");
+    EXPECT_STREQ(ckvs::logLevelToString(ckvs::LogLevel::LvlWarning), "WARNING");
+    EXPECT_STREQ(ckvs::logLevelToString(ckvs::LogLevel::LvlError), "ERROR");
+    EXPECT_STREQ(ckvs::logLevelToString(ckvs::LogLevel::LvlCritical), "CRITICAL");
+    EXPECT_STREQ(ckvs::logLevelToString(ckvs::LogLevel::LvlOff), "OFF");
 }
 
 TEST(ChronoKVSLogger_LogLevelToString, TestUnknownLevel)
@@ -136,7 +136,7 @@ TEST(ChronoKVSLogger_Macros, TestInfoMacroEnabled)
     StderrCapture capture;
 
     // With level INFO, INFO messages should appear
-    ckvs::LogLevel level = ckvs::LogLevel::INFO;
+    ckvs::LogLevel level = ckvs::LogLevel::LvlInfo;
     CHRONOKVS_INFO(level, "Info message");
 
     std::string output = capture.getOutput();
@@ -149,7 +149,7 @@ TEST(ChronoKVSLogger_Macros, TestInfoMacroDisabled)
     StderrCapture capture;
 
     // With level WARNING, INFO messages should NOT appear
-    ckvs::LogLevel level = ckvs::LogLevel::WARNING;
+    ckvs::LogLevel level = ckvs::LogLevel::LvlWarning;
     CHRONOKVS_INFO(level, "Info message");
 
     std::string output = capture.getOutput();
@@ -160,7 +160,7 @@ TEST(ChronoKVSLogger_Macros, TestWarningMacroEnabled)
 {
     StderrCapture capture;
 
-    ckvs::LogLevel level = ckvs::LogLevel::WARNING;
+    ckvs::LogLevel level = ckvs::LogLevel::LvlWarning;
     CHRONOKVS_WARNING(level, "Warning message");
 
     std::string output = capture.getOutput();
@@ -172,7 +172,7 @@ TEST(ChronoKVSLogger_Macros, TestWarningMacroDisabled)
 {
     StderrCapture capture;
 
-    ckvs::LogLevel level = ckvs::LogLevel::ERROR;
+    ckvs::LogLevel level = ckvs::LogLevel::LvlError;
     CHRONOKVS_WARNING(level, "Warning message");
 
     std::string output = capture.getOutput();
@@ -183,7 +183,7 @@ TEST(ChronoKVSLogger_Macros, TestErrorMacroEnabled)
 {
     StderrCapture capture;
 
-    ckvs::LogLevel level = ckvs::LogLevel::ERROR;
+    ckvs::LogLevel level = ckvs::LogLevel::LvlError;
     CHRONOKVS_ERROR(level, "Error message");
 
     std::string output = capture.getOutput();
@@ -195,7 +195,7 @@ TEST(ChronoKVSLogger_Macros, TestErrorMacroDisabled)
 {
     StderrCapture capture;
 
-    ckvs::LogLevel level = ckvs::LogLevel::CRITICAL;
+    ckvs::LogLevel level = ckvs::LogLevel::LvlCritical;
     CHRONOKVS_ERROR(level, "Error message");
 
     std::string output = capture.getOutput();
@@ -206,7 +206,7 @@ TEST(ChronoKVSLogger_Macros, TestCriticalMacroEnabled)
 {
     StderrCapture capture;
 
-    ckvs::LogLevel level = ckvs::LogLevel::CRITICAL;
+    ckvs::LogLevel level = ckvs::LogLevel::LvlCritical;
     CHRONOKVS_CRITICAL(level, "Critical message");
 
     std::string output = capture.getOutput();
@@ -218,7 +218,7 @@ TEST(ChronoKVSLogger_Macros, TestCriticalMacroDisabledByOff)
 {
     StderrCapture capture;
 
-    ckvs::LogLevel level = ckvs::LogLevel::OFF;
+    ckvs::LogLevel level = ckvs::LogLevel::LvlOff;
     CHRONOKVS_CRITICAL(level, "Critical message");
 
     std::string output = capture.getOutput();
@@ -229,7 +229,7 @@ TEST(ChronoKVSLogger_Macros, TestOffLevelDisablesAll)
 {
     StderrCapture capture;
 
-    ckvs::LogLevel level = ckvs::LogLevel::OFF;
+    ckvs::LogLevel level = ckvs::LogLevel::LvlOff;
     CHRONOKVS_INFO(level, "Should not appear");
     CHRONOKVS_WARNING(level, "Should not appear");
     CHRONOKVS_ERROR(level, "Should not appear");
@@ -246,7 +246,7 @@ TEST(ChronoKVSLogger_DebugMacros, TestTraceMacroEnabled)
 {
     StderrCapture capture;
 
-    ckvs::LogLevel level = ckvs::LogLevel::TRACE;
+    ckvs::LogLevel level = ckvs::LogLevel::LvlTrace;
     CHRONOKVS_TRACE(level, "Trace message");
 
     std::string output = capture.getOutput();
@@ -258,7 +258,7 @@ TEST(ChronoKVSLogger_DebugMacros, TestTraceMacroDisabled)
 {
     StderrCapture capture;
 
-    ckvs::LogLevel level = ckvs::LogLevel::DEBUG;
+    ckvs::LogLevel level = ckvs::LogLevel::LvlDebug;
     CHRONOKVS_TRACE(level, "Trace message");
 
     std::string output = capture.getOutput();
@@ -269,7 +269,7 @@ TEST(ChronoKVSLogger_DebugMacros, TestDebugMacroEnabled)
 {
     StderrCapture capture;
 
-    ckvs::LogLevel level = ckvs::LogLevel::DEBUG;
+    ckvs::LogLevel level = ckvs::LogLevel::LvlDebug;
     CHRONOKVS_DEBUG(level, "Debug message");
 
     std::string output = capture.getOutput();
@@ -281,7 +281,7 @@ TEST(ChronoKVSLogger_DebugMacros, TestDebugMacroDisabled)
 {
     StderrCapture capture;
 
-    ckvs::LogLevel level = ckvs::LogLevel::INFO;
+    ckvs::LogLevel level = ckvs::LogLevel::LvlInfo;
     CHRONOKVS_DEBUG(level, "Debug message");
 
     std::string output = capture.getOutput();
@@ -292,7 +292,7 @@ TEST(ChronoKVSLogger_DebugMacros, TestAllLevelsWithTraceEnabled)
 {
     StderrCapture capture;
 
-    ckvs::LogLevel level = ckvs::LogLevel::TRACE;
+    ckvs::LogLevel level = ckvs::LogLevel::LvlTrace;
     CHRONOKVS_TRACE(level, "1");
     CHRONOKVS_DEBUG(level, "2");
     CHRONOKVS_INFO(level, "3");
@@ -316,7 +316,7 @@ TEST(ChronoKVSLogger_ReleaseMacros, TestTraceAndDebugAreNoOp)
     StderrCapture capture;
 
     // In Release builds, TRACE and DEBUG macros expand to nothing
-    ckvs::LogLevel level = ckvs::LogLevel::TRACE;
+    ckvs::LogLevel level = ckvs::LogLevel::LvlTrace;
     CHRONOKVS_TRACE(level, "Should not compile to anything");
     CHRONOKVS_DEBUG(level, "Should not compile to anything");
 
@@ -329,7 +329,7 @@ TEST(ChronoKVSLogger_ReleaseMacros, TestInfoStillWorks)
 {
     StderrCapture capture;
 
-    ckvs::LogLevel level = ckvs::LogLevel::INFO;
+    ckvs::LogLevel level = ckvs::LogLevel::LvlInfo;
     CHRONOKVS_INFO(level, "Info in release");
 
     std::string output = capture.getOutput();
@@ -346,7 +346,7 @@ TEST(ChronoKVSLogger_LogMessage, TestDirectLogMessage)
 {
     StderrCapture capture;
 
-    ckvs::log_message(ckvs::LogLevel::INFO, "Direct log test");
+    ckvs::log_message(ckvs::LogLevel::LvlInfo, "Direct log test");
 
     std::string output = capture.getOutput();
     EXPECT_TRUE(output.find("[ChronoKVS][INFO]") != std::string::npos);
@@ -357,12 +357,12 @@ TEST(ChronoKVSLogger_LogMessage, TestAllLevelsDirect)
 {
     StderrCapture capture;
 
-    ckvs::log_message(ckvs::LogLevel::TRACE, "trace");
-    ckvs::log_message(ckvs::LogLevel::DEBUG, "debug");
-    ckvs::log_message(ckvs::LogLevel::INFO, "info");
-    ckvs::log_message(ckvs::LogLevel::WARNING, "warning");
-    ckvs::log_message(ckvs::LogLevel::ERROR, "error");
-    ckvs::log_message(ckvs::LogLevel::CRITICAL, "critical");
+    ckvs::log_message(ckvs::LogLevel::LvlTrace, "trace");
+    ckvs::log_message(ckvs::LogLevel::LvlDebug, "debug");
+    ckvs::log_message(ckvs::LogLevel::LvlInfo, "info");
+    ckvs::log_message(ckvs::LogLevel::LvlWarning, "warning");
+    ckvs::log_message(ckvs::LogLevel::LvlError, "error");
+    ckvs::log_message(ckvs::LogLevel::LvlCritical, "critical");
 
     std::string output = capture.getOutput();
     EXPECT_TRUE(output.find("[TRACE] trace") != std::string::npos);

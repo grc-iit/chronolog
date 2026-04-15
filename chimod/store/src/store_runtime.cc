@@ -1,22 +1,20 @@
 #include "chronolog/store/store_runtime.h"
 
-#include <filesystem>
-#include <fstream>
 #include <string>
 #include <functional>
+
+#include <CteHelper.h>
+#include <StoryChunkSerializer.h>
 
 namespace chronolog::store {
 
 // =========================================================================
-// Create - Initialize container with archive root directory
+// Create - Initialize container
 // =========================================================================
 chi::TaskResume Runtime::Create(hipc::FullPtr<CreateTask> task, chi::RunContext& rctx) {
   CHI_TASK_BODY_BEGIN
   auto params = task->GetParams();
   archive_root_ = params.archive_root_;
-
-  // Create the archive root directory if it doesn't exist
-  std::filesystem::create_directories(archive_root_);
 
   HLOG(kDebug, "store: Create pool {} archive_root={}",
        task->pool_id_, archive_root_);
@@ -40,11 +38,10 @@ chi::TaskResume Runtime::Destroy(hipc::FullPtr<DestroyTask> task, chi::RunContex
 }
 
 // =========================================================================
-// Monitor - No-op for now (future: scan for stale archives)
+// Monitor - No-op (CTE handles its own maintenance)
 // =========================================================================
 chi::TaskResume Runtime::Monitor(hipc::FullPtr<MonitorTask> task, chi::RunContext& rctx) {
   CHI_TASK_BODY_BEGIN
-  // TODO: Scan for stale archives and trigger compaction
   task->SetReturnCode(0);
   (void)rctx;
   CHI_CO_RETURN;
@@ -52,42 +49,32 @@ chi::TaskResume Runtime::Monitor(hipc::FullPtr<MonitorTask> task, chi::RunContex
 }
 
 // =========================================================================
-// ArchiveChunk - Write a StoryChunk metadata file to the archive directory
+// ArchiveChunk - Demote a chunk to cold storage via CTE score reduction
 // =========================================================================
 chi::TaskResume Runtime::ArchiveChunk(hipc::FullPtr<ArchiveChunkTask> task, chi::RunContext& rctx) {
   CHI_TASK_BODY_BEGIN
   std::string chronicle_name(task->chronicle_name_.c_str());
   std::string story_name(task->story_name_.c_str());
-  chi::u64 story_id = task->story_id_;
   chi::u64 start_time = task->start_time_;
   chi::u64 end_time = task->end_time_;
 
-  // Construct chronicle subdirectory: archive_root_ / chronicle_name
-  std::filesystem::path chronicle_dir =
-      std::filesystem::path(archive_root_) / chronicle_name;
-  std::filesystem::create_directories(chronicle_dir);
+  // Get CTE tag for this chronicle
+  auto tag_id = cte_helper_.getOrCreateTag(chronicle_name);
 
-  // Construct filename: chronicle_name.story_name.{start_s}.{end_s}.dat
-  chi::u64 start_s = start_time / 1000000000;
-  chi::u64 end_s = end_time / 1000000000;
-  std::string filename = chronicle_name + "." + story_name + "."
-      + std::to_string(start_s) + "." + std::to_string(end_s) + ".dat";
-  std::filesystem::path filepath = chronicle_dir / filename;
+  // The chunk should already be in CTE from keeper/grapher.
+  // Fetch it and re-put at cold archival score to trigger tier demotion.
+  std::string blob_name = chronolog::StoryChunkSerializer::makeBlobName(
+      story_name, start_time, end_time);
 
-  // Phase 1: Write a simple text metadata file
-  // (Phase 2 will replace this with HDF5 via StoryChunkWriter)
-  std::ofstream ofs(filepath, std::ios::out | std::ios::trunc);
-  if (ofs.is_open()) {
-    ofs << "story_id=" << story_id << "\n";
-    ofs << "start_time=" << start_time << "\n";
-    ofs << "end_time=" << end_time << "\n";
-    ofs.close();
+  chronolog::StoryChunk* chunk = cte_helper_.getChunk(tag_id, blob_name);
+  if (chunk) {
+    cte_helper_.putChunk(tag_id, *chunk, 0.1f);
+    delete chunk;
   }
 
   archive_counter_++;
-  HLOG(kDebug, "store: ArchiveChunk chronicle={} story={} sid={} [{}, {}) -> {}",
-       chronicle_name, story_name, story_id, start_time, end_time,
-       filepath.string());
+  HLOG(kDebug, "store: ArchiveChunk chronicle={} story={} [{}, {}) -> CTE score=0.1",
+       chronicle_name, story_name, start_time, end_time);
 
   task->SetReturnCode(0);
   (void)rctx;
@@ -96,7 +83,7 @@ chi::TaskResume Runtime::ArchiveChunk(hipc::FullPtr<ArchiveChunkTask> task, chi:
 }
 
 // =========================================================================
-// ReadChunk - Scan archive directory for files matching the time range
+// ReadChunk - Query CTE for blobs matching the time range
 // =========================================================================
 chi::TaskResume Runtime::ReadChunk(hipc::FullPtr<ReadChunkTask> task, chi::RunContext& rctx) {
   CHI_TASK_BODY_BEGIN
@@ -105,48 +92,26 @@ chi::TaskResume Runtime::ReadChunk(hipc::FullPtr<ReadChunkTask> task, chi::RunCo
   chi::u64 start_time = task->start_time_;
   chi::u64 end_time = task->end_time_;
 
-  std::filesystem::path chronicle_dir =
-      std::filesystem::path(archive_root_) / chronicle_name;
+  auto tag_id = cte_helper_.getOrCreateTag(chronicle_name);
+  auto blobs = cte_helper_.listChunks(tag_id);
 
   chi::u32 match_count = 0;
-
-  // Scan for files matching this story whose time range overlaps [start_time, end_time)
-  if (std::filesystem::exists(chronicle_dir) &&
-      std::filesystem::is_directory(chronicle_dir)) {
-    // Expected filename pattern: chronicle_name.story_name.{start_s}.{end_s}.dat
-    std::string prefix = chronicle_name + "." + story_name + ".";
-    chi::u64 query_start_s = start_time / 1000000000;
-    chi::u64 query_end_s = end_time / 1000000000;
-
-    for (const auto& entry : std::filesystem::directory_iterator(chronicle_dir)) {
-      if (!entry.is_regular_file()) continue;
-
-      std::string fname = entry.path().filename().string();
-      if (fname.rfind(prefix, 0) != 0) continue;
-      if (fname.size() < 5 || fname.substr(fname.size() - 4) != ".dat") continue;
-
-      // Parse the time range from the filename
-      // Format after prefix: {start_s}.{end_s}.dat
-      std::string suffix = fname.substr(prefix.size());
-      // Remove trailing ".dat"
-      suffix = suffix.substr(0, suffix.size() - 4);
-
-      // Split on '.'
-      auto dot_pos = suffix.find('.');
-      if (dot_pos == std::string::npos) continue;
-
-      chi::u64 file_start_s = std::stoull(suffix.substr(0, dot_pos));
-      chi::u64 file_end_s = std::stoull(suffix.substr(dot_pos + 1));
-
-      // Check overlap: file range [file_start_s, file_end_s) overlaps [query_start_s, query_end_s)
-      if (file_start_s < query_end_s && file_end_s > query_start_s) {
-        match_count++;
-      }
+  for (const auto& blob_name : blobs) {
+    std::string parsed_story;
+    uint64_t blob_start, blob_end;
+    if (!chronolog::StoryChunkSerializer::parseBlobName(
+            blob_name, parsed_story, blob_start, blob_end)) {
+      continue;
+    }
+    if (parsed_story != story_name) continue;
+    // Check overlap: blob [blob_start, blob_end) overlaps [start_time, end_time)
+    if (blob_start < end_time && blob_end > start_time) {
+      match_count++;
     }
   }
 
   task->event_count_ = match_count;
-  HLOG(kDebug, "store: ReadChunk chronicle={} story={} [{}, {}) matched {} files",
+  HLOG(kDebug, "store: ReadChunk chronicle={} story={} [{}, {}) matched {} CTE blobs",
        chronicle_name, story_name, start_time, end_time, match_count);
 
   task->SetReturnCode(0);
@@ -156,19 +121,14 @@ chi::TaskResume Runtime::ReadChunk(hipc::FullPtr<ReadChunkTask> task, chi::RunCo
 }
 
 // =========================================================================
-// ListArchives - Scan archive root for chronicle directories
+// ListArchives - Query CTE for all tags (chronicles)
 // =========================================================================
 chi::TaskResume Runtime::ListArchives(hipc::FullPtr<ListArchivesTask> task, chi::RunContext& rctx) {
   CHI_TASK_BODY_BEGIN
-
-  if (std::filesystem::exists(archive_root_) &&
-      std::filesystem::is_directory(archive_root_)) {
-    for (const auto& entry : std::filesystem::directory_iterator(archive_root_)) {
-      if (entry.is_directory()) {
-        HLOG(kDebug, "store: ListArchives chronicle={}",
-             entry.path().filename().string());
-      }
-    }
+  // CTE tags represent chronicles — query for all
+  auto tag_names = cte_helper_.queryChunks(".*", ".*");
+  for (const auto& name : tag_names) {
+    HLOG(kDebug, "store: ListArchives blob={}", name);
   }
 
   task->SetReturnCode(0);
@@ -178,11 +138,10 @@ chi::TaskResume Runtime::ListArchives(hipc::FullPtr<ListArchivesTask> task, chi:
 }
 
 // =========================================================================
-// DeleteArchive - No-op stub for now
+// DeleteArchive - No-op stub
 // =========================================================================
 chi::TaskResume Runtime::DeleteArchive(hipc::FullPtr<DeleteArchiveTask> task, chi::RunContext& rctx) {
   CHI_TASK_BODY_BEGIN
-  // TODO: Implement archive deletion by chronicle/story name
   task->SetReturnCode(0);
   (void)rctx;
   CHI_CO_RETURN;
@@ -190,11 +149,10 @@ chi::TaskResume Runtime::DeleteArchive(hipc::FullPtr<DeleteArchiveTask> task, ch
 }
 
 // =========================================================================
-// CompactArchive - No-op stub for now
+// CompactArchive - No-op stub
 // =========================================================================
 chi::TaskResume Runtime::CompactArchive(hipc::FullPtr<CompactArchiveTask> task, chi::RunContext& rctx) {
   CHI_TASK_BODY_BEGIN
-  // TODO: Implement archive compaction (merge small files)
   task->SetReturnCode(0);
   (void)rctx;
   CHI_CO_RETURN;
@@ -202,7 +160,7 @@ chi::TaskResume Runtime::CompactArchive(hipc::FullPtr<CompactArchiveTask> task, 
 }
 
 // =========================================================================
-// GetWorkRemaining - Report pending archive operations for scheduler
+// GetWorkRemaining
 // =========================================================================
 chi::u64 Runtime::GetWorkRemaining() const {
   return archive_counter_;

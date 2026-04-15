@@ -46,28 +46,22 @@ set_target_properties(chronokvs PROPERTIES
     SOVERSION ${CHRONOLOG_VERSION_MAJOR}
 )
 
-# Bring in any header usage requirements exposed by chronolog_client, without making it public
-# (Some ChronoLog releases set PUBLIC includes on the client target.)
-target_include_directories(chronokvs PRIVATE
-    $<TARGET_PROPERTY:chronolog_client,INTERFACE_INCLUDE_DIRECTORIES>
-)
-
 find_package(Threads REQUIRED)
 
-# Link to the in-tree target from the superbuild
+# Link to chrono_common which provides the chronolog::Client wrapper
 target_link_libraries(chronokvs
     PRIVATE
-        chronolog_client
+        chrono_common
         rt
     PUBLIC
         Threads::Threads
 )
 
-# Examples
-option(CHRONOKVS_BUILD_EXAMPLES "Build ChronoKVS examples" ON)
-if(CHRONOKVS_BUILD_EXAMPLES)
-    add_subdirectory(examples)
-endif()
+# Examples (disabled — require chimaera runtime initialization)
+# option(CHRONOKVS_BUILD_EXAMPLES "Build ChronoKVS examples" ON)
+# if(CHRONOKVS_BUILD_EXAMPLES)
+#     add_subdirectory(examples)
+# endif()
 
 # Install (no export set; we're inside the superbuild)
 chronolog_install_target(chronokvs)
