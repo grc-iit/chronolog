@@ -1,0 +1,3 @@
+[submodule "external/iowarp"]
+	path = external/iowarp
+	url = https://github.com/iowarp/clio-core.git
