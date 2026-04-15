@@ -14,9 +14,9 @@ target_include_directories(chrono_keeper PRIVATE
 
 target_sources(chrono_keeper PRIVATE
     src/ChronoKeeperInstance.cpp
+    src/ChronoKeeperConfiguration.cpp
     src/KeeperStoryPipeline.cpp
     src/KeeperDataStore.cpp
-    ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
 )
 
 target_link_libraries(chrono_keeper
