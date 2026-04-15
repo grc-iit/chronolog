@@ -1,0 +1,66 @@
+# Docker Compose for ChronoLog Grafana Development Environment
+# This file sets up Grafana and the ChronoLog backend service for plugin development
+
+services:
+  # ChronoLog Python Backend Service
+  chronolog-backend:
+    build:
+      context: ./grafana_backend
+      dockerfile: Dockerfile
+    container_name: chronolog-grafana-backend
+    network_mode: host
+    environment:
+      - HOST=0.0.0.0
+      - CHRONOLOG_BACKEND_SERVICE_PORT=${CHRONOLOG_BACKEND_SERVICE_PORT:-8080}
+      - CHRONOLOG_PROTOCOL=ofi+sockets
+      - CHRONOLOG_PORTAL_IP=${CHRONOLOG_PORTAL_IP:-127.0.0.1}
+      - CHRONOLOG_PORTAL_PORT=${CHRONOLOG_PORTAL_PORT:-5555}
+      - CHRONOLOG_PORTAL_PROVIDER_ID=${CHRONOLOG_PORTAL_PROVIDER_ID:-55}
+      - CHRONOLOG_QUERY_IP=${CHRONOLOG_QUERY_IP:-127.0.0.1}
+      - CHRONOLOG_QUERY_PORT=${CHRONOLOG_QUERY_PORT:-5557}
+      - CHRONOLOG_QUERY_PROVIDER_ID=${CHRONOLOG_QUERY_PROVIDER_ID:-57}
+      - CHRONOLOG_AUTO_CONNECT=${CHRONOLOG_AUTO_CONNECT:-false}
+      - CHRONOLOG_CONF_FILE=${CHRONOLOG_CONF_FILE:-}
+      - CHRONOLOG_INSTALL_PATH=/opt
+    volumes:
+      # Mount ChronoLog library for Python bindings
+      - ${CHRONOLOG_INSTALL_PATH:-~/chronolog-install}/chronolog/lib:/opt/chronolog/lib:ro
+      # Mount conf for client config file (e.g. default_client_conf.json)
+      - ${CHRONOLOG_INSTALL_PATH:-~/chronolog-install}/chronolog/conf:/opt/chronolog/conf:ro
+    healthcheck:
+      test: ["CMD", "sh", "-c", "python -c \"import urllib.request, os; p=os.environ.get('CHRONOLOG_BACKEND_SERVICE_PORT','8080'); urllib.request.urlopen('http://localhost:'+p+'/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # Grafana Service
+  grafana:
+    image: grafana/grafana:latest
+    container_name: chronolog-grafana
+    network_mode: host
+    environment:
+      - GF_SERVER_HTTP_PORT=${GRAFANA_PORT:-3000}
+      - CHRONOLOG_BACKEND_SERVICE_PORT=${CHRONOLOG_BACKEND_SERVICE_PORT:-8080}
+      - GF_SECURITY_ADMIN_USER=${GF_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GF_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      # Allow unsigned plugins for development
+      - GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=chronolog-datasource
+      # Enable debug logging for plugin development
+      - GF_LOG_LEVEL=debug
+      - GF_LOG_MODE=console
+    volumes:
+      # Mount the plugin for development
+      - ./grafana_plugin/dist:/var/lib/grafana/plugins/chronolog-datasource:ro
+      # Persist Grafana data
+      - grafana-data:/var/lib/grafana
+      # Mount provisioning if needed
+      - ./grafana_provisioning:/etc/grafana/provisioning:ro
+    restart: unless-stopped
+
+volumes:
+  grafana-data:
+    driver: local
+

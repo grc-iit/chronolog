@@ -1,0 +1,278 @@
+name: "ChronoLog: Check Format"
+
+# This workflow checks C/C++ code formatting using clang-format-18 (default Ubuntu 24.04 version)
+# To format code locally, install clang-format-18 from default Ubuntu repositories:
+#   Ubuntu 24.04:
+#     sudo apt-get update && sudo apt-get install -y clang-format-18
+#   Then run: clang-format-18 -i -style=file:CodeStyleFiles/ChronoLog.clang-format <file>
+
+on:
+  pull_request:
+    paths:
+      - '**/*.cpp'
+      - '**/*.h'
+      - '**/*.hpp'
+      - '**/*.cc'
+      - '**/*.cxx'
+      - '**/*.c'
+      - 'CodeStyleFiles/ChronoLog.clang-format'
+      - '.github/workflows/clang-format-check.yml'
+  workflow_dispatch:
+
+jobs:
+  clang-format-check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref }}
+          fetch-depth: 0  # Fetch full history for proper diff
+
+      - name: Install clang-format-18
+        run: |
+          sudo apt-get update
+          
+          # List available versions from default Ubuntu repositories
+          echo "Available clang-format-18 versions in default repositories:"
+          apt-cache madison clang-format-18 || apt-cache policy clang-format-18 || echo "clang-format-18 not found in default repos"
+          
+          # Install clang-format-18 from default Ubuntu repositories
+          sudo apt-get install -y clang-format-18
+
+      - name: Check clang-format version
+        run: |
+          echo "=== Clang Format Version Check ==="
+          clang-format-18 --version
+          echo "=================================="
+          VERSION=$(clang-format-18 --version | head -n1)
+          echo "Installed version: $VERSION"
+          echo "✅ Using clang-format-18 from Ubuntu 24.04 default repositories"
+
+      - name: Find C/C++ files
+        id: find-files
+        run: |
+          # Find all C/C++ files that are staged or modified in the PR
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # Primary: use PR base/head SHAs
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+            
+            # Ensure we have the commits
+            if ! git fetch origin "$BASE_SHA"; then
+              echo "Warning: git fetch for BASE_SHA ($BASE_SHA) failed." >&2
+            fi
+            if ! git fetch origin "$HEAD_SHA"; then
+              echo "Warning: git fetch for HEAD_SHA ($HEAD_SHA) failed." >&2
+            fi
+            
+            # Use the actual PR head, not the merge commit
+            git diff --name-only --diff-filter=ACMR "$BASE_SHA" "$HEAD_SHA" | \
+              grep -E '\.(cpp|h|hpp|cc|cxx|c)$' > changed_files.txt || true
+
+            # Fallback: use origin/base...HEAD if no files detected
+            if [ ! -s changed_files.txt ]; then
+              git diff --name-only --diff-filter=ACMR origin/${{ github.base_ref }}...HEAD | \
+                grep -E '\.(cpp|h|hpp|cc|cxx|c)$' > changed_files.txt || true
+            fi
+          else
+            # For other events, check all C/C++ files
+            find . -name "*.cpp" -o -name "*.h" -o -name "*.hpp" -o -name "*.cc" -o -name "*.cxx" -o -name "*.c" | \
+              grep -v "./build/" | grep -v "./.git/" > changed_files.txt
+          fi
+          
+          # Display files to check
+          if [ -s changed_files.txt ]; then
+            echo "Files to check ($(wc -l < changed_files.txt)):"
+            cat changed_files.txt
+          else
+            echo "No C/C++ files found to check"
+          fi
+          
+          # Count files
+          file_count=$(wc -l < changed_files.txt 2>/dev/null || echo "0")
+          echo "file_count=$file_count" >> $GITHUB_OUTPUT
+
+      - name: Check formatting
+        id: format-check
+        run: |
+          if [ ! -s changed_files.txt ]; then
+            echo "No C/C++ files to check"
+            echo "has_format_issues=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          echo "Checking formatting for $(wc -l < changed_files.txt) files..."
+          
+          # Create a temporary directory for formatted files
+          mkdir -p /tmp/formatted
+          
+          # Check each file and collect issues
+          format_issues=()
+          while IFS= read -r file; do
+            if [ -f "$file" ]; then
+              echo "Checking: $file"
+              
+              # Create formatted version
+              clang-format-18 -style=file:CodeStyleFiles/ChronoLog.clang-format "$file" > "/tmp/formatted/$(echo "$file" | sed 's|/|_|g')"
+              
+              # Compare with original
+              if ! diff -q "$file" "/tmp/formatted/$(echo "$file" | sed 's|/|_|g')" > /dev/null; then
+                echo "❌ Formatting issues found in: $file"
+                format_issues+=("$file")
+              else
+                echo "✅ $file is properly formatted"
+              fi
+            fi
+          done < changed_files.txt
+          
+          if [ ${#format_issues[@]} -eq 0 ]; then
+            echo "✅ All files are properly formatted!"
+            echo "has_format_issues=false" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Found formatting issues in ${#format_issues[@]} files"
+            echo "has_format_issues=true" >> $GITHUB_OUTPUT
+            printf '%s\n' "${format_issues[@]}" > format_issues.txt
+          fi
+
+      - name: Generate format patches
+        if: steps.format-check.outputs.has_format_issues == 'true'
+        run: |
+          echo "Generating format patches..."
+          
+          # Create patches directory
+          mkdir -p format_patches
+          
+          # Generate patches for each file with issues
+          while IFS= read -r file; do
+            if [ -f "$file" ]; then
+              echo "Generating patch for: $file"
+              
+              # Create formatted version
+              clang-format-18 -style=file:CodeStyleFiles/ChronoLog.clang-format "$file" > "/tmp/formatted/$(echo "$file" | sed 's|/|_|g')"
+              
+              # Generate unified diff patch
+              patch_file="format_patches/$(echo "$file" | sed 's|/|_|g').patch"
+              diff -u "$file" "/tmp/formatted/$(echo "$file" | sed 's|/|_|g')" > "$patch_file" || true
+              
+              echo "Patch created: $patch_file"
+            fi
+          done < format_issues.txt
+          
+          # Create a combined patch file
+          if [ -d "format_patches" ] && [ "$(ls -A format_patches)" ]; then
+            echo "Creating combined patch file..."
+            cat format_patches/*.patch > format_fixes.patch
+            echo "Combined patch created: format_fixes.patch"
+          fi
+
+      - name: Upload format patches as artifacts
+        if: steps.format-check.outputs.has_format_issues == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: clang-format-patches
+          path: |
+            format_patches/
+            format_fixes.patch
+          retention-days: 7
+
+      - name: Comment on PR with format issues
+        if: steps.format-check.outputs.has_format_issues == 'true' && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            
+            // Resolve artifact URL for this workflow run
+            const runId = context.runId;
+            const runPageUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${runId}`;
+            let artifactUrl = '';
+            try {
+              const { data } = await github.rest.actions.listWorkflowRunArtifacts({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                run_id: runId
+              });
+              const artifact = data.artifacts.find(a => a.name === 'clang-format-patches');
+              if (artifact) {
+                artifactUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${runId}/artifacts/${artifact.id}`;
+              }
+            } catch (e) {
+              console.log('Could not list artifacts for the run:', e.message);
+            }
+            
+            // Read the list of files with issues
+            let issueFiles = [];
+            try {
+              const content = fs.readFileSync('format_issues.txt', 'utf8');
+              issueFiles = content.trim().split('\n').filter(line => line.length > 0);
+            } catch (error) {
+              console.log('Could not read format_issues.txt');
+            }
+            
+            // Create comment body
+            let commentBody = `## ❌ Clang Format Check Failed\n\n`;
+            commentBody += `Found formatting issues in **${issueFiles.length}** file(s):\n\n`;
+            
+            issueFiles.forEach(file => {
+              commentBody += `- \`${file}\`\n`;
+            });
+            
+            commentBody += `\n### How to fix:\n\n`;
+            if (artifactUrl) {
+              commentBody += `1. **Download the patches** from the artifact: [clang-format-patches](${artifactUrl})\n`;
+            } else {
+              commentBody += `1. **Download the patches** from the workflow run artifacts:\n`;
+              commentBody += `   - Go to the [Actions run page](${runPageUrl})\n`;
+              commentBody += `   - Scroll down to the **Artifacts** section\n`;
+              commentBody += `   - Download \`clang-format-patches\`\n`;
+            }
+            commentBody += `2. **Apply the patches** to your local repository:\n`;
+            commentBody += `   \`\`\`bash\n`;
+            commentBody += `   # Extract the downloaded artifact\n`;
+            commentBody += `   # Then apply the combined patch:\n`;
+            commentBody += `   git apply format_fixes.patch\n`;
+            commentBody += `   \`\`\`\n\n`;
+            commentBody += `3. **Or format manually** using clang-format-18:\n`;
+            commentBody += `   \`\`\`bash\n`;
+            commentBody += `   # Ensure you have clang-format-18 from Ubuntu 24.04 default repositories installed (required for consistent formatting)\n`;
+            issueFiles.forEach(file => {
+              commentBody += `   clang-format-18 -i -style=file:CodeStyleFiles/ChronoLog.clang-format ${file}\n`;
+            });
+            commentBody += `   \`\`\`\n\n`;
+            commentBody += `4. **Commit and push** the formatting changes\n\n`;
+            commentBody += `> **Note:** This project uses clang-format-18 from Ubuntu 24.04 default repositories. Different versions may format code differently.\n\n`;
+            if (artifactUrl) {
+              commentBody += `### 📦 Format patches: [clang-format-patches](${artifactUrl}) | [Workflow run](${runPageUrl})\n\n`;
+            } else {
+              commentBody += `### 📦 Format patches available in [workflow artifacts](${runPageUrl})\n\n`;
+            }
+            commentBody += `---\n`;
+            commentBody += `*This check ensures consistent code style across the project.*`;
+            
+            // Post comment
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: commentBody
+            });
+
+      - name: Fail if format issues found
+        if: steps.format-check.outputs.has_format_issues == 'true'
+        run: |
+          echo "❌ Clang format check failed!"
+          echo "Please fix the formatting issues and push your changes."
+          echo "Format patches are available in the artifacts."
+          exit 1
+
+      - name: Success message
+        if: steps.format-check.outputs.has_format_issues == 'false'
+        run: |
+          echo "✅ All C/C++ files are properly formatted!"

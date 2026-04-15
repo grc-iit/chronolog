@@ -85,5 +85,47 @@ int main()
         std::cout << "No value found\n";
     }
 
+    // Read and display events in a time range for key2
+    std::cout << "\nReading events for key2 in time range [" << timestamps[1] << ", " << timestamps[2] + 1 << "):\n";
+    auto rangeEvents = chronoKVS.get_range(key2, timestamps[1], timestamps[2] + 1);
+    if(rangeEvents.empty())
+    {
+        std::cout << "No events found in the specified time range\n";
+    }
+    else
+    {
+        std::cout << "Found " << rangeEvents.size() << " events in the time range:\n";
+        for(const auto& event: rangeEvents)
+        {
+            std::cout << "Timestamp: " << event.timestamp << "\nValue    : " << event.value << "\n\n";
+        }
+    }
+
+    // Read and display the earliest event for key2
+    std::cout << "Reading earliest event for key2:\n";
+    auto earliestEvent = chronoKVS.get_earliest(key2);
+    if(earliestEvent.has_value())
+    {
+        std::cout << "Earliest event - Timestamp: " << earliestEvent->timestamp
+                  << "\nValue    : " << earliestEvent->value << "\n";
+    }
+    else
+    {
+        std::cout << "No events found for key2\n";
+    }
+
+    // Read and display the latest event for key2
+    std::cout << "\nReading latest event for key2:\n";
+    auto latestEvent = chronoKVS.get_latest(key2);
+    if(latestEvent.has_value())
+    {
+        std::cout << "Latest event - Timestamp: " << latestEvent->timestamp << "\nValue    : " << latestEvent->value
+                  << "\n";
+    }
+    else
+    {
+        std::cout << "No events found for key2\n";
+    }
+
     return 0;
 }

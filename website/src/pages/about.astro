@@ -1,0 +1,151 @@
+---
+import Layout from '../layouts/Layout.astro';
+
+const team = [
+  { name: 'Dr. Xian-He Sun', role: 'Principal Investigator', org: 'Illinois Tech', desc: 'University Distinguished Professor & Ron Hochsprung Endowed Chair. IEEE Fellow. Editor-in-Chief of IEEE Transactions on Parallel and Distributed Systems.' },
+  { name: 'Dr. Anthony Kougkas', role: 'Co-Principal Investigator', tag: 'Project Lead', org: 'Illinois Tech', desc: 'Associate Research Professor & Associate Director of GRC. Founder of ChronoLog, system architect, and day-to-day project lead.' },
+  { name: 'Dr. Kyle Chard', role: 'Co-Principal Investigator', org: 'University of Chicago', desc: 'Associate Research Professor. Application-layer integrations and ecosystem partnerships.' },
+  { name: 'Dr. Jaime Cernuda Garcia', role: 'Researcher', org: 'Illinois Tech', desc: 'Assistant Research Professor at GRC. Developer of HStream, HFlow, and Hades. Streaming data systems and hierarchical storage.' },
+  { name: 'Dr. Luke Logan', role: 'Researcher', org: 'Illinois Tech', desc: 'Assistant Research Professor at GRC. Developer of LabStor and MegaMmap. Distributed storage and OS-level I/O optimization.' },
+  { name: 'Izzet Yildirim', role: 'Researcher', org: 'Illinois Tech', desc: 'PhD Candidate at GRC. I/O analysis, characterization, and bottleneck detection in HPC systems (WisIO).' },
+  { name: 'Eneko Gonzalez', role: 'Engineer', org: 'Illinois Tech', desc: 'Research Software Engineer at GRC. Core member of the ChronoLog engineering team: architecture, deployment, and optimization.' },
+  { name: 'Dr. Kun Feng', role: 'Engineer', org: 'Illinois Tech', desc: 'Research Software Engineer at GRC. Key developer for Hermes. Data-intensive applications and memory systems.' },
+  { name: 'Inna Brodkin', role: 'Engineer', org: 'University of Chicago', desc: 'Research Associate at UChicago. Collaborates with GRC on ChronoLog distributed log storage systems.' },
+];
+
+const collaborators = [
+  { name: 'Argonne National Laboratory', logo: '/images/logos/argonne.jpeg', href: 'https://www.anl.gov', desc: 'funcX integration for event-based computing and Colmena framework for materials science.', people: 'Logan Ward' },
+  { name: 'University of Chicago', logo: '/images/logos/university-of-chicago.png', href: 'https://www.uchicago.edu', desc: 'Ecosystem integration partner: Parsl workflow extensions and Dark Energy Science Collaboration for Rubin Observatory.', people: 'Ian Foster' },
+  { name: 'Lawrence Livermore National Lab', logo: '/images/logos/llnl.jpg', href: 'https://www.llnl.gov', desc: 'Integration with Sonar and Flux job scheduler for HPC telemetry.', people: 'Stephen Herbein' },
+  { name: 'SLAC National Accelerator Lab', logo: '/images/logos/slac.png', href: 'https://www.slac.stanford.edu', desc: 'Dark Energy Science Collaboration and Rubin Observatory data pipeline integration.', people: 'Tom Glanzman' },
+  { name: 'UW-Madison', logo: '/images/logos/university-of-wisconsin.jpg', href: 'https://www.wisc.edu', desc: 'CyberGIS storage backend for geospatial data workloads.', people: 'Benedikt Riedel' },
+  { name: 'UIUC', logo: '/images/logos/university-of-illinois.jpg', href: 'https://illinois.edu', desc: 'Parsl workflow extensions for Rubin Observatory data processing.', people: 'Shaowen Wang' },
+  { name: 'DePaul University', logo: '/images/logos/depaul.png', href: 'https://www.depaul.edu', desc: 'Lightweight indexing mechanisms for efficient log querying.', people: 'Tanu Malik' },
+  { name: 'IFSH at IIT', logo: '/images/logos/ifsh.jpg', href: 'https://www.iit.edu/ifsh', desc: 'Genomics and bioinformatics pipelines for food safety research.', people: '' },
+  { name: '3Red Partners', logo: '/images/logos/3red.png', href: 'https://www.3redpartners.com', desc: 'Financial trading infrastructure and low-latency log requirements.', people: 'Dries Kimpe, Sam Lang' },
+  { name: 'ParaTools, Inc.', logo: '/images/logos/paratools.png', href: 'https://www.paratools.com', desc: 'Performance monitoring tools integration (TAU Performance System).', people: 'Sameer Shende' },
+  { name: 'OmniBond Systems', logo: '/images/logos/omnibond.png', href: 'https://omnibond.com', desc: 'OrangeFS storage stack optimization.', people: 'Boyd Wilson' },
+];
+
+const organizationLd = {
+  "@context": "https://schema.org",
+  "@type": "ResearchOrganization",
+  "name": "Gnosis Research Center",
+  "url": "https://grc.iit.edu",
+  "logo": "https://chronolog.dev/images/logos/grc-logo.png",
+  "parentOrganization": {
+    "@type": "EducationalOrganization",
+    "name": "Illinois Institute of Technology",
+    "url": "https://www.iit.edu"
+  },
+  "member": [
+    { "@type": "Person", "name": "Dr. Xian-He Sun", "jobTitle": "Principal Investigator" },
+    { "@type": "Person", "name": "Dr. Anthony Kougkas", "jobTitle": "Co-Principal Investigator & Project Lead" },
+    { "@type": "Person", "name": "Dr. Kyle Chard", "jobTitle": "Co-Principal Investigator" },
+  ],
+  "funding": {
+    "@type": "Grant",
+    "identifier": "NSF CSSI-2104013",
+    "funder": { "@type": "Organization", "name": "National Science Foundation" }
+  }
+};
+
+---
+
+<Layout
+  title="About"
+  description="ChronoLog team, collaborators, publications, and background. Created by the Gnosis Research Center at Illinois Institute of Technology, funded by a $4M NSF CSSI grant."
+  keywords="ChronoLog team, Gnosis Research Center, Illinois Tech, Anthony Kougkas, Xian-He Sun, NSF CSSI, publications, collaborators, distributed systems research"
+  jsonLd={[organizationLd]}
+>
+  <section class="max-w-6xl mx-auto px-6 py-20">
+    <h1 class="text-3xl md:text-4xl font-extrabold mb-4">About ChronoLog</h1>
+    <p class="text-text-muted text-lg max-w-3xl mb-14 leading-relaxed">
+      ChronoLog is a multi-year research effort to build a distributed shared log storage ecosystem grounded in a novel idea: using physical time as the ordering mechanism. Created and led by the Gnosis Research Center (GRC) at Illinois Institute of Technology, supported by a $4M National Science Foundation CSSI grant.
+    </p>
+
+    <!-- Team -->
+    <div class="mb-16">
+      <h2 class="text-2xl font-bold mb-4">Team</h2>
+      <p class="text-text-muted text-sm mb-8 max-w-3xl">Created and led by the <a href="https://grc.iit.edu" target="_blank" class="text-lime hover:underline">Gnosis Research Center (GRC)</a> at Illinois Institute of Technology. University of Chicago serves as an ecosystem integration partner. Supported by a <strong class="text-text">$4M NSF CSSI grant</strong>.</p>
+
+      <!-- Institution logos -->
+      <div class="flex flex-wrap gap-8 items-center mb-10">
+        <a href="https://grc.iit.edu" target="_blank" class="flex flex-col items-center gap-2 group">
+          <img src="/images/logos/grc-logo.png" alt="Gnosis Research Center" class="h-16 rounded" />
+          <span class="text-xs font-medium text-text-muted group-hover:text-lime transition-colors">GRC</span>
+        </a>
+        <a href="https://www.iit.edu" target="_blank" class="flex flex-col items-center gap-2 group">
+          <img src="/images/logos/iit.png" alt="Illinois Tech" class="h-16 rounded" />
+          <span class="text-xs font-medium text-text-muted group-hover:text-lime transition-colors">Illinois Tech</span>
+        </a>
+        <a href="https://www.uchicago.edu" target="_blank" class="flex flex-col items-center gap-2 group">
+          <img src="/images/logos/university-of-chicago.png" alt="UChicago" class="h-16 rounded" />
+          <span class="text-xs font-medium text-text-muted group-hover:text-lime transition-colors">UChicago</span>
+        </a>
+      </div>
+
+      <!-- Principal Investigators -->
+      <h3 class="text-sm font-bold text-text-muted uppercase tracking-wider mb-4">Principal Investigators</h3>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+        {team.filter(t => t.role.includes('Investigator') || t.role.includes('PI')).map(t => (
+          <div class="bg-bg-card border border-lime/20 rounded-xl p-5">
+            <div class="flex items-center gap-2">
+              <h4 class="font-bold text-text text-sm">{t.name}</h4>
+              {t.tag && <span class="text-[10px] font-bold text-lime bg-lime/10 px-2 py-0.5 rounded-full">{t.tag}</span>}
+            </div>
+            <p class="text-xs text-lime font-medium mt-0.5">{t.role}</p>
+            <p class="text-xs text-text-muted mt-0.5">{t.org}</p>
+            <p class="text-xs text-text-muted leading-relaxed mt-2">{t.desc}</p>
+          </div>
+        ))}
+      </div>
+
+      <!-- Researchers & Engineers -->
+      <h3 class="text-sm font-bold text-text-muted uppercase tracking-wider mb-4">Researchers & Engineers</h3>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {team.filter(t => !t.role.includes('Investigator') && !t.role.includes('PI')).map(t => (
+          <div class="bg-bg-alt border border-border rounded-xl p-4 hover:border-lime/20 transition-colors">
+            <div class="flex items-center justify-between gap-2 mb-1">
+              <h4 class="font-semibold text-text text-sm">{t.name}</h4>
+              <span class="text-[10px] text-text-muted bg-bg-card px-2 py-0.5 rounded-full flex-shrink-0">{t.role}</span>
+            </div>
+            <p class="text-xs text-text-muted">{t.org}</p>
+            <p class="text-xs text-text-muted leading-relaxed mt-1.5">{t.desc}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    <!-- Collaborators -->
+    <div class="mb-16">
+      <h2 class="text-2xl font-bold mb-4">Collaborators</h2>
+      <p class="text-text-muted text-sm mb-8 max-w-3xl">ChronoLog is developed in partnership with DOE national laboratories, universities, and industry. Each collaboration brings domain-specific expertise and real-world deployment environments.</p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {collaborators.map(c => (
+          <a href={c.href} target="_blank" rel="noopener noreferrer" class="flex items-start gap-4 bg-bg-alt border border-border rounded-xl p-5 hover:border-lime/30 transition-colors group">
+            <img src={c.logo} alt={c.name} class="w-12 h-12 object-contain rounded flex-shrink-0 mt-0.5" />
+            <div>
+              <h3 class="font-semibold text-sm text-text group-hover:text-lime transition-colors">{c.name}</h3>
+              {c.people && <p class="text-xs text-lime/80 mt-0.5">{c.people}</p>}
+              <p class="text-xs text-text-muted leading-relaxed mt-1">{c.desc}</p>
+            </div>
+          </a>
+        ))}
+      </div>
+    </div>
+
+    <!-- Sponsor -->
+    <div>
+      <h2 class="text-2xl font-bold mb-6">Sponsor</h2>
+      <div class="bg-bg-alt border border-border rounded-xl p-6 flex items-center gap-6">
+        <img src="/images/logos/nsf.png" alt="NSF" class="h-16 flex-shrink-0" />
+        <div>
+          <p class="font-semibold text-text">National Science Foundation</p>
+          <p class="text-sm text-text-muted">Grant NSF CSSI-2104013</p>
+          <p class="text-xs text-text-muted mt-2 leading-relaxed">Any opinions, findings, and conclusions or recommendations expressed in this material are those of the author(s) and do not necessarily reflect the views of the National Science Foundation.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</Layout>

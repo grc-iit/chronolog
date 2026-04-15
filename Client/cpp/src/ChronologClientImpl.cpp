@@ -8,9 +8,9 @@
 
 #include <city.h>
 #include <margo.h>
-#include <spdlog/spdlog.h>
 #include <thallium.hpp>
 
+#include <chrono_monitor.h>
 #include "ChronologClientImpl.h"
 #include "StorytellerClient.h"
 
@@ -26,11 +26,11 @@ chronolog::ChronologClientImpl* chronolog::ChronologClientImpl::GetClientImplIns
 {
     chrono_monitor::initialize("file",
                                "/tmp/chrono_client.log",
-                               spdlog::level::info,
+                               chronolog::LogLevel::info,
                                "chrono_client",
                                1024000,
                                3,
-                               spdlog::level::warn);
+                               chronolog::LogLevel::warn);
 
     std::lock_guard<std::mutex> lock_client(chronologClientMutex);
 
@@ -111,6 +111,9 @@ void chronolog::ChronologClientImpl::defineClientIdentity()
 
 chronolog::ChronologClientImpl::~ChronologClientImpl()
 {
+    // Best-effort disconnect so the visor can remove the client record; safe to call when already SHUTTING_DOWN.
+    Disconnect();
+
     if(storyteller != nullptr)
     {
         delete storyteller;
@@ -184,7 +187,6 @@ int chronolog::ChronologClientImpl::Disconnect()
     auto return_code = rpcVisorClient->Disconnect(clientId);
     if(return_code == chronolog::CL_SUCCESS)
     {
-        clientState = SHUTTING_DOWN;
         LOG_INFO("[ChronoLogClientImpl] Successfully disconnected from Visor.");
     }
     else
@@ -192,6 +194,8 @@ int chronolog::ChronologClientImpl::Disconnect()
         LOG_ERROR("[ChronoLogClientImpl] Failed to disconnect from Visor. Error code: {}",
                   chronolog::to_string_client(return_code));
     }
+    // Always transition to SHUTTING_DOWN so destructor and delete client_ are safe regardless of RPC result.
+    clientState = SHUTTING_DOWN;
     return return_code;
 }
 

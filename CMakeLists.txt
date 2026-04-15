@@ -5,20 +5,21 @@ if(NOT DEFINED CMAKE_MACOSX_RPATH)
     set(CMAKE_MACOSX_RPATH 0)
 endif()
 
-project(ChronoLog LANGUAGES CXX C)
+project(ChronoLog VERSION 2.5.0 LANGUAGES CXX C)
 
 #------------------------------------------------------------------------------
 # Version information
 #------------------------------------------------------------------------------
-set(CHRONOLOG_VERSION_MAJOR "0")
-set(CHRONOLOG_VERSION_MINOR "7")
-set(CHRONOLOG_VERSION_PATCH "0")
+# Derive version variables from CMake project VERSION (set above)
+set(CHRONOLOG_VERSION_MAJOR "${PROJECT_VERSION_MAJOR}")
+set(CHRONOLOG_VERSION_MINOR "${PROJECT_VERSION_MINOR}")
+set(CHRONOLOG_VERSION_PATCH "${PROJECT_VERSION_PATCH}")
 set(CHRONOLOG_PACKAGE "ChronoLog")
 set(CHRONOLOG_PACKAGE_NAME "CHRONOLOG")
-set(CHRONOLOG_PACKAGE_VERSION "${CHRONOLOG_VERSION_MAJOR}.${CHRONOLOG_VERSION_MINOR}.${CHRONOLOG_VERSION_PATCH}")
-set(CHRONOLOG_PACKAGE_VERSION_MAJOR "${CHRONOLOG_VERSION_MAJOR}.${CHRONOLOG_VERSION_MINOR}")
-set(CHRONOLOG_PACKAGE_VERSION_MINOR "${CHRONOLOG_VERSION_PATCH}")
-set(CHRONOLOG_PACKAGE_STRING "${CHRONOLOG_PACKAGE_NAME} ${CHRONOLOG_PACKAGE_VERSION}")
+set(CHRONOLOG_PACKAGE_VERSION "${PROJECT_VERSION}")
+set(CHRONOLOG_PACKAGE_VERSION_MAJOR "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}")
+set(CHRONOLOG_PACKAGE_VERSION_MINOR "${PROJECT_VERSION_PATCH}")
+set(CHRONOLOG_PACKAGE_STRING "${CHRONOLOG_PACKAGE_NAME} ${PROJECT_VERSION}")
 set(CHRONOLOG_PACKAGE_TARNAME "${CHRONOLOG_PACKAGE}")
 
 #------------------------------------------------------------------------------
@@ -29,7 +30,7 @@ if( NOT DEFINED CMAKE_BUILD_TYPE OR NOT (CMAKE_BUILD_TYPE STREQUAL "Debug" OR CM
     message(FATAL_ERROR "Please, define CMAKE_BUILD_TYPE that is either Debug or Release")
 endif()
 
-message("CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
+message(STATUS "CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
 
 # --- Robust default for CMAKE_INSTALL_PREFIX (only if user didn't set one) ---
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
@@ -42,21 +43,52 @@ endif()
 message(STATUS "CMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}")
 
 # Single, consistent layout
+# bin/ = supported/runtime executables only
+# examples/ = runnable examples (installed names: chrono-<component>-example-<role>, same as bin/)
+#   - Client: chrono-client-example-writer, -reader, -basic, -distributed-telemetry-writer
+#   - ChronoKVS: chrono-chronokvs-example-writer, -reader
+# tests/ = test executables (non-release or gated)
+#
+# NOTE: the subdirectory is intentionally "chronolog" (not "chronolog-VERSION").
+# CI/CD, deploy scripts, and Docker scripts all hard-code this stable path as
+# WORK_DIR.  The distributable tarball uses "chronolog-VERSION/" internally so
+# multiple releases can be extracted side-by-side; that asymmetry is deliberate.
+# See cmake/CPackConfig.cmake for a full explanation.
 set(CHRONOLOG_INSTALL_ROOT        "${CMAKE_INSTALL_PREFIX}/chronolog")
 set(CHRONOLOG_INSTALL_BIN_DIR     "${CHRONOLOG_INSTALL_ROOT}/bin")
+set(CHRONOLOG_INSTALL_EXAMPLES_DIR "${CHRONOLOG_INSTALL_ROOT}/examples")
+set(CHRONOLOG_INSTALL_TESTS_DIR   "${CHRONOLOG_INSTALL_ROOT}/tests")
 set(CHRONOLOG_INSTALL_LIB_DIR     "${CHRONOLOG_INSTALL_ROOT}/lib")
 set(CHRONOLOG_INSTALL_INCLUDE_DIR "${CHRONOLOG_INSTALL_ROOT}/include")
 set(CHRONOLOG_INSTALL_CONF_DIR    "${CHRONOLOG_INSTALL_ROOT}/conf")
 
-# Helper function for consistent target installation
+# Helper function for consistent target installation.
+# Usage: chronolog_install_target(target_name [DESTINATION bin|examples|tests])
+# Default DESTINATION is bin. Use examples/ for sample clients, tests/ for test executables.
 function(chronolog_install_target target_name)
+    set(_runtime_dest "${CHRONOLOG_INSTALL_BIN_DIR}")
+    set(_dest_arg "${ARGV1}")
+    if(ARGC GREATER 2 AND ARGV1 STREQUAL "DESTINATION")
+        set(_dest_arg "${ARGV2}")
+    elseif(ARGC GREATER 1)
+        set(_dest_arg "${ARGV1}")
+    endif()
+    if(NOT _dest_arg STREQUAL "")
+        if(_dest_arg STREQUAL "examples")
+            set(_runtime_dest "${CHRONOLOG_INSTALL_EXAMPLES_DIR}")
+        elseif(_dest_arg STREQUAL "tests")
+            set(_runtime_dest "${CHRONOLOG_INSTALL_TESTS_DIR}")
+        elseif(NOT _dest_arg STREQUAL "bin")
+            message(WARNING "chronolog_install_target(${target_name}): unknown DESTINATION '${_dest_arg}', using bin")
+        endif()
+    endif()
     install(TARGETS ${target_name}
-        RUNTIME DESTINATION ${CHRONOLOG_INSTALL_BIN_DIR}
+        RUNTIME DESTINATION ${_runtime_dest}
         LIBRARY DESTINATION ${CHRONOLOG_INSTALL_LIB_DIR}
         ARCHIVE DESTINATION ${CHRONOLOG_INSTALL_LIB_DIR}
         PUBLIC_HEADER DESTINATION ${CHRONOLOG_INSTALL_INCLUDE_DIR}
     )
-    # Set both absolute and relative RPATH for portability
+    # Set both absolute and relative RPATH for portability (examples/tests need ../lib)
     set_target_properties(${target_name} PROPERTIES INSTALL_RPATH "${CHRONOLOG_INSTALL_LIB_DIR};$ORIGIN/../lib")
 endfunction()
 
@@ -101,9 +133,6 @@ if(NOT "${CMAKE_CXX_STANDARD}")
     set(CMAKE_CXX_EXTENSIONS OFF)
 endif()
 
-#find_package(OpenMP)
-#find_package(IntelDPCPP REQUIRED)
-
 #------------------------------------------------------------------------------
 # Options for compilations
 #------------------------------------------------------------------------------
@@ -112,8 +141,15 @@ option(BUILD_SHARED_LIBS "Build with shared libraries." ON)
 option(CHRONOLOG_ENABLE_COVERAGE "Enable code coverage." OFF)
 option(CHRONOLOG_USE_ADDRESS_SANITIZER "Enable -fsanitize=address in Debug builds" ON)
 option(CHRONOLOG_USE_THREAD_SANITIZER "Enable -fsanitize=thread in Debug builds" OFF)
-option(CHRONOLOG_BUILD_TESTING "Build the testing tree." ON)
+option(CHRONOLOG_BUILD_TESTING "Build the testing tree (Debug mode only)." ON)
+if(DEFINED ENV{CHRONOLOG_INSTALL_TESTS})
+    set(_chronolog_install_tests_default "$ENV{CHRONOLOG_INSTALL_TESTS}")
+else()
+    set(_chronolog_install_tests_default "OFF")
+endif()
+option(CHRONOLOG_INSTALL_TESTS "Install test executables to chronolog/tests/ (unit, integration, client)." ${_chronolog_install_tests_default})
 option(CHRONOLOG_ENABLE_DOXYGEN "Enable Doxygen documentation generation." OFF)
+option(CHRONOLOG_WITH_STREAMING "Build to stream to Grafana through InfluxDB" ON)
 
 #------------------------------------------------------------------------------
 # Define the compiler flags
@@ -121,38 +157,13 @@ option(CHRONOLOG_ENABLE_DOXYGEN "Enable Doxygen documentation generation." OFF)
 # TODO Should we consider the possibility of a user passing their own flags through CMAKE_CXX_FLAGS
 #   Encapsulate everything around if(NOT CMAKE_CXX_FLAGS)
 #   Check Hermes for how they delete flags automatically
-#if(SET_WERROR)
-#    add_compile_options(-Wall)
-#    add_compile_options(-Wextra)
-#    add_compile_options(-Werror)
-#else()
-#    add_compile_options(-Wall)
-#    add_compile_options(-Wextra)
-#endif()
-
-#set(CMAKE_BUILD_TYPE "Debug")
-# Change some compilation flags depending on the build type
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    message("Compiling ChronoLog in Debug Mode")
+    message(STATUS "Compiling ChronoLog in Debug Mode")
     add_compile_options(-O0)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wno-unused-parameter -Wno-unused-variable -O0 -g")
-
-    #if (CHRONOLOG_USE_ADDRESS_SANITIZER)
-    #    add_compile_options(-fsanitize=address)
-    #endif()
-
-    #if (CHRONOLOG_USE_THREAD_SANITIZER)
-    #    add_compile_options(-fsanitize=thread)
-    #endif()
-
-    #if (CHRONOLOG_USE_THREAD_SANITIZER AND CHRONOLOG_USE_ADDRESS_SANITIZER)
-    #    message(FATAL_ERROR "Cannot use -fsanitize=address and -fsanitize=thread "
-    #            "at the same time")
-    #endif()
 else()
-    message("Compiling ChronoLog in Release Mode")
+    message(STATUS "Compiling ChronoLog in Release Mode")
     add_compile_options(-O3 -lm)
-    #add_compile_options(-Wno-switch-unreachable -Wno-return-type)
 endif()
 
 #------------------------------------------------------------------------------
@@ -173,13 +184,9 @@ else()
     set(CHRONOLOG_LIBTYPE STATIC)
 endif()
 
-#-----------------------------------------------------------------------------
-# Dependencies common to all subdirectories
-#-----------------------------------------------------------------------------
-
-#-----------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 # Coverage
-#-----------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 if(CHRONOLOG_ENABLE_COVERAGE)
     set(COVERAGE_FLAGS "-fprofile-arcs -ftest-coverage" CACHE STRING
         "Flags to the coverage program to perform coverage inspection")
@@ -194,9 +201,9 @@ if(CHRONOLOG_ENABLE_COVERAGE)
     endmacro()
 endif()
 
-#-----------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 # Documentation
-#-----------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 
 if(CHRONOLOG_ENABLE_DOXYGEN)
     message(STATUS "Doxygen enable, generating documentation")
@@ -215,9 +222,9 @@ if(CHRONOLOG_ENABLE_DOXYGEN)
     )
 endif()
 
-#-----------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 # Linting
-#-----------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 add_custom_target(lint COMMAND cpplint --recursive
     --exclude=${CMAKE_CURRENT_SOURCE_DIR}/build
     --exclude=${CMAKE_CURRENT_SOURCE_DIR}/cmake-build-debug
@@ -226,19 +233,24 @@ add_custom_target(lint COMMAND cpplint --recursive
     --exclude=${CMAKE_CURRENT_SOURCE_DIR}/CI
     ${CMAKE_CURRENT_SOURCE_DIR})
 
-#-----------------------------------------------------------------------------
-# Source
-#-----------------------------------------------------------------------------
-if(CHRONOLOG_BUILD_TESTING)
-    message(STATUS "Tests enable")
+#------------------------------------------------------------------------------
+# Testing (only in Debug mode; Release install has no test tree)
+#------------------------------------------------------------------------------
+set(CHRONOLOG_BUILD_TESTS_NOW ${CHRONOLOG_BUILD_TESTING})
+if(CHRONOLOG_BUILD_TESTING AND NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(CHRONOLOG_BUILD_TESTS_NOW OFF)
+    message(STATUS "Tests are built only in Debug mode; skipping test tree in Release.")
+endif()
+if(CHRONOLOG_BUILD_TESTS_NOW)
+    message(STATUS "Tests enabled")
     include(CTest)
 endif()
 
-#-----------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 # ChronoLog Components
-#-----------------------------------------------------------------------------
-add_subdirectory(Client)
+#------------------------------------------------------------------------------
 add_subdirectory(chrono_common)
+add_subdirectory(Client)
 add_subdirectory(ChronoVisor)
 add_subdirectory(ChronoKeeper)
 add_subdirectory(ChronoGrapher)
@@ -247,12 +259,131 @@ add_subdirectory(ChronoStore)
 add_subdirectory(tools)
 add_subdirectory(Plugins)
 
-if(CHRONOLOG_BUILD_TESTING)
+if(CHRONOLOG_BUILD_TESTS_NOW)
     enable_testing()
     add_subdirectory(test)
 endif()
 
-#-----------------------------------------------------------------------------
-# Custom target to invoke 'make' in the build directory
-#-----------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+# CMake Package Configuration Files
+#------------------------------------------------------------------------------
+include(CMakePackageConfigHelpers)
+include(GNUInstallDirs)
+
+# Generate the version file
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/ChronologConfigVersion.cmake"
+    VERSION ${CHRONOLOG_PACKAGE_VERSION}
+    COMPATIBILITY AnyNewerVersion
+)
+
+# Configure the config file
+# First, create a version-aware intermediate file
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ChronologConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/ChronologConfig.cmake.intermediate"
+    @ONLY
+)
+
+# Then use configure_package_config_file to add PACKAGE_INIT and handle PATH_VARS
+# This will process @PACKAGE_INIT@ and @PACKAGE_CHRONOLOG_INSTALL_*@ variables
+configure_package_config_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/ChronologConfig.cmake.intermediate"
+    "${CMAKE_CURRENT_BINARY_DIR}/ChronologConfig.cmake"
+    INSTALL_DESTINATION ${CHRONOLOG_INSTALL_ROOT}/lib/cmake/Chronolog
+    PATH_VARS CHRONOLOG_INSTALL_INCLUDE_DIR CHRONOLOG_INSTALL_LIB_DIR
+)
+
+# Install CMake config files
+install(
+    FILES
+        "${CMAKE_CURRENT_BINARY_DIR}/ChronologConfig.cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/ChronologConfigVersion.cmake"
+    DESTINATION ${CHRONOLOG_INSTALL_ROOT}/lib/cmake/Chronolog
+)
+
+#------------------------------------------------------------------------------
+# pkg-config Support
+#------------------------------------------------------------------------------
+# Configure the pkg-config file
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/chronolog.pc.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/chronolog.pc"
+    @ONLY
+)
+
+# Install pkg-config file
+# Install to chronolog/lib/pkgconfig to match the installation structure
+install(
+    FILES "${CMAKE_CURRENT_BINARY_DIR}/chronolog.pc"
+    DESTINATION ${CHRONOLOG_INSTALL_ROOT}/lib/pkgconfig
+)
+
+#------------------------------------------------------------------------------
+# Runtime Version Header
+#------------------------------------------------------------------------------
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/version.h.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/chronolog_version.h"
+    @ONLY
+)
+
+install(
+    FILES "${CMAKE_CURRENT_BINARY_DIR}/chronolog_version.h"
+    DESTINATION ${CHRONOLOG_INSTALL_INCLUDE_DIR}/chronolog
+    RENAME version.h
+)
+
+#------------------------------------------------------------------------------
+# License and README (for packaging and install tree)
+#------------------------------------------------------------------------------
+install(
+    FILES
+        "${CMAKE_SOURCE_DIR}/LICENSE"
+        "${CMAKE_SOURCE_DIR}/README.md"
+    DESTINATION ${CHRONOLOG_INSTALL_ROOT}
+)
+
+#------------------------------------------------------------------------------
+# Deploy-from-install helper scripts
+#------------------------------------------------------------------------------
+install(
+    PROGRAMS
+        tools/deploy/ChronoLog/deploy_local.sh
+        tools/deploy/ChronoLog/deploy_cluster.sh
+    DESTINATION ${CHRONOLOG_INSTALL_ROOT}/tools
+)
+
+#------------------------------------------------------------------------------
+# Custom Targets
+#------------------------------------------------------------------------------
 add_custom_target(make_all cd ${CMAKE_BINARY_DIR} && make)
+
+#------------------------------------------------------------------------------
+# Packaging (must come after all install() calls)
+#------------------------------------------------------------------------------
+include(cmake/CPackConfig.cmake)
+include(CPack)
+
+# package_release: builds the CPack TGZ then renames it to add the platform
+# suffix, giving the final name: chronolog-<version>-<system>-<processor>.tar.gz
+# Usage: cmake --build . --target package_release
+get_filename_component(_cmake_bin_dir "${CMAKE_COMMAND}" DIRECTORY)
+find_program(_cpack_program cpack HINTS "${_cmake_bin_dir}" REQUIRED)
+string(TOLOWER "${CMAKE_SYSTEM_NAME}" _system_lower)
+set(_pkg_base    "${CPACK_PACKAGE_NAME}-${CHRONOLOG_PACKAGE_VERSION}")
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(_pkg_release "${_pkg_base}-${_system_lower}-${CMAKE_SYSTEM_PROCESSOR}-debug")
+else()
+    set(_pkg_release "${_pkg_base}-${_system_lower}-${CMAKE_SYSTEM_PROCESSOR}")
+endif()
+
+add_custom_target(package_release
+    COMMAND "${_cpack_program}" --config "${CMAKE_BINARY_DIR}/CPackConfig.cmake" -B "${CMAKE_BINARY_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E rename
+        "${CMAKE_BINARY_DIR}/${_pkg_base}.tar.gz"
+        "${CMAKE_BINARY_DIR}/${_pkg_release}.tar.gz"
+    WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+    COMMENT "Creating ${_pkg_release}.tar.gz"
+    VERBATIM
+)

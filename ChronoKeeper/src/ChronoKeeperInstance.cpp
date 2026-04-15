@@ -14,11 +14,13 @@
 #include <StoryChunkExtractionQueue.h>
 #include <KeeperDataStore.h>
 #include <DataStoreAdminService.h>
-#include <ConfigurationManager.h>
 #include <cmd_arg_parse.h>
 #include <StoryChunkExtractionModule.h>
 #include <ChunkLoggingExtractor.h>
 #include <ChunkExtractorRDMA.h>
+
+#include <ConfigurationManager.h>
+#include <ChronoKeeperConfiguration.h>
 
 namespace chl = chronolog;
 namespace tl = thallium;
@@ -75,8 +77,12 @@ int main(int argc, char** argv)
     }
     chronolog::ConfigurationManager confManager(conf_file_path);
 
-    chronolog::KeeperConfiguration KEEPER_CONF = confManager.KEEPER_CONF;
-    std::cout << "ChronoKeeper Configuration " << KEEPER_CONF.to_String() << std::endl;
+    chronolog::KeeperConfiguration KEEPER_CONF;
+    if(KEEPER_CONF.parseJsonConf(confManager.KEEPER_JSON_CONF) != chronolog::CL_SUCCESS)
+    {
+        std::cerr << "[ChronoKeeper] Invalid KEEPER configuration. Exiting";
+        exit(EXIT_FAILURE);
+    }
 
     int result = chronolog::chrono_monitor::initialize(KEEPER_CONF.LOG_CONF.LOGTYPE,
                                                        KEEPER_CONF.LOG_CONF.LOGFILE,
@@ -90,7 +96,7 @@ int main(int argc, char** argv)
         exit(EXIT_FAILURE);
     }
 
-    LOG_INFO("Running ChronoKeeper Server.");
+    LOG_INFO("[ChronoKeeper] Running ChronoKeeper Server.");
     LOG_INFO("[ChronoKeeper] Configuration {}", KEEPER_CONF.to_String());
 
     // Instantiate ChronoKeeper MemoryDataStore

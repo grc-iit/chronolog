@@ -1,0 +1,236 @@
+name: "ChronoLog: Publish Dev Image"
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  chronolog-base:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    timeout-minutes: 90
+    outputs:
+      image-name: ${{ steps.set-base-image-name.outputs.full-name }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute base image hash
+        id: basehash
+        run: |
+          echo "hash=${{ hashFiles('spack.yaml', 'Client/spack.yaml', '.github/docker/**') }}" >> $GITHUB_OUTPUT
+
+      - name: Set base image name (immutable)
+        id: set-base-image-name
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          HASH="${{ steps.basehash.outputs.hash }}"
+          TAG="sha-${HASH}"
+          echo "full-name=ghcr.io/${OWNER}/chronolog-base:${TAG}" >> $GITHUB_OUTPUT
+          echo "Base image tag: ${TAG}"
+
+      - name: Try to pull cached base image
+        id: pull-base
+        run: |
+          set -e
+          IMAGE="${{ steps.set-base-image-name.outputs.full-name }}"
+          if docker pull "$IMAGE" 2>/dev/null; then
+            echo "hit=true" >> $GITHUB_OUTPUT
+            echo "Base image already exists: $IMAGE"
+          else
+            echo "hit=false" >> $GITHUB_OUTPUT
+            echo "Base image not found, will build: $IMAGE"
+          fi
+
+      - name: Build base Docker image
+        if: steps.pull-base.outputs.hit != 'true'
+        uses: docker/build-push-action@v4
+        with:
+          context: .github/docker
+          push: false
+          tags: ${{ steps.set-base-image-name.outputs.full-name }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          load: true
+
+      - name: Install Spack dependencies in container
+        if: steps.pull-base.outputs.hit != 'true'
+        run: |
+          set -e
+          BASE_IMAGE="${{ steps.set-base-image-name.outputs.full-name }}"
+          FINAL_IMAGE="${{ steps.set-base-image-name.outputs.full-name }}"
+
+          CONTAINER_ID=$(docker create --user root \
+            -v "${{ github.workspace }}:/home/grc-iit/chronolog-repo" \
+            -w /home/grc-iit/chronolog-repo \
+            "$BASE_IMAGE" \
+            bash -c "
+              set -e
+              chown -R grc-iit:grc-iit /home/grc-iit/chronolog-repo
+              source /home/grc-iit/spack/share/spack/setup-env.sh
+              spack env activate -p .
+              echo 'Reconcretizing Spack environment for current architecture...'
+              spack concretize --force
+              echo 'Installing Spack dependencies...'
+              spack install
+              echo 'Spack dependencies installed successfully'
+            ")
+
+          docker start -a "$CONTAINER_ID"
+          docker commit "$CONTAINER_ID" "$FINAL_IMAGE"
+          docker rm "$CONTAINER_ID"
+
+      - name: Push base image
+        if: steps.pull-base.outputs.hit != 'true'
+        run: |
+          set -e
+          echo "Pushing base image: ${{ steps.set-base-image-name.outputs.full-name }}"
+          docker push "${{ steps.set-base-image-name.outputs.full-name }}"
+
+  publish-dev-image:
+    runs-on: ubuntu-24.04
+    needs: chronolog-base
+    permissions:
+      contents: read
+      packages: write
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set image metadata
+        id: meta
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "owner=${OWNER}" >> $GITHUB_OUTPUT
+
+      - name: Pull base Docker image
+        run: |
+          docker pull "${{ needs.chronolog-base.outputs.image-name }}"
+
+      - name: Create container for dev build
+        id: create-container
+        run: |
+          set -e
+          BASE_IMAGE="${{ needs.chronolog-base.outputs.image-name }}"
+          CONTAINER_ID=$(docker create --user root --init \
+            -v "${{ github.workspace }}:/tmp/chronolog-src" \
+            -w /tmp/chronolog-src \
+            "$BASE_IMAGE" \
+            bash -c "chown -R grc-iit:grc-iit /tmp/chronolog-src && tail -f /dev/null")
+          echo "container-id=${CONTAINER_ID}" >> $GITHUB_OUTPUT
+          docker start "$CONTAINER_ID"
+
+      - name: Reconcretize Spack environment
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker exec "$CONTAINER_ID" bash -c "
+            set -e
+            source /home/grc-iit/spack/share/spack/setup-env.sh
+            spack env activate -p .
+            if [ ! -d \".spack-env/view\" ] || [ ! -d \".spack-env/view/bin\" ] || [ ! -d \".spack-env/view/lib\" ]; then
+              spack concretize --force
+            fi
+          "
+
+      - name: Build Debug
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker exec "$CONTAINER_ID" bash -c "
+            set -e
+            source /home/grc-iit/spack/share/spack/setup-env.sh
+            spack env activate -p .
+            mkdir -p /home/grc-iit/chronolog-install
+            chown -R grc-iit:grc-iit /home/grc-iit/chronolog-install || true
+            ./tools/deploy/ChronoLog/build.sh -t Debug -I /home/grc-iit/chronolog-install
+          "
+
+      - name: Install Debug
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker exec "$CONTAINER_ID" bash -c "
+            set -e
+            source /home/grc-iit/spack/share/spack/setup-env.sh
+            spack env activate -p .
+            ./tools/deploy/ChronoLog/install.sh -t Debug -I /home/grc-iit/chronolog-install
+          "
+
+      - name: Prepare image for publishing
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker exec "$CONTAINER_ID" bash -c "
+            set -e
+            # Copy source into container at chronolog-repo (bind-mount does not survive docker commit)
+            mkdir -p /home/grc-iit/chronolog-repo
+            cp -a /tmp/chronolog-src/. /home/grc-iit/chronolog-repo/
+            # Fix ownership of install tree (built as root; grc-iit needs write access for monitor/output dirs)
+            chown -R grc-iit:grc-iit /home/grc-iit/chronolog-install
+            # Remove CMake build artifacts to reduce image size
+            rm -rf /home/grc-iit/chronolog-build
+            # Add runtime environment to bashrc
+            echo 'export PATH=/home/grc-iit/chronolog-install/chronolog/bin:\$PATH' >> /home/grc-iit/.bashrc
+            echo 'export LD_LIBRARY_PATH=/home/grc-iit/chronolog-install/chronolog/lib:\$LD_LIBRARY_PATH' >> /home/grc-iit/.bashrc
+          "
+
+      - name: Commit and push dev image
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          OWNER="${{ steps.meta.outputs.owner }}"
+
+          docker stop "$CONTAINER_ID"
+          docker commit \
+            --change 'ENV PATH=/home/grc-iit/chronolog-install/chronolog/bin:$PATH' \
+            --change 'ENV LD_LIBRARY_PATH=/home/grc-iit/chronolog-install/chronolog/lib' \
+            --change 'ENV CHRONOLOG_HOME=/home/grc-iit/chronolog-install/chronolog' \
+            --change "LABEL org.opencontainers.image.title=\"ChronoLog Developer Image\"" \
+            --change "LABEL org.opencontainers.image.description=\"Debug build with source code for development\"" \
+            --change "LABEL org.opencontainers.image.revision=${{ github.sha }}" \
+            --change 'LABEL org.opencontainers.image.source=https://github.com/grc-iit/ChronoLog' \
+            --change 'USER grc-iit' \
+            --change 'WORKDIR /home/grc-iit' \
+            "$CONTAINER_ID" "ghcr.io/${OWNER}/chronolog-dev:develop"
+
+          docker push "ghcr.io/${OWNER}/chronolog-dev:develop"
+
+      - name: Clean up
+        if: always()
+        run: |
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker stop "$CONTAINER_ID" 2>/dev/null || true
+          docker rm "$CONTAINER_ID" 2>/dev/null || true
