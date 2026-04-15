@@ -1,0 +1,55 @@
+{
+  "name": "ChronoLog (CPU)",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": "../..",
+    "args": {
+      "HOST_UID": "${localEnv:HOST_UID:1000}",
+      "HOST_GID": "${localEnv:HOST_GID:1000}"
+    },
+    "options": [
+      "--tag=chronolog/devcontainer-cpu:latest"
+    ]
+  },
+  "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
+  "containerEnv": {
+    "CHRONOLOG_ROOT": "${localWorkspaceFolder}",
+    "LD_LIBRARY_PATH": "/usr/local/lib:/usr/lib/x86_64-linux-gnu"
+  },
+  "mounts": [
+    "source=${localEnv:HOME}/.ssh,target=/tmp/host-ssh,type=bind,readonly",
+    "source=${localEnv:HOME}/.claude,target=/tmp/host-claude,type=bind,readonly",
+    "source=${localEnv:HOME}/.claude.json,target=/tmp/host-claude.json,type=bind,readonly",
+    "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
+  ],
+  "runArgs": [
+    "--privileged"
+  ],
+  "updateRemoteUserUID": true,
+  "initializeCommand": "bash -c 'mkdir -p ~/.ssh ~/.claude && chmod 700 ~/.ssh && touch ~/.claude.json'",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "anthropic.claude-code",
+        "ms-vscode.cpptools",
+        "ms-vscode.cmake-tools",
+        "twxs.cmake",
+        "llvm-vs-code-extensions.vscode-clangd",
+        "KylinIdeTeam.cppdebug",
+        "ms-azuretools.vscode-docker",
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-python.debugpy"
+      ],
+      "settings": {
+        "cmake.configureOnOpen": false,
+        "cmake.buildDirectory": "${workspaceFolder}/../chronolog-build/${buildType}",
+        "cmake.installPrefix": "${workspaceFolder}/../chronolog-install"
+      }
+    }
+  },
+  "postCreateCommand": ".devcontainer/post-create.sh",
+  "postStartCommand": ".devcontainer/post-start.sh",
+  "remoteUser": "grc-iit"
+}

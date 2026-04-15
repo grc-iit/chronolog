@@ -24,6 +24,7 @@ target_include_directories(chrono_common
         $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/Client/cpp/include>
     PRIVATE
         ${CMAKE_SOURCE_DIR}/Client/cpp/include
+        ${HDF5_INCLUDE_DIRS}
 )
 
 target_link_libraries(chrono_common

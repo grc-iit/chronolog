@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 find_package(Thallium REQUIRED)
+find_package(spdlog REQUIRED)
 
 #------------------------------------------------------------------------------
 # ChronoKeeper Executable
@@ -24,6 +25,7 @@ target_link_libraries(chrono_keeper
         chrono_common
         chronolog_client
         thallium
+        spdlog::spdlog
 )
 
 set_target_properties(chrono_keeper PROPERTIES

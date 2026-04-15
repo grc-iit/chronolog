@@ -87,9 +87,9 @@ target_link_libraries(client_lib_distributed_telemetry_writer_example
     PRIVATE
         chronolog_client
         thallium
+        MPI::MPI_CXX
         pthread
         rt
-        ${MPI_CXX_LIBRARIES}
 )
 
 set_target_properties(client_lib_distributed_telemetry_writer_example PROPERTIES

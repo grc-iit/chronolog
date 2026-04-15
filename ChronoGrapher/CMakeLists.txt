@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 find_package(Thallium REQUIRED)
+find_package(spdlog REQUIRED)
 find_package(HDF5 REQUIRED COMPONENTS C CXX)
 
 #------------------------------------------------------------------------------
@@ -11,6 +12,7 @@ add_executable(chrono_grapher)
 target_include_directories(chrono_grapher PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/chrono_common/include
+    ${HDF5_INCLUDE_DIRS}
 )
 
 target_sources(chrono_grapher PRIVATE
@@ -25,6 +27,7 @@ target_link_libraries(chrono_grapher
         chrono_common
         chronolog_client
         thallium
+        spdlog::spdlog
         ${HDF5_LIBRARIES}
 )
 

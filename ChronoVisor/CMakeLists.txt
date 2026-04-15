@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 find_package(Thallium REQUIRED)
+find_package(spdlog REQUIRED)
 
 set(CMAKE_FIND_LIBRARY_TYPE STATIC)
 
@@ -29,6 +30,7 @@ target_link_libraries(chronovisor_server
         chrono_common
         chronolog_client
         thallium
+        spdlog::spdlog
 )
 
 set_target_properties(chronovisor_server PROPERTIES
