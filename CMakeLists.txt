@@ -255,30 +255,28 @@ if(fmt_FOUND)
 endif()
 
 #------------------------------------------------------------------------------
-# ChronoLog Components
+# IOWarp / clio-core (must come before ChiMods so add_chimod_* macros exist)
 #------------------------------------------------------------------------------
-add_subdirectory(chrono_common)
-add_subdirectory(Client)
-add_subdirectory(ChronoVisor)
-add_subdirectory(ChronoKeeper)
-add_subdirectory(ChronoGrapher)
-add_subdirectory(ChronoPlayer)
-add_subdirectory(ChronoStore)
-add_subdirectory(tools)
-add_subdirectory(Plugins)
-
-#------------------------------------------------------------------------------
-# IOWarp / clio-core (external subdirectory build)
-#------------------------------------------------------------------------------
-# Disable optional features that are not needed for the ChronoLog integration
-# and would pull in extra dependencies.  Override before add_subdirectory so
-# the options take effect inside clio-core's CMakeLists.txt.
 set(WRP_CORE_ENABLE_TESTS      OFF CACHE BOOL "" FORCE)
 set(WRP_CORE_ENABLE_BENCHMARKS OFF CACHE BOOL "" FORCE)
 set(WRP_CORE_ENABLE_PYTHON     OFF CACHE BOOL "" FORCE)
 set(WRP_CORE_ENABLE_CPACK      OFF CACHE BOOL "" FORCE)
 set(WRP_CORE_ENABLE_DOXYGEN    OFF CACHE BOOL "" FORCE)
 add_subdirectory(external/iowarp)
+
+#------------------------------------------------------------------------------
+# ChronoLog Core Libraries
+#------------------------------------------------------------------------------
+add_subdirectory(chrono_common)
+
+#------------------------------------------------------------------------------
+# ChronoLog ChiMods (Chimaera modules — replace the old server components)
+#------------------------------------------------------------------------------
+find_package(Threads REQUIRED)
+add_subdirectory(chimod/keeper)
+add_subdirectory(chimod/grapher)
+add_subdirectory(chimod/player)
+add_subdirectory(chimod/store)
 
 if(CHRONOLOG_BUILD_TESTS_NOW)
     enable_testing()

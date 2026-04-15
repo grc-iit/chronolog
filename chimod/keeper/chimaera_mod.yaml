@@ -1,0 +1,24 @@
+module_name: keeper
+namespace: chronolog
+version: 1.0.0
+
+kCreate: 0
+kDestroy: 1
+kNodeFailure: -1
+kRecover: -1
+kMigrate: -1
+kUpgrade: -1
+kMonitor: 9
+
+kRecordEvent: 10
+kRecordEventBatch: 11
+kStartStoryRecording: 12
+kStopStoryRecording: 13
+kCreateChronicle: 14
+kDestroyChronicle: 15
+kAcquireStory: 16
+kReleaseStory: 17
+kShowChronicles: 18
+kShowStories: 19
+
+has_gpu: false

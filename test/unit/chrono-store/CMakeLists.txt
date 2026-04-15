@@ -1,7 +1,8 @@
 cmake_minimum_required(VERSION 3.25)
 
-find_package(Thallium REQUIRED)
 find_package(HDF5 REQUIRED COMPONENTS C CXX)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(JSON-C REQUIRED json-c)
 
 #------------------------------------------------------------------------------
 # ChronoStore unit tests
@@ -14,7 +15,6 @@ add_executable(hdf5_archiver_test
     ${CMAKE_SOURCE_DIR}/ChronoStore/src/StoryWriter.cpp
     ${CMAKE_SOURCE_DIR}/ChronoStore/include/StoryReader.h
     ${CMAKE_SOURCE_DIR}/ChronoStore/src/StoryReader.cpp
-    ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
 )
 
 target_include_directories(hdf5_archiver_test PRIVATE
@@ -29,8 +29,10 @@ target_include_directories(hdf5_archiver_test PRIVATE
 target_link_libraries(hdf5_archiver_test PRIVATE
     chrono_common
     ${HDF5_LIBRARIES}
-    thallium
+    ${JSON-C_LIBRARIES}
 )
+
+target_link_directories(hdf5_archiver_test PRIVATE ${JSON-C_LIBRARY_DIRS})
 
 set_target_properties(hdf5_archiver_test PROPERTIES
     OUTPUT_NAME chronolog-test-store-hdf5-archiver
@@ -47,7 +49,6 @@ endif()
 
 add_executable(cmp_vlen_bytes_vs_blob_map
     chrono_store_vlen_bytes_vs_blob_map_test.cpp
-    ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
 )
 
 target_include_directories(cmp_vlen_bytes_vs_blob_map PRIVATE
@@ -56,9 +57,12 @@ target_include_directories(cmp_vlen_bytes_vs_blob_map PRIVATE
 )
 
 target_link_libraries(cmp_vlen_bytes_vs_blob_map PRIVATE
+    chrono_common
     ${HDF5_LIBRARIES}
-    thallium
+    ${JSON-C_LIBRARIES}
 )
+
+target_link_directories(cmp_vlen_bytes_vs_blob_map PRIVATE ${JSON-C_LIBRARY_DIRS})
 
 set_target_properties(cmp_vlen_bytes_vs_blob_map PROPERTIES
     OUTPUT_NAME chronolog-test-store-vlen-bytes-vs-blob-map

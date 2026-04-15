@@ -1,0 +1,17 @@
+module_name: grapher
+namespace: chronolog
+version: 1.0.0
+
+kCreate: 0
+kDestroy: 1
+kNodeFailure: -1
+kRecover: -1
+kMigrate: -1
+kUpgrade: -1
+kMonitor: 9
+
+kMergeChunks: 10
+kFlushStory: 11
+kGetMergeStatus: 12
+
+has_gpu: false

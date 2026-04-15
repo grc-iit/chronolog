@@ -4,9 +4,11 @@ find_package(GTest REQUIRED)
 include(GoogleTest)
 
 #------------------------------------------------------------------------------
-# Unit test subdirectories (one component per folder)
+# Unit test subdirectories
 #------------------------------------------------------------------------------
 add_subdirectory(chrono-common)
+add_subdirectory(chrono-keeper)
 add_subdirectory(chrono-store)
-add_subdirectory(chrono-player)
-add_subdirectory(chronokvs)
+# chrono-player tests depend on old Thallium architecture — disabled pending rewrite
+# add_subdirectory(chrono-player)
+# add_subdirectory(chronokvs)

@@ -4,9 +4,8 @@
 #include <map>
 #include <iostream>
 #include <sstream>
-#include <thallium/serialization/stl/string.hpp>
-#include <thallium/serialization/stl/map.hpp>
-#include <thallium/serialization/stl/tuple.hpp>
+#include <string>
+#include <tuple>
 
 #include <chrono_monitor.h>
 #include <chronolog_client.h> //for chronolog::Event definition

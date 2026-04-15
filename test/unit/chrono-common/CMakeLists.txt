@@ -1,11 +1,10 @@
 cmake_minimum_required(VERSION 3.25)
 
 find_package(GTest REQUIRED)
-find_package(Thallium REQUIRED)
 include(GoogleTest)
 
 #------------------------------------------------------------------------------
-# chrono_common unit tests (GTest and standalone executables)
+# chrono_common unit tests (GTest)
 #------------------------------------------------------------------------------
 
 # StoryChunk (GTest)
@@ -21,7 +20,6 @@ target_include_directories(story_chunk_test PRIVATE
 target_link_libraries(story_chunk_test PRIVATE
     GTest::gtest_main
     chrono_common
-    chronolog_client
 )
 
 set_target_properties(story_chunk_test PROPERTIES OUTPUT_NAME chronolog-test-common-story-chunk)
@@ -40,10 +38,11 @@ target_include_directories(story_pipeline_test PRIVATE
     ${CMAKE_SOURCE_DIR}/Client/cpp/include
 )
 
+target_compile_definitions(story_pipeline_test PRIVATE CHRONOLOG_ENABLE_GTEST_FRIENDS)
+
 target_link_libraries(story_pipeline_test PRIVATE
     GTest::gtest_main
     chrono_common
-    chronolog_client
 )
 
 set_target_properties(story_pipeline_test PROPERTIES OUTPUT_NAME chronolog-test-common-story-pipeline)
@@ -52,62 +51,5 @@ if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(story_pipeline_test DESTINATION tests)
 endif()
 
-#------------------------------------------------------------------------------
-# chrono_common standalone tests (Thallium/Margo)
-#------------------------------------------------------------------------------
-
-add_executable(extraction_chain_test
-    chrono_common_extraction_chain_test.cpp
-)
-
-target_include_directories(extraction_chain_test PRIVATE
-    ${CMAKE_SOURCE_DIR}/chrono_common/include
-    ${CMAKE_SOURCE_DIR}/Client/cpp/include
-)
-
-target_link_libraries(extraction_chain_test PRIVATE
-    chrono_common
-    chronolog_client
-    thallium
-)
-
-set_target_properties(extraction_chain_test PROPERTIES
-    OUTPUT_NAME chronolog-test-common-extraction-chain
-    BUILD_WITH_INSTALL_RPATH TRUE
-    SKIP_BUILD_RPATH TRUE
-)
-
-add_test(NAME Unit_ChronoCommon_ExtractionChain COMMAND extraction_chain_test)
-set_tests_properties(Unit_ChronoCommon_ExtractionChain PROPERTIES DISABLED TRUE)
-if(CHRONOLOG_INSTALL_TESTS)
-    chronolog_install_target(extraction_chain_test DESTINATION tests)
-endif()
-
-#------------------------------------------------------------------------------
-
-add_executable(chunk_consumer_service_test
-    chrono_common_chunk_consumer_service_test.cpp
-)
-
-target_include_directories(chunk_consumer_service_test PRIVATE
-    ${CMAKE_SOURCE_DIR}/chrono_common/include
-    ${CMAKE_SOURCE_DIR}/Client/cpp/include
-)
-
-target_link_libraries(chunk_consumer_service_test PRIVATE
-    chrono_common
-    chronolog_client
-    thallium
-)
-
-set_target_properties(chunk_consumer_service_test PROPERTIES
-    OUTPUT_NAME chronolog-test-common-chunk-consumer-service
-    BUILD_WITH_INSTALL_RPATH TRUE
-    SKIP_BUILD_RPATH TRUE
-)
-
-add_test(NAME Unit_ChronoCommon_ChunkConsumerService COMMAND chunk_consumer_service_test)
-set_tests_properties(Unit_ChronoCommon_ChunkConsumerService PROPERTIES DISABLED TRUE)
-if(CHRONOLOG_INSTALL_TESTS)
-    chronolog_install_target(chunk_consumer_service_test DESTINATION tests)
-endif()
+# Thallium-dependent tests (extraction_chain, chunk_consumer_service)
+# are disabled pending migration to ChiMod architecture.
