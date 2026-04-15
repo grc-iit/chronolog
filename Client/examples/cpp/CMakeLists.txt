@@ -81,6 +81,7 @@ add_executable(client_lib_distributed_telemetry_writer_example
 
 target_include_directories(client_lib_distributed_telemetry_writer_example PRIVATE
     ${CMAKE_BINARY_DIR}/Client/cpp/include
+    ${MPI_CXX_INCLUDE_DIRS}
 )
 
 target_link_libraries(client_lib_distributed_telemetry_writer_example

@@ -247,6 +247,14 @@ if(CHRONOLOG_BUILD_TESTS_NOW)
 endif()
 
 #------------------------------------------------------------------------------
+# spdlog requires fmt at link time on Ubuntu 24.04 (separate shared library)
+#------------------------------------------------------------------------------
+find_package(fmt QUIET)
+if(fmt_FOUND)
+    link_libraries(fmt::fmt)
+endif()
+
+#------------------------------------------------------------------------------
 # ChronoLog Components
 #------------------------------------------------------------------------------
 add_subdirectory(chrono_common)
@@ -258,6 +266,19 @@ add_subdirectory(ChronoPlayer)
 add_subdirectory(ChronoStore)
 add_subdirectory(tools)
 add_subdirectory(Plugins)
+
+#------------------------------------------------------------------------------
+# IOWarp / clio-core (external subdirectory build)
+#------------------------------------------------------------------------------
+# Disable optional features that are not needed for the ChronoLog integration
+# and would pull in extra dependencies.  Override before add_subdirectory so
+# the options take effect inside clio-core's CMakeLists.txt.
+set(WRP_CORE_ENABLE_TESTS      OFF CACHE BOOL "" FORCE)
+set(WRP_CORE_ENABLE_BENCHMARKS OFF CACHE BOOL "" FORCE)
+set(WRP_CORE_ENABLE_PYTHON     OFF CACHE BOOL "" FORCE)
+set(WRP_CORE_ENABLE_CPACK      OFF CACHE BOOL "" FORCE)
+set(WRP_CORE_ENABLE_DOXYGEN    OFF CACHE BOOL "" FORCE)
+add_subdirectory(external/iowarp)
 
 if(CHRONOLOG_BUILD_TESTS_NOW)
     enable_testing()

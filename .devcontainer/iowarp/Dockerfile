@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc g++ gdb make ninja-build \
     cmake \
     autoconf automake libtool pkg-config \
+    ccache patchelf \
     # Source / VCS
     git curl wget \
     # ChronoLog apt deps
@@ -22,18 +23,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev \
     libfuse-dev \
     libfabric-dev \
-    libspdlog-dev \
+    libspdlog-dev libfmt-dev \
     libcereal-dev \
     python3-dev python3-pip \
     pybind11-dev \
     libgtest-dev \
     libmpich-dev mpich \
     libcurl4-openssl-dev \
-    # iowarp apt deps
+    # iowarp / clio-core apt deps
     redis-server redis-tools \
     nlohmann-json3-dev \
     libpoco-dev \
     libaio-dev \
+    catch2 \
+    libelf-dev \
     # Dev convenience
     sudo vim less procps openssh-server \
  && rm -rf /var/lib/apt/lists/*
