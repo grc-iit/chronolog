@@ -8,6 +8,8 @@
 #include <KeeperRegistry.h>
 #include <chrono_monitor.h>
 #include <VisorClientPortal.h>
+#include <ConfigurationManager.h>
+#include <ChronoVisorConfiguration.h>
 
 volatile sig_atomic_t keep_running = true;
 
@@ -42,9 +44,13 @@ int main(int argc, char** argv)
         std::exit(EXIT_FAILURE);
     }
     chronolog::ConfigurationManager confManager(conf_file_path);
-    chronolog::VisorConfiguration VISOR_CONF = confManager.VISOR_CONF;
 
-    std::cout << "VISOR_CONFIGURATION " << VISOR_CONF.to_String() << std::endl;
+    chronolog::VisorConfiguration VISOR_CONF;
+    if(VISOR_CONF.parseJsonConf(confManager.VISOR_JSON_CONF) != chronolog::CL_SUCCESS)
+    {
+        std::cerr << "[CHRONO_VISOR] Invalid VISOR configuration. Exiting";
+        exit(EXIT_FAILURE);
+    }
 
     int result = chronolog::chrono_monitor::initialize(VISOR_CONF.VISOR_LOG_CONF.LOGTYPE,
                                                        VISOR_CONF.VISOR_LOG_CONF.LOGFILE,
@@ -64,9 +70,10 @@ int main(int argc, char** argv)
     chronolog::VisorClientPortal theChronoVisorPortal;
     chronolog::KeeperRegistry keeperRegistry;
 
-    keeperRegistry.InitializeRegistryService(VISOR_CONF);
+    keeperRegistry.InitializeRegistryService(VISOR_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF,
+                                             VISOR_CONF.DELAYED_DATA_ADMIN_EXIT_IN_SECS);
 
-    theChronoVisorPortal.StartServices(VISOR_CONF, &keeperRegistry);
+    theChronoVisorPortal.StartServices(VISOR_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF, &keeperRegistry);
 
     // If services do not start successfully there should a graceful exit(-1) here
     /////
