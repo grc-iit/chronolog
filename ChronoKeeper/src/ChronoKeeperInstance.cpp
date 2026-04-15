@@ -18,6 +18,7 @@
 #include <StoryChunkExtractionModule.h>
 #include <ChunkLoggingExtractor.h>
 #include <ChunkExtractorRDMA.h>
+#include <DualEndpointChunkExtractorRDMA.h>
 
 #include <ConfigurationManager.h>
 #include <ChronoKeeperConfiguration.h>
@@ -186,8 +187,18 @@ int main(int argc, char** argv)
                                              KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT,
                                              KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.SERVICE_PROVIDER_ID);
 
+    chl::ServiceId playerReceivingServiceId(KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.PROTO_CONF,
+                                             KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP,
+                                             KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT+5,
+                                             KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.SERVICE_PROVIDER_ID+5);
+
     chl::StoryChunkExtractorRDMA single_endpoint_rdma_extractor(*extractionEngine, grapherReceivingServiceId);
-    chronolog::StoryChunkExtractionModule extractionModule(chl::LoggingExtractor(), single_endpoint_rdma_extractor);
+    //chronolog::StoryChunkExtractionModule extractionModule(chl::LoggingExtractor(), single_endpoint_rdma_extractor);
+
+    chronolog::DualEndpointChunkExtractorRDMA dual_endpoint_rdma_extractor(
+                       *extractionEngine, grapherReceivingServiceId, playerReceivingServiceId);
+    chronolog::StoryChunkExtractionModule extractionModule(chl::LoggingExtractor(), dual_endpoint_rdma_extractor);
+                    
 
     chronolog::KeeperDataStore theDataStore(ingestionQueue,
                                             extractionModule.getExtractionQueue(),

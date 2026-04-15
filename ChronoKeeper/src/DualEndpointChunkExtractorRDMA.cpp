@@ -20,22 +20,22 @@ chronolog::DualEndpointChunkExtractorRDMA::DualEndpointChunkExtractorRDMA(tl::en
     try
     {
         rdma_sender_for_player = RDMATransferAgent::CreateRDMATransferAgent(sender_tl_engine, player_receiver_service_id);
-        LOG_TRACE("[ChunkExtractorRDMA] Constructor created rdma_sender for player_receiver {} ", chl::to_string(player_receiver_service_id));
+        LOG_TRACE("[DualEndpointChunkExtractor] Constructor created rdma_sender for player_receiver {} ", chl::to_string(player_receiver_service_id));
     }
     catch(...)
     {
-        LOG_ERROR("[ChunkExtractorRDMA] Constructor : failed to create rdma_sender for player_receiver {} ", chl::to_string(player_receiver_service_id));
+        LOG_ERROR("[DualEndpointChunkExtractor] Constructor : failed to create rdma_sender for player_receiver {} ", chl::to_string(player_receiver_service_id));
         rdma_sender_for_player = nullptr;
     }
 
     try
     {
         rdma_sender_for_grapher = RDMATransferAgent::CreateRDMATransferAgent(sender_tl_engine, grapher_receiver_service_id);
-        LOG_TRACE("[ChunkExtractorRDMA] Constructor created rdma_sender for grpaher_receiver {} ", chl::to_string(grapher_receiver_service_id));
+        LOG_TRACE("[DualEndpointChunkExtractor] Constructor created rdma_sender for grpaher_receiver {} ", chl::to_string(grapher_receiver_service_id));
     }
     catch(...)
     {
-        LOG_ERROR("[ChunkExtractorRDMA] Constructor : failed to create rdma_sender for grapher_receiver {} ", chl::to_string(grapher_receiver_service_id));
+        LOG_ERROR("[DualEndpointChunkExtractor] Constructor : failed to create rdma_sender for grapher_receiver {} ", chl::to_string(grapher_receiver_service_id));
         rdma_sender_for_grapher = nullptr;
     }
 
@@ -111,10 +111,9 @@ chl::DualEndpointChunkExtractorRDMA & chronolog::DualEndpointChunkExtractorRDMA:
         }
         catch(...)
         {
-            LOG_ERROR("[DualEndpointExtractorRDMA] assignment: failed to create rdma_sender for receiver {} ", chl::to_string(grpaher_receiver_service_id));
+            LOG_ERROR("[DualEndpointExtractorRDMA] assignment: failed to create rdma_sender for receiver {} ", chl::to_string(grapher_receiver_service_id));
             rdma_sender_for_grapher = nullptr;
         }  
-    }
 
     return *this;
 }
@@ -138,47 +137,82 @@ chronolog::DualEndpointChunkExtractorRDMA::~DualEndpointChunkExtractorRDMA()
 
 int chronolog::DualEndpointChunkExtractorRDMA::process_chunk(chronolog::StoryChunk * story_chunk)
 {
+  
+    // Note: a failure to transfer a story_chunk to the ChronoPlayer alone is not considered a critical enough error 
+    // to exit this function and try again later. In this case the error would be logged but the function would 
+    // proceed to sending the story_chunk to the ChronoGrapher
+    // Failure to transfer the story_chunk to the ChronoGrapher would trigger the exit from the function,
+    // return the StoryChunk back on the extraction_queue, and subsequent retry
+
+    int transfer_return = chl::CL_ERR_UNKNOWN;
+
     try
     {
-        LOG_DEBUG("[ExtractorRDMA] tl::thread_id={} processing chunk StoryId={} {}-{} {}-{} eventCount {}",         
+        LOG_DEBUG("[DualEndpointChunkExtractor] tl::thread_id={} processing chunk StoryId={} {}-{} {}-{} eventCount {}",         
                 thallium::thread::self_id(), story_chunk->getStoryId(),
                 story_chunk->getChronicleName(),story_chunk->getStoryName(),story_chunk->getStartTime(), story_chunk->getEndTime(),story_chunk->getEventCount());
 
-        if(rdma_sender == nullptr) 
+        if(rdma_sender_for_grapher == nullptr) 
         { 
-            LOG_ERROR("[ChunkExtractorRDMA] Failed to transfer StoryChunk StoryId={} StartTime={}", story_chunk->getStoryId(), story_chunk->getStartTime());
-            return chl::CL_ERR_UNKNOWN; 
+            LOG_ERROR("[DualEndpointChunkExtractor] Failed to transfer StoryChunk StoryId={} StartTime={}", story_chunk->getStoryId(), story_chunk->getStartTime());
+            return chl::CL_ERR_STORY_CHUNK_EXTRACTION; 
         }
 
         std::ostringstream oss(std::ios::binary);
-        cereal::BinaryOutputArchive oarchive(oss);
-        oarchive(*story_chunk);
+        try
+        {
+            cereal::BinaryOutputArchive oarchive(oss);
+            oarchive(*story_chunk);
+        }
+        catch(cereal::Exception const &ex)
+        {
+            LOG_ERROR("[DualEndpointChunkExtractor] Cereal exception while serializing StoryChunk StoryId={} StartTime={} ex {}", story_chunk->getStoryId(), story_chunk->getStartTime() ,ex.what());
+        }
+
+
         std::string serialized_story_chunk = oss.str();
 
-        auto transfer_return = rdma_sender_for_grapher->transfer_serialized_bulk(serialized_story_chunk);
+        if(rdma_sender_for_player != nullptr)
+        {
+            try
+            {
+                transfer_return = rdma_sender_for_player->transfer_serialized_story_chunk(serialized_story_chunk);
+                if(transfer_return == chl::CL_SUCCESS)
+                {
+                    LOG_INFO("[DualEndpointChunkExtractor] Transfered to Player StoryChunk StoryId={} StartTime={}", story_chunk->getStoryId(), story_chunk->getStartTime());
+                }
+                else
+                {
+                    LOG_ERROR("[DualEndpointChunkExtractor] Failed to transfer to Player StoryChunk StoryId={} StartTime={}", story_chunk->getStoryId(), story_chunk->getStartTime());
+                }
+            }
+            catch(std::exception const &ex)
+            {
+                LOG_ERROR("[DualEndpointChunkExtractor] Standard exception while serializing StoryChunk StoryId={} StartTime={} ex {}", 
+                     story_chunk->getStoryId(), story_chunk->getStartTime() ,ex.what());
+            }
+        }
+
+        transfer_return = rdma_sender_for_grapher->transfer_serialized_story_chunk(serialized_story_chunk);
 
         if(transfer_return == chl::CL_SUCCESS)
         {
-            LOG_INFO("[ChunkExtractorRDMA] Transfered StoryChunk StoryId={} StartTime={}", story_chunk->getStoryId(), story_chunk->getStartTime());
+            LOG_INFO("[DualEndpointChunkExtractor] Transfered to Grapher StoryChunk StoryId={} StartTime={}", story_chunk->getStoryId(), story_chunk->getStartTime());
         }
         else
         {
-            LOG_ERROR("[ChunkExtractorRDMA] Failed to transfer StoryChunk StoryId={} StartTime={}", story_chunk->getStoryId(), story_chunk->getStartTime());
+            LOG_ERROR("[DualEndpointChunkExtractor] Failed to transfer to Grapher StoryChunk StoryId={} StartTime={}", story_chunk->getStoryId(), story_chunk->getStartTime());
         }
         
         return transfer_return;
     }
-    catch(cereal::Exception const &ex)
-    {
-        LOG_ERROR("[RDMATransferAgent] Cereal exception while serializing StoryChunk StoryId={} StartTime={} ex {}", story_chunk->getStoryId(), story_chunk->getStartTime() ,ex.what());
-    }
     catch(std::exception const &ex)
     {
-        LOG_ERROR("[RDMATransferAgent] Standard exception while serializing StoryChunk StoryId={} StartTime={} ex {}", story_chunk->getStoryId(), story_chunk->getStartTime() ,ex.what());
+        LOG_ERROR("[DualEndpointChunkExtractor] Standard exception while serializing StoryChunk StoryId={} StartTime={} ex {}", story_chunk->getStoryId(), story_chunk->getStartTime() ,ex.what());
     }
     catch(...)
     {
-        LOG_ERROR("[ChunkExtractorRDMA] Exception while  transferring StoryChunkiStoryId={} StartTime={}", story_chunk->getStoryId(), story_chunk->getStartTime());
+        LOG_ERROR("[DualEndpointChunkExtractor] Exception while transferring StoryChunkiStoryId={} StartTime={}", story_chunk->getStoryId(), story_chunk->getStartTime());
     }
 
 return chl::CL_ERR_STORY_CHUNK_EXTRACTION;

@@ -1,5 +1,5 @@
-#ifndef CHUNK_EXTRACTOR_RDMA_H
-#define CHUNK_EXTRACTOR_RDMA_H
+#ifndef DUAL_CHUNK_EXTRACTOR_RDMA_H
+#define DUAL_CHUNK_EXTRACTOR_RDMA_H
 
 #include <chronolog_types.h>
 #include <ServiceId.h>
