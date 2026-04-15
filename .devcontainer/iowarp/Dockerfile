@@ -179,9 +179,9 @@ RUN if id ubuntu >/dev/null 2>&1; then \
  && useradd -m -u "${HOST_UID}" -g "${HOST_GID}" -s /bin/bash grc-iit \
  && echo "grc-iit ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/grc-iit
 
+USER grc-iit
+
 # Install Claude Code
 RUN curl -fsSL https://claude.ai/install.sh | bash
-
-USER grc-iit
 WORKDIR /workspace
 CMD ["/bin/bash"]
