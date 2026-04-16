@@ -11,3 +11,11 @@ spack:
   - py-pybind11@2.11.1
   - googletest@1.12.1  cxxstd=17
   view: true
+  packages:
+    all:
+      # Pin to generic x86_64 so package hashes are consistent across all
+      # GitHub Actions runners regardless of their CPU microarchitecture
+      # (zen2, zen3, cascadelake, etc.). Without this, spack targets the
+      # runner's exact microarch and the base image packages are unusable
+      # on any runner with a different microarch, triggering a full rebuild.
+      target: [x86_64]
