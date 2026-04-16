@@ -57,15 +57,11 @@ void chunk_contributor_thread(chl::StoryChunkExtractionQueue* extractionQueue, u
 }
 
 
-std::string extraction_module_json_string = std::string("{ \"ExtractionModule\": ")
-    +  "{ \"extraction_stream_count\":2,"
-    +    "\"extractors\": { "
-    +       "\"test_csv_extractor\": { \"type\": \"csv_extractor\", \"csv_archive_dir\": \"/tmp/csv_archive\" }"
-    +       ","
-    +       "\"test_hdf5_extractor\": { \"type\": \"hdf5_extractor\", \"hdf5_archive_dir\": \"/tmp/hdf5_archive\" }"
-    +     "} 
-    +  "}"
-    +"}";
+std::string extraction_module_json_string =
+        std::string("{ \"ExtractionModule\": ") + "{ \"extraction_stream_count\":2," + "\"extractors\": { " +
+        "\"test_csv_extractor\": { \"type\": \"csv_extractor\", \"csv_archive_dir\": \"/tmp/csv_archive\" }" + "," +
+        "\"test_hdf5_extractor\": { \"type\": \"hdf5_extractor\", \"hdf5_archive_dir\": \"/tmp/hdf5_archive\" }" + "} 
+        + "}" + "}";
 
 int main()
 {
@@ -102,9 +98,9 @@ int main()
 
     extractionModule.getExtractionChain().add_extractor(csv_extractor);
     extractionModule.getExtractionChain().add_extractor(hdf5_extractor);
-  
-    extractionModule.initialize(extraction_threads); 
-     
+
+    extractionModule.initialize(extraction_threads);
+
     if(!extractionModule.is_initialized())
     {
 
@@ -141,7 +137,8 @@ int main()
 
 
     // 5. Test ExtractionModule shutdown
-    LOG_INFO("[GrapherExtractionChainTest] Shutting down StoryChunkExtractionModule for {}", chl::to_string(localServiceId));
+    LOG_INFO("[GrapherExtractionChainTest] Shutting down StoryChunkExtractionModule for {}",
+             chl::to_string(localServiceId));
 
     extractionModule.shutdownExtraction();
 

@@ -17,7 +17,7 @@ class StoryChunkExtractorCSV
 {
 
 public:
-    StoryChunkExtractorCSV(ServiceId const& service_id, std::string const& csv_archive_dir="/tmp");
+    StoryChunkExtractorCSV(ServiceId const& service_id, std::string const& csv_archive_dir = "/tmp");
 
     int reset(std::string const& csv_archive_dir);
     int reset(json_object*);
@@ -26,10 +26,7 @@ public:
 
     int process_chunk(StoryChunk*);
 
-    bool is_active() const
-    {
-       return (std::filesystem::exists(outputDirectory));
-    }
+    bool is_active() const { return (std::filesystem::exists(outputDirectory)); }
 
 private:
     ServiceId serviceId;

@@ -37,33 +37,32 @@ int chronolog::StoryChunkExtractorCSV::reset(std::string const& new_archive_dir)
 
 int chronolog::StoryChunkExtractorCSV::reset(json_object* json_block)
 {
-    if( (json_block == nullptr )
-      || !json_object_is_type(json_block, json_type_object)
-      || (json_object_object_get(json_block, "type") == nullptr)
-      || !json_object_is_type(json_object_object_get(json_block, "type"), json_type_string)
-      || (std::string("csv_extractor").compare(json_object_get_string(json_object_object_get(json_block,"type"))) != 0)
-      )
+    if((json_block == nullptr) || !json_object_is_type(json_block, json_type_object) ||
+       (json_object_object_get(json_block, "type") == nullptr) ||
+       !json_object_is_type(json_object_object_get(json_block, "type"), json_type_string) ||
+       (std::string("csv_extractor").compare(json_object_get_string(json_object_object_get(json_block, "type"))) != 0))
     {
         outputDirectory = "/tmp";
         LOG_ERROR("StoryChunkExtractorCSV] Reset failure, using csv directory {}", outputDirectory);
-        return chl::CL_ERR_INVALID_CONF;    
+        return chl::CL_ERR_INVALID_CONF;
     }
 
-    if( (json_object_object_get(json_block, "csv_archive_dir") == nullptr)
-      || !json_object_is_type(json_object_object_get(json_block, "csv_archive_dir"), json_type_string))
+    if((json_object_object_get(json_block, "csv_archive_dir") == nullptr) ||
+       !json_object_is_type(json_object_object_get(json_block, "csv_archive_dir"), json_type_string))
     {
         outputDirectory = "/tmp";
         LOG_ERROR("StoryChunkExtractorCSV] Reset failure, using csv directory {}", outputDirectory);
-        return chl::CL_ERR_INVALID_CONF;  
-    } 
-     
+        return chl::CL_ERR_INVALID_CONF;
+    }
+
     outputDirectory = json_object_get_string(json_object_object_get(json_block, "csv_archive_dir"));
 
     // check if archive directory exists and is writable by the extractor process
     if(!std::filesystem::exists(outputDirectory))
     {
         outputDirectory = "/tmp";
-        LOG_ERROR("StoryChunkExtractorCSV] Reset failure: csv_archive_dir doesn't exist or not writable; using {}", outputDirectory);
+        LOG_ERROR("StoryChunkExtractorCSV] Reset failure: csv_archive_dir doesn't exist or not writable; using {}",
+                  outputDirectory);
         return chl::CL_ERR_INVALID_CONF;
     }
 

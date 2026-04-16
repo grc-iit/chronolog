@@ -56,39 +56,31 @@ void chunk_contributor_thread(chl::StoryChunkExtractionQueue* extractionQueue, u
     LOG_INFO("[ExtractionModuleTest] exiting contributing thread {} ", thread_id);
 }
 
-using Extractor = std::variant< chl::LoggingExtractor, chl::StoryChunkExtractorCSV, chl::StoryChunkExtractorRDMA >;
+using Extractor = std::variant<chl::LoggingExtractor, chl::StoryChunkExtractorCSV, chl::StoryChunkExtractorRDMA>;
 
 class TestExtractionChain
 {
     std::vector<Extractor> theExtractors;
 
 public:
-    TestExtractionChain()
-    { }
+    TestExtractionChain() {}
 
-    ~TestExtractionChain()
+    ~TestExtractionChain() { theExtractors.clear(); }
+
+    void add_extractor(Extractor e) { theExtractors.push_back(std::move(e)); }
+
+    int process_chunk(chl::StoryChunk* chunk)
     {
-        theExtractors.clear();
-    }
+        int chain_result = chl::CL_SUCCESS;
 
-    void add_extractor(Extractor e)
-    {
-        theExtractors.push_back(std::move(e));
-    }
-
-    int process_chunk( chl::StoryChunk * chunk)
-    {
-        int  chain_result = chl::CL_SUCCESS;
-
-        // If extractor fails, mark the chain result as a failure, 
+        // If extractor fails, mark the chain result as a failure,
         // but keep going for the others.
-        for (auto& e : theExtractors) 
+        for(auto& e: theExtractors)
         {
-            int extractor_result = std::visit([chunk](auto& extractor) 
-                -> int { return extractor.process_chunk(chunk); 
-                }, e);
+            int extractor_result =
+                    std::visit([chunk](auto& extractor) -> int { return extractor.process_chunk(chunk); }, e);
 
-            if (chl::CL_SUCCESS != extractor_result) 
+            if(chl::CL_SUCCESS != extractor_result)
             {
                 chain_result = extractor_result;
             }
@@ -98,21 +90,23 @@ public:
 
     bool is_active_chain() const
     {
-       if(theExtractors.empty())
-       {  return false; }
+        if(theExtractors.empty())
+        {
+            return false;
+        }
 
-       for (const auto& e : theExtractors) 
-       {
-           bool active = std::visit([](const auto& extractor) -> bool {
-              return extractor.is_active();
-           }, e);
+        for(const auto& e: theExtractors)
+        {
+            bool active = std::visit([](const auto& extractor) -> bool { return extractor.is_active(); }, e);
 
-        // if any single extractor is NOT active, the whole chain fails
-        if (!active) 
-        { return false; }
-       }
-    
-       return true;
+            // if any single extractor is NOT active, the whole chain fails
+            if(!active)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 };
 
@@ -160,7 +154,7 @@ int main()
         return (-1);
     }
 
-    // 1. Test single endpoint RDMA extractor instantiation 
+    // 1. Test single endpoint RDMA extractor instantiation
     chl::ServiceId receiving_service_id("ofi+sockets", "127.0.0.1", 3333, 33);
     chl::StoryChunkExtractorRDMA rdma_extractor(*localEngine, receiving_service_id);
 
@@ -170,9 +164,9 @@ int main()
     extractionModule.getExtractionChain().add_extractor(logging_extractor);
     extractionModule.getExtractionChain().add_extractor(csv_extractor);
     extractionModule.getExtractionChain().add_extractor(rdma_extractor);
-  
-    extractionModule.initialize(extraction_threads); 
-     
+
+    extractionModule.initialize(extraction_threads);
+
     // 3. Start extraction threads
     chl::StoryChunkExtractionQueue& extractionQueue = extractionModule.getExtractionQueue();
 

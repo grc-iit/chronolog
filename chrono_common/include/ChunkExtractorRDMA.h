@@ -32,15 +32,14 @@ public:
     int reset(ServiceId const&);
     int reset(json_object*);
 
-    bool is_active() const
-    { return (nullptr != rdma_sender); }
+    bool is_active() const { return (nullptr != rdma_sender); }
 
 private:
     tl::engine& sender_tl_engine;  // local tl::engine
     ServiceId receiver_service_id; // receiving ServiceId
     RDMATransferAgent* rdma_sender;
 
-    void restart_rdma_sender(ServiceId const &);
+    void restart_rdma_sender(ServiceId const&);
 };
 
 
