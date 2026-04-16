@@ -225,7 +225,7 @@ endif()
 #------------------------------------------------------------------------------
 # Linting
 #------------------------------------------------------------------------------
-add_custom_target(lint COMMAND cpplint --recursive
+add_custom_target(chronolog_lint COMMAND cpplint --recursive
     --exclude=${CMAKE_CURRENT_SOURCE_DIR}/build
     --exclude=${CMAKE_CURRENT_SOURCE_DIR}/cmake-build-debug
     --exclude=${CMAKE_CURRENT_SOURCE_DIR}/external_libs

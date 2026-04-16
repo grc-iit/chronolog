@@ -1,3 +1,6 @@
 [submodule "external/iowarp"]
 	path = external/iowarp
 	url = https://github.com/iowarp/clio-core.git
+[submodule "external/jarvis-cd"]
+	path = external/jarvis-cd
+	url = https://github.com/grc-iit/jarvis-cd.git

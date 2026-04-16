@@ -1,0 +1,29 @@
+# ChronoLog Container Deployment Pipeline
+# Purpose: Deploy ChronoLog in a simulated Docker cluster
+# Uses container deployment mode for multi-node testing
+
+name: chronolog_container
+
+env:
+  TEST_MODE: "container"
+
+pkgs:
+  # Stage 1: Launch IOWarp runtime on all nodes
+  - pkg_type: jarvis_iowarp.wrp_runtime
+    pkg_name: runtime
+    num_threads: 4
+    main_segment_size: "auto"
+    client_data_segment_size: "1G"
+    port: 9413
+    log_level: "info"
+    sleep: 5
+
+  # Stage 2: Deploy ChronoLog modules via chimaera compose
+  - pkg_type: jarvis_chronolog.chronolog
+    pkg_name: chronolog
+    deploy_mode: container
+    visor_ip: "127.0.0.1"
+    protocol: "ofi+sockets"
+    story_files_dir: "/tmp/chronolog_data"
+    log_level: "info"
+    sleep: 3

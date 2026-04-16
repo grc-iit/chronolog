@@ -1,0 +1,25 @@
+# ChronoLog Local Deployment Pipeline
+# Purpose: Deploy ChronoLog on a single node for local testing
+# Requirements: chimaera runtime and chronolog modules installed in PATH
+
+name: chronolog_local
+
+pkgs:
+  # Stage 1: Launch IOWarp runtime
+  - pkg_type: jarvis_iowarp.wrp_runtime
+    pkg_name: runtime
+    num_threads: 4
+    main_segment_size: "auto"
+    client_data_segment_size: "512M"
+    port: 9413
+    log_level: "info"
+    sleep: 3
+
+  # Stage 2: Deploy ChronoLog modules into the runtime
+  - pkg_type: jarvis_chronolog.chronolog
+    pkg_name: chronolog
+    visor_ip: "127.0.0.1"
+    protocol: "ofi+sockets"
+    story_files_dir: "/tmp/chronolog_data"
+    log_level: "debug"
+    sleep: 2

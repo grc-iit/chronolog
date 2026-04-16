@@ -1,0 +1,26 @@
+[project]
+name = "jarvis_chronolog"
+description = "Jarvis-CD packages for deploying and benchmarking ChronoLog"
+readme = "README.md"
+requires-python = ">=3.7"
+version = "0.1.0"
+authors = [
+  {name = "Luke Logan", email = "llogan@hawk.iit.edu"},
+]
+dependencies = [
+  "jarvis_cd",
+  "pyyaml",
+]
+
+[build-system]
+build-backend = "setuptools.build_meta"
+requires = [
+  "setuptools>=42",
+]
+
+[tool.setuptools]
+packages = ["jarvis_chronolog", "jarvis_chronolog.chronolog"]
+include-package-data = true
+
+[tool.setuptools.package-data]
+"*" = ["*.py", "*.yaml", "*.yml", "*.md", "*.json"]
