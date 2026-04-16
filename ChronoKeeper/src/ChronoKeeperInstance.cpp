@@ -165,15 +165,14 @@ int main(int argc, char** argv)
     // default extraction engine fabric is "ofi+sockets"
     std::string extraction_engine_protocol = KEEPER_CONF.EXTRACTION_MODULE_CONF.extraction_protocol;
 
-    
+
     // if single_endpoint_rdma_extractor or dual_endpoint_rdma_extractor
-    // are configured then extraction engine needs to be instantiated with 
+    // are configured then extraction engine needs to be instantiated with
     // the protocol of the grapher receiving endpoint
-   
+
     try
     {
-        extractionEngine =
-                new tl::engine(extraction_engine_protocol, THALLIUM_CLIENT_MODE);
+        extractionEngine = new tl::engine(extraction_engine_protocol, THALLIUM_CLIENT_MODE);
 
         std::stringstream s1;
         s1 << extractionEngine->self();
@@ -189,16 +188,19 @@ int main(int argc, char** argv)
 
     std::string log_string;
 
-    LOG_INFO("[ChronoKeeperInstance] Initializing StoryChunkExtractionModule with {}", KEEPER_CONF.EXTRACTION_MODULE_CONF.to_string(log_string));
+    LOG_INFO("[ChronoKeeperInstance] Initializing StoryChunkExtractionModule with {}",
+             KEEPER_CONF.EXTRACTION_MODULE_CONF.to_string(log_string));
 
     chl::StoryChunkExtractionModule<chl::ChronoKeeperExtractionChain> theExtractionModule(
-                            KEEPER_CONF.EXTRACTION_MODULE_CONF.extraction_stream_count);
+            KEEPER_CONF.EXTRACTION_MODULE_CONF.extraction_stream_count);
 
-    theExtractionModule.getExtractionChain().activate(*extractionEngine, KEEPER_CONF.EXTRACTION_MODULE_CONF, keeperIdCard.getRecordingServiceId());
-       
+    theExtractionModule.getExtractionChain().activate(*extractionEngine,
+                                                      KEEPER_CONF.EXTRACTION_MODULE_CONF,
+                                                      keeperIdCard.getRecordingServiceId());
+
     theExtractionModule.initialize(KEEPER_CONF.EXTRACTION_MODULE_CONF.extraction_stream_count);
- 
-    if (!theExtractionModule.is_initialized())
+
+    if(!theExtractionModule.is_initialized())
     {
         LOG_ERROR("[ChronoKeeperInstance] StoryChunkExtractionModule failed to initialize, exiting");
         return (-1);

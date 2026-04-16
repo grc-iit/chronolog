@@ -117,11 +117,11 @@ int chronolog::GrapherConfiguration::parseJsonConf(json_object* json_conf)
         {
             if(!json_object_is_type(val, json_type_object))
             {
-                std::cerr << "[GrapherConfiguration] Invalid 'ExtractionModule' segment: expected json object" << std::endl;
+                std::cerr << "[GrapherConfiguration] Invalid 'ExtractionModule' segment: expected json object"
+                          << std::endl;
                 return chl::CL_ERR_INVALID_CONF;
             }
-            json_object* extraction_module_json_object =
-                    json_object_object_get(json_conf, "ExtractionModule");
+            json_object* extraction_module_json_object = json_object_object_get(json_conf, "ExtractionModule");
             if(EXTRACTION_MODULE_CONF.parse_json_object(extraction_module_json_object) != chl::CL_SUCCESS)
             {
                 return chl::CL_ERR_INVALID_CONF;

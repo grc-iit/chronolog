@@ -21,10 +21,7 @@ public:
     int reset(std::string const& hdf5_archive_dir);
     int reset(json_object*);
 
-    bool is_active() const
-    {
-       return (std::filesystem::exists(rootDirectory));
-    }
+    bool is_active() const { return (std::filesystem::exists(rootDirectory)); }
 
 private:
     std::string rootDirectory;

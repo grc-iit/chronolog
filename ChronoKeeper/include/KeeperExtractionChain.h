@@ -16,39 +16,32 @@ namespace tl = thallium;
 
 namespace chronolog
 {
-using Extractor = std::variant< LoggingExtractor, StoryChunkExtractorCSV, StoryChunkExtractorRDMA, DualEndpointChunkExtractorRDMA >;
+using Extractor =
+        std::variant<LoggingExtractor, StoryChunkExtractorCSV, StoryChunkExtractorRDMA, DualEndpointChunkExtractorRDMA>;
 
-class ChronoKeeperExtractionChain 
+class ChronoKeeperExtractionChain
 {
     std::vector<Extractor> theExtractors;
 
 public:
-    ChronoKeeperExtractionChain() 
-    { }
+    ChronoKeeperExtractionChain() {}
 
-    ~ChronoKeeperExtractionChain() 
-    {  
-        theExtractors.clear();
-    }
+    ~ChronoKeeperExtractionChain() { theExtractors.clear(); }
 
-    void add_extractor(Extractor e) 
+    void add_extractor(Extractor e) { theExtractors.push_back(std::move(e)); }
+
+    int process_chunk(StoryChunk* chunk)
     {
-        theExtractors.push_back(std::move(e));
-    }
+        int chain_result = CL_SUCCESS;
 
-    int process_chunk( StoryChunk * chunk)
-    {
-        int  chain_result = CL_SUCCESS;
-
-        // If extractor fails, mark the chain result as a failure, 
+        // If extractor fails, mark the chain result as a failure,
         // but keep going for the others.
-        for (auto& e : theExtractors)
+        for(auto& e: theExtractors)
         {
-            int extractor_result = std::visit([chunk](auto& extractor)
-                -> int { return extractor.process_chunk(chunk);
-                }, e);
+            int extractor_result =
+                    std::visit([chunk](auto& extractor) -> int { return extractor.process_chunk(chunk); }, e);
 
-            if (CL_SUCCESS != extractor_result)
+            if(CL_SUCCESS != extractor_result)
             {
                 chain_result = extractor_result;
             }
@@ -57,48 +50,54 @@ public:
     }
 
     bool is_active_chain() const
-    { 
-       if(theExtractors.empty())
-       {  return false; }
+    {
+        if(theExtractors.empty())
+        {
+            return false;
+        }
 
-       for (const auto& e : theExtractors) 
-       {
-           bool active = std::visit([](const auto& extractor) -> bool {
-              return extractor.is_active();
-           }, e);
+        for(const auto& e: theExtractors)
+        {
+            bool active = std::visit([](const auto& extractor) -> bool { return extractor.is_active(); }, e);
 
-        // if any single extractor is NOT active, the whole chain fails
-        if (!active) 
-        { return false; }
-       }
+            // if any single extractor is NOT active, the whole chain fails
+            if(!active)
+            {
+                return false;
+            }
+        }
 
-       return true;
+        return true;
     }
 
-    int activate( tl::engine & extraction_engine, ExtractionModuleConfiguration const & extraction_conf, 
+    int activate(tl::engine& extraction_engine,
+                 ExtractionModuleConfiguration const& extraction_conf,
                  ServiceId const& service_id)
     {
 
         int ret_value = CL_SUCCESS;
 
-        for( auto iter = extraction_conf.extractors.begin();
-            iter != extraction_conf.extractors.end(); ++iter)
+        for(auto iter = extraction_conf.extractors.begin(); iter != extraction_conf.extractors.end(); ++iter)
         {
-            
-            if( (*iter).first == "csv_extractor")
+
+            if((*iter).first == "csv_extractor")
             {
                 StoryChunkExtractorCSV csv_extractor(service_id);
                 ret_value = csv_extractor.reset((*iter).second);
                 if(CL_SUCCESS != ret_value)
-                {   break; }
+                {
+                    break;
+                }
                 add_extractor(csv_extractor);
-            }  
+            }
             else if((*iter).first == "singe_endpoint_rdma_extractor")
             {
                 StoryChunkExtractorRDMA single_endpoint_rdma_extractor(extraction_engine);
-                ret_value = single_endpoint_rdma_extractor.reset( (*iter).second);
+                ret_value = single_endpoint_rdma_extractor.reset((*iter).second);
                 if(CL_SUCCESS != ret_value)
-                {   break; }
+                {
+                    break;
+                }
                 add_extractor(single_endpoint_rdma_extractor);
             }
             else if((*iter).first == "dual_endpoint_rdma_extractor")
@@ -106,7 +105,9 @@ public:
                 DualEndpointChunkExtractorRDMA dual_endpoint_rdma_extractor(extraction_engine);
                 ret_value = dual_endpoint_rdma_extractor.reset((*iter).second);
                 if(CL_SUCCESS != ret_value)
-                {   break; }
+                {
+                    break;
+                }
                 add_extractor(dual_endpoint_rdma_extractor);
             }
             else if((*iter).first == "logging_extractor")
@@ -115,11 +116,10 @@ public:
             }
         }
 
-        return ret_value; 
+        return ret_value;
     }
-
 };
 
-}
+} // namespace chronolog
 
 #endif

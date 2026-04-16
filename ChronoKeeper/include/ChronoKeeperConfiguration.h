@@ -53,23 +53,22 @@ struct KeeperConfiguration
         DATA_STORE_CONF.acceptance_window_secs = 10;
         DATA_STORE_CONF.inactive_story_delay_secs = 180;
 
-        EXTRACTION_MODULE_CONF.extraction_stream_count=1;
+        EXTRACTION_MODULE_CONF.extraction_stream_count = 1;
     }
 
     int parseJsonConf(json_object*);
 
     [[nodiscard]] std::string to_String() const
     {
-        std::string a_string =
-               "[CHRONO_GRAPHER_CONFIGURATION: RECORDING_GROUP: " + std::to_string(RECORDING_GROUP) +
-               ", KEEPER_GRAPHER_DRAIN_SERVICE_CONF: " + KEEPER_GRAPHER_DRAIN_SERVICE_CONF.to_String() +
-               ", DATA_STORE_ADMIN_SERVICE_CONF: " + DATA_STORE_ADMIN_SERVICE_CONF.to_String() +
-               ", VISOR_REGISTRY_SERVICE_CONF: " + VISOR_REGISTRY_SERVICE_CONF.to_String() +
-               ", LOG_CONF: " + LOG_CONF.to_String() + ", DATA_STORE_CONF: " + DATA_STORE_CONF.to_String() +
-               ", ";
+        std::string a_string = "[CHRONO_GRAPHER_CONFIGURATION: RECORDING_GROUP: " + std::to_string(RECORDING_GROUP) +
+                               ", KEEPER_GRAPHER_DRAIN_SERVICE_CONF: " + KEEPER_GRAPHER_DRAIN_SERVICE_CONF.to_String() +
+                               ", DATA_STORE_ADMIN_SERVICE_CONF: " + DATA_STORE_ADMIN_SERVICE_CONF.to_String() +
+                               ", VISOR_REGISTRY_SERVICE_CONF: " + VISOR_REGISTRY_SERVICE_CONF.to_String() +
+                               ", LOG_CONF: " + LOG_CONF.to_String() +
+                               ", DATA_STORE_CONF: " + DATA_STORE_CONF.to_String() + ", ";
 
-       a_string += EXTRACTION_MODULE_CONF.to_string(a_string) + "]";
-       return a_string;
+        a_string += EXTRACTION_MODULE_CONF.to_string(a_string) + "]";
+        return a_string;
     }
 };
 
