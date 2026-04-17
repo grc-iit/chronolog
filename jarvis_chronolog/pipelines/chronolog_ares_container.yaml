@@ -72,7 +72,11 @@ pkgs:
     # container). Set to an absolute path only if you also add it as a
     # bind-mount, otherwise shell redirections will fail on the host.
     output_dir: ""
-    custom_cmd: ""
-    custom_nprocs: 1
-    custom_ppn: 1
+    # Exercise the deployed chimaera + chronolog pools from 24 concurrent
+    # MPI ranks (8 per node × 3 ares nodes). Each rank connects to the
+    # local runtime and fetches a monitor snapshot; this drives real
+    # per-node concurrency through the chimaera admin pool.
+    custom_cmd: "chimaera monitor --once --json"
+    custom_nprocs: 24
+    custom_ppn: 8
     sleep: 0

@@ -12,6 +12,7 @@ driver — it is run through `MpiExecInfo`, so jarvis builds the proper
 `docker exec` when the pipeline is containerised.
 """
 import os
+import time
 
 from jarvis_cd.core.pkg import Application
 from jarvis_cd.shell import Exec, MpiExecInfo, PsshExecInfo
@@ -75,7 +76,7 @@ class ChronologBenchmark(Application):
         self.log(f'Capturing chimaera monitor snapshot -> {out}')
         Exec(cmd, PsshExecInfo(
             env=self.mod_env,
-            hostfile=self.jarvis.hostfile,
+            hostfile=self.hostfile,
             **self._container_kwargs(),
         )).run()
 
@@ -85,18 +86,43 @@ class ChronologBenchmark(Application):
             return
         out_dir = self._output_dir()
         log = os.path.join(out_dir, 'custom_cmd.log')
+        timing_path = os.path.join(out_dir, 'custom_cmd.timing')
         Exec(f'mkdir -p {out_dir}', PsshExecInfo(
             env=self.mod_env,
-            hostfile=self.jarvis.hostfile,
+            hostfile=self.hostfile,
             **self._container_kwargs(),
         )).run()
+
+        nprocs = self.config['custom_nprocs']
+        ppn = self.config['custom_ppn']
         cmd = f'{raw} 2>&1 | tee {log}'
-        self.log(f'Running custom benchmark command under mpirun: {raw}')
+        self.log(
+            f'Running custom benchmark command under mpirun '
+            f'(nprocs={nprocs}, ppn={ppn}): {raw}'
+        )
+        start = time.monotonic()
         Exec(cmd, MpiExecInfo(
             env=self.mod_env,
-            hostfile=self.jarvis.hostfile,
-            nprocs=self.config['custom_nprocs'],
-            ppn=self.config['custom_ppn'],
+            hostfile=self.hostfile,
+            nprocs=nprocs,
+            ppn=ppn,
+            **self._container_kwargs(),
+        )).run()
+        elapsed = time.monotonic() - start
+        throughput = nprocs / elapsed if elapsed > 0 else 0.0
+        msg = (
+            f'custom_cmd elapsed: {elapsed:.3f}s '
+            f'(nprocs={nprocs}, ppn={ppn}, '
+            f'throughput={throughput:.2f} ranks/s)'
+        )
+        self.log(msg)
+        # benchmark_out is root-owned (created by commands running inside
+        # the container), so write the timing file via a shell redirect
+        # inside the container rather than host Python open().
+        escaped = msg.replace("'", "'\\''")
+        Exec(f"printf '%s\\n' '{escaped}' > {timing_path}", PsshExecInfo(
+            env=self.mod_env,
+            hostfile=self.hostfile,
             **self._container_kwargs(),
         )).run()
 
@@ -114,7 +140,7 @@ class ChronologBenchmark(Application):
         self.log(f'Removing benchmark output at {out_dir}')
         Exec(f'rm -rf {out_dir}', PsshExecInfo(
             env=self.mod_env,
-            hostfile=self.jarvis.hostfile,
+            hostfile=self.hostfile,
             **self._container_kwargs(),
         )).run()
 
