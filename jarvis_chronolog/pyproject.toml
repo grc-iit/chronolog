@@ -27,4 +27,4 @@ packages = [
 include-package-data = true
 
 [tool.setuptools.package-data]
-"*" = ["*.py", "*.yaml", "*.yml", "*.md", "*.json"]
+"*" = ["*.py", "*.yaml", "*.yml", "*.md", "*.json", "*.sh", "Dockerfile*"]

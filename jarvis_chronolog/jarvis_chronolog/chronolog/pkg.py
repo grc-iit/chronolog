@@ -180,11 +180,16 @@ class Chronolog(Service):
     # ------------------------------------------------------------------
 
     def _build_phase(self):
+        """
+        Return the build.sh script that installs ChronoLog + IOWarp into
+        the shared jarvis pipeline build container (jarvis-cd's
+        single-build-container model; see
+        jarvis_cd.core.pipeline._build_pipeline_container).
+        """
         if self.config.get('deploy_mode') != 'container':
             return None
-        base = getattr(self.pipeline, 'container_base',
-                       'iowarp/iowarp-build:latest')
-        content = self._read_dockerfile('Dockerfile.build', {
+        base = getattr(self.pipeline, 'container_base', 'ubuntu:24.04')
+        content = self._read_build_script('build.sh', {
             'BASE_IMAGE': base,
         })
         return content, 'chronolog'
@@ -192,10 +197,9 @@ class Chronolog(Service):
     def _build_deploy_phase(self):
         if self.config.get('deploy_mode') != 'container':
             return None
-        base = getattr(self.pipeline, 'container_base',
-                       'iowarp/iowarp-build:latest')
+        base = getattr(self.pipeline, 'container_base', 'ubuntu:24.04')
         suffix = getattr(self, '_build_suffix', '')
-        content = self._read_dockerfile('Dockerfile.deploy', {
+        content = self._read_template('Dockerfile.deploy', {
             'BUILD_IMAGE': self.build_image_name(),
             'BASE_IMAGE': base,
         })
@@ -215,10 +219,10 @@ class Chronolog(Service):
         if self.config.get('deploy_mode') == 'default':
             # Ensure story files directory exists on all nodes
             story_dir = self.config['story_files_dir']
-            if self.jarvis.hostfile.hosts:
+            if self.hostfile.hosts:
                 Mkdir(story_dir,
                       PsshExecInfo(env=self.mod_env,
-                                   hostfile=self.jarvis.hostfile)).run()
+                                   hostfile=self.hostfile)).run()
             else:
                 Mkdir(story_dir, LocalExecInfo(env=self.mod_env)).run()
 
@@ -244,11 +248,11 @@ class Chronolog(Service):
         cmd = f'chimaera compose {self.compose_conf_path}'
         self.log("Starting ChronoLog services via chimaera compose...")
         self.log(f"  Running: {cmd}")
-        self.log(f"  Nodes: {len(self.jarvis.hostfile)}")
+        self.log(f"  Nodes: {len(self.hostfile)}")
 
         Exec(cmd, PsshExecInfo(
             env=self.env,
-            hostfile=self.jarvis.hostfile,
+            hostfile=self.hostfile,
             container=self._container_engine,
             container_image=self.deploy_image_name(),
             private_dir=self.private_dir,
@@ -264,7 +268,7 @@ class Chronolog(Service):
     def kill(self):
         self.log("Forcibly killing ChronoLog-related processes on all nodes")
         Kill('chronolog', PsshExecInfo(
-            hostfile=self.jarvis.hostfile,
+            hostfile=self.hostfile,
             container=self._container_engine,
             container_image=self.deploy_image_name(),
             private_dir=self.private_dir,
@@ -284,10 +288,10 @@ class Chronolog(Service):
 
         story_dir = self.config.get('story_files_dir', '/tmp')
         rm_path = os.path.join(story_dir, 'chrono_*')
-        if self.jarvis.hostfile.hosts:
+        if self.hostfile.hosts:
             Rm(rm_path,
                PsshExecInfo(env=self.env,
-                            hostfile=self.jarvis.hostfile)).run()
+                            hostfile=self.hostfile)).run()
         else:
             Rm(rm_path, LocalExecInfo(env=self.env)).run()
 
