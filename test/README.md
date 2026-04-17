@@ -10,7 +10,7 @@ All ChronoLog tests live under this `test/` directory (there is no other test tr
 | **integration/** | Integration tests: `client/`, `keeper-grapher/`, chronokvs, package-discovery. keeper-grapher `extract_test` and `ingest_test` are registered with CTest but are integration/manual (not installed to `chronolog/tests/`). Client tests are registered as MANUAL CTest and optionally installed when `CHRONOLOG_INSTALL_TESTS` is ON. |
 | **communication/** | **Transport/protocol-layer tests (Thallium).** Server repeater RPC, client send/recv or RDMA, MPI client; exercises Thallium in isolation, not the full ChronoLog client library. Build-tree only; not installed. Kept separate from **integration/** because integration tests are application-level (e.g. client vs Keeper); communication tests are transport-only. |
 | **overhead/** | Overhead and micro-benchmarks: clock, lock. **Built only on x86** (uses SSE2 `emmintrin.h` and RDTSC). Build-tree only; not installed. Optional `kmod/` (kernel module) is not part of CTest. |
-| **system/** | Python-based fidelity and system checks (not built by CMake). **Run manually** (see Manual tests below). |
+| **end-to-end/** | End-to-end tests that boot the full stack via a CTest fixture (`deploy_local.sh`) and validate properties at multiple points in the pipeline. Currently: `data-integrity/` — three property tests (StoryID consistency, event count, event order) checked across three lenses (CSV extraction, HDF5 archive, client replay). Require an installed tree (`CHRONOLOG_INSTALL_DIR`, default `$HOME/chronolog-install/chronolog`); skip cleanly when the install is absent. Build-tree only; not installed. |
 | **synthetic_workload/** | Synthetic workload and performance scripts. **Run manually** (see Manual tests below). |
 
 Kafka deploy/validation scripts live under `tools/deploy/others/Kafka/` (e.g. `read-write-test.sh`, `end-to-end-lat-test.sh`) and are not part of the CTest tree.
@@ -23,7 +23,7 @@ Tests are only built when `CMAKE_BUILD_TYPE=Debug`; use a Debug build directory 
   `ctest` or `ctest -R Unit_` for unit tests, `ctest -R Integration_` for integration (excluding MANUAL), `ctest -R Integration_Client_` for client integration (MANUAL), etc. Use `ctest -N` to list all tests including MANUAL and DISABLED.
 
 - **What runs where:**  
-  (1) **CTest** — unit, integration (keeper-grapher, chronokvs, package-discovery), communication, overhead (on x86). (2) **Client integration** — all Client executables are registered as **MANUAL** CTest (`Integration_Client_*`). **All `Integration_Client_*` tests require a running ChronoVisor/Keeper** and are excluded from default `ctest`; run them with `ctest -R Integration_Client_ -M Manual` when the server is available, or run the binaries by hand with the correct config (e.g. `--conf <path>`). (3) **system/** and **synthetic_workload/** — not in CTest; run their scripts manually (see Manual tests).
+  (1) **CTest** — unit, integration (keeper-grapher, chronokvs, package-discovery), communication, overhead (on x86), end-to-end (data-integrity, gated by a setup/cleanup fixture). (2) **Client integration** — all Client executables are registered as **MANUAL** CTest (`Integration_Client_*`). **All `Integration_Client_*` tests require a running ChronoVisor/Keeper** and are excluded from default `ctest`; run them with `ctest -R Integration_Client_ -M Manual` when the server is available, or run the binaries by hand with the correct config (e.g. `--conf <path>`). (3) **synthetic_workload/** — not in CTest; run their scripts manually (see Manual tests).
 
 - **Install layout:**  
   Test executables are installed under `<prefix>/chronolog/tests/` **only when `CHRONOLOG_INSTALL_TESTS` is ON** (default OFF). When ON, all installable tests are installed: unit (chrono-common, chrono-store, chrono-player, chronokvs), package-discovery, chronokvs integration, and client integration (`chronolog-test-client-*`). Communication, overhead, and keeper-grapher tests are never installed (build-tree only). See Installed test executables below.
@@ -125,8 +125,6 @@ Four tests are disabled by default because they start **Margo/Thallium** service
 
 These are not run by default CTest; run them by hand when the right environment is available:
 
-- **system/** — Fidelity and system checks:  
-  `python test/system/fidelity_test_01.py <path>`, `fidelity_test_02.py`, `fidelity_test_03.py`, or `fidelity_test_all.py` as documented in the scripts.
 - **synthetic_workload/** — Use `INSTALL_DIR` (default `$HOME/chronolog-install`) so that `$INSTALL_DIR/chronolog` is the work tree (bin, lib, conf). Run `distributed_syslog.sh`, `perf_test.sh` with a running stack.
 - **overhead/clock/clock_cset_shield_test.sh** — Script for clock tests with cset shield (requires root/cgroup; not cgroupv2). Run from the build dir: `test/overhead/clock/clock_cset_shield_test.sh <path_to_clock_test_binary>` (e.g. the built `high_res_clock_test`). Registered as MANUAL CTest `Overhead_Clock_Script`.
 - **communication/thallium_protocol_test.sh** — Thallium multi-node test for HPC (SLURM/squeue, ssh). Run with `-j`, `-s`, `-c`, `-n` as needed. Registered as MANUAL CTest `Communication_Thallium_ProtocolScript`.
@@ -135,6 +133,7 @@ These are not run by default CTest; run them by hand when the right environment 
 
 ## Notes
 
-- **system/** and **synthetic_workload/** are not part of the CMake/CTest tree; run their scripts manually as above.
+- **synthetic_workload/** is not part of the CMake/CTest tree; run its scripts manually as above.
+- **end-to-end/data-integrity/** — gated by `DataIntegrity_Setup`/`DataIntegrity_Cleanup` CTest fixtures wrapping `tools/deploy/ChronoLog/deploy_local.sh`. The fixture expects an installed tree at `$CHRONOLOG_INSTALL_DIR` (default `$HOME/chronolog-install/chronolog`); when missing, setup exits 0 and the per-lens cases skip. Run with `ctest -R EndToEnd_DataIntegrity_`.
 - keeper-grapher and HDF5ArchiveReadingAgent tests skip (exit 0) when no config path is provided; run manually with `--conf <path>` for full runs.
 - Some tests (e.g. extraction chain, chunk consumer, Thallium server/client) run long or require SIGTERM to stop; use timeouts or run in isolation as needed.
