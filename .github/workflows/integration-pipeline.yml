@@ -485,6 +485,11 @@ jobs:
     timeout-minutes: 30
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref }}
+
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v2
         with:
@@ -500,9 +505,15 @@ jobs:
         id: create-container
         run: |
           set -e
+          # Mount the workspace at /home/grc-iit/chronolog-repo so the spack
+          # environment (.spack-env/) is available — local-deployment uses the
+          # same volume mount pattern; the committed image's mount point is
+          # empty without it.
           CONTAINER_ID=$(docker create --user root --init \
+            -v "${{ github.workspace }}:/home/grc-iit/chronolog-repo" \
+            -w /home/grc-iit/chronolog-repo \
             "${{ needs.local-deployment.outputs.image-name }}" \
-            bash -c "tail -f /dev/null")
+            bash -c "chown -R grc-iit:grc-iit /home/grc-iit/chronolog-repo && tail -f /dev/null")
           docker start "$CONTAINER_ID"
           echo "container-id=${CONTAINER_ID}" >> $GITHUB_OUTPUT
 
