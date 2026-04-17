@@ -255,14 +255,35 @@ if(fmt_FOUND)
 endif()
 
 #------------------------------------------------------------------------------
-# IOWarp / clio-core (must come before ChiMods so add_chimod_* macros exist)
+# IOWarp / clio-core
+#
+# By default we build clio-core in-tree via the external/iowarp submodule so
+# the add_chimod_* macros (IowarpCoreCommon.cmake) and chimaera targets are
+# available when the ChiMod subdirectories are processed below. For
+# container pipelines where clio-core has already been installed into
+# /usr/local by a sibling package, pass -DCHRONOLOG_BUILD_IOWARP=OFF so this
+# configure step just discovers it via find_package(iowarp-core) and skips
+# the duplicate compile.
 #------------------------------------------------------------------------------
-set(WRP_CORE_ENABLE_TESTS      OFF CACHE BOOL "" FORCE)
-set(WRP_CORE_ENABLE_BENCHMARKS OFF CACHE BOOL "" FORCE)
-set(WRP_CORE_ENABLE_PYTHON     OFF CACHE BOOL "" FORCE)
-set(WRP_CORE_ENABLE_CPACK      OFF CACHE BOOL "" FORCE)
-set(WRP_CORE_ENABLE_DOXYGEN    OFF CACHE BOOL "" FORCE)
-add_subdirectory(external/iowarp)
+option(CHRONOLOG_BUILD_IOWARP
+    "Build clio-core (external/iowarp) as an in-tree subdirectory. When OFF, \
+discover an already-installed iowarp-core via find_package instead."
+    ON)
+
+if(CHRONOLOG_BUILD_IOWARP)
+    set(WRP_CORE_ENABLE_TESTS      OFF CACHE BOOL "" FORCE)
+    set(WRP_CORE_ENABLE_BENCHMARKS OFF CACHE BOOL "" FORCE)
+    set(WRP_CORE_ENABLE_PYTHON     OFF CACHE BOOL "" FORCE)
+    set(WRP_CORE_ENABLE_CPACK      OFF CACHE BOOL "" FORCE)
+    set(WRP_CORE_ENABLE_DOXYGEN    OFF CACHE BOOL "" FORCE)
+    add_subdirectory(external/iowarp)
+else()
+    message(STATUS "CHRONOLOG_BUILD_IOWARP=OFF: locating prebuilt iowarp-core")
+    find_package(iowarp-core CONFIG REQUIRED)
+    # IowarpCoreConfig.cmake pulls in IowarpCoreCommon.cmake, which supplies
+    # the add_chimod_client / add_chimod_runtime helpers that chimod/*/
+    # CMakeLists.txt expect to exist at this point.
+endif()
 
 #------------------------------------------------------------------------------
 # ChronoLog Core Libraries
