@@ -7,21 +7,30 @@ find_package(Thallium REQUIRED)
 # End-to-end data-integrity tests (#567).
 #
 # Three property tests (story_id / event_count / event_order), each invoked
-# against three lenses (CSV / HDF5 / Replay). The CTest fixture
-# DataIntegrity_Setup boots a local ChronoLog deployment via deploy_local.sh,
-# injects the bundled reference file via chrono-client-admin -f, and waits for
-# CSV/HDF5 chunks to flush. DataIntegrity_Cleanup tears it down.
+# against two lenses (HDF5 / Replay). The CTest fixture DataIntegrity_Setup
+# boots a local ChronoLog deployment via deploy_local.sh, injects the bundled
+# reference file via chrono-client-admin -f, and waits for HDF5 chunks to
+# flush. DataIntegrity_Cleanup tears it down.
 #
-# All cases require an installed tree pointed to by CHRONOLOG_INSTALL_DIR
-# (defaults to $HOME/chronolog-install/chronolog). When the install is
-# missing, the setup fixture exits 0 and the dependent cases find no events
-# and return SKIP.
+# Originally a CSV lens was planned; the active pipeline does not produce
+# CSVs (ChronoKeeper uses LoggingExtractor + RDMATransferAgent and
+# ChronoGrapher writes HDF5). The CSV parsing helpers in
+# data_integrity_common.h remain dormant; re-add Lens::CSV + CTest cases here
+# if a CSV extractor is wired in later.
+#
+# All paths derived from the install tree resolve at *runtime* from the
+# CHRONOLOG_INSTALL_DIR environment variable, not at CMake configure time.
+# That avoids baking $ENV{HOME} from the configure-time user (e.g. root in CI)
+# into a path that the runtime user can't reach. Set CHRONOLOG_INSTALL_DIR
+# before invoking ctest; if unset, the fixture script falls back to
+# $HOME/chronolog-install/chronolog and skips cleanly when nothing is there.
+#
+# CSV and HDF5 chunks both land in the deployment's --output-dir
+# (single dir under the build tree), so one OUTPUT_DIR covers both lenses.
 #------------------------------------------------------------------------------
 
 set(_di_dir "${CMAKE_CURRENT_SOURCE_DIR}")
-set(_di_csv_out "${CMAKE_CURRENT_BINARY_DIR}/output")
-set(_di_h5_out  "$ENV{HOME}/chronolog-install/chronolog/output")
-set(_di_install "$ENV{HOME}/chronolog-install/chronolog")
+set(_di_output "${CMAKE_CURRENT_BINARY_DIR}/output")
 set(_di_reference "${_di_dir}/reference_input.txt")
 
 set(_di_tests
@@ -33,14 +42,10 @@ set(_di_tests
 foreach(_t ${_di_tests})
     add_executable(${_t}
         ${_t}.cpp
-        ${CMAKE_SOURCE_DIR}/ChronoStore/src/StoryReader.cpp
-        ${CMAKE_SOURCE_DIR}/ChronoStore/src/StoryWriter.cpp
         ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
     )
     target_include_directories(${_t} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_SOURCE_DIR}/ChronoStore/include
-        ${CMAKE_SOURCE_DIR}/ChronoKeeper/include
         ${CMAKE_SOURCE_DIR}/chrono_common/include
         ${CMAKE_SOURCE_DIR}/Client/cpp/include
         ${HDF5_INCLUDE_DIRS}
@@ -53,28 +58,27 @@ foreach(_t ${_di_tests})
 endforeach()
 
 #------------------------------------------------------------------------------
-# Fixture: setup / cleanup
+# Fixture: setup / cleanup. CHRONOLOG_INSTALL_DIR is intentionally NOT set
+# here — the fixture script reads it from the runtime env (with a default).
 #------------------------------------------------------------------------------
 add_test(NAME DataIntegrity_Setup
     COMMAND ${CMAKE_COMMAND} -E env
-        "CHRONOLOG_INSTALL_DIR=${_di_install}"
         "REFERENCE_INPUT=${_di_reference}"
-        "CSV_OUTPUT_DIR=${_di_csv_out}"
-        "HDF5_OUTPUT_DIR=${_di_h5_out}"
+        "OUTPUT_DIR=${_di_output}"
         bash ${_di_dir}/data_integrity_fixture_setup.sh)
-set_tests_properties(DataIntegrity_Setup PROPERTIES FIXTURES_SETUP DataIntegrityFixture TIMEOUT 180)
+set_tests_properties(DataIntegrity_Setup PROPERTIES FIXTURES_SETUP DataIntegrityFixture TIMEOUT 360)
 
 add_test(NAME DataIntegrity_Cleanup
-    COMMAND ${CMAKE_COMMAND} -E env
-        "CHRONOLOG_INSTALL_DIR=${_di_install}"
-        bash ${_di_dir}/data_integrity_fixture_cleanup.sh)
+    COMMAND bash ${_di_dir}/data_integrity_fixture_cleanup.sh)
 set_tests_properties(DataIntegrity_Cleanup PROPERTIES FIXTURES_CLEANUP DataIntegrityFixture TIMEOUT 60)
 
 #------------------------------------------------------------------------------
-# Per-property × per-lens registration
+# Per-property × per-lens registration. The test binaries derive admin-bin
+# and client-conf from CHRONOLOG_INSTALL_DIR (env, runtime) when not given
+# on the CLI.
 #------------------------------------------------------------------------------
-set(_di_lenses csv hdf5 replay)
-set(_di_lens_labels CSV HDF5 Replay)
+set(_di_lenses hdf5 replay)
+set(_di_lens_labels HDF5 Replay)
 
 set(_di_props
     data_integrity_story_id_test:StoryId
@@ -97,12 +101,9 @@ foreach(_pair ${_di_props})
             COMMAND ${_bin}
                 --lens ${_lens}
                 --reference ${_di_reference}
-                --csv-dir ${_di_csv_out}
-                --hdf5-dir ${_di_h5_out}
+                --hdf5-dir ${_di_output}
                 --chronicle chronicle_0_0
-                --story story_0_0
-                --admin-bin ${_di_install}/bin/chrono-client-admin
-                --client-conf ${_di_install}/conf/chrono-client-conf.json)
+                --story story_0_0)
         set_tests_properties(${_test_name} PROPERTIES
             FIXTURES_REQUIRED DataIntegrityFixture
             TIMEOUT 60)

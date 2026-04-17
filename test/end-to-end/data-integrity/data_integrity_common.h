@@ -1,13 +1,18 @@
 // Shared helpers for end-to-end data-integrity tests.
 //
-// Three lenses validate three properties (StoryID consistency, event count,
+// Two lenses validate three properties (StoryID consistency, event count,
 // event order) against the same reference input that was injected by the
 // fixture:
-//   - CSV    – ChronoGrapher's per-chunk *.csv files in CSV_OUTPUT_DIR.
-//   - HDF5   – ChronoStore's {chronicle}/{story}.h5 archives.
+//   - HDF5   – ChronoGrapher's on-disk archive files, named
+//              {chronicle}.{story}.<timestamp>.vlen.h5, flat in OUTPUT_DIR.
 //   - Replay – events returned by chrono-client-admin -i then '-r ...'.
 //
-// Helpers below abstract the three lenses behind a common iterator-style
+// (A CSV lens was originally planned but the current pipeline does not
+// produce CSV output — ChronoKeeper uses LoggingExtractor +
+// RDMATransferAgent, and ChronoGrapher writes HDF5. If a CSV extractor is
+// wired in later, add Lens::CSV back here and register the CTest cases.)
+//
+// Helpers below abstract the two lenses behind a common iterator-style
 // "events" vector so each test binary can stay short and focused on its
 // property check.
 
@@ -30,8 +35,8 @@
 #include <getopt.h>
 #include <unistd.h>
 
-#include <StoryReader.h>
-#include <StoryChunk.h>
+#include <H5Cpp.h>
+
 #include <chrono_monitor.h>
 
 #include "city.h"
@@ -41,7 +46,6 @@ namespace data_integrity
 
 enum class Lens
 {
-    CSV,
     HDF5,
     REPLAY
 };
@@ -50,8 +54,6 @@ inline const char* lens_name(Lens l)
 {
     switch(l)
     {
-        case Lens::CSV:
-            return "CSV";
         case Lens::HDF5:
             return "HDF5";
         case Lens::REPLAY:
@@ -80,8 +82,7 @@ struct Event
 
 struct Args
 {
-    Lens lens = Lens::CSV;
-    std::string csvDir;
+    Lens lens = Lens::HDF5;
     std::string hdf5Dir;
     std::string referenceFile;
     std::string chronicle = "chronicle_0_0";
@@ -93,16 +94,28 @@ struct Args
 inline void usage(const char* argv0)
 {
     std::cerr << "Usage: " << argv0
-              << " --lens csv|hdf5|replay --reference <file>"
-                 " [--csv-dir <dir>] [--hdf5-dir <dir>]"
+              << " --lens hdf5|replay --reference <file>"
+                 " --hdf5-dir <dir>"
                  " [--chronicle <name>] [--story <name>]"
                  " [--admin-bin <path>] [--client-conf <path>]\n";
+}
+
+// Fill missing admin-bin / client-conf from $CHRONOLOG_INSTALL_DIR at runtime.
+inline void fill_install_defaults(Args& args)
+{
+    const char* install = std::getenv("CHRONOLOG_INSTALL_DIR");
+    if(install == nullptr || *install == '\0')
+        return;
+    std::string root = install;
+    if(args.adminBin.empty())
+        args.adminBin = root + "/bin/chrono-client-admin";
+    if(args.clientConf.empty())
+        args.clientConf = root + "/conf/chrono-client-conf.json";
 }
 
 inline bool parse_args(int argc, char** argv, Args& out)
 {
     static option longopts[] = {{"lens", required_argument, nullptr, 'L'},
-                                {"csv-dir", required_argument, nullptr, 'C'},
                                 {"hdf5-dir", required_argument, nullptr, 'H'},
                                 {"reference", required_argument, nullptr, 'R'},
                                 {"chronicle", required_argument, nullptr, 'c'},
@@ -112,16 +125,14 @@ inline bool parse_args(int argc, char** argv, Args& out)
                                 {"help", no_argument, nullptr, 'h'},
                                 {nullptr, 0, nullptr, 0}};
     int opt;
-    while((opt = getopt_long(argc, argv, "L:C:H:R:c:s:A:K:h", longopts, nullptr)) != -1)
+    while((opt = getopt_long(argc, argv, "L:H:R:c:s:A:K:h", longopts, nullptr)) != -1)
     {
         switch(opt)
         {
             case 'L':
             {
                 std::string v = optarg;
-                if(v == "csv")
-                    out.lens = Lens::CSV;
-                else if(v == "hdf5")
+                if(v == "hdf5")
                     out.lens = Lens::HDF5;
                 else if(v == "replay")
                     out.lens = Lens::REPLAY;
@@ -132,9 +143,6 @@ inline bool parse_args(int argc, char** argv, Args& out)
                 }
                 break;
             }
-            case 'C':
-                out.csvDir = optarg;
-                break;
             case 'H':
                 out.hdf5Dir = optarg;
                 break;
@@ -159,6 +167,7 @@ inline bool parse_args(int argc, char** argv, Args& out)
                 return false;
         }
     }
+    fill_install_defaults(out);
     return true;
 }
 
@@ -183,7 +192,9 @@ inline std::vector<std::string> read_reference_lines(std::string const& path)
 }
 
 // ---------------------------------------------------------------------------
-// CSV lens
+// CSV line parser (unused today — no active CSV extractor in the pipeline).
+// Kept here so re-enabling a CSV lens is a matter of calling this plus adding
+// the Lens::CSV enum value + CTest registration back.
 // ---------------------------------------------------------------------------
 //
 // Each line: "event : <storyId>:<eventTime>:<clientId>:<eventIndex>:<logRecord>"
@@ -267,37 +278,98 @@ collect_events_csv(std::string const& csvDir, std::string const& chronicle, std:
 // ---------------------------------------------------------------------------
 // HDF5 lens (uses ChronoStore::StoryReader directly)
 // ---------------------------------------------------------------------------
+//
+// ChronoGrapher writes archive files flat in its configured story_files_dir,
+// named "{chronicle}.{story}.<timestamp>.vlen.h5" (one file per flushed
+// chunk). We scan the output dir for anything matching that prefix and read
+// each matching file as a Story via StoryReader.
+inline std::vector<std::filesystem::path>
+hdf5_files_for_story(std::string const& hdf5Dir, std::string const& chronicle, std::string const& story)
+{
+    std::vector<std::filesystem::path> out;
+    std::string prefix = chronicle + "." + story + ".";
+    if(!std::filesystem::is_directory(hdf5Dir))
+        return out;
+    for(auto const& entry: std::filesystem::directory_iterator(hdf5Dir))
+    {
+        if(!entry.is_regular_file())
+            continue;
+        auto name = entry.path().filename().string();
+        if(name.size() < 3 || name.compare(name.size() - 3, 3, ".h5") != 0)
+            continue;
+        if(name.compare(0, prefix.size(), prefix) != 0)
+            continue;
+        out.push_back(entry.path());
+    }
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+// POD with the same layout as chronolog::LogEventHVL (data members only) but
+// without an owning destructor. Letting LogEventHVL's destructor run after
+// H5::DataSet::vlenReclaim caused a double free; this POD avoids it.
+struct LogEventHVLPOD
+{
+    uint64_t storyId;
+    uint64_t eventTime;
+    uint32_t clientId;
+    uint32_t eventIndex;
+    hvl_t logRecord;
+};
+
+// Read all events from one chunk file written by StoryChunkWriter:
+//   /story_chunks/data.vlen_bytes  – compound dataset of LogEventHVL
+inline void read_events_from_chunk_file(std::filesystem::path const& path, std::vector<Event>& out)
+{
+    try
+    {
+        H5::H5File file(path.string(), H5F_ACC_RDONLY);
+        H5::DataSet dataset = file.openDataSet("/story_chunks/data.vlen_bytes");
+        H5::DataSpace space = dataset.getSpace();
+        hsize_t n = 0;
+        space.getSimpleExtentDims(&n, nullptr);
+        if(n == 0)
+            return;
+
+        H5::CompType type(sizeof(LogEventHVLPOD));
+        type.insertMember("storyId", HOFFSET(LogEventHVLPOD, storyId), H5::PredType::NATIVE_UINT64);
+        type.insertMember("eventTime", HOFFSET(LogEventHVLPOD, eventTime), H5::PredType::NATIVE_UINT64);
+        type.insertMember("clientId", HOFFSET(LogEventHVLPOD, clientId), H5::PredType::NATIVE_UINT32);
+        type.insertMember("eventIndex", HOFFSET(LogEventHVLPOD, eventIndex), H5::PredType::NATIVE_UINT32);
+        type.insertMember("logRecord", HOFFSET(LogEventHVLPOD, logRecord), H5::VarLenType(H5::PredType::NATIVE_UINT8));
+
+        std::vector<LogEventHVLPOD> raw(n);
+        dataset.read(raw.data(), type);
+
+        for(auto const& src: raw)
+        {
+            Event ev;
+            ev.storyId = src.storyId;
+            ev.eventTime = src.eventTime;
+            ev.clientId = src.clientId;
+            ev.eventIndex = src.eventIndex;
+            if(src.logRecord.p && src.logRecord.len > 0)
+            {
+                ev.logRecord.assign(static_cast<char const*>(src.logRecord.p), src.logRecord.len);
+            }
+            out.push_back(std::move(ev));
+        }
+
+        // Reclaim the variable-length buffers HDF5 allocated during read.
+        H5::DataSet::vlenReclaim(raw.data(), type, space);
+    }
+    catch(H5::Exception const& e)
+    {
+        std::cerr << "[hdf5] failed to read " << path << ": " << e.getCDetailMsg() << "\n";
+    }
+}
+
 inline std::vector<Event>
 collect_events_hdf5(std::string const& hdf5Dir, std::string const& chronicle, std::string const& story)
 {
     std::vector<Event> events;
-    std::string root = hdf5Dir;
-    if(!root.empty() && root.back() != '/')
-        root.push_back('/');
-    StoryReader reader(root);
-
-    std::string story_file = root + chronicle + "/" + story + ".h5";
-    if(!std::filesystem::exists(story_file))
-        return events;
-
-    std::map<uint64_t, chronolog::StoryChunk> chunks;
-    if(reader.readStory(chronicle, story_file, chunks) != 0)
-        return events;
-
-    for(auto const& [start, chunk]: chunks)
-    {
-        for(auto it = chunk.begin(); it != chunk.end(); ++it)
-        {
-            chronolog::LogEvent const& src = it->second;
-            Event ev;
-            ev.storyId = src.getStoryId();
-            ev.eventTime = src.time();
-            ev.clientId = src.getClientId();
-            ev.eventIndex = src.index();
-            ev.logRecord = src.getRecord();
-            events.push_back(std::move(ev));
-        }
-    }
+    auto files = hdf5_files_for_story(hdf5Dir, chronicle, story);
+    for(auto const& path: files) read_events_from_chunk_file(path, events);
     std::sort(events.begin(), events.end());
     return events;
 }
@@ -362,8 +434,6 @@ inline std::vector<Event> collect_events(Args const& args)
 {
     switch(args.lens)
     {
-        case Lens::CSV:
-            return collect_events_csv(args.csvDir, args.chronicle, args.story);
         case Lens::HDF5:
             return collect_events_hdf5(args.hdf5Dir, args.chronicle, args.story);
         case Lens::REPLAY:

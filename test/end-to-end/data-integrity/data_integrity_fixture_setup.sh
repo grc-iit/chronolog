@@ -4,13 +4,18 @@
 # Starts a local single-user ChronoLog deployment via deploy_local.sh, injects
 # the reference input file as one story (chronicle_0_0/story_0_0) using
 # chrono-client-admin -f, then waits long enough for the grapher to flush a
-# CSV chunk and for the player/store to flush an HDF5 chunk.
+# CSV/HDF5 chunk.
 #
-# Required env (set by CMake when registering the fixture):
-#   CHRONOLOG_INSTALL_DIR  – install tree containing chronolog/{bin,conf,...}
+# Required env (set by CMake when registering the fixture, OR by the user
+# running ctest by hand):
 #   REFERENCE_INPUT        – path to reference event payload file
-#   CSV_OUTPUT_DIR         – directory where CSV chunks are written
-#   HDF5_OUTPUT_DIR        – directory where HDF5 archives are written
+#   OUTPUT_DIR             – directory where CSV + HDF5 chunks are written
+#                            (single dir; deploy_local.sh --output-dir points
+#                            keeper + grapher + player at the same location)
+#
+# Optional env:
+#   CHRONOLOG_INSTALL_DIR  – install tree containing chronolog/{bin,conf,tools,...}
+#                            Defaults to $HOME/chronolog-install/chronolog.
 #
 # The fixture exits 0 (skipping the dependent tests) when the install tree is
 # missing — matching the project convention for tests that need a running
@@ -34,10 +39,15 @@ if [[ ! -f "${REFERENCE_INPUT:-}" ]]; then
     exit 1
 fi
 
-mkdir -p "${CSV_OUTPUT_DIR}" "${HDF5_OUTPUT_DIR}"
+if [[ -z "${OUTPUT_DIR:-}" ]]; then
+    echo "[data-integrity:setup] OUTPUT_DIR must be set"
+    exit 1
+fi
+
+mkdir -p "${OUTPUT_DIR}"
 
 echo "[data-integrity:setup] Starting deployment from ${INSTALL_DIR}"
-"${DEPLOY}" --start --output-dir "${CSV_OUTPUT_DIR}"
+"${DEPLOY}" --start --output-dir "${OUTPUT_DIR}"
 
 # Give the services a moment to come up and register.
 sleep 5
@@ -46,18 +56,18 @@ echo "[data-integrity:setup] Injecting reference events from ${REFERENCE_INPUT}"
 "${ADMIN}" -c "${CLIENT_CONF}" -f "${REFERENCE_INPUT}" \
     -h 1 -t 1 -n 1
 
-# Wait for grapher CSV flush + player HDF5 flush. The default chunk granularity
-# in the bundled config is on the order of seconds; 30s is a safe upper bound
-# for the small reference input.
-WAIT_DEADLINE=$((SECONDS + 60))
+# Wait for ChronoGrapher to flush its first HDF5 chunk to OUTPUT_DIR. With
+# the bundled config (story_chunk_duration_secs=60, acceptance_window_secs=180)
+# chunks land a few minutes after injection. 240s is the upper bound; if
+# nothing appears the dependent tests will SKIP rather than block forever.
+WAIT_DEADLINE=$((SECONDS + 240))
 while (( SECONDS < WAIT_DEADLINE )); do
-    csv_count=$(find "${CSV_OUTPUT_DIR}" -maxdepth 1 -name '*.csv' 2>/dev/null | wc -l)
-    h5_count=$(find "${HDF5_OUTPUT_DIR}" -name '*.h5' 2>/dev/null | wc -l)
-    if (( csv_count > 0 && h5_count > 0 )); then
-        echo "[data-integrity:setup] Detected ${csv_count} CSV file(s), ${h5_count} HDF5 file(s)"
+    h5_count=$(find "${OUTPUT_DIR}" -name '*.h5' 2>/dev/null | wc -l)
+    if (( h5_count > 0 )); then
+        echo "[data-integrity:setup] Detected ${h5_count} HDF5 file(s) in ${OUTPUT_DIR}"
         break
     fi
-    sleep 2
+    sleep 5
 done
 
 echo "[data-integrity:setup] Setup complete."
