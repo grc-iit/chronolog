@@ -1,8 +1,13 @@
 # ChronoLog Container Deployment Pipeline
-# Purpose: Deploy ChronoLog in a simulated Docker cluster
-# Uses container deployment mode for multi-node testing
+# Purpose: Build + deploy ChronoLog (with IOWarp) inside a container.
+# Dockerfile.build and Dockerfile.deploy in jarvis_chronolog/chronolog/
+# are derived from .devcontainer/iowarp/Dockerfile and produce the images.
 
 name: chronolog_container
+install_manager: container
+
+container_engine: docker
+container_base: ubuntu:24.04
 
 env:
   TEST_MODE: "container"
@@ -11,6 +16,8 @@ pkgs:
   # Stage 1: Launch IOWarp runtime on all nodes
   - pkg_type: jarvis_iowarp.wrp_runtime
     pkg_name: runtime
+    deploy_mode: container
+    cmake_preset: "release"
     num_threads: 4
     main_segment_size: "auto"
     client_data_segment_size: "1G"
@@ -27,3 +34,17 @@ pkgs:
     story_files_dir: "/tmp/chronolog_data"
     log_level: "info"
     sleep: 3
+
+  # Stage 3: liveness smoke-test: chimaera monitor --once --json snapshot
+  # before and after any optional driver in custom_cmd. Writes
+  # chimaera_monitor.{pre,post}.json into output_dir.
+  - pkg_type: jarvis_chronolog.chronolog_benchmark
+    pkg_name: benchmark
+    # Leave blank to use <shared_dir>/benchmark_out (auto-mounted into the
+    # container). Set to an absolute path only if you also add it as a
+    # bind-mount, otherwise shell redirections will fail on the host.
+    output_dir: ""
+    custom_cmd: ""
+    custom_nprocs: 1
+    custom_ppn: 1
+    sleep: 0

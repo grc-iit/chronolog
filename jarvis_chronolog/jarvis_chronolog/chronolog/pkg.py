@@ -248,7 +248,11 @@ class Chronolog(Service):
 
         Exec(cmd, PsshExecInfo(
             env=self.env,
-            hostfile=self.jarvis.hostfile
+            hostfile=self.jarvis.hostfile,
+            container=self._container_engine,
+            container_image=self.deploy_image_name(),
+            private_dir=self.private_dir,
+            bind_mounts=self.container_mounts,
         )).run()
 
         self.sleep()
@@ -260,7 +264,11 @@ class Chronolog(Service):
     def kill(self):
         self.log("Forcibly killing ChronoLog-related processes on all nodes")
         Kill('chronolog', PsshExecInfo(
-            hostfile=self.jarvis.hostfile
+            hostfile=self.jarvis.hostfile,
+            container=self._container_engine,
+            container_image=self.deploy_image_name(),
+            private_dir=self.private_dir,
+            bind_mounts=self.container_mounts,
         ), partial=True).run()
 
     def status(self):

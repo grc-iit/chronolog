@@ -1,0 +1,78 @@
+# Pipeline: ChronoLog on Ares (containerised)
+# Purpose: Deploy ChronoLog + IOWarp in Docker containers across multiple
+#          Ares nodes and drive the deployment with the ChronoKVS example
+#          benchmarks.
+# Hosts:   whatever hostfile is set via `jarvis hostfile set <path>`; a
+#          common layout is ~/hostfile.txt containing
+#            ares-comp-25
+#            ares-comp-27
+#            ares-comp-28
+#
+# Usage:
+#   jarvis hostfile set ~/hostfile.txt
+#   jarvis ppl load yaml chronolog_ares_container.yaml
+#   jarvis ppl build          # builds Dockerfile.build + Dockerfile.deploy
+#   jarvis ppl run            # starts runtime + chronolog + benchmark
+#   jarvis ppl kill           # teardown
+
+name: chronolog_ares_container_test
+install_manager: container
+
+container_engine: docker
+container_base: ubuntu:24.04
+
+# Pipeline-level hostfile: triggers pipeline.save() to copy this file
+# into <shared_dir>/hostfile, which is bind-mounted into every container
+# at the same path. Without this, the generated chimaera_config.yaml
+# references a host-only path and each chimaera runtime falls back to
+# localhost-only mode.
+hostfile: /home/llogan/hostfile.txt
+
+# Bind OpenMPI to the Ares compute NIC. `eno1` is the default 10GbE iface
+# on ares-comp-25/27/28; adjust if your hostfile points elsewhere.
+container_env:
+  OMPI_MCA_btl_tcp_if_include: eno1
+  OMPI_MCA_oob_tcp_if_include: eno1
+
+env:
+  TEST_MODE: "container"
+
+pkgs:
+  # Stage 1: IOWarp (Chimaera) runtime on every node in the hostfile.
+  - pkg_type: jarvis_iowarp.wrp_runtime
+    pkg_name: runtime
+    deploy_mode: container
+    cmake_preset: "release"
+    num_threads: 4
+    main_segment_size: "auto"
+    client_data_segment_size: "2G"
+    port: 9413
+    ipc_mode: "tcp"
+    log_level: "info"
+    sleep: 5
+
+  # Stage 2: ChronoLog chimods (keeper, grapher, player, store) composed
+  # into the running runtime via `chimaera compose`.
+  - pkg_type: jarvis_chronolog.chronolog
+    pkg_name: chronolog
+    deploy_mode: container
+    visor_ip: "127.0.0.1"
+    protocol: "ofi+sockets"
+    story_files_dir: "/tmp/chronolog_data"
+    log_level: "info"
+    sleep: 3
+
+  # Stage 3: ChronoLog smoke-test / benchmark. Captures a per-node
+  # `chimaera monitor --once --json` snapshot before and after any custom
+  # driver you wire into custom_cmd (leave empty for a pure liveness
+  # check). The JSON files land in output_dir on every host.
+  - pkg_type: jarvis_chronolog.chronolog_benchmark
+    pkg_name: benchmark
+    # Leave blank to use <shared_dir>/benchmark_out (auto-mounted into the
+    # container). Set to an absolute path only if you also add it as a
+    # bind-mount, otherwise shell redirections will fail on the host.
+    output_dir: ""
+    custom_cmd: ""
+    custom_nprocs: 1
+    custom_ppn: 1
+    sleep: 0

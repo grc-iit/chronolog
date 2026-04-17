@@ -1,0 +1,78 @@
+# ChronoLog + IOWarp deploy container
+# Multi-stage: pulls the installed ChronoLog/IOWarp/HDF5/argobots/mercury/
+# margo/thallium/yaml-cpp/msgpack/libsodium/zeromq tree out of /usr/local
+# in the build image, then installs only the apt runtime deps that aren't
+# baked into /usr/local.
+FROM ##BUILD_IMAGE## AS builder
+FROM ##BASE_IMAGE##
+
+SHELL ["/bin/bash", "-c"]
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+
+# Runtime apt deps. We install the -dev metapackages so the correctly
+# versioned shared libraries (which change suffixes across Ubuntu releases,
+# e.g. libssl3 -> libssl3t64, libaio1 -> libaio1t64) resolve automatically.
+# The extra headers are negligible next to the rest of the install tree.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        libboost-all-dev \
+        libjson-c-dev \
+        libssl-dev \
+        libfabric-dev \
+        libspdlog-dev libfmt-dev \
+        libcereal-dev \
+        libmpich-dev mpich \
+        libcurl4-openssl-dev \
+        libpoco-dev \
+        libaio-dev liburing-dev \
+        libelf-dev \
+        libgomp1 \
+        redis-server redis-tools \
+        python3 python3-pip python3-venv \
+        openssh-server openssh-client \
+        procps vim less sudo \
+ && rm -rf /var/lib/apt/lists/* \
+ && mkdir -p /var/run/sshd \
+ && sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config \
+ && sed -i 's/#PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+
+# Pull everything built/installed under /usr/local in the build image:
+#   - HDF5 2.1.1, argobots, mercury, margo, thallium
+#   - yaml-cpp, msgpack, libsodium, zeromq, cppzmq
+#   - clio-core (chimaera) binaries + libs
+#   - ChronoLog binaries, chimods, headers, cmake packages under
+#     /usr/local/chronolog/{bin,lib,include,conf}
+#   - pip-installed jarvis_cd / jarvis_iowarp / jarvis_chronolog under
+#     /usr/local/lib/python3.*/dist-packages
+COPY --from=builder /usr/local /usr/local
+COPY --from=builder /root/.chimaera /root/.chimaera
+
+ENV LD_LIBRARY_PATH=/usr/local/lib:/usr/local/chronolog/lib:/usr/lib/x86_64-linux-gnu
+ENV PATH=/usr/local/bin:/usr/local/chronolog/bin:${PATH}
+ENV OMPI_ALLOW_RUN_AS_ROOT=1
+ENV OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1
+
+# jarvis-cd drives containerised deployments over ssh (container SSH on :2222).
+# ENV PATH / LD_LIBRARY_PATH only apply to `docker exec`; an ssh session
+# starts from /etc/environment + login shells. Install them there so
+# `chimaera` etc. are on PATH for ssh-invoked commands.
+RUN printf '%s\n' \
+      'PATH=/usr/local/bin:/usr/local/chronolog/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin' \
+      'LD_LIBRARY_PATH=/usr/local/lib:/usr/local/chronolog/lib:/usr/lib/x86_64-linux-gnu' \
+      'OMPI_ALLOW_RUN_AS_ROOT=1' \
+      'OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1' \
+      > /etc/environment \
+ && printf '%s\n' \
+      'export PATH=/usr/local/bin:/usr/local/chronolog/bin:${PATH}' \
+      'export LD_LIBRARY_PATH=/usr/local/lib:/usr/local/chronolog/lib:/usr/lib/x86_64-linux-gnu' \
+      'export OMPI_ALLOW_RUN_AS_ROOT=1' \
+      'export OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1' \
+      > /etc/profile.d/chronolog.sh \
+ && chmod 0644 /etc/profile.d/chronolog.sh
+
+RUN ldconfig
+
+WORKDIR /workspace
+CMD ["/bin/bash"]

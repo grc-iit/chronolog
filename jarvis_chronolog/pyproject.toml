@@ -19,7 +19,11 @@ requires = [
 ]
 
 [tool.setuptools]
-packages = ["jarvis_chronolog", "jarvis_chronolog.chronolog"]
+packages = [
+  "jarvis_chronolog",
+  "jarvis_chronolog.chronolog",
+  "jarvis_chronolog.chronolog_benchmark",
+]
 include-package-data = true
 
 [tool.setuptools.package-data]
