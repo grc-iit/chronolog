@@ -7,7 +7,7 @@
 # --- General package metadata ------------------------------------------------
 set(CPACK_PACKAGE_NAME        "chronolog")
 set(CPACK_PACKAGE_VENDOR      "GRC-IIT, Illinois Institute of Technology")
-set(CPACK_PACKAGE_CONTACT     "eneko.gonzalez@iit.edu")
+set(CPACK_PACKAGE_CONTACT     "egonzalez30@illinoistech.edu")
 set(CPACK_PACKAGE_VERSION     "${CHRONOLOG_PACKAGE_VERSION}")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
     "ChronoLog: Distributed Chronicle Logging System")
@@ -58,20 +58,13 @@ set(CPACK_PACKAGE_FILE_NAME
     "${CPACK_PACKAGE_NAME}-${CHRONOLOG_PACKAGE_VERSION}")
 
 # --- Generators --------------------------------------------------------------
-# Always produce a TGZ. Add RPM when rpmbuild is present on this host.
+# This file drives the TGZ run only.  RPM and DEB each have their own config
+# file (cmake/CPackRPMConfig.cmake.in / CPackDEBConfig.cmake.in) that is
+# configured at cmake time and invoked separately by the package_release target.
+# Keeping generators separate is required because CPACK_INSTALLED_DIRECTORIES
+# cannot be overridden per-generator: TGZ needs "chronolog-VERSION/" as the
+# top-level dir while RPM/DEB must place files at "opt/chronolog" (→ /opt/chronolog).
 set(CPACK_GENERATOR "TGZ")
-
-find_program(RPMBUILD_FOUND rpmbuild)
-if(RPMBUILD_FOUND)
-    list(APPEND CPACK_GENERATOR "RPM")
-    message(STATUS "CPack: rpmbuild found — RPM generator enabled")
-endif()
-
-find_program(DPKG_FOUND dpkg-deb)
-if(DPKG_FOUND)
-    list(APPEND CPACK_GENERATOR "DEB")
-    message(STATUS "CPack: dpkg-deb found — DEB generator enabled")
-endif()
 
 # --- Source package ----------------------------------------------------------
 # Produce a curated source tarball via `cpack --config CPackSourceConfig.cmake`
@@ -158,18 +151,6 @@ set(CPACK_SOURCE_IGNORE_FILES
     "[.]log$"
 )
 
-# --- RPM-specific settings ---------------------------------------------------
-set(CPACK_RPM_PACKAGE_LICENSE  "BSD-2-Clause")
-set(CPACK_RPM_PACKAGE_GROUP    "System Environment/Daemons")
-set(CPACK_RPM_PACKAGE_REQUIRES "json-c >= 0.13")
-set(CPACK_RPM_PACKAGE_DESCRIPTION
-"ChronoLog is a distributed, hierarchical, and tiered chronicle-based logging
-system designed for high-performance recording and playback of time-ordered
-event streams across HPC clusters.
-
-Components: ChronoVisor, ChronoKeeper, ChronoGrapher, ChronoPlayer, chronolog_client.")
-
-# --- DEB-specific settings ---------------------------------------------------
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "libjson-c5 (>= 0.13)")
-set(CPACK_DEBIAN_PACKAGE_SECTION "net")
-set(CPACK_DEBIAN_PACKAGE_MAINTAINER "${CPACK_PACKAGE_CONTACT}")
+# RPM- and DEB-specific settings live in their own config files
+# (cmake/CPackRPMConfig.cmake.in / CPackDEBConfig.cmake.in), configured by
+# CMake at build time and invoked separately by the package_release target.
