@@ -247,9 +247,10 @@ jobs:
               mkdir -p \"\${INSTALL_DIR}\"
               chown -R grc-iit:grc-iit \"\${INSTALL_DIR}\" || true
               # TEMP (PR #598): Debug build so the test tree is built and
-              # CHRONOLOG_INSTALL_TESTS=ON. Revert to default Release once
-              # the integration-pipeline overhaul lands separately.
-              ./tools/deploy/ChronoLog/local_single_user_deploy.sh -b -t Debug -I \"\${INSTALL_DIR}\"
+              # CHRONOLOG_INSTALL_TESTS=ON. Explicit -B so the data-integrity
+              # job downstream knows where to find the build dir. Revert to
+              # default Release once the integration-pipeline overhaul lands.
+              ./tools/deploy/ChronoLog/local_single_user_deploy.sh -b -t Debug -B /home/grc-iit/chronolog-build -I \"\${INSTALL_DIR}\"
             else
               echo '❌ Build script not found or not executable'
               exit 1
@@ -272,7 +273,7 @@ jobs:
               mkdir -p \"\${INSTALL_DIR}\"
               chown -R grc-iit:grc-iit \"\${INSTALL_DIR}\" || true
               # TEMP (PR #598): match the Debug build above.
-              ./tools/deploy/ChronoLog/local_single_user_deploy.sh -i -t Debug -I \"\${INSTALL_DIR}\"
+              ./tools/deploy/ChronoLog/local_single_user_deploy.sh -i -t Debug -B /home/grc-iit/chronolog-build -I \"\${INSTALL_DIR}\"
             else
               echo '❌ Install script not found or not executable'
               exit 1
@@ -444,26 +445,6 @@ jobs:
             echo '✅ ChronoLog cleaned'
           "
 
-      - name: Run end-to-end data-integrity tests
-        # TEMP (PR #598): runs the new test/end-to-end/data-integrity/ tests
-        # against the installed Debug tree. The fixture starts/stops its own
-        # single-keeper deployment via deploy_local.sh. Will move to a
-        # dedicated Test job in the integration-pipeline overhaul PR.
-        run: |
-          set -e
-          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
-          docker exec "$CONTAINER_ID" bash -c "
-            set -e
-            source /home/grc-iit/spack/share/spack/setup-env.sh
-            spack env activate -p .
-            BUILD_DIR=\"/home/grc-iit/chronolog-build/Debug\"
-            export CHRONOLOG_INSTALL_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
-            echo '[end-to-end] Listing data-integrity ctest cases:'
-            ctest --test-dir \"\${BUILD_DIR}\" -N -R EndToEnd_DataIntegrity_
-            echo '[end-to-end] Running data-integrity ctest cases:'
-            ctest --test-dir \"\${BUILD_DIR}\" -R 'EndToEnd_DataIntegrity_|DataIntegrity_(Setup|Cleanup)' --output-on-failure
-          "
-
       - name: Copy chronolog-install from container
         run: |
           set -e
@@ -490,6 +471,88 @@ jobs:
       - name: Push final image
         run: |
           docker push "${{ steps.set-final-image-name.outputs.full-name }}"
+
+  # TEMP (PR #598): runs the end-to-end data-integrity tests against the
+  # Debug build/install committed by local-deployment. The fixture spins up
+  # its own single-keeper deployment via deploy_local.sh. Will move to the
+  # general Test job in the integration-pipeline overhaul PR.
+  data-integrity-tests:
+    runs-on: ubuntu-24.04
+    needs: local-deployment
+    permissions:
+      contents: read
+      packages: read
+    timeout-minutes: 30
+
+    steps:
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull final image from local-deployment
+        run: |
+          docker pull "${{ needs.local-deployment.outputs.image-name }}"
+
+      - name: Start container
+        id: create-container
+        run: |
+          set -e
+          CONTAINER_ID=$(docker create --user root --init \
+            "${{ needs.local-deployment.outputs.image-name }}" \
+            bash -c "tail -f /dev/null")
+          docker start "$CONTAINER_ID"
+          echo "container-id=${CONTAINER_ID}" >> $GITHUB_OUTPUT
+
+      - name: List data-integrity ctest cases
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker exec "$CONTAINER_ID" bash -c "
+            set -e
+            source /home/grc-iit/spack/share/spack/setup-env.sh
+            cd /home/grc-iit/chronolog-repo
+            spack env activate -p .
+            ctest --test-dir /home/grc-iit/chronolog-build/Debug -N -R 'EndToEnd_DataIntegrity_|DataIntegrity_(Setup|Cleanup)'
+          "
+
+      - name: Run data-integrity ctest cases
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker exec "$CONTAINER_ID" bash -c "
+            set -e
+            source /home/grc-iit/spack/share/spack/setup-env.sh
+            cd /home/grc-iit/chronolog-repo
+            spack env activate -p .
+            export CHRONOLOG_INSTALL_DIR=/home/grc-iit/chronolog-install/chronolog
+            ctest --test-dir /home/grc-iit/chronolog-build/Debug \
+              -R 'EndToEnd_DataIntegrity_|DataIntegrity_(Setup|Cleanup)' \
+              --output-on-failure
+          "
+
+      - name: Collect deployment logs on failure
+        if: failure()
+        run: |
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker exec "$CONTAINER_ID" bash -c "
+            echo '--- monitor/ ---'
+            ls -la /home/grc-iit/chronolog-install/chronolog/monitor/ 2>/dev/null || true
+            for f in /home/grc-iit/chronolog-install/chronolog/monitor/*.log; do
+              echo \"=== \$f ===\"; tail -200 \"\$f\" 2>/dev/null || true
+            done
+            echo '--- output/ ---'
+            ls -la /home/grc-iit/chronolog-install/chronolog/output/ 2>/dev/null || true
+          " || true
+
+      - name: Stop container
+        if: always()
+        run: |
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker stop "$CONTAINER_ID" || true
+          docker rm "$CONTAINER_ID" || true
 
   distributed-deployment:
     runs-on: ubuntu-24.04
