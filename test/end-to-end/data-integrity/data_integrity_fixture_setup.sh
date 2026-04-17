@@ -19,7 +19,7 @@
 set -u
 
 INSTALL_DIR="${CHRONOLOG_INSTALL_DIR:-$HOME/chronolog-install/chronolog}"
-DEPLOY="${INSTALL_DIR}/tools/deploy/ChronoLog/deploy_local.sh"
+DEPLOY="${INSTALL_DIR}/tools/deploy_local.sh"
 ADMIN="${INSTALL_DIR}/bin/chrono-client-admin"
 CLIENT_CONF="${INSTALL_DIR}/conf/chrono-client-conf.json"
 

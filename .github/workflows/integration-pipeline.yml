@@ -246,7 +246,10 @@ jobs:
               INSTALL_DIR=\"/home/grc-iit/chronolog-install\"
               mkdir -p \"\${INSTALL_DIR}\"
               chown -R grc-iit:grc-iit \"\${INSTALL_DIR}\" || true
-              ./tools/deploy/ChronoLog/local_single_user_deploy.sh -b -I \"\${INSTALL_DIR}\"
+              # TEMP (PR #598): Debug build so the test tree is built and
+              # CHRONOLOG_INSTALL_TESTS=ON. Revert to default Release once
+              # the integration-pipeline overhaul lands separately.
+              ./tools/deploy/ChronoLog/local_single_user_deploy.sh -b -t Debug -I \"\${INSTALL_DIR}\"
             else
               echo '❌ Build script not found or not executable'
               exit 1
@@ -268,7 +271,8 @@ jobs:
               INSTALL_DIR=\"/home/grc-iit/chronolog-install\"
               mkdir -p \"\${INSTALL_DIR}\"
               chown -R grc-iit:grc-iit \"\${INSTALL_DIR}\" || true
-              ./tools/deploy/ChronoLog/local_single_user_deploy.sh -i -I \"\${INSTALL_DIR}\"
+              # TEMP (PR #598): match the Debug build above.
+              ./tools/deploy/ChronoLog/local_single_user_deploy.sh -i -t Debug -I \"\${INSTALL_DIR}\"
             else
               echo '❌ Install script not found or not executable'
               exit 1
@@ -438,6 +442,26 @@ jobs:
               exit 1
             fi
             echo '✅ ChronoLog cleaned'
+          "
+
+      - name: Run end-to-end data-integrity tests
+        # TEMP (PR #598): runs the new test/end-to-end/data-integrity/ tests
+        # against the installed Debug tree. The fixture starts/stops its own
+        # single-keeper deployment via deploy_local.sh. Will move to a
+        # dedicated Test job in the integration-pipeline overhaul PR.
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker exec "$CONTAINER_ID" bash -c "
+            set -e
+            source /home/grc-iit/spack/share/spack/setup-env.sh
+            spack env activate -p .
+            BUILD_DIR=\"/home/grc-iit/chronolog-build/Debug\"
+            export CHRONOLOG_INSTALL_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
+            echo '[end-to-end] Listing data-integrity ctest cases:'
+            ctest --test-dir \"\${BUILD_DIR}\" -N -R EndToEnd_DataIntegrity_
+            echo '[end-to-end] Running data-integrity ctest cases:'
+            ctest --test-dir \"\${BUILD_DIR}\" -R 'EndToEnd_DataIntegrity_|DataIntegrity_(Setup|Cleanup)' --output-on-failure
           "
 
       - name: Copy chronolog-install from container
