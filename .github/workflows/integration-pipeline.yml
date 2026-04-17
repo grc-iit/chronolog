@@ -246,7 +246,7 @@ jobs:
               INSTALL_DIR=\"/home/grc-iit/chronolog-install\"
               mkdir -p \"\${INSTALL_DIR}\"
               chown -R grc-iit:grc-iit \"\${INSTALL_DIR}\" || true
-              ./tools/deploy/ChronoLog/local_single_user_deploy.sh -b -I \"\${INSTALL_DIR}\"
+              ./tools/deploy/ChronoLog/local_single_user_deploy.sh -b -t Debug -I \"\${INSTALL_DIR}\"
             else
               echo '❌ Build script not found or not executable'
               exit 1
@@ -268,7 +268,7 @@ jobs:
               INSTALL_DIR=\"/home/grc-iit/chronolog-install\"
               mkdir -p \"\${INSTALL_DIR}\"
               chown -R grc-iit:grc-iit \"\${INSTALL_DIR}\" || true
-              ./tools/deploy/ChronoLog/local_single_user_deploy.sh -i -I \"\${INSTALL_DIR}\"
+              ./tools/deploy/ChronoLog/local_single_user_deploy.sh -i -t Debug -I \"\${INSTALL_DIR}\"
             else
               echo '❌ Install script not found or not executable'
               exit 1
@@ -449,7 +449,7 @@ jobs:
       - name: Upload chronolog-install artifact
         uses: actions/upload-artifact@v4
         with:
-          name: chronolog-install-${{ github.head_ref || github.ref_name }}
+          name: chronolog-install-debug-${{ github.head_ref || github.ref_name }}
           path: ./chronolog-install
           retention-days: 7
 
