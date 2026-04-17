@@ -66,18 +66,89 @@ set(CPACK_PACKAGE_FILE_NAME
 # top-level dir while RPM/DEB must place files at "opt/chronolog" (→ /opt/chronolog).
 set(CPACK_GENERATOR "TGZ")
 
+# --- Source package ----------------------------------------------------------
+# Produce a curated source tarball via `cpack --config CPackSourceConfig.cmake`
+# (wrapped by the `package_source` custom target defined in CMakeLists.txt).
+# Excludes build artifacts, node_modules, caches, and local tooling directories
+# so users get a clean, versioned source package.
+set(CPACK_SOURCE_GENERATOR "TGZ")
+set(CPACK_SOURCE_PACKAGE_FILE_NAME
+    "${CPACK_PACKAGE_NAME}-${CHRONOLOG_PACKAGE_VERSION}-source")
+
 # --- Source ignore patterns --------------------------------------------------
+# Patterns are POSIX regexes matched against absolute paths. Keep these in sync
+# with .gitignore where it makes sense — .gitignore covers developer workflow,
+# this list protects the release tarball from build/cache bloat.
 set(CPACK_SOURCE_IGNORE_FILES
+    # VCS / CI metadata
     "/[.]git/"
     "/[.]github/"
-    "/build/"
-    "/chronolog-build/"
     "[.]gitignore$"
     "[.]gitmodules$"
-    "[.]clang-format$"
+    "[.]gitattributes$"
+    "[.]travis[.]yml$"
+    # Editor / AI-agent tooling
+    "/[.]idea/"
+    "/[.]vscode/"
+    "/[.]cursor/"
+    "/[.]claude/"
+    "/[.]aider[^/]*"
+    "/[.]windsurf/"
+    "/[.]codeium/"
+    "/[.]copilot/"
+    "/[.]continue/"
+    "/[.]mcp/"
+    "/[.]agent[s]?/"
+    "/[.]local/"
+    "/[.]localdev/"
+    # Build / CMake artifacts
+    "/build/"
+    "/chronolog-build/"
+    "/cmake-build-[^/]+/"
     "CMakeCache[.]txt$"
     "CMakeFiles/"
     "_CPack_Packages/"
+    "[.]spack-env/"
+    "spack[.]lock$"
+    "compile_commands[.]json$"
+    # Node / website build outputs
+    "/node_modules/"
+    "/[.]docusaurus/"
+    "docs-website/build/"
+    "website/dist/"
+    "/[.]next/"
+    "/[.]nuxt/"
+    "/[.]turbo/"
+    "/[.]parcel-cache/"
+    "[.]tsbuildinfo$"
+    "[.]eslintcache$"
+    # Python / test caches
+    "__pycache__/"
+    "/[.]pytest_cache/"
+    "/[.]mypy_cache/"
+    "/[.]ruff_cache/"
+    "/[.]cache/"
+    "[.]py[cod]$"
+    "/venv/"
+    "/[.]venv/"
+    # Coverage
+    "[.]gcno$"
+    "[.]gcda$"
+    "[.]gcov$"
+    "lcov[.]info$"
+    "/coverage/"
+    "/htmlcov/"
+    # OS / editor noise
+    "[.]DS_Store$"
+    "Thumbs[.]db$"
+    "[.]swp$"
+    "[.]swo$"
+    "~$"
+    # Backup / patch files
+    "[.]bak$"
+    "[.]orig$"
+    "[.]rej$"
+    "[.]log$"
 )
 
 # RPM- and DEB-specific settings live in their own config files

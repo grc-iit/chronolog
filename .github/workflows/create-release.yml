@@ -267,6 +267,30 @@ jobs:
             echo "No DEB package found — skipping"
           fi
 
+      - name: Create Source tarball
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker exec "$CONTAINER_ID" bash -c "
+            set -e
+            source /home/grc-iit/spack/share/spack/setup-env.sh
+            spack env activate -p .
+            BUILD_DIR=\"\$HOME/chronolog-build/Release\"
+            cmake --build \"\${BUILD_DIR}\" --target package_source
+            echo 'Source tarball created:'
+            ls \"\${BUILD_DIR}/\"chronolog-*-source.tar.gz
+          "
+
+      - name: Copy Source tarball out of container
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          SOURCE_TAR=$(docker exec "$CONTAINER_ID" bash -c \
+            "ls \$HOME/chronolog-build/Release/chronolog-*-source.tar.gz 2>/dev/null | head -1")
+          echo "Source tarball: ${SOURCE_TAR}"
+          docker exec "$CONTAINER_ID" bash -c "cat '${SOURCE_TAR}'" \
+            > /tmp/chronolog-artifacts/$(basename "${SOURCE_TAR}")
+
       - name: Commit release Docker image
         run: |
           set -e
