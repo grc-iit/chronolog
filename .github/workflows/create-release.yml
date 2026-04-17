@@ -234,6 +234,30 @@ jobs:
           docker exec "$CONTAINER_ID" bash -c "cat '${RELEASE_TAR}'" \
             > /tmp/chronolog-artifacts/$(basename "${RELEASE_TAR}")
 
+      - name: Create Source tarball
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker exec "$CONTAINER_ID" bash -c "
+            set -e
+            source /home/grc-iit/spack/share/spack/setup-env.sh
+            spack env activate -p .
+            BUILD_DIR=\"\$HOME/chronolog-build/Release\"
+            cmake --build \"\${BUILD_DIR}\" --target package_source
+            echo 'Source tarball created:'
+            ls \"\${BUILD_DIR}/\"chronolog-*-source.tar.gz
+          "
+
+      - name: Copy Source tarball out of container
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          SOURCE_TAR=$(docker exec "$CONTAINER_ID" bash -c \
+            "ls \$HOME/chronolog-build/Release/chronolog-*-source.tar.gz 2>/dev/null | head -1")
+          echo "Source tarball: ${SOURCE_TAR}"
+          docker exec "$CONTAINER_ID" bash -c "cat '${SOURCE_TAR}'" \
+            > /tmp/chronolog-artifacts/$(basename "${SOURCE_TAR}")
+
       - name: Commit release Docker image
         run: |
           set -e
@@ -287,7 +311,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: chronolog-${{ steps.extract-version.outputs.version }}-release-tarball
-          path: /tmp/chronolog-artifacts/*.tar.gz
+          path: /tmp/chronolog-artifacts/chronolog-*-linux-*.tar.gz
+          retention-days: 7
+
+      - name: Upload Source tarball as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: chronolog-${{ steps.extract-version.outputs.version }}-source-tarball
+          path: /tmp/chronolog-artifacts/chronolog-*-source.tar.gz
           retention-days: 7
 
   publish-docker-debug-image:
@@ -465,6 +496,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: chronolog-${{ needs.publish-docker-release-image.outputs.version }}-release-tarball
+          path: /tmp/chronolog-artifacts
+
+      - name: Download Source tarball
+        uses: actions/download-artifact@v4
+        with:
+          name: chronolog-${{ needs.publish-docker-release-image.outputs.version }}-source-tarball
           path: /tmp/chronolog-artifacts
 
       - name: Download Debug tarball

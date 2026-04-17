@@ -387,3 +387,8 @@ add_custom_target(package_release
     COMMENT "Creating ${_pkg_release}.tar.gz"
     VERBATIM
 )
+
+# Source tarball is built via the CPack-provided `package_source` target
+# (auto-generated when CPACK_SOURCE_GENERATOR is set in cmake/CPackConfig.cmake).
+# Output: chronolog-<version>-source.tar.gz
+# Usage: cmake --build . --target package_source
