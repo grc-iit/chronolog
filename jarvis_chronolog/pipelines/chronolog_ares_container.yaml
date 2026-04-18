@@ -38,11 +38,31 @@ env:
   TEST_MODE: "container"
 
 pkgs:
+  # Library stages: HDF5, ADIOS2, and the fpzip/SZ3/libpressio
+  # compression stack. wrp_runtime's build.sh no longer installs these —
+  # they've been factored into reusable Library packages (see jarvis-cd
+  # commit 285fcb4), and wrp_runtime's cmake find_package() expects them
+  # to already be in /usr/local via jarvis's deploy-image injection.
+  # These must appear before wrp_runtime in the yaml so jarvis injects
+  # their cached `jarvis-deploy-*` images first.
+  - pkg_type: builtin.hdf5
+    pkg_name: hdf5
+  - pkg_type: builtin.adios2
+    pkg_name: adios2
+  - pkg_type: builtin.compress_libs
+    pkg_name: compress_libs
+
   # Stage 1: IOWarp (Chimaera) runtime on every node in the hostfile.
+  # git_branch: transparent-compress is the branch the iowarp_container_test
+  # reference pipeline uses and the one whose cached deploy image exists
+  # on this host. release-adapter enables GRAY_SCOTT, which is fine;
+  # chronolog itself only needs the chimaera/admin/bdev/HermesShm cmake
+  # packages, which are present in every preset.
   - pkg_type: jarvis_iowarp.wrp_runtime
     pkg_name: runtime
     deploy_mode: container
-    cmake_preset: "release"
+    git_branch: "transparent-compress"
+    cmake_preset: "release-adapter"
     num_threads: 4
     main_segment_size: "auto"
     client_data_segment_size: "2G"
