@@ -279,6 +279,14 @@ if(CHRONOLOG_BUILD_IOWARP)
     add_subdirectory(external/iowarp)
 else()
     message(STATUS "CHRONOLOG_BUILD_IOWARP=OFF: locating prebuilt iowarp-core")
+    # iowarp-core's installed HermesShmCoreConfig.cmake references
+    # yaml-cpp::yaml-cpp as INTERFACE_LINK_LIBRARIES on hshm::configure
+    # without find_dependency(yaml-cpp), so we have to load yaml-cpp
+    # ourselves before iowarp-core's targets become usable.  Same for
+    # msgpack-c / cereal / ZeroMQ which are iowarp transitive deps.
+    find_package(yaml-cpp CONFIG REQUIRED)
+    find_package(msgpack-c CONFIG QUIET)
+    find_package(cereal CONFIG QUIET)
     find_package(iowarp-core CONFIG REQUIRED)
     # IowarpCoreConfig.cmake pulls in IowarpCoreCommon.cmake, which supplies
     # the add_chimod_client / add_chimod_runtime helpers that chimod/*/
