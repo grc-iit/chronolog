@@ -240,8 +240,13 @@ add_custom_target(lint COMMAND cpplint --recursive
 # to exercise a release-mode binary) can run the suite against the real build.
 # Tests are NOT installed by default: CHRONOLOG_INSTALL_TESTS controls whether
 # they land in the install prefix, and it defaults to OFF so release packages
-# (TGZ/RPM/DEB) stay clean. Opt in via -DCHRONOLOG_INSTALL_TESTS=ON or the
-# CHRONOLOG_INSTALL_TESTS env var when you want the artifact to carry tests.
+# (TGZ/RPM/DEB) stay clean. Opt in via -DCHRONOLOG_INSTALL_TESTS=ON.
+#
+# The CHRONOLOG_INSTALL_TESTS env var only seeds the default on a fresh
+# configure; CMake caches the option, so the env var is ignored on
+# reconfigure. tools/deploy/ChronoLog/build.sh forwards the env var as an
+# explicit -D on every invocation so it wins even when the build dir is
+# reused — if you invoke cmake directly, pass -D yourself.
 #------------------------------------------------------------------------------
 set(CHRONOLOG_BUILD_TESTS_NOW ${CHRONOLOG_BUILD_TESTING})
 if(CHRONOLOG_BUILD_TESTS_NOW)
