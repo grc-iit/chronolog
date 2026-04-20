@@ -14,6 +14,7 @@ add_library(chrono_common STATIC
     src/ChunkExtractorCSV.cpp
     src/ChunkExtractorRDMA.cpp
     src/RDMATransferAgent.cpp
+    src/ExtractionModuleConfiguration.cpp
 )
 
 target_include_directories(chrono_common

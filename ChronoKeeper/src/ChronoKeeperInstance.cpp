@@ -98,6 +98,7 @@ int main(int argc, char** argv)
     }
 
     LOG_INFO("[ChronoKeeper] Running ChronoKeeper Server.");
+
     LOG_INFO("[ChronoKeeper] Configuration {}", KEEPER_CONF.to_String());
 
     // Instantiate ChronoKeeper MemoryDataStore
@@ -162,7 +163,6 @@ int main(int argc, char** argv)
 
     // Instantiate ChronoKeeper MemoryDataStore & ExtractionModule
     chronolog::IngestionQueue ingestionQueue;
-    std::string keeper_csv_files_directory = KEEPER_CONF.EXTRACTOR_CONF.story_files_dir;
     // Instantiate KeeperGrapherDrainService
     tl::engine* extractionEngine = nullptr;
     try
@@ -182,6 +182,7 @@ int main(int argc, char** argv)
         return (-1);
     }
 
+    
     chl::ServiceId grapherReceivingServiceId(KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.PROTO_CONF,
                                              KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP,
                                              KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT,
@@ -192,12 +193,15 @@ int main(int argc, char** argv)
                                              KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT+5,
                                              KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.SERVICE_PROVIDER_ID+5);
 
-    chl::StoryChunkExtractorRDMA single_endpoint_rdma_extractor(*extractionEngine, grapherReceivingServiceId);
-    //chronolog::StoryChunkExtractionModule extractionModule(chl::LoggingExtractor(), single_endpoint_rdma_extractor);
+    
+    chronolog::StoryChunkExtractorRDMA single_endpoint_rdma_extractor(
+                       *extractionEngine, grapherReceivingServiceId);
+    chronolog::StoryChunkExtractionModule extractionModule(chl::LoggingExtractor(), single_endpoint_rdma_extractor);
 
-    chronolog::DualEndpointChunkExtractorRDMA dual_endpoint_rdma_extractor(
-                       *extractionEngine, grapherReceivingServiceId, playerReceivingServiceId);
-    chronolog::StoryChunkExtractionModule extractionModule(chl::LoggingExtractor(), dual_endpoint_rdma_extractor);
+    //chronolog::DualEndpointChunkExtractorRDMA dual_endpoint_rdma_extractor(
+    //                   *extractionEngine, grapherReceivingServiceId, playerReceivingServiceId);
+
+    //chronolog::StoryChunkExtractionModule extractionModule(chl::LoggingExtractor(), dual_endpoint_rdma_extractor);
                     
 
     chronolog::KeeperDataStore theDataStore(ingestionQueue,

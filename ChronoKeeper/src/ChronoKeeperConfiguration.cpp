@@ -139,35 +139,24 @@ int chronolog::KeeperConfiguration::parseJsonConf(json_object* json_conf)
             if(DATA_STORE_CONF.parseJsonConf(data_store_conf) != chl::CL_SUCCESS)
                 return chl::CL_ERR_INVALID_CONF;
         }
-        else if(strcmp(key, "Extractors") == 0)
+        else if(strcmp(key, "ExtractionModule") == 0)
         {
             if(!json_object_is_type(val, json_type_object))
             {
-                std::cerr << "[KeeperConfiguration] Invalid 'Extractors': expected object" << std::endl;
+                std::cerr << "[KeeperConfiguration] Invalid 'ExtractionModule' segment: expected json object" << std::endl;
                 return chl::CL_ERR_INVALID_CONF;
             }
-            json_object* extractors = json_object_object_get(json_conf, "Extractors");
-            json_object_object_foreach(extractors, key, val)
-            {
-                if(strcmp(key, "story_files_dir") == 0)
-                {
-                    if(!json_object_is_type(val, json_type_string))
-                    {
-                        std::cerr << "[KeeperConfiguration] Invalid 'story_files_dir': expected string" << std::endl;
-                        return chl::CL_ERR_INVALID_CONF;
-                    }
-                    EXTRACTOR_CONF.story_files_dir = json_object_get_string(val);
-                }
-                else
-                {
-                    std::cerr << "[ConfigurationManager] [chrono_keeper] Unknown Extractors configuration " << key
-                              << std::endl;
-                }
+            json_object* extraction_module_json_object =
+                    json_object_object_get(json_conf, "ExtractionModule");
+            if(EXTRACTION_MODULE_CONF.parse_json_object(extraction_module_json_object) != chl::CL_SUCCESS)
+            {            
+                return chl::CL_ERR_INVALID_CONF;
+                std::cerr << "[KeeperConfiguration] Error parsing ExtractionModule  configuration: " << std::endl;
             }
         }
         else
         {
-            std::cerr << "[ConfigurationManager] [chrono_keeper] Unknown Keeper configuration: " << key << std::endl;
+            std::cerr << "[ConfigurationManager] [chrono_keeper] Unknown Keeper configuration block: " << key << std::endl;
         }
     }
     return chronolog::CL_SUCCESS;
