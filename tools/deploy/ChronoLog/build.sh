@@ -164,8 +164,11 @@ build_project() {
     else
         echo -e "${DEBUG}No installation path specified; using CMake defaults (your CMakeLists sets $HOME/chronolog-install).${NC}"
     fi
+    # Treat an exported-but-empty CHRONOLOG_INSTALL_TESTS the same as unset
+    # (${VAR:+x} expands only when VAR is set AND non-empty), so a stray empty
+    # export doesn't silently suppress the Debug-mode default.
     local install_tests=""
-    if [[ -n "${CHRONOLOG_INSTALL_TESTS+x}" ]]; then
+    if [[ -n "${CHRONOLOG_INSTALL_TESTS:+x}" ]]; then
         install_tests="${CHRONOLOG_INSTALL_TESTS}"
         echo -e "${DEBUG}CHRONOLOG_INSTALL_TESTS=${install_tests} (from environment).${NC}"
     elif [[ "$BUILD_TYPE" == "Debug" ]]; then
