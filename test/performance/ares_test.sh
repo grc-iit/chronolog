@@ -28,17 +28,185 @@
 set -u -o pipefail
 
 # ---------------------------------------------------------------------------
+# Usage / help
+# ---------------------------------------------------------------------------
+
+usage() {
+    cat <<'EOF'
+USAGE
+  ares_test.sh [OPTIONS]
+
+DESCRIPTION
+  Orchestration driver for the ChronoLog performance regression test matrix.
+  Acquires a Slurm allocation, deploys ChronoLog at every (component scale ×
+  protocol) combination, then runs chrono-performance-test across all client
+  configs, event sizes, and repetitions, recording timing results to a CSV.
+
+  By default the script operates in DRY_RUN=1 mode: every side-effecting
+  command (salloc, deploy_cluster.sh, mpirun, pkill, ssh) is only echoed to
+  the log file and never executed.  Set DRY_RUN=0 (or export it) to run for
+  real on the cluster.
+
+OPTIONS
+  --dry-run        Echo every command to the log instead of executing it.
+                   No Slurm allocation, no deployment, no perf runs.
+                   Default: on (DRY_RUN=1).  Use --no-dry-run to run for real.
+  --no-dry-run     Execute commands for real on the cluster.
+
+  --write          Run write tests (connect_disconnect, acquire_release,
+                   recording).  On by default.
+  --no-write       Skip write tests.
+
+  --read           Run read tests (replay).  Off by default.
+  --no-read        Skip read tests (default).
+
+  --colocate       Allow client processes to run on the same nodes as service
+                   processes (keeper / grapher / player).  Reduces the Slurm
+                   allocation by MAX_CLIENT_NODES nodes.
+  --no-colocate    Keep client nodes fully dedicated (default).
+
+  --debug          After writing each client hosts file, snapshot the contents
+                   of CONF_DIR into the log directory for post-run inspection.
+                   Off by default.
+
+  -h, --help       Print this help message and exit.
+
+ENVIRONMENT VARIABLES
+  Any variable below can be set before invoking the script to override its
+  default without modifying source code, e.g.:
+    DRY_RUN=0 REPS=1 bash ares_test.sh --write
+
+  Execution mode
+    DRY_RUN=0|1           Echo-only mode (no real commands executed).
+                          Default: 1 (dry-run).  Overridden by --dry-run /
+                          --no-dry-run.
+    DEBUG=0|1             Enable per-client-config conf/ snapshots.
+                          Default: 0.  Overridden by --debug.
+    RUN_WRITE=0|1         Run write tests.  Default: 1.
+    RUN_READ=0|1          Run read tests.   Default: 0.
+    COLOCATE=0|1          Allow client/service node overlap.  Default: 0.
+
+  Paths  (all default under INSTALL_DIR)
+    INSTALL_DIR           ChronoLog installation root.
+                          Default: ~/chronolog-install/chronolog
+    CONF_DIR              Server config and hosts-file directory.
+                          Default: \$INSTALL_DIR/conf
+    OUTPUT_DIR            HDF5 story data written by keepers/graphers/players.
+                          Default: \$INSTALL_DIR/output
+    PERF_BIN              chrono-performance-test binary.
+                          Default: \$INSTALL_DIR/tests/chrono-performance-test
+    MPIRUN                Full path to mpirun / mpiexec.
+    DEPLOY_SCRIPT         Path to deploy_cluster.sh.
+                          Default: \$INSTALL_DIR/tools/deploy_cluster.sh
+    CONF_FILE             Server JSON config template.
+                          Default: \$CONF_DIR/default-chrono-conf.json
+    CLIENT_CONF_FILE      Client JSON config template.
+                          Default: \$CONF_DIR/default-chrono-client-conf.json
+
+  Test matrix
+    COMPONENT_SCALES      Space-separated component scale values (number of
+                          keeper / grapher / player nodes per scale point).
+                          Default: "1 2 4"
+    PROTOCOLS             Space-separated OFI transport strings.
+                          Default: "ofi+sockets"
+    WRITE_CLIENT_CONFIGS  Space-separated <procs_per_node>x<nodes> tokens for
+                          write tests.
+                          Default: "1x1 10x1 10x2 20x1 10x4 20x2 40x1 20x4 40x2 40x4"
+    READ_CLIENT_CONFIGS   Space-separated <procs_per_node>x<nodes> tokens for
+                          read tests (limited to 1 proc/node by the single-
+                          player-per-node constraint).
+                          Default: "1x1 1x2 1x4"
+    REPS                  Repetitions per (test × client-config × event-size).
+                          Default: 3
+    PER_TEST_TIMEOUT_SEC  Kill a single perf-test run after this many seconds.
+                          Default: 120
+
+  Slurm
+    SLURM_PARTITION       Force a specific partition name.
+                          Default: "" — try "compute" first; if it times out,
+                          split between "debug" (idle nodes) and "compute".
+    SALLOC_TIMEOUT_SEC    Seconds to wait for salloc before trying the split
+                          fallback.  Default: 60.  Set to 0 to disable timeout.
+    SLURM_TIME_LIMIT      Wall-time limit passed to salloc (HH:MM:SS).
+                          Default: 04:00:00
+    SLURM_JOB_NAME        Slurm job name.  Default: chronolog-perf
+
+  Logging  (rarely needed; defaults are derived from the run timestamp)
+    LOG_DIR               Directory for all output files.
+                          Default: ./ares_test_logs_YYYYMMDD_HHMMSS
+    LOG_FILE              Main timestamped execution log.
+    RESULT_FILE           CSV results file (input to extract_plot_results.py).
+
+OUTPUT
+  All output is written to ares_test_logs_YYYYMMDD_HHMMSS/ in the working
+  directory.  A symlink ares_test_logs_latest/ is kept pointing at the most
+  recent run directory.
+
+  Files inside the log directory:
+    ares_test_<stamp>.log           Full timestamped execution log.
+    ares_test_<stamp>.cmd.log       Clean list of every command executed /
+                                    that would have been executed in dry-run.
+    ares_test_<stamp>.conf.log      Snapshot of all resolved configuration
+                                    values at script start.
+    ares_test_<stamp>.results       CSV results consumed by
+                                    extract_plot_results.py.
+                                    Columns: test, protocol, scale, clients,
+                                    event_size, event_count, rep, status,
+                                    wall_time, tag
+    ares_test_<stamp>.sh.snapshot   Verbatim copy of this script as it ran.
+    conf_scale<S>_<proto>_clients<P>x<N>/
+                                    Conf/ snapshots (only written with --debug).
+
+EXAMPLES
+  # Review all commands without running anything (default dry-run):
+  bash ares_test.sh
+
+  # Run the full write-test matrix for real:
+  bash ares_test.sh --no-dry-run
+
+  # Run write and read tests together for real:
+  bash ares_test.sh --no-dry-run --write --read
+
+  # Smoke test: one scale, one client config, one rep:
+  COMPONENT_SCALES=1 WRITE_CLIENT_CONFIGS='1x1' REPS=1 bash ares_test.sh --no-dry-run
+
+  # Save nodes by colocating clients with service processes:
+  bash ares_test.sh --no-dry-run --colocate
+
+  # Force the compute partition, capture conf snapshots for debugging:
+  SLURM_PARTITION=compute bash ares_test.sh --no-dry-run --debug
+
+  # Plot results from the most recent run:
+  python3 extract_plot_results.py
+EOF
+}
+
+# Check for --help / -h before any side-effecting global setup so that
+# 'bash ares_test.sh --help' never creates a log directory.
+for _arg in "$@"; do
+    case "$_arg" in
+        --help|-h) usage; exit 0 ;;
+    esac
+done
+unset _arg
+
+# ---------------------------------------------------------------------------
 # Knobs
 # ---------------------------------------------------------------------------
 
-: "${DRY_RUN:=1}"                         # 1 = echo-only, 0 = actually run
+: "${DRY_RUN:=0}"                         # 1 = echo-only, 0 = actually run
+: "${DEBUG:=0}"                           # 1 = snapshot conf/ dir per client config (set via --debug)
+: "${RUN_WRITE:=1}"                       # 1 = run write tests (connect/disconnect, acquire/release, recording)
+: "${RUN_READ:=0}"                        # 1 = run read tests (replay)
+: "${COLOCATE:=0}"                        # 1 = client nodes may overlap with service nodes (keeper/grapher/player)
 : "${INSTALL_DIR:=$HOME/chronolog-install/chronolog}"
 : "${CONF_DIR:=$INSTALL_DIR/conf}"
+: "${OUTPUT_DIR:=$INSTALL_DIR/output}"
 : "${BIN_DIR:=$INSTALL_DIR/bin}"
 : "${TOOLS_DIR:=$INSTALL_DIR/tools}"
 : "${TESTS_DIR:=$INSTALL_DIR/tests}"
 : "${PERF_BIN:=$TESTS_DIR/chrono-performance-test}"
-: "${MPIRUN:=mpirun}"                    # full path if not in $PATH
+: "${MPIRUN:=/mnt/common/kfeng/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/mpich-4.0.2-yomnocixlvz4mtgvih66sj7bp4zetml7/bin/mpirun}"                    # full path if not in $PATH
 : "${DEPLOY_SCRIPT:=$TOOLS_DIR/deploy_cluster.sh}"
 : "${CONF_FILE:=$CONF_DIR/default-chrono-conf.json}"
 : "${CLIENT_CONF_FILE:=$CONF_DIR/default-chrono-client-conf.json}"
@@ -50,9 +218,17 @@ set -u -o pipefail
 
 : "${PER_TEST_TIMEOUT_SEC:=120}"          # kill any perf-test run that exceeds this
 : "${REPS:=3}"
-: "${SLURM_PARTITION:=}"                  # optional: -p <part> for salloc
+: "${SLURM_PARTITION:=}"                  # force a specific partition; empty = try compute, then debug,compute
+: "${SALLOC_TIMEOUT_SEC:=60}"             # per-partition timeout for salloc; 0 = no timeout
 : "${SLURM_TIME_LIMIT:=04:00:00}"
 : "${SLURM_JOB_NAME:=chronolog-perf}"
+
+# Holds the Slurm job ID(s) for the perf allocation (1 entry for a single
+# allocation, 2 for a split debug+compute allocation).
+PERF_JOB_IDS=()
+# 1 = this script instance ran salloc and owns the allocation (scancel on exit).
+# 0 = a pre-existing allocation was reused (do not scancel on exit).
+PERF_JOB_OWNED=0
 
 STAMP="$(date +%Y%m%d_%H%M%S)"
 LOG_DIR="${LOG_DIR:-$(pwd)/ares_test_logs_${STAMP}}"
@@ -80,46 +256,66 @@ ln -sfn "$LOG_DIR_BASE" "$LATEST_LINK"
 # Fixed component scales (symmetric: N keepers == N graphers == N players).
 COMPONENT_SCALES=(1 2 4)
 VISOR_NODES=1
-MAX_COMP_NODES=4                                 # max of COMPONENT_SCALES
-MAX_CLIENT_NODES=4                               # max #nodes across CLIENT_CONFIGS
-# Total allocation: 1 visor + 4 keepers + 4 graphers + 4 players = 13 nodes.
-# Client nodes overlap with the player-slot subset of the component pool, so
-# they do not add to the allocation. Visor is never shared.
-TOTAL_NODES=$(( VISOR_NODES + MAX_COMP_NODES * 3 ))  # 1 + 12 = 13
 
-PROTOCOLS=(ofi+sockets ofi+verbs)
+PROTOCOLS=(ofi+sockets)
 
-# Client configs, space-separated "<procs_per_node>x<nodes>" tokens, in the
-# order given by perf_test_plan.md. Overridable from the environment so the
-# operator can start with a small subset and grow it. Examples:
-#   CLIENT_CONFIGS='1x1'             bash ares_test.sh   # smoke test
-#   CLIENT_CONFIGS='1x1 10x1 10x2'   bash ares_test.sh   # first three
-#   bash ares_test.sh                                    # full plan matrix
-: "${CLIENT_CONFIGS:=1x1 10x1 10x2 20x1 10x4 20x2 40x1 20x4 40x2 40x4}"
-# Parse the string into an array so the main loop can iterate it.
-read -ra CLIENT_CONFIGS_ARR <<< "$CLIENT_CONFIGS"
+# Write-test client configs: space-separated "<procs_per_node>x<nodes>" tokens.
+# Examples:
+#   WRITE_CLIENT_CONFIGS='1x1'           bash ares_test.sh   # smoke test
+#   WRITE_CLIENT_CONFIGS='1x1 10x1 10x2' bash ares_test.sh   # first three
+#   bash ares_test.sh                                        # full matrix
+: "${WRITE_CLIENT_CONFIGS:=1x1 10x1 10x2 20x1 10x4 20x2 40x1 20x4 40x2 40x4}"
+read -ra WRITE_CLIENT_CONFIGS_ARR <<< "$WRITE_CLIENT_CONFIGS"
 
-# test_name:extra_flags (barrier is always on per the plan)
-# - connect/disconnect: only connect + disconnect, no story work
-# - acquire/release:    story lifecycle, no event I/O
-# - recording:          write path, #story_per_proc=#client
-# - replay:             read path, #story_per_proc=#client
-#
-# The performance_test binary uses a single bifurcated run with flags; we map
-# the plan's four cases onto these flag sets. #story_per_proc == #client is
-# expressed by passing -t <client_per_node*nodes> per test.
-TESTS=(
+# Read-test client configs: limited to 1 client per node (single player process
+# per node constraint).
+: "${READ_CLIENT_CONFIGS:=1x1 1x2 1x4}"
+read -ra READ_CLIENT_CONFIGS_ARR <<< "$READ_CLIENT_CONFIGS"
+
+# Derive MAX_COMP_NODES as the largest value in COMPONENT_SCALES.
+MAX_COMP_NODES=0
+for _s in "${COMPONENT_SCALES[@]}"; do
+    (( _s > MAX_COMP_NODES )) && MAX_COMP_NODES=$_s
+done
+unset _s
+
+# Derive MAX_CLIENT_NODES as the largest node count across both client config arrays.
+MAX_CLIENT_NODES=0
+for _c in "${WRITE_CLIENT_CONFIGS_ARR[@]}" "${READ_CLIENT_CONFIGS_ARR[@]}"; do
+    _n="${_c##*x}"
+    (( _n > MAX_CLIENT_NODES )) && MAX_CLIENT_NODES=$_n
+done
+unset _c _n
+
+# Total allocation:
+#   COLOCATE=0 (default): clients get dedicated nodes -> 1 visor + 3*MAX_COMP_NODES + MAX_CLIENT_NODES
+#   COLOCATE=1          : clients share the player slot pool -> 1 visor + 3*MAX_COMP_NODES
+if (( COLOCATE )); then
+    TOTAL_NODES=$(( VISOR_NODES + MAX_COMP_NODES * 3 ))
+else
+    TOTAL_NODES=$(( VISOR_NODES + MAX_COMP_NODES * 3 + MAX_CLIENT_NODES ))
+fi
+
+# Write tests run over the full CLIENT_CONFIGS matrix.
+# Read tests (replay) run only with 1 client per node.
+WRITE_TESTS=(
     "connect_disconnect"
     "acquire_release"
     "recording"
+)
+READ_TESTS=(
     "replay"
 )
 
 # Per-test shared workload settings. Event size is fixed (min==ave==max) so
 # the recording/replay bandwidth numbers are not distorted by a payload-size
 # distribution; see common_perf_flags for how this is wired into -a/-s/-b.
-EVENT_COUNT_DEFAULT=1000
-EVENT_SIZE_DEFAULT=4096
+#
+# EVENT_SIZES covers the full payload spectrum from small messages to large
+# blocks. event_count_for_size() maps each size to an event count so the
+# total data written stays bounded at ~19 GB for the largest client scale
+# (40x4 = 160 clients).
+EVENT_SIZES=(1024 2048 4096 8192 16384 32768 65536 131072 262144 524288 1048576)
 EVENT_INTERVAL_US=0
 CHRONICLE_COUNT=1
 
@@ -137,6 +333,7 @@ cp -- "${BASH_SOURCE[0]}" "$LOG_DIR/ares_test_${STAMP}.sh.snapshot"
     printf '# --- Paths ---\n'
     printf 'INSTALL_DIR=%s\n'      "$INSTALL_DIR"
     printf 'CONF_DIR=%s\n'         "$CONF_DIR"
+    printf 'OUTPUT_DIR=%s\n'       "$OUTPUT_DIR"
     printf 'BIN_DIR=%s\n'          "$BIN_DIR"
     printf 'TOOLS_DIR=%s\n'        "$TOOLS_DIR"
     printf 'TESTS_DIR=%s\n'        "$TESTS_DIR"
@@ -152,6 +349,7 @@ cp -- "${BASH_SOURCE[0]}" "$LOG_DIR/ares_test_${STAMP}.sh.snapshot"
     printf 'PLAYER_HOSTS=%s\n'     "$PLAYER_HOSTS"
     printf '\n# --- Runtime knobs ---\n'
     printf 'DRY_RUN=%s\n'          "$DRY_RUN"
+    printf 'COLOCATE=%s\n'         "$COLOCATE"
     printf 'PER_TEST_TIMEOUT_SEC=%s\n' "$PER_TEST_TIMEOUT_SEC"
     printf 'REPS=%s\n'             "$REPS"
     printf 'SLURM_PARTITION=%s\n'  "$SLURM_PARTITION"
@@ -163,15 +361,16 @@ cp -- "${BASH_SOURCE[0]}" "$LOG_DIR/ares_test_${STAMP}.sh.snapshot"
     printf 'MAX_CLIENT_NODES=%s\n' "$MAX_CLIENT_NODES"
     printf 'TOTAL_NODES=%s\n'      "$TOTAL_NODES"
     printf '\n# --- Workload ---\n'
-    printf 'EVENT_COUNT_DEFAULT=%s\n' "$EVENT_COUNT_DEFAULT"
-    printf 'EVENT_SIZE_DEFAULT=%s\n'  "$EVENT_SIZE_DEFAULT"
+    printf 'EVENT_SIZES=(%s)\n'       "${EVENT_SIZES[*]}"
     printf 'EVENT_INTERVAL_US=%s\n'   "$EVENT_INTERVAL_US"
     printf 'CHRONICLE_COUNT=%s\n'     "$CHRONICLE_COUNT"
     printf '\n# --- Arrays ---\n'
     printf 'COMPONENT_SCALES=(%s)\n'  "${COMPONENT_SCALES[*]}"
     printf 'PROTOCOLS=(%s)\n'         "${PROTOCOLS[*]}"
-    printf 'CLIENT_CONFIGS_ARR=(%s)\n' "${CLIENT_CONFIGS_ARR[*]}"
-    printf 'TESTS=(%s)\n'             "${TESTS[*]}"
+    printf 'WRITE_CLIENT_CONFIGS_ARR=(%s)\n' "${WRITE_CLIENT_CONFIGS_ARR[*]}"
+    printf 'READ_CLIENT_CONFIGS_ARR=(%s)\n'  "${READ_CLIENT_CONFIGS_ARR[*]}"
+    printf 'WRITE_TESTS=(%s)\n'             "${WRITE_TESTS[*]}"
+    printf 'READ_TESTS=(%s)\n'              "${READ_TESTS[*]}"
     printf '\n# --- Log files ---\n'
     printf 'LOG_DIR=%s\n'     "$LOG_DIR"
     printf 'LOG_FILE=%s\n'    "$LOG_FILE"
@@ -261,48 +460,157 @@ record_result() {
 # ---------------------------------------------------------------------------
 
 allocate_if_needed() {
-    # The script runs from an admin node, NOT inside the perf-test allocation.
-    # First, check squeue for a running job with our job name. If found, grab
-    # its job ID and proceed. Otherwise, create a new allocation and exit so
-    # the operator can rerun once nodes are ready.
-    log "[SLURM] checking squeue for running job named '$SLURM_JOB_NAME'"
-    log_cmd "squeue -u \$USER -n $SLURM_JOB_NAME -h -o '%i' | head -1"
+    log "[SLURM] checking for existing running allocation(s) under $USER (need $TOTAL_NODES nodes)"
+    log_cmd "squeue -u \$USER -h -t RUNNING -o '%i %D'"
 
     if [[ "$DRY_RUN" == "1" ]]; then
-        PERF_JOB_ID="dry-run-jobid"
-        log "DRY_RUN=1, skipping real squeue — faking PERF_JOB_ID=$PERF_JOB_ID"
+        PERF_JOB_IDS=("dry-run-jobid")
+        PERF_JOB_OWNED=0
+        log "DRY_RUN=1, skipping real squeue — faking PERF_JOB_IDS=${PERF_JOB_IDS[*]}"
         return 0
     fi
 
-    PERF_JOB_ID=$(squeue -u "$USER" -n "$SLURM_JOB_NAME" -h -o '%i' | head -1)
-    if [[ -n "$PERF_JOB_ID" ]]; then
-        log "Found existing job PERF_JOB_ID=$PERF_JOB_ID"
+    # Collect all running jobs and sum their node counts. If the total meets
+    # or exceeds TOTAL_NODES, reuse those jobs and skip salloc and scancel.
+    local -a existing_jids=()
+    local total_existing=0
+    local _jid _n
+    while read -r _jid _n; do
+        existing_jids+=("$_jid")
+        (( total_existing += _n ))
+    done < <(squeue -u "$USER" -h -t RUNNING -o '%i %D')
+
+    if (( total_existing >= TOTAL_NODES )); then
+        PERF_JOB_IDS=("${existing_jids[@]}")
+        PERF_JOB_OWNED=0
+        log "[SLURM] found ${#PERF_JOB_IDS[@]} existing job(s) totalling $total_existing node(s) — reusing, will not scancel"
         return 0
     fi
 
-    # No running job — allocate one with --no-shell and exit. The operator
-    # reruns this script once the allocation is granted (squeue will then
-    # find the job by name on the next invocation).
+    log "[SLURM] existing allocation insufficient ($total_existing node(s)) — requesting new allocation"
+
+    # Base salloc args; -N is supplied per-call to support split allocations.
     local salloc_args=(
         -J "$SLURM_JOB_NAME"
-        -N "$TOTAL_NODES"
-        --ntasks-per-node=1
         -t "$SLURM_TIME_LIMIT"
         --exclusive
         --no-shell
     )
-    [[ -n "$SLURM_PARTITION" ]] && salloc_args+=(-p "$SLURM_PARTITION")
 
-    log "[SLURM] no '$SLURM_JOB_NAME' job found — requesting allocation (salloc --no-shell)"
-    log_cmd "salloc ${salloc_args[*]}"
-    salloc "${salloc_args[@]}"
+    # Build the timeout prefix (empty when SALLOC_TIMEOUT_SEC=0).
+    local timeout_prefix=()
+    if (( SALLOC_TIMEOUT_SEC > 0 )); then
+        timeout_prefix=(timeout --kill-after=5 "$SALLOC_TIMEOUT_SEC")
+    fi
+
+    # _run_salloc <n_nodes> <partition>
+    # Submit salloc for n_nodes from the given partition; return its exit code.
+    # On timeout (rc=124) cancels any PENDING request left behind.
+    _run_salloc() {
+        local n="$1" part="$2"
+        log "[SLURM] requesting $n node(s) from '$part' (timeout=${SALLOC_TIMEOUT_SEC}s)"
+        log_cmd "${timeout_prefix[*]} salloc ${salloc_args[*]} -N $n -p $part"
+        "${timeout_prefix[@]}" salloc "${salloc_args[@]}" -N "$n" -p "$part"
+        local rc=$?
+        if [[ $rc -eq 124 ]]; then
+            log "[SLURM] salloc timed out on '$part' — cancelling any pending request"
+            scancel -u "$USER" -n "$SLURM_JOB_NAME" --state=PENDING 2>/dev/null || true
+        elif [[ $rc -ne 0 ]]; then
+            log "[SLURM] salloc failed on '$part' (rc=$rc)"
+        fi
+        return $rc
+    }
+
+    # _wait_for_jobs <expected>
+    # Poll squeue until <expected> jobs named SLURM_JOB_NAME appear and
+    # populate PERF_JOB_IDS.
+    _wait_for_jobs() {
+        local expected="$1"
+        log "[SLURM] waiting for $expected job(s) named '$SLURM_JOB_NAME' to appear in squeue..."
+        local wait_sec=0
+        while true; do
+            mapfile -t PERF_JOB_IDS < <(squeue -u "$USER" -n "$SLURM_JOB_NAME" -h -o '%i')
+            if (( ${#PERF_JOB_IDS[@]} >= expected )); then
+                log "[SLURM] job(s) appeared: ${PERF_JOB_IDS[*]} (waited ${wait_sec}s)"
+                return 0
+            fi
+            if (( wait_sec >= 120 )); then
+                log "ERROR: expected $expected job(s) did not appear after ${wait_sec}s — aborting"
+                exit 1
+            fi
+            sleep 5
+            (( wait_sec += 5 ))
+        done
+    }
+
+    # We are about to run salloc — mark the allocation as owned so cleanup
+    # cancels it on exit.
+    PERF_JOB_OWNED=1
+
+    if [[ -n "$SLURM_PARTITION" ]]; then
+        # Caller forced a specific partition — use it with no fallback.
+        _run_salloc "$TOTAL_NODES" "$SLURM_PARTITION" \
+            || { unset -f _run_salloc _wait_for_jobs; exit 1; }
+        _wait_for_jobs 1
+        unset -f _run_salloc _wait_for_jobs
+        return 0
+    fi
+
+    # 1st attempt: all nodes from compute.
+    _run_salloc "$TOTAL_NODES" "compute"
     local rc=$?
-    log "salloc exited with rc=$rc — rerun this script once the job appears in squeue"
-    exit $rc
+    if [[ $rc -eq 0 ]]; then
+        _wait_for_jobs 1
+        unset -f _run_salloc _wait_for_jobs
+        return 0
+    fi
+    if [[ $rc -ne 124 ]]; then
+        # Hard failure (not a timeout) — splitting won't help.
+        unset -f _run_salloc _wait_for_jobs
+        exit 1
+    fi
+
+    # compute timed out: not enough nodes available there. Split the allocation:
+    # take whatever debug has idle, fill the remainder from compute.
+    local debug_avail
+    debug_avail=$(sinfo -p debug -h --states=idle -o '%D' 2>/dev/null \
+                  | awk '{s+=$1} END{print s+0}')
+    log "[SLURM] compute timed out; debug has $debug_avail idle node(s), need $TOTAL_NODES total"
+
+    if (( debug_avail == 0 )); then
+        log "[SLURM] no idle nodes in debug partition — cannot allocate"
+        unset -f _run_salloc _wait_for_jobs
+        exit 1
+    fi
+
+    local debug_n=$(( debug_avail < TOTAL_NODES ? debug_avail : TOTAL_NODES ))
+    local compute_n=$(( TOTAL_NODES - debug_n ))
+    local expected_jobs=$(( compute_n > 0 ? 2 : 1 ))
+    log "[SLURM] split: $debug_n node(s) from debug, $compute_n node(s) from compute"
+
+    _run_salloc "$debug_n" "debug"
+    if [[ $? -ne 0 ]]; then
+        unset -f _run_salloc _wait_for_jobs
+        exit 1
+    fi
+
+    if (( compute_n > 0 )); then
+        _run_salloc "$compute_n" "compute"
+        if [[ $? -ne 0 ]]; then
+            log "[SLURM] compute allocation failed; cancelling debug job"
+            scancel -u "$USER" -n "$SLURM_JOB_NAME" 2>/dev/null || true
+            unset -f _run_salloc _wait_for_jobs
+            exit 1
+        fi
+    fi
+
+    _wait_for_jobs "$expected_jobs"
+    unset -f _run_salloc _wait_for_jobs
 }
 
-# Populate ALLOCATED_NODES by querying squeue for the nodelist of the perf
-# job. In dry-run we fabricate fake names so the rest of the script has
+# Populate ALLOCATED_NODES by querying squeue for the nodelist of every job
+# in PERF_JOB_IDS (one entry for a single allocation, two for a split).
+# In dry-run we fabricate fake names so the rest of the script has
 # deterministic output to review.
 discover_nodes() {
     if [[ "$DRY_RUN" == "1" ]]; then
@@ -310,50 +618,60 @@ discover_nodes() {
         for ((i=1; i<=TOTAL_NODES; i++)); do
             ALLOCATED_NODES+=("dry-node$(printf '%02d' "$i")")
         done
-        log "[SLURM] discovering nodes (dry-run, PERF_JOB_ID=$PERF_JOB_ID)"
-        log_cmd "squeue -j $PERF_JOB_ID -h -o '%N'"
+        log "[SLURM] discovering nodes (dry-run, PERF_JOB_IDS=${PERF_JOB_IDS[*]})"
+        log_cmd "squeue -j <jobid> -h -o '%N'  # repeated for each job in PERF_JOB_IDS"
         log_cmd "scontrol show hostnames <nodelist>"
         log "        -> ${ALLOCATED_NODES[*]}"
         return 0
     fi
 
-    log "[SLURM] discovering nodes for job $PERF_JOB_ID via squeue"
-    log_cmd "squeue -j $PERF_JOB_ID -h -o '%N'"
-    local nodelist
-    nodelist=$(squeue -j "$PERF_JOB_ID" -h -o '%N')
-    if [[ -z "$nodelist" ]]; then
-        log "ERROR: squeue returned empty nodelist for job $PERF_JOB_ID — is the job still running?"
-        exit 1
-    fi
-    log "        compact nodelist: $nodelist"
+    ALLOCATED_NODES=()
+    local jid
+    for jid in "${PERF_JOB_IDS[@]}"; do
+        log "[SLURM] discovering nodes for job $jid"
+        log_cmd "squeue -j $jid -h -o '%N'"
+        local nodelist
+        nodelist=$(squeue -j "$jid" -h -o '%N')
+        if [[ -z "$nodelist" ]]; then
+            log "ERROR: squeue returned empty nodelist for job $jid — is the job still running?"
+            exit 1
+        fi
+        log "        compact nodelist: $nodelist"
+        log_cmd "scontrol show hostnames $nodelist"
+        local nodes=()
+        mapfile -t nodes < <(scontrol show hostnames "$nodelist")
+        log "        -> ${nodes[*]}"
+        ALLOCATED_NODES+=("${nodes[@]}")
+    done
 
-    # Expand compact notation (e.g. node[01-13]) into individual hostnames.
-    log_cmd "scontrol show hostnames $nodelist"
-    mapfile -t ALLOCATED_NODES < <(scontrol show hostnames "$nodelist")
-    log "        -> ${ALLOCATED_NODES[*]}"
     if (( ${#ALLOCATED_NODES[@]} < TOTAL_NODES )); then
         log "ERROR: need $TOTAL_NODES nodes, got ${#ALLOCATED_NODES[@]}"
         exit 1
     fi
 }
 
-# Slice ALLOCATED_NODES into role groups for a given component scale. With
-# only 13 nodes available the client pool can no longer have its own dedicated
-# nodes — it overlaps with the player slot subset of the allocation. Visor is
-# still a dedicated node, and keeper/grapher/player slots never overlap with
-# each other.
+# Slice ALLOCATED_NODES into role groups for a given component scale.
+# Visor is always a dedicated node; keeper/grapher/player slot pools never
+# overlap with each other.  The client pool placement depends on COLOCATE:
 #
-# Layout (MAX_COMP_NODES = 4 → 13 total nodes):
-#   [0]                                 -> visor                 (dedicated)
-#   [1 .. 1+MAX_COMP_NODES)             -> keeper slot pool
-#   [1+MAX_COMP_NODES .. 1+2*MAX_COMP_NODES)   -> grapher slot pool
-#   [1+2*MAX_COMP_NODES .. 1+3*MAX_COMP_NODES) -> player slot pool
-#   client pool == the 4 player-slot nodes (overlap is by design)
+# COLOCATE=0 (default) — dedicated client nodes:
+#   Layout (TOTAL_NODES = VISOR_NODES + MAX_COMP_NODES*3 + MAX_CLIENT_NODES):
+#   [0]                                                    -> visor
+#   [1 .. 1+MAX_COMP_NODES)                               -> keeper slot pool
+#   [1+MAX_COMP_NODES .. 1+2*MAX_COMP_NODES)              -> grapher slot pool
+#   [1+2*MAX_COMP_NODES .. 1+3*MAX_COMP_NODES)            -> player slot pool
+#   [1+3*MAX_COMP_NODES .. 1+3*MAX_COMP_NODES+MAX_CLIENT_NODES) -> client pool (dedicated)
 #
-# The active keeper/grapher/player nodelists take the first `scale` nodes from
-# their respective slot pools; unused slots stay idle. Client nodes are pinned
-# to the player-slot pool so they stay on the same physical nodes across scale
-# changes, which keeps client placement out of the scale comparison.
+# COLOCATE=1 — clients share the player slot pool:
+#   Layout (TOTAL_NODES = VISOR_NODES + MAX_COMP_NODES*3):
+#   [0]                                                    -> visor
+#   [1 .. 1+MAX_COMP_NODES)                               -> keeper slot pool
+#   [1+MAX_COMP_NODES .. 1+2*MAX_COMP_NODES)              -> grapher slot pool
+#   [1+2*MAX_COMP_NODES .. 1+3*MAX_COMP_NODES)            -> player slot pool
+#   client pool == first MAX_CLIENT_NODES nodes of the player slot pool
+#
+# In both modes the active keeper/grapher/player nodelists take only the first
+# `scale` nodes from their respective slot pools; unused slots stay idle.
 partition_nodes() {
     local scale="$1"
 
@@ -368,17 +686,26 @@ partition_nodes() {
     off=$(( 1 + 2 * MAX_COMP_NODES ))
     PLAYER_NODELIST=("${ALLOCATED_NODES[@]:$off:$scale}")
 
-    # Client pool overlaps with the player slot pool (all 4 slots, not just
-    # the ones actually running a player at the current scale). This means
-    # clients always land on the same physical nodes regardless of scale.
-    CLIENT_POOL=("${ALLOCATED_NODES[@]:$off:$MAX_CLIENT_NODES}")
+    local client_note
+    if (( COLOCATE )); then
+        # Client pool overlaps with the player slot pool (all MAX_CLIENT_NODES
+        # slots, not just the ones running a player at the current scale).
+        CLIENT_POOL=("${ALLOCATED_NODES[@]:$off:$MAX_CLIENT_NODES}")
+        client_note="colocated with player slot pool"
+    else
+        # Client pool starts immediately after the player slot pool — fully
+        # dedicated nodes that never run a service process.
+        off=$(( 1 + 3 * MAX_COMP_NODES ))
+        CLIENT_POOL=("${ALLOCATED_NODES[@]:$off:$MAX_CLIENT_NODES}")
+        client_note="dedicated (no service overlap)"
+    fi
 
-    log "Node partition for scale=$scale:"
+    log "Node partition for scale=$scale (COLOCATE=$COLOCATE):"
     log "    visor   : ${VISOR_NODELIST[*]}"
     log "    keepers : ${KEEPER_NODELIST[*]}"
     log "    graphers: ${GRAPHER_NODELIST[*]}"
     log "    players : ${PLAYER_NODELIST[*]}"
-    log "    clients : ${CLIENT_POOL[*]} (overlap with player slot pool)"
+    log "    clients : ${CLIENT_POOL[*]} ($client_note)"
 }
 
 # ---------------------------------------------------------------------------
@@ -394,9 +721,8 @@ write_hosts_files() {
 
 write_client_hosts_file() {
     # $1 = #client_per_node, $2 = #nodes
-    # The hosts file is plain hostnames only (one per line), same format as
-    # the component hosts files. Slots/pernode info is passed to mpirun via
-    # --npernode at launch time, not baked into the file.
+    # Each hostname is suffixed with -40g to route client MPI traffic over the
+    # 40 GbE interface rather than the management network.
     local per_node="$1"
     local nnodes="$2"
     if (( nnodes > MAX_CLIENT_NODES )); then
@@ -404,7 +730,64 @@ write_client_hosts_file() {
         return 1
     fi
     local subset=("${CLIENT_POOL[@]:0:$nnodes}")
-    write_file "$CLIENT_HOSTS" "$(printf '%s\n' "${subset[@]}")"
+    write_file "$CLIENT_HOSTS" "$(printf '%s-40g\n' "${subset[@]}")"
+}
+
+# ---------------------------------------------------------------------------
+# Conf dir hygiene
+# ---------------------------------------------------------------------------
+
+# clean_conf_dir: remove all files that the script or deploy_cluster.sh
+# generates in $CONF_DIR so the next deployment starts from a known-clean
+# state. Keeps the two template JSON files intact.
+#
+# Files removed:
+#   hosts_visor, hosts_keeper, hosts_grapher, hosts_player, hosts_client
+#     — written by write_hosts_files / write_client_hosts_file
+#   hosts_keeper.N, hosts_grapher.N, hosts_player.N
+#     — split per-recording-group hosts files written by deploy_cluster.sh
+#   default-chrono-conf.json.N
+#     — per-recording-group conf files written by deploy_cluster.sh
+clean_conf_dir() {
+    log "[CONF] cleaning generated files from $CONF_DIR"
+    local targets=(
+        "$CONF_DIR/hosts_visor"
+        "$CONF_DIR/hosts_keeper"
+        "$CONF_DIR/hosts_grapher"
+        "$CONF_DIR/hosts_player"
+        "$CONF_DIR/hosts_client"
+    )
+    log_cmd "rm -f ${targets[*]} $CONF_DIR/hosts_keeper.* $CONF_DIR/hosts_grapher.* $CONF_DIR/hosts_player.* $CONF_DIR/default-chrono-conf.json.*"
+    if [[ "$DRY_RUN" == "1" ]]; then
+        return 0
+    fi
+    rm -f "${targets[@]}"
+    rm -f "$CONF_DIR"/hosts_keeper.* "$CONF_DIR"/hosts_grapher.* "$CONF_DIR"/hosts_player.*
+    rm -f "$CONF_DIR"/default-chrono-conf.json.*
+}
+
+# snapshot_conf_dir <scale> <proto> <per_node> <nnodes>
+#
+# Copy $CONF_DIR into a flat subdir of $LOG_DIR named after all the parameters
+# that affect the chrono-performance-test command line for this client config.
+# Called once per (scale, proto, per_node, nnodes) combination, immediately
+# after write_client_hosts_file so the snapshot captures hosts_client too.
+#
+# Dir name pattern:
+#   conf_scale<S>_<proto>_clients<P>x<N>
+# e.g.: conf_scale2_ofi_verbs_clients10x2
+# (esz/ecnt are not included because they vary per test invocation and the
+# conf dir captures deployment config, not client workload parameters)
+snapshot_conf_dir() {
+    local scale="$1" proto="$2" per_node="$3" nnodes="$4"
+    local proto_tag="${proto//+/_}"
+    local snap_dir="$LOG_DIR/conf_scale${scale}_${proto_tag}_clients${per_node}x${nnodes}"
+    log "[CONF] snapshotting $CONF_DIR → $snap_dir"
+    log_cmd "cp -r '$CONF_DIR' '$snap_dir'"
+    if [[ "$DRY_RUN" == "1" ]]; then
+        return 0
+    fi
+    cp -r "$CONF_DIR" "$snap_dir"
 }
 
 # ---------------------------------------------------------------------------
@@ -430,6 +813,25 @@ pkill_chrono_everywhere() {
         if ! run_shell "mpssh pkill chrono-${role}" \
                 "mpssh -f '$file' \"pkill -9 -f chrono-${role} || true\""; then
             log "WARNING: pkill chrono-${role} via mpssh returned non-zero — continuing"
+        fi
+    done
+    return 0
+}
+
+clean_output_dir() {
+    section "clean $OUTPUT_DIR on all component nodes"
+    # HDF5 story files accumulate quickly during a performance matrix run
+    # (25 GB+ after a full run). Wipe the output directory on every node that
+    # hosts a component before each new deployment so storage does not overflow.
+    local file
+    for file in "$VISOR_HOSTS" "$KEEPER_HOSTS" "$GRAPHER_HOSTS" "$PLAYER_HOSTS"; do
+        if [[ ! -f "$file" ]]; then
+            log "WARNING: hosts file $file not found — skipping output clean for it"
+            continue
+        fi
+        if ! run_shell "mpssh rm -f output/* on $(basename "$file")" \
+                "mpssh -f '$file' \"rm -f '${OUTPUT_DIR}/'*\""; then
+            log "WARNING: mpssh clean_output_dir for $file returned non-zero — continuing"
         fi
     done
     return 0
@@ -541,50 +943,74 @@ verify_components_running() {
 # Per-test flag assembly
 # ---------------------------------------------------------------------------
 
+# Map event size (bytes) and component scale to an event count.
+#
+# Base counts are calibrated for the maximum component scale (MAX_COMP_NODES)
+# so total data written stays bounded at ~19 GB for 40x4 = 160 clients at
+# the largest scale.  Smaller scales receive proportionally fewer events
+# (scale/MAX_COMP_NODES) so they do not become the bottleneck and the test
+# completes in a comparable wall time regardless of scale.
+#
+# Base tiers (at scale == MAX_COMP_NODES):
+#   <=   8192 → 2000   (160 * 2000 *   8192 B ≈  2.6 GB)
+#   <= 131072 → 1000   (160 * 1000 * 131072 B ≈ 21.0 GB)
+#   <= 262144 →  500   (160 *  500 * 262144 B ≈ 21.0 GB)
+#   <= 524288 →  250   (160 *  250 * 524288 B ≈ 21.0 GB)
+#       else  →  125   (160 *  125 * 1048576 B ≈ 21.0 GB)
+#
+# At scale S the effective count = base * S / MAX_COMP_NODES (minimum 1).
+event_count_for_size() {
+    local esz="$1"
+    local scale="$2"
+    local base
+    if   (( esz <=   8192 )); then base=2000
+    elif (( esz <= 131072 )); then base=1000
+    elif (( esz <= 262144 )); then base=500
+    elif (( esz <= 524288 )); then base=250
+    else                           base=125
+    fi
+    local ecnt=$(( base * scale / MAX_COMP_NODES ))
+    (( ecnt < 1 )) && ecnt=1
+    echo "$ecnt"
+}
+
 # Shared flags for every perf run. -y enables barriers, -p enables perf
 # reporting, -a/-s/-b pin min/ave/max event size to the same value so the
 # recording/replay bandwidth numbers are not distorted by a size distribution,
-# -g the inter-event interval, -h the chronicle count. Note: -t (story_count)
+# -h the chronicle count. Note: -t (story_count)
 # and -n (event_count) are NOT emitted here — performance_test rejects 0
 # ("Only positive number is allowed"), so each test must supply its own
 # positive values via test_specific_flags.
 common_perf_flags() {
-    printf -- '-c %s -y -p -a %d -s %d -b %d -g %d -h %d' \
+    local esz="$1"
+    printf -- '-c %s -y -p -a %d -s %d -b %d -h %d' \
         "$CLIENT_CONF_FILE" \
-        "$EVENT_SIZE_DEFAULT" \
-        "$EVENT_SIZE_DEFAULT" \
-        "$EVENT_SIZE_DEFAULT" \
-        "$EVENT_INTERVAL_US" \
+        "$esz" "$esz" "$esz" \
         "$CHRONICLE_COUNT"
 }
 
-# Build the test-specific flag tail. #story_per_proc=#client is honored for
-# every test except connect/disconnect, which only exercises the session
-# endpoints. Because performance_test rejects 0 for -t / -n, we fall back to
-# the smallest positive values (1) instead of attempting to zero the workload
-# — TimerWrapper reports each phase (Connect, CreateChronicle, AcquireStory,
-# WriteEvent, ReplayStory, ReleaseStory, DestroyChronicle, Disconnect)
-# separately, so a tiny amount of extra work does not contaminate the
-# Connect/Disconnect or AcquireStory/ReleaseStory measurements.
+# Build the test-specific flag tail. -t (stories per process) is always 1;
+# -n (event count) is 1 for lightweight tests and ecnt for
+# recording/replay bandwidth tests.
 test_specific_flags() {
     local test="$1"
-    local total_clients="$2"   # #client_per_node * #nodes
+    local ecnt="$2"
     case "$test" in
         connect_disconnect)
             # Minimum positive workload; Connect/Disconnect timers isolate phases.
             printf -- '-t 1 -n 1'
             ;;
         acquire_release)
-            # #story_per_proc=#client, minimum positive event count.
-            printf -- '-t %d -n 1' "$total_clients"
+            # 1 story per process, minimum positive event count.
+            printf -- '-t 1 -n 1'
             ;;
         recording)
-            # Full write workload: #story_per_proc=#client, default event count.
-            printf -- '-w -t %d -n %d' "$total_clients" "$EVENT_COUNT_DEFAULT"
+            # Full write workload: 1 story per process, event count from tier.
+            printf -- '-w -t 1 -n %d' "$ecnt"
             ;;
         replay)
             # -r sets read=true and write=false internally; no -w needed.
-            printf -- '-r -t %d -n %d' "$total_clients" "$EVENT_COUNT_DEFAULT"
+            printf -- '-r -t 1 -n %d' "$ecnt"
             ;;
         *)
             printf -- ''
@@ -596,7 +1022,7 @@ test_specific_flags() {
 # Running one chrono-performance-test invocation
 # ---------------------------------------------------------------------------
 
-# run_one_perf_test <test_name> <protocol> <scale> <client_per_node> <client_nodes> <rep>
+# run_one_perf_test <test_name> <protocol> <scale> <client_per_node> <client_nodes> <rep> <event_size>
 run_one_perf_test() {
     local test="$1"
     local proto="$2"
@@ -604,10 +1030,12 @@ run_one_perf_test() {
     local per_node="$4"
     local nnodes="$5"
     local rep="$6"
+    local esz="$7"
 
+    local ecnt; ecnt="$(event_count_for_size "$esz" "$scale")"
     local total_clients=$(( per_node * nnodes ))
-    local common; common="$(common_perf_flags)"
-    local specific; specific="$(test_specific_flags "$test" "$total_clients")"
+    local common; common="$(common_perf_flags "$esz")"
+    local specific; specific="$(test_specific_flags "$test" "$ecnt")"
 
     # mpirun/mpiexec launch line — uses the client hosts file we just wrote.
     # We wrap everything in `timeout` so a hung run cannot block the matrix.
@@ -616,13 +1044,12 @@ run_one_perf_test() {
         "$MPIRUN"
         --hostfile "$CLIENT_HOSTS"
         -np "$total_clients"
-        --npernode "$per_node"
         "$PERF_BIN"
         # shellcheck disable=SC2086
         $common $specific
     )
 
-    local tag="test=${test} proto=${proto} scale=${scale} clients=${per_node}x${nnodes} rep=${rep}"
+    local tag="test=${test} proto=${proto} scale=${scale} clients=${per_node}x${nnodes} esz=${esz} ecnt=${ecnt} rep=${rep}"
     section "RUN $tag"
 
     local wall_start wall_end rc
@@ -656,9 +1083,20 @@ run_one_perf_test() {
         log "WARNING: $tag exited with rc=$rc"
     fi
 
-    record_result "$(printf '%s,%s,%s,%sx%s,%s,%s,%ss,%s' \
-        "$test" "$proto" "$scale" "$per_node" "$nnodes" "$rep" \
+    record_result "$(printf '%s,%s,%s,%sx%s,%s,%s,%s,%s,%ss,%s' \
+        "$test" "$proto" "$scale" "$per_node" "$nnodes" "$esz" "$ecnt" "$rep" \
         "$status" "$wall" "$tag")"
+
+    # Cool-down: sleep ~10 % of the run's wall time so the cluster can drain
+    # in-flight I/O and network buffers before the next invocation.
+    # Integer division (wall / 10) is exact truncating 10 % — pure shell, no
+    # external tools required.  Skipped when the quotient rounds to zero (runs
+    # shorter than 10 s), which is fine for lightweight tests.
+    local cooldown=$(( wall / 10 ))
+    if (( cooldown > 0 )); then
+        log "[COOLDOWN] ${cooldown}s (~10% of ${wall}s wall time)"
+        sleep "$cooldown"
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -679,14 +1117,19 @@ cleanup_on_exit() {
         log "hosts files do not exist — skipping component teardown"
     fi
 
-    # Always scancel the perf job so nodes are released on any failure.
-    if [[ "$DRY_RUN" != "1" && -n "${PERF_JOB_ID:-}" ]]; then
-        log "[SLURM] releasing allocation (scancel $PERF_JOB_ID)"
-        log_cmd "scancel $PERF_JOB_ID"
-        scancel "$PERF_JOB_ID" || true
+    # Always clean generated conf files so the next run starts fresh.
+    clean_conf_dir || true
+
+    # Release the allocation only if this script instance created it.
+    # Pre-existing allocations that were reused are left intact.
+    if [[ "$DRY_RUN" != "1" && "$PERF_JOB_OWNED" == "1" && ${#PERF_JOB_IDS[@]} -gt 0 ]]; then
+        log "[SLURM] releasing owned allocation(s) (scancel ${PERF_JOB_IDS[*]})"
+        log_cmd "scancel ${PERF_JOB_IDS[*]}"
+        scancel "${PERF_JOB_IDS[@]}" || true
+    elif [[ ${#PERF_JOB_IDS[@]} -gt 0 ]]; then
+        log "[SLURM] allocation ${PERF_JOB_IDS[*]} was pre-existing — leaving it intact"
     else
-        log "[SLURM] releasing allocation (dry-run)"
-        log_cmd "scancel \$PERF_JOB_ID"
+        log "[SLURM] no allocation to release"
     fi
     # Refresh the latest symlink so it always points to the most recent run,
     # even if that run failed.
@@ -698,7 +1141,38 @@ cleanup_on_exit() {
 trap cleanup_on_exit EXIT INT TERM
 
 main() {
-    section "ares_test.sh starting (DRY_RUN=$DRY_RUN)"
+    # Parse script-level flags before forwarding remaining args.
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --dry-run)     DRY_RUN=1;   shift ;;
+            --no-dry-run)  DRY_RUN=0;   shift ;;
+            --debug)       DEBUG=1;     shift ;;
+            --write)       RUN_WRITE=1; shift ;;
+            --no-write)    RUN_WRITE=0; shift ;;
+            --read)        RUN_READ=1;  shift ;;
+            --no-read)     RUN_READ=0;  shift ;;
+            --colocate)    COLOCATE=1;  shift ;;
+            --no-colocate) COLOCATE=0;  shift ;;
+            *) break ;;
+        esac
+    done
+
+    # Recompute TOTAL_NODES now that COLOCATE is finalised (CLI args may have
+    # changed it from the env-var default that was used at global-scope init).
+    if (( COLOCATE )); then
+        TOTAL_NODES=$(( VISOR_NODES + MAX_COMP_NODES * 3 ))
+    else
+        TOTAL_NODES=$(( VISOR_NODES + MAX_COMP_NODES * 3 + MAX_CLIENT_NODES ))
+    fi
+
+    local colocate_desc
+    if (( COLOCATE )); then
+        colocate_desc="colocated (clients share player nodes)"
+    else
+        colocate_desc="non-colocated (clients on dedicated nodes)"
+    fi
+
+    section "ares_test.sh starting (DRY_RUN=$DRY_RUN DEBUG=$DEBUG RUN_WRITE=$RUN_WRITE RUN_READ=$RUN_READ COLOCATE=$COLOCATE)"
     log "install_dir=$INSTALL_DIR"
     log "conf_file=$CONF_FILE"
     log "perf_bin=$PERF_BIN"
@@ -706,14 +1180,18 @@ main() {
     log "log_file=$LOG_FILE"
     log "cmd_log_file=$CMD_LOG_FILE"
     log "result_file=$RESULT_FILE"
-    log "total_nodes_needed=$TOTAL_NODES (visor=$VISOR_NODES + 3*$MAX_COMP_NODES, clients overlap player slots)"
-    log "client_configs=${CLIENT_CONFIGS_ARR[*]} (${#CLIENT_CONFIGS_ARR[@]} configs)"
+    log "total_nodes_needed=$TOTAL_NODES (visor=$VISOR_NODES + 3*$MAX_COMP_NODES comp + ${MAX_CLIENT_NODES} client — $colocate_desc)"
+    log "write_client_configs=${WRITE_CLIENT_CONFIGS_ARR[*]} (${#WRITE_CLIENT_CONFIGS_ARR[@]} configs)"
+    log "read_client_configs=${READ_CLIENT_CONFIGS_ARR[*]} (${#READ_CLIENT_CONFIGS_ARR[@]} configs)"
 
     # Result-file header.
-    record_result "test,protocol,scale,clients,rep,status,wall_time,tag"
+    record_result "test,protocol,scale,clients,event_size,event_count,rep,status,wall_time,tag"
 
     allocate_if_needed "$@"
     discover_nodes
+
+    # Clean any leftover generated files from a previous run before we begin.
+    clean_conf_dir
 
     local prev_scale=""
     local first_iteration=1
@@ -739,7 +1217,14 @@ main() {
                 first_iteration=0
             else
                 pkill_chrono_everywhere
+                # Wipe generated files so the next deploy starts clean.
+                # Hosts files are re-written immediately after.
+                clean_conf_dir
+                write_hosts_files
             fi
+            # Always remove HDF5 story files written by the previous run so
+            # accumulated data does not overflow node-local storage.
+            clean_output_dir
             set_protocol_in_conf "$proto"
             deploy_cluster "$scale"
             if ! verify_components_running; then
@@ -747,20 +1232,45 @@ main() {
                 continue
             fi
 
-            for conf in "${CLIENT_CONFIGS_ARR[@]}"; do
-                # token is "<per_node>x<nnodes>" (e.g. 10x2).
-                per_node="${conf%%x*}"
-                nnodes="${conf##*x}"
-                write_client_hosts_file "$per_node" "$nnodes"
+            # Write tests: full client-config matrix × event size matrix.
+            if (( RUN_WRITE )); then
+                for conf in "${WRITE_CLIENT_CONFIGS_ARR[@]}"; do
+                    per_node="${conf%%x*}"
+                    nnodes="${conf##*x}"
+                    write_client_hosts_file "$per_node" "$nnodes"
+                    (( DEBUG )) && snapshot_conf_dir "$scale" "$proto" "$per_node" "$nnodes"
 
-                for test in "${TESTS[@]}"; do
-                    for (( rep=1; rep<=REPS; rep++ )); do
-                        run_one_perf_test \
-                            "$test" "$proto" "$scale" \
-                            "$per_node" "$nnodes" "$rep"
+                    for esz in "${EVENT_SIZES[@]}"; do
+                        for test in "${WRITE_TESTS[@]}"; do
+                            for (( rep=1; rep<=REPS; rep++ )); do
+                                run_one_perf_test \
+                                    "$test" "$proto" "$scale" \
+                                    "$per_node" "$nnodes" "$rep" "$esz"
+                            done
+                        done
                     done
                 done
-            done
+            fi
+
+            # Read tests: 1 client per node (single player process per node limit).
+            if (( RUN_READ )); then
+                for conf in "${READ_CLIENT_CONFIGS_ARR[@]}"; do
+                    per_node="${conf%%x*}"
+                    nnodes="${conf##*x}"
+                    write_client_hosts_file "$per_node" "$nnodes"
+                    (( DEBUG )) && snapshot_conf_dir "$scale" "$proto" "$per_node" "$nnodes"
+
+                    for esz in "${EVENT_SIZES[@]}"; do
+                        for test in "${READ_TESTS[@]}"; do
+                            for (( rep=1; rep<=REPS; rep++ )); do
+                                run_one_perf_test \
+                                    "$test" "$proto" "$scale" \
+                                    "$per_node" "$nnodes" "$rep" "$esz"
+                            done
+                        done
+                    done
+                done
+            fi
         done
     done
 
