@@ -70,10 +70,14 @@ jobs:
           set -e
           BASE_IMAGE="${{ needs.chronolog-base.outputs.image-name }}"
           echo "Using base image: ${BASE_IMAGE}"
-          # No --user override: container runs as the image's default user
-          # (grc-iit). The workspace bind mount arrives root-owned, so a
-          # follow-up step fixes ownership via a one-off --user root exec.
-          CONTAINER_ID=$(docker create --init \
+          # Run as grc-iit so HOME=/home/grc-iit and the build lands at
+          # /home/grc-iit/chronolog-build. We pin the user explicitly
+          # rather than relying on the image's default because older
+          # cached base images inherited USER=root from docker commit
+          # capturing the install-time --user root. The workspace bind
+          # mount arrives root-owned, so a follow-up step fixes
+          # ownership via a one-off --user root exec.
+          CONTAINER_ID=$(docker create --user grc-iit --init \
             -v "${{ github.workspace }}:/home/grc-iit/chronolog-repo" \
             -w /home/grc-iit/chronolog-repo \
             "$BASE_IMAGE" \

@@ -106,8 +106,14 @@ jobs:
           # Start the container and wait for it to complete
           docker start -a "$CONTAINER_ID"
 
-          # Commit the stopped container to a new image with Spack dependencies
-          docker commit "$CONTAINER_ID" "$FINAL_IMAGE"
+          # Commit the stopped container to a new image with Spack dependencies.
+          # --change restores USER/WORKDIR to the original Dockerfile values;
+          # docker commit otherwise captures the install-time --user root and
+          # bakes it into the resulting image config.
+          docker commit \
+            --change 'USER grc-iit' \
+            --change 'WORKDIR /home/grc-iit' \
+            "$CONTAINER_ID" "$FINAL_IMAGE"
 
           # Clean up
           docker rm "$CONTAINER_ID"
