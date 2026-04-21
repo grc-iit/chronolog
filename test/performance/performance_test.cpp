@@ -290,7 +290,8 @@ static int test_replay_story(chronolog::Client& client,
     return ret;
 }
 
-static int test_release_story(chronolog::Client& client, const std::string& chronicle_name, const std::string& story_name)
+static int
+test_release_story(chronolog::Client& client, const std::string& chronicle_name, const std::string& story_name)
 {
     int ret = client.ReleaseStory(chronicle_name, story_name);
     assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST);
@@ -304,7 +305,8 @@ static int test_destroy_chronicle(chronolog::Client& client, const std::string& 
     return ret;
 }
 
-static int test_destroy_story(chronolog::Client& client, const std::string& chronicle_name, const std::string& story_name)
+static int
+test_destroy_story(chronolog::Client& client, const std::string& chronicle_name, const std::string& story_name)
 {
     int ret = client.DestroyStory(chronicle_name, story_name);
     assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST || ret == chronolog::CL_ERR_ACQUIRED);

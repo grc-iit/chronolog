@@ -135,7 +135,8 @@ static int test_replay_story(chronolog::Client& client,
     return ret;
 }
 
-static int test_release_story(chronolog::Client& client, const std::string& chronicle_name, const std::string& story_name)
+static int
+test_release_story(chronolog::Client& client, const std::string& chronicle_name, const std::string& story_name)
 {
     int ret = client.ReleaseStory(chronicle_name, story_name);
     assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST);
@@ -149,7 +150,8 @@ static int test_destroy_chronicle(chronolog::Client& client, const std::string& 
     return ret;
 }
 
-static int test_destroy_story(chronolog::Client& client, const std::string& chronicle_name, const std::string& story_name)
+static int
+test_destroy_story(chronolog::Client& client, const std::string& chronicle_name, const std::string& story_name)
 {
     int ret = client.DestroyStory(chronicle_name, story_name);
     assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST || ret == chronolog::CL_ERR_ACQUIRED);
@@ -211,8 +213,9 @@ static std::vector<std::string> parse_command_line(const std::string& line)
     return tokens;
 }
 
-static void command_dispatcher(const std::string& command_line,
-                               std::unordered_map<std::string, std::function<void(std::vector<std::string>&)>> command_map)
+static void
+command_dispatcher(const std::string& command_line,
+                   std::unordered_map<std::string, std::function<void(std::vector<std::string>&)>> command_map)
 {
     if(command_line.empty())
     {
@@ -518,8 +521,7 @@ int main(int argc, char** argv)
               << std::endl;
 
     std::unordered_map<std::string, std::function<void(std::vector<std::string>&)>> command_map = {
-            {"-c",
-             [&](std::vector<std::string>& command_subs) { interactive_create_chronicle(command_subs, client); }},
+            {"-c", [&](std::vector<std::string>& command_subs) { interactive_create_chronicle(command_subs, client); }},
             {"-a",
              [&](std::vector<std::string>& command_subs)
              {
