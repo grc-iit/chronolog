@@ -120,6 +120,12 @@ ENVIRONMENT VARIABLES
                           Default: 3
     PER_TEST_TIMEOUT_SEC  Kill a single perf-test run after this many seconds.
                           Default: 120
+    MAX_RETRIES           Maximum redeploy+retry attempts when a component
+                          error is detected in a run's output.  Default: 2.
+    COMPONENT_ERROR_PATTERN
+                          grep -E pattern applied to each run's stdout/stderr.
+                          A match triggers redeploy and retry.
+                          Default: "HG_NOENTRY|HG_TIMEOUT|HG_CANCELED|margo_forward failed"
 
   Slurm
     SLURM_PARTITION       Force a specific partition name.
@@ -218,9 +224,13 @@ unset _arg
 
 : "${PER_TEST_TIMEOUT_SEC:=120}"          # kill any perf-test run that exceeds this
 : "${REPS:=3}"
+: "${MAX_RETRIES:=2}"                     # max redeploy+retry attempts on component failure per test run
+# grep -E pattern applied to each run's stdout/stderr to detect component failure.
+# A match triggers redeploy and retry (up to MAX_RETRIES times).
+: "${COMPONENT_ERROR_PATTERN:=HG_NOENTRY|HG_TIMEOUT|HG_CANCELED|margo_forward failed}"
 : "${SLURM_PARTITION:=}"                  # force a specific partition; empty = try compute, then debug,compute
 : "${SALLOC_TIMEOUT_SEC:=60}"             # per-partition timeout for salloc; 0 = no timeout
-: "${SLURM_TIME_LIMIT:=04:00:00}"
+: "${SLURM_TIME_LIMIT:=1-00:00:00}"
 : "${SLURM_JOB_NAME:=chronolog-perf}"
 
 # Holds the Slurm job ID(s) for the perf allocation (1 entry for a single
@@ -352,6 +362,8 @@ cp -- "${BASH_SOURCE[0]}" "$LOG_DIR/ares_test_${STAMP}.sh.snapshot"
     printf 'COLOCATE=%s\n'         "$COLOCATE"
     printf 'PER_TEST_TIMEOUT_SEC=%s\n' "$PER_TEST_TIMEOUT_SEC"
     printf 'REPS=%s\n'             "$REPS"
+    printf 'MAX_RETRIES=%s\n'      "$MAX_RETRIES"
+    printf 'COMPONENT_ERROR_PATTERN=%s\n' "$COMPONENT_ERROR_PATTERN"
     printf 'SLURM_PARTITION=%s\n'  "$SLURM_PARTITION"
     printf 'SLURM_TIME_LIMIT=%s\n' "$SLURM_TIME_LIMIT"
     printf 'SLURM_JOB_NAME=%s\n'   "$SLURM_JOB_NAME"
@@ -1022,6 +1034,29 @@ test_specific_flags() {
 # Running one chrono-performance-test invocation
 # ---------------------------------------------------------------------------
 
+# redeploy_cluster <protocol> <scale>
+#
+# Full teardown + restart cycle used by the retry path in run_one_perf_test
+# when component errors are detected in a run's output.  Returns 0 when all
+# four component processes are verified healthy after the redeploy; returns 1
+# if verification still fails (caller should give up retrying).
+redeploy_cluster() {
+    local proto="$1"
+    local scale="$2"
+    section "[REDEPLOY] component failure detected — redeploying (proto=$proto scale=$scale)"
+    pkill_chrono_everywhere
+    clean_conf_dir
+    write_hosts_files
+    clean_output_dir
+    set_protocol_in_conf "$proto"
+    deploy_cluster "$scale"
+    if ! verify_components_running; then
+        log "ERROR: components still not healthy after redeploy — giving up retries"
+        return 1
+    fi
+    return 0
+}
+
 # run_one_perf_test <test_name> <protocol> <scale> <client_per_node> <client_nodes> <rep> <event_size>
 run_one_perf_test() {
     local test="$1"
@@ -1048,40 +1083,76 @@ run_one_perf_test() {
         # shellcheck disable=SC2086
         $common $specific
     )
+    local timeout_cmd=(timeout --kill-after=5 "${PER_TEST_TIMEOUT_SEC}" "${mpirun_cmd[@]}")
 
     local tag="test=${test} proto=${proto} scale=${scale} clients=${per_node}x${nnodes} esz=${esz} ecnt=${ecnt} rep=${rep}"
     section "RUN $tag"
-
-    local wall_start wall_end rc
-    wall_start=$(date +%s)
-
-    local timeout_cmd=(timeout --kill-after=5 "${PER_TEST_TIMEOUT_SEC}" "${mpirun_cmd[@]}")
-
     log "[PERF] $tag"
     log_cmd "${timeout_cmd[*]}"
 
-    if [[ "$DRY_RUN" == "1" ]]; then
-        rc=0
-    else
-        # The script does not run with `set -e`, so a non-zero rc here simply
-        # propagates through $? without aborting the matrix. Do NOT toggle
-        # errexit here — turning it on would permanently enable it for the
-        # rest of the run and cause later, unrelated failures to abort.
-        "${timeout_cmd[@]}" 2>&1 | tee -a "$LOG_FILE"
-        rc=${PIPESTATUS[0]}
-    fi
+    local wall_start wall_end wall rc status
+    local attempt=0
 
-    wall_end=$(date +%s)
-    local wall=$(( wall_end - wall_start ))
+    while true; do
+        # Record the current LOG_FILE line count so we can isolate this run's
+        # stdout/stderr output afterwards for component-error pattern scanning.
+        local log_line_offset=0
+        [[ "$DRY_RUN" != "1" ]] && log_line_offset=$(wc -l < "$LOG_FILE")
 
-    local status="OK"
-    if (( rc == 124 || rc == 137 )); then
-        status="TIMEOUT(${PER_TEST_TIMEOUT_SEC}s)"
-        log "WARNING: $tag exceeded ${PER_TEST_TIMEOUT_SEC}s and was killed"
-    elif (( rc != 0 )); then
-        status="FAIL(rc=$rc)"
-        log "WARNING: $tag exited with rc=$rc"
-    fi
+        wall_start=$(date +%s)
+        if [[ "$DRY_RUN" == "1" ]]; then
+            rc=0
+        else
+            # set -e is intentionally off; a non-zero rc is handled below.
+            "${timeout_cmd[@]}" 2>&1 | tee -a "$LOG_FILE"
+            rc=${PIPESTATUS[0]}
+        fi
+        wall_end=$(date +%s)
+        wall=$(( wall_end - wall_start ))
+
+        if (( rc == 124 || rc == 137 )); then
+            status="TIMEOUT(${PER_TEST_TIMEOUT_SEC}s)"
+            log "WARNING: $tag exceeded ${PER_TEST_TIMEOUT_SEC}s and was killed"
+        elif (( rc != 0 )); then
+            status="FAIL(rc=$rc)"
+            log "WARNING: $tag exited with rc=$rc"
+        else
+            status="OK"
+        fi
+
+        # Scan the lines appended to LOG_FILE by this run for known component
+        # error signatures.  Skip the scan for timeouts (the run was killed by
+        # us, not by a component crash) and when retries are exhausted.
+        local component_error=0
+        if [[ "$DRY_RUN" != "1" && "$status" != TIMEOUT* ]] && \
+                (( attempt < MAX_RETRIES )); then
+            local run_lines=$(( $(wc -l < "$LOG_FILE") - log_line_offset ))
+            if (( run_lines > 0 )) && \
+                    tail -n "$run_lines" "$LOG_FILE" | \
+                    grep -qE "$COMPONENT_ERROR_PATTERN"; then
+                component_error=1
+            fi
+        fi
+
+        if (( component_error )); then
+            (( attempt++ ))
+            log "WARNING: component error pattern detected in output (attempt $attempt/$MAX_RETRIES)"
+            # Record this attempt so the CSV shows what happened before the retry.
+            record_result "$(printf '%s,%s,%s,%sx%s,%s,%s,%s,%s,%ss,%s' \
+                "$test" "$proto" "$scale" "$per_node" "$nnodes" "$esz" "$ecnt" "$rep" \
+                "COMPONENT_FAIL(attempt=$attempt)" "$wall" "$tag")"
+            if redeploy_cluster "$proto" "$scale"; then
+                # Restore the client hosts file removed by clean_conf_dir.
+                write_client_hosts_file "$per_node" "$nnodes"
+                continue
+            else
+                status="COMPONENT_FAIL(redeploy_failed)"
+                break
+            fi
+        fi
+
+        break
+    done
 
     record_result "$(printf '%s,%s,%s,%sx%s,%s,%s,%s,%s,%ss,%s' \
         "$test" "$proto" "$scale" "$per_node" "$nnodes" "$esz" "$ecnt" "$rep" \
