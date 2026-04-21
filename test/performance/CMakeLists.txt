@@ -31,7 +31,7 @@ target_link_libraries(performance_test PRIVATE
 )
 
 set_target_properties(performance_test PROPERTIES
-    OUTPUT_NAME chrono-performance-test
+    OUTPUT_NAME chronolog-test-performance
     BUILD_WITH_INSTALL_RPATH TRUE
     SKIP_BUILD_RPATH TRUE
 )

@@ -5,7 +5,7 @@
 # This script is written to be reviewed locally *before* it runs on an actual
 # Slurm cluster. By default (DRY_RUN=1) it never executes any side-effecting
 # command: every slurm invocation, every deploy_cluster.sh call, every
-# pkill / ssh / hosts-file write, and every chrono-performance-test command is
+# pkill / ssh / hosts-file write, and every chronolog-test-performance command is
 # echoed verbatim to the log file instead.
 #
 # To actually run it on the cluster, export DRY_RUN=0 before invoking.
@@ -39,7 +39,7 @@ USAGE
 DESCRIPTION
   Orchestration driver for the ChronoLog performance regression test matrix.
   Acquires a Slurm allocation, deploys ChronoLog at every (component scale ×
-  protocol) combination, then runs chrono-performance-test across all client
+  protocol) combination, then runs chronolog-test-performance across all client
   configs, event sizes, and repetitions, recording timing results to a CSV.
 
   By default the script operates in DRY_RUN=1 mode: every side-effecting
@@ -93,8 +93,8 @@ ENVIRONMENT VARIABLES
                           Default: \$INSTALL_DIR/conf
     OUTPUT_DIR            HDF5 story data written by keepers/graphers/players.
                           Default: \$INSTALL_DIR/output
-    PERF_BIN              chrono-performance-test binary.
-                          Default: \$INSTALL_DIR/tests/chrono-performance-test
+    PERF_BIN              chronolog-test-performance binary.
+                          Default: \$INSTALL_DIR/tests/chronolog-test-performance
     MPIRUN                Full path to mpirun / mpiexec.
     DEPLOY_SCRIPT         Path to deploy_cluster.sh.
                           Default: \$INSTALL_DIR/tools/deploy_cluster.sh
@@ -211,7 +211,7 @@ unset _arg
 : "${BIN_DIR:=$INSTALL_DIR/bin}"
 : "${TOOLS_DIR:=$INSTALL_DIR/tools}"
 : "${TESTS_DIR:=$INSTALL_DIR/tests}"
-: "${PERF_BIN:=$TESTS_DIR/chrono-performance-test}"
+: "${PERF_BIN:=$TESTS_DIR/chronolog-test-performance}"
 : "${MPIRUN:=/mnt/common/kfeng/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/mpich-4.0.2-yomnocixlvz4mtgvih66sj7bp4zetml7/bin/mpirun}"                    # full path if not in $PATH
 : "${DEPLOY_SCRIPT:=$TOOLS_DIR/deploy_cluster.sh}"
 : "${CONF_FILE:=$CONF_DIR/default-chrono-conf.json}"
@@ -781,7 +781,7 @@ clean_conf_dir() {
 # snapshot_conf_dir <scale> <proto> <per_node> <nnodes>
 #
 # Copy $CONF_DIR into a flat subdir of $LOG_DIR named after all the parameters
-# that affect the chrono-performance-test command line for this client config.
+# that affect the chronolog-test-performance command line for this client config.
 # Called once per (scale, proto, per_node, nnodes) combination, immediately
 # after write_client_hosts_file so the snapshot captures hosts_client too.
 #
@@ -1031,7 +1031,7 @@ test_specific_flags() {
 }
 
 # ---------------------------------------------------------------------------
-# Running one chrono-performance-test invocation
+# Running one chronolog-test-performance invocation
 # ---------------------------------------------------------------------------
 
 # redeploy_cluster <protocol> <scale>

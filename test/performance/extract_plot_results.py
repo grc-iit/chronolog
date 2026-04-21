@@ -12,7 +12,7 @@ output roots, mirroring the ares_test_logs_YYYYMMDD_HHMMSS naming convention.
 
 A matching log file (same directory, same timestamp stem, .log extension) is
 auto-discovered alongside the results file.  When found, per-run performance
-metrics printed by chrono-performance-test are parsed out and added as extra
+metrics printed by chronolog-test-performance are parsed out and added as extra
 columns in the CSVs and as additional plots.  Multiple MPI processes each print
 their own metric block; values are summed across processes to give total system
 throughput for that run.
@@ -65,7 +65,7 @@ DESCRIPTION
   file inside ares_test_logs_latest/ next to this script.
 
   A companion .log file (same directory, same timestamp stem) is discovered
-  automatically.  When found, per-run metrics printed by chrono-performance-test
+  automatically.  When found, per-run metrics printed by chronolog-test-performance
   are parsed and added as columns to every output CSV.  Additional metric plots
   (operation/s, MB/s, event/s) are generated alongside the wall-time plots.
 
@@ -84,7 +84,7 @@ INPUT FORMAT
   in a later revision; older files fall back to parsing ecnt=N from the tag.
 
   The .log file is the tee output from ares_test.sh.  At the end of each run
-  chrono-performance-test prints 10 metric lines followed by the CSV result
+  chronolog-test-performance prints 10 metric lines followed by the CSV result
   line (used as the anchor to associate metrics with the matching tag).
 
 METRIC COLUMNS ADDED TO CSVs (when a .log file is available)
@@ -146,7 +146,7 @@ if len(sys.argv) >= 2 and sys.argv[1] in ("-h", "--help"):
 # Metric specifications
 # ---------------------------------------------------------------------------
 # Each entry: (key, compiled_regex, short_label, unit)
-# The regex matches a line printed by chrono-performance-test at the end of
+# The regex matches a line printed by chronolog-test-performance at the end of
 # each run.  Multiple MPI processes each print their own set; values are
 # summed across all processes to give total system throughput for that run.
 
