@@ -170,6 +170,15 @@ jobs:
           docker exec chronolog-c1 bash -c "mkdir -p /home/grc-iit/chronolog-repo && cp -r /workspace/* /home/grc-iit/chronolog-repo/ 2>/dev/null || true && chown -R grc-iit:grc-iit /home/grc-iit/chronolog-repo"
           echo "✅ Workspace copied to containers"
 
+      - name: Fix /home/grc-iit ownership for grc-iit user
+        run: |
+          set -e
+          # The base image's spack install wrote DB/lock files as root, but
+          # the build step runs as grc-iit. Reclaim ownership of the shared
+          # volume so grc-iit can write to the spack DB and install prefix.
+          docker exec chronolog-c1 bash -c "chown -R grc-iit:grc-iit /home/grc-iit"
+          echo "✅ /home/grc-iit chowned to grc-iit in c1 (propagates via shared_home)"
+
       - name: Build and install ChronoLog (in c1, shared via volume)
         run: |
           set -e

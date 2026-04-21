@@ -280,7 +280,9 @@ jobs:
             set +e
             source /home/grc-iit/spack/share/spack/setup-env.sh
             spack env activate -p .
-            BUILD_DIR=\"/home/grc-iit/chronolog-build/Release\"
+            # build.sh uses \$HOME/chronolog-build; this step runs as root
+            # inside the container (no --user), so HOME=/root.
+            BUILD_DIR=\"/root/chronolog-build/Release\"
             WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
             echo '[6/8] Running ctest...'
             if [ ! -d \"\${BUILD_DIR}\" ]; then
