@@ -162,7 +162,11 @@ prepare_build_directory() {
 build_project() {
     echo -e "${INFO}Building ChronoLog in ${BUILD_TYPE} mode.${NC}"
 
-    # Configure (always). Debug builds enable install of test executables to chronolog/tests/
+    # Configure (always). Debug builds default to installing test executables
+    # to chronolog/tests/; any caller can override via the CHRONOLOG_INSTALL_TESTS
+    # env var, which we forward as an explicit -D so it takes effect even when
+    # reusing a populated build directory (CMake would otherwise keep the
+    # cached value and ignore the env var on reconfigure).
     local cmake_args=(-S "${REPO_ROOT}" -B . -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" -DPython_EXECUTABLE="${PYTHON_EXECUTABLE}")
     if [[ -n "$INSTALL_PATH" ]]; then
         echo -e "${DEBUG}Using installation prefix: ${INSTALL_PATH}${NC}"
@@ -170,9 +174,19 @@ build_project() {
     else
         echo -e "${DEBUG}No installation path specified; using CMake defaults (your CMakeLists sets $HOME/chronolog-install).${NC}"
     fi
-    if [[ "$BUILD_TYPE" == "Debug" ]]; then
+    # Treat an exported-but-empty CHRONOLOG_INSTALL_TESTS the same as unset
+    # (${VAR:+x} expands only when VAR is set AND non-empty), so a stray empty
+    # export doesn't silently suppress the Debug-mode default.
+    local install_tests=""
+    if [[ -n "${CHRONOLOG_INSTALL_TESTS:+x}" ]]; then
+        install_tests="${CHRONOLOG_INSTALL_TESTS}"
+        echo -e "${DEBUG}CHRONOLOG_INSTALL_TESTS=${install_tests} (from environment).${NC}"
+    elif [[ "$BUILD_TYPE" == "Debug" ]]; then
+        install_tests="ON"
         echo -e "${DEBUG}Debug build: enabling installation of test executables (CHRONOLOG_INSTALL_TESTS=ON).${NC}"
-        cmake_args+=(-DCHRONOLOG_INSTALL_TESTS=ON)
+    fi
+    if [[ -n "$install_tests" ]]; then
+        cmake_args+=(-DCHRONOLOG_INSTALL_TESTS="${install_tests}")
     fi
     if [[ -n "$EXTRA_CXX_FLAGS" ]]; then
         echo -e "${DEBUG}Extra CXX flags: ${EXTRA_CXX_FLAGS}${NC}"

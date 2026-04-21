@@ -141,7 +141,7 @@ option(BUILD_SHARED_LIBS "Build with shared libraries." ON)
 option(CHRONOLOG_ENABLE_COVERAGE "Enable code coverage." OFF)
 option(CHRONOLOG_USE_ADDRESS_SANITIZER "Enable -fsanitize=address in Debug builds" ON)
 option(CHRONOLOG_USE_THREAD_SANITIZER "Enable -fsanitize=thread in Debug builds" OFF)
-option(CHRONOLOG_BUILD_TESTING "Build the testing tree (Debug mode only)." ON)
+option(CHRONOLOG_BUILD_TESTING "Build the testing tree." ON)
 if(DEFINED ENV{CHRONOLOG_INSTALL_TESTS})
     set(_chronolog_install_tests_default "$ENV{CHRONOLOG_INSTALL_TESTS}")
 else()
@@ -240,15 +240,23 @@ add_custom_target(lint COMMAND cpplint --recursive
     ${CMAKE_CURRENT_SOURCE_DIR})
 
 #------------------------------------------------------------------------------
-# Testing (only in Debug mode; Release install has no test tree)
+# Testing
+#
+# The test tree is built in both Debug and Release so CI (and anyone who wants
+# to exercise a release-mode binary) can run the suite against the real build.
+# Tests are NOT installed by default: CHRONOLOG_INSTALL_TESTS controls whether
+# they land in the install prefix, and it defaults to OFF so release packages
+# (TGZ/RPM/DEB) stay clean. Opt in via -DCHRONOLOG_INSTALL_TESTS=ON.
+#
+# The CHRONOLOG_INSTALL_TESTS env var only seeds the default on a fresh
+# configure; CMake caches the option, so the env var is ignored on
+# reconfigure. tools/deploy/ChronoLog/build.sh forwards the env var as an
+# explicit -D on every invocation so it wins even when the build dir is
+# reused — if you invoke cmake directly, pass -D yourself.
 #------------------------------------------------------------------------------
 set(CHRONOLOG_BUILD_TESTS_NOW ${CHRONOLOG_BUILD_TESTING})
-if(CHRONOLOG_BUILD_TESTING AND NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set(CHRONOLOG_BUILD_TESTS_NOW OFF)
-    message(STATUS "Tests are built only in Debug mode; skipping test tree in Release.")
-endif()
 if(CHRONOLOG_BUILD_TESTS_NOW)
-    message(STATUS "Tests enabled")
+    message(STATUS "Tests enabled (install: ${CHRONOLOG_INSTALL_TESTS})")
     include(CTest)
 endif()
 
