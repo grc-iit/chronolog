@@ -90,8 +90,14 @@ jobs:
         run: |
           set -e
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
-          docker exec --user root "$CONTAINER_ID" chown -R grc-iit:grc-iit /home/grc-iit/chronolog-repo
-          echo "✅ Workspace owned by grc-iit"
+          # Two things need grc-iit ownership:
+          # - the bind-mounted repo (arrives root-owned from the host runner)
+          # - /home/grc-iit tree, because the cached base image was committed
+          #   from a --user root spack install, leaving spack DB/lock files
+          #   root-owned (fails with "Can't take write lock on read-only file"
+          #   when grc-iit later runs spack install / concretize).
+          docker exec --user root "$CONTAINER_ID" chown -R grc-iit:grc-iit /home/grc-iit
+          echo "✅ /home/grc-iit owned by grc-iit"
 
       - name: Verify code checkout
         run: |
