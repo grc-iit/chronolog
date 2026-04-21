@@ -7,10 +7,12 @@
 
 typedef enum ChronoLogRPCImplementation
 {
-    CHRONOLOG_THALLIUM_SOCKETS = 0, CHRONOLOG_THALLIUM_TCP = 1, CHRONOLOG_THALLIUM_ROCE = 2
+    CHRONOLOG_THALLIUM_SOCKETS = 0,
+    CHRONOLOG_THALLIUM_TCP = 1,
+    CHRONOLOG_THALLIUM_ROCE = 2
 } ChronoLogRPCImplementation;
 
-inline const char*getRPCImplString(ChronoLogRPCImplementation impl)
+inline const char* getRPCImplString(ChronoLogRPCImplementation impl)
 {
     switch(impl)
     {
@@ -27,10 +29,13 @@ inline const char*getRPCImplString(ChronoLogRPCImplementation impl)
 
 typedef enum ChronoLogServiceRole
 {
-    CHRONOLOG_UNKNOWN = 0, CHRONOLOG_VISOR = 1, CHRONOLOG_CLIENT = 2, CHRONOLOG_KEEPER = 3
+    CHRONOLOG_UNKNOWN = 0,
+    CHRONOLOG_VISOR = 1,
+    CHRONOLOG_CLIENT = 2,
+    CHRONOLOG_KEEPER = 3
 } ChronoLogServiceRole;
 
-inline const char*getServiceRoleString(ChronoLogServiceRole role)
+inline const char* getServiceRoleString(ChronoLogServiceRole role)
 {
     switch(role)
     {
@@ -49,10 +54,12 @@ inline const char*getServiceRoleString(ChronoLogServiceRole role)
 
 enum ClocksourceType
 {
-    C_STYLE = 0, CPP_STYLE = 1, TSC = 2
+    C_STYLE = 0,
+    CPP_STYLE = 1,
+    TSC = 2
 };
 
-inline const char*getClocksourceTypeString(ClocksourceType type)
+inline const char* getClocksourceTypeString(ClocksourceType type)
 {
     switch(type)
     {
