@@ -119,10 +119,13 @@ jobs:
           cat dynamic-compose.yaml
 
       - name: Launch docker-compose containers
+        id: launch
         run: |
+          _start=$(date +%s)
           docker compose -f dynamic-compose.yaml up -d
           echo "✅ Containers launched"
           docker ps
+          echo "duration=$(( $(date +%s) - _start ))" >> "$GITHUB_OUTPUT"
 
       - name: Wait for containers to be ready
         run: |
@@ -180,8 +183,10 @@ jobs:
           echo "✅ /home/grc-iit chowned to grc-iit in c1 (propagates via shared_home)"
 
       - name: Build and install ChronoLog (in c1, shared via volume)
+        id: build-install
         run: |
           set -e
+          _start=$(date +%s)
           echo '[1/5] Building and installing ChronoLog in c1 (propagates to c2..c7 via shared_home)...'
           docker exec --user grc-iit chronolog-c1 bash -c "
             set -e
@@ -200,6 +205,7 @@ jobs:
             ./tools/deploy/ChronoLog/local_single_user_deploy.sh -i -I \"\${INSTALL_DIR}\"
           "
           echo '✅ ChronoLog built and installed'
+          echo "duration=$(( $(date +%s) - _start ))" >> "$GITHUB_OUTPUT"
 
       - name: Prepare hosts files
         run: |
@@ -282,8 +288,10 @@ jobs:
           "
 
       - name: Deploy ChronoLog
+        id: deploy
         run: |
           set -e
+          _start=$(date +%s)
           docker exec --user grc-iit chronolog-c1 bash -c "
             set -e
             WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
@@ -304,6 +312,7 @@ jobs:
 
             echo '✅ ChronoLog deployment started'
           "
+          echo "duration=$(( $(date +%s) - _start ))" >> "$GITHUB_OUTPUT"
 
       - name: Verify Deployment
         run: |
@@ -436,8 +445,10 @@ jobs:
           echo '✅ Deployment verification passed (count and host distribution correct)'
 
       - name: Run Client Performance Test
+        id: perf-test
         run: |
           set -e
+          _start=$(date +%s)
           docker exec --user grc-iit chronolog-c1 bash -c "
             set -e
             WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
@@ -502,6 +513,14 @@ jobs:
               exit \${TEST_EXIT_CODE}
             fi
           "
+          echo "duration=$(( $(date +%s) - _start ))" >> "$GITHUB_OUTPUT"
+
+          # Capture the perf-test output for the job summary (tail, to cap size).
+          {
+            echo "output<<PERF_EOF"
+            docker exec --user grc-iit chronolog-c1 tail -80 /tmp/mpi_test_output.log 2>/dev/null || echo "(no output captured)"
+            echo "PERF_EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Stop ChronoLog
         if: always()
@@ -523,3 +542,73 @@ jobs:
         run: |
           docker compose -f dynamic-compose.yaml down -v
           echo "✅ Containers cleaned up"
+
+      - name: Job summary
+        if: always()
+        run: |
+          fmt_duration() {
+            local s=${1:-0}
+            if [ "$s" -ge 60 ]; then
+              printf "%dm %02ds" $(( s / 60 )) $(( s % 60 ))
+            else
+              printf "%ds" "$s"
+            fi
+          }
+
+          LAUNCH_D=${{ steps.launch.outputs.duration || 0 }}
+          BUILD_D=${{ steps.build-install.outputs.duration || 0 }}
+          DEPLOY_D=${{ steps.deploy.outputs.duration || 0 }}
+          PERF_D=${{ steps.perf-test.outputs.duration || 0 }}
+          PERF_OUTCOME="${{ steps.perf-test.outcome }}"
+          PERF_OUTPUT=$(cat <<'PERF_SUMMARY_EOF'
+          ${{ steps.perf-test.outputs.output }}
+          PERF_SUMMARY_EOF
+          )
+
+          BRANCH="${{ github.head_ref || github.ref_name }}"
+
+          case "$PERF_OUTCOME" in
+            success) PERF_ICON="✅" ;;
+            failure) PERF_ICON="❌" ;;
+            *)       PERF_ICON="⚠️" ;;
+          esac
+
+          {
+            echo "## 🌐 ChronoLog Distributed Pipeline"
+            echo ""
+            echo "Branch: \`${BRANCH}\` · Commit: \`${GITHUB_SHA:0:7}\`"
+            echo ""
+            echo "### 🧩 Topology"
+            echo ""
+            echo "7 containers launched from the base image (\`c1\`..\`c7\`):"
+            echo ""
+            echo "| Role | Hosts | Count |"
+            echo "|------|-------|-------|"
+            echo "| chrono-visor | c1 | 1 |"
+            echo "| chrono-keeper | c2, c3 | 2 |"
+            echo "| chrono-grapher | c4, c5 | 2 |"
+            echo "| chrono-player | c6, c7 | 2 |"
+            echo ""
+            echo "### ⏱️ Stage timings"
+            echo ""
+            echo "| Stage | Duration |"
+            echo "|-------|----------|"
+            echo "| Launch compose containers | $(fmt_duration "$LAUNCH_D") |"
+            echo "| Build + install ChronoLog | $(fmt_duration "$BUILD_D") |"
+            echo "| Deploy ChronoLog (distributed) | $(fmt_duration "$DEPLOY_D") |"
+            echo "| Client performance test | $(fmt_duration "$PERF_D") |"
+            echo ""
+            echo "### 🚀 Client performance test"
+            echo ""
+            echo "${PERF_ICON} Outcome: \`${PERF_OUTCOME}\` (4 MPI ranks, 1024 events × 4096 B)"
+            echo ""
+            if [ -n "$(echo "$PERF_OUTPUT" | tr -d '[:space:]')" ]; then
+              echo "<details><summary>Last 80 lines of MPI output</summary>"
+              echo ""
+              echo '```'
+              echo "$PERF_OUTPUT"
+              echo '```'
+              echo ""
+              echo "</details>"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
