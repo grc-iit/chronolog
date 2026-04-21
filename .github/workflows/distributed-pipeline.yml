@@ -1,0 +1,516 @@
+name: "ChronoLog: Distributed Pipeline"
+
+on:
+  pull_request:
+    branches: [develop, main]
+  workflow_dispatch:
+
+concurrency:
+  group: distributed-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  chronolog-base:
+    uses: ./.github/workflows/chronolog-base.yml
+    permissions:
+      contents: read
+      packages: write
+
+  distributed-deployment:
+    runs-on: ubuntu-24.04
+    needs: chronolog-base
+    permissions:
+      contents: read
+      packages: write
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull base Docker image
+        run: |
+          set -e
+          IMAGE_NAME="${{ needs.chronolog-base.outputs.image-name }}"
+          echo "Pulling base image: ${IMAGE_NAME}"
+          docker pull "${IMAGE_NAME}"
+          echo "✅ Base image pulled"
+
+      - name: Set up distributed deployment
+        run: |
+          set -e
+          NUM_CONTAINERS=7
+          NUM_KEEPERS=2
+          NUM_GRAPHERS=2
+          NUM_PLAYERS=2
+
+          # Launch all containers directly from the base image; ChronoLog is
+          # built and installed inside c1 and propagates to the other
+          # containers via the shared_home volume.
+          BASE_IMAGE="${{ needs.chronolog-base.outputs.image-name }}"
+
+          cat > dynamic-compose.yaml <<EOF
+          x-common: &x-common
+            image: ${BASE_IMAGE}
+            init: true
+            networks:
+              - chronolog_net
+            cap_add:
+              - SYS_ADMIN
+              - SYS_PTRACE
+            security_opt:
+              - seccomp:unconfined
+              - apparmor:unconfined
+            privileged: false
+            mem_limit: 4g
+            mem_reservation: 2g
+            cpus: 2
+            shm_size: 512m
+            command: >
+              bash -c "sleep infinity"
+
+          services:
+          EOF
+
+          for i in $(seq 1 $NUM_CONTAINERS); do
+            cat >> dynamic-compose.yaml << EOF
+            c$i:
+              <<: *x-common
+              hostname: c$i
+              container_name: chronolog-c$i
+              volumes:
+                - shared_home:/home/grc-iit
+                - ${{ github.workspace }}:/workspace
+          EOF
+
+            if [ $i -gt 1 ]; then
+              cat >> dynamic-compose.yaml <<EOF
+              depends_on:
+                - c1
+          EOF
+            fi
+          done
+
+          cat >> dynamic-compose.yaml <<EOF
+
+          networks:
+            chronolog_net:
+
+          volumes:
+            shared_home:
+          EOF
+
+          echo "✅ Generated dynamic-compose.yaml"
+          cat dynamic-compose.yaml
+
+      - name: Launch docker-compose containers
+        run: |
+          docker compose -f dynamic-compose.yaml up -d
+          echo "✅ Containers launched"
+          docker ps
+
+      - name: Wait for containers to be ready
+        run: |
+          echo "Waiting for containers to be ready..."
+          sleep 10
+          for i in $(seq 1 7); do
+            echo "Checking container c$i..."
+            docker exec chronolog-c$i bash -c "echo 'Container c$i is ready'" || echo "Container c$i not ready yet"
+          done
+
+      - name: Create grc-iit user and install SSH in containers
+        run: |
+          set -e
+          NUM_CONTAINERS=7
+          for i in $(seq 1 $NUM_CONTAINERS); do
+            docker exec chronolog-c$i bash -c "
+              apt-get update && apt-get install -y openssh-server sudo pssh dnsutils jq chrpath || true
+
+              if ! id -u grc-iit >/dev/null 2>&1; then
+                useradd -m -s /bin/bash grc-iit
+                echo 'grc-iit ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
+                mkdir -p /home/grc-iit
+                chown -R grc-iit:grc-iit /home/grc-iit
+              fi
+
+              service ssh start || /etc/init.d/ssh start || true
+            "
+          done
+          echo "✅ User grc-iit created and SSH installed in all containers"
+
+      - name: Prepare SSH keys and known hosts
+        run: |
+          set -e
+          NUM_CONTAINERS=7
+          docker exec --user grc-iit chronolog-c1 bash -c "mkdir -p /home/grc-iit/.ssh && ssh-keygen -t rsa -b 4096 -f /home/grc-iit/.ssh/id_rsa -N '' || true"
+          docker exec --user grc-iit chronolog-c1 bash -c "cat /home/grc-iit/.ssh/id_rsa.pub > /home/grc-iit/.ssh/authorized_keys"
+          docker exec --user grc-iit chronolog-c1 bash -c "for i in \$(seq 1 $NUM_CONTAINERS); do ssh-keyscan -t rsa,ed25519 c\$i >> /home/grc-iit/.ssh/known_hosts 2>/dev/null; done"
+          docker exec chronolog-c1 bash -c "chown -R grc-iit:grc-iit /home/grc-iit/.ssh && chmod 700 /home/grc-iit/.ssh && chmod 600 /home/grc-iit/.ssh/id_rsa && chmod 644 /home/grc-iit/.ssh/id_rsa.pub && chmod 600 /home/grc-iit/.ssh/authorized_keys"
+          docker exec --user grc-iit chronolog-c1 bash -c "echo 'export USER=grc-iit' >> ~/.bashrc"
+          echo "✅ SSH keys configured (shared across all containers via shared_home volume)"
+
+      - name: Copy workspace to containers
+        run: |
+          set -e
+          docker exec chronolog-c1 bash -c "mkdir -p /home/grc-iit/chronolog-repo && cp -r /workspace/* /home/grc-iit/chronolog-repo/ 2>/dev/null || true && chown -R grc-iit:grc-iit /home/grc-iit/chronolog-repo"
+          echo "✅ Workspace copied to containers"
+
+      - name: Build and install ChronoLog (in c1, shared via volume)
+        run: |
+          set -e
+          echo '[1/5] Building and installing ChronoLog in c1 (propagates to c2..c7 via shared_home)...'
+          docker exec --user grc-iit chronolog-c1 bash -c "
+            set -e
+            cd /home/grc-iit/chronolog-repo
+            source /home/grc-iit/spack/share/spack/setup-env.sh
+            spack env activate -p .
+
+            if [ ! -d .spack-env/view ] || [ ! -d .spack-env/view/bin ] || [ ! -d .spack-env/view/lib ]; then
+              echo 'Reconcretizing Spack environment...'
+              spack concretize --force
+            fi
+
+            INSTALL_DIR=\"/home/grc-iit/chronolog-install\"
+            mkdir -p \"\${INSTALL_DIR}\"
+            ./tools/deploy/ChronoLog/local_single_user_deploy.sh -b -I \"\${INSTALL_DIR}\"
+            ./tools/deploy/ChronoLog/local_single_user_deploy.sh -i -I \"\${INSTALL_DIR}\"
+          "
+          echo '✅ ChronoLog built and installed'
+
+      - name: Prepare hosts files
+        run: |
+          set -e
+          NUM_CONTAINERS=7
+          NUM_KEEPERS=2
+          NUM_GRAPHERS=2
+          NUM_PLAYERS=2
+
+          WORK_DIR="/home/grc-iit/chronolog-install/chronolog"
+
+          docker exec chronolog-c1 bash -c "mkdir -p ${WORK_DIR}/conf && chown -R grc-iit:grc-iit ${WORK_DIR}"
+
+          docker exec --user grc-iit chronolog-c1 bash -c "rm -rf ${WORK_DIR}/conf/hosts_*"
+          docker exec --user grc-iit chronolog-c1 bash -c "echo c1 > ${WORK_DIR}/conf/hosts_visor"
+
+          for i in $(seq 2 $(($NUM_KEEPERS + 1))); do
+            docker exec --user grc-iit chronolog-c1 bash -c "echo c$i >> ${WORK_DIR}/conf/hosts_keeper"
+          done
+
+          for i in $(seq $(($NUM_KEEPERS + 2)) $(($NUM_KEEPERS + $NUM_GRAPHERS + 1))); do
+            docker exec --user grc-iit chronolog-c1 bash -c "echo c$i >> ${WORK_DIR}/conf/hosts_grapher"
+          done
+
+          for i in $(seq $(($NUM_KEEPERS + $NUM_GRAPHERS + 2)) $(($NUM_KEEPERS + $NUM_GRAPHERS + $NUM_PLAYERS + 1))); do
+            docker exec --user grc-iit chronolog-c1 bash -c "echo c$i >> ${WORK_DIR}/conf/hosts_player"
+          done
+
+          for i in $(seq 1 $NUM_CONTAINERS); do
+            docker exec --user grc-iit chronolog-c1 bash -c "echo c$i >> ${WORK_DIR}/conf/hosts_clients"
+          done
+
+          for i in $(seq 1 $NUM_CONTAINERS); do
+            docker exec --user grc-iit chronolog-c1 bash -c "echo c$i >> ${WORK_DIR}/conf/hosts_all"
+          done
+
+          # Client hosts file for the MPI perf test: first 4 containers
+          docker exec --user grc-iit chronolog-c1 bash -c "echo c1 > ${WORK_DIR}/conf/hosts_client"
+          for i in $(seq 2 4); do
+            docker exec --user grc-iit chronolog-c1 bash -c "echo c$i >> ${WORK_DIR}/conf/hosts_client"
+          done
+
+          echo "✅ Hosts files prepared"
+          docker exec chronolog-c1 bash -c "ls -la ${WORK_DIR}/conf/"
+
+      - name: Verify Installation
+        run: |
+          set -e
+          docker exec --user grc-iit chronolog-c1 bash -c "
+            set -e
+            WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
+            REPO_DIR=\"/home/grc-iit/chronolog-repo\"
+            cd \${REPO_DIR}
+            source /home/grc-iit/spack/share/spack/setup-env.sh
+            spack env activate -d . 2>/dev/null || spack env activate -p . 2>/dev/null || true
+
+            echo '[2/5] Verifying installation...'
+            if [ -d \"\${WORK_DIR}/bin\" ]; then
+              echo '✅ bin directory found'
+              ls -la \"\${WORK_DIR}/bin\"
+            else
+              echo '❌ Install failed — bin directory not found'
+              exit 1
+            fi
+            main_binaries=(chrono-visor chrono-keeper chrono-grapher chrono-player chrono-client-admin)
+            missing=0
+            for exe in \"\${main_binaries[@]}\"; do
+              if [ ! -x \"\${WORK_DIR}/bin/\$exe\" ]; then
+                echo \"❌ \$exe is missing or not executable!\"
+                missing=1
+              else
+                echo \"✅ \$exe is present and executable\"
+              fi
+            done
+            if [ \"\$missing\" = 1 ]; then
+              echo '❌ Installation verification failed'
+              exit 1
+            fi
+            echo '✅ Installation verification passed'
+          "
+
+      - name: Deploy ChronoLog
+        run: |
+          set -e
+          docker exec --user grc-iit chronolog-c1 bash -c "
+            set -e
+            WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
+            REPO_DIR=\"/home/grc-iit/chronolog-repo\"
+            cd \${REPO_DIR}
+            source /home/grc-iit/spack/share/spack/setup-env.sh
+            spack env activate -d . 2>/dev/null || spack env activate -p . 2>/dev/null || true
+
+            echo '[3/5] Deploying ChronoLog...'
+
+            if [ -x ./tools/deploy/ChronoLog/single_user_deploy.sh ]; then
+              echo '🚀 Starting ChronoLog deployment...'
+              ./tools/deploy/ChronoLog/single_user_deploy.sh -d -w \"\${WORK_DIR}\"
+            else
+              echo '❌ Deploy script not found or not executable'
+              exit 1
+            fi
+
+            echo '✅ ChronoLog deployment started'
+          "
+
+      - name: Verify Deployment
+        run: |
+          set -e
+          WORK_DIR="/home/grc-iit/chronolog-install/chronolog"
+
+          echo '[4/5] Verifying deployment...'
+          echo 'Waiting for services to start...'
+          sleep 15
+
+          echo '📦 Listing ChronoLog processes across all containers...'
+          PROCESS_LIST="/tmp/chrono_processes.txt"
+          rm -f "${PROCESS_LIST}"
+
+          PSSH_OUT_DIR="/tmp/pssh_processes"
+          docker exec --user grc-iit chronolog-c1 bash -c "
+            rm -rf ${PSSH_OUT_DIR}
+            mkdir -p ${PSSH_OUT_DIR}
+            parallel-ssh -h ${WORK_DIR}/conf/hosts_all -o ${PSSH_OUT_DIR} -t 30 \"ps -eo pid,args 2>/dev/null | grep -E 'chrono-visor|chrono-keeper|chrono-grapher|chrono-player' | grep -v grep || true\"
+            for host_file in ${PSSH_OUT_DIR}/*; do
+              host=\$(basename \"\$host_file\")
+              if [ -f \"\$host_file\" ] && [ -s \"\$host_file\" ]; then
+                sed \"s/^/\$host /\" \"\$host_file\"
+              fi
+            done
+            rm -rf ${PSSH_OUT_DIR}
+          " > "${PROCESS_LIST}"
+
+          echo "Collected process list:"
+          cat "${PROCESS_LIST}" || echo "No processes found"
+
+          echo '🔍 Checking required components (count and host distribution)...'
+          missing=0
+
+          WORK_DIR="/home/grc-iit/chronolog-install/chronolog"
+          EXPECTED_VISOR_HOSTS=$(docker exec chronolog-c1 bash -c "cat ${WORK_DIR}/conf/hosts_visor 2>/dev/null" | tr '\n' ' ' | xargs)
+          EXPECTED_KEEPER_HOSTS=$(docker exec chronolog-c1 bash -c "cat ${WORK_DIR}/conf/hosts_keeper 2>/dev/null" | tr '\n' ' ' | xargs)
+          EXPECTED_GRAPHER_HOSTS=$(docker exec chronolog-c1 bash -c "cat ${WORK_DIR}/conf/hosts_grapher 2>/dev/null" | tr '\n' ' ' | xargs)
+          EXPECTED_PLAYER_HOSTS=$(docker exec chronolog-c1 bash -c "cat ${WORK_DIR}/conf/hosts_player 2>/dev/null" | tr '\n' ' ' | xargs)
+
+          echo "Expected host assignments:"
+          echo "  chrono-visor: ${EXPECTED_VISOR_HOSTS}"
+          echo "  chrono-keeper: ${EXPECTED_KEEPER_HOSTS}"
+          echo "  chrono-grapher: ${EXPECTED_GRAPHER_HOSTS}"
+          echo "  chrono-player: ${EXPECTED_PLAYER_HOSTS}"
+
+          check_process_distribution() {
+            local proc_name=$1
+            local expected_hosts=$2
+            local expected_count=$3
+
+            if [ ! -f "${PROCESS_LIST}" ] || [ ! -s "${PROCESS_LIST}" ]; then
+              count=0
+            else
+              count=$(grep -c "$proc_name" "${PROCESS_LIST}" 2>/dev/null || echo "0")
+              count=$(echo "$count" | tr -d '[:space:]' | head -1)
+              if [ -z "$count" ] || ! [[ "$count" =~ ^[0-9]+$ ]]; then
+                count=0
+              fi
+            fi
+
+            if [ "$count" -ne "$expected_count" ]; then
+              echo "❌ Wrong count for $proc_name: found $count, expected $expected_count"
+              return 1
+            fi
+
+            local missing_hosts=""
+            local extra_hosts=""
+            for host in $expected_hosts; do
+              if ! grep -q "^${host}.*${proc_name}" "${PROCESS_LIST}" 2>/dev/null; then
+                missing_hosts="${missing_hosts} ${host}"
+              fi
+            done
+
+            local found_hosts=$(grep "${proc_name}" "${PROCESS_LIST}" 2>/dev/null | awk '{print $1}' | sort -u | tr '\n' ' ' | xargs)
+            local expected_hosts_pattern=" ${expected_hosts} "
+            for found_host in $found_hosts; do
+              if [[ ! "${expected_hosts_pattern}" =~ " ${found_host} " ]]; then
+                extra_hosts="${extra_hosts} ${found_host}"
+              fi
+            done
+
+            if [ -n "$missing_hosts" ]; then
+              echo "❌ $proc_name missing on expected hosts:${missing_hosts}"
+              return 1
+            fi
+
+            if [ -n "$extra_hosts" ]; then
+              echo "❌ $proc_name found on unexpected hosts:${extra_hosts}"
+              return 1
+            fi
+
+            echo "✅ $proc_name: found $count processes on correct hosts (${expected_hosts})"
+            return 0
+          }
+
+          if ! check_process_distribution "chrono-visor" "$EXPECTED_VISOR_HOSTS" 1; then
+            missing=1
+          fi
+
+          if ! check_process_distribution "chrono-keeper" "$EXPECTED_KEEPER_HOSTS" 2; then
+            missing=1
+          fi
+
+          if ! check_process_distribution "chrono-grapher" "$EXPECTED_GRAPHER_HOSTS" 2; then
+            missing=1
+          fi
+
+          if ! check_process_distribution "chrono-player" "$EXPECTED_PLAYER_HOSTS" 2; then
+            missing=1
+          fi
+
+          if [ "$missing" != "0" ]; then
+            echo ''
+            echo '❌ Deployment verification failed'
+            echo ''
+            echo 'Debugging information:'
+            echo 'Checking processes on each container individually:'
+            for i in $(seq 1 7); do
+              echo "--- Container c$i ---"
+              docker exec chronolog-c$i ps aux | grep -E 'chrono|visor' | grep -v grep || echo "No chrono processes found"
+            done
+            echo ''
+            echo 'Checking deployment logs if available:'
+            docker exec chronolog-c1 bash -c "ls -la /home/grc-iit/chronolog-install/chronolog/monitor/ 2>/dev/null || echo 'No monitor directory'" || true
+            exit 1
+          fi
+
+          rm -f "${PROCESS_LIST}"
+          echo '✅ Deployment verification passed (count and host distribution correct)'
+
+      - name: Run Client Performance Test
+        run: |
+          set -e
+          docker exec --user grc-iit chronolog-c1 bash -c "
+            set -e
+            WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
+            REPO_DIR=\"/home/grc-iit/chronolog-repo\"
+            cd \${REPO_DIR}
+            source /home/grc-iit/spack/share/spack/setup-env.sh
+
+            echo '📦 Setting up spack environment...'
+            if spack env activate -d . 2>/dev/null; then
+              echo '✅ Spack environment activated'
+            else
+              echo '⚠️ Could not activate spack environment with -d flag, trying -p flag...'
+              spack env activate -p . 2>/dev/null || true
+            fi
+
+            if [ ! -d \"\${REPO_DIR}/.spack-env/view\" ]; then
+              echo '📦 Spack view not found, running spack concretize...'
+              spack concretize --force 2>&1 || echo '⚠️ spack concretize returned non-zero'
+            fi
+
+            echo '[5/5] Running client performance test...'
+
+            MPIEXEC_BIN=\"\"
+            if [ -x \"\${REPO_DIR}/.spack-env/view/bin/mpiexec\" ]; then
+              MPIEXEC_BIN=\"\${REPO_DIR}/.spack-env/view/bin/mpiexec\"
+              echo \"Found mpiexec in spack view\"
+            elif command -v mpiexec &> /dev/null; then
+              MPIEXEC_BIN=\$(which mpiexec)
+              echo \"Found mpiexec in PATH\"
+            else
+              echo \"Searching for mpiexec in spack opt directory...\"
+              MPIEXEC_BIN=\$(find /home/grc-iit/spack/opt/spack -name mpiexec \\( -type f -o -type l \\) -executable 2>/dev/null | head -1)
+              if [ -z \"\${MPIEXEC_BIN}\" ]; then
+                MPIEXEC_BIN=\$(find /home/grc-iit/spack/opt/spack -name mpiexec 2>/dev/null | head -1)
+              fi
+            fi
+
+            if [ -z \"\${MPIEXEC_BIN}\" ] || [ ! -x \"\${MPIEXEC_BIN}\" ]; then
+              echo '❌ mpiexec not found'
+              exit 1
+            fi
+            echo \"✅ Using mpiexec at: \${MPIEXEC_BIN}\"
+
+            export LD_LIBRARY_PATH=\${WORK_DIR}/lib:\$LD_LIBRARY_PATH
+            cd \${WORK_DIR}
+
+            if timeout 300 \${MPIEXEC_BIN} -l -n 4 -f conf/hosts_client \
+              bin/chrono-client-admin \
+              --config conf/default-chrono-client-conf.json \
+              -a 4096 -b 4096 -s 4096 -n 1024 -t 1 -h 1 -p -y 2>&1 | tee /tmp/mpi_test_output.log; then
+              echo '✅ Client performance test completed successfully'
+            else
+              TEST_EXIT_CODE=\$?
+              if [ \$TEST_EXIT_CODE -eq 124 ]; then
+                echo '❌ Client performance test timed out after 5 minutes'
+              else
+                echo \"❌ Client performance test failed with exit code \${TEST_EXIT_CODE}\"
+              fi
+              if [ -f /tmp/mpi_test_output.log ]; then
+                tail -50 /tmp/mpi_test_output.log || true
+              fi
+              exit \${TEST_EXIT_CODE}
+            fi
+          "
+
+      - name: Stop ChronoLog
+        if: always()
+        run: |
+          docker exec --user grc-iit chronolog-c1 bash -c "
+            WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
+            cd /home/grc-iit/chronolog-repo 2>/dev/null || true
+            source /home/grc-iit/spack/share/spack/setup-env.sh 2>/dev/null || true
+            spack env activate -d . 2>/dev/null || spack env activate -p . 2>/dev/null || true
+
+            echo 'Stopping ChronoLog...'
+            if [ -x ./tools/deploy/ChronoLog/single_user_deploy.sh ]; then
+              ./tools/deploy/ChronoLog/single_user_deploy.sh -s -w \"\${WORK_DIR}\" 2>/dev/null || true
+            fi
+          " || echo "⚠️ Stop command had errors but continuing cleanup"
+
+      - name: Clean up containers
+        if: always()
+        run: |
+          docker compose -f dynamic-compose.yaml down -v
+          echo "✅ Containers cleaned up"

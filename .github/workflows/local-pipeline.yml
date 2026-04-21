@@ -1,0 +1,423 @@
+name: "ChronoLog: Local Pipeline"
+
+on:
+  pull_request:
+    branches: [develop, main]
+  workflow_dispatch:
+
+concurrency:
+  group: local-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  INSTALL_BASE: /home/grc-iit/chronolog-install
+
+jobs:
+  chronolog-base:
+    uses: ./.github/workflows/chronolog-base.yml
+    permissions:
+      contents: read
+      packages: write
+
+  local-deployment:
+    runs-on: ubuntu-24.04
+    needs: chronolog-base
+    permissions:
+      contents: read
+      packages: write
+    timeout-minutes: 90
+    outputs:
+      image-name: ${{ steps.set-final-image-name.outputs.full-name }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull base Docker image
+        run: |
+          docker pull "${{ needs.chronolog-base.outputs.image-name }}"
+          echo "Pulled image: ${{ needs.chronolog-base.outputs.image-name }}"
+
+      - name: Set final image name
+        id: set-final-image-name
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BRANCH_NAME="${{ github.head_ref }}"
+          else
+            BRANCH_NAME="${{ github.ref_name }}"
+          fi
+          BRANCH_TAG=$(echo "$BRANCH_NAME" | sed 's/\//-/g' | sed 's/[^a-zA-Z0-9._-]/-/g')
+          echo "full-name=ghcr.io/${OWNER}/chronolog-ci:${BRANCH_TAG}" >> $GITHUB_OUTPUT
+          echo "Final image tag: ${BRANCH_TAG} (from branch: ${BRANCH_NAME})"
+
+      - name: Create container for build and deploy
+        id: create-container
+        run: |
+          set -e
+          BASE_IMAGE="${{ needs.chronolog-base.outputs.image-name }}"
+          echo "Using base image: ${BASE_IMAGE}"
+          CONTAINER_ID=$(docker create --user root --init \
+            -v "${{ github.workspace }}:/home/grc-iit/chronolog-repo" \
+            -w /home/grc-iit/chronolog-repo \
+            "$BASE_IMAGE" \
+            bash -c "chown -R grc-iit:grc-iit /home/grc-iit/chronolog-repo && tail -f /dev/null")
+          echo "container-id=${CONTAINER_ID}" >> $GITHUB_OUTPUT
+          docker start "$CONTAINER_ID"
+          echo "Container created and started: ${CONTAINER_ID}"
+
+      - name: Verify code checkout
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker exec "$CONTAINER_ID" bash -c "
+            echo '=== Verifying code checkout ==='
+            echo \"Current directory: \$(pwd)\"
+            echo \"Git branch: \$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo 'detached')\"
+            echo \"Git commit: \$(git rev-parse HEAD)\"
+            echo 'Git status:'
+            git status --short || true
+            echo '================================'
+          "
+
+      - name: Setup Spack environment in container
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker exec "$CONTAINER_ID" bash -c "
+            source /home/grc-iit/spack/share/spack/setup-env.sh
+            spack env activate -p .
+            echo '✅ Spack environment activated'
+          "
+
+      - name: Reconcretize Spack environment for current architecture
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker exec "$CONTAINER_ID" bash -c "
+            set -e
+            source /home/grc-iit/spack/share/spack/setup-env.sh
+            spack env activate -p .
+            if [ ! -d \".spack-env/view\" ] || [ ! -d \".spack-env/view/bin\" ] || [ ! -d \".spack-env/view/lib\" ]; then
+              echo 'Reconcretizing Spack environment for current architecture...'
+              spack concretize --force
+              echo '✅ Spack environment reconcretized'
+            else
+              echo '✅ Spack environment already concretized, skipping reconcretization'
+            fi
+          "
+
+      - name: Build ChronoLog
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker exec "$CONTAINER_ID" bash -c "
+            set -e
+            source /home/grc-iit/spack/share/spack/setup-env.sh
+            spack env activate -p .
+            echo '[1/8] Building ChronoLog...'
+            if [ -x ./tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
+              INSTALL_DIR=\"/home/grc-iit/chronolog-install\"
+              mkdir -p \"\${INSTALL_DIR}\"
+              chown -R grc-iit:grc-iit \"\${INSTALL_DIR}\" || true
+              # Build in Release (matches what we ship) with test executables enabled
+              # so the artifact and the Run tests step can exercise them.
+              export CHRONOLOG_INSTALL_TESTS=ON
+              ./tools/deploy/ChronoLog/local_single_user_deploy.sh -b -I \"\${INSTALL_DIR}\"
+            else
+              echo '❌ Build script not found or not executable'
+              exit 1
+            fi
+            echo '✅ ChronoLog build completed'
+          "
+
+      - name: Install ChronoLog
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker exec "$CONTAINER_ID" bash -c "
+            set -e
+            source /home/grc-iit/spack/share/spack/setup-env.sh
+            spack env activate -p .
+            echo '[2/8] Installing ChronoLog...'
+            if [ -x ./tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
+              INSTALL_DIR=\"/home/grc-iit/chronolog-install\"
+              mkdir -p \"\${INSTALL_DIR}\"
+              chown -R grc-iit:grc-iit \"\${INSTALL_DIR}\" || true
+              export CHRONOLOG_INSTALL_TESTS=ON
+              ./tools/deploy/ChronoLog/local_single_user_deploy.sh -i -I \"\${INSTALL_DIR}\"
+            else
+              echo '❌ Install script not found or not executable'
+              exit 1
+            fi
+            echo '✅ ChronoLog installation completed'
+          "
+
+      - name: Verify Installation
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker exec "$CONTAINER_ID" bash -c "
+            set -e
+            source /home/grc-iit/spack/share/spack/setup-env.sh
+            spack env activate -p .
+            WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
+            echo '[3/8] Verifying installation...'
+            if [ -d \"\${WORK_DIR}/bin\" ]; then
+              echo '✅ bin directory found'
+              ls -l \"\${WORK_DIR}/bin\"
+            else
+              echo '❌ Install failed — bin directory not found'
+              exit 1
+            fi
+            main_binaries=(chrono-visor chrono-keeper chrono-grapher chrono-player)
+            missing=0
+            for exe in \"\${main_binaries[@]}\"; do
+              if [ ! -x \"\${WORK_DIR}/bin/\$exe\" ]; then
+                echo \"❌ \$exe is missing or not executable!\"
+                missing=1
+              else
+                echo \"✅ \$exe is present and executable\"
+              fi
+            done
+            if [ \"\$missing\" = 1 ]; then
+              echo '❌ Installation verification failed'
+              exit 1
+            fi
+            echo '✅ Installation verification passed'
+          "
+
+      - name: Deploy ChronoLog
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker exec "$CONTAINER_ID" bash -c "
+            set -e
+            source /home/grc-iit/spack/share/spack/setup-env.sh
+            spack env activate -p .
+            WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
+            echo '[4/8] Deploying ChronoLog...'
+            if [ -x ./tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
+              ./tools/deploy/ChronoLog/local_single_user_deploy.sh -d -k 5 -r 3 -w \"\${WORK_DIR}\"
+            else
+              echo '❌ Deploy script not found or not executable'
+              exit 1
+            fi
+            echo '✅ ChronoLog deployment started'
+          "
+
+      - name: Verify Deployment
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker exec "$CONTAINER_ID" bash -c "
+            set -e
+            source /home/grc-iit/spack/share/spack/setup-env.sh
+            spack env activate -p .
+            WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
+            echo '[5/8] Verifying deployment...'
+            echo 'Waiting for services to start...'
+            sleep 5
+            echo '📦 Listing ChronoLog processes...'
+            pgrep -la chrono > /tmp/chrono_processes.txt || true
+            cat /tmp/chrono_processes.txt
+            echo '🔍 Checking required components...'
+            missing=0
+            for proc in chrono-visor chrono-grapher chrono-player chrono-keeper; do
+              count=\$(grep -c \"\$proc\" /tmp/chrono_processes.txt || true)
+              case \$proc in
+                chrono-visor)
+                  expected=1
+                  ;;
+                chrono-grapher|chrono-player)
+                  expected=3
+                  ;;
+                chrono-keeper)
+                  expected=5
+                  ;;
+              esac
+              if [ \"\$count\" -eq \"\$expected\" ]; then
+                echo \"✅ Found \$count \$proc (expected \$expected)\"
+              else
+                echo \"❌ Missing or wrong count: \$proc (found \$count, expected \$expected)\"
+                missing=1
+              fi
+            done
+            if [ \"\$missing\" != \"0\" ]; then
+              echo '❌ Deployment verification failed'
+              echo '==== Dumping monitor logs ===='
+              if [ -d \"\${WORK_DIR}/monitor\" ]; then
+                for log in \"\${WORK_DIR}/monitor/\"*; do
+                  echo \"==== \$log ====\"
+                  cat \"\$log\"
+                done
+              fi
+              exit 1
+            fi
+            echo '✅ Deployment verification passed'
+          "
+
+      - name: Run tests (ctest)
+        id: run-tests
+        continue-on-error: true
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker exec "$CONTAINER_ID" bash -c "
+            set +e
+            source /home/grc-iit/spack/share/spack/setup-env.sh
+            spack env activate -p .
+            BUILD_DIR=\"/home/grc-iit/chronolog-build/Release\"
+            WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
+            echo '[6/8] Running ctest...'
+            if [ ! -d \"\${BUILD_DIR}\" ]; then
+              echo \"❌ Build directory not found at \${BUILD_DIR}\"
+              exit 1
+            fi
+            # Give tests access to the deployed stack and installed libs.
+            export LD_LIBRARY_PATH=\"\${WORK_DIR}/lib:\${LD_LIBRARY_PATH:-}\"
+            cd \"\${BUILD_DIR}\"
+            # --output-junit writes a JUnit XML for artifact upload; --output-on-failure
+            # prints logs inline for any failing test.
+            mkdir -p /home/grc-iit/ctest-results
+            ctest --output-on-failure \
+                  --output-junit /home/grc-iit/ctest-results/ctest-junit.xml \
+                  2>&1 | tee /home/grc-iit/ctest-results/ctest.log
+            RC=\${PIPESTATUS[0]}
+            echo \"ctest exit code: \${RC}\"
+            # Copy the LastTest logs alongside so artifact consumers have full context.
+            if [ -d Testing ]; then
+              cp -r Testing /home/grc-iit/ctest-results/Testing || true
+            fi
+            chown -R grc-iit:grc-iit /home/grc-iit/ctest-results || true
+            exit \${RC}
+          "
+
+      - name: Copy ctest results from container
+        if: always()
+        run: |
+          set +e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          rm -rf ./ctest-results
+          docker cp "$CONTAINER_ID:/home/grc-iit/ctest-results" ./ctest-results 2>/dev/null || {
+            echo "⚠️ No ctest results directory found in container"
+            mkdir -p ./ctest-results
+            echo "ctest did not produce results" > ./ctest-results/MISSING.txt
+          }
+
+      - name: Upload ctest results artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ctest-results-${{ github.head_ref || github.ref_name }}
+          path: ./ctest-results
+          retention-days: 14
+
+      - name: Report ctest outcome
+        if: always()
+        run: |
+          if [ "${{ steps.run-tests.outcome }}" = "success" ]; then
+            echo "✅ ctest passed"
+          else
+            echo "⚠️ ctest failed or reported errors (non-gating while the suite is being refactored)"
+            echo "See uploaded artifact: ctest-results-${{ github.head_ref || github.ref_name }}"
+          fi
+
+      - name: Stop ChronoLog
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker exec "$CONTAINER_ID" bash -c "
+            source /home/grc-iit/spack/share/spack/setup-env.sh
+            spack env activate -p .
+            WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
+            echo '[7/8] Stopping ChronoLog...'
+
+            echo 'Process states before stop:'
+            ps aux | grep -E 'chrono-player|chrono-keeper|chrono-grapher|chrono-visor' | grep -v grep || true
+
+            ./tools/deploy/ChronoLog/local_single_user_deploy.sh -s -w \"\${WORK_DIR}\"
+
+            echo '✅ ChronoLog stop command completed'
+          "
+
+      - name: Verify all processes stopped
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker exec "$CONTAINER_ID" bash -c "
+            echo '[7.5/8] Verifying all ChronoLog processes are stopped...'
+
+            REMAINING=\$(ps aux | grep -E 'chrono-player|chrono-keeper|chrono-grapher|chrono-visor' | grep -v grep || true)
+            if [ -z \"\$REMAINING\" ]; then
+              echo '✅ All ChronoLog processes stopped successfully'
+            else
+              echo '❌ ChronoLog processes still running:'
+              echo \"\$REMAINING\"
+              exit 1
+            fi
+          "
+
+      - name: Clean ChronoLog
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker exec "$CONTAINER_ID" bash -c "
+            source /home/grc-iit/spack/share/spack/setup-env.sh
+            spack env activate -p .
+            WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
+            echo '[8/8] Cleaning ChronoLog...'
+            if [ -x ./tools/deploy/ChronoLog/local_single_user_deploy.sh ]; then
+              ./tools/deploy/ChronoLog/local_single_user_deploy.sh -c -w \"\${WORK_DIR}\" || {
+                echo '⚠️ Warning: Clean script failed (likely due to stuck processes), but continuing'
+                echo 'ℹ️ Container will be destroyed anyway, cleaning up what we can...'
+                rm -rf \"\${WORK_DIR}/monitor/\"*.log 2>/dev/null || true
+                rm -rf \"\${WORK_DIR}/output/\"* 2>/dev/null || true
+                exit 0
+              }
+            else
+              echo '❌ Clean script not found or not executable'
+              exit 1
+            fi
+            echo '✅ ChronoLog cleaned'
+          "
+
+      - name: Copy chronolog-install from container
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker cp "$CONTAINER_ID:/home/grc-iit/chronolog-install" ./chronolog-install
+
+      - name: Upload chronolog-install artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: chronolog-install-${{ github.head_ref || github.ref_name }}
+          path: ./chronolog-install
+          retention-days: 7
+
+      - name: Commit and tag final image
+        run: |
+          set -e
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          FINAL_IMAGE="${{ steps.set-final-image-name.outputs.full-name }}"
+          docker stop "$CONTAINER_ID"
+          docker commit "$CONTAINER_ID" "$FINAL_IMAGE"
+          docker rm "$CONTAINER_ID"
+          echo "✅ Final image committed: ${FINAL_IMAGE}"
+
+      - name: Push final image
+        run: |
+          docker push "${{ steps.set-final-image-name.outputs.full-name }}"
