@@ -246,6 +246,11 @@ jobs:
               INSTALL_DIR=\"/home/grc-iit/chronolog-install\"
               mkdir -p \"\${INSTALL_DIR}\"
               chown -R grc-iit:grc-iit \"\${INSTALL_DIR}\" || true
+              # Build in Release (matches what we ship) but enable install of test
+              # executables so the uploaded artifact can drive the test suite.
+              # CHRONOLOG_INSTALL_TESTS only affects the install tree; release
+              # packages (TGZ/RPM/DEB) are built separately without this flag.
+              export CHRONOLOG_INSTALL_TESTS=ON
               ./tools/deploy/ChronoLog/local_single_user_deploy.sh -b -I \"\${INSTALL_DIR}\"
             else
               echo '❌ Build script not found or not executable'
@@ -268,6 +273,7 @@ jobs:
               INSTALL_DIR=\"/home/grc-iit/chronolog-install\"
               mkdir -p \"\${INSTALL_DIR}\"
               chown -R grc-iit:grc-iit \"\${INSTALL_DIR}\" || true
+              export CHRONOLOG_INSTALL_TESTS=ON
               ./tools/deploy/ChronoLog/local_single_user_deploy.sh -i -I \"\${INSTALL_DIR}\"
             else
               echo '❌ Install script not found or not executable'
