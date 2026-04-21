@@ -285,10 +285,13 @@ jobs:
       - name: Run tests (ctest)
         id: run-tests
         continue-on-error: true
+        # Intentionally no `set -e`: ctest is expected to exit non-zero when
+        # tests fail, and we still want the parsing block below to run so the
+        # job summary and step outputs get populated.
         run: |
-          set -e
           _start=$(date +%s)
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          CTEST_RC=0
           docker exec "$CONTAINER_ID" bash -c "
             set +e
             source /home/grc-iit/spack/share/spack/setup-env.sh
@@ -315,8 +318,7 @@ jobs:
               cp -r Testing /home/grc-iit/ctest-results/Testing || true
             fi
             exit \${RC}
-          "
-          CTEST_RC=$?
+          " || CTEST_RC=$?
 
           # Parse ctest.log for summary stats
           CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
