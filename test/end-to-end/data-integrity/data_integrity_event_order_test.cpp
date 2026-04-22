@@ -1,11 +1,10 @@
 // Property: events recorded for {chronicle, story} appear in the same order
 // as the lines of the reference input file.
 //
-// Replaces fidelity_test_03.py and extends the check to the HDF5 and replay
-// lenses. Records are matched by their logRecord payload — collect_events
-// already sorts the recorded events by (eventTime, clientId, eventIndex), so
-// this check verifies the ChronoLog-side timestamping preserved the input
-// order.
+// Replaces fidelity_test_03.py, reading from the on-disk HDF5 archive.
+// Records are matched by their logRecord payload — collect_events already
+// sorts the recorded events by (eventTime, clientId, eventIndex), so this
+// check verifies the ChronoLog-side timestamping preserved the input order.
 
 #include "data_integrity_common.h"
 
@@ -25,8 +24,7 @@ int main(int argc, char** argv)
     auto events = collect_events(args);
     if(events.empty())
     {
-        return skip(std::string("no events found via ") + lens_name(args.lens) + " lens for " + args.chronicle + "/" +
-                    args.story);
+        return fail("no events found in " + args.hdf5Dir + " for " + args.chronicle + "/" + args.story);
     }
 
     // Walk the reference lines in order; each must appear in the events list
@@ -47,13 +45,12 @@ int main(int argc, char** argv)
         if(!found)
         {
             std::ostringstream os;
-            os << lens_name(args.lens) << ": reference line " << (i + 1) << " not found in order: '" << reference[i]
-               << "'";
+            os << "reference line " << (i + 1) << " not found in order: '" << reference[i] << "'";
             return fail(os.str());
         }
     }
 
     std::ostringstream os;
-    os << lens_name(args.lens) << ": event order matches reference (" << reference.size() << " lines)";
+    os << "event order matches reference (" << reference.size() << " lines)";
     return pass(os.str());
 }
