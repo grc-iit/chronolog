@@ -100,16 +100,27 @@ inline void usage(const char* argv0)
                  " [--admin-bin <path>] [--client-conf <path>]\n";
 }
 
-// Fill missing paths from $CHRONOLOG_INSTALL_DIR at runtime. hdf5Dir defaults
-// to <install>/output — that's where deploy_local.sh points the grapher by
-// default, and where the CI pipeline's deployment writes chunks. The fixture
-// waits for files in the same directory.
+// Fill missing paths from $CHRONOLOG_INSTALL_DIR at runtime, falling back to
+// $HOME/chronolog-install/chronolog (the deploy_local.sh default and the same
+// fallback the fixture script uses). hdf5Dir defaults to <install>/output —
+// that's where deploy_local.sh points the grapher by default, and where the
+// CI pipeline's deployment writes chunks. ctest doesn't export
+// CHRONOLOG_INSTALL_DIR by default, so the HOME fallback matters.
 inline void fill_install_defaults(Args& args)
 {
-    const char* install = std::getenv("CHRONOLOG_INSTALL_DIR");
-    if(install == nullptr || *install == '\0')
+    std::string root;
+    if(const char* install = std::getenv("CHRONOLOG_INSTALL_DIR"); install != nullptr && *install != '\0')
+    {
+        root = install;
+    }
+    else if(const char* home = std::getenv("HOME"); home != nullptr && *home != '\0')
+    {
+        root = std::string(home) + "/chronolog-install/chronolog";
+    }
+    else
+    {
         return;
-    std::string root = install;
+    }
     if(args.adminBin.empty())
         args.adminBin = root + "/bin/chrono-client-admin";
     if(args.clientConf.empty())
