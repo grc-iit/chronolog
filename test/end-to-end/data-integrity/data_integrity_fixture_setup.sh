@@ -61,6 +61,14 @@ while (( SECONDS < WAIT_DEADLINE )); do
     h5_count=$(find "${OUTPUT_DIR}" -maxdepth 1 -name "${STORY_PREFIX}*.h5" 2>/dev/null | wc -l)
     if (( h5_count > 0 )); then
         echo "[data-integrity:setup] Detected ${h5_count} HDF5 file(s) for ${STORY_PREFIX}* in ${OUTPUT_DIR}"
+        # The grapher has flushed, but the player's HDF5ArchiveReadingAgent
+        # picks up new archive files on its own fs-monitor cadence (default
+        # ~60s). Give it one polling interval before Replay-lens tests fire,
+        # otherwise chrono-client-admin -r returns zero events against a
+        # player that hasn't loaded the file yet.
+        PLAYER_POLL_WAIT="${DATA_INTEGRITY_PLAYER_POLL_WAIT:-65}"
+        echo "[data-integrity:setup] Waiting ${PLAYER_POLL_WAIT}s for player to pick up the archive..."
+        sleep "${PLAYER_POLL_WAIT}"
         echo "[data-integrity:setup] Setup complete."
         exit 0
     fi
