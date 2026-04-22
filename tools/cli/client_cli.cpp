@@ -215,7 +215,7 @@ static std::vector<std::string> parse_command_line(const std::string& line)
 
 static void
 command_dispatcher(const std::string& command_line,
-                   std::unordered_map<std::string, std::function<void(std::vector<std::string>&)>> command_map)
+                   const std::unordered_map<std::string, std::function<void(std::vector<std::string>&)>>& command_map)
 {
     if(command_line.empty())
     {
