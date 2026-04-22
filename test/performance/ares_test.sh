@@ -215,7 +215,7 @@ unset _arg
 : "${TOOLS_DIR:=$INSTALL_DIR/tools}"
 : "${TESTS_DIR:=$INSTALL_DIR/tests}"
 : "${PERF_BIN:=$TESTS_DIR/chronolog-test-performance}"
-: "${MPIRUN:=/mnt/common/kfeng/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/mpich-4.0.2-yomnocixlvz4mtgvih66sj7bp4zetml7/bin/mpirun}" # full path if not in $PATH
+: "${MPIRUN:=mpirun}" # full path if not in $PATH
 : "${DEPLOY_SCRIPT:=$TOOLS_DIR/deploy_cluster.sh}"
 : "${CONF_FILE:=$CONF_DIR/default-chrono-conf.json}"
 : "${CLIENT_CONF_FILE:=$CONF_DIR/default-chrono-client-conf.json}"
