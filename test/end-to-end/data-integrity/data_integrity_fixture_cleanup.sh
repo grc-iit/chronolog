@@ -1,21 +1,10 @@
 #!/usr/bin/env bash
 # FIXTURES_CLEANUP for end-to-end data-integrity tests.
 #
-# Stops the deployment and removes log/output artifacts. Best-effort: never
-# fails the fixture even if the deployment was already down.
-
-set -u
-
-INSTALL_DIR="${CHRONOLOG_INSTALL_DIR:-$HOME/chronolog-install/chronolog}"
-DEPLOY="${INSTALL_DIR}/tools/deploy_local.sh"
-
-if [[ ! -x "${DEPLOY}" ]]; then
-    echo "[data-integrity:cleanup] No deploy script at ${DEPLOY}; nothing to do."
-    exit 0
-fi
-
-echo "[data-integrity:cleanup] Stopping deployment"
-"${DEPLOY}" --stop  || true
-"${DEPLOY}" --clean || true
+# The fixture no longer owns the deployment (see the note in
+# data_integrity_fixture_setup.sh) — the CI pipeline's Stop ChronoLog step
+# and the developer's own workflow are responsible for teardown. This
+# cleanup is a deliberate no-op so ctest's FIXTURES_CLEANUP plumbing still
+# has a hook, without interfering with the shared stack.
 
 exit 0

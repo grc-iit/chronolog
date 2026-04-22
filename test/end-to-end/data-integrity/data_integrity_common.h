@@ -100,7 +100,10 @@ inline void usage(const char* argv0)
                  " [--admin-bin <path>] [--client-conf <path>]\n";
 }
 
-// Fill missing admin-bin / client-conf from $CHRONOLOG_INSTALL_DIR at runtime.
+// Fill missing paths from $CHRONOLOG_INSTALL_DIR at runtime. hdf5Dir defaults
+// to <install>/output — that's where deploy_local.sh points the grapher by
+// default, and where the CI pipeline's deployment writes chunks. The fixture
+// waits for files in the same directory.
 inline void fill_install_defaults(Args& args)
 {
     const char* install = std::getenv("CHRONOLOG_INSTALL_DIR");
@@ -111,6 +114,8 @@ inline void fill_install_defaults(Args& args)
         args.adminBin = root + "/bin/chrono-client-admin";
     if(args.clientConf.empty())
         args.clientConf = root + "/conf/chrono-client-conf.json";
+    if(args.hdf5Dir.empty())
+        args.hdf5Dir = root + "/output";
 }
 
 inline bool parse_args(int argc, char** argv, Args& out)
