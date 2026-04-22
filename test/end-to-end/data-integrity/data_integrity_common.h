@@ -442,10 +442,13 @@ inline std::vector<Event> collect_events(Args const& args)
     return {};
 }
 
+// An end-to-end integrity test that finds zero events hasn't validated
+// anything — treat that as a hard failure rather than a silent pass, so
+// broken fixtures, dead services, or empty lenses surface in CI.
 inline int skip(std::string const& msg)
 {
-    std::cout << "[SKIP] " << msg << std::endl;
-    return 0;
+    std::cerr << "[FAIL] " << msg << " (no events collected — fixture or lens is broken)" << std::endl;
+    return 1;
 }
 
 inline int pass(std::string const& msg)

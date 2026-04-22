@@ -309,7 +309,11 @@ jobs:
             export LD_LIBRARY_PATH=\"\${WORK_DIR}/lib:\${LD_LIBRARY_PATH:-}\"
             cd \"\${BUILD_DIR}\"
             mkdir -p /home/grc-iit/ctest-results
-            ctest --output-on-failure \
+            # TEMP (#598): pin to DataIntegrity_* only to validate the new
+            # end-to-end tests in isolation, without interference from prior
+            # ctest cases. Revert before merging.
+            ctest --output-on-failure -V \
+                  -R 'DataIntegrity' \
                   --output-junit /home/grc-iit/ctest-results/ctest-junit.xml \
                   2>&1 | tee /home/grc-iit/ctest-results/ctest.log
             RC=\${PIPESTATUS[0]}
