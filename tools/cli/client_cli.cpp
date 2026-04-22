@@ -539,7 +539,15 @@ int main(int argc, char** argv)
                  }
              }},
             {"-w",
-             [&](std::vector<std::string>& command_subs) { interactive_write_event(command_subs, story_handle); }},
+             [&](std::vector<std::string>& command_subs)
+             {
+                 if(story_handle == nullptr)
+                 {
+                     std::cerr << "Error: No story acquired. Use '-a -s <chronicle> <story>' first." << std::endl;
+                     return;
+                 }
+                 interactive_write_event(command_subs, story_handle);
+             }},
             {"-r", [&](std::vector<std::string>& command_subs) { interactive_replay_story(command_subs, client); }},
             {"-d",
              [&](std::vector<std::string>& command_subs)
