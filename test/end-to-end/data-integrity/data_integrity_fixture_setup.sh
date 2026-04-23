@@ -26,8 +26,9 @@ set -u
 
 INSTALL_DIR="${CHRONOLOG_INSTALL_DIR:-$HOME/chronolog-install/chronolog}"
 ADMIN="${INSTALL_DIR}/bin/chrono-client-admin"
-CLIENT_CONF="${INSTALL_DIR}/conf/chrono-client-conf.json"
+CLIENT_CONF="${INSTALL_DIR}/conf/default-chrono-client-conf.json"
 OUTPUT_DIR="${OUTPUT_DIR:-${INSTALL_DIR}/output}"
+STORY_PREFIX="chronicle_0_0.story_0_0."
 
 if [[ ! -x "${ADMIN}" ]]; then
     echo "[data-integrity:setup] chrono-client-admin not found at ${ADMIN}; skipping."
@@ -47,6 +48,11 @@ fi
 
 echo "[data-integrity:setup] Injecting reference events from ${REFERENCE_INPUT}"
 echo "[data-integrity:setup] Watch dir: ${OUTPUT_DIR}"
+
+# Clear any HDF5 chunks for this story left over from a previous run so the
+# wait loop below can't short-circuit on stale output.
+rm -f "${OUTPUT_DIR}/${STORY_PREFIX}"*.h5
+
 if ! "${ADMIN}" -c "${CLIENT_CONF}" -f "${REFERENCE_INPUT}" -h 1 -t 1 -n 1; then
     echo "[data-integrity:setup] Injection via chrono-client-admin failed (non-zero exit)."
     exit 1
@@ -55,7 +61,6 @@ fi
 # Wait for ChronoGrapher to flush its first HDF5 chunk matching the injected
 # story. With the bundled config (story_chunk_duration_secs=60,
 # acceptance_window_secs=180) chunks land a few minutes after injection.
-STORY_PREFIX="chronicle_0_0.story_0_0."
 WAIT_DEADLINE=$((SECONDS + 240))
 while (( SECONDS < WAIT_DEADLINE )); do
     h5_count=$(find "${OUTPUT_DIR}" -maxdepth 1 -name "${STORY_PREFIX}*.h5" 2>/dev/null | wc -l)
