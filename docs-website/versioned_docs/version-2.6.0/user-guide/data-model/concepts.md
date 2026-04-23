@@ -77,7 +77,7 @@ Client-facing developers primarily interact with **Chronicle**, **Story**, and *
 
 A Chronicle is the top-level organizational unit in ChronoLog — a named container that groups related Stories together for easier data management. Each Chronicle is uniquely identified by a numeric `ChronicleId`, computed as `CityHash64(chronicleName)`. This deterministic hashing means that any process in the distributed system can independently derive the same ID from the same name without coordination.
 
-Chronicles expose configurable attributes including indexing granularity (nanoseconds through seconds), type (standard or priority), and tiering policy (normal, hot, or cold). In ChronoLog v2.5.0, these Chronicle-level attributes are accepted but do not affect runtime behavior yet. Chronicles also support user-defined properties and metadata, each capped at 16 entries.
+Chronicles expose configurable attributes including indexing granularity (nanoseconds through seconds), type (standard or priority), and tiering policy (normal, hot, or cold). In ChronoLog v2.6.0, these Chronicle-level attributes are accepted but do not affect runtime behavior yet. Chronicles also support user-defined properties and metadata, each capped at 16 entries.
 
 Story names are scoped within their parent Chronicle, so two different Chronicles may each contain a Story with the same name without conflict. The Chronicle maintains an acquisition reference count that tracks how many clients are currently using it.
 
@@ -85,7 +85,7 @@ Story names are scoped within their parent Chronicle, so two different Chronicle
 
 A Story is a time-series dataset within a Chronicle. It represents a logical stream of events that client applications generate over time. Each Story is uniquely identified by a `StoryId`, computed as `CityHash64(chronicleName + storyName)`. Concatenating the Chronicle name ensures that identically named Stories in different Chronicles receive distinct IDs.
 
-Stories expose configurable attributes for indexing granularity, type, tiering policy, and access permission. In ChronoLog v2.5.0, these Story-level attributes are accepted but do not affect runtime behavior yet.
+Stories expose configurable attributes for indexing granularity, type, tiering policy, and access permission. In ChronoLog v2.6.0, these Story-level attributes are accepted but do not affect runtime behavior yet.
 
 The ChronoVisor maintains an in-memory representation of each Story that tracks which clients have acquired (are actively writing to) the Story. This acquirer client map is protected by a mutex for thread-safe concurrent access. The Story's acquisition count acts as a reference counter — a Story cannot be removed while any client holds it.
 
@@ -107,4 +107,4 @@ Each StoryChunk also carries a `revisionTime` field that records when it was las
 
 ### Archive
 
-An Archive provides historical storage associated with a Chronicle. Each Archive is identified by an `ArchiveId`, computed as `CityHash64(toString(chronicleId) + archiveName)`. Archives carry a user-defined property list for application-specific metadata. The list has no effect so far in ChronoLog v2.5.0.
+An Archive provides historical storage associated with a Chronicle. Each Archive is identified by an `ArchiveId`, computed as `CityHash64(toString(chronicleId) + archiveName)`. Archives carry a user-defined property list for application-specific metadata. The list has no effect so far in ChronoLog v2.6.0.

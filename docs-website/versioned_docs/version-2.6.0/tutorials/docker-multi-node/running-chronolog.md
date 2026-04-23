@@ -43,7 +43,7 @@ docker compose version
 ### Step 1: Pull ChronoLog Docker Image
 
 ```bash
-docker pull ghcr.io/grc-iit/chronolog:v2.5.0
+docker pull ghcr.io/grc-iit/chronolog:v2.6.0
 ```
 
 ### Step 2: Download the Deployment Script

@@ -27,7 +27,7 @@ Formal definitions of ChronoLog's core abstractions and how data moves through t
 
 ChronoLog is configured through a single JSON file that controls every component in the system. The configuration sub-section explains:
 
-- How the **ConfigurationManager** parses and validates settings at startup
+- How the **ConfigurationManager** hands JSON subtrees to the per-component configuration classes (`VisorConfiguration`, `KeeperConfiguration`, `GrapherConfiguration`, `PlayerConfiguration`) at startup
 - **Client configuration** — connection endpoints, timeouts, and logging
 - **Server configuration** — per-component settings for ChronoVisor, ChronoKeeper, ChronoGrapher, and ChronoPlayer
 - **Network & RPC** — protocol selection and multi-node networking
