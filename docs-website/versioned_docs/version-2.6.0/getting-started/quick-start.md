@@ -52,7 +52,7 @@ After extracting, the `bin/` directory should contain the following executables:
 - `chrono-keeper` — ChronoKeeper server
 - `chrono-grapher` — ChronoGrapher server
 - `chrono-player` — ChronoPlayer server
-- `chrono-client-admin` — CLI tool
+- `chrono-client-cli` — CLI tool
 
 List the contents of the `bin/` directory to confirm:
 
@@ -144,7 +144,7 @@ After installation, the ChronoLog executables are available system-wide:
 - `chrono-keeper` — ChronoKeeper server
 - `chrono-grapher` — ChronoGrapher server
 - `chrono-player` — ChronoPlayer server
-- `chrono-client-admin` — CLI tool
+- `chrono-client-cli` — CLI tool
 
 Confirm the installation:
 
@@ -232,7 +232,7 @@ After installation, the ChronoLog executables are available system-wide:
 - `chrono-keeper` — ChronoKeeper server
 - `chrono-grapher` — ChronoGrapher server
 - `chrono-player` — ChronoPlayer server
-- `chrono-client-admin` — CLI tool
+- `chrono-client-cli` — CLI tool
 
 Confirm the installation:
 
@@ -446,7 +446,7 @@ After entering the container, the `bin/` directory should contain the following 
 - `chrono-keeper` — ChronoKeeper server
 - `chrono-grapher` — ChronoGrapher server
 - `chrono-player` — ChronoPlayer server
-- `chrono-client-admin` — CLI tool
+- `chrono-client-cli` — CLI tool
 
 List the contents of the `bin/` directory to confirm:
 

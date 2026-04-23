@@ -17,14 +17,15 @@ INSTALL_DIR="${INSTALL_DIR:-$HOME/chronolog-install}"
 CHRONOLOG_WORK_DIR="${INSTALL_DIR}/chronolog"
 CHRONOLOG_BIN_DIR="${CHRONOLOG_WORK_DIR}/bin"
 CHRONOLOG_LIB_DIR="${CHRONOLOG_WORK_DIR}/lib"
+CHRONOLOG_TESTS_DIR="${CHRONOLOG_WORK_DIR}/tests"
 HOST_FILE="${CHRONOLOG_WORK_DIR}/conf/hosts_client"
-CLIENT_ADMIN_BIN="${CHRONOLOG_BIN_DIR}/chrono-client-admin"
+CLIENT_ADMIN_BIN="${CHRONOLOG_TESTS_DIR}/chronolog-test-performance"
 MPIEXEC_BIN="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../.spack-env/view/bin/mpiexec"
 CONF_FILE="${CHRONOLOG_WORK_DIR}/conf/default-chrono-conf.json"
 OUTPUT_LOG_FILE=./perf_test.log
 
 [[ -f ${HOST_FILE} ]] || { echo "Host file not found: ${HOST_FILE}"; exit 1; }
-[[ -f ${CLIENT_ADMIN_BIN} ]] || { echo "chrono-client-admin binary not found: ${CLIENT_ADMIN_BIN}"; exit 1; }
+[[ -f ${CLIENT_ADMIN_BIN} ]] || { echo "chronolog-test-performance binary not found: ${CLIENT_ADMIN_BIN}"; exit 1; }
 [[ -f ${MPIEXEC_BIN} ]] || { echo "mpiexec binary not found: ${MPIEXEC_BIN}"; exit 1; }
 [[ -f ${CONF_FILE} ]] || { echo "Configuration file not found: ${CONF_FILE}"; exit 1; }
 
