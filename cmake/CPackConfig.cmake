@@ -20,7 +20,7 @@ set(CPACK_RESOURCE_FILE_README  "${CMAKE_SOURCE_DIR}/README.md")
 #
 # CPACK_INCLUDE_TOPLEVEL_DIRECTORY OFF: CPack will NOT wrap content in an extra
 # top-level directory, so the destination below becomes the only level:
-#   chronolog-2.5.0/bin/, chronolog-2.5.0/lib/, chronolog-2.5.0/include/, ...
+#   chronolog-2.6.0/bin/, chronolog-2.6.0/lib/, chronolog-2.6.0/include/, ...
 #
 # Design note — intentional asymmetry between install dir and tarball dir:
 #
@@ -40,9 +40,9 @@ set(CPACK_RESOURCE_FILE_README  "${CMAKE_SOURCE_DIR}/README.md")
 #
 #   If versioned side-by-side installs are required on a single machine, version
 #   the *prefix* instead:
-#     cmake --install . --prefix ~/chronolog-install/2.5.0
-#   resulting in ~/chronolog-install/2.5.0/chronolog/, and use a symlink
-#   ~/chronolog-install/chronolog -> ~/chronolog-install/2.5.0/chronolog
+#     cmake --install . --prefix ~/chronolog-install/2.6.0
+#   resulting in ~/chronolog-install/2.6.0/chronolog/, and use a symlink
+#   ~/chronolog-install/chronolog -> ~/chronolog-install/2.6.0/chronolog
 #   to point the operational tooling at the active version.
 set(CPACK_INSTALL_CMAKE_PROJECTS "")
 set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY OFF)
