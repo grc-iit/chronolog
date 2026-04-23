@@ -49,9 +49,11 @@ fi
 echo "[data-integrity:setup] Injecting reference events from ${REFERENCE_INPUT}"
 echo "[data-integrity:setup] Watch dir: ${OUTPUT_DIR}"
 
-# Clear any HDF5 chunks for this story left over from a previous run so the
-# wait loop below can't short-circuit on stale output.
-rm -f "${OUTPUT_DIR}/${STORY_PREFIX}"*.h5
+# Start from an empty output dir. Leftover files from a previous integrity
+# run would short-circuit the wait loop; leftover files from other client
+# apps would inflate downstream file counts. The fixture owns the watch dir
+# for the duration of the test.
+find "${OUTPUT_DIR}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 
 if ! "${ADMIN}" -c "${CLIENT_CONF}" -f "${REFERENCE_INPUT}" -h 1 -t 1 -n 1; then
     echo "[data-integrity:setup] Injection via chrono-client-admin failed (non-zero exit)."
