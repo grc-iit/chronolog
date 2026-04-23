@@ -24,10 +24,10 @@ Get ChronoLog running on your machine in minutes. Choose the method that best fi
 
 ## Download the Tarball
 
-Download the pre-built binary tarball for v2.5.1 from the [ChronoLog GitHub Releases](https://github.com/grc-iit/ChronoLog/releases) page:
+Download the pre-built binary tarball for v2.6.0 from the [ChronoLog GitHub Releases](https://github.com/grc-iit/ChronoLog/releases) page:
 
 ```bash
-wget https://github.com/grc-iit/ChronoLog/releases/download/v2.5.1/chronolog-2.5.1-linux-x86_64.tar.gz
+wget https://github.com/grc-iit/ChronoLog/releases/download/v2.6.0/chronolog-2.6.0-linux-x86_64.tar.gz
 ```
 
 ## Extract the Archive
@@ -35,13 +35,13 @@ wget https://github.com/grc-iit/ChronoLog/releases/download/v2.5.1/chronolog-2.5
 Extract the tarball:
 
 ```bash
-tar -xzf chronolog-2.5.1-linux-x86_64.tar.gz
+tar -xzf chronolog-2.6.0-linux-x86_64.tar.gz
 ```
 
 Enter the extracted directory:
 
 ```bash
-cd chronolog-2.5.1
+cd chronolog-2.6.0
 ```
 
 ## Verify Executables
@@ -74,7 +74,7 @@ Refer to the [Configuration](/docs/user-guide/configuration/overview) documentat
 
 ## Start ChronoLog
 
-From inside the extracted directory (`chronolog-2.5.1`), run the deployment script:
+From inside the extracted directory (`chronolog-2.6.0`), run the deployment script:
 
 ```bash
 tools/deploy_local.sh --start
@@ -118,10 +118,10 @@ Ensure you have `rpm` and either `yum` or `dnf` available (RHEL, Fedora, Rocky L
 
 ## Download the RPM Package
 
-Download the RPM package for v2.5.1 from the [ChronoLog GitHub Releases](https://github.com/grc-iit/ChronoLog/releases/tag/v2.5.1) page:
+Download the RPM package for v2.6.0 from the [ChronoLog GitHub Releases](https://github.com/grc-iit/ChronoLog/releases/tag/v2.6.0) page:
 
 ```bash
-wget https://github.com/grc-iit/ChronoLog/releases/download/v2.5.1/chronolog-2.5.1-linux-x86_64.rpm
+wget https://github.com/grc-iit/ChronoLog/releases/download/v2.6.0/chronolog-2.6.0-linux-x86_64.rpm
 ```
 
 ## Install the Package
@@ -130,10 +130,10 @@ Install ChronoLog using your package manager:
 
 ```bash
 # With dnf (Fedora, RHEL 8+, Rocky, Alma)
-sudo dnf install ./chronolog-2.5.1-linux-x86_64.rpm
+sudo dnf install ./chronolog-2.6.0-linux-x86_64.rpm
 
 # Or with yum (RHEL 7, CentOS)
-sudo yum install ./chronolog-2.5.1-linux-x86_64.rpm
+sudo yum install ./chronolog-2.6.0-linux-x86_64.rpm
 ```
 
 ## Verify Executables
@@ -210,10 +210,10 @@ Ensure you have `apt` available (Debian, Ubuntu, and compatible distributions).
 
 ## Download the DEB Package
 
-Download the DEB package for v2.5.1 from the [ChronoLog GitHub Releases](https://github.com/grc-iit/ChronoLog/releases/tag/v2.5.1) page:
+Download the DEB package for v2.6.0 from the [ChronoLog GitHub Releases](https://github.com/grc-iit/ChronoLog/releases/tag/v2.6.0) page:
 
 ```bash
-wget https://github.com/grc-iit/ChronoLog/releases/download/v2.5.1/chronolog-2.5.1-linux-x86_64.deb
+wget https://github.com/grc-iit/ChronoLog/releases/download/v2.6.0/chronolog-2.6.0-linux-x86_64.deb
 ```
 
 ## Install the Package
@@ -221,7 +221,7 @@ wget https://github.com/grc-iit/ChronoLog/releases/download/v2.5.1/chronolog-2.5
 Install ChronoLog using `apt`:
 
 ```bash
-sudo apt install ./chronolog-2.5.1-linux-x86_64.deb
+sudo apt install ./chronolog-2.6.0-linux-x86_64.deb
 ```
 
 ## Verify Executables
@@ -328,7 +328,7 @@ Enter the repository and check out the stable release:
 
 ```bash
 cd ChronoLog
-git checkout v2.5.1
+git checkout v2.6.0
 ```
 
 Activate the Spack environment defined in the repository:
@@ -427,13 +427,13 @@ Ensure [Docker](https://docs.docker.com/get-docker/) is installed and the Docker
 Pull the official ChronoLog image from GitHub Container Registry:
 
 ```bash
-docker pull ghcr.io/grc-iit/chronolog:v2.5.1
+docker pull ghcr.io/grc-iit/chronolog:v2.6.0
 ```
 
 ## Run the Container
 
 ```bash
-docker run -it --rm ghcr.io/grc-iit/chronolog:v2.5.1 bash
+docker run -it --rm ghcr.io/grc-iit/chronolog:v2.6.0 bash
 ```
 
 This opens an interactive shell inside the container with ChronoLog pre-installed. The working directory is automatically set to the ChronoLog installation (`$CHRONOLOG_HOME`).
