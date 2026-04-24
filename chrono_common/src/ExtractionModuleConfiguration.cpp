@@ -7,12 +7,35 @@
 
 namespace chl = chronolog;
 
+chronolog::ExtractionModuleConfiguration::~ExtractionModuleConfiguration()
+{
+  //clear old extractors map
+   for(auto iter = extractors.begin(); iter!= extractors.end();++iter)
+   {
+       json_object_put((*iter).second);
+   }
+
+   extractors.clear();
+}
+
+///////
+
 int chronolog::ExtractionModuleConfiguration::parse_json_object(json_object * json_block)
 {
+
    if(json_block == nullptr || !json_object_is_type(json_block, json_type_object))
    {
         return chl::CL_ERR_INVALID_CONF;
    }
+
+  //clear old extractors map
+
+  for(auto iter = extractors.begin(); iter!= extractors.end();++iter)
+  {
+   json_object_put((*iter).second);
+  }
+
+  extractors.clear();
 
     json_object_object_foreach(json_block, key, json_val)
     {
@@ -34,16 +57,15 @@ int chronolog::ExtractionModuleConfiguration::parse_json_object(json_object * js
         }
         else if(strcmp(key, "extractors") == 0)
         {
-            if(!json_object_is_type(json_val, json_type_object))
+            if( (json_val == nullptr)
+            || !json_object_is_type(json_val, json_type_object))
             {
                 std::cerr << "[ExtractionModuleConfiguration] Invalid 'extractors': expected json_object" << std::endl;
                 return chl::CL_ERR_INVALID_CONF;
             }
-            json_object* extractors_conf = json_object_object_get(json_block, "extractors");
-            json_object_object_foreach(extractors_conf, key, val)
+
+            json_object_object_foreach(json_val, key, val)
             {
-                if(strcmp(key, "extractor") == 0)
-                {
                     if(!json_object_is_type(val, json_type_object))
                     {
                        std::cerr << "[ExtractionConfiguration] Invalid 'extractor': expected json_object" << std::endl;
@@ -52,20 +74,16 @@ int chronolog::ExtractionModuleConfiguration::parse_json_object(json_object * js
                     else if( !json_object_is_type(json_object_object_get(val, "type") , json_type_string) )
                     {
                        std::cerr << "[ExtractionConfiguration] Invalid 'extractor_type' " << std::endl;
+                       return chl::CL_ERR_INVALID_CONF;
                     }
                     else
                     {
                        std::string extractor_type = json_object_get_string(json_object_object_get(val, "type"));
-                       extractors[extractor_type] = val;
+                       //retrieve_extractor json_object and increment its reference count
+                       json_object* extractor_json_object = json_object_object_get(json_val, key);
+                       extractors[extractor_type] = json_object_get(extractor_json_object);
                     }
-                }
-                else
-                {
-                    std::cerr << "[ExtractionModuleConfiguration] Unknown 'extractors' configuration: " << key << std::endl;
-                return chl::CL_ERR_INVALID_CONF;
-                }
             }
-
         }
         else
         {
@@ -73,7 +91,8 @@ int chronolog::ExtractionModuleConfiguration::parse_json_object(json_object * js
             return chl::CL_ERR_INVALID_CONF;
         }
       }
-        
+       
    return chronolog::CL_SUCCESS;
 }
+
 

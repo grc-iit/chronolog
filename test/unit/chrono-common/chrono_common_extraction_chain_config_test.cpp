@@ -152,18 +152,41 @@ int main() {
 
     if(!json_object_is_type(json_object_object_get(json_block, "ExtractionModule"), json_type_object))
     {
-      std::cout << "\n ExtractionModuleConfiguration Test "<<" failed : json_block  is not a json object" << std::endl;
+      std::cerr << "\n ExtractionModuleConfiguration Test "<<" failed : json_block  is not a json object" << std::endl;
       return -1;
     }
 
     json_object * extraction_module_block = json_object_object_get(json_block, "ExtractionModule");
     int return_value = module_config.parse_json_object(extraction_module_block);
 
-    std::string log_string = module_config.to_string(log_string);
+    std::string log_string;
+    module_config.to_string(log_string);
 
-    std::cout<< "\n ExtractionModuleConfiguration Test " <<" passed "<< log_string << std::endl;
-
+    std::cout<< "\n ExtractionModuleConfiguration Test " <<" passed parsing stage"<< log_string << std::endl;
 
     json_object_put(json_block);
+
+    // confirm that borrowed extractor_json_objects in ExtractionModuleConfiguration instance are retained 
+    // after the original json_block object is released
+
+    for( auto iter = module_config.extractors.begin(); iter != module_config.extractors.end(); ++iter)
+    {
+      if ( !json_object_is_type((*iter).second, json_type_object) )
+      {
+         std::cerr<< "\n ExtractionModuleConfiguration Test " <<" failed to retain extractor_json_object for"<<(*iter).first << std::endl;
+         return (-1);
+      }
+    }
+
+    log_string.clear();
+
+    std::cout<< "\n ExtractionModuleConfiguration Test " <<" passed borowed reference stage"<< module_config.to_string(log_string) << std::endl;
+
+    
+ /* for( auto iter = module_config.extractors.begin(); iter != module_config.extractors.end(); ++iter)
+    {
+      std::cout <<"\n"<<(*iter).first << json_object_get_string((*iter).second);
+    }
+*/
     return return_value;
 }

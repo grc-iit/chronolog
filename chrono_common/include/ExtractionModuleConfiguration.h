@@ -20,15 +20,19 @@ struct ExtractionModuleConfiguration
     {
         a_string += "\n[EXTRACTION_MODULE_CONF: { extraction_stream_count: " + std::to_string(extraction_stream_count)
                     + "} extractors {";
-        for( auto iter = extractors.begin(); iter != extractors.end(); ++iter)
-        {    a_string += " {"+ (*iter).first +  ":" /*+( (*iter).second == nullptr? "nullptr" : std::to_string((*iter).second)) */+"}"; }
-
+        if(!extractors.empty())
+        {
+          for( auto iter = extractors.begin(); iter != extractors.end(); ++iter)
+          {    a_string += " {"+ (*iter).first +  ":" +json_object_get_string((*iter).second) +"}"; }
+        } 
         a_string += "} ]";
 
     return a_string;
     }
 
     int parse_json_object(json_object * json_object);
+
+    ~ExtractionModuleConfiguration();
 };
 
 }
