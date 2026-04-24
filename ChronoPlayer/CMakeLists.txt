@@ -15,12 +15,12 @@ target_include_directories(chrono_player PRIVATE
 
 target_sources(chrono_player PRIVATE
     src/ChronoPlayer.cpp
+    src/ChronoPlayerConfiguration.cpp
     src/PlayerDataStore.cpp
     src/ArchiveReadingAgent.cpp
     src/HDF5ArchiveReadingAgent.cpp
     src/PlaybackService.cpp
     src/StoryChunkTransferAgent.cpp
-    ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
 )
 
 target_link_libraries(chrono_player

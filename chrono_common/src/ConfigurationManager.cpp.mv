@@ -1,5 +1,8 @@
 #include "ConfigurationManager.h"
 
+#include "ExtractionModuleConfiguration.h"
+
+namespace chl = chronolog;
 
 int chronolog::ClockConf::parseJsonConf(json_object* clock_conf)
 {
@@ -255,6 +258,13 @@ int chronolog::VisorConfiguration::parseJsonConf(json_object* json_conf)
     }
     return 1;
 }
+//////////////
+
+chl::KeeperConfiguration::~KeeperConfiguration()
+{
+    if(extraction_module_conf != nullptr) { delete extraction_module_conf; }
+}
+//////////////
 
 int chronolog::KeeperConfiguration::parseJsonConf(json_object* json_conf)
 {
@@ -363,6 +373,13 @@ int chronolog::KeeperConfiguration::parseJsonConf(json_object* json_conf)
             json_object* data_store_conf = json_object_object_get(json_conf, "DataStoreInternals");
             DATA_STORE_CONF.parseJsonConf(data_store_conf);
         }
+        else if(strcmp(key,"ExtractionModule") == 0)
+        {
+            assert(json_object_is_type(val, json_type_object));
+            json_object* extraction_conf_json_object = json_object_object_get(json_conf, "ExtractionModule");
+            if(extraction_module_conf != nullptr) { delete extraction_module_conf; }
+            extraction_module_conf = new chl::ExtractionModuleConfiguration(extraction_conf_json_object);
+        }
         else if(strcmp(key, "Extractors") == 0)
         {
             assert(json_object_is_type(val, json_type_object));
@@ -388,6 +405,15 @@ int chronolog::KeeperConfiguration::parseJsonConf(json_object* json_conf)
     }
     return 1;
 }
+
+//////////////
+
+chl::GrapherConfiguration::~GrapherConfiguration()
+{
+    if(extraction_module_conf != nullptr) { delete extraction_module_conf; }
+}
+
+//////////////
 
 int chronolog::GrapherConfiguration::parseJsonConf(json_object* json_conf)
 {
@@ -475,6 +501,13 @@ int chronolog::GrapherConfiguration::parseJsonConf(json_object* json_conf)
             assert(json_object_is_type(val, json_type_object));
             json_object* data_store_conf = json_object_object_get(json_conf, "DataStoreInternals");
             DATA_STORE_CONF.parseJsonConf(data_store_conf);
+        }
+        else if(strcmp(key,"ExtractionModule") == 0)
+        {
+            assert(json_object_is_type(val, json_type_object));
+            json_object* extraction_conf_json_object = json_object_object_get(json_conf, "ExtractionModule");
+            if(extraction_module_conf != nullptr) { delete extraction_module_conf; }
+            extraction_module_conf = new chl::ExtractionModuleConfiguration(extraction_conf_json_object);
         }
         else if(strcmp(key, "Extractors") == 0)
         {
@@ -645,3 +678,140 @@ int chronolog::DataStoreConf::parseJsonConf(json_object* data_store_json_conf)
 
     return 1;
 }
+
+////////////////
+
+std::string & chl::KeeperConfiguration::to_string( std::string & a_string) const
+{
+    a_string += "[CHRONO_KEEPER_CONFIGURATION: RECORDING_GROUP: " + std::to_string(RECORDING_GROUP) +
+            ", KEEPER_GRAPHER_DRAIN_SERVICE_CONF: " + KEEPER_GRAPHER_DRAIN_SERVICE_CONF.to_String() +
+            ", DATA_STORE_ADMIN_SERVICE_CONF: " + DATA_STORE_ADMIN_SERVICE_CONF.to_String() +
+            ", VISOR_REGISTRY_SERVICE_CONF: " + VISOR_REGISTRY_SERVICE_CONF.to_String() +
+            ", LOG_CONF: " + LOG_CONF.to_String() + ", DATA_STORE_CONF: " + DATA_STORE_CONF.to_String() +
+            ", " + (extraction_module_conf != nullptr ? extraction_module_conf->to_string(a_string) : std::string("ExtractionModuleConf { }")) + 
+            "]";
+
+    return a_string;
+}
+
+////////////////
+
+std::string & chl::GrapherConfiguration::to_string( std::string & a_string) const
+    {
+    a_string += "[CHRONO_GRAPHER_CONFIGURATION: RECORDING_GROUP: " + std::to_string(RECORDING_GROUP) +
+            ", KEEPER_GRAPHER_DRAIN_SERVICE_CONF: " + KEEPER_GRAPHER_DRAIN_SERVICE_CONF.to_String() +
+            ", DATA_STORE_ADMIN_SERVICE_CONF: " + DATA_STORE_ADMIN_SERVICE_CONF.to_String() +
+            ", VISOR_REGISTRY_SERVICE_CONF: " + VISOR_REGISTRY_SERVICE_CONF.to_String() +
+            ", LOG_CONF: " + LOG_CONF.to_String() + ", DATA_STORE_CONF: " + DATA_STORE_CONF.to_String() +
+            ", EXTRACTOR_CONF: " + EXTRACTOR_CONF.to_String() + "]";
+            ", "  + (extraction_module_conf != nullptr ? extraction_module_conf->to_string(a_string) : std::string("ExtractionModuleConf { }")) + 
+            "]";
+
+    return a_string;
+}
+
+////////////////
+
+std::string & chl::PlayerConfiguration::to_string(std::string & a_string) const
+{
+    a_string +="[CHRONO_PLAYER_CONFIGURATION: RECORDING_GROUP: " + std::to_string(RECORDING_GROUP) +
+            ", DATA_STORE_ADMIN_SERVICE_CONF: " + DATA_STORE_ADMIN_SERVICE_CONF.to_String() +
+            ", PLAYBACK_SERVICE_CONF: " + PLAYBACK_SERVICE_CONF.to_String() +
+            ", VISOR_REGISTRY_SERVICE_CONF: " + VISOR_REGISTRY_SERVICE_CONF.to_String() +
+            ", LOG_CONF: " + LOG_CONF.to_String() + ", DATA_STORE_CONF: " + DATA_STORE_CONF.to_String() +
+            ", READER_CONF: " + READER_CONF.to_String() + "]";
+
+    return a_string;
+}
+
+    
+////////////////
+
+void chl::ConfigurationManager::LoadConfFromJSONFile(const std::string& conf_file_path)
+{
+        json_object* root = json_object_from_file(conf_file_path.c_str());
+        if(root == nullptr)
+        {
+            std::cerr << "[ConfigurationManager] Failed to open configuration file at path: " << conf_file_path.c_str()
+                      << ". Exiting..." << std::endl;
+            exit(chronolog::CL_ERR_UNKNOWN);
+        }
+
+        json_object_object_foreach(root, key, val)
+        {
+            if(strcmp(key, "clock") == 0)
+            {
+                json_object* clock_conf = json_object_object_get(root, "clock");
+                if(clock_conf == nullptr || !json_object_is_type(clock_conf, json_type_object))
+                {
+                    std::cerr << "[ConfigurationManager] Error while parsing configuration file "
+                              << conf_file_path.c_str() << ". Clock configuration is not found or is not an object."
+                              << std::endl;
+                    exit(chronolog::CL_ERR_INVALID_CONF);
+                }
+                CLOCK_CONF.parseJsonConf(clock_conf);
+            }
+            else if(strcmp(key, "authentication") == 0)
+            {
+                json_object* auth_conf = json_object_object_get(root, "authentication");
+                if(auth_conf == nullptr || !json_object_is_type(auth_conf, json_type_object))
+                {
+                    std::cerr << "[ConfigurationManager] Error while parsing configuration file "
+                              << conf_file_path.c_str()
+                              << ". Authentication configuration is not found or is not an object." << std::endl;
+                    exit(chronolog::CL_ERR_INVALID_CONF);
+                }
+                AUTH_CONF.parseJsonConf(auth_conf);
+            }
+            else if(strcmp(key, "chrono_visor") == 0)
+            {
+                json_object* chrono_visor_conf = json_object_object_get(root, "chrono_visor");
+                if(chrono_visor_conf == nullptr || !json_object_is_type(chrono_visor_conf, json_type_object))
+                {
+                    std::cerr << "[ConfigurationManager] Error while parsing configuration file "
+                              << conf_file_path.c_str()
+                              << ". ChronoVisor configuration is not found or is not an object." << std::endl;
+                    exit(chronolog::CL_ERR_INVALID_CONF);
+                }
+                VISOR_CONF.parseJsonConf(chrono_visor_conf);
+            }
+            else if(strcmp(key, "chrono_keeper") == 0)
+            {
+                json_object* chrono_keeper_conf = json_object_object_get(root, "chrono_keeper");
+                if(chrono_keeper_conf == nullptr || !json_object_is_type(chrono_keeper_conf, json_type_object))
+                {
+                    std::cerr << "[ConfigurationManager] Error while parsing configuration file "
+                              << conf_file_path.c_str()
+                              << ". ChronoKeeper configuration is not found or is not an object." << std::endl;
+                    exit(chronolog::CL_ERR_INVALID_CONF);
+                }
+                KEEPER_CONF.parseJsonConf(chrono_keeper_conf);
+            }
+            else if(strcmp(key, "chrono_grapher") == 0)
+            {
+                json_object* chrono_grapher_conf = json_object_object_get(root, "chrono_grapher");
+                if(chrono_grapher_conf == nullptr || !json_object_is_type(chrono_grapher_conf, json_type_object))
+                {
+                    std::cerr << "[ConfigurationManager] Error while parsing configuration file "
+                              << conf_file_path.c_str()
+                              << ". ChronoGrapher configuration is not found or is not an object." << std::endl;
+                    exit(chronolog::CL_ERR_INVALID_CONF);
+                }
+                GRAPHER_CONF.parseJsonConf(chrono_grapher_conf);
+            }
+            else if(strcmp(key, "chrono_player") == 0)
+            {
+                json_object* chrono_player_conf = json_object_object_get(root, "chrono_player");
+                if(chrono_player_conf == nullptr || !json_object_is_type(chrono_player_conf, json_type_object))
+                {
+                    std::cerr << "[ConfigurationManager] Error while parsing configuration file "
+                              << conf_file_path.c_str()
+                              << ". ChronoPlayer configuration is not found or is not an object." << std::endl;
+                    exit(chronolog::CL_ERR_INVALID_CONF);
+                }
+                PLAYER_CONF.parseJsonConf(chrono_player_conf);
+            }
+        }
+        json_object_put(root);
+    }
+

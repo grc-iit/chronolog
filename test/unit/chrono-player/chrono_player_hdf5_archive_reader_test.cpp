@@ -13,6 +13,8 @@
 #include <ConfigurationManager.h>
 #include <cmd_arg_parse.h>
 
+#include <ChronoPlayerConfiguration.h>
+
 namespace tl = thallium;
 
 std::atomic<bool> running(true);
@@ -55,13 +57,20 @@ int main(int argc, char** argv)
         return 0;
     }
     chronolog::ConfigurationManager confManager(conf_file_path);
-    int result = chronolog::chrono_monitor::initialize(confManager.PLAYER_CONF.LOG_CONF.LOGTYPE,
-                                                       confManager.PLAYER_CONF.LOG_CONF.LOGFILE,
-                                                       confManager.PLAYER_CONF.LOG_CONF.LOGLEVEL,
-                                                       confManager.PLAYER_CONF.LOG_CONF.LOGNAME,
-                                                       confManager.PLAYER_CONF.LOG_CONF.LOGFILESIZE,
-                                                       confManager.PLAYER_CONF.LOG_CONF.LOGFILENUM,
-                                                       confManager.PLAYER_CONF.LOG_CONF.FLUSHLEVEL);
+    chronolog::PlayerConfiguration PLAYER_CONF;
+    if(PLAYER_CONF.parseJsonConf(confManager.PLAYER_JSON_CONF) != chronolog::CL_SUCCESS)
+    {
+        std::cerr << "[HDF5ReadingAgentTest] Invalid configuration. Exiting";
+        exit(EXIT_FAILURE);
+    }
+
+    int result = chronolog::chrono_monitor::initialize(PLAYER_CONF.LOG_CONF.LOGTYPE,
+                                                       PLAYER_CONF.LOG_CONF.LOGFILE,
+                                                       PLAYER_CONF.LOG_CONF.LOGLEVEL,
+                                                       PLAYER_CONF.LOG_CONF.LOGNAME,
+                                                       PLAYER_CONF.LOG_CONF.LOGFILESIZE,
+                                                       PLAYER_CONF.LOG_CONF.LOGFILENUM,
+                                                       PLAYER_CONF.LOG_CONF.FLUSHLEVEL);
     if(result == 1)
     {
         exit(EXIT_FAILURE);
@@ -69,7 +78,7 @@ int main(int argc, char** argv)
 
     tl::abt scope;
 
-    std::string archive_path = confManager.GRAPHER_CONF.EXTRACTOR_CONF.story_files_dir;
+    std::string archive_path = PLAYER_CONF.READER_CONF.story_files_dir;
     agent_ptr = new chronolog::HDF5ArchiveReadingAgent(archive_path, true); // Default to polling mode
 
     agent_ptr->initialize();

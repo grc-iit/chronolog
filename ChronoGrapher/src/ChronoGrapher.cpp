@@ -22,7 +22,7 @@
 #include <ChunkExtractorCSV.h>
 #include <HDF5FileChunkExtractor.h>
 #include <cmd_arg_parse.h>
-
+#include <ChronoGrapherConfiguration.h>
 
 namespace chl = chronolog;
 namespace tl = thallium;
@@ -80,9 +80,12 @@ int main(int argc, char** argv)
     }
 
     chronolog::ConfigurationManager confManager(conf_file_path);
-    chronolog::GrapherConfiguration GRAPHER_CONF = confManager.GRAPHER_CONF;
-
-    std::cout << "ChronoGrapher Configuration " << GRAPHER_CONF.to_String() << std::endl;
+    chronolog::GrapherConfiguration GRAPHER_CONF;
+    if(GRAPHER_CONF.parseJsonConf(confManager.GRAPHER_JSON_CONF) != chronolog::CL_SUCCESS)
+    {
+        std::cerr << "[ChronoGrapher] Invalid GRAPHER configuration. Exiting";
+        exit(EXIT_FAILURE);
+    }
 
     int result = chronolog::chrono_monitor::initialize(GRAPHER_CONF.LOG_CONF.LOGTYPE,
                                                        GRAPHER_CONF.LOG_CONF.LOGFILE,
@@ -97,7 +100,7 @@ int main(int argc, char** argv)
         exit(EXIT_FAILURE);
     }
 
-    LOG_INFO("Running ChronoGrapher ");
+    LOG_INFO("{ChronoGrapher] Running ChronoGrapher ");
     LOG_INFO("[ChronoGrapher] Configuration {}", GRAPHER_CONF.to_String());
 
     // Instantiate MemoryDataStore

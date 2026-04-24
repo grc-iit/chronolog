@@ -1,0 +1,10 @@
+Nov  5 14:36:49 ares-comp-01 systemd[1]: line-0001 Started Time & Date Service.
+Nov  5 14:36:50 ares-comp-01 systemd[1]: line-0002 Reached target Sound Card.
+Nov  5 14:36:51 ares-comp-01 systemd[1]: line-0003 Started User Manager for UID 1000.
+Nov  5 14:36:52 ares-comp-01 systemd[1]: line-0004 Started Session 1 of user root.
+Nov  5 14:36:53 ares-comp-01 systemd[1]: line-0005 Reached target Multi-User System.
+Nov  5 14:36:54 ares-comp-01 systemd[1]: line-0006 Reached target Graphical Interface.
+Nov  5 14:36:55 ares-comp-01 systemd[1]: line-0007 Started Daily Cleanup of Temporary Directories.
+Nov  5 14:36:56 ares-comp-01 systemd[1]: line-0008 Reached target Timers.
+Nov  5 14:36:57 ares-comp-01 systemd[1]: line-0009 Started Daily man-db regeneration.
+Nov  5 14:36:58 ares-comp-01 systemd[1]: line-0010 Reached target Bluetooth.

@@ -7,7 +7,7 @@
 # --- General package metadata ------------------------------------------------
 set(CPACK_PACKAGE_NAME        "chronolog")
 set(CPACK_PACKAGE_VENDOR      "GRC-IIT, Illinois Institute of Technology")
-set(CPACK_PACKAGE_CONTACT     "eneko.gonzalez@iit.edu")
+set(CPACK_PACKAGE_CONTACT     "egonzalez30@illinoistech.edu")
 set(CPACK_PACKAGE_VERSION     "${CHRONOLOG_PACKAGE_VERSION}")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
     "ChronoLog: Distributed Chronicle Logging System")
@@ -20,7 +20,7 @@ set(CPACK_RESOURCE_FILE_README  "${CMAKE_SOURCE_DIR}/README.md")
 #
 # CPACK_INCLUDE_TOPLEVEL_DIRECTORY OFF: CPack will NOT wrap content in an extra
 # top-level directory, so the destination below becomes the only level:
-#   chronolog-2.5.0/bin/, chronolog-2.5.0/lib/, chronolog-2.5.0/include/, ...
+#   chronolog-2.6.0/bin/, chronolog-2.6.0/lib/, chronolog-2.6.0/include/, ...
 #
 # Design note — intentional asymmetry between install dir and tarball dir:
 #
@@ -40,9 +40,9 @@ set(CPACK_RESOURCE_FILE_README  "${CMAKE_SOURCE_DIR}/README.md")
 #
 #   If versioned side-by-side installs are required on a single machine, version
 #   the *prefix* instead:
-#     cmake --install . --prefix ~/chronolog-install/2.5.0
-#   resulting in ~/chronolog-install/2.5.0/chronolog/, and use a symlink
-#   ~/chronolog-install/chronolog -> ~/chronolog-install/2.5.0/chronolog
+#     cmake --install . --prefix ~/chronolog-install/2.6.0
+#   resulting in ~/chronolog-install/2.6.0/chronolog/, and use a symlink
+#   ~/chronolog-install/chronolog -> ~/chronolog-install/2.6.0/chronolog
 #   to point the operational tooling at the active version.
 set(CPACK_INSTALL_CMAKE_PROJECTS "")
 set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY OFF)
@@ -58,47 +58,99 @@ set(CPACK_PACKAGE_FILE_NAME
     "${CPACK_PACKAGE_NAME}-${CHRONOLOG_PACKAGE_VERSION}")
 
 # --- Generators --------------------------------------------------------------
-# Always produce a TGZ. Add RPM when rpmbuild is present on this host.
+# This file drives the TGZ run only.  RPM and DEB each have their own config
+# file (cmake/CPackRPMConfig.cmake.in / CPackDEBConfig.cmake.in) that is
+# configured at cmake time and invoked separately by the package_release target.
+# Keeping generators separate is required because CPACK_INSTALLED_DIRECTORIES
+# cannot be overridden per-generator: TGZ needs "chronolog-VERSION/" as the
+# top-level dir while RPM/DEB must place files at "opt/chronolog" (→ /opt/chronolog).
 set(CPACK_GENERATOR "TGZ")
 
-find_program(RPMBUILD_FOUND rpmbuild)
-if(RPMBUILD_FOUND)
-    list(APPEND CPACK_GENERATOR "RPM")
-    message(STATUS "CPack: rpmbuild found — RPM generator enabled")
-endif()
-
-find_program(DPKG_FOUND dpkg-deb)
-if(DPKG_FOUND)
-    list(APPEND CPACK_GENERATOR "DEB")
-    message(STATUS "CPack: dpkg-deb found — DEB generator enabled")
-endif()
+# --- Source package ----------------------------------------------------------
+# Produce a curated source tarball via `cpack --config CPackSourceConfig.cmake`
+# (wrapped by the `package_source` custom target defined in CMakeLists.txt).
+# Excludes build artifacts, node_modules, caches, and local tooling directories
+# so users get a clean, versioned source package.
+set(CPACK_SOURCE_GENERATOR "TGZ")
+set(CPACK_SOURCE_PACKAGE_FILE_NAME
+    "${CPACK_PACKAGE_NAME}-${CHRONOLOG_PACKAGE_VERSION}-source")
 
 # --- Source ignore patterns --------------------------------------------------
+# Patterns are POSIX regexes matched against absolute paths. Keep these in sync
+# with .gitignore where it makes sense — .gitignore covers developer workflow,
+# this list protects the release tarball from build/cache bloat.
 set(CPACK_SOURCE_IGNORE_FILES
+    # VCS / CI metadata
     "/[.]git/"
     "/[.]github/"
-    "/build/"
-    "/chronolog-build/"
     "[.]gitignore$"
     "[.]gitmodules$"
-    "[.]clang-format$"
+    "[.]gitattributes$"
+    "[.]travis[.]yml$"
+    # Editor / AI-agent tooling
+    "/[.]idea/"
+    "/[.]vscode/"
+    "/[.]cursor/"
+    "/[.]claude/"
+    "/[.]aider[^/]*"
+    "/[.]windsurf/"
+    "/[.]codeium/"
+    "/[.]copilot/"
+    "/[.]continue/"
+    "/[.]mcp/"
+    "/[.]agent[s]?/"
+    "/[.]local/"
+    "/[.]localdev/"
+    # Build / CMake artifacts
+    "/build/"
+    "/chronolog-build/"
+    "/cmake-build-[^/]+/"
     "CMakeCache[.]txt$"
     "CMakeFiles/"
     "_CPack_Packages/"
+    "[.]spack-env/"
+    "spack[.]lock$"
+    "compile_commands[.]json$"
+    # Node / website build outputs
+    "/node_modules/"
+    "/[.]docusaurus/"
+    "docs-website/build/"
+    "website/dist/"
+    "/[.]next/"
+    "/[.]nuxt/"
+    "/[.]turbo/"
+    "/[.]parcel-cache/"
+    "[.]tsbuildinfo$"
+    "[.]eslintcache$"
+    # Python / test caches
+    "__pycache__/"
+    "/[.]pytest_cache/"
+    "/[.]mypy_cache/"
+    "/[.]ruff_cache/"
+    "/[.]cache/"
+    "[.]py[cod]$"
+    "/venv/"
+    "/[.]venv/"
+    # Coverage
+    "[.]gcno$"
+    "[.]gcda$"
+    "[.]gcov$"
+    "lcov[.]info$"
+    "/coverage/"
+    "/htmlcov/"
+    # OS / editor noise
+    "[.]DS_Store$"
+    "Thumbs[.]db$"
+    "[.]swp$"
+    "[.]swo$"
+    "~$"
+    # Backup / patch files
+    "[.]bak$"
+    "[.]orig$"
+    "[.]rej$"
+    "[.]log$"
 )
 
-# --- RPM-specific settings ---------------------------------------------------
-set(CPACK_RPM_PACKAGE_LICENSE  "BSD-2-Clause")
-set(CPACK_RPM_PACKAGE_GROUP    "System Environment/Daemons")
-set(CPACK_RPM_PACKAGE_REQUIRES "json-c >= 0.13")
-set(CPACK_RPM_PACKAGE_DESCRIPTION
-"ChronoLog is a distributed, hierarchical, and tiered chronicle-based logging
-system designed for high-performance recording and playback of time-ordered
-event streams across HPC clusters.
-
-Components: ChronoVisor, ChronoKeeper, ChronoGrapher, ChronoPlayer, chronolog_client.")
-
-# --- DEB-specific settings ---------------------------------------------------
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "libjson-c5 (>= 0.13)")
-set(CPACK_DEBIAN_PACKAGE_SECTION "net")
-set(CPACK_DEBIAN_PACKAGE_MAINTAINER "${CPACK_PACKAGE_CONTACT}")
+# RPM- and DEB-specific settings live in their own config files
+# (cmake/CPackRPMConfig.cmake.in / CPackDEBConfig.cmake.in), configured by
+# CMake at build time and invoked separately by the package_release target.

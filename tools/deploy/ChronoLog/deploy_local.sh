@@ -20,6 +20,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEFAULT_WORK_DIR="$(realpath -m "${SCRIPT_DIR}/..")"
 DEFAULT_INSTALL_WORK_DIR="$HOME/chronolog-install/chronolog"
 WORK_DIR_USER_SET=false
+OUTPUT_DIR_USER_SET=false
+MONITOR_DIR_USER_SET=false
 
 # Directories (initialize with defaults; may be overridden via CLI)
 WORK_DIR="${DEFAULT_WORK_DIR}"
@@ -203,7 +205,7 @@ generate_config_files() {
             '.chrono_keeper.KeeperRecordingService.rpc.service_base_port = $new_port_keeper_record |
             .chrono_keeper.KeeperGrapherDrainService.rpc.service_base_port = $new_port_keeper_drain |
             .chrono_keeper.KeeperDataStoreAdminService.rpc.service_base_port = $new_port_keeper_datastore |
-            .chrono_keeper.story_files_dir = ($output_dir + "/") |
+            .chrono_keeper.Extractors.story_files_dir = ($output_dir + "/") |
             .chrono_keeper.RecordingGroup = $grapher_index |
             .chrono_keeper.Monitoring.monitor.file = ($monitor_dir + "/chrono-keeper-" + ($keeper_index | tostring) + ".log")' "$default_conf" > "$keeper_output_file"
         echo "Generated $keeper_output_file with ports $new_port_keeper_record, $new_port_keeper_datastore, and $new_port_keeper_drain"
@@ -274,8 +276,14 @@ refresh_paths_for_work_dir() {
     LIB_DIR="${WORK_DIR}/lib"
     CONF_DIR="${WORK_DIR}/conf"
     BIN_DIR="${WORK_DIR}/bin"
-    MONITOR_DIR="${WORK_DIR}/monitor"
-    OUTPUT_DIR="${WORK_DIR}/output"
+    # Preserve user-set --output-dir / --monitor-dir; only re-derive from WORK_DIR
+    # when the user didn't override them explicitly.
+    if [[ "${MONITOR_DIR_USER_SET}" == "false" ]]; then
+        MONITOR_DIR="${WORK_DIR}/monitor"
+    fi
+    if [[ "${OUTPUT_DIR_USER_SET}" == "false" ]]; then
+        OUTPUT_DIR="${WORK_DIR}/output"
+    fi
     VISOR_BIN="${BIN_DIR}/chrono-visor"
     KEEPER_BIN="${BIN_DIR}/chrono-keeper"
     GRAPHER_BIN="${BIN_DIR}/chrono-grapher"
@@ -439,23 +447,17 @@ parse_args() {
             -w|--work-dir)
                 WORK_DIR="${2%/}"
                 WORK_DIR_USER_SET=true
-                LIB_DIR="${WORK_DIR}/lib"
-                CONF_DIR="${WORK_DIR}/conf"
-                BIN_DIR="${WORK_DIR}/bin"
-                VISOR_BIN="${BIN_DIR}/chrono-visor"
-                KEEPER_BIN="${BIN_DIR}/chrono-keeper"
-                GRAPHER_BIN="${BIN_DIR}/chrono-grapher"
-                PLAYER_BIN="${BIN_DIR}/chrono-player"
-                CONF_FILE="${CONF_DIR}/default-chrono-conf.json"
-                CLIENT_CONF_FILE="${CONF_DIR}/default-chrono-client-conf.json"
-                OUTPUT_DIR="${WORK_DIR}/output"
-                MONITOR_DIR="${WORK_DIR}/monitor"
+                # Path derivation happens in refresh_paths_for_work_dir() after
+                # arg parsing completes, so --output-dir / --monitor-dir are
+                # honored regardless of argv order.
                 shift 2 ;;
             -u|--output-dir)
                 OUTPUT_DIR=$(realpath -m "$2")
+                OUTPUT_DIR_USER_SET=true
                 shift 2 ;;
             -m|--monitor-dir)
                 MONITOR_DIR=$(realpath -m "$2")
+                MONITOR_DIR_USER_SET=true
                 shift 2 ;;
             -v|--visor-bin)
                 VISOR_BIN=$(realpath -m "$2")

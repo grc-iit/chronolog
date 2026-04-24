@@ -5,7 +5,7 @@ if(NOT DEFINED CMAKE_MACOSX_RPATH)
     set(CMAKE_MACOSX_RPATH 0)
 endif()
 
-project(ChronoLog VERSION 2.5.0 LANGUAGES CXX C)
+project(ChronoLog VERSION 2.6.0 LANGUAGES CXX C)
 
 #------------------------------------------------------------------------------
 # Version information
@@ -141,7 +141,7 @@ option(BUILD_SHARED_LIBS "Build with shared libraries." ON)
 option(CHRONOLOG_ENABLE_COVERAGE "Enable code coverage." OFF)
 option(CHRONOLOG_USE_ADDRESS_SANITIZER "Enable -fsanitize=address in Debug builds" ON)
 option(CHRONOLOG_USE_THREAD_SANITIZER "Enable -fsanitize=thread in Debug builds" OFF)
-option(CHRONOLOG_BUILD_TESTING "Build the testing tree (Debug mode only)." ON)
+option(CHRONOLOG_BUILD_TESTING "Build the testing tree." ON)
 if(DEFINED ENV{CHRONOLOG_INSTALL_TESTS})
     set(_chronolog_install_tests_default "$ENV{CHRONOLOG_INSTALL_TESTS}")
 else()
@@ -234,15 +234,23 @@ add_custom_target(lint COMMAND cpplint --recursive
     ${CMAKE_CURRENT_SOURCE_DIR})
 
 #------------------------------------------------------------------------------
-# Testing (only in Debug mode; Release install has no test tree)
+# Testing
+#
+# The test tree is built in both Debug and Release so CI (and anyone who wants
+# to exercise a release-mode binary) can run the suite against the real build.
+# Tests are NOT installed by default: CHRONOLOG_INSTALL_TESTS controls whether
+# they land in the install prefix, and it defaults to OFF so release packages
+# (TGZ/RPM/DEB) stay clean. Opt in via -DCHRONOLOG_INSTALL_TESTS=ON.
+#
+# The CHRONOLOG_INSTALL_TESTS env var only seeds the default on a fresh
+# configure; CMake caches the option, so the env var is ignored on
+# reconfigure. tools/deploy/ChronoLog/build.sh forwards the env var as an
+# explicit -D on every invocation so it wins even when the build dir is
+# reused — if you invoke cmake directly, pass -D yourself.
 #------------------------------------------------------------------------------
 set(CHRONOLOG_BUILD_TESTS_NOW ${CHRONOLOG_BUILD_TESTING})
-if(CHRONOLOG_BUILD_TESTING AND NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set(CHRONOLOG_BUILD_TESTS_NOW OFF)
-    message(STATUS "Tests are built only in Debug mode; skipping test tree in Release.")
-endif()
 if(CHRONOLOG_BUILD_TESTS_NOW)
-    message(STATUS "Tests enabled")
+    message(STATUS "Tests enabled (install: ${CHRONOLOG_INSTALL_TESTS})")
     include(CTest)
 endif()
 
@@ -365,25 +373,117 @@ add_custom_target(make_all cd ${CMAKE_BINARY_DIR} && make)
 include(cmake/CPackConfig.cmake)
 include(CPack)
 
-# package_release: builds the CPack TGZ then renames it to add the platform
-# suffix, giving the final name: chronolog-<version>-<system>-<processor>.tar.gz
+# --- Per-generator CPack config files ----------------------------------------
+# CPACK_INSTALLED_DIRECTORIES cannot be overridden per generator, so RPM and DEB
+# each get their own config file configured here and invoked separately by the
+# package_release target.  TGZ continues to use the auto-generated CPackConfig.cmake.
+
+# Map CMAKE_SYSTEM_PROCESSOR to Debian architecture name (x86_64 → amd64, etc.)
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")
+    set(CHRONOLOG_DEB_ARCH "amd64")
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
+    set(CHRONOLOG_DEB_ARCH "arm64")
+else()
+    set(CHRONOLOG_DEB_ARCH "${CMAKE_SYSTEM_PROCESSOR}")
+endif()
+
+configure_file(
+    "${CMAKE_SOURCE_DIR}/cmake/CPackRPMConfig.cmake.in"
+    "${CMAKE_BINARY_DIR}/CPackRPMConfig.cmake"
+    @ONLY
+)
+configure_file(
+    "${CMAKE_SOURCE_DIR}/cmake/CPackDEBConfig.cmake.in"
+    "${CMAKE_BINARY_DIR}/CPackDEBConfig.cmake"
+    @ONLY
+)
+
+# --- package_release target --------------------------------------------------
+# Produces: chronolog-<version>-<system>-<processor>.tar.gz  (always)
+#           chronolog-<version>-<system>-<processor>.rpm      (if rpmbuild present)
+#           chronolog-<version>-<system>-<processor>.deb      (if dpkg-deb present)
 # Usage: cmake --build . --target package_release
 get_filename_component(_cmake_bin_dir "${CMAKE_COMMAND}" DIRECTORY)
 find_program(_cpack_program cpack HINTS "${_cmake_bin_dir}" REQUIRED)
+find_program(CHRONOLOG_RPMBUILD rpmbuild)
+find_program(CHRONOLOG_DPKG_DEB dpkg-deb)
+
 string(TOLOWER "${CMAKE_SYSTEM_NAME}" _system_lower)
-set(_pkg_base    "${CPACK_PACKAGE_NAME}-${CHRONOLOG_PACKAGE_VERSION}")
+set(_pkg_base "${CPACK_PACKAGE_NAME}-${CHRONOLOG_PACKAGE_VERSION}")
+
+# TGZ output name
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set(_pkg_release "${_pkg_base}-${_system_lower}-${CMAKE_SYSTEM_PROCESSOR}-debug")
+    set(_tgz_name "${_pkg_base}-${_system_lower}-${CMAKE_SYSTEM_PROCESSOR}-debug")
 else()
-    set(_pkg_release "${_pkg_base}-${_system_lower}-${CMAKE_SYSTEM_PROCESSOR}")
+    set(_tgz_name "${_pkg_base}-${_system_lower}-${CMAKE_SYSTEM_PROCESSOR}")
 endif()
 
+# RPM output names (CPack produces name-ver-release.arch.rpm)
+set(_rpm_src  "${_pkg_base}-1.${CMAKE_SYSTEM_PROCESSOR}.rpm")
+set(_rpm_dest "${_pkg_base}-${_system_lower}-${CMAKE_SYSTEM_PROCESSOR}.rpm")
+
+# DEB output names (CPack produces name_ver-release_arch.deb internally)
+# Renamed on output to match the tarball/RPM convention: name-ver-system-processor.deb
+# Debug builds get a -debug suffix so release and debug DEBs can coexist as artifacts.
+set(_deb_src  "chronolog_${CHRONOLOG_PACKAGE_VERSION}-1_${CHRONOLOG_DEB_ARCH}.deb")
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(_deb_dest "${_pkg_base}-${_system_lower}-${CMAKE_SYSTEM_PROCESSOR}-debug.deb")
+else()
+    set(_deb_dest "${_pkg_base}-${_system_lower}-${CMAKE_SYSTEM_PROCESSOR}.deb")
+endif()
+
+if(CHRONOLOG_RPMBUILD)
+    message(STATUS "CPack: rpmbuild found at ${CHRONOLOG_RPMBUILD} — RPM packages will be built")
+else()
+    message(STATUS "CPack: rpmbuild not found — RPM packages will be skipped")
+endif()
+if(CHRONOLOG_DPKG_DEB)
+    message(STATUS "CPack: dpkg-deb found at ${CHRONOLOG_DPKG_DEB} — DEB packages will be built")
+else()
+    message(STATUS "CPack: dpkg-deb not found — DEB packages will be skipped")
+endif()
+
+# TGZ (always)
 add_custom_target(package_release
-    COMMAND "${_cpack_program}" --config "${CMAKE_BINARY_DIR}/CPackConfig.cmake" -B "${CMAKE_BINARY_DIR}"
+    COMMAND "${_cpack_program}" --config "${CMAKE_BINARY_DIR}/CPackConfig.cmake"
+            -G TGZ -B "${CMAKE_BINARY_DIR}"
     COMMAND ${CMAKE_COMMAND} -E rename
-        "${CMAKE_BINARY_DIR}/${_pkg_base}.tar.gz"
-        "${CMAKE_BINARY_DIR}/${_pkg_release}.tar.gz"
+            "${CMAKE_BINARY_DIR}/${_pkg_base}.tar.gz"
+            "${CMAKE_BINARY_DIR}/${_tgz_name}.tar.gz"
     WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
-    COMMENT "Creating ${_pkg_release}.tar.gz"
+    COMMENT "Creating ${_tgz_name}.tar.gz"
     VERBATIM
 )
+
+# RPM (when rpmbuild is available)
+if(CHRONOLOG_RPMBUILD)
+    add_custom_command(TARGET package_release POST_BUILD
+        COMMAND "${_cpack_program}" --config "${CMAKE_BINARY_DIR}/CPackRPMConfig.cmake"
+                -G RPM -B "${CMAKE_BINARY_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E rename
+                "${CMAKE_BINARY_DIR}/${_rpm_src}"
+                "${CMAKE_BINARY_DIR}/${_rpm_dest}"
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+        COMMENT "Creating ${_rpm_dest}"
+        VERBATIM
+    )
+endif()
+
+# DEB (when dpkg-deb is available)
+if(CHRONOLOG_DPKG_DEB)
+    add_custom_command(TARGET package_release POST_BUILD
+        COMMAND "${_cpack_program}" --config "${CMAKE_BINARY_DIR}/CPackDEBConfig.cmake"
+                -G DEB -B "${CMAKE_BINARY_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E rename
+                "${CMAKE_BINARY_DIR}/${_deb_src}"
+                "${CMAKE_BINARY_DIR}/${_deb_dest}"
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+        COMMENT "Creating ${_deb_dest}"
+        VERBATIM
+    )
+endif()
+
+# Source tarball is built via the CPack-provided `package_source` target
+# (auto-generated when CPACK_SOURCE_GENERATOR is set in cmake/CPackConfig.cmake).
+# Output: chronolog-<version>-source.tar.gz
+# Usage: cmake --build . --target package_source

@@ -8,7 +8,7 @@ find_package(HDF5 REQUIRED COMPONENTS C CXX)
 #------------------------------------------------------------------------------
 add_library(chrono_common STATIC
     src/city.cpp
-    src/ConfigurationManager.cpp
+    src/ConfigurationBlocks.cpp
     src/StoryChunk.cpp
     src/StoryChunkExtractor.cpp
     src/StoryChunkWriter.cpp
