@@ -11,12 +11,58 @@ namespace tl = thallium;
 namespace chl = chronolog;
 
 chronolog::StoryChunkExtractorCSV::StoryChunkExtractorCSV(chronolog::ServiceId const& service_id,
-                                                          std::string const& csv_files_dir)
+                                                          std::string const& csv_archive_dir)
     : serviceId(service_id)
-    , outputDirectory(csv_files_dir)
-{}
+    , outputDirectory(csv_archive_dir)
+{
+    serviceId.get_ip_as_dotted_string(service_id_string);
+}
 
+int chronolog::StoryChunkExtractorCSV::reset(std::string const& new_archive_dir)
+{
+    outputDirectory = new_archive_dir;
+    LOG_INFO("StoryChunkExtractorCSV] Reset success: using csv directory :", outputDirectory);
+    return chl::CL_SUCCESS;
+}
+
+// json block for CSV Extractor looks like this
+//
+//  "extractor": {
+//                "type": "csv_extractor",
+//                "csv_archive_dir": "/tmp/csv_archive"
+//               }
+//
 //////////
+
+int chronolog::StoryChunkExtractorCSV::reset(json_object* json_block)
+{
+    if( (json_block == nullptr )
+      || !json_object_is_type(json_block, json_type_object)
+      || (json_object_object_get(json_block, "type") == nullptr)
+      || !json_object_is_type(json_object_object_get(json_block, "type"), json_type_string)
+      || (std::string("csv_extractor").compare(json_object_get_string(json_object_object_get(json_block,"type"))) != 0)
+      )
+    {
+        outputDirectory = "/tmp";
+        LOG_ERROR("StoryChunkExtractorCSV] Reset failure, using csv directory :", outputDirectory);
+        return chl::CL_ERR_INVALID_CONF;    
+    }
+
+    if( (json_object_object_get(json_block, "csv_archive_dir") == nullptr)
+      || !json_object_is_type(json_object_object_get(json_block, "csv_archive_dir"), json_type_string))
+    {
+        outputDirectory = "/tmp";
+        LOG_ERROR("StoryChunkExtractorCSV] Reset failure, using csv directory :", outputDirectory);
+        return chl::CL_ERR_INVALID_CONF;  
+    } 
+     
+    outputDirectory = json_object_get_string(json_object_object_get(json_block, "csv_archive_dir"));
+    LOG_INFO("StoryChunkExtractorCSV] Reset success: using csv directory :", outputDirectory);
+    return chl::CL_SUCCESS;
+}
+
+///////////////////
+
 int chronolog::StoryChunkExtractorCSV::process_chunk(StoryChunk* story_chunk)
 {
 
