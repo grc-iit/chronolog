@@ -102,18 +102,19 @@ int main()
         return (-1);
     }
 
+    // 1. Test single endpoint RDMA extractor instantiation 
     chl::ServiceId receiving_service_id("ofi+sockets", "127.0.0.1", 3333, 33);
     chl::StoryChunkExtractorRDMA rdma_extractor(*localEngine, receiving_service_id);
 
-
+    // 2. Test chained ExtractionModule instantiation with chained logging extractor & rdma extractor
     chronolog::StoryChunkExtractionModule extractionModule(logging_extractor, rdma_extractor);
-    //Start extraction threads
-
+    
+    // 3. Start extraction threads
     chl::StoryChunkExtractionQueue& extractionQueue = extractionModule.getExtractionQueue();
 
     extractionModule.startExtraction(extraction_threads);
 
-    //Start chunk contributing threads
+    // 4. create chunk contributing threads
     std::thread contributors[contributor_threads];
 
     static uint32_t thread_id = 0;
@@ -137,6 +138,7 @@ int main()
     }
 
 
+    // 5. Test ExtractionModule shutdown
     LOG_INFO("[ExtractionModuleTest] Shutting down StoryChunkExtractionModule for {}", chl::to_string(localServiceId));
 
     extractionModule.shutdownExtraction();

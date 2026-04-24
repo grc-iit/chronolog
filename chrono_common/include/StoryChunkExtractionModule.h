@@ -12,6 +12,8 @@
 #include <chronolog_errcode.h>
 #include <StoryChunk.h>
 #include <StoryChunkExtractionQueue.h>
+#include <ChunkLoggingExtractor.h>
+#include <ExtractionModuleConfiguration.h>
 
 namespace tl = thallium;
 
@@ -73,21 +75,54 @@ class StoryChunkExtractionModule
     enum State
     {
         UNKNOWN = 0,
-        RUNNING = 1,      //  active extraction threads
-        SHUTTING_DOWN = 2 // Shutting down extraction threads
+        INITIALIZED = 1,  // ExtractionChain initialized and ready
+        RUNNING = 2,      //  active extraction threads
+        SHUTTING_DOWN = 3 // Shutting down extraction threads
     };
 
 public:
+    StoryChunkExtractionModule()
+       : state(UNKNOWN)
+       , stream_count(1)
+       , theExtractors(LoggingExtractor())
+    { }
+
     StoryChunkExtractionModule(const Args&... extractors)
         : state(UNKNOWN)
-        , extractorChain(extractors...)
-    {}
+        , stream_count(1)
+        , theExtractors(extractors...)
+    {
+       if(theExtractors.size() > 1)
+       { state = INITIALIZED;  }  
+    }
 
     StoryChunkExtractionQueue& getExtractionQueue() { return chunkExtractionQueue; }
+
+    bool is_initialized() const { return (state == INITIALIZED); }
 
     bool is_running() const { return (state == RUNNING); }
 
     bool is_shutting_down() const { return (state == SHUTTING_DOWN); }
+
+    int initialize(int stream_count, const Args&... extractors)
+    {
+
+       if(theExtractors.size() > 1)
+       {
+        state = INITIALIZED;
+        return CL_SUCCESS;
+       }
+    }
+
+    int initialize(const ExtractionModuleConfiguration & extraction_config)
+    {
+       if(theExtractors.size() > 1)
+       {
+        state = INITIALIZED;
+        return CL_SUCCESS;
+       }
+
+    }
 
     void drainExtractionQueue()
     {
@@ -101,7 +136,11 @@ public:
                   thallium::thread::self_id(),
                   chunkExtractionQueue.size());
 
-        while(state == RUNNING)
+        // (1) while state== RUNNING keep draining the queue or waiting if the queue is empty
+        // (2) if state != RUNNING make best attempt to drain the queue and exit
+
+        while(state == RUNNING 
+        || ( state == SHUTTING_DOWN && !chunkExtractionQueue.empty()))
         {
             if(!chunkExtractionQueue.empty())
             {
@@ -123,7 +162,7 @@ public:
                               story_chunk->getEventCount());
 
                     // each extractor in the chain would handle its own intermittent failure appropriately
-                    extractorChain.process_chunk(story_chunk);
+                    theExtractors.process_chunk(story_chunk);
 
                     // free the memory or reset the chunk to the original state and return it to the pool of prealocated chunks
                     delete story_chunk;
@@ -136,12 +175,18 @@ public:
         }
     }
 
-    void startExtraction(int stream_count)
+    void startExtraction(int stream_count )
     {
 
         if(state == RUNNING)
         {
             LOG_INFO("[StoryChunkExtractionModule] ExtractionModule already running; ignoring start request.");
+            return;
+        }
+
+        if(state != INITIALIZED)
+        {
+            LOG_INFO("[StoryChunkExtractionModule] Can't start extraction: ExtractionModule is either not initialized or is shutting down");
             return;
         }
 
@@ -205,14 +250,14 @@ private:
 
     StoryChunkExtractionModule& operator=(StoryChunkExtractionModule const&) = delete;
 
-
     std::atomic<State> state;
     StoryChunkExtractionQueue chunkExtractionQueue;
 
-    ExtractorChain<Args...> extractorChain;
-
+    int stream_count;
     std::vector<tl::managed<tl::xstream>> extractionStreams;
     std::vector<tl::managed<tl::thread>> extractionThreads;
+
+    ExtractorChain<Args...> theExtractors;
 };
 
 
