@@ -280,12 +280,12 @@ void chl::ClientQueryService::receive_story_chunk(tl::request const& request, tl
         {
             std::vector<chl::Event>& event_series = (*query_iter).second.eventSeries;
             event_series.reserve(event_series.size() + response.events.size());
-            for(auto const& wire_event: response.events)
+            for(auto const& log_event: response.events)
             {
-                event_series.emplace_back(wire_event.eventTime,
-                                          wire_event.clientId,
-                                          wire_event.eventIndex,
-                                          wire_event.logRecord);
+                event_series.emplace_back(log_event.eventTime,
+                                          log_event.clientId,
+                                          log_event.eventIndex,
+                                          log_event.logRecord);
             }
             (*query_iter).second.completed = true;
             LOG_DEBUG("[ClientQueryService] Query {} got {} events, ThreadID={}",

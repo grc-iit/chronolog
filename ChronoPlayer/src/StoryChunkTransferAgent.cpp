@@ -66,19 +66,13 @@ int chronolog::StoryChunkTransferAgent::processStoryChunk(chronolog::StoryChunk*
         std::chrono::high_resolution_clock::time_point start, end;
         start = std::chrono::high_resolution_clock::now();
 #endif
-        // Build the wire response: a flat vector of WireEvent in the chunk's
-        // natural sorted order (the chunk stores events in a map keyed by
-        // (eventTime, clientId, eventIndex), so iteration is already ordered).
+        // Build the wire response: a flat vector of LogEvent values in the
+        // chunk's natural sorted order (the chunk stores events in a map
+        // keyed by (eventTime, clientId, eventIndex), so iteration is
+        // already ordered).
         chronolog::PlaybackQueryResponse response;
         response.events.reserve(story_chunk->getEventCount());
-        for(auto const& entry: *story_chunk)
-        {
-            chl::LogEvent const& log_event = entry.second;
-            response.events.push_back(chronolog::WireEvent{log_event.eventTime,
-                                                           log_event.clientId,
-                                                           log_event.eventIndex,
-                                                           log_event.logRecord});
-        }
+        for(auto const& entry: *story_chunk) { response.events.push_back(entry.second); }
 
         size_t serialized_response_size;
         std::ostringstream oss(std::ios::binary);
