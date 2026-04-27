@@ -9,6 +9,8 @@
 
 #include <chrono_monitor.h>
 #include <chronolog_errcode.h>
+#include <PlaybackQueryResponse.h>
+#include <StoryChunk.h>
 #include <StoryChunkTransferAgent.h>
 
 namespace tl = thallium;
@@ -64,41 +66,60 @@ int chronolog::StoryChunkTransferAgent::processStoryChunk(chronolog::StoryChunk*
         std::chrono::high_resolution_clock::time_point start, end;
         start = std::chrono::high_resolution_clock::now();
 #endif
-        size_t serialized_story_chunk_size;
+        // Build the wire response: a flat vector of WireEvent in the chunk's
+        // natural sorted order (the chunk stores events in a map keyed by
+        // (eventTime, clientId, eventIndex), so iteration is already ordered).
+        chronolog::PlaybackQueryResponse response;
+        response.events.reserve(story_chunk->getEventCount());
+        for(auto const& entry: *story_chunk)
+        {
+            chl::LogEvent const& log_event = entry.second;
+            response.events.push_back(chronolog::WireEvent{log_event.eventTime,
+                                                           log_event.clientId,
+                                                           log_event.eventIndex,
+                                                           log_event.logRecord});
+        }
+
+        size_t serialized_response_size;
         std::ostringstream oss(std::ios::binary);
         cereal::BinaryOutputArchive oarchive(oss);
-        oarchive(*story_chunk);
-        std::string serialized_story_chunk = oss.str();
-        serialized_story_chunk_size = serialized_story_chunk.size();
+        oarchive(response);
+        std::string serialized_response = oss.str();
+        serialized_response_size = serialized_response.size();
 
 #ifdef LOGTIME
         end = std::chrono::high_resolution_clock::now();
-        LOG_INFO("[StoryChunkTransferAgent] StoryChunk serialization took {} us",
+        LOG_INFO("[StoryChunkTransferAgent] PlaybackQueryResponse serialization took {} us",
                  std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count() / 1000.0);
 #endif
-        LOG_DEBUG("[StoryChunkTransferAgent] Serialized StoryChunk size: {}", serialized_story_chunk_size);
+        LOG_DEBUG("[StoryChunkTransferAgent] Serialized PlaybackQueryResponse size: {} ({} events)",
+                  serialized_response_size,
+                  response.events.size());
 
         std::vector<std::pair<void*, std::size_t>> segments(1);
-        segments[0].first = (void*)(serialized_story_chunk.data());
-        segments[0].second = serialized_story_chunk_size;
+        segments[0].first = (void*)(serialized_response.data());
+        segments[0].second = serialized_response_size;
         tl::bulk tl_bulk = service_engine.expose(segments, tl::bulk_mode::read_only);
-        LOG_DEBUG("[StoryChunkTransferAgent] Draining StoryChunk size: {} ...", tl_bulk.size());
+        LOG_DEBUG("[StoryChunkTransferAgent] Draining PlaybackQueryResponse size: {} ...", tl_bulk.size());
 
         size_t bytes_transfered = receive_story_chunk.on(receiver_service_handle)(tl_bulk);
 
 #ifdef LOGTIME
         start = end;
         end = std::chrono::high_resolution_clock::now();
-        LOG_INFO("[StoryChunkTransferAgent] StoryChunk transfer took {} us",
+        LOG_INFO("[StoryChunkTransferAgent] PlaybackQueryResponse transfer took {} us",
                  std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count() / 1000.0);
 #endif
-        LOG_DEBUG("[StoryChunkTransferAgent] StoryChunk transfer returned with result: {}", bytes_transfered);
+        LOG_DEBUG("[StoryChunkTransferAgent] PlaybackQueryResponse transfer returned with result: {}",
+                  bytes_transfered);
 
-        if(bytes_transfered == serialized_story_chunk_size)
+        if(bytes_transfered == serialized_response_size)
         {
-            LOG_INFO("[StoryChunkTransferAgent] Successfully transfered StoryChunk, StoryId:{}, StartTime:{}",
+            LOG_INFO("[StoryChunkTransferAgent] Successfully transfered PlaybackQueryResponse, StoryId:{}, "
+                     "StartTime:{}, events:{}",
                      story_chunk->getStoryId(),
-                     story_chunk->getStartTime());
+                     story_chunk->getStartTime(),
+                     response.events.size());
             return chronolog::CL_SUCCESS;
         }
     }
@@ -109,21 +130,22 @@ int chronolog::StoryChunkTransferAgent::processStoryChunk(chronolog::StoryChunk*
     }
     catch(cereal::Exception const& ex)
     {
-        LOG_ERROR("[StoryChunkTransferAgent] Cereal exception while serializing StoryChunk: {}", ex.what());
+        LOG_ERROR("[StoryChunkTransferAgent] Cereal exception while serializing PlaybackQueryResponse: {}", ex.what());
         return chronolog::CL_ERR_UNKNOWN;
     }
     catch(std::exception const& ex)
     {
-        LOG_ERROR("[StoryChunkTransferAgent] Standard exception while serializing StoryChunk: {}", ex.what());
+        LOG_ERROR("[StoryChunkTransferAgent] Standard exception while serializing PlaybackQueryResponse: {}",
+                  ex.what());
         return chronolog::CL_ERR_UNKNOWN;
     }
     catch(...)
     {
-        LOG_ERROR("[StoryChunkTransferAgent] Unknown exception while  transferring StoryChunk.");
+        LOG_ERROR("[StoryChunkTransferAgent] Unknown exception while transferring PlaybackQueryResponse.");
         return chronolog::CL_ERR_UNKNOWN;
     }
 
-    LOG_ERROR("[StoryChunkTransferAgent] Failed to transfer StoryShunk, StoryId:{},StartTime:{}",
+    LOG_ERROR("[StoryChunkTransferAgent] Failed to transfer PlaybackQueryResponse, StoryId:{},StartTime:{}",
               story_chunk->getStoryId(),
               story_chunk->getStartTime());
     return chronolog::CL_ERR_STORY_CHUNK_EXTRACTION;
