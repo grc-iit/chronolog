@@ -242,7 +242,8 @@ int main(int argc, char** argv)
 
     try
     {
-        margo_instance_id margo_id = margo_init(KEEPER_RECORDING_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 1);
+        int rpc_thread_count = static_cast<int>(KEEPER_CONF.INGESTION_THREAD_COUNT);
+        margo_instance_id margo_id = margo_init(KEEPER_RECORDING_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, rpc_thread_count);
         recordingEngine = new tl::engine(margo_id);
 
         std::stringstream s1;
