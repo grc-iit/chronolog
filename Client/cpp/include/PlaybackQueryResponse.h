@@ -3,6 +3,7 @@
 
 #include <vector>
 
+#include <thallium/serialization/stl/string.hpp>
 #include <thallium/serialization/stl/vector.hpp>
 
 #include <chronolog_types.h>
