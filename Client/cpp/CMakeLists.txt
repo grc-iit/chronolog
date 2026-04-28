@@ -87,6 +87,20 @@ set_target_properties(chronolog_client PROPERTIES
 )
 
 #------------------------------------------------------------------------------
+# Symbol-leakage guard
+#------------------------------------------------------------------------------
+# After issue #616, chronolog_client must not link any chrono_common compiled
+# code. This POST_BUILD check asserts the invariant by scanning the built
+# shared library for known chrono_common-only symbols and failing the build
+# if any leak in. See Client/cpp/check_no_chrono_common_symbols.sh.
+add_custom_command(TARGET chronolog_client POST_BUILD
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/check_no_chrono_common_symbols.sh
+            $<TARGET_FILE:chronolog_client>
+    COMMENT "Checking chronolog_client for chrono_common symbol leakage"
+    VERBATIM
+)
+
+#------------------------------------------------------------------------------
 # Install library, headers, and configuration file
 #------------------------------------------------------------------------------
 # Install chronolog_client with export (chrono_common is not installed as it's
