@@ -19,6 +19,12 @@ typedef uint64_t ClientId;
 typedef uint64_t chrono_time;
 typedef uint32_t chrono_index;
 
+// Wire-protocol version exchanged on Connect. Bump this whenever the wire
+// format between the client and any ChronoLog server component changes in
+// an incompatible way; the Visor returns CL_ERR_PROTOCOL_VERSION_MISMATCH
+// if a connecting client's version doesn't match the server's expectation.
+static constexpr uint32_t CLIENT_PROTOCOL_VERSION = 1;
+
 class Event
 {
 public:
