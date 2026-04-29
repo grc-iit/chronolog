@@ -40,6 +40,6 @@ configure_file(
 #------------------------------------------------------------------------------
 # Install binary
 #------------------------------------------------------------------------------
-chronolog_install_target(client_cli)
+chronolog_install_target(client_cli DESTINATION cli)
 
 # Client configuration file is installed by Client/cpp to avoid duplication

@@ -79,6 +79,7 @@ parse_arguments() {
     LIB_DIR="${INSTALL_DIR}/chronolog/lib"
     EXAMPLES_DIR="${INSTALL_DIR}/chronolog/examples"
     TESTS_DIR="${INSTALL_DIR}/chronolog/tests"
+    TOOLS_DIR="${INSTALL_DIR}/chronolog/tools"
 
     echo -e "${DEBUG}Using build type: ${BUILD_TYPE}${NC}"
     echo -e "${DEBUG}Using build directory: ${BUILD_BASE_DIR}/${BUILD_TYPE}${NC}"

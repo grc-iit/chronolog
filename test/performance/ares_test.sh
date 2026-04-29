@@ -213,10 +213,12 @@ unset _arg
 : "${OUTPUT_DIR:=$INSTALL_DIR/output}"
 : "${BIN_DIR:=$INSTALL_DIR/bin}"
 : "${TOOLS_DIR:=$INSTALL_DIR/tools}"
+: "${BENCHMARK_DIR:=$TOOLS_DIR/benchmark}"
+: "${DEPLOY_DIR:=$TOOLS_DIR/deploy}"
 : "${TESTS_DIR:=$INSTALL_DIR/tests}"
-: "${PERF_BIN:=$TESTS_DIR/chronolog-test-performance}"
+: "${PERF_BIN:=$BENCHMARK_DIR/chrono-bench}"
 : "${MPIRUN:=mpirun}" # full path if not in $PATH
-: "${DEPLOY_SCRIPT:=$TOOLS_DIR/deploy_cluster.sh}"
+: "${DEPLOY_SCRIPT:=$DEPLOY_DIR/deploy_cluster.sh}"
 : "${CONF_FILE:=$CONF_DIR/default-chrono-conf.json}"
 : "${CLIENT_CONF_FILE:=$CONF_DIR/default-chrono-client-conf.json}"
 : "${CLIENT_HOSTS:=$CONF_DIR/hosts_client}" # not consumed by deploy script, used by mpirun

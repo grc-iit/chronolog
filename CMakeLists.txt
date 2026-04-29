@@ -58,6 +58,9 @@ set(CHRONOLOG_INSTALL_ROOT        "${CMAKE_INSTALL_PREFIX}/chronolog")
 set(CHRONOLOG_INSTALL_BIN_DIR     "${CHRONOLOG_INSTALL_ROOT}/bin")
 set(CHRONOLOG_INSTALL_EXAMPLES_DIR "${CHRONOLOG_INSTALL_ROOT}/examples")
 set(CHRONOLOG_INSTALL_TESTS_DIR   "${CHRONOLOG_INSTALL_ROOT}/tests")
+set(CHRONOLOG_INSTALL_CLI_DIR      "${CHRONOLOG_INSTALL_ROOT}/tools/cli")
+set(CHRONOLOG_INSTALL_BENCHMARK_DIR "${CHRONOLOG_INSTALL_ROOT}/tools/benchmark")
+set(CHRONOLOG_INSTALL_DEPLOY_DIR  "${CHRONOLOG_INSTALL_ROOT}/tools/deploy")
 set(CHRONOLOG_INSTALL_LIB_DIR     "${CHRONOLOG_INSTALL_ROOT}/lib")
 set(CHRONOLOG_INSTALL_INCLUDE_DIR "${CHRONOLOG_INSTALL_ROOT}/include")
 set(CHRONOLOG_INSTALL_CONF_DIR    "${CHRONOLOG_INSTALL_ROOT}/conf")
@@ -78,6 +81,10 @@ function(chronolog_install_target target_name)
             set(_runtime_dest "${CHRONOLOG_INSTALL_EXAMPLES_DIR}")
         elseif(_dest_arg STREQUAL "tests")
             set(_runtime_dest "${CHRONOLOG_INSTALL_TESTS_DIR}")
+        elseif(_dest_arg STREQUAL "cli")
+            set(_runtime_dest "${CHRONOLOG_INSTALL_CLI_DIR}")
+        elseif(_dest_arg STREQUAL "benchmark")
+            set(_runtime_dest "${CHRONOLOG_INSTALL_BENCHMARK_DIR}")
         elseif(NOT _dest_arg STREQUAL "bin")
             message(WARNING "chronolog_install_target(${target_name}): unknown DESTINATION '${_dest_arg}', using bin")
         endif()
@@ -370,7 +377,7 @@ install(
     PROGRAMS
         tools/deploy/ChronoLog/deploy_local.sh
         tools/deploy/ChronoLog/deploy_cluster.sh
-    DESTINATION ${CHRONOLOG_INSTALL_ROOT}/tools
+    DESTINATION ${CHRONOLOG_INSTALL_DEPLOY_DIR}
 )
 
 #------------------------------------------------------------------------------
