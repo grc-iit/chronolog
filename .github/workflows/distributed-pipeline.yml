@@ -270,10 +270,19 @@ jobs:
               echo '❌ Install failed — bin directory not found'
               exit 1
             fi
-            main_binaries=(chrono-visor chrono-keeper chrono-grapher chrono-player chrono-client-cli)
+            main_binaries=(chrono-visor chrono-keeper chrono-grapher chrono-player)
+            tool_binaries=(tools/cli/chrono-client-cli tools/benchmark/chrono-bench)
             missing=0
             for exe in \"\${main_binaries[@]}\"; do
               if [ ! -x \"\${WORK_DIR}/bin/\$exe\" ]; then
+                echo \"❌ \$exe is missing or not executable!\"
+                missing=1
+              else
+                echo \"✅ \$exe is present and executable\"
+              fi
+            done
+            for exe in \"\${tool_binaries[@]}\"; do
+              if [ ! -x \"\${WORK_DIR}/\$exe\" ]; then
                 echo \"❌ \$exe is missing or not executable!\"
                 missing=1
               else
@@ -496,7 +505,7 @@ jobs:
             cd \${WORK_DIR}
 
             if timeout 300 \${MPIEXEC_BIN} -l -n 4 -f conf/hosts_client \
-              tests/chronolog-test-performance \
+              tools/benchmark/chrono-bench \
               --config conf/default-chrono-client-conf.json \
               -a 4096 -b 4096 -s 4096 -n 1024 -t 1 -h 1 -p -y 2>&1 | tee /tmp/mpi_test_output.log; then
               echo '✅ Client performance test completed successfully'
