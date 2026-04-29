@@ -358,7 +358,7 @@ chronolog::ChronologClientImpl::AcquireStory(std::string const& chronicle_name,
         return std::pair<int, chronolog::StoryHandle*>(acquireStoryResponse.getErrorCode(), nullptr);
     }
 
-    //successfull AcquireStoryResponse carries Visor generated StoryId & vector<KeeperIdCard>
+    //successfull AcquireStoryResponse carries Visor generated StoryId & vector<ServiceId>
     // for the Keepers assigned to record the acquired story
 
     storyHandle = storyteller->initializeStoryWritingHandle(chronicle_name,

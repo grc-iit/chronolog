@@ -8,7 +8,7 @@
 #include <thallium/serialization/stl/string.hpp>
 
 #include <chronolog_types.h>
-#include <KeeperIdCard.h>
+#include <ServiceId.h>
 #include <client_errcode.h>
 #include <chrono_monitor.h>
 
@@ -23,11 +23,11 @@ class KeeperRecordingClient
 {
 
 public:
-    static KeeperRecordingClient* CreateKeeperRecordingClient(tl::engine& tl_engine, KeeperIdCard const& keeper_id_card)
+    static KeeperRecordingClient* CreateKeeperRecordingClient(tl::engine& tl_engine, ServiceId const& keeper_service_id)
     {
         try
         {
-            return new KeeperRecordingClient(tl_engine, keeper_id_card);
+            return new KeeperRecordingClient(tl_engine, keeper_service_id);
         }
         catch(tl::exception const& ex)
         {
@@ -50,35 +50,34 @@ public:
         catch(thallium::exception const& ex)
         {
             LOG_ERROR("[KeeperRecordingClient] Failed to send event message to {} exception: {}",
-                      to_string(keeperIdCard),
+                      to_string(recordingServiceId),
                       ex.what());
         }
         return (chronolog::CL_ERR_UNKNOWN);
     }
 
-    KeeperIdCard const& getKeeperId() const { return keeperIdCard; }
+    ServiceId const& getRecordingServiceId() const { return recordingServiceId; }
 
     ~KeeperRecordingClient()
     {
         record_event.deregister();
-        LOG_DEBUG("[KeeperRecordingClient] Destructor called {}", to_string(keeperIdCard));
+        LOG_DEBUG("[KeeperRecordingClient] Destructor called {}", to_string(recordingServiceId));
     }
 
 private:
-    KeeperIdCard keeperIdCard;
+    ServiceId recordingServiceId;
     tl::provider_handle service_ph; //provider_handle for remote registry service
     tl::remote_procedure record_event;
 
     // constructor is private to make sure thalium rpc objects are created on the heap, not stack
-    KeeperRecordingClient(tl::engine& tl_engine, KeeperIdCard const& keeper_id_card)
-        : keeperIdCard(keeper_id_card)
+    KeeperRecordingClient(tl::engine& tl_engine, ServiceId const& keeper_service_id)
+        : recordingServiceId(keeper_service_id)
     {
-        LOG_DEBUG("[KeeperRecordingClient] KeeperRecordingiClient Constructor for {}", to_string(keeper_id_card));
+        LOG_DEBUG("[KeeperRecordingClient] KeeperRecordingiClient Constructor for {}", to_string(keeper_service_id));
         std::string service_addr_string;
-        keeperIdCard.getRecordingServiceId().get_service_as_string(service_addr_string);
+        recordingServiceId.get_service_as_string(service_addr_string);
 
-        service_ph = tl::provider_handle(tl_engine.lookup(service_addr_string),
-                                         keeper_id_card.getRecordingServiceId().getProviderId());
+        service_ph = tl::provider_handle(tl_engine.lookup(service_addr_string), recordingServiceId.getProviderId());
 
         record_event = tl_engine.define("record_event");
     }

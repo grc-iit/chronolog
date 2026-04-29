@@ -225,22 +225,26 @@ chl::AcquireStoryResponseMsg chronolog::VisorClientPortal::AcquireStory(chl::Cli
                                                                         int& flags)
 {
     chronolog::StoryId story_id{0};
+    // recording_keepers is the server-internal view (full KeeperIdCards, used by the
+    // notify call below). The client-facing AcquireStoryResponseMsg only carries each
+    // Keeper's ServiceId — the RecordingGroup membership is server-internal.
     std::vector<chronolog::KeeperIdCard> recording_keepers;
     chl::ServiceId player; //ServiceID of ChronoPlayer providing playback service for this story
+    std::vector<chronolog::ServiceId> const empty_keeper_service_ids;
 
     if(!theKeeperRegistry->is_running())
     {
-        return chronolog::AcquireStoryResponseMsg(chronolog::CL_ERR_NO_KEEPERS, story_id, recording_keepers);
+        return chronolog::AcquireStoryResponseMsg(chronolog::CL_ERR_NO_KEEPERS, story_id, empty_keeper_service_ids);
     }
 
     if(chronicle_name.empty() || story_name.empty())
     {
-        return chronolog::AcquireStoryResponseMsg(chronolog::CL_ERR_INVALID_ARG, story_id, recording_keepers);
+        return chronolog::AcquireStoryResponseMsg(chronolog::CL_ERR_INVALID_ARG, story_id, empty_keeper_service_ids);
     }
 
     if(!story_action_is_authorized(client_id, chronicle_name, story_name))
     {
-        return chronolog::AcquireStoryResponseMsg(chronolog::CL_ERR_NOT_AUTHORIZED, story_id, recording_keepers);
+        return chronolog::AcquireStoryResponseMsg(chronolog::CL_ERR_NOT_AUTHORIZED, story_id, empty_keeper_service_ids);
     }
 
     int ret = chronolog::CL_ERR_UNKNOWN;
@@ -250,7 +254,7 @@ chl::AcquireStoryResponseMsg chronolog::VisorClientPortal::AcquireStory(chl::Cli
     if(ret != chronolog::CL_SUCCESS)
     {
         // return the error with the empty recording_keepers vector
-        return chronolog::AcquireStoryResponseMsg(ret, story_id, recording_keepers);
+        return chronolog::AcquireStoryResponseMsg(ret, story_id, empty_keeper_service_ids);
     }
     else
     {
@@ -275,11 +279,19 @@ chl::AcquireStoryResponseMsg chronolog::VisorClientPortal::AcquireStory(chl::Cli
         // RPC notification to the keepers might have failed, release the newly acquired story
         chronicleMetaDirectory.release_story(client_id, chronicle_name, story_name, story_id);
         //we do know that there's no need notify keepers of the story ending in this case as it hasn't started...
-        recording_keepers.clear();
-        return chronolog::AcquireStoryResponseMsg(chronolog::CL_ERR_NO_KEEPERS, story_id, recording_keepers);
+        return chronolog::AcquireStoryResponseMsg(chronolog::CL_ERR_NO_KEEPERS, story_id, empty_keeper_service_ids);
     }
 
-    return chronolog::AcquireStoryResponseMsg(chronolog::CL_SUCCESS, story_id, recording_keepers, player);
+    // Project the server-internal vector<KeeperIdCard> down to the client-facing
+    // vector<ServiceId> the client needs to address each Keeper for recording.
+    std::vector<chronolog::ServiceId> keeper_service_ids;
+    keeper_service_ids.reserve(recording_keepers.size());
+    for(chronolog::KeeperIdCard const& keeper_card: recording_keepers)
+    {
+        keeper_service_ids.push_back(keeper_card.getRecordingServiceId());
+    }
+
+    return chronolog::AcquireStoryResponseMsg(chronolog::CL_SUCCESS, story_id, keeper_service_ids, player);
 }
 
 
