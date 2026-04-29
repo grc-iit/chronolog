@@ -1,6 +1,6 @@
-#include <thallium/serialization/stl/vector.hpp>
 #include <cereal/archives/binary.hpp>
-
+#include <json-c/json.h>
+#include <thallium.hpp>
 #include <chrono_monitor.h>
 #include <chronolog_errcode.h>
 #include <StoryChunk.h>
@@ -12,7 +12,7 @@ namespace tl = thallium;
 namespace chl = chronolog;
 
 chronolog::StoryChunkExtractorRDMA::StoryChunkExtractorRDMA(tl::engine& tl_engine,
-                chronolog::ServiceId const& receiving_service_id = chronolog::ServiceId())
+                chronolog::ServiceId const& receiving_service_id)
     : sender_tl_engine(tl_engine)
     , receiver_service_id(receiving_service_id)
     , rdma_sender(nullptr)
@@ -157,7 +157,7 @@ int chronolog::StoryChunkExtractorRDMA::reset( chl::ServiceId const& new_receive
 //   JSON configuration for single endpoint RDMA Chunk Extractor RDMA 
 //   looks like this:
 //
-//   "extractor": {
+//   "extractor_name": {
 //          "type": "single_endpoint_rdma_extractor",
 //          "receiving_endpoint": {
 //            "protocol_conf": "ofi+sockets",

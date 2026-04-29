@@ -43,6 +43,11 @@ public:
         return the_rest.process_chunk(some_chunk);
     }
 
+    bool is_active_chain() const 
+    { 
+       return the_extractor.is_active() && the_rest.is_active_chain();
+    }
+
 private:
     T the_extractor;
     ExtractorChain<Args...> the_rest;
@@ -61,7 +66,11 @@ public:
 
     const T& extractor() const { return the_extractor; }
 
-    int process_chunk(StoryChunk* some_chunk) { return the_extractor.process_chunk(some_chunk); }
+    int process_chunk(StoryChunk* some_chunk) 
+    { return the_extractor.process_chunk(some_chunk); }
+
+    bool is_active_chain() const 
+    { return the_extractor.is_active(); }
 
 private:
     T the_extractor;
@@ -81,18 +90,13 @@ class StoryChunkExtractionModule
     };
 
 public:
-    StoryChunkExtractionModule()
-       : state(UNKNOWN)
-       , stream_count(1)
-       , theExtractors(LoggingExtractor())
-    { }
 
-    StoryChunkExtractionModule(const Args&... extractors)
+    StoryChunkExtractionModule(int stream_count, const Args&... extractors)
         : state(UNKNOWN)
-        , stream_count(1)
-        , theExtractors(extractors...)
+        , stream_count(stream_count)
+        , theExtractionChain(extractors...)
     {
-       if(theExtractors.size() > 1)
+       if(theExtractionChain.is_active_chain())
        { state = INITIALIZED;  }  
     }
 
@@ -103,26 +107,6 @@ public:
     bool is_running() const { return (state == RUNNING); }
 
     bool is_shutting_down() const { return (state == SHUTTING_DOWN); }
-
-    int initialize(int stream_count, const Args&... extractors)
-    {
-
-       if(theExtractors.size() > 1)
-       {
-        state = INITIALIZED;
-        return CL_SUCCESS;
-       }
-    }
-
-    int initialize(const ExtractionModuleConfiguration & extraction_config)
-    {
-       if(theExtractors.size() > 1)
-       {
-        state = INITIALIZED;
-        return CL_SUCCESS;
-       }
-
-    }
 
     void drainExtractionQueue()
     {
@@ -162,7 +146,7 @@ public:
                               story_chunk->getEventCount());
 
                     // each extractor in the chain would handle its own intermittent failure appropriately
-                    theExtractors.process_chunk(story_chunk);
+                    theExtractionChain.process_chunk(story_chunk);
 
                     // free the memory or reset the chunk to the original state and return it to the pool of prealocated chunks
                     delete story_chunk;
@@ -175,7 +159,7 @@ public:
         }
     }
 
-    void startExtraction(int stream_count )
+    void startExtraction()
     {
 
         if(state == RUNNING)
@@ -257,7 +241,7 @@ private:
     std::vector<tl::managed<tl::xstream>> extractionStreams;
     std::vector<tl::managed<tl::thread>> extractionThreads;
 
-    ExtractorChain<Args...> theExtractors;
+    ExtractorChain<Args...> theExtractionChain;
 };
 
 

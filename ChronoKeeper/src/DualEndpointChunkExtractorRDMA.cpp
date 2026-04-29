@@ -1,8 +1,11 @@
-#include <thallium/serialization/stl/vector.hpp>
 #include <cereal/archives/binary.hpp>
+#include <json-c/json.h>
+//#include <thallium/serialization/stl/vector.hpp>
+#include <thallium.hpp>
 
 #include <chrono_monitor.h>
 #include <chronolog_errcode.h>
+#include <ConfigurationBlocks.h>
 #include <StoryChunk.h>
 #include <RDMATransferAgent.h>
 #include <DualEndpointChunkExtractorRDMA.h>
@@ -10,13 +13,61 @@
 namespace tl = thallium;
 namespace chl = chronolog;
 
-chronolog::DualEndpointChunkExtractorRDMA::DualEndpointChunkExtractorRDMA(tl::engine &tl_engine, chronolog::ServiceId const& player_receiving_service_id, chronolog::ServiceId const& grapher_receiving_service_id)
+chronolog::DualEndpointChunkExtractorRDMA::DualEndpointChunkExtractorRDMA(tl::engine &tl_engine, 
+  chronolog::ServiceId const& player_receiving_service_id, chronolog::ServiceId const& grapher_receiving_service_id)
         : sender_tl_engine(tl_engine)
         , player_receiver_service_id(player_receiving_service_id) 
         , grapher_receiver_service_id(grapher_receiving_service_id) 
         , rdma_sender_for_player(nullptr)
         , rdma_sender_for_grapher(nullptr)
 {
+    restart_rdma_sender_for_grapher(grapher_receiver_service_id);
+   
+    restart_rdma_sender_for_player(player_receiver_service_id);
+}
+
+/////////////
+
+void chronolog::DualEndpointChunkExtractorRDMA::restart_rdma_sender_for_grapher(chl::ServiceId const & receiver_service_id)
+{
+    if(rdma_sender_for_grapher != nullptr)
+    {
+        LOG_TRACE("[DualEndpointExtractorRDMA] assingment : deleting receiver {} ", chl::to_string(grapher_receiver_service_id));
+        delete rdma_sender_for_grapher;
+    }
+
+    grapher_receiver_service_id = receiver_service_id;
+
+    if(grapher_receiver_service_id.is_valid())
+    {  return; }
+
+    try
+    {
+        rdma_sender_for_grapher = RDMATransferAgent::CreateRDMATransferAgent(sender_tl_engine, grapher_receiver_service_id);
+        LOG_TRACE("[DualEndpointChunkExtractor] created rdma_sender for grpaher_receiver {} ", chl::to_string(grapher_receiver_service_id));
+    }
+    catch(...)
+    {
+        LOG_ERROR("[DualEndpointChunkExtractor] failed to create rdma_sender for grapher_receiver {} ", chl::to_string(grapher_receiver_service_id));
+        rdma_sender_for_grapher = nullptr;
+    }
+}
+
+/////////////
+
+void chronolog::DualEndpointChunkExtractorRDMA::restart_rdma_sender_for_player(chl::ServiceId const & receiver_service_id)
+{
+    if(rdma_sender_for_player != nullptr)
+    { 
+        LOG_TRACE("[DualEndpointExtractorRDMA] assingment : deleting receiver {} ", chl::to_string(player_receiver_service_id));
+        delete rdma_sender_for_player;
+    }
+
+    player_receiver_service_id = receiver_service_id;
+
+    if(!player_receiver_service_id.is_valid())
+    {  return; }
+
     try
     {
         rdma_sender_for_player = RDMATransferAgent::CreateRDMATransferAgent(sender_tl_engine, player_receiver_service_id);
@@ -27,19 +78,8 @@ chronolog::DualEndpointChunkExtractorRDMA::DualEndpointChunkExtractorRDMA(tl::en
         LOG_ERROR("[DualEndpointChunkExtractor] Constructor : failed to create rdma_sender for player_receiver {} ", chl::to_string(player_receiver_service_id));
         rdma_sender_for_player = nullptr;
     }
-
-    try
-    {
-        rdma_sender_for_grapher = RDMATransferAgent::CreateRDMATransferAgent(sender_tl_engine, grapher_receiver_service_id);
-        LOG_TRACE("[DualEndpointChunkExtractor] Constructor created rdma_sender for grpaher_receiver {} ", chl::to_string(grapher_receiver_service_id));
-    }
-    catch(...)
-    {
-        LOG_ERROR("[DualEndpointChunkExtractor] Constructor : failed to create rdma_sender for grapher_receiver {} ", chl::to_string(grapher_receiver_service_id));
-        rdma_sender_for_grapher = nullptr;
-    }
-
 }
+
 
 chronolog::DualEndpointChunkExtractorRDMA::DualEndpointChunkExtractorRDMA( DualEndpointChunkExtractorRDMA const& other)
         : sender_tl_engine(other.get_sender_engine())
@@ -216,4 +256,105 @@ int chronolog::DualEndpointChunkExtractorRDMA::process_chunk(chronolog::StoryChu
     }
 
 return chl::CL_ERR_STORY_CHUNK_EXTRACTION;
+}
+
+
+
+/*
+   JSON Block for Dual Endpoint RDMA Extractor
+
+           "extractor_name": {
+                "type": "dual_endpoint_rdma_extractor",
+                "player_receiving_endpoint": {
+                    "protocol_conf": "ofi+sockets",
+                    "service_ip": "127.0.0.1",
+                    "service_base_port": 2230,
+                    "service_provider_id": 30
+                },
+                "grapher_receiving_endpoint": {
+                    "protocol_conf": "ofi+sockets",
+                    "service_ip": "127.0.0.1",
+                    "service_base_port": 3333,
+                    "service_provider_id": 33
+                }
+
+*/
+int chronolog::DualEndpointChunkExtractorRDMA::reset(json_object* json_block)
+{
+     if( (json_block == nullptr )
+      || !json_object_is_type(json_block, json_type_object)
+      || (json_object_object_get(json_block, "type") == nullptr)
+      || !json_object_is_type(json_object_object_get(json_block, "type"), json_type_string)
+      || (std::string("dual_endpoint_rdma_extractor").compare(json_object_get_string(json_object_object_get(json_block,"type"))) != 0)
+      )
+    {
+        LOG_ERROR("[DualEndpointExtractorRDMA] Reset failure: invalid json config" );
+        return chl::CL_ERR_INVALID_CONF;
+    }
+
+    if( (json_object_object_get(json_block, "grapher_receiving_endpoint") == nullptr)
+      || !json_object_is_type(json_object_object_get(json_block, "grapher_receiving_endpoint"), json_type_object)
+      )
+    {
+        LOG_ERROR("[DualEndpointChunkExtractorRDMA] Reset failure: invalid json config" );
+        return chl::CL_ERR_INVALID_CONF;
+    }
+
+    json_object* json_rpc_block = json_object_object_get(json_block, "grapher_receiving_endpoint");
+    chl::RPCProviderConf grapher_receiving_endpoint_conf;
+    if(grapher_receiving_endpoint_conf.parseJsonConf(json_rpc_block) != chl::CL_SUCCESS)
+    {
+        LOG_ERROR("[ChunkExtractorRDMA] Reset failure: invalid grapher_endpoint config" );
+        return chl::CL_ERR_INVALID_CONF;
+    }
+
+    chl::ServiceId grapher_receiver_id(grapher_receiving_endpoint_conf.PROTO_CONF,
+                               grapher_receiving_endpoint_conf.IP,
+                               grapher_receiving_endpoint_conf.BASE_PORT,
+                               grapher_receiving_endpoint_conf.SERVICE_PROVIDER_ID);
+
+    LOG_DEBUG("[ChunkExtractorRDMA] reset: about to create grapher_rdma_sender for receiver_service {} ",
+                      chl::to_string(grapher_receiver_id));
+
+    restart_rdma_sender_for_grapher( grapher_receiver_id );
+
+    if( (json_object_object_get(json_block, "player_receiving_endpoint") == nullptr)
+      || !json_object_is_type(json_object_object_get(json_block, "player_receiving_endpoint"), json_type_object)
+      )
+    {
+        LOG_ERROR("[DualEndpointChunkExtractorRDMA] Reset failure: invalid json config" );
+        return chl::CL_ERR_INVALID_CONF;
+    }
+
+    json_object* player_rpc_block = json_object_object_get(json_block, "player_receiving_endpoint");
+    chl::RPCProviderConf player_receiving_endpoint_conf;
+    if(player_receiving_endpoint_conf.parseJsonConf(player_rpc_block) != chl::CL_SUCCESS)
+    {
+        LOG_ERROR("[ChunkExtractorRDMA] Reset failure: invalid player endpoint config" );
+        return chl::CL_ERR_INVALID_CONF;
+    }
+
+    chl::ServiceId player_receiver_id(player_receiving_endpoint_conf.PROTO_CONF,
+                               player_receiving_endpoint_conf.IP,
+                               player_receiving_endpoint_conf.BASE_PORT,
+                               player_receiving_endpoint_conf.SERVICE_PROVIDER_ID);
+
+    LOG_DEBUG("[ChunkExtractorRDMA] reset: about to create player_rdma_sender for receiver_service {} ",
+                      chl::to_string(player_receiver_id));
+
+    restart_rdma_sender_for_player( player_receiver_id );
+
+return chl::CL_SUCCESS;   
+}
+
+int chronolog::DualEndpointChunkExtractorRDMA::reset_player_endpoint(chl::ServiceId const& receiver_player)
+{
+
+return chl::CL_SUCCESS;   
+}
+
+int chronolog::DualEndpointChunkExtractorRDMA::reset_grapher_endpoint(chl::ServiceId const& receiver_grapher)
+{
+
+return chl::CL_SUCCESS;   
 }

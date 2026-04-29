@@ -25,6 +25,9 @@ public:
 
     int process_chunk(StoryChunk*);
 
+    bool is_active() const
+    { return true; }
+
 private:
     ServiceId serviceId;
     std::string outputDirectory;

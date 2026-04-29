@@ -19,7 +19,7 @@ class StoryChunkExtractorRDMA
 {
 
 public:
-    StoryChunkExtractorRDMA(tl::engine& tl_engine, ServiceId const& service_id);
+    StoryChunkExtractorRDMA(tl::engine& tl_engine, ServiceId const& service_id = ServiceId());
     StoryChunkExtractorRDMA(StoryChunkExtractorRDMA const& other);
     StoryChunkExtractorRDMA& operator=(StoryChunkExtractorRDMA const& other);
 
@@ -33,7 +33,7 @@ public:
     int reset(json_object*);
 
     bool is_active() const
-    { return (nullptr == rdma_sender); }
+    { return (nullptr != rdma_sender); }
 
 private:
     tl::engine& sender_tl_engine;  // local tl::engine

@@ -14,11 +14,13 @@ namespace chronolog
 struct ExtractionModuleConfiguration
 {
     int extraction_stream_count = 1;
+    std::string engine_protocol = "ofi+sockets";
     std::map<std::string, json_object*> extractors;
 
     std::string & to_string( std::string & a_string) const
     {
         a_string += "\n[EXTRACTION_MODULE_CONF: { extraction_stream_count: " + std::to_string(extraction_stream_count)
+                    + ", engine_protocol: " + engine_protocol
                     + "} extractors {";
         if(!extractors.empty())
         {

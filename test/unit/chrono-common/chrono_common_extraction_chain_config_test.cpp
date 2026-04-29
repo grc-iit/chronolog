@@ -19,6 +19,7 @@ JSON block for ExtractionModule Configuration is expected to look like this
 
     "ExtractionModule": {
         "extraction_stream_count":2,
+        "extraction_protocol": "ofi+sockets",
         "extractors": {           
             "test_csv_extractor": {
                 "type": "csv_extractor",
