@@ -35,10 +35,10 @@ If you see a version number, you're good to go!
 First, pull the pre-built ChronoLog image from GitHub Container Registry:
 
 ```bash
-docker pull ghcr.io/grc-iit/chronolog:v2.6.0
+docker pull ghcr.io/grc-iit/chronolog:v2.7.0
 ```
 
-This downloads the ChronoLog v2.6.0 image to your local machine, with a pre-installed release build ready to use.
+This downloads the ChronoLog v2.7.0 image to your local machine, with a pre-installed release build ready to use.
 
 ---
 
@@ -47,7 +47,7 @@ This downloads the ChronoLog v2.6.0 image to your local machine, with a pre-inst
 Next, launch the ChronoLog container:
 
 ```bash
-docker run -it --rm --name chronolog-instance ghcr.io/grc-iit/chronolog:v2.6.0
+docker run -it --rm --name chronolog-instance ghcr.io/grc-iit/chronolog:v2.7.0
 ```
 
 This command:
@@ -73,7 +73,7 @@ You should see a container named `chronolog-instance`. For example:
 
 ```bash
 CONTAINER ID   IMAGE                                    COMMAND       CREATED          STATUS          PORTS     NAMES
-bfbc93af1d50   ghcr.io/grc-iit/chronolog:v2.6.0        "/bin/bash"   X seconds ago    Up X seconds             chronolog-instance
+bfbc93af1d50   ghcr.io/grc-iit/chronolog:v2.7.0        "/bin/bash"   X seconds ago    Up X seconds             chronolog-instance
 ```
 
 This indicates your ChronoLog container is up and running successfully!
