@@ -1,35 +1,32 @@
 cmake_minimum_required(VERSION 3.25)
 
-find_package(MPI REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(MARGO REQUIRED margo)
 
 #------------------------------------------------------------------------------
-# Client Admin CLI Tool
+# Client CLI Tool (interactive shell)
 #------------------------------------------------------------------------------
-add_executable(client_admin
-    client_admin.cpp
+add_executable(client_cli
+    client_cli.cpp
 )
 
-target_include_directories(client_admin PRIVATE
+target_include_directories(client_cli PRIVATE
     ${CMAKE_SOURCE_DIR}/chrono_common/include
     ${CMAKE_SOURCE_DIR}/Client/cpp/include
-    ${MPI_INCLUDE_PATH}
     ${MARGO_INCLUDE_DIRS}
 )
 
-target_link_directories(client_admin PRIVATE
+target_link_directories(client_cli PRIVATE
     ${MARGO_LIBRARY_DIRS}
 )
 
-target_link_libraries(client_admin PRIVATE
+target_link_libraries(client_cli PRIVATE
     chronolog_client
-    ${MPI_CXX_LIBRARIES}
     ${MARGO_LIBRARIES}
 )
 
-set_target_properties(client_admin PROPERTIES
-    OUTPUT_NAME chrono-client-admin
+set_target_properties(client_cli PROPERTIES
+    OUTPUT_NAME chrono-client-cli
     BUILD_WITH_INSTALL_RPATH TRUE
     SKIP_BUILD_RPATH TRUE
 )
@@ -43,6 +40,6 @@ configure_file(
 #------------------------------------------------------------------------------
 # Install binary
 #------------------------------------------------------------------------------
-chronolog_install_target(client_admin)
+chronolog_install_target(client_cli DESTINATION cli)
 
 # Client configuration file is installed by Client/cpp to avoid duplication

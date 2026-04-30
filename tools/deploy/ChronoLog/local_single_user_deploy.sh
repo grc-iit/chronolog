@@ -25,6 +25,8 @@ NUM_RECORDING_GROUPS=1
 BUILD_TYPE="Release"
 BUILD_DIR="$HOME/chronolog-build"
 INSTALL_DIR="$HOME/chronolog-install"
+EXTRA_CXX_FLAGS=""
+EXTRA_C_FLAGS=""
 WORK_DIR="$INSTALL_DIR/chronolog"
 
 # Directories (with defaults)
@@ -57,6 +59,12 @@ build() {
 
     if [[ -n "$INSTALL_DIR" ]]; then
         build_args+=("-I" "$INSTALL_DIR")
+    fi
+    if [[ -n "$EXTRA_CXX_FLAGS" ]]; then
+        build_args+=("--cxx-flags" "$EXTRA_CXX_FLAGS")
+    fi
+    if [[ -n "$EXTRA_C_FLAGS" ]]; then
+        build_args+=("--c-flags" "$EXTRA_C_FLAGS")
     fi
 
     echo -e "${DEBUG}Running: ${build_args[*]}${NC}"
@@ -145,6 +153,8 @@ usage() {
     echo "  -t|--build-type <Debug|Release>  Define type of build (default: Release) [Modes: Build, Install]"
     echo "  -B|--build-dir <path>            Set the build directory (default: $HOME/chronolog-build/) [Modes: Build, Install]"
     echo "  -I|--install-dir <path>          Set the installation directory (default: $HOME/chronolog-install/) [Modes: Build, Install]"
+    echo "  --cxx-flags <flags>              Extra flags appended to CMAKE_CXX_FLAGS (e.g. '-O2 -g -fno-omit-frame-pointer') [Modes: Build]"
+    echo "  --c-flags   <flags>              Extra flags appended to CMAKE_C_FLAGS [Modes: Build]"
     echo ""
     echo "Deployment Options:"
     echo "  -k|--keepers <number>            Set the total number of keeper processes. They will be assigned iteratively to the recording groups (default: 1)[Modes: Start]"
@@ -215,8 +225,8 @@ parse_args() {
                 shift ;;
             -t|--build-type)
                 BUILD_TYPE="$2"
-                if [[ "$BUILD_TYPE" != "Debug" && "$BUILD_TYPE" != "Release" ]]; then
-                    echo -e "${ERR}Invalid build type: $BUILD_TYPE. Must be 'Debug' or 'Release'.${NC}"
+                if [[ "$BUILD_TYPE" != "Debug" && "$BUILD_TYPE" != "Release" && "$BUILD_TYPE" != "RelWithDebInfo" ]]; then
+                    echo -e "${ERR}Invalid build type: $BUILD_TYPE. Must be 'Debug', 'Release', or 'RelWithDebInfo'.${NC}"
                     usage
                 fi
                 shift 2 ;;
@@ -225,6 +235,12 @@ parse_args() {
                 shift 2 ;;
             -I|--install-dir)
                 INSTALL_DIR=$(realpath -m "$2")
+                shift 2 ;;
+            --cxx-flags)
+                EXTRA_CXX_FLAGS="$2"
+                shift 2 ;;
+            --c-flags)
+                EXTRA_C_FLAGS="$2"
                 shift 2 ;;
             -k|--keepers)
                 NUM_KEEPERS="$2"
