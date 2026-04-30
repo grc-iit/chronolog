@@ -24,6 +24,7 @@ All `Client` methods return a plain `int` status code. A return value of `0` mea
 | `CL_ERR_NO_PLAYERS` | -10 | No ChronoPlayer nodes available |
 | `CL_ERR_NOT_READER_MODE` | -11 | Client is in WRITER_MODE; read operations unavailable |
 | `CL_ERR_QUERY_TIMED_OUT` | -12 | Replay query timed out |
+| `CL_ERR_PROTOCOL_VERSION_MISMATCH` | -13 | Client and server disagree on the wire-protocol version |
 
 ## Error Handling
 
@@ -46,6 +47,7 @@ ERROR_NAMES = {
     -10: "CL_ERR_NO_PLAYERS",
     -11: "CL_ERR_NOT_READER_MODE",
     -12: "CL_ERR_QUERY_TIMED_OUT",
+    -13: "CL_ERR_PROTOCOL_VERSION_MISMATCH",
 }
 
 portal_conf = py_chronolog_client.ClientPortalServiceConf("ofi+sockets", "127.0.0.1", 5555, 55)

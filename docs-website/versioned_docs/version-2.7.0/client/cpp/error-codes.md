@@ -28,6 +28,7 @@ All Client API methods return an `int` status code. Check the return value again
 | `CL_ERR_NO_PLAYERS` | -10 | No ChronoPlayer nodes available |
 | `CL_ERR_NOT_READER_MODE` | -11 | Client is in WRITER_MODE; read operations unavailable |
 | `CL_ERR_QUERY_TIMED_OUT` | -12 | Replay query timed out |
+| `CL_ERR_PROTOCOL_VERSION_MISMATCH` | -13 | Client and server disagree on the wire-protocol version |
 
 ## Error Handling
 
