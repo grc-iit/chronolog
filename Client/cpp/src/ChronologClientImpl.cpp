@@ -6,7 +6,6 @@
 #include <string>
 #include <unistd.h>
 
-#include <city.h>
 #include <margo.h>
 #include <thallium.hpp>
 

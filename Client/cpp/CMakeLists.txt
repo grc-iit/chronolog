@@ -36,7 +36,6 @@ target_include_directories(chronolog_client
         ${JSON-C_INCLUDE_DIRS}
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
-        ${CMAKE_SOURCE_DIR}/chrono_common/include
         ${CMAKE_SOURCE_DIR}/Client/cpp/include
 )
 
@@ -50,7 +49,6 @@ target_link_directories(chronolog_client
 
 target_link_libraries(chronolog_client
     PRIVATE
-        chrono_common
         thallium
         ${JSON-C_LIBRARIES}
 )

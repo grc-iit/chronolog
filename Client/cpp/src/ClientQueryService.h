@@ -20,7 +20,7 @@ namespace chronolog
 {
 
 class PlaybackQueryRpcClient;
-class StoryChunk;
+struct PlaybackQueryResponse;
 
 struct PlaybackQuery
 {
@@ -103,7 +103,7 @@ private:
                                std::vector<Event>&);
     void stop_query(uint32_t);
 
-    int deserializedWithCereal(char* buffer, size_t size, StoryChunk& story_chunk);
+    int deserializeResponse(char* buffer, size_t size, PlaybackQueryResponse& response);
     thallium::engine queryServiceEngine;
     ServiceId queryServiceId;
     std::mutex queryServiceMutex;
