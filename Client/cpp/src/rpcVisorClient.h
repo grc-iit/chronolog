@@ -194,7 +194,7 @@ public:
                       story_name.c_str(),
                       chronicle_name.c_str());
         }
-        return (AcquireStoryResponseMsg(chronolog::CL_ERR_UNKNOWN, 0, std::vector<KeeperIdCard>{}));
+        return (AcquireStoryResponseMsg(chronolog::CL_ERR_UNKNOWN, 0, std::vector<ServiceId>{}));
     }
 
     int ReleaseStory(ClientId const& client_id, std::string const& chronicle_name, std::string const& story_name)
