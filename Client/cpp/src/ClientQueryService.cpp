@@ -16,7 +16,7 @@
 #include <client_errcode.h>
 #include <chrono_monitor.h>
 #include <chronolog_client.h>
-#include <StoryChunk.h>
+#include <PlaybackQueryResponse.h>
 
 #include "ClientQueryService.h"
 #include "PlaybackQueryRpcClient.h"
@@ -227,7 +227,10 @@ void chronolog::ClientQueryService::removePlaybackQueryClient(chl::ServiceId con
     // to safely remove it
 }
 
-// build transfer of the Response StoryChunks
+// Receive a PlaybackQueryResponse from the Player and append its events
+// directly to the active query's event series. The RPC keeps the legacy name
+// "receive_story_chunk" for now to avoid changing the Thallium endpoint name
+// in this refactor; the wire payload is no longer a StoryChunk.
 void chl::ClientQueryService::receive_story_chunk(tl::request const& request, tl::bulk& b)
 {
     try
@@ -247,78 +250,76 @@ void chl::ClientQueryService::receive_story_chunk(tl::request const& request, tl
         tl::bulk local = local_engine.expose(segments, tl::bulk_mode::write_only);
         LOG_DEBUG("[ClientQueryService] Bulk memory exposed, ThreadID={}", tl::thread::self_id());
         b.on(ep) >> local;
-        LOG_DEBUG("[ClientQueryService] Received {} bytes of StoryChunk data, ThreadID={}",
+        LOG_DEBUG("[ClientQueryService] Received {} bytes of PlaybackQueryResponse data, ThreadID={}",
                   b.size(),
                   tl::thread::self_id());
 
-        StoryChunk* story_chunk = new StoryChunk();
-        int ret = deserializedWithCereal(&mem_vec[0], b.size(), *story_chunk);
+        chronolog::PlaybackQueryResponse response;
+        int ret = deserializeResponse(&mem_vec[0], b.size(), response);
         if(ret != chronolog::CL_SUCCESS)
         {
-            LOG_ERROR("[ClientQueryService] Failed to deserialize a story chunk, ThreadID={}", tl::thread::self_id());
-            delete story_chunk;
+            LOG_ERROR("[ClientQueryService] Failed to deserialize PlaybackQueryResponse, ThreadID={}",
+                      tl::thread::self_id());
             ret = 10000000 + tl::thread::self_id(); // arbitrary error code encoded with thread id
-            LOG_ERROR("[ClientQueryService] Discarding the story chunk, responding {} to Keeper", ret);
+            LOG_ERROR("[ClientQueryService] Discarding the response, responding {} to Player", ret);
             request.respond(ret);
             return;
         }
 
-        LOG_DEBUG("[ClientQueryService] StoryChunk received: StoryId {} StartTime {} eventCount {} ThreadID={}",
-                  story_chunk->getStoryId(),
-                  story_chunk->getStartTime(),
-                  story_chunk->getEventCount(),
+        LOG_DEBUG("[ClientQueryService] PlaybackQueryResponse received: eventCount {} ThreadID={}",
+                  response.events.size(),
                   tl::thread::self_id());
 
-        // add StoryChunk to the Query response event series
         uint32_t query_id = 1; //TODO:  add query_id to query response transfer
 
-        // NOTE: by design threre would be only one receiving thread that's writing to the specific query object
-        // but we probably should take case of the possibility of the query timeout happenning while we are writing the response
+        // NOTE: by design there would be only one receiving thread that's writing to the specific query object
+        // but we probably should take care of the possibility of the query timeout happening while we are writing the response
 
         auto query_iter = activeQueryMap.find(query_id);
         if(query_iter != activeQueryMap.end())
         {
-            LOG_DEBUG("[ClientQueryService] Query {} got StoryChunk {}-{} StartTime {} eventCount {} ThreadID={}",
-                      query_id,
-                      story_chunk->getChronicleName(),
-                      story_chunk->getStoryName(),
-                      story_chunk->getStartTime(),
-                      story_chunk->getEventCount(),
-                      tl::thread::self_id());
-            story_chunk->extractEventSeries((*query_iter).second.eventSeries);
+            std::vector<chl::Event>& event_series = (*query_iter).second.eventSeries;
+            event_series.reserve(event_series.size() + response.events.size());
+            for(auto const& log_event: response.events)
+            {
+                event_series.emplace_back(log_event.eventTime,
+                                          log_event.clientId,
+                                          log_event.eventIndex,
+                                          log_event.logRecord);
+            }
             (*query_iter).second.completed = true;
+            LOG_DEBUG("[ClientQueryService] Query {} got {} events, ThreadID={}",
+                      query_id,
+                      response.events.size(),
+                      tl::thread::self_id());
         }
 
-        delete story_chunk;
-
-        LOG_DEBUG("[ClientQueryService] StoryChunk recording RPC response {}, ThreadID={}",
+        LOG_DEBUG("[ClientQueryService] PlaybackQueryResponse recording RPC response {}, ThreadID={}",
                   b.size(),
                   tl::thread::self_id());
         request.respond(b.size());
-
-        // add StoryChunk to the QueryResponse Object
     }
     catch(std::bad_alloc const& ex)
     {
-        LOG_ERROR("[ClientQueryService] Failed to allocate memory for StoryChunk data, ThreadID={}",
+        LOG_ERROR("[ClientQueryService] Failed to allocate memory for PlaybackQueryResponse data, ThreadID={}",
                   tl::thread::self_id());
         request.respond(20000000 + tl::thread::self_id());
     }
 }
 
-int chl::ClientQueryService::deserializedWithCereal(char* buffer, size_t size, chl::StoryChunk& story_chunk)
+int chl::ClientQueryService::deserializeResponse(char* buffer, size_t size, chl::PlaybackQueryResponse& response)
 {
     std::stringstream ss(std::ios::binary | std::ios::in | std::ios::out);
     try
     {
         ss.write(buffer, size);
         cereal::BinaryInputArchive iarchive(ss);
-        iarchive(story_chunk);
+        iarchive(response);
         return chronolog::CL_SUCCESS;
     }
     catch(cereal::Exception const& ex)
     {
-        LOG_ERROR("[ClientQueryService] Failed to deserialize a story chunk, size={}, ThreadID={}. "
+        LOG_ERROR("[ClientQueryService] Failed to deserialize PlaybackQueryResponse, size={}, ThreadID={}. "
                   "Cereal exception: {}",
                   ss.str().size(),
                   tl::thread::self_id(),
@@ -326,7 +327,7 @@ int chl::ClientQueryService::deserializedWithCereal(char* buffer, size_t size, c
     }
     catch(std::exception const& ex)
     {
-        LOG_ERROR("[ClientQueryService] Failed to deserialize a story chunk, size={}, ThreadID={}. "
+        LOG_ERROR("[ClientQueryService] Failed to deserialize PlaybackQueryResponse, size={}, ThreadID={}. "
                   "std::exception : {}",
                   ss.str().size(),
                   tl::thread::self_id(),
@@ -334,7 +335,7 @@ int chl::ClientQueryService::deserializedWithCereal(char* buffer, size_t size, c
     }
     catch(...)
     {
-        LOG_ERROR("[ClientQueryService] Failed to deserialize a story chunk, ThreadID={}. Unknown exception "
+        LOG_ERROR("[ClientQueryService] Failed to deserialize PlaybackQueryResponse, ThreadID={}. Unknown exception "
                   "encountered.",
                   tl::thread::self_id());
     }

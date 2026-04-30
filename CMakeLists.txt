@@ -5,7 +5,7 @@ if(NOT DEFINED CMAKE_MACOSX_RPATH)
     set(CMAKE_MACOSX_RPATH 0)
 endif()
 
-project(ChronoLog VERSION 2.6.0 LANGUAGES CXX C)
+project(ChronoLog VERSION 2.7.0 LANGUAGES CXX C)
 
 #------------------------------------------------------------------------------
 # Version information
@@ -26,8 +26,8 @@ set(CHRONOLOG_PACKAGE_TARNAME "${CHRONOLOG_PACKAGE}")
 # Setup install and output Directories
 #------------------------------------------------------------------------------
 # Validate CMAKE_BUILD_TYPE
-if( NOT DEFINED CMAKE_BUILD_TYPE OR NOT (CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "Release"))
-    message(FATAL_ERROR "Please, define CMAKE_BUILD_TYPE that is either Debug or Release")
+if( NOT DEFINED CMAKE_BUILD_TYPE OR NOT (CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo"))
+    message(FATAL_ERROR "Please, define CMAKE_BUILD_TYPE that is either Debug, Release, or RelWithDebInfo")
 endif()
 
 message(STATUS "CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
@@ -58,6 +58,9 @@ set(CHRONOLOG_INSTALL_ROOT        "${CMAKE_INSTALL_PREFIX}/chronolog")
 set(CHRONOLOG_INSTALL_BIN_DIR     "${CHRONOLOG_INSTALL_ROOT}/bin")
 set(CHRONOLOG_INSTALL_EXAMPLES_DIR "${CHRONOLOG_INSTALL_ROOT}/examples")
 set(CHRONOLOG_INSTALL_TESTS_DIR   "${CHRONOLOG_INSTALL_ROOT}/tests")
+set(CHRONOLOG_INSTALL_CLI_DIR      "${CHRONOLOG_INSTALL_ROOT}/tools/cli")
+set(CHRONOLOG_INSTALL_BENCHMARK_DIR "${CHRONOLOG_INSTALL_ROOT}/tools/benchmark")
+set(CHRONOLOG_INSTALL_DEPLOY_DIR  "${CHRONOLOG_INSTALL_ROOT}/tools/deploy")
 set(CHRONOLOG_INSTALL_LIB_DIR     "${CHRONOLOG_INSTALL_ROOT}/lib")
 set(CHRONOLOG_INSTALL_INCLUDE_DIR "${CHRONOLOG_INSTALL_ROOT}/include")
 set(CHRONOLOG_INSTALL_CONF_DIR    "${CHRONOLOG_INSTALL_ROOT}/conf")
@@ -78,6 +81,10 @@ function(chronolog_install_target target_name)
             set(_runtime_dest "${CHRONOLOG_INSTALL_EXAMPLES_DIR}")
         elseif(_dest_arg STREQUAL "tests")
             set(_runtime_dest "${CHRONOLOG_INSTALL_TESTS_DIR}")
+        elseif(_dest_arg STREQUAL "cli")
+            set(_runtime_dest "${CHRONOLOG_INSTALL_CLI_DIR}")
+        elseif(_dest_arg STREQUAL "benchmark")
+            set(_runtime_dest "${CHRONOLOG_INSTALL_BENCHMARK_DIR}")
         elseif(NOT _dest_arg STREQUAL "bin")
             message(WARNING "chronolog_install_target(${target_name}): unknown DESTINATION '${_dest_arg}', using bin")
         endif()
@@ -161,6 +168,12 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     message(STATUS "Compiling ChronoLog in Debug Mode")
     add_compile_options(-O0)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wno-unused-parameter -Wno-unused-variable -O0 -g")
+elseif(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+    # Profiling build: CMake provides -O2 -g -DNDEBUG by default.
+    # Only add -lm; do NOT add -O3 so that -O2 and debug symbols are preserved
+    # and inlining stays moderate enough for perf annotate to resolve symbols.
+    message(STATUS "Compiling ChronoLog in RelWithDebInfo Mode (profiling-friendly)")
+    add_compile_options(-lm)
 else()
     message(STATUS "Compiling ChronoLog in Release Mode")
     add_compile_options(-O3 -lm)
@@ -270,6 +283,11 @@ add_subdirectory(Plugins)
 if(CHRONOLOG_BUILD_TESTS_NOW)
     enable_testing()
     add_subdirectory(test)
+else()
+    # Performance regression harness ships in every build type (including
+    # Release) so the perf matrix can be run against optimized binaries. The
+    # rest of the test tree remains Debug-only.
+    add_subdirectory(test/performance)
 endif()
 
 #------------------------------------------------------------------------------
@@ -359,7 +377,7 @@ install(
     PROGRAMS
         tools/deploy/ChronoLog/deploy_local.sh
         tools/deploy/ChronoLog/deploy_cluster.sh
-    DESTINATION ${CHRONOLOG_INSTALL_ROOT}/tools
+    DESTINATION ${CHRONOLOG_INSTALL_DEPLOY_DIR}
 )
 
 #------------------------------------------------------------------------------

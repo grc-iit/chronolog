@@ -9,6 +9,7 @@
 #include <thallium/serialization/stl/vector.hpp>
 #include <thallium/serialization/stl/unordered_map.hpp>
 
+#include <chronolog_client.h>
 #include <chronolog_types.h>
 #include <KeeperIdCard.h>
 #include <ConnectResponseMsg.h>
@@ -37,8 +38,21 @@ public:
         get_engine().pop_finalize_callback(this);
     }
 
-    void Connect(tl::request const& request, uint32_t client_account, uint32_t client_host_ip, uint32_t client_pid)
+    void Connect(tl::request const& request,
+                 uint32_t client_account,
+                 uint32_t client_host_ip,
+                 uint32_t client_pid,
+                 uint32_t client_protocol_version)
     {
+        if(client_protocol_version != chronolog::CLIENT_PROTOCOL_VERSION)
+        {
+            LOG_ERROR("[ClientPortalService] Connect rejected: client protocol version {} does not match server {}",
+                      client_protocol_version,
+                      chronolog::CLIENT_PROTOCOL_VERSION);
+            request.respond(ConnectResponseMsg(chronolog::CL_ERR_PROTOCOL_VERSION_MISMATCH, ClientId{0}));
+            return;
+        }
+
         ClientId client_id;
         uint64_t clock_offset;
         int return_code =
