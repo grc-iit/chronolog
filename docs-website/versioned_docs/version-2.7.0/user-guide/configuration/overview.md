@@ -38,7 +38,7 @@ See [Server Configuration](./server-configuration.md) for the full field referen
 
 ## How the Configuration is Loaded
 
-Starting with ChronoLog v2.6.0 the configuration system is split into a lightweight loader and a set of per-component configuration classes. This replaces the earlier monolithic `ConfigurationManager` that owned the parsed state of every component.
+Starting with ChronoLog v2.7.0 the configuration system is split into a lightweight loader and a set of per-component configuration classes. This replaces the earlier monolithic `ConfigurationManager` that owned the parsed state of every component.
 
 ### `ConfigurationManager` (shared loader)
 

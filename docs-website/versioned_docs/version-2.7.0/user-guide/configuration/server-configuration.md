@@ -7,7 +7,7 @@ title: "Server Configuration"
 
 ChronoLog server executables share a single JSON configuration file. The repository ships a template at `default_conf.json.in`; a fully expanded example is installed as `conf/default-chrono-conf.json` and is used by `tools/deploy/deploy_local.sh`.
 
-As of ChronoLog v2.6.0 the file is organized into two shared blocks (`clock`, `authentication`) and four per-component sections (`chrono_visor`, `chrono_keeper`, `chrono_grapher`, `chrono_player`). See the [Overview](./overview.md) page for the loader architecture behind these sections.
+As of ChronoLog v2.7.0 the file is organized into two shared blocks (`clock`, `authentication`) and four per-component sections (`chrono_visor`, `chrono_keeper`, `chrono_grapher`, `chrono_player`). See the [Overview](./overview.md) page for the loader architecture behind these sections.
 
 ```json
 {

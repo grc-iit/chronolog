@@ -93,7 +93,7 @@ Controls the mechanism used to generate event timestamps across all components.
 
 ### `drift_cal_sleep_sec` / `drift_cal_sleep_nsec`
 
-Interval between clock drift calibration runs (default: every 10 seconds). The drift calibration corrects for slow clock drift between the ChronoLog clock and the system wall clock. Reducing this interval increases correction frequency at a small CPU cost; increasing it reduces CPU overhead but allows more drift to accumulate between corrections. Currently, it has no effect in ChronoLog v2.6.0.
+Interval between clock drift calibration runs (default: every 10 seconds). The drift calibration corrects for slow clock drift between the ChronoLog clock and the system wall clock. Reducing this interval increases correction frequency at a small CPU cost; increasing it reduces CPU overhead but allows more drift to accumulate between corrections. Currently, it has no effect in ChronoLog v2.7.0.
 
 ## Shutdown Grace Period
 
