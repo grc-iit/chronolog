@@ -2,12 +2,18 @@
 #include <string>
 #include <iostream>
 #include <fstream>
+#include <cmd_arg_parse.h>
 #include "chronokvs.h"
 
-int main()
+int main(int argc, char** argv)
 {
-    // Create ChronoKVS instance
-    chronokvs::ChronoKVS chronoKVS;
+    // Optional ChronoLog client config file (-c/--config). When omitted,
+    // ChronoKVS uses the built-in defaults (localhost deployment).
+    std::string conf_file_path = parse_conf_path_arg(argc, argv);
+
+    // Create ChronoKVS instance: with config file when provided, otherwise defaults.
+    chronokvs::ChronoKVS chronoKVS =
+            conf_file_path.empty() ? chronokvs::ChronoKVS() : chronokvs::ChronoKVS(conf_file_path);
 
     // Define key-value pairs
     std::string key1 = "key1";

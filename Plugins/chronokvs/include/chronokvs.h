@@ -30,6 +30,23 @@ public:
     explicit ChronoKVS(LogLevel level = getDefaultLogLevel());
 
     /**
+     * @brief Construct a ChronoKVS instance using a ChronoLog client configuration file.
+     *
+     * Loads the JSON configuration at @p config_path and uses the resulting portal,
+     * query and logging settings to connect to ChronoLog. Pass an empty string to
+     * fall back to the built-in defaults (localhost deployment).
+     *
+     * @param config_path
+     *     Path to a ChronoLog client configuration JSON file. Empty means
+     *     "use defaults".
+     * @param level
+     *     The logging level to use. Default is DEBUG in debug builds, ERROR in release builds.
+     *
+     * @throws std::runtime_error if @p config_path is non-empty but cannot be loaded.
+     */
+    explicit ChronoKVS(const std::string& config_path, LogLevel level = getDefaultLogLevel());
+
+    /**
      * @brief Get the current log level
      * @return The current LogLevel
      */

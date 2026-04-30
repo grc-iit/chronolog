@@ -15,6 +15,11 @@ ChronoKVS::ChronoKVS(LogLevel level)
     , logLevel_(level)
 {}
 
+ChronoKVS::ChronoKVS(const std::string& config_path, LogLevel level)
+    : mapper(std::make_unique<ChronoKVSMapper>(config_path, level))
+    , logLevel_(level)
+{}
+
 ChronoKVS::~ChronoKVS() = default;
 
 std::uint64_t ChronoKVS::put(const std::string& key, const std::string& value)

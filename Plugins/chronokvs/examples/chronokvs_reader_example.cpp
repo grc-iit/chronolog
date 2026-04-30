@@ -4,6 +4,7 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <cmd_arg_parse.h>
 #include "chronokvs.h"
 
 std::vector<std::uint64_t> readTimestampsFromFile(const std::string& filename)
@@ -24,10 +25,15 @@ std::vector<std::uint64_t> readTimestampsFromFile(const std::string& filename)
     return timestamps;
 }
 
-int main()
+int main(int argc, char** argv)
 {
-    // Create ChronoKVS instance
-    chronokvs::ChronoKVS chronoKVS;
+    // Optional ChronoLog client config file (-c/--config). When omitted,
+    // ChronoKVS uses the built-in defaults (localhost deployment).
+    std::string conf_file_path = parse_conf_path_arg(argc, argv);
+
+    // Create ChronoKVS instance: with config file when provided, otherwise defaults.
+    chronokvs::ChronoKVS chronoKVS =
+            conf_file_path.empty() ? chronokvs::ChronoKVS() : chronokvs::ChronoKVS(conf_file_path);
 
     // Read timestamps from file
     std::vector<std::uint64_t> timestamps = readTimestampsFromFile("chronokvs_timestamps.txt");

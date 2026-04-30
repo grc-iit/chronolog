@@ -19,7 +19,27 @@ ChronoKVSClientAdapter::ChronoKVSClientAdapter(LogLevel level)
     : logLevel_(level)
 {
     chronolog::ClientConfiguration confManager;
+    initialize(confManager);
+}
 
+ChronoKVSClientAdapter::ChronoKVSClientAdapter(const std::string& config_path, LogLevel level)
+    : logLevel_(level)
+{
+    chronolog::ClientConfiguration confManager;
+    if(!config_path.empty())
+    {
+        CHRONOKVS_INFO(logLevel_, "Loading ChronoLog client configuration from '", config_path, "'");
+        if(!confManager.load_from_file(config_path))
+        {
+            CHRONOKVS_ERROR(logLevel_, "Failed to load configuration file: ", config_path);
+            throw std::runtime_error("Failed to load config file: " + config_path);
+        }
+    }
+    initialize(confManager);
+}
+
+void ChronoKVSClientAdapter::initialize(const chronolog::ClientConfiguration& confManager)
+{
     // Configure portal and query services from the configuration manager
     chronolog::ClientPortalServiceConf portalConf{confManager.PORTAL_CONF.PROTO_CONF,
                                                   confManager.PORTAL_CONF.IP,
