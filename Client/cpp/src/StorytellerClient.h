@@ -12,7 +12,7 @@
 #include <thallium.hpp>
 
 #include <chrono_monitor.h>
-#include <KeeperIdCard.h>
+#include <ServiceId.h>
 #include <chronolog_types.h>
 #include <chronolog_client.h>
 
@@ -52,15 +52,15 @@ public:
 
     ~StorytellerClient();
 
-    int addKeeperRecordingClient(KeeperIdCard const&);
-    int removeKeeperRecordingClient(KeeperIdCard const&);
+    int addKeeperRecordingClient(ServiceId const&);
+    int removeKeeperRecordingClient(ServiceId const&);
 
     StoryHandle* findStoryWritingHandle(ChronicleName const&, StoryName const&);
 
     StoryHandle* initializeStoryWritingHandle(ChronicleName const&,
                                               StoryName const&,
                                               StoryId const&,
-                                              std::vector<KeeperIdCard> const&,
+                                              std::vector<ServiceId> const&,
                                               ServiceId const&);
 
     void removeAcquiredStoryHandle(ChronicleName const&, StoryName const&);
@@ -117,7 +117,7 @@ public:
     // virtual int log_event(size_t size, void*data);
 
     void addRecordingClient(KeeperRecordingClient*);
-    void removeRecordingClient(KeeperIdCard const&);
+    void removeRecordingClient(ServiceId const&);
 
 private:
     StorytellerClient& theClient;

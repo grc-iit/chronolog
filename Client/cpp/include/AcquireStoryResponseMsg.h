@@ -6,7 +6,6 @@
 
 #include "chronolog_types.h"
 #include "ServiceId.h"
-#include "KeeperIdCard.h"
 #include "client_errcode.h"
 
 namespace chronolog
@@ -16,7 +15,7 @@ class AcquireStoryResponseMsg
 {
     int error_code;
     StoryId storyId;
-    std::vector<KeeperIdCard> keepers;
+    std::vector<ServiceId> keepers;
     ServiceId player;
 
 public:
@@ -28,7 +27,7 @@ public:
 
     AcquireStoryResponseMsg(int code,
                             StoryId const& story_id,
-                            std::vector<KeeperIdCard> const& keepers_to_use,
+                            std::vector<ServiceId> const& keepers_to_use,
                             ServiceId const& player_to_use = ServiceId())
         : error_code(code)
         , storyId(story_id)
@@ -42,7 +41,7 @@ public:
 
     StoryId const& getStoryId() const { return storyId; }
 
-    std::vector<KeeperIdCard> const& getKeepers() const { return keepers; }
+    std::vector<ServiceId> const& getKeepers() const { return keepers; }
 
     ServiceId const& getPlayer() const { return player; }
 
@@ -62,7 +61,7 @@ public:
 inline std::ostream& operator<<(std::ostream& out, chronolog::AcquireStoryResponseMsg const& msg)
 {
     out << "AcquireStoryResponseMsg{" << msg.getErrorCode() << "}{story_id:" << msg.getStoryId() << "}{";
-    for(chronolog::KeeperIdCard keeper_card: msg.getKeepers()) { out << keeper_card; }
+    for(chronolog::ServiceId const& keeper_service: msg.getKeepers()) { out << keeper_service; }
     out << "}{" << msg.getPlayer() << "}";
 
     return out;

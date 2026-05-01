@@ -49,13 +49,13 @@ void chronolog::StoryWritingHandle<KeeperChoicePolicy>::addRecordingClient(
 ///////////////////
 template <class KeeperChoicePolicy>
 void chronolog::StoryWritingHandle<KeeperChoicePolicy>::removeRecordingClient(
-        chronolog::KeeperIdCard const& keeper_id_card)
+        chronolog::ServiceId const& keeper_service_id)
 {
     // this should only be called when the ChronoKeeper process unexpectedly exits
     // so it's ok to use rather inefficient vector iteration....
     for(auto iter = storyKeepers.begin(); iter != storyKeepers.end(); ++iter)
     {
-        if((*iter)->getKeeperId() == keeper_id_card)
+        if((*iter)->getRecordingServiceId() == keeper_service_id)
         {
             storyKeepers.erase(iter);
             break;
@@ -129,29 +129,30 @@ int chronolog::StorytellerClient::get_event_index()
 ////////////////
 
 
-int chronolog::StorytellerClient::addKeeperRecordingClient(chronolog::KeeperIdCard const& keeper_id_card)
+int chronolog::StorytellerClient::addKeeperRecordingClient(chronolog::ServiceId const& keeper_service_id)
 {
     std::lock_guard<std::mutex> lock(recordingClientMapMutex);
 
     try
     {
         chronolog::KeeperRecordingClient* keeperRecordingClient =
-                chronolog::KeeperRecordingClient::CreateKeeperRecordingClient(client_engine, keeper_id_card);
+                chronolog::KeeperRecordingClient::CreateKeeperRecordingClient(client_engine, keeper_service_id);
 
         auto insert_return =
                 recordingClientMap.insert(std::pair<std::pair<uint32_t, uint16_t>, chronolog::KeeperRecordingClient*>(
-                        keeper_id_card.getRecordingServiceId().get_service_endpoint(),
+                        keeper_service_id.get_service_endpoint(),
                         keeperRecordingClient));
         if(false == insert_return.second)
         {
-            LOG_ERROR("[StorytellerClient] Failed to create KeeperRecordingClient for {}", to_string(keeper_id_card));
+            LOG_ERROR("[StorytellerClient] Failed to create KeeperRecordingClient for {}",
+                      to_string(keeper_service_id));
             return 0;
         }
-        LOG_INFO("[StorytellerClient] Added KeeperRecordingClient for {}", to_string(keeper_id_card));
+        LOG_INFO("[StorytellerClient] Added KeeperRecordingClient for {}", to_string(keeper_service_id));
     }
     catch(tl::exception const& ex)
     {
-        LOG_ERROR("[StorytellerClient] Failed to create KeeperRecordingClient for {}", to_string(keeper_id_card));
+        LOG_ERROR("[StorytellerClient] Failed to create KeeperRecordingClient for {}", to_string(keeper_service_id));
     }
 
     // state = RUNNING;
@@ -160,12 +161,12 @@ int chronolog::StorytellerClient::addKeeperRecordingClient(chronolog::KeeperIdCa
 }
 /////////////////
 
-int chronolog::StorytellerClient::removeKeeperRecordingClient(chronolog::KeeperIdCard const& keeper_id_card)
+int chronolog::StorytellerClient::removeKeeperRecordingClient(chronolog::ServiceId const& keeper_service_id)
 {
     std::lock_guard<std::mutex> lock(recordingClientMapMutex);
 
     // stop & delete keeperRecordingClient before erasing keeper_process entry
-    auto keeper_client_iter = recordingClientMap.find(keeper_id_card.getRecordingServiceId().get_service_endpoint());
+    auto keeper_client_iter = recordingClientMap.find(keeper_service_id.get_service_endpoint());
 
     if(keeper_client_iter != recordingClientMap.end())
     {
@@ -177,7 +178,7 @@ int chronolog::StorytellerClient::removeKeeperRecordingClient(chronolog::KeeperI
     // we need to iterate through the known WritingHandles and make sure this keeperClient is removed from all the active storyHandles
     // serialize the log events by switching the state to PENDING and forcing the log event calls to wait by locking
     //recording clientMutex during this time ....
-    LOG_INFO("[StorytellerClient] Removed KeeperRecordingClient for {}", to_string(keeper_id_card));
+    LOG_INFO("[StorytellerClient] Removed KeeperRecordingClient for {}", to_string(keeper_service_id));
     return 1;
 }
 
@@ -211,7 +212,7 @@ chronolog::StoryHandle*
 chronolog::StorytellerClient::initializeStoryWritingHandle(ChronicleName const& chronicle,
                                                            StoryName const& story,
                                                            StoryId const& story_id,
-                                                           std::vector<KeeperIdCard> const& vectorOfKeepers,
+                                                           std::vector<ServiceId> const& vectorOfKeepers,
                                                            chl::ServiceId const& player_card)
 //INNA: TODO :KeeperChoicePolicy will have to be communicated here as well ....
 {
@@ -230,22 +231,21 @@ chronolog::StorytellerClient::initializeStoryWritingHandle(ChronicleName const& 
     chronolog::StoryWritingHandle<RoundRobinKeeperChoice>* storyWritingHandle =
             new StoryWritingHandle<RoundRobinKeeperChoice>(*this, chronicle, story, story_id);
 
-    for(KeeperIdCard keeper_id_card: vectorOfKeepers)
+    for(ServiceId const& keeper_service_id: vectorOfKeepers)
     {
-        auto keeper_client_iter =
-                recordingClientMap.find(keeper_id_card.getRecordingServiceId().get_service_endpoint());
+        auto keeper_client_iter = recordingClientMap.find(keeper_service_id.get_service_endpoint());
 
         if(keeper_client_iter == recordingClientMap.end())
         {
             // unlikely but we better check
-            if(addKeeperRecordingClient(keeper_id_card) == 0)
+            if(addKeeperRecordingClient(keeper_service_id) == 0)
             {
                 LOG_WARNING("[StorytellerClient] Failed to add KeeperRecordingClient for {}",
-                            to_string(keeper_id_card));
+                            to_string(keeper_service_id));
                 continue;
             }
         }
-        keeper_client_iter = recordingClientMap.find(keeper_id_card.getRecordingServiceId().get_service_endpoint());
+        keeper_client_iter = recordingClientMap.find(keeper_service_id.get_service_endpoint());
 
         storyWritingHandle->addRecordingClient((*keeper_client_iter).second);
     }

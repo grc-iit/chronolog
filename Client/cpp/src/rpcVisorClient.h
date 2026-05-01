@@ -17,6 +17,7 @@
 #include <thallium/serialization/stl/map.hpp>
 
 #include <chrono_monitor.h>
+#include <chronolog_client.h>
 #include <chronolog_types.h>
 #include <ConnectResponseMsg.h>
 #include <AcquireStoryResponseMsg.h>
@@ -49,13 +50,15 @@ public:
 
     ConnectResponseMsg Connect(uint32_t client_euid, uint32_t client_host_ip, uint32_t client_pid)
     {
-        LOG_DEBUG("[RpcVisorClient] Initiating connection for Account={}, HostID={}, PID={}",
+        LOG_DEBUG("[RpcVisorClient] Initiating connection for Account={}, HostID={}, PID={}, ProtocolVersion={}",
                   client_euid,
                   client_host_ip,
-                  client_pid);
+                  client_pid,
+                  chronolog::CLIENT_PROTOCOL_VERSION);
         try
         {
-            ConnectResponseMsg response = visor_connect.on(service_ph)(client_euid, client_host_ip, client_pid);
+            ConnectResponseMsg response = visor_connect.on(
+                    service_ph)(client_euid, client_host_ip, client_pid, chronolog::CLIENT_PROTOCOL_VERSION);
             LOG_INFO("[RpcVisorClient] Connection successful for Account={}, HostID={}, PID={}",
                      client_euid,
                      client_host_ip,
@@ -194,7 +197,7 @@ public:
                       story_name.c_str(),
                       chronicle_name.c_str());
         }
-        return (AcquireStoryResponseMsg(chronolog::CL_ERR_UNKNOWN, 0, std::vector<KeeperIdCard>{}));
+        return (AcquireStoryResponseMsg(chronolog::CL_ERR_UNKNOWN, 0, std::vector<ServiceId>{}));
     }
 
     int ReleaseStory(ClientId const& client_id, std::string const& chronicle_name, std::string const& story_name)
