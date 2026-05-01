@@ -1,5 +1,6 @@
-#include <iostream>
+#include <filesystem>
 #include <fstream>
+#include <json-c/json.h>
 #include <thallium.hpp>
 
 #include <chronolog_types.h>
@@ -57,6 +58,15 @@ int chronolog::StoryChunkExtractorCSV::reset(json_object* json_block)
     } 
      
     outputDirectory = json_object_get_string(json_object_object_get(json_block, "csv_archive_dir"));
+
+    // check if archive directory exists and is writable by the extractor process
+    if(std::filesystem::exists(outputDirectory))
+    {
+        outputDirectory = "/tmp";
+        LOG_ERROR("StoryChunkExtractorCSV] Reset failure: csv_archive_dir doesn't exist or not writable; using ", outputDirectory);
+        return chl::CL_ERR_INVALID_CONF;
+    }
+
     LOG_INFO("StoryChunkExtractorCSV] Reset success: using csv directory :", outputDirectory);
     return chl::CL_SUCCESS;
 }

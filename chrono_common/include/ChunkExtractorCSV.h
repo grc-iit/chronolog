@@ -1,6 +1,7 @@
 #ifndef CHUNK_EXTRACTOR_CSV_H
 #define CHUNK_EXTRACTOR_CSV_H
 
+#include <filesystem>
 #include <json-c/json.h>
 
 #include <chronolog_types.h>
@@ -26,7 +27,9 @@ public:
     int process_chunk(StoryChunk*);
 
     bool is_active() const
-    { return true; }
+    {
+       return (std::filesystem::exists(outputDirectory));
+    }
 
 private:
     ServiceId serviceId;

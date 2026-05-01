@@ -1,7 +1,7 @@
 #include <chronolog_errcode.h>
 #include <ConfigurationBlocks.h>
 #include <ChronoGrapherConfiguration.h>
-
+#include <ExtractionModuleConfiguration.h>
 
 namespace chl = chronolog;
 
@@ -113,31 +113,22 @@ int chronolog::GrapherConfiguration::parseJsonConf(json_object* json_conf)
             if(DATA_STORE_CONF.parseJsonConf(data_store_conf) != chl::CL_SUCCESS)
                 return chl::CL_ERR_INVALID_CONF;
         }
-        else if(strcmp(key, "Extractors") == 0)
+        else if(strcmp(key, "ExtractionModule") == 0)
         {
             if(!json_object_is_type(val, json_type_object))
             {
-                std::cerr << "[GrapherConfiguration] Invalid 'Extractors': expected object" << std::endl;
+                std::cerr << "[GrapherConfiguration] Invalid 'ExtractionModule' segment: expected json object" << std::endl;
                 return chl::CL_ERR_INVALID_CONF;
             }
-            json_object* extractors = json_object_object_get(json_conf, "Extractors");
-            json_object_object_foreach(extractors, key, val)
+            json_object* extraction_module_json_object =
+                    json_object_object_get(json_conf, "ExtractionModule");
+            if(EXTRACTION_MODULE_CONF.parse_json_object(extraction_module_json_object) != chl::CL_SUCCESS)
             {
-                if(strcmp(key, "story_files_dir") == 0)
-                {
-                    if(!json_object_is_type(val, json_type_string))
-                    {
-                        std::cerr << "[GrapherConfiguration] Invalid 'story_files_dir': expected string" << std::endl;
-                        return chl::CL_ERR_INVALID_CONF;
-                    }
-                    EXTRACTOR_CONF.story_files_dir = json_object_get_string(val);
-                }
-                else
-                {
-                    std::cerr << "[GrapherConfiguration] Unknown Extractors configuration " << key << std::endl;
-                }
+                return chl::CL_ERR_INVALID_CONF;
+                std::cerr << "[GrapherConfiguration] Error parsing ExtractionModule  configuration: " << std::endl;
             }
         }
+
         else
         {
             std::cerr << "[GrapherConfiguration] Unknown Grapher configuration " << key << std::endl;

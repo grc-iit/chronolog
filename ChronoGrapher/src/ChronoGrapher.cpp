@@ -18,11 +18,9 @@
 #include <DataStoreAdminService.h>
 #include <ConfigurationManager.h>
 #include <StoryChunkExtractionModule.h>
-#include <ChunkLoggingExtractor.h>
-#include <ChunkExtractorCSV.h>
-#include <HDF5FileChunkExtractor.h>
 #include <cmd_arg_parse.h>
 #include <ChronoGrapherConfiguration.h>
+#include <GrapherExtractionChain.h>
 
 namespace chl = chronolog;
 namespace tl = thallium;
@@ -158,18 +156,26 @@ int main(int argc, char** argv)
 
     LOG_INFO("[ChronoGrapher] GrapherIdCard: {}", chl::to_string(processIdCard));
 
-    // Instantiate MemoryDataStore & ExtractionModule
+    // Instantiate StoryChunkExtractionModule
+
+    std::string log_string;
+    LOG_INFO("[ChronoKeeperInstance] Initializing StoryChunkExtractionModule with ", GRAPHER_CONF.EXTRACTION_MODULE_CONF.to_string(log_string));
+
+    chronolog::StoryChunkExtractionModule<chronolog::ChronoGrapherExtractionChain> theExtractionModule;
+
+    theExtractionModule.getExtractionChain().activate(GRAPHER_CONF.EXTRACTION_MODULE_CONF,processIdCard.getRecordingServiceId());
+       
+    if (!theExtractionModule.is_initialized())
+    {
+        LOG_ERROR("[ChronoKeeper] StoryChunkExtractionModule failed to initialize, exiting");
+        return (-1);
+    }
+
+    // Instantiate MemoryDataStore 
     chronolog::ChunkIngestionQueue ingestionQueue;
 
-    std::string archive_directory = GRAPHER_CONF.EXTRACTOR_CONF.story_files_dir;
-
-    chl::LoggingExtractor logging_extractor;
-    chl::HDF5FileChunkExtractor hdf5_extractor(archive_directory);
-
-    chronolog::StoryChunkExtractionModule extractionModule(logging_extractor, hdf5_extractor);
-
     chronolog::GrapherDataStore theDataStore(ingestionQueue,
-                                             extractionModule.getExtractionQueue(),
+                                             theExtractionModule.getExtractionQueue(),
                                              GRAPHER_CONF.DATA_STORE_CONF.max_story_chunk_size,
                                              GRAPHER_CONF.DATA_STORE_CONF.story_chunk_duration_secs,
                                              GRAPHER_CONF.DATA_STORE_CONF.acceptance_window_secs,
@@ -291,7 +297,7 @@ int main(int argc, char** argv)
     tl::abt scope;
     theDataStore.startDataCollection(3);
     // start extraction streams & threads
-    extractionModule.startExtraction(2);
+    theExtractionModule.startExtraction();
 
     /// Main loop for sending stats message until receiving SIGTERM ____________________________________________________
     // now we are ready to ingest records coming from the storyteller clients ....
@@ -318,7 +324,7 @@ int main(int argc, char** argv)
     theDataStore.shutdownDataCollection();
     // Shutdown extraction module
     // drain extractionQueue and stop extraction xStreams
-    extractionModule.shutdownExtraction();
+    theExtractionModule.shutdownExtraction();
     // these are not probably needed as thallium handles the engine finalization...
     //  recordingEngine.finalize();
     //  collectionEngine.finalize();

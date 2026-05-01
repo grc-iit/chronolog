@@ -62,7 +62,7 @@ int chronolog::ExtractionModuleConfiguration::parse_json_object(json_object * js
                 std::cerr << "[ExtractionConfiguration] Invalid 'extraction_protocol': expected json_object" << std::endl;
                 return chl::CL_ERR_INVALID_CONF;
             }
-            engine_protocol = json_object_get_string(json_val);
+            extraction_protocol = json_object_get_string(json_val);
         }
         else if(strcmp(key, "extractors") == 0)
         {

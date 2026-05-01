@@ -1,5 +1,5 @@
-#ifndef STORY_CHUNK_EXTRACTION_CHAIN_H
-#define STORY_CHUNK_EXTRACTION_CHAIN_H
+#ifndef STORY_CHUNK_EXTRACTION_MODULE_H
+#define STORY_CHUNK_EXTRACTION_MODULE_H
 
 #include <iostream>
 #include <type_traits>
@@ -12,73 +12,15 @@
 #include <chronolog_errcode.h>
 #include <StoryChunk.h>
 #include <StoryChunkExtractionQueue.h>
-#include <ChunkLoggingExtractor.h>
 #include <ExtractionModuleConfiguration.h>
 
 namespace tl = thallium;
 
+
 namespace chronolog
 {
 
-
-// Recursive ExtractorChain Definition
-template <typename T, typename... Args>
-class ExtractorChain
-{
-public:
-    ExtractorChain(const T& extractor, const Args&... rest)
-        : the_extractor(extractor)
-        , the_rest(rest...)
-    {}
-
-    constexpr size_t size() const { return 1 + the_rest.size(); }
-
-    const T& extractor() const { return the_extractor; }
-
-    const ExtractorChain<Args...>& get_rest() const { return the_rest; }
-
-    int process_chunk(StoryChunk* some_chunk)
-    {
-        the_extractor.process_chunk(some_chunk);
-        return the_rest.process_chunk(some_chunk);
-    }
-
-    bool is_active_chain() const 
-    { 
-       return the_extractor.is_active() && the_rest.is_active_chain();
-    }
-
-private:
-    T the_extractor;
-    ExtractorChain<Args...> the_rest;
-};
-
-// Base Case ExtractorChain
 template <typename T>
-class ExtractorChain<T>
-{
-public:
-    ExtractorChain(const T& an_extractor)
-        : the_extractor(an_extractor)
-    {}
-
-    constexpr size_t size() const { return 1; }
-
-    const T& extractor() const { return the_extractor; }
-
-    int process_chunk(StoryChunk* some_chunk) 
-    { return the_extractor.process_chunk(some_chunk); }
-
-    bool is_active_chain() const 
-    { return the_extractor.is_active(); }
-
-private:
-    T the_extractor;
-};
-
-///////////////////////////
-
-template <typename... Args>
 class StoryChunkExtractionModule
 {
     enum State
@@ -91,16 +33,41 @@ class StoryChunkExtractionModule
 
 public:
 
-    StoryChunkExtractionModule(int stream_count, const Args&... extractors)
+    StoryChunkExtractionModule(int stream_count =2)
         : state(UNKNOWN)
         , stream_count(stream_count)
-        , theExtractionChain(extractors...)
+    { }
+
+    int initialize(ExtractionModuleConfiguration const&)
     {
-       if(theExtractionChain.is_active_chain())
-       { state = INITIALIZED;  }  
+        //TODO: move extraction engine instantiation here
+        // then move Extraction Chain instantiation here as well
+
+        if( !theExtractionChain.is_active_chain() ) 
+        {
+            return CL_ERR_INVALID_CONF;
+        }
+
+        state = INITIALIZED;
+        return CL_SUCCESS;
+    }
+
+    int initialize(int stream_count)
+    {
+        stream_count = stream_count;
+        //TODO: move extraction engine instantiation here
+        if( !theExtractionChain.is_active_chain() ) 
+        {
+            return CL_ERR_INVALID_CONF;
+        }
+
+        state = INITIALIZED;
+        return CL_SUCCESS;
     }
 
     StoryChunkExtractionQueue& getExtractionQueue() { return chunkExtractionQueue; }
+
+    T & getExtractionChain() { return theExtractionChain; }
 
     bool is_initialized() const { return (state == INITIALIZED); }
 
@@ -122,6 +89,8 @@ public:
 
         // (1) while state== RUNNING keep draining the queue or waiting if the queue is empty
         // (2) if state != RUNNING make best attempt to drain the queue and exit
+
+        int extraction_result;
 
         while(state == RUNNING 
         || ( state == SHUTTING_DOWN && !chunkExtractionQueue.empty()))
@@ -145,11 +114,17 @@ public:
                               story_chunk->getEndTime(),
                               story_chunk->getEventCount());
 
-                    // each extractor in the chain would handle its own intermittent failure appropriately
-                    theExtractionChain.process_chunk(story_chunk);
+                    extraction_result = theExtractionChain.process_chunk(story_chunk);
 
-                    // free the memory or reset the chunk to the original state and return it to the pool of prealocated chunks
-                    delete story_chunk;
+                    if(CL_SUCCESS == extraction_result)
+                    { // free the story_chunk memory or 
+                      // return it to the pool of prealocated chunks
+                        delete story_chunk;
+                    }
+                    else
+                    { //return the stroy_chunk to the extractionQueue and try again later
+                        chunkExtractionQueue.stashStoryChunk(story_chunk);
+                    }
                 }
             }
             else
@@ -203,7 +178,7 @@ public:
         state = SHUTTING_DOWN;
 
         // make sure extractionQueue is drained before the extraction streams are shut down
-        LOG_DEBUG("[StoryChunkExtractionModule] Initiating shutdown: extractionQueue size {}",
+        LOG_INFO("[StoryChunkExtractionModule] Initiating shutdown: extractionQueue size {}",
                   chunkExtractionQueue.size());
 
         drainExtractionQueue();
@@ -241,7 +216,7 @@ private:
     std::vector<tl::managed<tl::xstream>> extractionStreams;
     std::vector<tl::managed<tl::thread>> extractionThreads;
 
-    ExtractorChain<Args...> theExtractionChain;
+    T theExtractionChain;
 };
 
 

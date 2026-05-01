@@ -2,6 +2,8 @@
 #include <iostream>
 #include <signal.h>
 #include <thread>
+#include <variant>
+#include <vector>
 
 #include <chrono_monitor.h>
 #include <ServiceId.h>
@@ -54,6 +56,66 @@ void chunk_contributor_thread(chl::StoryChunkExtractionQueue* extractionQueue, u
     LOG_INFO("[ExtractionModuleTest] exiting contributing thread {} ", thread_id);
 }
 
+using Extractor = std::variant< chl::LoggingExtractor, chl::StoryChunkExtractorCSV, chl::StoryChunkExtractorRDMA >;
+
+class TestExtractionChain
+{
+    std::vector<Extractor> theExtractors;
+
+public:
+    TestExtractionChain()
+    { }
+
+    ~TestExtractionChain()
+    {
+        theExtractors.clear();
+    }
+
+    void add_extractor(Extractor e)
+    {
+        theExtractors.push_back(std::move(e));
+    }
+
+    int process_chunk( chl::StoryChunk * chunk)
+    {
+        int  chain_result = chl::CL_SUCCESS;
+
+        // If extractor fails, mark the chain result as a failure, 
+        // but keep going for the others.
+        for (auto& e : theExtractors) 
+        {
+            int extractor_result = std::visit([chunk](auto& extractor) 
+                -> int { return extractor.process_chunk(chunk); 
+                }, e);
+
+            if (chl::CL_SUCCESS != extractor_result) 
+            {
+                chain_result = extractor_result;
+            }
+        }
+        return chain_result;
+    }
+
+    bool is_active_chain() const
+    {
+       if(theExtractors.empty())
+       {  return false; }
+
+       for (const auto& e : theExtractors) 
+       {
+           bool active = std::visit([](const auto& extractor) -> bool {
+              return extractor.is_active();
+           }, e);
+
+        // if any single extractor is NOT active, the whole chain fails
+        if (!active) 
+        { return false; }
+       }
+    
+       return true;
+    }
+};
+
 int main()
 {
     int contributor_threads = 5;
@@ -88,10 +150,6 @@ int main()
     chronolog::LoggingExtractor logging_extractor;
     chronolog::StoryChunkExtractorCSV csv_extractor(localServiceId, "/tmp/");
 
-    chl::ExtractorChain extractorChain1(csv_extractor);
-    chl::ExtractorChain extractorChain2(logging_extractor, csv_extractor);
-
-
     try
     {
         margo_instance_id margo_id = margo_init(LOCAL_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 1);
@@ -106,13 +164,19 @@ int main()
     chl::ServiceId receiving_service_id("ofi+sockets", "127.0.0.1", 3333, 33);
     chl::StoryChunkExtractorRDMA rdma_extractor(*localEngine, receiving_service_id);
 
-    // 2. Test chained ExtractionModule instantiation with chained logging extractor & rdma extractor
-    chronolog::StoryChunkExtractionModule extractionModule(logging_extractor, rdma_extractor);
-    
+    // 2. Test chained ExtractionModule instantiation with chained logging extractor & csv extractor
+    chronolog::StoryChunkExtractionModule<TestExtractionChain> extractionModule;
+
+    extractionModule.getExtractionChain().add_extractor(logging_extractor);
+    extractionModule.getExtractionChain().add_extractor(csv_extractor);
+    extractionModule.getExtractionChain().add_extractor(rdma_extractor);
+  
+    extractionModule.initialize(extraction_threads); 
+     
     // 3. Start extraction threads
     chl::StoryChunkExtractionQueue& extractionQueue = extractionModule.getExtractionQueue();
 
-    extractionModule.startExtraction(extraction_threads);
+    extractionModule.startExtraction();
 
     // 4. create chunk contributing threads
     std::thread contributors[contributor_threads];
