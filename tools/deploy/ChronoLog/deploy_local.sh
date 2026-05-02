@@ -140,6 +140,7 @@ generate_config_files() {
 
     echo "Generating grapher configuration files ..."
     mkdir -p "${output_dir}"
+
     for (( i=0; i<num_recording_groups; i++ )); do
         local new_port_grapher_drain=$((base_port_grapher_drain + i))
         local new_port_grapher_datastore=$((base_port_grapher_datastore + i))
@@ -156,7 +157,7 @@ generate_config_files() {
             .chrono_grapher.KeeperGrapherDrainService.rpc.service_base_port = $new_port_grapher_drain |
             .chrono_grapher.DataStoreAdminService.rpc.service_base_port = $new_port_grapher_datastore |
             .chrono_grapher.Monitoring.monitor.file = ($monitor_dir + "/chrono-grapher-" + ($grapher_index | tostring) + ".log") |
-            .chrono_grapher.Extractors.story_files_dir = ($output_dir + "/")' "$default_conf" > "$grapher_output_file"
+            .chrono_grapher.ExtractionModule.extractors.hdf5_archive_extractor.hdf5_archive_dir = ($output_dir + "/")' "$default_conf" > "$grapher_output_file"
 
         echo "Generated $grapher_output_file with ports $new_port_grapher_drain and $new_port_grapher_datastore"
     done
@@ -202,7 +203,7 @@ generate_config_files() {
             --arg keeper_index "$keeper_index" \
             '.chrono_keeper.KeeperRecordingService.rpc.service_base_port = $new_port_keeper_record |
             .chrono_keeper.KeeperDataStoreAdminService.rpc.service_base_port = $new_port_keeper_datastore |
-            .chrono_keeper.ExtractionModule.extractors.csv_extractor.csv_archive_dir = ($output_dir + "/") |
+            .chrono_keeper.ExtractionModule.extractors.csv_tier_extractor.csv_archive_dir = ($output_dir + "/") |
             .chrono_keeper.ExtractionModule.extractors.extractor_to_grapher.receiving_endpoint.service_base_port = $new_port_keeper_drain |
             .chrono_keeper.RecordingGroup = $grapher_index |
             .chrono_keeper.Monitoring.monitor.file = ($monitor_dir + "/chrono-keeper-" + ($keeper_index | tostring) + ".log")' "$default_conf" > "$keeper_output_file"

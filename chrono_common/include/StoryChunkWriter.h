@@ -21,7 +21,7 @@ public:
 
     ~StoryChunkWriter()
     {
-        LOG_INFO("[StoryChunkWriter] Destructor called. Cleaning up...");
+        LOG_DEBUG("[StoryChunkWriter] Destructor called. Cleaning up...");
     }
 
     hsize_t writeStoryChunk(StoryChunkHVL &story_chunk);

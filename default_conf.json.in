@@ -93,7 +93,7 @@
         "extraction_stream_count":2,
         "extraction_protocol": "ofi+sockets",
         "extractors": { 
-            "csv_extractor": {
+            "csv_tier_extractor": {
                 "type": "csv_extractor",
                 "csv_archive_dir": "/tmp/csv_archive"
             },
@@ -152,8 +152,15 @@
       "acceptance_window_secs": 180,
       "inactive_story_delay_secs": 300
     },
-    "Extractors": {
-      "story_files_dir": "/tmp"
+    "ExtractionModule": {
+        "extraction_stream_count":2,
+        "extraction_protocol": "ofi+sockets",
+        "extractors": { 
+            "hdf5_archive_extractor": {
+                "type": "hdf5_extractor",
+                "hdf5_archive_dir": "/tmp"
+            }
+        }
     }
   },
   "chrono_player": {

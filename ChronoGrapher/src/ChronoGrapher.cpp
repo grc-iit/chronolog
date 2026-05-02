@@ -159,12 +159,14 @@ int main(int argc, char** argv)
     // Instantiate StoryChunkExtractionModule
 
     std::string log_string;
-    LOG_INFO("[ChronoKeeperInstance] Initializing StoryChunkExtractionModule with ", GRAPHER_CONF.EXTRACTION_MODULE_CONF.to_string(log_string));
+    LOG_INFO("[ChronoKeeperInstance] Initializing StoryChunkExtractionModule with {}", GRAPHER_CONF.EXTRACTION_MODULE_CONF.to_string(log_string));
 
     chronolog::StoryChunkExtractionModule<chronolog::ChronoGrapherExtractionChain> theExtractionModule;
 
     theExtractionModule.getExtractionChain().activate(GRAPHER_CONF.EXTRACTION_MODULE_CONF,processIdCard.getRecordingServiceId());
-       
+      
+    theExtractionModule.initialize(GRAPHER_CONF.EXTRACTION_MODULE_CONF.extraction_stream_count);
+ 
     if (!theExtractionModule.is_initialized())
     {
         LOG_ERROR("[ChronoKeeper] StoryChunkExtractionModule failed to initialize, exiting");

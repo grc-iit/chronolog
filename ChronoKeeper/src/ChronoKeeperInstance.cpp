@@ -189,7 +189,7 @@ int main(int argc, char** argv)
 
     std::string log_string;
 
-    LOG_INFO("[ChronoKeeperInstance] Initializing StoryChunkExtractionModule with ", KEEPER_CONF.EXTRACTION_MODULE_CONF.to_string(log_string));
+    LOG_INFO("[ChronoKeeperInstance] Initializing StoryChunkExtractionModule with {}", KEEPER_CONF.EXTRACTION_MODULE_CONF.to_string(log_string));
 
     chl::StoryChunkExtractionModule<chl::ChronoKeeperExtractionChain> theExtractionModule(
                             KEEPER_CONF.EXTRACTION_MODULE_CONF.extraction_stream_count);

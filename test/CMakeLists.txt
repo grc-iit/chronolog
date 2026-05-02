@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 add_subdirectory(unit)
+add_subdirectory(functional)
 add_subdirectory(integration)
 add_subdirectory(communication)
 # Overhead tests use x86 SSE2 (emmintrin) and RDTSC; skip on non-x86 (e.g. aarch64)

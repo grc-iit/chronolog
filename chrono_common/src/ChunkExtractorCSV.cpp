@@ -45,7 +45,7 @@ int chronolog::StoryChunkExtractorCSV::reset(json_object* json_block)
       )
     {
         outputDirectory = "/tmp";
-        LOG_ERROR("StoryChunkExtractorCSV] Reset failure, using csv directory :", outputDirectory);
+        LOG_ERROR("StoryChunkExtractorCSV] Reset failure, using csv directory {}", outputDirectory);
         return chl::CL_ERR_INVALID_CONF;    
     }
 
@@ -53,21 +53,21 @@ int chronolog::StoryChunkExtractorCSV::reset(json_object* json_block)
       || !json_object_is_type(json_object_object_get(json_block, "csv_archive_dir"), json_type_string))
     {
         outputDirectory = "/tmp";
-        LOG_ERROR("StoryChunkExtractorCSV] Reset failure, using csv directory :", outputDirectory);
+        LOG_ERROR("StoryChunkExtractorCSV] Reset failure, using csv directory {}", outputDirectory);
         return chl::CL_ERR_INVALID_CONF;  
     } 
      
     outputDirectory = json_object_get_string(json_object_object_get(json_block, "csv_archive_dir"));
 
     // check if archive directory exists and is writable by the extractor process
-    if(std::filesystem::exists(outputDirectory))
+    if(!std::filesystem::exists(outputDirectory))
     {
         outputDirectory = "/tmp";
-        LOG_ERROR("StoryChunkExtractorCSV] Reset failure: csv_archive_dir doesn't exist or not writable; using ", outputDirectory);
+        LOG_ERROR("StoryChunkExtractorCSV] Reset failure: csv_archive_dir doesn't exist or not writable; using {}", outputDirectory);
         return chl::CL_ERR_INVALID_CONF;
     }
 
-    LOG_INFO("StoryChunkExtractorCSV] Reset success: using csv directory :", outputDirectory);
+    LOG_INFO("StoryChunkExtractorCSV] Reset success: using csv directory {}", outputDirectory);
     return chl::CL_SUCCESS;
 }
 
