@@ -56,6 +56,17 @@ void chunk_contributor_thread(chl::StoryChunkExtractionQueue* extractionQueue, u
     LOG_INFO("[GrapherExtractionChainTest] exiting contributing thread {} ", thread_id);
 }
 
+
+std::string extraction_module_json_string = std::string("{ \"ExtractionModule\": ")
+    +  "{ \"extraction_stream_count\":2,"
+    +    "\"extractors\": { "
+    +       "\"test_csv_extractor\": { \"type\": \"csv_extractor\", \"csv_archive_dir\": \"/tmp/csv_archive\" }"
+    +       ","
+    +       "\"test_hdf5_extractor\": { \"type\": \"hdf5_extractor\", \"hdf5_archive_dir\": \"/tmp/hdf5_archive\" }"
+    +     "} 
+    +  "}"
+    +"}";
+
 int main()
 {
     int contributor_threads = 5;
@@ -82,24 +93,9 @@ int main()
 
     chl::ServiceId localServiceId("ofi+sockets", "127.0.0.1", 2225, 25);
 
-    std::string LOCAL_SERVICE_NA_STRING;
-    localServiceId.get_service_as_string(LOCAL_SERVICE_NA_STRING);
-
-    tl::engine* localEngine = nullptr;
-
     chronolog::LoggingExtractor logging_extractor;
     chronolog::StoryChunkExtractorCSV csv_extractor(localServiceId, "/tmp/");
     chronolog::HDF5FileChunkExtractor hdf5_extractor("/tmp/");
-
-    try
-    {
-        margo_instance_id margo_id = margo_init(LOCAL_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 1);
-        localEngine = new tl::engine(margo_id);
-    }
-    catch(tl::exception const&)
-    {
-        return (-1);
-    }
 
     // 2. Test chained ExtractionModule instantiation with ChronoGrapherExtractionChain
     chronolog::StoryChunkExtractionModule<chronolog::ChronoGrapherExtractionChain> extractionModule;
@@ -149,6 +145,5 @@ int main()
 
     extractionModule.shutdownExtraction();
 
-    delete localEngine;
     return 1;
 }

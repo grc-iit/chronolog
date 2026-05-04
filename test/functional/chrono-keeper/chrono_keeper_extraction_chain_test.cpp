@@ -12,6 +12,7 @@
 #include <ChunkLoggingExtractor.h>
 #include <ChunkExtractorCSV.h>
 #include <ChunkExtractorRDMA.h>
+#include <KeeperExtractionChain.h>
 
 namespace tl = thallium;
 namespace chl = chronolog;
@@ -56,65 +57,34 @@ void chunk_contributor_thread(chl::StoryChunkExtractionQueue* extractionQueue, u
     LOG_INFO("[ExtractionModuleTest] exiting contributing thread {} ", thread_id);
 }
 
-using Extractor = std::variant< chl::LoggingExtractor, chl::StoryChunkExtractorCSV, chl::StoryChunkExtractorRDMA >;
+////
 
-class TestExtractionChain
-{
-    std::vector<Extractor> theExtractors;
+           "test_single_rdma_extractor": {
+                "type": "single_endpoint_rdma_extractor",
+                "receiving_endpoint": {
+                    "protocol_conf": "ofi+sockets",
+                    "service_ip": "127.0.0.1",
+                    "service_base_port": 2230,
+                    "service_provider_id": 30
+                },
 
-public:
-    TestExtractionChain()
-    { }
+           "test_dual_rdma_extractor": {
+                "type": "dual_endpoint_rdma_extractor",
+                "player_receiving_endpoint": {
+                    "protocol_conf": "ofi+sockets",
+                    "service_ip": "127.0.0.1",
+                    "service_base_port": 2232,
+                    "service_provider_id": 32
+                },
+                "grapher_receiving_endpoint": {
+                    "protocol_conf": "ofi+sockets",
+                    "service_ip": "127.0.0.1",
+                    "service_base_port": 2233,
+                    "service_provider_id": 33
+                }
 
-    ~TestExtractionChain()
-    {
-        theExtractors.clear();
-    }
+///
 
-    void add_extractor(Extractor e)
-    {
-        theExtractors.push_back(std::move(e));
-    }
-
-    int process_chunk( chl::StoryChunk * chunk)
-    {
-        int  chain_result = chl::CL_SUCCESS;
-
-        // If extractor fails, mark the chain result as a failure, 
-        // but keep going for the others.
-        for (auto& e : theExtractors) 
-        {
-            int extractor_result = std::visit([chunk](auto& extractor) 
-                -> int { return extractor.process_chunk(chunk); 
-                }, e);
-
-            if (chl::CL_SUCCESS != extractor_result) 
-            {
-                chain_result = extractor_result;
-            }
-        }
-        return chain_result;
-    }
-
-    bool is_active_chain() const
-    {
-       if(theExtractors.empty())
-       {  return false; }
-
-       for (const auto& e : theExtractors) 
-       {
-           bool active = std::visit([](const auto& extractor) -> bool {
-              return extractor.is_active();
-           }, e);
-
-        // if any single extractor is NOT active, the whole chain fails
-        if (!active) 
-        { return false; }
-       }
-    
-       return true;
-    }
-};
 
 int main()
 {
@@ -165,7 +135,7 @@ int main()
     chl::StoryChunkExtractorRDMA rdma_extractor(*localEngine, receiving_service_id);
 
     // 2. Test chained ExtractionModule instantiation with chained logging extractor & csv extractor
-    chronolog::StoryChunkExtractionModule<TestExtractionChain> extractionModule;
+    chronolog::StoryChunkExtractionModule<chronolog::ChronoKeeperExtractionChain> extractionModule;
 
     extractionModule.getExtractionChain().add_extractor(logging_extractor);
     extractionModule.getExtractionChain().add_extractor(csv_extractor);

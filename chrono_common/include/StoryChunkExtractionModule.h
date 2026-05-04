@@ -33,15 +33,18 @@ class StoryChunkExtractionModule
 
 public:
 
-    StoryChunkExtractionModule(int stream_count =2)
+    StoryChunkExtractionModule(int extraction_stream_count =1)
         : state(UNKNOWN)
         , stream_count(stream_count)
     { }
 
-    int initialize(ExtractionModuleConfiguration const&)
+    int initialize(ServiceId const& recording_service_id, ExtractionModuleConfiguration const& configuration)
     {
         //TODO: move extraction engine instantiation here
         // then move Extraction Chain instantiation here as well
+        stream_count = configuration.extraction_stream_count;
+
+  //TODO:      theExtractionChain.activate(recording_service_id, configuration);
 
         if( !theExtractionChain.is_active_chain() ) 
         {
@@ -52,10 +55,10 @@ public:
         return CL_SUCCESS;
     }
 
-    int initialize(int stream_count)
+    int initialize(int extraction_stream_count)
     {
-        stream_count = stream_count;
-        //TODO: move extraction engine instantiation here
+        stream_count = extraction_stream_count;
+
         if( !theExtractionChain.is_active_chain() ) 
         {
             return CL_ERR_INVALID_CONF;
@@ -87,13 +90,12 @@ public:
                   thallium::thread::self_id(),
                   chunkExtractionQueue.size());
 
-        // (1) while state== RUNNING keep draining the queue or waiting if the queue is empty
-        // (2) if state != RUNNING make best attempt to drain the queue and exit
+        // while state== RUNNING keep draining the queue 
+        // or waiting if the queue is empty
 
         int extraction_result;
 
-        while(state == RUNNING 
-        || ( state == SHUTTING_DOWN && !chunkExtractionQueue.empty()))
+        while(state == RUNNING) 
         {
             if(!chunkExtractionQueue.empty())
             {
@@ -122,7 +124,7 @@ public:
                         delete story_chunk;
                     }
                     else
-                    { //return the stroy_chunk to the extractionQueue and try again later
+                    { //return the story_chunk to the extractionQueue and try again later
                         chunkExtractionQueue.stashStoryChunk(story_chunk);
                     }
                 }
@@ -181,8 +183,55 @@ public:
         LOG_INFO("[StoryChunkExtractionModule] Initiating shutdown: extractionQueue size {}",
                   chunkExtractionQueue.size());
 
-        drainExtractionQueue();
+        // make the best to drain the extraction queue before exiting
+        while(!chunkExtractionQueue.empty())
+        {
+            // chunkExtractionQueue has internal mutex protecting its integrity
+            StoryChunk* story_chunk = chunkExtractionQueue.ejectStoryChunk();
+    
+            // the queue might have been drained by another thread before the current thread acquired extractionQueue mutex
+            // in this case the nullptr is returned..
+            if(story_chunk == nullptr)
+            { continue; }
+   
+            LOG_DEBUG("[StoryChunkExtractionModule] tl::thread_id={} processing chunk StoryId={} {}-{} {}-{} "
+                              "eventCount {}",
+                              thallium::thread::self_id(),
+                              story_chunk->getStoryId(),
+                              story_chunk->getChronicleName(),
+                              story_chunk->getStoryName(),
+                              story_chunk->getStartTime(),
+                              story_chunk->getEndTime(),
+                              story_chunk->getEventCount());
 
+            //try to extract the chunk 5 times before giving up
+            int extraction_result = CL_ERR_UNKNOWN;
+            int tries = 0;
+            while( CL_SUCCESS != extraction_result || (tries < 5))
+            { 
+                tries++;
+                extraction_result = theExtractionChain.process_chunk(story_chunk);
+            }
+
+            if(CL_SUCCESS == extraction_result)
+            {        LOG_INFO("[StoryChunkExtractionModule] extracted chunk StoryId={} {}-{} {}-{}",
+                              story_chunk->getStoryId(),
+                              story_chunk->getChronicleName(),
+                              story_chunk->getStoryName(),
+                              story_chunk->getStartTime(),
+                              story_chunk->getEndTime());
+            }
+            else
+            {        LOG_ERROR("[StoryChunkExtractionModule] failed to extract chunk StoryId={} {}-{} {}-{}",
+                              story_chunk->getStoryId(),
+                              story_chunk->getChronicleName(),
+                              story_chunk->getStoryName(),
+                              story_chunk->getStartTime(),
+                              story_chunk->getEndTime());
+            }
+
+            delete story_chunk;
+        }
         // join and stop threads & executionstreams
         for(auto& eth: extractionThreads) { eth->join(); }
         LOG_DEBUG("[StoryChunkExtractionModule] Extraction threads have been successfully shut down.");
