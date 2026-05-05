@@ -35,7 +35,7 @@ void ChronoSQLMapper::ensureMetadataLoaded()
     {
         return;
     }
-    auto events = adapter_->replayEvents(kMetadataStory, MIN_TS, MAX_TS);
+    auto events = adapter_->replayEvents(kMetadataStory, MIN_TS, MAX_TS, /*tolerate_timeout=*/true);
     std::sort(events.begin(),
               events.end(),
               [](const ChronoSQLClientAdapter::EventPayload& a, const ChronoSQLClientAdapter::EventPayload& b)

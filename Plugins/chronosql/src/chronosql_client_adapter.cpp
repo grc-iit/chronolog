@@ -120,8 +120,10 @@ std::uint64_t ChronoSQLClientAdapter::appendEvent(const std::string& story, cons
     return handle->log_event(payload);
 }
 
-std::vector<ChronoSQLClientAdapter::EventPayload>
-ChronoSQLClientAdapter::replayEvents(const std::string& story, std::uint64_t start_ts, std::uint64_t end_ts)
+std::vector<ChronoSQLClientAdapter::EventPayload> ChronoSQLClientAdapter::replayEvents(const std::string& story,
+                                                                                       std::uint64_t start_ts,
+                                                                                       std::uint64_t end_ts,
+                                                                                       bool tolerate_timeout)
 {
     flushCachedHandle(story);
 
@@ -145,6 +147,14 @@ ChronoSQLClientAdapter::replayEvents(const std::string& story, std::uint64_t sta
     std::vector<chronolog::Event> events;
     if(int ret = client_->ReplayStory(chronicle_, story, start_ts, end_ts, events); ret != chronolog::CL_SUCCESS)
     {
+        if(tolerate_timeout && ret == chronolog::CL_ERR_QUERY_TIMED_OUT)
+        {
+            CHRONOSQL_WARNING(logLevel_,
+                              "Replay timed out for story='",
+                              story,
+                              "'; treating as no events available (cold start)");
+            return {};
+        }
         CHRONOSQL_ERROR(logLevel_, "Failed to replay events for story='", story, "' code:", ret);
         throw std::runtime_error("Failed to replay events for story: " + story +
                                  ", error code: " + std::to_string(ret));

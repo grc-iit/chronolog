@@ -32,7 +32,7 @@ bool expect_eq(const char* what, std::size_t actual, std::size_t expected)
 
 } // namespace
 
-int main(int argc, char** argv)
+int run(int argc, char** argv)
 {
     std::string conf_path;
     for(int i = 1; i < argc; ++i)
@@ -73,8 +73,11 @@ int main(int argc, char** argv)
         }
         ts.push_back(*r.last_insert_timestamp);
     }
+    // Release cached write handles so the keeper commits the events, then wait
+    // long enough for the player to make them visible to replay queries. The
+    // ChronoKVS integration test uses the same 120s wait for the same reason.
     db.flush();
-    std::this_thread::sleep_for(std::chrono::seconds(2));
+    std::this_thread::sleep_for(std::chrono::seconds(120));
 
     bool ok = true;
     auto all = db.execute("SELECT * FROM " + table);
@@ -97,4 +100,31 @@ int main(int argc, char** argv)
     std::cout << "Total time: " << std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count() << " ms\n";
 
     return ok ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+
+int main(int argc, char** argv)
+{
+    try
+    {
+        return run(argc, argv);
+    }
+    catch(const std::exception& e)
+    {
+        std::string msg(e.what());
+        // Mirror the ChronoKVS integration test: when no ChronoLog server is
+        // reachable, exit cleanly so the test is treated as skipped rather
+        // than a hard failure.
+        if(msg.find("Failed to connect") != std::string::npos)
+        {
+            std::cout << "ChronoSQL integration test skipped (no ChronoLog server available).\n";
+            return EXIT_SUCCESS;
+        }
+        std::cerr << "ChronoSQL integration test failed: " << e.what() << "\n";
+        return EXIT_FAILURE;
+    }
+    catch(...)
+    {
+        std::cerr << "ChronoSQL integration test failed: unknown exception\n";
+        return EXIT_FAILURE;
+    }
 }

@@ -46,7 +46,15 @@ public:
     std::uint64_t appendEvent(const std::string& story, const std::string& payload);
 
     /// Replay [start_ts, end_ts) from the named story.
-    std::vector<EventPayload> replayEvents(const std::string& story, std::uint64_t start_ts, std::uint64_t end_ts);
+    ///
+    /// On a brand-new deployment a story may have no events committed yet, and
+    /// the player can fail to mark such a query complete before the client-side
+    /// replay timeout fires. When `tolerate_timeout` is true, a query timeout
+    /// is logged as a warning and an empty vector is returned instead of
+    /// throwing. Use this for read paths that legitimately tolerate "no data
+    /// yet" (e.g. cold-start metadata replay).
+    std::vector<EventPayload>
+    replayEvents(const std::string& story, std::uint64_t start_ts, std::uint64_t end_ts, bool tolerate_timeout = false);
 
     /// Release all cached write handles. Required before reads if the same
     /// process holds active write handles for the target story.
