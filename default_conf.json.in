@@ -153,6 +153,7 @@
       }
     },
     "PlaybackQueryService": {
+      "IngestionThreadCount": 1,
       "rpc": {
         "protocol_conf": "ofi+sockets",
         "service_ip": "127.0.0.1",

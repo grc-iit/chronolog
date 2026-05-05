@@ -59,8 +59,19 @@ int chronolog::PlayerConfiguration::parseJsonConf(json_object* json_conf)
             {
                 if(strcmp(key, "rpc") == 0)
                 {
-                    if(PLAYBACK_SERVICE_CONF.parseJsonConf(val) != chl::CL_SUCCESS)
+                    if(PLAYBACK_SERVICE_CONF.RPC_CONF.parseJsonConf(val) != chl::CL_SUCCESS)
                         return chl::CL_ERR_INVALID_CONF;
+                }
+                else if(strcmp(key, "IngestionThreadCount") == 0)
+                {
+                    if(!json_object_is_type(val, json_type_int))
+                    {
+                        std::cerr << "[PlayerConfiguration] Invalid 'IngestionThreadCount': expected integer"
+                                  << std::endl;
+                        return chl::CL_ERR_INVALID_CONF;
+                    }
+                    int value = json_object_get_int(val);
+                    PLAYBACK_SERVICE_CONF.INGESTION_THREAD_COUNT = (value >= 1 ? value : 1);
                 }
                 else
                 {
