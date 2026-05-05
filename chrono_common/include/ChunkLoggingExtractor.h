@@ -28,8 +28,7 @@ public:
         return chronolog::CL_SUCCESS;
     }
 
-    bool is_active() const
-    { return true; }
+    bool is_active() const { return true; }
 };
 
 } // namespace chronolog

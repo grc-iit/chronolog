@@ -15,20 +15,19 @@ namespace chronolog
 class StoryChunkWriter
 {
 public:
-    StoryChunkWriter(std::string const &root_dir, std::string const &group_name, std::string const &dset_name)
-            : rootDirectory(root_dir), groupName(group_name), dsetName(dset_name), numDims(1)
-    {};
+    StoryChunkWriter(std::string const& root_dir, std::string const& group_name, std::string const& dset_name)
+        : rootDirectory(root_dir)
+        , groupName(group_name)
+        , dsetName(dset_name)
+        , numDims(1){};
 
-    ~StoryChunkWriter()
-    {
-        LOG_DEBUG("[StoryChunkWriter] Destructor called. Cleaning up...");
-    }
+    ~StoryChunkWriter() { LOG_DEBUG("[StoryChunkWriter] Destructor called. Cleaning up..."); }
 
-    hsize_t writeStoryChunk(StoryChunkHVL &story_chunk);
+    hsize_t writeStoryChunk(StoryChunkHVL& story_chunk);
 
-    hsize_t writeStoryChunk(StoryChunk &story_chunk);
+    hsize_t writeStoryChunk(StoryChunk& story_chunk);
 
-    hsize_t writeEvents(std::unique_ptr<H5::H5File> &file, std::vector <LogEventHVL> &data);
+    hsize_t writeEvents(std::unique_ptr<H5::H5File>& file, std::vector<LogEventHVL>& data);
 
     static H5::CompType createEventCompoundType()
     {
@@ -37,12 +36,14 @@ public:
         data_type.insertMember("eventTime", HOFFSET(LogEventHVL, eventTime), H5::PredType::NATIVE_UINT64);
         data_type.insertMember("clientId", HOFFSET(LogEventHVL, clientId), H5::PredType::NATIVE_UINT32);
         data_type.insertMember("eventIndex", HOFFSET(LogEventHVL, eventIndex), H5::PredType::NATIVE_UINT32);
-        data_type.insertMember("logRecord", HOFFSET(LogEventHVL, logRecord), H5::VarLenType(H5::PredType::NATIVE_UINT8));
+        data_type.insertMember("logRecord",
+                               HOFFSET(LogEventHVL, logRecord),
+                               H5::VarLenType(H5::PredType::NATIVE_UINT8));
         return data_type;
     }
 
     // base_file_name should be in the format of chronicleName.storyName.startTime.vlen.h5, not including the path
-    static std::string getStoryChunkFileName(std::string const &root_dir, std::string const &base_file_name);
+    static std::string getStoryChunkFileName(std::string const& root_dir, std::string const& base_file_name);
 
 private:
     std::string rootDirectory;
@@ -50,6 +51,6 @@ private:
     std::string dsetName;
     int numDims;
 };
-} // chronolog
+} // namespace chronolog
 
 #endif //CHRONOLOG_STORY_CHUNK_WRITER_H

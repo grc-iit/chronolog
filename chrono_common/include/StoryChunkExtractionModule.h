@@ -118,7 +118,7 @@ public:
                     extraction_result = theExtractionChain.process_chunk(story_chunk);
 
                     if(CL_SUCCESS == extraction_result)
-                    {   // free the story_chunk memory or
+                    { // free the story_chunk memory or
                         // return it to the pool of prealocated chunks
                         delete story_chunk;
                     }
