@@ -1,7 +1,6 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
-#include <iomanip>
 #include <iostream>
 #include <mutex>
 #include <string>
@@ -14,19 +13,20 @@
  * ChronoPubSub API Integration Test
  *
  * Verifies the publish/subscribe wrapper end-to-end against a live ChronoLog
- * deployment. The test covers:
+ * deployment. ChronoLog's read path takes ~120s to surface freshly-published
+ * events (events have to propagate from keepers to a player before
+ * ReplayStory will return them), so this test uses the same explicit
+ * propagation wait that the chronokvs integration test relies on.
  *
- *   1. Publish N messages to a topic.
- *   2. Subscribe with a watermark of 1 (replay from the beginning) and wait
- *      until all N messages are delivered to the callback or the propagation
- *      window expires.
- *   3. Verify count, payload integrity, and timestamp ordering.
- *   4. Subscribe a second time and confirm new messages are still delivered.
- *   5. Unsubscribe and ensure no further callbacks fire.
- *
- * ChronoLog's read path takes some time to surface freshly-published events,
- * so the test allows a generous propagation window (DEFAULT 180s) before
- * declaring failure.
+ * Phases:
+ *   1. Publish N messages to a topic, flush.
+ *   2. Wait kPropagationSeconds for events to propagate.
+ *   3. Subscribe from timestamp 1 (replay everything) and wait briefly for
+ *      the polling thread to deliver all messages.
+ *   4. Verify count, payload integrity, ordering, and topic.
+ *   5. Live delivery on a second topic: subscribe, publish, flush, wait
+ *      another propagation window, verify delivery.
+ *   6. Unsubscribe and verify no further callbacks fire.
  */
 
 namespace
@@ -50,8 +50,10 @@ void printResult(const std::string& name, bool passed, const std::string& detail
 }
 
 constexpr int kNumMessages = 50;
-constexpr int kPropagationSeconds = 180;
-constexpr std::uint32_t kPollIntervalMs = 100;
+constexpr int kLiveMessages = 10;
+constexpr int kPropagationSeconds = 130;    // ~120s window plus margin
+constexpr int kPostPropagationWaitSec = 30; // window for the polling thread to deliver
+constexpr std::uint32_t kPollIntervalMs = 1000;
 const std::string kTopic = "chronopubsub_integration_topic";
 const std::string kSecondTopic = "chronopubsub_integration_topic_second";
 
@@ -80,6 +82,20 @@ private:
     mutable std::mutex mu_;
     std::vector<chronopubsub::Message> messages_;
 };
+
+void waitWithProgress(int total_seconds, const std::string& label)
+{
+    std::cout << "  " << label << ": waiting " << total_seconds << "s..." << std::flush;
+    for(int s = 0; s < total_seconds; ++s)
+    {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        if((s + 1) % 10 == 0)
+        {
+            std::cout << " " << (s + 1) << "s" << std::flush;
+        }
+    }
+    std::cout << " done" << std::endl;
+}
 
 bool waitForCount(const Collector& collector, std::size_t expected, int timeout_seconds)
 {
@@ -121,26 +137,24 @@ bool runTest()
                 published_ts.size() == static_cast<std::size_t>(kNumMessages),
                 std::to_string(published_ts.size()) + "/" + std::to_string(kNumMessages));
 
-    // Force a flush so other readers (and our own subscribe path) can see the data.
+    // Flush so the server can finalize the chunks and a subsequent ReplayStory can see them.
     pubsub->flush();
     printResult("Flush after publish", true);
 
-    // ---- Phase 2: subscribe and wait for delivery ---------------------------
-    printHeader("PHASE 2: SUBSCRIBE & RECEIVE");
-    std::cout << "  Waiting up to " << kPropagationSeconds << "s for propagation..." << std::endl;
+    // ---- Phase 2: wait for propagation, then subscribe and read ------------
+    printHeader("PHASE 2: PROPAGATION WAIT");
+    waitWithProgress(kPropagationSeconds, "Data propagation");
 
+    printHeader("PHASE 3: SUBSCRIBE AND RECEIVE HISTORICAL");
     Collector collector;
-    auto sub_id = pubsub->subscribe_from(kTopic,
-                                         /*since_timestamp*/ 1,
-                                         std::ref(collector),
-                                         kPollIntervalMs);
+    auto sub_id = pubsub->subscribe_from(kTopic, /*since_timestamp*/ 1, std::ref(collector), kPollIntervalMs);
     if(sub_id == chronopubsub::kInvalidSubscriptionId)
     {
         printResult("Subscribe", false, "subscribe_from returned kInvalidSubscriptionId");
         return false;
     }
 
-    bool received_all = waitForCount(collector, static_cast<std::size_t>(kNumMessages), kPropagationSeconds);
+    bool received_all = waitForCount(collector, static_cast<std::size_t>(kNumMessages), kPostPropagationWaitSec);
     auto received = collector.snapshot();
     printResult("Receive all messages",
                 received_all,
@@ -168,8 +182,8 @@ bool runTest()
     }
     printResult("All messages carry the expected topic", topic_ok);
 
-    // ---- Phase 3: live delivery on a second topic ---------------------------
-    printHeader("PHASE 3: LIVE DELIVERY ON SECOND TOPIC");
+    // ---- Phase 4: live delivery on a second topic ---------------------------
+    printHeader("PHASE 4: LIVE DELIVERY ON SECOND TOPIC");
     Collector collector2;
     auto sub_id2 = pubsub->subscribe(kSecondTopic, std::ref(collector2), kPollIntervalMs);
     if(sub_id2 == chronopubsub::kInvalidSubscriptionId)
@@ -179,15 +193,17 @@ bool runTest()
         return false;
     }
 
-    constexpr int kLiveMessages = 10;
     for(int i = 0; i < kLiveMessages; ++i) { pubsub->publish(kSecondTopic, "live-" + std::to_string(i)); }
     pubsub->flush();
+    printResult("Publish + flush live messages", true);
 
-    bool live_ok = waitForCount(collector2, static_cast<std::size_t>(kLiveMessages), kPropagationSeconds);
+    waitWithProgress(kPropagationSeconds, "Live data propagation");
+
+    bool live_ok = waitForCount(collector2, static_cast<std::size_t>(kLiveMessages), kPostPropagationWaitSec);
     printResult("Live delivery", live_ok, std::to_string(collector2.size()) + "/" + std::to_string(kLiveMessages));
 
-    // ---- Phase 4: unsubscribe stops further callbacks -----------------------
-    printHeader("PHASE 4: UNSUBSCRIBE STOPS DELIVERY");
+    // ---- Phase 5: unsubscribe stops further callbacks -----------------------
+    printHeader("PHASE 5: UNSUBSCRIBE STOPS DELIVERY");
     bool unsub1 = pubsub->unsubscribe(sub_id);
     bool unsub2 = pubsub->unsubscribe(sub_id2);
     printResult("Unsubscribe both subscriptions", unsub1 && unsub2);

@@ -158,8 +158,16 @@ void ChronoPubSubMapper::runSubscription(std::shared_ptr<Subscription> sub)
         }
         catch(const std::exception& e)
         {
-            CHRONOPUBSUB_ERROR(logLevel_, "Replay failed for topic='", sub->topic, "' id=", sub->id, ": ", e.what());
-            // Back off and retry; transient errors should not kill the subscription.
+            // Expected during the first ~120s after a publish: ChronoLog returns
+            // CL_ERR_QUERY_TIMED_OUT until events have propagated to a player.
+            // Log at WARNING so a hot polling loop does not flood stderr.
+            CHRONOPUBSUB_WARNING(logLevel_,
+                                 "Replay failed for topic='",
+                                 sub->topic,
+                                 "' id=",
+                                 sub->id,
+                                 " (will retry): ",
+                                 e.what());
             std::this_thread::sleep_for(std::chrono::milliseconds(sub->poll_interval_ms));
             continue;
         }

@@ -169,7 +169,8 @@ ChronoPubSubClientAdapter::replayEvents(const std::string& topic, std::uint64_t 
     if(int ret = chronolog->ReplayStory(defaultChronicle, topic, start_ts, end_ts, events);
        ret != chronolog::CL_SUCCESS)
     {
-        CHRONOPUBSUB_ERROR(logLevel_, "Failed to replay events for topic='", topic, "' with error code: ", ret);
+        // Caller (subscriber polling loop) decides severity; throw with the code so
+        // it can be retried without spamming ERROR for the propagation window.
         throw std::runtime_error("Failed to replay events for topic: " + topic +
                                  ", error code: " + std::to_string(ret));
     }
