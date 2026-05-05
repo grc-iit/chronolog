@@ -31,7 +31,10 @@ add_test(NAME Integration_ChronoSQL_PluginIntegration
 
 set_tests_properties(Integration_ChronoSQL_PluginIntegration PROPERTIES
     MANUAL TRUE
-    TIMEOUT 300
+    # Cold-start budget: ~180s for the initial metadata replay (the ChronoLog
+    # player times out empty-story queries at its hardcoded 180s ceiling),
+    # plus 120s for data propagation, plus the SELECT roundtrips.
+    TIMEOUT 600
 )
 
 if(CHRONOLOG_INSTALL_TESTS)
