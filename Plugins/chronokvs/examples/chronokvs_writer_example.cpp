@@ -12,8 +12,13 @@ int main(int argc, char** argv)
     std::string conf_file_path = parse_conf_path_arg(argc, argv);
 
     // Create ChronoKVS instance: with config file when provided, otherwise defaults.
-    chronokvs::ChronoKVS chronoKVS =
-            conf_file_path.empty() ? chronokvs::ChronoKVS() : chronokvs::ChronoKVS(conf_file_path);
+    auto chronoKVS =
+            conf_file_path.empty() ? chronokvs::ChronoKVS::Create() : chronokvs::ChronoKVS::Create(conf_file_path);
+    if(!chronoKVS)
+    {
+        std::cerr << "Failed to initialize ChronoKVS\n";
+        return 1;
+    }
 
     // Define key-value pairs
     std::string key1 = "key1";
@@ -24,9 +29,9 @@ int main(int argc, char** argv)
 
     // Insert key-value pairs and store timestamps
     std::cout << "Putting key-value pairs into ChronoKVS...\n";
-    std::uint64_t timestamp1 = chronoKVS.put(key1, value1);
-    std::uint64_t timestamp2 = chronoKVS.put(key2, value2);
-    std::uint64_t timestamp3 = chronoKVS.put(key2, value3);
+    std::uint64_t timestamp1 = chronoKVS->put(key1, value1);
+    std::uint64_t timestamp2 = chronoKVS->put(key2, value2);
+    std::uint64_t timestamp3 = chronoKVS->put(key2, value3);
 
     std::cout << "Inserted values with timestamps:\n";
     std::cout << "1. key1=" << value1 << " timestamp=" << timestamp1 << "\n";

@@ -22,19 +22,39 @@ private:
     std::unique_ptr<ChronoKVSMapper> mapper;
     LogLevel logLevel_;
 
+    // Private constructors. May throw on configuration or connection failure;
+    // the public Create() factories catch those exceptions at the library
+    // boundary and signal failure via a nullptr return.
+    explicit ChronoKVS(LogLevel level);
+    explicit ChronoKVS(const std::string& config_path, LogLevel level);
+
 public:
     /**
-     * @brief Construct a ChronoKVS instance with optional log level
-     * @param level The logging level to use. Default is DEBUG in debug builds, ERROR in release builds.
+     * @brief Create a ChronoKVS instance using built-in default ChronoLog
+     *        client configuration (localhost deployment).
+     *
+     * This factory does not propagate exceptions across the library boundary:
+     * any failure during configuration loading or ChronoLog connection is
+     * logged at the configured @p level and signalled by returning nullptr.
+     *
+     * @param level
+     *     The logging level to use. Default is DEBUG in debug builds, ERROR in release builds.
+     *
+     * @return std::unique_ptr<ChronoKVS>
+     *     A connected ChronoKVS instance, or nullptr if construction failed.
      */
-    explicit ChronoKVS(LogLevel level = getDefaultLogLevel());
+    static std::unique_ptr<ChronoKVS> Create(LogLevel level = getDefaultLogLevel()) noexcept;
 
     /**
-     * @brief Construct a ChronoKVS instance using a ChronoLog client configuration file.
+     * @brief Create a ChronoKVS instance using a ChronoLog client configuration file.
      *
      * Loads the JSON configuration at @p config_path and uses the resulting portal,
      * query and logging settings to connect to ChronoLog. Pass an empty string to
      * fall back to the built-in defaults (localhost deployment).
+     *
+     * This factory does not propagate exceptions across the library boundary:
+     * any failure during configuration loading or ChronoLog connection is
+     * logged at the configured @p level and signalled by returning nullptr.
      *
      * @param config_path
      *     Path to a ChronoLog client configuration JSON file. Empty means
@@ -42,9 +62,12 @@ public:
      * @param level
      *     The logging level to use. Default is DEBUG in debug builds, ERROR in release builds.
      *
-     * @throws std::runtime_error if @p config_path is non-empty but cannot be loaded.
+     * @return std::unique_ptr<ChronoKVS>
+     *     A connected ChronoKVS instance, or nullptr if @p config_path could
+     *     not be loaded or the ChronoLog connection failed.
      */
-    explicit ChronoKVS(const std::string& config_path, LogLevel level = getDefaultLogLevel());
+    static std::unique_ptr<ChronoKVS> Create(const std::string& config_path,
+                                             LogLevel level = getDefaultLogLevel()) noexcept;
 
     /**
      * @brief Get the current log level
