@@ -189,7 +189,14 @@ bool runTest()
     // invalidates the publisher's cached handle every poll cycle), and on
     // ChronoLog today that causes events not to surface during a single
     // propagation window.
+    //
+    // We also stop the Phase 3 subscriber before publishing here: its
+    // poll-loop AcquireStory/ReleaseStory churn on the same chronicle
+    // measurably delays propagation of the second topic.
     printHeader("PHASE 4: SECOND TOPIC PUBLISH + SUBSCRIBE");
+    bool unsub_phase3 = pubsub->unsubscribe(sub_id);
+    printResult("Stop Phase 3 subscriber before publishing on second topic", unsub_phase3);
+
     for(int i = 0; i < kLiveMessages; ++i) { pubsub->publish(kSecondTopic, "live-" + std::to_string(i)); }
     pubsub->flush();
     printResult("Publish + flush messages on second topic", true);
@@ -212,9 +219,12 @@ bool runTest()
 
     // ---- Phase 5: unsubscribe stops further callbacks -----------------------
     printHeader("PHASE 5: UNSUBSCRIBE STOPS DELIVERY");
-    bool unsub1 = pubsub->unsubscribe(sub_id);
     bool unsub2 = pubsub->unsubscribe(sub_id2);
-    printResult("Unsubscribe both subscriptions", unsub1 && unsub2);
+    printResult("Unsubscribe second-topic subscription", unsub2);
+    // unsubscribe of sub_id was already issued in Phase 4; calling it again
+    // must safely return false rather than fail.
+    bool double_unsub = !pubsub->unsubscribe(sub_id);
+    printResult("Re-unsubscribing an already-removed id is a no-op", double_unsub);
 
     auto count_at_stop = collector2.size();
     pubsub->publish(kSecondTopic, "after-unsubscribe");
@@ -224,7 +234,7 @@ bool runTest()
     printResult("No callbacks after unsubscribe", no_more);
 
     // ---- Summary ------------------------------------------------------------
-    bool overall = received_all && ordered && topic_ok && live_ok && unsub1 && unsub2 && no_more;
+    bool overall = received_all && ordered && topic_ok && live_ok && unsub_phase3 && unsub2 && double_unsub && no_more;
     printHeader(overall ? "RESULT: PASS" : "RESULT: FAIL");
     return overall;
 }
