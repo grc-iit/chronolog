@@ -59,42 +59,19 @@ void chunk_contributor_thread(chl::StoryChunkExtractionQueue* extractionQueue, u
 
 ////
 
-std::string extraction_module_json_1 = std::string("{ \"ExtractionModule\": ")
-    +  "{ \"extraction_stream_count\":2,"
-    +    "\"extractors\": { "
-    +       "\"test_single_rdma_extractor\": {"
-    +            "\"type\": \"single_endpoint_rdma_extractor\","
-    +            "\"receiving_endpoint\": {"
-    +                "\"protocol_conf\": \"ofi+sockets\","
-    +                "\"service_ip\": \"127.0.0.1\","
-    +                "\"service_base_port\": 2230,"
-    +                "\"service_provider_id\": 30"
-    +           " }"
-    +     "}" 
-    +  "}"
-    +  "}"
-    +"}";
+std::string extraction_module_json_1 =
+        std::string("{ \"ExtractionModule\": ") + "{ \"extraction_stream_count\":2," + "\"extractors\": { " +
+        "\"test_single_rdma_extractor\": {" + "\"type\": \"single_endpoint_rdma_extractor\"," +
+        "\"receiving_endpoint\": {" + "\"protocol_conf\": \"ofi+sockets\"," + "\"service_ip\": \"127.0.0.1\"," +
+        "\"service_base_port\": 2230," + "\"service_provider_id\": 30" + " }" + "}" + "}" + "}" + "}";
 
-std::string extraction_module_json_2 = std::string("{ \"ExtractionModule\": ")
-    +  "{ \"extraction_stream_count\":2,"
-    +    "\"extractors\": { "
-    +     "\"test_dual_rdma_extractor\": {"
-    +            "\"type\": \"dual_endpoint_rdma_extractor\","
-    +            "\"player_receiving_endpoint\": {"
-    +                "\"protocol_conf\": \"ofi+sockets\","
-    +                "\"service_ip\": \"127.0.0.1\","
-    +                "\"service_base_port\": 2232,"
-    +                "\"service_provider_id\": 32"
-    +           " },"
-    +           "\"grapher_receiving_endpoint\": {"
-    +                "\"protocol_conf\": \"ofi+sockets\","
-    +                "\"service_ip\": \"127.0.0.1\","
-    +                "\"service_base_port\": 2233,"
-    +                "\"service_provider_id\": 33"
-    +          "}"
-    +     "}" 
-    +  "}"
-    +  "}" +"}";
+std::string extraction_module_json_2 =
+        std::string("{ \"ExtractionModule\": ") + "{ \"extraction_stream_count\":2," + "\"extractors\": { " +
+        "\"test_dual_rdma_extractor\": {" + "\"type\": \"dual_endpoint_rdma_extractor\"," +
+        "\"player_receiving_endpoint\": {" + "\"protocol_conf\": \"ofi+sockets\"," + "\"service_ip\": \"127.0.0.1\"," +
+        "\"service_base_port\": 2232," + "\"service_provider_id\": 32" + " }," + "\"grapher_receiving_endpoint\": {" +
+        "\"protocol_conf\": \"ofi+sockets\"," + "\"service_ip\": \"127.0.0.1\"," + "\"service_base_port\": 2233," +
+        "\"service_provider_id\": 33" + "}" + "}" + "}" + "}" + "}";
 
 ///
 
@@ -143,7 +120,7 @@ int main()
         return (-1);
     }
 
-    // 1. Test single endpoint RDMA extractor instantiation 
+    // 1. Test single endpoint RDMA extractor instantiation
     chl::ServiceId receiving_service_id("ofi+sockets", "127.0.0.1", 3333, 33);
     chl::StoryChunkExtractorRDMA rdma_extractor(*localEngine, receiving_service_id);
 
@@ -153,48 +130,48 @@ int main()
     extractionModule.getExtractionChain().add_extractor(logging_extractor);
     extractionModule.getExtractionChain().add_extractor(csv_extractor);
     extractionModule.getExtractionChain().add_extractor(rdma_extractor);
-  
-    extractionModule.initialize(extraction_threads); 
-    
+
+    extractionModule.initialize(extraction_threads);
+
     // 3.  Test ExtractionModule instantiation using json configuration object
 
     chronolog::StoryChunkExtractionModule<chronolog::ChronoKeeperExtractionChain> new_extractionModule;
 
-    json_object * parsed_json = json_tokener_parse(extraction_module_json_1.c_str());
+    json_object* parsed_json = json_tokener_parse(extraction_module_json_1.c_str());
 
     if(!json_object_is_type(json_object_object_get(parsed_json, "ExtractionModule"), json_type_object))
     {
-      std::cerr << "\n [ExtractionModuleConfiguration] Test parsing stage:" << " failed : json_block  is not a json object" << std::endl;
-      return -1;
+        std::cerr << "\n [ExtractionModuleConfiguration] Test parsing stage:"
+                  << " failed : json_block  is not a json object" << std::endl;
+        return -1;
     }
 
-    json_object * extraction_module_block = json_object_object_get(parsed_json, "ExtractionModule");
+    json_object* extraction_module_block = json_object_object_get(parsed_json, "ExtractionModule");
     chronolog::ExtractionModuleConfiguration extraction_config;
     int return_value = extraction_config.parse_json_object(extraction_module_block);
     if(return_value != chl::CL_SUCCESS)
     {
-      std::cerr << "\n [ExtractionModuleConfiguration] Test parsing stage:" << " failed  " << std::endl;
-      return -1;
+        std::cerr << "\n [ExtractionModuleConfiguration] Test parsing stage:" << " failed  " << std::endl;
+        return -1;
     }
 
     std::string log_string;
     extraction_config.to_string(log_string);
 
-    std::cout<< "\n [ExtractionModuleConfiguration] Test parsing stage:" <<" passed "<< log_string << std::endl;
+    std::cout << "\n [ExtractionModuleConfiguration] Test parsing stage:" << " passed " << log_string << std::endl;
 
     json_object_put(parsed_json);
-    
-    extractionModule.getExtractionChain().activate( *localEngine, extraction_config,localServiceId);
+
+    extractionModule.getExtractionChain().activate(*localEngine, extraction_config, localServiceId);
 
     new_extractionModule.initialize(extraction_config.extraction_stream_count);
 
     if(!new_extractionModule.is_initialized())
     {
-      std::cerr << "\n [ExtractionModuleConfiguration] ExtractionModule failed to initialize " << std::endl;
-      return -1;
-
+        std::cerr << "\n [ExtractionModuleConfiguration] ExtractionModule failed to initialize " << std::endl;
+        return -1;
     }
- 
+
     chl::StoryChunkExtractionQueue& extractionQueue = new_extractionModule.getExtractionQueue();
 
     new_extractionModule.startExtraction();
@@ -224,8 +201,7 @@ int main()
 
 
     // 5. Test ExtractionModule shutdown
-    LOG_INFO("[ExtractionModuleTest] Shutting down StoryChunkExtractionModule for {}",
-                     chl::to_string(localServiceId));
+    LOG_INFO("[ExtractionModuleTest] Shutting down StoryChunkExtractionModule for {}", chl::to_string(localServiceId));
 
     extractionModule.shutdownExtraction();
 
