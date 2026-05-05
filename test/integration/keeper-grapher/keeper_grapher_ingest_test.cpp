@@ -146,9 +146,9 @@ int main(int argc, char** argv)
     /**
      * Keeper-push
      */
-    std::string KEEPER_COLLECTOR_NA_STRING = GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.PROTO_CONF + "://" +
-                                             GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP + ":" +
-                                             std::to_string(GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT);
+    std::string KEEPER_COLLECTOR_NA_STRING = GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.PROTO_CONF + "://" +
+                                             GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.IP + ":" +
+                                             std::to_string(GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.BASE_PORT);
     tl::engine extraction_engine = tl::engine(KEEPER_COLLECTOR_NA_STRING, THALLIUM_SERVER_MODE);
     std::stringstream ss;
     ss << extraction_engine.self();
@@ -164,7 +164,7 @@ int main(int argc, char** argv)
         tl_es_vec.push_back(std::move(es));
     }
 
-    int service_provider_id = GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.SERVICE_PROVIDER_ID;
+    int service_provider_id = GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID;
     StoryChunkRecordService* story_chunk_recording_service =
             StoryChunkRecordService::CreateStoryChunkRecordService(extraction_engine, tl_pool, service_provider_id);
     LOG_DEBUG("[standalone_ingest_test] StoryChunkRecordService created");

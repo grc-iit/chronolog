@@ -11,10 +11,16 @@
 namespace chronolog
 {
 
+struct KeeperGrapherDrainServiceConf
+{
+    RPCProviderConf RPC_CONF;
+    uint32_t INGESTION_THREAD_COUNT = 1;
+};
+
 struct GrapherConfiguration
 {
     uint32_t RECORDING_GROUP{};
-    RPCProviderConf KEEPER_GRAPHER_DRAIN_SERVICE_CONF;
+    KeeperGrapherDrainServiceConf KEEPER_GRAPHER_DRAIN_SERVICE_CONF;
     RPCProviderConf DATA_STORE_ADMIN_SERVICE_CONF;
     RPCProviderConf VISOR_REGISTRY_SERVICE_CONF;
     LogConf LOG_CONF;
@@ -24,10 +30,10 @@ struct GrapherConfiguration
     GrapherConfiguration()
     {
         RECORDING_GROUP = 0;
-        KEEPER_GRAPHER_DRAIN_SERVICE_CONF.PROTO_CONF = "ofi+sockets";
-        KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP = "127.0.0.1";
-        KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT = 9999;
-        KEEPER_GRAPHER_DRAIN_SERVICE_CONF.SERVICE_PROVIDER_ID = 99;
+        KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.PROTO_CONF = "ofi+sockets";
+        KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.IP = "127.0.0.1";
+        KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.BASE_PORT = 9999;
+        KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID = 99;
 
         DATA_STORE_ADMIN_SERVICE_CONF.PROTO_CONF = "ofi+sockets";
         DATA_STORE_ADMIN_SERVICE_CONF.IP = "127.0.0.1";
@@ -51,7 +57,7 @@ struct GrapherConfiguration
     [[nodiscard]] std::string to_String() const
     {
         return "[CHRONO_GRAPHER_CONFIGURATION: RECORDING_GROUP: " + std::to_string(RECORDING_GROUP) +
-               ", KEEPER_GRAPHER_DRAIN_SERVICE_CONF: " + KEEPER_GRAPHER_DRAIN_SERVICE_CONF.to_String() +
+               ", KEEPER_GRAPHER_DRAIN_SERVICE_CONF: " + KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.to_String() +
                ", DATA_STORE_ADMIN_SERVICE_CONF: " + DATA_STORE_ADMIN_SERVICE_CONF.to_String() +
                ", VISOR_REGISTRY_SERVICE_CONF: " + VISOR_REGISTRY_SERVICE_CONF.to_String() +
                ", LOG_CONF: " + LOG_CONF.to_String() + ", DATA_STORE_CONF: " + DATA_STORE_CONF.to_String() +
