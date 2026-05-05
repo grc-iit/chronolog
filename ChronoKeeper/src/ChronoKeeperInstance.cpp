@@ -127,10 +127,10 @@ int main(int argc, char** argv)
 
     /// KeeperRecordingService setup ___________________________________________________________________________________
     // Instantiate KeeperRecordingService
-    std::string KEEPER_RECORDING_SERVICE_PROTOCOL = KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.PROTO_CONF;
-    std::string KEEPER_RECORDING_SERVICE_IP = KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.IP;
-    uint16_t KEEPER_RECORDING_SERVICE_PORT = KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.BASE_PORT;
-    uint16_t recording_service_provider_id = KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.SERVICE_PROVIDER_ID;
+    std::string KEEPER_RECORDING_SERVICE_PROTOCOL = KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.PROTO_CONF;
+    std::string KEEPER_RECORDING_SERVICE_IP = KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.IP;
+    uint16_t KEEPER_RECORDING_SERVICE_PORT = KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.BASE_PORT;
+    uint16_t recording_service_provider_id = KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID;
 
 
     // validate ip address, instantiate Recording Service and create KeeperIdCard
@@ -149,10 +149,10 @@ int main(int argc, char** argv)
     chronolog::RecordingGroupId keeper_group_id = KEEPER_CONF.RECORDING_GROUP;
     chronolog::KeeperIdCard keeperIdCard(
             keeper_group_id,
-            chronolog::ServiceId(KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.PROTO_CONF,
-                                 KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.IP,
-                                 KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.BASE_PORT,
-                                 KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.SERVICE_PROVIDER_ID));
+            chronolog::ServiceId(KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.PROTO_CONF,
+                                 KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.IP,
+                                 KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.BASE_PORT,
+                                 KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID));
 
     std::string KEEPER_RECORDING_SERVICE_NA_STRING;
     keeperIdCard.getRecordingServiceId().get_service_as_string(KEEPER_RECORDING_SERVICE_NA_STRING);
@@ -242,7 +242,7 @@ int main(int argc, char** argv)
 
     try
     {
-        int rpc_thread_count = static_cast<int>(KEEPER_CONF.INGESTION_THREAD_COUNT);
+        int rpc_thread_count = static_cast<int>(KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.INGESTION_THREAD_COUNT);
         margo_instance_id margo_id = margo_init(KEEPER_RECORDING_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, rpc_thread_count);
         recordingEngine = new tl::engine(margo_id);
 

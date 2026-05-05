@@ -23,16 +23,6 @@ int chronolog::KeeperConfiguration::parseJsonConf(json_object* json_conf)
             int value = json_object_get_int(val);
             RECORDING_GROUP = (value >= 0 ? value : 0);
         }
-        else if(strcmp(key, "IngestionThreadCount") == 0)
-        {
-            if(!json_object_is_type(val, json_type_int))
-            {
-                std::cerr << "[KeeperConfiguration] Invalid 'IngestionThreadCount': expected integer" << std::endl;
-                return chl::CL_ERR_INVALID_CONF;
-            }
-            int value = json_object_get_int(val);
-            INGESTION_THREAD_COUNT = (value >= 1 ? value : 1);
-        }
         else if(strcmp(key, "KeeperRecordingService") == 0)
         {
             if(!json_object_is_type(val, json_type_object))
@@ -45,8 +35,19 @@ int chronolog::KeeperConfiguration::parseJsonConf(json_object* json_conf)
             {
                 if(strcmp(key, "rpc") == 0)
                 {
-                    if(KEEPER_RECORDING_SERVICE_CONF.parseJsonConf(val) != chl::CL_SUCCESS)
+                    if(KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.parseJsonConf(val) != chl::CL_SUCCESS)
                         return chl::CL_ERR_INVALID_CONF;
+                }
+                else if(strcmp(key, "IngestionThreadCount") == 0)
+                {
+                    if(!json_object_is_type(val, json_type_int))
+                    {
+                        std::cerr << "[KeeperConfiguration] Invalid 'IngestionThreadCount': expected integer"
+                                  << std::endl;
+                        return chl::CL_ERR_INVALID_CONF;
+                    }
+                    int value = json_object_get_int(val);
+                    KEEPER_RECORDING_SERVICE_CONF.INGESTION_THREAD_COUNT = (value >= 1 ? value : 1);
                 }
                 else
                 {

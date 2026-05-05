@@ -40,8 +40,8 @@
   },
   "chrono_keeper": {
     "RecordingGroup": 7,
-    "IngestionThreadCount": 1,
     "KeeperRecordingService": {
+      "IngestionThreadCount": 4,
       "rpc": {
         "protocol_conf": "ofi+sockets",
         "service_ip": "127.0.0.1",
