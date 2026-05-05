@@ -33,28 +33,52 @@ private:
     std::unique_ptr<ChronoSQLMapper> mapper;
     LogLevel logLevel_;
 
+    // Private constructors. May throw on configuration or connection failure;
+    // the public Create() factories catch those exceptions at the library
+    // boundary and signal failure via a nullptr return.
+    explicit ChronoSQL(LogLevel level);
+    explicit ChronoSQL(const std::string& config_path, LogLevel level);
+
 public:
     /**
-     * @brief Construct a ChronoSQL instance using built-in defaults.
+     * @brief Create a ChronoSQL instance using built-in default ChronoLog
+     *        client configuration (localhost deployment).
      *
-     * Uses the localhost ChronoLog client defaults and connects to the default
-     * chronicle.
+     * This factory does not propagate exceptions across the library boundary:
+     * any failure during configuration loading or ChronoLog connection is
+     * logged at the configured @p level and signalled by returning nullptr.
+     *
+     * @param level
+     *     The logging level. Default is DEBUG in debug builds, ERROR in release builds.
+     *
+     * @return std::unique_ptr<ChronoSQL>
+     *     A connected ChronoSQL instance, or nullptr if construction failed.
      */
-    explicit ChronoSQL(LogLevel level = getDefaultLogLevel());
+    static std::unique_ptr<ChronoSQL> Create(LogLevel level = getDefaultLogLevel()) noexcept;
 
     /**
-     * @brief Construct a ChronoSQL instance loading a ChronoLog client config.
+     * @brief Create a ChronoSQL instance loading a ChronoLog client config.
+     *
+     * Loads the JSON configuration at @p config_path and uses the resulting portal,
+     * query and logging settings to connect to ChronoLog. Pass an empty string to
+     * fall back to the built-in defaults (localhost deployment).
+     *
+     * This factory does not propagate exceptions across the library boundary:
+     * any failure during configuration loading or ChronoLog connection is
+     * logged at the configured @p level and signalled by returning nullptr.
      *
      * @param config_path
      *     Path to a ChronoLog client configuration JSON file. Empty means
-     *     "use defaults" (same as the no-arg constructor).
+     *     "use defaults".
      * @param level
-     *     The logging level.
+     *     The logging level. Default is DEBUG in debug builds, ERROR in release builds.
      *
-     * @throws std::runtime_error if the config file cannot be loaded or the
-     *     ChronoLog client fails to connect.
+     * @return std::unique_ptr<ChronoSQL>
+     *     A connected ChronoSQL instance, or nullptr if @p config_path could
+     *     not be loaded or the ChronoLog connection failed.
      */
-    explicit ChronoSQL(const std::string& config_path, LogLevel level = getDefaultLogLevel());
+    static std::unique_ptr<ChronoSQL> Create(const std::string& config_path,
+                                             LogLevel level = getDefaultLogLevel()) noexcept;
 
     ~ChronoSQL();
 

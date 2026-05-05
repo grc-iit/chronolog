@@ -10,16 +10,21 @@ int main(int argc, char** argv)
 {
     std::string conf_file_path = parse_conf_path_arg(argc, argv);
 
-    chronosql::ChronoSQL db = conf_file_path.empty() ? chronosql::ChronoSQL() : chronosql::ChronoSQL(conf_file_path);
+    auto db = conf_file_path.empty() ? chronosql::ChronoSQL::Create() : chronosql::ChronoSQL::Create(conf_file_path);
+    if(!db)
+    {
+        std::cerr << "Failed to initialize ChronoSQL\n";
+        return EXIT_FAILURE;
+    }
 
-    auto schema = db.getSchema("users");
+    auto schema = db->getSchema("users");
     if(!schema)
     {
         std::cerr << "Table 'users' not found. Run the writer example first.\n";
         return EXIT_FAILURE;
     }
 
-    auto result = db.execute("SELECT * FROM users");
+    auto result = db->execute("SELECT * FROM users");
     std::cout << "Found " << result.rows.size() << " rows in 'users':\n";
     for(const auto& row: result.rows)
     {

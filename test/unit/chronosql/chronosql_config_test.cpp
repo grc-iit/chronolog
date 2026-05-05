@@ -1,20 +1,22 @@
 #include <cstdio>
 #include <gtest/gtest.h>
-#include <stdexcept>
 #include <string>
 
 #include <chronosql.h>
 
-// Smoke tests for the config-file constructor. These run without a live
-// ChronoLog deployment: they only exercise the load path that runs before
-// any RPC connection attempt.
+// Smoke tests for the configuration-file factory. These tests do NOT require
+// a running ChronoLog deployment: they only exercise the config-loading path
+// that runs *before* any RPC connection attempt. A bad path must cause
+// Create() to return nullptr (the library boundary catches the underlying
+// exception and signals failure to the caller without forcing them to use
+// try/catch).
 
-TEST(ChronoSQLConfig, ThrowsOnNonexistentConfigFile)
+TEST(ChronoSQLConfig, ReturnsNullOnNonexistentConfigFile)
 {
-    EXPECT_THROW(chronosql::ChronoSQL{"/this/path/should/not/exist/chronosql.json"}, std::runtime_error);
+    EXPECT_EQ(chronosql::ChronoSQL::Create("/this/path/should/not/exist/chronosql.json"), nullptr);
 }
 
-TEST(ChronoSQLConfig, ThrowsOnConfigFileMissingChronoClientSection)
+TEST(ChronoSQLConfig, ReturnsNullOnConfigFileMissingChronoClientSection)
 {
     const std::string path = "/tmp/chronosql_no_section_config.json";
     {
@@ -23,6 +25,6 @@ TEST(ChronoSQLConfig, ThrowsOnConfigFileMissingChronoClientSection)
         std::fputs("{}", f);
         std::fclose(f);
     }
-    EXPECT_THROW(chronosql::ChronoSQL{path}, std::runtime_error);
+    EXPECT_EQ(chronosql::ChronoSQL::Create(path), nullptr);
     std::remove(path.c_str());
 }

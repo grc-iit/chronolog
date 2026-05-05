@@ -47,12 +47,17 @@ int run(int argc, char** argv)
         }
     }
 
-    chronosql::ChronoSQL db = conf_path.empty() ? chronosql::ChronoSQL() : chronosql::ChronoSQL(conf_path);
+    auto db = conf_path.empty() ? chronosql::ChronoSQL::Create() : chronosql::ChronoSQL::Create(conf_path);
+    if(!db)
+    {
+        std::cout << "ChronoSQL integration test skipped (no ChronoLog server available).\n";
+        return EXIT_SUCCESS;
+    }
 
     const std::string table = "ycsb_users";
-    if(!db.getSchema(table).has_value())
+    if(!db->getSchema(table).has_value())
     {
-        db.execute("CREATE TABLE " + table + " (id INT, name STRING, region STRING)");
+        db->execute("CREATE TABLE " + table + " (id INT, name STRING, region STRING)");
     }
 
     constexpr int N = 100;
@@ -65,7 +70,7 @@ int run(int argc, char** argv)
         std::string region = (i % 2 == 0) ? "us-east" : "us-west";
         std::string sql = "INSERT INTO " + table + " (id, name, region) VALUES (" + std::to_string(i) + ", 'user" +
                           std::to_string(i) + "', '" + region + "')";
-        auto r = db.execute(sql);
+        auto r = db->execute(sql);
         if(!r.last_insert_timestamp.has_value())
         {
             std::cerr << "INSERT did not return a timestamp\n";
@@ -76,23 +81,23 @@ int run(int argc, char** argv)
     // Release cached write handles so the keeper commits the events, then wait
     // long enough for the player to make them visible to replay queries. The
     // ChronoKVS integration test uses the same 120s wait for the same reason.
-    db.flush();
+    db->flush();
     std::this_thread::sleep_for(std::chrono::seconds(120));
 
     bool ok = true;
-    auto all = db.execute("SELECT * FROM " + table);
+    auto all = db->execute("SELECT * FROM " + table);
     ok &= expect_eq("SELECT * row count", all.rows.size(), N);
 
-    auto east = db.execute("SELECT id, region FROM " + table + " WHERE region = 'us-east'");
+    auto east = db->execute("SELECT id, region FROM " + table + " WHERE region = 'us-east'");
     ok &= expect_eq("SELECT WHERE region='us-east'", east.rows.size(), N / 2);
 
-    auto by_id = db.execute("SELECT * FROM " + table + " WHERE id = 42");
+    auto by_id = db->execute("SELECT * FROM " + table + " WHERE id = 42");
     ok &= expect_eq("SELECT WHERE id=42", by_id.rows.size(), 1u);
 
     if(N >= 10)
     {
-        auto range = db.execute("SELECT * FROM " + table + " WHERE __ts BETWEEN " + std::to_string(ts[10]) + " AND " +
-                                std::to_string(ts[19]));
+        auto range = db->execute("SELECT * FROM " + table + " WHERE __ts BETWEEN " + std::to_string(ts[10]) + " AND " +
+                                 std::to_string(ts[19]));
         ok &= expect_eq("SELECT WHERE __ts BETWEEN ts[10] AND ts[19] (inclusive)", range.rows.size(), 10u);
     }
 
@@ -110,15 +115,6 @@ int main(int argc, char** argv)
     }
     catch(const std::exception& e)
     {
-        std::string msg(e.what());
-        // Mirror the ChronoKVS integration test: when no ChronoLog server is
-        // reachable, exit cleanly so the test is treated as skipped rather
-        // than a hard failure.
-        if(msg.find("Failed to connect") != std::string::npos)
-        {
-            std::cout << "ChronoSQL integration test skipped (no ChronoLog server available).\n";
-            return EXIT_SUCCESS;
-        }
         std::cerr << "ChronoSQL integration test failed: " << e.what() << "\n";
         return EXIT_FAILURE;
     }

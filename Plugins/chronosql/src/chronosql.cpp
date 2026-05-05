@@ -62,6 +62,42 @@ ChronoSQL::ChronoSQL(const std::string& config_path, LogLevel level)
     , logLevel_(level)
 {}
 
+std::unique_ptr<ChronoSQL> ChronoSQL::Create(LogLevel level) noexcept
+{
+    try
+    {
+        return std::unique_ptr<ChronoSQL>(new ChronoSQL(level));
+    }
+    catch(const std::exception& e)
+    {
+        CHRONOSQL_ERROR(level, "ChronoSQL construction failed: ", e.what());
+        return nullptr;
+    }
+    catch(...)
+    {
+        CHRONOSQL_ERROR(level, "ChronoSQL construction failed: unknown exception");
+        return nullptr;
+    }
+}
+
+std::unique_ptr<ChronoSQL> ChronoSQL::Create(const std::string& config_path, LogLevel level) noexcept
+{
+    try
+    {
+        return std::unique_ptr<ChronoSQL>(new ChronoSQL(config_path, level));
+    }
+    catch(const std::exception& e)
+    {
+        CHRONOSQL_ERROR(level, "ChronoSQL construction failed (config_path='", config_path, "'): ", e.what());
+        return nullptr;
+    }
+    catch(...)
+    {
+        CHRONOSQL_ERROR(level, "ChronoSQL construction failed (config_path='", config_path, "'): unknown exception");
+        return nullptr;
+    }
+}
+
 ChronoSQL::~ChronoSQL() = default;
 
 void ChronoSQL::createTable(const std::string& name, const std::vector<Column>& columns)
