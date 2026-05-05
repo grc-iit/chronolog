@@ -44,7 +44,7 @@ private:
 
     // Connect to ChronoLog using the already-populated configuration and ensure
     // the default chronicle exists. Used by all constructors.
-    void initialize(const chronolog::ClientConfiguration& confManager);
+    void initialize(const chronolog::ClientConfiguration& client_config);
 
 public:
     explicit ChronoKVSClientAdapter(LogLevel level);

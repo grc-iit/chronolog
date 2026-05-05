@@ -18,38 +18,38 @@ static int DEFAULT_FLAGS = 0;
 ChronoKVSClientAdapter::ChronoKVSClientAdapter(LogLevel level)
     : logLevel_(level)
 {
-    chronolog::ClientConfiguration confManager;
-    initialize(confManager);
+    chronolog::ClientConfiguration client_config;
+    initialize(client_config);
 }
 
 ChronoKVSClientAdapter::ChronoKVSClientAdapter(const std::string& config_path, LogLevel level)
     : logLevel_(level)
 {
-    chronolog::ClientConfiguration confManager;
+    chronolog::ClientConfiguration client_config;
     if(!config_path.empty())
     {
         CHRONOKVS_INFO(logLevel_, "Loading ChronoLog client configuration from '", config_path, "'");
-        if(!confManager.load_from_file(config_path))
+        if(!client_config.load_from_file(config_path))
         {
             CHRONOKVS_ERROR(logLevel_, "Failed to load configuration file: ", config_path);
             throw std::runtime_error("Failed to load config file: " + config_path);
         }
     }
-    initialize(confManager);
+    initialize(client_config);
 }
 
-void ChronoKVSClientAdapter::initialize(const chronolog::ClientConfiguration& confManager)
+void ChronoKVSClientAdapter::initialize(const chronolog::ClientConfiguration& client_config)
 {
-    // Configure portal and query services from the configuration manager
-    chronolog::ClientPortalServiceConf portalConf{confManager.PORTAL_CONF.PROTO_CONF,
-                                                  confManager.PORTAL_CONF.IP,
-                                                  confManager.PORTAL_CONF.PORT,
-                                                  confManager.PORTAL_CONF.PROVIDER_ID};
+    // Configure portal and query services from the client configuration
+    chronolog::ClientPortalServiceConf portalConf{client_config.PORTAL_CONF.PROTO_CONF,
+                                                  client_config.PORTAL_CONF.IP,
+                                                  client_config.PORTAL_CONF.PORT,
+                                                  client_config.PORTAL_CONF.PROVIDER_ID};
 
-    chronolog::ClientQueryServiceConf queryConf{confManager.QUERY_CONF.PROTO_CONF,
-                                                confManager.QUERY_CONF.IP,
-                                                confManager.QUERY_CONF.PORT,
-                                                confManager.QUERY_CONF.PROVIDER_ID};
+    chronolog::ClientQueryServiceConf queryConf{client_config.QUERY_CONF.PROTO_CONF,
+                                                client_config.QUERY_CONF.IP,
+                                                client_config.QUERY_CONF.PORT,
+                                                client_config.QUERY_CONF.PROVIDER_ID};
 
     // Initialize and connect the ChronoLog client
     CHRONOKVS_INFO(logLevel_, "Connecting to ChronoLog at ", portalConf.IP, ":", portalConf.PORT);
