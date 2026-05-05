@@ -20,6 +20,12 @@ ChronoKVSMapper::ChronoKVSMapper(LogLevel level)
     chronoClientAdapter = std::make_unique<ChronoKVSClientAdapter>(level);
 }
 
+ChronoKVSMapper::ChronoKVSMapper(const std::string& config_path, LogLevel level)
+    : logLevel_(level)
+{
+    chronoClientAdapter = std::make_unique<ChronoKVSClientAdapter>(config_path, level);
+}
+
 std::uint64_t ChronoKVSMapper::storeKeyValue(const std::string& key, const std::string& value)
 {
     // Input validation

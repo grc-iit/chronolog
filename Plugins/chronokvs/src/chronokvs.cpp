@@ -15,6 +15,47 @@ ChronoKVS::ChronoKVS(LogLevel level)
     , logLevel_(level)
 {}
 
+ChronoKVS::ChronoKVS(const std::string& config_path, LogLevel level)
+    : mapper(std::make_unique<ChronoKVSMapper>(config_path, level))
+    , logLevel_(level)
+{}
+
+std::unique_ptr<ChronoKVS> ChronoKVS::Create(LogLevel level) noexcept
+{
+    try
+    {
+        return std::unique_ptr<ChronoKVS>(new ChronoKVS(level));
+    }
+    catch(const std::exception& e)
+    {
+        CHRONOKVS_ERROR(level, "ChronoKVS construction failed: ", e.what());
+        return nullptr;
+    }
+    catch(...)
+    {
+        CHRONOKVS_ERROR(level, "ChronoKVS construction failed: unknown exception");
+        return nullptr;
+    }
+}
+
+std::unique_ptr<ChronoKVS> ChronoKVS::Create(const std::string& config_path, LogLevel level) noexcept
+{
+    try
+    {
+        return std::unique_ptr<ChronoKVS>(new ChronoKVS(config_path, level));
+    }
+    catch(const std::exception& e)
+    {
+        CHRONOKVS_ERROR(level, "ChronoKVS construction failed (config_path='", config_path, "'): ", e.what());
+        return nullptr;
+    }
+    catch(...)
+    {
+        CHRONOKVS_ERROR(level, "ChronoKVS construction failed (config_path='", config_path, "'): unknown exception");
+        return nullptr;
+    }
+}
+
 ChronoKVS::~ChronoKVS() = default;
 
 std::uint64_t ChronoKVS::put(const std::string& key, const std::string& value)
