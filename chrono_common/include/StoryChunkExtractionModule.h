@@ -32,12 +32,22 @@ class StoryChunkExtractionModule
     };
 
 public:
-    StoryChunkExtractionModule(int extraction_stream_count = 1)
-        : state(UNKNOWN)
-        , stream_count(stream_count)
-    {}
 
-    int initialize(ServiceId const& recording_service_id, ExtractionModuleConfiguration const& configuration)
+    StoryChunkExtractionModule(int extraction_stream_count =2)
+        : state(UNKNOWN)
+        , stream_count(extraction_stream_count)
+    { }
+
+    StoryChunkExtractionModule(ServiceId const& recording_service_id, 
+                ExtractionModuleConfiguration const& configuration)
+        : state(UNKNOWN)
+        , stream_count(2)
+    { 
+       initialize(recording_service_id, configuration);
+    }
+
+    int initialize(ServiceId const& recording_service_id, 
+                ExtractionModuleConfiguration const& configuration)
     {
         //TODO: move extraction engine instantiation here
         // then move Extraction Chain instantiation here as well

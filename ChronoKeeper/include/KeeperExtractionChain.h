@@ -90,7 +90,7 @@ public:
                 }
                 add_extractor(csv_extractor);
             }
-            else if((*iter).first == "singe_endpoint_rdma_extractor")
+            else if((*iter).first == "single_endpoint_rdma_extractor")
             {
                 StoryChunkExtractorRDMA single_endpoint_rdma_extractor(extraction_engine);
                 ret_value = single_endpoint_rdma_extractor.reset((*iter).second);
