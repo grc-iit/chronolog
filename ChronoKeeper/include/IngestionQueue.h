@@ -59,12 +59,14 @@ public:
 
     void ingestLogEvent(LogEvent const& event)
     {
+#ifndef NDEBUG
         std::stringstream ss;
         ss << event;
-        LOG_DEBUG("[IngestionQueue] Received event for StoryID={}: Event Details={}, HandleMapSize={}",
+        LOG_TRACE("[IngestionQueue] Received event for StoryID={}: Event Details={}, HandleMapSize={}",
                   event.storyId,
                   ss.str(),
                   storyIngestionHandles.size());
+#endif
         auto ingestionHandle_iter = storyIngestionHandles.find(event.storyId);
         if(ingestionHandle_iter == storyIngestionHandles.end())
         {
