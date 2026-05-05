@@ -39,9 +39,12 @@ public:
     {
         //  ClientId teller_id,  StoryId story_id,
         //  ChronoTick const& chrono_tick, std::string const& record)
+#ifndef NDEBUG
         std::stringstream ss;
         ss << log_event;
-        LOG_DEBUG("[KeeperRecordingService] Recording event: {}", ss.str());
+        LOG_TRACE("[KeeperRecordingService] Recording event: {}", ss.str());
+#endif
+        LOG_DEBUG("[KeeperRecordingService] Recording event in ULT={}, ES={}", tl::thread::self_id(), tl::xstream::self().get_rank());
         theIngestionQueue.ingestLogEvent(log_event);
         request.respond(chronolog::CL_SUCCESS);
     }
