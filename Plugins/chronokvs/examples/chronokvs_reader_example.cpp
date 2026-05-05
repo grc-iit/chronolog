@@ -4,6 +4,7 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <cmd_arg_parse.h>
 #include "chronokvs.h"
 
 std::vector<std::uint64_t> readTimestampsFromFile(const std::string& filename)
@@ -24,10 +25,20 @@ std::vector<std::uint64_t> readTimestampsFromFile(const std::string& filename)
     return timestamps;
 }
 
-int main()
+int main(int argc, char** argv)
 {
-    // Create ChronoKVS instance
-    chronokvs::ChronoKVS chronoKVS;
+    // Optional ChronoLog client config file (-c/--config). When omitted,
+    // ChronoKVS uses the built-in defaults (localhost deployment).
+    std::string conf_file_path = parse_conf_path_arg(argc, argv);
+
+    // Create ChronoKVS instance: with config file when provided, otherwise defaults.
+    auto chronoKVS =
+            conf_file_path.empty() ? chronokvs::ChronoKVS::Create() : chronokvs::ChronoKVS::Create(conf_file_path);
+    if(!chronoKVS)
+    {
+        std::cerr << "Failed to initialize ChronoKVS\n";
+        return 1;
+    }
 
     // Read timestamps from file
     std::vector<std::uint64_t> timestamps = readTimestampsFromFile("chronokvs_timestamps.txt");
@@ -48,7 +59,7 @@ int main()
 
     // Read and display history for key2
     std::cout << "\nReading history for key2:\n";
-    auto historyForKey2 = chronoKVS.get_history(key2);
+    auto historyForKey2 = chronoKVS->get_history(key2);
 
     if(historyForKey2.empty())
     {
@@ -65,8 +76,8 @@ int main()
 
     // Read specific values for key2 at both timestamps
     std::cout << "Reading specific values for key2:\n";
-    std::string value2_t1 = chronoKVS.get(key2, timestamps[1]);
-    std::string value2_t2 = chronoKVS.get(key2, timestamps[2]);
+    std::string value2_t1 = chronoKVS->get(key2, timestamps[1]);
+    std::string value2_t2 = chronoKVS->get(key2, timestamps[2]);
 
     std::cout << "Value at timestamp " << timestamps[1] << ": " << (value2_t1.empty() ? "Not found" : value2_t1)
               << "\n";
@@ -75,7 +86,7 @@ int main()
 
     // Read and display value for key1
     std::cout << "\nReading value for key1 at timestamp " << timestamps[0] << ":\n";
-    std::string value1 = chronoKVS.get(key1, timestamps[0]);
+    std::string value1 = chronoKVS->get(key1, timestamps[0]);
     if(!value1.empty())
     {
         std::cout << "Value: " << value1 << "\n";
@@ -87,7 +98,7 @@ int main()
 
     // Read and display events in a time range for key2
     std::cout << "\nReading events for key2 in time range [" << timestamps[1] << ", " << timestamps[2] + 1 << "):\n";
-    auto rangeEvents = chronoKVS.get_range(key2, timestamps[1], timestamps[2] + 1);
+    auto rangeEvents = chronoKVS->get_range(key2, timestamps[1], timestamps[2] + 1);
     if(rangeEvents.empty())
     {
         std::cout << "No events found in the specified time range\n";
@@ -103,7 +114,7 @@ int main()
 
     // Read and display the earliest event for key2
     std::cout << "Reading earliest event for key2:\n";
-    auto earliestEvent = chronoKVS.get_earliest(key2);
+    auto earliestEvent = chronoKVS->get_earliest(key2);
     if(earliestEvent.has_value())
     {
         std::cout << "Earliest event - Timestamp: " << earliestEvent->timestamp
@@ -116,7 +127,7 @@ int main()
 
     // Read and display the latest event for key2
     std::cout << "\nReading latest event for key2:\n";
-    auto latestEvent = chronoKVS.get_latest(key2);
+    auto latestEvent = chronoKVS->get_latest(key2);
     if(latestEvent.has_value())
     {
         std::cout << "Latest event - Timestamp: " << latestEvent->timestamp << "\nValue    : " << latestEvent->value
