@@ -69,7 +69,7 @@ private:
     std::unordered_map<std::string, chronolog::StoryHandle*> handleCache_;
     mutable std::mutex cacheMutex_;
 
-    void initialize(const chronolog::ClientConfiguration& confManager);
+    void initialize(const chronolog::ClientConfiguration& client_config);
     chronolog::StoryHandle* getOrAcquireHandle(const std::string& story);
     void flushCachedHandle(const std::string& story);
 };
