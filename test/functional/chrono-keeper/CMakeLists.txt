@@ -12,6 +12,7 @@ find_package(HDF5 REQUIRED COMPONENTS C CXX)
 
 add_executable(chrono_keeper_extraction_chain_test
     chrono_keeper_extraction_chain_test.cpp
+    ${CMAKE_SOURCE_DIR}/ChronoKeeper/src/DualEndpointChunkExtractorRDMA.cpp
 )
 
 target_include_directories(chrono_keeper_extraction_chain_test PRIVATE

@@ -57,11 +57,15 @@ void chunk_contributor_thread(chl::StoryChunkExtractionQueue* extractionQueue, u
 }
 
 
-std::string extraction_module_json_string =
-        std::string("{ \"ExtractionModule\": ") + "{ \"extraction_stream_count\":2," + "\"extractors\": { " +
-        "\"test_csv_extractor\": { \"type\": \"csv_extractor\", \"csv_archive_dir\": \"/tmp/csv_archive\" }" + "," +
-        "\"test_hdf5_extractor\": { \"type\": \"hdf5_extractor\", \"hdf5_archive_dir\": \"/tmp/hdf5_archive\" }" + "} 
-        + "}" + "}";
+std::string extraction_module_json_string = std::string("{ \"ExtractionModule\": ")
+    +  "{ \"extraction_stream_count\":2,"
+    +    "\"extractors\": { "
+    +       "\"test_csv_extractor\": { \"type\": \"csv_extractor\", \"csv_archive_dir\": \"/tmp/csv_archive\" }"
+    +       ","
+    +       "\"test_hdf5_extractor\": { \"type\": \"hdf5_extractor\", \"hdf5_archive_dir\": \"/tmp/hdf5_archive\" }"
+    +     "}" 
+    +  "}"
+    +"}";
 
 int main()
 {
@@ -73,7 +77,7 @@ int main()
     int result = chronolog::chrono_monitor::initialize(
             "file" //confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE
             ,
-            "/tmp/extraction_test.log" //, confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
+            "/tmp/grapher_extraction_test.log" //, confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
             ,
             chronolog::LogLevel::debug // confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
             ,

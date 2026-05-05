@@ -12,7 +12,6 @@ find_package(HDF5 REQUIRED COMPONENTS C CXX)
 
 add_executable(chrono_grapher_extraction_chain_test
     chrono_grapher_extraction_chain_test.cpp
-    ${CMAKE_SOURCE_DIR}/ChronoGrapher/src/StoryChunkWriter.cpp
     ${CMAKE_SOURCE_DIR}/ChronoGrapher/src/HDF5FileChunkExtractor.cpp
 )
 
