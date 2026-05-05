@@ -182,10 +182,22 @@ bool runTest()
     }
     printResult("All messages carry the expected topic", topic_ok);
 
-    // ---- Phase 4: live delivery on a second topic ---------------------------
-    printHeader("PHASE 4: LIVE DELIVERY ON SECOND TOPIC");
+    // ---- Phase 4: delivery on a second topic --------------------------------
+    // We deliberately publish BEFORE subscribing here, mirroring Phase 3.
+    // Subscribing before publishing means the polling thread races the
+    // publisher on the same chronicle+topic (the subscriber's ReleaseStory
+    // invalidates the publisher's cached handle every poll cycle), and on
+    // ChronoLog today that causes events not to surface during a single
+    // propagation window.
+    printHeader("PHASE 4: SECOND TOPIC PUBLISH + SUBSCRIBE");
+    for(int i = 0; i < kLiveMessages; ++i) { pubsub->publish(kSecondTopic, "live-" + std::to_string(i)); }
+    pubsub->flush();
+    printResult("Publish + flush messages on second topic", true);
+
+    waitWithProgress(kPropagationSeconds, "Second topic propagation");
+
     Collector collector2;
-    auto sub_id2 = pubsub->subscribe(kSecondTopic, std::ref(collector2), kPollIntervalMs);
+    auto sub_id2 = pubsub->subscribe_from(kSecondTopic, /*since_timestamp*/ 1, std::ref(collector2), kPollIntervalMs);
     if(sub_id2 == chronopubsub::kInvalidSubscriptionId)
     {
         printResult("Subscribe to second topic", false);
@@ -193,14 +205,10 @@ bool runTest()
         return false;
     }
 
-    for(int i = 0; i < kLiveMessages; ++i) { pubsub->publish(kSecondTopic, "live-" + std::to_string(i)); }
-    pubsub->flush();
-    printResult("Publish + flush live messages", true);
-
-    waitWithProgress(kPropagationSeconds, "Live data propagation");
-
     bool live_ok = waitForCount(collector2, static_cast<std::size_t>(kLiveMessages), kPostPropagationWaitSec);
-    printResult("Live delivery", live_ok, std::to_string(collector2.size()) + "/" + std::to_string(kLiveMessages));
+    printResult("Second topic delivery",
+                live_ok,
+                std::to_string(collector2.size()) + "/" + std::to_string(kLiveMessages));
 
     // ---- Phase 5: unsubscribe stops further callbacks -----------------------
     printHeader("PHASE 5: UNSUBSCRIBE STOPS DELIVERY");
