@@ -537,38 +537,28 @@ int chronolog::ChronologClientImpl::EditChronicleAttr(std::string const& chronic
     return editStatus;
 }
 
-std::vector<std::string>& chronolog::ChronologClientImpl::ShowChronicles(std::vector<std::string>& chronicles)
+int chronolog::ChronologClientImpl::ShowChronicles(std::vector<std::string>& chronicles)
 {
+    chronicles.clear();
     std::lock_guard<std::mutex> lock_client(chronologClientMutex);
 
     if((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
     {
         LOG_ERROR("[ChronoLogClientImpl] Failed to fetch chronicles: Client is in an unknown or shutting down state.");
-        return chronicles;
+        return chronolog::CL_ERR_UNKNOWN;
     }
 
-    // Fetch the list of chronicles from the Visor using the RPC call.
-    chronicles = rpcVisorClient->ShowChronicles(clientId);
-
-    // Log the number of chronicles fetched and return the list.
-    if(!chronicles.empty())
-    {
-        LOG_INFO("[ChronoLogClientImpl] Successfully fetched {} chronicles.", chronicles.size());
-    }
-    else
-    {
-        LOG_WARNING("[ChronoLogClientImpl] No chronicles found for the client.");
-    }
-    return chronicles;
+    return rpcVisorClient->ShowChronicles(clientId, chronicles);
 }
 
-std::vector<std::string>& chronolog::ChronologClientImpl::ShowStories(std::string const& chronicle_name,
-                                                                      std::vector<std::string>& stories)
+int chronolog::ChronologClientImpl::ShowStories(std::string const& chronicle_name, std::vector<std::string>& stories)
 {
+    stories.clear();
+
     if(chronicle_name.empty())
     {
         LOG_ERROR("[ChronoLogClientImpl] Failed to fetch stories: Empty chronicle name provided.");
-        return stories;
+        return chronolog::CL_ERR_INVALID_ARG;
     }
 
     std::lock_guard<std::mutex> lock_client(chronologClientMutex);
@@ -578,24 +568,10 @@ std::vector<std::string>& chronolog::ChronologClientImpl::ShowStories(std::strin
         LOG_ERROR("[ChronoLogClientImpl] Failed to fetch stories for chronicle '{}': Client is in an unknown or "
                   "shutting down state.",
                   chronicle_name);
-        return stories;
+        return chronolog::CL_ERR_UNKNOWN;
     }
 
-    // Fetch stories for the given chronicle name using the RPC call.
-    stories = rpcVisorClient->ShowStories(clientId, chronicle_name);
-
-    // Log the number of stories fetched and return the list.
-    if(!stories.empty())
-    {
-        LOG_INFO("[ChronoLogClientImpl] Successfully fetched {} stories for chronicle '{}'.",
-                 stories.size(),
-                 chronicle_name);
-    }
-    else
-    {
-        LOG_WARNING("[ChronoLogClientImpl] No stories found for chronicle '{}'.", chronicle_name);
-    }
-    return stories;
+    return rpcVisorClient->ShowStories(clientId, chronicle_name, stories);
 }
 
 ////////////////////////////

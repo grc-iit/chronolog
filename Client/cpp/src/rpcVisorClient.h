@@ -344,58 +344,59 @@ public:
         return (chronolog::CL_ERR_UNKNOWN);
     }
 
-    std::vector<std::string> ShowChronicles(ClientId const& client_id) //, std::vector<std::string> & chronicles)
+    int ShowChronicles(ClientId const& client_id, std::vector<std::string>& chronicles)
     {
         LOG_INFO("[RPCVisorClient] Attempting to retrieve list of chronicles for ClientID={}", client_id);
         try
         {
-            std::vector<std::string> chronicleList = show_chronicles.on(service_ph)(client_id);
+            std::pair<int, std::vector<std::string>> response = show_chronicles.on(service_ph)(client_id);
+            chronicles = std::move(response.second);
 
-            if(!chronicleList.empty())
+            if(response.first == chronolog::CL_SUCCESS)
             {
-                LOG_INFO("[RPCVisorClient] Successfully fetched {} chronicles for ClientID={}",
-                         chronicleList.size(),
-                         client_id);
+                LOG_INFO("[RPCVisorClient] Fetched {} chronicles for ClientID={}", chronicles.size(), client_id);
             }
             else
             {
-                LOG_WARNING("[RPCVisorClient] Retrieved an empty list of chronicles for ClientID={}", client_id);
+                LOG_WARNING("[RPCVisorClient] ShowChronicles returned status {} for ClientID={}",
+                            response.first,
+                            client_id);
             }
-            return chronicleList;
+            return response.first;
         }
         catch(tl::exception const&)
         {
             LOG_ERROR("[RPCVisorClient] Failed to fetch chronicles for ClientID {}. Thallium exception encountered.",
                       client_id);
         }
-        return (std::vector<std::string>{});
+        return chronolog::CL_ERR_UNKNOWN;
     }
 
-    std::vector<std::string> ShowStories(ClientId const& client_id,
-                                         std::string const& chronicle_name) //, std::vector<std::string> & stories )
+    int ShowStories(ClientId const& client_id, std::string const& chronicle_name, std::vector<std::string>& stories)
     {
         LOG_INFO("[RPCVisorClient] Attempting to retrieve stories for ClientID={}, ChronicleName={}",
                  client_id,
                  chronicle_name);
         try
         {
-            std::vector<std::string> storyList = show_stories.on(service_ph)(client_id, chronicle_name);
+            std::pair<int, std::vector<std::string>> response = show_stories.on(service_ph)(client_id, chronicle_name);
+            stories = std::move(response.second);
 
-            if(!storyList.empty())
+            if(response.first == chronolog::CL_SUCCESS)
             {
-                LOG_INFO("[RPCVisorClient] Successfully fetched {} stories for ClientID={} from ChronicleName={}",
-                         storyList.size(),
+                LOG_INFO("[RPCVisorClient] Fetched {} stories for ClientID={} from ChronicleName={}",
+                         stories.size(),
                          client_id,
                          chronicle_name);
             }
             else
             {
-                LOG_WARNING("[RPCVisorClient] Retrieved an empty list of stories for ClientID={} from ChronicleName={}",
+                LOG_WARNING("[RPCVisorClient] ShowStories returned status {} for ClientID={}, ChronicleName={}",
+                            response.first,
                             client_id,
                             chronicle_name);
             }
-
-            return storyList;
+            return response.first;
         }
         catch(tl::exception const&)
         {
@@ -404,7 +405,7 @@ public:
                       client_id,
                       chronicle_name);
         }
-        return (std::vector<std::string>{});
+        return chronolog::CL_ERR_UNKNOWN;
     }
 
     ~RpcVisorClient()

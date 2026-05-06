@@ -147,9 +147,9 @@ public:
 
     int EditChronicleAttr(std::string const& chronicle_name, const std::string& key, const std::string& value);
 
-    std::vector<std::string>& ShowChronicles(std::vector<std::string>&);
+    int ShowChronicles(std::vector<std::string>& chronicles);
 
-    std::vector<std::string>& ShowStories(std::string const& chronicle_name, std::vector<std::string>&);
+    int ShowStories(std::string const& chronicle_name, std::vector<std::string>& stories);
 
     int ReplayStory(std::string const& chronicle,
                     std::string const& story,

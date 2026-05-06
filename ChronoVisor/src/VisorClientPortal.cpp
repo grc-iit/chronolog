@@ -366,10 +366,15 @@ int chronolog::VisorClientPortal::ShowChronicles(chl::ClientId const& client_id,
 {
     LOG_DEBUG("[VisorClientPortal] Show Chronicles: PID={}, ClientID={}", getpid(), client_id);
 
-    // TODO: add client_id authorization check : if ( chronicle_action_is_authorized())
-    chronicleMetaDirectory.show_chronicles(chronicles);
+    // Listing chronicles is a client-scoped metadata read; route through the
+    // chronicle authorization predicate with no specific chronicle name. All
+    // authorization predicates currently return true (tracked in #637).
+    if(!chronicle_action_is_authorized(client_id, ""))
+    {
+        return chronolog::CL_ERR_NOT_AUTHORIZED;
+    }
 
-    return chronolog::CL_SUCCESS;
+    return chronicleMetaDirectory.show_chronicles(chronicles);
 }
 
 int chronolog::VisorClientPortal::ShowStories(chl::ClientId const& client_id,
@@ -380,12 +385,10 @@ int chronolog::VisorClientPortal::ShowStories(chl::ClientId const& client_id,
 
     if(!chronicle_action_is_authorized(client_id, chronicle_name))
     {
-        return chronolog::CL_ERR_UNKNOWN;
+        return chronolog::CL_ERR_NOT_AUTHORIZED;
     }
 
-    chronicleMetaDirectory.show_stories(chronicle_name, stories);
-
-    return chronolog::CL_SUCCESS;
+    return chronicleMetaDirectory.show_stories(chronicle_name, stories);
 }
 
 

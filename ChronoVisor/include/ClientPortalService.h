@@ -141,16 +141,15 @@ public:
     void ShowChronicles(tl::request const& request, ClientId const& client_id)
     {
         std::vector<std::string> chronicles;
-        theVisorClientPortal.ShowChronicles(client_id, chronicles);
-        request.respond(chronicles);
+        int return_code = theVisorClientPortal.ShowChronicles(client_id, chronicles);
+        request.respond(std::make_pair(return_code, std::move(chronicles)));
     }
 
     void ShowStories(tl::request const& request, ClientId const& client_id, const std::string& chronicle_name)
     {
         std::vector<std::string> stories;
-        theVisorClientPortal.ShowStories(client_id, chronicle_name, stories);
-
-        request.respond(stories);
+        int return_code = theVisorClientPortal.ShowStories(client_id, chronicle_name, stories);
+        request.respond(std::make_pair(return_code, std::move(stories)));
     }
 
 private:

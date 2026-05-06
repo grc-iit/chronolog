@@ -104,7 +104,7 @@ int main(int argc, char** argv)
 
     t1 = std::chrono::steady_clock::now();
     std::vector<std::string> chronicle_names_retrieved;
-    chronicle_names_retrieved = client.ShowChronicles(chronicle_names_retrieved);
+    client.ShowChronicles(chronicle_names_retrieved);
     t2 = std::chrono::steady_clock::now();
     duration_show_chronicles += (t2 - t1);
     //std::sort(chronicle_names_retrieved.begin(), chronicle_names_retrieved.end());
