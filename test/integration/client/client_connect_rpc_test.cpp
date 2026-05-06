@@ -67,7 +67,6 @@ int main(int argc, char** argv)
 
     std::string server_uri;
     std::vector<std::string> client_ids;
-    int flags = 0;
     bool ret = false;
     uint64_t offset;
 

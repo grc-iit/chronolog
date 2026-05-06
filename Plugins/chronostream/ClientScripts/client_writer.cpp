@@ -183,17 +183,17 @@ static chronolog::StoryHandle* acquire_or_create_story(chronolog::Client& client
     // Acquire story with empty attributes
     std::map<std::string, std::string> empty_attrs;
     int f_open = 0;
-    auto r_open1 = client.AcquireStory(chronicle, story, empty_attrs, f_open);
+    auto r_open1 = client.AcquireStory(chronicle, story, empty_attrs);
     if(r_open1.first == chronolog::CL_SUCCESS && r_open1.second)
         return r_open1.second;
 
     // Create the story with the attributes
     int f_create = 1;
-    auto r_create = client.AcquireStory(chronicle, story, create_attrs, f_create);
+    auto r_create = client.AcquireStory(chronicle, story, create_attrs);
     if(r_create.first == chronolog::CL_SUCCESS && r_create.second)
         return r_create.second;
 
-    auto r_open2 = client.AcquireStory(chronicle, story, empty_attrs, f_open);
+    auto r_open2 = client.AcquireStory(chronicle, story, empty_attrs);
     if(r_open2.first == chronolog::CL_SUCCESS && r_open2.second)
         return r_open2.second;
 
@@ -216,8 +216,7 @@ int main(int argc, char** argv)
 
     Args args = parse_args(argc, argv);
     std::cout << "[writer] config=" << args.config << " chronicle=" << args.chronicle
-              << " duration=" << args.duration_sec << "s"
-              << " interval=" << args.interval_sec << "s";
+              << " duration=" << args.duration_sec << "s" << " interval=" << args.interval_sec << "s";
 
     // Load client config
     chronolog::ClientConfiguration cfg;
@@ -250,8 +249,7 @@ int main(int argc, char** argv)
     // Create chronicle, ignore if it exists already
     std::map<std::string, std::string> chron_attrs{{"description", "telemetry for " + args.chronicle},
                                                    {"node", args.chronicle}};
-    int flags = 1;
-    rc = client.CreateChronicle(args.chronicle, chron_attrs, flags);
+    rc = client.CreateChronicle(args.chronicle, chron_attrs);
     if(rc != chronolog::CL_SUCCESS && rc != chronolog::CL_ERR_CHRONICLE_EXISTS)
     {
         std::cerr << "[writer] CreateChronicle failed rc=" << rc << "\n";

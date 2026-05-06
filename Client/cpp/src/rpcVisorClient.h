@@ -97,26 +97,22 @@ public:
         return (chronolog::CL_ERR_UNKNOWN);
     }
 
-    int CreateChronicle(ClientId const& client_id,
-                        std::string const& name,
-                        const std::map<std::string, std::string>& attrs,
-                        int& flags)
+    int
+    CreateChronicle(ClientId const& client_id, std::string const& name, const std::map<std::string, std::string>& attrs)
     {
-        LOG_INFO("[RPCVisorClient] Initiating creation of chronicle: Name={}, Flags={}", name.c_str(), flags);
+        LOG_INFO("[RPCVisorClient] Initiating creation of chronicle: Name={}", name.c_str());
         try
         {
-            int result = create_chronicle.on(service_ph)(client_id, name, attrs, flags);
+            int result = create_chronicle.on(service_ph)(client_id, name, attrs);
 
             if(result == chronolog::CL_SUCCESS)
             {
-                LOG_INFO("[RPCVisorClient] Successfully created chronicle with Name={}, Flags={}", name.c_str(), flags);
+                LOG_INFO("[RPCVisorClient] Successfully created chronicle with Name={}", name.c_str());
             }
             else
             {
-                LOG_ERROR("[RPCVisorClient] Failed to create chronicle with Name={}, Flags={}. Unexpected return code: "
-                          "{}",
+                LOG_ERROR("[RPCVisorClient] Failed to create chronicle with Name={}. Unexpected return code: {}",
                           name.c_str(),
-                          flags,
                           chronolog::to_string_client(result));
             }
             return result;
@@ -157,8 +153,7 @@ public:
     chronolog::AcquireStoryResponseMsg AcquireStory(ClientId const& client_id,
                                                     std::string const& chronicle_name,
                                                     std::string const& story_name,
-                                                    const std::map<std::string, std::string>& attrs,
-                                                    const int& flags)
+                                                    const std::map<std::string, std::string>& attrs)
     {
         LOG_INFO("[RPCVisorClient] Initiating story acquisition: ChronicleName={}, StoryName={}",
                  chronicle_name.c_str(),
@@ -166,7 +161,7 @@ public:
         try
         {
             chronolog::AcquireStoryResponseMsg response =
-                    acquire_story.on(service_ph)(client_id, chronicle_name, story_name, attrs, flags);
+                    acquire_story.on(service_ph)(client_id, chronicle_name, story_name, attrs);
 
             if(response.getErrorCode() == chronolog::CL_SUCCESS)
             {

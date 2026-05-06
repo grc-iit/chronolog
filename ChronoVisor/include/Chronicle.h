@@ -277,29 +277,6 @@ public:
             return chronolog::CL_ERR_UNKNOWN;
     }
 
-    int removeArchive(uint64_t cid, const std::string& name, int flags)
-    {
-        // add cid to name before hash to allow same archive name across chronicles
-        std::string archive_name_for_hash = std::to_string(cid) + name;
-        uint64_t aid = CityHash64(archive_name_for_hash.c_str(), archive_name_for_hash.size());
-        auto storyRecord = archiveMap_.find(aid);
-        if(storyRecord != archiveMap_.end())
-        {
-            Archive* pArchive = storyRecord->second;
-            delete pArchive;
-            LOG_DEBUG("[Chronicle] Removing from ArchiveMap at {} with {} entries in Chronicle at {}",
-                      static_cast<void*>(&archiveMap_),
-                      archiveMap_.size(),
-                      static_cast<const void*>(this));
-            auto nErased = archiveMap_.erase(aid);
-            if(nErased == 1)
-                return chronolog::CL_SUCCESS;
-            else
-                return chronolog::CL_ERR_UNKNOWN;
-        }
-        return chronolog::CL_ERR_NOT_EXIST;
-    }
-
     uint64_t incrementAcquisitionCount()
     {
         stats_.count++;

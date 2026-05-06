@@ -69,7 +69,6 @@ int main(int argc, char** argv)
     std::chrono::duration<double, std::nano> duration_create_chronicle{}, duration_edit_chronicle_attr{},
             duration_acquire_story{}, duration_release_story{}, duration_destroy_story{}, duration_get_chronicle_attr{},
             duration_destroy_chronicle{}, duration_show_chronicles{}, duration_show_stories{};
-    int flags;
     int ret;
     uint64_t offset = 0;
     std::string server_uri = portalConf.PROTO_CONF + "://" + portalConf.IP + ":" + std::to_string(portalConf.PORT);
@@ -95,7 +94,7 @@ int main(int argc, char** argv)
         chronicle_attrs.emplace("IndexGranularity", "Millisecond");
         chronicle_attrs.emplace("TieringPolicy", "Hot");
         t1 = std::chrono::steady_clock::now();
-        ret = client.CreateChronicle(chronicle_names[i], chronicle_attrs, flags);
+        ret = client.CreateChronicle(chronicle_names[i], chronicle_attrs);
         t2 = std::chrono::steady_clock::now();
         assert(ret == chronolog::CL_SUCCESS);
         duration_create_chronicle += (t2 - t1);
@@ -127,7 +126,6 @@ int main(int argc, char** argv)
         story_names.reserve(NUM_STORY);
         for(int j = 0; j < NUM_STORY; j++)
         {
-            flags = 2;
             std::string story_name(gen_random(STORY_NAME_LEN));
             story_names.emplace_back(story_name);
             std::map<std::string, std::string> story_attrs;
@@ -135,7 +133,7 @@ int main(int argc, char** argv)
             story_attrs.emplace("IndexGranularity", "Millisecond");
             story_attrs.emplace("TieringPolicy", "Hot");
             t1 = std::chrono::steady_clock::now();
-            ret = client.AcquireStory(chronicle_names[i], story_names[j], story_attrs, flags).first;
+            ret = client.AcquireStory(chronicle_names[i], story_names[j], story_attrs).first;
             t2 = std::chrono::steady_clock::now();
             assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NO_KEEPERS);
             duration_acquire_story += (t2 - t1);
@@ -156,7 +154,6 @@ int main(int argc, char** argv)
 
         for(int j = 0; j < NUM_STORY; j++)
         {
-            flags = 4;
             t1 = std::chrono::steady_clock::now();
             ret = client.ReleaseStory(chronicle_names[i], story_names[j]); //, flags);
             t2 = std::chrono::steady_clock::now();
@@ -164,7 +161,6 @@ int main(int argc, char** argv)
             duration_release_story += (t2 - t1);
         }
 
-        flags = 8;
         for(int j = 0; j < NUM_STORY; j++)
         {
             t1 = std::chrono::steady_clock::now();
@@ -184,7 +180,6 @@ int main(int argc, char** argv)
         duration_get_chronicle_attr += (t2 - t1);
     }
 
-    flags = 32;
     for(int i = 0; i < NUM_CHRONICLE; i++)
     {
         t1 = std::chrono::steady_clock::now();
@@ -198,7 +193,7 @@ int main(int argc, char** argv)
     {
         std::map<std::string, std::string> story_attrs;
         std::string temp_str = gen_random(STORY_NAME_LEN);
-        ret = client.AcquireStory(chronicle_names[i].append(temp_str), temp_str, story_attrs, flags).first;
+        ret = client.AcquireStory(chronicle_names[i].append(temp_str), temp_str, story_attrs).first;
         assert(ret == chronolog::CL_ERR_NOT_EXIST);
     }
 
@@ -221,7 +216,6 @@ int main(int argc, char** argv)
 
     duration_create_chronicle = std::chrono::duration<double, std::nano>();
     chronicle_names.clear();
-    flags = 1;
     for(int i = 0; i < NUM_CHRONICLE; i++)
     {
         std::string chronicle_name(gen_random(CHRONICLE_NAME_LEN));
@@ -233,13 +227,12 @@ int main(int argc, char** argv)
         chronicle_attrs.emplace("IndexGranularity", "Millisecond");
         chronicle_attrs.emplace("TieringPolicy", "Hot");
         t1 = std::chrono::steady_clock::now();
-        ret = client.CreateChronicle(chronicle_name, chronicle_attrs, flags);
+        ret = client.CreateChronicle(chronicle_name, chronicle_attrs);
         t2 = std::chrono::steady_clock::now();
         assert(ret == chronolog::CL_SUCCESS);
         duration_create_chronicle += (t2 - t1);
     }
 
-    flags = 32;
     duration_destroy_chronicle = std::chrono::duration<double, std::nano>();
     for(int i = 0; i < NUM_CHRONICLE; i++)
     {

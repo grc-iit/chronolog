@@ -39,7 +39,6 @@ public:
                       const std::string& chronicle_name,
                       const std::string& story_name,
                       const std::map<std::string, std::string>& attrs,
-                      int& flags,
                       StoryId&);
 
     int release_story(chronolog::ClientId const& client_id,

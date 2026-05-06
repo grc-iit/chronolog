@@ -145,8 +145,7 @@ int chronolog::VisorClientPortal::ClientDisconnect(chronolog::ClientId const& cl
  */
 int chronolog::VisorClientPortal::CreateChronicle(chl::ClientId const& client_id,
                                                   std::string const& chronicle_name,
-                                                  const std::map<std::string, std::string>& attrs,
-                                                  int& flags)
+                                                  const std::map<std::string, std::string>& attrs)
 {
     if(chronicle_name.empty())
     {
@@ -221,8 +220,7 @@ int chronolog::VisorClientPortal::DestroyStory(chl::ClientId const& client_id,
 chl::AcquireStoryResponseMsg chronolog::VisorClientPortal::AcquireStory(chl::ClientId const& client_id,
                                                                         std::string const& chronicle_name,
                                                                         std::string const& story_name,
-                                                                        const std::map<std::string, std::string>& attrs,
-                                                                        int& flags)
+                                                                        const std::map<std::string, std::string>& attrs)
 {
     chronolog::StoryId story_id{0};
     // recording_keepers is the server-internal view (full KeeperIdCards, used by the
@@ -249,7 +247,7 @@ chl::AcquireStoryResponseMsg chronolog::VisorClientPortal::AcquireStory(chl::Cli
 
     int ret = chronolog::CL_ERR_UNKNOWN;
 
-    ret = chronicleMetaDirectory.acquire_story(client_id, chronicle_name, story_name, attrs, flags, story_id);
+    ret = chronicleMetaDirectory.acquire_story(client_id, chronicle_name, story_name, attrs, story_id);
 
     if(ret != chronolog::CL_SUCCESS)
     {
@@ -258,12 +256,11 @@ chl::AcquireStoryResponseMsg chronolog::VisorClientPortal::AcquireStory(chl::Cli
     }
     else
     {
-        LOG_INFO("[VisorClientPortal] Story acquired: PID={}, ClientID={}, ChronicleName={}, StoryName={}, Flags={}",
+        LOG_INFO("[VisorClientPortal] Story acquired: PID={}, ClientID={}, ChronicleName={}, StoryName={}",
                  getpid(),
                  client_id,
                  chronicle_name.c_str(),
-                 story_name.c_str(),
-                 flags);
+                 story_name.c_str());
     }
 
     // if this is the first client to acquire this story we need to choose an active recording group

@@ -29,7 +29,6 @@ void thread_function(void* tt)
 {
     struct thread_arg* t = (struct thread_arg*)tt;
 
-    int flags = 0;
     uint64_t offset;
     int ret;
     std::string chronicle_name;
@@ -41,21 +40,19 @@ void thread_function(void* tt)
     chronicle_attrs.emplace("Priority", "High");
     chronicle_attrs.emplace("IndexGranularity", "Millisecond");
     chronicle_attrs.emplace("TieringPolicy", "Hot");
-    ret = client->CreateChronicle(chronicle_name, chronicle_attrs, flags);
+    ret = client->CreateChronicle(chronicle_name, chronicle_attrs);
     LOG_DEBUG("[ClientLibMultiArgobotsTest] Thread (ID: {}) - Created Chronicle: {}. Return Code: {}",
               t->tid,
               chronicle_name,
               ret);
     assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_CHRONICLE_EXISTS ||
            ret == chronolog::CL_ERR_NO_KEEPERS);
-    flags = 1;
     std::string story_name = gen_random(STORY_NAME_LEN);
     std::map<std::string, std::string> story_attrs;
     story_attrs.emplace("Priority", "High");
     story_attrs.emplace("IndexGranularity", "Millisecond");
     story_attrs.emplace("TieringPolicy", "Hot");
-    flags = 2;
-    auto acquire_ret = client->AcquireStory(chronicle_name, story_name, story_attrs, flags);
+    auto acquire_ret = client->AcquireStory(chronicle_name, story_name, story_attrs);
     LOG_DEBUG("[ClientLibMultiArgobotsTest] Thread ID: {} - Attempted to acquire Story: {} in Chronicle: {}. Result "
               "Code: {}",
               t->tid,
