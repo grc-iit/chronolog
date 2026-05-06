@@ -49,8 +49,7 @@ def reader_client():
     return_code = reader_client.Connect()
     print("\n client.Connect() call returns:", return_code)
 
-    attrs = dict()
-    return_tuple = reader_client.AcquireStory("py_chronicle", "my_story", attrs, 1)
+    return_tuple = reader_client.AcquireStory("py_chronicle", "my_story", 1)
     print("\n client.AcquireStory() returned:", return_tuple)
 
     event_series = py_chronolog_client.EventList()

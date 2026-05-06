@@ -96,11 +96,7 @@ static std::string parse_config_arg(int argc, char** argv)
 static int test_create_chronicle(chronolog::Client& client, const std::string& chronicle_name)
 {
     int ret, flags = 0;
-    std::map<std::string, std::string> chronicle_attrs;
-    chronicle_attrs.emplace("Priority", "High");
-    chronicle_attrs.emplace("IndexGranularity", "Millisecond");
-    chronicle_attrs.emplace("TieringPolicy", "Hot");
-    ret = client.CreateChronicle(chronicle_name, chronicle_attrs, flags);
+    ret = client.CreateChronicle(chronicle_name, flags);
     assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_CHRONICLE_EXISTS);
     return ret;
 }
@@ -109,11 +105,7 @@ static std::pair<int, chronolog::StoryHandle*>
 test_acquire_story(chronolog::Client& client, const std::string& chronicle_name, const std::string& story_name)
 {
     int flags = 0;
-    std::map<std::string, std::string> story_acquisition_attrs;
-    story_acquisition_attrs.emplace("Priority", "High");
-    story_acquisition_attrs.emplace("IndexGranularity", "Millisecond");
-    story_acquisition_attrs.emplace("TieringPolicy", "Hot");
-    return client.AcquireStory(chronicle_name, story_name, story_acquisition_attrs, flags);
+    return client.AcquireStory(chronicle_name, story_name, flags);
 }
 
 static uint64_t test_write_event(chronolog::StoryHandle* story_handle, const std::string& event_payload)

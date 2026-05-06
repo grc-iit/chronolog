@@ -410,21 +410,18 @@ void thread_body(struct thread_arg* t)
              t->chronicle_name,
              t->story_name);
     // Chronicle Variables
-    std::map<std::string, std::string> chronicle_attrs;
-    chronicle_attrs.emplace("Priority", "High");
     int flags = 1;
     // Chronicle creation
-    int ret = client->CreateChronicle(t->chronicle_name, chronicle_attrs, flags);
+    int ret = client->CreateChronicle(t->chronicle_name, flags);
     LOG_INFO("[ClientLibThreadInterdependencyTest] Chronicle created: tid={}, Ret: {}",
              t->tid,
              chronolog::to_string_client(ret));
     check_chronicle_created(t->tid, ret);
 
     // Story Variables
-    std::map<std::string, std::string> story_attrs;
     flags = 2;
     // Acquire story
-    auto acquire_ret = client->AcquireStory(t->chronicle_name, t->story_name, story_attrs, flags);
+    auto acquire_ret = client->AcquireStory(t->chronicle_name, t->story_name, flags);
     LOG_INFO("[ClientLibThreadInterdependencyTest] Story acquired: tid={}, Ret: {}",
              t->tid,
              chronolog::to_string_client(acquire_ret.first));

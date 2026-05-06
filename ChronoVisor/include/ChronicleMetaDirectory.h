@@ -29,7 +29,7 @@ public:
 
     std::unordered_map<uint64_t, Chronicle*>* getChronicleMap() { return chronicleMap_; }
 
-    int create_chronicle(const std::string& name, const std::map<std::string, std::string>& attrs);
+    int create_chronicle(const std::string& name);
 
     int destroy_chronicle(const std::string& name);
 
@@ -38,7 +38,6 @@ public:
     int acquire_story(chronolog::ClientId const& client_id,
                       const std::string& chronicle_name,
                       const std::string& story_name,
-                      const std::map<std::string, std::string>& attrs,
                       int& flags,
                       StoryId&);
 

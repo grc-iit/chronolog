@@ -32,18 +32,16 @@ void writer_thread(struct thread_arg* t)
 
     // Local variable declarations
     int flags = 1;
-    std::map<std::string, std::string> chronicle_attrs;
-    std::map<std::string, std::string> story_attrs;
 
     // Create the chronicle
-    int ret = client->CreateChronicle(t->chronicle, chronicle_attrs, flags);
+    int ret = client->CreateChronicle(t->chronicle, flags);
     LOG_INFO("[ClientLibStoryReader] Chronicle created: tid={}, ChronicleName={}, Flags: {}",
              t->tid,
              t->chronicle,
              flags);
 
     // Acquire the story
-    auto acquire_ret = client->AcquireStory(t->chronicle, t->story, story_attrs, flags);
+    auto acquire_ret = client->AcquireStory(t->chronicle, t->story, flags);
     LOG_INFO("[ClientLibStoryReader] Writer thread tid={} acquired story {} {}, Ret: {}",
              t->tid,
              t->chronicle,
@@ -96,13 +94,11 @@ void reader_thread(int tid, struct thread_arg* t)
 
     int ret = chronolog::CL_ERR_UNKNOWN;
     ;
-    std::map<std::string, std::string> chronicle_attrs;
-    std::map<std::string, std::string> story_attrs;
     int flags = 1;
 
     std::vector<chronolog::Event> replay_events;
     // Create the chronicle
-    ret = client->CreateChronicle(t->chronicle, chronicle_attrs, flags);
+    ret = client->CreateChronicle(t->chronicle, flags);
     LOG_INFO("[ClientLibStoryReader] Chronicle created: tid={}, ChronicleName={}, Flags: {}",
              t->tid,
              t->chronicle,
@@ -110,7 +106,7 @@ void reader_thread(int tid, struct thread_arg* t)
 
 
     // Acquire the story
-    auto acquire_ret = client->AcquireStory(t->chronicle, t->story, story_attrs, flags);
+    auto acquire_ret = client->AcquireStory(t->chronicle, t->story, flags);
     LOG_INFO("[ClientLibStoryReader] Reader thread tid={} acquired story: {} {}, Ret: {}",
              tid,
              t->chronicle,

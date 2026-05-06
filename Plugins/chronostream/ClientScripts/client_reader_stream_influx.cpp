@@ -147,8 +147,7 @@ log_replay_error(int rc, const std::string& chronicle, const std::string& story,
     if(rc == -12) // CL_ERR_QUERY_TIMED_OUT
     {
         std::cerr << "[client_reader_stream] Replay timed out for " << chronicle << "/" << story << " window=["
-                  << start_ns << "," << end_ns << "] (~" << dur_s << "s)"
-                  << " Will be retried automatically\n";
+                  << start_ns << "," << end_ns << "] (~" << dur_s << "s)" << " Will be retried automatically\n";
     }
     else
     {
@@ -206,14 +205,12 @@ int main(int argc, char** argv)
     }
 
     int flags = 1;
-    std::map<std::string, std::string> chronicle_attrs;
-    std::map<std::string, std::string> story_attrs;
 
-    // rc = client.CreateChronicle(args.chronicle, chronicle_attrs, flags);
+    // rc = client.CreateChronicle(args.chronicle, flags);
 
     for(const auto& s: args.stories)
     {
-        auto acq = client.AcquireStory(args.chronicle, s, story_attrs, flags);
+        auto acq = client.AcquireStory(args.chronicle, s, flags);
         (void)acq;
     }
 

@@ -72,15 +72,13 @@ int main(int argc, char** argv)
 
     // Create a chronicle
     std::string chronicle_name = "MyChronicle";
-    std::map<std::string, std::string> chronicle_attrs;
     int flags = 0;
-    ret = client.CreateChronicle(chronicle_name, chronicle_attrs, flags);
+    ret = client.CreateChronicle(chronicle_name, flags);
     std::cout << "[ClientExample] CreateChronicle returned: " << chronolog::to_string_client(ret) << "\n";
 
     // Acquire a story
     std::string story_name = "MyStory";
-    std::map<std::string, std::string> story_attrs;
-    auto acquire_result = client.AcquireStory(chronicle_name, story_name, story_attrs, flags);
+    auto acquire_result = client.AcquireStory(chronicle_name, story_name, flags);
     std::cout << "[ClientExample] AcquireStory returned: " << chronolog::to_string_client(acquire_result.first) << "\n";
     auto story_handle = acquire_result.second;
 

@@ -158,30 +158,24 @@ public:
 
         // Create a chronicle named after the hostname
         std::string chronicle_name = node_name;
-        std::map<std::string, std::string> chronicle_attrs;
-        chronicle_attrs["description"] = "System telemetry metrics for node " + node_name;
-        chronicle_attrs["node"] = node_name;
         int flags = 0;
-        ret = client->CreateChronicle(chronicle_name, chronicle_attrs, flags);
+        ret = client->CreateChronicle(chronicle_name, flags);
         assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_CHRONICLE_EXISTS);
 
         // Acquire stories for different metrics
-        std::map<std::string, std::string> story_attrs;
-        story_attrs["node"] = node_name;
-        story_attrs["rank"] = std::to_string(rank);
 
         // CPU usage story
-        auto cpu_result = client->AcquireStory(chronicle_name, "cpu_usage", story_attrs, flags);
+        auto cpu_result = client->AcquireStory(chronicle_name, "cpu_usage", flags);
         assert(cpu_result.first == chronolog::CL_SUCCESS);
         cpu_story_handle = cpu_result.second;
 
         // Memory usage story
-        auto memory_result = client->AcquireStory(chronicle_name, "memory_usage", story_attrs, flags);
+        auto memory_result = client->AcquireStory(chronicle_name, "memory_usage", flags);
         assert(memory_result.first == chronolog::CL_SUCCESS);
         memory_story_handle = memory_result.second;
 
         // Network usage story
-        auto network_result = client->AcquireStory(chronicle_name, "network_usage", story_attrs, flags);
+        auto network_result = client->AcquireStory(chronicle_name, "network_usage", flags);
         assert(network_result.first == chronolog::CL_SUCCESS);
         network_story_handle = network_result.second;
 

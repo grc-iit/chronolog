@@ -45,8 +45,7 @@ def writer_client():
 
     # try to acquire the story
     # this should fail as the connection to the ChronoVisor hasn't been established yet
-    attrs = dict()
-    return_tuple = client.AcquireStory("py_chronicle", "my_story", attrs, 1)
+    return_tuple = client.AcquireStory("py_chronicle", "my_story", 1)
     print(
         "\n Attempt to acquire story without ChronoVisor connection returns : ",
         return_tuple,
@@ -59,13 +58,13 @@ def writer_client():
     print("\n client.Connect() call returns:", return_code)
 
     # create chronicle
-    return_code = client.CreateChronicle("py_chronicle", attrs, 1)
+    return_code = client.CreateChronicle("py_chronicle", 1)
     print("\n clientCreateCronicle() returned", return_code)
 
     # acquire story that is part of "py_chronicle"
     # returns a tuple [0, StoryHandle] on success
     # and [error_code,None] otherwise
-    return_tuple = client.AcquireStory("py_chronicle", "my_story", attrs, 1)
+    return_tuple = client.AcquireStory("py_chronicle", "my_story", 1)
 
     print("\n client.AcquireStory() returned:", return_tuple)
 

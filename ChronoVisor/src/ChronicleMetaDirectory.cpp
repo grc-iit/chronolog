@@ -26,21 +26,13 @@ ChronicleMetaDirectory::~ChronicleMetaDirectory() { delete chronicleMap_; }
 /**
  * Create a Chronicle
  * @param name: name of the Chronicle
- * @param attrs: attributes associated with the Chronicle
  * @return chronolog::CL_SUCCESS if succeed to create the Chronicle \n
  *         chronolog::CL_ERR_CHRONICLE_EXISTS if a Chronicle with the same name already exists \n
  *         chronolog::CL_ERR_UNKNOWN otherwise
  */
-int ChronicleMetaDirectory::create_chronicle(const std::string& name, const std::map<std::string, std::string>& attrs)
+int ChronicleMetaDirectory::create_chronicle(const std::string& name)
 {
     LOG_DEBUG("[ChronicleMetaDirectory] Creating Chronicle Name={}", name.c_str());
-    for(auto iter = attrs.begin(); iter != attrs.end(); ++iter)
-    {
-        LOG_DEBUG("[ChronicleMetaDirectory] Attribute of Chronicle {}: {}={}",
-                  name.c_str(),
-                  iter->first.c_str(),
-                  iter->second.c_str());
-    }
     std::lock_guard<std::mutex> chronicleMapLock(g_chronicleMetaDirectoryMutex_);
     /* Check if Chronicle already exists, fail if true */
     uint64_t cid;
@@ -214,7 +206,6 @@ int ChronicleMetaDirectory::destroy_story(std::string const& chronicle_name, con
 int ChronicleMetaDirectory::acquire_story(chl::ClientId const& client_id,
                                           const std::string& chronicle_name,
                                           const std::string& story_name,
-                                          const std::map<std::string, std::string>& attrs,
                                           int& flags,
                                           StoryId& story_id)
 {
@@ -236,7 +227,7 @@ int ChronicleMetaDirectory::acquire_story(chl::ClientId const& client_id,
     }
     Chronicle* pChronicle = chronicleMapRecord->second;
     /* Then check if Story already_acquired_by_this_client, fail if false */
-    auto ret = pChronicle->addStory(story_name, attrs);
+    auto ret = pChronicle->addStory(story_name);
     if(ret.first != chronolog::CL_SUCCESS)
     {
         return ret.first;

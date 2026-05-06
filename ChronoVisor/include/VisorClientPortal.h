@@ -53,10 +53,7 @@ public:
 
     int ClientDisconnect(ClientId const& client_id);
 
-    int CreateChronicle(ClientId const& name,
-                        ChronicleName const&,
-                        const std::map<std::string, std::string>& attrs,
-                        int& flags);
+    int CreateChronicle(ClientId const& name, ChronicleName const&, int& flags);
 
     int DestroyChronicle(ClientId const& client_id, ChronicleName const& chronicle_name);
 
@@ -65,7 +62,6 @@ public:
     AcquireStoryResponseMsg AcquireStory(ClientId const& client_id,
                                          std::string const& chronicle_name,
                                          std::string const& story_name,
-                                         const std::map<std::string, std::string>& attrs,
                                          int& flags);
 
     int ReleaseStory(ClientId const& client_id, std::string const& chronicle_name, std::string const& story_name);
