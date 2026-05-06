@@ -88,6 +88,7 @@ int main()
 
 
     chl::ServiceId localServiceId("ofi+sockets", "127.0.0.1", 2225, 25);
+    tl::engine myEngine("ofi+sockets", THALLIUM_SERVER_MODE);
 
     chronolog::LoggingExtractor logging_extractor;
     chronolog::StoryChunkExtractorCSV csv_extractor(localServiceId, "/tmp/");
