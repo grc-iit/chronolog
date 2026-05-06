@@ -63,7 +63,7 @@ std::string extraction_module_json_1 =
         std::string("{ \"ExtractionModule\": ") + "{ \"extraction_stream_count\":2," + "\"extractors\": { " +
         "\"test_single_rdma_extractor\": {" + "\"type\": \"single_endpoint_rdma_extractor\"," +
         "\"receiving_endpoint\": {" + "\"protocol_conf\": \"ofi+sockets\"," + "\"service_ip\": \"127.0.0.1\"," +
-        "\"service_base_port\": 2230," + "\"service_provider_id\": 30" + " }" + "}" + "}" + "}" + "}";
+        "\"service_base_port\": 3333," + "\"service_provider_id\": 33" + " }" + "}" + "}" + "}" + "}";
 
 std::string extraction_module_json_2 =
         std::string("{ \"ExtractionModule\": ") + "{ \"extraction_stream_count\":2," + "\"extractors\": { " +
@@ -88,7 +88,7 @@ int main()
             ,
             "/tmp/keeper_extraction_test.log" //, confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
             ,
-            chronolog::LogLevel::debug // confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
+            chronolog::LogLevel::trace // confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
             ,
             "ExtractionModuleTest" //confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME
             ,
@@ -96,7 +96,7 @@ int main()
             ,
             2 //confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILENUM
             ,
-            chronolog::LogLevel::debug //confManager.CLIENT_CONF.CLIENT_LOG_CONF.FLUSHLEVEL);
+            chronolog::LogLevel::trace //confManager.CLIENT_CONF.CLIENT_LOG_CONF.FLUSHLEVEL);
     );
 
 
@@ -125,13 +125,13 @@ int main()
     chl::StoryChunkExtractorRDMA rdma_extractor(*localEngine, receiving_service_id);
 
     // 2. Test chained ExtractionModule instantiation with chained logging extractor & csv extractor
-    chronolog::StoryChunkExtractionModule<chronolog::ChronoKeeperExtractionChain> extractionModule;
+//    chronolog::StoryChunkExtractionModule<chronolog::ChronoKeeperExtractionChain> extractionModule;
 
-    extractionModule.getExtractionChain().add_extractor(logging_extractor);
-    extractionModule.getExtractionChain().add_extractor(csv_extractor);
-    extractionModule.getExtractionChain().add_extractor(rdma_extractor);
+//    extractionModule.getExtractionChain().add_extractor(logging_extractor);
+//    extractionModule.getExtractionChain().add_extractor(csv_extractor);
+ //   extractionModule.getExtractionChain().add_extractor(rdma_extractor);
 
-    extractionModule.initialize(extraction_threads);
+ //   extractionModule.initialize(extraction_threads);
 
     // 3.  Test ExtractionModule instantiation using json configuration object
 
@@ -162,7 +162,7 @@ int main()
 
     json_object_put(parsed_json);
 
-    extractionModule.getExtractionChain().activate(*localEngine, extraction_config, localServiceId);
+    new_extractionModule.getExtractionChain().activate(*localEngine, extraction_config, localServiceId);
 
     new_extractionModule.initialize(extraction_config.extraction_stream_count);
 
@@ -203,7 +203,7 @@ int main()
     // 5. Test ExtractionModule shutdown
     LOG_INFO("[ExtractionModuleTest] Shutting down StoryChunkExtractionModule for {}", chl::to_string(localServiceId));
 
-    extractionModule.shutdownExtraction();
+    new_extractionModule.shutdownExtraction();
 
     delete localEngine;
     return 1;
