@@ -146,9 +146,10 @@ int main(int argc, char** argv)
     /**
      * Keeper-push
      */
-    std::string KEEPER_COLLECTOR_NA_STRING = GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.PROTO_CONF + "://" +
-                                             GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.IP + ":" +
-                                             std::to_string(GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.BASE_PORT);
+    std::string KEEPER_COLLECTOR_NA_STRING =
+            GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.PROTO_CONF + "://" +
+            GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.IP + ":" +
+            std::to_string(GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.BASE_PORT);
     tl::engine extraction_engine = tl::engine(KEEPER_COLLECTOR_NA_STRING, THALLIUM_SERVER_MODE);
     std::stringstream ss;
     ss << extraction_engine.self();

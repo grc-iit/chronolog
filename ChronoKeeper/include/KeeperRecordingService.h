@@ -44,7 +44,9 @@ public:
         ss << log_event;
         LOG_TRACE("[KeeperRecordingService] Recording event: {}", ss.str());
 #endif
-        LOG_DEBUG("[KeeperRecordingService] Recording event in ULT={}, ES={}", tl::thread::self_id(), tl::xstream::self().get_rank());
+        LOG_DEBUG("[KeeperRecordingService] Recording event in ULT={}, ES={}",
+                  tl::thread::self_id(),
+                  tl::xstream::self().get_rank());
         theIngestionQueue.ingestLogEvent(log_event);
         request.respond(chronolog::CL_SUCCESS);
     }
