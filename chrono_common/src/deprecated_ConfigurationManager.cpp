@@ -279,12 +279,6 @@ int chronolog::KeeperConfiguration::parseJsonConf(json_object* json_conf)
             int value = json_object_get_int(val);
             RECORDING_GROUP = (value >= 0 ? value : 0);
         }
-        else if(strcmp(key, "IngestionThreadCount") == 0)
-        {
-            assert(json_object_is_type(val, json_type_int));
-            int value = json_object_get_int(val);
-            INGESTION_THREAD_COUNT = (value >= 1 ? value : 1);
-        }
         else if(strcmp(key, "KeeperRecordingService") == 0)
         {
             assert(json_object_is_type(val, json_type_object));
