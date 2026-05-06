@@ -75,7 +75,7 @@ int test_csv_extractor_config()
 {
     std::string csv_extractor_json_string =
             std::string("{") +
-            " \"test_csv_extractor\": { \"type\": \"csv_extractor\", \"csv_archive_dir\": \"/tmp/csv_archive\" }" + "}";
+            " \"test_csv_extractor\": { \"type\": \"csv_extractor\", \"csv_archive_dir\": \"/tmp\" }" + "}";
 
     json_object* parsed_json = json_tokener_parse(csv_extractor_json_string.c_str());
 
