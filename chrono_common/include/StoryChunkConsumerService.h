@@ -34,7 +34,7 @@ public:
         get_engine().pop_finalize_callback(this);
     }
 
-    void is_receiver_available(tl::request const& request) { request.respond(true); }
+    void receiver_available(tl::request const& request) { request.respond(true); }
 
     void receive_story_chunk(tl::request const& request, tl::bulk& b)
     {
@@ -114,6 +114,8 @@ private:
         : tl::provider<StoryChunkConsumerService>(tl_engine, service_provider_id)
         , theIngestionQueue(ingestion_queue)
     {
+
+        define("receiver_available", &StoryChunkConsumerService::receiver_available);
         define("receive_story_chunk", &StoryChunkConsumerService::receive_story_chunk);
         //set up callback for the case when the engine is being finalized while this provider is still alive
         get_engine().push_finalize_callback(this, [p = this]() { delete p; });
