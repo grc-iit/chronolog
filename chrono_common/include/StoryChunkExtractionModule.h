@@ -220,7 +220,7 @@ public:
             //try to extract the chunk 5 times before giving up
             int extraction_result = CL_ERR_UNKNOWN;
             int tries = 0;
-            while(CL_SUCCESS != extraction_result || (tries < 5))
+            while(CL_SUCCESS != extraction_result && (tries < 5))
             {
                 tries++;
                 extraction_result = theExtractionChain.process_chunk(story_chunk);
