@@ -42,7 +42,7 @@ void chronolog::DualEndpointChunkExtractorRDMA::restart_rdma_sender_for_grapher(
 
     grapher_receiver_service_id = receiver_service_id;
 
-    if(grapher_receiver_service_id.is_valid())
+    if(!grapher_receiver_service_id.is_valid())
     {
         return;
     }
@@ -156,7 +156,7 @@ chronolog::DualEndpointChunkExtractorRDMA::operator=(DualEndpointChunkExtractorR
 
     sender_tl_engine = other.get_sender_engine();
     player_receiver_service_id = other.get_player_receiver_id();
-    grapher_receiver_service_id = other.get_player_receiver_id();
+    grapher_receiver_service_id = other.get_grapher_receiver_id();
 
     try
     {
@@ -232,7 +232,8 @@ int chronolog::DualEndpointChunkExtractorRDMA::process_chunk(chronolog::StoryChu
 
         if(rdma_sender_for_grapher == nullptr)
         {
-            LOG_ERROR("[DualEndpointChunkExtractor] Failed to transfer StoryChunk StoryId={} StartTime={}",
+            LOG_ERROR("[DualEndpointChunkExtractor] Failed to transfer StoryChunk StoryId={} StartTime={}, no valid "
+                      "rdma_sender_for_grapher",
                       story_chunk->getStoryId(),
                       story_chunk->getStartTime());
             return chl::CL_ERR_STORY_CHUNK_EXTRACTION;
@@ -375,6 +376,12 @@ int chronolog::DualEndpointChunkExtractorRDMA::reset(json_object* json_block)
     LOG_DEBUG("[ChunkExtractorRDMA] reset: about to create grapher_rdma_sender for receiver_service {} ",
               chl::to_string(grapher_receiver_id));
 
+    if(!grapher_receiver_id.is_valid())
+    {
+        LOG_ERROR("[DualEndpointChunkExtractorRDMA] Reset failure: invalid grapher endpoint config");
+        return chl::CL_ERR_INVALID_CONF;
+    }
+
     restart_rdma_sender_for_grapher(grapher_receiver_id);
 
     if((json_object_object_get(json_block, "player_receiving_endpoint") == nullptr) ||
@@ -388,7 +395,7 @@ int chronolog::DualEndpointChunkExtractorRDMA::reset(json_object* json_block)
     chl::RPCProviderConf player_receiving_endpoint_conf;
     if(player_receiving_endpoint_conf.parseJsonConf(player_rpc_block) != chl::CL_SUCCESS)
     {
-        LOG_ERROR("[ChunkExtractorRDMA] Reset failure: invalid player endpoint config");
+        LOG_ERROR("[DualEndpointChunkExtractorRDMA] Reset failure: invalid player endpoint config");
         return chl::CL_ERR_INVALID_CONF;
     }
 
@@ -396,6 +403,12 @@ int chronolog::DualEndpointChunkExtractorRDMA::reset(json_object* json_block)
                                       player_receiving_endpoint_conf.IP,
                                       player_receiving_endpoint_conf.BASE_PORT,
                                       player_receiving_endpoint_conf.SERVICE_PROVIDER_ID);
+
+    if(!player_receiver_id.is_valid())
+    {
+        LOG_ERROR("[ChunkExtractorRDMA] Reset failure: invalid player endpoint config");
+        return chl::CL_ERR_INVALID_CONF;
+    }
 
     LOG_DEBUG("[ChunkExtractorRDMA] reset: about to create player_rdma_sender for receiver_service {} ",
               chl::to_string(player_receiver_id));

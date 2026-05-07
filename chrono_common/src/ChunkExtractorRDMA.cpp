@@ -17,7 +17,7 @@ chronolog::StoryChunkExtractorRDMA::StoryChunkExtractorRDMA(tl::engine& tl_engin
     , receiver_service_id(receiving_service_id)
     , rdma_sender(nullptr)
 {
-    if(receiving_service_id.is_valid())
+    if(receiver_service_id.is_valid())
     {
         try
         {
@@ -146,6 +146,11 @@ void chronolog::StoryChunkExtractorRDMA::restart_rdma_sender(chl::ServiceId cons
 
 int chronolog::StoryChunkExtractorRDMA::reset(chl::ServiceId const& new_receiver_id)
 {
+    if(!new_receiver_id.is_valid())
+    {
+        return chl::CL_ERR_INVALID_CONF;
+    }
+
     LOG_DEBUG("[ChunkExtractorRDMA] reset: about to create rdma_sender for receiver_service {} ",
               chl::to_string(new_receiver_id));
 
@@ -207,6 +212,11 @@ int chronolog::StoryChunkExtractorRDMA::reset(json_object* json_block)
                                    receiving_endpoint_conf.BASE_PORT,
                                    receiving_endpoint_conf.SERVICE_PROVIDER_ID);
 
+    if(!new_receiver_id.is_valid())
+    {
+        return chl::CL_ERR_INVALID_CONF;
+    }
+
     LOG_DEBUG("[ChunkExtractorRDMA] reset: about to create rdma_sender for receiver_service {} ",
               chl::to_string(new_receiver_id));
 
@@ -239,9 +249,10 @@ int chronolog::StoryChunkExtractorRDMA::process_chunk(chronolog::StoryChunk* sto
 
         if(rdma_sender == nullptr)
         {
-            LOG_ERROR("[ChunkExtractorRDMA] Failed to transfer StoryChunk StoryId={} StartTime={}",
-                      story_chunk->getStoryId(),
-                      story_chunk->getStartTime());
+            LOG_ERROR(
+                    "[ChunkExtractorRDMA] Failed to transfer StoryChunk StoryId={} StartTime={}, no valid rdma_sender",
+                    story_chunk->getStoryId(),
+                    story_chunk->getStartTime());
             return chl::CL_ERR_STORY_CHUNK_EXTRACTION;
         }
 

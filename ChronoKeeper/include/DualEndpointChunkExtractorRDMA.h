@@ -26,7 +26,7 @@ public:
 
     tl::engine& get_sender_engine() const { return sender_tl_engine; }
     ServiceId const& get_player_receiver_id() const { return player_receiver_service_id; }
-    ServiceId const& get_grapher_receiver_id() const { return player_receiver_service_id; }
+    ServiceId const& get_grapher_receiver_id() const { return grapher_receiver_service_id; }
 
     int process_chunk(StoryChunk*);
 

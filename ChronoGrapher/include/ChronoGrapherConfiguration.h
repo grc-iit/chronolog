@@ -58,7 +58,8 @@ struct GrapherConfiguration
                                ", LOG_CONF: " + LOG_CONF.to_String() +
                                ", DATA_STORE_CONF: " + DATA_STORE_CONF.to_String() + ", ";
 
-        a_string += EXTRACTION_MODULE_CONF.to_string(a_string) + "]";
+        EXTRACTION_MODULE_CONF.to_string(a_string);
+        a_string += "]";
         return a_string;
     }
 };
