@@ -44,7 +44,7 @@ private:
     tl::engine& service_engine;                  // local tl::engine
     ServiceId receiver_service_id;               // remote receiver service ServiceId
     tl::provider_handle receiver_service_handle; // tl::provider_handle for remote receiver service
-    tl::remote_procedure receiver_is_available;
+    tl::remote_procedure receiver_available;
     tl::remote_procedure receive_story_chunk;
 
     // constructor is private to make sure thalium rpc objects are created on the heap, not stack
