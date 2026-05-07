@@ -62,37 +62,34 @@ public:
     // (rpc_thread_count = INGESTION_THREAD_COUNT). The map lookup is guarded
     // by a shared lock so multiple ingest threads can resolve handles in
     // parallel; only add/removeIngestionHandle take an exclusive lock.
-    // The handle itself is invoked outside the map lock so handler threads
-    // don't serialize on it -- StoryIngestionHandle::ingestEvent has its own
-    // per-story mutex.
+    //
+    // The shared lock is held across handle->ingestEvent so the retirement
+    // path (KeeperDataStore::retireDecayedPipelines: removeIngestionHandle
+    // followed by `delete pipeline`) cannot tear down the handle mid-call.
+    // Concurrent ingest threads still proceed in parallel since shared locks
+    // don't block each other; only the rare retire path waits.
     void ingestLogEvent(LogEvent const& event)
     {
-        StoryIngestionHandle* handle = nullptr;
-        {
-            std::shared_lock<std::shared_mutex> lock(handleMapMutex);
+        std::shared_lock<std::shared_mutex> lock(handleMapMutex);
 #ifndef NDEBUG
-            std::stringstream ss;
-            ss << event;
-            LOG_TRACE("[IngestionQueue] Received event for StoryID={}: Event Details={}, HandleMapSize={}",
-                      event.storyId,
-                      ss.str(),
-                      storyIngestionHandles.size());
+        std::stringstream ss;
+        ss << event;
+        LOG_TRACE("[IngestionQueue] Received event for StoryID={}: Event Details={}, HandleMapSize={}",
+                  event.storyId,
+                  ss.str(),
+                  storyIngestionHandles.size());
 #endif
-            auto ingestionHandle_iter = storyIngestionHandles.find(event.storyId);
-            if(ingestionHandle_iter != storyIngestionHandles.end())
-                handle = ingestionHandle_iter->second;
+        auto ingestionHandle_iter = storyIngestionHandles.find(event.storyId);
+        if(ingestionHandle_iter != storyIngestionHandles.end())
+        {
+            ingestionHandle_iter->second->ingestEvent(event);
+            return;
         }
+        lock.unlock();
 
-        if(handle != nullptr)
-        {
-            handle->ingestEvent(event);
-        }
-        else
-        {
-            LOG_WARNING("[IngestionQueue] Orphan event for story {}. Storing for later processing.", event.storyId);
-            std::lock_guard<std::mutex> lock(orphanQueueMutex);
-            orphanEventQueue.push_back(event);
-        }
+        LOG_WARNING("[IngestionQueue] Orphan event for story {}. Storing for later processing.", event.storyId);
+        std::lock_guard<std::mutex> orphan_lock(orphanQueueMutex);
+        orphanEventQueue.push_back(event);
     }
 
     // Lock ordering when both mutexes are needed: orphanQueueMutex first,
