@@ -82,6 +82,37 @@ void BindChronologClient(pybind11::module& m)
             .def("AcquireStory", &Client::AcquireStory, pybind11::return_value_policy::reference)
             .def("ReleaseStory", &Client::ReleaseStory, pybind11::arg("chronicle_name"), pybind11::arg("story_name"))
             .def("DestroyStory", &Client::DestroyStory, pybind11::arg("chronicle_name"), pybind11::arg("story_name"))
+            .def(
+                    "GetChronicleAttr",
+                    [](Client& self, std::string const& chronicle_name, std::string const& key)
+                    {
+                        std::string value;
+                        int rc = self.GetChronicleAttr(chronicle_name, key, value);
+                        return std::make_pair(rc, value);
+                    },
+                    pybind11::arg("chronicle_name"),
+                    pybind11::arg("key"))
+            .def("EditChronicleAttr",
+                 &Client::EditChronicleAttr,
+                 pybind11::arg("chronicle_name"),
+                 pybind11::arg("key"),
+                 pybind11::arg("value"))
+            .def("ShowChronicles",
+                 [](Client& self)
+                 {
+                     std::vector<std::string> chronicles;
+                     int rc = self.ShowChronicles(chronicles);
+                     return std::make_pair(rc, chronicles);
+                 })
+            .def(
+                    "ShowStories",
+                    [](Client& self, std::string const& chronicle_name)
+                    {
+                        std::vector<std::string> stories;
+                        int rc = self.ShowStories(chronicle_name, stories);
+                        return std::make_pair(rc, stories);
+                    },
+                    pybind11::arg("chronicle_name"))
             .def("ReplayStory", &Client::ReplayStory);
 };
 

@@ -392,59 +392,6 @@ int chronolog::VisorClientPortal::ShowStories(chl::ClientId const& client_id,
 }
 
 
-/*
-/////////////////
-int chronolog::VisorClientPortal::LocalDestroyStory(std::string const& chronicle_name, std::string const&story_name)
-{    int return_code = chronolog::CL_SUCCESS;
-
-    return return_code;
-}
-
-
-/////////////////
-AcquireStoryResponseMsg const& chronolog::VisorClientPortal::LocalAcquireStory(
-                              chronolog::ClientId const&client_id
-                              , std::string const&chronicle_name,
-                              std::string const&story_name,
-                              const std::unordered_map<std::string, std::string> &attrs,
-                              int &flags)
-{
-    int return_code = chronolog::CL_SUCCESS;
-
-    return return_code;
-}
-
-
-/////////////////
-int chronolog::VisorClientPortal::LocalReleaseStory( chronolog::ClientId const&client_id
-            , std::string const&chronicle_name, std::string const&story_name)
-{
-    int return_code = chronolog::CL_SUCCESS;
-
-    return return_code;
-}
-
-
-/////////////////
-int chronolog::VisorClientPortal::LocalGetChronicleAttr( chronolog::ClientId const& client_id
-            , std::string const&name, const std::string &key, std::string &value)
-{
-    int return_code = chronolog::CL_SUCCESS;
-
-    return return_code;
-}
-
-/////////////////
-int chronolog::VisorClientPortal::LocalEditChronicleAttr( chronolog::ClientId const& client_id
-            , std::string const&name, const std::string &key, const std::string &value)
-{
-    int return_code = chronolog::CL_SUCCESS;
-
-    return return_code;
-}
-
-
-*/
 /////////////////
 
 bool chronolog::VisorClientPortal::is_client_authenticated(uint32_t client_account) { return true; }

@@ -416,6 +416,88 @@ static void interactive_destroy_story(std::vector<std::string>& tokens, chronolo
     }
 }
 
+static void interactive_show_chronicles(std::vector<std::string>& tokens, chronolog::Client& client)
+{
+    if(tokens.size() != 2)
+    {
+        std::cerr << "Usage: -l -c" << std::endl;
+        return;
+    }
+    std::vector<std::string> chronicles;
+    int ret_i = client.ShowChronicles(chronicles);
+    if(ret_i != chronolog::CL_SUCCESS)
+    {
+        std::cout << "Failed to list chronicles, return code: " << chronolog::to_string_client(ret_i) << std::endl;
+        return;
+    }
+    std::cout << "Chronicles (" << chronicles.size() << "):" << std::endl;
+    for(auto const& name: chronicles) std::cout << "  " << name << std::endl;
+}
+
+static void interactive_show_stories(std::vector<std::string>& tokens, chronolog::Client& client)
+{
+    if(tokens.size() != 3)
+    {
+        std::cerr << "Usage: -l -s <chronicle_name>" << std::endl;
+        return;
+    }
+    const std::string& chronicle_name = tokens[2];
+    std::vector<std::string> stories;
+    int ret_i = client.ShowStories(chronicle_name, stories);
+    if(ret_i != chronolog::CL_SUCCESS)
+    {
+        std::cout << "Failed to list stories in Chronicle " << chronicle_name
+                  << ", return code: " << chronolog::to_string_client(ret_i) << std::endl;
+        return;
+    }
+    std::cout << "Stories in Chronicle " << chronicle_name << " (" << stories.size() << "):" << std::endl;
+    for(auto const& name: stories) std::cout << "  " << name << std::endl;
+}
+
+static void interactive_get_chronicle_attr(std::vector<std::string>& tokens, chronolog::Client& client)
+{
+    if(tokens.size() != 3)
+    {
+        std::cerr << "Usage: -g <chronicle_name> <key>" << std::endl;
+        return;
+    }
+    const std::string& chronicle_name = tokens[1];
+    const std::string& key = tokens[2];
+    std::string value;
+    int ret_i = client.GetChronicleAttr(chronicle_name, key, value);
+    if(ret_i == chronolog::CL_SUCCESS)
+    {
+        std::cout << chronicle_name << "[" << key << "] = " << value << std::endl;
+    }
+    else
+    {
+        std::cout << "Failed to get attribute " << key << " from Chronicle " << chronicle_name
+                  << ", return code: " << chronolog::to_string_client(ret_i) << std::endl;
+    }
+}
+
+static void interactive_edit_chronicle_attr(std::vector<std::string>& tokens, chronolog::Client& client)
+{
+    if(tokens.size() != 4)
+    {
+        std::cerr << "Usage: -e <chronicle_name> <key> <value>" << std::endl;
+        return;
+    }
+    const std::string& chronicle_name = tokens[1];
+    const std::string& key = tokens[2];
+    const std::string& value = tokens[3];
+    int ret_i = client.EditChronicleAttr(chronicle_name, key, value);
+    if(ret_i == chronolog::CL_SUCCESS)
+    {
+        std::cout << "Set " << chronicle_name << "[" << key << "] = " << value << std::endl;
+    }
+    else
+    {
+        std::cout << "Failed to set attribute " << key << " on Chronicle " << chronicle_name
+                  << ", return code: " << chronolog::to_string_client(ret_i) << std::endl;
+    }
+}
+
 static void interactive_destroy_chronicle(std::vector<std::string>& tokens, chronolog::Client& client)
 {
     if(tokens.size() != 3)
@@ -517,6 +599,10 @@ int main(int argc, char** argv)
               << "\t-q -s <chronicle_name> <story_name>, release Story <story_name> in Chronicle <chronicle_name>\n"
               << "\t-d -s <chronicle_name> <story_name>, destroy Story <story_name> in Chronicle <chronicle_name>\n"
               << "\t-d -c <chronicle_name>, destroy Chronicle <chronicle_name>\n"
+              << "\t-l -c, list all Chronicles\n"
+              << "\t-l -s <chronicle_name>, list Stories in Chronicle <chronicle_name>\n"
+              << "\t-g <chronicle_name> <key>, get attribute <key> on Chronicle <chronicle_name>\n"
+              << "\t-e <chronicle_name> <key> <value>, set attribute <key>=<value> on Chronicle <chronicle_name>\n"
               << "\t-disconnect\n"
               << std::endl;
 
@@ -560,7 +646,23 @@ int main(int argc, char** argv)
                  {
                      interactive_destroy_story(command_subs, client);
                  }
-             }}};
+             }},
+            {"-l",
+             [&](std::vector<std::string>& command_subs)
+             {
+                 if(command_subs[1] == "-c")
+                 {
+                     interactive_show_chronicles(command_subs, client);
+                 }
+                 else if(command_subs[1] == "-s")
+                 {
+                     interactive_show_stories(command_subs, client);
+                 }
+             }},
+            {"-g",
+             [&](std::vector<std::string>& command_subs) { interactive_get_chronicle_attr(command_subs, client); }},
+            {"-e",
+             [&](std::vector<std::string>& command_subs) { interactive_edit_chronicle_attr(command_subs, client); }}};
 
     std::string command_line;
     while(true)
