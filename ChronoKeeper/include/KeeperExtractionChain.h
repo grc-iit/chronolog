@@ -28,23 +28,12 @@ public:
 
     ~ChronoKeeperExtractionChain() { theExtractors.clear(); }
 
-    int process_chunk(StoryChunk* chunk)
+    void process_chunk(StoryChunk* chunk)
     {
-        int chain_result = CL_SUCCESS;
-
-        // If extractor fails, mark the chain result as a failure,
-        // but keep going for the others.
         for(auto& e: theExtractors)
         {
-            int extractor_result =
-                    std::visit([chunk](auto& extractor) -> int { return extractor.process_chunk(chunk); }, e);
-
-            if(CL_SUCCESS != extractor_result)
-            {
-                chain_result = extractor_result;
-            }
+            std::visit([chunk](auto& extractor){ return extractor.process_chunk(chunk); }, e);
         }
-        return chain_result;
     }
 
     bool is_active_chain() const
@@ -100,7 +89,7 @@ public:
             }
             else if((*iter).first == "dual_endpoint_rdma_extractor")
             {
-                DualEndpointChunkExtractorRDMA dual_endpoint_rdma_extractor(*extraction_engine);
+                DualEndpointChunkExtractorRDMA dual_endpoint_rdma_extractor(extraction_engine);
                 ret_value = dual_endpoint_rdma_extractor.reset((*iter).second);
                 if(CL_SUCCESS != ret_value)
                 {

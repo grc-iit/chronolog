@@ -38,7 +38,6 @@ public:
     ~RDMATransferAgent();
 
     int transfer_serialized_story_chunk(std::string const& chunk);
-    bool is_receiver_available() const;
 
 private:
     tl::engine& service_engine;                  // local sender tl::engine
