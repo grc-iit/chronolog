@@ -11,7 +11,7 @@
 namespace tl = thallium;
 namespace chl = chronolog;
 
-chronolog::StoryChunkExtractorRDMA::StoryChunkExtractorRDMA(tl::engine& tl_engine,
+chronolog::StoryChunkExtractorRDMA::StoryChunkExtractorRDMA(tl::engine* tl_engine,
                                                             chronolog::ServiceId const& receiving_service_id)
     : sender_tl_engine(tl_engine)
     , receiver_service_id(receiving_service_id)
@@ -21,7 +21,7 @@ chronolog::StoryChunkExtractorRDMA::StoryChunkExtractorRDMA(tl::engine& tl_engin
     {
         try
         {
-            rdma_sender = RDMATransferAgent::CreateRDMATransferAgent(sender_tl_engine, receiver_service_id);
+            rdma_sender = RDMATransferAgent::CreateRDMATransferAgent(*sender_tl_engine, receiver_service_id);
             LOG_TRACE("[ChunkExtractorRDMA] Constructor created rdma_sender for receiver_service {} ",
                       chl::to_string(receiver_service_id));
         }
@@ -34,63 +34,33 @@ chronolog::StoryChunkExtractorRDMA::StoryChunkExtractorRDMA(tl::engine& tl_engin
     }
 }
 
-chronolog::StoryChunkExtractorRDMA::StoryChunkExtractorRDMA(StoryChunkExtractorRDMA const& other)
-    : sender_tl_engine(other.get_sender_engine())
-    , receiver_service_id(other.get_receiver_service_id())
-    , rdma_sender(nullptr)
+chronolog::StoryChunkExtractorRDMA::StoryChunkExtractorRDMA(StoryChunkExtractorRDMA && other)
 {
-    if(receiver_service_id.is_valid())
-    {
-        try
-        {
-            rdma_sender = RDMATransferAgent::CreateRDMATransferAgent(sender_tl_engine, receiver_service_id);
-            LOG_TRACE("[ChunkExtractorRDMA] Constructor copy: created rdma_sender for receiver_service {} ",
-                      chl::to_string(receiver_service_id));
-        }
-        catch(...)
-        {
-            LOG_ERROR("[ChunkExtractorRDMA] Constructor: failed to create rdma_sender for receiver_service {} ",
-                      chl::to_string(receiver_service_id));
-            rdma_sender = nullptr;
-        }
-    }
-}
-
-chl::StoryChunkExtractorRDMA& chronolog::StoryChunkExtractorRDMA::operator=(StoryChunkExtractorRDMA const& other)
-{
-    if(this == &other)
-    {
-        return *this;
-    }
-
-
-    if(rdma_sender != nullptr)
-    {
-        LOG_TRACE("[ChunkExtractorRDMA] assingment : deleting receiver_service {} ",
-                  chl::to_string(receiver_service_id));
-
-        delete rdma_sender;
-    }
+    if(this == &other) { return; }
 
     sender_tl_engine = other.get_sender_engine();
     receiver_service_id = other.get_receiver_service_id();
+    rdma_sender = other.get_rdma_sender();
 
-    if(receiver_service_id.is_valid())
-    {
-        try
-        {
-            rdma_sender = RDMATransferAgent::CreateRDMATransferAgent(sender_tl_engine, receiver_service_id);
-            LOG_TRACE("[ChunkExtractorRDMA] assingment: created rdma_sender for receiver_service {} ",
-                      chl::to_string(receiver_service_id));
-        }
-        catch(...)
-        {
-            LOG_ERROR("[ChunkExtractorRDMA] assignment: failed to create rdma_sender for receiver_service {} ",
-                      chl::to_string(receiver_service_id));
-            rdma_sender = nullptr;
-        }
-    }
+    LOG_TRACE("[ChunkExtractorRDMA] move constructor: using rdma_sender for receiver_service {} ", chl::to_string(receiver_service_id));
+    other.clear_engine_reference(); // sender_tl_engine();
+    other.clear_rdma_sender_reference(); // sender_tl_engine();
+}
 
+chl::StoryChunkExtractorRDMA& chronolog::StoryChunkExtractorRDMA::operator=(StoryChunkExtractorRDMA && other)
+{
+    if(this == &other) { return *this; }
+   
+    if(rdma_sender != nullptr)
+    { delete rdma_sender; }
+    
+    sender_tl_engine = other.get_sender_engine();
+    receiver_service_id = other.get_receiver_service_id();
+    rdma_sender = other.get_rdma_sender();
+    LOG_TRACE("[ChunkExtractorRDMA] move operator: using rdma_sender for receiver_service {} ",chl::to_string(receiver_service_id));
+
+    other.clear_engine_reference(); // sender_tl_engine();
+    other.clear_rdma_sender_reference(); // sender_tl_engine();
     return *this;
 }
 
@@ -130,7 +100,7 @@ void chronolog::StoryChunkExtractorRDMA::restart_rdma_sender(chl::ServiceId cons
 
     try
     {
-        rdma_sender = RDMATransferAgent::CreateRDMATransferAgent(sender_tl_engine, receiver_service_id);
+        rdma_sender = RDMATransferAgent::CreateRDMATransferAgent(*sender_tl_engine, receiver_service_id);
         LOG_TRACE("[ChunkExtractorRDMA] assingment: created rdma_sender for receiver_service {} ",
                   chl::to_string(receiver_service_id));
     }

@@ -28,8 +28,6 @@ public:
 
     ~ChronoKeeperExtractionChain() { theExtractors.clear(); }
 
-    void add_extractor(Extractor e) { theExtractors.push_back(std::move(e)); }
-
     int process_chunk(StoryChunk* chunk)
     {
         int chain_result = CL_SUCCESS;
@@ -70,9 +68,9 @@ public:
         return true;
     }
 
-    int activate(tl::engine& extraction_engine,
-                 ExtractionModuleConfiguration const& extraction_conf,
-                 ServiceId const& service_id)
+    int activate(ServiceId const& service_id,
+		 tl::engine * extraction_engine,
+                 ExtractionModuleConfiguration const& extraction_conf)
     {
 
         int ret_value = CL_SUCCESS;
@@ -88,7 +86,7 @@ public:
                 {
                     break;
                 }
-                add_extractor(csv_extractor);
+		theExtractors.push_back(std::move(csv_extractor));
             }
             else if((*iter).first == "single_endpoint_rdma_extractor")
             {
@@ -98,21 +96,22 @@ public:
                 {
                     break;
                 }
-                add_extractor(single_endpoint_rdma_extractor);
+		theExtractors.push_back(std::move(single_endpoint_rdma_extractor));
             }
             else if((*iter).first == "dual_endpoint_rdma_extractor")
             {
-                DualEndpointChunkExtractorRDMA dual_endpoint_rdma_extractor(extraction_engine);
+                DualEndpointChunkExtractorRDMA dual_endpoint_rdma_extractor(*extraction_engine);
                 ret_value = dual_endpoint_rdma_extractor.reset((*iter).second);
                 if(CL_SUCCESS != ret_value)
                 {
                     break;
                 }
-                add_extractor(dual_endpoint_rdma_extractor);
+
+		theExtractors.push_back(std::move(dual_endpoint_rdma_extractor));
             }
             else if((*iter).first == "logging_extractor")
             {
-                add_extractor(LoggingExtractor());
+		theExtractors.push_back(std::move(LoggingExtractor()));
             }
         }
 

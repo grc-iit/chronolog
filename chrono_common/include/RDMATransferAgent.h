@@ -41,7 +41,7 @@ public:
     bool is_receiver_available() const;
 
 private:
-    tl::engine& service_engine;                  // local tl::engine
+    tl::engine& service_engine;                  // local sender tl::engine
     ServiceId receiver_service_id;               // remote receiver service ServiceId
     tl::provider_handle receiver_service_handle; // tl::provider_handle for remote receiver service
     tl::remote_procedure receiver_available;
@@ -49,6 +49,7 @@ private:
 
     // constructor is private to make sure thalium rpc objects are created on the heap, not stack
     RDMATransferAgent(tl::engine& tl_engine, ServiceId const& receiver_service_id);
+    RDMATransferAgent(RDMATransferAgent const&) = delete;
 };
 
 
