@@ -30,7 +30,7 @@ public:
 
     tl::engine* get_sender_engine() const { return sender_tl_engine; }
     ServiceId const& get_receiver_service_id() const { return receiver_service_id; }
-    RDMATransferAgent * const& get_rdma_sender() const { return rdma_sender; }
+
     int process_chunk(StoryChunk*);
 
     int reset(ServiceId const&);
@@ -44,8 +44,6 @@ private:
     RDMATransferAgent* rdma_sender;
 
     void restart_rdma_sender(ServiceId const&);
-    void clear_engine_reference() { sender_tl_engine = nullptr;}
-    void clear_rdma_sender_reference() { rdma_sender = nullptr; }
 };
 
 

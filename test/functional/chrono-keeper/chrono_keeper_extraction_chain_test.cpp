@@ -69,8 +69,8 @@ std::string extraction_module_json_2 =
         std::string("{ \"ExtractionModule\": ") + "{ \"extraction_stream_count\":2," + "\"extractors\": { " +
         "\"test_dual_rdma_extractor\": {" + "\"type\": \"dual_endpoint_rdma_extractor\"," +
         "\"player_receiving_endpoint\": {" + "\"protocol_conf\": \"ofi+sockets\"," + "\"service_ip\": \"127.0.0.1\"," +
-        "\"service_base_port\": 2232," + "\"service_provider_id\": 32" + " }," + "\"grapher_receiving_endpoint\": {" +
-        "\"protocol_conf\": \"ofi+sockets\"," + "\"service_ip\": \"127.0.0.1\"," + "\"service_base_port\": 2233," +
+        "\"service_base_port\": 2222," + "\"service_provider_id\": 22" + " }," + "\"grapher_receiving_endpoint\": {" +
+        "\"protocol_conf\": \"ofi+sockets\"," + "\"service_ip\": \"127.0.0.1\"," + "\"service_base_port\": 3333," +
         "\"service_provider_id\": 33" + "}" + "}" + "}" + "}" + "}";
 
 ///
@@ -120,14 +120,15 @@ int main()
         return (-1);
     }
 
-    // 1. Test single endpoint RDMA extractor instantiation
-    chl::ServiceId receiving_service_id("ofi+sockets", "127.0.0.1", 3333, 33);
+    std::string extraction_module_json = extraction_module_json_1;
+    // to test dual rdma extractor use the second json string
+    // std::string extraction_module_json = extraction_module_json_2;
 
-    // 3.  Test ExtractionModule instantiation using json configuration object
+    //   Test ExtractionModule instantiation using json configuration object
 
     chronolog::StoryChunkExtractionModule<chronolog::ChronoKeeperExtractionChain> extractionModule;
 
-    json_object* parsed_json = json_tokener_parse(extraction_module_json_1.c_str());
+    json_object* parsed_json = json_tokener_parse(extraction_module_json.c_str());
 
     if(!json_object_is_type(json_object_object_get(parsed_json, "ExtractionModule"), json_type_object))
     {
@@ -184,6 +185,7 @@ int main()
             std::thread t{chunk_contributor_thread, &extractionQueue, thread_id};
             contributors[i] = std::move(t);
         }
+
         for(int i = 0; i < contributor_threads; ++i) { contributors[i].join(); }
 
         std::this_thread::sleep_for(std::chrono::seconds(20));

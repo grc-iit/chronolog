@@ -18,7 +18,6 @@ chronolog::RDMATransferAgent::RDMATransferAgent(tl::engine& tl_engine, chronolog
     receiver_service_handle =
             tl::provider_handle(service_engine.lookup(service_addr_string), receiver_service_id.getProviderId());
 
-    receiver_available = service_engine.define("receiver_available");
     receive_story_chunk = service_engine.define("receive_story_chunk");
 
     LOG_DEBUG("[RDMATransferAgent] created agent for receiver service {}", chl::to_string(receiver_service_id));
@@ -27,27 +26,7 @@ chronolog::RDMATransferAgent::RDMATransferAgent(tl::engine& tl_engine, chronolog
 chronolog::RDMATransferAgent::~RDMATransferAgent()
 {
     LOG_DEBUG("[RDMATransferAgent] Destroying agent for receiver service {}", chl::to_string(receiver_service_id));
-    receiver_available.deregister();
     receive_story_chunk.deregister();
-}
-
-bool chronolog::RDMATransferAgent::is_receiver_available() const
-{
-    bool ret_value = false;
-    try
-    {
-        ret_value = receiver_available.on(receiver_service_handle)();
-    }
-    catch(...)
-    {
-        LOG_ERROR("[RDMATransferAgent] Unknown exception in rpc with receiver_service {}.",
-                  chl::to_string(receiver_service_id));
-    }
-
-    LOG_DEBUG("[RDMATransferAgent] receiver_service {} is available {}",
-              chl::to_string(receiver_service_id),
-              ret_value);
-    return ret_value;
 }
 
 ///////////////////////////////////
@@ -62,9 +41,6 @@ int chronolog::RDMATransferAgent::transfer_serialized_story_chunk(std::string co
         LOG_TRACE("[RDMATransferAgent] about to transfer Chunk size: {}  tl_bulk size {}",
                   serialized_story_chunk.size(),
                   tl_bulk.size());
-
-       bool receiver_available_ret = receiver_available.on(receiver_service_handle)();
-        LOG_INFO("[RDMATransferAgent] receiver_is_available returns {}", receiver_available_ret);
 
         size_t bytes_transfered = receive_story_chunk.on(receiver_service_handle)(tl_bulk);
 

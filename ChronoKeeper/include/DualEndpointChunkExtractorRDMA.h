@@ -16,15 +16,17 @@ class DualEndpointChunkExtractorRDMA
 {
 
 public:
-    DualEndpointChunkExtractorRDMA(tl::engine& tl_engine,
+    DualEndpointChunkExtractorRDMA(tl::engine * tl_engine,
                                    ServiceId const& receiver_player = ServiceId(),
                                    ServiceId const& receiver_grapher = ServiceId());
-    DualEndpointChunkExtractorRDMA(DualEndpointChunkExtractorRDMA const& other);
-    DualEndpointChunkExtractorRDMA& operator=(DualEndpointChunkExtractorRDMA const& other);
+    DualEndpointChunkExtractorRDMA(DualEndpointChunkExtractorRDMA const& other) = delete;
+    DualEndpointChunkExtractorRDMA& operator=(DualEndpointChunkExtractorRDMA const& other) = delete;
+    DualEndpointChunkExtractorRDMA(DualEndpointChunkExtractorRDMA && other);
+    DualEndpointChunkExtractorRDMA& operator=(DualEndpointChunkExtractorRDMA && other);
 
     ~DualEndpointChunkExtractorRDMA();
 
-    tl::engine& get_sender_engine() const { return sender_tl_engine; }
+    tl::engine * get_sender_engine() const { return sender_tl_engine; }
     ServiceId const& get_player_receiver_id() const { return player_receiver_service_id; }
     ServiceId const& get_grapher_receiver_id() const { return grapher_receiver_service_id; }
 
@@ -37,7 +39,7 @@ public:
     bool is_active() const { return (nullptr != rdma_sender_for_grapher) && (nullptr != rdma_sender_for_player); }
 
 private:
-    tl::engine& sender_tl_engine;          // local tl::engine
+    tl::engine * sender_tl_engine;          // sender local tl::engine
     ServiceId player_receiver_service_id;  // ChronoGrapher receiving ServiceId
     ServiceId grapher_receiver_service_id; // ChronoPlayer receiving ServiceId
     RDMATransferAgent* rdma_sender_for_player;
