@@ -142,7 +142,7 @@ int main(int argc, char** argv)
         }
 
         ret = client.Disconnect(); //client_id, flags);
-        assert(ret == chronolog::CL_ERR_NO_KEEPERS || ret == chronolog::CL_ERR_ACQUIRED);
+        assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NO_KEEPERS);
 
         t1 = std::chrono::steady_clock::now();
         std::vector<std::string> stories_names_retrieved;

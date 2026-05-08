@@ -47,6 +47,10 @@ public:
                       const std::string& story_name,
                       StoryId&);
 
+    // Release every story currently acquired by client_id. Returns the StoryIds
+    // that were released so the caller can notify the recording groups.
+    int release_all_acquired_stories(chronolog::ClientId const& client_id, std::vector<StoryId>& released_ids);
+
     int get_chronicle_attr(std::string const& name, const std::string& key, std::string& value);
 
     int edit_chronicle_attr(std::string const& name, const std::string& key, const std::string& value);

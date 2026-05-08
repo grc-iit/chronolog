@@ -332,6 +332,67 @@ int ChronicleMetaDirectory::release_story(chl::ClientId const& client_id,
     return ret;
 }
 
+int ChronicleMetaDirectory::release_all_acquired_stories(chl::ClientId const& client_id,
+                                                         std::vector<StoryId>& released_ids)
+{
+    released_ids.clear();
+    if(clientRegistryManager_ == nullptr)
+    {
+        return chronolog::CL_ERR_UNKNOWN;
+    }
+
+    ClientInfo* clientInfo = clientRegistryManager_->get_client_info(client_id);
+    if(clientInfo == nullptr)
+    {
+        // Nothing to release if the client has no record (e.g. already disconnected).
+        return chronolog::CL_SUCCESS;
+    }
+
+    // Snapshot first; release_story below mutates acquiredStoryList_ via the
+    // ClientRegistryManager and would invalidate iterators.
+    std::vector<std::pair<uint64_t, Story*>> snapshot(clientInfo->acquiredStoryList_.begin(),
+                                                      clientInfo->acquiredStoryList_.end());
+    released_ids.reserve(snapshot.size());
+
+    for(auto& [sid, pStory]: snapshot)
+    {
+        if(pStory == nullptr)
+        {
+            continue;
+        }
+
+        uint64_t cid = pStory->getCid();
+        std::string const story_name = pStory->getName();
+
+        std::string chronicle_name;
+        {
+            std::lock_guard<std::mutex> chronicleMapLock(g_chronicleMetaDirectoryMutex_);
+            auto chronicleRecord = chronicleMap_->find(cid);
+            if(chronicleRecord == chronicleMap_->end())
+            {
+                continue;
+            }
+            chronicle_name = chronicleRecord->second->getName();
+        }
+
+        StoryId released_id{0};
+        int ret = release_story(client_id, chronicle_name, story_name, released_id);
+        if(ret == chronolog::CL_SUCCESS)
+        {
+            released_ids.push_back(released_id);
+        }
+        else
+        {
+            LOG_WARNING("[ChronicleMetaDirectory] Failed to auto-release StoryName={} for ClientID={}: rc={}",
+                        story_name.c_str(),
+                        client_id,
+                        ret);
+        }
+    }
+
+    return chronolog::CL_SUCCESS;
+}
+
 int ChronicleMetaDirectory::get_chronicle_attr(std::string const& name, const std::string& key, std::string& value)
 {
     LOG_DEBUG("[ChronicleMetaDirectory] Getting attributes Key={} from ChronicleName={}", key.c_str(), name.c_str());

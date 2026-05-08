@@ -137,6 +137,21 @@ int chronolog::VisorClientPortal::ClientConnect(uint32_t client_euid,
 int chronolog::VisorClientPortal::ClientDisconnect(chronolog::ClientId const& client_id)
 {
     LOG_INFO("Client Disconnected. ClientID={}", client_id);
+
+    // Auto-release any stories the client is still holding so the client
+    // record can always be cleaned up. Without this, remove_client_record
+    // refuses to remove a client that has acquired stories and the client
+    // would have to call ReleaseStory for every acquisition before Disconnect.
+    std::vector<StoryId> released_ids;
+    chronicleMetaDirectory.release_all_acquired_stories(client_id, released_ids);
+    if(theKeeperRegistry != nullptr)
+    {
+        for(StoryId const& released_id: released_ids)
+        {
+            theKeeperRegistry->notifyRecordingGroupOfStoryRecordingStop(released_id);
+        }
+    }
+
     return clientManager.remove_client_record(client_id);
 }
 
