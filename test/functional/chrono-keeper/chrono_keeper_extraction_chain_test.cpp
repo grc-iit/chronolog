@@ -122,20 +122,10 @@ int main()
 
     // 1. Test single endpoint RDMA extractor instantiation
     chl::ServiceId receiving_service_id("ofi+sockets", "127.0.0.1", 3333, 33);
-    chl::StoryChunkExtractorRDMA rdma_extractor(*localEngine, receiving_service_id);
-
-    // 2. Test chained ExtractionModule instantiation with chained logging extractor & csv extractor
-//    chronolog::StoryChunkExtractionModule<chronolog::ChronoKeeperExtractionChain> extractionModule;
-
-//    extractionModule.getExtractionChain().add_extractor(logging_extractor);
-//    extractionModule.getExtractionChain().add_extractor(csv_extractor);
- //   extractionModule.getExtractionChain().add_extractor(rdma_extractor);
-
- //   extractionModule.initialize(extraction_threads);
 
     // 3.  Test ExtractionModule instantiation using json configuration object
 
-    chronolog::StoryChunkExtractionModule<chronolog::ChronoKeeperExtractionChain> new_extractionModule;
+    chronolog::StoryChunkExtractionModule<chronolog::ChronoKeeperExtractionChain> extractionModule;
 
     json_object* parsed_json = json_tokener_parse(extraction_module_json_1.c_str());
 
@@ -162,19 +152,19 @@ int main()
 
     json_object_put(parsed_json);
 
-    new_extractionModule.getExtractionChain().activate(*localEngine, extraction_config, localServiceId);
+    extractionModule.getExtractionChain().activate(localServiceId, localEngine, extraction_config);
 
-    new_extractionModule.initialize(extraction_config.extraction_stream_count);
+    extractionModule.initialize(extraction_config.extraction_stream_count);
 
-    if(!new_extractionModule.is_initialized())
+    if(!extractionModule.is_initialized())
     {
         std::cerr << "\n [ExtractionModuleConfiguration] ExtractionModule failed to initialize " << std::endl;
         return -1;
     }
 
-    chl::StoryChunkExtractionQueue& extractionQueue = new_extractionModule.getExtractionQueue();
+    chl::StoryChunkExtractionQueue& extractionQueue = extractionModule.getExtractionQueue();
 
-    new_extractionModule.startExtraction();
+    extractionModule.startExtraction();
 
     // 4. create chunk contributing threads
     std::thread contributors[contributor_threads];
@@ -203,7 +193,7 @@ int main()
     // 5. Test ExtractionModule shutdown
     LOG_INFO("[ExtractionModuleTest] Shutting down StoryChunkExtractionModule for {}", chl::to_string(localServiceId));
 
-    new_extractionModule.shutdownExtraction();
+    extractionModule.shutdownExtraction();
 
     delete localEngine;
     return 1;
