@@ -48,21 +48,19 @@ public:
     }
 
 
-    ConnectResponseMsg Connect(uint32_t client_euid, uint32_t client_host_ip, uint32_t client_pid)
+    ConnectResponseMsg Connect(uint32_t client_euid, ClientId proposed_client_id)
     {
-        LOG_DEBUG("[RpcVisorClient] Initiating connection for Account={}, HostID={}, PID={}, ProtocolVersion={}",
+        LOG_DEBUG("[RpcVisorClient] Initiating connection for Account={}, ClientID={}, ProtocolVersion={}",
                   client_euid,
-                  client_host_ip,
-                  client_pid,
+                  proposed_client_id,
                   chronolog::CLIENT_PROTOCOL_VERSION);
         try
         {
-            ConnectResponseMsg response = visor_connect.on(
-                    service_ph)(client_euid, client_host_ip, client_pid, chronolog::CLIENT_PROTOCOL_VERSION);
-            LOG_INFO("[RpcVisorClient] Connection successful for Account={}, HostID={}, PID={}",
+            ConnectResponseMsg response =
+                    visor_connect.on(service_ph)(client_euid, proposed_client_id, chronolog::CLIENT_PROTOCOL_VERSION);
+            LOG_INFO("[RpcVisorClient] Connection successful for Account={}, ClientID={}",
                      client_euid,
-                     client_host_ip,
-                     client_pid);
+                     proposed_client_id);
             return response;
         }
         catch(tl::exception const&)

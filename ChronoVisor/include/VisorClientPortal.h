@@ -45,11 +45,7 @@ public:
 
     void ShutdownServices();
 
-    int ClientConnect(uint32_t client_account,
-                      uint32_t client_host_ip,
-                      uint32_t client_pid,
-                      ClientId&,
-                      uint64_t& clock_offset);
+    int ClientConnect(uint32_t client_account, ClientId& client_id, uint64_t& clock_offset);
 
     int ClientDisconnect(ClientId const& client_id);
 

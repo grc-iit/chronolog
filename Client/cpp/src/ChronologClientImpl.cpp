@@ -1,10 +1,16 @@
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
 #include <limits.h>
 #include <mutex>
+#include <netdb.h>
+#include <netinet/in.h>
 #include <sstream>
 #include <string>
+#include <sys/socket.h>
 #include <unistd.h>
+
+#include <arpa/inet.h>
 
 #include <margo.h>
 #include <thallium.hpp>
@@ -48,16 +54,18 @@ chronolog::ChronologClientImpl::ChronologClientImpl(chronolog::ClientPortalServi
     : clientMode(clientMode)
     , clientState(UNKNOWN)
     , clientLogin("")
-    , hostId(0)
-    , pid(0)
+    , clientIdentity{}
     , clientId(0)
     , tlEngine(nullptr)
     , rpcVisorClient(nullptr)
     , storyteller(nullptr)
     , storyReaderService(nullptr)
 {
-
-    defineClientIdentity();
+    // For reader-mode clients, the local query service has a stable port; pin
+    // it into the ClientId so consumers can reach back to this client. Writer-
+    // only clients have no inbound port and report 0.
+    uint16_t query_port = (READER_MODE == clientMode) ? clientQueryServiceConf.PORT : uint16_t{0};
+    defineClientIdentity(query_port);
 
     if(WRITER_MODE == clientMode)
     {
@@ -88,7 +96,33 @@ chronolog::ChronologClientImpl::ChronologClientImpl(chronolog::ClientPortalServi
 
 ////////
 
-void chronolog::ChronologClientImpl::defineClientIdentity()
+// Resolve the host's primary IPv4 address in host byte order. Returns 0 if the
+// hostname does not resolve to an IPv4 address (e.g. air-gapped environments);
+// that's intentionally non-fatal — ClientId is still unique within a host
+// thanks to the pid-derived instance discriminator.
+static uint32_t resolve_local_ipv4()
+{
+    char hostname[HOST_NAME_MAX + 1] = {0};
+    if(gethostname(hostname, sizeof(hostname) - 1) != 0)
+    {
+        return 0;
+    }
+    struct addrinfo hints;
+    std::memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    struct addrinfo* res = nullptr;
+    if(getaddrinfo(hostname, nullptr, &hints, &res) != 0 || res == nullptr)
+    {
+        return 0;
+    }
+    auto const* sin = reinterpret_cast<struct sockaddr_in const*>(res->ai_addr);
+    uint32_t ip = ntohl(sin->sin_addr.s_addr);
+    freeaddrinfo(res);
+    return ip;
+}
+
+void chronolog::ChronologClientImpl::defineClientIdentity(uint16_t query_service_port)
 {
     euid = geteuid(); //TODO: effective uid might be a better choice than login name ...
 
@@ -97,15 +131,16 @@ void chronolog::ChronologClientImpl::defineClientIdentity()
 
     clientLogin = login_name; //this truncates login_name to the actual strlen...
 
-    //32bit host identifier
-    hostId = gethostid();
-    //32bit process id
-    pid = getpid();
-    LOG_INFO("[ChronologClientImpl] Client Identity - Login: {}, EUID: {}, HostID: {}, PID: {}",
+    clientIdentity.ip = resolve_local_ipv4();
+    clientIdentity.port = query_service_port;
+    clientIdentity.instance = static_cast<uint16_t>(getpid() & 0xFFFFu);
+
+    LOG_INFO("[ChronologClientImpl] Client Identity - Login: {}, EUID: {}, IP: {}, Port: {}, Instance: {}",
              clientLogin,
              euid,
-             hostId,
-             pid);
+             clientIdentity.ip,
+             clientIdentity.port,
+             clientIdentity.instance);
 }
 
 chronolog::ChronologClientImpl::~ChronologClientImpl()
@@ -148,7 +183,8 @@ int chronolog::ChronologClientImpl::Connect()
     }
 
 
-    auto connectResponseMsg = rpcVisorClient->Connect(euid, hostId, pid);
+    ClientId proposed_client_id = clientIdentity.pack();
+    auto connectResponseMsg = rpcVisorClient->Connect(euid, proposed_client_id);
 
     std::stringstream ss;
     ss << connectResponseMsg;
@@ -163,7 +199,6 @@ int chronolog::ChronologClientImpl::Connect()
         {
             storyteller = new StorytellerClient(clockProxy, *tlEngine, clientId);
         }
-        //TODO: if we ever change the connection hashing algorithm we'd need to handle reconnection case with the new client_id
     }
     else
     {

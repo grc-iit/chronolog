@@ -23,7 +23,7 @@ namespace chronolog
 // startTime/endTime are invariant
 
 typedef std::tuple<chrono_time, chrono_index> ArrivalSequence;
-typedef std::tuple<chrono_time, ClientId, chrono_index> EventSequence;
+// EventSequence is now defined in chronolog_client.h (re-exported here via include).
 
 class StoryChunk
 {

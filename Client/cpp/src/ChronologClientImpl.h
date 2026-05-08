@@ -88,8 +88,7 @@ private:
     ChronologClientState clientState;
     std::string clientLogin;
     uint32_t euid;
-    uint32_t hostId;
-    uint32_t pid;
+    ClientIdentity clientIdentity;
     ClientId clientId;
     ChronologTimer clockProxy;
     thallium::engine* tlEngine;
@@ -99,7 +98,7 @@ private:
 
     ChronologClientImpl(ClientPortalServiceConf const&, ClientMode const&, chronolog::ClientQueryServiceConf const&);
 
-    void defineClientIdentity();
+    void defineClientIdentity(uint16_t query_service_port);
 };
 } //namespace chronolog
 

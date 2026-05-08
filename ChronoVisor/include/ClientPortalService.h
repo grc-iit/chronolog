@@ -40,8 +40,7 @@ public:
 
     void Connect(tl::request const& request,
                  uint32_t client_account,
-                 uint32_t client_host_ip,
-                 uint32_t client_pid,
+                 ClientId proposed_client_id,
                  uint32_t client_protocol_version)
     {
         if(client_protocol_version != chronolog::CLIENT_PROTOCOL_VERSION)
@@ -53,10 +52,9 @@ public:
             return;
         }
 
-        ClientId client_id;
+        ClientId client_id = proposed_client_id;
         uint64_t clock_offset;
-        int return_code =
-                theVisorClientPortal.ClientConnect(client_account, client_host_ip, client_pid, client_id, clock_offset);
+        int return_code = theVisorClientPortal.ClientConnect(client_account, client_id, clock_offset);
         if(chronolog::CL_SUCCESS == return_code)
         {
             request.respond(ConnectResponseMsg(chronolog::CL_SUCCESS, client_id));
