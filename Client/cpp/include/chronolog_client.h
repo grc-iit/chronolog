@@ -1,6 +1,7 @@
 #ifndef CHRONOLOG_CLIENT_H
 #define CHRONOLOG_CLIENT_H
 
+#include <functional>
 #include <string>
 #include <vector>
 #include <map>
@@ -156,6 +157,17 @@ public:
                     uint64_t start,
                     uint64_t end,
                     std::vector<Event>& event_series);
+
+    // Streaming overload: invoke `callback` once per event in the requested
+    // [start, end) range as the response arrives, with no intermediate
+    // vector allocation. The callback is invoked on the query service
+    // receive thread; the caller is responsible for any locking it needs.
+    using EventCallback = std::function<void(Event const&)>;
+    int ReplayStory(std::string const& chronicle,
+                    std::string const& story,
+                    uint64_t start,
+                    uint64_t end,
+                    EventCallback callback);
 
 private:
     ChronologClientImpl* chronologClientImpl;

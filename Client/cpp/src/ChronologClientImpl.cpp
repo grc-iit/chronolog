@@ -619,4 +619,28 @@ int chronolog::ChronologClientImpl::replay_story(chronolog::ChronicleName const&
 
     return storyReaderService->replay_story(chronicle, story, start, end, event_series);
 }
+
+int chronolog::ChronologClientImpl::replay_story(chronolog::ChronicleName const& chronicle,
+                                                 chronolog::StoryName const& story,
+                                                 uint64_t start,
+                                                 uint64_t end,
+                                                 chronolog::Client::EventCallback callback)
+{
+    if(WRITER_MODE == clientMode)
+    {
+        return chl::CL_ERR_NOT_READER_MODE;
+    }
+
+    if(nullptr == storyReaderService)
+    {
+        return chronolog::CL_ERR_NO_PLAYERS;
+    }
+
+    if(!callback)
+    {
+        return chronolog::CL_ERR_INVALID_ARG;
+    }
+
+    return storyReaderService->replay_story(chronicle, story, start, end, std::move(callback));
+}
 //////////////////////////////

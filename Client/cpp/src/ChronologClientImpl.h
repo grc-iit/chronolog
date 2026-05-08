@@ -83,6 +83,9 @@ public:
     int
     replay_story(ChronicleName const&, StoryName const&, uint64_t start, uint64_t end, std::vector<Event>& eventSeries);
 
+    int
+    replay_story(ChronicleName const&, StoryName const&, uint64_t start, uint64_t end, Client::EventCallback callback);
+
 private:
     ClientMode clientMode;
     ChronologClientState clientState;

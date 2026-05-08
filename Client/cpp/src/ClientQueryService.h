@@ -24,7 +24,11 @@ struct PlaybackQueryResponse;
 
 struct PlaybackQuery
 {
-    std::vector<Event>& eventSeries;
+    // Exactly one of `eventSeries` or `callback` is set: vector mode appends
+    // to the user-provided vector; callback mode invokes the function once
+    // per event as the response arrives.
+    std::vector<Event>* eventSeries;
+    Client::EventCallback callback;
     uint32_t queryId;
     uint64_t timeout_time;
     bool completed;
@@ -40,7 +44,26 @@ struct PlaybackQuery
                   StoryName const& story,
                   chrono_time const& start,
                   chrono_time const& end)
-        : eventSeries(playbackEvents)
+        : eventSeries(&playbackEvents)
+        , callback()
+        , queryId(query_id)
+        , timeout_time(timeout_time)
+        , completed(false)
+        , chronicleName(chronicle)
+        , storyName(story)
+        , startTime(start)
+        , endTime(end)
+    {}
+
+    PlaybackQuery(Client::EventCallback cb,
+                  uint32_t query_id,
+                  uint64_t timeout_time,
+                  ChronicleName const& chronicle,
+                  StoryName const& story,
+                  chrono_time const& start,
+                  chrono_time const& end)
+        : eventSeries(nullptr)
+        , callback(std::move(cb))
         , queryId(query_id)
         , timeout_time(timeout_time)
         , completed(false)
@@ -84,6 +107,9 @@ public:
                      uint64_t end,
                      std::vector<Event>& replay_events);
 
+    int
+    replay_story(ChronicleName const&, StoryName const&, uint64_t start, uint64_t end, Client::EventCallback callback);
+
 private:
     ClientQueryService(thallium::engine& tl_engine, ServiceId const&);
 
@@ -101,7 +127,17 @@ private:
                                chrono_time const&,
                                chrono_time const&,
                                std::vector<Event>&);
+    PlaybackQuery* start_query(uint64_t,
+                               ChronicleName const&,
+                               StoryName const&,
+                               chrono_time const&,
+                               chrono_time const&,
+                               Client::EventCallback callback);
     void stop_query(uint32_t);
+
+    // Issue the playback request to the player and block on the query's
+    // completion or timeout. Common to both replay_story overloads.
+    int dispatch_query(PlaybackQuery* query, PlaybackQueryRpcClient* playbackRpcClient);
 
     int deserializeResponse(char* buffer, size_t size, PlaybackQueryResponse& response);
     thallium::engine queryServiceEngine;
