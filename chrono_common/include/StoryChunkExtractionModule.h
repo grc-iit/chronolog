@@ -100,8 +100,6 @@ public:
         // while state== RUNNING keep draining the queue
         // or waiting if the queue is empty
 
-        int extraction_result;
-
         while(state == RUNNING)
         {
             if(!chunkExtractionQueue.empty())
@@ -123,20 +121,11 @@ public:
                               story_chunk->getEndTime(),
                               story_chunk->getEventCount());
 
-                    extraction_result = theExtractionChain.process_chunk(story_chunk);
-                    // INNA: commented out lines are temporary to get the existing PR
-                    // past the CI deployment check
-                    // more nuanced handling of intermitent communication outtage
+                    theExtractionChain.process_chunk(story_chunk);
+
+                    // handling of intermitent communication outtage
                     // will be addressed in the follow-up issue #635
-                    //if(CL_SUCCESS == extraction_result)
-                    { // free the story_chunk memory or
-                        // return it to the pool of prealocated chunks
-                        delete story_chunk;
-                    }
-                    // else
-                    // { //return the story_chunk to the extractionQueue and try again later
-                    //     chunkExtractionQueue.stashStoryChunk(story_chunk);
-                    // }
+                    delete story_chunk;
                 }
             }
             else
@@ -217,13 +206,13 @@ public:
                       story_chunk->getEndTime(),
                       story_chunk->getEventCount());
 
-            //try to extract the chunk 5 times before giving up
+/*            //try to extract the chunk 5 times before giving up
             int extraction_result = CL_ERR_UNKNOWN;
             int tries = 0;
             while(CL_SUCCESS != extraction_result && (tries < 5))
             {
                 tries++;
-                extraction_result = theExtractionChain.process_chunk(story_chunk);
+                theExtractionChain.process_chunk(story_chunk);
             }
 
             if(CL_SUCCESS == extraction_result)
@@ -244,7 +233,7 @@ public:
                           story_chunk->getStartTime(),
                           story_chunk->getEndTime());
             }
-
+*/
             delete story_chunk;
         }
         // join and stop threads & executionstreams

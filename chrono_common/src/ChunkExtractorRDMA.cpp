@@ -40,11 +40,12 @@ chronolog::StoryChunkExtractorRDMA::StoryChunkExtractorRDMA(StoryChunkExtractorR
 
     sender_tl_engine = other.get_sender_engine();
     receiver_service_id = other.get_receiver_service_id();
-    rdma_sender = other.get_rdma_sender();
+    rdma_sender = other.rdma_sender;
 
     LOG_TRACE("[ChunkExtractorRDMA] move constructor: using rdma_sender for receiver_service {} ", chl::to_string(receiver_service_id));
-    other.clear_engine_reference(); // sender_tl_engine();
-    other.clear_rdma_sender_reference(); // sender_tl_engine();
+
+    other.sender_tl_engine = nullptr;
+    other.rdma_sender = nullptr;
 }
 
 chl::StoryChunkExtractorRDMA& chronolog::StoryChunkExtractorRDMA::operator=(StoryChunkExtractorRDMA && other)
@@ -56,11 +57,12 @@ chl::StoryChunkExtractorRDMA& chronolog::StoryChunkExtractorRDMA::operator=(Stor
     
     sender_tl_engine = other.get_sender_engine();
     receiver_service_id = other.get_receiver_service_id();
-    rdma_sender = other.get_rdma_sender();
+    rdma_sender = other.rdma_sender;
+
     LOG_TRACE("[ChunkExtractorRDMA] move operator: using rdma_sender for receiver_service {} ",chl::to_string(receiver_service_id));
 
-    other.clear_engine_reference(); // sender_tl_engine();
-    other.clear_rdma_sender_reference(); // sender_tl_engine();
+    other.sender_tl_engine = nullptr;
+    other.rdma_sender = nullptr;
     return *this;
 }
 
