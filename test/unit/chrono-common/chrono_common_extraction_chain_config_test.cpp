@@ -96,7 +96,7 @@ int test_csv_extractor_config()
     return return_value;
 }
 
-int test_rdma_extractor_config(tl::engine& tl_engine, std::string const& json_string)
+int test_rdma_extractor_config(tl::engine* tl_engine, std::string const& json_string)
 {
     json_object* parsed_json = json_tokener_parse(json_string.c_str());
 
@@ -169,7 +169,7 @@ int main()
     }
 
 
-    test_ret_value = test_rdma_extractor_config(*localEngine, rdma_extractor_json_string);
+    test_ret_value = test_rdma_extractor_config(localEngine, rdma_extractor_json_string);
     if(test_ret_value == chl::CL_SUCCESS)
     {
         std::cout << "\n [ExtractionModuleConfiguration] Test 2 rdma_extractor_config:" << " passed " << std::endl;
@@ -225,6 +225,8 @@ int main()
     std::cout << "\n [ExtractionModuleConfiguration] Test borowed reference stage:" << " passed :"
               << module_config.to_string(log_string) << std::endl;
 
+
+    if(localEngine != nullptr) { delete localEngine;}
 
     return return_value;
 }
