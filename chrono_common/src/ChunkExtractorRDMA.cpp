@@ -225,6 +225,8 @@ int chronolog::StoryChunkExtractorRDMA::process_chunk(chronolog::StoryChunk* sto
                     "[ChunkExtractorRDMA] Failed to transfer StoryChunk StoryId={} StartTime={}, no valid rdma_sender",
                     story_chunk->getStoryId(),
                     story_chunk->getStartTime());
+
+	    stash_to_outage_buffer(story_chunk);
             return chl::CL_ERR_STORY_CHUNK_EXTRACTION;
         }
 
@@ -246,6 +248,7 @@ int chronolog::StoryChunkExtractorRDMA::process_chunk(chronolog::StoryChunk* sto
             LOG_ERROR("[ChunkExtractorRDMA] Failed to transfer StoryChunk StoryId={} StartTime={}",
                       story_chunk->getStoryId(),
                       story_chunk->getStartTime());
+	    stash_to_outage_buffer(story_chunk);
         }
 
         return transfer_return;
@@ -271,5 +274,26 @@ int chronolog::StoryChunkExtractorRDMA::process_chunk(chronolog::StoryChunk* sto
                   story_chunk->getStartTime());
     }
 
+    stash_to_outage_buffer(story_chunk);
     return chl::CL_ERR_STORY_CHUNK_EXTRACTION;
+}
+
+void chronolog::StoryChunkExtractorRDMA::stash_to_outage_buffer(StoryChunk* chunk)
+{
+
+}
+void chronolog::StoryChunkExtractorRDMA::flush_outage_buffer()
+{
+/*     StoryChunk * chunk = nullptr;
+     //try to extract the chunk 5 times before giving up
+     int extraction_result = CL_ERR_UNKNOWN;
+     int tries = 0;
+     while(CL_SUCCESS != extraction_result && (tries < 5))
+     {
+         tries++;
+         extraction_result = process_chunk(chunk);
+     }
+
+     delete chunk;
+     */
 }

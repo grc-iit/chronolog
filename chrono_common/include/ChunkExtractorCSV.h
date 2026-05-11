@@ -28,6 +28,9 @@ public:
 
     bool is_active() const { return (std::filesystem::exists(outputDirectory)); }
 
+    void stash_to_outage_buffer(StoryChunk* chunk) {}
+    void flush_outage_buffer() {}
+
 private:
     ServiceId serviceId;
     std::string outputDirectory;

@@ -114,3 +114,9 @@ int chronolog::HDF5FileChunkExtractor::process_chunk(chl::StoryChunk* story_chun
         return chl::CL_SUCCESS;
     }
 }
+
+////
+
+void chronolog::HDF5FileChunkExtractor::stash_to_outage_buffer(StoryChunk* chunk) {}
+void chronolog::HDF5FileChunkExtractor::flush_outage_buffer() {}
+

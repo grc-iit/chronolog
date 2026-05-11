@@ -363,12 +363,22 @@ int chronolog::DualEndpointChunkExtractorRDMA::reset(json_object* json_block)
 
 int chronolog::DualEndpointChunkExtractorRDMA::reset_player_endpoint(chl::ServiceId const& receiver_player)
 {
-
+//INNA
     return chl::CL_SUCCESS;
 }
 
 int chronolog::DualEndpointChunkExtractorRDMA::reset_grapher_endpoint(chl::ServiceId const& receiver_grapher)
 {
-
+//INNA
     return chl::CL_SUCCESS;
+}
+
+void chronolog::DualEndpointChunkExtractorRDMA::stash_to_outage_buffer(chl::StoryChunk* chunk)
+{
+//INNA
+}
+
+void chronolog::DualEndpointChunkExtractorRDMA::flush_outage_buffer()
+{
+//INNA
 }

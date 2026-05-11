@@ -77,23 +77,13 @@ public:
      return chl::CL_SUCCESS;
     }
 
-    int process_chunk(chl::StoryChunk* chunk)
+    void process_chunk(chl::StoryChunk* chunk)
     {
-        int chain_result = chl::CL_SUCCESS;
-
-        // If extractor fails, mark the chain result as a failure,
-        // but keep going for the others.
         for(auto& e: theExtractors)
         {
-            int extractor_result =
-                    std::visit([chunk](auto& extractor) -> int { return extractor.process_chunk(chunk); }, e);
-
-            if(chl::CL_SUCCESS != extractor_result)
-            {
-                chain_result = extractor_result;
-            }
+            std::visit([chunk](auto& extractor)
+	       { extractor.process_chunk(chunk); }, e);
         }
-        return chain_result;
     }
 
     bool is_active_chain() const
@@ -115,6 +105,15 @@ public:
         }
 
         return true;
+    }
+
+    void flush_outage_buffers( )
+    {
+        for(auto& e: theExtractors)
+        {
+            std::visit([](auto& extractor)
+	       { extractor.flush_outage_buffer(); }, e);
+        }
     }
 };
 

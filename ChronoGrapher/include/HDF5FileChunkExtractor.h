@@ -23,6 +23,9 @@ public:
 
     bool is_active() const { return (std::filesystem::exists(rootDirectory)); }
 
+    void stash_to_outage_buffer(StoryChunk* chunk);
+    void flush_outage_buffer();
+
 private:
     std::string rootDirectory;
 };

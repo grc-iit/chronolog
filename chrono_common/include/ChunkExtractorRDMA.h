@@ -38,6 +38,9 @@ public:
 
     bool is_active() const { return (nullptr != rdma_sender); }
 
+    void stash_to_outage_buffer(StoryChunk* chunk); 
+    void flush_outage_buffer();
+
 private:
     tl::engine* sender_tl_engine;  // local tl::engine
     ServiceId receiver_service_id; // receiving ServiceId

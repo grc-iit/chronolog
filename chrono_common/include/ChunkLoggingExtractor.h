@@ -29,6 +29,10 @@ public:
     }
 
     bool is_active() const { return true; }
+
+    void stash_to_outage_buffer(StoryChunk* chunk) {}
+    void flush_outage_buffer() {}
+
 };
 
 } // namespace chronolog

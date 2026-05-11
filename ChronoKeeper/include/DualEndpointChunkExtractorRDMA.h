@@ -38,6 +38,9 @@ public:
 
     bool is_active() const { return (nullptr != rdma_sender_for_grapher) && (nullptr != rdma_sender_for_player); }
 
+    void stash_to_outage_buffer(StoryChunk*);
+    void flush_outage_buffer();
+
 private:
     tl::engine * sender_tl_engine;          // sender local tl::engine
     ServiceId player_receiver_service_id;  // ChronoGrapher receiving ServiceId
