@@ -1,0 +1,99 @@
+[chronolog no-op profiling mode validation]
+time=2026-05-11T22:38:54-05:00
+-- CMAKE_BUILD_TYPE=Release
+-- CMAKE_INSTALL_PREFIX=/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent
+-- Compiling ChronoLog in Release Mode
+-- Found pybind11: /mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-pybind11-2.13.5-pngixx5435xneyfvuuj4mtxcevckdu6y/include (found version "2.13.5")
+-- Found pybind11 v2.13.5:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-pybind11-2.13.5-pngixx5435xneyfvuuj4mtxcevckdu6y/include;/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/python-3.11.9-zg4555ebtlzblojgppzbgh6ofod6wfgs/include/python3.11
+-- ChronoKVS: superbuild mode enabled
+-- Performance regression harness CMake file not present; skipping test/performance
+-- CPack: rpmbuild not found — RPM packages will be skipped
+-- CPack: dpkg-deb found at /usr/bin/dpkg-deb — DEB packages will be built
+-- Configuring done (7.8s)
+-- Generating done (0.1s)
+-- Build files have been written to: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/build-consistent/Release
+[ 11%] Built target chronolog_client
+[ 26%] Built target chrono_common
+[ 29%] Built target client_lib_basic_example
+[ 32%] Built target client_lib_reader_example
+[ 35%] Built target py_chronolog_client
+[ 38%] Built target client_lib_writer_example
+[ 44%] Built target client_lib_distributed_telemetry_writer_example
+[ 44%] Built target client_lib_reader_to_csv_example
+[ 51%] Built target chrono_keeper
+[ 63%] Built target chronovisor_server
+[ 69%] Built target chronokvs
+[ 76%] Built target chrono_grapher
+[ 79%] Built target perf_bench
+[ 82%] Built target client_cli
+[ 94%] Built target chrono_player
+[ 97%] Built target chronokvs_writer_example
+[100%] Built target chronokvs_reader_example
+-- Install configuration: "Release"
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/lib/libchronolog_client.so.2.7.0
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/lib/libchronolog_client.so.2
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/lib/libchronolog_client.so
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/include/chronolog_client.h
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/include/ClientConfiguration.h
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/include/client_errcode.h
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/include/log_level.h
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/include/chrono_monitor.h
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/include/chronolog_profile.h
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/lib/cmake/Chronolog/ChronologTargets.cmake
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/lib/cmake/Chronolog/ChronologTargets-release.cmake
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/default-chrono-client-conf.json
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/lib/py_chronolog_client.cpython-311-x86_64-linux-gnu.so
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/examples/chrono-client-example-writer
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/examples/chrono-client-example-reader
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/examples/chrono-client-example-basic
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/examples/chrono-client-example-distributed-telemetry-writer
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/examples/chrono-client-example-reader-to-csv
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/bin/chrono-visor
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/default-chrono-conf.json
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/bin/chrono-keeper
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/bin/chrono-grapher
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/bin/chrono-player
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/cli/chrono-client-cli
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/examples/chrono-chronokvs-example-writer
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/examples/chrono-chronokvs-example-reader
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/lib/libchronokvs.so.2.7.0
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/lib/libchronokvs.so.2
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/lib/libchronokvs.so
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/include/chronokvs.h
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/include/chronokvs_logger.h
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/include/chronokvs_types.h
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/lib/cmake/Chronolog/ChronologConfig.cmake
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/lib/cmake/Chronolog/ChronologConfigVersion.cmake
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/lib/pkgconfig/chronolog.pc
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/include/chronolog/version.h
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/LICENSE
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/README.md
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/deploy/deploy_local.sh
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/deploy/deploy_cluster.sh
+	linux-vdso.so.1 (0x00007ffc62c82000)
+	libchronolog_client.so.2 => /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/lib/libchronolog_client.so.2 (0x00007f70398f7000)
+	libmargo.so.0 => /mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/mochi-margo-0.17.0-llh62sixeqcv7lymwbh6tqz5goqr4ler/lib/libmargo.so.0 (0x00007f70398c1000)
+	libmercury.so.2 => /mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/mercury-2.3.1-kcmn6u3qyvg54ckavanidt6tbffn7gb3/lib/libmercury.so.2 (0x00007f703988a000)
+	libabt.so.1 => /mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/argobots-1.1-indjy5qf2zbywf5oihcq7po6c2fixlxh/lib/libabt.so.1 (0x00007f7039860000)
+	libjson-c.so.5 => /mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/json-c-0.16-2ofsb6tqror3evils2dudzcoivsjmheg/lib/libjson-c.so.5 (0x00007f703984d000)
+	libstdc++.so.6 => /mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/gcc-runtime-11.4.0-owu4kv5u3pwyjw4pj6pl36rnjkxdjimi/lib/libstdc++.so.6 (0x00007f7039621000)
+	libgcc_s.so.1 => /mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/gcc-runtime-11.4.0-owu4kv5u3pwyjw4pj6pl36rnjkxdjimi/lib/libgcc_s.so.1 (0x00007f7039601000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007f70393c1000)
+	libspdlog.so.1.14 => /mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/spdlog-1.14.1-y4quhaucnh6gslkgaat6nbqjh5sjcowg/lib/libspdlog.so.1.14 (0x00007f7039320000)
+	libmchecksum.so.2 => /mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/mercury-2.3.1-kcmn6u3qyvg54ckavanidt6tbffn7gb3/lib/libmchecksum.so.2 (0x00007f703931a000)
+	libna.so.4 => /mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/mercury-2.3.1-kcmn6u3qyvg54ckavanidt6tbffn7gb3/lib/libna.so.4 (0x00007f70392e4000)
+	libmercury_util.so.4 => /mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/mercury-2.3.1-kcmn6u3qyvg54ckavanidt6tbffn7gb3/lib/libmercury_util.so.4 (0x00007f70392d4000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007f70399d9000)
+	libm.so.6 => /lib/x86_64-linux-gnu/libm.so.6 (0x00007f70391ed000)
+	libfabric.so.1 => /mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libfabric-1.22.0-eclvajkq7piki37srfyc3acxaecn73hu/lib/libfabric.so.1 (0x00007f70390c8000)
+	librdmacm.so.1 => /mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/rdma-core-52.0-oflqvy56v24xvtansfcgkcgs3h3kj4tp/lib/librdmacm.so.1 (0x00007f70390a5000)
+	libibverbs.so.1 => /mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/rdma-core-52.0-oflqvy56v24xvtansfcgkcgs3h3kj4tp/lib/libibverbs.so.1 (0x00007f7039082000)
+	libnl-3.so.200 => /mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libnl-3.3.0-xztyu5vvndftp3evrwsglv2otlct5fb7/lib/libnl-3.so.200 (0x00007f703905e000)
+	libnl-route-3.so.200 => /mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libnl-3.3.0-xztyu5vvndftp3evrwsglv2otlct5fb7/lib/libnl-route-3.so.200 (0x00007f7038fe5000)
+chronolog no-op profiling mode validation: ok
+time=2026-05-11T22:39:04-05:00
+
+[no-op profiling checkpoint validation]
+2026-05-11T22:39:39-05:00
+no-op profiling checkpoint validation: ok

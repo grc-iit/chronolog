@@ -1,0 +1,3 @@
+Python bindings enabled
+Building CMAKE_CURRENT_SOURCE_DIR=/home/jcernudagarcia/chronolog-opt/chronolog/ChronoStore
+build target : chrono_store

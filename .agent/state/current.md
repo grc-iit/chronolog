@@ -1,7 +1,7 @@
 # Current State
 
-- current task: add no-op profiling mode
+- current task: add coarse semantic regions
 - commands running: none
-- last successful validation: TAU-backed ChronoLog profiling mode built and installed; evidence in `.agent/results/20260511-223430/chronolog/stdout.log`, `.agent/results/20260511-223430/chronolog/chrono-visor.tau.ldd`, and `.agent/results/chronolog-tau-profiling-mode.md`
+- last successful validation: no-op profiling mode built and installed without TAU dependency; evidence in `.agent/results/20260511-223810/chronolog/stdout.log`, `.agent/results/20260511-223810/chronolog/chrono-visor.noop.ldd`, and `.agent/results/chronolog-noop-profiling-mode.md`
 - current blocker: perf runtime events and eBPF-based observability require cluster/admin permission changes for later profiling-output validation
-- next intended step: validate that default builds still use the no-op profiling mode and do not link TAU
+- next intended step: add coarse semantic `CL_PROFILE_REGION` and `CL_PROFILE_COUNTER` call sites around ChronoLog append, query, serialization, keeper, grapher, and storage paths
