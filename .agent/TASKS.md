@@ -55,6 +55,7 @@ This is not a performance-optimization phase. The goal is to make the full measu
 - [x] Explore bundled Mofka benchmark tooling and record whether it can drive Phase 0.
 - [x] Create Mofka launch script.
 - [x] Create Mofka stop/cleanup script.
+- [x] Validate Mofka local smoke launch and Bedrock provider query.
 - [ ] Run selected benchmark/workflow against Mofka.
 - [ ] Collect Mofka baseline throughput/latency.
 - [ ] Confirm no Mofka source changes were made.
@@ -65,7 +66,7 @@ This is not a performance-optimization phase. The goal is to make the full measu
 - [x] Define configuration surfaces that must be captured for ChronoLog, Kafka, and Mofka.
 - [ ] Capture per-run configuration manifest for ChronoLog.
 - [ ] Capture per-run configuration manifest for Kafka.
-- [ ] Capture per-run configuration manifest for Mofka.
+- [x] Capture per-run configuration manifest for Mofka local smoke.
 - [ ] Record RDMA/RoCE and Linux network measurement evidence for distributed runs.
 - [ ] Justify selected ChronoLog, Kafka, and Mofka configurations in the final Phase 0 report.
 

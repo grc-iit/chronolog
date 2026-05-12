@@ -83,11 +83,15 @@ MOFKA_RESULT_DIR="${RESULT_DIR}/mofka"
 MOFKA_LOG_DIR="${MOFKA_RESULT_DIR}/logs"
 MOFKA_PID_DIR="${MOFKA_RESULT_DIR}/pids"
 GROUP_FILE="${MOFKA_RESULT_DIR}/mofka.json"
+STORAGE_COUNT=$(( NODE_COUNT > 1 ? NODE_COUNT - 1 : 1 ))
+SERVER_PROCESS_COUNT=$(( STORAGE_COUNT + 1 ))
 
 mkdir -p "${CONFIG_DIR}" "${MOFKA_LOG_DIR}" "${MOFKA_PID_DIR}"
 
 exec > >(tee -a "${MOFKA_RESULT_DIR}/stdout.log")
 exec 2> >(tee -a "${MOFKA_RESULT_DIR}/stderr.log" >&2)
+
+mofka_export_spack_runtime_env
 
 mofka_command_summary > "${CONFIG_DIR}/mofka-command-paths.txt"
 mofka_require_commands
@@ -175,7 +179,30 @@ MOFKA_STORAGE_CONFIG='${STORAGE_CONFIG}'
 MOFKA_PROTOCOL='${PROTOCOL}'
 MOFKA_DEPLOYMENT_MODE='${DEPLOYMENT_MODE}'
 MOFKA_NODE_COUNT='${NODE_COUNT}'
+MOFKA_SPACK_SPEC='${MOFKA_SPACK_SPEC:-mofka@0.6.4+python~mpi~benchmark~kafka}'
 EOF
+
+{
+  echo "deployment_mode=${DEPLOYMENT_MODE}"
+  echo "node_count=${NODE_COUNT}"
+  echo "server_process_count=${SERVER_PROCESS_COUNT}"
+  echo "storage_process_count=${STORAGE_COUNT}"
+  echo "protocol=${PROTOCOL}"
+  echo "group_file=${GROUP_FILE}"
+  echo "master_config=${MASTER_CONFIG}"
+  echo "storage_config=${STORAGE_CONFIG}"
+  echo "mofka_spack_spec=${MOFKA_SPACK_SPEC:-mofka@0.6.4+python~mpi~benchmark~kafka}"
+  echo "bedrock=$(command -v bedrock)"
+  echo "mofkactl=$(command -v mofkactl)"
+  echo "hostname=$(hostname)"
+  echo "slurm_job_id=${SLURM_JOB_ID:-}"
+  echo "slurm_job_nodelist=${SLURM_JOB_NODELIST:-}"
+  echo "ld_library_path_file=${CONFIG_DIR}/mofka-ld-library-path.txt"
+  echo "pythonpath_file=${CONFIG_DIR}/mofka-pythonpath.txt"
+} > "${CONFIG_DIR}/mofka-config-manifest.env"
+
+printf '%s\n' "${LD_LIBRARY_PATH:-}" | tr ':' '\n' > "${CONFIG_DIR}/mofka-ld-library-path.txt"
+printf '%s\n' "${PYTHONPATH:-}" | tr ':' '\n' > "${CONFIG_DIR}/mofka-pythonpath.txt"
 
 echo "Mofka result directory: ${RESULT_DIR}"
 echo "Deployment mode: ${DEPLOYMENT_MODE}"
@@ -191,7 +218,7 @@ if [[ "${DEPLOYMENT_MODE}" == "bare_metal" && "${NODE_COUNT}" -gt 1 ]]; then
     > "${MOFKA_LOG_DIR}/mofka-master.stdout.log" \
     2> "${MOFKA_LOG_DIR}/mofka-master.stderr.log" &
 else
-  bedrock "${PROTOCOL}" -c "${MASTER_CONFIG}" \
+  nohup bedrock "${PROTOCOL}" -c "${MASTER_CONFIG}" \
     > "${MOFKA_LOG_DIR}/mofka-master.stdout.log" \
     2> "${MOFKA_LOG_DIR}/mofka-master.stderr.log" &
 fi
@@ -204,18 +231,27 @@ if ! mofka_wait_for_file "${GROUP_FILE}" "${WAIT_SECONDS}"; then
   exit 1
 fi
 
-STORAGE_COUNT=$(( NODE_COUNT > 1 ? NODE_COUNT - 1 : 1 ))
 for storage_index in $(seq 1 "${STORAGE_COUNT}"); do
   if [[ "${DEPLOYMENT_MODE}" == "bare_metal" && "${NODE_COUNT}" -gt 1 ]]; then
     srun --nodes=1 --ntasks=1 bedrock "${PROTOCOL}" -c "${STORAGE_CONFIG}" \
       > "${MOFKA_LOG_DIR}/mofka-storage-${storage_index}.stdout.log" \
       2> "${MOFKA_LOG_DIR}/mofka-storage-${storage_index}.stderr.log" &
   else
-    bedrock "${PROTOCOL}" -c "${STORAGE_CONFIG}" \
+    nohup bedrock "${PROTOCOL}" -c "${STORAGE_CONFIG}" \
       > "${MOFKA_LOG_DIR}/mofka-storage-${storage_index}.stdout.log" \
       2> "${MOFKA_LOG_DIR}/mofka-storage-${storage_index}.stderr.log" &
   fi
   echo "$!" > "${MOFKA_PID_DIR}/mofka-storage-${storage_index}.pid"
+done
+
+sleep 2
+for pid_file in "${MOFKA_PID_DIR}"/*.pid; do
+  process_name="$(basename "${pid_file}" .pid)"
+  process_id="$(cat "${pid_file}")"
+  if ! kill -0 "${process_id}" >/dev/null 2>&1; then
+    echo "${process_name} exited during startup; inspect ${MOFKA_LOG_DIR}/${process_name}.stderr.log" >&2
+    exit 1
+  fi
 done
 
 echo "Mofka fixed baseline is running"

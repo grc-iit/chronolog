@@ -1,0 +1,6 @@
+# [700814.680872] mercury->cls [error] /tmp/jcernudagarcia/spack-stage/spack-stage-mercury-2.4.1-yeqyucvxjv42dv3s2lyav6goazrsnxbr/spack-src/src/na/na_sm.c:2386 na_sm_endpoint_close() Unexpected msg queue should be empty
+# [700814.680917] mercury->cls [error] /tmp/jcernudagarcia/spack-stage/spack-stage-mercury-2.4.1-yeqyucvxjv42dv3s2lyav6goazrsnxbr/spack-src/src/na/na_sm.c:4351 na_sm_finalize() Could not close endpoint
+# [700814.680925] mercury->cls [error] /tmp/jcernudagarcia/spack-stage/spack-stage-mercury-2.4.1-yeqyucvxjv42dv3s2lyav6goazrsnxbr/spack-src/src/na/na.c:972 NA_Finalize() Could not finalize plugin
+# [700814.680934] mercury->cls [error] /tmp/jcernudagarcia/spack-stage/spack-stage-mercury-2.4.1-yeqyucvxjv42dv3s2lyav6goazrsnxbr/spack-src/src/mercury_core.c:1487 hg_core_finalize() Could not finalize NA class (NA_BUSY)
+# [700814.680941] mercury->cls [error] /tmp/jcernudagarcia/spack-stage/spack-stage-mercury-2.4.1-yeqyucvxjv42dv3s2lyav6goazrsnxbr/spack-src/src/mercury_core.c:6171 HG_Core_finalize() Cannot finalize HG core class (0x5644fea29e80)
+# [700814.680949] mercury->cls [error] /tmp/jcernudagarcia/spack-stage/spack-stage-mercury-2.4.1-yeqyucvxjv42dv3s2lyav6goazrsnxbr/spack-src/src/mercury.c:1115 HG_Finalize() Could not finalize HG core class

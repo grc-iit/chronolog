@@ -29,6 +29,46 @@ mofka_command_summary() {
   } | sed '/^$/d'
 }
 
+mofka_prepend_path() {
+  local var_name="$1"
+  local entry="$2"
+  local current_value="${!var_name:-}"
+
+  [[ -d "${entry}" ]] || return 0
+
+  case ":${current_value}:" in
+    *":${entry}:"*) ;;
+    *)
+      if [[ -n "${current_value}" ]]; then
+        export "${var_name}=${entry}:${current_value}"
+      else
+        export "${var_name}=${entry}"
+      fi
+      ;;
+  esac
+}
+
+mofka_export_spack_runtime_env() {
+  local spec="${MOFKA_SPACK_SPEC:-mofka@0.6.4+python~mpi~benchmark~kafka}"
+
+  if ! command -v spack >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if ! command -v bedrock >/dev/null 2>&1 || ! command -v mofkactl >/dev/null 2>&1; then
+    eval "$(spack load --sh "${spec}")"
+  fi
+
+  local prefix
+  while IFS= read -r prefix; do
+    [[ -n "${prefix}" ]] || continue
+    mofka_prepend_path PATH "${prefix}/bin"
+    mofka_prepend_path LD_LIBRARY_PATH "${prefix}/lib"
+    mofka_prepend_path LD_LIBRARY_PATH "${prefix}/lib64"
+    mofka_prepend_path PYTHONPATH "${prefix}/lib/python3.11/site-packages"
+  done < <(spack find -dp "${spec}" | awk '$NF ~ /^\// {print $NF}')
+}
+
 mofka_require_commands() {
   local missing=0
   for command_name in bedrock mofkactl; do
