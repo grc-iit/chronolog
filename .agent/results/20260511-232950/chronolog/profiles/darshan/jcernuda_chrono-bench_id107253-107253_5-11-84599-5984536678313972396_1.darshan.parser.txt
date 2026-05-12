@@ -1,0 +1,396 @@
+# darshan log version: 3.41
+# compression method: ZLIB
+# exe: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench -c /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json -w -h 1 -t 1 -a 32 -s 64 -b 128 -n 5 -p
+# uid: 1008
+# jobid: 107253
+# start_time: 1778560199
+# start_time_asci: Mon May 11 23:29:59 2026
+# end_time: 1778560199
+# end_time_asci: Mon May 11 23:29:59 2026
+# nprocs: 1
+# run time: 0.0846
+# metadata: lib_ver = 3.4.6
+# metadata: h = romio_no_indep_rw=true;cb_nodes=4
+
+# log file regions
+# -------------------------------------------------------
+# header: 1328 bytes (uncompressed)
+# job data: 651 bytes (compressed)
+# record table: 241 bytes (compressed)
+# POSIX module: 152 bytes (compressed), ver=4
+# STDIO module: 163 bytes (compressed), ver=2
+# HEATMAP module: 67 bytes (compressed), ver=1
+
+# mounted file systems (mount point and fs type)
+# -------------------------------------------------------
+# mount entry:	/var/lib/docker/overlay2/8a95967f48d68ce0ac723931255a2e8b27b1c778b5af28f6ceac0d4f1b186a4b/merged	overlay
+# mount entry:	/var/lib/docker/overlay2/4aad438c36b5d0fd43d7b6185b3fa6256da66707c54ff6368d6f63d5cac5bc5c/merged	overlay
+# mount entry:	/var/lib/docker/overlay2/4f840003b7ea6fdbd59e92a81c0fe8667cef24a817460f011e9b95947916d238/merged	overlay
+# mount entry:	/var/lib/docker/overlay2/43c9a766198f2a0b1e8925af244ccd850c9ad8895da4f7f5ccca64845fc83533/merged	overlay
+# mount entry:	/run/credentials/systemd-sysusers.service	ramfs
+# mount entry:	/run/docker/netns/87f6aeced540	nsfs
+# mount entry:	/run/docker/netns/97f53a89a84f	nsfs
+# mount entry:	/run/docker/netns/252057e1cd39	nsfs
+# mount entry:	/run/docker/netns/2826f21498b1	nsfs
+# mount entry:	/sys/firmware/efi/efivars	efivarfs
+# mount entry:	/proc/sys/fs/binfmt_misc	autofs
+# mount entry:	/sys/kernel/tracing	tracefs
+# mount entry:	/sys/kernel/config	configfs
+# mount entry:	/sys/fs/cgroup	cgroup2
+# mount entry:	/sys/fs/pstore	pstore
+# mount entry:	/sys/fs/bpf	bpf
+# mount entry:	/dev/mqueue	mqueue
+# mount entry:	/mnt/common	xfs
+# mount entry:	/boot/efi	vfat
+# mount entry:	/mnt/repo	xfs
+# mount entry:	/dev	devtmpfs
+# mount entry:	/	ext4
+
+# description of columns:
+#   <module>: module responsible for this I/O record.
+#   <rank>: MPI rank.  -1 indicates that the file is shared
+#      across all processes and statistics are aggregated.
+#   <record id>: hash of the record's file path
+#   <counter name> and <counter value>: statistical counters.
+#      A value of -1 indicates that Darshan could not monitor
+#      that counter, and its value should be ignored.
+#   <file name>: full file path for the record.
+#   <mount pt>: mount point that the file resides on.
+#   <fs type>: type of file system that the file resides on.
+
+# *******************************************************
+# POSIX module data
+# *******************************************************
+
+# description of POSIX counters:
+#   POSIX_*: posix operation counts.
+#   READS,WRITES,OPENS,SEEKS,STATS,MMAPS,SYNCS,FILENOS,DUPS are types of operations.
+#   POSIX_RENAME_SOURCES/TARGETS: total count file was source or target of a rename operation
+#   POSIX_RENAMED_FROM: Darshan record ID of the first rename source, if file was a rename target
+#   POSIX_MODE: mode that file was opened in.
+#   POSIX_BYTES_*: total bytes read and written.
+#   POSIX_MAX_BYTE_*: highest offset byte read and written.
+#   POSIX_CONSEC_*: number of exactly adjacent reads and writes.
+#   POSIX_SEQ_*: number of reads and writes from increasing offsets.
+#   POSIX_RW_SWITCHES: number of times access alternated between read and write.
+#   POSIX_*_ALIGNMENT: memory and file alignment.
+#   POSIX_*_NOT_ALIGNED: number of reads and writes that were not aligned.
+#   POSIX_MAX_*_TIME_SIZE: size of the slowest read and write operations.
+#   POSIX_SIZE_*_*: histogram of read and write access sizes.
+#   POSIX_STRIDE*_STRIDE: the four most common strides detected.
+#   POSIX_STRIDE*_COUNT: count of the four most common strides.
+#   POSIX_ACCESS*_ACCESS: the four most common access sizes.
+#   POSIX_ACCESS*_COUNT: count of the four most common access sizes.
+#   POSIX_*_RANK: rank of the processes that were the fastest and slowest at I/O (for shared files).
+#   POSIX_*_RANK_BYTES: bytes transferred by the fastest and slowest ranks (for shared files).
+#   POSIX_F_*_START_TIMESTAMP: timestamp of first open/read/write/close.
+#   POSIX_F_*_END_TIMESTAMP: timestamp of last open/read/write/close.
+#   POSIX_F_READ/WRITE/META_TIME: cumulative time spent in read, write, or metadata operations.
+#   POSIX_F_MAX_*_TIME: duration of the slowest read and write operations.
+#   POSIX_F_*_RANK_TIME: fastest and slowest I/O time for a single rank (for shared files).
+#   POSIX_F_VARIANCE_RANK_*: variance of total I/O time and bytes moved for all ranks (for shared files).
+
+# WARNING: POSIX_OPENS counter includes both POSIX_FILENOS and POSIX_DUPS counts
+
+# WARNING: POSIX counters related to file offsets may be incorrect if a file is simultaneously accessed by both POSIX and STDIO (e.g., using fileno())
+# 	- Affected counters include: MAX_BYTE_{READ|WRITTEN}, CONSEC_{READS|WRITES}, SEQ_{READS|WRITES}, {MEM|FILE}_NOT_ALIGNED, STRIDE*_STRIDE
+
+#<module>	<rank>	<record id>	<counter>	<value>	<file name>	<mount pt>	<fs type>
+POSIX	-1	4931380412657766057	POSIX_OPENS	1	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_FILENOS	1	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_DUPS	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_READS	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_WRITES	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_SEEKS	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_STATS	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_MMAPS	-1	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_FSYNCS	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_FDSYNCS	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_RENAME_SOURCES	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_RENAME_TARGETS	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_RENAMED_FROM	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_MODE	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_BYTES_READ	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_BYTES_WRITTEN	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_MAX_BYTE_READ	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_MAX_BYTE_WRITTEN	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_CONSEC_READS	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_CONSEC_WRITES	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_SEQ_READS	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_SEQ_WRITES	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_RW_SWITCHES	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_MEM_NOT_ALIGNED	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_MEM_ALIGNMENT	8	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_FILE_NOT_ALIGNED	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_FILE_ALIGNMENT	4096	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_MAX_READ_TIME_SIZE	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_MAX_WRITE_TIME_SIZE	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_SIZE_READ_0_100	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_SIZE_READ_100_1K	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_SIZE_READ_1K_10K	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_SIZE_READ_10K_100K	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_SIZE_READ_100K_1M	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_SIZE_READ_1M_4M	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_SIZE_READ_4M_10M	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_SIZE_READ_10M_100M	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_SIZE_READ_100M_1G	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_SIZE_READ_1G_PLUS	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_SIZE_WRITE_0_100	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_SIZE_WRITE_100_1K	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_SIZE_WRITE_1K_10K	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_SIZE_WRITE_10K_100K	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_SIZE_WRITE_100K_1M	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_SIZE_WRITE_1M_4M	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_SIZE_WRITE_4M_10M	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_SIZE_WRITE_10M_100M	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_SIZE_WRITE_100M_1G	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_SIZE_WRITE_1G_PLUS	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_STRIDE1_STRIDE	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_STRIDE2_STRIDE	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_STRIDE3_STRIDE	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_STRIDE4_STRIDE	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_STRIDE1_COUNT	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_STRIDE2_COUNT	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_STRIDE3_COUNT	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_STRIDE4_COUNT	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_ACCESS1_ACCESS	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_ACCESS2_ACCESS	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_ACCESS3_ACCESS	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_ACCESS4_ACCESS	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_ACCESS1_COUNT	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_ACCESS2_COUNT	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_ACCESS3_COUNT	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_ACCESS4_COUNT	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_FASTEST_RANK	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_FASTEST_RANK_BYTES	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_SLOWEST_RANK	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_SLOWEST_RANK_BYTES	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_F_OPEN_START_TIMESTAMP	0.002805	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_F_READ_START_TIMESTAMP	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_F_WRITE_START_TIMESTAMP	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_F_CLOSE_START_TIMESTAMP	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_F_OPEN_END_TIMESTAMP	0.002806	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_F_READ_END_TIMESTAMP	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_F_WRITE_END_TIMESTAMP	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_F_CLOSE_END_TIMESTAMP	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_F_READ_TIME	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_F_WRITE_TIME	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_F_META_TIME	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_F_MAX_READ_TIME	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_F_MAX_WRITE_TIME	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_F_FASTEST_RANK_TIME	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_F_SLOWEST_RANK_TIME	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_F_VARIANCE_RANK_TIME	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	4931380412657766057	POSIX_F_VARIANCE_RANK_BYTES	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	-1	17866113541216250344	POSIX_OPENS	1	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_FILENOS	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_DUPS	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_READS	2	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_WRITES	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_SEEKS	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_STATS	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_MMAPS	-1	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_FSYNCS	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_FDSYNCS	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_RENAME_SOURCES	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_RENAME_TARGETS	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_RENAMED_FROM	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_MODE	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_BYTES_READ	791	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_BYTES_WRITTEN	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_MAX_BYTE_READ	790	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_MAX_BYTE_WRITTEN	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_CONSEC_READS	1	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_CONSEC_WRITES	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_SEQ_READS	1	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_SEQ_WRITES	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_RW_SWITCHES	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_MEM_NOT_ALIGNED	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_MEM_ALIGNMENT	8	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_FILE_NOT_ALIGNED	1	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_FILE_ALIGNMENT	4096	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_MAX_READ_TIME_SIZE	791	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_MAX_WRITE_TIME_SIZE	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_SIZE_READ_0_100	1	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_SIZE_READ_100_1K	1	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_SIZE_READ_1K_10K	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_SIZE_READ_10K_100K	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_SIZE_READ_100K_1M	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_SIZE_READ_1M_4M	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_SIZE_READ_4M_10M	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_SIZE_READ_10M_100M	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_SIZE_READ_100M_1G	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_SIZE_READ_1G_PLUS	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_SIZE_WRITE_0_100	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_SIZE_WRITE_100_1K	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_SIZE_WRITE_1K_10K	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_SIZE_WRITE_10K_100K	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_SIZE_WRITE_100K_1M	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_SIZE_WRITE_1M_4M	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_SIZE_WRITE_4M_10M	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_SIZE_WRITE_10M_100M	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_SIZE_WRITE_100M_1G	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_SIZE_WRITE_1G_PLUS	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_STRIDE1_STRIDE	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_STRIDE2_STRIDE	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_STRIDE3_STRIDE	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_STRIDE4_STRIDE	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_STRIDE1_COUNT	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_STRIDE2_COUNT	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_STRIDE3_COUNT	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_STRIDE4_COUNT	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_ACCESS1_ACCESS	791	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_ACCESS2_ACCESS	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_ACCESS3_ACCESS	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_ACCESS4_ACCESS	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_ACCESS1_COUNT	1	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_ACCESS2_COUNT	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_ACCESS3_COUNT	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_ACCESS4_COUNT	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_FASTEST_RANK	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_FASTEST_RANK_BYTES	791	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_SLOWEST_RANK	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_SLOWEST_RANK_BYTES	791	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_F_OPEN_START_TIMESTAMP	0.002489	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_F_READ_START_TIMESTAMP	0.002512	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_F_WRITE_START_TIMESTAMP	0.000000	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_F_CLOSE_START_TIMESTAMP	0.002568	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_F_OPEN_END_TIMESTAMP	0.002500	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_F_READ_END_TIMESTAMP	0.002534	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_F_WRITE_END_TIMESTAMP	0.000000	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_F_CLOSE_END_TIMESTAMP	0.002572	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_F_READ_TIME	0.000015	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_F_WRITE_TIME	0.000000	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_F_META_TIME	0.000014	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_F_MAX_READ_TIME	0.000014	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_F_MAX_WRITE_TIME	0.000000	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_F_FASTEST_RANK_TIME	0.000029	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_F_SLOWEST_RANK_TIME	0.000029	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_F_VARIANCE_RANK_TIME	0.000000	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+POSIX	-1	17866113541216250344	POSIX_F_VARIANCE_RANK_BYTES	0.000000	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json	/	ext4
+
+# *******************************************************
+# STDIO module data
+# *******************************************************
+
+# description of STDIO counters:
+#   STDIO_{OPENS|FDOPENS|WRITES|READS|SEEKS|FLUSHES} are types of operations.
+#   STDIO_BYTES_*: total bytes read and written.
+#   STDIO_MAX_BYTE_*: highest offset byte read and written.
+#   STDIO_*_RANK: rank of the processes that were the fastest and slowest at I/O (for shared files).
+#   STDIO_*_RANK_BYTES: bytes transferred by the fastest and slowest ranks (for shared files).
+#   STDIO_F_*_START_TIMESTAMP: timestamp of the first call to that type of function.
+#   STDIO_F_*_END_TIMESTAMP: timestamp of the completion of the last call to that type of function.
+#   STDIO_F_*_TIME: cumulative time spent in different types of functions.
+#   STDIO_F_*_RANK_TIME: fastest and slowest I/O time for a single rank (for shared files).
+#   STDIO_F_VARIANCE_RANK_*: variance of total I/O time and bytes moved for all ranks (for shared files).
+
+# WARNING: STDIO_OPENS counter includes STDIO_FDOPENS count
+
+# WARNING: STDIO counters related to file offsets may be incorrect if a file is simultaneously accessed by both STDIO and POSIX (e.g., using fdopen())
+# 	- Affected counters include: MAX_BYTE_{READ|WRITTEN}
+
+#<module>	<rank>	<record id>	<counter>	<value>	<file name>	<mount pt>	<fs type>
+STDIO	-1	4931380412657766057	STDIO_OPENS	1	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	-1	4931380412657766057	STDIO_FDOPENS	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	-1	4931380412657766057	STDIO_READS	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	-1	4931380412657766057	STDIO_WRITES	25	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	-1	4931380412657766057	STDIO_SEEKS	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	-1	4931380412657766057	STDIO_FLUSHES	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	-1	4931380412657766057	STDIO_BYTES_WRITTEN	3370	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	-1	4931380412657766057	STDIO_BYTES_READ	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	-1	4931380412657766057	STDIO_MAX_BYTE_READ	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	-1	4931380412657766057	STDIO_MAX_BYTE_WRITTEN	3369	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	-1	4931380412657766057	STDIO_FASTEST_RANK	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	-1	4931380412657766057	STDIO_FASTEST_RANK_BYTES	3370	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	-1	4931380412657766057	STDIO_SLOWEST_RANK	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	-1	4931380412657766057	STDIO_SLOWEST_RANK_BYTES	3370	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	-1	4931380412657766057	STDIO_F_META_TIME	0.000056	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	-1	4931380412657766057	STDIO_F_WRITE_TIME	0.000014	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	-1	4931380412657766057	STDIO_F_READ_TIME	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	-1	4931380412657766057	STDIO_F_OPEN_START_TIMESTAMP	0.002743	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	-1	4931380412657766057	STDIO_F_CLOSE_START_TIMESTAMP	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	-1	4931380412657766057	STDIO_F_WRITE_START_TIMESTAMP	0.003223	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	-1	4931380412657766057	STDIO_F_READ_START_TIMESTAMP	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	-1	4931380412657766057	STDIO_F_OPEN_END_TIMESTAMP	0.002799	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	-1	4931380412657766057	STDIO_F_CLOSE_END_TIMESTAMP	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	-1	4931380412657766057	STDIO_F_WRITE_END_TIMESTAMP	0.086198	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	-1	4931380412657766057	STDIO_F_READ_END_TIMESTAMP	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	-1	4931380412657766057	STDIO_F_FASTEST_RANK_TIME	0.000070	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	-1	4931380412657766057	STDIO_F_SLOWEST_RANK_TIME	0.000070	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	-1	4931380412657766057	STDIO_F_VARIANCE_RANK_TIME	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	-1	4931380412657766057	STDIO_F_VARIANCE_RANK_BYTES	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232950/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	-1	7238257241479193519	STDIO_OPENS	1	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	-1	7238257241479193519	STDIO_FDOPENS	0	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	-1	7238257241479193519	STDIO_READS	0	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	-1	7238257241479193519	STDIO_WRITES	18	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	-1	7238257241479193519	STDIO_SEEKS	0	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	-1	7238257241479193519	STDIO_FLUSHES	45	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	-1	7238257241479193519	STDIO_BYTES_WRITTEN	771	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	-1	7238257241479193519	STDIO_BYTES_READ	0	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	-1	7238257241479193519	STDIO_MAX_BYTE_READ	0	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	-1	7238257241479193519	STDIO_MAX_BYTE_WRITTEN	770	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	-1	7238257241479193519	STDIO_FASTEST_RANK	0	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	-1	7238257241479193519	STDIO_FASTEST_RANK_BYTES	771	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	-1	7238257241479193519	STDIO_SLOWEST_RANK	0	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	-1	7238257241479193519	STDIO_SLOWEST_RANK_BYTES	771	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	-1	7238257241479193519	STDIO_F_META_TIME	0.000000	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	-1	7238257241479193519	STDIO_F_WRITE_TIME	0.000036	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	-1	7238257241479193519	STDIO_F_READ_TIME	0.000000	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	-1	7238257241479193519	STDIO_F_OPEN_START_TIMESTAMP	0.000000	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	-1	7238257241479193519	STDIO_F_CLOSE_START_TIMESTAMP	0.000000	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	-1	7238257241479193519	STDIO_F_WRITE_START_TIMESTAMP	0.024841	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	-1	7238257241479193519	STDIO_F_READ_START_TIMESTAMP	0.000000	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	-1	7238257241479193519	STDIO_F_OPEN_END_TIMESTAMP	0.000000	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	-1	7238257241479193519	STDIO_F_CLOSE_END_TIMESTAMP	0.000000	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	-1	7238257241479193519	STDIO_F_WRITE_END_TIMESTAMP	0.024922	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	-1	7238257241479193519	STDIO_F_READ_END_TIMESTAMP	0.000000	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	-1	7238257241479193519	STDIO_F_FASTEST_RANK_TIME	0.000036	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	-1	7238257241479193519	STDIO_F_SLOWEST_RANK_TIME	0.000036	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	-1	7238257241479193519	STDIO_F_VARIANCE_RANK_TIME	0.000000	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	-1	7238257241479193519	STDIO_F_VARIANCE_RANK_BYTES	0.000000	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	-1	15920181672442173319	STDIO_OPENS	1	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	-1	15920181672442173319	STDIO_FDOPENS	0	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	-1	15920181672442173319	STDIO_READS	0	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	-1	15920181672442173319	STDIO_WRITES	103	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	-1	15920181672442173319	STDIO_SEEKS	0	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	-1	15920181672442173319	STDIO_FLUSHES	84	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	-1	15920181672442173319	STDIO_BYTES_WRITTEN	2241	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	-1	15920181672442173319	STDIO_BYTES_READ	0	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	-1	15920181672442173319	STDIO_MAX_BYTE_READ	0	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	-1	15920181672442173319	STDIO_MAX_BYTE_WRITTEN	2240	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	-1	15920181672442173319	STDIO_FASTEST_RANK	0	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	-1	15920181672442173319	STDIO_FASTEST_RANK_BYTES	2241	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	-1	15920181672442173319	STDIO_SLOWEST_RANK	0	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	-1	15920181672442173319	STDIO_SLOWEST_RANK_BYTES	2241	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	-1	15920181672442173319	STDIO_F_META_TIME	0.000000	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	-1	15920181672442173319	STDIO_F_WRITE_TIME	0.000031	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	-1	15920181672442173319	STDIO_F_READ_TIME	0.000000	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	-1	15920181672442173319	STDIO_F_OPEN_START_TIMESTAMP	0.000000	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	-1	15920181672442173319	STDIO_F_CLOSE_START_TIMESTAMP	0.000000	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	-1	15920181672442173319	STDIO_F_WRITE_START_TIMESTAMP	0.002384	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	-1	15920181672442173319	STDIO_F_READ_START_TIMESTAMP	0.000000	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	-1	15920181672442173319	STDIO_F_OPEN_END_TIMESTAMP	0.000000	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	-1	15920181672442173319	STDIO_F_CLOSE_END_TIMESTAMP	0.000000	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	-1	15920181672442173319	STDIO_F_WRITE_END_TIMESTAMP	0.086355	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	-1	15920181672442173319	STDIO_F_READ_END_TIMESTAMP	0.000000	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	-1	15920181672442173319	STDIO_F_FASTEST_RANK_TIME	0.000031	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	-1	15920181672442173319	STDIO_F_SLOWEST_RANK_TIME	0.000031	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	-1	15920181672442173319	STDIO_F_VARIANCE_RANK_TIME	0.000000	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	-1	15920181672442173319	STDIO_F_VARIANCE_RANK_BYTES	0.000000	<STDOUT>	UNKNOWN	UNKNOWN
+
+# *******************************************************
+# HEATMAP module data
+# *******************************************************
+
+# description of heatmap counters:
+#   HEATMAP_F_BIN_WIDTH_SECONDS: time duration of each heatmap bin
+#   HEATMAP_{READ|WRITE}_BIN_{*}: number of bytes read or written within specified heatmap bin
+
+#<module>	<rank>	<record id>	<counter>	<value>	<file name>	<mount pt>	<fs type>
+HEATMAP	0	3989511027826779520	HEATMAP_F_BIN_WIDTH_SECONDS	0.100000	heatmap:STDIO	UNKNOWN	UNKNOWN
+HEATMAP	0	3989511027826779520	HEATMAP_READ_BIN_0	0	heatmap:STDIO	UNKNOWN	UNKNOWN
+HEATMAP	0	3989511027826779520	HEATMAP_WRITE_BIN_0	6382	heatmap:STDIO	UNKNOWN	UNKNOWN
+HEATMAP	0	16592106915301738621	HEATMAP_F_BIN_WIDTH_SECONDS	0.100000	heatmap:POSIX	UNKNOWN	UNKNOWN
+HEATMAP	0	16592106915301738621	HEATMAP_READ_BIN_0	791	heatmap:POSIX	UNKNOWN	UNKNOWN
+HEATMAP	0	16592106915301738621	HEATMAP_WRITE_BIN_0	0	heatmap:POSIX	UNKNOWN	UNKNOWN
