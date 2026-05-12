@@ -112,6 +112,31 @@ The current bootstrap normalizer is:
 python3 profileforge/controller/normalize_evidence.py --iteration 0
 ```
 
+The controlled loop entry point is:
+
+```bash
+python3 profileforge/controller/run_loop.py \
+  --iterations 1 \
+  --systems chronolog \
+  --workflows append_throughput \
+  --node-counts 2 \
+  --message-sizes 1024 \
+  --operation-counts 1000 \
+  --trials 3 \
+  --partition debug \
+  --nodelist 'ares-comp-[03-04]' \
+  --chronolog-profile-mode tau
+```
+
+For a detached run:
+
+```bash
+PROFILEFORGE_NODELIST='ares-comp-[03-04]' \
+PROFILEFORGE_OPERATION_COUNTS=1000 \
+PROFILEFORGE_TRIALS=3 \
+bash profileforge/controller/run_profileforge_tmux.sh
+```
+
 ## Candidate First Bottleneck Areas
 
 The next agent should not assume Keeper locks are the only bottleneck. It should compare:

@@ -10,10 +10,11 @@ Phase 0 produced the measurement ingredients under `.agent/` and `profiling/`. T
 - edit boundaries
 - benchmark and profiler entry points
 - evidence expectations
-- accept/reject policy
-- iteration handoff plan
+- executable validation
+- repeated-run performance judging
+- detached controller launch
 
-The current state is ready for controlled iteration setup, not yet a fully autonomous optimization loop. Iteration 1 can be run by following `controller/iteration-1-runbook.md`; the next framework step is to turn that runbook into a controller script.
+The current state is ready for controlled unattended benchmark/profile/validate/judge iterations. The controller does not itself invent source patches; it can run an optional `--patch-command`, and the LLM optimization agent should use the normalized evidence and edit policy to create one bounded change per iteration.
 
 ## Current Readiness
 
@@ -24,13 +25,14 @@ Ready:
 - Kafka and Mofka have fixed baseline run paths and common `metrics.json` output.
 - Top-level `/profiling` has an explicit iteration history with iteration `0` mapped to one result directory.
 - `record_groups` is a tunable ChronoLog deployment parameter and has been validated with `record_groups=2`.
+- `run_loop.py` can execute benchmark matrix runs, correctness validation, evidence normalization, and performance judging.
+- `run_profileforge_tmux.sh` can start the loop detached under tmux.
 
-Still needed before full autonomy:
+Still needed for stronger autonomy:
 
-- A controller script that reads the manifests and executes build, deploy, benchmark, profile, normalize, diagnose, patch, validate, judge, and commit/rollback.
-- Normalized evidence JSON that merges benchmark metrics, TAU, perf, Darshan, network, and application counters into one agent-facing file per run.
-- Stronger correctness validators for no lost records, no duplicate records, ordering, and range retrieval.
-- A repeated-run statistical acceptance policy rather than one-run decisions.
+- Automatic LLM patch invocation and rollback integration around `--patch-command`.
+- Stronger semantic validators that inspect event IDs/order directly instead of relying on current benchmark metrics and artifacts.
+- eBPF-based tools after admin enablement.
 - A production-scale benchmark matrix with stable operation counts, trials, client counts, and node counts.
 
 ## Main Files
@@ -42,9 +44,13 @@ Still needed before full autonomy:
 - `controller/iteration-1-runbook.md`: practical first iteration runbook.
 - `controller/acceptance-policy.yaml`: initial accept/reject policy.
 - `controller/normalize_evidence.py`: creates one agent-facing evidence JSON file for a registered iteration.
+- `controller/run_loop.py`: runs benchmark, validation, evidence normalization, and performance judging for controlled iterations.
+- `controller/run_profileforge_tmux.sh`: starts the loop detached in tmux.
+- `controller/performance_judge.py`: repeated-run accept/reject/rerun decision.
 - `agents/bottleneck-diagnosis.md`: diagnosis agent input/output contract.
 - `agents/patch-agent.md`: patch/tuning agent guardrails.
 - `validators/correctness-policy.md`: correctness requirements that must become executable validators.
+- `validators/validate_correctness.py`: executable correctness validator for current metrics/artifacts.
 
 Generate iteration-0 normalized evidence:
 
@@ -57,3 +63,22 @@ Output:
 ```text
 profileforge/results/0/evidence.json
 ```
+
+Run a dry controller pass:
+
+```bash
+python3 profileforge/controller/run_loop.py --dry-run --iterations 1
+```
+
+Start a detached tmux run:
+
+```bash
+PROFILEFORGE_NODELIST='ares-comp-[03-06]' \
+PROFILEFORGE_NODE_COUNTS=2 \
+PROFILEFORGE_OPERATION_COUNTS=1000 \
+PROFILEFORGE_TRIALS=3 \
+PROFILEFORGE_PROFILE_MODE=tau \
+bash profileforge/controller/run_profileforge_tmux.sh
+```
+
+The tmux launcher does not spend account funds by itself; it only starts the local controller process. Funding/account changes must be handled outside the repository tooling.

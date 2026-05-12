@@ -122,3 +122,4 @@ This is not a performance-optimization phase. The goal is to make the full measu
 - [x] Document ChronoLog bare-metal SLURM service placement for engineer review.
 - [x] Add ProfileForge target manifests, edit policy, acceptance policy, and iteration-1 runbook.
 - [x] Generate normalized iteration-0 evidence JSON for the optimization-agent handoff.
+- [x] Add executable correctness validator, repeated-run performance judge, controller loop, and tmux launcher.
