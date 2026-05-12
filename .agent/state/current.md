@@ -1,7 +1,7 @@
 # Current State
 
-- current task: detect or install TAU
+- current task: detect or install perf
 - commands running: none
-- last successful validation: no-sudo install channels detected and strategy documented; evidence in `.agent/results/20260511-220041/` and `.agent/results/no-sudo-install-strategy.md`
+- last successful validation: TAU 2.34 installed under `opt/tau-2.34`; wrappers validated with `TAU_MAKEFILE`; evidence in `.agent/results/20260511-220126/`
 - current blocker: none
-- next intended step: check existing commands/modules for TAU, then user-local/project-local install options if unavailable
+- next intended step: detect `perf`, verify basic usability or document kernel/package permission blocker

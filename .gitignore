@@ -89,6 +89,7 @@ docs-website/build/
 .local-dev/
 local-dev/
 chronolog-install/
+opt/
 tmp/
 tmp*/
 .cache/
