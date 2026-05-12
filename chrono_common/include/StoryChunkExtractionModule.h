@@ -206,36 +206,13 @@ public:
                       story_chunk->getEndTime(),
                       story_chunk->getEventCount());
 
-/*            //try to extract the chunk 5 times before giving up
-            int extraction_result = CL_ERR_UNKNOWN;
-            int tries = 0;
-            while(CL_SUCCESS != extraction_result && (tries < 5))
-            {
-                tries++;
-                theExtractionChain.process_chunk(story_chunk);
-            }
-
-            if(CL_SUCCESS == extraction_result)
-            {
-                LOG_INFO("[StoryChunkExtractionModule] extracted chunk StoryId={} {}-{} {}-{}",
-                         story_chunk->getStoryId(),
-                         story_chunk->getChronicleName(),
-                         story_chunk->getStoryName(),
-                         story_chunk->getStartTime(),
-                         story_chunk->getEndTime());
-            }
-            else
-            {
-                LOG_ERROR("[StoryChunkExtractionModule] failed to extract chunk StoryId={} {}-{} {}-{}",
-                          story_chunk->getStoryId(),
-                          story_chunk->getChronicleName(),
-                          story_chunk->getStoryName(),
-                          story_chunk->getStartTime(),
-                          story_chunk->getEndTime());
-            }
-*/
             delete story_chunk;
         }
+
+	// if any of the extractors still have chunks in their individual
+	// outage buffers, try to flush them one last time
+	theExtractionChain.flush_outage_buffers();
+
         // join and stop threads & executionstreams
         for(auto& eth: extractionThreads) { eth->join(); }
         LOG_DEBUG("[StoryChunkExtractionModule] Extraction threads have been successfully shut down.");

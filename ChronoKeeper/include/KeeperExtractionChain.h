@@ -32,7 +32,7 @@ public:
     {
         for(auto& e: theExtractors)
         {
-            std::visit([chunk](auto& extractor){ return extractor.process_chunk(chunk); }, e);
+            std::visit([chunk](auto& extractor){ extractor.process_chunk(chunk); }, e);
         }
     }
 
@@ -105,6 +105,12 @@ public:
         }
 
         return ret_value;
+    }
+
+
+    void flush_outage_buffers()
+    {
+	    //TODO #635
     }
 };
 
