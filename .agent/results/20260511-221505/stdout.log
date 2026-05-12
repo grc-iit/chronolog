@@ -1,0 +1,273 @@
+timestamp=2026-05-11T22:15:05-05:00
+branch=opt/phase0-bootstrap
+merge_base_status=0
+
+[eBPF-based tools commands]
+bpftrace=missing
+bpftool=missing
+execsnoop=missing
+opensnoop=missing
+ext4slower=missing
+biolatency=missing
+offcputime=missing
+runqlat=missing
+funclatency=missing
+profile=missing
+tcplife=missing
+tcpconnect=missing
+
+[eBPF-based tools modules]
+bpftool/
+bpftool/7.5.0
+
+[kernel bpf settings]
+/proc/sys/kernel/unprivileged_bpf_disabled=2
+/proc/sys/kernel/perf_event_paranoid=4
+/proc/sys/kernel/kptr_restrict=1
+
+[bpf filesystem]
+bpf on /sys/fs/bpf type bpf (rw,nosuid,nodev,noexec,relatime,mode=700)
+debugfs on /sys/kernel/debug type debugfs (rw,nosuid,nodev,noexec,relatime)
+tracefs on /sys/kernel/tracing type tracefs (rw,nosuid,nodev,noexec,relatime)
+drwx-----T  2 root root 0 May  3 21:45 /sys/fs/bpf
+drwx------ 49 root root 0 May  3 21:44 /sys/kernel/debug
+drwx------  9 root root 0 May  3 21:44 /sys/kernel/tracing
+
+[python bcc]
+python_bcc=missing:ModuleNotFoundError:No module named 'bcc'
+
+[apt package status]
+bpftrace:
+  Installed: (none)
+  Candidate: 0.14.0-1
+  Version table:
+     0.14.0-1 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy/universe amd64 Packages
+bpfcc-tools:
+  Installed: (none)
+  Candidate: 0.18.0+ds-2
+  Version table:
+     0.18.0+ds-2 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy/universe amd64 Packages
+python3-bpfcc:
+  Installed: (none)
+  Candidate: 0.18.0+ds-2
+  Version table:
+     0.18.0+ds-2 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy/universe amd64 Packages
+linux-tools-common:
+  Installed: (none)
+  Candidate: 5.15.0-177.187
+  Version table:
+     5.15.0-177.187 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-176.186 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-174.184 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-173.183 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-171.181 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-170.180 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-168.178 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-164.174 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-163.173 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-161.171 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-160.170 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-157.167 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-156.166 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-153.163 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-152.162 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-151.161 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-144.157 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-143.153 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-142.152 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-141.151 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-140.150 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-139.149 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-138.148 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-136.147 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-135.146 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-134.145 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-133.144 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-131.141 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-130.140 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-128.138 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+     5.15.0-127.137 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-126.136 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+     5.15.0-125.135 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-124.134 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-122.132 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-121.131 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-119.129 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-118.128 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-117.127 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-116.126 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-113.123 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-112.122 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-107.117 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-106.116 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-105.115 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-102.112 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-101.111 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-100.110 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-97.107 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-94.104 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-92.102 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-91.101 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-89.99 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-88.98 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-87.97 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-86.96 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-84.93 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-83.92 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-82.91 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-79.86 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-78.85 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-75.82 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-73.80 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-72.79 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-25.25 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy/main amd64 Packages
+
+[eBPF-based tools module validation]
+started=2026-05-11T22:15:19-05:00
+
+Currently Loaded Modules:
+  1) glibc/2.35-b34moeb           3) json-c/0.16-2ofsb6t      5) bpftool/7.5.0
+  2) gcc-runtime/11.4.0-owu4kv5   4) yaml-cpp/0.8.0-t3qoxou
+
+ 
+
+/mnt/repo/software/bpftool/sbin/bpftool
+bpftool v7.5.0
+using libbpf v1.5
+features: skeletons
+Error: unprivileged run not supported, recompile bpftool with libcap
+
+[local linux-tools bpftool]
+LOCAL_BPFTOOL=/home/jcernudagarcia/chronolog-opt/chronolog/opt/perf/extract/usr/lib/linux-tools-5.15.0-176/bpftool
+/home/jcernudagarcia/chronolog-opt/chronolog/opt/perf/extract/usr/lib/linux-tools-5.15.0-176/bpftool v5.15.199
+features:
