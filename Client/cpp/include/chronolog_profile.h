@@ -7,7 +7,9 @@
 #if defined(CHRONOLOG_PROFILE_TAU)
 
 #include <TAU.h>
+#include <chrono>
 #include <mutex>
+#include <string>
 
 namespace chronolog
 {
@@ -23,17 +25,29 @@ inline void initializeTau()
 class TauRegion
 {
   public:
-    explicit TauRegion(const char* name)
+    explicit TauRegion(const char* name) : name_(name), start_(std::chrono::steady_clock::now())
     {
         initializeTau();
-        void* event = Tau_get_userevent(name);
+        void* event = Tau_get_userevent(name_.c_str());
         Tau_userevent(event, 1.0);
     }
 
     TauRegion(const TauRegion&) = delete;
     TauRegion& operator=(const TauRegion&) = delete;
 
-    ~TauRegion() = default;
+    ~TauRegion()
+    {
+        auto end = std::chrono::steady_clock::now();
+        double duration_us = static_cast<double>(
+            std::chrono::duration_cast<std::chrono::microseconds>(end - start_).count());
+        std::string duration_name = name_ + "_duration_us";
+        void* event = Tau_get_userevent(duration_name.c_str());
+        Tau_userevent(event, duration_us);
+    }
+
+  private:
+    std::string name_;
+    std::chrono::steady_clock::time_point start_;
 };
 
 inline void tauCounter(const char* name, double value)

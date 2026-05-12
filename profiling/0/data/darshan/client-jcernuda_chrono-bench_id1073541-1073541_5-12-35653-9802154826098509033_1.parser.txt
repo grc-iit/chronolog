@@ -1,0 +1,859 @@
+# darshan log version: 3.41
+# compression method: ZLIB
+# exe: /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench -c /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json -w -h 1 -t 1 -a 512 -s 1024 -b 2048 -n 20 -p 
+# uid: 1008
+# jobid: 1073541
+# start_time: 1778597653
+# start_time_asci: Tue May 12 09:54:13 2026
+# end_time: 1778597653
+# end_time_asci: Tue May 12 09:54:13 2026
+# nprocs: 1
+# run time: 0.1265
+# metadata: lib_ver = 3.4.6
+# metadata: h = romio_no_indep_rw=true;cb_nodes=4
+
+# log file regions
+# -------------------------------------------------------
+# header: 1328 bytes (uncompressed)
+# job data: 683 bytes (compressed)
+# record table: 483 bytes (compressed)
+# POSIX module: 368 bytes (compressed), ver=4
+# STDIO module: 206 bytes (compressed), ver=2
+# HEATMAP module: 75 bytes (compressed), ver=1
+
+# mounted file systems (mount point and fs type)
+# -------------------------------------------------------
+# mount entry:	/var/lib/docker/overlay2/8a95967f48d68ce0ac723931255a2e8b27b1c778b5af28f6ceac0d4f1b186a4b/merged	overlay
+# mount entry:	/var/lib/docker/overlay2/4aad438c36b5d0fd43d7b6185b3fa6256da66707c54ff6368d6f63d5cac5bc5c/merged	overlay
+# mount entry:	/var/lib/docker/overlay2/4f840003b7ea6fdbd59e92a81c0fe8667cef24a817460f011e9b95947916d238/merged	overlay
+# mount entry:	/var/lib/docker/overlay2/43c9a766198f2a0b1e8925af244ccd850c9ad8895da4f7f5ccca64845fc83533/merged	overlay
+# mount entry:	/run/credentials/systemd-sysusers.service	ramfs
+# mount entry:	/run/docker/netns/87f6aeced540	nsfs
+# mount entry:	/run/docker/netns/97f53a89a84f	nsfs
+# mount entry:	/run/docker/netns/252057e1cd39	nsfs
+# mount entry:	/run/docker/netns/2826f21498b1	nsfs
+# mount entry:	/sys/firmware/efi/efivars	efivarfs
+# mount entry:	/proc/sys/fs/binfmt_misc	autofs
+# mount entry:	/sys/kernel/tracing	tracefs
+# mount entry:	/sys/kernel/config	configfs
+# mount entry:	/sys/fs/cgroup	cgroup2
+# mount entry:	/sys/fs/pstore	pstore
+# mount entry:	/sys/fs/bpf	bpf
+# mount entry:	/dev/mqueue	mqueue
+# mount entry:	/mnt/common	xfs
+# mount entry:	/boot/efi	vfat
+# mount entry:	/mnt/repo	xfs
+# mount entry:	/dev	devtmpfs
+# mount entry:	/	ext4
+
+# description of columns:
+#   <module>: module responsible for this I/O record.
+#   <rank>: MPI rank.  -1 indicates that the file is shared
+#      across all processes and statistics are aggregated.
+#   <record id>: hash of the record's file path
+#   <counter name> and <counter value>: statistical counters.
+#      A value of -1 indicates that Darshan could not monitor
+#      that counter, and its value should be ignored.
+#   <file name>: full file path for the record.
+#   <mount pt>: mount point that the file resides on.
+#   <fs type>: type of file system that the file resides on.
+
+# *******************************************************
+# POSIX module data
+# *******************************************************
+
+# description of POSIX counters:
+#   POSIX_*: posix operation counts.
+#   READS,WRITES,OPENS,SEEKS,STATS,MMAPS,SYNCS,FILENOS,DUPS are types of operations.
+#   POSIX_RENAME_SOURCES/TARGETS: total count file was source or target of a rename operation
+#   POSIX_RENAMED_FROM: Darshan record ID of the first rename source, if file was a rename target
+#   POSIX_MODE: mode that file was opened in.
+#   POSIX_BYTES_*: total bytes read and written.
+#   POSIX_MAX_BYTE_*: highest offset byte read and written.
+#   POSIX_CONSEC_*: number of exactly adjacent reads and writes.
+#   POSIX_SEQ_*: number of reads and writes from increasing offsets.
+#   POSIX_RW_SWITCHES: number of times access alternated between read and write.
+#   POSIX_*_ALIGNMENT: memory and file alignment.
+#   POSIX_*_NOT_ALIGNED: number of reads and writes that were not aligned.
+#   POSIX_MAX_*_TIME_SIZE: size of the slowest read and write operations.
+#   POSIX_SIZE_*_*: histogram of read and write access sizes.
+#   POSIX_STRIDE*_STRIDE: the four most common strides detected.
+#   POSIX_STRIDE*_COUNT: count of the four most common strides.
+#   POSIX_ACCESS*_ACCESS: the four most common access sizes.
+#   POSIX_ACCESS*_COUNT: count of the four most common access sizes.
+#   POSIX_*_RANK: rank of the processes that were the fastest and slowest at I/O (for shared files).
+#   POSIX_*_RANK_BYTES: bytes transferred by the fastest and slowest ranks (for shared files).
+#   POSIX_F_*_START_TIMESTAMP: timestamp of first open/read/write/close.
+#   POSIX_F_*_END_TIMESTAMP: timestamp of last open/read/write/close.
+#   POSIX_F_READ/WRITE/META_TIME: cumulative time spent in read, write, or metadata operations.
+#   POSIX_F_MAX_*_TIME: duration of the slowest read and write operations.
+#   POSIX_F_*_RANK_TIME: fastest and slowest I/O time for a single rank (for shared files).
+#   POSIX_F_VARIANCE_RANK_*: variance of total I/O time and bytes moved for all ranks (for shared files).
+
+# WARNING: POSIX_OPENS counter includes both POSIX_FILENOS and POSIX_DUPS counts
+
+# WARNING: POSIX counters related to file offsets may be incorrect if a file is simultaneously accessed by both POSIX and STDIO (e.g., using fileno())
+# 	- Affected counters include: MAX_BYTE_{READ|WRITTEN}, CONSEC_{READS|WRITES}, SEQ_{READS|WRITES}, {MEM|FILE}_NOT_ALIGNED, STRIDE*_STRIDE
+
+#<module>	<rank>	<record id>	<counter>	<value>	<file name>	<mount pt>	<fs type>
+POSIX	0	1434272119053776118	POSIX_OPENS	4	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_FILENOS	4	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_DUPS	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_READS	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_WRITES	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_SEEKS	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_STATS	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_MMAPS	-1	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_FSYNCS	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_FDSYNCS	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_RENAME_SOURCES	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_RENAME_TARGETS	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_RENAMED_FROM	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_MODE	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_BYTES_READ	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_BYTES_WRITTEN	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_MAX_BYTE_READ	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_MAX_BYTE_WRITTEN	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_CONSEC_READS	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_CONSEC_WRITES	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_SEQ_READS	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_SEQ_WRITES	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_RW_SWITCHES	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_MEM_NOT_ALIGNED	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_MEM_ALIGNMENT	8	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_FILE_NOT_ALIGNED	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_FILE_ALIGNMENT	4096	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_MAX_READ_TIME_SIZE	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_MAX_WRITE_TIME_SIZE	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_SIZE_READ_0_100	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_SIZE_READ_100_1K	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_SIZE_READ_1K_10K	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_SIZE_READ_10K_100K	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_SIZE_READ_100K_1M	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_SIZE_READ_1M_4M	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_SIZE_READ_4M_10M	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_SIZE_READ_10M_100M	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_SIZE_READ_100M_1G	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_SIZE_READ_1G_PLUS	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_SIZE_WRITE_0_100	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_SIZE_WRITE_100_1K	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_SIZE_WRITE_1K_10K	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_SIZE_WRITE_10K_100K	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_SIZE_WRITE_100K_1M	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_SIZE_WRITE_1M_4M	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_SIZE_WRITE_4M_10M	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_SIZE_WRITE_10M_100M	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_SIZE_WRITE_100M_1G	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_SIZE_WRITE_1G_PLUS	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_STRIDE1_STRIDE	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_STRIDE2_STRIDE	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_STRIDE3_STRIDE	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_STRIDE4_STRIDE	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_STRIDE1_COUNT	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_STRIDE2_COUNT	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_STRIDE3_COUNT	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_STRIDE4_COUNT	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_ACCESS1_ACCESS	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_ACCESS2_ACCESS	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_ACCESS3_ACCESS	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_ACCESS4_ACCESS	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_ACCESS1_COUNT	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_ACCESS2_COUNT	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_ACCESS3_COUNT	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_ACCESS4_COUNT	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_FASTEST_RANK	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_FASTEST_RANK_BYTES	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_SLOWEST_RANK	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_SLOWEST_RANK_BYTES	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_F_OPEN_START_TIMESTAMP	0.001810	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_F_READ_START_TIMESTAMP	0.000000	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_F_WRITE_START_TIMESTAMP	0.000000	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_F_CLOSE_START_TIMESTAMP	0.002925	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_F_OPEN_END_TIMESTAMP	0.002101	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_F_READ_END_TIMESTAMP	0.000000	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_F_WRITE_END_TIMESTAMP	0.000000	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_F_CLOSE_END_TIMESTAMP	0.002936	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_F_READ_TIME	0.000000	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_F_WRITE_TIME	0.000000	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_F_META_TIME	0.000011	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_F_MAX_READ_TIME	0.000000	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_F_MAX_WRITE_TIME	0.000000	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_F_FASTEST_RANK_TIME	0.000000	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_F_SLOWEST_RANK_TIME	0.000000	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_F_VARIANCE_RANK_TIME	0.000000	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	1434272119053776118	POSIX_F_VARIANCE_RANK_BYTES	0.000000	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+POSIX	0	7238257241479193519	POSIX_OPENS	1	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_FILENOS	1	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_DUPS	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_READS	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_WRITES	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_SEEKS	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_STATS	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_MMAPS	-1	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_FSYNCS	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_FDSYNCS	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_RENAME_SOURCES	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_RENAME_TARGETS	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_RENAMED_FROM	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_MODE	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_BYTES_READ	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_BYTES_WRITTEN	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_MAX_BYTE_READ	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_MAX_BYTE_WRITTEN	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_CONSEC_READS	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_CONSEC_WRITES	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_SEQ_READS	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_SEQ_WRITES	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_RW_SWITCHES	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_MEM_NOT_ALIGNED	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_MEM_ALIGNMENT	8	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_FILE_NOT_ALIGNED	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_FILE_ALIGNMENT	-1	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_MAX_READ_TIME_SIZE	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_MAX_WRITE_TIME_SIZE	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_SIZE_READ_0_100	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_SIZE_READ_100_1K	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_SIZE_READ_1K_10K	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_SIZE_READ_10K_100K	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_SIZE_READ_100K_1M	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_SIZE_READ_1M_4M	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_SIZE_READ_4M_10M	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_SIZE_READ_10M_100M	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_SIZE_READ_100M_1G	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_SIZE_READ_1G_PLUS	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_SIZE_WRITE_0_100	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_SIZE_WRITE_100_1K	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_SIZE_WRITE_1K_10K	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_SIZE_WRITE_10K_100K	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_SIZE_WRITE_100K_1M	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_SIZE_WRITE_1M_4M	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_SIZE_WRITE_4M_10M	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_SIZE_WRITE_10M_100M	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_SIZE_WRITE_100M_1G	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_SIZE_WRITE_1G_PLUS	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_STRIDE1_STRIDE	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_STRIDE2_STRIDE	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_STRIDE3_STRIDE	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_STRIDE4_STRIDE	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_STRIDE1_COUNT	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_STRIDE2_COUNT	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_STRIDE3_COUNT	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_STRIDE4_COUNT	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_ACCESS1_ACCESS	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_ACCESS2_ACCESS	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_ACCESS3_ACCESS	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_ACCESS4_ACCESS	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_ACCESS1_COUNT	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_ACCESS2_COUNT	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_ACCESS3_COUNT	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_ACCESS4_COUNT	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_FASTEST_RANK	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_FASTEST_RANK_BYTES	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_SLOWEST_RANK	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_SLOWEST_RANK_BYTES	0	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_F_OPEN_START_TIMESTAMP	0.002244	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_F_READ_START_TIMESTAMP	0.000000	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_F_WRITE_START_TIMESTAMP	0.000000	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_F_CLOSE_START_TIMESTAMP	0.000000	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_F_OPEN_END_TIMESTAMP	0.002244	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_F_READ_END_TIMESTAMP	0.000000	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_F_WRITE_END_TIMESTAMP	0.000000	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_F_CLOSE_END_TIMESTAMP	0.000000	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_F_READ_TIME	0.000000	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_F_WRITE_TIME	0.000000	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_F_META_TIME	0.000000	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_F_MAX_READ_TIME	0.000000	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_F_MAX_WRITE_TIME	0.000000	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_F_FASTEST_RANK_TIME	0.000000	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_F_SLOWEST_RANK_TIME	0.000000	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_F_VARIANCE_RANK_TIME	0.000000	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	7238257241479193519	POSIX_F_VARIANCE_RANK_BYTES	0.000000	<STDERR>	UNKNOWN	UNKNOWN
+POSIX	0	5482730119186333704	POSIX_OPENS	1	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_FILENOS	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_DUPS	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_READS	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_WRITES	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_SEEKS	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_STATS	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_MMAPS	-1	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_FSYNCS	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_FDSYNCS	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_RENAME_SOURCES	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_RENAME_TARGETS	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_RENAMED_FROM	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_MODE	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_BYTES_READ	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_BYTES_WRITTEN	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_MAX_BYTE_READ	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_MAX_BYTE_WRITTEN	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_CONSEC_READS	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_CONSEC_WRITES	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_SEQ_READS	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_SEQ_WRITES	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_RW_SWITCHES	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_MEM_NOT_ALIGNED	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_MEM_ALIGNMENT	8	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_FILE_NOT_ALIGNED	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_FILE_ALIGNMENT	4096	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_MAX_READ_TIME_SIZE	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_MAX_WRITE_TIME_SIZE	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_SIZE_READ_0_100	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_SIZE_READ_100_1K	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_SIZE_READ_1K_10K	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_SIZE_READ_10K_100K	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_SIZE_READ_100K_1M	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_SIZE_READ_1M_4M	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_SIZE_READ_4M_10M	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_SIZE_READ_10M_100M	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_SIZE_READ_100M_1G	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_SIZE_READ_1G_PLUS	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_SIZE_WRITE_0_100	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_SIZE_WRITE_100_1K	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_SIZE_WRITE_1K_10K	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_SIZE_WRITE_10K_100K	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_SIZE_WRITE_100K_1M	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_SIZE_WRITE_1M_4M	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_SIZE_WRITE_4M_10M	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_SIZE_WRITE_10M_100M	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_SIZE_WRITE_100M_1G	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_SIZE_WRITE_1G_PLUS	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_STRIDE1_STRIDE	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_STRIDE2_STRIDE	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_STRIDE3_STRIDE	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_STRIDE4_STRIDE	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_STRIDE1_COUNT	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_STRIDE2_COUNT	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_STRIDE3_COUNT	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_STRIDE4_COUNT	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_ACCESS1_ACCESS	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_ACCESS2_ACCESS	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_ACCESS3_ACCESS	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_ACCESS4_ACCESS	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_ACCESS1_COUNT	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_ACCESS2_COUNT	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_ACCESS3_COUNT	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_ACCESS4_COUNT	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_FASTEST_RANK	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_FASTEST_RANK_BYTES	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_SLOWEST_RANK	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_SLOWEST_RANK_BYTES	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_F_OPEN_START_TIMESTAMP	0.020594	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_F_READ_START_TIMESTAMP	0.000000	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_F_WRITE_START_TIMESTAMP	0.000000	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_F_CLOSE_START_TIMESTAMP	0.020627	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_F_OPEN_END_TIMESTAMP	0.020605	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_F_READ_END_TIMESTAMP	0.000000	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_F_WRITE_END_TIMESTAMP	0.000000	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_F_CLOSE_END_TIMESTAMP	0.020629	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_F_READ_TIME	0.000000	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_F_WRITE_TIME	0.000000	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_F_META_TIME	0.000013	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_F_MAX_READ_TIME	0.000000	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_F_MAX_WRITE_TIME	0.000000	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_F_FASTEST_RANK_TIME	0.000000	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_F_SLOWEST_RANK_TIME	0.000000	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_F_VARIANCE_RANK_TIME	0.000000	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	5482730119186333704	POSIX_F_VARIANCE_RANK_BYTES	0.000000	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.jobdata.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_OPENS	1	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_FILENOS	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_DUPS	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_READS	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_WRITES	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_SEEKS	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_STATS	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_MMAPS	-1	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_FSYNCS	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_FDSYNCS	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_RENAME_SOURCES	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_RENAME_TARGETS	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_RENAMED_FROM	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_MODE	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_BYTES_READ	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_BYTES_WRITTEN	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_MAX_BYTE_READ	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_MAX_BYTE_WRITTEN	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_CONSEC_READS	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_CONSEC_WRITES	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_SEQ_READS	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_SEQ_WRITES	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_RW_SWITCHES	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_MEM_NOT_ALIGNED	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_MEM_ALIGNMENT	8	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_FILE_NOT_ALIGNED	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_FILE_ALIGNMENT	4096	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_MAX_READ_TIME_SIZE	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_MAX_WRITE_TIME_SIZE	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_SIZE_READ_0_100	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_SIZE_READ_100_1K	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_SIZE_READ_1K_10K	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_SIZE_READ_10K_100K	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_SIZE_READ_100K_1M	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_SIZE_READ_1M_4M	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_SIZE_READ_4M_10M	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_SIZE_READ_10M_100M	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_SIZE_READ_100M_1G	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_SIZE_READ_1G_PLUS	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_SIZE_WRITE_0_100	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_SIZE_WRITE_100_1K	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_SIZE_WRITE_1K_10K	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_SIZE_WRITE_10K_100K	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_SIZE_WRITE_100K_1M	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_SIZE_WRITE_1M_4M	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_SIZE_WRITE_4M_10M	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_SIZE_WRITE_10M_100M	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_SIZE_WRITE_100M_1G	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_SIZE_WRITE_1G_PLUS	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_STRIDE1_STRIDE	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_STRIDE2_STRIDE	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_STRIDE3_STRIDE	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_STRIDE4_STRIDE	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_STRIDE1_COUNT	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_STRIDE2_COUNT	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_STRIDE3_COUNT	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_STRIDE4_COUNT	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_ACCESS1_ACCESS	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_ACCESS2_ACCESS	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_ACCESS3_ACCESS	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_ACCESS4_ACCESS	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_ACCESS1_COUNT	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_ACCESS2_COUNT	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_ACCESS3_COUNT	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_ACCESS4_COUNT	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_FASTEST_RANK	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_FASTEST_RANK_BYTES	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_SLOWEST_RANK	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_SLOWEST_RANK_BYTES	0	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_F_OPEN_START_TIMESTAMP	0.020658	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_F_READ_START_TIMESTAMP	0.000000	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_F_WRITE_START_TIMESTAMP	0.000000	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_F_CLOSE_START_TIMESTAMP	0.020678	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_F_OPEN_END_TIMESTAMP	0.020663	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_F_READ_END_TIMESTAMP	0.000000	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_F_WRITE_END_TIMESTAMP	0.000000	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_F_CLOSE_END_TIMESTAMP	0.020679	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_F_READ_TIME	0.000000	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_F_WRITE_TIME	0.000000	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_F_META_TIME	0.000006	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_F_MAX_READ_TIME	0.000000	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_F_MAX_WRITE_TIME	0.000000	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_F_FASTEST_RANK_TIME	0.000000	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_F_SLOWEST_RANK_TIME	0.000000	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_F_VARIANCE_RANK_TIME	0.000000	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	15214515151133243771	POSIX_F_VARIANCE_RANK_BYTES	0.000000	/tmp/prterun.ares.1073411.1008/1/pmix-gds-shmem2.ares-prterun-ares-1073411@1.session.e019d281.1073411	/	ext4
+POSIX	0	12742296183670045692	POSIX_OPENS	2	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_FILENOS	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_DUPS	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_READS	2	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_WRITES	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_SEEKS	2	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_STATS	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_MMAPS	-1	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_FSYNCS	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_FDSYNCS	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_RENAME_SOURCES	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_RENAME_TARGETS	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_RENAMED_FROM	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_MODE	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_BYTES_READ	48	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_BYTES_WRITTEN	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_MAX_BYTE_READ	23	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_MAX_BYTE_WRITTEN	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_CONSEC_READS	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_CONSEC_WRITES	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_SEQ_READS	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_SEQ_WRITES	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_RW_SWITCHES	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_MEM_NOT_ALIGNED	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_MEM_ALIGNMENT	8	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_FILE_NOT_ALIGNED	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_FILE_ALIGNMENT	4096	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_MAX_READ_TIME_SIZE	24	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_MAX_WRITE_TIME_SIZE	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_SIZE_READ_0_100	2	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_SIZE_READ_100_1K	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_SIZE_READ_1K_10K	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_SIZE_READ_10K_100K	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_SIZE_READ_100K_1M	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_SIZE_READ_1M_4M	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_SIZE_READ_4M_10M	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_SIZE_READ_10M_100M	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_SIZE_READ_100M_1G	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_SIZE_READ_1G_PLUS	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_SIZE_WRITE_0_100	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_SIZE_WRITE_100_1K	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_SIZE_WRITE_1K_10K	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_SIZE_WRITE_10K_100K	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_SIZE_WRITE_100K_1M	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_SIZE_WRITE_1M_4M	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_SIZE_WRITE_4M_10M	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_SIZE_WRITE_10M_100M	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_SIZE_WRITE_100M_1G	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_SIZE_WRITE_1G_PLUS	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_STRIDE1_STRIDE	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_STRIDE2_STRIDE	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_STRIDE3_STRIDE	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_STRIDE4_STRIDE	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_STRIDE1_COUNT	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_STRIDE2_COUNT	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_STRIDE3_COUNT	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_STRIDE4_COUNT	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_ACCESS1_ACCESS	24	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_ACCESS2_ACCESS	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_ACCESS3_ACCESS	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_ACCESS4_ACCESS	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_ACCESS1_COUNT	2	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_ACCESS2_COUNT	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_ACCESS3_COUNT	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_ACCESS4_COUNT	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_FASTEST_RANK	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_FASTEST_RANK_BYTES	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_SLOWEST_RANK	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_SLOWEST_RANK_BYTES	0	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_F_OPEN_START_TIMESTAMP	0.027042	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_F_READ_START_TIMESTAMP	0.027073	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_F_WRITE_START_TIMESTAMP	0.000000	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_F_CLOSE_START_TIMESTAMP	0.000000	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_F_OPEN_END_TIMESTAMP	0.031610	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_F_READ_END_TIMESTAMP	0.031618	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_F_WRITE_END_TIMESTAMP	0.000000	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_F_CLOSE_END_TIMESTAMP	0.000000	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_F_READ_TIME	0.000016	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_F_WRITE_TIME	0.000000	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_F_META_TIME	0.000018	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_F_MAX_READ_TIME	0.000013	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_F_MAX_WRITE_TIME	0.000000	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_F_FASTEST_RANK_TIME	0.000000	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_F_SLOWEST_RANK_TIME	0.000000	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_F_VARIANCE_RANK_TIME	0.000000	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	12742296183670045692	POSIX_F_VARIANCE_RANK_BYTES	0.000000	/tmp/prterun.ares.1073411.1008/hwloc.sm	/	ext4
+POSIX	0	14486859360857679674	POSIX_OPENS	1	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_FILENOS	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_DUPS	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_READS	2	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_WRITES	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_SEEKS	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_STATS	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_MMAPS	-1	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_FSYNCS	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_FDSYNCS	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_RENAME_SOURCES	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_RENAME_TARGETS	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_RENAMED_FROM	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_MODE	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_BYTES_READ	797	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_BYTES_WRITTEN	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_MAX_BYTE_READ	796	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_MAX_BYTE_WRITTEN	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_CONSEC_READS	1	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_CONSEC_WRITES	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_SEQ_READS	1	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_SEQ_WRITES	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_RW_SWITCHES	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_MEM_NOT_ALIGNED	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_MEM_ALIGNMENT	8	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_FILE_NOT_ALIGNED	1	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_FILE_ALIGNMENT	4096	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_MAX_READ_TIME_SIZE	797	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_MAX_WRITE_TIME_SIZE	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_SIZE_READ_0_100	1	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_SIZE_READ_100_1K	1	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_SIZE_READ_1K_10K	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_SIZE_READ_10K_100K	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_SIZE_READ_100K_1M	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_SIZE_READ_1M_4M	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_SIZE_READ_4M_10M	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_SIZE_READ_10M_100M	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_SIZE_READ_100M_1G	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_SIZE_READ_1G_PLUS	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_SIZE_WRITE_0_100	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_SIZE_WRITE_100_1K	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_SIZE_WRITE_1K_10K	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_SIZE_WRITE_10K_100K	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_SIZE_WRITE_100K_1M	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_SIZE_WRITE_1M_4M	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_SIZE_WRITE_4M_10M	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_SIZE_WRITE_10M_100M	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_SIZE_WRITE_100M_1G	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_SIZE_WRITE_1G_PLUS	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_STRIDE1_STRIDE	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_STRIDE2_STRIDE	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_STRIDE3_STRIDE	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_STRIDE4_STRIDE	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_STRIDE1_COUNT	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_STRIDE2_COUNT	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_STRIDE3_COUNT	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_STRIDE4_COUNT	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_ACCESS1_ACCESS	797	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_ACCESS2_ACCESS	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_ACCESS3_ACCESS	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_ACCESS4_ACCESS	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_ACCESS1_COUNT	1	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_ACCESS2_COUNT	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_ACCESS3_COUNT	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_ACCESS4_COUNT	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_FASTEST_RANK	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_FASTEST_RANK_BYTES	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_SLOWEST_RANK	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_SLOWEST_RANK_BYTES	0	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_F_OPEN_START_TIMESTAMP	0.045917	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_F_READ_START_TIMESTAMP	0.045939	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_F_WRITE_START_TIMESTAMP	0.000000	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_F_CLOSE_START_TIMESTAMP	0.046005	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_F_OPEN_END_TIMESTAMP	0.045931	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_F_READ_END_TIMESTAMP	0.045961	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_F_WRITE_END_TIMESTAMP	0.000000	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_F_CLOSE_END_TIMESTAMP	0.046009	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_F_READ_TIME	0.000018	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_F_WRITE_TIME	0.000000	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_F_META_TIME	0.000018	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_F_MAX_READ_TIME	0.000017	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_F_MAX_WRITE_TIME	0.000000	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_F_FASTEST_RANK_TIME	0.000000	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_F_SLOWEST_RANK_TIME	0.000000	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_F_VARIANCE_RANK_TIME	0.000000	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	14486859360857679674	POSIX_F_VARIANCE_RANK_BYTES	0.000000	/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/config/default-chrono-client-conf.json	/	ext4
+POSIX	0	8215650938716813467	POSIX_OPENS	1	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_FILENOS	1	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_DUPS	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_READS	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_WRITES	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_SEEKS	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_STATS	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_MMAPS	-1	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_FSYNCS	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_FDSYNCS	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_RENAME_SOURCES	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_RENAME_TARGETS	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_RENAMED_FROM	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_MODE	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_BYTES_READ	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_BYTES_WRITTEN	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_MAX_BYTE_READ	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_MAX_BYTE_WRITTEN	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_CONSEC_READS	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_CONSEC_WRITES	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_SEQ_READS	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_SEQ_WRITES	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_RW_SWITCHES	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_MEM_NOT_ALIGNED	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_MEM_ALIGNMENT	8	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_FILE_NOT_ALIGNED	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_FILE_ALIGNMENT	4096	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_MAX_READ_TIME_SIZE	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_MAX_WRITE_TIME_SIZE	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_SIZE_READ_0_100	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_SIZE_READ_100_1K	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_SIZE_READ_1K_10K	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_SIZE_READ_10K_100K	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_SIZE_READ_100K_1M	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_SIZE_READ_1M_4M	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_SIZE_READ_4M_10M	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_SIZE_READ_10M_100M	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_SIZE_READ_100M_1G	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_SIZE_READ_1G_PLUS	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_SIZE_WRITE_0_100	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_SIZE_WRITE_100_1K	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_SIZE_WRITE_1K_10K	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_SIZE_WRITE_10K_100K	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_SIZE_WRITE_100K_1M	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_SIZE_WRITE_1M_4M	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_SIZE_WRITE_4M_10M	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_SIZE_WRITE_10M_100M	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_SIZE_WRITE_100M_1G	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_SIZE_WRITE_1G_PLUS	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_STRIDE1_STRIDE	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_STRIDE2_STRIDE	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_STRIDE3_STRIDE	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_STRIDE4_STRIDE	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_STRIDE1_COUNT	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_STRIDE2_COUNT	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_STRIDE3_COUNT	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_STRIDE4_COUNT	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_ACCESS1_ACCESS	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_ACCESS2_ACCESS	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_ACCESS3_ACCESS	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_ACCESS4_ACCESS	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_ACCESS1_COUNT	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_ACCESS2_COUNT	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_ACCESS3_COUNT	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_ACCESS4_COUNT	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_FASTEST_RANK	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_FASTEST_RANK_BYTES	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_SLOWEST_RANK	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_SLOWEST_RANK_BYTES	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_F_OPEN_START_TIMESTAMP	0.046530	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_F_READ_START_TIMESTAMP	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_F_WRITE_START_TIMESTAMP	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_F_CLOSE_START_TIMESTAMP	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_F_OPEN_END_TIMESTAMP	0.046530	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_F_READ_END_TIMESTAMP	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_F_WRITE_END_TIMESTAMP	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_F_CLOSE_END_TIMESTAMP	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_F_READ_TIME	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_F_WRITE_TIME	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_F_META_TIME	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_F_MAX_READ_TIME	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_F_MAX_WRITE_TIME	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_F_FASTEST_RANK_TIME	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_F_SLOWEST_RANK_TIME	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_F_VARIANCE_RANK_TIME	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+POSIX	0	8215650938716813467	POSIX_F_VARIANCE_RANK_BYTES	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+
+# *******************************************************
+# STDIO module data
+# *******************************************************
+
+# description of STDIO counters:
+#   STDIO_{OPENS|FDOPENS|WRITES|READS|SEEKS|FLUSHES} are types of operations.
+#   STDIO_BYTES_*: total bytes read and written.
+#   STDIO_MAX_BYTE_*: highest offset byte read and written.
+#   STDIO_*_RANK: rank of the processes that were the fastest and slowest at I/O (for shared files).
+#   STDIO_*_RANK_BYTES: bytes transferred by the fastest and slowest ranks (for shared files).
+#   STDIO_F_*_START_TIMESTAMP: timestamp of the first call to that type of function.
+#   STDIO_F_*_END_TIMESTAMP: timestamp of the completion of the last call to that type of function.
+#   STDIO_F_*_TIME: cumulative time spent in different types of functions.
+#   STDIO_F_*_RANK_TIME: fastest and slowest I/O time for a single rank (for shared files).
+#   STDIO_F_VARIANCE_RANK_*: variance of total I/O time and bytes moved for all ranks (for shared files).
+
+# WARNING: STDIO_OPENS counter includes STDIO_FDOPENS count
+
+# WARNING: STDIO counters related to file offsets may be incorrect if a file is simultaneously accessed by both STDIO and POSIX (e.g., using fdopen())
+# 	- Affected counters include: MAX_BYTE_{READ|WRITTEN}
+
+#<module>	<rank>	<record id>	<counter>	<value>	<file name>	<mount pt>	<fs type>
+STDIO	0	15920181672442173319	STDIO_OPENS	1	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	0	15920181672442173319	STDIO_FDOPENS	0	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	0	15920181672442173319	STDIO_READS	0	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	0	15920181672442173319	STDIO_WRITES	103	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	0	15920181672442173319	STDIO_SEEKS	0	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	0	15920181672442173319	STDIO_FLUSHES	84	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	0	15920181672442173319	STDIO_BYTES_WRITTEN	2265	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	0	15920181672442173319	STDIO_BYTES_READ	0	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	0	15920181672442173319	STDIO_MAX_BYTE_READ	0	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	0	15920181672442173319	STDIO_MAX_BYTE_WRITTEN	2264	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	0	15920181672442173319	STDIO_FASTEST_RANK	0	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	0	15920181672442173319	STDIO_FASTEST_RANK_BYTES	0	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	0	15920181672442173319	STDIO_SLOWEST_RANK	0	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	0	15920181672442173319	STDIO_SLOWEST_RANK_BYTES	0	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	0	15920181672442173319	STDIO_F_META_TIME	0.000000	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	0	15920181672442173319	STDIO_F_WRITE_TIME	0.000033	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	0	15920181672442173319	STDIO_F_READ_TIME	0.000000	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	0	15920181672442173319	STDIO_F_OPEN_START_TIMESTAMP	0.000000	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	0	15920181672442173319	STDIO_F_CLOSE_START_TIMESTAMP	0.000000	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	0	15920181672442173319	STDIO_F_WRITE_START_TIMESTAMP	0.045839	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	0	15920181672442173319	STDIO_F_READ_START_TIMESTAMP	0.000000	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	0	15920181672442173319	STDIO_F_OPEN_END_TIMESTAMP	0.000000	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	0	15920181672442173319	STDIO_F_CLOSE_END_TIMESTAMP	0.000000	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	0	15920181672442173319	STDIO_F_WRITE_END_TIMESTAMP	0.126533	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	0	15920181672442173319	STDIO_F_READ_END_TIMESTAMP	0.000000	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	0	15920181672442173319	STDIO_F_FASTEST_RANK_TIME	0.000000	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	0	15920181672442173319	STDIO_F_SLOWEST_RANK_TIME	0.000000	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	0	15920181672442173319	STDIO_F_VARIANCE_RANK_TIME	0.000000	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	0	15920181672442173319	STDIO_F_VARIANCE_RANK_BYTES	0.000000	<STDOUT>	UNKNOWN	UNKNOWN
+STDIO	0	7238257241479193519	STDIO_OPENS	1	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	0	7238257241479193519	STDIO_FDOPENS	0	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	0	7238257241479193519	STDIO_READS	0	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	0	7238257241479193519	STDIO_WRITES	18	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	0	7238257241479193519	STDIO_SEEKS	0	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	0	7238257241479193519	STDIO_FLUSHES	45	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	0	7238257241479193519	STDIO_BYTES_WRITTEN	771	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	0	7238257241479193519	STDIO_BYTES_READ	0	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	0	7238257241479193519	STDIO_MAX_BYTE_READ	0	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	0	7238257241479193519	STDIO_MAX_BYTE_WRITTEN	770	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	0	7238257241479193519	STDIO_FASTEST_RANK	0	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	0	7238257241479193519	STDIO_FASTEST_RANK_BYTES	0	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	0	7238257241479193519	STDIO_SLOWEST_RANK	0	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	0	7238257241479193519	STDIO_SLOWEST_RANK_BYTES	0	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	0	7238257241479193519	STDIO_F_META_TIME	0.000000	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	0	7238257241479193519	STDIO_F_WRITE_TIME	0.000043	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	0	7238257241479193519	STDIO_F_READ_TIME	0.000000	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	0	7238257241479193519	STDIO_F_OPEN_START_TIMESTAMP	0.000000	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	0	7238257241479193519	STDIO_F_CLOSE_START_TIMESTAMP	0.000000	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	0	7238257241479193519	STDIO_F_WRITE_START_TIMESTAMP	0.065681	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	0	7238257241479193519	STDIO_F_READ_START_TIMESTAMP	0.000000	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	0	7238257241479193519	STDIO_F_OPEN_END_TIMESTAMP	0.000000	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	0	7238257241479193519	STDIO_F_CLOSE_END_TIMESTAMP	0.000000	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	0	7238257241479193519	STDIO_F_WRITE_END_TIMESTAMP	0.065764	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	0	7238257241479193519	STDIO_F_READ_END_TIMESTAMP	0.000000	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	0	7238257241479193519	STDIO_F_FASTEST_RANK_TIME	0.000000	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	0	7238257241479193519	STDIO_F_SLOWEST_RANK_TIME	0.000000	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	0	7238257241479193519	STDIO_F_VARIANCE_RANK_TIME	0.000000	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	0	7238257241479193519	STDIO_F_VARIANCE_RANK_BYTES	0.000000	<STDERR>	UNKNOWN	UNKNOWN
+STDIO	0	1434272119053776118	STDIO_OPENS	2	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+STDIO	0	1434272119053776118	STDIO_FDOPENS	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+STDIO	0	1434272119053776118	STDIO_READS	2	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+STDIO	0	1434272119053776118	STDIO_WRITES	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+STDIO	0	1434272119053776118	STDIO_SEEKS	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+STDIO	0	1434272119053776118	STDIO_FLUSHES	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+STDIO	0	1434272119053776118	STDIO_BYTES_WRITTEN	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+STDIO	0	1434272119053776118	STDIO_BYTES_READ	5772	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+STDIO	0	1434272119053776118	STDIO_MAX_BYTE_READ	2885	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+STDIO	0	1434272119053776118	STDIO_MAX_BYTE_WRITTEN	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+STDIO	0	1434272119053776118	STDIO_FASTEST_RANK	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+STDIO	0	1434272119053776118	STDIO_FASTEST_RANK_BYTES	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+STDIO	0	1434272119053776118	STDIO_SLOWEST_RANK	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+STDIO	0	1434272119053776118	STDIO_SLOWEST_RANK_BYTES	0	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+STDIO	0	1434272119053776118	STDIO_F_META_TIME	0.000036	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+STDIO	0	1434272119053776118	STDIO_F_WRITE_TIME	0.000000	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+STDIO	0	1434272119053776118	STDIO_F_READ_TIME	0.000034	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+STDIO	0	1434272119053776118	STDIO_F_OPEN_START_TIMESTAMP	0.001739	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+STDIO	0	1434272119053776118	STDIO_F_CLOSE_START_TIMESTAMP	0.001926	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+STDIO	0	1434272119053776118	STDIO_F_WRITE_START_TIMESTAMP	0.000000	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+STDIO	0	1434272119053776118	STDIO_F_READ_START_TIMESTAMP	0.001845	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+STDIO	0	1434272119053776118	STDIO_F_OPEN_END_TIMESTAMP	0.001983	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+STDIO	0	1434272119053776118	STDIO_F_CLOSE_END_TIMESTAMP	0.002108	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+STDIO	0	1434272119053776118	STDIO_F_WRITE_END_TIMESTAMP	0.000000	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+STDIO	0	1434272119053776118	STDIO_F_READ_END_TIMESTAMP	0.002050	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+STDIO	0	1434272119053776118	STDIO_F_FASTEST_RANK_TIME	0.000000	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+STDIO	0	1434272119053776118	STDIO_F_SLOWEST_RANK_TIME	0.000000	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+STDIO	0	1434272119053776118	STDIO_F_VARIANCE_RANK_TIME	0.000000	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+STDIO	0	1434272119053776118	STDIO_F_VARIANCE_RANK_BYTES	0.000000	/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/etc/openmpi-mca-params.conf	/mnt/repo	xfs
+STDIO	0	8215650938716813467	STDIO_OPENS	1	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	0	8215650938716813467	STDIO_FDOPENS	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	0	8215650938716813467	STDIO_READS	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	0	8215650938716813467	STDIO_WRITES	27	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	0	8215650938716813467	STDIO_SEEKS	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	0	8215650938716813467	STDIO_FLUSHES	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	0	8215650938716813467	STDIO_BYTES_WRITTEN	3625	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	0	8215650938716813467	STDIO_BYTES_READ	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	0	8215650938716813467	STDIO_MAX_BYTE_READ	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	0	8215650938716813467	STDIO_MAX_BYTE_WRITTEN	3624	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	0	8215650938716813467	STDIO_FASTEST_RANK	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	0	8215650938716813467	STDIO_FASTEST_RANK_BYTES	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	0	8215650938716813467	STDIO_SLOWEST_RANK	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	0	8215650938716813467	STDIO_SLOWEST_RANK_BYTES	0	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	0	8215650938716813467	STDIO_F_META_TIME	0.000326	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	0	8215650938716813467	STDIO_F_WRITE_TIME	0.000014	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	0	8215650938716813467	STDIO_F_READ_TIME	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	0	8215650938716813467	STDIO_F_OPEN_START_TIMESTAMP	0.046196	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	0	8215650938716813467	STDIO_F_CLOSE_START_TIMESTAMP	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	0	8215650938716813467	STDIO_F_WRITE_START_TIMESTAMP	0.046952	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	0	8215650938716813467	STDIO_F_READ_START_TIMESTAMP	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	0	8215650938716813467	STDIO_F_OPEN_END_TIMESTAMP	0.046522	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	0	8215650938716813467	STDIO_F_CLOSE_END_TIMESTAMP	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	0	8215650938716813467	STDIO_F_WRITE_END_TIMESTAMP	0.126370	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	0	8215650938716813467	STDIO_F_READ_END_TIMESTAMP	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	0	8215650938716813467	STDIO_F_FASTEST_RANK_TIME	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	0	8215650938716813467	STDIO_F_SLOWEST_RANK_TIME	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	0	8215650938716813467	STDIO_F_VARIANCE_RANK_TIME	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+STDIO	0	8215650938716813467	STDIO_F_VARIANCE_RANK_BYTES	0.000000	/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-client.log	/mnt/common	xfs
+
+# *******************************************************
+# HEATMAP module data
+# *******************************************************
+
+# description of heatmap counters:
+#   HEATMAP_F_BIN_WIDTH_SECONDS: time duration of each heatmap bin
+#   HEATMAP_{READ|WRITE}_BIN_{*}: number of bytes read or written within specified heatmap bin
+
+#<module>	<rank>	<record id>	<counter>	<value>	<file name>	<mount pt>	<fs type>
+HEATMAP	0	3989511027826779520	HEATMAP_F_BIN_WIDTH_SECONDS	0.100000	heatmap:STDIO	UNKNOWN	UNKNOWN
+HEATMAP	0	3989511027826779520	HEATMAP_READ_BIN_0	5772	heatmap:STDIO	UNKNOWN	UNKNOWN
+HEATMAP	0	3989511027826779520	HEATMAP_READ_BIN_1	0	heatmap:STDIO	UNKNOWN	UNKNOWN
+HEATMAP	0	3989511027826779520	HEATMAP_WRITE_BIN_0	2586	heatmap:STDIO	UNKNOWN	UNKNOWN
+HEATMAP	0	3989511027826779520	HEATMAP_WRITE_BIN_1	4075	heatmap:STDIO	UNKNOWN	UNKNOWN
+HEATMAP	0	16592106915301738621	HEATMAP_F_BIN_WIDTH_SECONDS	0.100000	heatmap:POSIX	UNKNOWN	UNKNOWN
+HEATMAP	0	16592106915301738621	HEATMAP_READ_BIN_0	845	heatmap:POSIX	UNKNOWN	UNKNOWN
+HEATMAP	0	16592106915301738621	HEATMAP_READ_BIN_1	0	heatmap:POSIX	UNKNOWN	UNKNOWN
+HEATMAP	0	16592106915301738621	HEATMAP_WRITE_BIN_0	0	heatmap:POSIX	UNKNOWN	UNKNOWN
+HEATMAP	0	16592106915301738621	HEATMAP_WRITE_BIN_1	0	heatmap:POSIX	UNKNOWN	UNKNOWN

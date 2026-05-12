@@ -1,0 +1,28 @@
+[2026-05-12 11:07:16.338] [ChronoPlayer] [info] [ChronoPlayer] Running ChronoPlayer 
+[2026-05-12 11:07:16.338] [ChronoPlayer] [info] [ChronoPlayer]  Configuration [CHRONO_PLAYER_CONFIGURATION: RECORDING_GROUP: 1, DATA_STORE_ADMIN_SERVICE_CONF: [PROTO_CONF: ofi+sockets, IP: 172.25.101.4, BASE_PORT: 2222, SERVICE_PROVIDER_ID: 22, PORTS: ], PLAYBACK_SERVICE_CONF: [PROTO_CONF: ofi+sockets, IP: 172.25.101.4, BASE_PORT: 2225, SERVICE_PROVIDER_ID: 25, PORTS: ], VISOR_REGISTRY_SERVICE_CONF: [PROTO_CONF: ofi+sockets, IP: 172.25.101.3, BASE_PORT: 8888, SERVICE_PROVIDER_ID: 88, PORTS: ], LOG_CONF: [TYPE: file, FILE: /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-110654/chronolog/logs/chrono-player-ares-comp-04.log, LEVEL: DEBUG, NAME: ChronoPlayer, LOGFILESIZE: 1048576, LOGFILENUM: 3, FLUSH LEVEL: DEBUG], DATA_STORE_CONF: [DATA_STORE_CONF: max_story_chunk_size: 4096 story_chunk_duration_secs: 60 acceptance_window_secs: 180 inactive_story_delay_secs: 300], READER_CONF: [EXTRACTOR_READER_CONF: STORY_FILES_DIR: /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-110654/chronolog/output]]
+[2026-05-12 11:07:16.385] [ChronoPlayer] [info] [PlaybackService] Constructed at ofi+sockets://172.25.101.4:2225. ProviderID=25
+[2026-05-12 11:07:16.385] [ChronoPlayer] [info] [ChronoPlayer] created PlayerIdCard: PlayerIdCard{Group{1}ServiceId{ofi+sockets:172.25.101.4:2225:25}}
+[2026-05-12 11:07:16.412] [ChronoPlayer] [info] [PlayerStoreAdminService] Constructed at ofi+sockets://172.25.101.4:2222. ProviderID=22
+[2026-05-12 11:07:16.412] [ChronoPlayer] [info] [ChronoPlayer] started AdminService at ServiceId{ofi+sockets:172.25.101.4:2222:22}
+[2026-05-12 11:07:16.413] [ChronoPlayer] [info] [ChronoPlayer] Successfully registered with ChronoVisor.
+[2026-05-12 11:07:16.414] [ChronoPlayer] [info] [HDF5ArchiveReadingAgent] Initializing, scanning archive path /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-110654/chronolog/output recursively to create the map ...
+[2026-05-12 11:07:16.415] [ChronoPlayer] [info] [ReadingAgent] Starting reading streams. StreamCount=1, ThreadID=0
+[2026-05-12 11:07:16.415] [ChronoPlayer] [info] [ReadingAgent] reading streams started successfully. Stream count=1, ThreadID=0
+[2026-05-12 11:07:22.793] [ChronoPlayer] [info] [ChronoPlayer] Received SIGTERM signal. Initiating shutdown procedure.
+[2026-05-12 11:07:22.793] [ChronoPlayer] [info] [ChronoPlayer] Initiating shutdown procedures.
+[2026-05-12 11:07:22.793] [ChronoPlayer] [info] [ReadingAgent] Initiating shutdown of archive reading. agentState=1
+[2026-05-12 11:07:23.416] [ChronoPlayer] [info] [ReadingAgent] All archive reading threads have been joined.
+[2026-05-12 11:07:26.416] [ChronoPlayer] [info] [ReadingAgent] Archive reading is shutdown.
+[2026-05-12 11:07:26.416] [ChronoPlayer] [info] [ReadingAgent] Initiating shutdown of archive reading. agentState=2
+[2026-05-12 11:07:26.416] [ChronoPlayer] [info] [ReadingAgent] reading agent is already shutting down. Ignoring additional shutdown request.
+[2026-05-12 11:07:26.416] [ChronoPlayer] [info] [HDF5ArchiveReadingAgent] Shutdown already requested. Skipping shutdown request.
+[2026-05-12 11:07:26.416] [ChronoPlayer] [info] [ChronoPlayer] Shutdown completed. Exiting.
+[2026-05-12 11:07:26.416] [ChronoPlayer] [info] [PlayerDataStore] Destructor called. Initiating shutdown. Active StoryPipelines count=0
+[2026-05-12 11:07:26.416] [ChronoPlayer] [info] [PlayerDataStore] Initiating shutdown of DataCollection. CurrentState=0, Active StoryPipelines=0, PipelinesWaitingForExit=0
+[2026-05-12 11:07:26.416] [ChronoPlayer] [info] [PlayerDataStore] All data collection threads have been joined.
+[2026-05-12 11:07:26.416] [ChronoPlayer] [info] [PlayerDataStore] All data collection streams have been joined.
+[2026-05-12 11:07:26.416] [ChronoPlayer] [info] [PlayerDataStore] DataCollection shutdown completed.
+[2026-05-12 11:07:26.416] [ChronoPlayer] [info] [PlayerDataStore] Shutdown completed successfully. Active StoryPipelines count=0
+[2026-05-12 11:07:26.416] [ChronoPlayer] [info] [StoryChunkExtractionQueue] Initiating queue shutdown. Queue size: 0
+[2026-05-12 11:07:26.417] [ChronoPlayer] [info] [IngestionQueue] Initiating shutdown. HandleMapSize=0, OrphanQueueSize=0
+[2026-05-12 11:07:26.417] [ChronoPlayer] [info] [IngestionQueue] Shutdown completed. All handles disengaged.

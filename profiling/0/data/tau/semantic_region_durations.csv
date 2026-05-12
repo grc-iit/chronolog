@@ -1,0 +1,14 @@
+role,region,count,mean_us,max_us,total_us
+chrono-grapher,storage_write,5.0,4725.4,23592.0,23627.0
+chrono-grapher,grapher_query,4.0,30.5,60.0,122.0
+chrono-keeper,keeper_ingest,8.0,3538.25,28288.0,28306.0
+chrono-keeper,keeper_flush,8.0,21.375,114.0,171.0
+chrono-keeper,keeper_ingest,8.0,3186.875,25477.0,25495.0
+chrono-keeper,keeper_flush,9.0,8.333333333333334,20.0,75.0
+chrono-visor,rpc_receive,1.0,3032.0,3032.0,3032.0
+chrono-visor,metadata_lookup,4.0,786.0,3021.0,3144.0
+chrono-visor,story_index_update,2.0,20.0,30.0,40.0
+client,rpc_send,27.0,2324.740740740741,47896.0,62768.0
+client,metadata_lookup,3.0,1435.333333333333,3374.0,4305.999999999999
+client,client_append,20.0,431.1,1773.0,8622.0
+client,story_index_update,2.0,999.0,1723.0,1998.0

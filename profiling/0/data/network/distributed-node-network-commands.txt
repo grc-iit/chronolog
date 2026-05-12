@@ -1,0 +1,804 @@
+node=ares-comp-03
+node=ares-comp-04
+date=2026-05-12 00:38 CDT
+## ip -br addr
+lo               UNKNOWN        127.0.0.1/8 ::1/128 
+eno1             UP             172.20.101.3/16 fe80::7ed3:aff:feef:3dd0/64 
+eno2             DOWN           
+enp47s0np0       UP             172.25.101.3/16 fe80::268a:7ff:fe2f:cdb2/64 
+enx7ed30aef3dd7  UNKNOWN        169.254.95.120/24 metric 100 fe80::7cd3:aff:feef:3dd7/64 
+docker0          DOWN           172.17.0.1/16 
+## ip route
+default via 172.20.1.1 dev eno1 proto static 
+169.254.95.0/24 dev enx7ed30aef3dd7 proto kernel scope link src 169.254.95.120 metric 100 
+172.17.0.0/16 dev docker0 proto kernel scope link src 172.17.0.1 linkdown 
+172.20.0.0/16 dev eno1 proto kernel scope link src 172.20.101.3 
+172.25.0.0/16 dev enp47s0np0 proto kernel scope link src 172.25.101.3 
+## interfaces
+### iface=docker0
+down
+Settings for docker0:
+	Supported ports: [  ]
+	Supported link modes:   Not reported
+	Supported pause frame use: No
+	Supports auto-negotiation: No
+	Supported FEC modes: Not reported
+	Advertised link modes:  Not reported
+	Advertised pause frame use: No
+	Advertised auto-negotiation: No
+	Advertised FEC modes: Not reported
+	Speed: Unknown!
+	Duplex: Unknown! (255)
+	Auto-negotiation: off
+	Port: Other
+	PHYAD: 0
+	Transceiver: internal
+	Link detected: no
+### iface=eno1
+date=2026-05-12 00:38 CDT
+## ip -br addr
+lo               UNKNOWN        127.0.0.1/8 ::1/128 
+eno1             UP             172.20.101.4/16 fe80::7ed3:aff:feef:3328/64 
+eno2             DOWN           
+enp47s0np0       UP             172.25.101.4/16 fe80::268a:7ff:fe2f:c992/64 
+enx7ed30aef332f  UNKNOWN        169.254.95.120/24 metric 100 fe80::7cd3:aff:feef:332f/64 
+docker0          DOWN           172.17.0.1/16 
+## ip route
+default via 172.20.1.1 dev eno1 proto static 
+169.254.95.0/24 dev enx7ed30aef332f proto kernel scope link src 169.254.95.120 metric 100 
+172.17.0.0/16 dev docker0 proto kernel scope link src 172.17.0.1 linkdown 
+172.20.0.0/16 dev eno1 proto kernel scope link src 172.20.101.4 
+172.25.0.0/16 dev enp47s0np0 proto kernel scope link src 172.25.101.4 
+## interfaces
+### iface=docker0
+down
+up
+Settings for docker0:
+	Supported ports: [  ]
+	Supported link modes:   Not reported
+	Supported pause frame use: No
+	Supports auto-negotiation: No
+	Supported FEC modes: Not reported
+	Advertised link modes:  Not reported
+	Advertised pause frame use: No
+	Advertised auto-negotiation: No
+	Advertised FEC modes: Not reported
+	Speed: Unknown!
+	Duplex: Unknown! (255)
+	Auto-negotiation: off
+	Port: Other
+	PHYAD: 0
+	Transceiver: internal
+	Link detected: no
+Settings for eno1:
+	Supported ports: [ TP ]
+	Supported link modes:   1000baseT/Full
+	Supported pause frame use: Symmetric Receive-only
+	Supports auto-negotiation: Yes
+	Supported FEC modes: Not reported
+	Advertised link modes:  1000baseT/Full
+	Advertised pause frame use: No
+	Advertised auto-negotiation: Yes
+	Advertised FEC modes: Not reported
+	Speed: 1000Mb/s
+	Duplex: Full
+	Auto-negotiation: on
+	Port: Twisted Pair
+	PHYAD: 0
+	Transceiver: internal
+	MDI-X: Unknown
+        Current message level: 0x00000007 (7)
+                               drv probe link
+	Link detected: yes
+### iface=eno1
+up
+NIC statistics:
+     rx_packets: 1081719
+     tx_packets: 132096
+     rx_bytes: 332534549
+     tx_bytes: 13968193
+     rx_errors: 0
+     tx_errors: 0
+     rx_dropped: 0
+     rx_missed_errors: 0
+     tx_dropped: 0
+     collisions: 0
+     rx_length_errors: 0
+     rx_crc_errors: 0
+     rx_unicast: 256607
+     tx_unicast: 131874
+     rx_multicast: 354459
+     tx_multicast: 207
+     rx_broadcast: 470647
+     tx_broadcast: 8
+     rx_unknown_protocol: 0
+     tx_linearize: 0
+     tx_force_wb: 0
+     tx_busy: 0
+     rx_alloc_fail: 0
+     rx_pg_alloc_fail: 0
+     tx-0.packets: 8077
+     tx-0.bytes: 716717
+     rx-0.packets: 26679
+     rx-0.bytes: 36535854
+     tx-1.packets: 14923
+     tx-1.bytes: 1087636
+     rx-1.packets: 28056
+     rx-1.bytes: 36539665
+     tx-2.packets: 6098
+     tx-2.bytes: 413477
+     rx-2.packets: 12132
+     rx-2.bytes: 13956881
+     tx-3.packets: 2661
+     tx-3.bytes: 201122
+     rx-3.packets: 3158
+     rx-3.bytes: 2550258
+     tx-4.packets: 710
+     tx-4.bytes: 82219
+     rx-4.packets: 1501
+     rx-4.bytes: 334778
+     tx-5.packets: 925
+     tx-5.bytes: 96305
+     rx-5.packets: 1749
+     rx-5.bytes: 370381
+     tx-6.packets: 1492
+     tx-6.bytes: 120426
+     rx-6.packets: 2263
+     rx-6.bytes: 1847654
+     tx-7.packets: 5801
+     tx-7.bytes: 416855
+     rx-7.packets: 13029
+     rx-7.bytes: 16721234
+     tx-8.packets: 1156
+     tx-8.bytes: 91830
+     rx-8.packets: 2086
+     rx-8.bytes: 2056105
+     tx-9.packets: 3713
+     tx-9.bytes: 266384
+     rx-9.packets: 6078
+     rx-9.bytes: 7598066
+     tx-10.packets: 2311
+     tx-10.bytes: 372128
+     rx-10.packets: 12511
+     rx-10.bytes: 812989
+     tx-11.packets: 1174
+     tx-11.bytes: 233201
+     rx-11.packets: 646
+     rx-11.bytes: 234780
+     tx-12.packets: 1994
+     tx-12.bytes: 377439
+     rx-12.packets: 458942
+     rx-12.bytes: 27759078
+     tx-13.packets: 880
+     tx-13.bytes: 211386
+     rx-13.packets: 4382
+### iface=eno2
+down
+Settings for eno1:
+	Supported ports: [ TP ]
+	Supported link modes:   1000baseT/Full
+	Supported pause frame use: Symmetric Receive-only
+	Supports auto-negotiation: Yes
+	Supported FEC modes: Not reported
+	Advertised link modes:  1000baseT/Full
+	Advertised pause frame use: No
+	Advertised auto-negotiation: Yes
+	Advertised FEC modes: Not reported
+	Speed: 1000Mb/s
+	Duplex: Full
+	Auto-negotiation: on
+	Port: Twisted Pair
+	PHYAD: 0
+	Transceiver: internal
+	MDI-X: Unknown
+        Current message level: 0x00000007 (7)
+                               drv probe link
+	Link detected: yes
+Settings for eno2:
+	Supported ports: [  ]
+	Supported link modes:   1000baseT/Full
+	Supported pause frame use: Symmetric Receive-only
+	Supports auto-negotiation: Yes
+	Supported FEC modes: Not reported
+	Advertised link modes:  1000baseT/Full
+	Advertised pause frame use: No
+	Advertised auto-negotiation: Yes
+	Advertised FEC modes: Not reported
+	Speed: Unknown!
+	Duplex: Unknown! (255)
+	Auto-negotiation: off
+	Port: Other
+	PHYAD: 0
+	Transceiver: internal
+        Current message level: 0x00000007 (7)
+                               drv probe link
+	Link detected: no
+NIC statistics:
+     rx_packets: 1076286
+     tx_packets: 143578
+     rx_bytes: 306149312
+     tx_bytes: 13489205
+     rx_errors: 0
+     tx_errors: 0
+     rx_dropped: 0
+     rx_missed_errors: 0
+     tx_dropped: 0
+     collisions: 0
+     rx_length_errors: 0
+     rx_crc_errors: 0
+     rx_unicast: 248701
+     tx_unicast: 143363
+     rx_multicast: 355805
+     tx_multicast: 207
+     rx_broadcast: 471779
+     tx_broadcast: 4
+     rx_unknown_protocol: 0
+     tx_linearize: 0
+     tx_force_wb: 0
+     tx_busy: 0
+     rx_alloc_fail: 0
+     rx_pg_alloc_fail: 0
+     tx-0.packets: 5191
+     tx-0.bytes: 517961
+     rx-0.packets: 9395
+     rx-0.bytes: 11017552
+     tx-1.packets: 3250
+     tx-1.bytes: 352714
+     rx-1.packets: 2677
+     rx-1.bytes: 990362
+     tx-2.packets: 6901
+     tx-2.bytes: 769464
+     rx-2.packets: 17214
+     rx-2.bytes: 20140087
+     tx-3.packets: 13265
+     tx-3.bytes: 1076316
+     rx-3.packets: 26154
+     rx-3.bytes: 35197143
+     tx-4.packets: 6231
+     tx-4.bytes: 474630
+     rx-4.packets: 3740
+     rx-4.bytes: 3373730
+     tx-5.packets: 4384
+     tx-5.bytes: 441599
+     rx-5.packets: 4923
+     rx-5.bytes: 4890608
+     tx-6.packets: 5510
+     tx-6.bytes: 632651
+     rx-6.packets: 1928
+     rx-6.bytes: 1350579
+     tx-7.packets: 11461
+     tx-7.bytes: 904919
+     rx-7.packets: 22608
+     rx-7.bytes: 30401713
+     tx-8.packets: 7676
+     tx-8.bytes: 663316
+     rx-8.packets: 481208
+     rx-8.bytes: 48501557
+     tx-9.packets: 32409
+     tx-9.bytes: 2462163
+     rx-9.packets: 64488
+     rx-9.bytes: 86454580
+     tx-10.packets: 40
+     tx-10.bytes: 13920
+     rx-10.packets: 426
+     rx-10.bytes: 37958
+     tx-11.packets: 329
+     tx-11.bytes: 57214
+     rx-11.packets: 487
+     rx-11.bytes: 46421
+     tx-12.packets: 570
+     tx-12.bytes: 82892
+     rx-12.packets: 510
+     rx-12.bytes: 51846
+     tx-13.packets: 111
+     tx-13.bytes: 17541
+     rx-13.packets: 443
+### iface=eno2
+NIC statistics:
+     rx_packets: 0
+     tx_packets: 0
+     rx_bytes: 0
+     tx_bytes: 0
+     rx_errors: 0
+     tx_errors: 0
+     rx_dropped: 0
+     rx_missed_errors: 0
+     tx_dropped: 0
+     collisions: 0
+     rx_length_errors: 0
+     rx_crc_errors: 0
+     rx_unicast: 0
+     tx_unicast: 0
+     rx_multicast: 0
+     tx_multicast: 0
+     rx_broadcast: 0
+     tx_broadcast: 0
+     rx_unknown_protocol: 0
+     tx_linearize: 0
+     tx_force_wb: 0
+     tx_busy: 0
+     rx_alloc_fail: 0
+     rx_pg_alloc_fail: 0
+     tx-0.packets: 0
+     tx-0.bytes: 0
+     rx-0.packets: 0
+     rx-0.bytes: 0
+     tx-1.packets: 0
+     tx-1.bytes: 0
+     rx-1.packets: 0
+     rx-1.bytes: 0
+     tx-2.packets: 0
+     tx-2.bytes: 0
+     rx-2.packets: 0
+     rx-2.bytes: 0
+     tx-3.packets: 0
+     tx-3.bytes: 0
+     rx-3.packets: 0
+     rx-3.bytes: 0
+     tx-4.packets: 0
+     tx-4.bytes: 0
+     rx-4.packets: 0
+     rx-4.bytes: 0
+     tx-5.packets: 0
+     tx-5.bytes: 0
+     rx-5.packets: 0
+     rx-5.bytes: 0
+     tx-6.packets: 0
+     tx-6.bytes: 0
+     rx-6.packets: 0
+     rx-6.bytes: 0
+     tx-7.packets: 0
+     tx-7.bytes: 0
+     rx-7.packets: 0
+     rx-7.bytes: 0
+     tx-8.packets: 0
+     tx-8.bytes: 0
+     rx-8.packets: 0
+     rx-8.bytes: 0
+     tx-9.packets: 0
+     tx-9.bytes: 0
+     rx-9.packets: 0
+     rx-9.bytes: 0
+     tx-10.packets: 0
+     tx-10.bytes: 0
+     rx-10.packets: 0
+     rx-10.bytes: 0
+     tx-11.packets: 0
+     tx-11.bytes: 0
+     rx-11.packets: 0
+     rx-11.bytes: 0
+     tx-12.packets: 0
+     tx-12.bytes: 0
+     rx-12.packets: 0
+     rx-12.bytes: 0
+     tx-13.packets: 0
+     tx-13.bytes: 0
+     rx-13.packets: 0
+### iface=enp47s0np0
+down
+up
+Settings for eno2:
+	Supported ports: [  ]
+	Supported link modes:   1000baseT/Full
+	Supported pause frame use: Symmetric Receive-only
+	Supports auto-negotiation: Yes
+	Supported FEC modes: Not reported
+	Advertised link modes:  1000baseT/Full
+	Advertised pause frame use: No
+	Advertised auto-negotiation: Yes
+	Advertised FEC modes: Not reported
+	Speed: Unknown!
+	Duplex: Unknown! (255)
+	Auto-negotiation: off
+	Port: Other
+	PHYAD: 0
+	Transceiver: internal
+        Current message level: 0x00000007 (7)
+                               drv probe link
+	Link detected: no
+Settings for enp47s0np0:
+	Supported ports: [ Backplane ]
+	Supported link modes:   1000baseKX/Full
+	                        10000baseKR/Full
+	                        40000baseKR4/Full
+	                        40000baseCR4/Full
+	                        40000baseSR4/Full
+	                        40000baseLR4/Full
+	                        25000baseCR/Full
+	                        25000baseKR/Full
+	                        25000baseSR/Full
+	Supported pause frame use: Symmetric
+	Supports auto-negotiation: Yes
+	Supported FEC modes: None	 RS	 BASER
+	Advertised link modes:  1000baseKX/Full
+	                        10000baseKR/Full
+	                        40000baseKR4/Full
+	                        40000baseCR4/Full
+	                        40000baseSR4/Full
+	                        40000baseLR4/Full
+	                        25000baseCR/Full
+	                        25000baseKR/Full
+	                        25000baseSR/Full
+	Advertised pause frame use: Symmetric
+	Advertised auto-negotiation: Yes
+	Advertised FEC modes: None
+	Speed: 40000Mb/s
+	Duplex: Full
+	Auto-negotiation: on
+	Port: Direct Attach Copper
+	PHYAD: 0
+	Transceiver: internal
+        Current message level: 0x00000004 (4)
+                               link
+	Link detected: yes
+NIC statistics:
+     rx_packets: 0
+     tx_packets: 0
+     rx_bytes: 0
+     tx_bytes: 0
+     rx_errors: 0
+     tx_errors: 0
+     rx_dropped: 0
+     rx_missed_errors: 0
+     tx_dropped: 0
+     collisions: 0
+     rx_length_errors: 0
+     rx_crc_errors: 0
+     rx_unicast: 0
+     tx_unicast: 0
+     rx_multicast: 0
+     tx_multicast: 0
+     rx_broadcast: 0
+     tx_broadcast: 0
+     rx_unknown_protocol: 0
+     tx_linearize: 0
+     tx_force_wb: 0
+     tx_busy: 0
+     rx_alloc_fail: 0
+     rx_pg_alloc_fail: 0
+     tx-0.packets: 0
+     tx-0.bytes: 0
+     rx-0.packets: 0
+     rx-0.bytes: 0
+     tx-1.packets: 0
+     tx-1.bytes: 0
+     rx-1.packets: 0
+     rx-1.bytes: 0
+     tx-2.packets: 0
+     tx-2.bytes: 0
+     rx-2.packets: 0
+     rx-2.bytes: 0
+     tx-3.packets: 0
+     tx-3.bytes: 0
+     rx-3.packets: 0
+     rx-3.bytes: 0
+     tx-4.packets: 0
+     tx-4.bytes: 0
+     rx-4.packets: 0
+     rx-4.bytes: 0
+     tx-5.packets: 0
+     tx-5.bytes: 0
+     rx-5.packets: 0
+     rx-5.bytes: 0
+     tx-6.packets: 0
+     tx-6.bytes: 0
+     rx-6.packets: 0
+     rx-6.bytes: 0
+     tx-7.packets: 0
+     tx-7.bytes: 0
+     rx-7.packets: 0
+     rx-7.bytes: 0
+     tx-8.packets: 0
+     tx-8.bytes: 0
+     rx-8.packets: 0
+     rx-8.bytes: 0
+     tx-9.packets: 0
+     tx-9.bytes: 0
+     rx-9.packets: 0
+     rx-9.bytes: 0
+     tx-10.packets: 0
+     tx-10.bytes: 0
+     rx-10.packets: 0
+     rx-10.bytes: 0
+     tx-11.packets: 0
+     tx-11.bytes: 0
+     rx-11.packets: 0
+     rx-11.bytes: 0
+     tx-12.packets: 0
+     tx-12.bytes: 0
+     rx-12.packets: 0
+     rx-12.bytes: 0
+     tx-13.packets: 0
+     tx-13.bytes: 0
+     rx-13.packets: 0
+### iface=enp47s0np0
+up
+Settings for enp47s0np0:
+	Supported ports: [ Backplane ]
+	Supported link modes:   1000baseKX/Full
+	                        10000baseKR/Full
+	                        40000baseKR4/Full
+	                        40000baseCR4/Full
+	                        40000baseSR4/Full
+	                        40000baseLR4/Full
+	                        25000baseCR/Full
+	                        25000baseKR/Full
+	                        25000baseSR/Full
+	Supported pause frame use: Symmetric
+	Supports auto-negotiation: Yes
+	Supported FEC modes: None	 RS	 BASER
+	Advertised link modes:  1000baseKX/Full
+	                        10000baseKR/Full
+	                        40000baseKR4/Full
+	                        40000baseCR4/Full
+	                        40000baseSR4/Full
+	                        40000baseLR4/Full
+	                        25000baseCR/Full
+	                        25000baseKR/Full
+	                        25000baseSR/Full
+	Advertised pause frame use: Symmetric
+	Advertised auto-negotiation: Yes
+	Advertised FEC modes: None
+	Speed: 40000Mb/s
+	Duplex: Full
+	Auto-negotiation: on
+	Port: Direct Attach Copper
+	PHYAD: 0
+	Transceiver: internal
+        Current message level: 0x00000004 (4)
+                               link
+	Link detected: yes
+NIC statistics:
+     rx_packets: 8662361
+     rx_bytes: 539790634
+     tx_packets: 8116670
+     tx_bytes: 604798585
+     tx_tso_packets: 172
+     tx_tso_bytes: 1792960
+     tx_tso_inner_packets: 0
+     tx_tso_inner_bytes: 0
+     tx_added_vlan_packets: 0
+     tx_nop: 281
+     tx_mpwqe_blks: 0
+     tx_mpwqe_pkts: 0
+     tx_tls_encrypted_packets: 0
+     tx_tls_encrypted_bytes: 0
+     tx_tls_ooo: 0
+     tx_tls_dump_packets: 0
+     tx_tls_dump_bytes: 0
+     tx_tls_resync_bytes: 0
+     tx_tls_skip_no_sync_data: 0
+     tx_tls_drop_no_sync_data: 0
+     tx_tls_drop_bypass_req: 0
+     rx_lro_packets: 0
+     rx_lro_bytes: 0
+     rx_gro_packets: 0
+     rx_gro_bytes: 0
+     rx_gro_skbs: 0
+     rx_gro_match_packets: 0
+     rx_gro_large_hds: 0
+     rx_ecn_mark: 0
+     rx_removed_vlan_packets: 0
+     rx_csum_unnecessary: 8034979
+     rx_csum_none: 574448
+     rx_csum_complete: 52934
+     rx_csum_complete_tail: 0
+     rx_csum_complete_tail_slow: 0
+     rx_csum_unnecessary_inner: 0
+     rx_xdp_drop: 0
+     rx_xdp_redirect: 0
+     rx_xdp_tx_xmit: 0
+     rx_xdp_tx_mpwqe: 0
+     rx_xdp_tx_inlnw: 0
+     rx_xdp_tx_nops: 0
+     rx_xdp_tx_full: 0
+     rx_xdp_tx_err: 0
+     rx_xdp_tx_cqe: 0
+     tx_csum_none: 41912
+     tx_csum_partial: 8073688
+     tx_csum_partial_inner: 0
+     tx_queue_stopped: 0
+     tx_queue_dropped: 0
+     tx_xmit_more: 2
+     tx_recover: 0
+     tx_cqes: 8115598
+     tx_queue_wake: 0
+     tx_cqe_err: 0
+     tx_xdp_xmit: 0
+     tx_xdp_mpwqe: 0
+     tx_xdp_inlnw: 0
+     tx_xdp_nops: 0
+     tx_xdp_full: 0
+     tx_xdp_err: 0
+     tx_xdp_cqes: 0
+     tx_cqe_compress_blks: 0
+     tx_cqe_compress_pkts: 0
+     rx_wqe_err: 0
+     rx_mpwqe_filler_cqes: 0
+     rx_mpwqe_filler_strides: 0
+     rx_oversize_pkts_sw_drop: 0
+     rx_buff_alloc_err: 0
+     rx_cqe_compress_blks: 0
+     rx_cqe_compress_pkts: 0
+     rx_cache_reuse: 4320692
+     rx_cache_full: 0
+     rx_cache_empty: 0
+     rx_cache_busy: 0
+     rx_cache_ext: 0
+     rx_cache_rdc: 0
+     rx_cache_alloc: 30896
+     rx_cache_waive: 10242
+### iface=enx7ed30aef3dd7
+unknown
+Settings for enx7ed30aef3dd7:
+	Supported ports: [  ]
+	Supported link modes:   Not reported
+	Supported pause frame use: No
+	Supports auto-negotiation: No
+	Supported FEC modes: Not reported
+	Advertised link modes:  Not reported
+	Advertised pause frame use: No
+	Advertised auto-negotiation: No
+	Advertised FEC modes: Not reported
+	Speed: 425Mb/s
+	Duplex: Half
+	Auto-negotiation: off
+	Port: Twisted Pair
+	PHYAD: 0
+	Transceiver: internal
+	MDI-X: Unknown
+        Current message level: 0x00000007 (7)
+                               drv probe link
+	Link detected: yes
+### iface=lo
+unknown
+NIC statistics:
+     rx_packets: 600891
+     rx_bytes: 58997084
+     tx_packets: 55973
+     tx_bytes: 7966331
+     tx_tso_packets: 152
+     tx_tso_bytes: 440192
+     tx_tso_inner_packets: 0
+     tx_tso_inner_bytes: 0
+     tx_added_vlan_packets: 0
+     tx_nop: 307
+     tx_mpwqe_blks: 0
+     tx_mpwqe_pkts: 0
+     tx_tls_encrypted_packets: 0
+     tx_tls_encrypted_bytes: 0
+     tx_tls_ooo: 0
+     tx_tls_dump_packets: 0
+     tx_tls_dump_bytes: 0
+     tx_tls_resync_bytes: 0
+     tx_tls_skip_no_sync_data: 0
+     tx_tls_drop_no_sync_data: 0
+     tx_tls_drop_bypass_req: 0
+     rx_lro_packets: 0
+     rx_lro_bytes: 0
+     rx_gro_packets: 0
+     rx_gro_bytes: 0
+     rx_gro_skbs: 0
+     rx_gro_match_packets: 0
+     rx_gro_large_hds: 0
+     rx_ecn_mark: 0
+     rx_removed_vlan_packets: 0
+     rx_csum_unnecessary: 32
+     rx_csum_none: 544507
+     rx_csum_complete: 56352
+     rx_csum_complete_tail: 0
+     rx_csum_complete_tail_slow: 0
+     rx_csum_unnecessary_inner: 0
+     rx_xdp_drop: 0
+     rx_xdp_redirect: 0
+     rx_xdp_tx_xmit: 0
+     rx_xdp_tx_mpwqe: 0
+     rx_xdp_tx_inlnw: 0
+     rx_xdp_tx_nops: 0
+     rx_xdp_tx_full: 0
+     rx_xdp_tx_err: 0
+     rx_xdp_tx_cqe: 0
+     tx_csum_none: 8157
+     tx_csum_partial: 47664
+     tx_csum_partial_inner: 0
+     tx_queue_stopped: 0
+     tx_queue_dropped: 0
+     tx_xmit_more: 0
+     tx_recover: 0
+     tx_cqes: 55821
+     tx_queue_wake: 0
+     tx_cqe_err: 0
+     tx_xdp_xmit: 0
+     tx_xdp_mpwqe: 0
+     tx_xdp_inlnw: 0
+     tx_xdp_nops: 0
+     tx_xdp_full: 0
+     tx_xdp_err: 0
+     tx_xdp_cqes: 0
+     tx_cqe_compress_blks: 0
+     tx_cqe_compress_pkts: 0
+     rx_wqe_err: 0
+     rx_mpwqe_filler_cqes: 0
+     rx_mpwqe_filler_strides: 0
+     rx_oversize_pkts_sw_drop: 0
+     rx_buff_alloc_err: 0
+     rx_cqe_compress_blks: 0
+     rx_cqe_compress_pkts: 0
+     rx_cache_reuse: 299279
+     rx_cache_full: 0
+     rx_cache_empty: 0
+     rx_cache_busy: 0
+     rx_cache_ext: 0
+     rx_cache_rdc: 0
+     rx_cache_alloc: 21603
+     rx_cache_waive: 1056
+### iface=enx7ed30aef332f
+unknown
+Settings for lo:
+	Link detected: yes
+Settings for enx7ed30aef332f:
+	Supported ports: [  ]
+	Supported link modes:   Not reported
+	Supported pause frame use: No
+	Supports auto-negotiation: No
+	Supported FEC modes: Not reported
+	Advertised link modes:  Not reported
+	Advertised pause frame use: No
+	Advertised auto-negotiation: No
+	Advertised FEC modes: Not reported
+	Speed: 425Mb/s
+	Duplex: Half
+	Auto-negotiation: off
+	Port: Twisted Pair
+	PHYAD: 0
+	Transceiver: internal
+	MDI-X: Unknown
+        Current message level: 0x00000007 (7)
+                               drv probe link
+	Link detected: yes
+## RDMA devices
+mlx5_0
+### iface=lo
+unknown
+Settings for lo:
+	Link detected: yes
+## RDMA devices
+mlx5_0
+hca_id:	mlx5_0
+	transport:			InfiniBand (0)
+	fw_ver:				14.25.1020
+	node_guid:			248a:0703:002f:cdb2
+	sys_image_guid:			248a:0703:002f:cdb2
+	vendor_id:			0x02c9
+	vendor_part_id:			4117
+	hw_ver:				0x0
+	board_id:			LNV2430110027
+	phys_port_cnt:			1
+		port:	1
+			state:			PORT_ACTIVE (4)
+			max_mtu:		4096 (5)
+			active_mtu:		1024 (3)
+			sm_lid:			0
+			port_lid:		0
+			port_lmc:		0x00
+			link_layer:		Ethernet
+
+hca_id:	mlx5_0
+	transport:			InfiniBand (0)
+	fw_ver:				14.25.1020
+	node_guid:			248a:0703:002f:c992
+	sys_image_guid:			248a:0703:002f:c992
+	vendor_id:			0x02c9
+	vendor_part_id:			4117
+	hw_ver:				0x0
+	board_id:			LNV2430110027
+	phys_port_cnt:			1
+		port:	1
+			state:			PORT_ACTIVE (4)
+			max_mtu:		4096 (5)
+			active_mtu:		1024 (3)
+			sm_lid:			0
+			port_lid:		0
+			port_lmc:		0x00
+			link_layer:		Ethernet
+

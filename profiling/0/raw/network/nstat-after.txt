@@ -1,0 +1,6 @@
+#kernel
+IpInReceives                    757961049          0.0
+IpOutRequests                   681173928          0.0
+TcpInSegs                       731404941          0.0
+TcpOutSegs                      2722215878         0.0
+TcpRetransSegs                  76677              0.0
