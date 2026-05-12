@@ -37,7 +37,7 @@ ChronoLog and Mofka require extra attention to HPC configuration surfaces such a
 | `append_throughput` | Sustained append/write throughput for fixed-size records | ChronoLog, Kafka, Mofka | Primary baseline workflow. |
 | `append_latency` | Append/write latency distribution for fixed-size records | ChronoLog, Kafka, Mofka | Requires per-operation timing in the client harness. |
 | `range_retrieval` | Read/range retrieval over previously appended records | ChronoLog, Kafka, Mofka | Run only when all systems expose a comparable path; otherwise document unsupported status with evidence. |
-| `mixed_append_read` | Concurrent append and read/range workload | ChronoLog, Kafka, Mofka | Run only when all systems expose compatible APIs; otherwise document unsupported status with evidence. |
-| `scaling_sweep` | Append throughput and latency at 1, 2, 4, and 8 nodes | ChronoLog, Kafka, Mofka | Use only node counts allowed by cluster limits and launch support. |
+| `mixed_append_read` | Concurrent append and read/range workload | ChronoLog, Kafka, Mofka | Unsupported for final Phase 0 comparison with current ChronoLog archived-playback semantics; evidence in `.agent/results/phase0-mixed-append-read.md`. |
+| `scaling_sweep` | Append throughput and latency at 1, 2, 4, and 8 nodes | ChronoLog, Kafka, Mofka | Completed for distributed 2-node and available 4-node smoke counts; 1-node is local/single-node and 8 nodes were unavailable in `debug`; evidence in `.agent/results/phase0-scaling-sweep.md`. |
 
 Default parameters are recorded in `.agent/config/phase0-workflows.json` for later benchmark scripts.

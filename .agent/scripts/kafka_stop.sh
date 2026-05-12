@@ -116,7 +116,16 @@ exec 2> >(tee -a "${KAFKA_RESULT_DIR}/stderr.log" >&2)
 
 echo "Stopping Kafka fixed baseline in ${RESULT_DIR}"
 
-stop_pid_file "Kafka broker" "${KAFKA_PID_DIR}/broker.pid" "${TIMEOUT_SECONDS}"
+shopt -s nullglob
+broker_pid_files=("${KAFKA_PID_DIR}"/broker-*.pid)
+if [[ "${#broker_pid_files[@]}" -gt 0 ]]; then
+  for broker_pid_file in "${broker_pid_files[@]}"; do
+    stop_pid_file "Kafka $(basename "${broker_pid_file}" .pid)" "${broker_pid_file}" "${TIMEOUT_SECONDS}"
+  done
+else
+  stop_pid_file "Kafka broker" "${KAFKA_PID_DIR}/broker.pid" "${TIMEOUT_SECONDS}"
+fi
+shopt -u nullglob
 stop_pid_file "ZooKeeper" "${KAFKA_PID_DIR}/zookeeper.pid" "${TIMEOUT_SECONDS}"
 
 if [[ "${CLEAN_DATA}" -eq 1 ]]; then

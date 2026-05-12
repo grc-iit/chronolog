@@ -1,0 +1,57 @@
+ChronoLog distributed result directory: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-020504
+SLURM job: 13725
+Nodes:
+ares-comp-03
+ares-comp-04
+ares-comp-05
+ares-comp-06
+[0;33mChecking required dependencies...[0m
+[0;33mAll required dependencies are installed.[0m
+[7;49m[92mStarting ...[0m
+[7;49m[92mPreparing hosts files ...[0m
+[0;33mLaunched from a shell, getting hosts from command line or presets ...[0m
+[0;33mJOB_ID is not set, use what are already in hosts files from /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-020504/config[0m
+[7;49m[92mChecking recording group mapping ...[0m
+[0;33mGenerating hosts file for RecordingGroup 1...[0m
+[7;49m[92mChecking binary files...[0m
+[7;49m[92mReplacing ChronoVisor IP with 172.25.101.3 ...[0m
+[7;49m[92mGenerating conf files for all RecordingGroups ...[0m
+[7;49m[92mChecking if rpc conf matches on both communication ends ...[0m
+[0;33mLaunching ChronoVisor ...[0m
+[1] 02:05:16 [SUCCESS] ares-comp-03
+[0;33mLaunching ChronoGraphers from /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-020504/config/hosts_grapher.1 using conf file /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-020504/config/default-chrono-conf.json.1.grapher.$(hostname) ...[0m
+[1] 02:05:17 [SUCCESS] ares-comp-06
+[0;33mLaunching ChronoKeepers from /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-020504/config/hosts_keeper.1 using conf file /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-020504/config/default-chrono-conf.json.1.keeper.$(hostname) ...[0m
+[0;33mLaunching ChronoPlayers from /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-020504/chronolog/deploy-work/conf/hosts_player.1 using conf file /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-020504/config/default-chrono-conf.json.1.player.$(hostname) ...[0m
+[1] 02:05:17 [SUCCESS] ares-comp-03
+[2] 02:05:17 [SUCCESS] ares-comp-05
+[3] 02:05:17 [SUCCESS] ares-comp-04
+[4] 02:05:17 [SUCCESS] ares-comp-06
+[1] 02:05:17 [SUCCESS] ares-comp-06
+[0;33mRunning ChronoVisor:[0m
+477050 bash /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-020504/chronolog/wrappers/chrono-visor --config /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-020504/config/default-chrono-conf.json
+[0;33mRunning ChronoGraphers, ChronoKeepers, and ChronoPlayers:[0m
+[0;33mRecordingGroup 1:[0m
+538636 bash /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-020504/chronolog/wrappers/chrono-grapher --config /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-020504/config/default-chrono-conf.json.1.grapher.ares-comp-06
+477070 bash /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-020504/chronolog/wrappers/chrono-keeper --config /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-020504/config/default-chrono-conf.json.1.keeper.ares-comp-03
+505715 bash /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-020504/chronolog/wrappers/chrono-keeper --config /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-020504/config/default-chrono-conf.json.1.keeper.ares-comp-05
+2215542 bash /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-020504/chronolog/wrappers/chrono-keeper --config /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-020504/config/default-chrono-conf.json.1.keeper.ares-comp-04
+538666 bash /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-020504/chronolog/wrappers/chrono-keeper --config /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-020504/config/default-chrono-conf.json.1.keeper.ares-comp-06
+538670 bash /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-020504/chronolog/wrappers/chrono-player --config /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-020504/config/default-chrono-conf.json.1.player.ares-comp-06
+[7;49m[92mDone[0m
+{
+  "system": "chronolog",
+  "workflow": "append_throughput",
+  "node_count": 4,
+  "client_count": 1,
+  "message_size_bytes": 1024,
+  "operation_count": 100,
+  "duration_seconds": 29263.724686878144,
+  "throughput_ops_per_sec": 0.0034172,
+  "avg_latency_ms": null,
+  "p50_latency_ms": null,
+  "p95_latency_ms": null,
+  "p99_latency_ms": null,
+  "success": true,
+  "record_event_bandwidth_mb_per_sec": 3.44068
+}

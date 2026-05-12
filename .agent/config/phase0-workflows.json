@@ -116,7 +116,9 @@
       "required_systems": ["chronolog", "kafka", "mofka"],
       "primary_metric": "throughput_ops_per_sec",
       "latency_required": true,
-      "support_policy": "Run when all three systems expose compatible concurrent append/read APIs; otherwise mark unsupported with evidence."
+      "support_policy": "Run when all three systems expose compatible concurrent append/read APIs; otherwise mark unsupported with evidence.",
+      "status": "unsupported_for_selected_phase0_suite",
+      "evidence": ".agent/results/phase0-mixed-append-read.md"
     },
     {
       "name": "scaling_sweep",
@@ -124,7 +126,9 @@
       "required_systems": ["chronolog", "kafka", "mofka"],
       "primary_metric": "throughput_ops_per_sec",
       "latency_required": true,
-      "node_counts": [1, 2, 4, 8]
+      "node_counts": [1, 2, 4, 8],
+      "status": "complete_for_available_distributed_smoke_counts",
+      "evidence": ".agent/results/phase0-scaling-sweep.md"
     }
   ],
   "metrics_schema": {

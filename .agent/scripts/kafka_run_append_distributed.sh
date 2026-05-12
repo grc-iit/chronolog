@@ -97,7 +97,7 @@ if [[ "${#NODES[@]}" -lt "${NODE_COUNT}" ]]; then
 fi
 
 ZOOKEEPER_NODE="${NODES[0]}"
-BROKER_NODE="${NODES[1]}"
+BROKER_NODES=("${NODES[@]:1:$((NODE_COUNT - 1))}")
 printf '%s\n' "${NODES[@]:0:${NODE_COUNT}}" > "${CONFIG_DIR}/kafka-slurm-nodes.txt"
 
 node_ip() {
@@ -108,9 +108,15 @@ node_ip() {
 }
 
 ZOOKEEPER_HOST="$(node_ip "${ZOOKEEPER_NODE}")"
-BROKER_HOST="$(node_ip "${BROKER_NODE}")"
 ZOOKEEPER_CONNECT="${ZOOKEEPER_HOST}:${ZOOKEEPER_PORT}"
-BOOTSTRAP_SERVER="${BROKER_HOST}:${BROKER_PORT}"
+BROKER_HOSTS=()
+BOOTSTRAP_SERVERS=()
+for broker_node in "${BROKER_NODES[@]}"; do
+  broker_host="$(node_ip "${broker_node}")"
+  BROKER_HOSTS+=("${broker_host}")
+  BOOTSTRAP_SERVERS+=("${broker_host}:${BROKER_PORT}")
+done
+BOOTSTRAP_SERVER="$(IFS=,; echo "${BOOTSTRAP_SERVERS[*]}")"
 
 ZOOKEEPER_CONFIG="${CONFIG_DIR}/kafka-zookeeper.properties"
 SERVER_CONFIG="${CONFIG_DIR}/kafka-server.properties"
@@ -123,20 +129,6 @@ maxClientCnxns=0
 admin.enableServer=false
 EOF
 
-cat > "${SERVER_CONFIG}" <<EOF
-broker.id=0
-listeners=PLAINTEXT://0.0.0.0:${BROKER_PORT}
-advertised.listeners=PLAINTEXT://${BROKER_HOST}:${BROKER_PORT}
-log.dirs=${KAFKA_DATA_DIR}
-zookeeper.connect=${ZOOKEEPER_CONNECT}
-offsets.topic.replication.factor=1
-transaction.state.log.replication.factor=1
-transaction.state.log.min.isr=1
-num.partitions=1
-auto.create.topics.enable=false
-delete.topic.enable=true
-EOF
-
 cat > "${CONFIG_DIR}/kafka-config-manifest.env" <<EOF
 deployment_mode=bare_metal
 node_count=${NODE_COUNT}
@@ -147,12 +139,12 @@ operation_count=${OPERATION_COUNT}
 partition=${PARTITION}
 slurm_time=${SLURM_TIME}
 zookeeper_node=${ZOOKEEPER_NODE}
-broker_node=${BROKER_NODE}
+broker_nodes=$(IFS=,; echo "${BROKER_NODES[*]}")
 network_iface=${NETWORK_IFACE}
 zookeeper_connect=${ZOOKEEPER_CONNECT}
 bootstrap_server=${BOOTSTRAP_SERVER}
 kafka_home=${KAFKA_HOME}
-kafka_server_config=${SERVER_CONFIG}
+kafka_server_config_pattern=${CONFIG_DIR}/kafka-server-broker-<id>.properties
 kafka_zookeeper_config=${ZOOKEEPER_CONFIG}
 kafka_heap_opts=${KAFKA_HEAP_OPTS_VALUE}
 zookeeper_heap_opts=${ZOOKEEPER_HEAP_OPTS_VALUE}
@@ -166,7 +158,9 @@ trap cleanup EXIT
 
 echo "Kafka distributed result directory: ${RESULT_DIR}"
 echo "ZooKeeper node: ${ZOOKEEPER_NODE} (${ZOOKEEPER_HOST})"
-echo "Broker node: ${BROKER_NODE} (${BROKER_HOST})"
+for broker_index in "${!BROKER_NODES[@]}"; do
+  echo "Broker ${broker_index} node: ${BROKER_NODES[${broker_index}]} (${BROKER_HOSTS[${broker_index}]})"
+done
 echo "Bootstrap server: ${BOOTSTRAP_SERVER}"
 
 srun --partition="${PARTITION}" --nodes=1 --ntasks=1 --exclusive \
@@ -181,17 +175,42 @@ if ! phase0_wait_for_port "${ZOOKEEPER_HOST}" "${ZOOKEEPER_PORT}" 60; then
   exit 1
 fi
 
-srun --partition="${PARTITION}" --nodes=1 --ntasks=1 --exclusive \
-  --time="${SLURM_TIME}" --nodelist="${BROKER_NODE}" \
-  bash -lc "hostname; export KAFKA_HEAP_OPTS='${KAFKA_HEAP_OPTS_VALUE}'; exec '${KAFKA_HOME}/bin/kafka-server-start.sh' '${SERVER_CONFIG}'" \
-  > "${KAFKA_LOG_DIR}/broker.stdout.log" \
-  2> "${KAFKA_LOG_DIR}/broker.stderr.log" &
-echo "$!" > "${KAFKA_PID_DIR}/broker.pid"
+for broker_index in "${!BROKER_NODES[@]}"; do
+  broker_node="${BROKER_NODES[${broker_index}]}"
+  broker_host="${BROKER_HOSTS[${broker_index}]}"
+  broker_config="${CONFIG_DIR}/kafka-server-broker-${broker_index}.properties"
+  broker_data_dir="${KAFKA_DATA_DIR}/broker-${broker_index}"
+  mkdir -p "${broker_data_dir}"
+  cat > "${broker_config}" <<EOF
+broker.id=${broker_index}
+listeners=PLAINTEXT://0.0.0.0:${BROKER_PORT}
+advertised.listeners=PLAINTEXT://${broker_host}:${BROKER_PORT}
+log.dirs=${broker_data_dir}
+zookeeper.connect=${ZOOKEEPER_CONNECT}
+offsets.topic.replication.factor=1
+transaction.state.log.replication.factor=1
+transaction.state.log.min.isr=1
+num.partitions=${#BROKER_NODES[@]}
+auto.create.topics.enable=false
+delete.topic.enable=true
+EOF
 
-if ! phase0_wait_for_port "${BROKER_HOST}" "${BROKER_PORT}" 60; then
-  echo "Kafka broker failed to listen on ${BOOTSTRAP_SERVER}" >&2
-  exit 1
-fi
+  srun --partition="${PARTITION}" --nodes=1 --ntasks=1 --exclusive \
+    --time="${SLURM_TIME}" --nodelist="${broker_node}" \
+    bash -lc "hostname; export KAFKA_HEAP_OPTS='${KAFKA_HEAP_OPTS_VALUE}'; exec '${KAFKA_HOME}/bin/kafka-server-start.sh' '${broker_config}'" \
+    > "${KAFKA_LOG_DIR}/broker-${broker_index}.stdout.log" \
+    2> "${KAFKA_LOG_DIR}/broker-${broker_index}.stderr.log" &
+  echo "$!" > "${KAFKA_PID_DIR}/broker-${broker_index}.pid"
+
+  if [[ "${broker_index}" == "0" ]]; then
+    cp "${broker_config}" "${SERVER_CONFIG}"
+  fi
+
+  if ! phase0_wait_for_port "${broker_host}" "${BROKER_PORT}" 60; then
+    echo "Kafka broker ${broker_index} failed to listen on ${broker_host}:${BROKER_PORT}" >&2
+    exit 1
+  fi
+done
 
 ADMIN_DEADLINE=$((SECONDS + 60))
 until "${KAFKA_HOME}/bin/kafka-topics.sh" --bootstrap-server "${BOOTSTRAP_SERVER}" --list >/dev/null; do
@@ -203,7 +222,7 @@ until "${KAFKA_HOME}/bin/kafka-topics.sh" --bootstrap-server "${BOOTSTRAP_SERVER
 done
 
 "${KAFKA_HOME}/bin/kafka-topics.sh" --bootstrap-server "${BOOTSTRAP_SERVER}" \
-  --create --if-not-exists --topic "${TOPIC}" --partitions 1 --replication-factor 1 \
+  --create --if-not-exists --topic "${TOPIC}" --partitions "${#BROKER_NODES[@]}" --replication-factor 1 \
   > "${KAFKA_RESULT_DIR}/topic-create.log" 2>&1
 
 "${KAFKA_HOME}/bin/kafka-producer-perf-test.sh" \
@@ -307,7 +326,7 @@ cat > "${RESULT_DIR}/summary.md" <<EOF
 - deployment_mode: bare_metal
 - node_count: ${NODE_COUNT}
 - zookeeper_node: ${ZOOKEEPER_NODE}
-- broker_node: ${BROKER_NODE}
+- broker_nodes: $(IFS=,; echo "${BROKER_NODES[*]}")
 - bootstrap_server: ${BOOTSTRAP_SERVER}
 - operation_count: ${OPERATION_COUNT}
 - message_size_bytes: ${MESSAGE_SIZE_BYTES}

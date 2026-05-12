@@ -30,7 +30,17 @@
         "kafka": ".agent/results/20260511-234455/kafka/metrics.json",
         "mofka": ".agent/results/20260512-003314/mofka/metrics.json"
       },
-      "comparability_note": "Current local smoke runs validate plumbing but are not final comparable distributed results. ChronoLog smoke used a minimal 5-operation client path and must be rerun with the common append_throughput workload before final comparison."
+      "distributed_runs": {
+        "chronolog": ".agent/results/20260512-010115/chronolog/metrics.json",
+        "kafka": ".agent/results/20260512-010210/kafka/metrics.json",
+        "mofka": ".agent/results/20260512-010240/mofka/metrics.json"
+      },
+      "scaling_runs": {
+        "chronolog_4_node": ".agent/results/20260512-020504/chronolog/metrics.json",
+        "kafka_4_node": ".agent/results/20260512-020415/kafka/metrics.json",
+        "mofka_4_node": ".agent/results/20260512-020606/mofka/metrics.json"
+      },
+      "comparability_note": "Distributed smoke runs validate plumbing and comparable metrics output. They are not performance-claim runs."
     },
     {
       "name": "append_latency",
@@ -42,19 +52,30 @@
         "client_count": 1,
         "node_counts": [1, 2, 4, 8]
       },
-      "status": "pending_common_client_harness"
+      "status": "complete_distributed_smoke",
+      "distributed_runs": {
+        "chronolog": ".agent/results/20260512-010537/chronolog/metrics.json",
+        "kafka": ".agent/results/20260512-010656/kafka/metrics.json",
+        "mofka": ".agent/results/20260512-010754/mofka/metrics.json"
+      }
     },
     {
       "name": "range_retrieval",
       "description": "Read/range retrieval over previously appended records when comparable APIs exist.",
       "systems": ["chronolog", "kafka", "mofka"],
-      "status": "pending_support_validation"
+      "status": "complete_distributed_smoke",
+      "distributed_runs": {
+        "chronolog": ".agent/results/20260512-015243/chronolog/metrics.json",
+        "kafka": ".agent/results/20260512-013547/kafka/metrics.json",
+        "mofka": ".agent/results/20260512-011238/mofka/metrics.json"
+      }
     },
     {
       "name": "mixed_append_read",
       "description": "Concurrent append and read/range workload when comparable APIs exist.",
       "systems": ["chronolog", "kafka", "mofka"],
-      "status": "pending_support_validation"
+      "status": "unsupported_for_selected_phase0_suite",
+      "evidence": ".agent/results/phase0-mixed-append-read.md"
     }
   ]
 }

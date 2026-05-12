@@ -1,0 +1,6 @@
+srun: job 13721 queued and waiting for resources
+srun: job 13721 has been allocated resources
+srun: forcing job termination
+srun: Job step aborted: Waiting up to 32 seconds for job step to finish.
+slurmstepd-ares-comp-03: error: *** STEP 13721.0 ON ares-comp-03 CANCELLED AT 2026-05-12T02:04:54 ***
+srun: error: ares-comp-03: task 0: Killed

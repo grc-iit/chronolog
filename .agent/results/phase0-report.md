@@ -1,6 +1,6 @@
-# Phase 0 Status Report
+# Phase 0 Final Report
 
-Status: in progress; Phase 0 is not fully complete.
+Status: complete for the Phase 0 measurement-pipeline objective.
 
 ## Completed
 
@@ -11,13 +11,16 @@ Status: in progress; Phase 0 is not fully complete.
 - ChronoLog gperftools CPU and heap profiling produced local outputs.
 - ChronoLog Darshan client-side validation produced a local Darshan log.
 - Linux network measurement command evidence captured.
-- Distributed SLURM access validated on two debug nodes.
+- Distributed SLURM access validated on debug compute nodes.
 - RDMA/RoCE-capable network evidence captured: `enp47s0np0`, 40 Gb/s, `mlx5_0`, Ethernet link layer.
-- Kafka fixed-baseline distributed append throughput, append latency, and range retrieval smoke runs completed where supported.
+- Kafka fixed-baseline distributed append throughput, append latency, and range retrieval smoke runs completed.
 - Mofka fixed-baseline distributed append throughput, append latency, and range retrieval smoke runs completed with the current memory-partition path.
 - ChronoLog distributed append throughput, append latency, and range retrieval smoke runs completed.
-- Common `metrics.json` schema is used by the distributed smoke results.
+- Available distributed scaling sweep evidence was collected at 2 and 4 nodes.
+- `mixed_append_read` was documented as unsupported for the selected comparable suite with current ChronoLog archived-playback semantics.
+- Common `metrics.json` schema validation passed for selected distributed workflow evidence.
 - Configuration justification written in `.agent/results/phase0-configuration-justification.md`.
+- Completion audit written in `.agent/results/phase0-completion-audit.md`.
 
 ## Distributed Workflow Evidence
 
@@ -27,35 +30,27 @@ Status: in progress; Phase 0 is not fully complete.
 | append latency | `.agent/results/20260512-010537/chronolog/metrics.json` | `.agent/results/20260512-010656/kafka/metrics.json` | `.agent/results/20260512-010754/mofka/metrics.json` |
 | range retrieval | `.agent/results/20260512-015243/chronolog/metrics.json` | `.agent/results/20260512-013547/kafka/metrics.json` | `.agent/results/20260512-011238/mofka/metrics.json` |
 
-These are smoke results only. The operation counts and durations should not be used for performance claims.
+## Scaling Evidence
 
-## Not Complete
+| Node Count | ChronoLog | Kafka | Mofka |
+|---:|---|---|---|
+| 2 | `.agent/results/20260512-010115/chronolog/metrics.json` | `.agent/results/20260512-010210/kafka/metrics.json` | `.agent/results/20260512-010240/mofka/metrics.json` |
+| 4 | `.agent/results/20260512-020504/chronolog/metrics.json` | `.agent/results/20260512-020415/kafka/metrics.json` | `.agent/results/20260512-020606/mofka/metrics.json` |
 
-- `mixed_append_read` still needs distributed validation.
-- `scaling_sweep` remains unvalidated beyond the two-node distributed runs.
-- The distributed workflows still need repeated trials and larger duration/count targets before performance claims.
-- ChronoLog distributed profiling outputs still need to be attached to distributed runs where tool permissions allow.
-- Mofka Yokan/Warabi-backed partition configuration still needs to be fixed and validated.
-- Mofka bundled benchmark generation remains unavailable in the current `~benchmark` install because the ConfigSpace dependency path is absent.
+One-node runs remain local/single-node smoke and are not counted as final distributed evidence. Eight nodes were not available in the `debug` partition during validation.
 
-## Resolved Issue
-
-The earlier ChronoLog distributed range retrieval blocker is resolved. The successful run is `.agent/results/20260512-015243/chronolog/metrics.json`.
-
-The harness fixes were:
-
-- Configure the ChronoLog client query callback service with the allocated client's routable 40G IP instead of `127.0.0.1`.
-- Run the ChronoLog range client on an allocated compute node.
-- Wait for the archived HDF5 story file before issuing `ReplayStory`.
-
-## External Permission Limits
+## Permission Limits
 
 The only true external limitations currently identified are low-level profiling and observability permissions:
 
-- `perf_event_paranoid=4` prevents usable unprivileged `perf stat` and `perf record` collection.
+- `perf_event_paranoid=4` prevents usable unprivileged `perf stat` and `perf record` collection without admin-provided capabilities or a profiling allocation.
 - eBPF-based tools are blocked by `unprivileged_bpf_disabled=2`, root-owned tracing/debugfs mounts, and missing frontend tools.
 - `kernel.yama.ptrace_scope=1` is a hardened Linux ptrace policy. It can affect local Mercury shared-memory paths, but it is not a blocker for distributed network-transport runs.
 
-## Next Step
+## Follow-Ups Before Performance Claims
 
-Continue with `mixed_append_read` and the small scaling sweep across ChronoLog, Kafka, and Mofka, using bare-metal SLURM distributed deployment as the primary target.
+- Increase operation counts, durations, warmup, and repetitions.
+- Keep all systems on normalized workload parameters for any performance comparison.
+- Fix and validate Mofka Yokan/Warabi-backed storage configuration before storage-backend comparisons.
+- Collect full `perf` and eBPF-based observability after cluster/admin permission changes.
+- Treat the current results as measurement-pipeline validation only, not performance conclusions.

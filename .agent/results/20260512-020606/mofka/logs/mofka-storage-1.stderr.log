@@ -1,0 +1,4 @@
+srun: forcing job termination
+srun: Job step aborted: Waiting up to 32 seconds for job step to finish.
+slurmstepd-ares-comp-04: error: *** STEP 13728.0 ON ares-comp-04 CANCELLED AT 2026-05-12T02:06:31 ***
+srun: error: ares-comp-04: task 0: Killed

@@ -1,6 +1,6 @@
 # Phase 0 Blockers
 
-No active STOP_RALPH_LOOP blocker is present as of 2026-05-12 01:57 CDT.
+No active blocker is present as of 2026-05-12 02:06 CDT.
 
 ## Resolved: ChronoLog Distributed Range Retrieval
 
@@ -24,6 +24,5 @@ Successful validation:
 
 ## Non-blocking Open Issues
 
-- Mofka Yokan/Warabi-backed default partition configuration still needs to be fixed, but Mofka memory-partition distributed append/read smokes work.
-- `perf` and eBPF-based observability need admin/capability changes for full low-level profiling, but those do not block the benchmark harness itself.
-- Mixed append/read and the broader scaling sweep still need distributed validation before Phase 0 can be called complete.
+- Mofka Yokan/Warabi-backed default partition configuration still needs to be fixed before storage-backend comparisons, but Mofka memory-partition distributed append/read smokes work.
+- `perf` and eBPF-based observability need admin/capability changes for full low-level profiling, but the tool detection, limitation evidence, and other ChronoLog profiling outputs are documented.

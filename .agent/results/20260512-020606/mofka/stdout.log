@@ -1,0 +1,16 @@
+Mofka result directory: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-020606
+Deployment mode: bare_metal
+Node count: 4
+Protocol: ofi+tcp
+Master node: ares-comp-03
+Storage 1 node: ares-comp-04
+Storage 2 node: ares-comp-05
+Storage 3 node: ares-comp-06
+Mofka fixed baseline is running
+Stopping Mofka fixed baseline in /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-020606
+Stopping mofka-storage-1 pid 489924
+mofka-storage-1 pid 489924 stopped
+mofka-storage-2 pid 489925 is not running
+mofka-storage-3 pid 489926 is not running
+mofka-master pid 489834 is not running
+Mofka fixed baseline stop complete
