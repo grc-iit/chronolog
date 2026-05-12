@@ -64,19 +64,19 @@ This is not a performance-optimization phase. The goal is to make the full measu
 
 - [x] Record distributed deployment policy: bare metal SLURM target, containerized fallback, local master-node smoke only.
 - [x] Define configuration surfaces that must be captured for ChronoLog, Kafka, and Mofka.
-- [ ] Capture per-run configuration manifest for ChronoLog.
-- [ ] Capture per-run configuration manifest for Kafka.
+- [x] Capture per-run configuration manifest for ChronoLog.
+- [x] Capture per-run configuration manifest for Kafka.
 - [x] Capture per-run configuration manifest for Mofka local smoke.
 - [ ] Record RDMA/RoCE and Linux network measurement evidence for distributed runs.
 - [ ] Justify selected ChronoLog, Kafka, and Mofka configurations in the final Phase 0 report.
 
 ## Common benchmark/result harness
 
-- [ ] Create shared workload config format.
-- [ ] Create common metrics output schema.
-- [ ] Ensure every run writes `metrics.json`.
-- [ ] Ensure every run writes stdout/stderr/logs.
-- [ ] Ensure ChronoLog profile artifacts are collected.
+- [x] Create shared workload config format.
+- [x] Create common metrics output schema.
+- [x] Ensure every local smoke run writes `metrics.json`.
+- [x] Ensure every local smoke run writes stdout/stderr/logs.
+- [x] Ensure ChronoLog local smoke profile artifacts are collected.
 - [ ] Create final Phase 0 report.
 
 ## Phase 0 completion

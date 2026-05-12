@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "required_fields": {
+    "system": "string: chronolog|kafka|mofka",
+    "workflow": "string",
+    "node_count": "number",
+    "client_count": "number",
+    "message_size_bytes": "number",
+    "operation_count": "number",
+    "duration_seconds": "number",
+    "throughput_ops_per_sec": "number",
+    "avg_latency_ms": "number|null",
+    "p50_latency_ms": "number|null",
+    "p95_latency_ms": "number|null",
+    "p99_latency_ms": "number|null",
+    "success": "boolean"
+  },
+  "allowed_systems": ["chronolog", "kafka", "mofka"]
+}

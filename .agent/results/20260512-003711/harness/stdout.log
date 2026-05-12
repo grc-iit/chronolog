@@ -1,0 +1,30 @@
+# Common harness validation
+timestamp=2026-05-12 00:37 CDT
+
+## Metrics validator
+valid .agent/results/20260511-222650/chronolog/metrics.json
+valid .agent/results/20260511-234455/kafka/metrics.json
+valid .agent/results/20260512-003314/mofka/metrics.json
+
+## JSON configs
+workloads_json_valid
+metrics_schema_json_valid
+
+## stdout/stderr files
+exists .agent/results/20260511-222650/chronolog/stdout.log
+exists .agent/results/20260511-222650/chronolog/stderr.log
+exists .agent/results/20260511-231340/chronolog/stdout.log
+exists .agent/results/20260511-231340/chronolog/stderr.log
+exists .agent/results/20260511-234455/kafka/stdout.log
+exists .agent/results/20260511-234455/kafka/stderr.log
+exists .agent/results/20260512-003314/mofka/stdout.log
+exists .agent/results/20260512-003314/mofka/stderr.log
+
+## log directories
+exists .agent/results/20260511-222650/chronolog/logs
+exists .agent/results/20260511-231340/chronolog/logs
+exists .agent/results/20260511-234455/kafka/logs
+exists .agent/results/20260512-003314/mofka/logs
+
+## ChronoLog profiles
+tau_profile_present
