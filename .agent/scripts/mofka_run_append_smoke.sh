@@ -17,6 +17,7 @@ Options:
   --result-dir DIR             Existing or new result directory to use.
   --operation-count N          Number of events to append. Default: 50.
   --message-size-bytes N       Payload size. Default: 1024.
+  --workflow NAME              append_throughput or append_latency. Default: append_throughput.
   --protocol PROTOCOL          Mercury protocol. Default: ofi+tcp.
   --deployment-mode MODE       local_smoke or bare_metal. Default: local_smoke.
   --node-count N               Node count. Default: 1.
@@ -30,6 +31,7 @@ USAGE
 RESULT_DIR="${PHASE0_RESULT_DIR:-}"
 OPERATION_COUNT="${MOFKA_OPERATION_COUNT:-50}"
 MESSAGE_SIZE_BYTES="${MOFKA_MESSAGE_SIZE_BYTES:-1024}"
+WORKFLOW="${MOFKA_WORKFLOW:-append_throughput}"
 PROTOCOL="${MOFKA_PROTOCOL:-ofi+tcp}"
 DEPLOYMENT_MODE="${MOFKA_DEPLOYMENT_MODE:-local_smoke}"
 NODE_COUNT="${MOFKA_NODE_COUNT:-1}"
@@ -49,6 +51,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --message-size-bytes)
       MESSAGE_SIZE_BYTES="$2"
+      shift 2
+      ;;
+    --workflow)
+      WORKFLOW="$2"
       shift 2
       ;;
     --protocol)
@@ -125,6 +131,7 @@ python3 "${SCRIPT_DIR}/mofka_append_benchmark.py" \
   --node-count "${NODE_COUNT}" \
   --client-count 1 \
   --deployment-mode "${DEPLOYMENT_MODE}" \
+  --workflow "${WORKFLOW}" \
   > "${MOFKA_RESULT_DIR}/append-benchmark.stdout.log" \
   2> "${MOFKA_RESULT_DIR}/append-benchmark.stderr.log"
 
@@ -132,7 +139,7 @@ cat > "${RESULT_DIR}/summary.md" <<EOF
 # Mofka Append Smoke
 
 - system: Mofka
-- workflow: append_throughput
+- workflow: ${WORKFLOW}
 - deployment_mode: ${DEPLOYMENT_MODE}
 - protocol: ${PROTOCOL}
 - partition_type: memory

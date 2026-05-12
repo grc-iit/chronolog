@@ -17,6 +17,7 @@ Options:
   --node-count N               Node count. Default: 2.
   --slurm-time TIME            SLURM time limit. Default: 00:10:00.
   --record-groups N            ChronoLog recording groups. Default: 1.
+  --workflow NAME              append_throughput or append_latency. Default: append_throughput.
   --operation-count N          Events per client. Default: 10.
   --message-size-bytes N       Average event size. Default: 1024.
   --chronicle-count N          Chronicles per process. Default: 1.
@@ -66,6 +67,7 @@ MESSAGE_SIZE_BYTES="${CHRONOLOG_MESSAGE_SIZE_BYTES:-1024}"
 CHRONICLE_COUNT="${CHRONOLOG_CHRONICLE_COUNT:-1}"
 STORY_COUNT="${CHRONOLOG_STORY_COUNT:-1}"
 INSIDE_ALLOCATION="${CHRONOLOG_INSIDE_ALLOCATION:-0}"
+WORKFLOW="${CHRONOLOG_WORKFLOW:-append_throughput}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -74,6 +76,7 @@ while [[ $# -gt 0 ]]; do
     --node-count) NODE_COUNT="$2"; shift 2 ;;
     --slurm-time) SLURM_TIME="$2"; shift 2 ;;
     --record-groups) RECORD_GROUPS="$2"; shift 2 ;;
+    --workflow) WORKFLOW="$2"; shift 2 ;;
     --operation-count) OPERATION_COUNT="$2"; shift 2 ;;
     --message-size-bytes) MESSAGE_SIZE_BYTES="$2"; shift 2 ;;
     --chronicle-count) CHRONICLE_COUNT="$2"; shift 2 ;;
@@ -102,6 +105,7 @@ if [[ -z "${SLURM_JOB_ID:-}" && "${INSIDE_ALLOCATION}" != "1" ]]; then
       --node-count "${NODE_COUNT}" \
       --slurm-time "${SLURM_TIME}" \
       --record-groups "${RECORD_GROUPS}" \
+      --workflow "${WORKFLOW}" \
       --operation-count "${OPERATION_COUNT}" \
       --message-size-bytes "${MESSAGE_SIZE_BYTES}" \
       --chronicle-count "${CHRONICLE_COUNT}" \
@@ -177,7 +181,7 @@ cat > "${CONFIG_DIR}/chronolog-config-manifest.env" <<EOF
 deployment_mode=bare_metal
 node_count=${NODE_COUNT}
 client_count=1
-workflow=append_throughput
+workflow=${WORKFLOW}
 message_size_bytes=${MESSAGE_SIZE_BYTES}
 operation_count=${OPERATION_COUNT}
 partition=${PARTITION}
@@ -235,14 +239,15 @@ sleep 5
 MIN_EVENT_SIZE=$((MESSAGE_SIZE_BYTES / 2))
 MAX_EVENT_SIZE=$((MESSAGE_SIZE_BYTES * 2))
 
-set +e
-bash -lc "$(module_loads); mpirun -n 1 '${BENCH_BIN}' -c '${CLIENT_CONF_FILE}' -w -h '${CHRONICLE_COUNT}' -t '${STORY_COUNT}' -a '${MIN_EVENT_SIZE}' -s '${MESSAGE_SIZE_BYTES}' -b '${MAX_EVENT_SIZE}' -n '${OPERATION_COUNT}' -p" \
-  > "${CHRONOLOG_RESULT_DIR}/chrono-bench-append-throughput.log" \
-  2> "${CHRONOLOG_RESULT_DIR}/chrono-bench-append-throughput.stderr.log"
-BENCH_STATUS=$?
-set -e
+if [[ "${WORKFLOW}" == "append_throughput" ]]; then
+  set +e
+  bash -lc "$(module_loads); mpirun -n 1 '${BENCH_BIN}' -c '${CLIENT_CONF_FILE}' -w -h '${CHRONICLE_COUNT}' -t '${STORY_COUNT}' -a '${MIN_EVENT_SIZE}' -s '${MESSAGE_SIZE_BYTES}' -b '${MAX_EVENT_SIZE}' -n '${OPERATION_COUNT}' -p" \
+    > "${CHRONOLOG_RESULT_DIR}/chrono-bench-append-throughput.log" \
+    2> "${CHRONOLOG_RESULT_DIR}/chrono-bench-append-throughput.stderr.log"
+  BENCH_STATUS=$?
+  set -e
 
-python3 - "${CHRONOLOG_RESULT_DIR}/chrono-bench-append-throughput.log" "${CHRONOLOG_RESULT_DIR}/metrics.json" "${NODE_COUNT}" "${OPERATION_COUNT}" "${MESSAGE_SIZE_BYTES}" "${BENCH_STATUS}" <<'PY'
+  python3 - "${CHRONOLOG_RESULT_DIR}/chrono-bench-append-throughput.log" "${CHRONOLOG_RESULT_DIR}/metrics.json" "${NODE_COUNT}" "${OPERATION_COUNT}" "${MESSAGE_SIZE_BYTES}" "${BENCH_STATUS}" <<'PY'
 import json
 import re
 import sys
@@ -275,12 +280,26 @@ print(json.dumps(metrics, indent=2))
 if not metrics["success"]:
     raise SystemExit(1)
 PY
+elif [[ "${WORKFLOW}" == "append_latency" ]]; then
+  set +e
+  bash -lc "$(module_loads); export LD_LIBRARY_PATH='${INSTALL_DIR}/lib':\${LD_LIBRARY_PATH:-}; export PYTHONPATH='${INSTALL_DIR}/lib':\${PYTHONPATH:-}; python3 '${SCRIPT_DIR}/chronolog_append_latency.py' --config '${CLIENT_CONF_FILE}' --result-dir '${RESULT_DIR}' --operation-count '${OPERATION_COUNT}' --message-size-bytes '${MESSAGE_SIZE_BYTES}' --node-count '${NODE_COUNT}' --client-count 1 --workflow append_latency" \
+    > "${CHRONOLOG_RESULT_DIR}/chronolog-append-latency.log" \
+    2> "${CHRONOLOG_RESULT_DIR}/chronolog-append-latency.stderr.log"
+  BENCH_STATUS=$?
+  set -e
+  if [[ "${BENCH_STATUS}" -ne 0 ]]; then
+    exit "${BENCH_STATUS}"
+  fi
+else
+  echo "Unsupported ChronoLog workflow: ${WORKFLOW}" >&2
+  exit 2
+fi
 
 cat > "${RESULT_DIR}/summary.md" <<EOF
 # ChronoLog Distributed Append Smoke
 
 - system: ChronoLog
-- workflow: append_throughput
+- workflow: ${WORKFLOW}
 - deployment_mode: bare_metal
 - transport: ofi+sockets
 - node_count: ${NODE_COUNT}

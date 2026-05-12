@@ -26,6 +26,7 @@ def main():
     parser.add_argument("--node-count", type=int, default=1)
     parser.add_argument("--client-count", type=int, default=1)
     parser.add_argument("--deployment-mode", default="local_smoke")
+    parser.add_argument("--workflow", default="append_throughput")
     parser.add_argument("--partition-type", choices=["memory"], default="memory")
     args = parser.parse_args()
 
@@ -69,7 +70,7 @@ def main():
     throughput = args.operation_count / duration if duration > 0 else 0
     metrics = {
         "system": "mofka",
-        "workflow": "append_throughput",
+        "workflow": args.workflow,
         "node_count": args.node_count,
         "client_count": args.client_count,
         "message_size_bytes": args.message_size_bytes,
@@ -85,7 +86,7 @@ def main():
 
     (mofka_dir / "metrics.json").write_text(json.dumps(metrics, indent=2) + "\n")
     (config_dir / "mofka-workload.json").write_text(json.dumps({
-        "workflow": "append_throughput",
+        "workflow": args.workflow,
         "topic": args.topic,
         "partition_type": args.partition_type,
         "deployment_mode": args.deployment_mode,

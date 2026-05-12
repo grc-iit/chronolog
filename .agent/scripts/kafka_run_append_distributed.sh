@@ -20,6 +20,7 @@ Options:
   --slurm-time TIME            SLURM time limit. Default: 00:10:00.
   --operation-count N          Number of records. Default: 1000.
   --message-size-bytes N       Record size. Default: 1024.
+  --workflow NAME              append_throughput or append_latency. Default: append_throughput.
   --topic NAME                 Topic name. Default: phase0-append.
   --zookeeper-port PORT        ZooKeeper port. Default: 22181.
   --broker-port PORT           Broker port. Default: 29092.
@@ -35,6 +36,7 @@ SLURM_TIME="${KAFKA_SLURM_TIME:-00:10:00}"
 OPERATION_COUNT="${KAFKA_OPERATION_COUNT:-1000}"
 MESSAGE_SIZE_BYTES="${KAFKA_MESSAGE_SIZE_BYTES:-1024}"
 TOPIC="${KAFKA_TOPIC:-phase0-append}"
+WORKFLOW="${KAFKA_WORKFLOW:-append_throughput}"
 ZOOKEEPER_PORT="${KAFKA_ZOOKEEPER_PORT:-22181}"
 BROKER_PORT="${KAFKA_BROKER_PORT:-29092}"
 KAFKA_HEAP_OPTS_VALUE="${KAFKA_HEAP_OPTS:-"-Xms128m -Xmx512m"}"
@@ -50,6 +52,7 @@ while [[ $# -gt 0 ]]; do
     --slurm-time) SLURM_TIME="$2"; shift 2 ;;
     --operation-count) OPERATION_COUNT="$2"; shift 2 ;;
     --message-size-bytes) MESSAGE_SIZE_BYTES="$2"; shift 2 ;;
+    --workflow) WORKFLOW="$2"; shift 2 ;;
     --topic) TOPIC="$2"; shift 2 ;;
     --zookeeper-port) ZOOKEEPER_PORT="$2"; shift 2 ;;
     --broker-port) BROKER_PORT="$2"; shift 2 ;;
@@ -138,7 +141,7 @@ cat > "${CONFIG_DIR}/kafka-config-manifest.env" <<EOF
 deployment_mode=bare_metal
 node_count=${NODE_COUNT}
 client_count=1
-workflow=append_throughput
+workflow=${WORKFLOW}
 message_size_bytes=${MESSAGE_SIZE_BYTES}
 operation_count=${OPERATION_COUNT}
 partition=${PARTITION}
@@ -212,12 +215,12 @@ done
   > "${KAFKA_RESULT_DIR}/producer-perf-append-throughput.log" \
   2> "${KAFKA_RESULT_DIR}/producer-perf-append-throughput.stderr.log"
 
-python3 - "$KAFKA_RESULT_DIR/producer-perf-append-throughput.log" "${KAFKA_RESULT_DIR}/metrics.json" "${NODE_COUNT}" "${OPERATION_COUNT}" "${MESSAGE_SIZE_BYTES}" <<'PY'
+python3 - "$KAFKA_RESULT_DIR/producer-perf-append-throughput.log" "${KAFKA_RESULT_DIR}/metrics.json" "${NODE_COUNT}" "${OPERATION_COUNT}" "${MESSAGE_SIZE_BYTES}" "${WORKFLOW}" <<'PY'
 import json
 import re
 import sys
 
-log_path, metrics_path, node_count, operation_count, message_size = sys.argv[1:]
+log_path, metrics_path, node_count, operation_count, message_size, workflow = sys.argv[1:]
 text = open(log_path).read()
 pattern = re.compile(
     r"(?P<records>\d+) records sent, (?P<tput>[0-9.]+) records/sec .*?, "
@@ -232,7 +235,7 @@ throughput = float(match.group("tput"))
 duration = records / throughput if throughput else 0
 metrics = {
     "system": "kafka",
-    "workflow": "append_throughput",
+    "workflow": workflow,
     "node_count": int(node_count),
     "client_count": 1,
     "message_size_bytes": int(message_size),
@@ -253,7 +256,7 @@ cat > "${RESULT_DIR}/summary.md" <<EOF
 # Kafka Distributed Append Smoke
 
 - system: Kafka
-- workflow: append_throughput
+- workflow: ${WORKFLOW}
 - deployment_mode: bare_metal
 - node_count: ${NODE_COUNT}
 - zookeeper_node: ${ZOOKEEPER_NODE}

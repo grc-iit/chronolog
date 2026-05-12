@@ -1,0 +1,15 @@
+{
+  "system": "mofka",
+  "workflow": "append_latency",
+  "node_count": 2,
+  "client_count": 1,
+  "message_size_bytes": 1024,
+  "operation_count": 10,
+  "duration_seconds": 1.1059510529739782,
+  "throughput_ops_per_sec": 9.041991481548225,
+  "avg_latency_ms": 100.46268810983747,
+  "p50_latency_ms": 100.50473397132009,
+  "p95_latency_ms": 100.63512297347188,
+  "p99_latency_ms": 100.63512297347188,
+  "success": true
+}
