@@ -180,6 +180,7 @@ Rules:
 Useful commands:
 
 ```bash
+profileforge/targets/chronolog/build.sh
 bash {display_path(session_dir / "run_goal_loop.sh")}
 python3 profileforge/controller/run_loop.py --help
 ```

@@ -38,6 +38,7 @@ Still needed for stronger autonomy:
 ## Main Files
 
 - `targets/chronolog/target.yaml`: target manifest for the optimized system.
+- `targets/chronolog/build.sh`: rebuilds/reinstalls the ChronoLog target used by the harness.
 - `targets/chronolog/allowed_edits.yaml`: explicit optimization scope.
 - `targets/kafka/target.yaml`: fixed Kafka baseline contract.
 - `targets/mofka/target.yaml`: fixed Mofka baseline contract.

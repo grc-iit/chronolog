@@ -50,6 +50,18 @@ profiling/data/history/fixed_baselines.csv
 
 ## Recommended First Loop Workload
 
+After any ChronoLog source edit, rebuild and reinstall the TAU-enabled target used by the harness:
+
+```bash
+profileforge/targets/chronolog/build.sh
+```
+
+The benchmark runner uses:
+
+```text
+.agent/install-tau/chronolog
+```
+
 Start with append throughput because it has the most complete comparable pipeline:
 
 ```bash
