@@ -44,7 +44,7 @@ This is not a performance-optimization phase. The goal is to make the full measu
 ## Kafka fixed baseline
 
 - [x] Create Kafka launch script.
-- [ ] Create Kafka stop/cleanup script.
+- [x] Create Kafka stop/cleanup script.
 - [ ] Run selected benchmark/workflow against Kafka.
 - [ ] Collect Kafka baseline throughput/latency.
 - [ ] Confirm no Kafka source changes were made.

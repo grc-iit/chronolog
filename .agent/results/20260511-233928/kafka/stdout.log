@@ -1,0 +1,9 @@
+Usage: kafka_stop.sh [options]
+
+Stop a Phase 0 Kafka fixed baseline launched by kafka_launch.sh.
+
+Options:
+  --result-dir DIR        Result directory containing kafka/pids.
+  --timeout-seconds N     Graceful shutdown timeout per process. Default: 20.
+  --clean-data            Remove Kafka data and ZooKeeper data under DIR/kafka.
+  -h, --help              Show this help.
