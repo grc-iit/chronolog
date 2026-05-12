@@ -1,0 +1,2 @@
+Error: unprivileged run not supported, recompile bpftool with libcap
+Error: can't get next program: Operation not permitted

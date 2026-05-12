@@ -1,0 +1,15 @@
+{
+  "system": "chronolog",
+  "workflow": "ebpf_based_observability_probe",
+  "node_count": 1,
+  "client_count": 0,
+  "message_size_bytes": 0,
+  "operation_count": 0,
+  "duration_seconds": 0,
+  "throughput_ops_per_sec": 0,
+  "avg_latency_ms": null,
+  "p50_latency_ms": null,
+  "p95_latency_ms": null,
+  "p99_latency_ms": null,
+  "success": false
+}

@@ -1,0 +1,26 @@
+[chronolog eBPF-based observability validation]
+time=2026-05-11T23:32:24-05:00
+unprivileged_bpf_disabled=2
+perf_event_paranoid=4
+kptr_restrict=1
+drwx-----T  2 root root 0 May  3 21:45 /sys/fs/bpf
+drwx------ 49 root root 0 May  3 21:44 /sys/kernel/debug
+drwx------  9 root root 0 May  3 21:44 /sys/kernel/tracing
+
+[tool paths]
+bpftrace=execsnoop=opensnoop=biolatency=offcputime=runqlat=funclatency=profile=tcplife=tcpconnect=local_bpftool=/home/jcernudagarcia/chronolog-opt/chronolog/opt/perf/extract/usr/lib/linux-tools-5.15.0-176/bpftool
+
+[module bpftool version]
+bpftool v7.5.0
+using libbpf v1.5
+features: skeletons
+
+[module bpftool feature probe unprivileged]
+module_feature_status=255
+
+[local bpftool version]
+/home/jcernudagarcia/chronolog-opt/chronolog/opt/perf/extract/usr/lib/linux-tools-5.15.0-176/bpftool v5.15.199
+features:
+
+[local bpftool prog show]
+local_prog_show_status=255

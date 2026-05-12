@@ -38,7 +38,7 @@ This is not a performance-optimization phase. The goal is to make the full measu
 - [x] Verify gperftools CPU profile output on ChronoLog run.
 - [x] Verify gperftools heap/allocation profile output on ChronoLog run.
 - [x] Verify Darshan output if applicable.
-- [ ] Verify eBPF-based measurements if available.
+- [x] Verify eBPF-based measurements if available.
 - [ ] Verify Linux network measurement outputs.
 
 ## Kafka fixed baseline
