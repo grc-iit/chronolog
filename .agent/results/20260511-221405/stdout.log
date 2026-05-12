@@ -1,0 +1,91 @@
+timestamp=2026-05-11T22:14:05-05:00
+branch=opt/phase0-bootstrap
+merge_base_status=0
+
+[darshan commands before modules]
+darshan-parser=missing
+darshan-job-summary.pl=missing
+darshan-summary-per-file.sh=missing
+darshan-convert=missing
+darshan-dxt-parser=missing
+darshan-config=missing
+darshan-runtime-config=missing
+
+[darshan modules]
+darshan-runtime/
+darshan-runtime/3.4.6-gcc-11.4.0-u7vfz6e
+darshan-util/
+darshan-util/3.4.6-gcc-11.4.0-75rttfw
+
+[darshan after module load]
+
+Currently Loaded Modules:
+  1) glibc/2.35-gcc-11.4.0-b34moeb
+  2) gcc-runtime/11.4.0-gcc-11.4.0-owu4kv5
+  3) libpciaccess/0.17-gcc-11.4.0-enmdm4m
+  4) libiconv/1.17-gcc-11.4.0-wm5g66g
+  5) xz/5.4.6-gcc-11.4.0-jbodcp5
+  6) zlib-ng/2.2.1-gcc-11.4.0-nnfxngg
+  7) libxml2/2.13.4-gcc-11.4.0-u6qpzqr
+  8) ncurses/6.5-gcc-11.4.0-ez6c47q
+  9) hwloc/2.11.1-gcc-11.4.0-2h7d7ez
+ 10) openssl/3.4.0-gcc-11.4.0-tsej5dg
+ 11) libevent/2.1.12-gcc-11.4.0-6hsetqm
+ 12) numactl/2.0.18-gcc-11.4.0-k2wg7yw
+ 13) bzip2/1.0.8-gcc-11.4.0-ko2woy6
+ 14) pigz/2.8-gcc-11.4.0-e4qyap2
+ 15) zstd/1.5.6-gcc-11.4.0-i7n7mhj
+ 16) tar/1.34-gcc-11.4.0-ahhhqn4
+ 17) gettext/0.22.5-gcc-11.4.0-mbqnrku
+ 18) krb5/1.21.3-gcc-11.4.0-n2getuy
+ 19) libedit/3.1-20240808-gcc-11.4.0-vexrvth
+ 20) libxcrypt/4.4.35-gcc-11.4.0-rxnqnjb
+ 21) openssh/9.9p1-gcc-11.4.0-zsi7jbn
+ 22) pmix/5.0.3-gcc-11.4.0-mtqvcp2
+ 23) openmpi/5.0.5-gcc-11.4.0-og56sxz
+ 24) darshan-runtime/3.4.6-gcc-11.4.0-u7vfz6e
+ 25) darshan-util/3.4.6-gcc-11.4.0-75rttfw
+
+ 
+
+darshan-parser=/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/darshan-util-3.4.6-75rttfwncebw4iwz2agrq2r2icasiqmn/bin/darshan-parser
+darshan-job-summary.pl=/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/darshan-util-3.4.6-75rttfwncebw4iwz2agrq2r2icasiqmn/bin/darshan-job-summary.pl
+darshan-summary-per-file.sh=/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/darshan-util-3.4.6-75rttfwncebw4iwz2agrq2r2icasiqmn/bin/darshan-summary-per-file.sh
+darshan-convert=/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/darshan-util-3.4.6-75rttfwncebw4iwz2agrq2r2icasiqmn/bin/darshan-convert
+darshan-dxt-parser=/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/darshan-util-3.4.6-75rttfwncebw4iwz2agrq2r2icasiqmn/bin/darshan-dxt-parser
+darshan-config=/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/darshan-runtime-3.4.6-u7vfz6edqy4hzj6fnpx6g7inobzd32os/bin/darshan-config
+darshan-runtime-config=missing
+darshan-parser: unrecognized option '--version'
+Usage: darshan-parser [options] <filename>
+    --all   : all sub-options are enabled
+    --base  : darshan log field data [default]
+    --file  : total file counts
+    --perf  : derived perf data
+    --total : aggregated darshan field data
+    --show-incomplete : display results even if log is incomplete
+Usage: darshan-config [--pre-ld-flags] [--post-ld-flags] [--dyn-ld-flags] [--log-path]
+PATH=/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/darshan-util-3.4.6-75rttfwncebw4iwz2agrq2r2icasiqmn/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/darshan-runtime-3.4.6-u7vfz6edqy4hzj6fnpx6g7inobzd32os/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-og56sxzoqwjcpelrnw7cc2o3th7u7673/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pmix-5.0.3-mtqvcp2oursbrcnr5dnpb7iyb5htkcsg/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openssh-9.9p1-zsi7jbnzwumknquqtyaighyxnju4ljx3/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/krb5-1.21.3-n2getuycoz5mrcpcg6qd7jmkfw4ly4zb/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/gettext-0.22.5-mbqnrkughmugrj6bkggsbiimmnb6vhcp/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/tar-1.34-ahhhqn43bpkqc4sptu5djpexmyucj2sz/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/zstd-1.5.6-i7n7mhjlnqlgr64smryfji2ploaetsgu/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pigz-2.8-e4qyap2unvfzbzzipset567mrav2qvzs/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/bzip2-1.0.8-ko2woy6rguqa6vr6ljv7b66h3qyhjivk/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/numactl-2.0.18-k2wg7ywovshpaq73uquirlsnzkhqodh2/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libevent-2.1.12-6hsetqmwdgwdozp2mycajf6d4tqiltgx/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openssl-3.4.0-tsej5dglslyhrikyjv5ykahrw6khbna7/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hwloc-2.11.1-2h7d7ez5znqxnbtbsfqme6hifn34skwf/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/ncurses-6.5-ez6c47qaetsfgq2xocg75my2ebnuhjxc/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libxml2-2.13.4-u6qpzqrp62r45wis36liyzuiugcmwexl/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/xz-5.4.6-jbodcp574bdwddmrvjxvdjriq2ctvbav/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libiconv-1.17-wm5g66gzc3ecwd3ijrsxlcjivmsnyclu/bin:/home/jcernudagarcia/.local/bin:/home/jcernudagarcia/bin:/home/jcernudagarcia/.codex/tmp/arg0/codex-arg0elUrSz:/mnt/common/jcernudagarcia/.npm-global/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/path:/home/jcernudagarcia/.npm-global/bin:/home/jcernudagarcia/vhs:/home/jcernudagarcia/.claude/local:/home/jcernudagarcia/spack/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/home/jcernudagarcia/.fzf/bin
+PKG_CONFIG_PATH=/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/darshan-util-3.4.6-75rttfwncebw4iwz2agrq2r2icasiqmn/lib/pkgconfig:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/darshan-runtime-3.4.6-u7vfz6edqy4hzj6fnpx6g7inobzd32os/lib/pkgconfig:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-og56sxzoqwjcpelrnw7cc2o3th7u7673/lib/pkgconfig:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pmix-5.0.3-mtqvcp2oursbrcnr5dnpb7iyb5htkcsg/lib/pkgconfig:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libxcrypt-4.4.35-rxnqnjba7uy5ikoqri53if76m7l7ggbh/lib/pkgconfig:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libedit-3.1-20240808-vexrvth4e32dmlqc3wmntu56dv27ocfl/lib/pkgconfig:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/krb5-1.21.3-n2getuycoz5mrcpcg6qd7jmkfw4ly4zb/lib/pkgconfig:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/zstd-1.5.6-i7n7mhjlnqlgr64smryfji2ploaetsgu/lib/pkgconfig:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/bzip2-1.0.8-ko2woy6rguqa6vr6ljv7b66h3qyhjivk/lib/pkgconfig:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/numactl-2.0.18-k2wg7ywovshpaq73uquirlsnzkhqodh2/lib/pkgconfig:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libevent-2.1.12-6hsetqmwdgwdozp2mycajf6d4tqiltgx/lib/pkgconfig:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openssl-3.4.0-tsej5dglslyhrikyjv5ykahrw6khbna7/lib64/pkgconfig:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hwloc-2.11.1-2h7d7ez5znqxnbtbsfqme6hifn34skwf/lib/pkgconfig:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/ncurses-6.5-ez6c47qaetsfgq2xocg75my2ebnuhjxc/lib/pkgconfig:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libxml2-2.13.4-u6qpzqrp62r45wis36liyzuiugcmwexl/lib/pkgconfig:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/zlib-ng-2.2.1-nnfxnggxva6jcikon24aoj4yiycmcei3/lib/pkgconfig:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/xz-5.4.6-jbodcp574bdwddmrvjxvdjriq2ctvbav/lib/pkgconfig:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libpciaccess-0.17-enmdm4mcctdtvpmrlbxbalt54xhsa66s/lib/pkgconfig:/usr/share/pkgconfig:/usr/lib/pkgconfig
+
+[darshan config validation]
+started=2026-05-11T22:14:21-05:00
+log_path=$DARSHAN_LOG_DIR_PATH
+pre_ld_flags=-L/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/darshan-runtime-3.4.6-u7vfz6edqy4hzj6fnpx6g7inobzd32os/lib -L/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/zlib-ng-2.2.1-nnfxnggxva6jcikon24aoj4yiycmcei3/lib -ldarshan -lz -Wl,@/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/darshan-runtime-3.4.6-u7vfz6edqy4hzj6fnpx6g7inobzd32os/share/ld-opts/darshan-ld-opts
+post_ld_flags=-L/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/darshan-runtime-3.4.6-u7vfz6edqy4hzj6fnpx6g7inobzd32os/lib -ldarshan -lz -lrt -lpthread -lm
+dyn_ld_flags=-L/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/darshan-runtime-3.4.6-u7vfz6edqy4hzj6fnpx6g7inobzd32os/lib -L/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/zlib-ng-2.2.1-nnfxnggxva6jcikon24aoj4yiycmcei3/lib -Wl,-rpath=/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/darshan-runtime-3.4.6-u7vfz6edqy4hzj6fnpx6g7inobzd32os/lib -Wl,-no-as-needed -ldarshan
+Usage: darshan-parser [options] <filename>
+    --all   : all sub-options are enabled
+    --base  : darshan log field data [default]
+    --file  : total file counts
+    --perf  : derived perf data
+    --total : aggregated darshan field data
+    --show-incomplete : display results even if log is incomplete
+Usage: darshan-convert [options] <infile> <outfile>
+       Converts darshan log from infile to outfile.
+       rewrites the log file into the newest format.
+       --bzip2 Use bzip2 compression instead of zlib.
+       --obfuscate Obfuscate items in the log.
+       --key <key> Key to use when obfuscating.
+       --annotate <string> Additional metadata to add.
+       --file <hash> Limit output to specified (hashed) file only.
+       --reset-md Reset old metadata during conversion.

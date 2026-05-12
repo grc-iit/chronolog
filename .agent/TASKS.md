@@ -17,7 +17,7 @@ This is not a performance-optimization phase. The goal is to make the full measu
 - [x] Install or detect TAU.
 - [x] Install or detect perf.
 - [x] Install or detect gperftools.
-- [ ] Install or detect Darshan.
+- [x] Install or detect Darshan.
 - [ ] Detect eBPF-based tooling through available bpftrace or BCC tools.
 - [ ] Detect Linux network measurement commands: iperf3, ss, nstat, sar -n, ethtool.
 - [ ] Write toolchain report.
