@@ -1,0 +1,268 @@
+#!/usr/bin/env python3
+"""Prepare a ProfileForge optimization session for an agent."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shlex
+import shutil
+import subprocess
+from datetime import datetime
+from pathlib import Path
+
+
+REPO_ROOT = Path(__file__).resolve().parent
+PROFILEFORGE = REPO_ROOT / "profileforge"
+RESULTS = PROFILEFORGE / "results"
+RUN_LOOP = PROFILEFORGE / "controller" / "run_loop.py"
+DEFAULT_GOAL = (
+    "Optimize ChronoLog performance until it is at least 2x better than the fixed Mofka baseline "
+    "across append_throughput, append_latency, and range_retrieval, while preserving correctness and "
+    "obeying the ProfileForge edit policy."
+)
+
+
+def timestamp() -> str:
+    return datetime.now().strftime("%Y%m%d-%H%M%S")
+
+
+def display_path(path: Path) -> str:
+    try:
+        return str(path.relative_to(REPO_ROOT))
+    except ValueError:
+        return str(path)
+
+
+def resolve_system(system: str) -> Path:
+    candidate = Path(system)
+    candidates = []
+    if candidate.exists():
+        candidates.append(candidate)
+    if candidate.suffix in {".yaml", ".yml"}:
+        stem = candidate.stem
+        candidates.append(PROFILEFORGE / "targets" / stem / "target.yaml")
+        candidates.append(PROFILEFORGE / "targets" / stem.replace("-", "_") / "target.yaml")
+    else:
+        candidates.append(PROFILEFORGE / "targets" / system / "target.yaml")
+        candidates.append(PROFILEFORGE / "targets" / f"{system}.yaml")
+    for path in candidates:
+        if path.exists():
+            return path.resolve()
+    raise SystemExit(f"could not resolve system manifest: {system}")
+
+
+def write_executable(path: Path, text: str) -> None:
+    path.write_text(text, encoding="utf-8")
+    path.chmod(0o755)
+
+
+def run(cmd: list[str], log: Path, dry_run: bool) -> int:
+    rendered = " ".join(shlex.quote(part) for part in cmd)
+    with log.open("a", encoding="utf-8") as fh:
+        fh.write(f"$ {rendered}\n")
+        fh.flush()
+        if dry_run:
+            fh.write("dry_run=true\n")
+            return 0
+        proc = subprocess.run(cmd, cwd=REPO_ROOT, text=True, stdout=fh, stderr=subprocess.STDOUT)
+        fh.write(f"exit_code={proc.returncode}\n")
+        return proc.returncode
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--agent", default="codex", choices=["codex"])
+    parser.add_argument("--system", required=True, help="Manifest path or alias, e.g. chronolog.yaml")
+    parser.add_argument("--goal", default=DEFAULT_GOAL)
+    parser.add_argument("--session-name", default="")
+    parser.add_argument("--workflows", default=os.environ.get("PROFILEFORGE_WORKFLOWS", "append_throughput,append_latency,range_retrieval"))
+    parser.add_argument("--node-counts", default=os.environ.get("PROFILEFORGE_NODE_COUNTS", "2"))
+    parser.add_argument("--message-sizes", default=os.environ.get("PROFILEFORGE_MESSAGE_SIZES", "1024"))
+    parser.add_argument("--operation-counts", default=os.environ.get("PROFILEFORGE_OPERATION_COUNTS", "100"))
+    parser.add_argument("--trials", type=int, default=int(os.environ.get("PROFILEFORGE_TRIALS", "3")))
+    parser.add_argument("--partition", default=os.environ.get("PROFILEFORGE_PARTITION", "debug"))
+    parser.add_argument("--nodelist", default=os.environ.get("PROFILEFORGE_NODELIST", ""))
+    parser.add_argument("--slurm-time", default=os.environ.get("PROFILEFORGE_SLURM_TIME", "00:10:00"))
+    parser.add_argument("--profile-mode", default=os.environ.get("PROFILEFORGE_PROFILE_MODE", "tau"))
+    parser.add_argument("--goal-system", default=os.environ.get("PROFILEFORGE_GOAL_SYSTEM", "mofka"))
+    parser.add_argument("--goal-ratio", type=float, default=float(os.environ.get("PROFILEFORGE_GOAL_RATIO", "2.0")))
+    parser.add_argument("--max-iterations", type=int, default=int(os.environ.get("PROFILEFORGE_MAX_ITERATIONS", "100")))
+    parser.add_argument("--patch-command", default=os.environ.get("PROFILEFORGE_PATCH_COMMAND", ""))
+    parser.add_argument("--skip-initial-run", action="store_true")
+    parser.add_argument("--dry-run", action="store_true")
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+    manifest = resolve_system(args.system)
+    session_name = args.session_name or f"{manifest.parent.name}-{timestamp()}"
+    session_dir = RESULTS / "sessions" / session_name
+    session_dir.mkdir(parents=True, exist_ok=True)
+
+    manifest_copy = session_dir / "target.yaml"
+    shutil.copy2(manifest, manifest_copy)
+
+    loop_dir = session_dir / "initial-run"
+    loop_cmd = [
+        "python3",
+        str(RUN_LOOP),
+        "--iterations",
+        "1",
+        "--systems",
+        "chronolog",
+        "--workflows",
+        args.workflows,
+        "--node-counts",
+        args.node_counts,
+        "--message-sizes",
+        args.message_sizes,
+        "--operation-counts",
+        args.operation_counts,
+        "--trials",
+        str(args.trials),
+        "--partition",
+        args.partition,
+        "--slurm-time",
+        args.slurm_time,
+        "--chronolog-profile-mode",
+        args.profile_mode,
+        "--goal-system",
+        args.goal_system,
+        "--goal-ratio",
+        str(args.goal_ratio),
+        "--result-root",
+        str(loop_dir),
+    ]
+    if args.nodelist:
+        loop_cmd.extend(["--nodelist", args.nodelist])
+    if args.patch_command:
+        loop_cmd.extend(["--patch-command", args.patch_command])
+    if args.dry_run:
+        loop_cmd.append("--dry-run")
+
+    goal_prompt = f"""# Codex Goal Prompt
+
+/goal "{args.goal}"
+
+You are operating inside a ProfileForge-prepared ChronoLog optimization session.
+
+Session directory:
+
+```text
+{display_path(session_dir)}
+```
+
+Target manifest:
+
+```text
+{display_path(manifest)}
+```
+
+Initial evidence/run directory:
+
+```text
+{display_path(loop_dir)}
+```
+
+Rules:
+
+- ChronoLog is the only optimization target.
+- Kafka and Mofka are fixed baselines. Do not modify or tune their source.
+- Obey `profileforge/targets/chronolog/allowed_edits.yaml`.
+- Use one bottleneck and one bounded change per iteration.
+- Run correctness validation before judging performance.
+- Stop only when every judged benchmark group reaches at least `{args.goal_ratio}`x against `{args.goal_system}`, or when a real blocker is recorded.
+- ChronoLog should run as the normal user. Only eBPF-based profiling tools may use sudo.
+
+Useful commands:
+
+```bash
+bash {display_path(session_dir / "run_goal_loop.sh")}
+python3 profileforge/controller/run_loop.py --help
+```
+"""
+    (session_dir / "codex-goal.md").write_text(goal_prompt, encoding="utf-8")
+
+    env_text = f"""#!/usr/bin/env bash
+export PROFILEFORGE_SESSION={shlex.quote(str(session_dir))}
+export PROFILEFORGE_TARGET_MANIFEST={shlex.quote(str(manifest))}
+export PROFILEFORGE_WORKFLOWS={shlex.quote(args.workflows)}
+export PROFILEFORGE_NODE_COUNTS={shlex.quote(args.node_counts)}
+export PROFILEFORGE_MESSAGE_SIZES={shlex.quote(args.message_sizes)}
+export PROFILEFORGE_OPERATION_COUNTS={shlex.quote(args.operation_counts)}
+export PROFILEFORGE_TRIALS={shlex.quote(str(args.trials))}
+export PROFILEFORGE_PARTITION={shlex.quote(args.partition)}
+export PROFILEFORGE_NODELIST={shlex.quote(args.nodelist)}
+export PROFILEFORGE_SLURM_TIME={shlex.quote(args.slurm_time)}
+export PROFILEFORGE_PROFILE_MODE={shlex.quote(args.profile_mode)}
+export PROFILEFORGE_GOAL_SYSTEM={shlex.quote(args.goal_system)}
+export PROFILEFORGE_GOAL_RATIO={shlex.quote(str(args.goal_ratio))}
+export PROFILEFORGE_MAX_ITERATIONS={shlex.quote(str(args.max_iterations))}
+export PROFILEFORGE_PATCH_COMMAND={shlex.quote(args.patch_command)}
+"""
+    write_executable(session_dir / "environment.sh", env_text)
+
+    goal_loop_script = """#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "${{BASH_SOURCE[0]}}")/../../.."
+source "$PWD/{env}"
+cmd=(
+  python3 profileforge/controller/run_loop.py
+  --run-until-goal
+  --max-iterations "${{PROFILEFORGE_MAX_ITERATIONS:-100}}"
+  --systems chronolog
+  --workflows "${{PROFILEFORGE_WORKFLOWS}}"
+  --node-counts "${{PROFILEFORGE_NODE_COUNTS}}"
+  --message-sizes "${{PROFILEFORGE_MESSAGE_SIZES}}"
+  --operation-counts "${{PROFILEFORGE_OPERATION_COUNTS}}"
+  --trials "${{PROFILEFORGE_TRIALS}}"
+  --partition "${{PROFILEFORGE_PARTITION}}"
+  --slurm-time "${{PROFILEFORGE_SLURM_TIME}}"
+  --chronolog-profile-mode "${{PROFILEFORGE_PROFILE_MODE}}"
+  --goal-system "${{PROFILEFORGE_GOAL_SYSTEM}}"
+  --goal-ratio "${{PROFILEFORGE_GOAL_RATIO}}"
+  --result-root "${{PROFILEFORGE_SESSION}}/goal-loop"
+)
+if [[ -n "${{PROFILEFORGE_NODELIST}}" ]]; then
+  cmd+=(--nodelist "${{PROFILEFORGE_NODELIST}}")
+fi
+if [[ -n "${{PROFILEFORGE_PATCH_COMMAND}}" ]]; then
+  cmd+=(--patch-command "${{PROFILEFORGE_PATCH_COMMAND}}")
+fi
+exec "${{cmd[@]}}"
+""".format(
+        env=display_path(session_dir / "environment.sh"),
+    )
+    write_executable(session_dir / "run_goal_loop.sh", goal_loop_script)
+
+    setup = {
+        "agent": args.agent,
+        "system_manifest": display_path(manifest),
+        "session_dir": display_path(session_dir),
+        "goal": args.goal,
+        "goal_system": args.goal_system,
+        "goal_ratio": args.goal_ratio,
+        "initial_run_command": loop_cmd,
+        "initial_run_skipped": args.skip_initial_run,
+        "dry_run": args.dry_run,
+        "codex_goal_prompt": display_path(session_dir / "codex-goal.md"),
+        "environment": display_path(session_dir / "environment.sh"),
+        "goal_loop": display_path(session_dir / "run_goal_loop.sh"),
+    }
+    (session_dir / "setup.json").write_text(json.dumps(setup, indent=2) + "\n", encoding="utf-8")
+
+    if not args.skip_initial_run:
+        code = run(loop_cmd, session_dir / "setup.log", dry_run=False)
+        if code != 0 and not args.dry_run:
+            return code
+
+    print(display_path(session_dir))
+    print(f"Codex prompt: {display_path(session_dir / 'codex-goal.md')}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -64,6 +64,20 @@ Output:
 profileforge/results/0/evidence.json
 ```
 
+Prepare a Codex optimization session:
+
+```bash
+./forge_setup --agent codex --system chronolog.yaml --dry-run
+```
+
+This writes a session under `profileforge/results/sessions/` containing:
+
+- `codex-goal.md`: the `/goal` prompt to paste into Codex.
+- `environment.sh`: the resolved ProfileForge environment.
+- `run_goal_loop.sh`: the long-running loop command for the session.
+- `setup.json`: machine-readable setup metadata.
+- `setup.log`: initial-run command log.
+
 Run a dry controller pass:
 
 ```bash
