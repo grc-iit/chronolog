@@ -34,7 +34,7 @@ This is not a performance-optimization phase. The goal is to make the full measu
 - [x] Build ChronoLog with TAU instrumentation.
 - [x] Run ChronoLog instrumented smoke test.
 - [x] Verify TAU output.
-- [ ] Verify perf output on ChronoLog run.
+- [x] Verify perf output on ChronoLog run.
 - [ ] Verify gperftools CPU profile output on ChronoLog run.
 - [ ] Verify gperftools heap/allocation profile output on ChronoLog run.
 - [ ] Verify Darshan output if applicable.

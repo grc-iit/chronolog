@@ -1,0 +1,19 @@
+[chronolog perf validation]
+time=2026-05-11T23:17:53-05:00
+PERF_BIN=/home/jcernudagarcia/chronolog-opt/chronolog/opt/perf/extract/usr/lib/linux-tools-5.15.0-176/perf
+perf_event_paranoid=4
+perf version 5.15.199
+
+[perf stat chrono binary]
+perf_stat_status=255
+
+[perf record chrono binary]
+perf_record_status=255
+
+[perf stat output]
+# started on Mon May 11 23:17:53 2026
+
+
+[profile files]
+perf-stat.txt 39 bytes
+perf.data 0 bytes
