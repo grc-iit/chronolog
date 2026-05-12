@@ -67,22 +67,22 @@ public:
 
     ~TestExtractionChain() { theExtractors.clear(); }
 
-    int activate(chl::ServiceId const& recording_service_id, 
-		    tl::engine * extraction_engine, 
-		    chl::ExtractionModuleConfiguration const& configuration)
+    int activate(chl::ServiceId const& recording_service_id,
+                 tl::engine* extraction_engine,
+                 chl::ExtractionModuleConfiguration const& configuration)
     {
         theExtractors.push_back(std::move(chl::LoggingExtractor()));
         theExtractors.push_back(std::move(chl::StoryChunkExtractorCSV(recording_service_id)));
-        theExtractors.push_back(std::move(chl::StoryChunkExtractorRDMA(extraction_engine,chl::ServiceId("ofi+sockets", "127.0.0.1", 3333, 33))));
-     return chl::CL_SUCCESS;
+        theExtractors.push_back(std::move(
+                chl::StoryChunkExtractorRDMA(extraction_engine, chl::ServiceId("ofi+sockets", "127.0.0.1", 3333, 33))));
+        return chl::CL_SUCCESS;
     }
 
     void process_chunk(chl::StoryChunk* chunk)
     {
         for(auto& e: theExtractors)
         {
-            std::visit([chunk](auto& extractor)
-	       { extractor.process_chunk(chunk); }, e);
+            std::visit([chunk](auto& extractor) { extractor.process_chunk(chunk); }, e);
         }
     }
 
@@ -107,9 +107,9 @@ public:
         return true;
     }
 
-    void flush_outage_buffers( )
+    void flush_outage_buffers()
     {
-	    //TODO #635
+        //TODO #635
     }
 };
 
