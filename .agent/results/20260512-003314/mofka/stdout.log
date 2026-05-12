@@ -1,0 +1,10 @@
+Mofka result directory: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-003314
+Deployment mode: local_smoke
+Node count: 1
+Protocol: ofi+tcp
+Mofka fixed baseline is running
+Stopping Mofka fixed baseline in /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-003314
+Stopping mofka-storage-1 pid 334121
+mofka-storage-1 pid 334121 stopped
+mofka-master pid 334111 is not running
+Mofka fixed baseline stop complete

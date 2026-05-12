@@ -121,7 +121,7 @@ cat > "${MASTER_CONFIG}" <<EOF
       "name": "phase0_master",
       "provider_id": 2,
       "type": "yokan",
-      "tags": [ "mofka:controller" ],
+      "tags": [ "mofka:master" ],
       "config": {
         "database": { "type": "map" }
       }

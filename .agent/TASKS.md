@@ -56,9 +56,9 @@ This is not a performance-optimization phase. The goal is to make the full measu
 - [x] Create Mofka launch script.
 - [x] Create Mofka stop/cleanup script.
 - [x] Validate Mofka local smoke launch and Bedrock provider query.
-- [ ] Run selected benchmark/workflow against Mofka.
-- [ ] Collect Mofka baseline throughput/latency.
-- [ ] Confirm no Mofka source changes were made.
+- [x] Run selected benchmark/workflow against Mofka.
+- [x] Collect Mofka baseline throughput/latency.
+- [x] Confirm no Mofka source changes were made.
 
 ## Configuration characterization
 

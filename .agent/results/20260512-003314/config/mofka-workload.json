@@ -1,0 +1,11 @@
+{
+  "workflow": "append_throughput",
+  "topic": "phase0_append",
+  "partition_type": "memory",
+  "operation_count": 50,
+  "message_size_bytes": 1024,
+  "producer_batch_size": 1,
+  "producer_max_batch": 2,
+  "producer_ordering": "Loose",
+  "local_smoke_note": "Uses Mofka memory partition because local Yokan/Warabi-backed dynamic partition creation is not yet validated."
+}
