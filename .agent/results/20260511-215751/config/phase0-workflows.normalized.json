@@ -1,0 +1,121 @@
+{
+    "status": "provisional",
+    "reason": "No user-provided benchmark/workflow list was found in the repository state available to the agent.",
+    "entity_mapping": {
+        "chronolog": {
+            "container": "chronicle/story",
+            "record": "event",
+            "append_operation": "client append event to acquired story",
+            "read_operation": "story playback/range retrieval where supported"
+        },
+        "kafka": {
+            "container": "topic",
+            "record": "message",
+            "append_operation": "producer send message to topic",
+            "read_operation": "consumer poll messages by topic/offset range where supported"
+        },
+        "mofka": {
+            "container": "stream",
+            "record": "record",
+            "append_operation": "producer append record to stream",
+            "read_operation": "consumer/read API range retrieval where supported"
+        }
+    },
+    "default_parameters": {
+        "message_size_bytes": 1024,
+        "operation_count": 100000,
+        "client_counts": [
+            1,
+            4,
+            8
+        ],
+        "node_counts": [
+            1,
+            2,
+            4,
+            8
+        ],
+        "node_count_rule": "Use the listed node counts only where cluster allocation limits and system launch support allow.",
+        "latency_sampling": "Record per-operation latency when client APIs expose timestamps; otherwise report null latency fields and document the limitation in run notes."
+    },
+    "workflows": [
+        {
+            "name": "append_throughput",
+            "description": "Sustained append/write throughput for fixed-size records.",
+            "required_systems": [
+                "chronolog",
+                "kafka",
+                "mofka"
+            ],
+            "primary_metric": "throughput_ops_per_sec",
+            "latency_required": false
+        },
+        {
+            "name": "append_latency",
+            "description": "Append/write latency distribution for fixed-size records.",
+            "required_systems": [
+                "chronolog",
+                "kafka",
+                "mofka"
+            ],
+            "primary_metric": "p99_latency_ms",
+            "latency_required": true
+        },
+        {
+            "name": "range_retrieval",
+            "description": "Read/range retrieval over previously appended records where the system exposes a comparable read path.",
+            "required_systems": [
+                "chronolog",
+                "kafka",
+                "mofka"
+            ],
+            "primary_metric": "throughput_ops_per_sec",
+            "latency_required": true,
+            "support_policy": "Run when all three systems expose a comparable read/range path; otherwise mark unsupported with evidence."
+        },
+        {
+            "name": "mixed_append_read",
+            "description": "Concurrent append and read/range workload where the system exposes compatible APIs.",
+            "required_systems": [
+                "chronolog",
+                "kafka",
+                "mofka"
+            ],
+            "primary_metric": "throughput_ops_per_sec",
+            "latency_required": true,
+            "support_policy": "Run when all three systems expose compatible concurrent append/read APIs; otherwise mark unsupported with evidence."
+        },
+        {
+            "name": "scaling_sweep",
+            "description": "Small scaling sweep for append throughput and latency at 1, 2, 4, and 8 nodes where cluster limits allow.",
+            "required_systems": [
+                "chronolog",
+                "kafka",
+                "mofka"
+            ],
+            "primary_metric": "throughput_ops_per_sec",
+            "latency_required": true,
+            "node_counts": [
+                1,
+                2,
+                4,
+                8
+            ]
+        }
+    ],
+    "metrics_schema": {
+        "system": "chronolog|kafka|mofka",
+        "workflow": "name",
+        "node_count": 0,
+        "client_count": 0,
+        "message_size_bytes": 0,
+        "operation_count": 0,
+        "duration_seconds": 0,
+        "throughput_ops_per_sec": 0,
+        "avg_latency_ms": null,
+        "p50_latency_ms": null,
+        "p95_latency_ms": null,
+        "p99_latency_ms": null,
+        "success": true
+    }
+}

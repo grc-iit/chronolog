@@ -1,0 +1,6 @@
+branch=opt/phase0-bootstrap
+merge_base_status=0
+json_validation_status=0
+ M .agent/TASKS.md
+ M .agent/results/progress.md
+ M .agent/state/current.md

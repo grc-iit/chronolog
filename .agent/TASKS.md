@@ -8,7 +8,7 @@ This is not a performance-optimization phase. The goal is to make the full measu
 
 ## Critical first task
 
-- [ ] Define the required Phase 0 workflows/benchmarks across ChronoLog, Kafka, and Mofka.
+- [x] Define the required Phase 0 workflows/benchmarks across ChronoLog, Kafka, and Mofka.
 
 ## Environment and tooling
 

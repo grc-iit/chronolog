@@ -1,7 +1,7 @@
 # Current State
 
-- current task: setup only
+- current task: detect SLURM environment
 - commands running: none
-- last successful validation: repository cloned and branch `opt/phase0-bootstrap` created from `origin/develop`
+- last successful validation: provisional workflow JSON validated with `python3 -m json.tool`; evidence in `.agent/results/20260511-215751/`
 - current blocker: none
-- next intended step: start Codex with `/goal` when ready
+- next intended step: discover SLURM commands, modules, partition/node/job-limit hints, and compiler stack
