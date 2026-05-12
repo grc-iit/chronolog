@@ -1,0 +1,15 @@
+{
+  "system": "kafka",
+  "workflow": "append_throughput",
+  "node_count": 1,
+  "client_count": 1,
+  "message_size_bytes": 1024,
+  "operation_count": 1000,
+  "duration_seconds": 0.791000,
+  "throughput_ops_per_sec": 1264.222503,
+  "avg_latency_ms": 183.28,
+  "p50_latency_ms": 185,
+  "p95_latency_ms": 269,
+  "p99_latency_ms": 276,
+  "success": true
+}

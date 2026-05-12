@@ -1,0 +1,7 @@
+# Kafka source change check
+
+git diff --stat -- tools/deploy/others/Kafka
+
+git status --short -- tools/deploy/others/Kafka
+
+Project-local Kafka distribution is under ignored opt/kafka and was not modified as repository source.

@@ -28,6 +28,8 @@ HOST="${KAFKA_HOST:-127.0.0.1}"
 ZOOKEEPER_PORT="${KAFKA_ZOOKEEPER_PORT:-22181}"
 BROKER_PORT="${KAFKA_BROKER_PORT:-29092}"
 WAIT_SECONDS="${KAFKA_WAIT_SECONDS:-30}"
+KAFKA_HEAP_OPTS_VALUE="${KAFKA_HEAP_OPTS:-"-Xms128m -Xmx512m"}"
+ZOOKEEPER_HEAP_OPTS_VALUE="${ZOOKEEPER_HEAP_OPTS:-"-Xms128m -Xmx512m"}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -112,6 +114,8 @@ KAFKA_ZOOKEEPER_CONNECT=${ZOOKEEPER_CONNECT}
 KAFKA_RESULT_DIR=${KAFKA_RESULT_DIR}
 KAFKA_SERVER_CONFIG=${SERVER_CONFIG}
 KAFKA_ZOOKEEPER_CONFIG=${ZOOKEEPER_CONFIG}
+KAFKA_HEAP_OPTS='${KAFKA_HEAP_OPTS_VALUE}'
+ZOOKEEPER_HEAP_OPTS='${ZOOKEEPER_HEAP_OPTS_VALUE}'
 EOF
 
 echo "Kafka home: ${KAFKA_HOME}"
@@ -119,7 +123,8 @@ echo "Result directory: ${RESULT_DIR}"
 echo "Bootstrap server: ${BOOTSTRAP_SERVER}"
 echo "ZooKeeper connect: ${ZOOKEEPER_CONNECT}"
 
-"${KAFKA_HOME}/bin/zookeeper-server-start.sh" "${ZOOKEEPER_CONFIG}" \
+env KAFKA_HEAP_OPTS="${ZOOKEEPER_HEAP_OPTS_VALUE}" \
+  nohup "${KAFKA_HOME}/bin/zookeeper-server-start.sh" "${ZOOKEEPER_CONFIG}" \
   > "${KAFKA_LOG_DIR}/zookeeper.stdout.log" \
   2> "${KAFKA_LOG_DIR}/zookeeper.stderr.log" &
 ZOOKEEPER_PID=$!
@@ -130,7 +135,8 @@ if ! phase0_wait_for_port "${HOST}" "${ZOOKEEPER_PORT}" "${WAIT_SECONDS}"; then
   exit 1
 fi
 
-"${KAFKA_HOME}/bin/kafka-server-start.sh" "${SERVER_CONFIG}" \
+env KAFKA_HEAP_OPTS="${KAFKA_HEAP_OPTS_VALUE}" \
+  nohup "${KAFKA_HOME}/bin/kafka-server-start.sh" "${SERVER_CONFIG}" \
   > "${KAFKA_LOG_DIR}/broker.stdout.log" \
   2> "${KAFKA_LOG_DIR}/broker.stderr.log" &
 BROKER_PID=$!
@@ -141,6 +147,13 @@ if ! phase0_wait_for_port "${HOST}" "${BROKER_PORT}" "${WAIT_SECONDS}"; then
   exit 1
 fi
 
-"${KAFKA_HOME}/bin/kafka-topics.sh" --bootstrap-server "${BOOTSTRAP_SERVER}" --list >/dev/null
+ADMIN_DEADLINE=$((SECONDS + WAIT_SECONDS))
+until "${KAFKA_HOME}/bin/kafka-topics.sh" --bootstrap-server "${BOOTSTRAP_SERVER}" --list >/dev/null; do
+  if (( SECONDS >= ADMIN_DEADLINE )); then
+    echo "Kafka broker port opened, but admin client did not become ready for ${BOOTSTRAP_SERVER}" >&2
+    exit 1
+  fi
+  sleep 1
+done
 
 echo "Kafka fixed baseline is running"

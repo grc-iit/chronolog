@@ -1,0 +1,16 @@
+Kafka home: /home/jcernudagarcia/chronolog-opt/chronolog/opt/kafka/kafka_2.13-2.8.0
+Result directory: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-234455
+Bootstrap server: 127.0.0.1:29092
+ZooKeeper connect: 127.0.0.1:22181
+Kafka fixed baseline is running
+Creating topic phase0-append-throughput-1778561126
+Created topic phase0-append-throughput-1778561126.
+Running producer perf workflow append_throughput
+1000 records sent, 1264.222503 records/sec (1.23 MB/sec), 183.28 ms avg latency, 560.00 ms max latency, 185 ms 50th, 269 ms 95th, 276 ms 99th, 560 ms 99.9th.
+Deleting topic phase0-append-throughput-1778561126
+Stopping Kafka fixed baseline in /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-234455
+Stopping Kafka broker pid 139640
+Kafka broker pid 139640 stopped
+Stopping ZooKeeper pid 139218
+ZooKeeper pid 139218 stopped
+Kafka fixed baseline stop complete

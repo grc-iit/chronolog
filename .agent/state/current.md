@@ -1,7 +1,7 @@
 # Current State
 
-- current task: run selected benchmark/workflow against Kafka
+- current task: create Mofka launch script
 - commands running: none
-- last successful validation: Kafka stop/cleanup script syntax and help path passed; evidence in `.agent/results/20260511-233928/kafka/stdout.log` and `.agent/results/20260511-233928/kafka/stderr.log`
+- last successful validation: Kafka fixed baseline ran the provisional `append_throughput` workflow and wrote comparable metrics; evidence in `.agent/results/20260511-234455/kafka/metrics.json` and `.agent/results/20260511-234455/kafka/producer-perf-append-throughput.log`
 - current blocker: perf runtime events and eBPF-based observability require cluster/admin permission changes for later profiling-output validation
-- next intended step: launch the fixed Kafka baseline and run the provisional append throughput workflow
+- next intended step: locate Mofka installation or available modules, then add a Mofka fixed-baseline launch wrapper without modifying Mofka source
