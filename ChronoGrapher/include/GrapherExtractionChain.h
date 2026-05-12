@@ -70,7 +70,7 @@ public:
                 {
                     break;
                 }
-		theExtractors.push_back(std::move(csv_extractor));
+                theExtractors.push_back(std::move(csv_extractor));
             }
             else if((*iter).first == "hdf5_extractor")
             {
@@ -80,11 +80,11 @@ public:
                 {
                     break;
                 }
-		theExtractors.push_back(std::move(hdf5_extractor));
+                theExtractors.push_back(std::move(hdf5_extractor));
             }
             else if((*iter).first == "logging_extractor")
             {
-		theExtractors.push_back(std::move(LoggingExtractor()));
+                theExtractors.push_back(std::move(LoggingExtractor()));
             }
         }
 
@@ -93,8 +93,8 @@ public:
 
     void flush_outage_buffers()
     {
-	    //TODO #635
-    }	    
+        //TODO #635
+    }
 };
 
 } // namespace chronolog

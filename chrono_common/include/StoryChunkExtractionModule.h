@@ -209,9 +209,9 @@ public:
             delete story_chunk;
         }
 
-	// if any of the extractors still have chunks in their individual
-	// outage buffers, try to flush them one last time
-	theExtractionChain.flush_outage_buffers();
+        // if any of the extractors still have chunks in their individual
+        // outage buffers, try to flush them one last time
+        theExtractionChain.flush_outage_buffers();
 
         // join and stop threads & executionstreams
         for(auto& eth: extractionThreads) { eth->join(); }

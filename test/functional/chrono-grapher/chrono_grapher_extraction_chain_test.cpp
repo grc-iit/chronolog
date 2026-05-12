@@ -60,8 +60,7 @@ void chunk_contributor_thread(chl::StoryChunkExtractionQueue* extractionQueue, u
 std::string extraction_module_json =
         std::string("{ \"ExtractionModule\": ") + "{ \"extraction_stream_count\":2," + "\"extractors\": { " +
         "\"test_csv_extractor\": { \"type\": \"csv_extractor\", \"csv_archive_dir\": \"/tmp\" }" + "," +
-        "\"test_hdf5_extractor\": { \"type\": \"hdf5_extractor\", \"hdf5_archive_dir\": \"/tmp\" }" + "}" +
-        "}" + "}";
+        "\"test_hdf5_extractor\": { \"type\": \"hdf5_extractor\", \"hdf5_archive_dir\": \"/tmp\" }" + "}" + "}" + "}";
 
 int main()
 {
@@ -121,7 +120,7 @@ int main()
     chronolog::StoryChunkExtractionModule<chronolog::ChronoGrapherExtractionChain> extractionModule;
 
     extractionModule.getExtractionChain().activate(localServiceId, extraction_config);
-    
+
     extractionModule.initialize(extraction_threads);
 
     if(!extractionModule.is_initialized())

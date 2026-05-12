@@ -32,7 +32,7 @@ public:
     {
         for(auto& e: theExtractors)
         {
-            std::visit([chunk](auto& extractor){ extractor.process_chunk(chunk); }, e);
+            std::visit([chunk](auto& extractor) { extractor.process_chunk(chunk); }, e);
         }
     }
 
@@ -58,7 +58,7 @@ public:
     }
 
     int activate(ServiceId const& service_id,
-		 tl::engine * extraction_engine,
+                 tl::engine* extraction_engine,
                  ExtractionModuleConfiguration const& extraction_conf)
     {
 
@@ -75,7 +75,7 @@ public:
                 {
                     break;
                 }
-		theExtractors.push_back(std::move(csv_extractor));
+                theExtractors.push_back(std::move(csv_extractor));
             }
             else if((*iter).first == "single_endpoint_rdma_extractor")
             {
@@ -85,7 +85,7 @@ public:
                 {
                     break;
                 }
-		theExtractors.push_back(std::move(single_endpoint_rdma_extractor));
+                theExtractors.push_back(std::move(single_endpoint_rdma_extractor));
             }
             else if((*iter).first == "dual_endpoint_rdma_extractor")
             {
@@ -96,11 +96,11 @@ public:
                     break;
                 }
 
-		theExtractors.push_back(std::move(dual_endpoint_rdma_extractor));
+                theExtractors.push_back(std::move(dual_endpoint_rdma_extractor));
             }
             else if((*iter).first == "logging_extractor")
             {
-		theExtractors.push_back(std::move(LoggingExtractor()));
+                theExtractors.push_back(std::move(LoggingExtractor()));
             }
         }
 
@@ -110,7 +110,7 @@ public:
 
     void flush_outage_buffers()
     {
-	    //TODO #635
+        //TODO #635
     }
 };
 
