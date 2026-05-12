@@ -1,0 +1,25 @@
+Kafka distributed result directory: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-004857
+ZooKeeper node: ares-comp-03 (172.25.101.3)
+Broker node: ares-comp-04 (172.25.101.4)
+Bootstrap server: 172.25.101.4:30092
+{
+  "system": "kafka",
+  "workflow": "append_throughput",
+  "node_count": 2,
+  "client_count": 1,
+  "message_size_bytes": 1024,
+  "operation_count": 100,
+  "duration_seconds": 0.53600000051456,
+  "throughput_ops_per_sec": 186.567164,
+  "avg_latency_ms": 128.9,
+  "p50_latency_ms": 124.0,
+  "p95_latency_ms": 137.0,
+  "p99_latency_ms": 504.0,
+  "success": true
+}
+Stopping Kafka fixed baseline in /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-004857
+Stopping Kafka broker pid 358837
+Kafka broker pid 358837 stopped
+Stopping ZooKeeper pid 358498
+ZooKeeper pid 358498 stopped
+Kafka fixed baseline stop complete

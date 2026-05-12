@@ -46,6 +46,7 @@ This is not a performance-optimization phase. The goal is to make the full measu
 - [x] Create Kafka launch script.
 - [x] Create Kafka stop/cleanup script.
 - [x] Run selected benchmark/workflow against Kafka.
+- [x] Run append throughput workflow against Kafka distributed target.
 - [x] Collect Kafka baseline throughput/latency.
 - [x] Confirm no Kafka source changes were made.
 
@@ -85,6 +86,7 @@ This is not a performance-optimization phase. The goal is to make the full measu
 ## Phase 0 completion
 
 - [ ] All selected workflows run on ChronoLog distributed target.
+- [x] Append throughput workflow runs on Kafka distributed target.
 - [ ] All selected workflows run on Kafka distributed target.
 - [x] Append throughput workflow runs on Mofka distributed target.
 - [ ] All selected workflows run on Mofka distributed target.
