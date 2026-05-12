@@ -19,6 +19,9 @@ Options:
   --protocol PROTOCOL       Mercury protocol. Default: ofi+tcp for bare metal,
                             na+sm for local_smoke.
   --deployment-mode MODE    bare_metal or local_smoke. Default: bare_metal.
+  --slurm-partition NAME    Partition for bare_metal multi-node launch. Default: debug.
+  --slurm-nodelist LIST     Comma-separated or SLURM-style host list to pin nodes.
+  --slurm-time TIME         Time limit for bare_metal srun commands. Default: 00:30:00.
   --wait-seconds N          Wait for group file creation. Default: 30.
   -h, --help                Show this help.
 USAGE
@@ -29,6 +32,9 @@ NODE_COUNT="${MOFKA_NODE_COUNT:-1}"
 DEPLOYMENT_MODE="${MOFKA_DEPLOYMENT_MODE:-bare_metal}"
 PROTOCOL="${MOFKA_PROTOCOL:-}"
 WAIT_SECONDS="${MOFKA_WAIT_SECONDS:-30}"
+SLURM_PARTITION="${MOFKA_SLURM_PARTITION:-debug}"
+SLURM_NODELIST="${MOFKA_SLURM_NODELIST:-}"
+SLURM_TIME="${MOFKA_SLURM_TIME:-00:30:00}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -46,6 +52,18 @@ while [[ $# -gt 0 ]]; do
       ;;
     --deployment-mode)
       DEPLOYMENT_MODE="$2"
+      shift 2
+      ;;
+    --slurm-partition)
+      SLURM_PARTITION="$2"
+      shift 2
+      ;;
+    --slurm-nodelist)
+      SLURM_NODELIST="$2"
+      shift 2
+      ;;
+    --slurm-time)
+      SLURM_TIME="$2"
       shift 2
       ;;
     --wait-seconds)
@@ -85,6 +103,7 @@ MOFKA_PID_DIR="${MOFKA_RESULT_DIR}/pids"
 GROUP_FILE="${MOFKA_RESULT_DIR}/mofka.json"
 STORAGE_COUNT=$(( NODE_COUNT > 1 ? NODE_COUNT - 1 : 1 ))
 SERVER_PROCESS_COUNT=$(( STORAGE_COUNT + 1 ))
+declare -a SELECTED_SLURM_NODES=()
 
 mkdir -p "${CONFIG_DIR}" "${MOFKA_LOG_DIR}" "${MOFKA_PID_DIR}"
 
@@ -95,6 +114,32 @@ mofka_export_spack_runtime_env
 
 mofka_command_summary > "${CONFIG_DIR}/mofka-command-paths.txt"
 mofka_require_commands
+
+if [[ "${DEPLOYMENT_MODE}" == "bare_metal" && "${NODE_COUNT}" -gt 1 ]]; then
+  if ! command -v srun >/dev/null 2>&1; then
+    echo "srun is required for bare_metal distributed Mofka launch" >&2
+    exit 1
+  fi
+
+  if [[ -n "${SLURM_NODELIST}" ]]; then
+    if command -v scontrol >/dev/null 2>&1; then
+      mapfile -t SELECTED_SLURM_NODES < <(scontrol show hostnames "${SLURM_NODELIST}")
+    else
+      IFS=',' read -r -a SELECTED_SLURM_NODES <<< "${SLURM_NODELIST}"
+    fi
+  else
+    mapfile -t SELECTED_SLURM_NODES < <(
+      sinfo -N -h -p "${SLURM_PARTITION}" -t idle -o '%N' | sort -u | head -n "${NODE_COUNT}"
+    )
+  fi
+
+  if [[ "${#SELECTED_SLURM_NODES[@]}" -lt "${NODE_COUNT}" ]]; then
+    echo "Only found ${#SELECTED_SLURM_NODES[@]} usable SLURM nodes for requested node count ${NODE_COUNT}" >&2
+    exit 1
+  fi
+
+  printf '%s\n' "${SELECTED_SLURM_NODES[@]:0:${NODE_COUNT}}" > "${CONFIG_DIR}/mofka-slurm-nodes.txt"
+fi
 
 MASTER_CONFIG="${CONFIG_DIR}/mofka-master.json"
 STORAGE_CONFIG="${CONFIG_DIR}/mofka-storage.json"
@@ -180,6 +225,9 @@ MOFKA_PROTOCOL='${PROTOCOL}'
 MOFKA_DEPLOYMENT_MODE='${DEPLOYMENT_MODE}'
 MOFKA_NODE_COUNT='${NODE_COUNT}'
 MOFKA_SPACK_SPEC='${MOFKA_SPACK_SPEC:-mofka@0.6.4+python~mpi~benchmark~kafka}'
+MOFKA_SLURM_PARTITION='${SLURM_PARTITION}'
+MOFKA_SLURM_NODELIST='${SLURM_NODELIST}'
+MOFKA_SLURM_TIME='${SLURM_TIME}'
 EOF
 
 {
@@ -192,6 +240,10 @@ EOF
   echo "master_config=${MASTER_CONFIG}"
   echo "storage_config=${STORAGE_CONFIG}"
   echo "mofka_spack_spec=${MOFKA_SPACK_SPEC:-mofka@0.6.4+python~mpi~benchmark~kafka}"
+  echo "slurm_partition=${SLURM_PARTITION}"
+  echo "slurm_nodelist=${SLURM_NODELIST}"
+  echo "slurm_time=${SLURM_TIME}"
+  echo "slurm_nodes_file=${CONFIG_DIR}/mofka-slurm-nodes.txt"
   echo "bedrock=$(command -v bedrock)"
   echo "mofkactl=$(command -v mofkactl)"
   echo "hostname=$(hostname)"
@@ -210,11 +262,11 @@ echo "Node count: ${NODE_COUNT}"
 echo "Protocol: ${PROTOCOL}"
 
 if [[ "${DEPLOYMENT_MODE}" == "bare_metal" && "${NODE_COUNT}" -gt 1 ]]; then
-  if ! command -v srun >/dev/null 2>&1; then
-    echo "srun is required for bare_metal distributed Mofka launch" >&2
-    exit 1
-  fi
-  srun --nodes=1 --ntasks=1 bedrock "${PROTOCOL}" -c "${MASTER_CONFIG}" \
+  MASTER_NODE="${SELECTED_SLURM_NODES[0]}"
+  echo "Master node: ${MASTER_NODE}"
+  srun --partition="${SLURM_PARTITION}" --nodes=1 --ntasks=1 --exclusive \
+    --time="${SLURM_TIME}" --nodelist="${MASTER_NODE}" \
+    bash -lc "hostname; exec bedrock '${PROTOCOL}' -c '${MASTER_CONFIG}'" \
     > "${MOFKA_LOG_DIR}/mofka-master.stdout.log" \
     2> "${MOFKA_LOG_DIR}/mofka-master.stderr.log" &
 else
@@ -233,7 +285,11 @@ fi
 
 for storage_index in $(seq 1 "${STORAGE_COUNT}"); do
   if [[ "${DEPLOYMENT_MODE}" == "bare_metal" && "${NODE_COUNT}" -gt 1 ]]; then
-    srun --nodes=1 --ntasks=1 bedrock "${PROTOCOL}" -c "${STORAGE_CONFIG}" \
+    STORAGE_NODE="${SELECTED_SLURM_NODES[${storage_index}]}"
+    echo "Storage ${storage_index} node: ${STORAGE_NODE}"
+    srun --partition="${SLURM_PARTITION}" --nodes=1 --ntasks=1 --exclusive \
+      --time="${SLURM_TIME}" --nodelist="${STORAGE_NODE}" \
+      bash -lc "hostname; exec bedrock '${PROTOCOL}' -c '${STORAGE_CONFIG}'" \
       > "${MOFKA_LOG_DIR}/mofka-storage-${storage_index}.stdout.log" \
       2> "${MOFKA_LOG_DIR}/mofka-storage-${storage_index}.stderr.log" &
   else
