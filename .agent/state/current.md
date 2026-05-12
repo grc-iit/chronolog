@@ -1,7 +1,7 @@
 # Current State
 
-- current task: create no-sudo install strategy
+- current task: detect or install TAU
 - commands running: none
-- last successful validation: SLURM environment discovered; evidence in `.agent/results/20260511-215928/` and `.agent/results/slurm-environment.md`
+- last successful validation: no-sudo install channels detected and strategy documented; evidence in `.agent/results/20260511-220041/` and `.agent/results/no-sudo-install-strategy.md`
 - current blocker: none
-- next intended step: document dependency/tool installation fallback order using detected modules, `$HOME/.local`, project `opt/`, conda/mamba/spack, and source builds
+- next intended step: check existing commands/modules for TAU, then user-local/project-local install options if unavailable

@@ -13,7 +13,7 @@ This is not a performance-optimization phase. The goal is to make the full measu
 ## Environment and tooling
 
 - [x] Detect SLURM environment: partition, node count, job limits, modules, compiler stack.
-- [ ] Create no-sudo install strategy: modules first, user-local prefix second, source build third.
+- [x] Create no-sudo install strategy: modules first, user-local prefix second, source build third.
 - [ ] Install or detect TAU.
 - [ ] Install or detect perf.
 - [ ] Install or detect gperftools.

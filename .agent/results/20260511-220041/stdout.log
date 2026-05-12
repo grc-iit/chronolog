@@ -1,0 +1,40 @@
+timestamp=2026-05-11T22:00:41-05:00
+branch=opt/phase0-bootstrap
+merge_base_status=0
+
+[prefixes]
+HOME=/home/jcernudagarcia
+HOME_LOCAL=/home/jcernudagarcia/.local
+PROJECT_OPT=/home/jcernudagarcia/chronolog-opt/chronolog/opt
+/home/jcernudagarcia/.local=exists
+/home/jcernudagarcia/chronolog-opt/chronolog/opt=missing
+
+[package managers]
+module=module
+ml=ml
+spack=spack
+conda=missing
+mamba=missing
+micromamba=missing
+pip=/usr/bin/pip
+pip3=/usr/bin/pip3
+git=/usr/bin/git
+curl=/usr/bin/curl
+wget=/usr/bin/wget
+cmake=/usr/bin/cmake
+make=/usr/bin/make
+ninja=/usr/bin/ninja
+tar=/usr/bin/tar
+unzip=/usr/bin/unzip
+
+[spack hints]
+0.23.1 (2bfcc69fa870d3c6919be87593f22647981b648a)
+    mchips
+
+[repo spack files]
+./CI/enviroment/spack.yaml
+./Client/spack.yaml
+./spack.yaml
+
+[module relevant count]
+1203
