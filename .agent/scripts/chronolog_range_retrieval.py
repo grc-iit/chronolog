@@ -24,7 +24,7 @@ def main():
     parser.add_argument("--message-size-bytes", type=int, default=1024)
     parser.add_argument("--node-count", type=int, default=2)
     parser.add_argument("--client-count", type=int, default=1)
-    parser.add_argument("--flush-wait-seconds", type=float, default=130.0)
+    parser.add_argument("--archive-wait-seconds", type=float, default=420.0)
     args = parser.parse_args()
 
     try:
@@ -77,8 +77,16 @@ def main():
         for index in range(args.operation_count):
             handle.log_event(f"{index}:{payload}")
 
-        if args.flush_wait_seconds > 0:
-            time.sleep(args.flush_wait_seconds)
+        output_dir = result_root / "chronolog" / "output"
+        deadline = time.monotonic() + args.archive_wait_seconds
+        archive_files = []
+        while time.monotonic() < deadline:
+            archive_files = list(output_dir.glob(f"{chronicle}.{story}*.h5"))
+            if archive_files:
+                break
+            time.sleep(1)
+        if not archive_files:
+            raise RuntimeError(f"Timed out waiting for archived story file in {output_dir}")
 
         events = py_chronolog_client.EventList()
         started = time.perf_counter()

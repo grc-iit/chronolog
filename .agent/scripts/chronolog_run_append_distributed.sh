@@ -151,6 +151,15 @@ cp "${CONFIG_DIR}/chronolog-slurm-nodes.txt" "${CONFIG_DIR}/hosts_keeper"
 tail -n "${RECORD_GROUPS}" "${CONFIG_DIR}/chronolog-slurm-nodes.txt" > "${CONFIG_DIR}/hosts_grapher"
 tail -n "${RECORD_GROUPS}" "${CONFIG_DIR}/chronolog-slurm-nodes.txt" > "${CONFIG_DIR}/hosts_player"
 cp "${CONFIG_DIR}/hosts_player" "${DEPLOY_CONF_DIR}/hosts_player"
+CLIENT_NODE="$(head -n 1 "${CONFIG_DIR}/chronolog-slurm-nodes.txt")"
+CLIENT_IP="$(dig +short "${CLIENT_NODE}-40g" | head -n 1)"
+if [[ -z "${CLIENT_IP}" ]]; then
+  CLIENT_IP="$(dig +short "${CLIENT_NODE}" | head -n 1)"
+fi
+if [[ -z "${CLIENT_IP}" ]]; then
+  echo "Could not resolve client node IP for ${CLIENT_NODE}" >&2
+  exit 1
+fi
 
 create_wrapper() {
   local role="$1"
@@ -194,6 +203,8 @@ chronolog_client_config=${CLIENT_CONF_FILE}
 chronolog_deploy_script=${DEPLOY_SCRIPT}
 chronolog_benchmark=${BENCH_BIN}
 chronolog_deploy_work_dir=${DEPLOY_WORK_DIR}
+client_node=${CLIENT_NODE}
+client_ip=${CLIENT_IP}
 transport=ofi+sockets
 EOF
 
@@ -233,6 +244,9 @@ cat "${CONFIG_DIR}/chronolog-slurm-nodes.txt"
   --keeper-bin "${WRAPPER_DIR}/chrono-keeper" \
   --grapher-bin "${WRAPPER_DIR}/chrono-grapher" \
   --player-bin "${WRAPPER_DIR}/chrono-player"
+
+jq ".chrono_client.ClientQueryService.rpc.service_ip = \"${CLIENT_IP}\"" "${CLIENT_CONF_FILE}" > "${CONFIG_DIR}/client-conf.tmp" \
+  && mv "${CONFIG_DIR}/client-conf.tmp" "${CLIENT_CONF_FILE}"
 
 sleep 5
 
@@ -291,8 +305,27 @@ elif [[ "${WORKFLOW}" == "append_latency" ]]; then
     exit "${BENCH_STATUS}"
   fi
 elif [[ "${WORKFLOW}" == "range_retrieval" ]]; then
+  CLIENT_COMMAND="${CONFIG_DIR}/chronolog-range-client.sh"
+  {
+    printf '%s\n' '#!/usr/bin/env bash'
+    printf '%s\n' 'set -euo pipefail'
+    printf 'cd %q\n' "${REPO_ROOT}"
+    printf '%s\n' 'source /etc/profile.d/lmod.sh 2>/dev/null || source /etc/profile.d/modules.sh 2>/dev/null || true'
+    printf '%s\n' 'type module >/dev/null 2>&1 || { echo "module command unavailable on $(hostname)" >&2; exit 127; }'
+    module_loads
+    printf 'export LD_LIBRARY_PATH=%q:${LD_LIBRARY_PATH:-}\n' "${INSTALL_DIR}/lib"
+    printf 'export PYTHONPATH=%q:${PYTHONPATH:-}\n' "${INSTALL_DIR}/lib"
+    printf 'timeout 600s python3 %q --config %q --result-dir %q --operation-count %q --message-size-bytes %q --node-count %q --client-count 1\n' \
+      "${SCRIPT_DIR}/chronolog_range_retrieval.py" \
+      "${CLIENT_CONF_FILE}" \
+      "${RESULT_DIR}" \
+      "${OPERATION_COUNT}" \
+      "${MESSAGE_SIZE_BYTES}" \
+      "${NODE_COUNT}"
+  } > "${CLIENT_COMMAND}"
+  chmod +x "${CLIENT_COMMAND}"
   set +e
-  bash -lc "$(module_loads); export LD_LIBRARY_PATH='${INSTALL_DIR}/lib':\${LD_LIBRARY_PATH:-}; export PYTHONPATH='${INSTALL_DIR}/lib':\${PYTHONPATH:-}; timeout 300s python3 '${SCRIPT_DIR}/chronolog_range_retrieval.py' --config '${CLIENT_CONF_FILE}' --result-dir '${RESULT_DIR}' --operation-count '${OPERATION_COUNT}' --message-size-bytes '${MESSAGE_SIZE_BYTES}' --node-count '${NODE_COUNT}' --client-count 1" \
+  ssh -n "${CLIENT_NODE}" "bash '${CLIENT_COMMAND}'" \
     > "${CHRONOLOG_RESULT_DIR}/chronolog-range-retrieval.log" \
     2> "${CHRONOLOG_RESULT_DIR}/chronolog-range-retrieval.stderr.log"
   BENCH_STATUS=$?

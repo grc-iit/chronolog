@@ -1,44 +1,29 @@
 # Phase 0 Blockers
 
-STOP_RALPH_LOOP
+No active STOP_RALPH_LOOP blocker is present as of 2026-05-12 01:57 CDT.
 
-## ChronoLog Distributed Range Retrieval
+## Resolved: ChronoLog Distributed Range Retrieval
 
-Status: blocking Phase 0 completion.
+Status: resolved in the distributed harness.
 
-Phase 0 requires the selected workflows to run on ChronoLog, Kafka, and Mofka. The provisional selected suite includes `range_retrieval` when all systems expose a comparable read path. Kafka and Mofka now have distributed range/read evidence, but ChronoLog's distributed `ReplayStory` path failed twice.
+The earlier ChronoLog `ReplayStory` failures were caused by distributed client callback configuration and archive-readiness timing:
 
-### Attempt 1
+- `.agent/results/20260512-011348/`: `ReplayStory` did not return before the SLURM allocation expired.
+- `.agent/results/20260512-012853/`: internal `timeout 300s` expired before `ReplayStory` returned; ChronoVisor aborted with `HG_NOENTRY`.
+- `.agent/results/20260512-014245/`: player received the callback address, but the client queried before the archived HDF5 story file existed.
 
-- Result directory: `.agent/results/20260512-011348/`
-- Command path: `.agent/scripts/chronolog_run_append_distributed.sh --workflow range_retrieval`
-- Outcome: `ReplayStory` did not return before the SLURM allocation expired.
-- Secondary effect: cleanup then lost compute-node SSH access because Ares `pam_slurm_adopt` requires an active job.
+The validated fix is in:
 
-### Attempt 2
+- `.agent/scripts/chronolog_run_append_distributed.sh`
+- `.agent/scripts/chronolog_range_retrieval.py`
 
-- Result directory: `.agent/results/20260512-012853/`
-- Command path: `.agent/scripts/chronolog_run_append_distributed.sh --workflow range_retrieval`
-- Harness change: internal `timeout 300s` around the Python `ReplayStory` client.
-- Outcome: timeout expired before `ReplayStory` returned; cleanup completed before allocation expiry.
-- ChronoVisor evidence: `.agent/results/20260512-012853/chronolog/logs/chrono-visor-ares-comp-03.launch.log`
+Successful validation:
 
-Relevant log excerpt:
-
-```text
-Function returned HG_NOENTRY
-terminate called after throwing an instance of 'thallium::margo_exception'
-what(): [margo_respond] Function returned HG_NOENTRY
-```
-
-## Impact
-
-- `range_retrieval` is not complete across all three systems.
-- `mixed_append_read` is not safe to claim because the ChronoLog read side is blocked.
-- `All selected workflows run on ChronoLog distributed target` remains incomplete.
-- `Results are comparable across systems` remains incomplete for the full selected suite.
+- `.agent/results/20260512-015243/chronolog/metrics.json`
+- `.agent/results/20260512-015243/chronolog/output/phase0_range_chronicle_1778568791663.phase0_range_story_1778568791663.1778568780.vlen.h5`
 
 ## Non-blocking Open Issues
 
 - Mofka Yokan/Warabi-backed default partition configuration still needs to be fixed, but Mofka memory-partition distributed append/read smokes work.
 - `perf` and eBPF-based observability need admin/capability changes for full low-level profiling, but those do not block the benchmark harness itself.
+- Mixed append/read and the broader scaling sweep still need distributed validation before Phase 0 can be called complete.

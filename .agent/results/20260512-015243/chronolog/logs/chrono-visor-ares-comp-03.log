@@ -1,0 +1,68 @@
+[2026-05-12 01:53:04.354] [ChronoVisor] [info] [chronovisor_instance] Running Chronovisor Server.
+[2026-05-12 01:53:04.355] [ChronoVisor] [info] chronovisor_instance] VISOR CONFIGURATION [VISOR_CLIENT_PORTAL_SERVICE_CONF: [PROTO_CONF: ofi+sockets, IP: 172.25.101.3, BASE_PORT: 5555, SERVICE_PROVIDER_ID: 55, PORTS: ], VISOR_KEEPER_REGISTRY_SERVICE_CONF: [PROTO_CONF: ofi+sockets, IP: 172.25.101.3, BASE_PORT: 8888, SERVICE_PROVIDER_ID: 88, PORTS: ], VISOR_LOG: [TYPE: file, FILE: /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-015243/chronolog/logs/chrono-visor-ares-comp-03.log, LEVEL: DEBUG, NAME: ChronoVisor, LOGFILESIZE: 104857600, LOGFILENUM: 3, FLUSH LEVEL: WARN], DELAYED_DATA_ADMIN_EXIT_IN_SECS: 3]
+[2026-05-12 01:53:04.510] [ChronoVisor] [info] [ChronoProcessRegistry] margo_instance initialized with NA_STRING ofi+sockets://172.25.101.3:8888
+[2026-05-12 01:53:04.510] [ChronoVisor] [info] [ChronoProcessRegistry] Starting RegistryService at ofi+sockets://172.25.101.3:8888 provider id: 88
+[2026-05-12 01:53:04.510] [ChronoVisor] [info] [RegistryService] register_grapher: GrapherRegistrationMsg{GrapherIdCard{Group{1}ServiceId{ofi+sockets:172.25.101.4:3333:33}}}{admin:ServiceId{ofi+sockets:172.25.101.4:4444:44}}
+[2026-05-12 01:53:04.510] [ChronoVisor] [info] [RegistryService] New Keeper Registered: KeeperIdCard: KeeperIdCard{Group{1}ServiceId{ofi+sockets:172.25.101.4:6666:66}}, AdminServiceId: ServiceId{ofi+sockets:172.25.101.4:7777:77}
+[2026-05-12 01:53:04.510] [ChronoVisor] [info] [ChronoProcessRegistry] Register grapher GrapherIdCard{Group{1}ServiceId{ofi+sockets:172.25.101.4:3333:33}} created DataStoreAdminClient for ServiceId{ofi+sockets:172.25.101.4:4444:44}
+[2026-05-12 01:53:04.510] [ChronoVisor] [info] [ChronoProcessRegistry] RecordingGroup 1 has a grappher and  0 keepers
+[2026-05-12 01:53:04.510] [ChronoVisor] [info] [ChronoProcessRegistry]  has 0 activeGroups; 1 RecordingGroups 
+[2026-05-12 01:53:04.510] [ChronoVisor] [info] [ChronoProcessRegistry] Register Keeper: KeeperIdCard{Group{1}ServiceId{ofi+sockets:172.25.101.4:6666:66}} created DataStoreAdminClient for ServiceId{ofi+sockets:172.25.101.4:7777:77}
+[2026-05-12 01:53:04.510] [ChronoVisor] [info] [ChronoProcessRegistry] RecordingGroup 1 has 1 keepers
+[2026-05-12 01:53:04.510] [ChronoVisor] [info] [ChronoProcessRegistry]  has 1 activeGroups; 1 RecordingGroups 
+[2026-05-12 01:53:04.524] [ChronoVisor] [info] [VisorClientPortal] margo_instance initialized with NA_STRING ofi+sockets://172.25.101.3:5555
+[2026-05-12 01:53:04.524] [ChronoVisor] [info] [ClientPortalService] Started at address ofi+sockets://172.25.101.3:5555 with provider id 55
+[2026-05-12 01:53:04.524] [ChronoVisor] [info] [chronovisor_instance] ChronoVisor Running...
+[2026-05-12 01:53:04.540] [ChronoVisor] [info] [RegistryService] New Keeper Registered: KeeperIdCard: KeeperIdCard{Group{1}ServiceId{ofi+sockets:172.25.101.3:6666:66}}, AdminServiceId: ServiceId{ofi+sockets:172.25.101.3:7777:77}
+[2026-05-12 01:53:04.540] [ChronoVisor] [info] [ChronoProcessRegistry] Register Keeper: KeeperIdCard{Group{1}ServiceId{ofi+sockets:172.25.101.3:6666:66}} created DataStoreAdminClient for ServiceId{ofi+sockets:172.25.101.3:7777:77}
+[2026-05-12 01:53:04.540] [ChronoVisor] [info] [ChronoProcessRegistry] RecordingGroup 1 has 2 keepers
+[2026-05-12 01:53:04.540] [ChronoVisor] [info] [ChronoProcessRegistry]  has 1 activeGroups; 1 RecordingGroups 
+[2026-05-12 01:53:05.563] [ChronoVisor] [info] [RegistryService] register_player: PlayerRegistrationMsg{PlayerIdCard{Group{1}ServiceId{ofi+sockets:172.25.101.4:2225:25}}}{admin:ServiceId{ofi+sockets:172.25.101.4:2222:22}}
+[2026-05-12 01:53:05.563] [ChronoVisor] [info] [ChronoProcessRegistry] Register Player PlayerIdCard{Group{1}ServiceId{ofi+sockets:172.25.101.4:2225:25}} created DataStoreAdminClient for ServiceId{ofi+sockets:172.25.101.4:2222:22}
+[2026-05-12 01:53:05.563] [ChronoVisor] [info] [ChronoProcessRegistry]  has 1 activeGroups; 1 RecordingGroups 
+[2026-05-12 01:53:11.664] [ChronoVisor] [info] New Client Connected. ClientEUID=1008, ClientHostID=346817381, ClientPID=474808
+[2026-05-12 01:53:11.664] [ChronoVisor] [info] [VisorClientPortal] Client arguments: account=1008 host_id=346817381 pid=474808 -> client_token=2634609517913142554
+[2026-05-12 01:53:11.665] [ChronoVisor] [info] [VisorClientPortal] Chronicle created: PID=474768, ClientID=2634609517913142554, Name=phase0_range_chronicle_1778568791663
+[2026-05-12 01:53:11.665] [ChronoVisor] [info] [VisorClientPortal] Story acquired: PID=474768, ClientID=2634609517913142554, ChronicleName=phase0_range_chronicle_1778568791663, StoryName=phase0_range_story_1778568791663, Flags=1
+[2026-05-12 01:53:11.666] [ChronoVisor] [info] [ChronoProcessRegistry] Registry notified GrapherIdCard{Group{1}ServiceId{ofi+sockets:172.25.101.4:3333:33}} to start recording StoryID=4420695604221295382 with StartTime=1778568791665532787
+[2026-05-12 01:53:11.668] [ChronoVisor] [info] [ChronoProcessRegistry] Registry notified KeeperIdCard{Group{1}ServiceId{ofi+sockets:172.25.101.3:6666:66}} to start recording StoryID=4420695604221295382 with StartTime=1778568791665532787
+[2026-05-12 01:53:11.668] [ChronoVisor] [info] [ChronoProcessRegistry] Registry notified KeeperIdCard{Group{1}ServiceId{ofi+sockets:172.25.101.4:6666:66}} to start recording StoryID=4420695604221295382 with StartTime=1778568791665532787
+[2026-05-12 01:53:11.668] [ChronoVisor] [info] [ChronoProcessRegistry]  RecordingGroup 1  notified  of story 4420695604221295382 Start : group has 2 keepers and player ServiceId{ofi+sockets:172.25.101.4:2225:25}
+[2026-05-12 01:57:02.825] [ChronoVisor] [info] [VisorClientPortal] Story released: PID=474768, ChronicleName=phase0_range_chronicle_1778568791663, StoryName=phase0_range_story_1778568791663
+[2026-05-12 01:57:02.825] [ChronoVisor] [info] [ChronoProcessRegistry] Registry notified  KeeperIdCard{Group{1}ServiceId{ofi+sockets:172.25.101.3:6666:66}} to stop recording story 4420695604221295382
+[2026-05-12 01:57:02.826] [ChronoVisor] [info] [ChronoProcessRegistry] Registry notified  KeeperIdCard{Group{1}ServiceId{ofi+sockets:172.25.101.4:6666:66}} to stop recording story 4420695604221295382
+[2026-05-12 01:57:02.827] [ChronoVisor] [info] [ChronoProcessRegistry] Registry notified grapher GrapherIdCard{Group{1}ServiceId{ofi+sockets:172.25.101.4:3333:33}} to stop recording StoryID=4420695604221295382 
+[2026-05-12 01:57:02.827] [ChronoVisor] [info] [VisorClientPortal] Story destroyed: PID=474768, ChronicleName=phase0_range_chronicle_1778568791663, StoryName=phase0_range_story_1778568791663
+[2026-05-12 01:57:02.828] [ChronoVisor] [info] Client Disconnected. ClientID=2634609517913142554
+[2026-05-12 01:57:04.350] [ChronoVisor] [info] [RegistryService] Keeper Unregistered: KeeperIdCard: KeeperIdCard{Group{1}ServiceId{ofi+sockets:172.25.101.3:6666:66}}
+[2026-05-12 01:57:04.351] [ChronoVisor] [info] [ChronoProcessRegistry] recording_group 1 starts delayedExit for KeeperIdCard{Group{1}ServiceId{ofi+sockets:172.25.101.3:6666:66}}
+[2026-05-12 01:57:04.351] [ChronoVisor] [info] [ChronoProcessRegistry] RecordingGroup 1 has 2 keepers
+[2026-05-12 01:57:04.351] [ChronoVisor] [info] [ChronoProcessRegistry]  has 1 activeGroups; 1 RecordingGroups 
+[2026-05-12 01:57:04.390] [ChronoVisor] [info] [RegistryService] Keeper Unregistered: KeeperIdCard: KeeperIdCard{Group{1}ServiceId{ofi+sockets:172.25.101.4:6666:66}}
+[2026-05-12 01:57:04.390] [ChronoVisor] [info] [ChronoProcessRegistry] recording_group 1 starts delayedExit for KeeperIdCard{Group{1}ServiceId{ofi+sockets:172.25.101.4:6666:66}}
+[2026-05-12 01:57:04.390] [ChronoVisor] [info] [ChronoProcessRegistry] RecordingGroup 1 has 2 keepers
+[2026-05-12 01:57:04.390] [ChronoVisor] [info] [ChronoProcessRegistry]  has 0 activeGroups; 1 RecordingGroups 
+[2026-05-12 01:57:04.390] [ChronoVisor] [info] [RegistryService] unregister_player: PlayerIdCard{Group{1}ServiceId{ofi+sockets:172.25.101.4:2225:25}}
+[2026-05-12 01:57:04.390] [ChronoVisor] [info] [ChronoProcessRegistry] starting delayedExit for player PlayerIdCard{Group{1}ServiceId{ofi+sockets:172.25.101.4:2225:25}} delayedExitTime=Tue May 12 01:57:07 2026
+
+[2026-05-12 01:57:04.390] [ChronoVisor] [info] [ChronoProcessRegistry] recording_group 1 starts delayedExit for PlayerIdCard{Group{1}ServiceId{ofi+sockets:172.25.101.4:2225:25}}
+[2026-05-12 01:57:04.391] [ChronoVisor] [info] [ChronoProcessRegistry] RecordingGroup 1 has no chrono_player 
+[2026-05-12 01:57:04.391] [ChronoVisor] [info] [ChronoProcessRegistry]  has 0 activeGroups; 1 RecordingGroups 
+[2026-05-12 01:57:15.634] [ChronoVisor] [info] [ChronoProcessRegistry] starting delayedExit for grapher GrapherIdCard{Group{1}ServiceId{ofi+sockets:172.25.101.4:3333:33}} delayedExitTime=Tue May 12 01:57:18 2026
+
+[2026-05-12 01:57:15.634] [ChronoVisor] [info] [ChronoProcessRegistry] recording_group 1 starts delayedExit for GrapherIdCard{Group{1}ServiceId{ofi+sockets:172.25.101.4:3333:33}}
+[2026-05-12 01:57:15.634] [ChronoVisor] [info] [ChronoProcessRegistry] RecordingGroup 1 has no grapher and  2 keepers
+[2026-05-12 01:57:15.634] [ChronoVisor] [info] [ChronoProcessRegistry]  has 0 activeGroups; 1 RecordingGroups 
+[2026-05-12 01:57:26.837] [ChronoVisor] [info] Received SIGTERM, start shutting down.
+[2026-05-12 01:57:26.837] [ChronoVisor] [info] [ChronoProcessRegistry] Shutting down...
+[2026-05-12 01:57:26.838] [ChronoVisor] [info] [ChronoProcessRegistry] recording_Group 1, destroys delayed dataAdmindClient for GrapherIdCard{Group{1}ServiceId{ofi+sockets:172.25.101.4:3333:33}}
+[2026-05-12 01:57:26.838] [ChronoVisor] [info] [ChronoProcessRegistry] shudown: destroyed old entry for grapher GrapherIdCard{Group{1}ServiceId{ofi+sockets:172.25.101.4:3333:33}}
+[2026-05-12 01:57:26.838] [ChronoVisor] [info] [ChronoProcessRegistry] shutdown: clear delayedAdminClient for keeper KeeperIdCard{Group{1}ServiceId{ofi+sockets:172.25.101.3:6666:66}}
+[2026-05-12 01:57:26.838] [ChronoVisor] [info] [ChronoProcessRegistry] recording_group 1 destroys delayed dataAdminClient for KeeperIdCard{Group{1}ServiceId{ofi+sockets:172.25.101.3:6666:66}}
+[2026-05-12 01:57:26.838] [ChronoVisor] [info] [ChronoProcessRegistry] shutdown : destroys old keeperProcessEntry for KeeperIdCard{Group{1}ServiceId{ofi+sockets:172.25.101.3:6666:66}}
+[2026-05-12 01:57:26.838] [ChronoVisor] [info] [ChronoProcessRegistry] shutdown: clear delayedAdminClient for keeper KeeperIdCard{Group{1}ServiceId{ofi+sockets:172.25.101.4:6666:66}}
+[2026-05-12 01:57:26.838] [ChronoVisor] [info] [ChronoProcessRegistry] recording_group 1 destroys delayed dataAdminClient for KeeperIdCard{Group{1}ServiceId{ofi+sockets:172.25.101.4:6666:66}}
+[2026-05-12 01:57:26.838] [ChronoVisor] [info] [ChronoProcessRegistry] shutdown : destroys old keeperProcessEntry for KeeperIdCard{Group{1}ServiceId{ofi+sockets:172.25.101.4:6666:66}}
+[2026-05-12 01:57:26.838] [ChronoVisor] [info] [ChronoProcessRegistry] shutdown: recordingGroup 1 is destroyed
+[2026-05-12 01:57:26.838] [ChronoVisor] [info] [chronovisor_instance] ChronoVisor shutdown.
+[2026-05-12 01:57:26.838] [ChronoVisor] [info] [ChronoProcessRegistry] Shutdown

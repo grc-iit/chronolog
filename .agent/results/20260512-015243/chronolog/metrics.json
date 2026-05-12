@@ -1,0 +1,16 @@
+{
+  "system": "chronolog",
+  "workflow": "range_retrieval",
+  "node_count": 2,
+  "client_count": 1,
+  "message_size_bytes": 1024,
+  "operation_count": 10,
+  "duration_seconds": 2.00279733305797,
+  "throughput_ops_per_sec": 4.993016435033647,
+  "avg_latency_ms": 2002.7973330579698,
+  "p50_latency_ms": 2002.7973330579698,
+  "p95_latency_ms": 2002.7973330579698,
+  "p99_latency_ms": 2002.7973330579698,
+  "success": true,
+  "retrieved_event_count": 10
+}

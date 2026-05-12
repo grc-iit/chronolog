@@ -1,8 +1,8 @@
 # Phase 0 Range Retrieval Support
 
-Status: partial.
+Status: complete for the two-node distributed smoke target.
 
-Kafka and Mofka completed distributed range/read retrieval smoke runs. ChronoLog exposed a `ReplayStory` API path, but the distributed range retrieval run is blocked by a repeatable hang followed by a ChronoVisor abort.
+Kafka, Mofka, and ChronoLog completed distributed range/read retrieval smoke runs. The ChronoLog failures seen in earlier attempts were harness/configuration issues, not an external cluster blocker.
 
 ## Common Parameters
 
@@ -70,34 +70,48 @@ Mofka used `TopicHandle.consumer()` and `Consumer.pull()` after producing the te
 
 ## ChronoLog
 
-Status: blocked.
+Status: complete.
 
-Attempt 1:
+- Metrics: `.agent/results/20260512-015243/chronolog/metrics.json`
+- Config manifest: `.agent/results/20260512-015243/config/chronolog-config-manifest.env`
+- Client output: `.agent/results/20260512-015243/chronolog/chronolog-range-retrieval.log`
+- Archive evidence: `.agent/results/20260512-015243/chronolog/output/phase0_range_chronicle_1778568791663.phase0_range_story_1778568791663.1778568780.vlen.h5`
 
-- Result directory: `.agent/results/20260512-011348/`
-- Outcome: `ReplayStory` did not return before the SLURM allocation expired.
-- Cleanup then lost compute-node SSH access because `pam_slurm_adopt` requires an active job.
+ChronoLog used the Python client `ReplayStory` path after writing and waiting for the archived story file to exist. The distributed harness now runs the range client on an allocated compute node and configures the `ClientQueryService` callback IP to that node's 40G address.
 
-Attempt 2:
-
-- Result directory: `.agent/results/20260512-012853/`
-- Outcome: internal `timeout 300s` expired before `ReplayStory` returned.
-- Cleanup completed before allocation expiry.
-- ChronoVisor launch log records:
-
-```text
-Function returned HG_NOENTRY
-terminate called after throwing an instance of 'thallium::margo_exception'
-what(): [margo_respond] Function returned HG_NOENTRY
+```json
+{
+  "system": "chronolog",
+  "workflow": "range_retrieval",
+  "node_count": 2,
+  "client_count": 1,
+  "message_size_bytes": 1024,
+  "operation_count": 10,
+  "duration_seconds": 2.00279733305797,
+  "throughput_ops_per_sec": 4.993016435033647,
+  "avg_latency_ms": 2002.7973330579698,
+  "p50_latency_ms": 2002.7973330579698,
+  "p95_latency_ms": 2002.7973330579698,
+  "p99_latency_ms": 2002.7973330579698,
+  "success": true,
+  "retrieved_event_count": 10
+}
 ```
 
-Evidence:
+## Resolved ChronoLog Harness Issue
 
-- ChronoLog range harness: `.agent/scripts/chronolog_range_retrieval.py`
-- ChronoLog failed run stdout/stderr: `.agent/results/20260512-012853/chronolog/stdout.log`, `.agent/results/20260512-012853/chronolog/stderr.log`
-- ChronoVisor abort evidence: `.agent/results/20260512-012853/chronolog/logs/chrono-visor-ares-comp-03.launch.log`
-- Cleanup evidence: `.agent/results/20260512-012853/chronolog/logs/deploy-stop.log`
+Earlier failed attempts:
+
+- `.agent/results/20260512-011348/`: `ReplayStory` did not return before the SLURM allocation expired.
+- `.agent/results/20260512-012853/`: internal `timeout 300s` expired before `ReplayStory` returned; ChronoVisor aborted with `HG_NOENTRY`.
+- `.agent/results/20260512-014245/`: callback topology was fixed, but the client queried before the HDF5 archive appeared.
+
+Fixes:
+
+- Set `.chrono_client.ClientQueryService.rpc.service_ip` to the allocated client node's routable 40G IP instead of leaving it on `127.0.0.1`.
+- Run the ChronoLog range client from inside the SLURM allocation on the client node.
+- Wait for the archived HDF5 story file before issuing `ReplayStory`.
 
 ## Conclusion
 
-Range retrieval is not complete across all three systems. Kafka and Mofka have distributed read evidence. ChronoLog needs ReplayStory/debugging work before the range retrieval workflow can be counted as complete for Phase 0.
+The `range_retrieval` workflow now has comparable two-node distributed smoke evidence across ChronoLog, Kafka, and Mofka. These are correctness/harness validation runs only; operation counts and durations are still too small for performance claims.

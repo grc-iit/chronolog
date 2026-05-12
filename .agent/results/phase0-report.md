@@ -1,6 +1,6 @@
 # Phase 0 Status Report
 
-Status: blocked; Phase 0 is not fully complete.
+Status: in progress; Phase 0 is not fully complete.
 
 ## Completed
 
@@ -15,44 +15,38 @@ Status: blocked; Phase 0 is not fully complete.
 - RDMA/RoCE-capable network evidence captured: `enp47s0np0`, 40 Gb/s, `mlx5_0`, Ethernet link layer.
 - Kafka fixed-baseline distributed append throughput, append latency, and range retrieval smoke runs completed where supported.
 - Mofka fixed-baseline distributed append throughput, append latency, and range retrieval smoke runs completed with the current memory-partition path.
-- ChronoLog distributed append throughput and append latency smoke runs completed.
-- Common `metrics.json` schema is used by the distributed append smoke results.
+- ChronoLog distributed append throughput, append latency, and range retrieval smoke runs completed.
+- Common `metrics.json` schema is used by the distributed smoke results.
 - Configuration justification written in `.agent/results/phase0-configuration-justification.md`.
 
-## Distributed Append Evidence
+## Distributed Workflow Evidence
 
-| System | Result | Nodes | Operations | Message Size | Metrics |
-|---|---:|---:|---:|---:|---|
-| ChronoLog | success | 2 | 1 | 1024 bytes | `.agent/results/20260512-005631/chronolog/metrics.json` |
-| Kafka | success | 2 | 100 | 1024 bytes | `.agent/results/20260512-004857/kafka/metrics.json` |
-| Mofka | success | 2 | 10 | 1024 bytes | `.agent/results/20260512-004535/mofka/metrics.json` |
+| Workflow | ChronoLog | Kafka | Mofka |
+|---|---|---|---|
+| append throughput | `.agent/results/20260512-010115/chronolog/metrics.json` | `.agent/results/20260512-010210/kafka/metrics.json` | `.agent/results/20260512-010240/mofka/metrics.json` |
+| append latency | `.agent/results/20260512-010537/chronolog/metrics.json` | `.agent/results/20260512-010656/kafka/metrics.json` | `.agent/results/20260512-010754/mofka/metrics.json` |
+| range retrieval | `.agent/results/20260512-015243/chronolog/metrics.json` | `.agent/results/20260512-013547/kafka/metrics.json` | `.agent/results/20260512-011238/mofka/metrics.json` |
 
-These are smoke results only. The operation counts are not normalized and should not be used for performance claims.
-
-## Blocker
-
-`STOP_RALPH_LOOP`
-
-ChronoLog distributed range retrieval is blocked. Two distributed `ReplayStory` attempts failed:
-
-- `.agent/results/20260512-011348/`: `ReplayStory` did not return before the SLURM allocation expired.
-- `.agent/results/20260512-012853/`: internal `timeout 300s` expired before `ReplayStory` returned; ChronoVisor aborted with `HG_NOENTRY`.
-
-Evidence is summarized in `.agent/results/phase0-range-retrieval.md` and `.agent/results/blockers.md`.
+These are smoke results only. The operation counts and durations should not be used for performance claims.
 
 ## Not Complete
 
-- The broader provisional suite is not complete:
-  - `range_retrieval`
-  - `mixed_append_read`
-  - `scaling_sweep`
-- Range retrieval has Kafka and Mofka distributed evidence, but not ChronoLog.
-- Mixed append/read depends on the blocked ChronoLog read path.
-- The scaling sweep remains unvalidated beyond the two-node distributed runs.
+- `mixed_append_read` still needs distributed validation.
+- `scaling_sweep` remains unvalidated beyond the two-node distributed runs.
 - The distributed workflows still need repeated trials and larger duration/count targets before performance claims.
 - ChronoLog distributed profiling outputs still need to be attached to distributed runs where tool permissions allow.
 - Mofka Yokan/Warabi-backed partition configuration still needs to be fixed and validated.
 - Mofka bundled benchmark generation remains unavailable in the current `~benchmark` install because the ConfigSpace dependency path is absent.
+
+## Resolved Issue
+
+The earlier ChronoLog distributed range retrieval blocker is resolved. The successful run is `.agent/results/20260512-015243/chronolog/metrics.json`.
+
+The harness fixes were:
+
+- Configure the ChronoLog client query callback service with the allocated client's routable 40G IP instead of `127.0.0.1`.
+- Run the ChronoLog range client on an allocated compute node.
+- Wait for the archived HDF5 story file before issuing `ReplayStory`.
 
 ## External Permission Limits
 
@@ -64,4 +58,4 @@ The only true external limitations currently identified are low-level profiling 
 
 ## Next Step
 
-Debug ChronoLog distributed `ReplayStory` and the associated `HG_NOENTRY` ChronoVisor abort. Phase 0 should resume after that read path can either complete successfully or be replaced with a documented comparable ChronoLog retrieval path.
+Continue with `mixed_append_read` and the small scaling sweep across ChronoLog, Kafka, and Mofka, using bare-metal SLURM distributed deployment as the primary target.
