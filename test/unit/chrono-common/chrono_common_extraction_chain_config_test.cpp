@@ -226,7 +226,10 @@ int main()
               << module_config.to_string(log_string) << std::endl;
 
 
-    if(localEngine != nullptr) { delete localEngine;}
+    if(localEngine != nullptr)
+    {
+        delete localEngine;
+    }
 
     return return_value;
 }
