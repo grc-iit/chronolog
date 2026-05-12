@@ -1,0 +1,12 @@
+Usage: kafka_launch.sh [options]
+
+Launch a Phase 0 single-node Kafka fixed baseline and write all runtime
+artifacts under .agent/results.
+
+Options:
+  --result-dir DIR        Existing or new result directory to use.
+  --host HOST             Listener host. Default: 127.0.0.1.
+  --zookeeper-port PORT   ZooKeeper client port. Default: 22181.
+  --broker-port PORT      Kafka broker port. Default: 29092.
+  --wait-seconds N        Startup wait timeout per service. Default: 30.
+  -h, --help              Show this help.
