@@ -103,7 +103,7 @@ profilers:
     evidence: profiling/0/raw/network
   - name: ebpf_based_tools
     mode: syscall_offcpu_scheduler_futex_tcp
-    status: pending_admin_enablement
+    status: tools_installed_sudoers_match_pending
     admin_request: profiling/0/ebpf-admin-command-allowlist.md
   - name: scorep
     mode: hpc_distributed_trace

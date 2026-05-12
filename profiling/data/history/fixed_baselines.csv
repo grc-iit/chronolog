@@ -1,3 +1,8 @@
 system,workflow,node_count,message_size_bytes,result_dir,metrics_path
 kafka,append_throughput,2,1024,.agent/results/20260512-010210,.agent/results/20260512-010210/kafka/metrics.json
 mofka,append_throughput,2,1024,.agent/results/20260512-010240,.agent/results/20260512-010240/mofka/metrics.json
+kafka,append_latency,2,1024,.agent/results/20260512-010656,.agent/results/20260512-010656/kafka/metrics.json
+mofka,append_latency,2,1024,.agent/results/20260512-010754,.agent/results/20260512-010754/mofka/metrics.json
+kafka,range_retrieval,2,1024,.agent/results/20260512-013547,.agent/results/20260512-013547/kafka/metrics.json
+mofka,range_retrieval,2,1024,.agent/results/20260512-011238,.agent/results/20260512-011238/mofka/metrics.json
+mofka,append_throughput,4,1024,.agent/results/20260512-020606,.agent/results/20260512-020606/mofka/metrics.json

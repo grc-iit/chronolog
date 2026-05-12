@@ -14,6 +14,9 @@ fi
 CMD=(
   python3 profileforge/controller/run_loop.py
   --iterations "${PROFILEFORGE_ITERATIONS:-1}"
+  --max-iterations "${PROFILEFORGE_MAX_ITERATIONS:-100}"
+  --goal-system "${PROFILEFORGE_GOAL_SYSTEM:-mofka}"
+  --goal-ratio "${PROFILEFORGE_GOAL_RATIO:-2.0}"
   --systems "${PROFILEFORGE_SYSTEMS:-chronolog}"
   --workflows "${PROFILEFORGE_WORKFLOWS:-append_throughput}"
   --node-counts "${PROFILEFORGE_NODE_COUNTS:-2}"
@@ -25,6 +28,9 @@ CMD=(
   --chronolog-profile-mode "${PROFILEFORGE_PROFILE_MODE:-tau}"
 )
 
+if [[ "${PROFILEFORGE_RUN_UNTIL_GOAL:-1}" == "1" ]]; then
+  CMD+=(--run-until-goal)
+fi
 if [[ -n "${PROFILEFORGE_NODELIST:-}" ]]; then
   CMD+=(--nodelist "${PROFILEFORGE_NODELIST}")
 fi

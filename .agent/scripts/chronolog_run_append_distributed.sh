@@ -24,7 +24,7 @@ Options:
   --chronicle-count N          Chronicles per process. Default: 1.
   --story-count N              Stories per process. Default: 1.
   --install-dir DIR            ChronoLog install tree. Default: .agent/install-consistent/chronolog.
-  --profile-mode MODE          none, tau, gperftools, darshan, or perf. Default: none.
+  --profile-mode MODE          none, tau, gperftools, darshan, perf, or ebpf. Default: none.
   --perf-bin PATH              perf binary for profile-mode=perf. Default: CHRONOLOG_PERF_BIN or PATH.
   -h, --help                   Show this help.
 USAGE
@@ -111,7 +111,7 @@ if [[ ! -d "${INSTALL_DIR}" ]]; then
 fi
 
 case "${PROFILE_MODE}" in
-  none|tau|gperftools|darshan|perf) ;;
+  none|tau|gperftools|darshan|perf|ebpf) ;;
   *) echo "Unsupported profile mode: ${PROFILE_MODE}" >&2; exit 2 ;;
 esac
 if [[ "${PROFILE_MODE}" != "none" && "${STARTUP_SLEEP_SECONDS}" -lt 10 ]]; then
@@ -130,6 +130,7 @@ if [[ "${PROFILE_MODE}" == "perf" ]]; then
   fi
   PERF_BIN="$(readlink -f "${PERF_BIN}")"
 fi
+EBPF_DURATION_SECONDS="${CHRONOLOG_EBPF_DURATION_SECONDS:-45}"
 
 RESULT_DIR="$(make_result_dir "${RESULT_DIR}")"
 export PHASE0_RESULT_DIR="${RESULT_DIR}"
@@ -265,6 +266,35 @@ create_wrapper chrono-grapher
 create_wrapper chrono-keeper
 create_wrapper chrono-player
 
+EBPF_PIDS_FILE="${CHRONOLOG_RESULT_DIR}/profiles/ebpf/collector-pids.txt"
+start_ebpf_collectors() {
+  if [[ "${PROFILE_MODE}" != "ebpf" ]]; then
+    return 0
+  fi
+  mkdir -p "${CHRONOLOG_RESULT_DIR}/profiles/ebpf"
+  : > "${EBPF_PIDS_FILE}"
+  local nodes
+  nodes="$(sort -u "${CONFIG_DIR}/hosts_keeper" "${CONFIG_DIR}/hosts_grapher" 2>/dev/null)"
+  while IFS= read -r node; do
+    [[ -n "${node}" ]] || continue
+    local node_dir="${CHRONOLOG_RESULT_DIR}/profiles/ebpf/${node}"
+    mkdir -p "${node_dir}"
+    ssh -n "${node}" "bash -lc 'mkdir -p ${node_dir@Q}; keeper_pid=\$(pgrep -u ${USER@Q} -f \"chrono-keeper\" | head -n 1 || true); grapher_pid=\$(pgrep -u ${USER@Q} -f \"chrono-grapher\" | head -n 1 || true); echo keeper_pid=\${keeper_pid} grapher_pid=\${grapher_pid} > ${node_dir@Q}/pids.env; if [[ -n \${keeper_pid} ]]; then timeout $((EBPF_DURATION_SECONDS + 15))s sudo -n /usr/sbin/offcputime-bpfcc -p \${keeper_pid} -f ${EBPF_DURATION_SECONDS} > ${node_dir@Q}/keeper.offcputime.txt 2> ${node_dir@Q}/keeper.offcputime.err & echo \$! > ${node_dir@Q}/keeper.offcputime.pid; timeout $((EBPF_DURATION_SECONDS + 15))s sudo -n /usr/sbin/runqlat-bpfcc -p \${keeper_pid} ${EBPF_DURATION_SECONDS} > ${node_dir@Q}/keeper.runqlat.txt 2> ${node_dir@Q}/keeper.runqlat.err & echo \$! > ${node_dir@Q}/keeper.runqlat.pid; fi; if [[ -n \${grapher_pid} ]]; then timeout $((EBPF_DURATION_SECONDS + 15))s sudo -n /usr/sbin/runqlat-bpfcc -p \${grapher_pid} ${EBPF_DURATION_SECONDS} > ${node_dir@Q}/grapher.runqlat.txt 2> ${node_dir@Q}/grapher.runqlat.err & echo \$! > ${node_dir@Q}/grapher.runqlat.pid; fi'" \
+      > "${node_dir}/collector-launch.log" 2> "${node_dir}/collector-launch.err" &
+    echo "$!" >> "${EBPF_PIDS_FILE}"
+  done <<< "${nodes}"
+}
+
+wait_ebpf_collectors() {
+  if [[ "${PROFILE_MODE}" != "ebpf" || ! -f "${EBPF_PIDS_FILE}" ]]; then
+    return 0
+  fi
+  while IFS= read -r pid; do
+    [[ -n "${pid}" ]] || continue
+    wait "${pid}" || true
+  done < "${EBPF_PIDS_FILE}"
+}
+
 cat > "${CONFIG_DIR}/chronolog-config-manifest.env" <<EOF
 deployment_mode=bare_metal
 node_count=${NODE_COUNT}
@@ -332,6 +362,7 @@ jq ".chrono_client.ClientQueryService.rpc.service_ip = \"${CLIENT_IP}\"" "${CLIE
   && mv "${CONFIG_DIR}/client-conf.tmp" "${CLIENT_CONF_FILE}"
 
 sleep "${STARTUP_SLEEP_SECONDS}"
+start_ebpf_collectors
 
 MIN_EVENT_SIZE=$((MESSAGE_SIZE_BYTES / 2))
 MAX_EVENT_SIZE=$((MESSAGE_SIZE_BYTES * 2))
@@ -447,6 +478,7 @@ else
   echo "Unsupported ChronoLog workflow: ${WORKFLOW}" >&2
   exit 2
 fi
+wait_ebpf_collectors
 
 cat > "${RESULT_DIR}/summary.md" <<EOF
 # ChronoLog Distributed Benchmark Run

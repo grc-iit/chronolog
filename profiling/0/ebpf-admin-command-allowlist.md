@@ -6,21 +6,31 @@ Target nodes:
 - `ares-comp-04`
 - `ares-comp-05`
 - `ares-comp-06`
+- `ares-comp-07`
+- `ares-comp-08`
 
 Current status:
 
 - `kernel.perf_event_paranoid=1` on `ares-comp-03` and `ares-comp-04`.
 - `kernel.yama.ptrace_scope=0` on `ares-comp-03` and `ares-comp-04`.
 - Kun Feng is extending those two settings to `ares-comp-05` and `ares-comp-06`.
-- `kernel.unprivileged_bpf_disabled=2` remains enabled, so normal-user eBPF-based observability still needs an approved wrapper/capability path.
+- `bpfcc-tools` has been upgraded on `ares-comp-[03-08]`; `offcputime-bpfcc` and `runqlat-bpfcc` now work on the upgraded nodes.
+- `kernel.unprivileged_bpf_disabled=2` may remain enabled, so normal-user eBPF-based observability still needs sudo for the eBPF tool commands or an approved wrapper/capability path.
 - `perf` is not currently on `PATH`; install/expose the kernel-matched `perf` binary, for example the equivalent of `linux-tools-5.15.0-176-generic`.
+- Validation through `srun` confirms the eBPF tools are installed on `ares-comp-[03-06,08]`, but passwordless sudo is not yet matching `jcernudagarcia`; see `profiling/0/results/ebpf-sudo-validation.md`.
+
+Important privilege model:
+
+- ChronoLog services and benchmark clients should run as the normal ChronoLog user.
+- Only the profiling tools that inspect kernel state need elevated privileges.
+- Do **not** run ChronoLog binaries as root for profiling. Use sudo only for controlled commands such as `bpftrace`, `offcputime-bpfcc`, `runqlat-bpfcc`, and related eBPF-based tools.
 
 ## Preferred Short-Term Admin Changes
 
 For Phase 0 profiling on the four target nodes, the simplest useful setup is:
 
 ```bash
-for node in ares-comp-03 ares-comp-04 ares-comp-05 ares-comp-06; do
+for node in ares-comp-03 ares-comp-04 ares-comp-05 ares-comp-06 ares-comp-07 ares-comp-08; do
   ssh "$node" '
     sudo sysctl -w kernel.perf_event_paranoid=1
     sudo sysctl -w kernel.yama.ptrace_scope=0
@@ -71,7 +81,7 @@ kernel.unprivileged_bpf_disabled = 0
 
 ## Constrained Wrapper Alternative
 
-If admins do not want to set `kernel.unprivileged_bpf_disabled=0`, the fallback is a root-owned wrapper that runs only the commands below for members of a ChronoLog profiling group. This is more work, but acceptable for Phase 0.
+If admins do not want to set `kernel.unprivileged_bpf_disabled=0`, the fallback is sudo access to a root-owned wrapper or a tightly controlled sudoers command list that runs only the profiling tools below for members of a ChronoLog profiling group. This is acceptable for ProfileForge.
 
 Suggested group and directory:
 
@@ -95,6 +105,21 @@ Example sudoers entry once a wrapper exists:
 ```text
 %chronolog-prof ALL=(root) NOPASSWD: /opt/chronolog-prof/bin/chronolog-ebpf
 ```
+
+If the admins prefer direct sudoers entries instead of a wrapper, the command set should be limited to the installed paths on `ares-comp-[03-08]`, for example:
+
+```text
+%chronolog-prof ALL=(root) NOPASSWD: /usr/sbin/bpftrace
+%chronolog-prof ALL=(root) NOPASSWD: /usr/sbin/offcputime-bpfcc
+%chronolog-prof ALL=(root) NOPASSWD: /usr/sbin/runqlat-bpfcc
+%chronolog-prof ALL=(root) NOPASSWD: /usr/sbin/funclatency-bpfcc
+%chronolog-prof ALL=(root) NOPASSWD: /usr/sbin/biolatency-bpfcc
+%chronolog-prof ALL=(root) NOPASSWD: /usr/sbin/tcplife-bpfcc
+%chronolog-prof ALL=(root) NOPASSWD: /usr/sbin/tcpretrans-bpfcc
+%chronolog-prof ALL=(root) NOPASSWD: /usr/sbin/tcptop-bpfcc
+```
+
+The exact paths should be confirmed with `command -v` on the compute nodes. The wrapper remains safer because sudoers cannot easily constrain durations, PIDs, and output paths for arbitrary tool arguments.
 
 ## Requested Controlled Command Set
 

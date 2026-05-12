@@ -1,0 +1,25 @@
+name: chronolog_2x_mofka
+target: chronolog
+fixed_baseline: mofka
+ratio: 2.0
+workflows:
+  - append_throughput
+  - append_latency
+  - range_retrieval
+interpretation:
+  throughput_ops_per_sec: higher_is_better
+  p99_latency_ms: lower_is_better
+stop_when:
+  correctness: pass
+  repeated_trials_min: 3
+  every_judged_group_meets_ratio: true
+blockers_to_record:
+  - missing_mofka_fixed_baseline
+  - benchmark_runner_failure
+  - correctness_failure
+  - profiler_tool_unavailable
+  - cluster_allocation_unavailable
+notes:
+  - ChronoLog runs as the normal user.
+  - eBPF-based profiling tools may use sudo; ChronoLog binaries should not run as root.
+  - Kafka and Mofka are fixed baselines and must not be optimized by the loop.

@@ -122,6 +122,8 @@ def validate(metrics_path: Path, result_dir: Path) -> dict[str, Any]:
         "validator": "profileforge_correctness",
         "system": metrics.get("system"),
         "workflow": metrics.get("workflow"),
+        "node_count": metrics.get("node_count"),
+        "message_size_bytes": metrics.get("message_size_bytes"),
         "metrics_path": display_path(metrics_path),
         "result_dir": display_path(result_dir),
         "result": "pass" if not errors and semantic_result == "pass" else "fail",

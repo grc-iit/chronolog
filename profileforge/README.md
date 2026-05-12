@@ -75,10 +75,18 @@ Start a detached tmux run:
 ```bash
 PROFILEFORGE_NODELIST='ares-comp-[03-06]' \
 PROFILEFORGE_NODE_COUNTS=2 \
+PROFILEFORGE_WORKFLOWS='append_throughput,append_latency,range_retrieval' \
 PROFILEFORGE_OPERATION_COUNTS=1000 \
 PROFILEFORGE_TRIALS=3 \
 PROFILEFORGE_PROFILE_MODE=tau \
+PROFILEFORGE_GOAL_SYSTEM=mofka \
+PROFILEFORGE_GOAL_RATIO=2.0 \
+PROFILEFORGE_RUN_UNTIL_GOAL=1 \
 bash profileforge/controller/run_profileforge_tmux.sh
 ```
 
 The tmux launcher does not spend account funds by itself; it only starts the local controller process. Funding/account changes must be handled outside the repository tooling.
+
+In goal mode, the controller stops when every judged ChronoLog benchmark group is at least `PROFILEFORGE_GOAL_RATIO` better than the fixed baseline system. For throughput-oriented workflows, higher is better. For `append_latency`, lower latency is better, so a `2.0` ratio means ChronoLog latency is at most half of the baseline latency.
+
+If `PROFILEFORGE_PATCH_COMMAND` is unset, the loop repeats measurement and judging only. To let an external optimization agent modify ChronoLog between rounds, set `PROFILEFORGE_PATCH_COMMAND` to that agent entry point; it must obey `targets/chronolog/allowed_edits.yaml`.

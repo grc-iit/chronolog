@@ -28,8 +28,8 @@ SYSTEM_SCRIPTS = {
 
 WORKFLOW_BY_SYSTEM = {
     "append_throughput": {"chronolog", "kafka", "mofka"},
-    "append_latency": {"chronolog"},
-    "range_retrieval": {"chronolog", "kafka"},
+    "append_latency": {"chronolog", "kafka", "mofka"},
+    "range_retrieval": {"chronolog", "kafka", "mofka"},
 }
 
 
@@ -78,19 +78,42 @@ def command_for(run: dict[str, Any], child_dir: Path, args: argparse.Namespace) 
     system = run["system"]
     workflow = run["workflow"]
     script = SYSTEM_SCRIPTS[system]
-    base = [
-        str(script),
-        "--result-dir",
-        str(child_dir),
-        "--partition",
-        args.partition,
-        "--node-count",
-        str(run["node_count"]),
-        "--operation-count",
-        str(run["operation_count"]),
-        "--message-size-bytes",
-        str(run["message_size_bytes"]),
-    ]
+    base = [str(script), "--result-dir", str(child_dir)]
+    if system == "mofka":
+        base.extend(
+            [
+                "--node-count",
+                str(run["node_count"]),
+                "--operation-count",
+                str(run["operation_count"]),
+                "--message-size-bytes",
+                str(run["message_size_bytes"]),
+                "--workflow",
+                workflow,
+                "--deployment-mode",
+                "bare_metal",
+                "--slurm-partition",
+                args.partition,
+                "--slurm-time",
+                args.slurm_time,
+            ]
+        )
+        if args.nodelist:
+            base.extend(["--slurm-nodelist", args.nodelist])
+        return base
+
+    base.extend(
+        [
+            "--partition",
+            args.partition,
+            "--node-count",
+            str(run["node_count"]),
+            "--operation-count",
+            str(run["operation_count"]),
+            "--message-size-bytes",
+            str(run["message_size_bytes"]),
+        ]
+    )
     if system in {"chronolog", "kafka"}:
         base.extend(["--workflow", workflow, "--slurm-time", args.slurm_time])
     if system == "chronolog":

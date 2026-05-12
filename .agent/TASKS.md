@@ -123,3 +123,5 @@ This is not a performance-optimization phase. The goal is to make the full measu
 - [x] Add ProfileForge target manifests, edit policy, acceptance policy, and iteration-1 runbook.
 - [x] Generate normalized iteration-0 evidence JSON for the optimization-agent handoff.
 - [x] Add executable correctness validator, repeated-run performance judge, controller loop, and tmux launcher.
+- [x] Add explicit ProfileForge goal mode for `>=2x` ChronoLog-vs-Mofka across selected benchmarks.
+- [x] Add nonfatal ChronoLog eBPF profile mode and validate current sudo/tool status on Ares.

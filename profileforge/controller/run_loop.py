@@ -59,6 +59,10 @@ def read_json(path: Path) -> Any:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--iterations", type=int, default=1)
+    parser.add_argument("--run-until-goal", action="store_true")
+    parser.add_argument("--max-iterations", type=int, default=100)
+    parser.add_argument("--goal-system", default="mofka")
+    parser.add_argument("--goal-ratio", type=float, default=2.0)
     parser.add_argument("--systems", default="chronolog")
     parser.add_argument("--workflows", default="append_throughput")
     parser.add_argument("--node-counts", default="2")
@@ -179,10 +183,25 @@ def normalize_rows(iteration_dir: Path, rows: list[dict[str, str]], dry_run: boo
     return evidence_paths
 
 
-def judge_iteration(iteration_dir: Path, rows: list[dict[str, str]], correctness_paths: list[str], dry_run: bool) -> Path:
+def judge_iteration(args: argparse.Namespace, iteration_dir: Path, rows: list[dict[str, str]], correctness_paths: list[str], dry_run: bool) -> Path:
     metrics_paths = [row["metrics_path"] for row in rows if row.get("system") == "chronolog" and row.get("metrics_path")]
     output = iteration_dir / "judge.json"
-    cmd = ["python3", str(JUDGE), "--metrics", *metrics_paths, "--correctness", *correctness_paths, "--output", str(output)]
+    cmd = [
+        "python3",
+        str(JUDGE),
+        "--metrics",
+        *metrics_paths,
+        "--correctness",
+        *correctness_paths,
+        "--output",
+        str(output),
+        "--goal-system",
+        args.goal_system,
+        "--goal-ratio",
+        str(args.goal_ratio),
+        "--minimum-trials",
+        str(args.trials),
+    ]
     code = run_command(cmd, REPO_ROOT, iteration_dir / "controller.log", dry_run=dry_run)
     if dry_run:
         output.write_text(
@@ -200,7 +219,8 @@ def main() -> int:
     root.mkdir(parents=True, exist_ok=True)
 
     loop_summary: list[dict[str, Any]] = []
-    for iteration in range(1, args.iterations + 1):
+    iteration_limit = args.max_iterations if args.run_until_goal else args.iterations
+    for iteration in range(1, iteration_limit + 1):
         iteration_dir = root / f"iteration-{iteration:03d}"
         iteration_dir.mkdir(parents=True, exist_ok=True)
         if args.patch_command:
@@ -217,7 +237,7 @@ def main() -> int:
         rows = read_csv(summary_csv) if summary_csv.exists() else []
         correctness_paths = validate_rows(iteration_dir, rows, dry_run=args.dry_run) if rows else []
         evidence_paths = normalize_rows(iteration_dir, rows, dry_run=args.dry_run) if rows else []
-        judge_path = judge_iteration(iteration_dir, rows, correctness_paths, dry_run=args.dry_run) if rows else iteration_dir / "judge.json"
+        judge_path = judge_iteration(args, iteration_dir, rows, correctness_paths, dry_run=args.dry_run) if rows else iteration_dir / "judge.json"
         judge = read_json(judge_path) if judge_path.exists() else {"decision": "missing"}
 
         summary = {
@@ -232,8 +252,12 @@ def main() -> int:
         loop_summary.append(summary)
         (iteration_dir / "iteration-summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
         (root / "loop-summary.json").write_text(json.dumps(loop_summary, indent=2) + "\n", encoding="utf-8")
+        if args.run_until_goal and judge.get("decision") == "goal_met":
+            break
 
     print(display_path(root))
+    if args.run_until_goal and loop_summary and loop_summary[-1].get("decision") != "goal_met":
+        return 1
     return 0
 
 
