@@ -1,0 +1,27 @@
+{
+  "libraries": [
+    "libflock-bedrock-module.so",
+    "libyokan-bedrock-module.so"
+  ],
+  "providers": [
+    {
+      "name": "phase0_group_manager",
+      "type": "flock",
+      "provider_id": 1,
+      "config": {
+        "bootstrap": "self",
+        "file": "/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-093629/mofka/mofka.json",
+        "group": { "type": "centralized" }
+      }
+    },
+    {
+      "name": "phase0_master",
+      "provider_id": 2,
+      "type": "yokan",
+      "tags": [ "mofka:master" ],
+      "config": {
+        "database": { "type": "map" }
+      }
+    }
+  ]
+}

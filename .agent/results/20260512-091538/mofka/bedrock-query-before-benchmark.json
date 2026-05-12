@@ -1,0 +1,246 @@
+{
+    "ofi+tcp://172.25.101.3:43413": {
+        "bedrock": {
+            "pool": "__primary__",
+            "provider_id": 0
+        },
+        "libraries": [
+            "libflock-bedrock-module.so",
+            "libyokan-bedrock-module.so"
+        ],
+        "margo": {
+            "argobots": {
+                "abt_mem_max_num_stacks": 8,
+                "abt_thread_stacksize": 2097152,
+                "lazy_stack_alloc": false,
+                "pools": [
+                    {
+                        "access": "mpmc",
+                        "kind": "fifo_wait",
+                        "name": "__primary__"
+                    }
+                ],
+                "profiling_dir": ".",
+                "xstreams": [
+                    {
+                        "name": "__primary__",
+                        "scheduler": {
+                            "pools": [
+                                "__primary__"
+                            ],
+                            "type": "basic_wait"
+                        }
+                    }
+                ]
+            },
+            "enable_abt_profiling": false,
+            "handle_cache_size": 32,
+            "mercury": {
+                "address": "ofi+tcp://172.25.101.3:43413",
+                "auto_sm": false,
+                "checksum_level": "none",
+                "input_eager_size": 4060,
+                "listening": true,
+                "log_level": "warning",
+                "log_subsys": "hg,na",
+                "max_contexts": 0,
+                "na_addr_format": "unspec",
+                "na_max_expected_size": 0,
+                "na_max_unexpected_size": 0,
+                "na_no_block": false,
+                "na_no_retry": false,
+                "na_request_mem_device": false,
+                "no_bulk_eager": false,
+                "no_loopback": false,
+                "output_eager_size": 4076,
+                "request_post_incr": 256,
+                "request_post_init": 256,
+                "stats": false,
+                "version": "2.4.1"
+            },
+            "plumber": {
+                "bucket_policy": "package",
+                "nic_policy": "roundrobin"
+            },
+            "progress_pool": "__primary__",
+            "progress_spindown_msec": 10,
+            "progress_timeout_ub_msec": 100,
+            "rpc_pool": "__primary__",
+            "version": "0.23.0"
+        },
+        "providers": [
+            {
+                "config": {},
+                "dependencies": {},
+                "engine": 0,
+                "name": "phase0_group_manager",
+                "provider_id": 1,
+                "tags": [],
+                "type": "flock"
+            },
+            {
+                "config": {
+                    "buffer_cache": {
+                        "type": "default"
+                    },
+                    "database": {
+                        "config": {
+                            "allocators": {
+                                "key_allocator": "default",
+                                "key_allocator_config": {},
+                                "node_allocator": "default",
+                                "node_allocator_config": {},
+                                "value_allocator": "default",
+                                "value_allocator_config": {}
+                            },
+                            "comparator": "default",
+                            "use_lock": true
+                        },
+                        "type": "map"
+                    }
+                },
+                "dependencies": {},
+                "engine": 0,
+                "name": "phase0_master",
+                "provider_id": 2,
+                "tags": [
+                    "mofka:master"
+                ],
+                "type": "yokan"
+            }
+        ]
+    },
+    "ofi+tcp://172.25.101.4:42205": {
+        "bedrock": {
+            "pool": "__primary__",
+            "provider_id": 0
+        },
+        "libraries": [
+            "libflock-bedrock-module.so",
+            "libyokan-bedrock-module.so",
+            "libwarabi-bedrock-module.so",
+            "libmofka-bedrock-module.so"
+        ],
+        "margo": {
+            "argobots": {
+                "abt_mem_max_num_stacks": 8,
+                "abt_thread_stacksize": 2097152,
+                "lazy_stack_alloc": false,
+                "pools": [
+                    {
+                        "access": "mpmc",
+                        "kind": "fifo_wait",
+                        "name": "__primary__"
+                    }
+                ],
+                "profiling_dir": ".",
+                "xstreams": [
+                    {
+                        "name": "__primary__",
+                        "scheduler": {
+                            "pools": [
+                                "__primary__"
+                            ],
+                            "type": "basic_wait"
+                        }
+                    }
+                ]
+            },
+            "enable_abt_profiling": false,
+            "handle_cache_size": 32,
+            "mercury": {
+                "address": "ofi+tcp://172.25.101.4:42205",
+                "auto_sm": false,
+                "checksum_level": "none",
+                "input_eager_size": 4060,
+                "listening": true,
+                "log_level": "warning",
+                "log_subsys": "hg,na",
+                "max_contexts": 0,
+                "na_addr_format": "unspec",
+                "na_max_expected_size": 0,
+                "na_max_unexpected_size": 0,
+                "na_no_block": false,
+                "na_no_retry": false,
+                "na_request_mem_device": false,
+                "no_bulk_eager": false,
+                "no_loopback": false,
+                "output_eager_size": 4076,
+                "request_post_incr": 256,
+                "request_post_init": 256,
+                "stats": false,
+                "version": "2.4.1"
+            },
+            "plumber": {
+                "bucket_policy": "package",
+                "nic_policy": "roundrobin"
+            },
+            "progress_pool": "__primary__",
+            "progress_spindown_msec": 10,
+            "progress_timeout_ub_msec": 100,
+            "rpc_pool": "__primary__",
+            "version": "0.23.0"
+        },
+        "providers": [
+            {
+                "config": {},
+                "dependencies": {},
+                "engine": 0,
+                "name": "phase0_group_manager",
+                "provider_id": 1,
+                "tags": [],
+                "type": "flock"
+            },
+            {
+                "config": {
+                    "buffer_cache": {
+                        "type": "default"
+                    },
+                    "database": {
+                        "config": {
+                            "allocators": {
+                                "key_allocator": "default",
+                                "key_allocator_config": {},
+                                "node_allocator": "default",
+                                "node_allocator_config": {},
+                                "value_allocator": "default",
+                                "value_allocator_config": {}
+                            },
+                            "comparator": "default",
+                            "use_lock": true
+                        },
+                        "type": "map"
+                    }
+                },
+                "dependencies": {},
+                "engine": 0,
+                "name": "phase0_metadata_provider",
+                "provider_id": 3,
+                "tags": [
+                    "mofka:metadata"
+                ],
+                "type": "yokan"
+            },
+            {
+                "config": {
+                    "target": {
+                        "config": {},
+                        "type": "memory"
+                    },
+                    "transfer_manager": {
+                        "config": {},
+                        "type": "__default__"
+                    }
+                },
+                "dependencies": {},
+                "engine": 0,
+                "name": "phase0_data_provider",
+                "provider_id": 4,
+                "tags": [
+                    "mofka:data"
+                ],
+                "type": "warabi"
+            }
+        ]
+    }
+}

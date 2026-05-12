@@ -1,0 +1,15 @@
+{
+  "workflow": "append_throughput",
+  "topic": "phase0_append",
+  "partition_type": "default",
+  "deployment_mode": "bare_metal",
+  "operation_count": 10,
+  "message_size_bytes": 1024,
+  "partition_server_rank": 1,
+  "metadata_provider": "",
+  "data_provider": "",
+  "producer_batch_size": 1,
+  "producer_max_batch": 2,
+  "producer_ordering": "Loose",
+  "configuration_note": "Uses Mofka default partition backed by configured Yokan metadata and Warabi data providers."
+}

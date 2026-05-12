@@ -1,0 +1,27 @@
+[2026-05-12 09:47:51.778] [ChronoClient] [info] [ChronologClientImpl] Client Identity - Login: jcernudagarcia, EUID: 1008, HostID: 8323329, PID: 1063015
+[2026-05-12 09:47:52.229] [ChronoClient] [info] [RpcVisorClient] Connection successful for Account=1008, HostID=8323329, PID=1063015
+[2026-05-12 09:47:52.270] [ChronoClient] [info] [RPCVisorClient] Initiating creation of chronicle: Name=chronicle_0_0, Flags=0
+[2026-05-12 09:47:52.280] [ChronoClient] [info] [RPCVisorClient] Successfully created chronicle with Name=chronicle_0_0, Flags=0
+[2026-05-12 09:47:52.280] [ChronoClient] [info] [ChronoLogClientImpl] Successfully created chronicle 'chronicle_0_0'.
+[2026-05-12 09:47:52.280] [ChronoClient] [info] [RPCVisorClient] Initiating story acquisition: ChronicleName=chronicle_0_0, StoryName=story_0_0
+[2026-05-12 09:47:52.300] [ChronoClient] [info] [RPCVisorClient] Successfully acquired story: ChronicleName=chronicle_0_0, StoryName=story_0_0
+[2026-05-12 09:47:52.302] [ChronoClient] [info] [StorytellerClient] Added KeeperRecordingClient for ServiceId{ofi+sockets:172.25.101.3:6666:66}
+[2026-05-12 09:47:52.302] [ChronoClient] [info] [StorytellerClient] RUNNING with 1 KeeperRecordingClients
+[2026-05-12 09:47:52.303] [ChronoClient] [info] [StorytellerClient] Added KeeperRecordingClient for ServiceId{ofi+sockets:172.25.101.4:6666:66}
+[2026-05-12 09:47:52.304] [ChronoClient] [info] [StorytellerClient] RUNNING with 2 KeeperRecordingClients
+[2026-05-12 09:47:52.304] [ChronoClient] [info] [StorytellerClient] Successfully initialized StoryWritingHandle for Chronicle: 'chronicle_0_0' and Story: 'story_0_0'.
+[2026-05-12 09:47:52.304] [ChronoClient] [info] [ChronoLogClientImpl] Successfully acquired story 'story_0_0' in chronicle 'chronicle_0_0'.
+[2026-05-12 09:47:52.338] [ChronoClient] [info] [StorytellerClient] Successfully removed StoryHandle for Chronicle: 'chronicle_0_0' and Story: 'story_0_0'.
+[2026-05-12 09:47:52.338] [ChronoClient] [info] [ChronoLogClientImpl] Successfully released the story 'story_0_0' from chronicle 'chronicle_0_0'.
+[2026-05-12 09:47:52.338] [ChronoClient] [info] [RPCVisorClient] Initiating story release: ChronicleName=chronicle_0_0, StoryName=story_0_0
+[2026-05-12 09:47:52.345] [ChronoClient] [info] [RPCVisorClient] Successfully released story: ChronicleName=chronicle_0_0, StoryName=story_0_0
+[2026-05-12 09:47:52.345] [ChronoClient] [info] [ChronoLogClientImpl] Successfully released story 'story_0_0' from chronicle 'chronicle_0_0'.
+[2026-05-12 09:47:52.346] [ChronoClient] [info] [RPCVisorClient] Initiating story destruction: ChronicleName=chronicle_0_0, StoryName=story_0_0
+[2026-05-12 09:47:52.347] [ChronoClient] [info] [RPCVisorClient] Successfully destroyed story: ChronicleName=chronicle_0_0, StoryName=story_0_0
+[2026-05-12 09:47:52.347] [ChronoClient] [info] [ChronoLogClientImpl] Successfully destroyed Story 'story_0_0' from Chronicle 'chronicle_0_0'.
+[2026-05-12 09:47:52.347] [ChronoClient] [info] [RPCVisorClient] Initiating destruction of chronicle: Name=chronicle_0_0
+[2026-05-12 09:47:52.348] [ChronoClient] [info] [RPCVisorClient] Successfully destroyed chronicle: Name=chronicle_0_0
+[2026-05-12 09:47:52.348] [ChronoClient] [info] [ChronoLogClientImpl] Successfully destroyed chronicle 'chronicle_0_0'.
+[2026-05-12 09:47:52.348] [ChronoClient] [info] [RPCVisorClient] Initiating disconnection for ClientID=10133164115592847944
+[2026-05-12 09:47:52.349] [ChronoClient] [info] [RPCVisorClient] Disconnection successful for ClientID=10133164115592847944
+[2026-05-12 09:47:52.350] [ChronoClient] [info] [ChronoLogClientImpl] Successfully disconnected from Visor.

@@ -102,3 +102,13 @@ This is not a performance-optimization phase. The goal is to make the full measu
 - [x] ChronoLog profiling stack produces outputs.
 - [x] Results are comparable across systems.
 - [x] Final Phase 0 report exists.
+
+## Gap wrap-up after completion audit correction
+
+- [x] Validate Mofka default partition storage backed by configured Yokan/Warabi providers.
+- [x] Run ChronoLog distributed profiling with TAU across client and service roles.
+- [x] Run ChronoLog distributed profiling with gperftools CPU/heap across service roles.
+- [x] Run ChronoLog distributed profiling with Darshan across client and service roles.
+- [x] Document ChronoLog archive-backed read path and future live/tail read gap.
+- [x] Seed benchmark framework design from Mofka generator configuration dimensions.
+- [x] Package Phase 0 profiling outputs and figures under `profiling/0`.

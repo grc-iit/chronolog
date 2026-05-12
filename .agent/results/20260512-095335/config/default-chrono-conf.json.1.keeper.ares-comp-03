@@ -1,0 +1,190 @@
+{
+  "clock": {
+    "clocksource_type": "CPP_STYLE",
+    "drift_cal_sleep_sec": 10,
+    "drift_cal_sleep_nsec": 0
+  },
+  "authentication": {
+    "auth_type": "RBAC",
+    "module_location": "/path/to/auth_module"
+  },
+  "chrono_visor": {
+    "VisorClientPortalService": {
+      "rpc": {
+        "protocol_conf": "ofi+sockets",
+        "service_ip": "172.25.101.3",
+        "service_base_port": 5555,
+        "service_provider_id": 55
+      }
+    },
+    "VisorKeeperRegistryService": {
+      "rpc": {
+        "protocol_conf": "ofi+sockets",
+        "service_ip": "172.25.101.3",
+        "service_base_port": 8888,
+        "service_provider_id": 88
+      }
+    },
+    "Monitoring": {
+      "monitor": {
+        "type": "file",
+        "file": "/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-visor-ares-comp-03.log",
+        "level": "debug",
+        "name": "ChronoVisor",
+        "filesize": 104857600,
+        "filenum": 3,
+        "flushlevel": "warning"
+      }
+    },
+    "delayed_data_admin_exit_in_secs": 3
+  },
+  "chrono_keeper": {
+    "RecordingGroup": 1,
+    "KeeperRecordingService": {
+      "rpc": {
+        "protocol_conf": "ofi+sockets",
+        "service_ip": "172.25.101.3",
+        "service_base_port": 6666,
+        "service_provider_id": 66
+      }
+    },
+    "KeeperDataStoreAdminService": {
+      "rpc": {
+        "protocol_conf": "ofi+sockets",
+        "service_ip": "172.25.101.3",
+        "service_base_port": 7777,
+        "service_provider_id": 77
+      }
+    },
+    "VisorKeeperRegistryService": {
+      "rpc": {
+        "protocol_conf": "ofi+sockets",
+        "service_ip": "172.25.101.3",
+        "service_base_port": 8888,
+        "service_provider_id": 88
+      }
+    },
+    "KeeperGrapherDrainService": {
+      "rpc": {
+        "protocol_conf": "ofi+sockets",
+        "service_ip": "172.25.101.4",
+        "service_base_port": 3333,
+        "service_provider_id": 33
+      }
+    },
+    "Monitoring": {
+      "monitor": {
+        "type": "file",
+        "file": "/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/logs/chrono-keeper-ares-comp-03.log",
+        "level": "debug",
+        "name": "ChronoKeeper",
+        "filesize": 1048576,
+        "filenum": 3,
+        "flushlevel": "warning"
+      }
+    },
+    "DataStoreInternals": {
+      "max_story_chunk_size": 4096,
+      "story_chunk_duration_secs": 10,
+      "acceptance_window_secs": 15,
+      "inactive_story_delay_secs": 120
+    },
+    "Extractors": {
+      "story_files_dir": "/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/output"
+    }
+  },
+  "chrono_grapher": {
+    "RecordingGroup": 1,
+    "KeeperGrapherDrainService": {
+      "rpc": {
+        "protocol_conf": "ofi+sockets",
+        "service_ip": "172.25.101.4",
+        "service_base_port": 3333,
+        "service_provider_id": 33
+      }
+    },
+    "DataStoreAdminService": {
+      "rpc": {
+        "protocol_conf": "ofi+sockets",
+        "service_ip": "172.25.101.4",
+        "service_base_port": 4444,
+        "service_provider_id": 44
+      }
+    },
+    "VisorRegistryService": {
+      "rpc": {
+        "protocol_conf": "ofi+sockets",
+        "service_ip": "172.25.101.3",
+        "service_base_port": 8888,
+        "service_provider_id": 88
+      }
+    },
+    "Monitoring": {
+      "monitor": {
+        "type": "file",
+        "file": "chrono-grapher-1.log",
+        "level": "debug",
+        "name": "ChronoGrapher",
+        "filesize": 1048576,
+        "filenum": 3,
+        "flushlevel": "debug"
+      }
+    },
+    "DataStoreInternals": {
+      "max_story_chunk_size": 4096,
+      "story_chunk_duration_secs": 60,
+      "acceptance_window_secs": 180,
+      "inactive_story_delay_secs": 300
+    },
+    "Extractors": {
+      "story_files_dir": "/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/output"
+    }
+  },
+  "chrono_player": {
+    "RecordingGroup": 1,
+    "PlayerStoreAdminService": {
+      "rpc": {
+        "protocol_conf": "ofi+sockets",
+        "service_ip": "172.25.101.4",
+        "service_base_port": 2222,
+        "service_provider_id": 22
+      }
+    },
+    "PlaybackQueryService": {
+      "rpc": {
+        "protocol_conf": "ofi+sockets",
+        "service_ip": "172.25.101.4",
+        "service_base_port": 2225,
+        "service_provider_id": 25
+      }
+    },
+    "VisorRegistryService": {
+      "rpc": {
+        "protocol_conf": "ofi+sockets",
+        "service_ip": "172.25.101.3",
+        "service_base_port": 8888,
+        "service_provider_id": 88
+      }
+    },
+    "Monitoring": {
+      "monitor": {
+        "type": "file",
+        "file": "chrono-player-1.log",
+        "level": "debug",
+        "name": "ChronoPlayer",
+        "filesize": 1048576,
+        "filenum": 3,
+        "flushlevel": "debug"
+      }
+    },
+    "DataStoreInternals": {
+      "max_story_chunk_size": 4096,
+      "story_chunk_duration_secs": 60,
+      "acceptance_window_secs": 180,
+      "inactive_story_delay_secs": 300
+    },
+    "ArchiveReaders": {
+      "story_files_dir": "/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-095335/chronolog/output"
+    }
+  }
+}

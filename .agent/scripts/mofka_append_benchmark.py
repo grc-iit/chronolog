@@ -27,7 +27,10 @@ def main():
     parser.add_argument("--client-count", type=int, default=1)
     parser.add_argument("--deployment-mode", default="local_smoke")
     parser.add_argument("--workflow", default="append_throughput")
-    parser.add_argument("--partition-type", choices=["memory"], default="memory")
+    parser.add_argument("--partition-type", choices=["memory", "default"], default="memory")
+    parser.add_argument("--partition-server-rank", type=int, default=1)
+    parser.add_argument("--metadata-provider", default="")
+    parser.add_argument("--data-provider", default="")
     args = parser.parse_args()
 
     from mochi.mofka.client import MofkaDriver, Ordering
@@ -43,7 +46,15 @@ def main():
         service.create_topic(args.topic)
 
     if args.partition_type == "memory":
-        service.add_memory_partition(args.topic, 1, pool_name="__primary__")
+        service.add_memory_partition(args.topic, args.partition_server_rank, pool_name="__primary__")
+    elif args.partition_type == "default":
+        service.add_default_partition(
+            args.topic,
+            args.partition_server_rank,
+            metadata_provider=args.metadata_provider,
+            data_provider=args.data_provider,
+            pool_name="__primary__",
+        )
 
     topic = service.open_topic(args.topic)
     producer = topic.producer(
@@ -112,10 +123,17 @@ def main():
         "deployment_mode": args.deployment_mode,
         "operation_count": args.operation_count,
         "message_size_bytes": args.message_size_bytes,
+        "partition_server_rank": args.partition_server_rank,
+        "metadata_provider": args.metadata_provider,
+        "data_provider": args.data_provider,
         "producer_batch_size": 1,
         "producer_max_batch": 2,
         "producer_ordering": "Loose",
-        "configuration_note": "Uses Mofka memory partition because Yokan/Warabi-backed dynamic partition creation still needs configuration validation.",
+        "configuration_note": (
+            "Uses Mofka memory partition."
+            if args.partition_type == "memory"
+            else "Uses Mofka default partition backed by configured Yokan metadata and Warabi data providers."
+        ),
     }, indent=2) + "\n")
     print(json.dumps(metrics, indent=2))
     return 0

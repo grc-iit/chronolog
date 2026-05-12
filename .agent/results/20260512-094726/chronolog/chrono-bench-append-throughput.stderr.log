@@ -1,0 +1,35 @@
+Starting tracking the heap
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-094726/chronolog/profiles/gperftools/client/chrono-bench.heap.0001.heap (1 MB allocated cumulatively, 1 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-094726/chronolog/profiles/gperftools/client/chrono-bench.heap.0002.heap (5 MB allocated cumulatively, 5 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-094726/chronolog/profiles/gperftools/client/chrono-bench.heap.0003.heap (6 MB allocated cumulatively, 1 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-094726/chronolog/profiles/gperftools/client/chrono-bench.heap.0004.heap (10 MB allocated cumulatively, 5 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-094726/chronolog/profiles/gperftools/client/chrono-bench.heap.0005.heap (11 MB allocated cumulatively, 1 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-094726/chronolog/profiles/gperftools/client/chrono-bench.heap.0006.heap (12 MB allocated cumulatively, 1 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-094726/chronolog/profiles/gperftools/client/chrono-bench.heap.0007.heap (13 MB allocated cumulatively, 1 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-094726/chronolog/profiles/gperftools/client/chrono-bench.heap.0008.heap (14 MB allocated cumulatively, 1 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-094726/chronolog/profiles/gperftools/client/chrono-bench.heap.0009.heap (15 MB allocated cumulatively, 2 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-094726/chronolog/profiles/gperftools/client/chrono-bench.heap.0010.heap (17 MB allocated cumulatively, 3 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-094726/chronolog/profiles/gperftools/client/chrono-bench.heap.0011.heap (25 MB allocated cumulatively, 11 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-094726/chronolog/profiles/gperftools/client/chrono-bench.heap.0012.heap (26 MB allocated cumulatively, 12 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-094726/chronolog/profiles/gperftools/client/chrono-bench.heap.0013.heap (42 MB allocated cumulatively, 28 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-094726/chronolog/profiles/gperftools/client/chrono-bench.heap.0014.heap (43 MB allocated cumulatively, 29 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-094726/chronolog/profiles/gperftools/client/chrono-bench.heap.0015.heap (44 MB allocated cumulatively, 30 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-094726/chronolog/profiles/gperftools/client/chrono-bench.heap.0016.heap (45 MB allocated cumulatively, 31 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-094726/chronolog/profiles/gperftools/client/chrono-bench.heap.0017.heap (46 MB allocated cumulatively, 32 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-094726/chronolog/profiles/gperftools/client/chrono-bench.heap.0018.heap (47 MB allocated cumulatively, 33 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-094726/chronolog/profiles/gperftools/client/chrono-bench.heap.0019.heap (51 MB allocated cumulatively, 38 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-094726/chronolog/profiles/gperftools/client/chrono-bench.heap.0020.heap (55 MB allocated cumulatively, 42 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-094726/chronolog/profiles/gperftools/client/chrono-bench.heap.0021.heap (59 MB allocated cumulatively, 46 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-094726/chronolog/profiles/gperftools/client/chrono-bench.heap.0022.heap (63 MB allocated cumulatively, 50 MB currently in use)
+MPI_WTIME_IS_GLOBAL is not available in this MPI implementation for timer Connect
+MPI_WTIME_IS_GLOBAL is not available in this MPI implementation for timer CreateChronicle
+MPI_WTIME_IS_GLOBAL is not available in this MPI implementation for timer AcquireStory
+MPI_WTIME_IS_GLOBAL is not available in this MPI implementation for timer WriteEvent
+MPI_WTIME_IS_GLOBAL is not available in this MPI implementation for timer ReplayStory
+MPI_WTIME_IS_GLOBAL is not available in this MPI implementation for timer ReleaseStory
+MPI_WTIME_IS_GLOBAL is not available in this MPI implementation for timer DestroyStory
+MPI_WTIME_IS_GLOBAL is not available in this MPI implementation for timer DestroyChronicle
+MPI_WTIME_IS_GLOBAL is not available in this MPI implementation for timer Disconnect
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-094726/chronolog/profiles/gperftools/client/chrono-bench.heap.0023.heap (96 MB allocated cumulatively, 82 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-094726/chronolog/profiles/gperftools/client/chrono-bench.heap.0024.heap (Exiting, 215 kB in use)
+PROFILE: interrupts/evictions/bytes = 315/0/9376

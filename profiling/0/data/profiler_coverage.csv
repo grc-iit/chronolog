@@ -1,0 +1,8 @@
+collector,status,evidence
+TAU semantic profile,validated,distributed client and service profiles
+gperftools CPU/heap,validated,distributed service CPU and heap profiles
+Darshan,validated,distributed client and service logs with non-MPI enabled
+Linux network measurement commands,validated,SLURM node evidence captured
+perf,permission-limited,kernel perf_event policy requires admin change
+eBPF-based tools,permission-limited,kernel tracing permissions require admin change
+TAU trace/Jumpshot timeline,planned,TAU profile validated; trace-mode timeline is next

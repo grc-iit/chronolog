@@ -22,6 +22,8 @@ Options:
   --message-size-bytes N       Average event size. Default: 1024.
   --chronicle-count N          Chronicles per process. Default: 1.
   --story-count N              Stories per process. Default: 1.
+  --install-dir DIR            ChronoLog install tree. Default: .agent/install-consistent/chronolog.
+  --profile-mode MODE          none, tau, gperftools, or darshan. Default: none.
   -h, --help                   Show this help.
 USAGE
 }
@@ -68,6 +70,9 @@ CHRONICLE_COUNT="${CHRONOLOG_CHRONICLE_COUNT:-1}"
 STORY_COUNT="${CHRONOLOG_STORY_COUNT:-1}"
 INSIDE_ALLOCATION="${CHRONOLOG_INSIDE_ALLOCATION:-0}"
 WORKFLOW="${CHRONOLOG_WORKFLOW:-append_throughput}"
+INSTALL_DIR="${CHRONOLOG_INSTALL_DIR:-${REPO_ROOT}/.agent/install-consistent/chronolog}"
+PROFILE_MODE="${CHRONOLOG_PROFILE_MODE:-none}"
+STARTUP_SLEEP_SECONDS="${CHRONOLOG_STARTUP_SLEEP_SECONDS:-5}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -81,6 +86,8 @@ while [[ $# -gt 0 ]]; do
     --message-size-bytes) MESSAGE_SIZE_BYTES="$2"; shift 2 ;;
     --chronicle-count) CHRONICLE_COUNT="$2"; shift 2 ;;
     --story-count) STORY_COUNT="$2"; shift 2 ;;
+    --install-dir) INSTALL_DIR="$2"; shift 2 ;;
+    --profile-mode) PROFILE_MODE="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -89,6 +96,23 @@ done
 if [[ "${NODE_COUNT}" -lt 2 ]]; then
   echo "Distributed ChronoLog append requires at least 2 nodes" >&2
   exit 2
+fi
+
+INSTALL_DIR="$(readlink -f "${INSTALL_DIR}")"
+if [[ ! -d "${INSTALL_DIR}" ]]; then
+  echo "ChronoLog install directory not found: ${INSTALL_DIR}" >&2
+  exit 1
+fi
+
+case "${PROFILE_MODE}" in
+  none|tau|gperftools|darshan) ;;
+  *) echo "Unsupported profile mode: ${PROFILE_MODE}" >&2; exit 2 ;;
+esac
+if [[ "${PROFILE_MODE}" != "none" && "${STARTUP_SLEEP_SECONDS}" -lt 10 ]]; then
+  STARTUP_SLEEP_SECONDS=10
+fi
+if [[ "${PROFILE_MODE}" == "darshan" && "${STARTUP_SLEEP_SECONDS}" -lt 20 ]]; then
+  STARTUP_SLEEP_SECONDS=20
 fi
 
 RESULT_DIR="$(make_result_dir "${RESULT_DIR}")"
@@ -109,7 +133,9 @@ if [[ -z "${SLURM_JOB_ID:-}" && "${INSIDE_ALLOCATION}" != "1" ]]; then
       --operation-count "${OPERATION_COUNT}" \
       --message-size-bytes "${MESSAGE_SIZE_BYTES}" \
       --chronicle-count "${CHRONICLE_COUNT}" \
-      --story-count "${STORY_COUNT}"
+      --story-count "${STORY_COUNT}" \
+      --install-dir "${INSTALL_DIR}" \
+      --profile-mode "${PROFILE_MODE}"
 fi
 
 CONFIG_DIR="${RESULT_DIR}/config"
@@ -124,7 +150,6 @@ mkdir -p "${CONFIG_DIR}" "${CHRONOLOG_RESULT_DIR}" "${CHRONOLOG_LOG_DIR}" "${CHR
 exec > >(tee -a "${CHRONOLOG_RESULT_DIR}/stdout.log")
 exec 2> >(tee -a "${CHRONOLOG_RESULT_DIR}/stderr.log" >&2)
 
-INSTALL_DIR="${REPO_ROOT}/.agent/install-consistent/chronolog"
 DEPLOY_SCRIPT="${INSTALL_DIR}/tools/deploy/deploy_cluster.sh"
 BENCH_BIN="${INSTALL_DIR}/tools/benchmark/chrono-bench"
 BASE_CONF="${INSTALL_DIR}/conf/default-chrono-conf.json"
@@ -165,12 +190,29 @@ create_wrapper() {
   local role="$1"
   local real_bin="${INSTALL_DIR}/bin/${role}"
   local wrapper="${WRAPPER_DIR}/${role}"
+  local role_profile_dir="${CHRONOLOG_RESULT_DIR}/profiles/${PROFILE_MODE}/${role}"
   {
     printf '%s\n' '#!/usr/bin/env bash'
     printf '%s\n' 'set -euo pipefail'
     printf '%s\n' 'source /etc/profile.d/lmod.sh 2>/dev/null || source /etc/profile.d/modules.sh 2>/dev/null || true'
     printf '%s\n' 'type module >/dev/null 2>&1 || { echo "module command unavailable on $(hostname)" >&2; exit 127; }'
     module_loads
+    printf 'profile_mode=%q\n' "${PROFILE_MODE}"
+    printf 'role_profile_dir=%q\n' "${role_profile_dir}"
+    printf '%s\n' 'mkdir -p "${role_profile_dir}"'
+    printf '%s\n' 'if [[ "${profile_mode}" == "tau" ]]; then'
+    printf '%s\n' '  export PROFILEDIR="${role_profile_dir}/$(hostname)"'
+    printf '%s\n' '  mkdir -p "${PROFILEDIR}"'
+    printf '%s\n' 'elif [[ "${profile_mode}" == "gperftools" ]]; then'
+    printf '%s\n' '  export LD_PRELOAD="/lib/x86_64-linux-gnu/libtcmalloc_and_profiler.so:${LD_PRELOAD:-}"'
+    printf '%s\n' '  export CPUPROFILE="${role_profile_dir}/$(hostname).cpu.prof"'
+    printf '%s\n' '  export HEAPPROFILE="${role_profile_dir}/$(hostname).heap"'
+    printf '%s\n' '  export HEAP_PROFILE_ALLOCATION_INTERVAL="${HEAP_PROFILE_ALLOCATION_INTERVAL:-1048576}"'
+    printf '%s\n' 'elif [[ "${profile_mode}" == "darshan" ]]; then'
+    printf '%s\n' '  export DARSHAN_LOG_DIR_PATH="${role_profile_dir}"'
+    printf '%s\n' '  export DARSHAN_ENABLE_NONMPI=1'
+    printf '%s\n' '  export LD_PRELOAD="/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/darshan-runtime-3.4.6-u7vfz6edqy4hzj6fnpx6g7inobzd32os/lib/libdarshan.so:${LD_PRELOAD:-}"'
+    printf '%s\n' 'fi'
     printf 'real_bin=%q\n' "${real_bin}"
     printf '%s\n' '"${real_bin}" "$@" &'
     printf '%s\n' 'child=$!'
@@ -206,6 +248,8 @@ chronolog_deploy_work_dir=${DEPLOY_WORK_DIR}
 client_node=${CLIENT_NODE}
 client_ip=${CLIENT_IP}
 transport=ofi+sockets
+profile_mode=${PROFILE_MODE}
+startup_sleep_seconds=${STARTUP_SLEEP_SECONDS}
 EOF
 
 cleanup() {
@@ -248,14 +292,28 @@ cat "${CONFIG_DIR}/chronolog-slurm-nodes.txt"
 jq ".chrono_client.ClientQueryService.rpc.service_ip = \"${CLIENT_IP}\"" "${CLIENT_CONF_FILE}" > "${CONFIG_DIR}/client-conf.tmp" \
   && mv "${CONFIG_DIR}/client-conf.tmp" "${CLIENT_CONF_FILE}"
 
-sleep 5
+sleep "${STARTUP_SLEEP_SECONDS}"
 
 MIN_EVENT_SIZE=$((MESSAGE_SIZE_BYTES / 2))
 MAX_EVENT_SIZE=$((MESSAGE_SIZE_BYTES * 2))
 
 if [[ "${WORKFLOW}" == "append_throughput" ]]; then
   set +e
-  bash -lc "$(module_loads); mpirun -n 1 '${BENCH_BIN}' -c '${CLIENT_CONF_FILE}' -w -h '${CHRONICLE_COUNT}' -t '${STORY_COUNT}' -a '${MIN_EVENT_SIZE}' -s '${MESSAGE_SIZE_BYTES}' -b '${MAX_EVENT_SIZE}' -n '${OPERATION_COUNT}' -p" \
+  CLIENT_PROFILE_DIR="${CHRONOLOG_RESULT_DIR}/profiles/${PROFILE_MODE}/client"
+  mkdir -p "${CLIENT_PROFILE_DIR}"
+  CLIENT_MPI_ENV=""
+  if [[ "${PROFILE_MODE}" == "tau" ]]; then
+    CLIENT_PROFILE_EXPORTS="export PROFILEDIR='${CLIENT_PROFILE_DIR}'; mkdir -p \"\${PROFILEDIR}\";"
+  elif [[ "${PROFILE_MODE}" == "gperftools" ]]; then
+    CLIENT_PROFILE_EXPORTS=""
+    CLIENT_MPI_ENV="-x LD_PRELOAD=/lib/x86_64-linux-gnu/libtcmalloc_and_profiler.so -x CPUPROFILE=${CLIENT_PROFILE_DIR}/chrono-bench.cpu.prof -x HEAPPROFILE=${CLIENT_PROFILE_DIR}/chrono-bench.heap -x HEAP_PROFILE_ALLOCATION_INTERVAL=1048576"
+  elif [[ "${PROFILE_MODE}" == "darshan" ]]; then
+    CLIENT_PROFILE_EXPORTS=""
+    CLIENT_MPI_ENV="-x DARSHAN_LOG_DIR_PATH=${CLIENT_PROFILE_DIR} -x DARSHAN_ENABLE_NONMPI=1 -x LD_PRELOAD=/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/darshan-runtime-3.4.6-u7vfz6edqy4hzj6fnpx6g7inobzd32os/lib/libdarshan.so"
+  else
+    CLIENT_PROFILE_EXPORTS=""
+  fi
+  bash -lc "$(module_loads); ${CLIENT_PROFILE_EXPORTS} mpirun ${CLIENT_MPI_ENV} -n 1 '${BENCH_BIN}' -c '${CLIENT_CONF_FILE}' -w -h '${CHRONICLE_COUNT}' -t '${STORY_COUNT}' -a '${MIN_EVENT_SIZE}' -s '${MESSAGE_SIZE_BYTES}' -b '${MAX_EVENT_SIZE}' -n '${OPERATION_COUNT}' -p" \
     > "${CHRONOLOG_RESULT_DIR}/chrono-bench-append-throughput.log" \
     2> "${CHRONOLOG_RESULT_DIR}/chrono-bench-append-throughput.stderr.log"
   BENCH_STATUS=$?

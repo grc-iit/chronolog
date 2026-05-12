@@ -1,0 +1,38 @@
+{
+  "libraries": [
+    "libflock-bedrock-module.so",
+    "libyokan-bedrock-module.so",
+    "libwarabi-bedrock-module.so",
+    "libmofka-bedrock-module.so"
+  ],
+  "providers": [
+    {
+      "name": "phase0_group_manager",
+      "type": "flock",
+      "provider_id": 1,
+      "config": {
+        "bootstrap": "join",
+        "file": "/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-091538/mofka/mofka.json",
+        "group": { "type": "centralized" }
+      }
+    },
+    {
+      "name": "phase0_metadata_provider",
+      "provider_id": 3,
+      "type": "yokan",
+      "tags": [ "mofka:metadata" ],
+      "config": {
+        "database": { "type": "map" }
+      }
+    },
+    {
+      "name": "phase0_data_provider",
+      "provider_id": 4,
+      "type": "warabi",
+      "tags": [ "mofka:data" ],
+      "config": {
+        "target": { "type": "memory" }
+      }
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -euo pipefail
+source /etc/profile.d/lmod.sh 2>/dev/null || source /etc/profile.d/modules.sh 2>/dev/null || true
+type module >/dev/null 2>&1 || { echo "module command unavailable on $(hostname)" >&2; exit 127; }
+module load gcc/11.4.0/cmake/3.30.5-pq5ntgo
+module load gcc/11.4.0/argobots/1.1-indjy5q
+module load gcc/11.4.0/libfabric/1.22.0-lyviqpl
+module load gcc/11.4.0/mercury/2.3.1-kcmn6u3
+module load gcc/11.4.0/mochi-margo/0.17.0-llh62si
+module load gcc/11.4.0/mochi-thallium/0.10.1-2pari3f
+module load gcc/11.4.0/boost/1.86.0-cs4onpk
+module load gcc/11.4.0/spdlog/1.14.1-y4quhau
+module load gcc/11.4.0/json-c/0.16-2ofsb6t
+module load gcc/11.4.0/pkgconf/2.2.0-3sczowe
+module load gcc/11.4.0/python/3.11.9-zg4555e
+module load gcc/11.4.0/py-pybind11/2.13.5-pngixx5
+module load openmpi/5.0.5-x2kvx5l/gcc/11.4.0/hdf5/1.14.5-5zbyeqh
+profile_mode=gperftools
+role_profile_dir=/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-094726/chronolog/profiles/gperftools/chrono-player
+mkdir -p "${role_profile_dir}"
+if [[ "${profile_mode}" == "tau" ]]; then
+  export PROFILEDIR="${role_profile_dir}/$(hostname)"
+  mkdir -p "${PROFILEDIR}"
+elif [[ "${profile_mode}" == "gperftools" ]]; then
+  export LD_PRELOAD="/lib/x86_64-linux-gnu/libtcmalloc_and_profiler.so:${LD_PRELOAD:-}"
+  export CPUPROFILE="${role_profile_dir}/$(hostname).cpu.prof"
+  export HEAPPROFILE="${role_profile_dir}/$(hostname).heap"
+  export HEAP_PROFILE_ALLOCATION_INTERVAL="${HEAP_PROFILE_ALLOCATION_INTERVAL:-1048576}"
+elif [[ "${profile_mode}" == "darshan" ]]; then
+  module load darshan-runtime/3.4.6-gcc-11.4.0-u7vfz6e darshan-util/3.4.6-gcc-11.4.0-75rttfw
+  export DARSHAN_LOG_DIR_PATH="${role_profile_dir}"
+  export LD_PRELOAD="/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/darshan-runtime-3.4.6-u7vfz6edqy4hzj6fnpx6g7inobzd32os/lib/libdarshan.so:${LD_PRELOAD:-}"
+fi
+real_bin=/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/bin/chrono-player
+"${real_bin}" "$@" &
+child=$!
+term_child() { kill -TERM "${child}" 2>/dev/null || true; wait "${child}" 2>/dev/null || true; }
+trap term_child TERM INT
+wait "${child}"

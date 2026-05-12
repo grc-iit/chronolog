@@ -2,6 +2,8 @@
 
 Audit time: 2026-05-12 02:06 CDT.
 
+Gap wrap-up update: 2026-05-12 09:58 CDT.
+
 ## Objective
 
 Execute Phase 0 of the ChronoLog measurement pipeline checkpoint-by-checkpoint, update `.agent/results/progress.md` after each checkpoint, and stop only when Phase 0 is complete or blocked.
@@ -46,6 +48,9 @@ Concrete success criteria:
 | Mofka benchmark exploration | `.agent/results/mofka-benchmark-exploration.md` | pass |
 | Progress and state updated | `.agent/results/progress.md`, `.agent/state/current.md`, `.agent/TASKS.md` | pass |
 | Final report exists | `.agent/results/phase0-report.md` | pass |
+| Mofka Yokan/Warabi-backed storage | `.agent/results/20260512-091538/mofka/metrics.json`, `.agent/results/20260512-093629/mofka/metrics.json`, `.agent/results/mofka-yokan-warabi-storage-validation.md` | pass |
+| Distributed ChronoLog profiling with non-blocked collectors | TAU `.agent/results/20260512-094406`, gperftools `.agent/results/20260512-094726`, Darshan `.agent/results/20260512-095335`, `.agent/results/chronolog-distributed-profiling-gap-wrapup.md` | pass |
+| Phase 0 profiling package and figures | `profiling/0/README.md`, `profiling/0/gaps.md`, `profiling/0/figures/*.png` | pass |
 
 ## Metrics Validation Command
 
@@ -70,8 +75,9 @@ The common metrics validator passed for the selected distributed workflow eviden
 
 - These are Phase 0 harness-validation runs, not performance conclusions.
 - `perf` and eBPF-based tools require administrator policy/capability changes for full low-level profiling.
-- Mofka Yokan/Warabi-backed storage configuration remains an important follow-up before storage-backend comparisons; current validated Mofka fixed baseline uses the memory partition path.
+- Mofka Yokan/Warabi-backed storage is now validated for Phase 0 append and range retrieval smokes.
+- TAU trace-mode/Jumpshot timeline generation remains planned beyond the validated TAU profile-mode package.
 
 ## Audit Decision
 
-Phase 0 is complete for the measurement-pipeline objective. No active blocker remains.
+Phase 0 is complete for the measurement-pipeline objective after the gap wrap-up. No active blocker remains.

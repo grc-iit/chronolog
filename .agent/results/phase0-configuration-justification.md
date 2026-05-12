@@ -105,6 +105,8 @@ What still needs improvement before performance claims:
 Evidence:
 
 - Metrics: `.agent/results/20260512-004535/mofka/metrics.json`
+- Yokan/Warabi-backed append validation: `.agent/results/20260512-091538/mofka/metrics.json`
+- Yokan/Warabi-backed range validation: `.agent/results/20260512-093629/mofka/metrics.json`
 - Report: `.agent/results/mofka-distributed-append-throughput.md`
 - Bedrock query: `.agent/results/20260512-004535/mofka/bedrock-query-before-benchmark.json`
 
@@ -114,18 +116,18 @@ Selected configuration:
 - protocol: `ofi+tcp`
 - master node: `ares-comp-03`
 - storage node: `ares-comp-04`
-- partition type for smoke: memory
+- partition type for storage validation: default
+- metadata/data providers: Mofka default partition path backed by configured Yokan metadata and Warabi data providers
 - benchmark client: `.agent/scripts/mofka_append_benchmark.py`
 
 Why this is acceptable for Phase 0:
 
 - It validates distributed Bedrock launch, provider visibility, append path, metrics generation, and cleanup.
-- The memory partition gives a working fixed-baseline append path while the Yokan/Warabi-backed default partition configuration is corrected.
+- The default partition validation exercises the intended Mofka Yokan/Warabi-backed storage path instead of relying only on memory partitions.
 - Mofka remains a fixed baseline; configuration is recorded and launched, not optimized.
 
 What still needs improvement before performance claims:
 
-- Fix and validate the Yokan/Warabi-backed partition configuration; this is a configuration issue, not a stop condition.
 - Build or expose the `+benchmark` Mofka tooling path if `mofkactl benchmark generate` will be used as a reference workload source.
 - Evaluate the RDMA/RoCE-capable provider path after interface/provider selection is agreed.
 - Record pool/execution-stream settings, provider layout, storage target type/path, persistence flags, and partition count in every run manifest.

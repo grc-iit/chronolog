@@ -1,6 +1,6 @@
 # Phase 0 Blockers
 
-No active blocker is present as of 2026-05-12 02:06 CDT.
+No active blocker is present as of 2026-05-12 09:55 CDT.
 
 ## Resolved: ChronoLog Distributed Range Retrieval
 
@@ -24,5 +24,6 @@ Successful validation:
 
 ## Non-blocking Open Issues
 
-- Mofka Yokan/Warabi-backed default partition configuration still needs to be fixed before storage-backend comparisons, but Mofka memory-partition distributed append/read smokes work.
+- Mofka Yokan/Warabi-backed default partition configuration was fixed and validated in `.agent/results/20260512-091538` and `.agent/results/20260512-093629`.
+- ChronoLog distributed profiling was validated with TAU, gperftools, and Darshan in `.agent/results/20260512-094406`, `.agent/results/20260512-094726`, and `.agent/results/20260512-095335`.
 - `perf` and eBPF-based observability need admin/capability changes for full low-level profiling, but the tool detection, limitation evidence, and other ChronoLog profiling outputs are documented.

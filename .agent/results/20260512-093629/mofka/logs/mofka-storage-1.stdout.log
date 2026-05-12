@@ -1,0 +1,3 @@
+ares-comp-04
+[2026-05-12 09:36:38.220] [info] Bedrock daemon now running at ofi+tcp://172.25.101.4:35549
+# [744275.070963] mercury->rpc [warning] /tmp/jcernudagarcia/spack-stage/spack-stage-mercury-2.4.1-yeqyucvxjv42dv3s2lyav6goazrsnxbr/spack-src/src/mercury_core_header.c:338 hg_core_header_response_verify() Response return code: HG_NOENTRY

@@ -1,0 +1,4 @@
+ERROR: ld.so: object '/lib/x86_64-linux-gnu/libtcmalloc_and_profiler.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+ERROR: ld.so: object '/lib/x86_64-linux-gnu/libtcmalloc_and_profiler.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+ERROR: ld.so: object '/lib/x86_64-linux-gnu/libtcmalloc_and_profiler.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+[cmd_arg_parse] Configuration file path provided: /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-094726/config/default-chrono-conf.json

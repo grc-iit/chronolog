@@ -2,6 +2,8 @@
 
 Status: complete for the Phase 0 measurement-pipeline objective.
 
+Update 2026-05-12 09:58 CDT: the earlier Mofka storage and distributed profiling gaps have been corrected and validated. The showable profiling package is under `profiling/0`.
+
 ## Completed
 
 - Branch validated: work is on `opt/phase0-bootstrap`, derived from `origin/develop`.
@@ -9,12 +11,14 @@ Status: complete for the Phase 0 measurement-pipeline objective.
 - ChronoLog TAU profiling abstraction and semantic regions added.
 - ChronoLog TAU local smoke produced TAU profile output.
 - ChronoLog gperftools CPU and heap profiling produced local outputs.
-- ChronoLog Darshan client-side validation produced a local Darshan log.
+- ChronoLog Darshan validation produced local and distributed Darshan logs.
 - Linux network measurement command evidence captured.
 - Distributed SLURM access validated on debug compute nodes.
 - RDMA/RoCE-capable network evidence captured: `enp47s0np0`, 40 Gb/s, `mlx5_0`, Ethernet link layer.
 - Kafka fixed-baseline distributed append throughput, append latency, and range retrieval smoke runs completed.
-- Mofka fixed-baseline distributed append throughput, append latency, and range retrieval smoke runs completed with the current memory-partition path.
+- Mofka fixed-baseline distributed append throughput, append latency, and range retrieval smoke runs completed.
+- Mofka default partition storage backed by configured Yokan/Warabi providers was validated for append and range retrieval.
+- ChronoLog distributed profiling was validated with TAU, gperftools, and Darshan across service/client roles.
 - ChronoLog distributed append throughput, append latency, and range retrieval smoke runs completed.
 - Available distributed scaling sweep evidence was collected at 2 and 4 nodes.
 - `mixed_append_read` was documented as unsupported for the selected comparable suite with current ChronoLog archived-playback semantics.
@@ -29,6 +33,17 @@ Status: complete for the Phase 0 measurement-pipeline objective.
 | append throughput | `.agent/results/20260512-010115/chronolog/metrics.json` | `.agent/results/20260512-010210/kafka/metrics.json` | `.agent/results/20260512-010240/mofka/metrics.json` |
 | append latency | `.agent/results/20260512-010537/chronolog/metrics.json` | `.agent/results/20260512-010656/kafka/metrics.json` | `.agent/results/20260512-010754/mofka/metrics.json` |
 | range retrieval | `.agent/results/20260512-015243/chronolog/metrics.json` | `.agent/results/20260512-013547/kafka/metrics.json` | `.agent/results/20260512-011238/mofka/metrics.json` |
+
+## Gap Wrap-up Evidence
+
+| Item | Evidence |
+|---|---|
+| Mofka Yokan/Warabi append | `.agent/results/20260512-091538/mofka/metrics.json` |
+| Mofka Yokan/Warabi range retrieval | `.agent/results/20260512-093629/mofka/metrics.json` |
+| ChronoLog distributed TAU | `.agent/results/20260512-094406/chronolog/profiles/tau` |
+| ChronoLog distributed gperftools | `.agent/results/20260512-094726/chronolog/profiles/gperftools` |
+| ChronoLog distributed Darshan | `.agent/results/20260512-095335/chronolog/profiles/darshan` |
+| Profiling figures | `profiling/0/figures/` |
 
 ## Scaling Evidence
 
@@ -51,6 +66,6 @@ The only true external limitations currently identified are low-level profiling 
 
 - Increase operation counts, durations, warmup, and repetitions.
 - Keep all systems on normalized workload parameters for any performance comparison.
-- Fix and validate Mofka Yokan/Warabi-backed storage configuration before storage-backend comparisons.
 - Collect full `perf` and eBPF-based observability after cluster/admin permission changes.
+- Add TAU trace-mode/Jumpshot timeline generation after the profile-mode package.
 - Treat the current results as measurement-pipeline validation only, not performance conclusions.

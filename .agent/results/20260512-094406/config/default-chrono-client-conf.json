@@ -1,0 +1,31 @@
+{
+  "chrono_client": {
+    "VisorClientPortalService": {
+      "rpc": {
+        "protocol_conf": "ofi+sockets",
+        "service_ip": "172.25.101.3",
+        "service_base_port": 5555,
+        "service_provider_id": 55
+      }
+    },
+    "ClientQueryService": {
+      "rpc": {
+        "protocol_conf": "ofi+sockets",
+        "service_ip": "172.25.101.3",
+        "service_base_port": 5557,
+        "service_provider_id": 57
+      }
+    },
+    "Monitoring": {
+      "monitor": {
+        "type": "file",
+        "file": "/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-094406/chronolog/logs/chrono-client.log",
+        "level": "debug",
+        "name": "ChronoClient",
+        "filesize": 1048576,
+        "filenum": 3,
+        "flushlevel": "warning"
+      }
+    }
+  }
+}

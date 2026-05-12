@@ -1,0 +1,25 @@
+event_index=0 event_id=0
+event_index=1 event_id=1
+event_index=2 event_id=2
+event_index=3 event_id=3
+event_index=4 event_id=4
+event_index=5 event_id=5
+event_index=6 event_id=6
+event_index=7 event_id=7
+event_index=8 event_id=8
+event_index=9 event_id=9
+{
+  "system": "mofka",
+  "workflow": "append_throughput",
+  "node_count": 2,
+  "client_count": 1,
+  "message_size_bytes": 1024,
+  "operation_count": 10,
+  "duration_seconds": 1.1138592170318589,
+  "throughput_ops_per_sec": 8.977795260919386,
+  "avg_latency_ms": 101.27488898579031,
+  "p50_latency_ms": 101.15575091913342,
+  "p95_latency_ms": 102.28068800643086,
+  "p99_latency_ms": 102.28068800643086,
+  "success": true
+}
