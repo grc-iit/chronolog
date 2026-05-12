@@ -1,0 +1,438 @@
+timestamp=2026-05-11T22:10:33-05:00
+branch=opt/phase0-bootstrap
+merge_base_status=0
+
+[perf command]
+perf=missing
+
+[perf permissions]
+perf_event_paranoid=4
+kptr_restrict=1
+
+[perf stat smoke]
+skipped: perf missing
+
+[perf fallback checks]
+started=2026-05-11T22:10:49-05:00
+
+[module perf matches]
+
+[filesystem perf candidates]
+
+[spack perf candidates]
+linux-perf
+
+[apt package hint no sudo]
+linux-tools-common:
+  Installed: (none)
+  Candidate: 5.15.0-177.187
+  Version table:
+     5.15.0-177.187 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-176.186 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-174.184 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-173.183 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-171.181 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-170.180 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-168.178 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-164.174 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-163.173 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-161.171 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-160.170 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-157.167 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-156.166 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-153.163 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-152.162 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-151.161 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-144.157 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-143.153 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-142.152 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-141.151 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-140.150 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-139.149 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-138.148 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-136.147 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-135.146 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-134.145 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-133.144 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-131.141 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-130.140 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-128.138 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+     5.15.0-127.137 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-126.136 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+     5.15.0-125.135 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-124.134 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-122.132 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-121.131 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-119.129 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-118.128 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-117.127 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-116.126 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-113.123 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-112.122 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-107.117 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-106.116 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-105.115 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-102.112 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-101.111 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-100.110 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-97.107 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-94.104 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-92.102 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-91.101 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-89.99 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-88.98 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-87.97 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-86.96 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-84.93 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-83.92 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-82.91 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-79.86 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-78.85 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-75.82 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-73.80 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-72.79 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-25.25 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy/main amd64 Packages
+linux-tools-generic:
+  Installed: (none)
+  Candidate: 5.15.0.177.162
+  Version table:
+     5.15.0.177.162 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0.25.27 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy/main amd64 Packages
+
+[kernel]
+Linux ares.ares.local 5.15.0-176-generic #186-Ubuntu SMP Fri Mar 13 11:01:42 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
+
+[spack linux-perf spec]
+started=2026-05-11T22:11:04-05:00
+ -   zjihnip  linux-perf@6.9.10%gcc@11.4.0+babeltrace+capstone~debuginfod~jvmti~libaudit+libcap+libpfm4+libtraceevent+numactl+openssl+perl+python+slang+xz+zstd build_system=generic arch=linux-ubuntu22.04-skylake_avx512
+ -   nhw3r7g      ^asciidoc@10.2.0%gcc@11.4.0 build_system=python_pip arch=linux-ubuntu22.04-skylake_avx512
+ -   gnawq7y          ^docbook-xml@4.5%gcc@11.4.0 build_system=generic arch=linux-ubuntu22.04-skylake_avx512
+ -   p3r6vjv          ^docbook-xsl@1.79.2%gcc@11.4.0 build_system=generic patches=a92c397 arch=linux-ubuntu22.04-skylake_avx512
+[+]  u6qpzqr          ^libxml2@2.13.4%gcc@11.4.0+pic~python+shared build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+ -   x6nwbhc          ^libxslt@1.1.42%gcc@11.4.0+crypto~python build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+ -   aoullws              ^libgcrypt@1.11.0%gcc@11.4.0 build_system=autotools patches=4e308ba arch=linux-ubuntu22.04-skylake_avx512
+ -   mdjrhin                  ^libgpg-error@1.50%gcc@11.4.0 build_system=autotools patches=0b2a0ff arch=linux-ubuntu22.04-skylake_avx512
+ -   lxasyli                      ^gawk@5.3.1%gcc@11.4.0~nls build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+ -   tdt3m2d                          ^gmp@6.3.0%gcc@11.4.0+cxx build_system=autotools libs=shared,static arch=linux-ubuntu22.04-skylake_avx512
+ -   twunken                          ^mpfr@4.2.1%gcc@11.4.0 build_system=autotools libs=shared,static arch=linux-ubuntu22.04-skylake_avx512
+ -   zrgzr6c                              ^autoconf-archive@2023.02.20%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+ -   dsszizt                              ^texinfo@7.1%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]  rdfpgl2          ^py-pip@23.1.2%gcc@11.4.0 build_system=generic arch=linux-ubuntu22.04-skylake_avx512
+[+]  xysybcj          ^py-wheel@0.41.2%gcc@11.4.0 build_system=generic arch=linux-ubuntu22.04-skylake_avx512
+[+]  alnj5of          ^python-venv@1.0%gcc@11.4.0 build_system=generic arch=linux-ubuntu22.04-skylake_avx512
+ -   cq2arww      ^babeltrace@1.5.11%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+ -   cjtnb2q          ^glib@2.78.3%gcc@11.4.0~libmount~strip build_system=meson buildtype=release default_library=shared tracing=none arch=linux-ubuntu22.04-skylake_avx512
+ -   4bn3d3x              ^meson@1.5.1%gcc@11.4.0 build_system=python_pip patches=0f0b1bd arch=linux-ubuntu22.04-skylake_avx512
+ -   4ixvfgx              ^ninja@1.12.1%gcc@11.4.0+re2c build_system=generic arch=linux-ubuntu22.04-skylake_avx512
+ -   jdk4uwq                  ^re2c@3.1%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]  v6bicsz              ^pcre2@10.44%gcc@11.4.0~jit+multibyte build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+ -   ha5ukae          ^popt@1.19%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]  ut7sq7q          ^util-linux-uuid@2.40.2%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+ -   fql545z      ^binutils@2.43.1%gcc@11.4.0~gas~gprofng~headers~interwork~ld~libiberty~lto~nls~pgo+plugins build_system=autotools compress_debug_sections=zlib libs=shared,static arch=linux-ubuntu22.04-skylake_avx512
+[+]  yjxz467          ^diffutils@3.10%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]  rg5qfff      ^bison@3.8.2%gcc@11.4.0~color build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]  xf6mxmp          ^m4@1.4.19%gcc@11.4.0+sigsegv build_system=autotools patches=9dc5fbd,bfdffa7 arch=linux-ubuntu22.04-skylake_avx512
+[+]  5jc2pdi              ^libsigsegv@2.14%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+ -   6r553ia      ^capstone@5.0.1%gcc@11.4.0~ipo build_system=cmake build_type=Release generator=make arch=linux-ubuntu22.04-skylake_avx512
+[+]  7bxr5u6          ^cmake@3.30.5%gcc@11.4.0~doc+ncurses+ownlibs~qtgui build_system=generic build_type=Release patches=dbc3892 arch=linux-ubuntu22.04-skylake_avx512
+[+]  jagxtou              ^curl@8.10.1%gcc@11.4.0~gssapi~ldap~libidn2~librtmp~libssh~libssh2+nghttp2 build_system=autotools libs=shared,static tls=openssl arch=linux-ubuntu22.04-skylake_avx512
+[+]  7qd2hx2                  ^nghttp2@1.63.0%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+ -   5etpxfg      ^elfutils@0.191%gcc@11.4.0~debuginfod+exeprefix+nls build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]  ko2woy6          ^bzip2@1.0.8%gcc@11.4.0~debug~pic+shared build_system=generic arch=linux-ubuntu22.04-skylake_avx512
+[+]  mbqnrku          ^gettext@0.22.5%gcc@11.4.0+bzip2+curses+git~libunistring+libxml2+pic+shared+tar+xz build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]  ahhhqn4              ^tar@1.34%gcc@11.4.0 build_system=autotools zip=pigz arch=linux-ubuntu22.04-skylake_avx512
+[+]  e4qyap2                  ^pigz@2.8%gcc@11.4.0 build_system=makefile arch=linux-ubuntu22.04-skylake_avx512
+[+]  wm5g66g          ^libiconv@1.17%gcc@11.4.0 build_system=autotools libs=shared,static arch=linux-ubuntu22.04-skylake_avx512
+[+]  iw4rzfw      ^flex@2.6.3%gcc@11.4.0+lex~nls build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]  mp75ryf          ^findutils@4.9.0%gcc@11.4.0 build_system=autotools patches=440b954 arch=linux-ubuntu22.04-skylake_avx512
+[+]  owu4kv5      ^gcc-runtime@11.4.0%gcc@11.4.0 build_system=generic arch=linux-ubuntu22.04-skylake_avx512
+[e]  b34moeb      ^glibc@2.35%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]  fxk44dg      ^gmake@4.4.1%gcc@11.4.0~guile build_system=generic arch=linux-ubuntu22.04-skylake_avx512
+ -   lydmlkv      ^libcap@2.69%gcc@11.4.0 build_system=makefile arch=linux-ubuntu22.04-skylake_avx512
+ -   jiimroj      ^libiberty@2.41%gcc@11.4.0~pic build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+ -   wknr3cy      ^libpfm4@4.13.0%gcc@11.4.0 build_system=makefile arch=linux-ubuntu22.04-skylake_avx512
+ -   gziyw7k      ^libtraceevent@1.8.2%gcc@11.4.0~doc build_system=makefile arch=linux-ubuntu22.04-skylake_avx512
+ -   y56qdsl      ^libunwind@1.8.1%gcc@11.4.0~block_signals~conservative_checks~cxx_exceptions~debug~debug_frame+docs~pic+tests+weak_backtrace~xz~zlib build_system=autotools components=ptrace libs=shared,static arch=linux-ubuntu22.04-skylake_avx512
+[+]  k2wg7yw      ^numactl@2.0.18%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]  l7rdvcz          ^autoconf@2.72%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]  g3yby4t          ^automake@1.16.5%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]  mlxg2br          ^libtool@2.4.7%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]  tsej5dg      ^openssl@3.4.0%gcc@11.4.0~docs+shared build_system=generic certs=mozilla arch=linux-ubuntu22.04-skylake_avx512
+[+]  36yfjab          ^ca-certificates-mozilla@2023-05-30%gcc@11.4.0 build_system=generic arch=linux-ubuntu22.04-skylake_avx512
+[+]  ngsi23x      ^perl@5.40.0%gcc@11.4.0+cpanm+opcode+open+shared+threads build_system=generic arch=linux-ubuntu22.04-skylake_avx512
+[+]  42oacwo          ^berkeley-db@18.1.40%gcc@11.4.0+cxx~docs+stl build_system=autotools patches=26090f4,b231fcc arch=linux-ubuntu22.04-skylake_avx512
+[+]  vk5wn4d          ^gdbm@1.23%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]  3sczowe      ^pkgconf@2.2.0%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]  diwcwdl      ^py-setuptools@63.4.3%gcc@11.4.0 build_system=generic arch=linux-ubuntu22.04-skylake_avx512
+[+]  g2xunro      ^python@3.11.9%gcc@11.4.0+bz2+crypt+ctypes+dbm~debug+libxml2+lzma~nis~optimizations+pic+pyexpat+pythoncmd+readline+shared+sqlite3+ssl~tkinter+uuid+zlib build_system=generic patches=13fa8bf,b0615b2,ebdca64,f2fd060 arch=linux-ubuntu22.04-skylake_avx512
+[+]  crjtgjd          ^expat@2.6.4%gcc@11.4.0+libbsd build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]  cqoivda              ^libbsd@0.12.2%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]  7syqes5                  ^libmd@1.0.4%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]  3dramwh          ^libffi@3.4.6%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]  rxnqnjb          ^libxcrypt@4.4.35%gcc@11.4.0~obsolete_api build_system=autotools patches=4885da3 arch=linux-ubuntu22.04-skylake_avx512
+[+]  ez6c47q          ^ncurses@6.5%gcc@11.4.0~symlinks+termlib abi=none build_system=autotools patches=7a351bc arch=linux-ubuntu22.04-skylake_avx512
+[+]  sf7kdl7          ^readline@8.2%gcc@11.4.0 build_system=autotools patches=bbf97f1 arch=linux-ubuntu22.04-skylake_avx512
+[+]  v3uizlq          ^sqlite@3.46.0%gcc@11.4.0+column_metadata+dynamic_extensions+fts~functions+rtree build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+ -   tujqwke      ^slang@2.3.3%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+ -   hfgrv6i      ^xmlto@0.0.28%gcc@11.4.0 build_system=autotools patches=056c8be,50e39b1 arch=linux-ubuntu22.04-skylake_avx512
+ -   e5byc2j          ^util-linux@2.40.2%gcc@11.4.0~bash build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]  jbodcp5      ^xz@5.4.6%gcc@11.4.0~pic build_system=autotools libs=shared,static arch=linux-ubuntu22.04-skylake_avx512
+[+]  nnfxngg      ^zlib-ng@2.2.1%gcc@11.4.0+compat+new_strategies+opt+pic+shared build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]  i7n7mhj      ^zstd@1.5.6%gcc@11.4.0+programs build_system=makefile compression=none libs=shared,static arch=linux-ubuntu22.04-skylake_avx512
+
+
+[apt download perf attempt]
+started=2026-05-11T22:11:47-05:00
+kernel=5.15.0-176-generic
+linux-tools-5.15.0-176-generic:
+  Installed: (none)
+  Candidate: 5.15.0-176.186
+  Version table:
+     5.15.0-176.186 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+linux-tools-common:
+  Installed: (none)
+  Candidate: 5.15.0-177.187
+  Version table:
+     5.15.0-177.187 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-176.186 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-174.184 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-173.183 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-171.181 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-170.180 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-168.178 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-164.174 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-163.173 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-161.171 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-160.170 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-157.167 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-156.166 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-153.163 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-152.162 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-151.161 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-144.157 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-143.153 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-142.152 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-141.151 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-140.150 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-139.149 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+     5.15.0-138.148 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+Get:1 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 linux-tools-5.15.0-176-generic amd64 5.15.0-176.186 [1792 B]
+Get:2 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 linux-tools-common all 5.15.0-177.187 [282 kB]
+Fetched 283 kB in 1s (378 kB/s)
+../extract/usr/bin/perf
+
+[local perf validation]
+started=2026-05-11T22:11:59-05:00
+PERF_ROOT=/home/jcernudagarcia/chronolog-opt/chronolog/opt/perf/extract
+/home/jcernudagarcia/chronolog-opt/chronolog/opt/perf/extract/usr/bin/perf
+
+[apt base linux-tools download]
+started=2026-05-11T22:12:08-05:00
+kernel_base=5.15.0-176
+linux-tools-5.15.0-176:
+  Installed: (none)
+  Candidate: 5.15.0-176.186
+  Version table:
+     5.15.0-176.186 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+Get:1 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 linux-tools-5.15.0-176 amd64 5.15.0-176.186 [7945 kB]
+Fetched 7945 kB in 1s (8265 kB/s)
+../extract/usr/bin/perf
+../extract/usr/lib/linux-tools-5.15.0-176/acpidbg
+../extract/usr/lib/linux-tools-5.15.0-176/bpftool
+../extract/usr/lib/linux-tools-5.15.0-176/cpupower
+../extract/usr/lib/linux-tools-5.15.0-176/libperf-jvmti.so
+../extract/usr/lib/linux-tools-5.15.0-176/perf
+../extract/usr/lib/linux-tools-5.15.0-176/turbostat
+../extract/usr/lib/linux-tools-5.15.0-176/usbip
+../extract/usr/lib/linux-tools-5.15.0-176/usbipd
+../extract/usr/lib/linux-tools-5.15.0-176/x86_energy_perf_policy
+../extract/usr/share/doc/linux-tools-5.15.0-176-generic/copyright
+../extract/usr/share/doc/linux-tools-5.15.0-176/changelog.Debian.gz
+../extract/usr/share/doc/linux-tools-5.15.0-176/copyright
+../extract/usr/share/doc/linux-tools-common/changelog.Debian.gz
+../extract/usr/share/doc/linux-tools-common/copyright
+
+[local perf direct binary validation]
+started=2026-05-11T22:12:18-05:00
+PERF_BIN=/home/jcernudagarcia/chronolog-opt/chronolog/opt/perf/extract/usr/lib/linux-tools-5.15.0-176/perf
+perf version 5.15.199

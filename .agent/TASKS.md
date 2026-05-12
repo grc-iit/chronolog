@@ -15,7 +15,7 @@ This is not a performance-optimization phase. The goal is to make the full measu
 - [x] Detect SLURM environment: partition, node count, job limits, modules, compiler stack.
 - [x] Create no-sudo install strategy: modules first, user-local prefix second, source build third.
 - [x] Install or detect TAU.
-- [ ] Install or detect perf.
+- [x] Install or detect perf.
 - [ ] Install or detect gperftools.
 - [ ] Install or detect Darshan.
 - [ ] Detect eBPF-based tooling through available bpftrace or BCC tools.

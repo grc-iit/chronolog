@@ -7,3 +7,4 @@
 | 2026-05-11 21:59 CT | Detect SLURM environment | complete | `.agent/results/20260511-215928/stdout.log`, `.agent/results/slurm-environment.md` | Create no-sudo install strategy |
 | 2026-05-11 22:00 CT | Create no-sudo install strategy | complete | `.agent/results/20260511-220041/stdout.log`, `.agent/results/no-sudo-install-strategy.md` | Detect or install TAU |
 | 2026-05-11 22:09 CT | Install or detect TAU | complete | `.agent/results/20260511-220126/stdout.log`, `.agent/results/tau-install.md`, `.agent/config/tau-env.sh` | Detect or install perf |
+| 2026-05-11 22:12 CT | Install or detect perf | complete with limitation | `.agent/results/20260511-221033/stdout.log`, `.agent/results/perf-install.md`, `.agent/config/perf-env.sh` | Detect or install gperftools |
