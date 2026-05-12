@@ -4,6 +4,17 @@ Status: provisional.
 
 No selected benchmark/workflow list was found in the current repository state. This suite is therefore a proposed default and must be treated as provisional until confirmed or replaced.
 
+## Deployment Target
+
+The final Phase 0 benchmark target is distributed deployment, not single-node `ares` smoke testing. Local single-node runs on the master/login node are allowed only to validate scripts, launch mechanics, logging, and metrics output.
+
+Preferred deployment mode:
+
+1. Bare metal through SLURM allocations, because ChronoLog optimization work is expected to depend on correct RDMA/RoCE-capable network configuration.
+2. Containerized deployment only as a fallback or convenience path when it unblocks Phase 0 measurement plumbing, with the mode recorded in each run's config and report.
+
+The distributed sweep remains 1, 2, 4, and 8 nodes where cluster limits allow. A single-node local smoke result does not satisfy the distributed benchmark requirement.
+
 ## Comparable Entity Mapping
 
 | Concept | ChronoLog | Kafka | Mofka |

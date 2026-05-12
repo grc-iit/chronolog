@@ -2,6 +2,6 @@
 
 - current task: create Mofka launch script
 - commands running: none
-- last successful validation: Kafka fixed baseline ran the provisional `append_throughput` workflow and wrote comparable metrics; evidence in `.agent/results/20260511-234455/kafka/metrics.json` and `.agent/results/20260511-234455/kafka/producer-perf-append-throughput.log`
+- last successful validation: distributed deployment policy was recorded; single-node `ares` runs are now explicitly smoke-only and bare-metal SLURM deployment is preferred, with evidence in `.agent/config/phase0-workflows.md` and `.agent/config/phase0-workflows.json`
 - current blocker: perf runtime events and eBPF-based observability require cluster/admin permission changes for later profiling-output validation
-- next intended step: locate Mofka installation or available modules, then add a Mofka fixed-baseline launch wrapper without modifying Mofka source
+- next intended step: locate Mofka installation or available modules, then add a bare-metal-first Mofka fixed-baseline launch wrapper without modifying Mofka source

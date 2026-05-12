@@ -29,6 +29,15 @@
     "node_count_rule": "Use the listed node counts only where cluster allocation limits and system launch support allow.",
     "latency_sampling": "Record per-operation latency when client APIs expose timestamps; otherwise report null latency fields and document the limitation in run notes."
   },
+  "deployment_policy": {
+    "final_target": "distributed deployments across allocated compute nodes",
+    "single_node_master_policy": "Allowed only for smoke validation of scripts, launch mechanics, logging, and metrics output; does not satisfy final distributed benchmark requirements.",
+    "preferred_mode": "bare_metal",
+    "fallback_mode": "containerized",
+    "mode_rule": "Record bare_metal or containerized in each run configuration and summary.",
+    "bare_metal_reason": "Preferred because later ChronoLog optimization work is expected to depend on proper RDMA/RoCE-capable network configuration.",
+    "distributed_node_counts": [1, 2, 4, 8]
+  },
   "workflows": [
     {
       "name": "append_throughput",
