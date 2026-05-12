@@ -213,6 +213,53 @@ public:
         // outage buffers, try to flush them one last time
         theExtractionChain.flush_outage_buffers();
 
+            // the queue might have been drained by another thread before the current thread acquired extractionQueue mutex
+            // in this case the nullptr is returned..
+            if(story_chunk == nullptr)
+            {
+                continue;
+            }
+
+            LOG_DEBUG("[StoryChunkExtractionModule] tl::thread_id={} processing chunk StoryId={} {}-{} {}-{} "
+                      "eventCount {}",
+                      thallium::thread::self_id(),
+                      story_chunk->getStoryId(),
+                      story_chunk->getChronicleName(),
+                      story_chunk->getStoryName(),
+                      story_chunk->getStartTime(),
+                      story_chunk->getEndTime(),
+                      story_chunk->getEventCount());
+
+            //try to extract the chunk 5 times before giving up
+            int extraction_result = CL_ERR_UNKNOWN;
+            int tries = 0;
+            while(CL_SUCCESS != extraction_result && (tries < 5))
+            {
+                tries++;
+                extraction_result = theExtractionChain.process_chunk(story_chunk);
+            }
+
+            if(CL_SUCCESS == extraction_result)
+            {
+                LOG_INFO("[StoryChunkExtractionModule] extracted chunk StoryId={} {}-{} {}-{}",
+                         story_chunk->getStoryId(),
+                         story_chunk->getChronicleName(),
+                         story_chunk->getStoryName(),
+                         story_chunk->getStartTime(),
+                         story_chunk->getEndTime());
+            }
+            else
+            {
+                LOG_ERROR("[StoryChunkExtractionModule] failed to extract chunk StoryId={} {}-{} {}-{}",
+                          story_chunk->getStoryId(),
+                          story_chunk->getChronicleName(),
+                          story_chunk->getStoryName(),
+                          story_chunk->getStartTime(),
+                          story_chunk->getEndTime());
+            }
+
+            delete story_chunk;
+        }
         // join and stop threads & executionstreams
         for(auto& eth: extractionThreads) { eth->join(); }
         LOG_DEBUG("[StoryChunkExtractionModule] Extraction threads have been successfully shut down.");
