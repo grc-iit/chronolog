@@ -1,0 +1,38 @@
+[2026-05-11 23:14:13.472] [ChronoGrapher] [info] {ChronoGrapher] Running ChronoGrapher 
+[2026-05-11 23:14:13.472] [ChronoGrapher] [info] [ChronoGrapher] Configuration [CHRONO_GRAPHER_CONFIGURATION: RECORDING_GROUP: 1, KEEPER_GRAPHER_DRAIN_SERVICE_CONF: [PROTO_CONF: ofi+sockets, IP: 127.0.0.1, BASE_PORT: 3333, SERVICE_PROVIDER_ID: 33, PORTS: ], DATA_STORE_ADMIN_SERVICE_CONF: [PROTO_CONF: ofi+sockets, IP: 127.0.0.1, BASE_PORT: 4444, SERVICE_PROVIDER_ID: 44, PORTS: ], VISOR_REGISTRY_SERVICE_CONF: [PROTO_CONF: ofi+sockets, IP: 127.0.0.1, BASE_PORT: 8888, SERVICE_PROVIDER_ID: 88, PORTS: ], LOG_CONF: [TYPE: file, FILE: /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-231340/chronolog/logs/chrono-grapher-1.log, LEVEL: DEBUG, NAME: ChronoGrapher, LOGFILESIZE: 1048576, LOGFILENUM: 3, FLUSH LEVEL: DEBUG], DATA_STORE_CONF: [DATA_STORE_CONF: max_story_chunk_size: 4096 story_chunk_duration_secs: 60 acceptance_window_secs: 180 inactive_story_delay_secs: 300], EXTRACTOR_CONF: [EXTRACTOR_READER_CONF: STORY_FILES_DIR: /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-231340/chronolog/output/]]
+[2026-05-11 23:14:13.473] [ChronoGrapher] [info] [ChronoGrapher] RecordingService started successfully.
+[2026-05-11 23:14:13.473] [ChronoGrapher] [info] [ChronoGrapher] GrapherIdCard: GrapherIdCard{Group{1}ServiceId{ofi+sockets:127.0.0.1:3333:33}}
+[2026-05-11 23:14:13.498] [ChronoGrapher] [info] [DataStoreAdminService] Constructed at ofi+sockets://127.0.0.1:4444. ProviderID=44
+[2026-05-11 23:14:13.498] [ChronoGrapher] [info] [ChronoGrapher] DataStoreAdminService started successfully.
+[2026-05-11 23:14:13.520] [ChronoGrapher] [info] [ChronoGrapher] starting RecordingService at ofi+sockets://127.0.0.1:3333 with provider_id 33
+[2026-05-11 23:14:13.522] [ChronoGrapher] [info] [ChronoGrapher] Successfully registered with ChronoVisor.
+[2026-05-11 23:14:13.522] [ChronoGrapher] [info] [GrapherDataStore] Starting data collection. StreamCount=3, ThreadID=0
+[2026-05-11 23:14:13.523] [ChronoGrapher] [info] [GrapherDataStore] Data collection started successfully. Stream count=3, ThreadID=0
+[2026-05-11 23:14:17.806] [ChronoGrapher] [info] [DataStoreAdminService] Starting Story Recording: StoryName=story_0_0, StoryID=11362487075052809
+[2026-05-11 23:14:17.806] [ChronoGrapher] [info] [GrapherDataStore] Start recording story: Chronicle=chronicle_0_0, Story=story_0_0, StoryId=11362487075052809
+[2026-05-11 23:14:17.806] [ChronoGrapher] [info] [StoryPipeline] Initialized StoryPipleine StoryID=11362487075052809, chronicle_0_0-story_0_0 timeline 1778559240000000000-1778559420000000000 Start Mon May 11 23:14:00 2026
+ End Mon May 11 23:14:00 2026
+ ChunkGranularity=60 seconds, AcceptanceWindow=180 seconds
+[2026-05-11 23:14:17.806] [ChronoGrapher] [info] [GrapherDataStore] New StoryPipeline created successfully. StoryId 11362487075052809
+[2026-05-11 23:14:17.842] [ChronoGrapher] [info] [DataStoreAdminService] Stopping Story Recording: StoryID=11362487075052809
+[2026-05-11 23:14:17.842] [ChronoGrapher] [info] [GrapherDataStore] Scheduled pipeline to retire: StoryId 11362487075052809 timeline 1778559240000000000-1778559420000000000 acceptanceWindow 180000000000 retirementTime 1778559261489436585
+[2026-05-11 23:14:21.525] [ChronoGrapher] [info] [StoryPipeline] Finalized ingestion handle for storyId 11362487075052809
+[2026-05-11 23:14:21.525] [ChronoGrapher] [info] [LoggingExtractor] tl::thread_id=1 processing chunk StoryId=11362487075052809 chronicle_0_0-story_0_0 1778559240000000000-1778559300000000000 eventCount 5
+[2026-05-11 23:14:21.525] [ChronoGrapher] [info] [HDF5FileChunkExtractor] tl::thread_id=1 processing chunk StoryId=11362487075052809 chronicle_0_0-story_0_0 1778559240000000000-1778559300000000000 eventCount 5
+[2026-05-11 23:14:21.527] [ChronoGrapher] [info] [HDF5FileChunkExtractor] StoryChunk written to file: StoryId=11362487075052809 chronicle_0_0-story_0_0 1778559240000000000-1778559300000000000 eventCount 5
+[2026-05-11 23:14:21.527] [ChronoGrapher] [info] [StoryChunkWriter] Destructor called. Cleaning up...
+[2026-05-11 23:14:38.690] [ChronoGrapher] [info] [ChronoGrapher] Received SIGTERM signal. Initiating shutdown procedure.
+[2026-05-11 23:14:38.691] [ChronoGrapher] [info] [ChronoGrapher] Initiating shutdown procedures.
+[2026-05-11 23:14:38.691] [ChronoGrapher] [info] [GrapherDataStore] Initiating shutdown of DataCollection. CurrentState=1, Active StoryPipelines=0, PipelinesWaitingForExit=0
+[2026-05-11 23:14:39.541] [ChronoGrapher] [info] [GrapherDataStore] All data collection threads have been joined.
+[2026-05-11 23:14:39.541] [ChronoGrapher] [info] [GrapherDataStore] All data collection streams have been joined.
+[2026-05-11 23:14:39.541] [ChronoGrapher] [info] [GrapherDataStore] DataCollection shutdown completed.
+[2026-05-11 23:14:39.542] [ChronoGrapher] [info] [ChronoGrapher] Shutdown completed. Exiting.
+[2026-05-11 23:14:39.543] [ChronoGrapher] [info] [GrapherDataStore] Destructor called. Initiating shutdown. Active StoryPipelines count=0
+[2026-05-11 23:14:39.543] [ChronoGrapher] [info] [GrapherDataStore] Initiating shutdown of DataCollection. CurrentState=2, Active StoryPipelines=0, PipelinesWaitingForExit=0
+[2026-05-11 23:14:39.543] [ChronoGrapher] [info] [GrapherDataStore] Data collection is already shutting down. Ignoring additional shutdown request.
+[2026-05-11 23:14:39.543] [ChronoGrapher] [info] [GrapherDataStore] Shutdown completed successfully. Active StoryPipelines count=0
+[2026-05-11 23:14:39.543] [ChronoGrapher] [info] [StoryChunkExtractionModule] ExtractionModule already shutting down. Ignoring shutdown request.
+[2026-05-11 23:14:39.543] [ChronoGrapher] [info] [StoryChunkExtractionQueue] Initiating queue shutdown. Queue size: 0
+[2026-05-11 23:14:39.543] [ChronoGrapher] [info] [IngestionQueue] Initiating shutdown. HandleMapSize=0, OrphanQueueSize=0
+[2026-05-11 23:14:39.543] [ChronoGrapher] [info] [IngestionQueue] Shutdown completed. All handles disengaged.

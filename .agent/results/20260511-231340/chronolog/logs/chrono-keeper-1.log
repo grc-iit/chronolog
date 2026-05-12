@@ -1,0 +1,37 @@
+[2026-05-11 23:14:17.436] [ChronoKeeper] [info] [ChronoKeeper] Running ChronoKeeper Server.
+[2026-05-11 23:14:17.436] [ChronoKeeper] [info] [ChronoKeeper] Configuration [CHRONO_GRAPHER_CONFIGURATION: RECORDING_GROUP: 1, KEEPER_GRAPHER_DRAIN_SERVICE_CONF: [PROTO_CONF: ofi+sockets, IP: 127.0.0.1, BASE_PORT: 3333, SERVICE_PROVIDER_ID: 33, PORTS: ], DATA_STORE_ADMIN_SERVICE_CONF: [PROTO_CONF: ofi+sockets, IP: 127.0.0.1, BASE_PORT: 7777, SERVICE_PROVIDER_ID: 77, PORTS: ], VISOR_REGISTRY_SERVICE_CONF: [PROTO_CONF: ofi+sockets, IP: 127.0.0.1, BASE_PORT: 8888, SERVICE_PROVIDER_ID: 88, PORTS: ], LOG_CONF: [TYPE: file, FILE: /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-231340/chronolog/logs/chrono-keeper-1.log, LEVEL: DEBUG, NAME: ChronoKeeper, LOGFILESIZE: 1048576, LOGFILENUM: 3, FLUSH LEVEL: WARN], DATA_STORE_CONF: [DATA_STORE_CONF: max_story_chunk_size: 4096 story_chunk_duration_secs: 10 acceptance_window_secs: 15 inactive_story_delay_secs: 120], EXTRACTOR_CONF: [EXTRACTOR_READER_CONF: STORY_FILES_DIR: /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-231340/chronolog/output/]]
+[2026-05-11 23:14:17.436] [ChronoKeeper] [info] [ChronoKeeperInstance] KeeperRecordingService started successfully.
+[2026-05-11 23:14:17.436] [ChronoKeeper] [info] [ChronoKeeperInstance] KeeperIdCard: KeeperIdCard{Group{1}ServiceId{ofi+sockets:127.0.0.1:6666:66}}
+[2026-05-11 23:14:17.462] [ChronoKeeper] [info] [ChronoKeeperInstance] GroupID=1 starting extraction engine at address ofi+sockets://172.25.1.1:21059
+[2026-05-11 23:14:17.485] [ChronoKeeper] [info] [DataStoreAdminService] Constructed at ofi+sockets://127.0.0.1:7777. ProviderID=77
+[2026-05-11 23:14:17.485] [ChronoKeeper] [info] [ChronoKeeperInstance] DataStoreAdminService started successfully.
+[2026-05-11 23:14:17.510] [ChronoKeeper] [info] [ChronoKeeperInstance] GroupID=1 starting KeeperRecordingService at ofi+sockets://127.0.0.1:6666 with provider_id 66
+[2026-05-11 23:14:17.610] [ChronoKeeper] [info] [ChronoKeeperInstance] Successfully registered with ChronoVisor.
+[2026-05-11 23:14:17.610] [ChronoKeeper] [info] [KeeperDataStore] Starting data collection. StreamCount=3, ThreadID=0
+[2026-05-11 23:14:17.612] [ChronoKeeper] [info] [KeeperDataStore] Data collection started successfully. Stream count=3, ThreadID=0
+[2026-05-11 23:14:17.807] [ChronoKeeper] [info] [DataStoreAdminService] Starting Story Recording: StoryName=story_0_0, StoryID=11362487075052809
+[2026-05-11 23:14:17.807] [ChronoKeeper] [info] [KeeperDataStore] Start recording story: Chronicle=chronicle_0_0, Story=story_0_0, StoryID=11362487075052809
+[2026-05-11 23:14:17.807] [ChronoKeeper] [info] [KeeperStoryPipeline] Initialized KeeperStoryPipeline StoryID=11362487075052809, chronicle_0_0-story_0_0 timeline 1778559250000000000-1778559280000000000 Start Mon May 11 23:14:10 2026
+ End Mon May 11 23:14:10 2026
+ ChunkGranularity=10 seconds, AcceptanceWindow=15 seconds
+[2026-05-11 23:14:17.807] [ChronoKeeper] [info] [KeeperDataStore] New KeeperStoryPipeline created successfully. StoryID: 11362487075052809
+[2026-05-11 23:14:17.841] [ChronoKeeper] [info] [DataStoreAdminService] Stopping Story Recording: StoryID=11362487075052809
+[2026-05-11 23:14:17.841] [ChronoKeeper] [info] [KeeperDataStore] Added KeeperStoryPipeline to waiting list for finalization. StoryID=11362487075052809, ExitTime=1778559257841549621
+[2026-05-11 23:14:18.629] [ChronoKeeper] [info] [KeeperStoryPipeline] Finalized ingestion handle for storyId: 11362487075052809
+[2026-05-11 23:14:18.630] [ChronoKeeper] [info] [LoggingExtractor] tl::thread_id=1 processing chunk StoryId=11362487075052809 chronicle_0_0-story_0_0 1778559250000000000-1778559260000000000 eventCount 5
+[2026-05-11 23:14:27.713] [ChronoKeeper] [info] [ChunkExtractorRDMA] Transfered StoryChunk StoryId=11362487075052809 StartTime=1778559250000000000
+[2026-05-11 23:14:28.462] [ChronoKeeper] [info] [ChronoKeeperInstance] Received SIGTERM signal. Initiating shutdown procedure.
+[2026-05-11 23:14:28.562] [ChronoKeeper] [info] [ChronoKeeperInstance] Initiating shutdown procedures.
+[2026-05-11 23:14:28.562] [ChronoKeeper] [info] [KeeperDataStore] Initiating shutdown of DataCollection. CurrentState=1, Active KeeperStoryPipelines=0, PipelinesWaitingForExit=0
+[2026-05-11 23:14:28.662] [ChronoKeeper] [info] [KeeperDataStore] All data collection threads have been joined.
+[2026-05-11 23:14:28.963] [ChronoKeeper] [info] [KeeperDataStore] All data collection streams have been joined.
+[2026-05-11 23:14:28.963] [ChronoKeeper] [info] [KeeperDataStore] DataCollection shutdown completed.
+[2026-05-11 23:14:29.365] [ChronoKeeper] [info] [ChronoKeeperInstance] Shutdown completed. Exiting.
+[2026-05-11 23:14:29.365] [ChronoKeeper] [info] [KeeperDataStore] Destructor called. Initiating shutdown. Active KeeperStoryPipelines count=0
+[2026-05-11 23:14:29.365] [ChronoKeeper] [info] [KeeperDataStore] Initiating shutdown of DataCollection. CurrentState=2, Active KeeperStoryPipelines=0, PipelinesWaitingForExit=0
+[2026-05-11 23:14:29.365] [ChronoKeeper] [info] [KeeperDataStore] Data collection is already shutting down. Ignoring additional shutdown request.
+[2026-05-11 23:14:29.365] [ChronoKeeper] [info] [KeeperDataStore] Shutdown completed successfully. Active KeeperStoryPipelines count=0
+[2026-05-11 23:14:29.365] [ChronoKeeper] [info] [StoryChunkExtractionModule] ExtractionModule already shutting down. Ignoring shutdown request.
+[2026-05-11 23:14:29.365] [ChronoKeeper] [info] [StoryChunkExtractionQueue] Initiating queue shutdown. Queue size: 0
+[2026-05-11 23:14:29.365] [ChronoKeeper] [info] [IngestionQueue] Initiating shutdown. HandleMapSize=0, Orphan EventQueueSize=0
+[2026-05-11 23:14:29.365] [ChronoKeeper] [info] [IngestionQueue] Shutdown completed. All handles disengaged.

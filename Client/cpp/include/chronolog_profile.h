@@ -7,35 +7,38 @@
 #if defined(CHRONOLOG_PROFILE_TAU)
 
 #include <TAU.h>
+#include <mutex>
 
 namespace chronolog
 {
 namespace profiling
 {
 
+inline void initializeTau()
+{
+    static std::once_flag init_once;
+    std::call_once(init_once, []() { TAU_PROFILE_SET_NODE(0); });
+}
+
 class TauRegion
 {
   public:
     explicit TauRegion(const char* name)
     {
-        Tau_profile_c_timer(&timer_, name, "", TAU_USER, "TAU_USER");
-        Tau_lite_start_timer(timer_, 0);
+        initializeTau();
+        void* event = Tau_get_userevent(name);
+        Tau_userevent(event, 1.0);
     }
 
     TauRegion(const TauRegion&) = delete;
     TauRegion& operator=(const TauRegion&) = delete;
 
-    ~TauRegion()
-    {
-        Tau_lite_stop_timer(timer_);
-    }
-
-  private:
-    void* timer_ = nullptr;
+    ~TauRegion() = default;
 };
 
 inline void tauCounter(const char* name, double value)
 {
+    initializeTau();
     void* event = Tau_get_userevent(name);
     Tau_userevent(event, value);
 }

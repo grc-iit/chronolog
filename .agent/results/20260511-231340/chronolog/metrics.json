@@ -1,0 +1,15 @@
+{
+  "system": "chronolog",
+  "workflow": "tau_instrumented_write_smoke",
+  "node_count": 1,
+  "client_count": 1,
+  "message_size_bytes": 64,
+  "operation_count": 5,
+  "duration_seconds": 50,
+  "throughput_ops_per_sec": 0.1,
+  "avg_latency_ms": null,
+  "p50_latency_ms": null,
+  "p95_latency_ms": null,
+  "p99_latency_ms": null,
+  "success": true
+}
