@@ -31,7 +31,7 @@ This is not a performance-optimization phase. The goal is to make the full measu
 - [x] Add TAU-backed ChronoLog profiling mode.
 - [x] Add no-op profiling mode.
 - [x] Add coarse semantic regions.
-- [ ] Build ChronoLog with TAU instrumentation.
+- [x] Build ChronoLog with TAU instrumentation.
 - [ ] Run ChronoLog instrumented smoke test.
 - [ ] Verify TAU output.
 - [ ] Verify perf output on ChronoLog run.
