@@ -1,0 +1,8 @@
+iperf3-client.log 607 bytes
+iperf3-server.log 692 bytes
+nstat-after.txt 283 bytes
+nstat-before.txt 283 bytes
+sar-n-dev.txt 8730 bytes
+ss-after.txt 93129 bytes
+ss-before.txt 77971 bytes
+ss-during.txt 86469 bytes

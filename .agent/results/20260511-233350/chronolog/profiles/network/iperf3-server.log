@@ -1,0 +1,12 @@
+-----------------------------------------------------------
+Server listening on 5201
+-----------------------------------------------------------
+Accepted connection from 127.0.0.1, port 27830
+[  5] local 127.0.0.1 port 5201 connected to 127.0.0.1 port 27842
+[ ID] Interval           Transfer     Bitrate
+[  5]   0.00-1.00   sec  2.46 GBytes  21.1 Gbits/sec                  
+[  5]   1.00-2.00   sec  2.82 GBytes  24.2 Gbits/sec                  
+[  5]   2.00-2.04   sec   116 MBytes  23.2 Gbits/sec                  
+- - - - - - - - - - - - - - - - - - - - - - - - -
+[ ID] Interval           Transfer     Bitrate
+[  5]   0.00-2.04   sec  5.40 GBytes  22.7 Gbits/sec                  receiver

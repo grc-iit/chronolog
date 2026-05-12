@@ -1,0 +1,796 @@
+[chronolog Linux network measurement commands validation]
+time=2026-05-11T23:33:50-05:00
+iface=eno1
+
+[command paths]
+iperf3=/usr/bin/iperf3
+ss=/usr/bin/ss
+nstat=/usr/bin/nstat
+sar=/usr/bin/sar
+ethtool=/usr/sbin/ethtool
+tcpdump=/usr/bin/tcpdump
+
+[ip links]
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN mode DEFAULT group default qlen 1000\    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+2: eno1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP mode DEFAULT group default qlen 1000\    link/ether 7c:d3:0a:ef:bc:00 brd ff:ff:ff:ff:ff:ff\    altname enp8s0f0
+3: eno2: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP mode DEFAULT group default qlen 1000\    link/ether 7c:d3:0a:ef:bc:01 brd ff:ff:ff:ff:ff:ff\    altname enp8s0f1
+4: ens4f0: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN mode DEFAULT group default qlen 1000\    link/ether 68:05:ca:7d:66:2a brd ff:ff:ff:ff:ff:ff\    altname enp88s0f0
+5: enx7ed30aefbc07: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN mode DEFAULT group default qlen 1000\    link/ether 7e:d3:0a:ef:bc:07 brd ff:ff:ff:ff:ff:ff
+6: ens4f1: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN mode DEFAULT group default qlen 1000\    link/ether 68:05:ca:7d:66:2b brd ff:ff:ff:ff:ff:ff\    altname enp88s0f1
+7: ens1np0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP mode DEFAULT group default qlen 1000\    link/ether 24:8a:07:2f:c9:7e brd ff:ff:ff:ff:ff:ff\    altname enp47s0np0
+8: virbr0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc noqueue state DOWN mode DEFAULT group default qlen 1000\    link/ether 52:54:00:f8:28:a3 brd ff:ff:ff:ff:ff:ff
+9: docker0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP mode DEFAULT group default \    link/ether be:18:2c:bf:62:2a brd ff:ff:ff:ff:ff:ff
+18: veth194e6cd@if2: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue master docker0 state UP mode DEFAULT group default \    link/ether 0a:7b:71:fa:40:2f brd ff:ff:ff:ff:ff:ff link-netnsid 0
+19: veth746804d@if2: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue master docker0 state UP mode DEFAULT group default \    link/ether 7e:06:a1:80:eb:a9 brd ff:ff:ff:ff:ff:ff link-netnsid 1
+20: veth8e06653@if2: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue master docker0 state UP mode DEFAULT group default \    link/ether 9a:c4:b7:56:a3:af brd ff:ff:ff:ff:ff:ff link-netnsid 2
+21: vetha957d29@if2: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue master docker0 state UP mode DEFAULT group default \    link/ether 46:a3:79:b8:68:79 brd ff:ff:ff:ff:ff:ff link-netnsid 3
+
+[ethtool link settings]
+Settings for eno1:
+	Supported ports: [ TP ]
+	Supported link modes:   1000baseT/Full
+	Supported pause frame use: Symmetric Receive-only
+	Supports auto-negotiation: Yes
+	Supported FEC modes: Not reported
+	Advertised link modes:  1000baseT/Full
+	Advertised pause frame use: No
+	Advertised auto-negotiation: Yes
+	Advertised FEC modes: Not reported
+	Speed: 1000Mb/s
+	Duplex: Full
+	Auto-negotiation: on
+	Port: Twisted Pair
+	PHYAD: 0
+	Transceiver: internal
+	MDI-X: Unknown
+        Current message level: 0x00000007 (7)
+                               drv probe link
+	Link detected: yes
+
+[ethtool stats]
+NIC statistics:
+     rx_packets: 167194789
+     tx_packets: 100428635
+     rx_bytes: 189410384893
+     tx_bytes: 34675486122
+     rx_errors: 0
+     tx_errors: 0
+     rx_dropped: 0
+     rx_missed_errors: 0
+     tx_dropped: 0
+     collisions: 0
+     rx_length_errors: 0
+     rx_crc_errors: 0
+     rx_unicast: 155930388
+     tx_unicast: 100428192
+     rx_multicast: 7772
+     tx_multicast: 439
+     rx_broadcast: 11256611
+     tx_broadcast: 1
+     rx_unknown_protocol: 0
+     tx_linearize: 3
+     tx_force_wb: 0
+     tx_busy: 0
+     rx_alloc_fail: 0
+     rx_pg_alloc_fail: 0
+     tx-0.packets: 2572486
+     tx-0.bytes: 514228063
+     rx-0.packets: 4382324
+     rx-0.bytes: 5631363220
+     tx-1.packets: 3617704
+     tx-1.bytes: 840974723
+     rx-1.packets: 6206793
+     rx-1.bytes: 8012262803
+     tx-2.packets: 4957408
+     tx-2.bytes: 1821206732
+     rx-2.packets: 7758608
+     rx-2.bytes: 9556553319
+     tx-3.packets: 5006848
+     tx-3.bytes: 1821358467
+     rx-3.packets: 7821195
+     rx-3.bytes: 9672064637
+     tx-4.packets: 5562498
+     tx-4.bytes: 2095794665
+     rx-4.packets: 8508231
+     rx-4.bytes: 10348261848
+     tx-5.packets: 5606118
+     tx-5.bytes: 1989507631
+     rx-5.packets: 8779904
+     rx-5.bytes: 10847484724
+     tx-6.packets: 6034024
+     tx-6.bytes: 2093013452
+     rx-6.packets: 9583574
+     rx-6.bytes: 11919798783
+     tx-7.packets: 4712575
+     tx-7.bytes: 1561497286
+     rx-7.packets: 7466950
+     rx-7.bytes: 9223197500
+     tx-8.packets: 5085807
+     tx-8.bytes: 1969460399
+     rx-8.packets: 7750085
+     rx-8.bytes: 9388054822
+     tx-9.packets: 4605678
+     tx-9.bytes: 1622180043
+     rx-9.packets: 7295296
+     rx-9.bytes: 8920033625
+     tx-10.packets: 198286
+     tx-10.bytes: 46430284
+     rx-10.packets: 955284
+     rx-10.bytes: 211035182
+     tx-11.packets: 218615
+     tx-11.bytes: 63768053
+     rx-11.packets: 249945
+     rx-11.bytes: 123416807
+     tx-12.packets: 229601
+     tx-12.bytes: 55875386
+     rx-12.packets: 245554
+     rx-12.bytes: 100169794
+     tx-13.packets: 215702
+     tx-13.bytes: 42502062
+     rx-13.packets: 230750
+     rx-13.bytes: 80024384
+     tx-14.packets: 242245
+     tx-14.bytes: 46510838
+     rx-14.packets: 257146
+     rx-14.bytes: 76184854
+     tx-15.packets: 216869
+     tx-15.bytes: 40364178
+     rx-15.packets: 230906
+     rx-15.bytes: 61841469
+     tx-16.packets: 220858
+     tx-16.bytes: 40012513
+     rx-16.packets: 233480
+     rx-16.bytes: 61859508
+     tx-17.packets: 177702
+     tx-17.bytes: 30335761
+     rx-17.packets: 185567
+     rx-17.bytes: 43476958
+     tx-18.packets: 190438
+     tx-18.bytes: 43726817
+     rx-18.packets: 195655
+     rx-18.bytes: 41773811
+     tx-19.packets: 195003
+     tx-19.bytes: 39345669
+     rx-19.packets: 198535
+     rx-19.bytes: 40738016
+     tx-20.packets: 4199366
+     tx-20.bytes: 1363405318
+     rx-20.packets: 6742911
+     rx-20.bytes: 8436941260
+     tx-21.packets: 5352660
+     tx-21.bytes: 1580994184
+     rx-21.packets: 8814003
+     rx-21.bytes: 11209304385
+     tx-22.packets: 4167921
+     tx-22.bytes: 1060578809
+     rx-22.packets: 7051414
+     rx-22.bytes: 8931557078
+     tx-23.packets: 5638355
+     tx-23.bytes: 1891540341
+     rx-23.packets: 8980240
+     rx-23.bytes: 11102393988
+     tx-24.packets: 4766914
+     tx-24.bytes: 1865316327
+     rx-24.packets: 7281077
+     rx-24.bytes: 8752709069
+     tx-25.packets: 5299546
+     tx-25.bytes: 2324710706
+     rx-25.packets: 7675460
+     rx-25.bytes: 9017087966
+     tx-26.packets: 4479051
+     tx-26.bytes: 1739139852
+     rx-26.packets: 6718690
+     rx-26.bytes: 8042630285
+     tx-27.packets: 5408622
+     tx-27.bytes: 2082934609
+     rx-27.packets: 8226162
+     rx-27.bytes: 9930623914
+     tx-28.packets: 4574212
+     tx-28.bytes: 1533839490
+     rx-28.packets: 7146342
+     rx-28.bytes: 8714497387
+     tx-29.packets: 5402987
+     tx-29.bytes: 2167233227
+     rx-29.packets: 8216069
+     rx-29.bytes: 9953360526
+     tx-30.packets: 123413
+     tx-30.bytes: 29634033
+     rx-30.packets: 133463
+     rx-30.bytes: 45160914
+     tx-31.packets: 122163
+     tx-31.bytes: 26652082
+     rx-31.packets: 132661
+     rx-31.bytes: 36015960
+     tx-32.packets: 135270
+     tx-32.bytes: 33367317
+     rx-32.packets: 232043
+     rx-32.bytes: 43493423
+     tx-33.packets: 119859
+     tx-33.bytes: 30144252
+     rx-33.packets: 124763
+     rx-33.bytes: 30458701
+     tx-34.packets: 136091
+     tx-34.bytes: 26817016
+     rx-34.packets: 143864
+     rx-34.bytes: 35591375
+     tx-35.packets: 114835
+     tx-35.bytes: 28803641
+     rx-35.packets: 122284
+     rx-35.bytes: 29701609
+     tx-36.packets: 135742
+     tx-36.bytes: 25279385
+     rx-36.packets: 10521479
+     rx-36.bytes: 652160133
+     tx-37.packets: 137476
+     tx-37.bytes: 28203029
+     rx-37.packets: 141618
+     rx-37.bytes: 29907215
+     tx-38.packets: 122190
+     tx-38.bytes: 28069333
+     rx-38.packets: 127509
+     rx-38.bytes: 28453740
+     tx-39.packets: 125497
+     tx-39.bytes: 30730149
+     rx-39.packets: 126955
+     rx-39.bytes: 28739901
+     tx-40.packets: 0
+     tx-40.bytes: 0
+     rx-40.packets: 0
+     rx-40.bytes: 0
+     tx-41.packets: 0
+     tx-41.bytes: 0
+     rx-41.packets: 0
+     rx-41.bytes: 0
+     tx-42.packets: 0
+     tx-42.bytes: 0
+     rx-42.packets: 0
+     rx-42.bytes: 0
+     tx-43.packets: 0
+     tx-43.bytes: 0
+     rx-43.packets: 0
+     rx-43.bytes: 0
+     tx-44.packets: 0
+     tx-44.bytes: 0
+     rx-44.packets: 0
+     rx-44.bytes: 0
+     tx-45.packets: 0
+     tx-45.bytes: 0
+     rx-45.packets: 0
+     rx-45.bytes: 0
+     tx-46.packets: 0
+     tx-46.bytes: 0
+     rx-46.packets: 0
+     rx-46.bytes: 0
+     tx-47.packets: 0
+     tx-47.bytes: 0
+     rx-47.packets: 0
+     rx-47.bytes: 0
+     tx-48.packets: 0
+     tx-48.bytes: 0
+     rx-48.packets: 0
+     rx-48.bytes: 0
+     tx-49.packets: 0
+     tx-49.bytes: 0
+     rx-49.packets: 0
+     rx-49.bytes: 0
+     tx-50.packets: 0
+     tx-50.bytes: 0
+     rx-50.packets: 0
+     rx-50.bytes: 0
+     tx-51.packets: 0
+     tx-51.bytes: 0
+     rx-51.packets: 0
+     rx-51.bytes: 0
+     tx-52.packets: 0
+     tx-52.bytes: 0
+     rx-52.packets: 0
+     rx-52.bytes: 0
+     tx-53.packets: 0
+     tx-53.bytes: 0
+     rx-53.packets: 0
+     rx-53.bytes: 0
+     tx-54.packets: 0
+     tx-54.bytes: 0
+     rx-54.packets: 0
+     rx-54.bytes: 0
+     tx-55.packets: 0
+     tx-55.bytes: 0
+     rx-55.packets: 0
+     rx-55.bytes: 0
+     tx-56.packets: 0
+     tx-56.bytes: 0
+     rx-56.packets: 0
+     rx-56.bytes: 0
+     tx-57.packets: 0
+     tx-57.bytes: 0
+     rx-57.packets: 0
+     rx-57.bytes: 0
+     tx-58.packets: 0
+     tx-58.bytes: 0
+     rx-58.packets: 0
+     rx-58.bytes: 0
+     tx-59.packets: 0
+     tx-59.bytes: 0
+     rx-59.packets: 0
+     rx-59.bytes: 0
+     tx-60.packets: 0
+     tx-60.bytes: 0
+     rx-60.packets: 0
+     rx-60.bytes: 0
+     tx-61.packets: 0
+     tx-61.bytes: 0
+     rx-61.packets: 0
+     rx-61.bytes: 0
+     tx-62.packets: 0
+     tx-62.bytes: 0
+     rx-62.packets: 0
+     rx-62.bytes: 0
+     tx-63.packets: 0
+     tx-63.bytes: 0
+     rx-63.packets: 0
+     rx-63.bytes: 0
+     veb.rx_bytes: 0
+     veb.tx_bytes: 0
+     veb.rx_unicast: 0
+     veb.tx_unicast: 0
+     veb.rx_multicast: 0
+     veb.tx_multicast: 0
+     veb.rx_broadcast: 0
+     veb.tx_broadcast: 0
+     veb.rx_discards: 0
+     veb.tx_discards: 0
+     veb.tx_errors: 0
+     veb.rx_unknown_protocol: 0
+     veb.tc_0_tx_packets: 0
+     veb.tc_0_tx_bytes: 0
+     veb.tc_0_rx_packets: 0
+     veb.tc_0_rx_bytes: 0
+     veb.tc_1_tx_packets: 0
+     veb.tc_1_tx_bytes: 0
+     veb.tc_1_rx_packets: 0
+     veb.tc_1_rx_bytes: 0
+     veb.tc_2_tx_packets: 0
+     veb.tc_2_tx_bytes: 0
+     veb.tc_2_rx_packets: 0
+     veb.tc_2_rx_bytes: 0
+     veb.tc_3_tx_packets: 0
+     veb.tc_3_tx_bytes: 0
+     veb.tc_3_rx_packets: 0
+     veb.tc_3_rx_bytes: 0
+     veb.tc_4_tx_packets: 0
+     veb.tc_4_tx_bytes: 0
+     veb.tc_4_rx_packets: 0
+     veb.tc_4_rx_bytes: 0
+     veb.tc_5_tx_packets: 0
+     veb.tc_5_tx_bytes: 0
+     veb.tc_5_rx_packets: 0
+     veb.tc_5_rx_bytes: 0
+     veb.tc_6_tx_packets: 0
+     veb.tc_6_tx_bytes: 0
+     veb.tc_6_rx_packets: 0
+     veb.tc_6_rx_bytes: 0
+     veb.tc_7_tx_packets: 0
+     veb.tc_7_tx_bytes: 0
+     veb.tc_7_rx_packets: 0
+     veb.tc_7_rx_bytes: 0
+     port.rx_bytes: 190568951957
+     port.tx_bytes: 35150280872
+     port.rx_unicast: 156017765
+     port.tx_unicast: 100428192
+     port.rx_multicast: 2733558
+     port.tx_multicast: 23774
+     port.rx_broadcast: 11256904
+     port.tx_broadcast: 1
+     port.tx_errors: 0
+     port.rx_discards: 0
+     port.tx_dropped_link_down: 0
+     port.rx_crc_errors: 0
+     port.illegal_bytes: 0
+     port.mac_local_faults: 0
+     port.mac_remote_faults: 0
+     port.tx_timeout: 0
+     port.rx_csum_bad: 4
+     port.rx_length_errors: 0
+     port.link_xon_rx: 0
+     port.link_xoff_rx: 0
+     port.link_xon_tx: 0
+     port.link_xoff_tx: 0
+     port.rx_size_64: 18171362
+     port.rx_size_127: 16811648
+     port.rx_size_255: 2533902
+     port.rx_size_511: 641981
+     port.rx_size_1023: 646320
+     port.rx_size_1522: 131203014
+     port.rx_size_big: 0
+     port.tx_size_64: 11793122
+     port.tx_size_127: 65139778
+     port.tx_size_255: 2957023
+     port.tx_size_511: 391364
+     port.tx_size_1023: 233400
+     port.tx_size_1522: 19937280
+     port.tx_size_big: 0
+     port.rx_undersize: 0
+     port.rx_fragments: 0
+     port.rx_oversize: 0
+     port.rx_jabber: 0
+     port.VF_admin_queue_requests: 0
+     port.arq_overflows: 0
+     port.tx_hwtstamp_timeouts: 0
+     port.rx_hwtstamp_cleared: 0
+     port.tx_hwtstamp_skipped: 0
+     port.fdir_flush_cnt: 1
+     port.fdir_atr_match: 155574616
+     port.fdir_atr_tunnel_match: 0
+     port.fdir_atr_status: 1
+     port.fdir_sb_match: 0
+     port.fdir_sb_status: 1
+     port.tx_lpi_status: 0
+     port.rx_lpi_status: 0
+     port.tx_lpi_count: 0
+     port.rx_lpi_count: 0
+     port.tx_priority_0_xon_tx: 0
+     port.tx_priority_0_xoff_tx: 0
+     port.rx_priority_0_xon_rx: 0
+     port.rx_priority_0_xoff_rx: 0
+     port.rx_priority_0_xon_2_xoff: 0
+     port.tx_priority_1_xon_tx: 0
+     port.tx_priority_1_xoff_tx: 0
+     port.rx_priority_1_xon_rx: 0
+     port.rx_priority_1_xoff_rx: 0
+     port.rx_priority_1_xon_2_xoff: 0
+     port.tx_priority_2_xon_tx: 0
+     port.tx_priority_2_xoff_tx: 0
+     port.rx_priority_2_xon_rx: 0
+     port.rx_priority_2_xoff_rx: 0
+     port.rx_priority_2_xon_2_xoff: 0
+     port.tx_priority_3_xon_tx: 0
+     port.tx_priority_3_xoff_tx: 0
+     port.rx_priority_3_xon_rx: 0
+     port.rx_priority_3_xoff_rx: 0
+     port.rx_priority_3_xon_2_xoff: 0
+     port.tx_priority_4_xon_tx: 0
+     port.tx_priority_4_xoff_tx: 0
+     port.rx_priority_4_xon_rx: 0
+     port.rx_priority_4_xoff_rx: 0
+     port.rx_priority_4_xon_2_xoff: 0
+     port.tx_priority_5_xon_tx: 0
+     port.tx_priority_5_xoff_tx: 0
+     port.rx_priority_5_xon_rx: 0
+     port.rx_priority_5_xoff_rx: 0
+     port.rx_priority_5_xon_2_xoff: 0
+     port.tx_priority_6_xon_tx: 0
+     port.tx_priority_6_xoff_tx: 0
+     port.rx_priority_6_xon_rx: 0
+     port.rx_priority_6_xoff_rx: 0
+     port.rx_priority_6_xon_2_xoff: 0
+     port.tx_priority_7_xon_tx: 0
+     port.tx_priority_7_xoff_tx: 0
+     port.rx_priority_7_xon_rx: 0
+     port.rx_priority_7_xoff_rx: 0
+     port.rx_priority_7_xon_2_xoff: 0
+
+[nstat before]
+#kernel
+IpInReceives                    757729959          0.0
+IpOutRequests                   680942326          0.0
+TcpInSegs                       731173864          0.0
+TcpOutSegs                      2721964947         0.0
+TcpRetransSegs                  76677              0.0
+
+[ss before]
+State      Recv-Q Send-Q  Local Address:Port    Peer Address:Port Process                             
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                        
+
+[iperf3 status]
+client=0 server=0
+
+[chronolog deployment]
+[7;49m[92mStopping ChronoLog...[0m
+[0;33mStopping chrono-player ...[0m
+[0;33mAll chrono-player processes stopped gracefully.[0m
+
+[0;33mStopping chrono-keeper ...[0m
+[0;33mAll chrono-keeper processes stopped gracefully.[0m
+
+[0;33mStopping chrono-grapher ...[0m
+[0;33mAll chrono-grapher processes stopped gracefully.[0m
+
+[0;33mStopping chrono-visor ...[0m
+[0;33mAll chrono-visor processes stopped gracefully.[0m
+
+[7;49m[92mAll ChronoLog processes stopped.[0m
+[7;49m[92mCleaning ChronoLog...[0m
+[0;33mChecking if ChronoLog processes are running...[0m
+[0;33mNo active ChronoLog processes detected. Proceeding with cleaning.[0m
+[0;33mRemoving config files[0m
+[0;33mRemoving log files[0m
+[0;33mRemoving output files[0m
+[7;49m[92mChronoLog cleaning done.[0m
+[7;49m[92mPreparing to start ChronoLog...[0m
+[0;33mChecking required dependencies...[0m
+[0;33mAll required dependencies are installed.[0m
+[0;33mChecking required directories...[0m
+[0;33mAll required directories are in place.[0m
+[0;33mChecking required files...[0m
+[0;33mAll required files are in place.[0m
+Generating grapher configuration files ...
+Generated /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-grapher-conf-1.json with ports 3333 and 4444
+Generating player configuration files ...
+Generated /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-player-conf-1.json with port 2222
+Generating keeper configuration files ...
+Generated /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-keeper-conf-1.json with ports 6666, 7777, and 3333
+Generating visor configuration file ...
+Generated /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-visor-conf.json
+Generating client configuration file ...
+Generated /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json
+Generate configuration files for all recording groups done
+[7;49m[92mStarting ChronoLog...[0m
+[0;33mLaunching /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/bin/chrono-visor --config /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-visor-conf.json ...[0m
+[0;33mLaunching /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/bin/chrono-grapher --config /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-grapher-conf-1.json ...[0m
+[0;33mLaunching /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/bin/chrono-player --config /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-player-conf-1.json ...[0m
+[0;33mLaunching /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/bin/chrono-keeper --config /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-keeper-conf-1.json ...[0m
+[7;49m[92mChronoLog Started.[0m
+113876 /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/bin/chrono-visor --config /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-visor-conf.json
+113917 /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/bin/chrono-grapher --config /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-grapher-conf-1.json
+113958 /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/bin/chrono-player --config /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-player-conf-1.json
+114056 /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/bin/chrono-keeper --config /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-keeper-conf-1.json
+
+[ss during chronolog]
+LISTEN     0      1024        127.0.0.1:2225         0.0.0.0:*     users:(("chrono-player",pid=113958,fd=16)) 
+LISTEN     0      1024        127.0.0.1:2222         0.0.0.0:*     users:(("chrono-player",pid=113958,fd=22)) 
+LISTEN     0      1024        127.0.0.1:3333         0.0.0.0:*     users:(("chrono-grapher",pid=113917,fd=22))
+LISTEN     0      1024        127.0.0.1:6666         0.0.0.0:*     users:(("chrono-keeper",pid=114056,fd=37)) 
+LISTEN     0      1024        127.0.0.1:7777         0.0.0.0:*     users:(("chrono-keeper",pid=114056,fd=31)) 
+LISTEN     0      1024        127.0.0.1:4444         0.0.0.0:*     users:(("chrono-grapher",pid=113917,fd=16))
+LISTEN     0      1024       172.25.1.1:21847        0.0.0.0:*     users:(("chrono-keeper",pid=114056,fd=16)) 
+LISTEN     0      1024        127.0.0.1:5555         0.0.0.0:*     users:(("chrono-visor",pid=113876,fd=22))  
+LISTEN     0      1024        127.0.0.1:8888         0.0.0.0:*     users:(("chrono-visor",pid=113876,fd=16))  
+ESTAB      0      0           127.0.0.1:2222       127.0.0.1:63536 users:(("chrono-player",pid=113958,fd=26)) 
+ESTAB      0      0           127.0.0.1:4444       127.0.0.1:24870 users:(("chrono-grapher",pid=113917,fd=26))
+ESTAB      0      0           127.0.0.1:8888       127.0.0.1:20994 users:(("chrono-visor",pid=113876,fd=25))  
+ESTAB      0      0           127.0.0.1:20994      127.0.0.1:8888  users:(("chrono-grapher",pid=113917,fd=25))
+ESTAB      0      0           127.0.0.1:21010      127.0.0.1:8888  users:(("chrono-player",pid=113958,fd=25)) 
+ESTAB      0      0           127.0.0.1:63536      127.0.0.1:2222  users:(("chrono-visor",pid=113876,fd=28))  
+ESTAB      0      0           127.0.0.1:8888       127.0.0.1:14128 users:(("chrono-visor",pid=113876,fd=29))  
+ESTAB      0      0           127.0.0.1:8888       127.0.0.1:21010 users:(("chrono-visor",pid=113876,fd=27))  
+ESTAB      0      0           127.0.0.1:14128      127.0.0.1:8888  users:(("chrono-keeper",pid=114056,fd=40)) 
+ESTAB      0      0           127.0.0.1:7777       127.0.0.1:4522  users:(("chrono-keeper",pid=114056,fd=41)) 
+ESTAB      0      0           127.0.0.1:4522       127.0.0.1:7777  users:(("chrono-visor",pid=113876,fd=30))  
+ESTAB      0      0           127.0.0.1:24870      127.0.0.1:4444  users:(("chrono-visor",pid=113876,fd=26))  
+Config file specified: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json
+Number of processes: 1
+Chronicle count (#chronicles per proc): 1
+Story count (#stories per proc): 1
+No event payload file specified, use default/specified separate conf args ...
+Min event size (minimum of event payload length following a normal distribution): 32 bytes
+Ave event size (median of event payload length following a normal distribution): 64 bytes
+Max event size (maximum of event payload length following a normal distribution): 128 bytes
+Event count (#events per proc): 5
+Event interval (time in-between event accesses): 0 us
+Barrier (hold on next ChronoLog API call until completion of the previous one): false
+Shared story (all procs access the same story): false
+[PerformanceTest] Configuration file loaded successfully from '/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json'.
+===== ChronoLog Client Configuration =====
+[PORTAL_CONF]
+  protocol: ofi+sockets
+  IP: 127.0.0.1
+  port: 5555
+  provider ID: 55
+[QUERY_CONF]
+  protocol: ofi+sockets
+  IP: 127.0.0.1
+  port: 5557
+  provider ID: 57
+[LOG_CONF]
+  type: file
+  file: /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-233350/chronolog/logs/chrono-client.log
+  level: debug
+  name: ChronoClient
+  filesize: 1048576
+  filenum: 3
+  flushlevel: warning
+[PerformanceTest] Running in write mode.
+Connected to server address: ofi+sockets://127.0.0.1:5555@55
+==================================================================
+=================      Performance results:      =================
+==================================================================
+Total payload written: 304 bytes
+Connect throughput: 111.845 connections/s
+CreateChronicle throughput: 108.041 creations/s
+AcquireStory throughput: 35.7149 acquisitions/s
+ReleaseStory throughput: 962.204 releases/s
+DestroyStory throughput: 5813.89 destructions/s
+DestroyChronicle throughput: 5491.43 destructions/s
+Disconnect throughput: 5592.25 disconnections/s
+End-to-end (incl. metadata time) bandwidth: 0.00752922 MB/s
+Record-event (incl. metadata time) bandwidth: 0.17836 MB/s
+Record-event (incl. metadata time) throughput: 0.00293356 events/s
+bench_status=0
+sar_status=0
+
+[nstat after]
+#kernel
+IpInReceives                    757961049          0.0
+IpOutRequests                   681173928          0.0
+TcpInSegs                       731404941          0.0
+TcpOutSegs                      2722215878         0.0
+TcpRetransSegs                  76677              0.0
+
+[ss after]
+State      Recv-Q Send-Q  Local Address:Port    Peer Address:Port Process                                     
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3478         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+LISTEN     0      1024       172.25.1.1:3479         0.0.0.0:*                                                
+[7;49m[92mStopping ChronoLog...[0m
+[0;33mStopping chrono-player ...[0m
+[0;33mWaiting for chrono-player to stop...[0m
+[0;33mAll chrono-player processes stopped gracefully.[0m
+
+[0;33mStopping chrono-keeper ...[0m
+[0;33mWaiting for chrono-keeper to stop...[0m
+[0;33mAll chrono-keeper processes stopped gracefully.[0m
+
+[0;33mStopping chrono-grapher ...[0m
+[0;33mWaiting for chrono-grapher to stop...[0m
+[0;33mAll chrono-grapher processes stopped gracefully.[0m
+
+[0;33mStopping chrono-visor ...[0m
+[0;33mWaiting for chrono-visor to stop...[0m
+[0;33mAll chrono-visor processes stopped gracefully.[0m
+
+[7;49m[92mAll ChronoLog processes stopped.[0m
+time=2026-05-11T23:34:49-05:00
