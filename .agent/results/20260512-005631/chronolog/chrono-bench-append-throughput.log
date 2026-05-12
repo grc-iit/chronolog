@@ -1,0 +1,48 @@
+Config file specified: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-005631/config/default-chrono-client-conf.json
+Number of processes: 1
+Chronicle count (#chronicles per proc): 1
+Story count (#stories per proc): 1
+No event payload file specified, use default/specified separate conf args ...
+Min event size (minimum of event payload length following a normal distribution): 512 bytes
+Ave event size (median of event payload length following a normal distribution): 1024 bytes
+Max event size (maximum of event payload length following a normal distribution): 2048 bytes
+Event count (#events per proc): 1
+Event interval (time in-between event accesses): 0 us
+Barrier (hold on next ChronoLog API call until completion of the previous one): false
+Shared story (all procs access the same story): false
+[PerformanceTest] Configuration file loaded successfully from '/home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-005631/config/default-chrono-client-conf.json'.
+===== ChronoLog Client Configuration =====
+[PORTAL_CONF]
+  protocol: ofi+sockets
+  IP: 172.25.101.3
+  port: 5555
+  provider ID: 55
+[QUERY_CONF]
+  protocol: ofi+sockets
+  IP: 127.0.0.1
+  port: 5557
+  provider ID: 57
+[LOG_CONF]
+  type: file
+  file: /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-005631/chronolog/logs/chrono-client.log
+  level: debug
+  name: ChronoClient
+  filesize: 1048576
+  filenum: 3
+  flushlevel: warning
+[PerformanceTest] Running in write mode.
+Connected to server address: ofi+sockets://172.25.101.3:5555@55
+==================================================================
+=================      Performance results:      =================
+==================================================================
+Total payload written: 1054 bytes
+Connect throughput: 83.8014 connections/s
+CreateChronicle throughput: 103.287 creations/s
+AcquireStory throughput: 256.627 acquisitions/s
+ReleaseStory throughput: 634.897 releases/s
+DestroyStory throughput: 4494.81 destructions/s
+DestroyChronicle throughput: 4421.86 destructions/s
+Disconnect throughput: 4880.02 disconnections/s
+End-to-end (incl. metadata time) bandwidth: 0.0537514 MB/s
+Record-event (incl. metadata time) bandwidth: 0.264363 MB/s
+Record-event (incl. metadata time) throughput: 0.000250818 events/s

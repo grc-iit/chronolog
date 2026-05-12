@@ -40,6 +40,7 @@ This is not a performance-optimization phase. The goal is to make the full measu
 - [x] Verify Darshan output if applicable.
 - [x] Verify eBPF-based measurements if available.
 - [x] Verify Linux network measurement outputs.
+- [x] Run append throughput workflow against ChronoLog distributed target.
 
 ## Kafka fixed baseline
 
@@ -85,6 +86,7 @@ This is not a performance-optimization phase. The goal is to make the full measu
 
 ## Phase 0 completion
 
+- [x] Append throughput workflow runs on ChronoLog distributed target.
 - [ ] All selected workflows run on ChronoLog distributed target.
 - [x] Append throughput workflow runs on Kafka distributed target.
 - [ ] All selected workflows run on Kafka distributed target.

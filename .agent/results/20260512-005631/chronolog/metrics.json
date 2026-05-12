@@ -1,0 +1,16 @@
+{
+  "system": "chronolog",
+  "workflow": "append_throughput",
+  "node_count": 2,
+  "client_count": 1,
+  "message_size_bytes": 1024,
+  "operation_count": 1,
+  "duration_seconds": 3986.954684273059,
+  "throughput_ops_per_sec": 0.000250818,
+  "avg_latency_ms": null,
+  "p50_latency_ms": null,
+  "p95_latency_ms": null,
+  "p99_latency_ms": null,
+  "success": true,
+  "record_event_bandwidth_mb_per_sec": 0.264363
+}
