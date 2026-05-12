@@ -16,3 +16,4 @@
 | 2026-05-11 22:17 CT | Verify current branch is off `develop` | complete | `.agent/results/20260511-221756/stdout.log` | Build ChronoLog baseline |
 | 2026-05-11 22:25 CT | Build ChronoLog baseline | complete | `.agent/results/20260511-221855/chronolog/stdout.log`, `.agent/results/chronolog-baseline-build.md`, `.agent/install-consistent/chronolog/bin/chrono-visor` | Run ChronoLog minimal local smoke test |
 | 2026-05-11 22:29 CT | Run ChronoLog minimal local smoke test | complete | `.agent/results/20260511-222650/chronolog/stdout.log`, `.agent/results/20260511-222650/chronolog/metrics.json`, `.agent/results/chronolog-minimal-smoke.md` | Add ChronoLog profiling abstraction |
+| 2026-05-11 22:31 CT | Add ChronoLog profiling abstraction | complete | `Client/cpp/include/chronolog_profile.h`, `.agent/results/20260511-223210/chronolog/stdout.log`, `.agent/results/chronolog-profiling-abstraction.md` | Add TAU-backed ChronoLog profiling mode |

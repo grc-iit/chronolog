@@ -73,6 +73,7 @@ set(PUBLIC_HEADER_FILES
     include/client_errcode.h
     include/log_level.h
     include/chrono_monitor.h
+    include/chronolog_profile.h
 )
 
 # Set PUBLIC_HEADER property for automatic installation

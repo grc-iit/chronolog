@@ -1,7 +1,7 @@
 # Current State
 
-- current task: add ChronoLog profiling abstraction
+- current task: add TAU-backed ChronoLog profiling mode
 - commands running: none
-- last successful validation: ChronoLog minimal local smoke test completed; evidence in `.agent/results/20260511-222650/chronolog/stdout.log`, `.agent/results/20260511-222650/chronolog/metrics.json`, and `.agent/results/chronolog-minimal-smoke.md`
+- last successful validation: ChronoLog profiling abstraction compiled, built, and installed; evidence in `.agent/results/20260511-223210/chronolog/stdout.log` and `.agent/results/chronolog-profiling-abstraction.md`
 - current blocker: perf runtime events and eBPF-based observability require cluster/admin permission changes for later profiling-output validation
-- next intended step: add a no-overhead profiling macro abstraction that can later map ChronoLog semantic regions to TAU
+- next intended step: wire the profiling abstraction to TAU behind an explicit CMake option while keeping default builds unchanged
