@@ -10,7 +10,7 @@ usage() {
   cat <<'USAGE'
 Usage: mofka_run_append_smoke.sh [options]
 
-Launch Mofka, run a local append-throughput smoke benchmark, collect metrics,
+Launch Mofka, run an append-throughput smoke benchmark, collect metrics,
 and stop Mofka in one command/session.
 
 Options:
@@ -18,6 +18,11 @@ Options:
   --operation-count N          Number of events to append. Default: 50.
   --message-size-bytes N       Payload size. Default: 1024.
   --protocol PROTOCOL          Mercury protocol. Default: ofi+tcp.
+  --deployment-mode MODE       local_smoke or bare_metal. Default: local_smoke.
+  --node-count N               Node count. Default: 1.
+  --slurm-partition NAME       Partition for bare_metal. Default: debug.
+  --slurm-nodelist LIST        Optional explicit SLURM nodelist.
+  --slurm-time TIME            SLURM time limit. Default: 00:10:00.
   -h, --help                   Show this help.
 USAGE
 }
@@ -26,6 +31,11 @@ RESULT_DIR="${PHASE0_RESULT_DIR:-}"
 OPERATION_COUNT="${MOFKA_OPERATION_COUNT:-50}"
 MESSAGE_SIZE_BYTES="${MOFKA_MESSAGE_SIZE_BYTES:-1024}"
 PROTOCOL="${MOFKA_PROTOCOL:-ofi+tcp}"
+DEPLOYMENT_MODE="${MOFKA_DEPLOYMENT_MODE:-local_smoke}"
+NODE_COUNT="${MOFKA_NODE_COUNT:-1}"
+SLURM_PARTITION="${MOFKA_SLURM_PARTITION:-debug}"
+SLURM_NODELIST="${MOFKA_SLURM_NODELIST:-}"
+SLURM_TIME="${MOFKA_SLURM_TIME:-00:10:00}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -43,6 +53,26 @@ while [[ $# -gt 0 ]]; do
       ;;
     --protocol)
       PROTOCOL="$2"
+      shift 2
+      ;;
+    --deployment-mode)
+      DEPLOYMENT_MODE="$2"
+      shift 2
+      ;;
+    --node-count)
+      NODE_COUNT="$2"
+      shift 2
+      ;;
+    --slurm-partition)
+      SLURM_PARTITION="$2"
+      shift 2
+      ;;
+    --slurm-nodelist)
+      SLURM_NODELIST="$2"
+      shift 2
+      ;;
+    --slurm-time)
+      SLURM_TIME="$2"
       shift 2
       ;;
     -h|--help)
@@ -74,9 +104,12 @@ trap cleanup EXIT
 
 "${SCRIPT_DIR}/mofka_launch.sh" \
   --result-dir "${RESULT_DIR}" \
-  --deployment-mode local_smoke \
-  --node-count 1 \
+  --deployment-mode "${DEPLOYMENT_MODE}" \
+  --node-count "${NODE_COUNT}" \
   --protocol "${PROTOCOL}" \
+  --slurm-partition "${SLURM_PARTITION}" \
+  --slurm-nodelist "${SLURM_NODELIST}" \
+  --slurm-time "${SLURM_TIME}" \
   --wait-seconds 20
 
 mofka_export_spack_runtime_env
@@ -89,8 +122,9 @@ python3 "${SCRIPT_DIR}/mofka_append_benchmark.py" \
   --result-dir "${RESULT_DIR}" \
   --operation-count "${OPERATION_COUNT}" \
   --message-size-bytes "${MESSAGE_SIZE_BYTES}" \
-  --node-count 1 \
+  --node-count "${NODE_COUNT}" \
   --client-count 1 \
+  --deployment-mode "${DEPLOYMENT_MODE}" \
   > "${MOFKA_RESULT_DIR}/append-benchmark.stdout.log" \
   2> "${MOFKA_RESULT_DIR}/append-benchmark.stderr.log"
 
@@ -99,12 +133,13 @@ cat > "${RESULT_DIR}/summary.md" <<EOF
 
 - system: Mofka
 - workflow: append_throughput
-- deployment_mode: local_smoke
+- deployment_mode: ${DEPLOYMENT_MODE}
 - protocol: ${PROTOCOL}
 - partition_type: memory
+- node_count: ${NODE_COUNT}
 - operation_count: ${OPERATION_COUNT}
 - message_size_bytes: ${MESSAGE_SIZE_BYTES}
 - metrics: mofka/metrics.json
 
-This local smoke validates the Mofka append path and metrics plumbing. It does not satisfy the final distributed bare-metal benchmark requirement.
+This smoke validates the Mofka append path and metrics plumbing. A bare_metal run contributes distributed evidence; a local_smoke run does not satisfy the final distributed benchmark requirement.
 EOF

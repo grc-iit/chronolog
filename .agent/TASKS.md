@@ -58,6 +58,7 @@ This is not a performance-optimization phase. The goal is to make the full measu
 - [x] Validate Mofka local smoke launch and Bedrock provider query.
 - [x] Validate Mofka two-node bare-metal launch and Bedrock provider query.
 - [x] Run selected benchmark/workflow against Mofka.
+- [x] Run append throughput workflow against Mofka distributed target.
 - [x] Collect Mofka baseline throughput/latency.
 - [x] Confirm no Mofka source changes were made.
 
@@ -85,6 +86,7 @@ This is not a performance-optimization phase. The goal is to make the full measu
 
 - [ ] All selected workflows run on ChronoLog distributed target.
 - [ ] All selected workflows run on Kafka distributed target.
+- [x] Append throughput workflow runs on Mofka distributed target.
 - [ ] All selected workflows run on Mofka distributed target.
 - [ ] ChronoLog instrumentation works.
 - [ ] ChronoLog profiling stack produces outputs.

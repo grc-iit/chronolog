@@ -25,6 +25,7 @@ def main():
     parser.add_argument("--message-size-bytes", type=int, default=1024)
     parser.add_argument("--node-count", type=int, default=1)
     parser.add_argument("--client-count", type=int, default=1)
+    parser.add_argument("--deployment-mode", default="local_smoke")
     parser.add_argument("--partition-type", choices=["memory"], default="memory")
     args = parser.parse_args()
 
@@ -87,12 +88,13 @@ def main():
         "workflow": "append_throughput",
         "topic": args.topic,
         "partition_type": args.partition_type,
+        "deployment_mode": args.deployment_mode,
         "operation_count": args.operation_count,
         "message_size_bytes": args.message_size_bytes,
         "producer_batch_size": 1,
         "producer_max_batch": 2,
         "producer_ordering": "Loose",
-        "local_smoke_note": "Uses Mofka memory partition because local Yokan/Warabi-backed dynamic partition creation is not yet validated.",
+        "configuration_note": "Uses Mofka memory partition because Yokan/Warabi-backed dynamic partition creation still needs configuration validation.",
     }, indent=2) + "\n")
     print(json.dumps(metrics, indent=2))
     return 0
