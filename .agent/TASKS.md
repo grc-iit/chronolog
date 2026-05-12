@@ -74,6 +74,7 @@ This is not a performance-optimization phase. The goal is to make the full measu
 
 - [x] Create shared workload config format.
 - [x] Create common metrics output schema.
+- [x] Create distributed SLURM run wrapper.
 - [x] Ensure every local smoke run writes `metrics.json`.
 - [x] Ensure every local smoke run writes stdout/stderr/logs.
 - [x] Ensure ChronoLog local smoke profile artifacts are collected.
