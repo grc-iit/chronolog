@@ -1,0 +1,137 @@
+Starting tracking the heap
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap.0001.heap (1 MB allocated cumulatively, 1 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap.0002.heap (5 MB allocated cumulatively, 5 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap.0003.heap (6 MB allocated cumulatively, 1 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap.0004.heap (10 MB allocated cumulatively, 5 MB currently in use)
+Starting tracking the heap
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0001.heap (1 MB allocated cumulatively, 0 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0002.heap (2 MB allocated cumulatively, 0 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0003.heap (3 MB allocated cumulatively, 0 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0004.heap (4 MB allocated cumulatively, 1 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0005.heap (5 MB allocated cumulatively, 1 MB currently in use)
+Starting tracking the heap
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91088.0001.heap (1 MB allocated cumulatively, 1 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91088.0002.heap (5 MB allocated cumulatively, 5 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91088.0003.heap (6 MB allocated cumulatively, 1 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91088.0004.heap (10 MB allocated cumulatively, 5 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0006.heap (6 MB allocated cumulatively, 1 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0007.heap (7 MB allocated cumulatively, 1 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0008.heap (8 MB allocated cumulatively, 1 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0009.heap (9 MB allocated cumulatively, 1 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0010.heap (10 MB allocated cumulatively, 1 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0011.heap (11 MB allocated cumulatively, 1 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0012.heap (12 MB allocated cumulatively, 1 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0013.heap (13 MB allocated cumulatively, 1 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0014.heap (14 MB allocated cumulatively, 1 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0015.heap (15 MB allocated cumulatively, 1 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0016.heap (16 MB allocated cumulatively, 1 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0017.heap (17 MB allocated cumulatively, 1 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0018.heap (18 MB allocated cumulatively, 1 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0019.heap (19 MB allocated cumulatively, 1 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0020.heap (21 MB allocated cumulatively, 1 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0021.heap (22 MB allocated cumulatively, 1 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0022.heap (23 MB allocated cumulatively, 2 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91088.0005.heap (11 MB allocated cumulatively, 1 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91088.0006.heap (12 MB allocated cumulatively, 1 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91088.0007.heap (13 MB allocated cumulatively, 1 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91088.0008.heap (14 MB allocated cumulatively, 1 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91088.0009.heap (15 MB allocated cumulatively, 2 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91088.0010.heap (17 MB allocated cumulatively, 3 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91088.0011.heap (25 MB allocated cumulatively, 11 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91088.0012.heap (26 MB allocated cumulatively, 12 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91088.0013.heap (42 MB allocated cumulatively, 28 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91088.0014.heap (43 MB allocated cumulatively, 29 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91088.0015.heap (44 MB allocated cumulatively, 30 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91088.0016.heap (45 MB allocated cumulatively, 31 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91088.0017.heap (46 MB allocated cumulatively, 32 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91088.0018.heap (47 MB allocated cumulatively, 33 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91088.0019.heap (51 MB allocated cumulatively, 38 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91088.0020.heap (55 MB allocated cumulatively, 42 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91088.0021.heap (59 MB allocated cumulatively, 46 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91088.0022.heap (63 MB allocated cumulatively, 50 MB currently in use)
+MPI_WTIME_IS_GLOBAL is not available in this MPI implementation for timer Connect
+MPI_WTIME_IS_GLOBAL is not available in this MPI implementation for timer CreateChronicle
+MPI_WTIME_IS_GLOBAL is not available in this MPI implementation for timer AcquireStory
+MPI_WTIME_IS_GLOBAL is not available in this MPI implementation for timer WriteEvent
+MPI_WTIME_IS_GLOBAL is not available in this MPI implementation for timer ReplayStory
+MPI_WTIME_IS_GLOBAL is not available in this MPI implementation for timer ReleaseStory
+MPI_WTIME_IS_GLOBAL is not available in this MPI implementation for timer DestroyStory
+MPI_WTIME_IS_GLOBAL is not available in this MPI implementation for timer DestroyChronicle
+MPI_WTIME_IS_GLOBAL is not available in this MPI implementation for timer Disconnect
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91088.0023.heap (95 MB allocated cumulatively, 82 MB currently in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91088.0024.heap (Exiting, 215 kB in use)
+Dumping heap profile to /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0023.heap (Exiting, 223 kB in use)
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap.0001.heap.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap.0002.heap.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap.0003.heap.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap.0004.heap.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0001.heap.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0002.heap.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0003.heap.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0004.heap.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0005.heap.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0006.heap.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0007.heap.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0008.heap.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0009.heap.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0010.heap.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0011.heap.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0012.heap.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0013.heap.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0014.heap.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0015.heap.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0016.heap.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0017.heap.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0018.heap.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0019.heap.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0020.heap.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0021.heap.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0022.heap.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91033.0023.heap.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91088.0001.heap.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91088.0002.heap.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91088.0003.heap.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91088.0004.heap.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91088.0005.heap.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91088.0006.heap.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91088.0007.heap.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91088.0008.heap.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91088.0009.heap.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/profiles/gperftools/chrono-bench.heap_91088.0010.heap.

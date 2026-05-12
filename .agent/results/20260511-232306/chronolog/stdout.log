@@ -1,0 +1,121 @@
+[chronolog gperftools heap profile validation]
+time=2026-05-11T23:23:07-05:00
+work_dir=/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog
+libtcmalloc=/usr/lib/x86_64-linux-gnu/libtcmalloc.so
+[7;49m[92mStopping ChronoLog...[0m
+[0;33mStopping chrono-player ...[0m
+[0;33mAll chrono-player processes stopped gracefully.[0m
+
+[0;33mStopping chrono-keeper ...[0m
+[0;33mAll chrono-keeper processes stopped gracefully.[0m
+
+[0;33mStopping chrono-grapher ...[0m
+[0;33mAll chrono-grapher processes stopped gracefully.[0m
+
+[0;33mStopping chrono-visor ...[0m
+[0;33mAll chrono-visor processes stopped gracefully.[0m
+
+[7;49m[92mAll ChronoLog processes stopped.[0m
+[7;49m[92mCleaning ChronoLog...[0m
+[0;33mChecking if ChronoLog processes are running...[0m
+[0;33mNo active ChronoLog processes detected. Proceeding with cleaning.[0m
+[0;33mRemoving config files[0m
+[0;33mRemoving log files[0m
+[0;33mRemoving output files[0m
+[7;49m[92mChronoLog cleaning done.[0m
+[7;49m[92mPreparing to start ChronoLog...[0m
+[0;33mChecking required dependencies...[0m
+[0;33mAll required dependencies are installed.[0m
+[0;33mChecking required directories...[0m
+[0;33mAll required directories are in place.[0m
+[0;33mChecking required files...[0m
+[0;33mAll required files are in place.[0m
+Generating grapher configuration files ...
+Generated /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-grapher-conf-1.json with ports 3333 and 4444
+Generating player configuration files ...
+Generated /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-player-conf-1.json with port 2222
+Generating keeper configuration files ...
+Generated /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-keeper-conf-1.json with ports 6666, 7777, and 3333
+Generating visor configuration file ...
+Generated /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-visor-conf.json
+Generating client configuration file ...
+Generated /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json
+Generate configuration files for all recording groups done
+[7;49m[92mStarting ChronoLog...[0m
+[0;33mLaunching /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/bin/chrono-visor --config /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-visor-conf.json ...[0m
+[0;33mLaunching /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/bin/chrono-grapher --config /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-grapher-conf-1.json ...[0m
+[0;33mLaunching /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/bin/chrono-player --config /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-player-conf-1.json ...[0m
+[0;33mLaunching /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/bin/chrono-keeper --config /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-keeper-conf-1.json ...[0m
+[7;49m[92mChronoLog Started.[0m
+90844 /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/bin/chrono-visor --config /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-visor-conf.json
+90904 /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/bin/chrono-grapher --config /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-grapher-conf-1.json
+90989 /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/bin/chrono-player --config /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-player-conf-1.json
+91023 /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/bin/chrono-keeper --config /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-keeper-conf-1.json
+Config file specified: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json
+Number of processes: 1
+Chronicle count (#chronicles per proc): 1
+Story count (#stories per proc): 1
+No event payload file specified, use default/specified separate conf args ...
+Min event size (minimum of event payload length following a normal distribution): 32 bytes
+Ave event size (median of event payload length following a normal distribution): 64 bytes
+Max event size (maximum of event payload length following a normal distribution): 128 bytes
+Event count (#events per proc): 20
+Event interval (time in-between event accesses): 0 us
+Barrier (hold on next ChronoLog API call until completion of the previous one): false
+Shared story (all procs access the same story): false
+[PerformanceTest] Configuration file loaded successfully from '/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/chrono-client-conf.json'.
+===== ChronoLog Client Configuration =====
+[PORTAL_CONF]
+  protocol: ofi+sockets
+  IP: 127.0.0.1
+  port: 5555
+  provider ID: 55
+[QUERY_CONF]
+  protocol: ofi+sockets
+  IP: 127.0.0.1
+  port: 5557
+  provider ID: 57
+[LOG_CONF]
+  type: file
+  file: /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232306/chronolog/logs/chrono-client.log
+  level: debug
+  name: ChronoClient
+  filesize: 1048576
+  filenum: 3
+  flushlevel: warning
+[PerformanceTest] Running in write mode.
+Connected to server address: ofi+sockets://127.0.0.1:5555@55
+==================================================================
+=================      Performance results:      =================
+==================================================================
+Total payload written: 1222 bytes
+Connect throughput: 47.0689 connections/s
+CreateChronicle throughput: 92.0741 creations/s
+AcquireStory throughput: 42.6033 acquisitions/s
+ReleaseStory throughput: 377.201 releases/s
+DestroyStory throughput: 5.60574e-128 destructions/s
+DestroyChronicle throughput: 623.412 destructions/s
+Disconnect throughput: 646.068 disconnections/s
+End-to-end (incl. metadata time) bandwidth: 0.0195488 MB/s
+Record-event (incl. metadata time) bandwidth: 0.054082 MB/s
+Record-event (incl. metadata time) throughput: 0.00088514 events/s
+bench_status=0
+[7;49m[92mStopping ChronoLog...[0m
+[0;33mStopping chrono-player ...[0m
+[0;33mWaiting for chrono-player to stop...[0m
+[0;33mAll chrono-player processes stopped gracefully.[0m
+
+[0;33mStopping chrono-keeper ...[0m
+[0;33mWaiting for chrono-keeper to stop...[0m
+[0;33mAll chrono-keeper processes stopped gracefully.[0m
+
+[0;33mStopping chrono-grapher ...[0m
+[0;33mWaiting for chrono-grapher to stop...[0m
+[0;33mAll chrono-grapher processes stopped gracefully.[0m
+
+[0;33mStopping chrono-visor ...[0m
+[0;33mWaiting for chrono-visor to stop...[0m
+[0;33mAll chrono-visor processes stopped gracefully.[0m
+
+[7;49m[92mAll ChronoLog processes stopped.[0m
+time=2026-05-11T23:24:03-05:00
