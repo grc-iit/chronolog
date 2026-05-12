@@ -1,0 +1,21 @@
+Usage: mofka_launch.sh [options]
+
+Launch a Phase 0 Mofka fixed baseline using Bedrock. Bare-metal distributed
+deployment is the target; local single-node mode is only a smoke validation.
+
+Options:
+  --result-dir DIR          Existing or new result directory to use.
+  --node-count N            Total server processes/nodes requested. Default: 1.
+  --protocol PROTOCOL       Mercury protocol. Default: ofi+tcp for bare metal,
+                            na+sm for local_smoke.
+  --deployment-mode MODE    bare_metal or local_smoke. Default: bare_metal.
+  --wait-seconds N          Wait for group file creation. Default: 30.
+  -h, --help                Show this help.
+Usage: mofka_stop.sh [options]
+
+Stop a Phase 0 Mofka fixed baseline launched by mofka_launch.sh.
+
+Options:
+  --result-dir DIR        Result directory containing mofka/pids.
+  --timeout-seconds N     Graceful shutdown timeout per process. Default: 20.
+  -h, --help              Show this help.

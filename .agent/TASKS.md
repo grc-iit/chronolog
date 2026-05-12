@@ -51,8 +51,8 @@ This is not a performance-optimization phase. The goal is to make the full measu
 
 ## Mofka fixed baseline
 
-- [ ] Create Mofka launch script.
-- [ ] Create Mofka stop/cleanup script.
+- [x] Create Mofka launch script.
+- [x] Create Mofka stop/cleanup script.
 - [ ] Run selected benchmark/workflow against Mofka.
 - [ ] Collect Mofka baseline throughput/latency.
 - [ ] Confirm no Mofka source changes were made.
