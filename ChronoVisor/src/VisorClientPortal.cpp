@@ -12,6 +12,7 @@
 #include <ClientRegistryManager.h>
 #include <ChronicleMetaDirectory.h>
 #include <ClientPortalService.h>
+#include <chronolog_profile.h>
 
 namespace tl = thallium;
 namespace chl = chronolog;
@@ -23,6 +24,7 @@ chronolog::VisorClientPortal::VisorClientPortal()
     , clientPortalService(nullptr)
     , theKeeperRegistry(nullptr) //TODO: revisit later ...
 {
+    CL_PROFILE_REGION("visor_client_connect");
     // TODO: revisit the construction of registries ....
     LOG_DEBUG("[VisorClientPortal] Constructor is called. Object created at {} in thread PID={}",
               static_cast<const void*>(this),
@@ -37,6 +39,7 @@ chronolog::VisorClientPortal::VisorClientPortal()
 int chronolog::VisorClientPortal::StartServices(chronolog::RPCProviderConf const& VISOR_CLIENT_PORTAL_SERVICE_CONF,
                                                 chl::KeeperRegistry* keeperRegistry)
 {
+    CL_PROFILE_REGION("visor_client_disconnect");
     int return_status = chronolog::CL_ERR_UNKNOWN;
 
     // check if already started
@@ -85,6 +88,8 @@ void chronolog::VisorClientPortal::ShutdownServices() { clientPortalState = SHUT
 /////////////////
 chronolog::VisorClientPortal::~VisorClientPortal()
 {
+    CL_PROFILE_REGION("visor_create_chronicle");
+    CL_PROFILE_REGION("metadata_lookup");
     LOG_DEBUG("[VisorClientPortal] Destructor is called.");
 
     ShutdownServices();
@@ -109,6 +114,8 @@ int chronolog::VisorClientPortal::ClientConnect(uint32_t client_euid,
                                                 chl::ClientId& client_id,
                                                 uint64_t& clock_offset)
 {
+    CL_PROFILE_REGION("visor_destroy_chronicle");
+    CL_PROFILE_REGION("metadata_lookup");
     LOG_INFO("New Client Connected. ClientEUID={}, ClientHostID={}, ClientPID={}",
              client_euid,
              client_host_id,
@@ -136,6 +143,8 @@ int chronolog::VisorClientPortal::ClientConnect(uint32_t client_euid,
 
 int chronolog::VisorClientPortal::ClientDisconnect(chronolog::ClientId const& client_id)
 {
+    CL_PROFILE_REGION("visor_destroy_story");
+    CL_PROFILE_REGION("story_index_update");
     LOG_INFO("Client Disconnected. ClientID={}", client_id);
     return clientManager.remove_client_record(client_id);
 }
@@ -148,6 +157,8 @@ int chronolog::VisorClientPortal::CreateChronicle(chl::ClientId const& client_id
                                                   const std::map<std::string, std::string>& attrs,
                                                   int& flags)
 {
+    CL_PROFILE_REGION("visor_acquire_story");
+    CL_PROFILE_REGION("metadata_lookup");
     if(chronicle_name.empty())
     {
         return chronolog::CL_ERR_INVALID_ARG;
@@ -249,7 +260,10 @@ chl::AcquireStoryResponseMsg chronolog::VisorClientPortal::AcquireStory(chl::Cli
 
     int ret = chronolog::CL_ERR_UNKNOWN;
 
-    ret = chronicleMetaDirectory.acquire_story(client_id, chronicle_name, story_name, attrs, flags, story_id);
+    {
+        CL_PROFILE_REGION("visor_metadata_acquire_story");
+        ret = chronicleMetaDirectory.acquire_story(client_id, chronicle_name, story_name, attrs, flags, story_id);
+    }
 
     if(ret != chronolog::CL_SUCCESS)
     {
@@ -270,11 +284,15 @@ chl::AcquireStoryResponseMsg chronolog::VisorClientPortal::AcquireStory(chl::Cli
     // for the new story and notify the recording Keepers & Graphers
     // so that they are ready to start recording this story
 
-    if(chronolog::CL_SUCCESS != theKeeperRegistry->notifyRecordingGroupOfStoryRecordingStart(chronicle_name,
-                                                                                             story_name,
-                                                                                             story_id,
-                                                                                             recording_keepers,
-                                                                                             player))
+    {
+        CL_PROFILE_REGION("visor_notify_recording_start");
+        ret = theKeeperRegistry->notifyRecordingGroupOfStoryRecordingStart(chronicle_name,
+                                                                           story_name,
+                                                                           story_id,
+                                                                           recording_keepers,
+                                                                           player);
+    }
+    if(chronolog::CL_SUCCESS != ret)
     {
         // RPC notification to the keepers might have failed, release the newly acquired story
         chronicleMetaDirectory.release_story(client_id, chronicle_name, story_name, story_id);
@@ -299,6 +317,8 @@ int chronolog::VisorClientPortal::ReleaseStory(chl::ClientId const& client_id,
                                                std::string const& chronicle_name,
                                                std::string const& story_name)
 {
+    CL_PROFILE_REGION("visor_release_story");
+    CL_PROFILE_REGION("story_index_update");
     LOG_INFO("[VisorClientPortal] Story released: PID={}, ChronicleName={}, StoryName={}",
              getpid(),
              chronicle_name.c_str(),
@@ -310,13 +330,20 @@ int chronolog::VisorClientPortal::ReleaseStory(chl::ClientId const& client_id,
     }
 
     StoryId story_id(0);
-    auto return_code = chronicleMetaDirectory.release_story(client_id, chronicle_name, story_name, story_id);
+    int return_code = chronolog::CL_ERR_UNKNOWN;
+    {
+        CL_PROFILE_REGION("visor_metadata_release_story");
+        return_code = chronicleMetaDirectory.release_story(client_id, chronicle_name, story_name, story_id);
+    }
     if(chronolog::CL_SUCCESS != return_code)
     {
         return return_code;
     }
 
-    theKeeperRegistry->notifyRecordingGroupOfStoryRecordingStop(story_id);
+    {
+        CL_PROFILE_REGION("visor_notify_recording_stop");
+        theKeeperRegistry->notifyRecordingGroupOfStoryRecordingStop(story_id);
+    }
 
     return chronolog::CL_SUCCESS;
 }
@@ -328,6 +355,8 @@ int chronolog::VisorClientPortal::GetChronicleAttr(chl::ClientId const& client_i
                                                    const std::string& key,
                                                    std::string& value)
 {
+    CL_PROFILE_REGION("visor_get_chronicle_attr");
+    CL_PROFILE_REGION("metadata_lookup");
     LOG_DEBUG("[VisorClientPortal] Get Chronicle Attributes: PID={}, Name={}, Key={}",
               getpid(),
               chronicle_name.c_str(),
@@ -348,6 +377,8 @@ int chronolog::VisorClientPortal::EditChronicleAttr(chl::ClientId const& client_
                                                     std::string const& key,
                                                     std::string const& value)
 {
+    CL_PROFILE_REGION("visor_edit_chronicle_attr");
+    CL_PROFILE_REGION("metadata_lookup");
     LOG_DEBUG("[VisorClientPortal] Edit Chronicle Attributes: PID={}, Name={}, Key={}, Value={}",
               getpid(),
               chronicle.c_str(),
@@ -364,6 +395,8 @@ int chronolog::VisorClientPortal::EditChronicleAttr(chl::ClientId const& client_
 
 int chronolog::VisorClientPortal::ShowChronicles(chl::ClientId const& client_id, std::vector<std::string>& chronicles)
 {
+    CL_PROFILE_REGION("visor_show_chronicles");
+    CL_PROFILE_REGION("metadata_lookup");
     LOG_DEBUG("[VisorClientPortal] Show Chronicles: PID={}, ClientID={}", getpid(), client_id);
 
     // TODO: add client_id authorization check : if ( chronicle_action_is_authorized())
@@ -376,6 +409,8 @@ int chronolog::VisorClientPortal::ShowStories(chl::ClientId const& client_id,
                                               std::string const& chronicle_name,
                                               std::vector<std::string>& stories)
 {
+    CL_PROFILE_REGION("visor_show_stories");
+    CL_PROFILE_REGION("metadata_lookup");
     LOG_DEBUG("[VisorClientPortal] Show Stories: PID={}, ChronicleName={}", getpid(), chronicle_name.c_str());
 
     if(!chronicle_action_is_authorized(client_id, chronicle_name))

@@ -17,7 +17,7 @@ def percentile(values, percent):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run a Phase 0 Mofka append/read smoke benchmark.")
+    parser = argparse.ArgumentParser(description="Run a Phase 0 Mofka append/read benchmark.")
     parser.add_argument("--group-file", required=True)
     parser.add_argument("--result-dir", required=True)
     parser.add_argument("--topic", default="phase0_append")
@@ -25,7 +25,7 @@ def main():
     parser.add_argument("--message-size-bytes", type=int, default=1024)
     parser.add_argument("--node-count", type=int, default=1)
     parser.add_argument("--client-count", type=int, default=1)
-    parser.add_argument("--deployment-mode", default="local_smoke")
+    parser.add_argument("--deployment-mode", default="local_validation")
     parser.add_argument("--workflow", default="append_throughput")
     parser.add_argument("--partition-type", choices=["memory", "default"], default="memory")
     parser.add_argument("--partition-server-rank", type=int, default=1)

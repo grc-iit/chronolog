@@ -9,7 +9,7 @@ usage() {
   cat <<'USAGE'
 Usage: chronolog_run_append_distributed.sh [options]
 
-Run a two-node bare-metal ChronoLog append-throughput smoke benchmark.
+Run a distributed bare-metal ChronoLog benchmark/profiling workflow.
 
 Options:
   --result-dir DIR             Existing or new result directory to use.
@@ -449,7 +449,7 @@ else
 fi
 
 cat > "${RESULT_DIR}/summary.md" <<EOF
-# ChronoLog Distributed Append Smoke
+# ChronoLog Distributed Benchmark Run
 
 - system: ChronoLog
 - workflow: ${WORKFLOW}

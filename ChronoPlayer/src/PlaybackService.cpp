@@ -54,6 +54,7 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
     CL_PROFILE_REGION("rpc_receive");
     CL_PROFILE_REGION("grapher_query");
     CL_PROFILE_REGION("range_retrieval");
+    CL_PROFILE_REGION("player_playback_request");
 
     LOG_INFO("[PlaybackService] story_playback_request for receiver_service {} Story {}-{}",
              chl::to_string(receiver_service_id),
@@ -68,6 +69,7 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
     // if we already have StoryChunkTransferAgent & ExtractionQueue for this receiver,
     // use it or add one otherwise
     {
+        CL_PROFILE_REGION("player_sender_lookup");
         std::lock_guard<std::mutex> lock(playbackServiceMutex);
 
         auto findSenderIter = chunkSenders.find(receiver_service_id.get_service_endpoint());
@@ -91,12 +93,15 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
     // put new archiveRequest tied to the Sender's extractionQueue on
     // onto the ArchiveReadingRequestQueue
 
-    theArchiveReadingRequestQueue.pushReadingRequest(
-            chl::ArchiveReadingRequest(&(storyChunkSender->getExtractionQueue()),
-                                       chronicle_name,
-                                       story_name,
-                                       start_time,
-                                       end_time));
+    {
+        CL_PROFILE_REGION("player_archive_request_enqueue");
+        theArchiveReadingRequestQueue.pushReadingRequest(
+                chl::ArchiveReadingRequest(&(storyChunkSender->getExtractionQueue()),
+                                           chronicle_name,
+                                           story_name,
+                                           start_time,
+                                           end_time));
+    }
 
     // return requestId
     request.respond(requestId);

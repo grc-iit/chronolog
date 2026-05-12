@@ -3,7 +3,7 @@
   "status": "provisional",
   "deployment_policy": {
     "final_target": "distributed bare-metal SLURM deployments",
-    "local_smoke_role": "validate launch, logging, metrics, and profiling plumbing only",
+    "local_validation_role": "validate launch, logging, metrics, and profiling plumbing only",
     "containerized_role": "fallback or convenience path only"
   },
   "workloads": [
@@ -25,7 +25,7 @@
         "p95_latency_ms",
         "p99_latency_ms"
       ],
-      "local_smoke_runs": {
+      "local_validation_runs": {
         "chronolog": ".agent/results/20260511-222650/chronolog/metrics.json",
         "kafka": ".agent/results/20260511-234455/kafka/metrics.json",
         "mofka": ".agent/results/20260512-003314/mofka/metrics.json"
@@ -40,7 +40,7 @@
         "kafka_4_node": ".agent/results/20260512-020415/kafka/metrics.json",
         "mofka_4_node": ".agent/results/20260512-020606/mofka/metrics.json"
       },
-      "comparability_note": "Distributed smoke runs validate plumbing and comparable metrics output. They are not performance-claim runs."
+      "comparability_note": "Distributed validation runs validate plumbing and comparable metrics output. They are not performance-claim runs."
     },
     {
       "name": "append_latency",
@@ -52,7 +52,7 @@
         "client_count": 1,
         "node_counts": [1, 2, 4, 8]
       },
-      "status": "complete_distributed_smoke",
+      "status": "complete_distributed_validation",
       "distributed_runs": {
         "chronolog": ".agent/results/20260512-010537/chronolog/metrics.json",
         "kafka": ".agent/results/20260512-010656/kafka/metrics.json",
@@ -63,7 +63,7 @@
       "name": "range_retrieval",
       "description": "Read/range retrieval over previously appended records when comparable APIs exist.",
       "systems": ["chronolog", "kafka", "mofka"],
-      "status": "complete_distributed_smoke",
+      "status": "complete_distributed_validation",
       "distributed_runs": {
         "chronolog": ".agent/results/20260512-015243/chronolog/metrics.json",
         "kafka": ".agent/results/20260512-013547/kafka/metrics.json",

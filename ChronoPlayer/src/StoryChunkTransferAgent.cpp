@@ -56,6 +56,8 @@ bool chronolog::StoryChunkTransferAgent::is_receiver_available() const
 }
 int chronolog::StoryChunkTransferAgent::processStoryChunk(chronolog::StoryChunk* story_chunk)
 {
+    CL_PROFILE_REGION("player_send_result_chunk");
+    CL_PROFILE_COUNTER("player_result_chunk_events", story_chunk->getEventCount());
     try
     {
         LOG_DEBUG(

@@ -77,14 +77,23 @@ uint64_t chronolog::StoryWritingHandle<KeeperChoicePolicy>::log_event(std::strin
                                   theClient.get_event_index(),
                                   event_record);
 
-    auto keeperRecordingClient = keeperChoicePolicy->chooseKeeper(storyKeepers, log_event.time());
+    chronolog::KeeperRecordingClient* keeperRecordingClient = nullptr;
+    {
+        CL_PROFILE_REGION("client_keeper_select");
+        keeperRecordingClient = keeperChoicePolicy->chooseKeeper(storyKeepers, log_event.time());
+    }
     if(nullptr == keeperRecordingClient) //very unlikely...
     {
         LOG_WARNING("[StoryWritingHandle] No keeper selected for logging event: {}", event_record);
         return 0;
     }
 
-    if(chronolog::CL_SUCCESS == keeperRecordingClient->send_event_msg(log_event))
+    int send_status = chronolog::CL_ERR_UNKNOWN;
+    {
+        CL_PROFILE_REGION("client_keeper_rpc");
+        send_status = keeperRecordingClient->send_event_msg(log_event);
+    }
+    if(chronolog::CL_SUCCESS == send_status)
     {
         return log_event.eventTime;
     }

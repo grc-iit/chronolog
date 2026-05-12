@@ -6,12 +6,12 @@ Time: 2026-05-11 23:34 CT
 
 ## Command Summary
 
-Collected outputs from the required Linux network measurement commands around a local ChronoLog smoke run:
+Collected outputs from the required Linux network measurement commands around a local ChronoLog validation run:
 
 - `iperf3`: localhost raw bandwidth check.
 - `ss`: socket state and send/receive queues before, during, and after ChronoLog.
 - `nstat`: kernel TCP/IP counters before and after ChronoLog.
-- `sar -n DEV`: network throughput during the ChronoLog smoke run.
+- `sar -n DEV`: network throughput during the ChronoLog validation run.
 - `ethtool`: link settings and driver stats for the default interface `eno1`.
 
 ## Evidence

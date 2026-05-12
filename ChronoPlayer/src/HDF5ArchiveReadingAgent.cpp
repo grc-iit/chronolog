@@ -99,11 +99,17 @@ int chronolog::HDF5ArchiveReadingAgent::readStoryChunkFile(const ChronicleName& 
         H5::Exception::dontPrint();
 
         LOG_DEBUG("[HDF5ArchiveReadingAgent] Opening file {}", file_name);
-        file = std::make_unique<H5::H5File>(file_name, H5F_ACC_SWMR_READ);
+        {
+            CL_PROFILE_REGION("player_hdf5_open");
+            file = std::make_unique<H5::H5File>(file_name, H5F_ACC_SWMR_READ);
+        }
 
         std::string dataset_name = "/story_chunks/data.vlen_bytes";
         LOG_DEBUG("[HDF5ArchiveReadingAgent] Opening dataset {}", dataset_name);
-        H5::DataSet dataset = file->openDataSet(dataset_name);
+        H5::DataSet dataset = [&]() {
+            CL_PROFILE_REGION("player_hdf5_open_dataset");
+            return file->openDataSet(dataset_name);
+        }();
 
         H5::DataSpace dataspace = dataset.getSpace();
         hsize_t dims_out[2] = {0, 0};
@@ -131,9 +137,11 @@ int chronolog::HDF5ArchiveReadingAgent::readStoryChunkFile(const ChronicleName& 
         std::vector<LogEventHVL> data;
         data.resize(dims_out[0]);
         {
+            CL_PROFILE_REGION("player_hdf5_read");
             CL_PROFILE_REGION("deserialization");
             dataset.read(data.data(), defined_comp_type);
         }
+        CL_PROFILE_COUNTER("storage_read_events", data.size());
 
         LOG_DEBUG("[HDF5ArchiveReadingAgent] Creating StoryChunk {}-{} range {}-{}...",
                   chronicleName,
@@ -259,6 +267,7 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName& c
                                                           std::list<StoryChunk*>& listOfChunks,
                                                           bool readAuxFiles)
 {
+    CL_PROFILE_REGION("player_archive_lookup");
     // find all HDF5 files in the archive directory the start time of which falls in the range [startTime, endTime)
     // for each file, read Events in the StoryChunk and add matched ones to the list of StoryChunks
     // return the list of StoryChunks

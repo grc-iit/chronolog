@@ -22,7 +22,7 @@ RESULTS_ROOT = REPO_ROOT / ".agent" / "results"
 SYSTEM_SCRIPTS = {
     "chronolog": REPO_ROOT / ".agent" / "scripts" / "chronolog_run_append_distributed.sh",
     "kafka": REPO_ROOT / ".agent" / "scripts" / "kafka_run_append_distributed.sh",
-    "mofka": REPO_ROOT / ".agent" / "scripts" / "mofka_run_append_smoke.sh",
+    "mofka": REPO_ROOT / ".agent" / "scripts" / "mofka_run_append_distributed.sh",
 }
 
 

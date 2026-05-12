@@ -8,6 +8,7 @@
 #include <chronolog_errcode.h>
 #include <GrapherDataStore.h>
 #include <chrono_monitor.h>
+#include <chronolog_profile.h>
 
 namespace chl = chronolog;
 namespace tl = thallium;
@@ -20,6 +21,8 @@ int chronolog::GrapherDataStore::startStoryRecording(std::string const& chronicl
                                                      chronolog::StoryId const& story_id,
                                                      uint64_t start_time)
 {
+    CL_PROFILE_REGION("grapher_start_story");
+    CL_PROFILE_REGION("metadata_lookup");
     LOG_INFO("[GrapherDataStore] Start recording story: Chronicle={}, Story={}, StoryId={}",
              chronicle,
              story,
@@ -106,6 +109,7 @@ int chronolog::GrapherDataStore::stopStoryRecording(chronolog::StoryId const& st
 
 void chronolog::GrapherDataStore::collectIngestedEvents()
 {
+    CL_PROFILE_REGION("grapher_collect_ingested");
     LOG_DEBUG("[GrapherDataStore] Initiating collection of ingested story chunks. Current state={}, Active "
               "StoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}",
               state,
@@ -126,6 +130,7 @@ void chronolog::GrapherDataStore::collectIngestedEvents()
 ////////////////////////
 void chronolog::GrapherDataStore::extractDecayedStoryChunks()
 {
+    CL_PROFILE_REGION("grapher_extract_decayed");
     LOG_DEBUG("[GrapherDataStore] Initiating extraction of decayed story chunks. Current state={}, Active "
               "StoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}",
               state,
@@ -146,6 +151,7 @@ void chronolog::GrapherDataStore::extractDecayedStoryChunks()
 
 void chronolog::GrapherDataStore::retireDecayedPipelines()
 {
+    CL_PROFILE_REGION("grapher_retire_pipelines");
     LOG_TRACE("[GrapherDataStore] Initiating retirement of decayed pipelines. Current state={}, Active "
               "StoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}",
               state,

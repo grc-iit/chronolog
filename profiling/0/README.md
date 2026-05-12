@@ -10,6 +10,7 @@ Primary distributed evidence:
 - Mofka Yokan/Warabi-backed default partition runs: `.agent/results/20260512-091538` and `.agent/results/20260512-093629`
 - TAU semantic-duration run: `.agent/results/20260512-110654`
 - Keeper lock/queue TAU semantic run: `.agent/results/20260512-115145-chronolog-tau-keeper-semantics`
+- broad ChronoLog semantic TAU run: `.agent/results/20260512-122315-chronolog-tau-full-semantics`
 - distributed perf run on `ares-comp-[03-04]`: `.agent/results/20260512-115003-chronolog-perf`
 - tunable benchmark matrix run: `.agent/results/20260512-115546-benchmark-matrix-chronolog`
 
@@ -32,6 +33,8 @@ Figures:
 - `figures/gperftools_cpu_by_role.png`: gperftools sample signal by ChronoLog role.
 - `figures/darshan_io_by_role.png`: Darshan-observed I/O volume by ChronoLog role.
 - `figures/benchmark_append_throughput_matrix.png`: initial tunable benchmark matrix throughput sweep.
+- `figures/chronolog_throughput_over_time.png`: ChronoLog append-throughput history across timestamped Phase 0 and loop runs.
+- `figures/tau_semantic_time_over_time.png`: TAU semantic-region timing history across timestamped Phase 0 and loop runs.
 
 Raw and parsed data:
 
@@ -41,6 +44,8 @@ Raw and parsed data:
 - `raw/network/`: Linux network measurement command outputs.
 - `data/tau/semantic_region_durations.csv`: parsed semantic timings.
 - `data/benchmark/benchmark_matrix_summary.csv`: parsed benchmark matrix metrics.
+- `data/history/chronolog_metrics_history.csv`: timestamped ChronoLog workflow metrics for iteration-over-iteration plots.
+- `data/history/tau_semantic_history.csv`: timestamped TAU semantic-region timing for iteration-over-iteration plots.
 - `data/gperftools/top_cpu_samples_by_role.csv`: parsed top CPU samples by role.
 - `data/darshan/io_summary_by_role.csv`: parsed I/O counters by role.
 - `perf-local-install.md`: no-sudo commands used to recreate the repo-local kernel-matched `perf`.
@@ -54,3 +59,5 @@ TAU visualization tools found locally:
 - `opt/tau-2.34/x86_64/bin/tau_prof2json.py`
 
 For static repo figures, `pprof` text output plus generated matplotlib charts are the most portable path. For interactive TAU inspection, use ParaProf on the `profile.*` directories. Jumpshot timeline images require a TAU trace-mode run; this package validates TAU profile mode and marks trace-mode timeline generation as next work.
+
+The optimization loop should append new runs under `.agent/results/YYYYMMDD-HHMMSS.../` and rerun `profiling/0/scripts/generate_loop_history.py`. That keeps human-facing trend plots stable while allowing the loop agent to consume the CSV history directly.

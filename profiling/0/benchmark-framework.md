@@ -1,6 +1,6 @@
 # Benchmark Framework Direction
 
-Phase 0 needs small validated smokes, but the optimization loop needs a tunable benchmark framework. Mofka's generator is the right reference because it exposes the dimensions a distributed event/log system actually cares about.
+Phase 0 previously needed small validations, but the optimization loop needs a tunable benchmark framework. Mofka's generator is the right reference because it exposes the dimensions a distributed event/log system actually cares about.
 
 Dimensions to carry forward:
 

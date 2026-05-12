@@ -10,7 +10,7 @@ usage() {
   cat <<'USAGE'
 Usage: kafka_run_append_distributed.sh [options]
 
-Run a two-node bare-metal Kafka append-throughput smoke benchmark.
+Run a two-node bare-metal Kafka append-throughput benchmark.
 
 Options:
   --result-dir DIR             Existing or new result directory to use.

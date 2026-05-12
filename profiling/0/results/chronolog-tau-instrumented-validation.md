@@ -1,12 +1,12 @@
-# ChronoLog TAU-Instrumented Smoke Test
+# ChronoLog TAU-Instrumented validation Test
 
-Checkpoint: run ChronoLog instrumented smoke test
+Checkpoint: run ChronoLog instrumented validation test
 Status: complete
 Time: 2026-05-11 23:15 CT
 
 ## Command Summary
 
-The smoke test used the TAU-instrumented install tree at `.agent/install-tau/chronolog`.
+The validation test used the TAU-instrumented install tree at `.agent/install-tau/chronolog`.
 
 The local deployment was started with:
 

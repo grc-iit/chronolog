@@ -6,7 +6,7 @@ Time: 2026-05-11 23:21 CT
 
 ## Command Summary
 
-The baseline ChronoLog local smoke deployment was started from `.agent/install-consistent/chronolog`. The `chrono-bench` client was run with:
+The baseline ChronoLog local validation deployment was started from `.agent/install-consistent/chronolog`. The `chrono-bench` client was run with:
 
 ```text
 LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libprofiler.so

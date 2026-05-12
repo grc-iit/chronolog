@@ -13,6 +13,7 @@
 
 #include <chronolog_errcode.h>
 #include <KeeperIdCard.h>
+#include <chronolog_profile.h>
 #include <chronolog_types.h>
 #include <StoryChunk.h>
 
@@ -41,6 +42,9 @@ public:
 
     void receive_story_chunk(tl::request const& request, tl::bulk& b)
     {
+        CL_PROFILE_REGION("rpc_receive");
+        CL_PROFILE_REGION("grapher_receive_chunk");
+        CL_PROFILE_COUNTER("grapher_receive_bytes", b.size());
         try
         {
             std::vector<char> mem_vec(b.size());
@@ -60,7 +64,10 @@ public:
                       tl::thread::self_id());
             tl::bulk local = tl_engine.expose(segments, tl::bulk_mode::write_only);
             LOG_DEBUG("[GrapherRecordingService] Bulk memory exposed, ThreadID={}", tl::thread::self_id());
-            b.on(ep) >> local;
+            {
+                CL_PROFILE_REGION("rpc_bulk_transfer");
+                b.on(ep) >> local;
+            }
             LOG_DEBUG("[GrapherRecordingService] Received {} bytes of StoryChunk data, ThreadID={}",
                       b.size(),
                       tl::thread::self_id());
@@ -69,7 +76,11 @@ public:
 #ifndef NDEBUG
             start = std::chrono::high_resolution_clock::now();
 #endif
-            int ret = deserializedWithCereal(&mem_vec[0], b.size(), *story_chunk);
+            int ret = chronolog::CL_ERR_UNKNOWN;
+            {
+                CL_PROFILE_REGION("deserialization");
+                ret = deserializedWithCereal(&mem_vec[0], b.size(), *story_chunk);
+            }
             if(ret != chronolog::CL_SUCCESS)
             {
                 LOG_ERROR("[GrapherRecordingService] Failed to deserialize a story chunk, ThreadID={}",
@@ -98,7 +109,11 @@ public:
                       b.size(),
                       tl::thread::self_id());
 
-            theIngestionQueue.ingestStoryChunk(story_chunk);
+            {
+                CL_PROFILE_REGION("grapher_ingest_chunk");
+                CL_PROFILE_COUNTER("grapher_ingest_chunk_events", story_chunk->getEventCount());
+                theIngestionQueue.ingestStoryChunk(story_chunk);
+            }
         }
         catch(std::bad_alloc const& ex)
         {

@@ -5,7 +5,7 @@ The audit found four meaningful gaps after the earlier premature completion note
 | Gap | Status | Evidence |
 |---|---|---|
 | Mofka storage | Fixed | Default partition runs backed by configured Yokan metadata and Warabi data providers: `.agent/results/20260512-091538`, `.agent/results/20260512-093629` |
-| Distributed ChronoLog profiling | Perf fixed; eBPF still admin-gated | Keeper lock/queue TAU `.agent/results/20260512-115145-chronolog-tau-keeper-semantics`, perf `.agent/results/20260512-115003-chronolog-perf`, gperftools `.agent/results/20260512-094726`, Darshan `.agent/results/20260512-095335` |
+| Distributed ChronoLog profiling | Perf fixed; eBPF still admin-gated | Broad TAU semantics `.agent/results/20260512-122315-chronolog-tau-full-semantics`, perf `.agent/results/20260512-115003-chronolog-perf`, gperftools `.agent/results/20260512-094726`, Darshan `.agent/results/20260512-095335` |
 | ChronoLog reading | Documented current behavior and future gap | Current comparable path is archive-backed replay after Grapher HDF5 archival; live/tail read remains future ChronoLog work |
 | Benchmark framework | Implemented initial tunable runner | `.agent/scripts/phase0_benchmark_matrix.py`; validated run `.agent/results/20260512-115546-benchmark-matrix-chronolog`; figure `profiling/0/figures/benchmark_append_throughput_matrix.png` |
 

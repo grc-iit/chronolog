@@ -113,6 +113,7 @@ This is not a performance-optimization phase. The goal is to make the full measu
 - [x] Seed benchmark framework design from Mofka generator configuration dimensions.
 - [x] Package Phase 0 profiling outputs and figures under `profiling/0`.
 - [x] Add finer Keeper lock/queue TAU semantic labels and validate them in a distributed TAU run.
+- [x] Broaden TAU semantic labels across client, Visor, Keeper, Grapher, Player, RPC, archive, and HDF5 paths.
 - [x] Make `perf` available without sudo through a repo-local kernel-matched binary and validate distributed `perf record`.
 - [x] Implement and validate the tunable Phase 0 benchmark matrix runner.
-- [x] Generate updated TAU, perf, and benchmark matrix artifacts under `profiling/0`.
+- [x] Generate updated TAU, perf, benchmark matrix, and over-time loop-history artifacts under `profiling/0`.

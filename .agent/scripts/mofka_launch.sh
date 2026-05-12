@@ -11,14 +11,14 @@ usage() {
 Usage: mofka_launch.sh [options]
 
 Launch a Phase 0 Mofka fixed baseline using Bedrock. Bare-metal distributed
-deployment is the target; local single-node mode is only a smoke validation.
+deployment is the target; local single-node mode is only a validation.
 
 Options:
   --result-dir DIR          Existing or new result directory to use.
   --node-count N            Total server processes/nodes requested. Default: 1.
   --protocol PROTOCOL       Mercury protocol. Default: ofi+tcp for bare metal,
-                            na+sm for local_smoke.
-  --deployment-mode MODE    bare_metal or local_smoke. Default: bare_metal.
+                            na+sm for local_validation.
+  --deployment-mode MODE    bare_metal or local_validation. Default: bare_metal.
   --slurm-partition NAME    Partition for bare_metal multi-node launch. Default: debug.
   --slurm-nodelist LIST     Comma-separated or SLURM-style host list to pin nodes.
   --slurm-time TIME         Time limit for bare_metal srun commands. Default: 00:30:00.
@@ -82,13 +82,13 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ "${DEPLOYMENT_MODE}" != "bare_metal" && "${DEPLOYMENT_MODE}" != "local_smoke" ]]; then
+if [[ "${DEPLOYMENT_MODE}" != "bare_metal" && "${DEPLOYMENT_MODE}" != "local_validation" ]]; then
   echo "Unsupported deployment mode: ${DEPLOYMENT_MODE}" >&2
   exit 2
 fi
 
 if [[ -z "${PROTOCOL}" ]]; then
-  if [[ "${DEPLOYMENT_MODE}" == "local_smoke" ]]; then
+  if [[ "${DEPLOYMENT_MODE}" == "local_validation" ]]; then
     PROTOCOL="na+sm"
   else
     PROTOCOL="ofi+tcp"

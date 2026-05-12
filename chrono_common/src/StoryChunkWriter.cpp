@@ -14,6 +14,7 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunkHVL& story_chunk)
 {
     CL_PROFILE_REGION("storage_write");
     CL_PROFILE_COUNTER("append_bytes", story_chunk.getEventCount());
+    CL_PROFILE_COUNTER("storage_write_events", story_chunk.getEventCount());
 
     std::vector<LogEventHVL> data;
     data.reserve(story_chunk.getEventCount());
@@ -25,7 +26,10 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunkHVL& story_chunk)
     try
     {
         LOG_DEBUG("[StoryChunkWriter] Creating StoryChunk file: {}", file_name);
-        file = std::make_unique<H5::H5File>(file_name, H5F_ACC_TRUNC | H5F_ACC_SWMR_WRITE);
+        {
+            CL_PROFILE_REGION("grapher_hdf5_open");
+            file = std::make_unique<H5::H5File>(file_name, H5F_ACC_TRUNC | H5F_ACC_SWMR_WRITE);
+        }
 
         LOG_DEBUG("[StoryChunkWriter] Writing StoryChunk to file...");
         ret = writeEvents(file, data);
@@ -35,7 +39,10 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunkHVL& story_chunk)
             return ret;
         }
 
-        file->flush(H5F_SCOPE_GLOBAL);
+        {
+            CL_PROFILE_REGION("grapher_hdf5_flush");
+            file->flush(H5F_SCOPE_GLOBAL);
+        }
         hsize_t file_size = file->getFileSize();
 
         LOG_DEBUG("[StoryChunkWriter] Finished writing StoryChunk to file.");
@@ -119,6 +126,7 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunk& story_chunk)
 {
     CL_PROFILE_REGION("storage_write");
     CL_PROFILE_COUNTER("append_bytes", story_chunk.getEventCount());
+    CL_PROFILE_COUNTER("storage_write_events", story_chunk.getEventCount());
 
     std::vector<LogEventHVL> data;
     data.reserve(story_chunk.getEventCount());
@@ -144,7 +152,10 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunk& story_chunk)
         file_name = getStoryChunkFileName(rootDirectory, file_name);
 
         LOG_DEBUG("[StoryChunkWriter] Creating StoryChunk file: {}", file_name);
-        file = std::make_unique<H5::H5File>(file_name, H5F_ACC_TRUNC | H5F_ACC_SWMR_WRITE);
+        {
+            CL_PROFILE_REGION("grapher_hdf5_open");
+            file = std::make_unique<H5::H5File>(file_name, H5F_ACC_TRUNC | H5F_ACC_SWMR_WRITE);
+        }
 
         LOG_DEBUG("[StoryChunkWriter] Writing StoryChunk to file...");
         ret = writeEvents(file, data);
@@ -154,7 +165,10 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunk& story_chunk)
             return ret;
         }
 
-        file->flush(H5F_SCOPE_GLOBAL);
+        {
+            CL_PROFILE_REGION("grapher_hdf5_flush");
+            file->flush(H5F_SCOPE_GLOBAL);
+        }
         hsize_t file_size = file->getFileSize();
 
         LOG_DEBUG("[StoryChunkWriter] Finished writing StoryChunk to file.");
@@ -171,6 +185,8 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunk& story_chunk)
 hsize_t StoryChunkWriter::writeEvents(std::unique_ptr<H5::H5File>& file, std::vector<LogEventHVL>& data)
 {
     CL_PROFILE_REGION("storage_write");
+    CL_PROFILE_REGION("grapher_hdf5_write_dataset");
+    CL_PROFILE_COUNTER("storage_write_events", data.size());
 
     int ret = 0;
     try

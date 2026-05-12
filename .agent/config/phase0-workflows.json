@@ -31,7 +31,7 @@
   },
   "deployment_policy": {
     "final_target": "distributed deployments across allocated compute nodes",
-    "single_node_master_policy": "Allowed only for smoke validation of scripts, launch mechanics, logging, and metrics output; does not satisfy final distributed benchmark requirements.",
+    "single_node_master_policy": "Allowed only for validation validation of scripts, launch mechanics, logging, and metrics output; does not satisfy final distributed benchmark requirements.",
     "preferred_mode": "bare_metal",
     "fallback_mode": "containerized",
     "mode_rule": "Record bare_metal or containerized in each run configuration and summary.",
@@ -127,7 +127,7 @@
       "primary_metric": "throughput_ops_per_sec",
       "latency_required": true,
       "node_counts": [1, 2, 4, 8],
-      "status": "complete_for_available_distributed_smoke_counts",
+      "status": "complete_for_available_distributed_validation_counts",
       "evidence": ".agent/results/phase0-scaling-sweep.md"
     }
   ],

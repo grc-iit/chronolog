@@ -6,7 +6,7 @@ Time: 2026-05-11 23:30 CT
 
 ## Command Summary
 
-The baseline ChronoLog local smoke deployment was run with Darshan dynamic instrumentation preloaded:
+The baseline ChronoLog local validation deployment was run with Darshan dynamic instrumentation preloaded:
 
 ```text
 LD_PRELOAD=/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/darshan-runtime-3.4.6-u7vfz6edqy4hzj6fnpx6g7inobzd32os/lib/libdarshan.so

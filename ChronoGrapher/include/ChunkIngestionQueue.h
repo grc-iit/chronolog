@@ -8,6 +8,7 @@
 
 #include <chrono_monitor.h>
 #include <chronolog_types.h>
+#include <chronolog_profile.h>
 #include <StoryChunk.h>
 #include <StoryChunkIngestionHandle.h>
 
@@ -30,8 +31,10 @@ public:
 
     void addStoryIngestionHandle(StoryId const &story_id, StoryChunkIngestionHandle*ingestion_handle)
     {
+        CL_PROFILE_REGION("grapher_queue_register_story");
         std::lock_guard <std::mutex> lock(ingestionQueueMutex);
         storyIngestionHandles.emplace(std::pair <StoryId, StoryChunkIngestionHandle*>(story_id, ingestion_handle));
+        CL_PROFILE_COUNTER("grapher_ingestion_handle_count", storyIngestionHandles.size());
         LOG_DEBUG("[IngestionQueue] Added handle for StoryID={}: HandleAddress={}, StoryIngestionHandles={}, HandleMapSize={}"
              , story_id, static_cast<void*>(ingestion_handle), reinterpret_cast<void*>(&storyIngestionHandles)
              , storyIngestionHandles.size());
@@ -39,9 +42,11 @@ public:
 
     void removeStoryIngestionHandle(StoryId const &story_id)
     {
+        CL_PROFILE_REGION("grapher_queue_unregister_story");
         std::lock_guard <std::mutex> lock(ingestionQueueMutex);
         if(storyIngestionHandles.erase(story_id))
         {
+            CL_PROFILE_COUNTER("grapher_ingestion_handle_count", storyIngestionHandles.size());
             LOG_DEBUG("[IngestionQueue] Removed handle for StoryID={}. Current handle MapSize={}", story_id
                  , storyIngestionHandles.size());
         }
@@ -53,6 +58,8 @@ public:
 
     void ingestStoryChunk(StoryChunk* chunk)
     {
+        CL_PROFILE_REGION("grapher_queue_push");
+        CL_PROFILE_COUNTER("grapher_queue_push_events", chunk->getEventCount());
         LOG_DEBUG("[IngestionQueue] has {} StoryHandles; Received chunk for StoryID={} startTime {} eventCount{}", storyIngestionHandles.size(),
                                 chunk->getStoryId(), chunk->getStartTime(), chunk->getEventCount());
         auto ingestionHandle_iter = storyIngestionHandles.find(chunk->getStoryId());
@@ -61,6 +68,7 @@ public:
             LOG_WARNING("[IngestionQueue] Orphan chunk for story {}. Storing for later processing.", chunk->getStoryId());
             std::lock_guard <std::mutex> lock(ingestionQueueMutex);
             orphanQueue.push_back(chunk);
+            CL_PROFILE_COUNTER("grapher_orphan_queue_depth", orphanQueue.size());
         }
         else
         {
@@ -71,6 +79,7 @@ public:
 
     void drainOrphanChunks()
     {
+        CL_PROFILE_REGION("grapher_orphan_queue_drain");
         if(orphanQueue.empty())
         {
             LOG_DEBUG("[IngestionQueue] Orphan chunk queue is empty. No actions taken.");
@@ -84,6 +93,7 @@ public:
         }
  
         std::lock_guard <std::mutex> lock(ingestionQueueMutex);
+        const auto orphan_count_before = orphanQueue.size();
         for(StoryChunkDeque::iterator iter = orphanQueue.begin(); iter != orphanQueue.end();)
         {
             auto ingestionHandle_iter = storyIngestionHandles.find((*iter)->getStoryId());
@@ -102,6 +112,8 @@ public:
         }
             
         LOG_WARNING("[IngestionQueue] has {} orphaned chunks", orphanQueue.size());
+        CL_PROFILE_COUNTER("grapher_orphan_queue_drain_chunks", orphan_count_before - orphanQueue.size());
+        CL_PROFILE_COUNTER("grapher_orphan_queue_depth", orphanQueue.size());
     }
 
     bool is_empty() const
@@ -136,4 +148,3 @@ private:
 }
 
 #endif
-

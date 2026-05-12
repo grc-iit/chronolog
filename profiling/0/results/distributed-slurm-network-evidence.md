@@ -2,7 +2,7 @@
 
 Status: complete for first distributed-node access and network/RDMA evidence.
 
-SLURM two-node smoke:
+SLURM two-node validation:
 
 - Result directory: `.agent/results/20260512-003805/`
 - Command: `srun --partition=debug --nodes=2 --ntasks=2 --time=00:02:00 hostname`

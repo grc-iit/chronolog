@@ -116,7 +116,7 @@ def write_profiler_coverage_csv() -> list[tuple[str, str, str]]:
         ("gperftools CPU/heap", "validated", "distributed service CPU and heap profiles"),
         ("Darshan", "validated", "distributed client and service logs with non-MPI enabled"),
         ("Linux network measurement commands", "validated", "SLURM node evidence captured"),
-        ("perf", "tool-missing", "target node kernel policy enabled; perf binary not on PATH"),
+        ("perf", "validated", "repo-local kernel-matched perf captured distributed client and service profiles"),
         ("eBPF-based tools", "permission-limited", "unprivileged_bpf_disabled=2; allowlisted wrapper requested"),
         ("TAU trace/Jumpshot timeline", "planned", "semantic duration profile validated; trace-mode timeline is next"),
     ]
