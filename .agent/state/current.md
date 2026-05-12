@@ -1,7 +1,7 @@
 # Current State
 
-- current task: detect Linux network measurement commands
+- current task: write toolchain report
 - commands running: none
-- last successful validation: eBPF-based tools detection found `bpftool` module/local binary and documented missing bpftrace/BCC plus permission limits; evidence in `.agent/results/20260511-221505/`
+- last successful validation: required Linux network measurement commands detected and smoke-tested; evidence in `.agent/results/20260511-221607/`
 - current blocker: perf runtime events and eBPF-based observability require cluster/admin permission changes for later profiling-output validation
-- next intended step: detect required Linux network measurement commands: `iperf3`, `ss`, `nstat`, `sar -n`, and `ethtool`
+- next intended step: consolidate detected toolchain, install paths, environment snippets, and limitations into `.agent/results/toolchain-report.md`

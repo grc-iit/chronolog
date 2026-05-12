@@ -1,0 +1,167 @@
+timestamp=2026-05-11T22:16:07-05:00
+branch=opt/phase0-bootstrap
+merge_base_status=0
+
+[Linux network measurement commands]
+iperf3=/usr/bin/iperf3
+ss=/usr/bin/ss
+nstat=/usr/bin/nstat
+sar=/usr/bin/sar
+ethtool=/usr/sbin/ethtool
+tcpdump=/usr/bin/tcpdump
+
+[versions/help]
+iperf 3.9 (cJSON 1.7.13)
+Linux ares.ares.local 5.15.0-176-generic #186-Ubuntu SMP Fri Mar 13 11:01:42 UTC 2026 x86_64
+Optional features available: CPU affinity setting, IPv6 flow label, SCTP, TCP congestion algorithm setting, sendfile / zerocopy, socket pacing, authentication
+ss utility, iproute2-5.15.0
+nstat utility, iproute2-5.15.0
+sysstat version 12.5.2
+(C) Sebastien Godard (sysstat <at> orange.fr)
+ethtool version 5.16
+tcpdump version 4.99.1
+libpcap version 1.10.1 (with TPACKET_V3)
+OpenSSL 3.0.2 15 Mar 2022
+
+[smoke commands]
+State      Recv-Q Send-Q       Local Address:Port            Peer Address:Port Process
+LISTEN     0      1024            172.25.1.1:3478                 0.0.0.0:*           
+LISTEN     0      1024            172.25.1.1:3478                 0.0.0.0:*           
+LISTEN     0      1024            172.25.1.1:3478                 0.0.0.0:*           
+LISTEN     0      1024            172.25.1.1:3478                 0.0.0.0:*           
+LISTEN     0      1024            172.25.1.1:3478                 0.0.0.0:*           
+LISTEN     0      1024            172.25.1.1:3478                 0.0.0.0:*           
+LISTEN     0      1024            172.25.1.1:3478                 0.0.0.0:*           
+LISTEN     0      1024            172.25.1.1:3478                 0.0.0.0:*           
+LISTEN     0      1024            172.25.1.1:3478                 0.0.0.0:*           
+LISTEN     0      1024            172.25.1.1:3478                 0.0.0.0:*           
+LISTEN     0      1024            172.25.1.1:3478                 0.0.0.0:*           
+LISTEN     0      1024            172.25.1.1:3478                 0.0.0.0:*           
+LISTEN     0      1024            172.25.1.1:3478                 0.0.0.0:*           
+LISTEN     0      1024            172.25.1.1:3478                 0.0.0.0:*           
+LISTEN     0      1024            172.25.1.1:3478                 0.0.0.0:*           
+LISTEN     0      1024            172.25.1.1:3478                 0.0.0.0:*           
+LISTEN     0      1024            172.25.1.1:3478                 0.0.0.0:*           
+LISTEN     0      1024            172.25.1.1:3478                 0.0.0.0:*           
+LISTEN     0      1024            172.25.1.1:3478                 0.0.0.0:*           
+#kernel
+IpInReceives                    743681668          0.0
+IpOutRequests                   667311450          0.0
+TcpInSegs                       717142864          0.0
+TcpOutSegs                      2697219936         0.0
+Linux 5.15.0-176-generic (ares.ares.local) 	05/11/26 	_x86_64_	(40 CPU)
+
+22:16:08        IFACE   rxpck/s   txpck/s    rxkB/s    txkB/s   rxcmp/s   txcmp/s  rxmcst/s   %ifutil
+22:16:09           lo     28.00     28.00      8.10      8.10      0.00      0.00      0.00      0.00
+22:16:09         eno1     37.00     42.00      2.38      7.57      0.00      0.00      0.00      0.01
+22:16:09         eno2     25.00     24.00      1.77      1.24      0.00      0.00      1.00      0.00
+22:16:09       ens4f0      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+22:16:09    enx7ed30aefbc07      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+22:16:09       ens4f1      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+22:16:09      ens1np0     29.00     20.00     10.43      2.04      0.00      0.00      0.00      0.00
+22:16:09       virbr0      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+22:16:09      docker0      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+22:16:09    veth194e6cd      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+22:16:09    veth746804d      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+22:16:09    veth8e06653      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+22:16:09    vetha957d29      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+
+Average:        IFACE   rxpck/s   txpck/s    rxkB/s    txkB/s   rxcmp/s   txcmp/s  rxmcst/s   %ifutil
+Average:           lo     28.00     28.00      8.10      8.10      0.00      0.00      0.00      0.00
+Average:         eno1     37.00     42.00      2.38      7.57      0.00      0.00      0.00      0.01
+Average:         eno2     25.00     24.00      1.77      1.24      0.00      0.00      1.00      0.00
+Average:       ens4f0      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+Average:    enx7ed30aefbc07      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+Average:       ens4f1      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+Average:      ens1np0     29.00     20.00     10.43      2.04      0.00      0.00      0.00      0.00
+Average:       virbr0      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+Average:      docker0      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+Average:    veth194e6cd      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+Average:    veth746804d      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+Average:    veth8e06653      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN mode DEFAULT group default qlen 1000\    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+2: eno1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP mode DEFAULT group default qlen 1000\    link/ether 7c:d3:0a:ef:bc:00 brd ff:ff:ff:ff:ff:ff\    altname enp8s0f0
+3: eno2: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP mode DEFAULT group default qlen 1000\    link/ether 7c:d3:0a:ef:bc:01 brd ff:ff:ff:ff:ff:ff\    altname enp8s0f1
+4: ens4f0: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN mode DEFAULT group default qlen 1000\    link/ether 68:05:ca:7d:66:2a brd ff:ff:ff:ff:ff:ff\    altname enp88s0f0
+5: enx7ed30aefbc07: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN mode DEFAULT group default qlen 1000\    link/ether 7e:d3:0a:ef:bc:07 brd ff:ff:ff:ff:ff:ff
+6: ens4f1: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN mode DEFAULT group default qlen 1000\    link/ether 68:05:ca:7d:66:2b brd ff:ff:ff:ff:ff:ff\    altname enp88s0f1
+7: ens1np0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP mode DEFAULT group default qlen 1000\    link/ether 24:8a:07:2f:c9:7e brd ff:ff:ff:ff:ff:ff\    altname enp47s0np0
+8: virbr0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc noqueue state DOWN mode DEFAULT group default qlen 1000\    link/ether 52:54:00:f8:28:a3 brd ff:ff:ff:ff:ff:ff
+9: docker0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP mode DEFAULT group default \    link/ether be:18:2c:bf:62:2a brd ff:ff:ff:ff:ff:ff
+18: veth194e6cd@if2: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue master docker0 state UP mode DEFAULT group default \    link/ether 0a:7b:71:fa:40:2f brd ff:ff:ff:ff:ff:ff link-netnsid 0
+19: veth746804d@if2: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue master docker0 state UP mode DEFAULT group default \    link/ether 7e:06:a1:80:eb:a9 brd ff:ff:ff:ff:ff:ff link-netnsid 1
+20: veth8e06653@if2: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue master docker0 state UP mode DEFAULT group default \    link/ether 9a:c4:b7:56:a3:af brd ff:ff:ff:ff:ff:ff link-netnsid 2
+21: vetha957d29@if2: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue master docker0 state UP mode DEFAULT group default \    link/ether 46:a3:79:b8:68:79 brd ff:ff:ff:ff:ff:ff link-netnsid 3
+first_non_loopback_iface=eno1
+netlink error: Operation not permitted
+Settings for eno1:
+	Supported ports: [ TP ]
+	Supported link modes:   1000baseT/Full
+	Supported pause frame use: Symmetric Receive-only
+	Supports auto-negotiation: Yes
+	Supported FEC modes: Not reported
+	Advertised link modes:  1000baseT/Full
+	Advertised pause frame use: No
+	Advertised auto-negotiation: Yes
+	Advertised FEC modes: Not reported
+	Speed: 1000Mb/s
+	Duplex: Full
+	Auto-negotiation: on
+	Port: Twisted Pair
+	PHYAD: 0
+	Transceiver: internal
+	MDI-X: Unknown
+        Current message level: 0x00000007 (7)
+                               drv probe link
+	Link detected: yes
+
+[modules]
+
+[apt status]
+iperf3:
+  Installed: 3.9-1+deb11u1ubuntu0.1
+  Candidate: 3.9-1+deb11u1ubuntu0.1
+  Version table:
+ *** 3.9-1+deb11u1ubuntu0.1 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/universe amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/universe amd64 Packages
+        100 /var/lib/dpkg/status
+     3.9-1build1 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy/universe amd64 Packages
+iproute2:
+  Installed: 5.15.0-1ubuntu2
+  Candidate: 5.15.0-1ubuntu2.1
+  Version table:
+     5.15.0-1ubuntu2.1 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+ *** 5.15.0-1ubuntu2 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy/main amd64 Packages
+        100 /var/lib/dpkg/status
+sysstat:
+  Installed: 12.5.2-2ubuntu0.2
+  Candidate: 12.5.2-2ubuntu0.2
+  Version table:
+ *** 12.5.2-2ubuntu0.2 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        500 http://us.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages
+        100 /var/lib/dpkg/status
+     12.5.2-2build2 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy/main amd64 Packages
+ethtool:
+  Installed: 1:5.16-1ubuntu0.2
+  Candidate: 1:5.16-1ubuntu0.2
+  Version table:
+ *** 1:5.16-1ubuntu0.2 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        100 /var/lib/dpkg/status
+     1:5.16-1 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy/main amd64 Packages
+tcpdump:
+  Installed: 4.99.1-3ubuntu0.2
+  Candidate: 4.99.1-3ubuntu0.2
+  Version table:
+ *** 4.99.1-3ubuntu0.2 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages
+        100 /var/lib/dpkg/status
+     4.99.1-3build2 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy/main amd64 Packages

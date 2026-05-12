@@ -11,3 +11,4 @@
 | 2026-05-11 22:13 CT | Install or detect gperftools | complete | `.agent/results/20260511-221259/stdout.log`, `.agent/results/20260511-221259/gperftools/cpu.prof`, `.agent/results/20260511-221259/gperftools/heap-env.prof.0001.heap`, `.agent/results/gperftools-detection.md` | Detect or install Darshan |
 | 2026-05-11 22:14 CT | Install or detect Darshan | complete | `.agent/results/20260511-221405/stdout.log`, `.agent/results/darshan-detection.md`, `.agent/config/darshan-env.sh` | Detect eBPF-based tools |
 | 2026-05-11 22:15 CT | Detect eBPF-based tools | complete with limitation | `.agent/results/20260511-221505/stdout.log`, `.agent/results/ebpf-based-tools-detection.md`, `.agent/config/ebpf-env.sh` | Detect Linux network measurement commands |
+| 2026-05-11 22:16 CT | Detect Linux network measurement commands | complete | `.agent/results/20260511-221607/stdout.log`, `.agent/results/linux-network-measurement-commands.md` | Write toolchain report |
