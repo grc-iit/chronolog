@@ -9,6 +9,7 @@ find_package(HDF5 REQUIRED COMPONENTS C CXX)
 
 add_executable(transfer_agent_test
     chrono_player_transfer_agent_test.cpp
+    ${CMAKE_SOURCE_DIR}/ChronoPlayer/src/StoryChunkExtractor.cpp
     ${CMAKE_SOURCE_DIR}/ChronoPlayer/src/StoryChunkTransferAgent.cpp
 )
 
@@ -41,6 +42,7 @@ endif()
 add_executable(playback_service_test
     chrono_player_playback_service_test.cpp
     ${CMAKE_SOURCE_DIR}/ChronoPlayer/src/PlaybackService.cpp
+    ${CMAKE_SOURCE_DIR}/ChronoPlayer/src/StoryChunkExtractor.cpp
     ${CMAKE_SOURCE_DIR}/ChronoPlayer/src/StoryChunkTransferAgent.cpp
 )
 

@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 add_subdirectory(unit)
+add_subdirectory(functional)
 add_subdirectory(integration)
 add_subdirectory(communication)
 add_subdirectory(end-to-end)
