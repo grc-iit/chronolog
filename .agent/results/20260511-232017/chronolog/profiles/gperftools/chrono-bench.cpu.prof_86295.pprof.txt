@@ -1,0 +1,31 @@
+Total: 4 samples
+       1  25.0%  25.0%        1  25.0% __GI___fstatat64
+       1  25.0%  50.0%        1  25.0% __GI___libc_read
+       1  25.0%  75.0%        1  25.0% __GI___sched_setaffinity_new
+       1  25.0% 100.0%        1  25.0% __pthread_create_2_1
+       0   0.0% 100.0%        4 100.0% 0x000056490fc9d7c1
+       0   0.0% 100.0%        4 100.0% 0x000056490fca05b4
+       0   0.0% 100.0%        1  25.0% PMIx_server_init
+       0   0.0% 100.0%        4 100.0% __libc_start_call_main
+       0   0.0% 100.0%        4 100.0% __libc_start_main_impl
+       0   0.0% 100.0%        3  75.0% hwloc_discover (inline)
+       0   0.0% 100.0%        3  75.0% hwloc_discover_by_phase.constprop.0.isra.0
+       0   0.0% 100.0%        1  25.0% hwloc_fstatat (inline)
+       0   0.0% 100.0%        1  25.0% hwloc_linux_set_tid_cpubind
+       0   0.0% 100.0%        1  25.0% hwloc_linuxfs_lookup_block_class (inline)
+       0   0.0% 100.0%        1  25.0% hwloc_linuxfs_pci_look_pcidevices (inline)
+       0   0.0% 100.0%        2  50.0% hwloc_look_linuxfs
+       0   0.0% 100.0%        1  25.0% hwloc_look_x86
+       0   0.0% 100.0%        1  25.0% hwloc_read_path_by_length (inline)
+       0   0.0% 100.0%        1  25.0% hwloc_stat (inline)
+       0   0.0% 100.0%        3  75.0% hwloc_topology_load
+       0   0.0% 100.0%        1  25.0% hwloc_x86_discover
+       0   0.0% 100.0%        1  25.0% look_procs (inline)
+       0   0.0% 100.0%        1  25.0% pmix_progress_thread_start
+       0   0.0% 100.0%        1  25.0% pmix_rte_init
+       0   0.0% 100.0%        1  25.0% pmix_server_init
+       0   0.0% 100.0%        1  25.0% pmix_thread_start
+       0   0.0% 100.0%        3  75.0% prte_hwloc_base_get_topology
+       0   0.0% 100.0%        4 100.0% prte_init
+       0   0.0% 100.0%        1  25.0% read (inline)
+       0   0.0% 100.0%        4 100.0% rte_init

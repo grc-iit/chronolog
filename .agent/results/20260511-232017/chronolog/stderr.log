@@ -1,0 +1,15 @@
+MPI_WTIME_IS_GLOBAL is not available in this MPI implementation for timer Connect
+MPI_WTIME_IS_GLOBAL is not available in this MPI implementation for timer CreateChronicle
+MPI_WTIME_IS_GLOBAL is not available in this MPI implementation for timer AcquireStory
+MPI_WTIME_IS_GLOBAL is not available in this MPI implementation for timer WriteEvent
+MPI_WTIME_IS_GLOBAL is not available in this MPI implementation for timer ReplayStory
+MPI_WTIME_IS_GLOBAL is not available in this MPI implementation for timer ReleaseStory
+MPI_WTIME_IS_GLOBAL is not available in this MPI implementation for timer DestroyStory
+MPI_WTIME_IS_GLOBAL is not available in this MPI implementation for timer DestroyChronicle
+MPI_WTIME_IS_GLOBAL is not available in this MPI implementation for timer Disconnect
+PROFILE: interrupts/evictions/bytes = 15/0/1176
+PROFILE: interrupts/evictions/bytes = 4/0/504
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232017/chronolog/profiles/gperftools/chrono-bench.cpu.prof_86295.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench.
+Using local file /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-232017/chronolog/profiles/gperftools/chrono-bench.cpu.prof_86301.
