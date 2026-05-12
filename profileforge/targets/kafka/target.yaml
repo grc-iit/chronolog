@@ -1,0 +1,36 @@
+system:
+  name: kafka
+  role: fixed_baseline
+  type: distributed_log_system
+
+allowed_actions:
+  - launch
+  - run_baseline_benchmark
+  - collect_metrics
+  - stop
+
+forbidden_actions:
+  - modify_source
+  - instrument_source
+  - optimize
+  - tune_internals_for_chronolog_comparison
+
+scripts:
+  launch: .agent/scripts/kafka_launch.sh
+  stop: .agent/scripts/kafka_stop.sh
+  append: .agent/scripts/kafka_run_append_distributed.sh
+
+baseline_history:
+  fixed_baseline_table: profiling/data/history/fixed_baselines.csv
+  append_throughput_metrics: .agent/results/20260512-010210/kafka/metrics.json
+
+configuration_policy:
+  record_manifest: true
+  required_surfaces:
+    - broker_count
+    - topic_partition_count
+    - replication_factor
+    - producer_ack_linger_batch_compression
+    - jvm_heap
+    - log_directory
+    - advertised_listener_mapping

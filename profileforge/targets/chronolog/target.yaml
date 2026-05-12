@@ -1,0 +1,143 @@
+system:
+  name: chronolog
+  role: optimization_target
+  repo: https://github.com/grc-iit/chronolog
+  language: C++
+  type: distributed_log_system
+
+branch_policy:
+  required_base: origin/develop
+  allowed_branch_pattern: opt/phase0-*
+  forbidden_branches:
+    - develop
+    - main
+    - master
+
+build:
+  current_baseline: .agent/results/chronolog-baseline-build.md
+  tau_build: .agent/results/chronolog-tau-instrumented-build.md
+  install_dir: .agent/install-tau/chronolog
+
+deploy:
+  mode: bare_metal_slurm
+  preferred_transport: ofi+sockets
+  future_transport_target: rdma_roce_when_configured
+  script: .agent/scripts/chronolog_run_append_distributed.sh
+  topology_document: profiling/chronolog-deployment-topology.md
+  default_nodes: 2
+  target_nodes:
+    - ares-comp-03
+    - ares-comp-04
+    - ares-comp-05
+    - ares-comp-06
+  tunable_parameters:
+    - node_count
+    - client_count
+    - message_size_bytes
+    - operation_count
+    - record_groups
+    - profile_mode
+    - transport
+    - process_placement
+    - cpu_affinity
+    - numa_policy
+
+benchmarks:
+  - name: append_throughput
+    script: .agent/scripts/phase0_benchmark_matrix.py
+    objective: maximize_throughput
+    status: implemented
+    metrics:
+      - throughput_ops_per_sec
+      - record_event_bandwidth_mb_per_sec
+      - duration_seconds
+      - p50_latency_ms
+      - p95_latency_ms
+      - p99_latency_ms
+  - name: append_latency
+    script: .agent/scripts/chronolog_append_latency.py
+    objective: minimize_tail_latency
+    status: implemented
+    metrics:
+      - avg_latency_ms
+      - p50_latency_ms
+      - p95_latency_ms
+      - p99_latency_ms
+  - name: range_retrieval
+    script: .agent/scripts/chronolog_range_retrieval.py
+    objective: minimize_range_query_latency
+    status: implemented_archive_playback_path
+    metrics:
+      - throughput_ops_per_sec
+      - duration_seconds
+      - records_returned
+  - name: mixed_read_write
+    objective: maximize_sustained_service_rate
+    status: design_gap
+    note: Requires comparable ChronoLog live/tail read or archive-backed mixed workflow definition.
+  - name: scaling_skew_burst
+    script: .agent/scripts/phase0_benchmark_matrix.py
+    objective: maximize_scaling_efficiency
+    status: partial_matrix_implemented
+
+profilers:
+  - name: tau
+    mode: source_semantic_regions
+    status: implemented
+    evidence: profiling/0/data/tau/semantic_region_durations.csv
+  - name: perf
+    mode: node_local_cpu_and_lock_hotspots
+    status: implemented_when_perf_available
+    evidence: profiling/0/raw/perf
+  - name: gperftools
+    mode: cpu_heap_allocation
+    status: implemented
+    evidence: profiling/0/data/gperftools
+  - name: darshan
+    mode: io_behavior
+    status: implemented
+    evidence: profiling/0/data/darshan
+  - name: linux_network_measurement_commands
+    mode: iperf3_ss_nstat_sar_ethtool
+    status: implemented
+    evidence: profiling/0/raw/network
+  - name: ebpf_based_tools
+    mode: syscall_offcpu_scheduler_futex_tcp
+    status: pending_admin_enablement
+    admin_request: profiling/0/ebpf-admin-command-allowlist.md
+  - name: scorep
+    mode: hpc_distributed_trace
+    status: not_implemented
+
+metrics:
+  schema: .agent/config/metrics-schema.json
+  loop_history: profiling/data/history/chronolog_metrics_history.csv
+  tau_history: profiling/data/history/tau_semantic_history.csv
+
+validation:
+  build_check: cmake_build_must_pass
+  metrics_check: .agent/scripts/phase0_validate_metrics.py
+  correctness_policy: profileforge/validators/correctness-policy.md
+  required_semantics:
+    - no_lost_records
+    - no_duplicate_records
+    - ordering_preserved_within_defined_story_semantics
+    - valid_time_range_retrieval
+    - benchmark_oracles_not_modified
+
+optimization_scope:
+  allowed_edits: profileforge/targets/chronolog/allowed_edits.yaml
+  optimization_levels:
+    - level_0_config_and_benchmark_parameters
+    - level_1_environment_and_placement
+    - level_2_localized_source_patches
+  forbidden_in_phase0_to_iteration1:
+    - kafka_source_changes
+    - mofka_source_changes
+    - benchmark_scoring_oracle_changes
+    - broad_architectural_rewrites_without_prior_acceptance
+
+baselines:
+  kafka: profileforge/targets/kafka/target.yaml
+  mofka: profileforge/targets/mofka/target.yaml
+  fixed_baseline_table: profiling/data/history/fixed_baselines.csv

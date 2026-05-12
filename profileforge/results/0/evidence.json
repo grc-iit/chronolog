@@ -1,0 +1,357 @@
+{
+  "iteration": 0,
+  "timestamp": "20260512-122315",
+  "label": "phase0_baseline",
+  "commit": "de6f10b2",
+  "target": "chronolog",
+  "result_dir": ".agent/results/20260512-122315-chronolog-tau-full-semantics",
+  "benchmark": {
+    "workflow": "append_throughput",
+    "node_count": 2,
+    "client_count": 1,
+    "message_size_bytes": 1024,
+    "operation_count": 50,
+    "duration_seconds": 16701.628742835,
+    "throughput_ops_per_sec": 0.00299372,
+    "record_event_bandwidth_mb_per_sec": 3.03653,
+    "success": true,
+    "metrics_path": ".agent/results/20260512-122315-chronolog-tau-full-semantics/chronolog/metrics.json"
+  },
+  "baseline_ratios": {
+    "chronolog_to_iteration0": 1.0,
+    "chronolog_to_kafka": 0.000153278464,
+    "chronolog_to_mofka": 0.00033140067269265606,
+    "kafka_baseline_metrics_path": ".agent/results/20260512-010210/kafka/metrics.json",
+    "mofka_baseline_metrics_path": ".agent/results/20260512-010240/mofka/metrics.json",
+    "note": "Iteration 0 is the broad ChronoLog TAU semantic baseline. Kafka and Mofka ratios use fixed Phase 0 append-throughput baselines with matching workflow, node count, and message size; operation counts differ."
+  },
+  "profilers": {
+    "tau": {
+      "source": "profiling/data/history/tau_semantic_history.csv",
+      "top_regions": [
+        {
+          "role": "client",
+          "region": "rpc_send",
+          "count": 57.0,
+          "total_us": 35858.0,
+          "max_us": 12697.0
+        },
+        {
+          "role": "client",
+          "region": "client_connect",
+          "count": 1.0,
+          "total_us": 32235.0,
+          "max_us": 32235.0
+        },
+        {
+          "role": "chrono-keeper",
+          "region": "keeper_ingest",
+          "count": 18.0,
+          "total_us": 23071.999999999996,
+          "max_us": 19696.0
+        },
+        {
+          "role": "chrono-visor",
+          "region": "visor_client_connect",
+          "count": 1.0,
+          "total_us": 22051.0,
+          "max_us": 22051.0
+        },
+        {
+          "role": "chrono-grapher",
+          "region": "grapher_collect_ingested",
+          "count": 20.0,
+          "total_us": 21015.0,
+          "max_us": 20768.0
+        },
+        {
+          "role": "client",
+          "region": "client_append",
+          "count": 50.0,
+          "total_us": 16443.0,
+          "max_us": 1405.0
+        },
+        {
+          "role": "chrono-visor",
+          "region": "visor_client_disconnect",
+          "count": 1.0,
+          "total_us": 16401.0,
+          "max_us": 16401.0
+        },
+        {
+          "role": "client",
+          "region": "client_keeper_rpc",
+          "count": 50.0,
+          "total_us": 16072.999999999998,
+          "max_us": 1356.0
+        },
+        {
+          "role": "chrono-visor",
+          "region": "rpc_receive",
+          "count": 7.0,
+          "total_us": 6530.0,
+          "max_us": 3903.0
+        },
+        {
+          "role": "client",
+          "region": "client_visor_rpc",
+          "count": 2.0,
+          "total_us": 5841.0,
+          "max_us": 4200.0
+        },
+        {
+          "role": "client",
+          "region": "metadata_lookup",
+          "count": 3.0,
+          "total_us": 5348.000000000001,
+          "max_us": 4371.0
+        },
+        {
+          "role": "chrono-visor",
+          "region": "metadata_lookup",
+          "count": 9.0,
+          "total_us": 4504.999999999999,
+          "max_us": 3892.0
+        }
+      ]
+    },
+    "gperftools": {
+      "top_cpu_samples_by_role": [
+        {
+          "role": "chrono-bench",
+          "symbol": "__GI___pthread_sigmask",
+          "samples": "213.0"
+        },
+        {
+          "role": "chrono-bench",
+          "symbol": "syscall@@GLIBC_2.2.5",
+          "samples": "14.0"
+        },
+        {
+          "role": "chrono-bench",
+          "symbol": "_ULx86_64_get_reg",
+          "samples": "12.0"
+        },
+        {
+          "role": "chrono-bench",
+          "symbol": "epoll_wait@@GLIBC_2.3.2",
+          "samples": "12.0"
+        },
+        {
+          "role": "chrono-bench",
+          "symbol": "__GI_mincore",
+          "samples": "10.0"
+        },
+        {
+          "role": "chrono-bench",
+          "symbol": "__GI___libc_read",
+          "samples": "5.0"
+        },
+        {
+          "role": "chrono-grapher",
+          "symbol": "__GI___pthread_sigmask",
+          "samples": "68.0"
+        },
+        {
+          "role": "chrono-grapher",
+          "symbol": "__GI___clock_nanosleep",
+          "samples": "24.0"
+        },
+        {
+          "role": "chrono-grapher",
+          "symbol": "epoll_wait@@GLIBC_2.3.2",
+          "samples": "15.0"
+        },
+        {
+          "role": "chrono-grapher",
+          "symbol": "__vfprintf_internal",
+          "samples": "12.0"
+        },
+        {
+          "role": "chrono-grapher",
+          "symbol": "__GI__IO_default_xsputn",
+          "samples": "8.0"
+        },
+        {
+          "role": "chrono-grapher",
+          "symbol": "__memset_evex_unaligned_erms",
+          "samples": "8.0"
+        }
+      ],
+      "artifact_dir": "profiling/0/data/gperftools"
+    },
+    "darshan": {
+      "io_summary_by_role": [
+        {
+          "role": "chrono-grapher",
+          "metric": "POSIX_BYTES_READ",
+          "value": "5217.0"
+        },
+        {
+          "role": "chrono-grapher",
+          "metric": "POSIX_BYTES_WRITTEN",
+          "value": "34290.0"
+        },
+        {
+          "role": "chrono-grapher",
+          "metric": "POSIX_READS",
+          "value": "3.0"
+        },
+        {
+          "role": "chrono-grapher",
+          "metric": "POSIX_WRITES",
+          "value": "8.0"
+        },
+        {
+          "role": "chrono-grapher",
+          "metric": "STDIO_BYTES_READ",
+          "value": "0.0"
+        },
+        {
+          "role": "chrono-grapher",
+          "metric": "STDIO_BYTES_WRITTEN",
+          "value": "6213.0"
+        },
+        {
+          "role": "chrono-grapher",
+          "metric": "STDIO_READS",
+          "value": "0.0"
+        },
+        {
+          "role": "chrono-grapher",
+          "metric": "STDIO_WRITES",
+          "value": "38.0"
+        },
+        {
+          "role": "chrono-keeper",
+          "metric": "POSIX_BYTES_READ",
+          "value": "10446.0"
+        },
+        {
+          "role": "chrono-keeper",
+          "metric": "POSIX_BYTES_WRITTEN",
+          "value": "0.0"
+        },
+        {
+          "role": "chrono-keeper",
+          "metric": "POSIX_READS",
+          "value": "6.0"
+        },
+        {
+          "role": "chrono-keeper",
+          "metric": "POSIX_WRITES",
+          "value": "0.0"
+        }
+      ],
+      "artifact_dir": "profiling/0/data/darshan"
+    },
+    "perf": {
+      "artifact_dir": "profiling/0/raw/perf",
+      "status": "available_when_perf_profiles_exist_for_selected_run"
+    },
+    "linux_network_measurement_commands": {
+      "summary": [
+        "node=ares-comp-03",
+        "node=ares-comp-04",
+        "date=2026-05-12 00:38 CDT",
+        "## ip -br addr",
+        "lo               UNKNOWN        127.0.0.1/8 ::1/128 ",
+        "eno1             UP             172.20.101.3/16 fe80::7ed3:aff:feef:3dd0/64 ",
+        "eno2             DOWN           ",
+        "enp47s0np0       UP             172.25.101.3/16 fe80::268a:7ff:fe2f:cdb2/64 ",
+        "enx7ed30aef3dd7  UNKNOWN        169.254.95.120/24 metric 100 fe80::7cd3:aff:feef:3dd7/64 ",
+        "docker0          DOWN           172.17.0.1/16 ",
+        "## ip route",
+        "default via 172.20.1.1 dev eno1 proto static ",
+        "169.254.95.0/24 dev enx7ed30aef3dd7 proto kernel scope link src 169.254.95.120 metric 100 ",
+        "172.17.0.0/16 dev docker0 proto kernel scope link src 172.17.0.1 linkdown ",
+        "172.20.0.0/16 dev eno1 proto kernel scope link src 172.20.101.3 ",
+        "172.25.0.0/16 dev enp47s0np0 proto kernel scope link src 172.25.101.3 ",
+        "## interfaces",
+        "### iface=docker0",
+        "down",
+        "Settings for docker0:",
+        "\tSupported ports: [  ]",
+        "\tSupported link modes:   Not reported",
+        "\tSupported pause frame use: No",
+        "\tSupports auto-negotiation: No",
+        "\tSupported FEC modes: Not reported",
+        "\tAdvertised link modes:  Not reported",
+        "\tAdvertised pause frame use: No",
+        "\tAdvertised auto-negotiation: No",
+        "\tAdvertised FEC modes: Not reported",
+        "\tSpeed: Unknown!",
+        "\tDuplex: Unknown! (255)",
+        "\tAuto-negotiation: off",
+        "\tPort: Other",
+        "\tPHYAD: 0",
+        "\tTransceiver: internal",
+        "\tLink detected: no",
+        "### iface=eno1",
+        "date=2026-05-12 00:38 CDT",
+        "## ip -br addr",
+        "lo               UNKNOWN        127.0.0.1/8 ::1/128 ",
+        "eno1             UP             172.20.101.4/16 fe80::7ed3:aff:feef:3328/64 ",
+        "eno2             DOWN           ",
+        "enp47s0np0       UP             172.25.101.4/16 fe80::268a:7ff:fe2f:c992/64 ",
+        "enx7ed30aef332f  UNKNOWN        169.254.95.120/24 metric 100 fe80::7cd3:aff:feef:332f/64 ",
+        "docker0          DOWN           172.17.0.1/16 ",
+        "## ip route",
+        "default via 172.20.1.1 dev eno1 proto static ",
+        "169.254.95.0/24 dev enx7ed30aef332f proto kernel scope link src 169.254.95.120 metric 100 ",
+        "172.17.0.0/16 dev docker0 proto kernel scope link src 172.17.0.1 linkdown ",
+        "172.20.0.0/16 dev eno1 proto kernel scope link src 172.20.101.4 ",
+        "172.25.0.0/16 dev enp47s0np0 proto kernel scope link src 172.25.101.4 ",
+        "## interfaces",
+        "### iface=docker0",
+        "down",
+        "up",
+        "Settings for docker0:",
+        "\tSupported ports: [  ]",
+        "\tSupported link modes:   Not reported",
+        "\tSupported pause frame use: No",
+        "\tSupports auto-negotiation: No",
+        "\tSupported FEC modes: Not reported",
+        "\tAdvertised link modes:  Not reported",
+        "\tAdvertised pause frame use: No",
+        "\tAdvertised auto-negotiation: No",
+        "\tAdvertised FEC modes: Not reported",
+        "\tSpeed: Unknown!",
+        "\tDuplex: Unknown! (255)",
+        "\tAuto-negotiation: off",
+        "\tPort: Other",
+        "\tPHYAD: 0",
+        "\tTransceiver: internal",
+        "\tLink detected: no",
+        "Settings for eno1:",
+        "\tSupported ports: [ TP ]",
+        "\tSupported link modes:   1000baseT/Full",
+        "\tSupported pause frame use: Symmetric Receive-only",
+        "\tSupports auto-negotiation: Yes",
+        "\tSupported FEC modes: Not reported",
+        "\tAdvertised link modes:  1000baseT/Full",
+        "\tAdvertised pause frame use: No"
+      ],
+      "artifact_dir": "profiling/0/raw/network"
+    },
+    "ebpf_based_tools": {
+      "status": "pending_admin_enablement_or_allowlisted_wrapper",
+      "admin_request": "profiling/0/ebpf-admin-command-allowlist.md"
+    }
+  },
+  "correctness": {
+    "status": "phase0_basic_validation_only",
+    "policy": "profileforge/validators/correctness-policy.md",
+    "required_upgrade": "emit explicit no-lost-records/no-duplicates/ordering/range validator JSON before autonomous patch acceptance"
+  },
+  "deployment": {
+    "topology_document": "profiling/chronolog-deployment-topology.md",
+    "manifest": ".agent/results/20260512-122315-chronolog-tau-full-semantics/config/chronolog-config-manifest.env"
+  },
+  "agent_guidance": {
+    "diagnosis_contract": "profileforge/agents/bottleneck-diagnosis.md",
+    "patch_contract": "profileforge/agents/patch-agent.md",
+    "allowed_edits": "profileforge/targets/chronolog/allowed_edits.yaml",
+    "acceptance_policy": "profileforge/controller/acceptance-policy.yaml"
+  }
+}

@@ -120,3 +120,5 @@ This is not a performance-optimization phase. The goal is to make the full measu
 - [x] Move loop history to top-level `/profiling` and keep `profiling/0` as the iteration-0 snapshot.
 - [x] Validate `record_groups=2` as a tunable ChronoLog deployment parameter.
 - [x] Document ChronoLog bare-metal SLURM service placement for engineer review.
+- [x] Add ProfileForge target manifests, edit policy, acceptance policy, and iteration-1 runbook.
+- [x] Generate normalized iteration-0 evidence JSON for the optimization-agent handoff.
