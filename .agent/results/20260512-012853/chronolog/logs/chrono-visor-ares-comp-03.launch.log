@@ -1,0 +1,5 @@
+[cmd_arg_parse] Configuration file path provided: /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-012853/config/default-chrono-conf.json
+Function returned HG_NOENTRY
+terminate called after throwing an instance of 'thallium::margo_exception'
+  what():  [/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/mochi-thallium-0.10.1-2pari3f6rfymdumimuinunfd43w4c7nq/include/thallium/request.hpp:174][margo_respond] Function returned HG_NOENTRY
+/mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-012853/chronolog/wrappers/chrono-visor: line 23: 471842 Aborted                 "${real_bin}" "$@"

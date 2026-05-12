@@ -1,0 +1,15 @@
+{
+  "system": "mofka",
+  "workflow": "range_retrieval",
+  "node_count": 2,
+  "client_count": 1,
+  "message_size_bytes": 1024,
+  "operation_count": 10,
+  "duration_seconds": 0.0029256989946588874,
+  "throughput_ops_per_sec": 3417.9866138846996,
+  "avg_latency_ms": 0.025932013522833586,
+  "p50_latency_ms": 0.016406062059104443,
+  "p95_latency_ms": 0.10212801862508059,
+  "p99_latency_ms": 0.10212801862508059,
+  "success": true
+}

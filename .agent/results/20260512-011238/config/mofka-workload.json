@@ -1,0 +1,12 @@
+{
+  "workflow": "range_retrieval",
+  "topic": "phase0_append",
+  "partition_type": "memory",
+  "deployment_mode": "bare_metal",
+  "operation_count": 10,
+  "message_size_bytes": 1024,
+  "producer_batch_size": 1,
+  "producer_max_batch": 2,
+  "producer_ordering": "Loose",
+  "configuration_note": "Uses Mofka memory partition because Yokan/Warabi-backed dynamic partition creation still needs configuration validation."
+}

@@ -17,7 +17,7 @@ def percentile(values, percent):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run a Phase 0 Mofka append smoke benchmark.")
+    parser = argparse.ArgumentParser(description="Run a Phase 0 Mofka append/read smoke benchmark.")
     parser.add_argument("--group-file", required=True)
     parser.add_argument("--result-dir", required=True)
     parser.add_argument("--topic", default="phase0_append")
@@ -54,19 +54,39 @@ def main():
     )
 
     payload = b"x" * args.message_size_bytes
-    latencies_ms = []
-    start = time.perf_counter()
+    append_latencies_ms = []
+    read_latencies_ms = []
+    append_start = time.perf_counter()
     for index in range(args.operation_count):
         metadata = {"index": index}
         op_start = time.perf_counter()
         event_id = producer.push(metadata, payload, partition=0).wait()
         op_end = time.perf_counter()
-        latencies_ms.append((op_end - op_start) * 1000.0)
+        append_latencies_ms.append((op_end - op_start) * 1000.0)
         print(f"event_index={index} event_id={event_id}", flush=True)
     producer.flush()
-    end = time.perf_counter()
+    append_end = time.perf_counter()
 
-    duration = end - start
+    if args.workflow == "range_retrieval":
+        consumer = topic.consumer("phase0_consumer", batch_size=1, max_batch=2)
+        read_start = time.perf_counter()
+        for index in range(args.operation_count):
+            op_start = time.perf_counter()
+            event = consumer.pull().wait()
+            op_end = time.perf_counter()
+            read_latencies_ms.append((op_end - op_start) * 1000.0)
+            print(f"read_index={index} event_id={event.event_id}", flush=True)
+            try:
+                event.acknowledge()
+            except Exception:
+                pass
+        read_end = time.perf_counter()
+        measured_latencies = read_latencies_ms
+        duration = read_end - read_start
+    else:
+        measured_latencies = append_latencies_ms
+        duration = append_end - append_start
+
     throughput = args.operation_count / duration if duration > 0 else 0
     metrics = {
         "system": "mofka",
@@ -77,10 +97,10 @@ def main():
         "operation_count": args.operation_count,
         "duration_seconds": duration,
         "throughput_ops_per_sec": throughput,
-        "avg_latency_ms": statistics.fmean(latencies_ms) if latencies_ms else None,
-        "p50_latency_ms": percentile(latencies_ms, 50),
-        "p95_latency_ms": percentile(latencies_ms, 95),
-        "p99_latency_ms": percentile(latencies_ms, 99),
+        "avg_latency_ms": statistics.fmean(measured_latencies) if measured_latencies else None,
+        "p50_latency_ms": percentile(measured_latencies, 50),
+        "p95_latency_ms": percentile(measured_latencies, 95),
+        "p99_latency_ms": percentile(measured_latencies, 99),
         "success": True,
     }
 

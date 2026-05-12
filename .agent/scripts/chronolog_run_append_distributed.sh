@@ -17,7 +17,7 @@ Options:
   --node-count N               Node count. Default: 2.
   --slurm-time TIME            SLURM time limit. Default: 00:10:00.
   --record-groups N            ChronoLog recording groups. Default: 1.
-  --workflow NAME              append_throughput or append_latency. Default: append_throughput.
+  --workflow NAME              append_throughput, append_latency, or range_retrieval. Default: append_throughput.
   --operation-count N          Events per client. Default: 10.
   --message-size-bytes N       Average event size. Default: 1024.
   --chronicle-count N          Chronicles per process. Default: 1.
@@ -285,6 +285,16 @@ elif [[ "${WORKFLOW}" == "append_latency" ]]; then
   bash -lc "$(module_loads); export LD_LIBRARY_PATH='${INSTALL_DIR}/lib':\${LD_LIBRARY_PATH:-}; export PYTHONPATH='${INSTALL_DIR}/lib':\${PYTHONPATH:-}; python3 '${SCRIPT_DIR}/chronolog_append_latency.py' --config '${CLIENT_CONF_FILE}' --result-dir '${RESULT_DIR}' --operation-count '${OPERATION_COUNT}' --message-size-bytes '${MESSAGE_SIZE_BYTES}' --node-count '${NODE_COUNT}' --client-count 1 --workflow append_latency" \
     > "${CHRONOLOG_RESULT_DIR}/chronolog-append-latency.log" \
     2> "${CHRONOLOG_RESULT_DIR}/chronolog-append-latency.stderr.log"
+  BENCH_STATUS=$?
+  set -e
+  if [[ "${BENCH_STATUS}" -ne 0 ]]; then
+    exit "${BENCH_STATUS}"
+  fi
+elif [[ "${WORKFLOW}" == "range_retrieval" ]]; then
+  set +e
+  bash -lc "$(module_loads); export LD_LIBRARY_PATH='${INSTALL_DIR}/lib':\${LD_LIBRARY_PATH:-}; export PYTHONPATH='${INSTALL_DIR}/lib':\${PYTHONPATH:-}; timeout 300s python3 '${SCRIPT_DIR}/chronolog_range_retrieval.py' --config '${CLIENT_CONF_FILE}' --result-dir '${RESULT_DIR}' --operation-count '${OPERATION_COUNT}' --message-size-bytes '${MESSAGE_SIZE_BYTES}' --node-count '${NODE_COUNT}' --client-count 1" \
+    > "${CHRONOLOG_RESULT_DIR}/chronolog-range-retrieval.log" \
+    2> "${CHRONOLOG_RESULT_DIR}/chronolog-range-retrieval.stderr.log"
   BENCH_STATUS=$?
   set -e
   if [[ "${BENCH_STATUS}" -ne 0 ]]; then

@@ -91,9 +91,11 @@ This is not a performance-optimization phase. The goal is to make the full measu
 - [ ] All selected workflows run on ChronoLog distributed target.
 - [x] Append throughput workflow runs on Kafka distributed target.
 - [x] Append latency workflow runs on Kafka distributed target.
+- [x] Range retrieval workflow runs on Kafka distributed target.
 - [ ] All selected workflows run on Kafka distributed target.
 - [x] Append throughput workflow runs on Mofka distributed target.
 - [x] Append latency workflow runs on Mofka distributed target.
+- [x] Range retrieval workflow runs on Mofka distributed target.
 - [ ] All selected workflows run on Mofka distributed target.
 - [x] ChronoLog instrumentation works.
 - [x] ChronoLog profiling stack produces outputs.

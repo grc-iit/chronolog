@@ -1,0 +1,25 @@
+[0;33mChecking required dependencies...[0m
+[0;33mAll required dependencies are installed.[0m
+[7;49m[92mStopping ...[0m
+[0;33mNo JOB_ID provided, use hosts files in /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-012853/config[0m
+[7;49m[92mChecking hosts files...[0m
+[0;33mStopping ChronoPlayer ...[0m
+[0;33mStopping ChronoKeeper ...[0m
+[1] 01:34:17 [SUCCESS] ares-comp-03
+bash killed (pid 471758)
+[1] 01:34:17 [SUCCESS] ares-comp-04
+bash killed (pid 2204672)
+[2] 01:34:17 [SUCCESS] ares-comp-04
+bash killed (pid 2204677)
+[0;33mchrono-player processes are still running, waiting for 10 seconds ...[0m
+[0;33mchrono-keeper processes are still running, waiting for 10 seconds ...[0m
+[0;33mStopping ChronoGrapher ...[0m
+[1] 01:34:28 [SUCCESS] ares-comp-04
+bash killed (pid 2204642)
+[0;33mchrono-grapher processes are still running, waiting for 10 seconds ...[0m
+[0;33mStopping ChronoVisor ...[0m
+[1] 01:34:40 [FAILURE] ares-comp-03 Exited with error code 1
+[0;33mRunning ChronoVisor:[0m
+[0;33mRunning ChronoGraphers, ChronoKeepers, and ChronoPlayers:[0m
+[0;33mRecordingGroup 1:[0m
+[7;49m[92mDone[0m

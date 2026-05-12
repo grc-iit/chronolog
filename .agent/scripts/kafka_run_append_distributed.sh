@@ -20,7 +20,7 @@ Options:
   --slurm-time TIME            SLURM time limit. Default: 00:10:00.
   --operation-count N          Number of records. Default: 1000.
   --message-size-bytes N       Record size. Default: 1024.
-  --workflow NAME              append_throughput or append_latency. Default: append_throughput.
+  --workflow NAME              append_throughput, append_latency, or range_retrieval. Default: append_throughput.
   --topic NAME                 Topic name. Default: phase0-append.
   --zookeeper-port PORT        ZooKeeper port. Default: 22181.
   --broker-port PORT           Broker port. Default: 29092.
@@ -215,7 +215,53 @@ done
   > "${KAFKA_RESULT_DIR}/producer-perf-append-throughput.log" \
   2> "${KAFKA_RESULT_DIR}/producer-perf-append-throughput.stderr.log"
 
-python3 - "$KAFKA_RESULT_DIR/producer-perf-append-throughput.log" "${KAFKA_RESULT_DIR}/metrics.json" "${NODE_COUNT}" "${OPERATION_COUNT}" "${MESSAGE_SIZE_BYTES}" "${WORKFLOW}" <<'PY'
+if [[ "${WORKFLOW}" == "range_retrieval" ]]; then
+  "${KAFKA_HOME}/bin/kafka-consumer-perf-test.sh" \
+    --bootstrap-server "${BOOTSTRAP_SERVER}" \
+    --topic "${TOPIC}" \
+    --messages "${OPERATION_COUNT}" \
+    --group "phase0-range-${TOPIC}" \
+    --timeout 30000 \
+    > "${KAFKA_RESULT_DIR}/consumer-perf-range-retrieval.log" \
+    2> "${KAFKA_RESULT_DIR}/consumer-perf-range-retrieval.stderr.log"
+
+  python3 - "${KAFKA_RESULT_DIR}/consumer-perf-range-retrieval.log" "${KAFKA_RESULT_DIR}/metrics.json" "${NODE_COUNT}" "${OPERATION_COUNT}" "${MESSAGE_SIZE_BYTES}" <<'PY'
+import csv
+import json
+import sys
+
+log_path, metrics_path, node_count, operation_count, message_size = sys.argv[1:]
+rows = [row for row in csv.reader(open(log_path)) if row]
+if len(rows) < 2:
+    raise SystemExit(f"Could not parse consumer perf output: {open(log_path).read()}")
+header = [col.strip() for col in rows[0]]
+values = [col.strip() for col in rows[-1]]
+data = dict(zip(header, values))
+records = int(float(data.get("data.consumed.in.nMsg", operation_count)))
+throughput = float(data.get("nMsg.sec", 0))
+duration = records / throughput if throughput else 0
+metrics = {
+    "system": "kafka",
+    "workflow": "range_retrieval",
+    "node_count": int(node_count),
+    "client_count": 1,
+    "message_size_bytes": int(message_size),
+    "operation_count": int(operation_count),
+    "duration_seconds": duration,
+    "throughput_ops_per_sec": throughput,
+    "avg_latency_ms": None,
+    "p50_latency_ms": None,
+    "p95_latency_ms": None,
+    "p99_latency_ms": None,
+    "success": records >= int(operation_count),
+}
+open(metrics_path, "w").write(json.dumps(metrics, indent=2) + "\n")
+print(json.dumps(metrics, indent=2))
+if not metrics["success"]:
+    raise SystemExit(1)
+PY
+else
+  python3 - "$KAFKA_RESULT_DIR/producer-perf-append-throughput.log" "${KAFKA_RESULT_DIR}/metrics.json" "${NODE_COUNT}" "${OPERATION_COUNT}" "${MESSAGE_SIZE_BYTES}" "${WORKFLOW}" <<'PY'
 import json
 import re
 import sys
@@ -251,6 +297,7 @@ metrics = {
 open(metrics_path, "w").write(json.dumps(metrics, indent=2) + "\n")
 print(json.dumps(metrics, indent=2))
 PY
+fi
 
 cat > "${RESULT_DIR}/summary.md" <<EOF
 # Kafka Distributed Append Smoke
