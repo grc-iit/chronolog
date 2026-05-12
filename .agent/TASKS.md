@@ -67,7 +67,7 @@ This is not a performance-optimization phase. The goal is to make the full measu
 - [x] Capture per-run configuration manifest for ChronoLog.
 - [x] Capture per-run configuration manifest for Kafka.
 - [x] Capture per-run configuration manifest for Mofka local smoke.
-- [ ] Record RDMA/RoCE and Linux network measurement evidence for distributed runs.
+- [x] Record RDMA/RoCE and Linux network measurement evidence for distributed runs.
 - [ ] Justify selected ChronoLog, Kafka, and Mofka configurations in the final Phase 0 report.
 
 ## Common benchmark/result harness
@@ -81,9 +81,9 @@ This is not a performance-optimization phase. The goal is to make the full measu
 
 ## Phase 0 completion
 
-- [ ] All selected workflows run on ChronoLog.
-- [ ] All selected workflows run on Kafka.
-- [ ] All selected workflows run on Mofka.
+- [ ] All selected workflows run on ChronoLog distributed target.
+- [ ] All selected workflows run on Kafka distributed target.
+- [ ] All selected workflows run on Mofka distributed target.
 - [ ] ChronoLog instrumentation works.
 - [ ] ChronoLog profiling stack produces outputs.
 - [ ] Results are comparable across systems.

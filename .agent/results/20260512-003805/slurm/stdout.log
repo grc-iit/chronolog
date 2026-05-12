@@ -1,0 +1,5 @@
+# SLURM two-node smoke
+timestamp=2026-05-12 00:38 CDT
+command=srun --partition=debug --nodes=2 --ntasks=2 --time=00:02:00 hostname
+ares-comp-03
+ares-comp-04
