@@ -1,0 +1,76 @@
+heap profile:   1007: 11518073 [  1017: 11526257] @ heapprofile
+     1:  8388608 [     1:  8388608] @ 0x7f8faadc70aa 0x7f8faadc521e 0x7f8faadc5769 0x55b1f3420334 0x7f8faa772d90 0x7f8faa772e40 0x55b1f3420245
+     1:  2097152 [     1:  2097152] @ 0x7f8faadc70b7 0x7f8faadc521e 0x7f8faadc5769 0x55b1f3420334 0x7f8faa772d90 0x7f8faa772e40 0x55b1f3420245
+  1000:  1024000 [  1000:  1024000] @ 0x55b1f3420362 0x7f8faa772d90 0x7f8faa772e40 0x55b1f3420245
+     1:     8192 [    11:    16376] @ 0x55b1f3421010 0x55b1f3420ee2 0x55b1f3420d90 0x55b1f3420a19 0x55b1f3420884 0x55b1f34205e6 0x55b1f3420379 0x7f8faa772d90 0x7f8faa772e40 0x55b1f3420245
+     1:       72 [     1:       72] @ 0x7f8faadc6b55 0x7f8faa7e2ee8 0x7f8faadc6ba2 0x7f8faadc6bfd 0x7f8faadc4b29 0x7f8faadf347e 0x7f8faadf3568 0x7f8faae0d2ca
+     1:       24 [     1:       24] @ 0x7f8faadc66d8 0x7f8faadc511e 0x7f8faadc524e 0x7f8faadc5769 0x55b1f3420334 0x7f8faa772d90 0x7f8faa772e40 0x55b1f3420245
+     1:       16 [     1:       16] @ 0x7f8faadc6659 0x7f8faadc511e 0x7f8faadc524e 0x7f8faadc5769 0x55b1f3420334 0x7f8faa772d90 0x7f8faa772e40 0x55b1f3420245
+     1:        9 [     1:        9] @ 0x7f8faa7f158f 0x7f8faadc7085 0x7f8faadc521e 0x7f8faadc5769 0x55b1f3420334 0x7f8faa772d90 0x7f8faa772e40 0x55b1f3420245
+
+MAPPED_LIBRARIES:
+55b1f341f000-55b1f3420000 r--p 00000000 00:00 45355675912 /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-221259/gperftools/gperftools_probe
+55b1f3420000-55b1f3422000 r-xp 00001000 00:00 45355675912 /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-221259/gperftools/gperftools_probe
+55b1f3422000-55b1f3423000 r--p 00003000 00:00 45355675912 /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-221259/gperftools/gperftools_probe
+55b1f3423000-55b1f3424000 r--p 00003000 00:00 45355675912 /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-221259/gperftools/gperftools_probe
+55b1f3424000-55b1f3425000 rw-p 00004000 00:00 45355675912 /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-221259/gperftools/gperftools_probe
+55b21d01f000-55b21e420000 rw-p 00000000 00:00 0           [heap]
+7f8faa326000-7f8faa61a000 rw-p 00000000 00:00 0           
+7f8faa61a000-7f8faa61d000 r--p 00000000 00:00 30414844    /usr/lib/x86_64-linux-gnu/liblzma.so.5.2.5
+7f8faa61d000-7f8faa638000 r-xp 00003000 00:00 30414844    /usr/lib/x86_64-linux-gnu/liblzma.so.5.2.5
+7f8faa638000-7f8faa643000 r--p 0001e000 00:00 30414844    /usr/lib/x86_64-linux-gnu/liblzma.so.5.2.5
+7f8faa643000-7f8faa644000 r--p 00028000 00:00 30414844    /usr/lib/x86_64-linux-gnu/liblzma.so.5.2.5
+7f8faa644000-7f8faa645000 rw-p 00029000 00:00 30414844    /usr/lib/x86_64-linux-gnu/liblzma.so.5.2.5
+7f8faa645000-7f8faa653000 r--p 00000000 00:00 30413739    /usr/lib/x86_64-linux-gnu/libm.so.6
+7f8faa653000-7f8faa6cf000 r-xp 0000e000 00:00 30413739    /usr/lib/x86_64-linux-gnu/libm.so.6
+7f8faa6cf000-7f8faa72a000 r--p 0008a000 00:00 30413739    /usr/lib/x86_64-linux-gnu/libm.so.6
+7f8faa72a000-7f8faa72b000 r--p 000e4000 00:00 30413739    /usr/lib/x86_64-linux-gnu/libm.so.6
+7f8faa72b000-7f8faa72c000 rw-p 000e5000 00:00 30413739    /usr/lib/x86_64-linux-gnu/libm.so.6
+7f8faa72c000-7f8faa72e000 r--p 00000000 00:00 30409090    /usr/lib/x86_64-linux-gnu/libunwind.so.8.0.1
+7f8faa72e000-7f8faa738000 r-xp 00002000 00:00 30409090    /usr/lib/x86_64-linux-gnu/libunwind.so.8.0.1
+7f8faa738000-7f8faa73b000 r--p 0000c000 00:00 30409090    /usr/lib/x86_64-linux-gnu/libunwind.so.8.0.1
+7f8faa73b000-7f8faa73c000 r--p 0000e000 00:00 30409090    /usr/lib/x86_64-linux-gnu/libunwind.so.8.0.1
+7f8faa73c000-7f8faa73d000 rw-p 0000f000 00:00 30409090    /usr/lib/x86_64-linux-gnu/libunwind.so.8.0.1
+7f8faa73d000-7f8faa749000 rw-p 00000000 00:00 0           
+7f8faa749000-7f8faa771000 r--p 00000000 00:00 30413736    /usr/lib/x86_64-linux-gnu/libc.so.6
+7f8faa771000-7f8faa906000 r-xp 00028000 00:00 30413736    /usr/lib/x86_64-linux-gnu/libc.so.6
+7f8faa906000-7f8faa95e000 r--p 001bd000 00:00 30413736    /usr/lib/x86_64-linux-gnu/libc.so.6
+7f8faa95e000-7f8faa95f000 ---p 00215000 00:00 30413736    /usr/lib/x86_64-linux-gnu/libc.so.6
+7f8faa95f000-7f8faa963000 r--p 00215000 00:00 30413736    /usr/lib/x86_64-linux-gnu/libc.so.6
+7f8faa963000-7f8faa965000 rw-p 00219000 00:00 30413736    /usr/lib/x86_64-linux-gnu/libc.so.6
+7f8faa965000-7f8faa972000 rw-p 00000000 00:00 0           
+7f8faa972000-7f8faa975000 r--p 00000000 00:00 30410251    /usr/lib/x86_64-linux-gnu/libgcc_s.so.1
+7f8faa975000-7f8faa98c000 r-xp 00003000 00:00 30410251    /usr/lib/x86_64-linux-gnu/libgcc_s.so.1
+7f8faa98c000-7f8faa990000 r--p 0001a000 00:00 30410251    /usr/lib/x86_64-linux-gnu/libgcc_s.so.1
+7f8faa990000-7f8faa991000 r--p 0001d000 00:00 30410251    /usr/lib/x86_64-linux-gnu/libgcc_s.so.1
+7f8faa991000-7f8faa992000 rw-p 0001e000 00:00 30410251    /usr/lib/x86_64-linux-gnu/libgcc_s.so.1
+7f8faa992000-7f8faaa2c000 r--p 00000000 00:00 30409162    /usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.30
+7f8faaa2c000-7f8faab3d000 r-xp 0009a000 00:00 30409162    /usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.30
+7f8faab3d000-7f8faabac000 r--p 001ab000 00:00 30409162    /usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.30
+7f8faabac000-7f8faabad000 ---p 0021a000 00:00 30409162    /usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.30
+7f8faabad000-7f8faabb8000 r--p 0021a000 00:00 30409162    /usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.30
+7f8faabb8000-7f8faabbb000 rw-p 00225000 00:00 30409162    /usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.30
+7f8faabbb000-7f8faabbe000 rw-p 00000000 00:00 0           
+7f8faabbe000-7f8faabd1000 r--p 00000000 00:00 30417879    /usr/lib/x86_64-linux-gnu/libtcmalloc.so.4.5.9
+7f8faabd1000-7f8faabf7000 r-xp 00013000 00:00 30417879    /usr/lib/x86_64-linux-gnu/libtcmalloc.so.4.5.9
+7f8faabf7000-7f8faac07000 r--p 00039000 00:00 30417879    /usr/lib/x86_64-linux-gnu/libtcmalloc.so.4.5.9
+7f8faac07000-7f8faac08000 r--p 00048000 00:00 30417879    /usr/lib/x86_64-linux-gnu/libtcmalloc.so.4.5.9
+7f8faac08000-7f8faac09000 rw-p 00049000 00:00 30417879    /usr/lib/x86_64-linux-gnu/libtcmalloc.so.4.5.9
+7f8faac09000-7f8faadbf000 rw-p 00000000 00:00 0           
+7f8faadbf000-7f8faadc4000 r--p 00000000 00:00 30417878    /usr/lib/x86_64-linux-gnu/libprofiler.so.0.5.4
+7f8faadc4000-7f8faadcb000 r-xp 00005000 00:00 30417878    /usr/lib/x86_64-linux-gnu/libprofiler.so.0.5.4
+7f8faadcb000-7f8faadcf000 r--p 0000c000 00:00 30417878    /usr/lib/x86_64-linux-gnu/libprofiler.so.0.5.4
+7f8faadcf000-7f8faadd0000 r--p 0000f000 00:00 30417878    /usr/lib/x86_64-linux-gnu/libprofiler.so.0.5.4
+7f8faadd0000-7f8faadd1000 rw-p 00010000 00:00 30417878    /usr/lib/x86_64-linux-gnu/libprofiler.so.0.5.4
+7f8faadd1000-7f8faadd6000 rw-p 00000000 00:00 0           
+7f8faadda000-7f8faaded000 rw-p 00000000 00:00 0           
+7f8faaded000-7f8faadef000 r--p 00000000 00:00 30411660    /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+7f8faadef000-7f8faae19000 r-xp 00002000 00:00 30411660    /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+7f8faae19000-7f8faae24000 r--p 0002c000 00:00 30411660    /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+7f8faae24000-7f8faae25000 rw-p 00000000 00:00 0           
+7f8faae25000-7f8faae27000 r--p 00037000 00:00 30411660    /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+7f8faae27000-7f8faae29000 rw-p 00039000 00:00 30411660    /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+7ffe4f2e4000-7ffe4f306000 rw-p 00000000 00:00 0           [stack]
+7ffe4f306000-7ffe4f30a000 r--p 00000000 00:00 0           [vvar]
+7ffe4f30a000-7ffe4f30c000 r-xp 00000000 00:00 0           [vdso]
+ffffffffff600000-ffffffffff601000 --xp 00000000 00:00 0           [vsyscall]

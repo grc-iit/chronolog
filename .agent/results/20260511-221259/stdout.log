@@ -1,0 +1,79 @@
+timestamp=2026-05-11T22:12:59-05:00
+branch=opt/phase0-bootstrap
+merge_base_status=0
+
+[gperftools commands]
+google-pprof=/usr/bin/google-pprof
+pprof=missing
+pprof-symbolize=/usr/bin/pprof-symbolize
+cpu_profiler=missing
+heap_profiler=missing
+
+[gperftools libs headers]
+/usr/include/google/heap-profiler.h
+/usr/include/google/profiler.h
+/usr/include/gperftools
+/usr/include/gperftools/heap-profiler.h
+/usr/include/gperftools/profiler.h
+/usr/lib/x86_64-linux-gnu/libprofiler.so
+/usr/lib/x86_64-linux-gnu/libprofiler.so.0
+/usr/lib/x86_64-linux-gnu/libprofiler.so.0.5.4
+/usr/lib/x86_64-linux-gnu/libtcmalloc.so
+/usr/lib/x86_64-linux-gnu/libtcmalloc.so.4
+/usr/lib/x86_64-linux-gnu/libtcmalloc.so.4.5.9
+/usr/share/doc/gperftools
+
+[gperftools modules]
+
+[gperftools spack]
+gperftools
+
+[gperftools apt]
+google-perftools:
+  Installed: 2.9.1-0ubuntu3
+  Candidate: 2.9.1-0ubuntu3
+  Version table:
+ *** 2.9.1-0ubuntu3 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy/universe amd64 Packages
+        100 /var/lib/dpkg/status
+libgoogle-perftools-dev:
+  Installed: 2.9.1-0ubuntu3
+  Candidate: 2.9.1-0ubuntu3
+  Version table:
+ *** 2.9.1-0ubuntu3 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy/main amd64 Packages
+        100 /var/lib/dpkg/status
+libgoogle-perftools4:
+  Installed: 2.9.1-0ubuntu3
+  Candidate: 2.9.1-0ubuntu3
+  Version table:
+ *** 2.9.1-0ubuntu3 500
+        500 http://us.archive.ubuntu.com/ubuntu jammy/main amd64 Packages
+        100 /var/lib/dpkg/status
+
+[gperftools compile/run validation]
+started=2026-05-11T22:13:16-05:00
+total 48
+drwxr-xr-x 2 jcernudagarcia nogroup   125 May 11 22:13 .
+drwxr-xr-x 4 jcernudagarcia nogroup    94 May 11 22:13 ..
+-rw-r--r-- 1 jcernudagarcia nogroup  6585 May 11 22:13 cpu.prof
+-rwxr-xr-x 1 jcernudagarcia nogroup 25488 May 11 22:13 gperftools_probe
+-rw-r--r-- 1 jcernudagarcia nogroup   447 May 11 22:13 gperftools_probe.cpp
+-rw-r--r-- 1 jcernudagarcia nogroup  7680 May 11 22:13 heap-env.prof.0001.heap
+Using local file ./gperftools_probe.
+Using local file cpu.prof.
+Removing __GI___sigprocmask from all stack traces.
+Removing _ULx86_64_reg_states_iterate from all stack traces.
+Removing _ULx86_64_step from all stack traces.
+Removing base::internal::SpinLockWake from all stack traces.
+Removing GetStackTrace from all stack traces.
+Removing MallocHook_GetCallerStackTrace from all stack traces.
+Removing std::__introsort_loop from all stack traces.
+Removing MallocHook::InvokeNewHookSlow from all stack traces.
+Removing tcmalloc::allocate_full_malloc_oom from all stack traces.
+Removing main from all stack traces.
+Removing __libc_start_call_main from all stack traces.
+Removing __libc_start_main_impl from all stack traces.
+Removing _start from all stack traces.
+Total: 1 samples
+       1 100.0% 100.0%        1 100.0% __GI___pthread_sigmask

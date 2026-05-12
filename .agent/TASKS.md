@@ -16,7 +16,7 @@ This is not a performance-optimization phase. The goal is to make the full measu
 - [x] Create no-sudo install strategy: modules first, user-local prefix second, source build third.
 - [x] Install or detect TAU.
 - [x] Install or detect perf.
-- [ ] Install or detect gperftools.
+- [x] Install or detect gperftools.
 - [ ] Install or detect Darshan.
 - [ ] Detect eBPF-based tooling through available bpftrace or BCC tools.
 - [ ] Detect Linux network measurement commands: iperf3, ss, nstat, sar -n, ethtool.

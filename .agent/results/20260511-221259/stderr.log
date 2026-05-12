@@ -1,0 +1,4 @@
+==> Error: No package matches the query: gperftools
+Starting tracking the heap
+Dumping heap profile to heap-env.prof.0001.heap (after_alloc)
+PROFILE: interrupts/evictions/bytes = 1/0/192
