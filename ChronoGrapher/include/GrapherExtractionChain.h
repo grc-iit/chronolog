@@ -26,25 +26,12 @@ public:
 
     ~ChronoGrapherExtractionChain() { theExtractors.clear(); }
 
-    void add_extractor(Extractor e) { theExtractors.push_back(std::move(e)); }
-
-    int process_chunk(StoryChunk* chunk)
+    void process_chunk(StoryChunk* chunk)
     {
-        int chain_result = CL_SUCCESS;
-
-        // If extractor fails, mark the chain result as a failure,
-        // but keep going for the others.
         for(auto& e: theExtractors)
         {
-            int extractor_result =
-                    std::visit([chunk](auto& extractor) -> int { return extractor.process_chunk(chunk); }, e);
-
-            if(CL_SUCCESS != extractor_result)
-            {
-                chain_result = extractor_result;
-            }
+            std::visit([chunk](auto& extractor) { extractor.process_chunk(chunk); }, e);
         }
-        return chain_result;
     }
 
     bool is_active_chain() const
@@ -68,7 +55,7 @@ public:
         return true;
     }
 
-    int activate(ExtractionModuleConfiguration const& extraction_conf, ServiceId const& service_id)
+    int activate(ServiceId const& service_id, ExtractionModuleConfiguration const& extraction_conf)
     {
         int ret_value = CL_SUCCESS;
 
@@ -83,7 +70,7 @@ public:
                 {
                     break;
                 }
-                add_extractor(csv_extractor);
+		theExtractors.push_back(std::move(csv_extractor));
             }
             else if((*iter).first == "hdf5_extractor")
             {
@@ -93,16 +80,21 @@ public:
                 {
                     break;
                 }
-                add_extractor(hdf5_extractor);
+		theExtractors.push_back(std::move(hdf5_extractor));
             }
             else if((*iter).first == "logging_extractor")
             {
-                add_extractor(LoggingExtractor());
+		theExtractors.push_back(std::move(LoggingExtractor()));
             }
         }
 
         return ret_value;
     }
+
+    void flush_outage_buffers()
+    {
+	    //TODO #635
+    }	    
 };
 
 } // namespace chronolog
