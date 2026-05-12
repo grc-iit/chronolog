@@ -1,0 +1,128 @@
+╭───────────────────── Traceback (most recent call last) ──────────────────────╮
+│ /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/ │
+│ gcc-11.4.0/mofka-0.6.4-labml323r2hejghgbtqu3lfnha63doqo/lib/python3.11/site- │
+│ packages/mochi/mofka/mofkactl/benchmark.py:259 in generate                   │
+│                                                                              │
+│   256 │   master_db_path_prefixes = master_db_path_prefixes.split(",")       │
+│   257 │   metadata_db_path_prefixes = metadata_db_path_prefixes.split(",")   │
+│   258 │   data_storage_path_prefixes = data_storage_path_prefixes.split(",") │
+│ ❱ 259 │   space = BenchmarkSpec.space(                                       │
+│   260 │   │   # Arguments for the MofkaServiceSpec                           │
+│   261 │   │   num_servers=num_servers,                                       │
+│   262 │   │   num_metadata_db_per_proc=num_metadata_db_per_proc,             │
+│                                                                              │
+│ ╭───────────────────────────────── locals ─────────────────────────────────╮ │
+│ │                           address = 'na+sm'                              │ │
+│ │    allow_more_pools_than_xstreams = False                                │ │
+│ │      consumer_adaptive_batch_size = [True]                               │ │
+│ │               consumer_batch_size = -1                                   │ │
+│ │               consumer_check_data = [True]                               │ │
+│ │ consumer_data_broker_num_blocks_max 1                                    │ │
+│ │                                   =                                      │ │
+│ │ consumer_data_broker_num_blocks_min 1                                    │ │
+│ │                                   =                                      │ │
+│ │ consumer_data_selector_proportion_… 1.0                                  │ │
+│ │                                   =                                      │ │
+│ │ consumer_data_selector_proportion_… 1.0                                  │ │
+│ │                                   =                                      │ │
+│ │  consumer_data_selector_selectivity 1.0                                  │ │
+│ │                                   =                                      │ │
+│ │             consumer_thread_count = 0                                    │ │
+│ │                               ctx = <click.core.Context object at        │ │
+│ │                                     0x7f5ae498e390>                      │ │
+│ │                   data_num_blocks = [0]                                  │ │
+│ │    data_storage_needs_persistence = False                                │ │
+│ │        data_storage_path_prefixes = ['/tmp/mofka-benchmark']             │ │
+│ │                   data_total_size = [0]                                  │ │
+│ │       master_db_needs_persistence = False                                │ │
+│ │           master_db_path_prefixes = ['/tmp/mofka-benchmark']             │ │
+│ │     metadata_db_needs_persistence = False                                │ │
+│ │         metadata_db_path_prefixes = ['/tmp/mofka-benchmark']             │ │
+│ │                metadata_key_sizes = [8]                                  │ │
+│ │               metadata_num_fields = 8                                    │ │
+│ │                metadata_val_sizes = [16]                                 │ │
+│ │                     num_consumers = 0                                    │ │
+│ │         num_data_storage_per_proc = 1                                    │ │
+│ │                        num_events = 10                                   │ │
+│ │          num_metadata_db_per_proc = 1                                    │ │
+│ │                    num_partitions = 1                                    │ │
+│ │              num_pools_in_servers = 1                                    │ │
+│ │                     num_producers = 1                                    │ │
+│ │                       num_servers = 1                                    │ │
+│ │           num_xstreams_in_servers = 1                                    │ │
+│ │                partition_selector = ['default']                          │ │
+│ │      producer_adaptive_batch_size = [True]                               │ │
+│ │               producer_batch_size = -1                                   │ │
+│ │           producer_burst_size_max = 1                                    │ │
+│ │           producer_burst_size_min = 1                                    │ │
+│ │     producer_flush_between_bursts = [True]                               │ │
+│ │          producer_flush_every_max = 1                                    │ │
+│ │          producer_flush_every_min = 1                                    │ │
+│ │                 producer_ordering = ['loose']                            │ │
+│ │             producer_thread_count = 0                                    │ │
+│ │ producer_wait_between_bursts_ms_max 0                                    │ │
+│ │                                   =                                      │ │
+│ │ producer_wait_between_bursts_ms_min 0                                    │ │
+│ │                                   =                                      │ │
+│ │ producer_wait_between_events_ms_max 0                                    │ │
+│ │                                   =                                      │ │
+│ │ producer_wait_between_events_ms_min 0                                    │ │
+│ │                                   =                                      │ │
+│ │                        serializer = ['default']                          │ │
+│ │  simultaneous_producer_and_consumer False                                │ │
+│ │                                   =                                      │ │
+│ │                         validator = ['default']                          │ │
+│ ╰──────────────────────────────────────────────────────────────────────────╯ │
+│                                                                              │
+│ /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/ │
+│ gcc-11.4.0/mofka-0.6.4-labml323r2hejghgbtqu3lfnha63doqo/lib/python3.11/site- │
+│ packages/mochi/mofka/spec.py:478 in space                                    │
+│                                                                              │
+│   475 │   │   │     num_pools_in_servers: int|tuple[int,int] = 1,            │
+│   476 │   │   │     num_partitions: int|tuple[int,int] = 1,                  │
+│   477 │   │   │     **kwargs):                                               │
+│ ❱ 478 │   │   from mochi.bedrock.config_space import (                       │
+│   479 │   │   │   │   ConfigurationSpace,                                    │
+│   480 │   │   │   │   Constant,                                              │
+│   481 │   │   │   │   AndConjunction,                                        │
+│                                                                              │
+│ ╭───────────────────────────────── locals ─────────────────────────────────╮ │
+│ │               kwargs = {                                                 │ │
+│ │                        │   'num_metadata_db_per_proc': 1,                │ │
+│ │                        │   'num_data_storage_per_proc': 1,               │ │
+│ │                        │   'master_db_path_prefixes': [                  │ │
+│ │                        │   │   '/tmp/mofka-benchmark'                    │ │
+│ │                        │   ],                                            │ │
+│ │                        │   'metadata_db_path_prefixes': [                │ │
+│ │                        │   │   '/tmp/mofka-benchmark'                    │ │
+│ │                        │   ],                                            │ │
+│ │                        │   'data_storage_path_prefixes': [               │ │
+│ │                        │   │   '/tmp/mofka-benchmark'                    │ │
+│ │                        │   ],                                            │ │
+│ │                        │   'master_db_needs_persistence': False,         │ │
+│ │                        │   'metadata_db_needs_persistence': False,       │ │
+│ │                        │   'data_storage_needs_persistence': False,      │ │
+│ │                        │   'num_xstreams_in_servers': 1,                 │ │
+│ │                        │   'allow_more_pools_than_xstreams': False,      │ │
+│ │                        │   ... +30                                       │ │
+│ │                        }                                                 │ │
+│ │        num_consumers = 0                                                 │ │
+│ │       num_partitions = 1                                                 │ │
+│ │ num_pools_in_servers = 1                                                 │ │
+│ │        num_producers = 1                                                 │ │
+│ │          num_servers = 1                                                 │ │
+│ ╰──────────────────────────────────────────────────────────────────────────╯ │
+│                                                                              │
+│ /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/ │
+│ gcc-11.4.0/mochi-bedrock-0.16.0-qpmaqjnfyb7tvc675nf2aa5oxscjchu7/lib/python3 │
+│ .11/site-packages/mochi/bedrock/config_space.py:16 in <module>               │
+│                                                                              │
+│    13 """                                                                    │
+│    14                                                                        │
+│    15                                                                        │
+│ ❱  16 import ConfigSpace                                                     │
+│    17 from ConfigSpace.hyperparameters import Hyperparameter                 │
+│    18 from ConfigSpace.conditions import Condition, Conjunction, ConditionLi │
+│    19 from ConfigSpace.forbidden import ForbiddenLike                        │
+╰──────────────────────────────────────────────────────────────────────────────╯
+ModuleNotFoundError: No module named 'ConfigSpace'

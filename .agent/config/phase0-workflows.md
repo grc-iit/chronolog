@@ -15,6 +15,12 @@ Preferred deployment mode:
 
 The distributed sweep remains 1, 2, 4, and 8 nodes where cluster limits allow. A single-node local smoke result does not satisfy the distributed benchmark requirement.
 
+## Configuration Requirement
+
+Every comparable run must write a configuration manifest under its `config/` directory. The manifest must record deployment mode, node allocation, process/thread layout, storage path and persistence mode, memory-relevant settings, network transport/interface evidence, software versions/build variants, and workload parameters.
+
+ChronoLog and Mofka require extra attention to HPC configuration surfaces such as Mercury/Thallium transport, RDMA/RoCE-capable interfaces, Bedrock/provider layout, pools/execution streams, keeper/grapher topology, and storage targets. Kafka remains a fixed baseline, but its broker/topic/producer/JVM/log configuration must still be captured so comparisons are defensible.
+
 ## Comparable Entity Mapping
 
 | Concept | ChronoLog | Kafka | Mofka |

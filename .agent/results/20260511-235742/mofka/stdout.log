@@ -1,0 +1,582 @@
+# Mofka Spack install
+timestamp=2026-05-11 23:57:42 CDT
+
+## Repo state
+mochi      /mnt/common/jcernudagarcia/chronolog-opt/chronolog/opt/mochi-spack-packages
+coeus      /home/jcernudagarcia/coeus-adapter/CI/coeus
+iowarp     /mnt/common/jcernudagarcia/iowarp-install/iowarp-spack
+builtin    /mnt/common/jcernudagarcia/spack/var/spack/repos/builtin
+4d2b1ea trying to make c-raft import builtin c-raft
+ packages/argobots/package.py          | 2 +-
+ packages/c-raft/package.py            | 4 ++--
+ packages/darshan-runtime/package.py   | 2 +-
+ packages/ior/package.py               | 2 +-
+ packages/json-c/package.py            | 2 +-
+ packages/libfabric/package.py         | 2 +-
+ packages/mercury-na-libp2p/package.py | 2 +-
+ packages/mercury-na-zmq/package.py    | 2 +-
+ packages/mercury/package.py           | 2 +-
+ packages/mochi-abt-io/package.py      | 2 +-
+ packages/mochi-margo/package.py       | 2 +-
+ packages/mpich/package.py             | 2 +-
+ packages/paraview/package.py          | 2 +-
+ packages/pmdk/package.py              | 2 +-
+ packages/prrte/package.py             | 2 +-
+ packages/rocksdb/package.py           | 2 +-
+ packages/toml11/package.py            | 2 +-
+ 17 files changed, 18 insertions(+), 18 deletions(-)
+
+## Spec
+ -   mofka@0.6.4%gcc@11.4.0~benchmark~ipo~kafka~mpi+python build_system=cmake build_type=Release generator=make arch=linux-ubuntu22.04-skylake_avx512
+ -       ^argobots@1.2%gcc@11.4.0~affinity~debug~lazy_stack_alloc+perf~stackunwind~tool~valgrind build_system=autotools stackguard=none arch=linux-ubuntu22.04-skylake_avx512
+[+]      ^cmake@3.30.5%gcc@11.4.0~doc+ncurses+ownlibs~qtgui build_system=generic build_type=Release patches=dbc3892 arch=linux-ubuntu22.04-skylake_avx512
+[+]          ^curl@8.10.1%gcc@11.4.0~gssapi~ldap~libidn2~librtmp~libssh~libssh2+nghttp2 build_system=autotools libs=shared,static tls=openssl arch=linux-ubuntu22.04-skylake_avx512
+[+]              ^nghttp2@1.63.0%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]          ^ncurses@6.5%gcc@11.4.0~symlinks+termlib abi=none build_system=autotools patches=7a351bc arch=linux-ubuntu22.04-skylake_avx512
+[+]          ^zlib-ng@2.2.1%gcc@11.4.0+compat+new_strategies+opt+pic+shared build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]      ^fmt@11.0.2%gcc@11.4.0~ipo+pic~shared build_system=cmake build_type=Release cxxstd=11 generator=make arch=linux-ubuntu22.04-skylake_avx512
+[+]      ^gcc-runtime@11.4.0%gcc@11.4.0 build_system=generic arch=linux-ubuntu22.04-skylake_avx512
+[e]      ^glibc@2.35%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]      ^gmake@4.4.1%gcc@11.4.0~guile build_system=generic arch=linux-ubuntu22.04-skylake_avx512
+ -       ^mochi-bedrock@0.16.0%gcc@11.4.0+flock~ipo+mpi+python~space build_system=cmake build_type=Release generator=make arch=linux-ubuntu22.04-skylake_avx512
+ -           ^mochi-bedrock-module-api@0.2.1%gcc@11.4.0~ipo build_system=cmake build_type=Release generator=make arch=linux-ubuntu22.04-skylake_avx512
+[+]          ^openmpi@5.0.5%gcc@11.4.0+atomics~cuda~debug~gpfs~internal-hwloc~internal-libevent~internal-pmix~java~lustre~memchecker~openshmem~romio+rsh~static~two_level_namespace+vt+wrapper-rpath build_system=autotools fabrics=none romio-filesystem=none schedulers=none arch=linux-ubuntu22.04-skylake_avx512
+[+]              ^autoconf@2.72%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]                  ^m4@1.4.19%gcc@11.4.0+sigsegv build_system=autotools patches=9dc5fbd,bfdffa7 arch=linux-ubuntu22.04-skylake_avx512
+[+]                      ^libsigsegv@2.14%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]              ^automake@1.16.5%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]              ^libevent@2.1.12%gcc@11.4.0+openssl build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]              ^libtool@2.4.7%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]                  ^findutils@4.9.0%gcc@11.4.0 build_system=autotools patches=440b954 arch=linux-ubuntu22.04-skylake_avx512
+[+]              ^numactl@2.0.18%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]              ^openssh@9.9p1%gcc@11.4.0+gssapi build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]                  ^krb5@1.21.3%gcc@11.4.0+shared build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]                      ^bison@3.8.2%gcc@11.4.0~color build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]                  ^libedit@3.1-20240808%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]              ^perl@5.40.0%gcc@11.4.0+cpanm+opcode+open+shared+threads build_system=generic arch=linux-ubuntu22.04-skylake_avx512
+[+]                  ^berkeley-db@18.1.40%gcc@11.4.0+cxx~docs+stl build_system=autotools patches=26090f4,b231fcc arch=linux-ubuntu22.04-skylake_avx512
+[+]              ^pmix@5.0.3%gcc@11.4.0~munge~python~restful build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+ -           ^py-attrs@23.1.0%gcc@11.4.0 build_system=python_pip arch=linux-ubuntu22.04-skylake_avx512
+ -               ^py-hatch-fancy-pypi-readme@23.1.0%gcc@11.4.0 build_system=python_pip arch=linux-ubuntu22.04-skylake_avx512
+ -               ^py-hatch-vcs@0.4.0%gcc@11.4.0 build_system=python_pip arch=linux-ubuntu22.04-skylake_avx512
+[+]                  ^py-setuptools-scm@8.0.4%gcc@11.4.0+toml build_system=python_pip arch=linux-ubuntu22.04-skylake_avx512
+[+]                      ^git@2.47.0%gcc@11.4.0+man+nls+perl+subtree~svn~tcltk build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]                          ^libidn2@2.3.7%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]                              ^libunistring@1.2%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]                          ^pcre2@10.44%gcc@11.4.0~jit+multibyte build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]                      ^py-tomli@2.0.1%gcc@11.4.0 build_system=python_pip arch=linux-ubuntu22.04-skylake_avx512
+ -               ^py-hatchling@1.25.0%gcc@11.4.0 build_system=python_pip arch=linux-ubuntu22.04-skylake_avx512
+ -                   ^py-editables@0.5%gcc@11.4.0 build_system=python_pip arch=linux-ubuntu22.04-skylake_avx512
+[+]                  ^py-packaging@24.1%gcc@11.4.0 build_system=python_pip arch=linux-ubuntu22.04-skylake_avx512
+ -                   ^py-pathspec@0.11.1%gcc@11.4.0 build_system=python_pip arch=linux-ubuntu22.04-skylake_avx512
+ -                   ^py-pluggy@1.5.0%gcc@11.4.0 build_system=python_pip arch=linux-ubuntu22.04-skylake_avx512
+ -                   ^py-trove-classifiers@2023.8.7%gcc@11.4.0 build_system=python_pip arch=linux-ubuntu22.04-skylake_avx512
+ -                       ^py-calver@2022.6.26%gcc@11.4.0 build_system=python_pip arch=linux-ubuntu22.04-skylake_avx512
+ -           ^tclap@1.2.5%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+ -           ^toml11@4.0.2%gcc@11.4.0~ipo build_system=cmake build_type=Release cxx_std=11 generator=make arch=linux-ubuntu22.04-skylake_avx512
+ -       ^mochi-flock@0.7.0%gcc@11.4.0+bedrock~ipo+mpi+python build_system=cmake build_type=Release generator=make arch=linux-ubuntu22.04-skylake_avx512
+ -           ^json-c@0.16%gcc@11.4.0~ipo build_system=cmake build_type=Release generator=make arch=linux-ubuntu22.04-skylake_avx512
+ -       ^mochi-margo@0.23.0%gcc@11.4.0+hwloc~ipo~pvar build_system=cmake build_type=Release generator=make arch=linux-ubuntu22.04-skylake_avx512
+ -           ^coreutils@9.5%gcc@11.4.0~gprefix build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]          ^hwloc@2.11.1%gcc@11.4.0~cairo~cuda~gl~libudev+libxml2~nvml~oneapi-level-zero~opencl+pci~rocm build_system=autotools libs=shared,static arch=linux-ubuntu22.04-skylake_avx512
+[+]              ^libpciaccess@0.17%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]                  ^util-macros@1.20.1%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]              ^libxml2@2.13.4%gcc@11.4.0+pic~python+shared build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+ -           ^libfabric@1.22.0%gcc@11.4.0~cuda~debug~disable-spinlocks~kdreg~uring build_system=autotools fabrics=sockets,tcp,udp arch=linux-ubuntu22.04-skylake_avx512
+ -           ^mercury@2.4.1%gcc@11.4.0~bmi+boostsys+checksum~debug~hwloc~ipo~mpi+ofi~plugins~psm~psm2+shared+sm~ucx~udreg build_system=cmake build_type=Release generator=make arch=linux-ubuntu22.04-skylake_avx512
+[+]              ^boost@1.86.0%gcc@11.4.0~atomic~charconv~chrono~clanglibcpp~cobalt~container+context~contract+coroutine~date_time~debug~exception+fiber+filesystem~graph~graph_parallel~icu~iostreams~json~locale~log+math~mpi+multithreaded~nowide~numpy+pic~program_options~python~random+regex+serialization+shared~signals~singlethreaded~stacktrace+system~taggedlayout~test~thread~timer~type_erasure~url~versionedlayout~wave build_system=generic context-impl=fcontext cxxstd=11 patches=a440f96 visibility=hidden arch=linux-ubuntu22.04-skylake_avx512
+ -       ^mochi-thallium@0.16.0%gcc@11.4.0+cereal~ipo build_system=cmake build_type=Release generator=make arch=linux-ubuntu22.04-skylake_avx512
+[+]          ^cereal@1.3.2%gcc@11.4.0~ipo build_system=cmake build_type=Release generator=make patches=2dfa0bf arch=linux-ubuntu22.04-skylake_avx512
+ -       ^mochi-warabi@0.7.1%gcc@11.4.0+bedrock~ipo+python~remi~space build_system=cmake build_type=Release generator=make arch=linux-ubuntu22.04-skylake_avx512
+ -           ^mochi-abt-io@0.9.0%gcc@11.4.0+bedrock~benchmark~ipo~liburing build_system=cmake build_type=Release generator=make arch=linux-ubuntu22.04-skylake_avx512
+ -           ^pmdk@1.12.1%gcc@11.4.0~doc~experimental~ndctl~rpmem build_system=generic arch=linux-ubuntu22.04-skylake_avx512
+ -       ^mochi-yokan@0.9.1%gcc@11.4.0+bedrock~berkeleydb~gdbm~ipo~leveldb~lmdb~lua+python~remi~rocksdb~space~tkrzw~unqlite build_system=cmake build_type=Release generator=make arch=linux-ubuntu22.04-skylake_avx512
+ -       ^nlohmann-json@3.11.3%gcc@11.4.0~ipo+multiple_headers build_system=cmake build_type=Release generator=make arch=linux-ubuntu22.04-skylake_avx512
+ -       ^nlohmann-json-schema-validator@2.3.0%gcc@11.4.0~ipo build_system=cmake build_type=Release generator=make arch=linux-ubuntu22.04-skylake_avx512
+[+]      ^pkgconf@2.2.0%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+ -       ^py-mochi-margo@0.6.2%gcc@11.4.0 build_system=python_pip arch=linux-ubuntu22.04-skylake_avx512
+[+]          ^py-pip@23.1.2%gcc@11.4.0 build_system=generic arch=linux-ubuntu22.04-skylake_avx512
+ -           ^py-pkgconfig@1.5.5%gcc@11.4.0 build_system=python_pip arch=linux-ubuntu22.04-skylake_avx512
+[+]          ^py-setuptools@63.4.3%gcc@11.4.0 build_system=generic arch=linux-ubuntu22.04-skylake_avx512
+[+]          ^py-wheel@0.41.2%gcc@11.4.0 build_system=generic arch=linux-ubuntu22.04-skylake_avx512
+ -       ^py-pybind11@2.13.5%gcc@11.4.0+ipo build_system=cmake build_type=Release generator=ninja arch=linux-ubuntu22.04-skylake_avx512
+ -           ^ninja@1.12.1%gcc@11.4.0+re2c build_system=generic arch=linux-ubuntu22.04-skylake_avx512
+ -               ^re2c@3.1%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+ -       ^py-rich@13.7.1%gcc@11.4.0 build_system=python_pip arch=linux-ubuntu22.04-skylake_avx512
+ -           ^py-markdown-it-py@3.0.0%gcc@11.4.0~linkify build_system=python_pip arch=linux-ubuntu22.04-skylake_avx512
+[+]              ^py-flit-core@3.9.0%gcc@11.4.0 build_system=python_pip arch=linux-ubuntu22.04-skylake_avx512
+ -               ^py-mdurl@0.1.2%gcc@11.4.0 build_system=python_pip arch=linux-ubuntu22.04-skylake_avx512
+ -           ^py-poetry-core@1.8.1%gcc@11.4.0 build_system=python_pip arch=linux-ubuntu22.04-skylake_avx512
+ -           ^py-pygments@2.18.0%gcc@11.4.0 build_system=python_pip arch=linux-ubuntu22.04-skylake_avx512
+ -       ^py-typer@0.9.0%gcc@11.4.0 build_system=python_pip arch=linux-ubuntu22.04-skylake_avx512
+ -           ^py-click@8.1.7%gcc@11.4.0 build_system=python_pip arch=linux-ubuntu22.04-skylake_avx512
+ -           ^py-flit-core@2.3.0%gcc@11.4.0 build_system=python_pip arch=linux-ubuntu22.04-skylake_avx512
+ -               ^py-pytoml@0.1.21%gcc@11.4.0 build_system=python_pip arch=linux-ubuntu22.04-skylake_avx512
+[+]          ^py-typing-extensions@4.12.2%gcc@11.4.0 build_system=python_pip arch=linux-ubuntu22.04-skylake_avx512
+[+]      ^python@3.11.9%gcc@11.4.0+bz2+crypt+ctypes+dbm~debug+libxml2+lzma~nis~optimizations+pic+pyexpat+pythoncmd+readline+shared+sqlite3+ssl~tkinter+uuid+zlib build_system=generic patches=13fa8bf,b0615b2,ebdca64,f2fd060 arch=linux-ubuntu22.04-skylake_avx512
+[+]          ^bzip2@1.0.8%gcc@11.4.0~debug~pic+shared build_system=generic arch=linux-ubuntu22.04-skylake_avx512
+[+]              ^diffutils@3.10%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]          ^expat@2.6.4%gcc@11.4.0+libbsd build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]              ^libbsd@0.12.2%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]                  ^libmd@1.0.4%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]          ^gdbm@1.23%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]          ^gettext@0.22.5%gcc@11.4.0+bzip2+curses+git~libunistring+libxml2+pic+shared+tar+xz build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]              ^libiconv@1.17%gcc@11.4.0 build_system=autotools libs=shared,static arch=linux-ubuntu22.04-skylake_avx512
+[+]              ^tar@1.34%gcc@11.4.0 build_system=autotools zip=pigz arch=linux-ubuntu22.04-skylake_avx512
+[+]                  ^pigz@2.8%gcc@11.4.0 build_system=makefile arch=linux-ubuntu22.04-skylake_avx512
+[+]                  ^zstd@1.5.6%gcc@11.4.0+programs build_system=makefile compression=none libs=shared,static arch=linux-ubuntu22.04-skylake_avx512
+[+]          ^libffi@3.4.6%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]          ^libxcrypt@4.4.35%gcc@11.4.0~obsolete_api build_system=autotools patches=4885da3 arch=linux-ubuntu22.04-skylake_avx512
+[+]          ^openssl@3.4.0%gcc@11.4.0~docs+shared build_system=generic certs=mozilla arch=linux-ubuntu22.04-skylake_avx512
+[+]              ^ca-certificates-mozilla@2023-05-30%gcc@11.4.0 build_system=generic arch=linux-ubuntu22.04-skylake_avx512
+[+]          ^readline@8.2%gcc@11.4.0 build_system=autotools patches=bbf97f1 arch=linux-ubuntu22.04-skylake_avx512
+[+]          ^sqlite@3.46.0%gcc@11.4.0+column_metadata+dynamic_extensions+fts~functions+rtree build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+[+]          ^xz@5.4.6%gcc@11.4.0~pic build_system=autotools libs=shared,static arch=linux-ubuntu22.04-skylake_avx512
+[+]      ^python-venv@1.0%gcc@11.4.0 build_system=generic arch=linux-ubuntu22.04-skylake_avx512
+[+]      ^spdlog@1.14.1%gcc@11.4.0~ipo+shared build_system=cmake build_type=Release generator=make arch=linux-ubuntu22.04-skylake_avx512
+[+]      ^util-linux-uuid@2.40.2%gcc@11.4.0 build_system=autotools arch=linux-ubuntu22.04-skylake_avx512
+
+
+## Install
+[+] /usr (external glibc-2.35-b34moebinsjbdvt6t2pmq5yd2y3aonay)
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/gcc-runtime-11.4.0-owu4kv5u3pwyjw4pj6pl36rnjkxdjimi
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/util-linux-uuid-2.40.2-ut7sq7q3sxg73es7zekwrxu3r42g4js4
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/gmake-4.4.1-fxk44dgyuwd32adjuxbiqcmw44p3hkuq
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/boost-1.86.0-cs4onpkpi4j243dfosudy24bbqoslzkz
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/numactl-2.0.18-k2wg7ywovshpaq73uquirlsnzkhqodh2
+==> Installing libfabric-1.22.0-movbj3cyr6r6csbpsssd4pvetmmlxyeu [7/98]
+==> No binary for libfabric-1.22.0-movbj3cyr6r6csbpsssd4pvetmmlxyeu found: installing from source
+==> Using cached archive: /mnt/common/jcernudagarcia/spack/var/spack/cache/_source-cache/archive/48/485e6cafa66c9e4f6aa688d2c9526e274c47fda3a783cf1dd8f7c69a07e2d5fe.tar.bz2
+==> No patches needed for libfabric
+==> libfabric: Executing phase: 'autoreconf'
+==> libfabric: Executing phase: 'configure'
+==> libfabric: Executing phase: 'build'
+==> libfabric: Executing phase: 'install'
+==> libfabric: Successfully installed libfabric-1.22.0-movbj3cyr6r6csbpsssd4pvetmmlxyeu
+  Stage: 0.78s.  Autoreconf: 0.00s.  Configure: 25.06s.  Build: 15.93s.  Install: 1.38s.  Post-install: 0.58s.  Total: 44.13s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libfabric-1.22.0-movbj3cyr6r6csbpsssd4pvetmmlxyeu
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libpciaccess-0.17-enmdm4mcctdtvpmrlbxbalt54xhsa66s
+==> Installing coreutils-9.5-zqsiitkmv3fcmxt3l2qhrz27mttbgpyw [9/98]
+==> No binary for coreutils-9.5-zqsiitkmv3fcmxt3l2qhrz27mttbgpyw found: installing from source
+==> Fetching https://mirror.spack.io/_source-cache/archive/cd/cd328edeac92f6a665de9f323c93b712af1858bc2e0d88f3f7100469470a1b8a.tar.xz
+==> No patches needed for coreutils
+==> coreutils: Executing phase: 'autoreconf'
+==> coreutils: Executing phase: 'configure'
+==> coreutils: Executing phase: 'build'
+==> coreutils: Executing phase: 'install'
+==> coreutils: Successfully installed coreutils-9.5-zqsiitkmv3fcmxt3l2qhrz27mttbgpyw
+  Stage: 1.55s.  Autoreconf: 0.00s.  Configure: 1m 55.49s.  Build: 16.09s.  Install: 3.38s.  Post-install: 0.36s.  Total: 2m 17.16s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/coreutils-9.5-zqsiitkmv3fcmxt3l2qhrz27mttbgpyw
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/zlib-ng-2.2.1-nnfxnggxva6jcikon24aoj4yiycmcei3
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/bzip2-1.0.8-ko2woy6rguqa6vr6ljv7b66h3qyhjivk
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libffi-3.4.6-3dramwhw5pfycbymoygmbek46et7zvep
+==> Installing argobots-1.2-pbrtscry3iyltcvuujnfypu2ov44k733 [13/98]
+==> No binary for argobots-1.2-pbrtscry3iyltcvuujnfypu2ov44k733 found: installing from source
+==> Fetching https://mirror.spack.io/_source-cache/archive/1c/1c056429d9c0a27c041d4734f6318b801fc2ec671854e42c35251c4c7d0d43e1.tar.gz
+==> No patches needed for argobots
+==> argobots: Executing phase: 'autoreconf'
+==> argobots: Executing phase: 'configure'
+==> argobots: Executing phase: 'build'
+==> argobots: Executing phase: 'install'
+==> argobots: Successfully installed argobots-1.2-pbrtscry3iyltcvuujnfypu2ov44k733
+  Stage: 0.24s.  Autoreconf: 0.00s.  Configure: 12.98s.  Build: 5.13s.  Install: 0.46s.  Post-install: 0.14s.  Total: 19.23s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/argobots-1.2-pbrtscry3iyltcvuujnfypu2ov44k733
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/cereal-1.3.2-ps5rsxgmyoeqkaswcq6xsmen4ldflbm4
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pcre2-10.44-v6bicsz4w36wahkbjp7vlj35p74y6zkc
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/fmt-11.0.2-32fk4sjk4fvh4wcueiygmb5lu47byupf
+==> Installing tclap-1.2.5-jfvm74y2mixlqjjp3vnukpkdhq5elrnd [17/98]
+==> No binary for tclap-1.2.5-jfvm74y2mixlqjjp3vnukpkdhq5elrnd found: installing from source
+==> Fetching https://mirror.spack.io/_source-cache/archive/bb/bb649f76dae35e8d0dcba4b52acfd4e062d787e6a81b43f7a4b01275153165a6.tar.gz
+==> No patches needed for tclap
+==> tclap: Executing phase: 'autoreconf'
+==> tclap: Executing phase: 'configure'
+==> tclap: Executing phase: 'build'
+==> tclap: Executing phase: 'install'
+==> tclap: Successfully installed tclap-1.2.5-jfvm74y2mixlqjjp3vnukpkdhq5elrnd
+  Stage: 0.53s.  Autoreconf: 0.00s.  Configure: 5.15s.  Build: 18.02s.  Install: 0.47s.  Post-install: 0.36s.  Total: 24.83s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/tclap-1.2.5-jfvm74y2mixlqjjp3vnukpkdhq5elrnd
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libiconv-1.17-wm5g66gzc3ecwd3ijrsxlcjivmsnyclu
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/berkeley-db-18.1.40-42oacwogxqlqqh3xofno2dfizxavn3mu
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/ncurses-6.5-ez6c47qaetsfgq2xocg75my2ebnuhjxc
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libxcrypt-4.4.35-rxnqnjba7uy5ikoqri53if76m7l7ggbh
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pkgconf-2.2.0-3sczowe2qduemddkdtoa3bf5nm3i6s6o
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libmd-1.0.4-7syqes5qtn7vawh67nfbsu5qblrlrgha
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/zstd-1.5.6-i7n7mhjlnqlgr64smryfji2ploaetsgu
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/xz-5.4.6-jbodcp574bdwddmrvjxvdjriq2ctvbav
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openssl-3.4.0-tsej5dglslyhrikyjv5ykahrw6khbna7
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pigz-2.8-e4qyap2unvfzbzzipset567mrav2qvzs
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/spdlog-1.14.1-w3psznco3aun4bswgutur3paj3lnimkv
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libunistring-1.2-6dji36rofjphallflcu2mv2aesyi4m4n
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/readline-8.2-sf7kdl72lpevk6qas3tva2k5yiwclv47
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/nghttp2-1.63.0-7qd2hx2zbupazubeokkpyssmcpbza4ro
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libedit-3.1-20240808-vexrvth4e32dmlqc3wmntu56dv27ocfl
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libbsd-0.12.2-cqoivdakwpsj6nud7hvui4c2h7wvbdr3
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libxml2-2.13.4-u6qpzqrp62r45wis36liyzuiugcmwexl
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libevent-2.1.12-6hsetqmwdgwdozp2mycajf6d4tqiltgx
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/tar-1.34-ahhhqn43bpkqc4sptu5djpexmyucj2sz
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libidn2-2.3.7-3gnjx3uecxkugdinakr5h7cpcas2q2zn
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/gdbm-1.23-vk5wn4dg6u2lvqucsayl7qujplavxldq
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/sqlite-3.46.0-v3uizlqdaybl3tk3c2r4yiyco5l7vlmp
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/curl-8.10.1-jagxtouvv2tmvwyiyc7bdoumlvf5o2lc
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/expat-2.6.4-crjtgjd5u2dacbx2fi2wu73hbixduk5r
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hwloc-2.11.1-2h7d7ez5znqxnbtbsfqme6hifn34skwf
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/gettext-0.22.5-mbqnrkughmugrj6bkggsbiimmnb6vhcp
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/perl-5.40.0-ngsi23xro7ezzpjkxjaaaevnttynqwz7
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/cmake-3.30.5-7bxr5u62yujcgm23c7xqvogq3vgxdufg
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pmix-5.0.3-mtqvcp2oursbrcnr5dnpb7iyb5htkcsg
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/python-3.11.9-g2xunrolsdxciboqsc3pb222farpvunq
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/krb5-1.21.3-n2getuycoz5mrcpcg6qd7jmkfw4ly4zb
+==> Installing mercury-2.4.1-yeqyucvxjv42dv3s2lyav6goazrsnxbr [49/98]
+==> No binary for mercury-2.4.1-yeqyucvxjv42dv3s2lyav6goazrsnxbr found: installing from source
+==> Fetching https://mirror.spack.io/_source-cache/archive/8a/8a372416f3fca28d402ac7f7b73f0a7dd5d4b88785281ad9e6076e105e4840b9.tar.bz2
+==> No patches needed for mercury
+==> mercury: Executing phase: 'cmake'
+==> mercury: Executing phase: 'build'
+==> mercury: Executing phase: 'install'
+==> mercury: Successfully installed mercury-2.4.1-yeqyucvxjv42dv3s2lyav6goazrsnxbr
+  Stage: 0.33s.  Cmake: 7.00s.  Build: 5.02s.  Install: 0.32s.  Post-install: 0.24s.  Total: 14.13s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/mercury-2.4.1-yeqyucvxjv42dv3s2lyav6goazrsnxbr
+==> Installing pmdk-1.12.1-42cyhydpvtmppj2gzix4daye7zw6zmgt [50/98]
+==> No binary for pmdk-1.12.1-42cyhydpvtmppj2gzix4daye7zw6zmgt found: installing from source
+==> Fetching https://mirror.spack.io/_source-cache/archive/53/53602e4c2439957046b428187665c5ff38cb90ca50956eb917b509a2e96909a3.tar.gz
+==> No patches needed for pmdk
+==> pmdk: Executing phase: 'install'
+==> pmdk: Successfully installed pmdk-1.12.1-42cyhydpvtmppj2gzix4daye7zw6zmgt
+  Stage: 0.53s.  Install: 37.99s.  Post-install: 0.25s.  Total: 38.94s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pmdk-1.12.1-42cyhydpvtmppj2gzix4daye7zw6zmgt
+==> Installing toml11-4.0.2-pcrs7xoj3lqto7esstb6io7qfc2kiabu [51/98]
+==> No binary for toml11-4.0.2-pcrs7xoj3lqto7esstb6io7qfc2kiabu found: installing from source
+==> Fetching https://mirror.spack.io/_source-cache/archive/d1/d1bec1970d562d328065f2667b23f9745a271bf3900ca78e92b71a324b126070.tar.gz
+==> No patches needed for toml11
+==> toml11: Executing phase: 'cmake'
+==> toml11: Executing phase: 'build'
+==> toml11: Executing phase: 'install'
+==> toml11: Successfully installed toml11-4.0.2-pcrs7xoj3lqto7esstb6io7qfc2kiabu
+  Stage: 0.53s.  Cmake: 0.69s.  Build: 0.06s.  Install: 0.09s.  Post-install: 0.18s.  Total: 1.84s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/toml11-4.0.2-pcrs7xoj3lqto7esstb6io7qfc2kiabu
+==> Installing json-c-0.16-4lhhrroftqhozfpinme7rg2ab45ad2re [52/98]
+==> No binary for json-c-0.16-4lhhrroftqhozfpinme7rg2ab45ad2re found: installing from source
+==> Using cached archive: /mnt/common/jcernudagarcia/spack/var/spack/cache/_source-cache/archive/8e/8e45ac8f96ec7791eaf3bb7ee50e9c2100bbbc87b8d0f1d030c5ba8a0288d96b.tar.gz
+==> No patches needed for json-c
+==> json-c: Executing phase: 'cmake'
+==> json-c: Executing phase: 'build'
+==> json-c: Executing phase: 'install'
+==> json-c: Successfully installed json-c-0.16-4lhhrroftqhozfpinme7rg2ab45ad2re
+  Stage: 0.38s.  Cmake: 12.04s.  Build: 10.98s.  Install: 1.18s.  Post-install: 0.16s.  Total: 24.99s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/json-c-0.16-4lhhrroftqhozfpinme7rg2ab45ad2re
+==> Installing nlohmann-json-3.11.3-hjpv3ufqo6m6nretuvyo6qh6ywdkxsqd [53/98]
+==> No binary for nlohmann-json-3.11.3-hjpv3ufqo6m6nretuvyo6qh6ywdkxsqd found: installing from source
+==> Fetching https://mirror.spack.io/_source-cache/archive/0d/0d8ef5af7f9794e3263480193c491549b2ba6cc74bb018906202ada498a79406.tar.gz
+==> No patches needed for nlohmann-json
+==> nlohmann-json: Executing phase: 'cmake'
+==> nlohmann-json: Executing phase: 'build'
+==> nlohmann-json: Executing phase: 'install'
+==> nlohmann-json: Successfully installed nlohmann-json-3.11.3-hjpv3ufqo6m6nretuvyo6qh6ywdkxsqd
+  Stage: 1.14s.  Cmake: 0.55s.  Build: 0.05s.  Install: 0.07s.  Post-install: 0.17s.  Total: 2.24s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/nlohmann-json-3.11.3-hjpv3ufqo6m6nretuvyo6qh6ywdkxsqd
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/python-venv-1.0-alnj5oflota5n422x2zxhjbbrdfgqmi2
+==> Installing re2c-3.1-jdk4uwqzu7pp4bmpwgygje3cor5afuzp [55/98]
+==> No binary for re2c-3.1-jdk4uwqzu7pp4bmpwgygje3cor5afuzp found: installing from source
+==> Fetching https://mirror.spack.io/_source-cache/archive/0a/0ac299ad359e3f512b06a99397d025cfff81d3be34464ded0656f8a96676c029.tar.xz
+==> No patches needed for re2c
+==> re2c: Executing phase: 'autoreconf'
+==> re2c: Executing phase: 'configure'
+==> re2c: Executing phase: 'build'
+==> re2c: Executing phase: 'install'
+==> re2c: Successfully installed re2c-3.1-jdk4uwqzu7pp4bmpwgygje3cor5afuzp
+  Stage: 0.50s.  Autoreconf: 0.00s.  Configure: 11.16s.  Build: 47.94s.  Install: 0.80s.  Post-install: 0.39s.  Total: 1m 2.07s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/re2c-3.1-jdk4uwqzu7pp4bmpwgygje3cor5afuzp
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openssh-9.9p1-zsi7jbnzwumknquqtyaighyxnju4ljx3
+==> Installing mochi-margo-0.23.0-zhkr7anwdz55q525yudr4you6dqeeqp2 [57/98]
+==> No binary for mochi-margo-0.23.0-zhkr7anwdz55q525yudr4you6dqeeqp2 found: installing from source
+==> Fetching https://mirror.spack.io/_source-cache/archive/7c/7c39df5e09da67745ad4df8de81c30c1d9562d8a5ce7f35278bc9c38f2e7dc03.tar.gz
+==> No patches needed for mochi-margo
+==> mochi-margo: Executing phase: 'cmake'
+==> mochi-margo: Executing phase: 'build'
+==> mochi-margo: Executing phase: 'install'
+==> mochi-margo: Successfully installed mochi-margo-0.23.0-zhkr7anwdz55q525yudr4you6dqeeqp2
+  Stage: 0.39s.  Cmake: 1.29s.  Build: 5.21s.  Install: 0.25s.  Post-install: 0.21s.  Total: 7.82s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/mochi-margo-0.23.0-zhkr7anwdz55q525yudr4you6dqeeqp2
+==> Installing nlohmann-json-schema-validator-2.3.0-tns36sjzthvlfwduyauws27u7dyk2gjh [58/98]
+==> No binary for nlohmann-json-schema-validator-2.3.0-tns36sjzthvlfwduyauws27u7dyk2gjh found: installing from source
+==> Fetching https://mirror.spack.io/_source-cache/archive/2c/2c00b50023c7d557cdaa71c0777f5bcff996c4efd7a539e58beaa4219fa2a5e1.tar.gz
+==> No patches needed for nlohmann-json-schema-validator
+==> nlohmann-json-schema-validator: Executing phase: 'cmake'
+==> nlohmann-json-schema-validator: Executing phase: 'build'
+==> nlohmann-json-schema-validator: Executing phase: 'install'
+==> nlohmann-json-schema-validator: Successfully installed nlohmann-json-schema-validator-2.3.0-tns36sjzthvlfwduyauws27u7dyk2gjh
+  Stage: 0.07s.  Cmake: 0.59s.  Build: 32.91s.  Install: 0.20s.  Post-install: 0.18s.  Total: 34.20s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/nlohmann-json-schema-validator-2.3.0-tns36sjzthvlfwduyauws27u7dyk2gjh
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-tomli-2.0.1-dcirvoisqubr5ydjmjz5fngifz2sez65
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-wheel-0.41.2-xysybcjg73m7z5ogsaxfdvvuaxlpr4f2
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-setuptools-63.4.3-diwcwdlgzz6rrvd52ndojnvf2jfnrenn
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-pip-23.1.2-rdfpgl2pzpbcc7wq3yknjfon3qh433as
+==> Installing ninja-1.12.1-4ixvfgxyxz6kmue5q4l2tcqwmk5jjko4 [63/98]
+==> No binary for ninja-1.12.1-4ixvfgxyxz6kmue5q4l2tcqwmk5jjko4 found: installing from source
+==> Fetching https://mirror.spack.io/_source-cache/archive/82/821bdff48a3f683bc4bb3b6f0b5fe7b2d647cf65d52aeb63328c91a6c6df285a.tar.gz
+==> No patches needed for ninja
+==> ninja: Executing phase: 'configure'
+==> ninja: Executing phase: 'install'
+==> ninja: Successfully installed ninja-1.12.1-4ixvfgxyxz6kmue5q4l2tcqwmk5jjko4
+  Stage: 0.34s.  Configure: 35.46s.  Install: 0.02s.  Post-install: 0.22s.  Total: 36.31s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/ninja-1.12.1-4ixvfgxyxz6kmue5q4l2tcqwmk5jjko4
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-og56sxzoqwjcpelrnw7cc2o3th7u7673
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/git-2.47.0-mzrrcpaq72czlrn7upyc7lwsiyphwreh
+==> Installing mochi-thallium-0.16.0-bdvbwcff6f4xs4pb53rvn6k7nackncmq [66/98]
+==> No binary for mochi-thallium-0.16.0-bdvbwcff6f4xs4pb53rvn6k7nackncmq found: installing from source
+==> Fetching https://mirror.spack.io/_source-cache/archive/9c/9c519a082a980a69d4cc37a930dcfffa01613aceec157646c81b98a77da84689.tar.gz
+==> No patches needed for mochi-thallium
+==> mochi-thallium: Executing phase: 'cmake'
+==> mochi-thallium: Executing phase: 'build'
+==> mochi-thallium: Executing phase: 'install'
+==> mochi-thallium: Successfully installed mochi-thallium-0.16.0-bdvbwcff6f4xs4pb53rvn6k7nackncmq
+  Stage: 0.46s.  Cmake: 1.12s.  Build: 0.05s.  Install: 0.11s.  Post-install: 0.25s.  Total: 2.43s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/mochi-thallium-0.16.0-bdvbwcff6f4xs4pb53rvn6k7nackncmq
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-flit-core-3.9.0-t4gwg35hkgcnxo6ud7w53jzxxsyovqz6
+==> Installing py-calver-2022.6.26-645lkwisj5kmsjdounhskdkn3skuno67 [68/98]
+==> No binary for py-calver-2022.6.26-645lkwisj5kmsjdounhskdkn3skuno67 found: installing from source
+==> Fetching https://mirror.spack.io/_source-cache/archive/e0/e05493a3b17517ef1748fbe610da11f10485faa7c416b9d33fd4a52d74894f8b.tar.gz
+==> No patches needed for py-calver
+==> py-calver: Executing phase: 'install'
+==> py-calver: Successfully installed py-calver-2022.6.26-645lkwisj5kmsjdounhskdkn3skuno67
+  Stage: 0.05s.  Install: 13.49s.  Post-install: 0.49s.  Total: 14.38s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-calver-2022.6.26-645lkwisj5kmsjdounhskdkn3skuno67
+==> Installing py-pytoml-0.1.21-pik7i3owmjy3kgbo6ctvivbigximclsu [69/98]
+==> No binary for py-pytoml-0.1.21-pik7i3owmjy3kgbo6ctvivbigximclsu found: installing from source
+==> Fetching https://mirror.spack.io/_source-cache/archive/8e/8eecf7c8d0adcff3b375b09fe403407aa9b645c499e5ab8cac670ac4a35f61e7.tar.gz
+==> No patches needed for py-pytoml
+==> py-pytoml: Executing phase: 'install'
+==> py-pytoml: Successfully installed py-pytoml-0.1.21-pik7i3owmjy3kgbo6ctvivbigximclsu
+  Stage: 0.28s.  Install: 1.66s.  Post-install: 0.47s.  Total: 2.60s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-pytoml-0.1.21-pik7i3owmjy3kgbo6ctvivbigximclsu
+==> Installing py-poetry-core-1.8.1-u255ysdd6nzm3jhoo5iux3iszkpmt5yk [70/98]
+==> No binary for py-poetry-core-1.8.1-u255ysdd6nzm3jhoo5iux3iszkpmt5yk found: installing from source
+==> Fetching https://mirror.spack.io/_source-cache/archive/67/67a76c671da2a70e55047cddda83566035b701f7e463b32a2abfeac6e2a16376.tar.gz
+==> No patches needed for py-poetry-core
+==> py-poetry-core: Executing phase: 'install'
+==> py-poetry-core: Successfully installed py-poetry-core-1.8.1-u255ysdd6nzm3jhoo5iux3iszkpmt5yk
+  Stage: 0.12s.  Install: 2.40s.  Post-install: 0.63s.  Total: 3.33s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-poetry-core-1.8.1-u255ysdd6nzm3jhoo5iux3iszkpmt5yk
+==> Installing py-click-8.1.7-2r6on3dv5xnnfk3jxhrcqf4espxnwy45 [71/98]
+==> No binary for py-click-8.1.7-2r6on3dv5xnnfk3jxhrcqf4espxnwy45 found: installing from source
+==> Fetching https://mirror.spack.io/_source-cache/archive/ca/ca9853ad459e787e2192211578cc907e7594e294c7ccc834310722b41b9ca6de.tar.gz
+==> No patches needed for py-click
+==> py-click: Executing phase: 'install'
+==> py-click: Successfully installed py-click-8.1.7-2r6on3dv5xnnfk3jxhrcqf4espxnwy45
+  Stage: 0.55s.  Install: 1.70s.  Post-install: 0.48s.  Total: 2.97s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-click-8.1.7-2r6on3dv5xnnfk3jxhrcqf4espxnwy45
+==> Installing py-pybind11-2.13.5-hohxlq5sa3u5rbqpxjolwehsyt2ktchy [72/98]
+==> No binary for py-pybind11-2.13.5-hohxlq5sa3u5rbqpxjolwehsyt2ktchy found: installing from source
+==> Fetching https://mirror.spack.io/_source-cache/archive/b1/b1e209c42b3a9ed74da3e0b25a4f4cd478d89d5efbb48f04b277df427faf6252.tar.gz
+==> No patches needed for py-pybind11
+==> py-pybind11: Executing phase: 'cmake'
+==> py-pybind11: Executing phase: 'build'
+==> py-pybind11: Executing phase: 'install'
+==> py-pybind11: Successfully installed py-pybind11-2.13.5-hohxlq5sa3u5rbqpxjolwehsyt2ktchy
+  Stage: 0.17s.  Cmake: 1.08s.  Build: 0.03s.  Install: 3.28s.  Post-install: 0.51s.  Total: 5.40s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-pybind11-2.13.5-hohxlq5sa3u5rbqpxjolwehsyt2ktchy
+==> Installing mochi-bedrock-module-api-0.2.1-fe6lu276bvm57dvesnf3khc47igm22lm [73/98]
+==> No binary for mochi-bedrock-module-api-0.2.1-fe6lu276bvm57dvesnf3khc47igm22lm found: installing from source
+==> Fetching https://github.com/mochi-hpc/mochi-bedrock-module-api/archive/refs/tags/v0.2.1.tar.gz
+==> No patches needed for mochi-bedrock-module-api
+==> mochi-bedrock-module-api: Executing phase: 'cmake'
+==> mochi-bedrock-module-api: Executing phase: 'build'
+==> mochi-bedrock-module-api: Executing phase: 'install'
+==> mochi-bedrock-module-api: Successfully installed mochi-bedrock-module-api-0.2.1-fe6lu276bvm57dvesnf3khc47igm22lm
+  Stage: 0.61s.  Cmake: 1.47s.  Build: 7.80s.  Install: 0.15s.  Post-install: 0.59s.  Total: 11.10s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/mochi-bedrock-module-api-0.2.1-fe6lu276bvm57dvesnf3khc47igm22lm
+==> Installing py-editables-0.5-gfhu7hnvtvtlu5w2juflzibp2cnccs5k [74/98]
+==> No binary for py-editables-0.5-gfhu7hnvtvtlu5w2juflzibp2cnccs5k found: installing from source
+==> Fetching https://mirror.spack.io/_source-cache/archive/30/309627d9b5c4adc0e668d8c6fa7bac1ba7c8c5d415c2d27f60f081f8e80d1de2.tar.gz
+==> No patches needed for py-editables
+==> py-editables: Executing phase: 'install'
+==> py-editables: Successfully installed py-editables-0.5-gfhu7hnvtvtlu5w2juflzibp2cnccs5k
+  Stage: 0.27s.  Install: 1.12s.  Post-install: 0.47s.  Total: 2.14s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-editables-0.5-gfhu7hnvtvtlu5w2juflzibp2cnccs5k
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-typing-extensions-4.12.2-p7oqeqcs3kt5sehi6yq6swwa2zrzwr44
+==> Installing py-pathspec-0.11.1-fzct4epap47m4tbllahwsmdkyq6tjbvo [76/98]
+==> No binary for py-pathspec-0.11.1-fzct4epap47m4tbllahwsmdkyq6tjbvo found: installing from source
+==> Fetching https://mirror.spack.io/_source-cache/archive/27/2798de800fa92780e33acca925945e9a19a133b715067cf165b8866c15a31687.tar.gz
+==> No patches needed for py-pathspec
+==> py-pathspec: Executing phase: 'install'
+==> py-pathspec: Successfully installed py-pathspec-0.11.1-fzct4epap47m4tbllahwsmdkyq6tjbvo
+  Stage: 0.28s.  Install: 1.08s.  Post-install: 0.77s.  Total: 2.33s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-pathspec-0.11.1-fzct4epap47m4tbllahwsmdkyq6tjbvo
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-packaging-24.1-jnkhaie6433a27qehcz3nurw3icb57sx
+==> Installing py-mdurl-0.1.2-t5gxdiq7f5755ekiu7hd4gybc5inbbh4 [78/98]
+==> No binary for py-mdurl-0.1.2-t5gxdiq7f5755ekiu7hd4gybc5inbbh4 found: installing from source
+==> Fetching https://mirror.spack.io/_source-cache/archive/bb/bb413d29f5eea38f31dd4754dd7377d4465116fb207585f97bf925588687c1ba.tar.gz
+==> No patches needed for py-mdurl
+==> py-mdurl: Executing phase: 'install'
+==> py-mdurl: Successfully installed py-mdurl-0.1.2-t5gxdiq7f5755ekiu7hd4gybc5inbbh4
+  Stage: 0.05s.  Install: 1.02s.  Post-install: 0.79s.  Total: 2.06s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-mdurl-0.1.2-t5gxdiq7f5755ekiu7hd4gybc5inbbh4
+==> Installing py-trove-classifiers-2023.8.7-fzxozqlbmme4vdb55z5bwymknpdzkvaz [79/98]
+==> No binary for py-trove-classifiers-2023.8.7-fzxozqlbmme4vdb55z5bwymknpdzkvaz found: installing from source
+==> Fetching https://mirror.spack.io/_source-cache/archive/c9/c9f2a0a85d545e5362e967e4f069f56fddfd91215e22ffa48c66fb283521319a.tar.gz
+==> No patches needed for py-trove-classifiers
+==> py-trove-classifiers: Executing phase: 'install'
+==> py-trove-classifiers: Successfully installed py-trove-classifiers-2023.8.7-fzxozqlbmme4vdb55z5bwymknpdzkvaz
+  Stage: 0.30s.  Install: 1.52s.  Post-install: 0.79s.  Total: 2.81s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-trove-classifiers-2023.8.7-fzxozqlbmme4vdb55z5bwymknpdzkvaz
+==> Installing py-flit-core-2.3.0-ea33vw32owuzfdjvpk3zses4sbil7ooz [80/98]
+==> No binary for py-flit-core-2.3.0-ea33vw32owuzfdjvpk3zses4sbil7ooz found: installing from source
+==> Fetching https://mirror.spack.io/_source-cache/archive/a5/a50bcd8bf5785e3a7d95434244f30ba693e794c5204ac1ee908fc07c4acdbf80.tar.gz
+==> No patches needed for py-flit-core
+==> py-flit-core: Executing phase: 'install'
+==> py-flit-core: Successfully installed py-flit-core-2.3.0-ea33vw32owuzfdjvpk3zses4sbil7ooz
+  Stage: 0.35s.  Install: 1.00s.  Post-install: 0.93s.  Total: 2.46s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-flit-core-2.3.0-ea33vw32owuzfdjvpk3zses4sbil7ooz
+==> Installing py-pkgconfig-1.5.5-lcnsy4pcknjeakyc4crfeal4mq2mpnbo [81/98]
+==> No binary for py-pkgconfig-1.5.5-lcnsy4pcknjeakyc4crfeal4mq2mpnbo found: installing from source
+==> Fetching https://mirror.spack.io/_source-cache/archive/de/deb4163ef11f75b520d822d9505c1f462761b4309b1bb713d08689759ea8b899.tar.gz
+==> No patches needed for py-pkgconfig
+==> py-pkgconfig: Executing phase: 'install'
+==> py-pkgconfig: Successfully installed py-pkgconfig-1.5.5-lcnsy4pcknjeakyc4crfeal4mq2mpnbo
+  Stage: 0.05s.  Install: 1.35s.  Post-install: 0.45s.  Total: 2.38s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-pkgconfig-1.5.5-lcnsy4pcknjeakyc4crfeal4mq2mpnbo
+==> Installing mochi-abt-io-0.9.0-4v5eznxwsjkr4hdw6o4u4tidsuy56gvg [82/98]
+==> No binary for mochi-abt-io-0.9.0-4v5eznxwsjkr4hdw6o4u4tidsuy56gvg found: installing from source
+==> Fetching https://github.com/mochi-hpc/mochi-abt-io/archive/refs/tags/v0.9.0.tar.gz
+==> No patches needed for mochi-abt-io
+==> mochi-abt-io: Executing phase: 'cmake'
+==> mochi-abt-io: Executing phase: 'build'
+==> mochi-abt-io: Executing phase: 'install'
+==> mochi-abt-io: Successfully installed mochi-abt-io-0.9.0-4v5eznxwsjkr4hdw6o4u4tidsuy56gvg
+  Stage: 0.72s.  Cmake: 2.32s.  Build: 3.21s.  Install: 0.20s.  Post-install: 0.21s.  Total: 6.98s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/mochi-abt-io-0.9.0-4v5eznxwsjkr4hdw6o4u4tidsuy56gvg
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-setuptools-scm-8.0.4-ykrydpis4lqzhi55q6wkwpnwpanesgek
+==> Installing py-markdown-it-py-3.0.0-4xf4tn6yfsdhlz434a3lyyt5fknq6vcw [84/98]
+==> No binary for py-markdown-it-py-3.0.0-4xf4tn6yfsdhlz434a3lyyt5fknq6vcw found: installing from source
+==> Fetching https://mirror.spack.io/_source-cache/archive/e3/e3f60a94fa066dc52ec76661e37c851cb232d92f9886b15cb560aaada2df8feb.tar.gz
+==> No patches needed for py-markdown-it-py
+==> py-markdown-it-py: Executing phase: 'install'
+==> py-markdown-it-py: Successfully installed py-markdown-it-py-3.0.0-4xf4tn6yfsdhlz434a3lyyt5fknq6vcw
+  Stage: 0.27s.  Install: 1.04s.  Post-install: 0.61s.  Total: 2.12s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-markdown-it-py-3.0.0-4xf4tn6yfsdhlz434a3lyyt5fknq6vcw
+==> Installing py-typer-0.9.0-cjqaecpyismkveszkvinclheteeneltr [85/98]
+==> No binary for py-typer-0.9.0-cjqaecpyismkveszkvinclheteeneltr found: installing from source
+==> Fetching https://mirror.spack.io/_source-cache/archive/50/50922fd79aea2f4751a8e0408ff10d2662bd0c8bbfa84755a699f3bada2978b2.tar.gz
+==> No patches needed for py-typer
+==> py-typer: Executing phase: 'install'
+==> py-typer: Successfully installed py-typer-0.9.0-cjqaecpyismkveszkvinclheteeneltr
+  Stage: 0.55s.  Install: 1.00s.  Post-install: 0.75s.  Total: 2.54s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-typer-0.9.0-cjqaecpyismkveszkvinclheteeneltr
+==> Installing py-mochi-margo-0.6.2-wai3wqx3xq44bpsqa57vzqacznupmpux [86/98]
+==> No binary for py-mochi-margo-0.6.2-wai3wqx3xq44bpsqa57vzqacznupmpux found: installing from source
+==> Fetching https://github.com/mochi-hpc/py-mochi-margo/archive/refs/tags/v0.6.2.tar.gz
+==> No patches needed for py-mochi-margo
+==> py-mochi-margo: Executing phase: 'install'
+==> py-mochi-margo: Successfully installed py-mochi-margo-0.6.2-wai3wqx3xq44bpsqa57vzqacznupmpux
+  Stage: 0.67s.  Install: 24.29s.  Post-install: 0.53s.  Total: 25.75s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-mochi-margo-0.6.2-wai3wqx3xq44bpsqa57vzqacznupmpux
+==> Installing py-pluggy-1.5.0-u6sdehsbllfrj53gismanysnefiyjfbn [87/98]
+==> No binary for py-pluggy-1.5.0-u6sdehsbllfrj53gismanysnefiyjfbn found: installing from source
+==> Fetching https://mirror.spack.io/_source-cache/archive/2c/2cffa88e94fdc978c4c574f15f9e59b7f4201d439195c3715ca9e2486f1d0cf1.tar.gz
+==> No patches needed for py-pluggy
+==> py-pluggy: Executing phase: 'install'
+==> py-pluggy: Successfully installed py-pluggy-1.5.0-u6sdehsbllfrj53gismanysnefiyjfbn
+  Stage: 0.31s.  Install: 2.40s.  Post-install: 0.51s.  Total: 4.31s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-pluggy-1.5.0-u6sdehsbllfrj53gismanysnefiyjfbn
+==> Installing mochi-yokan-0.9.1-47q3xjpnbchqhyapha7mhxii565pz5pj [88/98]
+==> No binary for mochi-yokan-0.9.1-47q3xjpnbchqhyapha7mhxii565pz5pj found: installing from source
+==> Fetching https://github.com/mochi-hpc/mochi-yokan/archive/refs/tags/v0.9.1.tar.gz
+==> No patches needed for mochi-yokan
+==> mochi-yokan: Executing phase: 'cmake'
+==> mochi-yokan: Executing phase: 'build'
+==> mochi-yokan: Executing phase: 'install'
+==> mochi-yokan: Successfully installed mochi-yokan-0.9.1-47q3xjpnbchqhyapha7mhxii565pz5pj
+  Stage: 0.73s.  Cmake: 3.55s.  Build: 40.67s.  Install: 0.42s.  Post-install: 0.75s.  Total: 46.57s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/mochi-yokan-0.9.1-47q3xjpnbchqhyapha7mhxii565pz5pj
+==> Installing mochi-warabi-0.7.1-ir32un6wfvkd3xytp2rdulir4oe4buhd [89/98]
+==> No binary for mochi-warabi-0.7.1-ir32un6wfvkd3xytp2rdulir4oe4buhd found: installing from source
+==> Fetching https://github.com/mochi-hpc/mochi-warabi/archive/refs/tags/v0.7.1.tar.gz
+==> No patches needed for mochi-warabi
+==> mochi-warabi: Executing phase: 'cmake'
+==> mochi-warabi: Executing phase: 'build'
+==> mochi-warabi: Executing phase: 'install'
+==> mochi-warabi: Successfully installed mochi-warabi-0.7.1-ir32un6wfvkd3xytp2rdulir4oe4buhd
+  Stage: 0.62s.  Cmake: 2.30s.  Build: 22.14s.  Install: 0.28s.  Post-install: 0.79s.  Total: 26.51s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/mochi-warabi-0.7.1-ir32un6wfvkd3xytp2rdulir4oe4buhd
+==> Installing mochi-flock-0.7.0-6rxikokvmyk3c2sgr4vdacgujhvvklop [90/98]
+==> No binary for mochi-flock-0.7.0-6rxikokvmyk3c2sgr4vdacgujhvvklop found: installing from source
+==> Fetching https://github.com/mochi-hpc/mochi-flock/archive/refs/tags/v0.7.0.tar.gz
+==> No patches needed for mochi-flock
+==> mochi-flock: Executing phase: 'cmake'
+==> mochi-flock: Executing phase: 'build'
+==> mochi-flock: Executing phase: 'install'
+==> mochi-flock: Successfully installed mochi-flock-0.7.0-6rxikokvmyk3c2sgr4vdacgujhvvklop
+  Stage: 0.64s.  Cmake: 3.37s.  Build: 12.63s.  Install: 0.29s.  Post-install: 0.58s.  Total: 18.30s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/mochi-flock-0.7.0-6rxikokvmyk3c2sgr4vdacgujhvvklop
+==> Installing py-hatchling-1.25.0-m3oy6jjse3x5kzt6yehj7hyca5uv2pid [91/98]
+==> No binary for py-hatchling-1.25.0-m3oy6jjse3x5kzt6yehj7hyca5uv2pid found: installing from source
+==> Fetching https://mirror.spack.io/_source-cache/archive/70/7064631a512610b52250a4d3ff1bd81551d6d1431c4eb7b72e734df6c74f4262.tar.gz
+==> No patches needed for py-hatchling
+==> py-hatchling: Executing phase: 'install'
+==> py-hatchling: Successfully installed py-hatchling-1.25.0-m3oy6jjse3x5kzt6yehj7hyca5uv2pid
+  Stage: 0.34s.  Install: 1.25s.  Post-install: 1.12s.  Total: 2.98s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-hatchling-1.25.0-m3oy6jjse3x5kzt6yehj7hyca5uv2pid
+==> Installing py-hatch-vcs-0.4.0-3ip32olgb5esdegfpul3s6o47ukp5rvh [92/98]
+==> No binary for py-hatch-vcs-0.4.0-3ip32olgb5esdegfpul3s6o47ukp5rvh found: installing from source
+==> Fetching https://mirror.spack.io/_source-cache/archive/09/093810748fe01db0d451fabcf2c1ac2688caefd232d4ede967090b1c1b07d9f7.tar.gz
+==> No patches needed for py-hatch-vcs
+==> py-hatch-vcs: Executing phase: 'install'
+==> py-hatch-vcs: Successfully installed py-hatch-vcs-0.4.0-3ip32olgb5esdegfpul3s6o47ukp5rvh
+  Stage: 0.08s.  Install: 1.03s.  Post-install: 1.64s.  Total: 3.02s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-hatch-vcs-0.4.0-3ip32olgb5esdegfpul3s6o47ukp5rvh
+==> Installing py-hatch-fancy-pypi-readme-23.1.0-2tf6zbem3ooh4uzzorxiqkupjwjzfd3u [93/98]
+==> No binary for py-hatch-fancy-pypi-readme-23.1.0-2tf6zbem3ooh4uzzorxiqkupjwjzfd3u found: installing from source
+==> Fetching https://mirror.spack.io/_source-cache/archive/b1/b1df44063094af1e8248ceacd47a92c9cf313d6b9823bf66af8a927c3960287d.tar.gz
+==> No patches needed for py-hatch-fancy-pypi-readme
+==> py-hatch-fancy-pypi-readme: Executing phase: 'install'
+==> py-hatch-fancy-pypi-readme: Successfully installed py-hatch-fancy-pypi-readme-23.1.0-2tf6zbem3ooh4uzzorxiqkupjwjzfd3u
+  Stage: 0.26s.  Install: 0.96s.  Post-install: 1.18s.  Total: 2.66s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-hatch-fancy-pypi-readme-23.1.0-2tf6zbem3ooh4uzzorxiqkupjwjzfd3u
+==> Installing py-pygments-2.18.0-gjwnatdd2gz57sutaj6zkr2umxjuxoma [94/98]
+==> No binary for py-pygments-2.18.0-gjwnatdd2gz57sutaj6zkr2umxjuxoma found: installing from source
+==> Fetching https://mirror.spack.io/_source-cache/archive/78/786ff802f32e91311bff3889f6e9a86e81505fe99f2735bb6d60ae0c5004f199.tar.gz
+==> No patches needed for py-pygments
+==> py-pygments: Executing phase: 'install'
+==> py-pygments: Successfully installed py-pygments-2.18.0-gjwnatdd2gz57sutaj6zkr2umxjuxoma
+  Stage: 1.15s.  Install: 1.97s.  Post-install: 0.65s.  Total: 4.04s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-pygments-2.18.0-gjwnatdd2gz57sutaj6zkr2umxjuxoma
+==> Installing py-attrs-23.1.0-luy6wto52lhekx5pzgbv5p5if67rbigy [95/98]
+==> No binary for py-attrs-23.1.0-luy6wto52lhekx5pzgbv5p5if67rbigy found: installing from source
+==> Fetching https://mirror.spack.io/_source-cache/archive/62/6279836d581513a26f1bf235f9acd333bc9115683f14f7e8fae46c98fc50e015.tar.gz
+==> No patches needed for py-attrs
+==> py-attrs: Executing phase: 'install'
+==> py-attrs: Successfully installed py-attrs-23.1.0-luy6wto52lhekx5pzgbv5p5if67rbigy
+  Stage: 0.10s.  Install: 1.13s.  Post-install: 0.52s.  Total: 2.03s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-attrs-23.1.0-luy6wto52lhekx5pzgbv5p5if67rbigy
+==> Installing py-rich-13.7.1-gaceegjllo3dpnypftd3worlf7ut7eck [96/98]
+==> No binary for py-rich-13.7.1-gaceegjllo3dpnypftd3worlf7ut7eck found: installing from source
+==> Fetching https://mirror.spack.io/_source-cache/archive/9b/9be308cb1fe2f1f57d67ce99e95af38a1e2bc71ad9813b0e247cf7ffbcc3a432.tar.gz
+==> No patches needed for py-rich
+==> py-rich: Executing phase: 'install'
+==> py-rich: Successfully installed py-rich-13.7.1-gaceegjllo3dpnypftd3worlf7ut7eck
+  Stage: 0.54s.  Install: 1.85s.  Post-install: 0.91s.  Total: 3.60s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-rich-13.7.1-gaceegjllo3dpnypftd3worlf7ut7eck
+==> Installing mochi-bedrock-0.16.0-qpmaqjnfyb7tvc675nf2aa5oxscjchu7 [97/98]
+==> No binary for mochi-bedrock-0.16.0-qpmaqjnfyb7tvc675nf2aa5oxscjchu7 found: installing from source
+==> Fetching https://github.com/mochi-hpc/mochi-bedrock/archive/refs/tags/v0.16.0.tar.gz
+==> No patches needed for mochi-bedrock
+==> mochi-bedrock: Executing phase: 'cmake'
+==> mochi-bedrock: Executing phase: 'build'
+==> mochi-bedrock: Executing phase: 'install'
+==> mochi-bedrock: Successfully installed mochi-bedrock-0.16.0-qpmaqjnfyb7tvc675nf2aa5oxscjchu7
+  Stage: 0.85s.  Cmake: 3.90s.  Build: 52.01s.  Install: 0.33s.  Post-install: 1.80s.  Total: 59.44s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/mochi-bedrock-0.16.0-qpmaqjnfyb7tvc675nf2aa5oxscjchu7
+==> Installing mofka-0.6.4-labml323r2hejghgbtqu3lfnha63doqo [98/98]
+==> No binary for mofka-0.6.4-labml323r2hejghgbtqu3lfnha63doqo found: installing from source
+==> Fetching https://github.com/mochi-hpc/mofka/archive/refs/tags/v0.6.4.tar.gz
+==> No patches needed for mofka
+==> mofka: Executing phase: 'cmake'
+==> mofka: Executing phase: 'build'
+==> mofka: Executing phase: 'install'
+==> mofka: Successfully installed mofka-0.6.4-labml323r2hejghgbtqu3lfnha63doqo
+  Stage: 0.77s.  Cmake: 4.91s.  Build: 44.53s.  Install: 0.40s.  Post-install: 2.24s.  Total: 53.45s
+[+] /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/mofka-0.6.4-labml323r2hejghgbtqu3lfnha63doqo
+
+## Installed paths
+-- linux-ubuntu22.04-skylake_avx512 / gcc@11.4.0 ----------------
+mofka@0.6.4  /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/mofka-0.6.4-labml323r2hejghgbtqu3lfnha63doqo

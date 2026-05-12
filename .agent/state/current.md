@@ -1,7 +1,7 @@
 # Current State
 
-- current task: install or expose Mofka fixed baseline tooling
+- current task: fix Mofka runtime environment and rerun local Mofka smoke launch
 - commands running: none
-- last successful validation: Mofka launch and stop wrappers passed shell syntax and help-path validation; evidence in `.agent/results/20260511-235012/mofka/stdout.log` and `.agent/results/20260511-235012/mofka/stderr.log`
-- current blocker: perf runtime events and eBPF-based observability require cluster/admin permission changes for later profiling-output validation
-- next intended step: attempt no-sudo Mofka exposure through modules, existing user-local Spack repositories, or a project-local/user-local Spack environment before running the fixed baseline
+- last successful validation: Mofka fixed-baseline tooling installed without sudo and `bedrock`/`mofkactl` command exposure validated; evidence in `.agent/results/20260511-235742/mofka/stdout.log` and `.agent/results/mofka-install.md`
+- current blocker: first Mofka local smoke launch failed because Bedrock could not locate dependent module libraries such as `libyokan-bedrock-module.so`; perf runtime events and eBPF-based observability also require cluster/admin permission changes for later profiling-output validation
+- next intended step: patch Mofka launch environment to expose Spack dependency `lib`/`lib64` paths, then rerun local smoke launch before attempting Mofka baseline workflow metrics

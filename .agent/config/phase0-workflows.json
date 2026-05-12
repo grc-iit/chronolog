@@ -38,6 +38,55 @@
     "bare_metal_reason": "Preferred because later ChronoLog optimization work is expected to depend on proper RDMA/RoCE-capable network configuration.",
     "distributed_node_counts": [1, 2, 4, 8]
   },
+  "configuration_policy": {
+    "manifest_required": true,
+    "manifest_location": "config/",
+    "common_fields": [
+      "deployment_mode",
+      "node_count",
+      "task_count",
+      "hostnames",
+      "slurm_job_metadata",
+      "workflow_parameters",
+      "storage_path",
+      "persistence_mode",
+      "process_thread_layout",
+      "memory_relevant_settings",
+      "network_transport",
+      "network_interface_evidence",
+      "software_versions",
+      "build_variants",
+      "environment_variables"
+    ],
+    "chronolog_surfaces": [
+      "chrono_visor_keeper_grapher_topology",
+      "story_chronicle_layout",
+      "keeper_buffering_flush_settings",
+      "storage_path",
+      "thallium_mercury_transport",
+      "profiling_mode"
+    ],
+    "kafka_surfaces": [
+      "broker_count",
+      "topic_partition_count",
+      "replication_factor",
+      "producer_ack_linger_batch_compression",
+      "jvm_heap",
+      "log_directory",
+      "advertised_listener_mapping"
+    ],
+    "mofka_surfaces": [
+      "bedrock_provider_layout",
+      "mercury_protocol_address",
+      "metadata_database_count_type_path",
+      "data_storage_target_count_type_path",
+      "persistence_flags",
+      "pool_execution_stream_counts",
+      "partition_count",
+      "producer_consumer_thread_batch_settings",
+      "benchmark_generator_configuration"
+    ]
+  },
   "workflows": [
     {
       "name": "append_throughput",
