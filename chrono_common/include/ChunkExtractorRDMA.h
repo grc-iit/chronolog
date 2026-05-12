@@ -19,11 +19,11 @@ class StoryChunkExtractorRDMA
 {
 
 public:
-    StoryChunkExtractorRDMA(tl::engine * tl_engine, ServiceId const& service_id = ServiceId());
+    StoryChunkExtractorRDMA(tl::engine* tl_engine, ServiceId const& service_id = ServiceId());
     StoryChunkExtractorRDMA(StoryChunkExtractorRDMA const& other) = delete;
     StoryChunkExtractorRDMA& operator=(StoryChunkExtractorRDMA const& other) = delete;
-    StoryChunkExtractorRDMA(StoryChunkExtractorRDMA &&);
-    StoryChunkExtractorRDMA& operator=(StoryChunkExtractorRDMA && other) ;
+    StoryChunkExtractorRDMA(StoryChunkExtractorRDMA&&);
+    StoryChunkExtractorRDMA& operator=(StoryChunkExtractorRDMA&& other);
 
 
     ~StoryChunkExtractorRDMA();

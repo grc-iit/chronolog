@@ -14,7 +14,7 @@ namespace tl = thallium;
 namespace chl = chronolog;
 
 chronolog::DualEndpointChunkExtractorRDMA::DualEndpointChunkExtractorRDMA(
-        tl::engine * tl_engine,
+        tl::engine* tl_engine,
         chronolog::ServiceId const& player_receiving_service_id,
         chronolog::ServiceId const& grapher_receiving_service_id)
     : sender_tl_engine(tl_engine)
@@ -97,14 +97,17 @@ void chronolog::DualEndpointChunkExtractorRDMA::restart_rdma_sender_for_player(
 }
 
 
-chronolog::DualEndpointChunkExtractorRDMA::DualEndpointChunkExtractorRDMA(DualEndpointChunkExtractorRDMA && other)
+chronolog::DualEndpointChunkExtractorRDMA::DualEndpointChunkExtractorRDMA(DualEndpointChunkExtractorRDMA&& other)
 {
-        LOG_TRACE("[DualEndpointExtractorRDMA] Move Constructor ");
-    if(this == &other) { return; }
+    LOG_TRACE("[DualEndpointExtractorRDMA] Move Constructor ");
+    if(this == &other)
+    {
+        return;
+    }
 
     sender_tl_engine = other.get_sender_engine();
     player_receiver_service_id = other.get_player_receiver_id();
-    grapher_receiver_service_id=other.get_grapher_receiver_id();
+    grapher_receiver_service_id = other.get_grapher_receiver_id();
     rdma_sender_for_player = other.rdma_sender_for_player;
     rdma_sender_for_grapher = other.rdma_sender_for_grapher;
 
@@ -114,7 +117,7 @@ chronolog::DualEndpointChunkExtractorRDMA::DualEndpointChunkExtractorRDMA(DualEn
 }
 
 chl::DualEndpointChunkExtractorRDMA&
-chronolog::DualEndpointChunkExtractorRDMA::operator=(DualEndpointChunkExtractorRDMA && other)
+chronolog::DualEndpointChunkExtractorRDMA::operator=(DualEndpointChunkExtractorRDMA&& other)
 {
     if(this == &other)
     {

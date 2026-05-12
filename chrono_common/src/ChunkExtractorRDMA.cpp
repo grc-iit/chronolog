@@ -34,32 +34,42 @@ chronolog::StoryChunkExtractorRDMA::StoryChunkExtractorRDMA(tl::engine* tl_engin
     }
 }
 
-chronolog::StoryChunkExtractorRDMA::StoryChunkExtractorRDMA(StoryChunkExtractorRDMA && other)
+chronolog::StoryChunkExtractorRDMA::StoryChunkExtractorRDMA(StoryChunkExtractorRDMA&& other)
 {
-    if(this == &other) { return; }
+    if(this == &other)
+    {
+        return;
+    }
 
     sender_tl_engine = other.get_sender_engine();
     receiver_service_id = other.get_receiver_service_id();
     rdma_sender = other.rdma_sender;
 
-    LOG_TRACE("[ChunkExtractorRDMA] move constructor: using rdma_sender for receiver_service {} ", chl::to_string(receiver_service_id));
+    LOG_TRACE("[ChunkExtractorRDMA] move constructor: using rdma_sender for receiver_service {} ",
+              chl::to_string(receiver_service_id));
 
     other.sender_tl_engine = nullptr;
     other.rdma_sender = nullptr;
 }
 
-chl::StoryChunkExtractorRDMA& chronolog::StoryChunkExtractorRDMA::operator=(StoryChunkExtractorRDMA && other)
+chl::StoryChunkExtractorRDMA& chronolog::StoryChunkExtractorRDMA::operator=(StoryChunkExtractorRDMA&& other)
 {
-    if(this == &other) { return *this; }
-   
+    if(this == &other)
+    {
+        return *this;
+    }
+
     if(rdma_sender != nullptr)
-    { delete rdma_sender; }
-    
+    {
+        delete rdma_sender;
+    }
+
     sender_tl_engine = other.get_sender_engine();
     receiver_service_id = other.get_receiver_service_id();
     rdma_sender = other.rdma_sender;
 
-    LOG_TRACE("[ChunkExtractorRDMA] move operator: using rdma_sender for receiver_service {} ",chl::to_string(receiver_service_id));
+    LOG_TRACE("[ChunkExtractorRDMA] move operator: using rdma_sender for receiver_service {} ",
+              chl::to_string(receiver_service_id));
 
     other.sender_tl_engine = nullptr;
     other.rdma_sender = nullptr;
