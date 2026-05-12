@@ -1,0 +1,200 @@
+==> Error: failed to concretize `mochi-margo@0.13 ^libfabric@1.16.1 fabrics=mlx,rxd,rxm,shm,sockets,tcp,udp,verbs`, `mercury@2.2.0~boostsys ^libfabric@1.16.1 fabrics=mlx,rxd,rxm,shm,sockets,tcp,udp,verbs`, `mochi-thallium@0.10.1 ^libfabric@1.16.1 fabrics=mlx,rxd,rxm,shm,sockets,tcp,udp,verbs`, `mpich@4.0.2+argobots~fortran+verbs ^libfabric@1.16.1 fabrics=mlx,rxd,rxm,shm,sockets,tcp,udp,verbs`, ..., `py-pybind11@2.11.1` for the following reasons:
+     1. Cannot satisfy 'cmake@3.25.1'
+     2. Cannot satisfy 'cmake@3.25.1'
+        required because cmake@3.25.1 ^openssl@3.0.0:3.0.999 requested explicitly 
+     3. Cannot satisfy 'cmake@3.18:' and 'cmake@3.25.1
+        required because hdf5 depends on cmake@3.18: when @1.13: 
+          required because hdf5@1.14.1-2+cxx+threadsafe requested explicitly 
+        required because cmake@3.25.1 ^openssl@3.0.0:3.0.999 requested explicitly 
+     4. Cannot satisfy 'cmake@3.18:' and 'cmake@3.25.1
+        required because py-pybind11 depends on cmake@3.18: when @2.6.0: build_system=cmake 
+          required because py-pybind11@2.11.1 requested explicitly 
+        required because cmake@3.25.1 ^openssl@3.0.0:3.0.999 requested explicitly 
+     5. Cannot satisfy 'cmake@3.13:' and 'cmake@3.25.1
+        required because py-pybind11 depends on cmake@3.13: when build_system=cmake 
+          required because py-pybind11@2.11.1 requested explicitly 
+        required because cmake@3.25.1 ^openssl@3.0.0:3.0.999 requested explicitly 
+     6. Cannot satisfy 'cmake@3.12:' and 'cmake@3.25.1
+        required because hdf5 depends on cmake@3.12: 
+          required because hdf5@1.14.1-2+cxx+threadsafe requested explicitly 
+        required because cmake@3.25.1 ^openssl@3.0.0:3.0.999 requested explicitly 
+     7. Cannot satisfy 'cmake@3.10:' and 'cmake@3.25.1
+        required because spdlog depends on cmake@3.10: when @1.8.0: 
+          required because spdlog@1.12.0 requested explicitly 
+        required because cmake@3.25.1 ^openssl@3.0.0:3.0.999 requested explicitly 
+     8. Cannot satisfy 'cmake@2.8.12.2:' and 'cmake@3.25.1
+        required because mercury depends on cmake@2.8.12.2: 
+          required because mochi-margo depends on mercury@2.0.0: when @0.5.2: 
+            required because mochi-thallium depends on mochi-margo@0.6: when @0.5: 
+              required because mochi-thallium@0.10.1 ^libfabric@1.16.1 fabrics=mlx,rxd,rxm,shm,sockets,tcp,udp,verbs requested explicitly 
+            required because mochi-thallium depends on mochi-margo@0.7: when @0.7: 
+            required because mochi-thallium depends on mochi-margo@0.9.8: when @0.10.0: 
+            required because mochi-margo@0.13 ^libfabric@1.16.1 fabrics=mlx,rxd,rxm,shm,sockets,tcp,udp,verbs requested explicitly 
+          required because mercury@2.2.0~boostsys ^libfabric@1.16.1 fabrics=mlx,rxd,rxm,shm,sockets,tcp,udp,verbs requested explicitly 
+        required because cmake@3.25.1 ^openssl@3.0.0:3.0.999 requested explicitly . You could consider setting `concretizer:unify` to `when_possible` or `false` to allow multiple versions of some packages.
+Lmod Warning:
+-------------------------------------------------------------------------------
+The following dependent module(s) are not currently loaded:
+gcc-runtime/11.4.0-gcc-11.4.0-owu4kv5 (required by:
+nghttp2/1.63.0-gcc-11.4.0-7qd2hx2, curl/8.10.1-gcc-11.4.0-jagxtou,
+gmake/4.4.1-gcc-11.4.0-fxk44dg, cmake/3.30.5-gcc-11.4.0-7bxr5u6,
+libpciaccess/0.17-gcc-11.4.0-enmdm4m, hwloc/2.11.1-gcc-11.4.0-2h7d7ez,
+libevent/2.1.12-gcc-11.4.0-6hsetqm, numactl/2.0.18-gcc-11.4.0-k2wg7yw,
+krb5/1.21.3-gcc-11.4.0-n2getuy, libedit/3.1-20240808-gcc-11.4.0-vexrvth,
+openssh/9.9p1-gcc-11.4.0-zsi7jbn, pmix/5.0.3-gcc-11.4.0-mtqvcp2,
+openmpi/5.0.5-gcc-11.4.0-og56sxz, argobots/1.1-gcc-11.4.0-indjy5q,
+libfabric/1.22.0-gcc-11.4.0-lyviqpl, mercury/2.3.1-gcc-11.4.0-v35oegb,
+mochi-margo/0.17.0-gcc-11.4.0-l6v4nr7, cereal/1.3.2-gcc-11.4.0-ps5rsxg,
+mochi-thallium/0.10.1-gcc-11.4.0-qh3zh7f, boost/1.86.0-gcc-11.4.0-cs4onpk,
+fmt/11.0.2-gcc-11.4.0-32fk4sj, spdlog/1.14.1-gcc-11.4.0-w3psznc,
+hdf5/1.14.5-gcc-11.4.0-flto63r, googletest/1.12.1-gcc-11.4.0-y6iiozs,
+json-c/0.16-gcc-11.4.0-4rjmyoo, pkgconf/2.2.0-gcc-11.4.0-3sczowe),
+gettext/0.22.5-gcc-11.4.0-mbqnrku (required by:
+krb5/1.21.3-gcc-11.4.0-n2getuy), glibc/2.35-gcc-11.4.0-b34moeb (required by:
+nghttp2/1.63.0-gcc-11.4.0-7qd2hx2, curl/8.10.1-gcc-11.4.0-jagxtou,
+gmake/4.4.1-gcc-11.4.0-fxk44dg, cmake/3.30.5-gcc-11.4.0-7bxr5u6,
+libpciaccess/0.17-gcc-11.4.0-enmdm4m, hwloc/2.11.1-gcc-11.4.0-2h7d7ez,
+libevent/2.1.12-gcc-11.4.0-6hsetqm, numactl/2.0.18-gcc-11.4.0-k2wg7yw,
+krb5/1.21.3-gcc-11.4.0-n2getuy, libedit/3.1-20240808-gcc-11.4.0-vexrvth,
+openssh/9.9p1-gcc-11.4.0-zsi7jbn, pmix/5.0.3-gcc-11.4.0-mtqvcp2,
+openmpi/5.0.5-gcc-11.4.0-og56sxz, argobots/1.1-gcc-11.4.0-indjy5q,
+libfabric/1.22.0-gcc-11.4.0-lyviqpl, mercury/2.3.1-gcc-11.4.0-v35oegb,
+mochi-margo/0.17.0-gcc-11.4.0-l6v4nr7, cereal/1.3.2-gcc-11.4.0-ps5rsxg,
+mochi-thallium/0.10.1-gcc-11.4.0-qh3zh7f, boost/1.86.0-gcc-11.4.0-cs4onpk,
+fmt/11.0.2-gcc-11.4.0-32fk4sj, spdlog/1.14.1-gcc-11.4.0-w3psznc,
+hdf5/1.14.5-gcc-11.4.0-flto63r, googletest/1.12.1-gcc-11.4.0-y6iiozs,
+json-c/0.16-gcc-11.4.0-4rjmyoo, pkgconf/2.2.0-gcc-11.4.0-3sczowe),
+libxcrypt/4.4.35-gcc-11.4.0-rxnqnjb (required by:
+openssh/9.9p1-gcc-11.4.0-zsi7jbn), libxml2/2.13.4-gcc-11.4.0-u6qpzqr (required
+by: hwloc/2.11.1-gcc-11.4.0-2h7d7ez), ncurses/6.5-gcc-11.4.0-ez6c47q (required
+by: cmake/3.30.5-gcc-11.4.0-7bxr5u6, hwloc/2.11.1-gcc-11.4.0-2h7d7ez,
+libedit/3.1-20240808-gcc-11.4.0-vexrvth, openssh/9.9p1-gcc-11.4.0-zsi7jbn),
+openssl/3.4.0-gcc-11.4.0-tsej5dg (required by: curl/8.10.1-gcc-11.4.0-jagxtou,
+libevent/2.1.12-gcc-11.4.0-6hsetqm, krb5/1.21.3-gcc-11.4.0-n2getuy,
+openssh/9.9p1-gcc-11.4.0-zsi7jbn), zlib-ng/2.2.1-gcc-11.4.0-nnfxngg (required
+by: curl/8.10.1-gcc-11.4.0-jagxtou, cmake/3.30.5-gcc-11.4.0-7bxr5u6,
+openssh/9.9p1-gcc-11.4.0-zsi7jbn, pmix/5.0.3-gcc-11.4.0-mtqvcp2,
+openmpi/5.0.5-gcc-11.4.0-og56sxz, hdf5/1.14.5-gcc-11.4.0-flto63r)
+-------------------------------------------------------------------------------
+
+
+
+CMake Error at /home/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/cmake-3.30.5-7bxr5u62yujcgm23c7xqvogq3vgxdufg/share/cmake-3.30/Modules/FindPackageHandleStandardArgs.cmake:233 (message):
+  Could NOT find HDF5 (missing: HDF5_INCLUDE_DIRS) (found version "1.14.5")
+Call Stack (most recent call first):
+  /home/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/cmake-3.30.5-7bxr5u62yujcgm23c7xqvogq3vgxdufg/share/cmake-3.30/Modules/FindPackageHandleStandardArgs.cmake:603 (_FPHSA_FAILURE_MESSAGE)
+  /home/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/cmake-3.30.5-7bxr5u62yujcgm23c7xqvogq3vgxdufg/share/cmake-3.30/Modules/FindHDF5.cmake:1028 (find_package_handle_standard_args)
+  chrono_common/CMakeLists.txt:4 (find_package)
+
+
+gmake: Makefile: No such file or directory
+gmake: *** No rule to make target 'Makefile'.  Stop.
+Lmod Warning:
+-------------------------------------------------------------------------------
+The following dependent module(s) are not currently loaded:
+gcc-runtime/11.4.0-gcc-11.4.0-owu4kv5 (required by:
+nghttp2/1.63.0-gcc-11.4.0-7qd2hx2, curl/8.10.1-gcc-11.4.0-jagxtou,
+gmake/4.4.1-gcc-11.4.0-fxk44dg, cmake/3.30.5-gcc-11.4.0-7bxr5u6,
+argobots/1.1-gcc-11.4.0-indjy5q, libfabric/1.22.0-gcc-11.4.0-lyviqpl,
+mercury/2.3.1-gcc-11.4.0-v35oegb, mochi-margo/0.17.0-gcc-11.4.0-l6v4nr7,
+cereal/1.3.2-gcc-11.4.0-ps5rsxg, mochi-thallium/0.10.1-gcc-11.4.0-qh3zh7f,
+boost/1.86.0-gcc-11.4.0-cs4onpk, fmt/11.0.2-gcc-11.4.0-32fk4sj,
+spdlog/1.14.1-gcc-11.4.0-w3psznc, googletest/1.12.1-gcc-11.4.0-y6iiozs,
+json-c/0.16-gcc-11.4.0-4rjmyoo), glibc/2.35-gcc-11.4.0-b34moeb (required by:
+nghttp2/1.63.0-gcc-11.4.0-7qd2hx2, curl/8.10.1-gcc-11.4.0-jagxtou,
+gmake/4.4.1-gcc-11.4.0-fxk44dg, cmake/3.30.5-gcc-11.4.0-7bxr5u6,
+argobots/1.1-gcc-11.4.0-indjy5q, libfabric/1.22.0-gcc-11.4.0-lyviqpl,
+mercury/2.3.1-gcc-11.4.0-v35oegb, mochi-margo/0.17.0-gcc-11.4.0-l6v4nr7,
+cereal/1.3.2-gcc-11.4.0-ps5rsxg, mochi-thallium/0.10.1-gcc-11.4.0-qh3zh7f,
+boost/1.86.0-gcc-11.4.0-cs4onpk, fmt/11.0.2-gcc-11.4.0-32fk4sj,
+spdlog/1.14.1-gcc-11.4.0-w3psznc, googletest/1.12.1-gcc-11.4.0-y6iiozs,
+json-c/0.16-gcc-11.4.0-4rjmyoo), ncurses/6.5-gcc-11.4.0-ez6c47q (required by:
+cmake/3.30.5-gcc-11.4.0-7bxr5u6), openssl/3.4.0-gcc-11.4.0-tsej5dg (required
+by: curl/8.10.1-gcc-11.4.0-jagxtou), zlib-ng/2.2.1-gcc-11.4.0-nnfxngg (required
+by: curl/8.10.1-gcc-11.4.0-jagxtou, cmake/3.30.5-gcc-11.4.0-7bxr5u6)
+-------------------------------------------------------------------------------
+
+
+
+Python bindings enabled
+Building CMAKE_CURRENT_SOURCE_DIR=/home/jcernudagarcia/chronolog-opt/chronolog/ChronoStore
+build target : chrono_store
+CMake Error at CMakeLists.txt:290 (add_subdirectory):
+  The source directory
+
+    /home/jcernudagarcia/chronolog-opt/chronolog/test/performance
+
+  does not contain a CMakeLists.txt file.
+
+
+
+Currently Loaded Modules:
+  1) glibc/2.35-b34moeb
+  2) gcc-runtime/11.4.0-owu4kv5
+  3) nghttp2/1.63.0-7qd2hx2
+  4) zlib-ng/2.2.1-dribu5i
+  5) openssl/3.4.0-ilowtdm
+  6) curl/8.10.1-7ha27jj
+  7) gmake/4.4.1-fxk44dg
+  8) ncurses/6.5-ez6c47q
+  9) gcc/11.4.0/cmake/3.30.5-pq5ntgo
+ 10) gcc/11.4.0/argobots/1.1-indjy5q
+ 11) gcc/11.4.0/libfabric/1.22.0-lyviqpl
+ 12) boost/1.86.0-cs4onpk
+ 13) libnl/3.3.0-xztyu5v
+ 14) rdma-core/52.0-oflqvy5
+ 15) ucx/1.17.0-rofkl46
+ 16) libfabric/1.22.0-eclvajk
+ 17) gcc/11.4.0/mercury/2.3.1-kcmn6u3
+ 18) argobots/1.1-indjy5q
+ 19) json-c/0.16-2ofsb6t
+ 20) mercury/2.3.1-kcmn6u3
+ 21) gcc/11.4.0/mochi-margo/0.17.0-llh62si
+ 22) cereal/1.3.2-wwkdnuj
+ 23) mochi-margo/0.17.0-llh62si
+ 24) gcc/11.4.0/mochi-thallium/0.10.1-2pari3f
+ 25) gcc/11.4.0/boost/1.86.0-cs4onpk
+ 26) fmt/11.0.2-6qgv5bv
+ 27) gcc/11.4.0/spdlog/1.14.1-y4quhau
+ 28) gcc/11.4.0/googletest/1.12.1-al2evss
+ 29) gcc/11.4.0/json-c/0.16-2ofsb6t
+ 30) gcc/11.4.0/pkgconf/2.2.0-3sczowe
+ 31) bzip2/1.0.8-ko2woy6
+ 32) libmd/1.0.4-7syqes5
+ 33) libbsd/0.12.2-cqoivda
+ 34) expat/2.6.4-crjtgjd
+ 35) readline/8.2-sf7kdl7
+ 36) gdbm/1.23-vk5wn4d
+ 37) libiconv/1.17-wm5g66g
+ 38) xz/5.4.6-jbodcp5
+ 39) libxml2/2.13.4-3b76nt2
+ 40) pigz/2.8-b34vblb
+ 41) zstd/1.5.6-i7n7mhj
+ 42) tar/1.34-ekkjnqg
+ 43) gettext/0.22.5-pym22n7
+ 44) libffi/3.4.6-3dramwh
+ 45) libxcrypt/4.4.35-csiftbw
+ 46) sqlite/3.46.0-g4jup4g
+ 47) util-linux-uuid/2.40.2-ut7sq7q
+ 48) gcc/11.4.0/python/3.11.9-zg4555e
+ 49) python/3.11.9-zg4555e
+ 50) python-venv/1.0-u5vf2gn
+ 51) gcc/11.4.0/py-pybind11/2.13.5-pngixx5
+ 52) openmpi/5.0.5-x2kvx5l
+ 53) pkgconf/2.2.0-3sczowe
+ 54) openmpi/5.0.5-x2kvx5l/gcc/11.4.0/hdf5/1.14.5-5zbyeqh
+
+ 
+
+Python bindings enabled
+Building CMAKE_CURRENT_SOURCE_DIR=/home/jcernudagarcia/chronolog-opt/chronolog/ChronoStore
+build target : chrono_store
+In file included from /home/jcernudagarcia/chronolog-opt/chronolog/tools/benchmark/perf_bench.cpp:27:
+/home/jcernudagarcia/chronolog-opt/chronolog/chrono_common/include/TimerWrapper.h: In constructor ‘TimerWrapper::TimerWrapper(bool, const string&)’:
+/home/jcernudagarcia/chronolog-opt/chronolog/chrono_common/include/TimerWrapper.h:29:25: warning: ‘int MPI_Attr_get(MPI_Comm, int, void*, int*)’ is deprecated: MPI_Attr_get was deprecated in MPI-2.0; use MPI_Comm_get_attr instead [-Wdeprecated-declarations]
+   29 |             MPI_Attr_get(MPI_COMM_SELF, MPI_WTIME_IS_GLOBAL, &global_time_flag, &flag);
+      |             ~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from /home/jcernudagarcia/chronolog-opt/chronolog/tools/benchmark/perf_bench.cpp:20:
+/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/include/mpi.h:3024:20: note: declared here
+ 3024 | OMPI_DECLSPEC  int MPI_Attr_get(MPI_Comm comm, int keyval, void *attribute_val, int *flag)
+      |                    ^~~~~~~~~~~~

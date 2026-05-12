@@ -25,7 +25,7 @@ This is not a performance-optimization phase. The goal is to make the full measu
 ## ChronoLog
 
 - [x] Verify current branch is off `develop`.
-- [ ] Build ChronoLog baseline.
+- [x] Build ChronoLog baseline.
 - [ ] Run ChronoLog minimal local smoke test.
 - [ ] Add ChronoLog profiling abstraction.
 - [ ] Add TAU-backed ChronoLog profiling mode.

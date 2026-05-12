@@ -287,7 +287,11 @@ else()
     # Performance regression harness ships in every build type (including
     # Release) so the perf matrix can be run against optimized binaries. The
     # rest of the test tree remains Debug-only.
-    add_subdirectory(test/performance)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test/performance/CMakeLists.txt")
+        add_subdirectory(test/performance)
+    else()
+        message(STATUS "Performance regression harness CMake file not present; skipping test/performance")
+    endif()
 endif()
 
 #------------------------------------------------------------------------------

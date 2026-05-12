@@ -1,0 +1,822 @@
+timestamp=2026-05-11T22:18:55-05:00
+branch=opt/phase0-bootstrap
+merge_base_status=0
+command=tools/deploy/ChronoLog/build.sh -t Release -B .agent/build -I .agent/install --cxx-flags -O2 -g -fno-omit-frame-pointer --c-flags -O2 -g -fno-omit-frame-pointer
+[7;49m[92mBuilding ChronoLog...[0m
+[0;33mActivating Spack environment in '/mnt/common/jcernudagarcia/chronolog-opt/chronolog'...[0m
+[7;49m[92mSpack environment activated successfully.[0m
+[0;33mChecking dependencies...[0m
+[0;33mSpack concretization failed. Exiting.[0m
+
+[module candidates for direct cmake build]
+argobots/
+argobots/1.1-gcc-11.4.0-indjy5q
+boost/
+boost/1.86.0-gcc-11.4.0-cs4onpk
+cmake/
+cmake/3.30.5-gcc-11.4.0-7bxr5u6
+googletest/
+googletest/1.12.1-gcc-11.4.0-y6iiozs
+hdf5/
+hdf5/1.14.5-gcc-11.4.0-flto63r
+json-c/
+json-c/0.16-gcc-11.4.0-4rjmyoo
+libfabric/
+libfabric/1.22.0-gcc-11.4.0-lyviqpl
+mercury/
+mercury/2.3.1-gcc-11.4.0-v35oegb
+mochi-margo/
+mochi-margo/0.17.0-gcc-11.4.0-l6v4nr7
+mochi-thallium/
+mochi-thallium/0.10.1-gcc-11.4.0-qh3zh7f
+openmpi/
+openmpi/5.0.5-gcc-11.4.0-og56sxz
+spdlog/
+spdlog/1.14.1-gcc-11.4.0-w3psznc
+yaml-cpp/
+yaml-cpp/0.8.0-gcc-11.4.0-cbiu3fx
+hdf5/1.14.0
+hdf5/parallel/
+hdf5/parallel/1.14.0
+mercury/
+mercury/2.2.0
+mpich/
+mpich/4.1.1
+argobots/
+argobots/1.1-indjy5q
+boost/
+boost/1.86.0-cs4onpk
+boost/1.86.0-qx7wmdx
+cmake/
+cmake/3.30.5-pq5ntgo
+googletest/
+googletest/1.12.1-al2evss
+json-c/
+json-c/0.16-2ofsb6t
+libfabric/
+libfabric/1.22.0-eclvajk
+libfabric/1.22.0-lyviqpl
+mercury/
+mercury/2.3.1-kcmn6u3
+mochi-margo/
+mochi-margo/0.17.0-llh62si
+mochi-thallium/
+mochi-thallium/0.10.1-2pari3f
+openmpi/
+openmpi/5.0.5-cphqvsy
+openmpi/5.0.5-x2kvx5l
+spdlog/
+spdlog/1.14.1-y4quhau
+yaml-cpp/
+yaml-cpp/0.8.0-t3qoxou
+gcc/11.4.0/argobots/
+gcc/11.4.0/argobots/1.1-indjy5q
+gcc/11.4.0/boost/
+gcc/11.4.0/boost/1.86.0-cs4onpk
+gcc/11.4.0/boost/1.86.0-qx7wmdx
+gcc/11.4.0/cmake/
+gcc/11.4.0/cmake/3.30.5-pq5ntgo
+gcc/11.4.0/googletest/
+gcc/11.4.0/googletest/1.12.1-al2evss
+gcc/11.4.0/json-c/
+gcc/11.4.0/json-c/0.16-2ofsb6t
+gcc/11.4.0/libfabric/
+gcc/11.4.0/libfabric/1.22.0-eclvajk
+gcc/11.4.0/libfabric/1.22.0-lyviqpl
+gcc/11.4.0/mercury/
+gcc/11.4.0/mercury/2.3.1-kcmn6u3
+gcc/11.4.0/mochi-margo/
+gcc/11.4.0/mochi-margo/0.17.0-llh62si
+gcc/11.4.0/mochi-thallium/
+gcc/11.4.0/mochi-thallium/0.10.1-2pari3f
+gcc/11.4.0/openmpi/
+gcc/11.4.0/openmpi/5.0.5-cphqvsy
+gcc/11.4.0/openmpi/5.0.5-x2kvx5l
+gcc/11.4.0/spdlog/
+gcc/11.4.0/spdlog/1.14.1-y4quhau
+gcc/11.4.0/yaml-cpp/
+gcc/11.4.0/yaml-cpp/0.8.0-t3qoxou
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/adios2/
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/adios2/2.10.2-sf7srjv
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/adios2/2.10.2-wqc5dwb
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/fftw/
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/fftw/3.3.10-vgmk7ol
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/hdf5/
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/hdf5/1.14.5-raazvt3
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/netcdf-c/
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/netcdf-c/4.9.2-674pv54
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/netcdf-fortran/
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/netcdf-fortran/4.6.1-7fod32w
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/openfoam/
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/openfoam/2312-wocgfjq
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/parallel-netcdf/
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/parallel-netcdf/1.12.3-f2bzvt6
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/scotch/
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/scotch/7.0.4-dd4w3wc
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/wrf/
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/wrf/4.6.1-ulfhjc3
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/cte-hermes-shm/
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/cte-hermes-shm/main-navyno7
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/h5bench/
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/h5bench/1.4-clordg2
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/h5bench/1.4-rbf7w5g
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/h5bench/1.4-4osowbl
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/h5part/
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/h5part/1.6.6-pqhcryw
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/hdf5-vol-async/
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/hdf5-vol-async/1.5-zwj3leo
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/hdf5/
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/hdf5/1.8.23-yggscmv
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/hdf5/1.14.5-fhssvl7
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/hdf5/1.14.5-plr6lpu
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/hdf5/1.14.5-5zbyeqh
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/ior/
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/ior/3.3.0-fihmxeb
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/iowarp-cte/
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/iowarp-cte/main-7ay5ec7
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/iowarp-runtime/
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/iowarp-runtime/main-6pjrr73
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/iowarp/
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/iowarp/main-resnye4
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/ppi-chi-nettest/
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/ppi-chi-nettest/main-nntqsmo
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/py-ppi-jarvis-cd/
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/py-ppi-jarvis-cd/main-puystwh
+/mnt/repo/software/spack/spack/share/spack/lmod/linux-ubuntu22.04-x86_64/openmpi/5.0.5-cphqvsy/gcc/11.4.0:
+hdf5/
+hdf5/1.14.5-raazvt3
+
+[baseline build attempt 2 direct cmake with modules]
+started=2026-05-11T22:20:09-05:00
+
+Currently Loaded Modules:
+  1) nghttp2/1.63.0-gcc-11.4.0-7qd2hx2
+  2) curl/8.10.1-gcc-11.4.0-jagxtou
+  3) gmake/4.4.1-gcc-11.4.0-fxk44dg
+  4) cmake/3.30.5-gcc-11.4.0-7bxr5u6
+  5) libpciaccess/0.17-gcc-11.4.0-enmdm4m
+  6) hwloc/2.11.1-gcc-11.4.0-2h7d7ez
+  7) libevent/2.1.12-gcc-11.4.0-6hsetqm
+  8) numactl/2.0.18-gcc-11.4.0-k2wg7yw
+  9) krb5/1.21.3-gcc-11.4.0-n2getuy
+ 10) libedit/3.1-20240808-gcc-11.4.0-vexrvth
+ 11) openssh/9.9p1-gcc-11.4.0-zsi7jbn
+ 12) pmix/5.0.3-gcc-11.4.0-mtqvcp2
+ 13) openmpi/5.0.5-gcc-11.4.0-og56sxz
+ 14) argobots/1.1-gcc-11.4.0-indjy5q
+ 15) libfabric/1.22.0-gcc-11.4.0-lyviqpl
+ 16) mercury/2.3.1-gcc-11.4.0-v35oegb
+ 17) mochi-margo/0.17.0-gcc-11.4.0-l6v4nr7
+ 18) cereal/1.3.2-gcc-11.4.0-ps5rsxg
+ 19) mochi-thallium/0.10.1-gcc-11.4.0-qh3zh7f
+ 20) boost/1.86.0-gcc-11.4.0-cs4onpk
+ 21) fmt/11.0.2-gcc-11.4.0-32fk4sj
+ 22) spdlog/1.14.1-gcc-11.4.0-w3psznc
+ 23) hdf5/1.14.5-gcc-11.4.0-flto63r
+ 24) googletest/1.12.1-gcc-11.4.0-y6iiozs
+ 25) json-c/0.16-gcc-11.4.0-4rjmyoo
+ 26) pkgconf/2.2.0-gcc-11.4.0-3sczowe
+ 27) glibc/2.35-b34moeb
+ 28) gcc-runtime/11.4.0-owu4kv5
+ 29) bzip2/1.0.8-ko2woy6
+ 30) libmd/1.0.4-7syqes5
+ 31) libbsd/0.12.2-cqoivda
+ 32) expat/2.6.4-crjtgjd
+ 33) ncurses/6.5-ez6c47q
+ 34) readline/8.2-sf7kdl7
+ 35) gdbm/1.23-vk5wn4d
+ 36) libiconv/1.17-wm5g66g
+ 37) xz/5.4.6-jbodcp5
+ 38) zlib-ng/2.2.1-dribu5i
+ 39) libxml2/2.13.4-3b76nt2
+ 40) pigz/2.8-b34vblb
+ 41) zstd/1.5.6-i7n7mhj
+ 42) tar/1.34-ekkjnqg
+ 43) gettext/0.22.5-pym22n7
+ 44) libffi/3.4.6-3dramwh
+ 45) libxcrypt/4.4.35-csiftbw
+ 46) openssl/3.4.0-ilowtdm
+ 47) sqlite/3.46.0-g4jup4g
+ 48) util-linux-uuid/2.40.2-ut7sq7q
+ 49) python/3.11.9-zg4555e
+ 50) python-venv/1.0-u5vf2gn
+ 51) py-pybind11/2.13.5-pngixx5
+
+ 
+
+-- The CXX compiler identification is GNU 11.4.0
+-- The C compiler identification is GNU 11.4.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- CMAKE_BUILD_TYPE=Release
+-- CMAKE_INSTALL_PREFIX=/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-direct
+-- Compiling ChronoLog in Release Mode
+-- Found PkgConfig: /home/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pkgconf-2.2.0-3sczowe2qduemddkdtoa3bf5nm3i6s6o/bin/pkg-config (found version "2.2.0")
+-- Checking for module 'margo'
+--   Found margo, version 0.17.0
+-- Configuring incomplete, errors occurred!
+finished=2026-05-11T22:20:21-05:00
+
+[hdf5 module diagnostics]
+
+Currently Loaded Modules:
+  1) glibc/2.35-gcc-11.4.0-b34moeb
+  2) gcc-runtime/11.4.0-gcc-11.4.0-owu4kv5
+  3) nghttp2/1.63.0-gcc-11.4.0-7qd2hx2
+  4) zlib-ng/2.2.1-gcc-11.4.0-nnfxngg
+  5) openssl/3.4.0-gcc-11.4.0-tsej5dg
+  6) curl/8.10.1-gcc-11.4.0-jagxtou
+  7) gmake/4.4.1-gcc-11.4.0-fxk44dg
+  8) ncurses/6.5-gcc-11.4.0-ez6c47q
+  9) cmake/3.30.5-gcc-11.4.0-7bxr5u6
+ 10) libpciaccess/0.17-gcc-11.4.0-enmdm4m
+ 11) libiconv/1.17-gcc-11.4.0-wm5g66g
+ 12) xz/5.4.6-gcc-11.4.0-jbodcp5
+ 13) libxml2/2.13.4-gcc-11.4.0-u6qpzqr
+ 14) hwloc/2.11.1-gcc-11.4.0-2h7d7ez
+ 15) libevent/2.1.12-gcc-11.4.0-6hsetqm
+ 16) numactl/2.0.18-gcc-11.4.0-k2wg7yw
+ 17) bzip2/1.0.8-gcc-11.4.0-ko2woy6
+ 18) pigz/2.8-gcc-11.4.0-e4qyap2
+ 19) zstd/1.5.6-gcc-11.4.0-i7n7mhj
+ 20) tar/1.34-gcc-11.4.0-ahhhqn4
+ 21) gettext/0.22.5-gcc-11.4.0-mbqnrku
+ 22) krb5/1.21.3-gcc-11.4.0-n2getuy
+ 23) libedit/3.1-20240808-gcc-11.4.0-vexrvth
+ 24) libxcrypt/4.4.35-gcc-11.4.0-rxnqnjb
+ 25) openssh/9.9p1-gcc-11.4.0-zsi7jbn
+ 26) pmix/5.0.3-gcc-11.4.0-mtqvcp2
+ 27) openmpi/5.0.5-gcc-11.4.0-og56sxz
+ 28) pkgconf/2.2.0-gcc-11.4.0-3sczowe
+ 29) hdf5/1.14.5-gcc-11.4.0-flto63r
+
+ 
+
+HDF5 env:
+CMAKE_PREFIX_PATH=/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hdf5-1.14.5-flto63rnzjmvmt7vyv2tpguzly5aplqa:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pkgconf-2.2.0-3sczowe2qduemddkdtoa3bf5nm3i6s6o:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-og56sxzoqwjcpelrnw7cc2o3th7u7673:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pmix-5.0.3-mtqvcp2oursbrcnr5dnpb7iyb5htkcsg:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openssh-9.9p1-zsi7jbnzwumknquqtyaighyxnju4ljx3:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libxcrypt-4.4.35-rxnqnjba7uy5ikoqri53if76m7l7ggbh:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libedit-3.1-20240808-vexrvth4e32dmlqc3wmntu56dv27ocfl:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/krb5-1.21.3-n2getuycoz5mrcpcg6qd7jmkfw4ly4zb:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/gettext-0.22.5-mbqnrkughmugrj6bkggsbiimmnb6vhcp:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/tar-1.34-ahhhqn43bpkqc4sptu5djpexmyucj2sz:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/zstd-1.5.6-i7n7mhjlnqlgr64smryfji2ploaetsgu:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pigz-2.8-e4qyap2unvfzbzzipset567mrav2qvzs:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/bzip2-1.0.8-ko2woy6rguqa6vr6ljv7b66h3qyhjivk:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/numactl-2.0.18-k2wg7ywovshpaq73uquirlsnzkhqodh2:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libevent-2.1.12-6hsetqmwdgwdozp2mycajf6d4tqiltgx:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hwloc-2.11.1-2h7d7ez5znqxnbtbsfqme6hifn34skwf:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libxml2-2.13.4-u6qpzqrp62r45wis36liyzuiugcmwexl:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/xz-5.4.6-jbodcp574bdwddmrvjxvdjriq2ctvbav:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libiconv-1.17-wm5g66gzc3ecwd3ijrsxlcjivmsnyclu:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libpciaccess-0.17-enmdm4mcctdtvpmrlbxbalt54xhsa66s:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/cmake-3.30.5-7bxr5u62yujcgm23c7xqvogq3vgxdufg:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/ncurses-6.5-ez6c47qaetsfgq2xocg75my2ebnuhjxc:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/gmake-4.4.1-fxk44dgyuwd32adjuxbiqcmw44p3hkuq:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/curl-8.10.1-jagxtouvv2tmvwyiyc7bdoumlvf5o2lc:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openssl-3.4.0-tsej5dglslyhrikyjv5ykahrw6khbna7:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/zlib-ng-2.2.1-nnfxnggxva6jcikon24aoj4yiycmcei3:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/nghttp2-1.63.0-7qd2hx2zbupazubeokkpyssmcpbza4ro:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/gcc-runtime-11.4.0-owu4kv5u3pwyjw4pj6pl36rnjkxdjimi
+LD_LIBRARY_PATH=/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hdf5-1.14.5-flto63rnzjmvmt7vyv2tpguzly5aplqa/lib
+PATH=/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hdf5-1.14.5-flto63rnzjmvmt7vyv2tpguzly5aplqa/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pkgconf-2.2.0-3sczowe2qduemddkdtoa3bf5nm3i6s6o/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-og56sxzoqwjcpelrnw7cc2o3th7u7673/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pmix-5.0.3-mtqvcp2oursbrcnr5dnpb7iyb5htkcsg/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openssh-9.9p1-zsi7jbnzwumknquqtyaighyxnju4ljx3/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/krb5-1.21.3-n2getuycoz5mrcpcg6qd7jmkfw4ly4zb/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/gettext-0.22.5-mbqnrkughmugrj6bkggsbiimmnb6vhcp/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/tar-1.34-ahhhqn43bpkqc4sptu5djpexmyucj2sz/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/zstd-1.5.6-i7n7mhjlnqlgr64smryfji2ploaetsgu/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pigz-2.8-e4qyap2unvfzbzzipset567mrav2qvzs/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/bzip2-1.0.8-ko2woy6rguqa6vr6ljv7b66h3qyhjivk/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/numactl-2.0.18-k2wg7ywovshpaq73uquirlsnzkhqodh2/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libevent-2.1.12-6hsetqmwdgwdozp2mycajf6d4tqiltgx/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hwloc-2.11.1-2h7d7ez5znqxnbtbsfqme6hifn34skwf/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libxml2-2.13.4-u6qpzqrp62r45wis36liyzuiugcmwexl/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/xz-5.4.6-jbodcp574bdwddmrvjxvdjriq2ctvbav/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libiconv-1.17-wm5g66gzc3ecwd3ijrsxlcjivmsnyclu/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/cmake-3.30.5-7bxr5u62yujcgm23c7xqvogq3vgxdufg/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/ncurses-6.5-ez6c47qaetsfgq2xocg75my2ebnuhjxc/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/gmake-4.4.1-fxk44dgyuwd32adjuxbiqcmw44p3hkuq/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/curl-8.10.1-jagxtouvv2tmvwyiyc7bdoumlvf5o2lc/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openssl-3.4.0-tsej5dglslyhrikyjv5ykahrw6khbna7/bin:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/nghttp2-1.63.0-7qd2hx2zbupazubeokkpyssmcpbza4ro/bin:/home/jcernudagarcia/.local/bin:/home/jcernudagarcia/bin:/home/jcernudagarcia/.codex/tmp/arg0/codex-arg0elUrSz:/mnt/common/jcernudagarcia/.npm-global/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/path:/home/jcernudagarcia/.npm-global/bin:/home/jcernudagarcia/vhs:/home/jcernudagarcia/.claude/local:/home/jcernudagarcia/spack/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/home/jcernudagarcia/.fzf/bin
+PKG_CONFIG_PATH=/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hdf5-1.14.5-flto63rnzjmvmt7vyv2tpguzly5aplqa/lib/pkgconfig:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pkgconf-2.2.0-3sczowe2qduemddkdtoa3bf5nm3i6s6o/lib/pkgconfig:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-og56sxzoqwjcpelrnw7cc2o3th7u7673/lib/pkgconfig:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pmix-5.0.3-mtqvcp2oursbrcnr5dnpb7iyb5htkcsg/lib/pkgconfig:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libxcrypt-4.4.35-rxnqnjba7uy5ikoqri53if76m7l7ggbh/lib/pkgconfig:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libedit-3.1-20240808-vexrvth4e32dmlqc3wmntu56dv27ocfl/lib/pkgconfig:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/krb5-1.21.3-n2getuycoz5mrcpcg6qd7jmkfw4ly4zb/lib/pkgconfig:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/zstd-1.5.6-i7n7mhjlnqlgr64smryfji2ploaetsgu/lib/pkgconfig:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/bzip2-1.0.8-ko2woy6rguqa6vr6ljv7b66h3qyhjivk/lib/pkgconfig:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/numactl-2.0.18-k2wg7ywovshpaq73uquirlsnzkhqodh2/lib/pkgconfig:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libevent-2.1.12-6hsetqmwdgwdozp2mycajf6d4tqiltgx/lib/pkgconfig:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hwloc-2.11.1-2h7d7ez5znqxnbtbsfqme6hifn34skwf/lib/pkgconfig:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libxml2-2.13.4-u6qpzqrp62r45wis36liyzuiugcmwexl/lib/pkgconfig:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/xz-5.4.6-jbodcp574bdwddmrvjxvdjriq2ctvbav/lib/pkgconfig:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libpciaccess-0.17-enmdm4mcctdtvpmrlbxbalt54xhsa66s/lib/pkgconfig:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/ncurses-6.5-ez6c47qaetsfgq2xocg75my2ebnuhjxc/lib/pkgconfig:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/curl-8.10.1-jagxtouvv2tmvwyiyc7bdoumlvf5o2lc/lib/pkgconfig:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openssl-3.4.0-tsej5dglslyhrikyjv5ykahrw6khbna7/lib64/pkgconfig:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/zlib-ng-2.2.1-nnfxnggxva6jcikon24aoj4yiycmcei3/lib/pkgconfig:/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/nghttp2-1.63.0-7qd2hx2zbupazubeokkpyssmcpbza4ro/lib/pkgconfig:/usr/share/pkgconfig:/usr/lib/pkgconfig
+h5cc=/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hdf5-1.14.5-flto63rnzjmvmt7vyv2tpguzly5aplqa/bin/h5cc
+        SUMMARY OF THE HDF5 CONFIGURATION
+        =================================
+
+General Information:
+-------------------
+                   HDF5 Version: 1.14.5
+                  Configured on: 2026-02-28
+                  Configured by: Unix Makefiles
+                    Host system: Linux-5.15.0-164-generic
+              Uname information: Linux
+                       Byte sex: little-endian
+             Installation point: /mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hdf5-1.14.5-flto63rnzjmvmt7vyv2tpguzly5aplqa
+
+Compiling Options:
+------------------
+                     Build Mode: Release
+              Debugging Symbols: OFF
+                        Asserts: OFF
+                      Profiling: OFF
+             Optimization Level: OFF
+
+Linking Options:
+----------------
+                      Libraries: 
+  Statically Linked Executables: OFF
+                        LDFLAGS: 
+                     H5_LDFLAGS: 
+                     AM_LDFLAGS: 
+                Extra libraries: m;dl;/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-og56sxzoqwjcpelrnw7cc2o3th7u7673/lib/libmpi.so
+                       Archiver: /usr/bin/ar
+                       AR_FLAGS:
+                         Ranlib: /usr/bin/ranlib
+
+Languages:
+----------
+                              C: YES
+                     C Compiler: /mnt/common/jcernudagarcia/spack/lib/spack/env/gcc/gcc 11.4.0
+                       CPPFLAGS: 
+                    H5_CPPFLAGS: 
+                    AM_CPPFLAGS: 
+                         CFLAGS:   -std=c99 -Wno-error=implicit-function-declaration -fstdarg-opt -fdiagnostics-urls=never -fno-diagnostics-color -fmessage-length=0
+                      H5_CFLAGS: -Wall;-Wcast-qual;-Wconversion;-Wextra;-Wfloat-equal;-Wformat=2;-Winit-self;-Winvalid-pch;-Wmissing-include-dirs;-Wshadow;-Wundef;-Wwrite-strings;-pedantic;-Wno-c++-compat;-Wbad-function-cast;-Wcast-align;-Wformat;-Wimplicit-function-declaration;-Wint-to-pointer-cast;-Wmissing-declarations;-Wmissing-prototypes;-Wnested-externs;-Wold-style-definition;-Wpacked;-Wpointer-sign;-Wpointer-to-int-cast;-Wredundant-decls;-Wstrict-prototypes;-Wswitch;-Wunused-but-set-variable;-Wunused-variable;-Wunused-function;-Wunused-parameter;-finline-functions;-Wno-aggregate-return;-Wno-inline;-Wno-missing-format-attribute;-Wno-missing-noreturn;-Wno-overlength-strings;-Wlarger-than=2560;-Wlogical-op;-Wframe-larger-than=16384;-Wpacked-bitfield-compat;-Wsync-nand;-Wno-unsuffixed-float-constants;-Wdouble-promotion;-Wtrampolines;-Wstack-usage=8192;-Wmaybe-uninitialized;-Wno-jump-misses-init;-Wstrict-overflow=2;-Wno-suggest-attribute=const;-Wno-suggest-attribute=noreturn;-Wno-suggest-attribute=pure;-Wno-suggest-attribute=format;-Wdate-time;-Warray-bounds=2;-Wc99-c11-compat;-Wincompatible-pointer-types;-Wint-conversion;-Wshadow;-Wduplicated-cond;-Whsa;-Wnormalized;-Wnull-dereference;-Wunused-const-variable;-Walloca;-Walloc-zero;-Wduplicated-branches;-Wformat-overflow=2;-Wformat-truncation=1;-Wrestrict;-Wattribute-alias;-Wshift-overflow=2;-Wcast-function-type;-Wmaybe-uninitialized;-Wcast-align=strict;-Wno-suggest-attribute=cold;-Wno-suggest-attribute=malloc;-Wattribute-alias=2;-Wmissing-profile;-Wc11-c2x-compat
+                      AM_CFLAGS: 
+               Shared C Library: YES
+               Static C Library: YES
+
+                        Fortran: OFF
+               Fortran Compiler:  
+                  Fortran Flags: 
+               H5 Fortran Flags: 
+               AM Fortran Flags: 
+         Shared Fortran Library: YES
+         Static Fortran Library: YES
+               Module Directory: /tmp/jcernudagarcia/spack-stage/spack-stage-hdf5-1.14.5-flto63rnzjmvmt7vyv2tpguzly5aplqa/spack-build-flto63r/mod
+
+                            C++: OFF
+                   C++ Compiler:  
+                      C++ Flags: 
+                   H5 C++ Flags: 
+                   AM C++ Flags: 
+             Shared C++ Library: YES
+             Static C++ Library: YES
+
+                           JAVA: OFF
+                  JAVA Compiler:  
+
+Features:
+---------
+                     Parallel HDF5: ON
+  Parallel Filtered Dataset Writes: ON
+                Large Parallel I/O: ON
+                High-level library: OFF
+Dimension scales w/ new references: 
+                  Build HDF5 Tests: OFF
+                  Build HDF5 Tools: ON
+                   Build GIF Tools: 
+                      Threadsafety: OFF
+               Default API mapping: v114
+    With deprecated public symbols: ON
+            I/O filters (external):  DEFLATE
+h5c++=/usr/bin/bash: line 11: h5c++: command not found
+pkg-config hdf5:
+1.14.5
+-I/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hdf5-1.14.5-flto63rnzjmvmt7vyv2tpguzly5aplqa/include -L/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hdf5-1.14.5-flto63rnzjmvmt7vyv2tpguzly5aplqa/lib -lhdf5
+hdf5 files:
+/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hdf5-1.14.5-flto63rnzjmvmt7vyv2tpguzly5aplqa/include/hdf5.h
+/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hdf5-1.14.5-flto63rnzjmvmt7vyv2tpguzly5aplqa/lib/libhdf5.so
+/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hdf5-1.14.5-flto63rnzjmvmt7vyv2tpguzly5aplqa/lib/libhdf5_tools.so
+/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hdf5-1.14.5-flto63rnzjmvmt7vyv2tpguzly5aplqa/cmake/hdf5-config.cmake
+
+[hdf5 cxx candidate diagnostics]
+
+-- module hdf5/parallel/1.14.0 --
+Lmod has detected the following error: Cannot load module
+"hdf5/parallel/1.14.0" without these module(s) loaded:
+   mpich/4.1.1
+
+While processing the following module(s):
+    Module fullname       Module Filename
+    ---------------       ---------------
+    hdf5/parallel/1.14.0  /mnt/repo/software/modules/hdf5/parallel/1.14.0.lua
+
+load failed
+
+-- module openmpi/5.0.5-cphqvsy/gcc/11.4.0/hdf5/1.14.5-raazvt3 --
+h5cc=/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hdf5-1.14.5-raazvt3m22s5rj57bdyvwo5mmzvkpbmm/bin/h5cc
+h5c++=                   HDF5 Version: 1.14.5
+                            C++: OFF
+                   C++ Compiler:  
+                      C++ Flags: 
+                   H5 C++ Flags: 
+                   AM C++ Flags: 
+             Shared C++ Library: YES
+             Static C++ Library: YES
+                     Parallel HDF5: ON
+                      Threadsafety: OFF
+/usr/bin/bash: line 10: h5c++: command not found
+CMAKE_PREFIX_PATH=/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hdf5-1.14.5-raazvt3m22s5rj57bdyvwo5mmzvkpbmm:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pkgconf-2.2.0-3sczowe2qduemddkdtoa3bf5nm3i6s6o:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/ucx-1.17.0-mhbxjenw6mqannmlxz7d77oarm7l5kwo:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pmix-5.0.3-cxagayvsqbxkmq6sjurjtnmvtp6c7lup:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openssh-9.9p1-4gjrqhdzob74ygqvcbi5gscbcnszpauo:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libxcrypt-4.4.35-csiftbwmmk7c4s36cyj6u37jsd3npzqf:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libedit-3.1-20240808-vexrvth4e32dmlqc3wmntu56dv27ocfl:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/krb5-1.21.3-5l7knmkpbdjh7luwh7zk5zm7o2pvnbko:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/gettext-0.22.5-pym22n7mwm2dpjm4qk6fl3bkm2dobyoz:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/tar-1.34-ekkjnqg6352pzwlps657zvnue2e3uv3p:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/zstd-1.5.6-i7n7mhjlnqlgr64smryfji2ploaetsgu:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pigz-2.8-b34vblb5o26bpxzirw3zrisb3bj46bq5:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/bzip2-1.0.8-ko2woy6rguqa6vr6ljv7b66h3qyhjivk:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/numactl-2.0.18-qjpirtpvpwiute5lq56v4vcnt3pbuaxw:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libevent-2.1.12-45gsoeofzlcobggzrve3f6ybmtgifoqi:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openssl-3.4.0-ilowtdmrxz7irht34o7jytswo4psmck2:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hwloc-2.11.1-ofwh4t3mcutrdzk5xsyfqzxvgay3rhs7:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/ncurses-6.5-ez6c47qaetsfgq2xocg75my2ebnuhjxc:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libxml2-2.13.4-3b76nt2ws5kfyhddmthdj7pyyvfti7ki:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/zlib-ng-2.2.1-dribu5iuv62zmmyraw743tiwibr3dwwo:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/xz-5.4.6-jbodcp574bdwddmrvjxvdjriq2ctvbav:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libiconv-1.17-wm5g66gzc3ecwd3ijrsxlcjivmsnyclu:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libpciaccess-0.17-enmdm4mcctdtvpmrlbxbalt54xhsa66s:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/gcc-runtime-11.4.0-owu4kv5u3pwyjw4pj6pl36rnjkxdjimi
+PKG_CONFIG_PATH=/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hdf5-1.14.5-raazvt3m22s5rj57bdyvwo5mmzvkpbmm:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hdf5-1.14.5-raazvt3m22s5rj57bdyvwo5mmzvkpbmm/lib/pkgconfig:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pkgconf-2.2.0-3sczowe2qduemddkdtoa3bf5nm3i6s6o:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pkgconf-2.2.0-3sczowe2qduemddkdtoa3bf5nm3i6s6o/lib/pkgconfig:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/lib/pkgconfig:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/ucx-1.17.0-mhbxjenw6mqannmlxz7d77oarm7l5kwo:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/ucx-1.17.0-mhbxjenw6mqannmlxz7d77oarm7l5kwo/lib/pkgconfig:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pmix-5.0.3-cxagayvsqbxkmq6sjurjtnmvtp6c7lup:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pmix-5.0.3-cxagayvsqbxkmq6sjurjtnmvtp6c7lup/lib/pkgconfig:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openssh-9.9p1-4gjrqhdzob74ygqvcbi5gscbcnszpauo:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libxcrypt-4.4.35-csiftbwmmk7c4s36cyj6u37jsd3npzqf:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libxcrypt-4.4.35-csiftbwmmk7c4s36cyj6u37jsd3npzqf/lib/pkgconfig:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libedit-3.1-20240808-vexrvth4e32dmlqc3wmntu56dv27ocfl:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libedit-3.1-20240808-vexrvth4e32dmlqc3wmntu56dv27ocfl/lib/pkgconfig:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/krb5-1.21.3-5l7knmkpbdjh7luwh7zk5zm7o2pvnbko:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/krb5-1.21.3-5l7knmkpbdjh7luwh7zk5zm7o2pvnbko/lib/pkgconfig:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/gettext-0.22.5-pym22n7mwm2dpjm4qk6fl3bkm2dobyoz:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/tar-1.34-ekkjnqg6352pzwlps657zvnue2e3uv3p:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/zstd-1.5.6-i7n7mhjlnqlgr64smryfji2ploaetsgu:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/zstd-1.5.6-i7n7mhjlnqlgr64smryfji2ploaetsgu/lib/pkgconfig:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pigz-2.8-b34vblb5o26bpxzirw3zrisb3bj46bq5:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/bzip2-1.0.8-ko2woy6rguqa6vr6ljv7b66h3qyhjivk:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/bzip2-1.0.8-ko2woy6rguqa6vr6ljv7b66h3qyhjivk/lib/pkgconfig:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/numactl-2.0.18-qjpirtpvpwiute5lq56v4vcnt3pbuaxw:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/numactl-2.0.18-qjpirtpvpwiute5lq56v4vcnt3pbuaxw/lib/pkgconfig:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libevent-2.1.12-45gsoeofzlcobggzrve3f6ybmtgifoqi:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libevent-2.1.12-45gsoeofzlcobggzrve3f6ybmtgifoqi/lib/pkgconfig:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openssl-3.4.0-ilowtdmrxz7irht34o7jytswo4psmck2:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openssl-3.4.0-ilowtdmrxz7irht34o7jytswo4psmck2/lib64/pkgconfig:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hwloc-2.11.1-ofwh4t3mcutrdzk5xsyfqzxvgay3rhs7:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hwloc-2.11.1-ofwh4t3mcutrdzk5xsyfqzxvgay3rhs7/lib/pkgconfig:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/ncurses-6.5-ez6c47qaetsfgq2xocg75my2ebnuhjxc:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/ncurses-6.5-ez6c47qaetsfgq2xocg75my2ebnuhjxc/lib/pkgconfig:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libxml2-2.13.4-3b76nt2ws5kfyhddmthdj7pyyvfti7ki:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libxml2-2.13.4-3b76nt2ws5kfyhddmthdj7pyyvfti7ki/lib/pkgconfig:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/zlib-ng-2.2.1-dribu5iuv62zmmyraw743tiwibr3dwwo:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/zlib-ng-2.2.1-dribu5iuv62zmmyraw743tiwibr3dwwo/lib/pkgconfig:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/xz-5.4.6-jbodcp574bdwddmrvjxvdjriq2ctvbav:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/xz-5.4.6-jbodcp574bdwddmrvjxvdjriq2ctvbav/lib/pkgconfig:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libiconv-1.17-wm5g66gzc3ecwd3ijrsxlcjivmsnyclu:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libpciaccess-0.17-enmdm4mcctdtvpmrlbxbalt54xhsa66s:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/libpciaccess-0.17-enmdm4mcctdtvpmrlbxbalt54xhsa66s/lib/pkgconfig:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/gcc-runtime-11.4.0-owu4kv5u3pwyjw4pj6pl36rnjkxdjimi:/usr/share/pkgconfig:/usr/lib/pkgconfig
+
+-- module openmpi/5.0.5-x2kvx5l/gcc/11.4.0/hdf5/1.14.5-fhssvl7 --
+h5cc=/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hdf5-1.14.5-fhssvl7pgoj3imsvizzgkqhhcmkzwyd6/bin/h5cc
+h5c++=                   HDF5 Version: 1.14.5
+                            C++: OFF
+                   C++ Compiler:  
+                      C++ Flags: 
+                   H5 C++ Flags: 
+                   AM C++ Flags: 
+             Shared C++ Library: YES
+             Static C++ Library: YES
+                     Parallel HDF5: ON
+                      Threadsafety: OFF
+/usr/bin/bash: line 10: h5c++: command not found
+CMAKE_PREFIX_PATH=/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hdf5-1.14.5-fhssvl7pgoj3imsvizzgkqhhcmkzwyd6:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/zlib-ng-2.2.1-dribu5iuv62zmmyraw743tiwibr3dwwo:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pkgconf-2.2.0-3sczowe2qduemddkdtoa3bf5nm3i6s6o:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/gcc-runtime-11.4.0-owu4kv5u3pwyjw4pj6pl36rnjkxdjimi
+PKG_CONFIG_PATH=/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hdf5-1.14.5-fhssvl7pgoj3imsvizzgkqhhcmkzwyd6:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hdf5-1.14.5-fhssvl7pgoj3imsvizzgkqhhcmkzwyd6/lib/pkgconfig:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/zlib-ng-2.2.1-dribu5iuv62zmmyraw743tiwibr3dwwo:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/zlib-ng-2.2.1-dribu5iuv62zmmyraw743tiwibr3dwwo/lib/pkgconfig:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pkgconf-2.2.0-3sczowe2qduemddkdtoa3bf5nm3i6s6o:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pkgconf-2.2.0-3sczowe2qduemddkdtoa3bf5nm3i6s6o/lib/pkgconfig:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/lib/pkgconfig:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/gcc-runtime-11.4.0-owu4kv5u3pwyjw4pj6pl36rnjkxdjimi:/usr/share/pkgconfig:/usr/lib/pkgconfig
+
+-- module openmpi/5.0.5-x2kvx5l/gcc/11.4.0/hdf5/1.14.5-plr6lpu --
+h5cc=/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hdf5-1.14.5-plr6lputauhiacjyxvnl43oyj7fekuev/bin/h5cc
+h5c++=                   HDF5 Version: 1.14.5
+                            C++: OFF
+                   C++ Compiler:  
+                      C++ Flags: 
+                   H5 C++ Flags: 
+                   AM C++ Flags: 
+             Shared C++ Library: YES
+             Static C++ Library: YES
+                     Parallel HDF5: ON
+                      Threadsafety: ON
+/usr/bin/bash: line 10: h5c++: command not found
+CMAKE_PREFIX_PATH=/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hdf5-1.14.5-plr6lputauhiacjyxvnl43oyj7fekuev:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/zlib-ng-2.2.1-dribu5iuv62zmmyraw743tiwibr3dwwo:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pkgconf-2.2.0-3sczowe2qduemddkdtoa3bf5nm3i6s6o:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/gcc-runtime-11.4.0-owu4kv5u3pwyjw4pj6pl36rnjkxdjimi
+PKG_CONFIG_PATH=/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hdf5-1.14.5-plr6lputauhiacjyxvnl43oyj7fekuev:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hdf5-1.14.5-plr6lputauhiacjyxvnl43oyj7fekuev/lib/pkgconfig:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/zlib-ng-2.2.1-dribu5iuv62zmmyraw743tiwibr3dwwo:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/zlib-ng-2.2.1-dribu5iuv62zmmyraw743tiwibr3dwwo/lib/pkgconfig:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pkgconf-2.2.0-3sczowe2qduemddkdtoa3bf5nm3i6s6o:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pkgconf-2.2.0-3sczowe2qduemddkdtoa3bf5nm3i6s6o/lib/pkgconfig:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/lib/pkgconfig:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/gcc-runtime-11.4.0-owu4kv5u3pwyjw4pj6pl36rnjkxdjimi:/usr/share/pkgconfig:/usr/lib/pkgconfig
+
+-- module openmpi/5.0.5-x2kvx5l/gcc/11.4.0/hdf5/1.14.5-5zbyeqh --
+h5cc=/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hdf5-1.14.5-5zbyeqhv3xpkaan45z3voqb263b7whyj/bin/h5cc
+h5c++=/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hdf5-1.14.5-5zbyeqhv3xpkaan45z3voqb263b7whyj/bin/h5c++
+                   HDF5 Version: 1.14.5
+                            C++: ON
+                   C++ Compiler: /mnt/repo/software/spack/spack/lib/spack/env/gcc/g++ 11.4.0
+                      C++ Flags:    -fstdarg-opt -fdiagnostics-urls=never -fno-diagnostics-color -fmessage-length=0
+                   H5 C++ Flags: -Wall;-Wcast-qual;-Wconversion;-Wctor-dtor-privacy;-Weffc++;-Wextra;-Wfloat-equal;-Wformat=2;-Winit-self;-Winvalid-pch;-Wmissing-include-dirs;-Wnon-virtual-dtor;-Wold-style-cast;-Woverloaded-virtual;-Wreorder;-Wshadow;-Wsign-promo;-Wundef;-Wwrite-strings;-pedantic;-Wcast-align;-Wmissing-declarations;-Wpacked;-Wredundant-decls;-Wswitch;-Wunused-but-set-variable;-Wunused-function;-Wunused-variable;-Wunused-parameter;-Wno-aggregate-return;-Wno-inline;-Wno-missing-format-attribute;-Wno-missing-noreturn;-Wno-overlength-strings;-Wlarger-than=2560;-Wlogical-op;-Wframe-larger-than=16384;-Wpacked-bitfield-compat;-Wsync-nand;-Wdouble-promotion;-Wtrampolines;-Wstack-usage=8192;-Wmaybe-uninitialized;-Wstrict-overflow=2;-Wno-suggest-attribute=const;-Wno-suggest-attribute=noreturn;-Wno-suggest-attribute=pure;-Wno-suggest-attribute=format;-Wdate-time;-Wopenmp-simd;-Warray-bounds=2;-Wshadow;-Wduplicated-cond;-Whsa;-Wnormalized;-Wnull-dereference;-Wunused-const-variable;-Wattribute-alias;-Wshift-overflow=2;-Wcast-function-type;-Wmaybe-uninitialized;-Wcast-align=strict;-Wno-suggest-attribute=cold;-Wno-suggest-attribute=malloc;-Wattribute-alias=2;-Wmissing-profile;-Wno-deprecated-copy
+                   AM C++ Flags: 
+             Shared C++ Library: YES
+             Static C++ Library: YES
+                     Parallel HDF5: ON
+                      Threadsafety: OFF
+/usr/bin/g++ -show -lhdf5_cpp -lhdf5
+CMAKE_PREFIX_PATH=/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hdf5-1.14.5-5zbyeqhv3xpkaan45z3voqb263b7whyj:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/zlib-ng-2.2.1-dribu5iuv62zmmyraw743tiwibr3dwwo:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pkgconf-2.2.0-3sczowe2qduemddkdtoa3bf5nm3i6s6o:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/gcc-runtime-11.4.0-owu4kv5u3pwyjw4pj6pl36rnjkxdjimi
+PKG_CONFIG_PATH=/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hdf5-1.14.5-5zbyeqhv3xpkaan45z3voqb263b7whyj:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hdf5-1.14.5-5zbyeqhv3xpkaan45z3voqb263b7whyj/lib/pkgconfig:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/zlib-ng-2.2.1-dribu5iuv62zmmyraw743tiwibr3dwwo:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/zlib-ng-2.2.1-dribu5iuv62zmmyraw743tiwibr3dwwo/lib/pkgconfig:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pkgconf-2.2.0-3sczowe2qduemddkdtoa3bf5nm3i6s6o:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pkgconf-2.2.0-3sczowe2qduemddkdtoa3bf5nm3i6s6o/lib/pkgconfig:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/lib/pkgconfig:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/gcc-runtime-11.4.0-owu4kv5u3pwyjw4pj6pl36rnjkxdjimi:/usr/share/pkgconfig:/usr/lib/pkgconfig
+
+[baseline build attempt 3 direct cmake with HDF5 CXX module]
+started=2026-05-11T22:22:08-05:00
+
+[consistent module load diagnostic]
+load_status=0
+
+Currently Loaded Modules:
+  1) glibc/2.35-b34moeb
+  2) gcc-runtime/11.4.0-owu4kv5
+  3) nghttp2/1.63.0-7qd2hx2
+  4) zlib-ng/2.2.1-dribu5i
+  5) openssl/3.4.0-ilowtdm
+  6) curl/8.10.1-7ha27jj
+  7) gmake/4.4.1-fxk44dg
+  8) ncurses/6.5-ez6c47q
+  9) gcc/11.4.0/cmake/3.30.5-pq5ntgo
+ 10) gcc/11.4.0/argobots/1.1-indjy5q
+ 11) gcc/11.4.0/libfabric/1.22.0-lyviqpl
+ 12) boost/1.86.0-cs4onpk
+ 13) libnl/3.3.0-xztyu5v
+ 14) rdma-core/52.0-oflqvy5
+ 15) ucx/1.17.0-rofkl46
+ 16) libfabric/1.22.0-eclvajk
+ 17) gcc/11.4.0/mercury/2.3.1-kcmn6u3
+ 18) argobots/1.1-indjy5q
+ 19) json-c/0.16-2ofsb6t
+ 20) mercury/2.3.1-kcmn6u3
+ 21) gcc/11.4.0/mochi-margo/0.17.0-llh62si
+ 22) cereal/1.3.2-wwkdnuj
+ 23) mochi-margo/0.17.0-llh62si
+ 24) gcc/11.4.0/mochi-thallium/0.10.1-2pari3f
+ 25) gcc/11.4.0/boost/1.86.0-cs4onpk
+ 26) fmt/11.0.2-6qgv5bv
+ 27) gcc/11.4.0/spdlog/1.14.1-y4quhau
+ 28) gcc/11.4.0/googletest/1.12.1-al2evss
+ 29) gcc/11.4.0/json-c/0.16-2ofsb6t
+ 30) gcc/11.4.0/pkgconf/2.2.0-3sczowe
+ 31) bzip2/1.0.8-ko2woy6
+ 32) libmd/1.0.4-7syqes5
+ 33) libbsd/0.12.2-cqoivda
+ 34) expat/2.6.4-crjtgjd
+ 35) readline/8.2-sf7kdl7
+ 36) gdbm/1.23-vk5wn4d
+ 37) libiconv/1.17-wm5g66g
+ 38) xz/5.4.6-jbodcp5
+ 39) libxml2/2.13.4-3b76nt2
+ 40) pigz/2.8-b34vblb
+ 41) zstd/1.5.6-i7n7mhj
+ 42) tar/1.34-ekkjnqg
+ 43) gettext/0.22.5-pym22n7
+ 44) libffi/3.4.6-3dramwh
+ 45) libxcrypt/4.4.35-csiftbw
+ 46) sqlite/3.46.0-g4jup4g
+ 47) util-linux-uuid/2.40.2-ut7sq7q
+ 48) gcc/11.4.0/python/3.11.9-zg4555e
+ 49) python/3.11.9-zg4555e
+ 50) python-venv/1.0-u5vf2gn
+ 51) gcc/11.4.0/py-pybind11/2.13.5-pngixx5
+ 52) openmpi/5.0.5-x2kvx5l
+ 53) pkgconf/2.2.0-3sczowe
+ 54) openmpi/5.0.5-x2kvx5l/gcc/11.4.0/hdf5/1.14.5-5zbyeqh
+
+ 
+
+cmake=/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/cmake-3.30.5-pq5ntgo32v2psq3zvmpdfhfy3dnerodh/bin/cmake
+h5c++=/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/hdf5-1.14.5-5zbyeqhv3xpkaan45z3voqb263b7whyj/bin/h5c++
+python3=/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/python-venv-1.0-u5vf2gn7okmwqpjrqavjygjg64gpbkll/bin/python3
+pkg-config=/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pkgconf-2.2.0-3sczowe2qduemddkdtoa3bf5nm3i6s6o/bin/pkg-config
+0.17.0
+                   HDF5 Version: 1.14.5
+                            C++: ON
+                   C++ Compiler: /mnt/repo/software/spack/spack/lib/spack/env/gcc/g++ 11.4.0
+                      C++ Flags:    -fstdarg-opt -fdiagnostics-urls=never -fno-diagnostics-color -fmessage-length=0
+                   H5 C++ Flags: -Wall;-Wcast-qual;-Wconversion;-Wctor-dtor-privacy;-Weffc++;-Wextra;-Wfloat-equal;-Wformat=2;-Winit-self;-Winvalid-pch;-Wmissing-include-dirs;-Wnon-virtual-dtor;-Wold-style-cast;-Woverloaded-virtual;-Wreorder;-Wshadow;-Wsign-promo;-Wundef;-Wwrite-strings;-pedantic;-Wcast-align;-Wmissing-declarations;-Wpacked;-Wredundant-decls;-Wswitch;-Wunused-but-set-variable;-Wunused-function;-Wunused-variable;-Wunused-parameter;-Wno-aggregate-return;-Wno-inline;-Wno-missing-format-attribute;-Wno-missing-noreturn;-Wno-overlength-strings;-Wlarger-than=2560;-Wlogical-op;-Wframe-larger-than=16384;-Wpacked-bitfield-compat;-Wsync-nand;-Wdouble-promotion;-Wtrampolines;-Wstack-usage=8192;-Wmaybe-uninitialized;-Wstrict-overflow=2;-Wno-suggest-attribute=const;-Wno-suggest-attribute=noreturn;-Wno-suggest-attribute=pure;-Wno-suggest-attribute=format;-Wdate-time;-Wopenmp-simd;-Warray-bounds=2;-Wshadow;-Wduplicated-cond;-Whsa;-Wnormalized;-Wnull-dereference;-Wunused-const-variable;-Wattribute-alias;-Wshift-overflow=2;-Wcast-function-type;-Wmaybe-uninitialized;-Wcast-align=strict;-Wno-suggest-attribute=cold;-Wno-suggest-attribute=malloc;-Wattribute-alias=2;-Wmissing-profile;-Wno-deprecated-copy
+                   AM C++ Flags: 
+             Shared C++ Library: YES
+             Static C++ Library: YES
+                     Parallel HDF5: ON
+                      Threadsafety: OFF
+
+[baseline build attempt 4 consistent /mnt/repo module stack]
+started=2026-05-11T22:22:56-05:00
+
+Currently Loaded Modules:
+  1) glibc/2.35-b34moeb
+  2) gcc-runtime/11.4.0-owu4kv5
+  3) nghttp2/1.63.0-7qd2hx2
+  4) zlib-ng/2.2.1-dribu5i
+  5) openssl/3.4.0-ilowtdm
+  6) curl/8.10.1-7ha27jj
+  7) gmake/4.4.1-fxk44dg
+  8) ncurses/6.5-ez6c47q
+  9) gcc/11.4.0/cmake/3.30.5-pq5ntgo
+ 10) gcc/11.4.0/argobots/1.1-indjy5q
+ 11) gcc/11.4.0/libfabric/1.22.0-lyviqpl
+ 12) boost/1.86.0-cs4onpk
+ 13) libnl/3.3.0-xztyu5v
+ 14) rdma-core/52.0-oflqvy5
+ 15) ucx/1.17.0-rofkl46
+ 16) libfabric/1.22.0-eclvajk
+ 17) gcc/11.4.0/mercury/2.3.1-kcmn6u3
+ 18) argobots/1.1-indjy5q
+ 19) json-c/0.16-2ofsb6t
+ 20) mercury/2.3.1-kcmn6u3
+ 21) gcc/11.4.0/mochi-margo/0.17.0-llh62si
+ 22) cereal/1.3.2-wwkdnuj
+ 23) mochi-margo/0.17.0-llh62si
+ 24) gcc/11.4.0/mochi-thallium/0.10.1-2pari3f
+ 25) gcc/11.4.0/boost/1.86.0-cs4onpk
+ 26) fmt/11.0.2-6qgv5bv
+ 27) gcc/11.4.0/spdlog/1.14.1-y4quhau
+ 28) gcc/11.4.0/googletest/1.12.1-al2evss
+ 29) gcc/11.4.0/json-c/0.16-2ofsb6t
+ 30) gcc/11.4.0/pkgconf/2.2.0-3sczowe
+ 31) bzip2/1.0.8-ko2woy6
+ 32) libmd/1.0.4-7syqes5
+ 33) libbsd/0.12.2-cqoivda
+ 34) expat/2.6.4-crjtgjd
+ 35) readline/8.2-sf7kdl7
+ 36) gdbm/1.23-vk5wn4d
+ 37) libiconv/1.17-wm5g66g
+ 38) xz/5.4.6-jbodcp5
+ 39) libxml2/2.13.4-3b76nt2
+ 40) pigz/2.8-b34vblb
+ 41) zstd/1.5.6-i7n7mhj
+ 42) tar/1.34-ekkjnqg
+ 43) gettext/0.22.5-pym22n7
+ 44) libffi/3.4.6-3dramwh
+ 45) libxcrypt/4.4.35-csiftbw
+ 46) sqlite/3.46.0-g4jup4g
+ 47) util-linux-uuid/2.40.2-ut7sq7q
+ 48) gcc/11.4.0/python/3.11.9-zg4555e
+ 49) python/3.11.9-zg4555e
+ 50) python-venv/1.0-u5vf2gn
+ 51) gcc/11.4.0/py-pybind11/2.13.5-pngixx5
+ 52) openmpi/5.0.5-x2kvx5l
+ 53) pkgconf/2.2.0-3sczowe
+ 54) openmpi/5.0.5-x2kvx5l/gcc/11.4.0/hdf5/1.14.5-5zbyeqh
+
+ 
+
+-- The CXX compiler identification is GNU 11.4.0
+-- The C compiler identification is GNU 11.4.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- CMAKE_BUILD_TYPE=Release
+-- CMAKE_INSTALL_PREFIX=/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent
+-- Compiling ChronoLog in Release Mode
+-- Found PkgConfig: /mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pkgconf-2.2.0-3sczowe2qduemddkdtoa3bf5nm3i6s6o/bin/pkg-config (found version "2.2.0")
+-- Checking for module 'margo'
+--   Found margo, version 0.17.0
+-- Found HDF5: hdf5-shared;hdf5_cpp-shared (found version "1.14.5") found components: C CXX
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE
+-- Checking for module 'json-c'
+--   Found json-c, version 0.16
+-- Found Python: /mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/python-venv-1.0-u5vf2gn7okmwqpjrqavjygjg64gpbkll/bin/python3 (found version "3.11.9") found components: Interpreter Development Development.Module Development.Embed
+-- Performing Test HAS_FLTO
+-- Performing Test HAS_FLTO - Success
+-- Found pybind11: /mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-pybind11-2.13.5-pngixx5435xneyfvuuj4mtxcevckdu6y/include (found version "2.13.5")
+-- Found pybind11 v2.13.5:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-pybind11-2.13.5-pngixx5435xneyfvuuj4mtxcevckdu6y/include;/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/python-3.11.9-zg4555ebtlzblojgppzbgh6ofod6wfgs/include/python3.11
+-- Found MPI_C: /mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/lib/libmpi.so (found version "3.1")
+-- Found MPI_CXX: /mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/lib/libmpi.so (found version "3.1")
+-- Found MPI: TRUE (found version "3.1")
+-- Checking for module 'margo'
+--   Found margo, version 0.17.0
+-- ChronoKVS: superbuild mode enabled
+-- CPack: rpmbuild not found — RPM packages will be skipped
+-- CPack: dpkg-deb found at /usr/bin/dpkg-deb — DEB packages will be built
+-- Configuring incomplete, errors occurred!
+
+[baseline build attempt 5 after test/performance guard]
+time=2026-05-11T22:24:52-05:00
+-- The CXX compiler identification is GNU 11.4.0
+-- The C compiler identification is GNU 11.4.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- CMAKE_BUILD_TYPE=Release
+-- CMAKE_INSTALL_PREFIX=/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent
+-- Compiling ChronoLog in Release Mode
+-- Found PkgConfig: /mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pkgconf-2.2.0-3sczowe2qduemddkdtoa3bf5nm3i6s6o/bin/pkg-config (found version "2.2.0")
+-- Checking for module 'margo'
+--   Found margo, version 0.17.0
+-- Found HDF5: hdf5-shared;hdf5_cpp-shared (found version "1.14.5") found components: C CXX
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE
+-- Checking for module 'json-c'
+--   Found json-c, version 0.16
+-- Found Python: /mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/python-venv-1.0-u5vf2gn7okmwqpjrqavjygjg64gpbkll/bin/python3 (found version "3.11.9") found components: Interpreter Development Development.Module Development.Embed
+-- Performing Test HAS_FLTO
+-- Performing Test HAS_FLTO - Success
+-- Found pybind11: /mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-pybind11-2.13.5-pngixx5435xneyfvuuj4mtxcevckdu6y/include (found version "2.13.5")
+-- Found pybind11 v2.13.5:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-pybind11-2.13.5-pngixx5435xneyfvuuj4mtxcevckdu6y/include;/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/python-3.11.9-zg4555ebtlzblojgppzbgh6ofod6wfgs/include/python3.11
+-- Found MPI_C: /mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/lib/libmpi.so (found version "3.1")
+-- Found MPI_CXX: /mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/lib/libmpi.so (found version "3.1")
+-- Found MPI: TRUE (found version "3.1")
+-- Checking for module 'margo'
+--   Found margo, version 0.17.0
+-- ChronoKVS: superbuild mode enabled
+-- Performance regression harness CMake file not present; skipping test/performance
+-- CPack: rpmbuild not found — RPM packages will be skipped
+-- CPack: dpkg-deb found at /usr/bin/dpkg-deb — DEB packages will be built
+-- Configuring done (12.0s)
+-- Generating done (0.3s)
+-- Build files have been written to: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/build-consistent/Release
+[  1%] Building CXX object Client/cpp/CMakeFiles/chronolog_client.dir/src/PlaybackQueryRpcClient.cpp.o
+[  2%] Building CXX object chrono_common/CMakeFiles/chrono_common.dir/src/city.cpp.o
+[  4%] Building CXX object Client/cpp/CMakeFiles/chronolog_client.dir/src/ClientQueryService.cpp.o
+[  5%] Building CXX object Client/cpp/CMakeFiles/chronolog_client.dir/src/ChronologClientImpl.cpp.o
+[  8%] Building CXX object Client/cpp/CMakeFiles/chronolog_client.dir/src/ChronologClient.cpp.o
+[  8%] Building CXX object Client/cpp/CMakeFiles/chronolog_client.dir/src/StorytellerClient.cpp.o
+[ 10%] Building CXX object chrono_common/CMakeFiles/chrono_common.dir/src/ConfigurationBlocks.cpp.o
+[ 11%] Building CXX object chrono_common/CMakeFiles/chrono_common.dir/src/StoryChunk.cpp.o
+[ 13%] Building CXX object Client/cpp/CMakeFiles/chronolog_client.dir/src/ClientConfiguration.cpp.o
+[ 14%] Building CXX object Client/cpp/CMakeFiles/chronolog_client.dir/src/chrono_monitor.cpp.o
+[ 16%] Building CXX object chrono_common/CMakeFiles/chrono_common.dir/src/StoryChunkExtractor.cpp.o
+[ 17%] Building CXX object chrono_common/CMakeFiles/chrono_common.dir/src/StoryChunkWriter.cpp.o
+[ 19%] Building CXX object chrono_common/CMakeFiles/chrono_common.dir/src/StoryPipeline.cpp.o
+[ 20%] Building CXX object chrono_common/CMakeFiles/chrono_common.dir/src/ChunkExtractorCSV.cpp.o
+[ 22%] Building CXX object chrono_common/CMakeFiles/chrono_common.dir/src/ChunkExtractorRDMA.cpp.o
+[ 23%] Building CXX object chrono_common/CMakeFiles/chrono_common.dir/src/RDMATransferAgent.cpp.o
+[ 25%] Linking CXX shared library libchronolog_client.so
+[ 25%] Built target chronolog_client
+[ 26%] Building CXX object Client/examples/cpp/CMakeFiles/client_lib_writer_example.dir/client_lib_writer_example.cpp.o
+[ 27%] Building CXX object Client/examples/cpp/CMakeFiles/client_lib_distributed_telemetry_writer_example.dir/client_lib_distributed_telemetry_writer_example.cpp.o
+[ 29%] Building CXX object Client/examples/cpp/CMakeFiles/client_lib_basic_example.dir/client_lib_basic_example.cpp.o
+[ 30%] Building CXX object tools/cli/CMakeFiles/client_cli.dir/client_cli.cpp.o
+[ 32%] Building CXX object Client/examples/cpp/CMakeFiles/client_lib_reader_example.dir/client_lib_reader_example.cpp.o
+[ 33%] Building CXX object Client/python/CMakeFiles/py_chronolog_client.dir/py_chronolog_client.cpp.o
+[ 35%] Building CXX object Client/examples/cpp/CMakeFiles/client_lib_reader_to_csv_example.dir/client_lib_reader_to_csv_example.cpp.o
+[ 36%] Linking CXX static library libchrono_common.a
+[ 36%] Built target chrono_common
+[ 38%] Building CXX object tools/benchmark/CMakeFiles/perf_bench.dir/perf_bench.cpp.o
+[ 39%] Linking CXX executable chrono-client-example-writer
+[ 41%] Linking CXX executable chrono-client-example-reader
+[ 42%] Linking CXX executable chrono-client-example-basic
+[ 42%] Built target client_lib_reader_example
+[ 42%] Built target client_lib_basic_example
+[ 42%] Built target client_lib_writer_example
+[ 44%] Building CXX object Plugins/chronokvs/CMakeFiles/chronokvs.dir/src/chronokvs.cpp.o
+[ 45%] Building CXX object ChronoVisor/CMakeFiles/chronovisor_server.dir/src/chronovisor_instance.cpp.o
+[ 47%] Building CXX object ChronoKeeper/CMakeFiles/chrono_keeper.dir/src/ChronoKeeperInstance.cpp.o
+[ 48%] Building CXX object Plugins/chronokvs/CMakeFiles/chronokvs.dir/src/chronokvs_mapper.cpp.o
+[ 50%] Linking CXX executable chrono-client-example-distributed-telemetry-writer
+[ 51%] Linking CXX executable chrono-client-example-reader-to-csv
+[ 51%] Built target client_lib_distributed_telemetry_writer_example
+[ 52%] Building CXX object Plugins/chronokvs/CMakeFiles/chronokvs.dir/src/chronokvs_client_adapter.cpp.o
+[ 52%] Built target client_lib_reader_to_csv_example
+[ 54%] Building CXX object ChronoKeeper/CMakeFiles/chrono_keeper.dir/src/ChronoKeeperConfiguration.cpp.o
+[ 55%] Linking CXX executable chrono-client-cli
+[ 55%] Built target client_cli
+[ 57%] Building CXX object ChronoGrapher/CMakeFiles/chrono_grapher.dir/src/ChronoGrapher.cpp.o
+[ 58%] Building CXX object ChronoVisor/CMakeFiles/chronovisor_server.dir/src/ChronoVisorConfiguration.cpp.o
+[ 60%] Building CXX object ChronoPlayer/CMakeFiles/chrono_player.dir/src/ChronoPlayer.cpp.o
+[ 61%] Linking CXX executable chrono-bench
+[ 63%] Building CXX object ChronoPlayer/CMakeFiles/chrono_player.dir/src/ChronoPlayerConfiguration.cpp.o
+[ 63%] Built target perf_bench
+[ 64%] Building CXX object ChronoPlayer/CMakeFiles/chrono_player.dir/src/PlayerDataStore.cpp.o
+[ 66%] Linking CXX shared library libchronokvs.so
+[ 67%] Building CXX object ChronoGrapher/CMakeFiles/chrono_grapher.dir/src/ChronoGrapherConfiguration.cpp.o
+[ 67%] Built target chronokvs
+[ 69%] Building CXX object ChronoVisor/CMakeFiles/chronovisor_server.dir/src/VisorClientPortal.cpp.o
+[ 70%] Building CXX object ChronoGrapher/CMakeFiles/chrono_grapher.dir/src/GrapherDataStore.cpp.o
+[ 72%] Building CXX object Plugins/chronokvs/examples/CMakeFiles/chronokvs_writer_example.dir/chronokvs_writer_example.cpp.o
+[ 73%] Linking CXX executable chrono-chronokvs-example-writer
+[ 73%] Built target chronokvs_writer_example
+[ 75%] Building CXX object ChronoKeeper/CMakeFiles/chrono_keeper.dir/src/KeeperStoryPipeline.cpp.o
+[ 76%] Linking CXX shared module py_chronolog_client.cpython-311-x86_64-linux-gnu.so
+[ 77%] Building CXX object ChronoPlayer/CMakeFiles/chrono_player.dir/src/ArchiveReadingAgent.cpp.o
+[ 79%] Building CXX object ChronoKeeper/CMakeFiles/chrono_keeper.dir/src/KeeperDataStore.cpp.o
+[ 80%] Building CXX object ChronoVisor/CMakeFiles/chronovisor_server.dir/src/ClientRegistryManager.cpp.o
+[ 82%] Building CXX object ChronoVisor/CMakeFiles/chronovisor_server.dir/src/ClientRegistryRecord.cpp.o
+[ 83%] Building CXX object Plugins/chronokvs/examples/CMakeFiles/chronokvs_reader_example.dir/chronokvs_reader_example.cpp.o
+[ 85%] Linking CXX executable chrono-keeper
+[ 86%] Linking CXX executable chrono-chronokvs-example-reader
+[ 86%] Built target chrono_keeper
+[ 88%] Building CXX object ChronoGrapher/CMakeFiles/chrono_grapher.dir/src/HDF5FileChunkExtractor.cpp.o
+[ 88%] Built target chronokvs_reader_example
+[ 89%] Building CXX object ChronoPlayer/CMakeFiles/chrono_player.dir/src/HDF5ArchiveReadingAgent.cpp.o
+[ 91%] Building CXX object ChronoPlayer/CMakeFiles/chrono_player.dir/src/PlaybackService.cpp.o
+[ 92%] Building CXX object ChronoPlayer/CMakeFiles/chrono_player.dir/src/StoryChunkTransferAgent.cpp.o
+[ 94%] Building CXX object ChronoVisor/CMakeFiles/chronovisor_server.dir/src/ChronicleMetaDirectory.cpp.o
+[ 94%] Built target py_chronolog_client
+[ 95%] Building CXX object ChronoVisor/CMakeFiles/chronovisor_server.dir/src/KeeperRegistry.cpp.o
+[ 97%] Linking CXX executable chrono-grapher
+[ 97%] Built target chrono_grapher
+[ 98%] Linking CXX executable chrono-player
+[ 98%] Built target chrono_player
+[100%] Linking CXX executable chrono-visor
+[100%] Built target chronovisor_server
+-- Install configuration: "Release"
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/lib/libchronolog_client.so.2.7.0
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/lib/libchronolog_client.so.2
+-- Set non-toolchain portion of runtime path of "/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/lib/libchronolog_client.so.2.7.0" to "/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/lib:$ORIGIN/../lib"
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/lib/libchronolog_client.so
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/include/chronolog_client.h
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/include/ClientConfiguration.h
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/include/client_errcode.h
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/include/log_level.h
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/include/chrono_monitor.h
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/lib/cmake/Chronolog/ChronologTargets.cmake
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/lib/cmake/Chronolog/ChronologTargets-release.cmake
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/default-chrono-client-conf.json
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/lib/py_chronolog_client.cpython-311-x86_64-linux-gnu.so
+-- Set non-toolchain portion of runtime path of "/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/lib/py_chronolog_client.cpython-311-x86_64-linux-gnu.so" to "/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/lib:$ORIGIN/../lib"
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/examples/chrono-client-example-writer
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/examples/chrono-client-example-reader
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/examples/chrono-client-example-basic
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/examples/chrono-client-example-distributed-telemetry-writer
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/examples/chrono-client-example-reader-to-csv
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/bin/chrono-visor
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/conf/default-chrono-conf.json
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/bin/chrono-keeper
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/bin/chrono-grapher
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/bin/chrono-player
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/cli/chrono-client-cli
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/examples/chrono-chronokvs-example-writer
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/examples/chrono-chronokvs-example-reader
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/lib/libchronokvs.so.2.7.0
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/lib/libchronokvs.so.2
+-- Set non-toolchain portion of runtime path of "/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/lib/libchronokvs.so.2.7.0" to "/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/lib:$ORIGIN/../lib"
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/lib/libchronokvs.so
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/include/chronokvs.h
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/include/chronokvs_logger.h
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/include/chronokvs_types.h
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/lib/cmake/Chronolog/ChronologConfig.cmake
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/lib/cmake/Chronolog/ChronologConfigVersion.cmake
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/lib/pkgconfig/chronolog.pc
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/include/chronolog/version.h
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/LICENSE
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/README.md
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/deploy/deploy_local.sh
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/deploy/deploy_cluster.sh
+/home/jcernudagarcia/chronolog-opt/chronolog/.agent/build-consistent/Release/ChronoGrapher/chrono-grapher
+/home/jcernudagarcia/chronolog-opt/chronolog/.agent/build-consistent/Release/ChronoKeeper/chrono-keeper
+/home/jcernudagarcia/chronolog-opt/chronolog/.agent/build-consistent/Release/ChronoPlayer/chrono-player
+/home/jcernudagarcia/chronolog-opt/chronolog/.agent/build-consistent/Release/ChronoVisor/chrono-visor
+/home/jcernudagarcia/chronolog-opt/chronolog/.agent/build-consistent/Release/Client/cpp/libchronolog_client.so.2.7.0
+/home/jcernudagarcia/chronolog-opt/chronolog/.agent/build-consistent/Release/Client/examples/cpp/chrono-client-example-basic
+/home/jcernudagarcia/chronolog-opt/chronolog/.agent/build-consistent/Release/Client/examples/cpp/chrono-client-example-distributed-telemetry-writer
+/home/jcernudagarcia/chronolog-opt/chronolog/.agent/build-consistent/Release/Client/examples/cpp/chrono-client-example-reader
+/home/jcernudagarcia/chronolog-opt/chronolog/.agent/build-consistent/Release/Client/examples/cpp/chrono-client-example-reader-to-csv
+/home/jcernudagarcia/chronolog-opt/chronolog/.agent/build-consistent/Release/Client/examples/cpp/chrono-client-example-writer
+/home/jcernudagarcia/chronolog-opt/chronolog/.agent/build-consistent/Release/Client/python/py_chronolog_client.cpython-311-x86_64-linux-gnu.so
+/home/jcernudagarcia/chronolog-opt/chronolog/.agent/build-consistent/Release/Plugins/chronokvs/examples/chrono-chronokvs-example-reader
+/home/jcernudagarcia/chronolog-opt/chronolog/.agent/build-consistent/Release/Plugins/chronokvs/examples/chrono-chronokvs-example-writer
+/home/jcernudagarcia/chronolog-opt/chronolog/.agent/build-consistent/Release/tools/benchmark/chrono-bench
+/home/jcernudagarcia/chronolog-opt/chronolog/.agent/build-consistent/Release/tools/cli/chrono-client-cli
+/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/bin/chrono-grapher
+/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/bin/chrono-keeper
+/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/bin/chrono-player
+/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/bin/chrono-visor
+/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/examples/chrono-chronokvs-example-reader
+/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/examples/chrono-chronokvs-example-writer
+/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/examples/chrono-client-example-basic
+/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/examples/chrono-client-example-distributed-telemetry-writer
+/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/examples/chrono-client-example-reader
+/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/examples/chrono-client-example-reader-to-csv
+/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/examples/chrono-client-example-writer
+/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/benchmark/chrono-bench
+/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-consistent/chronolog/tools/cli/chrono-client-cli
+time=2026-05-11T22:25:48-05:00
+
+[baseline build checkpoint validation]
+2026-05-11T22:26:47-05:00
+baseline build checkpoint validation: ok
