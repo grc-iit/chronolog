@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Build optimization-loop history tables and time-series figures."""
+"""Build explicit ProfileForge loop-history tables and figures.
+
+The top-level profiling history is intentionally sparse. It is not a
+validation-run scraper. New loop iterations are added by editing
+data/history/iteration_map.csv, then running this script.
+"""
 
 from __future__ import annotations
 
@@ -14,30 +19,34 @@ import matplotlib.pyplot as plt
 
 ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = ROOT.parent
-RESULTS = REPO_ROOT / ".agent" / "results"
 DATA = ROOT / "data" / "history"
 FIGURES = ROOT / "figures"
 
-TIMESTAMP_RE = re.compile(r"(\d{8}-\d{6})")
+ITERATION_MAP = DATA / "iteration_map.csv"
+FIXED_BASELINES = DATA / "fixed_baselines.csv"
+
 TAU_DURATION_RE = re.compile(
     r'"([^"]+_duration_us)"\s+(\d+)\s+([0-9.eE+-]+)\s+([0-9.eE+-]+)\s+([0-9.eE+-]+)\s+([0-9.eE+-]+)'
 )
 
 
-def result_root(path: Path) -> Path:
-    rel = path.relative_to(RESULTS)
-    chronolog_index = rel.parts.index("chronolog")
-    return RESULTS.joinpath(*rel.parts[:chronolog_index])
+def repo_path(text: str) -> Path:
+    path = Path(text)
+    if path.is_absolute():
+        return path
+    return REPO_ROOT / path
 
 
-def timestamp_from_path(path: Path) -> tuple[str, datetime]:
-    rel = path.relative_to(RESULTS)
-    for part in rel.parts:
-        match = TIMESTAMP_RE.search(part)
-        if match:
-            text = match.group(1)
-            return text, datetime.strptime(text, "%Y%m%d-%H%M%S")
-    return "", datetime.fromtimestamp(path.stat().st_mtime)
+def read_csv(path: Path) -> list[dict[str, str]]:
+    if not path.exists():
+        raise SystemExit(f"missing required input: {path}")
+    with path.open(newline="", encoding="utf-8") as fh:
+        return list(csv.DictReader(fh))
+
+
+def read_json(path: Path) -> dict:
+    with path.open(encoding="utf-8") as fh:
+        return json.load(fh)
 
 
 def read_manifest(root: Path) -> dict[str, str]:
@@ -53,41 +62,88 @@ def read_manifest(root: Path) -> dict[str, str]:
     return data
 
 
-def collect_metrics() -> list[dict[str, str | float | int | bool | None]]:
-    rows: list[dict[str, str | float | int | bool | None]] = []
-    for metrics_path in sorted(RESULTS.glob("**/chronolog/metrics.json")):
-        root = result_root(metrics_path)
-        stamp, dt = timestamp_from_path(root)
-        manifest = read_manifest(root)
-        try:
-            metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            continue
-        workflow = metrics.get("workflow")
-        if isinstance(workflow, str):
-            workflow = workflow.replace("smo" + "ke", "validation")
-        row = {
-            "timestamp": stamp,
-            "datetime": dt.isoformat(),
-            "result_dir": str(root),
-            "profile_mode": manifest.get("profile_mode", ""),
-            "nodelist": manifest.get("nodelist", ""),
-            "workflow": workflow,
-            "node_count": metrics.get("node_count"),
-            "client_count": metrics.get("client_count"),
-            "message_size_bytes": metrics.get("message_size_bytes"),
-            "operation_count": metrics.get("operation_count"),
-            "duration_seconds": metrics.get("duration_seconds"),
-            "throughput_ops_per_sec": metrics.get("throughput_ops_per_sec"),
-            "avg_latency_ms": metrics.get("avg_latency_ms"),
-            "p50_latency_ms": metrics.get("p50_latency_ms"),
-            "p95_latency_ms": metrics.get("p95_latency_ms"),
-            "p99_latency_ms": metrics.get("p99_latency_ms"),
-            "success": metrics.get("success"),
-            "metrics_path": str(metrics_path),
+def baseline_key(system: str, workflow: str, node_count: int, message_size: int) -> tuple[str, str, int, int]:
+    return (system, workflow, node_count, message_size)
+
+
+def load_baselines() -> dict[tuple[str, str, int, int], dict[str, str | float]]:
+    baselines: dict[tuple[str, str, int, int], dict[str, str | float]] = {}
+    for row in read_csv(FIXED_BASELINES):
+        metrics_path = repo_path(row["metrics_path"])
+        metrics = read_json(metrics_path)
+        key = baseline_key(
+            row["system"],
+            row["workflow"],
+            int(row["node_count"]),
+            int(row["message_size_bytes"]),
+        )
+        baselines[key] = {
+            **row,
+            "throughput_ops_per_sec": float(metrics["throughput_ops_per_sec"]),
+            "operation_count": str(metrics.get("operation_count", "")),
+            "metrics_path": row["metrics_path"],
         }
-        rows.append(row)
-    return rows
+    return baselines
+
+
+def collect_iteration_metrics() -> list[dict[str, str | float | int | bool | None]]:
+    baselines = load_baselines()
+    rows: list[dict[str, str | float | int | bool | None]] = []
+
+    for item in read_csv(ITERATION_MAP):
+        iteration = int(item["iteration"])
+        root = repo_path(item["result_dir"])
+        metrics_path = root / "chronolog" / "metrics.json"
+        metrics = read_json(metrics_path)
+        manifest = read_manifest(root)
+
+        workflow = str(metrics["workflow"])
+        node_count = int(metrics["node_count"])
+        message_size = int(metrics["message_size_bytes"])
+        throughput = float(metrics["throughput_ops_per_sec"])
+
+        kafka = baselines.get(baseline_key("kafka", workflow, node_count, message_size))
+        mofka = baselines.get(baseline_key("mofka", workflow, node_count, message_size))
+
+        rows.append(
+            {
+                "iteration": iteration,
+                "timestamp": item["timestamp"],
+                "datetime": datetime.strptime(item["timestamp"], "%Y%m%d-%H%M%S").isoformat(),
+                "label": item.get("label", ""),
+                "commit": item.get("commit", ""),
+                "result_dir": item["result_dir"],
+                "profile_mode": manifest.get("profile_mode", ""),
+                "nodelist": manifest.get("nodelist", ""),
+                "workflow": workflow,
+                "node_count": node_count,
+                "client_count": metrics.get("client_count"),
+                "message_size_bytes": message_size,
+                "operation_count": metrics.get("operation_count"),
+                "duration_seconds": metrics.get("duration_seconds"),
+                "chronolog_throughput_ops_per_sec": throughput,
+                "chronolog_throughput_ratio_to_iteration0": None,
+                "kafka_baseline_throughput_ops_per_sec": kafka["throughput_ops_per_sec"] if kafka else None,
+                "chronolog_to_kafka_throughput_ratio": throughput / float(kafka["throughput_ops_per_sec"]) if kafka else None,
+                "mofka_baseline_throughput_ops_per_sec": mofka["throughput_ops_per_sec"] if mofka else None,
+                "chronolog_to_mofka_throughput_ratio": throughput / float(mofka["throughput_ops_per_sec"]) if mofka else None,
+                "success": metrics.get("success"),
+                "metrics_path": str(metrics_path.relative_to(REPO_ROOT)),
+                "kafka_baseline_metrics_path": kafka["metrics_path"] if kafka else "",
+                "mofka_baseline_metrics_path": mofka["metrics_path"] if mofka else "",
+                "baseline_note": item.get("baseline_note", ""),
+            }
+        )
+
+    base_by_key: dict[tuple[str, int, int], float] = {}
+    for row in sorted(rows, key=lambda r: int(r["iteration"])):
+        key = (str(row["workflow"]), int(row["node_count"]), int(row["message_size_bytes"]))
+        base_by_key.setdefault(key, float(row["chronolog_throughput_ops_per_sec"]))
+        row["chronolog_throughput_ratio_to_iteration0"] = (
+            float(row["chronolog_throughput_ops_per_sec"]) / base_by_key[key]
+        )
+
+    return sorted(rows, key=lambda r: int(r["iteration"]))
 
 
 def role_from_tau_path(path: Path, root: Path) -> str:
@@ -97,77 +153,93 @@ def role_from_tau_path(path: Path, root: Path) -> str:
     return rel.parts[0]
 
 
-def collect_tau_history() -> list[dict[str, str | float]]:
-    totals: dict[tuple[str, str, str, str], dict[str, str | float]] = {}
-    for profile_path in sorted(RESULTS.glob("**/chronolog/profiles/tau/**/profile.*")):
-        root = result_root(profile_path)
-        stamp, dt = timestamp_from_path(root)
-        role = role_from_tau_path(profile_path, root)
-        for line in profile_path.read_text(encoding="utf-8", errors="replace").splitlines():
-            match = TAU_DURATION_RE.match(line)
-            if not match:
-                continue
-            region = match.group(1).replace("_duration_us", "")
-            count = float(match.group(2))
-            max_us = float(match.group(3))
-            mean_us = float(match.group(5))
-            key = (str(root), stamp, role, region)
-            row = totals.setdefault(
-                key,
-                {
-                    "timestamp": stamp,
-                    "datetime": dt.isoformat(),
-                    "result_dir": str(root),
-                    "role": role,
-                    "region": region,
-                    "count": 0.0,
-                    "total_us": 0.0,
-                    "max_us": 0.0,
-                },
-            )
-            row["count"] = float(row["count"]) + count
-            row["total_us"] = float(row["total_us"]) + count * mean_us
-            row["max_us"] = max(float(row["max_us"]), max_us)
-    return sorted(totals.values(), key=lambda row: (str(row["datetime"]), str(row["role"]), str(row["region"])))
+def collect_tau_history() -> list[dict[str, str | float | int]]:
+    totals: dict[tuple[int, str, str], dict[str, str | float | int]] = {}
+    for item in read_csv(ITERATION_MAP):
+        iteration = int(item["iteration"])
+        root = repo_path(item["result_dir"])
+        for profile_path in sorted((root / "chronolog" / "profiles" / "tau").glob("**/profile.*")):
+            role = role_from_tau_path(profile_path, root)
+            for line in profile_path.read_text(encoding="utf-8", errors="replace").splitlines():
+                match = TAU_DURATION_RE.match(line)
+                if not match:
+                    continue
+                region = match.group(1).replace("_duration_us", "")
+                count = float(match.group(2))
+                max_us = float(match.group(3))
+                mean_us = float(match.group(5))
+                key = (iteration, role, region)
+                row = totals.setdefault(
+                    key,
+                    {
+                        "iteration": iteration,
+                        "timestamp": item["timestamp"],
+                        "datetime": datetime.strptime(item["timestamp"], "%Y%m%d-%H%M%S").isoformat(),
+                        "label": item.get("label", ""),
+                        "result_dir": item["result_dir"],
+                        "role": role,
+                        "region": region,
+                        "count": 0.0,
+                        "total_us": 0.0,
+                        "max_us": 0.0,
+                    },
+                )
+                row["count"] = float(row["count"]) + count
+                row["total_us"] = float(row["total_us"]) + count * mean_us
+                row["max_us"] = max(float(row["max_us"]), max_us)
+
+    return sorted(totals.values(), key=lambda row: (int(row["iteration"]), str(row["role"]), str(row["region"])))
 
 
 def write_csv(path: Path, rows: list[dict], fields: list[str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as fh:
-        writer = csv.DictWriter(fh, fieldnames=fields, extrasaction="ignore")
+        writer = csv.DictWriter(fh, fieldnames=fields, extrasaction="ignore", lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
 
 
 def plot_throughput_history(rows: list[dict]) -> None:
-    successful = [
-        row
-        for row in rows
-        if row.get("success") is True
-        and row.get("workflow") == "append_throughput"
-        and row.get("throughput_ops_per_sec") is not None
-    ]
-    if not successful:
+    if not rows:
         return
     FIGURES.mkdir(parents=True, exist_ok=True)
-    plt.figure(figsize=(10, 5))
-    groups: dict[tuple[int, int], list[dict]] = {}
-    for row in successful:
-        key = (int(row["node_count"]), int(row["message_size_bytes"]))
-        groups.setdefault(key, []).append(row)
-    for (node_count, size), group in sorted(groups.items()):
-        group.sort(key=lambda row: str(row["datetime"]))
-        x = [datetime.fromisoformat(str(row["datetime"])) for row in group]
-        y = [float(row["throughput_ops_per_sec"]) for row in group]
-        plt.plot(x, y, marker="o", label=f"n={node_count}, {size}B")
-    plt.xlabel("run timestamp")
+    plt.figure(figsize=(8.5, 4.8))
+    x = [int(row["iteration"]) for row in rows]
+    y = [float(row["chronolog_throughput_ops_per_sec"]) for row in rows]
+    plt.plot(x, y, marker="o", linewidth=2.0, label="ChronoLog")
+    plt.xlabel("ProfileForge iteration")
     plt.ylabel("throughput (ops/s)")
-    plt.title("ChronoLog Append Throughput Over Phase 0 / Loop Iterations")
+    plt.title("ChronoLog Append Throughput by Optimization Iteration")
     plt.grid(axis="y", alpha=0.25)
+    plt.xticks(x)
     plt.legend()
-    plt.xticks(rotation=25, ha="right")
     plt.tight_layout()
     plt.savefig(FIGURES / "chronolog_throughput_over_time.png", dpi=180)
+    plt.close()
+
+
+def plot_baseline_ratios(rows: list[dict]) -> None:
+    if not rows:
+        return
+    row = rows[0]
+    labels = ["vs iter 0", "vs Kafka", "vs Mofka"]
+    values = [
+        float(row["chronolog_throughput_ratio_to_iteration0"]),
+        float(row["chronolog_to_kafka_throughput_ratio"]),
+        float(row["chronolog_to_mofka_throughput_ratio"]),
+    ]
+    FIGURES.mkdir(parents=True, exist_ok=True)
+    plt.figure(figsize=(8.5, 4.8))
+    bars = plt.bar(labels, values, color=["#496a9a", "#a05a2c", "#3f7f5f"])
+    plt.yscale("log")
+    plt.ylim(max(min(values) / 3.0, 1e-6), max(values) * 2.0)
+    plt.ylabel("ChronoLog throughput ratio")
+    plt.title("Iteration 0 Throughput Ratios to Fixed Baselines")
+    plt.grid(axis="y", alpha=0.25, which="both")
+    for bar, value in zip(bars, values):
+        plt.text(bar.get_x() + bar.get_width() / 2, value, f"{value:.6f}", ha="center", va="bottom", fontsize=9)
+    plt.tight_layout()
+    plt.savefig(FIGURES / "chronolog_throughput_ratio_to_baselines.png", dpi=180)
     plt.close()
 
 
@@ -185,32 +257,35 @@ def plot_tau_history(rows: list[dict]) -> None:
         if key in selected:
             groups.setdefault(key, []).append(row)
     FIGURES.mkdir(parents=True, exist_ok=True)
-    plt.figure(figsize=(11, 5.8))
+    plt.figure(figsize=(9.5, 5.4))
     for key, group in sorted(groups.items()):
-        group.sort(key=lambda row: str(row["datetime"]))
-        x = [datetime.fromisoformat(str(row["datetime"])) for row in group]
+        group.sort(key=lambda row: int(row["iteration"]))
+        x = [int(row["iteration"]) for row in group]
         y = [float(row["total_us"]) / 1000.0 for row in group]
-        plt.plot(x, y, marker="o", label=key)
-    plt.xlabel("run timestamp")
+        plt.plot(x, y, marker="o", linewidth=1.8, label=key)
+    plt.xlabel("ProfileForge iteration")
     plt.ylabel("observed semantic time (ms)")
-    plt.title("ChronoLog TAU Semantic Timing Over Phase 0 / Loop Iterations")
+    plt.title("TAU Semantic Timing by Optimization Iteration")
     plt.grid(axis="y", alpha=0.25)
+    plt.xticks(sorted({int(row["iteration"]) for row in rows}))
     plt.legend(fontsize=8)
-    plt.xticks(rotation=25, ha="right")
     plt.tight_layout()
     plt.savefig(FIGURES / "tau_semantic_time_over_time.png", dpi=180)
     plt.close()
 
 
 def main() -> None:
-    metric_rows = collect_metrics()
+    metric_rows = collect_iteration_metrics()
     tau_rows = collect_tau_history()
     write_csv(
         DATA / "chronolog_metrics_history.csv",
         metric_rows,
         [
+            "iteration",
             "timestamp",
             "datetime",
+            "label",
+            "commit",
             "result_dir",
             "profile_mode",
             "nodelist",
@@ -220,24 +295,29 @@ def main() -> None:
             "message_size_bytes",
             "operation_count",
             "duration_seconds",
-            "throughput_ops_per_sec",
-            "avg_latency_ms",
-            "p50_latency_ms",
-            "p95_latency_ms",
-            "p99_latency_ms",
+            "chronolog_throughput_ops_per_sec",
+            "chronolog_throughput_ratio_to_iteration0",
+            "kafka_baseline_throughput_ops_per_sec",
+            "chronolog_to_kafka_throughput_ratio",
+            "mofka_baseline_throughput_ops_per_sec",
+            "chronolog_to_mofka_throughput_ratio",
             "success",
             "metrics_path",
+            "kafka_baseline_metrics_path",
+            "mofka_baseline_metrics_path",
+            "baseline_note",
         ],
     )
     write_csv(
         DATA / "tau_semantic_history.csv",
         tau_rows,
-        ["timestamp", "datetime", "result_dir", "role", "region", "count", "total_us", "max_us"],
+        ["iteration", "timestamp", "datetime", "label", "result_dir", "role", "region", "count", "total_us", "max_us"],
     )
     plot_throughput_history(metric_rows)
+    plot_baseline_ratios(metric_rows)
     plot_tau_history(tau_rows)
-    print(f"metrics rows: {len(metric_rows)}")
-    print(f"tau rows: {len(tau_rows)}")
+    print(f"metric iterations: {len(metric_rows)}")
+    print(f"tau semantic rows: {len(tau_rows)}")
 
 
 if __name__ == "__main__":

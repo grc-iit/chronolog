@@ -1,0 +1,3 @@
+system,workflow,node_count,message_size_bytes,result_dir,metrics_path
+kafka,append_throughput,2,1024,.agent/results/20260512-010210,.agent/results/20260512-010210/kafka/metrics.json
+mofka,append_throughput,2,1024,.agent/results/20260512-010240,.agent/results/20260512-010240/mofka/metrics.json

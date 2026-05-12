@@ -1,0 +1,2 @@
+iteration,timestamp,result_dir,label,commit,baseline_note
+0,20260512-122315,.agent/results/20260512-122315-chronolog-tau-full-semantics,phase0_baseline,de6f10b2,"Iteration 0 is the broad ChronoLog TAU semantic baseline. Kafka and Mofka ratios use fixed Phase 0 append-throughput baselines with matching workflow, node count, and message size; operation counts differ."

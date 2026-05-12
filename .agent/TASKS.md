@@ -117,3 +117,6 @@ This is not a performance-optimization phase. The goal is to make the full measu
 - [x] Make `perf` available without sudo through a repo-local kernel-matched binary and validate distributed `perf record`.
 - [x] Implement and validate the tunable Phase 0 benchmark matrix runner.
 - [x] Generate updated TAU, perf, benchmark matrix, and over-time loop-history artifacts under `profiling/0`.
+- [x] Move loop history to top-level `/profiling` and keep `profiling/0` as the iteration-0 snapshot.
+- [x] Validate `record_groups=2` as a tunable ChronoLog deployment parameter.
+- [x] Document ChronoLog bare-metal SLURM service placement for engineer review.
