@@ -28,7 +28,7 @@ This is not a performance-optimization phase. The goal is to make the full measu
 - [x] Build ChronoLog baseline.
 - [x] Run ChronoLog minimal local smoke test.
 - [x] Add ChronoLog profiling abstraction.
-- [ ] Add TAU-backed ChronoLog profiling mode.
+- [x] Add TAU-backed ChronoLog profiling mode.
 - [ ] Add no-op profiling mode.
 - [ ] Add coarse semantic regions.
 - [ ] Build ChronoLog with TAU instrumentation.

@@ -1,0 +1,24 @@
+In file included from /home/jcernudagarcia/chronolog-opt/chronolog/opt/tau-2.34/include/Profile/ProfileHeaders.h:28,
+                 from /home/jcernudagarcia/chronolog-opt/chronolog/opt/tau-2.34/include/Profile/Profiler.h:156,
+                 from /home/jcernudagarcia/chronolog-opt/chronolog/opt/tau-2.34/include/TAU.h:27,
+                 from /home/jcernudagarcia/chronolog-opt/chronolog/Client/cpp/include/chronolog_profile.h:9,
+                 from /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260511-223430/chronolog/tau_profile_probe.cpp:1:
+/home/jcernudagarcia/chronolog-opt/chronolog/opt/tau-2.34/include/Profile/bstring.h:28:10: fatal error: iostream.h: No such file or directory
+   28 | #include <iostream.h>
+      |          ^~~~~~~~~~~~
+compilation terminated.
+Python bindings enabled
+Building CMAKE_CURRENT_SOURCE_DIR=/home/jcernudagarcia/chronolog-opt/chronolog/ChronoStore
+build target : chrono_store
+In file included from /home/jcernudagarcia/chronolog-opt/chronolog/tools/benchmark/perf_bench.cpp:27:
+/home/jcernudagarcia/chronolog-opt/chronolog/chrono_common/include/TimerWrapper.h: In constructor ‘TimerWrapper::TimerWrapper(bool, const string&)’:
+/home/jcernudagarcia/chronolog-opt/chronolog/chrono_common/include/TimerWrapper.h:29:25: warning: ‘int MPI_Attr_get(MPI_Comm, int, void*, int*)’ is deprecated: MPI_Attr_get was deprecated in MPI-2.0; use MPI_Comm_get_attr instead [-Wdeprecated-declarations]
+   29 |             MPI_Attr_get(MPI_COMM_SELF, MPI_WTIME_IS_GLOBAL, &global_time_flag, &flag);
+      |             ~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from /home/jcernudagarcia/chronolog-opt/chronolog/tools/benchmark/perf_bench.cpp:20:
+/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/include/mpi.h:3024:20: note: declared here
+ 3024 | OMPI_DECLSPEC  int MPI_Attr_get(MPI_Comm comm, int keyval, void *attribute_val, int *flag)
+      |                    ^~~~~~~~~~~~
+Python bindings enabled
+Building CMAKE_CURRENT_SOURCE_DIR=/home/jcernudagarcia/chronolog-opt/chronolog/ChronoStore
+build target : chrono_store

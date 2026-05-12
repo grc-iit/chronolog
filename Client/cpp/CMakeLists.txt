@@ -100,7 +100,9 @@ install(TARGETS chronolog_client
     PUBLIC_HEADER DESTINATION ${CHRONOLOG_INSTALL_INCLUDE_DIR}
 )
 # Set both absolute and relative RPATH for portability
-set_target_properties(chronolog_client PROPERTIES INSTALL_RPATH "${CHRONOLOG_INSTALL_LIB_DIR};$ORIGIN/../lib")
+set_target_properties(chronolog_client PROPERTIES
+    INSTALL_RPATH "${CHRONOLOG_INSTALL_LIB_DIR};$ORIGIN/../lib${CHRONOLOG_EXTRA_INSTALL_RPATH}"
+)
 
 # Export target for CMake config files
 install(EXPORT ChronologTargets

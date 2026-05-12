@@ -1,7 +1,7 @@
 # Current State
 
-- current task: add TAU-backed ChronoLog profiling mode
+- current task: add no-op profiling mode
 - commands running: none
-- last successful validation: ChronoLog profiling abstraction compiled, built, and installed; evidence in `.agent/results/20260511-223210/chronolog/stdout.log` and `.agent/results/chronolog-profiling-abstraction.md`
+- last successful validation: TAU-backed ChronoLog profiling mode built and installed; evidence in `.agent/results/20260511-223430/chronolog/stdout.log`, `.agent/results/20260511-223430/chronolog/chrono-visor.tau.ldd`, and `.agent/results/chronolog-tau-profiling-mode.md`
 - current blocker: perf runtime events and eBPF-based observability require cluster/admin permission changes for later profiling-output validation
-- next intended step: wire the profiling abstraction to TAU behind an explicit CMake option while keeping default builds unchanged
+- next intended step: validate that default builds still use the no-op profiling mode and do not link TAU

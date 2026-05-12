@@ -64,6 +64,7 @@ set(CHRONOLOG_INSTALL_DEPLOY_DIR  "${CHRONOLOG_INSTALL_ROOT}/tools/deploy")
 set(CHRONOLOG_INSTALL_LIB_DIR     "${CHRONOLOG_INSTALL_ROOT}/lib")
 set(CHRONOLOG_INSTALL_INCLUDE_DIR "${CHRONOLOG_INSTALL_ROOT}/include")
 set(CHRONOLOG_INSTALL_CONF_DIR    "${CHRONOLOG_INSTALL_ROOT}/conf")
+set(CHRONOLOG_EXTRA_INSTALL_RPATH "")
 
 # Helper function for consistent target installation.
 # Usage: chronolog_install_target(target_name [DESTINATION bin|examples|tests])
@@ -96,7 +97,9 @@ function(chronolog_install_target target_name)
         PUBLIC_HEADER DESTINATION ${CHRONOLOG_INSTALL_INCLUDE_DIR}
     )
     # Set both absolute and relative RPATH for portability (examples/tests need ../lib)
-    set_target_properties(${target_name} PROPERTIES INSTALL_RPATH "${CHRONOLOG_INSTALL_LIB_DIR};$ORIGIN/../lib")
+    set_target_properties(${target_name} PROPERTIES
+        INSTALL_RPATH "${CHRONOLOG_INSTALL_LIB_DIR};$ORIGIN/../lib${CHRONOLOG_EXTRA_INSTALL_RPATH}"
+    )
 endfunction()
 
 # Disable using link paths as RPATH
@@ -157,6 +160,38 @@ endif()
 option(CHRONOLOG_INSTALL_TESTS "Install test executables to chronolog/tests/ (unit, integration, client)." ${_chronolog_install_tests_default})
 option(CHRONOLOG_ENABLE_DOXYGEN "Enable Doxygen documentation generation." OFF)
 option(CHRONOLOG_WITH_STREAMING "Build to stream to Grafana through InfluxDB" ON)
+option(CHRONOLOG_ENABLE_TAU_PROFILING "Enable TAU-backed ChronoLog profiling macros." OFF)
+
+if(CHRONOLOG_ENABLE_TAU_PROFILING)
+    if(DEFINED ENV{TAU_PREFIX} AND NOT "$ENV{TAU_PREFIX}" STREQUAL "")
+        set(CHRONOLOG_TAU_ROOT "$ENV{TAU_PREFIX}" CACHE PATH "TAU installation prefix")
+    else()
+        set(CHRONOLOG_TAU_ROOT "" CACHE PATH "TAU installation prefix")
+    endif()
+
+    find_path(CHRONOLOG_TAU_INCLUDE_DIR
+        NAMES TAU.h
+        HINTS "${CHRONOLOG_TAU_ROOT}/include"
+        REQUIRED
+    )
+    find_library(CHRONOLOG_TAU_LIBRARY
+        NAMES TAUsh-pthread tau-pthread
+        HINTS "${CHRONOLOG_TAU_ROOT}/x86_64/lib" "${CHRONOLOG_TAU_ROOT}/lib"
+        REQUIRED
+    )
+    get_filename_component(CHRONOLOG_TAU_LIBRARY_DIR "${CHRONOLOG_TAU_LIBRARY}" DIRECTORY)
+
+    message(STATUS "ChronoLog TAU profiling enabled")
+    message(STATUS "CHRONOLOG_TAU_INCLUDE_DIR=${CHRONOLOG_TAU_INCLUDE_DIR}")
+    message(STATUS "CHRONOLOG_TAU_LIBRARY=${CHRONOLOG_TAU_LIBRARY}")
+
+    add_compile_definitions(CHRONOLOG_PROFILE_TAU=1 PROFILING_ON=1 TAU_DOT_H_LESS_HEADERS=1)
+    include_directories(SYSTEM "${CHRONOLOG_TAU_INCLUDE_DIR}")
+    link_libraries("${CHRONOLOG_TAU_LIBRARY}")
+    set(CHRONOLOG_EXTRA_INSTALL_RPATH ";${CHRONOLOG_TAU_LIBRARY_DIR}")
+    set(CMAKE_BUILD_RPATH "${CMAKE_BUILD_RPATH};${CHRONOLOG_TAU_LIBRARY_DIR}")
+    set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_RPATH};${CHRONOLOG_TAU_LIBRARY_DIR}")
+endif()
 
 #------------------------------------------------------------------------------
 # Define the compiler flags

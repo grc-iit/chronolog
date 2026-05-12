@@ -1,0 +1,283 @@
+[chronolog tau profiling mode validation]
+time=2026-05-11T22:34:29-05:00
+
+[chronolog tau profiling mode validation retry]
+time=2026-05-11T22:35:17-05:00
+-- The CXX compiler identification is GNU 11.4.0
+-- The C compiler identification is GNU 11.4.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- CMAKE_BUILD_TYPE=Release
+-- CMAKE_INSTALL_PREFIX=/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau
+-- ChronoLog TAU profiling enabled
+-- CHRONOLOG_TAU_INCLUDE_DIR=/home/jcernudagarcia/chronolog-opt/chronolog/opt/tau-2.34/include
+-- CHRONOLOG_TAU_LIBRARY=/home/jcernudagarcia/chronolog-opt/chronolog/opt/tau-2.34/x86_64/lib/libTAUsh-pthread.so
+-- Compiling ChronoLog in Release Mode
+-- Found PkgConfig: /mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/pkgconf-2.2.0-3sczowe2qduemddkdtoa3bf5nm3i6s6o/bin/pkg-config (found version "2.2.0")
+-- Checking for module 'margo'
+--   Found margo, version 0.17.0
+-- Found HDF5: hdf5-shared;hdf5_cpp-shared (found version "1.14.5") found components: C CXX
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE
+-- Checking for module 'json-c'
+--   Found json-c, version 0.16
+-- Found Python: /mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/python-venv-1.0-u5vf2gn7okmwqpjrqavjygjg64gpbkll/bin/python3 (found version "3.11.9") found components: Interpreter Development Development.Module Development.Embed
+-- Performing Test HAS_FLTO
+-- Performing Test HAS_FLTO - Success
+-- Found pybind11: /mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-pybind11-2.13.5-pngixx5435xneyfvuuj4mtxcevckdu6y/include (found version "2.13.5")
+-- Found pybind11 v2.13.5:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-pybind11-2.13.5-pngixx5435xneyfvuuj4mtxcevckdu6y/include;/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/python-3.11.9-zg4555ebtlzblojgppzbgh6ofod6wfgs/include/python3.11
+-- Found MPI_C: /mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/lib/libmpi.so (found version "3.1")
+-- Found MPI_CXX: /mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/openmpi-5.0.5-cphqvsysakxjobds6sfeborx4p3ryiqa/lib/libmpi.so (found version "3.1")
+-- Found MPI: TRUE (found version "3.1")
+-- Checking for module 'margo'
+--   Found margo, version 0.17.0
+-- ChronoKVS: superbuild mode enabled
+-- Performance regression harness CMake file not present; skipping test/performance
+-- CPack: rpmbuild not found — RPM packages will be skipped
+-- CPack: dpkg-deb found at /usr/bin/dpkg-deb — DEB packages will be built
+-- Configuring done (12.0s)
+-- Generating done (0.1s)
+-- Build files have been written to: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/build-tau/Release
+[  1%] Building CXX object Client/cpp/CMakeFiles/chronolog_client.dir/src/ChronologClient.cpp.o
+[  2%] Building CXX object Client/cpp/CMakeFiles/chronolog_client.dir/src/ClientQueryService.cpp.o
+[  5%] Building CXX object Client/cpp/CMakeFiles/chronolog_client.dir/src/ChronologClientImpl.cpp.o
+[  5%] Building CXX object Client/cpp/CMakeFiles/chronolog_client.dir/src/ClientConfiguration.cpp.o
+[  7%] Building CXX object Client/cpp/CMakeFiles/chronolog_client.dir/src/PlaybackQueryRpcClient.cpp.o
+[  8%] Building CXX object Client/cpp/CMakeFiles/chronolog_client.dir/src/StorytellerClient.cpp.o
+[ 11%] Building CXX object Client/cpp/CMakeFiles/chronolog_client.dir/src/chrono_monitor.cpp.o
+[ 11%] Building CXX object chrono_common/CMakeFiles/chrono_common.dir/src/city.cpp.o
+[ 13%] Building CXX object chrono_common/CMakeFiles/chrono_common.dir/src/ConfigurationBlocks.cpp.o
+[ 14%] Building CXX object chrono_common/CMakeFiles/chrono_common.dir/src/StoryChunk.cpp.o
+[ 16%] Building CXX object chrono_common/CMakeFiles/chrono_common.dir/src/StoryChunkExtractor.cpp.o
+[ 17%] Building CXX object chrono_common/CMakeFiles/chrono_common.dir/src/StoryChunkWriter.cpp.o
+[ 19%] Building CXX object chrono_common/CMakeFiles/chrono_common.dir/src/StoryPipeline.cpp.o
+[ 20%] Building CXX object chrono_common/CMakeFiles/chrono_common.dir/src/ChunkExtractorCSV.cpp.o
+[ 22%] Building CXX object chrono_common/CMakeFiles/chrono_common.dir/src/ChunkExtractorRDMA.cpp.o
+[ 23%] Building CXX object chrono_common/CMakeFiles/chrono_common.dir/src/RDMATransferAgent.cpp.o
+[ 25%] Linking CXX shared library libchronolog_client.so
+[ 25%] Built target chronolog_client
+[ 26%] Building CXX object Client/examples/cpp/CMakeFiles/client_lib_reader_example.dir/client_lib_reader_example.cpp.o
+[ 27%] Building CXX object Client/examples/cpp/CMakeFiles/client_lib_writer_example.dir/client_lib_writer_example.cpp.o
+[ 29%] Building CXX object Client/python/CMakeFiles/py_chronolog_client.dir/py_chronolog_client.cpp.o
+[ 30%] Building CXX object Client/examples/cpp/CMakeFiles/client_lib_distributed_telemetry_writer_example.dir/client_lib_distributed_telemetry_writer_example.cpp.o
+[ 32%] Building CXX object Client/examples/cpp/CMakeFiles/client_lib_reader_to_csv_example.dir/client_lib_reader_to_csv_example.cpp.o
+[ 33%] Building CXX object Client/examples/cpp/CMakeFiles/client_lib_basic_example.dir/client_lib_basic_example.cpp.o
+[ 35%] Building CXX object tools/cli/CMakeFiles/client_cli.dir/client_cli.cpp.o
+[ 36%] Linking CXX executable chrono-client-example-writer
+[ 36%] Built target client_lib_writer_example
+[ 38%] Linking CXX executable chrono-client-example-reader
+[ 39%] Linking CXX executable chrono-client-example-basic
+[ 41%] Building CXX object tools/benchmark/CMakeFiles/perf_bench.dir/perf_bench.cpp.o
+[ 41%] Built target client_lib_reader_example
+[ 41%] Built target client_lib_basic_example
+[ 42%] Building CXX object Plugins/chronokvs/CMakeFiles/chronokvs.dir/src/chronokvs.cpp.o
+[ 44%] Building CXX object Plugins/chronokvs/CMakeFiles/chronokvs.dir/src/chronokvs_mapper.cpp.o
+[ 45%] Linking CXX static library libchrono_common.a
+[ 45%] Built target chrono_common
+[ 47%] Building CXX object Plugins/chronokvs/CMakeFiles/chronokvs.dir/src/chronokvs_client_adapter.cpp.o
+[ 48%] Linking CXX executable chrono-client-example-distributed-telemetry-writer
+[ 50%] Building CXX object ChronoVisor/CMakeFiles/chronovisor_server.dir/src/chronovisor_instance.cpp.o
+[ 51%] Linking CXX executable chrono-client-example-reader-to-csv
+[ 52%] Building CXX object ChronoVisor/CMakeFiles/chronovisor_server.dir/src/ChronoVisorConfiguration.cpp.o
+[ 52%] Built target client_lib_distributed_telemetry_writer_example
+[ 54%] Building CXX object ChronoKeeper/CMakeFiles/chrono_keeper.dir/src/ChronoKeeperInstance.cpp.o
+[ 54%] Built target client_lib_reader_to_csv_example
+[ 55%] Building CXX object ChronoVisor/CMakeFiles/chronovisor_server.dir/src/VisorClientPortal.cpp.o
+[ 57%] Linking CXX executable chrono-client-cli
+[ 58%] Building CXX object ChronoGrapher/CMakeFiles/chrono_grapher.dir/src/ChronoGrapher.cpp.o
+[ 58%] Built target client_cli
+[ 60%] Building CXX object ChronoVisor/CMakeFiles/chronovisor_server.dir/src/ClientRegistryManager.cpp.o
+[ 61%] Linking CXX executable chrono-bench
+[ 63%] Linking CXX shared library libchronokvs.so
+[ 63%] Built target perf_bench
+[ 64%] Building CXX object ChronoGrapher/CMakeFiles/chrono_grapher.dir/src/ChronoGrapherConfiguration.cpp.o
+[ 64%] Built target chronokvs
+[ 66%] Building CXX object ChronoKeeper/CMakeFiles/chrono_keeper.dir/src/ChronoKeeperConfiguration.cpp.o
+[ 67%] Building CXX object ChronoKeeper/CMakeFiles/chrono_keeper.dir/src/KeeperStoryPipeline.cpp.o
+[ 69%] Building CXX object ChronoKeeper/CMakeFiles/chrono_keeper.dir/src/KeeperDataStore.cpp.o
+[ 70%] Building CXX object ChronoGrapher/CMakeFiles/chrono_grapher.dir/src/GrapherDataStore.cpp.o
+[ 72%] Building CXX object ChronoGrapher/CMakeFiles/chrono_grapher.dir/src/HDF5FileChunkExtractor.cpp.o
+[ 73%] Linking CXX shared module py_chronolog_client.cpython-311-x86_64-linux-gnu.so
+[ 75%] Building CXX object ChronoVisor/CMakeFiles/chronovisor_server.dir/src/ClientRegistryRecord.cpp.o
+[ 76%] Building CXX object ChronoPlayer/CMakeFiles/chrono_player.dir/src/ChronoPlayer.cpp.o
+[ 77%] Building CXX object Plugins/chronokvs/examples/CMakeFiles/chronokvs_writer_example.dir/chronokvs_writer_example.cpp.o
+[ 79%] Linking CXX executable chrono-chronokvs-example-writer
+[ 79%] Built target chronokvs_writer_example
+[ 80%] Building CXX object ChronoVisor/CMakeFiles/chronovisor_server.dir/src/ChronicleMetaDirectory.cpp.o
+[ 82%] Building CXX object ChronoPlayer/CMakeFiles/chrono_player.dir/src/ChronoPlayerConfiguration.cpp.o
+[ 83%] Building CXX object Plugins/chronokvs/examples/CMakeFiles/chronokvs_reader_example.dir/chronokvs_reader_example.cpp.o
+[ 85%] Building CXX object ChronoVisor/CMakeFiles/chronovisor_server.dir/src/KeeperRegistry.cpp.o
+[ 86%] Linking CXX executable chrono-chronokvs-example-reader
+[ 86%] Built target chronokvs_reader_example
+[ 88%] Building CXX object ChronoPlayer/CMakeFiles/chrono_player.dir/src/PlayerDataStore.cpp.o
+[ 89%] Building CXX object ChronoPlayer/CMakeFiles/chrono_player.dir/src/ArchiveReadingAgent.cpp.o
+[ 91%] Linking CXX executable chrono-keeper
+[ 91%] Built target chrono_keeper
+[ 92%] Building CXX object ChronoPlayer/CMakeFiles/chrono_player.dir/src/HDF5ArchiveReadingAgent.cpp.o
+[ 94%] Building CXX object ChronoPlayer/CMakeFiles/chrono_player.dir/src/PlaybackService.cpp.o
+[ 94%] Built target py_chronolog_client
+[ 95%] Building CXX object ChronoPlayer/CMakeFiles/chrono_player.dir/src/StoryChunkTransferAgent.cpp.o
+[ 97%] Linking CXX executable chrono-grapher
+[ 97%] Built target chrono_grapher
+[ 98%] Linking CXX executable chrono-player
+[ 98%] Built target chrono_player
+[100%] Linking CXX executable chrono-visor
+[100%] Built target chronovisor_server
+-- Install configuration: "Release"
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/lib/libchronolog_client.so.2.7.0
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/lib/libchronolog_client.so.2
+-- Set non-toolchain portion of runtime path of "/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/lib/libchronolog_client.so.2.7.0" to "/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/lib:$ORIGIN/../lib"
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/lib/libchronolog_client.so
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/include/chronolog_client.h
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/include/ClientConfiguration.h
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/include/client_errcode.h
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/include/log_level.h
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/include/chrono_monitor.h
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/include/chronolog_profile.h
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/lib/cmake/Chronolog/ChronologTargets.cmake
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/lib/cmake/Chronolog/ChronologTargets-release.cmake
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/conf/default-chrono-client-conf.json
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/lib/py_chronolog_client.cpython-311-x86_64-linux-gnu.so
+-- Set non-toolchain portion of runtime path of "/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/lib/py_chronolog_client.cpython-311-x86_64-linux-gnu.so" to "/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/lib:$ORIGIN/../lib"
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/examples/chrono-client-example-writer
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/examples/chrono-client-example-reader
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/examples/chrono-client-example-basic
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/examples/chrono-client-example-distributed-telemetry-writer
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/examples/chrono-client-example-reader-to-csv
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/bin/chrono-visor
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/conf/default-chrono-conf.json
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/bin/chrono-keeper
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/bin/chrono-grapher
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/bin/chrono-player
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/tools/cli/chrono-client-cli
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/tools/benchmark/chrono-bench
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/examples/chrono-chronokvs-example-writer
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/examples/chrono-chronokvs-example-reader
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/lib/libchronokvs.so.2.7.0
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/lib/libchronokvs.so.2
+-- Set non-toolchain portion of runtime path of "/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/lib/libchronokvs.so.2.7.0" to "/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/lib:$ORIGIN/../lib"
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/lib/libchronokvs.so
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/include/chronokvs.h
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/include/chronokvs_logger.h
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/include/chronokvs_types.h
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/lib/cmake/Chronolog/ChronologConfig.cmake
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/lib/cmake/Chronolog/ChronologConfigVersion.cmake
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/lib/pkgconfig/chronolog.pc
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/include/chronolog/version.h
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/LICENSE
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/README.md
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/tools/deploy/deploy_local.sh
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/tools/deploy/deploy_cluster.sh
+chronolog tau profiling mode validation: ok
+time=2026-05-11T22:36:07-05:00
+
+[chronolog tau install rpath validation]
+time=2026-05-11T22:37:03-05:00
+-- CMAKE_BUILD_TYPE=Release
+-- CMAKE_INSTALL_PREFIX=/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau
+-- ChronoLog TAU profiling enabled
+-- CHRONOLOG_TAU_INCLUDE_DIR=/home/jcernudagarcia/chronolog-opt/chronolog/opt/tau-2.34/include
+-- CHRONOLOG_TAU_LIBRARY=/home/jcernudagarcia/chronolog-opt/chronolog/opt/tau-2.34/x86_64/lib/libTAUsh-pthread.so
+-- Compiling ChronoLog in Release Mode
+-- Found pybind11: /mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-pybind11-2.13.5-pngixx5435xneyfvuuj4mtxcevckdu6y/include (found version "2.13.5")
+-- Found pybind11 v2.13.5:/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/py-pybind11-2.13.5-pngixx5435xneyfvuuj4mtxcevckdu6y/include;/mnt/repo/software/spack/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/python-3.11.9-zg4555ebtlzblojgppzbgh6ofod6wfgs/include/python3.11
+-- ChronoKVS: superbuild mode enabled
+-- Performance regression harness CMake file not present; skipping test/performance
+-- CPack: rpmbuild not found — RPM packages will be skipped
+-- CPack: dpkg-deb found at /usr/bin/dpkg-deb — DEB packages will be built
+-- Configuring done (7.6s)
+-- Generating done (0.1s)
+-- Build files have been written to: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/build-tau/Release
+[  1%] Linking CXX shared library libchronolog_client.so
+[ 16%] Built target chrono_common
+[ 26%] Built target chronolog_client
+[ 27%] Linking CXX executable chrono-client-example-reader
+[ 29%] Linking CXX executable chrono-client-example-writer
+[ 30%] Linking CXX shared module py_chronolog_client.cpython-311-x86_64-linux-gnu.so
+[ 32%] Linking CXX executable chrono-client-example-distributed-telemetry-writer
+[ 33%] Linking CXX executable chrono-client-example-reader-to-csv
+[ 35%] Linking CXX executable chrono-client-example-basic
+[ 36%] Linking CXX executable chrono-keeper
+[ 38%] Linking CXX executable chrono-visor
+[ 39%] Built target client_lib_writer_example
+[ 41%] Built target client_lib_basic_example
+[ 42%] Built target client_lib_reader_example
+[ 44%] Built target client_lib_reader_to_csv_example
+[ 45%] Built target client_lib_distributed_telemetry_writer_example
+[ 47%] Linking CXX executable chrono-bench
+[ 48%] Linking CXX executable chrono-client-cli
+[ 50%] Linking CXX executable chrono-grapher
+[ 51%] Linking CXX shared library libchronokvs.so
+[ 52%] Linking CXX executable chrono-player
+[ 58%] Built target chrono_keeper
+[ 69%] Built target chronovisor_server
+[ 70%] Built target client_cli
+[ 75%] Built target chronokvs
+[ 76%] Built target perf_bench
+[ 77%] Linking CXX executable chrono-chronokvs-example-writer
+[ 79%] Linking CXX executable chrono-chronokvs-example-reader
+[ 85%] Built target chrono_grapher
+[ 95%] Built target chrono_player
+[ 97%] Built target chronokvs_writer_example
+[ 98%] Built target chronokvs_reader_example
+[100%] Built target py_chronolog_client
+-- Install configuration: "Release"
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/lib/libchronolog_client.so.2.7.0
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/lib/libchronolog_client.so.2
+-- Set non-toolchain portion of runtime path of "/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/lib/libchronolog_client.so.2.7.0" to "/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/lib:$ORIGIN/../lib:/home/jcernudagarcia/chronolog-opt/chronolog/opt/tau-2.34/x86_64/lib"
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/lib/libchronolog_client.so
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/include/chronolog_client.h
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/include/ClientConfiguration.h
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/include/client_errcode.h
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/include/log_level.h
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/include/chrono_monitor.h
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/include/chronolog_profile.h
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/lib/cmake/Chronolog/ChronologTargets.cmake
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/lib/cmake/Chronolog/ChronologTargets-release.cmake
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/conf/default-chrono-client-conf.json
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/lib/py_chronolog_client.cpython-311-x86_64-linux-gnu.so
+-- Set non-toolchain portion of runtime path of "/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/lib/py_chronolog_client.cpython-311-x86_64-linux-gnu.so" to "/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/lib:$ORIGIN/../lib:/home/jcernudagarcia/chronolog-opt/chronolog/opt/tau-2.34/x86_64/lib"
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/examples/chrono-client-example-writer
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/examples/chrono-client-example-reader
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/examples/chrono-client-example-basic
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/examples/chrono-client-example-distributed-telemetry-writer
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/examples/chrono-client-example-reader-to-csv
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/bin/chrono-visor
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/conf/default-chrono-conf.json
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/bin/chrono-keeper
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/bin/chrono-grapher
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/bin/chrono-player
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/tools/cli/chrono-client-cli
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/tools/benchmark/chrono-bench
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/examples/chrono-chronokvs-example-writer
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/examples/chrono-chronokvs-example-reader
+-- Installing: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/lib/libchronokvs.so.2.7.0
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/lib/libchronokvs.so.2
+-- Set non-toolchain portion of runtime path of "/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/lib/libchronokvs.so.2.7.0" to "/home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/lib:$ORIGIN/../lib:/home/jcernudagarcia/chronolog-opt/chronolog/opt/tau-2.34/x86_64/lib"
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/lib/libchronokvs.so
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/include/chronokvs.h
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/include/chronokvs_logger.h
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/include/chronokvs_types.h
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/lib/cmake/Chronolog/ChronologConfig.cmake
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/lib/cmake/Chronolog/ChronologConfigVersion.cmake
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/lib/pkgconfig/chronolog.pc
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/include/chronolog/version.h
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/LICENSE
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/README.md
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/tools/deploy/deploy_local.sh
+-- Up-to-date: /home/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/tools/deploy/deploy_cluster.sh
+chronolog tau install rpath validation: ok
+time=2026-05-11T22:37:17-05:00
+
+[tau profiling checkpoint validation]
+2026-05-11T22:37:49-05:00
+tau profiling checkpoint validation: ok
