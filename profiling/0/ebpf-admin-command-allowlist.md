@@ -17,7 +17,7 @@ Current status:
 - `bpfcc-tools` has been upgraded on `ares-comp-[03-08]`; `offcputime-bpfcc` and `runqlat-bpfcc` now work on the upgraded nodes.
 - `kernel.unprivileged_bpf_disabled=2` may remain enabled, so normal-user eBPF-based observability still needs sudo for the eBPF tool commands or an approved wrapper/capability path.
 - `perf` is not currently on `PATH`; install/expose the kernel-matched `perf` binary, for example the equivalent of `linux-tools-5.15.0-176-generic`.
-- Validation through `srun` confirms the eBPF tools are installed on `ares-comp-[03-06,08]`, but passwordless sudo is not yet matching `jcernudagarcia`; see `profiling/0/results/ebpf-sudo-validation.md`.
+- Validation through `salloc` followed by `ssh` confirms passwordless sudo works on `ares-comp-03` for `/usr/bin/bpftrace`, `/usr/bin/perf`, `/usr/sbin/runqlat-bpfcc`, and `/usr/sbin/offcputime-bpfcc`; see `profiling/0/results/ebpf-sudo-validation.md`. One-shot `srun` did not show the `sudo_profiling` group, so ProfileForge should use the allocate-then-ssh collection shape.
 
 Important privilege model:
 
