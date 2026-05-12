@@ -17,6 +17,7 @@
 #include <thallium/serialization/stl/map.hpp>
 
 #include <chrono_monitor.h>
+#include <chronolog_profile.h>
 #include <chronolog_client.h>
 #include <chronolog_types.h>
 #include <ConnectResponseMsg.h>
@@ -50,6 +51,8 @@ public:
 
     ConnectResponseMsg Connect(uint32_t client_euid, uint32_t client_host_ip, uint32_t client_pid)
     {
+        CL_PROFILE_REGION("rpc_send");
+
         LOG_DEBUG("[RpcVisorClient] Initiating connection for Account={}, HostID={}, PID={}, ProtocolVersion={}",
                   client_euid,
                   client_host_ip,
@@ -74,6 +77,8 @@ public:
 
     int Disconnect(ClientId const& client_id)
     {
+        CL_PROFILE_REGION("rpc_send");
+
         LOG_INFO("[RPCVisorClient] Initiating disconnection for ClientID={}", client_id);
         try
         {
@@ -102,6 +107,8 @@ public:
                         const std::map<std::string, std::string>& attrs,
                         int& flags)
     {
+        CL_PROFILE_REGION("rpc_send");
+
         LOG_INFO("[RPCVisorClient] Initiating creation of chronicle: Name={}, Flags={}", name.c_str(), flags);
         try
         {
@@ -130,6 +137,8 @@ public:
 
     int DestroyChronicle(ClientId const& client_id, std::string const& name)
     {
+        CL_PROFILE_REGION("rpc_send");
+
         LOG_INFO("[RPCVisorClient] Initiating destruction of chronicle: Name={}", name.c_str());
         try
         {
@@ -160,6 +169,8 @@ public:
                                                     const std::map<std::string, std::string>& attrs,
                                                     const int& flags)
     {
+        CL_PROFILE_REGION("rpc_send");
+
         LOG_INFO("[RPCVisorClient] Initiating story acquisition: ChronicleName={}, StoryName={}",
                  chronicle_name.c_str(),
                  story_name.c_str());
@@ -202,6 +213,8 @@ public:
 
     int ReleaseStory(ClientId const& client_id, std::string const& chronicle_name, std::string const& story_name)
     {
+        CL_PROFILE_REGION("rpc_send");
+
         LOG_INFO("[RPCVisorClient] Initiating story release: ChronicleName={}, StoryName={}",
                  chronicle_name.c_str(),
                  story_name.c_str());
@@ -236,6 +249,8 @@ public:
 
     int DestroyStory(ClientId const& client_id, std::string const& chronicle_name, std::string const& story_name)
     {
+        CL_PROFILE_REGION("rpc_send");
+
         LOG_INFO("[RPCVisorClient] Initiating story destruction: ChronicleName={}, StoryName={}",
                  chronicle_name.c_str(),
                  story_name.c_str());
@@ -271,6 +286,8 @@ public:
 
     int GetChronicleAttr(ClientId const& client_id, std::string const& name, const std::string& key, std::string& value)
     {
+        CL_PROFILE_REGION("rpc_send");
+
         LOG_INFO("[RPCVisorClient] Retrieving attribute: ChronicleName={}, Key={}", name.c_str(), key.c_str());
         try
         {
@@ -308,6 +325,8 @@ public:
                           const std::string& key,
                           const std::string& value)
     {
+        CL_PROFILE_REGION("rpc_send");
+
         LOG_INFO("[RPCVisorClient] Modifying attribute: ChronicleName={}, Key={}, NewValue={}",
                  name.c_str(),
                  key.c_str(),
@@ -346,6 +365,8 @@ public:
 
     std::vector<std::string> ShowChronicles(ClientId const& client_id) //, std::vector<std::string> & chronicles)
     {
+        CL_PROFILE_REGION("rpc_send");
+
         LOG_INFO("[RPCVisorClient] Attempting to retrieve list of chronicles for ClientID={}", client_id);
         try
         {

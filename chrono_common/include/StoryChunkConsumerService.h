@@ -10,6 +10,7 @@
 #include <chronolog_errcode.h>
 #include <ServiceId.h>
 #include <chronolog_types.h>
+#include <chronolog_profile.h>
 
 #include "StoryChunkIngestionQueue.h"
 
@@ -38,6 +39,9 @@ public:
 
     void receive_story_chunk(tl::request const& request, tl::bulk& b)
     {
+        CL_PROFILE_REGION("rpc_receive");
+        CL_PROFILE_COUNTER("append_bytes", b.size());
+
         try
         {
             std::vector<char> mem_vec(b.size());
@@ -67,7 +71,11 @@ public:
 #ifndef NDEBUG
             start = std::chrono::high_resolution_clock::now();
 #endif
-            int ret = deserializedWithCereal(&mem_vec[0], b.size(), *story_chunk);
+            int ret;
+            {
+                CL_PROFILE_REGION("deserialization");
+                ret = deserializedWithCereal(&mem_vec[0], b.size(), *story_chunk);
+            }
             if(ret != chronolog::CL_SUCCESS)
             {
                 LOG_ERROR("[StoryChunkConsumerService] Failed to deserialize a story chunk, ThreadID={}",
@@ -96,7 +104,10 @@ public:
                       b.size(),
                       tl::thread::self_id());
 
-            theIngestionQueue.ingestStoryChunk(story_chunk);
+            {
+                CL_PROFILE_REGION("keeper_ingest");
+                theIngestionQueue.ingestStoryChunk(story_chunk);
+            }
         }
         catch(std::bad_alloc const& ex)
         {

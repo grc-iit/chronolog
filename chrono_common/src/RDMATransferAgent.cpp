@@ -2,6 +2,7 @@
 #include <cereal/archives/binary.hpp>
 
 #include <chrono_monitor.h>
+#include <chronolog_profile.h>
 #include <chronolog_errcode.h>
 #include <RDMATransferAgent.h>
 
@@ -53,6 +54,9 @@ bool chronolog::RDMATransferAgent::is_receiver_available() const
 ///////////////////////////////////
 int chronolog::RDMATransferAgent::transfer_serialized_story_chunk(std::string const& serialized_story_chunk)
 {
+    CL_PROFILE_REGION("rpc_send");
+    CL_PROFILE_COUNTER("append_bytes", serialized_story_chunk.size());
+
     try
     {
         std::vector<std::pair<void*, std::size_t>> segments(1);
@@ -63,7 +67,11 @@ int chronolog::RDMATransferAgent::transfer_serialized_story_chunk(std::string co
                   serialized_story_chunk.size(),
                   tl_bulk.size());
 
-        size_t bytes_transfered = receive_story_chunk.on(receiver_service_handle)(tl_bulk);
+        size_t bytes_transfered;
+        {
+            CL_PROFILE_REGION("rpc_send");
+            bytes_transfered = receive_story_chunk.on(receiver_service_handle)(tl_bulk);
+        }
 
         LOG_DEBUG("[RDMATransferAgent] prepared tl_bulk size {} transfered {} bytes", tl_bulk.size(), bytes_transfered);
 

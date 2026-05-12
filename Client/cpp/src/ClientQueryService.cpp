@@ -15,6 +15,7 @@
 
 #include <client_errcode.h>
 #include <chrono_monitor.h>
+#include <chronolog_profile.h>
 #include <chronolog_client.h>
 #include <PlaybackQueryResponse.h>
 
@@ -83,6 +84,8 @@ int chl::ClientQueryService::replay_story(chl::ChronicleName const& chronicle,
                                           uint64_t end,
                                           std::vector<chl::Event>& event_series)
 {
+    CL_PROFILE_REGION("client_query");
+    CL_PROFILE_REGION("range_retrieval");
 
     //check if the story has been acquired and the chrono_player is available for it
 
@@ -233,6 +236,9 @@ void chronolog::ClientQueryService::removePlaybackQueryClient(chl::ServiceId con
 // in this refactor; the wire payload is no longer a StoryChunk.
 void chl::ClientQueryService::receive_story_chunk(tl::request const& request, tl::bulk& b)
 {
+    CL_PROFILE_REGION("rpc_receive");
+    CL_PROFILE_COUNTER("append_bytes", b.size());
+
     try
     {
         tl::endpoint ep = request.get_endpoint();
@@ -255,7 +261,11 @@ void chl::ClientQueryService::receive_story_chunk(tl::request const& request, tl
                   tl::thread::self_id());
 
         chronolog::PlaybackQueryResponse response;
-        int ret = deserializeResponse(&mem_vec[0], b.size(), response);
+        int ret;
+        {
+            CL_PROFILE_REGION("deserialization");
+            ret = deserializeResponse(&mem_vec[0], b.size(), response);
+        }
         if(ret != chronolog::CL_SUCCESS)
         {
             LOG_ERROR("[ClientQueryService] Failed to deserialize PlaybackQueryResponse, ThreadID={}",

@@ -5,6 +5,7 @@
 #include <thallium.hpp>
 
 #include <chrono_monitor.h>
+#include <chronolog_profile.h>
 #include <PlaybackService.h>
 #include <StoryChunkTransferAgent.h>
 
@@ -50,6 +51,10 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
                                                         chl::chrono_time const& start_time,
                                                         chl::chrono_time const& end_time)
 {
+    CL_PROFILE_REGION("rpc_receive");
+    CL_PROFILE_REGION("grapher_query");
+    CL_PROFILE_REGION("range_retrieval");
+
     LOG_INFO("[PlaybackService] story_playback_request for receiver_service {} Story {}-{}",
              chl::to_string(receiver_service_id),
              chronicle_name,

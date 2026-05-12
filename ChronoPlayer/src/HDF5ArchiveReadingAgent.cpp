@@ -13,6 +13,7 @@
 #include <chrono>
 
 #include <chronolog_errcode.h>
+#include <chronolog_profile.h>
 #include <StoryChunkWriter.h>
 #include <HDF5ArchiveReadingAgent.h>
 
@@ -87,6 +88,9 @@ int chronolog::HDF5ArchiveReadingAgent::readStoryChunkFile(const ChronicleName& 
                                                            std::list<StoryChunk*>& listOfChunks,
                                                            const std::string& file_name)
 {
+    CL_PROFILE_REGION("storage_read");
+    CL_PROFILE_REGION("range_retrieval");
+
     std::unique_ptr<H5::H5File> file;
     StoryChunk* story_chunk = nullptr;
     bool has_events_outside_range = false;
@@ -126,7 +130,10 @@ int chronolog::HDF5ArchiveReadingAgent::readStoryChunkFile(const ChronicleName& 
         LOG_DEBUG("[HDF5ArchiveReadingAgent] Reading data from dataset {}", dataset_name);
         std::vector<LogEventHVL> data;
         data.resize(dims_out[0]);
-        dataset.read(data.data(), defined_comp_type);
+        {
+            CL_PROFILE_REGION("deserialization");
+            dataset.read(data.data(), defined_comp_type);
+        }
 
         LOG_DEBUG("[HDF5ArchiveReadingAgent] Creating StoryChunk {}-{} range {}-{}...",
                   chronicleName,

@@ -10,6 +10,7 @@
 #include <thallium/serialization/stl/unordered_map.hpp>
 
 #include <chronolog_client.h>
+#include <chronolog_profile.h>
 #include <chronolog_types.h>
 #include <KeeperIdCard.h>
 #include <ConnectResponseMsg.h>
@@ -44,6 +45,8 @@ public:
                  uint32_t client_pid,
                  uint32_t client_protocol_version)
     {
+        CL_PROFILE_REGION("rpc_receive");
+
         if(client_protocol_version != chronolog::CLIENT_PROTOCOL_VERSION)
         {
             LOG_ERROR("[ClientPortalService] Connect rejected: client protocol version {} does not match server {}",
@@ -69,6 +72,8 @@ public:
 
     void Disconnect(tl::request const& request, ClientId const& client_token)
     {
+        CL_PROFILE_REGION("rpc_receive");
+
         int return_code = theVisorClientPortal.ClientDisconnect(client_token);
         request.respond(return_code);
     }
@@ -79,12 +84,18 @@ public:
                          const std::map<std::string, std::string>& attrs,
                          int& flags)
     {
+        CL_PROFILE_REGION("rpc_receive");
+        CL_PROFILE_REGION("metadata_lookup");
+
         int return_code = theVisorClientPortal.CreateChronicle(client_id, chronicle_name, attrs, flags);
         request.respond(return_code);
     }
 
     void DestroyChronicle(tl::request const& request, ClientId const& client_id, ChronicleName const& chronicle_name)
     {
+        CL_PROFILE_REGION("rpc_receive");
+        CL_PROFILE_REGION("metadata_lookup");
+
         int return_code = theVisorClientPortal.DestroyChronicle(client_id, chronicle_name);
         request.respond(return_code);
     }
@@ -96,6 +107,9 @@ public:
                       const std::map<std::string, std::string>& attrs,
                       int& flags)
     {
+        CL_PROFILE_REGION("rpc_receive");
+        CL_PROFILE_REGION("metadata_lookup");
+
         AcquireStoryResponseMsg acquire_response =
                 theVisorClientPortal.AcquireStory(client_id, chronicle_name, story_name, attrs, flags);
         request.respond(acquire_response);
@@ -106,6 +120,9 @@ public:
                       std::string const& chronicle_name,
                       std::string const& story_name)
     {
+        CL_PROFILE_REGION("rpc_receive");
+        CL_PROFILE_REGION("story_index_update");
+
         int return_code = theVisorClientPortal.ReleaseStory(client_id, chronicle_name, story_name);
         request.respond(return_code);
     }
@@ -115,6 +132,9 @@ public:
                       std::string const& chronicle_name,
                       std::string const& story_name)
     {
+        CL_PROFILE_REGION("rpc_receive");
+        CL_PROFILE_REGION("story_index_update");
+
         request.respond(theVisorClientPortal.DestroyStory(client_id, chronicle_name, story_name));
     }
 
@@ -124,6 +144,9 @@ public:
                           std::string const& key,
                           std::string& value)
     {
+        CL_PROFILE_REGION("rpc_receive");
+        CL_PROFILE_REGION("metadata_lookup");
+
         int return_code = theVisorClientPortal.GetChronicleAttr(client_id, chronicle_name, key, value);
         request.respond(return_code);
     }
@@ -134,12 +157,18 @@ public:
                            std::string const& key,
                            std::string const& value)
     {
+        CL_PROFILE_REGION("rpc_receive");
+        CL_PROFILE_REGION("metadata_lookup");
+
         int return_code = theVisorClientPortal.EditChronicleAttr(client_id, chronicle_name, key, value);
         request.respond(return_code);
     }
 
     void ShowChronicles(tl::request const& request, ClientId const& client_id)
     {
+        CL_PROFILE_REGION("rpc_receive");
+        CL_PROFILE_REGION("metadata_lookup");
+
         std::vector<std::string> chronicles;
         theVisorClientPortal.ShowChronicles(client_id, chronicles);
         request.respond(chronicles);
@@ -147,6 +176,9 @@ public:
 
     void ShowStories(tl::request const& request, ClientId const& client_id, const std::string& chronicle_name)
     {
+        CL_PROFILE_REGION("rpc_receive");
+        CL_PROFILE_REGION("metadata_lookup");
+
         std::vector<std::string> stories;
         theVisorClientPortal.ShowStories(client_id, chronicle_name, stories);
 

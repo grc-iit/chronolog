@@ -10,6 +10,7 @@
 #include <chronolog_errcode.h>
 #include <KeeperDataStore.h>
 #include <chrono_monitor.h>
+#include <chronolog_profile.h>
 
 namespace chl = chronolog;
 namespace tl = thallium;
@@ -30,6 +31,9 @@ int chronolog::KeeperDataStore::startStoryRecording(std::string const& chronicle
                                                     uint32_t time_chunk_duration,
                                                     uint32_t access_window)
 {
+    CL_PROFILE_REGION("keeper_ingest");
+    CL_PROFILE_REGION("metadata_lookup");
+
     LOG_INFO("[KeeperDataStore] Start recording story: Chronicle={}, Story={}, StoryID={}", chronicle, story, story_id);
 
     // Get dataStoreMutex, check for story_id_presense & add new KeeperStoryPipeline if needed
@@ -109,6 +113,8 @@ int chronolog::KeeperDataStore::stopStoryRecording(chronolog::StoryId const& sto
 
 void chronolog::KeeperDataStore::collectIngestedEvents()
 {
+    CL_PROFILE_REGION("keeper_ingest");
+
     LOG_DEBUG("[KeeperDataStore] Initiating collection of ingested events. Current state={}, Active "
               "KeeperStoryPipelines={}, "
               "PipelinesWaitingForExit={}, ThreadID={}",
@@ -130,6 +136,8 @@ void chronolog::KeeperDataStore::collectIngestedEvents()
 ////////////////////////
 void chronolog::KeeperDataStore::extractDecayedStoryChunks()
 {
+    CL_PROFILE_REGION("keeper_flush");
+
     LOG_DEBUG("[KeeperDataStore] Initiating extraction of decayed story chunks. Current state={}, Active "
               "KeeperStoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}",
               state,

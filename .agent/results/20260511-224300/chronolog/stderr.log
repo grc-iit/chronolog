@@ -1,0 +1,48 @@
+Python bindings enabled
+Building CMAKE_CURRENT_SOURCE_DIR=/home/jcernudagarcia/chronolog-opt/chronolog/ChronoStore
+build target : chrono_store
+In file included from /home/jcernudagarcia/chronolog-opt/chronolog/ChronoKeeper/src/KeeperDataStore.cpp:13:
+/home/jcernudagarcia/chronolog-opt/chronolog/Client/cpp/include/chronolog_profile.h:51:35: error: expected unqualified-id before ‘void’
+   51 | #define CL_PROFILE_REGION(name) ((void)0)
+      |                                   ^~~~
+/home/jcernudagarcia/chronolog-opt/chronolog/ChronoKeeper/src/KeeperDataStore.cpp:21:5: note: in expansion of macro ‘CL_PROFILE_REGION’
+   21 |     CL_PROFILE_REGION("keeper_ingest");
+      |     ^~~~~~~~~~~~~~~~~
+/home/jcernudagarcia/chronolog-opt/chronolog/Client/cpp/include/chronolog_profile.h:51:35: error: expected ‘)’ before ‘void’
+   51 | #define CL_PROFILE_REGION(name) ((void)0)
+      |                                  ~^~~~
+/home/jcernudagarcia/chronolog-opt/chronolog/ChronoKeeper/src/KeeperDataStore.cpp:21:5: note: in expansion of macro ‘CL_PROFILE_REGION’
+   21 |     CL_PROFILE_REGION("keeper_ingest");
+      |     ^~~~~~~~~~~~~~~~~
+/home/jcernudagarcia/chronolog-opt/chronolog/Client/cpp/include/chronolog_profile.h:51:35: error: expected ‘)’ before ‘void’
+   51 | #define CL_PROFILE_REGION(name) ((void)0)
+      |                                 ~ ^~~~
+/home/jcernudagarcia/chronolog-opt/chronolog/ChronoKeeper/src/KeeperDataStore.cpp:21:5: note: in expansion of macro ‘CL_PROFILE_REGION’
+   21 |     CL_PROFILE_REGION("keeper_ingest");
+      |     ^~~~~~~~~~~~~~~~~
+/home/jcernudagarcia/chronolog-opt/chronolog/Client/cpp/include/chronolog_profile.h:51:35: error: expected unqualified-id before ‘void’
+   51 | #define CL_PROFILE_REGION(name) ((void)0)
+      |                                   ^~~~
+/home/jcernudagarcia/chronolog-opt/chronolog/ChronoKeeper/src/KeeperDataStore.cpp:22:5: note: in expansion of macro ‘CL_PROFILE_REGION’
+   22 |     CL_PROFILE_REGION("metadata_lookup");
+      |     ^~~~~~~~~~~~~~~~~
+/home/jcernudagarcia/chronolog-opt/chronolog/Client/cpp/include/chronolog_profile.h:51:35: error: expected ‘)’ before ‘void’
+   51 | #define CL_PROFILE_REGION(name) ((void)0)
+      |                                  ~^~~~
+/home/jcernudagarcia/chronolog-opt/chronolog/ChronoKeeper/src/KeeperDataStore.cpp:22:5: note: in expansion of macro ‘CL_PROFILE_REGION’
+   22 |     CL_PROFILE_REGION("metadata_lookup");
+      |     ^~~~~~~~~~~~~~~~~
+/home/jcernudagarcia/chronolog-opt/chronolog/Client/cpp/include/chronolog_profile.h:51:35: error: expected ‘)’ before ‘void’
+   51 | #define CL_PROFILE_REGION(name) ((void)0)
+      |                                 ~ ^~~~
+/home/jcernudagarcia/chronolog-opt/chronolog/ChronoKeeper/src/KeeperDataStore.cpp:22:5: note: in expansion of macro ‘CL_PROFILE_REGION’
+   22 |     CL_PROFILE_REGION("metadata_lookup");
+      |     ^~~~~~~~~~~~~~~~~
+gmake[2]: *** [ChronoKeeper/CMakeFiles/chrono_keeper.dir/build.make:118: ChronoKeeper/CMakeFiles/chrono_keeper.dir/src/KeeperDataStore.cpp.o] Error 1
+gmake[2]: *** Waiting for unfinished jobs....
+gmake[1]: *** [CMakeFiles/Makefile2:700: ChronoKeeper/CMakeFiles/chrono_keeper.dir/all] Error 2
+gmake[1]: *** Waiting for unfinished jobs....
+gmake: *** [Makefile:156: all] Error 2
+Python bindings enabled
+Building CMAKE_CURRENT_SOURCE_DIR=/home/jcernudagarcia/chronolog-opt/chronolog/ChronoStore
+build target : chrono_store

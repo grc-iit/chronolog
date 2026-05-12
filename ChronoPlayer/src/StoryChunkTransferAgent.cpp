@@ -8,6 +8,7 @@
 #include <cereal/archives/binary.hpp>
 
 #include <chrono_monitor.h>
+#include <chronolog_profile.h>
 #include <chronolog_errcode.h>
 #include <PlaybackQueryResponse.h>
 #include <StoryChunk.h>
@@ -76,10 +77,14 @@ int chronolog::StoryChunkTransferAgent::processStoryChunk(chronolog::StoryChunk*
 
         size_t serialized_response_size;
         std::ostringstream oss(std::ios::binary);
-        cereal::BinaryOutputArchive oarchive(oss);
-        oarchive(response);
+        {
+            CL_PROFILE_REGION("serialization");
+            cereal::BinaryOutputArchive oarchive(oss);
+            oarchive(response);
+        }
         std::string serialized_response = oss.str();
         serialized_response_size = serialized_response.size();
+        CL_PROFILE_COUNTER("append_bytes", serialized_response_size);
 
 #ifdef LOGTIME
         end = std::chrono::high_resolution_clock::now();
@@ -96,7 +101,11 @@ int chronolog::StoryChunkTransferAgent::processStoryChunk(chronolog::StoryChunk*
         tl::bulk tl_bulk = service_engine.expose(segments, tl::bulk_mode::read_only);
         LOG_DEBUG("[StoryChunkTransferAgent] Draining PlaybackQueryResponse size: {} ...", tl_bulk.size());
 
-        size_t bytes_transfered = receive_story_chunk.on(receiver_service_handle)(tl_bulk);
+        size_t bytes_transfered;
+        {
+            CL_PROFILE_REGION("rpc_send");
+            bytes_transfered = receive_story_chunk.on(receiver_service_handle)(tl_bulk);
+        }
 
 #ifdef LOGTIME
         start = end;

@@ -11,6 +11,7 @@
 #include <thallium.hpp>
 
 #include <chronolog_types.h>
+#include <chronolog_profile.h>
 
 #include "KeeperRecordingClient.h"
 #include "StorytellerClient.h"
@@ -67,6 +68,9 @@ void chronolog::StoryWritingHandle<KeeperChoicePolicy>::removeRecordingClient(
 template <class KeeperChoicePolicy>
 uint64_t chronolog::StoryWritingHandle<KeeperChoicePolicy>::log_event(std::string const& event_record)
 {
+    CL_PROFILE_REGION("client_append");
+    CL_PROFILE_COUNTER("append_bytes", event_record.size());
+
     chronolog::LogEvent log_event(storyId,
                                   theClient.getTimestamp(),
                                   theClient.getClientId(),

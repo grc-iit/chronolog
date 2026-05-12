@@ -12,6 +12,7 @@
 #include <StoryIngestionHandle.h>
 #include <StoryChunkExtractionQueue.h>
 #include <chrono_monitor.h>
+#include <chronolog_profile.h>
 
 //#define TRACE_CHUNKING
 #define TRACE_CHUNK_EXTRACTION
@@ -206,6 +207,8 @@ std::map<uint64_t, chronolog::StoryChunk*>::iterator chronolog::KeeperStoryPipel
 
 void chronolog::KeeperStoryPipeline::collectIngestedEvents()
 {
+    CL_PROFILE_REGION("keeper_buffer_insert");
+
     activeIngestionHandle->swapActiveDeque();
     if(!activeIngestionHandle->getPassiveDeque().empty())
     {
@@ -216,6 +219,8 @@ void chronolog::KeeperStoryPipeline::collectIngestedEvents()
 
 void chronolog::KeeperStoryPipeline::extractDecayedStoryChunks(uint64_t current_time)
 {
+    CL_PROFILE_REGION("keeper_flush");
+
 #ifdef TRACE_CHUNK_EXTRACTION
     auto current_point = std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds>{}
                          // epoch_time_point{};

@@ -6,6 +6,7 @@
 #include <utility>
 
 #include <chrono_monitor.h>
+#include <chronolog_profile.h>
 #include <StoryChunk.h>
 #include <StoryPipeline.h>
 #include <StoryChunkIngestionHandle.h>
@@ -215,6 +216,8 @@ std::map<uint64_t, chronolog::StoryChunk*>::iterator chronolog::StoryPipeline::a
 
 void chronolog::StoryPipeline::collectIngestedEvents()
 {
+    CL_PROFILE_REGION("grapher_query");
+
     activeIngestionHandle->swapActiveDeque();
     StoryChunk* next_chunk = nullptr;
     while(!activeIngestionHandle->getPassiveDeque().empty())
@@ -231,6 +234,8 @@ void chronolog::StoryPipeline::collectIngestedEvents()
 
 void chronolog::StoryPipeline::extractDecayedStoryChunks(uint64_t current_time)
 {
+    CL_PROFILE_REGION("storage_write");
+
 #ifdef TRACE_CHUNK_EXTRACTION
     auto current_point = std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds>{}
                          // epoch_time_point{};

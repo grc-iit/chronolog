@@ -10,6 +10,7 @@
 #include <thallium.hpp>
 
 #include <chrono_monitor.h>
+#include <chronolog_profile.h>
 #include "ChronologClientImpl.h"
 #include "StorytellerClient.h"
 
@@ -202,6 +203,8 @@ int chronolog::ChronologClientImpl::CreateChronicle(std::string const& chronicle
                                                     const std::map<std::string, std::string>& attrs,
                                                     int& flags)
 {
+    CL_PROFILE_REGION("metadata_lookup");
+
     if(chronicle_name.empty())
     {
         LOG_ERROR("[ChronoLogClientImpl] Failed to create chronicle: No valid name provided.");
@@ -236,6 +239,8 @@ int chronolog::ChronologClientImpl::CreateChronicle(std::string const& chronicle
 
 int chronolog::ChronologClientImpl::DestroyChronicle(std::string const& chronicle_name)
 {
+    CL_PROFILE_REGION("metadata_lookup");
+
     if(chronicle_name.empty())
     {
         return chronolog::CL_ERR_INVALID_ARG;
@@ -267,6 +272,8 @@ int chronolog::ChronologClientImpl::DestroyChronicle(std::string const& chronicl
 
 int chronolog::ChronologClientImpl::DestroyStory(std::string const& chronicle_name, std::string const& story_name)
 {
+    CL_PROFILE_REGION("story_index_update");
+
     if(chronicle_name.empty() || story_name.empty())
     {
         LOG_ERROR("[ChronoLogClientImpl] Failed to destroy chronicle: No valid name provided.");
@@ -309,6 +316,8 @@ chronolog::ChronologClientImpl::AcquireStory(std::string const& chronicle_name,
                                              const std::map<std::string, std::string>& attrs,
                                              int& flags)
 {
+    CL_PROFILE_REGION("metadata_lookup");
+
     // Log the attempt to acquire a story with specific details.
     LOG_DEBUG("[ChronoLogClientImpl] Attempting to acquire story. ChronicleName={}, StoryName={}",
               chronicle_name,
@@ -393,6 +402,8 @@ chronolog::ChronologClientImpl::AcquireStory(std::string const& chronicle_name,
 
 int chronolog::ChronologClientImpl::ReleaseStory(std::string const& chronicle_name, std::string const& story_name)
 {
+    CL_PROFILE_REGION("story_index_update");
+
     // there's no reason to waste an rpc call on empty strings...
     if(chronicle_name.empty() || story_name.empty())
     {
@@ -459,6 +470,8 @@ int chronolog::ChronologClientImpl::GetChronicleAttr(std::string const& chronicl
                                                      const std::string& key,
                                                      std::string& value)
 {
+    CL_PROFILE_REGION("metadata_lookup");
+
     value.clear(); // in case the error is returned , make sure value is an empty string
 
     if(chronicle_name.empty() || key.empty())
@@ -501,6 +514,8 @@ int chronolog::ChronologClientImpl::EditChronicleAttr(std::string const& chronic
                                                       const std::string& key,
                                                       std::string const& value)
 {
+    CL_PROFILE_REGION("metadata_lookup");
+
     if(chronicle_name.empty() || key.empty() || value.empty())
     {
         LOG_ERROR(
@@ -539,6 +554,8 @@ int chronolog::ChronologClientImpl::EditChronicleAttr(std::string const& chronic
 
 std::vector<std::string>& chronolog::ChronologClientImpl::ShowChronicles(std::vector<std::string>& chronicles)
 {
+    CL_PROFILE_REGION("metadata_lookup");
+
     std::lock_guard<std::mutex> lock_client(chronologClientMutex);
 
     if((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
@@ -565,6 +582,8 @@ std::vector<std::string>& chronolog::ChronologClientImpl::ShowChronicles(std::ve
 std::vector<std::string>& chronolog::ChronologClientImpl::ShowStories(std::string const& chronicle_name,
                                                                       std::vector<std::string>& stories)
 {
+    CL_PROFILE_REGION("metadata_lookup");
+
     if(chronicle_name.empty())
     {
         LOG_ERROR("[ChronoLogClientImpl] Failed to fetch stories: Empty chronicle name provided.");
@@ -605,6 +624,9 @@ int chronolog::ChronologClientImpl::replay_story(chronolog::ChronicleName const&
                                                  uint64_t end,
                                                  std::vector<chronolog::Event>& event_series)
 {
+    CL_PROFILE_REGION("client_query");
+    CL_PROFILE_REGION("range_retrieval");
+
     // this functionality is only available if the client is running in READER_MODE
 
     if(WRITER_MODE == clientMode)

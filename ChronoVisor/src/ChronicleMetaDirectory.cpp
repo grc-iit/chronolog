@@ -6,6 +6,7 @@
 #include <vector>
 
 #include <chrono_monitor.h>
+#include <chronolog_profile.h>
 #include <chronolog_errcode.h>
 #include <ClientRegistryManager.h>
 #include <ChronicleMetaDirectory.h>
@@ -33,6 +34,8 @@ ChronicleMetaDirectory::~ChronicleMetaDirectory() { delete chronicleMap_; }
  */
 int ChronicleMetaDirectory::create_chronicle(const std::string& name, const std::map<std::string, std::string>& attrs)
 {
+    CL_PROFILE_REGION("metadata_lookup");
+
     LOG_DEBUG("[ChronicleMetaDirectory] Creating Chronicle Name={}", name.c_str());
     for(auto iter = attrs.begin(); iter != attrs.end(); ++iter)
     {
@@ -79,6 +82,8 @@ int ChronicleMetaDirectory::create_chronicle(const std::string& name, const std:
  */
 int ChronicleMetaDirectory::destroy_chronicle(const std::string& name)
 {
+    CL_PROFILE_REGION("metadata_lookup");
+
     LOG_DEBUG("[ChronicleMetaDirectory] Destroying ChronicleName={}", name.c_str());
     std::lock_guard<std::mutex> chronicleMapLock(g_chronicleMetaDirectoryMutex_);
     /* First check if Chronicle exists, fail if false */
@@ -152,6 +157,8 @@ int ChronicleMetaDirectory::destroy_chronicle(const std::string& name)
  */
 int ChronicleMetaDirectory::destroy_story(std::string const& chronicle_name, const std::string& story_name)
 {
+    CL_PROFILE_REGION("story_index_update");
+
     LOG_DEBUG("[ChronicleMetaDirectory] Destroying StoryName={} in ChronicleName={}",
               story_name.c_str(),
               chronicle_name.c_str());
@@ -218,6 +225,9 @@ int ChronicleMetaDirectory::acquire_story(chl::ClientId const& client_id,
                                           int& flags,
                                           StoryId& story_id)
 {
+    CL_PROFILE_REGION("metadata_lookup");
+    CL_PROFILE_REGION("story_index_update");
+
     LOG_DEBUG("[ChronicleMetaDirectory] ClientID={} acquiring StoryName={} in ChronicleName={} with Flags={}",
               client_id,
               story_name.c_str(),

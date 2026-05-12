@@ -4,6 +4,7 @@
 #include <stdexcept>
 
 #include <StoryChunkWriter.h>
+#include <chronolog_profile.h>
 
 namespace fs = std::filesystem;
 
@@ -11,6 +12,9 @@ namespace chronolog
 {
 hsize_t StoryChunkWriter::writeStoryChunk(StoryChunkHVL& story_chunk)
 {
+    CL_PROFILE_REGION("storage_write");
+    CL_PROFILE_COUNTER("append_bytes", story_chunk.getEventCount());
+
     std::vector<LogEventHVL> data;
     data.reserve(story_chunk.getEventCount());
     for(const auto& start: story_chunk) { data.push_back(start.second); }
@@ -113,6 +117,9 @@ std::string StoryChunkWriter::getStoryChunkFileName(std::string const& root_dir,
 
 hsize_t StoryChunkWriter::writeStoryChunk(StoryChunk& story_chunk)
 {
+    CL_PROFILE_REGION("storage_write");
+    CL_PROFILE_COUNTER("append_bytes", story_chunk.getEventCount());
+
     std::vector<LogEventHVL> data;
     data.reserve(story_chunk.getEventCount());
     for(const auto& event: story_chunk)
@@ -163,6 +170,8 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunk& story_chunk)
 
 hsize_t StoryChunkWriter::writeEvents(std::unique_ptr<H5::H5File>& file, std::vector<LogEventHVL>& data)
 {
+    CL_PROFILE_REGION("storage_write");
+
     int ret = 0;
     try
     {

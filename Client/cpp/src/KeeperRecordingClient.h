@@ -11,6 +11,7 @@
 #include <ServiceId.h>
 #include <client_errcode.h>
 #include <chrono_monitor.h>
+#include <chronolog_profile.h>
 
 namespace tl = thallium;
 
@@ -38,6 +39,9 @@ public:
 
     int send_event_msg(LogEvent const& eventMsg)
     {
+        CL_PROFILE_REGION("rpc_send");
+        CL_PROFILE_COUNTER("append_bytes", eventMsg.logRecord.size());
+
         try
         {
             //std::stringstream ss;

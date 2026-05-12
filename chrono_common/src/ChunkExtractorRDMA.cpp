@@ -2,6 +2,7 @@
 #include <cereal/archives/binary.hpp>
 
 #include <chrono_monitor.h>
+#include <chronolog_profile.h>
 #include <chronolog_errcode.h>
 #include <StoryChunk.h>
 #include <RDMATransferAgent.h>
@@ -96,6 +97,8 @@ chronolog::StoryChunkExtractorRDMA::~StoryChunkExtractorRDMA()
 
 int chronolog::StoryChunkExtractorRDMA::process_chunk(chronolog::StoryChunk* story_chunk)
 {
+    CL_PROFILE_REGION("keeper_flush");
+
     try
     {
         LOG_DEBUG("[ExtractorRDMA] tl::thread_id={} processing chunk StoryId={} {}-{} {}-{} eventCount {}",
@@ -116,11 +119,19 @@ int chronolog::StoryChunkExtractorRDMA::process_chunk(chronolog::StoryChunk* sto
         }
 
         std::ostringstream oss(std::ios::binary);
-        cereal::BinaryOutputArchive oarchive(oss);
-        oarchive(*story_chunk);
+        {
+            CL_PROFILE_REGION("serialization");
+            cereal::BinaryOutputArchive oarchive(oss);
+            oarchive(*story_chunk);
+        }
         std::string serialized_story_chunk = oss.str();
+        CL_PROFILE_COUNTER("append_bytes", serialized_story_chunk.size());
 
-        auto transfer_return = rdma_sender->transfer_serialized_story_chunk(serialized_story_chunk);
+        int transfer_return;
+        {
+            CL_PROFILE_REGION("rpc_send");
+            transfer_return = rdma_sender->transfer_serialized_story_chunk(serialized_story_chunk);
+        }
 
         if(transfer_return == chl::CL_SUCCESS)
         {
