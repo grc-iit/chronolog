@@ -6,7 +6,6 @@
 #include <cstring>
 #include <fstream>
 #include <iostream>
-#include <cassert>
 #include <json-c/json.h>
 #include <sstream>
 

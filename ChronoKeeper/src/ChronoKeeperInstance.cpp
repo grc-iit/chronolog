@@ -16,9 +16,7 @@
 #include <DataStoreAdminService.h>
 #include <cmd_arg_parse.h>
 #include <StoryChunkExtractionModule.h>
-#include <ChunkLoggingExtractor.h>
-#include <ChunkExtractorRDMA.h>
-
+#include <KeeperExtractionChain.h>
 #include <ConfigurationManager.h>
 #include <ChronoKeeperConfiguration.h>
 
@@ -97,6 +95,7 @@ int main(int argc, char** argv)
     }
 
     LOG_INFO("[ChronoKeeper] Running ChronoKeeper Server.");
+
     LOG_INFO("[ChronoKeeper] Configuration {}", KEEPER_CONF.to_String());
 
     // Instantiate ChronoKeeper MemoryDataStore
@@ -159,15 +158,21 @@ int main(int argc, char** argv)
 
     LOG_INFO("[ChronoKeeperInstance] KeeperIdCard: {}", chronolog::to_string(keeperIdCard));
 
-    // Instantiate ChronoKeeper MemoryDataStore & ExtractionModule
-    chronolog::IngestionQueue ingestionQueue;
-    std::string keeper_csv_files_directory = KEEPER_CONF.EXTRACTOR_CONF.story_files_dir;
-    // Instantiate KeeperGrapherDrainService
+
+    // Instantiate ChronoKeeper  ExtractionModule
+
     tl::engine* extractionEngine = nullptr;
+    // default extraction engine fabric is "ofi+sockets"
+    std::string extraction_engine_protocol = KEEPER_CONF.EXTRACTION_MODULE_CONF.extraction_protocol;
+
+
+    // if single_endpoint_rdma_extractor or dual_endpoint_rdma_extractor
+    // are configured then extraction engine needs to be instantiated with
+    // the protocol of the grapher receiving endpoint
+
     try
     {
-        extractionEngine =
-                new tl::engine(KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.PROTO_CONF, THALLIUM_CLIENT_MODE);
+        extractionEngine = new tl::engine(extraction_engine_protocol, THALLIUM_CLIENT_MODE);
 
         std::stringstream s1;
         s1 << extractionEngine->self();
@@ -181,16 +186,30 @@ int main(int argc, char** argv)
         return (-1);
     }
 
-    chl::ServiceId grapherReceivingServiceId(KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.PROTO_CONF,
-                                             KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP,
-                                             KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT,
-                                             KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.SERVICE_PROVIDER_ID);
+    std::string log_string;
 
-    chl::StoryChunkExtractorRDMA single_endpoint_rdma_extractor(*extractionEngine, grapherReceivingServiceId);
-    chronolog::StoryChunkExtractionModule extractionModule(chl::LoggingExtractor(), single_endpoint_rdma_extractor);
+    LOG_INFO("[ChronoKeeperInstance] Initializing StoryChunkExtractionModule with {}",
+             KEEPER_CONF.EXTRACTION_MODULE_CONF.to_string(log_string));
 
+    chl::StoryChunkExtractionModule<chl::ChronoKeeperExtractionChain> theExtractionModule(
+            KEEPER_CONF.EXTRACTION_MODULE_CONF.extraction_stream_count);
+
+    theExtractionModule.getExtractionChain().activate(*extractionEngine,
+                                                      KEEPER_CONF.EXTRACTION_MODULE_CONF,
+                                                      keeperIdCard.getRecordingServiceId());
+
+    theExtractionModule.initialize(KEEPER_CONF.EXTRACTION_MODULE_CONF.extraction_stream_count);
+
+    if(!theExtractionModule.is_initialized())
+    {
+        LOG_ERROR("[ChronoKeeperInstance] StoryChunkExtractionModule failed to initialize, exiting");
+        return (-1);
+    }
+
+    // Instantiate KeeperDataStore
+    chronolog::IngestionQueue ingestionQueue;
     chronolog::KeeperDataStore theDataStore(ingestionQueue,
-                                            extractionModule.getExtractionQueue(),
+                                            theExtractionModule.getExtractionQueue(),
                                             KEEPER_CONF.DATA_STORE_CONF.max_story_chunk_size,
                                             KEEPER_CONF.DATA_STORE_CONF.story_chunk_duration_secs,
                                             KEEPER_CONF.DATA_STORE_CONF.acceptance_window_secs,
@@ -316,8 +335,7 @@ int main(int argc, char** argv)
     tl::abt scope;
     theDataStore.startDataCollection(3);
     // start extraction streams & threads
-    //storyExtractor.startExtractionThreads(2);
-    extractionModule.startExtraction(2);
+    theExtractionModule.startExtraction();
 
 
     /// Main loop for sending stats message until receiving SIGTERM ____________________________________________________
@@ -345,7 +363,8 @@ int main(int argc, char** argv)
     theDataStore.shutdownDataCollection();
     // Shutdown extraction module
     // drain extractionQueue and stop extraction xStreams
-    extractionModule.shutdownExtraction();
+    theExtractionModule.shutdownExtraction();
+
     // these are not probably needed as thallium handles the engine finalization...
     //  recordingEngine.finalize();
     //  collectionEngine.finalize();
