@@ -1,0 +1,1066 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 113  of event 'cycles'
+# Event count (approx.): 641529268
+#
+# Children      Self  Command       Shared Object         Symbol                                     
+# ........  ........  ............  ....................  ...........................................
+#
+    43.53%     0.00%  chrono-visor  [unknown]             [.] 0000000000000000
+            |
+            ---0
+               |          
+               |--14.28%--pthread_mutex_unlock@@GLIBC_2.2.5
+               |          
+               |--9.68%--pthread_mutex_lock@@GLIBC_2.2.5
+               |          
+               |--5.42%--epoll_wait
+               |          
+               |--4.62%--sock_pe_progress_rx_ep
+               |          
+               |--3.42%--pthread_spin_lock@@GLIBC_2.34
+               |          
+               |--3.02%--HG_Core_progress
+               |          
+                --1.41%--0x56010798de80
+                          HG_Core_trigger
+
+    26.13%    26.13%  chrono-visor  libc.so.6             [.] pthread_mutex_lock@@GLIBC_2.2.5
+            |          
+            |--16.45%--0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          0x5601076ffb90
+            |          0x7f6c204f5cf0
+            |          0x56010798bfc0
+            |          pthread_mutex_lock@@GLIBC_2.2.5
+            |          
+             --9.68%--0
+                       pthread_mutex_lock@@GLIBC_2.2.5
+
+    21.63%     0.00%  chrono-visor  [unknown]             [.] 0x00005601076ffb90
+            |
+            ---0x5601076ffb90
+               0x7f6c204f5cf0
+               |          
+               |--17.11%--0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          |          
+               |           --16.45%--pthread_mutex_lock@@GLIBC_2.2.5
+               |          
+                --4.52%--0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          |          
+                           --3.78%--0x7ffd9956f7b0
+
+    21.63%     0.00%  chrono-visor  [unknown]             [.] 0x00007f6c204f5cf0
+            |
+            ---0x7f6c204f5cf0
+               |          
+               |--17.11%--0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          0x5601076ffb90
+               |          0x7f6c204f5cf0
+               |          0x56010798bfc0
+               |          |          
+               |           --16.45%--pthread_mutex_lock@@GLIBC_2.2.5
+               |          
+                --4.52%--0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          0x7f6c204f5cf0
+                          0x5601076ffb90
+                          |          
+                           --3.78%--0x7ffd9956f7b0
+
+    19.93%    19.93%  chrono-visor  libabt.so.1.1.0       [.] ABT_thread_yield
+            |
+            ---0x560107bf9e00
+               ABT_thread_yield
+
+    19.93%     0.00%  chrono-visor  [unknown]             [.] 0x0000560107bf9e00
+            |
+            ---0x560107bf9e00
+               ABT_thread_yield
+
+    17.11%     0.00%  chrono-visor  [unknown]             [k] 0x000056010798bfc0
+            |
+            ---0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               0x5601076ffb90
+               0x7f6c204f5cf0
+               0x56010798bfc0
+               |          
+                --16.45%--pthread_mutex_lock@@GLIBC_2.2.5
+
+    14.38%    14.38%  chrono-visor  libc.so.6             [.] pthread_mutex_unlock@@GLIBC_2.2.5
+            |          
+             --14.28%--0
+                       pthread_mutex_unlock@@GLIBC_2.2.5
+
+    10.05%     9.25%  chrono-visor  libc.so.6             [.] epoll_wait
+            |          
+             --9.25%--0
+                       |          
+                       |--4.62%--epoll_wait
+                       |          
+                        --4.62%--sock_pe_progress_rx_ep
+
+     5.99%     5.99%  chrono-visor  libfabric.so.1.25.0   [.] sock_pe_progress_rx_ctrl_ctx
+            |
+            ---0xb3a000000313f0e
+               0x80
+               sock_pe_progress_rx_ctrl_ctx
+
+     5.99%     0.00%  chrono-visor  [unknown]             [.] 0x0b3a000000313f0e
+            |
+            ---0xb3a000000313f0e
+               0x80
+               sock_pe_progress_rx_ctrl_ctx
+
+     5.99%     0.00%  chrono-visor  [unknown]             [.] 0x0000000000000080
+            |
+            ---0x80
+               sock_pe_progress_rx_ctrl_ctx
+
+     4.62%     0.00%  chrono-visor  libfabric.so.1.25.0   [.] sock_pe_progress_rx_ep
+            |
+            ---sock_pe_progress_rx_ep
+
+     4.33%     4.33%  chrono-visor  [vdso]                [.] __vdso_clock_gettime
+            |          
+             --3.78%--0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7f6c204f5cf0
+                       0x5601076ffb90
+                       0x7ffd9956f7b0
+
+     4.33%     0.00%  chrono-visor  [vdso]                [.] 0x00007ffd9956f7b0
+            |
+            ---0x7ffd9956f7b0
+
+     3.42%     3.42%  chrono-visor  libc.so.6             [.] pthread_spin_lock@@GLIBC_2.34
+            |
+            ---0
+               pthread_spin_lock@@GLIBC_2.34
+
+     3.02%     3.02%  chrono-visor  libmercury.so.2.3.1   [.] HG_Core_progress
+            |
+            ---0
+               HG_Core_progress
+
+     2.43%     2.43%  chrono-visor  [unknown]             [k] 0xffffffff89401247
+            |          
+             --2.38%--_dl_map_object
+                       |          
+                        --2.37%--_dl_map_object_from_fd
+
+     2.38%     0.00%  chrono-visor  ld-linux-x86-64.so.2  [.] _dl_map_object
+            |
+            ---_dl_map_object
+               |          
+                --2.37%--_dl_map_object_from_fd
+
+     2.37%     0.00%  chrono-visor  ld-linux-x86-64.so.2  [.] _dl_map_object_from_fd
+            |
+            ---_dl_map_object_from_fd
+
+     1.76%     1.76%  chrono-visor  libna.so.4.0.0        [.] na_ofi_progress
+            |
+            ---0x5601076fc6e0
+               na_ofi_progress
+
+     1.76%     0.00%  chrono-visor  [unknown]             [.] 0x00005601076fc6e0
+            |
+            ---0x5601076fc6e0
+               na_ofi_progress
+
+     1.41%     1.41%  chrono-visor  libmercury.so.2.3.1   [.] HG_Core_trigger
+            |
+            ---0x25002f2f3a5d3a5e
+               na_ofi_get_protocol_info
+               0x5601076d2c60
+               0
+               0x56010798de80
+               HG_Core_trigger
+
+     1.41%     0.00%  chrono-visor  [unknown]             [.] 0x25002f2f3a5d3a5e
+            |
+            ---0x25002f2f3a5d3a5e
+               na_ofi_get_protocol_info
+               0x5601076d2c60
+               0
+               0x56010798de80
+               HG_Core_trigger
+
+     1.41%     0.00%  chrono-visor  libna.so.4.0.0        [.] na_ofi_get_protocol_info
+            |
+            ---na_ofi_get_protocol_info
+               0x5601076d2c60
+               0
+               0x56010798de80
+               HG_Core_trigger
+
+     1.41%     0.00%  chrono-visor  [unknown]             [.] 0x00005601076d2c60
+            |
+            ---0x5601076d2c60
+               0
+               0x56010798de80
+               HG_Core_trigger
+
+     1.41%     0.00%  chrono-visor  [unknown]             [.] 0x000056010798de80
+            |
+            ---0x56010798de80
+               HG_Core_trigger
+
+
+
+#
+# (Cannot load tips.txt file, please install perf!)
+#

@@ -112,3 +112,7 @@ This is not a performance-optimization phase. The goal is to make the full measu
 - [x] Document ChronoLog archive-backed read path and future live/tail read gap.
 - [x] Seed benchmark framework design from Mofka generator configuration dimensions.
 - [x] Package Phase 0 profiling outputs and figures under `profiling/0`.
+- [x] Add finer Keeper lock/queue TAU semantic labels and validate them in a distributed TAU run.
+- [x] Make `perf` available without sudo through a repo-local kernel-matched binary and validate distributed `perf record`.
+- [x] Implement and validate the tunable Phase 0 benchmark matrix runner.
+- [x] Generate updated TAU, perf, and benchmark matrix artifacts under `profiling/0`.

@@ -212,6 +212,7 @@ void chronolog::KeeperStoryPipeline::collectIngestedEvents()
     activeIngestionHandle->swapActiveDeque();
     if(!activeIngestionHandle->getPassiveDeque().empty())
     {
+        CL_PROFILE_COUNTER("keeper_passive_queue_depth", activeIngestionHandle->getPassiveDeque().size());
         mergeEvents(activeIngestionHandle->getPassiveDeque());
     }
     LOG_INFO("[KeeperStoryPipeline] Collected ingested events for StoryID={}", storyId);
@@ -244,7 +245,12 @@ void chronolog::KeeperStoryPipeline::extractDecayedStoryChunks(uint64_t current_
 
         {
             // lock the TimelineMap & check that the decayed storychunk is still there
-            std::lock_guard<std::mutex> lock(sequencingMutex);
+            {
+                CL_PROFILE_REGION("keeper_timeline_lock_wait");
+                sequencingMutex.lock();
+            }
+            std::lock_guard<std::mutex> lock(sequencingMutex, std::adopt_lock);
+            CL_PROFILE_REGION("keeper_timeline_lock_hold");
             if(current_time > acceptanceWindow + (*storyTimelineMap.begin()).second->getEndTime())
             {
                 extractedChunk = (*storyTimelineMap.begin()).second;
@@ -271,6 +277,8 @@ void chronolog::KeeperStoryPipeline::extractDecayedStoryChunks(uint64_t current_
             }
             else
             {
+                CL_PROFILE_REGION("keeper_extraction_queue_push");
+                CL_PROFILE_COUNTER("keeper_extracted_chunk_events", extractedChunk->getEventCount());
                 theExtractionQueue.stashStoryChunk(extractedChunk);
             }
         }
@@ -291,7 +299,15 @@ void chronolog::KeeperStoryPipeline::mergeEvents(chronolog::EventDeque& event_de
         return;
     }
 
-    std::lock_guard<std::mutex> lock(sequencingMutex);
+    const auto events_to_merge = event_deque.size();
+    CL_PROFILE_COUNTER("keeper_merge_batch_events", events_to_merge);
+    {
+        CL_PROFILE_REGION("keeper_timeline_lock_wait");
+        sequencingMutex.lock();
+    }
+    std::lock_guard<std::mutex> lock(sequencingMutex, std::adopt_lock);
+    CL_PROFILE_REGION("keeper_timeline_lock_hold");
+    CL_PROFILE_REGION("keeper_merge_events");
     chl::LogEvent event;
     // the last chunk is most likely the one that would get the events, so we'd start with the last
     // chunk and do the lookup only if it's not the one
@@ -393,6 +409,7 @@ void chronolog::KeeperStoryPipeline::mergeEvents(chronolog::EventDeque& event_de
         }
         event_deque.pop_front();
     }
+    CL_PROFILE_COUNTER("keeper_merge_events_completed", events_to_merge);
 }
 
 //////////////////////

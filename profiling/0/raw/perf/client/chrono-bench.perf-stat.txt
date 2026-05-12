@@ -1,0 +1,32 @@
+# started on Tue May 12 11:50:39 2026
+
+
+ Performance counter stats for '/mnt/common/jcernudagarcia/chronolog-opt/chronolog/opt/perf/root/usr/lib/linux-tools-5.15.0-176/perf record --all-user -F 49 -g -o /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-115003-chronolog-perf/chronolog/profiles/perf/client/chrono-bench.perf.data -- mpirun -n 1 /mnt/common/jcernudagarcia/chronolog-opt/chronolog/.agent/install-tau/chronolog/tools/benchmark/chrono-bench -c /home/jcernudagarcia/chronolog-opt/chronolog/.agent/results/20260512-115003-chronolog-perf/config/default-chrono-client-conf.json -w -h 1 -t 1 -a 512 -s 1024 -b 2048 -n 20 -p':
+
+            845.36 msec task-clock                #    0.632 CPUs utilized          
+              1404      context-switches          #    1.661 K/sec                  
+               132      cpu-migrations            #  156.147 /sec                   
+             16099      page-faults               #   19.044 K/sec                  
+        1487317958      cycles                    #    1.759 GHz                      (33.22%)
+        1329862181      instructions              #    0.89  insn per cycle           (40.10%)
+         306953080      branches                  #  363.104 M/sec                    (38.21%)
+           8848811      branch-misses             #    2.88% of all branches          (39.13%)
+         342129100      L1-dcache-loads           #  404.715 M/sec                    (37.66%)
+           9631578      L1-dcache-load-misses     #    2.82% of all L1-dcache accesses  (37.11%)
+            596987      LLC-loads                 #  706.194 K/sec                    (31.06%)
+            310709      LLC-load-misses           #   52.05% of all LL-cache accesses  (33.45%)
+   <not supported>      L1-icache-loads                                             
+          13492977      L1-icache-load-misses                                         (34.50%)
+         334197942      dTLB-loads                #  395.333 M/sec                    (35.54%)
+            224551      dTLB-load-misses          #    0.07% of all dTLB cache accesses  (35.62%)
+            251675      iTLB-loads                #  297.714 K/sec                    (34.44%)
+            313551      iTLB-load-misses          #  124.59% of all iTLB cache accesses  (34.79%)
+   <not supported>      L1-dcache-prefetches                                        
+   <not supported>      L1-dcache-prefetch-misses                                   
+
+       1.336954098 seconds time elapsed
+
+       0.368986000 seconds user
+       0.503025000 seconds sys
+
+

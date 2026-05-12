@@ -1,0 +1,554 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 75  of event 'cycles'
+# Event count (approx.): 279935008
+#
+# Children      Self  Command        Shared Object         Symbol                                                             
+# ........  ........  .............  ....................  ...................................................................
+#
+    75.96%     0.00%  chrono-player  [unknown]             [.] 0000000000000000
+            |
+            ---0
+               |          
+               |--27.67%--0x7f9e38bf71a0
+               |          _dl_add_to_namespace_list
+               |          
+               |--21.77%--pthread_mutex_unlock@@GLIBC_2.2.5
+               |          
+               |--16.72%--pthread_mutex_lock@@GLIBC_2.2.5
+               |          
+               |--5.50%--pthread_cond_timedwait@@GLIBC_2.3.2
+               |          
+               |--2.06%--epoll_wait
+               |          
+                --1.82%--ABTD_ythread_func_wrapper
+                          thallium::xstream::forward_work_unit
+                          chronolog::HDF5ArchiveReadingAgent::pollingMonitoringThreadFunc
+                          chronolog::HDF5ArchiveReadingAgent::scanFileSystem
+                          chronolog::HDF5ArchiveReadingAgent::getCurrentFileState
+
+    27.67%    27.67%  chrono-player  ld-linux-x86-64.so.2  [.] _dl_add_to_namespace_list
+            |
+            ---0
+               0x7f9e38bf71a0
+               _dl_add_to_namespace_list
+
+    27.67%     0.00%  chrono-player  [unknown]             [.] 0x00007f9e38bf71a0
+            |
+            ---0x7f9e38bf71a0
+               _dl_add_to_namespace_list
+
+    22.53%    22.53%  chrono-player  libc.so.6             [.] pthread_mutex_lock@@GLIBC_2.2.5
+            |          
+            |--16.72%--0
+            |          pthread_mutex_lock@@GLIBC_2.2.5
+            |          
+            |--4.47%--0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          0x7f9e383facf0
+            |          0x55951f8d13b0
+            |          pthread_mutex_lock@@GLIBC_2.2.5
+            |          
+             --1.34%--pthread_mutex_lock@@GLIBC_2.2.5
+
+    21.77%    21.77%  chrono-player  libc.so.6             [.] pthread_mutex_unlock@@GLIBC_2.2.5
+            |
+            ---0
+               pthread_mutex_unlock@@GLIBC_2.2.5
+
+     8.55%     8.55%  chrono-player  libc.so.6             [.] __libc_calloc
+            |
+            ---0x25002f2f3a5d3a5e
+               na_ofi_get_protocol_info
+               0x55951f8a85b0
+               __libc_calloc
+
+     8.55%     0.00%  chrono-player  [unknown]             [.] 0x25002f2f3a5d3a5e
+            |
+            ---0x25002f2f3a5d3a5e
+               na_ofi_get_protocol_info
+               0x55951f8a85b0
+               __libc_calloc
+
+     8.55%     0.00%  chrono-player  libna.so.4.0.0        [.] na_ofi_get_protocol_info
+            |
+            ---na_ofi_get_protocol_info
+               0x55951f8a85b0
+               __libc_calloc
+
+     8.55%     0.00%  chrono-player  [unknown]             [.] 0x000055951f8a85b0
+            |
+            ---0x55951f8a85b0
+               __libc_calloc
+
+     5.50%     5.50%  chrono-player  libc.so.6             [.] pthread_cond_timedwait@@GLIBC_2.3.2
+            |
+            ---0
+               pthread_cond_timedwait@@GLIBC_2.3.2
+
+     4.47%     0.00%  chrono-player  [unknown]             [.] 0x000055951f8d13b0
+            |
+            ---0x55951f8d13b0
+               0x7f9e383facf0
+               |          
+                --4.47%--0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          pthread_mutex_lock@@GLIBC_2.2.5
+
+     4.47%     0.00%  chrono-player  [unknown]             [.] 0x00007f9e383facf0
+            |
+            ---0x7f9e383facf0
+               |          
+                --4.47%--0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          0x7f9e383facf0
+                          0x55951f8d13b0
+                          pthread_mutex_lock@@GLIBC_2.2.5
+
+     4.36%     4.36%  chrono-player  [unknown]             [k] 0xffffffffba201247
+            |          
+             --4.27%--0x40
+                       _dl_sysdep_start
+                       dl_main
+
+     4.27%     0.00%  chrono-player  [unknown]             [k] 0x0000000000000040
+            |
+            ---0x40
+               _dl_sysdep_start
+               dl_main
+
+     4.27%     0.00%  chrono-player  ld-linux-x86-64.so.2  [.] _dl_sysdep_start
+            |
+            ---_dl_sysdep_start
+               dl_main
+
+     4.27%     0.00%  chrono-player  ld-linux-x86-64.so.2  [.] dl_main
+            |
+            ---dl_main
+
+     3.18%     3.18%  chrono-player  libmercury.so.2.3.1   [.] HG_Core_progress
+            |
+            ---0x55951fdc9e40
+               HG_Core_progress
+
+     3.18%     0.00%  chrono-player  [unknown]             [.] 0x000055951fdc9e40
+            |
+            ---0x55951fdc9e40
+               HG_Core_progress
+
+     2.07%     2.06%  chrono-player  libc.so.6             [.] epoll_wait
+            |          
+             --2.06%--0
+                       epoll_wait
+
+     2.01%     2.01%  chrono-player  ld-linux-x86-64.so.2  [.] do_lookup_x
+            |
+            ---do_lookup_x
+
+     1.82%     1.82%  chrono-player  chrono-player         [.] chronolog::HDF5ArchiveReadingAgent::getCurrentFileState
+            |
+            ---0
+               ABTD_ythread_func_wrapper
+               thallium::xstream::forward_work_unit
+               chronolog::HDF5ArchiveReadingAgent::pollingMonitoringThreadFunc
+               chronolog::HDF5ArchiveReadingAgent::scanFileSystem
+               chronolog::HDF5ArchiveReadingAgent::getCurrentFileState
+
+     1.82%     0.00%  chrono-player  libabt.so.1.1.0       [.] ABTD_ythread_func_wrapper
+            |
+            ---ABTD_ythread_func_wrapper
+               thallium::xstream::forward_work_unit
+               chronolog::HDF5ArchiveReadingAgent::pollingMonitoringThreadFunc
+               chronolog::HDF5ArchiveReadingAgent::scanFileSystem
+               chronolog::HDF5ArchiveReadingAgent::getCurrentFileState
+
+     1.82%     0.00%  chrono-player  chrono-player         [.] thallium::xstream::forward_work_unit
+            |
+            ---thallium::xstream::forward_work_unit
+               chronolog::HDF5ArchiveReadingAgent::pollingMonitoringThreadFunc
+               chronolog::HDF5ArchiveReadingAgent::scanFileSystem
+               chronolog::HDF5ArchiveReadingAgent::getCurrentFileState
+
+     1.82%     0.00%  chrono-player  chrono-player         [.] chronolog::HDF5ArchiveReadingAgent::pollingMonitoringThreadFunc
+            |
+            ---chronolog::HDF5ArchiveReadingAgent::pollingMonitoringThreadFunc
+               chronolog::HDF5ArchiveReadingAgent::scanFileSystem
+               chronolog::HDF5ArchiveReadingAgent::getCurrentFileState
+
+     1.82%     0.00%  chrono-player  chrono-player         [.] chronolog::HDF5ArchiveReadingAgent::scanFileSystem
+            |
+            ---chronolog::HDF5ArchiveReadingAgent::scanFileSystem
+               chronolog::HDF5ArchiveReadingAgent::getCurrentFileState
+
+
+
+#
+# (Cannot load tips.txt file, please install perf!)
+#

@@ -1,0 +1,538 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 106  of event 'cycles'
+# Event count (approx.): 678961858
+#
+# Children      Self  Command        Shared Object         Symbol                                                                                                                          
+# ........  ........  .............  ....................  ................................................................................................................................
+#
+    39.26%    35.69%  chrono-keeper  libabt.so.1.1.0       [.] pool_pop_shared
+            |
+            ---pool_pop_shared
+
+    25.74%     0.00%  chrono-keeper  [unknown]             [k] 0000000000000000
+            |
+            ---0
+               |          
+               |--12.43%--sock_pe_progress_rx_ep
+               |          
+               |--8.65%--pthread_mutex_lock@@GLIBC_2.2.5
+               |          
+               |--3.03%--0x7f7429742888
+               |          decompose_rpath
+               |          
+                --1.54%--ABTD_ythread_func_wrapper
+                          thallium::xstream::forward_work_unit
+                          |          
+                           --1.01%--chronolog::StoryChunkExtractionModule<chronolog::LoggingExtractor, chronolog::StoryChunkExtractorRDMA>::drainExtractionQueue
+
+    14.01%    14.01%  chrono-keeper  libabt.so.1.1.0       [.] sched_run
+            |          
+            |--10.45%--sched_run
+            |          
+             --3.56%--pool_pop_shared
+
+    12.43%    12.43%  chrono-keeper  libfabric.so.1.25.0   [.] sock_pe_progress_rx_ep
+            |
+            ---0
+               sock_pe_progress_rx_ep
+
+     9.69%     9.69%  chrono-keeper  libc.so.6             [.] pthread_mutex_lock@@GLIBC_2.2.5
+            |          
+             --8.76%--0
+                       |          
+                        --8.65%--pthread_mutex_lock@@GLIBC_2.2.5
+
+     7.19%     0.00%  chrono-keeper  [unknown]             [.] 0x0000558ddf3df880
+            |
+            ---0x558ddf3df880
+               0x7f742898ccf0
+               |          
+                --7.18%--0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          |          
+                           --6.25%--pthread_mutex_unlock@@GLIBC_2.2.5
+
+     7.19%     0.00%  chrono-keeper  [unknown]             [.] 0x00007f742898ccf0
+            |
+            ---0x7f742898ccf0
+               |          
+                --7.18%--0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          0x7f742898ccf0
+                          0x558ddf3df880
+                          |          
+                           --6.25%--pthread_mutex_unlock@@GLIBC_2.2.5
+
+     7.03%     7.03%  chrono-keeper  libabt.so.1.1.0       [.] ABTI_xstream_check_events
+            |
+            ---0x7f7429526300
+               ABTI_xstream_check_events
+
+     7.03%     0.00%  chrono-keeper  [unknown]             [.] 0x00007f7429526300
+            |
+            ---0x7f7429526300
+               ABTI_xstream_check_events
+
+     6.34%     6.34%  chrono-keeper  libc.so.6             [.] pthread_mutex_unlock@@GLIBC_2.2.5
+            |          
+             --6.25%--0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       0x7f742898ccf0
+                       0x558ddf3df880
+                       pthread_mutex_unlock@@GLIBC_2.2.5
+
+     3.62%     3.62%  chrono-keeper  libc.so.6             [.] __vfprintf_internal
+            |
+            ---0x558ddf5b0dda
+               __vfprintf_internal
+
+     3.62%     0.00%  chrono-keeper  [unknown]             [.] 0x0000558ddf5b0dda
+            |
+            ---0x558ddf5b0dda
+               __vfprintf_internal
+
+     3.09%     3.09%  chrono-keeper  [unknown]             [k] 0xffffffffba201247
+            |          
+             --3.03%--0
+                       |          
+                        --3.03%--0x7f7429742888
+                                  decompose_rpath
+
+     3.03%     0.00%  chrono-keeper  [unknown]             [k] 0x00007f7429742888
+            |
+            ---0x7f7429742888
+               decompose_rpath
+
+     3.03%     0.00%  chrono-keeper  ld-linux-x86-64.so.2  [.] decompose_rpath
+            |
+            ---decompose_rpath
+
+     2.07%     2.07%  chrono-keeper  ld-linux-x86-64.so.2  [.] strcmp
+            |
+            ---strcmp
+
+     1.54%     0.00%  chrono-keeper  libabt.so.1.1.0       [.] ABTD_ythread_func_wrapper
+            |
+            ---ABTD_ythread_func_wrapper
+               thallium::xstream::forward_work_unit
+               |          
+                --1.01%--chronolog::StoryChunkExtractionModule<chronolog::LoggingExtractor, chronolog::StoryChunkExtractorRDMA>::drainExtractionQueue
+
+     1.54%     0.00%  chrono-keeper  chrono-keeper         [.] thallium::xstream::forward_work_unit
+            |
+            ---thallium::xstream::forward_work_unit
+               |          
+                --1.01%--chronolog::StoryChunkExtractionModule<chronolog::LoggingExtractor, chronolog::StoryChunkExtractorRDMA>::drainExtractionQueue
+
+     1.52%     1.52%  chrono-keeper  [vdso]                [.] __vdso_clock_gettime
+            |
+            ---0x100235220
+               0x7ffd5829c7b0
+
+     1.52%     0.00%  chrono-keeper  [unknown]             [.] 0x0000000100235220
+            |
+            ---0x100235220
+               0x7ffd5829c7b0
+
+     1.52%     0.00%  chrono-keeper  [vdso]                [.] 0x00007ffd5829c7b0
+            |
+            ---0x7ffd5829c7b0
+
+     1.25%     1.25%  chrono-keeper  ld-linux-x86-64.so.2  [.] _dl_runtime_resolve_xsavec
+            |
+            ---0x747365676e
+               _dl_runtime_resolve_xsavec
+
+     1.25%     0.00%  chrono-keeper  [unknown]             [.] 0x000000747365676e
+            |
+            ---0x747365676e
+               _dl_runtime_resolve_xsavec
+
+     1.15%     1.15%  chrono-keeper  [vdso]                [.] 0x0000000000000873
+            |
+            ---clock_gettime@@GLIBC_2.17
+
+     1.15%     0.00%  chrono-keeper  libc.so.6             [.] clock_gettime@@GLIBC_2.17
+            |
+            ---clock_gettime@@GLIBC_2.17
+
+     1.01%     1.01%  chrono-keeper  chrono-keeper         [.] chronolog::StoryChunkExtractionModule<chronolog::LoggingExtractor, chronolog::StoryChunkExtractorRDMA>::drainExtractionQueue
+            |
+            ---0
+               ABTD_ythread_func_wrapper
+               thallium::xstream::forward_work_unit
+               chronolog::StoryChunkExtractionModule<chronolog::LoggingExtractor, chronolog::StoryChunkExtractorRDMA>::drainExtractionQueue
+
+
+
+#
+# (Cannot load tips.txt file, please install perf!)
+#

@@ -10,6 +10,7 @@
 
 #include <chrono_monitor.h>
 #include <chronolog_types.h>
+#include <chronolog_profile.h>
 
 #include "StoryIngestionHandle.h"
 
@@ -32,8 +33,14 @@ public:
 
     void addStoryIngestionHandle(StoryId const& story_id, StoryIngestionHandle* ingestion_handle)
     {
-        std::lock_guard<std::mutex> lock(ingestionQueueMutex);
+        {
+            CL_PROFILE_REGION("keeper_ingestion_queue_lock_wait");
+            ingestionQueueMutex.lock();
+        }
+        std::lock_guard<std::mutex> lock(ingestionQueueMutex, std::adopt_lock);
+        CL_PROFILE_REGION("keeper_ingestion_queue_lock_hold");
         storyIngestionHandles.emplace(std::pair<StoryId, StoryIngestionHandle*>(story_id, ingestion_handle));
+        CL_PROFILE_COUNTER("keeper_ingestion_handle_count", storyIngestionHandles.size());
         LOG_DEBUG("[IngestionQueue] Added handle for StoryID={}: HandleAddress={}, StoryIngestionHandles={}, "
                   "HandleMapSize={}",
                   story_id,
@@ -44,9 +51,15 @@ public:
 
     void removeIngestionHandle(StoryId const& story_id)
     {
-        std::lock_guard<std::mutex> lock(ingestionQueueMutex);
+        {
+            CL_PROFILE_REGION("keeper_ingestion_queue_lock_wait");
+            ingestionQueueMutex.lock();
+        }
+        std::lock_guard<std::mutex> lock(ingestionQueueMutex, std::adopt_lock);
+        CL_PROFILE_REGION("keeper_ingestion_queue_lock_hold");
         if(storyIngestionHandles.erase(story_id))
         {
+            CL_PROFILE_COUNTER("keeper_ingestion_handle_count", storyIngestionHandles.size());
             LOG_DEBUG("[IngestionQueue] Removed handle for StoryID={}. Current handle MapSize={}",
                       story_id,
                       storyIngestionHandles.size());
@@ -59,6 +72,7 @@ public:
 
     void ingestLogEvent(LogEvent const& event)
     {
+        CL_PROFILE_REGION("keeper_ingest_event");
         std::stringstream ss;
         ss << event;
         LOG_DEBUG("[IngestionQueue] Received event for StoryID={}: Event Details={}, HandleMapSize={}",
@@ -69,8 +83,15 @@ public:
         if(ingestionHandle_iter == storyIngestionHandles.end())
         {
             LOG_WARNING("[IngestionQueue] Orphan event for story {}. Storing for later processing.", event.storyId);
-            std::lock_guard<std::mutex> lock(ingestionQueueMutex);
+            {
+                CL_PROFILE_REGION("keeper_ingestion_queue_lock_wait");
+                ingestionQueueMutex.lock();
+            }
+            std::lock_guard<std::mutex> lock(ingestionQueueMutex, std::adopt_lock);
+            CL_PROFILE_REGION("keeper_ingestion_queue_lock_hold");
+            CL_PROFILE_REGION("keeper_orphan_queue_push");
             orphanEventQueue.push_back(event);
+            CL_PROFILE_COUNTER("keeper_orphan_queue_depth", orphanEventQueue.size());
         }
         else
         {
@@ -81,12 +102,19 @@ public:
 
     void drainOrphanEvents()
     {
+        CL_PROFILE_REGION("keeper_orphan_queue_drain");
         if(orphanEventQueue.empty())
         {
             LOG_DEBUG("[IngestionQueue] Orphan event queue is empty. No actions taken.");
             return;
         }
-        std::lock_guard<std::mutex> lock(ingestionQueueMutex);
+        {
+            CL_PROFILE_REGION("keeper_ingestion_queue_lock_wait");
+            ingestionQueueMutex.lock();
+        }
+        std::lock_guard<std::mutex> lock(ingestionQueueMutex, std::adopt_lock);
+        CL_PROFILE_REGION("keeper_ingestion_queue_lock_hold");
+        const auto orphan_count_before = orphanEventQueue.size();
         for(EventDeque::iterator iter = orphanEventQueue.begin(); iter != orphanEventQueue.end();)
         {
             auto ingestionHandle_iter = storyIngestionHandles.find((*iter).storyId);
@@ -102,6 +130,8 @@ public:
                 ++iter;
             }
         }
+        CL_PROFILE_COUNTER("keeper_orphan_queue_drain_events", orphan_count_before - orphanEventQueue.size());
+        CL_PROFILE_COUNTER("keeper_orphan_queue_depth", orphanEventQueue.size());
         LOG_DEBUG("[IngestionQueue] Drained {} orphan events into known handles.", orphanEventQueue.size());
     }
 
@@ -115,7 +145,12 @@ public:
         // last attempt to drain orphanEventQueue into known ingestionHandles
         drainOrphanEvents();
         // disengage all handles
-        std::lock_guard<std::mutex> lock(ingestionQueueMutex);
+        {
+            CL_PROFILE_REGION("keeper_ingestion_queue_lock_wait");
+            ingestionQueueMutex.lock();
+        }
+        std::lock_guard<std::mutex> lock(ingestionQueueMutex, std::adopt_lock);
+        CL_PROFILE_REGION("keeper_ingestion_queue_lock_hold");
         storyIngestionHandles.clear();
         LOG_INFO("[IngestionQueue] Shutdown completed. All handles disengaged.");
     }

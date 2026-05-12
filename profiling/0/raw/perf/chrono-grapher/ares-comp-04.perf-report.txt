@@ -1,0 +1,232 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 118  of event 'cycles'
+# Event count (approx.): 409200389
+#
+# Children      Self  Command         Shared Object         Symbol                                                                                                                         
+# ........  ........  ..............  ....................  ...............................................................................................................................
+#
+    44.33%     0.00%  chrono-grapher  [unknown]             [k] 0000000000000000
+            |
+            ---0
+               |          
+               |--19.54%--pthread_mutex_unlock@@GLIBC_2.2.5
+               |          
+               |--9.41%--sock_pe_progress_rx_ctx
+               |          
+               |--6.61%--0x55cfa27d9910
+               |          HG_Core_trigger
+               |          
+               |--4.24%--ABTD_ythread_func_wrapper
+               |          thallium::xstream::forward_work_unit
+               |          |          
+               |          |--2.21%--chronolog::StoryChunkExtractionModule<chronolog::LoggingExtractor, chronolog::HDF5FileChunkExtractor>::drainExtractionQueue
+               |          |          
+               |           --1.30%--usleep
+               |          
+               |--2.28%--pthread_cond_timedwait@@GLIBC_2.3.2
+               |          
+                --1.34%--epoll_ctl
+
+    26.34%    26.34%  chrono-grapher  libc.so.6             [.] pthread_mutex_unlock@@GLIBC_2.2.5
+            |          
+            |--19.54%--0
+            |          pthread_mutex_unlock@@GLIBC_2.2.5
+            |          
+            |--5.55%--0x7f23c836d340
+            |          pthread_mutex_unlock@@GLIBC_2.2.5
+            |          
+             --1.25%--0x100235202
+                       pthread_mutex_unlock@@GLIBC_2.2.5
+
+    14.06%    14.06%  chrono-grapher  ld-linux-x86-64.so.2  [.] do_lookup_x
+            |
+            ---do_lookup_x
+
+    11.43%     0.00%  chrono-grapher  ld-linux-x86-64.so.2  [.] _dl_map_object
+            |
+            ---_dl_map_object
+               |          
+                --11.40%--_dl_load_cache_lookup
+
+    11.40%    11.40%  chrono-grapher  ld-linux-x86-64.so.2  [.] _dl_load_cache_lookup
+            |
+            ---_dl_map_object
+               _dl_load_cache_lookup
+
+     9.88%     9.88%  chrono-grapher  libfabric.so.1.25.0   [.] sock_pe_progress_rx_ctx
+            |
+            ---0
+               |          
+                --9.41%--sock_pe_progress_rx_ctx
+
+     9.76%     9.76%  chrono-grapher  [unknown]             [k] 0xffffffffba201247
+            |          
+             --9.38%--0x40
+                       _dl_sysdep_start
+                       dl_main
+
+     9.38%     0.00%  chrono-grapher  [unknown]             [k] 0x0000000000000040
+            |
+            ---0x40
+               _dl_sysdep_start
+               dl_main
+
+     9.38%     0.00%  chrono-grapher  ld-linux-x86-64.so.2  [.] _dl_sysdep_start
+            |
+            ---_dl_sysdep_start
+               dl_main
+
+     9.38%     0.00%  chrono-grapher  ld-linux-x86-64.so.2  [.] dl_main
+            |
+            ---dl_main
+
+     6.61%     6.61%  chrono-grapher  libmercury.so.2.3.1   [.] HG_Core_trigger
+            |
+            ---0x25002f2f3a5d3a5e
+               na_ofi_get_protocol_info
+               0x55cfa278c160
+               0
+               0x55cfa27d9910
+               HG_Core_trigger
+
+     6.61%     0.00%  chrono-grapher  [unknown]             [.] 0x25002f2f3a5d3a5e
+            |
+            ---0x25002f2f3a5d3a5e
+               na_ofi_get_protocol_info
+               0x55cfa278c160
+               0
+               0x55cfa27d9910
+               HG_Core_trigger
+
+     6.61%     0.00%  chrono-grapher  libna.so.4.0.0        [.] na_ofi_get_protocol_info
+            |
+            ---na_ofi_get_protocol_info
+               0x55cfa278c160
+               0
+               0x55cfa27d9910
+               HG_Core_trigger
+
+     6.61%     0.00%  chrono-grapher  [unknown]             [.] 0x000055cfa278c160
+            |
+            ---0x55cfa278c160
+               0
+               0x55cfa27d9910
+               HG_Core_trigger
+
+     6.61%     0.00%  chrono-grapher  [unknown]             [.] 0x000055cfa27d9910
+            |
+            ---0x55cfa27d9910
+               HG_Core_trigger
+
+     5.55%     0.00%  chrono-grapher  [unknown]             [.] 0x00007f23c836d340
+            |
+            ---0x7f23c836d340
+               pthread_mutex_unlock@@GLIBC_2.2.5
+
+     4.24%     0.00%  chrono-grapher  libabt.so.1.1.0       [.] ABTD_ythread_func_wrapper
+            |
+            ---ABTD_ythread_func_wrapper
+               thallium::xstream::forward_work_unit
+               |          
+               |--2.21%--chronolog::StoryChunkExtractionModule<chronolog::LoggingExtractor, chronolog::HDF5FileChunkExtractor>::drainExtractionQueue
+               |          
+                --1.30%--usleep
+
+     4.24%     0.00%  chrono-grapher  chrono-grapher        [.] thallium::xstream::forward_work_unit
+            |
+            ---thallium::xstream::forward_work_unit
+               |          
+               |--2.21%--chronolog::StoryChunkExtractionModule<chronolog::LoggingExtractor, chronolog::HDF5FileChunkExtractor>::drainExtractionQueue
+               |          
+                --1.30%--usleep
+
+     2.33%     2.32%  chrono-grapher  libc.so.6             [.] epoll_wait
+            |          
+             --2.32%--0xb7aa700000000
+                       epoll_wait
+
+     2.32%     0.00%  chrono-grapher  [unknown]             [.] 0x000b7aa700000000
+            |
+            ---0xb7aa700000000
+               epoll_wait
+
+     2.28%     2.28%  chrono-grapher  libc.so.6             [.] pthread_cond_timedwait@@GLIBC_2.3.2
+            |
+            ---0
+               pthread_cond_timedwait@@GLIBC_2.3.2
+
+     2.21%     2.03%  chrono-grapher  chrono-grapher        [.] chronolog::StoryChunkExtractionModule<chronolog::LoggingExtractor, chronolog::HDF5FileChunkExtractor>::drainExtractionQueue
+            |          
+             --2.03%--0
+                       ABTD_ythread_func_wrapper
+                       thallium::xstream::forward_work_unit
+                       chronolog::StoryChunkExtractionModule<chronolog::LoggingExtractor, chronolog::HDF5FileChunkExtractor>::drainExtractionQueue
+
+     2.16%     2.16%  chrono-grapher  libucm.so.0.0.0       [.] ucm_event_dispatch
+            |
+            ---ucm_event_dispatch
+
+     2.14%     2.14%  chrono-grapher  libabt.so.1.1.0       [.] pool_pop_shared
+            |
+            ---pool_pop_shared
+
+     1.52%     1.52%  chrono-grapher  libabt.so.1.1.0       [.] sched_run
+            |
+            ---sched_run
+
+     1.50%     1.50%  chrono-grapher  libabt.so.1.1.0       [.] pool_get_size
+            |
+            ---pool_get_size
+
+     1.42%     1.42%  chrono-grapher  [vdso]                [.] 0x00000000000007f4
+            |
+            ---0x10023520d
+               clock_gettime@@GLIBC_2.17
+               0x7f23c8a207f7
+
+     1.42%     0.00%  chrono-grapher  [unknown]             [.] 0x000000010023520d
+            |
+            ---0x10023520d
+               clock_gettime@@GLIBC_2.17
+               0x7f23c8a207f7
+
+     1.42%     0.00%  chrono-grapher  libc.so.6             [.] clock_gettime@@GLIBC_2.17
+            |
+            ---clock_gettime@@GLIBC_2.17
+               0x7f23c8a207f7
+
+     1.42%     0.00%  chrono-grapher  [vdso]                [.] 0x00007f23c8a207f7
+            |
+            ---0x7f23c8a207f7
+
+     1.36%     1.36%  chrono-grapher  libc.so.6             [.] pthread_spin_lock@@GLIBC_2.34
+            |
+            ---pthread_spin_lock@@GLIBC_2.34
+
+     1.34%     1.34%  chrono-grapher  libc.so.6             [.] epoll_ctl
+            |
+            ---0
+               epoll_ctl
+
+     1.30%     1.30%  chrono-grapher  libc.so.6             [.] usleep
+            |
+            ---0
+               ABTD_ythread_func_wrapper
+               thallium::xstream::forward_work_unit
+               usleep
+
+     1.25%     0.00%  chrono-grapher  [unknown]             [.] 0x0000000100235202
+            |
+            ---0x100235202
+               pthread_mutex_unlock@@GLIBC_2.2.5
+
+     1.16%     1.00%  chrono-grapher  libc.so.6             [.] clock_nanosleep@GLIBC_2.2.5
+
+
+#
+# (Cannot load tips.txt file, please install perf!)
+#

@@ -37,7 +37,12 @@ int chronolog::KeeperDataStore::startStoryRecording(std::string const& chronicle
     LOG_INFO("[KeeperDataStore] Start recording story: Chronicle={}, Story={}, StoryID={}", chronicle, story, story_id);
 
     // Get dataStoreMutex, check for story_id_presense & add new KeeperStoryPipeline if needed
-    std::lock_guard storeLock(dataStoreMutex);
+    {
+        CL_PROFILE_REGION("keeper_datastore_lock_wait");
+        dataStoreMutex.lock();
+    }
+    std::lock_guard<std::mutex> storeLock(dataStoreMutex, std::adopt_lock);
+    CL_PROFILE_REGION("keeper_datastore_lock_hold");
     auto pipeline_iter = theMapOfStoryPipelines.find(story_id);
     if(pipeline_iter != theMapOfStoryPipelines.end())
     {
@@ -89,7 +94,12 @@ int chronolog::KeeperDataStore::stopStoryRecording(chronolog::StoryId const& sto
     // but put it on the WaitingForExit list to be finalized, persisted to disk , and
     // removed from memory at exit_time = now+acceptance_window...
     // unless there's a new story acquisition request comes before that moment
-    std::lock_guard storeLock(dataStoreMutex);
+    {
+        CL_PROFILE_REGION("keeper_datastore_lock_wait");
+        dataStoreMutex.lock();
+    }
+    std::lock_guard<std::mutex> storeLock(dataStoreMutex, std::adopt_lock);
+    CL_PROFILE_REGION("keeper_datastore_lock_hold");
     auto pipeline_iter = theMapOfStoryPipelines.find(story_id);
     if(pipeline_iter != theMapOfStoryPipelines.end())
     {
@@ -124,7 +134,13 @@ void chronolog::KeeperDataStore::collectIngestedEvents()
               tl::thread::self_id());
     theIngestionQueue.drainOrphanEvents();
 
-    std::lock_guard storeLock(dataStoreMutex);
+    {
+        CL_PROFILE_REGION("keeper_datastore_lock_wait");
+        dataStoreMutex.lock();
+    }
+    std::lock_guard<std::mutex> storeLock(dataStoreMutex, std::adopt_lock);
+    CL_PROFILE_REGION("keeper_datastore_lock_hold");
+    CL_PROFILE_COUNTER("keeper_active_pipeline_count", theMapOfStoryPipelines.size());
     for(auto pipeline_iter = theMapOfStoryPipelines.begin(); pipeline_iter != theMapOfStoryPipelines.end();
         ++pipeline_iter)
     {
@@ -147,7 +163,13 @@ void chronolog::KeeperDataStore::extractDecayedStoryChunks()
 
     uint64_t current_time = std::chrono::high_resolution_clock::now().time_since_epoch().count();
 
-    std::lock_guard storeLock(dataStoreMutex);
+    {
+        CL_PROFILE_REGION("keeper_datastore_lock_wait");
+        dataStoreMutex.lock();
+    }
+    std::lock_guard<std::mutex> storeLock(dataStoreMutex, std::adopt_lock);
+    CL_PROFILE_REGION("keeper_datastore_lock_hold");
+    CL_PROFILE_COUNTER("keeper_active_pipeline_count", theMapOfStoryPipelines.size());
     for(auto pipeline_iter = theMapOfStoryPipelines.begin(); pipeline_iter != theMapOfStoryPipelines.end();
         ++pipeline_iter)
     {

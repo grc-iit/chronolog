@@ -14,6 +14,7 @@ Run a two-node bare-metal ChronoLog append-throughput smoke benchmark.
 Options:
   --result-dir DIR             Existing or new result directory to use.
   --partition NAME             SLURM partition. Default: debug.
+  --nodelist LIST              Optional SLURM nodelist, for example ares-comp-[03-04].
   --node-count N               Node count. Default: 2.
   --slurm-time TIME            SLURM time limit. Default: 00:10:00.
   --record-groups N            ChronoLog recording groups. Default: 1.
@@ -23,7 +24,8 @@ Options:
   --chronicle-count N          Chronicles per process. Default: 1.
   --story-count N              Stories per process. Default: 1.
   --install-dir DIR            ChronoLog install tree. Default: .agent/install-consistent/chronolog.
-  --profile-mode MODE          none, tau, gperftools, or darshan. Default: none.
+  --profile-mode MODE          none, tau, gperftools, darshan, or perf. Default: none.
+  --perf-bin PATH              perf binary for profile-mode=perf. Default: CHRONOLOG_PERF_BIN or PATH.
   -h, --help                   Show this help.
 USAGE
 }
@@ -61,6 +63,7 @@ EOF
 
 RESULT_DIR="${PHASE0_RESULT_DIR:-}"
 PARTITION="${CHRONOLOG_SLURM_PARTITION:-debug}"
+NODELIST="${CHRONOLOG_NODELIST:-}"
 NODE_COUNT="${CHRONOLOG_NODE_COUNT:-2}"
 SLURM_TIME="${CHRONOLOG_SLURM_TIME:-00:10:00}"
 RECORD_GROUPS="${CHRONOLOG_RECORD_GROUPS:-1}"
@@ -73,11 +76,13 @@ WORKFLOW="${CHRONOLOG_WORKFLOW:-append_throughput}"
 INSTALL_DIR="${CHRONOLOG_INSTALL_DIR:-${REPO_ROOT}/.agent/install-consistent/chronolog}"
 PROFILE_MODE="${CHRONOLOG_PROFILE_MODE:-none}"
 STARTUP_SLEEP_SECONDS="${CHRONOLOG_STARTUP_SLEEP_SECONDS:-5}"
+PERF_BIN="${CHRONOLOG_PERF_BIN:-}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --result-dir) RESULT_DIR="$2"; shift 2 ;;
     --partition) PARTITION="$2"; shift 2 ;;
+    --nodelist) NODELIST="$2"; shift 2 ;;
     --node-count) NODE_COUNT="$2"; shift 2 ;;
     --slurm-time) SLURM_TIME="$2"; shift 2 ;;
     --record-groups) RECORD_GROUPS="$2"; shift 2 ;;
@@ -88,6 +93,7 @@ while [[ $# -gt 0 ]]; do
     --story-count) STORY_COUNT="$2"; shift 2 ;;
     --install-dir) INSTALL_DIR="$2"; shift 2 ;;
     --profile-mode) PROFILE_MODE="$2"; shift 2 ;;
+    --perf-bin) PERF_BIN="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -105,7 +111,7 @@ if [[ ! -d "${INSTALL_DIR}" ]]; then
 fi
 
 case "${PROFILE_MODE}" in
-  none|tau|gperftools|darshan) ;;
+  none|tau|gperftools|darshan|perf) ;;
   *) echo "Unsupported profile mode: ${PROFILE_MODE}" >&2; exit 2 ;;
 esac
 if [[ "${PROFILE_MODE}" != "none" && "${STARTUP_SLEEP_SECONDS}" -lt 10 ]]; then
@@ -114,28 +120,52 @@ fi
 if [[ "${PROFILE_MODE}" == "darshan" && "${STARTUP_SLEEP_SECONDS}" -lt 20 ]]; then
   STARTUP_SLEEP_SECONDS=20
 fi
+if [[ "${PROFILE_MODE}" == "perf" ]]; then
+  if [[ -z "${PERF_BIN}" ]]; then
+    PERF_BIN="$(command -v perf || true)"
+  fi
+  if [[ -z "${PERF_BIN}" || ! -x "${PERF_BIN}" ]]; then
+    echo "profile-mode=perf requires a runnable perf binary; use --perf-bin or CHRONOLOG_PERF_BIN" >&2
+    exit 2
+  fi
+  PERF_BIN="$(readlink -f "${PERF_BIN}")"
+fi
 
 RESULT_DIR="$(make_result_dir "${RESULT_DIR}")"
 export PHASE0_RESULT_DIR="${RESULT_DIR}"
 
 if [[ -z "${SLURM_JOB_ID:-}" && "${INSIDE_ALLOCATION}" != "1" ]]; then
+  SALLOC_NODELIST_ARGS=()
+  if [[ -n "${NODELIST}" ]]; then
+    SALLOC_NODELIST_ARGS=(--nodelist="${NODELIST}")
+  fi
+  RECURSIVE_ARGS=(
+    --partition "${PARTITION}"
+    --node-count "${NODE_COUNT}"
+    --slurm-time "${SLURM_TIME}"
+    --record-groups "${RECORD_GROUPS}"
+    --workflow "${WORKFLOW}"
+    --operation-count "${OPERATION_COUNT}"
+    --message-size-bytes "${MESSAGE_SIZE_BYTES}"
+    --chronicle-count "${CHRONICLE_COUNT}"
+    --story-count "${STORY_COUNT}"
+    --install-dir "${INSTALL_DIR}"
+    --profile-mode "${PROFILE_MODE}"
+  )
+  if [[ -n "${NODELIST}" ]]; then
+    RECURSIVE_ARGS+=(--nodelist "${NODELIST}")
+  fi
+  if [[ -n "${PERF_BIN}" ]]; then
+    RECURSIVE_ARGS+=(--perf-bin "${PERF_BIN}")
+  fi
   exec salloc \
     --partition="${PARTITION}" \
     --nodes="${NODE_COUNT}" \
+    "${SALLOC_NODELIST_ARGS[@]}" \
     --time="${SLURM_TIME}" \
     --job-name=phase0-chronolog \
     /usr/bin/env CHRONOLOG_INSIDE_ALLOCATION=1 PHASE0_RESULT_DIR="${RESULT_DIR}" "$0" \
-      --partition "${PARTITION}" \
-      --node-count "${NODE_COUNT}" \
-      --slurm-time "${SLURM_TIME}" \
-      --record-groups "${RECORD_GROUPS}" \
-      --workflow "${WORKFLOW}" \
-      --operation-count "${OPERATION_COUNT}" \
-      --message-size-bytes "${MESSAGE_SIZE_BYTES}" \
-      --chronicle-count "${CHRONICLE_COUNT}" \
-      --story-count "${STORY_COUNT}" \
-      --install-dir "${INSTALL_DIR}" \
-      --profile-mode "${PROFILE_MODE}"
+      "${RECURSIVE_ARGS[@]}"
 fi
 
 CONFIG_DIR="${RESULT_DIR}/config"
@@ -199,6 +229,7 @@ create_wrapper() {
     module_loads
     printf 'profile_mode=%q\n' "${PROFILE_MODE}"
     printf 'role_profile_dir=%q\n' "${role_profile_dir}"
+    printf 'perf_bin=%q\n' "${PERF_BIN}"
     printf '%s\n' 'mkdir -p "${role_profile_dir}"'
     printf '%s\n' 'if [[ "${profile_mode}" == "tau" ]]; then'
     printf '%s\n' '  export PROFILEDIR="${role_profile_dir}/$(hostname)"'
@@ -212,9 +243,15 @@ create_wrapper() {
     printf '%s\n' '  export DARSHAN_LOG_DIR_PATH="${role_profile_dir}"'
     printf '%s\n' '  export DARSHAN_ENABLE_NONMPI=1'
     printf '%s\n' '  export LD_PRELOAD="/mnt/common/jcernudagarcia/spack/opt/spack/linux-ubuntu22.04-skylake_avx512/gcc-11.4.0/darshan-runtime-3.4.6-u7vfz6edqy4hzj6fnpx6g7inobzd32os/lib/libdarshan.so:${LD_PRELOAD:-}"'
+    printf '%s\n' 'elif [[ "${profile_mode}" == "perf" ]]; then'
+    printf '%s\n' '  if [[ -z "${perf_bin}" || ! -x "${perf_bin}" ]]; then echo "perf binary unavailable: ${perf_bin}" >&2; exit 127; fi'
     printf '%s\n' 'fi'
     printf 'real_bin=%q\n' "${real_bin}"
-    printf '%s\n' '"${real_bin}" "$@" &'
+    printf '%s\n' 'if [[ "${profile_mode}" == "perf" ]]; then'
+    printf '%s\n' '  "${perf_bin}" record --all-user -F "${CHRONOLOG_PERF_FREQ:-49}" -g -o "${role_profile_dir}/$(hostname).perf.data" -- "${real_bin}" "$@" &'
+    printf '%s\n' 'else'
+    printf '%s\n' '  "${real_bin}" "$@" &'
+    printf '%s\n' 'fi'
     printf '%s\n' 'child=$!'
     printf '%s\n' 'term_child() { kill -TERM "${child}" 2>/dev/null || true; wait "${child}" 2>/dev/null || true; }'
     printf '%s\n' 'trap term_child TERM INT'
@@ -231,6 +268,7 @@ create_wrapper chrono-player
 cat > "${CONFIG_DIR}/chronolog-config-manifest.env" <<EOF
 deployment_mode=bare_metal
 node_count=${NODE_COUNT}
+nodelist=${NODELIST}
 client_count=1
 workflow=${WORKFLOW}
 message_size_bytes=${MESSAGE_SIZE_BYTES}
@@ -249,6 +287,7 @@ client_node=${CLIENT_NODE}
 client_ip=${CLIENT_IP}
 transport=ofi+sockets
 profile_mode=${PROFILE_MODE}
+perf_bin=${PERF_BIN}
 startup_sleep_seconds=${STARTUP_SLEEP_SECONDS}
 EOF
 
@@ -313,9 +352,22 @@ if [[ "${WORKFLOW}" == "append_throughput" ]]; then
   else
     CLIENT_PROFILE_EXPORTS=""
   fi
-  bash -lc "$(module_loads); ${CLIENT_PROFILE_EXPORTS} mpirun ${CLIENT_MPI_ENV} -n 1 '${BENCH_BIN}' -c '${CLIENT_CONF_FILE}' -w -h '${CHRONICLE_COUNT}' -t '${STORY_COUNT}' -a '${MIN_EVENT_SIZE}' -s '${MESSAGE_SIZE_BYTES}' -b '${MAX_EVENT_SIZE}' -n '${OPERATION_COUNT}' -p" \
-    > "${CHRONOLOG_RESULT_DIR}/chrono-bench-append-throughput.log" \
-    2> "${CHRONOLOG_RESULT_DIR}/chrono-bench-append-throughput.stderr.log"
+  if [[ "${PROFILE_MODE}" == "perf" ]]; then
+    CLIENT_PROFILE_EXPORTS=""
+    CLIENT_MPI_ENV=""
+    CLIENT_CMD="'${PERF_BIN}' stat -d -d -d -o '${CLIENT_PROFILE_DIR}/chrono-bench.perf-stat.txt' -- '${PERF_BIN}' record --all-user -F '${CHRONOLOG_PERF_FREQ:-49}' -g -o '${CLIENT_PROFILE_DIR}/chrono-bench.perf.data' -- mpirun -n 1 '${BENCH_BIN}' -c '${CLIENT_CONF_FILE}' -w -h '${CHRONICLE_COUNT}' -t '${STORY_COUNT}' -a '${MIN_EVENT_SIZE}' -s '${MESSAGE_SIZE_BYTES}' -b '${MAX_EVENT_SIZE}' -n '${OPERATION_COUNT}' -p"
+  else
+    CLIENT_CMD="mpirun ${CLIENT_MPI_ENV} -n 1 '${BENCH_BIN}' -c '${CLIENT_CONF_FILE}' -w -h '${CHRONICLE_COUNT}' -t '${STORY_COUNT}' -a '${MIN_EVENT_SIZE}' -s '${MESSAGE_SIZE_BYTES}' -b '${MAX_EVENT_SIZE}' -n '${OPERATION_COUNT}' -p"
+  fi
+  if [[ "${PROFILE_MODE}" == "perf" ]]; then
+    srun --nodes=1 --ntasks=1 --nodelist="${CLIENT_NODE}" bash -lc "$(module_loads); ${CLIENT_PROFILE_EXPORTS} ${CLIENT_CMD}" \
+      > "${CHRONOLOG_RESULT_DIR}/chrono-bench-append-throughput.log" \
+      2> "${CHRONOLOG_RESULT_DIR}/chrono-bench-append-throughput.stderr.log"
+  else
+    bash -lc "$(module_loads); ${CLIENT_PROFILE_EXPORTS} ${CLIENT_CMD}" \
+      > "${CHRONOLOG_RESULT_DIR}/chrono-bench-append-throughput.log" \
+      2> "${CHRONOLOG_RESULT_DIR}/chrono-bench-append-throughput.stderr.log"
+  fi
   BENCH_STATUS=$?
   set -e
 

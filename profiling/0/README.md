@@ -9,6 +9,9 @@ Primary distributed evidence:
 - Darshan distributed run: `.agent/results/20260512-095335`
 - Mofka Yokan/Warabi-backed default partition runs: `.agent/results/20260512-091538` and `.agent/results/20260512-093629`
 - TAU semantic-duration run: `.agent/results/20260512-110654`
+- Keeper lock/queue TAU semantic run: `.agent/results/20260512-115145-chronolog-tau-keeper-semantics`
+- distributed perf run on `ares-comp-[03-04]`: `.agent/results/20260512-115003-chronolog-perf`
+- tunable benchmark matrix run: `.agent/results/20260512-115546-benchmark-matrix-chronolog`
 
 Target profiling nodes:
 
@@ -17,7 +20,7 @@ Target profiling nodes:
 - `ares-comp-05`
 - `ares-comp-06`
 
-Kun Feng enabled `kernel.perf_event_paranoid=1` and `kernel.yama.ptrace_scope=0` on `ares-comp-03` and `ares-comp-04`, and is extending the same settings to `ares-comp-05` and `ares-comp-06`. `unprivileged_bpf_disabled=2` was still present when checked on `ares-comp-03` and `ares-comp-04`, so eBPF-based tools still need an approved wrapper/capability path.
+Kun Feng enabled `kernel.perf_event_paranoid=1` and `kernel.yama.ptrace_scope=0` on `ares-comp-03` and `ares-comp-04`, and is extending the same settings to `ares-comp-05` and `ares-comp-06`. A repo-local kernel-matched `perf` binary was validated on `ares-comp-03`. `unprivileged_bpf_disabled=2` was still present when checked on `ares-comp-03` and `ares-comp-04`, so eBPF-based tools still need an approved wrapper/capability path or temporary profiling-node enablement.
 
 Figures:
 
@@ -28,15 +31,19 @@ Figures:
 - `figures/gperftools_keeper_cpu_samples.png`: top ChronoKeeper CPU samples from gperftools.
 - `figures/gperftools_cpu_by_role.png`: gperftools sample signal by ChronoLog role.
 - `figures/darshan_io_by_role.png`: Darshan-observed I/O volume by ChronoLog role.
+- `figures/benchmark_append_throughput_matrix.png`: initial tunable benchmark matrix throughput sweep.
 
 Raw and parsed data:
 
-- `raw/tau/`: TAU profiles from the semantic-duration distributed run.
+- `raw/tau/`: TAU profiles from the Keeper lock/queue semantic distributed run.
+- `raw/perf/`: raw `perf.data`, `perf stat`, and `perf report --stdio` outputs from the distributed perf run.
 - `raw/darshan/`: distributed Darshan logs for client and service roles.
 - `raw/network/`: Linux network measurement command outputs.
 - `data/tau/semantic_region_durations.csv`: parsed semantic timings.
+- `data/benchmark/benchmark_matrix_summary.csv`: parsed benchmark matrix metrics.
 - `data/gperftools/top_cpu_samples_by_role.csv`: parsed top CPU samples by role.
 - `data/darshan/io_summary_by_role.csv`: parsed I/O counters by role.
+- `perf-local-install.md`: no-sudo commands used to recreate the repo-local kernel-matched `perf`.
 
 TAU visualization tools found locally:
 
