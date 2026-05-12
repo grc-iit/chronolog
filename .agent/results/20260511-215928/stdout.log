@@ -1,0 +1,868 @@
+timestamp=2026-05-11T21:59:28-05:00
+branch=opt/phase0-bootstrap
+merge_base_status=0
+
+[commands]
+sinfo=/usr/bin/sinfo
+squeue=/usr/bin/squeue
+scontrol=/usr/bin/scontrol
+sbatch=/usr/bin/sbatch
+srun=/usr/bin/srun
+sacct=/usr/bin/sacct
+module=module
+ml=ml
+gcc=/usr/bin/gcc
+g++=/usr/bin/g++
+cc=/usr/bin/cc
+c++=/usr/bin/c++
+mpicc=missing
+mpicxx=missing
+cmake=/usr/bin/cmake
+make=/usr/bin/make
+ninja=/usr/bin/ninja
+python3=/usr/bin/python3
+
+[slurm env]
+
+[sinfo summary]
+PARTITION|AVAIL|NODES|STATE|CPUS|MEMORY|GRES|TIMELIMIT
+datacrumbs|up|1|inval|40|47759|(null)|2-00:00:00
+datacrumbs|up|1|down*|40|47759|(null)|2-00:00:00
+datacrumbs|up|2|mix|40|47759|(null)|2-00:00:00
+datacrumbs|up|20|alloc|40|47759|(null)|2-00:00:00
+datacrumbs|up|5|idle|40|47759|(null)|2-00:00:00
+compute*|up|2|mix|40|47759|(null)|2-00:00:00
+compute*|up|20|alloc|40|47759|(null)|2-00:00:00
+debug|up|1|inval|40|47759|(null)|4-00:00:00
+debug|up|5|idle|40|47759|(null)|4-00:00:00
+
+[scontrol partitions]
+PartitionName=datacrumbs
+   AllowGroups=ALL AllowAccounts=ALL AllowQos=ALL
+   AllocNodes=ALL Default=NO QoS=N/A
+   DefaultTime=NONE DisableRootJobs=NO ExclusiveUser=NO GraceTime=0 Hidden=NO
+   MaxNodes=UNLIMITED MaxTime=2-00:00:00 MinNodes=0 LLN=NO MaxCPUsPerNode=UNLIMITED
+   Nodes=ares-comp-[02-08,10-23,25-32]
+   PriorityJobFactor=1 PriorityTier=1 RootOnly=NO ReqResv=NO OverSubscribe=NO
+   OverTimeLimit=NONE PreemptMode=OFF
+   State=UP TotalCPUs=1160 TotalNodes=29 SelectTypeParameters=NONE
+   JobDefaults=(null)
+   DefMemPerNode=UNLIMITED MaxMemPerNode=UNLIMITED
+
+PartitionName=compute
+   AllowGroups=ALL AllowAccounts=ALL AllowQos=ALL
+   AllocNodes=ALL Default=YES QoS=N/A
+   DefaultTime=NONE DisableRootJobs=NO ExclusiveUser=NO GraceTime=0 Hidden=NO
+   MaxNodes=UNLIMITED MaxTime=2-00:00:00 MinNodes=0 LLN=NO MaxCPUsPerNode=UNLIMITED
+   Nodes=ares-comp-[10-23,25-32]
+   PriorityJobFactor=1 PriorityTier=1 RootOnly=NO ReqResv=NO OverSubscribe=NO
+   OverTimeLimit=NONE PreemptMode=OFF
+   State=UP TotalCPUs=880 TotalNodes=22 SelectTypeParameters=NONE
+   JobDefaults=(null)
+   DefMemPerNode=UNLIMITED MaxMemPerNode=UNLIMITED
+
+PartitionName=debug
+   AllowGroups=ALL AllowAccounts=ALL AllowQos=ALL
+   AllocNodes=ALL Default=NO QoS=N/A
+   DefaultTime=NONE DisableRootJobs=NO ExclusiveUser=NO GraceTime=0 Hidden=NO
+   MaxNodes=UNLIMITED MaxTime=4-00:00:00 MinNodes=0 LLN=NO MaxCPUsPerNode=UNLIMITED
+   Nodes=ares-comp-[03-08]
+   PriorityJobFactor=1 PriorityTier=1 RootOnly=NO ReqResv=NO OverSubscribe=NO
+   OverTimeLimit=NONE PreemptMode=OFF
+   State=UP TotalCPUs=240 TotalNodes=6 SelectTypeParameters=NONE
+   JobDefaults=(null)
+   DefMemPerNode=UNLIMITED MaxMemPerNode=UNLIMITED
+
+
+[squeue self]
+             JOBID PARTITION     NAME     USER ST       TIME  NODES NODELIST(REASON)
+
+[module avail brief]
+/mnt/common/jcernudagarcia/spack/share/spack/modules/linux-ubuntu22.04-skylake_avx512:
+abseil-cpp/
+abseil-cpp/20240722.0-gcc-11.4.0-fb5xru5
+adios2-coeus/
+adios2-coeus/2.10.0-gcc-11.4.0-27nopqa
+argobots/
+argobots/1.1-gcc-11.4.0-indjy5q
+autoconf/
+autoconf/2.72-gcc-11.4.0-l7rdvcz
+automake/
+automake/1.16.5-gcc-11.4.0-g3yby4t
+berkeley-db/
+berkeley-db/18.1.40-gcc-11.4.0-42oacwo
+bison/
+bison/3.8.2-gcc-11.4.0-rg5qfff
+boost/
+boost/1.86.0-gcc-11.4.0-cs4onpk
+bzip2/
+bzip2/1.0.8-gcc-11.4.0-ko2woy6
+c-blosc2/
+c-blosc2/2.15.1-gcc-11.4.0-5pd6s5c
+ca-certificates-mozilla/
+ca-certificates-mozilla/2023-05-30-gcc-11.4.0-36yfjab
+catch2/
+catch2/3.0.1-gcc-11.4.0-25dbsfv
+cereal/
+cereal/1.3.2-gcc-11.4.0-ps5rsxg
+chi-nettest/
+chi-nettest/main-gcc-11.4.0-gc2ydue
+cmake/
+cmake/3.30.5-gcc-11.4.0-7bxr5u6
+curl/
+curl/8.10.1-gcc-11.4.0-jagxtou
+darshan-runtime/
+darshan-runtime/3.4.6-gcc-11.4.0-u7vfz6e
+darshan-util/
+darshan-util/3.4.6-gcc-11.4.0-75rttfw
+diffutils/
+diffutils/3.10-gcc-11.4.0-yjxz467
+doxygen/
+doxygen/1.12.0-gcc-11.4.0-qnr7hnv
+expat/
+expat/2.6.4-gcc-11.4.0-crjtgjd
+fftw/
+fftw/3.3.10-gcc-11.4.0-dgsfkrl
+findutils/
+findutils/4.9.0-gcc-11.4.0-mp75ryf
+flex/
+flex/2.6.3-gcc-11.4.0-iw4rzfw
+fmt/
+fmt/11.0.2-gcc-11.4.0-32fk4sj
+gcc-runtime/
+gcc-runtime/11.4.0-gcc-11.4.0-owu4kv5
+gdbm/
+gdbm/1.23-gcc-11.4.0-vk5wn4d
+gettext/
+gettext/0.22.5-gcc-11.4.0-mbqnrku
+git/
+git/2.47.0-gcc-11.4.0-mzrrcpa
+glibc/
+glibc/2.35-gcc-11.4.0-b34moeb
+gmake/
+gmake/4.4.1-gcc-11.4.0-fxk44dg
+googletest/
+googletest/1.12.1-gcc-11.4.0-y6iiozs
+hdf5/
+hdf5/1.14.5-gcc-11.4.0-flto63r
+hermes-shm/
+hermes-shm/1.2.0-gcc-11.4.0-24o27wb
+hermes/
+hermes/1.2.1-gcc-11.4.0-dgr5ygw
+hwloc/
+hwloc/2.11.1-gcc-11.4.0-2h7d7ez
+incompact3D/
+incompact3D/coeus-gcc-11.4.0-wnhhqrc
+iowarp-base/
+iowarp-base/main-gcc-11.4.0-upk3a24
+json-c/
+json-c/0.16-gcc-11.4.0-4rjmyoo
+krb5/
+krb5/1.21.3-gcc-11.4.0-n2getuy
+libarchive/
+libarchive/3.7.6-gcc-11.4.0-mgmchtk
+libbsd/
+libbsd/0.12.2-gcc-11.4.0-cqoivda
+libcatalyst/
+libcatalyst/2.0.0-gcc-11.4.0-l6g2mrp
+libedit/
+libedit/3.1-20240808-gcc-11.4.0-vexrvth
+libelf/
+libelf/0.8.13-gcc-11.4.0-7a6cwlq
+libevent/
+libevent/2.1.12-gcc-11.4.0-6hsetqm
+libfabric/
+libfabric/1.22.0-gcc-11.4.0-lyviqpl
+libffi/
+libffi/3.4.6-gcc-11.4.0-3dramwh
+libiconv/
+libiconv/1.17-gcc-11.4.0-wm5g66g
+libidn2/
+libidn2/2.3.7-gcc-11.4.0-3gnjx3u
+libmd/
+libmd/1.0.4-gcc-11.4.0-7syqes5
+libpciaccess/
+libpciaccess/0.17-gcc-11.4.0-enmdm4m
+libpng/
+libpng/1.6.39-gcc-11.4.0-nrvlchm
+libsigsegv/
+libsigsegv/2.14-gcc-11.4.0-5jc2pdi
+libsodium/
+libsodium/1.0.20-gcc-11.4.0-jgvts2m
+libtool/
+libtool/2.4.7-gcc-11.4.0-mlxg2br
+libunistring/
+libunistring/1.2-gcc-11.4.0-6dji36r
+libuv/
+libuv/1.48.0-gcc-11.4.0-gyegrtb
+libwebsockets/
+libwebsockets/4.3.3-gcc-11.4.0-2xghdv3
+libxcrypt/
+libxcrypt/4.4.35-gcc-11.4.0-rxnqnjb
+libxml2/
+libxml2/2.13.4-gcc-11.4.0-u6qpzqr
+libyaml/
+libyaml/0.2.5-gcc-11.4.0-pyhhyol
+libzmq/
+libzmq/4.3.5-gcc-11.4.0-gs5dxpf
+lizard/
+lizard/2.0-gcc-11.4.0-mbg5xwv
+lz4/
+lz4/1.10.0-gcc-11.4.0-mlyf42e
+lzo/
+lzo/2.10-gcc-11.4.0-mcb7ymo
+m4/
+m4/1.4.19-gcc-11.4.0-xf6mxmp
+mercury/
+mercury/2.3.1-gcc-11.4.0-v35oegb
+mgard/
+mgard/2023-12-09-gcc-11.4.0-v445mhs
+mochi-margo/
+mochi-margo/0.17.0-gcc-11.4.0-l6v4nr7
+mochi-thallium/
+mochi-thallium/0.10.1-gcc-11.4.0-qh3zh7f
+msgpack-c/
+msgpack-c/3.1.1-gcc-11.4.0-zztoebi
+ncurses/
+ncurses/6.5-gcc-11.4.0-ez6c47q
+nghttp2/
+nghttp2/1.63.0-gcc-11.4.0-7qd2hx2
+numactl/
+numactl/2.0.18-gcc-11.4.0-k2wg7yw
+openblas/
+openblas/0.3.28-gcc-11.4.0-zof5b7w
+openmpi/
+openmpi/5.0.5-gcc-11.4.0-og56sxz
+openssh/
+openssh/9.9p1-gcc-11.4.0-zsi7jbn
+openssl/
+openssl/3.4.0-gcc-11.4.0-tsej5dg
+pcre2/
+pcre2/10.44-gcc-11.4.0-v6bicsz
+perl/
+perl/5.40.0-gcc-11.4.0-ngsi23x
+pigz/
+pigz/2.8-gcc-11.4.0-e4qyap2
+pkgconf/
+pkgconf/2.2.0-gcc-11.4.0-3sczowe
+pmix/
+pmix/5.0.3-gcc-11.4.0-mtqvcp2
+ppi-chi-nettest/
+ppi-chi-nettest/main-gcc-11.4.0-2okdm2j
+protobuf/
+protobuf/3.28.2-gcc-11.4.0-b53zp5d
+py-bottleneck/
+py-bottleneck/1.3.7-gcc-11.4.0-di62wo3
+py-cython/
+py-cython/0.29.36-gcc-11.4.0-3qgk73c
+py-flit-core/
+py-flit-core/3.9.0-gcc-11.4.0-t4gwg35
+py-jarvis-cd/
+py-jarvis-cd/main-gcc-11.4.0-f55tkfa
+py-jarvis-util/
+py-jarvis-util/main-gcc-11.4.0-lu5k2bg
+py-numexpr/
+py-numexpr/2.9.0-gcc-11.4.0-wyvtgwf
+py-numpy/
+py-numpy/1.25.2-gcc-11.4.0-rju52r7
+py-packaging/
+py-packaging/24.1-gcc-11.4.0-jnkhaie
+py-pandas/
+py-pandas/1.5.3-gcc-11.4.0-es2lwr7
+py-pip/
+py-pip/23.1.2-gcc-11.4.0-rdfpgl2
+py-ppi-jarvis-cd/
+py-ppi-jarvis-cd/main-gcc-11.4.0-k4at7cq
+py-ppi-jarvis-util/
+py-ppi-jarvis-util/main-gcc-11.4.0-d6kgsb3
+py-ppi-scspkg/
+py-ppi-scspkg/main-gcc-11.4.0-k2l4n74
+py-python-dateutil/
+
+[loaded modules]
+No modules loaded
+
+[compiler versions]
+gcc (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0
+Copyright (C) 2021 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+g++ (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0
+Copyright (C) 2021 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+cc (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0
+Copyright (C) 2021 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+c++ (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0
+Copyright (C) 2021 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+/usr/bin/bash: line 29: mpicc: command not found
+/usr/bin/bash: line 30: mpicxx: command not found
+cmake version 3.22.1
+
+CMake suite maintained and supported by Kitware (kitware.com/cmake).
+GNU Make 4.3
+Built for x86_64-pc-linux-gnu
+Copyright (C) 1988-2020 Free Software Foundation, Inc.
+1.10.1
+
+[cpu]
+Architecture:                            x86_64
+CPU op-mode(s):                          32-bit, 64-bit
+Address sizes:                           46 bits physical, 48 bits virtual
+Byte Order:                              Little Endian
+CPU(s):                                  40
+On-line CPU(s) list:                     0-39
+Vendor ID:                               GenuineIntel
+Model name:                              Intel(R) Xeon(R) Silver 4114 CPU @ 2.20GHz
+CPU family:                              6
+Model:                                   85
+Thread(s) per core:                      2
+Core(s) per socket:                      10
+Socket(s):                               2
+Stepping:                                4
+BogoMIPS:                                4400.00
+Flags:                                   fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe syscall nx pdpe1gb rdtscp lm constant_tsc art arch_perfmon pebs bts rep_good nopl xtopology nonstop_tsc cpuid aperfmperf pni pclmulqdq dtes64 monitor ds_cpl vmx smx est tm2 ssse3 sdbg fma cx16 xtpr pdcm pcid dca sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand lahf_lm abm 3dnowprefetch cpuid_fault epb cat_l3 cdp_l3 invpcid_single pti intel_ppin ssbd mba ibrs ibpb stibp tpr_shadow vnmi flexpriority ept vpid ept_ad fsgsbase tsc_adjust bmi1 hle avx2 smep bmi2 erms invpcid rtm cqm mpx rdt_a avx512f avx512dq rdseed adx smap clflushopt clwb intel_pt avx512cd avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local dtherm ida arat pln pts hwp_epp pku ospke md_clear flush_l1d arch_capabilities ibpb_exit_to_user
+Virtualization:                          VT-x
+L1d cache:                               640 KiB (20 instances)
+L1i cache:                               640 KiB (20 instances)
+L2 cache:                                20 MiB (20 instances)
+L3 cache:                                27.5 MiB (2 instances)
+NUMA node(s):                            2
+NUMA node0 CPU(s):                       0-9,20-29
+NUMA node1 CPU(s):                       10-19,30-39
+Vulnerability Gather data sampling:      Mitigation; Microcode
+Vulnerability Indirect target selection: Not affected
+Vulnerability Itlb multihit:             KVM: Mitigation: VMX disabled
+Vulnerability L1tf:                      Mitigation; PTE Inversion; VMX conditional cache flushes, SMT vulnerable
+Vulnerability Mds:                       Mitigation; Clear CPU buffers; SMT vulnerable
+Vulnerability Meltdown:                  Mitigation; PTI
+Vulnerability Mmio stale data:           Mitigation; Clear CPU buffers; SMT vulnerable
+Vulnerability Reg file data sampling:    Not affected
+Vulnerability Retbleed:                  Mitigation; IBRS
+Vulnerability Spec rstack overflow:      Not affected
+Vulnerability Spec store bypass:         Mitigation; Speculative Store Bypass disabled via prctl and seccomp
+Vulnerability Spectre v1:                Mitigation; usercopy/swapgs barriers and __user pointer sanitization
+Vulnerability Spectre v2:                Mitigation; IBRS; IBPB conditional; STIBP conditional; RSB filling; PBRSB-eIBRS Not affected; BHI Not affected
+Vulnerability Srbds:                     Not affected
+Vulnerability Tsa:                       Not affected
+Vulnerability Tsx async abort:           Mitigation; Clear CPU buffers; SMT vulnerable
+
+[module mpi/compiler candidates]
+argobots/
+argobots/1.1-gcc-11.4.0-indjy5q
+boost/
+boost/1.86.0-gcc-11.4.0-cs4onpk
+cmake/
+cmake/3.30.5-gcc-11.4.0-7bxr5u6
+darshan-runtime/
+darshan-runtime/3.4.6-gcc-11.4.0-u7vfz6e
+darshan-util/
+darshan-util/3.4.6-gcc-11.4.0-75rttfw
+gcc-runtime/
+gcc-runtime/11.4.0-gcc-11.4.0-owu4kv5
+hdf5/
+hdf5/1.14.5-gcc-11.4.0-flto63r
+mercury/
+mercury/2.3.1-gcc-11.4.0-v35oegb
+openmpi/
+openmpi/5.0.5-gcc-11.4.0-og56sxz
+hdf5/1.14.0
+hdf5/parallel/
+hdf5/parallel/1.14.0
+mercury/
+mercury/2.2.0
+mpich/
+mpich/4.1.1
+/mnt/repo/software/spack/spack/share/spack/lmod/linux-ubuntu22.04-x86_64/gcc/11.4.0:
+argobots/
+argobots/1.1-indjy5q
+boost/
+boost/1.86.0-cs4onpk
+boost/1.86.0-qx7wmdx
+cmake/
+cmake/3.30.5-pq5ntgo
+gcc-runtime/
+gcc-runtime/11.4.0-owu4kv5
+mercury/
+mercury/2.3.1-kcmn6u3
+openmpi/
+openmpi/5.0.5-cphqvsy
+openmpi/5.0.5-x2kvx5l
+gcc/11.4.0/abseil-cpp/
+gcc/11.4.0/abseil-cpp/20240722.0-azsummi
+gcc/11.4.0/argobots/
+gcc/11.4.0/argobots/1.1-indjy5q
+gcc/11.4.0/arrow/
+gcc/11.4.0/arrow/15.0.1-znobty3
+gcc/11.4.0/attr/
+gcc/11.4.0/attr/2.4.48-uab65fy
+gcc/11.4.0/autoconf-archive/
+gcc/11.4.0/autoconf-archive/2023.02.20-zrgzr6c
+gcc/11.4.0/autoconf/
+gcc/11.4.0/autoconf/2.72-xa64tje
+gcc/11.4.0/automake/
+gcc/11.4.0/automake/1.16.5-vnnup7s
+gcc/11.4.0/berkeley-db/
+gcc/11.4.0/berkeley-db/18.1.40-42oacwo
+gcc/11.4.0/binutils/
+gcc/11.4.0/binutils/2.43.1-sizxhsm
+gcc/11.4.0/bison/
+gcc/11.4.0/bison/3.8.2-rg5qfff
+gcc/11.4.0/boost/
+gcc/11.4.0/boost/1.86.0-cs4onpk
+gcc/11.4.0/boost/1.86.0-qx7wmdx
+gcc/11.4.0/brotli/
+gcc/11.4.0/brotli/1.1.0-hbydoxp
+gcc/11.4.0/bzip2/
+gcc/11.4.0/bzip2/1.0.8-ko2woy6
+gcc/11.4.0/c-blosc/
+gcc/11.4.0/c-blosc/1.21.5-mwrgzea
+gcc/11.4.0/c-blosc2/
+gcc/11.4.0/c-blosc2/2.15.1-4qb7atc
+gcc/11.4.0/ca-certificates-mozilla/
+gcc/11.4.0/ca-certificates-mozilla/2023-05-30-36yfjab
+gcc/11.4.0/catch2/
+gcc/11.4.0/catch2/3.0.1-qrn53pr
+gcc/11.4.0/cereal/
+gcc/11.4.0/cereal/1.3.2-wwkdnuj
+gcc/11.4.0/cgal/
+gcc/11.4.0/cgal/6.0.1-xv2it3x
+gcc/11.4.0/chi-nettest/
+gcc/11.4.0/chi-nettest/main-wshwm5x
+gcc/11.4.0/cli11/
+gcc/11.4.0/cli11/1.9.1-qv4jym6
+gcc/11.4.0/cmake/
+gcc/11.4.0/cmake/3.30.5-pq5ntgo
+gcc/11.4.0/curl/
+gcc/11.4.0/curl/8.10.1-7ha27jj
+gcc/11.4.0/diffutils/
+gcc/11.4.0/diffutils/3.10-yjxz467
+gcc/11.4.0/double-conversion/
+gcc/11.4.0/double-conversion/3.3.0-fiztbui
+gcc/11.4.0/doxygen/
+gcc/11.4.0/doxygen/1.12.0-kj3ppd6
+gcc/11.4.0/eigen/
+gcc/11.4.0/eigen/3.4.0-bj4hlyq
+gcc/11.4.0/expat/
+gcc/11.4.0/expat/2.6.4-crjtgjd
+gcc/11.4.0/findutils/
+gcc/11.4.0/findutils/4.9.0-mp75ryf
+gcc/11.4.0/flatbuffers/
+gcc/11.4.0/flatbuffers/24.3.25-ujxr4ta
+gcc/11.4.0/flex/
+gcc/11.4.0/flex/2.6.3-iw4rzfw
+gcc/11.4.0/flex/2.6.4-fmazymp
+gcc/11.4.0/fmt/
+gcc/11.4.0/fmt/11.0.2-6qgv5bv
+gcc/11.4.0/freetype/
+gcc/11.4.0/freetype/2.13.2-m3iicz6
+gcc/11.4.0/gcc-runtime/
+gcc/11.4.0/gcc-runtime/11.4.0-owu4kv5
+gcc/11.4.0/gdbm/
+gcc/11.4.0/gdbm/1.23-vk5wn4d
+gcc/11.4.0/gettext/
+gcc/11.4.0/gettext/0.22.5-pym22n7
+gcc/11.4.0/git/
+gcc/11.4.0/git/2.47.0-wdup5ya
+gcc/11.4.0/glew/
+gcc/11.4.0/glew/2.2.0-kwp3h3k
+gcc/11.4.0/glibc/
+gcc/11.4.0/glibc/2.35-b34moeb
+gcc/11.4.0/glproto/
+gcc/11.4.0/glproto/1.4.17-qellayj
+gcc/11.4.0/glx/
+gcc/11.4.0/glx/1.4-juqzrbp
+gcc/11.4.0/gmake/
+gcc/11.4.0/gmake/4.4.1-fxk44dg
+gcc/11.4.0/gmp/
+gcc/11.4.0/gmp/6.3.0-pk4p6au
+gcc/11.4.0/googletest/
+gcc/11.4.0/googletest/1.12.1-al2evss
+gcc/11.4.0/help2man/
+gcc/11.4.0/help2man/1.49.3-nvqgj5x
+gcc/11.4.0/hwloc/
+gcc/11.4.0/hwloc/2.11.1-ofwh4t3
+gcc/11.4.0/icu4c/
+gcc/11.4.0/icu4c/74.2-rqbxouy
+gcc/11.4.0/inputproto/
+gcc/11.4.0/inputproto/2.3.2-hguornz
+gcc/11.4.0/iowarp-base/
+gcc/11.4.0/iowarp-base/main-a4oohpv
+gcc/11.4.0/jasper/
+gcc/11.4.0/jasper/2.0.32-oq2qtfm
+gcc/11.4.0/jasper/4.2.4-djqtly2
+gcc/11.4.0/json-c/
+gcc/11.4.0/json-c/0.16-2ofsb6t
+gcc/11.4.0/jsoncpp/
+gcc/11.4.0/jsoncpp/1.9.5-evqjiko
+gcc/11.4.0/kbproto/
+gcc/11.4.0/kbproto/1.0.7-b6qdeeb
+gcc/11.4.0/krb5/
+gcc/11.4.0/krb5/1.21.3-5l7knmk
+gcc/11.4.0/libaec/
+gcc/11.4.0/libaec/1.0.6-ivxvp5c
+gcc/11.4.0/libarchive/
+gcc/11.4.0/libarchive/3.7.6-hshrao7
+gcc/11.4.0/libbsd/
+gcc/11.4.0/libbsd/0.12.2-cqoivda
+gcc/11.4.0/libcap/
+gcc/11.4.0/libcap/2.69-lydmlkv
+gcc/11.4.0/libcatalyst/
+gcc/11.4.0/libcatalyst/2.0.0-l4lxprs
+gcc/11.4.0/libedit/
+gcc/11.4.0/libedit/3.1-20240808-vexrvth
+gcc/11.4.0/libelf/
+gcc/11.4.0/libelf/0.8.13-7a6cwlq
+gcc/11.4.0/libevent/
+gcc/11.4.0/libevent/2.1.12-45gsoeo
+gcc/11.4.0/libfabric/
+gcc/11.4.0/libfabric/1.22.0-eclvajk
+gcc/11.4.0/libfabric/1.22.0-lyviqpl
+gcc/11.4.0/libffi/
+gcc/11.4.0/libffi/3.4.6-3dramwh
+gcc/11.4.0/libfuse/
+gcc/11.4.0/libfuse/3.16.2-qt4vscd
+gcc/11.4.0/libice/
+gcc/11.4.0/libice/1.1.1-6uxtk7j
+gcc/11.4.0/libiconv/
+gcc/11.4.0/libiconv/1.17-wm5g66g
+gcc/11.4.0/libidn2/
+gcc/11.4.0/libidn2/2.3.7-3gnjx3u
+gcc/11.4.0/libjpeg-turbo/
+gcc/11.4.0/libjpeg-turbo/3.0.3-zii6o4e
+gcc/11.4.0/libmd/
+gcc/11.4.0/libmd/1.0.4-7syqes5
+gcc/11.4.0/libnl/
+gcc/11.4.0/libnl/3.3.0-xztyu5v
+gcc/11.4.0/libnsl/
+gcc/11.4.0/libnsl/2.0.1-235bgdb
+gcc/11.4.0/libogg/
+gcc/11.4.0/libogg/1.3.5-aj3uw6z
+gcc/11.4.0/libpciaccess/
+gcc/11.4.0/libpciaccess/0.17-enmdm4m
+gcc/11.4.0/libpng/
+gcc/11.4.0/libpng/1.6.39-r5xqgos
+gcc/11.4.0/libpthread-stubs/
+gcc/11.4.0/libpthread-stubs/0.5-nglrfqr
+gcc/11.4.0/libsigsegv/
+gcc/11.4.0/libsigsegv/2.14-5jc2pdi
+gcc/11.4.0/libsm/
+gcc/11.4.0/libsm/1.2.4-vrxwolp
+gcc/11.4.0/libtheora/
+gcc/11.4.0/libtheora/1.1.1-6dmo7d3
+gcc/11.4.0/libtiff/
+gcc/11.4.0/libtiff/4.7.0-ojb6aul
+gcc/11.4.0/libtirpc/
+gcc/11.4.0/libtirpc/1.3.3-t5hk7tj
+gcc/11.4.0/libtool/
+gcc/11.4.0/libtool/2.4.7-mlxg2br
+gcc/11.4.0/libunistring/
+gcc/11.4.0/libunistring/1.2-6dji36r
+gcc/11.4.0/libunwind/
+gcc/11.4.0/libunwind/1.8.1-ouiulky
+gcc/11.4.0/libx11/
+gcc/11.4.0/libx11/1.8.10-kvundg5
+gcc/11.4.0/libxau/
+gcc/11.4.0/libxau/1.0.11-egavqnk
+gcc/11.4.0/libxcb/
+gcc/11.4.0/libxcb/1.17.0-2a3h5ot
+gcc/11.4.0/libxcrypt/
+gcc/11.4.0/libxcrypt/4.4.35-csiftbw
+gcc/11.4.0/libxdmcp/
+gcc/11.4.0/libxdmcp/1.1.5-isa574u
+gcc/11.4.0/libxext/
+gcc/11.4.0/libxext/1.3.6-zs4oysa
+gcc/11.4.0/libxml2/
+gcc/11.4.0/libxml2/2.13.4-3b76nt2
+gcc/11.4.0/libxrandr/
+gcc/11.4.0/libxrandr/1.5.4-6gcyxyc
+gcc/11.4.0/libxrender/
+gcc/11.4.0/libxrender/0.9.11-n6qcyj5
+gcc/11.4.0/libxt/
+gcc/11.4.0/libxt/1.3.0-5wls4cp
+gcc/11.4.0/libyaml/
+gcc/11.4.0/libyaml/0.2.5-pyhhyol
+gcc/11.4.0/lizard/
+gcc/11.4.0/lizard/2.0-mbg5xwv
+gcc/11.4.0/llvm/
+gcc/11.4.0/llvm/17.0.6-bbud2fg
+gcc/11.4.0/lua/
+gcc/11.4.0/lua/5.3.6-nsj3xua
+gcc/11.4.0/lz4/
+gcc/11.4.0/lz4/1.10.0-mlyf42e
+gcc/11.4.0/lzo/
+gcc/11.4.0/lzo/2.10-mcb7ymo
+gcc/11.4.0/m4/
+gcc/11.4.0/m4/1.4.19-xf6mxmp
+gcc/11.4.0/mercury/
+gcc/11.4.0/mercury/2.3.1-kcmn6u3
+gcc/11.4.0/mesa/
+gcc/11.4.0/mesa/23.3.6-pn4neax
+gcc/11.4.0/meson/
+gcc/11.4.0/meson/1.5.1-zebihd3
+gcc/11.4.0/mgard/
+gcc/11.4.0/mgard/2023-12-09-h5gxdgb
+gcc/11.4.0/mgard/2023-12-09-imrwprl
+gcc/11.4.0/mochi-margo/
+gcc/11.4.0/mochi-margo/0.17.0-llh62si
+gcc/11.4.0/mochi-thallium/
+gcc/11.4.0/mochi-thallium/0.10.1-2pari3f
+gcc/11.4.0/montage/
+gcc/11.4.0/montage/6.0-akvnsor
+gcc/11.4.0/mpfr/
+gcc/11.4.0/mpfr/4.2.1-wswsyrx
+gcc/11.4.0/nasm/
+gcc/11.4.0/nasm/2.16.03-n2rimqz
+gcc/11.4.0/ncurses/
+gcc/11.4.0/ncurses/6.5-ez6c47q
+gcc/11.4.0/nghttp2/
+gcc/11.4.0/nghttp2/1.63.0-7qd2hx2
+gcc/11.4.0/ninja/
+gcc/11.4.0/ninja/1.12.1-kdba5lw
+gcc/11.4.0/nlohmann-json/
+gcc/11.4.0/nlohmann-json/3.11.3-36lkxh4
+gcc/11.4.0/numactl/
+gcc/11.4.0/numactl/2.0.18-qjpirtp
+gcc/11.4.0/openblas/
+gcc/11.4.0/openblas/0.3.28-zof5b7w
+gcc/11.4.0/openmpi/
+gcc/11.4.0/openmpi/5.0.5-cphqvsy
+gcc/11.4.0/openmpi/5.0.5-x2kvx5l
+gcc/11.4.0/openssh/
+gcc/11.4.0/openssh/9.9p1-4gjrqhd
+gcc/11.4.0/openssl/
+gcc/11.4.0/openssl/3.4.0-ilowtdm
+gcc/11.4.0/pcre/
+gcc/11.4.0/pcre/8.45-gfsga6z
+gcc/11.4.0/pcre2/
+gcc/11.4.0/pcre2/10.44-v6bicsz
+gcc/11.4.0/pegtl/
+gcc/11.4.0/pegtl/2.8.3-4qr5cvq
+gcc/11.4.0/perl-data-dumper/
+gcc/11.4.0/perl-data-dumper/2.173-yuimzh2
+gcc/11.4.0/perl/
+gcc/11.4.0/perl/5.40.0-xglh2kt
+gcc/11.4.0/pigz/
+gcc/11.4.0/pigz/2.8-b34vblb
+gcc/11.4.0/pkgconf/
+gcc/11.4.0/pkgconf/2.2.0-3sczowe
+gcc/11.4.0/pmix/
+gcc/11.4.0/pmix/5.0.3-cxagayv
+gcc/11.4.0/proj/
+gcc/11.4.0/proj/8.1.0-blfmifo
+gcc/11.4.0/protobuf/
+gcc/11.4.0/protobuf/3.21.12-bxu2mww
+gcc/11.4.0/protobuf/3.28.2-zsvraur
+gcc/11.4.0/pugixml/
+gcc/11.4.0/pugixml/1.14-lcj62cu
+gcc/11.4.0/py-bottleneck/
+gcc/11.4.0/py-bottleneck/1.3.7-bosxyp4
+gcc/11.4.0/py-chimaera-util/
+gcc/11.4.0/py-chimaera-util/main-qpyjmk4
+gcc/11.4.0/py-contourpy/
+gcc/11.4.0/py-contourpy/1.3.0-2jr445k
+gcc/11.4.0/py-cppy/
+gcc/11.4.0/py-cppy/1.2.1-qn6d73e
+gcc/11.4.0/py-cycler/
+gcc/11.4.0/py-cycler/0.11.0-hrcmy22
+gcc/11.4.0/py-cython/
+gcc/11.4.0/py-cython/0.29.36-qp65lxb
+gcc/11.4.0/py-cython/3.0.11-qichdtj
+gcc/11.4.0/py-docutils/
+gcc/11.4.0/py-docutils/0.20.1-g4nmvwa
+gcc/11.4.0/py-flit-core/
+gcc/11.4.0/py-flit-core/3.9.0-vml4d5v
+gcc/11.4.0/py-fonttools/
+gcc/11.4.0/py-fonttools/4.39.4-cwwsd5k
+gcc/11.4.0/py-iowarp-runtime-util/
+gcc/11.4.0/py-iowarp-runtime-util/main-bzacilm
+gcc/11.4.0/py-jarvis-cd/
+gcc/11.4.0/py-jarvis-cd/main-gd3l522
+gcc/11.4.0/py-jarvis-util/
+gcc/11.4.0/py-jarvis-util/main-zzkca44
+gcc/11.4.0/py-kiwisolver/
+gcc/11.4.0/py-kiwisolver/1.4.5-ebcajfr
+gcc/11.4.0/py-mako/
+gcc/11.4.0/py-mako/1.2.4-jypsvnj
+gcc/11.4.0/py-markupsafe/
+gcc/11.4.0/py-markupsafe/2.1.3-wm2zanp
+gcc/11.4.0/py-matplotlib/
+gcc/11.4.0/py-matplotlib/3.9.2-pp5asnv
+gcc/11.4.0/py-meson-python/
+gcc/11.4.0/py-meson-python/0.16.0-xfzqebf
+gcc/11.4.0/py-numexpr/
+gcc/11.4.0/py-numexpr/2.9.0-liftdtt
+gcc/11.4.0/py-numpy/
+gcc/11.4.0/py-numpy/1.25.2-jy7uwju
+gcc/11.4.0/py-packaging/
+gcc/11.4.0/py-packaging/24.1-jmratyl
+gcc/11.4.0/py-pandas/
+gcc/11.4.0/py-pandas/1.5.3-jg3qops
+gcc/11.4.0/py-pillow/
+gcc/11.4.0/py-pillow/11.0.0-zh6hu5n
+gcc/11.4.0/py-pip/
+gcc/11.4.0/py-pip/23.1.2-573kwry
+gcc/11.4.0/py-ppi-jarvis-util/
+gcc/11.4.0/py-ppi-jarvis-util/main-hoczj67
+gcc/11.4.0/py-ppi-scspkg/
+gcc/11.4.0/py-ppi-scspkg/main-734eswj
+gcc/11.4.0/py-pybind11/
+gcc/11.4.0/py-pybind11/2.13.5-pngixx5
+gcc/11.4.0/py-pyparsing/
+gcc/11.4.0/py-pyparsing/3.1.2-oed7i4t
+gcc/11.4.0/py-pyproject-metadata/
+gcc/11.4.0/py-pyproject-metadata/0.7.1-crph24r
+gcc/11.4.0/py-python-dateutil/
+gcc/11.4.0/py-python-dateutil/2.8.2-pyd3i5h
+gcc/11.4.0/py-pytz/
+gcc/11.4.0/py-pytz/2023.3-pv4p6jl
+gcc/11.4.0/py-pyyaml/
+gcc/11.4.0/py-pyyaml/6.0.2-q6tviuo
+gcc/11.4.0/py-scspkg/
+gcc/11.4.0/py-scspkg/main-loootxg
+gcc/11.4.0/py-setuptools-scm/
+gcc/11.4.0/py-setuptools-scm/8.0.4-eieasd6
+gcc/11.4.0/py-setuptools/
+gcc/11.4.0/py-setuptools/63.4.3-3k7bjpl
+gcc/11.4.0/py-setuptools/69.2.0-dr2wxpl
+gcc/11.4.0/py-six/
+gcc/11.4.0/py-six/1.16.0-k7o426e
+gcc/11.4.0/py-tabulate/
+gcc/11.4.0/py-tabulate/0.9.0-fqlcywn
+gcc/11.4.0/py-tomli/
+gcc/11.4.0/py-tomli/2.0.1-lyst5aq
+gcc/11.4.0/py-typing-extensions/
+gcc/11.4.0/py-typing-extensions/4.12.2-ydlwj6r
+gcc/11.4.0/py-versioneer/
+gcc/11.4.0/py-versioneer/0.29-4kwtuqq
+gcc/11.4.0/py-wheel/
+gcc/11.4.0/py-wheel/0.41.2-bx4wsbb
+gcc/11.4.0/python-venv/
+gcc/11.4.0/python-venv/1.0-u5vf2gn
+gcc/11.4.0/python/
+gcc/11.4.0/python/3.11.9-zg4555e
+gcc/11.4.0/qhull/
+gcc/11.4.0/qhull/2020.2-ul2jjsy
+gcc/11.4.0/randrproto/
+gcc/11.4.0/randrproto/1.5.0-cbsm4r6
+gcc/11.4.0/rapidjson/
+gcc/11.4.0/rapidjson/1.2.0-2024-08-16-rcfpd6j
+gcc/11.4.0/rdma-core/
+gcc/11.4.0/rdma-core/52.0-oflqvy5
+gcc/11.4.0/re2/
+gcc/11.4.0/re2/2024-07-02-7fy3j4d
+gcc/11.4.0/re2c/
+gcc/11.4.0/re2c/3.1-ckucf6o
+gcc/11.4.0/readline/
+gcc/11.4.0/readline/8.2-sf7kdl7
+gcc/11.4.0/renderproto/
+gcc/11.4.0/renderproto/0.11.1-ryuc72n
+gcc/11.4.0/rpcsvc-proto/
+gcc/11.4.0/rpcsvc-proto/1.4.4-5tydypz
+gcc/11.4.0/sed/
+gcc/11.4.0/sed/4.9-hzoefab
+gcc/11.4.0/snappy/
+gcc/11.4.0/snappy/1.2.1-jkrlwov
+gcc/11.4.0/snappy/1.2.1-l2ogsjh
+gcc/11.4.0/spdlog/
+gcc/11.4.0/spdlog/1.14.1-y4quhau
+gcc/11.4.0/sqlite/
+gcc/11.4.0/sqlite/3.46.0-g4jup4g
+gcc/11.4.0/swig/
+gcc/11.4.0/swig/4.0.2-fortran-qebxult
+gcc/11.4.0/swig/4.1.1-g5gmtrw
+gcc/11.4.0/sz/
+gcc/11.4.0/sz/1.4.12.3-udwts24
+gcc/11.4.0/sz/2.1.12.5-gpybmqq
+gcc/11.4.0/tar/
+gcc/11.4.0/tar/1.34-ekkjnqg
+gcc/11.4.0/tcsh/
+gcc/11.4.0/tcsh/6.24.00-thl5uaz
+gcc/11.4.0/texinfo/
+gcc/11.4.0/texinfo/7.1-iswg6js
+gcc/11.4.0/time/
+gcc/11.4.0/time/1.9-furr553
+gcc/11.4.0/ucx/
+gcc/11.4.0/ucx/1.17.0-mhbxjen
+gcc/11.4.0/ucx/1.17.0-rofkl46
+gcc/11.4.0/unzip/
+gcc/11.4.0/unzip/6.0-gsz7fsy
+gcc/11.4.0/utf8proc/
+gcc/11.4.0/utf8proc/2.9.0-sarvn32
+gcc/11.4.0/util-linux-uuid/
+gcc/11.4.0/util-linux-uuid/2.40.2-ut7sq7q
+gcc/11.4.0/util-macros/
+gcc/11.4.0/util-macros/1.20.1-kvkq4tw
+gcc/11.4.0/xcb-proto/
+gcc/11.4.0/xcb-proto/1.17.0-ovlxfn3
+gcc/11.4.0/xextproto/
+gcc/11.4.0/xextproto/7.3.0-w6xeahk
+gcc/11.4.0/xproto/
+gcc/11.4.0/xproto/7.0.31-m3mb2xo
+gcc/11.4.0/xrandr/
+gcc/11.4.0/xrandr/1.5.2-wqymkhe
+gcc/11.4.0/xsimd/
+gcc/11.4.0/xsimd/8.1.0-ck6kgpu
+gcc/11.4.0/xtrans/
+gcc/11.4.0/xtrans/1.5.2-pxvhwc4
+gcc/11.4.0/xz/
+gcc/11.4.0/xz/5.4.6-jbodcp5
+gcc/11.4.0/yaml-cpp/
+gcc/11.4.0/yaml-cpp/0.8.0-t3qoxou
+gcc/11.4.0/zfp/
+gcc/11.4.0/zfp/0.5.5-o6g6txk
+gcc/11.4.0/zlib-ng/
+gcc/11.4.0/zlib-ng/2.2.1-dribu5i
+gcc/11.4.0/zlib/
+gcc/11.4.0/zlib/1.3.1-lw24hlw
+gcc/11.4.0/zstd/
+gcc/11.4.0/zstd/1.5.6-i7n7mhj
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/adios2/
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/adios2/2.10.2-sf7srjv
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/adios2/2.10.2-wqc5dwb
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/fftw/
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/fftw/3.3.10-vgmk7ol
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/hdf5/
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/hdf5/1.14.5-raazvt3
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/netcdf-c/
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/netcdf-c/4.9.2-674pv54
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/netcdf-fortran/
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/netcdf-fortran/4.6.1-7fod32w
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/openfoam/
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/openfoam/2312-wocgfjq
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/parallel-netcdf/
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/parallel-netcdf/1.12.3-f2bzvt6
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/scotch/
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/scotch/7.0.4-dd4w3wc
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/wrf/
+openmpi/5.0.5-cphqvsy/gcc/11.4.0/wrf/4.6.1-ulfhjc3
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/cte-hermes-shm/
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/cte-hermes-shm/main-navyno7
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/h5bench/
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/h5bench/1.4-clordg2
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/h5bench/1.4-rbf7w5g
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/h5bench/1.4-4osowbl
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/h5part/
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/h5part/1.6.6-pqhcryw
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/hdf5-vol-async/
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/hdf5-vol-async/1.5-zwj3leo
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/hdf5/
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/hdf5/1.8.23-yggscmv
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/hdf5/1.14.5-fhssvl7
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/hdf5/1.14.5-plr6lpu
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/hdf5/1.14.5-5zbyeqh
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/ior/
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/ior/3.3.0-fihmxeb
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/iowarp-cte/
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/iowarp-cte/main-7ay5ec7
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/iowarp-runtime/
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/iowarp-runtime/main-6pjrr73
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/iowarp/
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/iowarp/main-resnye4
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/ppi-chi-nettest/
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/ppi-chi-nettest/main-nntqsmo
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/py-ppi-jarvis-cd/
+openmpi/5.0.5-x2kvx5l/gcc/11.4.0/py-ppi-jarvis-cd/main-puystwh
+/mnt/repo/software/spack/spack/share/spack/lmod/linux-ubuntu22.04-x86_64/openmpi/5.0.5-cphqvsy/gcc/11.4.0:
+hdf5/
+hdf5/1.14.5-raazvt3
