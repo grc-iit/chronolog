@@ -15,6 +15,12 @@ struct KeeperGrapherDrainServiceConf
 {
     RPCProviderConf RPC_CONF;
     uint32_t INGESTION_THREAD_COUNT = 1;
+
+    [[nodiscard]] std::string to_String() const
+    {
+        return "[RPC_CONF: " + RPC_CONF.to_String() +
+               ", INGESTION_THREAD_COUNT: " + std::to_string(INGESTION_THREAD_COUNT) + "]";
+    }
 };
 
 struct GrapherConfiguration
@@ -57,7 +63,7 @@ struct GrapherConfiguration
     [[nodiscard]] std::string to_String() const
     {
         return "[CHRONO_GRAPHER_CONFIGURATION: RECORDING_GROUP: " + std::to_string(RECORDING_GROUP) +
-               ", KEEPER_GRAPHER_DRAIN_SERVICE_CONF: " + KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.to_String() +
+               ", KEEPER_GRAPHER_DRAIN_SERVICE_CONF: " + KEEPER_GRAPHER_DRAIN_SERVICE_CONF.to_String() +
                ", DATA_STORE_ADMIN_SERVICE_CONF: " + DATA_STORE_ADMIN_SERVICE_CONF.to_String() +
                ", VISOR_REGISTRY_SERVICE_CONF: " + VISOR_REGISTRY_SERVICE_CONF.to_String() +
                ", LOG_CONF: " + LOG_CONF.to_String() + ", DATA_STORE_CONF: " + DATA_STORE_CONF.to_String() +
