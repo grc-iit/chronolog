@@ -124,9 +124,24 @@ chronolog::DualEndpointChunkExtractorRDMA::operator=(DualEndpointChunkExtractorR
         return *this;
     }
 
+    if(rdma_sender_for_player != nullptr)
+    {
+        LOG_TRACE("[DualEndpointExtractorRDMA] move operator: deleting receiver {} ",
+                  chl::to_string(player_receiver_service_id));
+        delete rdma_sender_for_player;
+    }
+    if(rdma_sender_for_grapher != nullptr)
+    {
+        LOG_TRACE("[DualEndpointExtractorRDMA] move operator: deleting receiver {} ",
+                  chl::to_string(grapher_receiver_service_id));
+        delete rdma_sender_for_grapher;
+    }
+
     sender_tl_engine = other.get_sender_engine();
     player_receiver_service_id = other.get_player_receiver_id();
     grapher_receiver_service_id = other.get_grapher_receiver_id();
+    rdma_sender_for_player = other.rdma_sender_for_player;
+    rdma_sender_for_grapher = other.rdma_sender_for_grapher;
 
     other.sender_tl_engine = nullptr;
     other.rdma_sender_for_player = nullptr;
