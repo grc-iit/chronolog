@@ -67,25 +67,23 @@ public:
 
     ~TestExtractionChain() { theExtractors.clear(); }
 
-    void add_extractor(Extractor e) { theExtractors.push_back(std::move(e)); }
-
-    int process_chunk(chl::StoryChunk* chunk)
+    int activate(chl::ServiceId const& recording_service_id,
+                 tl::engine* extraction_engine,
+                 chl::ExtractionModuleConfiguration const& configuration)
     {
-        int chain_result = chl::CL_SUCCESS;
+        theExtractors.push_back(std::move(chl::LoggingExtractor()));
+        theExtractors.push_back(std::move(chl::StoryChunkExtractorCSV(recording_service_id)));
+        theExtractors.push_back(std::move(
+                chl::StoryChunkExtractorRDMA(extraction_engine, chl::ServiceId("ofi+sockets", "127.0.0.1", 3333, 33))));
+        return chl::CL_SUCCESS;
+    }
 
-        // If extractor fails, mark the chain result as a failure,
-        // but keep going for the others.
+    void process_chunk(chl::StoryChunk* chunk)
+    {
         for(auto& e: theExtractors)
         {
-            int extractor_result =
-                    std::visit([chunk](auto& extractor) -> int { return extractor.process_chunk(chunk); }, e);
-
-            if(chl::CL_SUCCESS != extractor_result)
-            {
-                chain_result = extractor_result;
-            }
+            std::visit([chunk](auto& extractor) { extractor.process_chunk(chunk); }, e);
         }
-        return chain_result;
     }
 
     bool is_active_chain() const
@@ -108,6 +106,11 @@ public:
 
         return true;
     }
+
+    void flush_outage_buffers()
+    {
+        //TODO #635
+    }
 };
 
 int main()
@@ -122,7 +125,7 @@ int main()
             ,
             "/tmp/extraction_test.log" //, confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
             ,
-            chronolog::LogLevel::debug // confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
+            chronolog::LogLevel::trace // confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
             ,
             "ExtractionModuleTest" //confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME
             ,
@@ -130,7 +133,7 @@ int main()
             ,
             2 //confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILENUM
             ,
-            chronolog::LogLevel::debug //confManager.CLIENT_CONF.CLIENT_LOG_CONF.FLUSHLEVEL);
+            chronolog::LogLevel::trace //confManager.CLIENT_CONF.CLIENT_LOG_CONF.FLUSHLEVEL);
     );
 
 
@@ -141,12 +144,9 @@ int main()
 
     tl::engine* localEngine = nullptr;
 
-    chronolog::LoggingExtractor logging_extractor;
-    chronolog::StoryChunkExtractorCSV csv_extractor(localServiceId, "/tmp/");
-
     try
     {
-        margo_instance_id margo_id = margo_init(LOCAL_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 1);
+        margo_instance_id margo_id = margo_init(LOCAL_SERVICE_NA_STRING.c_str(), MARGO_CLIENT_MODE, 1, 1);
         localEngine = new tl::engine(margo_id);
     }
     catch(tl::exception const&)
@@ -154,18 +154,11 @@ int main()
         return (-1);
     }
 
-    // 1. Test single endpoint RDMA extractor instantiation
-    chl::ServiceId receiving_service_id("ofi+sockets", "127.0.0.1", 3333, 33);
-    chl::StoryChunkExtractorRDMA rdma_extractor(*localEngine, receiving_service_id);
-
     // 2. Test chained ExtractionModule instantiation with chained logging extractor & csv extractor
     chronolog::StoryChunkExtractionModule<TestExtractionChain> extractionModule;
 
-    extractionModule.getExtractionChain().add_extractor(logging_extractor);
-    extractionModule.getExtractionChain().add_extractor(csv_extractor);
-    extractionModule.getExtractionChain().add_extractor(rdma_extractor);
-
-    extractionModule.initialize(extraction_threads);
+    extractionModule.getExtractionChain().activate(localServiceId, localEngine, chl::ExtractionModuleConfiguration());
+    extractionModule.initialize(localServiceId, chl::ExtractionModuleConfiguration());
 
     // 3. Start extraction threads
     chl::StoryChunkExtractionQueue& extractionQueue = extractionModule.getExtractionQueue();

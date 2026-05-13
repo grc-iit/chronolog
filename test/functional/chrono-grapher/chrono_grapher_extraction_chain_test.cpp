@@ -57,11 +57,10 @@ void chunk_contributor_thread(chl::StoryChunkExtractionQueue* extractionQueue, u
 }
 
 
-std::string extraction_module_json_string =
+std::string extraction_module_json =
         std::string("{ \"ExtractionModule\": ") + "{ \"extraction_stream_count\":2," + "\"extractors\": { " +
-        "\"test_csv_extractor\": { \"type\": \"csv_extractor\", \"csv_archive_dir\": \"/tmp/csv_archive\" }" + "," +
-        "\"test_hdf5_extractor\": { \"type\": \"hdf5_extractor\", \"hdf5_archive_dir\": \"/tmp/hdf5_archive\" }" + "}" +
-        "}" + "}";
+        "\"test_csv_extractor\": { \"type\": \"csv_extractor\", \"csv_archive_dir\": \"/tmp\" }" + "," +
+        "\"test_hdf5_extractor\": { \"type\": \"hdf5_extractor\", \"hdf5_archive_dir\": \"/tmp\" }" + "}" + "}" + "}";
 
 int main()
 {
@@ -88,22 +87,44 @@ int main()
 
 
     chl::ServiceId localServiceId("ofi+sockets", "127.0.0.1", 2225, 25);
+    tl::engine myEngine("ofi+sockets", THALLIUM_SERVER_MODE);
 
-    chronolog::LoggingExtractor logging_extractor;
-    chronolog::StoryChunkExtractorCSV csv_extractor(localServiceId, "/tmp/");
-    chronolog::HDF5FileChunkExtractor hdf5_extractor("/tmp/");
+    // parse KeeperExtractionConfiguration
+    //
+    json_object* parsed_json = json_tokener_parse(extraction_module_json.c_str());
+
+    if(!json_object_is_type(json_object_object_get(parsed_json, "ExtractionModule"), json_type_object))
+    {
+        std::cerr << "\n [ExtractionModuleConfiguration] Test parsing stage:"
+                  << " failed : json_block  is not a json object" << std::endl;
+        return -1;
+    }
+
+    json_object* extraction_module_block = json_object_object_get(parsed_json, "ExtractionModule");
+    chronolog::ExtractionModuleConfiguration extraction_config;
+    int return_value = extraction_config.parse_json_object(extraction_module_block);
+    if(return_value != chl::CL_SUCCESS)
+    {
+        std::cerr << "\n [ExtractionModuleConfiguration] Test parsing stage:" << " failed  " << std::endl;
+        return -1;
+    }
+
+    std::string log_string;
+    extraction_config.to_string(log_string);
+
+    std::cout << "\n [ExtractionModuleConfiguration] Test parsing stage:" << " passed " << log_string << std::endl;
+
+    json_object_put(parsed_json);
 
     // 2. Test chained ExtractionModule instantiation with ChronoGrapherExtractionChain
     chronolog::StoryChunkExtractionModule<chronolog::ChronoGrapherExtractionChain> extractionModule;
 
-    extractionModule.getExtractionChain().add_extractor(csv_extractor);
-    extractionModule.getExtractionChain().add_extractor(hdf5_extractor);
+    extractionModule.getExtractionChain().activate(localServiceId, extraction_config);
 
     extractionModule.initialize(extraction_threads);
 
     if(!extractionModule.is_initialized())
     {
-
         LOG_ERROR("[GrapherExtractionChainTest] ExtractionModule failed to initialize ");
         return (-1);
     }

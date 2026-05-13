@@ -28,25 +28,12 @@ public:
 
     ~ChronoKeeperExtractionChain() { theExtractors.clear(); }
 
-    void add_extractor(Extractor e) { theExtractors.push_back(std::move(e)); }
-
-    int process_chunk(StoryChunk* chunk)
+    void process_chunk(StoryChunk* chunk)
     {
-        int chain_result = CL_SUCCESS;
-
-        // If extractor fails, mark the chain result as a failure,
-        // but keep going for the others.
         for(auto& e: theExtractors)
         {
-            int extractor_result =
-                    std::visit([chunk](auto& extractor) -> int { return extractor.process_chunk(chunk); }, e);
-
-            if(CL_SUCCESS != extractor_result)
-            {
-                chain_result = extractor_result;
-            }
+            std::visit([chunk](auto& extractor) { extractor.process_chunk(chunk); }, e);
         }
-        return chain_result;
     }
 
     bool is_active_chain() const
@@ -70,9 +57,9 @@ public:
         return true;
     }
 
-    int activate(tl::engine& extraction_engine,
-                 ExtractionModuleConfiguration const& extraction_conf,
-                 ServiceId const& service_id)
+    int activate(ServiceId const& service_id,
+                 tl::engine* extraction_engine,
+                 ExtractionModuleConfiguration const& extraction_conf)
     {
 
         int ret_value = CL_SUCCESS;
@@ -88,7 +75,7 @@ public:
                 {
                     break;
                 }
-                add_extractor(csv_extractor);
+                theExtractors.push_back(std::move(csv_extractor));
             }
             else if((*iter).first == "single_endpoint_rdma_extractor")
             {
@@ -98,7 +85,7 @@ public:
                 {
                     break;
                 }
-                add_extractor(single_endpoint_rdma_extractor);
+                theExtractors.push_back(std::move(single_endpoint_rdma_extractor));
             }
             else if((*iter).first == "dual_endpoint_rdma_extractor")
             {
@@ -108,15 +95,22 @@ public:
                 {
                     break;
                 }
-                add_extractor(dual_endpoint_rdma_extractor);
+
+                theExtractors.push_back(std::move(dual_endpoint_rdma_extractor));
             }
             else if((*iter).first == "logging_extractor")
             {
-                add_extractor(LoggingExtractor());
+                theExtractors.push_back(std::move(LoggingExtractor()));
             }
         }
 
         return ret_value;
+    }
+
+
+    void flush_outage_buffers()
+    {
+        //TODO #635
     }
 };
 

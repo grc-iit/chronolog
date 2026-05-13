@@ -162,8 +162,8 @@ int main(int argc, char** argv)
 
     chronolog::StoryChunkExtractionModule<chronolog::ChronoGrapherExtractionChain> theExtractionModule;
 
-    theExtractionModule.getExtractionChain().activate(GRAPHER_CONF.EXTRACTION_MODULE_CONF,
-                                                      processIdCard.getRecordingServiceId());
+    theExtractionModule.getExtractionChain().activate(processIdCard.getRecordingServiceId(),
+                                                      GRAPHER_CONF.EXTRACTION_MODULE_CONF);
 
     theExtractionModule.initialize(GRAPHER_CONF.EXTRACTION_MODULE_CONF.extraction_stream_count);
 
