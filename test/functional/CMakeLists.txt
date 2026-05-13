@@ -8,3 +8,4 @@ include(GoogleTest)
 #------------------------------------------------------------------------------
 add_subdirectory(chrono-keeper)
 add_subdirectory(chrono-grapher)
+add_subdirectory(chrono-player)

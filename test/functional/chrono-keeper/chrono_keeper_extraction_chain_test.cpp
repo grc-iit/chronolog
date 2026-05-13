@@ -63,14 +63,14 @@ std::string extraction_module_json_1 =
         std::string("{ \"ExtractionModule\": ") + "{ \"extraction_stream_count\":2," + "\"extractors\": { " +
         "\"test_single_rdma_extractor\": {" + "\"type\": \"single_endpoint_rdma_extractor\"," +
         "\"receiving_endpoint\": {" + "\"protocol_conf\": \"ofi+sockets\"," + "\"service_ip\": \"127.0.0.1\"," +
-        "\"service_base_port\": 2230," + "\"service_provider_id\": 30" + " }" + "}" + "}" + "}" + "}";
+        "\"service_base_port\": 3333," + "\"service_provider_id\": 33" + " }" + "}" + "}" + "}" + "}";
 
 std::string extraction_module_json_2 =
         std::string("{ \"ExtractionModule\": ") + "{ \"extraction_stream_count\":2," + "\"extractors\": { " +
         "\"test_dual_rdma_extractor\": {" + "\"type\": \"dual_endpoint_rdma_extractor\"," +
         "\"player_receiving_endpoint\": {" + "\"protocol_conf\": \"ofi+sockets\"," + "\"service_ip\": \"127.0.0.1\"," +
-        "\"service_base_port\": 2232," + "\"service_provider_id\": 32" + " }," + "\"grapher_receiving_endpoint\": {" +
-        "\"protocol_conf\": \"ofi+sockets\"," + "\"service_ip\": \"127.0.0.1\"," + "\"service_base_port\": 2233," +
+        "\"service_base_port\": 2222," + "\"service_provider_id\": 22" + " }," + "\"grapher_receiving_endpoint\": {" +
+        "\"protocol_conf\": \"ofi+sockets\"," + "\"service_ip\": \"127.0.0.1\"," + "\"service_base_port\": 3333," +
         "\"service_provider_id\": 33" + "}" + "}" + "}" + "}" + "}";
 
 ///
@@ -88,7 +88,7 @@ int main()
             ,
             "/tmp/keeper_extraction_test.log" //, confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
             ,
-            chronolog::LogLevel::debug // confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
+            chronolog::LogLevel::trace // confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
             ,
             "ExtractionModuleTest" //confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME
             ,
@@ -96,7 +96,7 @@ int main()
             ,
             2 //confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILENUM
             ,
-            chronolog::LogLevel::debug //confManager.CLIENT_CONF.CLIENT_LOG_CONF.FLUSHLEVEL);
+            chronolog::LogLevel::trace //confManager.CLIENT_CONF.CLIENT_LOG_CONF.FLUSHLEVEL);
     );
 
 
@@ -120,24 +120,15 @@ int main()
         return (-1);
     }
 
-    // 1. Test single endpoint RDMA extractor instantiation
-    chl::ServiceId receiving_service_id("ofi+sockets", "127.0.0.1", 3333, 33);
-    chl::StoryChunkExtractorRDMA rdma_extractor(*localEngine, receiving_service_id);
+    std::string extraction_module_json = extraction_module_json_1;
+    // to test dual rdma extractor use the second json string
+    // std::string extraction_module_json = extraction_module_json_2;
 
-    // 2. Test chained ExtractionModule instantiation with chained logging extractor & csv extractor
+    //   Test ExtractionModule instantiation using json configuration object
+
     chronolog::StoryChunkExtractionModule<chronolog::ChronoKeeperExtractionChain> extractionModule;
 
-    extractionModule.getExtractionChain().add_extractor(logging_extractor);
-    extractionModule.getExtractionChain().add_extractor(csv_extractor);
-    extractionModule.getExtractionChain().add_extractor(rdma_extractor);
-
-    extractionModule.initialize(extraction_threads);
-
-    // 3.  Test ExtractionModule instantiation using json configuration object
-
-    chronolog::StoryChunkExtractionModule<chronolog::ChronoKeeperExtractionChain> new_extractionModule;
-
-    json_object* parsed_json = json_tokener_parse(extraction_module_json_1.c_str());
+    json_object* parsed_json = json_tokener_parse(extraction_module_json.c_str());
 
     if(!json_object_is_type(json_object_object_get(parsed_json, "ExtractionModule"), json_type_object))
     {
@@ -162,19 +153,19 @@ int main()
 
     json_object_put(parsed_json);
 
-    extractionModule.getExtractionChain().activate(*localEngine, extraction_config, localServiceId);
+    extractionModule.getExtractionChain().activate(localServiceId, localEngine, extraction_config);
 
-    new_extractionModule.initialize(extraction_config.extraction_stream_count);
+    extractionModule.initialize(extraction_config.extraction_stream_count);
 
-    if(!new_extractionModule.is_initialized())
+    if(!extractionModule.is_initialized())
     {
         std::cerr << "\n [ExtractionModuleConfiguration] ExtractionModule failed to initialize " << std::endl;
         return -1;
     }
 
-    chl::StoryChunkExtractionQueue& extractionQueue = new_extractionModule.getExtractionQueue();
+    chl::StoryChunkExtractionQueue& extractionQueue = extractionModule.getExtractionQueue();
 
-    new_extractionModule.startExtraction();
+    extractionModule.startExtraction();
 
     // 4. create chunk contributing threads
     std::thread contributors[contributor_threads];
@@ -194,6 +185,7 @@ int main()
             std::thread t{chunk_contributor_thread, &extractionQueue, thread_id};
             contributors[i] = std::move(t);
         }
+
         for(int i = 0; i < contributor_threads; ++i) { contributors[i].join(); }
 
         std::this_thread::sleep_for(std::chrono::seconds(20));
