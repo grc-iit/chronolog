@@ -15,6 +15,12 @@ struct PlaybackServiceConf
 {
     RPCProviderConf RPC_CONF;
     uint32_t INGESTION_THREAD_COUNT = 1;
+
+    [[nodiscard]] std::string to_String() const
+    {
+        return "[RPC_CONF: " + RPC_CONF.to_String() +
+               ", INGESTION_THREAD_COUNT: " + std::to_string(INGESTION_THREAD_COUNT) + "]";
+    }
 };
 
 struct PlayerConfiguration
@@ -58,7 +64,7 @@ struct PlayerConfiguration
     {
         return "[CHRONO_PLAYER_CONFIGURATION: RECORDING_GROUP: " + std::to_string(RECORDING_GROUP) +
                ", DATA_STORE_ADMIN_SERVICE_CONF: " + DATA_STORE_ADMIN_SERVICE_CONF.to_String() +
-               ", PLAYBACK_SERVICE_CONF: " + PLAYBACK_SERVICE_CONF.RPC_CONF.to_String() +
+               ", PLAYBACK_SERVICE_CONF: " + PLAYBACK_SERVICE_CONF.to_String() +
                ", VISOR_REGISTRY_SERVICE_CONF: " + VISOR_REGISTRY_SERVICE_CONF.to_String() +
                ", LOG_CONF: " + LOG_CONF.to_String() + ", DATA_STORE_CONF: " + DATA_STORE_CONF.to_String() +
                ", READER_CONF: " + READER_CONF.to_String() + "]";
