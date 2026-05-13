@@ -206,6 +206,7 @@ public:
                       story_chunk->getEndTime(),
                       story_chunk->getEventCount());
 
+            theExtractionChain.process_chunk(story_chunk);
             delete story_chunk;
         }
 
