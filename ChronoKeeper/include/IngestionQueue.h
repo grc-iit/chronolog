@@ -68,10 +68,13 @@ public:
     void ingestLogEvent(LogEvent const& event)
     {
         std::shared_lock<std::shared_mutex> lock(handleMapMutex);
-        LOG_TRACE("[IngestionQueue] Received event for StoryID={}: storyId={}, time={}, clientId={}, index={}, record={}, HandleMapSize={}",
+        LOG_TRACE("[IngestionQueue] Received event for StoryID={}: storyId={}, time={}, clientId={}, index={}, "
+                  "record={}, HandleMapSize={}",
                   event.storyId,
-                  event.getStoryId(), event.time(),
-                  event.getClientId(), event.index(),
+                  event.getStoryId(),
+                  event.time(),
+                  event.getClientId(),
+                  event.index(),
                   event.getRecord(),
                   storyIngestionHandles.size());
         auto ingestionHandle_iter = storyIngestionHandles.find(event.storyId);
