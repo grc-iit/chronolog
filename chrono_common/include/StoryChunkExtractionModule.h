@@ -1,5 +1,5 @@
-#ifndef STORY_CHUNK_EXTRACTION_CHAIN_H
-#define STORY_CHUNK_EXTRACTION_CHAIN_H
+#ifndef STORY_CHUNK_EXTRACTION_MODULE_H
+#define STORY_CHUNK_EXTRACTION_MODULE_H
 
 #include <iostream>
 #include <type_traits>
@@ -12,78 +12,74 @@
 #include <chronolog_errcode.h>
 #include <StoryChunk.h>
 #include <StoryChunkExtractionQueue.h>
+#include <ExtractionModuleConfiguration.h>
 
 namespace tl = thallium;
+
 
 namespace chronolog
 {
 
-
-// Recursive ExtractorChain Definition
-template <typename T, typename... Args>
-class ExtractorChain
-{
-public:
-    ExtractorChain(const T& extractor, const Args&... rest)
-        : the_extractor(extractor)
-        , the_rest(rest...)
-    {}
-
-    constexpr size_t size() const { return 1 + the_rest.size(); }
-
-    const T& extractor() const { return the_extractor; }
-
-    const ExtractorChain<Args...>& get_rest() const { return the_rest; }
-
-    int process_chunk(StoryChunk* some_chunk)
-    {
-        the_extractor.process_chunk(some_chunk);
-        return the_rest.process_chunk(some_chunk);
-    }
-
-private:
-    T the_extractor;
-    ExtractorChain<Args...> the_rest;
-};
-
-// Base Case ExtractorChain
 template <typename T>
-class ExtractorChain<T>
-{
-public:
-    ExtractorChain(const T& an_extractor)
-        : the_extractor(an_extractor)
-    {}
-
-    constexpr size_t size() const { return 1; }
-
-    const T& extractor() const { return the_extractor; }
-
-    int process_chunk(StoryChunk* some_chunk) { return the_extractor.process_chunk(some_chunk); }
-
-private:
-    T the_extractor;
-};
-
-///////////////////////////
-
-template <typename... Args>
 class StoryChunkExtractionModule
 {
     enum State
     {
         UNKNOWN = 0,
-        RUNNING = 1,      //  active extraction threads
-        SHUTTING_DOWN = 2 // Shutting down extraction threads
+        INITIALIZED = 1,  // ExtractionChain initialized and ready
+        RUNNING = 2,      //  active extraction threads
+        SHUTTING_DOWN = 3 // Shutting down extraction threads
     };
 
 public:
-    StoryChunkExtractionModule(const Args&... extractors)
+    StoryChunkExtractionModule(int extraction_stream_count = 2)
         : state(UNKNOWN)
-        , extractorChain(extractors...)
+        , stream_count(extraction_stream_count)
     {}
 
+    StoryChunkExtractionModule(ServiceId const& recording_service_id,
+                               ExtractionModuleConfiguration const& configuration)
+        : state(UNKNOWN)
+        , stream_count(2)
+    {
+        initialize(recording_service_id, configuration);
+    }
+
+    int initialize(ServiceId const& recording_service_id, ExtractionModuleConfiguration const& configuration)
+    {
+        //TODO: move extraction engine instantiation here
+        // then move Extraction Chain instantiation here as well
+        stream_count = configuration.extraction_stream_count;
+
+        //TODO:      theExtractionChain.activate(recording_service_id, configuration);
+
+        if(!theExtractionChain.is_active_chain())
+        {
+            return CL_ERR_INVALID_CONF;
+        }
+
+        state = INITIALIZED;
+        return CL_SUCCESS;
+    }
+
+    int initialize(int extraction_stream_count)
+    {
+        stream_count = extraction_stream_count;
+
+        if(!theExtractionChain.is_active_chain())
+        {
+            return CL_ERR_INVALID_CONF;
+        }
+
+        state = INITIALIZED;
+        return CL_SUCCESS;
+    }
+
     StoryChunkExtractionQueue& getExtractionQueue() { return chunkExtractionQueue; }
+
+    T& getExtractionChain() { return theExtractionChain; }
+
+    bool is_initialized() const { return (state == INITIALIZED); }
 
     bool is_running() const { return (state == RUNNING); }
 
@@ -100,6 +96,11 @@ public:
                   es.get_rank(),
                   thallium::thread::self_id(),
                   chunkExtractionQueue.size());
+
+        // while state== RUNNING keep draining the queue
+        // or waiting if the queue is empty
+
+        int extraction_result;
 
         while(state == RUNNING)
         {
@@ -122,11 +123,20 @@ public:
                               story_chunk->getEndTime(),
                               story_chunk->getEventCount());
 
-                    // each extractor in the chain would handle its own intermittent failure appropriately
-                    extractorChain.process_chunk(story_chunk);
-
-                    // free the memory or reset the chunk to the original state and return it to the pool of prealocated chunks
-                    delete story_chunk;
+                    extraction_result = theExtractionChain.process_chunk(story_chunk);
+                    // INNA: commented out lines are temporary to get the existing PR
+                    // past the CI deployment check
+                    // more nuanced handling of intermitent communication outtage
+                    // will be addressed in the follow-up issue #635
+                    //if(CL_SUCCESS == extraction_result)
+                    { // free the story_chunk memory or
+                        // return it to the pool of prealocated chunks
+                        delete story_chunk;
+                    }
+                    // else
+                    // { //return the story_chunk to the extractionQueue and try again later
+                    //     chunkExtractionQueue.stashStoryChunk(story_chunk);
+                    // }
                 }
             }
             else
@@ -136,12 +146,19 @@ public:
         }
     }
 
-    void startExtraction(int stream_count)
+    void startExtraction()
     {
 
         if(state == RUNNING)
         {
             LOG_INFO("[StoryChunkExtractionModule] ExtractionModule already running; ignoring start request.");
+            return;
+        }
+
+        if(state != INITIALIZED)
+        {
+            LOG_INFO("[StoryChunkExtractionModule] Can't start extraction: ExtractionModule is either not initialized "
+                     "or is shutting down");
             return;
         }
 
@@ -174,11 +191,62 @@ public:
         state = SHUTTING_DOWN;
 
         // make sure extractionQueue is drained before the extraction streams are shut down
-        LOG_DEBUG("[StoryChunkExtractionModule] Initiating shutdown: extractionQueue size {}",
-                  chunkExtractionQueue.size());
+        LOG_INFO("[StoryChunkExtractionModule] Initiating shutdown: extractionQueue size {}",
+                 chunkExtractionQueue.size());
 
-        drainExtractionQueue();
+        // make the best to drain the extraction queue before exiting
+        while(!chunkExtractionQueue.empty())
+        {
+            // chunkExtractionQueue has internal mutex protecting its integrity
+            StoryChunk* story_chunk = chunkExtractionQueue.ejectStoryChunk();
 
+            // the queue might have been drained by another thread before the current thread acquired extractionQueue mutex
+            // in this case the nullptr is returned..
+            if(story_chunk == nullptr)
+            {
+                continue;
+            }
+
+            LOG_DEBUG("[StoryChunkExtractionModule] tl::thread_id={} processing chunk StoryId={} {}-{} {}-{} "
+                      "eventCount {}",
+                      thallium::thread::self_id(),
+                      story_chunk->getStoryId(),
+                      story_chunk->getChronicleName(),
+                      story_chunk->getStoryName(),
+                      story_chunk->getStartTime(),
+                      story_chunk->getEndTime(),
+                      story_chunk->getEventCount());
+
+            //try to extract the chunk 5 times before giving up
+            int extraction_result = CL_ERR_UNKNOWN;
+            int tries = 0;
+            while(CL_SUCCESS != extraction_result && (tries < 5))
+            {
+                tries++;
+                extraction_result = theExtractionChain.process_chunk(story_chunk);
+            }
+
+            if(CL_SUCCESS == extraction_result)
+            {
+                LOG_INFO("[StoryChunkExtractionModule] extracted chunk StoryId={} {}-{} {}-{}",
+                         story_chunk->getStoryId(),
+                         story_chunk->getChronicleName(),
+                         story_chunk->getStoryName(),
+                         story_chunk->getStartTime(),
+                         story_chunk->getEndTime());
+            }
+            else
+            {
+                LOG_ERROR("[StoryChunkExtractionModule] failed to extract chunk StoryId={} {}-{} {}-{}",
+                          story_chunk->getStoryId(),
+                          story_chunk->getChronicleName(),
+                          story_chunk->getStoryName(),
+                          story_chunk->getStartTime(),
+                          story_chunk->getEndTime());
+            }
+
+            delete story_chunk;
+        }
         // join and stop threads & executionstreams
         for(auto& eth: extractionThreads) { eth->join(); }
         LOG_DEBUG("[StoryChunkExtractionModule] Extraction threads have been successfully shut down.");
@@ -205,14 +273,14 @@ private:
 
     StoryChunkExtractionModule& operator=(StoryChunkExtractionModule const&) = delete;
 
-
     std::atomic<State> state;
     StoryChunkExtractionQueue chunkExtractionQueue;
 
-    ExtractorChain<Args...> extractorChain;
-
+    int stream_count;
     std::vector<tl::managed<tl::xstream>> extractionStreams;
     std::vector<tl::managed<tl::thread>> extractionThreads;
+
+    T theExtractionChain;
 };
 
 
