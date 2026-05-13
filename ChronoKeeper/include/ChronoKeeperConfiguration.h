@@ -4,13 +4,14 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
-#include <cassert>
-#include <unordered_map>
+
+#include <map>
 #include <json-c/json.h>
 
 #include "chronolog_errcode.h"
 
 #include <ConfigurationBlocks.h>
+#include <ExtractionModuleConfiguration.h>
 
 namespace chronolog
 {
@@ -34,8 +35,9 @@ struct KeeperConfiguration
     RPCProviderConf VISOR_REGISTRY_SERVICE_CONF;
     RPCProviderConf KEEPER_GRAPHER_DRAIN_SERVICE_CONF;
     DataStoreConf DATA_STORE_CONF{};
-    ExtractorReaderConf EXTRACTOR_CONF;
     LogConf LOG_CONF;
+
+    ExtractionModuleConfiguration EXTRACTION_MODULE_CONF;
 
     KeeperConfiguration()
     {
@@ -67,19 +69,24 @@ struct KeeperConfiguration
         DATA_STORE_CONF.acceptance_window_secs = 10;
         DATA_STORE_CONF.inactive_story_delay_secs = 180;
 
-        EXTRACTOR_CONF.story_files_dir = "/tmp/";
+        EXTRACTION_MODULE_CONF.extraction_stream_count = 1;
     }
 
     int parseJsonConf(json_object*);
+
     [[nodiscard]] std::string to_String() const
     {
-        return "[CHRONO_KEEPER_CONFIGURATION: RECORDING_GROUP: " + std::to_string(RECORDING_GROUP) +
-               ", KEEPER_RECORDING_SERVICE_CONF: " + KEEPER_RECORDING_SERVICE_CONF.to_String() +
-               ", KEEPER_GRAPHER_DRAIN_SERVICE_CONF: " + KEEPER_GRAPHER_DRAIN_SERVICE_CONF.to_String() +
-               ", DATA_STORE_ADMIN_SERVICE_CONF: " + DATA_STORE_ADMIN_SERVICE_CONF.to_String() +
-               ", VISOR_REGISTRY_SERVICE_CONF: " + VISOR_REGISTRY_SERVICE_CONF.to_String() +
-               ", LOG_CONF: " + LOG_CONF.to_String() + ", DATA_STORE_CONF: " + DATA_STORE_CONF.to_String() +
-               ", EXTRACTOR_CONF: " + EXTRACTOR_CONF.to_String() + "]";
+        std::string a_string = "[CHRONO_KEEPER_CONFIGURATION: RECORDING_GROUP: " + std::to_string(RECORDING_GROUP) +
+                               ", KEEPER_RECORDING_SERVICE_CONF: " + KEEPER_RECORDING_SERVICE_CONF.to_String() +
+                               ", KEEPER_GRAPHER_DRAIN_SERVICE_CONF: " + KEEPER_GRAPHER_DRAIN_SERVICE_CONF.to_String() +
+                               ", DATA_STORE_ADMIN_SERVICE_CONF: " + DATA_STORE_ADMIN_SERVICE_CONF.to_String() +
+                               ", VISOR_REGISTRY_SERVICE_CONF: " + VISOR_REGISTRY_SERVICE_CONF.to_String() +
+                               ", LOG_CONF: " + LOG_CONF.to_String() +
+                               ", DATA_STORE_CONF: " + DATA_STORE_CONF.to_String() + ", ";
+
+        EXTRACTION_MODULE_CONF.to_string(a_string);
+        a_string += "]";
+        return a_string;
     }
 };
 
