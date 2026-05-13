@@ -3,7 +3,6 @@
 
 #include <iostream>
 #include <string>
-#include <sstream>
 #include <cstdint>
 #include <margo.h>
 #include <thallium.hpp>
@@ -39,11 +38,10 @@ public:
     {
         //  ClientId teller_id,  StoryId story_id,
         //  ChronoTick const& chrono_tick, std::string const& record)
-#ifndef NDEBUG
-        std::stringstream ss;
-        ss << log_event;
-        LOG_TRACE("[KeeperRecordingService] Recording event: {}", ss.str());
-#endif
+        LOG_TRACE("[KeeperRecordingService] Recording event: storyId={}, time={}, clientId={}, index={}, record={}",
+            log_event.getStoryId(), log_event.time(),
+            log_event.getClientId(), log_event.index(),
+            log_event.getRecord());
         theIngestionQueue.ingestLogEvent(log_event);
         request.respond(chronolog::CL_SUCCESS);
     }

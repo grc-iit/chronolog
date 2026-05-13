@@ -1,13 +1,10 @@
 #ifndef INGESTION_QUEUE_H
 #define INGESTION_QUEUE_H
 
-#include <iostream>
 #include <deque>
 #include <unordered_map>
 #include <mutex>
 #include <shared_mutex>
-#include <string>
-#include <sstream>
 
 #include <chrono_monitor.h>
 #include <chronolog_types.h>
@@ -71,14 +68,12 @@ public:
     void ingestLogEvent(LogEvent const& event)
     {
         std::shared_lock<std::shared_mutex> lock(handleMapMutex);
-#ifndef NDEBUG
-        std::stringstream ss;
-        ss << event;
-        LOG_TRACE("[IngestionQueue] Received event for StoryID={}: Event Details={}, HandleMapSize={}",
+        LOG_TRACE("[IngestionQueue] Received event for StoryID={}: storyId={}, time={}, clientId={}, index={}, record={}, HandleMapSize={}",
                   event.storyId,
-                  ss.str(),
+                  event.getStoryId(), event.time(),
+                  event.getClientId(), event.index(),
+                  event.getRecord(),
                   storyIngestionHandles.size());
-#endif
         auto ingestionHandle_iter = storyIngestionHandles.find(event.storyId);
         if(ingestionHandle_iter != storyIngestionHandles.end())
         {
