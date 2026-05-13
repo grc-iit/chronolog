@@ -14,7 +14,7 @@ namespace tl = thallium;
 namespace chl = chronolog;
 
 chronolog::DualEndpointChunkExtractorRDMA::DualEndpointChunkExtractorRDMA(
-        tl::engine& tl_engine,
+        tl::engine* tl_engine,
         chronolog::ServiceId const& player_receiving_service_id,
         chronolog::ServiceId const& grapher_receiving_service_id)
     : sender_tl_engine(tl_engine)
@@ -50,7 +50,7 @@ void chronolog::DualEndpointChunkExtractorRDMA::restart_rdma_sender_for_grapher(
     try
     {
         rdma_sender_for_grapher =
-                RDMATransferAgent::CreateRDMATransferAgent(sender_tl_engine, grapher_receiver_service_id);
+                RDMATransferAgent::CreateRDMATransferAgent(*sender_tl_engine, grapher_receiver_service_id);
         LOG_TRACE("[DualEndpointChunkExtractor] created rdma_sender for grpaher_receiver {} ",
                   chl::to_string(grapher_receiver_service_id));
     }
@@ -84,7 +84,7 @@ void chronolog::DualEndpointChunkExtractorRDMA::restart_rdma_sender_for_player(
     try
     {
         rdma_sender_for_player =
-                RDMATransferAgent::CreateRDMATransferAgent(sender_tl_engine, player_receiver_service_id);
+                RDMATransferAgent::CreateRDMATransferAgent(*sender_tl_engine, player_receiver_service_id);
         LOG_TRACE("[DualEndpointChunkExtractor] Constructor created rdma_sender for player_receiver {} ",
                   chl::to_string(player_receiver_service_id));
     }
@@ -97,44 +97,27 @@ void chronolog::DualEndpointChunkExtractorRDMA::restart_rdma_sender_for_player(
 }
 
 
-chronolog::DualEndpointChunkExtractorRDMA::DualEndpointChunkExtractorRDMA(DualEndpointChunkExtractorRDMA const& other)
-    : sender_tl_engine(other.get_sender_engine())
-    , player_receiver_service_id(other.get_player_receiver_id())
-    , grapher_receiver_service_id(other.get_grapher_receiver_id())
-    , rdma_sender_for_player(nullptr)
-    , rdma_sender_for_grapher(nullptr)
+chronolog::DualEndpointChunkExtractorRDMA::DualEndpointChunkExtractorRDMA(DualEndpointChunkExtractorRDMA&& other)
 {
-    try
+    LOG_TRACE("[DualEndpointExtractorRDMA] Move Constructor ");
+    if(this == &other)
     {
-        rdma_sender_for_player =
-                RDMATransferAgent::CreateRDMATransferAgent(sender_tl_engine, player_receiver_service_id);
-        LOG_TRACE("[DualEndpointExtractorRDMA] Copy Constructor created rdma_sender for player_receiver {} ",
-                  chl::to_string(player_receiver_service_id));
-    }
-    catch(...)
-    {
-        LOG_ERROR("[DualEndpointExtractorRDMA] Constructor : failed to create rdma_sender for player_receiver {} ",
-                  chl::to_string(player_receiver_service_id));
-        rdma_sender_for_player = nullptr;
+        return;
     }
 
-    try
-    {
-        rdma_sender_for_grapher =
-                RDMATransferAgent::CreateRDMATransferAgent(sender_tl_engine, grapher_receiver_service_id);
-        LOG_TRACE("Dual[DualEndpointExtractorRDMA] Copy Constructor created rdma_sender for grpaher_receiver {} ",
-                  chl::to_string(grapher_receiver_service_id));
-    }
-    catch(...)
-    {
-        LOG_ERROR("[DualEndpointExtractorRDMA] Constructor : failed to create rdma_sender for grapher_receiver {} ",
-                  chl::to_string(grapher_receiver_service_id));
-        rdma_sender_for_grapher = nullptr;
-    }
+    sender_tl_engine = other.get_sender_engine();
+    player_receiver_service_id = other.get_player_receiver_id();
+    grapher_receiver_service_id = other.get_grapher_receiver_id();
+    rdma_sender_for_player = other.rdma_sender_for_player;
+    rdma_sender_for_grapher = other.rdma_sender_for_grapher;
+
+    other.sender_tl_engine = nullptr;
+    other.rdma_sender_for_player = nullptr;
+    other.rdma_sender_for_grapher = nullptr;
 }
 
 chl::DualEndpointChunkExtractorRDMA&
-chronolog::DualEndpointChunkExtractorRDMA::operator=(DualEndpointChunkExtractorRDMA const& other)
+chronolog::DualEndpointChunkExtractorRDMA::operator=(DualEndpointChunkExtractorRDMA&& other)
 {
     if(this == &other)
     {
@@ -143,13 +126,13 @@ chronolog::DualEndpointChunkExtractorRDMA::operator=(DualEndpointChunkExtractorR
 
     if(rdma_sender_for_player != nullptr)
     {
-        LOG_TRACE("[DualEndpointExtractorRDMA] assingment : deleting receiver {} ",
+        LOG_TRACE("[DualEndpointExtractorRDMA] move operator: deleting receiver {} ",
                   chl::to_string(player_receiver_service_id));
         delete rdma_sender_for_player;
     }
     if(rdma_sender_for_grapher != nullptr)
     {
-        LOG_TRACE("[DualEndpointExtractorRDMA] assingment : deleting receiver {} ",
+        LOG_TRACE("[DualEndpointExtractorRDMA] move operator: deleting receiver {} ",
                   chl::to_string(grapher_receiver_service_id));
         delete rdma_sender_for_grapher;
     }
@@ -157,34 +140,12 @@ chronolog::DualEndpointChunkExtractorRDMA::operator=(DualEndpointChunkExtractorR
     sender_tl_engine = other.get_sender_engine();
     player_receiver_service_id = other.get_player_receiver_id();
     grapher_receiver_service_id = other.get_grapher_receiver_id();
+    rdma_sender_for_player = other.rdma_sender_for_player;
+    rdma_sender_for_grapher = other.rdma_sender_for_grapher;
 
-    try
-    {
-        rdma_sender_for_player =
-                RDMATransferAgent::CreateRDMATransferAgent(sender_tl_engine, player_receiver_service_id);
-        LOG_TRACE("[DualEndpointExtractorRDMA] assingment: created rdma_sender for receiver {} ",
-                  chl::to_string(player_receiver_service_id));
-    }
-    catch(...)
-    {
-        LOG_ERROR("[DualEndpointExtractorRDMA] assignment: failed to create rdma_sender for receiver {} ",
-                  chl::to_string(player_receiver_service_id));
-        rdma_sender_for_player = nullptr;
-    }
-
-    try
-    {
-        rdma_sender_for_grapher =
-                RDMATransferAgent::CreateRDMATransferAgent(sender_tl_engine, grapher_receiver_service_id);
-        LOG_TRACE("[DualEndpointExtractorRDMA] assingment: created rdma_sender for receiver {} ",
-                  chl::to_string(grapher_receiver_service_id));
-    }
-    catch(...)
-    {
-        LOG_ERROR("[DualEndpointExtractorRDMA] assignment: failed to create rdma_sender for receiver {} ",
-                  chl::to_string(grapher_receiver_service_id));
-        rdma_sender_for_grapher = nullptr;
-    }
+    other.sender_tl_engine = nullptr;
+    other.rdma_sender_for_player = nullptr;
+    other.rdma_sender_for_grapher = nullptr;
 
     return *this;
 }
