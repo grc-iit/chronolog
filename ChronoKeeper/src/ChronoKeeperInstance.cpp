@@ -194,9 +194,9 @@ int main(int argc, char** argv)
     chl::StoryChunkExtractionModule<chl::ChronoKeeperExtractionChain> theExtractionModule(
             KEEPER_CONF.EXTRACTION_MODULE_CONF.extraction_stream_count);
 
-    theExtractionModule.getExtractionChain().activate(*extractionEngine,
-                                                      KEEPER_CONF.EXTRACTION_MODULE_CONF,
-                                                      keeperIdCard.getRecordingServiceId());
+    theExtractionModule.getExtractionChain().activate(keeperIdCard.getRecordingServiceId(),
+                                                      extractionEngine,
+                                                      KEEPER_CONF.EXTRACTION_MODULE_CONF);
 
     theExtractionModule.initialize(KEEPER_CONF.EXTRACTION_MODULE_CONF.extraction_stream_count);
 

@@ -20,7 +20,7 @@ public:
 
     ~StoryChunkExtractionQueue()
     {
-        LOG_DEBUG("[StoryChunkExtractionQueue] Destructor called. Initiating queue shutdown.");
+        LOG_TRACE("[StoryChunkExtractionQueue] Destructor called.");
         shutDown();
     }
 
@@ -62,19 +62,18 @@ public:
     void shutDown()
     {
         LOG_INFO("[StoryChunkExtractionQueue] Initiating queue shutdown. Queue size: {}", extractionDeque.size());
-        if(extractionDeque.empty())
+        // we should never get to this point as many attempts were made by now to process the chunk
+        // process the chunk or put on the extractors outage buffer
+        // this is just an extra safety measure...
+        // to free the remaining storychunks memory...
+        if(!extractionDeque.empty())
         {
-            return;
-        }
-
-        //INNA: LOG a WARNING and attempt to delay shutdown until the queue is drained by the Extraction module
-        // if this fails , log an ERROR .
-        // free the remaining storychunks memory...
-        std::lock_guard<std::mutex> lock(extractionQueueMutex);
-        while(!extractionDeque.empty())
-        {
-            delete extractionDeque.front();
-            extractionDeque.pop_front();
+            std::lock_guard<std::mutex> lock(extractionQueueMutex);
+            while(!extractionDeque.empty())
+            {
+                delete extractionDeque.front();
+                extractionDeque.pop_front();
+            }
         }
         LOG_INFO("[StoryChunkExtractionQueue] Queue has been successfully shut down and all story chunks have been "
                  "freed.");
