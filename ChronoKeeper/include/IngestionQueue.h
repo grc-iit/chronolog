@@ -1,12 +1,10 @@
 #ifndef INGESTION_QUEUE_H
 #define INGESTION_QUEUE_H
 
-#include <iostream>
 #include <deque>
 #include <unordered_map>
 #include <mutex>
-#include <string>
-#include <sstream>
+#include <shared_mutex>
 
 #include <chrono_monitor.h>
 #include <chronolog_types.h>
@@ -32,8 +30,8 @@ public:
 
     void addStoryIngestionHandle(StoryId const& story_id, StoryIngestionHandle* ingestion_handle)
     {
-        std::lock_guard<std::mutex> lock(ingestionQueueMutex);
-        storyIngestionHandles.emplace(std::pair<StoryId, StoryIngestionHandle*>(story_id, ingestion_handle));
+        std::unique_lock<std::shared_mutex> lock(handleMapMutex);
+        storyIngestionHandles.emplace(story_id, ingestion_handle);
         LOG_DEBUG("[IngestionQueue] Added handle for StoryID={}: HandleAddress={}, StoryIngestionHandles={}, "
                   "HandleMapSize={}",
                   story_id,
@@ -44,7 +42,7 @@ public:
 
     void removeIngestionHandle(StoryId const& story_id)
     {
-        std::lock_guard<std::mutex> lock(ingestionQueueMutex);
+        std::unique_lock<std::shared_mutex> lock(handleMapMutex);
         if(storyIngestionHandles.erase(story_id))
         {
             LOG_DEBUG("[IngestionQueue] Removed handle for StoryID={}. Current handle MapSize={}",
@@ -57,36 +55,53 @@ public:
         }
     }
 
+    // Hot path: called concurrently by the keeper's RPC handler threads
+    // (rpc_thread_count = INGESTION_THREAD_COUNT). The map lookup is guarded
+    // by a shared lock so multiple ingest threads can resolve handles in
+    // parallel; only add/removeIngestionHandle take an exclusive lock.
+    //
+    // The shared lock is held across handle->ingestEvent so the retirement
+    // path (KeeperDataStore::retireDecayedPipelines: removeIngestionHandle
+    // followed by `delete pipeline`) cannot tear down the handle mid-call.
+    // Concurrent ingest threads still proceed in parallel since shared locks
+    // don't block each other; only the rare retire path waits.
     void ingestLogEvent(LogEvent const& event)
     {
-        std::stringstream ss;
-        ss << event;
-        LOG_DEBUG("[IngestionQueue] Received event for StoryID={}: Event Details={}, HandleMapSize={}",
+        std::shared_lock<std::shared_mutex> lock(handleMapMutex);
+        LOG_TRACE("[IngestionQueue] Received event for StoryID={}: storyId={}, time={}, clientId={}, index={}, "
+                  "record={}, HandleMapSize={}",
                   event.storyId,
-                  ss.str(),
+                  event.getStoryId(),
+                  event.time(),
+                  event.getClientId(),
+                  event.index(),
+                  event.getRecord(),
                   storyIngestionHandles.size());
         auto ingestionHandle_iter = storyIngestionHandles.find(event.storyId);
-        if(ingestionHandle_iter == storyIngestionHandles.end())
+        if(ingestionHandle_iter != storyIngestionHandles.end())
         {
-            LOG_WARNING("[IngestionQueue] Orphan event for story {}. Storing for later processing.", event.storyId);
-            std::lock_guard<std::mutex> lock(ingestionQueueMutex);
-            orphanEventQueue.push_back(event);
+            ingestionHandle_iter->second->ingestEvent(event);
+            return;
         }
-        else
-        {
-            //individual StoryIngestionHandle has its own mutex
-            (*ingestionHandle_iter).second->ingestEvent(event);
-        }
+        lock.unlock();
+
+        LOG_WARNING("[IngestionQueue] Orphan event for story {}. Storing for later processing.", event.storyId);
+        std::lock_guard<std::mutex> orphan_lock(orphanQueueMutex);
+        orphanEventQueue.push_back(event);
     }
 
+    // Lock ordering when both mutexes are needed: orphanQueueMutex first,
+    // then handleMapMutex. ingestLogEvent never holds them simultaneously, so
+    // there is no inverse-order acquisition path.
     void drainOrphanEvents()
     {
+        std::lock_guard<std::mutex> orphanLock(orphanQueueMutex);
         if(orphanEventQueue.empty())
         {
             LOG_DEBUG("[IngestionQueue] Orphan event queue is empty. No actions taken.");
             return;
         }
-        std::lock_guard<std::mutex> lock(ingestionQueueMutex);
+        std::shared_lock<std::shared_mutex> mapLock(handleMapMutex);
         for(EventDeque::iterator iter = orphanEventQueue.begin(); iter != orphanEventQueue.end();)
         {
             auto ingestionHandle_iter = storyIngestionHandles.find((*iter).storyId);
@@ -105,17 +120,26 @@ public:
         LOG_DEBUG("[IngestionQueue] Drained {} orphan events into known handles.", orphanEventQueue.size());
     }
 
-    bool is_empty() const { return (orphanEventQueue.empty() && storyIngestionHandles.empty()); }
+    bool is_empty() const
+    {
+        std::lock_guard<std::mutex> orphanLock(orphanQueueMutex);
+        std::shared_lock<std::shared_mutex> mapLock(handleMapMutex);
+        return (orphanEventQueue.empty() && storyIngestionHandles.empty());
+    }
 
     void shutDown()
     {
-        LOG_INFO("[IngestionQueue] Initiating shutdown. HandleMapSize={}, Orphan EventQueueSize={}",
-                 storyIngestionHandles.size(),
-                 orphanEventQueue.size());
+        {
+            std::lock_guard<std::mutex> orphanLock(orphanQueueMutex);
+            std::shared_lock<std::shared_mutex> mapLock(handleMapMutex);
+            LOG_INFO("[IngestionQueue] Initiating shutdown. HandleMapSize={}, Orphan EventQueueSize={}",
+                     storyIngestionHandles.size(),
+                     orphanEventQueue.size());
+        }
         // last attempt to drain orphanEventQueue into known ingestionHandles
         drainOrphanEvents();
         // disengage all handles
-        std::lock_guard<std::mutex> lock(ingestionQueueMutex);
+        std::unique_lock<std::shared_mutex> lock(handleMapMutex);
         storyIngestionHandles.clear();
         LOG_INFO("[IngestionQueue] Shutdown completed. All handles disengaged.");
     }
@@ -125,11 +149,15 @@ private:
 
     IngestionQueue& operator=(IngestionQueue const&) = delete;
 
-    std::mutex ingestionQueueMutex;
+    // handleMapMutex is shared/exclusive: ingestLogEvent and drainOrphanEvents
+    // take shared locks (concurrent map lookups); add/remove take exclusive.
+    // mutable so const observers (is_empty) can take a shared lock.
+    mutable std::shared_mutex handleMapMutex;
     std::unordered_map<StoryId, StoryIngestionHandle*> storyIngestionHandles;
 
     // events for unknown stories or late events for closed stories will end up
     // in orphanEventQueue that we'll periodically try to drain into the DataStore
+    mutable std::mutex orphanQueueMutex;
     std::deque<LogEvent> orphanEventQueue;
 
     //Timer to triger periodic attempt to drain orphanEventQueue and collect/log statistics

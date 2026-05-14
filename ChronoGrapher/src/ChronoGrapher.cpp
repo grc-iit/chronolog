@@ -127,15 +127,11 @@ int main(int argc, char** argv)
 
     // Instantiate GrapherRecordingService
     chronolog::RecordingGroupId recording_group_id = GRAPHER_CONF.RECORDING_GROUP;
-    std::string RECORDING_SERVICE_PROTOCOL = GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.PROTO_CONF;
-    std::string RECORDING_SERVICE_IP = GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP;
-    uint16_t RECORDING_SERVICE_PORT = GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT;
-    uint16_t recording_service_provider_id = GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.SERVICE_PROVIDER_ID;
 
-    chl::ServiceId recordingServiceId(GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.PROTO_CONF,
-                                      GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.IP,
-                                      GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.BASE_PORT,
-                                      GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.SERVICE_PROVIDER_ID);
+    chl::ServiceId recordingServiceId(GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.PROTO_CONF,
+                                      GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.IP,
+                                      GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.BASE_PORT,
+                                      GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID);
 
 
     std::string RECORDING_SERVICE_NA_STRING;
@@ -144,7 +140,9 @@ int main(int argc, char** argv)
     // validate ip address, instantiate Recording Service and create IdCard
 
     chronolog::service_endpoint recording_endpoint;
-    if(-1 == service_endpoint_from_dotted_string(RECORDING_SERVICE_IP, RECORDING_SERVICE_PORT, recording_endpoint))
+    if(-1 == service_endpoint_from_dotted_string(GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.IP,
+                                                 GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.BASE_PORT,
+                                                 recording_endpoint))
     {
         LOG_CRITICAL("[ChronoGrapher] Failed to start RecordingService. Invalid endpoint provided.");
         return (-1);
@@ -223,17 +221,19 @@ int main(int argc, char** argv)
 
     try
     {
-        margo_instance_id margo_id = margo_init(RECORDING_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 1);
+        int rpc_thread_count = static_cast<int>(GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.INGESTION_THREAD_COUNT);
+        margo_instance_id margo_id =
+                margo_init(RECORDING_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, rpc_thread_count);
         recordingEngine = new tl::engine(margo_id);
 
         std::stringstream s1;
         s1 << recordingEngine->self();
         LOG_INFO("[ChronoGrapher] starting RecordingService at {} with provider_id {}",
                  s1.str(),
-                 recording_service_provider_id);
+                 recordingServiceId.getProviderId());
         grapherRecordingService =
                 chronolog::GrapherRecordingService::CreateRecordingService(*recordingEngine,
-                                                                           recording_service_provider_id,
+                                                                           recordingServiceId.getProviderId(),
                                                                            ingestionQueue);
     }
     catch(tl::exception const&)

@@ -87,17 +87,17 @@ int main(int argc, char** argv)
     }
 
     // Instantiate PlaybackService
-    std::string PLAYBACK_SERVICE_PROTOCOL = PLAYER_CONF.PLAYBACK_SERVICE_CONF.PROTO_CONF;
-    std::string PLAYBACK_SERVICE_IP = PLAYER_CONF.PLAYBACK_SERVICE_CONF.IP;
-    uint16_t PLAYBACK_SERVICE_PORT = PLAYER_CONF.PLAYBACK_SERVICE_CONF.BASE_PORT;
-    uint16_t playback_service_provider_id = PLAYER_CONF.PLAYBACK_SERVICE_CONF.SERVICE_PROVIDER_ID;
+    std::string PLAYBACK_SERVICE_PROTOCOL = PLAYER_CONF.PLAYBACK_SERVICE_CONF.RPC_CONF.PROTO_CONF;
+    std::string PLAYBACK_SERVICE_IP = PLAYER_CONF.PLAYBACK_SERVICE_CONF.RPC_CONF.IP;
+    uint16_t PLAYBACK_SERVICE_PORT = PLAYER_CONF.PLAYBACK_SERVICE_CONF.RPC_CONF.BASE_PORT;
+    uint16_t playback_service_provider_id = PLAYER_CONF.PLAYBACK_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID;
 
     // validate ip address, instantiate Playback Service and create IdCard
 
-    chronolog::ServiceId playbackServiceId(PLAYER_CONF.PLAYBACK_SERVICE_CONF.PROTO_CONF,
-                                           PLAYER_CONF.PLAYBACK_SERVICE_CONF.IP,
-                                           PLAYER_CONF.PLAYBACK_SERVICE_CONF.BASE_PORT,
-                                           PLAYER_CONF.PLAYBACK_SERVICE_CONF.SERVICE_PROVIDER_ID);
+    chronolog::ServiceId playbackServiceId(PLAYER_CONF.PLAYBACK_SERVICE_CONF.RPC_CONF.PROTO_CONF,
+                                           PLAYER_CONF.PLAYBACK_SERVICE_CONF.RPC_CONF.IP,
+                                           PLAYER_CONF.PLAYBACK_SERVICE_CONF.RPC_CONF.BASE_PORT,
+                                           PLAYER_CONF.PLAYBACK_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID);
 
     if(!playbackServiceId.is_valid())
     {
@@ -116,7 +116,9 @@ int main(int argc, char** argv)
 
         playbackServiceId.get_service_as_string(PLAYBACK_SERVICE_NA_STRING);
 
-        margo_instance_id playback_margo_id = margo_init(PLAYBACK_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 1);
+        int rpc_thread_count = static_cast<int>(PLAYER_CONF.PLAYBACK_SERVICE_CONF.INGESTION_THREAD_COUNT);
+        margo_instance_id playback_margo_id =
+                margo_init(PLAYBACK_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, rpc_thread_count);
 
         playbackEngine = new tl::engine(playback_margo_id);
 
