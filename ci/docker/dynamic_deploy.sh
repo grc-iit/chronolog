@@ -2,13 +2,14 @@
 
 # Function to display usage information
 usage() {
-    echo "Usage: $0 [-n NUM_CONTAINERS] [-k NUM_KEEPERS] [-g NUM_GRAPHERS] [-p NUM_PLAYERS]"
+    echo "Usage: $0 [-n NUM_CONTAINERS] [-k NUM_KEEPERS] [-g NUM_GRAPHERS] [-p NUM_PLAYERS] [-i IMAGE_NAME]"
     echo
     echo "Options:"
     echo "  -n NUM_CONTAINERS       Number of containers to deploy, must equal to sum of NUM_KEEPERS, NUM_GRAPHERS, and NUM_PLAYERS plus one (minimum 2, default: 4)"
     echo "  -k NUM_KEEPERS          Number of ChronoKeepers to deploy (minimum 1, default: 1)"
     echo "  -g NUM_GRAPHERS         Number of ChronoGraphers to deploy (minimum 1, default: 1)"
     echo "  -p NUM_PLAYERS          Number of ChronoPlayers to deploy (minimum 1, default: 1)"
+    echo "  -i IMAGE_NAME           Docker image name to use (default: ghcr.io/grc-iit/chronolog:latest)"
     echo "  -h                      Display this help message"
     echo
     echo "Example:"
@@ -22,9 +23,10 @@ NUM_CONTAINERS=4
 NUM_KEEPERS=1
 NUM_GRAPHERS=1
 NUM_PLAYERS=1
+IMAGE_NAME="ghcr.io/grc-iit/chronolog:latest"
 
 # Parse command line arguments
-while getopts "n:k:g:p:h" opt; do
+while getopts "n:k:g:p:i:h" opt; do
     case ${opt} in
     n)
         NUM_CONTAINERS=$OPTARG
@@ -37,6 +39,9 @@ while getopts "n:k:g:p:h" opt; do
         ;;
     p)
         NUM_PLAYERS=$OPTARG
+        ;;
+    i)
+        IMAGE_NAME=$OPTARG
         ;;
     h)
         usage
@@ -72,7 +77,7 @@ fi
 # Generate the docker-compose file dynamically
 cat >dynamic-compose.yaml <<EOF
 x-common: &x-common
-  image: ghcr.io/grc-iit/chronolog:latest
+  image: ${IMAGE_NAME}
   init: true
   networks:
     - chronolog_net
@@ -83,6 +88,10 @@ x-common: &x-common
     - seccomp:unconfined
     - apparmor:unconfined
   privileged: false
+  mem_limit: 4g
+  mem_reservation: 2g
+  cpus: 2
+  shm_size: 512m
   command: >
     bash -c "sudo service ssh restart && sleep infinity"
 
