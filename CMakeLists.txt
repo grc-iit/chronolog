@@ -276,7 +276,6 @@ add_subdirectory(ChronoVisor)
 add_subdirectory(ChronoKeeper)
 add_subdirectory(ChronoGrapher)
 add_subdirectory(ChronoPlayer)
-add_subdirectory(ChronoStore)
 add_subdirectory(tools)
 add_subdirectory(Plugins)
 
