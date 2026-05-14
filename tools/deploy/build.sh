@@ -10,7 +10,7 @@ BUILD_BASE_DIR="$HOME/chronolog-build"  # Base build directory
 PYTHON_EXECUTABLE=""
 EXTRA_CXX_FLAGS=""
 EXTRA_C_FLAGS=""
-REPO_ROOT="$(realpath "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../")"
+REPO_ROOT="$(realpath "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../")"
 
 ERR='\033[7;37m\033[41m'
 INFO='\033[7;49m\033[92m'
