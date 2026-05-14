@@ -12,37 +12,29 @@
 class Event
 {
 public:
-    Event(): data_(nullptr)
-    {};
+    Event()
+        : data_(nullptr){};
 
-    const uint64_t &getSid() const
-    { return sid_; }
+    const uint64_t& getSid() const { return sid_; }
 
-    const uint64_t &getTimestamp() const
-    { return timestamp_; }
+    const uint64_t& getTimestamp() const { return timestamp_; }
 
-    void*getData() const
-    { return data_; }
+    void* getData() const { return data_; }
 
-    size_t getSize() const
-    { return size_; }
+    size_t getSize() const { return size_; }
 
-    void setSid(const uint64_t &sid)
-    { sid_ = sid; }
+    void setSid(const uint64_t& sid) { sid_ = sid; }
 
-    void setTimestamp(const uint64_t &timestamp)
-    { timestamp_ = timestamp; }
+    void setTimestamp(const uint64_t& timestamp) { timestamp_ = timestamp; }
 
-    void setData(void*data)
-    { Event::data_ = data; }
+    void setData(void* data) { Event::data_ = data; }
 
-    void setSize(size_t size)
-    { size_ = size; }
+    void setSize(size_t size) { size_ = size; }
 
 private:
     uint64_t sid_{};
     uint64_t timestamp_{};
-    void*data_;
+    void* data_;
     size_t size_{};
 };
 

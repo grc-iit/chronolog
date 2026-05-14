@@ -147,8 +147,7 @@ log_replay_error(int rc, const std::string& chronicle, const std::string& story,
     if(rc == -12) // CL_ERR_QUERY_TIMED_OUT
     {
         std::cerr << "[client_reader_stream] Replay timed out for " << chronicle << "/" << story << " window=["
-                  << start_ns << "," << end_ns << "] (~" << dur_s << "s)"
-                  << " Will be retried automatically\n";
+                  << start_ns << "," << end_ns << "] (~" << dur_s << "s)" << " Will be retried automatically\n";
     }
     else
     {
