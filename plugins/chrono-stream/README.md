@@ -56,7 +56,7 @@ export INFLUX_TOKEN=chronolog-dev-token-123
 export INFLUX_URL="http://$VM_IP:8086/api/v2/write?org=$INFLUX_ORG&bucket=$INFLUX_BUCKET&precision=ns"
 ```
 Once you have the IP of your machine you need to update the hardcoded IP in the InfluxDB datasources file.
-- Go to `Plugins/chronostream/GrafanaInfluxSetup/provisioning/datasources/datasource.yml`
+- Go to `plugins/chrono-stream/GrafanaInfluxSetup/provisioning/datasources/datasource.yml`
 - Update the IP in the data source URL
 
 Now build and install ChronoLog with the below commands:
@@ -69,7 +69,7 @@ cd $SRC_ROOT/tools/deploy
 ### 3. Launch Grafana and InfluxDB 
 Launch the below commands to start the Grafana and InfluxDB docker containers
 ``` bash
-cd Plugins/chronostream/GrafanaInfluxSetup/
+cd plugins/chrono-stream/GrafanaInfluxSetup/
 docker compose --env-file .env up -d
 
 # Confirm if the containers are up

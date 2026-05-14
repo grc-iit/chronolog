@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ares_test.sh — orchestration driver for the ChronoLog performance regression
-# test matrix described in test/performance/perf_test_plan.md.
+# test matrix described in tests/performance/perf_test_plan.md.
 #
 # This script is written to be reviewed locally *before* it runs on an actual
 # Slurm cluster. By default (DRY_RUN=1) it never executes any side-effecting
