@@ -15,12 +15,12 @@ git clone https://github.com/scs-lab/ChronoLog.git
 cd ChronoLog || exit
 CHRONOLOG_DIR=$(pwd)
 
-spack env create chronolog "${CHRONOLOG_DIR}"/CI/enviroment/spack.lock
+spack env create chronolog "${CHRONOLOG_DIR}"/ci/environment/spack.lock
 spack env activate -p chronolog
 yes | spack install
 echo "spack env activate -p chronolog" >> "${HOME}"/.bashrc
 
 yes| spack module tcl refresh
 spack env loads -r
-echo "source ${CHRONOLOG_DIR}/CI/enviroment/loads" >> "${HOME}"/.bashrc
+echo "source ${CHRONOLOG_DIR}/ci/environment/loads" >> "${HOME}"/.bashrc
 source "${HOME}"/.bashrc

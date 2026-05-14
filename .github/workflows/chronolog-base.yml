@@ -40,7 +40,7 @@ jobs:
       - name: Compute base image hash
         id: basehash
         run: |
-          echo "hash=${{ hashFiles('spack.yaml', 'Client/spack.yaml', '.github/docker/**') }}" >> $GITHUB_OUTPUT
+          echo "hash=${{ hashFiles('spack.yaml', 'Client/spack.yaml', 'ci/docker/**') }}" >> $GITHUB_OUTPUT
 
       - name: Set base image name (immutable)
         id: set-base-image-name
@@ -69,7 +69,7 @@ jobs:
         id: build-base-docker-image
         uses: docker/build-push-action@v4
         with:
-          context: .github/docker
+          context: ci/docker
           push: false
           tags: ${{ steps.set-base-image-name.outputs.full-name }}
           cache-from: type=gha

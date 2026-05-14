@@ -145,7 +145,7 @@ docker pull gnosisrc/chronolog:latest
 Download deployment script:
 
 ```bash
-wget https://raw.githubusercontent.com/grc-iit/ChronoLog/refs/heads/develop/CI/docker/dynamic_deploy.sh
+wget https://raw.githubusercontent.com/grc-iit/ChronoLog/refs/heads/develop/ci/docker/dynamic_deploy.sh
 ```
 
 ```bash
