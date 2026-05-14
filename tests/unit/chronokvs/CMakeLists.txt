@@ -11,7 +11,7 @@ add_executable(chronokvs_logger_test
 )
 
 target_include_directories(chronokvs_logger_test PRIVATE
-    ${CMAKE_SOURCE_DIR}/Plugins/chronokvs/include
+    ${CMAKE_SOURCE_DIR}/plugins/chrono-kvs/include
 )
 
 target_link_libraries(chronokvs_logger_test PRIVATE

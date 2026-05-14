@@ -10,7 +10,7 @@ add_executable(chronokvs_integration_test
 )
 
 target_include_directories(chronokvs_integration_test PRIVATE
-    ${CMAKE_SOURCE_DIR}/Plugins/chronokvs/include
+    ${CMAKE_SOURCE_DIR}/plugins/chrono-kvs/include
 )
 
 target_link_libraries(chronokvs_integration_test

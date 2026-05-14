@@ -277,7 +277,7 @@ add_subdirectory(ChronoKeeper)
 add_subdirectory(ChronoGrapher)
 add_subdirectory(ChronoPlayer)
 add_subdirectory(tools)
-add_subdirectory(Plugins)
+add_subdirectory(plugins)
 
 if(CHRONOLOG_BUILD_TESTS_NOW)
     enable_testing()
