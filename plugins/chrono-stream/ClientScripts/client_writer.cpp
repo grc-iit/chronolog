@@ -216,8 +216,7 @@ int main(int argc, char** argv)
 
     Args args = parse_args(argc, argv);
     std::cout << "[writer] config=" << args.config << " chronicle=" << args.chronicle
-              << " duration=" << args.duration_sec << "s"
-              << " interval=" << args.interval_sec << "s";
+              << " duration=" << args.duration_sec << "s" << " interval=" << args.interval_sec << "s";
 
     // Load client config
     chronolog::ClientConfiguration cfg;
