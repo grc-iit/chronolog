@@ -19,7 +19,7 @@ USER=$(whoami)
 
 # Script location
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(realpath "${SCRIPT_DIR}/../../../")"
+REPO_ROOT="$(realpath "${SCRIPT_DIR}/../../")"
 DEPLOY_CLUSTER_SCRIPT="${SCRIPT_DIR}/deploy_cluster.sh"
 
 # Default values
