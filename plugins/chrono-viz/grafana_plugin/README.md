@@ -49,7 +49,7 @@ This plugin enables Grafana to query and visualize data from ChronoLog chronicle
 
 2. **Build and start services** (script uses Docker by default):
    ```bash
-   cd /path/to/ChronoLog/Plugins/chronoviz
+   cd /path/to/ChronoLog/plugins/chrono-viz
    ./scripts/start_grafana_dev.sh
    ```
 

@@ -42,7 +42,7 @@ The start script uses **Docker** by default. No arguments needed.
 
 2. **Start Grafana and the backend**:
    ```bash
-   cd Plugins/chronoviz
+   cd plugins/chrono-viz
    ./scripts/start_grafana_dev.sh
    ```
 
@@ -59,13 +59,13 @@ To run only the backend on the host and start Grafana yourself:
 
 1. **Build the plugin**:
    ```bash
-   cd Plugins/chronoviz
+   cd plugins/chrono-viz
    ./scripts/build_grafana_plugin.sh
    ```
 
 2. **Start the backend** (in a separate terminal):
    ```bash
-   cd Plugins/chronoviz
+   cd plugins/chrono-viz
    ./scripts/start_grafana_dev.sh --local
    ```
 
@@ -167,7 +167,7 @@ npm run build
 
 ### Running the Backend
 
-**Default (Docker):** From `Plugins/chronoviz`, run `./scripts/start_grafana_dev.sh` with no arguments. Grafana and the backend run in containers.
+**Default (Docker):** From `plugins/chrono-viz`, run `./scripts/start_grafana_dev.sh` with no arguments. Grafana and the backend run in containers.
 
 **Local backend only:** Use the start script with `--local` (creates/uses a venv and sets env for you), or run the backend manually — see [Grafana Backend README](grafana_backend/README.md) for venv and required env vars:
 

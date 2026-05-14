@@ -47,7 +47,7 @@ Configure via environment variables (see `env.example`):
 From the ChronoViz plugin root, the start script **defaults to Docker** and runs both Grafana and this backend:
 
 ```bash
-cd Plugins/chronoviz
+cd plugins/chrono-viz
 ./scripts/start_grafana_dev.sh
 ```
 
@@ -69,7 +69,7 @@ docker run -p 8080:8080 \
 
 Use when you want to run the backend on the host (e.g. to attach a debugger or avoid rebuilding the image).
 
-**Option A — start script with `--local`:** From `Plugins/chronoviz` run `./scripts/start_grafana_dev.sh --local`. The script creates/activates a venv and sets required env vars.
+**Option A — start script with `--local`:** From `plugins/chrono-viz` run `./scripts/start_grafana_dev.sh --local`. The script creates/activates a venv and sets required env vars.
 
 **Option B — run manually:** You need a venv (recommended) and these environment variables:
 

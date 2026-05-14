@@ -125,7 +125,7 @@ export TEST_STORY_NAME=cpu_usage
 ### Quick Start
 
 ```bash
-cd Plugins/chronoviz/grafana_backend
+cd plugins/chrono-viz/grafana_backend
 ./run_tests.sh
 ```
 
@@ -246,7 +246,7 @@ To integrate with CI/CD pipelines:
 
 - name: Run Backend Tests
   run: |
-    cd Plugins/chronoviz/grafana_backend
+    cd plugins/chrono-viz/grafana_backend
     export CHRONOLOG_LIB_PATH="$HOME/chronolog-install/chronolog/lib"
     export PYTHONPATH="$CHRONOLOG_LIB_PATH:$PYTHONPATH"
     export LD_LIBRARY_PATH="$CHRONOLOG_LIB_PATH:$LD_LIBRARY_PATH"
@@ -255,7 +255,7 @@ To integrate with CI/CD pipelines:
 
 - name: Collect Coverage (Optional)
   run: |
-    cd Plugins/chronoviz/grafana_backend
+    cd plugins/chrono-viz/grafana_backend
     # WARNING: May cause segfaults without --forked
     coverage run --source=chronolog_service -m pytest test_chronolog_service.py -v
     coverage report -m

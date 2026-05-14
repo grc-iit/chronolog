@@ -114,7 +114,7 @@ set(CPACK_SOURCE_IGNORE_FILES
     # Node / website build outputs
     "/node_modules/"
     "/[.]docusaurus/"
-    "docs-website/build/"
+    "docs/build/"
     "website/dist/"
     "/[.]next/"
     "/[.]nuxt/"

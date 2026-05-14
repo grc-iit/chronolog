@@ -6,7 +6,7 @@ All ChronoLog tests live under this `test/` directory. Tests are built only when
 
 | Directory | Description |
 |-----------|-------------|
-| **unit/** | Unit tests; **every test lives in a component subfolder**. `chrono-common/`, `chrono-store/`, `chrono-player/`, `chronokvs/`. All sources follow `component_element_test.cpp` (e.g. `chrono_common_story_chunk_test.cpp`, `chrono_store_hdf5_archiver_test.cpp`). |
+| **unit/** | Unit tests; **every test lives in a component subfolder**. `chrono-common/`, `chrono-player/`, `chronokvs/`. All sources follow `component_element_test.cpp` (e.g. `chrono_common_story_chunk_test.cpp`). |
 | **integration/** | Integration tests: `client/`, `keeper-grapher/`, chronokvs, package-discovery. keeper-grapher `extract_test` and `ingest_test` are registered with CTest but are integration/manual (not installed to `chronolog/tests/`). Client tests are registered as MANUAL CTest and optionally installed when `CHRONOLOG_INSTALL_TESTS` is ON. |
 | **communication/** | **Transport/protocol-layer tests (Thallium).** Server repeater RPC, client send/recv or RDMA, MPI client; exercises Thallium in isolation, not the full ChronoLog client library. Build-tree only; not installed. Kept separate from **integration/** because integration tests are application-level (e.g. client vs Keeper); communication tests are transport-only. |
 | **overhead/** | Overhead and micro-benchmarks: clock, lock. **Built only on x86** (uses SSE2 `emmintrin.h` and RDTSC). Build-tree only; not installed. Optional `kmod/` (kernel module) is not part of CTest. |
@@ -24,7 +24,7 @@ Tests are only built when `CMAKE_BUILD_TYPE=Debug`; use a Debug build directory 
   (1) **CTest** — unit, integration (keeper-grapher, chronokvs, package-discovery), communication, overhead (on x86), end-to-end (data-integrity, gated by a setup/cleanup fixture). (2) **Client integration** — all Client executables are registered as **MANUAL** CTest (`Integration_Client_*`). **All `Integration_Client_*` tests require a running ChronoVisor/Keeper** and are excluded from default `ctest`; run them with `ctest -R Integration_Client_ -M Manual` when the server is available, or run the binaries by hand with the correct config (e.g. `--conf <path>`). (3) **synthetic_workload/** — not in CTest; run their scripts manually (see Manual tests).
 
 - **Install layout:**  
-  Test executables are installed under `<prefix>/chronolog/tests/` **only when `CHRONOLOG_INSTALL_TESTS` is ON** (default OFF). When ON, all installable tests are installed: unit (chrono-common, chrono-store, chrono-player, chronokvs), package-discovery, chronokvs integration, and client integration (`chronolog-test-client-*`). Communication, overhead, and keeper-grapher tests are never installed (build-tree only). See Installed test executables below.
+  Test executables are installed under `<prefix>/chronolog/tests/` **only when `CHRONOLOG_INSTALL_TESTS` is ON** (default OFF). When ON, all installable tests are installed: unit (chrono-common, chrono-player, chronokvs), package-discovery, chronokvs integration, and client integration (`chronolog-test-client-*`). Communication, overhead, and keeper-grapher tests are never installed (build-tree only). See Installed test executables below.
 
 ## Install policy (what goes to `chronolog/tests/`)
 
@@ -42,7 +42,7 @@ All test **source files** follow one pattern so component and purpose are clear 
 
 **`<component>_<element>_test.cpp`** (or `_test.sh` / `_test.py` for scripts)
 
-- **component** — snake_case area: `chrono_common`, `chrono_store`, `chrono_player`, `chronokvs`, `client`, `keeper_grapher`, `package_discovery`, `thallium`, `clock`, `lock`.
+- **component** — snake_case area: `chrono_common`, `chrono_player`, `chronokvs`, `client`, `keeper_grapher`, `package_discovery`, `thallium`, `clock`, `lock`.
 - **element** — what is tested (e.g. `story_chunk`, `extraction_chain`, `connect_rpc`, `high_resolution`, `overhead`).
 - **`_test`** — marks the file as a test; suffix `.cpp`, `.sh`, or `.py`.
 
@@ -51,7 +51,6 @@ Examples:
 | File | Component | Element |
 |------|-----------|---------|
 | `chrono_common_story_chunk_test.cpp` | chrono_common | story_chunk |
-| `chrono_store_hdf5_archiver_test.cpp` | chrono_store | hdf5_archiver |
 | `client_connect_rpc_test.cpp` | client | connect_rpc |
 | `keeper_grapher_extract_test.cpp` | keeper_grapher | extract |
 | `package_discovery_cmake_test.cpp` | package_discovery | cmake |
@@ -76,8 +75,6 @@ When **`CHRONOLOG_INSTALL_TESTS`** is ON, test binaries installed under `chronol
 | `chronolog-test-common-chunk-consumer-service` | Standalone StoryChunk consumer service |
 | `chronolog-test-common-story-chunk` | StoryChunk GTest unit tests |
 | `chronolog-test-common-story-pipeline` | StoryPipeline GTest unit tests |
-| `chronolog-test-store-hdf5-archiver` | HDF5 archiver write/read/range tests |
-| `chronolog-test-store-vlen-bytes-vs-blob-map` | HDF5 VLEN bytes vs blob+map comparison |
 | `chronolog-test-player-transfer-agent` | StoryChunk transfer agent |
 | `chronolog-test-player-playback-service` | Playback service |
 | `chronolog-test-player-hdf5-archive-reader` | HDF5 archive reading agent |
@@ -124,7 +121,7 @@ Four tests are disabled by default because they start **Margo/Thallium** service
 These are not run by default CTest; run them by hand when the right environment is available:
 
 - **synthetic_workload/** — Use `INSTALL_DIR` (default `$HOME/chronolog-install`) so that `$INSTALL_DIR/chronolog` is the work tree (bin, lib, conf). Run `distributed_syslog.sh`, `perf_test.sh` with a running stack.
-- **overhead/clock/clock_cset_shield_test.sh** — Script for clock tests with cset shield (requires root/cgroup; not cgroupv2). Run from the build dir: `test/overhead/clock/clock_cset_shield_test.sh <path_to_clock_test_binary>` (e.g. the built `high_res_clock_test`). Registered as MANUAL CTest `Overhead_Clock_Script`.
+- **overhead/clock/clock_cset_shield_test.sh** — Script for clock tests with cset shield (requires root/cgroup; not cgroupv2). Run from the build dir: `tests/overhead/clock/clock_cset_shield_test.sh <path_to_clock_test_binary>` (e.g. the built `high_res_clock_test`). Registered as MANUAL CTest `Overhead_Clock_Script`.
 - **communication/thallium_protocol_test.sh** — Thallium multi-node test for HPC (SLURM/squeue, ssh). Run with `-j`, `-s`, `-c`, `-n` as needed. Registered as MANUAL CTest `Communication_Thallium_ProtocolScript`.
 - **overhead/kmod/** — Optional kernel module (`kmod_rdtsc_rdtscp`); not part of CTest. Build and load manually if needed.
 - **Integration_ChronoKVS_PluginIntegration** — Requires a running ChronoLog stack and runs a long data-propagation wait; use `ctest -R Integration_ChronoKVS_PluginIntegration -M Manual` when the stack is available. If run without a server, the test exits 0 (skipped).
