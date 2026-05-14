@@ -74,7 +74,7 @@ To run only the backend on the host and start Grafana yourself:
 ## Project Structure
 
 ```
-chronoviz/
+chrono-viz/
 ├── grafana_plugin/          # Grafana data source plugin (TypeScript)
 │   ├── src/
 │   │   ├── module.ts        # Plugin entry point

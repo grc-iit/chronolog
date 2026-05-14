@@ -61,8 +61,8 @@ RUN cd \
  && export SPACK_ROOT=$(pwd)/spack \
  && source spack/share/spack/setup-env.sh \
  && cd chronolog-repo \
- && ./tools/deploy/ChronoLog/local_single_user_deploy.sh -b \
- && ./tools/deploy/ChronoLog/local_single_user_deploy.sh -i
+ && ./tools/deploy/local_single_user_deploy.sh -b \
+ && ./tools/deploy/local_single_user_deploy.sh -i
 
 # Source Spack on each shell
 RUN cd \
