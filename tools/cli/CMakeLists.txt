@@ -32,7 +32,7 @@ set_target_properties(client_cli PROPERTIES
 )
 
 configure_file(
-    ${CMAKE_SOURCE_DIR}/default_conf.json.in
+    ${CMAKE_SOURCE_DIR}/conf/default_conf.json.in
     ${CMAKE_CURRENT_BINARY_DIR}/default_conf.json
     COPYONLY
 )

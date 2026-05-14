@@ -44,7 +44,7 @@ set_target_properties(chronovisor_server PROPERTIES
 chronolog_install_target(chronovisor_server)
 
 install(
-    FILES ${CMAKE_SOURCE_DIR}/default_conf.json.in
+    FILES ${CMAKE_SOURCE_DIR}/conf/default_conf.json.in
     DESTINATION ${CHRONOLOG_INSTALL_CONF_DIR}
     RENAME default-chrono-conf.json
 )
