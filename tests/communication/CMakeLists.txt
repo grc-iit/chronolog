@@ -24,7 +24,7 @@ add_executable(thallium_server
 )
 
 target_include_directories(thallium_server PRIVATE
-    ${CMAKE_SOURCE_DIR}/chrono_common/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
     ${CMAKE_SOURCE_DIR}/client/cpp/include
 )
 
@@ -43,7 +43,7 @@ add_executable(thallium_client
 )
 
 target_include_directories(thallium_client PRIVATE
-    ${CMAKE_SOURCE_DIR}/chrono_common/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
     ${CMAKE_SOURCE_DIR}/client/cpp/include
 )
 
@@ -62,7 +62,7 @@ add_executable(thallium_client_mpi
 )
 
 target_include_directories(thallium_client_mpi SYSTEM PRIVATE
-    ${CMAKE_SOURCE_DIR}/chrono_common/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
     ${CMAKE_SOURCE_DIR}/client/cpp/include
     ${MPI_INCLUDE_PATH}
 )

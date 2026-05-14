@@ -11,7 +11,7 @@ add_executable(client_cli
 )
 
 target_include_directories(client_cli PRIVATE
-    ${CMAKE_SOURCE_DIR}/chrono_common/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
     ${CMAKE_SOURCE_DIR}/client/cpp/include
     ${MARGO_INCLUDE_DIRS}
 )

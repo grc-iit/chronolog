@@ -270,12 +270,12 @@ endif()
 #------------------------------------------------------------------------------
 # ChronoLog Components
 #------------------------------------------------------------------------------
-add_subdirectory(chrono_common)
+add_subdirectory(src/chrono-common)
 add_subdirectory(client)
-add_subdirectory(ChronoVisor)
-add_subdirectory(ChronoKeeper)
-add_subdirectory(ChronoGrapher)
-add_subdirectory(ChronoPlayer)
+add_subdirectory(src/chrono-visor)
+add_subdirectory(src/chrono-keeper)
+add_subdirectory(src/chrono-grapher)
+add_subdirectory(src/chrono-player)
 add_subdirectory(tools)
 add_subdirectory(plugins)
 

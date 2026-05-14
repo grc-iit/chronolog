@@ -13,9 +13,9 @@ add_executable(chronolog_test_story_chunk_consumer
 )
 
 target_include_directories(chronolog_test_story_chunk_consumer PRIVATE
-    ${CMAKE_SOURCE_DIR}/chrono_common/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
     ${CMAKE_SOURCE_DIR}/client/cpp/include
-    ${CMAKE_SOURCE_DIR}/ChronoKeeper/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/include
 )
 
 target_link_libraries(chronolog_test_story_chunk_consumer PRIVATE

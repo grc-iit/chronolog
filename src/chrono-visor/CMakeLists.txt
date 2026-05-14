@@ -11,7 +11,7 @@ add_executable(chronovisor_server)
 
 target_include_directories(chronovisor_server PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/chrono_common/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
 )
 
 target_sources(chronovisor_server PRIVATE
