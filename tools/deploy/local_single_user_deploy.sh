@@ -16,7 +16,7 @@ NC='\033[0m' # No Color
 
 # Script location
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(realpath "${SCRIPT_DIR}/../../../")"
+REPO_ROOT="$(realpath "${SCRIPT_DIR}/../../")"
 DEPLOY_LOCAL_SCRIPT="${SCRIPT_DIR}/deploy_local.sh"
 
 # Default values
