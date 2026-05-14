@@ -195,7 +195,7 @@ jobs:
             spack env activate -p .
             mkdir -p '${{ env.RELEASE_INSTALL }}'
             chown -R grc-iit:grc-iit '${{ env.RELEASE_INSTALL }}' || true
-            ./tools/deploy/ChronoLog/build.sh -t Release -I '${{ env.RELEASE_INSTALL }}'
+            ./tools/deploy/build.sh -t Release -I '${{ env.RELEASE_INSTALL }}'
           "
 
       - name: Install Release package
@@ -206,7 +206,7 @@ jobs:
             set -e
             source /home/grc-iit/spack/share/spack/setup-env.sh
             spack env activate -p .
-            ./tools/deploy/ChronoLog/install.sh -t Release -I '${{ env.RELEASE_INSTALL }}'
+            ./tools/deploy/install.sh -t Release -I '${{ env.RELEASE_INSTALL }}'
           "
 
       - name: Export install tree for RPM build
@@ -427,7 +427,7 @@ jobs:
             spack env activate -p .
             mkdir -p '${{ env.DEBUG_INSTALL }}'
             chown -R grc-iit:grc-iit '${{ env.DEBUG_INSTALL }}' || true
-            ./tools/deploy/ChronoLog/build.sh -t Debug -I '${{ env.DEBUG_INSTALL }}'
+            ./tools/deploy/build.sh -t Debug -I '${{ env.DEBUG_INSTALL }}'
           "
 
       - name: Install Debug package
@@ -438,7 +438,7 @@ jobs:
             set -e
             source /home/grc-iit/spack/share/spack/setup-env.sh
             spack env activate -p .
-            ./tools/deploy/ChronoLog/install.sh -t Debug -I '${{ env.DEBUG_INSTALL }}'
+            ./tools/deploy/install.sh -t Debug -I '${{ env.DEBUG_INSTALL }}'
           "
 
       - name: Create Debug tarball

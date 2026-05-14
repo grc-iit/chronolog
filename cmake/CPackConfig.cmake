@@ -31,7 +31,7 @@ set(CPACK_RESOURCE_FILE_README  "${CMAKE_SOURCE_DIR}/README.md")
 #   tooling (CI/CD workflows, deploy scripts, Docker scripts, conf files, and
 #   RPATH entries) hard-code this path so they work without knowing the version.
 #   Changing it to "chronolog-VERSION/" would require sweeping updates across
-#   .github/workflows/ci.yml (20+ references), tools/deploy/ChronoLog/,
+#   .github/workflows/ci.yml (20+ references), tools/deploy/,
 #   ci/docker/, and every piece of documentation that quotes WORK_DIR.
 #
 #   The tarball uses "chronolog-VERSION/" so that users can extract multiple

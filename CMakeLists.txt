@@ -257,7 +257,7 @@ add_custom_target(lint COMMAND cpplint --recursive
 #
 # The CHRONOLOG_INSTALL_TESTS env var only seeds the default on a fresh
 # configure; CMake caches the option, so the env var is ignored on
-# reconfigure. tools/deploy/ChronoLog/build.sh forwards the env var as an
+# reconfigure. tools/deploy/build.sh forwards the env var as an
 # explicit -D on every invocation so it wins even when the build dir is
 # reused — if you invoke cmake directly, pass -D yourself.
 #------------------------------------------------------------------------------
@@ -374,8 +374,8 @@ install(
 #------------------------------------------------------------------------------
 install(
     PROGRAMS
-        tools/deploy/ChronoLog/deploy_local.sh
-        tools/deploy/ChronoLog/deploy_cluster.sh
+        tools/deploy/deploy_local.sh
+        tools/deploy/deploy_cluster.sh
     DESTINATION ${CHRONOLOG_INSTALL_DEPLOY_DIR}
 )
 

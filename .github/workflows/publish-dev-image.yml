@@ -175,7 +175,7 @@ jobs:
             spack env activate -p .
             mkdir -p /home/grc-iit/chronolog-install
             chown -R grc-iit:grc-iit /home/grc-iit/chronolog-install || true
-            ./tools/deploy/ChronoLog/build.sh -t Debug -I /home/grc-iit/chronolog-install
+            ./tools/deploy/build.sh -t Debug -I /home/grc-iit/chronolog-install
           "
 
       - name: Install Debug
@@ -186,7 +186,7 @@ jobs:
             set -e
             source /home/grc-iit/spack/share/spack/setup-env.sh
             spack env activate -p .
-            ./tools/deploy/ChronoLog/install.sh -t Debug -I /home/grc-iit/chronolog-install
+            ./tools/deploy/install.sh -t Debug -I /home/grc-iit/chronolog-install
           "
 
       - name: Prepare image for publishing

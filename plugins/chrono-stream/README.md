@@ -61,7 +61,7 @@ Once you have the IP of your machine you need to update the hardcoded IP in the 
 
 Now build and install ChronoLog with the below commands:
 ``` bash 
-cd $SRC_ROOT/tools/deploy/ChronoLog
+cd $SRC_ROOT/tools/deploy
 ./local_single_user_deploy.sh -b -I $INSTALL_PREFIX
 ./local_single_user_deploy.sh -i -I $INSTALL_PREFIX
 ```
