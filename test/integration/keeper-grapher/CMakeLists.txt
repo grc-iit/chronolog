@@ -66,7 +66,7 @@ add_dependencies(story_chunk_drain_test
 )
 
 configure_file(
-    ${CMAKE_SOURCE_DIR}/default_conf.json.in
+    ${CMAKE_SOURCE_DIR}/conf/default_conf.json.in
     ${CMAKE_CURRENT_BINARY_DIR}/default_conf.json
     COPYONLY
 )
