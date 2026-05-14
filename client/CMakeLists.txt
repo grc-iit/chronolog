@@ -6,5 +6,3 @@ add_subdirectory(cpp)
 message("Python bindings enabled")
 add_subdirectory(python)
 #endif()
-
-add_subdirectory(examples)
