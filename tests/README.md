@@ -13,8 +13,6 @@ All ChronoLog tests live under this `test/` directory. Tests are built only when
 | **end-to-end/** | End-to-end tests that boot the full stack via a CTest fixture (`deploy_local.sh`) and validate properties at multiple points in the pipeline. Currently: `data-integrity/` — three property tests (StoryID consistency, event count, event order) checked across three lenses (CSV extraction, HDF5 archive, client replay). Require an installed tree (`CHRONOLOG_INSTALL_DIR`, default `$HOME/chronolog-install/chronolog`); skip cleanly when the install is absent. Build-tree only; not installed. |
 | **synthetic_workload/** | Synthetic workload and performance scripts. **Run manually** (see Manual tests below). |
 
-Kafka deploy/validation scripts live under `tools/deploy/others/Kafka/` (e.g. `read-write-test.sh`, `end-to-end-lat-test.sh`) and are not part of the CTest tree.
-
 ## Running tests
 
 Tests are only built when `CMAKE_BUILD_TYPE=Debug`; use a Debug build directory to run CTest.
