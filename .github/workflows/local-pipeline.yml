@@ -157,7 +157,7 @@ jobs:
             # Build in Release (matches what we ship) with test executables enabled
             # so the artifact and the Run tests step can exercise them.
             export CHRONOLOG_INSTALL_TESTS=ON
-            ./tools/deploy/ChronoLog/local_single_user_deploy.sh -b -I \"\${INSTALL_DIR}\"
+            ./tools/deploy/local_single_user_deploy.sh -b -I \"\${INSTALL_DIR}\"
             echo '✅ ChronoLog build completed'
           "
           echo "duration=$(( $(date +%s) - _start ))" >> "$GITHUB_OUTPUT"
@@ -175,7 +175,7 @@ jobs:
             echo '[2/8] Installing ChronoLog...'
             INSTALL_DIR=\"/home/grc-iit/chronolog-install\"
             export CHRONOLOG_INSTALL_TESTS=ON
-            ./tools/deploy/ChronoLog/local_single_user_deploy.sh -i -I \"\${INSTALL_DIR}\"
+            ./tools/deploy/local_single_user_deploy.sh -i -I \"\${INSTALL_DIR}\"
             echo '✅ ChronoLog installation completed'
           "
           echo "duration=$(( $(date +%s) - _start ))" >> "$GITHUB_OUTPUT"
@@ -226,7 +226,7 @@ jobs:
             spack env activate -p .
             WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
             echo '[4/8] Deploying ChronoLog...'
-            ./tools/deploy/ChronoLog/local_single_user_deploy.sh -d -k 5 -r 3 -w \"\${WORK_DIR}\"
+            ./tools/deploy/local_single_user_deploy.sh -d -k 5 -r 3 -w \"\${WORK_DIR}\"
             echo '✅ ChronoLog deployment started'
           "
           echo "duration=$(( $(date +%s) - _start ))" >> "$GITHUB_OUTPUT"
@@ -389,7 +389,7 @@ jobs:
             echo 'Process states before stop:'
             ps aux | grep -E 'chrono-player|chrono-keeper|chrono-grapher|chrono-visor' | grep -v grep || true
 
-            ./tools/deploy/ChronoLog/local_single_user_deploy.sh -s -w \"\${WORK_DIR}\"
+            ./tools/deploy/local_single_user_deploy.sh -s -w \"\${WORK_DIR}\"
 
             echo '✅ ChronoLog stop command completed'
           "
@@ -420,7 +420,7 @@ jobs:
             spack env activate -p .
             WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
             echo '[8/8] Cleaning ChronoLog...'
-            ./tools/deploy/ChronoLog/local_single_user_deploy.sh -c -w \"\${WORK_DIR}\" || {
+            ./tools/deploy/local_single_user_deploy.sh -c -w \"\${WORK_DIR}\" || {
               echo '⚠️ Warning: Clean script failed (likely due to stuck processes), but continuing'
               echo 'ℹ️ Container will be destroyed anyway, cleaning up what we can...'
               rm -rf \"\${WORK_DIR}/monitor/\"*.log 2>/dev/null || true

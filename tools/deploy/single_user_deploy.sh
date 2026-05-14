@@ -167,33 +167,33 @@ check_op_validity() {
 
 # Main functions
 build() {
-  local build_args=("${REPO_ROOT}/tools/deploy/ChronoLog/build.sh" "-t" "$BUILD_TYPE" "-B" "$BUILD_DIR")
+  local build_args=("${REPO_ROOT}/tools/deploy/build.sh" "-t" "$BUILD_TYPE" "-B" "$BUILD_DIR")
 
   if [[ -n "$INSTALL_DIR" ]]; then
     build_args+=("-I" "$INSTALL_DIR")
   fi
 
   echo -e "${DEBUG}Running: ${build_args[*]}${NC}"
-  if [[ -x "${REPO_ROOT}/tools/deploy/ChronoLog/build.sh" ]]; then
+  if [[ -x "${REPO_ROOT}/tools/deploy/build.sh" ]]; then
     "${build_args[@]}"
   else
-    echo -e "${ERR}Error: ${REPO_ROOT}/tools/deploy/ChronoLog/build.sh is not executable or not found.${NC}"
+    echo -e "${ERR}Error: ${REPO_ROOT}/tools/deploy/build.sh is not executable or not found.${NC}"
     exit 1
   fi
 }
 
 install() {
-  local install_args=("${REPO_ROOT}/tools/deploy/ChronoLog/install.sh" "-t" "$BUILD_TYPE" "-B" "$BUILD_DIR")
+  local install_args=("${REPO_ROOT}/tools/deploy/install.sh" "-t" "$BUILD_TYPE" "-B" "$BUILD_DIR")
 
   if [[ -n "$INSTALL_DIR" ]]; then
     install_args+=("-I" "$INSTALL_DIR")
   fi
 
   echo -e "${DEBUG}Running: ${install_args[*]}${NC}"
-  if [[ -x "${REPO_ROOT}/tools/deploy/ChronoLog/install.sh" ]]; then
+  if [[ -x "${REPO_ROOT}/tools/deploy/install.sh" ]]; then
     "${install_args[@]}"
   else
-    echo -e "${ERR}Error: ${REPO_ROOT}/tools/deploy/ChronoLog/install.sh is not executable or not found.${NC}"
+    echo -e "${ERR}Error: ${REPO_ROOT}/tools/deploy/install.sh is not executable or not found.${NC}"
     exit 1
   fi
 }

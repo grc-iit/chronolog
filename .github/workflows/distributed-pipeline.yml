@@ -205,8 +205,8 @@ jobs:
 
             INSTALL_DIR=\"/home/grc-iit/chronolog-install\"
             mkdir -p \"\${INSTALL_DIR}\"
-            ./tools/deploy/ChronoLog/local_single_user_deploy.sh -b -I \"\${INSTALL_DIR}\"
-            ./tools/deploy/ChronoLog/local_single_user_deploy.sh -i -I \"\${INSTALL_DIR}\"
+            ./tools/deploy/local_single_user_deploy.sh -b -I \"\${INSTALL_DIR}\"
+            ./tools/deploy/local_single_user_deploy.sh -i -I \"\${INSTALL_DIR}\"
           "
           echo '✅ ChronoLog built and installed'
           echo "duration=$(( $(date +%s) - _start ))" >> "$GITHUB_OUTPUT"
@@ -315,9 +315,9 @@ jobs:
 
             echo '[3/5] Deploying ChronoLog...'
 
-            if [ -x ./tools/deploy/ChronoLog/single_user_deploy.sh ]; then
+            if [ -x ./tools/deploy/single_user_deploy.sh ]; then
               echo '🚀 Starting ChronoLog deployment...'
-              ./tools/deploy/ChronoLog/single_user_deploy.sh -d -w \"\${WORK_DIR}\"
+              ./tools/deploy/single_user_deploy.sh -d -w \"\${WORK_DIR}\"
             else
               echo '❌ Deploy script not found or not executable'
               exit 1
@@ -545,8 +545,8 @@ jobs:
             spack env activate -d . 2>/dev/null || spack env activate -p . 2>/dev/null || true
 
             echo 'Stopping ChronoLog...'
-            if [ -x ./tools/deploy/ChronoLog/single_user_deploy.sh ]; then
-              ./tools/deploy/ChronoLog/single_user_deploy.sh -s -w \"\${WORK_DIR}\" 2>/dev/null || true
+            if [ -x ./tools/deploy/single_user_deploy.sh ]; then
+              ./tools/deploy/single_user_deploy.sh -s -w \"\${WORK_DIR}\" 2>/dev/null || true
             fi
           " || echo "⚠️ Stop command had errors but continuing cleanup"
 

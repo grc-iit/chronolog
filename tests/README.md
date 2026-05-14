@@ -132,6 +132,6 @@ These are not run by default CTest; run them by hand when the right environment 
 ## Notes
 
 - **synthetic_workload/** is not part of the CMake/CTest tree; run its scripts manually as above.
-- **end-to-end/data-integrity/** — gated by `DataIntegrity_Setup`/`DataIntegrity_Cleanup` CTest fixtures wrapping `tools/deploy/ChronoLog/deploy_local.sh`. The fixture expects an installed tree at `$CHRONOLOG_INSTALL_DIR` (default `$HOME/chronolog-install/chronolog`); when missing, setup exits 0 and the per-lens cases skip. Run with `ctest -R EndToEnd_DataIntegrity_`.
+- **end-to-end/data-integrity/** — gated by `DataIntegrity_Setup`/`DataIntegrity_Cleanup` CTest fixtures wrapping `tools/deploy/deploy_local.sh`. The fixture expects an installed tree at `$CHRONOLOG_INSTALL_DIR` (default `$HOME/chronolog-install/chronolog`); when missing, setup exits 0 and the per-lens cases skip. Run with `ctest -R EndToEnd_DataIntegrity_`.
 - keeper-grapher and HDF5ArchiveReadingAgent tests skip (exit 0) when no config path is provided; run manually with `--conf <path>` for full runs.
 - Some tests (e.g. extraction chain, chunk consumer, Thallium server/client) run long or require SIGTERM to stop; use timeouts or run in isolation as needed.
