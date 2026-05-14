@@ -1,6 +1,6 @@
 # ChronoLog Tests
 
-All ChronoLog tests live under this `test/` directory (there is no other test tree; legacy `ChronoStore/test/` has been removed). Tests are built only when `CHRONOLOG_BUILD_TESTING` is ON (default) **and** `CMAKE_BUILD_TYPE` is `Debug`; they are then registered with CTest. Release builds do not include the test tree, so no test executables are built or installed in Release (the installation folder stays free of tests). To run tests, configure with `-DCMAKE_BUILD_TYPE=Debug`.
+All ChronoLog tests live under this `test/` directory. Tests are built only when `CHRONOLOG_BUILD_TESTING` is ON (default) **and** `CMAKE_BUILD_TYPE` is `Debug`; they are then registered with CTest. Release builds do not include the test tree, so no test executables are built or installed in Release (the installation folder stays free of tests). To run tests, configure with `-DCMAKE_BUILD_TYPE=Debug`.
 
 ## Layout
 
@@ -110,8 +110,8 @@ So when `CHRONOLOG_INSTALL_TESTS` is ON, `ls chronolog/tests/` shows a consisten
 All CTest names follow the pattern **`<Type>_<Component>_<WhatIsTested>`**:
 
 - **Type**: `Unit`, `Integration`, `Communication`, `PackageDiscovery`, `Overhead`
-- **Component**: `ChronoCommon`, `ChronoStore`, `ChronoPlayer`, `KeeperGrapher`, `Thallium`, `ChronoKVS`, `Discovery`, `Lock`, `Clock`
-- **WhatIsTested**: Short descriptor (e.g. `StoryChunkExtract`, `HDF5ArchiverWriteReadRoundtrip`)
+- **Component**: `ChronoCommon`, `ChronoPlayer`, `KeeperGrapher`, `Thallium`, `ChronoKVS`, `Discovery`, `Lock`, `Clock`
+- **WhatIsTested**: Short descriptor (e.g. `StoryChunkExtract`)
 
 Examples: `Unit_ChronoCommon_StoryChunk_TestConstructors.testEmptyConstructor`, `Integration_ChronoKVS_PluginIntegration`, `PackageDiscovery_CMakeFindPackage`. Filter with `ctest -R Unit_`, `ctest -R Integration_`, or `ctest -R PackageDiscovery`.
 
