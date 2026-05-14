@@ -113,3 +113,5 @@ install(
     DESTINATION ${CHRONOLOG_INSTALL_CONF_DIR}
     RENAME default-chrono-client-conf.json
 )
+
+add_subdirectory(examples)
