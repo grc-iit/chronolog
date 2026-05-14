@@ -227,7 +227,7 @@ if(CHRONOLOG_ENABLE_DOXYGEN)
         BUILD_DIR
         ${CMAKE_CURRENT_BINARY_DIR}/_build
         DOXY_FILE
-        ${CMAKE_CURRENT_SOURCE_DIR}/doc/Doxyfile.in
+        ${CMAKE_CURRENT_SOURCE_DIR}/docs/Doxyfile.in
         TARGET_NAME
         dox
         COMMENT
@@ -242,7 +242,7 @@ add_custom_target(lint COMMAND cpplint --recursive
     --exclude=${CMAKE_CURRENT_SOURCE_DIR}/build
     --exclude=${CMAKE_CURRENT_SOURCE_DIR}/cmake-build-debug
     --exclude=${CMAKE_CURRENT_SOURCE_DIR}/external_libs
-    --exclude=${CMAKE_CURRENT_SOURCE_DIR}/doc
+    --exclude=${CMAKE_CURRENT_SOURCE_DIR}/docs
     --exclude=${CMAKE_CURRENT_SOURCE_DIR}/CI
     ${CMAKE_CURRENT_SOURCE_DIR})
 
