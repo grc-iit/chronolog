@@ -1,34 +1,36 @@
 cmake_minimum_required(VERSION 3.25)
 
 find_package(Thallium REQUIRED)
+find_package(HDF5 REQUIRED COMPONENTS C CXX)
 
 #------------------------------------------------------------------------------
-# ChronoKeeper Executable
+# ChronoGrapher Executable
 #------------------------------------------------------------------------------
-add_executable(chrono_keeper)
+add_executable(chrono_grapher)
 
-target_include_directories(chrono_keeper PRIVATE
+target_include_directories(chrono_grapher PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/chrono_common/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${HDF5_INCLUDE_DIRS}
 )
 
-target_sources(chrono_keeper PRIVATE
-    src/ChronoKeeperInstance.cpp
-    src/ChronoKeeperConfiguration.cpp
-    src/KeeperStoryPipeline.cpp
-    src/KeeperDataStore.cpp
-    src/DualEndpointChunkExtractorRDMA.cpp
+target_sources(chrono_grapher PRIVATE
+    src/ChronoGrapher.cpp
+    src/ChronoGrapherConfiguration.cpp
+    src/GrapherDataStore.cpp
+    src/HDF5FileChunkExtractor.cpp
 )
 
-target_link_libraries(chrono_keeper
+target_link_libraries(chrono_grapher
     PRIVATE
         chrono_common
         chronolog_client
         thallium
+        ${HDF5_LIBRARIES}
 )
 
-set_target_properties(chrono_keeper PROPERTIES
-    OUTPUT_NAME chrono-keeper
+set_target_properties(chrono_grapher PROPERTIES
+    OUTPUT_NAME chrono-grapher
     BUILD_WITH_INSTALL_RPATH TRUE
     SKIP_BUILD_RPATH TRUE
 )
@@ -36,6 +38,6 @@ set_target_properties(chrono_keeper PROPERTIES
 #------------------------------------------------------------------------------
 # Install binary
 #------------------------------------------------------------------------------
-chronolog_install_target(chrono_keeper)
+chronolog_install_target(chrono_grapher)
 
 # Configuration file is installed by ChronoVisor to avoid duplication

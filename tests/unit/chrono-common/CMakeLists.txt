@@ -14,7 +14,7 @@ add_executable(story_chunk_test
 )
 
 target_include_directories(story_chunk_test PRIVATE
-    ${CMAKE_SOURCE_DIR}/chrono_common/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
     ${CMAKE_SOURCE_DIR}/client/cpp/include
 )
 
@@ -36,7 +36,7 @@ add_executable(story_pipeline_test
 )
 
 target_include_directories(story_pipeline_test PRIVATE
-    ${CMAKE_SOURCE_DIR}/chrono_common/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
     ${CMAKE_SOURCE_DIR}/client/cpp/include
 )
 
@@ -58,7 +58,7 @@ add_executable(extraction_chain_config_test
 )
 
 target_include_directories(extraction_chain_config_test PRIVATE
-    ${CMAKE_SOURCE_DIR}/chrono_common/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
     ${CMAKE_SOURCE_DIR}/client/cpp/include
 )
 
@@ -83,7 +83,7 @@ add_executable(extraction_module_test
 )
 
 target_include_directories(extraction_module_test PRIVATE
-    ${CMAKE_SOURCE_DIR}/chrono_common/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
     ${CMAKE_SOURCE_DIR}/client/cpp/include
 )
 

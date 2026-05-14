@@ -10,7 +10,7 @@ add_executable(chrono_player)
 
 target_include_directories(chrono_player PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/chrono_common/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
 )
 
 target_sources(chrono_player PRIVATE
@@ -39,7 +39,7 @@ set_target_properties(chrono_player PROPERTIES
 )
 
 #------------------------------------------------------------------------------
-# Test executables: built from test/unit/ChronoPlayer/
+# Test executables: built from tests/unit/chrono-player/
 #------------------------------------------------------------------------------
 
 #------------------------------------------------------------------------------

@@ -38,7 +38,7 @@ foreach(_pair ${_di_props})
     )
     target_include_directories(${_bin} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_SOURCE_DIR}/chrono_common/include
+        ${CMAKE_SOURCE_DIR}/src/chrono-common/include
         ${HDF5_INCLUDE_DIRS}
     )
     target_link_libraries(${_bin} PRIVATE
