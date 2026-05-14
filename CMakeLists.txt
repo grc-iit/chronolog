@@ -243,7 +243,7 @@ add_custom_target(lint COMMAND cpplint --recursive
     --exclude=${CMAKE_CURRENT_SOURCE_DIR}/cmake-build-debug
     --exclude=${CMAKE_CURRENT_SOURCE_DIR}/external_libs
     --exclude=${CMAKE_CURRENT_SOURCE_DIR}/docs
-    --exclude=${CMAKE_CURRENT_SOURCE_DIR}/ci
+    --exclude=${CMAKE_CURRENT_SOURCE_DIR}/docker
     ${CMAKE_CURRENT_SOURCE_DIR})
 
 #------------------------------------------------------------------------------
