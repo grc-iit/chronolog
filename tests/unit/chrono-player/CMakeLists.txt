@@ -16,7 +16,7 @@ add_executable(transfer_agent_test
 target_include_directories(transfer_agent_test PRIVATE
     ${CMAKE_SOURCE_DIR}/ChronoPlayer/include
     ${CMAKE_SOURCE_DIR}/chrono_common/include
-    ${CMAKE_SOURCE_DIR}/Client/cpp/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
 )
 
 target_link_libraries(transfer_agent_test PRIVATE
@@ -49,7 +49,7 @@ add_executable(playback_service_test
 target_include_directories(playback_service_test PRIVATE
     ${CMAKE_SOURCE_DIR}/ChronoPlayer/include
     ${CMAKE_SOURCE_DIR}/chrono_common/include
-    ${CMAKE_SOURCE_DIR}/Client/cpp/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
 )
 
 target_link_libraries(playback_service_test PRIVATE
@@ -81,7 +81,7 @@ add_executable(hdf5_archive_reader_test
 target_include_directories(hdf5_archive_reader_test PRIVATE
     ${CMAKE_SOURCE_DIR}/ChronoPlayer/include
     ${CMAKE_SOURCE_DIR}/chrono_common/include
-    ${CMAKE_SOURCE_DIR}/Client/cpp/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
 )
 
 target_link_directories(hdf5_archive_reader_test PRIVATE ${HDF5_LIBRARY_DIRS})
@@ -108,13 +108,13 @@ endif()
 add_executable(fs_monitoring_test
     chrono_player_fs_monitoring_test.cpp
     ${CMAKE_SOURCE_DIR}/ChronoPlayer/src/HDF5ArchiveReadingAgent.cpp
-    ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
+    ${CMAKE_SOURCE_DIR}/client/cpp/src/chrono_monitor.cpp
 )
 
 target_include_directories(fs_monitoring_test PRIVATE
     ${CMAKE_SOURCE_DIR}/ChronoPlayer/include
     ${CMAKE_SOURCE_DIR}/chrono_common/include
-    ${CMAKE_SOURCE_DIR}/Client/cpp/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
 )
 
 target_link_directories(fs_monitoring_test PRIVATE ${HDF5_LIBRARY_DIRS})

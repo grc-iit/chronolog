@@ -5,8 +5,8 @@ add_library(grafana_stream STATIC
     Transform.cpp
 )
 
-set(CHRONOLOG_GEN_INCLUDE_DIR "${CMAKE_BINARY_DIR}/Client/cpp/include")
-set(CHRONOLOG_SRC_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/Client/cpp/include")
+set(CHRONOLOG_GEN_INCLUDE_DIR "${CMAKE_BINARY_DIR}/client/cpp/include")
+set(CHRONOLOG_SRC_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/client/cpp/include")
 target_include_directories(grafana_stream
   PUBLIC
     .

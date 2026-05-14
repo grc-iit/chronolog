@@ -14,11 +14,11 @@ target_sources(extract_test PRIVATE
     ${CMAKE_SOURCE_DIR}/chrono_common/src/ConfigurationBlocks.cpp
     ${CMAKE_SOURCE_DIR}/ChronoKeeper/src/ChronoKeeperConfiguration.cpp
     keeper_grapher_extract_test.cpp
-    ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
+    ${CMAKE_SOURCE_DIR}/client/cpp/src/chrono_monitor.cpp
 )
 
 target_include_directories(extract_test PRIVATE
-    ${CMAKE_SOURCE_DIR}/Client/cpp/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
     ${CMAKE_SOURCE_DIR}/chrono_common/include
     ${CMAKE_SOURCE_DIR}/ChronoKeeper/include
 )
@@ -39,11 +39,11 @@ target_sources(ingest_test PRIVATE
     ${CMAKE_SOURCE_DIR}/chrono_common/src/ConfigurationBlocks.cpp
     ${CMAKE_SOURCE_DIR}/ChronoGrapher/src/ChronoGrapherConfiguration.cpp
     keeper_grapher_ingest_test.cpp
-    ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
+    ${CMAKE_SOURCE_DIR}/client/cpp/src/chrono_monitor.cpp
 )
 
 target_include_directories(ingest_test PRIVATE
-    ${CMAKE_SOURCE_DIR}/Client/cpp/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
     ${CMAKE_SOURCE_DIR}/chrono_common/include
     ${CMAKE_SOURCE_DIR}/ChronoGrapher/include
 )

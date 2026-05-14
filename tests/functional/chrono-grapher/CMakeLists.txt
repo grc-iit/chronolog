@@ -17,7 +17,7 @@ add_executable(chrono_grapher_extraction_chain_test
 
 target_include_directories(chrono_grapher_extraction_chain_test PRIVATE
     ${CMAKE_SOURCE_DIR}/chrono_common/include
-    ${CMAKE_SOURCE_DIR}/Client/cpp/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
     ${CMAKE_SOURCE_DIR}/ChronoGrapher/include
     ${HDF5_INCLUDE_DIRS}
 )

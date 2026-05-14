@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 find_package(Threads REQUIRED)
-set(CHRONOLOG_GEN_INCLUDE_DIR "${CMAKE_BINARY_DIR}/Client/include")
+set(CHRONOLOG_GEN_INCLUDE_DIR "${CMAKE_BINARY_DIR}/client/include")
 set(GRAFANA_STREAM_PUBLIC_INCLUDE
     ${CHRONOLOG_GEN_INCLUDE_DIR}
     ${CMAKE_SOURCE_DIR}/GrafanaStream/StreamingScripts

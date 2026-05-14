@@ -22,7 +22,7 @@ add_library(chronolog_client
     src/ChronologClient.cpp
     src/ChronologClientImpl.cpp
     src/ClientConfiguration.cpp
-    ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
+    ${CMAKE_SOURCE_DIR}/client/cpp/src/chrono_monitor.cpp
 )
 
 # Include directories for the library
@@ -36,7 +36,7 @@ target_include_directories(chronolog_client
         ${JSON-C_INCLUDE_DIRS}
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
-        ${CMAKE_SOURCE_DIR}/Client/cpp/include
+        ${CMAKE_SOURCE_DIR}/client/cpp/include
 )
 
 # Link dependencies
