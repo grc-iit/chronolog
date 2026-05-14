@@ -281,12 +281,12 @@ add_subdirectory(Plugins)
 
 if(CHRONOLOG_BUILD_TESTS_NOW)
     enable_testing()
-    add_subdirectory(test)
+    add_subdirectory(tests)
 else()
     # Performance regression harness ships in every build type (including
     # Release) so the perf matrix can be run against optimized binaries. The
     # rest of the test tree remains Debug-only.
-    add_subdirectory(test/performance)
+    add_subdirectory(tests/performance)
 endif()
 
 #------------------------------------------------------------------------------
