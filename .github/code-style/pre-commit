@@ -7,7 +7,7 @@ set -e
 REPO_ROOT=$(git rev-parse --show-toplevel)
 
 # Adjust path to clang-format config if needed
-FORMAT_STYLE=file:"$REPO_ROOT/CodeStyleFiles/ChronoLog.clang-format"
+FORMAT_STYLE=file:"$REPO_ROOT/.github/code-style/ChronoLog.clang-format"
 
 # Resolve clang-format: search custom paths and PATH without modifying parent shell
 CLANG_FORMAT_NAME="${CLANG_FORMAT:-clang-format-18}"
@@ -37,8 +37,8 @@ else
 fi
 
 # Check if the clang-format configuration file exists
-if [ ! -f "$REPO_ROOT/CodeStyleFiles/ChronoLog.clang-format" ]; then
-  echo "Error: clang-format configuration file not found at $REPO_ROOT/CodeStyleFiles/ChronoLog.clang-format."
+if [ ! -f "$REPO_ROOT/.github/code-style/ChronoLog.clang-format" ]; then
+  echo "Error: clang-format configuration file not found at $REPO_ROOT/.github/code-style/ChronoLog.clang-format."
   exit 1
 fi
 
