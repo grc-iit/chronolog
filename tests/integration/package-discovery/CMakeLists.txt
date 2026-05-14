@@ -29,7 +29,7 @@ add_executable(test_cmake_discovery
 )
 target_link_libraries(test_cmake_discovery PRIVATE chronolog_client)
 target_include_directories(test_cmake_discovery PRIVATE
-    ${CMAKE_SOURCE_DIR}/Client/cpp/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
 )
 set_target_properties(test_cmake_discovery PROPERTIES OUTPUT_NAME chronolog-test-discovery-cmake)
 
@@ -46,7 +46,7 @@ add_executable(test_pkgconfig_discovery
     package_discovery_pkgconfig_test.cpp
 )
 target_include_directories(test_pkgconfig_discovery PRIVATE
-    ${CMAKE_SOURCE_DIR}/Client/cpp/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
 )
 target_link_libraries(test_pkgconfig_discovery PRIVATE chronolog_client)
 set_target_properties(test_pkgconfig_discovery PROPERTIES OUTPUT_NAME chronolog-test-discovery-pkgconfig)

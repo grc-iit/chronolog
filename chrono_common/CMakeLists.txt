@@ -20,9 +20,9 @@ add_library(chrono_common STATIC
 target_include_directories(chrono_common
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/Client/cpp/include>
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/client/cpp/include>
     PRIVATE
-        ${CMAKE_SOURCE_DIR}/Client/cpp/include
+        ${CMAKE_SOURCE_DIR}/client/cpp/include
 )
 
 target_link_libraries(chrono_common

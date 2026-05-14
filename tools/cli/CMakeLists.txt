@@ -12,7 +12,7 @@ add_executable(client_cli
 
 target_include_directories(client_cli PRIVATE
     ${CMAKE_SOURCE_DIR}/chrono_common/include
-    ${CMAKE_SOURCE_DIR}/Client/cpp/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
     ${MARGO_INCLUDE_DIRS}
 )
 
@@ -42,4 +42,4 @@ configure_file(
 #------------------------------------------------------------------------------
 chronolog_install_target(client_cli DESTINATION cli)
 
-# Client configuration file is installed by Client/cpp to avoid duplication
+# Client configuration file is installed by client/cpp to avoid duplication

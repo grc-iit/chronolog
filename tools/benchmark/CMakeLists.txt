@@ -13,7 +13,7 @@ add_executable(perf_bench
 
 target_include_directories(perf_bench PRIVATE
     ${CMAKE_SOURCE_DIR}/chrono_common/include
-    ${CMAKE_SOURCE_DIR}/Client/cpp/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
     ${MPI_INCLUDE_PATH}
     ${MARGO_INCLUDE_DIRS}
 )
