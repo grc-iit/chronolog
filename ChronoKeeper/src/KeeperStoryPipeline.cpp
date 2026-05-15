@@ -211,7 +211,7 @@ void chronolog::KeeperStoryPipeline::collectIngestedEvents()
     {
         mergeEvents(activeIngestionHandle->getPassiveDeque());
     }
-    LOG_INFO("[KeeperStoryPipeline] Collected ingested events for StoryID={}", storyId);
+    LOG_TRACE("[KeeperStoryPipeline] Collected ingested events for StoryID={}", storyId);
 }
 
 void chronolog::KeeperStoryPipeline::extractDecayedStoryChunks(uint64_t current_time)

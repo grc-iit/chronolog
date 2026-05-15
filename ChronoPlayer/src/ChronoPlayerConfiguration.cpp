@@ -80,6 +80,39 @@ int chronolog::PlayerConfiguration::parseJsonConf(json_object* json_conf)
                 }
             }
         }
+        else if(strcmp(key, "PlayerRecordingService") == 0)
+        {
+            if(!json_object_is_type(val, json_type_object))
+            {
+                std::cerr << "[PlayerConfiguration] Invalid 'RecordingService': expected object" << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
+            json_object* data_store_admin_service_conf = json_object_object_get(json_conf, "PlayerRecordingService");
+            json_object_object_foreach(data_store_admin_service_conf, key, val)
+            {
+                if(strcmp(key, "rpc") == 0)
+                {
+                    if(RECORDING_SERVICE_CONF.RPC_CONF.parseJsonConf(val) != chl::CL_SUCCESS)
+                        return chl::CL_ERR_INVALID_CONF;
+                }
+                else if(strcmp(key, "IngestionThreadCount") == 0)
+                {
+                    if(!json_object_is_type(val, json_type_int))
+                    {
+                        std::cerr << "[PlayerConfiguration] Invalid 'IngestionThreadCount': expected integer"
+                                  << std::endl;
+                        return chl::CL_ERR_INVALID_CONF;
+                    }
+                    int value = json_object_get_int(val);
+                    RECORDING_SERVICE_CONF.INGESTION_THREAD_COUNT = (value >= 1 ? value : 1);
+                }
+                else
+                {
+                    std::cerr << "[PlayerConfiguration] Unknown RecordingService configuration: "
+                              << key << std::endl;
+                }
+            }
+        }
         else if(strcmp(key, "VisorRegistryService") == 0)
         {
             if(!json_object_is_type(val, json_type_object))

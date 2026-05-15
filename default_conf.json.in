@@ -175,6 +175,14 @@
         "service_provider_id": 22
       }
     },
+    "VisorRegistryService": {
+      "rpc": {
+        "protocol_conf": "ofi+sockets",
+        "service_ip": "127.0.0.1",
+        "service_base_port": 8888,
+        "service_provider_id": 88
+      }
+    },
     "PlaybackQueryService": {
       "IngestionThreadCount": 1,
       "rpc": {
@@ -184,12 +192,13 @@
         "service_provider_id": 25
       }
     },
-    "VisorRegistryService": {
+    "PlayerRecordingService": {
+      "IngestionThreadCount": 1,
       "rpc": {
         "protocol_conf": "ofi+sockets",
         "service_ip": "127.0.0.1",
-        "service_base_port": 8888,
-        "service_provider_id": 88
+        "service_base_port": 7778,
+        "service_provider_id": 78
       }
     },
     "Monitoring": {

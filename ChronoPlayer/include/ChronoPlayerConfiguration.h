@@ -11,7 +11,7 @@
 namespace chronolog
 {
 
-struct PlaybackServiceConf
+struct RecordingServiceConf
 {
     RPCProviderConf RPC_CONF;
     uint32_t INGESTION_THREAD_COUNT = 1;
@@ -27,9 +27,10 @@ struct PlayerConfiguration
 {
     uint32_t RECORDING_GROUP;
     RPCProviderConf DATA_STORE_ADMIN_SERVICE_CONF;
-    PlaybackServiceConf PLAYBACK_SERVICE_CONF;
+    RecordingServiceConf PLAYBACK_SERVICE_CONF;
     RPCProviderConf VISOR_REGISTRY_SERVICE_CONF;
     LogConf LOG_CONF;
+    RecordingServiceConf RECORDING_SERVICE_CONF;
     DataStoreConf DATA_STORE_CONF{};
     ExtractorReaderConf READER_CONF;
 
@@ -51,6 +52,11 @@ struct PlayerConfiguration
         VISOR_REGISTRY_SERVICE_CONF.BASE_PORT = 8888;
         VISOR_REGISTRY_SERVICE_CONF.SERVICE_PROVIDER_ID = 88;
 
+        RECORDING_SERVICE_CONF.RPC_CONF.PROTO_CONF = "ofi+sockets";
+        RECORDING_SERVICE_CONF.RPC_CONF.IP = "127.0.0.1";
+        RECORDING_SERVICE_CONF.RPC_CONF.BASE_PORT = 7778;
+        RECORDING_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID = 78;
+
         DATA_STORE_CONF.max_story_chunk_size = 4096;
         DATA_STORE_CONF.story_chunk_duration_secs = 60;
         DATA_STORE_CONF.acceptance_window_secs = 180;
@@ -66,6 +72,7 @@ struct PlayerConfiguration
                ", DATA_STORE_ADMIN_SERVICE_CONF: " + DATA_STORE_ADMIN_SERVICE_CONF.to_String() +
                ", PLAYBACK_SERVICE_CONF: " + PLAYBACK_SERVICE_CONF.to_String() +
                ", VISOR_REGISTRY_SERVICE_CONF: " + VISOR_REGISTRY_SERVICE_CONF.to_String() +
+               ", RECORDING_SERVICE_CONF: " + RECORDING_SERVICE_CONF.to_String() +
                ", LOG_CONF: " + LOG_CONF.to_String() + ", DATA_STORE_CONF: " + DATA_STORE_CONF.to_String() +
                ", READER_CONF: " + READER_CONF.to_String() + "]";
     }
