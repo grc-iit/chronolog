@@ -5,7 +5,7 @@ on:
     branches: [main]
     paths:
       - 'website/**'
-      - 'docs-website/**'
+      - 'docs/**'
   workflow_dispatch:
 
 permissions:
@@ -39,14 +39,14 @@ jobs:
 
       - name: Install docs website dependencies
         run: npm ci
-        working-directory: docs-website
+        working-directory: docs
 
       - name: Build docs website
         run: npm run build
-        working-directory: docs-website
+        working-directory: docs
 
       - name: Merge docs into main website build
-        run: cp -r docs-website/build/. website/dist/docs/
+        run: cp -r docs/build/. website/dist/docs/
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
