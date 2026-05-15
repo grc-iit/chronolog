@@ -26,6 +26,7 @@ CONF_DIR="${WORK_DIR}/conf"
 BIN_DIR="${WORK_DIR}/bin"
 MONITOR_DIR="${WORK_DIR}/monitor"
 OUTPUT_DIR="${WORK_DIR}/output"
+CSV_ARCHIVE_DIR=""
 
 # Binary names
 VISOR_BIN_FILE_NAME="chrono-visor"
@@ -83,11 +84,14 @@ usage() {
   echo "  -q|--visor-hosts <path>          Hosts file for ChronoVisor (default: work_dir/conf/hosts_visor)"
   echo "  -k|--grapher-hosts <path>        Hosts file for ChronoGrapher (default: work_dir/conf/hosts_grapher)"
   echo "  -o|--keeper-hosts <path>         Hosts file for ChronoKeeper (default: work_dir/conf/hosts_keeper)"
+  echo "  -l|--player-hosts <path>         Hosts file for ChronoPlayer (default: work_dir/conf/hosts_player)"
   echo ""
   echo "Directory Settings:"
   echo "  -w|--work-dir <path>             Working directory (default: script_dir/..)"
   echo "  -m|--monitor-dir <path>          Monitoring directory (default: work_dir/monitor)"
   echo "  -u|--output-dir <path>           Output directory (default: work_dir/output)"
+  echo "  -b|--csv-archive-dir <path>      CSV archive directory for ChronoKeeper; if omitted, the csv_tier_extractor"
+  echo "                                   block is removed from all keeper config files (default: disabled)"
   echo ""
   echo "Binary Paths:"
   echo "  -v|--visor-bin <path>            ChronoVisor binary (default: work_dir/bin/chrono-visor)"
@@ -300,25 +304,25 @@ update_visor_ip() {
 
   echo -e "${INFO}Replacing ChronoVisor IP with ${visor_ip} ...${NC}"
   # Config File
-  jq ".chrono_visor.VisorClientPortalService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} >tmp.json && mv tmp.json ${CONF_FILE}
-  jq ".chrono_visor.VisorKeeperRegistryService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} >tmp.json && mv tmp.json ${CONF_FILE}
-  jq ".chrono_keeper.VisorKeeperRegistryService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} >tmp.json && mv tmp.json ${CONF_FILE}
-  jq ".chrono_grapher.VisorRegistryService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} >tmp.json && mv tmp.json ${CONF_FILE}
-  jq ".chrono_player.VisorRegistryService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} >tmp.json && mv tmp.json ${CONF_FILE}
+  jq ".chrono_visor.VisorClientPortalService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} >${CONF_DIR}/tmp.json && mv ${CONF_DIR}/tmp.json ${CONF_FILE}
+  jq ".chrono_visor.VisorKeeperRegistryService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} >${CONF_DIR}/tmp.json && mv ${CONF_DIR}/tmp.json ${CONF_FILE}
+  jq ".chrono_keeper.VisorKeeperRegistryService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} >${CONF_DIR}/tmp.json && mv ${CONF_DIR}/tmp.json ${CONF_FILE}
+  jq ".chrono_grapher.VisorRegistryService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} >${CONF_DIR}/tmp.json && mv ${CONF_DIR}/tmp.json ${CONF_FILE}
+  jq ".chrono_player.VisorRegistryService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} >${CONF_DIR}/tmp.json && mv ${CONF_DIR}/tmp.json ${CONF_FILE}
 
   # Client Config File
-  jq ".chrono_client.VisorClientPortalService.rpc.service_ip = \"${visor_ip}\"" "${CLIENT_CONF_FILE}" >tmp.json && mv tmp.json "${CLIENT_CONF_FILE}"
+  jq ".chrono_client.VisorClientPortalService.rpc.service_ip = \"${visor_ip}\"" "${CLIENT_CONF_FILE}" >${CONF_DIR}/tmp.json && mv ${CONF_DIR}/tmp.json "${CLIENT_CONF_FILE}"
 
   [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Update ChronoVisor IP done${NC}" || true
 }
 
 update_visor_monitor_file_path() {
   visor_host=$(head -1 ${VISOR_HOSTS})
-  jq ".chrono_visor.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono-visor-${visor_host}.log\"" "${CONF_FILE}" >tmp.json && mv tmp.json "${CONF_FILE}"
+  jq ".chrono_visor.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono-visor-${visor_host}.log\"" "${CONF_FILE}" >${CONF_DIR}/tmp.json && mv ${CONF_DIR}/tmp.json "${CONF_FILE}"
 }
 
 update_client_monitor_file_path() {
-  jq ".chrono_client.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono-client.log\"" "${CLIENT_CONF_FILE}" >tmp.json && mv tmp.json "${CLIENT_CONF_FILE}"
+  jq ".chrono_client.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono-client.log\"" "${CLIENT_CONF_FILE}" >${CONF_DIR}/tmp.json && mv ${CONF_DIR}/tmp.json "${CLIENT_CONF_FILE}"
 }
 
 generate_conf_for_each_keeper() {
@@ -390,7 +394,9 @@ generate_conf_for_each_recording_group() {
     jq ".chrono_player.RecordingGroup = ${i}" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
     jq ".chrono_keeper.ExtractionModule.extractors.extractor_to_grapher.receiving_endpoint.service_ip= \"${grapher_ip}\"" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
     jq ".chrono_grapher.KeeperGrapherDrainService.rpc.service_ip = \"${grapher_ip}\"" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
-    jq ".chrono_keeper.ExtractionModule.extractors.csv_tier_extractor.csv_archive_dir = \"${OUTPUT_DIR}\"" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
+    jq --arg csv_archive_dir "${CSV_ARCHIVE_DIR}" \
+       'if $csv_archive_dir != "" then .chrono_keeper.ExtractionModule.extractors.csv_tier_extractor.csv_archive_dir = $csv_archive_dir else del(.chrono_keeper.ExtractionModule.extractors.csv_tier_extractor) end' \
+       "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
     jq ".chrono_grapher.ExtractionModule.extractors.hdf5_archive_extractor.hdf5_archive_dir = \"${OUTPUT_DIR}\"" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
     jq ".chrono_player.PlayerStoreAdminService.rpc.service_ip = \"${player_ip}\"" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
     jq ".chrono_player.PlaybackQueryService.rpc.service_ip = \"${player_ip}\"" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
@@ -559,6 +565,7 @@ start() {
 
   echo -e "${INFO}Starting ...${NC}"
   mkdir -p "${MONITOR_DIR}" "${OUTPUT_DIR}"
+  [[ -n "${CSV_ARCHIVE_DIR}" ]] && mkdir -p "${CSV_ARCHIVE_DIR}"
 
   prepare_hosts
   check_bin_files
@@ -672,12 +679,13 @@ clean() {
   rm -f ${CONF_FILE}.*
   rm -f ${CLIENT_CONF_FILE}.*
   rm -f ${OUTPUT_DIR}/*
+  [[ -n "${CSV_ARCHIVE_DIR}" ]] && rm -f "${CSV_ARCHIVE_DIR}"/*
 
   [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Clean done${NC}" || true
 }
 
 parse_args() {
-  TEMP=$(getopt -o w:m:u:v:g:p:a:q:k:o:f:n:j:r:hdsce --long work-dir:,monitor-dir:,output-dir:,visor-bin:,grapher-bin:,keeper-bin:,player-bin:,visor-hosts:,grapher-hosts:,keeper-hosts:,conf-file:,client-conf-file:,job-id:,record-groups:,help,start,stop,clean,verbose -- "$@")
+  TEMP=$(getopt -o w:m:u:b:v:g:p:a:q:k:o:l:f:n:j:r:hdsce --long work-dir:,monitor-dir:,output-dir:,csv-archive-dir:,visor-bin:,grapher-bin:,keeper-bin:,player-bin:,visor-hosts:,grapher-hosts:,keeper-hosts:,player-hosts:,conf-file:,client-conf-file:,job-id:,record-groups:,help,start,stop,clean,verbose -- "$@")
   if [ $? != 0 ]; then
     echo -e "${ERR}Terminating ...${NC}" >&2
     exit 1
@@ -729,6 +737,10 @@ parse_args() {
       mkdir -p ${OUTPUT_DIR}
       shift 2
       ;;
+    -b | --csv-archive-dir)
+      CSV_ARCHIVE_DIR=$(realpath -m "$2")
+      shift 2
+      ;;
     -v | --visor-bin)
       VISOR_BIN=$(realpath -m "$2")
       VISOR_BIN_FILE_NAME=$(basename ${VISOR_BIN})
@@ -765,9 +777,31 @@ parse_args() {
       KEEPER_HOSTS=$(realpath -m "$2")
       shift 2
       ;;
+    -l | --player-hosts)
+      PLAYER_HOSTS=$(realpath -m "$2")
+      shift 2
+      ;;
     -f | --conf-file)
       CONF_FILE=$(realpath -m "$2")
-      CONF_DIR=$(dirname ${CONF_FILE})
+      CONF_DIR=$(dirname "${CONF_FILE}")
+      # Infer the install root from the conventional layout (install_root/conf/).
+      # This updates BIN_DIR, LIB_DIR, MONITOR_DIR, OUTPUT_DIR, and all binary
+      # paths so that passing -f alone is sufficient when binaries are not in
+      # a custom location.  Explicit -v/-g/-p/-a flags processed after -f will
+      # still override individual binary paths.
+      WORK_DIR=$(dirname "${CONF_DIR}")
+      BIN_DIR="${WORK_DIR}/bin"
+      LIB_DIR="${WORK_DIR}/lib"
+      MONITOR_DIR="${WORK_DIR}/monitor"
+      OUTPUT_DIR="${WORK_DIR}/output"
+      VISOR_BIN="${BIN_DIR}/${VISOR_BIN_FILE_NAME}"
+      GRAPHER_BIN="${BIN_DIR}/${GRAPHER_BIN_FILE_NAME}"
+      KEEPER_BIN="${BIN_DIR}/${KEEPER_BIN_FILE_NAME}"
+      PLAYER_BIN="${BIN_DIR}/${PLAYER_BIN_FILE_NAME}"
+      VISOR_BIN_DIR="${BIN_DIR}"
+      GRAPHER_BIN_DIR="${BIN_DIR}"
+      KEEPER_BIN_DIR="${BIN_DIR}"
+      PLAYER_BIN_DIR="${BIN_DIR}"
       shift 2
       ;;
     -n | --client-conf-file)

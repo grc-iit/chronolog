@@ -30,6 +30,7 @@ CONF_DIR="${WORK_DIR}/conf"
 BIN_DIR="${WORK_DIR}/bin"
 MONITOR_DIR="${WORK_DIR}/monitor"
 OUTPUT_DIR="${WORK_DIR}/output"
+CSV_ARCHIVE_DIR=""
 
 # Files (with defaults)
 VISOR_BIN="${BIN_DIR}/chrono-visor"
@@ -103,6 +104,7 @@ generate_config_files() {
     local num_recording_groups=$5
     local monitor_dir=$6
     local client_conf_file=$7
+    local csv_archive_dir=$8
 
     mkdir -p "${monitor_dir}"
 
@@ -198,6 +200,7 @@ generate_config_files() {
 
         jq --arg monitor_dir "$monitor_dir" \
             --arg output_dir "$output_dir" \
+            --arg csv_archive_dir "$csv_archive_dir" \
             --argjson new_port_keeper_record $new_port_keeper_record \
             --argjson new_port_keeper_drain $new_port_keeper_drain \
             --argjson new_port_keeper_datastore $new_port_keeper_datastore \
@@ -205,7 +208,7 @@ generate_config_files() {
             --arg keeper_index "$keeper_index" \
             '.chrono_keeper.KeeperRecordingService.rpc.service_base_port = $new_port_keeper_record |
             .chrono_keeper.KeeperDataStoreAdminService.rpc.service_base_port = $new_port_keeper_datastore |
-            .chrono_keeper.ExtractionModule.extractors.csv_tier_extractor.csv_archive_dir = ($output_dir + "/") |
+            (if $csv_archive_dir != "" then .chrono_keeper.ExtractionModule.extractors.csv_tier_extractor.csv_archive_dir = ($csv_archive_dir + "/") else del(.chrono_keeper.ExtractionModule.extractors.csv_tier_extractor) end) |
             .chrono_keeper.ExtractionModule.extractors.extractor_to_grapher.receiving_endpoint.service_base_port = $new_port_keeper_drain |
             .chrono_keeper.RecordingGroup = $grapher_index |
             .chrono_keeper.Monitoring.monitor.file = ($monitor_dir + "/chrono-keeper-" + ($keeper_index | tostring) + ".log")' "$default_conf" > "$keeper_output_file"
@@ -335,8 +338,9 @@ start() {
     echo -e "${INFO}Preparing to start ChronoLog...${NC}"
     check_work_dir
     mkdir -p "${MONITOR_DIR}" "${OUTPUT_DIR}"
+    [[ -n "${CSV_ARCHIVE_DIR}" ]] && mkdir -p "${CSV_ARCHIVE_DIR}"
     check_installation
-    generate_config_files "${NUM_KEEPERS}" "${CONF_FILE}" "${CONF_DIR}" "${OUTPUT_DIR}" "${NUM_RECORDING_GROUPS}" "${MONITOR_DIR}" "${CLIENT_CONF_FILE}"
+    generate_config_files "${NUM_KEEPERS}" "${CONF_FILE}" "${CONF_DIR}" "${OUTPUT_DIR}" "${NUM_RECORDING_GROUPS}" "${MONITOR_DIR}" "${CLIENT_CONF_FILE}" "${CSV_ARCHIVE_DIR}"
     echo -e "${INFO}Starting ChronoLog...${NC}"
     start_service "${VISOR_BIN}" "--config ${CONF_DIR}/chrono-visor-conf.json" "chrono-visor.launch.log"
     sleep 2
@@ -381,6 +385,11 @@ clean() {
     echo -e "${DEBUG}Removing output files${NC}"
     rm -f "${OUTPUT_DIR}"/*
 
+    if [[ -n "${CSV_ARCHIVE_DIR}" ]]; then
+        echo -e "${DEBUG}Removing CSV archive files${NC}"
+        rm -f "${CSV_ARCHIVE_DIR}"/*
+    fi
+
     echo -e "${INFO}ChronoLog cleaning done.${NC}"
 }
 
@@ -400,6 +409,8 @@ usage() {
     echo "  -w|--work-dir <path>             Working directory (default: script_dir/..)"
     echo "  -m|--monitor-dir <path>          Monitor directory (default: work_dir/monitor)"
     echo "  -u|--output-dir <path>           Output directory (default: work_dir/output)"
+    echo "  -b|--csv-archive-dir <path>      CSV archive directory for ChronoKeeper; if omitted, the csv_tier_extractor"
+  echo "                                   block is removed from all keeper config files (default: disabled)"
     echo ""
     echo "Binary Paths:"
     echo "  -v|--visor-bin <path>            Path to ChronoVisor binary (default: work_dir/bin/chrono-visor)"
@@ -455,6 +466,9 @@ parse_args() {
             -u|--output-dir)
                 OUTPUT_DIR=$(realpath -m "$2")
                 OUTPUT_DIR_USER_SET=true
+                shift 2 ;;
+            -b|--csv-archive-dir)
+                CSV_ARCHIVE_DIR=$(realpath -m "$2")
                 shift 2 ;;
             -m|--monitor-dir)
                 MONITOR_DIR=$(realpath -m "$2")
