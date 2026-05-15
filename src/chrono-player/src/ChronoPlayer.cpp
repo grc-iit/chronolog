@@ -20,6 +20,7 @@
 #include <ArchiveReadingRequestQueue.h>
 #include <PlaybackService.h>
 #include <ChronoPlayerConfiguration.h>
+#include <StoryChunkConsumerService.h>
 
 namespace chl = chronolog;
 namespace tl = thallium;
@@ -149,8 +150,47 @@ int main(int argc, char** argv)
     chronolog::PlayerIdCard playerIdCard(recording_group_id, playbackServiceId);
     LOG_INFO("[ChronoPlayer] created PlayerIdCard: {}", chl::to_string(playerIdCard));
 
-    // Instantiate MemoryDataStore & ExtractorModule
+    // Instantiate StroyChunk Recording Service &  MemoryDataStore 
     chronolog::StoryChunkIngestionQueue ingestionQueue;
+
+    chronolog::ServiceId recordingServiceId(PLAYER_CONF.RECORDING_SERVICE_CONF.RPC_CONF.PROTO_CONF,
+                                           PLAYER_CONF.RECORDING_SERVICE_CONF.RPC_CONF.IP,
+                                           PLAYER_CONF.RECORDING_SERVICE_CONF.RPC_CONF.BASE_PORT,
+                                           PLAYER_CONF.RECORDING_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID);
+
+    if(!recordingServiceId.is_valid())
+    {
+        LOG_CRITICAL("[ChronoPlayer] Failed to start RecordingService. Invalid endpoint provided.");
+        return (-1);
+    }
+
+    std::string RECORDING_SERVICE_NA_STRING;
+    recordingServiceId.get_service_as_string(RECORDING_SERVICE_NA_STRING);
+    tl::engine * recordingEngine = nullptr;
+    chl::StoryChunkConsumerService* recordingService =nullptr;
+
+    try
+    {
+        int rpc_thread_count = static_cast<int>(PLAYER_CONF.RECORDING_SERVICE_CONF.INGESTION_THREAD_COUNT);
+        margo_instance_id margo_id = margo_init(RECORDING_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, rpc_thread_count);
+        recordingEngine = new tl::engine(margo_id);
+
+
+        LOG_INFO("[ChronoPlayer starting RecordingService at {}", chl::to_string(recordingServiceId));
+
+        recordingService =
+                chronolog::StoryChunkConsumerService::CreateChunkConsumerService(*recordingEngine,
+                                                                                 recordingServiceId.getProviderId(),
+                                                                                 ingestionQueue);
+    }
+    catch(tl::exception const&)
+    {
+        LOG_ERROR("[ChronoPlayer] failed to create RecordingService");
+        recordingService = nullptr;
+        return (-1);
+    }
+
+    // PlayerDataStore uses ExtractionModule with only LoggingExtractor 
     chronolog::StoryChunkExtractionQueue extractionQueue;
 
     chronolog::PlayerDataStore theDataStore(ingestionQueue, extractionQueue);
@@ -279,6 +319,7 @@ int main(int argc, char** argv)
     delete archiveReadingAgent;
     delete playerStoreAdminService;
     delete playbackService;
+    delete recordingService;
     // Shutdown the Data Collection
     //theDataStore.shutdownDataCollection();
     // Shutdown extraction module
@@ -290,6 +331,7 @@ int main(int argc, char** argv)
     // delete recordingEngine;
     delete dataAdminEngine;
     delete playbackEngine;
+    delete recordingEngine;
     LOG_INFO("[ChronoPlayer] Shutdown completed. Exiting.");
     return exit_code;
 }
