@@ -218,3 +218,92 @@ chronolog::PlayerDataStore::~PlayerDataStore()
     LOG_INFO("[PlayerDataStore] Shutdown completed successfully. Active StoryPipelines count={}",
              theMapOfStoryPipelines.size());
 }
+
+////
+int chronolog::PlayerDataStore::startStoryRecording(std::string const& chronicle,
+                                                     std::string const& story,
+                                                     chronolog::StoryId const& story_id,
+                                                     uint64_t start_time)
+{
+    LOG_INFO("[PlayerDataStore] Start recording story: Chronicle={}, Story={}, StoryId={}",
+             chronicle,
+             story,
+             story_id);
+
+    // Get dataStoreMutex, check for story_id_presence & add new StoryPipeline if needed
+    std::lock_guard storeLock(dataStoreMutex);
+    auto pipeline_iter = theMapOfStoryPipelines.find(story_id);
+    if(pipeline_iter != theMapOfStoryPipelines.end())
+    {
+        LOG_INFO("[PlayerDataStore] Story already being recorded. StoryId: {}", story_id);
+        //check it the pipeline was put on the waitingForExit list by the previous acquisition
+        // and remove it from there
+        auto waiting_iter = pipelinesWaitingForExit.find(story_id);
+        if(waiting_iter != pipelinesWaitingForExit.end())
+        {
+            pipelinesWaitingForExit.erase(waiting_iter);
+        }
+
+        return chronolog::CL_SUCCESS;
+    }
+
+    auto result = theMapOfStoryPipelines.emplace(
+            std::pair<chl::StoryId, chl::StoryPipeline*>(story_id,
+                                                         new chl::StoryPipeline(theExtractionQueue,
+                                                                                chronicle,
+                                                                                story,
+                                                                                story_id,
+                                                                                start_time,
+                                                                                story_chunk_duration_secs,
+                                                                                acceptance_window_secs)));
+
+    if(result.second)
+    {
+        LOG_INFO("[PlayerDataStore] New StoryPipeline created successfully. StoryId {}", story_id);
+        pipeline_iter = result.first;
+        //engage StoryPipeline with the IngestionQueue
+        chl::StoryChunkIngestionHandle* ingestionHandle = (*pipeline_iter).second->getActiveIngestionHandle();
+        theIngestionQueue.addStoryIngestionHandle(story_id, ingestionHandle);
+        return chronolog::CL_SUCCESS;
+    }
+    else
+    {
+        LOG_ERROR(
+                "[PlayerDataStore] Failed to create StoryPipeline for StoryId: {}. Possible memory or resource issue.",
+                story_id);
+        return chronolog::CL_ERR_UNKNOWN;
+    }
+}
+////////////////////////
+
+int chronolog::PlayerDataStore::stopStoryRecording(chronolog::StoryId const& story_id)
+{
+    LOG_INFO("[PlayerDataStore] Stop recording StoryId={}", story_id);
+    // we do not yet disengage the StoryPipeline from the IngestionQueue right away
+    // but put it on the WaitingForExit list to be finalized, persisted to disk , and
+    // removed from memory at exit_time = now+acceptance_window...
+    // unless there's a new story acquisition request comes before that moment
+    std::lock_guard storeLock(dataStoreMutex);
+    auto pipeline_iter = theMapOfStoryPipelines.find(story_id);
+    if(pipeline_iter != theMapOfStoryPipelines.end())
+    {
+        uint64_t exit_time = std::chrono::high_resolution_clock::now().time_since_epoch().count() +
+                             inactive_pipeline_delay_secs * 1000000000;
+        // (*pipeline_iter).second->getAcceptanceWindow();
+        pipelinesWaitingForExit[(*pipeline_iter).first] =
+                (std::pair<chl::StoryPipeline*, uint64_t>((*pipeline_iter).second, exit_time));
+        LOG_INFO("[PlayerDataStore] Scheduled pipeline to retire: StoryId {} timeline {}-{} acceptanceWindow {} "
+                 "retirementTime {}",
+                 (*pipeline_iter).second->getStoryId(),
+                 (*pipeline_iter).second->TimelineStart(),
+                 (*pipeline_iter).second->TimelineEnd(),
+                 (*pipeline_iter).second->getAcceptanceWindow(),
+                 exit_time);
+    }
+    else
+    {
+        LOG_WARNING("[PlayerDataStore] Attempt to stop recording for non-existent StoryId={}", story_id);
+    }
+    return chronolog::CL_SUCCESS;
+}
+
