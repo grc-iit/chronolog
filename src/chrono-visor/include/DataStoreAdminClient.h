@@ -15,10 +15,6 @@ namespace tl = thallium;
 namespace chronolog
 {
 
-//typedef std::string ChronicleName;
-//typedef std::string StoryName;
-//typedef uint64_t StoryId;
-
 class DataStoreAdminClient
 {
 
@@ -106,8 +102,8 @@ public:
     }
 
 private:
-    std::string service_addr;           // na address of Keeper Collection Service
-    uint16_t service_provider_id;       // Keeper CollectionService provider id
+    std::string service_addr;           // na address of Keeper/Grapher/Player Collection Service
+    uint16_t service_provider_id;       // Keeper/Grapher/Player CollectionService provider id
     tl::provider_handle service_handle; //provider_handle for remote collector service
     tl::remote_procedure collection_service_available;
     tl::remote_procedure shutdown_data_collection;

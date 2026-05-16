@@ -650,6 +650,23 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
     if(recording_group->playerProcess != nullptr)
     {
         player_service_id = recording_group->playerProcess->idCard.getPlaybackServiceId();
+        int rpc_player = notifyPlayerOfStoryRecordingStart(*recording_group, chronicle, story, story_id, story_start_time);
+
+        if(rpc_player == chronolog::CL_SUCCESS)
+	{
+            player_service_id = recording_group->playerProcess->idCard.getPlaybackServiceId();
+            LOG_DEBUG("[ChronoProcessRegistry]  RecordingGroup {}  notified Player  of Story {} Start",
+                recording_group->groupId,
+                story_id);
+	}
+	else
+	{
+             LOG_WARNING(
+                "[ChronoProcessRegistry]  RecordingGroup {} failed to notify Player of Story {} Start : err_code {}",
+                recording_group->groupId,
+                story_id,
+                rpc_return);
+        }
     }
 
     LOG_INFO("[ChronoProcessRegistry]  RecordingGroup {}  notified  of story {} Start : group has {} keepers and "
@@ -727,6 +744,72 @@ int KeeperRegistry::notifyGrapherOfStoryRecordingStart(RecordingGroup& recording
 
     return return_code;
 }
+/////////
+int KeeperRegistry::notifyPlayerOfStoryRecordingStart(RecordingGroup& recordingGroup,
+                                                       ChronicleName const& chronicle,
+                                                       StoryName const& story,
+                                                       StoryId const& storyId,
+                                                       uint64_t story_start_time)
+{
+    int return_code = chronolog::CL_ERR_UNKNOWN;
+
+    if(!is_running())
+    {
+        LOG_ERROR("[ChronoProcessRegistry] Registry has no active RecordingGroups to start recording story {}",
+                  storyId);
+        return chronolog::CL_ERR_UNKNOWN;
+    }
+
+    DataStoreAdminClient* dataAdminClient = nullptr;
+
+    {
+        // NOTE: we release the registryLock before sending rpc request so that we do not hold it for the duration of rpc communication.
+        // We delay the destruction of unactive adminClients that might be triggered by the unregister call from a different thread
+        //  to protect us from the unfortunate case of aminClient object being deleted
+        // while this thread is waiting for rpc response
+        std::lock_guard<std::mutex> lock(registryLock);
+
+        if(recordingGroup.playerProcess != nullptr && recordingGroup.playerProcess->active &&
+           recordingGroup.playerProcess->adminClient != nullptr)
+        {
+            dataAdminClient = recordingGroup.playerProcess->adminClient;
+        }
+        else
+        {
+            LOG_WARNING("[ChronoProcessRegistry] player for recordingGroup {} is not available for notification",
+                        recordingGroup.groupId);
+        }
+    }
+
+    if(dataAdminClient == nullptr)
+    {
+        return return_code;
+    }
+
+    try
+    {
+        return_code = dataAdminClient->send_start_story_recording(chronicle, story, storyId, story_start_time);
+        if(return_code != chronolog::CL_SUCCESS)
+        {
+            LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to player {}",
+                        recordingGroup.grapherProcess->idCardString);
+        }
+        else
+        {
+            LOG_INFO("[ChronoProcessRegistry] Registry notified player {} to start recording StoryID={} with StartTime={}",
+                     recordingGroup.grapherProcess->idCardString,
+                     storyId,
+                     story_start_time);
+        }
+    }
+    catch(thallium::exception const& ex)
+    {
+        LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to player {}",
+                    recordingGroup.grapherProcess->idCardString);
+    }
+
+    return return_code;
+}
 
 ///////////////
 int KeeperRegistry::notifyGrapherOfStoryRecordingStop(RecordingGroup& recordingGroup, StoryId const& storyId)
@@ -786,6 +869,71 @@ int KeeperRegistry::notifyGrapherOfStoryRecordingStop(RecordingGroup& recordingG
     catch(thallium::exception const& ex)
     {
         LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to grapher {}", id_string.str());
+    }
+
+    return return_code;
+}
+/////////////////////
+
+
+///////////////
+int KeeperRegistry::notifyPlayerOfStoryRecordingStop(RecordingGroup& recordingGroup, StoryId const& storyId)
+{
+    int return_code = chronolog::CL_ERR_UNKNOWN;
+
+    if(!is_running())
+    {
+        LOG_ERROR("[ChronoProcessRegistry] Registry has no active RecordingGroups to start recording story {}",
+                  storyId);
+        return chronolog::CL_ERR_NO_KEEPERS;
+    }
+
+    DataStoreAdminClient* dataAdminClient = nullptr;
+
+    std::stringstream id_string;
+
+    {
+        // NOTE: we release the registryLock before sending rpc request so that we do not hold it for the duration of rpc communication.
+        // We delay the destruction of unactive adminClients that might be triggered by the unregister call from a different thread
+        //  to protect us from the unfortunate case of aminClient object being deleted
+        // while this thread is waiting for rpc response
+        std::lock_guard<std::mutex> lock(registryLock);
+
+        if(recordingGroup.playerProcess != nullptr && recordingGroup.playerProcess->active &&
+           recordingGroup.playerProcess->adminClient != nullptr)
+        {
+            id_string << recordingGroup.playerProcess->idCard;
+            dataAdminClient = recordingGroup.playerProcess->adminClient;
+        }
+        else
+        {
+            LOG_WARNING("[ChronoProcessRegistry] player for recordingGroup {} is not available for notification",
+                        recordingGroup.groupId);
+        }
+    }
+
+    if(dataAdminClient == nullptr)
+    {
+        return return_code;
+    }
+
+    try
+    {
+        return_code = dataAdminClient->send_stop_story_recording(storyId);
+        if(return_code != chronolog::CL_SUCCESS)
+        {
+            LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to player {}", id_string.str());
+        }
+        else
+        {
+            LOG_INFO("[ChronoProcessRegistry] Registry notified player {} to stop recording StoryID={} ",
+                     id_string.str(),
+                     storyId);
+        }
+    }
+    catch(thallium::exception const& ex)
+    {
+        LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to player {}", id_string.str());
     }
 
     return return_code;
