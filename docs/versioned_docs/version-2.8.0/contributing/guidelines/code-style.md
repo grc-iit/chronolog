@@ -15,7 +15,7 @@ Install clang-format-18 from the default Ubuntu 24.04 repositories:
 sudo apt-get update && sudo apt-get install -y clang-format-18
 ```
 
-The project configuration lives at [`CodeStyleFiles/ChronoLog.clang-format`](https://github.com/grc-iit/ChronoLog/tree/develop/CodeStyleFiles/ChronoLog.clang-format). Key settings:
+The project configuration lives at [`.github/code-style/ChronoLog.clang-format`](https://github.com/grc-iit/ChronoLog/tree/develop/.github/code-style/ChronoLog.clang-format). Key settings:
 
 | Setting | Value |
 |---|---|
@@ -32,15 +32,15 @@ The project configuration lives at [`CodeStyleFiles/ChronoLog.clang-format`](htt
 Format a single file:
 
 ```bash
-clang-format-18 -i -style=file:CodeStyleFiles/ChronoLog.clang-format path/to/file.cpp
+clang-format-18 -i -style=file:.github/code-style/ChronoLog.clang-format path/to/file.cpp
 ```
 
 ### Pre-commit Hook
 
-The repository includes a ready-made hook at `CodeStyleFiles/pre-commit` that automatically formats staged C/C++ files before each commit. Install it by copying it into your local hooks directory:
+The repository includes a ready-made hook at `.github/code-style/pre-commit` that automatically formats staged C/C++ files before each commit. Install it by copying it into your local hooks directory:
 
 ```bash
-cp CodeStyleFiles/pre-commit .git/hooks/pre-commit
+cp .github/code-style/pre-commit .git/hooks/pre-commit
 chmod +x .git/hooks/pre-commit
 ```
 
@@ -52,7 +52,7 @@ The hook searches for `clang-format-18` in `~/.local/bin`, `/usr/local/bin`, `/u
 
 1. Go to **File > Settings > Editor > Code Style > C/C++**
 2. Click the gear icon and choose **Import Scheme**
-3. Import `CodeStyleFiles/ChronoLog.xml`
+3. Import `.github/code-style/ChronoLog.xml`
 
 ### VS Code
 
@@ -61,14 +61,14 @@ Install the **Clang-Format** extension (or use clangd), then add to your workspa
 ```json
 {
   "C_Cpp.clang_format_path": "/usr/bin/clang-format-18",
-  "C_Cpp.clang_format_style": "file:${workspaceFolder}/CodeStyleFiles/ChronoLog.clang-format",
+  "C_Cpp.clang_format_style": "file:${workspaceFolder}/.github/code-style/ChronoLog.clang-format",
   "editor.formatOnSave": true
 }
 ```
 
 ### Other Editors
 
-Point your editor's clang-format integration at the `CodeStyleFiles/ChronoLog.clang-format` file and ensure it uses version 18. Different versions may produce different output.
+Point your editor's clang-format integration at the `.github/code-style/ChronoLog.clang-format` file and ensure it uses version 18. Different versions may produce different output.
 
 ## CI Enforcement
 
@@ -86,7 +86,7 @@ gh run download <run-id> -n clang-format-patches
 git apply format_fixes.patch
 
 # Option B: format the files manually
-clang-format-18 -i -style=file:CodeStyleFiles/ChronoLog.clang-format <file>
+clang-format-18 -i -style=file:.github/code-style/ChronoLog.clang-format <file>
 
 # Then commit and push
 git add -u && git commit -m "style: fix formatting"
@@ -111,7 +111,7 @@ git push
 
 ### Error Codes
 
-ChronoLog uses integer error codes defined in `chrono_common/include/chronolog_errcode.h`. Return `CL_SUCCESS` (0) on success and negative values on failure. The file provides `to_string()` conversion functions for human-readable log output.
+ChronoLog uses integer error codes defined in `src/chrono-common/include/chronolog_errcode.h`. Return `CL_SUCCESS` (0) on success and negative values on failure. The file provides `to_string()` conversion functions for human-readable log output.
 
 ### Logging
 

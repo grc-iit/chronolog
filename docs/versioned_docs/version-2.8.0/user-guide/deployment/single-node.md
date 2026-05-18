@@ -5,7 +5,7 @@ title: "Single Node Deployment"
 
 # Single Node Deployment
 
-`deploy_local.sh` deploys ChronoLog on a single machine from an already-installed ChronoLog tree. It handles starting, stopping, and cleaning only — it does not build or install. The script is located at `tools/deploy/ChronoLog/deploy_local.sh` in the repository, and is also copied into the installed tree at `<work-dir>/deploy/deploy_local.sh`.
+`deploy_local.sh` deploys ChronoLog on a single machine from an already-installed ChronoLog tree. It handles starting, stopping, and cleaning only — it does not build or install. The script is located at `tools/deploy/deploy_local.sh` in the repository, and is also copied into the installed tree at `<work-dir>/deploy/deploy_local.sh`.
 
 ## Prerequisites
 

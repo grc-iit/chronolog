@@ -42,7 +42,7 @@ Starting with ChronoLog v2.8.0 the configuration system is split into a lightwei
 
 ### `ConfigurationManager` (shared loader)
 
-`chrono_common/include/ConfigurationManager.h` parses the JSON file once and exposes:
+`src/chrono-common/include/ConfigurationManager.h` parses the JSON file once and exposes:
 
 - `ClockConf CLOCK_CONF` — clock-source settings parsed from `clock`.
 - `AuthConf AUTH_CONF` — authentication settings parsed from `authentication`.
@@ -63,10 +63,10 @@ Each server process owns a configuration class that lives alongside its source t
 
 | Process        | Header                                                | Class                  |
 | -------------- | ----------------------------------------------------- | ---------------------- |
-| ChronoVisor    | `ChronoVisor/include/ChronoVisorConfiguration.h`      | `VisorConfiguration`   |
-| ChronoKeeper   | `ChronoKeeper/include/ChronoKeeperConfiguration.h`    | `KeeperConfiguration`  |
-| ChronoGrapher  | `ChronoGrapher/include/ChronoGrapherConfiguration.h`  | `GrapherConfiguration` |
-| ChronoPlayer   | `ChronoPlayer/include/ChronoPlayerConfiguration.h`    | `PlayerConfiguration`  |
+| ChronoVisor    | `src/chrono-visor/include/ChronoVisorConfiguration.h`      | `VisorConfiguration`   |
+| ChronoKeeper   | `src/chrono-keeper/include/ChronoKeeperConfiguration.h`    | `KeeperConfiguration`  |
+| ChronoGrapher  | `src/chrono-grapher/include/ChronoGrapherConfiguration.h`  | `GrapherConfiguration` |
+| ChronoPlayer   | `src/chrono-player/include/ChronoPlayerConfiguration.h`    | `PlayerConfiguration`  |
 
 A typical startup sequence inside each server executable looks like:
 
@@ -82,7 +82,7 @@ if (visorConf.parseJsonConf(confManager.VISOR_JSON_CONF) != chronolog::CL_SUCCES
 
 ### Shared Configuration Blocks
 
-Configuration fragments that appear in more than one component are defined once in `chrono_common/include/ConfigurationBlocks.h` and composed into each per-component class:
+Configuration fragments that appear in more than one component are defined once in `src/chrono-common/include/ConfigurationBlocks.h` and composed into each per-component class:
 
 | Block                 | Purpose                                                                |
 | --------------------- | ---------------------------------------------------------------------- |
@@ -91,7 +91,8 @@ Configuration fragments that appear in more than one component are defined once 
 | `RPCProviderConf`     | One Thallium endpoint: protocol, IP, port, provider id (`rpc` block).  |
 | `LogConf`             | Per-process log sink configuration (`Monitoring.monitor` block).       |
 | `DataStoreConf`       | Story-chunk sizing and lifecycle (`DataStoreInternals` block).         |
-| `ExtractorReaderConf` | Filesystem location for story files (`Extractors` / `ArchiveReaders`). |
+| `ExtractorReaderConf` | Filesystem location for archived story files (`ArchiveReaders` block, ChronoPlayer only). |
+| `ExtractionModuleConfiguration` | Configurable extraction pipeline used by ChronoKeeper and ChronoGrapher (`ExtractionModule` block). Lives in `src/chrono-common/include/ExtractionModuleConfiguration.h`. |
 
 ### Why the Split Matters
 

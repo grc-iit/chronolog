@@ -60,13 +60,13 @@ export INFLUX_URL="http://$VM_IP:8086/api/v2/write?org=$INFLUX_ORG&bucket=$INFLU
 ```
 
 :::note
-After setting `VM_IP`, update the IP address in the InfluxDB datasource provisioning file at `Plugins/chronostream/GrafanaInfluxSetup/provisioning/datasources/datasource.yml`.
+After setting `VM_IP`, update the IP address in the InfluxDB datasource provisioning file at `plugins/chrono-stream/GrafanaInfluxSetup/provisioning/datasources/datasource.yml`.
 :::
 
 ### 2. Build and Install ChronoLog
 
 ```bash
-cd $SRC_ROOT/tools/deploy/ChronoLog
+cd $SRC_ROOT/tools/deploy
 ./local_single_user_deploy.sh -b -I $INSTALL_PREFIX
 ./local_single_user_deploy.sh -i -I $INSTALL_PREFIX
 ```
@@ -74,7 +74,7 @@ cd $SRC_ROOT/tools/deploy/ChronoLog
 ### 3. Launch Grafana and InfluxDB
 
 ```bash
-cd Plugins/chronostream/GrafanaInfluxSetup/
+cd plugins/chrono-stream/GrafanaInfluxSetup/
 docker compose --env-file .env up -d
 ```
 

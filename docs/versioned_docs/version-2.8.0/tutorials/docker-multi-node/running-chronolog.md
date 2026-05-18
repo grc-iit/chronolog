@@ -51,7 +51,7 @@ docker pull ghcr.io/grc-iit/chronolog:v2.8.0
 Retrieve the dynamic deployment script and make it executable:
 
 ```bash
-wget https://raw.githubusercontent.com/grc-iit/ChronoLog/refs/heads/develop/CI/docker/dynamic_deploy.sh
+wget https://raw.githubusercontent.com/grc-iit/ChronoLog/refs/heads/develop/docker/dynamic_deploy.sh
 ```
 
 ```bash

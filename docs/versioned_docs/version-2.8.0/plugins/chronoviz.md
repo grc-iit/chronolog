@@ -45,7 +45,7 @@ The Grafana UI loads the plugin; the plugin sends HTTP requests to the Python ba
 2. **Start Grafana and the backend:**
 
    ```bash
-   cd Plugins/chronoviz
+   cd plugins/chrono-viz
    ./scripts/start_grafana_dev.sh
    ```
 
@@ -58,14 +58,14 @@ The ChronoLog data source is provisioned automatically — no manual configurati
 1. **Build the plugin:**
 
    ```bash
-   cd Plugins/chronoviz
+   cd plugins/chrono-viz
    ./scripts/build_grafana_plugin.sh
    ```
 
 2. **Start the backend** (in a separate terminal):
 
    ```bash
-   cd Plugins/chronoviz
+   cd plugins/chrono-viz
    ./scripts/start_grafana_dev.sh --local
    ```
 

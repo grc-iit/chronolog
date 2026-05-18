@@ -57,6 +57,37 @@ How long (in seconds) a story with no new events is kept in memory before being 
 
 **Effect**: longer delays keep story state warm, reducing re-initialization cost when a story becomes active again. Shorter delays free memory sooner in workloads with many short-lived or bursty stories.
 
+## Ingestion Thread Count
+
+Each component's ingestion RPC service exposes an `IngestionThreadCount` knob that controls how many worker threads serve incoming requests.
+
+| Component                                       | Default | Tunes                                                                          |
+| ----------------------------------------------- | ------- | ------------------------------------------------------------------------------ |
+| `KeeperRecordingService.IngestionThreadCount`   | `4`     | Concurrent client → Keeper event ingestion. Raise for high client fan-in.      |
+| `KeeperGrapherDrainService.IngestionThreadCount`| `1`     | Concurrent Keeper → Grapher chunk drain. Raise for multi-Keeper deployments.   |
+| `PlaybackQueryService.IngestionThreadCount`     | `1`     | Concurrent client → Player playback queries. Raise for concurrent readers.     |
+
+**Effect**: more threads improve RPC concurrency at the cost of CPU and contention on internal queues. The Keeper default (`4`) reflects the heavier ingestion workload; Grapher and Player default to `1` and only need raising when the corresponding traffic is concurrent.
+
+## Extraction Pipeline
+
+The `ExtractionModule` block in `chrono_keeper` and `chrono_grapher` controls how retired StoryChunks are drained downstream. Two knobs affect throughput directly:
+
+### `extraction_stream_count`
+
+Number of parallel worker threads draining the extraction queue through the configured extractor chain.
+
+| Component     | Default |
+| ------------- | ------- |
+| ChronoKeeper  | `2`     |
+| ChronoGrapher | `2`     |
+
+**Effect**: higher values increase chunk-throughput when downstream extractors (CSV writes, RDMA fan-out, HDF5 archive) are the bottleneck. The benefit plateaus when storage or network bandwidth saturates.
+
+### `extractors`
+
+The composition of the extractor chain itself is a tuning surface: chains can be shortened (drop CSV mirroring), lengthened (add a parallel RDMA target), or swapped (use `dual_endpoint_rdma_extractor` to deliver chunks to both ChronoGrapher and ChronoPlayer in one pass). See [Server Configuration → ExtractionModule](./server-configuration.md#extractionmodule) for the schema.
+
 ## Recording Groups
 
 ```json
@@ -115,3 +146,6 @@ Number of seconds ChronoVisor waits after receiving a shutdown signal before ter
 | Reduce memory usage with many stories          | Decrease `inactive_story_delay_secs` on Keeper and Grapher                                    |
 | Minimum timestamp latency on bare-metal HPC    | Set `clocksource_type` to `"TSC"` (verify invariant TSC first)                                |
 | Prevent data loss at shutdown under heavy load | Increase `delayed_data_admin_exit_in_secs` to `10` or more                                    |
+| High client fan-in into ChronoKeeper           | Raise `KeeperRecordingService.IngestionThreadCount` (e.g., `8` or `16`)                       |
+| Many ChronoKeepers draining one ChronoGrapher  | Raise `KeeperGrapherDrainService.IngestionThreadCount` to match concurrent drain RPCs         |
+| Extraction-bound ChronoKeeper or ChronoGrapher | Raise `ExtractionModule.extraction_stream_count` until storage/network saturates              |

@@ -5,7 +5,7 @@ title: "Multi-Node Deployment"
 
 # Multi-Node (Cluster) Deployment
 
-`deploy_cluster.sh` deploys ChronoLog across multiple nodes using `parallel-ssh` for remote process management. Like `deploy_local.sh`, it operates on an already-installed ChronoLog tree and supports starting, stopping, and cleaning only — no build or install steps. The script is located at `tools/deploy/ChronoLog/deploy_cluster.sh` in the repository.
+`deploy_cluster.sh` deploys ChronoLog across multiple nodes using `parallel-ssh` for remote process management. Like `deploy_local.sh`, it operates on an already-installed ChronoLog tree and supports starting, stopping, and cleaning only — no build or install steps. The script is located at `tools/deploy/deploy_cluster.sh` in the repository.
 
 ## Prerequisites
 

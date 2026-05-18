@@ -7,7 +7,7 @@ title: "Building for Development"
 
 The developer deployment scripts combine build, install, and runtime management into a single workflow. They wrap `build.sh` and `install.sh` for build/install steps, then delegate start/stop/clean to the user-facing `deploy_local.sh` or `deploy_cluster.sh` scripts.
 
-Both scripts live in `tools/deploy/ChronoLog/` alongside the other deployment scripts.
+Both scripts live in `tools/deploy/` alongside the other deployment scripts.
 
 ## Single-Node: `local_single_user_deploy.sh`
 
@@ -50,7 +50,7 @@ Use this script for development and testing on a single machine.
 ### Typical Developer Workflow
 
 ```bash
-cd tools/deploy/ChronoLog
+cd tools/deploy
 
 # 1. Build in Debug mode
 ./local_single_user_deploy.sh --build --build-type Debug --install-dir ~/chronolog-install
@@ -111,7 +111,7 @@ All options from `local_single_user_deploy.sh` apply, plus:
 ### Typical Developer Workflow (Cluster)
 
 ```bash
-cd tools/deploy/ChronoLog
+cd tools/deploy
 
 # 1. Build and install (same as local)
 ./single_user_deploy.sh --build --build-type Debug --install-dir /shared/chronolog-install

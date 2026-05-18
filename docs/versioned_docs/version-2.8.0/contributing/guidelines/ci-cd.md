@@ -40,7 +40,7 @@ This workflow has three sequential jobs:
 
 Builds a Docker base image containing all Spack dependencies. The image is tagged with a content hash of the Spack environment files and Docker configuration, so it is only rebuilt when dependencies actually change.
 
-- Computes a hash of `spack.yaml`, `Client/spack.yaml`, and `.github/docker/**`
+- Computes a hash of `spack.yaml`, `client/spack.yaml`, and `docker/**`
 - Checks `ghcr.io` for an existing image with that tag
 - If no cached image exists, builds and pushes a new one
 - Outputs the full image name for downstream jobs
