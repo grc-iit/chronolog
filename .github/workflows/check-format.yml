@@ -4,7 +4,7 @@ name: "ChronoLog: Check Format"
 # To format code locally, install clang-format-18 from default Ubuntu repositories:
 #   Ubuntu 24.04:
 #     sudo apt-get update && sudo apt-get install -y clang-format-18
-#   Then run: clang-format-18 -i -style=file:CodeStyleFiles/ChronoLog.clang-format <file>
+#   Then run: clang-format-18 -i -style=file:.github/code-style/ChronoLog.clang-format <file>
 
 on:
   pull_request:
@@ -15,7 +15,7 @@ on:
       - '**/*.cc'
       - '**/*.cxx'
       - '**/*.c'
-      - 'CodeStyleFiles/ChronoLog.clang-format'
+      - '.github/code-style/ChronoLog.clang-format'
       - '.github/workflows/clang-format-check.yml'
   workflow_dispatch:
 
@@ -119,7 +119,7 @@ jobs:
               echo "Checking: $file"
               
               # Create formatted version
-              clang-format-18 -style=file:CodeStyleFiles/ChronoLog.clang-format "$file" > "/tmp/formatted/$(echo "$file" | sed 's|/|_|g')"
+              clang-format-18 -style=file:.github/code-style/ChronoLog.clang-format "$file" > "/tmp/formatted/$(echo "$file" | sed 's|/|_|g')"
               
               # Compare with original
               if ! diff -q "$file" "/tmp/formatted/$(echo "$file" | sed 's|/|_|g')" > /dev/null; then
@@ -154,7 +154,7 @@ jobs:
               echo "Generating patch for: $file"
               
               # Create formatted version
-              clang-format-18 -style=file:CodeStyleFiles/ChronoLog.clang-format "$file" > "/tmp/formatted/$(echo "$file" | sed 's|/|_|g')"
+              clang-format-18 -style=file:.github/code-style/ChronoLog.clang-format "$file" > "/tmp/formatted/$(echo "$file" | sed 's|/|_|g')"
               
               # Generate unified diff patch
               patch_file="format_patches/$(echo "$file" | sed 's|/|_|g').patch"
@@ -243,7 +243,7 @@ jobs:
             commentBody += `   \`\`\`bash\n`;
             commentBody += `   # Ensure you have clang-format-18 from Ubuntu 24.04 default repositories installed (required for consistent formatting)\n`;
             issueFiles.forEach(file => {
-              commentBody += `   clang-format-18 -i -style=file:CodeStyleFiles/ChronoLog.clang-format ${file}\n`;
+              commentBody += `   clang-format-18 -i -style=file:.github/code-style/ChronoLog.clang-format ${file}\n`;
             });
             commentBody += `   \`\`\`\n\n`;
             commentBody += `4. **Commit and push** the formatting changes\n\n`;
