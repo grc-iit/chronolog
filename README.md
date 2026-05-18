@@ -5,7 +5,7 @@
 
 <p align="center">
   <a href="https://www.chronolog.dev">
-    <img src="doc/images/logos/chronolog-full-logo-transparent.webp" alt="ChronoLog logo" width="40%">
+    <img src="docs/static/logos/chronolog-full-logo-transparent.webp" alt="ChronoLog logo" width="40%">
   </a>
 </p>
 
@@ -30,13 +30,13 @@
     <tr>
       <td align="center" style="padding: 0 10px; border: none;">
         <a href="https://www.iit.edu">
-          <img src="doc/images/logos/IIT.png" alt="Illinois Tech" width="120"><br>
+          <img src="docs/static/logos/IIT.png" alt="Illinois Tech" width="120"><br>
           <strong>Illinois Tech</strong>
         </a>
       </td>
       <td align="center" style="padding: 0 10px; border: none;">
         <a href="https://www.uchicago.edu">
-          <img src="doc/images/logos/university-of-chicago.png" alt="UChicago" width="120"><br>
+          <img src="docs/static/logos/university-of-chicago.png" alt="UChicago" width="120"><br>
           <strong>UChicago</strong>
         </a>
       </td>
@@ -105,7 +105,7 @@ Learn more detailed information about the project on ChronoLog's Wiki: https://g
 ### 🐳 Docker Installation <img src="https://img.shields.io/badge/Recommended-0097a7?style=flat&logoColor=white" alt="Recommended">
 
 #### Single-Node Deployment
-![Single Node Docker Deployment](doc/images/docker-single-node.png)
+![Single Node Docker Deployment](docs/static/img/docker-single-node.png)
 
 Pull Docker image:
 
@@ -134,7 +134,7 @@ pgrep -la chrono
 
 #### Multi-Node Deployment
 
-![Multi Node Docker Deployment](doc/images/docker-multi-node.png)
+![Multi Node Docker Deployment](docs/static/img/docker-multi-node.png)
 
 Pull Docker image:
 
@@ -145,7 +145,7 @@ docker pull gnosisrc/chronolog:latest
 Download deployment script:
 
 ```bash
-wget https://raw.githubusercontent.com/grc-iit/ChronoLog/refs/heads/develop/CI/docker/dynamic_deploy.sh
+wget https://raw.githubusercontent.com/grc-iit/ChronoLog/refs/heads/develop/docker/dynamic_deploy.sh
 ```
 
 ```bash
@@ -210,43 +210,43 @@ We are grateful for the collaboration and support from our research and industry
 </thead>
 <tbody>
 <tr>
-<td><img src="doc/images/logos/argonne.jpeg" alt="Argonne National Laboratory" width="30" style="vertical-align: middle;"> <a href="https://www.anl.gov">Argonne National Laboratory</a></td>
+<td><img src="docs/static/logos/argonne.jpeg" alt="Argonne National Laboratory" width="30" style="vertical-align: middle;"> <a href="https://www.anl.gov">Argonne National Laboratory</a></td>
 <td>Collaborating with the funcX team to enable event-based and real-time computing capabilities, supporting scalable execution of machine learning workloads and integration with Colmena framework for materials science applications.</td>
 </tr>
 <tr>
-<td><img src="doc/images/logos/university-of-chicago.png" alt="University of Chicago" width="30" style="vertical-align: middle;"> <a href="https://www.uchicago.edu">University of Chicago</a></td>
+<td><img src="docs/static/logos/university-of-chicago.png" alt="University of Chicago" width="30" style="vertical-align: middle;"> <a href="https://www.uchicago.edu">University of Chicago</a></td>
 <td>Working with Tom Glanzman and the Dark Energy Science Collaboration on Parsl workflow extensions for Rubin Observatory data processing, enabling extreme-scale logging and monitoring for cosmology workflows.</td>
 </tr>
 <tr>
-<td><img src="doc/images/logos/parsl.svg" alt="Parsl" width="30" style="vertical-align: middle;"> <a href="https://parsl-project.org">Parsl</a></td>
+<td><img src="docs/static/logos/parsl.svg" alt="Parsl" width="30" style="vertical-align: middle;"> <a href="https://parsl-project.org">Parsl</a></td>
 <td>Developing workflow extensions to enable extreme-scale logging and monitoring for large-scale scientific workflows, with potential impact across domains including biology, social science, and high energy physics.</td>
 </tr>
 <tr>
-<td><img src="doc/images/logos/ifsh.jpg" alt="Institute for Food Safety and Health" width="30" style="vertical-align: middle;"> <a href="https://www.iit.edu/ifsh">Institute for Food Safety and Health (IFSH)</a></td>
+<td><img src="docs/static/logos/ifsh.jpg" alt="Institute for Food Safety and Health" width="30" style="vertical-align: middle;"> <a href="https://www.iit.edu/ifsh">Institute for Food Safety and Health (IFSH)</a></td>
 <td>Exploring new scientific applications of ChronoLog in genomics and bioinformatics, with discussions helping shape development priorities while informing adjacent research communities about ChronoLog capabilities.</td>
 </tr>
 <tr>
-<td><img src="doc/images/logos/llnl.jpg" alt="Lawrence Livermore National Laboratory" width="30" style="vertical-align: middle;"> <a href="https://www.llnl.gov">Lawrence Livermore National Laboratory</a></td>
+<td><img src="docs/static/logos/llnl.jpg" alt="Lawrence Livermore National Laboratory" width="30" style="vertical-align: middle;"> <a href="https://www.llnl.gov">Lawrence Livermore National Laboratory</a></td>
 <td>Working with the system scheduler team to integrate ChronoLog with Sonar and Flux job scheduler, eliminating bottlenecks in HPC resource management and telemetry data collection.</td>
 </tr>
 <tr>
-<td><img src="doc/images/logos/university-of-wisconsin.jpg" alt="University of Wisconsin-Madison" width="30" style="vertical-align: middle;"> <a href="https://www.wisc.edu">University of Wisconsin-Madison</a></td>
+<td><img src="docs/static/logos/university-of-wisconsin.jpg" alt="University of Wisconsin-Madison" width="30" style="vertical-align: middle;"> <a href="https://www.wisc.edu">University of Wisconsin-Madison</a></td>
 <td>Working with Shaowen Wang to deploy ChronoLog as a storage backend for CyberGIS, addressing growing data volume and velocity demands while refining ChronoLog features through GIS workloads.</td>
 </tr>
 <tr>
-<td><img src="doc/images/logos/university-of-illinois.jpg" alt="University of Illinois at Urbana-Champaign" width="30" style="vertical-align: middle;"> <a href="https://illinois.edu">University of Illinois at Urbana-Champaign</a></td>
+<td><img src="docs/static/logos/university-of-illinois.jpg" alt="University of Illinois at Urbana-Champaign" width="30" style="vertical-align: middle;"> <a href="https://illinois.edu">University of Illinois at Urbana-Champaign</a></td>
 <td>Collaborating on Parsl workflow extensions for the Dark Energy Science Collaboration, enabling extreme-scale logging and monitoring for Rubin Observatory data processing workflows.</td>
 </tr>
 <tr>
-<td><img src="doc/images/logos/depaul.png" alt="DePaul University" width="30" style="vertical-align: middle;"> <a href="https://www.depaul.edu">DePaul University</a></td>
+<td><img src="docs/static/logos/depaul.png" alt="DePaul University" width="30" style="vertical-align: middle;"> <a href="https://www.depaul.edu">DePaul University</a></td>
 <td>Working with Tanu Malik to develop novel lightweight indexing mechanisms within the ChronoKeeper for efficient querying of log data by both identifier and value predicates.</td>
 </tr>
 <tr>
-<td><img src="doc/images/logos/paratools.png" alt="ParaTools, Inc." width="30" style="vertical-align: middle;"> <a href="https://www.paratools.com">ParaTools, Inc.</a></td>
+<td><img src="docs/static/logos/paratools.png" alt="ParaTools, Inc." width="30" style="vertical-align: middle;"> <a href="https://www.paratools.com">ParaTools, Inc.</a></td>
 <td>Exploring integration and evaluation of ChronoLog with performance monitoring tools, optimizing ChronoLog and its native plugins for application performance analysis use cases.</td>
 </tr>
 <tr>
-<td><img src="doc/images/logos/omnibond.png" alt="OmniBond Systems LLC" width="30" style="vertical-align: middle;"> <a href="https://omnibond.com">OmniBond Systems LLC</a></td>
+<td><img src="docs/static/logos/omnibond.png" alt="OmniBond Systems LLC" width="30" style="vertical-align: middle;"> <a href="https://omnibond.com">OmniBond Systems LLC</a></td>
 <td>Working with Boyd Wilson to fine-tune the storage stack using extended attributes in OrangeFS, optimizing ChronoLog's multi-tiered distributed log store performance.</td>
 </tr>
 </tbody>
@@ -279,6 +279,6 @@ Illinois Institute of Technology
 <br>
 <p align="center">
   <strong>Sponsored by:</strong><br>
-  <a href="https://www.nsf.gov"><img src="doc/images/logos/nsf-fb7efe9286a9b499c5907d82af3e70fd.png" alt="National Science Foundation" width="100"></a><br>
+  <a href="https://www.nsf.gov"><img src="docs/static/logos/nsf-fb7efe9286a9b499c5907d82af3e70fd.png" alt="National Science Foundation" width="100"></a><br>
   National Science Foundation (NSF CSSI-2104013)
 </p>
