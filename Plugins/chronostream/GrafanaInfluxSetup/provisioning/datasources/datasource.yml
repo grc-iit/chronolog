@@ -1,0 +1,15 @@
+apiVersion: 1
+
+datasources:
+  - name: InfluxDB v2 (telemetry)
+    type: influxdb
+    access: proxy
+    isDefault: true
+    url: http://127.0.0.1:8086 # IP of the machine you are launching on
+    jsonData:
+      version: Flux 
+      organization: chronolog
+      defaultBucket: telemetry
+      httpMode: POST
+    secureJsonData:
+      token: chronolog-dev-token-123

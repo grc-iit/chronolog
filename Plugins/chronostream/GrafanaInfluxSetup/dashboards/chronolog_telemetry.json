@@ -1,0 +1,64 @@
+{
+  "title": "ChronoLog Telemetry",
+  "uid": "chronolog-telemetry",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "CPU / Memory / Network",
+      "id": 1,
+      "datasource": { "type": "influxdb", "uid": "influxdb-telemetry" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "queryType": "flux",
+          "query": "from(bucket: \"${bucket}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r.chronicle =~ /${chronicle:regex}/)\n  |> filter(fn: (r) => r.story =~ /${story:regex}/)\n  |> group(columns: [\"chronicle\",\"story\"])"
+        }
+      ]
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "type": "constant",
+        "name": "bucket",
+        "label": "Bucket",
+        "query": "telemetry",
+        "current": { "text": "telemetry", "value": "telemetry" },
+        "options": [{ "text": "telemetry", "value": "telemetry" }]
+      },
+      {
+        "type": "query",
+        "name": "chronicle",
+        "label": "Chronicle",
+        "datasource": { "type": "influxdb", "uid": "influxdb-telemetry" },
+        "query": "from(bucket: \"${bucket}\")\n  |> range(start: -30d)\n  |> keep(columns: [\"chronicle\"]) \n  |> distinct(column: \"chronicle\")\n  |> sort(columns: [\"chronicle\"]) \n  |> rename(columns: {chronicle: \"_value\"})\n  |> keep(columns: [\"_value\"])",
+        "refresh": 1,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": { "text": "All", "value": ".*" }
+      },
+      {
+        "type": "query",
+        "name": "story",
+        "label": "Story",
+        "datasource": { "type": "influxdb", "uid": "influxdb-telemetry" },
+        "query": "from(bucket: \"${bucket}\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r.chronicle =~ /${chronicle:regex}/)\n  |> keep(columns: [\"story\"]) \n  |> distinct(column: \"story\")\n  |> sort(columns: [\"story\"]) \n  |> rename(columns: {story: \"_value\"})\n  |> keep(columns: [\"_value\"])",
+        "refresh": 1,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": { "text": "All", "value": ".*" }
+      }
+    ]
+  }  
+}

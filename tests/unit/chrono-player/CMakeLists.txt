@@ -9,14 +9,13 @@ find_package(HDF5 REQUIRED COMPONENTS C CXX)
 
 add_executable(transfer_agent_test
     chrono_player_transfer_agent_test.cpp
-    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/StoryChunkExtractor.cpp
-    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/StoryChunkTransferAgent.cpp
+    ${CMAKE_SOURCE_DIR}/ChronoPlayer/src/StoryChunkTransferAgent.cpp
 )
 
 target_include_directories(transfer_agent_test PRIVATE
-    ${CMAKE_SOURCE_DIR}/src/chrono-player/include
-    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
-    ${CMAKE_SOURCE_DIR}/client/cpp/include
+    ${CMAKE_SOURCE_DIR}/ChronoPlayer/include
+    ${CMAKE_SOURCE_DIR}/chrono_common/include
+    ${CMAKE_SOURCE_DIR}/Client/cpp/include
 )
 
 target_link_libraries(transfer_agent_test PRIVATE
@@ -41,15 +40,14 @@ endif()
 
 add_executable(playback_service_test
     chrono_player_playback_service_test.cpp
-    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/PlaybackService.cpp
-    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/StoryChunkExtractor.cpp
-    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/StoryChunkTransferAgent.cpp
+    ${CMAKE_SOURCE_DIR}/ChronoPlayer/src/PlaybackService.cpp
+    ${CMAKE_SOURCE_DIR}/ChronoPlayer/src/StoryChunkTransferAgent.cpp
 )
 
 target_include_directories(playback_service_test PRIVATE
-    ${CMAKE_SOURCE_DIR}/src/chrono-player/include
-    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
-    ${CMAKE_SOURCE_DIR}/client/cpp/include
+    ${CMAKE_SOURCE_DIR}/ChronoPlayer/include
+    ${CMAKE_SOURCE_DIR}/chrono_common/include
+    ${CMAKE_SOURCE_DIR}/Client/cpp/include
 )
 
 target_link_libraries(playback_service_test PRIVATE
@@ -74,14 +72,14 @@ endif()
 
 add_executable(hdf5_archive_reader_test
     chrono_player_hdf5_archive_reader_test.cpp
-    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/ChronoPlayerConfiguration.cpp
-    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/HDF5ArchiveReadingAgent.cpp
+    ${CMAKE_SOURCE_DIR}/ChronoPlayer/src/ChronoPlayerConfiguration.cpp
+    ${CMAKE_SOURCE_DIR}/ChronoPlayer/src/HDF5ArchiveReadingAgent.cpp
 )
 
 target_include_directories(hdf5_archive_reader_test PRIVATE
-    ${CMAKE_SOURCE_DIR}/src/chrono-player/include
-    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
-    ${CMAKE_SOURCE_DIR}/client/cpp/include
+    ${CMAKE_SOURCE_DIR}/ChronoPlayer/include
+    ${CMAKE_SOURCE_DIR}/chrono_common/include
+    ${CMAKE_SOURCE_DIR}/Client/cpp/include
 )
 
 target_link_directories(hdf5_archive_reader_test PRIVATE ${HDF5_LIBRARY_DIRS})
@@ -107,14 +105,14 @@ endif()
 
 add_executable(fs_monitoring_test
     chrono_player_fs_monitoring_test.cpp
-    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/HDF5ArchiveReadingAgent.cpp
-    ${CMAKE_SOURCE_DIR}/client/cpp/src/chrono_monitor.cpp
+    ${CMAKE_SOURCE_DIR}/ChronoPlayer/src/HDF5ArchiveReadingAgent.cpp
+    ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
 )
 
 target_include_directories(fs_monitoring_test PRIVATE
-    ${CMAKE_SOURCE_DIR}/src/chrono-player/include
-    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
-    ${CMAKE_SOURCE_DIR}/client/cpp/include
+    ${CMAKE_SOURCE_DIR}/ChronoPlayer/include
+    ${CMAKE_SOURCE_DIR}/chrono_common/include
+    ${CMAKE_SOURCE_DIR}/Client/cpp/include
 )
 
 target_link_directories(fs_monitoring_test PRIVATE ${HDF5_LIBRARY_DIRS})
