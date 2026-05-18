@@ -8,6 +8,7 @@
 #include <thallium/serialization/stl/string.hpp>
 #include <thallium/serialization/stl/vector.hpp>
 #include <thallium/serialization/stl/unordered_map.hpp>
+#include <thallium/serialization/stl/pair.hpp>
 
 #include <chronolog_client.h>
 #include <chronolog_types.h>

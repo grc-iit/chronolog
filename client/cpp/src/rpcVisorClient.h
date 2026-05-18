@@ -15,6 +15,7 @@
 #include <thallium/serialization/stl/string.hpp>
 #include <thallium/serialization/stl/vector.hpp>
 #include <thallium/serialization/stl/map.hpp>
+#include <thallium/serialization/stl/pair.hpp>
 
 #include <chrono_monitor.h>
 #include <chronolog_client.h>
