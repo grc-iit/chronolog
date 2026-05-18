@@ -82,7 +82,12 @@ void BindChronologClient(pybind11::module& m)
             .def("AcquireStory", &Client::AcquireStory, pybind11::return_value_policy::reference)
             .def("ReleaseStory", &Client::ReleaseStory, pybind11::arg("chronicle_name"), pybind11::arg("story_name"))
             .def("DestroyStory", &Client::DestroyStory, pybind11::arg("chronicle_name"), pybind11::arg("story_name"))
-            .def("ReplayStory", &Client::ReplayStory);
+            .def("ReplayStory",
+                 pybind11::overload_cast<std::string const&,
+                                         std::string const&,
+                                         uint64_t,
+                                         uint64_t,
+                                         std::vector<chronolog::Event>&>(&Client::ReplayStory));
 };
 
 PYBIND11_MODULE(py_chronolog_client, m)
