@@ -1,0 +1,111 @@
+#include <cstdint>
+#include <iostream>
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "chronokvs.h"
+#include "chronokvs_mapper.h"
+
+namespace chronokvs
+{
+
+ChronoKVS::ChronoKVS(LogLevel level)
+    : mapper(std::make_unique<ChronoKVSMapper>(level))
+    , logLevel_(level)
+{}
+
+ChronoKVS::ChronoKVS(const std::string& config_path, LogLevel level)
+    : mapper(std::make_unique<ChronoKVSMapper>(config_path, level))
+    , logLevel_(level)
+{}
+
+std::unique_ptr<ChronoKVS> ChronoKVS::Create(LogLevel level) noexcept
+{
+    try
+    {
+        return std::unique_ptr<ChronoKVS>(new ChronoKVS(level));
+    }
+    catch(const std::exception& e)
+    {
+        CHRONOKVS_ERROR(level, "ChronoKVS construction failed: ", e.what());
+        return nullptr;
+    }
+    catch(...)
+    {
+        CHRONOKVS_ERROR(level, "ChronoKVS construction failed: unknown exception");
+        return nullptr;
+    }
+}
+
+std::unique_ptr<ChronoKVS> ChronoKVS::Create(const std::string& config_path, LogLevel level) noexcept
+{
+    try
+    {
+        return std::unique_ptr<ChronoKVS>(new ChronoKVS(config_path, level));
+    }
+    catch(const std::exception& e)
+    {
+        CHRONOKVS_ERROR(level, "ChronoKVS construction failed (config_path='", config_path, "'): ", e.what());
+        return nullptr;
+    }
+    catch(...)
+    {
+        CHRONOKVS_ERROR(level, "ChronoKVS construction failed (config_path='", config_path, "'): unknown exception");
+        return nullptr;
+    }
+}
+
+ChronoKVS::~ChronoKVS() = default;
+
+std::uint64_t ChronoKVS::put(const std::string& key, const std::string& value)
+{
+    CHRONOKVS_DEBUG(logLevel_, "put() called for key='", key, "' (value_size=", value.size(), ")");
+    return mapper->storeKeyValue(key, value);
+}
+
+std::string ChronoKVS::get(const std::string& key, std::uint64_t timestamp)
+{
+    CHRONOKVS_DEBUG(logLevel_, "get() called for key='", key, "' at timestamp=", timestamp);
+    return mapper->retrieveByKeyAndTs(key, timestamp);
+}
+
+std::vector<EventData> ChronoKVS::get_history(const std::string& key)
+{
+    CHRONOKVS_DEBUG(logLevel_, "get_history() called for key='", key, "'");
+    return mapper->retrieveByKey(key);
+}
+
+std::vector<EventData>
+ChronoKVS::get_range(const std::string& key, std::uint64_t start_timestamp, std::uint64_t end_timestamp)
+{
+    CHRONOKVS_DEBUG(logLevel_,
+                    "get_range() called for key='",
+                    key,
+                    "' range=[",
+                    start_timestamp,
+                    ", ",
+                    end_timestamp,
+                    ")");
+    return mapper->retrieveByKeyAndRange(key, start_timestamp, end_timestamp);
+}
+
+std::optional<EventData> ChronoKVS::get_earliest(const std::string& key)
+{
+    CHRONOKVS_DEBUG(logLevel_, "get_earliest() called for key='", key, "'");
+    return mapper->retrieveEarliestByKey(key);
+}
+
+std::optional<EventData> ChronoKVS::get_latest(const std::string& key)
+{
+    CHRONOKVS_DEBUG(logLevel_, "get_latest() called for key='", key, "'");
+    return mapper->retrieveLatestByKey(key);
+}
+
+void ChronoKVS::flush()
+{
+    CHRONOKVS_DEBUG(logLevel_, "flush() called - releasing cached handles");
+    mapper->flush();
+}
+
+} // namespace chronokvs
