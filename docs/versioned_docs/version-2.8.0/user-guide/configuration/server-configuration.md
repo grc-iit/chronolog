@@ -36,7 +36,7 @@ Controls the clock source used for event timestamping. See [Performance Tuning �
 | `drift_cal_sleep_sec`  | integer | `10`          | Seconds between clock drift calibrations.                      |
 | `drift_cal_sleep_nsec` | integer | `0`           | Additional nanoseconds added to the calibration interval.      |
 
-Backed by `ClockConf` in `chrono_common/include/ConfigurationBlocks.h`.
+Backed by `ClockConf` in `src/chrono-common/include/ConfigurationBlocks.h`.
 
 ### `authentication`
 
@@ -45,7 +45,7 @@ Backed by `ClockConf` in `chrono_common/include/ConfigurationBlocks.h`.
 | `auth_type`       | string | `"RBAC"` | Authentication mechanism. Currently only `"RBAC"` is used. |
 | `module_location` | string | `""`     | Path to the authentication module shared object.           |
 
-Backed by `AuthConf` in `chrono_common/include/ConfigurationBlocks.h`.
+Backed by `AuthConf` in `src/chrono-common/include/ConfigurationBlocks.h`.
 
 ---
 
@@ -103,19 +103,50 @@ Appears in `chrono_keeper`, `chrono_grapher`, and `chrono_player`. Parsed by `Da
 | `acceptance_window_secs`    | integer | Maximum allowed age of an incoming event relative to wall-clock time. |
 | `inactive_story_delay_secs` | integer | Idle time before an in-memory story is evicted.                       |
 
-### `Extractors` / `ArchiveReaders` — story files directory
+### `ExtractionModule`
 
-Parsed by `ExtractorReaderConf`. Present under the key `Extractors` in `chrono_keeper` and `chrono_grapher`, and under `ArchiveReaders` in `chrono_player`.
+Present under `chrono_keeper` and `chrono_grapher`. Parsed by `ExtractionModuleConfiguration` (`src/chrono-common/include/ExtractionModuleConfiguration.h`). Defines the configurable pipeline of extractors that drains retired StoryChunks. See [Architecture → ChronoKeeper](../architecture/chronokeeper.md) for the concept and [Performance Tuning → Extraction Pipeline](./performance-tuning.md#extraction-pipeline) for tuning guidance.
+
+| Field                     | Type    | Description                                                                                                                                                                       |
+| ------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `extraction_stream_count` | integer | Number of parallel extraction-stream threads draining the extraction queue. Default: `2`.                                                                                         |
+| `extraction_protocol`     | string  | Thallium protocol used by RDMA-based extractors. Default: `"ofi+sockets"`.                                                                                                        |
+| `extractors`              | object  | Map of extractor instances keyed by an arbitrary label. Each entry must set `"type"` to one of the supported extractor types listed below; additional fields depend on the type.  |
+
+**Supported extractor types**
+
+| `type`                            | Available in        | Required fields                                                                            | Behavior                                                                                                              |
+| --------------------------------- | ------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `csv_extractor`                   | keeper, grapher     | `csv_archive_dir` (string)                                                                 | Writes each StoryChunk as a CSV file under `csv_archive_dir`.                                                         |
+| `single_endpoint_rdma_extractor`  | keeper, grapher     | `receiving_endpoint` (object: `protocol_conf`, `service_ip`, `service_base_port`, `service_provider_id`) | Drains each StoryChunk to one RDMA endpoint (typically a ChronoGrapher's `KeeperGrapherDrainService`).                |
+| `dual_endpoint_rdma_extractor`    | keeper              | Two `receiving_endpoint` entries                                                            | Fans each StoryChunk out to two RDMA endpoints simultaneously (e.g. ChronoGrapher + ChronoPlayer).                    |
+| `hdf5_extractor`                  | grapher             | `hdf5_archive_dir` (string)                                                                 | Serializes each StoryChunk into the HDF5 archive under `hdf5_archive_dir`.                                            |
+
+See the keeper and grapher blocks in [`conf/default_conf.json.in`](https://github.com/grc-iit/ChronoLog/blob/develop/conf/default_conf.json.in) for fully expanded examples.
+
+### `ArchiveReaders` — story files directory
+
+Present under `chrono_player`. Parsed by `ExtractorReaderConf`.
 
 | Field             | Type   | Description                                                                  |
 | ----------------- | ------ | ---------------------------------------------------------------------------- |
-| `story_files_dir` | string | Filesystem directory where story files are written or read by the component. |
+| `story_files_dir` | string | Filesystem directory where archived story files are read from by the player. |
+
+### `IngestionThreadCount` — ingestion-thread parallelism
+
+A scalar field that sits inside the ingestion service object of each component:
+
+| Component      | Path                                                          | Default | Description                                                                  |
+| -------------- | ------------------------------------------------------------- | ------- | ---------------------------------------------------------------------------- |
+| ChronoKeeper   | `chrono_keeper.KeeperRecordingService.IngestionThreadCount`   | `4`     | Number of worker threads serving the Keeper recording RPC.                   |
+| ChronoGrapher  | `chrono_grapher.KeeperGrapherDrainService.IngestionThreadCount` | `1`   | Number of worker threads serving the Grapher drain RPC.                      |
+| ChronoPlayer   | `chrono_player.PlaybackQueryService.IngestionThreadCount`     | `1`     | Number of worker threads serving the Player playback-query RPC.              |
 
 ---
 
 ## `chrono_visor`
 
-Parsed by `VisorConfiguration` (`ChronoVisor/include/ChronoVisorConfiguration.h`).
+Parsed by `VisorConfiguration` (`src/chrono-visor/include/ChronoVisorConfiguration.h`).
 
 | Field                             | Type    | Description                                                                                   |
 | --------------------------------- | ------- | --------------------------------------------------------------------------------------------- |
@@ -126,7 +157,7 @@ Parsed by `VisorConfiguration` (`ChronoVisor/include/ChronoVisorConfiguration.h`
 
 ## `chrono_keeper`
 
-Parsed by `KeeperConfiguration` (`ChronoKeeper/include/ChronoKeeperConfiguration.h`).
+Parsed by `KeeperConfiguration` (`src/chrono-keeper/include/ChronoKeeperConfiguration.h`).
 
 | Field                         | Type    | Description                                                                                |
 | ----------------------------- | ------- | ------------------------------------------------------------------------------------------ |
@@ -137,11 +168,13 @@ Parsed by `KeeperConfiguration` (`ChronoKeeper/include/ChronoKeeperConfiguration
 | `KeeperGrapherDrainService`   | object  | `{ "rpc": { ... } }` — endpoint **on ChronoGrapher** where drained chunks are delivered.   |
 | `Monitoring`                  | object  | See [`Monitoring`](#monitoring--logging).                                                  |
 | `DataStoreInternals`          | object  | See [`DataStoreInternals`](#datastoreinternals--story-chunk-tuning).                       |
-| `Extractors`                  | object  | See [`Extractors` / `ArchiveReaders`](#extractors--archivereaders--story-files-directory). |
+| `ExtractionModule`            | object  | See [`ExtractionModule`](#extractionmodule).                                               |
+
+`KeeperRecordingService` carries an `IngestionThreadCount` field — see [`IngestionThreadCount`](#ingestionthreadcount--ingestion-thread-parallelism).
 
 ## `chrono_grapher`
 
-Parsed by `GrapherConfiguration` (`ChronoGrapher/include/ChronoGrapherConfiguration.h`).
+Parsed by `GrapherConfiguration` (`src/chrono-grapher/include/ChronoGrapherConfiguration.h`).
 
 | Field                       | Type    | Description                                                                                |
 | --------------------------- | ------- | ------------------------------------------------------------------------------------------ |
@@ -151,11 +184,13 @@ Parsed by `GrapherConfiguration` (`ChronoGrapher/include/ChronoGrapherConfigurat
 | `VisorRegistryService`      | object  | `{ "rpc": { ... } }` — endpoint **on ChronoVisor** where this grapher registers.           |
 | `Monitoring`                | object  | See [`Monitoring`](#monitoring--logging).                                                  |
 | `DataStoreInternals`        | object  | See [`DataStoreInternals`](#datastoreinternals--story-chunk-tuning).                       |
-| `Extractors`                | object  | See [`Extractors` / `ArchiveReaders`](#extractors--archivereaders--story-files-directory). |
+| `ExtractionModule`          | object  | See [`ExtractionModule`](#extractionmodule).                                               |
+
+`KeeperGrapherDrainService` carries an `IngestionThreadCount` field — see [`IngestionThreadCount`](#ingestionthreadcount--ingestion-thread-parallelism).
 
 ## `chrono_player`
 
-Parsed by `PlayerConfiguration` (`ChronoPlayer/include/ChronoPlayerConfiguration.h`).
+Parsed by `PlayerConfiguration` (`src/chrono-player/include/ChronoPlayerConfiguration.h`).
 
 | Field                     | Type    | Description                                                                                |
 | ------------------------- | ------- | ------------------------------------------------------------------------------------------ |
@@ -165,10 +200,12 @@ Parsed by `PlayerConfiguration` (`ChronoPlayer/include/ChronoPlayerConfiguration
 | `VisorRegistryService`    | object  | `{ "rpc": { ... } }` — endpoint **on ChronoVisor** where this player registers.            |
 | `Monitoring`              | object  | See [`Monitoring`](#monitoring--logging).                                                  |
 | `DataStoreInternals`      | object  | See [`DataStoreInternals`](#datastoreinternals--story-chunk-tuning).                       |
-| `ArchiveReaders`          | object  | See [`Extractors` / `ArchiveReaders`](#extractors--archivereaders--story-files-directory). |
+| `ArchiveReaders`          | object  | See [`ArchiveReaders`](#archivereaders--story-files-directory).                            |
+
+`PlaybackQueryService` carries an `IngestionThreadCount` field — see [`IngestionThreadCount`](#ingestionthreadcount--ingestion-thread-parallelism).
 
 ---
 
 ## Full Example
 
-The repository ships a fully expanded example at [`default_conf.json.in`](https://github.com/grc-iit/ChronoLog/blob/develop/default_conf.json.in). Default values for every field are defined in the constructors of the configuration classes listed above.
+The repository ships a fully expanded example at [`conf/default_conf.json.in`](https://github.com/grc-iit/ChronoLog/blob/develop/conf/default_conf.json.in). Default values for every field are defined in the constructors of the configuration classes listed above.

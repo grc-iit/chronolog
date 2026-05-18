@@ -11,27 +11,27 @@ Every new feature and bug fix should include tests. ChronoLog uses **Google Test
 
 | Category | Directory | Purpose |
 |---|---|---|
-| Unit | `test/unit/` | Verify individual components in isolation |
-| Integration | `test/integration/` | Test interactions between two or more components |
-| Communication | `test/communication/` | Validate RPC (Thallium) and MPI communication layers |
-| Overhead | `test/overhead/` | Benchmark clock synchronization and lock contention |
+| Unit | `tests/unit/` | Verify individual components in isolation |
+| Integration | `tests/integration/` | Test interactions between two or more components |
+| Communication | `tests/communication/` | Validate RPC (Thallium) and MPI communication layers |
+| Overhead | `tests/overhead/` | Benchmark clock synchronization and lock contention |
 | System | `test/system/` | End-to-end Python scripts for fidelity and workload simulation |
 
 ## Writing Unit Tests
 
-Unit tests use the GTest framework and live under `test/unit/<component>/`.
+Unit tests use the GTest framework and live under `tests/unit/<component>/`.
 
 ### File Placement
 
 Place test files alongside the component they test:
 
 ```
-test/unit/
-├── chrono_store/
-│   ├── StoryChunkTest.cpp
-│   └── StoryPipelineTest.cpp
-├── chrono_player/
-│   └── PlayerClientTest.cpp
+tests/unit/
+├── chrono-common/
+│   ├── story_chunk_test.cpp
+│   └── chrono_common_extraction_chain_test.cpp
+├── chrono-player/
+│   └── chrono_player_hdf5_archive_reader_test.cpp
 └── ...
 ```
 
@@ -40,7 +40,7 @@ test/unit/
 Register tests in CMake with the prefix `Unit_<Component>_<Subject>`:
 
 ```cmake
-add_test(NAME Unit_ChronoStore_StoryChunk COMMAND StoryChunkTest)
+add_test(NAME Unit_ChronoCommon_StoryChunk COMMAND StoryChunkTest)
 ```
 
 ### Best Practices
@@ -51,7 +51,7 @@ add_test(NAME Unit_ChronoStore_StoryChunk COMMAND StoryChunkTest)
 
 ## Writing Integration Tests
 
-Integration tests are custom executables (not necessarily GTest-based) under `test/integration/<scope>/`.
+Integration tests are custom executables (not necessarily GTest-based) under `tests/integration/<scope>/`.
 
 ### CTest Registration
 

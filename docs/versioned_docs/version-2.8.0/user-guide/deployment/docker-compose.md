@@ -5,7 +5,7 @@ title: "Docker Compose"
 
 # Docker Compose Deployment
 
-`dynamic_deploy.sh` provides a containerized multi-node environment for developing and testing ChronoLog without physical cluster hardware. It generates a Docker Compose file at runtime, starts the containers, configures SSH between them, and deploys the pre-built ChronoLog services across the cluster — following the same SSH-based approach as the [multi-node deployment](./multi-node.md). Unlike the [single-node](./single-node.md) and [multi-node](./multi-node.md) bare-metal scripts, this workflow handles the full lifecycle from image launch through service startup in one step. The script is located at `CI/docker/dynamic_deploy.sh` in the repository.
+`dynamic_deploy.sh` provides a containerized multi-node environment for developing and testing ChronoLog without physical cluster hardware. It generates a Docker Compose file at runtime, starts the containers, configures SSH between them, and deploys the pre-built ChronoLog services across the cluster — following the same SSH-based approach as the [multi-node deployment](./multi-node.md). Unlike the [single-node](./single-node.md) and [multi-node](./multi-node.md) bare-metal scripts, this workflow handles the full lifecycle from image launch through service startup in one step. The script is located at `docker/dynamic_deploy.sh` in the repository.
 
 ## Prerequisites
 
@@ -72,14 +72,14 @@ Running `dynamic_deploy.sh` performs the following steps in order:
 Default 4-container deployment (1 ChronoVisor, 1 ChronoKeeper, 1 ChronoGrapher, 1 ChronoPlayer):
 
 ```bash
-cd CI/docker
+cd docker
 ./dynamic_deploy.sh
 ```
 
 8-container deployment with 3 keepers, 2 graphers, and 2 players:
 
 ```bash
-cd CI/docker
+cd docker
 ./dynamic_deploy.sh -n 8 -k 3 -g 2 -p 2
 ```
 
@@ -88,15 +88,15 @@ cd CI/docker
 Bring down the containers:
 
 ```bash
-docker compose -f CI/docker/dynamic-compose.yaml down
+docker compose -f docker/dynamic-compose.yaml down
 ```
 
 To also remove the `shared_home` volume (required when upgrading to a new ChronoLog image version):
 
 ```bash
-docker compose -f CI/docker/dynamic-compose.yaml down -v
+docker compose -f docker/dynamic-compose.yaml down -v
 ```
 
 :::note
-`dynamic-compose.yaml` is generated at runtime in the `CI/docker/` directory. A static 4-node reference file is available at `CI/docker/distributed.docker-compose.yaml` if you need a fixed, pre-defined topology without running the generation script.
+`dynamic-compose.yaml` is generated at runtime in the `docker/` directory. A static 4-node reference file is available at `docker/distributed.docker-compose.yaml` if you need a fixed, pre-defined topology without running the generation script.
 :::

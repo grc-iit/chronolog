@@ -241,7 +241,7 @@ There are two different APIs to get events back. **Playback()** retrievies Event
   <rect x="646" y="492" width="14" height="10" rx="1" fill="#1e2330" stroke="#3a4050" strokeWidth="0.5"/>
 
   {/* Bottom annotation */}
-  <text x="535" y="530" textAnchor="middle" fill="#9ca3b0" fontSize="7" fontStyle="italic">Complete StoryChunks are retrieved from the ChronoStore</text>
+  <text x="535" y="530" textAnchor="middle" fill="#9ca3b0" fontSize="7" fontStyle="italic">Complete StoryChunks are retrieved from the HDF5 archive</text>
   </g>
 </svg>
 
