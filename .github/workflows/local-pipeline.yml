@@ -36,6 +36,13 @@ jobs:
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref }}
 
+      - name: Compute sanitized branch slug
+        id: branch-slug
+        run: |
+          RAW="${{ github.head_ref || github.ref_name }}"
+          SAFE="${RAW//\//-}"
+          echo "slug=${SAFE}" >> "$GITHUB_OUTPUT"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
@@ -372,7 +379,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ctest-results-${{ github.head_ref || github.ref_name }}
+          name: ctest-results-${{ steps.branch-slug.outputs.slug }}
           path: ./ctest-results
           retention-days: 14
 
@@ -439,7 +446,7 @@ jobs:
       - name: Upload chronolog-install artifact
         uses: actions/upload-artifact@v7
         with:
-          name: chronolog-install-${{ github.head_ref || github.ref_name }}
+          name: chronolog-install-${{ steps.branch-slug.outputs.slug }}
           path: ./chronolog-install
           retention-days: 7
 
@@ -484,6 +491,7 @@ jobs:
           )
 
           BRANCH="${{ github.head_ref || github.ref_name }}"
+          BRANCH_SLUG="${{ steps.branch-slug.outputs.slug }}"
 
           {
             echo "## 🧪 ChronoLog Local Pipeline"
@@ -519,13 +527,13 @@ jobs:
                 echo "</details>"
                 echo ""
               fi
-              echo "_ctest is non-gating while the suite is being refactored. Full logs in the_ \`ctest-results-${BRANCH}\` _artifact._"
+              echo "_ctest is non-gating while the suite is being refactored. Full logs in the_ \`ctest-results-${BRANCH_SLUG}\` _artifact._"
             else
-              echo "⚠️ No ctest results captured (see \`ctest-results-${BRANCH}\` artifact)."
+              echo "⚠️ No ctest results captured (see \`ctest-results-${BRANCH_SLUG}\` artifact)."
             fi
             echo ""
             echo "### 📦 Artifacts"
             echo ""
-            echo "- \`chronolog-install-${BRANCH}\` — Release install tree with test binaries"
-            echo "- \`ctest-results-${BRANCH}\` — ctest JUnit XML, log, and \`Testing/\` directory"
+            echo "- \`chronolog-install-${BRANCH_SLUG}\` — Release install tree with test binaries"
+            echo "- \`ctest-results-${BRANCH_SLUG}\` — ctest JUnit XML, log, and \`Testing/\` directory"
           } >> "$GITHUB_STEP_SUMMARY"
