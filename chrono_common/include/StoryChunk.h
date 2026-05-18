@@ -65,6 +65,7 @@ public:
     uint64_t lastEventTime() const { return (logEvents.empty() ? 0 : (*(--logEvents.end())).second.time()); }
 
     int insertEvent(LogEvent const&);
+    int insertEvent(LogEvent&&);
 
     uint32_t mergeEvents(std::map<EventSequence, LogEvent>& events,
                          std::map<EventSequence, LogEvent>::const_iterator& merge_start);

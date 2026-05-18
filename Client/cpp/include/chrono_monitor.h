@@ -47,15 +47,19 @@ inline std::string format(const char* fmt_str, const Args&... args)
     constexpr std::size_t n = sizeof...(Args);
     while(*p)
     {
-        if(*p == '{' && *(p + 1) == '}' && idx < n)
+        if(*p == '{' && idx < n)
         {
-            result += arg_strs[idx++];
-            p += 2;
+            const char* close = p + 1;
+            while(*close && *close != '}')
+                ++close;
+            if(*close == '}')
+            {
+                result += arg_strs[idx++];
+                p = close + 1;
+                continue;
+            }
         }
-        else
-        {
-            result += *p++;
-        }
+        result += *p++;
     }
     return result;
 }

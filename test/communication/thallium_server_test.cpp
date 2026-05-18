@@ -120,21 +120,29 @@ int main(int argc, char** argv)
         tl::engine myEngine(mid);
         LOG_INFO("Engine created and running@{} ...", std::string(myEngine.self()));
 
-        // Define send/recv version
+        // Echo handler: receives data, copies it, sends it back (round-trip test)
         LOG_INFO("Defining RPC routines in send/recv mode");
-        std::function<void(const tl::request&, std::vector<std::byte>&)> repeater =
-                [](const tl::request& req, std::vector<std::byte>& data)
+        std::function<void(const tl::request&, std::vector<char>&)> repeater =
+                [](const tl::request& req, std::vector<char>& data)
         {
-            std::vector<std::byte> mem_vec(data.size());
+            std::vector<char> mem_vec(data.size());
             std::copy(data.begin(), data.end(), mem_vec.begin());
             LOG_DEBUG("Received {} bytes of data in send/recv mode", data.size());
             req.respond(mem_vec);
         };
         myEngine.define("repeater", repeater, 0, *myPool);
 
-        // Define RDMA version
+        // One-way receive handler: receives data, responds with size only (benchmark)
+        std::function<void(const tl::request&, std::vector<char>&)> receiver =
+                [](const tl::request& req, std::vector<char>& data)
+        {
+            LOG_DEBUG("Received {} bytes of data in recv-only mode", data.size());
+            req.respond((uint64_t)data.size());
+        };
+        myEngine.define("receiver", receiver, 0, *myPool);
+
+        // RDMA handler: server pulls bulk data from client, responds with size
         LOG_INFO("Defining RPC routines in RDMA mode");
-        /*std::cout << "Defining RPC routines in RDMA mode" << std::endl;*/
         std::function<void(const tl::request&, tl::bulk&)> f = [j, &engine_vec](const tl::request& req, tl::bulk& b)
         {
             LOG_DEBUG("RDMA rpc invoked");
@@ -152,11 +160,9 @@ int main(int argc, char** argv)
             LOG_DEBUG("RDMA memory exposed");
             b.on(ep) >> local;
             LOG_DEBUG("Received {} bytes of data in RDMA mode", b.size());
-            //for (auto c : mem_vec) std::cout << c;
-            //std::cout << std::endl;
             req.respond(b.size());
         };
-        myEngine.define("rdma_put", f); //.disable_response();
+        myEngine.define("rdma_put", f);
 
         engine_vec.emplace_back(std::move(myEngine));
         mid_vec.emplace_back(mid);

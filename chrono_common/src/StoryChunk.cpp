@@ -48,6 +48,24 @@ int chl::StoryChunk::insertEvent(chl::LogEvent const& event)
     }
 }
 
+int chl::StoryChunk::insertEvent(chl::LogEvent&& event)
+{
+    // Move overload: only moves the event into the map on the success path.
+    // On failure (return 0), the event is NOT consumed — callers can still
+    // read event.time() etc. to retry with a different chunk.
+    if((event.storyId == storyId) && (event.time() >= startTime) && (event.time() < endTime) &&
+       !event.logRecord.empty())
+    {
+        chl::EventSequence key{event.time(), event.clientId, event.index()};
+        logEvents.emplace(std::move(key), std::move(event));
+        return 1;
+    }
+    else
+    {
+        return 0;
+    }
+}
+
 //
 //  merge into this master chunk all the events from the events map startign at iterator position merge_start
 //  return the merged even count
