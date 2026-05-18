@@ -141,7 +141,11 @@ jobs:
           set -e
           NUM_CONTAINERS=7
           for i in $(seq 1 $NUM_CONTAINERS); do
-            docker exec chronolog-c$i bash -c "
+            # --user root: the base image now sets USER=grc-iit (via docker
+            # commit --change in chronolog-base.yml), so the default exec
+            # user is grc-iit. apt-get / useradd / service ssh start all
+            # require root.
+            docker exec --user root chronolog-c$i bash -c "
               apt-get update && apt-get install -y openssh-server sudo pssh dnsutils jq chrpath || true
 
               if ! id -u grc-iit >/dev/null 2>&1; then
@@ -163,14 +167,14 @@ jobs:
           docker exec --user grc-iit chronolog-c1 bash -c "mkdir -p /home/grc-iit/.ssh && ssh-keygen -t rsa -b 4096 -f /home/grc-iit/.ssh/id_rsa -N '' || true"
           docker exec --user grc-iit chronolog-c1 bash -c "cat /home/grc-iit/.ssh/id_rsa.pub > /home/grc-iit/.ssh/authorized_keys"
           docker exec --user grc-iit chronolog-c1 bash -c "for i in \$(seq 1 $NUM_CONTAINERS); do ssh-keyscan -t rsa,ed25519 c\$i >> /home/grc-iit/.ssh/known_hosts 2>/dev/null; done"
-          docker exec chronolog-c1 bash -c "chown -R grc-iit:grc-iit /home/grc-iit/.ssh && chmod 700 /home/grc-iit/.ssh && chmod 600 /home/grc-iit/.ssh/id_rsa && chmod 644 /home/grc-iit/.ssh/id_rsa.pub && chmod 600 /home/grc-iit/.ssh/authorized_keys"
+          docker exec --user root chronolog-c1 bash -c "chown -R grc-iit:grc-iit /home/grc-iit/.ssh && chmod 700 /home/grc-iit/.ssh && chmod 600 /home/grc-iit/.ssh/id_rsa && chmod 644 /home/grc-iit/.ssh/id_rsa.pub && chmod 600 /home/grc-iit/.ssh/authorized_keys"
           docker exec --user grc-iit chronolog-c1 bash -c "echo 'export USER=grc-iit' >> ~/.bashrc"
           echo "✅ SSH keys configured (shared across all containers via shared_home volume)"
 
       - name: Copy workspace to containers
         run: |
           set -e
-          docker exec chronolog-c1 bash -c "mkdir -p /home/grc-iit/chronolog-repo && cp -r /workspace/* /home/grc-iit/chronolog-repo/ 2>/dev/null || true && chown -R grc-iit:grc-iit /home/grc-iit/chronolog-repo"
+          docker exec --user root chronolog-c1 bash -c "mkdir -p /home/grc-iit/chronolog-repo && cp -r /workspace/* /home/grc-iit/chronolog-repo/ 2>/dev/null || true && chown -R grc-iit:grc-iit /home/grc-iit/chronolog-repo"
           echo "✅ Workspace copied to containers"
 
       - name: Fix /home/grc-iit ownership for grc-iit user
@@ -179,7 +183,7 @@ jobs:
           # The base image's spack install wrote DB/lock files as root, but
           # the build step runs as grc-iit. Reclaim ownership of the shared
           # volume so grc-iit can write to the spack DB and install prefix.
-          docker exec chronolog-c1 bash -c "chown -R grc-iit:grc-iit /home/grc-iit"
+          docker exec --user root chronolog-c1 bash -c "chown -R grc-iit:grc-iit /home/grc-iit"
           echo "✅ /home/grc-iit chowned to grc-iit in c1 (propagates via shared_home)"
 
       - name: Build and install ChronoLog (in c1, shared via volume)
@@ -201,8 +205,8 @@ jobs:
 
             INSTALL_DIR=\"/home/grc-iit/chronolog-install\"
             mkdir -p \"\${INSTALL_DIR}\"
-            ./tools/deploy/ChronoLog/local_single_user_deploy.sh -b -I \"\${INSTALL_DIR}\"
-            ./tools/deploy/ChronoLog/local_single_user_deploy.sh -i -I \"\${INSTALL_DIR}\"
+            ./tools/deploy/local_single_user_deploy.sh -b -I \"\${INSTALL_DIR}\"
+            ./tools/deploy/local_single_user_deploy.sh -i -I \"\${INSTALL_DIR}\"
           "
           echo '✅ ChronoLog built and installed'
           echo "duration=$(( $(date +%s) - _start ))" >> "$GITHUB_OUTPUT"
@@ -217,7 +221,7 @@ jobs:
 
           WORK_DIR="/home/grc-iit/chronolog-install/chronolog"
 
-          docker exec chronolog-c1 bash -c "mkdir -p ${WORK_DIR}/conf && chown -R grc-iit:grc-iit ${WORK_DIR}"
+          docker exec --user root chronolog-c1 bash -c "mkdir -p ${WORK_DIR}/conf && chown -R grc-iit:grc-iit ${WORK_DIR}"
 
           docker exec --user grc-iit chronolog-c1 bash -c "rm -rf ${WORK_DIR}/conf/hosts_*"
           docker exec --user grc-iit chronolog-c1 bash -c "echo c1 > ${WORK_DIR}/conf/hosts_visor"
@@ -311,9 +315,9 @@ jobs:
 
             echo '[3/5] Deploying ChronoLog...'
 
-            if [ -x ./tools/deploy/ChronoLog/single_user_deploy.sh ]; then
+            if [ -x ./tools/deploy/single_user_deploy.sh ]; then
               echo '🚀 Starting ChronoLog deployment...'
-              ./tools/deploy/ChronoLog/single_user_deploy.sh -d -w \"\${WORK_DIR}\"
+              ./tools/deploy/single_user_deploy.sh -d -w \"\${WORK_DIR}\"
             else
               echo '❌ Deploy script not found or not executable'
               exit 1
@@ -541,8 +545,8 @@ jobs:
             spack env activate -d . 2>/dev/null || spack env activate -p . 2>/dev/null || true
 
             echo 'Stopping ChronoLog...'
-            if [ -x ./tools/deploy/ChronoLog/single_user_deploy.sh ]; then
-              ./tools/deploy/ChronoLog/single_user_deploy.sh -s -w \"\${WORK_DIR}\" 2>/dev/null || true
+            if [ -x ./tools/deploy/single_user_deploy.sh ]; then
+              ./tools/deploy/single_user_deploy.sh -s -w \"\${WORK_DIR}\" 2>/dev/null || true
             fi
           " || echo "⚠️ Stop command had errors but continuing cleanup"
 

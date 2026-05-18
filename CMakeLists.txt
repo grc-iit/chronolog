@@ -5,7 +5,7 @@ if(NOT DEFINED CMAKE_MACOSX_RPATH)
     set(CMAKE_MACOSX_RPATH 0)
 endif()
 
-project(ChronoLog VERSION 2.7.0 LANGUAGES CXX C)
+project(ChronoLog VERSION 2.8.0 LANGUAGES CXX C)
 
 #------------------------------------------------------------------------------
 # Version information
@@ -227,7 +227,7 @@ if(CHRONOLOG_ENABLE_DOXYGEN)
         BUILD_DIR
         ${CMAKE_CURRENT_BINARY_DIR}/_build
         DOXY_FILE
-        ${CMAKE_CURRENT_SOURCE_DIR}/doc/Doxyfile.in
+        ${CMAKE_CURRENT_SOURCE_DIR}/docs/Doxyfile.in
         TARGET_NAME
         dox
         COMMENT
@@ -242,8 +242,8 @@ add_custom_target(lint COMMAND cpplint --recursive
     --exclude=${CMAKE_CURRENT_SOURCE_DIR}/build
     --exclude=${CMAKE_CURRENT_SOURCE_DIR}/cmake-build-debug
     --exclude=${CMAKE_CURRENT_SOURCE_DIR}/external_libs
-    --exclude=${CMAKE_CURRENT_SOURCE_DIR}/doc
-    --exclude=${CMAKE_CURRENT_SOURCE_DIR}/CI
+    --exclude=${CMAKE_CURRENT_SOURCE_DIR}/docs
+    --exclude=${CMAKE_CURRENT_SOURCE_DIR}/docker
     ${CMAKE_CURRENT_SOURCE_DIR})
 
 #------------------------------------------------------------------------------
@@ -257,7 +257,7 @@ add_custom_target(lint COMMAND cpplint --recursive
 #
 # The CHRONOLOG_INSTALL_TESTS env var only seeds the default on a fresh
 # configure; CMake caches the option, so the env var is ignored on
-# reconfigure. tools/deploy/ChronoLog/build.sh forwards the env var as an
+# reconfigure. tools/deploy/build.sh forwards the env var as an
 # explicit -D on every invocation so it wins even when the build dir is
 # reused — if you invoke cmake directly, pass -D yourself.
 #------------------------------------------------------------------------------
@@ -270,24 +270,18 @@ endif()
 #------------------------------------------------------------------------------
 # ChronoLog Components
 #------------------------------------------------------------------------------
-add_subdirectory(chrono_common)
-add_subdirectory(Client)
-add_subdirectory(ChronoVisor)
-add_subdirectory(ChronoKeeper)
-add_subdirectory(ChronoGrapher)
-add_subdirectory(ChronoPlayer)
-add_subdirectory(ChronoStore)
+add_subdirectory(src/chrono-common)
+add_subdirectory(client)
+add_subdirectory(src/chrono-visor)
+add_subdirectory(src/chrono-keeper)
+add_subdirectory(src/chrono-grapher)
+add_subdirectory(src/chrono-player)
 add_subdirectory(tools)
-add_subdirectory(Plugins)
+add_subdirectory(plugins)
 
 if(CHRONOLOG_BUILD_TESTS_NOW)
     enable_testing()
-    add_subdirectory(test)
-else()
-    # Performance regression harness ships in every build type (including
-    # Release) so the perf matrix can be run against optimized binaries. The
-    # rest of the test tree remains Debug-only.
-    add_subdirectory(test/performance)
+    add_subdirectory(tests)
 endif()
 
 #------------------------------------------------------------------------------
@@ -375,8 +369,8 @@ install(
 #------------------------------------------------------------------------------
 install(
     PROGRAMS
-        tools/deploy/ChronoLog/deploy_local.sh
-        tools/deploy/ChronoLog/deploy_cluster.sh
+        tools/deploy/deploy_local.sh
+        tools/deploy/deploy_cluster.sh
     DESTINATION ${CHRONOLOG_INSTALL_DEPLOY_DIR}
 )
 

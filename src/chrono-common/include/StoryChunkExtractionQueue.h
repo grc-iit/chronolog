@@ -1,0 +1,93 @@
+#ifndef CHUNK_EXTRACTION_QUEUE_H
+#define CHUNK_EXTRACTION_QUEUE_H
+
+#include <iostream>
+#include <deque>
+#include <mutex>
+
+#include <chrono_monitor.h>
+
+#include "chronolog_types.h"
+#include "StoryChunk.h"
+
+namespace chronolog
+{
+
+class StoryChunkExtractionQueue
+{
+public:
+    StoryChunkExtractionQueue() {}
+
+    ~StoryChunkExtractionQueue()
+    {
+        LOG_TRACE("[StoryChunkExtractionQueue] Destructor called.");
+        shutDown();
+    }
+
+    void stashStoryChunk(StoryChunk* story_chunk)
+    {
+        if(nullptr == story_chunk)
+        {
+            LOG_WARNING("[StoryChunkExtractionQueue] Attempted to stash a null story chunk. Ignoring.");
+            return;
+        }
+        LOG_DEBUG("[StoryChunkExtractionQueue] Stashed story chunk with StoryID={} and StartTime={}",
+                  story_chunk->getStoryId(),
+                  story_chunk->getStartTime());
+        {
+            std::lock_guard<std::mutex> lock(extractionQueueMutex);
+            extractionDeque.push_back(story_chunk);
+        }
+    }
+
+    StoryChunk* ejectStoryChunk()
+    {
+        std::lock_guard<std::mutex> lock(extractionQueueMutex);
+        if(extractionDeque.empty())
+        {
+            LOG_DEBUG("[StoryChunkExtractionQueue] No story chunks available for ejection.");
+            return nullptr;
+        }
+        StoryChunk* story_chunk = extractionDeque.front();
+        extractionDeque.pop_front();
+
+        return story_chunk;
+    }
+
+
+    int size() { return extractionDeque.size(); }
+
+    bool empty() { return extractionDeque.empty(); }
+
+    void shutDown()
+    {
+        LOG_INFO("[StoryChunkExtractionQueue] Initiating queue shutdown. Queue size: {}", extractionDeque.size());
+        // we should never get to this point as many attempts were made by now to process the chunk
+        // process the chunk or put on the extractors outage buffer
+        // this is just an extra safety measure...
+        // to free the remaining storychunks memory...
+        if(!extractionDeque.empty())
+        {
+            std::lock_guard<std::mutex> lock(extractionQueueMutex);
+            while(!extractionDeque.empty())
+            {
+                delete extractionDeque.front();
+                extractionDeque.pop_front();
+            }
+        }
+        LOG_INFO("[StoryChunkExtractionQueue] Queue has been successfully shut down and all story chunks have been "
+                 "freed.");
+    }
+
+private:
+    StoryChunkExtractionQueue(StoryChunkExtractionQueue const&) = delete;
+
+    StoryChunkExtractionQueue& operator=(StoryChunkExtractionQueue const&) = delete;
+
+    std::mutex extractionQueueMutex;
+    std::deque<StoryChunk*> extractionDeque;
+};
+
+} // namespace chronolog
+
+#endif
