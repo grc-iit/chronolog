@@ -25,7 +25,7 @@
 
 // Interactive ChronoLog client shell.
 // Extracted from client_admin.cpp; the scripted/perf-test workload lives in
-// test/performance/performance_test.cpp.
+// tests/performance/.
 
 static void usage(char** argv)
 {
