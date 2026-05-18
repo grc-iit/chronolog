@@ -3,6 +3,7 @@
 //
 
 #include <iostream>
+#include <iomanip>
 #include <string>
 #include <vector>
 #include <cstdlib>
@@ -18,38 +19,37 @@
 #include <chrono_monitor.h>
 
 #define WARM_UP_REPS 3
-#define MSG_SIZE (1 * 1024 * 1024)
-//#define MSG_SIZE (106930)
 
 namespace tl = thallium;
 using namespace std::chrono;
 using my_clock = steady_clock;
 
-void report_results(double duration_ave,
+void report_results(const std::string& mode,
+                    long msg_size,
+                    long repetition,
+                    int nprocs,
+                    double duration_ave,
                     double duration_min,
                     double duration_max,
                     double duration_wall,
                     double duration_init_ave,
                     double duration_comm_ave)
 {
-    // Logging the results with descriptive headers for better context.
-    LOG_INFO("[Performance Metrics Report (msg_size={}MB)(us)]", MSG_SIZE / (1024.0 * 1024.0));
-    LOG_INFO("-------------------------------------------------------------------------------------------------------");
-    LOG_INFO("{:>16} {:>16} {:>16} {:>16} {:>16} {:>16}",
-             "Ave Time",
-             "Min Time",
-             "Max Time",
-             "Wall Time",
-             "Ave Init Time",
-             "Ave Comm Time");
-    LOG_INFO("-------------------------------------------------------------------------------------------------------");
-    LOG_INFO("{:>16.4f} {:>16.4f} {:>16.4f} {:>16.4f} {:>16.4f} {:>16.4f}",
-             duration_ave,
-             duration_min,
-             duration_max,
-             duration_wall,
-             duration_init_ave,
-             duration_comm_ave);
+    long effective_reps = repetition - WARM_UP_REPS;
+    if(effective_reps < 1) effective_reps = 1;
+    double avg_latency_us = duration_comm_ave / effective_reps;
+    double bandwidth_MBps = ((double)msg_size * effective_reps) / (duration_comm_ave / 1e6) / (1024.0 * 1024.0);
+    double agg_bandwidth_MBps = bandwidth_MBps * nprocs;
+
+    std::cout << std::fixed
+              << "mode:          " << mode << std::endl
+              << "msg_size:      " << msg_size << std::endl
+              << "repetitions:   " << effective_reps << std::endl
+              << "nprocs:        " << nprocs << std::endl
+              << "total_comm:    " << std::setprecision(3) << duration_comm_ave << " us" << std::endl
+              << "avg_latency:   " << std::setprecision(3) << avg_latency_us << " us" << std::endl
+              << "bw_per_client: " << std::setprecision(3) << bandwidth_MBps << " MB/s" << std::endl
+              << "agg_bandwidth: " << std::setprecision(3) << agg_bandwidth_MBps << " MB/s" << std::endl;
 }
 
 
@@ -83,14 +83,13 @@ void calculate_time(time_point<my_clock, nanoseconds>& t_bigbang,
     duration_ave /= (nprocs);
     duration_init_ave /= (nprocs);
     duration_comm_ave /= (nprocs);
-    duration_comm_ave /= (double)(repetition - WARM_UP_REPS);
 }
 
 std::string get_server_address(const std::string& base_address, long num_servers, int rank)
 {
     std::string host_ip = base_address.substr(0, base_address.rfind(':'));
     std::string base_port = base_address.substr(base_address.rfind(':') + 1);
-    // randomly select target server port
+    // select target server port round-robin by rank
     auto new_port = strtol(base_port.c_str(), nullptr, 10) + rank % num_servers;
     LOG_DEBUG("[ThalliumClientMPI] Selected server port based on rank {}: {}", rank, new_port);
     std::string new_addr_str = host_ip + ":" + std::to_string(new_port);
@@ -100,9 +99,13 @@ std::string get_server_address(const std::string& base_address, long num_servers
 
 int main(int argc, char** argv)
 {
-    if(argc < 4)
+    if(argc < 5)
     {
-        std::cerr << "Usage: " << argv[0] << " <address> <#servers> <sendrecv|rdma> [repetition]" << std::endl;
+        std::cerr << "Usage: " << argv[0]
+                  << " <address> <#servers> <sendrecv|recv|rdma> <msg_size> [repetition]" << std::endl;
+        std::cerr << "  sendrecv  Round-trip echo via send/recv" << std::endl;
+        std::cerr << "  recv      One-way send/recv (server responds with size only)" << std::endl;
+        std::cerr << "  rdma      One-way RDMA pull (server pulls bulk, responds with size)" << std::endl;
         exit(0);
     }
 
@@ -113,11 +116,11 @@ int main(int argc, char** argv)
 
     int result = chronolog::chrono_monitor::initialize("console",
                                                        "thallium_client_mpi.log",
-                                                       chronolog::LogLevel::debug,
+                                                       chronolog::LogLevel::info,
                                                        "thallium_client_mpi",
                                                        1048576,
                                                        5,
-                                                       chronolog::LogLevel::debug);
+                                                       chronolog::LogLevel::warn);
     if(result == 1)
     {
         exit(EXIT_FAILURE);
@@ -126,78 +129,99 @@ int main(int argc, char** argv)
     std::string base_address = argv[1];
     long num_servers = strtol(argv[2], nullptr, 10);
     std::string mode = argv[3];
+    long msg_size = strtol(argv[4], nullptr, 10);
     long repetition = 1;
-    if(argc > 4)
-        repetition = strtol(argv[4], nullptr, 10);
+    if(argc > 5)
+        repetition = strtol(argv[5], nullptr, 10);
     std::string server_address;
 
+    // Ensure enough reps for warm-up
+    if(repetition <= WARM_UP_REPS)
+        repetition = WARM_UP_REPS + 1;
+
     std::string proto = base_address.substr(0, base_address.find_first_of(':'));
-    std::vector<char> send_vec, ret_vec;
-    send_vec.reserve(MSG_SIZE);
+    std::vector<char> send_vec;
+    send_vec.reserve(msg_size);
     static const char alphanum[] = "0123456789"
                                    "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
                                    "abcdefghijklmnopqrstuvwxyz";
-    for(int i = 0; i < MSG_SIZE; ++i) { send_vec.push_back(alphanum[dist(mt) % (sizeof(alphanum) - 1)]); }
+    for(long i = 0; i < msg_size; ++i) { send_vec.push_back(alphanum[dist(mt) % (sizeof(alphanum) - 1)]); }
     double duration_min, duration_max, duration_ave, duration_wall;
     double duration_init_ave, duration_comm_ave;
     time_point<my_clock, nanoseconds> t_bigbang, t_local_init, t_local_finish, t_global_finish;
 
-    if(!strcmp(mode.c_str(), "sendrecv"))
+    if(mode == "sendrecv")
     {
-        /* send/recv version */
+        // Round-trip echo: client sends data, server copies and echoes it back
         MPI_Barrier(MPI_COMM_WORLD);
         t_bigbang = my_clock::now();
         tl::engine myEngine(proto, THALLIUM_CLIENT_MODE);
         server_address = get_server_address(base_address, num_servers, my_rank);
         std::string rpc_name = "repeater";
-        LOG_DEBUG("[ThalliumClientMPI] Attempting to establish RPC connection for sendrecv mode with server at: {}",
-                  server_address);
+        LOG_DEBUG("[ThalliumClientMPI] Establishing sendrecv RPC with server at: {}", server_address);
         tl::remote_procedure repeater = myEngine.define(rpc_name);
         tl::endpoint server = myEngine.lookup(server_address);
-        tl::provider_handle ph(server);
+        std::vector<char> ret_vec;
         for(int i = 0; i < WARM_UP_REPS; i++)
-            ret_vec = repeater.on(server)(send_vec).as<std::vector<char>>(); // warm up
+            ret_vec = repeater.on(server)(send_vec).as<std::vector<char>>();
         t_local_init = my_clock::now();
-        for(int i = WARM_UP_REPS; i < repetition; i++)
+        for(long i = WARM_UP_REPS; i < repetition; i++)
         {
             ret_vec = repeater.on(server)(send_vec).as<std::vector<char>>();
-            //            if(ret_vec != send_vec)
-            //            {
-            //                LOG_ERROR("[ThalliumClientMPI] Mismatch detected: The server's response does not match the sent data.");
-            //            }
         }
         t_local_finish = my_clock::now();
         MPI_Barrier(MPI_COMM_WORLD);
         t_global_finish = my_clock::now();
     }
-    else if(!strcmp(mode.c_str(), "rdma"))
+    else if(mode == "recv")
     {
-        /* RDMA version */
+        // One-way send/recv: client sends data, server responds with size only
+        MPI_Barrier(MPI_COMM_WORLD);
+        t_bigbang = my_clock::now();
+        tl::engine myEngine(proto, THALLIUM_CLIENT_MODE);
+        server_address = get_server_address(base_address, num_servers, my_rank);
+        std::string rpc_name = "receiver";
+        LOG_DEBUG("[ThalliumClientMPI] Establishing recv RPC with server at: {}", server_address);
+        tl::remote_procedure receiver = myEngine.define(rpc_name);
+        tl::endpoint server = myEngine.lookup(server_address);
+        for(int i = 0; i < WARM_UP_REPS; i++)
+            receiver.on(server)(send_vec);
+        t_local_init = my_clock::now();
+        for(long i = WARM_UP_REPS; i < repetition; i++)
+        {
+            receiver.on(server)(send_vec);
+        }
+        t_local_finish = my_clock::now();
+        MPI_Barrier(MPI_COMM_WORLD);
+        t_global_finish = my_clock::now();
+    }
+    else if(mode == "rdma")
+    {
+        // RDMA: client exposes memory, server pulls it, responds with size
         MPI_Barrier(MPI_COMM_WORLD);
         t_bigbang = my_clock::now();
         tl::engine myEngine(proto, THALLIUM_CLIENT_MODE);
         server_address = get_server_address(base_address, num_servers, my_rank);
         std::string rpc_name = "rdma_put";
-        LOG_DEBUG("[ThalliumClientMPI] Attempting to establish RPC connection for RDMA mode with server at: {}",
-                  server_address);
-        tl::remote_procedure rdma_put = myEngine.define(rpc_name); //.disable_response();
+        LOG_DEBUG("[ThalliumClientMPI] Establishing RDMA RPC with server at: {}", server_address);
+        tl::remote_procedure rdma_put = myEngine.define(rpc_name);
         tl::endpoint server = myEngine.lookup(server_address);
         std::vector<std::pair<void*, std::size_t>> segments(1);
         segments[0].first = (void*)(&send_vec[0]);
-        segments[0].second = send_vec.size() + 1;
-        LOG_DEBUG("[ThalliumClientMPI] Exposing memory segments of size {} for RDMA mode.", send_vec.size() + 1);
+        segments[0].second = send_vec.size();
         tl::bulk myBulk = myEngine.expose(segments, tl::bulk_mode::read_only);
         for(int i = 0; i < WARM_UP_REPS; i++) rdma_put.on(server)(myBulk);
         t_local_init = my_clock::now();
-        for(int i = WARM_UP_REPS; i < repetition; i++) rdma_put.on(server)(myBulk);
+        for(long i = WARM_UP_REPS; i < repetition; i++) rdma_put.on(server)(myBulk);
         t_local_finish = my_clock::now();
         MPI_Barrier(MPI_COMM_WORLD);
         t_global_finish = my_clock::now();
     }
     else
     {
-        LOG_ERROR("[ThalliumClientMPI] Invalid mode selected: {}", mode);
-        exit(0);
+        LOG_ERROR("[ThalliumClientMPI] Invalid mode: {}. Use sendrecv, recv, or rdma.", mode);
+        MPI_Finalize();
+        return 1;
     }
 
     calculate_time(t_bigbang,
@@ -215,7 +239,9 @@ int main(int argc, char** argv)
 
     if(my_rank == 0)
     {
-        report_results(duration_ave, duration_min, duration_max, duration_wall, duration_init_ave, duration_comm_ave);
+        report_results(mode, msg_size, repetition, nprocs,
+                       duration_ave, duration_min, duration_max, duration_wall,
+                       duration_init_ave, duration_comm_ave);
     }
 
     MPI_Finalize();
