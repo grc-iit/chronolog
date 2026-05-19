@@ -147,17 +147,24 @@ for node_count in "${node_values[@]}"; do
         "${common[@]}"
     fi
 
-    run_batch "n${node_count}-s${size}-kafka-append-sync-async" \
-      --systems kafka \
-      --workflows append_throughput \
-      --kafka-acks-values 0,all \
-      "${common[@]}"
+    if (( node_count < 2 )); then
+      skip_batch "n${node_count}-s${size}-kafka-append-sync-async" \
+        "distributed Kafka harness requires at least 2 nodes"
+      skip_batch "n${node_count}-s${size}-kafka-range-sync-async" \
+        "distributed Kafka harness requires at least 2 nodes"
+    else
+      run_batch "n${node_count}-s${size}-kafka-append-sync-async" \
+        --systems kafka \
+        --workflows append_throughput \
+        --kafka-acks-values 0,all \
+        "${common[@]}"
 
-    run_batch "n${node_count}-s${size}-kafka-range-sync-async" \
-      --systems kafka \
-      --workflows range_retrieval \
-      --kafka-acks-values 0,all \
-      "${common[@]}"
+      run_batch "n${node_count}-s${size}-kafka-range-sync-async" \
+        --systems kafka \
+        --workflows range_retrieval \
+        --kafka-acks-values 0,all \
+        "${common[@]}"
+    fi
 
     run_batch "n${node_count}-s${size}-mofka-append-memory-none-noflush" \
       --systems mofka \

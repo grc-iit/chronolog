@@ -20,12 +20,13 @@ RESULT_ROOT=.agent/results/20260519-180958-requested-final-figure-grid-dryrun \
 | Item | Count |
 |---|---:|
 | Semantic batch directories | 220 |
-| Generated executable commands | 280 |
+| Generated executable commands | 264 |
 | Skipped ChronoLog 1-node batches | 12 |
+| Skipped Kafka 1-node batches | 8 |
 | Empty command batches | 0 |
 | Commands per 2/4/5/16-node count | 60 |
-| Commands for 1-node count | 40 |
-| Commands per payload size | 70 |
+| Commands for 1-node count | 24 |
+| Commands per payload size | 66 |
 
 Node coverage generated:
 
@@ -43,6 +44,6 @@ Payload coverage generated:
 
 This validates that the benchmark harness can expand the requested grid with explicit semantic batches and size-aware operation counts. It does not produce performance figures by itself, because `DRY_RUN=1` is the default.
 
-The original full dry-run revealed that distributed ChronoLog rejects 1-node runs. The runner now records those ChronoLog 1-node batches as skipped instead of failing the whole matrix. Kafka and Mofka 1-node rows remain runnable.
+The original actual 1-node probe revealed that distributed ChronoLog and Kafka reject 1-node runs. The runner now records those 1-node batches as skipped instead of failing the whole matrix. Mofka 1-node rows remain runnable.
 
 The stricter final figure objective remains incomplete until the same runner is executed with `DRY_RUN=0`, the resulting rows pass acceptance checks, and the final report is regenerated from those metrics.

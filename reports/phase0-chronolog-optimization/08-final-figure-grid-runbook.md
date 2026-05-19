@@ -67,6 +67,7 @@ Kafka:
 
 - append with `acks=0` and `acks=all`.
 - range/catch-up with `acks=0` and `acks=all`.
+- 1-node distributed Kafka rows are marked skipped because the distributed Kafka harness requires at least 2 nodes.
 
 Mofka:
 
