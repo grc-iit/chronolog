@@ -11,7 +11,7 @@
 
 #include "chronolog_types.h"
 #include "StoryChunk.h"
-#include "StoryChunkExtractionQueue.h"
+
 class StoryPipeline_TestAppendStoryChunk_testSuccess_Test;
 class StoryPipeline_TestPrependStoryChunk_testSuccess_Test;
 class StoryPipeline_TestFinalize_testNoPendingChunks_Test;
@@ -32,8 +32,7 @@ class StoryPipeline
 {
 
 public:
-    StoryPipeline(StoryChunkExtractionQueue&,
-                  ChronicleName const& chronicle_name,
+    StoryPipeline(ChronicleName const& chronicle_name,
                   StoryName const& story_name,
                   StoryId const& story_id,
                   uint64_t start_time,
@@ -55,21 +54,25 @@ public:
 
     void mergeEvents(StoryChunk&);
 
-    void extractDecayedStoryChunks(uint64_t);
+    void extractDecayedStoryChunks(uint64_t, std::vector<StoryChunk*> &);
 
     StoryId const& getStoryId() const { return storyId; }
 
     uint64_t getAcceptanceWindow() const { return acceptanceWindow; }
 
-    uint64_t TimelineStart() const { return (*storyTimelineMap.begin()).first; } // storyTimelineMap is never left empty
+    uint64_t TimelineStart() const 
+    {// storyTimelineMap is never left empty 
+        return (*storyTimelineMap.begin()).first; 
+    } 
 
     uint64_t TimelineEnd() const
-    {
+    {// storyTimelineMap is never left empty 
         return (*storyTimelineMap.rbegin()).second->getEndTime();
-    } // storyTimelineMap is never left empty
+    } 
+
+    void finalize(std::vector<StoryChunk*> &);
 
 private:
-    StoryChunkExtractionQueue& theExtractionQueue;
     StoryId storyId;
     ChronicleName chronicleName;
     StoryName storyName;
@@ -110,7 +113,6 @@ private:
     FRIEND_TEST(::StoryPipeline_TestFinalize, testEmptyVsNonTimeline);
     FRIEND_TEST(::StoryPipeline_TestFinalize, testFinalizeDoubleCall);
     FRIEND_TEST(::StoryPipeline_TestFinalize, testFinalizeWithMixedTimeline);
-    void finalize();
 };
 
 } // namespace chronolog
