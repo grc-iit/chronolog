@@ -11,7 +11,7 @@
 namespace chronolog
 {
 
-struct RecordingServiceConf
+struct RpcServiceConf
 {
     RPCProviderConf RPC_CONF;
     uint32_t INGESTION_THREAD_COUNT = 1;
@@ -27,10 +27,10 @@ struct PlayerConfiguration
 {
     uint32_t RECORDING_GROUP;
     RPCProviderConf DATA_STORE_ADMIN_SERVICE_CONF;
-    RecordingServiceConf PLAYBACK_SERVICE_CONF;
+    RpcServiceConf PLAYBACK_SERVICE_CONF;
     RPCProviderConf VISOR_REGISTRY_SERVICE_CONF;
     LogConf LOG_CONF;
-    RecordingServiceConf RECORDING_SERVICE_CONF;
+    RpcServiceConf RECORDING_SERVICE_CONF;
     DataStoreConf DATA_STORE_CONF{};
     ExtractorReaderConf READER_CONF;
 

@@ -87,8 +87,8 @@ int chronolog::PlayerConfiguration::parseJsonConf(json_object* json_conf)
                 std::cerr << "[PlayerConfiguration] Invalid 'RecordingService': expected object" << std::endl;
                 return chl::CL_ERR_INVALID_CONF;
             }
-            json_object* data_store_admin_service_conf = json_object_object_get(json_conf, "PlayerRecordingService");
-            json_object_object_foreach(data_store_admin_service_conf, key, val)
+            json_object* recording_service_conf = json_object_object_get(json_conf, "PlayerRecordingService");
+            json_object_object_foreach(recording_service_conf, key, val)
             {
                 if(strcmp(key, "rpc") == 0)
                 {
