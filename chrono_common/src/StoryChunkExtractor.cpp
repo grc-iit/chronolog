@@ -89,6 +89,7 @@ void chronolog::StoryChunkExtractorBase::drainExtractionQueue()
                 LOG_WARNING("[StoryChunkExtractionBase] Failed to acquire a story chunk from the queue.");
                 break;
             }
+            StoryId const story_id = storyChunk->getStoryId();
             int ret = processStoryChunk(storyChunk); // INNA: should add return type and handle the failure properly
             // free the memory or reset the startTime and return to the pool of prealocated chunks
             if(ret == chronolog::CL_SUCCESS)
@@ -96,6 +97,7 @@ void chronolog::StoryChunkExtractorBase::drainExtractionQueue()
                 LOG_DEBUG("[StoryChunkExtractionBase] StoryChunk processed successfully. ES Rank: {}, ULT ID: {}",
                           es.get_rank(),
                           thallium::thread::self_id());
+                chunkExtractionQueue.completeStoryChunk(story_id);
                 delete storyChunk;
             }
             else
@@ -111,6 +113,7 @@ void chronolog::StoryChunkExtractorBase::drainExtractionQueue()
                         es.get_rank(),
                         thallium::thread::self_id());
                 chunkExtractionQueue.stashStoryChunk(storyChunk);
+                chunkExtractionQueue.completeStoryChunk(story_id);
             }
         }
         sleep(1);

@@ -1,14 +1,18 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <signal.h>
+#include <chrono>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <utility>
 #include <cstdint>
 
 #include <KeeperRecordingService.h>
+#include <KeeperAppendStats.h>
 #include <KeeperRegClient.h>
 #include <IngestionQueue.h>
 #include <StoryChunkExtractionQueue.h>
@@ -24,6 +28,41 @@
 
 namespace chl = chronolog;
 namespace tl = thallium;
+
+namespace
+{
+int env_positive_int(char const* name, int default_value)
+{
+    char const* value = std::getenv(name);
+    if(value == nullptr || *value == '\0')
+    {
+        return default_value;
+    }
+    char* end = nullptr;
+    long parsed = std::strtol(value, &end, 10);
+    if(end == value || parsed <= 0 || parsed > std::numeric_limits<int>::max())
+    {
+        return default_value;
+    }
+    return static_cast<int>(parsed);
+}
+
+int env_nonnegative_int(char const* name, int default_value)
+{
+    char const* value = std::getenv(name);
+    if(value == nullptr || *value == '\0')
+    {
+        return default_value;
+    }
+    char* end = nullptr;
+    long parsed = std::strtol(value, &end, 10);
+    if(end == value || parsed < 0 || parsed > std::numeric_limits<int>::max())
+    {
+        return default_value;
+    }
+    return static_cast<int>(parsed);
+}
+}
 
 // we will be using a combination of the uint32_t representation of the service IP address
 // and uint16_t representation of the port number
@@ -53,11 +92,17 @@ int service_endpoint_from_dotted_string(std::string const& ip_string, int port, 
 }
 
 volatile sig_atomic_t keep_running = true;
+volatile sig_atomic_t append_stats_snapshot_requested = false;
 
 void sigterm_handler(int)
 {
-    LOG_INFO("[ChronoKeeperInstance] Received SIGTERM signal. Initiating shutdown procedure.");
     keep_running = false;
+    return;
+}
+
+void sigusr1_handler(int)
+{
+    append_stats_snapshot_requested = true;
     return;
 }
 
@@ -67,6 +112,7 @@ int main(int argc, char** argv)
 {
     int exit_code = 0;
     signal(SIGTERM, sigterm_handler);
+    signal(SIGUSR1, sigusr1_handler);
 
     /// Configure SetUp ________________________________________________________________________________________________
     std::string conf_file_path;
@@ -98,6 +144,7 @@ int main(int argc, char** argv)
 
     LOG_INFO("[ChronoKeeper] Running ChronoKeeper Server.");
     LOG_INFO("[ChronoKeeper] Configuration {}", KEEPER_CONF.to_String());
+    chronolog::chrono_monitor::flush();
 
     // Instantiate ChronoKeeper MemoryDataStore
     // instantiate DataStoreAdminService
@@ -166,8 +213,16 @@ int main(int argc, char** argv)
     tl::engine* extractionEngine = nullptr;
     try
     {
-        extractionEngine =
-                new tl::engine(KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.PROTO_CONF, THALLIUM_CLIENT_MODE);
+        int const drain_margo_progress_thread =
+                env_positive_int("CHRONOLOG_KEEPER_DRAIN_MARGO_PROGRESS_THREAD", 1);
+        int const drain_margo_rpc_threads = env_positive_int("CHRONOLOG_KEEPER_DRAIN_MARGO_RPC_THREADS", 0);
+        LOG_INFO("[ChronoKeeperInstance] Keeper-to-Grapher drain sender Margo progress_thread={} rpc_threads={}",
+                 drain_margo_progress_thread,
+                 drain_margo_rpc_threads);
+        extractionEngine = new tl::engine(KEEPER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.PROTO_CONF,
+                                          THALLIUM_CLIENT_MODE,
+                                          drain_margo_progress_thread != 0,
+                                          drain_margo_rpc_threads);
 
         std::stringstream s1;
         s1 << extractionEngine->self();
@@ -194,7 +249,11 @@ int main(int argc, char** argv)
                                             KEEPER_CONF.DATA_STORE_CONF.max_story_chunk_size,
                                             KEEPER_CONF.DATA_STORE_CONF.story_chunk_duration_secs,
                                             KEEPER_CONF.DATA_STORE_CONF.acceptance_window_secs,
-                                            KEEPER_CONF.DATA_STORE_CONF.inactive_story_delay_secs);
+                                            KEEPER_CONF.DATA_STORE_CONF.inactive_story_delay_secs,
+                                            KEEPER_CONF.DATA_STORE_CONF.data_collection_poll_interval_us,
+                                            [&single_endpoint_rdma_extractor](chl::StoryId const& story_id) {
+                                                return single_endpoint_rdma_extractor.complete_story_drain(story_id);
+                                            });
 
     // Instantiate KeeperRecordingService
     tl::engine* dataAdminEngine = nullptr;
@@ -242,7 +301,20 @@ int main(int argc, char** argv)
 
     try
     {
-        margo_instance_id margo_id = margo_init(KEEPER_RECORDING_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 1);
+        int const legacy_recording_margo_xstreams =
+                env_positive_int("CHRONOLOG_KEEPER_RECORDING_MARGO_XSTREAMS", 1);
+        int const recording_margo_progress_thread =
+                env_nonnegative_int("CHRONOLOG_KEEPER_RECORDING_MARGO_PROGRESS_THREAD",
+                                    legacy_recording_margo_xstreams > 0 ? 1 : 0);
+        int const recording_margo_handlers = env_positive_int("CHRONOLOG_KEEPER_RECORDING_MARGO_HANDLERS", 1);
+        LOG_INFO("[ChronoKeeperInstance] KeeperRecordingService Margo progress_thread={} handlers={} legacy_xstreams={}",
+                 recording_margo_progress_thread,
+                 recording_margo_handlers,
+                 legacy_recording_margo_xstreams);
+        margo_instance_id margo_id = margo_init(KEEPER_RECORDING_SERVICE_NA_STRING.c_str(),
+                                                MARGO_SERVER_MODE,
+                                                recording_margo_progress_thread != 0,
+                                                recording_margo_handlers);
         recordingEngine = new tl::engine(margo_id);
 
         std::stringstream s1;
@@ -254,7 +326,8 @@ int main(int argc, char** argv)
         keeperRecordingService =
                 chronolog::KeeperRecordingService::CreateKeeperRecordingService(*recordingEngine,
                                                                                 recording_service_provider_id,
-                                                                                ingestionQueue);
+                                                                                ingestionQueue,
+                                                                                theDataStore);
     }
     catch(tl::exception const&)
     {
@@ -290,34 +363,52 @@ int main(int argc, char** argv)
     }
 
     /// Registration with ChronoVisor __________________________________________________________________________________
-    // try to register with chronoVisor a few times than log ERROR and exit...
+    // Keep retrying long enough to survive Visor-side delayed AdminClient cleanup after an unclean Keeper exit.
     int registration_status = chronolog::CL_ERR_UNKNOWN;
-    int retries = 5;
-    while((chronolog::CL_SUCCESS != registration_status) && (retries > 0))
+    int retries = env_positive_int("CHRONOLOG_KEEPER_REGISTRATION_RETRIES", 80);
+    int const retry_sleep_ms = env_positive_int("CHRONOLOG_KEEPER_REGISTRATION_RETRY_SLEEP_MS", 100);
+    int attempt = 0;
+    while((chronolog::CL_SUCCESS != registration_status) && (attempt < retries))
     {
         registration_status = keeperRegistryClient->send_register_msg(
                 chronolog::KeeperRegistrationMsg(keeperIdCard, dataStoreServiceId));
-        retries--;
+        attempt++;
+        if(chronolog::CL_SUCCESS != registration_status && attempt < retries)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(retry_sleep_ms));
+        }
     }
 
     if(chronolog::CL_SUCCESS != registration_status)
     {
-        LOG_CRITICAL("[ChronoKeeperInstance] Failed to register with ChronoVisor after multiple attempts. Exiting.");
+        LOG_CRITICAL("[ChronoKeeperInstance] Failed to register with ChronoVisor after {} attempts over {} ms. Exiting.",
+                     attempt,
+                     attempt * retry_sleep_ms);
         delete keeperRegistryClient;
         delete keeperRecordingService;
         delete keeperDataAdminService;
         return (-1);
     }
     LOG_INFO("[ChronoKeeperInstance] Successfully registered with ChronoVisor.");
+    chronolog::chrono_monitor::flush();
 
     /// Start data collection and extraction threads ___________________________________________________________________
     // services are successfully created and keeper process had registered with ChronoVisor
     // start all dataCollection and Extraction threads...
     tl::abt scope;
-    theDataStore.startDataCollection(3);
+    int const keeper_data_collection_streams =
+            env_positive_int("CHRONOLOG_KEEPER_DATA_COLLECTION_STREAMS", 3);
+    int const keeper_data_collection_threads_per_stream =
+            env_positive_int("CHRONOLOG_KEEPER_DATA_COLLECTION_THREADS_PER_STREAM", 2);
+    LOG_INFO("[ChronoKeeperInstance] Starting Keeper data collection streams={} threads_per_stream={}",
+             keeper_data_collection_streams,
+             keeper_data_collection_threads_per_stream);
+    theDataStore.startDataCollection(keeper_data_collection_streams, keeper_data_collection_threads_per_stream);
     // start extraction streams & threads
     //storyExtractor.startExtractionThreads(2);
-    extractionModule.startExtraction(2);
+    int const keeper_extraction_threads = env_positive_int("CHRONOLOG_KEEPER_EXTRACTION_THREADS", 2);
+    LOG_INFO("[ChronoKeeperInstance] Starting {} Keeper extraction thread(s)", keeper_extraction_threads);
+    extractionModule.startExtraction(keeper_extraction_threads);
 
 
     /// Main loop for sending stats message until receiving SIGTERM ____________________________________________________
@@ -325,13 +416,48 @@ int main(int argc, char** argv)
     // main thread would be sending stats message until keeper process receives
     // sigterm signal
     chronolog::KeeperStatsMsg keeperStatsMsg(keeperIdCard);
+    int const stats_period_ms = env_positive_int("CHRONOLOG_KEEPER_STATS_PERIOD_MS", 10000);
+    int const stats_poll_ms = env_positive_int("CHRONOLOG_KEEPER_STATS_POLL_INTERVAL_MS", 100);
+    std::string const append_stats_snapshot_request_path = KEEPER_CONF.LOG_CONF.LOGFILE + ".snapshot_request";
+    std::thread append_stats_snapshot_thread([append_stats_snapshot_request_path]() {
+        while(keep_running)
+        {
+            bool const file_snapshot_requested = ::access(append_stats_snapshot_request_path.c_str(), F_OK) == 0;
+            if(file_snapshot_requested)
+            {
+                ::unlink(append_stats_snapshot_request_path.c_str());
+            }
+            if(append_stats_snapshot_requested || file_snapshot_requested)
+            {
+                append_stats_snapshot_requested = false;
+                chronolog::KeeperAppendStats::instance().logSummary("signal_stats_snapshot");
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        if(append_stats_snapshot_requested)
+        {
+            append_stats_snapshot_requested = false;
+            chronolog::KeeperAppendStats::instance().logSummary("signal_stats_snapshot");
+        }
+    });
+    auto last_stats_sent = std::chrono::steady_clock::now() - std::chrono::milliseconds(stats_period_ms);
     while(keep_running)
     {
-        keeperRegistryClient->send_stats_msg(keeperStatsMsg);
-        sleep(10);
+        auto const now = std::chrono::steady_clock::now();
+        if(now - last_stats_sent >= std::chrono::milliseconds(stats_period_ms))
+        {
+            keeperRegistryClient->send_stats_msg(keeperStatsMsg);
+            last_stats_sent = now;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(stats_poll_ms));
+    }
+    if(append_stats_snapshot_thread.joinable())
+    {
+        append_stats_snapshot_thread.join();
     }
 
     /// Unregister from ChronoVisor ____________________________________________________________________________________
+    LOG_INFO("[ChronoKeeperInstance] Received shutdown signal. Initiating shutdown procedure.");
     // Unregister from the chronoVisor so that no new story requests would be coming
     keeperRegistryClient->send_unregister_msg(keeperIdCard);
     delete keeperRegistryClient;

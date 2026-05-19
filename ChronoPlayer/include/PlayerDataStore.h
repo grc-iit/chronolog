@@ -31,10 +31,13 @@ class PlayerDataStore
 
 
 public:
-    PlayerDataStore(StoryChunkIngestionQueue& ingestion_queue, StoryChunkExtractionQueue& extraction_queue)
+    PlayerDataStore(StoryChunkIngestionQueue& ingestion_queue,
+                    StoryChunkExtractionQueue& extraction_queue,
+                    uint32_t data_collection_poll_interval_us = 1000000)
         : state(UNKNOWN)
         , theIngestionQueue(ingestion_queue)
         , theExtractionQueue(extraction_queue)
+        , data_collection_poll_interval_us(data_collection_poll_interval_us)
     {}
 
     ~PlayerDataStore();
@@ -69,6 +72,7 @@ private:
     std::mutex dataStoreStateMutex;
     StoryChunkIngestionQueue& theIngestionQueue;
     StoryChunkExtractionQueue& theExtractionQueue;
+    uint32_t data_collection_poll_interval_us;
     std::vector<thallium::managed<thallium::xstream>> dataStoreStreams;
     std::vector<thallium::managed<thallium::thread>> dataStoreThreads;
 

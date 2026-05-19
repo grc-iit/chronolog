@@ -1,0 +1,40 @@
+version: 1
+
+iteration_rule:
+  focus: one_bottleneck_one_bounded_change
+  require_agent_diagnosis: true
+  require_correctness_before_performance_judgment: true
+
+repeated_runs:
+  minimum_trials_for_acceptance: 3
+  preferred_trials_for_performance_claim: 5
+  rerun_if_result_is_noisy: true
+
+accept_patch_if:
+  build: pass
+  correctness: pass
+  metrics_schema: pass
+  throughput_improvement_percent_min: 5
+  p99_latency_regression_percent_max: 10
+  memory_regression_percent_max: 15
+  modifies_forbidden_paths: false
+
+reject_patch_if:
+  build: fail
+  correctness: fail
+  metrics_schema: fail
+  throughput_improvement_percent_below: 2
+  p99_latency_regression_percent_above: 20
+  flaky_or_unreproducible: true
+  modifies_forbidden_paths: true
+  improves_only_one_trivial_workload: true
+
+compare_against:
+  - previous_chronolog_iteration
+  - best_chronolog_iteration
+  - kafka_fixed_baseline
+  - mofka_fixed_baseline
+
+history_update:
+  append_only_file: profiling/data/history/iteration_map.csv
+  regenerate_command: python3 profiling/scripts/generate_loop_history.py

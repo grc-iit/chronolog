@@ -120,7 +120,7 @@ void chronolog::PlayerDataStore::dataCollectionTask()
         for(int i = 0; i < 1; ++i)
         {
             collectIngestedEvents();
-            sleep(1);
+            usleep(data_collection_poll_interval_us);
         }
         extractDecayedStoryChunks();
         retireDecayedPipelines();

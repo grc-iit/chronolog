@@ -97,12 +97,28 @@ public:
         return status;
     }
 
+    int send_stop_story_recording_with_keeper_count(StoryId const& story_id, uint32_t expected_keeper_drains)
+    {
+        int status = chronolog::CL_ERR_UNKNOWN;
+        try
+        {
+            LOG_DEBUG("[DataStoreAdminClient] STOP Story Recording for StoryId={} expectedKeeperDrains={}",
+                      story_id,
+                      expected_keeper_drains);
+            status = stop_story_recording_with_keeper_count.on(service_handle)(story_id, expected_keeper_drains);
+        }
+        catch(tl::exception const& ex)
+        {}
+        return status;
+    }
+
     ~DataStoreAdminClient()
     {
         collection_service_available.deregister();
         shutdown_data_collection.deregister();
         start_story_recording.deregister();
         stop_story_recording.deregister();
+        stop_story_recording_with_keeper_count.deregister();
     }
 
 private:
@@ -113,6 +129,7 @@ private:
     tl::remote_procedure shutdown_data_collection;
     tl::remote_procedure start_story_recording;
     tl::remote_procedure stop_story_recording;
+    tl::remote_procedure stop_story_recording_with_keeper_count;
 
     // constructor is private to make sure thalium rpc objects are created on the heap, not stack
     DataStoreAdminClient(tl::engine& tl_engine,
@@ -126,6 +143,7 @@ private:
         shutdown_data_collection = tl_engine.define("shutdown_data_collection");
         start_story_recording = tl_engine.define("start_story_recording");
         stop_story_recording = tl_engine.define("stop_story_recording");
+        stop_story_recording_with_keeper_count = tl_engine.define("stop_story_recording_with_keeper_count");
     }
 };
 } // namespace chronolog

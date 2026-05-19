@@ -90,7 +90,7 @@
       "inactive_story_delay_secs": 120
     },
     "Extractors": {
-      "story_files_dir": "/tmp"
+      "story_files_dir": "./chronolog-output"
     }
   },
   "chrono_grapher": {
@@ -137,7 +137,7 @@
       "inactive_story_delay_secs": 300
     },
     "Extractors": {
-      "story_files_dir": "/tmp"
+      "story_files_dir": "./chronolog-output"
     }
   },
   "chrono_player": {
@@ -184,7 +184,7 @@
       "inactive_story_delay_secs": 300
     },
     "ArchiveReaders": {
-      "story_files_dir": "/tmp"
+      "story_files_dir": "./chronolog-output"
     }
   }
 }

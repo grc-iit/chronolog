@@ -1,0 +1,40 @@
+system:
+  name: mofka
+  role: fixed_baseline
+  type: hpc_distributed_log_system
+
+allowed_actions:
+  - launch
+  - run_baseline_benchmark
+  - collect_metrics
+  - stop
+  - validate_configured_storage
+
+forbidden_actions:
+  - modify_source
+  - instrument_source
+  - optimize
+  - tune_internals_for_chronolog_comparison
+
+scripts:
+  launch: .agent/scripts/mofka_launch.sh
+  stop: .agent/scripts/mofka_stop.sh
+  append: .agent/scripts/mofka_run_append_distributed.sh
+  append_client: .agent/scripts/mofka_append_benchmark.py
+
+baseline_history:
+  fixed_baseline_table: profiling/data/history/fixed_baselines.csv
+  append_throughput_metrics: .agent/results/20260512-010240/mofka/metrics.json
+  yokan_warabi_storage_validation: .agent/results/mofka-yokan-warabi-storage-validation.md
+
+configuration_policy:
+  record_manifest: true
+  required_surfaces:
+    - bedrock_provider_layout
+    - mercury_protocol_address
+    - metadata_database_count_type_path
+    - data_storage_target_count_type_path
+    - persistence_flags
+    - pool_execution_stream_counts
+    - partition_count
+    - bundled_benchmark_generator_configuration

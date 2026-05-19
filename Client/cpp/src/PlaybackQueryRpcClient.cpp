@@ -7,6 +7,7 @@
 #include <thallium/serialization/stl/map.hpp>
 
 #include <chrono_monitor.h>
+#include <chronolog_profile.h>
 #include <client_errcode.h>
 #include <ServiceId.h>
 
@@ -64,6 +65,9 @@ int chl::PlaybackQueryRpcClient::send_story_playback_request(uint32_t query_id,
                                                              uint64_t start_time,
                                                              uint64_t end_time)
 {
+    CL_PROFILE_REGION("rpc_send");
+    CL_PROFILE_REGION("range_retrieval");
+
     int return_code = chronolog::CL_ERR_UNKNOWN;
 
     //uint32_t query_id = theClientQueryService.start_new_query( chronicle_name,story_name,start_time,end_time);

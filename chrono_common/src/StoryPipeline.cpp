@@ -6,6 +6,7 @@
 #include <utility>
 
 #include <chrono_monitor.h>
+#include <chronolog_profile.h>
 #include <StoryChunk.h>
 #include <StoryPipeline.h>
 #include <StoryChunkIngestionHandle.h>
@@ -215,6 +216,8 @@ std::map<uint64_t, chronolog::StoryChunk*>::iterator chronolog::StoryPipeline::a
 
 void chronolog::StoryPipeline::collectIngestedEvents()
 {
+    CL_PROFILE_REGION("grapher_query");
+
     activeIngestionHandle->swapActiveDeque();
     StoryChunk* next_chunk = nullptr;
     while(!activeIngestionHandle->getPassiveDeque().empty())
@@ -231,6 +234,8 @@ void chronolog::StoryPipeline::collectIngestedEvents()
 
 void chronolog::StoryPipeline::extractDecayedStoryChunks(uint64_t current_time)
 {
+    CL_PROFILE_REGION("storage_write");
+
 #ifdef TRACE_CHUNK_EXTRACTION
     auto current_point = std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds>{}
                          // epoch_time_point{};
@@ -305,16 +310,22 @@ void chronolog::StoryPipeline::mergeEvents(chronolog::StoryChunk& other_chunk)
         return;
     }
 
+    auto const merge_start = std::chrono::high_resolution_clock::now();
+    auto const source_start_time = other_chunk.getStartTime();
+    auto const source_end_time = other_chunk.getEndTime();
+    auto const source_event_count = other_chunk.getEventCount();
+    auto const source_first_event_time = other_chunk.firstEventTime();
+    uint32_t merged_event_count = 0;
     std::lock_guard<std::mutex> lock(sequencingMutex);
 
     LOG_DEBUG("[StoryPipeline] StoryId {} timeline {}-{} : Merging in StoryChunk {}-{} eventCount {} 1stEventTime {}",
               storyId,
               TimelineStart(),
               TimelineEnd(),
-              other_chunk.getStartTime(),
-              other_chunk.getEndTime(),
-              other_chunk.getEventCount(),
-              other_chunk.firstEventTime());
+              source_start_time,
+              source_end_time,
+              source_event_count,
+              source_first_event_time);
 
     // locate the storyChunk in the existing StoryPipeline with the time Key not less than
     // other_chunk.startTime, and start merging
@@ -322,7 +333,7 @@ void chronolog::StoryPipeline::mergeEvents(chronolog::StoryChunk& other_chunk)
 
     std::map<uint64_t, chronolog::StoryChunk*>::iterator chunk_to_merge_iter;
 
-    if(other_chunk.firstEventTime() < TimelineStart())
+    if(source_first_event_time < TimelineStart())
     {
         // it's unlikely but possible that we get some delayed events and need to prepend some chunks
         // extending the timeline back into the past
@@ -331,14 +342,14 @@ void chronolog::StoryPipeline::mergeEvents(chronolog::StoryChunk& other_chunk)
                   storyId,
                   TimelineStart(),
                   TimelineEnd(),
-                  other_chunk.getStartTime(),
-                  other_chunk.getEndTime(),
-                  other_chunk.firstEventTime());
+                  source_start_time,
+                  source_end_time,
+                  source_first_event_time);
 
         //we also increase the acceptance window for the slow story environment so that we do not have to keep prepending StoryChunks
         // and deal with auxiliary files if recording of this particular Story turns to be slow...
         acceptanceWindow =
-                (TimelineStart() - other_chunk.firstEventTime()) + 3000; //current delay + 3 microseconds buffer
+                (TimelineStart() - source_first_event_time) + 3000; //current delay + 3 microseconds buffer
 
         LOG_INFO("[StoryPipeline] StoryId {} timeline {}-{} : increasing acceptanceWindow to {} seconds",
                  storyId,
@@ -364,11 +375,11 @@ void chronolog::StoryPipeline::mergeEvents(chronolog::StoryChunk& other_chunk)
             }
         }
     }
-    else if((other_chunk.firstEventTime() >= TimelineStart()) && (other_chunk.firstEventTime() < TimelineEnd()))
+    else if((source_first_event_time >= TimelineStart()) && (source_first_event_time < TimelineEnd()))
     {
         // we are looking for the lower_bound StoryChunk that is the chunk with the StartTime equal or greater than other_chunk-getStartTime()
 
-        chunk_to_merge_iter = storyTimelineMap.lower_bound(other_chunk.firstEventTime());
+        chunk_to_merge_iter = storyTimelineMap.lower_bound(source_first_event_time);
 
         if(chunk_to_merge_iter == storyTimelineMap.end())
         {
@@ -444,7 +455,7 @@ void chronolog::StoryPipeline::mergeEvents(chronolog::StoryChunk& other_chunk)
                   other_chunk.getEndTime(),
                   (*chunk_to_merge_iter).second->getStartTime(),
                   (*chunk_to_merge_iter).second->getEndTime());
-        (*chunk_to_merge_iter).second->mergeEvents(other_chunk);
+        merged_event_count += (*chunk_to_merge_iter).second->mergeEvents(other_chunk);
         chunk_to_merge_iter++;
     }
 
@@ -475,10 +486,11 @@ void chronolog::StoryPipeline::mergeEvents(chronolog::StoryChunk& other_chunk)
                       other_chunk.getEndTime(),
                       (*chunk_to_merge_iter).second->getStartTime(),
                       (*chunk_to_merge_iter).second->getEndTime());
-            (*chunk_to_merge_iter).second->mergeEvents(other_chunk);
+            merged_event_count += (*chunk_to_merge_iter).second->mergeEvents(other_chunk);
         }
     }
 
+    auto const remaining_event_count = other_chunk.getEventCount();
 
     if(!other_chunk.empty())
     {
@@ -500,6 +512,20 @@ void chronolog::StoryPipeline::mergeEvents(chronolog::StoryChunk& other_chunk)
 #endif
         other_chunk.eraseEvents(other_chunk.getStartTime(), other_chunk.getEndTime());
     }
+
+    auto const merge_end = std::chrono::high_resolution_clock::now();
+    auto const total_us =
+            std::chrono::duration_cast<std::chrono::nanoseconds>(merge_end - merge_start).count() / 1000.0;
+    LOG_INFO("[StoryPipeline] Merge profile StoryID={} sourceStartTime={} sourceEndTime={} sourceEventCount={} "
+             "sourceFirstEventTime={} mergedEventCount={} remainingEventCount={} total_us={}",
+             storyId,
+             source_start_time,
+             source_end_time,
+             source_event_count,
+             source_first_event_time,
+             merged_event_count,
+             remaining_event_count,
+             total_us);
 
     return;
 }

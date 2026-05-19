@@ -7,6 +7,8 @@
 #include <unordered_map>
 #include <mutex>
 #include <cstdint>
+#include <functional>
+#include <thread>
 
 #include <thallium.hpp>
 
@@ -36,7 +38,9 @@ public:
                     uint32_t max_chunk_size = 4096,
                     uint32_t story_chunk_duration_secs = 30,
                     uint32_t acceptance_window_secs = 60,
-                    uint32_t inactive_pipeline_delay_secs = 300)
+                    uint32_t inactive_pipeline_delay_secs = 300,
+                    uint32_t data_collection_poll_interval_us = 1000000,
+                    std::function<int(StoryId const&)> story_drain_complete_callback = {})
         : state(UNKNOWN)
         , theIngestionQueue(ingestion_queue)
         , theExtractionQueue(extraction_queue)
@@ -44,6 +48,8 @@ public:
         , story_chunk_duration_secs(story_chunk_duration_secs)
         , acceptance_window_secs(acceptance_window_secs)
         , inactive_pipeline_delay_secs(inactive_pipeline_delay_secs)
+        , data_collection_poll_interval_us(data_collection_poll_interval_us)
+        , storyDrainCompleteCallback(std::move(story_drain_complete_callback))
 
     {}
 
@@ -62,13 +68,17 @@ public:
 
     int stopStoryRecording(StoryId const&);
 
+    int flushStoryRecording(StoryId const&, uint64_t extraction_drain_timeout_ms, bool async_drain_complete = false);
+
+    int collectTailEvents(StoryId const&, chrono_time, chrono_time, std::vector<LogEvent>&);
+
     void collectIngestedEvents();
 
     void extractDecayedStoryChunks();
 
     void retireDecayedPipelines();
 
-    void startDataCollection(int stream_count);
+    void startDataCollection(int stream_count, int threads_per_stream = 2);
 
     void shutdownDataCollection();
 
@@ -88,6 +98,8 @@ private:
     uint32_t story_chunk_duration_secs;
     uint32_t acceptance_window_secs;
     uint32_t inactive_pipeline_delay_secs;
+    uint32_t data_collection_poll_interval_us;
+    std::function<int(StoryId const&)> storyDrainCompleteCallback;
 
     std::vector<thallium::managed<thallium::xstream>> dataStoreStreams;
     std::vector<thallium::managed<thallium::thread>> dataStoreThreads;

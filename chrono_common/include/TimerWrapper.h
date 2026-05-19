@@ -18,6 +18,11 @@ public:
     TimerWrapper(bool enable_timing, const std::string& name)
         : name(name)
         , enabled(enable_timing)
+        , e2e_duration(0.0)
+        , duration_min(0.0)
+        , duration_ave(0.0)
+        , duration_max(0.0)
+        , pause_time(0.0)
     {
         int rank;
         MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -72,7 +77,7 @@ public:
             {
                 e2e_duration += global_elapsed;
                 duration_min += elapsed_min;
-                duration_ave += elapsed_ave;
+                duration_ave += elapsed_ave / static_cast<double>(size);
                 duration_max += elapsed_max;
             }
             return result; // Return the result of the function or block
@@ -112,7 +117,7 @@ public:
                 e2e_duration += global_elapsed;
                 duration_max += elapsed_max;
                 duration_min += elapsed_min;
-                duration_ave += elapsed_ave;
+                duration_ave += elapsed_ave / static_cast<double>(size);
             }
         }
         else

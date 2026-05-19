@@ -9,6 +9,7 @@
 #include <cereal/archives/binary.hpp>
 
 #include <StoryChunkExtractorRDMA.h>
+#include <chronolog_profile.h>
 
 namespace tl = thallium;
 
@@ -30,6 +31,8 @@ chronolog::StoryChunkExtractorRDMA::~StoryChunkExtractorRDMA()
 
 int chronolog::StoryChunkExtractorRDMA::processStoryChunk(StoryChunk* story_chunk)
 {
+    CL_PROFILE_REGION("keeper_flush");
+
     std::chrono::high_resolution_clock::time_point start, end;
     try
     {
@@ -41,10 +44,14 @@ int chronolog::StoryChunkExtractorRDMA::processStoryChunk(StoryChunk* story_chun
 #endif
         size_t serialized_story_chunk_size;
         std::ostringstream oss(std::ios::binary);
-        cereal::BinaryOutputArchive oarchive(oss);
-        oarchive(*story_chunk);
+        {
+            CL_PROFILE_REGION("serialization");
+            cereal::BinaryOutputArchive oarchive(oss);
+            oarchive(*story_chunk);
+        }
         std::string serialized_story_chunk = oss.str();
         serialized_story_chunk_size = serialized_story_chunk.size();
+        CL_PROFILE_COUNTER("append_bytes", serialized_story_chunk_size);
 
 #ifndef NDEBUG
         end = std::chrono::high_resolution_clock::now();
@@ -61,7 +68,11 @@ int chronolog::StoryChunkExtractorRDMA::processStoryChunk(StoryChunk* story_chun
 #ifndef NDEBUG
         start = std::chrono::high_resolution_clock::now();
 #endif
-        size_t result = drain_to_grapher.on(service_ph)(tl_bulk);
+        size_t result;
+        {
+            CL_PROFILE_REGION("rpc_send");
+            result = drain_to_grapher.on(service_ph)(tl_bulk);
+        }
 #ifndef NDEBUG
         end = std::chrono::high_resolution_clock::now();
         LOG_INFO("[StoryChunkExtractorRDMA] Draining to Grapher took {} us",

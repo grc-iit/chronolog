@@ -112,10 +112,11 @@ public:
                 // in this case the nullptr is returned..
                 if(story_chunk != nullptr)
                 {
+                    StoryId const story_id = story_chunk->getStoryId();
                     LOG_DEBUG("[StoryChunkExtractionModule] tl::thread_id={} processing chunk StoryId={} {}-{} {}-{} "
                               "eventCount {}",
                               thallium::thread::self_id(),
-                              story_chunk->getStoryId(),
+                              story_id,
                               story_chunk->getChronicleName(),
                               story_chunk->getStoryName(),
                               story_chunk->getStartTime(),
@@ -127,6 +128,7 @@ public:
 
                     // free the memory or reset the chunk to the original state and return it to the pool of prealocated chunks
                     delete story_chunk;
+                    chunkExtractionQueue.completeStoryChunk(story_id);
                 }
             }
             else

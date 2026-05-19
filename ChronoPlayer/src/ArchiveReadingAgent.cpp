@@ -24,19 +24,16 @@ void chronolog::ArchiveReadingAgent::archiveReadingTask()
     
     while( !is_shutting_down() )
     {
-        if(theReadingRequestQueue.empty())
-        {
-            sleep(1);
-            continue;
-        }
-         
         // 1. take a reading request off the reading queue
         // 2. read in the requested data from the archive store
         // 3. continue adding every StoryChunk read onto the StoryChunkIngestionQueue for merging with the current realtime stream of chunks from Keepers/Graphers
         //    or bypass the merging and add the StoryChunk directly onto the ExtractionQueue to be sent to the client
            
         chl::ArchiveReadingRequest readingRequest;
-        theReadingRequestQueue.popReadingRequest(readingRequest); 
+        if(!theReadingRequestQueue.waitPopReadingRequest(readingRequest, std::chrono::milliseconds(1)))
+        {
+            continue;
+        }
         std::list<chl::StoryChunk*> listOfChunks;
 
         theReadingAgent.readArchivedStory(readingRequest.chronicleName, readingRequest.storyName, readingRequest.startTime, readingRequest.endTime, listOfChunks);

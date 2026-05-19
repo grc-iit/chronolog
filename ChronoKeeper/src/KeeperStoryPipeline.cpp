@@ -12,6 +12,7 @@
 #include <StoryIngestionHandle.h>
 #include <StoryChunkExtractionQueue.h>
 #include <chrono_monitor.h>
+#include <chronolog_profile.h>
 
 //#define TRACE_CHUNKING
 #define TRACE_CHUNK_EXTRACTION
@@ -93,6 +94,7 @@ void chronolog::KeeperStoryPipeline::finalize()
     // as part of KeeperDataStore::shutdown
     if(activeIngestionHandle != nullptr)
     {
+        activeIngestionHandle->swapActiveDeque();
         if(!activeIngestionHandle->getPassiveDeque().empty())
         {
             mergeEvents(activeIngestionHandle->getPassiveDeque());
@@ -206,9 +208,12 @@ std::map<uint64_t, chronolog::StoryChunk*>::iterator chronolog::KeeperStoryPipel
 
 void chronolog::KeeperStoryPipeline::collectIngestedEvents()
 {
+    CL_PROFILE_REGION("keeper_buffer_insert");
+
     activeIngestionHandle->swapActiveDeque();
     if(!activeIngestionHandle->getPassiveDeque().empty())
     {
+        CL_PROFILE_COUNTER("keeper_passive_queue_depth", activeIngestionHandle->getPassiveDeque().size());
         mergeEvents(activeIngestionHandle->getPassiveDeque());
     }
     LOG_INFO("[KeeperStoryPipeline] Collected ingested events for StoryID={}", storyId);
@@ -216,6 +221,8 @@ void chronolog::KeeperStoryPipeline::collectIngestedEvents()
 
 void chronolog::KeeperStoryPipeline::extractDecayedStoryChunks(uint64_t current_time)
 {
+    CL_PROFILE_REGION("keeper_flush");
+
 #ifdef TRACE_CHUNK_EXTRACTION
     auto current_point = std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds>{}
                          // epoch_time_point{};
@@ -239,7 +246,12 @@ void chronolog::KeeperStoryPipeline::extractDecayedStoryChunks(uint64_t current_
 
         {
             // lock the TimelineMap & check that the decayed storychunk is still there
-            std::lock_guard<std::mutex> lock(sequencingMutex);
+            {
+                CL_PROFILE_REGION("keeper_timeline_lock_wait");
+                sequencingMutex.lock();
+            }
+            std::lock_guard<std::mutex> lock(sequencingMutex, std::adopt_lock);
+            CL_PROFILE_REGION("keeper_timeline_lock_hold");
             if(current_time > acceptanceWindow + (*storyTimelineMap.begin()).second->getEndTime())
             {
                 extractedChunk = (*storyTimelineMap.begin()).second;
@@ -266,6 +278,8 @@ void chronolog::KeeperStoryPipeline::extractDecayedStoryChunks(uint64_t current_
             }
             else
             {
+                CL_PROFILE_REGION("keeper_extraction_queue_push");
+                CL_PROFILE_COUNTER("keeper_extracted_chunk_events", extractedChunk->getEventCount());
                 theExtractionQueue.stashStoryChunk(extractedChunk);
             }
         }
@@ -277,6 +291,39 @@ void chronolog::KeeperStoryPipeline::extractDecayedStoryChunks(uint64_t current_
 #endif
 }
 
+void chronolog::KeeperStoryPipeline::collectEvents(uint64_t start_time,
+                                                   uint64_t end_time,
+                                                   std::vector<chronolog::LogEvent>& events)
+{
+    CL_PROFILE_REGION("keeper_tail_read");
+    {
+        CL_PROFILE_REGION("keeper_timeline_lock_wait");
+        sequencingMutex.lock();
+    }
+    std::lock_guard<std::mutex> lock(sequencingMutex, std::adopt_lock);
+    CL_PROFILE_REGION("keeper_timeline_lock_hold");
+
+    for(auto const& chunk_entry: storyTimelineMap)
+    {
+        StoryChunk* chunk = chunk_entry.second;
+        if(chunk == nullptr || chunk->getEndTime() <= start_time || chunk->getStartTime() >= end_time)
+        {
+            continue;
+        }
+
+        for(auto iter = chunk->lower_bound(start_time); iter != chunk->end(); ++iter)
+        {
+            chronolog::LogEvent const& event = (*iter).second;
+            if(event.time() >= end_time)
+            {
+                break;
+            }
+            events.push_back(event);
+        }
+    }
+    CL_PROFILE_COUNTER("keeper_tail_events", events.size());
+}
+
 ////////////////////
 
 void chronolog::KeeperStoryPipeline::mergeEvents(chronolog::EventDeque& event_deque)
@@ -286,15 +333,27 @@ void chronolog::KeeperStoryPipeline::mergeEvents(chronolog::EventDeque& event_de
         return;
     }
 
-    std::lock_guard<std::mutex> lock(sequencingMutex);
-    chl::LogEvent event;
+    const auto events_to_merge = event_deque.size();
+    CL_PROFILE_COUNTER("keeper_merge_batch_events", events_to_merge);
+    uint64_t const lock_wait_start_ns = KeeperAppendStats::nowNs();
+    {
+        CL_PROFILE_REGION("keeper_timeline_lock_wait");
+        sequencingMutex.lock();
+    }
+    uint64_t const lock_wait_ns = KeeperAppendStats::nowNs() - lock_wait_start_ns;
+    uint64_t const lock_hold_start_ns = KeeperAppendStats::nowNs();
+    uint64_t insert_ns = 0;
+    uint64_t inserted_count = 0;
+    std::lock_guard<std::mutex> lock(sequencingMutex, std::adopt_lock);
+    CL_PROFILE_REGION("keeper_timeline_lock_hold");
+    CL_PROFILE_REGION("keeper_merge_events");
     // the last chunk is most likely the one that would get the events, so we'd start with the last
     // chunk and do the lookup only if it's not the one
     // NOTE: we should never have less than 2 chunks in the active storyTimelineMap !!!
     std::map<uint64_t, chronolog::StoryChunk*>::iterator chunk_to_merge_iter = --storyTimelineMap.end();
     while(!event_deque.empty())
     {
-        event = event_deque.front();
+        chl::LogEvent event = std::move(event_deque.front());
         LOG_DEBUG("[KeeperStoryPipeline] StoryID: {} [Start: {}, End: {}]: Merging event time: {}",
                   storyId,
                   TimelineStart(),
@@ -305,8 +364,15 @@ void chronolog::KeeperStoryPipeline::mergeEvents(chronolog::EventDeque& event_de
             // we expect the events in the deque to be mostly monotonous
             // so we'd try the most recently used chunk first and only look for the new chunk
             // if the event does not belong to the recently used chunk
-            if(!(*chunk_to_merge_iter).second->insertEvent(event))
+            uint64_t const insert_start_ns = KeeperAppendStats::nowNs();
+            if((*chunk_to_merge_iter).second->insertEvent(std::move(event)))
             {
+                insert_ns += KeeperAppendStats::nowNs() - insert_start_ns;
+                ++inserted_count;
+            }
+            else
+            {
+                insert_ns += KeeperAppendStats::nowNs() - insert_start_ns;
                 // find the new chunk_to_merge the event into : we are lookingt for
                 // the chunk preceeding the first chunk with the startTime > event.time()
                 chunk_to_merge_iter = storyTimelineMap.lower_bound(event.time());
@@ -318,8 +384,15 @@ void chronolog::KeeperStoryPipeline::mergeEvents(chronolog::EventDeque& event_de
                     chunk_to_merge_iter--;
                 }
 
-                if(!(*chunk_to_merge_iter).second->insertEvent(event))
+                uint64_t const retry_insert_start_ns = KeeperAppendStats::nowNs();
+                if((*chunk_to_merge_iter).second->insertEvent(std::move(event)))
                 {
+                    insert_ns += KeeperAppendStats::nowNs() - retry_insert_start_ns;
+                    ++inserted_count;
+                }
+                else
+                {
+                    insert_ns += KeeperAppendStats::nowNs() - retry_insert_start_ns;
                     LOG_ERROR("[KeeperStoryPipeline] StoryID: {} - Discarded event with timestamp: {}",
                               storyId,
                               event.time());
@@ -338,7 +411,12 @@ void chronolog::KeeperStoryPipeline::mergeEvents(chronolog::EventDeque& event_de
             }
             if(chunk_to_merge_iter != storyTimelineMap.end())
             {
-                (*chunk_to_merge_iter).second->insertEvent(event);
+                uint64_t const insert_start_ns = KeeperAppendStats::nowNs();
+                if((*chunk_to_merge_iter).second->insertEvent(std::move(event)))
+                {
+                    ++inserted_count;
+                }
+                insert_ns += KeeperAppendStats::nowNs() - insert_start_ns;
             }
             else
             {
@@ -377,7 +455,12 @@ void chronolog::KeeperStoryPipeline::mergeEvents(chronolog::EventDeque& event_de
             }
             if(chunk_to_merge_iter != storyTimelineMap.end())
             {
-                (*chunk_to_merge_iter).second->insertEvent(event);
+                uint64_t const insert_start_ns = KeeperAppendStats::nowNs();
+                if((*chunk_to_merge_iter).second->insertEvent(std::move(event)))
+                {
+                    ++inserted_count;
+                }
+                insert_ns += KeeperAppendStats::nowNs() - insert_start_ns;
             }
             else
             {
@@ -388,6 +471,12 @@ void chronolog::KeeperStoryPipeline::mergeEvents(chronolog::EventDeque& event_de
         }
         event_deque.pop_front();
     }
+    KeeperAppendStats::instance().recordTimelineMerge(lock_wait_ns,
+                                                      KeeperAppendStats::nowNs() - lock_hold_start_ns,
+                                                      insert_ns,
+                                                      events_to_merge,
+                                                      inserted_count);
+    CL_PROFILE_COUNTER("keeper_merge_events_completed", events_to_merge);
 }
 
 //////////////////////

@@ -25,6 +25,7 @@ public:
     tl::engine& get_sender_engine() const { return sender_tl_engine; }
     ServiceId const& get_receiver_service_id() const { return receiver_service_id; }
     int process_chunk(StoryChunk*);
+    int complete_story_drain(StoryId const&);
 
 private:
     tl::engine& sender_tl_engine;  // local tl::engine

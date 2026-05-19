@@ -43,8 +43,9 @@ struct GrapherConfiguration
         DATA_STORE_CONF.story_chunk_duration_secs = 60;
         DATA_STORE_CONF.acceptance_window_secs = 180;
         DATA_STORE_CONF.inactive_story_delay_secs = 300;
+        DATA_STORE_CONF.data_collection_poll_interval_us = 1000000;
 
-        EXTRACTOR_CONF.story_files_dir = "/tmp/";
+        EXTRACTOR_CONF.story_files_dir = "./chronolog-output/";
     }
 
     int parseJsonConf(json_object*);

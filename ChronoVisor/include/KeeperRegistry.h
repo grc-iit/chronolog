@@ -209,7 +209,7 @@ private:
                                            StoryName const&,
                                            StoryId const&,
                                            uint64_t);
-    int notifyGrapherOfStoryRecordingStop(RecordingGroup&, StoryId const&);
+    int notifyGrapherOfStoryRecordingStop(RecordingGroup&, StoryId const&, size_t expected_keeper_drains);
     int notifyKeepersOfStoryRecordingStart(RecordingGroup&,
                                            std::vector<KeeperIdCard>&,
                                            ChronicleName const&,

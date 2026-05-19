@@ -71,10 +71,12 @@ class HDF5ArchiveReadingAgent
 public:
     explicit HDF5ArchiveReadingAgent(std::string const& archive_path,
                                      bool use_polling = true,
-                                     std::chrono::milliseconds monitoring_interval = std::chrono::milliseconds(5000))
+                                     std::chrono::milliseconds monitoring_interval = std::chrono::milliseconds(5000),
+                                     bool enable_monitoring = true)
         : archive_path_(fs::absolute(expandTilde(fs::path(archive_path))).make_preferred().string())
         , use_polling_(use_polling)
         , monitoring_interval_(monitoring_interval)
+        , enable_monitoring_(enable_monitoring)
         , shutdown_requested_(false)
     {}
 
@@ -85,6 +87,11 @@ public:
         LOG_INFO("[HDF5ArchiveReadingAgent] Initializing, scanning archive path {} recursively to create the map ...",
                  archive_path_);
         createStartTimeFileNameMap();
+        if(!enable_monitoring_)
+        {
+            LOG_INFO("[HDF5ArchiveReadingAgent] Archive directory monitoring disabled for one-shot reader.");
+            return 0;
+        }
         return setUpFsMonitoring();
     }
 
@@ -96,8 +103,11 @@ public:
             return 0;
         }
         shutdown_requested_.store(true);
-        archive_dir_monitoring_stream_->join();
-        archive_dir_monitoring_thread_->join();
+        if(enable_monitoring_)
+        {
+            archive_dir_monitoring_stream_->join();
+            archive_dir_monitoring_thread_->join();
+        }
         return 0;
     }
 
@@ -386,6 +396,7 @@ private:
     // Feature flag and monitoring configuration
     bool use_polling_;
     std::chrono::milliseconds monitoring_interval_;
+    bool enable_monitoring_;
     std::chrono::system_clock::time_point last_scan_time_;
 
     // File system state tracking for polling

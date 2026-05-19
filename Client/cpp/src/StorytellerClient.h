@@ -3,9 +3,12 @@
 
 #include <atomic>
 #include <cstdint>
+#include <cstdlib>
 #include <map>
 #include <mutex>
+#include <set>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -34,7 +37,29 @@ public:
     KeeperRecordingClient* chooseKeeper(std::vector<KeeperRecordingClient*> const& vectorOfKeepers,
                                         uint64_t chrono_tick)
     {
-        return vectorOfKeepers[chrono_tick % vectorOfKeepers.size()];
+        uint64_t const bucket_ns = keeperTimeBucketNs();
+        uint64_t const keeper_tick = bucket_ns > 1 ? chrono_tick / bucket_ns : chrono_tick;
+        return vectorOfKeepers[keeper_tick % vectorOfKeepers.size()];
+    }
+
+private:
+    static uint64_t keeperTimeBucketNs()
+    {
+        static uint64_t const bucket_ns = []() {
+            char const* value = std::getenv("CHRONOLOG_CLIENT_KEEPER_TIME_BUCKET_NS");
+            if(value == nullptr || *value == '\0')
+            {
+                return uint64_t{0};
+            }
+            char* end = nullptr;
+            unsigned long long parsed = std::strtoull(value, &end, 10);
+            if(end == value)
+            {
+                return uint64_t{0};
+            }
+            return static_cast<uint64_t>(parsed);
+        }();
+        return bucket_ns;
     }
 };
 
@@ -113,6 +138,18 @@ public:
     virtual ~StoryWritingHandle();
 
     virtual uint64_t log_event(std::string const&);
+    LogEventFuture log_event_async(std::string const&) override;
+    LogEventFuture log_events_async(std::vector<std::string> const&) override;
+    LogEventFuture log_events_async_owned(std::vector<std::string>) override;
+    uint64_t log_events_bounded_per_keeper(std::vector<std::string> const&,
+                                           std::size_t keeper_batch_size,
+                                           std::size_t max_outstanding_futures) override;
+    std::unique_ptr<PerKeeperBoundedLogEventAppender> make_per_keeper_bounded_appender(
+            std::size_t keeper_batch_size,
+            std::size_t max_outstanding_futures) override;
+    int replay_tail(uint64_t, uint64_t, std::vector<Event>&) override;
+    int replay_tail_incremental(uint64_t, std::vector<Event>&) override;
+    int replay_tail_incremental_packed(uint64_t, PackedReplayBatch&) override;
 
     // virtual int log_event(size_t size, void*data);
 
@@ -120,12 +157,23 @@ public:
     void removeRecordingClient(ServiceId const&);
 
 private:
+    class PerKeeperAppender;
+
     StorytellerClient& theClient;
     ChronicleName chronicle;
     StoryName story;
     StoryId storyId;
     KeeperChoicePolicy* keeperChoicePolicy;
     std::vector<KeeperRecordingClient*> storyKeepers;
+    struct TailCursor
+    {
+        uint64_t eventTime{1};
+        bool initialized{false};
+        KeeperTailCursorToken journalCursor;
+        using EventKey = std::tuple<uint64_t, uint64_t, uint32_t>;
+        std::set<EventKey> seenEvents;
+    };
+    std::vector<TailCursor> keeperTailCursors;
 };
 
 } // namespace chronolog

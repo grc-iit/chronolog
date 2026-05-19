@@ -2,17 +2,21 @@
 #include <unistd.h>
 #include <cstring>
 #include <cerrno>
+#include <cstdint>
 #include <memory>
 #include <vector>
 #include <string>
 #include <algorithm>
 #include <fcntl.h>
+#include <fstream>
 #include <H5Cpp.h>
 #include <filesystem>
 #include <thread>
 #include <chrono>
+#include <limits>
 
 #include <chronolog_errcode.h>
+#include <chronolog_profile.h>
 #include <StoryChunkWriter.h>
 #include <HDF5ArchiveReadingAgent.h>
 
@@ -80,6 +84,39 @@ herr_t error_walker(unsigned int n, const H5E_error2_t* err_desc, void* client_d
     return 0;
 }
 
+bool readRawBlobMetaSidecar(std::string const& file_name, std::vector<StoryChunkWriter::BlobMapEntry>& meta)
+{
+    std::ifstream input(file_name, std::ios::binary);
+    if(!input)
+    {
+        return false;
+    }
+    std::uint64_t entry_count = 0;
+    input.read(reinterpret_cast<char*>(&entry_count), sizeof(entry_count));
+    if(!input)
+    {
+        LOG_WARNING("[HDF5ArchiveReadingAgent] Failed to read raw-blob metadata sidecar header {}", file_name);
+        return false;
+    }
+    if(entry_count > static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max()))
+    {
+        LOG_WARNING("[HDF5ArchiveReadingAgent] Raw-blob metadata sidecar {} has too many entries", file_name);
+        return false;
+    }
+    meta.resize(static_cast<std::size_t>(entry_count));
+    if(!meta.empty())
+    {
+        input.read(reinterpret_cast<char*>(meta.data()),
+                   static_cast<std::streamsize>(meta.size() * sizeof(meta.front())));
+        if(!input)
+        {
+            LOG_WARNING("[HDF5ArchiveReadingAgent] Failed to read raw-blob metadata sidecar entries {}", file_name);
+            return false;
+        }
+    }
+    return true;
+}
+
 int chronolog::HDF5ArchiveReadingAgent::readStoryChunkFile(const ChronicleName& chronicleName,
                                                            const StoryName& storyName,
                                                            uint64_t startTime,
@@ -87,6 +124,9 @@ int chronolog::HDF5ArchiveReadingAgent::readStoryChunkFile(const ChronicleName& 
                                                            std::list<StoryChunk*>& listOfChunks,
                                                            const std::string& file_name)
 {
+    CL_PROFILE_REGION("storage_read");
+    CL_PROFILE_REGION("range_retrieval");
+
     std::unique_ptr<H5::H5File> file;
     StoryChunk* story_chunk = nullptr;
     bool has_events_outside_range = false;
@@ -95,11 +135,445 @@ int chronolog::HDF5ArchiveReadingAgent::readStoryChunkFile(const ChronicleName& 
         H5::Exception::dontPrint();
 
         LOG_DEBUG("[HDF5ArchiveReadingAgent] Opening file {}", file_name);
-        file = std::make_unique<H5::H5File>(file_name, H5F_ACC_SWMR_READ);
+        {
+            CL_PROFILE_REGION("player_hdf5_open");
+            file = std::make_unique<H5::H5File>(file_name, H5F_ACC_SWMR_READ);
+        }
+
+        std::string blob_dataset_name = "/story_chunks/data.blob";
+        std::string meta_dataset_name = "/story_chunks/data.meta";
+        std::string raw_meta_dataset_name = "/story_chunks/data.raw_meta";
+        std::string fixed_record_dataset_name = "/story_chunks/data.fixed_records";
+        std::string fixed_meta_dataset_name = "/story_chunks/data.fixed_meta";
+        auto read_raw_blob_from_meta = [&](std::vector<StoryChunkWriter::BlobMapEntry> const& meta,
+                                           std::string const& payload_file_name) -> int {
+            CL_PROFILE_COUNTER("storage_read_events", meta.size());
+
+            std::ifstream payload_stream(payload_file_name, std::ios::binary);
+            if(!payload_stream)
+            {
+                LOG_WARNING("[HDF5ArchiveReadingAgent] Failed to open raw-blob payload file {}", payload_file_name);
+                return CL_ERR_UNKNOWN;
+            }
+
+            uint64_t story_id = meta.empty() ? 0 : meta[0].storyId;
+            story_chunk = new StoryChunk(chronicleName, storyName, story_id, startTime, endTime);
+            std::vector<std::size_t> selected_indices;
+            std::size_t selected_payload_bytes = 0;
+            uint64_t span_start = std::numeric_limits<uint64_t>::max();
+            uint64_t span_end = 0;
+            bool raw_has_events_outside_range = false;
+            for(std::size_t index = 0; index < meta.size(); ++index)
+            {
+                auto const& entry = meta[index];
+                if(entry.eventTime < startTime)
+                {
+                    continue;
+                }
+                if(entry.eventTime >= endTime)
+                {
+                    raw_has_events_outside_range = true;
+                    break;
+                }
+                if(entry.size > std::numeric_limits<std::size_t>::max() - selected_payload_bytes ||
+                   entry.offset > std::numeric_limits<uint64_t>::max() - entry.size)
+                {
+                    LOG_WARNING("[HDF5ArchiveReadingAgent] Raw-blob range size overflow in file {}", file_name);
+                    delete story_chunk;
+                    return CL_ERR_UNKNOWN;
+                }
+                selected_indices.emplace_back(index);
+                selected_payload_bytes += static_cast<std::size_t>(entry.size);
+                span_start = std::min(span_start, entry.offset);
+                span_end = std::max(span_end, entry.offset + entry.size);
+            }
+
+            std::vector<unsigned char> coalesced_payload;
+            bool use_coalesced_payload = false;
+            if(!selected_indices.empty() && span_start <= span_end)
+            {
+                uint64_t const span_size_u64 = span_end - span_start;
+                if(span_size_u64 <= static_cast<uint64_t>(std::numeric_limits<std::size_t>::max()) &&
+                   span_size_u64 <= static_cast<uint64_t>(selected_payload_bytes) * 2)
+                {
+                    auto const span_size = static_cast<std::size_t>(span_size_u64);
+                    coalesced_payload.resize(span_size);
+                    payload_stream.seekg(static_cast<std::streamoff>(span_start), std::ios::beg);
+                    if(!coalesced_payload.empty())
+                    {
+                        payload_stream.read(reinterpret_cast<char*>(coalesced_payload.data()),
+                                            static_cast<std::streamsize>(coalesced_payload.size()));
+                        if(payload_stream.gcount() != static_cast<std::streamsize>(coalesced_payload.size()))
+                        {
+                            LOG_WARNING("[HDF5ArchiveReadingAgent] Short coalesced read from raw-blob payload file {}",
+                                        payload_file_name);
+                            delete story_chunk;
+                            return CL_ERR_UNKNOWN;
+                        }
+                    }
+                    use_coalesced_payload = true;
+                }
+            }
+
+            for(auto const index: selected_indices)
+            {
+                auto const& entry = meta[index];
+                std::string payload;
+                if(use_coalesced_payload)
+                {
+                    uint64_t const relative_offset = entry.offset - span_start;
+                    if(relative_offset > coalesced_payload.size() ||
+                       entry.size > coalesced_payload.size() - static_cast<std::size_t>(relative_offset))
+                    {
+                        LOG_WARNING("[HDF5ArchiveReadingAgent] Coalesced raw-blob entry outside payload span in file {}",
+                                    file_name);
+                        delete story_chunk;
+                        return CL_ERR_UNKNOWN;
+                    }
+                    auto const* payload_begin = reinterpret_cast<char const*>(
+                            coalesced_payload.data() + static_cast<std::size_t>(relative_offset));
+                    payload.assign(payload_begin, static_cast<std::size_t>(entry.size));
+                }
+                else
+                {
+                    payload.assign(static_cast<std::size_t>(entry.size), '\0');
+                    payload_stream.seekg(static_cast<std::streamoff>(entry.offset), std::ios::beg);
+                    if(!payload.empty())
+                    {
+                        payload_stream.read(payload.data(), static_cast<std::streamsize>(payload.size()));
+                        if(payload_stream.gcount() != static_cast<std::streamsize>(payload.size()))
+                        {
+                            LOG_WARNING("[HDF5ArchiveReadingAgent] Short read from raw-blob payload file {}",
+                                        payload_file_name);
+                            delete story_chunk;
+                            return CL_ERR_UNKNOWN;
+                        }
+                    }
+                }
+                LogEvent event(entry.storyId,
+                               entry.eventTime,
+                               entry.clientId,
+                               entry.eventIndex,
+                               std::move(payload));
+                if(story_chunk->insertEvent(std::move(event)) == 0)
+                {
+                    LOG_WARNING("[HDF5ArchiveReadingAgent] Failed to insert raw-blob event with time {} into "
+                                "StoryChunk {}-{}",
+                                formatWithCommas(entry.eventTime),
+                                chronicleName,
+                                storyName);
+                }
+            }
+
+            if(story_chunk->getEventCount() > 0)
+            {
+                listOfChunks.emplace_back(story_chunk);
+                LOG_DEBUG("[HDF5ArchiveReadingAgent] Inserted raw-blob StoryChunk with {} events {}-{} range {}-{} "
+                          "into list",
+                          formatWithCommas(story_chunk->getEventCount()),
+                          chronicleName,
+                          storyName,
+                          formatWithCommas(startTime),
+                          formatWithCommas(endTime));
+            }
+            else
+            {
+                delete story_chunk;
+            }
+            return raw_has_events_outside_range ? 1 : 0;
+        };
+
+        std::string const raw_meta_sidecar_name = file_name + ".rawmeta";
+        if(fs::exists(raw_meta_sidecar_name))
+        {
+            std::vector<StoryChunkWriter::BlobMapEntry> meta;
+            if(!readRawBlobMetaSidecar(raw_meta_sidecar_name, meta))
+            {
+                return CL_ERR_UNKNOWN;
+            }
+            std::string const payload_file_name = file_name + ".payload";
+            return read_raw_blob_from_meta(meta, payload_file_name);
+        }
+
+        if(H5Lexists(file->getId(), fixed_record_dataset_name.c_str(), H5P_DEFAULT) > 0 &&
+           H5Lexists(file->getId(), fixed_meta_dataset_name.c_str(), H5P_DEFAULT) > 0)
+        {
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] Opening fixed-record datasets {} and {}",
+                      fixed_record_dataset_name,
+                      fixed_meta_dataset_name);
+            H5::DataSet meta_dataset = [&]() {
+                CL_PROFILE_REGION("player_hdf5_open_dataset");
+                return file->openDataSet(fixed_meta_dataset_name);
+            }();
+            H5::DataSet record_dataset = [&]() {
+                CL_PROFILE_REGION("player_hdf5_open_dataset");
+                return file->openDataSet(fixed_record_dataset_name);
+            }();
+
+            H5::DataSpace meta_space = meta_dataset.getSpace();
+            hsize_t meta_dims[2] = {0, 0};
+            meta_space.getSimpleExtentDims(meta_dims, nullptr);
+            H5::CompType defined_meta_type = StoryChunkWriter::createFixedRecordMetaCompoundType();
+            H5::CompType probed_meta_type = meta_dataset.getCompType();
+            if(probed_meta_type.getNmembers() != defined_meta_type.getNmembers())
+            {
+                LOG_WARNING("[HDF5ArchiveReadingAgent] Error reading dataset {} : fixed-record meta member mismatch",
+                            file_name);
+                return CL_ERR_UNKNOWN;
+            }
+            if(probed_meta_type != defined_meta_type)
+            {
+                LOG_WARNING("[HDF5ArchiveReadingAgent] Error reading dataset {} : fixed-record meta type mismatch",
+                            file_name);
+                return CL_ERR_UNKNOWN;
+            }
+
+            std::vector<StoryChunkWriter::FixedRecordMetaEntry> meta;
+            meta.resize(meta_dims[0]);
+            {
+                CL_PROFILE_REGION("player_hdf5_read");
+                CL_PROFILE_REGION("deserialization");
+                if(!meta.empty())
+                {
+                    meta_dataset.read(meta.data(), defined_meta_type);
+                }
+            }
+
+            H5::DataSpace record_space = record_dataset.getSpace();
+            hsize_t record_dims[2] = {0, 0};
+            if(record_space.getSimpleExtentNdims() != 2)
+            {
+                LOG_WARNING("[HDF5ArchiveReadingAgent] Fixed-record payload dataset in {} is not two-dimensional",
+                            file_name);
+                return CL_ERR_UNKNOWN;
+            }
+            record_space.getSimpleExtentDims(record_dims, nullptr);
+            if(record_dims[0] != meta.size())
+            {
+                LOG_WARNING("[HDF5ArchiveReadingAgent] Fixed-record meta/payload count mismatch in file {}", file_name);
+                return CL_ERR_UNKNOWN;
+            }
+
+            std::vector<unsigned char> payload;
+            payload.resize(record_dims[0] * record_dims[1]);
+            {
+                CL_PROFILE_REGION("player_hdf5_read");
+                if(!payload.empty())
+                {
+                    record_dataset.read(payload.data(), H5::PredType::NATIVE_UINT8);
+                }
+            }
+            CL_PROFILE_COUNTER("storage_read_events", meta.size());
+
+            uint64_t story_id = meta.empty() ? 0 : meta[0].storyId;
+            story_chunk = new StoryChunk(chronicleName, storyName, story_id, startTime, endTime);
+            std::size_t const record_size = static_cast<std::size_t>(record_dims[1]);
+            for(std::size_t i = 0; i < meta.size(); ++i)
+            {
+                auto const& entry = meta[i];
+                if(entry.eventTime < startTime)
+                {
+                    continue;
+                }
+                if(entry.eventTime >= endTime)
+                {
+                    has_events_outside_range = true;
+                    break;
+                }
+                if(entry.size > record_size)
+                {
+                    LOG_WARNING("[HDF5ArchiveReadingAgent] Fixed-record entry size outside payload stride in file {}",
+                                file_name);
+                    delete story_chunk;
+                    return CL_ERR_UNKNOWN;
+                }
+                LogEvent event(entry.storyId,
+                               entry.eventTime,
+                               entry.clientId,
+                               entry.eventIndex,
+                               std::string(reinterpret_cast<char*>(payload.data() + (i * record_size)), entry.size));
+                if(story_chunk->insertEvent(std::move(event)) == 0)
+                {
+                    LOG_WARNING("[HDF5ArchiveReadingAgent] Failed to insert fixed-record event with time {} into "
+                                "StoryChunk {}-{}",
+                                formatWithCommas(entry.eventTime),
+                                chronicleName,
+                                storyName);
+                }
+            }
+
+            if(story_chunk->getEventCount() > 0)
+            {
+                listOfChunks.emplace_back(story_chunk);
+                LOG_DEBUG("[HDF5ArchiveReadingAgent] Inserted fixed-record StoryChunk with {} events {}-{} range {}-{} "
+                          "into list",
+                          formatWithCommas(story_chunk->getEventCount()),
+                          chronicleName,
+                          storyName,
+                          formatWithCommas(startTime),
+                          formatWithCommas(endTime));
+            }
+            else
+            {
+                delete story_chunk;
+            }
+            return has_events_outside_range ? 1 : 0;
+        }
+        if(H5Lexists(file->getId(), blob_dataset_name.c_str(), H5P_DEFAULT) > 0 &&
+           H5Lexists(file->getId(), meta_dataset_name.c_str(), H5P_DEFAULT) > 0)
+        {
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] Opening blob-map datasets {} and {}",
+                      blob_dataset_name,
+                      meta_dataset_name);
+            H5::DataSet meta_dataset = [&]() {
+                CL_PROFILE_REGION("player_hdf5_open_dataset");
+                return file->openDataSet(meta_dataset_name);
+            }();
+            H5::DataSet blob_dataset = [&]() {
+                CL_PROFILE_REGION("player_hdf5_open_dataset");
+                return file->openDataSet(blob_dataset_name);
+            }();
+
+            H5::DataSpace meta_space = meta_dataset.getSpace();
+            hsize_t meta_dims[2] = {0, 0};
+            meta_space.getSimpleExtentDims(meta_dims, nullptr);
+            H5::CompType defined_meta_type = StoryChunkWriter::createBlobMapMetaCompoundType();
+            H5::CompType probed_meta_type = meta_dataset.getCompType();
+            if(probed_meta_type.getNmembers() != defined_meta_type.getNmembers())
+            {
+                LOG_WARNING("[HDF5ArchiveReadingAgent] Error reading dataset {} : blob-map meta member mismatch",
+                            file_name);
+                return CL_ERR_UNKNOWN;
+            }
+            if(probed_meta_type != defined_meta_type)
+            {
+                LOG_WARNING("[HDF5ArchiveReadingAgent] Error reading dataset {} : blob-map meta type mismatch",
+                            file_name);
+                return CL_ERR_UNKNOWN;
+            }
+
+            std::vector<StoryChunkWriter::BlobMapEntry> meta;
+            meta.resize(meta_dims[0]);
+            {
+                CL_PROFILE_REGION("player_hdf5_read");
+                CL_PROFILE_REGION("deserialization");
+                if(!meta.empty())
+                {
+                    meta_dataset.read(meta.data(), defined_meta_type);
+                }
+            }
+
+            H5::DataSpace blob_space = blob_dataset.getSpace();
+            hsize_t blob_dims[2] = {0, 0};
+            blob_space.getSimpleExtentDims(blob_dims, nullptr);
+            std::vector<unsigned char> payload;
+            payload.resize(blob_dims[0]);
+            {
+                CL_PROFILE_REGION("player_hdf5_read");
+                if(!payload.empty())
+                {
+                    blob_dataset.read(payload.data(), H5::PredType::NATIVE_UINT8);
+                }
+            }
+            CL_PROFILE_COUNTER("storage_read_events", meta.size());
+
+            uint64_t story_id = meta.empty() ? 0 : meta[0].storyId;
+            story_chunk = new StoryChunk(chronicleName, storyName, story_id, startTime, endTime);
+            for(auto const& entry: meta)
+            {
+                if(entry.eventTime < startTime)
+                {
+                    continue;
+                }
+                if(entry.eventTime >= endTime)
+                {
+                    has_events_outside_range = true;
+                    break;
+                }
+                if(entry.offset > payload.size() || entry.size > payload.size() - entry.offset)
+                {
+                    LOG_WARNING("[HDF5ArchiveReadingAgent] Blob-map entry outside payload bounds in file {}", file_name);
+                    delete story_chunk;
+                    return CL_ERR_UNKNOWN;
+                }
+                LogEvent event(entry.storyId,
+                               entry.eventTime,
+                               entry.clientId,
+                               entry.eventIndex,
+                               std::string(reinterpret_cast<char*>(payload.data() + entry.offset), entry.size));
+                if(story_chunk->insertEvent(std::move(event)) == 0)
+                {
+                    LOG_WARNING("[HDF5ArchiveReadingAgent] Failed to insert blob-map event with time {} into StoryChunk {}-{}",
+                                formatWithCommas(entry.eventTime),
+                                chronicleName,
+                                storyName);
+                }
+            }
+
+            if(story_chunk->getEventCount() > 0)
+            {
+                listOfChunks.emplace_back(story_chunk);
+                LOG_DEBUG("[HDF5ArchiveReadingAgent] Inserted blob-map StoryChunk with {} events {}-{} range {}-{} into list",
+                          formatWithCommas(story_chunk->getEventCount()),
+                          chronicleName,
+                          storyName,
+                          formatWithCommas(startTime),
+                          formatWithCommas(endTime));
+            }
+            else
+            {
+                delete story_chunk;
+            }
+            return has_events_outside_range ? 1 : 0;
+        }
+        if(H5Lexists(file->getId(), raw_meta_dataset_name.c_str(), H5P_DEFAULT) > 0)
+        {
+            std::string const payload_file_name = file_name + ".payload";
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] Opening raw-blob meta dataset {} and payload file {}",
+                      raw_meta_dataset_name,
+                      payload_file_name);
+            H5::DataSet meta_dataset = [&]() {
+                CL_PROFILE_REGION("player_hdf5_open_dataset");
+                return file->openDataSet(raw_meta_dataset_name);
+            }();
+
+            H5::DataSpace meta_space = meta_dataset.getSpace();
+            hsize_t meta_dims[2] = {0, 0};
+            meta_space.getSimpleExtentDims(meta_dims, nullptr);
+            H5::CompType defined_meta_type = StoryChunkWriter::createBlobMapMetaCompoundType();
+            H5::CompType probed_meta_type = meta_dataset.getCompType();
+            if(probed_meta_type.getNmembers() != defined_meta_type.getNmembers())
+            {
+                LOG_WARNING("[HDF5ArchiveReadingAgent] Error reading dataset {} : raw-blob meta member mismatch",
+                            file_name);
+                return CL_ERR_UNKNOWN;
+            }
+            if(probed_meta_type != defined_meta_type)
+            {
+                LOG_WARNING("[HDF5ArchiveReadingAgent] Error reading dataset {} : raw-blob meta type mismatch",
+                            file_name);
+                return CL_ERR_UNKNOWN;
+            }
+
+            std::vector<StoryChunkWriter::BlobMapEntry> meta;
+            meta.resize(meta_dims[0]);
+            {
+                CL_PROFILE_REGION("player_hdf5_read");
+                CL_PROFILE_REGION("deserialization");
+                if(!meta.empty())
+                {
+                    meta_dataset.read(meta.data(), defined_meta_type);
+                }
+            }
+            return read_raw_blob_from_meta(meta, payload_file_name);
+        }
 
         std::string dataset_name = "/story_chunks/data.vlen_bytes";
         LOG_DEBUG("[HDF5ArchiveReadingAgent] Opening dataset {}", dataset_name);
-        H5::DataSet dataset = file->openDataSet(dataset_name);
+        H5::DataSet dataset = [&]() {
+            CL_PROFILE_REGION("player_hdf5_open_dataset");
+            return file->openDataSet(dataset_name);
+        }();
 
         H5::DataSpace dataspace = dataset.getSpace();
         hsize_t dims_out[2] = {0, 0};
@@ -126,7 +600,12 @@ int chronolog::HDF5ArchiveReadingAgent::readStoryChunkFile(const ChronicleName& 
         LOG_DEBUG("[HDF5ArchiveReadingAgent] Reading data from dataset {}", dataset_name);
         std::vector<LogEventHVL> data;
         data.resize(dims_out[0]);
-        dataset.read(data.data(), defined_comp_type);
+        {
+            CL_PROFILE_REGION("player_hdf5_read");
+            CL_PROFILE_REGION("deserialization");
+            dataset.read(data.data(), defined_comp_type);
+        }
+        CL_PROFILE_COUNTER("storage_read_events", data.size());
 
         LOG_DEBUG("[HDF5ArchiveReadingAgent] Creating StoryChunk {}-{} range {}-{}...",
                   chronicleName,
@@ -252,10 +731,11 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName& c
                                                           std::list<StoryChunk*>& listOfChunks,
                                                           bool readAuxFiles)
 {
+    CL_PROFILE_REGION("player_archive_lookup");
     // find all HDF5 files in the archive directory the start time of which falls in the range [startTime, endTime)
     // for each file, read Events in the StoryChunk and add matched ones to the list of StoryChunks
     // return the list of StoryChunks
-    std::lock_guard<std::mutex> lock(start_time_file_name_map_mutex_);
+    std::unique_lock<std::mutex> lock(start_time_file_name_map_mutex_);
     if(!readAuxFiles)
     {
         LOG_DEBUG("[HDF5ArchiveReadingAgent] Reading archived story {}-{} range {}-{}, main file only",
@@ -278,8 +758,20 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName& c
 
     if(chronicle_story_it == start_time_file_name_map_.end())
     {
-        LOG_DEBUG("[HDF5ArchiveReadingAgent] No files found for story {}-{}", chronicleName, storyName);
-        return CL_ERR_UNKNOWN;
+        LOG_DEBUG("[HDF5ArchiveReadingAgent] No files found for story {}-{}, refreshing archive file map once",
+                  chronicleName,
+                  storyName);
+        lock.unlock();
+        createStartTimeFileNameMap();
+        lock.lock();
+        chronicle_story_it = start_time_file_name_map_.find(chronicle_story_pair);
+        if(chronicle_story_it == start_time_file_name_map_.end())
+        {
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] No files found for story {}-{} after archive file map refresh",
+                      chronicleName,
+                      storyName);
+            return CL_ERR_UNKNOWN;
+        }
     }
 
     auto& time_file_map = chronicle_story_it->second;

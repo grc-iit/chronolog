@@ -99,6 +99,7 @@ public:
     static void warn(const std::string& msg);
     static void error(const std::string& msg);
     static void critical(const std::string& msg);
+    static void flush();
 
     chrono_monitor(const chrono_monitor&) = delete;
     chrono_monitor& operator=(const chrono_monitor&) = delete;

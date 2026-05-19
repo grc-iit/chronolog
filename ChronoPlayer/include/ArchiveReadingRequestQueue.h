@@ -3,6 +3,8 @@
 
 #include <string>
 #include <cstdint>
+#include <chrono>
+#include <condition_variable>
 #include <mutex>
 #include <deque>
 
@@ -41,12 +43,19 @@ public:
 
     ~ArchiveReadingRequestQueue() {}
 
-    bool empty() const { return readingRequestQueue.empty(); }
+    bool empty() const
+    {
+        std::lock_guard<std::mutex> lock(readingRequestQueueMutex);
+        return readingRequestQueue.empty();
+    }
 
     void pushReadingRequest(ArchiveReadingRequest const& a_request)
     {
-        std::lock_guard<std::mutex> lock(readingRequestQueueMutex);
-        readingRequestQueue.push_back(a_request);
+        {
+            std::lock_guard<std::mutex> lock(readingRequestQueueMutex);
+            readingRequestQueue.push_back(a_request);
+        }
+        readingRequestQueueCondition.notify_one();
     }
 
     ArchiveReadingRequest& popReadingRequest(ArchiveReadingRequest& a_request)
@@ -65,10 +74,27 @@ public:
         return a_request;
     }
 
+    bool waitPopReadingRequest(ArchiveReadingRequest& a_request, std::chrono::milliseconds timeout)
+    {
+        std::unique_lock<std::mutex> lock(readingRequestQueueMutex);
+        if(!readingRequestQueueCondition.wait_for(lock, timeout, [this]() { return !readingRequestQueue.empty(); }))
+        {
+            a_request = ArchiveReadingRequest{nullptr, "", "", 0, 0};
+            return false;
+        }
+
+        a_request = readingRequestQueue.front();
+        readingRequestQueue.pop_front();
+        return true;
+    }
+
     void clear()
     {
-        std::lock_guard<std::mutex> lock(readingRequestQueueMutex);
-        readingRequestQueue.clear();
+        {
+            std::lock_guard<std::mutex> lock(readingRequestQueueMutex);
+            readingRequestQueue.clear();
+        }
+        readingRequestQueueCondition.notify_all();
     }
 
 
@@ -77,7 +103,8 @@ private:
 
     ArchiveReadingRequestQueue& operator=(ArchiveReadingRequestQueue const&) = delete;
 
-    std::mutex readingRequestQueueMutex;
+    mutable std::mutex readingRequestQueueMutex;
+    std::condition_variable readingRequestQueueCondition;
     std::deque<ArchiveReadingRequest> readingRequestQueue;
 };
 

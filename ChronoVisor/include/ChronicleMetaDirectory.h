@@ -45,7 +45,8 @@ public:
     int release_story(chronolog::ClientId const& client_id,
                       const std::string& chronicle_name,
                       const std::string& story_name,
-                      StoryId&);
+                      StoryId&,
+                      uint64_t* remaining_acquisition_count = nullptr);
 
     int get_chronicle_attr(std::string const& name, const std::string& key, std::string& value);
 

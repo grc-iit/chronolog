@@ -2,6 +2,9 @@
 #include <algorithm>
 #include <ctime>
 #include <cstdlib>
+#include <chrono>
+#include <future>
+#include <tuple>
 #include <unistd.h>
 #include <thallium.hpp>
 
@@ -18,6 +21,34 @@ namespace chl = chronolog;
 
 namespace chronolog
 {
+
+namespace
+{
+int64_t elapsedUs(std::chrono::steady_clock::time_point start)
+{
+    return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
+}
+
+bool parallelKeeperStopEnabled()
+{
+    char const* value = std::getenv("CHRONOLOG_VISOR_PARALLEL_KEEPER_STOP");
+    if(value == nullptr || *value == '\0')
+    {
+        return false;
+    }
+    return std::string(value) != "0";
+}
+
+bool parallelRecordingStopEnabled()
+{
+    char const* value = std::getenv("CHRONOLOG_VISOR_PARALLEL_RECORDING_STOP");
+    if(value == nullptr || *value == '\0')
+    {
+        return false;
+    }
+    return std::string(value) != "0";
+}
+}
 
 int KeeperRegistry::InitializeRegistryService(chl::RPCProviderConf const& VISOR_KEEPER_REGISTRY_SERVICE_CONF,
                                               size_t DELAYED_DATA_ADMIN_EXIT_IN_SECS)
@@ -729,8 +760,11 @@ int KeeperRegistry::notifyGrapherOfStoryRecordingStart(RecordingGroup& recording
 }
 
 ///////////////
-int KeeperRegistry::notifyGrapherOfStoryRecordingStop(RecordingGroup& recordingGroup, StoryId const& storyId)
+int KeeperRegistry::notifyGrapherOfStoryRecordingStop(RecordingGroup& recordingGroup,
+                                                      StoryId const& storyId,
+                                                      size_t expected_keeper_drains)
 {
+    auto const total_start = std::chrono::steady_clock::now();
     int return_code = chronolog::CL_ERR_UNKNOWN;
 
     if(!is_running())
@@ -766,12 +800,21 @@ int KeeperRegistry::notifyGrapherOfStoryRecordingStop(RecordingGroup& recordingG
 
     if(dataAdminClient == nullptr)
     {
+        LOG_INFO("[GrapherStopRpcProfile] story_id={} group_id={} target_present=0 return_code={} rpc_us=0 total_us={}",
+                 storyId,
+                 recordingGroup.groupId,
+                 return_code,
+                 elapsedUs(total_start));
         return return_code;
     }
 
+    int64_t rpc_us = 0;
     try
     {
-        return_code = dataAdminClient->send_stop_story_recording(storyId);
+        auto const rpc_start = std::chrono::steady_clock::now();
+        return_code = dataAdminClient->send_stop_story_recording_with_keeper_count(
+                storyId, static_cast<uint32_t>(expected_keeper_drains));
+        rpc_us = elapsedUs(rpc_start);
         if(return_code != chronolog::CL_SUCCESS)
         {
             LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to grapher {}", id_string.str());
@@ -787,6 +830,15 @@ int KeeperRegistry::notifyGrapherOfStoryRecordingStop(RecordingGroup& recordingG
     {
         LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to grapher {}", id_string.str());
     }
+
+    LOG_INFO("[GrapherStopRpcProfile] story_id={} group_id={} target_present=1 expected_keeper_drains={} "
+             "return_code={} rpc_us={} total_us={}",
+             storyId,
+             recordingGroup.groupId,
+             expected_keeper_drains,
+             return_code,
+             rpc_us,
+             elapsedUs(total_start));
 
     return return_code;
 }
@@ -874,11 +926,14 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStart(RecordingGroup& recording
 /////////////////
 int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStop(StoryId const& story_id)
 {
+    auto const total_start = std::chrono::steady_clock::now();
     RecordingGroup* recording_group = nullptr;
 
     std::vector<KeeperIdCard> vectorOfKeepers;
+    int64_t registry_lookup_us = 0;
 
     {
+        auto const lookup_start = std::chrono::steady_clock::now();
         //lock KeeperRegistry and choose the recording group for this story
         //NOTE we only keep the lock within this paragraph...
         std::lock_guard<std::mutex> lock(registryLock);
@@ -895,6 +950,14 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStop(StoryId const& stor
         if(story_iter == activeStories.end())
         {
             //we don't know of this story
+            registry_lookup_us = elapsedUs(lookup_start);
+            LOG_INFO("[RecordingStopProfile] story_id={} recording_group_found=0 keeper_count=0 registry_lookup_us={} "
+                     "keeper_notify_us=0 grapher_notify_us=0 total_us={} keeper_return_code={} grapher_return_code={}",
+                     story_id,
+                     registry_lookup_us,
+                     elapsedUs(total_start),
+                     chronolog::CL_SUCCESS,
+                     chronolog::CL_SUCCESS);
             return chronolog::CL_SUCCESS;
         }
 
@@ -905,18 +968,65 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStop(StoryId const& stor
         }
 
         activeStories.erase(story_iter);
+        registry_lookup_us = elapsedUs(lookup_start);
     }
 
+    int keeper_return_code = chronolog::CL_SUCCESS;
+    int grapher_return_code = chronolog::CL_SUCCESS;
+    int64_t keeper_notify_us = 0;
+    int64_t grapher_notify_us = 0;
     if(recording_group != nullptr)
     {
         // the registryLock is released by this point..
         // notify Grapher and notifyKeepers functions use delayedExit logic to protect
         // the rpc code from DataAdminClients being destroyed while notification is in progress..
 
-        notifyKeepersOfStoryRecordingStop(*recording_group, vectorOfKeepers, story_id);
+        if(parallelRecordingStopEnabled())
+        {
+            auto keeper_future = std::async(std::launch::async, [this, recording_group, vectorOfKeepers, story_id]() {
+                auto const keeper_start = std::chrono::steady_clock::now();
+                int const code = notifyKeepersOfStoryRecordingStop(*recording_group, vectorOfKeepers, story_id);
+                return std::make_pair(code, elapsedUs(keeper_start));
+            });
+            auto grapher_future = std::async(std::launch::async, [this, recording_group, vectorOfKeepers, story_id]() {
+                auto const grapher_start = std::chrono::steady_clock::now();
+                int const code =
+                        notifyGrapherOfStoryRecordingStop(*recording_group, story_id, vectorOfKeepers.size());
+                return std::make_pair(code, elapsedUs(grapher_start));
+            });
 
-        notifyGrapherOfStoryRecordingStop(*recording_group, story_id);
+            auto keeper_result = keeper_future.get();
+            auto grapher_result = grapher_future.get();
+            keeper_return_code = keeper_result.first;
+            keeper_notify_us = keeper_result.second;
+            grapher_return_code = grapher_result.first;
+            grapher_notify_us = grapher_result.second;
+        }
+        else
+        {
+            auto const keeper_start = std::chrono::steady_clock::now();
+            keeper_return_code = notifyKeepersOfStoryRecordingStop(*recording_group, vectorOfKeepers, story_id);
+            keeper_notify_us = elapsedUs(keeper_start);
+
+            auto const grapher_start = std::chrono::steady_clock::now();
+            grapher_return_code = notifyGrapherOfStoryRecordingStop(*recording_group, story_id, vectorOfKeepers.size());
+            grapher_notify_us = elapsedUs(grapher_start);
+        }
     }
+
+    LOG_INFO("[RecordingStopProfile] story_id={} recording_group_found={} keeper_count={} registry_lookup_us={} "
+             "keeper_notify_us={} grapher_notify_us={} total_us={} keeper_return_code={} grapher_return_code={} "
+             "parallel_recording_stop={}",
+             story_id,
+             recording_group != nullptr ? 1 : 0,
+             vectorOfKeepers.size(),
+             registry_lookup_us,
+             keeper_notify_us,
+             grapher_notify_us,
+             elapsedUs(total_start),
+             keeper_return_code,
+             grapher_return_code,
+             parallelRecordingStopEnabled() ? 1 : 0);
 
     return chronolog::CL_SUCCESS;
 }
@@ -925,6 +1035,7 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStop(RecordingGroup& recordingG
                                                       std::vector<KeeperIdCard> const& vectorOfKeepers,
                                                       StoryId const& storyId)
 {
+    auto const total_start = std::chrono::steady_clock::now();
     if(!is_running())
     {
         LOG_ERROR("[ChronoProcessRegistry] Registry has no keepers to notify of story release {}", storyId);
@@ -932,6 +1043,7 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStop(RecordingGroup& recordingG
     }
 
     auto keeper_processes = recordingGroup.keeperProcesses;
+    std::vector<std::pair<KeeperIdCard, DataStoreAdminClient*>> stop_targets;
 
     for(KeeperIdCard keeper_id_card: vectorOfKeepers)
     {
@@ -956,16 +1068,95 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStop(RecordingGroup& recordingG
                 continue;
             }
         }
-        try
+        stop_targets.emplace_back(keeper_id_card, dataAdminClient);
+    }
+
+    if(parallelKeeperStopEnabled())
+    {
+        std::vector<std::future<std::tuple<KeeperIdCard, int, int64_t>>> stop_futures;
+        stop_futures.reserve(stop_targets.size());
+        for(auto const& target: stop_targets)
         {
-            int rpc_return = dataAdminClient->send_stop_story_recording(storyId);
+            stop_futures.push_back(std::async(std::launch::async, [target, storyId]() {
+                auto const rpc_start = std::chrono::steady_clock::now();
+                int rpc_return = chronolog::CL_ERR_UNKNOWN;
+                try
+                {
+                    rpc_return = target.second->send_stop_story_recording(storyId);
+                }
+                catch(thallium::exception const& ex)
+                {
+                    rpc_return = chronolog::CL_ERR_UNKNOWN;
+                }
+                return std::make_tuple(target.first, rpc_return, elapsedUs(rpc_start));
+            }));
+        }
+
+        int success_count = 0;
+        int failure_count = 0;
+        int64_t rpc_sum_us = 0;
+        int64_t rpc_max_us = 0;
+        for(auto& future: stop_futures)
+        {
+            auto result = future.get();
+            KeeperIdCard const& keeper_id_card = std::get<0>(result);
+            int const rpc_return = std::get<1>(result);
+            int64_t const rpc_us = std::get<2>(result);
+            rpc_sum_us += rpc_us;
+            rpc_max_us = std::max(rpc_max_us, rpc_us);
             if(rpc_return != chronolog::CL_SUCCESS)
             {
+                ++failure_count;
                 LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to keeper {}",
                             to_string(keeper_id_card));
             }
             else
             {
+                ++success_count;
+                LOG_INFO("[ChronoProcessRegistry] Registry notified  {} to stop recording story {}",
+                         to_string(keeper_id_card),
+                         storyId);
+            }
+        }
+
+        LOG_INFO("[KeeperStopRpcProfile] story_id={} group_id={} parallel=1 target_count={} success_count={} "
+                 "failure_count={} rpc_sum_us={} rpc_max_us={} total_us={}",
+                 storyId,
+                 recordingGroup.groupId,
+                 stop_targets.size(),
+                 success_count,
+                 failure_count,
+                 rpc_sum_us,
+                 rpc_max_us,
+                 elapsedUs(total_start));
+
+        return chronolog::CL_SUCCESS;
+    }
+
+    int success_count = 0;
+    int failure_count = 0;
+    int64_t rpc_sum_us = 0;
+    int64_t rpc_max_us = 0;
+    for(auto const& target: stop_targets)
+    {
+        KeeperIdCard const& keeper_id_card = target.first;
+        DataStoreAdminClient* dataAdminClient = target.second;
+        try
+        {
+            auto const rpc_start = std::chrono::steady_clock::now();
+            int rpc_return = dataAdminClient->send_stop_story_recording(storyId);
+            int64_t const rpc_us = elapsedUs(rpc_start);
+            rpc_sum_us += rpc_us;
+            rpc_max_us = std::max(rpc_max_us, rpc_us);
+            if(rpc_return != chronolog::CL_SUCCESS)
+            {
+                ++failure_count;
+                LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to keeper {}",
+                            to_string(keeper_id_card));
+            }
+            else
+            {
+                ++success_count;
                 LOG_INFO("[ChronoProcessRegistry] Registry notified  {} to stop recording story {}",
                          to_string(keeper_id_card),
                          storyId);
@@ -973,10 +1164,22 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStop(RecordingGroup& recordingG
         }
         catch(thallium::exception const& ex)
         {
+            ++failure_count;
             LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to keeper {}",
                         to_string(keeper_id_card));
         }
     }
+
+    LOG_INFO("[KeeperStopRpcProfile] story_id={} group_id={} parallel=0 target_count={} success_count={} "
+             "failure_count={} rpc_sum_us={} rpc_max_us={} total_us={}",
+             storyId,
+             recordingGroup.groupId,
+             stop_targets.size(),
+             success_count,
+             failure_count,
+             rpc_sum_us,
+             rpc_max_us,
+             elapsedUs(total_start));
 
     return chronolog::CL_SUCCESS;
 }

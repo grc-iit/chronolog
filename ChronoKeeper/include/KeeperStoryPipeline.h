@@ -8,6 +8,7 @@
 #include <iostream>
 #include <string>
 #include <cstdint>
+#include <vector>
 
 #include <chronolog_types.h>
 #include <StoryChunk.h>
@@ -48,6 +49,8 @@ public:
     void mergeEvents(std::deque<LogEvent>&);
 
     void extractDecayedStoryChunks(uint64_t);
+
+    void collectEvents(uint64_t, uint64_t, std::vector<LogEvent>&);
 
     StoryId const& getStoryId() const { return storyId; }
 

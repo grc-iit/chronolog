@@ -151,7 +151,9 @@ int main(int argc, char** argv)
     chronolog::StoryChunkIngestionQueue ingestionQueue;
     chronolog::StoryChunkExtractionQueue extractionQueue;
 
-    chronolog::PlayerDataStore theDataStore(ingestionQueue, extractionQueue);
+    chronolog::PlayerDataStore theDataStore(ingestionQueue,
+                                            extractionQueue,
+                                            PLAYER_CONF.DATA_STORE_CONF.data_collection_poll_interval_us);
 
     tl::engine* dataAdminEngine = nullptr;
 

@@ -7,6 +7,8 @@
 #include <cstring>
 #include <cstdint>
 #include <tuple>
+#include <utility>
+#include <vector>
 
 namespace chronolog
 {
@@ -35,6 +37,18 @@ public:
         , clientId(client_id)
         , eventIndex(index)
         , logRecord(record)
+    {}
+
+    LogEvent(StoryId const& story_id,
+             chrono_time event_time,
+             ClientId client_id,
+             chrono_index index,
+             std::string&& record)
+        : storyId(story_id)
+        , eventTime(event_time)
+        , clientId(client_id)
+        , eventIndex(index)
+        , logRecord(std::move(record))
     {}
 
     StoryId storyId;
@@ -73,6 +87,59 @@ public:
                           " ClientId: " + std::to_string(clientId) + " EventIndex: " + std::to_string(eventIndex) +
                           " LogRecord: " + logRecord;
         return str;
+    }
+};
+
+struct KeeperTailCursorToken
+{
+    uint64_t segmentIndex{0};
+    uint64_t payloadOffset{0};
+    bool initialized{false};
+
+    template <typename SerArchiveT>
+    void serialize(SerArchiveT& serT)
+    {
+        serT(segmentIndex, payloadOffset, initialized);
+    }
+};
+
+struct KeeperTailBatch
+{
+    std::vector<LogEvent> events;
+    KeeperTailCursorToken nextCursor;
+    bool ok{false};
+
+    template <typename SerArchiveT>
+    void serialize(SerArchiveT& serT)
+    {
+        serT(events, nextCursor, ok);
+    }
+};
+
+struct KeeperTailPackedBatch
+{
+    std::vector<uint64_t> eventTimes;
+    std::vector<uint64_t> clientIds;
+    std::vector<uint32_t> eventIndexes;
+    std::vector<uint64_t> payloadOffsets;
+    std::vector<uint64_t> payloadSizes;
+    std::string payloadBlob;
+    KeeperTailCursorToken nextCursor;
+    uint64_t sourceBatchCount{0};
+    bool ok{false};
+
+    template <typename SerArchiveT>
+    void serialize(SerArchiveT& serT)
+    {
+        serT(eventTimes,
+             clientIds,
+             eventIndexes,
+             payloadOffsets,
+             payloadSizes,
+             payloadBlob,
+             nextCursor,
+             sourceBatchCount,
+             ok);
     }
 };
 } // namespace chronolog

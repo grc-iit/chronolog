@@ -15,6 +15,7 @@
 
 #include <client_errcode.h>
 #include <chrono_monitor.h>
+#include <chronolog_profile.h>
 #include <chronolog_client.h>
 #include <PlaybackQueryResponse.h>
 
@@ -83,6 +84,8 @@ int chl::ClientQueryService::replay_story(chl::ChronicleName const& chronicle,
                                           uint64_t end,
                                           std::vector<chl::Event>& event_series)
 {
+    CL_PROFILE_REGION("client_query");
+    CL_PROFILE_REGION("range_retrieval");
 
     //check if the story has been acquired and the chrono_player is available for it
 
@@ -122,13 +125,13 @@ int chl::ClientQueryService::replay_story(chl::ChronicleName const& chronicle,
     // response will be received on a different thread
 
     uint64_t current_time = std::chrono::steady_clock::now().time_since_epoch().count();
-    while(!query->completed && current_time < query->timeout_time)
+    while(!query->completed.load(std::memory_order_acquire) && current_time < query->timeout_time)
     {
-        sleep(1); //TODO: replace with finer granularity sleep...
+        usleep(1000);
         current_time = std::chrono::steady_clock::now().time_since_epoch().count();
     }
 
-    int ret_value = (query->completed == true ? chl::CL_SUCCESS : chl::CL_ERR_QUERY_TIMED_OUT);
+    int ret_value = (query->completed.load(std::memory_order_acquire) ? chl::CL_SUCCESS : chl::CL_ERR_QUERY_TIMED_OUT);
 
     // destroy query object and return to the caller
     stop_query(query->queryId);
@@ -150,9 +153,15 @@ chl::PlaybackQuery* chl::ClientQueryService::start_query(uint64_t timeout_time,
 
     //TODO add query_id to queryResponse object  and remove this line...
     query_id = 1;
-    auto insert_return = activeQueryMap.insert(std::pair<uint32_t, chl::PlaybackQuery>(
-            query_id,
-            chl::PlaybackQuery(playback_events, query_id, timeout_time, chronicle, story, start_time, end_time)));
+    auto insert_return = activeQueryMap.emplace(std::piecewise_construct,
+                                                std::forward_as_tuple(query_id),
+                                                std::forward_as_tuple(playback_events,
+                                                                      query_id,
+                                                                      timeout_time,
+                                                                      chronicle,
+                                                                      story,
+                                                                      start_time,
+                                                                      end_time));
 
     if(insert_return.second)
     {
@@ -233,6 +242,9 @@ void chronolog::ClientQueryService::removePlaybackQueryClient(chl::ServiceId con
 // in this refactor; the wire payload is no longer a StoryChunk.
 void chl::ClientQueryService::receive_story_chunk(tl::request const& request, tl::bulk& b)
 {
+    CL_PROFILE_REGION("rpc_receive");
+    CL_PROFILE_COUNTER("append_bytes", b.size());
+
     try
     {
         tl::endpoint ep = request.get_endpoint();
@@ -255,7 +267,11 @@ void chl::ClientQueryService::receive_story_chunk(tl::request const& request, tl
                   tl::thread::self_id());
 
         chronolog::PlaybackQueryResponse response;
-        int ret = deserializeResponse(&mem_vec[0], b.size(), response);
+        int ret;
+        {
+            CL_PROFILE_REGION("deserialization");
+            ret = deserializeResponse(&mem_vec[0], b.size(), response);
+        }
         if(ret != chronolog::CL_SUCCESS)
         {
             LOG_ERROR("[ClientQueryService] Failed to deserialize PlaybackQueryResponse, ThreadID={}",
@@ -287,7 +303,7 @@ void chl::ClientQueryService::receive_story_chunk(tl::request const& request, tl
                                           log_event.eventIndex,
                                           log_event.logRecord);
             }
-            (*query_iter).second.completed = true;
+            (*query_iter).second.completed.store(true, std::memory_order_release);
             LOG_DEBUG("[ClientQueryService] Query {} got {} events, ThreadID={}",
                       query_id,
                       response.events.size(),

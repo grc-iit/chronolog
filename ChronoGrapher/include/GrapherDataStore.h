@@ -6,6 +6,7 @@
 #include <map>
 #include <mutex>
 #include <unordered_map>
+#include <thread>
 #include <thallium.hpp>
 
 #include <StoryPipeline.h>
@@ -35,7 +36,8 @@ public:
                      uint32_t max_chunk_size = 4096,
                      uint32_t story_chunk_duration_secs = 60,
                      uint32_t acceptance_window_secs = 180,
-                     uint32_t inactive_pipeline_delay_secs = 300)
+                     uint32_t inactive_pipeline_delay_secs = 300,
+                     uint32_t data_collection_poll_interval_us = 1000000)
         : state(UNKNOWN)
         , theIngestionQueue(ingestion_queue)
         , theExtractionQueue(extraction_queue)
@@ -43,6 +45,7 @@ public:
         , story_chunk_duration_secs(story_chunk_duration_secs)
         , acceptance_window_secs(acceptance_window_secs)
         , inactive_pipeline_delay_secs(inactive_pipeline_delay_secs)
+        , data_collection_poll_interval_us(data_collection_poll_interval_us)
     {}
 
     ~GrapherDataStore();
@@ -53,7 +56,9 @@ public:
 
     int startStoryRecording(ChronicleName const&, StoryName const&, StoryId const&, uint64_t start_time);
 
-    int stopStoryRecording(StoryId const&);
+    int stopStoryRecording(StoryId const&,
+                           uint64_t extraction_drain_timeout_ms = 0,
+                           uint32_t expected_keeper_drains = 0);
 
     void collectIngestedEvents();
 
@@ -61,7 +66,7 @@ public:
 
     void retireDecayedPipelines();
 
-    void startDataCollection(int stream_count);
+    void startDataCollection(int stream_count, int threads_per_stream = 2);
 
     void shutdownDataCollection();
 
@@ -81,6 +86,7 @@ private:
     uint32_t story_chunk_duration_secs;
     uint32_t acceptance_window_secs;
     uint32_t inactive_pipeline_delay_secs;
+    uint32_t data_collection_poll_interval_us;
 
     std::vector<thallium::managed<thallium::xstream>> dataStoreStreams;
     std::vector<thallium::managed<thallium::thread>> dataStoreThreads;
@@ -88,6 +94,8 @@ private:
     std::mutex dataStoreMutex;
     std::unordered_map<StoryId, StoryPipeline*> theMapOfStoryPipelines;
     std::unordered_map<StoryId, std::pair<StoryPipeline*, uint64_t>> pipelinesWaitingForExit;
+    std::unordered_map<StoryId, uint64_t> pipelinesInStopRetireGrace;
+    std::unordered_map<StoryId, uint64_t> pipelinesInStopCompletionWait;
 };
 
 } // namespace chronolog

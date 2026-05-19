@@ -94,12 +94,14 @@ void chronolog::StoryChunkExtractorBase::drainExtractionQueue()
                 LOG_WARNING("[StoryChunkExtractionBase] Failed to acquire a story chunk from the queue.");
                 break;
             }
+            StoryId const story_id = storyChunk->getStoryId();
             int ret = processStoryChunk(storyChunk);
             if(ret == chronolog::CL_SUCCESS)
             {
                 LOG_DEBUG("[StoryChunkExtractionBase] Successfully processed a story chunk. ES Rank: {}, ULT ID: {}",
                           es.get_rank(),
                           thallium::thread::self_id());
+                chunkExtractionQueue.completeStoryChunk(story_id);
                 delete storyChunk;
             }
             else
@@ -114,6 +116,7 @@ void chronolog::StoryChunkExtractorBase::drainExtractionQueue()
                           es.get_rank(),
                           thallium::thread::self_id());
                 chunkExtractionQueue.stashStoryChunk(storyChunk);
+                chunkExtractionQueue.completeStoryChunk(story_id);
             }
         }
         sleep(2);

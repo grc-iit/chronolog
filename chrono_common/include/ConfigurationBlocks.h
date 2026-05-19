@@ -237,6 +237,7 @@ struct DataStoreConf
     int story_chunk_duration_secs = 30;
     int acceptance_window_secs = 60;
     int inactive_story_delay_secs = 180;
+    int data_collection_poll_interval_us = 1000000;
 
     DataStoreConf() {}
 
@@ -247,7 +248,8 @@ struct DataStoreConf
         return "[DATA_STORE_CONF: max_story_chunk_size: " + std::to_string(max_story_chunk_size) +
                " story_chunk_duration_secs: " + std::to_string(story_chunk_duration_secs) +
                " acceptance_window_secs: " + std::to_string(acceptance_window_secs) +
-               " inactive_story_delay_secs: " + std::to_string(inactive_story_delay_secs) + "]";
+               " inactive_story_delay_secs: " + std::to_string(inactive_story_delay_secs) +
+               " data_collection_poll_interval_us: " + std::to_string(data_collection_poll_interval_us) + "]";
     }
 };
 

@@ -5,7 +5,10 @@
 #include <vector>
 #include <chrono>
 #include <sstream>
+#include <streambuf>
 #include <exception>
+#include <cstdlib>
+#include <memory>
 #include <margo.h>
 #include <thallium.hpp>
 #include <thallium/serialization/stl/string.hpp>
@@ -13,8 +16,10 @@
 
 #include <chronolog_errcode.h>
 #include <KeeperIdCard.h>
+#include <chronolog_profile.h>
 #include <chronolog_types.h>
 #include <StoryChunk.h>
+#include <StoryChunkWireFormat.h>
 
 #include "ChunkIngestionQueue.h"
 
@@ -41,26 +46,39 @@ public:
 
     void receive_story_chunk(tl::request const& request, tl::bulk& b)
     {
+        CL_PROFILE_REGION("rpc_receive");
+        CL_PROFILE_REGION("grapher_receive_chunk");
+        CL_PROFILE_COUNTER("grapher_receive_bytes", b.size());
         try
         {
-            std::vector<char> mem_vec(b.size());
+            auto const total_start = std::chrono::high_resolution_clock::now();
+            auto const allocation_start = std::chrono::high_resolution_clock::now();
+            std::unique_ptr<char[]> receive_buffer(new char[b.size()]);
+            auto const allocation_end = std::chrono::high_resolution_clock::now();
             std::chrono::high_resolution_clock::time_point start, end;
             LOG_DEBUG("[GrapherRecordingService] StoryChunk recording RPC invoked, ThreadID={}", tl::thread::self_id());
             tl::endpoint ep = request.get_endpoint();
             LOG_DEBUG("[GrapherRecordingService] Endpoint obtained, ThreadID={}", tl::thread::self_id());
             std::vector<std::pair<void*, std::size_t>> segments(1);
-            segments[0].first = (void*)(&mem_vec[0]);
-            segments[0].second = mem_vec.size();
+            segments[0].first = static_cast<void*>(receive_buffer.get());
+            segments[0].second = b.size();
             LOG_DEBUG("[GrapherRecordingService] Bulk memory prepared, size: {}, ThreadID={}",
-                      mem_vec.size(),
+                      b.size(),
                       tl::thread::self_id());
             tl::engine tl_engine = get_engine();
             LOG_DEBUG("[GrapherRecordingService] Engine addr: {}, ThreadID={}",
                       (void*)&tl_engine,
                       tl::thread::self_id());
+            auto const local_bulk_expose_start = std::chrono::high_resolution_clock::now();
             tl::bulk local = tl_engine.expose(segments, tl::bulk_mode::write_only);
+            auto const local_bulk_expose_end = std::chrono::high_resolution_clock::now();
             LOG_DEBUG("[GrapherRecordingService] Bulk memory exposed, ThreadID={}", tl::thread::self_id());
-            b.on(ep) >> local;
+            auto const bulk_start = std::chrono::high_resolution_clock::now();
+            {
+                CL_PROFILE_REGION("rpc_bulk_transfer");
+                b.on(ep) >> local;
+            }
+            auto const bulk_end = std::chrono::high_resolution_clock::now();
             LOG_DEBUG("[GrapherRecordingService] Received {} bytes of StoryChunk data, ThreadID={}",
                       b.size(),
                       tl::thread::self_id());
@@ -69,7 +87,13 @@ public:
 #ifndef NDEBUG
             start = std::chrono::high_resolution_clock::now();
 #endif
-            int ret = deserializedWithCereal(&mem_vec[0], b.size(), *story_chunk);
+            auto const deserialize_start = std::chrono::high_resolution_clock::now();
+            int ret = chronolog::CL_ERR_UNKNOWN;
+            {
+                CL_PROFILE_REGION("deserialization");
+                ret = deserializedWithCereal(receive_buffer.get(), b.size(), *story_chunk);
+            }
+            auto const deserialize_end = std::chrono::high_resolution_clock::now();
             if(ret != chronolog::CL_SUCCESS)
             {
                 LOG_ERROR("[GrapherRecordingService] Failed to deserialize a story chunk, ThreadID={}",
@@ -93,12 +117,69 @@ public:
                     story_chunk->getEventCount(),
                     tl::thread::self_id());
 
-            request.respond(b.size());
-            LOG_DEBUG("[GrapherRecordingService] StoryChunk recording RPC responded {}, ThreadID={}",
+            auto const story_id = story_chunk->getStoryId();
+            auto const start_time = story_chunk->getStartTime();
+            auto const end_time = story_chunk->getEndTime();
+            auto const event_count = story_chunk->getEventCount();
+            {
+                CL_PROFILE_REGION("grapher_ingest_chunk");
+                CL_PROFILE_COUNTER("grapher_ingest_chunk_events", event_count);
+                auto const ingest_start = std::chrono::high_resolution_clock::now();
+                theIngestionQueue.ingestStoryChunk(story_chunk);
+                auto const ingest_end = std::chrono::high_resolution_clock::now();
+                auto const bulk_transfer_us =
+                        std::chrono::duration_cast<std::chrono::nanoseconds>(bulk_end - bulk_start).count() / 1000.0;
+                auto const allocation_us =
+                        std::chrono::duration_cast<std::chrono::nanoseconds>(allocation_end - allocation_start)
+                                .count() /
+                        1000.0;
+                auto const local_bulk_expose_us =
+                        std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                local_bulk_expose_end - local_bulk_expose_start)
+                                .count() /
+                        1000.0;
+                auto const deserialization_us =
+                        std::chrono::duration_cast<std::chrono::nanoseconds>(deserialize_end - deserialize_start)
+                                .count() /
+                        1000.0;
+                auto const ingestion_us =
+                        std::chrono::duration_cast<std::chrono::nanoseconds>(ingest_end - ingest_start).count() /
+                        1000.0;
+                auto const total_before_response_us =
+                        std::chrono::duration_cast<std::chrono::nanoseconds>(ingest_end - total_start).count() /
+                        1000.0;
+                auto const response_start = std::chrono::high_resolution_clock::now();
+                request.respond(b.size());
+                auto const response_end = std::chrono::high_resolution_clock::now();
+                auto const response_us =
+                        std::chrono::duration_cast<std::chrono::nanoseconds>(response_end - response_start).count() /
+                        1000.0;
+                auto const total_with_response_us =
+                        std::chrono::duration_cast<std::chrono::nanoseconds>(response_end - total_start).count() /
+                        1000.0;
+                LOG_INFO("[GrapherRecordingService] Receive profile StoryID={} StartTime={} EndTime={} eventCount={} "
+                         "bytes={} allocation_us={} local_bulk_expose_us={} bulk_transfer_us={} "
+                         "deserialization_us={} ingestion_us={} response_us={} total_before_response_us={} "
+                         "total_with_response_us={} ThreadID={}",
+                         story_id,
+                         start_time,
+                         end_time,
+                         event_count,
+                         b.size(),
+                         allocation_us,
+                         local_bulk_expose_us,
+                         bulk_transfer_us,
+                         deserialization_us,
+                         ingestion_us,
+                         response_us,
+                         total_before_response_us,
+                         total_with_response_us,
+                         tl::thread::self_id());
+            }
+            LOG_DEBUG("[GrapherRecordingService] StoryChunk recording RPC responded after local ingestion {}, "
+                      "ThreadID={}",
                       b.size(),
                       tl::thread::self_id());
-
-            theIngestionQueue.ingestStoryChunk(story_chunk);
         }
         catch(std::bad_alloc const& ex)
         {
@@ -109,31 +190,68 @@ public:
         }
     }
 
+    void story_drain_complete(tl::request const& request, StoryId const& story_id)
+    {
+        uint64_t const completion_count = theIngestionQueue.recordStoryDrainComplete(story_id);
+        LOG_INFO("[GrapherRecordingService] Story drain complete received. StoryID={} completionCount={} ThreadID={}",
+                 story_id,
+                 completion_count,
+                 tl::thread::self_id());
+        request.respond(chronolog::CL_SUCCESS);
+    }
+
 private:
     GrapherRecordingService(tl::engine& tl_engine, uint16_t service_provider_id, ChunkIngestionQueue& ingestion_queue)
         : tl::provider<GrapherRecordingService>(tl_engine, service_provider_id)
         , theIngestionQueue(ingestion_queue)
     {
         define("receive_story_chunk", &GrapherRecordingService::receive_story_chunk);
+        define("story_drain_complete", &GrapherRecordingService::story_drain_complete);
         //set up callback for the case when the engine is being finalized while this provider is still alive
         get_engine().push_finalize_callback(this, [p = this]() { delete p; });
     }
 
+    class MemoryInputBuffer: public std::streambuf
+    {
+    public:
+        MemoryInputBuffer(char* buffer, size_t size)
+        {
+            setg(buffer, buffer, buffer + size);
+        }
+    };
+
     int deserializedWithCereal(char* buffer, size_t size, StoryChunk& story_chunk)
     {
-        std::stringstream ss(std::ios::binary | std::ios::in | std::ios::out);
         try
         {
-            ss.write(buffer, size);
-            cereal::BinaryInputArchive iarchive(ss);
-            iarchive(story_chunk);
+            if(StoryChunkWireFormat::hasFastWireMagic(buffer, size))
+            {
+                if(!StoryChunkWireFormat::deserialize(buffer, size, story_chunk))
+                {
+                    return chronolog::CL_ERR_UNKNOWN;
+                }
+            }
+            else if(directDeserializeEnabled())
+            {
+                MemoryInputBuffer input_buffer(buffer, size);
+                std::istream input_stream(&input_buffer);
+                cereal::BinaryInputArchive iarchive(input_stream);
+                iarchive(story_chunk);
+            }
+            else
+            {
+                std::stringstream ss(std::ios::binary | std::ios::in | std::ios::out);
+                ss.write(buffer, size);
+                cereal::BinaryInputArchive iarchive(ss);
+                iarchive(story_chunk);
+            }
             return chronolog::CL_SUCCESS;
         }
         catch(cereal::Exception const& ex)
         {
             LOG_ERROR("[GrapherRecordingService] Failed to deserialize a story chunk, size={}, ThreadID={}. "
                       "Cereal exception encountered.",
-                      ss.str().size(),
+                      size,
                       tl::thread::self_id());
             LOG_ERROR("[GrapherRecordingService] Exception: {}", ex.what());
             return chronolog::CL_ERR_UNKNOWN;
@@ -142,7 +260,7 @@ private:
         {
             LOG_ERROR("[GrapherRecordingService] Failed to deserialize a story chunk, size={}, ThreadID={}. "
                       "std::exception encountered.",
-                      ss.str().size(),
+                      size,
                       tl::thread::self_id());
             LOG_ERROR("[GrapherRecordingService] Exception: {}", ex.what());
             return chronolog::CL_ERR_UNKNOWN;
@@ -159,6 +277,12 @@ private:
     GrapherRecordingService(GrapherRecordingService const&) = delete;
 
     GrapherRecordingService& operator=(GrapherRecordingService const&) = delete;
+
+    static bool directDeserializeEnabled()
+    {
+        char const* value = std::getenv("CHRONOLOG_GRAPHER_DIRECT_DESERIALIZE");
+        return value != nullptr && *value != '\0' && std::string(value) != "0";
+    }
 
     ChunkIngestionQueue& theIngestionQueue;
 };

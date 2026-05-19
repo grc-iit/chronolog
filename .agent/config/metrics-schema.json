@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "required_fields": {
+    "system": "string: chronolog|kafka|mofka",
+    "workflow": "string",
+    "node_count": "number",
+    "client_count": "number",
+    "message_size_bytes": "number",
+    "operation_count": "number: messages per client",
+    "operation_count_per_client": "number: messages per client",
+    "message_count_per_client": "number: explicit alias for operation_count_per_client",
+    "total_operation_count": "number: total messages across all clients",
+    "total_message_count": "number: explicit alias for total_operation_count",
+    "total_payload_bytes": "number: total_operation_count * message_size_bytes",
+    "parallel_client_count": "number: explicit alias for client_count",
+    "duration_seconds": "number",
+    "throughput_ops_per_sec": "number",
+    "avg_latency_ms": "number|null",
+    "p50_latency_ms": "number|null",
+    "p95_latency_ms": "number|null",
+    "p99_latency_ms": "number|null",
+    "success": "boolean"
+  },
+  "allowed_systems": ["chronolog", "kafka", "mofka"]
+}

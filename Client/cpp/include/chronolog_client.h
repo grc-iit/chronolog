@@ -1,11 +1,16 @@
 #ifndef CHRONOLOG_CLIENT_H
 #define CHRONOLOG_CLIENT_H
 
+#include <deque>
 #include <string>
 #include <vector>
 #include <map>
 #include <cstdint>
+#include <cstddef>
 #include <fstream>
+#include <memory>
+#include <stdexcept>
+#include <utility>
 
 #include "ClientConfiguration.h"
 #include "client_errcode.h"
@@ -38,6 +43,13 @@ public:
         , logRecord(record)
     {}
 
+    Event(chrono_time event_time, ClientId client_id, chrono_index index, std::string&& record)
+        : eventTime(event_time)
+        , clientId(client_id)
+        , eventIndex(index)
+        , logRecord(std::move(record))
+    {}
+
     uint64_t time() const { return eventTime; }
 
     ClientId const& client_id() const { return clientId; }
@@ -53,6 +65,8 @@ public:
         , logRecord(other.log_record())
     {}
 
+    Event(Event&& other) noexcept = default;
+
     Event& operator=(const Event& other)
     {
         if(this != &other)
@@ -64,6 +78,8 @@ public:
         }
         return *this;
     }
+
+    Event& operator=(Event&& other) noexcept = default;
 
     bool operator==(const Event& other) const
     {
@@ -99,12 +115,163 @@ private:
     std::string logRecord;
 };
 
+class PackedReplayBatch
+{
+public:
+    void clear()
+    {
+        eventTimes.clear();
+        clientIds.clear();
+        eventIndexes.clear();
+        blobIndexes.clear();
+        payloadOffsets.clear();
+        payloadSizes.clear();
+        payloadBlobs.clear();
+    }
+
+    [[nodiscard]] std::size_t event_count() const { return eventTimes.size(); }
+
+    [[nodiscard]] std::size_t payload_bytes() const
+    {
+        std::size_t total = 0;
+        for(auto const& blob: payloadBlobs)
+        {
+            total += blob.size();
+        }
+        return total;
+    }
+
+    [[nodiscard]] chrono_time time(std::size_t index) const { return eventTimes.at(index); }
+    [[nodiscard]] ClientId client_id(std::size_t index) const { return clientIds.at(index); }
+    [[nodiscard]] chrono_index event_index(std::size_t index) const { return eventIndexes.at(index); }
+    [[nodiscard]] std::size_t payload_size(std::size_t index) const
+    {
+        return static_cast<std::size_t>(payloadSizes.at(index));
+    }
+
+    [[nodiscard]] std::string payload(std::size_t index) const
+    {
+        std::size_t const blob_index = static_cast<std::size_t>(blobIndexes.at(index));
+        uint64_t const offset = payloadOffsets.at(index);
+        uint64_t const size = payloadSizes.at(index);
+        if(blob_index >= payloadBlobs.size())
+        {
+            throw std::out_of_range("PackedReplayBatch blob index out of range");
+        }
+        std::string const& blob = payloadBlobs[blob_index];
+        if(offset > blob.size() || size > blob.size() - offset)
+        {
+            throw std::out_of_range("PackedReplayBatch payload range out of range");
+        }
+        return blob.substr(static_cast<std::size_t>(offset), static_cast<std::size_t>(size));
+    }
+
+    std::vector<chrono_time> eventTimes;
+    std::vector<ClientId> clientIds;
+    std::vector<chrono_index> eventIndexes;
+    std::vector<uint32_t> blobIndexes;
+    std::vector<uint64_t> payloadOffsets;
+    std::vector<uint64_t> payloadSizes;
+    std::vector<std::string> payloadBlobs;
+};
+
+class LogEventFuture
+{
+public:
+    class State
+    {
+    public:
+        virtual ~State() = default;
+        virtual uint64_t wait() = 0;
+        virtual std::size_t future_count() const { return 1; }
+    };
+
+    LogEventFuture() = default;
+    explicit LogEventFuture(std::shared_ptr<State> state) : state(std::move(state)) {}
+
+    [[nodiscard]] bool valid() const { return static_cast<bool>(state); }
+
+    [[nodiscard]] std::size_t future_count() const
+    {
+        if(!state)
+        {
+            return 0;
+        }
+        return state->future_count();
+    }
+
+    uint64_t wait()
+    {
+        if(!state)
+        {
+            return 0;
+        }
+        return state->wait();
+    }
+
+private:
+    std::shared_ptr<State> state;
+};
+
+class PerKeeperBoundedLogEventAppender
+{
+public:
+    virtual ~PerKeeperBoundedLogEventAppender() = default;
+
+    virtual uint64_t append(std::string const&) = 0;
+    virtual uint64_t append_many(std::vector<std::string>) = 0;
+    virtual uint64_t flush() = 0;
+    [[nodiscard]] virtual uint64_t future_count() const { return 0; }
+    [[nodiscard]] virtual uint64_t future_count_max_per_call() const { return 0; }
+    [[nodiscard]] virtual uint64_t future_wait_count() const { return 0; }
+    [[nodiscard]] virtual uint64_t future_wait_ns() const { return 0; }
+    [[nodiscard]] virtual uint64_t future_wait_max_ns() const { return 0; }
+};
+
 class StoryHandle
 {
 public:
     virtual ~StoryHandle();
 
     virtual uint64_t log_event(std::string const&) = 0;
+    virtual LogEventFuture log_event_async(std::string const&);
+    virtual LogEventFuture log_events_async(std::vector<std::string> const&);
+    virtual LogEventFuture log_events_async_owned(std::vector<std::string>);
+    virtual uint64_t log_events_bounded(std::vector<std::string> const&, std::size_t batch_size,
+                                        std::size_t max_outstanding);
+    virtual uint64_t log_events_bounded_per_keeper(std::vector<std::string> const&,
+                                                   std::size_t keeper_batch_size,
+                                                   std::size_t max_outstanding_futures);
+    virtual std::unique_ptr<PerKeeperBoundedLogEventAppender> make_per_keeper_bounded_appender(
+            std::size_t keeper_batch_size,
+            std::size_t max_outstanding_futures);
+
+    virtual int replay_tail(uint64_t, uint64_t, std::vector<Event>&) { return CL_ERR_NO_PLAYERS; }
+
+    virtual int replay_tail_incremental(uint64_t, std::vector<Event>&) { return CL_ERR_NO_PLAYERS; }
+
+    virtual int replay_tail_incremental_packed(uint64_t, PackedReplayBatch&) { return CL_ERR_NO_PLAYERS; }
+};
+
+class BoundedLogEventAppender
+{
+public:
+    BoundedLogEventAppender(StoryHandle&, std::size_t batch_size, std::size_t max_outstanding);
+
+    uint64_t append(std::string const&);
+    uint64_t append_many(std::vector<std::string>);
+    uint64_t flush();
+
+private:
+    uint64_t wait_oldest();
+    bool submit_batch();
+
+    StoryHandle& story_handle;
+    std::size_t batch_size;
+    std::size_t max_outstanding;
+    std::deque<LogEventFuture> pending_writes;
+    std::vector<std::string> pending_batch;
+    uint64_t last_timestamp = 0;
 };
 
 class ChronologClientImpl;

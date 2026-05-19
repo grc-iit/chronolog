@@ -1,0 +1,61 @@
+optimization_scope:
+  level_0_config_and_benchmark_parameters:
+    editable:
+      - .agent/config/workloads.json
+      - .agent/config/phase0-workflows.json
+      - profiling/data/history/iteration_map.csv
+      - profiling/data/history/fixed_baselines.csv
+    examples:
+      - operation_count
+      - message_size_bytes
+      - client_count
+      - node_count
+      - record_groups
+      - trial_count
+
+  level_1_environment_and_placement:
+    editable:
+      - .agent/scripts/chronolog_run_append_distributed.sh
+      - .agent/scripts/phase0_benchmark_matrix.py
+      - profileforge/targets/chronolog/target.yaml
+    examples:
+      - CPU affinity
+      - NUMA binding
+      - service placement
+      - process co-location
+      - transport selection
+      - logging level
+
+  level_2_localized_source_patches:
+    editable:
+      - ChronoAPI/
+      - ChronoKeeper/
+      - ChronoVisor/
+      - ChronoGrapher/
+      - ChronoPlayer/
+      - Client/
+      - Common/
+      - CMakeLists.txt
+    examples:
+      - profiling labels
+      - application counters
+      - buffer reuse
+      - allocation reduction
+      - lock scope reduction
+      - queue instrumentation
+
+forbidden:
+  - profiling/0/data/benchmark/
+  - profiling/data/history/chronolog_metrics_history.csv
+  - profiling/data/history/tau_semantic_history.csv
+  - profiling/figures/
+  - .agent/config/metrics-schema.json
+  - .agent/scripts/phase0_validate_metrics.py
+  - profileforge/validators/
+  - profileforge/controller/acceptance-policy.yaml
+  - opt/kafka/
+  - opt/mofka/
+  - opt/mochi-spack-packages/
+
+rule:
+  Patch agents may modify generated history files only by running the documented generator scripts. They may not hand-edit benchmark scores, baseline metrics, validator logic, or fixed-baseline system sources.

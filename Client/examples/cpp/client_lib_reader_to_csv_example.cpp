@@ -169,7 +169,7 @@ int main(int argc, char** argv)
     std::string chronicle_name("CHRONICLE");
     std::string story_name("STORY");
     int interval_in_secs = 300;
-    std::string output_csv_file_path("/tmp/chronolog_reader_client.csv");
+    std::string output_csv_file_path("chronolog_reader_client.csv");
 
     parse_command_args(argc, argv, conf_file_path, chronicle_name, story_name, interval_in_secs, output_csv_file_path);
 

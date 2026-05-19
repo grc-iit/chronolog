@@ -1,4 +1,5 @@
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -27,6 +28,19 @@ void BindChronologClientQueryServiceConf(pybind11::module& m)
 
 
 using chronolog::StoryHandle;
+using chronolog::LogEventFuture;
+using chronolog::BoundedLogEventAppender;
+using chronolog::PerKeeperBoundedLogEventAppender;
+using chronolog::PackedReplayBatch;
+
+void BindChronologLogEventFuture(pybind11::module& m)
+{
+    pybind11::class_<LogEventFuture>(m, "LogEventFuture")
+            .def("valid", &LogEventFuture::valid)
+            .def("future_count", &LogEventFuture::future_count)
+            .def("wait", &LogEventFuture::wait);
+}
+
 class PyStoryHandle: public StoryHandle
 {
 public:
@@ -42,13 +56,79 @@ public:
                                event_string /* Argument(s) */
         );
     }
+
+    int replay_tail_incremental(uint64_t end_time, std::vector<chronolog::Event>& events) override
+    {
+        PYBIND11_OVERRIDE(int,                   /* Return type */
+                          StoryHandle,           /* Parent class */
+                          replay_tail_incremental, /* Name of function in C++ (must match Python name) */
+                          end_time,              /* Argument(s) */
+                          events);
+    }
+
+    int replay_tail_incremental_packed(uint64_t end_time, chronolog::PackedReplayBatch& events) override
+    {
+        PYBIND11_OVERRIDE(int,
+                          StoryHandle,
+                          replay_tail_incremental_packed,
+                          end_time,
+                          events);
+    }
 };
 
 void BindChronologStoryHandle(pybind11::module& m)
 {
     pybind11::class_<StoryHandle, PyStoryHandle>(m, "StoryHandle")
             .def(pybind11::init<>())
-            .def("log_event", &StoryHandle::log_event, pybind11::arg("log_string"));
+            .def("log_event", &StoryHandle::log_event, pybind11::arg("log_string"))
+            .def("log_event_async", &StoryHandle::log_event_async, pybind11::arg("log_string"))
+            .def("log_events_async", &StoryHandle::log_events_async, pybind11::arg("log_strings"))
+            .def("log_events_async_owned", &StoryHandle::log_events_async_owned, pybind11::arg("log_strings"))
+            .def("log_events_bounded",
+                 &StoryHandle::log_events_bounded,
+                 pybind11::arg("log_strings"),
+                 pybind11::arg("batch_size") = 1,
+                 pybind11::arg("max_outstanding") = 1)
+            .def("log_events_bounded_per_keeper",
+                 &StoryHandle::log_events_bounded_per_keeper,
+                 pybind11::arg("log_strings"),
+                 pybind11::arg("keeper_batch_size") = 1,
+                 pybind11::arg("max_outstanding_futures") = 1)
+            .def("make_per_keeper_bounded_appender",
+                 &StoryHandle::make_per_keeper_bounded_appender,
+                 pybind11::arg("keeper_batch_size") = 1,
+                 pybind11::arg("max_outstanding_futures") = 1)
+            .def("replay_tail_incremental",
+                 &StoryHandle::replay_tail_incremental,
+                 pybind11::arg("end_time"),
+                 pybind11::arg("events"))
+            .def("replay_tail_incremental_packed",
+                 &StoryHandle::replay_tail_incremental_packed,
+                 pybind11::arg("end_time"),
+                 pybind11::arg("events"));
+};
+
+void BindChronologBoundedLogEventAppender(pybind11::module& m)
+{
+    pybind11::class_<PerKeeperBoundedLogEventAppender>(m, "PerKeeperBoundedLogEventAppender")
+            .def("append", &PerKeeperBoundedLogEventAppender::append, pybind11::arg("log_string"))
+            .def("append_many", &PerKeeperBoundedLogEventAppender::append_many, pybind11::arg("log_strings"))
+            .def("flush", &PerKeeperBoundedLogEventAppender::flush)
+            .def("future_count", &PerKeeperBoundedLogEventAppender::future_count)
+            .def("future_count_max_per_call", &PerKeeperBoundedLogEventAppender::future_count_max_per_call)
+            .def("future_wait_count", &PerKeeperBoundedLogEventAppender::future_wait_count)
+            .def("future_wait_ns", &PerKeeperBoundedLogEventAppender::future_wait_ns)
+            .def("future_wait_max_ns", &PerKeeperBoundedLogEventAppender::future_wait_max_ns);
+
+    pybind11::class_<BoundedLogEventAppender>(m, "BoundedLogEventAppender")
+            .def(pybind11::init<StoryHandle&, std::size_t, std::size_t>(),
+                 pybind11::arg("story_handle"),
+                 pybind11::arg("batch_size") = 1,
+                 pybind11::arg("max_outstanding") = 1,
+                 pybind11::keep_alive<1, 2>())
+            .def("append", &BoundedLogEventAppender::append, pybind11::arg("log_string"))
+            .def("append_many", &BoundedLogEventAppender::append_many, pybind11::arg("log_strings"))
+            .def("flush", &BoundedLogEventAppender::flush);
 };
 
 PYBIND11_MAKE_OPAQUE(std::pair<int, StoryHandle>);
@@ -67,6 +147,20 @@ void BindChronologEvent(pybind11::module& m)
 PYBIND11_MAKE_OPAQUE(std::vector<Event>);
 
 void BindChronologEventVector(pybind11::module& m) { pybind11::bind_vector<std::vector<Event>>(m, "EventList"); };
+
+void BindChronologPackedReplayBatch(pybind11::module& m)
+{
+    pybind11::class_<PackedReplayBatch>(m, "PackedReplayBatch")
+            .def(pybind11::init<>())
+            .def("clear", &PackedReplayBatch::clear)
+            .def("event_count", &PackedReplayBatch::event_count)
+            .def("payload_bytes", &PackedReplayBatch::payload_bytes)
+            .def("time", &PackedReplayBatch::time, pybind11::arg("index"))
+            .def("client_id", &PackedReplayBatch::client_id, pybind11::arg("index"))
+            .def("index", &PackedReplayBatch::event_index, pybind11::arg("index"))
+            .def("payload_size", &PackedReplayBatch::payload_size, pybind11::arg("index"))
+            .def("payload", &PackedReplayBatch::payload, pybind11::arg("index"));
+};
 
 using chronolog::Client;
 
@@ -89,8 +183,11 @@ PYBIND11_MODULE(py_chronolog_client, m)
 {
     BindChronologClientPortalServiceConf(m);
     BindChronologClientQueryServiceConf(m);
+    BindChronologLogEventFuture(m);
     BindChronologStoryHandle(m);
+    BindChronologBoundedLogEventAppender(m);
     BindChronologEvent(m);
     BindChronologEventVector(m);
+    BindChronologPackedReplayBatch(m);
     BindChronologClient(m);
 }

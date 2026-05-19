@@ -2,6 +2,9 @@
 #define DataStoreAdmin_SERVICE_H
 
 #include <iostream>
+#include <cstdlib>
+#include <chrono>
+#include <limits>
 #include <margo.h>
 #include <thallium.hpp>
 #include <thallium/serialization/stl/string.hpp>
@@ -55,12 +58,60 @@ public:
 
     void StopStoryRecording(tl::request const &request, StoryId const &story_id)
     {
-        LOG_INFO("[DataStoreAdminService] Stopping Story Recording: StoryID={}", story_id);
-        int return_code = theDataStore.stopStoryRecording(story_id);
+        StopStoryRecordingWithKeeperCount(request, story_id, 0);
+    }
+
+    void StopStoryRecordingWithKeeperCount(tl::request const &request,
+                                           StoryId const &story_id,
+                                           uint32_t expected_keeper_drains)
+    {
+        auto const total_start = std::chrono::steady_clock::now();
+        auto elapsed_us = [](std::chrono::steady_clock::time_point start) {
+            return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start)
+                    .count();
+        };
+        LOG_INFO("[DataStoreAdminService] Stopping Story Recording: StoryID={} expectedKeeperDrains={}",
+                 story_id,
+                 expected_keeper_drains);
+        uint64_t const drain_timeout_ms = stopStoryArchiveDrainTimeoutMs();
+        auto const datastore_stop_start = std::chrono::steady_clock::now();
+        int return_code = theDataStore.stopStoryRecording(story_id, drain_timeout_ms, expected_keeper_drains);
+        int64_t const datastore_stop_us = elapsed_us(datastore_stop_start);
+        LOG_INFO("[GrapherStopStoryProfile] story_id={} return_code={} drain_timeout_ms={} expected_keeper_drains={} "
+                 "datastore_stop_us={} total_us={}",
+                 story_id,
+                 return_code,
+                 drain_timeout_ms,
+                 expected_keeper_drains,
+                 datastore_stop_us,
+                 elapsed_us(total_start));
         request.respond(return_code);
     }
 
 private:
+    static uint64_t stopStoryArchiveDrainTimeoutMs()
+    {
+        char const* enabled = std::getenv("CHRONOLOG_GRAPHER_STOP_STORY_ARCHIVE_DRAIN");
+        if(enabled == nullptr || *enabled == '\0' || std::string(enabled) == "0")
+        {
+            return 0;
+        }
+
+        char const* value = std::getenv("CHRONOLOG_GRAPHER_STOP_STORY_ARCHIVE_DRAIN_TIMEOUT_MS");
+        if(value == nullptr || *value == '\0')
+        {
+            return 30000;
+        }
+
+        char* end = nullptr;
+        unsigned long long parsed = std::strtoull(value, &end, 10);
+        if(end == value || parsed > std::numeric_limits<uint64_t>::max())
+        {
+            return 30000;
+        }
+        return static_cast<uint64_t>(parsed);
+    }
+
     DataStoreAdminService(tl::engine &tl_engine, uint16_t service_provider_id, GrapherDataStore &data_store_instance)
             : tl::provider <DataStoreAdminService>(tl_engine, service_provider_id), theDataStore(data_store_instance)
     {
@@ -68,6 +119,7 @@ private:
         define("shutdown_data_collection", &DataStoreAdminService::shutdown_data_collection);
         define("start_story_recording", &DataStoreAdminService::StartStoryRecording);
         define("stop_story_recording", &DataStoreAdminService::StopStoryRecording);
+        define("stop_story_recording_with_keeper_count", &DataStoreAdminService::StopStoryRecordingWithKeeperCount);
         //set up callback for the case when the engine is being finalized while this provider is still alive
         get_engine().push_finalize_callback(this, [p = this]()
         { delete p; });

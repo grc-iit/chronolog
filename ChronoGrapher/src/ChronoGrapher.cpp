@@ -4,6 +4,7 @@
 #include <string>
 #include <iostream>
 #include <cstdlib>
+#include <limits>
 #include <utility>
 #include <sstream>
 #include <mutex>
@@ -26,6 +27,25 @@
 
 namespace chl = chronolog;
 namespace tl = thallium;
+
+namespace
+{
+int env_positive_int(char const* name, int default_value)
+{
+    char const* value = std::getenv(name);
+    if(value == nullptr || *value == '\0')
+    {
+        return default_value;
+    }
+    char* end = nullptr;
+    long parsed = std::strtol(value, &end, 10);
+    if(end == value || parsed <= 0 || parsed > std::numeric_limits<int>::max())
+    {
+        return default_value;
+    }
+    return static_cast<int>(parsed);
+}
+}
 
 // we will be using a combination of the uint32_t representation of the service IP address
 // and uint16_t representation of the port number
@@ -173,7 +193,8 @@ int main(int argc, char** argv)
                                              GRAPHER_CONF.DATA_STORE_CONF.max_story_chunk_size,
                                              GRAPHER_CONF.DATA_STORE_CONF.story_chunk_duration_secs,
                                              GRAPHER_CONF.DATA_STORE_CONF.acceptance_window_secs,
-                                             GRAPHER_CONF.DATA_STORE_CONF.inactive_story_delay_secs);
+                                             GRAPHER_CONF.DATA_STORE_CONF.inactive_story_delay_secs,
+                                             GRAPHER_CONF.DATA_STORE_CONF.data_collection_poll_interval_us);
 
     tl::engine* dataAdminEngine = nullptr;
 
@@ -213,7 +234,15 @@ int main(int argc, char** argv)
 
     try
     {
-        margo_instance_id margo_id = margo_init(RECORDING_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 1);
+        int const recording_margo_xstreams = env_positive_int("CHRONOLOG_GRAPHER_RECORDING_MARGO_XSTREAMS", 1);
+        int const recording_margo_handlers = env_positive_int("CHRONOLOG_GRAPHER_RECORDING_MARGO_HANDLERS", 1);
+        LOG_INFO("[ChronoGrapher] RecordingService Margo concurrency xstreams={} handlers={}",
+                 recording_margo_xstreams,
+                 recording_margo_handlers);
+        margo_instance_id margo_id = margo_init(RECORDING_SERVICE_NA_STRING.c_str(),
+                                                MARGO_SERVER_MODE,
+                                                recording_margo_xstreams,
+                                                recording_margo_handlers);
         recordingEngine = new tl::engine(margo_id);
 
         std::stringstream s1;
@@ -289,9 +318,18 @@ int main(int argc, char** argv)
     // services are successfully created and keeper process had registered with ChronoVisor
     // start all dataCollection and Extraction threads...
     tl::abt scope;
-    theDataStore.startDataCollection(3);
+    int const grapher_data_collection_streams =
+            env_positive_int("CHRONOLOG_GRAPHER_DATA_COLLECTION_STREAMS", 3);
+    int const grapher_data_collection_threads_per_stream =
+            env_positive_int("CHRONOLOG_GRAPHER_DATA_COLLECTION_THREADS_PER_STREAM", 2);
+    LOG_INFO("[ChronoGrapher] Starting Grapher data collection streams={} threads_per_stream={}",
+             grapher_data_collection_streams,
+             grapher_data_collection_threads_per_stream);
+    theDataStore.startDataCollection(grapher_data_collection_streams, grapher_data_collection_threads_per_stream);
     // start extraction streams & threads
-    extractionModule.startExtraction(2);
+    int const grapher_extraction_threads = env_positive_int("CHRONOLOG_GRAPHER_EXTRACTION_THREADS", 2);
+    LOG_INFO("[ChronoGrapher] Starting {} Grapher extraction thread(s)", grapher_extraction_threads);
+    extractionModule.startExtraction(grapher_extraction_threads);
 
     /// Main loop for sending stats message until receiving SIGTERM ____________________________________________________
     // now we are ready to ingest records coming from the storyteller clients ....

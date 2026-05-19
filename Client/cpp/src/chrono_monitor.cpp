@@ -128,4 +128,12 @@ void chrono_monitor::critical(const std::string& msg)
     }
 }
 
+void chrono_monitor::flush()
+{
+    if(g_logger)
+    {
+        g_logger->flush();
+    }
+}
+
 } // namespace chronolog

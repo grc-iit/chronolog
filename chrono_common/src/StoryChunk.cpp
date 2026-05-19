@@ -1,6 +1,7 @@
 #include <chronolog_client.h>
 
 #include <StoryChunk.h>
+#include <utility>
 
 
 namespace chl = chronolog;
@@ -48,6 +49,21 @@ int chl::StoryChunk::insertEvent(chl::LogEvent const& event)
     }
 }
 
+int chl::StoryChunk::insertEvent(chl::LogEvent&& event)
+{
+    if((event.storyId == storyId) && (event.time() >= startTime) && (event.time() < endTime) &&
+       !event.logRecord.empty())
+    {
+        chl::EventSequence key{event.time(), event.clientId, event.index()};
+        logEvents.emplace(key, std::move(event));
+        return 1;
+    }
+    else
+    {
+        return 0;
+    }
+}
+
 //
 //  merge into this master chunk all the events from the events map startign at iterator position merge_start
 //  return the merged even count
@@ -62,8 +78,6 @@ uint32_t chl::StoryChunk::mergeEvents(std::map<chl::EventSequence, chl::LogEvent
               events.size());
 
     uint32_t merged_event_count = 0;
-    std::map<chl::EventSequence, chl::LogEvent>::const_iterator first_merged, last_merged;
-
     if(events.empty())
     {
         return merged_event_count;
@@ -79,20 +93,20 @@ uint32_t chl::StoryChunk::mergeEvents(std::map<chl::EventSequence, chl::LogEvent
                   startTime);
     }
 
-    for(auto iter = merge_start; (iter != events.end()) && ((*iter).second.time() < endTime); ++iter)
+    auto iter = merge_start;
+    while(iter != events.end() && ((*iter).second.time() < endTime))
     {
+        auto current = iter++;
         LOG_TRACE("[StoryChunk] merge StoryId{} master chunk {} : merging event {}, master endTime{}",
                   storyId,
                   startTime,
-                  (*iter).second.time(),
+                  (*current).second.time(),
                   endTime);
-        if(insertEvent((*iter).second) > 0)
+        if(((*current).second.storyId == storyId) && ((*current).second.time() >= startTime) &&
+           ((*current).second.time() < endTime) && !(*current).second.logRecord.empty())
         {
-            if(merged_event_count == 0)
-            {
-                first_merged = iter;
-            }
-            last_merged = iter;
+            auto node = events.extract(current);
+            logEvents.insert(std::move(node));
             merged_event_count++;
         }
         /*    else
@@ -106,11 +120,9 @@ uint32_t chl::StoryChunk::mergeEvents(std::map<chl::EventSequence, chl::LogEvent
 */
     }
 
+    merge_start = iter;
     if(merged_event_count > 0)
     {
-        //remove the merged records from the original map
-        // removing records in range [first_merged, last_merged]
-        events.erase(first_merged, ++last_merged);
         LOG_TRACE("[StoryChunk] merge StoryId {} master chunk {} : merged {} records , remaining map eventCount {}",
                   storyId,
                   startTime,
@@ -153,8 +165,6 @@ uint32_t chl::StoryChunk::mergeEvents(chl::StoryChunk& other_chunk, uint64_t mer
         merge_start_time = other_chunk.getStartTime();
     }
 
-    std::map<chl::EventSequence, chl::LogEvent>::const_iterator first_merged, last_merged;
-
     std::map<chl::EventSequence, chl::LogEvent>::const_iterator merge_start =
             (merge_start_time < startTime ? other_chunk.lower_bound(startTime)
                                           : other_chunk.lower_bound(merge_start_time));
@@ -168,20 +178,20 @@ uint32_t chl::StoryChunk::mergeEvents(chl::StoryChunk& other_chunk, uint64_t mer
               other_chunk.getEndTime(),
               (merge_start != other_chunk.end() ? (*merge_start).second.time() : (uint64_t)0));
 
-    for(auto iter = merge_start; (iter != other_chunk.end()) && ((*iter).second.time() < endTime); ++iter)
+    auto iter = merge_start;
+    while(iter != other_chunk.end() && ((*iter).second.time() < endTime))
     {
+        auto current = iter++;
         LOG_TRACE("[StoryChunk] merge StoryId {} master chunk {}-{} : merging event {} ",
                   storyId,
                   startTime,
                   endTime,
-                  (*iter).second.time());
-        if(insertEvent((*iter).second) > 0)
+                  (*current).second.time());
+        if(((*current).second.storyId == storyId) && ((*current).second.time() >= startTime) &&
+           ((*current).second.time() < endTime) && !(*current).second.logRecord.empty())
         {
-            if(merged_event_count == 0)
-            {
-                first_merged = iter;
-            }
-            last_merged = iter;
+            auto node = other_chunk.logEvents.extract(current);
+            logEvents.insert(std::move(node));
             merged_event_count++;
         }
         /*       else
@@ -196,9 +206,6 @@ uint32_t chl::StoryChunk::mergeEvents(chl::StoryChunk& other_chunk, uint64_t mer
 
     if(merged_event_count > 0)
     {
-        //remove the merged records from the original map
-        // removing recordis in range [first_merged, last_merged]
-        other_chunk.eraseEvents(first_merged, ++last_merged);
         LOG_DEBUG("[StoryChunk] merge StoryId {} master chunk {}-{} : merged in {} events from chunk {}-{} remaining "
                   "eventCount {}",
                   storyId,

@@ -38,6 +38,7 @@ public:
     ~RDMATransferAgent();
 
     int transfer_serialized_story_chunk(std::string const& chunk);
+    int notify_story_drain_complete(StoryId const& story_id);
     bool is_receiver_available() const;
 
 private:
@@ -46,6 +47,7 @@ private:
     tl::provider_handle receiver_service_handle; // tl::provider_handle for remote receiver service
     tl::remote_procedure receiver_is_available;
     tl::remote_procedure receive_story_chunk;
+    tl::remote_procedure story_drain_complete;
 
     // constructor is private to make sure thalium rpc objects are created on the heap, not stack
     RDMATransferAgent(tl::engine& tl_engine, ServiceId const& receiver_service_id);

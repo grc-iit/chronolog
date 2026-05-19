@@ -27,7 +27,7 @@ struct PlaybackQuery
     std::vector<Event>& eventSeries;
     uint32_t queryId;
     uint64_t timeout_time;
-    bool completed;
+    std::atomic<bool> completed;
     ChronicleName chronicleName;
     StoryName storyName;
     chrono_time startTime;

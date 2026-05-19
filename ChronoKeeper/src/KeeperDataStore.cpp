@@ -10,6 +10,7 @@
 #include <chronolog_errcode.h>
 #include <KeeperDataStore.h>
 #include <chrono_monitor.h>
+#include <chronolog_profile.h>
 
 namespace chl = chronolog;
 namespace tl = thallium;
@@ -30,10 +31,18 @@ int chronolog::KeeperDataStore::startStoryRecording(std::string const& chronicle
                                                     uint32_t time_chunk_duration,
                                                     uint32_t access_window)
 {
+    CL_PROFILE_REGION("keeper_ingest");
+    CL_PROFILE_REGION("metadata_lookup");
+
     LOG_INFO("[KeeperDataStore] Start recording story: Chronicle={}, Story={}, StoryID={}", chronicle, story, story_id);
 
     // Get dataStoreMutex, check for story_id_presense & add new KeeperStoryPipeline if needed
-    std::lock_guard storeLock(dataStoreMutex);
+    {
+        CL_PROFILE_REGION("keeper_datastore_lock_wait");
+        dataStoreMutex.lock();
+    }
+    std::lock_guard<std::mutex> storeLock(dataStoreMutex, std::adopt_lock);
+    CL_PROFILE_REGION("keeper_datastore_lock_hold");
     auto pipeline_iter = theMapOfStoryPipelines.find(story_id);
     if(pipeline_iter != theMapOfStoryPipelines.end())
     {
@@ -85,7 +94,12 @@ int chronolog::KeeperDataStore::stopStoryRecording(chronolog::StoryId const& sto
     // but put it on the WaitingForExit list to be finalized, persisted to disk , and
     // removed from memory at exit_time = now+acceptance_window...
     // unless there's a new story acquisition request comes before that moment
-    std::lock_guard storeLock(dataStoreMutex);
+    {
+        CL_PROFILE_REGION("keeper_datastore_lock_wait");
+        dataStoreMutex.lock();
+    }
+    std::lock_guard<std::mutex> storeLock(dataStoreMutex, std::adopt_lock);
+    CL_PROFILE_REGION("keeper_datastore_lock_hold");
     auto pipeline_iter = theMapOfStoryPipelines.find(story_id);
     if(pipeline_iter != theMapOfStoryPipelines.end())
     {
@@ -105,10 +119,144 @@ int chronolog::KeeperDataStore::stopStoryRecording(chronolog::StoryId const& sto
     return chronolog::CL_SUCCESS;
 }
 
+int chronolog::KeeperDataStore::flushStoryRecording(chronolog::StoryId const& story_id,
+                                                    uint64_t extraction_drain_timeout_ms,
+                                                    bool async_drain_complete)
+{
+    auto const flush_start = std::chrono::high_resolution_clock::now();
+    LOG_INFO("[KeeperDataStore] Flush story recording requested. StoryID={} extractionDrainTimeoutMs={} "
+             "asyncDrainComplete={}",
+             story_id,
+             extraction_drain_timeout_ms,
+             async_drain_complete ? 1 : 0);
+
+    KeeperStoryPipeline* pipeline = nullptr;
+    {
+        CL_PROFILE_REGION("keeper_flush_story_lock_wait");
+        dataStoreMutex.lock();
+    }
+    {
+        std::lock_guard<std::mutex> storeLock(dataStoreMutex, std::adopt_lock);
+        CL_PROFILE_REGION("keeper_flush_story_lock_hold");
+        auto pipeline_iter = theMapOfStoryPipelines.find(story_id);
+        if(pipeline_iter == theMapOfStoryPipelines.end())
+        {
+            LOG_WARNING("[KeeperDataStore] Flush requested for non-existent StoryID={}", story_id);
+            return chronolog::CL_ERR_UNKNOWN;
+        }
+
+        pipeline = pipeline_iter->second;
+        theMapOfStoryPipelines.erase(pipeline_iter);
+        pipelinesWaitingForExit.erase(story_id);
+        theIngestionQueue.removeIngestionHandle(story_id);
+    }
+
+    auto const finalize_start = std::chrono::high_resolution_clock::now();
+    delete pipeline;
+    auto const finalize_end = std::chrono::high_resolution_clock::now();
+
+    if(async_drain_complete)
+    {
+        auto const finalize_us =
+                std::chrono::duration_cast<std::chrono::nanoseconds>(finalize_end - finalize_start).count() / 1000.0;
+        std::thread([this, story_id, extraction_drain_timeout_ms]() {
+            auto const async_start = std::chrono::high_resolution_clock::now();
+            bool const drained = theExtractionQueue.waitForStoryDrain(story_id, extraction_drain_timeout_ms);
+            auto const drain_end = std::chrono::high_resolution_clock::now();
+            int completion_notify_return = chronolog::CL_SUCCESS;
+            int64_t completion_notify_us = 0;
+            if(drained && storyDrainCompleteCallback)
+            {
+                auto const notify_start = std::chrono::high_resolution_clock::now();
+                completion_notify_return = storyDrainCompleteCallback(story_id);
+                auto const notify_end = std::chrono::high_resolution_clock::now();
+                completion_notify_us =
+                        std::chrono::duration_cast<std::chrono::microseconds>(notify_end - notify_start).count();
+            }
+            LOG_INFO("[KeeperDataStore] Async flush story drain completed. StoryID={} drained={} queuedChunks={} "
+                     "inFlightChunks={} completion_notify_return={} completion_notify_us={} drain_wait_us={} "
+                     "total_us={}",
+                     story_id,
+                     drained,
+                     theExtractionQueue.queuedStoryChunkCount(story_id),
+                     theExtractionQueue.inFlightStoryChunkCount(story_id),
+                     completion_notify_return,
+                     completion_notify_us,
+                     std::chrono::duration_cast<std::chrono::nanoseconds>(drain_end - async_start).count() / 1000.0,
+                     std::chrono::duration_cast<std::chrono::nanoseconds>(drain_end - async_start).count() / 1000.0);
+        }).detach();
+
+        auto const flush_end = std::chrono::high_resolution_clock::now();
+        LOG_INFO("[KeeperDataStore] Flush story recording returned with async drain pending. StoryID={} queuedChunks={} "
+                 "inFlightChunks={} finalize_us={} total_us={}",
+                 story_id,
+                 theExtractionQueue.queuedStoryChunkCount(story_id),
+                 theExtractionQueue.inFlightStoryChunkCount(story_id),
+                 finalize_us,
+                 std::chrono::duration_cast<std::chrono::nanoseconds>(flush_end - flush_start).count() / 1000.0);
+        return chronolog::CL_SUCCESS;
+    }
+
+    auto const drain_start = std::chrono::high_resolution_clock::now();
+    bool const drained = theExtractionQueue.waitForStoryDrain(story_id, extraction_drain_timeout_ms);
+    auto const drain_end = std::chrono::high_resolution_clock::now();
+    int completion_notify_return = chronolog::CL_SUCCESS;
+    int64_t completion_notify_us = 0;
+    if(drained && storyDrainCompleteCallback)
+    {
+        auto const notify_start = std::chrono::high_resolution_clock::now();
+        completion_notify_return = storyDrainCompleteCallback(story_id);
+        auto const notify_end = std::chrono::high_resolution_clock::now();
+        completion_notify_us =
+                std::chrono::duration_cast<std::chrono::microseconds>(notify_end - notify_start).count();
+    }
+    LOG_INFO("[KeeperDataStore] Flush story recording completed. StoryID={} drained={} queuedChunks={} "
+             "inFlightChunks={} completion_notify_return={} completion_notify_us={} finalize_us={} drain_wait_us={} "
+             "total_us={}",
+             story_id,
+             drained,
+             theExtractionQueue.queuedStoryChunkCount(story_id),
+             theExtractionQueue.inFlightStoryChunkCount(story_id),
+             completion_notify_return,
+             completion_notify_us,
+             std::chrono::duration_cast<std::chrono::nanoseconds>(finalize_end - finalize_start).count() / 1000.0,
+             std::chrono::duration_cast<std::chrono::nanoseconds>(drain_end - drain_start).count() / 1000.0,
+             std::chrono::duration_cast<std::chrono::nanoseconds>(drain_end - flush_start).count() / 1000.0);
+    return (drained && completion_notify_return == chronolog::CL_SUCCESS) ? chronolog::CL_SUCCESS
+                                                                          : chronolog::CL_ERR_UNKNOWN;
+}
+
+int chronolog::KeeperDataStore::collectTailEvents(chronolog::StoryId const& story_id,
+                                                  chronolog::chrono_time start_time,
+                                                  chronolog::chrono_time end_time,
+                                                  std::vector<chronolog::LogEvent>& events)
+{
+    CL_PROFILE_REGION("keeper_tail_read");
+    collectIngestedEvents();
+
+    {
+        CL_PROFILE_REGION("keeper_datastore_lock_wait");
+        dataStoreMutex.lock();
+    }
+    std::lock_guard<std::mutex> storeLock(dataStoreMutex, std::adopt_lock);
+    CL_PROFILE_REGION("keeper_datastore_lock_hold");
+
+    auto pipeline_iter = theMapOfStoryPipelines.find(story_id);
+    if(pipeline_iter == theMapOfStoryPipelines.end())
+    {
+        return chronolog::CL_ERR_UNKNOWN;
+    }
+
+    (*pipeline_iter).second->collectEvents(start_time, end_time, events);
+    return chronolog::CL_SUCCESS;
+}
+
 ////////////////////////
 
 void chronolog::KeeperDataStore::collectIngestedEvents()
 {
+    CL_PROFILE_REGION("keeper_ingest");
+
     LOG_DEBUG("[KeeperDataStore] Initiating collection of ingested events. Current state={}, Active "
               "KeeperStoryPipelines={}, "
               "PipelinesWaitingForExit={}, ThreadID={}",
@@ -118,7 +266,13 @@ void chronolog::KeeperDataStore::collectIngestedEvents()
               tl::thread::self_id());
     theIngestionQueue.drainOrphanEvents();
 
-    std::lock_guard storeLock(dataStoreMutex);
+    {
+        CL_PROFILE_REGION("keeper_datastore_lock_wait");
+        dataStoreMutex.lock();
+    }
+    std::lock_guard<std::mutex> storeLock(dataStoreMutex, std::adopt_lock);
+    CL_PROFILE_REGION("keeper_datastore_lock_hold");
+    CL_PROFILE_COUNTER("keeper_active_pipeline_count", theMapOfStoryPipelines.size());
     for(auto pipeline_iter = theMapOfStoryPipelines.begin(); pipeline_iter != theMapOfStoryPipelines.end();
         ++pipeline_iter)
     {
@@ -130,6 +284,8 @@ void chronolog::KeeperDataStore::collectIngestedEvents()
 ////////////////////////
 void chronolog::KeeperDataStore::extractDecayedStoryChunks()
 {
+    CL_PROFILE_REGION("keeper_flush");
+
     LOG_DEBUG("[KeeperDataStore] Initiating extraction of decayed story chunks. Current state={}, Active "
               "KeeperStoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}",
               state,
@@ -139,7 +295,13 @@ void chronolog::KeeperDataStore::extractDecayedStoryChunks()
 
     uint64_t current_time = std::chrono::high_resolution_clock::now().time_since_epoch().count();
 
-    std::lock_guard storeLock(dataStoreMutex);
+    {
+        CL_PROFILE_REGION("keeper_datastore_lock_wait");
+        dataStoreMutex.lock();
+    }
+    std::lock_guard<std::mutex> storeLock(dataStoreMutex, std::adopt_lock);
+    CL_PROFILE_REGION("keeper_datastore_lock_hold");
+    CL_PROFILE_COUNTER("keeper_active_pipeline_count", theMapOfStoryPipelines.size());
     for(auto pipeline_iter = theMapOfStoryPipelines.begin(); pipeline_iter != theMapOfStoryPipelines.end();
         ++pipeline_iter)
     {
@@ -206,7 +368,7 @@ void chronolog::KeeperDataStore::dataCollectionTask()
         for(int i = 0; i < 1; ++i)
         {
             collectIngestedEvents();
-            sleep(1);
+            usleep(data_collection_poll_interval_us);
         }
         extractDecayedStoryChunks();
         retireDecayedPipelines();
@@ -215,7 +377,7 @@ void chronolog::KeeperDataStore::dataCollectionTask()
 }
 
 ////////////////////////
-void chronolog::KeeperDataStore::startDataCollection(int stream_count)
+void chronolog::KeeperDataStore::startDataCollection(int stream_count, int threads_per_stream)
 {
     std::lock_guard storeLock(dataStoreStateMutex);
     if(is_running() || is_shutting_down())
@@ -224,8 +386,18 @@ void chronolog::KeeperDataStore::startDataCollection(int stream_count)
         return;
     }
 
-    LOG_INFO("[KeeperDataStore] Starting data collection. StreamCount={}, ThreadID={}",
+    if(stream_count <= 0)
+    {
+        stream_count = 1;
+    }
+    if(threads_per_stream <= 0)
+    {
+        threads_per_stream = 1;
+    }
+
+    LOG_INFO("[KeeperDataStore] Starting data collection. StreamCount={} ThreadsPerStream={} ThreadID={}",
              stream_count,
+             threads_per_stream,
              tl::thread::self_id());
     state = RUNNING;
 
@@ -235,14 +407,15 @@ void chronolog::KeeperDataStore::startDataCollection(int stream_count)
         dataStoreStreams.push_back(std::move(es));
     }
 
-    for(int i = 0; i < 2 * stream_count; ++i)
+    for(int i = 0; i < threads_per_stream * stream_count; ++i)
     {
         tl::managed<tl::thread> th =
                 dataStoreStreams[i % (dataStoreStreams.size())]->make_thread([p = this]() { p->dataCollectionTask(); });
         dataStoreThreads.push_back(std::move(th));
     }
-    LOG_INFO("[KeeperDataStore] Data collection started successfully. Stream count={}, ThreadID={}",
+    LOG_INFO("[KeeperDataStore] Data collection started successfully. StreamCount={} ThreadsPerStream={} ThreadID={}",
              stream_count,
+             threads_per_stream,
              tl::thread::self_id());
 }
 //////////////////////////////
