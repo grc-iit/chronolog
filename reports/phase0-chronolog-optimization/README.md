@@ -15,6 +15,7 @@ Phase 0 was not intended to declare a winner against Kafka or Mofka. Its purpose
 - [07-requested-figure-grid-gap-audit.md](07-requested-figure-grid-gap-audit.md): audit against the stricter requested final figure matrix.
 - [08-final-figure-grid-runbook.md](08-final-figure-grid-runbook.md): concrete runner and acceptance checks for the missing final figure grid.
 - [09-final-grid-dryrun-validation.md](09-final-grid-dryrun-validation.md): dry-run expansion proof for the requested final figure grid.
+- [10-first-actual-grid-slice.md](10-first-actual-grid-slice.md): first real requested-grid slice and blocker notes.
 - [data/artifact-index.md](data/artifact-index.md): original local result paths and generated artifacts.
 
 ## Scope boundary
