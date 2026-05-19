@@ -12,6 +12,7 @@ Phase 0 was not intended to declare a winner against Kafka or Mofka. Its purpose
 - [04-chronolog-changes.md](04-chronolog-changes.md): ChronoLog work accepted, rejected, or left default-off.
 - [05-deployment-and-reproduction.md](05-deployment-and-reproduction.md): how the benchmark/deployment pipeline is structured and how to reproduce the work.
 - [06-validation-and-completion-audit.md](06-validation-and-completion-audit.md): completion criteria, coverage, and audit status.
+- [07-requested-figure-grid-gap-audit.md](07-requested-figure-grid-gap-audit.md): audit against the stricter requested final figure matrix.
 - [data/artifact-index.md](data/artifact-index.md): original local result paths and generated artifacts.
 
 ## Scope boundary
