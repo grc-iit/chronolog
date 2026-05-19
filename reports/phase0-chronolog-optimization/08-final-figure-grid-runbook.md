@@ -61,6 +61,7 @@ ChronoLog:
 - append sync: Keeper-local journal group-commit tail-only fdatasync boundary.
 - append async/WAL-drain: Keeper-local journal async-drain variants.
 - archive/range: raw-blob archive range with async publish disabled/enabled.
+- 1-node distributed ChronoLog rows are marked skipped because the distributed ChronoLog harness requires at least 2 nodes.
 
 Kafka:
 

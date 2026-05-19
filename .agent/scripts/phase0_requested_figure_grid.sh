@@ -75,6 +75,20 @@ run_batch() {
     "$@" 2>&1 | tee -a "${RESULT_ROOT}/run.log"
 }
 
+skip_batch() {
+  local label="$1"
+  local reason="$2"
+  local batch_dir="${RESULT_ROOT}/${label}"
+  mkdir -p "${batch_dir}"
+  echo "[phase0-final-grid] ${label} SKIPPED: ${reason}" | tee -a "${RESULT_ROOT}/run.log"
+  cat > "${batch_dir}/SKIPPED.md" <<EOF
+# Skipped
+
+- batch: ${label}
+- reason: ${reason}
+EOF
+}
+
 IFS=',' read -r -a node_values <<< "${NODES}"
 IFS=',' read -r -a size_values <<< "${SIZES}"
 
@@ -89,40 +103,49 @@ for node_count in "${node_values[@]}"; do
       --client-counts "${client_count}"
     )
 
-    run_batch "n${node_count}-s${size}-chronolog-append-sync" \
-      --systems chronolog \
-      --workflows append_throughput \
-      --chronolog-completion-modes keeper_journal_group_commit_tail_only \
-      --chronolog-producer-wait-modes bounded_outstanding \
-      --chronolog-producer-outstanding-values 16 \
-      --chronolog-producer-batch-sizes 16 \
-      --chronolog-keeper-journal-batch-writev-values 1 \
-      --chronolog-keeper-journal-move-batch-payloads-values 1 \
-      --chronolog-keeper-journal-group-commit-flush-events 64 \
-      --chronolog-keeper-journal-group-commit-strict-flush-event-cap-values 1 \
-      "${common[@]}"
+    if (( node_count < 2 )); then
+      skip_batch "n${node_count}-s${size}-chronolog-append-sync" \
+        "distributed ChronoLog harness requires at least 2 nodes"
+      skip_batch "n${node_count}-s${size}-chronolog-append-async-wal-drain" \
+        "distributed ChronoLog harness requires at least 2 nodes"
+      skip_batch "n${node_count}-s${size}-chronolog-archive-range-sync-async-publish" \
+        "distributed ChronoLog harness requires at least 2 nodes"
+    else
+      run_batch "n${node_count}-s${size}-chronolog-append-sync" \
+        --systems chronolog \
+        --workflows append_throughput \
+        --chronolog-completion-modes keeper_journal_group_commit_tail_only \
+        --chronolog-producer-wait-modes bounded_outstanding \
+        --chronolog-producer-outstanding-values 16 \
+        --chronolog-producer-batch-sizes 16 \
+        --chronolog-keeper-journal-batch-writev-values 1 \
+        --chronolog-keeper-journal-move-batch-payloads-values 1 \
+        --chronolog-keeper-journal-group-commit-flush-events 64 \
+        --chronolog-keeper-journal-group-commit-strict-flush-event-cap-values 1 \
+        "${common[@]}"
 
-    run_batch "n${node_count}-s${size}-chronolog-append-async-wal-drain" \
-      --systems chronolog \
-      --workflows append_throughput \
-      --chronolog-completion-modes keeper_journal_group_fdatasync_async_drain \
-      --chronolog-producer-wait-modes bounded_outstanding \
-      --chronolog-producer-outstanding-values 16 \
-      --chronolog-producer-batch-sizes 16 \
-      --chronolog-keeper-journal-async-drain-threads 1,4 \
-      "${common[@]}"
+      run_batch "n${node_count}-s${size}-chronolog-append-async-wal-drain" \
+        --systems chronolog \
+        --workflows append_throughput \
+        --chronolog-completion-modes keeper_journal_group_fdatasync_async_drain \
+        --chronolog-producer-wait-modes bounded_outstanding \
+        --chronolog-producer-outstanding-values 16 \
+        --chronolog-producer-batch-sizes 16 \
+        --chronolog-keeper-journal-async-drain-threads 1,4 \
+        "${common[@]}"
 
-    run_batch "n${node_count}-s${size}-chronolog-archive-range-sync-async-publish" \
-      --systems chronolog \
-      --workflows archive_range_retrieval \
-      --chronolog-completion-modes archive_readback \
-      --chronolog-archive-range-event-counts "${operation_count}" \
-      --chronolog-hdf5-archive-layouts raw_blob \
-      --chronolog-raw-blob-async-publish-values 0,1 \
-      --chronolog-raw-blob-async-publish-threads 4 \
-      --chronolog-grapher-stop-story-archive-drain-values 1 \
-      --chronolog-grapher-stop-story-archive-drain-timeout-ms 120000 \
-      "${common[@]}"
+      run_batch "n${node_count}-s${size}-chronolog-archive-range-sync-async-publish" \
+        --systems chronolog \
+        --workflows archive_range_retrieval \
+        --chronolog-completion-modes archive_readback \
+        --chronolog-archive-range-event-counts "${operation_count}" \
+        --chronolog-hdf5-archive-layouts raw_blob \
+        --chronolog-raw-blob-async-publish-values 0,1 \
+        --chronolog-raw-blob-async-publish-threads 4 \
+        --chronolog-grapher-stop-story-archive-drain-values 1 \
+        --chronolog-grapher-stop-story-archive-drain-timeout-ms 120000 \
+        "${common[@]}"
+    fi
 
     run_batch "n${node_count}-s${size}-kafka-append-sync-async" \
       --systems kafka \
