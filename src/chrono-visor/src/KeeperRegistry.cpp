@@ -650,22 +650,23 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
     if(recording_group->playerProcess != nullptr)
     {
         player_service_id = recording_group->playerProcess->idCard.getPlaybackServiceId();
-        int rpc_player = notifyPlayerOfStoryRecordingStart(*recording_group, chronicle, story, story_id, story_start_time);
+        int rpc_player =
+                notifyPlayerOfStoryRecordingStart(*recording_group, chronicle, story, story_id, story_start_time);
 
         if(rpc_player == chronolog::CL_SUCCESS)
-	{
+        {
             player_service_id = recording_group->playerProcess->idCard.getPlaybackServiceId();
             LOG_DEBUG("[ChronoProcessRegistry]  RecordingGroup {}  notified Player  of Story {} Start",
-                recording_group->groupId,
-                story_id);
-	}
-	else
-	{
-             LOG_WARNING(
-                "[ChronoProcessRegistry]  RecordingGroup {} failed to notify Player of Story {} Start : err_code {}",
-                recording_group->groupId,
-                story_id,
-                rpc_return);
+                      recording_group->groupId,
+                      story_id);
+        }
+        else
+        {
+            LOG_WARNING("[ChronoProcessRegistry]  RecordingGroup {} failed to notify Player of Story {} Start : "
+                        "err_code {}",
+                        recording_group->groupId,
+                        story_id,
+                        rpc_return);
         }
     }
 
@@ -746,10 +747,10 @@ int KeeperRegistry::notifyGrapherOfStoryRecordingStart(RecordingGroup& recording
 }
 /////////
 int KeeperRegistry::notifyPlayerOfStoryRecordingStart(RecordingGroup& recordingGroup,
-                                                       ChronicleName const& chronicle,
-                                                       StoryName const& story,
-                                                       StoryId const& storyId,
-                                                       uint64_t story_start_time)
+                                                      ChronicleName const& chronicle,
+                                                      StoryName const& story,
+                                                      StoryId const& storyId,
+                                                      uint64_t story_start_time)
 {
     int return_code = chronolog::CL_ERR_UNKNOWN;
 
@@ -796,7 +797,8 @@ int KeeperRegistry::notifyPlayerOfStoryRecordingStart(RecordingGroup& recordingG
         }
         else
         {
-            LOG_INFO("[ChronoProcessRegistry] Registry notified player {} to start recording StoryID={} with StartTime={}",
+            LOG_INFO("[ChronoProcessRegistry] Registry notified player {} to start recording StoryID={} with "
+                     "StartTime={}",
                      recordingGroup.grapherProcess->idCardString,
                      storyId,
                      story_start_time);

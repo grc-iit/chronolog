@@ -221,14 +221,11 @@ chronolog::PlayerDataStore::~PlayerDataStore()
 
 ////
 int chronolog::PlayerDataStore::startStoryRecording(std::string const& chronicle,
-                                                     std::string const& story,
-                                                     chronolog::StoryId const& story_id,
-                                                     uint64_t start_time)
+                                                    std::string const& story,
+                                                    chronolog::StoryId const& story_id,
+                                                    uint64_t start_time)
 {
-    LOG_INFO("[PlayerDataStore] Start recording story: Chronicle={}, Story={}, StoryId={}",
-             chronicle,
-             story,
-             story_id);
+    LOG_INFO("[PlayerDataStore] Start recording story: Chronicle={}, Story={}, StoryId={}", chronicle, story, story_id);
 
     // Get dataStoreMutex, check for story_id_presence & add new StoryPipeline if needed
     std::lock_guard storeLock(dataStoreMutex);
@@ -306,4 +303,3 @@ int chronolog::PlayerDataStore::stopStoryRecording(chronolog::StoryId const& sto
     }
     return chronolog::CL_SUCCESS;
 }
-

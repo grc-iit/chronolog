@@ -31,11 +31,12 @@ class PlayerDataStore
 
 
 public:
-    PlayerDataStore(StoryChunkIngestionQueue& ingestion_queue, StoryChunkExtractionQueue& extraction_queue,
-	             uint32_t max_chunk_size = 4096,
-                     uint32_t story_chunk_duration_secs = 60,
-                     uint32_t acceptance_window_secs = 180,
-                     uint32_t inactive_pipeline_delay_secs = 300)
+    PlayerDataStore(StoryChunkIngestionQueue& ingestion_queue,
+                    StoryChunkExtractionQueue& extraction_queue,
+                    uint32_t max_chunk_size = 4096,
+                    uint32_t story_chunk_duration_secs = 60,
+                    uint32_t acceptance_window_secs = 180,
+                    uint32_t inactive_pipeline_delay_secs = 300)
         : state(UNKNOWN)
         , theIngestionQueue(ingestion_queue)
         , theExtractionQueue(extraction_queue)
@@ -50,10 +51,10 @@ public:
     bool is_running() const { return (RUNNING == state); }
 
     bool is_shutting_down() const { return (SHUTTING_DOWN == state); }
-    
-    int startStoryRecording(ChronicleName const &, StoryName const &, StoryId const &, uint64_t start_time);
 
-    int stopStoryRecording(StoryId const &);
+    int startStoryRecording(ChronicleName const&, StoryName const&, StoryId const&, uint64_t start_time);
+
+    int stopStoryRecording(StoryId const&);
 
     void collectIngestedEvents();
 
@@ -86,7 +87,6 @@ private:
     uint32_t story_chunk_duration_secs;
     uint32_t acceptance_window_secs;
     uint32_t inactive_pipeline_delay_secs;
-
 };
 
 } // namespace chronolog

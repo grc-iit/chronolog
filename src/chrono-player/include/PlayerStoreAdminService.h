@@ -44,17 +44,19 @@ public:
         theDataStore.shutdownDataCollection();
         request.respond(status);
     }
-    
-    void
-    StartStoryRecording(tl::request const &request, std::string const &chronicle_name, std::string const &story_name
-                        , StoryId const &story_id, uint64_t start_time)
+
+    void StartStoryRecording(tl::request const& request,
+                             std::string const& chronicle_name,
+                             std::string const& story_name,
+                             StoryId const& story_id,
+                             uint64_t start_time)
     {
         LOG_INFO("[PlayerStoreAdminService] Starting Story Recording: StoryName={}, StoryID={}", story_name, story_id);
         int return_code = theDataStore.startStoryRecording(chronicle_name, story_name, story_id, start_time);
         request.respond(return_code);
     }
 
-    void StopStoryRecording(tl::request const &request, StoryId const &story_id)
+    void StopStoryRecording(tl::request const& request, StoryId const& story_id)
     {
         LOG_INFO("[PlayerStoreAdminService] Stopping Story Recording: StoryID={}", story_id);
         int return_code = theDataStore.stopStoryRecording(story_id);

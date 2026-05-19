@@ -108,8 +108,7 @@ int chronolog::PlayerConfiguration::parseJsonConf(json_object* json_conf)
                 }
                 else
                 {
-                    std::cerr << "[PlayerConfiguration] Unknown RecordingService configuration: "
-                              << key << std::endl;
+                    std::cerr << "[PlayerConfiguration] Unknown RecordingService configuration: " << key << std::endl;
                 }
             }
         }
