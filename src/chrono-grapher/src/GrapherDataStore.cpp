@@ -44,8 +44,7 @@ int chronolog::GrapherDataStore::startStoryRecording(std::string const& chronicl
 
     auto result = theMapOfStoryPipelines.emplace(
             std::pair<chl::StoryId, chl::StoryPipeline*>(story_id,
-                                                         new chl::StoryPipeline(theExtractionQueue,
-                                                                                chronicle,
+                                                         new chl::StoryPipeline(chronicle,
                                                                                 story,
                                                                                 story_id,
                                                                                 start_time,
@@ -135,12 +134,14 @@ void chronolog::GrapherDataStore::extractDecayedStoryChunks()
 
     uint64_t current_time = std::chrono::high_resolution_clock::now().time_since_epoch().count();
 
+    std::vector<chl::StoryChunk*> extracted_story_chunks;
     std::lock_guard storeLock(dataStoreMutex);
     for(auto pipeline_iter = theMapOfStoryPipelines.begin(); pipeline_iter != theMapOfStoryPipelines.end();
         ++pipeline_iter)
     {
-        (*pipeline_iter).second->extractDecayedStoryChunks(current_time);
+        (*pipeline_iter).second->extractDecayedStoryChunks(current_time, extracted_story_chunks);
     }
+    theExtractionQueue.stashStoryChunks(extracted_story_chunks);
 }
 ////////////////////////
 
@@ -152,6 +153,8 @@ void chronolog::GrapherDataStore::retireDecayedPipelines()
               theMapOfStoryPipelines.size(),
               pipelinesWaitingForExit.size(),
               tl::thread::self_id());
+
+    std::vector<chl::StoryChunk *> extracted_story_chunks;
 
     if(!theMapOfStoryPipelines.empty())
     {
@@ -173,6 +176,8 @@ void chronolog::GrapherDataStore::retireDecayedPipelines()
                           (*pipeline_iter).second.second);
                 theMapOfStoryPipelines.erase(pipeline->getStoryId());
                 theIngestionQueue.removeStoryIngestionHandle(pipeline->getStoryId());
+		//extract any remaining story chunks
+		pipeline->finalize(extracted_story_chunks);
                 pipeline_iter = pipelinesWaitingForExit.erase(pipeline_iter);
                 delete pipeline;
             }
@@ -183,6 +188,8 @@ void chronolog::GrapherDataStore::retireDecayedPipelines()
         }
     }
 
+    theExtractionQueue.stashStoryChunks(extracted_story_chunks);
+    
     LOG_TRACE("[GrapherDataStore] Completed retirement of decayed pipelines. Current state={}, Active "
               "StoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}",
               state,
