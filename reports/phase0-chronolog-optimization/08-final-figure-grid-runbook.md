@@ -21,7 +21,9 @@ By default the script runs in dry-run mode and writes generated matrix commands 
 To launch actual jobs:
 
 ```bash
-DRY_RUN=0 TRIALS=3 CLIENTS_PER_NODE=8 .agent/scripts/phase0_requested_figure_grid.sh
+DRY_RUN=0 TRIALS=3 CLIENTS_PER_NODE=8 \
+  MOFKA_PMDK_STORAGE_TARGET_SIZE=3221225472 \
+  .agent/scripts/phase0_requested_figure_grid.sh
 ```
 
 For a one-cell smoke dry-run:
@@ -42,6 +44,7 @@ Default dimensions:
 | Client process policy | `total_clients = node_count * CLIENTS_PER_NODE` |
 | Default clients per node | 8 |
 | Trials | 1 by default, 3 for headline-repeat runs |
+| Mofka PMDK storage target size | 3 GiB by default for requested-grid rows |
 
 Size-aware operation counts:
 
@@ -73,6 +76,7 @@ Mofka:
 
 - append with four explicit variants: memory/no-flush, memory/wait-flush, PMDK/no-flush, and PMDK/wait-flush.
 - range/catch-up with two explicit variants: memory/after-loop/no-flush and PMDK/per-event/wait-flush.
+- PMDK rows pass `--mofka-storage-target-sizes` explicitly. The matrix default is 64 MiB, which is not large enough for the high-volume requested rows.
 
 ## Required acceptance checks
 

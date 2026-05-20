@@ -47,3 +47,25 @@ This validates that the benchmark harness can expand the requested grid with exp
 The original actual 1-node probe revealed that the current distributed ChronoLog and Kafka wrappers reject 1-node runs. The runner now records those 1-node batches as pending harness support instead of failing the whole matrix. Mofka 1-node rows remain runnable.
 
 The stricter final figure objective remains incomplete until the same runner is executed with `DRY_RUN=0`, the resulting rows pass acceptance checks, and the final report is regenerated from those metrics.
+
+## PMDK storage-target validation
+
+After the first actual 1-node Mofka PMDK attempt, the runner was updated to pass an explicit 3 GiB PMDK storage-target size for PMDK rows:
+
+```text
+MOFKA_PMDK_STORAGE_TARGET_SIZE=3221225472
+```
+
+Validation artifact:
+
+```text
+.agent/results/20260519-190814-requested-final-grid-dryrun-pmdk-size-check/
+```
+
+The generated PMDK command includes:
+
+```text
+--storage-target-size 3221225472
+```
+
+This fixes the dry-run command shape for high-volume PMDK rows, but those rows still need actual execution before they can be promoted into final figures.

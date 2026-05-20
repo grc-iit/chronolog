@@ -10,6 +10,8 @@ Defaults are conservative for review:
   CLIENTS_PER_NODE=8     total clients = node_count * CLIENTS_PER_NODE
   TRIALS=1               set TRIALS=3 for headline-repeat runs
   PARTITION=datacrumbs   target Ares partition
+  MOFKA_PMDK_STORAGE_TARGET_SIZE=3221225472
+                         PMDK target size for high-volume Mofka rows
 
 Examples:
   .agent/scripts/phase0_requested_figure_grid.sh
@@ -33,6 +35,7 @@ CLIENTS_PER_NODE="${CLIENTS_PER_NODE:-8}"
 PARTITION="${PARTITION:-datacrumbs}"
 SLURM_TIME="${SLURM_TIME:-02:00:00}"
 RESULT_ROOT="${RESULT_ROOT:-${REPO_ROOT}/.agent/results/$(date +%Y%m%d-%H%M%S)-requested-final-figure-grid}"
+MOFKA_PMDK_STORAGE_TARGET_SIZE="${MOFKA_PMDK_STORAGE_TARGET_SIZE:-3221225472}"
 
 NODES="${NODES:-1,2,4,5,16}"
 SIZES="${SIZES:-1024,4096,16384,65536}"
@@ -189,6 +192,7 @@ for node_count in "${node_values[@]}"; do
       --workflows append_throughput \
       --mofka-partition-types default \
       --mofka-storage-target-types pmdk \
+      --mofka-storage-target-sizes "${MOFKA_PMDK_STORAGE_TARGET_SIZE}" \
       --mofka-producer-wait-modes none \
       --mofka-producer-flush-modes no_flush \
       "${common[@]}"
@@ -198,6 +202,7 @@ for node_count in "${node_values[@]}"; do
       --workflows append_throughput \
       --mofka-partition-types default \
       --mofka-storage-target-types pmdk \
+      --mofka-storage-target-sizes "${MOFKA_PMDK_STORAGE_TARGET_SIZE}" \
       --mofka-producer-wait-modes per_event \
       --mofka-producer-flush-modes after_loop \
       "${common[@]}"
@@ -216,6 +221,7 @@ for node_count in "${node_values[@]}"; do
       --workflows range_retrieval \
       --mofka-partition-types default \
       --mofka-storage-target-types pmdk \
+      --mofka-storage-target-sizes "${MOFKA_PMDK_STORAGE_TARGET_SIZE}" \
       --mofka-producer-wait-modes per_event \
       --mofka-producer-flush-modes after_loop \
       "${common[@]}"
@@ -232,6 +238,7 @@ cat > "${RESULT_ROOT}/README.md" <<EOF
 - message_sizes: ${SIZES}
 - partition: ${PARTITION}
 - slurm_time: ${SLURM_TIME}
+- mofka_pmdk_storage_target_size: ${MOFKA_PMDK_STORAGE_TARGET_SIZE}
 
 Each child directory contains the matrix metadata and generated commands for one semantic batch.
 EOF
