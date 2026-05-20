@@ -666,7 +666,7 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
                         "err_code {}",
                         recording_group->groupId,
                         story_id,
-                        rpc_return);
+                        rpc_player);
         }
     }
 
