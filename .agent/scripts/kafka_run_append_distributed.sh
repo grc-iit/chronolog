@@ -144,7 +144,7 @@ if [[ -n "${SLURM_NODELIST}" ]]; then
     IFS=',' read -r -a NODES <<< "${SLURM_NODELIST}"
   fi
 else
-  mapfile -t CANDIDATE_NODES < <(sinfo -N -h -p "${PARTITION}" -t idle -o '%N' | sort -u)
+  mapfile -t CANDIDATE_NODES < <(sinfo -N -h -p "${PARTITION}" -t idle,mix -o '%N' | sort -u)
   for candidate_node in "${CANDIDATE_NODES[@]}"; do
     if slurm_node_available "${candidate_node}"; then
       NODES+=("${candidate_node}")
