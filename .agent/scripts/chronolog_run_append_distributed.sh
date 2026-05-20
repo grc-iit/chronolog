@@ -99,6 +99,9 @@ Options:
   --archive-event-count-poll-interval-seconds N
                                Harness-side archive event-count polling interval for archive_readback validation.
                                Default: CHRONOLOG_ARCHIVE_EVENT_COUNT_POLL_INTERVAL_SECONDS or 1.0.
+  --archive-wait-seconds N     Harness-side archive publication/event-count wait. Default: 420.
+  --archive-range-timeout-seconds N
+                               Outer timeout for archive_range_retrieval client process. Default: 1200.
   --archive-event-count-wait-mode MODE
                                Harness-side archive event-count wait mode: inline or parallel_process.
                                Default: CHRONOLOG_ARCHIVE_EVENT_COUNT_WAIT_MODE or inline.
@@ -542,6 +545,7 @@ KEEPER_DATA_COLLECTION_THREADS_PER_STREAM="${CHRONOLOG_KEEPER_DATA_COLLECTION_TH
 GRAPHER_DATA_COLLECTION_STREAMS="${CHRONOLOG_GRAPHER_DATA_COLLECTION_STREAMS:-3}"
 GRAPHER_DATA_COLLECTION_THREADS_PER_STREAM="${CHRONOLOG_GRAPHER_DATA_COLLECTION_THREADS_PER_STREAM:-2}"
 ARCHIVE_WAIT_SECONDS="${CHRONOLOG_ARCHIVE_WAIT_SECONDS:-420}"
+ARCHIVE_RANGE_TIMEOUT_SECONDS="${CHRONOLOG_ARCHIVE_RANGE_TIMEOUT_SECONDS:-1200}"
 ARCHIVE_EVENT_COUNT_POLL_INTERVAL_SECONDS="${CHRONOLOG_ARCHIVE_EVENT_COUNT_POLL_INTERVAL_SECONDS:-1.0}"
 ARCHIVE_RANGE_EVENT_COUNT="${CHRONOLOG_ARCHIVE_RANGE_EVENT_COUNT:-0}"
 HDF5_ARCHIVE_READER_BIN="${CHRONOLOG_HDF5_ARCHIVE_READER_BIN:-${REPO_ROOT}/.agent/build-hdf5-unit/Release/test/unit/chrono-player/chronolog-test-player-hdf5-archive-reader}"
@@ -574,6 +578,8 @@ while [[ $# -gt 0 ]]; do
     --hdf5-archive-atomic-rename) HDF5_ARCHIVE_ATOMIC_RENAME="$2"; shift 2 ;;
     --hdf5-archive-chunk-events) HDF5_ARCHIVE_CHUNK_EVENTS="$2"; shift 2 ;;
     --hdf5-archive-layout) HDF5_ARCHIVE_LAYOUT="$2"; shift 2 ;;
+    --archive-wait-seconds) ARCHIVE_WAIT_SECONDS="$2"; shift 2 ;;
+    --archive-range-timeout-seconds) ARCHIVE_RANGE_TIMEOUT_SECONDS="$2"; shift 2 ;;
     --archive-event-count-poll-interval-seconds) ARCHIVE_EVENT_COUNT_POLL_INTERVAL_SECONDS="$2"; shift 2 ;;
     --archive-event-count-wait-mode) ARCHIVE_EVENT_COUNT_WAIT_MODE="$2"; shift 2 ;;
     --archive-readback-mode) ARCHIVE_READBACK_MODE="$2"; shift 2 ;;
@@ -1015,9 +1021,12 @@ if [[ -z "${SLURM_JOB_ID:-}" && "${INSIDE_ALLOCATION}" != "1" ]]; then
     --hdf5-archive-atomic-rename "${HDF5_ARCHIVE_ATOMIC_RENAME}"
     --hdf5-archive-chunk-events "${HDF5_ARCHIVE_CHUNK_EVENTS}"
     --hdf5-archive-layout "${HDF5_ARCHIVE_LAYOUT}"
+    --archive-wait-seconds "${ARCHIVE_WAIT_SECONDS}"
+    --archive-range-timeout-seconds "${ARCHIVE_RANGE_TIMEOUT_SECONDS}"
     --archive-event-count-poll-interval-seconds "${ARCHIVE_EVENT_COUNT_POLL_INTERVAL_SECONDS}"
     --archive-event-count-wait-mode "${ARCHIVE_EVENT_COUNT_WAIT_MODE}"
     --archive-readback-mode "${ARCHIVE_READBACK_MODE}"
+    --archive-range-event-count "${ARCHIVE_RANGE_EVENT_COUNT}"
     --raw-blob-preallocate "${RAW_BLOB_PREALLOCATE}"
     --raw-blob-async-write "${RAW_BLOB_ASYNC_WRITE}"
     --raw-blob-async-close "${RAW_BLOB_ASYNC_CLOSE}"
@@ -1302,6 +1311,8 @@ export CHRONOLOG_KEEPER_JOURNAL_DURABLE_COMPLETE_BEFORE_PUBLISH="${KEEPER_JOURNA
 export CHRONOLOG_STARTUP_READY_TIMEOUT_SECONDS_EFFECTIVE="${STARTUP_READY_TIMEOUT_SECONDS}"
 export CHRONOLOG_DEPLOY_STOP_TIMEOUT_SECONDS_EFFECTIVE="${DEPLOY_STOP_TIMEOUT_SECONDS}"
 export CHRONOLOG_DATA_COLLECTION_POLL_INTERVAL_US="${DATA_COLLECTION_POLL_INTERVAL_US}"
+export CHRONOLOG_ARCHIVE_WAIT_SECONDS="${ARCHIVE_WAIT_SECONDS}"
+export CHRONOLOG_ARCHIVE_RANGE_TIMEOUT_SECONDS="${ARCHIVE_RANGE_TIMEOUT_SECONDS}"
 export CHRONOLOG_ARCHIVE_EVENT_COUNT_POLL_INTERVAL_SECONDS="${ARCHIVE_EVENT_COUNT_POLL_INTERVAL_SECONDS}"
 export CHRONOLOG_ARCHIVE_EVENT_COUNT_WAIT_MODE="${ARCHIVE_EVENT_COUNT_WAIT_MODE}"
 export CHRONOLOG_ARCHIVE_READBACK_MODE="${ARCHIVE_READBACK_MODE}"
@@ -1816,6 +1827,8 @@ raw_blob_fast_reserve=${RAW_BLOB_FAST_RESERVE}
 raw_blob_sidecar_meta=${RAW_BLOB_SIDECAR_META}
 hdf5_archive_reader_bin=${HDF5_ARCHIVE_READER_BIN}
 archive_range_event_count=${ARCHIVE_RANGE_EVENT_COUNT}
+archive_wait_seconds=${ARCHIVE_WAIT_SECONDS}
+archive_range_timeout_seconds=${ARCHIVE_RANGE_TIMEOUT_SECONDS}
 archive_event_count_poll_interval_seconds=${ARCHIVE_EVENT_COUNT_POLL_INTERVAL_SECONDS}
 archive_event_count_wait_mode=${ARCHIVE_EVENT_COUNT_WAIT_MODE}
 archive_readback_mode=${ARCHIVE_READBACK_MODE}
@@ -2146,7 +2159,8 @@ elif [[ "${WORKFLOW}" == "archive_range_retrieval" ]]; then
       printf 'export PROFILEDIR=%q\n' "${CHRONOLOG_RESULT_DIR}/profiles/tau/client"
       printf '%s\n' 'mkdir -p "${PROFILEDIR}"'
     fi
-    printf 'timeout 1200s python3 %q --client-config %q --player-config %q --result-dir %q --archive-reader-bin %q --operation-count %q --message-size-bytes %q --range-event-count %q --node-count %q --client-count %q --archive-wait-seconds %q --archive-event-count-poll-interval-seconds %q --archive-event-count-wait-mode %q --archive-readback-mode %q\n' \
+    printf 'timeout %qs python3 %q --client-config %q --player-config %q --result-dir %q --archive-reader-bin %q --operation-count %q --message-size-bytes %q --range-event-count %q --node-count %q --client-count %q --archive-wait-seconds %q --archive-event-count-poll-interval-seconds %q --archive-event-count-wait-mode %q --archive-readback-mode %q\n' \
+      "${ARCHIVE_RANGE_TIMEOUT_SECONDS}" \
       "${SCRIPT_DIR}/chronolog_archive_range_retrieval.py" \
       "${CLIENT_CONF_FILE}" \
       "${CONF_FILE}" \

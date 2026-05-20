@@ -156,7 +156,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--chronolog-startup-sleep", type=int, default=10)
     parser.add_argument("--chronolog-completion-modes", default="live_return")
     parser.add_argument("--chronolog-data-collection-poll-intervals-us", default="1000000")
+    parser.add_argument("--chronolog-archive-wait-seconds", default=os.environ.get("CHRONOLOG_ARCHIVE_WAIT_SECONDS", "420"))
+    parser.add_argument("--chronolog-archive-range-timeout-seconds", default=os.environ.get("CHRONOLOG_ARCHIVE_RANGE_TIMEOUT_SECONDS", "1200"))
     parser.add_argument("--chronolog-archive-event-count-poll-intervals-seconds", default="1.0")
+    parser.add_argument("--chronolog-archive-event-count-wait-modes", default=os.environ.get("CHRONOLOG_ARCHIVE_EVENT_COUNT_WAIT_MODE", "inline"))
     parser.add_argument("--chronolog-archive-readback-modes", default="inline")
     parser.add_argument(
         "--chronolog-keeper-data-collection-streams",
@@ -1073,6 +1076,10 @@ def command_for(run: dict[str, Any], child_dir: Path, args: argparse.Namespace) 
         )
         base.extend(["--visor-parallel-keeper-stop", str(run["chronolog_visor_parallel_keeper_stop"])])
         base.extend(["--data-collection-poll-interval-us", str(run["chronolog_data_collection_poll_interval_us"])])
+        if run.get("chronolog_archive_wait_seconds", "") != "":
+            base.extend(["--archive-wait-seconds", str(run["chronolog_archive_wait_seconds"])])
+        if run.get("chronolog_archive_range_timeout_seconds", "") != "":
+            base.extend(["--archive-range-timeout-seconds", str(run["chronolog_archive_range_timeout_seconds"])])
         if run.get("chronolog_archive_event_count_poll_interval_seconds", "") != "":
             base.extend(
                 [
@@ -1080,6 +1087,8 @@ def command_for(run: dict[str, Any], child_dir: Path, args: argparse.Namespace) 
                     str(run["chronolog_archive_event_count_poll_interval_seconds"]),
                 ]
             )
+        if run.get("chronolog_archive_event_count_wait_mode", "") != "":
+            base.extend(["--archive-event-count-wait-mode", str(run["chronolog_archive_event_count_wait_mode"])])
         if run.get("chronolog_archive_readback_mode", "") != "":
             base.extend(["--archive-readback-mode", str(run["chronolog_archive_readback_mode"])])
         if run["chronolog_grapher_inactive_story_delay_seconds"] != "":
@@ -2837,7 +2846,10 @@ def write_summary(rows: list[dict[str, Any]], path: Path) -> None:
         "storage_backend",
         "chronolog_completion_mode",
         "chronolog_data_collection_poll_interval_us",
+        "chronolog_archive_wait_seconds",
+        "chronolog_archive_range_timeout_seconds",
         "chronolog_archive_event_count_poll_interval_seconds",
+        "chronolog_archive_event_count_wait_mode",
         "chronolog_archive_readback_mode",
         "chronolog_keeper_data_collection_streams",
         "chronolog_keeper_data_collection_threads_per_stream",
@@ -3550,6 +3562,8 @@ def main() -> int:
     message_sizes = csv_ints(args.message_sizes)
     operation_counts = csv_ints(args.operation_counts)
     client_counts = csv_ints(args.client_counts)
+    chronolog_archive_wait_second_values = csv_ints(args.chronolog_archive_wait_seconds)
+    chronolog_archive_range_timeout_second_values = csv_ints(args.chronolog_archive_range_timeout_seconds)
     mofka_partition_types = csv_strings(args.mofka_partition_types)
     mofka_storage_target_types = csv_strings(args.mofka_storage_target_types)
     mofka_storage_target_sizes = csv_ints(args.mofka_storage_target_sizes)
@@ -3564,6 +3578,7 @@ def main() -> int:
     chronolog_archive_event_count_poll_intervals_seconds = csv_strings(
         args.chronolog_archive_event_count_poll_intervals_seconds
     )
+    chronolog_archive_event_count_wait_mode_values = csv_strings(args.chronolog_archive_event_count_wait_modes)
     chronolog_archive_readback_mode_values = csv_strings(args.chronolog_archive_readback_modes)
     chronolog_keeper_data_collection_stream_values = csv_ints(args.chronolog_keeper_data_collection_streams)
     chronolog_keeper_data_collection_threads_per_stream_values = csv_ints(
@@ -3770,6 +3785,9 @@ def main() -> int:
         chronolog_hdf5_archive_layout_modes = [""]
         chronolog_raw_blob_preallocate_modes = [""]
         chronolog_archive_event_count_poll_interval_modes = [""]
+        chronolog_archive_wait_second_modes = [""]
+        chronolog_archive_range_timeout_second_modes = [""]
+        chronolog_archive_event_count_wait_modes = [""]
         chronolog_archive_readback_modes = [""]
         chronolog_archive_range_event_count_modes = [""]
         chronolog_keeper_journal_shards = [""]
@@ -3821,6 +3839,15 @@ def main() -> int:
             chronolog_poll_intervals_us = chronolog_data_collection_poll_intervals_us
             chronolog_archive_event_count_poll_interval_modes = (
                 chronolog_archive_event_count_poll_intervals_seconds
+            )
+            chronolog_archive_wait_second_modes = (
+                chronolog_archive_wait_second_values if workflow in {"archive_range_retrieval", "append_durable"} else [""]
+            )
+            chronolog_archive_range_timeout_second_modes = (
+                chronolog_archive_range_timeout_second_values if workflow == "archive_range_retrieval" else [""]
+            )
+            chronolog_archive_event_count_wait_modes = (
+                chronolog_archive_event_count_wait_mode_values if workflow == "archive_range_retrieval" else [""]
             )
             chronolog_archive_readback_modes = (
                 chronolog_archive_readback_mode_values if workflow == "archive_range_retrieval" else [""]
@@ -4026,7 +4053,10 @@ def main() -> int:
             chronolog_raw_blob_async_close,
             chronolog_raw_blob_async_publish,
             chronolog_raw_blob_async_publish_threads,
+            chronolog_archive_wait_seconds,
+            chronolog_archive_range_timeout_seconds,
             chronolog_archive_event_count_poll_interval_seconds,
+            chronolog_archive_event_count_wait_mode,
             chronolog_archive_readback_mode,
             chronolog_archive_range_event_count,
             chronolog_keeper_journal_shard_count,
@@ -4112,7 +4142,10 @@ def main() -> int:
             chronolog_raw_blob_async_close_values,
             chronolog_raw_blob_async_publish_values,
             chronolog_raw_blob_async_publish_threads_values,
+            chronolog_archive_wait_second_modes,
+            chronolog_archive_range_timeout_second_modes,
             chronolog_archive_event_count_poll_interval_modes,
+            chronolog_archive_event_count_wait_modes,
             chronolog_archive_readback_modes,
             chronolog_archive_range_event_count_modes,
             chronolog_keeper_journal_shards,
@@ -4229,7 +4262,10 @@ def main() -> int:
                     "kafka_acks": kafka_acks,
                     "chronolog_completion_mode": chronolog_completion_mode,
                     "chronolog_data_collection_poll_interval_us": chronolog_poll_interval_us,
+                    "chronolog_archive_wait_seconds": chronolog_archive_wait_seconds,
+                    "chronolog_archive_range_timeout_seconds": chronolog_archive_range_timeout_seconds,
                     "chronolog_archive_event_count_poll_interval_seconds": chronolog_archive_event_count_poll_interval_seconds,
+                    "chronolog_archive_event_count_wait_mode": chronolog_archive_event_count_wait_mode,
                     "chronolog_archive_readback_mode": chronolog_archive_readback_mode,
                     "chronolog_keeper_data_collection_streams": chronolog_keeper_data_collection_stream_count,
                     "chronolog_keeper_data_collection_threads_per_stream": chronolog_keeper_data_collection_threads_per_stream_count,

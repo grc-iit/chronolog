@@ -85,7 +85,33 @@ archive/range row 001: timed out waiting for archive event count; expected 40000
 archive/range row 002: timed out waiting for archive event count; expected 40000, last_count 15533
 ```
 
-This is real requested-grid work still to do. The append rows are usable as append evidence, but archive/range cannot be promoted until the archive drain/readback path completes. The next step is to fix the archive-count timeout or adjust the harness so the row naturally reaches completion.
+Follow-up reruns found two separate issues:
+
+1. The ChronoLog distributed wrapper was dropping archive/range timeout knobs across its outer SLURM self-resubmission step. The matrix command requested `--chronolog-archive-wait-seconds 2400`, `--chronolog-archive-range-timeout-seconds 3600`, and `--chronolog-archive-range-event-counts 40000`, but the generated recursive `sbatch` script reverted to `--archive-wait-seconds 420`, `timeout 1200s`, and `--range-event-count 0`.
+2. After fixing that forwarding gap, both corrected long-wait variants still failed downstream archive completeness for the 2-node, 16-client, 1 KiB, 40,000 ops/client shape.
+
+Corrected long-wait artifact root:
+
+```text
+.agent/results/20260519-212132-requested-final-grid-actual-n2-1k-chronolog-archive-longwait-forwarded/
+```
+
+Corrected generated `sbatch` evidence includes:
+
+```text
+--archive-wait-seconds 2400
+--archive-range-timeout-seconds 3600
+--archive-range-event-count 40000
+```
+
+Corrected long-wait stderr summaries:
+
+```text
+sync raw-blob publish: expected 40000 archived events for story 14, last_count 10237, poll_count 2328
+async raw-blob publish x4: expected 40000 archived events for story 14, last_count 18879, poll_count 2342
+```
+
+All 16 append clients in each corrected row reached `release_story_returned`; the open issue is downstream archive completeness for at least one story after release. Async raw-blob publish improved the observed count for the failing story, but did not complete the row. These rows remain open work and must be fixed and rerun before archive/range can be promoted into the requested final figures.
 
 ## Kafka retry results
 

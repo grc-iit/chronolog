@@ -64,6 +64,7 @@ ChronoLog:
 - append sync: Keeper-local journal group-commit tail-only fdatasync boundary.
 - append async/WAL-drain: Keeper-local journal async-drain variants.
 - archive/range: raw-blob archive range with async publish disabled/enabled.
+- archive/range high-client rows require the wrapper to preserve `--archive-wait-seconds`, `--archive-range-timeout-seconds`, and `--archive-range-event-count` across the SLURM self-resubmission step. This is now wired in the launcher, but the 2-node, 16-client, 1 KiB corrected long-wait run still exposed a downstream archive-completeness issue that needs a ChronoLog/harness fix and rerun.
 - 1-node distributed ChronoLog rows are currently marked as a harness gap because the wrapper requires at least 2 nodes. For final figures, either add a true 1-node deployment path or report the row as pending harness support.
 
 Kafka:
@@ -93,4 +94,4 @@ Before these figures are promoted into the final report:
 
 ## Current decision
 
-Do not mark the stricter final figure-grid objective complete until this matrix has run, passed acceptance checks, and been summarized in a regenerated final report.
+Do not mark the stricter final figure-grid objective complete until this matrix has run, passed acceptance checks, and been summarized in a regenerated final report. Failed or slow rows are open engineering work: capture the concrete evidence, fix the cause when feasible, and rerun rather than dropping the cell from the requested figure grid.

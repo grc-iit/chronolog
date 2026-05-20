@@ -142,6 +142,9 @@ for node_count in "${node_values[@]}"; do
         --workflows archive_range_retrieval \
         --chronolog-completion-modes archive_readback \
         --chronolog-archive-range-event-counts "${operation_count}" \
+        --chronolog-archive-wait-seconds "${CHRONOLOG_ARCHIVE_WAIT_SECONDS:-2400}" \
+        --chronolog-archive-range-timeout-seconds "${CHRONOLOG_ARCHIVE_RANGE_TIMEOUT_SECONDS:-3600}" \
+        --chronolog-archive-event-count-wait-modes parallel_process \
         --chronolog-hdf5-archive-layouts raw_blob \
         --chronolog-raw-blob-async-publish-values 0,1 \
         --chronolog-raw-blob-async-publish-threads 4 \

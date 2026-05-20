@@ -228,6 +228,7 @@ This is not a performance-optimization phase. The goal is to make the full measu
 - [x] Add opt-in ChronoLog grouped journal early-ack semantic with post-ack ingestion-drain validity gate.
 - [x] Prototype opt-in ChronoLog async drain queue and reject it as a c4 performance improvement while keeping counters for evidence.
 - [ ] Run repeated trials and broader workload matrix for grouped/deferred semantics. ChronoLog grouped-fdatasync 1KiB batch=64, Kafka acks=1, and Mofka PMDK no-wait/flush have 3 accepted trials; read/range and broader workload coverage remain pending.
+- [ ] Fix and rerun the requested-grid ChronoLog 2-node, 16-client, 1KiB archive/range cell. The wrapper now preserves the requested long archive wait/range timeout/range event count across SLURM recursion, but corrected long-wait rows still under-archived one story after all append clients returned release (`10237/40000` sync raw-blob publish, `18879/40000` async publish x4).
 - [x] Validate ChronoLog Keeper journal-tail range retrieval at non-smoke scale.
 - [x] Add Keeper journal-tail payload movement counters and validate a corrected 64KiB noisy hot-tail row.
 - [x] Add opt-in direct Keeper journal-tail payload-read mode and validate a corrected 64KiB noisy hot-tail probe.
