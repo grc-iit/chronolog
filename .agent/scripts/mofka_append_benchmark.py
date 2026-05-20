@@ -184,10 +184,13 @@ def main():
                 wait_latencies_ms.append((wait_end - wait_start) * 1000.0)
                 with print_lock:
                     print(f"client={client_index} event_index={index} event_id={event_id}", flush=True)
-            else:
+            elif args.producer_wait_mode == "after_loop":
                 pending_events.append((index, future))
                 with print_lock:
                     print(f"client={client_index} event_index={index} event_id=pending", flush=True)
+            else:
+                with print_lock:
+                    print(f"client={client_index} event_index={index} event_id=not_waited", flush=True)
         if args.producer_wait_mode == "after_loop":
             for index, future in pending_events:
                 wait_start = time.perf_counter()
