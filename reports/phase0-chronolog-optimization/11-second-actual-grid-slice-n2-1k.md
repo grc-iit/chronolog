@@ -50,6 +50,27 @@ python3 .agent/scripts/phase0_validate_metrics.py $(find .agent/results/20260519
 
 All five high-volume ChronoLog 1-node metrics passed validation.
 
+High-volume 1-node Kafka 1 KiB artifact root:
+
+```text
+.agent/results/20260519-234135-requested-final-grid-actual-n1-1k-kafka/
+```
+
+| System | Workflow | Semantics | Nodes | Clients | Size | Ops/client | Total events | Throughput ops/s | Duration s | p50 ms | p95 ms | p99 ms |
+|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Kafka | append_throughput | `acks=0` | 1 | 8 | 1 KiB | 40,000 | 320,000 | 31,295.965 | 10.225 | 3,388.000 | 4,048.000 | 4,118.000 |
+| Kafka | append_throughput | `acks=all` RF1 | 1 | 8 | 1 KiB | 40,000 | 320,000 | 29,401.080 | 10.884 | 3,952.000 | 4,539.000 | 4,696.000 |
+| Kafka | range_retrieval | append first with `acks=0`, then consumer catch-up | 1 | 8 | 1 KiB | 40,000 | 320,000 | 50,235.479 | 6.370 | null | null | null |
+| Kafka | range_retrieval | append first with `acks=all`, then consumer catch-up | 1 | 8 | 1 KiB | 40,000 | 320,000 | 49,162.698 | 6.509 | null | null | null |
+
+Validation:
+
+```text
+python3 .agent/scripts/phase0_validate_metrics.py $(find .agent/results/20260519-234135-requested-final-grid-actual-n1-1k-kafka -name metrics.json | sort)
+```
+
+All four high-volume Kafka 1-node metrics passed validation.
+
 ## 2-node ChronoLog and Kafka rows
 
 ChronoLog artifact root:
@@ -211,4 +232,4 @@ All four Kafka metrics passed validation.
 
 ## Decision
 
-This report now adds usable ChronoLog 1-node and 2-node 1 KiB append numbers for sync versus async semantics, usable ChronoLog 1-node and 2-node 1 KiB archive/range rows with the 5s Grapher stop-retire grace, and usable Kafka 2-node 1 KiB append/range rows. It does not satisfy the final requested-grid objective because the remaining 4K/16K/64K payload sizes, Kafka high-volume 1-node rows, and 4/5/16-node requested-grid cells still need staged execution.
+This report now adds usable ChronoLog 1-node and 2-node 1 KiB append numbers for sync versus async semantics, usable ChronoLog 1-node and 2-node 1 KiB archive/range rows with the 5s Grapher stop-retire grace, and usable Kafka 1-node and 2-node 1 KiB append/range rows. It does not satisfy the final requested-grid objective because the remaining 4K/16K/64K payload sizes and 4/5/16-node requested-grid cells still need staged execution across systems.
