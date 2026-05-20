@@ -105,11 +105,11 @@ for node_count in "${node_values[@]}"; do
 
     if (( node_count < 2 )); then
       skip_batch "n${node_count}-s${size}-chronolog-append-sync" \
-        "distributed ChronoLog harness requires at least 2 nodes"
+        "pending 1-node ChronoLog deployment support: current distributed wrapper requires at least 2 nodes"
       skip_batch "n${node_count}-s${size}-chronolog-append-async-wal-drain" \
-        "distributed ChronoLog harness requires at least 2 nodes"
+        "pending 1-node ChronoLog deployment support: current distributed wrapper requires at least 2 nodes"
       skip_batch "n${node_count}-s${size}-chronolog-archive-range-sync-async-publish" \
-        "distributed ChronoLog harness requires at least 2 nodes"
+        "pending 1-node ChronoLog deployment support: current distributed wrapper requires at least 2 nodes"
     else
       run_batch "n${node_count}-s${size}-chronolog-append-sync" \
         --systems chronolog \
@@ -149,9 +149,9 @@ for node_count in "${node_values[@]}"; do
 
     if (( node_count < 2 )); then
       skip_batch "n${node_count}-s${size}-kafka-append-sync-async" \
-        "distributed Kafka harness requires at least 2 nodes"
+        "pending 1-node Kafka deployment support: current distributed wrapper requires at least 2 nodes"
       skip_batch "n${node_count}-s${size}-kafka-range-sync-async" \
-        "distributed Kafka harness requires at least 2 nodes"
+        "pending 1-node Kafka deployment support: current distributed wrapper requires at least 2 nodes"
     else
       run_batch "n${node_count}-s${size}-kafka-append-sync-async" \
         --systems kafka \

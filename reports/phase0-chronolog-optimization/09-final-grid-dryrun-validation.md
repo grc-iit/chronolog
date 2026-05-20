@@ -44,6 +44,6 @@ Payload coverage generated:
 
 This validates that the benchmark harness can expand the requested grid with explicit semantic batches and size-aware operation counts. It does not produce performance figures by itself, because `DRY_RUN=1` is the default.
 
-The original actual 1-node probe revealed that distributed ChronoLog and Kafka reject 1-node runs. The runner now records those 1-node batches as skipped instead of failing the whole matrix. Mofka 1-node rows remain runnable.
+The original actual 1-node probe revealed that the current distributed ChronoLog and Kafka wrappers reject 1-node runs. The runner now records those 1-node batches as pending harness support instead of failing the whole matrix. Mofka 1-node rows remain runnable.
 
 The stricter final figure objective remains incomplete until the same runner is executed with `DRY_RUN=0`, the resulting rows pass acceptance checks, and the final report is regenerated from those metrics.

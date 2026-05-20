@@ -61,13 +61,13 @@ ChronoLog:
 - append sync: Keeper-local journal group-commit tail-only fdatasync boundary.
 - append async/WAL-drain: Keeper-local journal async-drain variants.
 - archive/range: raw-blob archive range with async publish disabled/enabled.
-- 1-node distributed ChronoLog rows are marked skipped because the distributed ChronoLog harness requires at least 2 nodes.
+- 1-node distributed ChronoLog rows are currently marked as a harness gap because the wrapper requires at least 2 nodes. For final figures, either add a true 1-node deployment path or report the row as pending harness support.
 
 Kafka:
 
 - append with `acks=0` and `acks=all`.
 - range/catch-up with `acks=0` and `acks=all`.
-- 1-node distributed Kafka rows are marked skipped because the distributed Kafka harness requires at least 2 nodes.
+- 1-node distributed Kafka rows are currently marked as a harness gap because the wrapper requires at least 2 nodes. For final figures, either add a true 1-node deployment path or report the row as pending harness support.
 
 Mofka:
 
