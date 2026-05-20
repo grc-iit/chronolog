@@ -1015,6 +1015,7 @@ if [[ -z "${SLURM_JOB_ID:-}" && "${INSIDE_ALLOCATION}" != "1" ]]; then
     --data-collection-poll-interval-us "${DATA_COLLECTION_POLL_INTERVAL_US}"
     --grapher-inactive-story-delay-seconds "${GRAPHER_INACTIVE_STORY_DELAY_SECONDS}"
     --grapher-retire-on-stop "${GRAPHER_RETIRE_ON_STOP}"
+    --grapher-stop-retire-grace-us "${GRAPHER_STOP_RETIRE_GRACE_US}"
     --grapher-stop-story-archive-drain "${GRAPHER_STOP_STORY_ARCHIVE_DRAIN}"
     --grapher-stop-story-archive-drain-timeout-ms "${GRAPHER_STOP_STORY_ARCHIVE_DRAIN_TIMEOUT_MS}"
     --grapher-stop-drain-wait-outside-lock "${GRAPHER_STOP_DRAIN_WAIT_OUTSIDE_LOCK}"

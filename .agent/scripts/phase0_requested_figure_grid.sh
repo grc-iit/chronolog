@@ -148,6 +148,7 @@ for node_count in "${node_values[@]}"; do
         --chronolog-hdf5-archive-layouts raw_blob \
         --chronolog-raw-blob-async-publish-values 0,1 \
         --chronolog-raw-blob-async-publish-threads 4 \
+        --chronolog-grapher-stop-retire-grace-us-values "${CHRONOLOG_GRAPHER_STOP_RETIRE_GRACE_US:-5000000}" \
         --chronolog-grapher-stop-story-archive-drain-values 1 \
         --chronolog-grapher-stop-story-archive-drain-timeout-ms 120000 \
         "${common[@]}"

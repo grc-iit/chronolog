@@ -74,9 +74,9 @@ python3 .agent/scripts/phase0_benchmark_matrix.py \
 
 Each row used 16 clients across 2 nodes and 40,000 operations per client, for 640,000 total append operations.
 
-## ChronoLog archive/range rows needing fix and rerun
+## Completed ChronoLog archive/range rows
 
-The same run reached ChronoLog archive/range rows, but both variants failed before writing `metrics.json`.
+The initial ChronoLog archive/range rows failed before writing `metrics.json`.
 
 Observed stderr summaries:
 
@@ -111,7 +111,28 @@ sync raw-blob publish: expected 40000 archived events for story 14, last_count 1
 async raw-blob publish x4: expected 40000 archived events for story 14, last_count 18879, poll_count 2342
 ```
 
-All 16 append clients in each corrected row reached `release_story_returned`; the open issue is downstream archive completeness for at least one story after release. Async raw-blob publish improved the observed count for the failing story, but did not complete the row. These rows remain open work and must be fixed and rerun before archive/range can be promoted into the requested final figures.
+All 16 append clients in each corrected row reached `release_story_returned`, but Grapher logs showed late chunks arriving after story retirement and being recorded as orphan chunks. A bounded 5s Grapher stop-retire grace was then tested on the same 2-node, 16-client, 1 KiB, 40,000 ops/client cell.
+
+Grace artifact root:
+
+```text
+.agent/results/20260519-225156-requested-final-grid-actual-n2-1k-chronolog-archive-grace5s/
+```
+
+The 5s grace rerun completed both archive/range variants, passed metrics validation, archived and read back all 640,000 events, and produced zero Grapher orphan chunks.
+
+| System | Workflow | Semantics | Nodes | Clients | Size | Ops/client | Archive events | Readback events | Active throughput ops/s | Readback throughput ops/s | Duration s |
+|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| ChronoLog | archive_range_retrieval | raw-blob archive/range, sync publish, 5s Grapher stop-retire grace | 2 | 16 | 1 KiB | 40,000 | 640,000 | 640,000 | 5,270.966 | 128,736.431 | 123.927 |
+| ChronoLog | archive_range_retrieval | raw-blob archive/range, async publish x4, 5s Grapher stop-retire grace | 2 | 16 | 1 KiB | 40,000 | 640,000 | 640,000 | 5,364.442 | 136,898.966 | 121.942 |
+
+Validation:
+
+```text
+python3 .agent/scripts/phase0_validate_metrics.py $(find .agent/results/20260519-225156-requested-final-grid-actual-n2-1k-chronolog-archive-grace5s -name metrics.json | sort)
+```
+
+Both ChronoLog archive/range metrics passed validation.
 
 ## Kafka retry results
 
@@ -140,4 +161,4 @@ All four Kafka metrics passed validation.
 
 ## Decision
 
-This slice adds usable ChronoLog 2-node 1 KiB append numbers for sync versus async semantics and usable Kafka 2-node 1 KiB append/range rows. It does not satisfy the final requested-grid objective because ChronoLog archive/range remains incomplete, Mofka PMDK needs reruns, and the rest of the node/size matrix still needs execution.
+This slice adds usable ChronoLog 2-node 1 KiB append numbers for sync versus async semantics, usable ChronoLog 2-node 1 KiB archive/range rows with the 5s Grapher stop-retire grace, and usable Kafka 2-node 1 KiB append/range rows. It does not satisfy the final requested-grid objective because the remaining 4K/16K/64K payload sizes and 4/5/16-node requested-grid cells still need staged execution.

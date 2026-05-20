@@ -64,7 +64,8 @@ ChronoLog:
 - append sync: Keeper-local journal group-commit tail-only fdatasync boundary.
 - append async/WAL-drain: Keeper-local journal async-drain variants.
 - archive/range: raw-blob archive range with async publish disabled/enabled.
-- archive/range high-client rows require the wrapper to preserve `--archive-wait-seconds`, `--archive-range-timeout-seconds`, and `--archive-range-event-count` across the SLURM self-resubmission step. This is now wired in the launcher, but the 2-node, 16-client, 1 KiB corrected long-wait run still exposed a downstream archive-completeness issue that needs a ChronoLog/harness fix and rerun.
+- archive/range high-client rows use a 5s Grapher stop-retire grace. Without that grace, the 2-node, 16-client, 1 KiB row retired stories before late Keeper-to-Grapher chunks arrived, producing Grapher orphan chunks and incomplete archive manifests. With the grace, the same row passed archive/readback validation for both sync raw-blob publish and async publish x4.
+- archive/range high-client rows require the wrapper to preserve `--archive-wait-seconds`, `--archive-range-timeout-seconds`, `--archive-range-event-count`, and `--grapher-stop-retire-grace-us` across the SLURM self-resubmission step. These are now wired in the launcher and requested-grid runner.
 - 1-node distributed ChronoLog rows are currently marked as a harness gap because the wrapper requires at least 2 nodes. For final figures, either add a true 1-node deployment path or report the row as pending harness support.
 
 Kafka:
