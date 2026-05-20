@@ -223,7 +223,7 @@ Options:
                                older rows; threads applies concurrent client pressure. Default: sequential.
   --chronicle-count N          Chronicles per process. Default: 1.
   --story-count N              Stories per process. Default: 1.
-  --install-dir DIR            ChronoLog install tree. Default: .agent/install-consistent/chronolog.
+  --install-dir DIR            ChronoLog install tree. Default: .agent/install-tau/chronolog.
   --profile-mode MODE          none, tau, gperftools, darshan, perf, strace, or ebpf. Default: none.
   --keeper-journal-shards N    Keeper-local journal shards per Keeper. Default: 1.
   --keeper-journal-shard-policy POLICY
@@ -466,7 +466,7 @@ STORY_COUNT="${CHRONOLOG_STORY_COUNT:-1}"
 INSIDE_ALLOCATION="${CHRONOLOG_INSIDE_ALLOCATION:-0}"
 WORKFLOW="${CHRONOLOG_WORKFLOW:-append_throughput}"
 COMPLETION_MODE="${CHRONOLOG_COMPLETION_MODE:-live_return}"
-INSTALL_DIR="${CHRONOLOG_INSTALL_DIR:-${REPO_ROOT}/.agent/install-consistent/chronolog}"
+INSTALL_DIR="${CHRONOLOG_INSTALL_DIR:-${REPO_ROOT}/.agent/install-tau/chronolog}"
 PROFILE_MODE="${CHRONOLOG_PROFILE_MODE:-none}"
 STARTUP_SLEEP_SECONDS="${CHRONOLOG_STARTUP_SLEEP_SECONDS:-5}"
 STARTUP_READY_TIMEOUT_SECONDS="${CHRONOLOG_STARTUP_READY_TIMEOUT_SECONDS:-60}"
@@ -684,8 +684,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ "${NODE_COUNT}" -lt 2 ]]; then
-  echo "Distributed ChronoLog append requires at least 2 nodes" >&2
+if [[ "${NODE_COUNT}" -lt 1 ]]; then
+  echo "ChronoLog node-count must be >= 1" >&2
   exit 2
 fi
 

@@ -106,15 +106,7 @@ for node_count in "${node_values[@]}"; do
       --client-counts "${client_count}"
     )
 
-    if (( node_count < 2 )); then
-      skip_batch "n${node_count}-s${size}-chronolog-append-sync" \
-        "pending 1-node ChronoLog deployment support: current distributed wrapper requires at least 2 nodes"
-      skip_batch "n${node_count}-s${size}-chronolog-append-async-wal-drain" \
-        "pending 1-node ChronoLog deployment support: current distributed wrapper requires at least 2 nodes"
-      skip_batch "n${node_count}-s${size}-chronolog-archive-range-sync-async-publish" \
-        "pending 1-node ChronoLog deployment support: current distributed wrapper requires at least 2 nodes"
-    else
-      run_batch "n${node_count}-s${size}-chronolog-append-sync" \
+    run_batch "n${node_count}-s${size}-chronolog-append-sync" \
         --systems chronolog \
         --workflows append_throughput \
         --chronolog-completion-modes keeper_journal_group_commit_tail_only \
@@ -127,7 +119,7 @@ for node_count in "${node_values[@]}"; do
         --chronolog-keeper-journal-group-commit-strict-flush-event-cap-values 1 \
         "${common[@]}"
 
-      run_batch "n${node_count}-s${size}-chronolog-append-async-wal-drain" \
+    run_batch "n${node_count}-s${size}-chronolog-append-async-wal-drain" \
         --systems chronolog \
         --workflows append_throughput \
         --chronolog-completion-modes keeper_journal_group_fdatasync_async_drain \
@@ -137,7 +129,7 @@ for node_count in "${node_values[@]}"; do
         --chronolog-keeper-journal-async-drain-threads 1,4 \
         "${common[@]}"
 
-      run_batch "n${node_count}-s${size}-chronolog-archive-range-sync-async-publish" \
+    run_batch "n${node_count}-s${size}-chronolog-archive-range-sync-async-publish" \
         --systems chronolog \
         --workflows archive_range_retrieval \
         --chronolog-completion-modes archive_readback \
@@ -152,26 +144,18 @@ for node_count in "${node_values[@]}"; do
         --chronolog-grapher-stop-story-archive-drain-values 1 \
         --chronolog-grapher-stop-story-archive-drain-timeout-ms 120000 \
         "${common[@]}"
-    fi
 
-    if (( node_count < 2 )); then
-      skip_batch "n${node_count}-s${size}-kafka-append-sync-async" \
-        "pending 1-node Kafka deployment support: current distributed wrapper requires at least 2 nodes"
-      skip_batch "n${node_count}-s${size}-kafka-range-sync-async" \
-        "pending 1-node Kafka deployment support: current distributed wrapper requires at least 2 nodes"
-    else
-      run_batch "n${node_count}-s${size}-kafka-append-sync-async" \
+    run_batch "n${node_count}-s${size}-kafka-append-sync-async" \
         --systems kafka \
         --workflows append_throughput \
         --kafka-acks-values 0,all \
         "${common[@]}"
 
-      run_batch "n${node_count}-s${size}-kafka-range-sync-async" \
+    run_batch "n${node_count}-s${size}-kafka-range-sync-async" \
         --systems kafka \
         --workflows range_retrieval \
         --kafka-acks-values 0,all \
         "${common[@]}"
-    fi
 
     run_batch "n${node_count}-s${size}-mofka-append-memory-none-noflush" \
       --systems mofka \

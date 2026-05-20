@@ -103,8 +103,8 @@ case "${KAFKA_ACKS}" in
     ;;
 esac
 
-if [[ "${NODE_COUNT}" -lt 2 ]]; then
-  echo "Distributed Kafka append requires at least 2 nodes" >&2
+if [[ "${NODE_COUNT}" -lt 1 ]]; then
+  echo "Kafka node-count must be >= 1" >&2
   exit 2
 fi
 if [[ "${CLIENT_COUNT}" -lt 1 ]]; then
@@ -163,7 +163,11 @@ if [[ "${#NODES[@]}" -lt "${NODE_COUNT}" ]]; then
 fi
 
 ZOOKEEPER_NODE="${NODES[0]}"
-BROKER_NODES=("${NODES[@]:1:$((NODE_COUNT - 1))}")
+if [[ "${NODE_COUNT}" -eq 1 ]]; then
+  BROKER_NODES=("${NODES[0]}")
+else
+  BROKER_NODES=("${NODES[@]:1:$((NODE_COUNT - 1))}")
+fi
 printf '%s\n' "${NODES[@]:0:${NODE_COUNT}}" > "${CONFIG_DIR}/kafka-slurm-nodes.txt"
 
 node_ip() {
@@ -231,7 +235,12 @@ for broker_index in "${!BROKER_NODES[@]}"; do
 done
 echo "Bootstrap server: ${BOOTSTRAP_SERVER}"
 
-srun --partition="${PARTITION}" --nodes=1 --ntasks=1 --exclusive \
+SERVICE_SRUN_ARGS=()
+if [[ "${NODE_COUNT}" -gt 1 ]]; then
+  SERVICE_SRUN_ARGS+=(--exclusive)
+fi
+
+srun --partition="${PARTITION}" --nodes=1 --ntasks=1 "${SERVICE_SRUN_ARGS[@]}" \
   --time="${SLURM_TIME}" --nodelist="${ZOOKEEPER_NODE}" \
   bash -lc "hostname; export KAFKA_HEAP_OPTS='${ZOOKEEPER_HEAP_OPTS_VALUE}'; exec '${KAFKA_HOME}/bin/zookeeper-server-start.sh' '${ZOOKEEPER_CONFIG}'" \
   > "${KAFKA_LOG_DIR}/zookeeper.stdout.log" \
@@ -263,7 +272,7 @@ auto.create.topics.enable=false
 delete.topic.enable=true
 EOF
 
-  srun --partition="${PARTITION}" --nodes=1 --ntasks=1 --exclusive \
+  srun --partition="${PARTITION}" --nodes=1 --ntasks=1 "${SERVICE_SRUN_ARGS[@]}" \
     --time="${SLURM_TIME}" --nodelist="${broker_node}" \
     bash -lc "hostname; export KAFKA_HEAP_OPTS='${KAFKA_HEAP_OPTS_VALUE}'; exec '${KAFKA_HOME}/bin/kafka-server-start.sh' '${broker_config}'" \
     > "${KAFKA_LOG_DIR}/broker-${broker_index}.stdout.log" \
