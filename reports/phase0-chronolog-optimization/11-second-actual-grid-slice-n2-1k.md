@@ -14,6 +14,12 @@ Kafka artifact root:
 .agent/results/20260519-190113-requested-final-grid-actual-n2-1k-kafka/
 ```
 
+Kafka retry artifact root:
+
+```text
+.agent/results/20260519-191059-requested-final-grid-actual-n2-1k-kafka-retry/
+```
+
 ## Command shapes
 
 ChronoLog requested-grid slice:
@@ -24,7 +30,7 @@ NODES=2 SIZES=1024 DRY_RUN=0 CLIENTS_PER_NODE=8 TRIALS=1 SLURM_TIME=01:30:00 \
   .agent/scripts/phase0_requested_figure_grid.sh
 ```
 
-Kafka-only retry:
+First Kafka-only retry:
 
 ```bash
 python3 .agent/scripts/phase0_benchmark_matrix.py \
@@ -32,6 +38,23 @@ python3 .agent/scripts/phase0_benchmark_matrix.py \
   --slurm-time 01:00:00 \
   --trials 1 \
   --result-dir .agent/results/20260519-190113-requested-final-grid-actual-n2-1k-kafka \
+  --systems kafka \
+  --workflows append_throughput,range_retrieval \
+  --kafka-acks-values 0,all \
+  --node-counts 2 \
+  --message-sizes 1024 \
+  --operation-counts 40000 \
+  --client-counts 16
+```
+
+Second Kafka-only retry after node-probe hardening:
+
+```bash
+python3 .agent/scripts/phase0_benchmark_matrix.py \
+  --partition datacrumbs \
+  --slurm-time 01:00:00 \
+  --trials 1 \
+  --result-dir .agent/results/20260519-191059-requested-final-grid-actual-n2-1k-kafka-retry \
   --systems kafka \
   --workflows append_throughput,range_retrieval \
   --kafka-acks-values 0,all \
@@ -64,16 +87,31 @@ archive/range row 002: timed out waiting for archive event count; expected 40000
 
 This is a real requested-grid blocker. The append rows are usable as append evidence, but archive/range cannot be promoted until the archive drain/readback path either completes or is reported as a blocked row with accepted rationale.
 
-## Blocked Kafka retry
+## Kafka retry results
 
-The Kafka-only retry did not produce a benchmark metric. It stalled before benchmark execution while SLURM waited on an unavailable requested node:
+The first Kafka-only retry did not produce a benchmark metric. It stalled before benchmark execution while SLURM waited on an unavailable requested node:
 
 ```text
 ReqNodeNotAvail, UnavailableNodes:ares-comp-07
 ```
 
-The local driver was stopped after confirming no `metrics.json` existed. This should be retried with a fresh allocation that does not pin to the unavailable node, or the Kafka wrapper should be adjusted to avoid reusing stale node selection.
+The Kafka wrapper was then hardened to probe candidate nodes with `srun --immediate` and skip nodes that cannot launch promptly. The second retry skipped `ares-comp-07`, selected `ares-comp-06` and `ares-comp-08`, and completed all four Kafka rows.
+
+| System | Workflow | Semantics | Nodes | Clients | Size | Ops/client | Throughput ops/s | Duration s | p50 ms | p95 ms | p99 ms |
+|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Kafka | append_throughput | `acks=0` | 2 | 16 | 1 KiB | 40,000 | 28,391.230 | 22.542 | 7,995.000 | 8,825.000 | 8,925.000 |
+| Kafka | append_throughput | `acks=all` RF1 | 2 | 16 | 1 KiB | 40,000 | 24,689.502 | 25.922 | 9,420.000 | 11,190.000 | 11,387.000 |
+| Kafka | range_retrieval | append first with `acks=0`, then consumer catch-up | 2 | 16 | 1 KiB | 40,000 | 83,019.847 | 7.709 | null | null | null |
+| Kafka | range_retrieval | append first with `acks=all`, then consumer catch-up | 2 | 16 | 1 KiB | 40,000 | 83,160.083 | 7.696 | null | null | null |
+
+Validation:
+
+```text
+python3 .agent/scripts/phase0_validate_metrics.py $(find .agent/results/20260519-191059-requested-final-grid-actual-n2-1k-kafka-retry -name metrics.json | sort)
+```
+
+All four Kafka metrics passed validation.
 
 ## Decision
 
-This slice adds usable ChronoLog 2-node 1 KiB append numbers for sync versus async semantics. It does not satisfy the final requested-grid objective because archive/range and Kafka rows remain incomplete, and the rest of the node/size matrix still needs execution.
+This slice adds usable ChronoLog 2-node 1 KiB append numbers for sync versus async semantics and usable Kafka 2-node 1 KiB append/range rows. It does not satisfy the final requested-grid objective because ChronoLog archive/range remains incomplete, Mofka PMDK needs reruns, and the rest of the node/size matrix still needs execution.

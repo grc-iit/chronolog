@@ -2,6 +2,6 @@
 
 - current task: requested final figure-grid report refresh and runner hardening
 - commands running: none
-- last successful validation: `bash -n .agent/scripts/phase0_requested_figure_grid.sh`; `python3 -m py_compile .agent/scripts/phase0_benchmark_matrix.py`; PMDK storage-target dry-run check under `.agent/results/20260519-190814-requested-final-grid-dryrun-pmdk-size-check/`
-- current blocker: full requested final grid is incomplete; Kafka 2-node retry stalled on unavailable `ares-comp-07`; ChronoLog 2-node archive/range timed out waiting for archive event count; PMDK rows need actual reruns with explicit walltime and 3 GiB storage targets
-- next intended step: retry Kafka without stale unavailable node selection, then run staged Mofka PMDK rows without manual early termination
+- last successful validation: `phase0_validate_metrics.py` passed for all four Kafka metrics under `.agent/results/20260519-191059-requested-final-grid-actual-n2-1k-kafka-retry/`
+- current blocker: full requested final grid is incomplete; ChronoLog 2-node archive/range timed out waiting for archive event count; PMDK rows need actual reruns with explicit walltime and 3 GiB storage targets; remaining 2/4/5/16-node and 4K/16K/64K requested-grid cells still need staged execution
+- next intended step: run staged Mofka PMDK rows without manual early termination, then address ChronoLog archive/range timeout before broadening the grid

@@ -73,6 +73,7 @@ BROKER_PORT="${KAFKA_BROKER_PORT:-29092}"
 KAFKA_HEAP_OPTS_VALUE="${KAFKA_HEAP_OPTS:-"-Xms128m -Xmx512m"}"
 ZOOKEEPER_HEAP_OPTS_VALUE="${ZOOKEEPER_HEAP_OPTS:-"-Xms128m -Xmx512m"}"
 NETWORK_IFACE="${KAFKA_NETWORK_IFACE:-enp47s0np0}"
+SLURM_NODE_PROBE_IMMEDIATE_SECS="${KAFKA_SLURM_NODE_PROBE_IMMEDIATE_SECS:-15}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -126,6 +127,15 @@ exec 2> >(tee -a "${KAFKA_RESULT_DIR}/stderr.log" >&2)
 
 KAFKA_HOME="$(phase0_install_kafka_if_needed)"
 
+slurm_node_available() {
+  local node="$1"
+  srun --partition="${PARTITION}" --nodes=1 --ntasks=1 --time=00:01:00 \
+    --immediate="${SLURM_NODE_PROBE_IMMEDIATE_SECS}" --nodelist="${node}" \
+    bash -lc 'hostname >/dev/null' \
+    >> "${KAFKA_LOG_DIR}/node-probe.stdout.log" \
+    2>> "${KAFKA_LOG_DIR}/node-probe.stderr.log"
+}
+
 declare -a NODES=()
 if [[ -n "${SLURM_NODELIST}" ]]; then
   if command -v scontrol >/dev/null 2>&1; then
@@ -134,7 +144,17 @@ if [[ -n "${SLURM_NODELIST}" ]]; then
     IFS=',' read -r -a NODES <<< "${SLURM_NODELIST}"
   fi
 else
-  mapfile -t NODES < <(sinfo -N -h -p "${PARTITION}" -t idle -o '%N' | sort -u | head -n "${NODE_COUNT}")
+  mapfile -t CANDIDATE_NODES < <(sinfo -N -h -p "${PARTITION}" -t idle -o '%N' | sort -u)
+  for candidate_node in "${CANDIDATE_NODES[@]}"; do
+    if slurm_node_available "${candidate_node}"; then
+      NODES+=("${candidate_node}")
+    else
+      echo "Skipping SLURM node ${candidate_node}: probe did not launch within ${SLURM_NODE_PROBE_IMMEDIATE_SECS}s" >&2
+    fi
+    if [[ "${#NODES[@]}" -ge "${NODE_COUNT}" ]]; then
+      break
+    fi
+  done
 fi
 
 if [[ "${#NODES[@]}" -lt "${NODE_COUNT}" ]]; then
@@ -148,7 +168,8 @@ printf '%s\n' "${NODES[@]:0:${NODE_COUNT}}" > "${CONFIG_DIR}/kafka-slurm-nodes.t
 
 node_ip() {
   local node="$1"
-  srun --partition="${PARTITION}" --nodes=1 --ntasks=1 --time=00:02:00 --nodelist="${node}" \
+  srun --partition="${PARTITION}" --nodes=1 --ntasks=1 --time=00:02:00 \
+    --immediate="${SLURM_NODE_PROBE_IMMEDIATE_SECS}" --nodelist="${node}" \
     bash -lc "ip -4 -o addr show dev '${NETWORK_IFACE}' | cut -d' ' -f7 | cut -d/ -f1 | head -1 || hostname -I | cut -d' ' -f1" \
     2>> "${KAFKA_LOG_DIR}/ip-detect.stderr.log"
 }
