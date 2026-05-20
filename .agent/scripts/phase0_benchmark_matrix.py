@@ -3840,6 +3840,7 @@ def main() -> int:
         chronolog_keeper_stop_story_flush_drain_modes = [""]
         chronolog_keeper_stop_story_flush_drain_timeout_ms_modes = [""]
         chronolog_visor_parallel_keeper_stop_modes = [""]
+        chronolog_visor_parallel_recording_stop_modes = [""]
         kafka_acks_modes = [""]
         mofka_storage_sizes_for_system = [""]
         if system == "chronolog":
