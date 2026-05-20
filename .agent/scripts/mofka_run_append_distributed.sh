@@ -296,17 +296,31 @@ trap cleanup EXIT
 
 mofka_export_spack_runtime_env
 
-bedrock-query "${PROTOCOL}" -f "${MOFKA_RESULT_DIR}/mofka.json" -p \
-  > "${MOFKA_RESULT_DIR}/bedrock-query-before-benchmark.json"
-
 SERVER_PROCESS_COUNT=$(( NODE_COUNT > 1 ? NODE_COUNT : 2 ))
-python3 "${SCRIPT_DIR}/mofka_normalize_group_file.py" \
-  --group-file "${MOFKA_RESULT_DIR}/mofka.json" \
-  --bedrock-query "${MOFKA_RESULT_DIR}/bedrock-query-before-benchmark.json" \
-  --output "${MOFKA_RESULT_DIR}/mofka-client.json" \
-  --expected-members "${SERVER_PROCESS_COUNT}" \
-  > "${MOFKA_RESULT_DIR}/group-normalization.log" \
-  2>&1
+NORMALIZE_DEADLINE=$((SECONDS + LAUNCH_WAIT_SECONDS))
+NORMALIZE_ATTEMPT=0
+while true; do
+  NORMALIZE_ATTEMPT=$((NORMALIZE_ATTEMPT + 1))
+  bedrock-query "${PROTOCOL}" -f "${MOFKA_RESULT_DIR}/mofka.json" -p \
+    > "${MOFKA_RESULT_DIR}/bedrock-query-before-benchmark.json"
+
+  if python3 "${SCRIPT_DIR}/mofka_normalize_group_file.py" \
+    --group-file "${MOFKA_RESULT_DIR}/mofka.json" \
+    --bedrock-query "${MOFKA_RESULT_DIR}/bedrock-query-before-benchmark.json" \
+    --output "${MOFKA_RESULT_DIR}/mofka-client.json" \
+    --expected-members "${SERVER_PROCESS_COUNT}" \
+    > "${MOFKA_RESULT_DIR}/group-normalization.log" \
+    2>&1; then
+    printf 'normalized Mofka group after %s attempt(s)\n' "${NORMALIZE_ATTEMPT}" \
+      >> "${MOFKA_RESULT_DIR}/group-normalization.log"
+    break
+  fi
+  if [[ "${SECONDS}" -ge "${NORMALIZE_DEADLINE}" ]]; then
+    cat "${MOFKA_RESULT_DIR}/group-normalization.log" >&2
+    exit 1
+  fi
+  sleep 2
+done
 
 python3 "${SCRIPT_DIR}/mofka_append_benchmark.py" \
   --group-file "${MOFKA_RESULT_DIR}/mofka-client.json" \
