@@ -74,7 +74,7 @@ python3 .agent/scripts/phase0_benchmark_matrix.py \
 
 Each row used 16 clients across 2 nodes and 40,000 operations per client, for 640,000 total append operations.
 
-## Blocked ChronoLog archive/range rows
+## ChronoLog archive/range rows needing fix and rerun
 
 The same run reached ChronoLog archive/range rows, but both variants failed before writing `metrics.json`.
 
@@ -85,7 +85,7 @@ archive/range row 001: timed out waiting for archive event count; expected 40000
 archive/range row 002: timed out waiting for archive event count; expected 40000, last_count 15533
 ```
 
-This is a real requested-grid blocker. The append rows are usable as append evidence, but archive/range cannot be promoted until the archive drain/readback path either completes or is reported as a blocked row with accepted rationale.
+This is real requested-grid work still to do. The append rows are usable as append evidence, but archive/range cannot be promoted until the archive drain/readback path completes. The next step is to fix the archive-count timeout or adjust the harness so the row naturally reaches completion.
 
 ## Kafka retry results
 

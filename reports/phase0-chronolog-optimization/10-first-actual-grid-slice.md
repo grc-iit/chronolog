@@ -29,7 +29,7 @@ Each row used 8 clients on 1 node and 40,000 operations per client, for 320,000 
 
 The runner skipped the ChronoLog and Kafka 1-node distributed rows because the current distributed wrappers exit with a minimum 2-node guard. This should be treated as a harness/deployment gap for the requested final figure grid, not proof that ChronoLog or Kafka cannot run on one node.
 
-## Blocked row
+## Open row needing rerun
 
 The Mofka PMDK/no-flush 1-node 1 KiB high-volume row was manually terminated after it ran for more than 15 minutes without completing. That was too aggressive for a final benchmark: slow PMDK behavior is itself a valid result unless the row exceeds an explicit walltime or is clearly hung. At inspection time, clients were only around 7.2k of 40k events each. The row did not produce `metrics.json` and should be rerun with a much larger walltime or a staged PMDK-specific policy before it is used in the final figure set.
 
@@ -37,4 +37,4 @@ Follow-up: the requested-grid runner now passes a 3 GiB PMDK storage-target size
 
 ## Decision
 
-This actual run validates that the requested-grid runner can collect real rows, but it also shows that the full high-volume grid needs staged execution and row-specific walltime/blocker handling. Do not treat this as completion of the final figure objective.
+This actual run validates that the requested-grid runner can collect real rows, but it also shows that the full high-volume grid needs staged execution and row-specific walltime handling. Do not treat this as completion of the final figure objective.

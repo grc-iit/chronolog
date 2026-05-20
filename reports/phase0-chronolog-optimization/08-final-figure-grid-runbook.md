@@ -87,7 +87,7 @@ Before these figures are promoted into the final report:
 - Every row must have explicit semantic labels.
 - ChronoLog archive/range rows must validate archive event count and readback.
 - Kafka and Mofka rows must remain fixed baselines with no source modifications.
-- Any failed row must be marked blocked or rejected, not silently dropped.
+- Any failed row must be captured with the failure evidence, fixed when feasible, and rerun. It must not be silently dropped.
 - The regenerated report must include the complete prompt-to-artifact checklist.
 
 ## Current decision
