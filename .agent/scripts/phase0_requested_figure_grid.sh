@@ -205,6 +205,7 @@ for node_count in "${node_values[@]}"; do
       --mofka-storage-target-sizes "${MOFKA_PMDK_STORAGE_TARGET_SIZE}" \
       --mofka-producer-wait-modes per_event \
       --mofka-producer-flush-modes after_loop \
+      --mofka-client-execution-modes processes \
       "${common[@]}"
 
     run_batch "n${node_count}-s${size}-mofka-range-memory-afterloop-noflush" \
@@ -224,6 +225,7 @@ for node_count in "${node_values[@]}"; do
       --mofka-storage-target-sizes "${MOFKA_PMDK_STORAGE_TARGET_SIZE}" \
       --mofka-producer-wait-modes per_event \
       --mofka-producer-flush-modes after_loop \
+      --mofka-client-execution-modes processes \
       "${common[@]}"
   done
 done

@@ -59,6 +59,7 @@ Options:
   --group-ping-max-timeouts N  Centralized Flock group missed-ping eviction threshold. Default: 3.
   --producer-wait-mode MODE    per_event, after_loop, or none. Default: per_event.
   --producer-flush-mode MODE   after_loop or none. Default: after_loop.
+  --client-execution-mode MODE threads or processes. Default: threads.
   --protocol PROTOCOL          Mercury protocol. Default: ofi+tcp.
   --deployment-mode MODE       local_validation or bare_metal. Default: local_validation.
   --node-count N               Node count. Default: 1.
@@ -84,6 +85,7 @@ GROUP_PING_INTERVAL_MAX_MS="${MOFKA_GROUP_PING_INTERVAL_MAX_MS:-1000}"
 GROUP_PING_MAX_TIMEOUTS="${MOFKA_GROUP_PING_MAX_TIMEOUTS:-3}"
 PRODUCER_WAIT_MODE="${MOFKA_PRODUCER_WAIT_MODE:-per_event}"
 PRODUCER_FLUSH_MODE="${MOFKA_PRODUCER_FLUSH_MODE:-after_loop}"
+CLIENT_EXECUTION_MODE="${MOFKA_CLIENT_EXECUTION_MODE:-threads}"
 PROTOCOL="${MOFKA_PROTOCOL:-ofi+tcp}"
 DEPLOYMENT_MODE="${MOFKA_DEPLOYMENT_MODE:-local_validation}"
 NODE_COUNT="${MOFKA_NODE_COUNT:-1}"
@@ -149,6 +151,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --producer-flush-mode)
       PRODUCER_FLUSH_MODE="$2"
+      shift 2
+      ;;
+    --client-execution-mode)
+      CLIENT_EXECUTION_MODE="$2"
       shift 2
       ;;
     --protocol)
@@ -222,6 +228,7 @@ if [[ "${DEPLOYMENT_MODE}" == "bare_metal" && "${NODE_COUNT}" -gt 1 && -z "${SLU
     --group-ping-max-timeouts "${GROUP_PING_MAX_TIMEOUTS}"
     --producer-wait-mode "${PRODUCER_WAIT_MODE}"
     --producer-flush-mode "${PRODUCER_FLUSH_MODE}"
+    --client-execution-mode "${CLIENT_EXECUTION_MODE}"
     --protocol "${PROTOCOL}"
     --deployment-mode "${DEPLOYMENT_MODE}"
     --node-count "${NODE_COUNT}"
@@ -311,6 +318,7 @@ python3 "${SCRIPT_DIR}/mofka_append_benchmark.py" \
   --group-ping-max-timeouts "${GROUP_PING_MAX_TIMEOUTS}" \
   --producer-wait-mode "${PRODUCER_WAIT_MODE}" \
   --producer-flush-mode "${PRODUCER_FLUSH_MODE}" \
+  --client-execution-mode "${CLIENT_EXECUTION_MODE}" \
   --storage-path-root "${MOFKA_RESULT_DIR}/storage-targets" \
   > "${MOFKA_RESULT_DIR}/append-benchmark.stdout.log" \
   2> "${MOFKA_RESULT_DIR}/append-benchmark.stderr.log"
@@ -332,6 +340,7 @@ cat > "${RESULT_DIR}/summary.md" <<EOF
 - group_ping_max_timeouts: ${GROUP_PING_MAX_TIMEOUTS}
 - producer_wait_mode: ${PRODUCER_WAIT_MODE}
 - producer_flush_mode: ${PRODUCER_FLUSH_MODE}
+- client_execution_mode: ${CLIENT_EXECUTION_MODE}
 - node_count: ${NODE_COUNT}
 - nodes: ${NODE_COUNT}
 - client_count: ${CLIENT_COUNT}

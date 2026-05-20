@@ -77,6 +77,7 @@ Mofka:
 - append with four explicit variants: memory/no-flush, memory/wait-flush, PMDK/no-flush, and PMDK/wait-flush.
 - range/catch-up with two explicit variants: memory/after-loop/no-flush and PMDK/per-event/wait-flush.
 - PMDK rows pass `--mofka-storage-target-sizes` explicitly. The matrix default is 64 MiB, which is not large enough for the high-volume requested rows.
+- PMDK per-event rows use process-isolated client execution to avoid the native-client crash observed when eight Python threads shared one Mofka client process.
 
 ## Required acceptance checks
 

@@ -35,6 +35,31 @@ The Mofka PMDK/no-flush 1-node 1 KiB high-volume row was manually terminated aft
 
 Follow-up: the requested-grid runner now passes a 3 GiB PMDK storage-target size for PMDK rows instead of relying on the matrix default. The PMDK rows still need actual reruns; this only fixes the command shape.
 
+## PMDK rerun results
+
+The PMDK rows were rerun with explicit 3 GiB PMDK storage targets. The no-wait/no-flush row used the normal threaded benchmark path. The per-event/wait + after-loop flush row initially segfaulted in the native client path when eight Python threads shared one process, so the benchmark harness was extended with process-isolated client execution and rerun.
+
+Artifact roots:
+
+```text
+.agent/results/20260519-191902-requested-final-grid-actual-n1-1k-mofka-pmdk-none/
+.agent/results/20260519-192639-requested-final-grid-actual-n1-1k-mofka-pmdk-wait-flush-processes/
+```
+
+| System | Workflow | Semantics | Client mode | Nodes | Clients | Size | Ops/client | Throughput ops/s | Duration s | p50 ms | p95 ms | p99 ms |
+|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Mofka | append_throughput | PMDK none/no-flush | threads | 1 | 8 | 1 KiB | 40,000 | 2,853.392 | 112.147 | null | null | null |
+| Mofka | append_throughput | PMDK per-event wait + after-loop flush | processes | 1 | 8 | 1 KiB | 40,000 | 74.264 | 4,308.952 | 107.125 | 108.498 | 110.501 |
+
+Validation:
+
+```text
+python3 .agent/scripts/phase0_validate_metrics.py $(find .agent/results/20260519-191902-requested-final-grid-actual-n1-1k-mofka-pmdk-none -name metrics.json | sort)
+python3 .agent/scripts/phase0_validate_metrics.py $(find .agent/results/20260519-192639-requested-final-grid-actual-n1-1k-mofka-pmdk-wait-flush-processes -name metrics.json | sort)
+```
+
+Both rerun metrics passed validation. The slow per-event PMDK row is accepted as a real measured result, not treated as a failure.
+
 ## Decision
 
-This actual run validates that the requested-grid runner can collect real rows, but it also shows that the full high-volume grid needs staged execution and row-specific walltime handling. Do not treat this as completion of the final figure objective.
+This actual run validates that the requested-grid runner can collect real rows and that the PMDK rows can be completed when run with explicit storage sizing and enough walltime. Do not treat this as completion of the final figure objective.

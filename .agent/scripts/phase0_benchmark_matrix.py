@@ -494,6 +494,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--mofka-storage-target-sizes", default=os.environ.get("MOFKA_STORAGE_TARGET_SIZE", "67108864"))
     parser.add_argument("--mofka-producer-wait-modes", default="per_event")
     parser.add_argument("--mofka-producer-flush-modes", default="after_loop")
+    parser.add_argument("--mofka-client-execution-modes", default=os.environ.get("MOFKA_CLIENT_EXECUTION_MODE", "threads"))
     parser.add_argument(
         "--mofka-precreate-storage-provider-values",
         default=os.environ.get("MOFKA_PRECREATE_STORAGE_PROVIDER", "yes"),
@@ -876,6 +877,8 @@ def command_for(run: dict[str, Any], child_dir: Path, args: argparse.Namespace) 
                 run["mofka_producer_wait_mode"],
                 "--producer-flush-mode",
                 mofka_cli_flush_mode(run["mofka_producer_flush_mode"]),
+                "--client-execution-mode",
+                run["mofka_client_execution_mode"],
                 "--precreate-storage-provider",
                 run["mofka_precreate_storage_provider"],
                 "--group-ping-timeout-ms",
@@ -2991,6 +2994,7 @@ def write_summary(rows: list[dict[str, Any]], path: Path) -> None:
         "mofka_storage_target_size",
         "mofka_producer_wait_mode",
         "mofka_producer_flush_mode",
+        "mofka_client_execution_mode",
         "mofka_precreate_storage_provider",
         "kafka_acks",
         "chronolog_service_health_ok",
@@ -3551,6 +3555,8 @@ def main() -> int:
     mofka_storage_target_sizes = csv_ints(args.mofka_storage_target_sizes)
     mofka_producer_wait_modes = csv_strings(args.mofka_producer_wait_modes)
     mofka_producer_flush_modes = csv_strings(args.mofka_producer_flush_modes)
+    mofka_client_execution_modes = csv_strings(args.mofka_client_execution_modes)
+    mofka_client_execution_mode_default = mofka_client_execution_modes[0] if mofka_client_execution_modes else "threads"
     mofka_precreate_storage_provider_modes = csv_strings(args.mofka_precreate_storage_provider_values)
     kafka_acks_values = csv_strings(args.kafka_acks_values)
     chronolog_completion_modes = csv_strings(args.chronolog_completion_modes)
@@ -4164,6 +4170,7 @@ def main() -> int:
                 mofka_group_ping_interval_min_ms = args.mofka_group_ping_interval_min_ms
                 mofka_group_ping_interval_max_ms = args.mofka_group_ping_interval_max_ms
                 mofka_group_ping_max_timeouts = args.mofka_group_ping_max_timeouts
+                mofka_client_execution_mode = mofka_client_execution_mode_default
             else:
                 mofka_partition_type = ""
                 mofka_storage_target_type = ""
@@ -4175,6 +4182,7 @@ def main() -> int:
                 mofka_group_ping_interval_min_ms = ""
                 mofka_group_ping_interval_max_ms = ""
                 mofka_group_ping_max_timeouts = ""
+                mofka_client_execution_mode = ""
             if system != "kafka":
                 kafka_acks = ""
             if system == "chronolog" and not chronolog_completion_mode_is_valid_for_workflow(
@@ -4212,6 +4220,7 @@ def main() -> int:
                     "mofka_storage_target_size": mofka_storage_target_size,
                     "mofka_producer_wait_mode": mofka_producer_wait_mode,
                     "mofka_producer_flush_mode": mofka_producer_flush_mode,
+                    "mofka_client_execution_mode": mofka_client_execution_mode,
                     "mofka_precreate_storage_provider": mofka_precreate_storage_provider,
                     "mofka_group_ping_timeout_ms": mofka_group_ping_timeout_ms,
                     "mofka_group_ping_interval_min_ms": mofka_group_ping_interval_min_ms,

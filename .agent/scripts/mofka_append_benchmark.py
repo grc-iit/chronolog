@@ -3,7 +3,9 @@
 import argparse
 import concurrent.futures
 import json
+import os
 import statistics
+import subprocess
 import sys
 import threading
 import time
@@ -68,6 +70,10 @@ def main():
     parser.add_argument("--group-ping-max-timeouts", type=int, default=3)
     parser.add_argument("--producer-wait-mode", choices=["per_event", "after_loop", "none"], default="per_event")
     parser.add_argument("--producer-flush-mode", choices=["after_loop", "none"], default="after_loop")
+    parser.add_argument("--client-execution-mode", choices=["threads", "processes"], default="threads")
+    parser.add_argument("--single-client-index", type=int, default=None)
+    parser.add_argument("--skip-topic-setup", action="store_true")
+    parser.add_argument("--client-metrics-file", default="")
     args = parser.parse_args()
     if args.workflow == "range_retrieval" and args.producer_wait_mode == "none":
         raise SystemExit("range_retrieval requires producer-wait-mode per_event or after_loop")
@@ -81,70 +87,71 @@ def main():
     config_dir.mkdir(parents=True, exist_ok=True)
 
     service = MofkaDriver(args.group_file, use_progress_thread=True)
-    if not service.topic_exists(args.topic):
-        service.create_topic(args.topic)
+    if not args.skip_topic_setup:
+        if not service.topic_exists(args.topic):
+            service.create_topic(args.topic)
 
-    if args.partition_type == "memory":
-        service.add_memory_partition(args.topic, args.partition_server_rank, pool_name="__primary__")
-    elif args.partition_type == "default":
-        candidate_ranks = [args.partition_server_rank]
-        candidate_ranks.extend(rank for rank in group_ranks(args.group_file) if rank not in candidate_ranks)
-        last_error = None
-        for rank in candidate_ranks:
-            try:
-                metadata_provider = args.metadata_provider
-                data_provider = args.data_provider
-                if args.precreate_storage_provider == "yes":
-                    if not metadata_provider:
-                        metadata_provider = precreated_provider_locator(
-                            args.group_file, rank, "phase0_metadata_provider"
+        if args.partition_type == "memory":
+            service.add_memory_partition(args.topic, args.partition_server_rank, pool_name="__primary__")
+        elif args.partition_type == "default":
+            candidate_ranks = [args.partition_server_rank]
+            candidate_ranks.extend(rank for rank in group_ranks(args.group_file) if rank not in candidate_ranks)
+            last_error = None
+            for rank in candidate_ranks:
+                try:
+                    metadata_provider = args.metadata_provider
+                    data_provider = args.data_provider
+                    if args.precreate_storage_provider == "yes":
+                        if not metadata_provider:
+                            metadata_provider = precreated_provider_locator(
+                                args.group_file, rank, "phase0_metadata_provider"
+                            )
+                        if not data_provider:
+                            data_provider = precreated_provider_locator(
+                                args.group_file, rank, "phase0_data_provider"
+                            )
+                    if args.precreate_storage_provider != "yes" and not metadata_provider:
+                        metadata_provider = service.add_default_metadata_provider(rank)
+                    if args.precreate_storage_provider != "yes" and not data_provider:
+                        warabi_target_type = args.storage_target_type
+                        target_config = {}
+                        if args.storage_target_type == "abtio":
+                            storage_root = Path(args.storage_path_root or (mofka_dir / "storage-targets"))
+                            storage_root.mkdir(parents=True, exist_ok=True)
+                            target_path = storage_root / f"dynamic-data-rank-{rank}.abtio"
+                            target_config = {
+                                "path": str(target_path),
+                                "create_if_missing": True,
+                                "override_if_exists": True,
+                            }
+                        elif args.storage_target_type == "pmdk":
+                            storage_root = Path(args.storage_path_root or (mofka_dir / "storage-targets"))
+                            storage_root.mkdir(parents=True, exist_ok=True)
+                            target_config = {
+                                "path": str(storage_root / f"dynamic-data-rank-{rank}.pool"),
+                                "create_if_missing_with_size": args.storage_target_size,
+                                "override_if_exists": True,
+                            }
+                        data_provider = service.add_data_provider(
+                            rank,
+                            target_type=warabi_target_type,
+                            target_config=target_config,
                         )
-                    if not data_provider:
-                        data_provider = precreated_provider_locator(
-                            args.group_file, rank, "phase0_data_provider"
-                        )
-                if args.precreate_storage_provider != "yes" and not metadata_provider:
-                    metadata_provider = service.add_default_metadata_provider(rank)
-                if args.precreate_storage_provider != "yes" and not data_provider:
-                    warabi_target_type = args.storage_target_type
-                    target_config = {}
-                    if args.storage_target_type == "abtio":
-                        storage_root = Path(args.storage_path_root or (mofka_dir / "storage-targets"))
-                        storage_root.mkdir(parents=True, exist_ok=True)
-                        target_path = storage_root / f"dynamic-data-rank-{rank}.abtio"
-                        target_config = {
-                            "path": str(target_path),
-                            "create_if_missing": True,
-                            "override_if_exists": True,
-                        }
-                    elif args.storage_target_type == "pmdk":
-                        storage_root = Path(args.storage_path_root or (mofka_dir / "storage-targets"))
-                        storage_root.mkdir(parents=True, exist_ok=True)
-                        target_config = {
-                            "path": str(storage_root / f"dynamic-data-rank-{rank}.pool"),
-                            "create_if_missing_with_size": args.storage_target_size,
-                            "override_if_exists": True,
-                        }
-                    data_provider = service.add_data_provider(
+                    service.add_default_partition(
+                        args.topic,
                         rank,
-                        target_type=warabi_target_type,
-                        target_config=target_config,
+                        metadata_provider=metadata_provider,
+                        data_provider=data_provider,
+                        pool_name="__primary__",
                     )
-                service.add_default_partition(
-                    args.topic,
-                    rank,
-                    metadata_provider=metadata_provider,
-                    data_provider=data_provider,
-                    pool_name="__primary__",
-                )
-                args.partition_server_rank = rank
-                args.metadata_provider = metadata_provider
-                args.data_provider = data_provider
-                break
-            except Exception as exc:
-                last_error = exc
-        else:
-            raise last_error
+                    args.partition_server_rank = rank
+                    args.metadata_provider = metadata_provider
+                    args.data_provider = data_provider
+                    break
+                except Exception as exc:
+                    last_error = exc
+            else:
+                raise last_error
 
     topic = service.open_topic(args.topic)
 
@@ -200,13 +207,101 @@ def main():
             "wait_latencies_ms": wait_latencies_ms,
         }
 
+    if args.single_client_index is not None:
+        item = append_client(args.single_client_index)
+        if args.client_metrics_file:
+            Path(args.client_metrics_file).write_text(json.dumps(item, indent=2) + "\n")
+        return 0
+
     append_latencies_ms = []
     submit_latencies_ms = []
     wait_latencies_ms = []
     read_latencies_ms = []
     append_start = time.perf_counter()
     client_metrics = []
-    if args.client_count == 1:
+    if args.client_execution_mode == "processes":
+        if args.workflow == "range_retrieval":
+            raise SystemExit("process client execution is currently supported for append workflows only")
+        process_dir = mofka_dir / "client-processes"
+        process_dir.mkdir(parents=True, exist_ok=True)
+        procs = []
+        for client_index in range(args.client_count):
+            metrics_path = process_dir / f"client-{client_index}.json"
+            stdout_path = process_dir / f"client-{client_index}.stdout.log"
+            stderr_path = process_dir / f"client-{client_index}.stderr.log"
+            cmd = [
+                sys.executable,
+                str(Path(__file__).resolve()),
+                "--group-file",
+                args.group_file,
+                "--result-dir",
+                args.result_dir,
+                "--topic",
+                args.topic,
+                "--operation-count",
+                str(args.operation_count),
+                "--message-size-bytes",
+                str(args.message_size_bytes),
+                "--node-count",
+                str(args.node_count),
+                "--client-count",
+                "1",
+                "--deployment-mode",
+                args.deployment_mode,
+                "--workflow",
+                args.workflow,
+                "--partition-type",
+                args.partition_type,
+                "--partition-server-rank",
+                str(args.partition_server_rank),
+                "--storage-target-type",
+                args.storage_target_type,
+                "--storage-path-root",
+                args.storage_path_root,
+                "--storage-target-size",
+                str(args.storage_target_size),
+                "--precreate-storage-provider",
+                args.precreate_storage_provider,
+                "--group-ping-timeout-ms",
+                str(args.group_ping_timeout_ms),
+                "--group-ping-interval-min-ms",
+                str(args.group_ping_interval_min_ms),
+                "--group-ping-interval-max-ms",
+                str(args.group_ping_interval_max_ms),
+                "--group-ping-max-timeouts",
+                str(args.group_ping_max_timeouts),
+                "--producer-wait-mode",
+                args.producer_wait_mode,
+                "--producer-flush-mode",
+                args.producer_flush_mode,
+                "--client-execution-mode",
+                "threads",
+                "--single-client-index",
+                str(client_index),
+                "--skip-topic-setup",
+                "--client-metrics-file",
+                str(metrics_path),
+            ]
+            with stdout_path.open("w") as stdout_file, stderr_path.open("w") as stderr_file:
+                procs.append(
+                    (
+                        client_index,
+                        metrics_path,
+                        subprocess.Popen(cmd, stdout=stdout_file, stderr=stderr_file, env=os.environ.copy()),
+                    )
+                )
+        failures = []
+        for client_index, metrics_path, proc in procs:
+            rc = proc.wait()
+            if rc != 0:
+                failures.append((client_index, rc))
+            elif metrics_path.exists():
+                client_metrics.append(json.loads(metrics_path.read_text()))
+            else:
+                failures.append((client_index, "missing-metrics"))
+        if failures:
+            raise RuntimeError(f"Mofka process clients failed: {failures}")
+    elif args.client_count == 1:
         client_metrics.append(append_client(0))
     else:
         with concurrent.futures.ThreadPoolExecutor(max_workers=args.client_count) as executor:
@@ -282,6 +377,7 @@ def main():
         "success": True,
         "producer_wait_mode": args.producer_wait_mode,
         "producer_flush_mode": args.producer_flush_mode,
+        "client_execution_mode": args.client_execution_mode,
         "semantic_boundary": semantic_boundary,
         "append_ack_boundary": f"producer_push_wait_{args.producer_wait_mode}",
         "flush_boundary": args.producer_flush_mode,
@@ -344,6 +440,7 @@ def main():
         "producer_ordering": "Loose",
         "producer_wait_mode": args.producer_wait_mode,
         "producer_flush_mode": args.producer_flush_mode,
+        "client_execution_mode": args.client_execution_mode,
         "configuration_note": (
             "Uses Mofka memory partition."
             if args.partition_type == "memory"
