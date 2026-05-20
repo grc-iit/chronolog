@@ -101,6 +101,41 @@ python3 .agent/scripts/phase0_validate_metrics.py .agent/results/20260519-235721
 
 Both high-volume Mofka 1-node range/catch-up metrics passed validation. The memory row is live-memory evidence; the PMDK/default row is storage-backed Mofka fixed-baseline evidence, but still a consumer catch-up semantic rather than a ChronoLog archive subrange equivalent.
 
+## 1-node 4 KiB requested-grid slice
+
+The 1-node/4 KiB staged slice uses 8 clients and 20,000 operations per client, for 160,000 total messages/events per row.
+
+Artifact root:
+
+```text
+.agent/results/20260520-000540-requested-final-grid-actual-n1-4k/
+```
+
+| System | Workflow | Semantics | Nodes | Clients | Size | Ops/client | Total events | Throughput ops/s | Readback throughput ops/s | Duration s |
+|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| ChronoLog | append_throughput | sync, keeper journal group-commit tail-only fdatasync | 1 | 8 | 4 KiB | 20,000 | 160,000 | 1,363.380 |  | 117.355 |
+| ChronoLog | append_throughput | async WAL drain, 1 drain worker | 1 | 8 | 4 KiB | 20,000 | 160,000 | 15,898.500 |  | 10.064 |
+| ChronoLog | archive_range_retrieval | raw-blob archive/range, sync publish, 5s Grapher stop-retire grace | 1 | 8 | 4 KiB | 20,000 | 160,000 | 2,824.742 | 54,774.217 | 59.234 |
+| ChronoLog | archive_range_retrieval | raw-blob archive/range, async publish x4, 5s Grapher stop-retire grace | 1 | 8 | 4 KiB | 20,000 | 160,000 | 2,754.177 | 59,175.610 | 60.683 |
+| Kafka | append_throughput | `acks=0` | 1 | 8 | 4 KiB | 20,000 | 160,000 | 11,081.743 |  | 14.438 |
+| Kafka | append_throughput | `acks=all` RF1 | 1 | 8 | 4 KiB | 20,000 | 160,000 | 8,019.556 |  | 19.951 |
+| Kafka | range_retrieval | append first with `acks=0`, then consumer catch-up | 1 | 8 | 4 KiB | 20,000 | 160,000 | 21,069.265 |  | 7.594 |
+| Kafka | range_retrieval | append first with `acks=all`, then consumer catch-up | 1 | 8 | 4 KiB | 20,000 | 160,000 | 21,959.923 |  | 7.286 |
+| Mofka | append_throughput | memory partition, no producer wait, no flush | 1 | 8 | 4 KiB | 20,000 | 160,000 | 7,912.139 |  | 20.222 |
+| Mofka | append_throughput | memory partition, per-event wait, after-loop flush | 1 | 8 | 4 KiB | 20,000 | 160,000 | 6,546.381 |  | 24.441 |
+| Mofka | range_retrieval | memory partition, after-loop wait, no flush, then consumer pull catch-up | 1 | 8 | 4 KiB | 20,000 | 160,000 | 8,443.047 |  | 18.951 |
+| Mofka | append_throughput | PMDK/default partition, no producer wait, no flush | 1 | 8 | 4 KiB | 20,000 | 160,000 | 2,013.301 |  | 79.471 |
+| Mofka | append_throughput | PMDK/default partition, per-event wait, after-loop flush, process clients | 1 | 8 | 4 KiB | 20,000 | 160,000 | 72.187 |  | 2,216.465 |
+| Mofka | range_retrieval | PMDK/default partition, per-event wait, after-loop flush, then consumer pull catch-up | 1 | 8 | 4 KiB | 20,000 | 160,000 | 3,044.171 |  | 52.559 |
+
+Validation:
+
+```text
+python3 .agent/scripts/phase0_validate_metrics.py $(find .agent/results/20260520-000540-requested-final-grid-actual-n1-4k -name metrics.json | sort)
+```
+
+All 14 emitted 1-node/4 KiB metrics passed schema validation. The attempted ChronoLog async WAL drain row with 4 drain workers did not emit `metrics.json`; the matrix summary records it as a service-health failure because `chrono-visor-ares-comp-06.launch.log` contained `core dumped`. The single-drain async row above is the usable 4 KiB async append comparison.
+
 ## 2-node ChronoLog and Kafka rows
 
 ChronoLog artifact root:
