@@ -220,8 +220,6 @@ def main():
     append_start = time.perf_counter()
     client_metrics = []
     if args.client_execution_mode == "processes":
-        if args.workflow == "range_retrieval":
-            raise SystemExit("process client execution is currently supported for append workflows only")
         process_dir = mofka_dir / "client-processes"
         process_dir.mkdir(parents=True, exist_ok=True)
         procs = []
@@ -249,7 +247,7 @@ def main():
                 "--deployment-mode",
                 args.deployment_mode,
                 "--workflow",
-                args.workflow,
+                "append_throughput",
                 "--partition-type",
                 args.partition_type,
                 "--partition-server-rank",
