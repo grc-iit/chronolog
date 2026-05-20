@@ -78,6 +78,7 @@ High-volume 1-node Mofka 1 KiB artifact roots:
 .agent/results/20260519-191902-requested-final-grid-actual-n1-1k-mofka-pmdk-none/
 .agent/results/20260519-192639-requested-final-grid-actual-n1-1k-mofka-pmdk-wait-flush-processes/
 .agent/results/20260519-235231-requested-final-grid-actual-n1-1k-mofka-range-memory-clientgroup/
+.agent/results/20260519-235721-requested-final-grid-actual-n1-1k-mofka-range-pmdk-clientgroup/
 ```
 
 | System | Workflow | Semantics | Nodes | Clients | Size | Ops/client | Total events | Throughput ops/s | Duration s | p50 ms | p95 ms | p99 ms |
@@ -87,6 +88,7 @@ High-volume 1-node Mofka 1 KiB artifact roots:
 | Mofka | append_throughput | PMDK/default partition, no producer wait, no flush | 1 | 8 | 1 KiB | 40,000 | 320,000 | 2,853.392 | 112.147 | null | null | null |
 | Mofka | append_throughput | PMDK/default partition, per-event wait, after-loop flush, process clients | 1 | 8 | 1 KiB | 40,000 | 320,000 | 74.264 | 4,308.952 | 107.125 | 108.498 | 110.501 |
 | Mofka | range_retrieval | memory partition, after-loop wait, no flush, then consumer pull catch-up | 1 | 8 | 1 KiB | 40,000 | 320,000 | 6,906.989 | 46.330 | 0.034 | 0.087 | 0.171 |
+| Mofka | range_retrieval | PMDK/default partition, per-event wait, after-loop flush, then consumer pull catch-up | 1 | 8 | 1 KiB | 40,000 | 320,000 | 2,658.740 | 120.358 | 0.223 | 0.347 | 0.437 |
 
 The first 1-node Mofka memory range attempt failed before metrics because the Flock group file exposed duplicate/out-of-order members (`storage, storage, master`). The harness now writes a client-facing `mofka-client.json` from `bedrock-query-before-benchmark.json`, preserving the service group while ordering unique endpoints master-first for the Mofka client setup path.
 
@@ -94,9 +96,10 @@ Validation:
 
 ```text
 python3 .agent/scripts/phase0_validate_metrics.py .agent/results/20260519-235231-requested-final-grid-actual-n1-1k-mofka-range-memory-clientgroup/001-mofka-range_retrieval-memory-memory-after_loop-no_flush-n1-c8-s1024-o40000-t1/mofka/metrics.json
+python3 .agent/scripts/phase0_validate_metrics.py .agent/results/20260519-235721-requested-final-grid-actual-n1-1k-mofka-range-pmdk-clientgroup/001-mofka-range_retrieval-default-pmdk-per_event-after_loop-n1-c8-s1024-o40000-t1/mofka/metrics.json
 ```
 
-The high-volume Mofka 1-node memory range/catch-up metric passed validation. PMDK/default range for this exact 1-node 1 KiB high-volume shape remains to be run; do not treat that row as terminally blocked.
+Both high-volume Mofka 1-node range/catch-up metrics passed validation. The memory row is live-memory evidence; the PMDK/default row is storage-backed Mofka fixed-baseline evidence, but still a consumer catch-up semantic rather than a ChronoLog archive subrange equivalent.
 
 ## 2-node ChronoLog and Kafka rows
 
