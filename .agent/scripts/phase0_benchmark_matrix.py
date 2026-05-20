@@ -486,6 +486,10 @@ def parse_args() -> argparse.Namespace:
         default=os.environ.get("CHRONOLOG_VISOR_PARALLEL_KEEPER_STOP", "0"),
     )
     parser.add_argument(
+        "--chronolog-visor-parallel-recording-stop-values",
+        default=os.environ.get("CHRONOLOG_VISOR_PARALLEL_RECORDING_STOP", "0"),
+    )
+    parser.add_argument(
         "--chronolog-deploy-stop-timeout-seconds",
         default=os.environ.get("CHRONOLOG_DEPLOY_STOP_TIMEOUT_SECONDS", "90"),
         help="ChronoLog service stop timeout used by the distributed run wrapper.",
@@ -1075,6 +1079,7 @@ def command_for(run: dict[str, Any], child_dir: Path, args: argparse.Namespace) 
             ]
         )
         base.extend(["--visor-parallel-keeper-stop", str(run["chronolog_visor_parallel_keeper_stop"])])
+        base.extend(["--visor-parallel-recording-stop", str(run["chronolog_visor_parallel_recording_stop"])])
         base.extend(["--data-collection-poll-interval-us", str(run["chronolog_data_collection_poll_interval_us"])])
         if run.get("chronolog_archive_wait_seconds", "") != "":
             base.extend(["--archive-wait-seconds", str(run["chronolog_archive_wait_seconds"])])
@@ -2945,6 +2950,7 @@ def write_summary(rows: list[dict[str, Any]], path: Path) -> None:
         "chronolog_keeper_stop_story_flush_drain",
         "chronolog_keeper_stop_story_flush_drain_timeout_ms",
         "chronolog_visor_parallel_keeper_stop",
+        "chronolog_visor_parallel_recording_stop",
         "client_mpi_oversubscribe",
         "keeper_journal_shards",
         "keeper_journal_shard_policy",
@@ -2992,6 +2998,7 @@ def write_summary(rows: list[dict[str, Any]], path: Path) -> None:
         "keeper_stop_story_flush_drain",
         "keeper_stop_story_flush_drain_timeout_ms",
         "visor_parallel_keeper_stop",
+        "visor_parallel_recording_stop",
         "grapher_retire_on_stop",
         "grapher_stop_story_archive_drain",
         "grapher_stop_story_archive_drain_timeout_ms",
@@ -3720,6 +3727,7 @@ def main() -> int:
         args.chronolog_keeper_stop_story_flush_drain_timeout_ms
     )
     chronolog_visor_parallel_keeper_stop_values = csv_ints(args.chronolog_visor_parallel_keeper_stop_values)
+    chronolog_visor_parallel_recording_stop_values = csv_ints(args.chronolog_visor_parallel_recording_stop_values)
     root = run_dir(args)
     matrix_dir = root / "benchmark-matrix"
     matrix_dir.mkdir(parents=True, exist_ok=True)
@@ -4001,6 +4009,7 @@ def main() -> int:
                 chronolog_keeper_stop_story_flush_drain_timeout_ms_values
             )
             chronolog_visor_parallel_keeper_stop_modes = chronolog_visor_parallel_keeper_stop_values
+            chronolog_visor_parallel_recording_stop_modes = chronolog_visor_parallel_recording_stop_values
         if system == "mofka":
             backend_pairs = mofka_backend_modes(
                 mofka_partition_types,
@@ -4101,6 +4110,7 @@ def main() -> int:
             chronolog_keeper_stop_story_flush_drain,
             chronolog_keeper_stop_story_flush_drain_timeout_ms,
             chronolog_visor_parallel_keeper_stop,
+            chronolog_visor_parallel_recording_stop,
         ) in itertools.product(
             backend_pairs,
             mofka_storage_sizes_for_system,
@@ -4190,6 +4200,7 @@ def main() -> int:
             chronolog_keeper_stop_story_flush_drain_modes,
             chronolog_keeper_stop_story_flush_drain_timeout_ms_modes,
             chronolog_visor_parallel_keeper_stop_modes,
+            chronolog_visor_parallel_recording_stop_modes,
         ):
             if system == "mofka":
                 (
@@ -4387,6 +4398,7 @@ def main() -> int:
                         chronolog_keeper_stop_story_flush_drain_timeout_ms
                     ),
                     "chronolog_visor_parallel_keeper_stop": chronolog_visor_parallel_keeper_stop,
+                    "chronolog_visor_parallel_recording_stop": chronolog_visor_parallel_recording_stop,
                     **semantic_boundary(
                         system,
                         workflow,
