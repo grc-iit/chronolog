@@ -134,7 +134,9 @@ public:
     /**
      * @brief Parse and execute a single SQL statement.
      *
-     * Supported grammar (case-insensitive keywords):
+     * Supported grammar (case-insensitive keywords and identifiers; identifiers are
+     * normalized to lower-case at parse time, so `CREATE TABLE Users (...)` and
+     * `SELECT * FROM users` refer to the same table):
      *   - CREATE TABLE name (col [type], col [type], ...)
      *   - DROP TABLE name
      *   - INSERT INTO name [(col, col, ...)] VALUES (v, v, ...)
@@ -142,6 +144,14 @@ public:
      *         [WHERE col = value | WHERE __ts BETWEEN n AND n]
      *
      * Types: INT | DOUBLE | STRING | BOOL (synonyms: VARCHAR, TEXT → STRING).
+     *
+     * NULL semantics — v0.1 deviation from standard SQL three-valued logic:
+     *   - `WHERE col = NULL` returns rows where the column key is **absent** from
+     *     the stored payload. Standard SQL would return the empty set (any
+     *     comparison with NULL evaluates to UNKNOWN). A dedicated `IS NULL`
+     *     predicate will be added once secondary-index support lands; for now
+     *     callers needing absence semantics should prefer `= NULL` and treat
+     *     this as an explicit, plugin-specific extension.
      *
      * @throws std::invalid_argument on parse errors.
      * @throws std::runtime_error on execution errors.
