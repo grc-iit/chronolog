@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -47,7 +48,7 @@ private:
     LogLevel logLevel_;
     std::unique_ptr<ChronoSQLClientAdapter> adapter_;
     MetadataState metadata_;
-    bool metadata_loaded_{false};
+    std::once_flag metadata_loaded_flag_;
 
     static constexpr const char* kMetadataStory = "__chronosql_metadata";
     static constexpr const char* kDefaultChronicle = "ChronoSQLChronicle";

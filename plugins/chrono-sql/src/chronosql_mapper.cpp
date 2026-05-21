@@ -31,17 +31,20 @@ ChronoSQLMapper::ChronoSQLMapper(const std::string& config_path, LogLevel level)
 
 void ChronoSQLMapper::ensureMetadataLoaded()
 {
-    if(metadata_loaded_)
-    {
-        return;
-    }
-    auto events = adapter_->replayEvents(kMetadataStory, MIN_TS, MAX_TS, /*tolerate_timeout=*/true);
-    std::sort(events.begin(),
-              events.end(),
-              [](const ChronoSQLClientAdapter::EventPayload& a, const ChronoSQLClientAdapter::EventPayload& b)
-              { return a.timestamp < b.timestamp; });
-    for(const auto& e: events) { metadata_.apply(e.payload); }
-    metadata_loaded_ = true;
+    // std::call_once guarantees exactly one replay+apply across concurrent first-callers;
+    // other threads block here until the init completes, so MetadataState is never mutated by
+    // more than one thread at a time during load.
+    std::call_once(metadata_loaded_flag_,
+                   [this]
+                   {
+                       auto events = adapter_->replayEvents(kMetadataStory, MIN_TS, MAX_TS, /*tolerate_timeout=*/true);
+                       std::sort(events.begin(),
+                                 events.end(),
+                                 [](const ChronoSQLClientAdapter::EventPayload& a,
+                                    const ChronoSQLClientAdapter::EventPayload& b)
+                                 { return a.timestamp < b.timestamp; });
+                       for(const auto& e: events) { metadata_.apply(e.payload); }
+                   });
 }
 
 void ChronoSQLMapper::appendMetadata(const std::string& payload) { adapter_->appendEvent(kMetadataStory, payload); }
