@@ -311,12 +311,12 @@ private:
         ++idx_; // consume CREATE
         expectKeyword("table");
         ParsedCreateTable out;
-        out.table = expectIdent().original;
+        out.table = expectIdent().text;
         expect(Tok::LParen, "(");
         while(true)
         {
             Column col;
-            col.name = expectIdent().original;
+            col.name = expectIdent().text;
             // optional type identifier
             const Token& maybeType = peek();
             if(maybeType.kind == Tok::Ident)
@@ -358,7 +358,7 @@ private:
         ++idx_; // DROP
         expectKeyword("table");
         ParsedDropTable out;
-        out.table = expectIdent().original;
+        out.table = expectIdent().text;
         return out;
     }
 
@@ -367,13 +367,13 @@ private:
         ++idx_; // INSERT
         expectKeyword("into");
         ParsedInsert out;
-        out.table = expectIdent().original;
+        out.table = expectIdent().text;
         if(peek().kind == Tok::LParen)
         {
             ++idx_;
             while(true)
             {
-                out.columns.push_back(expectIdent().original);
+                out.columns.push_back(expectIdent().text);
                 if(peek().kind == Tok::Comma)
                 {
                     ++idx_;
@@ -431,7 +431,7 @@ private:
         {
             while(true)
             {
-                out.projection.push_back(expectIdent().original);
+                out.projection.push_back(expectIdent().text);
                 if(peek().kind == Tok::Comma)
                 {
                     ++idx_;
@@ -441,7 +441,7 @@ private:
             }
         }
         expectKeyword("from");
-        out.table = expectIdent().original;
+        out.table = expectIdent().text;
         if(peek().kind == Tok::Ident && iequals(peek().text, "where"))
         {
             ++idx_;
@@ -484,7 +484,7 @@ private:
             else
             {
                 WhereEq w;
-                w.column = expectIdent().original;
+                w.column = expectIdent().text;
                 expect(Tok::Equals, "=");
                 const Token& v = peek();
                 if(v.kind == Tok::Ident && iequals(v.text, "null"))

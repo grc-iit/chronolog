@@ -135,3 +135,36 @@ TEST(ChronoSQLParser, RejectsUnknownType)
 {
     EXPECT_THROW(parseStatement("CREATE TABLE t (a FOOBAR)"), std::invalid_argument);
 }
+
+TEST(ChronoSQLParser, IdentifiersAreCaseInsensitive)
+{
+    // SQL standard: unquoted identifiers are case-insensitive. The parser normalizes table and
+    // column names to lower-case so the metadata store can do exact-string lookups without
+    // surprising the user.
+    auto createStmt = parseStatement("CREATE TABLE Users (Id INT, Name STRING)");
+    auto* c = std::get_if<ParsedCreateTable>(&createStmt);
+    ASSERT_NE(c, nullptr);
+    EXPECT_EQ(c->table, "users");
+    ASSERT_EQ(c->columns.size(), 2u);
+    EXPECT_EQ(c->columns[0].name, "id");
+    EXPECT_EQ(c->columns[1].name, "name");
+
+    auto insertStmt = parseStatement("INSERT INTO Users (Id, Name) VALUES (1, 'a')");
+    auto* i = std::get_if<ParsedInsert>(&insertStmt);
+    ASSERT_NE(i, nullptr);
+    EXPECT_EQ(i->table, "users");
+    ASSERT_EQ(i->columns.size(), 2u);
+    EXPECT_EQ(i->columns[0], "id");
+    EXPECT_EQ(i->columns[1], "name");
+
+    auto selectStmt = parseStatement("SELECT Id, Name FROM Users WHERE Id = 1");
+    auto* s = std::get_if<ParsedSelect>(&selectStmt);
+    ASSERT_NE(s, nullptr);
+    EXPECT_EQ(s->table, "users");
+    ASSERT_EQ(s->projection.size(), 2u);
+    EXPECT_EQ(s->projection[0], "id");
+    EXPECT_EQ(s->projection[1], "name");
+    auto* w = std::get_if<WhereEq>(&s->where);
+    ASSERT_NE(w, nullptr);
+    EXPECT_EQ(w->column, "id");
+}
