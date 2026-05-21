@@ -53,8 +53,8 @@ private:
     void runSubscription(std::shared_ptr<Subscription> sub);
 
 public:
-    explicit ChronoPubSubMapper(LogLevel level);
-    explicit ChronoPubSubMapper(const std::string& config_path, LogLevel level);
+    ChronoPubSubMapper(LogLevel level, const std::string& chronicle_name);
+    ChronoPubSubMapper(const std::string& config_path, LogLevel level, const std::string& chronicle_name);
 
     ~ChronoPubSubMapper();
 

@@ -34,26 +34,36 @@ private:
     std::unique_ptr<ChronoPubSubMapper> mapper;
     LogLevel logLevel_;
 
-    explicit ChronoPubSub(LogLevel level);
-    explicit ChronoPubSub(const std::string& config_path, LogLevel level);
+    ChronoPubSub(LogLevel level, const std::string& chronicle_name);
+    ChronoPubSub(const std::string& config_path, LogLevel level, const std::string& chronicle_name);
 
 public:
+    /// Default chronicle used when @p chronicle_name is not specified.
+    static constexpr const char* kDefaultChronicleName = "ChronoPubSubChronicle";
+
     /**
      * @brief Create a ChronoPubSub instance using built-in default ChronoLog
      *        client configuration (localhost deployment).
      *
+     * @p chronicle_name lets independent applications keep their topic
+     * namespaces separate; defaults to @ref kDefaultChronicleName.
+     *
      * Failures during configuration loading or ChronoLog connection are logged
      * at @p level and signalled by returning nullptr.
      */
-    static std::unique_ptr<ChronoPubSub> Create(LogLevel level = getDefaultLogLevel()) noexcept;
+    static std::unique_ptr<ChronoPubSub> Create(LogLevel level = getDefaultLogLevel(),
+                                                const std::string& chronicle_name = kDefaultChronicleName) noexcept;
 
     /**
      * @brief Create a ChronoPubSub instance loading a ChronoLog client config.
      *
-     * Pass an empty string to fall back to the built-in defaults.
+     * Pass an empty string to @p config_path to fall back to the built-in
+     * defaults. @p chronicle_name lets independent applications keep their
+     * topic namespaces separate; defaults to @ref kDefaultChronicleName.
      */
     static std::unique_ptr<ChronoPubSub> Create(const std::string& config_path,
-                                                LogLevel level = getDefaultLogLevel()) noexcept;
+                                                LogLevel level = getDefaultLogLevel(),
+                                                const std::string& chronicle_name = kDefaultChronicleName) noexcept;
 
     ~ChronoPubSub();
 

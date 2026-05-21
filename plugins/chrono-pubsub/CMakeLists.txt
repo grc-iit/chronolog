@@ -49,7 +49,6 @@ target_link_libraries(chronopubsub
     PRIVATE
         chronolog_client
         rt
-    PUBLIC
         Threads::Threads
 )
 

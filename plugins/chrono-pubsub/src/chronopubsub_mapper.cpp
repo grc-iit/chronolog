@@ -15,16 +15,18 @@ namespace chronopubsub
 
 constexpr std::uint64_t MAX_TIMESTAMP = UINT64_MAX;
 
-ChronoPubSubMapper::ChronoPubSubMapper(LogLevel level)
+ChronoPubSubMapper::ChronoPubSubMapper(LogLevel level, const std::string& chronicle_name)
     : logLevel_(level)
 {
-    chronoClientAdapter = std::make_unique<ChronoPubSubClientAdapter>(level);
+    chronoClientAdapter = std::make_unique<ChronoPubSubClientAdapter>(level, chronicle_name);
 }
 
-ChronoPubSubMapper::ChronoPubSubMapper(const std::string& config_path, LogLevel level)
+ChronoPubSubMapper::ChronoPubSubMapper(const std::string& config_path,
+                                       LogLevel level,
+                                       const std::string& chronicle_name)
     : logLevel_(level)
 {
-    chronoClientAdapter = std::make_unique<ChronoPubSubClientAdapter>(config_path, level);
+    chronoClientAdapter = std::make_unique<ChronoPubSubClientAdapter>(config_path, level, chronicle_name);
 }
 
 ChronoPubSubMapper::~ChronoPubSubMapper()

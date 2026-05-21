@@ -14,15 +14,19 @@ namespace chronopubsub
 
 static int DEFAULT_FLAGS = 0;
 
-ChronoPubSubClientAdapter::ChronoPubSubClientAdapter(LogLevel level)
-    : logLevel_(level)
+ChronoPubSubClientAdapter::ChronoPubSubClientAdapter(LogLevel level, const std::string& chronicle_name)
+    : defaultChronicle(chronicle_name)
+    , logLevel_(level)
 {
     chronolog::ClientConfiguration client_config;
     initialize(client_config);
 }
 
-ChronoPubSubClientAdapter::ChronoPubSubClientAdapter(const std::string& config_path, LogLevel level)
-    : logLevel_(level)
+ChronoPubSubClientAdapter::ChronoPubSubClientAdapter(const std::string& config_path,
+                                                     LogLevel level,
+                                                     const std::string& chronicle_name)
+    : defaultChronicle(chronicle_name)
+    , logLevel_(level)
 {
     chronolog::ClientConfiguration client_config;
     if(!config_path.empty())

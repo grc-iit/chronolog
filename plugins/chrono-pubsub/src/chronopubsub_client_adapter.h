@@ -25,7 +25,7 @@ class ChronoPubSubClientAdapter
 {
 private:
     std::unique_ptr<chronolog::Client> chronolog;
-    const std::string defaultChronicle = "ChronoPubSubChronicle";
+    const std::string defaultChronicle;
     LogLevel logLevel_;
 
     // Cache of acquired publish handles (one per topic). Reads do not use the
@@ -39,8 +39,8 @@ private:
     void initialize(const chronolog::ClientConfiguration& client_config);
 
 public:
-    explicit ChronoPubSubClientAdapter(LogLevel level);
-    explicit ChronoPubSubClientAdapter(const std::string& config_path, LogLevel level);
+    ChronoPubSubClientAdapter(LogLevel level, const std::string& chronicle_name);
+    ChronoPubSubClientAdapter(const std::string& config_path, LogLevel level, const std::string& chronicle_name);
 
     ~ChronoPubSubClientAdapter();
 

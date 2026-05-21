@@ -62,7 +62,7 @@ inline std::string format_log_message(const char* fmt, Args&&... args)
 {
     std::ostringstream oss;
     oss << fmt;
-    ((oss << " " << std::forward<Args>(args)), ...);
+    ((oss << std::forward<Args>(args)), ...);
     return oss.str();
 }
 

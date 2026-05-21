@@ -226,10 +226,13 @@ bool runTest()
     bool double_unsub = !pubsub->unsubscribe(sub_id);
     printResult("Re-unsubscribing an already-removed id is a no-op", double_unsub);
 
+    // unsubscribe() above already joined the worker, so the count is final.
+    // Wait a few poll cycles to confirm no in-flight callback completes after
+    // the join. (Asserting against a freshly-published post-unsubscribe event
+    // would not be meaningful: ChronoLog needs ~120s for events to surface,
+    // so any short wait would pass vacuously regardless of subscription state.)
     auto count_at_stop = collector2.size();
-    pubsub->publish(kSecondTopic, "after-unsubscribe");
-    pubsub->flush();
-    std::this_thread::sleep_for(std::chrono::seconds(2));
+    std::this_thread::sleep_for(std::chrono::milliseconds(kPollIntervalMs * 3));
     bool no_more = collector2.size() == count_at_stop;
     printResult("No callbacks after unsubscribe", no_more);
 

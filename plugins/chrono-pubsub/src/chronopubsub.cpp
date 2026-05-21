@@ -8,21 +8,21 @@
 namespace chronopubsub
 {
 
-ChronoPubSub::ChronoPubSub(LogLevel level)
-    : mapper(std::make_unique<ChronoPubSubMapper>(level))
+ChronoPubSub::ChronoPubSub(LogLevel level, const std::string& chronicle_name)
+    : mapper(std::make_unique<ChronoPubSubMapper>(level, chronicle_name))
     , logLevel_(level)
 {}
 
-ChronoPubSub::ChronoPubSub(const std::string& config_path, LogLevel level)
-    : mapper(std::make_unique<ChronoPubSubMapper>(config_path, level))
+ChronoPubSub::ChronoPubSub(const std::string& config_path, LogLevel level, const std::string& chronicle_name)
+    : mapper(std::make_unique<ChronoPubSubMapper>(config_path, level, chronicle_name))
     , logLevel_(level)
 {}
 
-std::unique_ptr<ChronoPubSub> ChronoPubSub::Create(LogLevel level) noexcept
+std::unique_ptr<ChronoPubSub> ChronoPubSub::Create(LogLevel level, const std::string& chronicle_name) noexcept
 {
     try
     {
-        return std::unique_ptr<ChronoPubSub>(new ChronoPubSub(level));
+        return std::unique_ptr<ChronoPubSub>(new ChronoPubSub(level, chronicle_name));
     }
     catch(const std::exception& e)
     {
@@ -36,11 +36,12 @@ std::unique_ptr<ChronoPubSub> ChronoPubSub::Create(LogLevel level) noexcept
     }
 }
 
-std::unique_ptr<ChronoPubSub> ChronoPubSub::Create(const std::string& config_path, LogLevel level) noexcept
+std::unique_ptr<ChronoPubSub>
+ChronoPubSub::Create(const std::string& config_path, LogLevel level, const std::string& chronicle_name) noexcept
 {
     try
     {
-        return std::unique_ptr<ChronoPubSub>(new ChronoPubSub(config_path, level));
+        return std::unique_ptr<ChronoPubSub>(new ChronoPubSub(config_path, level, chronicle_name));
     }
     catch(const std::exception& e)
     {
@@ -62,14 +63,30 @@ ChronoPubSub::~ChronoPubSub() = default;
 std::uint64_t ChronoPubSub::publish(const std::string& topic, const std::string& payload)
 {
     CHRONOPUBSUB_DEBUG(logLevel_, "publish() topic='", topic, "' payload_size=", payload.size());
-    return mapper->publish(topic, payload);
+    try
+    {
+        return mapper->publish(topic, payload);
+    }
+    catch(const std::invalid_argument& e)
+    {
+        CHRONOPUBSUB_ERROR(logLevel_, "publish() rejected: ", e.what());
+        return 0;
+    }
 }
 
 SubscriptionId
 ChronoPubSub::subscribe(const std::string& topic, MessageCallback callback, std::uint32_t poll_interval_ms)
 {
     CHRONOPUBSUB_DEBUG(logLevel_, "subscribe() topic='", topic, "'");
-    return mapper->subscribe(topic, mapper->now_timestamp(), std::move(callback), poll_interval_ms);
+    try
+    {
+        return mapper->subscribe(topic, mapper->now_timestamp(), std::move(callback), poll_interval_ms);
+    }
+    catch(const std::invalid_argument& e)
+    {
+        CHRONOPUBSUB_ERROR(logLevel_, "subscribe() rejected: ", e.what());
+        return kInvalidSubscriptionId;
+    }
 }
 
 SubscriptionId ChronoPubSub::subscribe_from(const std::string& topic,
@@ -78,7 +95,15 @@ SubscriptionId ChronoPubSub::subscribe_from(const std::string& topic,
                                             std::uint32_t poll_interval_ms)
 {
     CHRONOPUBSUB_DEBUG(logLevel_, "subscribe_from() topic='", topic, "' since=", since_timestamp);
-    return mapper->subscribe(topic, since_timestamp, std::move(callback), poll_interval_ms);
+    try
+    {
+        return mapper->subscribe(topic, since_timestamp, std::move(callback), poll_interval_ms);
+    }
+    catch(const std::invalid_argument& e)
+    {
+        CHRONOPUBSUB_ERROR(logLevel_, "subscribe_from() rejected: ", e.what());
+        return kInvalidSubscriptionId;
+    }
 }
 
 bool ChronoPubSub::unsubscribe(SubscriptionId id)
