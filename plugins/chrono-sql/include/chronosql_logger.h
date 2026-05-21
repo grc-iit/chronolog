@@ -15,7 +15,7 @@ enum class LogLevel : std::uint8_t
     DEBUG = 1,
     INFO = 2,
     WARNING = 3,
-    ERROR = 4,
+    ERR = 4, // not ERROR: would collide with the #define ERROR in <wingdi.h>/<windows.h> on Win32 builds
     CRITICAL = 5,
     OFF = 6
 };
@@ -23,7 +23,7 @@ enum class LogLevel : std::uint8_t
 inline LogLevel getDefaultLogLevel()
 {
 #ifdef NDEBUG
-    return LogLevel::ERROR;
+    return LogLevel::ERR;
 #else
     return LogLevel::DEBUG;
 #endif
@@ -41,7 +41,7 @@ inline const char* logLevelToString(LogLevel level)
             return "INFO";
         case LogLevel::WARNING:
             return "WARNING";
-        case LogLevel::ERROR:
+        case LogLevel::ERR:
             return "ERROR";
         case LogLevel::CRITICAL:
             return "CRITICAL";
@@ -117,9 +117,9 @@ inline std::string format_log_message(const char* fmt, T&& arg)
 
 #define CHRONOSQL_ERROR(level, ...)                                                                                    \
     do {                                                                                                               \
-        if((level) <= chronosql::LogLevel::ERROR)                                                                      \
+        if((level) <= chronosql::LogLevel::ERR)                                                                        \
         {                                                                                                              \
-            chronosql::log_message(chronosql::LogLevel::ERROR, chronosql::format_log_message(__VA_ARGS__));            \
+            chronosql::log_message(chronosql::LogLevel::ERR, chronosql::format_log_message(__VA_ARGS__));              \
         }                                                                                                              \
     } while(0)
 
