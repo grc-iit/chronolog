@@ -211,6 +211,16 @@ std::vector<Row>
 ChronoSQLMapper::selectByKey(const std::string& table, const std::string& column, const std::string& value)
 {
     auto rows = selectAll(table);
+    // No secondary index in v0.1: every equality lookup replays the full story over RDMA and
+    // filters client-side. Surface the cost at runtime so it is not invisible in real workloads.
+    CHRONOSQL_WARNING(logLevel_,
+                      "selectByKey on table='",
+                      table,
+                      "' column='",
+                      column,
+                      "' performed a full-story scan over",
+                      rows.size(),
+                      "events; equality lookups are O(events) until secondary indexes land");
     rows.erase(std::remove_if(rows.begin(),
                               rows.end(),
                               [&](const Row& r)
