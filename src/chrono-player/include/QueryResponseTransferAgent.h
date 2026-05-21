@@ -1,5 +1,5 @@
-#ifndef CHRONOLOG_STORYCHUNK_TRANSFER_AGENT_H
-#define CHRONOLOG_STORYCHUNK_TRANSFER_AGENT_H
+#ifndef CHRONOLOG_QUERY_RESPONSE_TRANSFER_AGENT_H
+#define CHRONOLOG_QUERY_RESPONSE_TRANSFER_AGENT_H
 
 #include <string>
 #include <cstdint>
@@ -44,7 +44,7 @@ private:
     ServiceId receiver_service_id;               // remote receiver service ServiceId
     tl::provider_handle receiver_service_handle; // tl::provider_handle for remote receiver service
     tl::remote_procedure receiver_is_available;
-    tl::remote_procedure receive_story_chunk;
+    tl::remote_procedure receive_query_response;
 
     // constructor is private to make sure thalium rpc objects are created on the heap, not stack
     StoryChunkTransferAgent(tl::engine& tl_engine, ServiceId const& receiver_service_id);
@@ -54,4 +54,4 @@ private:
 } // namespace chronolog
 
 
-#endif //CHRONOLOG_STORYCHUNK_SENDER_H
+#endif //CHRONOLOG_QUERY_RESPONSE_TRANSFER_AGENT_H

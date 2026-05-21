@@ -11,7 +11,7 @@
 #include <chronolog_errcode.h>
 #include <PlaybackQueryResponse.h>
 #include <StoryChunk.h>
-#include <StoryChunkTransferAgent.h>
+#include <QueryResponseTransferAgent.h>
 
 namespace tl = thallium;
 namespace chl = chronolog;
@@ -31,7 +31,7 @@ chronolog::StoryChunkTransferAgent::StoryChunkTransferAgent(tl::engine& tl_engin
             tl::provider_handle(service_engine.lookup(service_addr_string), receiver_service_id.getProviderId());
 
     receiver_is_available = service_engine.define("receiver_is_available");
-    receive_story_chunk = service_engine.define("receive_story_chunk");
+    receive_query_response = service_engine.define("receive_query_response");
 
     LOG_DEBUG("[StoryChunkTransferAgent] created agent for receiver service {}", chl::to_string(receiver_service_id));
 }
@@ -39,7 +39,7 @@ chronolog::StoryChunkTransferAgent::StoryChunkTransferAgent(tl::engine& tl_engin
 chronolog::StoryChunkTransferAgent::~StoryChunkTransferAgent()
 {
     receiver_is_available.deregister();
-    receive_story_chunk.deregister();
+    receive_query_response.deregister();
     LOG_DEBUG("[StoryChunkTransferAgent] Destroying agent for receiver service {}",
               chl::to_string(receiver_service_id));
 }
@@ -96,7 +96,7 @@ int chronolog::StoryChunkTransferAgent::processStoryChunk(chronolog::StoryChunk*
         tl::bulk tl_bulk = service_engine.expose(segments, tl::bulk_mode::read_only);
         LOG_DEBUG("[StoryChunkTransferAgent] Draining PlaybackQueryResponse size: {} ...", tl_bulk.size());
 
-        size_t bytes_transfered = receive_story_chunk.on(receiver_service_handle)(tl_bulk);
+        size_t bytes_transfered = receive_query_response.on(receiver_service_handle)(tl_bulk);
 
 #ifdef LOGTIME
         start = end;

@@ -35,7 +35,7 @@ chl::ClientQueryService::ClientQueryService(thallium::engine& tl_engine, chl::Se
 
     LOG_DEBUG("[ClientQueryService] created  service {}", chl::to_string(queryServiceId));
 
-    define("receive_story_chunk", &ClientQueryService::receive_story_chunk, tl::ignore_return_value());
+    define("receive_query_response", &ClientQueryService::receive_query_response, tl::ignore_return_value());
     //set up callback for the case when the engine is being finalized while this provider is still alive
     get_engine().push_finalize_callback(this, [p = this]() { delete p; });
 }
@@ -228,15 +228,13 @@ void chronolog::ClientQueryService::removePlaybackQueryClient(chl::ServiceId con
 }
 
 // Receive a PlaybackQueryResponse from the Player and append its events
-// directly to the active query's event series. The RPC keeps the legacy name
-// "receive_story_chunk" for now to avoid changing the Thallium endpoint name
-// in this refactor; the wire payload is no longer a StoryChunk.
-void chl::ClientQueryService::receive_story_chunk(tl::request const& request, tl::bulk& b)
+// directly to the active query's event series. 
+void chl::ClientQueryService::receive_query_response(tl::request const& request, tl::bulk& b)
 {
     try
     {
         tl::endpoint ep = request.get_endpoint();
-        LOG_DEBUG("[ClientQueryService] receive_story_chunk :Endpoint obtained, ThreadID={}", tl::thread::self_id());
+        LOG_DEBUG("[ClientQueryService] receive_query_response :Endpoint obtained, ThreadID={}", tl::thread::self_id());
 
         std::vector<char> mem_vec(b.size());
         std::vector<std::pair<void*, std::size_t>> segments(1);

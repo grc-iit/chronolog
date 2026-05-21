@@ -21,7 +21,7 @@ target_sources(chrono_player PRIVATE
     src/HDF5ArchiveReadingAgent.cpp
     src/PlaybackService.cpp
     src/StoryChunkExtractor.cpp
-    src/StoryChunkTransferAgent.cpp
+    src/QueryResponseTransferAgent.cpp
 )
 
 target_link_libraries(chrono_player
