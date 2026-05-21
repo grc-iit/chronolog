@@ -79,12 +79,13 @@ void chronolog::PlayerDataStore::retireDecayedPipelines()
         std::lock_guard storeLock(dataStoreMutex);
 
         uint64_t current_time = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+        chl::StoryPipeline * pipeline = nullptr;
         for(auto pipeline_iter = pipelinesWaitingForExit.begin(); pipeline_iter != pipelinesWaitingForExit.end();)
         {
             if(current_time >= (*pipeline_iter).second.second)
             {
                 //current_time >= pipeline exit_time
-                StoryPipeline* pipeline = (*pipeline_iter).second.first;
+                pipeline = (*pipeline_iter).second.first;
                 LOG_DEBUG("[PlayerDataStore] retiring pipeline StoryId {} timeline {}-{} acceptanceWindow {} "
                           "retirementTime {}",
                           pipeline->getStoryId(),
@@ -180,37 +181,43 @@ void chronolog::PlayerDataStore::startDataCollection(int stream_count)
 
 void chronolog::PlayerDataStore::shutdownDataCollection()
 {
+    if(is_shutting_down())
+    {
+        LOG_INFO("[PlayerDataStore] Data collection is already shutting down. Ignoring additional shutdown request.");
+        return;
+    }
+
+    // switch the state to shuttingDown
+    std::lock_guard storeLock(dataStoreStateMutex);
+    state = SHUTTING_DOWN;
+
     LOG_INFO("[PlayerDataStore] Initiating shutdown of DataCollection. CurrentState={}, Active StoryPipelines={}, "
              "PipelinesWaitingForExit={}",
              state,
              theMapOfStoryPipelines.size(),
              pipelinesWaitingForExit.size());
 
-    // switch the state to shuttingDown
-    std::lock_guard storeLock(dataStoreStateMutex);
-    if(is_shutting_down())
-    {
-        LOG_INFO("[PlayerDataStore] Data collection is already shutting down. Ignoring additional shutdown request.");
-        return;
-    }
-    state = SHUTTING_DOWN;
 
     if(!theMapOfStoryPipelines.empty())
     {
-        // label all existing Pipelines as waiting to exit
         std::lock_guard storeLock(dataStoreMutex);
-        uint64_t current_time = std::chrono::high_resolution_clock::now().time_since_epoch().count();
-
-        for(auto pipeline_iter = theMapOfStoryPipelines.begin(); pipeline_iter != theMapOfStoryPipelines.end();
-            ++pipeline_iter)
+        
+        chl::StoryPipeline* pipeline = nullptr;
+        for(auto pipeline_iter = theMapOfStoryPipelines.begin(); pipeline_iter != theMapOfStoryPipelines.end();)
         {
-            if(pipelinesWaitingForExit.find((*pipeline_iter).first) == pipelinesWaitingForExit.end())
-            {
-                uint64_t exit_time = current_time + (*pipeline_iter).second->getAcceptanceWindow();
-                pipelinesWaitingForExit[(*pipeline_iter).first] =
-                        (std::pair<chl::StoryPipeline*, uint64_t>((*pipeline_iter).second, exit_time));
-            }
+                pipeline = (*pipeline_iter).second;
+                theIngestionQueue.removeStoryIngestionHandle(pipeline->getStoryId());
+                delete pipeline;
         }
+     
+        pipelinesWaitingForExit.clear(); 
+        theMapOfStoryPipelines.clear();
+
+        LOG_INFO("[PlayerDataStore] Completed retirement of pipelines. Current state={}, MapOfStoryPipelines={}, pipelinesWaitingForExit={}",
+              state,
+              theMapOfStoryPipelines.size(),
+              pipelinesWaitingForExit.size());
+
     }
 
     // Join threads & execution streams while holding stateMutex
@@ -229,8 +236,9 @@ void chronolog::PlayerDataStore::shutdownDataCollection()
 //
 chronolog::PlayerDataStore::~PlayerDataStore()
 {
-    LOG_INFO("[PlayerDataStore] Destructor called. Initiating shutdown. Active StoryPipelines count={}",
+    LOG_TRACE("[PlayerDataStore] Destructor called. Initiating shutdown. Active StoryPipelines count={}",
              theMapOfStoryPipelines.size());
+
     shutdownDataCollection();
     LOG_INFO("[PlayerDataStore] Shutdown completed successfully. Active StoryPipelines count={}",
              theMapOfStoryPipelines.size());
