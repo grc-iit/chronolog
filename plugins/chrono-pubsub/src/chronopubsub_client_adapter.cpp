@@ -1,5 +1,4 @@
 #include <cstdint>
-#include <map>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -11,8 +10,6 @@
 
 namespace chronopubsub
 {
-
-static int DEFAULT_FLAGS = 0;
 
 ChronoPubSubClientAdapter::ChronoPubSubClientAdapter(LogLevel level, const std::string& chronicle_name)
     : defaultChronicle(chronicle_name)
@@ -64,8 +61,7 @@ void ChronoPubSubClientAdapter::initialize(const chronolog::ClientConfiguration&
     }
     CHRONOPUBSUB_INFO(logLevel_, "Connected successfully");
 
-    std::map<std::string, std::string> chronicle_attrs;
-    if(int ret = chronolog->CreateChronicle(defaultChronicle, chronicle_attrs, DEFAULT_FLAGS);
+    if(int ret = chronolog->CreateChronicle(defaultChronicle);
        ret != chronolog::CL_SUCCESS && ret != chronolog::CL_ERR_CHRONICLE_EXISTS)
     {
         CHRONOPUBSUB_ERROR(logLevel_, "Failed to create chronicle '", defaultChronicle, "' with error code: ", ret);
@@ -96,8 +92,7 @@ chronolog::StoryHandle* ChronoPubSubClientAdapter::getOrAcquirePublishHandleLock
         return it->second;
     }
 
-    std::map<std::string, std::string> story_attrs;
-    auto [status, handle] = chronolog->AcquireStory(defaultChronicle, topic, story_attrs, DEFAULT_FLAGS);
+    auto [status, handle] = chronolog->AcquireStory(defaultChronicle, topic);
     if(status != chronolog::CL_SUCCESS)
     {
         CHRONOPUBSUB_ERROR(logLevel_,
@@ -149,8 +144,7 @@ ChronoPubSubClientAdapter::replayEvents(const std::string& topic, std::uint64_t 
     // handle to be released before events become replayable.
     flushCachedHandle(topic);
 
-    std::map<std::string, std::string> story_attrs;
-    auto [status, handle] = chronolog->AcquireStory(defaultChronicle, topic, story_attrs, DEFAULT_FLAGS);
+    auto [status, handle] = chronolog->AcquireStory(defaultChronicle, topic);
     if(status != chronolog::CL_SUCCESS)
     {
         CHRONOPUBSUB_ERROR(logLevel_,
