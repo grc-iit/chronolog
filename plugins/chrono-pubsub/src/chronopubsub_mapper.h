@@ -9,6 +9,7 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <vector>
 
 #include "chronopubsub_client_adapter.h"
 #include "chronopubsub_logger.h"
@@ -49,6 +50,12 @@ private:
     std::mutex subscriptionsMutex;
     std::unordered_map<SubscriptionId, std::shared_ptr<Subscription>> subscriptions;
     std::atomic<SubscriptionId> nextSubscriptionId{1};
+
+    // Workers that self-unsubscribed (from inside their own callback) cannot be
+    // joined from that same thread. They are moved here and joined by the
+    // destructor so the mapper still waits for every worker before tearing down.
+    std::mutex pendingJoinMutex;
+    std::vector<std::thread> pendingJoinWorkers;
 
     void runSubscription(std::shared_ptr<Subscription> sub);
 

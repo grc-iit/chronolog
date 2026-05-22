@@ -51,6 +51,22 @@ ChronoPubSubMapper::~ChronoPubSubMapper()
             sub->worker.join();
         }
     }
+
+    // Drain any workers that self-unsubscribed earlier. Their threads were not
+    // joinable from inside their own callback, so they were parked here for the
+    // destructor to clean up.
+    std::vector<std::thread> pending;
+    {
+        std::lock_guard<std::mutex> lock(pendingJoinMutex);
+        pending.swap(pendingJoinWorkers);
+    }
+    for(auto& t: pending)
+    {
+        if(t.joinable())
+        {
+            t.join();
+        }
+    }
 }
 
 std::uint64_t ChronoPubSubMapper::publish(const std::string& topic, const std::string& payload)
@@ -131,13 +147,18 @@ bool ChronoPubSubMapper::unsubscribe(SubscriptionId id)
         subscriptions.erase(it);
     }
 
-    // Don't join when called from inside the worker thread (callback-initiated
-    // unsubscribe). Detach instead so the thread cleans up after itself.
+    // Joining the worker from inside its own callback would deadlock, so when
+    // we detect self-unsubscription we move the thread into pendingJoinWorkers
+    // for the destructor to join. This keeps the "mapper waits for all workers
+    // before destruction" invariant intact and avoids the UAF window that a
+    // bare detach() leaves open (the detached thread would otherwise outlive
+    // the mapper and touch its members on the way out).
     if(sub->worker.joinable())
     {
         if(sub->worker.get_id() == std::this_thread::get_id())
         {
-            sub->worker.detach();
+            std::lock_guard<std::mutex> lock(pendingJoinMutex);
+            pendingJoinWorkers.push_back(std::move(sub->worker));
         }
         else
         {
