@@ -6,7 +6,6 @@
 #include <string>
 #include <cstdint>
 
-#include <chronolog_client.h> //for EventSequence definition
 #include "chronolog_types.h"
 #include "LogEventHVL.h"
 
@@ -14,7 +13,6 @@ namespace chronolog
 {
 
 typedef std::tuple<chrono_time, chrono_index> ArrivalSequence;
-// EventSequence is defined in chronolog_client.h.
 typedef std::tuple<uint64_t, uint64_t> EventOffsetSize;
 
 class StoryChunkHVL

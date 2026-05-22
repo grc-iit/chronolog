@@ -9,16 +9,11 @@
 #include <fstream>
 
 #include "ClientConfiguration.h"
+#include "chronolog_types.h"
 #include "client_errcode.h"
 
 namespace chronolog
 {
-
-typedef std::string StoryName;
-typedef std::string ChronicleName;
-typedef uint64_t ClientId;
-typedef uint64_t chrono_time;
-typedef uint32_t chrono_index;
 
 // Wire-protocol version exchanged on Connect. Bump this whenever the wire
 // format between the client and any ChronoLog server component changes in
@@ -53,10 +48,6 @@ struct ClientIdentity
                               static_cast<uint16_t>(id & 0xFFFFu)};
     }
 };
-
-// EventSequence uniquely orders an event within its story: the timestamp at
-// which it was logged, the producing client, and a per-client monotonic index.
-typedef std::tuple<chrono_time, ClientId, chrono_index> EventSequence;
 
 class Event
 {
