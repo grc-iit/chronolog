@@ -158,24 +158,23 @@ public:
 
         // Create a chronicle named after the hostname
         std::string chronicle_name = node_name;
-        int flags = 0;
-        ret = client->CreateChronicle(chronicle_name, flags);
+        ret = client->CreateChronicle(chronicle_name);
         assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_CHRONICLE_EXISTS);
 
         // Acquire stories for different metrics
 
         // CPU usage story
-        auto cpu_result = client->AcquireStory(chronicle_name, "cpu_usage", flags);
+        auto cpu_result = client->AcquireStory(chronicle_name, "cpu_usage");
         assert(cpu_result.first == chronolog::CL_SUCCESS);
         cpu_story_handle = cpu_result.second;
 
         // Memory usage story
-        auto memory_result = client->AcquireStory(chronicle_name, "memory_usage", flags);
+        auto memory_result = client->AcquireStory(chronicle_name, "memory_usage");
         assert(memory_result.first == chronolog::CL_SUCCESS);
         memory_story_handle = memory_result.second;
 
         // Network usage story
-        auto network_result = client->AcquireStory(chronicle_name, "network_usage", flags);
+        auto network_result = client->AcquireStory(chronicle_name, "network_usage");
         assert(network_result.first == chronolog::CL_SUCCESS);
         network_story_handle = network_result.second;
 

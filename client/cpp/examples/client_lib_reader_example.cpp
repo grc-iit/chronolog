@@ -79,8 +79,7 @@ int main(int argc, char** argv)
     // Acquire a story
     std::string chronicle_name = "MyChronicle";
     std::string story_name = "MyStory";
-    int flags = 0;
-    auto acquire_result = client.AcquireStory(chronicle_name, story_name, flags);
+    auto acquire_result = client.AcquireStory(chronicle_name, story_name);
     std::cout << "[ClientExample] AcquireStory returned: " << chronolog::to_string_client(acquire_result.first) << "\n";
     auto story_handle = acquire_result.second;
 

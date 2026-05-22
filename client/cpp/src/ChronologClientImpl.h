@@ -61,12 +61,11 @@ public:
 
     int Disconnect();
 
-    int CreateChronicle(std::string const& chronicle_name, int& flags);
+    int CreateChronicle(std::string const& chronicle_name);
 
     int DestroyChronicle(std::string const& chronicle_name);
 
-    std::pair<int, StoryHandle*>
-    AcquireStory(std::string const& chronicle_name, std::string const& story_name, int& flags);
+    std::pair<int, StoryHandle*> AcquireStory(std::string const& chronicle_name, std::string const& story_name);
 
     int ReleaseStory(std::string const& chronicle_name, std::string const& story_name);
     int DestroyStory(std::string const& chronicle_name, std::string const& story_name);

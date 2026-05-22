@@ -409,19 +409,15 @@ void thread_body(struct thread_arg* t)
              t->tid,
              t->chronicle_name,
              t->story_name);
-    // Chronicle Variables
-    int flags = 1;
     // Chronicle creation
-    int ret = client->CreateChronicle(t->chronicle_name, flags);
+    int ret = client->CreateChronicle(t->chronicle_name);
     LOG_INFO("[ClientLibThreadInterdependencyTest] Chronicle created: tid={}, Ret: {}",
              t->tid,
              chronolog::to_string_client(ret));
     check_chronicle_created(t->tid, ret);
 
-    // Story Variables
-    flags = 2;
     // Acquire story
-    auto acquire_ret = client->AcquireStory(t->chronicle_name, t->story_name, flags);
+    auto acquire_ret = client->AcquireStory(t->chronicle_name, t->story_name);
     LOG_INFO("[ClientLibThreadInterdependencyTest] Story acquired: tid={}, Ret: {}",
              t->tid,
              chronolog::to_string_client(acquire_ret.first));

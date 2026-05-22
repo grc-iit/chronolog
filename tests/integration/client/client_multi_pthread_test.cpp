@@ -24,7 +24,6 @@ chronolog::Client* client;
 void thread_body(struct thread_arg* t)
 {
     LOG_INFO("[ClientLibMultiPThreadTest] Thread (ID: {}) - Starting execution.", t->tid);
-    int flags = 0;
     uint64_t offset;
     int ret;
     std::string chronicle_name;
@@ -34,18 +33,16 @@ void thread_body(struct thread_arg* t)
         chronicle_name = "Chronicle_1";
 
     LOG_INFO("[ClientLibMultiPThreadTest] Thread (ID: {}) - Creating Chronicle: {}", t->tid, chronicle_name);
-    ret = client->CreateChronicle(chronicle_name, flags);
+    ret = client->CreateChronicle(chronicle_name);
     LOG_INFO("[ClientLibMultiPThreadTest] Thread (ID: {}) - CreateChronicle result for {}: {}",
              t->tid,
              chronicle_name,
              chronolog::to_string_client(ret));
 
-    flags = 1;
     std::string story_name = gen_random(STORY_NAME_LEN);
     LOG_INFO("[ClientLibMultiPThreadTest] Thread (ID: {}) - Generating Story: {}", t->tid, story_name);
 
-    flags = 2;
-    auto acquire_ret = client->AcquireStory(chronicle_name, story_name, flags);
+    auto acquire_ret = client->AcquireStory(chronicle_name, story_name);
     LOG_INFO("[ClientLibMultiPThreadTest] Thread (ID: {}) - AcquireStory result for {}:{} - {}",
              t->tid,
              chronicle_name,

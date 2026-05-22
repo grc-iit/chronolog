@@ -12,9 +12,6 @@
 namespace chronokvs
 {
 
-// Default flags for ChronoLog operations - not const since the API requires non-const reference
-static int DEFAULT_FLAGS = 0;
-
 ChronoKVSClientAdapter::ChronoKVSClientAdapter(LogLevel level)
     : logLevel_(level)
 {
@@ -64,7 +61,7 @@ void ChronoKVSClientAdapter::initialize(const chronolog::ClientConfiguration& cl
     CHRONOKVS_INFO(logLevel_, "Connected successfully");
 
     // Ensure the default chronicle exists
-    if(int ret = chronolog->CreateChronicle(defaultChronicle, DEFAULT_FLAGS);
+    if(int ret = chronolog->CreateChronicle(defaultChronicle);
        ret != chronolog::CL_SUCCESS && ret != chronolog::CL_ERR_CHRONICLE_EXISTS)
     {
         CHRONOKVS_ERROR(logLevel_, "Failed to create chronicle '", defaultChronicle, "' with error code: ", ret);
@@ -106,7 +103,7 @@ chronolog::StoryHandle* ChronoKVSClientAdapter::getOrAcquireHandle(const std::st
 
     // Cache miss - acquire new handle
     CHRONOKVS_DEBUG(logLevel_, "Cache miss for key='", key, "', acquiring new handle");
-    auto [status, handle] = chronolog->AcquireStory(defaultChronicle, key, DEFAULT_FLAGS);
+    auto [status, handle] = chronolog->AcquireStory(defaultChronicle, key);
     if(status != chronolog::CL_SUCCESS)
     {
         CHRONOKVS_ERROR(logLevel_, "Failed to acquire story handle for key='", key, "' with error code: ", status);
@@ -156,7 +153,7 @@ ChronoKVSClientAdapter::retrieveEvents(const std::string& key, std::uint64_t sta
     flushCachedHandle(key);
 
     // Acquire a fresh handle for the read operation
-    auto [status, handle] = chronolog->AcquireStory(defaultChronicle, key, DEFAULT_FLAGS);
+    auto [status, handle] = chronolog->AcquireStory(defaultChronicle, key);
     if(status != chronolog::CL_SUCCESS)
     {
         CHRONOKVS_ERROR(logLevel_, "Failed to acquire story handle for key='", key, "' with error code: ", status);

@@ -38,7 +38,6 @@ public:
     int acquire_story(chronolog::ClientId const& client_id,
                       const std::string& chronicle_name,
                       const std::string& story_name,
-                      int& flags,
                       StoryId&);
 
     int release_story(chronolog::ClientId const& client_id,

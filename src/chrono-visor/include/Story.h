@@ -123,11 +123,6 @@ public:
         }
     }
 
-    void setProperty(const std::map<std::string, std::string>& attrs)
-    {
-        for(auto const& entry: attrs) { propertyList_.emplace(entry.first, entry.second); }
-    }
-
     void setEventMap(const std::unordered_map<std::string, Event>& eventMap) { eventMap_ = eventMap; }
 
     uint64_t incrementAcquisitionCount()

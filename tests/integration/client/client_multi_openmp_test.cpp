@@ -74,7 +74,6 @@ int main(int argc, char** argv)
     std::string server_uri = portalConf.PROTO_CONF + "://" + portalConf.IP + ":" + std::to_string(portalConf.PORT);
     server_uri += "://" + server_ip + ":" + std::to_string(base_port);
     LOG_INFO("[ClientLibMultiOpenMPTest] Connecting to server at: {}", server_uri);
-    int flags = 0;
     uint64_t offset;
 
     std::string client_id = gen_random(8);
@@ -92,22 +91,19 @@ int main(int argc, char** argv)
         for(int i = 0; i < num_threads; i++)
         {
             int ret;
-            int flags = 0;
             std::string chronicle_name;
             if(i % 2 == 0)
                 chronicle_name = "gscs5er9TcdJ9mOgUDteDVBcI0oQjozK";
             else
                 chronicle_name = "6RPkwqX2IOpR41dVCqmWauX9RfXIuTAp";
 
-            ret = client->CreateChronicle(chronicle_name, flags);
+            ret = client->CreateChronicle(chronicle_name);
             LOG_INFO("[ClientLibMultiOpenMPTest] Thread {} creating chronicle: {}", i, chronicle_name);
 
-            flags = 1;
             std::string story_name = gen_random(STORY_NAME_LEN);
             LOG_INFO("[ClientLibMultiOpenMPTest] Thread {} creating story: {}", i, story_name);
 
-            flags = 2;
-            auto acquire_ret = client->AcquireStory(chronicle_name, story_name, flags);
+            auto acquire_ret = client->AcquireStory(chronicle_name, story_name);
 
             assert(acquire_ret.first == chronolog::CL_SUCCESS);
             ret = client->DestroyStory(chronicle_name, story_name); //, flags);

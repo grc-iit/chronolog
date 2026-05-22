@@ -178,17 +178,15 @@ static void net_totals(long& rx, long& tx)
 static chronolog::StoryHandle*
 acquire_or_create_story(chronolog::Client& client, const std::string& chronicle, const std::string& story)
 {
-    int f_open = 0;
-    auto r_open1 = client.AcquireStory(chronicle, story, f_open);
+    auto r_open1 = client.AcquireStory(chronicle, story);
     if(r_open1.first == chronolog::CL_SUCCESS && r_open1.second)
         return r_open1.second;
 
-    int f_create = 1;
-    auto r_create = client.AcquireStory(chronicle, story, f_create);
+    auto r_create = client.AcquireStory(chronicle, story);
     if(r_create.first == chronolog::CL_SUCCESS && r_create.second)
         return r_create.second;
 
-    auto r_open2 = client.AcquireStory(chronicle, story, f_open);
+    auto r_open2 = client.AcquireStory(chronicle, story);
     if(r_open2.first == chronolog::CL_SUCCESS && r_open2.second)
         return r_open2.second;
 
@@ -242,8 +240,7 @@ int main(int argc, char** argv)
 
 
     // Create chronicle, ignore if it exists already
-    int flags = 1;
-    rc = client.CreateChronicle(args.chronicle, flags);
+    rc = client.CreateChronicle(args.chronicle);
     if(rc != chronolog::CL_SUCCESS && rc != chronolog::CL_ERR_CHRONICLE_EXISTS)
     {
         std::cerr << "[writer] CreateChronicle failed rc=" << rc << "\n";

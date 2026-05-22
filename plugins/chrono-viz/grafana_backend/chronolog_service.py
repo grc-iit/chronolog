@@ -216,7 +216,6 @@ class AcquireRequest(BaseModel):
 
     chronicle_name: str = Field(..., description="Name of the chronicle")
     story_name: str = Field(..., description="Name of the story")
-    flags: int = Field(default=1, description="Acquisition flags")
 
 
 class AcquireResponse(BaseModel):
@@ -524,18 +523,14 @@ async def acquire_story(request: AcquireRequest):
         )
 
     try:
-        flags = request.flags if request.flags is not None else 1
-
         if not isinstance(request.chronicle_name, str) or not request.chronicle_name:
             raise HTTPException(status_code=400, detail="chronicle_name must be a non-empty string")
         if not isinstance(request.story_name, str) or not request.story_name:
             raise HTTPException(status_code=400, detail="story_name must be a non-empty string")
-        if not isinstance(flags, int):
-            raise HTTPException(status_code=400, detail="flags must be an integer")
 
         logger.info(
             f"Calling AcquireStory: chronicle='{request.chronicle_name}', "
-            f"story='{request.story_name}', flags={flags}"
+            f"story='{request.story_name}'"
         )
 
         import chronolog_service as cs_module
@@ -551,7 +546,6 @@ async def acquire_story(request: AcquireRequest):
                 return chronolog_client.AcquireStory(
                     request.chronicle_name,
                     request.story_name,
-                    flags
                 )
         
         result = await asyncio.to_thread(_acquire_story)
@@ -655,8 +649,6 @@ async def query_story(request: QueryRequest):
         raise
 
     try:
-        flags = 1
-
         import chronolog_service as cs_module
         if chronolog_client is not cs_module.client:
             logger.error("Client object mismatch in query endpoint!")
@@ -670,7 +662,6 @@ async def query_story(request: QueryRequest):
                 return chronolog_client.AcquireStory(
                     request.chronicle_name,
                     request.story_name,
-                    flags
                 )
         
         acquire_result = await asyncio.to_thread(_acquire_story)

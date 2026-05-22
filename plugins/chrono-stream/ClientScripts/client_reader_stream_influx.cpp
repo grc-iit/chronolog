@@ -204,13 +204,11 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    int flags = 1;
-
-    // rc = client.CreateChronicle(args.chronicle, flags);
+    // rc = client.CreateChronicle(args.chronicle);
 
     for(const auto& s: args.stories)
     {
-        auto acq = client.AcquireStory(args.chronicle, s, flags);
+        auto acq = client.AcquireStory(args.chronicle, s);
         (void)acq;
     }
 

@@ -250,8 +250,7 @@ static std::pair<std::string, workload_conf_args> cmd_arg_parse(int argc, char**
 
 static int test_create_chronicle(chronolog::Client& client, const std::string& chronicle_name)
 {
-    int ret, flags = 0;
-    ret = client.CreateChronicle(chronicle_name, flags);
+    int ret = client.CreateChronicle(chronicle_name);
     assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_CHRONICLE_EXISTS);
     return ret;
 }
@@ -259,8 +258,7 @@ static int test_create_chronicle(chronolog::Client& client, const std::string& c
 static std::pair<int, chronolog::StoryHandle*>
 test_acquire_story(chronolog::Client& client, const std::string& chronicle_name, const std::string& story_name)
 {
-    int flags = 0;
-    return client.AcquireStory(chronicle_name, story_name, flags);
+    return client.AcquireStory(chronicle_name, story_name);
 }
 
 static uint64_t test_write_event(chronolog::StoryHandle* story_handle, const std::string& event_payload)

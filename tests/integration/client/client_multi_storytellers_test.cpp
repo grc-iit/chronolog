@@ -25,7 +25,6 @@ chronolog::Client* client;
 void thread_body(struct thread_arg* t)
 {
     // Local variable declarations
-    int flags = 0;
     uint64_t offset;
     int ret;
     std::string chronicle_name;
@@ -36,22 +35,14 @@ void thread_body(struct thread_arg* t)
     else
         chronicle_name = "CHRONICLE_1";
 
-    // Create attributes for the chronicle
-    flags = 1;
-
     // Create the chronicle
-    ret = client->CreateChronicle(chronicle_name, flags);
-    LOG_DEBUG("[ClientLibMultiStorytellers] Chronicle created: tid={}, ChronicleName={}, Flags: {}",
-              t->tid,
-              chronicle_name,
-              flags);
+    ret = client->CreateChronicle(chronicle_name);
+    LOG_DEBUG("[ClientLibMultiStorytellers] Chronicle created: tid={}, ChronicleName={}", t->tid, chronicle_name);
 
-    // Create attributes for the story
     std::string story_name = "STORY"; //gen_random(STORY_NAME_LEN);
-    flags = 2;
 
     // Acquire the story
-    auto acquire_ret = client->AcquireStory(chronicle_name, story_name, flags);
+    auto acquire_ret = client->AcquireStory(chronicle_name, story_name);
     LOG_DEBUG("[ClientLibMultiStorytellers] Story acquired: tid={}, ChronicleName={}, StoryName={}, Ret: {}",
               t->tid,
               chronicle_name,
