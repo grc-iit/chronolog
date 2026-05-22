@@ -26,21 +26,13 @@ ChronicleMetaDirectory::~ChronicleMetaDirectory() { delete chronicleMap_; }
 /**
  * Create a Chronicle
  * @param name: name of the Chronicle
- * @param attrs: attributes associated with the Chronicle
  * @return chronolog::CL_SUCCESS if succeed to create the Chronicle \n
  *         chronolog::CL_ERR_CHRONICLE_EXISTS if a Chronicle with the same name already exists \n
  *         chronolog::CL_ERR_UNKNOWN otherwise
  */
-int ChronicleMetaDirectory::create_chronicle(const std::string& name, const std::map<std::string, std::string>& attrs)
+int ChronicleMetaDirectory::create_chronicle(const std::string& name)
 {
     LOG_DEBUG("[ChronicleMetaDirectory] Creating Chronicle Name={}", name.c_str());
-    for(auto iter = attrs.begin(); iter != attrs.end(); ++iter)
-    {
-        LOG_DEBUG("[ChronicleMetaDirectory] Attribute of Chronicle {}: {}={}",
-                  name.c_str(),
-                  iter->first.c_str(),
-                  iter->second.c_str());
-    }
     std::lock_guard<std::mutex> chronicleMapLock(g_chronicleMetaDirectoryMutex_);
     /* Check if Chronicle already exists, fail if true */
     uint64_t cid;
@@ -71,7 +63,6 @@ int ChronicleMetaDirectory::create_chronicle(const std::string& name, const std:
  * Destroy a Chronicle \n
  * No need to check its Stories. Users are required to release all Stories before releasing a Chronicle
  * @param name: name of the Chronicle
- * @param flags: flags
  * @return chronolog::CL_SUCCESS if succeed to destroy the Chronicle \n
  *         chronolog::CL_ERR_NOT_EXIST if the Chronicle does not exist \n
  *         chronolog::CL_ERR_ACQUIRED if the Chronicle is acquired by others and cannot be destroyed \n
@@ -144,7 +135,6 @@ int ChronicleMetaDirectory::destroy_chronicle(const std::string& name)
  * Destroy a Story
  * @param chronicle_name: name of the Chronicle that the Story belongs to
  * @param story_name: name of the Story
- * @param flags: flags
  * @return chronolog::CL_SUCCESS if succeed to destroy the Story \n
  *         chronolog::CL_ERR_ACQUIRED if the Story is acquired by others and cannot be destroyed \n
  *         chronolog::CL_ERR_NOT_EXIST if the Chronicle does not exist \n
@@ -205,7 +195,6 @@ int ChronicleMetaDirectory::destroy_story(std::string const& chronicle_name, con
  * @param client_id: ClientID to acquire the Story
  * @param chronicle_name: name of the Chronicle that the Story belongs to
  * @param story_name: name of the Story
- * @param flags: flags
  * @param story_id to populate with the story_id assigned to the story
  * @return chronolog::CL_SUCCESS if succeed to destroy the Story \n
  *         chronolog::CL_ERR_NOT_EXIST if the Chronicle does not exist \n
@@ -214,15 +203,12 @@ int ChronicleMetaDirectory::destroy_story(std::string const& chronicle_name, con
 int ChronicleMetaDirectory::acquire_story(chl::ClientId const& client_id,
                                           const std::string& chronicle_name,
                                           const std::string& story_name,
-                                          const std::map<std::string, std::string>& attrs,
-                                          int& flags,
                                           StoryId& story_id)
 {
-    LOG_DEBUG("[ChronicleMetaDirectory] ClientID={} acquiring StoryName={} in ChronicleName={} with Flags={}",
+    LOG_DEBUG("[ChronicleMetaDirectory] ClientID={} acquiring StoryName={} in ChronicleName={}",
               client_id,
               story_name.c_str(),
-              chronicle_name.c_str(),
-              flags);
+              chronicle_name.c_str());
 
     std::lock_guard<std::mutex> chronicleMapLock(g_chronicleMetaDirectoryMutex_);
     /* First check if Chronicle exists, fail if false */
@@ -236,7 +222,7 @@ int ChronicleMetaDirectory::acquire_story(chl::ClientId const& client_id,
     }
     Chronicle* pChronicle = chronicleMapRecord->second;
     /* Then check if Story already_acquired_by_this_client, fail if false */
-    auto ret = pChronicle->addStory(story_name, attrs);
+    auto ret = pChronicle->addStory(story_name);
     if(ret.first != chronolog::CL_SUCCESS)
     {
         return ret.first;
@@ -271,7 +257,6 @@ int ChronicleMetaDirectory::acquire_story(chl::ClientId const& client_id,
  * @param client_id: ClientID to release the Story
  * @param chronicle_name: name of the Chronicle that the Story belongs to
  * @param story_name: name of the Story
- * @param flags: flags
  * @param story_id to populate with the story_id assigned to the story
  * @return chronolog::CL_SUCCESS if succeed to destroy the Story \n
  *         chronolog::CL_ERR_NOT_EXIST if the Chronicle does not exist \n

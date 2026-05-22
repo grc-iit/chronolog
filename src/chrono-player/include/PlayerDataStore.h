@@ -12,7 +12,6 @@
 
 #include <StoryChunkIngestionQueue.h>
 #include <StoryPipeline.h>
-#include <StoryChunkExtractionQueue.h>
 
 
 namespace chronolog
@@ -32,14 +31,12 @@ class PlayerDataStore
 
 public:
     PlayerDataStore(StoryChunkIngestionQueue& ingestion_queue,
-                    StoryChunkExtractionQueue& extraction_queue,
                     uint32_t max_chunk_size = 4096,
                     uint32_t story_chunk_duration_secs = 60,
                     uint32_t acceptance_window_secs = 180,
                     uint32_t inactive_pipeline_delay_secs = 300)
         : state(UNKNOWN)
         , theIngestionQueue(ingestion_queue)
-        , theExtractionQueue(extraction_queue)
         , story_chunk_size(max_chunk_size)
         , story_chunk_duration_secs(story_chunk_duration_secs)
         , acceptance_window_secs(acceptance_window_secs)
@@ -76,7 +73,6 @@ private:
     DataStoreState state;
     std::mutex dataStoreStateMutex;
     StoryChunkIngestionQueue& theIngestionQueue;
-    StoryChunkExtractionQueue& theExtractionQueue;
     std::vector<thallium::managed<thallium::xstream>> dataStoreStreams;
     std::vector<thallium::managed<thallium::thread>> dataStoreThreads;
 
