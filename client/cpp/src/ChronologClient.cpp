@@ -64,14 +64,14 @@ int chronolog::Client::EditChronicleAttr(std::string const& chronicle_name,
     return chronologClientImpl->EditChronicleAttr(chronicle_name, key, value);
 }
 
-int chronolog::Client::ShowChronicles(std::vector<std::string>& chronicles)
+std::pair<int, std::vector<std::string>> chronolog::Client::ShowChronicles()
 {
-    return chronologClientImpl->ShowChronicles(chronicles);
+    return chronologClientImpl->ShowChronicles();
 }
 
-int chronolog::Client::ShowStories(std::string const& chronicle_name, std::vector<std::string>& stories)
+std::pair<int, std::vector<std::string>> chronolog::Client::ShowStories(std::string const& chronicle_name)
 {
-    return chronologClientImpl->ShowStories(chronicle_name, stories);
+    return chronologClientImpl->ShowStories(chronicle_name);
 }
 
 

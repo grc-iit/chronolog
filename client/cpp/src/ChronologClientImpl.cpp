@@ -537,28 +537,29 @@ int chronolog::ChronologClientImpl::EditChronicleAttr(std::string const& chronic
     return editStatus;
 }
 
-int chronolog::ChronologClientImpl::ShowChronicles(std::vector<std::string>& chronicles)
+std::pair<int, std::vector<std::string>> chronolog::ChronologClientImpl::ShowChronicles()
 {
-    chronicles.clear();
+    std::vector<std::string> chronicles;
     std::lock_guard<std::mutex> lock_client(chronologClientMutex);
 
     if((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
     {
         LOG_ERROR("[ChronoLogClientImpl] Failed to fetch chronicles: Client is in an unknown or shutting down state.");
-        return chronolog::CL_ERR_UNKNOWN;
+        return {chronolog::CL_ERR_UNKNOWN, std::move(chronicles)};
     }
 
-    return rpcVisorClient->ShowChronicles(clientId, chronicles);
+    int return_code = rpcVisorClient->ShowChronicles(clientId, chronicles);
+    return {return_code, std::move(chronicles)};
 }
 
-int chronolog::ChronologClientImpl::ShowStories(std::string const& chronicle_name, std::vector<std::string>& stories)
+std::pair<int, std::vector<std::string>> chronolog::ChronologClientImpl::ShowStories(std::string const& chronicle_name)
 {
-    stories.clear();
+    std::vector<std::string> stories;
 
     if(chronicle_name.empty())
     {
         LOG_ERROR("[ChronoLogClientImpl] Failed to fetch stories: Empty chronicle name provided.");
-        return chronolog::CL_ERR_INVALID_ARG;
+        return {chronolog::CL_ERR_INVALID_ARG, std::move(stories)};
     }
 
     std::lock_guard<std::mutex> lock_client(chronologClientMutex);
@@ -568,10 +569,11 @@ int chronolog::ChronologClientImpl::ShowStories(std::string const& chronicle_nam
         LOG_ERROR("[ChronoLogClientImpl] Failed to fetch stories for chronicle '{}': Client is in an unknown or "
                   "shutting down state.",
                   chronicle_name);
-        return chronolog::CL_ERR_UNKNOWN;
+        return {chronolog::CL_ERR_UNKNOWN, std::move(stories)};
     }
 
-    return rpcVisorClient->ShowStories(clientId, chronicle_name, stories);
+    int return_code = rpcVisorClient->ShowStories(clientId, chronicle_name, stories);
+    return {return_code, std::move(stories)};
 }
 
 ////////////////////////////

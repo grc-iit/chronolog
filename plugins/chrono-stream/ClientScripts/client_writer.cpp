@@ -197,8 +197,8 @@ static chronolog::StoryHandle* acquire_or_create_story(chronolog::Client& client
     if(r_open2.first == chronolog::CL_SUCCESS && r_open2.second)
         return r_open2.second;
 
-    std::vector<std::string> ss;
-    client.ShowStories(chronicle, ss);
+    auto [show_stories_rc, ss] = client.ShowStories(chronicle);
+    (void)show_stories_rc;
     std::cerr << "[writer] AcquireStory(" << story << ") failed\n"
               << " open1 rc=" << r_open1.first << " (" << chl::to_string_client(r_open1.first) << ")\n"
               << " create rc=" << r_create.first << " (" << chl::to_string_client(r_create.first) << ")\n"
@@ -238,8 +238,8 @@ int main(int argc, char** argv)
     }
 
     {
-        std::vector<std::string> chs;
-        client.ShowChronicles(chs);
+        auto [show_chronicles_rc, chs] = client.ShowChronicles();
+        (void)show_chronicles_rc;
         std::cerr << "[debug] chronicles:";
         for(auto& c: chs) std::cerr << " " << c;
         std::cerr << "\n";
@@ -259,8 +259,8 @@ int main(int argc, char** argv)
     }
 
     {
-        std::vector<std::string> ss;
-        client.ShowStories(args.chronicle, ss);
+        auto [show_stories_rc, ss] = client.ShowStories(args.chronicle);
+        (void)show_stories_rc;
         std::cerr << "[debug] stories under " << args.chronicle << ":";
         for(auto& s: ss) std::cerr << " " << s;
         std::cerr << "\n";
