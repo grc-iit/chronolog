@@ -12,24 +12,41 @@
 namespace chronokvs
 {
 
-// Default flags for ChronoLog operations - not const since the API requires non-const reference
-static int DEFAULT_FLAGS = 0;
-
 ChronoKVSClientAdapter::ChronoKVSClientAdapter(LogLevel level)
     : logLevel_(level)
 {
-    chronolog::ClientConfiguration confManager;
+    chronolog::ClientConfiguration client_config;
+    initialize(client_config);
+}
 
-    // Configure portal and query services from the configuration manager
-    chronolog::ClientPortalServiceConf portalConf{confManager.PORTAL_CONF.PROTO_CONF,
-                                                  confManager.PORTAL_CONF.IP,
-                                                  confManager.PORTAL_CONF.PORT,
-                                                  confManager.PORTAL_CONF.PROVIDER_ID};
+ChronoKVSClientAdapter::ChronoKVSClientAdapter(const std::string& config_path, LogLevel level)
+    : logLevel_(level)
+{
+    chronolog::ClientConfiguration client_config;
+    if(!config_path.empty())
+    {
+        CHRONOKVS_INFO(logLevel_, "Loading ChronoLog client configuration from '", config_path, "'");
+        if(!client_config.load_from_file(config_path))
+        {
+            CHRONOKVS_ERROR(logLevel_, "Failed to load configuration file: ", config_path);
+            throw std::runtime_error("Failed to load config file: " + config_path);
+        }
+    }
+    initialize(client_config);
+}
 
-    chronolog::ClientQueryServiceConf queryConf{confManager.QUERY_CONF.PROTO_CONF,
-                                                confManager.QUERY_CONF.IP,
-                                                confManager.QUERY_CONF.PORT,
-                                                confManager.QUERY_CONF.PROVIDER_ID};
+void ChronoKVSClientAdapter::initialize(const chronolog::ClientConfiguration& client_config)
+{
+    // Configure portal and query services from the client configuration
+    chronolog::ClientPortalServiceConf portalConf{client_config.PORTAL_CONF.PROTO_CONF,
+                                                  client_config.PORTAL_CONF.IP,
+                                                  client_config.PORTAL_CONF.PORT,
+                                                  client_config.PORTAL_CONF.PROVIDER_ID};
+
+    chronolog::ClientQueryServiceConf queryConf{client_config.QUERY_CONF.PROTO_CONF,
+                                                client_config.QUERY_CONF.IP,
+                                                client_config.QUERY_CONF.PORT,
+                                                client_config.QUERY_CONF.PROVIDER_ID};
 
     // Initialize and connect the ChronoLog client
     CHRONOKVS_INFO(logLevel_, "Connecting to ChronoLog at ", portalConf.IP, ":", portalConf.PORT);
@@ -44,8 +61,7 @@ ChronoKVSClientAdapter::ChronoKVSClientAdapter(LogLevel level)
     CHRONOKVS_INFO(logLevel_, "Connected successfully");
 
     // Ensure the default chronicle exists
-    std::map<std::string, std::string> chronicle_attrs;
-    if(int ret = chronolog->CreateChronicle(defaultChronicle, chronicle_attrs, DEFAULT_FLAGS);
+    if(int ret = chronolog->CreateChronicle(defaultChronicle);
        ret != chronolog::CL_SUCCESS && ret != chronolog::CL_ERR_CHRONICLE_EXISTS)
     {
         CHRONOKVS_ERROR(logLevel_, "Failed to create chronicle '", defaultChronicle, "' with error code: ", ret);
@@ -87,8 +103,7 @@ chronolog::StoryHandle* ChronoKVSClientAdapter::getOrAcquireHandle(const std::st
 
     // Cache miss - acquire new handle
     CHRONOKVS_DEBUG(logLevel_, "Cache miss for key='", key, "', acquiring new handle");
-    std::map<std::string, std::string> story_attrs;
-    auto [status, handle] = chronolog->AcquireStory(defaultChronicle, key, story_attrs, DEFAULT_FLAGS);
+    auto [status, handle] = chronolog->AcquireStory(defaultChronicle, key);
     if(status != chronolog::CL_SUCCESS)
     {
         CHRONOKVS_ERROR(logLevel_, "Failed to acquire story handle for key='", key, "' with error code: ", status);
@@ -138,8 +153,7 @@ ChronoKVSClientAdapter::retrieveEvents(const std::string& key, std::uint64_t sta
     flushCachedHandle(key);
 
     // Acquire a fresh handle for the read operation
-    std::map<std::string, std::string> story_attrs;
-    auto [status, handle] = chronolog->AcquireStory(defaultChronicle, key, story_attrs, DEFAULT_FLAGS);
+    auto [status, handle] = chronolog->AcquireStory(defaultChronicle, key);
     if(status != chronolog::CL_SUCCESS)
     {
         CHRONOKVS_ERROR(logLevel_, "Failed to acquire story handle for key='", key, "' with error code: ", status);

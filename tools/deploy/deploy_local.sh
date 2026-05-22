@@ -139,6 +139,7 @@ generate_config_files() {
     base_port_grapher_datastore=$(jq -r '.chrono_grapher.DataStoreAdminService.rpc.service_base_port' "$default_conf")
     base_port_player_datastore=$(jq -r '.chrono_player.PlayerStoreAdminService.rpc.service_base_port' "$default_conf")
     base_port_player_playback=$(jq -r '.chrono_player.PlaybackQueryService.rpc.service_base_port' "$default_conf")
+    base_port_player_recording=$(jq -r '.chrono_player.PlayerRecordingService.rpc.service_base_port' "$default_conf")
 
     echo "Generating grapher configuration files ..."
     mkdir -p "${output_dir}"
@@ -168,6 +169,7 @@ generate_config_files() {
     for (( i=0; i<num_recording_groups; i++ )); do
         local new_port_player_datastore=$((base_port_player_datastore + i))
         local new_port_player_playback=$((base_port_player_playback + i))
+        local new_port_player_recording=$((base_port_player_recording + i))
 
         local player_index=$((i + 1))
         local player_output_file="${conf_dir}/chrono-player-conf-${player_index}.json"
@@ -176,10 +178,12 @@ generate_config_files() {
             --arg output_dir "$output_dir" \
             --argjson new_port_player_datastore $new_port_player_datastore \
             --argjson new_port_player_playback $new_port_player_playback \
+            --argjson new_port_player_recording $new_port_player_recording \
             --argjson player_index "$player_index" \
            '.chrono_player.RecordingGroup = $player_index |
             .chrono_player.PlayerStoreAdminService.rpc.service_base_port = $new_port_player_datastore |
             .chrono_player.PlaybackQueryService.rpc.service_base_port = $new_port_player_playback |
+            .chrono_player.PlayerRecordingService.rpc.service_base_port = $new_port_player_recording |
             .chrono_player.Monitoring.monitor.file = ($monitor_dir + "/chrono-player-" + ($player_index | tostring) + ".log") |
             .chrono_player.ArchiveReaders.story_files_dir = ($output_dir + "/")' "$default_conf" >"$player_output_file"
 

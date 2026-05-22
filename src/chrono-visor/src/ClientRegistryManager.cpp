@@ -47,6 +47,23 @@ ClientInfo* ClientRegistryManager::get_client_info(chl::ClientId const& client_i
 }
 //////////////////////
 
+int ClientRegistryManager::get_acquired_stories_snapshot(chl::ClientId const& client_id,
+                                                         std::vector<std::pair<uint64_t, Story*>>& snapshot)
+{
+    snapshot.clear();
+    std::lock_guard<std::mutex> clientRegistryLock(g_clientRegistryMutex_);
+    auto clientRegistryRecord = clientRegistry_->find(client_id);
+    if(clientRegistryRecord == clientRegistry_->end())
+    {
+        return chronolog::CL_ERR_NOT_EXIST;
+    }
+    auto const& acquiredStoryList = clientRegistryRecord->second.acquiredStoryList_;
+    snapshot.reserve(acquiredStoryList.size());
+    snapshot.assign(acquiredStoryList.begin(), acquiredStoryList.end());
+    return chronolog::CL_SUCCESS;
+}
+//////////////////////
+
 int ClientRegistryManager::add_story_acquisition(chl::ClientId const& client_id, uint64_t& sid, Story* pStory)
 {
     std::lock_guard<std::mutex> clientRegistryLock(g_clientRegistryMutex_);
