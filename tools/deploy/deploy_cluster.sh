@@ -83,6 +83,7 @@ usage() {
   echo "  -q|--visor-hosts <path>          Hosts file for ChronoVisor (default: work_dir/conf/hosts_visor)"
   echo "  -k|--grapher-hosts <path>        Hosts file for ChronoGrapher (default: work_dir/conf/hosts_grapher)"
   echo "  -o|--keeper-hosts <path>         Hosts file for ChronoKeeper (default: work_dir/conf/hosts_keeper)"
+  echo "  -l|--player-hosts <path>         Hosts file for ChronoPlayer (default: work_dir/conf/hosts_player)"
   echo ""
   echo "Directory Settings:"
   echo "  -w|--work-dir <path>             Working directory (default: script_dir/..)"
@@ -678,7 +679,7 @@ clean() {
 }
 
 parse_args() {
-  TEMP=$(getopt -o w:m:u:v:g:p:a:q:k:o:f:n:j:r:hdsce --long work-dir:,monitor-dir:,output-dir:,visor-bin:,grapher-bin:,keeper-bin:,player-bin:,visor-hosts:,grapher-hosts:,keeper-hosts:,conf-file:,client-conf-file:,job-id:,record-groups:,help,start,stop,clean,verbose -- "$@")
+  TEMP=$(getopt -o w:m:u:v:g:p:a:q:k:o:l:f:n:j:r:hdsce --long work-dir:,monitor-dir:,output-dir:,visor-bin:,grapher-bin:,keeper-bin:,player-bin:,visor-hosts:,grapher-hosts:,keeper-hosts:,player-hosts:,conf-file:,client-conf-file:,job-id:,record-groups:,help,start,stop,clean,verbose -- "$@")
   if [ $? != 0 ]; then
     echo -e "${ERR}Terminating ...${NC}" >&2
     exit 1
@@ -764,6 +765,10 @@ parse_args() {
       ;;
     -o | --keeper-hosts)
       KEEPER_HOSTS=$(realpath -m "$2")
+      shift 2
+      ;;
+    -l | --player-hosts)
+      PLAYER_HOSTS=$(realpath -m "$2")
       shift 2
       ;;
     -f | --conf-file)
