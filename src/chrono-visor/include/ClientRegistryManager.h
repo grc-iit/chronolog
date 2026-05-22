@@ -31,6 +31,9 @@ public:
 
     ClientInfo* get_client_info(chronolog::ClientId const& client_id);
 
+    int get_acquired_stories_snapshot(chronolog::ClientId const& client_id,
+                                      std::vector<std::pair<uint64_t, Story*>>& snapshot);
+
     int add_story_acquisition(chronolog::ClientId const& client_id, uint64_t& sid, Story* pStory);
 
     int remove_story_acquisition(chronolog::ClientId const& client_id, uint64_t& sid);

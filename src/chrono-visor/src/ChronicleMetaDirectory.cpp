@@ -330,17 +330,20 @@ int ChronicleMetaDirectory::release_all_acquired_stories(chl::ClientId const& cl
         return chronolog::CL_ERR_UNKNOWN;
     }
 
-    ClientInfo* clientInfo = clientRegistryManager_->get_client_info(client_id);
-    if(clientInfo == nullptr)
+    // Snapshot under the ClientRegistryManager's mutex; release_story below
+    // mutates acquiredStoryList_ via the manager and an unsynchronized walk
+    // here would race with concurrent Acquire/Release on this client.
+    std::vector<std::pair<uint64_t, Story*>> snapshot;
+    int snapshot_ret = clientRegistryManager_->get_acquired_stories_snapshot(client_id, snapshot);
+    if(snapshot_ret == chronolog::CL_ERR_NOT_EXIST)
     {
         // Nothing to release if the client has no record (e.g. already disconnected).
         return chronolog::CL_SUCCESS;
     }
-
-    // Snapshot first; release_story below mutates acquiredStoryList_ via the
-    // ClientRegistryManager and would invalidate iterators.
-    std::vector<std::pair<uint64_t, Story*>> snapshot(clientInfo->acquiredStoryList_.begin(),
-                                                      clientInfo->acquiredStoryList_.end());
+    if(snapshot_ret != chronolog::CL_SUCCESS)
+    {
+        return snapshot_ret;
+    }
     released_with_no_acquirers_left.reserve(snapshot.size());
 
     for(auto& [sid, pStory]: snapshot)
