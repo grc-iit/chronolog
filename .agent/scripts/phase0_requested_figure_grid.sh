@@ -37,7 +37,7 @@ SLURM_TIME="${SLURM_TIME:-02:00:00}"
 RESULT_ROOT="${RESULT_ROOT:-${REPO_ROOT}/.agent/results/$(date +%Y%m%d-%H%M%S)-requested-final-figure-grid}"
 MOFKA_PMDK_STORAGE_TARGET_SIZE="${MOFKA_PMDK_STORAGE_TARGET_SIZE:-3221225472}"
 
-NODES="${NODES:-1,2,4,5,16}"
+NODES="${NODES:-1,2,4,8,16}"
 SIZES="${SIZES:-1024,4096,16384,65536}"
 
 if [[ "${SMOKE:-0}" == "1" ]]; then
