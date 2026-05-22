@@ -88,10 +88,8 @@ ChronoPubSubClientAdapter::~ChronoPubSubClientAdapter()
     }
 }
 
-chronolog::StoryHandle* ChronoPubSubClientAdapter::getOrAcquirePublishHandle(const std::string& topic)
+chronolog::StoryHandle* ChronoPubSubClientAdapter::getOrAcquirePublishHandleLocked(const std::string& topic)
 {
-    std::lock_guard<std::mutex> lock(cacheMutex);
-
     auto it = publishHandleCache.find(topic);
     if(it != publishHandleCache.end())
     {
@@ -129,7 +127,10 @@ void ChronoPubSubClientAdapter::flushCachedHandle(const std::string& topic)
 
 std::uint64_t ChronoPubSubClientAdapter::publishEvent(const std::string& topic, const std::string& payload)
 {
-    chronolog::StoryHandle* handle = getOrAcquirePublishHandle(topic);
+    // Hold cacheMutex across log_event so a concurrent flush() / flushCachedHandle()
+    // cannot ReleaseStory() and destroy the handle while we are still using it.
+    std::lock_guard<std::mutex> lock(cacheMutex);
+    chronolog::StoryHandle* handle = getOrAcquirePublishHandleLocked(topic);
     auto timestamp = handle->log_event(payload);
     CHRONOPUBSUB_DEBUG(logLevel_,
                        "Published event for topic='",

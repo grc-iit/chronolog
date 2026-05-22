@@ -33,7 +33,8 @@ private:
     std::unordered_map<std::string, chronolog::StoryHandle*> publishHandleCache;
     mutable std::mutex cacheMutex;
 
-    chronolog::StoryHandle* getOrAcquirePublishHandle(const std::string& topic);
+    // Caller must already hold cacheMutex.
+    chronolog::StoryHandle* getOrAcquirePublishHandleLocked(const std::string& topic);
     void flushCachedHandle(const std::string& topic);
 
     void initialize(const chronolog::ClientConfiguration& client_config);
