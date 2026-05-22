@@ -70,7 +70,7 @@ private:
     mutable std::mutex cacheMutex_;
 
     void initialize(const chronolog::ClientConfiguration& client_config);
-    chronolog::StoryHandle* getOrAcquireHandle(const std::string& story);
+    chronolog::StoryHandle* getOrAcquireHandleLocked(const std::string& story);
     void flushCachedHandle(const std::string& story);
 };
 

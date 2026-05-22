@@ -83,9 +83,8 @@ ChronoSQLClientAdapter::~ChronoSQLClientAdapter()
     client_->Disconnect();
 }
 
-chronolog::StoryHandle* ChronoSQLClientAdapter::getOrAcquireHandle(const std::string& story)
+chronolog::StoryHandle* ChronoSQLClientAdapter::getOrAcquireHandleLocked(const std::string& story)
 {
-    std::lock_guard<std::mutex> lock(cacheMutex_);
     auto it = handleCache_.find(story);
     if(it != handleCache_.end())
     {
@@ -116,7 +115,10 @@ void ChronoSQLClientAdapter::flushCachedHandle(const std::string& story)
 
 std::uint64_t ChronoSQLClientAdapter::appendEvent(const std::string& story, const std::string& payload)
 {
-    chronolog::StoryHandle* handle = getOrAcquireHandle(story);
+    // Hold cacheMutex_ across log_event so a concurrent flush() / flushCachedHandle()
+    // cannot ReleaseStory() and destroy the handle while we are still using it.
+    std::lock_guard<std::mutex> lock(cacheMutex_);
+    chronolog::StoryHandle* handle = getOrAcquireHandleLocked(story);
     return handle->log_event(payload);
 }
 
