@@ -11,7 +11,6 @@
 #include <PlayerIdCard.h>
 #include <PlayerRegClient.h>
 #include <StoryChunkIngestionQueue.h>
-#include <StoryChunkExtractionQueue.h>
 #include <PlayerDataStore.h>
 #include <PlayerStoreAdminService.h>
 #include <ConfigurationManager.h>
@@ -207,10 +206,7 @@ int main(int argc, char** argv)
         return (-1);
     }
 
-    // PlayerDataStore uses ExtractionModule with only LoggingExtractor
-    chronolog::StoryChunkExtractionQueue extractionQueue;
-
-    chronolog::PlayerDataStore theDataStore(ingestionQueue, extractionQueue);
+    chronolog::PlayerDataStore theDataStore(ingestionQueue);
 
     tl::engine* dataAdminEngine = nullptr;
 
@@ -317,8 +313,9 @@ int main(int argc, char** argv)
     }
     LOG_INFO("[ChronoPlayer] Successfully registered with ChronoVisor.");
 
-    /// Start data collection and extraction threads ___________________________________________________________________
-    // theDataStore.startDataCollection(3);
+    // start all dataCollection and Extraction threads...
+    theDataStore.startDataCollection(3);
+
     int NUMBER_ARCHIVE_READING_STREAMS = 1;
     archiveReadingAgent->startArchiveReading(NUMBER_ARCHIVE_READING_STREAMS);
 
@@ -344,7 +341,7 @@ int main(int argc, char** argv)
     delete playbackService;
     delete recordingService;
     // Shutdown the Data Collection
-    //theDataStore.shutdownDataCollection();
+    theDataStore.shutdownDataCollection();
     delete dataAdminEngine;
     delete playbackEngine;
     delete recordingEngine;

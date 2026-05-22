@@ -37,7 +37,7 @@ void chronolog::PlayerDataStore::collectIngestedEvents()
 ////////////////////////
 void chronolog::PlayerDataStore::extractDecayedStoryChunks()
 {
-    LOG_DEBUG("[PlayerDataStore] Initiating extraction of decayed story chunks. Current state={}, Active "
+    LOG_DEBUG("[PlayerDataStore] Discarding decayed story chunks. Current state={}, Active "
               "StoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}",
               state,
               theMapOfStoryPipelines.size(),
@@ -45,12 +45,22 @@ void chronolog::PlayerDataStore::extractDecayedStoryChunks()
               tl::thread::self_id());
 
     uint64_t current_time = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+    std::vector<chl::StoryChunk*> extracted_story_chunks;
 
     std::lock_guard storeLock(dataStoreMutex);
     for(auto pipeline_iter = theMapOfStoryPipelines.begin(); pipeline_iter != theMapOfStoryPipelines.end();
         ++pipeline_iter)
     {
-        (*pipeline_iter).second->extractDecayedStoryChunks(current_time);
+        (*pipeline_iter).second->extractDecayedStoryChunks(current_time, extracted_story_chunks);
+    }
+
+    // discard the extracted story chunks
+    for(auto& chunk_ptr: extracted_story_chunks)
+    {
+        if(chunk_ptr != nullptr)
+        {
+            delete chunk_ptr;
+        }
     }
 }
 ////////////////////////
@@ -63,6 +73,9 @@ void chronolog::PlayerDataStore::retireDecayedPipelines()
               theMapOfStoryPipelines.size(),
               pipelinesWaitingForExit.size(),
               tl::thread::self_id());
+
+
+    std::vector<chl::StoryChunk*> extracted_story_chunks;
 
     if(!theMapOfStoryPipelines.empty())
     {
@@ -86,12 +99,22 @@ void chronolog::PlayerDataStore::retireDecayedPipelines()
                 theMapOfStoryPipelines.erase(pipeline->getStoryId());
                 theIngestionQueue.removeStoryIngestionHandle(pipeline->getStoryId());
                 pipeline_iter = pipelinesWaitingForExit.erase(pipeline_iter);
+                pipeline->finalize(extracted_story_chunks);
                 delete pipeline;
             }
             else
             {
                 pipeline_iter++;
             }
+        }
+    }
+
+    // discard the extracted story chunks
+    for(auto& chunk_ptr: extracted_story_chunks)
+    {
+        if(chunk_ptr != nullptr)
+        {
+            delete chunk_ptr;
         }
     }
 
@@ -196,16 +219,26 @@ void chronolog::PlayerDataStore::shutdownDataCollection()
         std::lock_guard storeLock(dataStoreMutex);
 
         chl::StoryPipeline* pipeline = nullptr;
+        std::vector<chl::StoryChunk*> remaining_chunks;
         for(auto pipeline_iter = theMapOfStoryPipelines.begin(); pipeline_iter != theMapOfStoryPipelines.end();
             ++pipeline_iter)
         {
             pipeline = (*pipeline_iter).second;
             theIngestionQueue.removeStoryIngestionHandle(pipeline->getStoryId());
+            pipeline->finalize(remaining_chunks);
             delete pipeline;
         }
 
         pipelinesWaitingForExit.clear();
         theMapOfStoryPipelines.clear();
+
+        for(auto& chunk: remaining_chunks)
+        {
+            if(chunk != nullptr)
+            {
+                delete chunk;
+            }
+        }
 
         LOG_INFO("[PlayerDataStore] Completed retirement of pipelines. Current state={}, MapOfStoryPipelines={}, "
                  "pipelinesWaitingForExit={}",
@@ -257,8 +290,7 @@ int chronolog::PlayerDataStore::startStoryRecording(std::string const& chronicle
 
     auto result = theMapOfStoryPipelines.emplace(
             std::pair<chl::StoryId, chl::StoryPipeline*>(story_id,
-                                                         new chl::StoryPipeline(theExtractionQueue,
-                                                                                chronicle,
+                                                         new chl::StoryPipeline(chronicle,
                                                                                 story,
                                                                                 story_id,
                                                                                 start_time,
