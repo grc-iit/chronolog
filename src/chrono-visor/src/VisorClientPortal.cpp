@@ -142,11 +142,15 @@ int chronolog::VisorClientPortal::ClientDisconnect(chronolog::ClientId const& cl
     // record can always be cleaned up. Without this, remove_client_record
     // refuses to remove a client that has acquired stories and the client
     // would have to call ReleaseStory for every acquisition before Disconnect.
-    std::vector<StoryId> released_ids;
-    chronicleMetaDirectory.release_all_acquired_stories(client_id, released_ids);
+    //
+    // release_all_acquired_stories reports back only the stories whose last
+    // acquirer was this client; stories still held by other clients keep
+    // recording.
+    std::vector<StoryId> released_with_no_acquirers_left;
+    chronicleMetaDirectory.release_all_acquired_stories(client_id, released_with_no_acquirers_left);
     if(theKeeperRegistry != nullptr)
     {
-        for(StoryId const& released_id: released_ids)
+        for(StoryId const& released_id: released_with_no_acquirers_left)
         {
             theKeeperRegistry->notifyRecordingGroupOfStoryRecordingStop(released_id);
         }
@@ -292,7 +296,8 @@ chl::AcquireStoryResponseMsg chronolog::VisorClientPortal::AcquireStory(chl::Cli
                                                                                              player))
     {
         // RPC notification to the keepers might have failed, release the newly acquired story
-        chronicleMetaDirectory.release_story(client_id, chronicle_name, story_name, story_id);
+        bool was_last_acquirer = false;
+        chronicleMetaDirectory.release_story(client_id, chronicle_name, story_name, story_id, was_last_acquirer);
         //we do know that there's no need notify keepers of the story ending in this case as it hasn't started...
         return chronolog::AcquireStoryResponseMsg(chronolog::CL_ERR_NO_KEEPERS, story_id, empty_keeper_service_ids);
     }
@@ -325,13 +330,19 @@ int chronolog::VisorClientPortal::ReleaseStory(chl::ClientId const& client_id,
     }
 
     StoryId story_id(0);
-    auto return_code = chronicleMetaDirectory.release_story(client_id, chronicle_name, story_name, story_id);
+    bool was_last_acquirer = false;
+    auto return_code =
+            chronicleMetaDirectory.release_story(client_id, chronicle_name, story_name, story_id, was_last_acquirer);
     if(chronolog::CL_SUCCESS != return_code)
     {
         return return_code;
     }
 
-    theKeeperRegistry->notifyRecordingGroupOfStoryRecordingStop(story_id);
+    // Only stop the recording group if no other client still holds the story.
+    if(was_last_acquirer)
+    {
+        theKeeperRegistry->notifyRecordingGroupOfStoryRecordingStop(story_id);
+    }
 
     return chronolog::CL_SUCCESS;
 }

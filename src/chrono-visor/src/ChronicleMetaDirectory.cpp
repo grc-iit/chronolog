@@ -277,12 +277,13 @@ int ChronicleMetaDirectory::acquire_story(chl::ClientId const& client_id,
  *         chronolog::CL_ERR_NOT_EXIST if the Chronicle does not exist \n
  *         chronolog::CL_ERR_UNKNOWN otherwise
  */
-//TO_DO return acquisition_count after the story has been released
 int ChronicleMetaDirectory::release_story(chl::ClientId const& client_id,
                                           const std::string& chronicle_name,
                                           const std::string& story_name,
-                                          StoryId& story_id)
+                                          StoryId& story_id,
+                                          bool& was_last_acquirer)
 {
+    was_last_acquirer = false;
     LOG_DEBUG("[ChronicleMetaDirectory] ClientID={} releasing StoryName={} in ChronicleName={}",
               client_id,
               story_name.c_str(),
@@ -309,8 +310,11 @@ int ChronicleMetaDirectory::release_story(chl::ClientId const& client_id,
         if(acquirerMapRecord != acquirerMap.end())
         {
             /* All checks passed and entry found, manipulate metadata */
-            /* Decrement AcquisitionCount */
-            pStory->decrementAcquisitionCount();
+            /* Decrement AcquisitionCount; the post-decrement value tells the caller
+             * whether other clients still hold the story. The recording group must
+             * only be told to stop when the last acquirer releases. */
+            uint64_t remaining_acquirers = pStory->decrementAcquisitionCount();
+            was_last_acquirer = (remaining_acquirers == 0);
             story_id = pStory->getSid();
             /* Remove this client from acquirerClientList of the Story */
             pStory->removeAcquirerClient(client_id);
@@ -333,9 +337,9 @@ int ChronicleMetaDirectory::release_story(chl::ClientId const& client_id,
 }
 
 int ChronicleMetaDirectory::release_all_acquired_stories(chl::ClientId const& client_id,
-                                                         std::vector<StoryId>& released_ids)
+                                                         std::vector<StoryId>& released_with_no_acquirers_left)
 {
-    released_ids.clear();
+    released_with_no_acquirers_left.clear();
     if(clientRegistryManager_ == nullptr)
     {
         return chronolog::CL_ERR_UNKNOWN;
@@ -352,7 +356,7 @@ int ChronicleMetaDirectory::release_all_acquired_stories(chl::ClientId const& cl
     // ClientRegistryManager and would invalidate iterators.
     std::vector<std::pair<uint64_t, Story*>> snapshot(clientInfo->acquiredStoryList_.begin(),
                                                       clientInfo->acquiredStoryList_.end());
-    released_ids.reserve(snapshot.size());
+    released_with_no_acquirers_left.reserve(snapshot.size());
 
     for(auto& [sid, pStory]: snapshot)
     {
@@ -376,10 +380,16 @@ int ChronicleMetaDirectory::release_all_acquired_stories(chl::ClientId const& cl
         }
 
         StoryId released_id{0};
-        int ret = release_story(client_id, chronicle_name, story_name, released_id);
+        bool was_last_acquirer = false;
+        int ret = release_story(client_id, chronicle_name, story_name, released_id, was_last_acquirer);
         if(ret == chronolog::CL_SUCCESS)
         {
-            released_ids.push_back(released_id);
+            // Only report ids whose last acquirer was this client. If other
+            // clients still hold the story, the recording group must keep going.
+            if(was_last_acquirer)
+            {
+                released_with_no_acquirers_left.push_back(released_id);
+            }
         }
         else
         {
