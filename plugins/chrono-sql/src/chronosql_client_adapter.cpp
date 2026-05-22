@@ -1,17 +1,11 @@
 #include "chronosql_client_adapter.h"
 
-#include <map>
 #include <stdexcept>
 
 #include <ClientConfiguration.h>
 
 namespace chronosql
 {
-
-namespace
-{
-int DEFAULT_FLAGS = 0;
-}
 
 ChronoSQLClientAdapter::ChronoSQLClientAdapter(const std::string& chronicle_name, LogLevel level)
     : chronicle_(chronicle_name)
@@ -61,8 +55,7 @@ void ChronoSQLClientAdapter::initialize(const chronolog::ClientConfiguration& cl
         throw std::runtime_error("Failed to connect to ChronoLog with error code: " + std::to_string(ret));
     }
 
-    std::map<std::string, std::string> chronicle_attrs;
-    if(int ret = client_->CreateChronicle(chronicle_, chronicle_attrs, DEFAULT_FLAGS);
+    if(int ret = client_->CreateChronicle(chronicle_);
        ret != chronolog::CL_SUCCESS && ret != chronolog::CL_ERR_CHRONICLE_EXISTS)
     {
         CHRONOSQL_ERROR(logLevel_, "Failed to create chronicle '", chronicle_, "' with error code:", ret);
@@ -90,8 +83,7 @@ chronolog::StoryHandle* ChronoSQLClientAdapter::getOrAcquireHandleLocked(const s
     {
         return it->second;
     }
-    std::map<std::string, std::string> story_attrs;
-    auto [status, handle] = client_->AcquireStory(chronicle_, story, story_attrs, DEFAULT_FLAGS);
+    auto [status, handle] = client_->AcquireStory(chronicle_, story);
     if(status != chronolog::CL_SUCCESS)
     {
         CHRONOSQL_ERROR(logLevel_, "Failed to acquire story handle for story='", story, "' code:", status);
@@ -129,8 +121,7 @@ std::vector<ChronoSQLClientAdapter::EventPayload> ChronoSQLClientAdapter::replay
 {
     flushCachedHandle(story);
 
-    std::map<std::string, std::string> story_attrs;
-    auto [status, handle] = client_->AcquireStory(chronicle_, story, story_attrs, DEFAULT_FLAGS);
+    auto [status, handle] = client_->AcquireStory(chronicle_, story);
     if(status != chronolog::CL_SUCCESS)
     {
         CHRONOSQL_ERROR(logLevel_, "Failed to acquire story handle for story='", story, "' code:", status);
