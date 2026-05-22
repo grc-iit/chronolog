@@ -34,19 +34,11 @@ enum StoryType
     story_type_priority = 1
 };
 
-enum StoryTieringPolicy
-{
-    story_tiering_normal = 0,
-    story_tiering_hot = 1,
-    story_tiering_cold = 2
-};
-
 typedef struct StoryAttrs_
 {
     uint64_t size;
     enum StoryIndexingGranularity indexing_granularity;
     enum StoryType type;
-    enum StoryTieringPolicy tiering_policy;
     uint16_t access_permission;
 } StoryAttrs;
 
@@ -65,7 +57,6 @@ public:
         attrs_.size = 0;
         attrs_.indexing_granularity = story_gran_ms;
         attrs_.type = story_type_standard;
-        attrs_.tiering_policy = story_tiering_normal;
         attrs_.access_permission = 0;
         stats_.count = 0;
     }
@@ -130,11 +121,6 @@ public:
         {
             return false;
         }
-    }
-
-    void setProperty(const std::map<std::string, std::string>& attrs)
-    {
-        for(auto const& entry: attrs) { propertyList_.emplace(entry.first, entry.second); }
     }
 
     void setEventMap(const std::unordered_map<std::string, Event>& eventMap) { eventMap_ = eventMap; }
