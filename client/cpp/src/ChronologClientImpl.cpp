@@ -233,9 +233,7 @@ int chronolog::ChronologClientImpl::Disconnect()
     return return_code;
 }
 
-int chronolog::ChronologClientImpl::CreateChronicle(std::string const& chronicle_name,
-                                                    const std::map<std::string, std::string>& attrs,
-                                                    int& flags)
+int chronolog::ChronologClientImpl::CreateChronicle(std::string const& chronicle_name)
 {
     if(chronicle_name.empty())
     {
@@ -253,7 +251,7 @@ int chronolog::ChronologClientImpl::CreateChronicle(std::string const& chronicle
     }
 
     // Attempt to create the chronicle using the Visor client.
-    int result = rpcVisorClient->CreateChronicle(clientId, chronicle_name, attrs, flags);
+    int result = rpcVisorClient->CreateChronicle(clientId, chronicle_name);
 
     // Log the outcome of the create operation.
     if(result == chronolog::CL_SUCCESS)
@@ -338,11 +336,8 @@ int chronolog::ChronologClientImpl::DestroyStory(std::string const& chronicle_na
     return result;
 }
 
-std::pair<int, chronolog::StoryHandle*>
-chronolog::ChronologClientImpl::AcquireStory(std::string const& chronicle_name,
-                                             std::string const& story_name,
-                                             const std::map<std::string, std::string>& attrs,
-                                             int& flags)
+std::pair<int, chronolog::StoryHandle*> chronolog::ChronologClientImpl::AcquireStory(std::string const& chronicle_name,
+                                                                                     std::string const& story_name)
 {
     // Log the attempt to acquire a story with specific details.
     LOG_DEBUG("[ChronoLogClientImpl] Attempting to acquire story. ChronicleName={}, StoryName={}",
@@ -379,7 +374,7 @@ chronolog::ChronologClientImpl::AcquireStory(std::string const& chronicle_name,
     }
 
     // issue rpc request to the Visor
-    auto acquireStoryResponse = rpcVisorClient->AcquireStory(clientId, chronicle_name, story_name, attrs, flags);
+    auto acquireStoryResponse = rpcVisorClient->AcquireStory(clientId, chronicle_name, story_name);
 
     std::stringstream ss;
     ss << acquireStoryResponse;

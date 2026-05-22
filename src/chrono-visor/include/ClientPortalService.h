@@ -71,13 +71,9 @@ public:
         request.respond(return_code);
     }
 
-    void CreateChronicle(tl::request const& request,
-                         ClientId const& client_id,
-                         std::string const& chronicle_name,
-                         const std::map<std::string, std::string>& attrs,
-                         int& flags)
+    void CreateChronicle(tl::request const& request, ClientId const& client_id, std::string const& chronicle_name)
     {
-        int return_code = theVisorClientPortal.CreateChronicle(client_id, chronicle_name, attrs, flags);
+        int return_code = theVisorClientPortal.CreateChronicle(client_id, chronicle_name);
         request.respond(return_code);
     }
 
@@ -90,12 +86,10 @@ public:
     void AcquireStory(tl::request const& request,
                       ClientId const& client_id,
                       std::string const& chronicle_name,
-                      std::string const& story_name,
-                      const std::map<std::string, std::string>& attrs,
-                      int& flags)
+                      std::string const& story_name)
     {
         AcquireStoryResponseMsg acquire_response =
-                theVisorClientPortal.AcquireStory(client_id, chronicle_name, story_name, attrs, flags);
+                theVisorClientPortal.AcquireStory(client_id, chronicle_name, story_name);
         request.respond(acquire_response);
     }
 

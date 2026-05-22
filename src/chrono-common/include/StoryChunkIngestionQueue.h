@@ -121,6 +121,16 @@ public:
                  orphanQueue.size());
         // last attempt to drain orphanQueue into known ingestionHandles
         drainOrphanChunks();
+        if(!orphanQueue.empty())
+        {
+            for(auto& chunk: orphanQueue)
+            {
+                if(chunk != nullptr)
+                {
+                    delete chunk;
+                }
+            }
+        }
         // disengage all handles
         std::lock_guard<std::mutex> lock(ingestionQueueMutex);
         storyIngestionHandles.clear();
