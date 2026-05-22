@@ -26,7 +26,7 @@
 class ChronoKVSTest
 {
 private:
-    chronokvs::ChronoKVS kvs;
+    std::unique_ptr<chronokvs::ChronoKVS> kvs;
     const std::string test_key = "chronokvs_test_story";
     const int num_values = 1000;
     const int num_random_gets = 10;
@@ -75,6 +75,12 @@ private:
     void printSeparator() { std::cout << std::string(60, '-') << std::endl; }
 
 public:
+    ChronoKVSTest()
+        : kvs(chronokvs::ChronoKVS::Create())
+    {}
+
+    bool isInitialized() const { return kvs != nullptr; }
+
     bool test1_put()
     {
         printHeader("TEST 1: PUT OPERATIONS");
@@ -91,7 +97,7 @@ public:
 
         for(int i = 0; i < num_values; i++)
         {
-            std::uint64_t timestamp = kvs.put(test_key, values[i]);
+            std::uint64_t timestamp = kvs->put(test_key, values[i]);
             timestamps.push_back(timestamp);
 
             if((i + 1) % 100 == 0 || i < 5)
@@ -143,7 +149,7 @@ public:
 
         try
         {
-            auto history = kvs.get_history(test_key);
+            auto history = kvs->get_history(test_key);
             history_events = history; // Store for use in subsequent tests
 
             bool success = history.size() >= static_cast<size_t>(num_values);
@@ -196,7 +202,7 @@ public:
 
             try
             {
-                std::string retrieved_value = kvs.get(test_key, timestamp);
+                std::string retrieved_value = kvs->get(test_key, timestamp);
                 if(retrieved_value == expected_value)
                 {
                     successful_gets++;
@@ -283,7 +289,7 @@ public:
 
             try
             {
-                auto range_events = kvs.get_range(test_key, start_ts, end_ts);
+                auto range_events = kvs->get_range(test_key, start_ts, end_ts);
 
                 // Count how many events should be in this range from the available history
                 // Note: We iterate over ALL events, not just [start_idx, end_idx], because
@@ -377,7 +383,7 @@ public:
 
         try
         {
-            auto earliest_opt = kvs.get_earliest(test_key);
+            auto earliest_opt = kvs->get_earliest(test_key);
 
             if(!earliest_opt.has_value())
             {
@@ -448,7 +454,7 @@ public:
 
         try
         {
-            auto latest_opt = kvs.get_latest(test_key);
+            auto latest_opt = kvs->get_latest(test_key);
 
             if(!latest_opt.has_value())
             {
@@ -530,7 +536,7 @@ public:
         if(test1_result)
         {
             std::cout << "\n  Flushing cached handles to commit writes..." << std::endl;
-            kvs.flush();
+            kvs->flush();
             std::cout << "  ✓ Handles flushed - data committed for propagation" << std::endl;
         }
 
@@ -647,17 +653,16 @@ int main()
     try
     {
         ChronoKVSTest test;
+        if(!test.isInitialized())
+        {
+            std::cout << "\n  ChronoKVS integration test skipped (no ChronoLog server available)." << std::endl;
+            return 0;
+        }
         bool success = test.runAllTests();
         return success ? 0 : 1;
     }
     catch(const std::exception& e)
     {
-        std::string msg(e.what());
-        if(msg.find("Failed to connect") != std::string::npos)
-        {
-            std::cout << "\n  ChronoKVS integration test skipped (no ChronoLog server available)." << std::endl;
-            return 0;
-        }
         std::cerr << "\n" << std::string(80, '!') << std::endl;
         std::cerr << "  CRITICAL ERROR: Test failed with exception" << std::endl;
         std::cerr << "  " << e.what() << std::endl;

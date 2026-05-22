@@ -13,7 +13,7 @@ help() {
   echo "  -n    Number of clients (default: 1)"
   echo ""
   echo "  THALLIUM_TEST_WORK_DIR  Directory containing server/client binaries (default: script dir)."
-  echo "  Run from build tree or set THALLIUM_TEST_WORK_DIR to your build/test/communication path."
+  echo "  Run from build tree or set THALLIUM_TEST_WORK_DIR to your build/tests/communication path."
   echo ""
 }
 

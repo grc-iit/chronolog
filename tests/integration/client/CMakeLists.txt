@@ -23,9 +23,9 @@ foreach(client ${client_standard_targets})
     )
 
     target_include_directories(${client} PRIVATE
-        ${CMAKE_BINARY_DIR}/Client/include
-        ${CMAKE_SOURCE_DIR}/chrono_common/include
-        ${CMAKE_SOURCE_DIR}/Client/cpp/include
+        ${CMAKE_BINARY_DIR}/client/include
+        ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+        ${CMAKE_SOURCE_DIR}/client/cpp/include
     )
 
     target_link_libraries(${client}
@@ -49,9 +49,9 @@ add_executable(client_multi_argobots_test
 )
 
 target_include_directories(client_multi_argobots_test PRIVATE
-    ${CMAKE_BINARY_DIR}/Client/include
-    ${CMAKE_SOURCE_DIR}/chrono_common/include
-    ${CMAKE_SOURCE_DIR}/Client/cpp/include
+    ${CMAKE_BINARY_DIR}/client/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
     ${ABT_INCLUDE_DIRS}
 )
 
@@ -81,9 +81,9 @@ add_executable(client_multi_openmp_test
 )
 
 target_include_directories(client_multi_openmp_test PRIVATE
-    ${CMAKE_BINARY_DIR}/Client/include
-    ${CMAKE_SOURCE_DIR}/chrono_common/include
-    ${CMAKE_SOURCE_DIR}/Client/cpp/include
+    ${CMAKE_BINARY_DIR}/client/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
 )
 
 target_link_libraries(client_multi_openmp_test
@@ -105,9 +105,9 @@ add_executable(client_hybrid_argobots_test
 )
 
 target_include_directories(client_hybrid_argobots_test PRIVATE
-    ${CMAKE_BINARY_DIR}/Client/include
-    ${CMAKE_SOURCE_DIR}/chrono_common/include
-    ${CMAKE_SOURCE_DIR}/Client/cpp/include
+    ${CMAKE_BINARY_DIR}/client/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
     ${MPI_CXX_INCLUDE_DIRS}
     ${ABT_INCLUDE_DIRS}
 )

@@ -20,12 +20,12 @@ endif()
 # Thallium Server Test
 add_executable(thallium_server
     thallium_server_test.cpp
-    ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
+    ${CMAKE_SOURCE_DIR}/client/cpp/src/chrono_monitor.cpp
 )
 
 target_include_directories(thallium_server PRIVATE
-    ${CMAKE_SOURCE_DIR}/chrono_common/include
-    ${CMAKE_SOURCE_DIR}/Client/cpp/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
 )
 
 target_link_libraries(thallium_server
@@ -39,12 +39,12 @@ add_test(NAME Communication_Thallium_ServerRepeaterRpc COMMAND thallium_server)
 # Thallium Client Test
 add_executable(thallium_client
     thallium_client_test.cpp
-    ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
+    ${CMAKE_SOURCE_DIR}/client/cpp/src/chrono_monitor.cpp
 )
 
 target_include_directories(thallium_client PRIVATE
-    ${CMAKE_SOURCE_DIR}/chrono_common/include
-    ${CMAKE_SOURCE_DIR}/Client/cpp/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
 )
 
 target_link_libraries(thallium_client
@@ -58,12 +58,12 @@ set_tests_properties(Communication_Thallium_ClientSendRecvOrRdma PROPERTIES MANU
 # Thallium Client MPI Test
 add_executable(thallium_client_mpi
     thallium_client_mpi_test.cpp
-    ${CMAKE_SOURCE_DIR}/Client/cpp/src/chrono_monitor.cpp
+    ${CMAKE_SOURCE_DIR}/client/cpp/src/chrono_monitor.cpp
 )
 
 target_include_directories(thallium_client_mpi SYSTEM PRIVATE
-    ${CMAKE_SOURCE_DIR}/chrono_common/include
-    ${CMAKE_SOURCE_DIR}/Client/cpp/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
     ${MPI_INCLUDE_PATH}
 )
 

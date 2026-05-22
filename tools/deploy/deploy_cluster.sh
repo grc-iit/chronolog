@@ -394,6 +394,7 @@ generate_conf_for_each_recording_group() {
     jq ".chrono_grapher.ExtractionModule.extractors.hdf5_archive_extractor.hdf5_archive_dir = \"${OUTPUT_DIR}\"" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
     jq ".chrono_player.PlayerStoreAdminService.rpc.service_ip = \"${player_ip}\"" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
     jq ".chrono_player.PlaybackQueryService.rpc.service_ip = \"${player_ip}\"" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
+    jq ".chrono_player.PlayerRecordingService.rpc.service_ip = \"${player_ip}\"" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
     jq ".chrono_player.ArchiveReaders.story_files_dir = \"${OUTPUT_DIR}\"" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
 
     generate_conf_for_each_keeper "${CONF_FILE}.${i}" "${keeper_hosts_file}"
