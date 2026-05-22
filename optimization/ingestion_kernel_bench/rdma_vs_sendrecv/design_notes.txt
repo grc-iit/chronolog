@@ -1,0 +1,928 @@
+=============================================================
+  Ingestion kernel benchmark — design notes and optimization analysis
+  date:   2026-05-19
+  setup:  cross-node 40G IB (ofi+verbs;ofi_rxm)
+          server ares-comp-03-40g (172.25.101.3)
+          client ares-comp-04-40g
+          4096 B payload, 1000 events/run, reps=3, 4 handler ULTs
+=============================================================
+
+Full benchmark results: results/breakdown_20260519.txt
+Queue sweep results:    results/loopback_queue_sweep/
+
+
+================================================================
+1. Baseline results — three ingestion modes
+================================================================
+
+  mode            per-event RTT   vs sendrecv
+  ──────────────────────────────────────────
+  sendrecv             147 µs      baseline
+  rdma (naive)         201 µs      +37%
+  rdma-pool            171 µs      +16%
+
+Server handler breakdown (µs/event):
+
+  phase                sendrecv    rdma-naive    rdma-pool
+  ──────────────────────────────────────────────────────────
+  total handler         43.71       113.48         81.57
+  RDMA pull               --         39.39         38.77
+  POD deser               --          3.38          3.13
+  enqueue (lock)          6.18        2.08          1.81
+  ibv_reg_mr (alloc)      --         68.63           --
+  pool acquire+respond    --           --           37.86
+  respond (sendrecv)     ~37.53        --            --
+
+Network overhead (derived = RTT − handler):
+
+  sendrecv:  104 µs  (client serialize + transit req + Mercury deser +
+                       ULT schedule + transit resp)
+  rdma-pool:  89 µs  (tiny RPC transit + ULT schedule + transit resp;
+                       no payload deser — data arrives via RDMA pull)
+
+
+================================================================
+2. Why 40 Gbps is so underutilized
+================================================================
+
+40 Gbps = 5 GB/s → a 4 KB event takes 0.82 µs at wire speed.
+Actual RTT is 147 µs → 0.56% of theoretical bandwidth utilization.
+
+The bottleneck is per-RPC fixed overhead, not the wire:
+
+  respond():             ~38 µs  (Cereal uint64 → Mercury send → transit resp)
+  network round-trip:    ~20 µs  (req + resp transit at IB latency)
+  ULT scheduling:        ~5-10 µs
+  Mercury deser:         ~8 µs   (std::string heap alloc + memcpy for 4 KB)
+  ──────────────────────────────
+  floor per event:       ~70-80 µs before any application logic
+
+Each event is one synchronous RPC round-trip. Batching N events per RPC
+would amortize this overhead across N, but batching is not currently
+on the table.
+
+
+================================================================
+3. Why naive RDMA is slower than sendrecv
+================================================================
+
+ibv_reg_mr per event costs ~68 µs — this is the kernel pinning the
+4 KB page and registering it with the HCA on every single call.
+The actual RDMA data movement (39 µs) is faster than sendrecv's
+network round-trip component, but ibv_reg_mr overwhelms it:
+
+  rdma-naive handler = ibv_reg_mr (68) + RDMA pull (39) + POD deser (3)
+                     + enqueue (2)
+                     = 113 µs  >>  sendrecv handler 44 µs
+
+The pre-pinned pool (rdma-pool) eliminates ibv_reg_mr entirely.
+Handler drops 113 → 82 µs (−28%). But rdma-pool is still 16% slower
+than sendrecv because the RDMA pull (39 µs) replaces the Mercury deser
+(~8 µs) and the smaller initial RPC only saves ~15 µs on network overhead:
+
+  rdma-pool saves:  +15 µs (smaller network overhead, no payload in RPC)
+  rdma-pool costs:  −39 µs (RDMA pull replaces Mercury deser)
+  net:              −24 µs worse than sendrecv
+
+
+================================================================
+4. RDMA pull efficiency on this cluster
+================================================================
+
+True one-sided RDMA READ for 4 KB on 40G IB should take 5–10 µs
+(bandwidth-limited: 4 KB / 5 GB/s = 0.82 µs wire time + ~2 µs IB latency).
+We observe 39 µs — ~5–8x higher than expected.
+
+Root cause: ofi+verbs;ofi_rxm does not issue native ibv_post_send RDMA
+READ operations. The RXM layer provides FI_EP_RDM (reliable datagram)
+semantics on top of FI_EP_MSG (connected), using a two-message exchange
+for bulk transfers: server sends a pull request message, client NIC
+responds with the data. This round-trip (~2 × 20 µs one-way) accounts
+for the 39 µs observed.
+
+All RDMA optimizations on this cluster that go through ofi+verbs;ofi_rxm
+are therefore constrained by this emulated-RDMA ceiling. True one-sided
+operations would require a raw verbs or ofi+verbs (non-RXM) transport,
+which is not available in RDM mode on this cluster.
+
+
+================================================================
+5. Mercury deserialization — where it sits and optimization options
+================================================================
+
+In the sendrecv path, Thallium deserializes LogEvent before calling
+the handler lambda. The h0 timer starts after deserialization is complete.
+Deser cost therefore appears in "network overhead" (RTT − handler), not
+in the handler timer itself.
+
+Estimated deser cost:
+  sendrecv network overhead:  104 µs
+  rdma-pool network overhead:  89 µs  (tiny RPC, near-zero deser)
+  difference:                  15 µs  ← client serialize + server deser
+  server-side deser estimate:  ~7-8 µs for 4 KB (half of the 15 µs gap)
+
+The cost comes from LogEvent::serialize:
+  ar(storyId, eventTime, clientId, eventIndex, logRecord)
+where logRecord is std::string. Cereal deserializes this by:
+  1. Reading 4-byte length prefix
+  2. Calling new char[payload_size]   ← global malloc, contends under 4 ULTs
+  3. memcpy from Mercury receive buffer into new allocation
+  4. assign into the std::string
+
+Optimization options (in order of effort):
+
+  A. LD_PRELOAD=libjemalloc.so  (zero code change)
+     jemalloc per-thread arenas eliminate global malloc lock under
+     concurrent ULTs. Directly addresses the contention in step 2.
+     Worth measuring first.
+
+  B. POD wire type for sendrecv  (new rpc mode: sendrecv-pod)
+     Change RPC argument from LogEvent (std::string) to a flat fixed-size
+     struct EventFrame { EventPOD hdr; char payload[MAX_SIZE]; }.
+     Cereal serializes/deserializes this as a raw binary blob — no length
+     prefix, no new char[], no heap alloc. Eliminates steps 1-4.
+     Estimated saving: ~6-10 µs at 4 KB.
+
+  C. std::pmr::string with per-ES monotonic pool
+     Change LogEvent::logRecord to std::pmr::string backed by a per-Argobots-
+     ES monotonic_buffer_resource. Eliminates global heap contention without
+     changing the wire format. Invasive but keeps the serialization stable.
+
+  D. FI_RXM_BUFFER_SIZE / FI_OFI_RXM_USE_SRX env vars
+     Ensure messages stay below the eager/SAR threshold in the RXM layer,
+     avoiding a potential extra copy inside libfabric.
+
+Impact ceiling: deser is ~8 µs of the 147 µs RTT.
+Eliminating it entirely gives ~5% improvement. Not a step-change.
+The dominant server-side cost is respond() at ~38 µs.
+
+
+================================================================
+6. Async fire-and-forget record_event()
+================================================================
+
+6.1  How Thallium supports it
+──────────────────────────────
+Thallium exposes .disable_response() on both the server handler definition
+and the client remote_procedure handle. Mercury marks the RPC as one-way:
+client returns when the request is queued into Mercury's send buffer;
+server handler never calls respond().
+
+  // Server
+  engine.define("record_event_oneway",
+      [&state](LogEvent const& ev) {
+          state.queue.ingestEvent(ev);
+          state.record_arrival();
+          // no respond()
+      }
+  ).disable_response();
+
+  // Client
+  auto rpc = engine.define("record_event_oneway").disable_response();
+  rpc.on(server)(event);  // returns void immediately
+
+The Mercury progress thread still drains the send queue asynchronously.
+The caller is unblocked as soon as the request is handed to Mercury.
+
+6.2  What changes in the benchmark
+────────────────────────────────────
+Server:
+  - Remove tl::request const& req from handler signature
+  - Remove req.respond() call
+  - Handler becomes: enqueue + record_arrival only (~6 µs total, mutex)
+  - Timing instrumentation unchanged; server ingest_ms still valid
+
+Client:
+  - Send loop becomes a tight submit loop, no per-event blocking
+  - Add a separate wait_for(N) RPC: server spins on events_received >= N
+    then responds, giving client a way to wait for ingestion completion
+  - Replace RTT metric with:
+      submission_ms  = wall time to submit all N events client-side
+      ingest_ms      = server-side first-to-last arrival (unchanged)
+    These diverge: submission_ms << ingest_ms at high throughput
+
+6.3  Impact on production application code
+───────────────────────────────────────────
+
+  Aspect               Current (sync + respond)     Fire-and-forget
+  ─────────────────────────────────────────────────────────────────
+  Return value         uint64_t received count       void
+  Guarantee on return  Event received by Keeper      Event in Mercury send buffer
+  Backpressure         Implicit (RTT blocks sender)  None — must be explicit
+  Per-event errors     Yes (RPC exception)           Silent
+  Crash safety         Event received before return  In-flight events lost on crash
+
+Production ripple points:
+  - ChronoLogClient::record_event() return type and error-path logic
+  - Any caller using return count for flow control or sequencing
+  - release_story() — must explicitly flush and wait before story close
+  - Error handling — need out-of-band channel (periodic get_stats RPC, etc.)
+
+Backpressure options:
+  a. Credit/window: Keeper advertises N free slots; client waits for credit
+     replenishment RPC when window exhausted
+  b. Mercury send-buffer saturation: rpc.on(server)(ev) eventually blocks
+     when Mercury's send queue fills — implicit but fragile
+  c. Client-side rate limiter keyed on server-reported queue depth
+
+For ChronoLog's use case (high-throughput append-only logging, relaxed
+ordering), losing in-flight events on abrupt crash is likely acceptable.
+The release_story() boundary provides the durability checkpoint.
+
+6.4  Why the lockfree queue becomes much more valuable
+────────────────────────────────────────────────────────
+Current handler cost split:
+  enqueue:  6.18 µs  =  14% of handler
+  respond: 37.53 µs  =  86% of handler
+
+With fire-and-forget, respond() is gone. Enqueue becomes 100% of the
+handler. Simultaneously, clients are no longer throttled by RTT — they
+submit ~5-7x more events/sec, driving more concurrent ULT activity on
+the server.
+
+The local in-process sweep directly predicts what happens next:
+  mutex,    10 threads:  2.1 Mev/s
+  lockfree, 10 threads:  8.4 Mev/s  →  4x speedup
+
+In the current sync-respond benchmark lockfree gained only ~15% in
+network mode because respond() dominated. Remove respond() and the server
+is in the in-process regime: high-concurrency enqueue with no other work
+above it. The 4x gain from the in-process sweep becomes directly applicable.
+
+After the lockfree queue is no longer the bottleneck, the next layer is
+Mercury deserialization in the progress thread (~8 µs → ~125K ev/sec ceiling
+per progress thread). Options: jemalloc, POD wire type, multiple Mercury
+progress domains.
+
+Expected RTT improvement from fire-and-forget alone:
+  respond() removed:   −38 µs
+  remaining floor:     ~20-30 µs (one-way IB latency + Mercury serialization)
+  ≈ 2x improvement in per-event submission latency vs current 147 µs
+
+
+================================================================
+7. Combined: RDMA-pool + fire-and-forget + lockfree
+================================================================
+
+7.1  What gets eliminated
+──────────────────────────
+  ibv_reg_mr per event:   eliminated by pool (already done)
+  Mercury deser:          eliminated (tiny RPC carries only bulk handle)
+  respond():              eliminated by fire-and-forget
+  mutex contention:       eliminated by lockfree queue
+
+Server handler becomes:
+  pool acquire:   ~0 µs  (atomic fetch_add)
+  RDMA pull:      39 µs  ← dominant cost
+  POD deser:       3 µs
+  lockfree enq:   ~1 µs
+  ───────────────────
+  total:          ~43 µs
+
+7.2  Performance arithmetic vs sendrecv + fire-and-forget
+───────────────────────────────────────────────────────────
+sendrecv + fire-and-forget (lockfree queue):
+  Mercury deser:  ~8 µs  (in progress thread, parallel to handler ULTs)
+  handler enq:    ~1 µs  (lockfree, barely touches the critical path)
+  bottleneck:     Mercury progress thread at ~125K ev/sec
+
+RDMA-pool + fire-and-forget (lockfree queue):
+  handler:        ~43 µs per event, per ULT
+  with 4 ULTs:    4 / 43 µs ≈ 93K ev/sec  — slower than sendrecv + f&f
+
+RDMA-pool + f&f requires more handler ULTs to compensate because each
+ULT is blocked for 39 µs waiting for the RDMA pull. Pulls are independent
+(separate pool slots, separate client addresses) so throughput scales
+linearly with ULT count:
+
+  ULTs needed to match 125K ev/sec:  125K × 43 µs ≈ 6 ULTs
+  ULTs needed for 256K ev/sec:       256K × 43 µs ≈ 11 ULTs
+
+This assumes the NIC/HCA queue depth and ofi+verbs;ofi_rxm connection
+resources can sustain many concurrent bulk operations. Under RXM's
+emulated two-sided bulk, concurrent pulls compete for the same connection.
+
+Whether RDMA-pool + f&f surpasses sendrecv + f&f on this cluster depends
+on whether ofi+verbs;ofi_rxm can parallelize bulk transfers efficiently —
+which is uncertain given the 39 µs latency already shows non-ideal behavior.
+
+7.3  Correctness problem: client buffer lifetime
+──────────────────────────────────────────────────
+With fire-and-forget, the server can no longer safely do:
+  client_bulk.on(endpoint) >> slot.bulk
+after the client has returned from the RPC call.
+
+Current flow (safe):
+  client sends RPC with client_bulk → server pulls → server responds →
+  client receives response → client frees/reuses buffer
+
+Fire-and-forget flow (unsafe):
+  client sends RPC with client_bulk → client returns immediately →
+  client frees or reuses buffer
+  ↑ server tries to pull from now-invalid memory → corruption or fault
+
+Fix: client-side pool too. Client pre-registers N send slots; each event
+occupies a slot until server confirms pull completion via an out-of-band
+credit RPC. Without a completion signal, the client cannot safely reuse
+slots — which requires some form of round-trip anyway.
+
+7.4  The clean design: pure RDMA WRITE (push model)
+─────────────────────────────────────────────────────
+The design that avoids all the above complications:
+
+  1. At story-open time, server pre-registers N receive slots and sends
+     their addresses + rkeys to the client via a handshake RPC.
+  2. Client does one-sided RDMA WRITE directly into a server slot — no RPC,
+     no per-event Mercury involvement on either side.
+  3. Client writes to a server-side doorbell counter (also via RDMA WRITE)
+     to signal completion.
+  4. Server polls the doorbell and processes events.
+
+This eliminates ALL per-event RPCs, ALL per-event memory registration,
+and the client buffer lifetime problem (write is complete before the call
+returns). But it is a protocol redesign, not a parameter tweak, and it
+requires raw verbs (ofi+verbs without RXM) or true one-sided RDMA support
+from the transport — which is not available in RDM mode on this cluster.
+
+7.5  Summary of the optimization progression
+─────────────────────────────────────────────
+
+  configuration                           RTT / throughput ceiling
+  ──────────────────────────────────────────────────────────────────
+  sendrecv (baseline)                     147 µs / limited by RTT
+  rdma-naive                              201 µs / ibv_reg_mr bottleneck
+  rdma-pool                               171 µs / RDMA pull (39 µs) + respond
+  sendrecv + fire-and-forget              ~30-50 µs / Mercury deser (125K ev/s)
+  sendrecv + f&f + lockfree               same, but queue no longer a factor
+  sendrecv + f&f + lockfree + jemalloc    deser cost reduced, +10-20%
+  rdma-pool + f&f + lockfree (6 ULTs)     ~125K ev/s but cluster-RDMA-limited
+  RDMA WRITE push (raw verbs, future)     ~5-10 µs pull, true HW one-sided
+
+The single most impactful change on this cluster with current transport:
+fire-and-forget + lockfree queue, applied to the sendrecv path.
+RDMA benefits are constrained by ofi+verbs;ofi_rxm's emulated bulk transfer.
+
+
+================================================================
+8. Story count and per-story lock contention
+================================================================
+
+8.1  The contention structure with stories=4, 20 clients
+──────────────────────────────────────────────────────────
+All sweep runs use stories=4 regardless of client count. Each client
+cycles through stories 0–3 when assigning event storyIds. With 20 clients
+and only 4 story handles, ~5 clients share each story. Multiple handler
+ULTs frequently race for the same story's mutex:
+
+  ULT-0 → story 2 → lock story-2 mutex → push → unlock
+  ULT-1 → story 2 → spin on story-2 mutex        ← contention
+  ULT-2 → story 0 → lock story-0 mutex → push → unlock
+  ULT-3 → story 2 → spin on story-2 mutex        ← contention
+
+The measured 6 µs enqueue is the contended case.
+Uncontended mutex lock+push: ~100–300 ns.
+
+8.2  With stories=n_clients (one story per client)
+────────────────────────────────────────────────────
+In sync sendrecv mode each client is serial: it sends one event and waits
+for the ACK before sending the next. At any moment at most one request is
+in-flight per story. Two ULTs can never contend on the same story's mutex:
+
+  ULT-0 → story 7  → uncontended lock → push → unlock  (~200 ns)
+  ULT-1 → story 12 → uncontended lock → push → unlock  (~200 ns)
+  ULT-2 → story 3  → uncontended lock → push → unlock  (~200 ns)
+  ULT-3 → story 18 → uncontended lock → push → unlock  (~200 ns)
+
+Enqueue drops from ~6 µs → ~0.2–0.3 µs (20–30x reduction).
+
+8.3  Impact by scenario
+────────────────────────
+Sync + respond mode:
+  Saves ~5-6 µs out of 147 µs RTT ≈ 4% improvement.
+  Not a step-change — respond() at 38 µs still dominates.
+
+Fire-and-forget mode:
+  Enqueue is the entire handler. Dropping 6 µs → 0.3 µs raises the
+  handler ceiling from 4/6 µs = 667K ev/sec to 4/0.3 µs = 13M ev/sec —
+  well above both the network ceiling (~1.22 Mev/s at 4 KB) and the
+  Mercury deser ceiling (~125K ev/sec). Story lock becomes irrelevant.
+
+8.4  What the current sweep actually conflates
+───────────────────────────────────────────────
+As client count increases with stories fixed at 4, two things happen at
+the same time: more RPC concurrency on the server, and higher per-story
+lock contention. The throughput plateau observed at 20 clients could be
+partly network/Mercury-bound and partly contention-bound — the sweep as
+designed cannot distinguish between them.
+
+Running the sweep with stories=n_clients alongside stories=4 would isolate
+the two effects:
+  - stories=4:         shared-story workload (N writers per story) —
+                       tests the production case where multiple players
+                       append to the same chronicle
+  - stories=n_clients: partitioned workload (1 writer per story) —
+                       measures the pure network + Mercury ceiling with
+                       zero story-level lock contention
+
+Both are valid production scenarios. The difference in throughput between
+the two curves directly quantifies the cost of per-story mutex contention
+under the shared-writer model.
+
+=============================================================
+  Section 9: Fire-and-forget sweep results
+  date:   2026-05-19
+  setup:  loopback on ares-comp-03-40g (ofi+verbs;ofi_rxm, 172.25.101.3)
+          100000 events/client, 256 B payload, reps=3
+  axes:   rpc × queue × threads × n_clients × stories
+=============================================================
+
+9.1  sendrecv vs oneway speedup  (stories=4, best thread count)
+-------------------------------------------------------------
+
+  queue     clients | sendrecv | oneway  | speedup
+  -------------------------------------------------------
+  mutex           1 |    0.013 |   0.039 |  3.00x
+  mutex           5 |    0.082 |   0.163 |  1.99x
+  mutex          10 |    0.100 |   0.167 |  1.67x
+  mutex          20 |    0.127 |   0.120 |  0.94x   <-- oneway slower!
+
+  lockfree        1 |    0.013 |   0.038 |  2.92x
+  lockfree        5 |    0.091 |   0.171 |  1.88x
+  lockfree       10 |    0.101 |   0.158 |  1.56x
+  lockfree       20 |    0.115 |   0.115 |  1.00x
+
+Key finding: the oneway speedup is large at low client counts but
+VANISHES at 20 clients — oneway is equal to or slower than sendrecv
+at high concurrency.
+
+Why:
+  With sendrecv, each client's respond() acts as backpressure: the
+  client blocks until the server finishes the RPC, naturally
+  pacing the inflow to the server's handler throughput.
+
+  With oneway, all clients fire at full rate simultaneously.  The
+  Mercury receive-side dispatch becomes the bottleneck: the single
+  progress thread must dequeue and dispatch all incoming messages
+  from 20 concurrent senders without any rate limiting.  This
+  saturates the Mercury RX path faster than the server-side handler
+  ULTs can keep up.
+
+  The server handler time in oneway mode is 0.33–0.94 µs (pure
+  enqueue).  With 20 clients × 100k events = 2M events flooding at
+  max rate, the Mercury message queue backs up faster than the
+  Argobots ULT pool can drain it.
+
+  In sendrecv, the network RTT (~80 µs) serializes events per client,
+  spreading arrivals over time and giving the server natural spacing.
+
+9.2  Lockfree vs mutex under oneway  (stories=4)
+------------------------------------------------
+
+  threads  clients | mutex   | lockfree | speedup
+  --------------------------------------------------
+        1        5 | 0.163   |    0.171 |  1.05x
+        1       10 | 0.135   |    0.139 |  1.03x
+        5       10 | 0.167   |    0.158 |  0.95x
+        5        5 | 0.155   |    0.161 |  1.04x
+       10        5 | 0.079   |    0.099 |  1.25x  (best lockfree advantage)
+       10       10 | 0.101   |    0.111 |  1.10x
+
+Conclusion: even with respond() eliminated (handler = 0.33–0.94 µs),
+the lockfree advantage remains small and inconsistent (0.86x–1.25x,
+mostly ~1.0x).
+
+The expected mechanism was: remove Mercury respond() → enqueue becomes
+the bottleneck → lockfree shines.  But the data shows the new
+bottleneck after eliminating respond() is Mercury's receive-side
+dispatch, not the enqueue operation.  The enqueue at 0.4–0.9 µs is
+still a small fraction of total handler latency relative to what
+Mercury spends dispatching incoming messages under high load.
+
+The in-process benchmark (no network) remains the only regime where
+lockfree gives its full 4x advantage.
+
+9.3  stories=4 vs stories=match  (oneway, best thread count)
+-----------------------------------------------------------
+
+  queue     clients | stories=4 | stories=match | diff
+  ----------------------------------------------------------
+  mutex           1 |     0.039 |         0.039 | +0.0%
+  mutex           5 |     0.163 |         0.175 | +7.4%   <-- slight gain
+  mutex          10 |     0.167 |         0.110 | -34.1%  <-- worse!
+  mutex          20 |     0.120 |         0.089 | -25.8%  <-- worse!
+
+  lockfree        1 |     0.038 |         0.037 | -2.6%
+  lockfree        5 |     0.171 |         0.154 | -9.9%
+  lockfree       10 |     0.158 |         0.133 | -15.8%
+  lockfree       20 |     0.115 |         0.089 | -22.6%
+
+Counterintuitive result: stories=match (one story per client, zero
+inter-client lock contention) is mostly WORSE than stories=4.
+
+Explanation:
+  stories=4 uses a single server instance across all n_clients values
+  (server started once; nc is swept without restart).  stories=match
+  restarts the server for each nc (stories = nc), incurring cold OFI/
+  verbs initialization per data point.
+
+  More importantly: with stories=20 and nc=20, the server manages 20
+  separate IngestionHandles (20 mutex objects, 20 deques or lockfree
+  queues).  Routing each incoming event through the unordered_map to
+  the correct story handle, with 20 separate active allocations in
+  memory, causes more cache pressure than the stories=4 case where 4
+  handles are hot in L2/L3.
+
+  At nc=5, stories=5: slight gain for mutex (+7.4%) — contention
+  reduction is visible because 5 writers × 1 story/writer = no mutex
+  contention, and 5 cache lines are still L3-hot.
+
+  At nc=10+: the cache pressure and cold-start overhead of stories=match
+  outweighs the contention reduction.  The per-story mutex in the n=4
+  case adds only ~0.2–0.6 µs per event, which is negligible compared
+  to the Mercury dispatch overhead.
+
+9.4  Takeaways
+--------------
+
+A) Oneway (fire-and-forget) is beneficial only at low client counts.
+   - 1–5 clients:  1.9–3.0x throughput gain vs sendrecv
+   - 10 clients:   1.5–1.7x gain
+   - 20 clients:   no benefit; backpressure from respond() is actually
+                   helpful at high concurrency because it prevents the
+                   Mercury RX queue from being overwhelmed
+   Recommendation: keep per-event respond() for production ingestion
+   unless a rate-limiting mechanism replaces it.
+
+B) Lockfree queue provides no meaningful advantage in the network path,
+   even with respond() eliminated.  The bottleneck shifts to Mercury's
+   receive-side dispatch, not the enqueue operation.
+
+C) Per-story partitioning (stories=match) does not help and often hurts.
+   Keeping stories=4 (or a small fixed count) is better for cache
+   locality than one story per concurrent writer.
+
+D) The actual network bottleneck in the oneway regime is Mercury's
+   single-threaded progress/dispatch thread.  Breaking through 0.17 Mev/s
+   requires either:
+   - Multiple Mercury progress threads (margo_init with progress_pool > 1)
+   - Batching multiple events per RPC to amortize dispatch overhead
+   - Or accepting sendrecv's natural backpressure and focusing on
+     other optimizations (e.g., jemalloc for deser, POD wire type)
+
+=============================================================
+  Section 10: Batching sweep results
+  date:   2026-05-19
+  setup:  loopback on ares-comp-03-40g (ofi+verbs;ofi_rxm, 172.25.101.3)
+          100000 events/client, 256 B payload, reps=3
+  axes:   batch_size × queue × threads × n_clients  (stories=4 fixed)
+  batch sizes tested: 10, 100, 1000, 10000 events/RPC
+  baseline: sendrecv (1 event/RPC)
+=============================================================
+
+10.1  Best throughput per mode  (best thread count per cell, Mev/s)
+--------------------------------------------------------------------
+
+  rpc            queue    |  1c    |  5c    |  10c   |  20c   | peak
+  -------------------------------------------------------------------
+  sendrecv       mutex    | 0.015  | 0.086  | 0.097  | 0.126  | 0.126
+  sendrecv       lockfree | 0.016  | 0.088  | 0.101  | 0.131  | 0.131
+
+  batch_10       mutex    | 0.130  | 0.570  | 0.803  | 1.030  | 1.030
+  batch_10       lockfree | 0.124  | 0.588  | 0.874  | 1.093  | 1.093
+
+  batch_100      mutex    | 0.206  | 1.268  | 2.017  | 2.375  | 2.375
+  batch_100      lockfree | 0.313  | 1.579  | 2.873  | 4.234  | 4.234
+
+  batch_1000     mutex    | 0.455  | 1.755  | 2.408  | 2.419  | 2.419
+  batch_1000     lockfree | 0.394  | 1.826  | 4.614  | 5.411  | 5.411  ← peak
+
+  batch_10000    mutex    | 0.356  | 1.471  | 2.290  | 2.241  | 2.290
+  batch_10000    lockfree | 0.557  | 1.955  | 2.931  | 3.476  | 3.476
+
+10.2  Absolute peak per mode  (any queue, any thread — vs sendrecv at 20c)
+---------------------------------------------------------------------------
+
+  rpc            |  1c    |  5c    |  10c   |  20c   | vs sendrecv@20c
+  ---------------------------------------------------------------------
+  sendrecv       | 0.016  | 0.088  | 0.101  | 0.131  |   1.0x (baseline)
+  batch_10       | 0.130  | 0.588  | 0.874  | 1.093  |   8.3x
+  batch_100      | 0.313  | 1.579  | 2.873  | 4.234  |  32.3x
+  batch_1000     | 0.455  | 1.826  | 4.614  | 5.411  |  41.3x  ← sweet spot
+  batch_10000    | 0.557  | 1.955  | 2.931  | 3.476  |  26.5x
+
+  Best overall: batch_1000 + lockfree + 10 threads + 20 clients = 5.411 Mev/s
+
+10.3  lockfree / mutex speedup per batch size
+---------------------------------------------
+
+  rpc            |  1c   |  5c   | 10c   | 20c   | best
+  -------------------------------------------------------
+  sendrecv       | 1.07x | 1.02x | 1.04x | 1.04x | 1.07x
+  batch_10       | 0.95x | 1.03x | 1.09x | 1.06x | 1.09x
+  batch_100      | 1.52x | 1.25x | 1.42x | 1.78x | 1.78x
+  batch_1000     | 0.87x | 1.04x | 1.92x | 2.24x | 2.24x  ← lockfree matters here
+  batch_10000    | 1.56x | 1.33x | 1.28x | 1.55x | 1.56x
+
+  The lockfree advantage grows monotonically with batch size up to 1000,
+  then falls back at 10000 (see 10.4 for why).
+
+10.4  Analysis
+--------------
+
+A) Batch-size sweet spot: 1000 events/RPC
+
+   batch_100:  32x vs sendrecv.  Mercury dispatch overhead (1 dispatch per
+               100 events instead of per event) is the main saving.  The queue
+               enqueue loop (100 events × lock-unlock) is modest and not yet
+               the bottleneck.
+
+   batch_1000: 41x vs sendrecv.  Mercury overhead amortized over 1000 events.
+               Now the handler spends most of its time in the enqueue loop
+               (1000 events × lock-unlock under 10 concurrent ULTs).  This is
+               where the lockfree queue delivers 2.24x.  COMBINED EFFECT:
+               batching eliminates the Mercury bottleneck and exposes the queue
+               bottleneck; lockfree then resolves the queue bottleneck.
+
+   batch_10000: 26x — worse than batch_1000.
+               Two reasons:
+               (a) With 100k events per client and batch_size=10000, each
+                   client sends only 10 RPCs.  With 20 clients × 10 RPCs =
+                   200 total RPCs, the 10-thread handler pool is underutilized
+                   for most of the run.
+               (b) Thallium serializes std::vector<LogEvent> per RPC.
+                   Serializing 10000 × (struct + 256B string) ≈ 2.9 MB per RPC
+                   call adds measurable serialization overhead on both sides.
+               The combination of pipelining deficit and serialization cost
+               outweighs the per-dispatch amortization gain.
+
+B) Lockfree queue becomes significant at batch ≥ 100
+
+   In sendrecv and batch_10 mode, the per-event Mercury dispatch overhead
+   (~80 µs, amortized to 8 µs at batch_10) still dominates handler time.
+   The enqueue step (1-3 µs) is too small to see queue differences.
+
+   At batch_1000, the server handler processes 1000 enqueue calls under
+   10 concurrent ULTs.  With mutex, all 10 ULTs contend on the same 4
+   story locks while looping through a 1000-event batch.  With lockfree,
+   they proceed independently.  Result: 2.24x queue speedup.
+
+   At batch_10000, the lockfree advantage drops back to 1.56x because the
+   handler time is now dominated by serialization (both sides), not locking.
+
+C) Optimal thread count shifts upward with batch size
+
+   sendrecv:   t=1–5 optimal (Mercury dispatch is the bottleneck; more
+               threads cause Argobots scheduling overhead)
+   batch_10:   t=5 optimal
+   batch_100:  t=5–10
+   batch_1000: t=10 optimal (enqueue loop is parallelized across ULTs)
+   batch_10000: t=10 (serialization hides queue, more threads marginally help)
+
+D) Production recommendation
+
+   Optimal config: batch_size=1000 + lockfree queue + 10 handler threads
+   Throughput:     5.4 Mev/s at 20 concurrent clients (41x vs sendrecv)
+
+   This requires a batching API change:
+     ChronoPlayer collects events into a local buffer and calls
+     record_events_batch() once per N events (or on a timer flush).
+     The server-side record_events_batch() already exists in production
+     KeeperRecordingService; the batch_size knob needs to be exposed in conf.
+
+   Trade-off: latency vs throughput.  Batching introduces up to
+   batch_size × inter-event-arrival-time of additional latency.  At 5 Mev/s
+   ingest rate, 1000 events arrive in ~200 µs — acceptable for most
+   chronicle workloads but should be made configurable (default 100–1000).
+
+E) Combined bottleneck hierarchy (batch_1000 + lockfree regime)
+
+   Before batching: Mercury dispatch (~80 µs/event) >> queue >> everything
+   After batching:  queue enqueue (2.24x lockfree gap) > serialization > dispatch
+   After lockfree:  serialization cost per batch > dispatch amortized
+
+   The next optimization after batch + lockfree is therefore Mercury
+   serialization of std::vector<LogEvent>.  Options:
+   - POD wire format (pack events into a flat buffer; server memcpy-deserializes)
+   - jemalloc to speed up std::string allocation during deser
+   - RDMA-pool path (already benchmarked; gives ~1.17x on sendrecv path)
+
+────────────────────────────────────────────────────────────────────────────────
+11. CROSS-NODE BATCH SWEEP RESULTS (2026-05-20)
+────────────────────────────────────────────────────────────────────────────────
+
+Setup
+-----
+  Server:       ares-comp-03-40g  (172.25.101.3)
+  Client nodes: ares-comp-04-40g + ares-comp-05-40g  (2 physical nodes, real network)
+  Protocol:     ofi+verbs;ofi_rxm
+  n_clients:    1 5 10 20 40 80  (distributed evenly across 2 nodes)
+  Threads:      1 5 10 20
+  Queue modes:  mutex, lockfree
+  RPC modes:    sendrecv, batch_1000 (1000 events/RPC)
+  Count:        100000 events/client/rep  |  Size: 256 B  |  Reps: 3
+
+Table 1: batch_1000 + lockfree  (ingest Mev/s)
+  (* = suspected OFI resource-exhaustion outlier, 20 procs/node × 2 nodes)
+
+  n_clients   t= 1    t= 5    t=10    t=20
+      1       0.304   0.256   0.243   0.238
+      5       0.707   0.674   0.673   0.664
+     10       1.320   2.794   3.133   2.803
+     20       1.347   1.956   4.992   6.172  ← PEAK
+     40       1.300   2.002   2.300   0.318* ← outlier
+     80       1.264   0.981   2.119   1.418
+
+Table 2: batch_1000 + mutex  (ingest Mev/s)
+
+  n_clients   t= 1    t= 5    t=10    t=20
+      1       0.297   0.238   0.231   0.230
+      5       0.694   0.628   0.601   0.589
+     10       1.286   2.096   2.202   1.952
+     20       1.236   2.189   2.644   2.702  ← mutex peak
+     40       1.260   2.163   2.143   2.087
+     80       1.277   1.825   1.972   1.480
+
+Table 3: sendrecv best(mutex,lockfree)  (ingest Mev/s)
+
+  n_clients   t= 1    t= 5    t=10    t=20
+      1       0.012   0.010   0.010   0.009
+      5       0.070   0.066   0.064   0.045
+     10       0.098   0.093   0.078   0.056
+     20       0.099   0.142   0.080   0.051
+     40       0.098   0.153   0.080   0.053  ← sendrecv peak
+     80       0.093   0.149   0.082   0.049
+
+Table 4: lockfree/mutex speedup at batch_1000
+
+  n_clients   t= 1    t= 5    t=10    t=20
+      1       1.02x   1.08x   1.05x   1.03x
+      5       1.02x   1.07x   1.12x   1.13x
+     10       1.03x   1.33x   1.42x   1.44x
+     20       1.09x   0.89x   1.89x   2.28x  ← lockfree peak advantage
+     40       1.03x   0.93x   1.07x   0.15x* ← outlier
+     80       0.99x   0.54x   1.07x   0.96x
+
+Table 5: best-t scaling (batch_1000+lockfree)
+
+  n_clients   best_t   Mev/s   vs n_clients=1
+      1          1      0.304       1.0x
+      5          1      0.707       2.3x
+     10         10      3.133      10.3x
+     20         20      6.172      20.3x   ← near-perfect linear scaling
+     40         10      2.300       7.6x   (plateau / regression)
+     80         10      2.119       7.0x
+
+Key results
+-----------
+  Cross-node peak:    batch_1000 + lockfree + t=20 + n_clients=20 = 6.172 Mev/s
+  Loopback peak:      batch_1000 + lockfree + t=10 + n_clients=20 = 5.411 Mev/s
+  Cross-node gain:    +14% over loopback at matched n_clients=20
+  sendrecv peak:      0.153 Mev/s  (lockfree, t=5, n_clients=40)
+  Batch/sendrecv:     6.172 / 0.153 = 40.3x
+
+Analysis
+--------
+A) Cross-node is 14% FASTER than loopback at the optimal point
+   Counter-intuitive but explained by better pipeline overlap: each client is
+   on a separate NIC so sends are truly concurrent.  Loopback clients share one
+   NIC and compete for kernel buffers, creating invisible serialization.
+
+B) Magic ratio: n_clients ≈ server threads
+   n_clients=20 + t=20 gives 6.172 Mev/s — near-perfect 20x linear scaling
+   vs n_clients=1.  When client count equals handler thread count each thread
+   stays busy with exactly one in-flight RPC; Mercury's progress thread is never
+   idle, never overloaded.
+
+C) n_clients > 20 degrades (40 → 7.6x, 80 → 7.0x vs n=1)
+   With 40 clients across 2 nodes (20 procs/node), the Mercury progress thread
+   must poll 40 simultaneous OFI endpoints; CQ polling overhead exceeds the
+   actual handler work.  t=20 lockfree at n_clients=40 (0.318 Mev/s) is an
+   outlier consistent with OFI endpoint-table exhaustion under 20 procs/node.
+
+D) Optimal thread count shifts from t=10 (loopback) to t=20 (cross-node)
+   Loopback at t=10 was already slightly oversubscribed on a single NUMA node.
+   Cross-node clients run on separate sockets; server at t=20 has one handler
+   ULT per client without memory-bus contention, so the extra 10 threads pay off.
+
+E) Lockfree advantage: 2.28x at (t=20, n_clients=20) — same as loopback 2.24x
+   The queue bottleneck is consistently exposed once Mercury dispatch is
+   amortized by batching, regardless of whether traffic is local or cross-node.
+
+F) sendrecv cross-node peak (0.153 Mev/s) ≈ loopback sendrecv peak (~0.131 Mev/s)
+   sendrecv was already network RTT-bound on loopback.  The real-network hop
+   adds ~5 µs but the per-event Mercury dispatch (~35 µs observed) dominates,
+   so the cross-node penalty is hidden.  t=5 outperforms t=10/20 for sendrecv
+   — more threads create more concurrent responses all feeding through the single
+   Mercury progress thread, overloading NIC send queues.
+
+G) Next optimization target
+   Cross-node batch_1000+lockfree is limited at n_clients>20 by Mercury's
+   single progress thread polling 40-80 OFI endpoints.  Options:
+   - Multiple Margo progress ESs (requires ofi+tcp to avoid RxM thread-safety)
+   - Reduce n_clients to match t and scale via more client nodes instead of
+     more processes per node
+   - Serialize to POD wire format to cut the ~2.9 MB/RPC allocation cost
+     (batch serialization is the next bottleneck inside the sweet spot)
+
+────────────────────────────────────────────────────────────────────────────────
+12. PROGRESS-THREAD SWEEP RESULTS (2026-05-20)
+────────────────────────────────────────────────────────────────────────────────
+
+Setup
+-----
+  Server:        ares-comp-03-40g  (172.25.101.3)
+  Client nodes:  ares-comp-04-40g + ares-comp-05-40g  (same 2 nodes as §11)
+  Protocol:      ofi+tcp  (Mercury resolves to ofi+tcp;ofi_rxm at runtime)
+  n_clients:     1 5 10 20  (10 per node at n_clients=20)
+  Threads:       10 handler ULTs (fixed)
+  Queue modes:   mutex, lockfree
+  RPC mode:      batch_1000 (1000 events/RPC)
+  Progress ESs:  1, 2, 4  (extra Argobots xstreams on the Margo progress pool)
+  Count:         100000 events/client/rep  |  Size: 256 B  |  Reps: 3
+
+Implementation: engine initialised with 1 progress ES; post-init extra ESs
+attached via margo_get_progress_pool() + tl::xstream::create() on the
+retrieved pool.  All ESs run concurrent HG_Progress calls on the same pool.
+
+Table 1: lockfree — ingest Mev/s
+  (ingest_ms only; excludes merge drain time)
+
+  n_clients   pt=1    pt=2    pt=4   pt=2/1  pt=4/1
+      1        0.213   0.222   0.221   +4%     +4%
+      5        0.727   0.731   0.779   +1%     +7%
+     10        2.358   2.404   2.519   +2%     +7%
+     20        3.663   4.067   3.610  +11%     -1%
+
+Table 2: mutex — ingest Mev/s
+
+  n_clients   pt=1    pt=2    pt=4   pt=2/1  pt=4/1
+      1        0.213   0.218   0.209   +2%     -2%
+      5        0.656   0.702   0.710   +7%     +8%
+     10        2.123   2.218   1.967   +4%     -7%
+     20        2.262   2.129   2.448   -6%     +8%
+
+Table 3: lockfree — pipeline Mev/s
+  (ingest_ms + merge_ms; end-to-end ingestion including merge drain)
+
+  n_clients   pt=1    pt=2    pt=4   pt=2/1  pt=4/1
+      1        0.194   0.202   0.202   +4%     +4%
+      5        0.553   0.551   0.561   -0%     +1%
+     10        1.047   1.106   1.098   +6%     +5%
+     20        1.327   1.266   1.175   -5%    -11%
+
+Key results
+-----------
+  Best ingest:    lockfree + pt=2 + n_clients=20 = 4.067 Mev/s
+  Best pipeline:  lockfree + pt=1 + n_clients=20 = 1.327 Mev/s
+  ofi+verbs ref:  §11 Table 1 — t=10, lockfree, n_clients=20 = 4.992 Mev/s
+  ofi+tcp vs verbs at identical conditions (t=10, lockfree, n_clients=20, pt=1):
+    4.992 → 3.663 Mev/s  =  -27%
+
+Analysis
+--------
+A) Additional progress threads provide no meaningful benefit
+   Ingest Mev/s gains are 0–11%, with no monotonic trend across n_clients.
+   pt=4 is sometimes worse than pt=1 (mutex t=10: -7%; lockfree n_clients=20: -1%).
+   The variance across runs (~5-10%) is the same order as the alleged gains, so
+   the differences are noise.
+
+B) Pipeline (end-to-end) throughput DEGRADES at n_clients=20 with pt>1
+   lockfree pipeline: pt=1 → 1.327, pt=2 → 1.266, pt=4 → 1.175 Mev/s.
+   More progress threads push events into the ingestion queue faster (higher
+   ingest rate), but the single-threaded merge/drain phase cannot keep up.
+   Merge_ms at n_clients=20 is already 2× ingest_ms (lockfree: 546ms ingest,
+   961ms merge, pt=1).  Increasing ingest rate widens this gap, so end-to-end
+   time grows even though raw ingest speed ticks up slightly.
+
+C) The bottleneck is the merge thread, not Mercury progress
+   ofi+tcp;ofi_rxm delivers 3.663 Mev/s ingest at pt=1 with 10 handler ULTs.
+   The progress thread's CPU time at that rate (one HG_Progress poll per batch
+   arrival) is a small fraction of the handler work (1000 enqueues per ULT).
+   Adding progress threads gives those CPUs nothing useful to do until the
+   merge thread becomes parallel — which is outside the scope of this sweep.
+
+D) ofi+tcp is 27% slower than ofi+verbs for the same cross-node config
+   §11 ran with ofi+verbs;ofi_rxm and reached 4.992 Mev/s (t=10, lockfree,
+   n_clients=20).  This sweep with ofi+tcp (resolves to ofi+tcp;ofi_rxm) gives
+   3.663 Mev/s under identical client/server conditions.  The RxM layer is the
+   same in both cases; the difference is the underlying transport:
+     ofi+verbs: IB HCA direct-path, ~2–3 µs one-way latency
+     ofi+tcp:   TCP/IP stack, ~10–20 µs one-way latency on 40GbE
+   Per-RPC latency increase is hidden at high batch-count because the batch
+   serialization cost dominates, but at n_clients=20 the 5–17 µs extra per RPC
+   rounds up to a measurable throughput loss.
+   Practical implication: use ofi+verbs;ofi_rxm (the default for IB clusters)
+   for peak throughput.  ofi+tcp is required only when multiple progress threads
+   are needed for correctness reasons — and §12A shows they are not.
+
+E) Conclusion: no benefit from multiple Margo progress ESs at this scale
+   The hypothesis from §9.4-D ("breaking through 0.17 Mev/s requires multiple
+   Mercury progress threads") was validated for the oneway (fire-and-forget)
+   regime at 0.17 Mev/s.  In the batch_1000 regime the ingest rate has already
+   been raised 22× by batching (3.6 Mev/s); Mercury progress is no longer the
+   bottleneck.  Adding progress ESs costs the ofi+tcp transport penalty (-27%)
+   without recovering it.
+
+   The correct next target remains the merge/drain thread (§11-G):
+   - Parallelise the merge phase across stories (one merge ULT per story)
+   - Or pipeline ingest → merge differently so merge doesn't gate pipeline_Mevs
