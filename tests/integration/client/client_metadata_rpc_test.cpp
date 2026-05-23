@@ -130,7 +130,7 @@ int main(int argc, char** argv)
         }
 
         ret = client.Disconnect();
-        assert(ret == chronolog::CL_ERR_NO_KEEPERS || ret == chronolog::CL_ERR_ACQUIRED);
+        assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NO_KEEPERS);
 
         t1 = std::chrono::steady_clock::now();
         auto [show_stories_ret, stories_names_retrieved] = client.ShowStories(chronicle_names[i]);

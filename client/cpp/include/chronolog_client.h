@@ -111,10 +111,9 @@ class ChronologClientImpl;
 
 // Top-level Chronolog Client. Implementation details in ChronologClientImpl.
 //
-// NOTE: ReleaseStory() must be called for all acquired stories before Disconnect();
-// otherwise Disconnect() returns CL_ERR_ACQUIRED (-4) and the client record is not removed.
-// TODO: Visor should auto-release acquired stories on Disconnect() — removing this requirement.
-// The destructor calls Disconnect() as best-effort; the Client is always safe to delete.
+// Disconnect() auto-releases any stories still acquired by the client so the
+// caller never has to walk its own acquisitions to clean up. The destructor
+// calls Disconnect() as best-effort; the Client is always safe to delete.
 class Client
 {
 public:
