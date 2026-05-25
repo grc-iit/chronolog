@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ChronoLog perf-baseline (record_event bandwidth + throughput)",
+  "type": "object",
+  "required": ["schema_version", "version", "git_sha", "test_date",
+               "platform", "config", "metrics"],
+  "properties": {
+    "schema_version": {"type": "integer", "minimum": 2},
+    "version":        {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "git_sha":        {"type": "string"},
+    "test_date":      {"type": "string", "format": "date-time"},
+    "platform":       {"type": "string"},
+    "config": {
+      "type": "object",
+      "required": ["recording_groups", "client_nodes", "clients_per_node", "protocol"]
+    },
+    "reps":        {"type": "integer", "minimum": 1},
+    "aggregation": {"type": "string", "enum": ["mean", "median"]},
+    "metrics": {
+      "type": "object",
+      "required": ["record_event_bw_mbps", "record_event_ops"],
+      "properties": {
+        "record_event_bw_mbps": {
+          "type": "object",
+          "additionalProperties": {"type": "number"},
+          "description": "Per-event-size median record_event bandwidth in MB/s"
+        },
+        "record_event_ops": {
+          "type": "object",
+          "additionalProperties": {"type": "number"},
+          "description": "Per-event-size median record_event throughput in ops/s"
+        }
+      }
+    }
+  }
+}
