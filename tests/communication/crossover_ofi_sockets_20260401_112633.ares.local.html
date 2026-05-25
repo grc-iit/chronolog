@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Thallium Send/Recv vs RDMA Crossover Analysis</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+         background: #1a1a2e; color: #e0e0e0; }
+  .header { background: #16213e; padding: 20px 30px; border-bottom: 2px solid #0f3460; }
+  .header h1 { font-size: 1.4em; color: #e94560; }
+  .header p { font-size: 0.9em; color: #888; margin-top: 4px; }
+  .tabs { display: flex; background: #16213e; padding: 0 20px; gap: 2px; }
+  .tab { padding: 10px 20px; cursor: pointer; background: #1a1a2e; color: #888;
+          border-top: 2px solid transparent; font-size: 0.9em; transition: all 0.2s; }
+  .tab:hover { color: #e0e0e0; }
+  .tab.active { color: #e94560; border-top-color: #e94560; background: #1a1a2e; }
+  .panel { display: none; padding: 20px; }
+  .panel.active { display: block; }
+  .plot { width: 100%; height: 600px; }
+  .note { font-size: 0.85em; color: #666; padding: 10px 30px; }
+  .side-by-side { display: flex; gap: 10px; }
+  .side-by-side > div { flex: 1; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Thallium Send/Recv vs RDMA Crossover Analysis</h1>
+  <p>Interactive visualization of transport protocol performance across message sizes and repetitions</p>
+</div>
+
+<div class="tabs" id="tabs"></div>
+<div id="panels"></div>
+<div class="note" id="note"></div>
+
+<script>
+const D = {
+  "msg_sizes": [
+    64,
+    128,
+    256,
+    512,
+    1024,
+    2048,
+    4096,
+    8192,
+    16384,
+    32768,
+    65536,
+    131072,
+    262144,
+    524288,
+    1048576,
+    2097152,
+    4194304,
+    8388608,
+    16777216,
+    33554432,
+    67108864
+  ],
+  "rep_counts": [
+    3
+  ],
+  "size_labels": [
+    "64B",
+    "128B",
+    "256B",
+    "512B",
+    "1KB",
+    "2KB",
+    "4KB",
+    "8KB",
+    "16KB",
+    "32KB",
+    "64KB",
+    "128KB",
+    "256KB",
+    "512KB",
+    "1MB",
+    "2MB",
+    "4MB",
+    "8MB",
+    "16MB",
+    "32MB",
+    "64MB"
+  ],
+  "rep_labels": [
+    "3"
+  ],
+  "plot_data": {
+    "ofi+sockets": {
+      "recv": {
+        "latencies": [
+          [
+            581.509,
+            746.564,
+            565.587,
+            459.749,
+            507.108,
+            455.913,
+            635.54,
+            674.938,
+            675.179,
+            979.547,
+            864.544,
+            1099.506,
+            1503.664,
+            2351.233,
+            4808.647,
+            9193.405,
+            16808.824,
+            28648.0,
+            54643.769,
+            109052.867,
+            195754.104
+          ]
+        ],
+        "bandwidths": [
+          [
+            0.105,
+            0.164,
+            0.432,
+            1.062,
+            1.926,
+            4.284,
+            6.146,
+            11.575,
+            23.142,
+            31.903,
+            72.292,
+            113.687,
+            166.261,
+            212.654,
+            207.959,
+            217.547,
+            237.97,
+            279.252,
+            292.806,
+            293.436,
+            326.941
+          ]
+        ]
+      },
+      "rdma": {
+        "latencies": [
+          [
+            2224.106,
+            851.358,
+            1340.668,
+            1317.48,
+            750.898,
+            799.154,
+            1555.317,
+            955.302,
+            1010.296,
+            1041.766,
+            1657.523,
+            1283.628,
+            1206.336,
+            1466.861,
+            1999.037,
+            2441.843,
+            1956.666,
+            1969.054,
+            1914.795,
+            1966.324,
+            1895.534
+          ]
+        ],
+        "bandwidths": [
+          [
+            0.027,
+            0.143,
+            0.182,
+            0.371,
+            1.301,
+            2.444,
+            2.512,
+            8.178,
+            15.466,
+            29.997,
+            37.707,
+            97.38,
+            207.239,
+            340.864,
+            500.241,
+            819.053,
+            2044.294,
+            4062.864,
+            8355.984,
+            16274.025,
+            33763.573
+          ]
+        ]
+      }
+    }
+  },
+  "speedup_data": {},
+  "protocols": [
+    "ofi+sockets"
+  ],
+  "has_both": false,
+  "has_reps": false
+};
+
+// --- Tab management ---
+const tabDefs = [];
+
+if (D.has_both && D.has_reps) {
+  tabDefs.push({ id: 'heatmap', label: 'Speedup Heatmap' });
+  tabDefs.push({ id: 'surface', label: '3D Surface' });
+}
+tabDefs.push({ id: 'latency', label: 'Latency Comparison' });
+tabDefs.push({ id: 'bandwidth', label: 'Bandwidth Comparison' });
+if (D.has_both && !D.has_reps) {
+  tabDefs.push({ id: 'speedup1d', label: 'Speedup (1D)' });
+}
+
+const tabsEl = document.getElementById('tabs');
+const panelsEl = document.getElementById('panels');
+
+tabDefs.forEach((t, i) => {
+  const tab = document.createElement('div');
+  tab.className = 'tab' + (i === 0 ? ' active' : '');
+  tab.textContent = t.label;
+  tab.onclick = () => switchTab(t.id);
+  tab.id = 'tab-' + t.id;
+  tabsEl.appendChild(tab);
+
+  const panel = document.createElement('div');
+  panel.className = 'panel' + (i === 0 ? ' active' : '');
+  panel.id = 'panel-' + t.id;
+  panel.innerHTML = '<div class="plot" id="plot-' + t.id + '"></div>';
+  panelsEl.appendChild(panel);
+});
+
+function switchTab(id) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + id).classList.add('active');
+  document.getElementById('panel-' + id).classList.add('active');
+  Plotly.Plots.resize(document.getElementById('plot-' + id));
+}
+
+const darkLayout = {
+  paper_bgcolor: '#1a1a2e',
+  plot_bgcolor: '#1a1a2e',
+  font: { color: '#e0e0e0', size: 12 },
+  margin: { t: 50, b: 60, l: 70, r: 30 },
+};
+
+// --- Heatmap: speedup(msg_size, reps) ---
+if (D.has_both && D.has_reps) {
+  const mode = 'recv';  // primary comparison mode
+  const z = D.speedup_data[mode] || D.speedup_data[Object.keys(D.speedup_data)[0]];
+  if (z) {
+    Plotly.newPlot('plot-heatmap', [{
+      z: z,
+      x: D.size_labels,
+      y: D.rep_labels,
+      type: 'heatmap',
+      colorscale: [
+        [0, '#2196F3'],    // sockets faster (blue)
+        [0.5, '#ffffff'],  // crossover (white)
+        [1, '#e94560'],    // verbs faster (red)
+      ],
+      zmid: 1,
+      colorbar: {
+        title: { text: 'Speedup (verbs/sockets)', side: 'right' },
+        tickfont: { color: '#e0e0e0' },
+        titlefont: { color: '#e0e0e0' },
+      },
+      hovertemplate: 'Size: %{x}<br>Reps: %{y}<br>Speedup: %{z:.2f}x<extra></extra>',
+    }, {
+      // Contour at speedup = 1 (crossover boundary)
+      z: z,
+      x: D.size_labels,
+      y: D.rep_labels,
+      type: 'contour',
+      contours: { start: 1, end: 1, size: 0, coloring: 'none' },
+      line: { color: '#00ff00', width: 3 },
+      showscale: false,
+      hoverinfo: 'skip',
+    }], {
+      ...darkLayout,
+      title: 'Verbs vs Sockets Speedup (recv mode)',
+      xaxis: { title: 'Message Size', color: '#e0e0e0' },
+      yaxis: { title: 'Repetitions', color: '#e0e0e0' },
+    });
+
+    // --- 3D Surface ---
+    Plotly.newPlot('plot-surface', [{
+      z: z,
+      x: D.size_labels,
+      y: D.rep_labels,
+      type: 'surface',
+      colorscale: [
+        [0, '#2196F3'],
+        [0.5, '#ffffff'],
+        [1, '#e94560'],
+      ],
+      cmid: 1,
+      hovertemplate: 'Size: %{x}<br>Reps: %{y}<br>Speedup: %{z:.2f}x<extra></extra>',
+    }], {
+      ...darkLayout,
+      title: 'Verbs/Sockets Speedup Surface (recv mode)',
+      scene: {
+        xaxis: { title: 'Message Size', color: '#e0e0e0' },
+        yaxis: { title: 'Repetitions', color: '#e0e0e0' },
+        zaxis: { title: 'Speedup', color: '#e0e0e0' },
+        bgcolor: '#1a1a2e',
+      },
+    });
+  }
+}
+
+// --- Latency comparison ---
+(function() {
+  const traces = [];
+  const colors = { 'ofi+sockets': '#2196F3', 'ofi_sockets': '#2196F3',
+                     'ofi+verbs': '#e94560', 'ofi_verbs': '#e94560' };
+  const dashes = { 'recv': 'solid', 'rdma': 'dash', 'sendrecv': 'dot' };
+
+  // Use first rep count (or only one if 1D)
+  const repIdx = 0;
+
+  for (const proto of D.protocols) {
+    const pd = D.plot_data[proto];
+    if (!pd) continue;
+    for (const mode of Object.keys(pd)) {
+      const lats = pd[mode].latencies[repIdx];
+      if (!lats) continue;
+      const color = colors[proto] || '#888';
+      traces.push({
+        x: D.size_labels,
+        y: lats,
+        name: proto + ' ' + mode,
+        type: 'scatter',
+        mode: 'lines+markers',
+        line: { color: color, dash: dashes[mode] || 'solid', width: 2 },
+        marker: { size: 5 },
+        hovertemplate: '%{x}: %{y:.1f} us<extra>' + proto + ' ' + mode + '</extra>',
+      });
+    }
+  }
+
+  Plotly.newPlot('plot-latency', traces, {
+    ...darkLayout,
+    title: 'Average Latency per RPC' + (D.has_reps ? ' (reps=' + D.rep_counts[0] + ')' : ''),
+    xaxis: { title: 'Message Size', color: '#e0e0e0' },
+    yaxis: { title: 'Latency (us)', type: 'log', color: '#e0e0e0' },
+    legend: { font: { color: '#e0e0e0' } },
+  });
+})();
+
+// --- Bandwidth comparison ---
+(function() {
+  const traces = [];
+  const colors = { 'ofi+sockets': '#2196F3', 'ofi_sockets': '#2196F3',
+                     'ofi+verbs': '#e94560', 'ofi_verbs': '#e94560' };
+  const dashes = { 'recv': 'solid', 'rdma': 'dash', 'sendrecv': 'dot' };
+
+  const repIdx = 0;
+
+  for (const proto of D.protocols) {
+    const pd = D.plot_data[proto];
+    if (!pd) continue;
+    for (const mode of Object.keys(pd)) {
+      const bws = pd[mode].bandwidths[repIdx];
+      if (!bws) continue;
+      const color = colors[proto] || '#888';
+      traces.push({
+        x: D.size_labels,
+        y: bws,
+        name: proto + ' ' + mode,
+        type: 'scatter',
+        mode: 'lines+markers',
+        line: { color: color, dash: dashes[mode] || 'solid', width: 2 },
+        marker: { size: 5 },
+        hovertemplate: '%{x}: %{y:.1f} MB/s<extra>' + proto + ' ' + mode + '</extra>',
+      });
+    }
+  }
+
+  Plotly.newPlot('plot-bandwidth', traces, {
+    ...darkLayout,
+    title: 'Bandwidth' + (D.has_reps ? ' (reps=' + D.rep_counts[0] + ')' : ''),
+    xaxis: { title: 'Message Size', color: '#e0e0e0' },
+    yaxis: { title: 'Bandwidth (MB/s)', type: 'log', color: '#e0e0e0' },
+    legend: { font: { color: '#e0e0e0' } },
+  });
+})();
+
+// --- 1D Speedup (when only one rep count) ---
+if (D.has_both && !D.has_reps) {
+  const traces = [];
+  for (const mode of Object.keys(D.speedup_data)) {
+    const row = D.speedup_data[mode][0];
+    traces.push({
+      x: D.size_labels,
+      y: row,
+      name: mode,
+      type: 'scatter',
+      mode: 'lines+markers',
+      marker: { size: 6 },
+      hovertemplate: '%{x}: %{y:.2f}x<extra>' + mode + '</extra>',
+    });
+  }
+  // Crossover line at y=1
+  traces.push({
+    x: D.size_labels,
+    y: Array(D.size_labels.length).fill(1),
+    name: 'break-even',
+    type: 'scatter',
+    mode: 'lines',
+    line: { color: '#00ff00', dash: 'dash', width: 1 },
+    hoverinfo: 'skip',
+  });
+
+  Plotly.newPlot('plot-speedup1d', traces, {
+    ...darkLayout,
+    title: 'Verbs vs Sockets Speedup (>1 = verbs faster)',
+    xaxis: { title: 'Message Size', color: '#e0e0e0' },
+    yaxis: { title: 'Speedup Factor', color: '#e0e0e0' },
+    legend: { font: { color: '#e0e0e0' } },
+  });
+}
+
+document.getElementById('note').textContent =
+  D.has_both
+    ? 'Blue = sockets faster, Red = verbs faster. Green contour = crossover boundary (speedup = 1x).'
+    : 'Run with -p both to see the crossover surface between ofi+sockets and ofi+verbs.';
+</script>
+</body>
+</html>

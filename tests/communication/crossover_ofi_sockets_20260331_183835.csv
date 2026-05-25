@@ -1,0 +1,2 @@
+protocol,mode,msg_size,repetitions,total_time_s,avg_latency_us,bandwidth_MBps
+ofi+sockets,recv,64,3,0.000538773,179.591,0.340
