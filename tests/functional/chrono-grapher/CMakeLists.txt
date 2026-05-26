@@ -76,9 +76,8 @@ set_target_properties(chrono_grapher_destroy_files_test PROPERTIES
     SKIP_BUILD_RPATH TRUE
 )
 
-gtest_discover_tests(chrono_grapher_destroy_files_test
-    TEST_PREFIX Functional_ChronoGrapher_DestroyFiles.
-)
+add_test(NAME Functional_ChronoGrapher_DestroyFiles COMMAND chrono_grapher_destroy_files_test)
+set_tests_properties(Functional_ChronoGrapher_DestroyFiles PROPERTIES TIMEOUT 60)
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(chrono_grapher_destroy_files_test DESTINATION tests)
 endif()
