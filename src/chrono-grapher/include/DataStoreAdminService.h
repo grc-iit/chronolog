@@ -60,6 +60,33 @@ public:
         request.respond(return_code);
     }
 
+    void FlushAndStopStoryRecording(tl::request const& request, StoryId const& story_id)
+    {
+        LOG_INFO("[DataStoreAdminService] Flush+Stop Story Recording: StoryID={}", story_id);
+        int return_code = theDataStore.flushAndStopStoryRecording(story_id);
+        request.respond(return_code);
+    }
+
+    void DestroyStory(tl::request const& request,
+                      std::string const& chronicle_name,
+                      std::string const& story_name,
+                      StoryId const& story_id)
+    {
+        LOG_INFO("[DataStoreAdminService] Destroying Story: Chronicle={}, Story={}, StoryID={}",
+                 chronicle_name,
+                 story_name,
+                 story_id);
+        int return_code = theDataStore.destroyStory(story_id, chronicle_name, story_name);
+        request.respond(return_code);
+    }
+
+    void DestroyChronicle(tl::request const& request, std::string const& chronicle_name)
+    {
+        LOG_INFO("[DataStoreAdminService] Destroying Chronicle: {}", chronicle_name);
+        int return_code = theDataStore.destroyChronicle(chronicle_name);
+        request.respond(return_code);
+    }
+
 private:
     DataStoreAdminService(tl::engine& tl_engine, uint16_t service_provider_id, GrapherDataStore& data_store_instance)
         : tl::provider<DataStoreAdminService>(tl_engine, service_provider_id)
@@ -69,6 +96,9 @@ private:
         define("shutdown_data_collection", &DataStoreAdminService::shutdown_data_collection);
         define("start_story_recording", &DataStoreAdminService::StartStoryRecording);
         define("stop_story_recording", &DataStoreAdminService::StopStoryRecording);
+        define("flush_and_stop_story_recording", &DataStoreAdminService::FlushAndStopStoryRecording);
+        define("destroy_story", &DataStoreAdminService::DestroyStory);
+        define("destroy_chronicle", &DataStoreAdminService::DestroyChronicle);
         //set up callback for the case when the engine is being finalized while this provider is still alive
         get_engine().push_finalize_callback(this, [p = this]() { delete p; });
 

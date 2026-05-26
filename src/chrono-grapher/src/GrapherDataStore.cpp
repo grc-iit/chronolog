@@ -103,6 +103,167 @@ int chronolog::GrapherDataStore::stopStoryRecording(chronolog::StoryId const& st
 
 ////////////////////////
 
+int chronolog::GrapherDataStore::flushAndStopStoryRecording(chronolog::StoryId const& story_id)
+{
+    LOG_INFO("[GrapherDataStore] Initiating flush+stop recording for StoryId={}", story_id);
+
+    chl::StoryPipeline* pipeline = nullptr;
+    {
+        std::lock_guard storeLock(dataStoreMutex);
+        auto pipeline_iter = theMapOfStoryPipelines.find(story_id);
+        if(pipeline_iter == theMapOfStoryPipelines.end())
+        {
+            LOG_INFO("[GrapherDataStore] flush+stop: no live pipeline for StoryId={} (nothing to flush)", story_id);
+            return chronolog::CL_SUCCESS;
+        }
+        pipeline = (*pipeline_iter).second;
+        theMapOfStoryPipelines.erase(pipeline_iter);
+        pipelinesWaitingForExit.erase(story_id);
+    }
+
+    // Pick up any orphan chunks that arrived for this story and then drain the
+    // ingestion handle's deques into the pipeline timeline. Finalize then walks
+    // the timeline and hands the remaining non-empty chunks to the caller via
+    // the output vector.
+    theIngestionQueue.drainOrphanChunks();
+    pipeline->collectIngestedEvents();
+    theIngestionQueue.removeStoryIngestionHandle(story_id);
+
+    std::vector<chl::StoryChunk*> remaining_chunks;
+    pipeline->finalize(remaining_chunks);
+
+    int return_code = chronolog::CL_SUCCESS;
+    if(syncChunkProcessor)
+    {
+        for(chl::StoryChunk* chunk: remaining_chunks)
+        {
+            int chunk_rc = syncChunkProcessor(chunk);
+            if(chunk_rc != chronolog::CL_SUCCESS)
+            {
+                LOG_ERROR("[GrapherDataStore] Sync chunk processor failed for StoryId={} chunk {}-{}: rc={}",
+                          story_id,
+                          chunk->getStartTime(),
+                          chunk->getEndTime(),
+                          chunk_rc);
+                return_code = chunk_rc;
+            }
+            delete chunk;
+        }
+    }
+    else
+    {
+        LOG_WARNING("[GrapherDataStore] No sync chunk processor configured; falling back to extraction queue for "
+                    "StoryId={} ({} chunks)",
+                    story_id,
+                    remaining_chunks.size());
+        theExtractionQueue.stashStoryChunks(remaining_chunks);
+    }
+
+    delete pipeline;
+    LOG_INFO("[GrapherDataStore] flush+stop completed for StoryId={} ({} chunks drained)",
+             story_id,
+             remaining_chunks.size());
+    return return_code;
+}
+
+////////////////////////
+
+int chronolog::GrapherDataStore::destroyStory(chronolog::StoryId const& story_id,
+                                              chronolog::ChronicleName const& chronicle,
+                                              chronolog::StoryName const& story)
+{
+    LOG_INFO("[GrapherDataStore] Destroying story: Chronicle={}, Story={}, StoryId={}", chronicle, story, story_id);
+
+    // Cancel any in-memory pipeline for this story without flushing.
+    // Destroy means destroy: in-flight events are discarded. The caller
+    // (Visor) ensures any Release that needed to flush already ran.
+    chl::StoryPipeline* pipeline = nullptr;
+    {
+        std::lock_guard storeLock(dataStoreMutex);
+        auto pipeline_iter = theMapOfStoryPipelines.find(story_id);
+        if(pipeline_iter != theMapOfStoryPipelines.end())
+        {
+            pipeline = (*pipeline_iter).second;
+            theMapOfStoryPipelines.erase(pipeline_iter);
+            pipelinesWaitingForExit.erase(story_id);
+        }
+        else
+        {
+            auto waiting_iter = pipelinesWaitingForExit.find(story_id);
+            if(waiting_iter != pipelinesWaitingForExit.end())
+            {
+                pipeline = waiting_iter->second.first;
+                pipelinesWaitingForExit.erase(waiting_iter);
+            }
+        }
+    }
+    if(pipeline != nullptr)
+    {
+        theIngestionQueue.removeStoryIngestionHandle(story_id);
+        delete pipeline;
+    }
+
+    int delete_rc = chronolog::CL_SUCCESS;
+    if(deleteStoryFiles)
+    {
+        delete_rc = deleteStoryFiles(chronicle, story);
+    }
+    return delete_rc;
+}
+
+////////////////////////
+
+int chronolog::GrapherDataStore::destroyChronicle(chronolog::ChronicleName const& chronicle)
+{
+    LOG_INFO("[GrapherDataStore] Destroying chronicle: {}", chronicle);
+
+    // Cancel every in-memory pipeline whose chronicle matches, without flushing.
+    std::vector<chl::StoryPipeline*> pipelines_to_delete;
+    std::vector<chl::StoryId> story_ids_to_unhook;
+    {
+        std::lock_guard storeLock(dataStoreMutex);
+        for(auto it = theMapOfStoryPipelines.begin(); it != theMapOfStoryPipelines.end();)
+        {
+            if(it->second != nullptr && it->second->getChronicleName() == chronicle)
+            {
+                story_ids_to_unhook.push_back(it->first);
+                pipelines_to_delete.push_back(it->second);
+                pipelinesWaitingForExit.erase(it->first);
+                it = theMapOfStoryPipelines.erase(it);
+            }
+            else
+            {
+                ++it;
+            }
+        }
+        for(auto it = pipelinesWaitingForExit.begin(); it != pipelinesWaitingForExit.end();)
+        {
+            chl::StoryPipeline* p = it->second.first;
+            if(p != nullptr && p->getChronicleName() == chronicle)
+            {
+                story_ids_to_unhook.push_back(it->first);
+                pipelines_to_delete.push_back(p);
+                it = pipelinesWaitingForExit.erase(it);
+            }
+            else
+            {
+                ++it;
+            }
+        }
+    }
+    for(chl::StoryId const& sid: story_ids_to_unhook) { theIngestionQueue.removeStoryIngestionHandle(sid); }
+    for(chl::StoryPipeline* p: pipelines_to_delete) { delete p; }
+
+    int delete_rc = chronolog::CL_SUCCESS;
+    if(deleteChronicleFiles)
+    {
+        delete_rc = deleteChronicleFiles(chronicle);
+    }
+    return delete_rc;
+}
+
+////////////////////////
+
 void chronolog::GrapherDataStore::collectIngestedEvents()
 {
     LOG_DEBUG("[GrapherDataStore] Initiating collection of ingested story chunks. Current state={}, Active "

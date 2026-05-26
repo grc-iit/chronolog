@@ -860,14 +860,18 @@ int KeeperRegistry::notifyGrapherOfStoryRecordingStop(RecordingGroup& recordingG
 
     try
     {
-        return_code = dataAdminClient->send_stop_story_recording(storyId);
+        // Use the flush+stop variant so Release blocks until the Grapher has
+        // finalized its pipeline and persisted remaining chunks to HDF5. The
+        // error-fallback callers (failed Acquire start) just see a no-op when
+        // no pipeline exists, so the same RPC is safe for both paths.
+        return_code = dataAdminClient->send_flush_and_stop_story_recording(storyId);
         if(return_code != chronolog::CL_SUCCESS)
         {
             LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to grapher {}", id_string.str());
         }
         else
         {
-            LOG_INFO("[ChronoProcessRegistry] Registry notified grapher {} to stop recording StoryID={} ",
+            LOG_INFO("[ChronoProcessRegistry] Registry notified grapher {} to flush+stop recording StoryID={} ",
                      id_string.str(),
                      storyId);
         }
@@ -1113,7 +1117,13 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStop(RecordingGroup& recordingG
         }
         try
         {
-            int rpc_return = dataAdminClient->send_stop_story_recording(storyId);
+            // flush+stop: Keeper drains its buffers and pushes remaining chunks
+            // through the RDMA extractor to the Grapher synchronously. Combined
+            // with the keeper-then-grapher ordering used by
+            // notifyRecordingGroupOfStoryRecordingStop, this guarantees that by
+            // the time Release returns the Grapher has all the data ready to
+            // persist.
+            int rpc_return = dataAdminClient->send_flush_and_stop_story_recording(storyId);
             if(rpc_return != chronolog::CL_SUCCESS)
             {
                 LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to keeper {}",
@@ -1121,7 +1131,7 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStop(RecordingGroup& recordingG
             }
             else
             {
-                LOG_INFO("[ChronoProcessRegistry] Registry notified  {} to stop recording story {}",
+                LOG_INFO("[ChronoProcessRegistry] Registry notified  {} to flush+stop recording story {}",
                          to_string(keeper_id_card),
                          storyId);
             }
@@ -1134,6 +1144,133 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStop(RecordingGroup& recordingG
     }
 
     return chronolog::CL_SUCCESS;
+}
+
+////////////////////////////
+
+int KeeperRegistry::notifyAllGraphersOfStoryDestruction(ChronicleName const& chronicle_name,
+                                                        StoryName const& story_name,
+                                                        StoryId const& story_id)
+{
+    if(!is_running())
+    {
+        LOG_WARNING("[ChronoProcessRegistry] Registry is not running; skipping destroy-story broadcast for StoryID={}",
+                    story_id);
+        return chronolog::CL_ERR_NO_KEEPERS;
+    }
+
+    // Snapshot the list of currently-active Grapher admin clients under the
+    // registry lock; perform the RPCs without holding it (same delayed-exit
+    // pattern the per-group notifications use).
+    std::vector<std::pair<DataStoreAdminClient*, std::string>> targets;
+    {
+        std::lock_guard<std::mutex> lock(registryLock);
+        targets.reserve(recordingGroups.size());
+        for(auto& group_entry: recordingGroups)
+        {
+            RecordingGroup& rg = group_entry.second;
+            if(rg.grapherProcess != nullptr && rg.grapherProcess->active && rg.grapherProcess->adminClient != nullptr)
+            {
+                std::stringstream id_string;
+                id_string << rg.grapherProcess->idCard;
+                targets.emplace_back(rg.grapherProcess->adminClient, id_string.str());
+            }
+        }
+    }
+
+    int aggregate_rc = chronolog::CL_SUCCESS;
+    for(auto& target: targets)
+    {
+        try
+        {
+            int rc = target.first->send_destroy_story(chronicle_name, story_name, story_id);
+            if(rc != chronolog::CL_SUCCESS)
+            {
+                LOG_WARNING("[ChronoProcessRegistry] destroy-story RPC to grapher {} failed: rc={}", target.second, rc);
+                if(aggregate_rc == chronolog::CL_SUCCESS)
+                {
+                    aggregate_rc = rc;
+                }
+            }
+            else
+            {
+                LOG_INFO("[ChronoProcessRegistry] Notified grapher {} to destroy StoryID={}", target.second, story_id);
+            }
+        }
+        catch(thallium::exception const& ex)
+        {
+            LOG_WARNING("[ChronoProcessRegistry] destroy-story RPC to grapher {} threw thallium exception",
+                        target.second);
+            if(aggregate_rc == chronolog::CL_SUCCESS)
+            {
+                aggregate_rc = chronolog::CL_ERR_UNKNOWN;
+            }
+        }
+    }
+    return aggregate_rc;
+}
+
+////////////////////////////
+
+int KeeperRegistry::notifyAllGraphersOfChronicleDestruction(ChronicleName const& chronicle_name)
+{
+    if(!is_running())
+    {
+        LOG_WARNING("[ChronoProcessRegistry] Registry is not running; skipping destroy-chronicle broadcast for {}",
+                    chronicle_name);
+        return chronolog::CL_ERR_NO_KEEPERS;
+    }
+
+    std::vector<std::pair<DataStoreAdminClient*, std::string>> targets;
+    {
+        std::lock_guard<std::mutex> lock(registryLock);
+        targets.reserve(recordingGroups.size());
+        for(auto& group_entry: recordingGroups)
+        {
+            RecordingGroup& rg = group_entry.second;
+            if(rg.grapherProcess != nullptr && rg.grapherProcess->active && rg.grapherProcess->adminClient != nullptr)
+            {
+                std::stringstream id_string;
+                id_string << rg.grapherProcess->idCard;
+                targets.emplace_back(rg.grapherProcess->adminClient, id_string.str());
+            }
+        }
+    }
+
+    int aggregate_rc = chronolog::CL_SUCCESS;
+    for(auto& target: targets)
+    {
+        try
+        {
+            int rc = target.first->send_destroy_chronicle(chronicle_name);
+            if(rc != chronolog::CL_SUCCESS)
+            {
+                LOG_WARNING("[ChronoProcessRegistry] destroy-chronicle RPC to grapher {} failed: rc={}",
+                            target.second,
+                            rc);
+                if(aggregate_rc == chronolog::CL_SUCCESS)
+                {
+                    aggregate_rc = rc;
+                }
+            }
+            else
+            {
+                LOG_INFO("[ChronoProcessRegistry] Notified grapher {} to destroy Chronicle={}",
+                         target.second,
+                         chronicle_name);
+            }
+        }
+        catch(thallium::exception const& ex)
+        {
+            LOG_WARNING("[ChronoProcessRegistry] destroy-chronicle RPC to grapher {} threw thallium exception",
+                        target.second);
+            if(aggregate_rc == chronolog::CL_SUCCESS)
+            {
+                aggregate_rc = chronolog::CL_ERR_UNKNOWN;
+            }
+        }
+    }
+    return aggregate_rc;
 }
 
 ////////////////////////////

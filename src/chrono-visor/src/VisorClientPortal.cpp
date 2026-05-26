@@ -198,12 +198,55 @@ int chronolog::VisorClientPortal::DestroyChronicle(chl::ClientId const& client_i
         return chronolog::CL_ERR_NOT_AUTHORIZED;
     }
 
+    // Destroy rule: refuse if any story is held by a client other than the
+    // requester. If the requester is the sole acquirer of some stories, auto-
+    // release them first (the same Release path drives the sync flush so any
+    // in-flight events are persisted before the data is destroyed).
+    std::vector<std::pair<StoryId, std::string>> stories_to_auto_release;
+    int eligibility =
+            chronicleMetaDirectory.evaluate_chronicle_destroy(chronicle_name, client_id, stories_to_auto_release);
+    if(eligibility != chronolog::CL_SUCCESS)
+    {
+        return eligibility;
+    }
+
+    for(auto const& [sid, story_name]: stories_to_auto_release)
+    {
+        StoryId released_id{0};
+        bool was_last_acquirer = false;
+        int release_rc = chronicleMetaDirectory.release_story(client_id,
+                                                              chronicle_name,
+                                                              story_name,
+                                                              released_id,
+                                                              was_last_acquirer);
+        if(release_rc != chronolog::CL_SUCCESS)
+        {
+            LOG_WARNING("[VisorClientPortal] DestroyChronicle: auto-release of StoryName={} failed rc={}",
+                        story_name,
+                        release_rc);
+            // Continue; metadata removal below will report any inconsistency.
+        }
+        if(was_last_acquirer && theKeeperRegistry != nullptr)
+        {
+            // Flush+stop the recording group so any in-flight events for the
+            // soon-to-be-destroyed story are durable in HDF5 before delete.
+            theKeeperRegistry->notifyRecordingGroupOfStoryRecordingStop(released_id);
+        }
+    }
+
+    // Broadcast destroy_chronicle to every Grapher so HDF5 files written by
+    // any group during the chronicle's lifetime are removed.
+    if(theKeeperRegistry != nullptr)
+    {
+        theKeeperRegistry->notifyAllGraphersOfChronicleDestruction(chronicle_name);
+    }
+
     int return_code = chronicleMetaDirectory.destroy_chronicle(chronicle_name);
     if(return_code == chronolog::CL_SUCCESS)
     {
-        LOG_DEBUG("[VisorClientPortal] Chronicle destroyed: ClientID={}, ChronicleName={}",
-                  client_id,
-                  chronicle_name.c_str());
+        LOG_INFO("[VisorClientPortal] Chronicle destroyed: ClientID={}, ChronicleName={}",
+                 client_id,
+                 chronicle_name.c_str());
     }
     return (return_code);
 }
@@ -213,7 +256,7 @@ int chronolog::VisorClientPortal::DestroyStory(chl::ClientId const& client_id,
                                                std::string const& chronicle_name,
                                                std::string const& story_name)
 {
-    LOG_INFO("[VisorClientPortal] Story destroyed: PID={}, ChronicleName={}, StoryName={}",
+    LOG_INFO("[VisorClientPortal] Story destroy requested: PID={}, ChronicleName={}, StoryName={}",
              getpid(),
              chronicle_name.c_str(),
              story_name.c_str());
@@ -222,14 +265,62 @@ int chronolog::VisorClientPortal::DestroyStory(chl::ClientId const& client_id,
         return chronolog::CL_ERR_NOT_AUTHORIZED;
     }
 
-    if(!chronicle_name.empty() && !story_name.empty())
-    {
-        return chronicleMetaDirectory.destroy_story(chronicle_name, story_name);
-    }
-    else
+    if(chronicle_name.empty() || story_name.empty())
     {
         return chronolog::CL_ERR_INVALID_ARG;
     }
+
+    StoryId story_id{0};
+    bool caller_holds_it = false;
+    int eligibility = chronicleMetaDirectory.evaluate_story_destroy(chronicle_name,
+                                                                    story_name,
+                                                                    client_id,
+                                                                    story_id,
+                                                                    caller_holds_it);
+    if(eligibility != chronolog::CL_SUCCESS)
+    {
+        return eligibility;
+    }
+
+    if(caller_holds_it)
+    {
+        // Auto-release on behalf of the caller. Release runs the sync flush
+        // through Keeper -> Grapher -> HDF5 so in-flight events are durable
+        // before destruction removes the files.
+        StoryId released_id{0};
+        bool was_last_acquirer = false;
+        int release_rc = chronicleMetaDirectory.release_story(client_id,
+                                                              chronicle_name,
+                                                              story_name,
+                                                              released_id,
+                                                              was_last_acquirer);
+        if(release_rc != chronolog::CL_SUCCESS)
+        {
+            LOG_WARNING("[VisorClientPortal] DestroyStory: auto-release of StoryName={} failed rc={}",
+                        story_name,
+                        release_rc);
+        }
+        if(was_last_acquirer && theKeeperRegistry != nullptr)
+        {
+            theKeeperRegistry->notifyRecordingGroupOfStoryRecordingStop(released_id);
+        }
+    }
+
+    if(theKeeperRegistry != nullptr)
+    {
+        // Broadcast destroy_story to every Grapher; each filters by filename
+        // and no-ops on stories it never persisted.
+        theKeeperRegistry->notifyAllGraphersOfStoryDestruction(chronicle_name, story_name, story_id);
+    }
+
+    int return_code = chronicleMetaDirectory.destroy_story(chronicle_name, story_name);
+    if(return_code == chronolog::CL_SUCCESS)
+    {
+        LOG_INFO("[VisorClientPortal] Story destroyed: ChronicleName={}, StoryName={}",
+                 chronicle_name.c_str(),
+                 story_name.c_str());
+    }
+    return return_code;
 }
 
 ///////////////////

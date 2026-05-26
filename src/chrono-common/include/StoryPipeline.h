@@ -58,6 +58,10 @@ public:
 
     StoryId const& getStoryId() const { return storyId; }
 
+    ChronicleName const& getChronicleName() const { return chronicleName; }
+
+    StoryName const& getStoryName() const { return storyName; }
+
     uint64_t getAcceptanceWindow() const { return acceptanceWindow; }
 
     uint64_t TimelineStart() const
