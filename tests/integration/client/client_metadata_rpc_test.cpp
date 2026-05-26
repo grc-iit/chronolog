@@ -96,8 +96,8 @@ int main(int argc, char** argv)
 
 
     t1 = std::chrono::steady_clock::now();
-    std::vector<std::string> chronicle_names_retrieved;
-    chronicle_names_retrieved = client.ShowChronicles(chronicle_names_retrieved);
+    auto [show_chronicles_ret, chronicle_names_retrieved] = client.ShowChronicles();
+    (void)show_chronicles_ret;
     t2 = std::chrono::steady_clock::now();
     duration_show_chronicles += (t2 - t1);
     //std::sort(chronicle_names_retrieved.begin(), chronicle_names_retrieved.end());
@@ -133,8 +133,8 @@ int main(int argc, char** argv)
         assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NO_KEEPERS);
 
         t1 = std::chrono::steady_clock::now();
-        std::vector<std::string> stories_names_retrieved;
-        client.ShowStories(chronicle_names[i], stories_names_retrieved);
+        auto [show_stories_ret, stories_names_retrieved] = client.ShowStories(chronicle_names[i]);
+        (void)show_stories_ret;
         t2 = std::chrono::steady_clock::now();
         duration_show_stories += (t2 - t1);
         //std::sort(stories_names_retrieved.begin(), stories_names_retrieved.end());
