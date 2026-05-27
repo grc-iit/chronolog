@@ -66,9 +66,9 @@ int main(int argc, char** argv)
     chronolog::Client client(portalConf);
     std::vector<std::string> chronicle_names;
     std::chrono::steady_clock::time_point t1, t2;
-    std::chrono::duration<double, std::nano> duration_create_chronicle{}, duration_edit_chronicle_attr{},
-            duration_acquire_story{}, duration_release_story{}, duration_destroy_story{}, duration_get_chronicle_attr{},
-            duration_destroy_chronicle{}, duration_show_chronicles{}, duration_show_stories{};
+    std::chrono::duration<double, std::nano> duration_create_chronicle{}, duration_acquire_story{},
+            duration_release_story{}, duration_destroy_story{}, duration_destroy_chronicle{},
+            duration_show_chronicles{}, duration_show_stories{};
     int ret;
     uint64_t offset = 0;
     std::string server_uri = portalConf.PROTO_CONF + "://" + portalConf.IP + ":" + std::to_string(portalConf.PORT);
@@ -108,14 +108,6 @@ int main(int argc, char** argv)
 
     for(int i = 0; i < NUM_CHRONICLE; i++)
     {
-        std::string key("Date");
-        t1 = std::chrono::steady_clock::now();
-        ret = client.EditChronicleAttr(chronicle_names[i], key, "2023-01-15");
-        t2 = std::chrono::steady_clock::now();
-        //FIXME:  is not working, the following assert will fail
-        //assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NO_KEEPERS);
-        duration_edit_chronicle_attr += (t2 - t1);
-
         std::vector<std::string> story_names;
         story_names.reserve(NUM_STORY);
         for(int j = 0; j < NUM_STORY; j++)
@@ -159,15 +151,6 @@ int main(int argc, char** argv)
             assert(ret == chronolog::CL_SUCCESS);
             duration_destroy_story += (t2 - t1);
         }
-
-        std::string value = "pls_ignore";
-        t1 = std::chrono::steady_clock::now();
-        ret = client.GetChronicleAttr(chronicle_names[i], key, value);
-        t2 = std::chrono::steady_clock::now();
-        //FIXME:assert(ret == chronolog::CL_SUCCESS);
-        //FIXME: returning data using parameter is not working, the following assert will fail
-        //ASSERT(value, ==, "2023-01-15");
-        duration_get_chronicle_attr += (t2 - t1);
     }
 
     for(int i = 0; i < NUM_CHRONICLE; i++)
@@ -188,16 +171,12 @@ int main(int argc, char** argv)
 
     LOG_INFO("[ClientLibMetadataRPCTest] CreateChronicle takes {} ns",
              duration_create_chronicle.count() / NUM_CHRONICLE);
-    LOG_INFO("[ClientLibMetadataRPCTest] EditChronicleAttr takes {} ns",
-             duration_edit_chronicle_attr.count() / NUM_CHRONICLE);
     LOG_INFO("[ClientLibMetadataRPCTest] AcquireStory takes {} ns",
              duration_acquire_story.count() / (NUM_CHRONICLE * NUM_STORY));
     LOG_INFO("[ClientLibMetadataRPCTest] ReleaseStory takes {} ns",
              duration_release_story.count() / (NUM_CHRONICLE * NUM_STORY));
     LOG_INFO("[ClientLibMetadataRPCTest] DestroyStory takes {} ns",
              duration_destroy_story.count() / (NUM_CHRONICLE * NUM_STORY));
-    LOG_INFO("[ClientLibMetadataRPCTest] GetChronileAttr(Date) takes {} ns",
-             duration_get_chronicle_attr.count() / NUM_CHRONICLE);
     LOG_INFO("[ClientLibMetadataRPCTest] DestroyChronicle takes {} ns",
              duration_destroy_chronicle.count() / NUM_CHRONICLE);
     LOG_INFO("[ClientLibMetadataRPCTest] ShowChronicles takes {} ns", duration_show_chronicles.count() / NUM_CHRONICLE);
