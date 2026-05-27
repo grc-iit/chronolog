@@ -11,7 +11,6 @@ enum ServerErrorCode
 {
     CL_ERR_STORY_EXISTS = -101,               // Specified Story exists, cannot be created/renamed to
     CL_ERR_ARCHIVE_EXISTS = -102,             // Specified Archive exists, cannot be created/renamed to
-    CL_ERR_CHRONICLE_PROPERTY_FULL = -103,    // Property list of Chronicle is full, cannot add new property
     CL_ERR_STORY_PROPERTY_FULL = -104,        // Property list of Story is full, cannot add new property
     CL_ERR_CHRONICLE_METADATA_FULL = -105,    // Metadata list of Chronicle is full, cannot add new property
     CL_ERR_STORY_METADATA_FULL = -106,        // Metadata list of Story is full, cannot add new property
@@ -32,8 +31,6 @@ inline const char* to_string(ServerErrorCode e)
             return "CL_ERR_STORY_EXISTS";
         case CL_ERR_ARCHIVE_EXISTS:
             return "CL_ERR_ARCHIVE_EXISTS";
-        case CL_ERR_CHRONICLE_PROPERTY_FULL:
-            return "CL_ERR_CHRONICLE_PROPERTY_FULL";
         case CL_ERR_STORY_PROPERTY_FULL:
             return "CL_ERR_STORY_PROPERTY_FULL";
         case CL_ERR_CHRONICLE_METADATA_FULL:
@@ -63,7 +60,6 @@ inline const char* to_string_server(int code)
     {
         case CL_ERR_STORY_EXISTS:
         case CL_ERR_ARCHIVE_EXISTS:
-        case CL_ERR_CHRONICLE_PROPERTY_FULL:
         case CL_ERR_STORY_PROPERTY_FULL:
         case CL_ERR_CHRONICLE_METADATA_FULL:
         case CL_ERR_STORY_METADATA_FULL:
