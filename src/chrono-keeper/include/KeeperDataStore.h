@@ -10,6 +10,7 @@
 
 #include <thallium.hpp>
 
+#include <StoryChunk.h>
 #include "IngestionQueue.h"
 #include "KeeperStoryPipeline.h"
 #include "StoryChunkExtractionQueue.h"
@@ -44,7 +45,6 @@ public:
         , story_chunk_duration_secs(story_chunk_duration_secs)
         , acceptance_window_secs(acceptance_window_secs)
         , inactive_pipeline_delay_secs(inactive_pipeline_delay_secs)
-
     {}
 
     ~KeeperDataStore();

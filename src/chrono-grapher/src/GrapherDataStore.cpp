@@ -7,6 +7,7 @@
 
 #include <chronolog_errcode.h>
 #include <GrapherDataStore.h>
+#include <GrapherExtractionChain.h>
 #include <chrono_monitor.h>
 
 namespace chl = chronolog;
@@ -99,6 +100,263 @@ int chronolog::GrapherDataStore::stopStoryRecording(chronolog::StoryId const& st
         LOG_WARNING("[GrapherDataStore] Attempt to stop recording for non-existent StoryId={}", story_id);
     }
     return chronolog::CL_SUCCESS;
+}
+
+////////////////////////
+
+int chronolog::GrapherDataStore::destroyStory(chronolog::StoryId const& story_id,
+                                              chronolog::ChronicleName const& chronicle,
+                                              chronolog::StoryName const& story)
+{
+    LOG_INFO("[GrapherDataStore] Destroying story (async): Chronicle={}, Story={}, StoryId={}",
+             chronicle,
+             story,
+             story_id);
+
+    DestroyTask task;
+    task.kind = DestroyTask::Kind::Story;
+    task.chronicleName = chronicle;
+    task.storyName = story;
+
+    // Steps 1-3: under dataStoreMutex, unhook the pipeline from both maps,
+    // absorb in-flight chunks, and unhook the ingestion handle. All three
+    // must be atomic w.r.t. startStoryRecording: story_id is a deterministic
+    // CityHash64(chronicle+story), so a Destroy-then-recreate-then-reAcquire
+    // can reach this same Grapher while this destroy is in flight. If we
+    // released dataStoreMutex before removeStoryIngestionHandle, a concurrent
+    // startStoryRecording could install a fresh handle in the gap and we
+    // would erroneously remove it -- orphaning every subsequent event for
+    // the new acquisition (silent data loss). Safe to hold the lock across
+    // the IngestionQueue calls: the established locking order in this file
+    // is dataStoreMutex -> IngestionQueue (startStoryRecording, retire path).
+    chl::StoryPipeline* pipeline = nullptr;
+    {
+        std::lock_guard storeLock(dataStoreMutex);
+        auto pipeline_iter = theMapOfStoryPipelines.find(story_id);
+        if(pipeline_iter != theMapOfStoryPipelines.end())
+        {
+            pipeline = (*pipeline_iter).second;
+            theMapOfStoryPipelines.erase(pipeline_iter);
+            pipelinesWaitingForExit.erase(story_id);
+        }
+        else
+        {
+            auto waiting_iter = pipelinesWaitingForExit.find(story_id);
+            if(waiting_iter != pipelinesWaitingForExit.end())
+            {
+                pipeline = waiting_iter->second.first;
+                pipelinesWaitingForExit.erase(waiting_iter);
+            }
+        }
+
+        if(pipeline != nullptr)
+        {
+            // drainOrphanChunks is global to the ingestion queue (cheap) and
+            // pipeline->collectIngestedEvents folds both ingestion deques into
+            // the pipeline timeline before we unhook the handle so the worker
+            // still persists everything that arrived before Destroy.
+            theIngestionQueue.drainOrphanChunks();
+            pipeline->collectIngestedEvents();
+            theIngestionQueue.removeStoryIngestionHandle(story_id);
+        }
+    }
+
+    if(pipeline != nullptr)
+    {
+        // Finalize outside the lock; the pipeline is already unreachable via
+        // any map or ingestion handle, so no other thread can touch it.
+        pipeline->finalize(task.remainingChunks);
+        task.pipelines.push_back(pipeline);
+    }
+
+    // Step 5/6: hand ownership over to the destroy worker. Ownership of
+    // task.pipelines and task.remainingChunks transfers to the worker; the
+    // worker deletes both after the wait completes.
+    enqueueDestroyTask(std::move(task));
+    return chronolog::CL_SUCCESS;
+}
+
+////////////////////////
+
+int chronolog::GrapherDataStore::destroyChronicle(chronolog::ChronicleName const& chronicle)
+{
+    LOG_INFO("[GrapherDataStore] Destroying chronicle (async): {}", chronicle);
+
+    DestroyTask task;
+    task.kind = DestroyTask::Kind::Chronicle;
+    task.chronicleName = chronicle;
+
+    // Under dataStoreMutex, unhook every matching pipeline, drain/absorb
+    // their in-flight chunks, and unhook their ingestion handles -- all in
+    // one critical section. See destroyStory above for the rationale: any
+    // gap between the map erase and the handle remove lets a concurrent
+    // startStoryRecording for a freshly recreated story slip in and have
+    // its new ingestion handle erroneously removed (silent data loss).
+    std::vector<chl::StoryId> story_ids_to_unhook;
+    {
+        std::lock_guard storeLock(dataStoreMutex);
+        for(auto it = theMapOfStoryPipelines.begin(); it != theMapOfStoryPipelines.end();)
+        {
+            if(it->second != nullptr && it->second->getChronicleName() == chronicle)
+            {
+                story_ids_to_unhook.push_back(it->first);
+                task.pipelines.push_back(it->second);
+                pipelinesWaitingForExit.erase(it->first);
+                it = theMapOfStoryPipelines.erase(it);
+            }
+            else
+            {
+                ++it;
+            }
+        }
+        for(auto it = pipelinesWaitingForExit.begin(); it != pipelinesWaitingForExit.end();)
+        {
+            chl::StoryPipeline* p = it->second.first;
+            if(p != nullptr && p->getChronicleName() == chronicle)
+            {
+                story_ids_to_unhook.push_back(it->first);
+                task.pipelines.push_back(p);
+                it = pipelinesWaitingForExit.erase(it);
+            }
+            else
+            {
+                ++it;
+            }
+        }
+
+        if(!task.pipelines.empty())
+        {
+            theIngestionQueue.drainOrphanChunks();
+            for(chl::StoryPipeline* p: task.pipelines)
+            {
+                if(p != nullptr)
+                {
+                    p->collectIngestedEvents();
+                }
+            }
+            for(chl::StoryId const& sid: story_ids_to_unhook) { theIngestionQueue.removeStoryIngestionHandle(sid); }
+        }
+    }
+
+    // Finalize outside the lock; each pipeline is already unreachable via
+    // any map or ingestion handle, so no other thread can touch it.
+    for(chl::StoryPipeline* p: task.pipelines)
+    {
+        if(p != nullptr)
+        {
+            p->finalize(task.remainingChunks);
+        }
+    }
+
+    enqueueDestroyTask(std::move(task));
+    return chronolog::CL_SUCCESS;
+}
+
+////////////////////////
+
+void chronolog::GrapherDataStore::enqueueDestroyTask(DestroyTask&& task)
+{
+    {
+        std::lock_guard<std::mutex> lock(destroyMutex);
+        destroyQueue.emplace_back(std::move(task));
+    }
+    destroyCv.notify_one();
+}
+
+////////////////////////
+
+void chronolog::GrapherDataStore::drainExtractionQueueOrTimeout()
+{
+    // Poll the extraction queue until it drains. Destroy is rare; per-story
+    // granularity would be nicer but a global drain wait is the simplest
+    // robust primitive the queue currently exposes. To avoid blocking
+    // shutdown indefinitely we also bail when the data store is shutting
+    // down -- the extraction module's own shutdown will then take over.
+    using namespace std::chrono_literals;
+    auto const poll_interval = 50ms;
+    while(!destroyWorkerShouldExit.load(std::memory_order_acquire))
+    {
+        if(theExtractionQueue.empty())
+        {
+            return;
+        }
+        std::this_thread::sleep_for(poll_interval);
+    }
+}
+
+////////////////////////
+
+void chronolog::GrapherDataStore::destroyWorkerTask()
+{
+    LOG_INFO("[GrapherDataStore] Destroy worker thread started");
+    while(true)
+    {
+        DestroyTask task;
+        {
+            std::unique_lock<std::mutex> lock(destroyMutex);
+            destroyCv.wait(lock,
+                           [this] {
+                               return destroyWorkerShouldExit.load(std::memory_order_acquire) || !destroyQueue.empty();
+                           });
+            if(destroyQueue.empty() && destroyWorkerShouldExit.load(std::memory_order_acquire))
+            {
+                break;
+            }
+            task = std::move(destroyQueue.front());
+            destroyQueue.pop_front();
+        }
+
+        // Hand the drained chunks to the extraction queue so the existing
+        // writer threads persist them via the configured chain (e.g. HDF5).
+        // This must happen BEFORE we wait for drain; otherwise the wait
+        // would return immediately and we'd delete files before they were
+        // written.
+        if(!task.remainingChunks.empty())
+        {
+            theExtractionQueue.stashStoryChunks(task.remainingChunks);
+            task.remainingChunks.clear();
+        }
+
+        // Wait for the extraction queue to drain. This is the load-bearing
+        // ordering primitive: by the time we proceed to delete files, every
+        // chunk we stashed (and anything stashed concurrently for other
+        // stories) has been picked up by a writer thread.
+        drainExtractionQueueOrTimeout();
+
+        // Persistence-vs-deletion ordering is now safe; delete the on-disk
+        // HDF5 artifacts directly via the extraction chain.
+        int delete_rc = chronolog::CL_SUCCESS;
+        if(theExtractionChain != nullptr)
+        {
+            if(task.kind == DestroyTask::Kind::Story)
+            {
+                delete_rc = theExtractionChain->delete_story_files(task.chronicleName, task.storyName);
+                LOG_INFO("[GrapherDataStore] Destroy worker: delete_story_files Chronicle={}, Story={} rc={}",
+                         task.chronicleName,
+                         task.storyName,
+                         delete_rc);
+            }
+            else
+            {
+                delete_rc = theExtractionChain->delete_chronicle_files(task.chronicleName);
+                LOG_INFO("[GrapherDataStore] Destroy worker: delete_chronicle_files Chronicle={} rc={}",
+                         task.chronicleName,
+                         delete_rc);
+            }
+        }
+        else
+        {
+            LOG_WARNING("[GrapherDataStore] Destroy worker: no extraction chain configured; skipping file deletion "
+                        "for Chronicle={}",
+                        task.chronicleName);
+        }
+
+        // Pipelines are deleted last so that any references the extraction
+        // chain might still hold to their chunks are no longer reachable.
+        for(chl::StoryPipeline* p: task.pipelines) { delete p; }
+        task.pipelines.clear();
+    }
+    LOG_INFO("[GrapherDataStore] Destroy worker thread exiting");
 }
 
 ////////////////////////
@@ -251,6 +509,14 @@ void chronolog::GrapherDataStore::startDataCollection(int stream_count)
                 dataStoreStreams[i % (dataStoreStreams.size())]->make_thread([p = this]() { p->dataCollectionTask(); });
         dataStoreThreads.push_back(std::move(th));
     }
+
+    // Spawn the dedicated destroy worker. We use a std::thread (not a thallium
+    // ULT) so the worker can block on the extraction-queue drain via
+    // condition_variable / sleep without occupying an xstream that other
+    // ULTs need.
+    destroyWorkerShouldExit.store(false, std::memory_order_release);
+    destroyWorkerThread = std::thread([this]() { this->destroyWorkerTask(); });
+
     LOG_INFO("[GrapherDataStore] Data collection started successfully. Stream count={}, ThreadID={}",
              stream_count,
              tl::thread::self_id());
@@ -275,9 +541,21 @@ void chronolog::GrapherDataStore::shutdownDataCollection()
 
     state = SHUTTING_DOWN;
 
+    // Signal the destroy worker to exit and wake it up. We join after the
+    // data-collection ULTs have joined so any final destroy enqueued during
+    // shutdown has a chance to be processed.
+    destroyWorkerShouldExit.store(true, std::memory_order_release);
+    destroyCv.notify_all();
+
     // Join threads & execution streams while holding stateMutex
     for(auto& th: dataStoreThreads) { th->join(); }
     LOG_INFO("[GrapherDataStore] All data collection threads have been joined.");
+
+    if(destroyWorkerThread.joinable())
+    {
+        destroyWorkerThread.join();
+        LOG_INFO("[GrapherDataStore] Destroy worker thread has been joined.");
+    }
 
     for(auto& es: dataStoreStreams) { es->join(); }
     LOG_INFO("[GrapherDataStore] All data collection streams have been joined.");
