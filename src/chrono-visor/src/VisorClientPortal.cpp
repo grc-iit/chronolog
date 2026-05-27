@@ -126,6 +126,25 @@ int chronolog::VisorClientPortal::ClientConnect(uint32_t client_euid, chl::Clien
 int chronolog::VisorClientPortal::ClientDisconnect(chronolog::ClientId const& client_id)
 {
     LOG_INFO("Client Disconnected. ClientID={}", client_id);
+
+    // Auto-release any stories the client is still holding so the client
+    // record can always be cleaned up. Without this, remove_client_record
+    // refuses to remove a client that has acquired stories and the client
+    // would have to call ReleaseStory for every acquisition before Disconnect.
+    //
+    // release_all_acquired_stories reports back only the stories whose last
+    // acquirer was this client; stories still held by other clients keep
+    // recording.
+    std::vector<StoryId> released_with_no_acquirers_left;
+    chronicleMetaDirectory.release_all_acquired_stories(client_id, released_with_no_acquirers_left);
+    if(theKeeperRegistry != nullptr)
+    {
+        for(StoryId const& released_id: released_with_no_acquirers_left)
+        {
+            theKeeperRegistry->notifyRecordingGroupOfStoryRecordingStop(released_id);
+        }
+    }
+
     return clientManager.remove_client_record(client_id);
 }
 
@@ -260,7 +279,8 @@ chl::AcquireStoryResponseMsg chronolog::VisorClientPortal::AcquireStory(chl::Cli
                                                                                              player))
     {
         // RPC notification to the keepers might have failed, release the newly acquired story
-        chronicleMetaDirectory.release_story(client_id, chronicle_name, story_name, story_id);
+        bool was_last_acquirer = false;
+        chronicleMetaDirectory.release_story(client_id, chronicle_name, story_name, story_id, was_last_acquirer);
         //we do know that there's no need notify keepers of the story ending in this case as it hasn't started...
         return chronolog::AcquireStoryResponseMsg(chronolog::CL_ERR_NO_KEEPERS, story_id, empty_keeper_service_ids);
     }
@@ -293,13 +313,19 @@ int chronolog::VisorClientPortal::ReleaseStory(chl::ClientId const& client_id,
     }
 
     StoryId story_id(0);
-    auto return_code = chronicleMetaDirectory.release_story(client_id, chronicle_name, story_name, story_id);
+    bool was_last_acquirer = false;
+    auto return_code =
+            chronicleMetaDirectory.release_story(client_id, chronicle_name, story_name, story_id, was_last_acquirer);
     if(chronolog::CL_SUCCESS != return_code)
     {
         return return_code;
     }
 
-    theKeeperRegistry->notifyRecordingGroupOfStoryRecordingStop(story_id);
+    // Only stop the recording group if no other client still holds the story.
+    if(was_last_acquirer)
+    {
+        theKeeperRegistry->notifyRecordingGroupOfStoryRecordingStop(story_id);
+    }
 
     return chronolog::CL_SUCCESS;
 }
@@ -349,10 +375,15 @@ int chronolog::VisorClientPortal::ShowChronicles(chl::ClientId const& client_id,
 {
     LOG_DEBUG("[VisorClientPortal] Show Chronicles: PID={}, ClientID={}", getpid(), client_id);
 
-    // TODO: add client_id authorization check : if ( chronicle_action_is_authorized())
-    chronicleMetaDirectory.show_chronicles(chronicles);
+    // Listing chronicles is a client-scoped metadata read; route through the
+    // chronicle authorization predicate with no specific chronicle name. All
+    // authorization predicates currently return true (tracked in #637).
+    if(!chronicle_action_is_authorized(client_id, ""))
+    {
+        return chronolog::CL_ERR_NOT_AUTHORIZED;
+    }
 
-    return chronolog::CL_SUCCESS;
+    return chronicleMetaDirectory.show_chronicles(chronicles);
 }
 
 int chronolog::VisorClientPortal::ShowStories(chl::ClientId const& client_id,
@@ -363,12 +394,10 @@ int chronolog::VisorClientPortal::ShowStories(chl::ClientId const& client_id,
 
     if(!chronicle_action_is_authorized(client_id, chronicle_name))
     {
-        return chronolog::CL_ERR_UNKNOWN;
+        return chronolog::CL_ERR_NOT_AUTHORIZED;
     }
 
-    chronicleMetaDirectory.show_stories(chronicle_name, stories);
-
-    return chronolog::CL_SUCCESS;
+    return chronicleMetaDirectory.show_stories(chronicle_name, stories);
 }
 
 
