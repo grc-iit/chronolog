@@ -326,10 +326,30 @@ void chl::ClientQueryService::receive_story_chunk(tl::request const& request, tl
             {
                 for(auto const& log_event: response.events)
                 {
-                    query.callback(chl::Event{log_event.eventTime,
-                                              log_event.clientId,
-                                              log_event.eventIndex,
-                                              log_event.logRecord});
+                    // Per the public-header contract, the callback must not throw.
+                    // We still guard against it here so a misbehaving user callback
+                    // can't escape into the Thallium ULT, skip request.respond(...),
+                    // and hang the polling thread until CL_ERR_QUERY_TIMED_OUT.
+                    try
+                    {
+                        query.callback(chl::Event{log_event.eventTime,
+                                                  log_event.clientId,
+                                                  log_event.eventIndex,
+                                                  log_event.logRecord});
+                    }
+                    catch(std::exception const& ex)
+                    {
+                        LOG_ERROR("[ClientQueryService] User ReplayStory callback threw '{}'; "
+                                  "skipping event and continuing, ThreadID={}",
+                                  ex.what(),
+                                  tl::thread::self_id());
+                    }
+                    catch(...)
+                    {
+                        LOG_ERROR("[ClientQueryService] User ReplayStory callback threw non-std exception; "
+                                  "skipping event and continuing, ThreadID={}",
+                                  tl::thread::self_id());
+                    }
                 }
             }
             else if(query.eventSeries != nullptr)
