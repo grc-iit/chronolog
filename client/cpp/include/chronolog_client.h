@@ -155,6 +155,12 @@ public:
 
     int Disconnect();
 
+    // Returns this client's packed ClientId — the same value that appears in
+    // Event::client_id() / EventSequence::clientId for every event produced
+    // by this client and surfaced at retrieval. Valid only after a successful
+    // Connect(); returns 0 before that.
+    ClientId client_id() const;
+
     int CreateChronicle(std::string const& chronicle_name);
 
     int DestroyChronicle(std::string const& chronicle_name);

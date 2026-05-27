@@ -157,21 +157,26 @@ int ClientRegistryManager::add_client_record(chl::ClientId const& client_id, con
               static_cast<void*>(clientRegistry_),
               clientRegistry_->size());
     std::lock_guard<std::mutex> lock(g_clientRegistryMutex_);
-    if(clientRegistry_->insert_or_assign(client_id, record).first != clientRegistry_->end())
+    // Refuse to overwrite an existing entry. Two clients ending up with the same
+    // packed ClientId (ip<<32 | port<<16 | pid&0xFFFF) is possible — the pid is
+    // truncated to 16 bits and unresolvable hostnames pack ip=0 — so we surface
+    // the collision instead of silently aliasing two clients onto one record.
+    auto [it, inserted] = clientRegistry_->insert({client_id, record});
+    if(!inserted)
     {
-        LOG_DEBUG("[ClientRegistryManager] An entry for ClientID={} has been added to Client Registry at {}",
-                  client_id,
-                  static_cast<void*>(clientRegistry_));
-        LOG_DEBUG("[ClientRegistryManager] Client Registry at {} has {} entries stored",
-                  static_cast<void*>(clientRegistry_),
-                  clientRegistry_->size());
-        return chronolog::CL_SUCCESS;
+        LOG_WARNING("[ClientRegistryManager] Refusing duplicate ClientID={}: a client with the same packed "
+                    "(ip, port, instance) is already registered. The new client should re-Connect once the "
+                    "incumbent disconnects, or rebuild its identity with non-colliding fields.",
+                    client_id);
+        return chronolog::CL_ERR_INVALID_ARG;
     }
-    else
-    {
-        LOG_ERROR("[ClientRegistryManager] Fail to add entry for ClientID={} to clientRegistry_", client_id);
-        return chronolog::CL_ERR_UNKNOWN;
-    }
+    LOG_DEBUG("[ClientRegistryManager] An entry for ClientID={} has been added to Client Registry at {}",
+              client_id,
+              static_cast<void*>(clientRegistry_));
+    LOG_DEBUG("[ClientRegistryManager] Client Registry at {} has {} entries stored",
+              static_cast<void*>(clientRegistry_),
+              clientRegistry_->size());
+    return chronolog::CL_SUCCESS;
 }
 
 int ClientRegistryManager::remove_client_record(const chronolog::ClientId& client_id)

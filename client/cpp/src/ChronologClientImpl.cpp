@@ -141,6 +141,18 @@ void chronolog::ChronologClientImpl::defineClientIdentity(uint16_t query_service
              clientIdentity.ip,
              clientIdentity.port,
              clientIdentity.instance);
+
+    // pid&0xFFFF alone makes ClientId collide between processes whose pids
+    // differ only above bit 16 (~1-in-65536 on long-running boxes). Without
+    // an IP component, the Visor's collision guard can refuse the second
+    // Connect for what is really a legitimate distinct process.
+    if(clientIdentity.ip == 0)
+    {
+        LOG_WARNING("[ChronologClientImpl] Could not resolve a local IPv4 address; ClientId.ip=0. "
+                    "ClientId uniqueness now relies solely on pid&0xFFFF — collisions are possible "
+                    "and the Visor will refuse the second Connect. Configure /etc/hosts or ensure "
+                    "the host's name resolves to a non-loopback address to recover the full guarantee.");
+    }
 }
 
 chronolog::ChronologClientImpl::~ChronologClientImpl()

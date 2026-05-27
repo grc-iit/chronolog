@@ -61,6 +61,8 @@ public:
 
     int Disconnect();
 
+    ClientId client_id() const { return clientId; }
+
     int CreateChronicle(std::string const& chronicle_name);
 
     int DestroyChronicle(std::string const& chronicle_name);
