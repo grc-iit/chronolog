@@ -56,8 +56,8 @@ foreach(_pair ${_da_props})
             --client-conf $ENV{HOME}/chronolog-install/chronolog/conf/default-chrono-client-conf.json)
     set_tests_properties(${_test_name} PROPERTIES
         FIXTURES_REQUIRED DestructiveAPIsFixture
-        # Sync-flush of 100+ events through Keeper → Grapher → HDF5 + the
-        # subsequent destroy broadcast take a few seconds; give margin for a
-        # busy runner.
+        # Tests poll for the Grapher's async persistence / destroy worker to
+        # catch up; give a busy runner some margin around the 30 s poll cap
+        # in the test helpers.
         TIMEOUT 120)
 endforeach()

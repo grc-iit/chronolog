@@ -2,11 +2,13 @@
 //
 // Flow:
 //   1. CreateChronicle, AcquireStory ×2, log events on each, ReleaseStory ×2.
-//   2. Verify both stories have HDF5 files on disk after Release (sync flush).
-//   3. DestroyChronicle — Visor refuses if any story is held by another
+//   2. Poll until the Grapher's extraction-queue drain writes HDF5 files for
+//      both stories (Release is async post-#574).
+//   3. DestroyChronicle. Visor refuses if any story is held by another
 //      client; otherwise auto-Releases sole-caller stories (we already
 //      released both) and broadcasts destroy_chronicle to every Grapher.
-//   4. Verify no <chronicle>.*.vlen.h5 files remain anywhere.
+//      Each Grapher's destroy is internally async.
+//   4. Poll until no <chronicle>.*.vlen.h5 files remain.
 
 #include "destructive_apis_common.h"
 
@@ -49,18 +51,21 @@ int main(int argc, char** argv)
     if(client.ReleaseStory(chronicle, storyB) != chronolog::CL_SUCCESS)
         return fail("ReleaseStory B failed");
 
+    if(!wait_for([&] { return count_chronicle_files(args.hdf5Dir, chronicle) > 0; }))
+        return fail("Timed out waiting for HDF5 files to appear for chronicle " + chronicle + " in " + args.hdf5Dir);
     size_t before = count_chronicle_files(args.hdf5Dir, chronicle);
-    if(before == 0)
-        return fail("no HDF5 files for chronicle " + chronicle + " after Release in " + args.hdf5Dir);
-    std::cout << "[destroy-chronicle-test] after Release: " << before << " chronicle HDF5 file(s)" << std::endl;
+    std::cout << "[destroy-chronicle-test] after Release (polled): " << before << " chronicle HDF5 file(s)"
+              << std::endl;
 
     if(client.DestroyChronicle(chronicle) != chronolog::CL_SUCCESS)
         return fail("DestroyChronicle failed");
 
-    size_t after = count_chronicle_files(args.hdf5Dir, chronicle);
-    if(after != 0)
-        return fail("DestroyChronicle returned but " + std::to_string(after) +
-                    " HDF5 file(s) still exist for chronicle " + chronicle);
+    if(!wait_for([&] { return count_chronicle_files(args.hdf5Dir, chronicle) == 0; }))
+    {
+        size_t after = count_chronicle_files(args.hdf5Dir, chronicle);
+        return fail("Timed out waiting for HDF5 files to be removed: " + std::to_string(after) +
+                    " still exist for chronicle " + chronicle);
+    }
 
     client.Disconnect();
     return pass("DestroyChronicle removed " + std::to_string(before) + " HDF5 file(s)");

@@ -177,6 +177,28 @@ inline chronolog::ClientQueryServiceConf load_query_conf(std::string const& path
     return cfg.QUERY_CONF;
 }
 
+// Poll a predicate at a fixed interval until it returns true or `timeout`
+// has elapsed. Returns whether the predicate succeeded. Used in place of a
+// sleep-then-assert pattern: the destructive API contract is async (after
+// Destroy returns the Grapher's destroy task has been accepted, but the
+// HDF5 files may not be gone for a few extraction-queue iterations), so
+// tests poll instead of asserting immediately.
+template <typename Pred>
+inline bool wait_for(Pred&& pred,
+                     std::chrono::milliseconds timeout = std::chrono::seconds(30),
+                     std::chrono::milliseconds interval = std::chrono::milliseconds(100))
+{
+    auto const deadline = std::chrono::steady_clock::now() + timeout;
+    while(true)
+    {
+        if(pred())
+            return true;
+        if(std::chrono::steady_clock::now() >= deadline)
+            return false;
+        std::this_thread::sleep_for(interval);
+    }
+}
+
 // Generate `count` log records, padded so a story chunk fills out fast.
 // Returns the number of events successfully logged.
 inline size_t write_events(chronolog::StoryHandle* handle, size_t count, std::string const& tag)

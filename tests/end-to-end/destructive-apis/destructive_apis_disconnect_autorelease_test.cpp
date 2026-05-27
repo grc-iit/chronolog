@@ -1,12 +1,12 @@
-// End-to-end: Disconnect auto-releases acquired stories (#574, originally
-// landed in #642 and inheriting the new sync-flush guarantee here).
+// End-to-end: Disconnect auto-releases acquired stories (originally landed
+// in #642).
 //
 // Flow:
 //   1. Client A connects, creates chronicle, acquires story, logs events,
 //      then Disconnects without calling ReleaseStory.
-//   2. Visor's ClientDisconnect must auto-Release for A. With the sync flush
-//      from #574, the events must already be in the Grapher's HDF5 archive
-//      by the time we observe afterwards.
+//   2. Visor's ClientDisconnect must auto-Release for A. Release is async
+//      under the post-#574 design: persistence runs through the normal
+//      extraction-queue path on the Grapher. Poll until HDF5 files appear.
 //
 // We don't instantiate a second Client in this same process to clean up:
 // ClientId is derived from PID, so two Client instances in one process get
@@ -43,20 +43,20 @@ int main(int argc, char** argv)
         if(write_events(handleA, 128, "discon") == 0)
             return fail("no events written");
 
-        // No ReleaseStory call. Disconnect must auto-release and trigger
-        // the sync flush so events reach HDF5.
+        // No ReleaseStory call. Disconnect must auto-release; persistence
+        // is then async via the extraction-queue path.
         int dis_rc = clientA.Disconnect();
         if(dis_rc != chronolog::CL_SUCCESS)
             return fail("Disconnect returned " + std::to_string(dis_rc) +
                         " (expected CL_SUCCESS; legacy behavior was CL_ERR_ACQUIRED)");
     }
 
-    size_t files = count_story_files(args.hdf5Dir, chronicle, story);
-    if(files == 0)
+    if(!wait_for([&] { return count_story_files(args.hdf5Dir, chronicle, story) > 0; }))
     {
-        return fail("Disconnect auto-release didn't flush HDF5 files for " + chronicle + "/" + story + " in " +
-                    args.hdf5Dir);
+        return fail("Timed out waiting for Disconnect auto-release to persist HDF5 files for " + chronicle + "/" +
+                    story + " in " + args.hdf5Dir);
     }
+    size_t files = count_story_files(args.hdf5Dir, chronicle, story);
 
-    return pass("Disconnect auto-released + sync-flushed " + std::to_string(files) + " HDF5 file(s)");
+    return pass("Disconnect auto-released; " + std::to_string(files) + " HDF5 file(s) persisted");
 }

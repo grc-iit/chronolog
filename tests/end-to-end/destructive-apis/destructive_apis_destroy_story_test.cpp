@@ -2,13 +2,13 @@
 //
 // Flow:
 //   1. Connect, CreateChronicle, AcquireStory, log events.
-//   2. ReleaseStory — the sync-flush path must push remaining chunks to
-//      the Grapher's HDF5 archive before Release returns.
-//   3. Verify at least one <chronicle>.<story>.*.vlen.h5 file exists.
-//   4. DestroyStory — must auto-release-if-sole-acquirer is a no-op here
-//      because we already released; Visor then broadcasts destroy_story to
-//      every Grapher which deletes the matching files.
-//   5. Verify no <chronicle>.<story>.*.vlen.h5 files remain.
+//   2. ReleaseStory. The post-#574 contract is async: chunks are persisted
+//      via the normal extraction-queue path on the Grapher, not by Release
+//      itself. Poll until at least one HDF5 file appears.
+//   3. DestroyStory. The Visor removes metadata synchronously and fans out
+//      destroy RPCs to every Grapher; each Grapher's destroy is internally
+//      async (it waits for extraction-queue drain, then deletes files). Poll
+//      until no HDF5 files remain.
 
 #include "destructive_apis_common.h"
 
@@ -48,24 +48,26 @@ int main(int argc, char** argv)
     if(client.ReleaseStory(chronicle, story) != chronolog::CL_SUCCESS)
         return fail("ReleaseStory failed");
 
-    // With the issue-#574 sync flush, the HDF5 file must be on disk by the
-    // time ReleaseStory returns. No polling needed.
+    // Release is async: poll until the Grapher's extraction-queue drain
+    // writes at least one HDF5 file for this story.
+    bool persisted = wait_for([&] { return count_story_files(args.hdf5Dir, chronicle, story) > 0; });
     size_t files_after_release = count_story_files(args.hdf5Dir, chronicle, story);
-    if(files_after_release == 0)
+    if(!persisted)
     {
-        return fail("ReleaseStory returned but no HDF5 files were written for " + chronicle + "/" + story + " in " +
+        return fail("Timed out waiting for HDF5 files to appear for " + chronicle + "/" + story + " in " +
                     args.hdf5Dir);
     }
-    std::cout << "[destroy-story-test] after Release: " << files_after_release << " HDF5 file(s)" << std::endl;
+    std::cout << "[destroy-story-test] after Release (polled): " << files_after_release << " HDF5 file(s)" << std::endl;
 
     if(client.DestroyStory(chronicle, story) != chronolog::CL_SUCCESS)
         return fail("DestroyStory failed");
 
-    size_t files_after_destroy = count_story_files(args.hdf5Dir, chronicle, story);
-    if(files_after_destroy != 0)
+    // Destroy is async on the Grapher: poll until the worker has waited for
+    // extraction drain and deleted the matching HDF5 files.
+    bool removed = wait_for([&] { return count_story_files(args.hdf5Dir, chronicle, story) == 0; });
+    if(!removed)
     {
-        return fail("DestroyStory returned but " + std::to_string(files_after_destroy) +
-                    " HDF5 file(s) still exist for " + chronicle + "/" + story);
+        return fail("Timed out waiting for HDF5 files to be removed for " + chronicle + "/" + story);
     }
 
     if(client.DestroyChronicle(chronicle) != chronolog::CL_SUCCESS)

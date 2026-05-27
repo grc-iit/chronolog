@@ -138,3 +138,30 @@ TEST(HDF5FileChunkExtractor, DeleteOnNonExistentArchiveDirIsNoOp)
     ASSERT_EQ(0, ext.delete_story_files("ch", "st", &deleted));
     EXPECT_EQ(0u, deleted);
 }
+
+TEST(HDF5FileChunkExtractor, DeleteOnUnreadableArchiveDirReportsError)
+{
+    // If the archive directory exists but can't be opened (e.g. mode 0 so
+    // EACCES on directory_iterator construction), delete_*_files must report
+    // CL_ERR_UNKNOWN rather than silently returning CL_SUCCESS with zero
+    // deletions. We can't reproduce EACCES when running as root (CI), so we
+    // skip the test in that case.
+    if(::geteuid() == 0)
+    {
+        GTEST_SKIP() << "skipping unreadable-dir test as root: chmod 0 doesn't gate root";
+    }
+
+    fs::path dir = make_temp_dir();
+    touch(dir / "myChronicle.myStory.1700000000.vlen.h5");
+    fs::permissions(dir, fs::perms::none);
+
+    chronolog::HDF5FileChunkExtractor ext(dir.string());
+    size_t deleted = 99;
+    int rc = ext.delete_story_files("myChronicle", "myStory", &deleted);
+
+    // Restore permissions before any assertion so the temp dir is cleanable.
+    fs::permissions(dir, fs::perms::owner_all);
+    EXPECT_NE(rc, 0);
+
+    fs::remove_all(dir);
+}
