@@ -447,47 +447,6 @@ int chronolog::VisorClientPortal::ReleaseStory(chl::ClientId const& client_id,
     return chronolog::CL_SUCCESS;
 }
 
-//////////////
-
-int chronolog::VisorClientPortal::GetChronicleAttr(chl::ClientId const& client_id,
-                                                   std::string const& chronicle_name,
-                                                   const std::string& key,
-                                                   std::string& value)
-{
-    LOG_DEBUG("[VisorClientPortal] Get Chronicle Attributes: PID={}, Name={}, Key={}",
-              getpid(),
-              chronicle_name.c_str(),
-              key.c_str());
-    if(chronicle_name.empty() || key.empty())
-    {
-        return chronolog::CL_ERR_INVALID_ARG;
-    }
-
-    // TODO: add authorization check : if ( chronicle_action_is_authorized())
-    return chronicleMetaDirectory.get_chronicle_attr(chronicle_name, key, value);
-}
-
-//////////////
-
-int chronolog::VisorClientPortal::EditChronicleAttr(chl::ClientId const& client_id,
-                                                    std::string const& chronicle,
-                                                    std::string const& key,
-                                                    std::string const& value)
-{
-    LOG_DEBUG("[VisorClientPortal] Edit Chronicle Attributes: PID={}, Name={}, Key={}, Value={}",
-              getpid(),
-              chronicle.c_str(),
-              key.c_str(),
-              value.c_str());
-    if(chronicle.empty() || key.empty() || value.empty())
-    {
-        return chronolog::CL_ERR_INVALID_ARG;
-    }
-
-    // TODO: add authorization check : if ( chronicle_action_is_authorized())
-    return chronicleMetaDirectory.edit_chronicle_attr(chronicle, key, value);
-}
-
 int chronolog::VisorClientPortal::ShowChronicles(chl::ClientId const& client_id, std::vector<std::string>& chronicles)
 {
     LOG_DEBUG("[VisorClientPortal] Show Chronicles: PID={}, ClientID={}", getpid(), client_id);

@@ -64,15 +64,6 @@ public:
 
     int ReleaseStory(ClientId const& client_id, std::string const& chronicle_name, std::string const& story_name);
 
-    /*int ReleaseStory( ClientId const&client_id, StoryId const&);
-int DestroyStory( ClientId const&client_id, StoryId const&);
-*/
-    int
-    GetChronicleAttr(ClientId const&, std::string const& chronicle_name, std::string const& key, std::string& value);
-
-    int
-    EditChronicleAttr(ClientId const&, std::string const& chronicle, std::string const& key, std::string const& value);
-
     int ShowChronicles(ClientId const& client_id, std::vector<std::string>&);
 
     int ShowStories(ClientId const& client_id, std::string const& chronicle_name, std::vector<std::string>&);
