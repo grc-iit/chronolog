@@ -107,14 +107,22 @@ int delete_matching_files(std::string const& root_directory,
         return chl::CL_SUCCESS;
     }
 
+    // std::filesystem::directory_iterator's constructor reports an open
+    // failure (e.g. EACCES on the archive directory) by setting `ec` and
+    // returning an end-iterator. Previously we only checked `ec` inside the
+    // loop body, so a failed open looked like an empty directory and
+    // delete_*_files returned CL_SUCCESS with zero deletions -- the metadata
+    // would be gone but the files would still be on disk. Check `ec`
+    // immediately after construction.
     std::error_code ec;
-    for(auto const& entry: std::filesystem::directory_iterator(root_directory, ec))
+    std::filesystem::directory_iterator it(root_directory, ec);
+    if(ec)
     {
-        if(ec)
-        {
-            LOG_ERROR("[HDF5FileChunkExtractor] Failed to iterate {}: {}", root_directory, ec.message());
-            return chl::CL_ERR_UNKNOWN;
-        }
+        LOG_ERROR("[HDF5FileChunkExtractor] Failed to open directory {}: {}", root_directory, ec.message());
+        return chl::CL_ERR_UNKNOWN;
+    }
+    for(auto const& entry: it)
+    {
         if(!entry.is_regular_file())
         {
             continue;
