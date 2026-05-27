@@ -51,6 +51,10 @@ public:
 
     StoryId const& getStoryId() const { return storyId; }
 
+    ChronicleName const& getChronicleName() const { return chronicleName; }
+
+    StoryName const& getStoryName() const { return storyName; }
+
     uint16_t getAcceptanceWindow() const { return acceptanceWindow; }
 
     uint64_t TimelineStart() const { return (*storyTimelineMap.begin()).first; } // storyTimelineMap is never left empty

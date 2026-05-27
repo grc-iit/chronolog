@@ -321,6 +321,84 @@ int ChronicleMetaDirectory::release_story(chl::ClientId const& client_id,
     return ret;
 }
 
+int ChronicleMetaDirectory::evaluate_story_destroy(std::string const& chronicle_name,
+                                                   std::string const& story_name,
+                                                   chl::ClientId const& requester_client_id,
+                                                   StoryId& story_id,
+                                                   bool& caller_holds_it)
+{
+    caller_holds_it = false;
+    story_id = 0;
+
+    std::lock_guard<std::mutex> chronicleMapLock(g_chronicleMetaDirectoryMutex_);
+    uint64_t cid = CityHash64(chronicle_name.c_str(), chronicle_name.length());
+    auto chronicleRecord = chronicleMap_->find(cid);
+    if(chronicleRecord == chronicleMap_->end())
+    {
+        return chronolog::CL_ERR_NOT_EXIST;
+    }
+    Chronicle* pChronicle = chronicleRecord->second;
+    uint64_t sid = pChronicle->getStoryId(story_name);
+    if(sid == 0)
+    {
+        return chronolog::CL_ERR_NOT_EXIST;
+    }
+    Story* pStory = pChronicle->getStoryMap().at(sid);
+    story_id = sid;
+
+    auto& acquirerMap = pStory->getAcquirerMap();
+    for(auto const& entry: acquirerMap)
+    {
+        if(entry.first != requester_client_id)
+        {
+            // Some other client holds the story; destroy must be refused.
+            return chronolog::CL_ERR_ACQUIRED;
+        }
+    }
+    caller_holds_it = !acquirerMap.empty();
+    return chronolog::CL_SUCCESS;
+}
+
+int ChronicleMetaDirectory::evaluate_chronicle_destroy(
+        std::string const& chronicle_name,
+        chl::ClientId const& requester_client_id,
+        std::vector<std::pair<StoryId, std::string>>& stories_to_auto_release)
+{
+    stories_to_auto_release.clear();
+
+    std::lock_guard<std::mutex> chronicleMapLock(g_chronicleMetaDirectoryMutex_);
+    uint64_t cid = CityHash64(chronicle_name.c_str(), chronicle_name.length());
+    auto chronicleRecord = chronicleMap_->find(cid);
+    if(chronicleRecord == chronicleMap_->end())
+    {
+        return chronolog::CL_ERR_NOT_EXIST;
+    }
+    Chronicle* pChronicle = chronicleRecord->second;
+
+    for(auto const& storyMapRecord: pChronicle->getStoryMap())
+    {
+        Story* pStory = storyMapRecord.second;
+        if(pStory == nullptr)
+        {
+            continue;
+        }
+        auto& acquirerMap = pStory->getAcquirerMap();
+        bool sole_caller = !acquirerMap.empty();
+        for(auto const& entry: acquirerMap)
+        {
+            if(entry.first != requester_client_id)
+            {
+                return chronolog::CL_ERR_ACQUIRED;
+            }
+        }
+        if(sole_caller)
+        {
+            stories_to_auto_release.emplace_back(pStory->getSid(), pStory->getName());
+        }
+    }
+    return chronolog::CL_SUCCESS;
+}
+
 int ChronicleMetaDirectory::release_all_acquired_stories(chl::ClientId const& client_id,
                                                          std::vector<StoryId>& released_with_no_acquirers_left)
 {
