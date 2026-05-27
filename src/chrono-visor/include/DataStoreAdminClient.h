@@ -93,12 +93,43 @@ public:
         return status;
     }
 
+    int send_destroy_story(ChronicleName const& chronicle_name, StoryName const& story_name, StoryId const& story_id)
+    {
+        int status = chronolog::CL_ERR_UNKNOWN;
+        try
+        {
+            LOG_DEBUG("[DataStoreAdminClient] DESTROY Story for ChronicleName={}, StoryName={}, StoryId={}",
+                      chronicle_name,
+                      story_name,
+                      story_id);
+            status = destroy_story.on(service_handle)(chronicle_name, story_name, story_id);
+        }
+        catch(tl::exception const& ex)
+        {}
+        return status;
+    }
+
+    int send_destroy_chronicle(ChronicleName const& chronicle_name)
+    {
+        int status = chronolog::CL_ERR_UNKNOWN;
+        try
+        {
+            LOG_DEBUG("[DataStoreAdminClient] DESTROY Chronicle for ChronicleName={}", chronicle_name);
+            status = destroy_chronicle.on(service_handle)(chronicle_name);
+        }
+        catch(tl::exception const& ex)
+        {}
+        return status;
+    }
+
     ~DataStoreAdminClient()
     {
         collection_service_available.deregister();
         shutdown_data_collection.deregister();
         start_story_recording.deregister();
         stop_story_recording.deregister();
+        destroy_story.deregister();
+        destroy_chronicle.deregister();
     }
 
 private:
@@ -109,6 +140,8 @@ private:
     tl::remote_procedure shutdown_data_collection;
     tl::remote_procedure start_story_recording;
     tl::remote_procedure stop_story_recording;
+    tl::remote_procedure destroy_story;
+    tl::remote_procedure destroy_chronicle;
 
     // constructor is private to make sure thalium rpc objects are created on the heap, not stack
     DataStoreAdminClient(tl::engine& tl_engine,
@@ -122,6 +155,8 @@ private:
         shutdown_data_collection = tl_engine.define("shutdown_data_collection");
         start_story_recording = tl_engine.define("start_story_recording");
         stop_story_recording = tl_engine.define("stop_story_recording");
+        destroy_story = tl_engine.define("destroy_story");
+        destroy_chronicle = tl_engine.define("destroy_chronicle");
     }
 };
 } // namespace chronolog

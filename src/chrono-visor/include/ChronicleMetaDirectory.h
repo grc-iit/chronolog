@@ -35,6 +35,27 @@ public:
 
     int destroy_story(std::string const& chronicle_name, const std::string& story_name);
 
+    // Inspect destroy eligibility for a single story under the directory mutex.
+    // Returns CL_ERR_NOT_EXIST if the chronicle or story doesn't exist;
+    // CL_ERR_ACQUIRED if any acquirer other than requester_client_id holds it;
+    // CL_SUCCESS otherwise. Sets caller_holds_it when the requester is the
+    // sole acquirer (Visor must auto-release before destroying), and sets
+    // story_id to the resolved id when available.
+    int evaluate_story_destroy(std::string const& chronicle_name,
+                               std::string const& story_name,
+                               chronolog::ClientId const& requester_client_id,
+                               StoryId& story_id,
+                               bool& caller_holds_it);
+
+    // Inspect destroy eligibility for every story in the chronicle. Returns
+    // CL_ERR_NOT_EXIST if the chronicle doesn't exist; CL_ERR_ACQUIRED if any
+    // story has an acquirer other than requester_client_id; CL_SUCCESS
+    // otherwise. Populates stories_to_auto_release with (id, name) pairs for
+    // stories the requester holds (and only the requester holds).
+    int evaluate_chronicle_destroy(std::string const& chronicle_name,
+                                   chronolog::ClientId const& requester_client_id,
+                                   std::vector<std::pair<StoryId, std::string>>& stories_to_auto_release);
+
     int acquire_story(chronolog::ClientId const& client_id,
                       const std::string& chronicle_name,
                       const std::string& story_name,
