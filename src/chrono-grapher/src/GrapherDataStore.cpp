@@ -118,9 +118,17 @@ int chronolog::GrapherDataStore::destroyStory(chronolog::StoryId const& story_id
     task.chronicleName = chronicle;
     task.storyName = story;
 
-    // Step 1+2: atomically unhook the pipeline from both maps under the
-    // dataStoreMutex, and remove the story's ingestion handle from the
-    // ingestion queue so no new chunks land on it.
+    // Steps 1-3: under dataStoreMutex, unhook the pipeline from both maps,
+    // absorb in-flight chunks, and unhook the ingestion handle. All three
+    // must be atomic w.r.t. startStoryRecording: story_id is a deterministic
+    // CityHash64(chronicle+story), so a Destroy-then-recreate-then-reAcquire
+    // can reach this same Grapher while this destroy is in flight. If we
+    // released dataStoreMutex before removeStoryIngestionHandle, a concurrent
+    // startStoryRecording could install a fresh handle in the gap and we
+    // would erroneously remove it -- orphaning every subsequent event for
+    // the new acquisition (silent data loss). Safe to hold the lock across
+    // the IngestionQueue calls: the established locking order in this file
+    // is dataStoreMutex -> IngestionQueue (startStoryRecording, retire path).
     chl::StoryPipeline* pipeline = nullptr;
     {
         std::lock_guard storeLock(dataStoreMutex);
@@ -140,22 +148,23 @@ int chronolog::GrapherDataStore::destroyStory(chronolog::StoryId const& story_id
                 pipelinesWaitingForExit.erase(waiting_iter);
             }
         }
+
+        if(pipeline != nullptr)
+        {
+            // drainOrphanChunks is global to the ingestion queue (cheap) and
+            // pipeline->collectIngestedEvents folds both ingestion deques into
+            // the pipeline timeline before we unhook the handle so the worker
+            // still persists everything that arrived before Destroy.
+            theIngestionQueue.drainOrphanChunks();
+            pipeline->collectIngestedEvents();
+            theIngestionQueue.removeStoryIngestionHandle(story_id);
+        }
     }
 
     if(pipeline != nullptr)
     {
-        // Step 3: absorb in-flight chunks. drainOrphanChunks is global to the
-        // ingestion queue (cheap) and pipeline->collectIngestedEvents folds
-        // both ingestion deques into the pipeline timeline. Then unhook the
-        // ingestion handle so RecordingService threads can't append more.
-        theIngestionQueue.drainOrphanChunks();
-        pipeline->collectIngestedEvents();
-        theIngestionQueue.removeStoryIngestionHandle(story_id);
-
-        // Step 4: finalize the timeline into remaining_chunks. The worker
-        // will stash these in the extraction queue (so persistence still runs
-        // for events that arrived before Destroy) then wait for drain before
-        // deleting the on-disk files.
+        // Finalize outside the lock; the pipeline is already unreachable via
+        // any map or ingestion handle, so no other thread can touch it.
         pipeline->finalize(task.remainingChunks);
         task.pipelines.push_back(pipeline);
     }
@@ -177,6 +186,12 @@ int chronolog::GrapherDataStore::destroyChronicle(chronolog::ChronicleName const
     task.kind = DestroyTask::Kind::Chronicle;
     task.chronicleName = chronicle;
 
+    // Under dataStoreMutex, unhook every matching pipeline, drain/absorb
+    // their in-flight chunks, and unhook their ingestion handles -- all in
+    // one critical section. See destroyStory above for the rationale: any
+    // gap between the map erase and the handle remove lets a concurrent
+    // startStoryRecording for a freshly recreated story slip in and have
+    // its new ingestion handle erroneously removed (silent data loss).
     std::vector<chl::StoryId> story_ids_to_unhook;
     {
         std::lock_guard storeLock(dataStoreMutex);
@@ -208,27 +223,28 @@ int chronolog::GrapherDataStore::destroyChronicle(chronolog::ChronicleName const
                 ++it;
             }
         }
+
+        if(!task.pipelines.empty())
+        {
+            theIngestionQueue.drainOrphanChunks();
+            for(chl::StoryPipeline* p: task.pipelines)
+            {
+                if(p != nullptr)
+                {
+                    p->collectIngestedEvents();
+                }
+            }
+            for(chl::StoryId const& sid: story_ids_to_unhook) { theIngestionQueue.removeStoryIngestionHandle(sid); }
+        }
     }
 
-    // Drain in-flight chunks for each unhooked pipeline before unhooking from
-    // the ingestion queue, then finalize timelines into task.remainingChunks.
-    if(!task.pipelines.empty())
+    // Finalize outside the lock; each pipeline is already unreachable via
+    // any map or ingestion handle, so no other thread can touch it.
+    for(chl::StoryPipeline* p: task.pipelines)
     {
-        theIngestionQueue.drainOrphanChunks();
-        for(chl::StoryPipeline* p: task.pipelines)
+        if(p != nullptr)
         {
-            if(p != nullptr)
-            {
-                p->collectIngestedEvents();
-            }
-        }
-        for(chl::StoryId const& sid: story_ids_to_unhook) { theIngestionQueue.removeStoryIngestionHandle(sid); }
-        for(chl::StoryPipeline* p: task.pipelines)
-        {
-            if(p != nullptr)
-            {
-                p->finalize(task.remainingChunks);
-            }
+            p->finalize(task.remainingChunks);
         }
     }
 
