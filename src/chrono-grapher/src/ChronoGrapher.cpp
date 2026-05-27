@@ -173,19 +173,10 @@ int main(int argc, char** argv)
         return (-1);
     }
 
-    // Instantiate MemoryDataStore. The sync chunk processor lambda lets the
-    // synchronous Release flush path drive each remaining chunk through the
-    // same extraction chain the async path uses (HDF5 writer), so Release
-    // blocks until events are durable. The destroy hooks let Visor's
+    // Instantiate MemoryDataStore. Destroy file-deletion hooks let Visor's
     // DestroyStory / DestroyChronicle remove on-disk HDF5 artifacts.
     chronolog::ChunkIngestionQueue ingestionQueue;
     auto& grapherExtractionChain = theExtractionModule.getExtractionChain();
-    chronolog::GrapherDataStore::SyncChunkProcessor grapherSyncChunkProcessor =
-            [&grapherExtractionChain](chronolog::StoryChunk* chunk) -> int
-    {
-        grapherExtractionChain.process_chunk(chunk);
-        return chronolog::CL_SUCCESS;
-    };
     chronolog::GrapherDataStore::DeleteStoryFilesFn grapherDeleteStoryFiles =
             [&grapherExtractionChain](chronolog::ChronicleName const& chronicle,
                                       chronolog::StoryName const& story) -> int
@@ -200,7 +191,6 @@ int main(int argc, char** argv)
                                              GRAPHER_CONF.DATA_STORE_CONF.story_chunk_duration_secs,
                                              GRAPHER_CONF.DATA_STORE_CONF.acceptance_window_secs,
                                              GRAPHER_CONF.DATA_STORE_CONF.inactive_story_delay_secs,
-                                             std::move(grapherSyncChunkProcessor),
                                              std::move(grapherDeleteStoryFiles),
                                              std::move(grapherDeleteChronicleFiles));
 

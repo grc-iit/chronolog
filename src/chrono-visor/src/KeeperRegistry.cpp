@@ -860,18 +860,14 @@ int KeeperRegistry::notifyGrapherOfStoryRecordingStop(RecordingGroup& recordingG
 
     try
     {
-        // Use the flush+stop variant so Release blocks until the Grapher has
-        // finalized its pipeline and persisted remaining chunks to HDF5. The
-        // error-fallback callers (failed Acquire start) just see a no-op when
-        // no pipeline exists, so the same RPC is safe for both paths.
-        return_code = dataAdminClient->send_flush_and_stop_story_recording(storyId);
+        return_code = dataAdminClient->send_stop_story_recording(storyId);
         if(return_code != chronolog::CL_SUCCESS)
         {
             LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to grapher {}", id_string.str());
         }
         else
         {
-            LOG_INFO("[ChronoProcessRegistry] Registry notified grapher {} to flush+stop recording StoryID={} ",
+            LOG_INFO("[ChronoProcessRegistry] Registry notified grapher {} to stop recording StoryID={} ",
                      id_string.str(),
                      storyId);
         }
@@ -1117,13 +1113,7 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStop(RecordingGroup& recordingG
         }
         try
         {
-            // flush+stop: Keeper drains its buffers and pushes remaining chunks
-            // through the RDMA extractor to the Grapher synchronously. Combined
-            // with the keeper-then-grapher ordering used by
-            // notifyRecordingGroupOfStoryRecordingStop, this guarantees that by
-            // the time Release returns the Grapher has all the data ready to
-            // persist.
-            int rpc_return = dataAdminClient->send_flush_and_stop_story_recording(storyId);
+            int rpc_return = dataAdminClient->send_stop_story_recording(storyId);
             if(rpc_return != chronolog::CL_SUCCESS)
             {
                 LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to keeper {}",
@@ -1131,7 +1121,7 @@ int KeeperRegistry::notifyKeepersOfStoryRecordingStop(RecordingGroup& recordingG
             }
             else
             {
-                LOG_INFO("[ChronoProcessRegistry] Registry notified  {} to flush+stop recording story {}",
+                LOG_INFO("[ChronoProcessRegistry] Registry notified  {} to stop recording story {}",
                          to_string(keeper_id_card),
                          storyId);
             }

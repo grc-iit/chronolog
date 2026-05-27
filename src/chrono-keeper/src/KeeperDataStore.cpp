@@ -105,66 +105,6 @@ int chronolog::KeeperDataStore::stopStoryRecording(chronolog::StoryId const& sto
     return chronolog::CL_SUCCESS;
 }
 
-int chronolog::KeeperDataStore::flushAndStopStoryRecording(chronolog::StoryId const& story_id)
-{
-    LOG_INFO("[KeeperDataStore] Initiating flush+stop recording for StoryID={}", story_id);
-
-    chl::KeeperStoryPipeline* pipeline = nullptr;
-    {
-        std::lock_guard storeLock(dataStoreMutex);
-        auto pipeline_iter = theMapOfStoryPipelines.find(story_id);
-        if(pipeline_iter == theMapOfStoryPipelines.end())
-        {
-            LOG_INFO("[KeeperDataStore] flush+stop: no live pipeline for StoryID={} (nothing to flush)", story_id);
-            return chronolog::CL_SUCCESS;
-        }
-        pipeline = (*pipeline_iter).second;
-        // Remove from both maps so concurrent retireDecayedPipelines() can't race.
-        theMapOfStoryPipelines.erase(pipeline_iter);
-        pipelinesWaitingForExit.erase(story_id);
-    }
-
-    // Disengage from the ingestion queue first so RecordingService threads stop
-    // appending new events to this pipeline's deques before we drain them.
-    theIngestionQueue.removeIngestionHandle(story_id);
-
-    std::vector<chl::StoryChunk*> remaining_chunks;
-    pipeline->finalize(remaining_chunks);
-
-    int return_code = chronolog::CL_SUCCESS;
-    if(syncChunkProcessor)
-    {
-        for(chl::StoryChunk* chunk: remaining_chunks)
-        {
-            int chunk_rc = syncChunkProcessor(chunk);
-            if(chunk_rc != chronolog::CL_SUCCESS)
-            {
-                LOG_ERROR("[KeeperDataStore] Sync chunk processor failed for StoryID={} chunk {}-{}: rc={}",
-                          story_id,
-                          chunk->getStartTime(),
-                          chunk->getEndTime(),
-                          chunk_rc);
-                return_code = chunk_rc;
-            }
-            delete chunk;
-        }
-    }
-    else
-    {
-        LOG_WARNING("[KeeperDataStore] No sync chunk processor configured; falling back to extraction queue for "
-                    "StoryID={} ({} chunks)",
-                    story_id,
-                    remaining_chunks.size());
-        for(chl::StoryChunk* chunk: remaining_chunks) { theExtractionQueue.stashStoryChunk(chunk); }
-    }
-
-    delete pipeline;
-    LOG_INFO("[KeeperDataStore] flush+stop completed for StoryID={} ({} chunks drained)",
-             story_id,
-             remaining_chunks.size());
-    return return_code;
-}
-
 ////////////////////////
 
 void chronolog::KeeperDataStore::collectIngestedEvents()

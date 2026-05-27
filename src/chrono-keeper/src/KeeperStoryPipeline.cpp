@@ -134,47 +134,6 @@ void chronolog::KeeperStoryPipeline::finalize()
     }
 }
 
-void chronolog::KeeperStoryPipeline::finalize(std::vector<chl::StoryChunk*>& extracted_chunks)
-{
-    // Synchronous-flush variant. Same logic as finalize() above, but hands the
-    // remaining non-empty chunks to the caller via the output vector instead of
-    // pushing them onto the shared StoryChunkExtractionQueue. Lets the caller
-    // process each chunk in-line (e.g. push via RDMA to the Grapher and wait
-    // for the ack) before the Release RPC returns to the Visor.
-    if(activeIngestionHandle != nullptr)
-    {
-        if(!activeIngestionHandle->getPassiveDeque().empty())
-        {
-            mergeEvents(activeIngestionHandle->getPassiveDeque());
-        }
-        if(!activeIngestionHandle->getActiveDeque().empty())
-        {
-            mergeEvents(activeIngestionHandle->getActiveDeque());
-        }
-        delete activeIngestionHandle;
-        activeIngestionHandle = nullptr;
-        LOG_INFO("[KeeperStoryPipeline] Finalized ingestion handle for storyId: {}", storyId);
-    }
-
-    {
-        std::lock_guard<std::mutex> lock(sequencingMutex);
-        while(!storyTimelineMap.empty())
-        {
-            StoryChunk* extractedChunk = (*storyTimelineMap.begin()).second;
-            storyTimelineMap.erase(storyTimelineMap.begin());
-            if(extractedChunk->empty())
-            {
-                delete extractedChunk;
-            }
-            else
-            {
-                extracted_chunks.push_back(extractedChunk);
-            }
-        }
-    }
-}
-
-
 /////////////////////
 
 std::map<uint64_t, chronolog::StoryChunk*>::iterator chronolog::KeeperStoryPipeline::prependStoryChunk()

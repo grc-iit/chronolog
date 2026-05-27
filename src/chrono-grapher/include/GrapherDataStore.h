@@ -31,9 +31,6 @@ class GrapherDataStore
 
 
 public:
-    // Synchronous chunk processor (HDF5 writer) invoked by the Release flush
-    // path before stop returns. Must persist the chunk to disk before returning.
-    using SyncChunkProcessor = std::function<int(StoryChunk*)>;
     // File-deletion hooks used by destroy_story / destroy_chronicle to remove
     // persisted HDF5 files from the Grapher's archive directory.
     using DeleteStoryFilesFn = std::function<int(ChronicleName const&, StoryName const&)>;
@@ -45,7 +42,6 @@ public:
                      uint32_t story_chunk_duration_secs = 60,
                      uint32_t acceptance_window_secs = 180,
                      uint32_t inactive_pipeline_delay_secs = 300,
-                     SyncChunkProcessor sync_chunk_processor = nullptr,
                      DeleteStoryFilesFn delete_story_files = nullptr,
                      DeleteChronicleFilesFn delete_chronicle_files = nullptr)
         : state(UNKNOWN)
@@ -55,7 +51,6 @@ public:
         , story_chunk_duration_secs(story_chunk_duration_secs)
         , acceptance_window_secs(acceptance_window_secs)
         , inactive_pipeline_delay_secs(inactive_pipeline_delay_secs)
-        , syncChunkProcessor(std::move(sync_chunk_processor))
         , deleteStoryFiles(std::move(delete_story_files))
         , deleteChronicleFiles(std::move(delete_chronicle_files))
     {}
@@ -69,13 +64,6 @@ public:
     int startStoryRecording(ChronicleName const&, StoryName const&, StoryId const&, uint64_t start_time);
 
     int stopStoryRecording(StoryId const&);
-
-    // Synchronous-flush variant of stopStoryRecording. Drains the pipeline's
-    // ingestion queues, finalizes the timeline into a local vector of chunks,
-    // and pushes each chunk synchronously through the SyncChunkProcessor (the
-    // HDF5 writer) before returning. Used by ReleaseStory so events are durable
-    // by the time Release returns to the client.
-    int flushAndStopStoryRecording(StoryId const&);
 
     // Destroy persisted state for a single story: cancel any in-memory pipeline
     // (no flush — destroy discards) and delete the matching HDF5 files. Safe to
@@ -114,7 +102,6 @@ private:
     uint32_t story_chunk_duration_secs;
     uint32_t acceptance_window_secs;
     uint32_t inactive_pipeline_delay_secs;
-    SyncChunkProcessor syncChunkProcessor;
     DeleteStoryFilesFn deleteStoryFiles;
     DeleteChronicleFilesFn deleteChronicleFiles;
 

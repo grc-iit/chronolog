@@ -93,23 +93,6 @@ public:
         return status;
     }
 
-    // Synchronous-flush variant. Used by ReleaseStory: the callee (Keeper or
-    // Grapher) drains its pipeline and pushes remaining chunks through its
-    // sync processor before acking, so by the time this returns CL_SUCCESS the
-    // events are persisted on the Grapher's HDF5 archive.
-    int send_flush_and_stop_story_recording(StoryId const& story_id)
-    {
-        int status = chronolog::CL_ERR_UNKNOWN;
-        try
-        {
-            LOG_DEBUG("[DataStoreAdminClient] FLUSH+STOP Story Recording for StoryId={}", story_id);
-            status = flush_and_stop_story_recording.on(service_handle)(story_id);
-        }
-        catch(tl::exception const& ex)
-        {}
-        return status;
-    }
-
     int send_destroy_story(ChronicleName const& chronicle_name, StoryName const& story_name, StoryId const& story_id)
     {
         int status = chronolog::CL_ERR_UNKNOWN;
@@ -145,7 +128,6 @@ public:
         shutdown_data_collection.deregister();
         start_story_recording.deregister();
         stop_story_recording.deregister();
-        flush_and_stop_story_recording.deregister();
         destroy_story.deregister();
         destroy_chronicle.deregister();
     }
@@ -158,7 +140,6 @@ private:
     tl::remote_procedure shutdown_data_collection;
     tl::remote_procedure start_story_recording;
     tl::remote_procedure stop_story_recording;
-    tl::remote_procedure flush_and_stop_story_recording;
     tl::remote_procedure destroy_story;
     tl::remote_procedure destroy_chronicle;
 
@@ -174,7 +155,6 @@ private:
         shutdown_data_collection = tl_engine.define("shutdown_data_collection");
         start_story_recording = tl_engine.define("start_story_recording");
         stop_story_recording = tl_engine.define("stop_story_recording");
-        flush_and_stop_story_recording = tl_engine.define("flush_and_stop_story_recording");
         destroy_story = tl_engine.define("destroy_story");
         destroy_chronicle = tl_engine.define("destroy_chronicle");
     }

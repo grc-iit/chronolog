@@ -99,14 +99,6 @@ private:
     std::map<uint64_t, StoryChunk*>::iterator appendStoryChunk();
 
     void finalize();
-
-public:
-    // Drain both ingestion deques and all timeline chunks into the caller-owned
-    // vector. Used by the synchronous flush path on ReleaseStory so the Keeper
-    // can hand off in-flight events to a chunk processor (e.g. the RDMA
-    // extractor to the Grapher) before the Release RPC returns. The destructor
-    // path uses the no-argument finalize() that pushes into theExtractionQueue.
-    void finalize(std::vector<StoryChunk*>& extracted_chunks);
 };
 
 } // namespace chronolog

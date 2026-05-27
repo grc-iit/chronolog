@@ -93,18 +93,12 @@ public:
                     story_chunk->getEventCount(),
                     tl::thread::self_id());
 
-            // Ingest before responding so the Keeper-side processStoryChunk
-            // doesn't return until the chunk is queued for the Grapher's
-            // pipeline. ReleaseStory's synchronous flush relies on this
-            // ordering: when the Keeper's flush returns to the Visor, every
-            // chunk it sent must already be visible to the Grapher so the
-            // Grapher's own flush sees no in-flight gaps.
-            theIngestionQueue.ingestStoryChunk(story_chunk);
-
             request.respond(b.size());
             LOG_DEBUG("[GrapherRecordingService] StoryChunk recording RPC responded {}, ThreadID={}",
                       b.size(),
                       tl::thread::self_id());
+
+            theIngestionQueue.ingestStoryChunk(story_chunk);
         }
         catch(std::bad_alloc const& ex)
         {

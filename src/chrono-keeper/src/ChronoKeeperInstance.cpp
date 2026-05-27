@@ -206,26 +206,14 @@ int main(int argc, char** argv)
         return (-1);
     }
 
-    // Instantiate KeeperDataStore. The sync chunk processor lambda is used by
-    // the synchronous flush path on ReleaseStory: it routes each remaining
-    // chunk through the same ExtractionChain the async path uses (RDMA to the
-    // Grapher), so Release blocks until in-flight events are handed off
-    // downstream.
+    // Instantiate KeeperDataStore
     chronolog::IngestionQueue ingestionQueue;
-    auto& extractionChain = theExtractionModule.getExtractionChain();
-    chronolog::KeeperDataStore::SyncChunkProcessor syncChunkProcessor =
-            [&extractionChain](chronolog::StoryChunk* chunk) -> int
-    {
-        extractionChain.process_chunk(chunk);
-        return chronolog::CL_SUCCESS;
-    };
     chronolog::KeeperDataStore theDataStore(ingestionQueue,
                                             theExtractionModule.getExtractionQueue(),
                                             KEEPER_CONF.DATA_STORE_CONF.max_story_chunk_size,
                                             KEEPER_CONF.DATA_STORE_CONF.story_chunk_duration_secs,
                                             KEEPER_CONF.DATA_STORE_CONF.acceptance_window_secs,
-                                            KEEPER_CONF.DATA_STORE_CONF.inactive_story_delay_secs,
-                                            std::move(syncChunkProcessor));
+                                            KEEPER_CONF.DATA_STORE_CONF.inactive_story_delay_secs);
 
     // Instantiate KeeperRecordingService
     tl::engine* dataAdminEngine = nullptr;
