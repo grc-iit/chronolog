@@ -262,81 +262,6 @@ public:
     }
 
 
-    int GetChronicleAttr(ClientId const& client_id, std::string const& name, const std::string& key, std::string& value)
-    {
-        LOG_INFO("[RPCVisorClient] Retrieving attribute: ChronicleName={}, Key={}", name.c_str(), key.c_str());
-        try
-        {
-            int resultCode = get_chronicle_attr.on(service_ph)(client_id, name, key, value);
-
-            if(resultCode == chronolog::CL_SUCCESS)
-            {
-                LOG_INFO("[RPCVisorClient] Successfully retrieved attribute: ChronicleName={}, Key={}, Value={}",
-                         name.c_str(),
-                         key.c_str(),
-                         value.c_str());
-            }
-            else
-            {
-                LOG_ERROR("[RPCVisorClient] Failed to retrieve attribute: ChronicleName={}, Key={}, Error Code={}",
-                          name.c_str(),
-                          key.c_str(),
-                          chronolog::to_string_client(resultCode));
-            }
-
-            return resultCode;
-        }
-        catch(tl::exception const&)
-        {
-            LOG_ERROR("[RPCVisorClient] Failed to retrieve attribute {} from chronicle {}. Thallium exception "
-                      "encountered.",
-                      key.c_str(),
-                      name.c_str());
-        }
-        return (chronolog::CL_ERR_UNKNOWN);
-    }
-
-    int EditChronicleAttr(ClientId const& client_id,
-                          std::string const& name,
-                          const std::string& key,
-                          const std::string& value)
-    {
-        LOG_INFO("[RPCVisorClient] Modifying attribute: ChronicleName={}, Key={}, NewValue={}",
-                 name.c_str(),
-                 key.c_str(),
-                 value.c_str());
-        try
-        {
-            int resultCode = edit_chronicle_attr.on(service_ph)(client_id, name, key, value);
-
-            if(resultCode == chronolog::CL_SUCCESS)
-            {
-                LOG_INFO("[RPCVisorClient] Successfully modified attribute: ChronicleName={}, Key={}, NewValue={}",
-                         name.c_str(),
-                         key.c_str(),
-                         value.c_str());
-            }
-            else
-            {
-                LOG_ERROR("[RPCVisorClient] Failed to modify attribute: ChronicleName={}, Key={}, NewValue={}, Error "
-                          "Code={}",
-                          name.c_str(),
-                          key.c_str(),
-                          value.c_str(),
-                          chronolog::to_string_client(resultCode));
-            }
-
-            return resultCode;
-        }
-        catch(tl::exception const&)
-        {
-            LOG_ERROR("[RPCVisorClient] Failed to modify attribute {} of chronicle {}. Thallium exception encountered.",
-                      key.c_str(),
-                      name.c_str());
-        }
-        return (chronolog::CL_ERR_UNKNOWN);
-    }
-
     int ShowChronicles(ClientId const& client_id, std::vector<std::string>& chronicles)
     {
         LOG_INFO("[RPCVisorClient] Attempting to retrieve list of chronicles for ClientID={}", client_id);
@@ -407,8 +332,6 @@ public:
         visor_disconnect.deregister();
         create_chronicle.deregister();
         destroy_chronicle.deregister();
-        get_chronicle_attr.deregister();
-        edit_chronicle_attr.deregister();
         acquire_story.deregister();
         release_story.deregister();
         destroy_story.deregister();
@@ -424,8 +347,6 @@ private:
     tl::remote_procedure visor_disconnect;
     tl::remote_procedure create_chronicle;
     tl::remote_procedure destroy_chronicle;
-    tl::remote_procedure get_chronicle_attr;
-    tl::remote_procedure edit_chronicle_attr;
     tl::remote_procedure acquire_story;
     tl::remote_procedure release_story;
     tl::remote_procedure destroy_story;
@@ -451,8 +372,6 @@ private:
             visor_disconnect = tl_engine.define("Disconnect");
             create_chronicle = tl_engine.define("CreateChronicle");
             destroy_chronicle = tl_engine.define("DestroyChronicle");
-            get_chronicle_attr = tl_engine.define("GetChronicleAttr");
-            edit_chronicle_attr = tl_engine.define("EditChronicleAttr");
             acquire_story = tl_engine.define("AcquireStory");
             release_story = tl_engine.define("ReleaseStory");
             destroy_story = tl_engine.define("DestroyStory");

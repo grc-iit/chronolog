@@ -48,18 +48,6 @@ int chronolog::Client::DestroyStory(std::string const& chronicle_name, std::stri
     return chronologClientImpl->DestroyStory(chronicle_name, story_name);
 }
 
-int chronolog::Client::GetChronicleAttr(std::string const& chronicle_name, const std::string& key, std::string& value)
-{
-    return chronologClientImpl->GetChronicleAttr(chronicle_name, key, value);
-}
-
-int chronolog::Client::EditChronicleAttr(std::string const& chronicle_name,
-                                         const std::string& key,
-                                         const std::string& value)
-{
-    return chronologClientImpl->EditChronicleAttr(chronicle_name, key, value);
-}
-
 std::pair<int, std::vector<std::string>> chronolog::Client::ShowChronicles()
 {
     return chronologClientImpl->ShowChronicles();

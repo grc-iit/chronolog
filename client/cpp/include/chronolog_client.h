@@ -139,10 +139,6 @@ public:
 
     int DestroyStory(std::string const& chronicle_name, std::string const& story_name);
 
-    int GetChronicleAttr(std::string const& chronicle_name, const std::string& key, std::string& value);
-
-    int EditChronicleAttr(std::string const& chronicle_name, const std::string& key, const std::string& value);
-
     std::pair<int, std::vector<std::string>> ShowChronicles();
 
     std::pair<int, std::vector<std::string>> ShowStories(std::string const& chronicle_name);
