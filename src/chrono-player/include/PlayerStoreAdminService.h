@@ -44,23 +44,25 @@ public:
         theDataStore.shutdownDataCollection();
         request.respond(status);
     }
-    /*
-    void
-    StartStoryRecording(tl::request const &request, std::string const &chronicle_name, std::string const &story_name
-                        , StoryId const &story_id, uint64_t start_time)
+
+    void StartStoryRecording(tl::request const& request,
+                             std::string const& chronicle_name,
+                             std::string const& story_name,
+                             StoryId const& story_id,
+                             uint64_t start_time)
     {
         LOG_INFO("[PlayerStoreAdminService] Starting Story Recording: StoryName={}, StoryID={}", story_name, story_id);
         int return_code = theDataStore.startStoryRecording(chronicle_name, story_name, story_id, start_time);
         request.respond(return_code);
     }
 
-    void StopStoryRecording(tl::request const &request, StoryId const &story_id)
+    void StopStoryRecording(tl::request const& request, StoryId const& story_id)
     {
         LOG_INFO("[PlayerStoreAdminService] Stopping Story Recording: StoryID={}", story_id);
         int return_code = theDataStore.stopStoryRecording(story_id);
         request.respond(return_code);
     }
-*/
+
 private:
     PlayerStoreAdminService(tl::engine& tl_engine, uint16_t service_provider_id, PlayerDataStore& data_store_instance)
         : tl::provider<PlayerStoreAdminService>(tl_engine, service_provider_id)
@@ -68,8 +70,8 @@ private:
     {
         define("collection_service_available", &PlayerStoreAdminService::collection_service_available);
         define("shutdown_data_collection", &PlayerStoreAdminService::shutdown_data_collection);
-        //define("start_story_recording", &DataStoreAdminService::StartStoryRecording);
-        //define("stop_story_recording", &DataStoreAdminService::StopStoryRecording);
+        define("start_story_recording", &PlayerStoreAdminService::StartStoryRecording);
+        define("stop_story_recording", &PlayerStoreAdminService::StopStoryRecording);
         //set up callback for the case when the engine is being finalized while this provider is still alive
         get_engine().push_finalize_callback(this, [p = this]() { delete p; });
 

@@ -112,10 +112,9 @@ class ChronologClientImpl;
 
 // Top-level Chronolog Client. Implementation details in ChronologClientImpl.
 //
-// NOTE: ReleaseStory() must be called for all acquired stories before Disconnect();
-// otherwise Disconnect() returns CL_ERR_ACQUIRED (-4) and the client record is not removed.
-// TODO: Visor should auto-release acquired stories on Disconnect() — removing this requirement.
-// The destructor calls Disconnect() as best-effort; the Client is always safe to delete.
+// Disconnect() auto-releases any stories still acquired by the client so the
+// caller never has to walk its own acquisitions to clean up. The destructor
+// calls Disconnect() as best-effort; the Client is always safe to delete.
 class Client
 {
 public:
@@ -131,14 +130,11 @@ public:
 
     int Disconnect();
 
-    int CreateChronicle(std::string const& chronicle_name, std::map<std::string, std::string> const& attrs, int& flags);
+    int CreateChronicle(std::string const& chronicle_name);
 
     int DestroyChronicle(std::string const& chronicle_name);
 
-    std::pair<int, StoryHandle*> AcquireStory(std::string const& chronicle_name,
-                                              std::string const& story_name,
-                                              const std::map<std::string, std::string>& attrs,
-                                              int& flags);
+    std::pair<int, StoryHandle*> AcquireStory(std::string const& chronicle_name, std::string const& story_name);
 
     int ReleaseStory(std::string const& chronicle_name, std::string const& story_name);
 
@@ -148,9 +144,9 @@ public:
 
     int EditChronicleAttr(std::string const& chronicle_name, const std::string& key, const std::string& value);
 
-    std::vector<std::string>& ShowChronicles(std::vector<std::string>&);
+    std::pair<int, std::vector<std::string>> ShowChronicles();
 
-    std::vector<std::string>& ShowStories(std::string const& chronicle_name, std::vector<std::string>&);
+    std::pair<int, std::vector<std::string>> ShowStories(std::string const& chronicle_name);
 
     int ReplayStory(std::string const& chronicle,
                     std::string const& story,

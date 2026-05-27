@@ -4,7 +4,6 @@
 #include <vector>
 
 #include <StoryPipeline.h>
-#include <StoryChunkExtractionQueue.h>
 #include <StoryChunkIngestionHandle.h>
 
 namespace chl = chronolog;
@@ -25,8 +24,7 @@ static constexpr uint64_t NS = 1000000000ULL;
 TEST(StoryPipeline_TestConstructors, testValidEmptyInit)
 {
     initLogger();
-    chl::StoryChunkExtractionQueue q;
-    EXPECT_NO_THROW({ chl::StoryPipeline p(q, "C", "S", 1, 0, 1, 1); });
+    EXPECT_NO_THROW({ chl::StoryPipeline p("C", "S", 1, 0, 1, 1); });
 }
 
 // We set the starttime as the granularity boundary
@@ -34,14 +32,13 @@ TEST(StoryPipeline_TestConstructors, testValidEmptyInit)
 TEST(StoryPipeline_TestConstructors, testOnBoundaryStartTime)
 {
     initLogger();
-    chl::StoryChunkExtractionQueue q;
 
     uint64_t startNs = 9ULL * NS; // 9s
     uint16_t granS = 3;           // seconds
     uint16_t windowS = 1;         // second
 
     ASSERT_NO_THROW({
-        chl::StoryPipeline p(q, "C", "S", 1, startNs, granS, windowS);
+        chl::StoryPipeline p("C", "S", 1, startNs, granS, windowS);
 
         // TimelineStart should be exactly 9e9
         EXPECT_EQ(p.TimelineStart(), startNs);
@@ -58,14 +55,13 @@ TEST(StoryPipeline_TestConstructors, testOnBoundaryStartTime)
 TEST(StoryPipeline_TestConstructors, testNonBoundaryRounding)
 {
     initLogger();
-    chl::StoryChunkExtractionQueue q;
 
     uint64_t startNs = 5500000000ULL; // 5.5 s
     uint16_t granS = 3;               // seconds
     uint16_t windowS = 1;             // seconds
 
     ASSERT_NO_THROW({
-        chl::StoryPipeline p(q, "C", "S", 2, startNs, granS, windowS);
+        chl::StoryPipeline p("C", "S", 2, startNs, granS, windowS);
 
         // 5.5 % 3 = 2.5 should be rounded down to 3
         const uint64_t expectedStart = 3ULL * NS;
@@ -82,7 +78,6 @@ TEST(StoryPipeline_TestConstructors, testNonBoundaryRounding)
 TEST(StoryPipeline_TestConstructors, testHugeStoryStartTimeNoOverflow)
 {
     initLogger();
-    chl::StoryChunkExtractionQueue q;
 
     // pick the largest possible starttime
     uint64_t max64 = std::numeric_limits<uint64_t>::max();
@@ -93,7 +88,7 @@ TEST(StoryPipeline_TestConstructors, testHugeStoryStartTimeNoOverflow)
     // set starttime duch that we have space for the added three chunks within max64 limit
     uint64_t startTime = (maxIntervals - 3) * granNs;
 
-    chl::StoryPipeline p(q, "C", "S", 3, startTime, 1, 1);
+    chl::StoryPipeline p("C", "S", 3, startTime, 1, 1);
     EXPECT_EQ(p.TimelineStart(), startTime);
 
     // timelineEnd = startTime + 3 * granNs and <= max64
@@ -116,8 +111,7 @@ TEST(StoryPipeline_TestGetActiveIngestionHandle, testNonNullHandleEmptyDeques)
 {
     initLogger();
 
-    chl::StoryChunkExtractionQueue q;
-    chl::StoryPipeline pipeline(q, "C", "S", 1, 0, 1, 1);
+    chl::StoryPipeline pipeline("C", "S", 1, 0, 1, 1);
 
     auto* handle = pipeline.getActiveIngestionHandle();
     ASSERT_NE(handle, nullptr);
@@ -133,8 +127,7 @@ TEST(StoryPipeline_TestGetActiveIngestionHandle, testNonNullHandleEmptyDeques)
 TEST(StoryPipeline_TestCollectIngestedEvents, testNoChunkValid)
 {
     initLogger();
-    chl::StoryChunkExtractionQueue q;
-    chl::StoryPipeline p(q, "C", "S", 1, 0, 1, 1);
+    chl::StoryPipeline p("C", "S", 1, 0, 1, 1);
 
     auto* h = p.getActiveIngestionHandle();
     ASSERT_TRUE(h->getActiveDeque().empty());
@@ -148,8 +141,7 @@ TEST(StoryPipeline_TestCollectIngestedEvents, testNoChunkValid)
 TEST(StoryPipeline_TestCollectIngestedEvents, testSingleEmptyChunk)
 {
     initLogger();
-    chl::StoryChunkExtractionQueue q;
-    chl::StoryPipeline p(q, "C", "S", 1, 0, 1, 1);
+    chl::StoryPipeline p("C", "S", 1, 0, 1, 1);
 
     auto* h = p.getActiveIngestionHandle();
     auto* chunk = new chl::StoryChunk("C", "S", 1, 0, 1);
@@ -165,8 +157,7 @@ TEST(StoryPipeline_TestCollectIngestedEvents, testSingleEmptyChunk)
 TEST(StoryPipeline_TestCollectIngestedEvents, testSingleNonEmptyChunk)
 {
     initLogger();
-    chl::StoryChunkExtractionQueue q;
-    chl::StoryPipeline p(q, "C", "S", 14, 0, 1, 1);
+    chl::StoryPipeline p("C", "S", 14, 0, 1, 1);
 
     auto* h = p.getActiveIngestionHandle();
     auto* chunk = new chl::StoryChunk("C", "S", 14, 0, 1);
@@ -184,8 +175,7 @@ TEST(StoryPipeline_TestCollectIngestedEvents, testSingleNonEmptyChunk)
 TEST(StoryPipeline_TestCollectIngestedEvents, testNullptrInActiveDeque)
 {
     initLogger();
-    chl::StoryChunkExtractionQueue q;
-    chl::StoryPipeline p(q, "C", "S", 15, 0, 1, 1);
+    chl::StoryPipeline p("C", "S", 15, 0, 1, 1);
 
     auto* h = p.getActiveIngestionHandle();
     h->getActiveDeque().push_back(nullptr);
@@ -203,11 +193,11 @@ TEST(StoryPipeline_TestCollectIngestedEvents, testNullptrInActiveDeque)
 TEST(StoryPipeline_TestExtractDecayedChunks, testEmptyExtract)
 {
     initLogger();
-    chl::StoryChunkExtractionQueue q;
     // gran 1s, window 1s, the timeline of the pipeline is [0,3*NS)
-    chl::StoryPipeline p(q, "C", "S", 1, 0, 1, 1);
+    chl::StoryPipeline p("C", "S", 1, 0, 1, 1);
 
-    p.extractDecayedStoryChunks(2 * NS - 1);
+    std::vector<chl::StoryChunk*> q;
+    p.extractDecayedStoryChunks(2 * NS - 1, q);
     EXPECT_EQ(q.size(), 0);
 }
 
@@ -217,14 +207,14 @@ TEST(StoryPipeline_TestExtractDecayedChunks, testEmptyExtract)
 TEST(StoryPipeline_TestExtractDecayedChunks, testExtractSmallAfterDecay)
 {
     initLogger();
-    chl::StoryChunkExtractionQueue q;
-    chl::StoryPipeline p(q, "C", "S", 1, 0, 1, 1);
+    chl::StoryPipeline p("C", "S", 1, 0, 1, 1);
 
     chl::StoryChunk c("C", "S", 1, 0, 1000);
     c.insertEvent(chl::LogEvent(1, 500, 1, 0, "test"));
     p.mergeEvents(c);
 
-    p.extractDecayedStoryChunks(2 * NS + 1);
+    std::vector<chl::StoryChunk*> q;
+    p.extractDecayedStoryChunks(2 * NS + 1, q);
     EXPECT_EQ(q.size(), 1);
 }
 
@@ -233,7 +223,6 @@ TEST(StoryPipeline_TestExtractDecayedChunks, testExtractSmallAfterDecay)
 // BUG -> Gets stuck indefinitely
 // TEST(StoryPipeline_TestExtractDecayedChunks, testExtractAtBoundary) {
 //     initLogger();
-//     chl::StoryChunkExtractionQueue q;
 //     chl::StoryPipeline p(q, "C", "S", 1, 0, 1, 1);
 
 //     chl::StoryChunk c("C","S",1, 0, 1000);
@@ -250,8 +239,7 @@ TEST(StoryPipeline_TestExtractDecayedChunks, testExtractSmallAfterDecay)
 TEST(StoryPipeline_TestExtractDecayedChunks, testExtractMultiple)
 {
     initLogger();
-    chl::StoryChunkExtractionQueue q;
-    chl::StoryPipeline p(q, "C", "S", 1, 0, 1, 1);
+    chl::StoryPipeline p("C", "S", 1, 0, 1, 1);
 
     chl::StoryChunk c1("C", "S", 1, 0, NS);
     c1.insertEvent(chl::LogEvent(1, 500'000'000, 1, 0, "first"));
@@ -261,7 +249,8 @@ TEST(StoryPipeline_TestExtractDecayedChunks, testExtractMultiple)
     c2.insertEvent(chl::LogEvent(1, 1'500'000'000, 1, 1, "second"));
     p.mergeEvents(c2);
 
-    p.extractDecayedStoryChunks(3 * NS + 1);
+    std::vector<chl::StoryChunk*> q;
+    p.extractDecayedStoryChunks(3 * NS + 1, q);
     EXPECT_EQ(q.size(), 2);
 }
 
@@ -270,15 +259,15 @@ TEST(StoryPipeline_TestExtractDecayedChunks, testExtractMultiple)
 TEST(StoryPipeline_TestExtractDecayedChunks, testNoAppendAfterSingleDecay)
 {
     initLogger();
-    chl::StoryChunkExtractionQueue q;
-    chl::StoryPipeline p(q, "C", "S", 2, 0, 1, 1);
+    chl::StoryPipeline p("C", "S", 2, 0, 1, 1);
 
     // merge one non empty chunk to ensure stash would occur if extracted
     chl::StoryChunk nonEmpty("C", "S", 2, 0, 500'000'000);
     nonEmpty.insertEvent(chl::LogEvent(2, 250'000'000, 0, 0, "test"));
     p.mergeEvents(nonEmpty);
     // move to just past that chunks decay point
-    p.extractDecayedStoryChunks(2 * NS + 1);
+    std::vector<chl::StoryChunk*> q;
+    p.extractDecayedStoryChunks(2 * NS + 1, q);
     // we should have stashed exactly 1 chunk
     EXPECT_EQ(q.size(), 1);
 
@@ -292,8 +281,7 @@ TEST(StoryPipeline_TestExtractDecayedChunks, testNoAppendAfterSingleDecay)
 TEST(StoryPipeline_TestExtractDecayedChunks, testAppendBehaviorAfterMultiDecay)
 {
     initLogger();
-    chl::StoryChunkExtractionQueue q;
-    chl::StoryPipeline p(q, "C", "S", 3, 0, 1, 1);
+    chl::StoryPipeline p("C", "S", 3, 0, 1, 1);
 
     // merge two small non empty chunks so they will be stashed
     chl::StoryChunk c1("C", "S", 3, 0, NS);
@@ -304,7 +292,8 @@ TEST(StoryPipeline_TestExtractDecayedChunks, testAppendBehaviorAfterMultiDecay)
     p.mergeEvents(c2);
     // now we move beyond the second's threshold
     // first removal threshold = 2s, second = 3s so we use 3s + 1ns
-    p.extractDecayedStoryChunks(3 * NS + 1);
+    std::vector<chl::StoryChunk*> q;
+    p.extractDecayedStoryChunks(3 * NS + 1, q);
     // confirm that both chunks got stashed
     EXPECT_EQ(q.size(), 2);
 
@@ -321,8 +310,7 @@ TEST(StoryPipeline_TestExtractDecayedChunks, testAppendBehaviorAfterMultiDecay)
 TEST(StoryPipeline_TestExtractDecayedChunks, testExtractLeavesTwo)
 {
     initLogger();
-    chl::StoryChunkExtractionQueue q;
-    chl::StoryPipeline p(q, "C", "S", 1, 0, 1, 1);
+    chl::StoryPipeline p("C", "S", 1, 0, 1, 1);
 
     // push a chunk at a future time [3s,4s)
     chl::StoryChunk c("C", "S", 1, 3 * NS, 4 * NS);
@@ -332,7 +320,8 @@ TEST(StoryPipeline_TestExtractDecayedChunks, testExtractLeavesTwo)
     // now we have 4 chunks where only the last one is non empty
     // we extract at just after 3s, it should remove the first two and stop before the third
     uint64_t extractTime = 3 * NS + 1;
-    p.extractDecayedStoryChunks(extractTime);
+    std::vector<chl::StoryChunk*> q;
+    p.extractDecayedStoryChunks(extractTime, q);
     // no non empty events in the first two chunks so no stashes
     EXPECT_EQ(q.size(), 0);
 
@@ -350,8 +339,7 @@ TEST(StoryPipeline_TestExtractDecayedChunks, testExtractLeavesTwo)
 TEST(StoryPipeline_MergeEvents, testEmptyMerge)
 {
     initLogger();
-    chl::StoryChunkExtractionQueue q;
-    chl::StoryPipeline p(q, "C", "S", 100, 0, 1, 1);
+    chl::StoryPipeline p("C", "S", 100, 0, 1, 1);
     chl::StoryChunk c("C", "S", 100, 0, NS);
     EXPECT_TRUE(c.empty());
 
@@ -366,9 +354,8 @@ TEST(StoryPipeline_MergeEvents, testEmptyMerge)
 TEST(StoryPipeline_MergeEvents, testPrependSuccess)
 {
     initLogger();
-    chl::StoryChunkExtractionQueue q;
     // start pipeline at 2s so we can prepend back to 0
-    chl::StoryPipeline p(q, "C", "S", 1, 2 * NS, 1, 1);
+    chl::StoryPipeline p("C", "S", 1, 2 * NS, 1, 1);
     EXPECT_EQ(p.TimelineStart(), 2 * NS);
 
     // chunk has the timeline [0,1s)
@@ -389,8 +376,7 @@ TEST(StoryPipeline_MergeEvents, testPrependSuccess)
 TEST(StoryPipeline_MergeEvents, testSingleAppend)
 {
     initLogger();
-    chl::StoryChunkExtractionQueue q;
-    chl::StoryPipeline p(q, "C", "S", 1, 0, 1, 1);
+    chl::StoryPipeline p("C", "S", 1, 0, 1, 1);
 
     // the chunk covers [3s, 4s)
     chl::StoryChunk c("C", "S", 1, 3 * NS, 4 * NS);
@@ -410,8 +396,7 @@ TEST(StoryPipeline_MergeEvents, testSingleAppend)
 TEST(StoryPipeline_MergeEvents, testMultipleAppend)
 {
     initLogger();
-    chl::StoryChunkExtractionQueue q;
-    chl::StoryPipeline p(q, "C", "S", 1, 0, 1, 1);
+    chl::StoryPipeline p("C", "S", 1, 0, 1, 1);
 
     // chunk covers [5s,6s)
     chl::StoryChunk c("C", "S", 1, 5 * NS, 6 * NS);
@@ -434,9 +419,8 @@ TEST(StoryPipeline_MergeEvents, testMultipleAppend)
 TEST(StoryPipeline_TestPrependStoryChunk, testSuccess)
 {
     initLogger();
-    chl::StoryChunkExtractionQueue q;
 
-    chl::StoryPipeline p(q, "C", "S", 200, 5 * NS, 1, 1);
+    chl::StoryPipeline p("C", "S", 200, 5 * NS, 1, 1);
     EXPECT_EQ(p.TimelineStart(), 5 * NS);
 
     uint64_t beforeStart = p.TimelineStart();
@@ -456,9 +440,8 @@ TEST(StoryPipeline_TestPrependStoryChunk, testSuccess)
 TEST(StoryPipeline_TestAppendStoryChunk, testSuccess)
 {
     initLogger();
-    chl::StoryChunkExtractionQueue q;
 
-    chl::StoryPipeline p(q, "C", "S", 100, 0, 1, 1);
+    chl::StoryPipeline p("C", "S", 100, 0, 1, 1);
 
     uint64_t beforeEnd = p.TimelineEnd();
     // call the private appendStoryChunk()
@@ -479,9 +462,9 @@ TEST(StoryPipeline_TestAppendStoryChunk, testSuccess)
 TEST(StoryPipeline_TestFinalize, testNoPendingChunks)
 {
     initLogger();
-    chl::StoryChunkExtractionQueue q;
-    chl::StoryPipeline p(q, "C", "S", 1, 0, 1, 1);
-    EXPECT_NO_THROW(p.finalize());
+    chl::StoryPipeline p("C", "S", 1, 0, 1, 1);
+    std::vector<chl::StoryChunk*> q;
+    EXPECT_NO_THROW(p.finalize(q));
     EXPECT_EQ(q.size(), 0);
 }
 
@@ -490,15 +473,15 @@ TEST(StoryPipeline_TestFinalize, testNoPendingChunks)
 TEST(StoryPipeline_TestFinalize, testOnlyPassiveDeque)
 {
     initLogger();
-    chl::StoryChunkExtractionQueue q;
-    chl::StoryPipeline p(q, "C", "S", 1, 0, 1, 1);
+    chl::StoryPipeline p("C", "S", 1, 0, 1, 1);
 
     auto* h = p.getActiveIngestionHandle();
     auto* pass = new chl::StoryChunk("C", "S", 1, 0, NS);
     pass->insertEvent(chl::LogEvent(1, NS / 2, 0, 0, "passive"));
     h->getPassiveDeque().push_back(pass);
 
-    p.finalize();
+    std::vector<chl::StoryChunk*> q;
+    p.finalize(q);
     EXPECT_EQ(q.size(), 1);
 }
 
@@ -507,15 +490,15 @@ TEST(StoryPipeline_TestFinalize, testOnlyPassiveDeque)
 TEST(StoryPipeline_TestFinalize, testOnlyActiveDeque)
 {
     initLogger();
-    chl::StoryChunkExtractionQueue q;
-    chl::StoryPipeline p(q, "C", "S", 1, 0, 1, 1);
+    chl::StoryPipeline p("C", "S", 1, 0, 1, 1);
 
     auto* h = p.getActiveIngestionHandle();
     auto* act = new chl::StoryChunk("C", "S", 1, 0, NS);
     act->insertEvent(chl::LogEvent(1, NS / 2, 0, 0, "active"));
     h->getActiveDeque().push_back(act);
 
-    p.finalize();
+    std::vector<chl::StoryChunk*> q;
+    p.finalize(q);
     EXPECT_EQ(q.size(), 1);
 }
 
@@ -524,8 +507,7 @@ TEST(StoryPipeline_TestFinalize, testOnlyActiveDeque)
 TEST(StoryPipeline_TestFinalize, testMixedDeques)
 {
     initLogger();
-    chl::StoryChunkExtractionQueue q;
-    chl::StoryPipeline p(q, "C", "S", 1, 0, 1, 1);
+    chl::StoryPipeline p("C", "S", 1, 0, 1, 1);
 
     auto* h = p.getActiveIngestionHandle();
     auto* pass = new chl::StoryChunk("C", "S", 1, 0, NS);
@@ -535,11 +517,12 @@ TEST(StoryPipeline_TestFinalize, testMixedDeques)
     act->insertEvent(chl::LogEvent(1, NS + NS / 3, 0, 0, "active"));
     h->getActiveDeque().push_back(act);
 
-    p.finalize();
+    std::vector<chl::StoryChunk*> q;
+    p.finalize(q);
     EXPECT_EQ(q.size(), 2);
 
     // Now validate the order by checking payload of the event of the chunk
-    auto* firstChunk = q.ejectStoryChunk();
+    auto* firstChunk = q[0];
     ASSERT_NE(firstChunk, nullptr);
     std::vector<chl::Event> ev;
     firstChunk->extractEventSeries(ev);
@@ -547,7 +530,7 @@ TEST(StoryPipeline_TestFinalize, testMixedDeques)
     EXPECT_EQ(ev[0].log_record(), "passive");
     delete firstChunk;
 
-    auto* secondChunk = q.ejectStoryChunk();
+    auto* secondChunk = q[1];
     ASSERT_NE(secondChunk, nullptr);
     ev.clear();
     secondChunk->extractEventSeries(ev);
@@ -560,15 +543,15 @@ TEST(StoryPipeline_TestFinalize, testMixedDeques)
 TEST(StoryPipeline_TestFinalize, testEmptyVsNonTimeline)
 {
     initLogger();
-    chl::StoryChunkExtractionQueue q;
-    chl::StoryPipeline p(q, "C", "S", 1, 0, 1, 1);
+    chl::StoryPipeline p("C", "S", 1, 0, 1, 1);
 
     // merge a chunk at [1s–2s) so the pipeline has one non empty chunk
     chl::StoryChunk c("C", "S", 1, NS, 2 * NS);
     c.insertEvent(chl::LogEvent(1, NS + NS / 2, 0, 0, "test"));
     p.mergeEvents(c);
 
-    p.finalize();
+    std::vector<chl::StoryChunk*> q;
+    p.finalize(q);
     EXPECT_EQ(q.size(), 1);
 }
 
@@ -577,21 +560,21 @@ TEST(StoryPipeline_TestFinalize, testEmptyVsNonTimeline)
 TEST(StoryPipeline_TestFinalize, testFinalizeDoubleCall)
 {
     initLogger();
-    chl::StoryChunkExtractionQueue q;
-    chl::StoryPipeline p(q, "C", "S", 1, 0, 1, 1);
+    chl::StoryPipeline p("C", "S", 1, 0, 1, 1);
 
     auto* h = p.getActiveIngestionHandle();
     auto* chunk = new chl::StoryChunk("C", "S", 1, 0, NS);
     chunk->insertEvent(chl::LogEvent(1, NS / 2, 0, 0, "test"));
     h->getActiveDeque().push_back(chunk);
 
+    std::vector<chl::StoryChunk*> q;
     // first finalize should stash the one chunk
-    EXPECT_NO_THROW(p.finalize());
+    EXPECT_NO_THROW(p.finalize(q));
     EXPECT_EQ(q.size(), 1);
 
 
     // second finalize should not stash anything new
-    EXPECT_NO_THROW(p.finalize());
+    EXPECT_NO_THROW(p.finalize(q));
     EXPECT_EQ(q.size(), 1);
 }
 
@@ -599,8 +582,8 @@ TEST(StoryPipeline_TestFinalize, testFinalizeDoubleCall)
 TEST(StoryPipeline_TestFinalize, testFinalizeWithMixedTimeline)
 {
     initLogger();
-    chl::StoryChunkExtractionQueue q;
-    chl::StoryPipeline p(q, "C", "S", 1, 0, 1, 1);
+    std::vector<chl::StoryChunk*> q;
+    chl::StoryPipeline p("C", "S", 1, 0, 1, 1);
 
     // merge event in the [0–1s) chunk
     chl::StoryChunk c1("C", "S", 1, 0, NS);
@@ -618,6 +601,6 @@ TEST(StoryPipeline_TestFinalize, testFinalizeWithMixedTimeline)
     p.mergeEvents(c3);
 
     // all three non empty chunks should be stashed
-    p.finalize();
+    p.finalize(q);
     EXPECT_EQ(q.size(), 3);
 }

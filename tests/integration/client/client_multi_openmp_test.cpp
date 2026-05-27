@@ -74,7 +74,6 @@ int main(int argc, char** argv)
     std::string server_uri = portalConf.PROTO_CONF + "://" + portalConf.IP + ":" + std::to_string(portalConf.PORT);
     server_uri += "://" + server_ip + ":" + std::to_string(base_port);
     LOG_INFO("[ClientLibMultiOpenMPTest] Connecting to server at: {}", server_uri);
-    int flags = 0;
     uint64_t offset;
 
     std::string client_id = gen_random(8);
@@ -92,30 +91,19 @@ int main(int argc, char** argv)
         for(int i = 0; i < num_threads; i++)
         {
             int ret;
-            int flags = 0;
             std::string chronicle_name;
             if(i % 2 == 0)
                 chronicle_name = "gscs5er9TcdJ9mOgUDteDVBcI0oQjozK";
             else
                 chronicle_name = "6RPkwqX2IOpR41dVCqmWauX9RfXIuTAp";
-            std::map<std::string, std::string> chronicle_attrs;
-            chronicle_attrs.emplace("Priority", "High");
-            chronicle_attrs.emplace("IndexGranularity", "Millisecond");
-            chronicle_attrs.emplace("TieringPolicy", "Hot");
 
-            ret = client->CreateChronicle(chronicle_name, chronicle_attrs, flags);
+            ret = client->CreateChronicle(chronicle_name);
             LOG_INFO("[ClientLibMultiOpenMPTest] Thread {} creating chronicle: {}", i, chronicle_name);
 
-            flags = 1;
             std::string story_name = gen_random(STORY_NAME_LEN);
             LOG_INFO("[ClientLibMultiOpenMPTest] Thread {} creating story: {}", i, story_name);
 
-            std::map<std::string, std::string> story_attrs;
-            story_attrs.emplace("Priority", "High");
-            story_attrs.emplace("IndexGranularity", "Millisecond");
-            story_attrs.emplace("TieringPolicy", "Hot");
-            flags = 2;
-            auto acquire_ret = client->AcquireStory(chronicle_name, story_name, story_attrs, flags);
+            auto acquire_ret = client->AcquireStory(chronicle_name, story_name);
 
             assert(acquire_ret.first == chronolog::CL_SUCCESS);
             ret = client->DestroyStory(chronicle_name, story_name); //, flags);
