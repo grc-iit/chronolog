@@ -173,26 +173,18 @@ int main(int argc, char** argv)
         return (-1);
     }
 
-    // Instantiate MemoryDataStore. Destroy file-deletion hooks let Visor's
-    // DestroyStory / DestroyChronicle remove on-disk HDF5 artifacts.
+    // Instantiate MemoryDataStore. The DataStore takes a non-owning reference
+    // to the extraction chain; the async destroy path uses it directly to
+    // delete persisted HDF5 artifacts once persistence has caught up.
     chronolog::ChunkIngestionQueue ingestionQueue;
     auto& grapherExtractionChain = theExtractionModule.getExtractionChain();
-    chronolog::GrapherDataStore::DeleteStoryFilesFn grapherDeleteStoryFiles =
-            [&grapherExtractionChain](chronolog::ChronicleName const& chronicle,
-                                      chronolog::StoryName const& story) -> int
-    { return grapherExtractionChain.delete_story_files(chronicle, story); };
-    chronolog::GrapherDataStore::DeleteChronicleFilesFn grapherDeleteChronicleFiles =
-            [&grapherExtractionChain](chronolog::ChronicleName const& chronicle) -> int
-    { return grapherExtractionChain.delete_chronicle_files(chronicle); };
-
     chronolog::GrapherDataStore theDataStore(ingestionQueue,
                                              theExtractionModule.getExtractionQueue(),
                                              GRAPHER_CONF.DATA_STORE_CONF.max_story_chunk_size,
                                              GRAPHER_CONF.DATA_STORE_CONF.story_chunk_duration_secs,
                                              GRAPHER_CONF.DATA_STORE_CONF.acceptance_window_secs,
                                              GRAPHER_CONF.DATA_STORE_CONF.inactive_story_delay_secs,
-                                             std::move(grapherDeleteStoryFiles),
-                                             std::move(grapherDeleteChronicleFiles));
+                                             &grapherExtractionChain);
 
     tl::engine* dataAdminEngine = nullptr;
 

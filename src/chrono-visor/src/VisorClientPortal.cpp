@@ -228,26 +228,32 @@ int chronolog::VisorClientPortal::DestroyChronicle(chl::ClientId const& client_i
         }
         if(was_last_acquirer && theKeeperRegistry != nullptr)
         {
-            // Flush+stop the recording group so any in-flight events for the
-            // soon-to-be-destroyed story are durable in HDF5 before delete.
+            // Stop the recording group from accepting new events for this
+            // story (notification is async; the Grapher will drain on its
+            // own when destroy lands below).
             theKeeperRegistry->notifyRecordingGroupOfStoryRecordingStop(released_id);
         }
     }
 
-    // Broadcast destroy_chronicle to every Grapher so HDF5 files written by
-    // any group during the chronicle's lifetime are removed.
+    // Destroy metadata FIRST so that any concurrent Acquire fails before it
+    // can hand out a recording group binding for stories in this chronicle.
+    int return_code = chronicleMetaDirectory.destroy_chronicle(chronicle_name);
+    if(return_code != chronolog::CL_SUCCESS)
+    {
+        return return_code;
+    }
+
     if(theKeeperRegistry != nullptr)
     {
+        // Broadcast destroy_chronicle to every Grapher so HDF5 files written
+        // by any group during the chronicle's lifetime are removed. The
+        // Grapher destroy is async internally.
         theKeeperRegistry->notifyAllGraphersOfChronicleDestruction(chronicle_name);
     }
 
-    int return_code = chronicleMetaDirectory.destroy_chronicle(chronicle_name);
-    if(return_code == chronolog::CL_SUCCESS)
-    {
-        LOG_INFO("[VisorClientPortal] Chronicle destroyed: ClientID={}, ChronicleName={}",
-                 client_id,
-                 chronicle_name.c_str());
-    }
+    LOG_INFO("[VisorClientPortal] Chronicle destroyed: ClientID={}, ChronicleName={}",
+             client_id,
+             chronicle_name.c_str());
     return (return_code);
 }
 
@@ -284,9 +290,9 @@ int chronolog::VisorClientPortal::DestroyStory(chl::ClientId const& client_id,
 
     if(caller_holds_it)
     {
-        // Auto-release on behalf of the caller. Release runs the sync flush
-        // through Keeper -> Grapher -> HDF5 so in-flight events are durable
-        // before destruction removes the files.
+        // Auto-release on behalf of the caller. Release is async; the
+        // notification just stops the recording group from accepting new
+        // events for this story.
         StoryId released_id{0};
         bool was_last_acquirer = false;
         int release_rc = chronicleMetaDirectory.release_story(client_id,
@@ -306,20 +312,29 @@ int chronolog::VisorClientPortal::DestroyStory(chl::ClientId const& client_id,
         }
     }
 
+    // Destroy metadata FIRST. This closes the TOCTOU window where a
+    // concurrent AcquireStory from another client could land between the
+    // Grapher-side destroy broadcast and metadata removal: with metadata
+    // gone, any concurrent Acquire fails before it can hand out a recording
+    // group binding for the story.
+    int return_code = chronicleMetaDirectory.destroy_story(chronicle_name, story_name);
+    if(return_code != chronolog::CL_SUCCESS)
+    {
+        return return_code;
+    }
+
     if(theKeeperRegistry != nullptr)
     {
-        // Broadcast destroy_story to every Grapher; each filters by filename
-        // and no-ops on stories it never persisted.
+        // Broadcast destroy_story to every Grapher. The Grapher's destroy is
+        // async (it enqueues the work and returns immediately), so this
+        // RPC is fire-and-forget from the Visor's POV. Each Grapher filters
+        // by filename and no-ops on stories it never persisted.
         theKeeperRegistry->notifyAllGraphersOfStoryDestruction(chronicle_name, story_name, story_id);
     }
 
-    int return_code = chronicleMetaDirectory.destroy_story(chronicle_name, story_name);
-    if(return_code == chronolog::CL_SUCCESS)
-    {
-        LOG_INFO("[VisorClientPortal] Story destroyed: ChronicleName={}, StoryName={}",
-                 chronicle_name.c_str(),
-                 story_name.c_str());
-    }
+    LOG_INFO("[VisorClientPortal] Story destroyed: ChronicleName={}, StoryName={}",
+             chronicle_name.c_str(),
+             story_name.c_str());
     return return_code;
 }
 

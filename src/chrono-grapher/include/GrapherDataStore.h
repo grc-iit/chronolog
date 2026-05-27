@@ -1,12 +1,15 @@
 #ifndef GRAPHER_DATA_STORE_H
 #define GRAPHER_DATA_STORE_H
 
-#include <vector>
+#include <atomic>
+#include <condition_variable>
+#include <deque>
 #include <list>
 #include <map>
 #include <mutex>
+#include <thread>
 #include <unordered_map>
-#include <functional>
+#include <vector>
 #include <thallium.hpp>
 
 #include <StoryPipeline.h>
@@ -17,6 +20,8 @@
 
 namespace chronolog
 {
+
+class ChronoGrapherExtractionChain;
 
 
 class GrapherDataStore
@@ -31,19 +36,13 @@ class GrapherDataStore
 
 
 public:
-    // File-deletion hooks used by destroy_story / destroy_chronicle to remove
-    // persisted HDF5 files from the Grapher's archive directory.
-    using DeleteStoryFilesFn = std::function<int(ChronicleName const&, StoryName const&)>;
-    using DeleteChronicleFilesFn = std::function<int(ChronicleName const&)>;
-
     GrapherDataStore(ChunkIngestionQueue& ingestion_queue,
                      StoryChunkExtractionQueue& extraction_queue,
                      uint32_t max_chunk_size = 4096,
                      uint32_t story_chunk_duration_secs = 60,
                      uint32_t acceptance_window_secs = 180,
                      uint32_t inactive_pipeline_delay_secs = 300,
-                     DeleteStoryFilesFn delete_story_files = nullptr,
-                     DeleteChronicleFilesFn delete_chronicle_files = nullptr)
+                     ChronoGrapherExtractionChain* extraction_chain = nullptr)
         : state(UNKNOWN)
         , theIngestionQueue(ingestion_queue)
         , theExtractionQueue(extraction_queue)
@@ -51,8 +50,8 @@ public:
         , story_chunk_duration_secs(story_chunk_duration_secs)
         , acceptance_window_secs(acceptance_window_secs)
         , inactive_pipeline_delay_secs(inactive_pipeline_delay_secs)
-        , deleteStoryFiles(std::move(delete_story_files))
-        , deleteChronicleFiles(std::move(delete_chronicle_files))
+        , theExtractionChain(extraction_chain)
+        , destroyWorkerShouldExit(false)
     {}
 
     ~GrapherDataStore();
@@ -65,15 +64,19 @@ public:
 
     int stopStoryRecording(StoryId const&);
 
-    // Destroy persisted state for a single story: cancel any in-memory pipeline
-    // (no flush — destroy discards) and delete the matching HDF5 files. Safe to
-    // call on Graphers that never recorded this story; deletion hooks filter by
-    // filename and emit zero deletes.
+    // Async destroy of a single story. Atomically unhooks the live pipeline,
+    // drains in-flight chunks, finalizes the timeline, and enqueues a destroy
+    // task for the dedicated worker thread which (a) stashes the remaining
+    // chunks for the extraction chain to persist, (b) waits until extraction
+    // has drained them, and (c) deletes the matching HDF5 files via the
+    // injected ChronoGrapherExtractionChain reference. The RPC returns as
+    // soon as the task is enqueued; ordering between persistence and deletion
+    // is enforced inside the Grapher.
     int destroyStory(StoryId const&, ChronicleName const& chronicle, StoryName const& story);
 
-    // Destroy persisted state for every story in a chronicle. Cancels any
-    // in-memory pipelines belonging to the chronicle and deletes all HDF5 files
-    // matching <chronicle>.*.vlen.h5 in the archive directory.
+    // Async destroy of every story in a chronicle. Same ordering contract as
+    // destroyStory: the worker waits for extraction to drain all enqueued
+    // chunks before deleting any HDF5 files.
     int destroyChronicle(ChronicleName const& chronicle);
 
     void collectIngestedEvents();
@@ -93,6 +96,28 @@ private:
 
     GrapherDataStore& operator=(GrapherDataStore const&) = delete;
 
+    // Work submitted to the destroy worker. Carries either a single story or
+    // a whole chronicle's worth of pipelines that have already been unhooked
+    // from the live maps and drained into remainingChunks.
+    struct DestroyTask
+    {
+        enum class Kind
+        {
+            Story,
+            Chronicle
+        };
+
+        Kind kind;
+        ChronicleName chronicleName;
+        StoryName storyName; // only meaningful for Kind::Story
+        std::vector<StoryPipeline*> pipelines;
+        std::vector<StoryChunk*> remainingChunks;
+    };
+
+    void destroyWorkerTask();
+    void enqueueDestroyTask(DestroyTask&& task);
+    void drainExtractionQueueOrTimeout();
+
     DataStoreState state;
     std::mutex dataStoreStateMutex;
     ChunkIngestionQueue& theIngestionQueue;
@@ -102,8 +127,7 @@ private:
     uint32_t story_chunk_duration_secs;
     uint32_t acceptance_window_secs;
     uint32_t inactive_pipeline_delay_secs;
-    DeleteStoryFilesFn deleteStoryFiles;
-    DeleteChronicleFilesFn deleteChronicleFiles;
+    ChronoGrapherExtractionChain* theExtractionChain;
 
     std::vector<thallium::managed<thallium::xstream>> dataStoreStreams;
     std::vector<thallium::managed<thallium::thread>> dataStoreThreads;
@@ -111,6 +135,16 @@ private:
     std::mutex dataStoreMutex;
     std::unordered_map<StoryId, StoryPipeline*> theMapOfStoryPipelines;
     std::unordered_map<StoryId, std::pair<StoryPipeline*, uint64_t>> pipelinesWaitingForExit;
+
+    // Destroy worker: a dedicated std::thread (not an Argobots xstream) so
+    // it can block on the extraction-queue drain without starving the data
+    // collection ULTs. Tasks are enqueued by destroyStory / destroyChronicle
+    // under destroyMutex; the worker pops them one at a time.
+    std::thread destroyWorkerThread;
+    std::mutex destroyMutex;
+    std::condition_variable destroyCv;
+    std::deque<DestroyTask> destroyQueue;
+    std::atomic<bool> destroyWorkerShouldExit;
 };
 
 } // namespace chronolog
