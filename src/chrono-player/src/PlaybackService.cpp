@@ -85,12 +85,18 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
             // using the service tl_engine and service_id provided in the request
             queryResponseSender =
                     chl::QueryResponseAgent::CreateQueryResponseAgent(playbackEngine, receiver_service_id);
+            if(queryResponseSender == nullptr)
+            {
+                return;
+            }
+
             responseSenders.insert(std::pair<chl::service_endpoint, chl::QueryResponseAgent*>(
                     receiver_service_id.get_service_endpoint(),
                     queryResponseSender));
             queryResponseSender->startResponseThreads(1);
         }
     }
+
 
     //chl::chrono_time active_window_boundary = PlayerDataStore.get_access_window_boundary();
     chl::chrono_time active_window_boundary = 1;
@@ -100,6 +106,7 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
     if(chl::CL_SUCCESS != queryResponseSender->createQueryResponse(query_id))
     {
         request.respond(0);
+        return;
     }
 
 

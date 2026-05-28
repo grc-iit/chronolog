@@ -163,7 +163,7 @@ chl::PlaybackQuery* chl::ClientQueryService::start_query(uint64_t timeout_time,
 {
     std::lock_guard<std::mutex> lock(queryServiceMutex);
 
-    uint32_t query_id = queryIndex++;
+    uint32_t query_id = ++queryIndex;
 
     auto insert_return = activeQueryMap.insert(std::pair<uint32_t, chl::PlaybackQuery>(
             query_id,
@@ -171,6 +171,12 @@ chl::PlaybackQuery* chl::ClientQueryService::start_query(uint64_t timeout_time,
 
     if(insert_return.second)
     {
+        LOG_DEBUG("[ClientQueryService] started query {} for story {}-{} time range {}-{}",
+                  query_id,
+                  chronicle,
+                  story,
+                  start_time,
+                  end_time);
         return &(*insert_return.first).second;
     }
     else
@@ -188,7 +194,7 @@ chl::PlaybackQuery* chl::ClientQueryService::start_query(uint64_t timeout_time,
 {
     std::lock_guard<std::mutex> lock(queryServiceMutex);
 
-    uint32_t query_id = queryIndex++;
+    uint32_t query_id = ++queryIndex;
 
     auto insert_return = activeQueryMap.insert(std::pair<uint32_t, chl::PlaybackQuery>(
             query_id,
@@ -196,6 +202,12 @@ chl::PlaybackQuery* chl::ClientQueryService::start_query(uint64_t timeout_time,
 
     if(insert_return.second)
     {
+        LOG_DEBUG("[ClientQueryService] started query {} for story {}-{} time range {}-{}",
+                  query_id,
+                  chronicle,
+                  story,
+                  start_time,
+                  end_time);
         return &(*insert_return.first).second;
     }
     else
