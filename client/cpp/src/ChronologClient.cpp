@@ -67,3 +67,12 @@ int chronolog::Client::ReplayStory(std::string const& chronicle_name,
 {
     return chronologClientImpl->replay_story(chronicle_name, story_name, start_time, end_time, event_series);
 }
+
+int chronolog::Client::ReplayStory(std::string const& chronicle_name,
+                                   std::string const& story_name,
+                                   uint64_t start_time,
+                                   uint64_t end_time,
+                                   chronolog::Client::EventCallback callback)
+{
+    return chronologClientImpl->replay_story(chronicle_name, story_name, start_time, end_time, std::move(callback));
+}
