@@ -1,6 +1,7 @@
 #ifndef CHRONOLOG_CLIENT_H
 #define CHRONOLOG_CLIENT_H
 
+#include <functional>
 #include <string>
 #include <vector>
 #include <map>
@@ -152,6 +153,30 @@ public:
                     uint64_t start,
                     uint64_t end,
                     std::vector<Event>& event_series);
+
+    // Streaming overload: invoke `callback` once per event in the requested
+    // [start, end) range, with no client-side std::vector<Event> materialization.
+    //
+    // The callback runs on the query service receive thread; the caller is
+    // responsible for any locking it needs.
+    //
+    // The callback must not throw. If it does, the exception is caught and
+    // logged, that event is skipped, and the remaining events in the response
+    // are still delivered. Letting an exception escape into the Thallium ULT
+    // would skip the RPC response and hang the polling thread until
+    // CL_ERR_QUERY_TIMED_OUT.
+    //
+    // Scope note: this overload removes the client-side vector materialization,
+    // but the wire-level response is unchanged — the Player still ships one
+    // PlaybackQueryResponse per query and the events are fully deserialized
+    // into a server-supplied buffer before the callback loop runs. Player-side
+    // chunked delivery is tracked as a follow-up.
+    using EventCallback = std::function<void(Event const&)>;
+    int ReplayStory(std::string const& chronicle,
+                    std::string const& story,
+                    uint64_t start,
+                    uint64_t end,
+                    EventCallback callback);
 
 private:
     ChronologClientImpl* chronologClientImpl;

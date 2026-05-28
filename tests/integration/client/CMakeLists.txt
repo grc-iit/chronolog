@@ -15,6 +15,7 @@ set(client_standard_targets
     client_thread_interdependency_test
     client_multi_storytellers_test
     client_story_reader_test
+    client_replay_callback_test
 )
 
 foreach(client ${client_standard_targets})
@@ -141,6 +142,7 @@ set(client_all_targets
     client_thread_interdependency_test
     client_multi_storytellers_test
     client_story_reader_test
+    client_replay_callback_test
     client_multi_argobots_test
     client_multi_openmp_test
     client_hybrid_argobots_test
@@ -152,6 +154,7 @@ set(client_ctest_names
     ThreadInterdependency
     MultiStorytellers
     StoryReader
+    ReplayCallback
     MultiArgobots
     MultiOpenmp
     HybridArgobots
@@ -163,6 +166,7 @@ set(client_install_names
     chronolog-test-client-thread-interdependency
     chronolog-test-client-multi-storytellers
     chronolog-test-client-story-reader
+    chronolog-test-client-replay-callback
     chronolog-test-client-multi-argobots
     chronolog-test-client-multi-openmp
     chronolog-test-client-hybrid-argobots
