@@ -121,9 +121,6 @@ int main(int argc, char** argv)
             duration_acquire_story += (t2 - t1);
         }
 
-        ret = client.Disconnect();
-        assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NO_KEEPERS);
-
         t1 = std::chrono::steady_clock::now();
         auto [show_stories_ret, stories_names_retrieved] = client.ShowStories(chronicle_names[i]);
         (void)show_stories_ret;
