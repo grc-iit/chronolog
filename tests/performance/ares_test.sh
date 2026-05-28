@@ -57,7 +57,9 @@ OPTIONS
                    recording).  On by default.
   --no-write       Skip write tests.
 
-  --read           Run read tests (replay).  Off by default.
+  --read           Run read tests (replay) after the write phase.  Off by
+                   default.  Requires --write (replay needs pre-written data);
+                   combining --read with --no-write is an error.
   --no-read        Skip read tests (default).
 
   --colocate       Allow client processes to run on the same nodes as service
@@ -107,6 +109,7 @@ ENVIRONMENT VARIABLES
     COMPONENT_SCALES      Space-separated component scale values (number of
                           keeper / grapher / player nodes per scale point).
                           Default: "1 2 4"
+    VISOR_NODES           Number of dedicated visor nodes.  Default: 1.
     PROTOCOLS             Space-separated OFI transport strings.
                           Default: "ofi+sockets"
     WRITE_CLIENT_CONFIGS  Space-separated <procs_per_node>x<nodes> tokens for
@@ -116,6 +119,23 @@ ENVIRONMENT VARIABLES
                           read tests (limited to 1 proc/node by the single-
                           player-per-node constraint).
                           Default: "1x1 1x2 1x4"
+    WRITE_TESTS           Space-separated write test names to run.
+                          Default: "connect_disconnect acquire_release recording"
+    READ_TESTS            Space-separated read test names to run.
+                          Default: "replay"
+    EVENT_SIZES           Space-separated event payload sizes in bytes.
+                          Default: "1024 2048 4096 8192 16384 32768 65536 131072 262144 524288 1048576"
+    UNIFORM_EVENT_COUNT   0: event count declines with event size to keep total
+                          data written roughly constant (driven by
+                          event_count_for_size()).
+                          1 (default): every event size uses the same fixed
+                          count given by UNIFORM_EVENT_COUNT_N.
+    UNIFORM_EVENT_COUNT_N Fixed count used when UNIFORM_EVENT_COUNT=1.
+                          Default: 500.
+    EVENT_INTERVAL_US     Microseconds between consecutive record_event calls
+                          (0 = no delay).  Default: 0.
+    CHRONICLE_COUNT       Number of chronicles created per client process.
+                          Default: 1.
     REPS                  Repetitions per (test × client-config × event-size).
                           Default: 3
     PER_TEST_TIMEOUT_SEC  Kill a single perf-test run after this many seconds.
@@ -218,6 +238,7 @@ unset _arg
 : "${TESTS_DIR:=$INSTALL_DIR/tests}"
 : "${PERF_BIN:=$BENCHMARK_DIR/chrono-bench}"
 : "${MPIRUN:=mpirun}" # full path if not in $PATH
+: "${ADMIN_NODE:=}"  # node to launch mpirun from; empty = carve from allocation
 : "${DEPLOY_SCRIPT:=$DEPLOY_DIR/deploy_cluster.sh}"
 : "${CONF_FILE:=$CONF_DIR/default-chrono-conf.json}"
 : "${CLIENT_CONF_FILE:=$CONF_DIR/default-chrono-client-conf.json}"
@@ -227,14 +248,14 @@ unset _arg
 : "${GRAPHER_HOSTS:=$CONF_DIR/hosts_grapher}"
 : "${PLAYER_HOSTS:=$CONF_DIR/hosts_player}"
 
-: "${PER_TEST_TIMEOUT_SEC:=120}" # kill any perf-test run that exceeds this
+: "${PER_TEST_TIMEOUT_SEC:=600}" # kill any perf-test run that exceeds this
 : "${REPS:=3}"
 : "${MAX_RETRIES:=2}" # max redeploy+retry attempts on component failure per test run
 # grep -E pattern applied to each run's stdout/stderr to detect component failure.
 # A match triggers redeploy and retry (up to MAX_RETRIES times).
 : "${COMPONENT_ERROR_PATTERN:=HG_NOENTRY|HG_TIMEOUT|HG_CANCELED|margo_forward failed}"
 : "${SLURM_PARTITION:=}"      # force a specific partition; empty = try compute, then debug,compute
-: "${SALLOC_TIMEOUT_SEC:=60}" # per-partition timeout for salloc; 0 = no timeout
+: "${SALLOC_TIMEOUT_SEC:=300}" # per-partition timeout for salloc; 0 = no timeout
 : "${SLURM_TIME_LIMIT:=1-00:00:00}"
 : "${SLURM_JOB_NAME:=chronolog-perf}"
 
@@ -268,11 +289,12 @@ mkdir -p "$LOG_DIR"
 # Point the "latest" symlink at this run's log dir.
 ln -sfn "$LOG_DIR_BASE" "$LATEST_LINK"
 
-# Fixed component scales (symmetric: N keepers == N graphers == N players).
-COMPONENT_SCALES=(1 2 4)
-VISOR_NODES=1
+: "${COMPONENT_SCALES:=1 2 4}"
+read -ra COMPONENT_SCALES <<<"$COMPONENT_SCALES"
+: "${VISOR_NODES:=1}"
 
-PROTOCOLS=(ofi+sockets)
+: "${PROTOCOLS:=ofi+sockets}"
+read -ra PROTOCOLS <<<"$PROTOCOLS"
 
 # Write-test client configs: space-separated "<procs_per_node>x<nodes>" tokens.
 # Examples:
@@ -283,9 +305,11 @@ PROTOCOLS=(ofi+sockets)
 read -ra WRITE_CLIENT_CONFIGS_ARR <<<"$WRITE_CLIENT_CONFIGS"
 
 # Read-test client configs: limited to 1 client per node (single player process
-# per node constraint).
-: "${READ_CLIENT_CONFIGS:=1x1 1x2 1x4}"
-read -ra READ_CLIENT_CONFIGS_ARR <<<"$READ_CLIENT_CONFIGS"
+# per node constraint).  Export READ_CLIENT_CONFIGS="" to suppress read-config
+# contribution to MAX_CLIENT_NODES when read tests will not run.
+: "${READ_CLIENT_CONFIGS=1x1 1x2 1x4}"   # = not := so an empty export is preserved
+READ_CLIENT_CONFIGS_ARR=()
+[[ -n "$READ_CLIENT_CONFIGS" ]] && read -ra READ_CLIENT_CONFIGS_ARR <<<"$READ_CLIENT_CONFIGS"
 
 # Derive MAX_COMP_NODES as the largest value in COMPONENT_SCALES.
 MAX_COMP_NODES=0
@@ -305,22 +329,23 @@ unset _c _n
 # Total allocation:
 #   COLOCATE=0 (default): clients get dedicated nodes -> 1 visor + 3*MAX_COMP_NODES + MAX_CLIENT_NODES
 #   COLOCATE=1          : clients share the player slot pool -> 1 visor + 3*MAX_COMP_NODES
+# +1 admin node when ADMIN_NODE is not pre-configured: login nodes block HYDRA
+# proxy connections, so mpirun must be launched from inside the allocation.
+_ADMIN_EXTRA=0
+[[ -z "$ADMIN_NODE" ]] && _ADMIN_EXTRA=1
 if ((COLOCATE)); then
-  TOTAL_NODES=$((VISOR_NODES + MAX_COMP_NODES * 3))
+  TOTAL_NODES=$((_ADMIN_EXTRA + VISOR_NODES + MAX_COMP_NODES * 3))
 else
-  TOTAL_NODES=$((VISOR_NODES + MAX_COMP_NODES * 3 + MAX_CLIENT_NODES))
+  TOTAL_NODES=$((_ADMIN_EXTRA + VISOR_NODES + MAX_COMP_NODES * 3 + MAX_CLIENT_NODES))
 fi
+unset _ADMIN_EXTRA
 
 # Write tests run over the full CLIENT_CONFIGS matrix.
 # Read tests (replay) run only with 1 client per node.
-WRITE_TESTS=(
-  "connect_disconnect"
-  "acquire_release"
-  "recording"
-)
-READ_TESTS=(
-  "replay"
-)
+: "${WRITE_TESTS:=connect_disconnect acquire_release recording}"
+read -ra WRITE_TESTS <<<"$WRITE_TESTS"
+: "${READ_TESTS:=replay}"
+read -ra READ_TESTS <<<"$READ_TESTS"
 
 # Per-test shared workload settings. Event size is fixed (min==ave==max) so
 # the recording/replay bandwidth numbers are not distorted by a payload-size
@@ -330,9 +355,12 @@ READ_TESTS=(
 # blocks. event_count_for_size() maps each size to an event count so the
 # total data written stays bounded at ~19 GB for the largest client scale
 # (40x4 = 160 clients).
-EVENT_SIZES=(1024 2048 4096 8192 16384 32768 65536 131072 262144 524288 1048576)
-EVENT_INTERVAL_US=0
-CHRONICLE_COUNT=1
+: "${EVENT_SIZES:=1024 2048 4096 8192 16384 32768 65536 131072 262144 524288 1048576}"
+read -ra EVENT_SIZES <<<"$EVENT_SIZES"
+: "${UNIFORM_EVENT_COUNT:=1}"    # 1 = same count for every event size
+: "${UNIFORM_EVENT_COUNT_N:=500}" # count used when UNIFORM_EVENT_COUNT=1
+: "${EVENT_INTERVAL_US:=0}"
+: "${CHRONICLE_COUNT:=1}"
 
 # ---------------------------------------------------------------------------
 # Snapshots — freeze the script source and resolved config into the log dir
@@ -354,6 +382,7 @@ cp -- "${BASH_SOURCE[0]}" "$LOG_DIR/ares_test_${STAMP}.sh.snapshot"
   printf 'TESTS_DIR=%s\n' "$TESTS_DIR"
   printf 'PERF_BIN=%s\n' "$PERF_BIN"
   printf 'MPIRUN=%s\n' "$MPIRUN"
+  printf 'ADMIN_NODE=%s\n' "$ADMIN_NODE"
   printf 'DEPLOY_SCRIPT=%s\n' "$DEPLOY_SCRIPT"
   printf 'CONF_FILE=%s\n' "$CONF_FILE"
   printf 'CLIENT_CONF_FILE=%s\n' "$CLIENT_CONF_FILE"
@@ -379,6 +408,8 @@ cp -- "${BASH_SOURCE[0]}" "$LOG_DIR/ares_test_${STAMP}.sh.snapshot"
   printf 'TOTAL_NODES=%s\n' "$TOTAL_NODES"
   printf '\n# --- Workload ---\n'
   printf 'EVENT_SIZES=(%s)\n' "${EVENT_SIZES[*]}"
+  printf 'UNIFORM_EVENT_COUNT=%s\n' "$UNIFORM_EVENT_COUNT"
+  printf 'UNIFORM_EVENT_COUNT_N=%s\n' "$UNIFORM_EVENT_COUNT_N"
   printf 'EVENT_INTERVAL_US=%s\n' "$EVENT_INTERVAL_US"
   printf 'CHRONICLE_COUNT=%s\n' "$CHRONICLE_COUNT"
   printf '\n# --- Arrays ---\n'
@@ -698,15 +729,22 @@ discover_nodes() {
 partition_nodes() {
   local scale="$1"
 
-  VISOR_NODELIST=("${ALLOCATED_NODES[0]}")
+  # If no pre-configured admin node, carve the first allocated node for it.
+  local base=0
+  if [[ -z "$ADMIN_NODE" ]]; then
+    ADMIN_NODE="${ALLOCATED_NODES[0]}"
+    base=1
+  fi
 
-  local off=1
+  VISOR_NODELIST=("${ALLOCATED_NODES[$base]}")
+
+  local off=$((base + 1))
   KEEPER_NODELIST=("${ALLOCATED_NODES[@]:$off:$scale}")
 
-  off=$((1 + MAX_COMP_NODES))
+  off=$((base + 1 + MAX_COMP_NODES))
   GRAPHER_NODELIST=("${ALLOCATED_NODES[@]:$off:$scale}")
 
-  off=$((1 + 2 * MAX_COMP_NODES))
+  off=$((base + 1 + 2 * MAX_COMP_NODES))
   PLAYER_NODELIST=("${ALLOCATED_NODES[@]:$off:$scale}")
 
   local client_note
@@ -718,12 +756,13 @@ partition_nodes() {
   else
     # Client pool starts immediately after the player slot pool — fully
     # dedicated nodes that never run a service process.
-    off=$((1 + 3 * MAX_COMP_NODES))
+    off=$((base + 1 + 3 * MAX_COMP_NODES))
     CLIENT_POOL=("${ALLOCATED_NODES[@]:$off:$MAX_CLIENT_NODES}")
     client_note="dedicated (no service overlap)"
   fi
 
   log "Node partition for scale=$scale (COLOCATE=$COLOCATE):"
+  log "    admin   : $ADMIN_NODE (mpirun launcher)"
   log "    visor   : ${VISOR_NODELIST[*]}"
   log "    keepers : ${KEEPER_NODELIST[*]}"
   log "    graphers: ${GRAPHER_NODELIST[*]}"
@@ -769,8 +808,10 @@ write_client_hosts_file() {
 #     — written by write_hosts_files / write_client_hosts_file
 #   hosts_keeper.N, hosts_grapher.N, hosts_player.N
 #     — split per-recording-group hosts files written by deploy_cluster.sh
-#   default-chrono-conf.json.N
-#     — per-recording-group conf files written by deploy_cluster.sh
+#   default-chrono-conf.json.* (includes .deployed and per-recording-group .N)
+#     — deployed working copy + per-recording-group conf files written by deploy_cluster.sh
+#   default-chrono-client-conf.json.deployed
+#     — deployed working copy with visor IP patched by deploy_cluster.sh
 clean_conf_dir() {
   log "[CONF] cleaning generated files from $CONF_DIR"
   local targets=(
@@ -780,13 +821,14 @@ clean_conf_dir() {
     "$CONF_DIR/hosts_player"
     "$CONF_DIR/hosts_client"
   )
-  log_cmd "rm -f ${targets[*]} $CONF_DIR/hosts_keeper.* $CONF_DIR/hosts_grapher.* $CONF_DIR/hosts_player.* $CONF_DIR/default-chrono-conf.json.*"
+  log_cmd "rm -f ${targets[*]} $CONF_DIR/hosts_keeper.* $CONF_DIR/hosts_grapher.* $CONF_DIR/hosts_player.* $CONF_DIR/default-chrono-conf.json.* ${CLIENT_CONF_FILE}.deployed"
   if [[ "$DRY_RUN" == "1" ]]; then
     return 0
   fi
   rm -f "${targets[@]}"
   rm -f "$CONF_DIR"/hosts_keeper.* "$CONF_DIR"/hosts_grapher.* "$CONF_DIR"/hosts_player.*
   rm -f "$CONF_DIR"/default-chrono-conf.json.*
+  rm -f "${CLIENT_CONF_FILE}.deployed"
 }
 
 # snapshot_conf_dir <scale> <proto> <per_node> <nnodes>
@@ -892,10 +934,12 @@ deploy_cluster() {
   local scale="$1"
   section "deploy_cluster.sh -d (recording_groups=$scale)"
   run_cmd "start cluster" "$DEPLOY_SCRIPT" -d \
+    -w "$INSTALL_DIR" \
     -r "$scale" \
     -q "$VISOR_HOSTS" \
     -o "$KEEPER_HOSTS" \
     -k "$GRAPHER_HOSTS" \
+    -l "$PLAYER_HOSTS" \
     -f "$CONF_FILE" \
     -n "$CLIENT_CONF_FILE"
 }
@@ -903,9 +947,11 @@ deploy_cluster() {
 stop_cluster() {
   section "deploy_cluster.sh -s"
   run_cmd "stop cluster" "$DEPLOY_SCRIPT" -s \
+    -w "$INSTALL_DIR" \
     -q "$VISOR_HOSTS" \
     -o "$KEEPER_HOSTS" \
     -k "$GRAPHER_HOSTS" \
+    -l "$PLAYER_HOSTS" \
     -f "$CONF_FILE" \
     -n "$CLIENT_CONF_FILE" || true
 }
@@ -994,7 +1040,7 @@ verify_components_running() {
 #   <= 524288 →  250   (160 *  250 * 524288 B ≈ 21.0 GB)
 #       else  →  125   (160 *  125 * 1048576 B ≈ 21.0 GB)
 #
-# At scale S the effective count = base * S / MAX_COMP_NODES (minimum 1).
+# Only used when UNIFORM_EVENT_COUNT=0.
 event_count_for_size() {
   local esz="$1"
   local scale="$2"
@@ -1024,8 +1070,12 @@ event_count_for_size() {
 # positive values via test_specific_flags.
 common_perf_flags() {
   local esz="$1"
+  # deploy_cluster.sh writes the visor-IP-patched client conf to .deployed;
+  # fall back to the template only if the deployed copy is absent (dry-run etc).
+  local bench_conf="${CLIENT_CONF_FILE}.deployed"
+  [[ -f "$bench_conf" ]] || bench_conf="$CLIENT_CONF_FILE"
   printf -- '-c %s -y -p -a %d -s %d -b %d -h %d' \
-    "$CLIENT_CONF_FILE" \
+    "$bench_conf" \
     "$esz" "$esz" "$esz" \
     "$CHRONICLE_COUNT"
 }
@@ -1097,7 +1147,11 @@ run_one_perf_test() {
   local esz="$7"
 
   local ecnt
-  ecnt="$(event_count_for_size "$esz" "$scale")"
+  if ((UNIFORM_EVENT_COUNT)); then
+    ecnt=$UNIFORM_EVENT_COUNT_N
+  else
+    ecnt="$(event_count_for_size "$esz" "$scale")"
+  fi
   local total_clients=$((per_node * nnodes))
   local common
   common="$(common_perf_flags "$esz")"
@@ -1107,6 +1161,8 @@ run_one_perf_test() {
   # mpirun/mpiexec launch line — uses the client hosts file we just wrote.
   # We wrap everything in `timeout` so a hung run cannot block the matrix.
   # --kill-after fires SIGKILL 5s after SIGTERM if the run did not exit.
+  # mpirun must be launched from a compute node (ADMIN_NODE) — login nodes
+  # block HYDRA proxy connections back from the compute nodes.
   local mpirun_cmd=(
     "$MPIRUN"
     --hostfile "$CLIENT_HOSTS"
@@ -1115,7 +1171,14 @@ run_one_perf_test() {
     # shellcheck disable=SC2086
     $common $specific
   )
-  local timeout_cmd=(timeout --kill-after=5 "${PER_TEST_TIMEOUT_SEC}" "${mpirun_cmd[@]}")
+  local timeout_cmd
+  if [[ -n "$ADMIN_NODE" ]]; then
+    # shellcheck disable=SC2086
+    timeout_cmd=(timeout --kill-after=5 "${PER_TEST_TIMEOUT_SEC}" \
+      ssh "$ADMIN_NODE" "$(printf '%q ' "${mpirun_cmd[@]}")")
+  else
+    timeout_cmd=(timeout --kill-after=5 "${PER_TEST_TIMEOUT_SEC}" "${mpirun_cmd[@]}")
+  fi
 
   local tag="test=${test} proto=${proto} scale=${scale} clients=${per_node}x${nnodes} esz=${esz} ecnt=${ecnt} rep=${rep}"
   section "RUN $tag"
@@ -1295,6 +1358,11 @@ main() {
     TOTAL_NODES=$((VISOR_NODES + MAX_COMP_NODES * 3 + MAX_CLIENT_NODES))
   fi
 
+  if ((RUN_READ && ! RUN_WRITE)); then
+    log "ERROR: read tests (replay) require pre-written data — RUN_READ=1 cannot be combined with RUN_WRITE=0"
+    exit 1
+  fi
+
   local colocate_desc
   if ((COLOCATE)); then
     colocate_desc="colocated (clients share player nodes)"
@@ -1310,7 +1378,9 @@ main() {
   log "log_file=$LOG_FILE"
   log "cmd_log_file=$CMD_LOG_FILE"
   log "result_file=$RESULT_FILE"
-  log "total_nodes_needed=$TOTAL_NODES (visor=$VISOR_NODES + 3*$MAX_COMP_NODES comp + ${MAX_CLIENT_NODES} client — $colocate_desc)"
+  local admin_desc
+  [[ -n "$ADMIN_NODE" ]] && admin_desc="pre-set ($ADMIN_NODE)" || admin_desc="from allocation"
+  log "total_nodes_needed=$TOTAL_NODES (1 admin ($admin_desc) + visor=$VISOR_NODES + 3*$MAX_COMP_NODES comp + ${MAX_CLIENT_NODES} client — $colocate_desc)"
   log "write_client_configs=${WRITE_CLIENT_CONFIGS_ARR[*]} (${#WRITE_CLIENT_CONFIGS_ARR[@]} configs)"
   log "read_client_configs=${READ_CLIENT_CONFIGS_ARR[*]} (${#READ_CLIENT_CONFIGS_ARR[@]} configs)"
 

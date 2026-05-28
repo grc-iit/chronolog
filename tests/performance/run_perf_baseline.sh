@@ -9,8 +9,12 @@
 #   WRITE_CLIENT_CONFIGS=20x4       (20 clients × 4 nodes = 80 clients)
 #   PROTOCOLS=ofi+sockets
 #   EVENT_SIZES=1024 .. 1048576     (powers of two up to 1 MB)
-#   RUN_WRITE=1 RUN_READ=0
-#   WRITE_TESTS=(recording)         (only the metric we track)
+#   UNIFORM_EVENT_COUNT=1           (same count for every event size)
+#   UNIFORM_EVENT_COUNT_N=500       (500 events per client per run)
+#   WRITE_TESTS=recording           (write metric tracked in the baseline)
+#   READ_TESTS=replay               (read metric; activate by flipping RUN_READ=1 below)
+#   RUN_WRITE=1 RUN_READ=0          (replay requires pre-written data so RUN_WRITE must stay 1
+#                                    when RUN_READ=1; also set READ_CLIENT_CONFIGS as needed)
 #   REPS=3
 #
 # Outputs:
@@ -65,25 +69,41 @@ mkdir -p "$(dirname "$OUT_JSON")"
 if (( ! SKIP_RUN )); then
     [[ -x "$ARES_TEST" ]] || { echo "ERROR: $ARES_TEST not executable" >&2; exit 1; }
 
+    export MPIRUN="${REPO_ROOT}/.spack-env/view/bin/mpirun"
     export COMPONENT_SCALES=4
     export PROTOCOLS=ofi+sockets
     export WRITE_CLIENT_CONFIGS=20x4
-    export READ_CLIENT_CONFIGS=""
+    export READ_CLIENT_CONFIGS=""   # empty: read configs don't inflate node allocation
+    export WRITE_TESTS=recording
+    export READ_TESTS=replay
     export EVENT_SIZES="1024 2048 4096 8192 16384 32768 65536 131072 262144 524288 1048576"
+    export UNIFORM_EVENT_COUNT=1
+    export UNIFORM_EVENT_COUNT_N=500
     export RUN_WRITE=1
-    export RUN_READ=0
+    export RUN_READ=0   # set to 1 (and export READ_CLIENT_CONFIGS) to include replay
     export REPS=3
 
     if (( DRY_RUN_FLAG )); then
         export DRY_RUN=1
+    else
+        export DRY_RUN=0
     fi
 
-    if [[ -n "$LOGS_DIR" ]]; then
-        export LOG_DIR="$LOGS_DIR"
+    # Default logs to SCRIPT_DIR so the ares_test_logs_latest symlink lands
+    # next to this script, where the resolution block below will find it.
+    if [[ -z "$LOGS_DIR" ]]; then
+        LOGS_DIR="${SCRIPT_DIR}/ares_test_logs_$(date +%Y%m%d_%H%M%S)"
     fi
+    export LOG_DIR="$LOGS_DIR"
 
-    echo "[run_perf_baseline] invoking ares_test.sh (recording-only, scale=4, 20x4, reps=3)"
-    bash "$ARES_TEST" --write
+    # Build flag list from exported RUN_* knobs so toggling RUN_READ=1 above
+    # is the only change needed to add replay to the baseline.
+    _ares_flags=()
+    (( RUN_WRITE )) && _ares_flags+=(--write) || _ares_flags+=(--no-write)
+    (( RUN_READ  )) && _ares_flags+=(--read)  || _ares_flags+=(--no-read)
+
+    echo "[run_perf_baseline] invoking ares_test.sh"
+    bash "$ARES_TEST" "${_ares_flags[@]}"
 fi
 
 # ─── Resolve which logs to summarize ──────────────────────────────────────────
@@ -103,7 +123,7 @@ RESULTS_FILE="$(find "$LOGS_DIR" -maxdepth 1 -name 'ares_test_*.results' | head 
 [[ -n "$RESULTS_FILE" ]] || { echo "ERROR: no .results file in $LOGS_DIR" >&2; exit 1; }
 
 echo "[run_perf_baseline] extracting per-test CSVs from $(basename "$RESULTS_FILE")"
-python3 "$EXTRACT_PY" --no-plot "$RESULTS_FILE" >/dev/null
+python3 "$EXTRACT_PY" "$RESULTS_FILE" >/dev/null
 
 # ─── Summarize the recording test into a baseline JSON ────────────────────────
 [[ -f "$SUMMARIZE_PY" ]] || { echo "ERROR: $SUMMARIZE_PY not found" >&2; exit 1; }

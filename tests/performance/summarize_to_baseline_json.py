@@ -86,7 +86,15 @@ def collect_results(
 ) -> tuple[dict[str, float], dict[str, float]]:
     """Walk by_component_scale/recording_ofi_sockets_20x4_esz*.csv and pull
     out bandwidth (MB/s) and throughput (events/s) per event size."""
-    by_dir = logs_dir / "by_component_scale"
+    # extract_plot_results.py writes CSVs to
+    # <repo>/tests/performance/history_perf_data/<timestamp>/by_component_scale/
+    m = re.search(r"(\d{8}_\d{6})", logs_dir.name)
+    if m:
+        by_dir = (
+            REPO_ROOT / "tests" / "performance" / "history_perf_data" / m.group(1) / "by_component_scale"
+        )
+    else:
+        by_dir = logs_dir / "by_component_scale"
     if not by_dir.is_dir():
         sys.exit(f"ERROR: missing {by_dir} — did extract_plot_results.py run?")
 
