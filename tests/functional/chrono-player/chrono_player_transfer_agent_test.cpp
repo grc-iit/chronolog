@@ -8,9 +8,8 @@
 #include <chrono_monitor.h>
 #include <ServiceId.h>
 #include <StoryChunk.h>
-#include <StoryChunkTransferAgent.h>
-#include <ArchiveReadingRequestQueue.h>
-#include <PlaybackService.h>
+#include <PlaybackQueryResponse.h>
+#include <QueryResponseTransferAgent.h>
 
 namespace tl = thallium;
 namespace chl = chronolog;
@@ -45,18 +44,15 @@ int main()
     );
 
 
-    chl::ServiceId localServiceId("ofi+sockets", "127.0.0.1", 5555, 55);
+    chl::ServiceId localServiceId("ofi+sockets", "127.0.0.1", 2225, 25);
 
     std::string LOCAL_SERVICE_NA_STRING;
     localServiceId.get_service_as_string(LOCAL_SERVICE_NA_STRING);
 
     tl::engine* localEngine = nullptr;
-    chl::PlaybackService* playbackService = nullptr;
+    chronolog::QueryResponseAgent* transferAgent = nullptr;
 
     chl::ServiceId queryServiceId("ofi+sockets", "127.0.0.1", 5557, 57);
-
-    chl::ArchiveReadingRequestQueue readingRequestQueue;
-
     try
     {
         margo_instance_id margo_id = margo_init(LOCAL_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 1);
@@ -65,44 +61,49 @@ int main()
         std::cout << "started localEngine at " << localEngine->self() << std::endl;
 
 
-        playbackService = chl::PlaybackService::CreatePlaybackService(*localEngine,
-                                                                      localServiceId.getProviderId(),
-                                                                      readingRequestQueue);
+        transferAgent = chronolog::QueryResponseAgent::CreateQueryResponseAgent(*localEngine, queryServiceId);
     }
     catch(tl::exception const&)
     {
-        playbackService = nullptr;
+        transferAgent = nullptr;
     }
 
-    if(nullptr == playbackService)
+    if(nullptr == transferAgent)
     {
         return (-1);
     }
 
     while(true == keep_running)
     {
-        /*
-        std::cout<<"TransferAgent is running"<<std::endl;
+        std::cout << "TransferAgent is running" << std::endl;
         transferAgent->is_receiver_available();
-        
-        chl::StoryChunk storyChunk("Chronicle","Story", 1, std::chrono::high_resolution_clock::now().time_since_epoch().count()
-                  ,  std::chrono::high_resolution_clock::now().time_since_epoch().count()+5000);
-   
-        for(int i =0; i< 5; ++i) 
-        { 
-            storyChunk.insertEvent(chl::LogEvent{ 1, storyChunk.getStartTime()+i, 2968,1,
-                             "line "+std::to_string(i)});
-        }
-        std::cout<<"TransferAgent is sending storyChunk for story "<<storyChunk.getChronicleName()<<"-"<< storyChunk.getStoryName()<<"-"<<storyChunk.getStartTime()<<"-"<<storyChunk.getEndTime()<<" eventCount:"<<storyChunk.getEventCount()<<std::endl;
-        transferAgent->processStoryChunk(&storyChunk);
 
-  */
+        chl::ClientQueryId queryId = 7;
+
+        chl::StoryChunk storyChunk("Chronicle",
+                                   "Story",
+                                   1,
+                                   std::chrono::high_resolution_clock::now().time_since_epoch().count(),
+                                   std::chrono::high_resolution_clock::now().time_since_epoch().count() + 5000);
+
+        for(int i = 0; i < 5; ++i)
+        {
+            storyChunk.insertEvent(
+                    chl::LogEvent{1, storyChunk.getStartTime() + i, 2968, 1, "line " + std::to_string(i)});
+        }
+        std::cout << "TransferAgent is sending storyChunk for story " << storyChunk.getChronicleName() << "-"
+                  << storyChunk.getStoryName() << "-" << storyChunk.getStartTime() << "-" << storyChunk.getEndTime()
+                  << " eventCount:" << storyChunk.getEventCount() << std::endl;
+        std::list<chl::StoryChunk*> listOfChunks;
+        listOfChunks.push_back(&storyChunk);
+        transferAgent->stashStoryChunks(queryId, listOfChunks);
+
         sleep(3);
     }
 
     std::cout << "Shutting down  TransferAgent for " << chl::to_string(queryServiceId) << std::endl;
 
-    delete playbackService;
+    delete transferAgent;
     delete localEngine;
     return 1;
 }

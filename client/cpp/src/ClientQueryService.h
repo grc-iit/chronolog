@@ -99,7 +99,7 @@ public:
     int addStoryReader(ChronicleName const&, StoryName const&, ServiceId const&);
     void removeStoryReader(ChronicleName const&, StoryName const&);
 
-    void receive_story_chunk(tl::request const&, tl::bulk&);
+    void receive_query_response(tl::request const&, tl::bulk&);
 
     int replay_story(ChronicleName const&,
                      StoryName const&,

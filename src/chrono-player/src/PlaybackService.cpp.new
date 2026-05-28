@@ -1,12 +1,12 @@
-#include <chrono>
 #include <map>
 #include <mutex>
+#include <sstream>
 #include <utility>
 #include <thallium.hpp>
 
 #include <chrono_monitor.h>
 #include <PlaybackService.h>
-#include <QueryResponseTransferAgent.h>
+#include <StoryChunkTransferAgent.h>
 
 namespace tl = thallium;
 namespace chl = chronolog;
@@ -34,15 +34,6 @@ chronolog::PlaybackService::PlaybackService(tl::engine& tl_engine,
 chronolog::PlaybackService::~PlaybackService()
 {
     LOG_DEBUG("[PlaybackService] Destructor called. Cleaning up...");
-
-    std::lock_guard<std::mutex> lock(playbackServiceMutex);
-    for(auto& agent: responseSenders)
-    {
-        agent.second->stopResponseThreads();
-        delete agent.second;
-    }
-    responseSenders.clear();
-
     //remove provider finalization callback from the engine's list
     playbackEngine.pop_finalize_callback(this);
 }
@@ -50,8 +41,6 @@ chronolog::PlaybackService::~PlaybackService()
 //////////////////
 
 void chronolog::PlaybackService::playback_service_available(tl::request const& request) { request.respond(1); }
-
-/////////
 
 void chronolog::PlaybackService::story_playback_request(tl::request const& request,
                                                         chl::ServiceId const& receiver_service_id,
@@ -67,70 +56,58 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
              story_name);
 
     //ChronoPlayer is running and able to respond
+    // generate unique RequestId (service_provider_id + atomic query index)
+    uint32_t requestId = 1;
 
-    chl::QueryResponseAgent* queryResponseSender = nullptr;
-    // if we already have QueryResponseAgent for this receiver,
+    //TODO : active query object should have :
+    // 1. access to theDataStore for active stories
+    // 2. access to the reading queue for archvie reads 
+    // 3. access to the response transfer agent 
+
+    //(std::pair<receiver_service_id, query_id> , query Object> )
+
+    chl::StoryChunkTransferAgent* responseSender = nullptr;
+    // if we already have StoryChunkTransferAgent & ExtractionQueue for this receiver,
     // use it or add one otherwise
     {
         std::lock_guard<std::mutex> lock(playbackServiceMutex);
 
-        auto findSenderIter = responseSenders.find(receiver_service_id.get_service_endpoint());
-        if(findSenderIter != responseSenders.end())
+        auto findSenderIter = chunkSenders.find(receiver_service_id.get_service_endpoint());
+        if(findSenderIter != chunkSenders.end())
         {
-            queryResponseSender = (*findSenderIter).second;
+            responseSender = (*findSenderIter).second;
         }
         else
         {
             //create RDMA client of the requesting service
             // using the service tl_engine and service_id provided in the request
-            queryResponseSender =
-                    chl::QueryResponseAgent::CreateQueryResponseAgent(playbackEngine, receiver_service_id);
-            if(queryResponseSender == nullptr)
-            {
-                return;
-            }
-
-            responseSenders.insert(std::pair<chl::service_endpoint, chl::QueryResponseAgent*>(
+            responseSender =
+                    chl::StoryChunkTransferAgent::CreateStoryChunkTransferAgent(playbackEngine, receiver_service_id);
+            chunkSenders.insert(std::pair<chl::service_endpoint, chl::StoryChunkTransferAgent*>(
                     receiver_service_id.get_service_endpoint(),
-                    queryResponseSender));
-            queryResponseSender->startResponseThreads(1);
+                    responseSender));
+            responseSender->startExtractionThreads(1);
         }
     }
 
+    //TODO : 1) if the story is active and the query time < access _window, 
+    //// then get hte first portion of reponse from the active data store
+    /// 2) get the portion from the archive
+     //3) when post portions of hte response are received initiate the 
+     // response transfer in the format of event series vector
+     // 4) if no data were found send the empty series vector response
+     // 5) include query id in the response message
+     //
+    // put new archiveRequest tied to the Sender's extractionQueue on
+    // onto the ArchiveReadingRequestQueue
 
-    //chl::chrono_time active_window_boundary = PlayerDataStore.get_access_window_boundary();
-    chl::chrono_time active_window_boundary = 1;
+    theArchiveReadingRequestQueue.pushReadingRequest(
+            chl::ArchiveReadingRequest(&(responseSender->getExtractionQueue()),
+                                       chronicle_name,
+                                       story_name,
+                                       start_time,
+                                       end_time));
 
-    // allocate PlaybackQueryResponse instance for this query
-    // and put it on the ResponseTransferAgent's active_queries map
-    if(chl::CL_SUCCESS != queryResponseSender->createQueryResponse(query_id))
-    {
-        request.respond(0);
-        return;
-    }
-
-
-    // handle the active in-memory portion of the query response
-    if(start_time < active_window_boundary)
-    {
-        //PlayerDataStore.get_active_story_events( query_response.events());
-    }
-
-
-    if(end_time > active_window_boundary)
-    {
-        // put new archiveRequest with sender info
-        // onto the ArchiveReadingRequestQueue
-
-        chl::ArchiveReadingRequest* a_request = new chl::ArchiveReadingRequest(queryResponseSender,
-                                                                               query_id,
-                                                                               chronicle_name,
-                                                                               story_name,
-                                                                               start_time,
-                                                                               end_time);
-
-        theArchiveReadingRequestQueue.pushReadingRequest(a_request);
-    }
-
-    request.respond(query_id);
+    // return requestId
+    request.respond(requestId);
 }

@@ -11,27 +11,37 @@
 namespace chronolog
 {
 
-class StoryChunkExtractionQueue;
+class QueryResponseAgent;
 
-struct ArchiveReadingRequest
+class ArchiveReadingRequest
 {
-    StoryChunkExtractionQueue* storyChunkQueue;
+public:
+    QueryResponseAgent* queryResponseAgent;
+    uint32_t queryId;
     ChronicleName chronicleName;
     StoryName storyName;
     chrono_time startTime;
     chrono_time endTime;
 
-    ArchiveReadingRequest(StoryChunkExtractionQueue* queue = nullptr,
-                          ChronicleName const& chronicle = std::string(),
-                          StoryName const& story = std::string(),
-                          chrono_time const& start = 0,
-                          chrono_time const& end = 0)
-        : storyChunkQueue(queue)
+    ArchiveReadingRequest(QueryResponseAgent* query_response_agent,
+                          uint32_t query_id,
+                          ChronicleName const& chronicle,
+                          StoryName const& story,
+                          chrono_time const& start,
+                          chrono_time const& end)
+        : queryResponseAgent(query_response_agent)
+        , queryId(query_id)
         , chronicleName(chronicle)
         , storyName(story)
         , startTime(start)
         , endTime(end)
     {}
+
+    bool is_valid() const
+    {
+        return (queryResponseAgent != nullptr) && (queryId > 0) && !chronicleName.empty() && !storyName.empty() &&
+               (startTime > 0) && (startTime < endTime);
+    }
 };
 
 class ArchiveReadingRequestQueue
@@ -43,23 +53,22 @@ public:
 
     bool empty() const { return readingRequestQueue.empty(); }
 
-    void pushReadingRequest(ArchiveReadingRequest const& a_request)
+    void pushReadingRequest(ArchiveReadingRequest* a_request)
     {
         std::lock_guard<std::mutex> lock(readingRequestQueueMutex);
         readingRequestQueue.push_back(a_request);
     }
 
-    ArchiveReadingRequest& popReadingRequest(ArchiveReadingRequest& a_request)
+    ArchiveReadingRequest* popReadingRequest()
     {
+        ArchiveReadingRequest* a_request = nullptr;
+
         std::lock_guard<std::mutex> lock(readingRequestQueueMutex);
         if(!readingRequestQueue.empty())
         {
+
             a_request = readingRequestQueue.front();
             readingRequestQueue.pop_front();
-        }
-        else
-        {
-            a_request = ArchiveReadingRequest{nullptr, "", "", 0, 0};
         }
 
         return a_request;
@@ -68,7 +77,11 @@ public:
     void clear()
     {
         std::lock_guard<std::mutex> lock(readingRequestQueueMutex);
-        readingRequestQueue.clear();
+        if(!readingRequestQueue.empty())
+        {
+            for(auto& element: readingRequestQueue) { delete element; }
+            readingRequestQueue.clear();
+        }
     }
 
 
@@ -78,7 +91,7 @@ private:
     ArchiveReadingRequestQueue& operator=(ArchiveReadingRequestQueue const&) = delete;
 
     std::mutex readingRequestQueueMutex;
-    std::deque<ArchiveReadingRequest> readingRequestQueue;
+    std::deque<ArchiveReadingRequest*> readingRequestQueue;
 };
 
 } // namespace chronolog

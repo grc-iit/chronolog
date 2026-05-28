@@ -119,6 +119,13 @@ public:
                std::to_string(eventIndex) + ":" + logRecord + "}";
     }
 
+    // serialization function used by thallium RPC providers
+    template <typename SerArchiveT>
+    void serialize(SerArchiveT& serT)
+    {
+        serT(eventTime, clientId, eventIndex, logRecord);
+    }
+
 private:
     uint64_t eventTime;
     ClientId clientId;

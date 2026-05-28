@@ -35,7 +35,7 @@ chl::ClientQueryService::ClientQueryService(thallium::engine& tl_engine, chl::Se
 
     LOG_DEBUG("[ClientQueryService] created  service {}", chl::to_string(queryServiceId));
 
-    define("receive_story_chunk", &ClientQueryService::receive_story_chunk, tl::ignore_return_value());
+    define("receive_query_response", &ClientQueryService::receive_query_response, tl::ignore_return_value());
     //set up callback for the case when the engine is being finalized while this provider is still alive
     get_engine().push_finalize_callback(this, [p = this]() { delete p; });
 }
@@ -163,16 +163,20 @@ chl::PlaybackQuery* chl::ClientQueryService::start_query(uint64_t timeout_time,
 {
     std::lock_guard<std::mutex> lock(queryServiceMutex);
 
-    uint32_t query_id = queryIndex++;
+    uint32_t query_id = ++queryIndex;
 
-    //TODO add query_id to queryResponse object  and remove this line...
-    query_id = 1;
     auto insert_return = activeQueryMap.insert(std::pair<uint32_t, chl::PlaybackQuery>(
             query_id,
             chl::PlaybackQuery(playback_events, query_id, timeout_time, chronicle, story, start_time, end_time)));
 
     if(insert_return.second)
     {
+        LOG_DEBUG("[ClientQueryService] started query {} for story {}-{} time range {}-{}",
+                  query_id,
+                  chronicle,
+                  story,
+                  start_time,
+                  end_time);
         return &(*insert_return.first).second;
     }
     else
@@ -190,15 +194,20 @@ chl::PlaybackQuery* chl::ClientQueryService::start_query(uint64_t timeout_time,
 {
     std::lock_guard<std::mutex> lock(queryServiceMutex);
 
-    uint32_t query_id = queryIndex++;
-    //TODO add query_id to queryResponse object  and remove this line...
-    query_id = 1;
+    uint32_t query_id = ++queryIndex;
+
     auto insert_return = activeQueryMap.insert(std::pair<uint32_t, chl::PlaybackQuery>(
             query_id,
             chl::PlaybackQuery(std::move(callback), query_id, timeout_time, chronicle, story, start_time, end_time)));
 
     if(insert_return.second)
     {
+        LOG_DEBUG("[ClientQueryService] started query {} for story {}-{} time range {}-{}",
+                  query_id,
+                  chronicle,
+                  story,
+                  start_time,
+                  end_time);
         return &(*insert_return.first).second;
     }
     else
@@ -271,15 +280,13 @@ void chronolog::ClientQueryService::removePlaybackQueryClient(chl::ServiceId con
 }
 
 // Receive a PlaybackQueryResponse from the Player and append its events
-// directly to the active query's event series. The RPC keeps the legacy name
-// "receive_story_chunk" for now to avoid changing the Thallium endpoint name
-// in this refactor; the wire payload is no longer a StoryChunk.
-void chl::ClientQueryService::receive_story_chunk(tl::request const& request, tl::bulk& b)
+// directly to the active query's event series.
+void chl::ClientQueryService::receive_query_response(tl::request const& request, tl::bulk& b)
 {
     try
     {
         tl::endpoint ep = request.get_endpoint();
-        LOG_DEBUG("[ClientQueryService] receive_story_chunk :Endpoint obtained, ThreadID={}", tl::thread::self_id());
+        LOG_DEBUG("[ClientQueryService] receive_query_response :Endpoint obtained, ThreadID={}", tl::thread::self_id());
 
         std::vector<char> mem_vec(b.size());
         std::vector<std::pair<void*, std::size_t>> segments(1);
@@ -297,7 +304,7 @@ void chl::ClientQueryService::receive_story_chunk(tl::request const& request, tl
                   b.size(),
                   tl::thread::self_id());
 
-        chronolog::PlaybackQueryResponse response;
+        chronolog::PlaybackQueryResponse response(0);
         int ret = deserializeResponse(&mem_vec[0], b.size(), response);
         if(ret != chronolog::CL_SUCCESS)
         {
@@ -309,22 +316,21 @@ void chl::ClientQueryService::receive_story_chunk(tl::request const& request, tl
             return;
         }
 
-        LOG_DEBUG("[ClientQueryService] PlaybackQueryResponse received: eventCount {} ThreadID={}",
+        LOG_DEBUG("[ClientQueryService] PlaybackQueryResponse received: query_id {} eventCount {} ThreadID={}",
+                  response.query_id,
                   response.events.size(),
                   tl::thread::self_id());
-
-        uint32_t query_id = 1; //TODO:  add query_id to query response transfer
 
         // NOTE: by design there would be only one receiving thread that's writing to the specific query object
         // but we probably should take care of the possibility of the query timeout happening while we are writing the response
 
-        auto query_iter = activeQueryMap.find(query_id);
+        auto query_iter = activeQueryMap.find(response.query_id);
         if(query_iter != activeQueryMap.end())
         {
             chl::PlaybackQuery& query = (*query_iter).second;
             if(query.callback)
             {
-                for(auto const& log_event: response.events)
+                for(auto const& event: response.events)
                 {
                     // Per the public-header contract, the callback must not throw.
                     // We still guard against it here so a misbehaving user callback
@@ -332,10 +338,7 @@ void chl::ClientQueryService::receive_story_chunk(tl::request const& request, tl
                     // and hang the polling thread until CL_ERR_QUERY_TIMED_OUT.
                     try
                     {
-                        query.callback(chl::Event{log_event.eventTime,
-                                                  log_event.clientId,
-                                                  log_event.eventIndex,
-                                                  log_event.logRecord});
+                        query.callback(chl::Event{event.time(), event.client_id(), event.index(), event.log_record()});
                     }
                     catch(std::exception const& ex)
                     {
@@ -354,19 +357,18 @@ void chl::ClientQueryService::receive_story_chunk(tl::request const& request, tl
             }
             else if(query.eventSeries != nullptr)
             {
+                //TODO: now that PlaybackResponse is already an event series,
+                //revisit this unnecessary copying of large arrays
                 std::vector<chl::Event>& event_series = *query.eventSeries;
                 event_series.reserve(event_series.size() + response.events.size());
-                for(auto const& log_event: response.events)
+                for(auto const& event: response.events)
                 {
-                    event_series.emplace_back(log_event.eventTime,
-                                              log_event.clientId,
-                                              log_event.eventIndex,
-                                              log_event.logRecord);
+                    event_series.emplace_back(event.time(), event.client_id(), event.index(), event.log_record());
                 }
             }
             query.completed = true;
             LOG_DEBUG("[ClientQueryService] Query {} got {} events, ThreadID={}",
-                      query_id,
+                      response.query_id,
                       response.events.size(),
                       tl::thread::self_id());
         }

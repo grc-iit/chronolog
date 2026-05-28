@@ -6,23 +6,30 @@
 #include <thallium/serialization/stl/string.hpp>
 #include <thallium/serialization/stl/vector.hpp>
 
-#include <chronolog_types.h>
+#include <chronolog_client.h>
 
 namespace chronolog
 {
 
+typedef uint32_t ClientQueryId;
+
 // Wire format for the replay query response sent from ChronoPlayer back to a
-// ChronoLog client. Carries a flat, ordered vector of LogEvent values — the
-// same type used internally on the server — without the StoryChunk envelope
-// (metadata, map keying, revision tracking) that used to be on the wire.
+// ChronoLog client. Carries a flat, ordered vector of Event records
+
 struct PlaybackQueryResponse
 {
-    std::vector<LogEvent> events;
+    PlaybackQueryResponse(ClientQueryId const& client_query_id = 0)
+        : query_id(client_query_id)
+    {}
 
-    template <typename Archive>
-    void serialize(Archive& ar)
+    ClientQueryId query_id;
+    std::vector<Event> events;
+
+    template <typename SerArchiveT>
+    void serialize(SerArchiveT& serT)
     {
-        ar & events;
+        serT & query_id;
+        serT & events;
     }
 };
 
