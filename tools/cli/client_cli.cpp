@@ -148,6 +148,17 @@ test_destroy_story(chronolog::Client& client, const std::string& chronicle_name,
     return ret;
 }
 
+static std::pair<int, std::vector<std::string>> test_show_chronicles(chronolog::Client& client)
+{
+    return client.ShowChronicles();
+}
+
+static std::pair<int, std::vector<std::string>> test_show_stories(chronolog::Client& client,
+                                                                  const std::string& chronicle_name)
+{
+    return client.ShowStories(chronicle_name);
+}
+
 static std::vector<std::string> parse_command_line(const std::string& line)
 {
     std::vector<std::string> tokens;
@@ -406,6 +417,50 @@ static void interactive_destroy_story(std::vector<std::string>& tokens, chronolo
     }
 }
 
+static void interactive_show_chronicles(std::vector<std::string>& tokens, chronolog::Client& client)
+{
+    if(tokens.size() != 2)
+    {
+        std::cerr << "Usage: -l -c" << std::endl;
+        return;
+    }
+    auto [ret_i, chronicle_names] = test_show_chronicles(client);
+    if(ret_i == chronolog::CL_SUCCESS)
+    {
+        std::cout << "Chronicles (" << chronicle_names.size() << "):" << std::endl;
+        for(const auto& name: chronicle_names) { std::cout << "  " << name << std::endl; }
+    }
+    else
+    {
+        std::cout << "Failed to list Chronicles, return code: " << chronolog::to_string_client(ret_i) << std::endl;
+    }
+}
+
+static void interactive_show_stories(std::vector<std::string>& tokens, chronolog::Client& client)
+{
+    if(tokens.size() != 3)
+    {
+        std::cerr << "Usage: -l -s <chronicle_name>" << std::endl;
+        return;
+    }
+    const std::string& chronicle_name = tokens[2];
+    auto [ret_i, story_names] = test_show_stories(client, chronicle_name);
+    if(ret_i == chronolog::CL_SUCCESS)
+    {
+        std::cout << "Stories in Chronicle " << chronicle_name << " (" << story_names.size() << "):" << std::endl;
+        for(const auto& name: story_names) { std::cout << "  " << name << std::endl; }
+    }
+    else if(ret_i == chronolog::CL_ERR_NOT_EXIST)
+    {
+        std::cout << "Chronicle does not exist: " << chronicle_name << std::endl;
+    }
+    else
+    {
+        std::cout << "Failed to list Stories in Chronicle " << chronicle_name
+                  << ", return code: " << chronolog::to_string_client(ret_i) << std::endl;
+    }
+}
+
 static void interactive_destroy_chronicle(std::vector<std::string>& tokens, chronolog::Client& client)
 {
     if(tokens.size() != 3)
@@ -507,6 +562,8 @@ int main(int argc, char** argv)
               << "\t-q -s <chronicle_name> <story_name>, release Story <story_name> in Chronicle <chronicle_name>\n"
               << "\t-d -s <chronicle_name> <story_name>, destroy Story <story_name> in Chronicle <chronicle_name>\n"
               << "\t-d -c <chronicle_name>, destroy Chronicle <chronicle_name>\n"
+              << "\t-l -c, list all Chronicles\n"
+              << "\t-l -s <chronicle_name>, list Stories in Chronicle <chronicle_name>\n"
               << "\t-disconnect\n"
               << std::endl;
 
@@ -539,6 +596,23 @@ int main(int argc, char** argv)
                  interactive_write_event(command_subs, story_handle);
              }},
             {"-r", [&](std::vector<std::string>& command_subs) { interactive_replay_story(command_subs, client); }},
+            {"-l",
+             [&](std::vector<std::string>& command_subs)
+             {
+                 if(command_subs.size() < 2)
+                 {
+                     std::cerr << "Usage: -l -c | -l -s <chronicle_name>" << std::endl;
+                     return;
+                 }
+                 if(command_subs[1] == "-c")
+                 {
+                     interactive_show_chronicles(command_subs, client);
+                 }
+                 else if(command_subs[1] == "-s")
+                 {
+                     interactive_show_stories(command_subs, client);
+                 }
+             }},
             {"-d",
              [&](std::vector<std::string>& command_subs)
              {

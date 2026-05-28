@@ -73,10 +73,6 @@ public:
     int release_all_acquired_stories(chronolog::ClientId const& client_id,
                                      std::vector<StoryId>& released_with_no_acquirers_left);
 
-    int get_chronicle_attr(std::string const& name, const std::string& key, std::string& value);
-
-    int edit_chronicle_attr(std::string const& name, const std::string& key, const std::string& value);
-
     int show_chronicles(std::vector<std::string>&);
 
     int show_stories(const std::string& chronicle_name, std::vector<std::string>&);

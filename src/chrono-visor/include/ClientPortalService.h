@@ -111,26 +111,6 @@ public:
         request.respond(theVisorClientPortal.DestroyStory(client_id, chronicle_name, story_name));
     }
 
-    void GetChronicleAttr(tl::request const& request,
-                          ClientId const& client_id,
-                          std::string const& chronicle_name,
-                          std::string const& key,
-                          std::string& value)
-    {
-        int return_code = theVisorClientPortal.GetChronicleAttr(client_id, chronicle_name, key, value);
-        request.respond(return_code);
-    }
-
-    void EditChronicleAttr(tl::request const& request,
-                           ClientId const& client_id,
-                           std::string const& chronicle_name,
-                           std::string const& key,
-                           std::string const& value)
-    {
-        int return_code = theVisorClientPortal.EditChronicleAttr(client_id, chronicle_name, key, value);
-        request.respond(return_code);
-    }
-
     void ShowChronicles(tl::request const& request, ClientId const& client_id)
     {
         std::vector<std::string> chronicles;
@@ -157,8 +137,6 @@ private:
         define("AcquireStory", &ClientPortalService::AcquireStory);
         define("ReleaseStory", &ClientPortalService::ReleaseStory);
         define("DestroyStory", &ClientPortalService::DestroyStory);
-        define("GetChronicleAttr", &ClientPortalService::GetChronicleAttr);
-        define("EditChronicleAttr", &ClientPortalService::EditChronicleAttr);
         define("ShowChronicles", &ClientPortalService::ShowChronicles);
         define("ShowStories", &ClientPortalService::ShowStories);
         //setup finalization callback in case this ser vice provider is still alive when the engine is finalized
