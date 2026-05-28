@@ -139,8 +139,8 @@ int main(int argc, char** argv)
     for(auto const& ev: events)
     {
         assert(ev.client_id() == writer_id && "Event::client_id() must equal the writer's packed ClientId");
-        assert(ev.sequence().clientId == writer_id &&
-               "EventSequence::clientId must equal the writer's packed ClientId");
+        assert(std::get<1>(ev.sequence()) == writer_id &&
+               "EventSequence ClientId slot must equal the writer's packed ClientId");
     }
 
     client.DestroyStory(chronicle, story);
