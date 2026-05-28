@@ -103,35 +103,24 @@ chronolog::VisorClientPortal::~VisorClientPortal()
 /**
  * Admin APIs
  */
-int chronolog::VisorClientPortal::ClientConnect(uint32_t client_euid,
-                                                uint32_t client_host_id,
-                                                uint32_t client_pid,
-                                                chl::ClientId& client_id,
-                                                uint64_t& clock_offset)
+int chronolog::VisorClientPortal::ClientConnect(uint32_t client_euid, chl::ClientId& client_id, uint64_t& clock_offset)
 {
-    LOG_INFO("New Client Connected. ClientEUID={}, ClientHostID={}, ClientPID={}",
+    chronolog::ClientIdentity identity = chronolog::ClientIdentity::unpack(client_id);
+    LOG_INFO("New Client Connected. ClientEUID={}, ClientID={} (ip={}, port={}, instance={})",
              client_euid,
-             client_host_id,
-             client_pid);
+             client_id,
+             identity.ip,
+             identity.port,
+             identity.instance);
     ClientInfo record;
 
     if(!is_client_authenticated(client_euid))
     {
         LOG_ERROR("client_euid={} is invalid", client_euid);
-        //LOG_ERROR("client_euid=%u is invalid", client_euid);
         return chronolog::CL_ERR_INVALID_ARG;
     }
-    //TODO: consider different hashing mechanism that takesproduces uint32 hash value
-    std::string client_account_for_hash =
-            std::to_string(client_euid) + std::to_string(client_host_id) + std::to_string(client_pid);
-    uint64_t client_token = CityHash64(client_account_for_hash.c_str(), client_account_for_hash.size());
-    client_id = client_token; //INNA: change this API...
-    LOG_INFO("[VisorClientPortal] Client arguments: account={} host_id={} pid={} -> client_token={}",
-             client_euid,
-             client_host_id,
-             client_pid,
-             client_token);
-    return clientManager.add_client_record(client_token, record);
+
+    return clientManager.add_client_record(client_id, record);
 }
 
 int chronolog::VisorClientPortal::ClientDisconnect(chronolog::ClientId const& client_id)
