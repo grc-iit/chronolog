@@ -61,6 +61,8 @@ public:
 
     int Disconnect();
 
+    ClientId client_id() const { return clientId; }
+
     int CreateChronicle(std::string const& chronicle_name);
 
     int DestroyChronicle(std::string const& chronicle_name);
@@ -88,8 +90,7 @@ private:
     ChronologClientState clientState;
     std::string clientLogin;
     uint32_t euid;
-    uint32_t hostId;
-    uint32_t pid;
+    ClientIdentity clientIdentity;
     ClientId clientId;
     ChronologTimer clockProxy;
     thallium::engine* tlEngine;
@@ -99,7 +100,7 @@ private:
 
     ChronologClientImpl(ClientPortalServiceConf const&, ClientMode const&, chronolog::ClientQueryServiceConf const&);
 
-    void defineClientIdentity();
+    void defineClientIdentity(uint16_t query_service_port);
 };
 } //namespace chronolog
 

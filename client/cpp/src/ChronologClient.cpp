@@ -22,6 +22,8 @@ int chronolog::Client::Connect() { return chronologClientImpl->Connect(); }
 
 int chronolog::Client::Disconnect() { return chronologClientImpl->Disconnect(); }
 
+chronolog::ClientId chronolog::Client::client_id() const { return chronologClientImpl->client_id(); }
+
 int chronolog::Client::CreateChronicle(std::string const& chronicle_name)
 {
     return chronologClientImpl->CreateChronicle(chronicle_name);

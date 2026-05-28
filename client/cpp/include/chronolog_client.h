@@ -3,28 +3,52 @@
 
 #include <functional>
 #include <string>
+#include <tuple>
 #include <vector>
 #include <map>
 #include <cstdint>
 #include <fstream>
 
 #include "ClientConfiguration.h"
+#include "chronolog_types.h"
 #include "client_errcode.h"
 
 namespace chronolog
 {
 
-typedef std::string StoryName;
-typedef std::string ChronicleName;
-typedef uint64_t ClientId;
-typedef uint64_t chrono_time;
-typedef uint32_t chrono_index;
-
 // Wire-protocol version exchanged on Connect. Bump this whenever the wire
 // format between the client and any ChronoLog server component changes in
 // an incompatible way; the Visor returns CL_ERR_PROTOCOL_VERSION_MISMATCH
 // if a connecting client's version doesn't match the server's expectation.
-static constexpr uint32_t CLIENT_PROTOCOL_VERSION = 1;
+static constexpr uint32_t CLIENT_PROTOCOL_VERSION = 2;
+
+// 64-bit ClientId layout. The high 48 bits are the client's network endpoint
+// (IPv4 + port) so a downstream consumer reading back events can identify the
+// producer. The low 16 bits disambiguate multiple writer-only processes
+// running on the same host (where port is 0).
+//   bits [63:32] : ipv4 address in host byte order (0 if undetermined)
+//   bits [31:16] : tcp/udp port (query service port for reader-mode clients,
+//                  0 for writer-only clients)
+//   bits [15:0]  : instance discriminator (pid & 0xFFFF)
+struct ClientIdentity
+{
+    uint32_t ip = 0;
+    uint16_t port = 0;
+    uint16_t instance = 0;
+
+    ClientId pack() const
+    {
+        return (static_cast<ClientId>(ip) << 32) | (static_cast<ClientId>(port) << 16) |
+               static_cast<ClientId>(instance);
+    }
+
+    static ClientIdentity unpack(ClientId id)
+    {
+        return ClientIdentity{static_cast<uint32_t>(id >> 32),
+                              static_cast<uint16_t>((id >> 16) & 0xFFFFu),
+                              static_cast<uint16_t>(id & 0xFFFFu)};
+    }
+};
 
 class Event
 {
@@ -46,6 +70,8 @@ public:
     uint32_t index() const { return eventIndex; }
 
     std::string const& log_record() const { return logRecord; }
+
+    EventSequence sequence() const { return EventSequence{eventTime, clientId, eventIndex}; }
 
     Event(Event const& other)
         : eventTime(other.time())
@@ -129,6 +155,12 @@ public:
     int Connect();
 
     int Disconnect();
+
+    // Returns this client's packed ClientId — the same value that appears in
+    // Event::client_id() / EventSequence::clientId for every event produced
+    // by this client and surfaced at retrieval. Valid only after a successful
+    // Connect(); returns 0 before that.
+    ClientId client_id() const;
 
     int CreateChronicle(std::string const& chronicle_name);
 
