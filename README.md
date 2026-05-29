@@ -225,7 +225,7 @@ ChronoLog evolves alongside a network of labs and institutions whose research in
 
 <div align="center">
 
-<img src="https://grc.iit.edu/img/logo.png" alt="Gnosis Research Center" width="60">
+<img src="website/public/images/logos/grc-logo.png" alt="Gnosis Research Center" width="60">
 
 **Gnosis Research Center**  
 Illinois Institute of Technology  
