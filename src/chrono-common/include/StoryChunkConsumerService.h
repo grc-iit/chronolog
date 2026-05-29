@@ -42,22 +42,22 @@ public:
         {
             std::vector<char> mem_vec(b.size());
             std::chrono::high_resolution_clock::time_point start, end;
-            LOG_DEBUG("[StoryChunkConsumerService] StoryChunk recording RPC invoked, ThreadID={}",
+            LOG_TRACE("[StoryChunkConsumerService] StoryChunk recording RPC invoked, ThreadID={}",
                       tl::thread::self_id());
             tl::endpoint ep = request.get_endpoint();
-            LOG_DEBUG("[StoryChunkConsumerService] Endpoint obtained, ThreadID={}", tl::thread::self_id());
+            LOG_TRACE("[StoryChunkConsumerService] Endpoint obtained, ThreadID={}", tl::thread::self_id());
             std::vector<std::pair<void*, std::size_t>> segments(1);
             segments[0].first = (void*)(&mem_vec[0]);
             segments[0].second = mem_vec.size();
-            LOG_DEBUG("[StoryChunkConsumerService] Bulk memory prepared, size: {}, ThreadID={}",
+            LOG_TRACE("[StoryChunkConsumerService] Bulk memory prepared, size: {}, ThreadID={}",
                       mem_vec.size(),
                       tl::thread::self_id());
             tl::engine tl_engine = get_engine();
-            LOG_DEBUG("[StoryChunkConsumerService] Engine addr: {}, ThreadID={}",
+            LOG_TRACE("[StoryChunkConsumerService] Engine addr: {}, ThreadID={}",
                       (void*)&tl_engine,
                       tl::thread::self_id());
             tl::bulk local = tl_engine.expose(segments, tl::bulk_mode::write_only);
-            LOG_DEBUG("[StoryChunkConsumerService] Bulk memory exposed, ThreadID={}", tl::thread::self_id());
+            LOG_TRACE("[StoryChunkConsumerService] Bulk memory exposed, ThreadID={}", tl::thread::self_id());
             b.on(ep) >> local;
             LOG_DEBUG("[StoryChunkConsumerService] Received {} bytes of StoryChunk data, ThreadID={}",
                       b.size(),
@@ -80,7 +80,7 @@ public:
             }
 #ifndef NDEBUG
             end = std::chrono::high_resolution_clock::now();
-            LOG_INFO("[StoryChunkConsumerService] Deserialization took {} us, ThreadID={}",
+            LOG_TRACE("[StoryChunkConsumerService] Deserialization took {} us, ThreadID={}",
                      std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count() / 1000.0,
                      tl::thread::self_id());
 #endif
@@ -92,7 +92,7 @@ public:
                       tl::thread::self_id());
 
             request.respond(b.size());
-            LOG_DEBUG("[StoryChunkConsumerService] StoryChunk recording RPC responded {}, ThreadID={}",
+            LOG_TRACE("[StoryChunkConsumerService] StoryChunk recording RPC responded {}, ThreadID={}",
                       b.size(),
                       tl::thread::self_id());
 

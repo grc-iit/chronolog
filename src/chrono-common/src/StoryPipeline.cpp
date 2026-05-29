@@ -517,3 +517,11 @@ void chronolog::StoryPipeline::mergeEvents(chronolog::StoryChunk& other_chunk)
 
     return;
 }
+
+std::vector<chl::Event>&
+chronolog::StoryPipeline::copyToEventSeries(std::vector<chl::Event>& event_series, uint64_t start, uint64_t end)
+{
+    std::lock_guard<std::mutex> lock(sequencingMutex);
+    //TODO 656
+    return event_series;
+}

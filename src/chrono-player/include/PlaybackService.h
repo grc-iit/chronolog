@@ -40,6 +40,7 @@ public:
     void story_playback_request(tl::request const& request,
                                 ServiceId const& requesting_service_id,
                                 uint32_t query_id,
+                                StoryId const& story_id,
                                 ChronicleName const& chronicle_name,
                                 StoryName const& story_name,
                                 chrono_time const& start_time,

@@ -51,6 +51,7 @@ chl::ClientQueryService::~ClientQueryService()
 ///////////////
 int chl::ClientQueryService::addStoryReader(ChronicleName const& chronicle,
                                             StoryName const& story,
+                                            StoryId const& story_id,
                                             ServiceId const& service_id)
 {
     chl::PlaybackQueryRpcClient* playbackRpcClient = addPlaybackQueryClient(service_id);
@@ -61,10 +62,10 @@ int chl::ClientQueryService::addStoryReader(ChronicleName const& chronicle,
     }
 
     std::lock_guard<std::mutex> lock(queryServiceMutex);
-    auto insert_return = acquiredStoryMap.insert(
-            std::pair<std::pair<chl::ChronicleName, chl::StoryName>, chl::PlaybackQueryRpcClient*>(
-                    std::pair<chl::ChronicleName, chl::StoryName>(chronicle, story),
-                    playbackRpcClient));
+    auto insert_return = acquiredStoryMap.insert(std::pair<std::pair<chl::ChronicleName, chl::StoryName>,
+                                                           std::pair<chl::StoryId, chl::PlaybackQueryRpcClient*>>(
+            std::pair<chl::ChronicleName, chl::StoryName>(chronicle, story),
+            std::pair<chl::StoryId, chl::PlaybackQueryRpcClient*>(story_id, playbackRpcClient)));
 
     return (insert_return.second ? chl::CL_SUCCESS : chl::CL_ERR_UNKNOWN);
 }
@@ -84,6 +85,7 @@ int chl::ClientQueryService::dispatch_query(chl::PlaybackQuery* query, PlaybackQ
 {
     if((playbackRpcClient == nullptr) ||
        (playbackRpcClient->send_story_playback_request(query->queryId,
+                                                       query->storyId,
                                                        query->chronicleName,
                                                        query->storyName,
                                                        query->startTime,
@@ -116,12 +118,13 @@ int chl::ClientQueryService::replay_story(chl::ChronicleName const& chronicle,
     {
         return chl::CL_ERR_NOT_ACQUIRED;
     }
-    PlaybackQueryRpcClient* playbackRpcClient = (*storyReader_iter).second;
+    chl::StoryId story_id = (*storyReader_iter).second.first;
+    chl::PlaybackQueryRpcClient* playbackRpcClient = (*storyReader_iter).second.second;
 
     auto timeout_time =
             (std::chrono::steady_clock::now() + std::chrono::seconds(queryTimeoutInSecs)).time_since_epoch().count();
 
-    chl::PlaybackQuery* query = start_query(timeout_time, chronicle, story, start, end, event_series);
+    chl::PlaybackQuery* query = start_query(timeout_time, story_id, chronicle, story, start, end, event_series);
     if(query == nullptr)
     {
         return chl::CL_ERR_UNKNOWN;
@@ -140,12 +143,13 @@ int chl::ClientQueryService::replay_story(chl::ChronicleName const& chronicle,
     {
         return chl::CL_ERR_NOT_ACQUIRED;
     }
-    PlaybackQueryRpcClient* playbackRpcClient = (*storyReader_iter).second;
+    chl::StoryId story_id = (*storyReader_iter).second.first;
+    chl::PlaybackQueryRpcClient* playbackRpcClient = (*storyReader_iter).second.second;
 
     auto timeout_time =
             (std::chrono::steady_clock::now() + std::chrono::seconds(queryTimeoutInSecs)).time_since_epoch().count();
 
-    chl::PlaybackQuery* query = start_query(timeout_time, chronicle, story, start, end, std::move(callback));
+    chl::PlaybackQuery* query = start_query(timeout_time, story_id, chronicle, story, start, end, std::move(callback));
     if(query == nullptr)
     {
         return chl::CL_ERR_UNKNOWN;
@@ -155,6 +159,7 @@ int chl::ClientQueryService::replay_story(chl::ChronicleName const& chronicle,
 //////
 
 chl::PlaybackQuery* chl::ClientQueryService::start_query(uint64_t timeout_time,
+                                                         chl::StoryId const& story_id,
                                                          chl::ChronicleName const& chronicle,
                                                          chl::StoryName const& story,
                                                          chl::chrono_time const& start_time,
@@ -165,14 +170,22 @@ chl::PlaybackQuery* chl::ClientQueryService::start_query(uint64_t timeout_time,
 
     uint32_t query_id = ++queryIndex;
 
-    auto insert_return = activeQueryMap.insert(std::pair<uint32_t, chl::PlaybackQuery>(
-            query_id,
-            chl::PlaybackQuery(playback_events, query_id, timeout_time, chronicle, story, start_time, end_time)));
+    auto insert_return =
+            activeQueryMap.insert(std::pair<uint32_t, chl::PlaybackQuery>(query_id,
+                                                                          chl::PlaybackQuery(playback_events,
+                                                                                             query_id,
+                                                                                             timeout_time,
+                                                                                             story_id,
+                                                                                             chronicle,
+                                                                                             story,
+                                                                                             start_time,
+                                                                                             end_time)));
 
     if(insert_return.second)
     {
-        LOG_DEBUG("[ClientQueryService] started query {} for story {}-{} time range {}-{}",
+        LOG_DEBUG("[ClientQueryService] started query {} for story {} {}-{} time range {}-{}",
                   query_id,
+                  story_id,
                   chronicle,
                   story,
                   start_time,
@@ -186,6 +199,7 @@ chl::PlaybackQuery* chl::ClientQueryService::start_query(uint64_t timeout_time,
 }
 
 chl::PlaybackQuery* chl::ClientQueryService::start_query(uint64_t timeout_time,
+                                                         chl::StoryId const& story_id,
                                                          chl::ChronicleName const& chronicle,
                                                          chl::StoryName const& story,
                                                          chl::chrono_time const& start_time,
@@ -196,14 +210,22 @@ chl::PlaybackQuery* chl::ClientQueryService::start_query(uint64_t timeout_time,
 
     uint32_t query_id = ++queryIndex;
 
-    auto insert_return = activeQueryMap.insert(std::pair<uint32_t, chl::PlaybackQuery>(
-            query_id,
-            chl::PlaybackQuery(std::move(callback), query_id, timeout_time, chronicle, story, start_time, end_time)));
+    auto insert_return =
+            activeQueryMap.insert(std::pair<uint32_t, chl::PlaybackQuery>(query_id,
+                                                                          chl::PlaybackQuery(std::move(callback),
+                                                                                             query_id,
+                                                                                             timeout_time,
+                                                                                             story_id,
+                                                                                             chronicle,
+                                                                                             story,
+                                                                                             start_time,
+                                                                                             end_time)));
 
     if(insert_return.second)
     {
-        LOG_DEBUG("[ClientQueryService] started query {} for story {}-{} time range {}-{}",
+        LOG_DEBUG("[ClientQueryService] started query {} for story {} {}-{} time range {}-{}",
                   query_id,
+                  story_id,
                   chronicle,
                   story,
                   start_time,

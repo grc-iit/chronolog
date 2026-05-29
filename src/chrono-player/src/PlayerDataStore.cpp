@@ -2,6 +2,7 @@
 #include <map>
 #include <mutex>
 #include <chrono>
+#include <iomanip>
 #include <utility>
 #include <thallium.hpp>
 
@@ -349,18 +350,39 @@ int chronolog::PlayerDataStore::stopStoryRecording(chronolog::StoryId const& sto
 //////////////////////
 uint64_t chronolog::PlayerDataStore::get_active_window_boundary() const
 {
+#ifdef DEBUG_BOUNDARY
+    auto active_boundary_time =
+            std::chrono::high_resolution_clock::now() - std::chrono::seconds(acceptance_window_secs);
+    std::time_t boundary_time_t = std::chrono::high_resolution_clock::to_time_t(active_boundary_time);
+    std::ostringstream out;
+    out << std::put_time(std::localtime(&boundary_time_t), "%Y-%m-%d_%T");
+    LOG_DEBUG("[PlayerDataStore] active_window_boundary {}", out.str());
+#endif
     return (std::chrono::high_resolution_clock::now() - std::chrono::seconds(acceptance_window_secs))
             .time_since_epoch()
             .count();
 }
 ////////////////
 
-int chronolog::PlayerDataStore::get_active_story_events(chl::ChronicleName const& chronicle_name,
-                                                        chl::StoryName const& story_name,
+int chronolog::PlayerDataStore::get_active_story_events(chl::StoryId const& story_id,
                                                         uint64_t start_time,
                                                         uint64_t end_time,
-                                                        std::vector<chl::Event> events)
+                                                        std::vector<chl::Event> event_series)
 {
+    // 1. find the StoryPipeline
+    // 2. copy events in range [start_time,end_time) into event_series vector
+
+
+    std::lock_guard storeLock(dataStoreMutex);
+    auto pipeline_iter = theMapOfStoryPipelines.find(story_id);
+    if(pipeline_iter != theMapOfStoryPipelines.end())
+    {
+        return chl::CL_ERR_NOT_ACQUIRED;
+    }
+
+    chl::StoryPipeline* story_pipeline = (*pipeline_iter).second;
+    story_pipeline->copyToEventSeries(event_series, start_time, end_time);
+
     return chl::CL_SUCCESS;
 }
 ////////////////////////

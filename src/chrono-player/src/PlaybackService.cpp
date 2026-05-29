@@ -60,13 +60,15 @@ void chronolog::PlaybackService::playback_service_available(tl::request const& r
 void chronolog::PlaybackService::story_playback_request(tl::request const& request,
                                                         chl::ServiceId const& receiver_service_id,
                                                         uint32_t query_id,
+                                                        chl::StoryId const& story_id,
                                                         chl::ChronicleName const& chronicle_name,
                                                         chl::StoryName const& story_name,
                                                         chl::chrono_time const& start_time,
                                                         chl::chrono_time const& end_time)
 {
-    LOG_INFO("[PlaybackService] story_playback_request for receiver_service {} Story {}-{}",
+    LOG_INFO("[PlaybackService] story_playback_request for receiver_service {} Story {} {}-{}",
              chl::to_string(receiver_service_id),
+             story_id,
              chronicle_name,
              story_name);
 
@@ -106,17 +108,15 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
     // allocate PlaybackQueryResponse instance for this query
     // and put it on the ResponseTransferAgent's active_queries map
 
-    chl::PlaybackQueryResponse * query_response = new chl::PlaybackQueryResponse(query_id); 
+    chl::PlaybackQueryResponse* query_response = new chl::PlaybackQueryResponse(query_id);
 
     // handle the active in-memory portion of the query response
     if(start_time < active_window_boundary)
     {
         // portion of the playback response is coming from
-        // the active PlayerDataStore 
-
+        // the active PlayerDataStore
         theActiveDataStore.get_active_story_events(
-                chronicle_name,
-                story_name,
+                story_id,
                 start_time,
                 (end_time < active_window_boundary ? end_time : active_window_boundary),
                 query_response->events);
@@ -124,17 +124,17 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
 
     bool response_is_complete = false;
     if(end_time <= active_window_boundary)
-    {   
+    {
         response_is_complete = true;
     }
-	
+
     if(chl::CL_SUCCESS != queryResponseSender->stashQueryResponseRecord(query_id, query_response, response_is_complete))
     {
-	delete query_response;
+        delete query_response;
         request.respond(0);
         return;
     }
-    
+
     if(!response_is_complete)
     {
         // end_time > active_window_boundary

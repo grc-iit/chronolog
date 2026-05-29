@@ -67,11 +67,8 @@ public:
 
     uint64_t get_active_window_boundary() const;
 
-    int get_active_story_events(ChronicleName const& chronicle_name,
-                                StoryName const& story_name,
-                                uint64_t start_time,
-                                uint64_t end_time,
-                                std::vector<Event> events);
+    int
+    get_active_story_events(StoryId const& story_id, uint64_t start_time, uint64_t end_time, std::vector<Event> events);
 
 private:
     PlayerDataStore(PlayerDataStore const&) = delete;
