@@ -24,6 +24,16 @@
   <a href="https://github.com/grc-iit/ChronoLog/releases/latest"><img alt="GitHub Release" src="https://img.shields.io/github/release/grc-iit/ChronoLog.svg" /></a>
 </p>
 
+<p align="center">
+  <a href="https://www.chronolog.dev"><strong>Website</strong></a>
+  &nbsp;·&nbsp;
+  <a href="https://www.chronolog.dev/docs/getting-started/overview"><strong>Documentation</strong></a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/grc-iit/ChronoLog/releases">Releases</a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/grc-iit/ChronoLog/issues">Issues</a>
+</p>
+
 ## Overview
 
 **ChronoLog** is a distributed, tiered shared log store with time-based event ordering. It uses physical time for data distribution and multiple storage tiers for elastic capacity, eliminating the need for a central sequencer while keeping ingestion and query paths independently scalable.
@@ -206,13 +216,6 @@ ChronoLog evolves alongside a network of labs and institutions whose research in
 </tr>
 </tbody>
 </table>
-
-## Resources
-
-- **Documentation**: Visit [chronolog.dev](https://www.chronolog.dev) for comprehensive documentation and guides
-- **GitHub Repository**: [github.com/grc-iit/ChronoLog](https://github.com/grc-iit/ChronoLog)
-- **Issues & Support**: Report issues or request features on [GitHub Issues](https://github.com/grc-iit/ChronoLog/issues)
-- **Releases**: Check out the latest releases on [GitHub Releases](https://github.com/grc-iit/ChronoLog/releases)
 
 <br>
 
