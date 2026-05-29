@@ -77,11 +77,12 @@ Learn more detailed information about the project on ChronoLog's Wiki: https://g
 
 ## Installation
 
-ChronoLog ships in five flavors — pick the one that matches your environment. Each subsection lists the minimum command; the full step-by-step guide for every method (including configuration, single-node and multi-node deployment) lives in the [Quick Start guide on chronolog.dev](https://www.chronolog.dev/docs/getting-started/quick-start).
+ChronoLog ships in five flavors — pick the one that matches your environment. The full step-by-step guide for every method (including configuration, single-node and multi-node deployment) lives in the [Quick Start guide on chronolog.dev](https://www.chronolog.dev/docs/getting-started/quick-start).
 
-### 📦 Release archive (tarball)
+<details>
+<summary><strong>📦 Release archive (tarball)</strong> — pre-built binaries, no toolchain required</summary>
 
-Pre-built binaries — no toolchain or source checkout required. Best for trying ChronoLog quickly on a Linux x86_64 host.
+Best for trying ChronoLog quickly on a Linux x86_64 host.
 
 ```bash
 wget https://github.com/grc-iit/ChronoLog/releases/latest/download/chronolog-linux-x86_64.tar.gz
@@ -90,7 +91,10 @@ tar -xzf chronolog-linux-x86_64.tar.gz
 
 Full guide → [Quick Start: Release Archive](https://www.chronolog.dev/docs/getting-started/quick-start)
 
-### 🟧 DEB package (Debian / Ubuntu)
+</details>
+
+<details>
+<summary><strong>🟧 DEB package</strong> — Debian / Ubuntu</summary>
 
 System-wide install via `apt` for Debian, Ubuntu, and compatible distributions.
 
@@ -100,7 +104,10 @@ sudo apt install ./chronolog-linux-x86_64.deb
 
 Full guide → [Quick Start: DEB Package](https://www.chronolog.dev/docs/getting-started/quick-start)
 
-### 🟥 RPM package (RHEL / Fedora / Rocky / Alma)
+</details>
+
+<details>
+<summary><strong>🟥 RPM package</strong> — RHEL / Fedora / Rocky / Alma</summary>
 
 System-wide install via `dnf` (or `yum`) for RHEL-family distributions.
 
@@ -110,9 +117,12 @@ sudo dnf install ./chronolog-linux-x86_64.rpm
 
 Full guide → [Quick Start: RPM Package](https://www.chronolog.dev/docs/getting-started/quick-start)
 
-### 🐳 Docker
+</details>
 
-Containerized deployment with ChronoLog pre-installed. Supports both single-node and multi-node setups.
+<details>
+<summary><strong>🐳 Docker</strong> — containerized, single- or multi-node</summary>
+
+Containerized deployment with ChronoLog pre-installed.
 
 ```bash
 docker pull ghcr.io/grc-iit/chronolog:latest
@@ -121,9 +131,12 @@ docker run -it --rm ghcr.io/grc-iit/chronolog:latest bash
 
 Full guide → [Quick Start: Docker](https://www.chronolog.dev/docs/getting-started/quick-start) · [Single-node tutorial](https://www.chronolog.dev/docs/tutorials/docker-single-node/running-chronolog) · [Multi-node tutorial](https://www.chronolog.dev/docs/tutorials/docker-multi-node/running-chronolog)
 
-### 🛠️ Build from source
+</details>
 
-For developers and advanced users who need to modify ChronoLog, build against a custom dependency set, or target a platform without pre-built packages.
+<details>
+<summary><strong>🛠️ Build from source</strong> — for developers and advanced users</summary>
+
+For modifying ChronoLog, building against a custom dependency set, or targeting a platform without pre-built packages.
 
 ```bash
 git clone https://github.com/grc-iit/ChronoLog.git && cd ChronoLog
@@ -132,6 +145,8 @@ mkdir build && cd build && cmake -DCMAKE_BUILD_TYPE=Release .. && make all && ma
 ```
 
 Full guide → [Quick Start: Build from Source](https://www.chronolog.dev/docs/getting-started/quick-start)
+
+</details>
 
 ## Releases
 
