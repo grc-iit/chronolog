@@ -105,10 +105,15 @@ int main(int argc, char** argv)
         return (-1);
     }
 
+    // Instantiate active PlayerDataStore
 
+    chronolog::StoryChunkIngestionQueue ingestionQueue;
+    chronolog::PlayerDataStore theDataStore(ingestionQueue); //TODO: use DataStoreInternals config values
+    chronolog::ArchiveReadingRequestQueue readingRequestQueue;
+
+    // Instantiate Playback Service
     tl::engine* playbackEngine = nullptr;
     chronolog::PlaybackService* playbackService = nullptr;
-    chronolog::ArchiveReadingRequestQueue readingRequestQueue;
 
     try
     {
@@ -126,6 +131,7 @@ int main(int argc, char** argv)
 
         playbackService = chronolog::PlaybackService::CreatePlaybackService(*playbackEngine,
                                                                             playbackServiceId.getProviderId(),
+                                                                            theDataStore,
                                                                             readingRequestQueue);
     }
     catch(tl::exception const& ex)
@@ -154,7 +160,6 @@ int main(int argc, char** argv)
     LOG_INFO("[ChronoPlayer] created PlayerIdCard: {}", chl::to_string(playerIdCard));
 
     // Instantiate StoryChunk Recording Service &  MemoryDataStore
-    chronolog::StoryChunkIngestionQueue ingestionQueue;
 
     chronolog::ServiceId recordingServiceId(PLAYER_CONF.RECORDING_SERVICE_CONF.RPC_CONF.PROTO_CONF,
                                             PLAYER_CONF.RECORDING_SERVICE_CONF.RPC_CONF.IP,
@@ -205,8 +210,6 @@ int main(int argc, char** argv)
         delete playbackEngine;
         return (-1);
     }
-
-    chronolog::PlayerDataStore theDataStore(ingestionQueue);
 
     tl::engine* dataAdminEngine = nullptr;
 
@@ -335,13 +338,14 @@ int main(int argc, char** argv)
     playerRegistryClient->send_unregister_msg(playerIdCard);
     delete playerRegistryClient;
 
+    // Shutdown the Data Collection
+    theDataStore.shutdownDataCollection();
     archiveReadingAgent->shutdownArchiveReading();
     delete archiveReadingAgent;
     delete playerStoreAdminService;
     delete playbackService;
     delete recordingService;
-    // Shutdown the Data Collection
-    theDataStore.shutdownDataCollection();
+
     delete dataAdminEngine;
     delete playbackEngine;
     delete recordingEngine;

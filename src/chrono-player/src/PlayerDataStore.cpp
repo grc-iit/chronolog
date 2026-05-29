@@ -33,7 +33,6 @@ void chronolog::PlayerDataStore::collectIngestedEvents()
         (*pipeline_iter).second->collectIngestedEvents();
     }
 }
-
 ////////////////////////
 void chronolog::PlayerDataStore::extractDecayedStoryChunks()
 {
@@ -346,3 +345,22 @@ int chronolog::PlayerDataStore::stopStoryRecording(chronolog::StoryId const& sto
     }
     return chronolog::CL_SUCCESS;
 }
+
+//////////////////////
+uint64_t chronolog::PlayerDataStore::get_active_window_boundary() const
+{
+    return (std::chrono::high_resolution_clock::now() - std::chrono::seconds(acceptance_window_secs))
+            .time_since_epoch()
+            .count();
+}
+////////////////
+
+int chronolog::PlayerDataStore::get_active_story_events(chl::ChronicleName const& chronicle_name,
+                                                        chl::StoryName const& story_name,
+                                                        uint64_t start_time,
+                                                        uint64_t end_time,
+                                                        std::vector<chl::Event> events)
+{
+    return chl::CL_SUCCESS;
+}
+////////////////////////

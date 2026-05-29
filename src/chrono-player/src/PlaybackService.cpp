@@ -5,7 +5,9 @@
 #include <thallium.hpp>
 
 #include <chrono_monitor.h>
+#include <ArchiveReadingRequestQueue.h>
 #include <PlaybackService.h>
+#include <PlayerDataStore.h>
 #include <QueryResponseTransferAgent.h>
 
 namespace tl = thallium;
@@ -13,9 +15,11 @@ namespace chl = chronolog;
 
 chronolog::PlaybackService::PlaybackService(tl::engine& tl_engine,
                                             uint16_t service_provider_id,
+                                            chronolog::PlayerDataStore& activeDataStore,
                                             chronolog::ArchiveReadingRequestQueue& archive_reading_queue)
     : tl::provider<PlaybackService>(tl_engine, service_provider_id)
     , playbackEngine(tl_engine)
+    , theActiveDataStore(activeDataStore)
     , theArchiveReadingRequestQueue(archive_reading_queue)
 {
     define("playback_service_available", &PlaybackService::playback_service_available);
@@ -97,9 +101,7 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
         }
     }
 
-
-    //chl::chrono_time active_window_boundary = PlayerDataStore.get_access_window_boundary();
-    chl::chrono_time active_window_boundary = 1;
+    chl::chrono_time active_window_boundary = theActiveDataStore.get_active_window_boundary();
 
     // allocate PlaybackQueryResponse instance for this query
     // and put it on the ResponseTransferAgent's active_queries map
@@ -109,25 +111,42 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
         return;
     }
 
+    chl::PlaybackQueryResponse query_response(query_id); //TODO
 
     // handle the active in-memory portion of the query response
     if(start_time < active_window_boundary)
     {
-        //PlayerDataStore.get_active_story_events( query_response.events());
+        // portion of the playback response is coming from
+        // the active PlayerDataStore 
+
+        theActiveDataStore.get_active_story_events(
+                chronicle_name,
+                story_name,
+                start_time,
+                (end_time < active_window_boundary ? end_time : active_window_boundary),
+                query_response.events);
     }
 
 
-    if(end_time > active_window_boundary)
+    if(end_time <= active_window_boundary)
+    {   // mark query_response as complete
+        // TODO
+    }
+    else
     {
-        // put new archiveRequest with sender info
+        // end_time > active_window_boundary
+        // portion of the playback response is coming from the archived files
+
+        // create an archiveRequest and put it
         // onto the ArchiveReadingRequestQueue
 
-        chl::ArchiveReadingRequest* a_request = new chl::ArchiveReadingRequest(queryResponseSender,
-                                                                               query_id,
-                                                                               chronicle_name,
-                                                                               story_name,
-                                                                               start_time,
-                                                                               end_time);
+        chl::ArchiveReadingRequest* a_request = new chl::ArchiveReadingRequest(
+                queryResponseSender,
+                query_id,
+                chronicle_name,
+                story_name,
+                (start_time > active_window_boundary ? start_time : active_window_boundary),
+                end_time);
 
         theArchiveReadingRequestQueue.pushReadingRequest(a_request);
     }

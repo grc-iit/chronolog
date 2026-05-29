@@ -357,14 +357,10 @@ void chl::ClientQueryService::receive_query_response(tl::request const& request,
             }
             else if(query.eventSeries != nullptr)
             {
-                //TODO: now that PlaybackResponse is already an event series,
-                //revisit this unnecessary copying of large arrays
+                // PlaybackResponse contains vector<Event>,
+                // just move it to query.event_series
                 std::vector<chl::Event>& event_series = *query.eventSeries;
-                event_series.reserve(event_series.size() + response.events.size());
-                for(auto const& event: response.events)
-                {
-                    event_series.emplace_back(event.time(), event.client_id(), event.index(), event.log_record());
-                }
+                event_series = std::move(response.events);
             }
             query.completed = true;
             LOG_DEBUG("[ClientQueryService] Query {} got {} events, ThreadID={}",
