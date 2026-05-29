@@ -103,10 +103,10 @@ int main(int argc, char** argv)
 
     chronolog::StoryChunkIngestionQueue ingestionQueue;
     chronolog::PlayerDataStore theDataStore(ingestionQueue,
-                                             PLAYER_CONF.DATA_STORE_CONF.max_story_chunk_size,
-                                             PLAYER_CONF.DATA_STORE_CONF.story_chunk_duration_secs,
-                                             PLAYER_CONF.DATA_STORE_CONF.acceptance_window_secs,
-                                             PLAYER_CONF.DATA_STORE_CONF.inactive_story_delay_secs);
+                                            PLAYER_CONF.DATA_STORE_CONF.max_story_chunk_size,
+                                            PLAYER_CONF.DATA_STORE_CONF.story_chunk_duration_secs,
+                                            PLAYER_CONF.DATA_STORE_CONF.acceptance_window_secs,
+                                            PLAYER_CONF.DATA_STORE_CONF.inactive_story_delay_secs);
 
     chronolog::ArchiveReadingRequestQueue readingRequestQueue;
 

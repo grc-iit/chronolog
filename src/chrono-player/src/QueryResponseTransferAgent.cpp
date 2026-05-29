@@ -75,7 +75,8 @@ bool chronolog::QueryResponseAgent::is_receiver_available() const
 //////////
 
 int chronolog::QueryResponseAgent::stashQueryResponseRecord(chl::ClientQueryId const& query_id,
-		chl::PlaybackQueryResponse* query_response, bool ready_to_send)
+                                                            chl::PlaybackQueryResponse* query_response,
+                                                            bool ready_to_send)
 {
     // stash PlaybackResponseObject into this agent's internal map of active queries
     // keyed by the ClientQueryId

@@ -289,8 +289,8 @@ std::vector<chl::Event>& chl::StoryChunk::extractEventSeries(std::vector<chl::Ev
 
 // copy events falling into range [ start_time, end_time )
 // into vector<Event>
-std::vector<chl::Event>& chl::StoryChunk::copyToEventSeries(std::vector<chl::Event>& event_series,
-		uint64_t start_time, uint64_t end_time)
+std::vector<chl::Event>&
+chl::StoryChunk::copyToEventSeries(std::vector<chl::Event>& event_series, uint64_t start_time, uint64_t end_time)
 {
     // NOTE: event_series is a vector of chronolog::Event (client facing event representation)
     // while StoryChunk is using LogEvent (internal chronolog event representation)
@@ -310,13 +310,10 @@ std::vector<chl::Event>& chl::StoryChunk::copyToEventSeries(std::vector<chl::Eve
 
     for(auto iter = range_start; iter != range_end; ++iter)
     {
-	auto& logEvent = (*iter).second;
-        event_series.push_back(chl::Event{logEvent.eventTime,
-                                          logEvent.clientId,
-                                          logEvent.eventIndex,
-                                          logEvent.logRecord});
+        auto& logEvent = (*iter).second;
+        event_series.push_back(
+                chl::Event{logEvent.eventTime, logEvent.clientId, logEvent.eventIndex, logEvent.logRecord});
     }
 
     return event_series;
 }
-

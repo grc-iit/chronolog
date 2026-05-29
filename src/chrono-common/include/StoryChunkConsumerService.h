@@ -81,8 +81,8 @@ public:
 #ifndef NDEBUG
             end = std::chrono::high_resolution_clock::now();
             LOG_TRACE("[StoryChunkConsumerService] Deserialization took {} us, ThreadID={}",
-                     std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count() / 1000.0,
-                     tl::thread::self_id());
+                      std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count() / 1000.0,
+                      tl::thread::self_id());
 #endif
             LOG_DEBUG("[StoryChunkConsumerService] StoryChunk received: StoryId {} StartTime {} eventCount {} "
                       "ThreadID={}",
