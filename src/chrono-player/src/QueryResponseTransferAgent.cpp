@@ -74,23 +74,23 @@ bool chronolog::QueryResponseAgent::is_receiver_available() const
 
 //////////
 
-int chronolog::QueryResponseAgent::createQueryResponse(chl::ClientQueryId const& query_id)
+int chronolog::QueryResponseAgent::stashQueryResponseRecord(chl::ClientQueryId const& query_id,
+		chl::PlaybackQueryResponse* query_response, bool ready_to_send)
 {
-    // create the PlaybackQueryResponse object and stash it this agent's internal map of active queries
+    // stash PlaybackResponseObject into this agent's internal map of active queries
     // keyed by the ClientQueryId
     //
+    // ready_send = true means the response is compelte and ready to be send to the client
+    // ready_to_send = false means there's an archive portion of the response pending
 
     int ret_value = chl::CL_ERR_UNKNOWN;
 
     std::lock_guard<std::mutex> lock(query_mutex);
 
-    // the bool active query entry is flipped  to "true" when the archive portion of hte response is received
-    // and the PlaybackQueryResponse object is ready to be sent back to the client
-    //
     auto insert_return =
             active_queries.insert(std::pair<chl::ClientQueryId, std::pair<bool, chl::PlaybackQueryResponse*>>(
                     query_id,
-                    std::pair<bool, chl::PlaybackQueryResponse*>(false, new chl::PlaybackQueryResponse(query_id))));
+                    std::pair<bool, chl::PlaybackQueryResponse*>(ready_to_send, query_response)));
 
     if(insert_return.second)
     {

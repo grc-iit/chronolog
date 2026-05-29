@@ -47,7 +47,7 @@ public:
 
     bool is_receiver_available() const;
 
-    int createQueryResponse(ClientQueryId const&);
+    int stashQueryResponseRecord(ClientQueryId const&, PlaybackQueryResponse*, bool);
 
     int stashStoryChunks(ClientQueryId const& query_id, std::list<StoryChunk*> const&);
 

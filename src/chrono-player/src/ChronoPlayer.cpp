@@ -87,12 +87,6 @@ int main(int argc, char** argv)
     }
 
     // Instantiate PlaybackService
-    std::string PLAYBACK_SERVICE_PROTOCOL = PLAYER_CONF.PLAYBACK_SERVICE_CONF.RPC_CONF.PROTO_CONF;
-    std::string PLAYBACK_SERVICE_IP = PLAYER_CONF.PLAYBACK_SERVICE_CONF.RPC_CONF.IP;
-    uint16_t PLAYBACK_SERVICE_PORT = PLAYER_CONF.PLAYBACK_SERVICE_CONF.RPC_CONF.BASE_PORT;
-    uint16_t playback_service_provider_id = PLAYER_CONF.PLAYBACK_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID;
-
-    // validate ip address, instantiate Playback Service and create IdCard
 
     chronolog::ServiceId playbackServiceId(PLAYER_CONF.PLAYBACK_SERVICE_CONF.RPC_CONF.PROTO_CONF,
                                            PLAYER_CONF.PLAYBACK_SERVICE_CONF.RPC_CONF.IP,
@@ -108,7 +102,12 @@ int main(int argc, char** argv)
     // Instantiate active PlayerDataStore
 
     chronolog::StoryChunkIngestionQueue ingestionQueue;
-    chronolog::PlayerDataStore theDataStore(ingestionQueue); //TODO: use DataStoreInternals config values
+    chronolog::PlayerDataStore theDataStore(ingestionQueue,
+                                             PLAYER_CONF.DATA_STORE_CONF.max_story_chunk_size,
+                                             PLAYER_CONF.DATA_STORE_CONF.story_chunk_duration_secs,
+                                             PLAYER_CONF.DATA_STORE_CONF.acceptance_window_secs,
+                                             PLAYER_CONF.DATA_STORE_CONF.inactive_story_delay_secs);
+
     chronolog::ArchiveReadingRequestQueue readingRequestQueue;
 
     // Instantiate Playback Service

@@ -105,13 +105,8 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
 
     // allocate PlaybackQueryResponse instance for this query
     // and put it on the ResponseTransferAgent's active_queries map
-    if(chl::CL_SUCCESS != queryResponseSender->createQueryResponse(query_id))
-    {
-        request.respond(0);
-        return;
-    }
 
-    chl::PlaybackQueryResponse query_response(query_id); //TODO
+    chl::PlaybackQueryResponse * query_response = new chl::PlaybackQueryResponse(query_id); 
 
     // handle the active in-memory portion of the query response
     if(start_time < active_window_boundary)
@@ -124,15 +119,23 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
                 story_name,
                 start_time,
                 (end_time < active_window_boundary ? end_time : active_window_boundary),
-                query_response.events);
+                query_response->events);
     }
 
-
+    bool response_is_complete = false;
     if(end_time <= active_window_boundary)
-    {   // mark query_response as complete
-        // TODO
+    {   
+        response_is_complete = true;
     }
-    else
+	
+    if(chl::CL_SUCCESS != queryResponseSender->stashQueryResponseRecord(query_id, query_response, response_is_complete))
+    {
+	delete query_response;
+        request.respond(0);
+        return;
+    }
+    
+    if(!response_is_complete)
     {
         // end_time > active_window_boundary
         // portion of the playback response is coming from the archived files
