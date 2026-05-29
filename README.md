@@ -61,7 +61,7 @@ Learn more detailed information about the project on ChronoLog's Wiki: https://g
 ChronoLog ships in five flavors. Pick the one that matches your environment. The full step-by-step guide for every method (including configuration, single-node and multi-node deployment) lives in the [Quick Start guide on chronolog.dev](https://www.chronolog.dev/docs/getting-started/quick-start).
 
 <details>
-<summary><strong>📦 Release archive (tarball)</strong>: pre-built binaries, no toolchain required</summary>
+<summary><strong>Release archive (tarball)</strong>: pre-built binaries, no toolchain required</summary>
 
 Best for trying ChronoLog quickly on a Linux x86_64 host.
 
@@ -75,7 +75,7 @@ Full guide → [Quick Start: Release Archive](https://www.chronolog.dev/docs/get
 </details>
 
 <details>
-<summary><strong>🟧 DEB package</strong>: Debian / Ubuntu</summary>
+<summary><strong>DEB package</strong>: Debian / Ubuntu</summary>
 
 System-wide install via `apt` for Debian, Ubuntu, and compatible distributions.
 
@@ -88,7 +88,7 @@ Full guide → [Quick Start: DEB Package](https://www.chronolog.dev/docs/getting
 </details>
 
 <details>
-<summary><strong>🟥 RPM package</strong>: RHEL / Fedora / Rocky / Alma</summary>
+<summary><strong>RPM package</strong>: RHEL / Fedora / Rocky / Alma</summary>
 
 System-wide install via `dnf` (or `yum`) for RHEL-family distributions.
 
@@ -101,7 +101,7 @@ Full guide → [Quick Start: RPM Package](https://www.chronolog.dev/docs/getting
 </details>
 
 <details>
-<summary><strong>🐳 Docker</strong>: containerized, single- or multi-node</summary>
+<summary><strong>Docker</strong>: containerized, single- or multi-node</summary>
 
 Containerized deployment with ChronoLog pre-installed.
 
@@ -115,7 +115,7 @@ Full guide → [Quick Start: Docker](https://www.chronolog.dev/docs/getting-star
 </details>
 
 <details>
-<summary><strong>🛠️ Build from source</strong>: for developers and advanced users</summary>
+<summary><strong>Build from source</strong>: for developers and advanced users</summary>
 
 For modifying ChronoLog, building against a custom dependency set, or targeting a platform without pre-built packages.
 
@@ -146,7 +146,7 @@ Full history → [github.com/grc-iit/ChronoLog/releases](https://github.com/grc-
 
 Comprehensive documentation and tutorials are available on our [Wiki](https://github.com/grc-iit/ChronoLog/wiki). The documentation covers everything from getting started to advanced configuration and deployment strategies.
 
-### 📚 Documentation
+### Documentation
 
 | Document | Description |
 |----------|-------------|
@@ -161,7 +161,7 @@ Comprehensive documentation and tutorials are available on our [Wiki](https://gi
 | [Code Style Guidelines](https://github.com/grc-iit/ChronoLog/wiki/09.-Code-Style-Guidelines) | Coding standards and conventions |
 | [Contributors Guidelines](https://github.com/grc-iit/ChronoLog/wiki/10.-Contributors-Guidelines) | Guidelines for contributing to ChronoLog |
 
-### 🎓 Tutorials
+### Tutorials
 
 | Tutorial | Description |
 |----------|-------------|
