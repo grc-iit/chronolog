@@ -47,6 +47,23 @@ ClientInfo* ClientRegistryManager::get_client_info(chl::ClientId const& client_i
 }
 //////////////////////
 
+int ClientRegistryManager::get_acquired_stories_snapshot(chl::ClientId const& client_id,
+                                                         std::vector<std::pair<uint64_t, Story*>>& snapshot)
+{
+    snapshot.clear();
+    std::lock_guard<std::mutex> clientRegistryLock(g_clientRegistryMutex_);
+    auto clientRegistryRecord = clientRegistry_->find(client_id);
+    if(clientRegistryRecord == clientRegistry_->end())
+    {
+        return chronolog::CL_ERR_NOT_EXIST;
+    }
+    auto const& acquiredStoryList = clientRegistryRecord->second.acquiredStoryList_;
+    snapshot.reserve(acquiredStoryList.size());
+    snapshot.assign(acquiredStoryList.begin(), acquiredStoryList.end());
+    return chronolog::CL_SUCCESS;
+}
+//////////////////////
+
 int ClientRegistryManager::add_story_acquisition(chl::ClientId const& client_id, uint64_t& sid, Story* pStory)
 {
     std::lock_guard<std::mutex> clientRegistryLock(g_clientRegistryMutex_);
@@ -140,21 +157,26 @@ int ClientRegistryManager::add_client_record(chl::ClientId const& client_id, con
               static_cast<void*>(clientRegistry_),
               clientRegistry_->size());
     std::lock_guard<std::mutex> lock(g_clientRegistryMutex_);
-    if(clientRegistry_->insert_or_assign(client_id, record).first != clientRegistry_->end())
+    // Refuse to overwrite an existing entry. Two clients ending up with the same
+    // packed ClientId (ip<<32 | port<<16 | pid&0xFFFF) is possible — the pid is
+    // truncated to 16 bits and unresolvable hostnames pack ip=0 — so we surface
+    // the collision instead of silently aliasing two clients onto one record.
+    auto [it, inserted] = clientRegistry_->insert({client_id, record});
+    if(!inserted)
     {
-        LOG_DEBUG("[ClientRegistryManager] An entry for ClientID={} has been added to Client Registry at {}",
-                  client_id,
-                  static_cast<void*>(clientRegistry_));
-        LOG_DEBUG("[ClientRegistryManager] Client Registry at {} has {} entries stored",
-                  static_cast<void*>(clientRegistry_),
-                  clientRegistry_->size());
-        return chronolog::CL_SUCCESS;
+        LOG_WARNING("[ClientRegistryManager] Refusing duplicate ClientID={}: a client with the same packed "
+                    "(ip, port, instance) is already registered. The new client should re-Connect once the "
+                    "incumbent disconnects, or rebuild its identity with non-colliding fields.",
+                    client_id);
+        return chronolog::CL_ERR_INVALID_ARG;
     }
-    else
-    {
-        LOG_ERROR("[ClientRegistryManager] Fail to add entry for ClientID={} to clientRegistry_", client_id);
-        return chronolog::CL_ERR_UNKNOWN;
-    }
+    LOG_DEBUG("[ClientRegistryManager] An entry for ClientID={} has been added to Client Registry at {}",
+              client_id,
+              static_cast<void*>(clientRegistry_));
+    LOG_DEBUG("[ClientRegistryManager] Client Registry at {} has {} entries stored",
+              static_cast<void*>(clientRegistry_),
+              clientRegistry_->size());
+    return chronolog::CL_SUCCESS;
 }
 
 int ClientRegistryManager::remove_client_record(const chronolog::ClientId& client_id)

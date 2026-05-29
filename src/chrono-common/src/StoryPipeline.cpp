@@ -9,25 +9,22 @@
 #include <StoryChunk.h>
 #include <StoryPipeline.h>
 #include <StoryChunkIngestionHandle.h>
-#include <StoryChunkExtractionQueue.h>
 
 //#define TRACE_CHUNKING
 //#define TRACE_CHUNK_EXTRACTION
-#define TRACE_MERGING 1
+//#define TRACE_MERGING 1
 
 namespace chl = chronolog;
 
 ////////////////////////
 
-chronolog::StoryPipeline::StoryPipeline(StoryChunkExtractionQueue& extractionQueue,
-                                        chronolog::ChronicleName const& chronicle_name,
+chronolog::StoryPipeline::StoryPipeline(chronolog::ChronicleName const& chronicle_name,
                                         chronolog::StoryName const& story_name,
                                         chronolog::StoryId const& story_id,
                                         uint64_t story_start_time,
                                         uint32_t chunk_granularity,
                                         uint32_t acceptance_window)
-    : theExtractionQueue(extractionQueue)
-    , storyId(story_id)
+    : storyId(story_id)
     , chronicleName(chronicle_name)
     , storyName(story_name)
     , chunkGranularity(chunk_granularity)
@@ -82,14 +79,31 @@ chl::StoryChunkIngestionHandle* chl::StoryPipeline::getActiveIngestionHandle() {
 chronolog::StoryPipeline::~StoryPipeline()
 {
     LOG_DEBUG("[StoryPipeline] Destructor called for StoryId {}", storyId);
-    finalize();
+
+    //extract & destroy any remaining non-empty StoryChunks
+    {
+        std::lock_guard<std::mutex> lock(sequencingMutex);
+        while(!storyTimelineMap.empty())
+        {
+            StoryChunk* extractedChunk = nullptr;
+
+            extractedChunk = (*storyTimelineMap.begin()).second;
+            storyTimelineMap.erase(storyTimelineMap.begin());
+
+            LOG_TRACE("[StoryPipeline] destroying chunk for StoryId {} startTime {} eventCount {}",
+                      storyId,
+                      extractedChunk->getStartTime(),
+                      extractedChunk->getEventCount());
+
+            delete extractedChunk;
+        }
+    }
 }
 ///////////////////////
 
-void chronolog::StoryPipeline::finalize()
+// caller takes ownerhisp of the extracted StoryChunks
+void chronolog::StoryPipeline::finalize(std::vector<chl::StoryChunk*>& extracted_chunks)
 {
-    //by this time activeIngestionHandle is disengaged from the IngestionQueue
-    // as part of KeeperDataStore::shutdown
     if(activeIngestionHandle != nullptr)
     {
         while(!activeIngestionHandle->getPassiveDeque().empty())
@@ -134,7 +148,7 @@ void chronolog::StoryPipeline::finalize()
             }
             else
             {
-                theExtractionQueue.stashStoryChunk(extractedChunk);
+                extracted_chunks.push_back(extractedChunk);
             }
         }
     }
@@ -229,7 +243,9 @@ void chronolog::StoryPipeline::collectIngestedEvents()
     }
 }
 
-void chronolog::StoryPipeline::extractDecayedStoryChunks(uint64_t current_time)
+// caller takes ownerhisp of the extracted StoryChunks
+void chronolog::StoryPipeline::extractDecayedStoryChunks(uint64_t current_time,
+                                                         std::vector<chl::StoryChunk*>& extracted_chunks)
 {
 #ifdef TRACE_CHUNK_EXTRACTION
     auto current_point = std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds>{}
@@ -281,14 +297,12 @@ void chronolog::StoryPipeline::extractDecayedStoryChunks(uint64_t current_time)
             }
             else
             {
-                theExtractionQueue.stashStoryChunk(extractedChunk);
+                extracted_chunks.push_back(extractedChunk);
             }
         }
     }
 
-    LOG_TRACE("[StoryPipeline] Extracting decayed chunks for StoryId {} ExtractionQueue size {}",
-              storyId,
-              theExtractionQueue.size());
+    LOG_TRACE("[StoryPipeline] Extracted {} decayed chunks for StoryId {}", extracted_chunks.size(), storyId);
 }
 
 //////////////////////

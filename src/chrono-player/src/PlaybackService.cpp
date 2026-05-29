@@ -1,12 +1,12 @@
+#include <chrono>
 #include <map>
 #include <mutex>
-#include <sstream>
 #include <utility>
 #include <thallium.hpp>
 
 #include <chrono_monitor.h>
 #include <PlaybackService.h>
-#include <StoryChunkTransferAgent.h>
+#include <QueryResponseTransferAgent.h>
 
 namespace tl = thallium;
 namespace chl = chronolog;
@@ -34,6 +34,15 @@ chronolog::PlaybackService::PlaybackService(tl::engine& tl_engine,
 chronolog::PlaybackService::~PlaybackService()
 {
     LOG_DEBUG("[PlaybackService] Destructor called. Cleaning up...");
+
+    std::lock_guard<std::mutex> lock(playbackServiceMutex);
+    for(auto& agent: responseSenders)
+    {
+        agent.second->stopResponseThreads();
+        delete agent.second;
+    }
+    responseSenders.clear();
+
     //remove provider finalization callback from the engine's list
     playbackEngine.pop_finalize_callback(this);
 }
@@ -41,6 +50,8 @@ chronolog::PlaybackService::~PlaybackService()
 //////////////////
 
 void chronolog::PlaybackService::playback_service_available(tl::request const& request) { request.respond(1); }
+
+/////////
 
 void chronolog::PlaybackService::story_playback_request(tl::request const& request,
                                                         chl::ServiceId const& receiver_service_id,
@@ -56,43 +67,70 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
              story_name);
 
     //ChronoPlayer is running and able to respond
-    // generate unique RequestId (service_provider_id + atomic query index)
-    uint32_t requestId = 1;
 
-    chl::StoryChunkTransferAgent* storyChunkSender = nullptr;
-    // if we already have StoryChunkTransferAgent & ExtractionQueue for this receiver,
+    chl::QueryResponseAgent* queryResponseSender = nullptr;
+    // if we already have QueryResponseAgent for this receiver,
     // use it or add one otherwise
     {
         std::lock_guard<std::mutex> lock(playbackServiceMutex);
 
-        auto findSenderIter = chunkSenders.find(receiver_service_id.get_service_endpoint());
-        if(findSenderIter != chunkSenders.end())
+        auto findSenderIter = responseSenders.find(receiver_service_id.get_service_endpoint());
+        if(findSenderIter != responseSenders.end())
         {
-            storyChunkSender = (*findSenderIter).second;
+            queryResponseSender = (*findSenderIter).second;
         }
         else
         {
             //create RDMA client of the requesting service
             // using the service tl_engine and service_id provided in the request
-            storyChunkSender =
-                    chl::StoryChunkTransferAgent::CreateStoryChunkTransferAgent(playbackEngine, receiver_service_id);
-            chunkSenders.insert(std::pair<chl::service_endpoint, chl::StoryChunkTransferAgent*>(
+            queryResponseSender =
+                    chl::QueryResponseAgent::CreateQueryResponseAgent(playbackEngine, receiver_service_id);
+            if(queryResponseSender == nullptr)
+            {
+                return;
+            }
+
+            responseSenders.insert(std::pair<chl::service_endpoint, chl::QueryResponseAgent*>(
                     receiver_service_id.get_service_endpoint(),
-                    storyChunkSender));
-            storyChunkSender->startExtractionThreads(1);
+                    queryResponseSender));
+            queryResponseSender->startResponseThreads(1);
         }
     }
 
-    // put new archiveRequest tied to the Sender's extractionQueue on
-    // onto the ArchiveReadingRequestQueue
 
-    theArchiveReadingRequestQueue.pushReadingRequest(
-            chl::ArchiveReadingRequest(&(storyChunkSender->getExtractionQueue()),
-                                       chronicle_name,
-                                       story_name,
-                                       start_time,
-                                       end_time));
+    //chl::chrono_time active_window_boundary = PlayerDataStore.get_access_window_boundary();
+    chl::chrono_time active_window_boundary = 1;
 
-    // return requestId
-    request.respond(requestId);
+    // allocate PlaybackQueryResponse instance for this query
+    // and put it on the ResponseTransferAgent's active_queries map
+    if(chl::CL_SUCCESS != queryResponseSender->createQueryResponse(query_id))
+    {
+        request.respond(0);
+        return;
+    }
+
+
+    // handle the active in-memory portion of the query response
+    if(start_time < active_window_boundary)
+    {
+        //PlayerDataStore.get_active_story_events( query_response.events());
+    }
+
+
+    if(end_time > active_window_boundary)
+    {
+        // put new archiveRequest with sender info
+        // onto the ArchiveReadingRequestQueue
+
+        chl::ArchiveReadingRequest* a_request = new chl::ArchiveReadingRequest(queryResponseSender,
+                                                                               query_id,
+                                                                               chronicle_name,
+                                                                               story_name,
+                                                                               start_time,
+                                                                               end_time);
+
+        theArchiveReadingRequestQueue.pushReadingRequest(a_request);
+    }
+
+    request.respond(query_id);
 }

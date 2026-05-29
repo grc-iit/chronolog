@@ -37,7 +37,7 @@ void chronolog::PlayerDataStore::collectIngestedEvents()
 ////////////////////////
 void chronolog::PlayerDataStore::extractDecayedStoryChunks()
 {
-    LOG_DEBUG("[PlayerDataStore] Initiating extraction of decayed story chunks. Current state={}, Active "
+    LOG_DEBUG("[PlayerDataStore] Discarding decayed story chunks. Current state={}, Active "
               "StoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}",
               state,
               theMapOfStoryPipelines.size(),
@@ -45,12 +45,22 @@ void chronolog::PlayerDataStore::extractDecayedStoryChunks()
               tl::thread::self_id());
 
     uint64_t current_time = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+    std::vector<chl::StoryChunk*> extracted_story_chunks;
 
     std::lock_guard storeLock(dataStoreMutex);
     for(auto pipeline_iter = theMapOfStoryPipelines.begin(); pipeline_iter != theMapOfStoryPipelines.end();
         ++pipeline_iter)
     {
-        (*pipeline_iter).second->extractDecayedStoryChunks(current_time);
+        (*pipeline_iter).second->extractDecayedStoryChunks(current_time, extracted_story_chunks);
+    }
+
+    // discard the extracted story chunks
+    for(auto& chunk_ptr: extracted_story_chunks)
+    {
+        if(chunk_ptr != nullptr)
+        {
+            delete chunk_ptr;
+        }
     }
 }
 ////////////////////////
@@ -64,17 +74,21 @@ void chronolog::PlayerDataStore::retireDecayedPipelines()
               pipelinesWaitingForExit.size(),
               tl::thread::self_id());
 
+
+    std::vector<chl::StoryChunk*> extracted_story_chunks;
+
     if(!theMapOfStoryPipelines.empty())
     {
         std::lock_guard storeLock(dataStoreMutex);
 
         uint64_t current_time = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+        chl::StoryPipeline* pipeline = nullptr;
         for(auto pipeline_iter = pipelinesWaitingForExit.begin(); pipeline_iter != pipelinesWaitingForExit.end();)
         {
             if(current_time >= (*pipeline_iter).second.second)
             {
                 //current_time >= pipeline exit_time
-                StoryPipeline* pipeline = (*pipeline_iter).second.first;
+                pipeline = (*pipeline_iter).second.first;
                 LOG_DEBUG("[PlayerDataStore] retiring pipeline StoryId {} timeline {}-{} acceptanceWindow {} "
                           "retirementTime {}",
                           pipeline->getStoryId(),
@@ -85,12 +99,22 @@ void chronolog::PlayerDataStore::retireDecayedPipelines()
                 theMapOfStoryPipelines.erase(pipeline->getStoryId());
                 theIngestionQueue.removeStoryIngestionHandle(pipeline->getStoryId());
                 pipeline_iter = pipelinesWaitingForExit.erase(pipeline_iter);
+                pipeline->finalize(extracted_story_chunks);
                 delete pipeline;
             }
             else
             {
                 pipeline_iter++;
             }
+        }
+    }
+
+    // discard the extracted story chunks
+    for(auto& chunk_ptr: extracted_story_chunks)
+    {
+        if(chunk_ptr != nullptr)
+        {
+            delete chunk_ptr;
         }
     }
 
@@ -112,7 +136,7 @@ void chronolog::PlayerDataStore::dataCollectionTask()
               es.get_rank(),
               tl::thread::self_id());
 
-    while(!is_shutting_down() || !theIngestionQueue.is_empty() || !theMapOfStoryPipelines.empty())
+    while(!is_shutting_down())
     {
         LOG_DEBUG("[PlayerDataStore] Running DataCollection iteration. ESrank={}, ThreadID={}",
                   es.get_rank(),
@@ -163,47 +187,66 @@ void chronolog::PlayerDataStore::startDataCollection(int stream_count)
 
 void chronolog::PlayerDataStore::shutdownDataCollection()
 {
+    if(is_shutting_down())
+    {
+        LOG_INFO("[PlayerDataStore] Data collection is already shutting down. Ignoring additional shutdown request.");
+        return;
+    }
+
+    // switch the state to shuttingDown
+    std::lock_guard storeLock(dataStoreStateMutex);
+    state = SHUTTING_DOWN;
+
     LOG_INFO("[PlayerDataStore] Initiating shutdown of DataCollection. CurrentState={}, Active StoryPipelines={}, "
              "PipelinesWaitingForExit={}",
              state,
              theMapOfStoryPipelines.size(),
              pipelinesWaitingForExit.size());
 
-    // switch the state to shuttingDown
-    std::lock_guard storeLock(dataStoreStateMutex);
-    if(is_shutting_down())
-    {
-        LOG_INFO("[PlayerDataStore] Data collection is already shutting down. Ignoring additional shutdown request.");
-        return;
-    }
-    state = SHUTTING_DOWN;
-
-    if(!theMapOfStoryPipelines.empty())
-    {
-        // label all existing Pipelines as waiting to exit
-        std::lock_guard storeLock(dataStoreMutex);
-        uint64_t current_time = std::chrono::high_resolution_clock::now().time_since_epoch().count();
-
-        for(auto pipeline_iter = theMapOfStoryPipelines.begin(); pipeline_iter != theMapOfStoryPipelines.end();
-            ++pipeline_iter)
-        {
-            if(pipelinesWaitingForExit.find((*pipeline_iter).first) == pipelinesWaitingForExit.end())
-            {
-                uint64_t exit_time = current_time + (*pipeline_iter).second->getAcceptanceWindow();
-                pipelinesWaitingForExit[(*pipeline_iter).first] =
-                        (std::pair<chl::StoryPipeline*, uint64_t>((*pipeline_iter).second, exit_time));
-            }
-        }
-    }
-
     // Join threads & execution streams while holding stateMutex
-    // and just wait until all the events are collected and
-    // all the storyPipelines decay and retire
+
     for(auto& th: dataStoreThreads) { th->join(); }
     LOG_INFO("[PlayerDataStore] All data collection threads have been joined.");
 
     for(auto& es: dataStoreStreams) { es->join(); }
     LOG_INFO("[PlayerDataStore] All data collection streams have been joined.");
+
+    // Collect any remaining ingested events and retire the StoryPipelines
+    collectIngestedEvents();
+
+    if(!theMapOfStoryPipelines.empty())
+    {
+        std::lock_guard storeLock(dataStoreMutex);
+
+        chl::StoryPipeline* pipeline = nullptr;
+        std::vector<chl::StoryChunk*> remaining_chunks;
+        for(auto pipeline_iter = theMapOfStoryPipelines.begin(); pipeline_iter != theMapOfStoryPipelines.end();
+            ++pipeline_iter)
+        {
+            pipeline = (*pipeline_iter).second;
+            theIngestionQueue.removeStoryIngestionHandle(pipeline->getStoryId());
+            pipeline->finalize(remaining_chunks);
+            delete pipeline;
+        }
+
+        pipelinesWaitingForExit.clear();
+        theMapOfStoryPipelines.clear();
+
+        for(auto& chunk: remaining_chunks)
+        {
+            if(chunk != nullptr)
+            {
+                delete chunk;
+            }
+        }
+
+        LOG_INFO("[PlayerDataStore] Completed retirement of pipelines. Current state={}, MapOfStoryPipelines={}, "
+                 "pipelinesWaitingForExit={}",
+                 state,
+                 theMapOfStoryPipelines.size(),
+                 pipelinesWaitingForExit.size());
+    }
+
     LOG_INFO("[PlayerDataStore] DataCollection shutdown completed.");
 }
 
@@ -212,9 +255,94 @@ void chronolog::PlayerDataStore::shutdownDataCollection()
 //
 chronolog::PlayerDataStore::~PlayerDataStore()
 {
-    LOG_INFO("[PlayerDataStore] Destructor called. Initiating shutdown. Active StoryPipelines count={}",
-             theMapOfStoryPipelines.size());
+    LOG_TRACE("[PlayerDataStore] Destructor called. Initiating shutdown. Active StoryPipelines count={}",
+              theMapOfStoryPipelines.size());
+
     shutdownDataCollection();
     LOG_INFO("[PlayerDataStore] Shutdown completed successfully. Active StoryPipelines count={}",
              theMapOfStoryPipelines.size());
+}
+
+////
+int chronolog::PlayerDataStore::startStoryRecording(std::string const& chronicle,
+                                                    std::string const& story,
+                                                    chronolog::StoryId const& story_id,
+                                                    uint64_t start_time)
+{
+    LOG_INFO("[PlayerDataStore] Start recording story: Chronicle={}, Story={}, StoryId={}", chronicle, story, story_id);
+
+    // Get dataStoreMutex, check for story_id_presence & add new StoryPipeline if needed
+    std::lock_guard storeLock(dataStoreMutex);
+    auto pipeline_iter = theMapOfStoryPipelines.find(story_id);
+    if(pipeline_iter != theMapOfStoryPipelines.end())
+    {
+        LOG_INFO("[PlayerDataStore] Story already being recorded. StoryId: {}", story_id);
+        //check it the pipeline was put on the waitingForExit list by the previous acquisition
+        // and remove it from there
+        auto waiting_iter = pipelinesWaitingForExit.find(story_id);
+        if(waiting_iter != pipelinesWaitingForExit.end())
+        {
+            pipelinesWaitingForExit.erase(waiting_iter);
+        }
+
+        return chronolog::CL_SUCCESS;
+    }
+
+    auto result = theMapOfStoryPipelines.emplace(
+            std::pair<chl::StoryId, chl::StoryPipeline*>(story_id,
+                                                         new chl::StoryPipeline(chronicle,
+                                                                                story,
+                                                                                story_id,
+                                                                                start_time,
+                                                                                story_chunk_duration_secs,
+                                                                                acceptance_window_secs)));
+
+    if(result.second)
+    {
+        LOG_INFO("[PlayerDataStore] New StoryPipeline created successfully. StoryId {}", story_id);
+        pipeline_iter = result.first;
+        //engage StoryPipeline with the IngestionQueue
+        chl::StoryChunkIngestionHandle* ingestionHandle = (*pipeline_iter).second->getActiveIngestionHandle();
+        theIngestionQueue.addStoryIngestionHandle(story_id, ingestionHandle);
+        return chronolog::CL_SUCCESS;
+    }
+    else
+    {
+        LOG_ERROR(
+                "[PlayerDataStore] Failed to create StoryPipeline for StoryId: {}. Possible memory or resource issue.",
+                story_id);
+        return chronolog::CL_ERR_UNKNOWN;
+    }
+}
+////////////////////////
+
+int chronolog::PlayerDataStore::stopStoryRecording(chronolog::StoryId const& story_id)
+{
+    LOG_INFO("[PlayerDataStore] Stop recording StoryId={}", story_id);
+    // we do not yet disengage the StoryPipeline from the IngestionQueue right away
+    // but put it on the WaitingForExit list to be finalized, persisted to disk , and
+    // removed from memory at exit_time = now+acceptance_window...
+    // unless there's a new story acquisition request comes before that moment
+    std::lock_guard storeLock(dataStoreMutex);
+    auto pipeline_iter = theMapOfStoryPipelines.find(story_id);
+    if(pipeline_iter != theMapOfStoryPipelines.end())
+    {
+        uint64_t exit_time = std::chrono::high_resolution_clock::now().time_since_epoch().count() +
+                             inactive_pipeline_delay_secs * 1000000000;
+        // (*pipeline_iter).second->getAcceptanceWindow();
+        pipelinesWaitingForExit[(*pipeline_iter).first] =
+                (std::pair<chl::StoryPipeline*, uint64_t>((*pipeline_iter).second, exit_time));
+        LOG_INFO("[PlayerDataStore] Scheduled pipeline to retire: StoryId {} timeline {}-{} acceptanceWindow {} "
+                 "retirementTime {}",
+                 (*pipeline_iter).second->getStoryId(),
+                 (*pipeline_iter).second->TimelineStart(),
+                 (*pipeline_iter).second->TimelineEnd(),
+                 (*pipeline_iter).second->getAcceptanceWindow(),
+                 exit_time);
+    }
+    else
+    {
+        LOG_WARNING("[PlayerDataStore] Attempt to stop recording for non-existent StoryId={}", story_id);
+    }
+    return chronolog::CL_SUCCESS;
 }

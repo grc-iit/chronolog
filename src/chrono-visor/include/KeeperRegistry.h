@@ -192,6 +192,17 @@ public:
                                                   ServiceId&);
     int notifyRecordingGroupOfStoryRecordingStop(StoryId const&);
 
+    // Broadcast destroy_story to every active Grapher in the registry.
+    // Because a story may have been re-acquired across multiple recording
+    // groups over its lifetime (activeStories only tracks the current binding
+    // and a fresh group is picked at every Acquire), HDF5 files for the same
+    // story can live on Graphers other than the one currently recording it.
+    // Each Grapher filters by filename and no-ops on stories it never saw.
+    int notifyAllGraphersOfStoryDestruction(ChronicleName const&, StoryName const&, StoryId const&);
+
+    // Broadcast destroy_chronicle to every active Grapher in the registry.
+    int notifyAllGraphersOfChronicleDestruction(ChronicleName const&);
+
     int registerGrapherProcess(GrapherRegistrationMsg const& reg_msg);
     int unregisterGrapherProcess(GrapherIdCard const& id_card);
     void updateGrapherProcessStats(GrapherStatsMsg const&);
@@ -210,6 +221,12 @@ private:
                                            StoryId const&,
                                            uint64_t);
     int notifyGrapherOfStoryRecordingStop(RecordingGroup&, StoryId const&);
+    int notifyPlayerOfStoryRecordingStart(RecordingGroup&,
+                                          ChronicleName const&,
+                                          StoryName const&,
+                                          StoryId const&,
+                                          uint64_t);
+    int notifyPlayerOfStoryRecordingStop(RecordingGroup&, StoryId const&);
     int notifyKeepersOfStoryRecordingStart(RecordingGroup&,
                                            std::vector<KeeperIdCard>&,
                                            ChronicleName const&,

@@ -45,39 +45,20 @@ public:
 
     void ShutdownServices();
 
-    int ClientConnect(uint32_t client_account,
-                      uint32_t client_host_ip,
-                      uint32_t client_pid,
-                      ClientId&,
-                      uint64_t& clock_offset);
+    int ClientConnect(uint32_t client_account, ClientId& client_id, uint64_t& clock_offset);
 
     int ClientDisconnect(ClientId const& client_id);
 
-    int CreateChronicle(ClientId const& name,
-                        ChronicleName const&,
-                        const std::map<std::string, std::string>& attrs,
-                        int& flags);
+    int CreateChronicle(ClientId const& name, ChronicleName const&);
 
     int DestroyChronicle(ClientId const& client_id, ChronicleName const& chronicle_name);
 
     int DestroyStory(ClientId const& client_id, std::string const& chronicle_name, std::string const& story_name);
 
-    AcquireStoryResponseMsg AcquireStory(ClientId const& client_id,
-                                         std::string const& chronicle_name,
-                                         std::string const& story_name,
-                                         const std::map<std::string, std::string>& attrs,
-                                         int& flags);
+    AcquireStoryResponseMsg
+    AcquireStory(ClientId const& client_id, std::string const& chronicle_name, std::string const& story_name);
 
     int ReleaseStory(ClientId const& client_id, std::string const& chronicle_name, std::string const& story_name);
-
-    /*int ReleaseStory( ClientId const&client_id, StoryId const&);
-int DestroyStory( ClientId const&client_id, StoryId const&);
-*/
-    int
-    GetChronicleAttr(ClientId const&, std::string const& chronicle_name, std::string const& key, std::string& value);
-
-    int
-    EditChronicleAttr(ClientId const&, std::string const& chronicle, std::string const& key, std::string const& value);
 
     int ShowChronicles(ClientId const& client_id, std::vector<std::string>&);
 

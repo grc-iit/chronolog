@@ -24,6 +24,8 @@ private:
 public:
     explicit ChronoKVSMapper(LogLevel level);
 
+    explicit ChronoKVSMapper(const std::string& config_path, LogLevel level);
+
     ~ChronoKVSMapper() = default;
 
     std::uint64_t storeKeyValue(const std::string& key, const std::string& value);

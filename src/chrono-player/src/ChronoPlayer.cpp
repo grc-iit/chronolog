@@ -11,7 +11,6 @@
 #include <PlayerIdCard.h>
 #include <PlayerRegClient.h>
 #include <StoryChunkIngestionQueue.h>
-#include <StoryChunkExtractionQueue.h>
 #include <PlayerDataStore.h>
 #include <PlayerStoreAdminService.h>
 #include <ConfigurationManager.h>
@@ -20,6 +19,7 @@
 #include <ArchiveReadingRequestQueue.h>
 #include <PlaybackService.h>
 #include <ChronoPlayerConfiguration.h>
+#include <StoryChunkConsumerService.h>
 
 namespace chl = chronolog;
 namespace tl = thallium;
@@ -140,6 +140,10 @@ int main(int argc, char** argv)
     {
         LOG_CRITICAL("[ChronoPlayer] failed to create Playback Service at {}; exiting",
                      chl::to_string(playbackServiceId));
+        if(playbackEngine)
+        {
+            delete playbackEngine;
+        }
         return (-1);
     }
 
@@ -149,11 +153,60 @@ int main(int argc, char** argv)
     chronolog::PlayerIdCard playerIdCard(recording_group_id, playbackServiceId);
     LOG_INFO("[ChronoPlayer] created PlayerIdCard: {}", chl::to_string(playerIdCard));
 
-    // Instantiate MemoryDataStore & ExtractorModule
+    // Instantiate StoryChunk Recording Service &  MemoryDataStore
     chronolog::StoryChunkIngestionQueue ingestionQueue;
-    chronolog::StoryChunkExtractionQueue extractionQueue;
 
-    chronolog::PlayerDataStore theDataStore(ingestionQueue, extractionQueue);
+    chronolog::ServiceId recordingServiceId(PLAYER_CONF.RECORDING_SERVICE_CONF.RPC_CONF.PROTO_CONF,
+                                            PLAYER_CONF.RECORDING_SERVICE_CONF.RPC_CONF.IP,
+                                            PLAYER_CONF.RECORDING_SERVICE_CONF.RPC_CONF.BASE_PORT,
+                                            PLAYER_CONF.RECORDING_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID);
+
+    if(!recordingServiceId.is_valid())
+    {
+        LOG_CRITICAL("[ChronoPlayer] Failed to start RecordingService. Invalid endpoint provided.");
+        delete playbackService;
+        delete playbackEngine;
+        return (-1);
+    }
+
+    std::string RECORDING_SERVICE_NA_STRING;
+    recordingServiceId.get_service_as_string(RECORDING_SERVICE_NA_STRING);
+    tl::engine* recordingEngine = nullptr;
+    chl::StoryChunkConsumerService* recordingService = nullptr;
+
+    try
+    {
+        int rpc_thread_count = static_cast<int>(PLAYER_CONF.RECORDING_SERVICE_CONF.INGESTION_THREAD_COUNT);
+        margo_instance_id margo_id =
+                margo_init(RECORDING_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, rpc_thread_count);
+        recordingEngine = new tl::engine(margo_id);
+
+        LOG_INFO("[ChronoPlayer] starting RecordingService at {}", chl::to_string(recordingServiceId));
+
+        recordingService =
+                chronolog::StoryChunkConsumerService::CreateChunkConsumerService(*recordingEngine,
+                                                                                 recordingServiceId.getProviderId(),
+                                                                                 ingestionQueue);
+    }
+    catch(tl::exception const&)
+    {
+        LOG_ERROR("[ChronoPlayer] failed to create RecordingService");
+        recordingService = nullptr;
+    }
+
+    if(recordingService == nullptr)
+    {
+        LOG_CRITICAL("[ChronoPlayer] Failed to start RecordingService. exiting");
+        if(recordingEngine)
+        {
+            delete recordingEngine;
+        }
+        delete playbackService;
+        delete playbackEngine;
+        return (-1);
+    }
+
+    chronolog::PlayerDataStore theDataStore(ingestionQueue);
 
     tl::engine* dataAdminEngine = nullptr;
 
@@ -186,9 +239,15 @@ int main(int argc, char** argv)
 
     if(nullptr == playerStoreAdminService)
     {
-        LOG_CRITICAL("[ChronoPlayer] failed to create DataStoreAdminService at {} , exiting",
-                     chl::to_string(playerAdminServiceId));
+        LOG_CRITICAL("[ChronoPlayer] failed to create DataStoreAdminService, exiting");
+        if(dataAdminEngine)
+        {
+            delete dataAdminEngine;
+        }
+        delete recordingService;
+        delete recordingEngine;
         delete playbackService;
+        delete playbackEngine;
         return (-1);
     }
 
@@ -212,7 +271,11 @@ int main(int argc, char** argv)
     {
         LOG_CRITICAL("[ChronoPlayer] failed to create RegistryClient; exiting");
         delete playerStoreAdminService;
+        delete dataAdminEngine;
+        delete recordingService;
+        delete recordingEngine;
         delete playbackService;
+        delete playbackEngine;
         return (-1);
     }
 
@@ -241,24 +304,22 @@ int main(int argc, char** argv)
         delete archiveReadingAgent;
         delete playerRegistryClient;
         delete playerStoreAdminService;
+        delete dataAdminEngine;
+        delete recordingService;
+        delete recordingEngine;
         delete playbackService;
+        delete playbackEngine;
         return (-1);
     }
     LOG_INFO("[ChronoPlayer] Successfully registered with ChronoVisor.");
 
-    /// Start data collection and extraction threads ___________________________________________________________________
-    // services are successfully created and keeper process had registered with ChronoVisor
     // start all dataCollection and Extraction threads...
-    tl::abt scope;
-    // theDataStore.startDataCollection(3);
-    // start extraction streams & threads
-    //storyExtractor.startExtractionThreads(2);
+    theDataStore.startDataCollection(3);
+
     int NUMBER_ARCHIVE_READING_STREAMS = 1;
     archiveReadingAgent->startArchiveReading(NUMBER_ARCHIVE_READING_STREAMS);
 
-    /// Main loop for sending stats message until receiving SIGTERM ____________________________________________________
-    // now we are ready to ingest records coming from the storyteller clients ....
-    // main thread would be sending stats message until keeper process receives
+    // main thread would be sending stats message until the process receives
     // sigterm signal
     chronolog::PlayerStatsMsg playerStatsMsg(playerIdCard);
     while(keep_running)
@@ -267,29 +328,23 @@ int main(int argc, char** argv)
         sleep(10);
     }
 
+    /// Stop services and shut down ____________________________________________________________________________________
+    LOG_INFO("[ChronoPlayer] Initiating shutdown procedures.");
     /// Unregister from ChronoVisor ____________________________________________________________________________________
     // Unregister from the chronoVisor so that no new story requests would be coming
     playerRegistryClient->send_unregister_msg(playerIdCard);
     delete playerRegistryClient;
 
-    /// Stop services and shut down ____________________________________________________________________________________
-    LOG_INFO("[ChronoPlayer] Initiating shutdown procedures.");
-
     archiveReadingAgent->shutdownArchiveReading();
     delete archiveReadingAgent;
     delete playerStoreAdminService;
     delete playbackService;
+    delete recordingService;
     // Shutdown the Data Collection
-    //theDataStore.shutdownDataCollection();
-    // Shutdown extraction module
-    // drain extractionQueue and stop extraction xStreams
-    //storyExtractor.shutdownExtractionThreads();
-    // these are not probably needed as thallium handles the engine finalization...
-    //  recordingEngine.finalize();
-    //  collectionEngine.finalize();
-    // delete recordingEngine;
+    theDataStore.shutdownDataCollection();
     delete dataAdminEngine;
     delete playbackEngine;
+    delete recordingEngine;
     LOG_INFO("[ChronoPlayer] Shutdown completed. Exiting.");
     return exit_code;
 }

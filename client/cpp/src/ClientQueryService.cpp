@@ -35,7 +35,7 @@ chl::ClientQueryService::ClientQueryService(thallium::engine& tl_engine, chl::Se
 
     LOG_DEBUG("[ClientQueryService] created  service {}", chl::to_string(queryServiceId));
 
-    define("receive_story_chunk", &ClientQueryService::receive_story_chunk, tl::ignore_return_value());
+    define("receive_query_response", &ClientQueryService::receive_query_response, tl::ignore_return_value());
     //set up callback for the case when the engine is being finalized while this provider is still alive
     get_engine().push_finalize_callback(this, [p = this]() { delete p; });
 }
@@ -77,49 +77,21 @@ void chl::ClientQueryService::removeStoryReader(chl::ChronicleName const& chroni
 
 ////////////
 
-int chl::ClientQueryService::replay_story(chl::ChronicleName const& chronicle,
-                                          chl::StoryName const& story,
-                                          uint64_t start,
-                                          uint64_t end,
-                                          std::vector<chl::Event>& event_series)
+// Common dispatch loop shared by both replay_story overloads. Sends the
+// playback request, polls for completion or timeout, and tears the query
+// down. The PlaybackQuery* must already be installed in activeQueryMap.
+int chl::ClientQueryService::dispatch_query(chl::PlaybackQuery* query, PlaybackQueryRpcClient* playbackRpcClient)
 {
-
-    //check if the story has been acquired and the chrono_player is available for it
-
-    auto storyReader_iter = acquiredStoryMap.find(std::pair<chl::ChronicleName, chl::StoryName>(chronicle, story));
-
-    if(storyReader_iter == acquiredStoryMap.end())
-    {
-        return chl::CL_ERR_NOT_ACQUIRED;
-    }
-
-    PlaybackQueryRpcClient* playbackRpcClient = (*storyReader_iter).second;
-
-    // instantiate new query object
-
-    auto timeout_time =
-            (std::chrono::steady_clock::now() + std::chrono::seconds(queryTimeoutInSecs)).time_since_epoch().count();
-
-    chl::PlaybackQuery* query = start_query(timeout_time, chronicle, story, start, end, event_series);
-
-    if(query == nullptr)
-    {
-        return chl::CL_ERR_UNKNOWN;
-    }
-
-    //TODO: check that rpcQueryClient object can not be destroyed while we make the RPC call...
-
-    //send query request to the appropriate chrono_player PlaybackService
     if((playbackRpcClient == nullptr) ||
-       (playbackRpcClient->send_story_playback_request(query->queryId, chronicle, story, start, end) !=
-        chl::CL_SUCCESS))
+       (playbackRpcClient->send_story_playback_request(query->queryId,
+                                                       query->chronicleName,
+                                                       query->storyName,
+                                                       query->startTime,
+                                                       query->endTime) != chl::CL_SUCCESS))
     {
         stop_query(query->queryId);
         return chl::CL_ERR_NO_PLAYERS;
     }
-
-    // now wait for the asynchronous response with periodic polling of the query status
-    // response will be received on a different thread
 
     uint64_t current_time = std::chrono::steady_clock::now().time_since_epoch().count();
     while(!query->completed && current_time < query->timeout_time)
@@ -129,11 +101,56 @@ int chl::ClientQueryService::replay_story(chl::ChronicleName const& chronicle,
     }
 
     int ret_value = (query->completed == true ? chl::CL_SUCCESS : chl::CL_ERR_QUERY_TIMED_OUT);
-
-    // destroy query object and return to the caller
     stop_query(query->queryId);
-
     return ret_value;
+}
+
+int chl::ClientQueryService::replay_story(chl::ChronicleName const& chronicle,
+                                          chl::StoryName const& story,
+                                          uint64_t start,
+                                          uint64_t end,
+                                          std::vector<chl::Event>& event_series)
+{
+    auto storyReader_iter = acquiredStoryMap.find(std::pair<chl::ChronicleName, chl::StoryName>(chronicle, story));
+    if(storyReader_iter == acquiredStoryMap.end())
+    {
+        return chl::CL_ERR_NOT_ACQUIRED;
+    }
+    PlaybackQueryRpcClient* playbackRpcClient = (*storyReader_iter).second;
+
+    auto timeout_time =
+            (std::chrono::steady_clock::now() + std::chrono::seconds(queryTimeoutInSecs)).time_since_epoch().count();
+
+    chl::PlaybackQuery* query = start_query(timeout_time, chronicle, story, start, end, event_series);
+    if(query == nullptr)
+    {
+        return chl::CL_ERR_UNKNOWN;
+    }
+    return dispatch_query(query, playbackRpcClient);
+}
+
+int chl::ClientQueryService::replay_story(chl::ChronicleName const& chronicle,
+                                          chl::StoryName const& story,
+                                          uint64_t start,
+                                          uint64_t end,
+                                          chl::Client::EventCallback callback)
+{
+    auto storyReader_iter = acquiredStoryMap.find(std::pair<chl::ChronicleName, chl::StoryName>(chronicle, story));
+    if(storyReader_iter == acquiredStoryMap.end())
+    {
+        return chl::CL_ERR_NOT_ACQUIRED;
+    }
+    PlaybackQueryRpcClient* playbackRpcClient = (*storyReader_iter).second;
+
+    auto timeout_time =
+            (std::chrono::steady_clock::now() + std::chrono::seconds(queryTimeoutInSecs)).time_since_epoch().count();
+
+    chl::PlaybackQuery* query = start_query(timeout_time, chronicle, story, start, end, std::move(callback));
+    if(query == nullptr)
+    {
+        return chl::CL_ERR_UNKNOWN;
+    }
+    return dispatch_query(query, playbackRpcClient);
 }
 //////
 
@@ -146,16 +163,51 @@ chl::PlaybackQuery* chl::ClientQueryService::start_query(uint64_t timeout_time,
 {
     std::lock_guard<std::mutex> lock(queryServiceMutex);
 
-    uint32_t query_id = queryIndex++;
+    uint32_t query_id = ++queryIndex;
 
-    //TODO add query_id to queryResponse object  and remove this line...
-    query_id = 1;
     auto insert_return = activeQueryMap.insert(std::pair<uint32_t, chl::PlaybackQuery>(
             query_id,
             chl::PlaybackQuery(playback_events, query_id, timeout_time, chronicle, story, start_time, end_time)));
 
     if(insert_return.second)
     {
+        LOG_DEBUG("[ClientQueryService] started query {} for story {}-{} time range {}-{}",
+                  query_id,
+                  chronicle,
+                  story,
+                  start_time,
+                  end_time);
+        return &(*insert_return.first).second;
+    }
+    else
+    {
+        return nullptr;
+    }
+}
+
+chl::PlaybackQuery* chl::ClientQueryService::start_query(uint64_t timeout_time,
+                                                         chl::ChronicleName const& chronicle,
+                                                         chl::StoryName const& story,
+                                                         chl::chrono_time const& start_time,
+                                                         chl::chrono_time const& end_time,
+                                                         chl::Client::EventCallback callback)
+{
+    std::lock_guard<std::mutex> lock(queryServiceMutex);
+
+    uint32_t query_id = ++queryIndex;
+
+    auto insert_return = activeQueryMap.insert(std::pair<uint32_t, chl::PlaybackQuery>(
+            query_id,
+            chl::PlaybackQuery(std::move(callback), query_id, timeout_time, chronicle, story, start_time, end_time)));
+
+    if(insert_return.second)
+    {
+        LOG_DEBUG("[ClientQueryService] started query {} for story {}-{} time range {}-{}",
+                  query_id,
+                  chronicle,
+                  story,
+                  start_time,
+                  end_time);
         return &(*insert_return.first).second;
     }
     else
@@ -228,15 +280,13 @@ void chronolog::ClientQueryService::removePlaybackQueryClient(chl::ServiceId con
 }
 
 // Receive a PlaybackQueryResponse from the Player and append its events
-// directly to the active query's event series. The RPC keeps the legacy name
-// "receive_story_chunk" for now to avoid changing the Thallium endpoint name
-// in this refactor; the wire payload is no longer a StoryChunk.
-void chl::ClientQueryService::receive_story_chunk(tl::request const& request, tl::bulk& b)
+// directly to the active query's event series.
+void chl::ClientQueryService::receive_query_response(tl::request const& request, tl::bulk& b)
 {
     try
     {
         tl::endpoint ep = request.get_endpoint();
-        LOG_DEBUG("[ClientQueryService] receive_story_chunk :Endpoint obtained, ThreadID={}", tl::thread::self_id());
+        LOG_DEBUG("[ClientQueryService] receive_query_response :Endpoint obtained, ThreadID={}", tl::thread::self_id());
 
         std::vector<char> mem_vec(b.size());
         std::vector<std::pair<void*, std::size_t>> segments(1);
@@ -254,7 +304,7 @@ void chl::ClientQueryService::receive_story_chunk(tl::request const& request, tl
                   b.size(),
                   tl::thread::self_id());
 
-        chronolog::PlaybackQueryResponse response;
+        chronolog::PlaybackQueryResponse response(0);
         int ret = deserializeResponse(&mem_vec[0], b.size(), response);
         if(ret != chronolog::CL_SUCCESS)
         {
@@ -266,30 +316,59 @@ void chl::ClientQueryService::receive_story_chunk(tl::request const& request, tl
             return;
         }
 
-        LOG_DEBUG("[ClientQueryService] PlaybackQueryResponse received: eventCount {} ThreadID={}",
+        LOG_DEBUG("[ClientQueryService] PlaybackQueryResponse received: query_id {} eventCount {} ThreadID={}",
+                  response.query_id,
                   response.events.size(),
                   tl::thread::self_id());
-
-        uint32_t query_id = 1; //TODO:  add query_id to query response transfer
 
         // NOTE: by design there would be only one receiving thread that's writing to the specific query object
         // but we probably should take care of the possibility of the query timeout happening while we are writing the response
 
-        auto query_iter = activeQueryMap.find(query_id);
+        auto query_iter = activeQueryMap.find(response.query_id);
         if(query_iter != activeQueryMap.end())
         {
-            std::vector<chl::Event>& event_series = (*query_iter).second.eventSeries;
-            event_series.reserve(event_series.size() + response.events.size());
-            for(auto const& log_event: response.events)
+            chl::PlaybackQuery& query = (*query_iter).second;
+            if(query.callback)
             {
-                event_series.emplace_back(log_event.eventTime,
-                                          log_event.clientId,
-                                          log_event.eventIndex,
-                                          log_event.logRecord);
+                for(auto const& event: response.events)
+                {
+                    // Per the public-header contract, the callback must not throw.
+                    // We still guard against it here so a misbehaving user callback
+                    // can't escape into the Thallium ULT, skip request.respond(...),
+                    // and hang the polling thread until CL_ERR_QUERY_TIMED_OUT.
+                    try
+                    {
+                        query.callback(chl::Event{event.time(), event.client_id(), event.index(), event.log_record()});
+                    }
+                    catch(std::exception const& ex)
+                    {
+                        LOG_ERROR("[ClientQueryService] User ReplayStory callback threw '{}'; "
+                                  "skipping event and continuing, ThreadID={}",
+                                  ex.what(),
+                                  tl::thread::self_id());
+                    }
+                    catch(...)
+                    {
+                        LOG_ERROR("[ClientQueryService] User ReplayStory callback threw non-std exception; "
+                                  "skipping event and continuing, ThreadID={}",
+                                  tl::thread::self_id());
+                    }
+                }
             }
-            (*query_iter).second.completed = true;
+            else if(query.eventSeries != nullptr)
+            {
+                //TODO: now that PlaybackResponse is already an event series,
+                //revisit this unnecessary copying of large arrays
+                std::vector<chl::Event>& event_series = *query.eventSeries;
+                event_series.reserve(event_series.size() + response.events.size());
+                for(auto const& event: response.events)
+                {
+                    event_series.emplace_back(event.time(), event.client_id(), event.index(), event.log_record());
+                }
+            }
+            query.completed = true;
             LOG_DEBUG("[ClientQueryService] Query {} got {} events, ThreadID={}",
-                      query_id,
+                      response.query_id,
                       response.events.size(),
                       tl::thread::self_id());
         }

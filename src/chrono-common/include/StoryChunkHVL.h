@@ -13,7 +13,6 @@ namespace chronolog
 {
 
 typedef std::tuple<chrono_time, chrono_index> ArrivalSequence;
-typedef std::tuple<chrono_time, ClientId, chrono_index> EventSequence;
 typedef std::tuple<uint64_t, uint64_t> EventOffsetSize;
 
 class StoryChunkHVL

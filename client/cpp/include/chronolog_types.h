@@ -20,6 +20,10 @@ typedef uint64_t ClientId;
 typedef uint64_t chrono_time;
 typedef uint32_t chrono_index;
 
+// EventSequence uniquely orders an event within its story: the timestamp at
+// which it was logged, the producing client, and a per-client monotonic index.
+typedef std::tuple<chrono_time, ClientId, chrono_index> EventSequence;
+
 class LogEvent
 {
 public:

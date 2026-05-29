@@ -61,35 +61,32 @@ public:
 
     int Disconnect();
 
-    int CreateChronicle(std::string const& chronicle_name, const std::map<std::string, std::string>& attrs, int& flags);
+    ClientId client_id() const { return clientId; }
+
+    int CreateChronicle(std::string const& chronicle_name);
 
     int DestroyChronicle(std::string const& chronicle_name);
 
-    std::pair<int, StoryHandle*> AcquireStory(std::string const& chronicle_name,
-                                              std::string const& story_name,
-                                              const std::map<std::string, std::string>& attrs,
-                                              int& flags);
+    std::pair<int, StoryHandle*> AcquireStory(std::string const& chronicle_name, std::string const& story_name);
 
     int ReleaseStory(std::string const& chronicle_name, std::string const& story_name);
     int DestroyStory(std::string const& chronicle_name, std::string const& story_name);
 
-    int GetChronicleAttr(std::string const& chronicle_name, const std::string& key, std::string& value);
-
-    int EditChronicleAttr(std::string const& chronicle_name, const std::string& key, const std::string& value);
-
-    std::vector<std::string>& ShowChronicles(std::vector<std::string>&);
-    std::vector<std::string>& ShowStories(const std::string& chronicle_name, std::vector<std::string>&);
+    std::pair<int, std::vector<std::string>> ShowChronicles();
+    std::pair<int, std::vector<std::string>> ShowStories(const std::string& chronicle_name);
 
     int
     replay_story(ChronicleName const&, StoryName const&, uint64_t start, uint64_t end, std::vector<Event>& eventSeries);
+
+    int
+    replay_story(ChronicleName const&, StoryName const&, uint64_t start, uint64_t end, Client::EventCallback callback);
 
 private:
     ClientMode clientMode;
     ChronologClientState clientState;
     std::string clientLogin;
     uint32_t euid;
-    uint32_t hostId;
-    uint32_t pid;
+    ClientIdentity clientIdentity;
     ClientId clientId;
     ChronologTimer clockProxy;
     thallium::engine* tlEngine;
@@ -99,7 +96,7 @@ private:
 
     ChronologClientImpl(ClientPortalServiceConf const&, ClientMode const&, chronolog::ClientQueryServiceConf const&);
 
-    void defineClientIdentity();
+    void defineClientIdentity(uint16_t query_service_port);
 };
 } //namespace chronolog
 

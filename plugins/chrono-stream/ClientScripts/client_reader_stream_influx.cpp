@@ -204,15 +204,11 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    int flags = 1;
-    std::map<std::string, std::string> chronicle_attrs;
-    std::map<std::string, std::string> story_attrs;
-
-    // rc = client.CreateChronicle(args.chronicle, chronicle_attrs, flags);
+    // rc = client.CreateChronicle(args.chronicle);
 
     for(const auto& s: args.stories)
     {
-        auto acq = client.AcquireStory(args.chronicle, s, story_attrs, flags);
+        auto acq = client.AcquireStory(args.chronicle, s);
         (void)acq;
     }
 
