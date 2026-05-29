@@ -5,7 +5,7 @@
 
 <p align="center">
   <a href="https://www.chronolog.dev">
-    <img src="docs/static/logos/chronolog_logo.svg" alt="ChronoLog logo" width="40%">
+    <img src="docs/static/logos/chronolog_logo.svg" alt="ChronoLog logo" width="50%">
   </a>
 </p>
 
