@@ -141,15 +141,10 @@ Full guide → [Quick Start: Build from Source](https://www.chronolog.dev/docs/g
 
 ## Releases
 
-ChronoLog follows a regular release cadence. Each release bundles a tarball, DEB and RPM packages, a Docker image, and a source archive, all linked from the [GitHub Releases page](https://github.com/grc-iit/ChronoLog/releases).
+The latest stable release is [**ChronoLog v3.0.0**](https://github.com/grc-iit/ChronoLog/releases/latest), focused on API completeness and native extension plugins. Each release ships a tarball, DEB and RPM packages, a Docker image, and a source archive.
 
-| Version | Date | Notes |
-|---------|------|-------|
-| **v2.8.0** | 2026-05-18 | [Release notes](https://github.com/grc-iit/ChronoLog/releases/tag/v2.8.0) |
-| v2.7.0 | 2026-04-30 | [Release notes](https://github.com/grc-iit/ChronoLog/releases/tag/v2.7.0) |
-| v2.6.0 | 2026-04-24 | [Release notes](https://github.com/grc-iit/ChronoLog/releases/tag/v2.6.0) |
-
-Full history → [github.com/grc-iit/ChronoLog/releases](https://github.com/grc-iit/ChronoLog/releases)
+- All releases on GitHub: [github.com/grc-iit/ChronoLog/releases](https://github.com/grc-iit/ChronoLog/releases)
+- Versioned documentation: [chronolog.dev/versions](https://www.chronolog.dev/versions)
 
 
 ## Documentation
