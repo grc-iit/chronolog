@@ -163,40 +163,25 @@ Full documentation lives at [chronolog.dev/docs](https://www.chronolog.dev/docs/
 
 ## Research Network
 
-ChronoLog evolves alongside a network of labs and institutions whose research in scalable systems, scientific computing, and large-scale data shapes the problems that motivate our work.
+ChronoLog evolves alongside a network of labs and institutions whose research shapes the kinds of workloads and infrastructure our system is designed to support. [Argonne National Laboratory](https://www.anl.gov) and [Lawrence Livermore National Laboratory](https://www.llnl.gov) advance exascale computing, HPC system software, resource management, and large-scale telemetry. The [University of Chicago](https://www.uchicago.edu) leads research on distributed systems and large-scale scientific workflows for cosmology and the physical sciences. The [SCI Institute at the University of Utah](https://www.sci.utah.edu) drives scientific visualization, in-situ analysis, and large-scale data exploration for simulation and instrument science. [Ohio State University](https://www.osu.edu) is a leader in high-performance networking, MPI, and RDMA-based communication. [DePaul University](https://www.depaul.edu) works on data systems, lightweight indexing, and computational provenance. The [Institute for Food Safety and Health (IFSH)](https://www.iit.edu/ifsh) applies high-throughput data analysis, genomics, and bioinformatics to food safety and public-health challenges.
 
-<table>
-<tbody>
-<tr>
-<td><img src="docs/static/logos/argonne.jpeg" alt="Argonne National Laboratory" width="30" style="vertical-align: middle;"> <a href="https://www.anl.gov">Argonne National Laboratory</a></td>
-<td>National lab advancing exascale computing, distributed workflows, and real-time AI/ML integration for scientific applications.</td>
-</tr>
-<tr>
-<td><img src="docs/static/logos/university-of-chicago.png" alt="University of Chicago" width="30" style="vertical-align: middle;"> <a href="https://www.uchicago.edu">University of Chicago</a></td>
-<td>Research community spanning distributed systems, large-scale scientific workflows, and data pipelines for cosmology and the physical sciences.</td>
-</tr>
-<tr>
-<td><img src="docs/static/logos/ifsh.jpg" alt="Institute for Food Safety and Health" width="30" style="vertical-align: middle;"> <a href="https://www.iit.edu/ifsh">Institute for Food Safety and Health (IFSH)</a></td>
-<td>Research center applying high-throughput data analysis, genomics, and bioinformatics to food safety and public-health challenges.</td>
-</tr>
-<tr>
-<td><img src="docs/static/logos/llnl.jpg" alt="Lawrence Livermore National Laboratory" width="30" style="vertical-align: middle;"> <a href="https://www.llnl.gov">Lawrence Livermore National Laboratory</a></td>
-<td>National lab developing HPC system software, resource management, and large-scale telemetry for next-generation supercomputing.</td>
-</tr>
-<tr>
-<td><img src="docs/static/logos/sci-utah.png" alt="SCI Institute, University of Utah" width="30" style="vertical-align: middle;"> <a href="https://www.sci.utah.edu">SCI Institute, University of Utah</a></td>
-<td>Leading work in scientific visualization, in-situ analysis, and large-scale data exploration for simulation and instrument science.</td>
-</tr>
-<tr>
-<td><img src="docs/static/logos/ohio-state.png" alt="Ohio State University" width="30" style="vertical-align: middle;"> <a href="https://www.osu.edu">Ohio State University</a></td>
-<td>Home to leading research in high-performance networking, MPI, and RDMA-based communication for scalable HPC systems.</td>
-</tr>
-<tr>
-<td><img src="docs/static/logos/depaul.png" alt="DePaul University" width="30" style="vertical-align: middle;"> <a href="https://www.depaul.edu">DePaul University</a></td>
-<td>Research in data systems, lightweight indexing, and computational provenance for scalable scientific data management.</td>
-</tr>
-</tbody>
-</table>
+<p align="center">
+  <a href="https://www.anl.gov"><img src="docs/static/logos/argonne.jpeg" alt="Argonne National Laboratory" height="40"></a>
+  &nbsp;&nbsp;
+  <a href="https://www.llnl.gov"><img src="docs/static/logos/llnl.jpg" alt="Lawrence Livermore National Laboratory" height="40"></a>
+  &nbsp;&nbsp;
+  <a href="https://www.uchicago.edu"><img src="docs/static/logos/university-of-chicago.png" alt="University of Chicago" height="40"></a>
+  &nbsp;&nbsp;
+  <a href="https://www.sci.utah.edu"><img src="docs/static/logos/sci-utah.png" alt="SCI Institute, University of Utah" height="40"></a>
+  &nbsp;&nbsp;
+  <a href="https://www.osu.edu"><img src="docs/static/logos/ohio-state.png" alt="Ohio State University" height="40"></a>
+  &nbsp;&nbsp;
+  <a href="https://www.depaul.edu"><img src="docs/static/logos/depaul.png" alt="DePaul University" height="40"></a>
+  &nbsp;&nbsp;
+  <a href="https://www.iit.edu/ifsh"><img src="docs/static/logos/ifsh.jpg" alt="Institute for Food Safety and Health" height="40"></a>
+</p>
+
+> **Interested in integrating ChronoLog into your research or systems?** We welcome conversations with labs, research groups, and engineering teams working on scalable event processing, large-scale telemetry, time-ordered storage, and related problems. Reach out via [GitHub Issues](https://github.com/grc-iit/ChronoLog/issues) or contact the [Gnosis Research Center](https://grc.iit.edu).
 
 <br>
 
