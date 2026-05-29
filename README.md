@@ -1,7 +1,7 @@
 > [!IMPORTANT]
-> **ChronoLog MCP is now available.**
-> Integrate ChronoLog directly with LLMs through our new MCP server for real-time logging, event processing, and structured interactions.  
-> [Code](https://github.com/iowarp/agent-toolkit/tree/main/agent-toolkit-mcp-servers/chronolog) - [Documentation](https://www.iowarp.ai/docs/agent-toolkit/mcp#system-monitoring-2-servers-14-tools)
+> **ChronoLog v3.0.0 is now available.**
+> The latest stable release, focused on API completeness and native extension plugins.
+> [Release notes](https://github.com/grc-iit/ChronoLog/releases/latest) · [All releases](https://github.com/grc-iit/ChronoLog/releases) · [Versioned docs](https://www.chronolog.dev/versions)
 
 <p align="center">
   <a href="https://www.chronolog.dev">
@@ -138,13 +138,6 @@ mkdir build && cd build && cmake -DCMAKE_BUILD_TYPE=Release .. && make all && ma
 Full guide → [Quick Start: Build from Source](https://www.chronolog.dev/docs/getting-started/quick-start)
 
 </details>
-
-## Releases
-
-The latest stable release is [**ChronoLog v3.0.0**](https://github.com/grc-iit/ChronoLog/releases/latest), focused on API completeness and native extension plugins. Each release ships a tarball, DEB and RPM packages, a Docker image, and a source archive.
-
-- All releases on GitHub: [github.com/grc-iit/ChronoLog/releases](https://github.com/grc-iit/ChronoLog/releases)
-- Versioned documentation: [chronolog.dev/versions](https://www.chronolog.dev/versions)
 
 
 ## Documentation
