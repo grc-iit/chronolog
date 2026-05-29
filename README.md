@@ -79,8 +79,15 @@ ChronoLog ships in five flavors. Pick the one that matches your environment. The
 
 Best for trying ChronoLog quickly on a Linux x86_64 host.
 
+Download the tarball:
+
 ```bash
 wget https://github.com/grc-iit/ChronoLog/releases/latest/download/chronolog-linux-x86_64.tar.gz
+```
+
+Extract it:
+
+```bash
 tar -xzf chronolog-linux-x86_64.tar.gz
 ```
 
@@ -119,8 +126,15 @@ Full guide → [Quick Start: RPM Package](https://www.chronolog.dev/docs/getting
 
 Containerized deployment with ChronoLog pre-installed.
 
+Pull the image:
+
 ```bash
 docker pull ghcr.io/grc-iit/chronolog:latest
+```
+
+Run a container:
+
+```bash
 docker run -it --rm ghcr.io/grc-iit/chronolog:latest bash
 ```
 
@@ -133,10 +147,44 @@ Full guide → [Quick Start: Docker](https://www.chronolog.dev/docs/getting-star
 
 For modifying ChronoLog, building against a custom dependency set, or targeting a platform without pre-built packages.
 
+Clone the repository:
+
 ```bash
-git clone https://github.com/grc-iit/ChronoLog.git && cd ChronoLog
-spack env activate -p . && spack install -v
-mkdir build && cd build && cmake -DCMAKE_BUILD_TYPE=Release .. && make all && make install
+git clone https://github.com/grc-iit/ChronoLog.git
+```
+
+Enter the repo:
+
+```bash
+cd ChronoLog
+```
+
+Activate the Spack environment and install dependencies:
+
+```bash
+spack env activate -p .
+```
+
+```bash
+spack install -v
+```
+
+Configure, build, and install:
+
+```bash
+mkdir build && cd build
+```
+
+```bash
+cmake -DCMAKE_BUILD_TYPE=Release ..
+```
+
+```bash
+make all
+```
+
+```bash
+make install
 ```
 
 Full guide → [Quick Start: Build from Source](https://www.chronolog.dev/docs/getting-started/quick-start)
