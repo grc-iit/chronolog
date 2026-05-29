@@ -1,7 +1,7 @@
 > [!IMPORTANT]
 > **ChronoLog v3.0.0 is now available.**
 > The latest stable release, focused on API completeness and native extension plugins.
-> [Release notes](https://github.com/grc-iit/ChronoLog/releases/latest) · [All releases](https://github.com/grc-iit/ChronoLog/releases) · [Versioned docs](https://www.chronolog.dev/versions)
+> [Releases on chronolog.dev](https://www.chronolog.dev/releases) · [Release notes](https://github.com/grc-iit/ChronoLog/releases/latest) · [All releases on GitHub](https://github.com/grc-iit/ChronoLog/releases) · [Versioned docs](https://www.chronolog.dev/versions)
 
 <p align="center">
   <a href="https://www.chronolog.dev">
