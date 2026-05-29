@@ -40,6 +40,10 @@
 
 A pluggable serving layer lets custom services run directly on the log. Shipping plugins cover SQL-like queries, key-value storage, streaming, pub/sub, Grafana visualization, and an MCP server for LLM integration.
 
+<p align="center">
+  <img src="docs/static/diagrams/chronolog-ecosystem.svg" alt="ChronoLog ecosystem: plugins layered on the ChronoLog core, backed by tiered storage" width="90%">
+</p>
+
 ### Key Features
 
 - **No central sequencer**: physical-time partitioning enables high-throughput parallel writes.
