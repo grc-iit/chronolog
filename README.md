@@ -26,37 +26,18 @@
 
 ## Overview
 
-**ChronoLog** is a distributed, tiered shared log storage system that provides scalable log storage with time-based data ordering and total log ordering guarantees. By leveraging physical time for data distribution and utilizing multiple storage tiers for elastic capacity scaling, ChronoLog eliminates the need for a central sequencer while maintaining high performance and scalability.
+**ChronoLog** is a distributed, tiered shared log store with time-based event ordering. It uses physical time for data distribution and multiple storage tiers for elastic capacity, eliminating the need for a central sequencer while keeping ingestion and query paths independently scalable.
 
-The system's modular, plugin-based architecture serves as a foundation for building scalable applications, including SQL-like query engines, streaming processors, log-based key-value stores, and machine learning integration modules.
+A pluggable serving layer lets custom services run directly on the log. Shipping plugins cover SQL-like queries, key-value storage, streaming, pub/sub, Grafana visualization, and an MCP server for LLM integration.
 
 ### Key Features
 
-ChronoLog is built on four foundational pillars:
+- **No central sequencer**: physical-time partitioning enables high-throughput parallel writes.
+- **Tiered storage**: StoryChunks flow across fast and capacity tiers automatically.
+- **Concurrent access at scale**: multi-writer, multi-reader over RDMA or TCP.
+- **Pluggable serving layer**: extend the log with custom query and streaming services.
 
-- **Time-Structured Ingestion** — Events are chunked and organized by physical time, enabling high-throughput parallel writes without a central sequencer.
-
-- **Tiered & Efficient Storage** — StoryChunks flow across fast and scalable storage tiers, automatically balancing performance and capacity.
-
-- **Concurrent Access at Scale** — Multi-writer, multi-reader support with zero coordination overhead, optimized for both RDMA and TCP networks.
-
-- **Modular, Extensible Serving Layer** — Plugin-based architecture enables custom services to run directly on the log, supporting diverse application requirements.
-
-### Use Cases
-
-ChronoLog's flexible architecture supports a wide range of applications:
-
-- **AI & LLM Integration** — MCP server for seamless LLM integration with enterprise logging and real-time event processing.
-
-- **Machine Learning & Training** — TensorFlow module for training and inference workflows using time-ordered data streams.
-
-- **SQL-like Query Engine** — Query and analyze log data with SQL semantics and time-based distribution.
-
-- **Streaming Processor** — Real-time event processing and analytics for monitoring, alerting, and data pipelines.
-
-- **Log-based Key-Value Store** — Distributed key-value stores with strong consistency guarantees.
-
-For more information, visit [chronolog.dev](https://www.chronolog.dev).
+For more, visit [chronolog.dev](https://www.chronolog.dev).
 
 <!--
 ## Wiki:
@@ -77,10 +58,10 @@ Learn more detailed information about the project on ChronoLog's Wiki: https://g
 
 ## Installation
 
-ChronoLog ships in five flavors — pick the one that matches your environment. The full step-by-step guide for every method (including configuration, single-node and multi-node deployment) lives in the [Quick Start guide on chronolog.dev](https://www.chronolog.dev/docs/getting-started/quick-start).
+ChronoLog ships in five flavors. Pick the one that matches your environment. The full step-by-step guide for every method (including configuration, single-node and multi-node deployment) lives in the [Quick Start guide on chronolog.dev](https://www.chronolog.dev/docs/getting-started/quick-start).
 
 <details>
-<summary><strong>📦 Release archive (tarball)</strong> — pre-built binaries, no toolchain required</summary>
+<summary><strong>📦 Release archive (tarball)</strong>: pre-built binaries, no toolchain required</summary>
 
 Best for trying ChronoLog quickly on a Linux x86_64 host.
 
@@ -94,7 +75,7 @@ Full guide → [Quick Start: Release Archive](https://www.chronolog.dev/docs/get
 </details>
 
 <details>
-<summary><strong>🟧 DEB package</strong> — Debian / Ubuntu</summary>
+<summary><strong>🟧 DEB package</strong>: Debian / Ubuntu</summary>
 
 System-wide install via `apt` for Debian, Ubuntu, and compatible distributions.
 
@@ -107,7 +88,7 @@ Full guide → [Quick Start: DEB Package](https://www.chronolog.dev/docs/getting
 </details>
 
 <details>
-<summary><strong>🟥 RPM package</strong> — RHEL / Fedora / Rocky / Alma</summary>
+<summary><strong>🟥 RPM package</strong>: RHEL / Fedora / Rocky / Alma</summary>
 
 System-wide install via `dnf` (or `yum`) for RHEL-family distributions.
 
@@ -120,7 +101,7 @@ Full guide → [Quick Start: RPM Package](https://www.chronolog.dev/docs/getting
 </details>
 
 <details>
-<summary><strong>🐳 Docker</strong> — containerized, single- or multi-node</summary>
+<summary><strong>🐳 Docker</strong>: containerized, single- or multi-node</summary>
 
 Containerized deployment with ChronoLog pre-installed.
 
@@ -134,7 +115,7 @@ Full guide → [Quick Start: Docker](https://www.chronolog.dev/docs/getting-star
 </details>
 
 <details>
-<summary><strong>🛠️ Build from source</strong> — for developers and advanced users</summary>
+<summary><strong>🛠️ Build from source</strong>: for developers and advanced users</summary>
 
 For modifying ChronoLog, building against a custom dependency set, or targeting a platform without pre-built packages.
 
@@ -150,7 +131,7 @@ Full guide → [Quick Start: Build from Source](https://www.chronolog.dev/docs/g
 
 ## Releases
 
-ChronoLog follows a regular release cadence. Each release bundles a tarball, DEB and RPM packages, a Docker image, and a source archive — all linked from the [GitHub Releases page](https://github.com/grc-iit/ChronoLog/releases).
+ChronoLog follows a regular release cadence. Each release bundles a tarball, DEB and RPM packages, a Docker image, and a source archive, all linked from the [GitHub Releases page](https://github.com/grc-iit/ChronoLog/releases).
 
 | Version | Date | Notes |
 |---------|------|-------|
