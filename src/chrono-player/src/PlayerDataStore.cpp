@@ -377,11 +377,18 @@ int chronolog::PlayerDataStore::get_active_story_events(chl::StoryId const& stor
     auto pipeline_iter = theMapOfStoryPipelines.find(story_id);
     if(pipeline_iter == theMapOfStoryPipelines.end())
     {
+        LOG_DEBUG("[PlayerDataStore] doesn't have records of story {}", story_id);
         return chl::CL_ERR_NOT_ACQUIRED;
     }
 
     chl::StoryPipeline* story_pipeline = (*pipeline_iter).second;
     story_pipeline->copyToEventSeries(event_series, start_time, end_time);
+
+    LOG_DEBUG("[PlayerDataStore] got {} events for story {} in range {}-{}",
+              event_series.size(),
+              story_id,
+              start_time,
+              end_time);
 
     return chl::CL_SUCCESS;
 }
