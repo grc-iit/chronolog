@@ -383,15 +383,15 @@ void chl::ClientQueryService::receive_query_response(tl::request const& request,
                 // just move it to query.event_series
                 std::vector<chl::Event>& event_series = *query.eventSeries;
                 event_series = std::move(response.events);
+                LOG_DEBUG("[ClientQueryService] Query {} got {} events, ThreadID={}",
+                          response.query_id,
+                          event_series.size(),
+                          tl::thread::self_id());
             }
             query.completed = true;
-            LOG_DEBUG("[ClientQueryService] Query {} got {} events, ThreadID={}",
-                      response.query_id,
-                      response.events.size(),
-                      tl::thread::self_id());
         }
 
-        LOG_DEBUG("[ClientQueryService] PlaybackQueryResponse recording RPC response {}, ThreadID={}",
+        LOG_TRACE("[ClientQueryService] PlaybackQueryResponse recording RPC response {}, ThreadID={}",
                   b.size(),
                   tl::thread::self_id());
         request.respond(b.size());
