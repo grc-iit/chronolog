@@ -129,14 +129,14 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
                 end_time,
                 query_response->events);
 
-        LOG_DEBUG("[PlaybackService] query {} for stroy {} got {} events from active DataStore",
+        LOG_DEBUG("[PlaybackService] query {} for story_id {} got {} events from active DataStore",
                   query_id,
                   story_id,
                   query_response->events.size());
     }
 
     bool response_is_complete = false;
-    if(start_time > active_window_boundary)
+    if(active_window_boundary <= start_time)
     {
         response_is_complete = true;
     }
@@ -156,12 +156,13 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
         // create an archiveRequest and put it
         // onto the ArchiveReadingRequestQueue
 
-        chl::ArchiveReadingRequest* a_request = new chl::ArchiveReadingRequest(queryResponseSender,
-                                                                               query_id,
-                                                                               chronicle_name,
-                                                                               story_name,
-                                                                               start_time,
-                                                                               active_window_boundary);
+        chl::ArchiveReadingRequest* a_request =
+                new chl::ArchiveReadingRequest(queryResponseSender,
+                                               query_id,
+                                               chronicle_name,
+                                               story_name,
+                                               start_time,
+                                               (end_time < active_window_boundary ? end_time : active_window_boundary));
 
         theArchiveReadingRequestQueue.pushReadingRequest(a_request);
     }
