@@ -267,12 +267,14 @@ std::map<chl::EventSequence, chl::LogEvent>::iterator chl::StoryChunk::eraseEven
 }
 
 ///////////////////
-
+// extract all events from the StoryChunk into the EventSeries
+// StoryChunk is emptied by this operation
 std::vector<chl::Event>& chl::StoryChunk::extractEventSeries(std::vector<chl::Event>& event_series)
 {
     // NOTE: event_series is a vector of chronolog::Event ( client facing event representation)
     // while StoryChunk is using LogEvent (internal chronolog event representation)
 
+    event_series.reserve(event_series.size() + logEvents.size());
     for(auto logEvent: logEvents)
     {
         event_series.push_back(chl::Event{logEvent.second.eventTime,
