@@ -94,6 +94,7 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
                     chl::QueryResponseAgent::CreateQueryResponseAgent(playbackEngine, receiver_service_id);
             if(queryResponseSender == nullptr)
             {
+                request.respond(0);
                 return;
             }
 

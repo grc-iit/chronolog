@@ -110,13 +110,8 @@ int chronolog::QueryResponseAgent::stashStoryChunks(chl::ClientQueryId const& qu
                                                     std::list<chl::StoryChunk*> const& archive_chunks)
 {
     // this function is called by ArchiveReadingAgent thread that got the ArchiveReadingRequest
-    // we are guaranteed by desing that onle one ArchiveReagingThread calls this function after the archived
-    // files are scanned
-    // we are also guaranteed that QueryResponseAgent draining threads would not remove the queryResponse
-    // object from active_queries map until ready_to_send=true by this thread.
-    // so one thread writing, one thread waiting on condition, no need to lock query_mutex here
-    //
-    //std::lock_guard<std::mutex> lock(query_mutex);
+
+    std::lock_guard<std::mutex> lock(query_mutex);
 
     auto query_iter = active_queries.find(query_id);
     if(query_iter == active_queries.end())
