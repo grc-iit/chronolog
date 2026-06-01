@@ -301,25 +301,25 @@ update_visor_ip() {
 
   echo -e "${INFO}Replacing ChronoVisor IP with ${visor_ip} ...${NC}"
   # Config File
-  jq ".chrono_visor.VisorClientPortalService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} >tmp.json && mv tmp.json ${CONF_FILE}
-  jq ".chrono_visor.VisorKeeperRegistryService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} >tmp.json && mv tmp.json ${CONF_FILE}
-  jq ".chrono_keeper.VisorKeeperRegistryService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} >tmp.json && mv tmp.json ${CONF_FILE}
-  jq ".chrono_grapher.VisorRegistryService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} >tmp.json && mv tmp.json ${CONF_FILE}
-  jq ".chrono_player.VisorRegistryService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} >tmp.json && mv tmp.json ${CONF_FILE}
+  jq ".chrono_visor.VisorClientPortalService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} >"${CONF_DIR}/tmp.json" && mv "${CONF_DIR}/tmp.json" ${CONF_FILE}
+  jq ".chrono_visor.VisorKeeperRegistryService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} >"${CONF_DIR}/tmp.json" && mv "${CONF_DIR}/tmp.json" ${CONF_FILE}
+  jq ".chrono_keeper.VisorKeeperRegistryService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} >"${CONF_DIR}/tmp.json" && mv "${CONF_DIR}/tmp.json" ${CONF_FILE}
+  jq ".chrono_grapher.VisorRegistryService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} >"${CONF_DIR}/tmp.json" && mv "${CONF_DIR}/tmp.json" ${CONF_FILE}
+  jq ".chrono_player.VisorRegistryService.rpc.service_ip = \"${visor_ip}\"" ${CONF_FILE} >"${CONF_DIR}/tmp.json" && mv "${CONF_DIR}/tmp.json" ${CONF_FILE}
 
   # Client Config File
-  jq ".chrono_client.VisorClientPortalService.rpc.service_ip = \"${visor_ip}\"" "${CLIENT_CONF_FILE}" >tmp.json && mv tmp.json "${CLIENT_CONF_FILE}"
+  jq ".chrono_client.VisorClientPortalService.rpc.service_ip = \"${visor_ip}\"" "${CLIENT_CONF_FILE}" >"${CONF_DIR}/tmp.json" && mv "${CONF_DIR}/tmp.json" "${CLIENT_CONF_FILE}"
 
   [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Update ChronoVisor IP done${NC}" || true
 }
 
 update_visor_monitor_file_path() {
   visor_host=$(head -1 ${VISOR_HOSTS})
-  jq ".chrono_visor.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono-visor-${visor_host}.log\"" "${CONF_FILE}" >tmp.json && mv tmp.json "${CONF_FILE}"
+  jq ".chrono_visor.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono-visor-${visor_host}.log\"" "${CONF_FILE}" >"${CONF_DIR}/tmp.json" && mv "${CONF_DIR}/tmp.json" "${CONF_FILE}"
 }
 
 update_client_monitor_file_path() {
-  jq ".chrono_client.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono-client.log\"" "${CLIENT_CONF_FILE}" >tmp.json && mv tmp.json "${CLIENT_CONF_FILE}"
+  jq ".chrono_client.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono-client.log\"" "${CLIENT_CONF_FILE}" >"${CONF_DIR}/tmp.json" && mv "${CONF_DIR}/tmp.json" "${CLIENT_CONF_FILE}"
 }
 
 generate_conf_for_each_keeper() {
@@ -564,6 +564,17 @@ start() {
 
   prepare_hosts
   check_bin_files
+
+  # Work on deployed copies so the template files stay intact.
+  # All update_* and generate_conf_* functions operate on CONF_FILE /
+  # CLIENT_CONF_FILE, which now point to the copies for this invocation.
+  # clean() removes them via the existing "rm -f ${CONF_FILE}.*" glob.
+  local _orig_conf="${CONF_FILE}"
+  local _orig_client_conf="${CLIENT_CONF_FILE}"
+  CONF_FILE="${_orig_conf}.deployed"
+  CLIENT_CONF_FILE="${_orig_client_conf}.deployed"
+  cp "${_orig_conf}" "${CONF_FILE}"
+  cp "${_orig_client_conf}" "${CLIENT_CONF_FILE}"
 
   update_visor_ip
   update_visor_monitor_file_path
