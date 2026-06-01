@@ -287,21 +287,14 @@ void chronolog::QueryResponseAgent::stopResponseThreads()
 ///
 void chronolog::QueryResponseAgent::drainQueryResponses()
 {
-    LOG_DEBUG("[StoryChunkTransferAgent] Draining query responses: {}  active queries,  thread ID: {}",
-              active_queries.size(),
-              thallium::thread::self_id());
-
     while(state == RUNNING)
     {
-        if(active_queries.empty())
-        {
-            sleep(2);
-            continue;
-        }
-
         PlaybackQueryResponse* query_response = nullptr;
         {
             std::lock_guard<std::mutex> lock(query_mutex);
+            LOG_TRACE("[StoryChunkTransferAgent] Draining query responses: {}  active queries,  thread ID: {}",
+                      active_queries.size(),
+                      thallium::thread::self_id());
 
             for(auto query_iter = active_queries.begin(); query_iter != active_queries.end(); ++query_iter)
             {
@@ -318,6 +311,10 @@ void chronolog::QueryResponseAgent::drainQueryResponses()
         {
             transferQueryResponseToClient(*query_response);
             delete query_response;
+        }
+        else
+        {
+            sleep(2);
         }
     }
 }

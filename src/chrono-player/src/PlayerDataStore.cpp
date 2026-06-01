@@ -18,7 +18,7 @@ namespace tl = thallium;
 
 void chronolog::PlayerDataStore::collectIngestedEvents()
 {
-    LOG_DEBUG("[PlayerDataStore] Initiating collection of ingested story chunks. Current state={}, Active "
+    LOG_TRACE("[PlayerDataStore] Initiating collection of ingested story chunks. Current state={}, Active "
               "StoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}",
               state,
               theMapOfStoryPipelines.size(),
@@ -37,7 +37,7 @@ void chronolog::PlayerDataStore::collectIngestedEvents()
 ////////////////////////
 void chronolog::PlayerDataStore::extractDecayedStoryChunks()
 {
-    LOG_DEBUG("[PlayerDataStore] Discarding decayed story chunks. Current state={}, Active "
+    LOG_TRACE("[PlayerDataStore] Discarding decayed story chunks. Current state={}, Active "
               "StoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}",
               state,
               theMapOfStoryPipelines.size(),
@@ -138,7 +138,7 @@ void chronolog::PlayerDataStore::dataCollectionTask()
 
     while(!is_shutting_down())
     {
-        LOG_DEBUG("[PlayerDataStore] Running DataCollection iteration. ESrank={}, ThreadID={}",
+        LOG_TRACE("[PlayerDataStore] Running DataCollection iteration. ESrank={}, ThreadID={}",
                   es.get_rank(),
                   tl::thread::self_id());
         for(int i = 0; i < 1; ++i)
@@ -158,7 +158,7 @@ void chronolog::PlayerDataStore::startDataCollection(int stream_count)
     std::lock_guard storeLock(dataStoreStateMutex);
     if(is_running() || is_shutting_down())
     {
-        LOG_INFO("[PlayerDataStore] Data collection is already running or shutting down. Ignoring request.");
+        LOG_DEBUG("[PlayerDataStore] Data collection is already running or shutting down. Ignoring request.");
         return;
     }
 
@@ -276,7 +276,7 @@ int chronolog::PlayerDataStore::startStoryRecording(std::string const& chronicle
     auto pipeline_iter = theMapOfStoryPipelines.find(story_id);
     if(pipeline_iter != theMapOfStoryPipelines.end())
     {
-        LOG_INFO("[PlayerDataStore] Story already being recorded. StoryId: {}", story_id);
+        LOG_DEBUG("[PlayerDataStore] Story already being recorded. StoryId: {}", story_id);
         //check it the pipeline was put on the waitingForExit list by the previous acquisition
         // and remove it from there
         auto waiting_iter = pipelinesWaitingForExit.find(story_id);
