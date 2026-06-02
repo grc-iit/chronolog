@@ -37,7 +37,7 @@ void chronolog::ArchiveReadingAgent::archiveReadingTask()
 
         chl::ArchiveReadingRequest* readingRequest = theReadingRequestQueue.popReadingRequest();
 
-        if(readingRequest == nullptr)
+        if(readingRequest == nullptr || !readingRequest->is_valid())
         {
             // queue might have been drained by another thread before this this thread got a hold
             // of the reading queue mutex
@@ -62,8 +62,10 @@ void chronolog::ArchiveReadingAgent::archiveReadingTask()
 
         // notify the queryResponseAgent that archive read is completed
         // even if no events within the query time range were found
-        readingRequest->queryResponseAgent->stashStoryChunks(readingRequest->queryId, listOfChunks);
+        readingRequest->queryResponseAgent->addArchivedEventsToQueryResponse(readingRequest->queryId, listOfChunks);
 
+        // in case queryResponseAgent didn't recognise the query and failed to drain listOfChunks
+        // drain it here
         if(!listOfChunks.empty())
         {
             for(auto& chunk: listOfChunks) { delete chunk; }

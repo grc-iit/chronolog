@@ -517,3 +517,19 @@ void chronolog::StoryPipeline::mergeEvents(chronolog::StoryChunk& other_chunk)
 
     return;
 }
+
+/////
+//copy all events falling into range [start_time,end_time) into vector<Event>
+
+std::vector<chl::Event>& chronolog::StoryPipeline::copyToEventSeries(std::vector<chl::Event>& event_series,
+                                                                     uint64_t start_time,
+                                                                     uint64_t end_time)
+{
+    std::lock_guard<std::mutex> lock(sequencingMutex);
+
+    for(auto& chunk_iter: storyTimelineMap)
+    {
+        chunk_iter.second->copyToEventSeries(event_series, start_time, end_time);
+    }
+    return event_series;
+}

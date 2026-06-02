@@ -412,7 +412,10 @@ std::pair<int, chronolog::StoryHandle*> chronolog::ChronologClientImpl::AcquireS
     if((nullptr != storyReaderService) && acquireStoryResponse.getPlayer().is_valid())
     {
         //prepare ClientQueryService for reading this story
-        storyReaderService->addStoryReader(chronicle_name, story_name, acquireStoryResponse.getPlayer());
+        storyReaderService->addStoryReader(chronicle_name,
+                                           story_name,
+                                           acquireStoryResponse.getStoryId(),
+                                           acquireStoryResponse.getPlayer());
     }
 
     if(storyHandle == nullptr)

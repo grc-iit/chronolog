@@ -96,7 +96,7 @@ int main()
                   << " eventCount:" << storyChunk.getEventCount() << std::endl;
         std::list<chl::StoryChunk*> listOfChunks;
         listOfChunks.push_back(&storyChunk);
-        transferAgent->stashStoryChunks(queryId, listOfChunks);
+        transferAgent->addArchivedEventsToQueryResponse(queryId, listOfChunks);
 
         sleep(3);
     }

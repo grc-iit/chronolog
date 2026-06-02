@@ -76,6 +76,8 @@ public:
 
     void finalize(std::vector<StoryChunk*>&);
 
+    std::vector<Event>& copyToEventSeries(std::vector<Event>&, uint64_t start, uint64_t end);
+
 private:
     StoryId storyId;
     ChronicleName chronicleName;

@@ -113,6 +113,9 @@ public:
 
     std::vector<Event>& extractEventSeries(std::vector<Event>& event_series);
 
+    // copy events in range [start_time, end_time) to EventSeries vector
+    std::vector<Event>& copyToEventSeries(std::vector<Event>& event_series, uint64_t start_time, uint64_t end_time);
+
 private:
     ChronicleName chronicleName;
     StoryName storyName;

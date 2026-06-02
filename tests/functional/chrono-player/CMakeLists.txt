@@ -72,6 +72,7 @@ endif()
 add_executable(playback_service_test
     chrono_player_playback_service_test.cpp
     ${CMAKE_SOURCE_DIR}/src/chrono-player/src/PlaybackService.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/PlayerDataStore.cpp
     ${CMAKE_SOURCE_DIR}/src/chrono-player/src/QueryResponseTransferAgent.cpp
 )
 

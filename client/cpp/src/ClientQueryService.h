@@ -32,6 +32,7 @@ struct PlaybackQuery
     uint32_t queryId;
     uint64_t timeout_time;
     bool completed;
+    StoryId storyId;
     ChronicleName chronicleName;
     StoryName storyName;
     chrono_time startTime;
@@ -40,6 +41,7 @@ struct PlaybackQuery
     PlaybackQuery(std::vector<Event>& playbackEvents,
                   uint32_t query_id,
                   uint64_t timeout_time,
+                  StoryId const& story_id,
                   ChronicleName const& chronicle,
                   StoryName const& story,
                   chrono_time const& start,
@@ -49,6 +51,7 @@ struct PlaybackQuery
         , queryId(query_id)
         , timeout_time(timeout_time)
         , completed(false)
+        , storyId(story_id)
         , chronicleName(chronicle)
         , storyName(story)
         , startTime(start)
@@ -58,6 +61,7 @@ struct PlaybackQuery
     PlaybackQuery(Client::EventCallback cb,
                   uint32_t query_id,
                   uint64_t timeout_time,
+                  StoryId const& story_id,
                   ChronicleName const& chronicle,
                   StoryName const& story,
                   chrono_time const& start,
@@ -67,6 +71,7 @@ struct PlaybackQuery
         , queryId(query_id)
         , timeout_time(timeout_time)
         , completed(false)
+        , storyId(story_id)
         , chronicleName(chronicle)
         , storyName(story)
         , startTime(start)
@@ -96,7 +101,7 @@ public:
 
     ServiceId const& get_service_id() const { return queryServiceId; }
 
-    int addStoryReader(ChronicleName const&, StoryName const&, ServiceId const&);
+    int addStoryReader(ChronicleName const&, StoryName const&, StoryId const&, ServiceId const&);
     void removeStoryReader(ChronicleName const&, StoryName const&);
 
     void receive_query_response(tl::request const&, tl::bulk&);
@@ -122,12 +127,14 @@ private:
     void removePlaybackQueryClient(ServiceId const&);
 
     PlaybackQuery* start_query(uint64_t,
+                               StoryId const&,
                                ChronicleName const&,
                                StoryName const&,
                                chrono_time const&,
                                chrono_time const&,
                                std::vector<Event>&);
     PlaybackQuery* start_query(uint64_t,
+                               StoryId const&,
                                ChronicleName const&,
                                StoryName const&,
                                chrono_time const&,
@@ -146,7 +153,7 @@ private:
     std::atomic<uint32_t> queryIndex;
     int queryTimeoutInSecs;
     std::map<uint32_t, PlaybackQuery> activeQueryMap; // map of active queries by queryId
-    std::map<std::pair<ChronicleName, StoryName>, PlaybackQueryRpcClient*> acquiredStoryMap;
+    std::map<std::pair<ChronicleName, StoryName>, std::pair<StoryId, PlaybackQueryRpcClient*>> acquiredStoryMap;
     // map of QueryRpcClients by service_endpoint of the remote chrono_grapher PlaybackService
     std::map<service_endpoint, PlaybackQueryRpcClient*> playbackRpcClientMap;
 };

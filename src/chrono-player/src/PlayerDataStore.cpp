@@ -2,6 +2,7 @@
 #include <map>
 #include <mutex>
 #include <chrono>
+#include <iomanip>
 #include <utility>
 #include <thallium.hpp>
 
@@ -17,7 +18,7 @@ namespace tl = thallium;
 
 void chronolog::PlayerDataStore::collectIngestedEvents()
 {
-    LOG_DEBUG("[PlayerDataStore] Initiating collection of ingested story chunks. Current state={}, Active "
+    LOG_TRACE("[PlayerDataStore] Initiating collection of ingested story chunks. Current state={}, Active "
               "StoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}",
               state,
               theMapOfStoryPipelines.size(),
@@ -33,11 +34,10 @@ void chronolog::PlayerDataStore::collectIngestedEvents()
         (*pipeline_iter).second->collectIngestedEvents();
     }
 }
-
 ////////////////////////
 void chronolog::PlayerDataStore::extractDecayedStoryChunks()
 {
-    LOG_DEBUG("[PlayerDataStore] Discarding decayed story chunks. Current state={}, Active "
+    LOG_TRACE("[PlayerDataStore] Discarding decayed story chunks. Current state={}, Active "
               "StoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}",
               state,
               theMapOfStoryPipelines.size(),
@@ -138,7 +138,7 @@ void chronolog::PlayerDataStore::dataCollectionTask()
 
     while(!is_shutting_down())
     {
-        LOG_DEBUG("[PlayerDataStore] Running DataCollection iteration. ESrank={}, ThreadID={}",
+        LOG_TRACE("[PlayerDataStore] Running DataCollection iteration. ESrank={}, ThreadID={}",
                   es.get_rank(),
                   tl::thread::self_id());
         for(int i = 0; i < 1; ++i)
@@ -158,7 +158,7 @@ void chronolog::PlayerDataStore::startDataCollection(int stream_count)
     std::lock_guard storeLock(dataStoreStateMutex);
     if(is_running() || is_shutting_down())
     {
-        LOG_INFO("[PlayerDataStore] Data collection is already running or shutting down. Ignoring request.");
+        LOG_DEBUG("[PlayerDataStore] Data collection is already running or shutting down. Ignoring request.");
         return;
     }
 
@@ -276,7 +276,7 @@ int chronolog::PlayerDataStore::startStoryRecording(std::string const& chronicle
     auto pipeline_iter = theMapOfStoryPipelines.find(story_id);
     if(pipeline_iter != theMapOfStoryPipelines.end())
     {
-        LOG_INFO("[PlayerDataStore] Story already being recorded. StoryId: {}", story_id);
+        LOG_DEBUG("[PlayerDataStore] Story already being recorded. StoryId: {}", story_id);
         //check it the pipeline was put on the waitingForExit list by the previous acquisition
         // and remove it from there
         auto waiting_iter = pipelinesWaitingForExit.find(story_id);
@@ -346,3 +346,50 @@ int chronolog::PlayerDataStore::stopStoryRecording(chronolog::StoryId const& sto
     }
     return chronolog::CL_SUCCESS;
 }
+
+//////////////////////
+uint64_t chronolog::PlayerDataStore::get_active_window_boundary() const
+{
+#ifdef DEBUG_BOUNDARY
+    auto active_boundary_time =
+            std::chrono::high_resolution_clock::now() - std::chrono::seconds(acceptance_window_secs);
+    std::time_t boundary_time_t = std::chrono::high_resolution_clock::to_time_t(active_boundary_time);
+    std::ostringstream out;
+    out << std::put_time(std::localtime(&boundary_time_t), "%Y-%m-%d_%T");
+    LOG_DEBUG("[PlayerDataStore] active_window_boundary {}", out.str());
+#endif
+    return (std::chrono::high_resolution_clock::now() - std::chrono::seconds(acceptance_window_secs))
+            .time_since_epoch()
+            .count();
+}
+////////////////
+
+int chronolog::PlayerDataStore::get_active_story_events(chl::StoryId const& story_id,
+                                                        uint64_t start_time,
+                                                        uint64_t end_time,
+                                                        std::vector<chl::Event>& event_series)
+{
+    // 1. find the StoryPipeline
+    // 2. copy events in range [start_time,end_time) into event_series vector
+
+
+    std::lock_guard storeLock(dataStoreMutex);
+    auto pipeline_iter = theMapOfStoryPipelines.find(story_id);
+    if(pipeline_iter == theMapOfStoryPipelines.end())
+    {
+        LOG_DEBUG("[PlayerDataStore] doesn't have records of story {}", story_id);
+        return chl::CL_ERR_NOT_ACQUIRED;
+    }
+
+    chl::StoryPipeline* story_pipeline = (*pipeline_iter).second;
+    story_pipeline->copyToEventSeries(event_series, start_time, end_time);
+
+    LOG_DEBUG("[PlayerDataStore] got {} events for story {} in range {}-{}",
+              event_series.size(),
+              story_id,
+              start_time,
+              end_time);
+
+    return chl::CL_SUCCESS;
+}
+////////////////////////

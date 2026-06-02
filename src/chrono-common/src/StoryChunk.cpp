@@ -267,12 +267,14 @@ std::map<chl::EventSequence, chl::LogEvent>::iterator chl::StoryChunk::eraseEven
 }
 
 ///////////////////
-
+// extract all events from the StoryChunk into the EventSeries
+// StoryChunk is emptied by this operation
 std::vector<chl::Event>& chl::StoryChunk::extractEventSeries(std::vector<chl::Event>& event_series)
 {
     // NOTE: event_series is a vector of chronolog::Event ( client facing event representation)
     // while StoryChunk is using LogEvent (internal chronolog event representation)
 
+    event_series.reserve(event_series.size() + logEvents.size());
     for(auto logEvent: logEvents)
     {
         event_series.push_back(chl::Event{logEvent.second.eventTime,
@@ -282,6 +284,38 @@ std::vector<chl::Event>& chl::StoryChunk::extractEventSeries(std::vector<chl::Ev
     }
 
     logEvents.clear();
+
+    return event_series;
+}
+////////
+
+// copy events falling into range [ start_time, end_time )
+// into vector<Event>
+std::vector<chl::Event>&
+chl::StoryChunk::copyToEventSeries(std::vector<chl::Event>& event_series, uint64_t start_time, uint64_t end_time)
+{
+    // NOTE: event_series is a vector of chronolog::Event (client facing event representation)
+    // while StoryChunk is using LogEvent (internal chronolog event representation)
+
+    if(logEvents.empty() || start_time == 0 || end_time <= startTime)
+    {
+        return event_series;
+    }
+
+    std::map<chl::EventSequence, chl::LogEvent>::const_iterator range_start =
+            (start_time < startTime ? logEvents.lower_bound(chl::EventSequence{startTime, 0, 0})
+                                    : logEvents.lower_bound(chl::EventSequence{start_time, 0, 0}));
+
+    std::map<chl::EventSequence, chl::LogEvent>::const_iterator range_end =
+            (end_time > endTime ? logEvents.upper_bound(chl::EventSequence{endTime, 0, 0})
+                                : logEvents.upper_bound(chl::EventSequence{end_time, 0, 0}));
+
+    for(auto iter = range_start; iter != range_end; ++iter)
+    {
+        auto& logEvent = (*iter).second;
+        event_series.push_back(
+                chl::Event{logEvent.eventTime, logEvent.clientId, logEvent.eventIndex, logEvent.logRecord});
+    }
 
     return event_series;
 }
