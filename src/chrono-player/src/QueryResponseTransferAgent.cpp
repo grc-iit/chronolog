@@ -95,9 +95,10 @@ int chronolog::QueryResponseAgent::stashQueryResponseRecord(chl::ClientQueryId c
 
     if(insert_return.second)
     {
-        LOG_INFO("[QueryResponseAgent] receiver for {} got request for query_id {}",
+        LOG_INFO("[QueryResponseAgent] receiver for {} got request for query_id {}, ThreadID={}",
                  chl::to_string(receiver_service_id),
-                 query_id);
+                 query_id,
+                 tl::thread::self_id());
         ret_value = chl::CL_SUCCESS;
     }
 
@@ -106,10 +107,32 @@ int chronolog::QueryResponseAgent::stashQueryResponseRecord(chl::ClientQueryId c
 
 ///////
 
-int chronolog::QueryResponseAgent::stashStoryChunks(chl::ClientQueryId const& query_id,
-                                                    std::list<chl::StoryChunk*> const& archive_chunks)
+//int chronolog::QueryResponseAgent::addArchivedEventsToQueryResponse(chl::ClientQueryId const& query_id,
+int chronolog::QueryResponseAgent::addArchivedEventsToQueryResponse(chl::ClientQueryId const& query_id,
+                                                                    std::list<chl::StoryChunk*> const& archive_chunks)
 {
     // this function is called by ArchiveReadingAgent thread that got the ArchiveReadingRequest
+    // extract events from archive story chunks into the response->events
+
+    LOG_DEBUG("[QueryResponseAgent] agent for receiver {} processing archived events for query {} ThreadID={}",
+              chl::to_string(receiver_service_id),
+              query_id,
+              tl::thread::self_id());
+
+    std::vector<Event> archived_events;
+
+    for(auto& story_chunk: archive_chunks)
+    {
+        LOG_DEBUG("[QueryResponseAgent] agent for receiver {} processing story_chunk for query {} : story {}-{} "
+                  "ThreadID={}",
+                  chl::to_string(receiver_service_id),
+                  query_id,
+                  story_chunk->getChronicleName(),
+                  story_chunk->getStoryName(),
+                  tl::thread::self_id());
+
+        story_chunk->extractEventSeries(archived_events);
+    }
 
     std::lock_guard<std::mutex> lock(query_mutex);
 
@@ -124,7 +147,7 @@ int chronolog::QueryResponseAgent::stashStoryChunks(chl::ClientQueryId const& qu
 
     // if no events in query time range were found in archives
     // just mark the response as ready to send and return
-    if(archive_chunks.empty())
+    if(archived_events.empty())
     {
         (*query_iter).second.first = true;
         return chl::CL_SUCCESS;
@@ -140,18 +163,7 @@ int chronolog::QueryResponseAgent::stashStoryChunks(chl::ClientQueryId const& qu
         temp_vector = std::move(response->events);
     }
 
-    // extract events from archive story chunks into the response->events
-    for(auto& story_chunk: archive_chunks)
-    {
-        LOG_DEBUG("[QueryResponseAgent] agent for receiver {} processing story_chunk for QueryId {} : story {} "
-                  "chunk.startTime: {}",
-                  chl::to_string(receiver_service_id),
-                  query_id,
-                  story_chunk->getStoryName(),
-                  story_chunk->getStartTime());
-
-        story_chunk->extractEventSeries(response->events);
-    }
+    response->events = std::move(archived_events);
 
     // now append the active DataStore events if any were present
     // to the end of the response->events vector

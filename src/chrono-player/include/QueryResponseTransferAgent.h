@@ -49,7 +49,7 @@ public:
 
     int stashQueryResponseRecord(ClientQueryId const&, PlaybackQueryResponse*, bool);
 
-    int stashStoryChunks(ClientQueryId const& query_id, std::list<StoryChunk*> const&);
+    int addArchivedEventsToQueryResponse(ClientQueryId const& query_id, std::list<StoryChunk*> const&);
 
     void drainQueryResponses();
 
