@@ -1,0 +1,2593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ChronoLog</title>
+  <style>
+    :root {
+      --accent: #007acc;
+      --border: #e0e0e0;
+      --muted: #666;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin: 0;
+      color: #222;
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      background: #f5f5f5;
+    }
+    .tab-button {
+      padding: 12px 24px;
+      cursor: pointer;
+      border: none;
+      background: none;
+      font-size: 16px;
+      color: var(--muted);
+      border-bottom: 3px solid transparent;
+    }
+    .tab-button:hover { background: #eaeaea; }
+    .tab-button.active {
+      color: #000;
+      border-bottom-color: var(--accent);
+      font-weight: 600;
+    }
+    .tab-content { display: none; padding: 24px; max-width: 880px; line-height: 1.6; }
+    .tab-content.active { display: block; }
+
+    /* Section */
+    .component > h3 {
+      margin: 0 0 4px;
+      font-size: 22px;
+      border-bottom: 2px solid var(--accent);
+      padding-bottom: 6px;
+    }
+    .component .lead { color: #333; }
+    .component h4 {
+      margin: 28px 0 10px;
+      font-size: 15px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      color: var(--muted);
+    }
+    blockquote {
+      margin: 16px 0;
+      padding: 8px 16px;
+      border-left: 3px solid var(--accent);
+      background: #f7fbfe;
+      color: #444;
+    }
+
+    /* Standardized data tables */
+    table.data {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 8px 0;
+      font-size: 15px;
+    }
+    table.data th, table.data td {
+      border: 1px solid var(--border);
+      padding: 8px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    table.data th { background: #f5f5f5; font-weight: 600; }
+    table.data td:first-child,
+    table.data th:first-child {
+      width: 180px;
+      font-weight: 600;
+    }
+
+    .note {
+      margin-top: 24px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+      font-size: 14px;
+      color: var(--muted);
+    }
+    code {
+      background: #f0f0f0;
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-size: .9em;
+    }
+    .src { color: var(--muted); font-size: 13px; }
+    table.data.compare td:first-child,
+    table.data.compare th:first-child { width: 150px; }
+    table.data.compare th:nth-child(2),
+    table.data.compare th:nth-child(3) { width: auto; }
+    table.data.api td:first-child,
+    table.data.api th:first-child { width: 320px; white-space: normal; }
+    .tag {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .03em;
+      padding: 1px 7px;
+      border-radius: 10px;
+      vertical-align: middle;
+    }
+    .tag.absent { background: #fdecea; color: #b3261e; }
+    .tag.added  { background: #e7f4e8; color: #1e7a2e; }
+    .tag.changed{ background: #fef6e0; color: #9a6a00; }
+    .tag.research { background: #e7f4e8; color: #1e7a2e; }
+    .tag.analysis { background: #eceef7; color: #3b4a8c; }
+    .tag.improvement { background: #fdeede; color: #9a5b13; }
+    ol.diff-list { padding-left: 22px; }
+    ol.diff-list > li { margin-bottom: 16px; padding-left: 6px; }
+    ol.diff-list > li::marker { font-weight: 700; color: var(--accent); }
+    ol.diff-list .diff-title { font-weight: 600; }
+    .reason {
+      margin: 18px 0 0;
+      padding: 12px 16px;
+      background: #f7fbfe;
+      border: 1px solid #d6e9f6;
+      border-left: 4px solid var(--accent);
+      border-radius: 4px;
+      font-size: 15px;
+    }
+    .reason .reason-label {
+      display: block;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 6px;
+    }
+    .reason p { margin: 8px 0 0; }
+    .reason p:first-of-type { margin-top: 0; }
+    .note-later {
+      margin: 18px 0 0;
+      padding: 12px 16px;
+      background: #fff8ef;
+      border: 1px solid #f3dcc0;
+      border-left: 4px solid #d98a1f;
+      border-radius: 4px;
+      font-size: 15px;
+    }
+    .note-later .note-later-label {
+      display: block;
+      font-weight: 700;
+      color: #b5710f;
+      margin-bottom: 6px;
+    }
+    .note-later p { margin: 8px 0 0; }
+    .note-later p:first-of-type { margin-top: 0; }
+  </style>
+</head>
+<body>
+  <div class="tabs">
+    <button class="tab-button active" onclick="showTab('tab1')">Overview</button>
+    <button class="tab-button" onclick="showTab('tab3')">Data Model</button>
+    <button class="tab-button" onclick="showTab('tab8')">Client</button>
+    <button class="tab-button" onclick="showTab('tab4')">API</button>
+    <button class="tab-button" onclick="showTab('tab2')">ChronoVisor</button>
+    <button class="tab-button" onclick="showTab('tab5')">ChronoKeeper</button>
+    <button class="tab-button" onclick="showTab('tab6')">ChronoGrapher</button>
+    <button class="tab-button" onclick="showTab('tab7')">ChronoPlayer</button>
+  </div>
+
+  <div id="tab2" class="tab-content">
+    <h2>ChronoVisor</h2>
+
+    <section class="component" id="chronovisor">
+      <h3>ChronoVisor (Paper version)</h3>
+      <p class="lead">
+        The cluster's <strong>control-plane and coordination authority</strong>. One of ChronoLog's
+        three top-level components &mdash; alongside the <strong>ChronoKeeper</strong> (tail
+        operations) and the tiered <strong>ChronoStore</strong> (ChronoGrapher writes, ChronoPlayer
+        reads). It sits <strong>off the data path</strong> (events never flow through it) and instead
+        manages client connections, chronicle metadata, and time.
+      </p>
+      <blockquote>
+        &ldquo;The ChronoVisor handles client connections and chronicle metadata information. It also
+        acts as the global clock enforcing time synchronization between all server nodes
+        participating in a ChronoLog cluster.&rdquo;
+      </blockquote>
+
+      <h4>At a glance</h4>
+      <table class="data">
+        <tr><td>Role</td><td>Control plane / coordination authority; off the data path</td></tr>
+        <tr><td>Deployment</td><td>Single dedicated node, typically the cluster head node</td></tr>
+        <tr><td>Time</td><td>Master global clock; cluster nodes sync to it, clients derive relative ChronoTicks from its <code>(base, rate)</code></td></tr>
+        <tr><td>Metadata</td><td>Owns the chronicle namespace, tags, properties, permissions, and acquisition / reference counts</td></tr>
+        <tr><td>Bootstrap</td><td>Initializes ChronoKeeper structures, spawns the ChronoGrapher, configures KVS ranges, inits the ChronoPlayer</td></tr>
+        <tr><td>Connections</td><td>Client registry; entry point for <code>connect</code> / <code>disconnect</code></td></tr>
+        <tr><td>Migration</td><td>Inter-cluster ChronoVisor synchronization for moving chronicles</td></tr>
+        <tr><td>API surface</td><td>Admin API (registry + clock) and Chronicle API (metadata)</td></tr>
+      </table>
+
+      <h4>Responsibilities</h4>
+      <table class="data">
+        <tr>
+          <td>Connections &amp; registry</td>
+          <td>Entry point of the cluster. Clients must register before any operation; the
+            ChronoVisor's URL (<code>chronolog://&lt;host&gt;:&lt;port&gt;</code>) is what
+            <code>connect()</code> targets, and <code>disconnect()</code> tears the connection down.</td>
+        </tr>
+        <tr>
+          <td>Global clock</td>
+          <td>Runs the master clock. Server nodes sync to it at init and periodically. Clients keep
+            their own clocks and instead receive <code>(base, rate)</code> via <code>sync_clock()</code>
+            to compute correct ChronoTicks &mdash; the time-based event IDs.</td>
+        </tr>
+        <tr>
+          <td>Chronicle metadata</td>
+          <td>Owns the namespace (<code>create</code> / <code>edit</code> / <code>destroy</code>) and
+            the acquisition lifecycle (<code>acquire</code> / <code>release</code>). Maintains the
+            reference counter that guides tiering and gates deletion
+            (<code>reference_count == 0</code>), plus tags: type, granularity, tiering policy,
+            permissions, coherency, and collision semantics.</td>
+        </tr>
+        <tr>
+          <td>Bootstrap &amp; init</td>
+          <td>Orchestrates the rest of the cluster: initializes ChronoKeeper structures (tail hashmap
+            and backlog at init; data hashmaps and chronicle index on create/acquire), spawns the
+            ChronoGrapher and configures its KVS key ranges, inits the ChronoPlayer, and passes
+            chronicle tags to the ChronoKeeper to enforce collision policy.</td>
+        </tr>
+        <tr>
+          <td>Migration</td>
+          <td>Coordinates moves ChronoVisor-to-ChronoVisor. Because ChronoTicks are offsets from a
+            base value, the destination computes its distance and drift from the source so client
+            tick calculations still resolve to the correct slot.</td>
+        </tr>
+      </table>
+
+      <h4>Why it's designed this way</h4>
+      <p>
+        ChronoLog's goal is to <strong>avoid a centralized sequencer or metadata lock for finding the
+        log tail</strong> &mdash; the bottleneck in Corfu (sequencer) and Bookkeeper (MDM locking). The
+        ChronoVisor is deliberately kept off the per-event hot path: it never assigns log positions
+        and never sees event data. Ordering comes from physical time via ChronoTicks, leaving the
+        ChronoVisor only the lighter, less-frequent work &mdash; shared time and metadata &mdash; so
+        record/playback stay lock-free. This is why the paper lists ChronoLog's tail location as
+        <em>&ldquo;MDM lookup (lock-free)&rdquo;</em>.
+      </p>
+
+      <p class="note">
+        <strong>Note:</strong> reflects the architecture described in the ChronoLog research paper;
+        the current codebase may have evolved the ChronoVisor's responsibilities since.
+      </p>
+    </section>
+
+    <section class="component" id="chronovisor-impl">
+      <h3>ChronoVisor (Implementation)</h3>
+      <p class="lead">
+        As built on <code>develop</code>, the ChronoVisor is a <strong>single-process C++ server</strong>
+        (<code>chronovisor_instance</code>) that runs <strong>two Thallium/Margo RPC services</strong> and
+        holds metadata in memory. It is still the cluster's coordinator and entry point, but its scope is
+        narrower than the paper: a <strong>connection + metadata + service-registry hub</strong>. It is off
+        the data path, and &mdash; notably &mdash; it has <strong>no clock role</strong>.
+      </p>
+      <p class="src">Source: <code>src/chrono-visor/</code> &mdash; <code>chronovisor_instance.cpp</code>
+        instantiates a <code>VisorClientPortal</code> and a <code>KeeperRegistry</code>, then idles until SIGTERM.</p>
+
+      <h4>At a glance</h4>
+      <table class="data">
+        <tr><td>Process</td><td>One server binary; no global clock thread. Holds metadata in-process.</td></tr>
+        <tr><td>Services</td><td><strong>VisorClientPortalService</strong> (client-facing) and <strong>VisorKeeperRegistryService</strong> (data-process-facing)</td></tr>
+        <tr><td>Data model</td><td>Chronicle (namespace) &rarr; Story (acquirable, recordable unit) &rarr; Events. IDs are <code>CityHash64(name)</code>.</td></tr>
+        <tr><td>Metadata store</td><td>Plain in-memory <code>unordered_map</code>s under global mutexes (<code>ChronicleMetaDirectory</code>, <code>ClientRegistryManager</code>). Not distributed, not lock-free, not persisted.</td></tr>
+        <tr><td>Time</td><td>None. Events are timestamped <strong>client-side</strong> (the client's <code>high_resolution_clock</code>); a Keeper-side clocksource class exists but is unused dead code.</td></tr>
+        <tr><td>Client API</td><td>Connect, Disconnect, CreateChronicle, DestroyChronicle, AcquireStory, ReleaseStory, DestroyStory, ShowChronicles, ShowStories</td></tr>
+      </table>
+
+      <h4>Responsibilities</h4>
+      <table class="data">
+        <tr>
+          <td>Connections &amp; registry</td>
+          <td><code>Connect</code> checks the client protocol version and registers the <code>ClientId</code>;
+            <code>Disconnect</code> auto-releases any stories the client still holds (notifying their recording
+            groups) before removing the record. Client records live in <code>ClientRegistryManager</code>.</td>
+        </tr>
+        <tr>
+          <td>Chronicle / Story metadata</td>
+          <td>Create/destroy chronicle, destroy story, and acquire/release story &mdash; reference-counted via
+            per-story acquisition counts and acquirer maps. Plus <code>ShowChronicles</code> / <code>ShowStories</code>.
+            <code>create_chronicle</code> takes <strong>only a name</strong>: no tags, indexing granularity, or
+            tiering policy.</td>
+        </tr>
+        <tr>
+          <td>Data-process orchestration <span class="tag added">heavy</span></td>
+          <td>Via <code>KeeperRegistry</code>: Keepers, Graphers, and Players self-register (IdCards + periodic
+            stats), and are organized into <strong>RecordingGroups</strong> (N keepers + 1 grapher + 1 player). On the
+            first <code>AcquireStory</code> the Visor <strong>randomly picks an active RecordingGroup</strong>, records
+            the binding, and notifies that group's Grapher, Keepers, and Player to start recording; on last release it
+            notifies them to stop.</td>
+        </tr>
+        <tr>
+          <td>Routing the client</td>
+          <td><code>AcquireStory</code> returns the set of <strong>Keeper ServiceIds</strong> (where to record) and the
+            <strong>Player ServiceId</strong> (where to replay). Record / playback / replay then go <strong>directly to
+            those processes</strong> &mdash; never through the Visor.</td>
+        </tr>
+        <tr>
+          <td>Destruction lifecycle</td>
+          <td>Destroying a chronicle/story broadcasts the destroy to <strong>all Graphers</strong> so persisted HDF5
+            files are cleaned up; metadata is removed first to close acquire/destroy races.</td>
+        </tr>
+      </table>
+
+      <h4>Not present (vs. the paper)</h4>
+      <table class="data">
+        <tr><td>Global clock <span class="tag absent">absent</span></td><td>No clock sync, no drift modeling, no ChronoTicks. A <code>clock_offset</code> parameter exists in <code>ClientConnect</code> but is dead &mdash; never set, never returned to the client.</td></tr>
+        <tr><td>Authorization <span class="tag absent">stub</span></td><td>All authorization predicates <code>return true</code> (tracked in issue #637).</td></tr>
+        <tr><td>Durability / migration <span class="tag absent">absent</span></td><td>Metadata is in-memory only (lost on restart). No chronicle migration and no replication at the Visor.</td></tr>
+        <tr><td>Tags / policies <span class="tag absent">absent</span></td><td>No indexing granularity, tiering policy, coherency, or collision-semantic tags; <code>edit()</code> does not exist.</td></tr>
+      </table>
+
+      <p class="note"><strong>Verified against</strong> <code>src/chrono-visor/</code> on <code>develop</code>
+        (<code>chronovisor_instance.cpp</code>, <code>VisorClientPortal.cpp</code>, <code>ClientPortalService.h</code>,
+        <code>ChronicleMetaDirectory.cpp</code>, <code>ClientRegistryManager.cpp</code>, <code>KeeperRegistry.h/.cpp</code>,
+        <code>ChronoVisorConfiguration.cpp</code>) and the Keeper clocksource in <code>KeeperDataStore.cpp</code>.</p>
+    </section>
+
+    <section class="component" id="chronovisor-gaps">
+      <h3>Gaps</h3>
+      <p class="lead">
+        The implementation keeps the paper's core principle &mdash; the ChronoVisor is a coordinator that stays
+        <strong>off the data path</strong> &mdash; but it <strong>dropped/deferred the physical-time machinery</strong>
+        that was the paper's headline contribution, <strong>added a real service-discovery layer</strong> the paper
+        hand-waved, and <strong>reframed the user data model</strong>. The main differences:
+      </p>
+
+      <table class="data compare">
+        <thead>
+          <tr><th>Aspect</th><th>Paper version</th><th>Implementation (develop)</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Global clock</td>
+            <td>ChronoVisor <em>is</em> the master clock; clients fetch <code>(base, rate)</code> via
+              <code>sync_clock()</code> and compute ChronoTicks; all servers sync to it.</td>
+            <td><span class="tag absent">removed</span> No clock at the Visor. Keepers timestamp locally with
+              <code>steady_clock</code>; ordering is per-story at the recording Keeper, with time-chunking and an
+              acceptance window. The dead <code>clock_offset</code> marks where it was meant to be.</td>
+          </tr>
+          <tr>
+            <td>Data model</td>
+            <td>Chronicle = collection of <em>stories</em>, where a story is the sorted HDD-tier file; Event =
+              <code>(ChronoTick, value)</code>.</td>
+            <td><span class="tag changed">reframed</span> Chronicle = named namespace; <strong>Story = the user-facing
+              acquirable log</strong> clients record to. The "sorted file" notion is now a Grapher HDF5 output, not the
+              user abstraction.</td>
+          </tr>
+          <tr>
+            <td>Process orchestration</td>
+            <td>Implied: the ChronoVisor "spawns" Keeper/Grapher/Player; discovery and binding largely unspecified.</td>
+            <td><span class="tag added">new scope</span> A substantial <code>KeeperRegistry</code>: processes
+              self-register, are grouped into <strong>RecordingGroups</strong>, and stories are load-balanced across
+              groups with explicit start/stop notification and delayed-exit handling.</td>
+          </tr>
+          <tr>
+            <td>Client API surface</td>
+            <td><code>connect</code>/<code>disconnect</code>/<code>sync_clock</code> and the chronicle metadata ops
+              <code>create</code>/<code>edit</code>/<code>destroy</code>/<code>acquire</code>/<code>release</code>.</td>
+            <td><span class="tag changed">changed</span> No <code>sync_clock</code> and no <code>edit</code>; added
+              <code>DestroyStory</code>, <code>ShowChronicles</code>, <code>ShowStories</code>.</td>
+          </tr>
+          <tr>
+            <td>Metadata robustness</td>
+            <td>Implied durable (and potentially distributed) metadata, plus migration and replication.</td>
+            <td><span class="tag absent">prototype</span> Single-node in-memory maps under coarse mutexes; no
+              persistence, migration, or replication; authorization stubbed (#637).</td>
+          </tr>
+          <tr>
+            <td>Chronicle policies</td>
+            <td>Visor owns per-chronicle tags: tiering policy, coherency, and collision semantics (A&ndash;D).</td>
+            <td><span class="tag absent">absent</span> No such tags at the Visor. An acceptance window exists at the
+              Keeper; tiering is the Grapher's fixed pipeline.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h4>Why they differ</h4>
+      <table class="data">
+        <tr>
+          <td>Hard research problem</td>
+          <td>The synchronization-free <strong>global clock via physical time</strong> was the paper's central thesis
+            and its hardest piece. The current system sidesteps it: order events per-story at the Keeper rather than
+            assign cluster-global ChronoTicks. The <code>clock_offset</code> stub shows the seam where it was planned.</td>
+        </tr>
+        <tr>
+          <td>Real deployments need plumbing</td>
+          <td>A running cluster needs dynamic membership, fault handling, and read/write component coordination &mdash;
+            so the <code>KeeperRegistry</code>/RecordingGroup layer is net-new scope the paper abstracted away as
+            "the Visor initializes the components."</td>
+        </tr>
+        <tr>
+          <td>Usability of the abstraction</td>
+          <td>Promoting <strong>Story</strong> to a first-class, acquirable client handle gives a clean
+            acquire&rarr;record&rarr;replay lifecycle, at the cost of overloading the paper's "story" term.</td>
+        </tr>
+        <tr>
+          <td>Prototype maturity</td>
+          <td>Persistence, migration, replication, authorization, and the rich tag/policy set are deferred features,
+            not design reversals &mdash; some are tracked (e.g. auth in #637).</td>
+        </tr>
+      </table>
+
+      <p class="note">Net effect: the implementation is <strong>faithful to "Visor = off-path coordinator"</strong> but
+        is <strong>not yet the physical-time log store</strong> the paper describes &mdash; it is a metadata + service
+        coordination layer, with time-based ordering pushed down to the Keepers and several headline features still
+        outstanding.</p>
+    </section>
+
+    <section class="component" id="chronovisor-differences">
+      <h3>Differences</h3>
+      <p class="lead">A simpler, hand-maintained list of the key paper-vs-implementation differences for the ChronoVisor.
+        Each entry recaps what the paper proposed and how the implementation diverges, so it stands on its own without
+        re-reading the full sections above.</p>
+
+      <ol class="diff-list">
+        <li>
+          <span class="diff-title">Global clock &amp; time synchronization.</span> In the paper the ChronoVisor <em>is</em>
+          the cluster's master clock &mdash; it hosts the global time source, synchronizes all participating server nodes,
+          and hands each client a <code>(base, rate)</code> pair to derive drift-corrected ChronoTicks; this was its
+          headline responsibility. The implementation Visor has <span class="tag absent">no clock role</span> at all &mdash;
+          it neither hosts a clock nor synchronizes nodes, so that entire duty is removed from the component (only a dead
+          <code>clock_offset</code> parameter marks where it was meant to live).
+          <div class="note-later">
+            <span class="note-later-label">Core idea is system-wide, not Visor-exclusive</span>
+            <p>
+              Although the clock lived <em>on</em> the Visor, the decision to order events without a synchronized global
+              clock (local timestamps + composite event identity) is a <strong>system-wide conceptual approach</strong>,
+              not a Visor-only choice &mdash; it is analyzed in Data Model &rarr; Differences: &ldquo;Physical time &amp;
+              ChronoTick&rdquo;. Whether to revive a global clock is a <strong>general-architecture question</strong> that
+              spans the whole system, so it belongs to that broader discussion rather than being settled here.
+            </p>
+          </div>
+        </li>
+        <li>
+          <span class="diff-title">Process orchestration &amp; service registry.</span> The paper leaves this largely
+          unspecified &mdash; the Visor &ldquo;spawns&rdquo; the Keeper, Grapher, and Player, with discovery and binding
+          hand-waved. The implementation builds a dedicated subsystem (<code>KeeperRegistry</code>): the data processes
+          <strong>register themselves</strong> with the Visor (IdCards plus periodic stats that double as liveness) and are
+          organized into <strong>RecordingGroups</strong> &mdash; N Keepers with one Grapher and one Player. On the first
+          <code>AcquireStory</code> the Visor binds the story to an active group and notifies it to start recording; on the
+          last release it notifies it to stop, so recording follows the same reference count that gates the metadata. The
+          client is handed the group's Keeper and Player service IDs and talks to them directly, while delayed-exit
+          handling and the periodic stats provide basic membership and fault tracking.
+          <div class="reason">
+            <span class="reason-label">Why we made this difference</span>
+            <p>
+              A running cluster needs dynamic membership, fault handling, and read/write coordination that the paper
+              abstracted away as &ldquo;the Visor initializes the components.&rdquo; Self-registration was chosen over the
+              paper's spawn model because it fits the HPC / Mochi execution model &mdash; the job scheduler launches the
+              processes and they announce themselves &mdash; and it decouples coordination from process lifecycle, so the
+              Visor <em>reflects</em> membership rather than supervising processes. The net effect is that the Visor
+              <strong>traded the clock role for an orchestration role the paper never specified</strong>: its center of
+              gravity moved from &ldquo;global time + metadata&rdquo; to &ldquo;metadata + cluster-recording
+              coordinator.&rdquo;
+            </p>
+          </div>
+        </li>
+        <li>
+          <span class="diff-title">Metadata durability.</span> The paper treats the Visor as the cluster's authoritative,
+          <strong>durable</strong> metadata store. In the implementation the chronicle namespace
+          (<code>ChronicleMetaDirectory</code>) and the client registry (<code>ClientRegistryManager</code>) are
+          <strong>in-memory only</strong> &mdash; plain <code>unordered_map</code>s with no persistence. A Visor restart or
+          crash <strong>loses the entire namespace</strong> (every chronicle, story, acquisition, and client record), while
+          the Graphers' HDF5 files survive on disk &mdash; leaving <strong>orphaned data the Visor can no longer
+          address</strong>. The bytes persist; the metadata that gives them meaning does not.
+        </li>
+        <li>
+          <span class="diff-title">Availability &amp; replication.</span> The paper implies a fault-tolerant metadata
+          authority; the implementation runs a <strong>single Visor with no replica</strong>. It is therefore a
+          <strong>single point of failure</strong> for the whole control plane &mdash; while it is down, no client can
+          <code>connect</code>, <code>create</code>, or <code>acquire</code> (in-flight writes to already-acquired stories
+          continue, since they bypass the Visor, but no new work can start). There is no metadata replication.
+        </li>
+        <li>
+          <span class="diff-title">Distribution &amp; migration.</span> The paper gestures at distributed metadata and
+          <strong>inter-cluster chronicle migration</strong> (moving chronicles between ChronoVisors). The implementation
+          holds the whole namespace in <strong>one process's heap</strong>: it is not partitioned across nodes, so the
+          namespace is bounded by a single node's RAM, and there is <strong>no migration</strong> mechanism at all.
+        </li>
+        <li>
+          <span class="diff-title">Coarse-grained metadata locking.</span> Each metadata store sits behind <strong>one
+          global mutex</strong> (<code>g_chronicleMetaDirectoryMutex_</code>, <code>g_clientRegistryMutex_</code>), so every
+          metadata operation &mdash; create, destroy, acquire, release, show &mdash; serializes against all the others. The
+          paper's lock-free ethos applies to the data path; the control-plane metadata is the opposite &mdash; a coarse
+          whole-directory lock. It is a scaling ceiling rather than a hot-path concern, since metadata operations are far
+          less frequent than events.
+        </li>
+        <li>
+          <span class="diff-title">Authorization.</span> The paper assumes the Visor enforces access control &mdash;
+          permissions on chronicles and stories. The implementation <strong>scaffolds but does not implement</strong> it:
+          every operation (connect, create, destroy, acquire, release) calls an authorization predicate and returns
+          <code>CL_ERR_NOT_AUTHORIZED</code> on failure, but all three predicates &mdash;
+          <code>is_client_authenticated</code>, <code>chronicle_action_is_authorized</code>, and
+          <code>story_action_is_authorized</code> &mdash; <span class="tag absent">return <code>true</code></span>
+          unconditionally (tracked in #637). The gate is wired but inert.
+        </li>
+        <li>
+          <span class="diff-title">Client API surface.</span> The client-facing API the Visor exposes is not identical to
+          the paper's &mdash; methods are renamed and re-shaped (e.g. <code>create(name, index, tags)</code> &rarr;
+          <code>CreateChronicle(name)</code>, <code>acquire</code> &rarr; <code>AcquireStory(chronicle, story)</code>), and
+          story-level operations are added (<code>DestroyStory</code>, <code>ShowChronicles</code>,
+          <code>ShowStories</code>). Conceptually the structure is unchanged: connect plus chronicle / story metadata
+          management.
+          <div class="note-later">
+            <span class="note-later-label">Core idea belongs to the data model</span>
+            <p>
+              The API only changed shape because the <strong>data-model approach</strong> changed underneath it (Story as a
+              first-class acquirable unit, no chronicle tags). It is the surface, not the decision &mdash; the reasoning
+              lives in the Data Model and API tabs.
+            </p>
+          </div>
+        </li>
+        <li>
+          <span class="diff-title">Chronicle policies &amp; tags.</span> In the paper the Visor owns a rich per-chronicle
+          tag set &mdash; type, indexing granularity, tiering policy, coherency, collision semantics, and permissions. The
+          implementation Visor handles <span class="tag absent">none of them</span>: <code>create_chronicle</code> takes
+          only a name, and the tag / policy structures are inert or absent.
+          <div class="note-later">
+            <span class="note-later-label">Core idea belongs to the data model</span>
+            <p>
+              Tags and policies are a <strong>data-model concept</strong>, not a Visor mechanism &mdash; their absence is
+              analyzed in Data Model &rarr; Differences: &ldquo;Tags, types &amp; policies&rdquo;. The Visor simply has
+              nothing to store because the model upstream does not define them.
+            </p>
+          </div>
+        </li>
+      </ol>
+    </section>
+
+    <section class="component" id="chronovisor-research">
+      <h3>Areas of Research, Analysis &amp; Improvement</h3>
+
+      <h4>1 &middot; Rename the Keeper registry <span class="tag improvement">Improvement</span></h4>
+      <p class="lead">
+        <code>KeeperRegistry</code> (and the <code>VisorKeeperRegistryService</code>) also register Graphers and Players
+        and own the RecordingGroups, so the <code>Keeper</code> prefix is misleadingly narrow. Rename the subsystem to
+        something scope-accurate &mdash; e.g. <code>RecordingRegistry</code>. Low-risk but multi-file: the class, the RPC
+        service, headers, and config / log strings.
+      </p>
+
+      <h4>2 &middot; Deployment &amp; orchestration layer <span class="tag analysis">Analysis</span></h4>
+      <p class="lead">
+        Today the cluster is brought up by an external <code>parallel-ssh</code> bash script
+        (<code>tools/deploy/deploy_cluster.sh</code>) and the components self-register, so the Visor has no runtime control
+        or scaling. Add a deployment layer &mdash; but as an <strong>operational tool, not a runtime component</strong> (a
+        persistent peer would create a who-launches-the-launcher problem and fight the HPC batch model).
+      </p>
+      <p>
+        <strong>How.</strong> Harden the script and <strong>delegate process placement to the platform</strong> &mdash;
+        Slurm / <code>mpirun</code> on HPC, a Kubernetes operator or Helm chart on cloud &mdash; with the tool owning
+        config generation, RPC-conf validation, and start / stop / health; a step further is a <strong>job-scoped
+        controller</strong> that the scheduler launches first to bring up and monitor the rest within the allocation and
+        expose a scale / restart / status API. <strong>Why.</strong> This recovers the paper's one-touch
+        control-and-scale intent <strong>without re-coupling remote spawning back into the Visor</strong>, and leans on
+        battle-tested schedulers instead of reinventing process management.
+      </p>
+
+      <h4>3 &middot; Metadata durability <span class="tag improvement">Improvement</span></h4>
+      <p class="lead">
+        <strong>How.</strong> Persist the Visor's metadata so it survives restart &mdash; a write-ahead log plus periodic
+        snapshot, or back the namespace and client registry with an embedded durable KV (e.g. RocksDB).
+        <strong>Why.</strong> Today a restart loses the whole namespace and orphans the on-disk HDF5; persistence makes
+        the metadata recoverable and re-bindable to the data already on disk. <em>(Difference 3.)</em>
+      </p>
+
+      <h4>4 &middot; Availability &amp; replication <span class="tag analysis">Analysis</span></h4>
+      <p class="lead">
+        <strong>How.</strong> Replicate the Visor for failover &mdash; a Raft-replicated metadata state machine, or
+        externalize metadata to a proven coordination service (etcd / ZooKeeper) providing replication and quorum.
+        <strong>Why.</strong> Removes the single point of failure so the control plane survives a Visor crash;
+        externalizing can deliver durability and replication in one step. <em>(Difference 4.)</em>
+      </p>
+
+      <h4>5 &middot; Distribution &amp; migration <span class="tag analysis">Analysis</span></h4>
+      <p class="lead">
+        <strong>How.</strong> Partition the namespace across multiple Visors (shard by chronicle / hash) so it is not
+        bounded by one node's RAM, and add the paper's <strong>inter-cluster chronicle migration</strong> (export / import
+        of a chronicle's metadata, with clock reconciliation). <strong>Why.</strong> Lets the namespace scale out and
+        supports moving chronicles between clusters, as the paper envisioned. <em>(Difference 5.)</em>
+      </p>
+
+      <h4>6 &middot; Finer-grained metadata locking <span class="tag analysis">Analysis</span></h4>
+      <p class="lead">
+        <strong>How.</strong> Replace the single global mutex per store with finer-grained locking &mdash; per-chronicle /
+        per-story locks, sharded maps, or lock-free reads &mdash; so independent metadata operations stop serializing.
+        <strong>Why.</strong> The current whole-directory lock is a scaling ceiling under high client / chronicle
+        concurrency; finer locking lifts it without touching the data path. <em>(Difference 6.)</em>
+      </p>
+
+      <h4>7 &middot; Authorization <span class="tag improvement">Improvement</span></h4>
+      <p class="lead">
+        <strong>How.</strong> Implement the stubbed authorization framework &mdash; establish client identity from the
+        connect-time <code>euid</code> / credentials (rather than trusting it), define a permission model for chronicles
+        and stories (owner / ACL / capabilities), and make the three predicates actually enforce it.
+        <strong>Why.</strong> The gate is already wired into every operation but unconditionally returns <code>true</code>
+        (#637); without real enforcement there is no access control or multi-tenant isolation &mdash; a production
+        prerequisite. <em>(Difference 7.)</em>
+      </p>
+  </div>
+
+  <div id="tab3" class="tab-content">
+    <h2>Data Model</h2>
+
+    <section class="component" id="datamodel-paper">
+      <h3>Data Model (Paper version)</h3>
+      <p class="lead">
+        A three-level hierarchy <strong>Chronicle &rarr; Story &rarr; Event</strong>, ordered by
+        <strong>physical time</strong>. The defining idea: an event's identity <em>is</em> its time &mdash;
+        a single <strong>ChronoTick</strong> serves as both its position and its key, so no sequencer is
+        needed to order the log.
+      </p>
+
+      <h4>Entities</h4>
+      <table class="data">
+        <tr>
+          <td>Chronicle</td>
+          <td>A named, user-created log: a series of events ordered by physical time. Assigned a
+            <strong>base value</strong> (creation timestamp from the global clock) at creation, and indexed at a
+            <strong>configurable granularity</strong> (ns default; coarser units group events). Carries a
+            <strong>tags</strong> structure (size, ownership, permissions, access mode) and properties: type
+            (e.g. prioritized), indexing granularity, auto-tiering policy, coherency semantic.</td>
+        </tr>
+        <tr>
+          <td>Story</td>
+          <td>The <strong>storage form</strong> of a chronicle's events: on the HDD tier, events are sorted then
+            written sequentially to a file &mdash; the "story". A chronicle is a collection of stories; a story is a
+            collection of ordered events. (On upper tiers events instead live as KV pairs in the journal / KVS.)</td>
+        </tr>
+        <tr>
+          <td>Event</td>
+          <td>A <strong>key&ndash;value pair</strong>: key = ChronoTick, value = an uninterpreted byte array. The
+            smallest unit of addressing.</td>
+        </tr>
+        <tr>
+          <td>ChronoTick</td>
+          <td>A monotonically increasing <code>uint32_t</code> = time <strong>distance from the chronicle's base
+            value</strong>, at the chronicle's granularity. Computed client-side from the ChronoVisor's
+            <code>(base, rate)</code> and the client's own drift. It is the event's position/ID &mdash; there is no
+            separate sequencer.</td>
+        </tr>
+      </table>
+
+      <h4>Ordering, collisions &amp; mutability</h4>
+      <table class="data">
+        <tr><td>Ordering</td><td>Given directly by ChronoTick (physical time).</td></tr>
+        <tr><td>Collisions</td><td>At coarse granularity several events may share a tick. <strong>Four configurable
+          semantics</strong>, set in chronicle tags at creation: <strong>A</strong> link all in arrival order;
+          <strong>B</strong> keep last; <strong>C</strong> keep first, reject the rest; <strong>D</strong> first keeps
+          the slot, others spill to the next slots.</td></tr>
+        <tr><td>Mutability</td><td>Append-only and immutable: no in-place update; only range deletes at the very
+          beginning or end. Backdated events outside the acceptance window are rejected.</td></tr>
+        <tr><td>Operations</td><td><code>record</code> (append), <code>playback</code> (tail read),
+          <code>replay</code> (range / catch-up read with an optional constraint).</td></tr>
+      </table>
+
+      <p class="note"><strong>Note:</strong> reflects the data model as described in the ChronoLog paper.</p>
+    </section>
+
+    <section class="component" id="datamodel-impl">
+      <h3>Data Model (Implementation)</h3>
+      <p class="lead">
+        The implementation keeps the names <strong>Chronicle &rarr; Story &rarr; Event</strong> but redefines them.
+        An event's identity is a <strong>composite tuple</strong> <code>(eventTime, clientId, eventIndex)</code> &mdash;
+        not a single time tick &mdash; and the persisted form is a <strong>time-windowed HDF5 chunk</strong>, not a
+        sorted PFS file.
+      </p>
+      <p class="src">Source: <code>client/cpp/include/chronolog_types.h</code>,
+        <code>chronolog_client.h</code>, <code>src/chrono-common/include/StoryChunk.h</code>,
+        <code>StoryChunkWriter.{h,cpp}</code>, <code>src/chrono-visor/include/Chronicle.h</code> &amp;
+        <code>Story.h</code>, client <code>StorytellerClient.cpp</code>.</p>
+
+      <h4>Core types</h4>
+      <table class="data">
+        <tr><td>Chronicle</td><td>A namespace. <code>ChronicleId = uint64 = CityHash64(name)</code>. A Visor-side
+          metadata record holding a map of Stories.</td></tr>
+        <tr><td>Story</td><td>The acquirable, recordable unit. <code>StoryId = uint64 = CityHash64(chronicleName +
+          storyName)</code> (so story names are unique per chronicle).</td></tr>
+        <tr><td>LogEvent</td><td>The real event: <code>{ storyId, eventTime (u64), clientId (u64), eventIndex (u32),
+          logRecord (string) }</code>. Used over RPC and in storage. The client-facing <code>Event</code> is the same
+          minus <code>storyId</code> (the story is implied by the handle).</td></tr>
+        <tr><td>EventSequence</td><td><code>tuple&lt;eventTime, clientId, eventIndex&gt;</code> &mdash; the key that
+          uniquely orders an event within its story.</td></tr>
+        <tr><td>StoryChunk</td><td>All events of one story over <code>[startTime, endTime)</code>, held as an ordered
+          <code>map&lt;EventSequence, LogEvent&gt;</code>. The unit of data movement and of storage.</td></tr>
+      </table>
+
+      <h4>Ordering &amp; timestamping</h4>
+      <table class="data">
+        <tr><td>eventTime</td><td>The <strong>client's local</strong> <code>high_resolution_clock</code>
+          epoch-nanoseconds, read at log time. <strong>Uncorrected</strong> &mdash; no base value, drift, or offset is
+          applied; the Visor is not consulted.</td></tr>
+        <tr><td>eventIndex</td><td>A per-client monotonic atomic counter.</td></tr>
+        <tr><td>Order</td><td>Lexicographic on <code>(eventTime, clientId, eventIndex)</code>. The
+          <code>(clientId, eventIndex)</code> tail deterministically breaks ties &mdash; so there are
+          <strong>no configurable collision semantics</strong>; collisions are impossible by construction.</td></tr>
+        <tr><td>Append path</td><td>The client picks a Keeper (round-robin) and sends the <code>LogEvent</code>
+          directly to it. Ordering originates entirely client-side.</td></tr>
+      </table>
+
+      <h4>Physical storage</h4>
+      <table class="data">
+        <tr><td>Form</td><td>One <strong>HDF5 file per StoryChunk</strong>:
+          <code>&lt;chronicle&gt;.&lt;story&gt;.&lt;startTimeSeconds&gt;.vlen.h5</code>, a compound dataset of
+          <code>{storyId u64, eventTime u64, clientId u32, eventIndex u32, logRecord vlen-bytes}</code>. Written by the
+          Grapher. A CSV extractor also exists.</td></tr>
+        <tr><td>Not present</td><td>No sorted-sequential PFS file via MPI-IO, and no separate SSD key-value journal
+          tier &mdash; the path is Keeper memory &rarr; Grapher &rarr; chunk file.</td></tr>
+      </table>
+
+      <h4>Scaffolding present but not wired <span class="tag absent">inert</span></h4>
+      <table class="data">
+        <tr><td>Attrs / tags</td><td><code>ChronicleAttrs</code> / <code>StoryAttrs</code> (indexing granularity
+          {ns,us,ms,sec}, default <strong>ms</strong>; type {standard, priority}; access permission),
+          <code>metadataMap_</code> / <code>propertyList_</code>, and an <code>Archive</code> map exist on the Visor
+          classes but are inert: <code>create</code> takes only a name, there is no <code>edit</code>, and granularity
+          is never used for indexing.</td></tr>
+        <tr><td>Legacy Event</td><td>A separate <code>Event</code> class (<code>sid, timestamp, void* data</code>) in
+          the Visor is unused by the live path.</td></tr>
+      </table>
+
+      <p class="note"><strong>Verified against</strong> the files listed above on <code>develop</code>, plus the Keeper
+        clocksource in <code>KeeperDataStore.cpp</code>.</p>
+    </section>
+
+    <section class="component" id="datamodel-gaps">
+      <h3>Gaps</h3>
+      <p class="lead">
+        Same root cause as the ChronoVisor: the <strong>physical-time / ChronoTick machinery</strong> was the paper's
+        hard contribution and is deferred. Event identity moved from <em>"time alone"</em> to
+        <em>"time + client + index"</em>, which is sequencer-free <strong>and</strong> collision-free without needing a
+        synchronized clock &mdash; at the cost of the paper's single-integer addressing and its tiering model.
+      </p>
+
+      <table class="data compare">
+        <thead>
+          <tr><th>Aspect</th><th>Paper version</th><th>Implementation (develop)</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Event identity</td>
+            <td>One <code>ChronoTick</code> (<code>uint32</code>): time-distance from the chronicle base value. Key
+              <em>is</em> the time.</td>
+            <td><span class="tag changed">reframed</span> Composite <code>EventSequence</code>
+              <code>(eventTime u64, clientId, eventIndex)</code>; the byte payload is a separate field.</td>
+          </tr>
+          <tr>
+            <td>Time source</td>
+            <td>Drift-corrected relative time computed from the ChronoVisor's global clock <code>(base, rate)</code>.</td>
+            <td><span class="tag absent">removed</span> Raw client <code>high_resolution_clock</code> nanoseconds,
+              uncorrected; the Visor is never consulted.</td>
+          </tr>
+          <tr>
+            <td>Base value &amp; granularity</td>
+            <td>Per-chronicle base value; configurable indexing granularity groups events onto ticks.</td>
+            <td><span class="tag absent">absent</span> No base value; absolute ns timestamps; the granularity enum
+              exists but is inert (default ms, unused).</td>
+          </tr>
+          <tr>
+            <td>Collisions</td>
+            <td>Four configurable semantics (A&ndash;D) set in chronicle tags.</td>
+            <td><span class="tag changed">structural</span> None needed &mdash; <code>(clientId, eventIndex)</code>
+              breaks every tie deterministically.</td>
+          </tr>
+          <tr>
+            <td>"Story"</td>
+            <td>The sorted HDD file <em>is</em> the storage form.</td>
+            <td><span class="tag changed">reframed</span> A user-facing acquirable handle; the storage form is the
+              time-windowed <strong>StoryChunk</strong> (HDF5 file).</td>
+          </tr>
+          <tr>
+            <td>Storage / tiering</td>
+            <td>NVMe journal &rarr; SSD KVS &rarr; sorted HDD story (multi-tier).</td>
+            <td><span class="tag changed">simplified</span> Keeper memory &rarr; Grapher &rarr; one HDF5 chunk file
+              per window (single persisted form; CSV optional).</td>
+          </tr>
+          <tr>
+            <td>Tags / type / policy</td>
+            <td>Rich chronicle tags own tiering policy, coherency, and type (e.g. prioritized).</td>
+            <td><span class="tag absent">inert</span> The structs exist on the classes but are not wired to the API.</td>
+          </tr>
+          <tr>
+            <td>Mutability</td>
+            <td>Append-only + range-delete at the ends; acceptance window rejects backdated events.</td>
+            <td><span class="tag changed">partial</span> Append-only; an acceptance window exists at the Keeper;
+              range-delete / re-index are not exposed.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h4>Why they differ</h4>
+      <table class="data">
+        <tr>
+          <td>Deferred research core</td>
+          <td>The global-clock / ChronoTick scheme was the headline contribution and the hardest to get right, so it
+            was deferred &mdash; identity shifted to a composite key that needs no synchronized clock.</td>
+        </tr>
+        <tr>
+          <td>Collisions designed out</td>
+          <td>Because <code>(clientId, eventIndex)</code> makes two events' keys distinct by construction, the A&ndash;D
+            collision machinery became unnecessary &mdash; trading the paper's single-integer addressing for guaranteed
+            uniqueness.</td>
+        </tr>
+        <tr>
+          <td>Simpler persistence</td>
+          <td>Self-describing HDF5 chunk files replaced the sorted-PFS story plus KVS journal: one persisted form,
+            easier to write and read, but not the multi-tier pipeline the paper benchmarks.</td>
+        </tr>
+        <tr>
+          <td>Stubbed, then left</td>
+          <td>The attrs / tags / archive scaffolding shows the paper model was partially typed into the classes and
+            then left unwired &mdash; consistent with granularity, tiering policy, and prioritized chronicles being
+            deferred features.</td>
+        </tr>
+      </table>
+
+      <p class="note">Net effect: the stored data is faithfully <strong>per-story, time-ordered events</strong>, but
+        ordering is built from <strong>uncorrected client clocks + a composite key</strong> rather than the paper's
+        drift-modeled ChronoTicks &mdash; and the multi-tier, tag-driven chronicle is not yet realized.</p>
+    </section>
+
+    <section class="component" id="datamodel-differences">
+      <h3>Differences</h3>
+      <p class="lead">A simpler, hand-maintained list of the key paper-vs-implementation differences for the data
+        model &mdash; each one with the reason it exists.</p>
+      <ol class="diff-list">
+        <li>
+          <span class="diff-title">Physical time &amp; ChronoTick.</span> The paper orders events with a
+          clock-synchronized <strong>ChronoTick</strong>. No clock synchronization has been implemented, so time is taken
+          in a simpler way &mdash; each client's own local clock, uncorrected. The ordering <strong>logic and structure
+          are kept</strong> (events are still ordered by time); only the clock-sync part is left undeveloped.
+        </li>
+        <li>
+          <span class="diff-title">Uniqueness &amp; collisions.</span> Because that (local) time is not precise enough to be a unique
+          identifier on its own, <strong>standard uniqueness practice</strong> was used instead: the single ChronoTick
+          index is replaced by an <strong>EventSequence</strong> that adds <code>clientId</code> and
+          <code>eventIndex</code>. This guarantees uniqueness by changing the method &mdash; <strong>designing collisions
+          out</strong> (unique by construction) rather than the paper's <strong>detect-and-resolve</strong> (collision
+          detection + semantics).
+        </li>
+        <li>
+          <span class="diff-title">Base value &amp; granularity.</span> The paper makes each ChronoTick
+          <strong>relative</strong> to the chronicle's base value (its creation time), at a configurable granularity
+          (ns / µs / ms / sec). Relative ticks give a <strong>shared time reference</strong> across unsynchronized
+          clients, can be <strong>remapped on migration</strong>, and fit in a compact <code>uint32</code>. The
+          implementation uses <strong>absolute <code>uint64</code></strong> nanosecond timestamps instead &mdash; no
+          base, and no granularity grouping (the enum exists but is inert) &mdash; which is simpler and avoids
+          wraparound, at the cost of those three benefits.
+          <div class="reason">
+            <span class="reason-label">Why #3 is benign &mdash; the reasoning behind it</span>
+            <p>
+              Difference #3 describes the change neutrally; this is why the absolute choice loses nothing important. The
+              relative scheme's three motivations mostly dissolve for a single-cluster deployment:
+            </p>
+            <p>
+              <strong>Shared frame.</strong> A Visor-adjusted timestamp already places every client in a common
+              reference frame; subtracting the chronicle base is a <em>uniform shift applied identically by all
+              clients</em>, so it adds nothing to agreement &mdash; it only buys a smaller number.
+              <strong>Migration.</strong> Reconciling two clusters needs the same information either way &mdash; the
+              origin clock's offset/drift to the destination &mdash; which relative does <em>not</em> get for free (the
+              destination still measures it). Within a shared reference, absolute needs no recompute at all; and the
+              real-world solution for geo-distributed ordering (Google Spanner's TrueTime) uses globally-synchronized
+              <em>absolute</em> time, not per-object bases.
+              <strong>Compactness.</strong> The only surviving edge is the <code>uint32</code> key &mdash; but the
+              pipeline is I/O-bound, so the saving is marginal, and the small integer actively forces a
+              <strong>range&hairsp;&harr;&hairsp;resolution tradeoff</strong> and <strong>more tick collisions</strong>
+              (coarse granularity packs more events onto one tick), making the uniqueness problem worse.
+            </p>
+            <p>
+              Net: absolute <code>uint64</code> matches or beats relative on shared frame, migration, range/resolution,
+              and collision pressure, conceding only a marginal compact key. The implementation's choice is not a
+              regression &mdash; it is arguably the stronger engineering decision, so we can build on it without concern.
+            </p>
+          </div>
+        </li>
+        <li>
+          <span class="diff-title">Story &mdash; a new level of abstraction.</span> The model gains a level by
+          shifting roles up by one and adding a new top. The <strong>Event is unchanged</strong>; the paper's
+          <strong>Story</strong> (the internal sorted storage file) becomes the <strong>StoryChunk</strong>; the
+          paper's <strong>Chronicle</strong> (the user-acquired recording unit) becomes the <strong>Story</strong>
+          (now a named, acquirable unit); and a <strong>new top-level Chronicle</strong> is added as a pure namespace.
+          So the hierarchy goes from <code>Chronicle &rarr; Story(file) &rarr; Event</code> to
+          <code>Chronicle(namespace) &rarr; Story(handle) &rarr; StoryChunk &rarr; Event</code>.
+
+          <div class="reason">
+            <span class="reason-label">Why #4 enriches the model &mdash; and what it enables</span>
+            <p>
+              Unlike #1&ndash;#3, this difference is <strong>additive, not subtractive</strong>. It adds one
+              user-facing level (Story) while leaving event semantics untouched &mdash; the same immutable, time-ordered
+              events. The payoff is organizational: many independent streams can live under one Chronicle namespace and
+              be recorded and replayed independently, which means more ways to organize data and therefore more
+              application patterns. The only direct cost is a few extra story-level APIs (<code>AcquireStory</code> /
+              <code>ReleaseStory</code> / <code>ShowStories</code>). The organizational richness is essentially
+              <strong>free</strong>.
+            </p>
+            <p>
+              The new level also <strong>enables</strong> finer-grained optimization: with Story as a first-class,
+              addressable unit, the system can bind, own, distribute, and tune work <em>per story</em> &mdash; opening
+              the door to better load distribution and performance &mdash; all while the underlying logic stays the
+              same. The abstraction opens those options; it does not, by itself, impose them.
+            </p>
+          </div>
+
+          <div class="note-later">
+            <span class="note-later-label">To evaluate later &mdash; Keeper / Grapher architecture</span>
+            <p>
+              The optimization options the Story level opens are realized by additional, <strong>separable</strong>
+              processing decisions: the <strong>StoryChunk</strong> granularity, the <strong>StoryPipeline</strong>
+              (the ordered, distributed timeline of a story's chunks), and <strong>RecordingGroups</strong> (binding a
+              story to a fixed set of keepers + exactly one grapher for clean consolidation). These are <strong>opt-in
+              machinery</strong>, not required by the data model: a minimal binding (acquire &rarr; one keeper + one
+              player) is intrinsic, but the full group / pipeline elaboration could be dropped and the Story data model
+              would still stand &mdash; you would simply forgo the per-story distributed ingestion and load
+              distribution.
+            </p>
+            <p>
+              Whether this machinery is the right approach &mdash; and how it is designed &mdash; belongs to the
+              <strong>Keeper</strong> and <strong>Grapher</strong> tabs, where it is evaluated. It is parked here only
+              because it is the reason-and-consequence of this data-model change.
+            </p>
+          </div>
+
+          <div class="note-later">
+            <span class="note-later-label">To evaluate later &mdash; the event &rarr; chunk flow shift</span>
+            <p>
+              #4 also moved the inter-component <strong>data flow</strong> from event-based to chunk-based. Ingest stays
+              <strong>per-event</strong> (client &rarr; Keeper, one <code>LogEvent</code> per RPC), but everything from
+              the Keeper onward (Keeper &rarr; Grapher &rarr; disk) moves <strong>per StoryChunk</strong> &mdash; batched
+              and presorted; the Keeper is the transition point. Ironically, the paper marketed <em>per-event</em>
+              distribution and real-time per-event flushing as advantages &mdash; the implementation traded both for
+              batching.
+            </p>
+            <p>
+              <strong>Benefit:</strong> throughput &mdash; amortized per-RPC / network overhead, sequential + presorted
+              I/O, fewer coordination ops. <strong>Tradeoffs:</strong> higher <em>durability latency</em> (an event is
+              not flushed until its chunk closes &asymp; chunk duration + acceptance window); a larger <em>crash-loss
+              window</em> (un-flushed events sit in volatile Keeper memory; no replication); more <em>Keeper memory</em>
+              held; and coarser <em>distribution</em> (cohesive per-story chunks instead of the paper's any-keeper
+              per-event spread). The chunk time-window is the knob that dials throughput vs. latency / durability. To be
+              evaluated in the <strong>Keeper</strong> / <strong>Grapher</strong> tabs.
+            </p>
+          </div>
+        </li>
+        <li>
+          <span class="diff-title">Tags, types &amp; policies.</span> The paper attaches a rich, configurable
+          <strong>tag bundle</strong> to each chronicle &mdash; set at creation and editable &mdash; that drives
+          behaviour: <strong>type</strong> (e.g. prioritized), <strong>auto-tiering policy</strong>,
+          <strong>coherency semantic</strong>, <strong>permissions / access mode</strong>, <strong>ownership</strong>,
+          and <strong>size</strong>. (Indexing granularity and collision semantics, also paper tags, are covered in #3
+          and #2.) This per-object configurability is a capability still to be developed &mdash; and, because the model
+          now has two levels (#4), it must be <strong>reframed across both Chronicle and Story</strong>: deciding which
+          attributes belong at the chronicle (namespace) level, which at the story (stream) level, and how they
+          compose.
+
+          <div class="reason">
+            <span class="reason-label">Why #5 matters &mdash; and which parts are actually worth it</span>
+            <p>
+              The concept is valuable, but <strong>not uniformly</strong> &mdash; each tag is worth weighing on its own
+              before building any of it:
+            </p>
+            <p>
+              <strong>Permissions / ownership.</strong> High value &mdash; table-stakes for any shared, multi-user
+              system (though it partly overlaps the surrounding HPC access controls).
+              <strong>Auto-tiering policy.</strong> Valuable only once a real multi-tier storage hierarchy exists
+              &mdash; gated on that bigger piece.
+              <strong>Type / prioritized.</strong> Useful under multi-tenant contention (QoS); premature without
+              contention to arbitrate.
+              <strong>Coherency as a per-object knob.</strong> Likely over-engineering &mdash; a single good default
+              usually suffices.
+              <strong>Size.</strong> A cheap stat, useful mainly as an input to quotas or tiering.
+            </p>
+            <p>
+              The two-level hierarchy adds a design dimension: not just <em>which</em> tags, but <em>at what level</em>
+              (chronicle vs. story) and <em>how they compose / inherit</em>. So the value is real but selective &mdash;
+              it needs a deliberate decision on what to add and where.
+            </p>
+          </div>
+        </li>
+        <li>
+          <span class="diff-title">Mutability.</span> The <strong>append-only core is identical</strong> &mdash; no
+          in-place updates &mdash; and both whole-object delete and the <strong>acceptance window</strong> (rejecting
+          backdated events) are shared. The paper additionally allows two controlled <strong>boundary mutations</strong>
+          that are not exposed: <strong>range-trim</strong> (deleting the oldest or newest events, only at the ends,
+          never mid-log) and <strong>re-index</strong> (changing granularity via <code>edit</code>). So the gap is
+          narrow &mdash; just those two boundary operations.
+
+          <div class="reason">
+            <span class="reason-label">Where #6 is worth it &mdash; and how chunks help</span>
+            <p>
+              <strong>Head-trim (retention).</strong> The one genuinely useful piece &mdash; dropping data older than
+              <em>X</em> to reclaim space is a standard need. And it is largely achievable <strong>without a new
+              API</strong>: because StoryChunks are time-bounded HDF5 files, retention mostly reduces to
+              <strong>deleting old chunk files</strong>. Restricting trims to the <em>ends</em> (never the middle) is
+              exactly what keeps this tractable.
+              <strong>Tail-trim (rollback).</strong> Undo a bad recent batch &mdash; niche, medium value.
+              <strong>Re-index.</strong> Moot &mdash; it only matters with granularity bucketing, which the
+              absolute-<code>uint64</code> model (#3) deliberately doesn't use. Skip.
+              <strong>Acceptance window.</strong> Necessary for a distributed time-ordered log, and already shared by
+              both. No action.
+            </p>
+            <p>
+              Net: the only substantive item is <strong>head-trim retention</strong> &mdash; mostly an Improvement, and
+              partly a <strong>Grapher</strong> concern, since it owns the chunk files. The rest is either shared,
+              niche, or moot.
+            </p>
+          </div>
+        </li>
+      </ol>
+    </section>
+
+    <section class="component" id="datamodel-research">
+      <h3>Areas of Research, Analysis &amp; Improvement</h3>
+
+      <h4>1 &middot; Physical-time ordering &amp; clock synchronization <span class="tag research">Research</span></h4>
+      <p class="lead">
+        ChronoLog began as a thesis about <strong>ordering by physical time</strong>: a global clock on the ChronoVisor,
+        drift-modeled <strong>ChronoTicks</strong> as each event's identity, and total order achieved
+        <em>without</em> a sequencer or locking. To ship a <strong>functional product</strong>, the implementation set
+        that aside and gave each event a <strong>self-contained composite identity</strong>
+        <code>(eventTime, clientId, eventIndex)</code> &mdash; which guarantees uniqueness structurally and needs no clock
+        coordination at all. The headline research idea was deferred, not disproven.
+      </p>
+      <p>
+        The pragmatic consequence is striking: the system today <strong>never depends on clock quality</strong>, so the
+        original thesis has never actually been tested in practice. But that same working system is now the ideal
+        <strong>test bed and infrastructure</strong> to do that research for real. The pipeline is functional end to end
+        (client &rarr; keeper &rarr; grapher &rarr; player), it is already <strong>keyed on time</strong> at every stage,
+        and the clock machinery was deferred at <strong>two well-defined seams</strong> &mdash; both of which still carry
+        the original stubs.
+      </p>
+      <table class="data">
+        <tr><td>Where to intervene</td><td>(1) the ChronoVisor publishes a clock reference at connect (the dead
+          <code>clock_offset</code> is the stub); (2) the client's single timestamp function computes a corrected tick
+          instead of a raw local clock (the <code>ChronologTimer</code> / <code>chrono_tick</code> names are the stubs).</td></tr>
+        <tr><td>Why it's a strong test bed</td><td>The existing composite key already produces a <strong>correct,
+          unique ordering</strong> &mdash; a ground-truth baseline. Clock-derived ordering can be measured <em>against</em>
+          it, so the research question sharpens from "can we order at all?" to "<strong>how close to true global
+          time-order can we get, and with what uncertainty?</strong>"</td></tr>
+        <tr><td>Research arc</td><td><strong>MVP:</strong> offset-only client&harr;Visor sync, swap the timestamp source,
+          measure ordering fidelity. <strong>Then:</strong> drift-rate modeling, Spanner-style uncertainty intervals,
+          backdated-event handling, multi-client evaluation. <strong>Parity:</strong> server-to-server sync and collision
+          semantics, as needed.</td></tr>
+      </table>
+      <p class="note">In short: the deviation that made ChronoLog usable also turned it into the right vehicle for the
+        physical-time research it was born from &mdash; a functional substrate with a measurable baseline, waiting at two
+        seams the authors already shaped.</p>
+
+      <h4>2 &middot; Event uniqueness: &ldquo;design-out&rdquo; vs. &ldquo;detect-and-resolve&rdquo; <span class="tag research">Research</span></h4>
+      <p class="lead">
+        The two versions answer the same problem &mdash; physical time is <strong>not unique</strong> (many events can
+        land on one tick) &mdash; in opposite ways. The paper <strong>detects and resolves</strong> collisions: events
+        with the same tick are routed to one server, detected, and reconciled by a configurable per-chronicle policy
+        (semantics A&ndash;D) plus an acceptance window. The implementation <strong>designs them out</strong>: the
+        composite key <code>(eventTime, clientId, eventIndex)</code> makes two events' keys distinct <em>by
+        construction</em>, so no detection, routing constraint, or policy is needed. The research question: with a
+        working clock in place, <strong>which strategy actually wins</strong> &mdash; on throughput, tail latency,
+        storage overhead, and ordering fidelity?
+      </p>
+      <table class="data">
+        <tr><td>Why it's only fair under Thread&nbsp;1</td><td>Without synchronized clocks, "tick collisions" are mostly
+          <strong>clock skew</strong>, not true concurrency. A meaningful comparison needs the clock work above first;
+          Thread&nbsp;1 enables this study.</td></tr>
+        <tr><td>The honest novelty bar</td><td>Neither idea is new on its own &mdash; composite <code>(time, node,
+          seq)</code> keys are standard (Hybrid Logical Clocks, Cassandra, Kafka), and the paper already published the
+          physical-time approach. A reviewer's first question is <em>"what's new vs. HLC and the original paper?"</em>
+          The contribution must be <strong>empirical or a new mechanism</strong>, not the keys themselves.</td></tr>
+        <tr><td>Where a real contribution could live</td><td><strong>(a)</strong> A rigorous head-to-head at HPC scale on
+          a real tiered store &mdash; using the composite key's exact order as a <strong>ground-truth oracle</strong> for
+          clock-derived order (an unusual, clean methodology). <strong>(b)</strong> A new mechanism the test bed enables:
+          online clock <strong>calibration from the oracle</strong>, cheap bounded-uncertainty ordering, or
+          <strong>adaptive</strong> switching between strategies by observed contention.</td></tr>
+        <tr><td>Realistic venue</td><td>A solid evaluation + artifact fits <strong>mid-tier systems / HPC</strong>
+          venues (HPDC, CCGrid, Cluster, IPDPS, ATC). <strong>Top-tier</strong> (SOSP / OSDI / NSDI) needs the new
+          mechanism or a surprising result &mdash; which has to come <em>out</em> of the research, not be promised up
+          front.</td></tr>
+      </table>
+      <p class="note">Working hypothesis (to be measured, not assumed): design-out likely wins on throughput (the
+        pipeline is I/O-bound, so key size barely matters) and on simplicity (zero coordination), while detect-and-resolve
+        buys configurable semantics and provenance trade-offs. Before committing the team, scope it with a tight lit scan
+        vs. <strong>HLC, TrueTime, and recent shared-log work</strong> (Scalog, Boki, FlowLog) to lock down the
+        &ldquo;what's new.&rdquo;</p>
+
+      <h4>3 &middot; Configurable tags, types &amp; policies <span class="tag analysis">Analysis</span> <span class="tag improvement">Improvement</span></h4>
+      <p class="lead">
+        Conceptually interesting and potentially high-benefit: richer organization, QoS (priority), security
+        (permissions / ownership), and capacity control. But the benefit is <strong>selective</strong> and the design
+        is non-trivial &mdash; especially now that the model has two levels &mdash; so it splits into analysis and
+        improvement.
+      </p>
+      <table class="data">
+        <tr><td>Analysis</td><td>Decide <strong>which</strong> tags and categories are actually worth adding (authz is
+          high value; tiering policy is gated on a real multi-tier hierarchy; priority is premature without contention;
+          configurable coherency is likely unnecessary; size is a trivial stat), and &mdash; given Chronicle + Story
+          &mdash; <strong>at which level</strong> each belongs and <strong>how they compose / inherit</strong>.</td></tr>
+        <tr><td>Improvement</td><td>Then build the worthwhile ones. <strong>Permissions / ownership (authz)</strong> is
+          the clearest near-term candidate; the rest follow their gating conditions.</td></tr>
+      </table>
+      <p class="note">Because the model now has two abstraction levels, this is no longer a single chronicle-level tag
+        set: it must be <strong>reframed across both Chronicle and Story</strong> &mdash; what is namespace-wide vs.
+        per-stream, and how attributes inherit.</p>
+
+      <h4>4 &middot; Boundary mutation &amp; retention <span class="tag analysis">Analysis</span> <span class="tag improvement">Improvement</span></h4>
+      <p class="lead">
+        From Difference #6: the append-only core is fine, but the paper's controlled boundary mutations are not exposed.
+        Only one is worth pursuing &mdash; <strong>retention via head-trim</strong> &mdash; and there is a cheap path to
+        it, so the work is to decide exactly what makes sense and how.
+      </p>
+      <table class="data">
+        <tr><td>Analysis</td><td>Decide whether a dedicated <strong>range-trim / retention API</strong> is worth
+          building, or whether <strong>deleting old chunk files</strong> (the Grapher already owns them) covers the need.
+          Weigh tail-trim (rollback) as a niche extra; <strong>skip re-index</strong> (moot without granularity
+          bucketing).</td></tr>
+        <tr><td>Improvement</td><td>Implement <strong>retention (head-trim)</strong> &mdash; most likely via
+          chunk-file deletion coordinated with the Grapher &mdash; with trims restricted to the ends to stay
+          tractable.</td></tr>
+      </table>
+      <p class="note">The acceptance window already handles backdated events, so it needs nothing here. Retention is
+        partly a <strong>Grapher</strong> concern (chunk-file lifecycle), so the design crosses the data-model / storage
+        boundary.</p>
+    </section>
+  </div>
+
+  <div id="tab4" class="tab-content">
+    <h2>API</h2>
+
+    <section class="component" id="api-paper">
+      <h3>API (Paper version)</h3>
+      <p class="lead">
+        A client-library API in three groups &mdash; <strong>Admin</strong>, <strong>Chronicle</strong>, and
+        <strong>Event</strong>. Operations address data through opaque handles: <strong>acquire</strong> returns a
+        Chronicle ID (<code>CID</code>), and <strong>record</strong> returns an Event ID (<code>EID</code>). Time
+        management is explicit through <code>sync_clock</code>.
+      </p>
+
+      <h4>Admin API</h4>
+      <table class="data api">
+        <tr><td><code>connect(URL) &rarr; status</code></td><td>Connect to the cluster via the ChronoVisor's URL.</td></tr>
+        <tr><td><code>disconnect() &rarr; status</code></td><td>Terminate the connection.</td></tr>
+        <tr><td><code>sync_clock(URL) &rarr; base, rate</code></td><td>Fetch the ChronoVisor's global clock value and
+          drift rate. Called on connect, periodically, and on chronicle creation / migration.</td></tr>
+      </table>
+
+      <h4>Chronicle API</h4>
+      <table class="data api">
+        <tr><td><code>create(name, index, tags) &rarr; status</code></td><td>Create a chronicle with an indexing
+          granularity and an attribute set (type, permissions, tiering policy, &hellip;).</td></tr>
+        <tr><td><code>edit(name, index, tags) &rarr; status</code></td><td>Rename, re-index, or re-tag a chronicle.</td></tr>
+        <tr><td><code>destroy(name, flags) &rarr; status</code></td><td>Delete a chronicle once all acquisitions are released.</td></tr>
+        <tr><td><code>acquire(name, flags) &rarr; CID</code></td><td>Acquire (optionally exclusive / partial) and get the Chronicle ID.</td></tr>
+        <tr><td><code>release(CID, flags) &rarr; status</code></td><td>Release an acquisition (drops the reference count).</td></tr>
+      </table>
+
+      <h4>Event API</h4>
+      <table class="data api">
+        <tr><td><code>record(CID, data) &rarr; EID</code></td><td>Append serialized data; returns the Event ID.</td></tr>
+        <tr><td><code>playback(CID) &rarr; data</code></td><td>Tail read: get the data at the end of the chronicle.</td></tr>
+        <tr><td><code>replay(CID, range, constraint) &rarr; data</code></td><td>Catch-up read of a range (a vector of
+          <code>&lt;startEID, endEID&gt;</code>), optionally filtered by a constraint.</td></tr>
+      </table>
+
+      <p class="note"><strong>Note:</strong> reflects the API as described in the ChronoLog paper (Fig. 2).</p>
+    </section>
+
+    <section class="component" id="api-impl">
+      <h3>API (Implementation)</h3>
+      <p class="lead">
+        A C++ <code>chronolog::Client</code> facade. The shape is close to the paper, but addressing is by
+        <strong>name strings</strong> (not opaque CID/EID), writing goes through an acquired
+        <strong><code>StoryHandle</code></strong>, the only "event ID" is the event's own timestamp, and there is
+        <strong>no tail-read</strong> &mdash; reads are time-range replays.
+      </p>
+      <p class="src">Source: <code>client/cpp/include/chronolog_client.h</code>;
+        <code>StorytellerClient.cpp</code> (write), <code>ChronologClient.cpp</code> /
+        <code>ClientQueryService.cpp</code> / <code>PlaybackQueryRpcClient.cpp</code> (read).</p>
+
+      <h4>Session</h4>
+      <table class="data api">
+        <tr><td><code>Client(portalConf)</code><br><code>Client(portalConf, queryConf)</code></td><td>Construct
+          <strong>writer-only</strong> (portal only) or <strong>writer + reader</strong> (with a query service).
+          Reads require the second form.</td></tr>
+        <tr><td><code>Connect() &rarr; int</code></td><td>Register with the ChronoVisor; exchanges a wire
+          <strong>protocol version</strong> (currently 2).</td></tr>
+        <tr><td><code>Disconnect() &rarr; int</code></td><td>Disconnect; <strong>auto-releases</strong> any still-held stories.</td></tr>
+        <tr><td><code>client_id() &rarr; ClientId</code></td><td>This client's packed id (ip / port / pid), as it appears on every event it produces.</td></tr>
+      </table>
+
+      <h4>Chronicle &amp; Story</h4>
+      <table class="data api">
+        <tr><td><code>CreateChronicle(name) &rarr; int</code></td><td>Create a chronicle &mdash; <strong>name
+          only</strong>, no index or tags.</td></tr>
+        <tr><td><code>DestroyChronicle(name) &rarr; int</code></td><td>Destroy a chronicle.</td></tr>
+        <tr><td><code>AcquireStory(chronicle, story) &rarr; {int, StoryHandle*}</code></td><td>Acquire a story by name;
+          returns a <strong>write handle</strong> bound to the story's Keepers.</td></tr>
+        <tr><td><code>ReleaseStory(chronicle, story) &rarr; int</code></td><td>Release a story.</td></tr>
+        <tr><td><code>DestroyStory(chronicle, story) &rarr; int</code></td><td>Destroy a story.</td></tr>
+        <tr><td><code>ShowChronicles() &rarr; {int, [name]}</code></td><td>List chronicles.</td></tr>
+        <tr><td><code>ShowStories(chronicle) &rarr; {int, [name]}</code></td><td>List a chronicle's stories.</td></tr>
+      </table>
+
+      <h4>Event write</h4>
+      <table class="data api">
+        <tr><td><code>StoryHandle::log_event(record) &rarr; uint64</code></td><td>Append a record. The client stamps
+          <code>eventTime</code> / <code>eventIndex</code>, picks a Keeper (round-robin) and sends directly. Returns the
+          <strong>eventTime</strong> (the de-facto event ID), or 0 on failure. There is no <code>Client::record</code>.</td></tr>
+      </table>
+
+      <h4>Event read</h4>
+      <table class="data api">
+        <tr><td><code>ReplayStory(chronicle, story, start, end, vector&lt;Event&gt;&amp;) &rarr; int</code></td><td>Read
+          events in the <strong>time window <code>[start, end)</code></strong> into a vector. Served by the Player
+          (internally a "playback request").</td></tr>
+        <tr><td><code>ReplayStory(chronicle, story, start, end, EventCallback) &rarr; int</code></td><td>Streaming
+          overload: invoke a callback per event, no client-side vector materialization.</td></tr>
+      </table>
+
+      <p class="note"><strong>Verified against</strong> <code>chronolog_client.h</code> and the client write/read
+        implementation on <code>develop</code>. No <code>sync_clock</code>, <code>edit</code>, or tail-read exist in the surface.</p>
+    </section>
+
+    <section class="component" id="api-gaps">
+      <h3>Gaps</h3>
+      <p class="lead">
+        The implementation's verbs are recognizably the paper's, but the differences fall into <strong>two distinct
+        kinds</strong> that are worth keeping apart. <strong>Contract differences</strong> are operations the paper
+        specified that the implementation changed or dropped &mdash; genuine paper-vs-implementation divergence.
+        <strong>Realization choices</strong> are dimensions the paper left unspecified &mdash; it defines an
+        <em>operation set</em>, not how the client is packaged &mdash; that a working client library still had to decide;
+        these are additions, not reversals. Most of the contract differences track the same deferred features seen in the
+        other tabs.
+      </p>
+
+      <h4>Contract differences <span class="tag changed">paper specified &middot; implementation changed</span></h4>
+      <table class="data compare">
+        <thead>
+          <tr><th>Aspect</th><th>Paper version</th><th>Implementation (develop)</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Addressing</td>
+            <td>Opaque handles: <code>acquire &rarr; CID</code>, <code>record &rarr; EID</code>; later ops take the id.</td>
+            <td><span class="tag changed">reframed</span> By <code>(chronicle, story)</code> <strong>name strings</strong>;
+              the only handle is a <code>StoryHandle</code> for writing; the only id is the event's timestamp.</td>
+          </tr>
+          <tr>
+            <td>Clock API</td>
+            <td><code>sync_clock() &rarr; (base, rate)</code> for drift-corrected ChronoTicks.</td>
+            <td><span class="tag absent">removed</span> No clock call &mdash; clients stamp their own local time.</td>
+          </tr>
+          <tr>
+            <td>Create / acquire args</td>
+            <td><code>create(name, index, tags)</code>, <code>acquire(name, flags)</code>.</td>
+            <td><span class="tag absent">absent</span> <code>CreateChronicle(name)</code> /
+              <code>AcquireStory(chronicle, story)</code> &mdash; no index, tags, or flags.</td>
+          </tr>
+          <tr>
+            <td>Edit</td>
+            <td><code>edit(name, index, tags)</code> (rename / re-index / re-tag).</td>
+            <td><span class="tag absent">absent</span> No edit operation.</td>
+          </tr>
+          <tr>
+            <td>Write</td>
+            <td><code>record(CID, data) &rarr; EID</code> on the client.</td>
+            <td><span class="tag changed">reframed</span> <code>StoryHandle::log_event(data) &rarr; eventTime</code>;
+              sent directly to a Keeper, not via the Visor.</td>
+          </tr>
+          <tr>
+            <td>Tail read</td>
+            <td><code>playback(CID) &rarr; data</code> (the log tail).</td>
+            <td><span class="tag absent">absent</span> No dedicated tail-read; use a recent-window replay.</td>
+          </tr>
+          <tr>
+            <td>Range read</td>
+            <td><code>replay(CID, range, constraint)</code>: a vector of EID ranges + a filter.</td>
+            <td><span class="tag changed">changed</span> <code>ReplayStory(&hellip;, start, end)</code>: one
+              <code>[start, end)</code> <strong>time</strong> window, no constraint.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h4>Realization choices <span class="tag added">paper unspecified &middot; implementation decided</span></h4>
+      <table class="data compare">
+        <thead>
+          <tr><th>Aspect</th><th>Paper version</th><th>Implementation (develop)</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Client packaging</td>
+            <td><em>Unspecified</em> &mdash; the paper lists operations, not whether the client is stateless calls or a
+              stateful object.</td>
+            <td><span class="tag added">decided</span> A stateful <code>Client</code> object: the Visor address is
+              constructor config, and it holds the connection lifecycle, the assigned <code>clientId</code>, and the
+              write engine.</td>
+          </tr>
+          <tr>
+            <td>Reader / writer modes</td>
+            <td><em>Unspecified</em> &mdash; a single, undifferentiated client.</td>
+            <td><span class="tag added">decided</span> Built <strong>writer-only</strong> (<code>portalConf</code>) or
+              <strong>writer + reader</strong> (<code>+ queryConf</code>); reads require the second form.</td>
+          </tr>
+          <tr>
+            <td>Protocol handshake</td>
+            <td><em>Unspecified</em>.</td>
+            <td><span class="tag added">decided</span> <code>Connect()</code> exchanges
+              <code>CLIENT_PROTOCOL_VERSION</code> (2); the Visor rejects mismatches with
+              <code>CL_ERR_PROTOCOL_VERSION_MISMATCH</code>.</td>
+          </tr>
+          <tr>
+            <td>Streaming reads</td>
+            <td><em>Unspecified</em> &mdash; <code>replay</code> returns data.</td>
+            <td><span class="tag added">decided</span> A second <code>ReplayStory</code> overload delivers per-event via
+              an <code>EventCallback</code>, with no client-side vector materialization.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h4>Why they differ</h4>
+      <table class="data">
+        <tr>
+          <td>No clock, no tags</td>
+          <td>No <code>sync_clock</code> and the empty <code>create</code>/<code>acquire</code> args follow directly
+            from the deferred global clock and the inert chronicle tags documented in the other tabs.</td>
+        </tr>
+        <tr>
+          <td>Handle &amp; name model</td>
+          <td>Name-based addressing keeps the API stateless and human-readable; the <code>StoryHandle</code> binds a
+            writer to the exact Keeper set the Visor returned at acquire, so each <code>log_event</code> goes straight
+            to a Keeper. The EID became the event's own timestamp because the data model already keys on it.</td>
+        </tr>
+        <tr>
+          <td>Tail-read folded in</td>
+          <td>With time-keyed events and Player-side range queries, a tail read is just a replay over a recent window,
+            so a separate <code>playback</code> op was never built.</td>
+        </tr>
+        <tr>
+          <td>Operational hardening</td>
+          <td>Reader/writer modes, the protocol handshake, and the streaming-callback read are production concerns the
+            research prototype didn't address &mdash; net-new surface rather than design reversals.</td>
+        </tr>
+      </table>
+
+      <p class="note">Net effect: the paper's verbs survive, but the <strong>contract narrowed</strong> (no clock, no
+        tags, no edit, no tail-read, name-addressed) while the <strong>realization widened</strong> (a stateful client,
+        modes, a handshake, streaming). Metadata power down, operational surface up &mdash; and only the first column is a
+        true divergence from the paper.</p>
+    </section>
+
+    <section class="component" id="api-differences">
+      <h3>Differences</h3>
+      <p class="lead">A simpler, hand-maintained list of the key paper-vs-implementation API differences. Several are
+        <strong>direct consequences of the data-model differences</strong> already analyzed &mdash; noted briefly here and
+        cross-referenced rather than re-derived.</p>
+
+      <ol class="diff-list">
+        <li>
+          <span class="diff-title">No <code>sync_clock</code>.</span> The paper's clock-sync Admin call is gone &mdash;
+          the implementation orders events by each client's uncorrected local time, so there is no global clock to fetch.
+          <em>Consequence of Data Model &rarr; Differences: &ldquo;Physical time &amp; ChronoTick&rdquo;.</em>
+        </li>
+        <li>
+          <span class="diff-title">Empty <code>create</code> / <code>acquire</code> args.</span>
+          <code>CreateChronicle(name)</code> and <code>AcquireStory(chronicle, story)</code> drop the paper's index,
+          tags, and flags &mdash; there are no chronicle tags or policies for them to carry.
+          <em>Consequence of Data Model &rarr; Differences: &ldquo;Tags, types &amp; policies&rdquo; and &ldquo;Base value
+          &amp; granularity&rdquo;.</em>
+        </li>
+        <li>
+          <span class="diff-title">No <code>edit</code>.</span> With no tags or indexing to re-set, the paper's
+          <code>edit</code> operation has nothing to act on and was never built.
+          <em>Consequence of Data Model &rarr; Differences: &ldquo;Tags, types &amp; policies&rdquo; / &ldquo;Mutability&rdquo;.</em>
+        </li>
+        <li>
+          <span class="diff-title">No tail-read (<code>playback</code>).</span> The paper's
+          <code>playback(CID) &rarr; data</code> &mdash; read the log tail &mdash; has no dedicated implementation. The only
+          read is a time-windowed <code>ReplayStory(start, end)</code>, so a tail is <em>approximated</em> by replaying a
+          recent window rather than asking for &ldquo;the latest&rdquo;. This is the one genuinely API-level capability that
+          is <strong>missing</strong> rather than reframed or inherited from another tab.
+          <em>(Minor footnote: <code>ReplayStory</code> also drops the paper's <code>replay</code>
+          <code>constraint</code>/filter and its multi-range vector, reading a single <code>[start, end)</code> window.)</em>
+        </li>
+      </ol>
+    </section>
+
+    <section class="component" id="api-research">
+      <h3>Areas of Research, Analysis &amp; Improvement</h3>
+
+      <h4>1 &middot; The API has no research agenda of its own <span class="tag analysis">Analysis</span></h4>
+      <p class="lead">
+        Conceptually, the implementation follows the API the paper described. Every difference we found is one of two
+        things: a <strong>downstream consequence of an architectural decision</strong> taken at the data-model or
+        system-component level (the deferred global clock, the absent chronicle tags/policies, name-based addressing, the
+        EID becoming the event's timestamp), or a plain <strong>implementation consequence</strong> (the stateful
+        <code>Client</code>, reader/writer modes, the protocol handshake, write routing straight to the Keepers). The one
+        genuinely API-level gap &mdash; no dedicated tail-read &mdash; is a small missing operation, not a divergence in
+        approach.
+      </p>
+      <p>
+        The practical implication: the API <em>will</em> need analysis and improvement, but almost entirely as a
+        <strong>reflection of the rest of the project's</strong>. Reintroduce the global clock and the chronicle calls
+        regain their clock semantics; add tags and policies and <code>create</code>/<code>acquire</code> regain their
+        arguments; and so on &mdash; the API surface follows. There is <strong>no API-specific problem that varies
+        significantly or warrants dedicated research</strong> on its own. API improvements should therefore be tracked
+        against the Data Model and component (ChronoVisor / Keeper / Player) research, with the single standalone
+        exception of restoring a dedicated <strong>tail-read</strong> operation.
+      </p>
+    </section>
+  </div>
+
+  <div id="tab5" class="tab-content">
+    <h2>ChronoKeeper</h2>
+
+    <section class="component" id="keeper-paper">
+      <h3>ChronoKeeper (Paper version)</h3>
+      <p class="lead">
+        The <strong>gateway for all tail operations</strong> (record <em>and</em> playback) and the manager of the
+        <strong>top tier</strong> (NVMe / NVRAM). It acts as a lock-free, distributed <strong>cache of the latest
+        events</strong> on top of the ChronoStore, built on HCL distributed data structures over RDMA/RoCE.
+      </p>
+      <h4>At a glance</h4>
+      <table class="data">
+        <tr><td>Role</td><td>Gateway for tail ops (record + playback); top-tier cache of latest events</td></tr>
+        <tr><td>Tier</td><td>NVMe / NVRAM (highest)</td></tr>
+        <tr><td>Tech</td><td>HCL distributed data structures over RDMA/RoCE; lock-free</td></tr>
+        <tr><td>Deployment</td><td>Per compute node (co-located with clients) or a dedicated subset (e.g. 1:64)</td></tr>
+      </table>
+      <h4>The four data structures</h4>
+      <table class="data">
+        <tr><td>Distributed journal</td><td>Data hashmaps on every Keeper server; O(1) insert; lock-free.</td></tr>
+        <tr><td>Chronicle index</td><td>An ordered set of eventIDs per hashmap; O(log n); used by the Player to maintain order.</td></tr>
+        <tr><td>Tail hashmap</td><td>chronicleID &rarr; array of the latest eventIDs per server; lock-free tail location.</td></tr>
+        <tr><td>Event backlog</td><td>Circular queue of <code>(chronicleID, eventID)</code> already copied to the ChronoStore; marks events safe to evict.</td></tr>
+      </table>
+      <h4>Operations</h4>
+      <table class="data">
+        <tr><td><code>record()</code></td><td>Client computes a ChronoTick, uniform-hashes it to a serverID, and one RPC inserts into journal + index + tail (atomic, lock-free).</td></tr>
+        <tr><td><code>playback()</code></td><td>Read the tail hashmap &rarr; find the max ChronoTick &rarr; <code>play()</code> that server (random read from the hashmap).</td></tr>
+      </table>
+      <p class="note"><strong>Note:</strong> reflects the ChronoKeeper as described in the paper (§III.B).</p>
+    </section>
+
+    <section class="component" id="keeper-impl">
+      <h3>ChronoKeeper (Implementation)</h3>
+      <p class="lead">
+        A standalone C++ thallium/Margo + Argobots process that <strong>ingests events and pushes time-bounded
+        StoryChunks downstream</strong> to the Grapher. Crucially it is <strong>ingest-only &mdash; it serves no read
+        or playback</strong> (reads are the Player's job). There is no HCL, no distributed hashmap, and none of the
+        paper's four named structures.
+      </p>
+      <p class="src">Source: <code>src/chrono-keeper/</code> &mdash; <code>ChronoKeeperInstance.cpp</code> instantiates a
+        <code>KeeperRecordingService</code>, a <code>DataStoreAdminService</code>, and a <code>KeeperDataStore</code>,
+        and registers with the Visor's <code>KeeperRegistry</code>.</p>
+      <h4>At a glance</h4>
+      <table class="data">
+        <tr><td>Role</td><td>Event <strong>ingest + downstream extraction</strong>. No reads.</td></tr>
+        <tr><td>RPC exposed</td><td><code>KeeperRecordingService</code> (<code>record_event</code>) and
+          <code>DataStoreAdminService</code> (<code>start_story_recording</code>, <code>stop_story_recording</code>,
+          <code>shutdown_data_collection</code>, <code>collection_service_available</code>).</td></tr>
+        <tr><td>Registers as</td><td>A Keeper in a RecordingGroup, with the Visor.</td></tr>
+        <tr><td>Unit held</td><td>In-memory per-story <strong>StoryChunks</strong> (<code>map&lt;EventSequence,
+          LogEvent&gt;</code>) in a <code>KeeperStoryPipeline</code> timeline. Mutex-guarded std containers &mdash;
+          <strong>not lock-free, not distributed</strong>.</td></tr>
+      </table>
+      <h4>Ingest pipeline</h4>
+      <table class="data">
+        <tr><td>Ingest</td><td><code>record_event</code> &rarr; <code>IngestionQueue</code> (per-story double-buffered
+          deques; an orphan queue if the story isn't open) &rarr; <code>KeeperDataStore</code> collection threads merge
+          events into a <code>KeeperStoryPipeline</code> &rarr; time-bounded StoryChunks in a timeline map.</td></tr>
+        <tr><td>Eviction</td><td>A chunk <strong>"decays"</strong> when <code>now &ge; chunk.endTime +
+          acceptance_window</code>; decayed chunks are pushed to the Grapher via RDMA (Keeper initiates
+          <code>receive_story_chunk</code>). Configurable <code>story_chunk_duration_secs</code> (30),
+          <code>acceptance_window_secs</code> (10).</td></tr>
+        <tr><td>Timestamps</td><td>Come from the <strong>client</strong> (<code>LogEvent.eventTime</code>); the Keeper
+          does not stamp events. A <code>ClocksourceCPPStyle</code> class exists but is dead code.</td></tr>
+      </table>
+      <h4>Not present (vs. the paper) <span class="tag absent">absent</span></h4>
+      <table class="data">
+        <tr><td>Reads</td><td>No read / playback / tail RPC of any kind.</td></tr>
+        <tr><td>HCL structures</td><td>No distributed journal, chronicle index, tail hashmap, or event backlog &mdash;
+          by name or equivalent. The only RDMA use is point-to-point StoryChunk transfer to the Grapher.</td></tr>
+      </table>
+      <p class="note"><strong>Verified against</strong> <code>ChronoKeeperInstance.cpp</code>,
+        <code>KeeperRecordingService.h</code>, <code>DataStoreAdminService.h</code>, <code>KeeperDataStore.cpp</code>,
+        <code>KeeperStoryPipeline.cpp</code>, <code>IngestionQueue.h</code> on <code>develop</code>.</p>
+    </section>
+
+    <section class="component" id="keeper-gaps">
+      <h3>Gaps</h3>
+      <p class="lead">
+        The Keeper is the component that diverges <strong>most</strong> from the paper. The entire tail-read apparatus
+        &mdash; tail hashmap, chronicle index, journal, backlog &mdash; is gone, because the implementation serves no
+        tail-read at all: the Keeper is a pure ingest + forward stage, and reads come from the Player's archive.
+      </p>
+      <table class="data compare">
+        <thead><tr><th>Aspect</th><th>Paper version</th><th>Implementation (develop)</th></tr></thead>
+        <tbody>
+          <tr><td>Reads / playback</td><td>Gateway for tail reads via <code>playback()</code>.</td>
+            <td><span class="tag absent">removed</span> None &mdash; ingest-only; reads served by the Player from disk.</td></tr>
+          <tr><td>Tail location</td><td>Lock-free tail hashmap (chronicleID &rarr; latest eventIDs per server).</td>
+            <td><span class="tag absent">absent</span> No tail concept; clients never query a tail.</td></tr>
+          <tr><td>Data structures</td><td>HCL distributed journal / index / backlog over RDMA.</td>
+            <td><span class="tag changed">reframed</span> Local mutex-guarded std deques/maps; RDMA used only to ship StoryChunks to the Grapher.</td></tr>
+          <tr><td>Unit</td><td>Per-event insert into distributed hashmaps.</td>
+            <td><span class="tag changed">reframed</span> Per-story, time-bounded <strong>StoryChunk</strong> buffer.</td></tr>
+          <tr><td>Eviction trigger</td><td>Backlog of events already copied to the store.</td>
+            <td><span class="tag changed">changed</span> Time-decay (<code>endTime + acceptance_window</code>).</td></tr>
+          <tr><td>Tier role</td><td>NVMe cache that serves the latest events to readers.</td>
+            <td><span class="tag changed">reframed</span> In-memory buffer that forwards chunks; serves nothing to readers.</td></tr>
+        </tbody>
+      </table>
+      <h4>Why they differ</h4>
+      <table class="data">
+        <tr><td>No tail-read API</td><td>The journal / index / tail-hashmap existed to make lock-free tail reads fast.
+          With all reads served by the Player from archived chunks and no tail-read in the API, those structures had no
+          consumer.</td></tr>
+        <tr><td>Simpler transport</td><td>HCL distributed shared structures were replaced by a local buffer plus
+          point-to-point RDMA chunk push &mdash; matching the StoryChunk-centric data model.</td></tr>
+        <tr><td>Narrowed role</td><td>The Keeper became a pure ingest + forwarding stage, collapsing the paper's dual
+          record + playback gateway down to record-only.</td></tr>
+      </table>
+      <p class="note">Net effect: a fast, simple <strong>write intake</strong> &mdash; but not the lock-free,
+        latest-events tail cache the paper centers on.</p>
+    </section>
+
+    <section class="component" id="keeper-differences">
+      <h3>Differences</h3>
+      <p class="lead">A simpler, hand-maintained list of the key paper-vs-implementation differences for the ChronoKeeper.
+        Each entry recaps what the paper proposed and how the implementation diverges, so it stands on its own without
+        re-reading the full sections above.</p>
+
+      <ol class="diff-list">
+        <li>
+          <span class="diff-title">Keeper does not persist data &mdash; RAM only.</span> In the paper the Keeper <em>is</em>
+          the durable top tier &mdash; an <strong>NVMe / NVRAM</strong> cache that holds the latest events. The
+          implementation's Keeper holds recent events in <span class="tag changed">volatile RAM only</span> (mutex-guarded
+          per-story StoryChunks in a <code>KeeperStoryPipeline</code>) and persists nothing locally; durability is the
+          Grapher's job.
+          <div class="reason">
+            <span class="reason-label">Why we made this difference</span>
+            <p>
+              Keep the Keeper a lean ingest path. Local persistence &mdash; storage I/O, <code>fsync</code>, journal
+              management &mdash; would contend with the ingestion-critical section and cap throughput, so durability was
+              moved entirely to the Grapher. The cost is that un-drained events live only in volatile RAM with no
+              replication, so a Keeper crash loses them; that exposure is accepted because the Grapher owns durability and
+              the chunk window bounds the loss window.
+            </p>
+          </div>
+        </li>
+        <li>
+          <span class="diff-title">Keeper does not serve tail reads &mdash; ingest-only.</span> In the paper the Keeper
+          serves both sides of the tail &mdash; <strong>record</strong> and <strong>playback</strong> (reading the most
+          recent events directly from the Keeper). The implementation's Keeper is <span class="tag absent">ingest-only</span>:
+          its sole client RPC is <code>record_event</code>, and it exposes no read or playback endpoint. Reading is entirely
+          the Player's job (recent data from the Player's replica, older data from the persisted archive).
+          <div class="reason">
+            <span class="reason-label">Why we made this difference</span>
+            <p>
+              Serving reads from the Keeper would put <em>bursty, unpredictable</em> read load in contention with the
+              <em>steady</em> write firehose &mdash; same RPC threads, same network, lock contention on the in-memory data.
+              Keeping the Keeper a dedicated ingestion path protects its throughput ceiling, which &mdash; because ingestion
+              is the system's input rate &mdash; <strong>is the whole system's ceiling</strong>. The resulting freshness gap
+              is recovered off the hot path by the Player replica (below); why this corner was chosen is the subject of the
+              <em>tradeoff-triangle</em> analysis in this tab.
+            </p>
+          </div>
+        </li>
+        <li>
+          <span class="diff-title">Keeper pushes data &mdash; rather than being pulled.</span> In the paper the store
+          <em>copies</em> events out of the Keeper (the event backlog tracks what has been copied to the ChronoStore and is
+          therefore safe to evict) &mdash; a pull/copy driven by the downstream tier. The implementation inverts this: the
+          Keeper proactively <strong>pushes</strong> each decayed chunk downstream, initiating the
+          <code>receive_story_chunk</code> transfer to the Grapher over RDMA, and evicts on decay.
+          <div class="reason">
+            <span class="reason-label">Why we made this difference</span>
+            <p>
+              Pushing keeps the Keeper free of externally-driven traffic: it never serves pull requests reaching into its
+              memory, and it <strong>controls its own drain timing</strong> &mdash; flushing a chunk exactly when it decays,
+              which keeps memory bounded and predictable. It is the same principle as removing reads: nothing outside the
+              ingest path gets to reach in and compete for the Keeper's resources.
+            </p>
+          </div>
+        </li>
+        <li>
+          <span class="diff-title">Eviction trigger.</span> In the paper a chunk/event leaves the Keeper once it has been
+          <strong>copied downstream</strong> &mdash; the <em>event backlog</em> tracks <code>(chronicleID, eventID)</code>
+          pairs already copied to the ChronoStore and marks them safe to evict (copy-confirmed eviction). In the
+          implementation eviction is <strong>time-driven</strong>: a StoryChunk &ldquo;decays&rdquo; when
+          <code>now &ge; chunk.endTime + acceptance_window_secs</code> (default 10s on a 30s chunk), and the decayed chunk
+          is then drained to the Grapher. The trigger to finalize a chunk is the clock, not a downstream copy-confirmation.
+          <div class="reason">
+            <span class="reason-label">Why we made this difference</span>
+            <p>
+              The <strong>acceptance window</strong> does double duty &mdash; it is the grace period the Keeper waits for
+              late / out-of-order (backdated) events before closing a chunk, <em>and</em> the eviction trigger. A
+              time-based close fits the chunk-based, clock-free model: a chunk is finalized when its window has elapsed,
+              not when each event is individually confirmed persisted. It also <strong>decouples the Keeper from
+              downstream acks</strong> &mdash; no per-event backlog bookkeeping, no waiting on the Grapher &mdash; keeping
+              the ingest path simple. The trade is that finalization is driven by a timer rather than the paper's
+              copy-confirmed safety, so durability rests on the push succeeding (compounding the volatile-RAM caveat from
+              the <em>no-persist</em> difference).
+            </p>
+          </div>
+        </li>
+        <li>
+          <span class="diff-title">Keeper works in chunks &mdash; not single events.</span> The paper records and moves
+          data as <strong>single events</strong> (per-event record, per-event distribution and flushing). The implementation
+          ingests per-event but, from the Keeper onward, moves data as <strong>time-bounded StoryChunks</strong> &mdash;
+          batched and presorted. The Keeper is the <em>event&nbsp;&rarr;&nbsp;chunk</em> transition point.
+          <div class="reason">
+            <span class="reason-label">Why we made this difference</span>
+            <p>
+              Batching amortizes per-RPC, per-network, and per-I/O overhead and lets every downstream stage do sequential,
+              presorted I/O &mdash; a large throughput win. The cost is durability latency (an event is not flushed until its
+              chunk closes) and coarser distribution granularity than the paper's per-event spread. The full tradeoff and
+              the tuning knob are analyzed in Research &rarr; &ldquo;Event &rarr; chunk data-flow shift&rdquo;.
+            </p>
+          </div>
+        </li>
+        <li>
+          <span class="diff-title">Dual extraction &mdash; the Player gets the latest.</span> The paper served recent reads
+          from the Keeper itself. The implementation instead extracts each decayed chunk to <strong>two</strong> consumers
+          &mdash; the <strong>Grapher</strong> (persist) and the <strong>Player</strong> (which thereby holds the latest data
+          in RAM) &mdash; so the Player can serve recent reads and merge them with the persisted archive. This is
+          <span class="tag added">net-new</span> (no paper analog) and currently <strong>staged</strong>: the Player receives
+          and stores the chunks and <code>PlaybackService</code> is structured to merge an in-memory-recent tier with the
+          archive, but the in-memory serving path is not yet fully wired.
+          <div class="reason">
+            <span class="reason-label">Why we made this difference</span>
+            <p>
+              It delivers low-latency recent reads <strong>without re-burdening the Keeper</strong>: rather than serve reads
+              from the Keeper, the latest data is replicated to the Player &mdash; off the hot path &mdash; where read load
+              scales independently and the Keeper's ingestion ceiling stays intact. The cost is a <strong>constant second
+              extraction</strong> of every chunk, paid whether or not anyone reads; the chunk window tunes how fresh the
+              replica is versus how much that extraction costs. See the tradeoff-triangle analysis for why this corner was
+              chosen.
+            </p>
+          </div>
+        </li>
+        <li>
+          <span class="diff-title">Data structures: distributed &rarr; local.</span> In the paper the Keeper's state lives
+          in <strong>four HCL distributed structures</strong> spanning all Keeper servers over RDMA &mdash; a distributed
+          journal (where events land), a chronicle index (ordering), a <strong>tail hashmap</strong> (lock-free tail
+          location), and an event backlog (eviction). The implementation holds state in <strong>local, single-node std
+          containers</strong>: per-story <code>std::deque</code> buffers in an <code>IngestionQueue</code> and an
+          <code>std::map</code> timeline of StoryChunks in a <code>KeeperStoryPipeline</code>. Nothing spans Keepers; RDMA
+          is used only to ship chunks downstream. The tail hashmap &mdash; and with it any queryable notion of &ldquo;the
+          tail&rdquo; &mdash; is gone.
+          <div class="note-later">
+            <span class="note-later-label">Core idea is system-wide, not Visor- or Keeper-exclusive</span>
+            <p>
+              The distributed, tick-keyed design existed <em>because</em> the paper's <code>record()</code> hashes a
+              <strong>ChronoTick</strong> across servers &mdash; the structures are the embodiment of the physical-time,
+              sequencer-free scheme. With no global clock (and a per-story, recording-group-bound chunk model), there is
+              no tick to distribute by and no reason to span Keepers, so the structures collapse to local per-story
+              buffers. The driving decision is the <strong>system-wide clock / data-model</strong> one &mdash; see Data
+              Model &rarr; &ldquo;Physical time &amp; ChronoTick&rdquo; and the clock difference &mdash; not a standalone
+              Keeper choice.
+            </p>
+          </div>
+        </li>
+        <li>
+          <span class="diff-title">Ingestion: lock-free &rarr; mutex-guarded.</span> The paper's HCL structures are
+          <strong>lock-free</strong> &mdash; <code>record()</code> inserts with no mutex on the hot path, a headline of its
+          design. The implementation <strong>serializes ingestion with mutexes</strong>: a <code>std::shared_mutex</code>
+          over the <code>IngestionQueue</code>'s per-story handle map and an <code>std::mutex</code>
+          (<code>ingestionMutex</code>) in the <code>KeeperStoryPipeline</code>. Ingestion is mutex-guarded, not lock-free.
+          <div class="reason">
+            <span class="reason-label">Why we made this difference</span>
+            <p>
+              Once the structures became local and single-node, plain mutex-guarded std containers were the simple,
+              correct choice to ship &mdash; lock-free programming is hard to justify without the distributed-research
+              substrate. The cost is real, not cosmetic: mutex contention under high ingestion concurrency can cap
+              throughput, and because the Keeper's ingestion ceiling <strong>is the system's ceiling</strong>, that
+              directly limits the whole system. Restoring lock-free or finer-grained ingestion is a candidate improvement
+              (see Research).
+            </p>
+          </div>
+        </li>
+        <li>
+          <span class="diff-title">Event ordering &amp; timestamping.</span> In the paper the Keeper is where order is
+          assigned: the client computes a clock-synchronized <strong>ChronoTick</strong> and the Keeper orders by it (with
+          a chronicle index maintaining that order). In the implementation the Keeper <strong>stamps and orders
+          nothing</strong> &mdash; events carry a <strong>client-assigned timestamp</strong> (<code>LogEvent.eventTime</code>)
+          and order is implicit in the <code>EventSequence</code> key of the sorted StoryChunk. A
+          <code>ClocksourceCPPStyle</code> class exists in <code>KeeperDataStore.cpp</code> but is
+          <span class="tag absent">dead code</span>; the Keeper uses raw <code>now()</code> only for chunk-decay timing,
+          never to stamp or order events.
+          <div class="note-later">
+            <span class="note-later-label">Core idea is system-wide, not Keeper-exclusive</span>
+            <p>
+              The paper made the Keeper the point where physical-time order is assigned; that is the heart of the
+              clock-synchronized ChronoTick scheme. With no global clock, ordering moved to client timestamps + composite
+              identity, and the Keeper's clocksource became an unused stub &mdash; the Keeper-side seam of the same decision
+              the Visor's dead <code>clock_offset</code> marks. The driving choice is the <strong>system-wide
+              clock / data-model</strong> one (Data Model &rarr; &ldquo;Physical time &amp; ChronoTick&rdquo;), not a
+              standalone Keeper decision.
+            </p>
+          </div>
+        </li>
+        <li>
+          <span class="diff-title">Drain-outage recovery &mdash; stubbed.</span> The paper's copy-confirmed eviction is
+          inherently safe: a downstream stall merely delays eviction. The implementation evicts on a <em>timer</em> (see
+          <em>Eviction trigger</em>) and pushes chunks downstream, but its recovery path for a downstream outage is
+          <span class="tag absent">unimplemented</span> &mdash; <code>flush_outage_buffers()</code> in
+          <code>KeeperExtractionChain</code> is an empty <code>//TODO #635</code>. If the Grapher / Player drain stalls or
+          fails, there is no mechanism to buffer-and-replay the affected chunks, so &mdash; combined with time-decay
+          eviction and volatile RAM &mdash; a drain outage can <strong>silently lose data</strong>.
+        </li>
+      </ol>
+    </section>
+
+    <section class="component" id="keeper-research">
+      <h3>Areas of Research, Analysis &amp; Improvement</h3>
+
+      <h4>1 &middot; The Keeper tradeoff triangle <span class="tag analysis">Analysis</span></h4>
+      <p class="lead">
+        Nearly every Keeper difference flows from a single architectural decision. The Keeper's recent-data path balances
+        <strong>three goals that cannot all be maximized at once</strong> &mdash; you can have about two, and must decide
+        where to sacrifice the third:
+      </p>
+      <ol class="diff-list">
+        <li><span class="diff-title">Ingestion throughput.</span> The Keeper's ceiling &mdash; and because ingestion is the
+          system's input rate, <strong>the whole system's ceiling</strong>. The thing most worth protecting.</li>
+        <li><span class="diff-title">Tail-read latency.</span> How quickly the freshest events become readable.</li>
+        <li><span class="diff-title">Resource economy.</span> No constant duplication of data or extra bandwidth /
+          hardware.</li>
+      </ol>
+      <p>The three viable designs each sit on one edge &mdash; gaining two, sacrificing one:</p>
+      <ol class="diff-list">
+        <li><span class="diff-title">Paper &mdash; Keeper persists &amp; serves reads.</span> Gains tail-read latency +
+          economy (on-demand, no duplication); sacrifices <span class="tag absent">ingestion</span> &mdash; persist + read
+          contend on the Keeper.</li>
+        <li><span class="diff-title">Archive-only &mdash; no replica.</span> Gains ingestion + economy; sacrifices
+          <span class="tag absent">tail-read latency</span> &mdash; reads wait for persistence.</li>
+        <li><span class="diff-title">Current &mdash; RAM-only Keeper + Player replica.</span> Gains ingestion + tail-read
+          latency; sacrifices <span class="tag absent">economy</span> &mdash; constant double extraction.</li>
+      </ol>
+      <p>
+        The implementation chose <strong>ingestion + tail-read latency</strong>, paying with <strong>economy</strong> (the
+        constant second extraction to the Player), and made the sacrifice <strong>tunable</strong> via the chunk window
+        (<code>story_chunk_duration_secs</code> / <code>acceptance_window_secs</code>) &mdash; shrink it for fresher reads,
+        widen it to amortize the cost. It is the right corner for ChronoLog because the Keeper's ceiling is the system's
+        ceiling, and the economy cost is <strong>bounded and isolable</strong> (downstream RDMA egress, off the
+        ingest-critical section) rather than the unpredictable hot-path contention the other corner would impose.
+      </p>
+      <p class="note"><strong>To improve / decide:</strong> finish wiring the Player in-memory tier; make the window
+        <strong>workload-adaptive</strong> and the chosen sacrifice explicit per deployment; and re-test the assumption
+        with profiling &mdash; if the constant double extraction proves to eat into ingestion, the corner is worth
+        revisiting. Every other Keeper difference (no reads, no local persistence, dual extraction) is a face of this one
+        decision.</p>
+
+      <h4>2 &middot; Event &rarr; chunk data-flow shift <span class="tag analysis">Analysis</span></h4>
+      <p class="lead">
+        A consequence of Data-Model Difference #4: the implementation moved inter-component data flow from
+        <strong>event-based</strong> to <strong>chunk-based</strong>. This is an engineering trade-off (throughput vs.
+        latency / durability), not a research question &mdash; a tuning and prioritization decision to evaluate.
+      </p>
+      <p>
+        <strong>What changed:</strong> ingest stays <strong>per-event</strong> (client &rarr; Keeper, one
+        <code>LogEvent</code> per RPC), but everything from the Keeper onward (Keeper &rarr; Grapher &rarr; disk) moves
+        <strong>per StoryChunk</strong>, batched and presorted &mdash; the Keeper is the transition point. The
+        <strong>benefit</strong> is throughput: amortized per-RPC / network overhead, sequential presorted I/O, and fewer
+        coordination ops.
+      </p>
+      <p>
+        The <strong>cost</strong> is durability latency (an event is not flushed until its chunk closes &asymp; chunk
+        duration + acceptance window), a <strong>crash-loss window</strong> (un-flushed events sit in volatile Keeper
+        memory, no replication), Keeper memory held until chunks decay, and <strong>coarser distribution</strong>
+        (cohesive per-story chunks vs. the paper's any-keeper per-event spread). The <strong>knob</strong> is the chunk
+        time-window, which dials throughput against latency / durability.
+      </p>
+      <p>
+        <strong>To analyze:</strong> whether the chosen window suits target workloads, and whether a
+        <strong>hybrid</strong> (immediate per-event copy-down for durability + chunked bulk for throughput, as the
+        paper's real-time flushing intended) is worth the added complexity.
+      </p>
+      <p class="note">The paper marketed <em>per-event</em> distribution granularity and real-time per-event flushing as
+        advantages; the implementation traded both for batching. Mirrored from the Data Model tab (Difference #4), where
+        the originating breadcrumb is kept.</p>
+
+      <h4>3 &middot; Lock-free / finer-grained ingestion <span class="tag analysis">Analysis</span></h4>
+      <p class="lead">
+        <strong>How.</strong> Replace the coarse mutexes on the ingest path &mdash; the <code>IngestionQueue</code>'s
+        <code>std::shared_mutex</code> and the <code>KeeperStoryPipeline</code>'s <code>ingestionMutex</code> &mdash; with
+        lock-free or finer-grained structures: per-story sharded locks, lock-free queues, or a single-writer-per-story
+        design, so concurrent <code>record_event</code> calls stop serializing. <strong>Why.</strong> The Keeper's
+        ingestion throughput is the whole system's ceiling, and mutex contention directly suppresses it; the paper's
+        lock-free design targeted exactly this. <em>(Difference: Ingestion &mdash; lock-free &rarr; mutex-guarded.)</em>
+      </p>
+
+      <h4>4 &middot; Drain-outage recovery <span class="tag improvement">Improvement</span></h4>
+      <p class="lead">
+        <strong>How.</strong> Implement <code>flush_outage_buffers()</code> (#635) &mdash; buffer chunks that fail to drain
+        during a downstream (Grapher / Player) outage and replay them on recovery &mdash; and/or gate time-decay eviction
+        on drain-confirmation (or a bounded retry) so a stalled drain cannot drop a chunk. <strong>Why.</strong> With
+        time-decay eviction and volatile, unreplicated RAM, a drain outage currently risks <strong>silent data
+        loss</strong>; the scaffolded outage buffer is the intended safety net but is inert. <em>(Difference:
+        Drain-outage recovery &mdash; stubbed.)</em>
+      </p>
+    </section>
+  </div>
+
+  <div id="tab6" class="tab-content">
+    <h2>ChronoGrapher</h2>
+
+    <section class="component" id="grapher-paper">
+      <h3>ChronoGrapher (Paper version)</h3>
+      <p class="lead">
+        Continuously persists events from the Keeper journal down to the ChronoStore. A <strong>decoupled, elastic
+        Apache Flink streaming job</strong> with a server-pull eviction model, structured as a three-node DAG.
+      </p>
+      <h4>At a glance</h4>
+      <table class="data">
+        <tr><td>Role</td><td>Persist events to the lower tiers (SSD KVS &rarr; HDD stories)</td></tr>
+        <tr><td>Tech</td><td>Apache Flink streaming DAG</td></tr>
+        <tr><td>Model</td><td>Decoupled, elastic, server-pull eviction</td></tr>
+        <tr><td>Deployment</td><td>Burst-buffer / data-staging nodes</td></tr>
+      </table>
+      <h4>The three DAG nodes</h4>
+      <table class="data">
+        <tr><td>Event Collector</td><td>Pulls events from the Keeper journal, writes them to a <strong>distributed
+          KVS</strong> (BigTable-style key ranges preserving temporal locality), and marks them safe in the backlog.</td></tr>
+        <tr><td>Story Builder</td><td>Groups eventIDs by chronicle; a <strong>story-creation epoch</strong> (by count,
+          size, or timer) closes; a parallel sort runs; emits <code>storyID + set&lt;eventIDs&gt;</code> (no data movement).</td></tr>
+        <tr><td>Story Writer</td><td>Range-gets from the KVS, buffers, and writes the whole story to HDD via <strong>MPI
+          collective I/O</strong> as a ChronoLog-specific file.</td></tr>
+      </table>
+      <p class="note"><strong>Note:</strong> reflects the ChronoGrapher as described in the paper (§III.C).</p>
+    </section>
+
+    <section class="component" id="grapher-impl">
+      <h3>ChronoGrapher (Implementation)</h3>
+      <p class="lead">
+        A standalone C++ thallium/Margo + Argobots process that <strong>receives whole StoryChunks pushed from the
+        Keepers</strong> and writes <strong>one HDF5 file per chunk</strong>. No Flink, no KVS, no MPI collective I/O,
+        no separate sort/builder stage.
+      </p>
+      <p class="src">Source: <code>src/chrono-grapher/</code> &mdash; <code>ChronoGrapher.cpp</code> instantiates a
+        <code>GrapherRecordingService</code>, a <code>DataStoreAdminService</code>, and a <code>GrapherDataStore</code>,
+        and registers with the Visor as a Grapher.</p>
+      <h4>At a glance</h4>
+      <table class="data">
+        <tr><td>Role</td><td>Persist StoryChunks to <strong>HDF5</strong> (CSV optional).</td></tr>
+        <tr><td>Ingest</td><td>The <strong>Keeper pushes</strong> serialized StoryChunks via RDMA into
+          <code>receive_story_chunk</code>. Not a journal pull, not a KVS.</td></tr>
+        <tr><td>RPC exposed</td><td><code>GrapherRecordingService</code> (<code>receive_story_chunk</code>) and
+          <code>DataStoreAdminService</code> (start/stop recording, <code>destroy_story</code>,
+          <code>destroy_chronicle</code>).</td></tr>
+        <tr><td>Unit</td><td>One StoryChunk in &rarr; one HDF5 file out.</td></tr>
+      </table>
+      <h4>Pipeline &amp; persistence</h4>
+      <table class="data">
+        <tr><td>Pipeline</td><td><code>receive_story_chunk</code> &rarr; <code>ChunkIngestionQueue</code> &rarr; per-story
+          <code>StoryPipeline</code> (merges / re-chunks by time granularity) &rarr; extraction queue &rarr;
+          <code>HDF5FileChunkExtractor</code>. Chunks become writable by <strong>time-decay</strong>, not by
+          count/size.</td></tr>
+        <tr><td>File</td><td><code>&lt;chronicle&gt;.&lt;story&gt;.&lt;startSec&gt;.vlen.h5</code>: group
+          <code>/story_chunks</code>, dataset <code>data.vlen_bytes</code>, compound <code>{storyId u64, eventTime u64,
+          clientId u32, eventIndex u32, logRecord vlen}</code>.</td></tr>
+        <tr><td>Write mode</td><td><strong>Plain serial HDF5</strong> (H5Cpp, SWMR) with unique-filename rotation
+          &mdash; <strong>no MPI-IO</strong>.</td></tr>
+        <tr><td>Destroy</td><td>Async: <code>destroy_story</code> / <code>destroy_chronicle</code> drain in-flight chunks,
+          then delete matching HDF5 files.</td></tr>
+      </table>
+      <p class="note"><strong>Verified against</strong> <code>ChronoGrapher.cpp</code>,
+        <code>GrapherRecordingService.h</code>, <code>GrapherDataStore.cpp</code>, <code>HDF5FileChunkExtractor.cpp</code>,
+        and <code>StoryChunkWriter.cpp</code> on <code>develop</code>.</p>
+    </section>
+
+    <section class="component" id="grapher-gaps">
+      <h3>Gaps</h3>
+      <p class="lead">
+        Conceptually the Grapher still does the paper's job &mdash; move data from the fast tier to durable storage
+        &mdash; but every piece of the paper's <em>machinery</em> (Flink, the KVS staging tier, the sort/epoch builder,
+        MPI collective I/O) was replaced by a direct RDMA hand-off plus self-describing HDF5 files.
+      </p>
+      <table class="data compare">
+        <thead><tr><th>Aspect</th><th>Paper version</th><th>Implementation (develop)</th></tr></thead>
+        <tbody>
+          <tr><td>Runtime</td><td>Apache Flink streaming DAG.</td>
+            <td><span class="tag changed">reframed</span> Standalone C++ thallium / Argobots process.</td></tr>
+          <tr><td>Ingest</td><td>Pulls events from the Keeper journal.</td>
+            <td><span class="tag changed">changed</span> Keeper <strong>pushes</strong> whole StoryChunks via RDMA.</td></tr>
+          <tr><td>Staging tier</td><td>Distributed KVS with BigTable key ranges.</td>
+            <td><span class="tag absent">absent</span> None &mdash; chunks held in memory, then written.</td></tr>
+          <tr><td>Build step</td><td>Group-by-chronicle + parallel sort + count/size/timer epoch.</td>
+            <td><span class="tag changed">simplified</span> Time-window merge; eligibility by time-decay only.</td></tr>
+          <tr><td>Write</td><td>Whole story via MPI collective I/O, bespoke file.</td>
+            <td><span class="tag changed">changed</span> One HDF5 file per chunk, serial writes (CSV optional).</td></tr>
+          <tr><td>Eviction model</td><td>Server-pull.</td>
+            <td><span class="tag changed">mixed</span> Keeper-push-triggered (the Grapher pulls the bytes via RDMA, but the Keeper initiates).</td></tr>
+        </tbody>
+      </table>
+      <h4>Why they differ</h4>
+      <table class="data">
+        <tr><td>Heavy infra removed</td><td>Flink + a distributed KVS + MPI-IO is a lot of moving infrastructure;
+          a direct RDMA chunk hand-off into self-describing HDF5 files is far simpler to build and operate.</td></tr>
+        <tr><td>Chunk-native lifecycle</td><td>Writing per-chunk (not per-whole-story) follows the StoryChunk data model
+          and the time-decay lifecycle, removing the need for a separate sort/epoch builder and a KVS to stage from.</td></tr>
+        <tr><td>Cost</td><td>The trade is the multi-tier KVS staging and collective-I/O throughput story the paper
+          benchmarks &mdash; not realized here.</td></tr>
+      </table>
+      <p class="note">Net effect: a working, simple <strong>chunk &rarr; HDF5 file</strong> persister &mdash; without the
+        KVS tier, parallel sort, or collective I/O the paper describes.</p>
+    </section>
+
+    <section class="component" id="grapher-differences">
+      <h3>Differences</h3>
+      <p class="lead">A simpler, hand-maintained list of the key paper-vs-implementation differences for the ChronoGrapher.
+        Each entry recaps what the paper proposed and how the implementation diverges, so it stands on its own without
+        re-reading the full sections above.</p>
+
+      <ol class="diff-list">
+        <li>
+          <span class="diff-title">Grapher receives pushed chunks &mdash; rather than pulling events.</span> In the paper
+          the Grapher's event collector <strong>pulls</strong> events from the Keeper journal (reading, not removing them),
+          driving the data flow itself. In the implementation the Grapher is <strong>passive</strong>: it listens on
+          <code>receive_story_chunk</code> and the <strong>Keepers push</strong> whole, pre-formed StoryChunks to it over
+          RDMA. The Grapher no longer reaches into the Keeper or knows its journal &mdash; it waits to be handed chunks.
+          <div class="reason">
+            <span class="reason-label">Why we made this difference</span>
+            <p>
+              This is the Grapher's side of the Keeper's push decision (see ChronoKeeper &rarr; &ldquo;Keeper
+              pushes&rdquo;): the Keeper controls its own drain timing and hands off finished chunks, so the Grapher needs
+              no journal-pull machinery (collector processes matched to NVMe drives, knowledge of the journal layout).
+              Just as important, the data arrives <strong>already grouped per-story and pre-sorted as chunks</strong>
+              rather than as a raw, mixed event stream &mdash; which is the base that lets the later DAG work (the KVS
+              staging tier, and the grouping and parallel sort) collapse, because the work they existed to do is already
+              done upstream. (The build stage's <em>merge</em> survives &mdash; see Story building below.)
+            </p>
+          </div>
+        </li>
+        <li>
+          <span class="diff-title">Data unit: events &rarr; StoryChunks.</span> The paper's Grapher works in
+          <strong>individual events</strong> &mdash; the event collector pulls events, writes them one-by-one into the
+          KVS, and emits per-event <code>(chronicleID, eventID)</code> tuples. The implementation's transfer and processing
+          unit is the whole <strong>StoryChunk</strong>: the Grapher receives, queues, and re-chunks per-story
+          time-bounded chunks and never sees an individual event.
+          <div class="note-later">
+            <span class="note-later-label">Core idea belongs to the Keeper</span>
+            <p>
+              The Grapher is chunk-granular only because the <strong>Keeper produces and ships chunks</strong> &mdash; the
+              unit was decided upstream, not here (see ChronoKeeper &rarr; &ldquo;Keeper works in chunks, not single
+              events&rdquo;). It is a real Grapher-level fact &mdash; the whole pipeline is built around the chunk &mdash;
+              but the decision and its rationale (batching for throughput) live with the Keeper and the data model.
+            </p>
+          </div>
+        </li>
+        <li>
+          <span class="diff-title">Event collection: the KVS staging tier is gone.</span> In the paper the
+          collection step writes pulled events into a <strong>distributed KVS</strong> &mdash; BigTable-style, one
+          configurable time-range per SSD server &mdash; as an intermediate staging tier that preserves temporal locality
+          and holds the mixed-chronicle event stream until the builder groups it. The implementation has
+          <span class="tag absent">no KVS and no staging tier</span>: pushed chunks land in the Grapher's memory
+          (<code>ChunkIngestionQueue</code> &rarr; per-story <code>StoryPipeline</code>) and are written straight to HDF5.
+          <div class="reason">
+            <span class="reason-label">Why we made this difference</span>
+            <p>
+              The KVS existed to <em>stage and reorganize</em> a mixed, unsorted event stream &mdash; preserve time
+              locality and hold events across chronicles until they could be grouped and sorted. The chunk model does all
+              of that <strong>upstream</strong>: a StoryChunk is already per-story, time-bounded, and sorted, so there is
+              nothing for a staging / reorganization tier to do &mdash; the data is write-ready the moment it arrives. The
+              cost is real, though: the KVS was also a <strong>durable SSD staging tier and a decoupling buffer</strong>,
+              so without it recent chunks sit in <strong>volatile Grapher RAM</strong> until written (compounding the
+              no-durable-staging theme), and the paper's three-tier hierarchy (NVMe &rarr; SSD-KVS &rarr; HDD) flattens to
+              RAM &rarr; HDF5 files.
+            </p>
+          </div>
+        </li>
+        <li>
+          <span class="diff-title">Story building: group + sort &rarr; merge + re-window.</span> In the paper the
+          story-building step <strong>groups</strong> eventIDs by chronicle, closes a story on an <strong>epoch</strong>
+          (count, size, or timer), and runs a <strong>parallel sort</strong> to produce an ordered story. In the
+          implementation the grouping and sorting are <span class="tag absent">gone</span> &mdash; chunks arrive already
+          per-story and internally sorted (by <code>EventSequence</code>) &mdash; but a real stage <strong>remains</strong>:
+          the Grapher's <code>StoryPipeline</code> <strong>merges</strong> the chunk streams from the <strong>N
+          Keepers</strong> recording the story into one ordered per-story timeline (<code>storyTimelineMap</code>) and
+          <strong>re-windows</strong> them to its own granularity (Grapher <code>chunk_granularity</code> 60s, consolidating
+          the Keeper's 30s chunks). Eligibility to write is by time-decay.
+          <div class="reason">
+            <span class="reason-label">Why we made this difference</span>
+            <p>
+              The grouping and the sort dissolved because the chunk model already does them <strong>upstream</strong> (a
+              StoryChunk is per-story and internally ordered when it arrives), and the count/size/timer epoch collapses to
+              the same time-decay used everywhere else. But the stage did <strong>not</strong> vanish: because a story is
+              recorded by <strong>several Keepers in its recording group</strong>, their separate chunk streams must be
+              <strong>interleaved into one coherent timeline</strong>, and re-windowing consolidates many small Keeper
+              chunks into fewer, larger Grapher chunks (fewer output files). What changed in kind is that the paper's
+              <em>batch parallel sort</em> &mdash; a compute-scalable DAG node &mdash; becomes an <em>incremental merge of
+              pre-sorted streams</em>: cheaper, but no longer a scalable sort phase.
+            </p>
+          </div>
+        </li>
+        <li>
+          <span class="diff-title">Story writing: serial HDF5, not MPI collective I/O.</span> In the paper the story
+          writer uses <strong>MPI collective (parallel) I/O</strong> &mdash; many writer processes coordinating a single
+          parallel write to a file on the HDD-based PFS. The implementation writes via <span class="tag changed">plain
+          serial HDF5</span> (H5Cpp, SWMR) with unique-filename rotation &mdash; one writer, no MPI, no collective I/O, no
+          PFS dependency.
+          <div class="reason">
+            <span class="reason-label">Why we made this difference</span>
+            <p>
+              Collective I/O targets a parallel file system and coordinates many writers on one large file &mdash; a heavy
+              dependency (an MPI runtime plus a PFS like OrangeFS). Writing self-describing HDF5 files independently is far
+              simpler to deploy, and SWMR + unique filenames removes writer coordination entirely. But the cost runs deeper
+              than bandwidth: <strong>parallel, multiple-writer (MWMR) I/O was a named contribution of the paper</strong>,
+              which explicitly set out to beat the single-writer (SWMR) model of prior log stores. Serial HDF5 in SWMR mode
+              lands back on <em>exactly that SWMR model</em> &mdash; so this is not merely &ldquo;less optimized,&rdquo; it
+              forgoes one of the paper's headline contributions (and the ~3&nbsp;GB/s with 32 collective writers it
+              benchmarked). Note this is a usage limitation, not an HDF5 one &mdash; Parallel HDF5 over MPI-IO exists.
+            </p>
+          </div>
+        </li>
+        <li>
+          <span class="diff-title">Persistence unit: one file per chunk, not per story.</span> In the paper the writer
+          emits <strong>one file per whole story</strong> (the sorted story written out as a single ChronoLog file). The
+          implementation writes <strong>one HDF5 file per StoryChunk</strong>
+          (<code>&lt;chronicle&gt;.&lt;story&gt;.&lt;startSec&gt;.vlen.h5</code>), so a story becomes <strong>many small
+          time-windowed files</strong> rather than one.
+          <div class="reason">
+            <span class="reason-label">Why we made this difference</span>
+            <p>
+              With chunks as the unit and no build stage to coalesce them, the natural output is one file per chunk
+              &mdash; each file self-contained and written immediately on chunk decay, with no append or cross-chunk
+              assembly. This is genuinely the Grapher's own call (it <em>could</em> buffer chunks into per-story files but
+              chose not to). The cost is many small files per story instead of one: more files and metadata for the Player
+              to open and merge on replay, and none of the single-file locality the paper's whole-story write provided.
+            </p>
+          </div>
+        </li>
+        <li>
+          <span class="diff-title">Storage destination: one local directory, not distributed auto-tiered storage.</span>
+          In the paper the Grapher writes into a <strong>distributed, multi-tier, auto-tiered</strong> store: data flows
+          NVMe &rarr; SSD-KVS &rarr; HDD-PFS, the store spans burst-buffer / staging nodes and storage servers, capacity
+          scales by <em>auto-tiering across tiers</em> (the paper's &ldquo;3D log distribution&rdquo;), and
+          <strong>external connectors</strong> can push data out to a warehouse. The implementation writes every HDF5 file
+          into a <span class="tag absent">single configured local directory</span> (<code>HDF5FileChunkExtractor</code>'s
+          <code>rootDirectory</code>, default <code>/tmp</code>) &mdash; one tier, one location, no auto-tiering, no
+          connectors. The multi-tier distributed hierarchy collapses to flat files in a directory.
+          <div class="reason">
+            <span class="reason-label">Why we made this difference</span>
+            <p>
+              Auto-tiering across a distributed PFS is a large dependency (a tiered storage stack, OrangeFS, the KVS tier);
+              flat HDF5 files in a directory are the minimal persister that runs anywhere &mdash; HPC, cloud, or a laptop.
+              On the <em>format</em>, the choice is sound and arguably better than the paper's bespoke MPI-IO file:
+              <strong>HDF5 is self-describing, standard, portable, and richly tooled</strong>, with SWMR built in &mdash;
+              an HDF5 chunk is readable by anything, where the paper's file needs ChronoLog code. What is a stopgap is the
+              <em>serial, single-location</em> usage, not HDF5 itself: HDF5 and parallelism are not exclusive (Parallel
+              HDF5 runs over MPI-IO), so the evolution path is to keep HDF5 and layer parallel writes and tiering back on,
+              not to replace it.
+            </p>
+          </div>
+        </li>
+        <li>
+          <span class="diff-title">Not elastic &mdash; a static process, not a grow/shrink DAG.</span> The paper makes
+          elasticity a <strong>named contribution</strong>: the Grapher's DAG nodes &ldquo;grow or shrink based on the
+          traffic,&rdquo; adding collector / writer processes to match the I/O production and consumption rate. The
+          implementation is a <strong>single standalone process</strong> with a <span class="tag absent">static thread
+          count</span> (<code>INGESTION_THREAD_COUNT</code>, default 1) &mdash; no runtime grow/shrink, no per-traffic
+          scaling; handling more load means redeploying with different config, not scaling dynamically.
+          <div class="reason">
+            <span class="reason-label">Why we made this difference</span>
+            <p>
+              Dynamic elasticity &mdash; spawning and retiring processing elements at runtime to track a fluctuating I/O
+              rate &mdash; is significant machinery that Flink provided for free and that a hand-rolled C++ process does
+              not. The implementation defers it: a static, configured process is simple and adequate for steady workloads.
+              The cost is the paper's headline ability to <strong>match production and consumption rates under bursty
+              load</strong> &mdash; under a spike the fixed Grapher becomes the bottleneck, with no way to absorb it by
+              growing.
+            </p>
+          </div>
+        </li>
+        <li>
+          <span class="diff-title">Eviction without persistence confirmation.</span> In the paper persistence is
+          <strong>confirmed before eviction</strong>: after writing data down, the collector marks the Keeper's event
+          backlog &ldquo;safe to evict,&rdquo; so the Keeper only drops what the Grapher has confirmed persisted &mdash;
+          eviction is coupled to persistence success. The implementation has <span class="tag absent">no such
+          handshake</span>: the Grapher sends no acknowledgment back, and the Keeper evicts each chunk on time-decay (see
+          ChronoKeeper &rarr; &ldquo;Eviction trigger&rdquo;) regardless of whether the push landed or was persisted. If a
+          push is lost &mdash; a network blip, a Grapher crash, a write error &mdash; <strong>the Keeper still deletes its
+          only (volatile-RAM) copy on schedule, because it has no way to know.</strong>
+          <div class="reason">
+            <span class="reason-label">Why we made this difference</span>
+            <p>
+              It is the same decoupling that made the handoff simple: a Keeper that doesn't wait on per-chunk acks, and a
+              Grapher that doesn't maintain a backlog, are each easier and faster. But the simplicity buys a
+              <strong>silent-data-loss window</strong> &mdash; the confirmation loop the paper's backlog provided is gone,
+              so nothing guarantees a chunk is durable before its source is dropped. This is <em>not</em> a consequence of
+              <em>push</em> (a push could be acknowledged); it is the consequence of <strong>removing the
+              acknowledgment</strong>.
+            </p>
+          </div>
+        </li>
+        <li>
+          <span class="diff-title">Outage-recovery is stubbed (#635) &mdash; on the Grapher too.</span> The write side has
+          a scaffolded-but-empty recovery path: <code>GrapherExtractionChain::flush_outage_buffers()</code> &mdash; meant
+          to hold chunks that cannot be written during a write outage and replay them once it clears &mdash; is an empty
+          <span class="tag absent"><code>//TODO #635</code></span>. So a Grapher-side write outage (target unavailable,
+          disk error, stalled extraction) has no replay: those chunks are lost. It is the same #635 gap found on the
+          Keeper &mdash; the write-side half of the same handoff: with the confirmation loop gone (above), neither end has
+          a safety net.
+        </li>
+      </ol>
+    </section>
+
+    <section class="component" id="grapher-research">
+      <h3>Areas of Research, Analysis &amp; Improvement</h3>
+
+      <h4>1 &middot; Durability vs. throughput <span class="tag research">Research</span></h4>
+      <p class="lead">
+        The one genuine <em>open problem</em> the Grapher's differences land on &mdash; the rest are deferred engineering.
+        The implementation removed the paper's persistence-confirmation handshake: eviction is now decoupled from
+        persistence success (see Differences &mdash; &ldquo;Eviction without persistence confirmation&rdquo; and
+        &ldquo;Outage-recovery is stubbed&rdquo;), which opens a <strong>silent-data-loss window</strong>.
+      </p>
+      <p>
+        It is research, not a checkbox, because the naive fix &mdash; confirm-before-evict &mdash; <strong>reintroduces
+        exactly the coupling the architecture removed for throughput</strong>: the Keeper's eviction (and therefore its
+        memory pressure) would gate on the Grapher's persistence speed, so a slow Grapher stalls ingestion. So the open
+        question is genuinely hard: <strong>how to guarantee a chunk is durable without coupling the ingest/write path to
+        persistence speed.</strong> Candidate directions, each with real tradeoffs and none obviously right: replicate the
+        Keeper's volatile buffer (memory / network cost), async acks with a bounded in-flight window (bounds loss rather
+        than eliminating it), quorum / replicated persistence, or erasure-coding in-flight chunks.
+      </p>
+      <p class="note">This is the one conflict <strong>the paper itself leaves unsolved</strong> &mdash; durability vs.
+        write latency &mdash; so our differences land on a real open problem, not an oversight to patch.</p>
+
+      <h4>2 &middot; Parallel writes (PHDF5) <span class="tag analysis">Analysis</span></h4>
+      <p class="lead">
+        <strong>How.</strong> Replace serial H5Cpp writes with <strong>Parallel HDF5</strong> (PHDF5 over MPI-IO) so
+        multiple writers persist concurrently. <strong>Why.</strong> Serial / SWMR writes forgo the paper's headline
+        parallel-I/O (MWMR) contribution (~3&nbsp;GB/s with 32 collective writers); PHDF5 keeps the self-describing format
+        while restoring parallel bandwidth. <em>(Difference: Story writing &mdash; serial HDF5, not MPI collective I/O.)</em>
+      </p>
+
+      <h4>3 &middot; Auto-tiering &amp; distributed destination <span class="tag analysis">Analysis</span></h4>
+      <p class="lead">
+        <strong>How.</strong> Write to a <strong>distributed, multi-tier</strong> store rather than one local directory
+        &mdash; restore SSD &rarr; HDD tiering (or modern equivalents) spread across storage nodes, plus the external
+        connectors the paper described. <strong>Why.</strong> The implementation flattened the paper's hierarchy to flat
+        files in <code>/tmp</code>; auto-tiering is what lets log capacity scale and keeps tail / historical I/O isolated.
+        <em>(Difference: Storage destination.)</em>
+      </p>
+
+      <h4>4 &middot; Elasticity <span class="tag analysis">Analysis</span></h4>
+      <p class="lead">
+        <strong>How.</strong> Make the Grapher's collector / writer parallelism <strong>dynamic</strong> &mdash; grow and
+        shrink processing elements to track the I/O rate, instead of a static <code>INGESTION_THREAD_COUNT</code>.
+        <strong>Why.</strong> Under bursty load a fixed Grapher becomes the bottleneck; elasticity (a paper contribution)
+        is what matches production and consumption rates. <em>(Difference: Not elastic.)</em>
+      </p>
+
+      <h4>5 &middot; Chunk coalescing <span class="tag analysis">Analysis</span></h4>
+      <p class="lead">
+        <strong>How.</strong> Coalesce multiple StoryChunks into fewer, larger files (toward the paper's one-file-per-story)
+        instead of one HDF5 file per chunk. <strong>Why.</strong> One file per chunk yields many small files per story
+        &mdash; more files and metadata for the Player to open and merge on replay; coalescing cuts that overhead.
+        <em>(Difference: Persistence unit.)</em>
+      </p>
+    </section>
+  </div>
+
+  <div id="tab7" class="tab-content">
+    <h2>ChronoPlayer</h2>
+
+    <section class="component" id="player-paper">
+      <h3>ChronoPlayer (Paper version)</h3>
+      <p class="lead">
+        Serves historical <strong>reads (replay)</strong> from <strong>all tiers</strong> (Keeper + SSD + HDD).
+        Deployed on all storage nodes, initialized by the ChronoVisor; a decoupled, elastic data-streaming job
+        structured as a three-node DAG.
+      </p>
+      <h4>At a glance</h4>
+      <table class="data">
+        <tr><td>Role</td><td>Historical reads / replay</td></tr>
+        <tr><td>Tiers</td><td>All: live Keeper events + SSD + HDD stories</td></tr>
+        <tr><td>Model</td><td>Decoupled, elastic streaming DAG; initialized by the Visor</td></tr>
+      </table>
+      <h4>The three DAG nodes</h4>
+      <table class="data">
+        <tr><td>Replay Handler</td><td>Per-server request + response queues; the client <strong>randomly picks a
+          server</strong> and pushes its replay request.</td></tr>
+        <tr><td>Range Resolver</td><td>Turns a replay into a <strong>vector of ranges across tiers</strong>, splits it
+          into ~4&nbsp;MB subrequests, applies a <strong>constraint</strong> filter, and can short-circuit via the
+          response queues.</td></tr>
+        <tr><td>Request Executor</td><td><strong>Dedups</strong> ranges, aggregates over a <strong>replay epoch</strong>,
+          fetches (range reads from SSD, parallel I/O from HDD), and <strong>contacts the Keeper</strong> if the end of
+          the range is open.</td></tr>
+      </table>
+      <p class="note"><strong>Note:</strong> reflects the ChronoPlayer as described in the paper (§III.D).</p>
+    </section>
+
+    <section class="component" id="player-impl">
+      <h3>ChronoPlayer (Implementation)</h3>
+      <p class="lead">
+        A standalone C++ thallium/Margo process that answers <strong>time-range replay queries by reading HDF5 chunk
+        files from disk</strong> and RDMA-streaming a <code>vector&lt;Event&gt;</code> back. It reads <strong>only the
+        disk archive</strong> &mdash; not the Keeper, not a live tier.
+      </p>
+      <p class="src">Source: <code>src/chrono-player/</code> &mdash; <code>ChronoPlayer.cpp</code> instantiates a
+        <code>PlaybackService</code>, a <code>PlayerStoreAdminService</code>, a live-chunk
+        <code>StoryChunkConsumerService</code>, and an <code>ArchiveReadingAgent</code> (HDF5). The Visor assigns
+        <strong>one Player per RecordingGroup</strong>.</p>
+      <h4>At a glance</h4>
+      <table class="data">
+        <tr><td>Role</td><td>Range replay from the HDF5 archive.</td></tr>
+        <tr><td>RPC exposed</td><td><code>PlaybackService</code> (<code>story_playback_request(chronicle, story,
+          start_time, end_time)</code>) and <code>PlayerStoreAdminService</code> (start/stop recording notifications).</td></tr>
+        <tr><td>Returned</td><td>A <code>vector&lt;Event&gt;</code> for <code>[start, end)</code>, RDMA-bulk-transferred
+          to the client.</td></tr>
+        <tr><td>Tiers read</td><td><strong>HDF5 files only.</strong></td></tr>
+      </table>
+      <h4>Read path</h4>
+      <table class="data">
+        <tr><td>Flow</td><td><code>story_playback_request</code> &rarr; <code>ArchiveReadingRequestQueue</code> &rarr;
+          <code>ArchiveReadingAgent</code> &rarr; <code>HDF5ArchiveReadingAgent</code>.</td></tr>
+        <tr><td>File location</td><td>The agent keeps a <code>(chronicle, story) &rarr; {startTime &rarr; filename}</code>
+          map (built by scanning <code>story_files_dir</code>, kept fresh by polling / inotify). For <code>[start, end)</code>
+          it takes files from the last start &le; <code>start</code> onward, reads each <strong>whole</strong> HDF5 file,
+          filters events to the window, and stops once it passes <code>end</code>.</td></tr>
+        <tr><td>Response</td><td>A cereal-serialized <code>PlaybackQueryResponse</code> is RDMA-bulk-pushed to the
+          client's query service.</td></tr>
+      </table>
+      <h4>Stubbed / not present <span class="tag absent">absent</span></h4>
+      <table class="data">
+        <tr><td>Live-tier read</td><td><strong>Disabled:</strong> <code>active_window_boundary</code> is hardcoded to 1
+          and <code>get_active_story_events</code> is commented out &mdash; so no Keeper / top-tier read happens. (The
+          Player <em>does</em> ingest live chunks into a <code>PlayerDataStore</code>, but the read path never queries
+          it.)</td></tr>
+        <tr><td>DAG features</td><td>No range resolver, no ~4&nbsp;MB subrequest split, no constraint filter, no range
+          dedup / replay epoch, and no client random server selection (the Visor assigns one Player).</td></tr>
+      </table>
+      <p class="note"><strong>Verified against</strong> <code>ChronoPlayer.cpp</code>, <code>PlaybackService.cpp</code>,
+        <code>ArchiveReadingAgent.cpp</code>, <code>HDF5ArchiveReadingAgent.cpp</code>,
+        <code>QueryResponseTransferAgent.cpp</code> on <code>develop</code>.</p>
+    </section>
+
+    <section class="component" id="player-gaps">
+      <h3>Gaps</h3>
+      <p class="lead">
+        The Player delivers the paper's core promise &mdash; <strong>time-range replay</strong> &mdash; but as a
+        single-tier, whole-file reader. The paper's defining feature, reading across <em>all</em> tiers (so a replay can
+        reach right up to the live tail), is <strong>scaffolded but switched off</strong>.
+      </p>
+      <table class="data compare">
+        <thead><tr><th>Aspect</th><th>Paper version</th><th>Implementation (develop)</th></tr></thead>
+        <tbody>
+          <tr><td>Tier coverage</td><td>All tiers (Keeper + SSD + HDD).</td>
+            <td><span class="tag absent">stubbed</span> HDF5 disk only; the live-window read is hardcoded off.</td></tr>
+          <tr><td>Server selection</td><td>Client randomly picks a storage server.</td>
+            <td><span class="tag changed">changed</span> The Visor assigns one Player per RecordingGroup.</td></tr>
+          <tr><td>Range resolver</td><td>Vector of ranges, ~4&nbsp;MB subrequests, constraint filter.</td>
+            <td><span class="tag absent">absent</span> Whole-file reads; time-window filter only.</td></tr>
+          <tr><td>Executor</td><td>Range dedup + replay epoch + parallel HDD/SSD reads.</td>
+            <td><span class="tag changed">simplified</span> One uniform HDF5 read per relevant file.</td></tr>
+          <tr><td>Open-ended range</td><td>Contact the Keeper for the latest events.</td>
+            <td><span class="tag absent">absent</span> No Keeper contact; archive only.</td></tr>
+          <tr><td>Runtime</td><td>Streaming DAG.</td>
+            <td><span class="tag changed">reframed</span> Poll queue &rarr; read files &rarr; one bulk transfer.</td></tr>
+        </tbody>
+      </table>
+      <h4>Why they differ</h4>
+      <table class="data">
+        <tr><td>One persisted form</td><td>With a single HDF5 form on disk and the live-tier read not wired, the
+          multi-tier resolver/executor machinery has nothing to resolve &mdash; a time-window scan of chunk files
+          suffices.</td></tr>
+        <tr><td>RecordingGroup binding</td><td>One-Player-per-group (Visor-assigned) replaced client random selection
+          because the RecordingGroup model already binds a Player to each story.</td></tr>
+        <tr><td>Deferred optimizations</td><td>The 4&nbsp;MB split, dedup, replay epoch, and constraint filter are
+          throughput / feature optimizations deferred in the prototype.</td></tr>
+        <tr><td>Half-built live read</td><td>The commented-out active-window branch and the unused
+          <code>PlayerDataStore</code> show the all-tiers read was <strong>intended</strong> and partly wired, then left
+          off.</td></tr>
+      </table>
+      <p class="note">Net effect: replay works over the <strong>persisted archive</strong>, but "read the whole log
+        including the live tail in one call" &mdash; the paper's headline read feature &mdash; is not yet active.</p>
+    </section>
+
+    <section class="component" id="player-differences">
+      <h3>Differences</h3>
+      <p class="lead">A simpler, hand-maintained list of the key paper-vs-implementation differences for the ChronoPlayer.
+        Each entry recaps what the paper proposed and how the implementation diverges, so it stands on its own without
+        re-reading the full sections above. (As with the Grapher, the paper's use of Flink to build the read DAG is a
+        prototype-realization choice, not a prescribed design, so it is not listed as a difference.)</p>
+
+      <ol class="diff-list">
+        <li>
+          <span class="diff-title">Reads only the archive &mdash; not all tiers (live read stubbed).</span> In the paper
+          the Player reads across <strong>all tiers</strong> &mdash; live Keeper events + SSD + HDD &mdash; so a single
+          replay can span history <em>and</em> the live tail. The implementation reads <span class="tag absent">only the
+          HDF5 archive</span>. It does ingest live chunks into a <code>PlayerDataStore</code> (the dual-extraction copy),
+          but <strong>never queries it</strong>: the live-tier read is stubbed (<code>active_window_boundary</code>
+          hardcoded to 1, <code>get_active_story_events</code> commented out).
+          <div class="reason">
+            <span class="reason-label">Why we made this difference</span>
+            <p>
+              Archive-only is the simplest functional read path, and the live tier is the <em>in-progress</em> half &mdash;
+              the read side of the Grapher's dual extraction (see ChronoGrapher &rarr; &ldquo;Dual extraction&rdquo;). The
+              machinery to serve recent data from the Player's RAM is staged but not wired, so today the freshest events
+              are unreadable until the Grapher has persisted them &mdash; the same freshness gap as the Keeper tail, with
+              the fix sitting half-built on the Player.
+            </p>
+          </div>
+        </li>
+        <li>
+          <span class="diff-title">Whole-file reads, not range reads.</span> The paper fetches just the needed bytes
+          &mdash; range reads from SSD, parallel I/O from HDD. The implementation reads <strong>each entire HDF5
+          file</strong> whose window overlaps <code>[start, end)</code> and filters events in memory, stopping once it
+          passes <code>end</code>.
+          <div class="reason">
+            <span class="reason-label">Why we made this difference</span>
+            <p>
+              Whole-file reads are simple and fine while chunk files are small and self-contained. The cost is
+              <strong>over-reading</strong> &mdash; the Player reads whole files to return a sub-window &mdash; which grows
+              with file size and is the read-side counterpart of the Grapher writing one file per chunk.
+            </p>
+          </div>
+        </li>
+        <li>
+          <span class="diff-title">No constraint filter.</span> The paper's replay can carry a
+          <strong>constraint</strong> &mdash; a predicate that filters <em>which</em> events come back, beyond the
+          <code>[start, end)</code> time window &mdash; and the Range Resolver <strong>pushes it down</strong>, refining
+          the ranges so data that would be filtered out is never fetched (server-side filtering, less I/O). The
+          implementation has <span class="tag absent">no constraint</span>: a replay returns <strong>every</strong> event
+          in <code>[start, end)</code>, and any filtering is left to the client to do <em>after</em> the full window has
+          been transferred. This is the Player side of the API's dropped <code>replay</code> constraint.
+        </li>
+        <li>
+          <span class="diff-title">Query-optimizer stages dropped.</span> The paper's read pipeline is not a plain fetch
+          &mdash; its <strong>Range Resolver</strong> and <strong>Request Executor</strong> form a query optimizer over a
+          multi-tier, multi-server read. The <strong>Range Resolver</strong> splits a large replay into
+          <strong>~4&nbsp;MB subrequests</strong> (right-sized, parallelizable I/O units) and can <strong>short-circuit by
+          peeking at the in-flight response queues</strong> &mdash; if a concurrent request already fetched that data, the
+          read is skipped. The <strong>Request Executor</strong> then <strong>deduplicates overlapping ranges</strong>
+          across concurrent replays (so the same chronicle region is never read twice) and <strong>aggregates requests
+          over a &ldquo;replay epoch&rdquo;</strong> &mdash; a timer-closed batching window, configurable per chronicle,
+          that groups many reads to minimize I/O while the timer prevents starvation. The implementation has
+          <span class="tag absent">none of these</span>: each <code>story_playback_request</code> is handled on its own
+          &mdash; locate the HDF5 files overlapping <code>[start, end)</code>, read them, return. No subrequest split, no
+          cross-request dedup, no epoch batching, no response-queue short-circuit.
+          <div class="note-later">
+            <span class="note-later-label">Consequence of the single-tier / single-Player simplification</span>
+            <p>
+              These optimizers exist to make <strong>concurrent, large, parallel</strong> reads efficient across many
+              servers and tiers. With a <strong>single Player per group, whole-file reads, and one tier</strong> (see
+              &ldquo;Reads only the archive&rdquo; above and the Grapher's storage-tier collapse), there are no cross-tier
+              ranges to dedup, nothing to parallelize via subrequests, and no benefit to epoch-batching a single request
+              stream. So the absence is a <strong>downstream consequence</strong> of the storage simplification, not a
+              standalone read-design choice &mdash; restore parallel, multi-tier reads and these stages have to come back.
+            </p>
+          </div>
+        </li>
+        <li>
+          <span class="diff-title">Not elastic.</span> Like the Grapher, the paper's Player is an <strong>elastic
+          streaming DAG</strong> whose nodes grow and shrink with traffic; the implementation is a single static process.
+          Same realization as ChronoGrapher &rarr; &ldquo;Not elastic&rdquo;.
+        </li>
+        <li>
+          <span class="diff-title">Client routing: one assigned Player, not a client-chosen server.</span> In the paper
+          the client <strong>randomly picks a Player server</strong> (per-server request / response queues). In the
+          implementation the <strong>Visor assigns one Player per RecordingGroup</strong> and the client uses it.
+          <div class="note-later">
+            <span class="note-later-label">Core idea belongs to the Visor</span>
+            <p>
+              The routing change is a consequence of the <strong>RecordingGroup / orchestration model</strong> (see
+              ChronoVisor &rarr; &ldquo;Process orchestration &amp; service registry&rdquo;): a story is bound to a group
+              whose Player is assigned, so there is no pool of Player servers for the client to choose among. It is not a
+              Player decision.
+            </p>
+          </div>
+        </li>
+        <li>
+          <span class="diff-title">Data access is group-partitioned, not shared-storage global.</span> In the paper the
+          Player is deployed on <strong>all storage nodes</strong> and reads from <strong>shared, distributed
+          storage</strong>, and the client picks <em>any</em> Player &mdash; so any Player can serve any chronicle. In the
+          implementation a story's data is reachable <strong>only through its own recording group's Player</strong>:
+          <code>AcquireStory</code> routes the client to that one Player, and the group's Grapher wrote the HDF5 files to
+          its own local directory in the first place. Data is effectively <strong>siloed per recording group</strong>
+          rather than globally accessible.
+          <div class="note-later">
+            <span class="note-later-label">Consequence of one-Player routing + local storage</span>
+            <p>
+              This is not a standalone read decision &mdash; it falls out of the Visor assigning one Player per group (see
+              &ldquo;Client routing&rdquo; above) and the Grapher writing to a local, non-shared directory (see
+              ChronoGrapher &rarr; &ldquo;Storage destination&rdquo;). The costs are real: a hot story's reads
+              <strong>cannot be load-balanced across Players</strong> (only one holds the data); that Player is a
+              <strong>single point of access</strong> &mdash; if it or its node is down, the data is unreadable even though
+              it still exists on disk; and there are <strong>no cross-group / global reads</strong> of a chronicle. The
+              paper's shared-storage, any-Player model avoids all three.
+            </p>
+          </div>
+        </li>
+      </ol>
+    </section>
+
+    <section class="component" id="player-research">
+      <h3>Areas of Research, Analysis &amp; Improvement</h3>
+      <p class="lead">
+        Unlike the Grapher, the Player has <strong>no standalone Research problem</strong>: its gaps are
+        &ldquo;restore the paper's design,&rdquo; and the genuinely open questions it touches (clock, durability) are
+        <strong>system-wide</strong> and covered in other tabs. What follows are the design analyses.
+      </p>
+
+      <h4>1 &middot; Complete the live-tier read &mdash; the cross-tier merge <span class="tag analysis">Analysis</span></h4>
+      <p class="lead">
+        The Player already ingests live chunks into <code>PlayerDataStore</code>, but the read path is stubbed
+        (<code>active_window_boundary = 1</code>, <code>get_active_story_events</code> commented; <code>PlaybackService.cpp.new</code>
+        is the work in progress). Finishing the wiring is the easy half. The design-worthy half is the <strong>cross-tier
+        merge</strong>: serving one consistent read across the <strong>live RAM tier and the HDF5 archive while chunks
+        migrate between them</strong>. The boundary moves as chunks decay from Player RAM into Grapher-persisted files, so a
+        naive split risks <strong>gaps</strong> (a chunk in neither tier mid-handoff) or <strong>duplicates</strong> (a chunk
+        briefly in both) &mdash; it needs a watermark / overlap-and-dedup design. <strong>Why it matters:</strong> this is
+        what closes the freshness gap and delivers the paper's headline read &mdash; &ldquo;read the whole log including the
+        live tail in one call.&rdquo; <em>(Difference: Reads only the archive.)</em>
+      </p>
+
+      <h4>2 &middot; Un-silo the data: shared storage + any-Player reads <span class="tag analysis">Analysis</span></h4>
+      <p class="lead">
+        Today a story is served only by its group's Player, reading that group's local files, so reads cannot be
+        load-balanced and a Player loss makes its data unreadable though it exists on disk. <strong>The decision:</strong>
+        restore the paper's shared-storage, any-Player model &mdash; a shared / distributed store (parallel FS or object
+        store) plus routing that lets any Player serve any story. <strong>To evaluate:</strong> the gains (read
+        load-balancing, fault tolerance) against the cost and complexity of shared storage and the loss of data locality.
+        It is the read-side complement of the Grapher's &ldquo;auto-tiering &amp; distributed destination.&rdquo;
+        <em>(Differences: Client routing; Data access is group-partitioned.)</em>
+      </p>
+
+      <h4>3 &middot; Restore the read query optimizers <span class="tag analysis">Analysis</span></h4>
+      <p class="lead">
+        Range reads (vs. whole-file over-read), ~4&nbsp;MB subrequest splitting, range dedup, replay-epoch batching, and
+        constraint pushdown were all dropped. They share <strong>one precondition</strong>: they only pay off once reads go
+        <strong>parallel and multi-tier</strong>. So evaluate them as a <strong>bundle gated on items 1&ndash;2</strong>, not
+        piecemeal &mdash; adding dedup / epoch batching to a single-Player, single-tier, whole-file reader buys almost
+        nothing, while range reads and constraint pushdown become valuable the moment files grow or reads parallelize.
+        <em>(Differences: Whole-file reads; No constraint filter; Query-optimizer stages dropped.)</em>
+      </p>
+    </section>
+  </div>
+
+  <div id="tab8" class="tab-content">
+    <h2>Client</h2>
+
+    <section class="component" id="client-paper">
+      <h3>Client (Paper version)</h3>
+      <p class="lead">
+        A thin but <strong>active</strong> library that does the time-critical work. It registers with the Visor and
+        fetches the global clock's <strong>base value + drift rate</strong>, computes a <strong>ChronoTick</strong> per
+        event without changing its own machine clock, <strong>hashes that tick to choose a Keeper</strong>, and reads
+        via tail-hashmap playback or a randomly chosen Player.
+      </p>
+      <h4>At a glance</h4>
+      <table class="data">
+        <tr><td>Role</td><td>Turns application calls into time-ordered events and routes them</td></tr>
+        <tr><td>Clock</td><td>Fetches <code>(base, rate)</code> from the Visor; computes its own distance + drift</td></tr>
+        <tr><td>Write target</td><td><code>hash(ChronoTick) &rarr; Keeper</code> serverID (uniform; locality-aware optional)</td></tr>
+        <tr><td>Read</td><td>Playback via the tail hashmap; replay via a randomly chosen Player</td></tr>
+      </table>
+      <h4>Responsibilities</h4>
+      <table class="data">
+        <tr><td>Connect</td><td>Register with the Visor, receive the base clock + drift rate, and measure network
+          latency <code>L</code> (used for the acceptance window).</td></tr>
+        <tr><td>Timestamp</td><td>Per event compute <code>ChronoTick = current_time / drift_rate + clock_distance</code>.</td></tr>
+        <tr><td>Record</td><td>Choose a Keeper by hashing the ChronoTick, then send a <strong>bundled</strong> record RPC
+          (data + index + tail update).</td></tr>
+        <tr><td>Playback</td><td><code>get_tail</code> on the tail-hashmap server &rarr; find max ChronoTick &rarr;
+          <code>play()</code> that server.</td></tr>
+        <tr><td>Replay</td><td>Send to a randomly chosen Player with a range + constraint.</td></tr>
+      </table>
+      <p class="note"><strong>Note:</strong> reflects the client behavior described in the paper (§III.A.3 &amp; III.E).</p>
+    </section>
+
+    <section class="component" id="client-impl">
+      <h3>Client (Implementation)</h3>
+      <p class="lead">
+        A C++ <code>chronolog::Client</code> facade over a singleton impl. It registers with the Visor (with a
+        protocol-version handshake), stamps events with its <strong>own raw local clock</strong>, picks a Keeper by
+        <code>timestamp % n</code>, and reads by sending a <strong>time-range query to the single Visor-assigned
+        Player</strong>. There is no clock sync, no ChronoTick, and no latency measurement.
+      </p>
+      <p class="src">Source: <code>client/cpp/</code> &mdash; <code>chronolog_client.h</code>,
+        <code>ChronologClientImpl.cpp</code>, <code>StorytellerClient.cpp</code>, <code>ClientQueryService.cpp</code>,
+        <code>rpcVisorClient.h</code>, <code>PlaybackQueryRpcClient.cpp</code>.</p>
+      <h4>At a glance</h4>
+      <table class="data">
+        <tr><td>Layers</td><td><code>Client</code> (public) &rarr; <code>ChronologClientImpl</code> (singleton
+          orchestrator) &rarr; <code>StorytellerClient</code> (write) + <code>ClientQueryService</code> (read) +
+          <code>RpcVisorClient</code> (control).</td></tr>
+        <tr><td>Modes</td><td><strong>Writer-only</strong> vs <strong>writer + reader</strong> (reader mode stands up an
+          inbound query service); <code>ReplayStory</code> is gated to reader mode.</td></tr>
+        <tr><td>ClientId</td><td>Packed <code>(ip&lt;&lt;32 | port&lt;&lt;16 | pid&amp;0xFFFF)</code> &mdash; port is the
+          query port for readers, 0 for writers.</td></tr>
+        <tr><td>Clock</td><td>None &mdash; raw <code>high_resolution_clock</code> per event.</td></tr>
+      </table>
+      <h4>Write path</h4>
+      <table class="data">
+        <tr><td>Acquire</td><td><code>AcquireStory</code> &rarr; the Visor returns <code>{StoryId, [Keeper ServiceIds],
+          Player ServiceId}</code>; the client builds a <code>StoryWritingHandle</code> with one
+          <code>KeeperRecordingClient</code> per Keeper.</td></tr>
+        <tr><td>log_event</td><td>Stamps <code>eventTime = high_resolution_clock</code> and <code>eventIndex</code> = a
+          per-client atomic counter; chooses Keeper = <code>vectorOfKeepers[eventTime % n]</code> (the class is named
+          <code>RoundRobinKeeperChoice</code> but the behavior is <strong>timestamp-modulo</strong>); sends one
+          <code>record_event</code> RPC carrying the <code>LogEvent</code>; returns <code>eventTime</code>.</td></tr>
+      </table>
+      <h4>Read path</h4>
+      <table class="data">
+        <tr><td>Replay</td><td><code>ReplayStory</code> &rarr; <code>ClientQueryService</code> &rarr;
+          <code>send_story_playback_request(myServiceId, query_id, chronicle, story, start, end)</code> to the
+          <strong>assigned</strong> Player. Time range only &mdash; no constraint.</td></tr>
+        <tr><td>Response</td><td>The Player calls back <code>receive_query_response</code> via RDMA bulk; the client
+          deserializes one <code>PlaybackQueryResponse</code> (a flat <code>vector&lt;Event&gt;</code>) and
+          appends / invokes the callback. <code>dispatch_query</code> polls until done or a 180&nbsp;s timeout.</td></tr>
+      </table>
+      <h4>Not present <span class="tag absent">absent</span></h4>
+      <table class="data">
+        <tr><td>Clock / ticks</td><td>No clock base/drift fetch, no ChronoTick, no latency <code>L</code> / acceptance
+          window. The <code>ChronologTimer</code> "clockProxy" and the <code>chrono_tick</code> parameter name are
+          vestiges of the intended-but-unbuilt clock sync.</td></tr>
+      </table>
+      <p class="note"><strong>Verified against</strong> the files above on <code>develop</code> (deep read of the
+        connect / acquire / write / read paths).</p>
+    </section>
+
+    <section class="component" id="client-gaps">
+      <h3>Gaps</h3>
+      <p class="lead">
+        The client keeps the paper's <strong>shape</strong> (connect &rarr; acquire &rarr; log_event &rarr; replay) but
+        is <strong>clock-free and explicitly addressed</strong> rather than time-hashed. Every clock-dependent
+        behavior fell away with the deferred global clock; routing is handed to it by the Visor instead.
+      </p>
+      <table class="data compare">
+        <thead><tr><th>Aspect</th><th>Paper version</th><th>Implementation (develop)</th></tr></thead>
+        <tbody>
+          <tr><td>Clock sync</td><td>Fetch <code>(base, rate)</code>, compute distance + drift.</td>
+            <td><span class="tag absent">removed</span> None &mdash; raw local clock.</td></tr>
+          <tr><td>Event identity</td><td>Compute a ChronoTick.</td>
+            <td><span class="tag changed">reframed</span> Stamp raw timestamp + a per-client atomic index.</td></tr>
+          <tr><td>Keeper choice</td><td><code>hash(ChronoTick) &rarr; server</code>; locality-aware optional.</td>
+            <td><span class="tag changed">changed</span> <code>timestamp % n</code> over the Visor-supplied Keeper set (fixed policy).</td></tr>
+          <tr><td>Record RPC</td><td>Bundled data + index + tail update.</td>
+            <td><span class="tag changed">simplified</span> One <code>record_event</code> carrying only the event.</td></tr>
+          <tr><td>Tail read</td><td><code>get_tail</code> &rarr; max tick &rarr; <code>play()</code>.</td>
+            <td><span class="tag absent">absent</span> No tail path; time-range replay only.</td></tr>
+          <tr><td>Player selection</td><td>Client randomly picks a Player.</td>
+            <td><span class="tag changed">changed</span> Visor assigns one Player at acquire.</td></tr>
+          <tr><td>Replay args</td><td>Range vector + constraint.</td>
+            <td><span class="tag changed">changed</span> One <code>[start, end)</code> time window, no constraint.</td></tr>
+          <tr><td>Latency <code>L</code></td><td>Measured at connect / acquire.</td>
+            <td><span class="tag absent">absent</span> Not measured (only a fixed 180&nbsp;s read timeout).</td></tr>
+        </tbody>
+      </table>
+      <h4>Why they differ</h4>
+      <table class="data">
+        <tr><td>Deferred clock</td><td>The global clock was deferred, so everything depending on it &mdash; ChronoTick,
+          hash-to-Keeper, latency / acceptance window &mdash; fell away. The client stamps its own time and spreads
+          writes by timestamp-modulo.</td></tr>
+        <tr><td>Explicit addressing</td><td>The Visor's RecordingGroup binding hands the client its exact Keeper set and
+          one Player, so neither hash-routing nor random selection is needed.</td></tr>
+        <tr><td>Tail folded in</td><td>Tail-read became a recent-window replay (consistent with the API tab), so there
+          is no tail-hashmap consumer on the client.</td></tr>
+        <tr><td>Vestiges</td><td><code>ChronologTimer</code>, <code>chrono_tick</code>, and
+          <code>RoundRobinKeeperChoice</code> are names that mark where the paper's mechanics were stubbed and then
+          left.</td></tr>
+      </table>
+      <p class="note">Net effect: a faithful <strong>connect &rarr; acquire &rarr; record &rarr; replay</strong>
+        lifecycle, but routed by explicit Visor-supplied addresses on a raw local clock &mdash; not the self-timing,
+        tick-hashing client the paper describes.</p>
+    </section>
+  </div>
+
+  <div id="tab1" class="tab-content active">
+    <h2>Overview</h2>
+  </div>
+
+  <script>
+    function showTab(id) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.tab-button').forEach(el => el.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+      event.currentTarget.classList.add('active');
+    }
+  </script>
+</body>
+</html>
