@@ -163,6 +163,7 @@
 <body>
   <div class="tabs">
     <button class="tab-button active" onclick="showTab('tab1')">Overview</button>
+    <button class="tab-button" onclick="showTab('tab9')">Scope</button>
     <button class="tab-button" onclick="showTab('tab3')">Data Model</button>
     <button class="tab-button" onclick="showTab('tab8')">Client</button>
     <button class="tab-button" onclick="showTab('tab4')">API</button>
@@ -2579,6 +2580,211 @@
 
   <div id="tab1" class="tab-content active">
     <h2>Overview</h2>
+  </div>
+
+  <div id="tab9" class="tab-content">
+    <h2>Scope</h2>
+    <p class="lead">
+      Before prioritizing the differences and improvements catalogued across the component tabs, we need to name the
+      <strong>end goal</strong>. ChronoLog could become several different things, and the same analysis re-reads
+      differently depending on which we target. Three broad scenarios &mdash; to be reframed and specified as we work:
+    </p>
+
+    <section class="component">
+      <h3>1 &middot; Research project &mdash; validate the thesis</h3>
+      <p>
+        Not a product. Forget usability, deployment, users, and breadth of functionality. The goal is to <strong>prove or
+        test the original paper's thesis</strong> with just enough of a system to measure. Candidate questions: does
+        <strong>physical time as the ordering primitive</strong> actually remove the sequencer bottleneck and scale? Does
+        <strong>multi-tier auto-tiering</strong> deliver the capacity and tail/historical I/O isolation it claims? Does
+        <strong>MWMR / parallel I/O</strong> beat single-writer systems by the margin claimed? And the genuinely open one
+        we surfaced: can you have <strong>durability and throughput</strong> at once? The deliverable is evidence &mdash;
+        benchmarks, clock-uncertainty modeling, demos &mdash; not a system people run.
+      </p>
+    </section>
+
+    <section class="component">
+      <h3>2 &middot; Data-center product &mdash; realize the full vision</h3>
+      <p>
+        A real, deployable log system for <strong>HPC, clusters, and data centers</strong>. Here the differences we
+        catalogued <strong>become the roadmap</strong>: every gap is a to-do &mdash; durability and high availability,
+        MWMR parallel writes (PHDF5), auto-tiering across distributed storage, elasticity, a real deployment layer, and
+        authorization. This is the most work and the <strong>largest distance from today's code</strong> &mdash; it means
+        closing, rather than living with, the implementation's simplifications.
+      </p>
+    </section>
+
+    <section class="component">
+      <h3>3 &middot; ChronoLog-lite &mdash; a local, embeddable time-ordered log</h3>
+      <p>
+        Drop the cluster requirement; keep the time-ordering value. Something <strong>easier and available to more
+        people</strong> &mdash; no whole cluster needed to run it. Concretely it could be a <strong>single-node or
+        embeddable time-ordered log</strong> (a &ldquo;SQLite for time-logs&rdquo;), an <strong>edge / IoT logger</strong>,
+        or a <strong>local time-series store</strong>: single binary, no RecordingGroups, no distributed storage. It trades
+        the paper's scale ambitions for reach.
+      </p>
+    </section>
+
+    <p class="note">
+      <strong>Why this tab is the lens.</strong> The same differences read in opposite directions depending on the
+      target. For the <strong>data-center product (2)</strong>, the implementation's simplifications &mdash; local
+      storage, single-process, mutex-guarded, one-Player-per-group &mdash; are <strong>gaps to close</strong>. For
+      <strong>ChronoLog-lite (3)</strong>, those <em>same</em> simplifications are <strong>assets and a head
+      start</strong>: the code has already drifted toward &ldquo;smaller,&rdquo; away from the distributed vision. The
+      <strong>research project (1)</strong> cares about neither &mdash; it just needs enough to measure. So #3 is arguably
+      closest to today's reality, #2 the furthest, and picking one re-prioritizes every research / improvement item in
+      the other tabs.
+    </p>
+
+    <section class="component" id="scope-users">
+      <h3>Where the real users are &mdash; three concrete directions</h3>
+      <p class="lead">
+        Working the scenarios, the value question kept converging on one statement: ChronoLog's edge is real only where
+        someone needs <strong>correct, high-volume, time-ordered event streaming in an environment existing tools fit
+        badly</strong>. Testing the alternatives against incumbents narrows the field fast: a generic local store loses
+        to SQLite / DuckDB / RocksDB; agent <em>memory</em> is a semantic-relevance problem owned by vector DBs; agent
+        <em>observability</em> is owned by Langfuse / LangSmith; the general data-center log is owned by Kafka. What
+        survives is the environment Kafka genuinely cannot serve &mdash; <strong>HPC and scientific facilities</strong>
+        &mdash; plus one cheap consumer-side probe. Direction A is the at-scale form of scenario 2, Direction B is the
+        wedge into it, and Direction C is what remains of scenario 3 / the &ldquo;AgentLog&rdquo; idea.
+      </p>
+    </section>
+
+    <section class="component" id="scope-direction-a">
+      <h3>Direction A &mdash; at scale: the event backbone for HPC facilities</h3>
+      <p class="lead">
+        HPC centers increasingly need <strong>streaming</strong> &mdash; telemetry, job events, coupling simulations to
+        live analysis &mdash; and <strong>Kafka does not fit on a supercomputer</strong>: batch allocations instead of
+        long-running services, RDMA fabrics it cannot use, parallel filesystems instead of local disks, no root. Today
+        centers cobble together LDMS (metrics), Darshan (I/O logs), flat files, and grafted-on InfluxDB / Prometheus.
+        There is <strong>no native ordered-event substrate for a supercomputer</strong>. The users are the operations,
+        telemetry, and workflow teams at DOE / NSF facilities &mdash; Argonne, ORNL, LLNL, NERSC, TACC, NCSA &mdash; and
+        their European counterparts (JSC, CSC, BSC).
+      </p>
+      <h4>Concrete use cases</h4>
+      <ol class="diff-list">
+        <li><span class="diff-title">Full-machine telemetry.</span> Job events, node health, and I/O statistics at
+          millions of events per second across thousands of nodes &mdash; the one workload where the
+          <strong>sequencer-free ordering thesis actually matters</strong>. Today fragmented across LDMS, Darshan, and
+          ad-hoc files.</li>
+        <li><span class="diff-title">AI-coupled workflows.</span> Simulations streaming training data to models and
+          receiving steering signals back &mdash; the fastest-growing HPC pattern, with no native event plumbing.</li>
+        <li><span class="diff-title">In-situ / in-transit analysis coupling.</span> Staging simulation events to live
+          analysis pipelines without first writing everything to the parallel filesystem.</li>
+        <li><span class="diff-title">Workflow provenance.</span> A totally-ordered, time-replayable record of what a
+          distributed scientific campaign did &mdash; auditable and reproducible.</li>
+      </ol>
+      <div class="reason">
+        <span class="reason-label">The gap we fill</span>
+        <p>
+          A time-indexed, totally-ordered event store that is <strong>native to the HPC environment</strong>: Mochi /
+          Thallium stack, RDMA transports, batch-friendly deployment, storage tiered along the time axis. Every current
+          alternative is either fragmented (LDMS + Darshan + files) or a cloud tool fighting the environment (Kafka,
+          InfluxDB). Honest sizing: dozens of facilities, not a mass market &mdash; this is <strong>infrastructure
+          adoption</strong> on the Darshan / ADIOS2 path, which is exactly what an NSF-funded system is positioned for.
+        </p>
+      </div>
+    </section>
+
+    <section class="component" id="scope-direction-b">
+      <h3>Direction B &mdash; the wedge: scientific-instrument &amp; experiment data streaming</h3>
+      <p class="lead">
+        The sharpest concrete target. Light sources (APS, NSLS-II, LCLS), electron microscopes, fusion diagnostics, and
+        telescopes emit <strong>high-rate, inherently time-ordered event streams</strong> that must be buffered hot for
+        <em>prompt analysis while the experiment runs</em>, archived durably, and <strong>replayed by time window</strong>
+        for reanalysis. That is, item for item, ChronoLog's data model: tail tier + archive tier + time-range replay. The
+        users are nameable: beamline software groups (the Bluesky ecosystem at NSLS-II / APS), LCLS data systems, fusion
+        diagnostics teams.
+      </p>
+      <h4>Concrete use cases</h4>
+      <ol class="diff-list">
+        <li><span class="diff-title">Prompt analysis during a run.</span> Tail-read detector events seconds after
+          acquisition to steer the experiment while beam time is burning.</li>
+        <li><span class="diff-title">Time-window reanalysis.</span> &ldquo;All detector events between T1 and T2 of run
+          47&rdquo; &mdash; ChronoLog's native query, served from the archive with no auxiliary index.</li>
+        <li><span class="diff-title">Cross-stream correlation.</span> Beam state + sample environment + detector streams
+          correlated <em>by time</em> &mdash; the primary index &mdash; rather than joined after the fact.</li>
+        <li><span class="diff-title">Instrument &rarr; compute-facility streaming.</span> The DOE <strong>Integrated
+          Research Infrastructure (IRI)</strong> pattern &mdash; streaming experiment data to HPC for live processing
+          &mdash; which is being funded <em>now</em>, and which the APS upgrade (~100&times; more data) makes urgent.</li>
+      </ol>
+      <div class="reason">
+        <span class="reason-label">The gap we fill</span>
+        <p>
+          The <strong>missing queryable time-store between instrument and analysis</strong>. ADIOS2 <em>moves</em> data
+          but is not a store you can query; Kafka stores but cannot time-range query and fits the facility environment
+          badly; Bluesky's event model needs a backend (today MongoDB / Kafka). ChronoLog slots in as the store and
+          <strong>integrates with, rather than fights, that stack</strong>. Crucially, what the component tabs treated as
+          compromises are <strong>assets here</strong>: the HDF5 archive is the lingua franca of facility science, and
+          per-group locality matches per-instrument deployment. Sizing: tens of facilities, hundreds of beamlines, funded
+          engineers &mdash; a niche with an acute, currently-funded pain and <strong>no purpose-built incumbent</strong>.
+        </p>
+      </div>
+    </section>
+
+    <section class="component" id="scope-direction-c">
+      <h3>Direction C &mdash; agile probe: the agent flight recorder</h3>
+      <p class="lead">
+        The most defensible consumer-side option &mdash; framed precisely. Not agent <em>memory</em> (vector DBs own
+        semantic relevance) and not agent <em>observability dashboards</em> (Langfuse / LangSmith own that). The unowned
+        sliver is <strong>deterministic record-and-replay</strong>: a black-box flight recorder that captures every event
+        of an agent system in order and can <strong>re-run a session exactly</strong> &mdash; time-travel debugging for
+        agents, shipped as a small pip-installable OSS library.
+      </p>
+      <h4>Concrete use cases</h4>
+      <ol class="diff-list">
+        <li><span class="diff-title">Replay a failed session exactly.</span> Multi-agent failures are
+          &ldquo;worked in isolation, broke together&rdquo; &mdash; replay the true interleaving instead of guessing from
+          scattered logs.</li>
+        <li><span class="diff-title">Regression-test agents against recorded histories.</span> Re-run yesterday's
+          sessions against today's prompt or model change and diff the behavior.</li>
+        <li><span class="diff-title">Audit trail.</span> An ordered, immutable record of what the agent decided and when,
+          for compliance-sensitive deployments.</li>
+      </ol>
+      <div class="reason">
+        <span class="reason-label">The gap we fill</span>
+        <p>
+          Incumbents store traces <em>to look at</em>; <strong>nobody owns replay semantics</strong>. Agent debugging is
+          a felt, daily pain, and a recorder with first-class time-ordered replay is a tool people would adopt quickly.
+        </p>
+      </div>
+      <div class="note-later">
+        <span class="note-later-label">Why this is a probe, not a bet</span>
+        <p>
+          It uses almost none of ChronoLog's actual novelty &mdash; single-node-ish, low event rates, effectively a
+          &ldquo;lite&rdquo; re-skin. The space is funded and fast-moving: an incumbent could add replay in a quarter.
+          And the runner-up in this category &mdash; a robotics data recorder, technically a beautiful fit (sensor
+          fusion, rosbag-style replay, onboard&rarr;offload tiering) &mdash; faces a strong, beloved incumbent in
+          MCAP / Foxglove. So Direction C is a <strong>cheap experiment for learning and visibility</strong>, not a
+          direction to bet the architecture on.
+        </p>
+      </div>
+    </section>
+
+    <section class="component" id="scope-verdict">
+      <h3>Reading the three together</h3>
+      <table class="data compare">
+        <thead>
+          <tr><th>Direction</th><th>Users</th><th>Pain today?</th><th>Uses the novelty?</th><th>Incumbent risk</th><th>Fit to code &amp; grant</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>A &middot; HPC backbone</strong></td><td>Facility ops / workflow teams</td><td>Yes</td>
+            <td>Fully</td><td>None native</td><td>High</td></tr>
+          <tr><td><strong>B &middot; Instrument streaming</strong></td><td>Beamline / experiment software groups</td>
+            <td>Acute &amp; funded (IRI)</td><td>Mostly</td><td>Partial (ADIOS2 / Kafka, both incomplete)</td>
+            <td><strong>Highest</strong></td></tr>
+          <tr><td><strong>C &middot; Agent flight recorder</strong></td><td>AI engineers</td><td>Yes (debugging)</td>
+            <td>Barely</td><td>High, fast-moving</td><td>Low</td></tr>
+        </tbody>
+      </table>
+      <p class="note">
+        The realistic future users wear facility badges, not startup hoodies. <strong>Direction B is the wedge</strong>
+        &mdash; concrete, funded, nameable users, and the codebase's &ldquo;compromises&rdquo; (HDF5 archive, chunked
+        files, group locality) are strengths there. <strong>Direction A is what B grows into.</strong> Direction C is
+        worth at most a cheap OSS experiment for learning and visibility &mdash; it is not where this architecture wins.
+        The sequence that follows: prove the thesis (scenario 1) on Direction B workloads, then harden into A.
+      </p>
+    </section>
   </div>
 
   <script>
