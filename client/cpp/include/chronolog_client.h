@@ -139,6 +139,19 @@ public:
     virtual ~StoryHandle();
 
     virtual uint64_t log_event(std::string const&) = 0;
+
+    // Tail read: play back the most recent `n` events of this story directly
+    // from the assigned keepers' in-memory tail (sealed-but-not-yet-extracted
+    // events), bypassing the player/archive. The client gathers each keeper's
+    // last-N event sequences, selects the global last-N, then fetches just
+    // those payloads. On success returns CL_SUCCESS and fills `events` in
+    // ascending event order. Default implementation is a no-op.
+    virtual int playback(size_t n, std::vector<Event>& events)
+    {
+        (void)n;
+        (void)events;
+        return CL_ERR_UNKNOWN;
+    }
 };
 
 class ChronologClientImpl;

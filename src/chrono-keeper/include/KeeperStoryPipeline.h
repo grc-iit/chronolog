@@ -13,6 +13,7 @@
 #include <StoryChunk.h>
 
 #include "StoryChunkExtractionQueue.h"
+#include "KeeperTailStore.h"
 
 namespace chronolog
 {
@@ -25,6 +26,7 @@ class KeeperStoryPipeline
 
 public:
     KeeperStoryPipeline(StoryChunkExtractionQueue&,
+                        KeeperTailStore&,
                         std::string const& chronicle_name,
                         std::string const& story_name,
                         StoryId const& story_id,
@@ -67,6 +69,7 @@ public:
 
 private:
     StoryChunkExtractionQueue& theExtractionQueue;
+    KeeperTailStore& theTailStore;
     StoryId storyId;
     ChronicleName chronicleName;
     StoryName storyName;

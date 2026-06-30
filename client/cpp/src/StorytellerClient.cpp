@@ -91,6 +91,70 @@ uint64_t chronolog::StoryWritingHandle<KeeperChoicePolicy>::log_event(std::strin
 }
 /////////////////////
 
+// Tail read: two-phase scatter/gather across the story's assigned keepers.
+template <class KeeperChoicePolicy>
+int chronolog::StoryWritingHandle<KeeperChoicePolicy>::playback(size_t n, std::vector<Event>& events)
+{
+    events.clear();
+    if(storyKeepers.empty())
+    {
+        LOG_WARNING("[StoryWritingHandle] playback: no keepers assigned to story {}", storyId);
+        return CL_ERR_NO_KEEPERS;
+    }
+    if(n == 0)
+    {
+        return CL_SUCCESS;
+    }
+
+    // Phase 1: collect each keeper's last-N event sequences, remembering which
+    // keeper reported each sequence (so phase 2 asks the right keeper for it).
+    std::map<EventSequence, KeeperRecordingClient*> seqToKeeper;
+    for(auto* keeper: storyKeepers)
+    {
+        if(keeper == nullptr)
+        { continue; }
+        std::vector<EventSequence> seqs = keeper->getTailSequences(storyId, n);
+        for(auto const& seq: seqs)
+        { seqToKeeper[seq] = keeper; }
+    }
+    if(seqToKeeper.empty())
+    {
+        LOG_DEBUG("[StoryWritingHandle] playback: story {} has no tail events yet", storyId);
+        return CL_SUCCESS;
+    }
+
+    // Select the global last-N sequences (the largest N keys), grouped per keeper.
+    std::map<KeeperRecordingClient*, std::vector<EventSequence>> perKeeper;
+    size_t take = (n < seqToKeeper.size()) ? n : seqToKeeper.size();
+    auto seq_iter = seqToKeeper.end();
+    for(size_t i = 0; i < take; ++i)
+    {
+        --seq_iter;
+        perKeeper[seq_iter->second].push_back(seq_iter->first);
+    }
+
+    // Phase 2: fetch payloads for the selected sequences from each keeper and
+    // assemble Events keyed by sequence so the result is sorted ascending.
+    std::map<EventSequence, Event> assembled;
+    for(auto& keeper_entry: perKeeper)
+    {
+        std::vector<LogEvent> logEvents = keeper_entry.first->getTailEvents(storyId, keeper_entry.second);
+        for(auto const& le: logEvents)
+        {
+            EventSequence seq{le.time(), le.getClientId(), le.index()};
+            assembled[seq] = Event(le.time(), le.getClientId(), le.index(), le.getRecord());
+        }
+    }
+
+    events.reserve(assembled.size());
+    for(auto const& entry: assembled)
+    { events.push_back(entry.second); }
+
+    LOG_DEBUG("[StoryWritingHandle] playback(n={}) for story {} returned {} events", n, storyId, events.size());
+    return CL_SUCCESS;
+}
+/////////////////////
+
 chronolog::StorytellerClient::~StorytellerClient()
 {
     LOG_DEBUG("[StorytellerClient] Destructor called.");

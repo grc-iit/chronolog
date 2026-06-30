@@ -34,6 +34,7 @@ class KeeperDataStore
 public:
     KeeperDataStore(IngestionQueue& ingestion_queue,
                     StoryChunkExtractionQueue& extraction_queue,
+                    KeeperTailStore& tail_store,
                     uint32_t max_chunk_size = 4096,
                     uint32_t story_chunk_duration_secs = 30,
                     uint32_t acceptance_window_secs = 60,
@@ -41,6 +42,7 @@ public:
         : state(UNKNOWN)
         , theIngestionQueue(ingestion_queue)
         , theExtractionQueue(extraction_queue)
+        , theTailStore(tail_store)
         , story_chunk_size(max_chunk_size)
         , story_chunk_duration_secs(story_chunk_duration_secs)
         , acceptance_window_secs(acceptance_window_secs)
@@ -83,6 +85,7 @@ private:
     std::mutex dataStoreStateMutex;
     IngestionQueue& theIngestionQueue;
     StoryChunkExtractionQueue& theExtractionQueue;
+    KeeperTailStore& theTailStore;
 
     uint32_t story_chunk_size;
     uint32_t story_chunk_duration_secs;

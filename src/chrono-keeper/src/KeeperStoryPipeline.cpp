@@ -21,6 +21,7 @@ namespace chl = chronolog;
 ////////////////////////
 
 chronolog::KeeperStoryPipeline::KeeperStoryPipeline(StoryChunkExtractionQueue& extractionQueue,
+                                                    KeeperTailStore& tail_store,
                                                     std::string const& chronicle_name,
                                                     std::string const& story_name,
                                                     chronolog::StoryId const& story_id,
@@ -28,6 +29,7 @@ chronolog::KeeperStoryPipeline::KeeperStoryPipeline(StoryChunkExtractionQueue& e
                                                     uint32_t chunk_granularity,
                                                     uint32_t acceptance_window)
     : theExtractionQueue(extractionQueue)
+    , theTailStore(tail_store)
     , storyId(story_id)
     , chronicleName(chronicle_name)
     , storyName(story_name)
@@ -266,7 +268,11 @@ void chronolog::KeeperStoryPipeline::extractDecayedStoryChunks(uint64_t current_
             }
             else
             {
-                theExtractionQueue.stashStoryChunk(extractedChunk);
+                // Hand the sealed chunk to the TailStore. It retains the chunk
+                // (indexing its events into the per-story last-N tail) and only
+                // forwards it to the extraction queue once its events age out of
+                // the tail window — so tail reads are served from keeper memory.
+                theTailStore.ingestSealedChunk(storyId, extractedChunk);
             }
         }
     }

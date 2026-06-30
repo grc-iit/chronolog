@@ -114,6 +114,8 @@ public:
 
     virtual uint64_t log_event(std::string const&);
 
+    virtual int playback(size_t n, std::vector<Event>& events) override;
+
     // virtual int log_event(size_t size, void*data);
 
     void addRecordingClient(KeeperRecordingClient*);

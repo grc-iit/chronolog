@@ -12,6 +12,7 @@
 #include <KeeperRegClient.h>
 #include <IngestionQueue.h>
 #include <StoryChunkExtractionQueue.h>
+#include <KeeperTailStore.h>
 #include <KeeperDataStore.h>
 #include <DataStoreAdminService.h>
 #include <cmd_arg_parse.h>
@@ -206,10 +207,17 @@ int main(int argc, char** argv)
         return (-1);
     }
 
+    // Instantiate the TailStore (serves keeper-memory tail reads) and DataStore.
+    // tail_capacity = max number of most-recent sealed events retained per story
+    // for last-N playback before they age out to the extraction/archive path.
+    const std::size_t keeper_tail_capacity = 65536;
+    chronolog::KeeperTailStore theTailStore(theExtractionModule.getExtractionQueue(), keeper_tail_capacity);
+
     // Instantiate KeeperDataStore
     chronolog::IngestionQueue ingestionQueue;
     chronolog::KeeperDataStore theDataStore(ingestionQueue,
                                             theExtractionModule.getExtractionQueue(),
+                                            theTailStore,
                                             KEEPER_CONF.DATA_STORE_CONF.max_story_chunk_size,
                                             KEEPER_CONF.DATA_STORE_CONF.story_chunk_duration_secs,
                                             KEEPER_CONF.DATA_STORE_CONF.acceptance_window_secs,
@@ -275,7 +283,8 @@ int main(int argc, char** argv)
         keeperRecordingService =
                 chronolog::KeeperRecordingService::CreateKeeperRecordingService(*recordingEngine,
                                                                                 recording_service_provider_id,
-                                                                                ingestionQueue);
+                                                                                ingestionQueue,
+                                                                                theTailStore);
     }
     catch(tl::exception const&)
     {
