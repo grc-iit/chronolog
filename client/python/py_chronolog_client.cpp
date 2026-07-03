@@ -42,13 +42,26 @@ public:
                                event_string /* Argument(s) */
         );
     }
+
+    int playback(size_t n, std::vector<chronolog::Event>& events) override
+    {
+        PYBIND11_OVERRIDE(int,         /* Return type */
+                          StoryHandle, /* Parent class */
+                          playback,    /* Name of function in C++ (must match Python name) */
+                          n,           /* Argument(s) */
+                          events);
+    }
 };
 
 void BindChronologStoryHandle(pybind11::module& m)
 {
     pybind11::class_<StoryHandle, PyStoryHandle>(m, "StoryHandle")
             .def(pybind11::init<>())
-            .def("log_event", &StoryHandle::log_event, pybind11::arg("log_string"));
+            .def("log_event", &StoryHandle::log_event, pybind11::arg("log_string"))
+            // Tail read: fill `events` (an EventList) with the most recent `n`
+            // events of this story, served from the keepers' in-memory tail.
+            // Returns CL_SUCCESS on success; events are in ascending order.
+            .def("playback", &StoryHandle::playback, pybind11::arg("n"), pybind11::arg("events"));
 };
 
 PYBIND11_MAKE_OPAQUE(std::pair<int, StoryHandle>);
