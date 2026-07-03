@@ -45,9 +45,9 @@ public:
         std::lock_guard <std::mutex> lock(tailMutex);
         for(auto &story_entry: storyTails)
         {
-            for(auto &chunk_entry: story_entry.second.retainedChunks)
-            { theExtractionQueue.stashStoryChunk(chunk_entry.second.chunk); }
-            story_entry.second.retainedChunks.clear();
+            for(auto &chunk_entry: story_entry.second.liveCounts)
+            { theExtractionQueue.stashStoryChunk(chunk_entry.first); }
+            story_entry.second.liveCounts.clear();
             story_entry.second.index.clear();
         }
     }
@@ -63,7 +63,9 @@ public:
         }
         std::lock_guard <std::mutex> lock(tailMutex);
         StoryTail &tail = storyTails[story_id];
-        tail.retainedChunks.emplace(sealed_chunk->getStartTime(), ChunkEntry{sealed_chunk, (std::size_t)sealed_chunk->getEventCount()});
+        // Key retention on the chunk pointer (unique per live chunk) so accounting
+        // never depends on start-time uniqueness among retained chunks.
+        tail.liveCounts.emplace(sealed_chunk, (std::size_t)sealed_chunk->getEventCount());
         for(auto it = sealed_chunk->begin(); it != sealed_chunk->end(); ++it)
         { tail.index[it->first] = sealed_chunk; }
         enforceCapacity(tail);
@@ -112,16 +114,14 @@ public:
     }
 
 private:
-    struct ChunkEntry
-    {
-        StoryChunk *chunk;
-        std::size_t liveCount; // events of this chunk still present in the index
-    };
-
     struct StoryTail
     {
-        std::map <EventSequence, StoryChunk *> index;        // sorted tail, payload lives in the chunk
-        std::map <uint64_t, ChunkEntry> retainedChunks;      // keyed by chunk start time, owns the chunks
+        // sorted tail; the payload lives once inside the chunk pointed to.
+        std::map <EventSequence, StoryChunk *> index;
+        // owns the retained chunks: chunk -> number of its events still in `index`.
+        // Keyed by the chunk pointer (unique per live chunk); a chunk is forwarded
+        // to the extraction queue and dropped once its count reaches 0.
+        std::unordered_map <StoryChunk *, std::size_t> liveCounts;
     };
 
     // Evict oldest events until the tail is within capacity; once a retained
@@ -133,11 +133,11 @@ private:
             auto oldest = tail.index.begin();
             StoryChunk *chunk = oldest->second;
             tail.index.erase(oldest);
-            auto chunk_it = tail.retainedChunks.find(chunk->getStartTime());
-            if(chunk_it != tail.retainedChunks.end() && --chunk_it->second.liveCount == 0)
+            auto lc = tail.liveCounts.find(chunk);
+            if(lc != tail.liveCounts.end() && --lc->second == 0)
             {
                 theExtractionQueue.stashStoryChunk(chunk); // archive + free downstream
-                tail.retainedChunks.erase(chunk_it);
+                tail.liveCounts.erase(lc);
             }
         }
     }
