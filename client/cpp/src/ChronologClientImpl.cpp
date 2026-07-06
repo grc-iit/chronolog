@@ -409,13 +409,36 @@ std::pair<int, chronolog::StoryHandle*> chronolog::ChronologClientImpl::AcquireS
                                                             acquireStoryResponse.getKeepers(),
                                                             acquireStoryResponse.getPlayer());
 
-    if((nullptr != storyReaderService) && acquireStoryResponse.getPlayer().is_valid())
+    if(nullptr != storyReaderService)
     {
+        // Reader-capable client: registering the story with the ClientQueryService is
+        // what makes ReplayStory() work. If we cannot register it, this acquisition is
+        // not usable for reading, so we must NOT report CL_SUCCESS -- otherwise the
+        // caller gets a later, confusing CL_ERR_NOT_ACQUIRED (-5) from ReplayStory for
+        // a story AcquireStory said it acquired. Surface the failure here instead.
+        if(!acquireStoryResponse.getPlayer().is_valid())
+        {
+            LOG_ERROR("[ChronoLogClientImpl] Acquired story '{}' in chronicle '{}' but the Visor returned no valid "
+                      "ChronoPlayer; the story cannot be replayed.",
+                      story_name,
+                      chronicle_name);
+            return std::pair<int, chronolog::StoryHandle*>(chronolog::CL_ERR_NO_PLAYERS, nullptr);
+        }
+
         //prepare ClientQueryService for reading this story
-        storyReaderService->addStoryReader(chronicle_name,
-                                           story_name,
-                                           acquireStoryResponse.getStoryId(),
-                                           acquireStoryResponse.getPlayer());
+        int reader_ret = storyReaderService->addStoryReader(chronicle_name,
+                                                            story_name,
+                                                            acquireStoryResponse.getStoryId(),
+                                                            acquireStoryResponse.getPlayer());
+        if(chronolog::CL_SUCCESS != reader_ret)
+        {
+            LOG_ERROR("[ChronoLogClientImpl] Acquired story '{}' in chronicle '{}' but failed to register it for "
+                      "reading (error {}).",
+                      story_name,
+                      chronicle_name,
+                      reader_ret);
+            return std::pair<int, chronolog::StoryHandle*>(reader_ret, nullptr);
+        }
     }
 
     if(storyHandle == nullptr)
