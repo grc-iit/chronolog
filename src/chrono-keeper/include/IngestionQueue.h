@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <mutex>
 #include <shared_mutex>
+#include <sstream>
 
 #include <chrono_monitor.h>
 #include <chronolog_types.h>
@@ -138,6 +139,33 @@ public:
         }
         // last attempt to drain orphanEventQueue into known ingestionHandles
         drainOrphanEvents();
+
+        // Any events still orphaned here belong to stories that have no
+        // ingestion handle (retired and never re-acquired, or never acquired),
+        // so they can no longer be sealed and would otherwise be dropped
+        // silently when this queue is destroyed. We cannot re-home or archive
+        // them (an orphan LogEvent carries only its storyId, not the
+        // chronicle/story names needed to build an archivable StoryChunk), so
+        // at minimum surface the loss with an error rather than dropping it
+        // silently.
+        {
+            std::lock_guard<std::mutex> orphanLock(orphanQueueMutex);
+            if(!orphanEventQueue.empty())
+            {
+                std::unordered_map<StoryId, std::size_t> per_story;
+                for(auto const& orphan_event: orphanEventQueue)
+                { per_story[orphan_event.storyId]++; }
+                std::stringstream story_breakdown;
+                for(auto const& entry: per_story)
+                { story_breakdown << " story=" << entry.first << ":" << entry.second; }
+                LOG_ERROR("[IngestionQueue] Shutdown is dropping {} un-drainable orphan event(s) across {} "
+                          "story(ies) that had no ingestion handle to seal them:{}",
+                          orphanEventQueue.size(),
+                          per_story.size(),
+                          story_breakdown.str());
+            }
+        }
+
         // disengage all handles
         std::unique_lock<std::shared_mutex> lock(handleMapMutex);
         storyIngestionHandles.clear();
