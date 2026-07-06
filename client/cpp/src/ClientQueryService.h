@@ -27,8 +27,17 @@ struct PlaybackQuery
     // Exactly one of `eventSeries` or `callback` is set: vector mode appends
     // to the user-provided vector; callback mode invokes the function once
     // per event as the response arrives.
+    //
+    // `eventSeries` and `callback` reference caller-owned state whose lifetime
+    // ends when replay_story() returns. The response handler therefore never
+    // touches them directly: it stashes the arriving events into `resultEvents`
+    // (which the PlaybackQuery owns) under queryServiceMutex, and the polling
+    // thread in dispatch_query() is the one that delivers them to the caller.
+    // This keeps a late/timed-out response from writing into a vector or
+    // callback the caller has already destroyed (see issue #690).
     std::vector<Event>* eventSeries;
     Client::EventCallback callback;
+    std::vector<Event> resultEvents;
     uint32_t queryId;
     uint64_t timeout_time;
     bool completed;
@@ -48,6 +57,7 @@ struct PlaybackQuery
                   chrono_time const& end)
         : eventSeries(&playbackEvents)
         , callback()
+        , resultEvents()
         , queryId(query_id)
         , timeout_time(timeout_time)
         , completed(false)
@@ -68,6 +78,7 @@ struct PlaybackQuery
                   chrono_time const& end)
         : eventSeries(nullptr)
         , callback(std::move(cb))
+        , resultEvents()
         , queryId(query_id)
         , timeout_time(timeout_time)
         , completed(false)
