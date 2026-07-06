@@ -183,6 +183,22 @@ public:
 
     std::pair<int, std::vector<std::string>> ShowStories(std::string const& chronicle_name);
 
+    // Replay the events of an already-acquired story in the [start, end) time
+    // range (nanoseconds) into `event_series`.
+    //
+    // Preconditions / return codes:
+    //   - The story must be acquired by this (reader-capable) Client first;
+    //     otherwise this returns CL_ERR_NOT_ACQUIRED (-5).
+    //   - CL_ERR_QUERY_TIMED_OUT (-12) means the Player sent no response within the
+    //     query timeout. Note this is NOT the same as "no matching events": an empty
+    //     range returns CL_SUCCESS with an empty `event_series`.
+    //
+    // Read-after-write visibility: events are only replayable once they have
+    // propagated through the keeper -> grapher -> player pipeline and been made
+    // available by the Player. A ReplayStory issued immediately after log_event()
+    // may legitimately return no events (or time out) for the just-written data
+    // until that flush completes. Readers must not assume a just-logged event is
+    // immediately replayable.
     int ReplayStory(std::string const& chronicle,
                     std::string const& story,
                     uint64_t start,
@@ -192,14 +208,14 @@ public:
     // Streaming overload: invoke `callback` once per event in the requested
     // [start, end) range, with no client-side std::vector<Event> materialization.
     //
-    // The callback runs on the query service receive thread; the caller is
-    // responsible for any locking it needs.
+    // The callback runs on the thread that called ReplayStory (synchronously,
+    // before ReplayStory returns), never on the query service receive thread. The
+    // caller is responsible for any locking the callback body needs.
     //
     // The callback must not throw. If it does, the exception is caught and
-    // logged, that event is skipped, and the remaining events in the response
-    // are still delivered. Letting an exception escape into the Thallium ULT
-    // would skip the RPC response and hang the polling thread until
-    // CL_ERR_QUERY_TIMED_OUT.
+    // logged, that event is skipped, and the remaining events are still
+    // delivered, so a misbehaving callback cannot abort the client or break
+    // subsequent queries.
     //
     // Scope note: this overload removes the client-side vector materialization,
     // but the wire-level response is unchanged — the Player still ships one
