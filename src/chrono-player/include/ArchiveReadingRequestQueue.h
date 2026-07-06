@@ -39,8 +39,13 @@ public:
 
     bool is_valid() const
     {
+        // NB: startTime == 0 is a legitimate "from the beginning of time" lower bound
+        // (a ReplayStory(chronicle, story, 0, end, ...) — the common "read everything"
+        // query). Requiring startTime > 0 here silently dropped those archive requests,
+        // so their responses were never marked ready and the client timed out (-12).
+        // A valid range only needs startTime < endTime.
         return (queryResponseAgent != nullptr) && (queryId > 0) && !chronicleName.empty() && !storyName.empty() &&
-               (startTime > 0) && (startTime < endTime);
+               (startTime < endTime);
     }
 };
 
