@@ -23,6 +23,7 @@ namespace chl = chronolog;
 
 std::mutex chronolog::ChronologClientImpl::chronologClientMutex;
 chronolog::ChronologClientImpl* chronolog::ChronologClientImpl::chronologClientImplInstance{nullptr};
+int chronolog::ChronologClientImpl::chronologClientRefCount{0};
 
 chronolog::ChronologClientImpl* chronolog::ChronologClientImpl::GetClientImplInstance(
         chronolog::ClientPortalServiceConf const& visorClientPortalServiceConf,
@@ -45,7 +46,35 @@ chronolog::ChronologClientImpl* chronolog::ChronologClientImpl::GetClientImplIns
                 new ChronologClientImpl(visorClientPortalServiceConf, clientMode, clientQueryServiceConf);
     }
 
+    // Every Client that obtains the shared instance holds a reference to it;
+    // ReleaseClientImplInstance() (called from ~Client) drops it.
+    ++chronologClientRefCount;
+
     return chronologClientImplInstance;
+}
+
+void chronolog::ChronologClientImpl::ReleaseClientImplInstance()
+{
+    ChronologClientImpl* instance_to_delete = nullptr;
+    {
+        std::lock_guard<std::mutex> lock_client(chronologClientMutex);
+
+        if(chronologClientImplInstance == nullptr || chronologClientRefCount == 0)
+        {
+            // Nothing to release (or already released) — avoids underflow / double free.
+            return;
+        }
+
+        if(--chronologClientRefCount == 0)
+        {
+            instance_to_delete = chronologClientImplInstance;
+            chronologClientImplInstance = nullptr;
+        }
+    }
+
+    // Delete OUTSIDE the lock: ~ChronologClientImpl() -> Disconnect() re-acquires
+    // chronologClientMutex, so deleting while holding it would self-deadlock.
+    delete instance_to_delete;
 }
 
 chronolog::ChronologClientImpl::ChronologClientImpl(chronolog::ClientPortalServiceConf const& clientPortalServiceConf,

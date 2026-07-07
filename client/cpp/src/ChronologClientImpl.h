@@ -45,10 +45,20 @@ public:
     // thread(s) GetClientImplInstance() is called from
     static std::mutex chronologClientMutex;
     static ChronologClientImpl* chronologClientImplInstance;
+    // Number of live Client objects sharing chronologClientImplInstance. The impl
+    // (and its Thallium engine) is a process-wide singleton, so it must be deleted
+    // exactly once, when the LAST Client is destroyed. Guarded by chronologClientMutex.
+    static int chronologClientRefCount;
 
     static ChronologClientImpl* GetClientImplInstance(chronolog::ClientPortalServiceConf const&,
                                                       ClientMode const&,
                                                       chronolog::ClientQueryServiceConf const&);
+
+    // Drop one Client's reference to the shared impl; deletes it once the count
+    // reaches zero. Call this from ~Client() instead of `delete` — the singleton
+    // is shared, so a plain delete double-frees it (and leaves a dangling
+    // chronologClientImplInstance), which is the crash in issue #692.
+    static void ReleaseClientImplInstance();
 
     // the classs is non-copyable
     ChronologClientImpl(ChronologClientImpl const&) = delete;
