@@ -15,6 +15,17 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 include(GNUInstallDirs)
 
 # ---------------------------------------------------------------------------
+# The round-trip example is a pure ChronoLog client (StoryHandle::playback /
+# Client::ReplayStory) with no LDMS dependency, so it is ALWAYS built --
+# independent of whether the OVIS/LDMS headers required by the plugin below are
+# found.
+# ---------------------------------------------------------------------------
+option(CHRONO_LDMS_BUILD_EXAMPLES "Build chrono-ldms examples" ON)
+if(CHRONO_LDMS_BUILD_EXAMPLES)
+    add_subdirectory(examples)
+endif()
+
+# ---------------------------------------------------------------------------
 # store_chronolog is an ldmsd *store* plugin: a shared object that ldmsd
 # dlopen()s at runtime. It needs the OVIS/LDMS development headers
 # (ldmsd.h / ldms.h / ldmsd_plug_api.h), which are an external dependency not
@@ -38,7 +49,8 @@ find_path(LDMS_INCLUDE_DIR
 if(NOT LDMS_INCLUDE_DIR)
     message(STATUS
         "chrono-ldms: LDMS headers (ldmsd.h) not found -- skipping the "
-        "store_chronolog plugin. Set -DLDMS_PREFIX=<ldms-install> to build it.")
+        "store_chronolog plugin (the round-trip example is still built). "
+        "Set -DLDMS_PREFIX=<ldms-install> to build the plugin.")
     return()
 endif()
 message(STATUS "chrono-ldms: building store_chronolog (LDMS headers: ${LDMS_INCLUDE_DIR})")
@@ -73,12 +85,6 @@ set_target_properties(store_chronolog PROPERTIES
     PREFIX "lib"
     OUTPUT_NAME "store_chronolog"
 )
-
-# Examples (a tail-read reader over the LDMS metric events the store writes).
-option(CHRONO_LDMS_BUILD_EXAMPLES "Build chrono-ldms examples" ON)
-if(CHRONO_LDMS_BUILD_EXAMPLES)
-    add_subdirectory(examples)
-endif()
 
 # Install the plugin .so into the ChronoLog lib dir. To let ldmsd load it, add
 # that directory to LDMSD_PLUGIN_LIBPATH (or copy/symlink the .so into the
