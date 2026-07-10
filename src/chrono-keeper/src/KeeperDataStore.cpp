@@ -187,6 +187,13 @@ void chronolog::KeeperDataStore::retireDecayedPipelines()
             }
         }
     }
+
+    // Rescue any events stranded in the ingestion orphan queue for stories that
+    // were just retired (or retired earlier) and seal them for archival before
+    // they are lost. Invoked here so a direct retireDecayedPipelines() call --
+    // including the per-tick one -- always performs the rescue.
+    sealOrphanedEvents();
+
     //swipe through pipelineswaiting and remove all those with nullptr
     LOG_DEBUG("[KeeperDataStore] Completed retirement of decayed pipelines. Current state={}, Active "
               "KeeperStoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}",
@@ -281,7 +288,6 @@ void chronolog::KeeperDataStore::dataCollectionTask()
         }
         extractDecayedStoryChunks();
         retireDecayedPipelines();
-        sealOrphanedEvents();
     }
     LOG_DEBUG("[KeeperDataStore] Exiting DataCollectionTask thread {}", tl::thread::self_id());
 }

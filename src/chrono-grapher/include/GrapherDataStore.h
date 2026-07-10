@@ -9,6 +9,7 @@
 #include <mutex>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <thallium.hpp>
 
@@ -60,7 +61,13 @@ public:
 
     bool is_shutting_down() const { return (SHUTTING_DOWN == state); }
 
-    int startStoryRecording(ChronicleName const&, StoryName const&, StoryId const&, uint64_t start_time);
+    // is_adoption distinguishes an on-demand pipeline created by
+    // adoptOrphanChunks (recovery) from a real visor-driven registration. An
+    // adoption call is refused (returns an error, creates nothing) if the story
+    // or its chronicle has been destroyed; a real registration instead clears
+    // any such tombstone, since the story/chronicle is alive again.
+    int startStoryRecording(ChronicleName const&, StoryName const&, StoryId const&, uint64_t start_time,
+                            bool is_adoption = false);
 
     int stopStoryRecording(StoryId const&);
 
@@ -84,6 +91,12 @@ public:
     void extractDecayedStoryChunks();
 
     void retireDecayedPipelines();
+
+    // Recover chunks that arrived for a story with no registered pipeline
+    // (retired past its inactive window, or a registration that never reached
+    // this grapher) by creating a pipeline on-demand from each chunk's own
+    // chronicle/story identity, so they are archived instead of orphaned.
+    void adoptOrphanChunks();
 
     void startDataCollection(int stream_count);
 
@@ -135,6 +148,14 @@ private:
     std::mutex dataStoreMutex;
     std::unordered_map<StoryId, StoryPipeline*> theMapOfStoryPipelines;
     std::unordered_map<StoryId, std::pair<StoryPipeline*, uint64_t>> pipelinesWaitingForExit;
+    // Story-ids / chronicles that have been destroyed. adoptOrphanChunks consults
+    // these under dataStoreMutex and discards (rather than resurrects) orphan
+    // chunks for a destroyed entity, so recovery never re-creates HDF5 files after
+    // DestroyStory/DestroyChronicle has deleted them. Cleared when a story/chronicle
+    // is legitimately (re)registered by the visor. Grows with the number of distinct
+    // destroyed entities; a bounded cache is a possible future refinement.
+    std::unordered_set<StoryId> destroyedStories;
+    std::unordered_set<ChronicleName> destroyedChronicles;
 
     // Destroy worker: a dedicated std::thread (not an Argobots xstream) so
     // it can block on the extraction-queue drain without starving the data

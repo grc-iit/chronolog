@@ -110,6 +110,19 @@ public:
         LOG_WARNING("[IngestionQueue] has {} orphaned chunks", orphanQueue.size());
     }
 
+    // Remove and return all currently orphaned chunks (those whose story has no
+    // registered ingestion handle). The DataStore adopts these by creating a
+    // pipeline on-demand from each chunk's own chronicle/story identity -- a
+    // StoryChunk is self-describing, so unlike a raw event it can always be
+    // recovered.
+    std::deque<StoryChunk*> extractOrphanChunks()
+    {
+        std::lock_guard<std::mutex> lock(ingestionQueueMutex);
+        std::deque<StoryChunk*> extracted;
+        extracted.swap(orphanQueue);
+        return extracted;
+    }
+
     bool is_empty() const { return (orphanQueue.empty() && storyIngestionHandles.empty()); }
 
     void shutDown()

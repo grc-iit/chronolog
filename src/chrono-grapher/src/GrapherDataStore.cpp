@@ -3,6 +3,8 @@
 #include <mutex>
 #include <chrono>
 #include <utility>
+#include <deque>
+#include <unordered_set>
 #include <thallium.hpp>
 
 #include <chronolog_errcode.h>
@@ -19,7 +21,8 @@ namespace tl = thallium;
 int chronolog::GrapherDataStore::startStoryRecording(std::string const& chronicle,
                                                      std::string const& story,
                                                      chronolog::StoryId const& story_id,
-                                                     uint64_t start_time)
+                                                     uint64_t start_time,
+                                                     bool is_adoption)
 {
     LOG_INFO("[GrapherDataStore] Start recording story: Chronicle={}, Story={}, StoryId={}",
              chronicle,
@@ -28,6 +31,33 @@ int chronolog::GrapherDataStore::startStoryRecording(std::string const& chronicl
 
     // Get dataStoreMutex, check for story_id_presence & add new StoryPipeline if needed
     std::lock_guard storeLock(dataStoreMutex);
+
+    if(is_adoption)
+    {
+        // Recovery must not resurrect a destroyed story/chronicle: destroyStory/
+        // destroyChronicle deletes its HDF5 files under this same lock, and a
+        // pipeline created here would archive a fresh file the destroy worker can
+        // no longer clean up. Refuse; the caller discards the chunk. (Checking and
+        // creating under one lock makes this atomic w.r.t. destroy: if destroy ran
+        // first the tombstone is set and we refuse; if we create first the pipeline
+        // is in the map and destroy's own scan finds and deletes it.)
+        if(destroyedStories.find(story_id) != destroyedStories.end() ||
+           destroyedChronicles.find(chronicle) != destroyedChronicles.end())
+        {
+            LOG_INFO("[GrapherDataStore] Refusing to adopt orphan chunk for destroyed StoryId={} (Chronicle={})",
+                     story_id,
+                     chronicle);
+            return chronolog::CL_ERR_UNKNOWN;
+        }
+    }
+    else
+    {
+        // A real (visor-driven) registration means the story/chronicle is alive
+        // again; drop any tombstone so future recovery for it is allowed.
+        destroyedStories.erase(story_id);
+        destroyedChronicles.erase(chronicle);
+    }
+
     auto pipeline_iter = theMapOfStoryPipelines.find(story_id);
     if(pipeline_iter != theMapOfStoryPipelines.end())
     {
@@ -132,6 +162,9 @@ int chronolog::GrapherDataStore::destroyStory(chronolog::StoryId const& story_id
     chl::StoryPipeline* pipeline = nullptr;
     {
         std::lock_guard storeLock(dataStoreMutex);
+        // Tombstone the story so a late chunk cannot be adopted into a fresh
+        // pipeline (and a fresh HDF5 file) after the destroy worker deletes files.
+        destroyedStories.insert(story_id);
         auto pipeline_iter = theMapOfStoryPipelines.find(story_id);
         if(pipeline_iter != theMapOfStoryPipelines.end())
         {
@@ -195,6 +228,10 @@ int chronolog::GrapherDataStore::destroyChronicle(chronolog::ChronicleName const
     std::vector<chl::StoryId> story_ids_to_unhook;
     {
         std::lock_guard storeLock(dataStoreMutex);
+        // Tombstone the chronicle so late chunks for any of its stories (including
+        // ones already retired from the maps) cannot be adopted into fresh HDF5
+        // files after the destroy worker deletes them.
+        destroyedChronicles.insert(chronicle);
         for(auto it = theMapOfStoryPipelines.begin(); it != theMapOfStoryPipelines.end();)
         {
             if(it->second != nullptr && it->second->getChronicleName() == chronicle)
@@ -456,6 +493,56 @@ void chronolog::GrapherDataStore::retireDecayedPipelines()
               tl::thread::self_id());
 }
 
+void chronolog::GrapherDataStore::adoptOrphanChunks()
+{
+    // Chunks whose story has no registered pipeline (retired past its inactive
+    // window, or a registration that never reached this grapher) would otherwise
+    // sit in the ingestion orphan queue and eventually be dropped. Unlike a raw
+    // event, a StoryChunk is self-describing -- it carries its chronicle/story
+    // names -- so we recover it: create a pipeline on-demand from the chunk's own
+    // identity, re-ingest the chunk for normal sealing/archival, and schedule the
+    // on-demand pipeline to retire so it does not leak.
+    std::deque<chl::StoryChunk*> orphan_chunks = theIngestionQueue.extractOrphanChunks();
+    if(orphan_chunks.empty())
+    { return; }
+
+    std::unordered_set<chl::StoryId> adopted_stories;
+    std::size_t discarded = 0;
+    for(chl::StoryChunk* chunk: orphan_chunks)
+    {
+        // startStoryRecording(is_adoption=true) reuses an existing pipeline, or
+        // creates one from the chunk's own names -- unless the story/chronicle is
+        // tombstoned as destroyed, in which case it refuses and we discard the
+        // chunk rather than resurrecting a deleted archive.
+        int rc = startStoryRecording(chunk->getChronicleName(),
+                                     chunk->getStoryName(),
+                                     chunk->getStoryId(),
+                                     chunk->getStartTime(),
+                                     /*is_adoption=*/true);
+        if(rc != chronolog::CL_SUCCESS)
+        {
+            delete chunk;
+            ++discarded;
+            continue;
+        }
+        theIngestionQueue.ingestStoryChunk(chunk);
+        adopted_stories.insert(chunk->getStoryId());
+    }
+
+    // Schedule each on-demand pipeline to retire (now + inactive_pipeline_delay)
+    // so it is not left resident forever. A subsequent real acquisition rescues
+    // it from the waiting list; further stragglers re-adopt and reset the timer.
+    for(chl::StoryId const& story_id: adopted_stories)
+    { stopStoryRecording(story_id); }
+
+    LOG_WARNING("[GrapherDataStore] Adopted orphan chunk(s) for {} story(ies) from the chunks' own chronicle/story "
+                "identity; discarded {} chunk(s) for destroyed stories.",
+                adopted_stories.size(),
+                discarded);
+}
+
+////////////////////////
+
 void chronolog::GrapherDataStore::dataCollectionTask()
 {
     //run dataCollectionTask as long as the state == RUNNING
@@ -478,6 +565,7 @@ void chronolog::GrapherDataStore::dataCollectionTask()
         }
         extractDecayedStoryChunks();
         retireDecayedPipelines();
+        adoptOrphanChunks();
     }
     LOG_DEBUG("[GrapherDataStore] Exiting DataCollectionTask thread {}", tl::thread::self_id());
 }
