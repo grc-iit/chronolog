@@ -281,6 +281,15 @@ int chronolog::DataStoreConf::parseJsonConf(json_object* data_store_json_conf)
             }
             inactive_story_delay_secs = json_object_get_int(val);
         }
+        else if(strcmp(key, "tail_capacity") == 0)
+        {
+            if(!json_object_is_type(val, json_type_int))
+            {
+                std::cerr << "[DataStoreConf] Invalid 'tail_capacity': expected integer" << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
+            tail_capacity = json_object_get_int(val);
+        }
         else
         {
             std::cerr << "[DataStoreConf] Unknown DataStoreInternals configuration: " << key << std::endl;

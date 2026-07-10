@@ -210,7 +210,8 @@ int main(int argc, char** argv)
     // Instantiate the TailStore (serves keeper-memory tail reads) and DataStore.
     // tail_capacity = max number of most-recent sealed events retained per story
     // for last-N playback before they age out to the extraction/archive path.
-    const std::size_t keeper_tail_capacity = 65536;
+    // Configurable via DataStoreInternals.tail_capacity (default 65536).
+    const std::size_t keeper_tail_capacity = static_cast<std::size_t>(KEEPER_CONF.DATA_STORE_CONF.tail_capacity);
     chronolog::KeeperTailStore theTailStore(theExtractionModule.getExtractionQueue(), keeper_tail_capacity);
 
     // Instantiate KeeperDataStore
