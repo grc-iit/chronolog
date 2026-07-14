@@ -21,10 +21,21 @@ This plugin enables Grafana to query and visualize data from ChronoLog chronicle
 
 ### Data Flow
 
+Each query runs in exactly one of two modes, selected in the query editor:
+
+**Replay (archive) — default:**
+
 1. User selects a chronicle, story, and time range in the Grafana dashboard
 2. The **TypeScript plugin** converts the time range from milliseconds to nanoseconds and sends a `POST /query` request to the backend
 3. The **Python backend** acquires the story handle, calls `ReplayStory()` via the C++ client, then releases the handle
 4. Events are returned as JSON and transformed into Grafana DataFrames (Time, Log, Client ID, Index fields)
+
+**Tail (playback):**
+
+1. User selects a chronicle, story, and the number of most recent events (**Last N**); the dashboard time range is ignored
+2. The **TypeScript plugin** sends a `POST /playback` request to the backend
+3. The **Python backend** acquires the story handle, calls `StoryHandle.playback(n, events)` — a low-latency tail read served from the keepers' in-memory sealed chunks, bypassing the player/archive path — then releases the handle
+4. Events are returned and transformed exactly as in replay mode. Note: events become visible in the tail only after their chunk seals (chunk duration + acceptance window)
 
 ## Prerequisites
 
@@ -121,7 +132,7 @@ The Python backend can be configured via environment variables:
 | Field | Required | Description |
 |-------|----------|-------------|
 | Backend URL | Yes | URL of the Python backend service (e.g., `http://localhost:8080`) |
-| Client Config File | No | Path to ChronoLog client config JSON on the backend host. Leave empty to use the backend's default config. |
+| Client Config File | No | Path to ChronoLog client config JSON on the backend host. Leave empty to use the backend's default config. Its `Monitoring.monitor` block also sets the client log file/level (relative paths resolve against the config file's directory). |
 | Default Chronicle | No | Default chronicle name pre-filled in new queries |
 | Default Story | No | Default story name pre-filled in new queries |
 | API Key | No | Optional API key for backend authentication (stored securely) |
@@ -133,15 +144,18 @@ The Python backend can be configured via environment variables:
 1. Create a new dashboard in Grafana
 2. Add a panel
 3. Select **ChronoLog** as the data source
-4. Enter the **Chronicle Name** and **Story Name**
-5. Use Grafana's time picker to select the query range
+4. Pick a **Mode**: `Replay (archive)` or `Tail (playback)` — exactly one applies per query
+5. Enter the **Chronicle Name** and **Story Name** (manual entry is always possible; the dropdowns are optional autocomplete)
+6. Replay mode: use Grafana's time picker to select the query range. Tail mode: set **Last N** (the time picker is ignored)
 
 ### Query Fields
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| Chronicle Name | Yes | Name of the chronicle to query |
-| Story Name | Yes | Name of the story within the chronicle |
+| Mode | Yes | Exclusive fetch mode: `Replay (archive)` reads persisted events over the dashboard time range; `Tail (playback)` reads the most recent N events from keeper memory |
+| Chronicle Name | Yes | Name of the chronicle to query (dropdown or manual entry) |
+| Story Name | Yes | Name of the story within the chronicle (dropdown or manual entry) |
+| Last N | Tail mode only | Number of most recent events to fetch from the keeper tail (default 100) |
 
 ### Data Fields Returned
 

@@ -69,6 +69,27 @@ def load_config_from_file(path: str) -> Optional["ChronoLogConfig"]:
         chrono = data.get("chrono_client", {})
         portal = chrono.get("VisorClientPortalService", {}).get("rpc", {})
         query = chrono.get("ClientQueryService", {}).get("rpc", {})
+
+        # Client log settings from the Monitoring.monitor block (optional).
+        # A relative log file path is resolved against the conf file's
+        # directory; if the resulting location is unwritable the client
+        # library falls back to its legacy /tmp/chrono_client.log.
+        log_conf = None
+        monitor = chrono.get("Monitoring", {}).get("monitor")
+        if isinstance(monitor, dict) and monitor.get("file"):
+            log_file = monitor["file"]
+            if not os.path.isabs(log_file):
+                log_file = os.path.join(os.path.dirname(os.path.abspath(path)), log_file)
+            log_conf = {
+                "file": log_file,
+                "level": monitor.get("level", "info"),
+                "log_type": monitor.get("type", "file"),
+                "name": monitor.get("name", "ChronoClient"),
+                "filesize": int(monitor.get("filesize", 1048576)),
+                "filenum": int(monitor.get("filenum", 3)),
+                "flushlevel": monitor.get("flushlevel", "warning"),
+            }
+
         return ChronoLogConfig(
             protocol=portal.get("protocol_conf", "ofi+sockets"),
             portal_ip=portal.get("service_ip", "127.0.0.1"),
@@ -77,6 +98,7 @@ def load_config_from_file(path: str) -> Optional["ChronoLogConfig"]:
             query_ip=query.get("service_ip", "127.0.0.1"),
             query_port=int(query.get("service_base_port", 5557)),
             query_provider_id=int(query.get("service_provider_id", 57)),
+            log_conf=log_conf,
         )
     except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
         logger.warning("Failed to load config from %s: %s", path, e)
@@ -95,6 +117,7 @@ class ChronoLogConfig:
         query_ip: str = "127.0.0.1",
         query_port: int = 5557,
         query_provider_id: int = 57,
+        log_conf: Optional[dict] = None,
     ):
         self.protocol = protocol
         self.portal_ip = portal_ip
@@ -103,6 +126,9 @@ class ChronoLogConfig:
         self.query_ip = query_ip
         self.query_port = query_port
         self.query_provider_id = query_provider_id
+        # kwargs for chronolog.ClientLogConf (conf file Monitoring.monitor block);
+        # None means "let the client library use its default log location"
+        self.log_conf = log_conf
 
     @classmethod
     def from_env(cls) -> "ChronoLogConfig":
@@ -266,6 +292,28 @@ class QueryResponse(BaseModel):
     story_name: str
     start_time: int
     end_time: int
+    events: list[EventResponse]
+    total_events: int
+
+
+class PlaybackRequest(BaseModel):
+    """Request model for tail-reading the most recent story events."""
+
+    chronicle_name: str = Field(..., description="Name of the chronicle")
+    story_name: str = Field(..., description="Name of the story")
+    num_events: int = Field(
+        default=100,
+        ge=1,
+        description="Maximum number of most recent events to return from the keeper tail",
+    )
+
+
+class PlaybackResponse(BaseModel):
+    """Response model for playback (tail read) results."""
+
+    chronicle_name: str
+    story_name: str
+    num_events: int
     events: list[EventResponse]
     total_events: int
 
@@ -436,8 +484,24 @@ async def connect_client(conn_config: Optional[ConnectionConfig] = None):
             conn_config.query_provider_id,
         )
 
+        # Honor the conf file's Monitoring.monitor block for the client log
+        # (requires bindings with ClientLogConf; older bindings fall back to
+        # the library's fixed default log location).
+        log_conf_obj = None
+        if effective.log_conf and hasattr(chronolog, "ClientLogConf"):
+            try:
+                log_conf_obj = chronolog.ClientLogConf(**effective.log_conf)
+                logger.info("Client log configured: %s (level %s)",
+                            effective.log_conf["file"], effective.log_conf["level"])
+            except (TypeError, ValueError) as e:
+                logger.warning("Invalid client log config %s: %s; using library default",
+                               effective.log_conf, e)
+
         # Create client with both portal and query configurations
-        client = chronolog.Client(portal_conf, query_conf)
+        if log_conf_obj is not None:
+            client = chronolog.Client(portal_conf, query_conf, log_conf_obj)
+        else:
+            client = chronolog.Client(portal_conf, query_conf)
 
         # Connect to the service - run in thread pool to avoid thread-safety issues
         def _connect():
@@ -747,6 +811,128 @@ async def query_story(request: QueryRequest):
         raise HTTPException(
             status_code=500,
             detail=f"Failed to query story: {str(e)}"
+        )
+
+
+@app.post("/playback", response_model=PlaybackResponse)
+async def playback_story(request: PlaybackRequest):
+    """
+    Tail-read the most recent events of a story via StoryHandle.playback().
+
+    Unlike /query (Client.ReplayStory, the archive path through the player),
+    playback serves the keepers' in-memory tail of sealed-but-not-yet-archived
+    chunks. It takes no time range: it returns up to num_events of the most
+    recent events, in ascending order.
+    """
+    # Get client - will raise HTTPException(503) if not connected
+    try:
+        chronolog_client = get_client()
+    except HTTPException:
+        raise
+
+    try:
+        import chronolog_service as cs_module
+        if chronolog_client is not cs_module.client:
+            logger.error("Client object mismatch in playback endpoint!")
+            raise HTTPException(
+                status_code=500,
+                detail="Client object mismatch detected"
+            )
+
+        def _acquire_story():
+            with _client_lock:
+                return chronolog_client.AcquireStory(
+                    request.chronicle_name,
+                    request.story_name,
+                )
+
+        acquire_result = await asyncio.to_thread(_acquire_story)
+        acquire_error_code = acquire_result[0]
+
+        if acquire_error_code != 0:
+            logger.error(
+                f"Failed to acquire story {request.chronicle_name}/{request.story_name}: "
+                f"error code {acquire_error_code}"
+            )
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to acquire story (error code: {acquire_error_code})"
+            )
+
+        story_handle = acquire_result[1]
+        if story_handle is None:
+            logger.error(
+                f"AcquireStory returned no handle for "
+                f"{request.chronicle_name}/{request.story_name}"
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="AcquireStory returned no story handle"
+            )
+
+        logger.info(
+            f"Successfully acquired story {request.chronicle_name}/{request.story_name}"
+        )
+
+        try:
+            events = chronolog.EventList()
+
+            def _playback_story():
+                with _client_lock:
+                    return story_handle.playback(request.num_events, events)
+
+            result = await asyncio.to_thread(_playback_story)
+
+            if result != 0:
+                logger.warning(
+                    f"playback returned non-zero code: {result} for "
+                    f"{request.chronicle_name}/{request.story_name}"
+                )
+
+            event_responses = [
+                EventResponse(
+                    time=event.time(),
+                    client_id=event.client_id(),
+                    index=event.index(),
+                    log_record=event.log_record(),
+                )
+                for event in events
+            ]
+
+            return PlaybackResponse(
+                chronicle_name=request.chronicle_name,
+                story_name=request.story_name,
+                num_events=request.num_events,
+                events=event_responses,
+                total_events=len(event_responses),
+            )
+
+        finally:
+            try:
+                def _release_story():
+                    with _client_lock:
+                        return chronolog_client.ReleaseStory(
+                            request.chronicle_name,
+                            request.story_name
+                        )
+
+                release_result = await asyncio.to_thread(_release_story)
+                logger.info(
+                    f"ReleaseStory returned: {release_result} for "
+                    f"{request.chronicle_name}/{request.story_name}"
+                )
+            except Exception as release_error:
+                logger.error(f"Error releasing story: {release_error}")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"Error playing back story {request.chronicle_name}/{request.story_name}: {e}"
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to play back story: {str(e)}"
         )
 
 

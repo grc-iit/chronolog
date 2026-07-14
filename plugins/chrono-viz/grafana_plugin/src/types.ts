@@ -5,6 +5,17 @@ import { DataQuery, DataSourceJsonData } from '@grafana/data';
 // ============================================================================
 
 /**
+ * How events are fetched from ChronoLog (exclusive choice):
+ * - 'replay':   archive read over the dashboard time range (Client.ReplayStory)
+ * - 'playback': tail read of the most recent N events from keeper memory
+ *               (StoryHandle.playback); the dashboard time range is ignored
+ */
+export type ChronoLogQueryType = 'replay' | 'playback';
+
+/** Default number of events fetched in playback (tail read) mode */
+export const DEFAULT_NUM_EVENTS = 100;
+
+/**
  * ChronoLog query interface for Grafana
  */
 export interface ChronoLogQuery extends DataQuery {
@@ -12,6 +23,10 @@ export interface ChronoLogQuery extends DataQuery {
   chronicleName: string;
   /** Name of the story within the chronicle */
   storyName: string;
+  /** Fetch mode; defaults to 'replay' when unset (pre-existing queries) */
+  queryType?: ChronoLogQueryType;
+  /** Number of most recent events to fetch in 'playback' mode */
+  numEvents?: number;
   /** Query text for filtering (optional) */
   queryText?: string;
 }
@@ -22,6 +37,8 @@ export interface ChronoLogQuery extends DataQuery {
 export const DEFAULT_QUERY: Partial<ChronoLogQuery> = {
   chronicleName: '',
   storyName: '',
+  queryType: 'replay',
+  numEvents: DEFAULT_NUM_EVENTS,
 };
 
 /**
@@ -75,6 +92,16 @@ export interface QueryRequest {
   story_name: string;
   start_time: number;
   end_time: number;
+}
+
+/**
+ * Request model for tail-reading the most recent story events
+ * Matches PlaybackRequest in chronolog_service.py
+ */
+export interface PlaybackRequest {
+  chronicle_name: string;
+  story_name: string;
+  num_events: number;
 }
 
 // ============================================================================
@@ -132,6 +159,18 @@ export interface QueryResponse {
   story_name: string;
   start_time: number;
   end_time: number;
+  events: ChronoLogEvent[];
+  total_events: number;
+}
+
+/**
+ * Response from the playback endpoint
+ * Matches PlaybackResponse in chronolog_service.py
+ */
+export interface PlaybackResponse {
+  chronicle_name: string;
+  story_name: string;
+  num_events: number;
   events: ChronoLogEvent[];
   total_events: number;
 }

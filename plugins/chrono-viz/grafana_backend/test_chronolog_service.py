@@ -44,8 +44,13 @@ class TestChronoLogService:
        - test_query_story_success: connect -> acquire -> query -> release -> disconnect
        - test_multiple_queries_same_connection: connect -> acquire -> query1 -> release1 -> acquire -> query2 -> release2 -> acquire -> query3 -> release3 -> disconnect
 
-    4. Validation Tests:
+    4. Playback (tail read) Tests:
+       - test_playback_story_success: connect -> playback (acquire->playback->release handled by backend) -> disconnect
+       - test_playback_not_connected: playback without connection fails with 503
+
+    5. Validation Tests:
        - test_query_validation_missing_fields: Test request validation
+       - test_playback_validation_missing_fields / test_playback_validation_bad_num_events
     
     Each test starts with a clean state (setup clears any existing connections).
     """
@@ -376,6 +381,74 @@ class TestChronoLogService:
         print("Disconnected successfully")
 
     # ===================================================================
+    # Playback (Tail Read) Tests
+    # ===================================================================
+
+    def test_playback_story_success(self):
+        """Test tail-read (playback) of the most recent story events.
+
+        Lifecycle: connect -> playback (acquire->playback->release handled by backend) -> disconnect
+
+        The keeper tail only contains sealed-but-not-yet-archived chunks, so an
+        empty result is valid (e.g., right after events are written, before the
+        chunk seals). The test asserts success and response shape, not counts.
+        """
+        # 1. Connect to ChronoLog
+        conn_response = self.test_client.post("/connect", json=self.conn_params)
+        assert conn_response.status_code == 200
+        print("Connected successfully")
+
+        chronicle_name = os.getenv("TEST_CHRONICLE_NAME", "kfeng-EVO-X2")
+        story_name = os.getenv("TEST_STORY_NAME", "cpu_usage")
+
+        # 2. Playback the most recent events (backend handles acquire -> playback -> release)
+        print(f"Playing back story tail: {chronicle_name}/{story_name}")
+        response = self.test_client.post("/playback", json={
+            "chronicle_name": chronicle_name,
+            "story_name": story_name,
+            "num_events": 10
+        })
+
+        # Verify playback response
+        assert response.status_code == 200
+        data = response.json()
+        assert data["chronicle_name"] == chronicle_name
+        assert data["story_name"] == story_name
+        assert data["num_events"] == 10
+        assert "events" in data
+        assert isinstance(data["events"], list)
+        assert data["total_events"] == len(data["events"])
+        assert data["total_events"] <= 10
+        print(f"Playback returned {data['total_events']} event(s) from the keeper tail")
+
+        # Events must be in ascending time order
+        times = [e["time"] for e in data["events"]]
+        assert times == sorted(times)
+
+        # 3. Disconnect (explicit cleanup)
+        disconnect_response = self.test_client.post("/disconnect")
+        assert disconnect_response.status_code == 200
+        print("Disconnected successfully")
+
+    def test_playback_not_connected(self):
+        """Test playback endpoint when not connected to ChronoLog.
+
+        Should fail without connection.
+        """
+        chronicle_name = os.getenv("TEST_CHRONICLE_NAME", "kfeng-EVO-X2")
+        story_name = os.getenv("TEST_STORY_NAME", "cpu_usage")
+
+        response = self.test_client.post("/playback", json={
+            "chronicle_name": chronicle_name,
+            "story_name": story_name,
+            "num_events": 10
+        })
+
+        assert response.status_code == 503
+        assert "not connected" in response.json()["detail"].lower()
+        print("Playback correctly failed when not connected")
+
+    # ===================================================================
     # Additional Endpoint Tests
     # ===================================================================
     
@@ -395,14 +468,39 @@ class TestChronoLogService:
     
     def test_query_validation_missing_fields(self):
         """Test query endpoint with missing required fields.
-        
+
         Should return validation error (422) for incomplete request.
         """
         response = self.test_client.post("/query", json={
             "chronicle_name": "test_chronicle"
             # Missing story_name, start_time, end_time
         })
-        
+
+        assert response.status_code == 422  # Validation error
+
+    def test_playback_validation_missing_fields(self):
+        """Test playback endpoint with missing required fields.
+
+        Should return validation error (422) for incomplete request.
+        """
+        response = self.test_client.post("/playback", json={
+            "chronicle_name": "test_chronicle"
+            # Missing story_name
+        })
+
+        assert response.status_code == 422  # Validation error
+
+    def test_playback_validation_bad_num_events(self):
+        """Test playback endpoint rejects a non-positive num_events.
+
+        num_events has ge=1 in the Pydantic model.
+        """
+        response = self.test_client.post("/playback", json={
+            "chronicle_name": "test_chronicle",
+            "story_name": "test_story",
+            "num_events": 0
+        })
+
         assert response.status_code == 422  # Validation error
 
 
