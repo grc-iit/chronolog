@@ -89,7 +89,8 @@
       "story_chunk_duration_secs": 10,
       "acceptance_window_secs": 15,
       "inactive_story_delay_secs": 120,
-      "tail_capacity": 65536
+      "tail_capacity": 65536,
+      "retention_cap_mb": 512
     },
     "ExtractionModule": {
         "extraction_stream_count":2,

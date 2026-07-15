@@ -240,6 +240,11 @@ struct DataStoreConf
     // last-N playback before they age out to the extraction/archive path.
     // Keeper-only knob; ignored by grapher/player.
     int tail_capacity = 65536;
+    // Soft cap (MB) on the keeper's retained sealed-chunk memory. On exceed
+    // the retention store WARNs (the grapher's persisted watermark is lagging,
+    // e.g. an outage) but keeps retaining — unpersisted data is never dropped.
+    // 0 disables the warning. Keeper-only knob; ignored by grapher/player.
+    int retention_cap_mb = 512;
 
     DataStoreConf() {}
 
@@ -251,7 +256,8 @@ struct DataStoreConf
                " story_chunk_duration_secs: " + std::to_string(story_chunk_duration_secs) +
                " acceptance_window_secs: " + std::to_string(acceptance_window_secs) +
                " inactive_story_delay_secs: " + std::to_string(inactive_story_delay_secs) +
-               " tail_capacity: " + std::to_string(tail_capacity) + "]";
+               " tail_capacity: " + std::to_string(tail_capacity) +
+               " retention_cap_mb: " + std::to_string(retention_cap_mb) + "]";
     }
 };
 

@@ -290,6 +290,15 @@ int chronolog::DataStoreConf::parseJsonConf(json_object* data_store_json_conf)
             }
             tail_capacity = json_object_get_int(val);
         }
+        else if(strcmp(key, "retention_cap_mb") == 0)
+        {
+            if(!json_object_is_type(val, json_type_int))
+            {
+                std::cerr << "[DataStoreConf] Invalid 'retention_cap_mb': expected integer" << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
+            retention_cap_mb = json_object_get_int(val);
+        }
         else
         {
             std::cerr << "[DataStoreConf] Unknown DataStoreInternals configuration: " << key << std::endl;

@@ -21,7 +21,7 @@ namespace chl = chronolog;
 ////////////////////////
 
 chronolog::KeeperStoryPipeline::KeeperStoryPipeline(StoryChunkExtractionQueue& extractionQueue,
-                                                    KeeperTailStore& tail_store,
+                                                    KeeperChunkRetentionStore& tail_store,
                                                     std::string const& chronicle_name,
                                                     std::string const& story_name,
                                                     chronolog::StoryId const& story_id,
@@ -130,7 +130,10 @@ void chronolog::KeeperStoryPipeline::finalize()
             }
             else
             {
-                theExtractionQueue.stashStoryChunk(extractedChunk);
+                // through the retention store (which stashes to the extraction
+                // queue itself) so finalized chunks get the same durability
+                // gating as regular sealed ones
+                theTailStore.ingestSealedChunk(storyId, extractedChunk);
             }
         }
     }
@@ -268,10 +271,12 @@ void chronolog::KeeperStoryPipeline::extractDecayedStoryChunks(uint64_t current_
             }
             else
             {
-                // Hand the sealed chunk to the TailStore. It retains the chunk
-                // (indexing its events into the per-story last-N tail) and only
-                // forwards it to the extraction queue once its events age out of
-                // the tail window — so tail reads are served from keeper memory.
+                // Hand the sealed chunk to the retention store. It takes
+                // ownership, indexes the events into the per-story last-N tail
+                // (tail reads are served from keeper memory) and stashes the
+                // pointer to the extraction queue immediately (ship-on-seal);
+                // the payload is retained until the grapher's persisted
+                // watermark confirms it durable.
                 theTailStore.ingestSealedChunk(storyId, extractedChunk);
             }
         }

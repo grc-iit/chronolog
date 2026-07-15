@@ -259,7 +259,10 @@ void chronolog::KeeperDataStore::sealOrphanedEvents()
                         "chunk for archival.",
                         recovery_chunk->getEventCount(),
                         story_id);
-            theExtractionQueue.stashStoryChunk(recovery_chunk);
+            // through the retention store (which stashes it to the extraction
+            // queue itself) so the recovery data gets the same durability
+            // gating as a regular sealed chunk
+            theTailStore.ingestSealedChunk(story_id, recovery_chunk);
         }
     }
 }

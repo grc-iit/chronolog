@@ -38,7 +38,7 @@
 #include <IngestionQueue.h>
 #include <KeeperDataStore.h>
 #include <KeeperStoryPipeline.h>
-#include <KeeperTailStore.h>
+#include <KeeperChunkRetentionStore.h>
 #include <StoryChunkExtractionQueue.h>
 
 namespace chl = chronolog;
@@ -93,7 +93,7 @@ TEST(KeeperReleaseDataLoss, AcceptanceWindowGetterDoesNotTruncate)
 {
     ensureLogger();
     chl::StoryChunkExtractionQueue eq;
-    chl::KeeperTailStore tail(eq, 1024);
+    chl::KeeperChunkRetentionStore tail(eq, 1024);
 
     const uint32_t acceptance_window_secs = 60;
     chl::KeeperStoryPipeline pipeline(eq, tail, "chron", "story", /*story_id=*/1,
@@ -122,7 +122,7 @@ TEST(KeeperReleaseDataLoss, EventArrivingWithinGraceWindowAfterReleaseIsPersiste
 
     chl::IngestionQueue ingestionQueue;
     chl::StoryChunkExtractionQueue extractionQueue;
-    chl::KeeperTailStore tailStore(extractionQueue, 1024);
+    chl::KeeperChunkRetentionStore tailStore(extractionQueue, 1024);
 
     // 1s grace window: long enough that a straggler arriving ~100ms after
     // release must still be captured; short enough to keep the test fast.
@@ -228,7 +228,7 @@ TEST(KeeperOrphanAtRetirementDataLoss, OrphanQueueNotDrainedAtRetirementLosesOrp
 
     chl::IngestionQueue ingestionQueue;
     chl::StoryChunkExtractionQueue extractionQueue;
-    chl::KeeperTailStore tailStore(extractionQueue, 1024);
+    chl::KeeperChunkRetentionStore tailStore(extractionQueue, 1024);
 
     const int orphan_count = 3;
     chl::KeeperDataStore store(ingestionQueue, extractionQueue, tailStore,
@@ -261,7 +261,7 @@ TEST(KeeperOrphanAtRetirementDataLoss, OrphanQueueNotDrainedAtRetirementReproduc
 
     chl::IngestionQueue ingestionQueue;
     chl::StoryChunkExtractionQueue extractionQueue;
-    chl::KeeperTailStore tailStore(extractionQueue, 1024);
+    chl::KeeperChunkRetentionStore tailStore(extractionQueue, 1024);
 
     constexpr int iterations = 100;
     constexpr int orphan_count = 2;
@@ -321,7 +321,7 @@ TEST(KeeperReleaseDataLoss, OrphanedEventIsDrainedBeforeHandleRemovalAtRetiremen
 
     chl::IngestionQueue ingestionQueue;
     chl::StoryChunkExtractionQueue extractionQueue;
-    chl::KeeperTailStore tailStore(extractionQueue, 1024);
+    chl::KeeperChunkRetentionStore tailStore(extractionQueue, 1024);
 
     const uint32_t acceptance_window_secs = 1;
     chl::KeeperDataStore store(ingestionQueue, extractionQueue, tailStore,

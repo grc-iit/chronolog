@@ -78,13 +78,21 @@ public:
         return chl::CL_SUCCESS;
     }
 
-    void process_chunk(chl::StoryChunk* chunk)
+    int process_chunk(chl::StoryChunk* chunk)
     {
+        int ret_value = chl::CL_SUCCESS;
         for(auto& e: theExtractors)
         {
-            std::visit([chunk](auto& extractor) { extractor.process_chunk(chunk); }, e);
+            int rc = std::visit([chunk](auto& extractor) -> int { return extractor.process_chunk(chunk); }, e);
+            if(rc != chl::CL_SUCCESS && ret_value == chl::CL_SUCCESS)
+            {
+                ret_value = rc;
+            }
         }
+        return ret_value;
     }
+
+    void dispose_chunk(chl::StoryChunk* chunk, int /*status*/) { delete chunk; }
 
     bool is_active_chain() const
     {

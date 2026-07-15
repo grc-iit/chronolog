@@ -27,13 +27,27 @@ public:
 
     ~ChronoGrapherExtractionChain() { theExtractors.clear(); }
 
-    void process_chunk(StoryChunk* chunk)
+    // CL_SUCCESS only if every active extractor accepted the chunk; the first
+    // failure code otherwise.
+    int process_chunk(StoryChunk* chunk)
     {
+        int ret_value = CL_SUCCESS;
         for(auto& e: theExtractors)
         {
-            std::visit([chunk](auto& extractor) { extractor.process_chunk(chunk); }, e);
+            int rc = std::visit([chunk](auto& extractor) -> int { return extractor.process_chunk(chunk); }, e);
+            if(rc != CL_SUCCESS && ret_value == CL_SUCCESS)
+            {
+                ret_value = rc;
+            }
         }
+        return ret_value;
     }
+
+    // Disposal seam invoked by the extraction module after process_chunk. The
+    // grapher keeps today's ownership model — the drained chunk is freed
+    // regardless of outcome; durability feedback to the keepers flows through
+    // the StoryWatermarkRegistry instead.
+    void dispose_chunk(StoryChunk* chunk, int /*status*/) { delete chunk; }
 
     bool is_active_chain() const
     {
