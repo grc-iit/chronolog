@@ -12,6 +12,7 @@
 
 #include <StoryChunkIngestionQueue.h>
 #include <StoryPipeline.h>
+#include <ServiceId.h>
 
 
 namespace chronolog
@@ -72,6 +73,26 @@ public:
                                 uint64_t end_time,
                                 std::vector<Event>& events);
 
+    // Keeper roster for the story (recording-service identities), delivered
+    // by the visor with every story start and replaced wholesale each time.
+    // The playback service fans replay hot fetches out over it. Mid-story
+    // keeper membership changes do not refresh the roster until the next
+    // story start — documented limitation; a missing keeper only shrinks the
+    // hot set (the archive covers everything below the remaining keepers'
+    // floors).
+    void setStoryKeepers(StoryId const& story_id, std::vector<ServiceId> const& keeper_services)
+    {
+        std::lock_guard<std::mutex> lock(storyKeeperMutex);
+        storyKeepers[story_id] = keeper_services;
+    }
+
+    std::vector<ServiceId> getStoryKeepers(StoryId const& story_id) const
+    {
+        std::lock_guard<std::mutex> lock(storyKeeperMutex);
+        auto roster_iter = storyKeepers.find(story_id);
+        return (roster_iter == storyKeepers.end()) ? std::vector<ServiceId>{} : roster_iter->second;
+    }
+
 private:
     PlayerDataStore(PlayerDataStore const&) = delete;
 
@@ -91,6 +112,9 @@ private:
     uint32_t story_chunk_duration_secs;
     uint32_t acceptance_window_secs;
     uint32_t inactive_pipeline_delay_secs;
+
+    mutable std::mutex storyKeeperMutex;
+    std::unordered_map<StoryId, std::vector<ServiceId>> storyKeepers;
 };
 
 } // namespace chronolog

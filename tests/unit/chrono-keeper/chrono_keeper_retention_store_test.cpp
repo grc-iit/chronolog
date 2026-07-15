@@ -466,3 +466,108 @@ TEST(KeeperChunkRetentionStore, DestructorReleasesRetainedChunks)
     // no double-free.
     EXPECT_EQ(q.size(), 2);
 }
+
+// ---- fetchRange: the replay hot source -------------------------------------
+
+TEST(KeeperChunkRetentionStore, FetchRangeSpansMultipleChunksAscending)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 100);
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 5, 1, "A"));
+    store.ingestSealedChunk(sid, makeChunk(sid, 200, 300, 200, 5, 1, "B"));
+    store.ingestSealedChunk(sid, makeChunk(sid, 300, 400, 300, 5, 1, "C"));
+
+    uint64_t hot_floor = 0;
+    bool truncated = true;
+    auto events = store.fetchRange(sid, 102, 302, 1000, hot_floor, truncated);
+    // [102, 302): A#2..A#4, all of B, C#0..C#1
+    ASSERT_EQ(events.size(), 10u);
+    EXPECT_EQ(events.front().time(), 102u);
+    EXPECT_EQ(events.front().getRecord(), "A#2");
+    EXPECT_EQ(events.back().time(), 301u);
+    EXPECT_EQ(events.back().getRecord(), "C#1");
+    for(std::size_t i = 1; i < events.size(); ++i)
+    {
+        EXPECT_LT(events[i - 1].time(), events[i].time());
+    }
+    EXPECT_EQ(hot_floor, 100u); // oldest retained tick
+    EXPECT_FALSE(truncated);
+}
+
+TEST(KeeperChunkRetentionStore, FetchRangeEmptyStoreReportsMaxFloor)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 100);
+
+    uint64_t hot_floor = 0;
+    bool truncated = true;
+    auto events = store.fetchRange(42, 0, UINT64_MAX, 1000, hot_floor, truncated);
+    EXPECT_TRUE(events.empty());
+    EXPECT_EQ(hot_floor, UINT64_MAX); // nothing retained: drops out of the min()
+    EXPECT_FALSE(truncated);
+}
+
+TEST(KeeperChunkRetentionStore, FetchRangeHonorsMaxEventsAndFlagsTruncation)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 100);
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 10, 1, "A"));
+
+    uint64_t hot_floor = 0;
+    bool truncated = false;
+    auto events = store.fetchRange(sid, 100, 200, 4, hot_floor, truncated);
+    ASSERT_EQ(events.size(), 4u);
+    EXPECT_EQ(events.front().time(), 100u); // the cap cuts the tail, not the head
+    EXPECT_EQ(events.back().time(), 103u);
+    EXPECT_TRUE(truncated);
+}
+
+TEST(KeeperChunkRetentionStore, FetchRangeServesTailEvictedChunks)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 5); // tail only indexes 5 events
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 5, 1, "A"));
+    store.ingestSealedChunk(sid, makeChunk(sid, 200, 300, 200, 5, 1, "B")); // evicts A from the tail
+
+    // A is out of the tail index but still retained (not shipped/covered):
+    // its events may exist nowhere else, so fetchRange must serve them and
+    // hot_floor must account for them.
+    EXPECT_TRUE(store.getTailEvents(sid, {chl::EventSequence{100, 1, 0}}).empty());
+
+    uint64_t hot_floor = 0;
+    bool truncated = true;
+    auto events = store.fetchRange(sid, 0, 1000, 1000, hot_floor, truncated);
+    ASSERT_EQ(events.size(), 10u);
+    EXPECT_EQ(events.front().getRecord(), "A#0");
+    EXPECT_EQ(hot_floor, 100u);
+    EXPECT_FALSE(truncated);
+}
+
+TEST(KeeperChunkRetentionStore, FetchRangeFloorRisesAsChunksFree)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 0); // tail releases at ingest
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 5, 1, "A"));
+    store.ingestSealedChunk(sid, makeChunk(sid, 200, 300, 200, 5, 1, "B"));
+    ASSERT_NE(drainOne(q, store, /*transfer_ok=*/true), nullptr); // A shipped
+    ASSERT_NE(drainOne(q, store, /*transfer_ok=*/true), nullptr); // B shipped
+
+    uint64_t hot_floor = 0;
+    bool truncated = false;
+    store.fetchRange(sid, 0, 1000, 1000, hot_floor, truncated);
+    EXPECT_EQ(hot_floor, 100u);
+
+    store.confirmPersisted(sid, 200); // frees A only
+    auto events = store.fetchRange(sid, 0, 1000, 1000, hot_floor, truncated);
+    ASSERT_EQ(events.size(), 5u);
+    EXPECT_EQ(hot_floor, 200u); // floor rises with the free: below it is durable
+}

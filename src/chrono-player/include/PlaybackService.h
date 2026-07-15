@@ -12,6 +12,7 @@
 #include <ServiceId.h>
 
 #include <ArchiveReadingRequestQueue.h>
+#include <KeeperHotFetchClient.h>
 #include <PlayerDataStore.h>
 
 namespace tl = thallium;
@@ -56,11 +57,18 @@ private:
     PlaybackService(PlaybackService const&) = delete;
     PlaybackService& operator=(PlaybackService const&) = delete;
 
+    // Lazily created client of a keeper's story_range_fetch, cached by
+    // endpoint. Returns nullptr if the keeper cannot be looked up.
+    KeeperHotFetchClient* getHotFetchClient(ServiceId const& keeper_service_id);
+
     tl::engine playbackEngine;
     chronolog::PlayerDataStore& theActiveDataStore;
     ArchiveReadingRequestQueue& theArchiveReadingRequestQueue;
     std::mutex playbackServiceMutex;
     std::map<service_endpoint, QueryResponseAgent*> responseSenders;
+    // guards the hot-fetch client cache only; never held across RPCs
+    std::mutex hotFetchMutex;
+    std::map<service_endpoint, KeeperHotFetchClient*> hotFetchClients;
 };
 
 } // namespace chronolog

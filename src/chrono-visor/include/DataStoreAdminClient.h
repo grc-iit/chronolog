@@ -3,12 +3,15 @@
 
 #include <cstdint>
 #include <iostream>
+#include <vector>
 
 #include <thallium.hpp>
 #include <thallium/serialization/stl/string.hpp>
+#include <thallium/serialization/stl/vector.hpp>
 
 #include <chrono_monitor.h>
 #include <chronolog_types.h>
+#include <ServiceId.h>
 
 namespace tl = thallium;
 
@@ -80,6 +83,32 @@ public:
         return status;
     }
 
+    // Player variant of the story-start notification: also carries the
+    // story's keeper roster (recording-service identities) so the player can
+    // fan replay hot fetches out to the keepers on demand.
+    int send_start_story_recording_with_keepers(ChronicleName const& chronicle_name,
+                                                StoryName const& story_name,
+                                                StoryId const& story_id,
+                                                uint64_t start_time,
+                                                std::vector<ServiceId> const& keeper_services)
+    {
+        int status = chronolog::CL_ERR_UNKNOWN;
+        try
+        {
+            LOG_DEBUG("[DataStoreAdminClient] START Story Recording (with {} keeper(s)) for StoryID={}",
+                      keeper_services.size(),
+                      story_id);
+            status = start_story_recording_with_keepers.on(service_handle)(chronicle_name,
+                                                                           story_name,
+                                                                           story_id,
+                                                                           start_time,
+                                                                           keeper_services);
+        }
+        catch(tl::exception const& ex)
+        {}
+        return status;
+    }
+
     int send_stop_story_recording(StoryId const& story_id)
     {
         int status = chronolog::CL_ERR_UNKNOWN;
@@ -127,6 +156,7 @@ public:
         collection_service_available.deregister();
         shutdown_data_collection.deregister();
         start_story_recording.deregister();
+        start_story_recording_with_keepers.deregister();
         stop_story_recording.deregister();
         destroy_story.deregister();
         destroy_chronicle.deregister();
@@ -139,6 +169,7 @@ private:
     tl::remote_procedure collection_service_available;
     tl::remote_procedure shutdown_data_collection;
     tl::remote_procedure start_story_recording;
+    tl::remote_procedure start_story_recording_with_keepers;
     tl::remote_procedure stop_story_recording;
     tl::remote_procedure destroy_story;
     tl::remote_procedure destroy_chronicle;
@@ -154,6 +185,7 @@ private:
         collection_service_available = tl_engine.define("collection_service_available");
         shutdown_data_collection = tl_engine.define("shutdown_data_collection");
         start_story_recording = tl_engine.define("start_story_recording");
+        start_story_recording_with_keepers = tl_engine.define("start_story_recording_with_keepers");
         stop_story_recording = tl_engine.define("stop_story_recording");
         destroy_story = tl_engine.define("destroy_story");
         destroy_chronicle = tl_engine.define("destroy_chronicle");
