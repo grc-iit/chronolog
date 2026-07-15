@@ -94,11 +94,7 @@
     "ExtractionModule": {
         "extraction_stream_count":2,
         "extraction_protocol": "ofi+sockets",
-        "extractors": { 
-            "csv_tier_extractor": {
-                "type": "csv_extractor",
-                "csv_archive_dir": "/tmp/csv_archive"
-            },
+        "extractors": {
             "extractor_to_grapher": {
                 "type": "dual_endpoint_rdma_extractor",
                 "grapher_receiving_endpoint": {
