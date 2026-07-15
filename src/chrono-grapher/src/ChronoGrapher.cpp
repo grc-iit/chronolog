@@ -21,6 +21,7 @@
 #include <cmd_arg_parse.h>
 #include <ChronoGrapherConfiguration.h>
 #include <GrapherExtractionChain.h>
+#include <StoryWatermarkRegistry.h>
 
 namespace chl = chronolog;
 namespace tl = thallium;
@@ -160,10 +161,16 @@ int main(int argc, char** argv)
     GRAPHER_CONF.EXTRACTION_MODULE_CONF.to_string(log_string);
     LOG_INFO("[ChronoGrapherInstance] Initializing StoryChunkExtractionModule with {}", log_string);
 
+    // Per-story persisted watermark W; fed by the HDF5 extractor, consumed by
+    // the keeper report publisher. Declared before the extraction module so it
+    // outlives the extractors holding a pointer to it.
+    chronolog::StoryWatermarkRegistry theWatermarkRegistry;
+
     chronolog::StoryChunkExtractionModule<chronolog::ChronoGrapherExtractionChain> theExtractionModule;
 
     theExtractionModule.getExtractionChain().activate(processIdCard.getRecordingServiceId(),
-                                                      GRAPHER_CONF.EXTRACTION_MODULE_CONF);
+                                                      GRAPHER_CONF.EXTRACTION_MODULE_CONF,
+                                                      &theWatermarkRegistry);
 
     theExtractionModule.initialize(GRAPHER_CONF.EXTRACTION_MODULE_CONF.extraction_stream_count);
 
@@ -184,7 +191,8 @@ int main(int argc, char** argv)
                                              GRAPHER_CONF.DATA_STORE_CONF.story_chunk_duration_secs,
                                              GRAPHER_CONF.DATA_STORE_CONF.acceptance_window_secs,
                                              GRAPHER_CONF.DATA_STORE_CONF.inactive_story_delay_secs,
-                                             &grapherExtractionChain);
+                                             &grapherExtractionChain,
+                                             &theWatermarkRegistry);
 
     tl::engine* dataAdminEngine = nullptr;
 

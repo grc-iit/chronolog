@@ -27,6 +27,7 @@ namespace chronolog
 
 
 class StoryChunkIngestionHandle;
+class StoryChunkExtractionQueue;
 
 class StoryPipeline
 {
@@ -78,6 +79,13 @@ public:
 
     std::vector<Event>& copyToEventSeries(std::vector<Event>&, uint64_t start, uint64_t end);
 
+    // Optional escape hatch for events that cannot be merged because the
+    // timeline can no longer be extended into the past (prepend failure in
+    // mergeEvents): when attached, such events are wrapped into a fresh
+    // watermark-exempt chunk and stashed straight to this queue instead of
+    // being discarded. Not owned.
+    void attachExtractionQueue(StoryChunkExtractionQueue* queue) { theExtractionQueue = queue; }
+
 private:
     StoryId storyId;
     ChronicleName chronicleName;
@@ -103,6 +111,8 @@ private:
 
     // map of storyChunks ordered by StoryChunck.startTime
     std::map<chrono_time, StoryChunk*> storyTimelineMap;
+
+    StoryChunkExtractionQueue* theExtractionQueue = nullptr;
 
     // Added friend tests for the unit tests to test private functions
 

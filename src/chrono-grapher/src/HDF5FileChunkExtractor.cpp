@@ -8,6 +8,7 @@
 #include <StoryChunk.h>
 #include <StoryChunkWriter.h>
 #include <HDF5FileChunkExtractor.h>
+#include <StoryWatermarkRegistry.h>
 
 namespace tl = thallium;
 
@@ -195,6 +196,10 @@ int chronolog::HDF5FileChunkExtractor::process_chunk(chl::StoryChunk* story_chun
                   story_chunk->getStartTime(),
                   story_chunk->getEndTime(),
                   story_chunk->getEventCount());
+        if(watermarkRegistry != nullptr && !story_chunk->isWatermarkExempt())
+        {
+            watermarkRegistry->persistFailed(story_chunk->getStoryId());
+        }
         return chl::CL_ERR_UNKNOWN;
     }
     else
@@ -206,6 +211,15 @@ int chronolog::HDF5FileChunkExtractor::process_chunk(chl::StoryChunk* story_chun
                  story_chunk->getStartTime(),
                  story_chunk->getEndTime(),
                  story_chunk->getEventCount());
+        // StoryChunkWriter flushes H5F_SCOPE_GLOBAL before returning, so the
+        // window counts as persisted here. Salvage chunks are exempt: they are
+        // one keeper's rescued events, not a merged timeline window.
+        if(watermarkRegistry != nullptr && !story_chunk->isWatermarkExempt())
+        {
+            watermarkRegistry->advancePersisted(story_chunk->getStoryId(),
+                                                story_chunk->getStartTime(),
+                                                story_chunk->getEndTime());
+        }
         return chl::CL_SUCCESS;
     }
 }

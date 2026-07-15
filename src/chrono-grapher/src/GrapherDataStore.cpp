@@ -10,6 +10,7 @@
 #include <chronolog_errcode.h>
 #include <GrapherDataStore.h>
 #include <GrapherExtractionChain.h>
+#include <StoryWatermarkRegistry.h>
 #include <chrono_monitor.h>
 
 namespace chl = chronolog;
@@ -70,6 +71,12 @@ int chronolog::GrapherDataStore::startStoryRecording(std::string const& chronicl
             pipelinesWaitingForExit.erase(waiting_iter);
         }
 
+        if(theWatermarkRegistry != nullptr)
+        {
+            // live pipeline: its open windows may hold unpersisted events, so
+            // the registry must not treat [W, start_time) as covered
+            theWatermarkRegistry->registerStory(story_id, start_time, /*fresh_pipeline=*/false);
+        }
         return chronolog::CL_SUCCESS;
     }
 
@@ -86,6 +93,15 @@ int chronolog::GrapherDataStore::startStoryRecording(std::string const& chronicl
     {
         LOG_INFO("[GrapherDataStore] New StoryPipeline created successfully. StoryId {}", story_id);
         pipeline_iter = result.first;
+        // give the pipeline the extraction queue as the escape hatch for
+        // events whose timeline window can no longer be re-opened
+        (*pipeline_iter).second->attachExtractionQueue(&theExtractionQueue);
+        if(theWatermarkRegistry != nullptr)
+        {
+            // adoption is a recovery path for chunks that already exist below
+            // start_time — never let it cover the gap up to start_time
+            theWatermarkRegistry->registerStory(story_id, start_time, /*fresh_pipeline=*/!is_adoption);
+        }
         //engage StoryPipeline with the IngestionQueue
         chl::StoryChunkIngestionHandle* ingestionHandle = (*pipeline_iter).second->getActiveIngestionHandle();
         theIngestionQueue.addStoryIngestionHandle(story_id, ingestionHandle);
