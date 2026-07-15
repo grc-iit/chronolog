@@ -9,6 +9,7 @@
 #include <StoryChunk.h>
 #include <StoryPipeline.h>
 #include <StoryChunkIngestionHandle.h>
+#include <StoryChunkExtractionQueue.h>
 
 //#define TRACE_CHUNKING
 //#define TRACE_CHUNK_EXTRACTION
@@ -365,15 +366,65 @@ void chronolog::StoryPipeline::mergeEvents(chronolog::StoryChunk& other_chunk)
             chunk_to_merge_iter = chl::StoryPipeline::prependStoryChunk();
             if(chunk_to_merge_iter == storyTimelineMap.end())
             {
-                // if prepend fails we have no choice but to discard the events we can't merge !!
-                LOG_ERROR("[StoryPipeline] StoryId {} timeline {}-{} : Merging operation discards events between "
-                          "timestamps: {} and {}",
-                          storyId,
-                          TimelineStart(),
-                          TimelineEnd(),
-                          other_chunk.getStartTime(),
-                          TimelineStart());
-                other_chunk.eraseEvents(other_chunk.firstEventTime(), TimelineStart());
+                uint64_t const salvage_end = TimelineStart();
+                if(theExtractionQueue != nullptr)
+                {
+                    // The timeline cannot be extended into the past, but the
+                    // events must not be lost: wrap them into a fresh chunk and
+                    // stash it straight to the extraction queue so it persists
+                    // as a rotated file. Watermark-exempt — it is one keeper's
+                    // salvaged events, not a merged timeline window, so its
+                    // interval must not advance W.
+                    auto* salvage_chunk = new StoryChunk(chronicleName,
+                                                         storyName,
+                                                         storyId,
+                                                         other_chunk.getStartTime(),
+                                                         salvage_end);
+                    salvage_chunk->setWatermarkExempt(true);
+                    salvage_chunk->mergeEvents(other_chunk);
+                    if(!other_chunk.empty() && other_chunk.firstEventTime() < salvage_end)
+                    {
+                        // events the salvage chunk could not absorb (e.g. an
+                        // empty record in a deserialized chunk) must still be
+                        // dropped or the enclosing loop never progresses
+                        LOG_ERROR("[StoryPipeline] StoryId {} timeline {}-{} : discarding events between timestamps "
+                                  "{} and {} that could not be salvaged",
+                                  storyId,
+                                  TimelineStart(),
+                                  TimelineEnd(),
+                                  other_chunk.firstEventTime(),
+                                  salvage_end);
+                        other_chunk.eraseEvents(other_chunk.firstEventTime(), salvage_end);
+                    }
+                    if(salvage_chunk->empty())
+                    {
+                        delete salvage_chunk;
+                    }
+                    else
+                    {
+                        LOG_WARNING("[StoryPipeline] StoryId {} timeline {}-{} : prepend failed; salvaging {} "
+                                    "un-mergeable events between timestamps {} and {} straight to extraction",
+                                    storyId,
+                                    TimelineStart(),
+                                    TimelineEnd(),
+                                    salvage_chunk->getEventCount(),
+                                    salvage_chunk->getStartTime(),
+                                    salvage_end);
+                        theExtractionQueue->stashStoryChunk(salvage_chunk);
+                    }
+                }
+                else
+                {
+                    // no escape hatch attached: discard, as before
+                    LOG_ERROR("[StoryPipeline] StoryId {} timeline {}-{} : Merging operation discards events between "
+                              "timestamps: {} and {}",
+                              storyId,
+                              TimelineStart(),
+                              TimelineEnd(),
+                              other_chunk.getStartTime(),
+                              salvage_end);
+                    other_chunk.eraseEvents(other_chunk.firstEventTime(), salvage_end);
+                }
                 chunk_to_merge_iter = storyTimelineMap.begin();
             }
         }

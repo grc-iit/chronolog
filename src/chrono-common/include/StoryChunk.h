@@ -126,6 +126,16 @@ public:
     // copy events in range [start_time, end_time) to EventSeries vector
     std::vector<Event>& copyToEventSeries(std::vector<Event>& event_series, uint64_t start_time, uint64_t end_time);
 
+    // A watermark-exempt chunk is persisted but must not advance the grapher's
+    // persisted watermark W: it holds a single keeper's salvaged events (the
+    // StoryPipeline prepend-failure path), not a merged timeline window, so its
+    // interval does not prove that every event below its end is durable.
+    // Transient, deliberately not serialized: only locally created salvage
+    // chunks carry it.
+    bool isWatermarkExempt() const { return watermarkExempt; }
+
+    void setWatermarkExempt(bool exempt) { watermarkExempt = exempt; }
+
 private:
     ChronicleName chronicleName;
     StoryName storyName;
@@ -134,6 +144,7 @@ private:
     uint64_t endTime;
     uint64_t revisionTime;
     std::map<EventSequence, LogEvent> logEvents;
+    bool watermarkExempt = false;
 };
 
 } // namespace chronolog
