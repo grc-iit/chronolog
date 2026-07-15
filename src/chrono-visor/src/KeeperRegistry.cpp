@@ -652,7 +652,14 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
     if(recording_group->playerProcess != nullptr)
     {
         player_service_id = recording_group->playerProcess->idCard.getPlaybackServiceId();
-        rpc_return = notifyPlayerOfStoryRecordingStart(*recording_group, chronicle, story, story_id, story_start_time);
+        // vectorOfKeepers is the story's keeper roster (filled above); the
+        // player uses it to fan replay hot fetches out to the keepers
+        rpc_return = notifyPlayerOfStoryRecordingStart(*recording_group,
+                                                       chronicle,
+                                                       story,
+                                                       story_id,
+                                                       story_start_time,
+                                                       vectorOfKeepers);
 
         if(rpc_return == chronolog::CL_SUCCESS)
         {
@@ -754,7 +761,8 @@ int KeeperRegistry::notifyPlayerOfStoryRecordingStart(RecordingGroup& recordingG
                                                       ChronicleName const& chronicle,
                                                       StoryName const& story,
                                                       StoryId const& storyId,
-                                                      uint64_t story_start_time)
+                                                      uint64_t story_start_time,
+                                                      std::vector<KeeperIdCard> const& story_keepers)
 {
     int return_code = chronolog::CL_ERR_UNKNOWN;
 
@@ -791,9 +799,22 @@ int KeeperRegistry::notifyPlayerOfStoryRecordingStart(RecordingGroup& recordingG
         return return_code;
     }
 
+    // the player fans replay hot fetches out over the story's keeper roster;
+    // ship the keepers' recording-service identities along with the start
+    std::vector<ServiceId> keeper_services;
+    keeper_services.reserve(story_keepers.size());
+    for(auto const& keeper_id_card: story_keepers)
+    {
+        keeper_services.push_back(keeper_id_card.getRecordingServiceId());
+    }
+
     try
     {
-        return_code = dataAdminClient->send_start_story_recording(chronicle, story, storyId, story_start_time);
+        return_code = dataAdminClient->send_start_story_recording_with_keepers(chronicle,
+                                                                               story,
+                                                                               storyId,
+                                                                               story_start_time,
+                                                                               keeper_services);
         if(return_code != chronolog::CL_SUCCESS)
         {
             LOG_WARNING("[ChronoProcessRegistry] Registry failed RPC notification to player {}",
@@ -802,10 +823,11 @@ int KeeperRegistry::notifyPlayerOfStoryRecordingStart(RecordingGroup& recordingG
         else
         {
             LOG_INFO("[ChronoProcessRegistry] Registry notified player {} to start recording StoryID={} with "
-                     "StartTime={}",
+                     "StartTime={} and {} keeper(s)",
                      recordingGroup.playerProcess->idCardString,
                      storyId,
-                     story_start_time);
+                     story_start_time,
+                     keeper_services.size());
         }
     }
     catch(thallium::exception const& ex)

@@ -13,6 +13,7 @@
 #include <chronolog_errcode.h>
 #include <KeeperIdCard.h>
 #include <chronolog_types.h>
+#include <HotRangeResponse.h>
 
 #include "IngestionQueue.h"
 #include "KeeperChunkRetentionStore.h"
@@ -67,6 +68,33 @@ public:
         request.respond(theTailStore.getTailEvents(story_id, seqs));
     }
 
+    // Replay hot fetch: every retained event in [start, end) plus this
+    // keeper's hot floor and last-seen persisted watermark. The player fans
+    // this out over the story's keeper roster and splits replay at
+    // B = min(hot_floor).
+    void story_range_fetch(tl::request const& request, StoryId const& story_id, uint64_t start_time,
+                           uint64_t end_time, uint64_t max_events)
+    {
+        HotRangeResponse response;
+        response.events = theTailStore.fetchRange(story_id,
+                                                  start_time,
+                                                  end_time,
+                                                  (std::size_t)max_events,
+                                                  response.hot_floor,
+                                                  response.truncated);
+        response.known_W = theTailStore.knownPersisted(story_id);
+        LOG_DEBUG("[KeeperRecordingService] story_range_fetch StoryId={} {}-{} -> {} event(s), hot_floor={}, "
+                  "known_W={}, truncated={}",
+                  story_id,
+                  start_time,
+                  end_time,
+                  response.events.size(),
+                  response.hot_floor,
+                  response.known_W,
+                  response.truncated);
+        request.respond(response);
+    }
+
 private:
     KeeperRecordingService(tl::engine& tl_engine, uint16_t service_provider_id, IngestionQueue& ingestion_queue,
                            KeeperChunkRetentionStore& tail_store)
@@ -77,6 +105,7 @@ private:
         define("record_event", &KeeperRecordingService::record_event, tl::ignore_return_value());
         define("tail_get_sequences", &KeeperRecordingService::tail_get_sequences);
         define("tail_get_events", &KeeperRecordingService::tail_get_events);
+        define("story_range_fetch", &KeeperRecordingService::story_range_fetch);
         //set up callback for the case when the engine is being finalized while this provider is still alive
         get_engine().push_finalize_callback(this, [p = this]() { delete p; });
     }
