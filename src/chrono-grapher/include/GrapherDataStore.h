@@ -24,6 +24,7 @@ namespace chronolog
 
 class ChronoGrapherExtractionChain;
 class StoryWatermarkRegistry;
+class WatermarkReportPublisher;
 
 
 class GrapherDataStore
@@ -116,6 +117,12 @@ public:
 
     void dataCollectionTask();
 
+    // The publisher pushes dirty watermarks to contributing keepers; the
+    // data-collection loop drives it (rate-limited inside the publisher).
+    // Attached after the publisher exists (it needs the admin engine, which
+    // is created after this store) and before startDataCollection.
+    void attachWatermarkPublisher(WatermarkReportPublisher* publisher) { theWatermarkPublisher = publisher; }
+
 private:
     GrapherDataStore(GrapherDataStore const&) = delete;
 
@@ -154,6 +161,7 @@ private:
     uint32_t inactive_pipeline_delay_secs;
     ChronoGrapherExtractionChain* theExtractionChain;
     StoryWatermarkRegistry* theWatermarkRegistry;
+    WatermarkReportPublisher* theWatermarkPublisher = nullptr;
 
     std::vector<thallium::managed<thallium::xstream>> dataStoreStreams;
     std::vector<thallium::managed<thallium::thread>> dataStoreThreads;

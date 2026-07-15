@@ -199,6 +199,10 @@ int main(int argc, char** argv)
                                                       extractionEngine,
                                                       KEEPER_CONF.EXTRACTION_MODULE_CONF);
 
+    // Every grapher-bound chunk carries this keeper's DataStoreAdminService
+    // identity so the grapher knows where to push watermark reports.
+    theExtractionModule.getExtractionChain().set_watermark_reporter(dataStoreServiceId);
+
     theExtractionModule.initialize(KEEPER_CONF.EXTRACTION_MODULE_CONF.extraction_stream_count);
 
     if(!theExtractionModule.is_initialized())
@@ -231,7 +235,8 @@ int main(int argc, char** argv)
                                             KEEPER_CONF.DATA_STORE_CONF.max_story_chunk_size,
                                             KEEPER_CONF.DATA_STORE_CONF.story_chunk_duration_secs,
                                             KEEPER_CONF.DATA_STORE_CONF.acceptance_window_secs,
-                                            KEEPER_CONF.DATA_STORE_CONF.inactive_story_delay_secs);
+                                            KEEPER_CONF.DATA_STORE_CONF.inactive_story_delay_secs,
+                                            KEEPER_CONF.DATA_STORE_CONF.watermark_resend_timeout_secs);
 
     // Instantiate KeeperRecordingService
     tl::engine* dataAdminEngine = nullptr;

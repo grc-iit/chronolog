@@ -14,9 +14,11 @@
 #include <chronolog_errcode.h>
 #include <KeeperIdCard.h>
 #include <chronolog_types.h>
+#include <ServiceId.h>
 #include <StoryChunk.h>
 
 #include "ChunkIngestionQueue.h"
+#include "WatermarkReportPublisher.h"
 
 namespace tl = thallium;
 
@@ -26,10 +28,11 @@ class GrapherRecordingService: public tl::provider<GrapherRecordingService>
 {
 public:
     // RecordingService should be created on the heap not the stack thus the constructor is private...
-    static GrapherRecordingService*
-    CreateRecordingService(tl::engine& tl_engine, uint16_t service_provider_id, ChunkIngestionQueue& ingestion_queue)
+    static GrapherRecordingService* CreateRecordingService(tl::engine& tl_engine, uint16_t service_provider_id,
+                                                           ChunkIngestionQueue& ingestion_queue,
+                                                           WatermarkReportPublisher* watermark_publisher = nullptr)
     {
-        return new GrapherRecordingService(tl_engine, service_provider_id, ingestion_queue);
+        return new GrapherRecordingService(tl_engine, service_provider_id, ingestion_queue, watermark_publisher);
     }
 
     ~GrapherRecordingService()
@@ -39,7 +42,10 @@ public:
     }
 
 
-    void receive_story_chunk(tl::request const& request, tl::bulk& b)
+    // reporter identifies the sending keeper's DataStoreAdminService — the
+    // target for watermark reports; invalid/default for senders that do not
+    // expect reports.
+    void receive_story_chunk(tl::request const& request, tl::bulk& b, ServiceId const& reporter)
     {
         try
         {
@@ -93,6 +99,11 @@ public:
                     story_chunk->getEventCount(),
                     tl::thread::self_id());
 
+            if(theWatermarkPublisher != nullptr)
+            {
+                theWatermarkPublisher->recordContributor(story_chunk->getStoryId(), reporter);
+            }
+
             request.respond(b.size());
             LOG_DEBUG("[GrapherRecordingService] StoryChunk recording RPC responded {}, ThreadID={}",
                       b.size(),
@@ -110,9 +121,11 @@ public:
     }
 
 private:
-    GrapherRecordingService(tl::engine& tl_engine, uint16_t service_provider_id, ChunkIngestionQueue& ingestion_queue)
+    GrapherRecordingService(tl::engine& tl_engine, uint16_t service_provider_id, ChunkIngestionQueue& ingestion_queue,
+                            WatermarkReportPublisher* watermark_publisher)
         : tl::provider<GrapherRecordingService>(tl_engine, service_provider_id)
         , theIngestionQueue(ingestion_queue)
+        , theWatermarkPublisher(watermark_publisher)
     {
         define("receive_story_chunk", &GrapherRecordingService::receive_story_chunk);
         //set up callback for the case when the engine is being finalized while this provider is still alive
@@ -161,6 +174,7 @@ private:
     GrapherRecordingService& operator=(GrapherRecordingService const&) = delete;
 
     ChunkIngestionQueue& theIngestionQueue;
+    WatermarkReportPublisher* theWatermarkPublisher; // not owned; may be null
 };
 
 } // namespace chronolog

@@ -22,6 +22,7 @@
 #include <ChronoGrapherConfiguration.h>
 #include <GrapherExtractionChain.h>
 #include <StoryWatermarkRegistry.h>
+#include <WatermarkReportPublisher.h>
 
 namespace chl = chronolog;
 namespace tl = thallium;
@@ -226,6 +227,16 @@ int main(int argc, char** argv)
     }
     LOG_INFO("[ChronoGrapher] DataStoreAdminService started successfully.");
 
+    // Watermark report publisher: pushes dirty per-story watermarks to the
+    // contributing keepers over the dataAdminEngine (one-way RPC). Fed by the
+    // recording service (contributors) and the HDF5 extractor via the
+    // registry; driven by the data-collection loop.
+    chronolog::WatermarkReportPublisher* watermarkPublisher = new chronolog::WatermarkReportPublisher(
+            *dataAdminEngine,
+            theWatermarkRegistry,
+            GRAPHER_CONF.DATA_STORE_CONF.watermark_report_interval_secs);
+    theDataStore.attachWatermarkPublisher(watermarkPublisher);
+
     // Instantiate RecordingService
     tl::engine* recordingEngine = nullptr;
     chronolog::GrapherRecordingService* grapherRecordingService = nullptr;
@@ -245,7 +256,8 @@ int main(int argc, char** argv)
         grapherRecordingService =
                 chronolog::GrapherRecordingService::CreateRecordingService(*recordingEngine,
                                                                            recordingServiceId.getProviderId(),
-                                                                           ingestionQueue);
+                                                                           ingestionQueue,
+                                                                           watermarkPublisher);
     }
     catch(tl::exception const&)
     {
@@ -256,6 +268,7 @@ int main(int argc, char** argv)
     if(nullptr == grapherRecordingService)
     {
         LOG_CRITICAL("[ChronoGrapher] failed to create RecordingService exiting");
+        delete watermarkPublisher;
         delete grapherDataAdminService;
         return (-1);
     }
@@ -277,6 +290,7 @@ int main(int argc, char** argv)
     {
         LOG_CRITICAL("[ChronoGrapher] failed to create RegistryClient; exiting");
         delete grapherRecordingService;
+        delete watermarkPublisher;
         delete grapherDataAdminService;
         return (-1);
     }
@@ -301,6 +315,7 @@ int main(int argc, char** argv)
         LOG_CRITICAL("[ChronoGrapher] Failed to register with ChronoVisor after multiple attempts. Exiting.");
         delete grapherRegistryClient;
         delete grapherRecordingService;
+        delete watermarkPublisher;
         delete grapherDataAdminService;
         return (-1);
     }
@@ -337,6 +352,8 @@ int main(int argc, char** argv)
     delete grapherDataAdminService;
     // Shutdown the Data Collection
     theDataStore.shutdownDataCollection();
+    // no publish() can be in flight once the data-collection ULTs are joined
+    delete watermarkPublisher;
     // Shutdown extraction module
     // drain extractionQueue and stop extraction xStreams
     theExtractionModule.shutdownExtraction();

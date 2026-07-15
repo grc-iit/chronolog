@@ -143,14 +143,8 @@ void chronolog::StoryPipeline::finalize(std::vector<chl::StoryChunk*>& extracted
                       extractedChunk->getStartTime(),
                       extractedChunk->getEventCount());
 
-            if(extractedChunk->empty())
-            { // no need to carry an empty chunk any further...
-                delete extractedChunk;
-            }
-            else
-            {
-                extracted_chunks.push_back(extractedChunk);
-            }
+            // empty windows travel too — see extractDecayedStoryChunks
+            extracted_chunks.push_back(extractedChunk);
         }
     }
 }
@@ -292,14 +286,13 @@ void chronolog::StoryPipeline::extractDecayedStoryChunks(uint64_t current_time,
                       extractedChunk->getEndTime(),
                       extractedChunk->getEventCount());
 
-            if(extractedChunk->empty())
-            { // there's no need to carry an empty chunk any further...
-                delete extractedChunk;
-            }
-            else
-            {
-                extracted_chunks.push_back(extractedChunk);
-            }
+            // Empty windows travel too: an idle gap in a live story must still
+            // count as persisted (vacuously — there is nothing to write) or
+            // the persisted-watermark prefix would hold at the gap forever and
+            // the keepers would never free the chunks above it. The HDF5
+            // extractor advances the watermark for an empty chunk without
+            // writing a file; other consumers just discard them.
+            extracted_chunks.push_back(extractedChunk);
         }
     }
 

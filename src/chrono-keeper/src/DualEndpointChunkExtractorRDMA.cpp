@@ -108,6 +108,7 @@ chronolog::DualEndpointChunkExtractorRDMA::DualEndpointChunkExtractorRDMA(DualEn
     sender_tl_engine = other.get_sender_engine();
     player_receiver_service_id = other.get_player_receiver_id();
     grapher_receiver_service_id = other.get_grapher_receiver_id();
+    reporter_service_id = other.get_reporter_service_id();
     rdma_sender_for_player = other.rdma_sender_for_player;
     rdma_sender_for_grapher = other.rdma_sender_for_grapher;
 
@@ -140,6 +141,7 @@ chronolog::DualEndpointChunkExtractorRDMA::operator=(DualEndpointChunkExtractorR
     sender_tl_engine = other.get_sender_engine();
     player_receiver_service_id = other.get_player_receiver_id();
     grapher_receiver_service_id = other.get_grapher_receiver_id();
+    reporter_service_id = other.get_reporter_service_id();
     rdma_sender_for_player = other.rdma_sender_for_player;
     rdma_sender_for_grapher = other.rdma_sender_for_grapher;
 
@@ -247,7 +249,8 @@ int chronolog::DualEndpointChunkExtractorRDMA::process_chunk(chronolog::StoryChu
             }
         }
 
-        transfer_return = rdma_sender_for_grapher->transfer_serialized_story_chunk(serialized_story_chunk);
+        transfer_return = rdma_sender_for_grapher->transfer_serialized_story_chunk(serialized_story_chunk,
+                                                                                   reporter_service_id);
 
         if(transfer_return == chl::CL_SUCCESS)
         {

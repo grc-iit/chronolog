@@ -306,7 +306,9 @@ TEST(StoryPipeline_TestExtractDecayedChunks, testAppendBehaviorAfterMultiDecay)
 
 
 // We call extract just after a future chunks starttime
-// Ensure that only the decayed empty head chunks are removed and the pipeline keeps exactly two chunks without appending new
+// Ensure that only the decayed head chunks are removed and the pipeline keeps exactly two chunks without appending new.
+// Empty decayed windows now travel too (they extend the grapher's persisted
+// watermark vacuously), so they appear in the extracted vector.
 TEST(StoryPipeline_TestExtractDecayedChunks, testExtractLeavesTwo)
 {
     initLogger();
@@ -322,8 +324,13 @@ TEST(StoryPipeline_TestExtractDecayedChunks, testExtractLeavesTwo)
     uint64_t extractTime = 3 * NS + 1;
     std::vector<chl::StoryChunk*> q;
     p.extractDecayedStoryChunks(extractTime, q);
-    // no non empty events in the first two chunks so no stashes
-    EXPECT_EQ(q.size(), 0);
+    // the two decayed head windows are empty but still extracted
+    ASSERT_EQ(q.size(), 2);
+    for(auto* chunk: q)
+    {
+        EXPECT_TRUE(chunk->empty());
+        delete chunk;
+    }
 
     // the timeline must now be [2,4)
     EXPECT_EQ(p.TimelineStart(), 2 * NS);
@@ -454,18 +461,45 @@ TEST(StoryPipeline_TestAppendStoryChunk, testSuccess)
 }
 
 /* ----------------------------------
-  Tests on finalize() 
+  Tests on finalize()
   ---------------------------------- */
 
+// finalize() (like extractDecayedStoryChunks) now hands out EVERY timeline
+// window, empty ones included: an empty window still extends the grapher's
+// persisted watermark (vacuously). The payload assertions below therefore
+// count and inspect the non-empty chunks, and every returned chunk is freed.
+static std::size_t countNonEmpty(std::vector<chl::StoryChunk*> const& q)
+{
+    std::size_t n = 0;
+    for(auto* chunk: q)
+    {
+        if(chunk != nullptr && !chunk->empty())
+        {
+            n++;
+        }
+    }
+    return n;
+}
+
+static void freeChunks(std::vector<chl::StoryChunk*>& q)
+{
+    for(auto* chunk: q)
+    {
+        delete chunk;
+    }
+    q.clear();
+}
+
 // Call finalize on a fresh pipeline with no pending chunks
-// Ensure no stash/actions/errors
+// Ensure no stash/actions/errors; only empty windows come out
 TEST(StoryPipeline_TestFinalize, testNoPendingChunks)
 {
     initLogger();
     chl::StoryPipeline p("C", "S", 1, 0, 1, 1);
     std::vector<chl::StoryChunk*> q;
     EXPECT_NO_THROW(p.finalize(q));
-    EXPECT_EQ(q.size(), 0);
+    EXPECT_EQ(countNonEmpty(q), 0);
+    freeChunks(q);
 }
 
 // Test if finalize processes the chunk in the passive deque
@@ -482,7 +516,8 @@ TEST(StoryPipeline_TestFinalize, testOnlyPassiveDeque)
 
     std::vector<chl::StoryChunk*> q;
     p.finalize(q);
-    EXPECT_EQ(q.size(), 1);
+    EXPECT_EQ(countNonEmpty(q), 1);
+    freeChunks(q);
 }
 
 // Test if finalize processes the chunk in the active deque
@@ -499,7 +534,8 @@ TEST(StoryPipeline_TestFinalize, testOnlyActiveDeque)
 
     std::vector<chl::StoryChunk*> q;
     p.finalize(q);
-    EXPECT_EQ(q.size(), 1);
+    EXPECT_EQ(countNonEmpty(q), 1);
+    freeChunks(q);
 }
 
 // Test if finalize handles both passive and active deques in FIFO
@@ -519,27 +555,29 @@ TEST(StoryPipeline_TestFinalize, testMixedDeques)
 
     std::vector<chl::StoryChunk*> q;
     p.finalize(q);
-    EXPECT_EQ(q.size(), 2);
+    ASSERT_EQ(countNonEmpty(q), 2);
 
-    // Now validate the order by checking payload of the event of the chunk
-    auto* firstChunk = q[0];
-    ASSERT_NE(firstChunk, nullptr);
-    std::vector<chl::Event> ev;
-    firstChunk->extractEventSeries(ev);
-    ASSERT_EQ(ev.size(), 1);
-    EXPECT_EQ(ev[0].log_record(), "passive");
-    delete firstChunk;
-
-    auto* secondChunk = q[1];
-    ASSERT_NE(secondChunk, nullptr);
-    ev.clear();
-    secondChunk->extractEventSeries(ev);
-    ASSERT_EQ(ev.size(), 1);
-    EXPECT_EQ(ev[0].log_record(), "active");
-    delete secondChunk;
+    // Now validate the order by checking payload of the events of the
+    // non-empty chunks (windows come out in start-time order)
+    std::vector<std::string> records;
+    for(auto* chunk: q)
+    {
+        if(chunk == nullptr || chunk->empty())
+        {
+            continue;
+        }
+        std::vector<chl::Event> ev;
+        chunk->extractEventSeries(ev);
+        ASSERT_EQ(ev.size(), 1);
+        records.push_back(ev[0].log_record());
+    }
+    ASSERT_EQ(records.size(), 2);
+    EXPECT_EQ(records[0], "passive");
+    EXPECT_EQ(records[1], "active");
+    freeChunks(q);
 }
 
-// Test if finalize removes all initial empty chunks from the timeline and stashes the one non empty chunk
+// Test if finalize drains the whole timeline and stashes the one non empty chunk
 TEST(StoryPipeline_TestFinalize, testEmptyVsNonTimeline)
 {
     initLogger();
@@ -552,7 +590,8 @@ TEST(StoryPipeline_TestFinalize, testEmptyVsNonTimeline)
 
     std::vector<chl::StoryChunk*> q;
     p.finalize(q);
-    EXPECT_EQ(q.size(), 1);
+    EXPECT_EQ(countNonEmpty(q), 1);
+    freeChunks(q);
 }
 
 // Test calling finalize safely twice
@@ -568,14 +607,15 @@ TEST(StoryPipeline_TestFinalize, testFinalizeDoubleCall)
     h->getActiveDeque().push_back(chunk);
 
     std::vector<chl::StoryChunk*> q;
-    // first finalize should stash the one chunk
+    // first finalize should stash the one non-empty chunk
     EXPECT_NO_THROW(p.finalize(q));
-    EXPECT_EQ(q.size(), 1);
-
+    EXPECT_EQ(countNonEmpty(q), 1);
+    std::size_t const after_first = q.size();
 
     // second finalize should not stash anything new
     EXPECT_NO_THROW(p.finalize(q));
-    EXPECT_EQ(q.size(), 1);
+    EXPECT_EQ(q.size(), after_first);
+    freeChunks(q);
 }
 
 // finalize should stash all the non empty chunks
@@ -602,5 +642,6 @@ TEST(StoryPipeline_TestFinalize, testFinalizeWithMixedTimeline)
 
     // all three non empty chunks should be stashed
     p.finalize(q);
-    EXPECT_EQ(q.size(), 3);
+    EXPECT_EQ(countNonEmpty(q), 3);
+    freeChunks(q);
 }

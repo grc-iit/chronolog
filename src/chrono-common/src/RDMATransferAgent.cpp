@@ -1,3 +1,4 @@
+#include <thallium/serialization/stl/string.hpp>
 #include <thallium/serialization/stl/vector.hpp>
 #include <cereal/archives/binary.hpp>
 
@@ -51,7 +52,8 @@ bool chronolog::RDMATransferAgent::is_receiver_available() const
 }
 
 ///////////////////////////////////
-int chronolog::RDMATransferAgent::transfer_serialized_story_chunk(std::string const& serialized_story_chunk)
+int chronolog::RDMATransferAgent::transfer_serialized_story_chunk(std::string const& serialized_story_chunk,
+                                                                  chronolog::ServiceId const& reporter)
 {
     try
     {
@@ -63,7 +65,7 @@ int chronolog::RDMATransferAgent::transfer_serialized_story_chunk(std::string co
                   serialized_story_chunk.size(),
                   tl_bulk.size());
 
-        size_t bytes_transfered = receive_story_chunk.on(receiver_service_handle)(tl_bulk);
+        size_t bytes_transfered = receive_story_chunk.on(receiver_service_handle)(tl_bulk, reporter);
 
         LOG_DEBUG("[RDMATransferAgent] prepared tl_bulk size {} transfered {} bytes", tl_bulk.size(), bytes_transfered);
 

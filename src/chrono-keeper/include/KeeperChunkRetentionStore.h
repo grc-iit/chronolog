@@ -122,6 +122,12 @@ public:
                 story.index[it->first] = sealed_chunk;
             }
             retainedBytes += state.approx_bytes;
+            LOG_INFO("[KeeperChunkRetentionStore] retaining StoryId={} chunk {}-{} eventCount {} (retained_chunks={})",
+                     story_id,
+                     sealed_chunk->getStartTime(),
+                     sealed_chunk->getEndTime(),
+                     sealed_chunk->getEventCount(),
+                     story.chunks.size());
             enforceCapacity(story);
             warnOnCapCrossing();
         }

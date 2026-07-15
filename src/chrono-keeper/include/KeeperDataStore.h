@@ -38,7 +38,8 @@ public:
                     uint32_t max_chunk_size = 4096,
                     uint32_t story_chunk_duration_secs = 30,
                     uint32_t acceptance_window_secs = 60,
-                    uint32_t inactive_pipeline_delay_secs = 300)
+                    uint32_t inactive_pipeline_delay_secs = 300,
+                    uint32_t watermark_resend_timeout_secs = 720)
         : state(UNKNOWN)
         , theIngestionQueue(ingestion_queue)
         , theExtractionQueue(extraction_queue)
@@ -47,6 +48,7 @@ public:
         , story_chunk_duration_secs(story_chunk_duration_secs)
         , acceptance_window_secs(acceptance_window_secs)
         , inactive_pipeline_delay_secs(inactive_pipeline_delay_secs)
+        , watermark_resend_timeout_secs(watermark_resend_timeout_secs)
     {}
 
     ~KeeperDataStore();
@@ -75,6 +77,10 @@ public:
     // of stranded in the ingestion orphan queue and dropped at shutdown.
     void sealOrphanedEvents();
 
+    // Grapher watermark report: everything below w for the story is durable;
+    // forwards to the retention store's confirmPersisted.
+    void applyWatermarkReport(StoryId const&, uint64_t w);
+
     void startDataCollection(int stream_count);
 
     void shutdownDataCollection();
@@ -96,6 +102,7 @@ private:
     uint32_t story_chunk_duration_secs;
     uint32_t acceptance_window_secs;
     uint32_t inactive_pipeline_delay_secs;
+    uint32_t watermark_resend_timeout_secs;
 
     std::vector<thallium::managed<thallium::xstream>> dataStoreStreams;
     std::vector<thallium::managed<thallium::thread>> dataStoreThreads;

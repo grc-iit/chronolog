@@ -51,13 +51,45 @@ public:
     // drain outcomes to it. Called from ChronoKeeperInstance after activation.
     void attachRetentionStore(KeeperChunkRetentionStore* store) { theRetentionStore = store; }
 
-    // Whether this chain will ever receive grapher watermark reports. Task 2
-    // shim: always false, so a successful send also counts as persisted and
-    // behavior matches the historic free-on-ack. Task 3 implements it for
-    // real (true iff a grapher-bound RDMA extractor is in the chain), which
-    // also permanently covers CSV-only/logging-only keeper configs that will
-    // never receive reports.
-    bool expects_watermarks() const { return false; }
+    // Stamp this keeper's DataStoreAdminService identity onto every
+    // grapher-bound RDMA extractor: it travels with each drained chunk so the
+    // grapher knows where to push watermark reports. Called from
+    // ChronoKeeperInstance after activation.
+    void set_watermark_reporter(ServiceId const& reporter)
+    {
+        for(auto& e: theExtractors)
+        {
+            std::visit(
+                    [&reporter](auto& extractor)
+                    {
+                        using T = std::decay_t<decltype(extractor)>;
+                        if constexpr(std::is_same_v<T, StoryChunkExtractorRDMA> ||
+                                     std::is_same_v<T, DualEndpointChunkExtractorRDMA>)
+                        {
+                            extractor.set_reporter_service_id(reporter);
+                        }
+                    },
+                    e);
+        }
+    }
+
+    // Whether this chain will ever receive grapher watermark reports: true
+    // iff a grapher-bound RDMA extractor is in the chain. CSV-only or
+    // logging-only keeper configs never receive reports, so for them a
+    // successful extraction still counts as persisted (free-on-ack), by
+    // design.
+    bool expects_watermarks() const
+    {
+        for(auto const& e: theExtractors)
+        {
+            if(std::holds_alternative<StoryChunkExtractorRDMA>(e) ||
+               std::holds_alternative<DualEndpointChunkExtractorRDMA>(e))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
 
     // Disposal seam invoked by the extraction module after process_chunk.
     // Never deletes a tracked chunk: ownership stays with the retention store.

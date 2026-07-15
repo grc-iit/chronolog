@@ -281,6 +281,13 @@ void chronolog::KeeperDataStore::sealOrphanedEvents()
 
 ////////////////////////
 
+void chronolog::KeeperDataStore::applyWatermarkReport(chronolog::StoryId const& story_id, uint64_t w)
+{
+    theTailStore.confirmPersisted(story_id, w);
+}
+
+////////////////////////
+
 void chronolog::KeeperDataStore::dataCollectionTask()
 {
     //run dataCollectionTask as long as the state == RUNNING
@@ -303,6 +310,10 @@ void chronolog::KeeperDataStore::dataCollectionTask()
         }
         extractDecayedStoryChunks();
         retireDecayedPipelines();
+        // re-send retained chunks whose ack or covering watermark never
+        // arrived (transient grapher outage); the store's mutex makes the
+        // call safe and idempotent across the data-collection ULTs
+        theTailStore.requeueStalled(std::chrono::seconds(watermark_resend_timeout_secs));
     }
     LOG_DEBUG("[KeeperDataStore] Exiting DataCollectionTask thread {}", tl::thread::self_id());
 }
