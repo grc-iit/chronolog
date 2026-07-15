@@ -121,11 +121,13 @@ public:
                               story_chunk->getEndTime(),
                               story_chunk->getEventCount());
 
-                    theExtractionChain.process_chunk(story_chunk);
+                    int status = theExtractionChain.process_chunk(story_chunk);
 
-                    // handling of intermitent communication outtage
-                    // will be addressed in the follow-up issue #635
-                    delete story_chunk;
+                    // the chain decides the chunk's fate from the transfer
+                    // outcome: the keeper hands it back to its retention store
+                    // (retain on failure, await watermark on success); the
+                    // grapher deletes it as before
+                    theExtractionChain.dispose_chunk(story_chunk, status);
                 }
             }
             else
@@ -206,8 +208,8 @@ public:
                       story_chunk->getEndTime(),
                       story_chunk->getEventCount());
 
-            theExtractionChain.process_chunk(story_chunk);
-            delete story_chunk;
+            int status = theExtractionChain.process_chunk(story_chunk);
+            theExtractionChain.dispose_chunk(story_chunk, status);
         }
 
         // if any of the extractors still have chunks in their individual

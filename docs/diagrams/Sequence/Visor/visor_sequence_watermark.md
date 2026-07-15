@@ -1,0 +1,90 @@
+# ChronoVisor — control-plane orchestration under the watermark protocol (sequence)
+
+Same control plane as the base visor (register → connect → create → acquire → release → disconnect), with one watermark change in the **story-start fan-out**: the Player notification now carries the story's **keeper roster**. `notifyPlayerOfStoryRecordingStart` converts each active `KeeperIdCard` to its recording-service `ServiceId` and sends `start_story_recording_with_keepers(chronicle, story, storyId, startTime, keeper_services)`; the player uses that roster to fan replay hot fetches out to the keepers. Keeper and Grapher keep the original 4-arg `start_story_recording`. Fonts enlarged ~50%. See also [player_sequence_watermark](../Player/player_sequence_watermark.md).
+
+```mermaid
+%%{init: {"htmlLabels": false, "themeCSS": ".messageText{font-size:18px !important;} .loopText,.loopText tspan{font-size:18px !important;} .labelText,.labelText tspan{font-size:18px !important;} text.actor tspan,.actor{font-size:18px !important;} .noteText,.noteText tspan{font-size:24px !important;} .sectionTitle{font-size:18px !important;} .sequenceNumber{font-size:16px !important;}"}}%%
+%% ChronoVisor — control-plane orchestration under the watermark protocol: story-start fan-out now ships the keeper roster to the Player (start_story_recording_with_keepers)
+sequenceDiagram
+  autonumber
+  actor C as Client (storyteller)
+  box rgb(232,245,233) ChronoVisor process
+    participant CPS as ClientPortalService (port 5555)
+    participant CMD as ChronicleMetaDirectory
+    participant CRM as ClientRegistryManager
+    participant KRS as KeeperRegistryService (port 8888)
+    participant KR as KeeperRegistry (recordingGroups)
+    participant DAC as DataStoreAdminClient (per process, on registryEngine)
+  end
+  participant GR as ChronoGrapher (DataStoreAdminService 4444)
+  participant K as ChronoKeeper(s) (DataStoreAdminService 7777)
+  participant PL as ChronoPlayer (PlayerStoreAdminService 2222)
+
+  Note over GR,PL: 0) REGISTER — at startup each daemon registers, KeeperRegistry assembles RecordingGroups
+  GR->>KRS: register_grapher(GrapherRegistrationMsg)   [RPC]
+  K->>KRS: register_keeper(KeeperRegistrationMsg)   [RPC]
+  PL->>KRS: register_player(PlayerRegistrationMsg)   [RPC]
+  KRS->>KR: registerGrapher / Keeper / PlayerProcess(msg)
+  KR->>DAC: CreateDataStoreAdminClient(registryEngine, adminServiceId) per process
+  Note right of KR: processes grouped by RecordingGroup id, periodic stats msgs keep liveness
+
+  Note over C,CRM: 1) CONNECT
+  C->>CPS: Connect(client_euid, ClientId)   [RPC]
+  CPS->>CPS: is_client_authenticated(euid)
+  CPS->>CRM: add_client_record(ClientId)
+  CPS-->>C: ConnectResponseMsg(CL_SUCCESS, clock_offset)
+
+  Note over C,CMD: 2) CREATE CHRONICLE
+  C->>CPS: CreateChronicle(name)   [RPC]
+  CPS->>CMD: create_chronicle(name)
+  CPS-->>C: return_code
+
+  Note over C,PL: 3) ACQUIRE STORY — metadata acquire plus start-recording fan-out (the Player also gets the keeper roster)
+  C->>CPS: AcquireStory(chronicle, story)   [RPC]
+  CPS->>CMD: acquire_story(clientId, chronicle, story) returns storyId
+  CPS->>KR: notifyRecordingGroupOfStoryRecordingStart(chronicle, story, storyId, keepers, player)
+  KR->>KR: select RecordingGroup (Mersenne-Twister), activeStories[storyId] = group
+  KR->>DAC: notifyGrapherOfStoryRecordingStart()
+  DAC->>GR: start_story_recording(chronicle, story, storyId, startTime)   [RPC]
+  GR-->>DAC: CL_SUCCESS
+  KR->>DAC: notifyKeepersOfStoryRecordingStart(activeKeepers)
+  loop each active Keeper in the group
+    DAC->>K: start_story_recording(...)   [RPC]
+    K-->>DAC: CL_SUCCESS
+  end
+  Note over KR,K: Keeper and Grapher keep the original 4-arg start_story_recording — only the Player needs the roster
+  opt group has a Player
+    KR->>DAC: notifyPlayerOfStoryRecordingStart(..., story_keepers)
+    Note right of DAC: keeper roster = each active KeeperIdCard.getRecordingServiceId()
+    DAC->>PL: start_story_recording_with_keepers(chronicle, story, storyId, startTime, keeper_services)   [RPC]
+    PL-->>DAC: CL_SUCCESS
+  end
+  Note over KR,PL: on any failure, roll back with stop_story_recording to already-notified processes and return CL_ERR_NO_KEEPERS
+  KR-->>CPS: KeeperIdCard list plus playerServiceId
+  CPS-->>C: AcquireStoryResponseMsg(CL_SUCCESS, storyId, keeperServiceIds, player)
+  Note over C,PL: client now records directly to Keeper(s) and queries the Player (replay split — see player_sequence_watermark)
+
+  Note over C,PL: 4) RELEASE STORY
+  C->>CPS: ReleaseStory(chronicle, story)   [RPC]
+  CPS->>CMD: release_story(clientId, ...) returns (storyId, was_last_acquirer)
+  alt was_last_acquirer
+    CPS->>KR: notifyRecordingGroupOfStoryRecordingStop(storyId)
+    KR->>DAC: stop fan-out to the recording group
+    DAC->>GR: stop_story_recording(storyId)   [RPC]
+    DAC->>K: stop_story_recording(storyId)   [RPC]
+    DAC->>PL: stop_story_recording(storyId)   [RPC]
+  else other clients still hold the story
+    Note right of CPS: recording continues, no notification sent
+  end
+  CPS-->>C: CL_SUCCESS
+
+  Note over C,PL: 5) DISCONNECT — auto-release everything the client still holds
+  C->>CPS: Disconnect(ClientId)   [RPC]
+  CPS->>CMD: release_all_acquired_stories(clientId) returns stories with no acquirers left
+  loop each released storyId
+    CPS->>KR: notifyRecordingGroupOfStoryRecordingStop(storyId)
+  end
+  CPS->>CRM: remove_client_record(clientId)
+  CPS-->>C: CL_SUCCESS
+  Note over CPS,GR: DestroyStory / DestroyChronicle additionally broadcast destroy_* to every Grapher (async HDF5 cleanup)
+```

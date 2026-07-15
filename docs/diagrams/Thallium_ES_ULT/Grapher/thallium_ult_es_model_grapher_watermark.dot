@@ -1,0 +1,88 @@
+digraph ChronoGrapherArgobotsModelWatermark {
+    /* ============================================================
+       ChronoGrapher (watermark-feedback branch) — Argobots execution model
+       Deltas vs. the base model:
+         - StoryWatermarkRegistry: per-story persisted watermark W (contiguous
+           prefix), fed by the HDF5 extractor on write/flush (advancePersisted)
+           or write failure (persistFailed).
+         - WatermarkReportPublisher (rides dataAdminEngine as client): pushes
+           dirty W back to the contributing keepers each data-collection tick.
+         - receive_story_chunk carries the sending keeper's reporter id, recorded
+           as a contributor so the publisher knows whom to report to.
+       ============================================================ */
+    rankdir=LR;
+    compound=true;
+    splines=spline;
+    nodesep=0.35;
+    ranksep=1.05;
+    bgcolor="white";
+    fontname="Helvetica";
+    labelloc="t";
+    fontsize=22;
+    label=<<b>ChronoGrapher (watermark) &mdash; Argobots Execution Streams (ES) &amp; User-Level Threads (ULT)</b><br/><font point-size="13">HDF5 write advances the persisted watermark W; the publisher reports W back to the contributing keepers</font>>;
+
+    node [shape=box style="rounded,filled" fontname="Helvetica" fontsize=11 color="#475569"];
+    edge [fontname="Helvetica" fontsize=10];
+
+    /* ---------------- margo engines ---------------- */
+    subgraph cluster_record_engine {
+        label=<<b>recordingEngine</b>  &mdash; margo_init(:3333, SERVER, progress=1, rpc=1)  (RDMA receiver)>;
+        style="rounded,filled"; color="#7c3aed"; fillcolor="#faf5ff"; fontsize=13;
+        rec_prog [label="progress ES\n(network poll ULT)" fillcolor="#ddd6fe"];
+        rec_h    [label="1 RPC-handler ES\nreceive_story_chunk ULTs\n(bulk pull + deserialize,\nrecordContributor(reporter))" fillcolor="#c4b5fd"];
+    }
+
+    subgraph cluster_admin_engine {
+        label=<<b>dataAdminEngine</b>  &mdash; margo_init(:4444, SERVER, progress=1, rpc=1)  (server + client)>;
+        style="rounded,filled"; color="#2563eb"; fillcolor="#eff6ff"; fontsize=13;
+        adm_prog [label="progress ES\n(drives GrapherRegistryClient\n+ WatermarkReportPublisher)" fillcolor="#bfdbfe"];
+        adm_h    [label="1 RPC-handler ES\nstart/stop_story_recording ULTs" fillcolor="#93c5fd"];
+    }
+
+    /* ---------------- application ESs / ULTs ---------------- */
+    subgraph cluster_app {
+        label=<<b>Application ES / ULT</b>  &mdash; created in main() after <font face="Courier">tl::abt scope;</font>>;
+        style="rounded,filled"; color="#d97706"; fillcolor="#fffbeb"; fontsize=13;
+
+        dc [label="theDataStore.startDataCollection(3)\n3 app ES + 6 ULT -> dataCollectionTask()\nmerge chunks + adoptOrphanChunks()\n+ theWatermarkPublisher->publish()" fillcolor="#fde68a"];
+        ex [label="theExtractionModule.startExtraction()\n2 app ES + 2 ULT -> drainExtractionQueue()\nprocess_chunk() -> hdf5_extractor" fillcolor="#fcd34d"];
+    }
+
+    /* ---------------- watermark state / publisher ---------------- */
+    wr [label="StoryWatermarkRegistry\nper-story W = contiguous prefix\nof persisted merged windows" shape=note fillcolor="#fef9c3" color="#ca8a04" fontsize=10];
+    wp [label="WatermarkReportPublisher\n(client on dataAdminEngine)\nstory -> contributing keepers" shape=box style="rounded,filled" fillcolor="#dbeafe" color="#2563eb" fontsize=10];
+
+    /* ---------------- queues / sinks ---------------- */
+    iq   [label="ChunkIngestionQueue\n(lock-free)" shape=cylinder fillcolor="#e2e8f0" color="#334155"];
+    xq   [label="StoryChunkExtractionQueue\n(lock-free)" shape=cylinder fillcolor="#e2e8f0" color="#334155"];
+    hdf5 [label="HDF5 archive\n(/tmp on local disk)" shape=cylinder fillcolor="#dcfce7" color="#15803d"];
+
+    /* ---------------- external peers ---------------- */
+    keeper [label="ChronoKeeper(s)\nextractionEngine (chunk source)\nDataStoreAdminService :7777 (report target)" shape=component fillcolor="#ede9fe" color="#7c3aed"];
+    visor  [label="ChronoVisor\nKeeperRegistryService :8888" shape=component fillcolor="#dbeafe" color="#2563eb"];
+
+    /* ===================== EDGES ===================== */
+    /* inbound RDMA drain from keepers (chunk carries reporter id) */
+    keeper -> rec_h [color="#7c3aed" penwidth=2.2 label="receive_story_chunk\n(RDMA, +reporter)"];
+    rec_h  -> wp    [color="#2563eb" style=dashed label="recordContributor(story, reporter)"];
+    rec_h  -> iq    [color="#7c3aed" label="ingestStoryChunk()"];
+
+    /* data collection ULTs merge chunks -> extraction queue, and publish */
+    iq -> dc [color="#d97706" label="collect / merge"];
+    dc -> xq [color="#d97706" label="extractDecayedStoryChunks()\nejectStoryChunk()"];
+    dc -> wp [color="#2563eb" label="publish() each iteration"];
+
+    /* extraction ULTs persist to HDF5 and advance the persisted watermark */
+    xq -> ex   [color="#d97706" label="ejectStoryChunk()"];
+    ex -> hdf5 [color="#16a34a" penwidth=2.0 label="write + flush HDF5"];
+    ex -> wr   [color="#ca8a04" label="advancePersisted() / persistFailed()"];
+
+    /* publisher reads dirty W and reports to contributing keepers */
+    wp -> wr     [color="#ca8a04" label="snapshotDirty()"];
+    wp -> keeper [color="#2563eb" style=dotted penwidth=2.0 label="report_story_watermarks\n(one-way, coalesced ~1 Hz)"];
+
+    /* admin / registration */
+    visor    -> adm_h  [color="#2563eb" style=dotted label="start/stop_story_recording"];
+    adm_h    -> dc     [color="#2563eb" style=dotted label="startStoryRecording()\n+ registerStory()"];
+    adm_prog -> visor  [color="#2563eb" label="register_grapher / stats\n(GrapherRegistryClient on same engine)"];
+}

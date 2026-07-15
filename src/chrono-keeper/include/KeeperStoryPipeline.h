@@ -14,7 +14,7 @@
 
 #include "ActiveTailSource.h"
 #include "StoryChunkExtractionQueue.h"
-#include "KeeperTailStore.h"
+#include "KeeperChunkRetentionStore.h"
 
 namespace chronolog
 {
@@ -30,7 +30,7 @@ class KeeperStoryPipeline: public ActiveTailSource
 
 public:
     KeeperStoryPipeline(StoryChunkExtractionQueue&,
-                        KeeperTailStore&,
+                        KeeperChunkRetentionStore&,
                         std::string const& chronicle_name,
                         std::string const& story_name,
                         StoryId const& story_id,
@@ -80,7 +80,7 @@ public:
 
 private:
     StoryChunkExtractionQueue& theExtractionQueue;
-    KeeperTailStore& theTailStore;
+    KeeperChunkRetentionStore& theTailStore;
     StoryId storyId;
     ChronicleName chronicleName;
     StoryName storyName;

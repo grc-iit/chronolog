@@ -1,0 +1,208 @@
+# ChronoGrapher (watermark) — class interaction (UML)
+
+Live (compiled) classes for the `watermark-feedback` branch. `direction TB`; node fill = architectural plane (see legend, including the highlighted watermark/retention/hot-fetch plane added on this branch). Mermaid `classDiagram` counterpart of the Graphviz version under `UML/Grapher/`. `htmlLabels:false` for native-text SVGs that render in non-browser viewers.
+
+```mermaid
+%%{init: {"htmlLabels": false, "class": {"htmlLabels": false}}}%%
+%% ChronoLog ChronoGrapher (watermark-feedback branch) — class interaction (UML class diagram)
+%% Relationship key:  *-- composition (owns lifetime)   o-- aggregation (holds ref/ptr)
+%%                    <|-- inherits                      ..> dependency / RPC (label "RPC:")
+classDiagram
+  direction TB
+
+  namespace external_processes {
+    class ChronoKeeper:::ext {
+      <<chunk source + report target>>
+    }
+    class ChronoVisor:::ext {
+      <<registry + admin>>
+    }
+    class HDF5Archive:::ext {
+      <<local disk>>
+    }
+  }
+
+  class tlProvider["tl::provider&lt;T&gt;"]:::lib {
+    <<Thallium / Margo>>
+  }
+
+  namespace control_plane {
+    class GrapherRecordingService:::ctrl {
+      <<tl::provider>>
+      -ChunkIngestionQueue& theIngestionQueue
+      -WatermarkReportPublisher* theWatermarkPublisher
+      +receive_story_chunk(bulk, reporter)
+    }
+    class DataStoreAdminService:::ctrl {
+      <<tl::provider>>
+      -GrapherDataStore& theDataStore
+      +StartStoryRecording()
+      +StopStoryRecording()
+      +destroy_story()
+      +destroy_chronicle()
+    }
+    class GrapherRegistryClient:::ctrl {
+      +send_register_msg()
+      +send_stats_msg()
+    }
+  }
+
+  namespace data_collection {
+    class ChunkIngestionQueue:::dcol {
+      -Map~StoryId, StoryChunkIngestionHandle*~ handles
+      -Deque~StoryChunk*~ orphanQueue
+      +ingestStoryChunk()
+      +drainOrphanChunks()
+      +extractOrphanChunks()
+    }
+    class GrapherDataStore:::dcol {
+      -ChunkIngestionQueue& theIngestionQueue
+      -StoryChunkExtractionQueue& theExtractionQueue
+      -ChronoGrapherExtractionChain* theExtractionChain
+      -StoryWatermarkRegistry* theWatermarkRegistry
+      -WatermarkReportPublisher* theWatermarkPublisher
+      -Map~StoryId, StoryPipeline*~ theMapOfStoryPipelines
+      -Set~StoryId~ destroyedStories
+      +startStoryRecording()
+      +destroyStory()
+      +collectIngestedEvents()
+      +extractDecayedStoryChunks()
+      +retireDecayedPipelines()
+      +adoptOrphanChunks()
+      +attachWatermarkPublisher()
+    }
+    class StoryPipeline:::dcol {
+      -Map~chrono_time, StoryChunk*~ storyTimelineMap
+      +collectIngestedEvents()
+      +mergeEvents()
+      +extractDecayedStoryChunks()
+      +finalize()
+    }
+  }
+
+  namespace watermark {
+    class StoryWatermarkRegistry:::wm {
+      <<new — header-only>>
+      -Map~StoryId, Entry~ stories
+      +registerStory()
+      +persistFailed()
+      +advancePersisted(start, end)
+      +getPersisted()
+      +snapshotDirty()
+    }
+    class WatermarkReportPublisher:::wm {
+      <<new>>
+      -tl::engine& theEngine
+      -StoryWatermarkRegistry& theRegistry
+      -Map~StoryId, KeeperSet~ contributors
+      -Map~endpoint, provider_handle~ keeperHandles
+      +recordContributor(story, reporter)
+      +publish()
+    }
+  }
+
+  namespace extraction_persistence {
+    class StoryChunkExtractionQueue:::extract {
+      +stashStoryChunk()
+      +ejectStoryChunk()
+    }
+    class StoryChunkExtractionModule["StoryChunkExtractionModule&lt;T&gt;"]:::extract {
+      +drainExtractionQueue()
+      +startExtraction()
+    }
+    class ChronoGrapherExtractionChain:::extract {
+      +process_chunk()
+      +dispose_chunk(chunk, status)
+      +delete_story_files()
+      +delete_chronicle_files()
+    }
+    class HDF5FileChunkExtractor:::extract {
+      -string rootDirectory
+      -StoryWatermarkRegistry* watermarkRegistry
+      +process_chunk()
+      +delete_story_files()
+    }
+  }
+
+  namespace common_data {
+    class StoryChunk:::data {
+      -Map~EventSequence, LogEvent~ logEvents
+      +mergeEvents()
+      +isWatermarkExempt()
+    }
+  }
+
+  namespace legend {
+    class lg_owner["A"]:::lgnd
+    class lg_part["B"]:::lgnd
+    class lg_whole["A"]:::lgnd
+    class lg_ref["B"]:::lgnd
+    class lg_base["Base"]:::lgnd
+    class lg_derived["Derived"]:::lgnd
+    class lg_depA["A"]:::lgnd
+    class lg_depB["B"]:::lgnd
+    class lg_rpcA["A"]:::lgnd
+    class lg_rpcB["B"]:::lgnd
+    class key_control["fill = control plane — RPC providers / registry client"]:::ctrl
+    class key_datacol["fill = data collection — ingest + merge"]:::dcol
+    class key_watermark["fill = watermark — persisted-W registry + publisher (this branch)"]:::wm
+    class key_extraction["fill = extraction — drain + HDF5 persistence"]:::extract
+    class key_commondata["fill = common data"]:::data
+    class key_external["fill = external process"]:::ext
+    class key_library["fill = library base (tl::provider)"]:::lib
+  }
+
+  %% ---- generalization (inherits) ----
+  tlProvider <|-- GrapherRecordingService
+  tlProvider <|-- DataStoreAdminService
+
+  %% ---- composition (owns lifetime) ----
+  GrapherDataStore "1" *-- "many" StoryPipeline : owns* (new/delete)
+  StoryPipeline "1" *-- "many" StoryChunk : storyTimelineMap
+  StoryChunkExtractionModule *-- StoryChunkExtractionQueue : by value
+  StoryChunkExtractionModule *-- ChronoGrapherExtractionChain : by value (T)
+  ChronoGrapherExtractionChain *-- HDF5FileChunkExtractor : variant
+
+  %% ---- aggregation (holds ref / ptr, not owner) ----
+  GrapherRecordingService o-- ChunkIngestionQueue : &
+  GrapherRecordingService o-- WatermarkReportPublisher : * (contributor sink)
+  DataStoreAdminService o-- GrapherDataStore : &
+  GrapherDataStore o-- ChunkIngestionQueue : &
+  GrapherDataStore o-- StoryChunkExtractionQueue : &
+  GrapherDataStore o-- ChronoGrapherExtractionChain : * (destroy path)
+  GrapherDataStore o-- StoryWatermarkRegistry : *
+  GrapherDataStore o-- WatermarkReportPublisher : *
+  WatermarkReportPublisher o-- StoryWatermarkRegistry : &
+  HDF5FileChunkExtractor o-- StoryWatermarkRegistry : * (advance on write)
+
+  %% ---- in-process dependency ----
+  GrapherRecordingService ..> WatermarkReportPublisher : recordContributor()
+  GrapherDataStore ..> WatermarkReportPublisher : publish() per tick
+  GrapherDataStore ..> StoryWatermarkRegistry : registerStory()
+  WatermarkReportPublisher ..> StoryWatermarkRegistry : snapshotDirty()
+  HDF5FileChunkExtractor ..> StoryWatermarkRegistry : advancePersisted / persistFailed
+
+  %% ---- cross-process RPC ----
+  ChronoKeeper ..> GrapherRecordingService : RPC ▸receive_story_chunk (+reporter)
+  ChronoVisor ..> DataStoreAdminService : RPC ▸start/stop / destroy_*
+  GrapherRegistryClient ..> ChronoVisor : RPC ▸register / stats
+  WatermarkReportPublisher ..> ChronoKeeper : RPC ▸report_story_watermarks (one-way)
+  HDF5FileChunkExtractor ..> HDF5Archive : write / delete HDF5
+
+  %% ---- legend: relationship glyphs ----
+  lg_owner *-- lg_part : composition ▸ owner manages lifetime
+  lg_whole o-- lg_ref : aggregation ▸ holds borrowed ref / ptr
+  lg_base <|-- lg_derived : generalization ▸ inherits (triangle to base)
+  lg_depA ..> lg_depB : dependency ▸ uses / calls (in-process)
+  lg_rpcA ..> lg_rpcB : RPC ▸ cross-process (dashed)
+
+  %% ---- colors by plane ----
+  classDef lgnd   fill:#eeeeee,stroke:#999999,color:#000
+  classDef ctrl   fill:#bcd4e6,stroke:#5a7fa6,color:#000
+  classDef dcol   fill:#bfe3bf,stroke:#5a8a5a,color:#000
+  classDef wm     fill:#ffdf9e,stroke:#d0a03a,color:#000
+  classDef extract fill:#f0e08c,stroke:#b3a14a,color:#000
+  classDef data   fill:#dcdcdc,stroke:#999999,color:#000
+  classDef ext    fill:#ffe0b2,stroke:#cc8800,color:#000
+  classDef lib    fill:#eeeeee,stroke:#aaaaaa,color:#000
+```

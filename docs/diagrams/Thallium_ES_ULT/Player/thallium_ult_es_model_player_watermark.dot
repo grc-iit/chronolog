@@ -1,0 +1,101 @@
+digraph ChronoPlayerArgobotsModelWatermark {
+    /* ============================================================
+       ChronoPlayer (watermark-feedback branch) — Argobots execution model
+       Deltas vs. the base model:
+         - story_playback_request no longer reads the player's own active
+           window. It fans story_range_fetch out over the story's keeper roster
+           (KeeperHotFetchClient on the playbackEngine) and splits replay at
+           B = min(hot_floor); the archive read is cut at [start, B).
+         - dataAdminEngine also handles start_story_recording_with_keepers,
+           which stores the roster (setStoryKeepers) in PlayerDataStore.
+         - The RDMA chunk ingest + active-store pipeline is now a LEGACY MIRROR
+           (kept as config); replay no longer reads from it.
+       ============================================================ */
+    rankdir=LR;
+    compound=true;
+    splines=spline;
+    nodesep=0.35;
+    ranksep=1.05;
+    bgcolor="white";
+    fontname="Helvetica";
+    labelloc="t";
+    fontsize=22;
+    label=<<b>ChronoPlayer (watermark) &mdash; Argobots Execution Streams (ES) &amp; User-Level Threads (ULT)</b><br/><font point-size="13">replay hot side pulled on demand from the keeper roster (story_range_fetch), cold side from the archive, split at B = min(hot_floor)</font>>;
+
+    node [shape=box style="rounded,filled" fontname="Helvetica" fontsize=11 color="#475569"];
+    edge [fontname="Helvetica" fontsize=10];
+
+    /* ---------------- margo engines ---------------- */
+    subgraph cluster_playback_engine {
+        label=<<b>playbackEngine</b>  &mdash; margo_init(:2225, SERVER, progress=1, rpc=1)  (server + client)>;
+        style="rounded,filled"; color="#d97706"; fillcolor="#fffbeb"; fontsize=13;
+        pb_prog [label="progress ES\n(also drives KeeperHotFetchClient\n+ QueryResponseAgent)" fillcolor="#fde68a"];
+        pb_h    [label="1 RPC-handler ES\nstory_playback_request ULTs\nfan story_range_fetch over roster,\nB = min(hot_floor), enqueue archive [start,B)" fillcolor="#fcd34d"];
+    }
+
+    subgraph cluster_record_engine {
+        label=<<b>recordingEngine</b>  &mdash; margo_init(:7778, SERVER, progress=1, rpc=1)  (RDMA receiver, LEGACY MIRROR)>;
+        style="rounded,filled"; color="#7c3aed"; fillcolor="#faf5ff"; fontsize=13;
+        rec_prog [label="progress ES" fillcolor="#ddd6fe"];
+        rec_h    [label="1 RPC-handler ES\nreceive_story_chunk ULTs\n(legacy mirror — not read by replay)" fillcolor="#c4b5fd"];
+    }
+
+    subgraph cluster_admin_engine {
+        label=<<b>dataAdminEngine</b>  &mdash; margo_init(:2222, SERVER, progress=1, rpc=1)  (server + client)>;
+        style="rounded,filled"; color="#2563eb"; fillcolor="#eff6ff"; fontsize=13;
+        adm_prog [label="progress ES\n(also drives PlayerRegistryClient)" fillcolor="#bfdbfe"];
+        adm_h    [label="1 RPC-handler ES\nstart/stop_story_recording\n+ start_story_recording_with_keepers\n(setStoryKeepers roster)" fillcolor="#93c5fd"];
+    }
+
+    /* ---------------- application ESs / ULTs ---------------- */
+    subgraph cluster_app {
+        label=<<b>Application ES / ULT</b>  &mdash; created in main() after <font face="Courier">tl::abt scope;</font>>;
+        style="rounded,filled"; color="#d97706"; fillcolor="#fff7ed"; fontsize=13;
+
+        dc [label="startDataCollection(3)  [LEGACY MIRROR]\n3 app ES + 6 ULT -> dataCollectionTask()\ningested chunks -> active store (unused by replay)" fillcolor="#fde68a"];
+        ar [label="archiveReadingAgent.startArchiveReading(1)\n1 app ES + 2 ULT -> archiveReadingTask()\nread HDF5 [start,B) -> addArchivedEventsToQueryResponse" fillcolor="#fcd34d"];
+        qr [label="QueryResponseAgent.startResponseThreads(1)\nper requesting client: 1 app ES + 1 ULT\ndrain stashed responses -> RDMA reply" fillcolor="#fdba74"];
+    }
+
+    /* ---------------- clients / state / sinks ---------------- */
+    hfc  [label="KeeperHotFetchClient x roster\n(lazy, cached, on playbackEngine)\nstory_range_fetch -> HotRangeResponse" shape=box style="rounded,filled" fillcolor="#ede9fe" color="#7c3aed" fontsize=10];
+    store[label="PlayerDataStore\nstoryKeepers roster (setStoryKeepers)\n+ legacy active window" shape=note fillcolor="#f1f5f9" color="#334155"];
+    siq  [label="StoryChunkIngestionQueue\n(lock-free, legacy)" shape=cylinder fillcolor="#e2e8f0" color="#334155"];
+    arq  [label="ArchiveReadingRequestQueue\n(lock-free)" shape=cylinder fillcolor="#e2e8f0" color="#334155"];
+    aq   [label="QueryResponseAgent\nactive_queries (stashed responses)" shape=note fillcolor="#f1f5f9" color="#334155"];
+    hdf5 [label="HDF5 archive\n(story_files_dir /tmp)" shape=cylinder fillcolor="#dcfce7" color="#15803d"];
+
+    /* ---------------- external peers ---------------- */
+    keeper [label="ChronoKeeper(s)\nKeeperRecordingService :6666 (story_range_fetch)\nextractionEngine (legacy chunk push)" shape=component fillcolor="#ede9fe" color="#7c3aed"];
+    client [label="ChronoLog Client\nClientQueryService :5557" shape=component fillcolor="#dcfce7" color="#16a34a"];
+    visor  [label="ChronoVisor\nKeeperRegistryService :8888" shape=component fillcolor="#dbeafe" color="#2563eb"];
+
+    /* ===================== EDGES ===================== */
+    /* legacy mirror: inbound RDMA chunk push -> active store (not read by replay) */
+    keeper -> rec_h [color="#7c3aed" penwidth=1.6 style=dashed label="receive_story_chunk (RDMA, legacy)"];
+    rec_h  -> siq   [color="#94a3b8" label="ingestStoryChunk()"];
+    siq    -> dc    [color="#94a3b8" label="collect"];
+    dc     -> store [color="#94a3b8" label="merge into active window (unused)"];
+
+    /* query path: hot fetch over the roster */
+    client -> pb_h  [color="#d97706" label="story_playback_request"];
+    pb_h   -> store [color="#d97706" style=dashed label="getStoryKeepers() roster"];
+    pb_h   -> hfc   [color="#d97706" label="fetchRange() per keeper"];
+    hfc    -> keeper[color="#7c3aed" penwidth=2.2 label="story_range_fetch (RDMA/RPC)"];
+    pb_h   -> aq    [color="#d97706" label="stashQueryResponseRecord()\n(hot events >= B)"];
+    pb_h   -> arq   [color="#d97706" label="push ArchiveReadingRequest\n[start, B)  when B > start"];
+
+    /* archive reading ULTs (cold side) */
+    arq  -> ar   [color="#d97706" label="popReadingRequest()"];
+    hdf5 -> ar   [color="#16a34a" label="readArchivedStory([start,B))"];
+    ar   -> aq   [color="#d97706" label="addArchivedEventsToQueryResponse()"];
+
+    /* response sender ULTs -> client (RDMA) */
+    aq -> qr      [color="#d97706" label="drain completed responses"];
+    qr -> client  [color="#7c3aed" penwidth=2.2 style=dashed label="receive_query_response (RDMA)"];
+
+    /* admin / registration */
+    visor    -> adm_h  [color="#2563eb" style=dotted label="start_story_recording_with_keepers\n(roster) / stop"];
+    adm_h    -> store  [color="#2563eb" style=dotted label="setStoryKeepers() + startStoryRecording()"];
+    adm_prog -> visor  [color="#2563eb" label="register_player / stats\n(PlayerRegistryClient on same engine)"];
+}

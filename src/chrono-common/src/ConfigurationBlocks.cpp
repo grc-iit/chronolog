@@ -312,25 +312,14 @@ int chronolog::DataStoreConf::parseJsonConf(json_object* data_store_json_conf)
             }
             live_tail_read = json_object_get_boolean(val);
         }
-        else if(strcmp(key, "tail_retention_secs") == 0)
+        else if(strcmp(key, "retention_cap_mb") == 0)
         {
             if(!json_object_is_type(val, json_type_int))
             {
-                std::cerr << "[DataStoreConf] Invalid 'tail_retention_secs': expected integer" << std::endl;
+                std::cerr << "[DataStoreConf] Invalid 'retention_cap_mb': expected integer" << std::endl;
                 return chl::CL_ERR_INVALID_CONF;
             }
-            // Range-checked because the keeper widens this to uint64_t and scales it
-            // to nanoseconds: a negative value would wrap into a garbage retention
-            // window. 0 is valid and documented -- it disables age-out, leaving
-            // capacity eviction and the shutdown flush as the archival paths.
-            int const parsed_tail_retention = json_object_get_int(val);
-            if(parsed_tail_retention < 0)
-            {
-                std::cerr << "[DataStoreConf] Invalid 'tail_retention_secs': must not be negative, got "
-                          << parsed_tail_retention << std::endl;
-                return chl::CL_ERR_INVALID_CONF;
-            }
-            tail_retention_secs = parsed_tail_retention;
+            retention_cap_mb = json_object_get_int(val);
         }
         else
         {
@@ -347,15 +336,6 @@ int chronolog::DataStoreConf::parseJsonConf(json_object* data_store_json_conf)
     // playback() then returns 0 events with CL_SUCCESS forever, which is
     // indistinguishable from a story that simply has nothing yet. Warn rather than
     // reject, since a deployment that never issues tail reads is unaffected.
-    if(tail_retention_secs > 0 && acceptance_window_secs >= tail_retention_secs)
-    {
-        std::cerr << "[DataStoreConf] WARNING: tail_retention_secs (" << tail_retention_secs
-                  << ") <= acceptance_window_secs (" << acceptance_window_secs
-                  << "): sealed chunks are evicted as soon as they enter the tail, so playback() will always "
-                     "return 0 events. Set tail_retention_secs above acceptance_window_secs by the tail depth "
-                     "you want (readable window = tail_retention_secs - acceptance_window_secs)."
-                  << std::endl;
-    }
 
     return chronolog::CL_SUCCESS;
 }

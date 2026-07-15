@@ -1,0 +1,117 @@
+// ChronoLog ChronoVisor (watermark-feedback branch) — class interaction (UML class diagram)
+// Render:  dot -Tsvg visor_uml_watermark.dot -o visor_uml_watermark.svg
+//          dot -Tpng -Gdpi=150 visor_uml_watermark.dot -o visor_uml_watermark.png
+//
+// Watermark delta: the story-start fan-out delivers the keeper roster to the
+// Player. KeeperRegistry::notifyPlayerOfStoryRecordingStart passes the roster to
+// DataStoreAdminClient::send_start_story_recording_with_keepers; keeper and
+// grapher keep the 4-arg send_start_story_recording.
+digraph VisorClassesWatermark {
+  rankdir=LR; compound=true; newrank=true;
+  graph [fontname="Helvetica", fontsize=11];
+  node  [fontname="Helvetica", shape=plaintext];
+  edge  [fontname="Helvetica", fontsize=9, color="#555555"];
+
+  // ---------- legend ----------
+  legend [shape=plaintext, fontname="DejaVu Sans", label=<
+    <table border="1" cellborder="1" cellspacing="0" cellpadding="4" bgcolor="#ffffff">
+      <tr><td colspan="2" bgcolor="#e8e8e8" align="center"><b>LEGEND</b></td></tr>
+      <tr><td colspan="2" bgcolor="#f5f5f5" align="left"><b>relationships</b>&#160;&#160;(line: solid = structural &#183; dashed = dependency/RPC)</td></tr>
+      <tr><td align="center"><font point-size="20">&#9670;&#9472;&#9472;</font></td><td align="left"><b>composition</b> &#8212; owner manages lifetime (by-value member, or new/delete of *)</td></tr>
+      <tr><td align="center"><font point-size="20">&#9671;&#9472;&#9472;</font></td><td align="left"><b>aggregation</b> &#8212; holds a borrowed reference / pointer ( &amp; , * )</td></tr>
+      <tr><td align="center"><font point-size="20">&#9472;&#9472;&#9655;</font></td><td align="left"><b>generalization</b> &#8212; inherits (hollow triangle points to the base class)</td></tr>
+      <tr><td align="center"><font point-size="20">&#9548;&#9548;&#9656;</font></td><td align="left"><b>dependency</b> &#8212; uses / calls, in-process (dashed line)</td></tr>
+      <tr><td align="center"><font color="#1a56db" point-size="20">&#9548;&#9548;&#9656;</font></td><td align="left"><font color="#1a56db"><b>cross-process RPC</b> &#8212; Thallium / Margo (dashed, blue)</font></td></tr>
+      <tr><td colspan="2" bgcolor="#f5f5f5" align="left"><b>node fill = architectural plane</b></td></tr>
+      <tr><td colspan="2" align="left" bgcolor="#bcd4e6"><b>control plane</b> &#8212; RPC providers / admin client</td></tr>
+      <tr><td colspan="2" align="left" bgcolor="#bfe3bf"><b>registry / metadata</b> &#8212; in-memory state</td></tr>
+      <tr><td colspan="2" align="left" bgcolor="#ffdf9e"><b>roster delivery</b> &#8212; keeper roster to Player (this branch)</td></tr>
+      <tr><td colspan="2" align="left" bgcolor="#dcdcdc"><b>common data</b></td></tr>
+      <tr><td colspan="2" align="left" bgcolor="#ffe0b2"><b>external process</b></td></tr>
+      <tr><td colspan="2" align="left" bgcolor="#eeeeee"><b>library base</b> ( tl::provider&lt;T&gt; )</td></tr>
+    </table>>];
+
+  // ===================== external actors =====================
+  subgraph cluster_ext {
+    label="external processes"; style="rounded,dashed"; color="#cc8800"; fontcolor="#cc8800";
+    Client  [label=<<table border="1" cellborder="0" bgcolor="#ffe0b2"><tr><td><b>Client</b><br/><font point-size="9">&#171;storyteller&#187;</font></td></tr></table>>];
+    Keeper  [label=<<table border="1" cellborder="0" bgcolor="#ffe0b2"><tr><td><b>ChronoKeeper</b><br/><font point-size="9">DataStoreAdminService :7777</font></td></tr></table>>];
+    Grapher [label=<<table border="1" cellborder="0" bgcolor="#ffe0b2"><tr><td><b>ChronoGrapher</b><br/><font point-size="9">DataStoreAdminService :4444</font></td></tr></table>>];
+    Player  [label=<<table border="1" cellborder="0" bgcolor="#ffe0b2"><tr><td><b>ChronoPlayer</b><br/><font point-size="9">PlayerStoreAdminService :2222</font></td></tr></table>>];
+  }
+
+  tlprov [label=<<table border="1" cellborder="0" bgcolor="#eeeeee"><tr><td><b>tl::provider&lt;T&gt;</b><br/><font point-size="9">&#171;Thallium/Margo&#187;</font></td></tr></table>>];
+
+  // ===================== control plane =====================
+  subgraph cluster_ctrl {
+    label="control plane — RPC providers / admin client"; style="rounded,filled"; fillcolor="#eef4fb"; color="#7aa6d6";
+
+    CPS [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#bcd4e6">
+      <tr><td align="center"><b>ClientPortalService</b><br/><font point-size="8">&#171;tl::provider &#183; :5555&#187;</font></td></tr>
+      <tr><td align="left"><font point-size="9">- ChronicleMetaDirectory&amp; theMetaDirectory<br align="left"/>- ClientRegistryManager&amp; theClientRegistry<br align="left"/>- KeeperRegistry&amp; theKeeperRegistry<br align="left"/>+ Connect() / CreateChronicle()  &#171;RPC&#187;<br align="left"/>+ AcquireStory() / ReleaseStory()  &#171;RPC&#187;<br align="left"/>+ DestroyStory() / DestroyChronicle() / Show*()  &#171;RPC&#187;<br align="left"/></font></td></tr></table>>];
+
+    KRS [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#bcd4e6">
+      <tr><td align="center"><b>KeeperRegistryService</b><br/><font point-size="8">&#171;tl::provider &#183; :8888&#187;</font></td></tr>
+      <tr><td align="left"><font point-size="9">- KeeperRegistry&amp; theKeeperRegistry<br align="left"/>+ register_keeper/grapher/player()  &#171;RPC&#187;<br align="left"/>+ unregister_*() / handle_stats_msg()  &#171;RPC&#187;<br align="left"/></font></td></tr></table>>];
+
+    DAC [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#bcd4e6">
+      <tr><td align="center"><b>DataStoreAdminClient</b><br/><font point-size="8">one per process, on registryEngine</font></td></tr>
+      <tr><td align="left"><font point-size="9">- tl::provider_handle service_handle<br align="left"/>- tl::remote_procedure start_story_recording<br align="left"/>- tl::remote_procedure start_story_recording_with_keepers  &#171;new&#187;<br align="left"/>+ send_start_story_recording()  (keeper / grapher)<br align="left"/>+ send_start_story_recording_with_keepers(roster)  (player)<br align="left"/>+ send_stop_story_recording() / destroy_*()<br align="left"/></font></td></tr></table>>];
+  }
+
+  // ===================== registry / metadata =====================
+  subgraph cluster_reg {
+    label="registry / metadata — in-memory state"; style="rounded,filled"; fillcolor="#eef7ee"; color="#7fb37f";
+
+    KR [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#bfe3bf">
+      <tr><td align="center"><b>KeeperRegistry</b></td></tr>
+      <tr><td align="left"><font point-size="9">- map&lt;GroupId, RecordingGroup&gt; recordingGroups<br align="left"/>- keeper / grapher / player process maps<br align="left"/>- map&lt;StoryId, RecordingGroup*&gt; activeStories<br align="left"/>+ registerKeeper/Grapher/PlayerProcess()<br align="left"/>+ notifyRecordingGroupOfStoryRecordingStart()<br align="left"/>+ notifyKeepersOfStoryRecordingStart()<br align="left"/>+ notifyGrapherOfStoryRecordingStart()<br align="left"/>+ notifyPlayerOfStoryRecordingStart(&#8230;, story_keepers)  &#171;roster&#187;<br align="left"/>+ notifyRecordingGroupOfStoryRecordingStop()<br align="left"/></font></td></tr></table>>];
+
+    RG [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#bfe3bf">
+      <tr><td align="center"><b>RecordingGroup</b></td></tr>
+      <tr><td align="left"><font point-size="9">- map&lt;id, KeeperProcessEntry&gt; keeperProcesses<br align="left"/>- GrapherProcessEntry* grapherProcess<br align="left"/>- PlayerProcessEntry* playerProcess<br align="left"/></font></td></tr></table>>];
+
+    META [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#bfe3bf">
+      <tr><td align="center"><b>ChronicleMetaDirectory</b> / <b>ClientRegistryManager</b></td></tr>
+      <tr><td align="left"><font point-size="9">+ create/acquire/release_story() returns storyId<br align="left"/>+ add/remove_client_record()<br align="left"/></font></td></tr></table>>];
+  }
+
+  // ===================== common data =====================
+  subgraph cluster_data {
+    label="common data"; style="rounded,filled"; fillcolor="#f2f2f2"; color="#aaaaaa";
+    IDS [label=<<table border="1" cellborder="0" bgcolor="#dcdcdc"><tr><td><b>KeeperIdCard / ServiceId</b><br/><font point-size="9">getRecordingServiceId() &#8594; roster entry</font></td></tr></table>>];
+  }
+
+  // ===================== generalization =====================
+  edge [color="#444444", arrowhead=onormal, style=solid];
+  CPS -> tlprov;
+  KRS -> tlprov;
+
+  // ===================== composition =====================
+  edge [color="#222222", dir=both, arrowtail=diamond, arrowhead=none, style=solid];
+  KR  -> RG   [label="owns recordingGroups"];
+
+  // ===================== aggregation =====================
+  edge [color="#226622", dir=both, arrowtail=odiamond, arrowhead=none, style=solid];
+  CPS -> META [label="&amp;"];
+  CPS -> KR   [label="&amp;"];
+  KRS -> KR   [label="&amp;"];
+  KR  -> DAC  [label="* (per process)"];
+  RG  -> IDS  [label="keeper id cards"];
+
+  // ===================== in-process dependency (dashed) =====================
+  edge [color="#777777", dir=forward, arrowtail=none, arrowhead=vee, style=dashed];
+  CPS -> KR   [label="AcquireStory -> notify...StoryRecordingStart()", constraint=false];
+  KR  -> DAC  [label="issue notification", constraint=false];
+  KR  -> IDS  [label="roster = getRecordingServiceId()", constraint=false, color="#bbbbbb"];
+
+  // ===================== cross-process RPC (blue dashed) =====================
+  edge [color="#1a56db", fontcolor="#1a56db", dir=forward, arrowhead=vee, style=dashed];
+  Client  -> CPS [label="Connect / Acquire / Release / Show"];
+  Keeper  -> KRS [label="register / stats"];
+  Grapher -> KRS [label="register / stats"];
+  Player  -> KRS [label="register / stats"];
+  DAC -> Keeper  [label="start/stop_story_recording (4-arg)"];
+  DAC -> Grapher [label="start/stop_story_recording (4-arg)"];
+  DAC -> Player  [label="start_story_recording_with_keepers (roster)", color="#7c3aed", fontcolor="#7c3aed", penwidth=1.8];
+}

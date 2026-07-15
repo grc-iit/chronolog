@@ -1,0 +1,185 @@
+# ChronoPlayer (watermark) — class interaction (UML)
+
+Live (compiled) classes for the `watermark-feedback` branch. `direction TB`; node fill = architectural plane (see legend, including the highlighted watermark/retention/hot-fetch plane added on this branch). Mermaid `classDiagram` counterpart of the Graphviz version under `UML/Player/`. `htmlLabels:false` for native-text SVGs that render in non-browser viewers.
+
+```mermaid
+%%{init: {"htmlLabels": false, "class": {"htmlLabels": false}}}%%
+%% ChronoLog ChronoPlayer (watermark-feedback branch) — class interaction (UML class diagram)
+%% Relationship key:  *-- composition (owns lifetime)   o-- aggregation (holds ref/ptr)
+%%                    <|-- inherits                      ..> dependency / RPC (label "RPC:")
+classDiagram
+  direction TB
+
+  namespace external_processes {
+    class Client:::ext {
+      <<query requester>>
+    }
+    class ChronoKeeper:::ext {
+      <<story_range_fetch + legacy chunk push>>
+    }
+    class ChronoVisor:::ext {
+      <<registry + admin>>
+    }
+    class HDF5Archive:::ext {
+      <<cold store>>
+    }
+  }
+
+  class tlProvider["tl::provider&lt;T&gt;"]:::lib {
+    <<Thallium / Margo>>
+  }
+
+  namespace control_plane {
+    class PlaybackService:::ctrl {
+      <<tl::provider>>
+      -tl::engine playbackEngine
+      -PlayerDataStore& theActiveDataStore
+      -ArchiveReadingRequestQueue& theArchiveReadingRequestQueue
+      -Map~endpoint, QueryResponseAgent*~ responseSenders
+      -Map~endpoint, KeeperHotFetchClient*~ hotFetchClients
+      +story_playback_request()
+      +getHotFetchClient()
+    }
+    class PlayerStoreAdminService:::ctrl {
+      <<tl::provider>>
+      -PlayerDataStore& theDataStore
+      +StartStoryRecording()
+      +StartStoryRecordingWithKeepers()
+      +StopStoryRecording()
+    }
+    class StoryChunkConsumerService:::ctrl {
+      <<tl::provider — LEGACY MIRROR>>
+      -StoryChunkIngestionQueue& theIngestionQueue
+      +receive_story_chunk()
+    }
+  }
+
+  namespace hot_fetch {
+    class KeeperHotFetchClient:::hot {
+      <<new — one per keeper, cached by endpoint>>
+      -ServiceId keeperServiceId
+      -tl::provider_handle service_ph
+      -tl::remote_procedure story_range_fetch
+      +fetchRange(story, start, end, max)
+    }
+  }
+
+  namespace data_legacy_mirror {
+    class PlayerDataStore:::dcol {
+      -StoryChunkIngestionQueue& theIngestionQueue
+      -Map~StoryId, StoryPipeline*~ theMapOfStoryPipelines
+      -Map~StoryId, KeeperRoster~ storyKeepers
+      +setStoryKeepers()
+      +getStoryKeepers()
+      +startStoryRecording()
+      +collectIngestedEvents()
+      +get_active_story_events()
+    }
+    class StoryPipeline:::dcol {
+      <<legacy mirror>>
+      +collectIngestedEvents()
+      +mergeEvents()
+      +extractDecayedStoryChunks()
+    }
+  }
+
+  namespace archive_read_response {
+    class ArchiveReadingRequestQueue:::read {
+      +pushReadingRequest()
+      +popReadingRequest()
+    }
+    class ArchiveReadingAgent:::read {
+      +archiveReadingTask()
+      +readArchivedStory(chronicle, story, start, B)
+    }
+    class QueryResponseAgent:::read {
+      -Map~query_id, PlaybackQueryResponse*~ active_queries
+      +stashQueryResponseRecord()
+      +addArchivedEventsToQueryResponse()
+      +receive_query_response_RDMA()
+    }
+  }
+
+  namespace common_data {
+    class HotRangeResponse:::data {
+      <<new>>
+      +Vector~LogEvent~ events
+      +uint64 hot_floor
+      +uint64 known_W
+      +bool truncated
+    }
+    class PlaybackQueryResponse:::data {
+      +uint32 query_id
+      +Vector~Event~ events
+    }
+  }
+
+  namespace legend {
+    class lg_owner["A"]:::lgnd
+    class lg_part["B"]:::lgnd
+    class lg_whole["A"]:::lgnd
+    class lg_ref["B"]:::lgnd
+    class lg_base["Base"]:::lgnd
+    class lg_derived["Derived"]:::lgnd
+    class lg_depA["A"]:::lgnd
+    class lg_depB["B"]:::lgnd
+    class lg_rpcA["A"]:::lgnd
+    class lg_rpcB["B"]:::lgnd
+    class key_control["fill = control plane — RPC providers"]:::ctrl
+    class key_hot["fill = hot fetch — on-demand keeper read (this branch)"]:::hot
+    class key_datalegacy["fill = data / legacy mirror — roster + chunk-ingest window"]:::dcol
+    class key_read["fill = archive read + response — cold HDF5 + RDMA reply"]:::read
+    class key_commondata["fill = common data"]:::data
+    class key_external["fill = external process"]:::ext
+    class key_library["fill = library base (tl::provider)"]:::lib
+  }
+
+  %% ---- generalization (inherits) ----
+  tlProvider <|-- PlaybackService
+  tlProvider <|-- PlayerStoreAdminService
+  tlProvider <|-- StoryChunkConsumerService
+
+  %% ---- composition (owns lifetime) ----
+  PlaybackService "1" *-- "many" KeeperHotFetchClient : owns* (cached map)
+  PlaybackService "1" *-- "many" QueryResponseAgent : owns* (per receiver)
+  PlayerDataStore "1" *-- "many" StoryPipeline : owns* (legacy)
+  QueryResponseAgent "1" *-- "many" PlaybackQueryResponse : active_queries
+
+  %% ---- aggregation (holds ref / ptr, not owner) ----
+  PlaybackService o-- PlayerDataStore : &
+  PlaybackService o-- ArchiveReadingRequestQueue : &
+  PlayerStoreAdminService o-- PlayerDataStore : &
+  KeeperHotFetchClient o-- HotRangeResponse : returns
+
+  %% ---- in-process dependency ----
+  PlaybackService ..> PlayerDataStore : getStoryKeepers() roster
+  PlaybackService ..> KeeperHotFetchClient : fetchRange() per keeper
+  PlaybackService ..> ArchiveReadingRequestQueue : push [start, B)
+  ArchiveReadingAgent ..> QueryResponseAgent : addArchivedEventsToQueryResponse()
+  PlayerStoreAdminService ..> PlayerDataStore : setStoryKeepers()
+
+  %% ---- cross-process RPC ----
+  Client ..> PlaybackService : RPC ▸story_playback_request
+  KeeperHotFetchClient ..> ChronoKeeper : RPC ▸story_range_fetch (hot pull)
+  ChronoVisor ..> PlayerStoreAdminService : RPC ▸start_story_recording_with_keepers (roster)
+  ChronoKeeper ..> StoryChunkConsumerService : RPC ▸receive_story_chunk (legacy)
+  QueryResponseAgent ..> Client : RPC ▸receive_query_response (RDMA)
+  ArchiveReadingAgent ..> HDF5Archive : read HDF5
+
+  %% ---- legend: relationship glyphs ----
+  lg_owner *-- lg_part : composition ▸ owner manages lifetime
+  lg_whole o-- lg_ref : aggregation ▸ holds borrowed ref / ptr
+  lg_base <|-- lg_derived : generalization ▸ inherits (triangle to base)
+  lg_depA ..> lg_depB : dependency ▸ uses / calls (in-process)
+  lg_rpcA ..> lg_rpcB : RPC ▸ cross-process (dashed)
+
+  %% ---- colors by plane ----
+  classDef lgnd   fill:#eeeeee,stroke:#999999,color:#000
+  classDef ctrl   fill:#bcd4e6,stroke:#5a7fa6,color:#000
+  classDef hot    fill:#ffdf9e,stroke:#d0a03a,color:#000
+  classDef dcol   fill:#bfe3bf,stroke:#5a8a5a,color:#000
+  classDef read   fill:#f0e08c,stroke:#b3a14a,color:#000
+  classDef data   fill:#dcdcdc,stroke:#999999,color:#000
+  classDef ext    fill:#ffe0b2,stroke:#cc8800,color:#000
+  classDef lib    fill:#eeeeee,stroke:#aaaaaa,color:#000
+```

@@ -1,0 +1,160 @@
+// ChronoLog ChronoGrapher (watermark-feedback branch) — class interaction (UML class diagram)
+// Render:  dot -Tsvg grapher_uml_watermark.dot -o grapher_uml_watermark.svg
+//          dot -Tpng -Gdpi=150 grapher_uml_watermark.dot -o grapher_uml_watermark.png
+//
+// Watermark additions: StoryWatermarkRegistry (per-story persisted W = contiguous
+// prefix), WatermarkReportPublisher (pushes dirty W back to contributing keepers),
+// HDF5FileChunkExtractor advances the registry on write, receive_story_chunk records
+// the sending keeper as a contributor.
+digraph GrapherClassesWatermark {
+  rankdir=LR; compound=true; newrank=true;
+  graph [fontname="Helvetica", fontsize=11];
+  node  [fontname="Helvetica", shape=plaintext];
+  edge  [fontname="Helvetica", fontsize=9, color="#555555"];
+
+  // ---------- legend ----------
+  legend [shape=plaintext, fontname="DejaVu Sans", label=<
+    <table border="1" cellborder="1" cellspacing="0" cellpadding="4" bgcolor="#ffffff">
+      <tr><td colspan="2" bgcolor="#e8e8e8" align="center"><b>LEGEND</b></td></tr>
+      <tr><td colspan="2" bgcolor="#f5f5f5" align="left"><b>relationships</b>&#160;&#160;(line: solid = structural &#183; dashed = dependency/RPC)</td></tr>
+      <tr><td align="center"><font point-size="20">&#9670;&#9472;&#9472;</font></td><td align="left"><b>composition</b> &#8212; owner manages lifetime (by-value member, or new/delete of *)</td></tr>
+      <tr><td align="center"><font point-size="20">&#9671;&#9472;&#9472;</font></td><td align="left"><b>aggregation</b> &#8212; holds a borrowed reference / pointer ( &amp; , * )</td></tr>
+      <tr><td align="center"><font point-size="20">&#9472;&#9472;&#9655;</font></td><td align="left"><b>generalization</b> &#8212; inherits (hollow triangle points to the base class)</td></tr>
+      <tr><td align="center"><font point-size="20">&#9548;&#9548;&#9656;</font></td><td align="left"><b>dependency</b> &#8212; uses / calls, in-process (dashed line)</td></tr>
+      <tr><td align="center"><font color="#1a56db" point-size="20">&#9548;&#9548;&#9656;</font></td><td align="left"><font color="#1a56db"><b>cross-process RPC</b> &#8212; Thallium / Margo (dashed, blue)</font></td></tr>
+      <tr><td colspan="2" bgcolor="#f5f5f5" align="left"><b>node fill = architectural plane</b></td></tr>
+      <tr><td colspan="2" align="left" bgcolor="#bcd4e6"><b>control plane</b> &#8212; RPC providers / registry client</td></tr>
+      <tr><td colspan="2" align="left" bgcolor="#bfe3bf"><b>data collection</b> &#8212; ingest + merge pipelines</td></tr>
+      <tr><td colspan="2" align="left" bgcolor="#ffdf9e"><b>watermark</b> &#8212; persisted-W registry + report publisher (this branch)</td></tr>
+      <tr><td colspan="2" align="left" bgcolor="#f0e08c"><b>extraction</b> &#8212; drain path + HDF5 persistence</td></tr>
+      <tr><td colspan="2" align="left" bgcolor="#dcdcdc"><b>common data / config</b></td></tr>
+      <tr><td colspan="2" align="left" bgcolor="#ffe0b2"><b>external process</b></td></tr>
+      <tr><td colspan="2" align="left" bgcolor="#eeeeee"><b>library base</b> ( tl::provider&lt;T&gt; )</td></tr>
+    </table>>];
+
+  // ===================== external actors =====================
+  subgraph cluster_ext {
+    label="external processes"; style="rounded,dashed"; color="#cc8800"; fontcolor="#cc8800";
+    Keeper [label=<<table border="1" cellborder="0" bgcolor="#ffe0b2"><tr><td><b>ChronoKeeper(s)</b><br/><font point-size="9">&#171;chunk source + report target&#187;</font></td></tr></table>>];
+    Visor  [label=<<table border="1" cellborder="0" bgcolor="#ffe0b2"><tr><td><b>ChronoVisor</b><br/><font point-size="9">&#171;registry + admin&#187;</font></td></tr></table>>];
+    FS     [label=<<table border="1" cellborder="0" bgcolor="#ffe0b2"><tr><td><b>HDF5 archive</b><br/><font point-size="9">&#171;local disk&#187;</font></td></tr></table>>];
+  }
+
+  tlprov [label=<<table border="1" cellborder="0" bgcolor="#eeeeee"><tr><td><b>tl::provider&lt;T&gt;</b><br/><font point-size="9">&#171;Thallium/Margo&#187;</font></td></tr></table>>];
+
+  // ===================== control plane =====================
+  subgraph cluster_ctrl {
+    label="control plane — RPC providers / client"; style="rounded,filled"; fillcolor="#eef4fb"; color="#7aa6d6";
+
+    GRS [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#bcd4e6">
+      <tr><td align="center"><b>GrapherRecordingService</b><br/><font point-size="8">&#171;tl::provider&#187;</font></td></tr>
+      <tr><td align="left"><font point-size="9">- ChunkIngestionQueue&amp; theIngestionQueue<br align="left"/>- WatermarkReportPublisher* theWatermarkPublisher<br align="left"/>+ receive_story_chunk(bulk, reporter)  &#171;RDMA&#187;<br align="left"/><font point-size="8">&#8594; recordContributor(story, reporter)</font><br align="left"/></font></td></tr></table>>];
+
+    DSAS [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#bcd4e6">
+      <tr><td align="center"><b>DataStoreAdminService</b><br/><font point-size="8">&#171;tl::provider&#187;</font></td></tr>
+      <tr><td align="left"><font point-size="9">- GrapherDataStore&amp; theDataStore<br align="left"/>+ StartStoryRecording() / StopStoryRecording()  &#171;RPC&#187;<br align="left"/>+ destroy_story() / destroy_chronicle()  &#171;RPC&#187;<br align="left"/></font></td></tr></table>>];
+
+    GRC [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#bcd4e6">
+      <tr><td align="center"><b>GrapherRegistryClient</b></td></tr>
+      <tr><td align="left"><font point-size="9">+ send_register_msg() / send_stats_msg()<br align="left"/></font></td></tr></table>>];
+  }
+
+  // ===================== data collection =====================
+  subgraph cluster_data_c {
+    label="data collection — ingest + merge"; style="rounded,filled"; fillcolor="#eef7ee"; color="#7fb37f";
+
+    IQ [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#bfe3bf">
+      <tr><td align="center"><b>ChunkIngestionQueue</b></td></tr>
+      <tr><td align="left"><font point-size="9">- map&lt;StoryId, StoryChunkIngestionHandle*&gt; handles<br align="left"/>- orphanQueue<br align="left"/>+ ingestStoryChunk() / drainOrphanChunks()<br align="left"/>+ extractOrphanChunks()<br align="left"/></font></td></tr></table>>];
+
+    GDS [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#bfe3bf">
+      <tr><td align="center"><b>GrapherDataStore</b></td></tr>
+      <tr><td align="left"><font point-size="9">- ChunkIngestionQueue&amp; theIngestionQueue<br align="left"/>- StoryChunkExtractionQueue&amp; theExtractionQueue<br align="left"/>- ChronoGrapherExtractionChain* theExtractionChain<br align="left"/>- StoryWatermarkRegistry* theWatermarkRegistry<br align="left"/>- WatermarkReportPublisher* theWatermarkPublisher<br align="left"/>- map&lt;StoryId, StoryPipeline*&gt; theMapOfStoryPipelines<br align="left"/>- set&lt;StoryId&gt; destroyedStories<br align="left"/>- std::thread destroyWorkerThread<br align="left"/>+ start/stop/destroyStory() / collectIngestedEvents()<br align="left"/>+ extractDecayedStoryChunks() / retireDecayedPipelines()<br align="left"/>+ adoptOrphanChunks() / attachWatermarkPublisher()<br align="left"/></font></td></tr></table>>];
+
+    SP [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#bfe3bf">
+      <tr><td align="center"><b>StoryPipeline</b><br/><font point-size="8">chrono-common</font></td></tr>
+      <tr><td align="left"><font point-size="9">- map&lt;chrono_time, StoryChunk*&gt; storyTimelineMap<br align="left"/>+ collectIngestedEvents() / mergeEvents()<br align="left"/>+ extractDecayedStoryChunks() / finalize()<br align="left"/></font></td></tr></table>>];
+  }
+
+  // ===================== watermark (new) =====================
+  subgraph cluster_wm {
+    label="watermark — persisted-W tracking (this branch)"; style="rounded,filled"; fillcolor="#fff6e6"; color="#d0a03a";
+
+    WR [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#ffdf9e">
+      <tr><td align="center"><b>StoryWatermarkRegistry</b><br/><font point-size="8">&#171;new&#187; header-only</font></td></tr>
+      <tr><td align="left"><font point-size="9">- map&lt;StoryId, Entry&gt; stories<br align="left"/><font point-size="8">Entry: anchor, w, write_failed, pending intervals</font><br align="left"/>+ registerStory() / persistFailed()<br align="left"/>+ advancePersisted(start, end)  (contiguous prefix)<br align="left"/>+ getPersisted() / snapshotDirty()<br align="left"/></font></td></tr></table>>];
+
+    WP [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#ffdf9e">
+      <tr><td align="center"><b>WatermarkReportPublisher</b><br/><font point-size="8">&#171;new&#187;</font></td></tr>
+      <tr><td align="left"><font point-size="9">- tl::engine&amp; theEngine  (dataAdminEngine)<br align="left"/>- StoryWatermarkRegistry&amp; theRegistry<br align="left"/>- map&lt;StoryId, map&lt;endpoint, ServiceId&gt;&gt; contributors<br align="left"/>- map&lt;endpoint, provider_handle&gt; keeperHandles<br align="left"/>+ recordContributor(story, reporter)<br align="left"/>+ publish()  &#8594; report_story_watermarks<br align="left"/></font></td></tr></table>>];
+  }
+
+  // ===================== extraction / persistence =====================
+  subgraph cluster_extract {
+    label="extraction — drain + HDF5 persistence"; style="rounded,filled"; fillcolor="#fbf8e9"; color="#cbb85f";
+
+    SCEQ [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#f0e08c">
+      <tr><td align="center"><b>StoryChunkExtractionQueue</b></td></tr>
+      <tr><td align="left"><font point-size="9">+ stashStoryChunk() / ejectStoryChunk()<br align="left"/></font></td></tr></table>>];
+
+    SCEM [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#f0e08c">
+      <tr><td align="center"><b>StoryChunkExtractionModule&lt;T&gt;</b><br/><font point-size="8">T = ChronoGrapherExtractionChain</font></td></tr>
+      <tr><td align="left"><font point-size="9">+ drainExtractionQueue()  &#8594; process_chunk() + dispose_chunk()<br align="left"/></font></td></tr></table>>];
+
+    CHAIN [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#f0e08c">
+      <tr><td align="center"><b>ChronoGrapherExtractionChain</b></td></tr>
+      <tr><td align="left"><font point-size="9">+ process_chunk() / dispose_chunk(chunk, status) (delete)<br align="left"/>+ delete_story_files() / delete_chronicle_files()<br align="left"/></font></td></tr></table>>];
+
+    HX [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#f7efc0">
+      <tr><td align="center"><b>HDF5FileChunkExtractor</b></td></tr>
+      <tr><td align="left"><font point-size="9">- string rootDirectory<br align="left"/>- StoryWatermarkRegistry* watermarkRegistry<br align="left"/>+ process_chunk()  &#8594; advancePersisted() / persistFailed()<br align="left"/>+ delete_story_files()<br align="left"/></font></td></tr></table>>];
+  }
+
+  // ===================== common data =====================
+  subgraph cluster_data {
+    label="common data (chrono-common)"; style="rounded,filled"; fillcolor="#f2f2f2"; color="#aaaaaa";
+    SC [label=<<table border="1" cellborder="0" bgcolor="#dcdcdc"><tr><td><b>StoryChunk</b><br/><font point-size="9">- map&lt;EventSequence, LogEvent&gt; logEvents<br align="left"/>+ merge/extract &#183; isWatermarkExempt()  &#171;new&#187;</font></td></tr></table>>];
+  }
+
+  // ===================== generalization =====================
+  edge [color="#444444", arrowhead=onormal, style=solid];
+  GRS  -> tlprov;
+  DSAS -> tlprov;
+
+  // ===================== composition =====================
+  edge [color="#222222", dir=both, arrowtail=diamond, arrowhead=none, style=solid];
+  GDS  -> SP    [label="owns *  (new/delete)"];
+  SP   -> SC    [label="storyTimelineMap"];
+  SCEM -> SCEQ  [label="by value"];
+  SCEM -> CHAIN [label="by value"];
+  CHAIN -> HX   [label="variant vector"];
+
+  // ===================== aggregation =====================
+  edge [color="#226622", dir=both, arrowtail=odiamond, arrowhead=none, style=solid];
+  GRS  -> IQ    [label="&amp;"];
+  GRS  -> WP    [label="* (contributor sink)"];
+  DSAS -> GDS   [label="&amp;"];
+  GDS  -> IQ    [label="&amp;"];
+  GDS  -> SCEQ  [label="&amp;"];
+  GDS  -> CHAIN [label="* (destroy path)"];
+  GDS  -> WR    [label="*"];
+  GDS  -> WP    [label="*"];
+  WP   -> WR    [label="&amp;"];
+  HX   -> WR    [label="* (advance on write)"];
+
+  // ===================== in-process dependency (dashed) =====================
+  edge [color="#777777", dir=forward, arrowtail=none, arrowhead=vee, style=dashed];
+  GRS  -> WP    [label="recordContributor()", constraint=false];
+  GDS  -> WP    [label="publish() per tick", constraint=false];
+  GDS  -> WR    [label="registerStory()", constraint=false];
+  WP   -> WR    [label="snapshotDirty()", constraint=false, color="#bbbbbb"];
+  HX   -> WR    [label="advancePersisted() / persistFailed()", constraint=false, color="#bbbbbb"];
+
+  // ===================== cross-process RPC (blue dashed) =====================
+  edge [color="#1a56db", fontcolor="#1a56db", dir=forward, arrowhead=vee, style=dashed];
+  Keeper -> GRS   [label="receive_story_chunk (+reporter)"];
+  Visor  -> DSAS  [label="start/stop_story_recording / destroy_*"];
+  GRC    -> Visor [label="register / stats"];
+  WP     -> Keeper [label="report_story_watermarks (one-way)"];
+  HX     -> FS    [label="write / delete HDF5", color="#15803d", fontcolor="#15803d"];
+}

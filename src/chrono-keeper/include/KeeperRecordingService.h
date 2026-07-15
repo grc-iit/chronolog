@@ -15,7 +15,7 @@
 #include <chronolog_types.h>
 
 #include "IngestionQueue.h"
-#include "KeeperTailStore.h"
+#include "KeeperChunkRetentionStore.h"
 
 namespace tl = thallium;
 
@@ -25,10 +25,9 @@ class KeeperRecordingService: public tl::provider<KeeperRecordingService>
 {
 public:
     // KeeperRecordingService should be created on the heap not the stack thus the constructor is private...
-    static KeeperRecordingService* CreateKeeperRecordingService(tl::engine& tl_engine,
-                                                                uint16_t service_provider_id,
-                                                                IngestionQueue& ingestion_queue,
-                                                                KeeperTailStore& tail_store)
+    static KeeperRecordingService*
+    CreateKeeperRecordingService(tl::engine& tl_engine, uint16_t service_provider_id, IngestionQueue& ingestion_queue,
+                                 KeeperChunkRetentionStore& tail_store)
     {
         return new KeeperRecordingService(tl_engine, service_provider_id, ingestion_queue, tail_store);
     }
@@ -68,10 +67,8 @@ public:
     }
 
 private:
-    KeeperRecordingService(tl::engine& tl_engine,
-                           uint16_t service_provider_id,
-                           IngestionQueue& ingestion_queue,
-                           KeeperTailStore& tail_store)
+    KeeperRecordingService(tl::engine& tl_engine, uint16_t service_provider_id, IngestionQueue& ingestion_queue,
+                           KeeperChunkRetentionStore& tail_store)
         : tl::provider<KeeperRecordingService>(tl_engine, service_provider_id)
         , theIngestionQueue(ingestion_queue)
         , theTailStore(tail_store)
@@ -88,7 +85,7 @@ private:
     KeeperRecordingService& operator=(KeeperRecordingService const&) = delete;
 
     IngestionQueue& theIngestionQueue;
-    KeeperTailStore& theTailStore;
+    KeeperChunkRetentionStore& theTailStore;
 };
 
 } // namespace chronolog
