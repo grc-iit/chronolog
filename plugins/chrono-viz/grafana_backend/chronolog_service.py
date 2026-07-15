@@ -839,28 +839,58 @@ async def playback_story(request: PlaybackRequest):
                 detail="Client object mismatch detected"
             )
 
-        def _acquire_story():
+        def _acquire_playback_release():
+            # acquire -> playback -> release is ONE critical section. The story
+            # handle is a shared object owned by the client's acquired-story map;
+            # if we dropped _client_lock between the acquire and the playback, a
+            # concurrent request on the same story could ReleaseStory (which
+            # deletes the handle) in the gap, and our playback() would then
+            # dereference a freed handle. Holding the lock throughout keeps the
+            # trio atomic. Events are materialized into plain tuples here, while
+            # the handle (and thus the C++ event objects) are still alive.
             with _client_lock:
-                return chronolog_client.AcquireStory(
+                acquire_result = chronolog_client.AcquireStory(
                     request.chronicle_name,
                     request.story_name,
                 )
+                if acquire_result[0] != 0:
+                    return {"acquire_error": acquire_result[0]}
+                story_handle = acquire_result[1]
+                if story_handle is None:
+                    return {"no_handle": True}
+                try:
+                    events = chronolog.EventList()
+                    rc = story_handle.playback(request.num_events, events)
+                    materialized = [
+                        (e.time(), e.client_id(), e.index(), e.log_record())
+                        for e in events
+                    ]
+                    return {"rc": rc, "events": materialized}
+                finally:
+                    try:
+                        release_result = chronolog_client.ReleaseStory(
+                            request.chronicle_name,
+                            request.story_name,
+                        )
+                        logger.info(
+                            f"ReleaseStory returned: {release_result} for "
+                            f"{request.chronicle_name}/{request.story_name}"
+                        )
+                    except Exception as release_error:
+                        logger.error(f"Error releasing story: {release_error}")
 
-        acquire_result = await asyncio.to_thread(_acquire_story)
-        acquire_error_code = acquire_result[0]
+        outcome = await asyncio.to_thread(_acquire_playback_release)
 
-        if acquire_error_code != 0:
+        if "acquire_error" in outcome:
             logger.error(
                 f"Failed to acquire story {request.chronicle_name}/{request.story_name}: "
-                f"error code {acquire_error_code}"
+                f"error code {outcome['acquire_error']}"
             )
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to acquire story (error code: {acquire_error_code})"
+                detail=f"Failed to acquire story (error code: {outcome['acquire_error']})"
             )
-
-        story_handle = acquire_result[1]
-        if story_handle is None:
+        if outcome.get("no_handle"):
             logger.error(
                 f"AcquireStory returned no handle for "
                 f"{request.chronicle_name}/{request.story_name}"
@@ -870,59 +900,24 @@ async def playback_story(request: PlaybackRequest):
                 detail="AcquireStory returned no story handle"
             )
 
-        logger.info(
-            f"Successfully acquired story {request.chronicle_name}/{request.story_name}"
-        )
-
-        try:
-            events = chronolog.EventList()
-
-            def _playback_story():
-                with _client_lock:
-                    return story_handle.playback(request.num_events, events)
-
-            result = await asyncio.to_thread(_playback_story)
-
-            if result != 0:
-                logger.warning(
-                    f"playback returned non-zero code: {result} for "
-                    f"{request.chronicle_name}/{request.story_name}"
-                )
-
-            event_responses = [
-                EventResponse(
-                    time=event.time(),
-                    client_id=event.client_id(),
-                    index=event.index(),
-                    log_record=event.log_record(),
-                )
-                for event in events
-            ]
-
-            return PlaybackResponse(
-                chronicle_name=request.chronicle_name,
-                story_name=request.story_name,
-                num_events=request.num_events,
-                events=event_responses,
-                total_events=len(event_responses),
+        if outcome["rc"] != 0:
+            logger.warning(
+                f"playback returned non-zero code: {outcome['rc']} for "
+                f"{request.chronicle_name}/{request.story_name}"
             )
 
-        finally:
-            try:
-                def _release_story():
-                    with _client_lock:
-                        return chronolog_client.ReleaseStory(
-                            request.chronicle_name,
-                            request.story_name
-                        )
+        event_responses = [
+            EventResponse(time=t, client_id=c, index=i, log_record=r)
+            for (t, c, i, r) in outcome["events"]
+        ]
 
-                release_result = await asyncio.to_thread(_release_story)
-                logger.info(
-                    f"ReleaseStory returned: {release_result} for "
-                    f"{request.chronicle_name}/{request.story_name}"
-                )
-            except Exception as release_error:
-                logger.error(f"Error releasing story: {release_error}")
+        return PlaybackResponse(
+            chronicle_name=request.chronicle_name,
+            story_name=request.story_name,
+            num_events=request.num_events,
+            events=event_responses,
+            total_events=len(event_responses),
+        )
 
     except HTTPException:
         raise
