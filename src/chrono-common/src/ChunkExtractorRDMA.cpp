@@ -43,6 +43,7 @@ chronolog::StoryChunkExtractorRDMA::StoryChunkExtractorRDMA(StoryChunkExtractorR
 
     sender_tl_engine = other.get_sender_engine();
     receiver_service_id = other.get_receiver_service_id();
+    reporter_service_id = other.get_reporter_service_id();
     rdma_sender = other.rdma_sender;
 
     LOG_TRACE("[ChunkExtractorRDMA] move constructor: using rdma_sender for receiver_service {} ",
@@ -66,6 +67,7 @@ chl::StoryChunkExtractorRDMA& chronolog::StoryChunkExtractorRDMA::operator=(Stor
 
     sender_tl_engine = other.get_sender_engine();
     receiver_service_id = other.get_receiver_service_id();
+    reporter_service_id = other.get_reporter_service_id();
     rdma_sender = other.rdma_sender;
 
     LOG_TRACE("[ChunkExtractorRDMA] move operator: using rdma_sender for receiver_service {} ",
@@ -243,7 +245,8 @@ int chronolog::StoryChunkExtractorRDMA::process_chunk(chronolog::StoryChunk* sto
         oarchive(*story_chunk);
         std::string serialized_story_chunk = oss.str();
 
-        auto transfer_return = rdma_sender->transfer_serialized_story_chunk(serialized_story_chunk);
+        auto transfer_return = rdma_sender->transfer_serialized_story_chunk(serialized_story_chunk,
+                                                                            reporter_service_id);
 
         if(transfer_return == chl::CL_SUCCESS)
         {

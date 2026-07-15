@@ -90,7 +90,8 @@
       "acceptance_window_secs": 15,
       "inactive_story_delay_secs": 120,
       "tail_capacity": 65536,
-      "retention_cap_mb": 512
+      "retention_cap_mb": 512,
+      "watermark_resend_timeout_secs": 720
     },
     "ExtractionModule": {
         "extraction_stream_count":2,
@@ -156,7 +157,8 @@
       "max_story_chunk_size": 4096,
       "story_chunk_duration_secs": 60,
       "acceptance_window_secs": 180,
-      "inactive_story_delay_secs": 300
+      "inactive_story_delay_secs": 300,
+      "watermark_report_interval_secs": 1
     },
     "ExtractionModule": {
         "extraction_stream_count":2,

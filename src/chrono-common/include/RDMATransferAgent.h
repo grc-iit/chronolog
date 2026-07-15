@@ -37,7 +37,11 @@ public:
 
     ~RDMATransferAgent();
 
-    int transfer_serialized_story_chunk(std::string const& chunk);
+    // Ship one serialized chunk. reporter identifies the sender's
+    // DataStoreAdminService so the receiver (grapher) knows where to push
+    // watermark reports; pass a default ServiceId for receivers that do not
+    // report (player).
+    int transfer_serialized_story_chunk(std::string const& chunk, ServiceId const& reporter = ServiceId());
     bool is_receiver_available() const;
 
 private:

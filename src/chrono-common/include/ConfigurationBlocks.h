@@ -245,6 +245,14 @@ struct DataStoreConf
     // e.g. an outage) but keeps retaining — unpersisted data is never dropped.
     // 0 disables the warning. Keeper-only knob; ignored by grapher/player.
     int retention_cap_mb = 512;
+    // Re-send a retained chunk whose grapher ack or covering watermark report
+    // has not arrived after this long. Should exceed the grapher's
+    // acceptance_window + story_chunk_duration by a healthy multiple (the
+    // template's grapher values 180+60 suggest ~3x = 720). Keeper-only knob.
+    int watermark_resend_timeout_secs = 720;
+    // How often the grapher pushes dirty per-story persisted watermarks to
+    // the contributing keepers. Grapher-only knob; ignored by keeper/player.
+    int watermark_report_interval_secs = 1;
 
     DataStoreConf() {}
 
@@ -257,7 +265,9 @@ struct DataStoreConf
                " acceptance_window_secs: " + std::to_string(acceptance_window_secs) +
                " inactive_story_delay_secs: " + std::to_string(inactive_story_delay_secs) +
                " tail_capacity: " + std::to_string(tail_capacity) +
-               " retention_cap_mb: " + std::to_string(retention_cap_mb) + "]";
+               " retention_cap_mb: " + std::to_string(retention_cap_mb) +
+               " watermark_resend_timeout_secs: " + std::to_string(watermark_resend_timeout_secs) +
+               " watermark_report_interval_secs: " + std::to_string(watermark_report_interval_secs) + "]";
     }
 };
 

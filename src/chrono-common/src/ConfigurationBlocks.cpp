@@ -299,6 +299,24 @@ int chronolog::DataStoreConf::parseJsonConf(json_object* data_store_json_conf)
             }
             retention_cap_mb = json_object_get_int(val);
         }
+        else if(strcmp(key, "watermark_resend_timeout_secs") == 0)
+        {
+            if(!json_object_is_type(val, json_type_int))
+            {
+                std::cerr << "[DataStoreConf] Invalid 'watermark_resend_timeout_secs': expected integer" << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
+            watermark_resend_timeout_secs = json_object_get_int(val);
+        }
+        else if(strcmp(key, "watermark_report_interval_secs") == 0)
+        {
+            if(!json_object_is_type(val, json_type_int))
+            {
+                std::cerr << "[DataStoreConf] Invalid 'watermark_report_interval_secs': expected integer" << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
+            watermark_report_interval_secs = json_object_get_int(val);
+        }
         else
         {
             std::cerr << "[DataStoreConf] Unknown DataStoreInternals configuration: " << key << std::endl;

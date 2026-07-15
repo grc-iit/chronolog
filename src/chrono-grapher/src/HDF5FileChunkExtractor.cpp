@@ -185,6 +185,20 @@ int chronolog::HDF5FileChunkExtractor::process_chunk(chl::StoryChunk* story_chun
              story_chunk->getEndTime(),
              story_chunk->getEventCount());
 
+    if(story_chunk->empty())
+    {
+        // an idle-gap window: nothing to write, but the interval is vacuously
+        // durable and must extend the persisted watermark or the contiguous
+        // prefix would hold at the gap forever
+        if(watermarkRegistry != nullptr && !story_chunk->isWatermarkExempt())
+        {
+            watermarkRegistry->advancePersisted(story_chunk->getStoryId(),
+                                                story_chunk->getStartTime(),
+                                                story_chunk->getEndTime());
+        }
+        return chl::CL_SUCCESS;
+    }
+
     StoryChunkWriter chunkWriter(rootDirectory, "story_chunks", "data");
     hsize_t size = chunkWriter.writeStoryChunk(*story_chunk);
     if(size == 0)

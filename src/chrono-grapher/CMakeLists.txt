@@ -19,6 +19,7 @@ target_sources(chrono_grapher PRIVATE
     src/ChronoGrapherConfiguration.cpp
     src/GrapherDataStore.cpp
     src/HDF5FileChunkExtractor.cpp
+    src/WatermarkReportPublisher.cpp
 )
 
 target_link_libraries(chrono_grapher

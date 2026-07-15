@@ -11,6 +11,7 @@
 #include <GrapherDataStore.h>
 #include <GrapherExtractionChain.h>
 #include <StoryWatermarkRegistry.h>
+#include <WatermarkReportPublisher.h>
 #include <chrono_monitor.h>
 
 namespace chl = chronolog;
@@ -582,6 +583,12 @@ void chronolog::GrapherDataStore::dataCollectionTask()
         extractDecayedStoryChunks();
         retireDecayedPipelines();
         adoptOrphanChunks();
+        if(theWatermarkPublisher != nullptr)
+        {
+            // rate-limited inside the publisher; coalescing comes from the
+            // registry's dirty snapshot
+            theWatermarkPublisher->publish();
+        }
     }
     LOG_DEBUG("[GrapherDataStore] Exiting DataCollectionTask thread {}", tl::thread::self_id());
 }
