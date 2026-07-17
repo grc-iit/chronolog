@@ -57,11 +57,8 @@ namespace
 std::string make_ldms_sample(std::string const& schema, uint64_t sample_sec, long mem_total, std::string const& run_tag)
 {
     std::ostringstream o;
-    o << "{\"timestamp\":" << sample_sec << ".000000"
-      << ",\"producer\":\"node1\""
-      << ",\"instance\":\"node1/" << schema << "\""
-      << ",\"schema\":\"" << schema << "\""
-      << ",\"run\":\"" << run_tag << "\""
+    o << "{\"timestamp\":" << sample_sec << ".000000" << ",\"producer\":\"node1\"" << ",\"instance\":\"node1/" << schema
+      << "\"" << ",\"schema\":\"" << schema << "\"" << ",\"run\":\"" << run_tag << "\""
       << ",\"metrics\":{\"MemTotal\":" << mem_total << "}}";
     return o.str();
 }
